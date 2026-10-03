@@ -69,6 +69,12 @@ function Pagina() {
           deslocamento: +grupo.x().toFixed(2),
         }
       },
+      // Uma linha de pixels (RGB) do stage como ele está agora: o que a prévia mostra
+      linha: (y: number) => {
+        const c = stageRef.current?.toCanvas({ x: 0, y, width: W, height: 1, pixelRatio: 1 })
+        const rgba = c?.getContext('2d')?.getImageData(0, 0, W, 1).data
+        return rgba ? Array.from(rgba).filter((_, i) => i % 4 !== 3) : null
+      },
       // Os mesmos comandos do botão ▶︎/⏸, do painel e da tecla de espaço
       tocar: () => relogio.tocar(),
       pausar: () => relogio.pausar(),

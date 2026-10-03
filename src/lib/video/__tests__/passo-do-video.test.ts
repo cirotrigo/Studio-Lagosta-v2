@@ -35,6 +35,23 @@ describe('passoDoVideo', () => {
     })
   })
 
+  it('na janela de uma transição: o que sai segura o último quadro, o que entra espera parado no início', () => {
+    // Os dois lados recebem o relógio LOCAL como o VideoNode e o export o montam:
+    // { t: max(0, tLocal), tocando: tocando && tLocal >= 0 }. Trecho 2–6 s.
+    // Sai: 0,2 s depois do corte (tLocal 4,2 > os 4 s do trecho)
+    expect(passoDoVideo({ t: 4.2, tocando: true }, video({ tempo: 5.97, pausado: false }))).toEqual({
+      pausar: true,
+      aguardando: false,
+    })
+    // Entra: 0,2 s antes do corte (tLocal −0,2) — parado no início do trecho
+    expect(passoDoVideo({ t: 0, tocando: false }, video({ tempo: 2 }))).toEqual({ aguardando: false })
+    expect(passoDoVideo({ t: 0, tocando: false }, video({ tempo: 2.5, pausado: false }))).toEqual({
+      pausar: true,
+      irPara: 2,
+      aguardando: false,
+    })
+  })
+
   it('passado o fim do trecho, segura o último quadro', () => {
     expect(passoDoVideo({ t: 10, tocando: true }, video({ tempo: 5.98, pausado: false }))).toEqual({
       pausar: true,

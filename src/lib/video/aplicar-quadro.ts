@@ -1,29 +1,33 @@
 /**
  * O aplicador do quadro (Decisão 9 do plano de 03/10/2026): escreve o efeito
- * de tempo de cada camada — o movimento da foto — no GRUPO DE EFEITO que
- * envolve o nó editável, nunca no nó. Um só para a prévia (motor da página) e
- * para o export (konva-video-export), para os dois desenharem o mesmo quadro.
+ * de tempo de cada camada — o movimento da foto e a transição entre clipes —
+ * no GRUPO DE EFEITO que envolve o nó editável, nunca no nó. Um só para a
+ * prévia (motor da página) e para o export (konva-video-export), para os dois
+ * desenharem o mesmo quadro.
  *
  * Estrutura, montada pelo KonvaLayerFactory:
- *   Group.efeito-de-tempo (camadaId)   ← recorte pela caixa da camada
+ *   Group.efeito-de-tempo (camadaId)   ← visível? opacidade e deslocamento da
+ *                                        transição; recorte pela caixa da camada
  *     Group.efeito-movimento           ← escala em torno do centro + deslize
  *       nó editável (KonvaImage ou o Group da máscara)
  *
  * O React só põe nome e `camadaId` nesses grupos, então um re-render não
  * desfaz o quadro; os handlers de arraste e de transformação continuam lendo e
- * gravando o nó de dentro.
+ * gravando o nó de dentro. A VISIBILIDADE dos clipes também mora aqui (é ela
+ * que mostra os dois clipes da junção durante a transição).
  *
  * Na prévia o efeito fica SUSPENSO (identidade) quando a pessoa mexe na
  * camada: do toque até soltar, enquanto ela está selecionada (as alças do
  * Transformer seguem a caixa de verdade) e enquanto o nó não bate com o
  * design (logo depois de um arraste, antes de o React gravar). A suspensão do
  * toque acontece ANTES de o Konva calcular o deslocamento do arraste — senão a
- * posição gravada levaria o efeito junto.
+ * posição gravada levaria o efeito junto. A visibilidade nunca é suspensa: é a
+ * linha do tempo, não um efeito.
  */
 
 import type Konva from 'konva'
-import { paginaEVideo } from './camadas-de-video'
-import { linhaDoTempo } from './linha-do-tempo'
+import { ehClipe, paginaEVideo } from './camadas-de-video'
+import { linhaDoTempo, quadroDosClipes, type QuadroDoClipe } from './linha-do-tempo'
 import { ehMovimento, progressoDoMovimento, quadroDoMovimento } from './movimento'
 
 export const GRUPO_DE_EFEITO = 'efeito-de-tempo'
@@ -43,7 +47,12 @@ type CamadaDoQuadro = {
 
 type TrilhaDoQuadro = { source?: string; musicId?: number | null; startTime?: number; endTime?: number }
 
-export type DesignDoQuadro = { layers: readonly CamadaDoQuadro[]; audio?: TrilhaDoQuadro | null }
+export type DesignDoQuadro = {
+  layers: readonly CamadaDoQuadro[]
+  audio?: TrilhaDoQuadro | null
+  /** A largura da página: o deslize entre clipes anda em fração dela. */
+  canvas: { width: number }
+}
 
 export type OpcoesDoQuadro = {
   /** Export e miniatura: o quadro vale para tudo — sem seleção nem toque. */
@@ -53,6 +62,11 @@ export type OpcoesDoQuadro = {
 }
 
 type Alvo = {
+  /** Visibilidade do clipe na linha do tempo (não-clipe: sempre visível). */
+  visivel: boolean
+  /** Opacidade e deslocamento horizontal (px da página) da transição, no grupo de fora. */
+  opacidade: number
+  deslocamento: number
   /** Polígono do recorte, em coordenadas da página; null = sem recorte. */
   recorte: number[] | null
   x: number
@@ -62,7 +76,17 @@ type Alvo = {
   escala: number
 }
 
-const IDENTIDADE: Alvo = { recorte: null, x: 0, y: 0, offsetX: 0, offsetY: 0, escala: 1 }
+const IDENTIDADE: Alvo = {
+  visivel: true,
+  opacidade: 1,
+  deslocamento: 0,
+  recorte: null,
+  x: 0,
+  y: 0,
+  offsetX: 0,
+  offsetY: 0,
+  escala: 1,
+}
 
 /** O último alvo escrito em cada grupo: parado, nada é reescrito nem redesenhado. */
 const assinaturas = new WeakMap<Konva.Node, string>()
@@ -72,13 +96,24 @@ const stagesComToque = new WeakSet<Konva.Stage>()
 
 function assinatura(a: Alvo): string {
   const r = (n: number) => Math.round(n * 100) / 100
-  return [a.recorte ? a.recorte.map(r).join(',') : '-', r(a.x), r(a.y), r(a.offsetX), r(a.offsetY), r(a.escala * 1000)].join('|')
+  return [
+    a.visivel ? 'v' : 'o',
+    r(a.opacidade * 1000),
+    r(a.deslocamento),
+    a.recorte ? a.recorte.map(r).join(',') : '-',
+    r(a.x),
+    r(a.y),
+    r(a.offsetX),
+    r(a.offsetY),
+    r(a.escala * 1000),
+  ].join('|')
 }
 
 function escrever(grupo: Konva.Group, a: Alvo): boolean {
   const chave = assinatura(a)
   if (assinaturas.get(grupo) === chave) return false
   assinaturas.set(grupo, chave)
+  grupo.setAttrs({ visible: a.visivel, opacity: a.opacidade, x: a.deslocamento })
   const recorte = a.recorte
   // O Konva entrega o próprio Context (que repassa moveTo/lineTo); o tipo
   // declarado dele é o do canvas
@@ -107,7 +142,9 @@ function caixa(camada: CamadaDoQuadro) {
   }
 }
 
-function alvoDoMovimento(camada: CamadaDoQuadro, escala: number, deslocamentoX: number): Alvo {
+type AlvoDoMovimento = Pick<Alvo, 'recorte' | 'x' | 'y' | 'offsetX' | 'offsetY' | 'escala'>
+
+function alvoDoMovimento(camada: CamadaDoQuadro, escala: number, deslocamentoX: number): AlvoDoMovimento {
   const { x, y, w, h, graus } = caixa(camada)
   const rad = (graus * Math.PI) / 180
   const cos = Math.cos(rad)
@@ -165,6 +202,20 @@ function instalarToque(stage: Konva.Stage) {
 }
 
 /**
+ * O grupo aparece? Não-clipe, sempre — menos o oculto na gravação, que o
+ * export já tirou de cena. Clipe: o que a linha do tempo diz para o instante;
+ * fora dela (oculto, ou além do teto de clipes) não aparece, a não ser o clipe
+ * OCULTO na prévia, que o editor mostra esmaecido como qualquer camada oculta.
+ */
+function visibilidade(camada: CamadaDoQuadro | undefined, quadro: QuadroDoClipe | undefined, gravando: boolean): boolean {
+  if (!camada) return true
+  if (gravando && camada.visible === false) return false
+  if (!ehClipe(camada)) return true
+  if (quadro) return quadro.visivel
+  return !gravando && camada.visible === false
+}
+
+/**
  * Escreve o quadro do instante `t` em todos os grupos de efeito do stage.
  * Barato quando nada muda (compara com o último alvo escrito), então a prévia
  * chama a cada quadro e o export a cada quadro gravado.
@@ -182,7 +233,9 @@ export function aplicarQuadro(
 
   const audio = design.audio ?? null
   const ehVideo = paginaEVideo(design.layers, audio)
-  const linha = ehVideo ? linhaDoTempo(design.layers, audio, opcoes.duracoes) : null
+  // A linha vale fora de página-vídeo também: um clipe sozinho segue visível
+  const linha = linhaDoTempo(design.layers, audio, opcoes.duracoes)
+  const quadros = quadroDosClipes(linha.clipes, t)
   const porId = new Map(design.layers.map((l) => [l.id, l]))
   const selecionados = opcoes.gravando
     ? null
@@ -192,12 +245,15 @@ export function aplicarQuadro(
   for (const grupo of grupos) {
     const camada = porId.get(grupo.getAttr('camadaId'))
     const no = (grupo.getChildren()[0] as Konva.Group | undefined)?.getChildren()[0]
-    let alvo = IDENTIDADE
-    if (linha && camada && no && camada.type === 'image' && ehMovimento(camada.movimento)) {
-      const suspenso = !opcoes.gravando && (tocados.has(grupo) || selecionados?.has(no) || desalinhado(no, camada))
-      if (!suspenso) {
+    const quadro = camada ? quadros.get(camada.id) : undefined
+    let alvo: Alvo = { ...IDENTIDADE, visivel: visibilidade(camada, quadro, !!opcoes.gravando) }
+    const suspenso =
+      !opcoes.gravando && !!camada && !!no && (tocados.has(grupo) || !!selecionados?.has(no) || desalinhado(no, camada))
+    if (camada && !suspenso) {
+      if (quadro) alvo = { ...alvo, opacidade: quadro.opacidade, deslocamento: quadro.deslocamentoX * design.canvas.width }
+      if (ehVideo && no && camada.type === 'image' && ehMovimento(camada.movimento)) {
         const q = quadroDoMovimento(camada.movimento, progressoDoMovimento(camada, linha, t))
-        alvo = alvoDoMovimento(camada, q.escala, q.deslocamentoX)
+        alvo = { ...alvo, ...alvoDoMovimento(camada, q.escala, q.deslocamentoX) }
       }
     }
     if (escrever(grupo, alvo)) {

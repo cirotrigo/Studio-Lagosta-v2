@@ -700,6 +700,185 @@ let primeiroAfastar = null
   conferir('controle: sem música a página não é vídeo e a foto sai parada', semMusica.length === 2 && perto(semMusica[1] - semMusica[0], 400, 2), JSON.stringify(semMusica))
 }
 
+console.log('\n=== Q. transições entre clipes (Fase 3) ===')
+// Duas fotos de cor chapada, 2 s cada: o corte é em 2 s e a janela da
+// transição, de 0,5 s, vai de 1,75 a 2,25. A azul sai, a vermelha entra.
+const AZUL = [0x10, 0x40, 0xa0]
+const VERMELHO = [0xa0, 0x10, 0x10]
+const MEIO = AZUL.map((c, i) => (c + VERMELHO[i]) / 2)
+const duasFotos = (transicao) => [
+  { ...foto, order: 0, clipe: { duracao: 2 } },
+  { ...foto2, order: 1, clipe: { duracao: 2, ...(transicao ? { transicao } : {}) } },
+]
+const cor = (px, x) => [px[x * 3], px[x * 3 + 1], px[x * 3 + 2]]
+const igual = (c, alvo, tol) => c.every((v, i) => Math.abs(v - alvo[i]) <= tol)
+const toda = (px, alvo, tol) => Array.from({ length: 1080 }, (_, x) => cor(px, x)).every((c) => igual(c, alvo, tol))
+const naPrevia = async (t) => {
+  await ir(t)
+  await dormir(300)
+  return pagina.evaluate(() => window.validacao.linha(960))
+}
+/** Onde começa a vermelha numa linha "azul à esquerda, vermelha à direita", e quantos pixels não são nenhuma das duas. */
+const divisa = (px, azul, vermelho, tol) => {
+  let b = 1080
+  let sobra = 0
+  for (let x = 0; x < 1080; x++) {
+    const c = cor(px, x)
+    const ehVermelho = igual(c, vermelho, tol)
+    if (ehVermelho && b === 1080) b = x
+    if (!ehVermelho && !igual(c, azul, tol)) sobra++
+    else if (x >= b && !ehVermelho) sobra++ // azul depois da divisa: fora de ordem
+  }
+  return { b, sobra }
+}
+for (const transicao of ['dissolver', 'deslizar']) {
+  await montar(duasFotos(transicao))
+  await dormir(900) // as fotos carregam
+  conferir(`${transicao}: 0,25 s antes do corte a imagem é só a azul`, toda(await naPrevia(1.75), AZUL, 3))
+  conferir(`${transicao}: 0,25 s depois do corte, só a vermelha`, toda(await naPrevia(2.25), VERMELHO, 3))
+  const noCorte = await naPrevia(2)
+  const efeitos = await pagina.evaluate(() => [window.validacao.efeito('foto'), window.validacao.efeito('foto2')])
+  if (transicao === 'dissolver') {
+    conferir('dissolver: no corte a imagem é a média das duas (±8)', toda(noCorte, MEIO, 8), `${JSON.stringify(cor(noCorte, 540))} · esperado ${JSON.stringify(MEIO)} · ${JSON.stringify(efeitos)}`)
+  } else {
+    const { b, sobra } = divisa(noCorte, AZUL, VERMELHO, 3)
+    conferir('deslizar: no corte a divisa está no meio da página (±2%)', perto(b, 540, 1080 * 0.02) && sobra === 0, `divisa em ${b} px, ${sobra} px fora · ${JSON.stringify(efeitos)}`)
+  }
+}
+{
+  // Arrastar com a prévia PARADA no meio do deslize: a posição gravada é a do
+  // arraste, sem o deslocamento da transição (que fica suspenso do toque até soltar)
+  await ir(2.1)
+  await dormir(400)
+  const entra = Math.round((1 - 0.742) * 1080 * 100) / 100 // suavizar(0,7) = 0,742
+  const antes = await pagina.evaluate(() => window.validacao.efeito('foto2'))
+  conferir('parado em 2,1 s, a vermelha está no meio da entrada', !!antes && perto(antes.deslocamento, entra, 1), JSON.stringify(antes))
+  await pagina.mouse.move(700, 960)
+  await pagina.mouse.down()
+  for (let k = 1; k <= 10; k++) {
+    await pagina.mouse.move(700 + 10 * k, 960 + 5 * k)
+    await dormir(40)
+  }
+  await pagina.mouse.up()
+  await dormir(600)
+  const f2 = (await pagina.evaluate(() => window.validacao.camadas())).find((l) => l.id === 'foto2')
+  conferir('arrastar 100×50 no meio do deslize grava a posição sem o deslocamento', perto(f2.position.x, 100, 1) && perto(f2.position.y, 50, 1), JSON.stringify(f2.position))
+  const depois = await pagina.evaluate(() => [window.validacao.efeito('foto'), window.validacao.efeito('foto2')])
+  conferir('ao soltar, o deslize volta (e a azul, que não foi tocada, segue onde estava)', perto(depois[1]?.deslocamento, entra, 1) && perto(depois[0]?.deslocamento, -(1080 - entra), 1), JSON.stringify(depois))
+}
+{
+  // Export: uma 3ª foto (a grade) fecha com CORTE SECO em 4 s, e é esse corte
+  // que diz, no MESMO WebM, onde caem os 2 s da página — a largada da gravação
+  // varia uns 0,1 s de um export para outro. A transição tem de durar 0,5 s,
+  // centrada ali, com a imagem pura fora da janela; o corte seguinte, seco.
+  const TOL = 12
+  const CINZA = [0x20, 0x20, 0x20]
+  const tresFotos = (transicao) => [...duasFotos(transicao), camada('fim', 'image', 'grade.png', { order: 2, clipe: { duracao: 2 } })]
+  const linhasDoWebm = async (transicao, nome) => {
+    await montar(tresFotos(transicao))
+    await dormir(900)
+    const r = await pagina.evaluate(() => window.validacao.exportarLinha())
+    const webm = path.join(TMP, nome)
+    fs.writeFileSync(webm, Buffer.from(r.base64, 'base64'))
+    // Todos os quadros, com o tempo de cada um (a gravação não tem cadência fixa)
+    const tempos = execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v', '-show_entries', 'frame=pts_time', '-of', 'csv=p=0', webm])
+      .toString().trim().split('\n').map(Number)
+    const bruto = execFileSync(
+      'ffmpeg',
+      ['-v', 'error', '-i', webm, '-fps_mode', 'passthrough', '-vf', 'scale=1080:1920,crop=1080:1:0:960', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'],
+      { maxBuffer: 1 << 28 },
+    )
+    const quadros = []
+    for (let i = 0; i < tempos.length && (i + 1) * 3240 <= bruto.length; i++) quadros.push({ t: tempos[i], px: bruto.subarray(i * 3240, (i + 1) * 3240) })
+    // As cores puras como o codec as gravou (a conversão de cor desloca uns níveis)
+    const em = (t) => quadros.reduce((a, q) => (Math.abs(q.t - t) < Math.abs(a.t - t) ? q : a)).px
+    const azul = cor(em(1), 540)
+    const vermelho = cor(em(3), 540)
+    const i = quadros.findIndex((q) => q.t > 3.5 && !igual(cor(q.px, 540), vermelho, TOL))
+    return {
+      duracao: r.duracao,
+      quadros,
+      azul,
+      vermelho,
+      // Os 2 s da página no WebM: o meio entre o último quadro vermelho e o 1º da grade, menos 2 s
+      corte: i > 0 ? (quadros[i - 1].t + quadros[i].t) / 2 - 2 : null,
+      seco: i > 0 && igual(cor(quadros[i].px, 540), CINZA, TOL),
+    }
+  }
+  const pura = (quadros, corte, azul, vermelho) => {
+    const antes = quadros.filter((q) => q.t >= corte - 0.6 && q.t <= corte - 0.32)
+    const depois = quadros.filter((q) => q.t >= corte + 0.32 && q.t <= corte + 0.6)
+    return antes.length > 5 && depois.length > 5 && antes.every((q) => toda(q.px, azul, TOL)) && depois.every((q) => toda(q.px, vermelho, TOL))
+  }
+  {
+    const { duracao, quadros, azul, vermelho, corte, seco } = await linhasDoWebm('dissolver', 'transicao-dissolver.webm')
+    conferir('dissolver: a duração da página não muda (2 + 2 + 2 s)', Math.abs(duracao - 6) < 0.05, `duração ${duracao}`)
+    conferir('dissolver: a junção sem transição continua um corte seco', seco)
+    // Quanto da vermelha há em cada quadro, pelo canal vermelho
+    const m = quadros.map((q) => ({ t: q.t, m: (cor(q.px, 540)[0] - azul[0]) / (vermelho[0] - azul[0]), px: q.px }))
+    const cruza = (alvo) => {
+      const k = m.findIndex((q) => q.m >= alvo)
+      if (k <= 0) return null
+      return m[k - 1].t + ((alvo - m[k - 1].m) / (m[k].m - m[k - 1].m)) * (m[k].t - m[k - 1].t)
+    }
+    const t10 = cruza(0.1)
+    const t50 = cruza(0.5)
+    const t90 = cruza(0.9)
+    const dura = t10 !== null && t90 !== null ? (t90 - t10) / 0.8 : 0
+    conferir('dissolver: a mistura dura 0,5 s (±0,05)', perto(dura, 0.5, 0.05), `${dura.toFixed(3)} s`)
+    conferir('dissolver: centrada no corte (±0,05 s)', t50 !== null && corte !== null && perto(t50, corte, 0.05), `meio em ${t50?.toFixed(3)} s · corte em ${corte?.toFixed(3)} s`)
+    const meio = m.reduce((a, q) => (Math.abs(q.m - 0.5) < Math.abs(a.m - 0.5) ? q : a))
+    const esperado = azul.map((c, k) => (c + vermelho[k]) / 2)
+    conferir('dissolver: no meio a imagem é a média das duas (±8), sem escurecer', toda(meio.px, esperado, 8), `${JSON.stringify(cor(meio.px, 540))} · esperado ${JSON.stringify(esperado.map(Math.round))}`)
+    conferir('dissolver: fora da janela a imagem é pura', corte !== null && pura(quadros, corte, azul, vermelho))
+  }
+  {
+    const { duracao, quadros, azul, vermelho, corte, seco } = await linhasDoWebm('deslizar', 'transicao-deslizar.webm')
+    conferir('deslizar: a duração da página não muda (2 + 2 + 2 s)', Math.abs(duracao - 6) < 0.05, `duração ${duracao}`)
+    conferir('deslizar: a junção sem transição continua um corte seco', seco)
+    const d = quadros.filter((q) => q.t < 3.5).map((q) => ({ t: q.t, ...divisa(q.px, azul, vermelho, TOL) }))
+    const janela = d.filter((q) => q.b > 0 && q.b < 1080)
+    conferir('deslizar: a azul sai pela esquerda e a vermelha empurra, sem buraco nem sobra (±12 px de borda)', janela.length >= 10 && janela.every((q) => q.sobra <= 12), `${janela.length} quadros · pior ${Math.max(0, ...janela.map((q) => q.sobra))} px`)
+    conferir('deslizar: a divisa só anda para a esquerda', janela.every((q, k) => k === 0 || q.b <= janela[k - 1].b + 2))
+    const k = d.findIndex((q) => q.b < 540)
+    const tMeio = k > 0 ? d[k - 1].t + ((d[k - 1].b - 540) / (d[k - 1].b - d[k].b)) * (d[k].t - d[k - 1].t) : null
+    conferir('deslizar: a divisa passa pelo meio da página no corte (±0,05 s)', tMeio !== null && corte !== null && perto(tMeio, corte, 0.05), `meio em ${tMeio?.toFixed(3)} s · corte em ${corte?.toFixed(3)} s`)
+    const passo = janela.length > 1 ? (janela.at(-1).t - janela[0].t) / (janela.length - 1) : 0
+    const dura = janela.length ? janela.at(-1).t - janela[0].t + passo : 0
+    conferir('deslizar: o deslize dura 0,5 s (±0,1)', perto(dura, 0.5, 0.1), `${dura.toFixed(3)} s`)
+    conferir('deslizar: fora da janela a imagem é pura', corte !== null && pura(quadros, corte, azul, vermelho))
+  }
+}
+{
+  // O som NÃO entra na transição: o corte do som continua no corte dos clipes
+  // — na prévia só o clipe ativo tem som, mesmo com os dois na tela — e o WebM
+  // segue sem faixa de áudio (a trilha é do ffmpeg, pelos mesmos trechos)
+  await montar([
+    base({ loop: false, muted: false, trimStart: 0, trimEnd: 2 }, { order: 0, clipe: {} }),
+    video('base2', 'base.mp4', { loop: false, muted: false, trimStart: 2, trimEnd: 4 }, { order: 1, clipe: { transicao: 'dissolver' } }),
+  ])
+  conferir('os dois vídeos carregaram', await prontos(['base', 'base2']))
+  await ir(1.9)
+  await dormir(400)
+  let e = await estado()
+  let f = await pagina.evaluate(() => window.validacao.efeito('base2'))
+  conferir('em 1,9 s os dois estão na tela, mas só o 1º tem som', f?.visivel && f.opacidade > 0 && f.opacidade < 1 && e.base.mudo === false && e.base2.mudo === true, JSON.stringify({ f, base: e.base.mudo, base2: e.base2.mudo }))
+  conferir('o que entra espera parado no início do trecho', e.base2.pausado && perto(e.base2.t, 2, 0.05), JSON.stringify(e.base2))
+  await ir(2.1)
+  await dormir(400)
+  e = await estado()
+  f = await pagina.evaluate(() => window.validacao.efeito('base'))
+  conferir('em 2,1 s o som já passou para o 2º', f?.visivel && e.base.mudo === true && e.base2.mudo === false, JSON.stringify({ f, base: e.base.mudo, base2: e.base2.mudo }))
+  // Parado, o seek só acontece com desvio > 0,08 s do último quadro (1,96)
+  conferir('o que sai segura o último quadro', e.base.pausado && perto(e.base.t, 1.96, 0.1), JSON.stringify(e.base))
+  const r = await pagina.evaluate(() => window.validacao.exportarLinha())
+  conferir('a duração continua a soma dos clipes (2 + 2)', Math.abs(r.duracao - 4) < 0.05, `duração ${r.duracao}`)
+  const webm = path.join(TMP, 'transicao-dois-videos.webm')
+  fs.writeFileSync(webm, Buffer.from(r.base64, 'base64'))
+  const faixas = execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', webm]).toString().trim().split('\n')
+  conferir('o WebM continua sem faixa de áudio', faixas.length === 1 && faixas[0] === 'video', faixas.join(','))
+}
+
 conferir('nenhum erro de JavaScript na página', errosDaPagina.length === 0, errosDaPagina.slice(0, 3).join(' | '))
 console.log(`\n${falhas === 0 ? 'TUDO OK' : falhas + ' FALHA(S)'}  (arquivos em ${TMP})`)
 await navegador.close()

@@ -250,8 +250,6 @@ interface CommonProps {
   y: number
   rotation: number
   opacity: number
-  /** Clipe da linha do tempo fora do seu intervalo: montado, mas invisível (e surdo) */
-  visible: boolean
   draggable: boolean
   listening: boolean
   onClick: (event: KonvaEventObject<MouseEvent | TouchEvent>) => void
@@ -273,10 +271,11 @@ export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDra
   const opacityBase = isVisible ? layer.style?.opacity ?? 1 : 0.25
   const opacity = dimmed ? opacityBase * 0.12 : opacityBase
 
-  // Linha do tempo: a camada que é clipe só aparece no intervalo dela, segundo
-  // o relógio — quem publica o clipe ativo é o motor da página (prévia) e o
-  // export (gravação) mexe nos nós direto. Só vale para clipe DESTA página
-  // (a prévia de outra página desenha o quadro de 0 por conta própria).
+  // Linha do tempo: QUAL clipe aparece (e os dois da junção, durante a
+  // transição) é do aplicador do quadro, no grupo de efeito — aqui o clipe fora
+  // do intervalo dele só deixa de ser interativo e de tocar som. Quem publica o
+  // clipe ativo é o motor da página. Só vale para clipe DESTA página (a prévia
+  // de outra página desenha o quadro de 0 por conta própria).
   const editor = useTemplateEditor()
   const chave = useMultiPageOpcional()?.currentPageId
   const publicado = useClipeAtivo(chave)
@@ -457,7 +456,6 @@ export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDra
     y: layer.position?.y ?? 0,
     rotation: layer.rotation ?? 0,
     opacity,
-    visible: !clipeOculto,
     draggable: !isLocked && isVisible && !interactionsDisabled,
     listening: isVisible && !interactionsDisabled,
     onClick: handleSelect,

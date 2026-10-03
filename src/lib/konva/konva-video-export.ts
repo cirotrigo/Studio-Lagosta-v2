@@ -1,8 +1,8 @@
 import Konva from 'konva'
 import type { Layer, DesignData } from '@/types/template'
 import type { AudioConfig } from '@/components/audio/audio-selection-modal'
-import { duracaoDoExport, ehClipe, passoDoVideo, trechoDoVideo, videosDaPagina } from '@/lib/video/camadas-de-video'
-import { clipeAtivoEm, linhaDoTempo, type Clipe } from '@/lib/video/linha-do-tempo'
+import { duracaoDoExport, passoDoVideo, trechoDoVideo, videosDaPagina } from '@/lib/video/camadas-de-video'
+import { linhaDoTempo, type Clipe } from '@/lib/video/linha-do-tempo'
 import { relogioDaPagina, type RelogioDaPagina } from '@/lib/video/relogio-da-pagina'
 import { aplicarQuadro, restaurarIdentidade } from '@/lib/video/aplicar-quadro'
 
@@ -292,21 +292,9 @@ export async function exportVideoWithLayers(
         : (duracaoDoExport(trecho ? (trecho.duracao ?? 10) : null, audioConfig) ?? 10)
     console.log(`[Video Export] Duração efetiva: ${videoDuration}s (trecho do vídeo: ${trecho?.duracao ?? 'sem vídeo'}; clipes: ${clipes.length})`)
     const inicioDoClipe = (id: string) => clipes.find((c) => c.id === id)?.inicio ?? 0
-    // Os nós dos clipes são mostrados/escondidos por quadro, direto no Konva
-    // (o React não participa da gravação); o estado original volta no fim
-    // Todo clipe do design, não só os da linha: o que passou do teto é
-    // descartado pela leitura e não pode ficar desenhado por cima na gravação
-    const nosDosClipes = design.layers
-      .filter((l) => ehClipe(l))
-      .map((c) => ({ id: c.id, node: stage.findOne(`#${c.id}`) }))
-      .filter((c): c is { id: string; node: Konva.Node } => !!c.node)
-    const visiveisAntes = nosDosClipes.map(({ node }) => node.visible())
-    encerrar.push(() => nosDosClipes.forEach(({ node }, i) => node.visible(visiveisAntes[i])))
-    const mostrarClipe = (t: number) => {
-      const ativo = clipeAtivoEm(clipes, t)
-      for (const { id, node } of nosDosClipes) node.visible(id === ativo?.id)
-    }
-    if (clipes.length > 0) mostrarClipe(0)
+    // Qual clipe aparece (e a transição entre dois) é do aplicador do quadro,
+    // abaixo: o mesmo da prévia, escrito no grupo de efeito de cada clipe. O
+    // clipe que passou do teto também some ali — a leitura o descarta.
 
     // Todo vídeo VISÍVEL da página entra na gravação (o stage inteiro é
     // copiado), então todos precisam estar carregados e LARGAR JUNTOS — antes o
@@ -339,9 +327,10 @@ export async function exportVideoWithLayers(
     encerrar.push(() => relogio.encerrarGravacao())
     if (cancelado?.()) throw new Error(cancelado() ?? 'A gravação foi cancelada.')
 
-    // O movimento das fotos: o MESMO aplicador da prévia, sem seleção nem
-    // toque (o motor sai de cena no modo `gravacao`). Termina na identidade.
-    const quadroDoDesign = { layers: design.layers, audio: audioConfig ?? null }
+    // O movimento das fotos, qual clipe aparece e as transições: o MESMO
+    // aplicador da prévia, sem seleção nem toque (o motor sai de cena no modo
+    // `gravacao`). Termina na identidade.
+    const quadroDoDesign = { layers: design.layers, audio: audioConfig ?? null, canvas: design.canvas }
     aplicarQuadro(stage, quadroDoDesign, 0, { gravando: true, duracoes: duracoesDoStage })
     encerrar.push(() => restaurarIdentidade(stage))
 
@@ -551,7 +540,6 @@ export async function exportVideoWithLayers(
       relogio.avancarGravacao(tempoDaGravacao)
 
       // 2. Cada vídeo visível acompanha o relógio (clipe: o relógio local dele)
-      if (clipes.length > 0) mostrarClipe(tempoDaGravacao)
       aplicarQuadro(stage, quadroDoDesign, tempoDaGravacao, { gravando: true, duracoes: duracoesDoStage })
       let algumAguardando = false
       for (const { el, inicio, fim, entrada } of outrosVideos) {

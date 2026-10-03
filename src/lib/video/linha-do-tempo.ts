@@ -11,6 +11,10 @@
  *
  * Paridade legada: página sem nenhum `clipe` usa EXATAMENTE a conta de hoje
  * (`duracaoDaPagina` → `videoPrincipal` → `trechoDoVideo` → `duracaoDoExport`).
+ *
+ * Transição (plano de 03/10/2026, Fase 3): `clipe.transicao` no clipe que
+ * ENTRA, centrada no corte; ausente = corte seco; no primeiro clipe, ignorada.
+ * A duração total e o quadro de t = 0 não mudam.
  */
 
 import {
@@ -25,7 +29,7 @@ import {
   paginaEVideo,
   trechoDoVideo,
 } from './camadas-de-video'
-import { ehMovimento, MOVIMENTOS, progressoDoMovimento, QUADRO_ANOTADO, quadroDoMovimento } from './movimento'
+import { ehMovimento, MOVIMENTOS, progressoDoMovimento, QUADRO_ANOTADO, quadroDoMovimento, suavizar } from './movimento'
 
 type CamadaDaLinha = {
   id: string
@@ -33,11 +37,21 @@ type CamadaDaLinha = {
   visible?: boolean
   order?: number
   videoMetadata?: { trimStart?: number; trimEnd?: number; duration?: number; overlay?: boolean; [k: string]: unknown } | null
-  clipe?: { duracao?: number } | null
+  clipe?: { duracao?: number; transicao?: unknown } | null
   [k: string]: unknown
 }
 
 type TrilhaLike = { source?: string; musicId?: number | null; startTime?: number; endTime?: number }
+
+export const TRANSICOES = ['dissolver', 'deslizar'] as const
+export type Transicao = (typeof TRANSICOES)[number]
+
+export function ehTransicao(v: unknown): v is Transicao {
+  return typeof v === 'string' && (TRANSICOES as readonly string[]).includes(v)
+}
+
+/** Teto da janela de uma transição (nunca mais que metade do clipe mais curto da junção). */
+export const DURACAO_DA_TRANSICAO = 0.5
 
 export type Clipe = {
   id: string
@@ -48,6 +62,8 @@ export type Clipe = {
   duracao: number
   /** Início do trecho dentro do arquivo (só vídeo; 0 na foto). */
   trimStart: number
+  /** Como este clipe ENTRA (só do segundo em diante; ausente = corte seco). */
+  transicao?: Transicao
 }
 
 export type LinhaDoTempo = {
@@ -78,12 +94,15 @@ export function linhaDoTempo(
     const d = duracaoDoClipe(c, duracoesCarregadas?.get(c.id))
     if (c.type === 'video' && d === null) avisos.push(`"${String(c.name ?? c.id)}" ainda está carregando.`)
     const tipo = c.type === 'video' ? 'video' : 'foto'
+    const pedida = c.clipe?.transicao
+    const transicao = clipes.length > 0 && ehTransicao(pedida) ? pedida : undefined
     clipes.push({
       id: c.id,
       tipo,
       inicio: t,
       duracao: d ?? 0,
       trimStart: tipo === 'video' ? trechoDoVideo(c.videoMetadata).inicio : 0,
+      ...(transicao ? { transicao } : {}),
     })
     t += d ?? 0
   }
@@ -100,6 +119,62 @@ export function clipeAtivoEm(clipes: readonly Clipe[], t: number): Clipe | null 
   let ativo = clipes[0]
   for (const c of clipes) if (c.inicio <= t) ativo = c
   return ativo
+}
+
+export type QuadroDoClipe = {
+  visivel: boolean
+  /** 0–1, no grupo de efeito do clipe (multiplica a opacidade da camada). */
+  opacidade: number
+  /** Deslocamento horizontal, em fração da LARGURA DA PÁGINA. */
+  deslocamentoX: number
+}
+
+/** A janela da transição da junção que termina no clipe `i`, centrada no corte; `null` = corte seco. */
+export function janelaDaTransicao(
+  clipes: readonly Clipe[],
+  i: number,
+): { de: number; ate: number; duracao: number } | null {
+  const sai = clipes[i - 1]
+  const entra = clipes[i]
+  if (!sai || !entra?.transicao) return null
+  const duracao = Math.min(DURACAO_DA_TRANSICAO, Math.min(sai.duracao, entra.duracao) / 2)
+  if (!(duracao > 0)) return null
+  return { de: entra.inicio - duracao / 2, ate: entra.inicio + duracao / 2, duracao }
+}
+
+/**
+ * O que cada clipe mostra no instante `t`. Fora das janelas, só o clipe ativo
+ * (`clipeAtivoEm`), inteiro e no lugar — como sempre foi. Dentro da janela de
+ * uma junção com transição (aberta nas pontas: nas bordas a imagem é pura), os
+ * dois clipes da junção aparecem:
+ * - dissolver: o que ENTRA, desenhado por cima (vem depois na ordem da
+ *   página), vai de transparente a opaco; o que sai fica opaco — no meio dá a
+ *   média das duas imagens, sem escurecer;
+ * - deslizar: o que sai anda para a esquerda e o que entra chega pela direita,
+ *   empurrando, os dois na mesma suavização.
+ * A janela nunca passa de metade do clipe mais curto, então duas janelas não
+ * se encostam e t = 0 nunca está numa delas.
+ */
+export function quadroDosClipes(clipes: readonly Clipe[], t: number): Map<string, QuadroDoClipe> {
+  const quadros = new Map<string, QuadroDoClipe>()
+  const ativo = clipeAtivoEm(clipes, t)
+  for (const c of clipes) quadros.set(c.id, { visivel: c === ativo, opacidade: 1, deslocamentoX: 0 })
+  for (let i = 1; i < clipes.length; i++) {
+    const janela = janelaDaTransicao(clipes, i)
+    if (!janela || t <= janela.de || t >= janela.ate) continue
+    const p = (t - janela.de) / janela.duracao
+    const sai = clipes[i - 1].id
+    const entra = clipes[i].id
+    if (clipes[i].transicao === 'dissolver') {
+      quadros.set(sai, { visivel: true, opacidade: 1, deslocamentoX: 0 })
+      quadros.set(entra, { visivel: true, opacidade: p, deslocamentoX: 0 })
+    } else {
+      const s = suavizar(p)
+      quadros.set(sai, { visivel: true, opacidade: 1, deslocamentoX: -s })
+      quadros.set(entra, { visivel: true, opacidade: 1, deslocamentoX: 1 - s })
+    }
+  }
+  return quadros
 }
 
 /**
@@ -207,9 +282,9 @@ export const MENSAGEM_TETO_DE_CLIPES = `A linha do tempo aceita até ${MAX_CLIPE
 
 /**
  * O que o servidor recusa em `Page.layers` (PATCH da página, portas MCP):
- * `clipe.duracao` fora de [0,5; 60] s, mais de 10 clipes e `movimento` fora
- * da lista. Página legada (sem clipe) passa sempre. Mensagens em português,
- * uma por problema.
+ * `clipe.duracao` fora de [0,5; 60] s, mais de 10 clipes, `movimento` e
+ * `clipe.transicao` fora da lista. Página legada (sem clipe) passa sempre.
+ * Mensagens em português, uma por problema.
  */
 export function problemasDosClipes(layers: readonly CamadaDaLinha[] | null | undefined): string[] {
   const problemas: string[] = []
@@ -229,6 +304,11 @@ export function problemasDosClipes(layers: readonly CamadaDaLinha[] | null | und
   for (const c of clipes) {
     const nome = String(c.name ?? c.id)
     if (c.type === 'video') problemas.push(...problemasDoTrecho(nome, c.videoMetadata))
+    // Transição: ausente ou null = corte seco (no primeiro clipe vale, só é ignorada)
+    const tr = c.clipe?.transicao
+    if (tr !== undefined && tr !== null && !ehTransicao(tr)) {
+      problemas.push(`O clipe "${nome}" tem uma transição inválida (${String(tr)}): vale ${TRANSICOES.join(', ')}.`)
+    }
     const d = c.clipe?.duracao
     if (d === undefined) continue
     if (typeof d !== 'number' || !Number.isFinite(d) || d < DURACAO_MIN_DO_CLIPE || d > DURACAO_MAX_DO_CLIPE) {

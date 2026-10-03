@@ -95,8 +95,8 @@ function PagePreviewStage({ page, width, height, zoom }: { page: Page; width: nu
   // O quadro de 0 também no movimento da foto: o mesmo aplicador do editor
   React.useEffect(() => {
     const source = Array.isArray(page.layers) ? (page.layers as Layer[]) : []
-    aplicarQuadro(stageRef.current, { layers: source, audio: page.audio }, 0, { gravando: true })
-  }, [layers, page.layers, page.audio])
+    aplicarQuadro(stageRef.current, { layers: source, audio: page.audio, canvas: { width: page.width } }, 0, { gravando: true })
+  }, [layers, page.layers, page.audio, page.width])
 
   return (
     <div className="h-full w-full cursor-pointer" style={{ width, height }}>

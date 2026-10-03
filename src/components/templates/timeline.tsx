@@ -10,6 +10,7 @@ import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { useMultiPageOpcional } from '@/contexts/multi-page-context'
 import { BotaoPlayPause } from './botao-play-pause'
 import { IconeDoMovimento } from './movimento-da-foto'
+import { TransicaoDaJuncao } from './transicao-da-juncao'
 import { DURACAO_MAX_DO_CLIPE, DURACAO_MIN_DO_CLIPE, fatiaDaMusica, paginaEVideo } from '@/lib/video/camadas-de-video'
 import { linhaDoTempo, normalizarClipes, type Clipe } from '@/lib/video/linha-do-tempo'
 import { useRelogioDaPagina } from '@/lib/video/relogio-da-pagina'
@@ -26,7 +27,7 @@ const prender = (v: number, min: number, max: number) => Math.min(max, Math.max(
  * A linha do tempo sob o canvas (Fase 3); página estática ganha só o "Montar
  * sequência". Play/pause,
  * tempo, régua clicável, clipes em proporção (bordas arrastáveis, reordenar,
- * tirar) e a barra da música. Tudo desabilitado durante a gravação. No celular
+ * tirar), a transição de cada junção e a barra da música. Tudo desabilitado durante a gravação. No celular
  * fica só play/pause e a duração.
  */
 export function Timeline({ onAdicionar, painelAberto }: { onAdicionar: () => void; painelAberto: boolean }) {
@@ -130,22 +131,30 @@ export function Timeline({ onAdicionar, painelAberto }: { onAdicionar: () => voi
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={aoReordenar}>
             <SortableContext items={linha.clipes.map((c) => c.id)} strategy={horizontalListSortingStrategy}>
               <div className="flex h-12 w-full gap-0.5">
-                {linha.clipes.map((c) => (
-                  <ClipeNaFaixa
-                    key={c.id}
-                    clipe={c}
-                    camada={design.layers.find((l) => l.id === c.id)}
-                    fracao={c.duracao / total}
-                    desabilitado={gravando}
-                    onTirar={() => tirar(c.id)}
-                    onSelecionar={() => selectLayer(c.id)}
-                    onAjustar={(patch, gesto) =>
-                      // Uma entrada de desfazer por arraste, delimitada pelo GESTO
-                      // (não por tempo). Desfazer no meio reabre uma entrada nova.
-                      updateLayer(c.id, (l) => ({ ...l, ...patch }), { coalesceKey: gesto, gesto: true })
-                    }
-                    onMostrar={(t) => relogio.ir(t)}
-                  />
+                {linha.clipes.map((c, i) => (
+                  <React.Fragment key={c.id}>
+                    {i > 0 && (
+                      // A junção: o botão da transição, por cima das duas pontas
+                      // (-mx-px desconta o gap que este item a mais criaria)
+                      <div className="relative -mx-px w-0 shrink-0">
+                        <TransicaoDaJuncao clipes={linha.clipes} indice={i} desabilitado={gravando} />
+                      </div>
+                    )}
+                    <ClipeNaFaixa
+                      clipe={c}
+                      camada={design.layers.find((l) => l.id === c.id)}
+                      fracao={c.duracao / total}
+                      desabilitado={gravando}
+                      onTirar={() => tirar(c.id)}
+                      onSelecionar={() => selectLayer(c.id)}
+                      onAjustar={(patch, gesto) =>
+                        // Uma entrada de desfazer por arraste, delimitada pelo GESTO
+                        // (não por tempo). Desfazer no meio reabre uma entrada nova.
+                        updateLayer(c.id, (l) => ({ ...l, ...patch }), { coalesceKey: gesto, gesto: true })
+                      }
+                      onMostrar={(t) => relogio.ir(t)}
+                    />
+                  </React.Fragment>
                 ))}
                 <Button
                   size="sm"

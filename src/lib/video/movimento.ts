@@ -34,8 +34,8 @@ export const QUADRO_PARADO: QuadroDoMovimento = { escala: 1, deslocamentoX: 0 }
  */
 export const QUADRO_ANOTADO = '__quadroDoMovimento'
 
-/** Suavização leve: metade linear, metade smoothstep. */
-function suavizar(p: number): number {
+/** Suavização leve: metade linear, metade smoothstep (também a do deslize entre clipes). */
+export function suavizar(p: number): number {
   return 0.5 * p + 0.5 * p * p * (3 - 2 * p)
 }
 
