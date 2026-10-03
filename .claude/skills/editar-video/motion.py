@@ -13,8 +13,9 @@ da TIMELINE pedidos, numa pasta nova de <RAIZ>/07_TEMPORARIOS. Sem --quadros: PN
 07_TEMPORARIOS → ProRes pelo ffmpeg → o nome final só no fim (o resolve_projeto.py nunca vê arquivo pela
 metade) → os PNGs vão para a lixeira.
 Por que não o `--format mov` do HyperFrames (medido em 03/10/2026, v0.8.114): ele converte RGB→YUV com a matriz
-BT.601 e não marca o arquivo; o Resolve lê como Rec.709 e a cor saturada desvia (vermelho puro → ~255,25,0).
-Aqui a matriz é BT.709, com a marcação BT.709 completa (igual à logo do Quintal). O alfa do Chrome é DIRETO
+BT.601 e não marca o arquivo; lido como Rec.709 (o padrão do HD), a cor saturada desvia (vermelho puro → ~255,25,0).
+Aqui a matriz é BT.709, com a marcação BT.709 completa (igual à logo do Quintal): não depende de como o Resolve
+trata arquivo sem marcação, o que não foi conferido nele. O alfa do Chrome é DIRETO
 (branco a 50% sai RGB 255, A 128): Alpha mode "Straight" no Resolve — o legenda.py grava premultiplicado.
 A versão do HyperFrames é fixa (npm global): HYPERFRAMES_NO_AUTO_INSTALL=1 em toda chamada, senão ele se
 atualiza sozinho em segundo plano.

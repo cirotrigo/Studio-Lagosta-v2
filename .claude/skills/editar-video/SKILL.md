@@ -279,9 +279,10 @@ fala continua no `legenda.py`.
    Não remonta nada. Versão nova (-v2): `trocar_midia.py` e atualize o `pc.grafismos.arquivo`.
 
 Medido em 03/10/2026 (v0.8.114), e é por isso que o `motion.py` existe:
-- O `--format mov` do HyperFrames converte com a matriz **BT.601** e não marca o arquivo. O Resolve lê como
-  Rec.709 e a cor saturada desvia (vermelho puro vira ~255,25,0). O `motion.py` pede PNG e codifica o ProRes 4444
-  com BT.709 e marcação completa, igual à logo do Quintal.
+- O `--format mov` do HyperFrames converte com a matriz **BT.601** e não marca o arquivo. Lido como Rec.709 (o
+  padrão do vídeo HD, e o que a logo do Quintal declara), a cor saturada desvia: vermelho puro viraria ~255,25,0.
+  O `motion.py` pede PNG e codifica o ProRes 4444 com BT.709 e marcação completa, igual à logo. Assim não depende
+  de como o Resolve trata arquivo sem marcação (isso não foi conferido no Resolve).
 - O alfa do Chrome é **direto** (branco a 50% → RGB 255, A 128): Alpha mode "Straight". O `legenda.py` grava
   premultiplicado. Modo trocado dá borda escura ou clara.
 - Fundo no `html`/`body` o HyperFrames limpa sozinho. No `#root`, ele grava PNG sem alfa e o .mov cobriria o
