@@ -84,11 +84,11 @@ export function TransicaoDaJuncao({
           title={`Transição: ${rotulo}`}
           aria-label={`Transição entre os clipes: ${rotulo}`}
           // max-w-none: o `* { max-width: 100% }` do globals.css prendia o botão à
-          // largura da junção, que é 0 — ele colapsava e sumia. Contraste invertido
-          // para se destacar sobre as miniaturas.
-          className={`absolute left-1/2 top-1/2 z-20 flex h-7 w-7 max-w-none -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full shadow-md ring-2 ring-background transition hover:scale-110 disabled:opacity-50 ${atual ? 'bg-primary text-primary-foreground' : 'bg-foreground text-background'}`}
+          // largura da junção, que é 0 — ele colapsava e sumia. Fica na borda de
+          // CIMA da faixa: no meio cobria as alças de duração das duas pontas.
+          className={`absolute left-1/2 top-0 z-20 flex h-5 w-5 max-w-none -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full shadow-md ring-2 ring-background transition hover:scale-110 disabled:opacity-50 ${atual ? 'bg-primary text-primary-foreground' : 'bg-foreground text-background'}`}
         >
-          <IconeDaTransicao transicao={atual} className="h-4 w-4" />
+          <IconeDaTransicao transicao={atual} className="h-3 w-3" />
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-72" align="center">
