@@ -17,7 +17,7 @@ import { linhaDoTempo } from '@/lib/video/linha-do-tempo'
 import { volumeDoVideoNaPagina } from '@/lib/video/plano-de-som'
 import { useClipeAtivo } from '@/lib/video/clipe-ativo'
 import { GRUPO_DE_EFEITO, GRUPO_DE_MOVIMENTO } from '@/lib/video/aplicar-quadro'
-import { ehMovimento, ESCALA_DO_MOVIMENTO } from '@/lib/video/movimento'
+import { DENSIDADE_DO_CACHE_DO_MOVIMENTO, ehMovimento, raioDoBlurNoCache } from '@/lib/video/movimento'
 import { relogioDaPagina } from '@/lib/video/relogio-da-pagina'
 import { registrarVideoMontado } from '@/lib/video/videos-montados'
 import { useMultiPageOpcional } from '@/contexts/multi-page-context'
@@ -539,14 +539,15 @@ export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDra
 
 /**
  * O grupo de efeito (Decisão 9 do plano de 03/10/2026): o aplicador do quadro
- * (`aplicar-quadro.ts`) escreve o movimento e a transição AQUI — recorte pela
- * caixa, escala, deslize —, nunca no nó editável. Sem id: `findOne('#id')` e o
- * Transformer continuam achando o nó de dentro; `camadaId` liga o grupo à camada.
+ * (`aplicar-quadro.ts`) escreve AQUI a visibilidade e a transição, nunca no nó
+ * editável. O movimento da foto mora num grupo DENTRO do nó (ImageNode), para
+ * a máscara, os cantos e a borda ficarem presos à caixa. Sem id: `findOne('#id')`
+ * e o Transformer continuam achando o nó de dentro; `camadaId` liga à camada.
  */
 function comEfeitoDeTempo(camadaId: string, no: React.ReactNode) {
   return (
     <Group name={GRUPO_DE_EFEITO} camadaId={camadaId}>
-      <Group name={GRUPO_DE_MOVIMENTO}>{no}</Group>
+      {no}
     </Group>
   )
 }
@@ -879,6 +880,22 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
   const [image] = useImage(imageUrl, imageUrl.startsWith('http') ? 'anonymous' : undefined)
   const imageRef = React.useRef<Konva.Image>(null)
   const groupRef = React.useRef<Konva.Group>(null)
+  // O recorte da foto em movimento: o Konva não recorta o getClientRect pelo
+  // clipFunc, e sem isto o Transformer e as guias mediriam a foto ampliada (até
+  // 1,15×) — as alças sairiam da caixa
+  const medirPelaCaixa = React.useCallback((g: Konva.Group | null) => {
+    if (!g) return
+    g.getClientRect = (config) => {
+      const w = imageRef.current?.width() ?? 0
+      const h = imageRef.current?.height() ?? 0
+      if (config?.skipTransform) return { x: 0, y: 0, width: w, height: h }
+      const t = g.getAbsoluteTransform(config?.relativeTo)
+      const cantos = [t.point({ x: 0, y: 0 }), t.point({ x: w, y: 0 }), t.point({ x: 0, y: h }), t.point({ x: w, y: h })]
+      const x = Math.min(...cantos.map((p) => p.x))
+      const y = Math.min(...cantos.map((p) => p.y))
+      return { x, y, width: Math.max(...cantos.map((p) => p.x)) - x, height: Math.max(...cantos.map((p) => p.y)) - y }
+    }
+  }, [])
 
   // Máscara e flip vivem num Group wrapper: a máscara é clipFunc do Group e o
   // flip é scale NEGATIVO no KonvaImage interno — nunca no node transformado,
@@ -886,7 +903,11 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
   const flipH = layer.style?.flipH === true
   const flipV = layer.style?.flipV === true
   const maskPath = layer.style?.mask?.path
-  const hasWrapper = Boolean(maskPath || flipH || flipV)
+  // Foto em movimento também vive no wrapper: dentro dele, o recorte (máscara +
+  // cantos) e a borda ficam presos à caixa e só a imagem se move (grupo de
+  // movimento, escrito pelo aplicador do quadro)
+  const emMovimento = layer.type === 'image' && ehMovimento(layer.movimento)
+  const hasWrapper = Boolean(maskPath || flipH || flipV || emMovimento)
   const { setCroppingLayerId } = useTemplateEditor()
 
   // Duplo clique entra no recorte in-canvas (v1 não suporta camada rotacionada)
@@ -953,13 +974,15 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
   }, [layer.style])
 
   // Foto em movimento chega a 1,15×: o bitmap do filtro é feito nessa
-  // densidade, senão o zoom amacia a foto (o cache nasce no devicePixelRatio)
+  // densidade, senão o zoom amacia a foto (o cache nasce no devicePixelRatio).
+  // O raio do desfoque é em pixels do bitmap, e por isso é compensado pela
+  // mesma densidade (raioDoBlurNoCache) — senão o desfoque encolhe 1,15×
   const opcoesDoCache = React.useMemo(
     () =>
-      layer.type === 'image' && ehMovimento(layer.movimento)
-        ? { pixelRatio: (typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1) * ESCALA_DO_MOVIMENTO }
+      emMovimento
+        ? { pixelRatio: (typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1) * DENSIDADE_DO_CACHE_DO_MOVIMENTO }
         : undefined,
-    [layer.type, layer.movimento],
+    [emMovimento],
   )
 
   // Cache only when filters are applied (Konva performance best practice)
@@ -1199,28 +1222,50 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
     blacks: layer.style?.blacks ?? 0,
     saturation: layer.style?.saturation ?? 0,
     // Effects filters
-    blurRadius: layer.style?.blur ?? 0,
+    blurRadius: raioDoBlurNoCache(layer.style?.blur ?? 0, emMovimento),
     vignette: layer.style?.vignette ?? 0,
-    // Styling
-    cornerRadius: borderRadius,
-    stroke: borderWidth > 0 ? borderColor : undefined,
-    strokeWidth: borderWidth > 0 ? borderWidth : undefined,
+    // Styling — na foto em movimento cantos e borda saem do nó que se move
+    // (iriam junto com a escala) e são desenhados presos à caixa, no wrapper
+    cornerRadius: emMovimento ? 0 : borderRadius,
+    stroke: !emMovimento && borderWidth > 0 ? borderColor : undefined,
+    strokeWidth: !emMovimento && borderWidth > 0 ? borderWidth : undefined,
+  }
+
+  // A caixa VIVA da imagem: a alça lateral muda o tamanho antes de o React gravar
+  const caixaViva = () => ({ w: imageRef.current?.width() ?? width, h: imageRef.current?.height() ?? height })
+  // Path congelado em viewBox 0 0 100 100 escalado para a caixa; desfaz a escala
+  // em seguida para não afetar os filhos
+  const tracarMascara = (ctx: Konva.Context, w: number, h: number) => {
+    if (!maskPath) return
+    ctx.scale(w / 100, h / 100)
+    traceSvgPath(ctx, maskPath)
+    ctx.scale(100 / w, 100 / h)
+  }
+  const tracarCaixa = (ctx: Konva.Context, w: number, h: number) => {
+    if (borderRadius > 0) Konva.Util.drawRoundedRectPath(ctx, w, h, borderRadius)
+    else ctx.rect(0, 0, w, h)
   }
 
   if (hasWrapper) {
+    const imagem = (
+      <KonvaImage
+        ref={imageRef}
+        {...visualProps}
+        x={flipH ? width : 0}
+        y={flipV ? height : 0}
+        scaleX={flipH ? -1 : 1}
+        scaleY={flipV ? -1 : 1}
+        width={width}
+        height={height}
+      />
+    )
     return (
       <Group
         {...imageProps}
         ref={groupRef}
         clipFunc={
-          maskPath
-            ? (ctx: Konva.Context) => {
-                // Path congelado em viewBox 0 0 100 100 escalado para a caixa;
-                // desfaz a escala em seguida para não afetar os filhos
-                ctx.scale(width / 100, height / 100)
-                traceSvgPath(ctx, maskPath)
-                ctx.scale(100 / width, 100 / height)
-              }
+          maskPath && !emMovimento
+            ? (ctx: Konva.Context) => tracarMascara(ctx, width, height)
             : undefined
         }
         onTransformStart={handleTransformStart}
@@ -1232,16 +1277,45 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
         onDblClick={handleDblClick}
         onDblTap={handleDblClick}
       >
-        <KonvaImage
-          ref={imageRef}
-          {...visualProps}
-          x={flipH ? width : 0}
-          y={flipV ? height : 0}
-          scaleX={flipH ? -1 : 1}
-          scaleY={flipV ? -1 : 1}
-          width={width}
-          height={height}
-        />
+        {emMovimento ? (
+          <>
+            {/* Recorte preso à caixa: máscara ∩ cantos. O clip interno da
+                máscara mais o do Konva no path dos cantos dão a interseção */}
+            <Group
+              ref={medirPelaCaixa}
+              clipFunc={(ctx: Konva.Context) => {
+                const { w, h } = caixaViva()
+                if (maskPath) {
+                  tracarMascara(ctx, w, h)
+                  ctx.clip()
+                  ctx.beginPath()
+                }
+                tracarCaixa(ctx, w, h)
+              }}
+            >
+              <Group name={GRUPO_DE_MOVIMENTO}>{imagem}</Group>
+            </Group>
+            {borderWidth > 0 && (
+              // Borda por cima e sem recorte, como o render de servidor; o traço
+              // é do contexto (não `stroke` do nó) para não entrar na caixa das
+              // alças do Transformer
+              <Shape
+                listening={false}
+                sceneFunc={(ctx: Konva.Context) => {
+                  const { w, h } = caixaViva()
+                  ctx.beginPath()
+                  tracarCaixa(ctx, w, h)
+                  ctx.closePath()
+                  ctx.setAttr('strokeStyle', borderColor)
+                  ctx.setAttr('lineWidth', borderWidth)
+                  ctx.stroke()
+                }}
+              />
+            )}
+          </>
+        ) : (
+          imagem
+        )}
       </Group>
     )
   }

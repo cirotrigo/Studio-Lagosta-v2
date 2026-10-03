@@ -345,8 +345,15 @@ export async function renderPageAndRegister(input: RenderPageInput): Promise<Per
   // `versaoRenderizada`: a versão VISUAL (dimensões, fundo e camadas) que ESTE
   // PNG desenhou, gravada no mesmo patch da URL. É a prova de que a miniatura
   // da página ainda é a arte da página — o agendamento do lote só a reaproveita
-  // quando a página continua nessa versão (R12-01; `thumbnailEhAtual`).
-  const fieldValues = { ...input.fieldValues, pageId: page.id, thumbnailUrl: blob.url, versaoRenderizada: versaoDaPagina(page) }
+  // quando a página continua nessa versão (R12-01; `thumbnailEhAtual`). Leva o
+  // áudio com que o quadro 0 foi desenhado: na foto em movimento, a música
+  // decide se o PNG sai com o zoom.
+  const fieldValues = {
+    ...input.fieldValues,
+    pageId: page.id,
+    thumbnailUrl: blob.url,
+    versaoRenderizada: versaoDaPagina(page, { audio }),
+  }
 
   const dadosDaArteQueFecha = {
     status: 'COMPLETED' as any,

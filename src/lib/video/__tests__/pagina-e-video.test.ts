@@ -125,6 +125,9 @@ describe('quem decide se a página vira post como imagem', () => {
         'components/templates/image-toolbar.tsx',
         'lib/video/aplicar-quadro.ts',
         'lib/video/linha-do-tempo.ts',
+        // e se o quadro 0 sai com o movimento (`quadroZeroEmVideo`): é o que a
+        // versão da página e o PATCH que troca o áudio conferem
+        'lib/video/movimento.ts',
         'components/templates/continuous/continuous-workspace.tsx',
         'components/templates/modals/generate-creatives-modal.tsx',
         // o motor só toca página que é vídeo (o relógio fica em 0 na estática)

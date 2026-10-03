@@ -5,6 +5,7 @@ import { invalidateScheduledRenders, normalizeLayersString } from '@/lib/posts/i
 import { registrarDecisaoSemSugestao } from '@/lib/aprendizado/captura'
 import { lerCamadas } from '@/lib/posts/page-layers'
 import { problemasDosClipes } from '@/lib/video/linha-do-tempo'
+import { quadroZeroEmVideo } from '@/lib/video/movimento'
 import { reconciliarMarcasDoRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
 import { copyParaDecisao, diffDeCopy } from '@/lib/aprendizado/diff-copy'
 import { recusaDaRevisao, revisaoDaPaginaComCamadas } from '@/lib/copy-autoral/revisar-pagina'
@@ -45,8 +46,9 @@ const updatePageSchema = z.object({
   height: z.number().int().positive().optional(),
   layers: z.array(z.unknown()).optional(),
   background: z.string().optional(),
-  // Trilha sonora da página (aba Músicas); null limpa. NÃO entra no diff
-  // visual — mudar música não invalida o render agendado (que é PNG).
+  // Trilha sonora da página (aba Músicas); null limpa. Entra no diff visual só
+  // quando muda o quadro 0: com foto em movimento, a música faz da página um
+  // vídeo, e o PNG do quadro 0 sai com (ou sem) o zoom (`quadroZeroEmVideo`).
   audio: pageAudioSchema.nullable().optional(),
   order: z.number().int().optional(),
   thumbnail: z.string().nullable().optional(),
@@ -194,14 +196,27 @@ export async function PATCH(
       validatedData.layers !== undefined ||
       validatedData.background !== undefined ||
       validatedData.width !== undefined ||
-      validatedData.height !== undefined
-    type BaseVisual = { layers: unknown; background: string | null; width: number; height: number }
+      validatedData.height !== undefined ||
+      validatedData.audio !== undefined
+    type BaseVisual = { layers: unknown; background: string | null; width: number; height: number; audio: unknown }
+    /** Música só é visual quando liga ou desliga o movimento das fotos no quadro 0 — com as camadas que ficam. */
+    const audioMudaOQuadroZero = (base: BaseVisual) => {
+      const camadas = lerCamadas(validatedData.layers !== undefined ? updateData.layers : base.layers).camadas
+      return quadroZeroEmVideo(camadas, base.audio) !== quadroZeroEmVideo(camadas, validatedData.audio)
+    }
     const mudancasContra = (base: BaseVisual) => {
       const layersChanged = validatedData.layers !== undefined && updateData.layers !== normalizeLayersString(base.layers)
       const backgroundChanged = validatedData.background !== undefined && validatedData.background !== base.background
       const widthChanged = validatedData.width !== undefined && validatedData.width !== base.width
       const heightChanged = validatedData.height !== undefined && validatedData.height !== base.height
-      return { layersChanged, visualChanged: layersChanged || backgroundChanged || widthChanged || heightChanged, backgroundChanged, widthChanged, heightChanged }
+      const audioMudaOQuadro = validatedData.audio !== undefined && audioMudaOQuadroZero(base)
+      return {
+        layersChanged,
+        visualChanged: layersChanged || backgroundChanged || widthChanged || heightChanged || audioMudaOQuadro,
+        backgroundChanged,
+        widthChanged,
+        heightChanged,
+      }
     }
     /** Os dados a gravar SEM o que é idêntico à base — o idêntico não se reescreve. */
     const dadosContra = (base: BaseVisual): Record<string, unknown> => {
@@ -220,7 +235,7 @@ export async function PATCH(
     // "Unable to start a transaction in the given time" no meio da edição.
     // A leitura fresca abaixo é o que decide se a transação abre: custa um
     // SELECT a mais por PATCH com campo visual e nenhuma transação nova.
-    const selecaoDaBase = { updatedAt: true, layers: true, background: true, width: true, height: true, copyAutoral: true } as const
+    const selecaoDaBase = { updatedAt: true, layers: true, background: true, width: true, height: true, audio: true, copyAutoral: true } as const
     const baseFresca = payloadVisual ? await db.page.findUnique({ where: { id: pageId }, select: selecaoDaBase }) : null
     if (payloadVisual && !baseFresca) {
       return NextResponse.json({ error: 'Page not found' }, { status: 404 })

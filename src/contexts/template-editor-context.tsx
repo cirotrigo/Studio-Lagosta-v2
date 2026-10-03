@@ -11,7 +11,8 @@ import { camadaDuplicadaNoEditor, camadasColadasNoEditor, paginaTemContrato } fr
 import { useMultiPageOpcional } from '@/contexts/multi-page-context'
 import { relogioDaPagina } from '@/lib/video/relogio-da-pagina'
 import { mesmaEntradaDeDesfazer } from '@/lib/historico-do-editor'
-import { videosProntosEmZero } from '@/lib/video/videos-montados'
+import { duracoesDosVideosMontados, videosProntosEmZero } from '@/lib/video/videos-montados'
+import { aplicarQuadro } from '@/lib/video/aplicar-quadro'
 import { ehClipe } from '@/lib/video/camadas-de-video'
 import { criarReservaDeClipes, inserirClipe, MENSAGEM_TETO_DE_CLIPES, normalizarClipes } from '@/lib/video/linha-do-tempo'
 import { toast } from '@/hooks/use-toast'
@@ -704,6 +705,16 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
           }
         })
 
+        // O quadro de 0 como o export e o render de servidor o desenham: o
+        // clone herda o que a prévia escreveu nos grupos de efeito (um gesto
+        // suspenso, o instante em que a página parou), não o quadro de 0
+        aplicarQuadro(
+          cloneStage,
+          { layers: design.layers, audio: design.audio ?? null, canvas: { width: canvasWidth } },
+          0,
+          { gravando: true, duracoes: duracoesDosVideosMontados() },
+        )
+
         // Respeitar camadas invisíveis
         const contentLayer = cloneStage.findOne('.content-layer') as Konva.Layer | undefined
         if (contentLayer) {
@@ -737,7 +748,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
         }
       }
     },
-    [design.canvas.width, design.canvas.height, design.layers, multiPage?.currentPageId],
+    [design.canvas.width, design.canvas.height, design.layers, design.audio, multiPage?.currentPageId],
   )
 
   /**

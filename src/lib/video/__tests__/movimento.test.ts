@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  DENSIDADE_DO_CACHE_DO_MOVIMENTO,
   DESLIZE_DO_MOVIMENTO,
   ESCALA_DO_MOVIMENTO,
   progressoDoMovimento,
@@ -7,6 +8,8 @@ import {
   QUADRO_PARADO,
   quadroAnotado,
   quadroDoMovimento,
+  quadroZeroEmVideo,
+  raioDoBlurNoCache,
 } from '../movimento'
 import { camadasNoInstante, linhaDoTempo, problemasDosClipes } from '../linha-do-tempo'
 
@@ -103,6 +106,37 @@ describe('camadasNoInstante com movimento', () => {
   it('só foto se mexe: logo com movimento não é anotada', () => {
     const [logo] = camadasNoInstante([{ ...foto('l', 0, { movimento: 'aproximar' }), type: 'logo' }], 0, { audio: musica })
     expect(quadroAnotado(logo)).toBeNull()
+  })
+})
+
+describe('compensação de densidade do cache (achado 3 do Codex)', () => {
+  it('o cache denso mede o raio em pixels dele: compensado, o desfoque na foto é o mesmo da foto parada', () => {
+    expect(DENSIDADE_DO_CACHE_DO_MOVIMENTO).toBe(ESCALA_DO_MOVIMENTO)
+    for (const blur of [0, 4, 20]) {
+      expect(raioDoBlurNoCache(blur, false)).toBe(blur)
+      // raio no bitmap ÷ densidade = raio na foto
+      expect(raioDoBlurNoCache(blur, true) / DENSIDADE_DO_CACHE_DO_MOVIMENTO).toBeCloseTo(blur)
+    }
+  })
+})
+
+describe('quadroZeroEmVideo — o áudio só muda o quadro 0 quando há foto em movimento (achado 6)', () => {
+  it('sem foto em movimento o áudio não muda nada (null)', () => {
+    expect(quadroZeroEmVideo([foto('a', 0)], musica)).toBeNull()
+    expect(quadroZeroEmVideo([{ ...foto('l', 0, { movimento: 'afastar' }), type: 'logo' }], musica)).toBeNull()
+  })
+
+  it('com foto em movimento a música decide se a página é vídeo', () => {
+    const layers = [foto('a', 0, { movimento: 'afastar' })]
+    expect(quadroZeroEmVideo(layers, musica)).toBe(true)
+    expect(quadroZeroEmVideo(layers, null)).toBe(false)
+    expect(quadroZeroEmVideo(layers, { source: 'mute', startTime: 0, endTime: 10 })).toBe(false)
+  })
+
+  it('sequência é vídeo com ou sem música', () => {
+    const layers = [foto('a', 0, { clipe: {}, movimento: 'aproximar' }), foto('b', 1, { clipe: {} })]
+    expect(quadroZeroEmVideo(layers, null)).toBe(true)
+    expect(quadroZeroEmVideo(layers, musica)).toBe(true)
   })
 })
 

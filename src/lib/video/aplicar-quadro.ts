@@ -7,22 +7,28 @@
  *
  * Estrutura, montada pelo KonvaLayerFactory:
  *   Group.efeito-de-tempo (camadaId)   ← visível? opacidade e deslocamento da
- *                                        transição; recorte pela caixa da camada
- *     Group.efeito-movimento           ← escala em torno do centro + deslize
- *       nó editável (KonvaImage ou o Group da máscara)
+ *                                        transição
+ *     nó editável (KonvaImage, o Group da máscara, o vídeo)
+ *       [foto em movimento] Group (recorte preso à caixa: máscara ∩ cantos)
+ *         Group.efeito-movimento       ← escala em torno do centro + deslize,
+ *                                        no espaço da própria caixa
+ *           KonvaImage
+ *       [foto em movimento] a borda, presa à caixa
  *
  * O React só põe nome e `camadaId` nesses grupos, então um re-render não
  * desfaz o quadro; os handlers de arraste e de transformação continuam lendo e
- * gravando o nó de dentro. A VISIBILIDADE dos clipes também mora aqui (é ela
+ * gravando o nó editável. A VISIBILIDADE dos clipes também mora aqui (é ela
  * que mostra os dois clipes da junção durante a transição).
  *
- * Na prévia o efeito fica SUSPENSO (identidade) quando a pessoa mexe na
- * camada: do toque até soltar, enquanto ela está selecionada (as alças do
- * Transformer seguem a caixa de verdade) e enquanto o nó não bate com o
- * design (logo depois de um arraste, antes de o React gravar). A suspensão do
- * toque acontece ANTES de o Konva calcular o deslocamento do arraste — senão a
- * posição gravada levaria o efeito junto. A visibilidade nunca é suspensa: é a
- * linha do tempo, não um efeito.
+ * Na prévia o efeito fica SUSPENSO (identidade) só durante o GESTO: do toque
+ * na camada (ou numa alça do Transformer que a segura) até soltar, e enquanto
+ * o nó não bate com o design (logo depois de um arraste, antes de o React
+ * gravar). Selecionada e parada, a camada mostra o efeito do instante, como o
+ * export. A suspensão do toque acontece ANTES de o Konva tratar o pointerdown
+ * — senão a posição gravada levaria o efeito junto; na alça, o Konva ainda acha
+ * a alça pelo canvas de clique do quadro anterior e mede o arraste a partir da
+ * posição já suspensa. A visibilidade nunca é suspensa: é a linha do tempo,
+ * não um efeito.
  */
 
 import type Konva from 'konva'
@@ -67,8 +73,7 @@ type Alvo = {
   /** Opacidade e deslocamento horizontal (px da página) da transição, no grupo de fora. */
   opacidade: number
   deslocamento: number
-  /** Polígono do recorte, em coordenadas da página; null = sem recorte. */
-  recorte: number[] | null
+  /** O grupo de movimento, no espaço da caixa da camada. */
   x: number
   y: number
   offsetX: number
@@ -80,7 +85,6 @@ const IDENTIDADE: Alvo = {
   visivel: true,
   opacidade: 1,
   deslocamento: 0,
-  recorte: null,
   x: 0,
   y: 0,
   offsetX: 0,
@@ -92,7 +96,8 @@ const IDENTIDADE: Alvo = {
 const assinaturas = new WeakMap<Konva.Node, string>()
 /** Grupos tocados agora (ponteiro abaixado), até soltar. */
 const tocados = new Set<Konva.Node>()
-const stagesComToque = new WeakSet<Konva.Stage>()
+/** Os ouvintes de toque de cada stage, para tirar no descarte (restaurarIdentidade). */
+const desinstaladores = new WeakMap<Konva.Stage, () => void>()
 
 function assinatura(a: Alvo): string {
   const r = (n: number) => Math.round(n * 100) / 100
@@ -100,7 +105,6 @@ function assinatura(a: Alvo): string {
     a.visivel ? 'v' : 'o',
     r(a.opacidade * 1000),
     r(a.deslocamento),
-    a.recorte ? a.recorte.map(r).join(',') : '-',
     r(a.x),
     r(a.y),
     r(a.offsetX),
@@ -114,20 +118,9 @@ function escrever(grupo: Konva.Group, a: Alvo): boolean {
   if (assinaturas.get(grupo) === chave) return false
   assinaturas.set(grupo, chave)
   grupo.setAttrs({ visible: a.visivel, opacity: a.opacidade, x: a.deslocamento })
-  const recorte = a.recorte
-  // O Konva entrega o próprio Context (que repassa moveTo/lineTo); o tipo
-  // declarado dele é o do canvas
-  grupo.clipFunc(
-    recorte
-      ? (ctx: CanvasRenderingContext2D) => {
-          ctx.moveTo(recorte[0], recorte[1])
-          for (let i = 2; i < recorte.length; i += 2) ctx.lineTo(recorte[i], recorte[i + 1])
-          ctx.closePath()
-        }
-      : (undefined as never),
-  )
-  const interno = grupo.getChildren()[0] as Konva.Group | undefined
-  interno?.setAttrs({ x: a.x, y: a.y, offsetX: a.offsetX, offsetY: a.offsetY, scaleX: a.escala, scaleY: a.escala })
+  grupo
+    .findOne('.' + GRUPO_DE_MOVIMENTO)
+    ?.setAttrs({ x: a.x, y: a.y, offsetX: a.offsetX, offsetY: a.offsetY, scaleX: a.escala, scaleY: a.escala })
   return true
 }
 
@@ -142,25 +135,14 @@ function caixa(camada: CamadaDoQuadro) {
   }
 }
 
-type AlvoDoMovimento = Pick<Alvo, 'recorte' | 'x' | 'y' | 'offsetX' | 'offsetY' | 'escala'>
+type AlvoDoMovimento = Pick<Alvo, 'x' | 'y' | 'offsetX' | 'offsetY' | 'escala'>
 
 function alvoDoMovimento(camada: CamadaDoQuadro, escala: number, deslocamentoX: number): AlvoDoMovimento {
-  const { x, y, w, h, graus } = caixa(camada)
-  const rad = (graus * Math.PI) / 180
-  const cos = Math.cos(rad)
-  const sin = Math.sin(rad)
-  const ponto = (u: number, v: number) => [x + u * cos - v * sin, y + u * sin + v * cos]
-  const [cx, cy] = ponto(w / 2, h / 2)
-  return {
-    recorte: [...ponto(0, 0), ...ponto(w, 0), ...ponto(w, h), ...ponto(0, h)],
-    // Escala em torno do centro da caixa e deslize no eixo X dela: a mesma
-    // geometria do render de servidor (render-engine.ts)
-    x: cx + deslocamentoX * w * cos,
-    y: cy + deslocamentoX * w * sin,
-    offsetX: cx,
-    offsetY: cy,
-    escala,
-  }
+  const { w, h } = caixa(camada)
+  // No espaço da própria caixa (o grupo de movimento mora dentro do nó):
+  // escala em torno do centro e deslize no eixo X dela — a mesma geometria do
+  // render de servidor (render-engine.ts)
+  return { x: w / 2 + deslocamentoX * w, y: h / 2, offsetX: w / 2, offsetY: h / 2, escala }
 }
 
 /** O nó não bate com o design: arrastado agora, ou o React ainda não gravou. */
@@ -177,28 +159,47 @@ function desalinhado(no: Konva.Node, camada: CamadaDoQuadro): boolean {
 }
 
 function instalarToque(stage: Konva.Stage) {
-  if (stagesComToque.has(stage) || typeof window === 'undefined') return
+  if (desinstaladores.has(stage) || typeof window === 'undefined') return
   const container = stage.container?.()
   if (!container) return
-  stagesComToque.add(stage)
   // Captura: roda antes de o Konva tratar o pointerdown (e calcular o
   // deslocamento do arraste a partir da posição absoluta, que inclui o efeito).
   // A área clicável não muda com a suspensão: o recorte é a própria caixa.
-  container.addEventListener(
-    'pointerdown',
-    (evt) => {
-      stage.setPointersPositions(evt)
-      const pos = stage.getPointerPosition()
-      const grupo = pos ? stage.getIntersection(pos)?.findAncestor('.' + GRUPO_DE_EFEITO) : null
-      if (!grupo) return
+  const tocar = (evt: PointerEvent) => {
+    stage.setPointersPositions(evt)
+    const pos = stage.getPointerPosition()
+    const alvo = pos ? stage.getIntersection(pos) : null
+    if (!alvo) return
+    // Alça do Transformer, ou camada selecionada junto com outras (o arraste
+    // leva todas): o gesto é nos nós que o Transformer segura
+    const grupoDoAlvo = alvo.findAncestor('.' + GRUPO_DE_EFEITO)
+    const transformer =
+      (alvo.findAncestor('Transformer') as Konva.Transformer | null) ??
+      (grupoDoAlvo
+        ? (stage.find('Transformer') as Konva.Transformer[]).find((tr) =>
+            tr.nodes().some((n) => n.findAncestor('.' + GRUPO_DE_EFEITO) === grupoDoAlvo),
+          )
+        : undefined)
+    const redesenhar = new Set<Konva.Layer>()
+    for (const no of transformer ? transformer.nodes() : [alvo]) {
+      const grupo = no.findAncestor('.' + GRUPO_DE_EFEITO) as Konva.Group | null
+      if (!grupo) continue
       tocados.add(grupo)
-      if (escrever(grupo as Konva.Group, IDENTIDADE)) grupo.getLayer()?.batchDraw()
-    },
-    { capture: true },
-  )
+      const camada = grupo.getLayer()
+      if (escrever(grupo, IDENTIDADE) && camada) redesenhar.add(camada)
+    }
+    redesenhar.forEach((l) => l.batchDraw())
+  }
   const soltar = () => tocados.clear()
+  container.addEventListener('pointerdown', tocar, { capture: true })
   window.addEventListener('pointerup', soltar, { capture: true })
   window.addEventListener('pointercancel', soltar, { capture: true })
+  desinstaladores.set(stage, () => {
+    container.removeEventListener('pointerdown', tocar, { capture: true })
+    window.removeEventListener('pointerup', soltar, { capture: true })
+    window.removeEventListener('pointercancel', soltar, { capture: true })
+    for (const grupo of tocados) if (grupo.getStage() === stage || !grupo.getStage()) tocados.delete(grupo)
+  })
 }
 
 /**
@@ -237,18 +238,16 @@ export function aplicarQuadro(
   const linha = linhaDoTempo(design.layers, audio, opcoes.duracoes)
   const quadros = quadroDosClipes(linha.clipes, t)
   const porId = new Map(design.layers.map((l) => [l.id, l]))
-  const selecionados = opcoes.gravando
-    ? null
-    : new Set((stage.find('Transformer') as Konva.Transformer[]).flatMap((tr) => tr.nodes()))
 
   const redesenhar = new Set<Konva.Layer>()
   for (const grupo of grupos) {
     const camada = porId.get(grupo.getAttr('camadaId'))
-    const no = (grupo.getChildren()[0] as Konva.Group | undefined)?.getChildren()[0]
+    // O nó editável é o filho do grupo de efeito (Transformer e handlers o seguram)
+    const no = grupo.getChildren()[0]
     const quadro = camada ? quadros.get(camada.id) : undefined
     let alvo: Alvo = { ...IDENTIDADE, visivel: visibilidade(camada, quadro, !!opcoes.gravando) }
-    const suspenso =
-      !opcoes.gravando && !!camada && !!no && (tocados.has(grupo) || !!selecionados?.has(no) || desalinhado(no, camada))
+    // Selecionar não suspende: só o gesto (toque, arraste, alça) e o nó fora do design
+    const suspenso = !opcoes.gravando && !!camada && !!no && (tocados.has(grupo) || desalinhado(no, camada))
     if (camada && !suspenso) {
       if (quadro) alvo = { ...alvo, opacidade: quadro.opacidade, deslocamento: quadro.deslocamentoX * design.canvas.width }
       if (ehVideo && no && camada.type === 'image' && ehMovimento(camada.movimento)) {
@@ -264,9 +263,15 @@ export function aplicarQuadro(
   redesenhar.forEach((l) => l.batchDraw())
 }
 
-/** Tudo de volta à identidade (fim do export, troca de página, saída). */
+/**
+ * Tudo de volta à identidade (fim do export, troca de página, saída) — e os
+ * ouvintes de toque do stage saem junto: remontar o stage não os acumula. O
+ * próximo `aplicarQuadro` da prévia os instala de novo.
+ */
 export function restaurarIdentidade(stage: Konva.Stage | null | undefined): void {
   if (!stage) return
+  desinstaladores.get(stage)?.()
+  desinstaladores.delete(stage)
   const redesenhar = new Set<Konva.Layer>()
   for (const grupo of stage.find('.' + GRUPO_DE_EFEITO) as Konva.Group[]) {
     if (escrever(grupo, IDENTIDADE)) {

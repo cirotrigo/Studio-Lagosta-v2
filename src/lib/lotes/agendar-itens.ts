@@ -641,7 +641,9 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
         resolucao = await resolverAgendamento(input, {
           leitor: tx,
           ingerir: false,
-          aceitarThumbnail: (p) => thumbnailEhAtual({ thumbnail: p.thumbnail, resultUrl: sob.peca.resultUrl, pagina: p, versaoRenderizada: sob.peca.versaoRenderizada }),
+          // Sem áudio de propósito: resolverAgendamento recusa página com música
+          // (recusaComoImagem) antes de perguntar pelo thumbnail.
+          aceitarThumbnail: (p) => thumbnailEhAtual({ thumbnail: p.thumbnail, resultUrl: sob.peca.resultUrl, pagina: { ...p, audio: null }, versaoRenderizada: sob.peca.versaoRenderizada }),
         })
         const criado = await criarPostDoAgendamento(tx, resolucao)
         postId = criado.id
