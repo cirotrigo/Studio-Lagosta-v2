@@ -13,7 +13,8 @@ import { slotValuesParaRender } from './copy-segue-a-pagina'
 import { textosDaPagina } from './page-layers'
 import { reflowLayersAfterFill } from '@/lib/combo-stack-reflow'
 import { createServerTextMeasurer } from '@/lib/creatives/server-text-measurer'
-import { videosDaPagina } from '@/lib/video/camadas-de-video'
+import { paginaEhSequencia, videosDaPagina } from '@/lib/video/camadas-de-video'
+import { camadasNoInstante } from '@/lib/video/linha-do-tempo'
 
 export interface RenderStoryResult {
   buffer: Buffer
@@ -81,12 +82,14 @@ export async function renderStoryImage(
   // buraco transparente em silêncio (render-engine ignora o type 'video') e o
   // post publicaria arte furada com status RENDERED.
   // Camada OCULTA não conta: o render-engine já a pula, e a página é uma imagem.
-  if (videosDaPagina(designData.layers).length > 0) {
+  if (videosDaPagina(designData.layers).length > 0 || paginaEhSequencia(designData.layers)) {
     throw new Error(
-      `Página ${pageId} contém camada de vídeo — o render server-side gera imagem estática. ` +
+      `Página ${pageId} contém camada de vídeo (ou uma sequência de clipes) — o render server-side gera imagem estática. ` +
         'Exporte o vídeo pelo editor e agende o MP4 pela aba Criativos.',
     )
   }
+  // Com um clipe só, o quadro de 0 é a página inteira; a chamada deixa a regra num lugar só.
+  designData = { ...designData, layers: camadasNoInstante(designData.layers, 0) }
 
   // 4. Register project fonts (dynamic import to avoid static bundling)
   const projectId = page.Template.projectId

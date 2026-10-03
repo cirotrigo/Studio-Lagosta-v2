@@ -139,7 +139,9 @@ export function findUnmatchedSlotKeys(
  * na criação de post template-based e no story-renderer.
  */
 export function pageContainsVideoLayer(layers: unknown): boolean {
-  // Camada oculta não conta: o render a pula, então a página é uma imagem
+  // Camada oculta não conta: o render a pula, então a página é uma imagem.
+  // Sequência só de fotos renderiza (o quadro de 0); quem a impede de ir ao ar
+  // como imagem é `recusaComoImagem`.
   return videosDaPagina(camadasDaPagina(layers)).length > 0
 }
 

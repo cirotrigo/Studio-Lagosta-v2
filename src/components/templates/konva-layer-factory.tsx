@@ -12,7 +12,13 @@ import { KonvaMultiStyledText } from './konva-multi-styled-text'
 import { calculateImageCrop } from '@/lib/image-crop-utils'
 import { cropForResizedBox, resolveImageSourceRect } from '@/lib/image-fit'
 import { escalaDoBlur, folgaDoBlur } from '@/lib/creatives/halo/fundo-de-texto'
-import { ehMotion, passoDoMotion, videoPrincipal } from '@/lib/video/camadas-de-video'
+import { ehClipe, ehMotion, passoDoVideo } from '@/lib/video/camadas-de-video'
+import { linhaDoTempo } from '@/lib/video/linha-do-tempo'
+import { volumeDoVideoNaPagina } from '@/lib/video/plano-de-som'
+import { useClipeAtivo } from '@/lib/video/clipe-ativo'
+import { relogioDaPagina } from '@/lib/video/relogio-da-pagina'
+import { registrarVideoMontado } from '@/lib/video/videos-montados'
+import { useMultiPageOpcional } from '@/contexts/multi-page-context'
 
 /**
  * Alças do MEIO. O `keepRatio` do Konva só vale nos cantos, então são estas que
@@ -242,6 +248,8 @@ interface CommonProps {
   y: number
   rotation: number
   opacity: number
+  /** Clipe da linha do tempo fora do seu intervalo: montado, mas invisível (e surdo) */
+  visible: boolean
   draggable: boolean
   listening: boolean
   onClick: (event: KonvaEventObject<MouseEvent | TouchEvent>) => void
@@ -262,7 +270,38 @@ export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDra
   const isLocked = !!layer.locked
   const opacityBase = isVisible ? layer.style?.opacity ?? 1 : 0.25
   const opacity = dimmed ? opacityBase * 0.12 : opacityBase
-  const interactionsDisabled = disableInteractions || !isVisible
+
+  // Linha do tempo: a camada que é clipe só aparece no intervalo dela, segundo
+  // o relógio — quem publica o clipe ativo é o motor da página (prévia) e o
+  // export (gravação) mexe nos nós direto. Só vale para clipe DESTA página
+  // (a prévia de outra página desenha o quadro de 0 por conta própria).
+  const editor = useTemplateEditor()
+  const chave = useMultiPageOpcional()?.currentPageId
+  const publicado = useClipeAtivo(chave)
+  const linha = React.useMemo(
+    () => (ehClipe(layer) ? linhaDoTempo(editor?.design?.layers ?? [], null) : null),
+    [layer, editor?.design?.layers],
+  )
+  const clipeDaPagina = linha?.clipes.find((c) => c.id === layer.id) ?? null
+  const clipeAtivoId = publicado === undefined ? linha?.clipes[0]?.id : publicado
+  // Clipe visível fora da linha (além do teto de 10) também fica oculto: a
+  // leitura o descarta, então ele nunca é o ativo — e não pode ficar por cima
+  const clipeOculto = (!!clipeDaPagina || (ehClipe(layer) && isVisible)) && clipeAtivoId !== layer.id
+  const interactionsDisabled = disableInteractions || !isVisible || clipeOculto
+  // Fase 4: o som da prévia é o que o export vai ter — `trechosOriginais`, a
+  // MESMA conta da fila: só com a trilha em original/mix, e só o clipe ATIVO
+  // (fora do intervalo dele o vídeo fica mudo). Miniatura nunca toca som.
+  // ponytail: as durações carregadas não entram nas deps — só o clamp pela
+  // música dependeria delas, e o `[]` no cliente já é a regra do `linha` acima.
+  const audioDaPagina = editor?.design?.audio
+  const volumeDoSom = React.useMemo(
+    () =>
+      layer.type === 'video'
+        ? volumeDoVideoNaPagina(editor?.design?.layers ?? [], audioDaPagina ?? { source: 'original' }, layer.id)
+        : 0,
+    [layer.type, layer.id, editor?.design?.layers, audioDaPagina],
+  )
+  const somDoVideo = clipeOculto || disableInteractions ? 0 : volumeDoSom
 
   const handleSelect = React.useCallback(
     (event: KonvaEventObject<MouseEvent | TouchEvent>) => {
@@ -416,6 +455,7 @@ export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDra
     y: layer.position?.y ?? 0,
     rotation: layer.rotation ?? 0,
     opacity,
+    visible: !clipeOculto,
     draggable: !isLocked && isVisible && !interactionsDisabled,
     listening: isVisible && !interactionsDisabled,
     onClick: handleSelect,
@@ -460,7 +500,7 @@ export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDra
       return <ImageNode layer={layer} commonProps={commonProps} shapeRef={shapeRef} borderColor={borderColor} borderWidth={borderWidth} borderRadius={borderRadius} onChange={onChange} stageRef={stageRef} />
 
     case 'video':
-      return <VideoNode layer={layer} commonProps={commonProps} shapeRef={shapeRef} borderColor={borderColor} borderWidth={borderWidth} borderRadius={borderRadius} onChange={onChange} />
+      return <VideoNode layer={layer} commonProps={commonProps} shapeRef={shapeRef} borderColor={borderColor} borderWidth={borderWidth} borderRadius={borderRadius} onChange={onChange} inicioDoClipe={clipeDaPagina?.inicio ?? 0} somDoVideo={somDoVideo} />
 
     case 'gradient':
     case 'gradient2':
@@ -500,30 +540,23 @@ type VideoNodeProps = {
   borderWidth: number
   borderRadius: number
   onChange: (updates: Partial<Layer>) => void
+  /** Instante da página em que este clipe entra (0 fora da linha do tempo) */
+  inicioDoClipe: number
+  /** O som deste vídeo toca na prévia (Fase 4: trilha em original/mix E clipe ativo) */
+  /** Volume do som original (0–1); 0 = mudo. `volumeDoVideoNaPagina`, a mesma regra da fila. */
+  somDoVideo: number
 }
 
-/**
- * Os <video> montados agora, por id de camada. Só a página ativa monta <video>
- * (as prévias desenham poster), então o mapa descreve a página aberta. É por
- * ele que o motion lê o relógio do vídeo principal.
- */
-const videosMontados = new Map<string, HTMLVideoElement>()
-
-function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, borderRadius, onChange }: VideoNodeProps) {
+function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, borderRadius, onChange, inicioDoClipe, somDoVideo }: VideoNodeProps) {
   const videoUrl = layer.fileUrl || ''
   const videoRef = React.useRef<HTMLVideoElement | null>(null)
-  const autoplayRef = React.useRef(layer.videoMetadata?.autoplay)
-  const loopRef = React.useRef(layer.videoMetadata?.loop)
-  // Motion (vídeo com fundo transparente por cima da página) não tem relógio
-  // próprio: acompanha o do vídeo PRINCIPAL — o de fundo ou, sobre foto, o
-  // primeiro motion. Toca uma vez e segura o último quadro, que é o que o
-  // export grava. O principal (e o vídeo comum) obedece ao próprio loop.
-  const { design } = useTemplateEditor()
+  // Nenhum vídeo tem relógio próprio: TODOS se reconciliam, a cada quadro, com
+  // o relógio da PÁGINA (relogio-da-pagina.ts), que nasce parado em 0. O
+  // instante 0 da página é o início do trecho de cada vídeo; passado o fim do
+  // próprio trecho, o vídeo segura o último quadro. `autoplay`, `loop` e
+  // `playbackRate` do metadata não são mais lidos (decisão 8 do plano).
   const isMotion = ehMotion(layer)
-  const principal = isMotion ? videoPrincipal(design.layers) : null
-  const relogioId = principal && principal.id !== layer.id ? principal.id : null
-  const relogioInicio = principal?.videoMetadata?.trimStart ?? 0
-  const relogioRef = React.useRef<{ id: string; inicio: number } | null>(null)
+  const relogio = relogioDaPagina(useMultiPageOpcional()?.currentPageId)
   // Trim em refs: o elemento <video> é criado uma vez por URL; mudar o trim
   // não pode recriá-lo (perderia o frame atual e o estado de reprodução)
   const trimStartRef = React.useRef(layer.videoMetadata?.trimStart ?? 0)
@@ -532,6 +565,10 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
   // estado atual sem recriar o elemento
   const onChangeRef = React.useRef(onChange)
   const videoMetadataRef = React.useRef(layer.videoMetadata)
+  // O tique lê o início do clipe por ref: o relógio da página vira relógio
+  // LOCAL do clipe (t - inicio), sem recriar a animação quando a sequência muda
+  const inicioDoClipeRef = React.useRef(inicioDoClipe)
+  inicioDoClipeRef.current = inicioDoClipe
   const [videoMetaVersion, setVideoMetaVersion] = React.useState(0)
 
   React.useEffect(() => {
@@ -543,39 +580,10 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
   }, [layer.videoMetadata])
 
   React.useEffect(() => {
-    autoplayRef.current = layer.videoMetadata?.autoplay
-    // Desfazer/refazer muda o metadata sem passar pelo botão do painel: o
-    // elemento acompanha. Quem segue um relógio (o motion) não decide sozinho,
-    // e o export pausa o elemento sem tocar no metadata — não cai aqui.
-    const video = videoRef.current
-    if (!video || relogioRef.current) return
-    if (layer.videoMetadata?.autoplay === false) video.pause()
-    else if (video.paused && !video.ended) void video.play().catch(() => {})
-  }, [layer.videoMetadata?.autoplay])
-
-  React.useEffect(() => {
-    loopRef.current = layer.videoMetadata?.loop
-  }, [layer.videoMetadata?.loop])
-
-  React.useEffect(() => {
-    relogioRef.current = relogioId ? { id: relogioId, inicio: relogioInicio } : null
-  }, [relogioId, relogioInicio])
-
-  React.useEffect(() => {
+    // Trecho mudou: o tique seguinte reposiciona pelo relógio (0 da página =
+    // início do trecho novo)
     trimStartRef.current = layer.videoMetadata?.trimStart ?? 0
     trimEndRef.current = layer.videoMetadata?.trimEnd
-    // Trecho mudou: se o frame atual ficou fora do trim, reposicionar
-    const video = videoRef.current
-    if (!video) return
-    const start = trimStartRef.current
-    const end = trimEndRef.current
-    if (video.currentTime < start || (end !== undefined && video.currentTime > end)) {
-      try {
-        video.currentTime = start
-      } catch {
-        // metadados ainda não carregados — o loadedmetadata posiciona
-      }
-    }
   }, [layer.videoMetadata?.trimStart, layer.videoMetadata?.trimEnd])
   const imageRef = React.useRef<Konva.Image>(null)
 
@@ -598,6 +606,9 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
     // Configurações mínimas (como exemplo oficial)
     video.muted = true // Para permitir autoplay
     video.playsInline = true
+    // A página abre PARADA: sem `auto` o Chrome para em HAVE_METADATA e o
+    // quadro de 0 (o que a página mostra e a miniatura captura) não chega
+    video.preload = 'auto'
 
     // NÃO adicionar ao DOM - deixar como elemento independente (como exemplo oficial)
 
@@ -616,7 +627,8 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
           videoMetadata: { ...videoMetadataRef.current, duration: dur },
         })
       }
-      // Começar no início do trim (0 quando não há trim)
+      // Começar no início do trim (0 quando não há trim) — é o quadro que a
+      // página parada mostra e que a miniatura captura
       if (trimStartRef.current > 0) {
         try {
           video.currentTime = trimStartRef.current
@@ -624,35 +636,7 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
           // ignore
         }
       }
-      // Autoplay se configurado. Quem acompanha um relógio não decide sozinho
-      // quando tocar: entra no tempo do principal no próximo quadro.
-      if (autoplayRef.current !== false && !relogioRef.current) {
-        video.play().catch((err) => console.warn('[VideoNode] Autoplay falhou:', err))
-      }
       setVideoMetaVersion((prev) => prev + 1)
-    })
-
-    // Loop manual simples (volta para o início do trim)
-    video.addEventListener('ended', () => {
-      // Acompanhando um relógio: fica no último quadro até o principal dar a volta
-      if (relogioRef.current) return
-      if (loopRef.current ?? true) {
-        video.currentTime = trimStartRef.current
-        video.play()
-      }
-    })
-
-    // Trim de fim: ao passar do trimEnd, loopa para o trimStart (ou pausa)
-    video.addEventListener('timeupdate', () => {
-      if (relogioRef.current) return // o fim do trecho é decidido pelo relógio (passoDoMotion)
-      const end = trimEndRef.current
-      if (end === undefined || video.currentTime < end) return
-      if (loopRef.current ?? true) {
-        video.currentTime = trimStartRef.current
-      } else {
-        video.pause()
-        video.currentTime = trimStartRef.current
-      }
     })
 
     videoRef.current = video
@@ -665,32 +649,24 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
     }
   }, [videoUrl])
 
-  // Registra o elemento para os motions da página lerem o relógio dele.
-  // Declarado DEPOIS do efeito que cria o <video>: os efeitos rodam em ordem,
-  // então videoRef já aponta o elemento novo.
+  // Registra o elemento para o motor da página (duração, loop) e para a
+  // miniatura (quadro de 0 decodificado). Declarado DEPOIS do efeito que cria
+  // o <video>: os efeitos rodam em ordem, então videoRef já aponta o novo.
   React.useEffect(() => {
     const video = videoRef.current
     if (!video) return
-    videosMontados.set(layer.id, video)
-    return () => {
-      if (videosMontados.get(layer.id) === video) videosMontados.delete(layer.id)
-    }
+    return registrarVideoMontado(layer.id, video)
   }, [videoUrl, layer.id])
 
-  // Atualizar propriedades do vídeo quando metadata mudar (sem recriar o elemento)
+  // O som do elemento é o que o export vai ter: volume do original pela trilha
+  // e o interruptor "sem som" do painel (`volumeDoVideoNaPagina`, a regra da fila).
   React.useEffect(() => {
     const video = videoRef.current
     if (!video) return
-
-    // Aplicar metadata sem recriar elemento
-    const muted = layer.videoMetadata?.muted ?? true
-    const playbackRate = layer.videoMetadata?.playbackRate ?? 1
-
+    const muted = somDoVideo <= 0
     if (video.muted !== muted) video.muted = muted
-    if (video.playbackRate !== playbackRate) video.playbackRate = playbackRate
-
-    console.log('[VideoNode] Propriedades atualizadas:', { muted, playbackRate })
-  }, [layer.videoMetadata?.muted, layer.videoMetadata?.playbackRate])
+    if (!muted && video.volume !== somDoVideo) video.volume = somDoVideo
+  }, [somDoVideo, videoMetaVersion])
 
   // ✨ Animação EXATAMENTE como exemplo oficial do Konva
   React.useEffect(() => {
@@ -714,20 +690,26 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
     }
 
     // O Konva redesenha a camada a cada quadro (exemplo oficial: função vazia).
-    // O motion aproveita o tique para se RECONCILIAR com o relógio do principal:
+    // O vídeo aproveita o tique para se RECONCILIAR com o relógio da página:
     // sem estado próprio, sobrevive a ordem de carregamento, play/pause, volta
-    // do loop, trim e desfazer/refazer.
+    // do loop, trim e desfazer/refazer. O export (modo `gravacao`) faz a mesma
+    // reconciliação por conta própria, quadro a quadro, fora deste tique.
+    let avisouPlay = false
     const anim = new Konva.Animation(function () {
-      const relogio = relogioRef.current
-      const base = relogio ? videosMontados.get(relogio.id) : undefined
-      if (!base || !relogio || !Number.isFinite(video.duration) || !Number.isFinite(base.duration)) return
-      const passo = passoDoMotion(
-        { tempo: base.currentTime, inicio: relogio.inicio, pausado: base.paused || base.ended },
+      if (!Number.isFinite(video.duration)) return
+      const estado = relogio.estado()
+      if (estado.modo === 'gravacao') return
+      // Antes do intervalo do clipe: parado no início do trecho
+      const tLocal = relogio.agora() - inicioDoClipeRef.current
+      const passo = passoDoVideo(
+        { t: Math.max(0, tLocal), tocando: estado.tocando && tLocal >= 0 },
         {
           tempo: video.currentTime,
           inicio: trimStartRef.current,
           fim: trimEndRef.current ?? video.duration,
           pausado: video.paused || video.ended,
+          readyState: video.readyState,
+          seeking: video.seeking,
         },
       )
       if (passo.irPara !== undefined && !video.seeking) {
@@ -738,7 +720,17 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
         }
       }
       if (passo.pausar) video.pause()
-      if (passo.tocar) video.play().catch(() => {})
+      if (passo.tocar) {
+        video.play().catch((err) => {
+          // play() recusado (autoplay bloqueado, fonte inválida) não é engolido:
+          // o relógio para, senão a página "toca" com o vídeo parado
+          if (!avisouPlay) {
+            avisouPlay = true
+            console.warn('[VideoNode] O navegador recusou tocar o vídeo:', err)
+          }
+          relogio.pausar()
+        })
+      }
     }, konvaLayer)
 
     anim.start()
@@ -748,58 +740,7 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
       anim.stop()
       console.log('[VideoNode] Animação parada')
     }
-  }, [videoMetaVersion, width, height, layer.id])
-
-  // Escutar eventos de controle de vídeo
-  React.useEffect(() => {
-    const handleVideoControl = (event: Event) => {
-      const customEvent = event as CustomEvent
-      const { layerId, action, value } = customEvent.detail
-
-      // Apenas processar eventos para esta camada
-      if (layerId !== layer.id) return
-
-      // Lido NA HORA: trocar o arquivo da camada cria outro <video>, e o
-      // elemento capturado quando o efeito montou já teria o src esvaziado.
-      const video = videoRef.current
-      if (!video) return
-
-      switch (action) {
-        case 'play':
-          video.play().catch((err) => console.warn('[VideoNode] Play falhou:', err))
-          break
-        case 'pause':
-          video.pause()
-          break
-        case 'mute':
-          video.muted = value
-          break
-        case 'loop':
-          // Um mecanismo só: o loop é manual (handlers de 'ended' e do fim do
-          // trecho), para voltar ao INÍCIO DO TRECHO. O loop nativo voltaria a 0
-          // e sobreviveria a desfazer/refazer com o metadata dizendo o contrário.
-          loopRef.current = value
-          video.loop = false
-          break
-        case 'playbackRate':
-          video.playbackRate = value
-          break
-        case 'seek':
-          try {
-            video.currentTime = value
-          } catch (err) {
-            console.warn('[VideoNode] Seek falhou:', err)
-          }
-          break
-      }
-    }
-
-    window.addEventListener('video-control', handleVideoControl)
-
-    return () => {
-      window.removeEventListener('video-control', handleVideoControl)
-    }
-  }, [layer.id])
+  }, [videoMetaVersion, width, height, layer.id, relogio])
 
   // Calcular crop para objectFit: cover
   const crop = React.useMemo(() => {
@@ -818,26 +759,6 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
 
     return undefined
   }, [videoMetaVersion, width, height, layer.videoMetadata?.objectFit])
-
-  // Estado para rastrear se estava tocando antes da transformação
-  const wasPlayingRef = React.useRef(false)
-
-  // Handler de início de transformação - pausar vídeo para melhor performance
-  const handleTransformStart = React.useCallback(() => {
-    const video = videoRef.current
-    if (!video) return
-
-    // Salvar estado de reprodução
-    wasPlayingRef.current = !video.paused
-
-    // Pausar vídeo durante transform para melhor performance
-    if (!video.paused) {
-      video.pause()
-    }
-
-    // NÃO pausar a animação Konva - ela precisa continuar rodando
-    // para manter o vídeo visível durante a transformação
-  }, [])
 
   // Handler de transformação
   const handleTransformEnd = React.useCallback(() => {
@@ -875,13 +796,6 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
 
     node.getLayer()?.batchDraw()
 
-    // Retomar reprodução se estava tocando antes
-    if (wasPlayingRef.current && layer.videoMetadata?.autoplay !== false) {
-      video.play().catch((err) => console.warn('[VideoNode] Falha ao retomar reprodução:', err))
-    }
-
-    // A animação Konva já está rodando continuamente, não precisa reiniciar
-
     onChange({
       position: {
         x: Math.round(node.x()),
@@ -893,7 +807,7 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
       },
       rotation: Math.round(node.rotation()),
     })
-  }, [onChange, layer.videoMetadata?.objectFit, layer.videoMetadata?.autoplay])
+  }, [onChange, layer.videoMetadata?.objectFit])
 
   // Placeholder enquanto o vídeo carrega
   if (!videoRef.current) {
@@ -925,7 +839,6 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
       cornerRadius={borderRadius}
       stroke={borderWidth > 0 ? borderColor : undefined}
       strokeWidth={borderWidth > 0 ? borderWidth : undefined}
-      onTransformStart={handleTransformStart}
       onTransformEnd={handleTransformEnd}
     />
   )

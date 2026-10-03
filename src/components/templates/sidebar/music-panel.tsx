@@ -23,7 +23,7 @@ import { MusicCard } from '@/components/audio/music-card'
 import { AudioWaveformTimeline } from '@/components/audio/audio-waveform-timeline'
 import { MusicStemProgress } from '@/components/audio/music-stem-progress'
 import type { PageAudioConfig } from '@/types/template'
-import { trechoDoVideo, videoPrincipal } from '@/lib/video/camadas-de-video'
+import { duracaoDaPagina, trechoDoVideo, videoPrincipal } from '@/lib/video/camadas-de-video'
 
 const GENEROS = [
   'Todos',
@@ -114,6 +114,8 @@ export function MusicPanel() {
   )
 
   const hasActiveTrack = Boolean(audio?.musicId)
+  // Sem vídeo, a música É a duração: a página sai como vídeo com o trecho dela
+  const duracaoSoDaMusica = !videoLayer && hasActiveTrack ? duracaoDaPagina(design.layers, audio) : null
 
   return (
     <div className="space-y-4">
@@ -121,8 +123,9 @@ export function MusicPanel() {
         <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400">
           <Film className="mt-0.5 h-4 w-4 shrink-0" />
           <p>
-            Esta página não tem camada de vídeo — a música é usada apenas no
-            export de vídeo.
+            {duracaoSoDaMusica !== null
+              ? `Esta arte sai como vídeo de ${Math.round(duracaoSoDaMusica)} s — a duração é o trecho da música. Para agendar como imagem, tire a música.`
+              : 'Esta página não tem vídeo. Com música, ela passa a sair como vídeo (botão "Exportar Vídeo").'}
           </p>
         </div>
       )}

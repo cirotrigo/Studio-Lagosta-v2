@@ -8,9 +8,11 @@
  * (uma barra que anda no vídeo de fundo, uma caixa que desce no motion), então
  * dá para medir sincronia lendo os quadros do WebM gravado.
  *
- * O que prova: o motion (WebM com alfa) acompanha o relógio do vídeo principal
- * no editor — carregando junto ou depois, com pausa, autoplay desligado, corte,
- * volta do loop, vídeo oculto — e sai alinhado no vídeo exportado.
+ * O que prova: todo vídeo da página (o de fundo e o motion com alfa) segue o
+ * RELÓGIO DA PÁGINA no editor — a página abre parada em 0, tocar/pausar/ir
+ * valem para todos, carregando junto ou depois, com corte, volta no fim,
+ * vídeo oculto — e sai alinhado no vídeo exportado, que grava pelo mesmo
+ * relógio (modo gravação). A sincronia imagem × relógio é medida nos dois.
  *
  * Uso:  node scripts/validar-video-no-editor/rodar.mjs [--com-janela]
  * Exige ffmpeg/ffprobe e o Google Chrome instalado. Não toca em rede, banco,
@@ -49,6 +51,7 @@ ffmpeg(
   path.join(TMP, 'motion.webm'),
 )
 ffmpeg('-f', 'lavfi', '-i', 'color=c=0x1040a0:s=1080x1920:d=1', '-frames:v', '1', path.join(TMP, 'foto.png'))
+ffmpeg('-f', 'lavfi', '-i', 'color=c=0xa01010:s=1080x1920:d=1', '-frames:v', '1', path.join(TMP, 'foto2.png'))
 
 // ── Bundle da página ─────────────────────────────────────────────────────────
 await esbuild.build({
@@ -64,7 +67,7 @@ await esbuild.build({
       name: 'caminhos-do-repo',
       setup(build) {
         // O contexto do editor vira o stub; o resto de @/ resolve para src/
-        build.onResolve({ filter: /^@\/contexts\/template-editor-context$/ }, () => ({
+        build.onResolve({ filter: /^@\/contexts\/(template-editor-context|multi-page-context)$/ }, () => ({
           path: path.join(AQUI, 'stub-contexto.tsx'),
         }))
         build.onResolve({ filter: /^@\// }, (args) => {
@@ -123,6 +126,7 @@ const video = (id, arquivo, meta = {}, extra = {}) =>
 const base = (meta, extra) => video('base', 'base.mp4', meta, extra)
 const motion = (meta, extra) => video('motion', 'motion.webm', { loop: false, overlay: true, ...meta }, extra)
 const foto = camada('foto', 'image', 'foto.png')
+const foto2 = camada('foto2', 'image', 'foto2.png')
 
 // ── Página ───────────────────────────────────────────────────────────────────
 const navegador = await chromium.launch({
@@ -139,7 +143,11 @@ await pagina.waitForFunction(() => window.validacao)
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms))
 const estado = () => pagina.evaluate(() => window.validacao.estado())
 const montar = async (camadas) => {
-  await pagina.evaluate(() => window.validacao.set([]))
+  // trocar de página zera o relógio (é o que o PageSync faz no editor)
+  await pagina.evaluate(() => {
+    window.validacao.zerar()
+    window.validacao.set([])
+  })
   await dormir(150)
   await pagina.evaluate((c) => window.validacao.set(c), camadas)
 }
@@ -193,6 +201,7 @@ function quadrosDo(base64, nome) {
       base: xBarra === null ? null : xBarra / 40, // 160 px/s em 1080 → 40 px/s aqui
       motion: yCaixa === null ? null : (yCaixa - 150) / 75, // 600 + 300·t em 1920 → 150 + 75·t
       fotoAoFundo: fb > 120 && fr < 60,
+      foto2AoFundo: fr > 120 && fb < 60 && fg < 60,
     })
   }
   return quadros
@@ -204,25 +213,43 @@ const conferir = (nome, ok, detalhe = '') => {
   if (!ok) falhas++
 }
 const FIM_DO_MOTION = 2.9 // 3 s menos a margem do último quadro
+const DESVIO_MAXIMO = 0.1 // imagem × relógio, na prévia e na gravação
 const junto = (e) => Math.abs(e.motion.t - e.base.t)
+const tocar = () => pagina.evaluate(() => window.validacao.tocar())
+const pausar = () => pagina.evaluate(() => window.validacao.pausar())
+const ir = (t) => pagina.evaluate((x) => window.validacao.ir(x), t)
+/** Pior |currentTime do vídeo − (início do trecho + relógio)| nas amostras em que o vídeo ainda não chegou ao fim do trecho */
+const desvioDoRelogio = (amostras, id, inicio = 0, fim = Infinity) =>
+  Math.max(
+    0,
+    ...amostras
+      .filter((e) => e[id] && e[id].t < fim - 0.15 && e.relogio.t > 0.3)
+      .map((e) => Math.abs(e[id].t - (inicio + e.relogio.t))),
+  )
 
 console.log('\n=== A. vídeo + motion, carregando juntos ===')
 await montar([base(), motion()])
 conferir('os dois carregaram', await prontos(['base', 'motion']))
 {
+  const e = await estado()
+  conferir('a página abre PARADA em 0', !e.relogio.tocando && e.relogio.t === 0 && e.base.pausado && e.base.t < 0.05 && e.motion.pausado && e.motion.t < 0.05, `relógio ${e.relogio.t} · vídeo ${e.base.t} · motion ${e.motion.t}`)
+  await tocar()
   const s = await amostrar(8000)
   const andando = s.filter((e) => e.base.t > 0.4 && e.base.t < 2.6)
   const pior = Math.max(...andando.map(junto))
   conferir('o motion anda junto com o vídeo', andando.length > 5 && pior < 0.35, `${andando.length} amostras, pior desvio ${pior.toFixed(2)} s`)
+  const dr = desvioDoRelogio(s.filter((e) => e.base.t < 5.8), 'base', 0, 6)
+  conferir(`o vídeo acompanha o relógio da página (≤ ${DESVIO_MAXIMO} s)`, dr <= DESVIO_MAXIMO, `pior desvio ${dr.toFixed(3)} s`)
   const depois = s.filter((e) => e.base.t > 3.4 && e.base.t < 5.6)
   conferir('o motion segura o último quadro quando acaba', depois.length > 5 && depois.every((e) => e.motion.t >= FIM_DO_MOTION && e.motion.pausado), `${depois.length} amostras`)
-  const volta = s.findIndex((e, i) => i > 0 && e.base.t < s[i - 1].base.t - 1)
-  conferir('o vídeo deu a volta e o motion recomeçou com ele', volta > 0 && s.slice(volta + 3, volta + 12).some((e) => junto(e) < 0.35 && !e.motion.pausado))
+  const volta = s.findIndex((e, i) => i > 0 && e.relogio.t < s[i - 1].relogio.t - 1)
+  conferir('no fim da página o relógio volta a 0 e os dois recomeçam juntos', volta > 0 && s.slice(volta + 3, volta + 12).some((e) => junto(e) < 0.35 && !e.motion.pausado && !e.base.pausado))
 }
 
 console.log('\n=== B. motion inserido com o vídeo já tocando ===')
 await montar([base()])
 await prontos(['base'])
+await tocar()
 await dormir(900)
 await pagina.evaluate((m) => window.validacao.set([...window.validacao.camadas(), m]), motion())
 conferir('o motion carregou', await prontos(['base', 'motion']))
@@ -232,57 +259,75 @@ await dormir(700)
   conferir('entrou no tempo do vídeo', e.base.t < 2.6 ? junto(e) < 0.35 : e.motion.t >= FIM_DO_MOTION, `vídeo ${e.base.t} · motion ${e.motion.t}`)
 }
 
-console.log('\n=== C. pausar e tocar o vídeo ===')
+console.log('\n=== C. pausar, tocar e ir (o relógio manda nos dois) ===')
 await montar([base(), motion()])
 await prontos(['base', 'motion'])
+await tocar()
 await dormir(800)
-await pagina.evaluate(() => window.validacao.controle('base', 'pause'))
+await pausar()
 await dormir(500)
 {
   const e = await estado()
-  conferir('pausou junto, no mesmo quadro', e.base.pausado && e.motion.pausado && junto(e) < 0.1, `vídeo ${e.base.t} · motion ${e.motion.t}`)
-  await pagina.evaluate(() => window.validacao.controle('base', 'play'))
+  conferir('pausou junto, no quadro do relógio', e.base.pausado && e.motion.pausado && junto(e) < 0.1 && Math.abs(e.base.t - e.relogio.t) <= DESVIO_MAXIMO, `relógio ${e.relogio.t} · vídeo ${e.base.t} · motion ${e.motion.t}`)
+  await tocar()
   await dormir(700)
   const f = await estado()
   conferir('voltou a tocar junto', !f.base.pausado && !f.motion.pausado && junto(f) < 0.35 && f.base.t > e.base.t, `vídeo ${f.base.t} · motion ${f.motion.t}`)
+  await pausar()
+  await ir(2.5)
+  await dormir(500)
+  const g = await estado()
+  conferir('ir(2,5) parado leva os dois ao quadro 2,5', g.base.pausado && Math.abs(g.base.t - 2.5) <= DESVIO_MAXIMO && Math.abs(g.motion.t - 2.5) <= DESVIO_MAXIMO, `vídeo ${g.base.t} · motion ${g.motion.t}`)
+  await pagina.evaluate(() => window.validacao.alternar())
+  await dormir(300)
+  conferir('alternar (a tecla de espaço) toca', (await estado()).relogio.tocando)
+  await pagina.evaluate(() => window.validacao.alternar())
+  await dormir(100)
+  conferir('alternar de novo pausa', !(await estado()).relogio.tocando)
 }
 
-console.log('\n=== D. vídeo com autoplay desligado ===')
+console.log('\n=== D. a página nunca toca sozinha; desfazer/refazer não religa nada ===')
 await montar([base({ autoplay: false }), motion()])
 await prontos(['base', 'motion'])
 await dormir(900)
 {
   const e = await estado()
-  conferir('o motion não toca sozinho', e.base.pausado && e.motion.pausado && e.motion.t < 0.1, `vídeo ${e.base.t} · motion ${e.motion.t}`)
-  // Desfazer no editor devolve o autoplay ao metadata: o vídeo tem de voltar a tocar.
+  conferir('nada toca sem alguém apertar play', e.base.pausado && e.motion.pausado && e.base.t < 0.1 && e.motion.t < 0.1, `vídeo ${e.base.t} · motion ${e.motion.t}`)
+  // `autoplay` do metadata deixou de ser lido: mudar (desfazer/refazer) não toca
   await pagina.evaluate(() => window.validacao.mudar('base', { autoplay: true }))
   await dormir(900)
   const f = await estado()
-  conferir('religado o autoplay, os dois voltam a tocar', !f.base.pausado && f.base.t > 0.3 && junto(f) < 0.35, `vídeo ${f.base.t} · motion ${f.motion.t}`)
+  conferir('o metadata de autoplay não toca a página', f.base.pausado && f.base.t < 0.1 && !f.relogio.tocando, `vídeo ${f.base.t}`)
 }
 
 console.log('\n=== D2. trocar o arquivo do vídeo e pausar ===')
 await montar([base()])
 await prontos(['base'])
+await tocar()
 await pagina.evaluate(() => window.validacao.set(window.validacao.camadas().map((l) => ({ ...l, fileUrl: l.fileUrl + '?v=2' }))))
 await dormir(300)
 conferir('o vídeo novo carregou', await prontos(['base']))
 await dormir(600)
-await pagina.evaluate(() => window.validacao.controle('base', 'pause'))
+await pausar()
 await dormir(400)
 {
   const e = await estado()
-  conferir('o controle pausa o elemento ATUAL, não o antigo', e.base.pausado, `vídeo ${e.base.t}`)
+  conferir('o elemento NOVO segue o relógio e pausa', e.base.pausado && Math.abs(e.base.t - e.relogio.t) <= DESVIO_MAXIMO, `relógio ${e.relogio.t} · vídeo ${e.base.t}`)
 }
 
 console.log('\n=== E. corte no vídeo (2 s a 5 s) ===')
 await montar([base({ trimStart: 2, trimEnd: 5 }), motion()])
 await prontos(['base', 'motion'])
 {
+  const e = await estado()
+  conferir('parado, o vídeo mostra o início do trecho', e.base.pausado && Math.abs(e.base.t - 2) <= DESVIO_MAXIMO, `vídeo ${e.base.t}`)
+  await tocar()
   const s = await amostrar(2500)
   const andando = s.filter((e) => e.base.t > 2.4 && e.base.t < 4.6)
   const pior = Math.max(...andando.map((e) => Math.abs(e.motion.t - (e.base.t - 2))))
   conferir('o motion conta a partir do início do trecho', andando.length > 5 && pior < 0.35, `${andando.length} amostras, pior desvio ${pior.toFixed(2)} s`)
+  const dr = desvioDoRelogio(s, 'base', 2, 5)
+  conferir(`com corte, o vídeo acompanha o relógio (≤ ${DESVIO_MAXIMO} s)`, dr <= DESVIO_MAXIMO, `pior desvio ${dr.toFixed(3)} s`)
   const r = await pagina.evaluate(() => window.validacao.exportar())
   const q = quadrosDo(r.base64, 'corte.webm')
   conferir('o export dura o trecho e começa nele', Math.abs(r.duracao - 3) < 0.05 && q[0].base !== null && Math.abs(q[0].base - 2) < 0.15, `duração ${r.duracao} · 1º quadro em ${q[0].base}`)
@@ -291,10 +336,12 @@ await prontos(['base', 'motion'])
 console.log('\n=== F. foto + motion (o motion é o vídeo principal) ===')
 await montar([foto, motion()])
 conferir('o motion carregou', await prontos(['motion']))
+await tocar()
 {
   const s = await amostrar(4200)
-  const ultimo = s[s.length - 1].motion
-  conferir('toca uma vez e para no fim', s.some((e) => e.motion.t > 0.5 && e.motion.t < 2.5) && ultimo.t > 2.8 && (ultimo.pausado || ultimo.fim), `fim em t=${ultimo.t}`)
+  const chegouAoFim = s.findIndex((e) => e.motion.t > 2.5)
+  const voltou = chegouAoFim > 0 && s.slice(chegouAoFim).some((e) => e.motion.t < 1)
+  conferir('toca até o fim do motion (a duração da página) e dá a volta', s.some((e) => e.motion.t > 0.5 && e.motion.t < 2.5) && chegouAoFim > 0 && voltou, `fim visto em ${chegouAoFim >= 0 ? s[chegouAoFim].motion.t : '-'}`)
   const r = await pagina.evaluate(() => window.validacao.exportar())
   const q = quadrosDo(r.base64, 'foto-motion.webm')
   conferir('o export tem a duração do motion', r.principal === 'motion' && Math.abs(r.duracao - 3) < 0.05, `duração ${r.duracao}`)
@@ -306,24 +353,26 @@ conferir('o motion carregou', await prontos(['motion']))
 console.log('\n=== G. desligar e religar "Motion" no painel ===')
 await montar([base(), motion()])
 await prontos(['base', 'motion'])
+await tocar()
 await dormir(500)
-await pagina.evaluate(() => window.validacao.mudar('motion', { overlay: false, loop: true }))
-await dormir(3600)
+await pagina.evaluate(() => window.validacao.mudar('motion', { overlay: false }))
+await dormir(700)
 {
   const e = await estado()
-  conferir('desligado, vira vídeo comum e repete sozinho', !e.motion.pausado, `vídeo ${e.base.t} · motion ${e.motion.t}`)
-  await pagina.evaluate(() => window.validacao.mudar('motion', { overlay: true, loop: false }))
+  conferir('desligado, continua seguindo o relógio da página', e.base.t < 2.6 ? junto(e) < 0.35 && !e.motion.pausado : e.motion.t >= FIM_DO_MOTION, `vídeo ${e.base.t} · motion ${e.motion.t}`)
+  await pagina.evaluate(() => window.validacao.mudar('motion', { overlay: true }))
   await dormir(700)
   const f = await estado()
-  conferir('religado, volta a seguir o vídeo', f.base.t < 2.6 ? junto(f) < 0.35 : f.motion.t >= FIM_DO_MOTION, `vídeo ${f.base.t} · motion ${f.motion.t}`)
+  conferir('religado, idem', f.base.t < 2.6 ? junto(f) < 0.35 : f.motion.t >= FIM_DO_MOTION, `vídeo ${f.base.t} · motion ${f.motion.t}`)
 }
 
 console.log('\n=== H. vídeo oculto + motion ===')
 await montar([base({}, { visible: false }), motion()])
 await prontos(['base', 'motion'])
+await tocar()
 {
   const s = await amostrar(4200)
-  conferir('vídeo oculto não manda no motion', s.some((e) => e.motion.t > 0.5) && s[s.length - 1].motion.t > 2.8)
+  conferir('vídeo oculto não manda na duração da página (o motion dá a volta em 3 s)', s.some((e) => e.motion.t > 2.5) && s.some((e, i) => i > 0 && e.relogio.t < s[i - 1].relogio.t - 1))
   const r = await pagina.evaluate(() => window.validacao.exportar())
   conferir('nem na duração do export', r.principal === 'motion' && Math.abs(r.duracao - 3) < 0.05, `principal ${r.principal} · duração ${r.duracao}`)
 }
@@ -331,7 +380,8 @@ await prontos(['base', 'motion'])
 console.log('\n=== I. export com o editor vivo (vídeo + motion) ===')
 await montar([base(), motion()])
 await prontos(['base', 'motion'])
-await dormir(1700) // exporta com os vídeos no meio do caminho, como no editor
+await tocar()
+await dormir(1700) // exporta com a página tocando, no meio do caminho
 {
   const r = await pagina.evaluate(() => window.validacao.exportar())
   const q = quadrosDo(r.base64, 'video-motion.webm')
@@ -341,10 +391,33 @@ await dormir(1700) // exporta com os vídeos no meio do caminho, como no editor
   conferir('o motion está em todos os quadros do começo', comeco.every((x) => x.motion !== null))
   const pior = Math.max(...comeco.filter((x) => x.motion !== null && x.base !== null).map((x) => Math.abs(x.motion - x.base)))
   conferir('motion e vídeo saem alinhados', pior < 0.15, `pior desvio ${pior.toFixed(2)} s`)
-  const atraso = Math.max(...q.filter((x) => x.base !== null).map((x) => x.t - x.base))
-  conferir('a imagem não atrasa mais que 0,25 s em relação ao relógio da gravação', atraso < 0.25, `pior atraso ${atraso.toFixed(2)} s`)
+  const atraso = Math.max(...q.filter((x) => x.base !== null).map((x) => Math.abs(x.t - x.base)))
+  conferir(`a imagem gravada acompanha o relógio da gravação (≤ ${DESVIO_MAXIMO} s)`, atraso <= DESVIO_MAXIMO, `pior desvio ${atraso.toFixed(2)} s`)
   const fim = q.filter((x) => x.t >= 3.3 && x.t <= 5.8)
   conferir('o motion segura o último quadro até o fim', fim.length > 5 && fim.every((x) => x.motion !== null && x.motion > 2.8))
+  await dormir(300)
+  const e = await estado()
+  conferir('depois do export a página volta parada em 0', !e.relogio.tocando && e.relogio.t === 0 && e.relogio.modo === 'previa' && e.base.pausado && e.base.t < 0.1, `relógio ${e.relogio.t} ${e.relogio.modo} · vídeo ${e.base.t}`)
+}
+
+console.log('\n=== I2. editar a página durante a gravação cancela ===')
+await montar([base(), motion()])
+await prontos(['base', 'motion'])
+{
+  // O cancelamento é de quem chama (o botão compara o design): aqui simulado
+  const recusa = await pagina.evaluate(async () => {
+    const d = { canvas: { width: 1080, height: 1920, backgroundColor: '#000000' }, layers: window.validacao.camadas() }
+    let editou = false
+    setTimeout(() => { editou = true }, 1000)
+    try {
+      await window.validacao.exportarCom(d, { cancelado: () => (editou ? 'A página foi editada durante a gravação. Exporte de novo.' : null) })
+      return null
+    } catch (e) { return String(e.message) }
+  })
+  conferir('o export aborta com o motivo', !!recusa && recusa.includes('editada'), recusa ?? 'exportou')
+  await dormir(300)
+  const e = await estado()
+  conferir('e a página volta parada em 0', !e.relogio.tocando && e.relogio.t === 0 && e.relogio.modo === 'previa', `relógio ${e.relogio.t} ${e.relogio.modo}`)
 }
 
 console.log('\n=== J. motion que não carrega ===')
@@ -354,6 +427,112 @@ await dormir(600)
 {
   const recusa = await pagina.evaluate(() => window.validacao.exportar().then(() => null, (e) => String(e.message)))
   conferir('o export recusa em vez de gravar sem ele', !!recusa && recusa.includes('ainda não carregou'), recusa ?? 'exportou')
+}
+
+console.log('\n=== K. foto parada + música (sem vídeo nenhum) ===')
+await montar([foto])
+await dormir(400)
+{
+  const FATIA = 2.5
+  const r = await pagina.evaluate((f) => window.validacao.exportarSemVideo(f), FATIA)
+  conferir('a duração é a fatia da música', Math.abs(r.duracao - FATIA) < 0.01, `duração ${r.duracao}`)
+  const webm = path.join(TMP, 'foto-musica.webm')
+  fs.writeFileSync(webm, Buffer.from(r.base64, 'base64'))
+  // O MediaRecorder precisa RECEBER quadros de um canvas que não muda: conta
+  // decodificando, não supondo (nb_frames do WebM não é confiável; -count_frames é)
+  const info = JSON.parse(
+    execFileSync('ffprobe', ['-v', 'error', '-count_frames', '-select_streams', 'v:0', '-show_entries', 'stream=nb_read_frames,r_frame_rate', '-of', 'json', webm]).toString(),
+  ).streams[0]
+  const quadros = Number(info.nb_read_frames)
+  const esperado = 30 * FATIA
+  conferir('o WebM tem ~fps × duração quadros', quadros >= esperado * 0.8 && quadros <= esperado * 1.3, `${quadros} quadros (esperado ~${esperado})`)
+  const q = quadrosDo(r.base64, 'foto-musica-2.webm')
+  conferir('a foto está em todos os quadros', q.length > 10 && q.every((x) => x.fotoAoFundo), `${q.length} quadros lidos`)
+}
+
+console.log('\n=== L. aba oculta durante a gravação ===')
+await montar([base(), motion()])
+await prontos(['base', 'motion'])
+{
+  const recusa = await pagina.evaluate(() => {
+    const p = window.validacao.exportar().then(() => null, (e) => String(e.message))
+    setTimeout(() => {
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true })
+      document.dispatchEvent(new Event('visibilitychange'))
+    }, 1500)
+    return p
+  })
+  await pagina.evaluate(() => { delete document.visibilityState })
+  conferir('o export aborta com mensagem', !!recusa && recusa.includes('oculta'), recusa ?? 'exportou')
+}
+
+console.log('\n=== M. linha do tempo: foto 2 s + vídeo com trim (2→4 s) + foto 1 s ===')
+// Os clipes ficam no FUNDO, na ordem da página; o vídeo não é mais "de base"
+// (sequência não tem som original) e o export grava clipe a clipe.
+await montar([
+  { ...foto, order: 0, clipe: { duracao: 2 } },
+  base({ loop: false, trimStart: 2, trimEnd: 4 }, { order: 1, clipe: {} }),
+  { ...foto2, order: 2, clipe: { duracao: 1 } },
+])
+conferir('o vídeo da sequência carregou', await prontos(['base']))
+{
+  const r = await pagina.evaluate(() => window.validacao.exportarLinha())
+  conferir('a duração é a soma dos clipes (2 + 2 + 1)', Math.abs(r.duracao - 5) < 0.05, `duração ${r.duracao}`)
+  const q = quadrosDo(r.base64, 'linha-do-tempo.webm')
+  const em = (t) => q.find((x) => Math.abs(x.t - t) < 0.001)
+  const noClipe = (t0, t1) => q.filter((x) => x.t >= t0 && x.t < t1)
+  conferir('0–2 s: a 1ª foto (azul) está na tela', noClipe(0.2, 1.8).length > 5 && noClipe(0.2, 1.8).every((x) => x.fotoAoFundo && !x.foto2AoFundo))
+  const trecho = noClipe(2.3, 3.8)
+  const forrado = trecho.filter((x) => x.base !== null)
+  const pior = forrado.length ? Math.max(...forrado.map((x) => Math.abs(x.base - x.t))) : 99
+  conferir('2–4 s: o vídeo aparece, a partir do início do trecho (barra em t do vídeo = t da página)', trecho.length > 5 && forrado.length >= trecho.length - 2 && pior < 0.3, `${forrado.length}/${trecho.length} quadros com a barra, pior desvio ${pior.toFixed(2)} s`)
+  conferir('4–5 s: a 2ª foto (vermelha) está na tela', noClipe(4.2, 4.9).length > 2 && noClipe(4.2, 4.9).every((x) => x.foto2AoFundo && !x.fotoAoFundo))
+  conferir('nenhum quadro mostra duas fotos', q.every((x) => !(x.fotoAoFundo && x.foto2AoFundo)))
+  void em
+}
+
+console.log('\n=== N. reordenar pela linha do tempo (normalizarClipes) ===')
+{
+  // A mesma página; a ordem passa a ser foto2 (1 s) → foto (2 s) → vídeo (2 s)
+  const ordem = await pagina.evaluate(() => window.validacao.normalizar(['foto2', 'foto', 'base']))
+  conferir('os clipes vão para o fundo, contíguos e renumerados', JSON.stringify(ordem) === JSON.stringify([['foto2', 0], ['foto', 1], ['base', 2]]), JSON.stringify(ordem))
+  await dormir(300)
+  const r = await pagina.evaluate(() => window.validacao.exportarLinha())
+  const q = quadrosDo(r.base64, 'linha-do-tempo-reordenada.webm')
+  const noClipe = (t0, t1) => q.filter((x) => x.t >= t0 && x.t < t1)
+  conferir('a duração continua 5 s', Math.abs(r.duracao - 5) < 0.05, `duração ${r.duracao}`)
+  conferir('0–1 s: a foto vermelha vem primeiro', noClipe(0.2, 0.9).length > 2 && noClipe(0.2, 0.9).every((x) => x.foto2AoFundo))
+  conferir('1–3 s: depois a azul', noClipe(1.2, 2.8).length > 5 && noClipe(1.2, 2.8).every((x) => x.fotoAoFundo))
+  const trecho = noClipe(3.3, 4.8)
+  conferir('3–5 s: o vídeo fecha a sequência', trecho.length > 5 && trecho.filter((x) => x.base !== null).length >= trecho.length - 2)
+}
+
+console.log('\n=== O. som original numa sequência de dois vídeos (Fase 4) ===')
+// Dois clipes de VÍDEO, os dois com o mudo do painel DESLIGADO: na prévia só o
+// clipe ATIVO fica com som (o outro, fora do intervalo dele, mudo); o export
+// continua gravando um WebM sem faixa de áudio (a trilha é do ffmpeg na fila).
+await montar([
+  base({ loop: false, muted: false, trimStart: 0, trimEnd: 2 }, { order: 0, clipe: {} }),
+  video('base2', 'base.mp4', { loop: false, muted: false, trimStart: 2, trimEnd: 4 }, { order: 1, clipe: {} }),
+])
+conferir('os dois vídeos carregaram', await prontos(['base', 'base2']))
+{
+  await pagina.evaluate(() => window.validacao.zerar())
+  await dormir(200)
+  let e = await estado()
+  conferir('em 0 s só o 1º clipe tem som (o 2º fica mudo fora do intervalo dele)', e.base.mudo === false && e.base2.mudo === true, JSON.stringify({ base: e.base.mudo, base2: e.base2.mudo }))
+  await pagina.evaluate(() => window.validacao.ir(3))
+  await dormir(300)
+  e = await estado()
+  conferir('em 3 s o som passa para o 2º clipe', e.base.mudo === true && e.base2.mudo === false, JSON.stringify({ base: e.base.mudo, base2: e.base2.mudo }))
+  const r = await pagina.evaluate(() => window.validacao.exportarLinha())
+  conferir('a duração é a soma dos clipes (2 + 2)', Math.abs(r.duracao - 4) < 0.05, `duração ${r.duracao}`)
+  const webm = path.join(TMP, 'sequencia-dois-videos.webm')
+  fs.writeFileSync(webm, Buffer.from(r.base64, 'base64'))
+  const faixas = execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', webm]).toString().trim().split('\n')
+  conferir('o WebM gravado continua sem faixa de áudio (a trilha é do ffmpeg, na fila)', faixas.length === 1 && faixas[0] === 'video', faixas.join(','))
+  e = await estado()
+  conferir('depois do export o mudo volta ao que era (o clipe ativo com som)', e.base.mudo === false || e.base2.mudo === false, JSON.stringify({ base: e.base.mudo, base2: e.base2.mudo }))
 }
 
 conferir('nenhum erro de JavaScript na página', errosDaPagina.length === 0, errosDaPagina.slice(0, 3).join(' | '))

@@ -717,6 +717,19 @@ toolEstrita(
         resolvedTemplateId = page?.templateId ?? undefined
       }
 
+      // Post pela página que vai ao ar como IMAGEM: vídeo, sequência ou música
+      // na página sairiam como um quadro parado. O MP4 exportado (mídia de
+      // vídeo) passa — é a página publicada como vídeo.
+      if (pageId) {
+        const { isVideoUrl } = await import('../src/lib/media-type')
+        if (!(mediaUrls ?? []).some((url) => isVideoUrl(url))) {
+          const pagina = await prisma.page.findUnique({ where: { id: pageId }, select: { layers: true, audio: true } })
+          const { recusaComoImagem } = await import('../src/lib/video/pagina-com-video')
+          const recusa = pagina ? recusaComoImagem(pagina.layers, pagina.audio) : null
+          if (recusa) return { content: [{ type: 'text' as const, text: `Error: ${recusa.mensagem}` }], isError: true }
+        }
+      }
+
       const parsedSlotValues = slotValues ? JSON.parse(slotValues) : undefined
       const postStatus = status ?? 'DRAFT'
       const hasPage = !!pageId
@@ -1274,6 +1287,12 @@ toolEstrita(
         include: { Template: { select: { projectId: true } } },
       })
       if (!page) return { content: [{ type: 'text' as const, text: `Error: Page not found: ${post.pageId}` }], isError: true }
+      // O render é IMAGEM: vídeo visível ou sequência sairiam como um quadro
+      // parado. A música não entra aqui — post de imagem anterior à música
+      // segue renderizando, como no cron (`story-renderer`).
+      const { recusaPorCamadas } = await import('../src/lib/video/pagina-com-video')
+      const recusaDaPagina = recusaPorCamadas(page.layers)
+      if (recusaDaPagina) return { content: [{ type: 'text' as const, text: `Error: ${recusaDaPagina.mensagem} Nada foi alterado.` }], isError: true }
 
       // 3. Lock the post
       await prisma.socialPost.update({
@@ -1350,6 +1369,9 @@ toolEstrita(
 
       // 7. Render
       const { CanvasRenderer } = await import('../src/lib/canvas-renderer')
+      const { camadasNoInstante } = await import('../src/lib/video/linha-do-tempo')
+      // A linha do tempo desenha o quadro de 0 (a recusa de vídeo/sequência rodou antes da trava)
+      designData = { ...designData, layers: camadasNoInstante(designData.layers, 0) }
       const renderer = new CanvasRenderer(designData.canvas.width, designData.canvas.height)
       const buffer = await renderer.renderDesign(designData, {})
 

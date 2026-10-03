@@ -16,6 +16,7 @@ import { mesclarFieldValuesDaArte } from '@/lib/creatives/mesclar-field-values'
 import { convertPageToDesignData } from '@/lib/posts/page-to-design-data'
 import { registerProjectFonts } from '@/lib/posts/register-project-fonts'
 import { videosDaPagina } from '@/lib/video/camadas-de-video'
+import { camadasNoInstante } from '@/lib/video/linha-do-tempo'
 import { MENSAGEM_PAGINA_COM_VIDEO, videoNaPagina } from '@/lib/video/pagina-com-video'
 import { googleDriveService } from '@/server/google-drive-service'
 import type { TemplateType } from '@prisma/client'
@@ -313,6 +314,7 @@ export async function renderPageAndRegister(input: RenderPageInput): Promise<Per
   if (videosDaPagina(designData.layers).length > 0) {
     throw new CreativeError('PAGINA_COM_VIDEO', MENSAGEM_PAGINA_COM_VIDEO, 422, { pageId: page.id })
   }
+  designData.layers = camadasNoInstante(designData.layers, 0)
 
   await registerProjectFonts(project.id)
 

@@ -31,7 +31,8 @@ const queueVideoSchema = z
     templateId: z.coerce.number().int(),
     projectId: z.coerce.number().int(),
     videoName: z.string(),
-    videoDuration: z.coerce.number().positive(),
+    // Teto da linha do tempo (Fase 3): 10 clipes de até 60 s nunca passam de 180 s
+    videoDuration: z.coerce.number().positive().max(180, 'O vídeo passa de 3 minutos (180 s). Encurte a linha do tempo e exporte de novo.'),
     videoWidth: z.coerce.number().positive(),
     videoHeight: z.coerce.number().positive(),
     // Trilha sonora do export: o WebM chega MUDO e o processor mixa via ffmpeg

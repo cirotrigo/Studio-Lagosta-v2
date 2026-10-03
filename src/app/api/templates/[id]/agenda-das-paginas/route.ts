@@ -7,6 +7,7 @@ import { fetchProjectWithShares, hasProjectReadAccess, hasProjectWriteAccess } f
 import { agendarPost } from '@/lib/creatives/agendar'
 import { CreativeError } from '@/lib/creatives/errors'
 import { formatoDaPagina } from '@/lib/compositor/pastas'
+import { isVideoUrl } from '@/lib/media-type'
 import type { Formato } from '@/lib/compositor/spec'
 
 export const runtime = 'nodejs'
@@ -138,7 +139,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   const posts = await db.socialPost.findMany({
     where: { pageId: { in: paginas.map((p) => p.id) } },
-    select: { id: true, pageId: true, status: true, scheduledDatetime: true },
+    select: { id: true, pageId: true, status: true, scheduledDatetime: true, mediaUrls: true },
     orderBy: { createdAt: 'desc' },
   })
   const postPorPagina = new Map<string, (typeof posts)[number]>()
@@ -158,7 +159,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         slide: d?.slide ?? null,
         ehSlide: ehSlideDeCarrossel(d),
         post: post
-          ? { id: post.id, status: post.status, quando: post.scheduledDatetime?.toISOString() ?? null }
+          ? {
+              id: post.id,
+              status: post.status,
+              quando: post.scheduledDatetime?.toISOString() ?? null,
+              comVideo: post.mediaUrls.some((url) => isVideoUrl(url)),
+            }
           : null,
       }
     }),

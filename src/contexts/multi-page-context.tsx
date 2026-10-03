@@ -12,6 +12,8 @@ export interface PageStatePatch {
   background?: string
   /** Trilha sonora da página; null limpa a trilha. Fora do diff visual (não invalida renders). */
   audio?: PageAudioConfig | null
+  /** `null` apaga a miniatura vencida (página-vídeo salva sem captura nova). */
+  thumbnail?: null
 }
 
 interface MultiPageContextValue {
@@ -21,7 +23,7 @@ interface MultiPageContextValue {
   currentPage: Page | null
   setCurrentPageId: (pageId: string) => void
   isLoading: boolean
-  updatePageThumbnail: (pageId: string, thumbnail: string) => Promise<void>
+  updatePageThumbnail: (pageId: string, thumbnail: string | null) => Promise<void>
   savePageLayers: (pageId: string, layers: unknown[]) => Promise<void>
   savePageState: (pageId: string, data: PageStatePatch) => Promise<void>
 }
@@ -116,7 +118,7 @@ export function MultiPageProvider({ templateId, children, initialPageId }: Multi
   }, [])
 
   const updatePageThumbnail = React.useCallback(
-    async (pageId: string, thumbnail: string) => {
+    async (pageId: string, thumbnail: string | null) => {
       // Guarda: um caller sem pageId virava PATCH /pages/undefined (404 no
       // console a cada autosave). O trace identifica o caller em dev.
       if (!pageId) {

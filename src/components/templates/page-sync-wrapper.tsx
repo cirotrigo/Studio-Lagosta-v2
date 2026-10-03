@@ -1,6 +1,8 @@
 "use client"
 
 import * as React from 'react'
+import { relogioDaPagina } from '@/lib/video/relogio-da-pagina'
+import { paginaEVideo } from '@/lib/video/camadas-de-video'
 import { useMultiPage, type PageStatePatch } from '@/contexts/multi-page-context'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import type { Layer, Page } from '@/types/template'
@@ -43,6 +45,12 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
   const lastSavedAudioRef = React.useRef<string>('')
   /** O PATCH do debounce que já saiu e ainda não voltou. */
   const emVooRef = React.useRef<Promise<void> | null>(null)
+  /**
+   * Página cuja miniatura ficou por gerar: com vídeo tocando (ou fora do 0) a
+   * captura é recusada, e sem nova tentativa a miniatura ficava velha até a
+   * próxima edição. Ela é refeita quando o relógio volta ao quadro de 0.
+   */
+  const miniaturaPendenteRef = React.useRef<string | null>(null)
 
   // Trilha da página (aba Músicas). null e undefined são o mesmo estado ("sem
   // trilha") — normalizar para não gerar PATCH por falso diff.
@@ -101,6 +109,11 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
     // Trilha entra no MESMO PATCH (nunca dois writers na mesma página);
     // null explícito limpa a coluna no banco.
     if (audioChanged) patch.audio = design.audio ?? null
+    // Página-vídeo: a miniatura gravada é da versão anterior, e a nova só sai
+    // com o quadro de 0 pronto. Apagá-la NO MESMO PATCH vale para todo
+    // salvamento do PageSync (autosave, flush na troca de página, descarregar);
+    // a nova volta pelo autosave ou pela nova tentativa.
+    if ((layersChanged || canvasChanged) && paginaEVideo(design.layers, design.audio)) patch.thumbnail = null
     return { patch, layersString, canvasString, audioString }
   }, [design.layers, design.canvas.width, design.canvas.height, design.audio, canvasFromDesign, serializeAudio, serializeLayersForPersistence])
 
@@ -173,6 +186,8 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
       // eram descartadas na troca — salvar antes de carregar a nova página
       const previousPageId = lastPageIdRef.current
       if (previousPageId) {
+        // A página que sai deixa de tocar: a próxima abre parada em 0
+        relogioDaPagina(previousPageId).zerar()
         const pending = buildPendingPatch()
         if (pending) {
           void savePageState(previousPageId, pending.patch).catch((error) => {
@@ -220,6 +235,7 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
           // gerar agora salvaria o thumbnail errado
           if (lastPageIdRef.current !== pageIdForThumbnail) return
           const thumbnail = await generateThumbnail(150)
+          if (!thumbnail) miniaturaPendenteRef.current = pageIdForThumbnail
           if (thumbnail && lastPageIdRef.current === pageIdForThumbnail) {
             updatePageThumbnail(pageIdForThumbnail, thumbnail).catch(err =>
               console.error('[PageSync] Erro ao gerar thumbnail inicial:', err)
@@ -229,6 +245,35 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
       }
     }
   }, [currentPage, currentPageId, buildPendingPatch, canvasFromPage, loadTemplate, generateThumbnail, savePageState, serializeLayersForPersistence, updatePageThumbnail])
+
+  // 1b. Miniatura recusada (vídeo fora do 0, ou o quadro de 0 ainda não pronto):
+  // refaz assim que o quadro inicial estiver pronto. Sem teto de tempo — a
+  // conferência é barata (generateThumbnail recusa cedo) e para quando a
+  // miniatura sai ou a página deixa de ser a atual.
+  React.useEffect(() => {
+    if (!currentPageId) return
+    const relogio = relogioDaPagina(currentPageId)
+    let emAndamento = false
+    const intervalo = setInterval(async () => {
+      if (emAndamento) return
+      if (miniaturaPendenteRef.current !== currentPageId || lastPageIdRef.current !== currentPageId) return
+      const e = relogio.estado()
+      if (e.tocando || e.t !== 0 || e.modo === 'gravacao') return
+      emAndamento = true
+      try {
+        const thumbnail = await generateThumbnail(150)
+        if (!thumbnail) return
+        if (miniaturaPendenteRef.current !== currentPageId || lastPageIdRef.current !== currentPageId) return
+        miniaturaPendenteRef.current = null
+        updatePageThumbnail(currentPageId, thumbnail).catch((err) =>
+          console.error('[PageSync] Erro ao refazer a miniatura:', err),
+        )
+      } finally {
+        emAndamento = false
+      }
+    }, 500)
+    return () => clearInterval(intervalo)
+  }, [currentPageId, generateThumbnail, updatePageThumbnail])
 
   // 2. Salvar página atual quando o design muda (debounced e otimizado)
   React.useEffect(() => {
@@ -281,7 +326,10 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
 
         // Gerar thumbnail de forma silenciosa (não invalida cache)
         const thumbnail = await generateThumbnail(150)
+        // Recusada: o PATCH acima já apagou a vencida; a nova tentativa a refaz
+        if (!thumbnail && lastPageIdRef.current === currentPageId) miniaturaPendenteRef.current = currentPageId
         if (thumbnail && lastPageIdRef.current === currentPageId) {
+          miniaturaPendenteRef.current = null
           // Salvar thumbnail sem aguardar (fire and forget)
           updatePageThumbnail(currentPageId, thumbnail).catch(err =>
             console.error('[PageSync] Erro ao atualizar thumbnail:', err)

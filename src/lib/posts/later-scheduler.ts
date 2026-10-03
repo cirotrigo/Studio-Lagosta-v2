@@ -29,7 +29,7 @@ import { cropToInstagramFeed } from '@/lib/images/auto-crop'
 import { handlePublishFailure } from './failure-handler'
 import { isVideoUrl } from '@/lib/media-type'
 import { pageContainsVideoLayer } from './page-to-design-data'
-import { MENSAGEM_PAGINA_COM_VIDEO, videoNaPagina } from '@/lib/video/pagina-com-video'
+import { recusaComoImagem } from '@/lib/video/pagina-com-video'
 import { ensurePostGeneration } from './ensure-post-generation'
 
 interface RecurringConfig {
@@ -257,10 +257,9 @@ export class LaterPostScheduler {
         // dessa mesma página) segue passando.
         const midiaEVideo = data.mediaUrls.some((url) => isVideoUrl(url))
         if (!midiaEVideo) {
-          const pagina = await db.page.findUnique({ where: { id: data.pageId! }, select: { layers: true } })
-          if (pagina && videoNaPagina(pagina.layers) === 'tem-video') {
-            throw new Error(MENSAGEM_PAGINA_COM_VIDEO)
-          }
+          const pagina = await db.page.findUnique({ where: { id: data.pageId! }, select: { layers: true, audio: true } })
+          const recusa = pagina ? recusaComoImagem(pagina.layers, pagina.audio) : null
+          if (recusa) throw new Error(recusa.mensagem)
           // Image already rendered client-side (Konva export), mark as RENDERED
           renderStatusValue = RenderStatus.RENDERED
         }
@@ -274,7 +273,7 @@ export class LaterPostScheduler {
         // criação, em vez de às 2h da manhã no cron.
         const page = await db.page.findUnique({
           where: { id: data.pageId! },
-          select: { layers: true },
+          select: { layers: true, audio: true },
         })
         if (page && pageContainsVideoLayer(page.layers)) {
           throw new Error(
@@ -282,6 +281,10 @@ export class LaterPostScheduler {
               'Exporte o vídeo pelo editor (botão "Exportar Vídeo") e agende o MP4 pela aba Criativos.',
           )
         }
+        // Este ramo CRIA um post que o cron renderiza como imagem: é publicação,
+        // não render. Página com música só vai ao ar como vídeo.
+        const recusa = page ? recusaComoImagem(page.layers, page.audio) : null
+        if (recusa) throw new Error(recusa.mensagem)
         renderStatusValue = RenderStatus.PENDING
         nextRenderAtValue = new Date()
       }

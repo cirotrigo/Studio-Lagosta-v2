@@ -12,6 +12,10 @@ import { Switch } from '@/components/ui/switch'
 import { useBlobUpload } from '@/hooks/use-blob-upload'
 import { useToast } from '@/hooks/use-toast'
 import { videoPrincipal } from '@/lib/video/camadas-de-video'
+import { linhaDoTempo } from '@/lib/video/linha-do-tempo'
+import { duracoesDosVideosMontados } from '@/lib/video/videos-montados'
+import { useRelogioDaPagina } from '@/lib/video/relogio-da-pagina'
+import { useMultiPageOpcional } from '@/contexts/multi-page-context'
 
 const formatSeconds = (value: number) => {
   const mins = Math.floor(value / 60)
@@ -37,6 +41,9 @@ export function VideoProperties() {
   const { selectedLayerId, design, updateLayer } = useTemplateEditor()
   const { toast } = useToast()
   const { upload: uploadToBlob, isUploading: isUploadingPoster } = useBlobUpload()
+  // Todo vídeo segue o relógio da página: o painel comanda o relógio, não o
+  // elemento (play/pause/seek chegam ao <video> pelo tique do VideoNode)
+  const { relogio, estado: relogioEstado } = useRelogioDaPagina(useMultiPageOpcional()?.currentPageId)
 
   const selectedLayer = React.useMemo(
     () => design.layers.find((layer) => layer.id === selectedLayerId) ?? null,
@@ -68,37 +75,14 @@ export function VideoProperties() {
       ? Math.min(trimmedDuration, musicSliceDuration)
       : trimmedDuration ?? musicSliceDuration
 
-  const handleTogglePlay = () => {
-    // Dispatch custom event to control video playback
-    window.dispatchEvent(
-      new CustomEvent('video-control', {
-        detail: {
-          layerId: selectedLayer.id,
-          action: metadata.autoplay ? 'pause' : 'play',
-        },
-      }),
-    )
+  // Instante da PÁGINA em que este vídeo entra: 0 fora da linha do tempo; num
+  // clipe, o início dele (o relógio é da página inteira, não do clipe)
+  const inicioNaPagina =
+    linhaDoTempo(design.layers, null, duracoesDosVideosMontados()).clipes.find((c) => c.id === selectedLayer.id)?.inicio ?? 0
 
-    updateLayer(selectedLayer.id, (layer) => ({
-      ...layer,
-      videoMetadata: {
-        ...metadata,
-        autoplay: !metadata.autoplay,
-      },
-    }))
-  }
+  const handleTogglePlay = () => relogio.alternar()
 
   const handleToggleMute = () => {
-    window.dispatchEvent(
-      new CustomEvent('video-control', {
-        detail: {
-          layerId: selectedLayer.id,
-          action: 'mute',
-          value: !metadata.muted,
-        },
-      }),
-    )
-
     updateLayer(selectedLayer.id, (layer) => ({
       ...layer,
       videoMetadata: {
@@ -114,50 +98,6 @@ export function VideoProperties() {
       videoMetadata: {
         ...metadata,
         overlay: !motion,
-        // motion toca uma vez e segura o último quadro; vídeo comum repete
-        loop: motion,
-      },
-    }))
-  }
-
-  const handleToggleLoop = () => {
-    window.dispatchEvent(
-      new CustomEvent('video-control', {
-        detail: {
-          layerId: selectedLayer.id,
-          action: 'loop',
-          value: !metadata.loop,
-        },
-      }),
-    )
-
-    updateLayer(selectedLayer.id, (layer) => ({
-      ...layer,
-      videoMetadata: {
-        ...metadata,
-        loop: !metadata.loop,
-      },
-    }))
-  }
-
-  const handlePlaybackRateChange = (value: number[]) => {
-    const newRate = value[0]
-
-    window.dispatchEvent(
-      new CustomEvent('video-control', {
-        detail: {
-          layerId: selectedLayer.id,
-          action: 'playbackRate',
-          value: newRate,
-        },
-      }),
-    )
-
-    updateLayer(selectedLayer.id, (layer) => ({
-      ...layer,
-      videoMetadata: {
-        ...metadata,
-        playbackRate: newRate,
       },
     }))
   }
@@ -176,12 +116,8 @@ export function VideoProperties() {
     if (!fullDuration) return
     const [start, rawEnd] = values
     const end = Math.max(start + 0.5, rawEnd) // trecho mínimo de 0,5s
-    // Reposiciona o preview no início do trecho para o usuário ver o corte
-    window.dispatchEvent(
-      new CustomEvent('video-control', {
-        detail: { layerId: selectedLayer.id, action: 'seek', value: start },
-      }),
-    )
+    // Mostra o corte: alça do início → página em 0; alça do fim → último quadro
+    relogio.ir(inicioNaPagina + (start !== trimStart ? 0 : Math.max(0, end - start - 0.05)))
     updateLayer(
       selectedLayer.id,
       (layer) => ({
@@ -197,13 +133,8 @@ export function VideoProperties() {
     )
   }
 
-  const handleSeekPreview = (values: number[]) => {
-    window.dispatchEvent(
-      new CustomEvent('video-control', {
-        detail: { layerId: selectedLayer.id, action: 'seek', value: values[0] },
-      }),
-    )
-  }
+  // O slider é no tempo do ARQUIVO; o relógio é da página (o clipe entra em `inicioNaPagina`)
+  const handleSeekPreview = (values: number[]) => relogio.ir(inicioNaPagina + values[0] - trimStart)
 
   const handleCapturePoster = async () => {
     const video = findLayerVideoElement(selectedLayer.id)
@@ -215,7 +146,7 @@ export function VideoProperties() {
       return
     }
     try {
-      video.pause()
+      relogio.pausar()
       const canvas = document.createElement('canvas')
       canvas.width = video.videoWidth
       canvas.height = video.videoHeight
@@ -268,18 +199,18 @@ export function VideoProperties() {
 
       <Separator className="my-3" />
 
-      {/* Play/Pause — quem acompanha o vídeo principal não tem play próprio */}
-      {!acompanhaVideoDeFundo && (
+      {/* Play/Pause da PÁGINA (todos os vídeos e a música andam juntos) */}
       <div className="space-y-2">
-        <Label className="text-[11px] uppercase tracking-wide">Reprodução</Label>
+        <Label className="text-[11px] uppercase tracking-wide">Reprodução da página</Label>
         <div className="flex gap-2">
           <Button
             variant="outline"
             size="sm"
             onClick={handleTogglePlay}
+            disabled={relogioEstado.modo === 'gravacao'}
             className="flex-1 gap-2"
           >
-            {metadata.autoplay ? (
+            {relogioEstado.tocando ? (
               <>
                 <Pause className="h-4 w-4" />
                 Pausar
@@ -305,63 +236,12 @@ export function VideoProperties() {
             )}
           </Button>
         </div>
-      </div>
-      )}
-
-      {!acompanhaVideoDeFundo && <Separator className="my-3" />}
-
-      {/* Loop — o motion que acompanha um vídeo de fundo não repete sozinho */}
-      {!acompanhaVideoDeFundo && (
-        <>
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label className="text-[11px] uppercase tracking-wide">Loop Contínuo</Label>
-              <p className="text-[10px] text-muted-foreground">
-                {motion ? 'Repetir só na prévia do editor' : 'Repetir vídeo automaticamente'}
-              </p>
-            </div>
-            <Switch
-              checked={metadata.loop ?? true}
-              onCheckedChange={handleToggleLoop}
-            />
-          </div>
-
-          <Separator className="my-3" />
-        </>
-      )}
-
-      {/* Velocidade: o vídeo exportado sai sempre em 1x, então o controle só
-          aparece em camada antiga que já foi mexida, para voltar a 1x. */}
-      {(metadata.playbackRate ?? 1) !== 1 && (
-      <>
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Label className="text-[11px] uppercase tracking-wide">Velocidade de Reprodução</Label>
-          <span className="text-sm font-medium text-muted-foreground">
-            {(metadata.playbackRate || 1).toFixed(2)}x
-          </span>
-        </div>
-        <Slider
-          value={[metadata.playbackRate || 1]}
-          onValueChange={handlePlaybackRateChange}
-          min={0.25}
-          max={2}
-          step={0.25}
-          className="w-full"
-        />
-        <div className="flex justify-between text-[10px] text-muted-foreground">
-          <span>0.25x</span>
-          <span>1x</span>
-          <span>2x</span>
-        </div>
-        <p className="text-[10px] font-medium text-amber-600 dark:text-amber-500">
-          O vídeo exportado não acompanha a velocidade. Volte para 1x.
+        <p className="text-[10px] text-muted-foreground">
+          No fim da página a prévia volta ao início. Espaço também toca e pausa.
         </p>
       </div>
 
       <Separator className="my-3" />
-      </>
-      )}
 
       {/* Trim do vídeo */}
       {fullDuration ? (
@@ -417,7 +297,7 @@ export function VideoProperties() {
         <div className="space-y-2">
           <Label className="text-[11px] uppercase tracking-wide">Prévia no editor</Label>
           <Slider
-            defaultValue={[trimStart]}
+            value={[Math.min(trimEnd, trimStart + relogioEstado.t)]}
             onValueChange={handleSeekPreview}
             min={trimStart}
             max={trimEnd}

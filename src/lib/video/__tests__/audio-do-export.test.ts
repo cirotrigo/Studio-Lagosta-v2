@@ -100,3 +100,54 @@ describe('o aviso que o card do criativo mostra', () => {
     })
   })
 })
+
+// ── Fase 4: sequência de clipes ─────────────────────────────────────────────
+import { fonteEfetiva } from '../audio-do-export'
+import { trechosDeVideo } from '../plano-de-som'
+
+const sequencia = [
+  { id: 'a', type: 'image', order: 0, clipe: { duracao: 2 } },
+  { id: 'v', type: 'video', order: 1, fileUrl: 'https://x/v.mp4', videoMetadata: { duration: 3 }, clipe: {} },
+]
+const soFotos = [
+  { id: 'a', type: 'image', order: 0, clipe: { duracao: 2 } },
+  { id: 'b', type: 'image', order: 1, clipe: { duracao: 2 } },
+]
+const originais = [
+  { path: '/tmp/a.mp4', trimStart: 0, inicio: 2, duracao: 3 },
+  { path: '/tmp/b.mp4', trimStart: 1, inicio: 5, duracao: 2 },
+]
+
+describe('fonteEfetiva numa sequência (Fase 4)', () => {
+  it('com um vídeo na sequência, original e mix voltam a valer', () => {
+    const temSom = trechosDeVideo(sequencia).length > 0
+    expect(temSom).toBe(true)
+    expect(fonteEfetiva({ source: 'original' }, temSom)).toEqual({ config: { source: 'original' } })
+    expect(fonteEfetiva({ source: 'mix', musicId: 7 }, temSom)).toEqual({ config: { source: 'mix', musicId: 7 } })
+  })
+
+  it('sequência só de fotos continua caindo com aviso', () => {
+    const temSom = trechosDeVideo(soFotos).length > 0
+    expect(temSom).toBe(false)
+    expect(fonteEfetiva({ source: 'mix', musicId: 7 }, temSom)).toEqual({
+      config: { source: 'library', musicId: 7, volume: 60 },
+      aviso: 'so-musica',
+    })
+    expect(fonteEfetiva({ source: 'original' }, temSom)).toEqual({ config: { source: 'mute' }, aviso: 'sem-audio' })
+  })
+})
+
+describe('a escada com `originais` (Fase 4)', () => {
+  it('mix com os originais e música → só a música → só os originais → sem áudio', () => {
+    const pedido: AudioMixOptions = { mode: 'mix', originais, originalVolume: 0.8, ...musica }
+    const d1 = proximaTentativaDeAudio(pedido, pedido)
+    expect(d1).toEqual({ mix: { mode: 'library', ...musica }, aviso: 'so-musica' })
+    const d2 = proximaTentativaDeAudio(d1.mix as AudioMixOptions, pedido)
+    expect(d2).toEqual({ mix: { mode: 'original', originais, originalVolume: 0.8 }, aviso: 'so-original' })
+    expect(proximaTentativaDeAudio(d2.mix as AudioMixOptions, pedido)).toEqual({ aviso: 'sem-audio' })
+  })
+
+  it('original puro com originais → sem áudio', () => {
+    expect(proximaTentativaDeAudio({ mode: 'original', originais })).toEqual({ aviso: 'sem-audio' })
+  })
+})

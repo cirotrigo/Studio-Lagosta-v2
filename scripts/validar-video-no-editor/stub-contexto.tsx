@@ -9,3 +9,7 @@ export const ContextoDaValidacao = React.createContext<{
 } | null>(null)
 
 export const useTemplateEditor = () => React.useContext(ContextoDaValidacao)
+
+// Substitui @/contexts/multi-page-context: fora do editor multipágina o
+// relógio é o da página única (a MESMA chave que o export usa por padrão).
+export const useMultiPageOpcional = () => null
