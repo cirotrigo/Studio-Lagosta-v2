@@ -10,7 +10,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
-import { ESCOPOS_DA_REGRA, TETO_DO_PROMPT_DA_VOZ, lerVoz, vozParaPrompt, type EscopoDaRegra } from '@/lib/brand/voz'
+import { ESCOPOS_DA_REGRA, TETO_DO_PROMPT_DA_VOZ, lerVoz, problemasDaVozEmPortugues, vozParaPrompt, type EscopoDaRegra } from '@/lib/brand/voz'
 import {
   ESTADO_INICIAL_DA_VOZ,
   REESCRITA_VAZIA,
@@ -103,7 +103,7 @@ export function ComoAMarcaFala({ projectId }: { projectId: number }) {
 
   const gravar = () => {
     if (!previa.voz) {
-      toast.error(`A voz ainda não passa no contrato: ${previa.problemas.map((p) => `${p.caminho}: ${p.mensagem}`).slice(0, 3).join(' · ')}`)
+      toast.error(`Ainda não dá para salvar — ${problemasDaVozEmPortugues(previa.problemas).slice(0, 3).join(' · ')}`)
       return
     }
     enviadoRef.current = form
@@ -196,7 +196,7 @@ export function ComoAMarcaFala({ projectId }: { projectId: number }) {
 
           {registro && registro.problemas.length > 0 && (
             <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">
-              A voz gravada não passa mais no contrato ({registro.problemas.length}): {registro.problemas.map((p) => `${p.caminho}: ${p.mensagem}`).join(' · ')}. Enquanto isso a copy lê o legado.
+              A voz que está gravada tem {registro.problemas.length} ponto{registro.problemas.length === 1 ? '' : 's'} a resolver: {problemasDaVozEmPortugues(registro.problemas).join(' · ')}. Enquanto isso a copy lê o legado.
             </div>
           )}
 
@@ -212,22 +212,22 @@ export function ComoAMarcaFala({ projectId }: { projectId: number }) {
 
           <div className="grid gap-4 md:grid-cols-2">
             <Campo id="voz-descricao" label="Descrição" dica="Como a marca fala, em poucas linhas (até 600 caracteres)." className="md:col-span-2">
-              <Textarea id="voz-descricao" rows={3} value={form.descricao} onChange={(e) => set('descricao', e.target.value)} placeholder="Direta e quente, com orgulho do fogo de chão; fala de comida como quem convida para a mesa." />
+              <Textarea id="voz-descricao" rows={3} value={form.descricao} onChange={(e) => set('descricao', e.target.value)} placeholder="ex.: direta e calorosa, fala de comida como quem convida para a mesa" />
             </Campo>
             <Campo id="voz-tratamento" label="Tratamento" dica="Como se dirige à pessoa: você, tu, a gente…">
-              <Textarea id="voz-tratamento" rows={1} value={form.tratamento} onChange={(e) => set('tratamento', e.target.value)} placeholder="você" className="min-h-9" />
+              <Textarea id="voz-tratamento" rows={1} value={form.tratamento} onChange={(e) => set('tratamento', e.target.value)} placeholder="ex.: você" className="min-h-9" />
             </Campo>
             <Campo id="voz-termos" label="Termos da casa" dica="Na grafia exata (até 40).">
-              <ListaDeItens id="voz-termos" itens={form.termos} onChange={(v) => set('termos', v)} max={40} placeholder="costela no bafo" rotuloAdicionar="termo" />
+              <ListaDeItens id="voz-termos" itens={form.termos} onChange={(v) => set('termos', v)} max={40} placeholder="ex.: o nome de um prato da casa" rotuloAdicionar="termo" />
             </Campo>
             <Campo id="voz-exemplos" label="Exemplos aprovados" dica="Frases como saíram (até 12).">
-              <ListaDeItens id="voz-exemplos" itens={form.exemplos} onChange={(v) => set('exemplos', v)} max={12} placeholder="Sexta é dia de costela." rotuloAdicionar="exemplo" />
+              <ListaDeItens id="voz-exemplos" itens={form.exemplos} onChange={(v) => set('exemplos', v)} max={12} placeholder="ex.: uma frase que já foi ao ar" rotuloAdicionar="exemplo" />
             </Campo>
             <Campo id="voz-antesdepois" label="Reescritas (antes → depois, por quê)" dica="O que estava, o que ficou e o motivo (até 12).">
               <ListaDeReescritas itens={form.antesDepois} onChange={(v) => set('antesDepois', v)} max={12} />
             </Campo>
             <Campo id="voz-proibicoes" label="Proibições" dica="Poucas e curtas (até 20). Preço e horário nunca entram aqui." className="md:col-span-2">
-              <ListaDeItens id="voz-proibicoes" itens={form.proibicoes} onChange={(v) => set('proibicoes', v)} max={20} placeholder={'"o melhor da cidade"'} rotuloAdicionar="proibição" />
+              <ListaDeItens id="voz-proibicoes" itens={form.proibicoes} onChange={(v) => set('proibicoes', v)} max={20} placeholder={'ex.: "o melhor da cidade"'} rotuloAdicionar="proibição" />
             </Campo>
           </div>
 
@@ -340,7 +340,7 @@ export function ComoAMarcaFala({ projectId }: { projectId: number }) {
 
           {!previa.voz && mudou && (
             <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs">
-              Ainda não dá para salvar: {previa.problemas.slice(0, 4).map((p) => `${p.caminho}: ${p.mensagem}`).join(' · ')}
+              Ainda não dá para salvar — {problemasDaVozEmPortugues(previa.problemas).slice(0, 4).join(' · ')}
             </div>
           )}
 

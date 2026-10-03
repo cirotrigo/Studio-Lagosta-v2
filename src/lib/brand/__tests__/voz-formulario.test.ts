@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { lerVoz, type VozCompacta } from '../voz'
+import { lerVoz, problemasDaVozEmPortugues, TETO_DO_PROMPT_DA_VOZ, type VozCompacta } from '../voz'
 import {
   ESTADO_INICIAL_DA_VOZ,
   formularioParaVoz,
@@ -236,5 +236,69 @@ describe('registroComRecibo — a releitura falhou DEPOIS da escrita confirmada 
     expect(depois.form).toBe(b)
     expect(formulariosIguais(depois.base, a)).toBe(true)
     expect(depois).toMatchObject({ versaoLida: 2, divergente: null })
+  })
+})
+
+/**
+ * O que a pessoa LÊ quando a voz ainda não passa. O Ciro digitou um exemplo
+ * aprovado na Real Gelateria e recebeu "descricao: String must contain at
+ * least 1 character(s)" — nome de campo do banco e frase do zod em inglês,
+ * para quem cuida do Instagram de restaurante (22/09/2026).
+ *
+ * O teste anda o caminho REAL — formulário → `lerVoz` → mensagem — e a trava
+ * que vale por todas é a última: nenhuma frase do zod pode chegar à tela.
+ */
+describe('o problema da voz, em português', () => {
+  const vazio = vozParaFormulario(null)
+
+  function naTela(form: ReturnType<typeof vozParaFormulario>): string[] {
+    const { voz: passou, problemas } = lerVoz(formularioParaVoz(form))
+    expect(passou).toBeNull()
+    return problemasDaVozEmPortugues(problemas)
+  }
+
+  it('o caso do Ciro: diz o campo pelo rótulo da TELA e o que falta', () => {
+    expect(naTela({ ...vazio, exemplos: ['Sua pausa com sabores Real'] })).toEqual(['Descrição: falta preencher'])
+  })
+
+  it('item de lista aponta QUAL item e qual parte dele', () => {
+    const regra = { ...regraEmBranco([], '2026-09-22'), texto: '', motivo: '' }
+    expect(naTela({ ...vazio, descricao: 'Direta e calorosa.', regras: [regra] })).toEqual([
+      'Regras recentes (item 1), a regra: falta preencher',
+      'Regras recentes (item 1), o motivo: falta preencher',
+    ])
+    // Reescrita pela metade FICA na lista de propósito (o contrato recusa e a pessoa vê onde).
+    expect(naTela({ ...vazio, descricao: 'Direta e calorosa.', antesDepois: [{ antes: 'Venha conhecer', depois: '', motivo: '' }] })).toEqual([
+      'Reescritas (item 1), o "depois": falta preencher',
+      'Reescritas (item 1), o motivo: falta preencher',
+    ])
+  })
+
+  it('texto comprido demais diz o limite, e o problema da voz INTEIRA passa como está', () => {
+    expect(naTela({ ...vazio, descricao: 'a'.repeat(601) })).toEqual(['Descrição: passou de 600 caracteres — encurte o texto'])
+    const grande = naTela({
+      ...vazio,
+      descricao: 'Direta.',
+      exemplos: Array.from({ length: 12 }, (_, i) => `frase ${i} `.repeat(19)),
+      proibicoes: Array.from({ length: 20 }, (_, i) => `proibição ${i} `.repeat(11)),
+    })
+    expect(grande).toHaveLength(1)
+    expect(grande[0]).toContain(`passa de ${TETO_DO_PROMPT_DA_VOZ} caracteres no prompt`)
+  })
+
+  it('nenhuma frase do zod chega à tela', () => {
+    const formulários = [
+      { ...vazio },
+      { ...vazio, descricao: 'a'.repeat(601), tratamento: 'b'.repeat(161) },
+      { ...vazio, descricao: 'Direta.', exemplos: Array.from({ length: 13 }, (_, i) => `frase ${i}`) },
+      { ...vazio, descricao: 'Direta.', regras: [{ ...regraEmBranco([], '2026-09-22'), texto: 'c'.repeat(241), motivo: '' }] },
+      { ...vazio, descricao: 'Direta.', antesDepois: [{ antes: 'd'.repeat(201), depois: '', motivo: '' }] },
+    ]
+    for (const form of formulários) {
+      for (const linha of naTela(form)) {
+        expect(linha).not.toMatch(/String must|Array must|Required|Expected |Invalid enum|Unrecognized key/)
+        expect(linha).toMatch(/^[A-ZÀ-Ú]/)
+      }
+    }
   })
 })
