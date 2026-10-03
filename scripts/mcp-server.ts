@@ -1322,6 +1322,7 @@ toolEstrita(
         height: page.height,
         layers: page.layers,
         background: page.background,
+        audio: page.audio,
       })
 
       // 5. Apply slot values — só a copy PRÓPRIA do post, e só em página
@@ -1384,7 +1385,8 @@ toolEstrita(
       const { CanvasRenderer } = await import('../src/lib/canvas-renderer')
       const { camadasNoInstante } = await import('../src/lib/video/linha-do-tempo')
       // A linha do tempo desenha o quadro de 0 (a recusa de vídeo/sequência rodou antes da trava)
-      designData = { ...designData, layers: camadasNoInstante(designData.layers, 0) }
+      // (com a música: ela faz da foto em movimento uma página-vídeo, como no story-renderer)
+      designData = { ...designData, layers: camadasNoInstante(designData.layers, 0, { audio: designData.audio }) }
       const renderer = new CanvasRenderer(designData.canvas.width, designData.canvas.height)
       const buffer = await renderer.renderDesign(designData, {})
 

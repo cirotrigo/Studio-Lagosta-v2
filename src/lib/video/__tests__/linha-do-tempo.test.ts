@@ -3,17 +3,19 @@ import {
   camadasNoInstante,
   clipeAtivoEm,
   inserirClipe,
+  janelaDaTransicao,
   linhaDoTempo,
   normalizarClipes,
   problemasDosClipes,
+  quadroDosClipes,
 } from '../linha-do-tempo'
 import { duracaoDaPagina, paginaEVideo, videoDeBase } from '../camadas-de-video'
 import { medirDefasagem } from '@/lib/compositor/defasagem'
 
-const foto = (id: string, order: number, clipe?: { duracao?: number }) => ({
+const foto = (id: string, order: number, clipe?: { duracao?: number; transicao?: unknown }) => ({
   id, type: 'image', order, position: { x: 0, y: 0 }, size: { width: 1080, height: 1920 }, ...(clipe ? { clipe } : {}),
 })
-const video = (id: string, order: number, meta: Record<string, unknown>, clipe?: { duracao?: number }) => ({
+const video = (id: string, order: number, meta: Record<string, unknown>, clipe?: { duracao?: number; transicao?: unknown }) => ({
   id, type: 'video', order, position: { x: 0, y: 0 }, size: { width: 1080, height: 1920 }, videoMetadata: meta, ...(clipe ? { clipe } : {}),
 })
 const texto = (id: string, order: number) => ({ id, type: 'text', order, content: id, clipe: undefined as { duracao?: number } | undefined })
@@ -149,7 +151,81 @@ describe('paginaEVideo / videoDeBase com clipes', () => {
   })
 })
 
+describe('transição entre clipes (Fase 3)', () => {
+  const dois = (transicao?: string, da = 2, db = 2) =>
+    linhaDoTempo([foto('a', 0, { duracao: da }), foto('b', 1, { duracao: db, ...(transicao ? { transicao } : {}) })], null)
+      .clipes
+  const so = (c: ReturnType<typeof dois>, t: number) => Object.fromEntries(quadroDosClipes(c, t))
+
+  it('só do segundo clipe em diante, e só valor da lista', () => {
+    const l = linhaDoTempo(
+      [
+        foto('a', 0, { duracao: 2, transicao: 'dissolver' }),
+        foto('b', 1, { duracao: 2, transicao: 'deslizar' }),
+        foto('c', 2, { duracao: 2, transicao: 'girar' }),
+      ],
+      null,
+    )
+    expect(l.clipes.map((c) => c.transicao)).toEqual([undefined, 'deslizar', undefined])
+    expect(l.total).toBe(6) // a duração total não muda
+  })
+
+  it('janela de 0,5 s centrada no corte, presa a metade do clipe mais curto; corte e clipe sem duração não têm', () => {
+    expect(janelaDaTransicao(dois('dissolver'), 1)).toEqual({ de: 1.75, ate: 2.25, duracao: 0.5 })
+    expect(janelaDaTransicao(dois('deslizar', 0.5, 4), 1)).toEqual({ de: 0.375, ate: 0.625, duracao: 0.25 })
+    expect(janelaDaTransicao(dois(), 1)).toBeNull()
+    const carregando = linhaDoTempo([foto('a', 0, { duracao: 2 }), video('v', 1, {}, { transicao: 'deslizar' })], null)
+    expect(janelaDaTransicao(carregando.clipes, 1)).toBeNull()
+    // clipes mínimos com transição nas duas junções: as janelas não se encostam
+    const tres = linhaDoTempo(
+      [foto('a', 0, { duracao: 0.5 }), foto('b', 1, { duracao: 0.5, transicao: 'dissolver' }), foto('c', 2, { duracao: 0.5, transicao: 'deslizar' })],
+      null,
+    ).clipes
+    expect(janelaDaTransicao(tres, 1)!.ate).toBeLessThanOrEqual(janelaDaTransicao(tres, 2)!.de)
+  })
+
+  it('fora das janelas (e nas bordas, abertas) só o clipe ativo aparece, inteiro; t = 0 nunca está numa', () => {
+    const puro = (ativo: 'a' | 'b') => ({
+      a: { visivel: ativo === 'a', opacidade: 1, deslocamentoX: 0 },
+      b: { visivel: ativo === 'b', opacidade: 1, deslocamentoX: 0 },
+    })
+    for (const tr of [undefined, 'dissolver', 'deslizar']) {
+      for (const t of [0, 1, 1.75]) expect(so(dois(tr), t)).toEqual(puro('a'))
+      for (const t of [2.25, 3, 9]) expect(so(dois(tr), t)).toEqual(puro('b'))
+    }
+  })
+
+  it('dissolver: o que entra (por cima) vai de transparente a opaco; no corte, metade', () => {
+    expect(so(dois('dissolver'), 2)).toEqual({
+      a: { visivel: true, opacidade: 1, deslocamentoX: 0 },
+      b: { visivel: true, opacidade: 0.5, deslocamentoX: 0 },
+    })
+    expect(so(dois('dissolver'), 1.875).b.opacidade).toBeCloseTo(0.25)
+  })
+
+  it('deslizar: o que sai vai para a esquerda, o que entra empurra pela direita; no corte, meio a meio', () => {
+    expect(so(dois('deslizar'), 2)).toEqual({
+      a: { visivel: true, opacidade: 1, deslocamentoX: -0.5 },
+      b: { visivel: true, opacidade: 1, deslocamentoX: 0.5 },
+    })
+    // as duas bordas sempre se encostam: nem fresta, nem sobreposição
+    for (const t of [1.8, 1.9, 2.1, 2.2]) {
+      const q = so(dois('deslizar'), t)
+      expect(q.b.deslocamentoX - q.a.deslocamentoX).toBeCloseTo(1)
+      expect(q.a.deslocamentoX).toBeLessThan(0)
+    }
+  })
+})
+
 describe('problemasDosClipes', () => {
+  it('transição fora da lista é recusada; ausente, null ou da lista passa', () => {
+    expect(problemasDosClipes([foto('a', 0, {}), foto('b', 1, { transicao: 'dissolver' })])).toEqual([])
+    expect(problemasDosClipes([foto('a', 0, {}), foto('b', 1, { transicao: null })])).toEqual([])
+    const p = problemasDosClipes([foto('a', 0, {}), foto('b', 1, { transicao: 'girar' })])
+    expect(p).toHaveLength(1)
+    expect(p[0]).toMatch(/transição inválida/)
+  })
+
   it('página legada passa; duração fora da faixa e 11 clipes são recusados em português', () => {
     expect(problemasDosClipes([foto('a', 0), video('v', 1, {})])).toEqual([])
     expect(problemasDosClipes([foto('a', 0, {}), foto('b', 1, { duracao: 3 })])).toEqual([])

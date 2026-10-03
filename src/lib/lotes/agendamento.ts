@@ -479,18 +479,21 @@ export function superadaNoPlanoSemPeca(entrada: { item: ItemDoPlanoDaPeca | null
  * dúvida (arte sem o registro, página ilegível) vira `false`: o post nasce
  * PENDING e o cron de render desenha a página como ela está — refazer é
  * barato, publicar a arte velha não.
+ *
+ * `pagina.audio` entra porque o render grava a versão com o áudio do quadro 0
+ * (foto em movimento com música sai com o zoom). Ausente vale "sem música".
  */
 export function thumbnailEhAtual(entrada: {
   thumbnail: string | null
   resultUrl: string | null
-  pagina: { width: number; height: number; background?: string | null; layers: unknown }
+  pagina: { width: number; height: number; background?: string | null; layers: unknown; audio?: unknown }
   versaoRenderizada: unknown
 }): boolean {
   const { thumbnail, resultUrl } = entrada
   if (!thumbnail || thumbnail.startsWith('data:') || !resultUrl || thumbnail !== resultUrl) return false
   if (typeof entrada.versaoRenderizada !== 'string' || !entrada.versaoRenderizada) return false
   // Ilegível devolve null, que nunca é igual a uma versão gravada.
-  return versaoDaPagina(entrada.pagina) === entrada.versaoRenderizada
+  return versaoDaPagina(entrada.pagina, { audio: entrada.pagina.audio ?? null }) === entrada.versaoRenderizada
 }
 
 export type SituacaoDoItemAgendado = 'concluido' | 'pendente' | 'falhou'

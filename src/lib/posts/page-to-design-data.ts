@@ -23,6 +23,8 @@ interface PageRecord {
   height: number
   layers: unknown // Json field from Prisma
   background?: string | null
+  /** Page.audio: com música a página é vídeo, e a foto em movimento sai no quadro de 0 */
+  audio?: unknown
 }
 
 /**
@@ -38,6 +40,7 @@ export function convertPageToDesignData(page: PageRecord): DesignData {
       backgroundColor: page.background ?? '#ffffff',
     },
     layers,
+    audio: (page.audio ?? null) as DesignData['audio'],
   }
 }
 

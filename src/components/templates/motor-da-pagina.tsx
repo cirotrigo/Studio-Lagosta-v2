@@ -1,7 +1,9 @@
 'use client'
 
 import * as React from 'react'
+import type Konva from 'konva'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
+import { aplicarQuadro, restaurarIdentidade } from '@/lib/video/aplicar-quadro'
 import { useMultiPageOpcional } from '@/contexts/multi-page-context'
 import { useMusica } from '@/hooks/use-music-library'
 import { useMusicStemStatus } from '@/hooks/use-music-stem'
@@ -27,7 +29,9 @@ import { duracoesDosVideosMontados } from '@/lib/video/videos-montados'
  * dados (música) e do design atual.
  */
 export function MotorDaPagina() {
-  const { design } = useTemplateEditor()
+  const { design, getStageInstance } = useTemplateEditor()
+  const stageDaPagina = React.useRef(getStageInstance)
+  stageDaPagina.current = getStageInstance
   const chave = useMultiPageOpcional()?.currentPageId
   const relogio = relogioDaPagina(chave)
   const trilha = design.audio
@@ -57,6 +61,9 @@ export function MotorDaPagina() {
     let srcAtual = ''
     // Um play() por vez: o pedido leva alguns quadros para ser atendido
     let pedindo = false
+    // O stage em que o quadro foi escrito: trocou (outra página aberta), o
+    // anterior volta à identidade
+    let stageEscrito: Konva.Stage | null = null
 
     const tique = () => {
       quadro = requestAnimationFrame(tique)
@@ -71,6 +78,13 @@ export function MotorDaPagina() {
       // A linha do tempo: qual clipe está na tela (publica só quando muda)
       const linha = linhaDoTempo(d.layers, d.audio, duracoesDosVideosMontados())
       publicarClipeAtivo(chave, clipeAtivoEm(linha.clipes, t)?.id ?? null)
+
+      // O movimento das fotos: o quadro de `t`, parado ou tocando. Antes do
+      // retorno abaixo, para a página que deixou de ser vídeo voltar à identidade
+      const stage = stageDaPagina.current()
+      if (stageEscrito && stageEscrito !== stage) restaurarIdentidade(stageEscrito)
+      stageEscrito = stage
+      aplicarQuadro(stage, d, t, { duracoes: duracoesDosVideosMontados() })
 
       // Deixou de ser temporal (tirou o último vídeo, desfez a música): a
       // página é uma imagem, e o relógio volta a 0, parado.
@@ -138,6 +152,7 @@ export function MotorDaPagina() {
       cancelAnimationFrame(quadro)
       audio.pause()
       audio.src = ''
+      restaurarIdentidade(stageEscrito)
     }
   }, [relogio, chave])
 
