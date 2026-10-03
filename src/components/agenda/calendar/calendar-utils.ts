@@ -1,6 +1,7 @@
 'use client'
 
 import type { SocialPost } from '../../../../prisma/generated/client'
+import { isVideoUrl } from '@/lib/media-type'
 
 /**
  * Helper function to create a date key in local timezone
@@ -184,10 +185,15 @@ export function formatMonthYearShort(date: Date): string {
   return `${mes.charAt(0).toUpperCase() + mes.slice(1)} ${date.getFullYear()}`
 }
 
-/** Vídeo se reconhece pela extensão da URL — não há campo no banco. */
-export function isVideoUrl(url: string): boolean {
-  const videoExtensions = ['.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v']
-  return videoExtensions.some((ext) => url.toLowerCase().includes(ext))
+/**
+ * Vídeo se reconhece pela extensão da URL — não há campo no banco. O detector
+ * é o único da casa (`@/lib/media-type`); a agenda tinha três cópias dele.
+ */
+export { isVideoUrl }
+
+/** A capa de um vídeo do Blob: um quadro leve, gerado por `/api/video-thumb`. */
+export function capaDeVideoUrl(url: string): string {
+  return `/api/video-thumb?url=${encodeURIComponent(url)}`
 }
 
 /**

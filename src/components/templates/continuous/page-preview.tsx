@@ -8,6 +8,8 @@ import type { Layer, Page } from '@/types/template'
 import { KonvaLayerFactory } from '../konva-layer-factory'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { calculateImageCrop } from '@/lib/image-crop-utils'
+import { ehMotion, videosDaPagina } from '@/lib/video/camadas-de-video'
+import { camadasNoInstante } from '@/lib/video/linha-do-tempo'
 
 interface PagePreviewProps {
   page: Page
@@ -36,7 +38,10 @@ interface PagePreviewProps {
  * Clique/ativação são responsabilidade do slot no ContinuousWorkspace.
  */
 export function PagePreview({ page, width, height, zoom, live, capturedUrl, index }: PagePreviewProps) {
-  if (live) {
+  // Página com vídeo: a captura feita enquanto ela estava aberta (vídeo, motion
+  // e arte juntos) mostra mais que o stage de prévia, que não monta <video>.
+  const temVideo = Array.isArray(page.layers) && videosDaPagina(page.layers as Layer[]).length > 0
+  if (live && !(capturedUrl && temVideo)) {
     return <PagePreviewStage page={page} width={width} height={height} zoom={zoom} />
   }
 
@@ -80,7 +85,8 @@ function PagePreviewStage({ page, width, height, zoom }: { page: Page; width: nu
 
   const layers = React.useMemo(() => {
     const source = Array.isArray(page.layers) ? (page.layers as Layer[]) : []
-    return [...source]
+    // A prévia é o quadro de 0 da linha do tempo: só o primeiro clipe
+    return camadasNoInstante([...source], 0)
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
       .filter((layer) => layer.visible !== false)
   }, [page.layers])
@@ -162,6 +168,10 @@ function VideoPosterLayer({ layer }: { layer: Layer }) {
       />
     )
   }
+
+  // Motion sem quadro de prévia não desenha nada: o retângulo de espera taparia
+  // a foto ou o vídeo que está embaixo dele.
+  if (ehMotion(layer)) return null
 
   return (
     <Rect

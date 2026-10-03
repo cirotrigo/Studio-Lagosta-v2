@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { invalidateScheduledRenders, normalizeLayersString } from '@/lib/posts/invalidate-renders'
 import { registrarDecisaoSemSugestao } from '@/lib/aprendizado/captura'
 import { lerCamadas } from '@/lib/posts/page-layers'
+import { problemasDosClipes } from '@/lib/video/linha-do-tempo'
 import { reconciliarMarcasDoRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
 import { copyParaDecisao, diffDeCopy } from '@/lib/aprendizado/diff-copy'
 import { recusaDaRevisao, revisaoDaPaginaComCamadas } from '@/lib/copy-autoral/revisar-pagina'
@@ -48,7 +49,7 @@ const updatePageSchema = z.object({
   // visual — mudar música não invalida o render agendado (que é PNG).
   audio: pageAudioSchema.nullable().optional(),
   order: z.number().int().optional(),
-  thumbnail: z.string().optional(),
+  thumbnail: z.string().nullable().optional(),
   tags: z.array(z.string()).optional(),
 })
 
@@ -136,6 +137,14 @@ export async function PATCH(
 
     const body = await request.json()
     const validatedData = updatePageSchema.parse(body)
+    // Linha do tempo (Fase 3): duração de clipe fora de [0,5; 60] s ou mais de
+    // 10 clipes é recusado ANTES de gravar, com mensagem legível
+    if (validatedData.layers !== undefined) {
+      const clipes = problemasDosClipes(lerCamadas(validatedData.layers).camadas as Array<{ id: string; type?: string; clipe?: { duracao?: number } | null }>)
+      if (clipes.length > 0) {
+        return NextResponse.json({ error: clipes.join(' '), problemas: clipes }, { status: 400 })
+      }
+    }
 
     // Preparar dados com layers serializados se fornecidos
     const updateData: Record<string, unknown> = { ...validatedData }

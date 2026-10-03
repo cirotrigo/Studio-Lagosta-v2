@@ -1,7 +1,8 @@
 "use client"
 
 import * as React from 'react'
-import { CalendarCheck, CalendarPlus, Copy, Layers, Loader2, Plus, Trash2 } from 'lucide-react'
+import { CalendarCheck, CalendarPlus, Copy, ImageIcon, Layers, Loader2, Plus, Trash2, Video } from 'lucide-react'
+import { BotaoPlayPause } from '../botao-play-pause'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
@@ -9,6 +10,7 @@ import { useMultiPage } from '@/contexts/multi-page-context'
 import { usePageActions } from '@/hooks/use-page-actions'
 import { useAgendaDasPaginas, useAgendarPagina, type AgendaDaPagina } from '@/hooks/use-agenda-das-paginas'
 import { horarioCurto } from '@/lib/compositor/pasta-da-semana'
+import { recusaComoImagem, type RecusaComoImagem } from '@/lib/video/pagina-com-video'
 import { KonvaEditorStage } from '../konva-editor-stage'
 import { PagePreview } from './page-preview'
 import type { Layer } from '@/types/template'
@@ -28,10 +30,13 @@ import type { Layer } from '@/types/template'
  */
 function ControleDeAgenda({
   agenda,
+  recusa,
   aoAgendar,
   agendando,
 }: {
   agenda: AgendaDaPagina | undefined
+  /** A página tem vídeo (ou motion) visível, ou música: ela não se agenda como imagem. */
+  recusa: RecusaComoImagem | null
   aoAgendar: () => void
   agendando: boolean
 }) {
@@ -42,6 +47,21 @@ function ControleDeAgenda({
     // O botão cria RASCUNHO, então dizer "Agendado" logo depois do clique
     // mentiria: rascunho aparece na agenda mas não publica sozinho.
     const rascunho = agenda.post.status === 'DRAFT'
+    // O post nasceu ANTES de a página virar vídeo (ganhou música ou vídeo
+    // depois): ele continua sendo uma imagem, e o som não vai junto.
+    if (recusa && !agenda.post.comVideo) {
+      return (
+        <span
+          className="flex h-6 items-center gap-1 rounded bg-amber-500/10 px-1.5 text-[11px] font-medium text-amber-600 dark:text-amber-400"
+          title={`Esta página já está na agenda como IMAGEM${quando ? ` (${quando})` : ''}: ${
+            recusa.codigo === 'PAGINA_COM_MUSICA' ? 'a música' : 'o vídeo'
+          } não vai junto. Exporte o vídeo e troque a mídia do post.`}
+        >
+          <ImageIcon className="h-3 w-3" />
+          na agenda como imagem
+        </span>
+      )
+    }
     return (
       // Sem borda de propósito: `border-emerald-500/30` não pintou na medição
       // de 04/09/2026 (caiu no cinza do reset). Fundo e texto foram medidos.
@@ -69,6 +89,30 @@ function ControleDeAgenda({
       >
         <Layers className="h-3 w-3" />
         {agenda.slide ? `slide ${agenda.slide}` : 'slide'}
+      </span>
+    )
+  }
+
+  /**
+   * 🔴 Página com vídeo (ou com música) não ganha botão: "Agendar" manda a página como IMAGEM
+   * (o thumbnail ou o render do servidor) e o story sairia com um quadro
+   * parado. Ela vai ao ar pelo "Exportar Vídeo", e o MP4 é agendado pela aba
+   * Criativos. A tela só orienta — quem recusa de verdade é `agendarPost`
+   * (`PAGINA_COM_VIDEO`). Vem antes do horário: a indicação vale mesmo na
+   * página sem horário previsto, que é a maioria das de vídeo.
+   */
+  if (recusa) {
+    return (
+      <span
+        className="flex h-6 items-center gap-1 rounded bg-white/5 px-1.5 text-[11px] font-medium text-muted-foreground"
+        title={
+          recusa.codigo === 'PAGINA_COM_MUSICA'
+            ? 'Esta página tem música: ela vai ao ar como vídeo. Use "Exportar Vídeo" — ou tire a música para agendar a imagem.'
+            : 'Esta página tem vídeo: use "Exportar Vídeo" e agende o MP4 pela aba Criativos.'
+        }
+      >
+        <Video className="h-3 w-3" />
+        vídeo
       </span>
     )
   }
@@ -345,13 +389,15 @@ export function ContinuousWorkspace() {
       const previousPageId = currentPageIdRef.current
       if (previousPageId) {
         void generateThumbnail(CAPTURE_WIDTH).then((url) => {
-          if (url) {
-            setCaptures((prev) => {
-              const next = new Map(prev)
-              next.set(previousPageId, url)
-              return next
-            })
-          }
+          // Sem captura nova (vídeo fora do quadro de 0), a anterior é de uma
+          // versão que pode ter sido editada: some, e a prévia cai no stage vivo
+          setCaptures((prev) => {
+            if (!url && !prev.has(previousPageId)) return prev
+            const next = new Map(prev)
+            if (url) next.set(previousPageId, url)
+            else next.delete(previousPageId)
+            return next
+          })
         })
       }
       setCurrentPageId(pageId)
@@ -542,9 +588,13 @@ export function ContinuousWorkspace() {
                 <div className="flex items-center gap-0.5 opacity-50 transition-opacity hover:opacity-100">
                   <ControleDeAgenda
                     agenda={agendaPorPagina.get(page.id)}
+                    // A ativa lê as camadas vivas do editor: o vídeo recém-inserido
+                    // ainda não chegou à Page (autosave).
+                    recusa={recusaComoImagem(isActive ? design.layers : page.layers, isActive ? design.audio : page.audio)}
                     agendando={agendandoId === page.id}
                     aoAgendar={() => colocarNaAgenda(page.id, page.name)}
                   />
+                  {isActive && <BotaoPlayPause compacto />}
                   <Button
                     size="sm"
                     variant="ghost"

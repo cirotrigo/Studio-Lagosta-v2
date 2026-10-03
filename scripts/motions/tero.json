@@ -1,0 +1,400 @@
+{
+  "saida": "saida/tero",
+  "kit": {
+    "slug": "tero",
+    "margem": 80,
+    "topo": 250,
+    "rodape": 1690,
+    "duracao": 8,
+    "sombra": "rgba(19,13,10,0.9)",
+    "cores": {
+      "creme": "#F8F2F0",
+      "ambar": "#EF7B4F"
+    },
+    "fontes": {
+      "TeroDidot": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/3/fonts/1759897655527-Didot-HTF-B06-Bold.ttf",
+      "TeroMont": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/3/fonts/1786495202091-Montserrat-Regular.ttf",
+      "TeroMontSemi": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/3/fonts/1786495203581-Montserrat-SemiBold.ttf",
+      "TeroMontLight": "/Library/Fonts/Montserrat-Light.ttf"
+    },
+    "icones": {
+      "relogio": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/3/elements/1785788523760-relogio-ambar.png",
+      "local": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/3/elements/1785788516731-localizacao-ambar.png"
+    },
+    "filete": {
+      "largura": 120,
+      "cor": "ambar",
+      "ponto": false
+    },
+    "logo": {
+      "video": "/Volumes/Extreme Pro/EDITANDO/TERO/Setembro/Logo/TERO ProRes.mov",
+      "fps": 24,
+      "tamanho": 198,
+      "canto": "inferior-direito",
+      "topo": 250
+    },
+    "estilos": {
+      "pre": {
+        "fonte": "TeroMont",
+        "tam": 28,
+        "ls": 7,
+        "caixaAlta": true,
+        "cor": "creme"
+      },
+      "titulo": {
+        "fonte": "TeroDidot",
+        "tam": 80,
+        "entrelinha": 0.91,
+        "caixaAlta": true,
+        "cor": "ambar"
+      },
+      "apoio": {
+        "fonte": "TeroMont",
+        "tam": 30,
+        "ls": 2,
+        "entrelinha": 1.3,
+        "caixaAlta": true,
+        "cor": "creme",
+        "fonteForte": "TeroMontSemi",
+        "corForte": "ambar"
+      },
+      "cta": {
+        "fonte": "TeroMontSemi",
+        "tam": 30,
+        "ls": 0.5,
+        "cor": "ambar"
+      },
+      "servico": {
+        "fonte": "TeroMont",
+        "tam": 30,
+        "entrelinha": 1.8,
+        "cor": "creme",
+        "fonteForte": "TeroMontSemi",
+        "corForte": "ambar"
+      }
+    },
+    "gradiente": {
+      "cor": "#130D0A",
+      "topo": {
+        "altura": 760,
+        "forca": 0.62
+      },
+      "rodape": {
+        "altura": 600,
+        "forca": 0.62
+      }
+    }
+  },
+  "pecas": [
+    {
+      "id": "funcionamento-rodape",
+      "servico": [
+        {
+          "icone": "relogio",
+          "texto": "Terça a sábado, das [11h30 às 23h30]"
+        },
+        {
+          "icone": "relogio",
+          "texto": "Domingo, das [11h30 às 16h]"
+        },
+        {
+          "icone": "relogio",
+          "texto": "Segunda, das [18h30 às 23h30]"
+        },
+        {
+          "icone": "local",
+          "texto": "R. Eugênio Netto, 326, Praia do Canto"
+        }
+      ]
+    },
+    {
+      "id": "funcionamento-terca-a-sabado",
+      "alinhamento": "centro",
+      "topo": 1230,
+      "logo": "superior-centro",
+      "pre": "Experiência completa",
+      "titulo": [
+        {
+          "texto": "Seu momento"
+        },
+        {
+          "texto": "Tero",
+          "cor": "creme",
+          "tam": 76
+        }
+      ],
+      "apoio": [
+        "Do primeiro prato",
+        "ao último brinde"
+      ],
+      "servico": [
+        {
+          "icone": "relogio",
+          "texto": "Terça a sábado, das [11h30 às 23h30]"
+        },
+        {
+          "icone": "local",
+          "texto": "R. Eugênio Netto, 326, Praia do Canto"
+        }
+      ]
+    },
+    {
+      "id": "funcionamento-domingo",
+      "titulo": [
+        {
+          "texto": "Domingo"
+        },
+        {
+          "texto": "em família",
+          "cor": "creme",
+          "tam": 76
+        }
+      ],
+      "apoio": [
+        "Clássicos e grelhados",
+        "para compartilhar"
+      ],
+      "servico": [
+        {
+          "icone": "relogio",
+          "texto": "Domingo, das [11h30 às 16h]"
+        },
+        {
+          "icone": "local",
+          "texto": "R. Eugênio Netto, 326, Praia do Canto"
+        }
+      ]
+    },
+    {
+      "id": "funcionamento-segunda",
+      "alinhamento": "direita",
+      "logo": "inferior-esquerdo",
+      "pre": "Jantar de segunda",
+      "titulo": [
+        {
+          "texto": "A semana"
+        },
+        {
+          "texto": "começa no Tero",
+          "cor": "creme",
+          "tam": 76
+        }
+      ],
+      "servico": [
+        {
+          "icone": "relogio",
+          "texto": "Segunda, das [18h30 às 23h30]"
+        },
+        {
+          "icone": "local",
+          "texto": "R. Eugênio Netto, 326, Praia do Canto"
+        }
+      ]
+    },
+    {
+      "id": "almoco-executivo-1",
+      "titulo": [
+        {
+          "texto": "Almoço"
+        },
+        {
+          "texto": "executivo",
+          "cor": "creme",
+          "tam": 76
+        }
+      ],
+      "apoio": [
+        "Sua pausa com",
+        "sabor e aconchego"
+      ],
+      "servico": [
+        {
+          "icone": "relogio",
+          "texto": "Terça a sexta, das [11h30 às 16h]"
+        }
+      ]
+    },
+    {
+      "id": "almoco-executivo-2",
+      "alinhamento": "centro",
+      "topo": 1370,
+      "logo": "superior-centro",
+      "titulo": [
+        {
+          "texto": "Almoço"
+        },
+        {
+          "texto": "Tero",
+          "cor": "creme",
+          "tam": 76
+        }
+      ],
+      "apoio": [
+        "Do seu jeito"
+      ],
+      "servico": [
+        {
+          "icone": "relogio",
+          "texto": "Terça a sexta, das [11h30 às 16h]"
+        }
+      ]
+    },
+    {
+      "id": "happy-hour-1",
+      "titulo": [
+        {
+          "texto": "Happy",
+          "tam": 116
+        },
+        {
+          "texto": "Hour",
+          "cor": "creme",
+          "fonte": "TeroMontLight",
+          "tam": 112,
+          "ls": 6,
+          "entrelinha": 0.92
+        }
+      ],
+      "apoio": [
+        "Chopp e drinks",
+        "selecionados [em dobro]"
+      ],
+      "servico": [
+        {
+          "icone": "relogio",
+          "texto": "Terça a sexta, das [16h às 20h]"
+        },
+        {
+          "icone": "relogio",
+          "texto": "Sábado, das [12h às 16h]"
+        }
+      ]
+    },
+    {
+      "id": "happy-wine-1",
+      "titulo": [
+        {
+          "texto": "Happy",
+          "tam": 116
+        },
+        {
+          "texto": "Wine",
+          "cor": "creme",
+          "fonte": "TeroMontLight",
+          "tam": 112,
+          "ls": 6,
+          "entrelinha": 0.92
+        }
+      ],
+      "apoio": [
+        "Vinhos selecionados",
+        "[à vontade]"
+      ],
+      "servico": [
+        {
+          "icone": "relogio",
+          "texto": "Terça a sexta, das [16h às 20h]"
+        },
+        {
+          "icone": "relogio",
+          "texto": "Sábado, das [12h às 16h]"
+        }
+      ]
+    },
+    {
+      "id": "rolha-free-1",
+      "titulo": [
+        {
+          "texto": "Rolha",
+          "tam": 116
+        },
+        {
+          "texto": "Free",
+          "cor": "creme",
+          "fonte": "TeroMontLight",
+          "tam": 112,
+          "ls": 6,
+          "entrelinha": 0.92
+        }
+      ],
+      "apoio": [
+        "De [segunda a quinta],",
+        "no jantar"
+      ],
+      "cta": "Fale com a gente"
+    },
+    {
+      "id": "frase-experiencia",
+      "pre": "O lugar do encontro",
+      "titulo": [
+        {
+          "texto": "Uma experiência"
+        },
+        {
+          "texto": "para os sentidos",
+          "cor": "creme",
+          "tam": 76
+        }
+      ],
+      "cta": "Venha para o Tero"
+    },
+    {
+      "id": "frase-classicos-tero",
+      "alinhamento": "centro",
+      "topo": 1380,
+      "logo": "superior-centro",
+      "titulo": [
+        {
+          "texto": "Clássicos"
+        },
+        {
+          "texto": "Tero",
+          "cor": "creme",
+          "tam": 76
+        }
+      ],
+      "apoio": [
+        "Assinatura da casa"
+      ],
+      "cta": "Reserve sua mesa"
+    },
+    {
+      "id": "frase-carta-de-vinhos",
+      "alinhamento": "direita",
+      "logo": "inferior-esquerdo",
+      "pre": "Seleção da casa",
+      "titulo": [
+        {
+          "texto": "Carta"
+        },
+        {
+          "texto": "de vinhos",
+          "cor": "creme",
+          "tam": 76
+        }
+      ],
+      "apoio": [
+        "Curadoria e harmonização"
+      ],
+      "cta": "Escolha seu vinho"
+    },
+    {
+      "id": "frase-sobremesas",
+      "alinhamento": "centro",
+      "topo": 1400,
+      "logo": "superior-centro",
+      "pre": "Doce encerramento",
+      "titulo": [
+        {
+          "texto": "Finalize"
+        },
+        {
+          "texto": "com estilo",
+          "cor": "creme",
+          "tam": 76
+        }
+      ],
+      "cta": "Vem provar"
+    }
+  ]
+}

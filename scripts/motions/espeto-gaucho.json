@@ -1,0 +1,141 @@
+{
+  "saida": "saida/espeto-gaucho",
+  "kit": {
+    "slug": "espeto-gaucho",
+    "margem": 92,
+    "topo": 250,
+    "rodape": 1690,
+    "duracao": 8,
+    "filete": false,
+    "sombra": "rgba(23,14,9,0.85)",
+    "cores": { "branco": "#FFFFFF", "amarelo": "#FDC700" },
+    "fontes": {
+      "EgTitulo": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/6/fonts/1785280867694-Bevan-Regular.ttf",
+      "EgRegular": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/6/fonts/1785280869399-BarlowCondensed-Regular.ttf",
+      "EgSemi": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/6/fonts/1785280870529-BarlowCondensed-SemiBold.ttf",
+      "EgMao": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/6/fonts/1785280871815-Caveat-SemiBold.ttf"
+    },
+    "icones": {
+      "relogio": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/6/elements/1785792108345-relogio-amarelo.png",
+      "pino": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/6/elements/1785792103195-pino-amarelo.png",
+      "sacola": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/6/elements/1785792113525-sacola-amarelo.png",
+      "bolo": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/6/elements/1785792082165-bolo-amarelo.png"
+    },
+    "logo": {
+      "imagem": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/6/logos/1760564487128-logo-espeto-g.png",
+      "tamanho": 132,
+      "canto": "inferior-direito"
+    },
+    "estilos": {
+      "pre": { "fonte": "EgSemi", "tam": 30, "ls": 3, "caixaAlta": true, "cor": "branco" },
+      "titulo": { "fonte": "EgTitulo", "tam": 84, "entrelinha": 1, "caixaAlta": true, "cor": "branco" },
+      "apoio": { "fonte": "EgRegular", "tam": 42, "entrelinha": 1.15, "cor": "branco", "fonteForte": "EgSemi", "corForte": "amarelo" },
+      "cta": { "fonte": "EgMao", "tam": 58, "cor": "amarelo" },
+      "servico": { "fonte": "EgSemi", "tam": 32, "ls": 0.5, "entrelinha": 1.6, "caixaAlta": true, "cor": "branco", "corForte": "amarelo" }
+    }
+  },
+  "pecas": [
+    {
+      "id": "funcionamento-rodape",
+      "servico": [
+        { "icone": "relogio", "texto": "Seg a Qui das [16h à meia-noite]" },
+        { "icone": "relogio", "texto": "Sex a Dom e feriados das [10h à meia-noite]" },
+        { "icone": "pino", "texto": "Av. Ranulpho Barbosa dos Santos, 111, Jardim Camburi" }
+      ]
+    },
+    {
+      "id": "funcionamento-todo-dia",
+      "pre": "De segunda a domingo tem",
+      "titulo": [{ "texto": "Churrasco" }, { "texto": "gaúcho", "cor": "amarelo" }],
+      "cta": "Vem pro Espeto!",
+      "servico": [
+        { "icone": "relogio", "texto": "Seg a Qui das [16h à meia-noite]" },
+        { "icone": "relogio", "texto": "Sex a Dom e feriados das [10h à meia-noite]" },
+        { "icone": "pino", "texto": "Av. Ranulpho Barbosa dos Santos, 111, Jardim Camburi" }
+      ]
+    },
+    {
+      "id": "funcionamento-segunda-a-quinta",
+      "pre": "Churrasco todo dia e",
+      "titulo": [{ "texto": "Espeto" }, { "texto": "caprichado", "cor": "amarelo" }],
+      "apoio": ["de segunda a quinta,", "das [16h à meia-noite]"],
+      "cta": "Bora pro Espeto!",
+      "servico": [{ "icone": "pino", "texto": "Av. Ranulpho Barbosa dos Santos, 111, Jardim Camburi" }]
+    },
+    {
+      "id": "funcionamento-sexta-a-domingo",
+      "pre": "Almoço e jantar com",
+      "titulo": [{ "texto": "Mesa farta" }, { "texto": "desde as 10h", "cor": "amarelo" }],
+      "apoio": ["churrasco e resenha", "até a meia-noite"],
+      "cta": "Vem curtir o sabor!",
+      "servico": [
+        { "icone": "relogio", "texto": "Sex a Dom e feriados das [10h à meia-noite]" },
+        { "icone": "pino", "texto": "Av. Ranulpho Barbosa dos Santos, 111, Jardim Camburi" }
+      ]
+    },
+    {
+      "id": "rodizio-1",
+      "pre": "Exclusivo de sexta",
+      "titulo": [{ "texto": "Rodízio", "cor": "amarelo" }, { "texto": "no almoço" }],
+      "apoio": ["à vontade, [só às sextas]"],
+      "cta": "Garanta seu lugar!",
+      "servico": [{ "icone": "relogio", "texto": "Toda sexta, das [10h às 15h]" }]
+    },
+    {
+      "id": "promocao-do-dia-1",
+      "pre": "Direto pra mesa a",
+      "titulo": [{ "texto": "Promoção", "cor": "amarelo" }, { "texto": "do dia" }],
+      "apoio": ["espeto caprichado", "pra dividir na mesa"],
+      "cta": "Vem aproveitar!",
+      "servico": [{ "icone": "relogio", "texto": "Todos os dias, [a partir das 17h]" }]
+    },
+    {
+      "id": "marmitex-1",
+      "pre": "Marmitex do Espeto",
+      "titulo": [{ "texto": "Churrasco" }, { "texto": "pra levar", "cor": "amarelo" }],
+      "apoio": ["pra família e pro dia a dia"],
+      "cta": "Garanta o seu!",
+      "servico": [{ "icone": "sacola", "texto": "Somente [retirada no balcão]" }]
+    },
+    {
+      "id": "aniversario-1",
+      "pre": "Resenha garantida no seu",
+      "titulo": [{ "texto": "Aniversário", "cor": "amarelo" }, { "texto": "no Espeto" }],
+      "apoio": ["pode trazer o bolo", "pra cantar parabéns"],
+      "cta": "Chama o pessoal!",
+      "servico": [{ "icone": "bolo", "texto": "O aniversariante ganha [uma sobremesa ou um drink]" }]
+    },
+    {
+      "id": "familia-area-kids",
+      "pre": "Churrasco em família com",
+      "titulo": [{ "texto": "Área kids" }, { "texto": "em dois andares", "cor": "amarelo" }],
+      "apoio": ["no térreo e no andar de cima"],
+      "cta": "Chama a gurizada!"
+    },
+    {
+      "id": "frase-churrasco-de-respeito",
+      "pre": "Desde 1984",
+      "titulo": [{ "texto": "Churrasco" }, { "texto": "de respeito", "cor": "amarelo" }],
+      "apoio": ["tradição gaúcha em Jardim Camburi"],
+      "cta": "Vem saborear!"
+    },
+    {
+      "id": "frase-papo-leve",
+      "pre": "Resenha garantida",
+      "titulo": [{ "texto": "Churrasco" }, { "texto": "sério," }, { "texto": "papo leve", "cor": "amarelo" }],
+      "cta": "Chama os amigos!"
+    },
+    {
+      "id": "frase-daquele-churrasco",
+      "pre": "Todo dia é dia",
+      "titulo": [{ "texto": "Daquele" }, { "texto": "churrasco, tchê!", "cor": "amarelo" }],
+      "cta": "Partiu Espeto!"
+    },
+    {
+      "id": "frase-mesa-cheia",
+      "pre": "Resenha no Espeto com",
+      "titulo": [{ "texto": "Mesa cheia e" }, { "texto": "cerveja gelada", "cor": "amarelo" }],
+      "cta": "Chama a galera!"
+    }
+  ]
+}

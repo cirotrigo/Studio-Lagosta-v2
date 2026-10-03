@@ -20,6 +20,7 @@ import {
 import { cn, isExternalImage } from '@/lib/utils'
 import type { VereditoDeArte } from '@/lib/aprendizado/feedback-de-arte'
 import { formatPostTime, isVideoUrl, aspectClassForPostType } from '../calendar/calendar-utils'
+import { CapaDeVideo } from '../calendar/capa-de-video'
 import { publicarLembreteHref } from '@/lib/agenda-routes'
 import { useImproveJobForPost } from '@/stores/improve-queue-store'
 import type { SocialPost } from '../../../../prisma/generated/client'
@@ -140,9 +141,12 @@ export const PostArtCard = memo(function PostArtCard({
             <span className="px-2 text-center text-[11px] leading-tight">Gerando a arte…</span>
           </div>
         ) : ehVideo ? (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <Video className="h-8 w-8 text-muted-foreground" />
-          </div>
+          <CapaDeVideo
+            src={primeira}
+            alt={post.caption || 'Capa do vídeo'}
+            sizes="(max-width: 640px) 45vw, (max-width: 1024px) 30vw, 220px"
+            iconClassName="h-8 w-8 text-muted-foreground"
+          />
         ) : primeira ? (
           <Image
             src={primeira}
@@ -170,7 +174,9 @@ export const PostArtCard = memo(function PostArtCard({
         )}
 
         {/* Hora — o dado que se procura primeiro ao varrer o dia */}
-        <span className="absolute left-2 top-2 rounded bg-black/70 px-1.5 py-0.5 text-[11px] font-medium text-white backdrop-blur-sm">
+        <span className="absolute left-2 top-2 flex items-center gap-1 rounded bg-black/70 px-1.5 py-0.5 text-[11px] font-medium text-white backdrop-blur-sm">
+          {/* Com a capa no lugar do ícone, é isto que diz que a peça é vídeo */}
+          {ehVideo && <Video className="h-3 w-3" aria-label="Vídeo" />}
           {hora}
         </span>
 

@@ -89,6 +89,10 @@ export async function POST(
         thumbnail: null, // Não copiar thumbnail - será gerado ao abrir a página
         order: newOrder, // Logo após a página original
         templateId,
+        // A trilha (música, trecho, volumes) é parte da página: sem ela a cópia
+        // nascia "sem trilha configurada" e a música escolhida se perdia. Página
+        // sem trilha continua sem — campo omitido é NULL no banco (`Json?`).
+        ...(pageToDuplicate.audio != null ? { audio: pageToDuplicate.audio as never } : {}),
         // F1: a cópia leva o contrato da copy (autoria, fatos, histórico) — a
         // origem é conhecida. Os ids autorais dos blocos não mudam; os blocos
         // `extra-<id de camada>` (texto solto lido da página) acompanham os ids

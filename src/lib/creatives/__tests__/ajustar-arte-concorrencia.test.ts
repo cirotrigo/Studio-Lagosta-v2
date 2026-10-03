@@ -277,3 +277,46 @@ describe('C3-12 — a página promovida a MODELO durante o ajuste não é gravad
     expect(manchete()).toBe('Almoço executivo de sexta')
   })
 })
+
+describe('página com vídeo é recusada ANTES de qualquer escrita (2ª revisão do Codex, 02/10/2026)', () => {
+  const video = (visible: boolean) => ({ id: 'video-1', name: 'Vídeo', type: 'video', visible, locked: false, order: 0, position: { x: 0, y: 0 }, size: { width: 1080, height: 1920 }, fileUrl: 'https://blob.test/fundo.mp4', videoMetadata: {} })
+
+  it('ajustarArte: 422 PAGINA_COM_VIDEO, e a página fica exatamente como estava (camadas, miniatura e carimbo)', async () => {
+    banco.pagina = { ...paginaInicial(false), layers: [video(true), texto('headline', 1500, 'Almoço executivo')] }
+    const antes = JSON.stringify(banco.pagina)
+
+    const erro = await erroDe(ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { headline: 'Almoço de sexta' } }))
+    expect(erro).toBeInstanceOf(CreativeError)
+    expect((erro as CreativeError).code).toBe('PAGINA_COM_VIDEO')
+    expect((erro as CreativeError).status).toBe(422)
+    expect(JSON.stringify(banco.pagina)).toBe(antes)
+    expect(banco.generations).toHaveLength(0)
+  })
+
+  it('controle: vídeo OCULTO não entra na imagem, e o ajuste segue', async () => {
+    banco.pagina = { ...paginaInicial(false), layers: [video(false), texto('headline', 1500, 'Almoço executivo')] }
+    await ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { headline: 'Almoço de sexta' } })
+    expect(manchete()).toBe('Almoço de sexta')
+    expect(banco.generations).toHaveLength(1)
+  })
+
+  it('persistAndRenderCreative: recusa antes de criar a página (o banco falso nem tem page.create)', async () => {
+    const { persistAndRenderCreative } = await import('../persist')
+    const erro = await erroDe(
+      persistAndRenderCreative({
+        project: { id: 8, name: 'Lagosta Criativa', userId: 'dono-interno' },
+        templateId: 77,
+        templateName: 'Arte Rápida',
+        pageName: 'Peça',
+        width: 1080,
+        height: 1920,
+        layers: [video(true)],
+        fieldValues: {},
+        authorName: 'teste',
+      } as never),
+    )
+    expect(erro).toBeInstanceOf(CreativeError)
+    expect((erro as CreativeError).code).toBe('PAGINA_COM_VIDEO')
+    expect(banco.generations).toHaveLength(0)
+  })
+})

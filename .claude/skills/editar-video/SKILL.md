@@ -84,8 +84,8 @@ npx tsx .claude/skills/editar-video/organizar.ts "<pasta>" --aplicar --decisoes 
 npx tsx .claude/skills/editar-video/proxies.ts "<pasta>" --jobs 2      # em segundo plano
 ```
 
-H.264 1080p pelo hardware do Mac, em `02_PROXIES` espelhando `01_BRUTO`. **Mesmo
-fps, mesmos quadros e mesmo timecode do bruto** — conferido arquivo a arquivo; o que
+H.264 1080p pelo hardware do Mac, em `02_PROXIES` espelhando `01_BRUTO`. **Mesmos
+quadros e mesmo timecode do bruto, no fps que o Resolve lê** — conferido arquivo a arquivo; o que
 não confere aparece no resultado. Depois, rode o passo 2 de novo para ligar os proxies.
 
 **A ordem importa: projeto no Resolve ANTES dos proxies.** O Resolve só liga proxy
@@ -93,7 +93,8 @@ com o mesmo timecode do bruto, e ele lê a Sony a 120p como `17:28:14;030` enqua
 ffprobe diz `17:28:14:60` (o mesmo instante, escrito diferente; proxy com o do ffprobe
 é recusado, medido em 24/09/2026). Por isso o passo 2 grava
 `04_DAVINCI/timecodes.json` com o Start TC que o próprio Resolve leu, e os proxies
-nascem com ele.
+nascem com ele. Do mesmo jeito, `04_DAVINCI/fps.json` guarda o FPS que o Resolve leu em cada
+clipe, e o proxy sai CFR nesse fps (ver o VFR do iPhone nas armadilhas).
 
 **Por que não o Resolve gerar os proxies:** a geração de proxy do Resolve 21 e o
 Blackmagic Proxy Generator (instalado) são só interface — a API tem apenas
@@ -259,11 +260,16 @@ música com entrada e fade, planos com arquivo, `inicio_q` (quadro da fonte),
   correção está no modelo do projeto (passo 2); num projeto antigo, ajuste pela
   interface.
 - `LinkProxyMedia` devolve `False` sem dizer por quê: rotação diferente é aceita,
-  timecode diferente (ou ausente, quando o bruto tem) não.
-- **O iPhone grava VFR:** o `avg_frame_rate` do ProRes sai `992400/33083` (~29,997) e o `r_frame_rate` 30/1; o
-  proxy sai 30/1 com os MESMOS quadros e o Resolve liga (Noite Chilena, 25/09). Comparar o fps como texto dava
-  "não confere" e refazia o proxy a cada rodada (e a análise re-encodava o original de 19 GB). O `proxies.ts` e o
-  `analisar.ts` comparam o fps como número (tolerância de 0,1%), junto com quadros (±1) e timecode.
+  timecode diferente (ou ausente, quando o bruto tem) não, e fps diferente do que o Resolve lê também não.
+- **O iPhone grava VFR e o Resolve lê 30.0** (Salt, Fire & Drive, 02–03/10/2026, 31 clipes 4K em pé): o
+  `avg_frame_rate` do bruto sai `176700/5893` ou `55380/1847`, o `r_frame_rate` às vezes `30000/1001`, e o
+  `GetClipProperty("FPS")` dá 30.0 em todos. Proxy com `-fps_mode passthrough` saiu 30000/1001 em 5 clipes
+  (IMG_8822–8824, 8827, 8828) e o `LinkProxyMedia` recusou; refeito com `setpts=N/30/TB` + `-r 30` (mesmos
+  quadros, 30/1) ligou, e os 14 noturnos no mesmo jeito também. Comparar o `avg_frame_rate` deu 13 de 31
+  "não confere" com os quadros iguais. Agora o `resolve_projeto.py` grava `04_DAVINCI/fps.json`, o
+  `proxies.ts` gera CFR nesse fps e confere quadros (±1) + esse fps, nunca o `avg_frame_rate` do bruto
+  (`proxies.ts --autoteste` cobre um clipe VFR). Sem o `fps.json`, proxy existente só tem os quadros conferidos.
+  O `analisar.ts` aceita o proxy do projeto com os mesmos quadros (±1) e o fps a até 0,1% do `avg_frame_rate` do bruto.
 - **Desfazer (Cmd+Z) no Resolve ressuscita timeline apagada pelo script** e tira o nome da
   atual. Antes de renderizar, identifique a timeline pelo `GetUniqueId`, não pelo nome.
 - **Render só de áudio desliga o "Export Video" do projeto** e o `ExportVideo: True` da API

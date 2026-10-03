@@ -21,7 +21,8 @@ export interface AgendaDaPagina {
   slide: number | null
   /** A peça é slide de carrossel: ela não se agenda sozinha. */
   ehSlide: boolean
-  post: { id: string; status: string; quando: string | null } | null
+  /** `comVideo`: a mídia do post é vídeo (o MP4 exportado). */
+  post: { id: string; status: string; quando: string | null; comVideo: boolean } | null
 }
 
 interface AgendaDasPaginas {

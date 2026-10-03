@@ -31,6 +31,10 @@ import { VideosPanel } from './sidebar/videos-panel'
 import { MusicPanel } from './sidebar/music-panel'
 import { CreativesPanel } from './panels/creatives-panel'
 import { VideoExportButton } from './video-export-button'
+import { BotaoPlayPause } from './botao-play-pause'
+import { Timeline } from './timeline'
+import { guardarExportConcluido } from '@/lib/video/export-concluido'
+import { paginaEVideo, videosDaPagina } from '@/lib/video/camadas-de-video'
 import { PageModelButton, PageModelMobileSection } from './page-model-control'
 import { TemplateAIChat } from './template-ai-chat'
 import { ZoomControls, ZoomControlsMobile } from './zoom-controls'
@@ -245,8 +249,13 @@ function TemplateEditorContent({
 
   // MP4 pronto na fila → abrir a aba Criativos para o usuário agendar na hora
   // (o creatives-panel já escuta o mesmo evento para atualizar a lista)
+  const activeRightPanelRef = React.useRef(activeRightPanel)
+  activeRightPanelRef.current = activeRightPanel
   React.useEffect(() => {
-    const handleVideoCompleted = () => {
+    const handleVideoCompleted = (event: Event) => {
+      // Com a aba fechada o painel ainda não escuta: a conclusão fica guardada
+      // e ele a consome ao montar (com a aba aberta, o próprio painel trata)
+      if (activeRightPanelRef.current !== 'creatives') guardarExportConcluido((event as CustomEvent).detail)
       setActiveRightPanel('creatives')
     }
     window.addEventListener('video-export-completed', handleVideoCompleted)
@@ -261,7 +270,13 @@ function TemplateEditorContent({
   const [showScheduleModal, setShowScheduleModal] = React.useState(false)
   const [mobileFinishOpen, setMobileFinishOpen] = React.useState(false)
 
-  const canSchedule = templateType === 'STORY' && !!currentPageId
+  // Página com vídeo (ou motion) só vai ao ar pelo "Exportar Vídeo": "Agendar"
+  // manda um JPEG do quadro parado, e o story sai como imagem, sem aviso.
+  const paginaTemVideo = videosDaPagina(design.layers).length > 0 // vídeo oculto não conta
+  // Com MÚSICA a página também é um vídeo: agendada como imagem, o som ficaria
+  // para trás. A trava de verdade é do servidor (`recusaComoImagem`).
+  const paginaVideo = paginaEVideo(design.layers, design.audio)
+  const canSchedule = templateType === 'STORY' && !!currentPageId && !paginaVideo
 
   // Fecha o drawer de ferramentas assim que um elemento é aplicado no canvas
   const layerCount = design.layers.length
@@ -428,8 +443,19 @@ function TemplateEditorContent({
   // é onde se digita a instrução opcional para a melhoria com IA. Com uma
   // página, o modal esconde a lista e já vem com ela selecionada.
   const handleExport = React.useCallback(async () => {
+    if (paginaTemVideo) {
+      toast({
+        title: 'Esta página tem vídeo',
+        description: 'O criativo sai como imagem parada, sem o movimento. Para o vídeo, use "Exportar Vídeo".',
+      })
+    } else if (paginaVideo) {
+      toast({
+        title: 'Esta página tem música',
+        description: 'O criativo sai como imagem, sem o som. Para o vídeo com a música, use "Exportar Vídeo".',
+      })
+    }
     setShowGenerateModal(true)
-  }, [])
+  }, [paginaTemVideo, paginaVideo, toast])
 
   const handleGenerateMultipleCreatives = React.useCallback(async (
     selectedPageIds: string[],
@@ -739,6 +765,7 @@ function TemplateEditorContent({
                 </Button>
               )}
               <PageModelButton projectId={projectId} />
+              <BotaoPlayPause />
               <VideoExportButton />
               <Button size="sm" variant="outline" onClick={toggleFullscreen}>
                 <Maximize2 className="mr-2 h-4 w-4" />
@@ -924,9 +951,14 @@ function TemplateEditorContent({
               </Button>
 
               {/* Video Export Button (if visible) */}
-              {templateType === 'VIDEO' && (
-                <div className="shadow-lg rounded-md overflow-hidden">
-                  <VideoExportButton />
+              {paginaVideo && (
+                <div className="flex items-center gap-2">
+                  <div className="shadow-lg rounded-md overflow-hidden">
+                    <BotaoPlayPause />
+                  </div>
+                  <div className="shadow-lg rounded-md overflow-hidden">
+                    <VideoExportButton />
+                  </div>
                 </div>
               )}
             </div>
@@ -944,6 +976,9 @@ function TemplateEditorContent({
               </div>
             ) : null}
           </div>
+
+          {/* Linha do tempo (Fase 3); em página estática, só o "Montar sequência" */}
+          <Timeline onAdicionar={() => setActivePanel('images')} painelAberto={activePanel === 'images' || activePanel === 'videos'} />
 
           {/* Bottom Pages Bar - Polotno Style */}
           <PagesBar isCollapsed={isPagesBarCollapsed} onToggleCollapse={() => setPagesBarCollapsed(!isPagesBarCollapsed)} />
@@ -1203,6 +1238,9 @@ function TemplateEditorContent({
                   </span>
                 </button>
               )}
+              <div className="px-3 py-1 [&>button]:w-full">
+                <BotaoPlayPause />
+              </div>
               <div className="px-3 py-1 [&>button]:w-full">
                 <VideoExportButton />
               </div>

@@ -17,8 +17,16 @@ import { deductCreditsForFeature } from '@/lib/credits/deduct'
 import { googleDriveService } from '@/server/google-drive-service'
 import {
   convertWebMToMP4ServerSide,
+  temFaixaDeAudio,
   type AudioMixOptions,
 } from '@/lib/video/ffmpeg-server-converter'
+import { trechosDeVideo, trechosOriginais, volumeDoOriginal } from '@/lib/video/plano-de-som'
+import {
+  MOTIVO_DO_AVISO_DE_AUDIO,
+  fonteEfetiva,
+  proximaTentativaDeAudio,
+  type AudioAviso,
+} from '@/lib/video/audio-do-export'
 
 export type ProcessVideoJobResult =
   | { outcome: 'idle' }
@@ -57,17 +65,9 @@ function resolveExportAudioConfig(
   return raw
 }
 
-function findVideoLayer(designData: Record<string, unknown> | null): {
-  fileUrl?: string
-  videoMetadata?: { trimStart?: number }
-} | null {
+function camadasDaPagina(designData: Record<string, unknown> | null): Parameters<typeof trechosDeVideo>[0] {
   const layers = designData?.layers
-  if (!Array.isArray(layers)) return null
-  return (
-    (layers.find(
-      (l) => l && typeof l === 'object' && (l as { type?: string }).type === 'video',
-    ) as { fileUrl?: string; videoMetadata?: { trimStart?: number } } | undefined) ?? null
-  )
+  return Array.isArray(layers) ? (layers as Parameters<typeof trechosDeVideo>[0]) : null
 }
 
 async function downloadToTmp(url: string, label: string, tempFiles: string[]): Promise<string> {
@@ -92,56 +92,99 @@ async function downloadToTmp(url: string, label: string, tempFiles: string[]): P
 }
 
 /**
- * Baixa os insumos (vídeo fonte e/ou música) e monta o AudioMixOptions.
- * Devolve undefined quando não há o que mixar (ex.: 'original' sem arquivo).
+ * Baixa os insumos (vídeos da sequência e/ou música) e monta o AudioMixOptions.
+ * `mix` ausente = não há o que mixar. `aviso` vem quando o som vai sair
+ * diferente do pedido: algo FALHOU, ou a página não tem vídeo com som (foto +
+ * música, motion sobre foto, sequência sem vídeo) e o pedido contava com o som
+ * do vídeo (`fonteEfetiva` decide antes de baixar qualquer arquivo).
+ *
+ * Fase 4: o som original é o de CADA clipe de vídeo, na posição dele na linha
+ * do tempo (`trechosOriginais`, a mesma conta da prévia). Clipe sem faixa de
+ * áudio é pulado (`temFaixaDeAudio`), sem erro; só com nenhum sobrando o som
+ * original conta como falho.
  */
 async function prepareAudioMix(
-  cfg: ExportAudioConfig,
+  pedido: ExportAudioConfig,
   designData: Record<string, unknown> | null,
   tempFiles: string[],
-): Promise<AudioMixOptions | undefined> {
-  if (cfg.source === 'mute') return undefined
+): Promise<{ mix?: AudioMixOptions; aviso?: AudioAviso }> {
+  const layers = camadasDaPagina(designData)
+  const temSomOriginal = trechosDeVideo(layers).some((t) => t.fileUrl.startsWith('http'))
+  const { config: cfg, aviso: avisoDaFonte } = fonteEfetiva(pedido, temSomOriginal)
+  if (cfg.source === 'mute') return { aviso: avisoDaFonte }
   const mix: AudioMixOptions = { mode: cfg.source as AudioMixOptions['mode'] }
+  let somOriginalFalhou = false
 
   if (cfg.source === 'original' || cfg.source === 'mix') {
-    const videoLayer = findVideoLayer(designData)
-    const fileUrl = videoLayer?.fileUrl
-    if (typeof fileUrl === 'string' && fileUrl.startsWith('http')) {
-      mix.originalPath = await downloadToTmp(fileUrl, 'vídeo fonte', tempFiles)
-      mix.originalTrimStart = videoLayer?.videoMetadata?.trimStart ?? 0
-      mix.originalVolume = cfg.source === 'mix' ? (cfg.volumeOriginal ?? 80) / 100 : 1
-    } else if (cfg.source === 'original') {
-      console.warn('[Video Processor] Fonte de áudio "original" sem fileUrl — export sem áudio')
-      return undefined
+    if (temSomOriginal) {
+      try {
+        const baixados = new Map<string, string>() // o mesmo arquivo duas vezes na sequência baixa uma vez
+        const originais: NonNullable<AudioMixOptions['originais']> = []
+        for (const t of trechosOriginais(layers, cfg)) {
+          if (!t.fileUrl.startsWith('http')) continue
+          let path = baixados.get(t.fileUrl)
+          if (!path) {
+            path = await downloadToTmp(t.fileUrl, 'vídeo fonte', tempFiles)
+            baixados.set(t.fileUrl, path)
+          }
+          if (!(await temFaixaDeAudio(path))) {
+            console.warn(`[Video Processor] Clipe ${t.id} sem faixa de áudio — pulado`)
+            continue
+          }
+          originais.push({ path, trimStart: t.trimStart, inicio: t.inicio, duracao: t.duracao })
+        }
+        if (originais.length === 0) throw new Error('Nenhum vídeo da página tem faixa de áudio')
+        mix.originais = originais
+        mix.originalVolume = volumeDoOriginal(cfg)
+      } catch (error) {
+        // 'original' não tem outra fonte: quem chama registra e segue sem áudio.
+        // No mix a música não pode ir embora junto com o som que falhou.
+        if (cfg.source !== 'mix') throw error
+        console.error('[Video Processor] Som original indisponível — mix segue só com a música:', error)
+        somOriginalFalhou = true
+      }
     }
   }
 
   if ((cfg.source === 'library' || cfg.source === 'mix') && cfg.musicId) {
-    const music = await db.musicLibrary.findUnique({ where: { id: cfg.musicId } })
-    if (!music) {
-      throw new Error(`Música ${cfg.musicId} não encontrada na biblioteca`)
+    try {
+      const music = await db.musicLibrary.findUnique({ where: { id: cfg.musicId } })
+      if (!music) {
+        throw new Error(`Música ${cfg.musicId} não encontrada na biblioteca`)
+      }
+      // O original é o fallback: stem pedido que ainda não existe toca a faixa
+      // inteira, nunca um vídeo mudo.
+      const musicUrl =
+        cfg.audioVersion === 'instrumental' && music.instrumentalUrl
+          ? music.instrumentalUrl
+          : cfg.audioVersion === 'vocals' && music.vocalsUrl
+            ? music.vocalsUrl
+            : music.blobUrl
+      mix.musicPath = await downloadToTmp(musicUrl, `música ${music.name}`, tempFiles)
+      mix.musicStart = cfg.startTime ?? 0
+      mix.musicVolume =
+        (cfg.source === 'mix' ? cfg.volumeMusic ?? cfg.volume ?? 60 : cfg.volume ?? 80) / 100
+      mix.fadeInDuration = cfg.fadeIn ? cfg.fadeInDuration : undefined
+      mix.fadeOutDuration = cfg.fadeOut ? cfg.fadeOutDuration : undefined
+    } catch (error) {
+      // Música apagada ou fora do ar: no mix, o som do vídeo que já chegou
+      // íntegro não vai embora junto. Sem ele, quem chama segue sem áudio.
+      if (!mix.originais?.length) throw error
+      console.error('[Video Processor] Música indisponível — mix segue só com o som do vídeo:', error)
+      return { mix: { ...mix, mode: 'original' }, aviso: 'so-original' }
     }
-    // O original é o fallback: stem pedido que ainda não existe toca a faixa
-    // inteira, nunca um vídeo mudo.
-    const musicUrl =
-      cfg.audioVersion === 'instrumental' && music.instrumentalUrl
-        ? music.instrumentalUrl
-        : cfg.audioVersion === 'vocals' && music.vocalsUrl
-          ? music.vocalsUrl
-          : music.blobUrl
-    mix.musicPath = await downloadToTmp(musicUrl, `música ${music.name}`, tempFiles)
-    mix.musicStart = cfg.startTime ?? 0
-    mix.musicVolume =
-      (cfg.source === 'mix' ? cfg.volumeMusic ?? cfg.volume ?? 60 : cfg.volume ?? 80) / 100
-    mix.fadeInDuration = cfg.fadeIn ? cfg.fadeInDuration : undefined
-    mix.fadeOutDuration = cfg.fadeOut ? cfg.fadeOutDuration : undefined
   } else if (cfg.source === 'library') {
     console.warn('[Video Processor] Fonte "library" sem musicId — export sem áudio')
-    return undefined
+    return {}
   }
 
-  if (!mix.originalPath && !mix.musicPath) return undefined
-  return mix
+  const aviso: AudioAviso | undefined = somOriginalFalhou
+    ? mix.musicPath
+      ? 'so-musica'
+      : 'sem-audio'
+    : avisoDaFonte
+  if (!mix.originais?.length && !mix.musicPath) return { aviso }
+  return { mix, aviso }
 }
 
 export async function processNextVideoJob(): Promise<ProcessVideoJobResult> {
@@ -271,6 +314,8 @@ export async function processNextVideoJob(): Promise<ProcessVideoJobResult> {
     // Trilha sonora (mix server-side): o WebM novo chega mudo; a trilha vem
     // do __exportAudioConfig. Falha na preparação NÃO derruba o job — cai na
     // conversão sem áudio (pior caso: vídeo silencioso, nunca job perdido).
+    // Mas nunca em silêncio: audioAviso guarda o que saiu diferente do pedido
+    // e vai para a Generation, que é o que o card do criativo mostra.
     const jobDesignData =
       typeof job.designData === 'object' && job.designData !== null && !Array.isArray(job.designData)
         ? (job.designData as Record<string, unknown>)
@@ -278,11 +323,17 @@ export async function processNextVideoJob(): Promise<ProcessVideoJobResult> {
     const exportAudio = resolveExportAudioConfig(jobDesignData)
     const audioTempFiles: string[] = []
     let audioMix: AudioMixOptions | undefined
+    let audioAviso: AudioAviso | undefined
     if (exportAudio) {
       try {
-        audioMix = await prepareAudioMix(exportAudio, jobDesignData, audioTempFiles)
+        ;({ mix: audioMix, aviso: audioAviso } = await prepareAudioMix(
+          exportAudio,
+          jobDesignData,
+          audioTempFiles,
+        ))
       } catch (error) {
         console.error('[Video Processor] Falha ao preparar trilha — seguindo sem áudio:', error)
+        audioAviso = 'sem-audio'
       }
     }
 
@@ -311,22 +362,33 @@ export async function processNextVideoJob(): Promise<ProcessVideoJobResult> {
 
     let mp4Buffer: Buffer
     let thumbnailBuffer: Buffer | undefined
+    // A trilha como foi pedida: é por ela que a escada sabe o que ainda falta tentar
+    const audioPedido = audioMix
     try {
-      ;({ mp4Buffer, thumbnailBuffer } = await convertWebMToMP4ServerSide(
-        webmBuffer,
-        onConversionProgress,
-        { ...conversionOptions, audioMix },
-      ))
-    } catch (error) {
-      if (!audioMix) throw error
-      // Fallback: mix falhou (ex.: vídeo fonte sem faixa de áudio) — entrega
-      // o vídeo sem trilha em vez de perder o job e os créditos do usuário
-      console.error('[Video Processor] Mix de áudio falhou — reconvertendo sem trilha:', error)
-      ;({ mp4Buffer, thumbnailBuffer } = await convertWebMToMP4ServerSide(
-        webmBuffer,
-        onConversionProgress,
-        conversionOptions,
-      ))
+      // Escada: a trilha pedida → só a música → só o som do vídeo (os dois
+      // degraus do meio só quando havia som do vídeo E música) → sem áudio. Cada falha desce um degrau; sem trilha, a falha
+      // é do vídeo e derruba o job. No máximo 4 conversões — e a que falha
+      // por causa da trilha (ex.: vídeo fonte sem faixa de áudio) falha logo
+      // ao montar o filtro, antes de codificar.
+      for (;;) {
+        try {
+          ;({ mp4Buffer, thumbnailBuffer } = await convertWebMToMP4ServerSide(
+            webmBuffer,
+            onConversionProgress,
+            { ...conversionOptions, audioMix },
+          ))
+          break
+        } catch (error) {
+          if (!audioMix) throw error
+          const proxima = proximaTentativaDeAudio(audioMix, audioPedido ?? audioMix)
+          console.error(
+            `[Video Processor] Conversão com trilha falhou — tentando ${proxima.mix ? `com ${proxima.mix.mode === 'library' ? 'só a música' : 'só o som do vídeo'}` : 'sem áudio'}:`,
+            error,
+          )
+          audioMix = proxima.mix
+          audioAviso = proxima.aviso
+        }
+      }
     } finally {
       await Promise.all(audioTempFiles.map((file) => unlink(file).catch(() => {})))
     }
@@ -408,6 +470,10 @@ export async function processNextVideoJob(): Promise<ProcessVideoJobResult> {
     }
     if (driveBackupUrl) {
       completedFieldValues.driveBackupUrl = driveBackupUrl
+    }
+    if (audioAviso) {
+      completedFieldValues.audioAviso = audioAviso
+      completedFieldValues.audioAvisoMotivo = MOTIVO_DO_AVISO_DE_AUDIO[audioAviso]
     }
 
     const updatedDesignData = {

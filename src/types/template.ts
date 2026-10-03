@@ -116,7 +116,18 @@ export interface Layer {
     /** Trim do vídeo em segundos (editor E export reproduzem só o trecho). */
     trimStart?: number
     trimEnd?: number
+    /**
+     * Motion: vídeo com fundo transparente (WebM com alfa) por cima de uma foto
+     * ou de outro vídeo. Ver src/lib/video/camadas-de-video.ts.
+     */
+    overlay?: boolean
   }
+  /**
+   * Clipe da linha do tempo (foto ou vídeo em sequência, Fase 3). Foto:
+   * `duracao` em segundos (0,5–60; padrão 3). Vídeo: a duração é o trecho.
+   * Ver src/lib/video/linha-do-tempo.ts.
+   */
+  clipe?: { duracao?: number }
   // Rich text support - estilos aplicados a trechos específicos do texto
   richTextStyles?: RichTextStyle[]
   [key: string]: unknown

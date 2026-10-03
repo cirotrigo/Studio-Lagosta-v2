@@ -59,7 +59,7 @@ import { DuplicateDialog } from './duplicate-dialog'
 import { ApprovePostsDialog } from './approve-posts-dialog'
 import { ImproveCreativeModal } from '@/components/creatives/improve-creative-modal'
 import { toast } from 'sonner'
-import { getPostDate, formatPostDateTimeBR } from '../calendar/calendar-utils'
+import { getPostDate, formatPostDateTimeBR, isVideoUrl } from '../calendar/calendar-utils'
 import { descreverJanela } from '@/lib/posts/freeze-window'
 import { editarTemplateHref, publicarLembreteHref } from '@/lib/agenda-routes'
 import type { SocialPost } from '../../../../prisma/generated/client'
@@ -82,11 +82,6 @@ interface PostDetailViewProps {
   /** Tooltips das setas — "seg 31/08 16:00", para saber para onde vai. */
   rotuloAnterior?: string | null
   rotuloProximo?: string | null
-}
-
-const isVideoUrl = (url: string) => {
-  const videoExtensions = ['.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v']
-  return videoExtensions.some((ext) => url.toLowerCase().includes(ext))
 }
 
 /**
