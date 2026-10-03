@@ -1,7 +1,7 @@
 import Konva from 'konva'
 import type { Layer, DesignData } from '@/types/template'
 import type { AudioConfig } from '@/components/audio/audio-selection-modal'
-import { duracaoDoExport, passoDoVideo, trechoDoVideo, videosDaPagina } from '@/lib/video/camadas-de-video'
+import { duracaoDoExport, ehClipe, passoDoVideo, trechoDoVideo, videosDaPagina } from '@/lib/video/camadas-de-video'
 import { clipeAtivoEm, linhaDoTempo, type Clipe } from '@/lib/video/linha-do-tempo'
 import { relogioDaPagina, type RelogioDaPagina } from '@/lib/video/relogio-da-pagina'
 
@@ -192,7 +192,7 @@ export async function exportVideoWithLayers(
   },
   options: VideoExportOptions = {},
   onProgress?: (progress: VideoExportProgress) => void
-): Promise<{ webm: Blob; duracao: number }> {
+): Promise<{ webm: Blob; duracao: number; capa: string }> {
   const {
     fps: requestedFps = 30,
     duration,
@@ -293,7 +293,10 @@ export async function exportVideoWithLayers(
     const inicioDoClipe = (id: string) => clipes.find((c) => c.id === id)?.inicio ?? 0
     // Os nós dos clipes são mostrados/escondidos por quadro, direto no Konva
     // (o React não participa da gravação); o estado original volta no fim
-    const nosDosClipes = clipes
+    // Todo clipe do design, não só os da linha: o que passou do teto é
+    // descartado pela leitura e não pode ficar desenhado por cima na gravação
+    const nosDosClipes = design.layers
+      .filter((l) => ehClipe(l))
       .map((c) => ({ id: c.id, node: stage.findOne(`#${c.id}`) }))
       .filter((c): c is { id: string; node: Konva.Node } => !!c.node)
     const visiveisAntes = nosDosClipes.map(({ node }) => node.visible())
@@ -412,6 +415,10 @@ export async function exportVideoWithLayers(
     offscreenCtx.fillStyle = design.canvas.backgroundColor || '#FFFFFF'
     offscreenCtx.fillRect(0, 0, designWidth, designHeight)
     offscreenCtx.drawImage(initialSnapshot, 0, 0)
+    // A CAPA é este quadro: primeiro clipe na tela e todo vídeo parado no
+    // início do próprio trecho. Capturar depois do `finally` pegava o stage
+    // antes de o motor reconciliar (o clipe que estava na tela ao exportar).
+    const capa = offscreenCanvas.toDataURL('image/jpeg', 0.8)
 
     // AGUARDAR próximo frame para garantir que o canvas foi renderizado
     await new Promise(resolve => requestAnimationFrame(resolve))
@@ -652,7 +659,7 @@ export async function exportVideoWithLayers(
 
     onProgress?.({ phase: 'finalizing', progress: 100 })
     // A duração vai junto: a fila precisa da MESMA que a gravação usou
-    return { webm: webmBlob, duracao: videoDuration }
+    return { webm: webmBlob, duracao: videoDuration, capa }
   } finally {
     for (const fechar of encerrar) {
       try {
@@ -685,73 +692,6 @@ export async function exportVideoWithLayers(
       // ignore
     }
   }
-}
-
-/**
- * Gera um thumbnail estático do vídeo no frame atual
- *
- * @param stage - Konva Stage
- * @param videoLayer - Layer do vídeo
- * @returns Data URL do thumbnail
- */
-export async function generateVideoThumbnail(
-  stage: Konva.Stage,
-  videoLayer?: Layer | null
-): Promise<string> {
-  if (!stage) {
-    throw new Error('Stage não disponível')
-  }
-
-  // Página sem vídeo (foto + música): a capa é o stage como está
-  if (!videoLayer) {
-    stage.batchDraw()
-    return stage.toDataURL({ pixelRatio: 1, mimeType: 'image/jpeg', quality: 0.8 })
-  }
-
-  // Encontrar o VideoNode no stage
-  const videoNode = stage.findOne(`#${videoLayer.id}`) as Konva.Image | null
-
-  if (!videoNode) {
-    throw new Error('VideoNode não encontrado')
-  }
-
-  // Aguardar frame válido do vídeo
-  const video = videoNode.image() as HTMLVideoElement
-
-  await new Promise<void>((resolve) => {
-    if (video.readyState >= 2) {
-      resolve()
-    } else {
-      video.addEventListener('loadeddata', () => resolve(), { once: true })
-    }
-  })
-
-  // Garantir que o primeiro frame do TRIM está renderizado antes do thumbnail
-  const thumbTime = videoLayer.videoMetadata?.trimStart ?? 0
-  try {
-    video.currentTime = thumbTime
-  } catch (error) {
-    console.warn('[generateVideoThumbnail] Não foi possível definir currentTime:', error)
-  }
-
-  await new Promise<void>((resolve) => {
-    video.addEventListener('seeked', () => resolve(), { once: true })
-    if (video.readyState >= 2 && Math.abs(video.currentTime - thumbTime) < 0.05) {
-      resolve()
-    }
-  })
-
-  videoNode.getLayer()?.batchDraw()
-  stage.batchDraw()
-
-  // Gerar thumbnail do stage atual
-  const dataURL = stage.toDataURL({
-    pixelRatio: 1,
-    mimeType: 'image/jpeg',
-    quality: 0.8,
-  })
-
-  return dataURL
 }
 
 /**

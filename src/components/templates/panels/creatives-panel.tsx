@@ -24,6 +24,7 @@ import { ptBR } from 'date-fns/locale'
 import { PostComposer, type PostFormData } from '@/components/posts/post-composer'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { avisoDeAudioDe } from '@/lib/video/audio-do-export'
+import { consumirExportConcluido } from '@/lib/video/export-concluido'
 import { useAgendaDasPaginas } from '@/hooks/use-agenda-das-paginas'
 
 interface CreativesPanelProps {
@@ -155,6 +156,9 @@ export function CreativesPanel({ templateId, projectId, onOpenAIPanel }: Creativ
     window.addEventListener('video-export-progress', handleVideoProgress)
     window.addEventListener('video-export-completed', handleVideoCompleted)
     window.addEventListener('video-export-failed', handleVideoFailed)
+    // O MP4 que ficou pronto com a aba fechada (o shell guardou e a abriu)
+    const pendente = consumirExportConcluido()
+    if (pendente) handleVideoCompleted(new CustomEvent('video-export-completed', { detail: pendente }))
 
     return () => {
       window.removeEventListener('video-export-queued', handleVideoQueued)

@@ -389,13 +389,15 @@ export function ContinuousWorkspace() {
       const previousPageId = currentPageIdRef.current
       if (previousPageId) {
         void generateThumbnail(CAPTURE_WIDTH).then((url) => {
-          if (url) {
-            setCaptures((prev) => {
-              const next = new Map(prev)
-              next.set(previousPageId, url)
-              return next
-            })
-          }
+          // Sem captura nova (vídeo fora do quadro de 0), a anterior é de uma
+          // versão que pode ter sido editada: some, e a prévia cai no stage vivo
+          setCaptures((prev) => {
+            if (!url && !prev.has(previousPageId)) return prev
+            const next = new Map(prev)
+            if (url) next.set(previousPageId, url)
+            else next.delete(previousPageId)
+            return next
+          })
         })
       }
       setCurrentPageId(pageId)

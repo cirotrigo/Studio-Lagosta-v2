@@ -22,7 +22,8 @@ const arredondar = (v: number) => Math.round(v / PASSO) * PASSO
 const prender = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v))
 
 /**
- * A linha do tempo sob o canvas (Fase 3): só em página que é vídeo. Play/pause,
+ * A linha do tempo sob o canvas (Fase 3); página estática ganha só o "Montar
+ * sequência". Play/pause,
  * tempo, régua clicável, clipes em proporção (bordas arrastáveis, reordenar,
  * tirar) e a barra da música. Tudo desabilitado durante a gravação. No celular
  * fica só play/pause e a duração.
@@ -47,7 +48,7 @@ export function Timeline({ onAdicionar, painelAberto }: { onAdicionar: () => voi
 
   // O tempo corre por rAF direto no DOM: nenhum re-render por quadro
   React.useEffect(() => {
-    if (!ehVideo) return
+    if (!ehVideo && linha.clipes.length === 0) return
     let quadro = 0
     const tique = () => {
       quadro = requestAnimationFrame(tique)
@@ -57,10 +58,24 @@ export function Timeline({ onAdicionar, painelAberto }: { onAdicionar: () => voi
     }
     quadro = requestAnimationFrame(tique)
     return () => cancelAnimationFrame(quadro)
-  }, [relogio, duracao, ehVideo])
+  }, [relogio, duracao, ehVideo, linha.clipes.length])
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
-  if (!ehVideo) return null
+  const montar = () => {
+    armarInsercaoDeClipe()
+    onAdicionar()
+  }
+  // Página estática (fotos, sem vídeo nem música) também monta sequência: o
+  // "+" é a porta de entrada, e o primeiro clipe pode ser a própria foto de fundo
+  if (!ehVideo && linha.clipes.length === 0) {
+    return (
+      <div className="hidden items-center border-t border-border/40 bg-card/80 px-3 py-1.5 backdrop-blur-sm md:flex">
+        <Button size="sm" variant="ghost" className="h-7 w-fit gap-1 px-2 text-xs" onClick={montar}>
+          <Plus className="h-3.5 w-3.5" /> Montar sequência de fotos e vídeos
+        </Button>
+      </div>
+    )
+  }
 
   const ir = (e: React.PointerEvent<HTMLDivElement>) => {
     if (gravando || duracao <= 0) return
@@ -122,7 +137,12 @@ export function Timeline({ onAdicionar, painelAberto }: { onAdicionar: () => voi
                     fracao={c.duracao / total}
                     desabilitado={gravando}
                     onTirar={() => tirar(c.id)}
-                    onAjustar={(patch) => updateLayer(c.id, (l) => ({ ...l, ...patch }))}
+                    onAjustar={(patch) =>
+                      // Uma entrada de desfazer por arraste: o vídeo é ajustado
+                      // enquanto a borda anda (para o quadro aparecer) e no soltar
+                      updateLayer(c.id, (l) => ({ ...l, ...patch }), { coalesceKey: `clipe-borda:${c.id}` })
+                    }
+                    onMostrar={(t) => relogio.ir(t)}
                   />
                 ))}
                 <Button
@@ -132,10 +152,7 @@ export function Timeline({ onAdicionar, painelAberto }: { onAdicionar: () => voi
                   title="Adicionar foto ou vídeo à linha do tempo"
                   aria-label="Adicionar clipe"
                   disabled={gravando}
-                  onClick={() => {
-                    armarInsercaoDeClipe()
-                    onAdicionar()
-                  }}
+                  onClick={montar}
                 >
                   <Plus className="h-4 w-4" />
                 </Button>
@@ -149,10 +166,7 @@ export function Timeline({ onAdicionar, painelAberto }: { onAdicionar: () => voi
             variant="ghost"
             className="h-7 w-fit gap-1 px-2 text-xs"
             disabled={gravando}
-            onClick={() => {
-              armarInsercaoDeClipe()
-              onAdicionar()
-            }}
+            onClick={montar}
           >
             <Plus className="h-3.5 w-3.5" /> Montar sequência de fotos e vídeos
           </Button>
@@ -185,6 +199,7 @@ function ClipeNaFaixa({
   desabilitado,
   onTirar,
   onAjustar,
+  onMostrar,
 }: {
   clipe: Clipe
   camada: Layer | undefined
@@ -192,6 +207,8 @@ function ClipeNaFaixa({
   desabilitado: boolean
   onTirar: () => void
   onAjustar: (patch: Partial<Layer>) => void
+  /** Leva o relógio da página ao instante `t` (o quadro da borda arrastada). */
+  onMostrar: (t: number) => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: clipe.id, disabled: desabilitado })
   const ref = React.useRef<HTMLDivElement>(null)
@@ -220,6 +237,17 @@ function ClipeNaFaixa({
             : prender(ts0 + dx, 0, te0 - DURACAO_MIN_DO_CLIPE),
       )
       setRascunho(ultimo)
+      // Vídeo: aplica o corte já e mostra o quadro da borda que anda (o início
+      // do trecho, ou o último quadro). Foto não tem quadro a mostrar.
+      if (clipe.tipo === 'video') {
+        if (lado === 'dir') {
+          onAjustar({ videoMetadata: { ...meta, trimEnd: ultimo } })
+          onMostrar(clipe.inicio + Math.max(0, ultimo - ts0 - 0.05))
+        } else {
+          onAjustar({ videoMetadata: { ...meta, trimStart: ultimo } })
+          onMostrar(clipe.inicio)
+        }
+      }
     }
     const soltar = () => {
       window.removeEventListener('pointermove', mover)

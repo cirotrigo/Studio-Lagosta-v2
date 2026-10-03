@@ -33,6 +33,7 @@ import { CreativesPanel } from './panels/creatives-panel'
 import { VideoExportButton } from './video-export-button'
 import { BotaoPlayPause } from './botao-play-pause'
 import { Timeline } from './timeline'
+import { guardarExportConcluido } from '@/lib/video/export-concluido'
 import { paginaEVideo, videosDaPagina } from '@/lib/video/camadas-de-video'
 import { PageModelButton, PageModelMobileSection } from './page-model-control'
 import { TemplateAIChat } from './template-ai-chat'
@@ -248,8 +249,13 @@ function TemplateEditorContent({
 
   // MP4 pronto na fila → abrir a aba Criativos para o usuário agendar na hora
   // (o creatives-panel já escuta o mesmo evento para atualizar a lista)
+  const activeRightPanelRef = React.useRef(activeRightPanel)
+  activeRightPanelRef.current = activeRightPanel
   React.useEffect(() => {
-    const handleVideoCompleted = () => {
+    const handleVideoCompleted = (event: Event) => {
+      // Com a aba fechada o painel ainda não escuta: a conclusão fica guardada
+      // e ele a consome ao montar (com a aba aberta, o próprio painel trata)
+      if (activeRightPanelRef.current !== 'creatives') guardarExportConcluido((event as CustomEvent).detail)
       setActiveRightPanel('creatives')
     }
     window.addEventListener('video-export-completed', handleVideoCompleted)
@@ -971,7 +977,7 @@ function TemplateEditorContent({
             ) : null}
           </div>
 
-          {/* Linha do tempo (Fase 3): só em página que é vídeo */}
+          {/* Linha do tempo (Fase 3); em página estática, só o "Montar sequência" */}
           <Timeline onAdicionar={() => setActivePanel('images')} painelAberto={activePanel === 'images' || activePanel === 'videos'} />
 
           {/* Bottom Pages Bar - Polotno Style */}

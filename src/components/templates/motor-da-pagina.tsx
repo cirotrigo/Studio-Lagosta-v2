@@ -5,7 +5,8 @@ import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { useMultiPageOpcional } from '@/contexts/multi-page-context'
 import { useMusica } from '@/hooks/use-music-library'
 import { useMusicStemStatus } from '@/hooks/use-music-stem'
-import { duracaoDaPagina } from '@/lib/video/camadas-de-video'
+import { duracaoDaPagina, paginaEVideo } from '@/lib/video/camadas-de-video'
+import { toast } from '@/hooks/use-toast'
 import { clipeAtivoEm, linhaDoTempo } from '@/lib/video/linha-do-tempo'
 import { publicarClipeAtivo } from '@/lib/video/clipe-ativo'
 import { planoDeSom, volumeEm, type PlanoDeSom } from '@/lib/video/plano-de-som'
@@ -54,6 +55,8 @@ export function MotorDaPagina() {
     audio.crossOrigin = 'anonymous'
     let quadro = 0
     let srcAtual = ''
+    // Um play() por vez: o pedido leva alguns quadros para ser atendido
+    let pedindo = false
 
     const tique = () => {
       quadro = requestAnimationFrame(tique)
@@ -69,13 +72,22 @@ export function MotorDaPagina() {
       const linha = linhaDoTempo(d.layers, d.audio, duracoesDosVideosMontados())
       publicarClipeAtivo(chave, clipeAtivoEm(linha.clipes, t)?.id ?? null)
 
-      // A volta
-      if (estado.tocando) {
-        const duracao = linha.duracao
-        if (duracao !== null && t >= duracao) {
+      // Deixou de ser temporal (tirou o último vídeo, desfez a música): a
+      // página é uma imagem, e o relógio volta a 0, parado.
+      if (!paginaEVideo(d.layers, d.audio)) {
+        relogio.zerar()
+        if (!audio.paused) audio.pause()
+        return
+      }
+
+      // A volta (tocando) e o fim que encolheu (parado: o quadro fica no último instante)
+      const duracao = linha.duracao
+      if (duracao !== null && t >= duracao) {
+        if (estado.tocando) {
           relogio.ir(0)
           return
         }
+        if (t > duracao) relogio.ir(duracao)
       }
 
       // A música
@@ -99,8 +111,26 @@ export function MotorDaPagina() {
       }
       audio.volume = volumeEm(p, t)
       const deveTocar = estado.tocando && t < p.duracao
-      if (deveTocar && audio.paused) audio.play().catch(() => {})
-      else if (!deveTocar && !audio.paused) audio.pause()
+      if (deveTocar && audio.paused && !pedindo) {
+        pedindo = true
+        audio
+          .play()
+          .catch((erro: unknown) => {
+            // Interrompido por pause()/troca de arquivo: não é recusa
+            if ((erro as { name?: string })?.name === 'AbortError') return
+            // Recusado (navegador bloqueou o som, arquivo indisponível): parar a
+            // prévia em vez de seguir muda. Tocar de novo é a nova tentativa.
+            relogio.pausar()
+            toast({
+              variant: 'destructive',
+              title: 'A música não tocou',
+              description: 'O navegador não deixou a música tocar agora. Clique em tocar de novo para tentar.',
+            })
+          })
+          .finally(() => {
+            pedindo = false
+          })
+      } else if (!deveTocar && !audio.paused) audio.pause()
     }
     quadro = requestAnimationFrame(tique)
 

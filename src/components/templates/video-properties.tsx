@@ -12,6 +12,8 @@ import { Switch } from '@/components/ui/switch'
 import { useBlobUpload } from '@/hooks/use-blob-upload'
 import { useToast } from '@/hooks/use-toast'
 import { videoPrincipal } from '@/lib/video/camadas-de-video'
+import { linhaDoTempo } from '@/lib/video/linha-do-tempo'
+import { duracoesDosVideosMontados } from '@/lib/video/videos-montados'
 import { useRelogioDaPagina } from '@/lib/video/relogio-da-pagina'
 import { useMultiPageOpcional } from '@/contexts/multi-page-context'
 
@@ -73,6 +75,11 @@ export function VideoProperties() {
       ? Math.min(trimmedDuration, musicSliceDuration)
       : trimmedDuration ?? musicSliceDuration
 
+  // Instante da PÁGINA em que este vídeo entra: 0 fora da linha do tempo; num
+  // clipe, o início dele (o relógio é da página inteira, não do clipe)
+  const inicioNaPagina =
+    linhaDoTempo(design.layers, null, duracoesDosVideosMontados()).clipes.find((c) => c.id === selectedLayer.id)?.inicio ?? 0
+
   const handleTogglePlay = () => relogio.alternar()
 
   const handleToggleMute = () => {
@@ -110,7 +117,7 @@ export function VideoProperties() {
     const [start, rawEnd] = values
     const end = Math.max(start + 0.5, rawEnd) // trecho mínimo de 0,5s
     // Mostra o corte: alça do início → página em 0; alça do fim → último quadro
-    relogio.ir(start !== trimStart ? 0 : Math.max(0, end - start - 0.05))
+    relogio.ir(inicioNaPagina + (start !== trimStart ? 0 : Math.max(0, end - start - 0.05)))
     updateLayer(
       selectedLayer.id,
       (layer) => ({
@@ -126,8 +133,8 @@ export function VideoProperties() {
     )
   }
 
-  // O slider é no tempo do ARQUIVO; o relógio é da página (0 = início do trecho)
-  const handleSeekPreview = (values: number[]) => relogio.ir(values[0] - trimStart)
+  // O slider é no tempo do ARQUIVO; o relógio é da página (o clipe entra em `inicioNaPagina`)
+  const handleSeekPreview = (values: number[]) => relogio.ir(inicioNaPagina + values[0] - trimStart)
 
   const handleCapturePoster = async () => {
     const video = findLayerVideoElement(selectedLayer.id)

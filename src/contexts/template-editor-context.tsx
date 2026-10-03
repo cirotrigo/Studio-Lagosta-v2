@@ -12,7 +12,8 @@ import { useMultiPageOpcional } from '@/contexts/multi-page-context'
 import { relogioDaPagina } from '@/lib/video/relogio-da-pagina'
 import { videosProntosEmZero } from '@/lib/video/videos-montados'
 import { ehClipe } from '@/lib/video/camadas-de-video'
-import { inserirClipe, normalizarClipes } from '@/lib/video/linha-do-tempo'
+import { cabemMaisClipes, inserirClipe, MENSAGEM_TETO_DE_CLIPES, normalizarClipes } from '@/lib/video/linha-do-tempo'
+import { toast } from '@/hooks/use-toast'
 import { consumirInsercaoDeClipe } from '@/lib/video/insercao-de-clipe'
 import { useQueryClient } from '@tanstack/react-query'
 import { canonicalizeShapeStyleForPersistence } from '@/lib/shape-style'
@@ -171,9 +172,11 @@ interface TemplateEditorProviderProps {
 }
 
 function normalizeLayerOrder(layers: Layer[]): Layer[] {
-  return layers
-    .map((layer, idx) => ({ ...layer, order: idx }))
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+  // Toda escrita passa aqui: os clipes da linha do tempo ficam no bloco
+  // contíguo do fundo (desmarcar um do meio, reordenar pelo painel Camadas,
+  // trazer para frente) — uma camada solta entre clipes cobriria um e ficaria
+  // atrás de outro. Página sem clipe: a ordem do array, como sempre.
+  return normalizarClipes(layers.map((layer, idx) => ({ ...layer, order: idx })))
 }
 
 function cloneDesign(design: DesignData): DesignData {
@@ -193,6 +196,10 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
     canvas: { ...template.designData.canvas },
     layers: normalizeLayerOrder(template.designData.layers ?? []),
   }))
+  // Para as travas que precisam do design ANTES de mexer (teto de clipes) sem
+  // recriar os callbacks a cada edição
+  const designAtualRef = React.useRef(design)
+  designAtualRef.current = design
   const [dynamicFields, setDynamicFieldsState] = React.useState<DynamicField[]>(() =>
     Array.isArray(template.dynamicFields) ? [...template.dynamicFields] : [],
   )
@@ -440,6 +447,10 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
     (layer: Layer) => {
       // O "+" da linha do tempo armou a aba: a foto/vídeo entra como clipe
       const comoClipe = consumirInsercaoDeClipe() && (layer.type === 'image' || layer.type === 'video')
+      if ((comoClipe || ehClipe(layer)) && !cabemMaisClipes(designAtualRef.current.layers)) {
+        toast({ variant: 'destructive', description: MENSAGEM_TETO_DE_CLIPES })
+        return
+      }
       applyDesign((prev) => {
         const nextLayers = comoClipe
           ? inserirClipe(prev.layers, layer, prev.canvas)
@@ -467,6 +478,10 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
       // contrato). A transformação é pura e testada em `camada-copiada.ts`.
       const copia = camadaDuplicadaNoEditor(source, { novoId: createId(), paginaTemContrato: temCopyAutoral })
       if (ehClipe(source)) {
+        if (!cabemMaisClipes(design.layers)) {
+          toast({ variant: 'destructive', description: MENSAGEM_TETO_DE_CLIPES })
+          return
+        }
         // Clipe duplicado fica no MESMO lugar (tela cheia) e entra logo depois do original na sequência
         applyDesign((prev) => {
           const ids = normalizarClipes(prev.layers).filter((l) => ehClipe(l)).map((l) => l.id)
@@ -556,6 +571,10 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
 
     // C9-02/C9-11: colar é duplicar — a transformação é a mesma, pura e testada em `camada-copiada.ts`.
     const clones = camadasColadasNoEditor(clipboard, { novoId: createId, paginaTemContrato: temCopyAutoral })
+    if (!cabemMaisClipes(designAtualRef.current.layers, clones.filter((l) => ehClipe(l)).length)) {
+      toast({ variant: 'destructive', description: MENSAGEM_TETO_DE_CLIPES })
+      return
+    }
 
     applyDesign((prev) => {
       const nextLayers = normalizeLayerOrder([...prev.layers, ...clones])

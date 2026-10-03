@@ -23,14 +23,12 @@ import {
   exportVideoWithLayers,
   checkVideoExportSupport,
   type VideoExportProgress,
-  generateVideoThumbnail,
 } from '@/lib/konva/konva-video-export'
 import { AudioSelectionModal, type AudioConfig } from '@/components/audio/audio-selection-modal'
 import { upload } from '@vercel/blob/client'
 import { createId } from '@/lib/id'
 import { duracaoDaPagina, paginaEVideo, videoPrincipal } from '@/lib/video/camadas-de-video'
 import { trechosDeVideo } from '@/lib/video/plano-de-som'
-import { fonteEfetiva } from '@/lib/video/audio-do-export'
 import { useMultiPageOpcional } from '@/contexts/multi-page-context'
 import { relogioDaPagina } from '@/lib/video/relogio-da-pagina'
 
@@ -128,10 +126,6 @@ export function VideoExportButton() {
     if (videoDuration === null || hasPersistedAudioRef.current) return
     setAudioConfig((prev) => (prev.endTime === videoDuration ? prev : { ...prev, endTime: videoDuration }))
   }, [videoDuration, design.audio])
-
-  // O que o export vai ter de fato: sem vídeo de base, "som do vídeo" vira
-  // mudo e "mix" vira só a música — a mesma decisão da fila (`fonteEfetiva`).
-  const audioEfetivo = React.useMemo(() => fonteEfetiva(audioConfig, !semSomOriginal), [audioConfig, semSomOriginal])
 
   const creditCost = getCost('video_export')
   const hasCredits = canPerformOperation('video_export')
@@ -337,7 +331,7 @@ export function VideoExportButton() {
     }
 
     try {
-      const { webm: videoBlob, duracao: exportedDuration } = await exportVideoWithLayers(
+      const { webm: videoBlob, duracao: exportedDuration, capa } = await exportVideoWithLayers(
         stage,
         videoLayer ?? null,
         designGravado,
@@ -350,7 +344,7 @@ export function VideoExportButton() {
         {
           fps: 30,
           quality: 0.8,
-          audioConfig: audioEfetivo.config,
+          audioConfig,
           relogio: relogioDaPagina(paginaGravada),
           cancelado,
         },
@@ -361,8 +355,8 @@ export function VideoExportButton() {
 
       setExportProgress({ phase: 'preparing', progress: 45 })
 
-      // Capa definida no painel de vídeo tem prioridade; sem capa, captura o
-      // primeiro frame do trim (sem vídeo, o quadro do stage)
+      // Capa definida no painel de vídeo tem prioridade; sem capa, o quadro 0
+      // que a gravação capturou (primeiro clipe, vídeos no início do trecho)
       let thumbnailBlob: Blob
       const posterUrl = videoLayer?.videoMetadata?.posterUrl
       if (posterUrl) {
@@ -372,10 +366,10 @@ export function VideoExportButton() {
           thumbnailBlob = await posterResponse.blob()
         } catch (error) {
           console.warn('[Video Export] Falha ao usar posterUrl como capa, capturando frame:', error)
-          thumbnailBlob = await dataUrlToBlob(await generateVideoThumbnail(stage, videoLayer ?? null))
+          thumbnailBlob = await dataUrlToBlob(capa)
         }
       } else {
-        thumbnailBlob = await dataUrlToBlob(await generateVideoThumbnail(stage, videoLayer ?? null))
+        thumbnailBlob = await dataUrlToBlob(capa)
       }
 
       const videoUploadPath = generateUploadPath(clerkUserId, designName)
@@ -424,7 +418,9 @@ export function VideoExportButton() {
         thumbnailBlobSize: thumbnailBlob.size,
         designData: designGravado,
         // O WebM acima é MUDO — a fila mixa a trilha via ffmpeg a partir daqui
-        audioConfig: audioEfetivo.config,
+        // O PEDIDO, não o efetivo: a fila decide a fonte (`fonteEfetiva`) e
+        // grava o aviso na Generation — enviado já trocado, o aviso se perdia.
+        audioConfig,
       }
 
       console.log('[Video Export] Enviando para fila:', {
