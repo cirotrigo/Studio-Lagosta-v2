@@ -83,7 +83,10 @@ export function TransicaoDaJuncao({
           disabled={desabilitado}
           title={`Transição: ${rotulo}`}
           aria-label={`Transição entre os clipes: ${rotulo}`}
-          className={`absolute left-1/2 top-1/2 z-10 flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border bg-background shadow-sm transition hover:border-primary disabled:opacity-50 ${atual ? 'border-primary text-primary' : 'border-border text-muted-foreground'}`}
+          // max-w-none: o `* { max-width: 100% }` do globals.css prendia o botão à
+          // largura da junção, que é 0 — ele colapsava e sumia. Fica na borda de
+          // CIMA da faixa: no meio cobria as alças de duração das duas pontas.
+          className={`absolute left-1/2 top-0 z-20 flex h-5 w-5 max-w-none -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full shadow-md ring-2 ring-background transition hover:scale-110 disabled:opacity-50 ${atual ? 'bg-primary text-primary-foreground' : 'bg-foreground text-background'}`}
         >
           <IconeDaTransicao transicao={atual} className="h-3 w-3" />
         </button>

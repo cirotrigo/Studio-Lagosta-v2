@@ -136,7 +136,7 @@ export function Timeline({ onAdicionar, painelAberto }: { onAdicionar: () => voi
                     {i > 0 && (
                       // A junção: o botão da transição, por cima das duas pontas
                       // (-mx-px desconta o gap que este item a mais criaria)
-                      <div className="relative -mx-px w-0 shrink-0">
+                      <div className="relative z-20 -mx-px w-0 shrink-0">
                         <TransicaoDaJuncao clipes={linha.clipes} indice={i} desabilitado={gravando} />
                       </div>
                     )}
