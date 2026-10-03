@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
+import type { Substituicao } from '@/lib/video/estado-do-video-do-post'
 
 /**
  * A agenda das páginas de uma pasta — o horário previsto de cada peça e o
@@ -21,8 +22,21 @@ export interface AgendaDaPagina {
   slide: number | null
   /** A peça é slide de carrossel: ela não se agenda sozinha. */
   ehSlide: boolean
-  /** `comVideo`: a mídia do post é vídeo (o MP4 exportado). */
-  post: { id: string; status: string; quando: string | null; comVideo: boolean } | null
+  /**
+   * `comVideo`: o post é de vídeo (`postDeVideo`). `substituivel`: vídeo ainda
+   * trocável pelo editor (rascunho ou agendado, não entregue).
+   * `videoDesatualizado`: a página mudou depois do vídeo. `substituicao`: a
+   * troca pedida mais recente.
+   */
+  post: {
+    id: string
+    status: string
+    quando: string | null
+    comVideo: boolean
+    substituivel: boolean
+    videoDesatualizado: boolean
+    substituicao: Substituicao | null
+  } | null
 }
 
 interface AgendaDasPaginas {

@@ -30,10 +30,10 @@ import { AIImagesPanel } from './sidebar/ai-images-panel'
 import { VideosPanel } from './sidebar/videos-panel'
 import { MusicPanel } from './sidebar/music-panel'
 import { CreativesPanel } from './panels/creatives-panel'
-import { VideoExportButton } from './video-export-button'
+import { VideoExportButton, GerarVideoProvider, useGerarVideo } from './video-export-button'
+import { useAgendaDasPaginas } from '@/hooks/use-agenda-das-paginas'
 import { BotaoPlayPause } from './botao-play-pause'
 import { Timeline } from './timeline'
-import { guardarExportConcluido } from '@/lib/video/export-concluido'
 import { paginaEVideo, videosDaPagina } from '@/lib/video/camadas-de-video'
 import { PageModelButton, PageModelMobileSection } from './page-model-control'
 import { TemplateAIChat } from './template-ai-chat'
@@ -77,9 +77,12 @@ interface TemplateEditorShellProps {
   aiEditMode?: boolean
   initialPageId?: string
   agendaMode?: boolean
+  /** Vindo da agenda a partir de um post: o vídeo dele pode ser substituído. */
+  postId?: string
 }
 
-export function TemplateEditorShell({ template, prefillDriveImage, aiEditMode, initialPageId, agendaMode }: TemplateEditorShellProps) {
+export function TemplateEditorShell({ template, prefillDriveImage, aiEditMode, initialPageId, agendaMode, postId }: TemplateEditorShellProps) {
+  const router = useRouter()
   const [fontsLoaded, setFontsLoaded] = React.useState(false)
   const fontManager = React.useMemo(() => getFontManager(), [])
 
@@ -163,9 +166,23 @@ export function TemplateEditorShell({ template, prefillDriveImage, aiEditMode, i
     <MultiPageProvider key={initialPageId || 'default'} templateId={template.id} initialPageId={initialPageId}>
       <TemplateEditorProvider key={initialPageId || 'default'} template={resource}>
         <PageSyncWrapper>
-          <EditorViewModeProvider>
-            <TemplateEditorContent prefillDriveImage={prefillDriveImage} aiEditMode={aiEditMode} agendaMode={agendaMode} />
-          </EditorViewModeProvider>
+          <GerarVideoProvider
+            postIdDaAgenda={agendaMode ? postId : undefined}
+            // Vindo da agenda para trocar o vídeo do post: volta para lá assim
+            // que a fila responde — o resto acontece no servidor.
+            aoEnfileirar={(destino) => {
+              if (agendaMode && destino.tipo === 'substituir') router.back()
+            }}
+          >
+            <EditorViewModeProvider>
+              <TemplateEditorContent
+                prefillDriveImage={prefillDriveImage}
+                aiEditMode={aiEditMode}
+                agendaMode={agendaMode}
+                postId={agendaMode ? postId : undefined}
+              />
+            </EditorViewModeProvider>
+          </GerarVideoProvider>
         </PageSyncWrapper>
       </TemplateEditorProvider>
     </MultiPageProvider>
@@ -200,10 +217,12 @@ function TemplateEditorContent({
   prefillDriveImage,
   aiEditMode,
   agendaMode,
+  postId,
 }: {
   prefillDriveImage?: { fileId: string; fileName?: string; folderId?: string }
   aiEditMode?: boolean
   agendaMode?: boolean
+  postId?: string
 }) {
   const router = useRouter()
   const { toast } = useToast()
@@ -247,20 +266,6 @@ function TemplateEditorContent({
   const [activePanel, setActivePanel] = React.useState<SidePanel>(null)
   const [activeRightPanel, setActiveRightPanel] = React.useState<RightPanel>(null)
 
-  // MP4 pronto na fila → abrir a aba Criativos para o usuário agendar na hora
-  // (o creatives-panel já escuta o mesmo evento para atualizar a lista)
-  const activeRightPanelRef = React.useRef(activeRightPanel)
-  activeRightPanelRef.current = activeRightPanel
-  React.useEffect(() => {
-    const handleVideoCompleted = (event: Event) => {
-      // Com a aba fechada o painel ainda não escuta: a conclusão fica guardada
-      // e ele a consome ao montar (com a aba aberta, o próprio painel trata)
-      if (activeRightPanelRef.current !== 'creatives') guardarExportConcluido((event as CustomEvent).detail)
-      setActiveRightPanel('creatives')
-    }
-    window.addEventListener('video-export-completed', handleVideoCompleted)
-    return () => window.removeEventListener('video-export-completed', handleVideoCompleted)
-  }, [])
   const [isFullscreen, setIsFullscreen] = React.useState(false)
   // Estado da barra de páginas vive no hook de modo de visualização
   // (persistido; padrão: recolhida no modo contínuo)
@@ -277,6 +282,22 @@ function TemplateEditorContent({
   // para trás. A trava de verdade é do servidor (`recusaComoImagem`).
   const paginaVideo = paginaEVideo(design.layers, design.audio)
   const canSchedule = templateType === 'STORY' && !!currentPageId && !paginaVideo
+  // Página-vídeo vai à agenda pelo diálogo de gerar vídeo (o post nasce quando
+  // o MP4 fica pronto), nunca pelo agendamento de imagem.
+  const gerarVideo = useGerarVideo()
+  const agendarVideo = paginaVideo && !!currentPageId && !!gerarVideo
+
+  // Vindo da agenda a partir de um post de vídeo desta página: a ação
+  // principal é trocar o vídeo dele.
+  const { data: agendaDaPasta, refetch: relerAgenda } = useAgendaDasPaginas(templateId)
+  const postDaAgenda = agendaDaPasta?.paginas.find((p) => p.pageId === currentPageId)?.post ?? null
+  const substituirNaAgenda =
+    !!agendaMode &&
+    !!postId &&
+    agendarVideo &&
+    postDaAgenda?.id === postId &&
+    postDaAgenda.comVideo &&
+    postDaAgenda.substituivel
 
   // Fecha o drawer de ferramentas assim que um elemento é aplicado no canvas
   const layerCount = design.layers.length
@@ -438,6 +459,30 @@ function TemplateEditorContent({
       })
     }
   }, [templateId, name, design, dynamicFields, generateThumbnail, updateTemplate, markSaved, toast, pages, currentPageId, setCurrentPageId, agendaMode, router, pageSync])
+
+  /**
+   * "Salvar sem gerar" do post de vídeo vindo da agenda: salvar a página não
+   * troca o MP4 que está lá. Se a página mudou desde o vídeo, pergunta antes de
+   * voltar — sem isso a pessoa sai achando que a agenda já mostra a edição.
+   */
+  const handleSalvarSemGerar = React.useCallback(async () => {
+    try {
+      await pageSync?.descarregar()
+    } catch (error) {
+      console.error('[TemplateEditor] Falha ao salvar a página:', error)
+    }
+    const { data } = await relerAgenda()
+    const post = data?.paginas.find((p) => p.pageId === currentPageId)?.post
+    if (
+      post?.id === postId &&
+      post.videoDesatualizado &&
+      window.confirm('O vídeo da agenda ainda é o anterior. Gerar o novo agora?')
+    ) {
+      gerarVideo?.abrir({ destino: 'substituir' })
+      return
+    }
+    await handleSave()
+  }, [pageSync, relerAgenda, currentPageId, postId, gerarVideo, handleSave])
 
   // O modal abre sempre, mesmo com uma página só: além de escolher páginas ele
   // é onde se digita a instrução opcional para a melhoria com IA. Com uma
@@ -738,7 +783,22 @@ function TemplateEditorContent({
 
         {/* Right: Actions — rolam horizontalmente em telas estreitas em vez de cortar */}
         <div className="flex min-w-0 items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:flex-shrink-0">
-          {agendaMode ? (
+          {agendaMode && substituirNaAgenda ? (
+            <>
+              <BotaoPlayPause />
+              <Button size="sm" onClick={() => gerarVideo?.abrir({ destino: 'substituir' })} disabled={gerarVideo?.indisponivel}>
+                <Film className="mr-2 h-4 w-4" />
+                Substituir vídeo na agenda
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => void handleSalvarSemGerar()} disabled={isSaving}>
+                <Save className="mr-2 h-4 w-4" />
+                {isSaving ? 'Salvando...' : 'Salvar sem gerar'}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => router.back()}>
+                Cancelar
+              </Button>
+            </>
+          ) : agendaMode ? (
             <>
               <Button size="sm" onClick={handleSave} disabled={isSaving}>
                 <Save className="mr-2 h-4 w-4" />
@@ -760,6 +820,17 @@ function TemplateEditorContent({
               </Button>
               {canSchedule && (
                 <Button size="sm" variant="outline" onClick={() => setShowScheduleModal(true)}>
+                  <Calendar className="mr-2 h-4 w-4" />
+                  Agendar
+                </Button>
+              )}
+              {agendarVideo && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => gerarVideo?.abrir({ destino: 'agenda' })}
+                  disabled={gerarVideo?.indisponivel}
+                >
                   <Calendar className="mr-2 h-4 w-4" />
                   Agendar
                 </Button>
@@ -1184,22 +1255,50 @@ function TemplateEditorContent({
               O que você quer fazer?
             </SheetTitle>
             <div className="flex flex-col overflow-y-auto p-2">
+              {substituirNaAgenda && (
+                <button
+                  type="button"
+                  className="flex items-start gap-3 rounded-lg p-3 text-left transition-colors hover:bg-accent disabled:opacity-50"
+                  disabled={gerarVideo?.indisponivel}
+                  onClick={() => {
+                    // O menu fica por cima do diálogo: fecha antes de abrir
+                    setMobileFinishOpen(false)
+                    gerarVideo?.abrir({ destino: 'substituir' })
+                  }}
+                >
+                  <Film className="mt-0.5 h-5 w-5 flex-shrink-0 text-primary" />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium">Substituir vídeo na agenda</span>
+                    <span className="block text-xs text-muted-foreground">
+                      Grava o vídeo novo e troca o do post, no mesmo horário
+                    </span>
+                  </span>
+                </button>
+              )}
               <button
                 type="button"
                 className="flex items-start gap-3 rounded-lg p-3 text-left transition-colors hover:bg-accent disabled:opacity-50"
                 disabled={isSaving}
                 onClick={() => {
                   setMobileFinishOpen(false)
-                  void handleSave()
+                  void (substituirNaAgenda ? handleSalvarSemGerar() : handleSave())
                 }}
               >
                 <Save className="mt-0.5 h-5 w-5 flex-shrink-0 text-primary" />
                 <span className="min-w-0">
                   <span className="block text-sm font-medium">
-                    {isSaving ? 'Salvando...' : dirty ? 'Salvar template' : 'Template salvo'}
+                    {isSaving
+                      ? 'Salvando...'
+                      : substituirNaAgenda
+                        ? 'Salvar sem gerar'
+                        : dirty
+                          ? 'Salvar template'
+                          : 'Template salvo'}
                   </span>
                   <span className="block text-xs text-muted-foreground">
-                    Guarda as alterações deste modelo para continuar depois
+                    {substituirNaAgenda
+                      ? 'Guarda a página; o vídeo da agenda continua o anterior'
+                      : 'Guarda as alterações deste modelo para continuar depois'}
                   </span>
                 </span>
               </button>
@@ -1238,11 +1337,30 @@ function TemplateEditorContent({
                   </span>
                 </button>
               )}
+              {agendarVideo && !agendaMode && (
+                <button
+                  type="button"
+                  className="flex items-start gap-3 rounded-lg p-3 text-left transition-colors hover:bg-accent disabled:opacity-50"
+                  disabled={gerarVideo?.indisponivel}
+                  onClick={() => {
+                    setMobileFinishOpen(false)
+                    gerarVideo?.abrir({ destino: 'agenda' })
+                  }}
+                >
+                  <Calendar className="mt-0.5 h-5 w-5 flex-shrink-0 text-primary" />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium">Agendar vídeo</span>
+                    <span className="block text-xs text-muted-foreground">
+                      Grava o vídeo e o post entra na agenda quando ele ficar pronto
+                    </span>
+                  </span>
+                </button>
+              )}
               <div className="px-3 py-1 [&>button]:w-full">
                 <BotaoPlayPause />
               </div>
               <div className="px-3 py-1 [&>button]:w-full">
-                <VideoExportButton />
+                <VideoExportButton aoAbrir={() => setMobileFinishOpen(false)} />
               </div>
               {/* Fora do agendaMode, como no desktop: ali o editor é o ajuste
                   rápido de UM post vindo da agenda, e o header enxuto só tem
