@@ -14,6 +14,7 @@ import { recusaComoImagem, type RecusaComoImagem } from '@/lib/video/pagina-com-
 import { KonvaEditorStage } from '../konva-editor-stage'
 import { useGerarVideo } from '../video-export-button'
 import { PagePreview } from './page-preview'
+import type Konva from 'konva'
 import type { Layer } from '@/types/template'
 
 /**
@@ -229,7 +230,8 @@ const PROGRAMMATIC_SCROLL_MS = 900
 const CAPTURE_WIDTH = 450
 
 export function ContinuousWorkspace() {
-  const { design, zoom, setZoom, croppingLayerId, generateThumbnail, selectLayer, templateId } = useTemplateEditor()
+  const { design, zoom, setZoom, croppingLayerId, generateThumbnail, selectLayer, templateId, getStageInstance } =
+    useTemplateEditor()
   const { data: agendaDaPasta } = useAgendaDasPaginas(templateId)
   const agendarPagina = useAgendarPagina(templateId)
   const gerarVideo = useGerarVideo()
@@ -464,6 +466,26 @@ export function ContinuousWorkspace() {
   // (loadTemplate limpa a seleção — selecionar antes seria desfeito)
   const pendingSelectRef = React.useRef<{ pageId: string; layerId: string } | null>(null)
 
+  // Duplo clique em página inativa: o 1º mousedown acorda a página (a prévia
+  // vira stage), então o Konva nunca recebe os dois cliques e o dblclick dele
+  // não dispara — a pessoa via só a seleção e o texto digitado em seguida se
+  // perdia. O dblclick DOM ainda chega ao slot: ele marca a camada, e quem
+  // chegar por último (ele ou a seleção pendente) repassa o dblclick ao nó.
+  const acordouRef = React.useRef<{ pageId: string; layerId: string; em: number } | null>(null)
+  const edicaoPendenteRef = React.useRef<{ pageId: string; layerId: string } | null>(null)
+
+  const abrirEdicaoPendente = React.useCallback(() => {
+    const pendente = edicaoPendenteRef.current
+    if (!pendente || currentPageIdRef.current !== pendente.pageId) return
+    // O nó mais fundo com o id: com máscara/flip há um Group com o mesmo id
+    // por fora, e o dblclick do texto está no Text (eventos sobem, não descem)
+    const nos = getStageInstance()?.find((n: Konva.Node) => n.id() === pendente.layerId) ?? []
+    const no = nos[nos.length - 1]
+    if (!no) return // design ainda não carregou: a seleção pendente tenta de novo
+    edicaoPendenteRef.current = null
+    no.fire('dblclick')
+  }, [getStageInstance])
+
   React.useEffect(() => {
     const pending = pendingSelectRef.current
     if (!pending || pending.pageId !== currentPageId) return
@@ -474,9 +496,21 @@ export function ContinuousWorkspace() {
     window.setTimeout(() => {
       if (currentPageIdRef.current === pageId) {
         selectLayer(layerId)
+        abrirEdicaoPendente()
       }
     }, 80)
-  }, [currentPageId, design.layers, selectLayer])
+  }, [currentPageId, design.layers, selectLayer, abrirEdicaoPendente])
+
+  const handleSlotDoubleClick = React.useCallback(
+    (pageId: string) => {
+      const acordou = acordouRef.current
+      acordouRef.current = null
+      if (!acordou || acordou.pageId !== pageId || Date.now() - acordou.em > 1000) return
+      edicaoPendenteRef.current = { pageId, layerId: acordou.layerId }
+      abrirEdicaoPendente()
+    },
+    [abrirEdicaoPendente],
+  )
 
   /**
    * Clique na área ao redor das páginas desmarca o que estiver selecionado.
@@ -505,6 +539,7 @@ export function ContinuousWorkspace() {
         const canvasY = (event.clientY - rect.top) / (zoomRef.current || 1)
         const hit = hitTestPageLayer(Array.isArray(page.layers) ? (page.layers as Layer[]) : [], canvasX, canvasY)
         pendingSelectRef.current = hit ? { pageId, layerId: hit.id } : null
+        acordouRef.current = hit ? { pageId, layerId: hit.id, em: Date.now() } : null
       }
       activatePage(pageId)
     },
@@ -577,21 +612,28 @@ export function ContinuousWorkspace() {
   }, [])
 
   // Auto-fit inicial pela largura do container + scroll até a página corrente
-  // (link da agenda entra com initialPageId no meio do template)
+  // (link da agenda entra com initialPageId no meio do template).
+  // Duas fases: primeiro o zoom, e só com ele JÁ aplicado o scroll. Rolar no
+  // mesmo passo do setZoom media os slots no zoom antigo: se o re-render do
+  // zoom chegava depois do rAF, a coluna crescia por baixo do scrollTop e a
+  // tela parava páginas ACIMA da ativa (agenda abria na Pag.09 com 17/32).
+  const autoFitDoneRef = React.useRef(false)
   React.useEffect(() => {
     if (initialScrollDoneRef.current) return
     if (isLoading || sortedPages.length === 0 || !currentPageId) return
-    initialScrollDoneRef.current = true
 
     const container = containerRef.current
-    if (container) {
+    if (container && !autoFitDoneRef.current) {
+      autoFitDoneRef.current = true
       const maxPageWidth = Math.max(...sortedPages.map((p) => p.width || 1080))
       const fit = (container.clientWidth - 96) / maxPageWidth
       const clamped = Math.min(0.6, Math.max(0.25, fit))
       if (Number.isFinite(clamped) && Math.abs(clamped - zoom) > 0.02) {
         setZoom(clamped)
+        return // o efeito volta com o zoom novo e aí rola
       }
     }
+    initialScrollDoneRef.current = true
     requestAnimationFrame(() => {
       scrollToPage(currentPageId, 'auto')
       // Primeira âncora: quem dá zoom sem ter rolado nada ainda precisa de uma
@@ -599,7 +641,7 @@ export function ContinuousWorkspace() {
       requestAnimationFrame(captureAnchor)
     })
 
-  }, [isLoading, sortedPages, currentPageId])
+  }, [isLoading, sortedPages, currentPageId, zoom])
 
   if (isLoading && sortedPages.length === 0) {
     return (
@@ -690,6 +732,7 @@ export function ContinuousWorkspace() {
                 }`}
                 style={{ width: slotWidth, height: slotHeight }}
                 onMouseDown={(event) => handleSlotMouseDown(event, page.id)}
+                onDoubleClick={() => handleSlotDoubleClick(page.id)}
               >
                 {isActive ? (
                   <KonvaEditorStage embedded />
