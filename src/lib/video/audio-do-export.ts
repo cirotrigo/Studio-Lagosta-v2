@@ -31,7 +31,12 @@ export const MOTIVO_DO_AVISO_DE_AUDIO: Record<AudioAviso, string> = {
     'Não foi possível usar o som escolhido (o vídeo pode não ter som, ou a música não está mais disponível). O vídeo saiu sem som.',
 }
 
-type FonteLike = { source: 'original' | 'library' | 'mute' | 'mix'; musicId?: number | null }
+type FonteLike = {
+  source: 'original' | 'library' | 'mute' | 'mix'
+  musicId?: number | null
+  volume?: number
+  volumeMusic?: number
+}
 
 /**
  * A trilha que o export REALMENTE vai ter, dada a página. Sem som original
@@ -49,7 +54,9 @@ export function fonteEfetiva<T extends FonteLike>(
   if (cfg.source === 'original') return { config: { ...cfg, source: 'mute' }, aviso: 'sem-audio' }
   if (cfg.source === 'mix') {
     return cfg.musicId
-      ? { config: { ...cfg, source: 'library' }, aviso: 'so-musica' }
+      ? // A música segue no volume do mix (`volumeMusic`, com o mesmo default da fila):
+        // no `library` quem manda é `volume`, e 10% virava 80%.
+        { config: { ...cfg, source: 'library', volume: cfg.volumeMusic ?? cfg.volume ?? 60 }, aviso: 'so-musica' }
       : { config: { ...cfg, source: 'mute' }, aviso: 'sem-audio' }
   }
   return { config: cfg }

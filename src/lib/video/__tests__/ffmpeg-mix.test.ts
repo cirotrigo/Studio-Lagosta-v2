@@ -30,6 +30,15 @@ describe('buildAudioMixArgs (Fase 4)', () => {
     expect(legado.mapArgs).toEqual(['-map', '0:v:0', '-map', '[aout]'])
   })
 
+  it('um clipe só em 0 que termina ANTES do vídeo (2 s + foto de 3 s) não vira o atalho: o som para em 2 s', () => {
+    const { filterArgs } = buildAudioMixArgs(
+      { mode: 'original', originais: [{ path: '/tmp/v.mp4', trimStart: 0, inicio: 0, duracao: 2 }] },
+      5,
+    )
+    expect(filterArgs[1]).toContain('atrim=start=0.000:duration=2.000')
+    expect(filterArgs[1]).not.toContain('duration=5.000')
+  })
+
   it('sequência: cada clipe cortado, em estéreo, atrasado para a posição dele, e somados', () => {
     const mix: AudioMixOptions = {
       mode: 'original',

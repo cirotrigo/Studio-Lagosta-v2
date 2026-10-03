@@ -75,13 +75,16 @@ export function buildAudioMixArgs(
   const chains: string[] = []
   let inputIndex = 1 // 0 é o WebM
 
-  // Um clipe só, em 0, é o comando de sempre: paridade com o legado por construção
-  const mix: AudioMixOptions =
-    mixPedido.originais?.length === 1 && mixPedido.originais[0].inicio === 0
-      ? { ...mixPedido, originais: undefined, originalPath: mixPedido.originais[0].path, originalTrimStart: mixPedido.originais[0].trimStart }
-      : mixPedido
-
   const dur = duration && duration > 0 ? duration : undefined
+  // Um clipe só, em 0, cobrindo o vídeo INTEIRO é o comando de sempre (paridade
+  // com o legado). Um clipe que termina antes (vídeo de 2 s + foto de 3 s) não:
+  // o atalho cortaria pelo `duration` do export e o som seguiria sobre a foto.
+  const unico = mixPedido.originais?.length === 1 ? mixPedido.originais[0] : null
+  const cobreTudo = !!unico && unico.inicio === 0 && (unico.duracao === 0 || !dur || unico.duracao >= dur - 0.001)
+  const mix: AudioMixOptions = cobreTudo
+    ? { ...mixPedido, originais: undefined, originalPath: unico!.path, originalTrimStart: unico!.trimStart }
+    : mixPedido
+
   const trimExpr = (start: number) =>
     `atrim=start=${start.toFixed(3)}${dur ? `:duration=${dur.toFixed(3)}` : ''},asetpts=PTS-STARTPTS`
 

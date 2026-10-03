@@ -144,12 +144,20 @@ export function trechoDoVideo(
   metadata: TrechoLike | null | undefined,
   duracaoDaFonte?: number | null,
 ): { inicio: number; duracao: number | null } {
-  const inicio = Math.max(0, metadata?.trimStart ?? 0)
-  const fim = metadata?.trimEnd
+  // Leitura defensiva: dado já gravado pode ter NaN, texto ou fim além do arquivo
+  const inicio = Math.max(0, numeroFinito(metadata?.trimStart) ?? 0)
+  const declarada = numeroFinito(metadata?.duration)
+  const fonte = declarada && declarada > 0 ? declarada : numeroFinito(duracaoDaFonte)
+  const temFonte = !!fonte && fonte > 0
+  let fim = numeroFinito(metadata?.trimEnd)
+  if (fim !== undefined && temFonte) fim = Math.min(fim, fonte!)
   if (fim !== undefined && fim > inicio) return { inicio, duracao: fim - inicio }
-  const fonte = metadata?.duration && metadata.duration > 0 ? metadata.duration : duracaoDaFonte
-  if (!fonte || !Number.isFinite(fonte) || fonte <= 0) return { inicio, duracao: null }
-  return { inicio, duracao: Math.max(0.5, fonte - inicio) }
+  if (!temFonte) return { inicio, duracao: null }
+  return { inicio, duracao: Math.max(0.5, fonte! - inicio) }
+}
+
+function numeroFinito(v: unknown): number | undefined {
+  return typeof v === 'number' && Number.isFinite(v) ? v : undefined
 }
 
 type TrilhaLike = { source?: string; musicId?: number | null; startTime?: number; endTime?: number }

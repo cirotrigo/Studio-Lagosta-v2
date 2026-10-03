@@ -130,7 +130,7 @@ describe('fonteEfetiva numa sequência (Fase 4)', () => {
     const temSom = trechosDeVideo(soFotos).length > 0
     expect(temSom).toBe(false)
     expect(fonteEfetiva({ source: 'mix', musicId: 7 }, temSom)).toEqual({
-      config: { source: 'library', musicId: 7 },
+      config: { source: 'library', musicId: 7, volume: 60 },
       aviso: 'so-musica',
     })
     expect(fonteEfetiva({ source: 'original' }, temSom)).toEqual({ config: { source: 'mute' }, aviso: 'sem-audio' })

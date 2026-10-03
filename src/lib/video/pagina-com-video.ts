@@ -31,10 +31,10 @@ export const MENSAGEM_PAGINA_COM_VIDEO =
 export function videoNaPagina(layersCruas: unknown): VideoNaPagina {
   const { camadas, legivel } = lerCamadas(layersCruas)
   if (!legivel) return 'ilegivel'
-  const lista = camadas as Array<{ type?: string; visible?: boolean; order?: number; clipe?: { duracao?: number } | null }>
-  // Sequência de 2+ clipes (mesmo só de fotos) é vídeo: o render pararia no
-  // primeiro clipe e publicaria uma foto no lugar da sequência.
-  return videosDaPagina(lista).length > 0 || paginaEhSequencia(lista) ? 'tem-video' : 'sem-video'
+  // Só vídeo VISÍVEL: o render não o desenha. Sequência só de fotos RENDERIZA
+  // (o quadro de 0 — miniatura, ajuste); quem a impede de ir ao ar como imagem
+  // é a trava de publicação (`recusaComoImagem`).
+  return videosDaPagina(camadas as Array<{ type?: string; visible?: boolean }>).length > 0 ? 'tem-video' : 'sem-video'
 }
 
 /** Sequência de fotos sem vídeo nenhum: a mensagem fala de linha do tempo, não de vídeo. */
@@ -69,11 +69,25 @@ function lerTrilha(audioCru: unknown): Record<string, unknown> | null {
  * RENDERIZA como imagem (miniatura, ajuste de arte) — só não se PUBLICA assim.
  */
 export function recusaComoImagem(layersCruas: unknown, audioCru: unknown): RecusaComoImagem | null {
-  if (videoNaPagina(layersCruas) === 'tem-video') {
-    const camadas = lerCamadas(layersCruas).camadas as Array<{ type?: string; visible?: boolean }>
-    const mensagem = videosDaPagina(camadas).length > 0 ? MENSAGEM_PAGINA_COM_VIDEO : MENSAGEM_PAGINA_COM_SEQUENCIA
-    return { codigo: 'PAGINA_COM_VIDEO', mensagem }
+  return recusaPorCamadas(layersCruas) ?? recusaPorMusica(audioCru)
+}
+
+/**
+ * A parte da trava de publicação que vem das CAMADAS: vídeo visível ou
+ * sequência. É a que vale para post que JÁ existe (render-story do MCP, cron):
+ * a exceção dos posts de imagem anteriores à música fica de fora — a música só
+ * é conferida quando o post nasce.
+ */
+export function recusaPorCamadas(layersCruas: unknown): RecusaComoImagem | null {
+  if (videoNaPagina(layersCruas) === 'tem-video') return { codigo: 'PAGINA_COM_VIDEO', mensagem: MENSAGEM_PAGINA_COM_VIDEO }
+  const { camadas, legivel } = lerCamadas(layersCruas)
+  if (legivel && paginaEhSequencia(camadas as Array<{ type?: string; visible?: boolean; order?: number; clipe?: { duracao?: number } | null }>)) {
+    return { codigo: 'PAGINA_COM_VIDEO', mensagem: MENSAGEM_PAGINA_COM_SEQUENCIA }
   }
+  return null
+}
+
+function recusaPorMusica(audioCru: unknown): RecusaComoImagem | null {
   if (fatiaDaMusica(lerTrilha(audioCru)) !== null) {
     return { codigo: 'PAGINA_COM_MUSICA', mensagem: MENSAGEM_PAGINA_COM_MUSICA }
   }

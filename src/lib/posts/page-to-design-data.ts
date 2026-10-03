@@ -14,7 +14,7 @@
 
 import type { DesignData, Layer } from '@/types/template'
 import { lerCamadas } from './page-layers'
-import { paginaEhSequencia, videosDaPagina } from '@/lib/video/camadas-de-video'
+import { videosDaPagina } from '@/lib/video/camadas-de-video'
 
 interface PageRecord {
   id: string
@@ -140,9 +140,9 @@ export function findUnmatchedSlotKeys(
  */
 export function pageContainsVideoLayer(layers: unknown): boolean {
   // Camada oculta não conta: o render a pula, então a página é uma imagem.
-  // Sequência de 2+ clipes também é vídeo (linha do tempo).
-  const camadas = camadasDaPagina(layers)
-  return videosDaPagina(camadas).length > 0 || paginaEhSequencia(camadas)
+  // Sequência só de fotos renderiza (o quadro de 0); quem a impede de ir ao ar
+  // como imagem é `recusaComoImagem`.
+  return videosDaPagina(camadasDaPagina(layers)).length > 0
 }
 
 /**

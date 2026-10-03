@@ -20,7 +20,7 @@ import {
   temFaixaDeAudio,
   type AudioMixOptions,
 } from '@/lib/video/ffmpeg-server-converter'
-import { trechosDeVideo, trechosOriginais } from '@/lib/video/plano-de-som'
+import { trechosDeVideo, trechosOriginais, volumeDoOriginal } from '@/lib/video/plano-de-som'
 import {
   MOTIVO_DO_AVISO_DE_AUDIO,
   fonteEfetiva,
@@ -135,7 +135,7 @@ async function prepareAudioMix(
         }
         if (originais.length === 0) throw new Error('Nenhum vídeo da página tem faixa de áudio')
         mix.originais = originais
-        mix.originalVolume = cfg.source === 'mix' ? (cfg.volumeOriginal ?? 80) / 100 : 1
+        mix.originalVolume = volumeDoOriginal(cfg)
       } catch (error) {
         // 'original' não tem outra fonte: quem chama registra e segue sem áudio.
         // No mix a música não pode ir embora junto com o som que falhou.

@@ -75,7 +75,7 @@ describe('a fonte de áudio efetiva sem vídeo de base', () => {
 
   it('mix vira só a música; mix sem música vira mudo', () => {
     expect(fonteEfetiva({ source: 'mix', musicId: 7 }, false)).toEqual({
-      config: { source: 'library', musicId: 7 },
+      config: { source: 'library', musicId: 7, volume: 60 },
       aviso: 'so-musica',
     })
     expect(fonteEfetiva({ source: 'mix' }, false)).toEqual({ config: { source: 'mute' }, aviso: 'sem-audio' })
@@ -121,6 +121,8 @@ describe('quem decide se a página vira post como imagem', () => {
         'components/templates/editor-canvas.tsx',
         'components/templates/continuous/continuous-workspace.tsx',
         'components/templates/modals/generate-creatives-modal.tsx',
+        // o motor só toca página que é vídeo (o relógio fica em 0 na estática)
+        'components/templates/motor-da-pagina.tsx',
         'components/templates/template-editor-shell.tsx',
         'components/templates/timeline.tsx',
         'components/templates/video-export-button.tsx',

@@ -20,6 +20,7 @@ type TrilhaLike = {
   endTime?: number
   volume?: number
   volumeMusic?: number
+  volumeOriginal?: number
   fadeIn?: boolean
   fadeOut?: boolean
   fadeInDuration?: number
@@ -104,7 +105,7 @@ export function trechosDeVideo(
   const linha = linhaDoTempo(layers, null, duracoesCarregadas)
   if (linha.clipes.length === 0) {
     const base = videoDeBase(layers)
-    if (!base?.fileUrl) return []
+    if (!base?.fileUrl || base.videoMetadata?.muted === true) return []
     const trecho = trechoDoVideo(base.videoMetadata, duracoesCarregadas?.get(base.id))
     return [{ id: base.id, fileUrl: base.fileUrl, trimStart: trecho.inicio, inicio: 0, duracao: trecho.duracao ?? 0 }]
   }
@@ -112,7 +113,8 @@ export function trechosDeVideo(
   const trechos: TrechoOriginal[] = []
   for (const c of linha.clipes) {
     const camada = porId.get(c.id)
-    if (c.tipo !== 'video' || c.duracao <= 0 || !camada?.fileUrl || ehMotion(camada)) continue
+    // O interruptor "sem som" do painel do vídeo vale para a prévia E o export
+    if (c.tipo !== 'video' || c.duracao <= 0 || !camada?.fileUrl || ehMotion(camada) || camada.videoMetadata?.muted === true) continue
     trechos.push({ id: c.id, fileUrl: camada.fileUrl, trimStart: c.trimStart, inicio: c.inicio, duracao: c.duracao })
   }
   return trechos
@@ -135,6 +137,25 @@ export function trechosOriginais(
     // duração 0 = legada e ainda desconhecida (fica em 0; o `-t` do export corta)
     .map((t) => (fim === null || t.duracao === 0 ? t : { ...t, duracao: Math.min(t.duracao, fim - t.inicio) }))
     .filter((t) => t.inicio === 0 || t.duracao > 0)
+}
+
+/** O volume (0–1) do som ORIGINAL que a trilha pede: `original` inteiro, `mix` o `volumeOriginal`. */
+export function volumeDoOriginal(trilha: TrilhaLike | null | undefined): number {
+  if (trilha?.source === 'original') return 1
+  if (trilha?.source === 'mix') return Math.min(1, Math.max(0, (trilha.volumeOriginal ?? 80) / 100))
+  return 0
+}
+
+/**
+ * O som da camada de vídeo `id` na página: 0 = mudo. Prévia e fila decidem por
+ * aqui — a prévia não pode tocar um original que o export zera (ou silencia).
+ */
+export function volumeDoVideoNaPagina(
+  layers: readonly CamadaComVideo[] | null | undefined,
+  trilha: TrilhaLike | null | undefined,
+  id: string,
+): number {
+  return trechosOriginais(layers, trilha).some((t) => t.id === id) ? volumeDoOriginal(trilha) : 0
 }
 
 /** O volume no instante `t` da página, com os fades do plano. */

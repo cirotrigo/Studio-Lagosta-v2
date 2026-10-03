@@ -22,6 +22,7 @@ import {
   DURACAO_MAX_DO_CLIPE,
   DURACAO_MIN_DO_CLIPE,
   MAX_CLIPES,
+  trechoDoVideo,
 } from './camadas-de-video'
 
 type CamadaDaLinha = {
@@ -80,7 +81,7 @@ export function linhaDoTempo(
       tipo,
       inicio: t,
       duracao: d ?? 0,
-      trimStart: tipo === 'video' ? Math.max(0, c.videoMetadata?.trimStart ?? 0) : 0,
+      trimStart: tipo === 'video' ? trechoDoVideo(c.videoMetadata).inicio : 0,
     })
     t += d ?? 0
   }
@@ -154,8 +155,18 @@ export function inserirClipe<T extends CamadaDaLinha>(
       porOrdem.find((l) => l.type === 'image' && l.visible !== false && cobre(l))
     if (fundo) base = base.map((l) => (l === fundo ? { ...l, clipe: {} } : l))
   }
-  return normalizarClipes([...base, comoClipe(nova)])
+  // A ordem é DADA: a camada nova nasce com `order` 0 e, ordenada por ele,
+  // entraria no meio da sequência em vez de no fim
+  const ordem = normalizarClipes(base).filter((l) => ehClipe(l)).map((l) => l.id)
+  return normalizarClipes([...base, comoClipe(nova)], [...ordem, nova.id])
 }
+
+/** Cabem mais `n` clipes na página? Inserir, duplicar e colar perguntam ANTES de mexer. */
+export function cabemMaisClipes(layers: readonly CamadaDaLinha[] | null | undefined, n = 1): boolean {
+  return (layers ?? []).filter((l) => ehClipe(l)).length + n <= MAX_CLIPES
+}
+
+export const MENSAGEM_TETO_DE_CLIPES = `A linha do tempo aceita até ${MAX_CLIPES} fotos e vídeos. Tire um clipe antes de pôr outro.`
 
 /**
  * O que o servidor recusa em `Page.layers` (PATCH da página, portas MCP):
@@ -169,12 +180,42 @@ export function problemasDosClipes(layers: readonly CamadaDaLinha[] | null | und
     problemas.push(`A linha do tempo aceita até ${MAX_CLIPES} clipes (recebeu ${clipes.length}).`)
   }
   for (const c of clipes) {
+    const nome = String(c.name ?? c.id)
+    if (c.type === 'video') problemas.push(...problemasDoTrecho(nome, c.videoMetadata))
     const d = c.clipe?.duracao
     if (d === undefined) continue
     if (typeof d !== 'number' || !Number.isFinite(d) || d < DURACAO_MIN_DO_CLIPE || d > DURACAO_MAX_DO_CLIPE) {
       problemas.push(
-        `O clipe "${String(c.name ?? c.id)}" tem duração inválida (${String(d)}): vale de ${DURACAO_MIN_DO_CLIPE} a ${DURACAO_MAX_DO_CLIPE} segundos.`,
+        `O clipe "${nome}" tem duração inválida (${String(d)}): vale de ${DURACAO_MIN_DO_CLIPE} a ${DURACAO_MAX_DO_CLIPE} segundos.`,
       )
+    }
+  }
+  return problemas
+}
+
+/** O trecho de um clipe de vídeo: números finitos, início ≥ 0, trecho mínimo e fim dentro do arquivo (quando conhecido). */
+function problemasDoTrecho(nome: string, meta: CamadaDaLinha['videoMetadata']): string[] {
+  if (!meta) return []
+  const problemas: string[] = []
+  const campos = { trimStart: meta.trimStart, trimEnd: meta.trimEnd, duration: meta.duration }
+  for (const [campo, v] of Object.entries(campos)) {
+    if (v !== undefined && v !== null && (typeof v !== 'number' || !Number.isFinite(v))) {
+      problemas.push(`O vídeo "${nome}" tem um corte inválido (${campo}: ${String(v)}).`)
+    }
+  }
+  if (problemas.length > 0) return problemas
+  const inicio = meta.trimStart ?? 0
+  if (inicio < 0) problemas.push(`O vídeo "${nome}" começa antes do início do arquivo (${inicio} s).`)
+  const fonte = meta.duration && meta.duration > 0 ? meta.duration : null
+  if (fonte !== null && inicio > fonte - DURACAO_MIN_DO_CLIPE) {
+    problemas.push(`O vídeo "${nome}" começa depois do fim do arquivo (${inicio} s de ${fonte} s).`)
+  }
+  if (meta.trimEnd !== undefined && meta.trimEnd !== null) {
+    if (meta.trimEnd < inicio + DURACAO_MIN_DO_CLIPE) {
+      problemas.push(`O trecho do vídeo "${nome}" é curto demais: o mínimo é ${DURACAO_MIN_DO_CLIPE} s.`)
+    }
+    if (fonte !== null && meta.trimEnd > fonte + 0.05) {
+      problemas.push(`O vídeo "${nome}" termina depois do fim do arquivo (${meta.trimEnd} s de ${fonte} s).`)
     }
   }
   return problemas
