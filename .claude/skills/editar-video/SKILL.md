@@ -269,6 +269,7 @@ música com entrada e fade, planos com arquivo, `inicio_q` (quadro da fonte),
   "não confere" com os quadros iguais. Agora o `resolve_projeto.py` grava `04_DAVINCI/fps.json`, o
   `proxies.ts` gera CFR nesse fps e confere quadros (±1) + esse fps, nunca o `avg_frame_rate` do bruto
   (`proxies.ts --autoteste` cobre um clipe VFR). Sem o `fps.json`, proxy existente só tem os quadros conferidos.
+  O `analisar.ts` aceita o proxy do projeto com os mesmos quadros (±1) e o fps a até 0,1% do `avg_frame_rate` do bruto.
 - **Desfazer (Cmd+Z) no Resolve ressuscita timeline apagada pelo script** e tira o nome da
   atual. Antes de renderizar, identifique a timeline pelo `GetUniqueId`, não pelo nome.
 - **Render só de áudio desliga o "Export Video" do projeto** e o `ExportVideo: True` da API
