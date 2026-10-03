@@ -11671,3 +11671,53 @@ vídeo ou de uma foto e exportar o MP4.
   limpeza pular vídeo). É de propósito: o MP4 é a mídia do post e o uploader de
   backup é de imagem. Se o armazenamento pesar, o caminho é um backup de vídeo
   de verdade para o Drive, nunca tirar o `semVideos`.
+
+### Vídeo direto na agenda, movimento nas fotos e transições (03/10/2026)
+
+Plano em `docs/PLANO-2026-10-03-VIDEO-NA-AGENDA-MOVIMENTO-E-TRANSICOES.md`
+(Codex APTO na v3; duas revisões do Codex por frente). PR #191; migration
+`20261003120000_video_na_agenda` aplicada em produção antes do merge.
+
+- **O destino do vídeo é escolhido ANTES de gravar** ("Depois de gerar":
+  agenda, substituir o vídeo de um post, ou só galeria) e quem cria o post é o
+  SERVIDOR, quando o MP4 fica pronto (`destino-do-video.ts`,
+  `enfileirar-video.ts`). O PostComposer não abre mais sozinho no fim.
+- 🔴 **O processamento de vídeo é durável**: reserva por compare-and-set com
+  arrendamento (`startedAt` é o token, `VideoProcessingJob.attempts`, até 2),
+  job preso volta a PENDING, cada etapa tem marcador (MP4 enviado não é
+  reconvertido, cobrança marcada DENTRO da transação do débito, post não
+  duplica) e toda escrita final confere o arrendamento. Etapa que escreve em
+  dois lugares escreve no mesmo commit. A rota da fila processa o próprio job
+  em `after()`; o cron é a rede.
+- 🔴 **`SocialPost.videoDaPagina` é a origem de vídeo, gravada na criação e
+  nunca limpa por edição**; `postDeVideo` = essa marca OU mídia de vídeo. Post de
+  vídeo nunca é redesenhado como imagem (aprovação, invalidação,
+  `renderPostArt`, executor, MCP local), mesmo com a mídia limpa pela agenda.
+- **O vínculo vídeo → página mora em `Generation.fieldValues.videoDaPagina`,
+  NUNCA em `fieldValues.pageId`**: a "arte da página" (`arteDaPagina`, usada por
+  levantamento, trava e agenda-das-paginas) ignora Generation de vídeo, senão a
+  recomposição pegaria o MP4 como a arte.
+- **Substituir = gravar de novo e trocar o MP4 no MESMO post**, por
+  compare-and-set na revisão do post (`updatedAt`) lida ao enfileirar; a única
+  revisão intermediária aceita é a da substituição anterior da mesma cadeia.
+  Recusa (post editado, congelado, publicado) deixa o vídeo novo na galeria e o
+  motivo no histórico do post. Só DRAFT/SCHEDULED com `laterPostId` nulo.
+- **`versaoDoVideo` = `versaoDaPagina` + `Page.audio`**, calculada do retrato
+  GRAVADO: é o que acende "vídeo desatualizado · Substituir" na faixa da página
+  e o aviso no detalhe do post.
+- **Editor aberto pela agenda com `postId`**: "Substituir vídeo na agenda" e
+  "Salvar sem gerar" (que pergunta antes de voltar se o vídeo ficou velho).
+  `useAgendaDasPaginas(templateId, postId)` devolve ESTE post, não o mais novo da
+  página.
+- **Movimento** (`layer.movimento`: aproximar/afastar/deslizar, só foto, só em
+  página-vídeo) e **transição** (`clipe.transicao`: dissolver/deslizar, no clipe
+  que entra; o som continua cortando seco) moram num `Group` de EFEITO, nunca no
+  nó editável: `aplicarQuadro` (um só para prévia e export) escreve ali, e o
+  arraste/transformação continuam gravando o nó de dentro. A mesma geometria
+  roda no `render-engine` a partir do quadro anotado por `camadasNoInstante`.
+- **Teste de interface logado (03/10, banco de dev, projeto 8)**: gerar →
+  rascunho na hora pedida; "Editar vídeo" → editor com o post; edição →
+  `videoDesatualizado: true`; substituir → MP4 trocado no mesmo post. ⚠️ Em
+  sessão longa no localhost a sessão do Clerk expira e TODA chamada vira
+  `/sign-in?redirect_url=…` (200) — recarregar a página renova; não é defeito
+  do código.
