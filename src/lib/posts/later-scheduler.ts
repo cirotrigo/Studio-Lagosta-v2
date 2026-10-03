@@ -31,6 +31,8 @@ import { isVideoUrl } from '@/lib/media-type'
 import { pageContainsVideoLayer } from './page-to-design-data'
 import { recusaComoImagem } from '@/lib/video/pagina-com-video'
 import { ensurePostGeneration } from './ensure-post-generation'
+import { ehExportDeVideo, postDeVideo } from './post-de-video'
+import { vinculoDoVideo } from '@/lib/video/vinculo-do-video'
 
 interface RecurringConfig {
   frequency: RecurrenceFrequency
@@ -196,6 +198,27 @@ export class LaterPostScheduler {
     this.validatePost(data)
     console.log('[Later Scheduler] ✅ Validation passed')
 
+    /**
+     * Vídeo exportado de uma página: a origem fica marcada no post
+     * (`videoDaPagina`, nunca limpa por edição) e, quando o pedido não traz a
+     * página (o composer, as galerias), o post é ligado a ela pela Generation —
+     * é o que dá o "Editar vídeo" na agenda.
+     */
+    let origemDeVideo = postDeVideo({ mediaUrls: data.mediaUrls })
+    if (data.generationId) {
+      const geracao = await db.generation.findUnique({
+        where: { id: data.generationId },
+        select: { projectId: true, fieldValues: true },
+      })
+      if (geracao && geracao.projectId === data.projectId) {
+        if (ehExportDeVideo(geracao.fieldValues)) origemDeVideo = true
+        if (!data.pageId && origemDeVideo) {
+          const vinculo = await vinculoDoVideo(db, geracao)
+          if (vinculo) data = { ...data, pageId: vinculo.pageId, templateId: data.templateId ?? vinculo.templateId }
+        }
+      }
+    }
+
     // Note: Reminders work differently with Later - they're just scheduled posts
     // that users need to manually publish. We'll treat them as scheduled posts.
 
@@ -316,6 +339,7 @@ export class LaterPostScheduler {
         templateId: data.templateId || null,
         slotValues: data.slotValues ? (data.slotValues as Prisma.InputJsonValue) : null,
         renderStatus: renderStatusValue,
+        videoDaPagina: origemDeVideo,
         renderedImageUrl: isTemplateBased && data.mediaUrls.length > 0 ? data.mediaUrls[0] : null,
         renderedAt: isTemplateBased && data.mediaUrls.length > 0 ? new Date() : null,
         nextRenderAt: nextRenderAtValue,

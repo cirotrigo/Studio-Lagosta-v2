@@ -24,8 +24,6 @@ import { ptBR } from 'date-fns/locale'
 import { PostComposer, type PostFormData } from '@/components/posts/post-composer'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { avisoDeAudioDe } from '@/lib/video/audio-do-export'
-import { consumirExportConcluido } from '@/lib/video/export-concluido'
-import { useAgendaDasPaginas } from '@/hooks/use-agenda-das-paginas'
 
 interface CreativesPanelProps {
   templateId: number
@@ -38,16 +36,10 @@ export function CreativesPanel({ templateId, projectId, onOpenAIPanel }: Creativ
   const queryClient = useQueryClient()
   const { data: creatives = [], isLoading, error, refetch } = useTemplateCreatives(templateId)
   const deleteCreative = useDeleteCreative(templateId)
-  const { setPendingAIImageEdit, design } = useTemplateEditor()
+  const { setPendingAIImageEdit } = useTemplateEditor()
   const [creativeToDelete, setCreativeToDelete] = React.useState<string | null>(null)
   const [isComposerOpen, setIsComposerOpen] = React.useState(false)
   const [schedulingCreative, setSchedulingCreative] = React.useState<Creative | null>(null)
-  // A página de onde o vídeo recém-exportado saiu: o agendamento abre no
-  // horário previsto dela (agenda-das-paginas), quando houver.
-  const [schedulingPageId, setSchedulingPageId] = React.useState<string | null>(null)
-  const { data: agendaDasPaginas } = useAgendaDasPaginas(templateId)
-  const canvasRef = React.useRef(design.canvas)
-  canvasRef.current = design.canvas
 
   // Debug logging
   React.useEffect(() => {
@@ -112,30 +104,12 @@ export function CreativesPanel({ templateId, projectId, onOpenAIPanel }: Creativ
         },
       }))
 
-      // Invalidar query para pegar o vídeo MP4 final
+      // Invalidar query para pegar o vídeo MP4 final. O destino (agenda,
+      // substituição ou só a galeria) foi escolhido antes de gravar: o painel
+      // não abre mais o agendamento sozinho.
       setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: ['template-creatives', templateId] })
       }, 1000)
-
-      // "Agendar como vídeo" em um gesto: o MP4 pronto abre o agendamento.
-      // O card ainda pode não estar na lista (a invalidação é assíncrona), então
-      // o criativo é montado do próprio evento.
-      if (typeof detail.mp4ResultUrl === 'string' && detail.mp4ResultUrl) {
-        setSchedulingCreative({
-          id: detail.generationId,
-          status: 'COMPLETED',
-          resultUrl: detail.mp4ResultUrl,
-          createdAt: new Date().toISOString(),
-          templateName: '',
-          projectName: '',
-          width: canvasRef.current.width,
-          height: canvasRef.current.height,
-          isVideo: true,
-          thumbnailUrl: typeof detail.thumbnailUrl === 'string' ? detail.thumbnailUrl : undefined,
-        })
-        setSchedulingPageId(typeof detail.pageId === 'string' ? detail.pageId : null)
-        setIsComposerOpen(true)
-      }
     }
 
     const handleVideoFailed = (event: Event) => {
@@ -156,9 +130,6 @@ export function CreativesPanel({ templateId, projectId, onOpenAIPanel }: Creativ
     window.addEventListener('video-export-progress', handleVideoProgress)
     window.addEventListener('video-export-completed', handleVideoCompleted)
     window.addEventListener('video-export-failed', handleVideoFailed)
-    // O MP4 que ficou pronto com a aba fechada (o shell guardou e a abriu)
-    const pendente = consumirExportConcluido()
-    if (pendente) handleVideoCompleted(new CustomEvent('video-export-completed', { detail: pendente }))
 
     return () => {
       window.removeEventListener('video-export-queued', handleVideoQueued)
@@ -226,14 +197,12 @@ export function CreativesPanel({ templateId, projectId, onOpenAIPanel }: Creativ
 
   const handleSchedule = React.useCallback((creative: Creative) => {
     setSchedulingCreative(creative)
-    setSchedulingPageId(null)
     setIsComposerOpen(true)
   }, [])
 
   const handleCloseComposer = React.useCallback(() => {
     setIsComposerOpen(false)
     setSchedulingCreative(null)
-    setSchedulingPageId(null)
   }, [])
 
   const handleEditWithAI = React.useCallback((creative: Creative) => {
@@ -283,22 +252,14 @@ export function CreativesPanel({ templateId, projectId, onOpenAIPanel }: Creativ
 
     if (!mediaUrl) return undefined
 
-    // Horário previsto da página (só no futuro: o passado o composer recusa)
-    const quando = schedulingPageId
-      ? agendaDasPaginas?.paginas.find((p) => p.pageId === schedulingPageId)?.quando ?? null
-      : null
-    const previsto = quando ? new Date(quando) : null
-    const scheduledDatetime = previsto && previsto.getTime() > Date.now() ? previsto : undefined
-
     return {
       postType,
       mediaUrls: [mediaUrl],
       generationIds: [schedulingCreative.id],
       caption: '',
       scheduleType: 'SCHEDULED' as const,
-      scheduledDatetime,
     } as Partial<PostFormData>
-  }, [schedulingCreative, schedulingPageId, agendaDasPaginas])
+  }, [schedulingCreative])
 
   if (isLoading) {
     return (

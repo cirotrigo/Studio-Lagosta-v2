@@ -1520,6 +1520,9 @@ model VideoProcessingJob {
   completedAt     DateTime?
   creditsDeducted Boolean               @default(false)
   creditsUsed     Int                   @default(10)
+  /// Quantas vezes o job foi reservado (o arrendamento). A recuperação devolve
+  /// à fila o job preso enquanto houver tentativa; esgotado, vira FAILED.
+  attempts        Int                   @default(0)
   generationId    String?               @unique
   audioFadeIn     Float?
   audioFadeOut    Float?
@@ -1606,6 +1609,10 @@ model SocialPost {
   renderAttempts       Int                @default(0)
   nextRenderAt         DateTime?
   renderError          String?
+  /// O post é o VÍDEO da página: a mídia é um MP4 exportado dela, e nenhum
+  /// caminho pode trocá-la pelo render (imagem parada) da página. Marca
+  /// persistente: sobrevive à mídia apagada ou trocada à mão (`postDeVideo`).
+  videoDaPagina        Boolean            @default(false)
   // Escopo de aprendizado (ver enum LearningScope). Marcado POR ITEM: uma leva
   // normal mistura rotina, campanha e post pontual.
   learningScope        LearningScope      @default(ROTINA)

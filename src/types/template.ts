@@ -125,9 +125,15 @@ export interface Layer {
   /**
    * Clipe da linha do tempo (foto ou vídeo em sequência, Fase 3). Foto:
    * `duracao` em segundos (0,5–60; padrão 3). Vídeo: a duração é o trecho.
+   * `transicao`: como este clipe ENTRA (ausente = corte; ignorada no primeiro).
    * Ver src/lib/video/linha-do-tempo.ts.
    */
-  clipe?: { duracao?: number }
+  clipe?: { duracao?: number; transicao?: 'dissolver' | 'deslizar' }
+  /**
+   * Movimento da foto (só `image`, só em página-vídeo): zoom e deslize do
+   * conteúdo dentro da caixa. Ausente = parada. Ver src/lib/video/movimento.ts.
+   */
+  movimento?: 'aproximar' | 'afastar' | 'deslizar'
   // Rich text support - estilos aplicados a trechos específicos do texto
   richTextStyles?: RichTextStyle[]
   [key: string]: unknown

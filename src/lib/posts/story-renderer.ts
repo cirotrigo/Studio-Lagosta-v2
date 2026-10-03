@@ -66,6 +66,7 @@ export async function renderStoryImage(
     height: page.height,
     layers: page.layers,
     background: page.background,
+    audio: page.audio,
   })
 
   // 3. Slots por cima da página — só a copy PRÓPRIA do post, e só quando a
@@ -89,7 +90,7 @@ export async function renderStoryImage(
     )
   }
   // Com um clipe só, o quadro de 0 é a página inteira; a chamada deixa a regra num lugar só.
-  designData = { ...designData, layers: camadasNoInstante(designData.layers, 0) }
+  designData = { ...designData, layers: camadasNoInstante(designData.layers, 0, { audio: designData.audio }) }
 
   // 4. Register project fonts (dynamic import to avoid static bundling)
   const projectId = page.Template.projectId

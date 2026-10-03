@@ -28,6 +28,7 @@ import {
 } from './creatives/halo/fundo-de-texto'
 import { papelNoBloco, retanguloDoBloco } from './creatives/halo/bloco-de-fundo'
 import { aplicarCaixa } from './posts/caixa-do-texto'
+import { quadroAnotado, type QuadroDoMovimento } from './video/movimento'
 
 export type ImageLoader = (url: string) => Promise<CanvasImageSource>
 export type FontChecker = (fontName: string) => Promise<FontValidationResult>
@@ -118,6 +119,8 @@ export class RenderEngine {
     // efeitos por segmento e ignora layer.effects)
 
     const { width, height } = this.applyTransforms(ctx, finalLayer, scaleFactor)
+    // O movimento da foto (quadro anotado por camadasNoInstante) é desenhado
+    // em drawImageEmMovimento: máscara, cantos e borda presos à caixa
     this.applyShadow(ctx, finalLayer, scaleFactor)
     this.applyOpacity(ctx, finalLayer.style)
 
@@ -1453,17 +1456,18 @@ export class RenderEngine {
   ): Promise<void> {
     const source = layer.fileUrl
     if (!source) return
+    const quadro = layer.type === 'image' ? quadroAnotado(layer) : null
 
     const cache = options.imageCache
     if (cache?.has(source)) {
-      this.drawImage(ctx, cache.get(source) as CanvasImageSource, width, height, layer.style, options)
+      this.drawImage(ctx, cache.get(source) as CanvasImageSource, width, height, layer.style, options, quadro)
       return
     }
 
     if (!options.imageLoader) return
     const image = await options.imageLoader(source)
     if (cache) cache.set(source, image)
-    this.drawImage(ctx, image, width, height, layer.style, options)
+    this.drawImage(ctx, image, width, height, layer.style, options, quadro)
   }
 
   private static getPath2D(d: string, options?: RenderOptions): Path2D | null {
@@ -1515,6 +1519,7 @@ export class RenderEngine {
     height: number,
     style?: LayerStyle,
     options?: RenderOptions,
+    quadro?: QuadroDoMovimento | null,
   ): void {
     const opacityBefore = ctx.globalAlpha
 
@@ -1529,9 +1534,11 @@ export class RenderEngine {
     // Ajustes/filtros de imagem: o conteúdo (crop/flip/radius/borda) é
     // desenhado num offscreen do tamanho da caixa — o cache do Konva no
     // editor —, a MESMA cadeia de pixels roda ali e o bitmap é blitado.
-    const filtered = hasImageFilters(style)
-      ? this.drawImageFiltered(ctx, image, width, height, style, options)
-      : false
+    const filtered = quadro
+      ? (this.drawImageEmMovimento(ctx, image, width, height, style, options, quadro), true)
+      : hasImageFilters(style)
+        ? this.drawImageFiltered(ctx, image, width, height, style, options)
+        : false
 
     if (!filtered) {
       ctx.save()
@@ -1564,14 +1571,33 @@ export class RenderEngine {
     style: LayerStyle | undefined,
     options?: RenderOptions,
   ): boolean {
-    const off = this.getOffscreen(width, height, options)
+    const off = this.offscreenFiltrado(image, width, height, style, options, true)
     if (!off) return false
+
+    ctx.save()
+    this.applyImageMaskClip(ctx, style, width, height, options)
+    ctx.drawImage(off.canvas as unknown as CanvasImageSource, 0, 0)
+    ctx.restore()
+    return true
+  }
+
+  /** O conteúdo filtrado num offscreen do tamanho da caixa (com a borda, se pedida). */
+  private static offscreenFiltrado(
+    image: CanvasImageSource,
+    width: number,
+    height: number,
+    style: LayerStyle | undefined,
+    options: RenderOptions | undefined,
+    comBorda: boolean,
+  ) {
+    const off = this.getOffscreen(width, height, options)
+    if (!off) return null
 
     const octx = off.ctx
     octx.save()
     this.drawImageContent(octx, image, width, height, style, options)
     octx.restore()
-    if (style?.border?.width) {
+    if (comBorda && style?.border?.width) {
       this.strokeImageBorder(octx, width, height, style)
     }
 
@@ -1583,14 +1609,43 @@ export class RenderEngine {
       // getImageData falha em canvas contaminado por imagem cross-origin (só
       // no browser); no server nunca acontece. Sem pixels, sem filtro.
       console.warn('[RenderEngine] Falha ao aplicar filtros de imagem:', error)
-      return false
+      return null
     }
+    return off
+  }
 
+  /**
+   * Foto em movimento (quadro anotado por camadasNoInstante), a MESMA
+   * estrutura do ImageNode do editor: máscara e cantos recortam pela caixa
+   * parada, só o conteúdo — filtrado, sem cantos nem borda — escala em torno
+   * do centro e desliza no eixo X da caixa; a borda vem por cima, sem recorte
+   * e sem filtro.
+   */
+  private static drawImageEmMovimento(
+    ctx: CanvasRenderingContext2D,
+    image: CanvasImageSource,
+    width: number,
+    height: number,
+    style: LayerStyle | undefined,
+    options: RenderOptions | undefined,
+    quadro: QuadroDoMovimento,
+  ): void {
+    const conteudo: LayerStyle = { ...style, border: undefined }
     ctx.save()
     this.applyImageMaskClip(ctx, style, width, height, options)
-    ctx.drawImage(off.canvas as unknown as CanvasImageSource, 0, 0)
+    ctx.beginPath()
+    const radius = style?.border?.radius ?? 0
+    if (radius > 0) this.traceRoundedRectPath(ctx, width, height, radius)
+    else ctx.rect(0, 0, width, height)
+    ctx.clip()
+    ctx.translate(width / 2 + quadro.deslocamentoX * width, height / 2)
+    ctx.scale(quadro.escala, quadro.escala)
+    ctx.translate(-width / 2, -height / 2)
+    const off = hasImageFilters(style) ? this.offscreenFiltrado(image, width, height, conteudo, options, false) : null
+    if (off) ctx.drawImage(off.canvas as unknown as CanvasImageSource, 0, 0)
+    else this.drawImageContent(ctx, image, width, height, conteudo, options)
     ctx.restore()
-    return true
+    if (style?.border?.width) this.strokeImageBorder(ctx, width, height, style)
   }
 
   /**

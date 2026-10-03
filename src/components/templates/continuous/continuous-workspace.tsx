@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from 'react'
-import { CalendarCheck, CalendarPlus, Copy, ImageIcon, Layers, Loader2, Plus, Trash2, Video } from 'lucide-react'
+import { CalendarCheck, CalendarPlus, Copy, ImageIcon, Layers, Loader2, Plus, RefreshCw, Trash2, Video } from 'lucide-react'
 import { BotaoPlayPause } from '../botao-play-pause'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -12,6 +12,7 @@ import { useAgendaDasPaginas, useAgendarPagina, type AgendaDaPagina } from '@/ho
 import { horarioCurto } from '@/lib/compositor/pasta-da-semana'
 import { recusaComoImagem, type RecusaComoImagem } from '@/lib/video/pagina-com-video'
 import { KonvaEditorStage } from '../konva-editor-stage'
+import { useGerarVideo } from '../video-export-button'
 import { PagePreview } from './page-preview'
 import type { Layer } from '@/types/template'
 
@@ -33,12 +34,15 @@ function ControleDeAgenda({
   recusa,
   aoAgendar,
   agendando,
+  aoGerarVideo,
 }: {
   agenda: AgendaDaPagina | undefined
   /** A página tem vídeo (ou motion) visível, ou música: ela não se agenda como imagem. */
   recusa: RecusaComoImagem | null
   aoAgendar: () => void
   agendando: boolean
+  /** Abre o diálogo de gerar vídeo desta página. Fora do editor, `null`. */
+  aoGerarVideo: ((destino: 'agenda' | 'substituir') => void) | null
 }) {
   if (!agenda) return null
 
@@ -47,6 +51,37 @@ function ControleDeAgenda({
     // O botão cria RASCUNHO, então dizer "Agendado" logo depois do clique
     // mentiria: rascunho aparece na agenda mas não publica sozinho.
     const rascunho = agenda.post.status === 'DRAFT'
+    const sub = agenda.post.substituicao
+    // Vídeo novo a caminho: a troca acontece sozinha quando o MP4 ficar pronto.
+    if (agenda.post.comVideo && sub?.estado === 'em-producao') {
+      return (
+        <span
+          className="flex h-6 items-center gap-1 rounded bg-white/5 px-1.5 text-[11px] font-medium text-muted-foreground"
+          title={`O vídeo novo está sendo preparado e vai substituir o do post${quando ? ` de ${quando}` : ''}.`}
+        >
+          <Loader2 className="h-3 w-3 animate-spin" />
+          vídeo novo em produção
+        </span>
+      )
+    }
+    // A página mudou depois do vídeo que está na agenda: oferecer a troca.
+    if (agenda.post.comVideo && agenda.post.videoDesatualizado && agenda.post.substituivel && aoGerarVideo) {
+      const naoTrocou = sub && (sub.estado === 'recusada' || sub.estado === 'falhou') ? sub.motivo : null
+      return (
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-6 gap-1 px-1.5 text-[11px] font-medium text-amber-600 hover:text-amber-700 dark:text-amber-400"
+          title={`A página mudou depois do vídeo que está na agenda${quando ? ` (${quando})` : ''}. Gerar o novo e trocar no post.${
+            naoTrocou ? ` Última tentativa não substituiu: ${naoTrocou}` : ''
+          }`}
+          onClick={() => aoGerarVideo('substituir')}
+        >
+          <RefreshCw className="h-3 w-3" />
+          vídeo desatualizado · Substituir
+        </Button>
+      )
+    }
     // O post nasceu ANTES de a página virar vídeo (ganhou música ou vídeo
     // depois): ele continua sendo uma imagem, e o som não vai junto.
     if (recusa && !agenda.post.comVideo) {
@@ -94,13 +129,27 @@ function ControleDeAgenda({
   }
 
   /**
-   * 🔴 Página com vídeo (ou com música) não ganha botão: "Agendar" manda a página como IMAGEM
-   * (o thumbnail ou o render do servidor) e o story sairia com um quadro
-   * parado. Ela vai ao ar pelo "Exportar Vídeo", e o MP4 é agendado pela aba
-   * Criativos. A tela só orienta — quem recusa de verdade é `agendarPost`
-   * (`PAGINA_COM_VIDEO`). Vem antes do horário: a indicação vale mesmo na
-   * página sem horário previsto, que é a maioria das de vídeo.
+   * 🔴 Página com vídeo (ou com música) NÃO se agenda como imagem: "Agendar"
+   * mandaria um quadro parado. O botão dela abre o diálogo de gerar vídeo com
+   * destino agenda — o post nasce quando o MP4 fica pronto. Quem recusa a
+   * imagem de verdade é `agendarPost` (`PAGINA_COM_VIDEO`). Vem antes do
+   * horário: vale mesmo na página sem horário previsto, que é a maioria das
+   * de vídeo.
    */
+  if (recusa && aoGerarVideo) {
+    return (
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-6 gap-1 px-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+        title="Gerar o vídeo desta página e colocar na agenda quando ele ficar pronto"
+        onClick={() => aoGerarVideo('agenda')}
+      >
+        <Video className="h-3 w-3" />
+        Agendar
+      </Button>
+    )
+  }
   if (recusa) {
     return (
       <span
@@ -183,6 +232,7 @@ export function ContinuousWorkspace() {
   const { design, zoom, setZoom, croppingLayerId, generateThumbnail, selectLayer, templateId } = useTemplateEditor()
   const { data: agendaDaPasta } = useAgendaDasPaginas(templateId)
   const agendarPagina = useAgendarPagina(templateId)
+  const gerarVideo = useGerarVideo()
   const [agendandoId, setAgendandoId] = React.useState<string | null>(null)
   const agendaPorPagina = React.useMemo(
     () => new Map((agendaDaPasta?.paginas ?? []).map((a) => [a.pageId, a])),
@@ -593,6 +643,11 @@ export function ContinuousWorkspace() {
                     recusa={recusaComoImagem(isActive ? design.layers : page.layers, isActive ? design.audio : page.audio)}
                     agendando={agendandoId === page.id}
                     aoAgendar={() => colocarNaAgenda(page.id, page.name)}
+                    aoGerarVideo={
+                      gerarVideo && !gerarVideo.indisponivel
+                        ? (destino) => gerarVideo.abrir({ pageId: page.id, destino })
+                        : null
+                    }
                   />
                   {isActive && <BotaoPlayPause compacto />}
                   <Button

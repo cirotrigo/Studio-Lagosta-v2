@@ -11,6 +11,7 @@ interface SearchParams {
   aiEdit?: string
   pageId?: string
   from?: string
+  postId?: string
 }
 
 export default async function TemplateEditorPage({
@@ -40,6 +41,7 @@ export default async function TemplateEditorPage({
       aiEditMode={query.aiEdit === 'true'}
       initialPageId={query.pageId}
       agendaMode={query.from === 'agenda'}
+      postId={query.from === 'agenda' ? query.postId : undefined}
     />
   )
 }
