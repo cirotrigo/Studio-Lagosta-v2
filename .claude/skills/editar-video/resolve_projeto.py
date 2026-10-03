@@ -109,14 +109,20 @@ for topo in PASTAS_IMPORTADAS:
 # Timecode de cada bruto COMO O RESOLVE O LÊ. O proxy só liga se tiver o mesmo, e a Sony
 # a 120p é lida como 17:28:14;030 (base 60, com ;) enquanto o ffprobe diz 17:28:14:60 —
 # o mesmo instante escrito de outro jeito. proxies.ts grava ESTE texto no proxy.
+# E o FPS como o Resolve o lê: o iPhone grava VFR (avg 176700/5893; r_frame_rate 30000/1001 em uns)
+# e o Resolve lê 30.0 em todos; proxy a 29,97 é recusado (Salt, Fire & Drive, 02/10/2026).
+# proxies.ts gera o proxy NESTE fps.
 import json
-tcs = {}
+tcs, fps = {}, {}
 for caminho, clip in ja.items():
     if caminho.startswith(os.path.join(RAIZ, "01_BRUTO") + os.sep):
-        tcs[os.path.relpath(caminho, RAIZ)] = clip.GetClipProperty("Start TC")
+        rel = os.path.relpath(caminho, RAIZ)
+        tcs[rel] = clip.GetClipProperty("Start TC")
+        fps[rel] = clip.GetClipProperty("FPS")
 os.makedirs(os.path.join(RAIZ, "04_DAVINCI"), exist_ok=True)
-with open(os.path.join(RAIZ, "04_DAVINCI", "timecodes.json"), "w") as f:
-    json.dump(tcs, f, indent=2, ensure_ascii=False)
+for nome, dados in (("timecodes.json", tcs), ("fps.json", fps)):
+    with open(os.path.join(RAIZ, "04_DAVINCI", nome), "w") as f:
+        json.dump(dados, f, indent=2, ensure_ascii=False)
 
 # Proxies: 02_PROXIES espelha 01_BRUTO com extensão .mp4
 ligados, sem_proxy = 0, []
