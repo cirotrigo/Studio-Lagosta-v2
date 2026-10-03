@@ -115,13 +115,22 @@ function assinatura(a: Alvo): string {
 
 function escrever(grupo: Konva.Group, a: Alvo): boolean {
   const chave = assinatura(a)
-  if (assinaturas.get(grupo) === chave) return false
-  assinaturas.set(grupo, chave)
-  grupo.setAttrs({ visible: a.visivel, opacity: a.opacidade, x: a.deslocamento })
-  grupo
-    .findOne('.' + GRUPO_DE_MOVIMENTO)
-    ?.setAttrs({ x: a.x, y: a.y, offsetX: a.offsetX, offsetY: a.offsetY, scaleX: a.escala, scaleY: a.escala })
-  return true
+  let mudou = false
+  if (assinaturas.get(grupo) !== chave) {
+    assinaturas.set(grupo, chave)
+    grupo.setAttrs({ visible: a.visivel, opacity: a.opacidade, x: a.deslocamento })
+    mudou = true
+  }
+  // A assinatura do grupo interno mora NA INSTÂNCIA dele: ele só nasce quando a
+  // imagem carrega (antes há só o placeholder), e um grupo novo com o mesmo
+  // alvo precisa ser escrito mesmo que o externo já esteja em dia.
+  const interno = grupo.findOne('.' + GRUPO_DE_MOVIMENTO)
+  if (interno && assinaturas.get(interno) !== chave) {
+    assinaturas.set(interno, chave)
+    interno.setAttrs({ x: a.x, y: a.y, offsetX: a.offsetX, offsetY: a.offsetY, scaleX: a.escala, scaleY: a.escala })
+    mudou = true
+  }
+  return mudou
 }
 
 /** A caixa da camada, como o nó a desenha (o editor usa ao menos 20 px). */

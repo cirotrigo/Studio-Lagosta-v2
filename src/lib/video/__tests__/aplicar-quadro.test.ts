@@ -85,6 +85,21 @@ describe('aplicarQuadro — o efeito só fica suspenso durante o gesto', () => {
     restaurarIdentidade(stage)
   })
 
+  it('rodada 2 — a imagem que carrega depois do primeiro quadro recebe o movimento no mesmo instante', () => {
+    const f = fotoEmMovimento()
+    // Antes de a imagem carregar, o nó só tem o placeholder: sem grupo de movimento
+    f.movimento.remove()
+    const { stage } = palco([f.efeito])
+    aplicarQuadro(stage, design, 5)
+    // A imagem carregou: o factory monta o grupo de movimento novo, em identidade
+    const recorte = f.no.getChildren()[0] as KonvaTipos.Group
+    const novo = new Konva.Group({ name: GRUPO_DE_MOVIMENTO })
+    recorte.add(novo)
+    aplicarQuadro(stage, design, 5) // mesmo instante, mesmo alvo
+    expect(escala(novo)).toBeCloseTo(ESCALA_NO_MEIO)
+    restaurarIdentidade(stage)
+  })
+
   it('o toque na foto suspende antes do Konva tratar o pointerdown; soltar devolve o efeito', () => {
     const f = fotoEmMovimento()
     const { stage, tocar } = palco([f.efeito])
