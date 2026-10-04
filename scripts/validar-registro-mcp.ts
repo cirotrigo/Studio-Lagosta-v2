@@ -1234,8 +1234,10 @@ const LITERAIS_RESTANTE: Record<string, unknown> = {
     properties: {
       projectId: { type: 'number', description: 'ID do cliente.' },
       entradaId: { type: 'string', description: 'Id da entrada (de consultar-base).' },
+      updatedAt: { type: 'string', format: 'date-time', description: 'Versão de consultar-base aprovada pela pessoa.' },
+      contentHash: { type: 'string', pattern: '^[a-f0-9]{64}$', description: 'Hash do conteúdo de consultar-base aprovado.' },
     },
-    required: ['projectId', 'entradaId'],
+    required: ['projectId', 'entradaId', 'updatedAt', 'contentHash'],
     additionalProperties: false,
   },
   'buscar-fotos': {
