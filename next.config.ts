@@ -1,5 +1,8 @@
 import type { NextConfig } from "next";
 import path from "path";
+import { previewSideEffectsAreDisabled } from './src/lib/preview-isolation';
+
+const isolatedPreview = previewSideEffectsAreDisabled(process.env);
 
 const heavyNodeModulesGlobs = [
   './node_modules/@swc/core-linux-x64-gnu/**/*',
@@ -230,7 +233,8 @@ const nextConfig: NextConfig = {
     ]
   },
   images: {
-    remotePatterns: [
+    unoptimized: isolatedPreview,
+    remotePatterns: isolatedPreview ? [] : [
       {
         protocol: 'https',
         hostname: 'images.unsplash.com',

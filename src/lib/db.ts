@@ -1,4 +1,8 @@
 import { PrismaClient } from "../../prisma/generated/client";
+import { assertPreviewDatabaseIsolation } from './preview-isolation'
+import previewDatabasePolicy from './preview-database-policy.json'
+
+assertPreviewDatabaseIsolation(process.env, previewDatabasePolicy)
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
@@ -70,7 +74,8 @@ function getDatabaseUrl() {
   }
 }
 
-export const db = globalForPrisma.prisma ?? new PrismaClient({
+const cachedClient = process.env.VERCEL_ENV === 'preview' ? undefined : globalForPrisma.prisma
+export const db = cachedClient ?? new PrismaClient({
   log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
   datasources: {
     db: {
@@ -79,7 +84,7 @@ export const db = globalForPrisma.prisma ?? new PrismaClient({
   }
 })
 
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db
+if (process.env.NODE_ENV !== 'production' && process.env.VERCEL_ENV !== 'preview') globalForPrisma.prisma = db
 
 // Handle Prisma connection errors gracefully
 db.$connect().catch((err) => {

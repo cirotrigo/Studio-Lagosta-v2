@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { previewSideEffectsAreDisabled } from '@/lib/preview-isolation'
 import { db } from '@/lib/db'
 import { arquivarEntradaBase } from '@/lib/knowledge/archive'
 import { LIMPEZA_ARQUIVAMENTO_PENDENTE } from '@/lib/knowledge/marca-de-indexado'
@@ -23,6 +24,9 @@ export const maxDuration = 300 // 5 minutes
  */
 export async function GET(req: Request) {
   try {
+    if (previewSideEffectsAreDisabled(process.env)) {
+      return NextResponse.json({ error: 'Jobs desativados no Preview.' }, { status: 403 })
+    }
     // Autenticação do cron (Vercel Cron Secret)
     const authHeader = req.headers.get('authorization')
     const cronSecret = process.env.CRON_SECRET

@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@/../prisma/generated/client'
+import { previewSideEffectsAreDisabled } from '@/lib/preview-isolation'
+import { db as prisma } from '@/lib/db'
 import * as fs from 'fs'
 import * as path from 'path'
-
-const prisma = new PrismaClient()
 
 /**
  * Cron job para backup diário do banco de dados
@@ -12,6 +11,9 @@ const prisma = new PrismaClient()
  */
 export async function GET(request: NextRequest) {
   try {
+    if (previewSideEffectsAreDisabled(process.env)) {
+      return NextResponse.json({ error: 'Jobs desativados no Preview.' }, { status: 403 })
+    }
     // Validar secret do cron job
     const authHeader = request.headers.get('authorization')
     const cronSecret = process.env.CRON_SECRET
@@ -125,7 +127,5 @@ export async function GET(request: NextRequest) {
       { error: 'Erro ao fazer backup', message: error.message },
       { status: 500 }
     )
-  } finally {
-    await prisma.$disconnect()
   }
 }

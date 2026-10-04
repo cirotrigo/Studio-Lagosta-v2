@@ -5,6 +5,7 @@
 
 import { embed, embedMany } from 'ai'
 import { openai } from '@ai-sdk/openai'
+import { assertExternalEffectsAllowed } from '../preview-isolation'
 
 const embeddingModel = openai.embedding('text-embedding-3-small')
 
@@ -14,6 +15,7 @@ const embeddingModel = openai.embedding('text-embedding-3-small')
  * @returns 1536-dimensional embedding vector
  */
 export async function generateEmbedding(text: string): Promise<number[]> {
+  assertExternalEffectsAllowed(process.env)
   if (!text.trim()) {
     throw new Error('Text cannot be empty for embedding generation')
   }
@@ -33,6 +35,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
  * @returns Array of 1536-dimensional embedding vectors
  */
 export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
+  assertExternalEffectsAllowed(process.env)
   if (texts.length === 0) {
     return []
   }

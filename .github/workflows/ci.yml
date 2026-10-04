@@ -1,5 +1,5 @@
 # CI mínimo: typecheck + lint em todo push/PR na main.
-# Sem testes (não existem) e sem deploy (a Vercel cuida do build de produção).
+# Sem deploy (a Vercel cuida do build de produção).
 # O postinstall do npm ci já roda `prisma generate`, mas o passo explícito
 # fica como rede de segurança caso o postinstall mude.
 name: CI
@@ -31,6 +31,10 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      # Fixtures sintéticas; nenhum banco ou provider externo.
+      - name: Isolamento Preview (destino, rotas, efeitos e imagens)
+        run: npm run test:preview-isolation
 
       # Roda SEM env de propósito: o catálogo tem de carregar sem DATABASE_URL
       # (handlers só alcançam db por import dinâmico) — ver o cabeçalho do script.

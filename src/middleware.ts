@@ -1,5 +1,7 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
-import { NextResponse } from 'next/server'
+import { NextResponse, type NextRequest, type NextFetchEvent } from 'next/server'
+import { isPreviewSmokeRequestAllowed, previewSideEffectsAreDisabled } from '@/lib/preview-isolation'
+import previewPolicy from '@/lib/preview-database-policy.json'
 
 // Define public routes (accessible without authentication)
 const isPublicRoute = createRouteMatcher([
@@ -41,7 +43,10 @@ const isAdminRoute = createRouteMatcher([
   '/admin(.*)',
 ])
 
-export default clerkMiddleware(async (auth, req) => {
+const authenticatedMiddleware = clerkMiddleware(async (auth, req) => {
+  if (!isPreviewSmokeRequestAllowed(process.env, req.nextUrl.pathname, req.method, previewPolicy.approvedProjectIds)) {
+    return NextResponse.json({ error: 'Rota desativada no smoke isolado da Marca.' }, { status: 403 })
+  }
   const { userId } = await auth()
   const { pathname, search } = req.nextUrl
   // Volta para a URL inteira: a tela de consentimento do OAuth carrega
@@ -74,8 +79,20 @@ export default clerkMiddleware(async (auth, req) => {
   return NextResponse.next()
 })
 
+export default function middleware(req: NextRequest, event: NextFetchEvent) {
+  // Recusa antes de Clerk/otimizador: nenhuma consulta de origem remota.
+  const isolatedPreview = previewSideEffectsAreDisabled(process.env)
+  if (req.nextUrl.pathname.startsWith('/_next/image')) {
+    return isolatedPreview
+      ? NextResponse.json({ error: 'Otimização de imagens desativada no Preview.' }, { status: 403 })
+      : NextResponse.next()
+  }
+  return authenticatedMiddleware(req, event)
+}
+
 export const config = {
   matcher: [
+    '/_next/image/:path*',
     // Skip Next.js internals and all static files
     '/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
     // Always run for API routes
