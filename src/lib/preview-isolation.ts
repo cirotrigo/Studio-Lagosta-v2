@@ -1,5 +1,6 @@
 export interface PreviewDatabasePolicy {
   approvedDestinations: readonly { endpoint: string; database: string; role: string; schema: string }[]
+  approvedMigrationDestinations?: readonly { endpoint: string; database: string; role: string; schema: string }[]
   productionEndpoints: readonly string[]
 }
 
@@ -68,6 +69,19 @@ export function isPreviewSmokeRequestAllowed(
 export function assertPreviewDatabaseIsolation(env: PreviewEnv, policy: PreviewDatabasePolicy): void {
   assertHostedEnvironment(env)
   if (env.VERCEL_ENV !== 'preview') return
+  assertApprovedPreviewConnections(env, policy, 'runtime')
+}
+
+/** Separate entrypoint; context is selected by code, never by an env approval flag. */
+export function assertPreviewMigrationIsolation(env: PreviewEnv, policy: PreviewDatabasePolicy): void {
+  assertHostedEnvironment(env)
+  if (env.VERCEL_ENV !== 'preview' || env.VERCEL === '1' || env.VERCEL_URL) {
+    throw new Error('Executor de migrations Preview: somente execução separada, fora do deployment hospedado.')
+  }
+  assertApprovedPreviewConnections(env, policy, 'migration')
+}
+
+function assertApprovedPreviewConnections(env: PreviewEnv, policy: PreviewDatabasePolicy, context: 'runtime' | 'migration'): void {
   const pooled = parseConnection(env.DATABASE_URL, 'DATABASE_URL')
   const direct = parseConnection(env.DIRECT_URL, 'DIRECT_URL')
   if (!pooled.pooled || direct.pooled || pooled.endpoint !== direct.endpoint ||
@@ -76,8 +90,12 @@ export function assertPreviewDatabaseIsolation(env: PreviewEnv, policy: PreviewD
       pooled.url.searchParams.get('schema') !== direct.url.searchParams.get('schema')) {
     throw new Error('Preview isolado: DATABASE_URL e DIRECT_URL devem apontar ao mesmo banco/role/schema de teste, pooled e direct respectivamente.')
   }
+  const approved = context === 'runtime' ? policy.approvedDestinations : policy.approvedMigrationDestinations ?? []
+  const other = context === 'runtime' ? policy.approvedMigrationDestinations ?? [] : policy.approvedDestinations
+  // A role must never be approved for both execution contexts on this endpoint.
   if (policy.productionEndpoints.includes(pooled.endpoint) ||
-      !policy.approvedDestinations.some(destination =>
+      other.some(destination => destination.endpoint === pooled.endpoint && destination.role === pooled.role) ||
+      !approved.some(destination =>
         destination.endpoint === pooled.endpoint && destination.database === pooled.database &&
         destination.role === pooled.role && destination.schema === pooled.schema)) {
     throw new Error('Preview isolado: destino endpoint/banco/role/schema não aprovado ou reservado à produção.')

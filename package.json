@@ -14,7 +14,7 @@
     "postinstall": "prisma generate",
     "build": "node --import tsx scripts/validar-preview.ts && prisma generate && next build",
     "prebuild": "rm -rf .next/cache",
-    "vercel-build": "node --import tsx scripts/validar-preview.ts && rm -rf .next/cache && (prisma migrate deploy || { echo '=== ATENCAO: prisma migrate deploy FALHOU. O banco pode estar sem as mudancas desta versao. ==='; [ \"$VERCEL_ENV\" != production ] && [ \"$VERCEL_ENV\" != preview ]; }) && prisma generate && next build",
+    "vercel-build": "node --import tsx scripts/vercel-build.ts",
     "start": "next start",
     "lint": "next lint",
     "test": "npm run test:e2e",
@@ -26,7 +26,7 @@
     "db:push": "npx tsx scripts/dev-db.ts prisma db push",
     "db:migrate": "npx tsx scripts/dev-db.ts prisma migrate dev",
     "db:reset": "npx tsx scripts/dev-db.ts prisma migrate reset",
-    "db:deploy": "node --import tsx scripts/validar-preview.ts && prisma migrate deploy",
+    "db:deploy": "node --import tsx scripts/deploy-migrations.ts",
     "db:studio": "prisma studio",
     "db:studio:dev": "npx tsx scripts/dev-db.ts prisma studio",
     "db:dev:setup": "npx tsx scripts/setup-dev-db.ts",
@@ -46,7 +46,8 @@
     "migrate-verifying-status": "npx tsx src/scripts/migrate-verifying-status.ts",
     "debug-verification": "npx tsx src/scripts/debug-verification.ts",
     "inspect-post": "npx tsx src/scripts/inspect-post.ts",
-    "test:preview-isolation": "node --import tsx --test src/lib/__tests__/preview-isolation.test.ts && vitest run src/app/api/__tests__/preview-side-effects.test.ts src/lib/__tests__/preview-images.test.ts"
+    "test:preview-isolation": "node --import tsx --test src/lib/__tests__/preview-isolation.test.ts scripts/lib/__tests__/deployment-build.test.ts && vitest run src/app/api/__tests__/preview-side-effects.test.ts src/lib/__tests__/preview-images.test.ts",
+    "db:preview:deploy": "node --import tsx scripts/migrate-preview.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^2.0.53",

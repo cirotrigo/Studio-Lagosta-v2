@@ -1,5 +1,6 @@
 {
   "approvedDestinations": [],
+  "approvedMigrationDestinations": [],
   "approvedProjectIds": [],
   "productionEndpoints": ["ep-fragrant-term-adnufsao"]
 }
