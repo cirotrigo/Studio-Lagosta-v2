@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { z } from 'zod'
+import { CreativeError } from '@/lib/creatives/errors'
 import { db } from '@/lib/db'
 import { reindexEntry, deleteEntry } from '@/lib/knowledge/indexer'
 import { editarEntradaCoordenada } from '@/lib/knowledge/arrendamento'
@@ -211,7 +212,6 @@ export async function PUT(
     }
 
     // Check if content changed - if so, need to reindex (contra a linha lida na MESMA leitura que gravou)
-    const contentChanged = content && content !== edicao.antes.content
     const titleChanged = title && title !== edicao.antes.title
 
     const updatedEntry = await db.knowledgeBaseEntry.findUnique({
@@ -227,7 +227,7 @@ export async function PUT(
     }
 
     // If content or title changed, reindex
-    if (contentChanged || titleChanged) {
+    if (updatedEntry.status !== 'ARCHIVED' && (edicao.mudouIndice || titleChanged)) {
       try {
         await reindexEntry(id, {
           projectId: existingEntry.projectId,
@@ -310,7 +310,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Você não tem permissão para excluir esta entrada' }, { status: 403 })
     }
 
-    await deleteEntry(id, {
+    const exclusao = await deleteEntry(id, {
       projectId: entry.projectId,
       userId: dbUser.id,
       workspaceId: orgId,
@@ -322,9 +322,12 @@ export async function DELETE(
       console.error('[knowledge] Failed to invalidate RAG cache after entry delete', cacheError)
     }
 
-    return NextResponse.json({ message: 'Entrada excluída com sucesso' })
+    if (exclusao.status === 'partial') return NextResponse.json({ success: false, exclusao, aviso: 'Exclusão não concluída; confira a recuperação do índice antes de tentar novamente.' }, { status: 202 })
+    return NextResponse.json({ message: 'Entrada excluída com sucesso', exclusao })
   } catch (error) {
     console.error('Error deleting knowledge entry:', error)
+    if (error instanceof CreativeError) return NextResponse.json(error.toJSON(), { status: error.status })
+    if (ehIndexacaoEmAndamento(error)) return NextResponse.json({ error: error.message, code: error.code }, { status: 409 })
     return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 })
   }
 }

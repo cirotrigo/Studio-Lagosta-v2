@@ -46,17 +46,17 @@ beforeEach(() => {
 
 describe('PR13-47 — a identidade do fato sobrevive à edição pela confirmação: a reaplicação não duplica, e a correção da pessoa bloqueia', () => {
   const DNA = {
-    // O texto de marca que a voz do Espeto cita (CTAs e pré-títulos, verbatim): sem ele a voz proposta não passa na
-    // conferência de exemplos e CTAs contra o DNA e o cliente é bloqueado antes de chegar aos fatos (13/09/2026).
-    toneOfVoice: '**CTAs Aprovados:**\n- Chama a piazada!, Vem pra resenha!, Partiu Espeto!, Vem pro fogo!, Garanta seu lugar!, Vem curtir o sabor!, Vem aproveitar!, Vem matar a fome!, Vem se servir!, Vem pro Espeto!, Sente esse sabor!, Bora pro Espeto!, Vem saborear!, Chama o pessoal!, Experimente esse sabor!, Chama a galera!, Vem provar!, Vem petiscar!, Garanta o seu!, Vem pro boteco do Espeto!, Vem viver esse sabor!\n\nPré-títulos: SEXTOU COM ESPETO · DOMINGO EM FAMÍLIA',
+    // Marca e corpus inteiramente sintéticos para o cenário de concorrência.
+    toneOfVoice: 'CTAs (lista fechada): Explore o planeta!',
     contentRules: 'Happy hour das 17h às 19h, com petiscos da casa e música ao vivo no salão principal.\nO gelato custa R$ 25 hoje, em qualquer sabor da vitrine, na casquinha ou no copo.',
     updatedAt: new Date('2026-09-10T12:00:00Z'),
   }
+  const vozSintetica = { versao: 'voz-v1' as const, descricao: 'Direto.', tratamento: 'você', termos: [], exemplos: ['CTAs (lista fechada): Explore o planeta!'], proibicoes: ['CTAs: lista fechada, cópia literal.'], antesDepois: [], regras: [] }
   const PARADA = 'parada da prova depois dos fatos, antes da voz'
 
   it('o estado lido pelo script confere a voz contra o DNA ATUAL: sem o texto de marca que ela cita, o cliente não pode migrar (13/09/2026)', async () => {
     base.dna = { ...DNA, toneOfVoice: null }
-    const lido = await lerEstadoDoCliente(dbFalso as never, 6)
+    const lido = await lerEstadoDoCliente(dbFalso as never, 6, { voz: vozSintetica })
     expect(lido?.estado.vozValida).toBe(false)
     expect(lido?.estado.problemasDaVoz).toEqual(expect.arrayContaining([expect.stringMatching(/não está no DNA/)]))
     expect(lido?.previa.avisos).toEqual(expect.arrayContaining([expect.stringMatching(/^⛔ .*bloqueia a migração/)]))
@@ -64,12 +64,12 @@ describe('PR13-47 — a identidade do fato sobrevive à edição pela confirmaç
 
   async function manifestoAprovado(): Promise<Manifesto> {
     base.dna = DNA
-    const lido = await lerEstadoDoCliente(dbFalso as never, 6)
+    const lido = await lerEstadoDoCliente(dbFalso as never, 6, { voz: vozSintetica })
     if (!lido) throw new Error('o projeto 6 não tem voz proposta')
     const trechos = fatosNoDna(DNA).map((f) => f.trecho)
     expect(trechos).toHaveLength(2)
     const m = manifestoEmBranco([lido.previa])
-    m.clientes[0] = { ...m.clientes[0], decisao: 'migrar', aprovadoPor: 'Ciro', aprovadoEm: '2026-09-12', fatosParaABase: trechos.map((trecho, i) => ({ trecho, categoria: 'ESTABELECIMENTO_INFO', titulo: `Fato ${i + 1}` })) }
+    m.clientes[0] = { ...m.clientes[0], decisao: 'migrar', aprovadoPor: 'Pessoa fictícia', aprovadoEm: '2026-09-12', fatosParaABase: trechos.map((trecho, i) => ({ trecho, categoria: 'ESTABELECIMENTO_INFO', titulo: `Fato ${i + 1}` })) }
     return m
   }
   const chavesDe = (m: Manifesto) => m.clientes[0].fatosParaABase.map((f) => chaveDoFato({ projectId: 6, versaoDaPrevia: m.clientes[0].versaoDaPrevia, trecho: f.trecho }))
@@ -88,7 +88,7 @@ describe('PR13-47 — a identidade do fato sobrevive à edição pela confirmaç
       } as never)) as ComTrava
   }
   const aplicar = (m: Manifesto) =>
-    aplicarManifesto(dbFalso as never, m, { comTrava: travaDaProva(chavesDe(m)), criarFato: (fato, autor, signal) => criarFatoPeloIndexador(dbFalso as never, fato, autor, signal) })
+    aplicarManifesto(dbFalso as never, m, { vozesPropostas: new Map([[6, vozSintetica]]), comTrava: travaDaProva(chavesDe(m)), criarFato: (fato, autor, signal) => criarFatoPeloIndexador(dbFalso as never, fato, autor, signal) })
 
   /** A aplicação cria o 1º fato e falha no 2º (embeddings fora do ar): o 2º é desfeito, o 1º fica completo. */
   async function falhaParcial(m: Manifesto) {
@@ -107,7 +107,7 @@ describe('PR13-47 — a identidade do fato sobrevive à edição pela confirmaç
   it.each([
     ['omitido', {}],
     ['nulo', { metadata: null }],
-    ['substituído', { metadata: { nota: 'conferido pela Roberta' } }],
+    ['substituído', { metadata: { nota: 'conferido pela pessoa fictícia' } }],
   ])('metadata %s na confirmação real: a reaplicação acha o fato pela chave e cria só o que faltava', async (_rotulo, extra) => {
     const m = await manifestoAprovado()
     const [ch1, ch2] = chavesDe(m)
@@ -186,7 +186,10 @@ describe('PR13-47 — todo escritor de metadata respeita a partição: pessoa ×
     const r = await confirmarPelaRota({ projectId: 6, preview: { operation: 'CREATE', category: 'ESTABELECIMENTO_INFO', title: 'Horário', content: ANTIGO, tags: [], metadata: { horario: '11h às 23h', chaveDoFato: 'forjada', [MARCA_DE_INDEXADO]: 'forjada', [CICLO_DE_INDEXACAO]: 'forjado', [EXPIRACAO_DO_CICLO]: '2099-01-01T00:00:00.000Z' } } })
     expect(r.status).toBe(200)
     const [linha] = [...base.entradas.values()]
-    expect(linha.metadata).toEqual({ horario: '11h às 23h' })
+    expect(linha.metadata).toMatchObject({ horario: '11h às 23h', [CICLO_DE_INDEXACAO]: expect.any(String) })
+    expect(base.meta(linha.id)[CICLO_DE_INDEXACAO]).not.toBe('forjado')
+    expect(base.meta(linha.id)[MARCA_DE_INDEXADO]).toBeUndefined()
+    expect(base.meta(linha.id)[EXPIRACAO_DO_CICLO]).toBeUndefined()
   })
 
   it('criarEntradaBase: a identidade vem de quem cria; marca e prazo prontos no metadata são descartados e a indexação desta criação não é recusada', async () => {

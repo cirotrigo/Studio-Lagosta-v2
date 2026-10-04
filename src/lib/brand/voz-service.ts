@@ -18,8 +18,9 @@
  */
 
 import { db } from '@/lib/db'
+import type { ContextoDeTextoAprovado } from './texto-aprovado'
 import { CreativeError } from '@/lib/creatives/errors'
-import { conferirFatosEsperados, type FatoEsperado } from './migracao-da-voz'
+import { conferirFatosEsperados, problemasParaMigrar, type FatoEsperado } from './migracao-da-voz'
 import {
   aplicarRegraNaVoz,
   arquivoDoDna,
@@ -145,6 +146,7 @@ export async function gravarVoz(args: GravarVozArgs): Promise<{ versao: number; 
 export async function migrarParaVoz(args: {
   projectId: number
   versaoEsperada: number
+  textoAprovado?: ContextoDeTextoAprovado
   em?: Date
   /**
    * O DNA de texto que a prévia APROVADA leu. Conferido na MESMA transação em
@@ -191,8 +193,8 @@ export async function migrarParaVoz(args: {
    * (`updateBrandDNA` direto, da aba Marca). **Não pegava**: medido no mesmo
    * banco, a edição solta commita no meio e a transação serializável segue e
    * commita — um upsert que não LÊ nada não fecha ciclo para o SSI. Quem
-   * protege esse caso é `dnaEsperado`, comparado logo abaixo, e não o nível de
-   * isolamento. Não reintroduza o isolamento aqui sem repetir as duas medições.
+   * protege esse caso agora é a trava da linha BrandDNA, a coordenação dos escritores
+   * pela linha Project (inclusive ausência) e o CAS relacional na ativação. Não reintroduza o isolamento aqui sem repetir as duas medições.
    */
   return db.$transaction(async (tx) => {
     await travarProjeto(tx, args.projectId)
@@ -203,7 +205,13 @@ export async function migrarParaVoz(args: {
     if (registro.versao !== args.versaoEsperada) {
       throw new CreativeError('VOZ_DIVERGENTE', `A voz mudou (versão esperada ${args.versaoEsperada}, atual ${registro.versao}). Releia a voz antes de migrar.`, 409, { versaoEsperada: args.versaoEsperada, versaoAtual: registro.versao })
     }
+    // Bloqueia UPDATE/DELETE soltos na linha; Project + escritores coordenados protegem ausência/criação.
+    await tx.$queryRaw`SELECT "id" FROM "BrandDNA" WHERE "projectId" = ${args.projectId} FOR UPDATE`
     const dna = await tx.brandDNA.findUnique({ where: { projectId: args.projectId }, select: { toneOfVoice: true, contentRules: true, updatedAt: true } })
+    if (args.textoAprovado) {
+      const problemas = problemasParaMigrar(registro.voz, dna ?? { toneOfVoice: null, contentRules: null }, { ...args.textoAprovado, projectId: args.projectId })
+      if (problemas.length) throw new CreativeError('VOZ_TEXTO_APROVADO_DIVERGENTE', problemas.join('; '), 409)
+    }
     if (args.dnaEsperado) {
       const campos = dnaDiverge({ toneOfVoice: dna?.toneOfVoice ?? null, contentRules: dna?.contentRules ?? null }, args.dnaEsperado)
       if (campos.length > 0) {
@@ -222,8 +230,10 @@ export async function migrarParaVoz(args: {
     }
     const em = args.em ?? new Date()
     await args.antesDeEscrever?.()
+    const dnaFinal = await tx.brandDNA.findUnique({ where: { projectId: args.projectId }, select: { toneOfVoice: true, contentRules: true, updatedAt: true } })
+    if (Boolean(dna) !== Boolean(dnaFinal) || (dna && dnaFinal && (dnaDiverge(dnaFinal, dna).length || dnaFinal.updatedAt.getTime() !== dna.updatedAt.getTime()))) throw new CreativeError('VOZ_DNA_DIVERGENTE', 'DNA mudou dentro da ativação; nada ativado.', 409)
     const gravada = await tx.brandVoice.updateMany({
-      where: { projectId: args.projectId, versao: args.versaoEsperada, migradaEm: null },
+      where: { projectId: args.projectId, versao: args.versaoEsperada, migradaEm: null, Project: { brandDNA: { is: dna ? { toneOfVoice: dna.toneOfVoice, contentRules: dna.contentRules, updatedAt: dna.updatedAt } : null } } },
       data: { migradaEm: em, dnaArquivado: arquivoDoDna({ toneOfVoice: dna?.toneOfVoice ?? null, contentRules: dna?.contentRules ?? null, updatedAt: dna?.updatedAt ?? null }, em) as never },
     })
     if (gravada.count === 0) throw new CreativeError('VOZ_DIVERGENTE', 'A voz mudou enquanto a migração era gravada. Releia e tente de novo.', 409)

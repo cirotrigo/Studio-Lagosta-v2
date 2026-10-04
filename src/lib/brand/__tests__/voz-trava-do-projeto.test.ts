@@ -1,3 +1,4 @@
+// Cenários sintéticos; não representam cliente, pessoa ou aprovação real.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { VozCompacta } from '../voz'
 
@@ -95,6 +96,7 @@ vi.mock('@/lib/db', () => {
           brandDNA,
           $queryRaw: async (partes: TemplateStringsArray, ...valores: unknown[]) => {
             if (!partes.join('?').includes('"Project"')) return []
+            if (trava.liberar) return estado.projetoExiste ? [{ id: valores[0] }] : []
             trava.liberar = await tomarATrava()
             if (estado.aposATrava) { const gancho = estado.aposATrava; estado.aposATrava = null; await gancho() }
             return estado.projetoExiste ? [{ id: valores[0] }] : []
@@ -109,8 +111,8 @@ vi.mock('@/lib/db', () => {
 const { virarRegra } = await import('../brand-context')
 const { gravarVoz, migrarParaVoz } = await import('../voz-service')
 
-const regra = 'Pode usar "Vem pro fogo" só em post de churrasco ao vivo'
-const motivo = 'o Ciro liberou para o evento'
+const regra = 'Pode usar "Acenda a estrela" só em post de churrasco ao vivo'
+const motivo = 'a pessoa fictícia liberou no teste'
 const tick = () => new Promise((r) => setTimeout(r, 0))
 
 async function codigoDe(p: Promise<unknown>): Promise<string | null> {
@@ -120,12 +122,53 @@ async function codigoDe(p: Promise<unknown>): Promise<string | null> {
 describe('a trava que existe sempre: a linha do Project (PR7-R9-01/02)', () => {
   beforeEach(() => {
     estado.voz = null
-    estado.dna = { projectId: 7, toneOfVoice: 'Direto.', contentRules: 'Nunca usar "Vem pro fogo".', updatedAt: new Date('2026-09-10T00:00:00.000Z') }
+    estado.dna = { projectId: 7, toneOfVoice: 'Direto.', contentRules: 'Nunca usar "Acenda a estrela".', updatedAt: new Date('2026-09-10T00:00:00.000Z') }
     estado.ordem = []
     estado.upserts = 0
     estado.projetoExiste = true
     estado.aposATrava = null
     estado.antesDeGravarODna = null
+  })
+
+  it('duas confirmações simultâneas acrescentam ambas, sem lost update', async () => {
+    const resultados = await Promise.all([
+      virarRegra({projectId:7,secao:'contentRules',regra:'Use frases curtas.',motivo:'Primeira decisão',confirmado:true}),
+      virarRegra({projectId:7,secao:'contentRules',regra:'Prefira palavras simples.',motivo:'Segunda decisão',confirmado:true}),
+    ])
+    const texto=String(estado.dna!.contentRules)
+    expect(texto).toContain('Nunca usar "Acenda a estrela".')
+    expect(texto.match(/Use frases curtas\./g)).toHaveLength(1)
+    expect(texto.match(/Prefira palavras simples\./g)).toHaveLength(1)
+    expect(estado.upserts).toBe(2)
+    expect(resultados.every(r=>r.destino==='dna' && r.gravado)).toBe(true)
+  })
+  it.each(['contentRules','composition'] as const)('edição UI intercalada em %s é relida antes de acrescentar',async(secao)=>{
+    estado.aposATrava=()=>{estado.dna={...estado.dna,[secao]:'Edição da UI preservada.'}}
+    const r=await virarRegra({projectId:7,secao,regra:'Use frases curtas.',motivo:'Decisão',confirmado:true})
+    expect(r).toMatchObject({destino:'dna',antes:'Edição da UI preservada.',gravado:true})
+    expect(String(estado.dna![secao])).toContain('Edição da UI preservada.')
+    expect(String(estado.dna![secao])).toContain('Use frases curtas.')
+  })
+  it('DNA inicialmente ausente, criado enquanto aguarda trava, não é perdido',async()=>{
+    estado.dna=null
+    estado.aposATrava=()=>{estado.dna={projectId:7,contentRules:'DNA criado na UI.'}}
+    const r=await virarRegra({projectId:7,secao:'contentRules',regra:'Use frases curtas.',motivo:'Decisão',confirmado:true})
+    expect(r).toMatchObject({antes:'DNA criado na UI.'})
+    expect(String(estado.dna!.contentRules)).toContain('DNA criado na UI.')
+  })
+  it('limite é conferido sobre edição concorrente e preserva essa edição ao recusar',async()=>{
+    estado.aposATrava=()=>{estado.dna={...estado.dna,contentRules:'x'.repeat(10000)}}
+    await expect(virarRegra({projectId:7,secao:'contentRules',regra:'Use frases curtas.',motivo:'Decisão',confirmado:true})).rejects.toThrow('passaria de 10000')
+    expect(estado.upserts).toBe(0)
+    expect(estado.dna!.contentRules).toBe('x'.repeat(10000))
+  })
+  it('prévia permanece somente leitura e não toma trava nem escreve',async()=>{
+    const antes=structuredClone(estado.dna)
+    const r=await virarRegra({projectId:7,secao:'contentRules',regra:'Use frases curtas.',motivo:'Decisão'})
+    expect(r).toMatchObject({destino:'dna',gravado:false})
+    expect(estado.dna).toEqual(antes)
+    expect(estado.upserts).toBe(0)
+    expect(estado.ordem).toEqual([])
   })
 
   it('SEM voz: a voz é criada e migrada enquanto o DNA é confirmado — ordem serial válida, nunca DNA depois da migração', async () => {

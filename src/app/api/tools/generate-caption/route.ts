@@ -3,9 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { generateText } from 'ai'
 import { openai } from '@ai-sdk/openai'
 import { z } from 'zod'
-import { db } from '@/lib/db'
-import { fetchProjectWithShares, hasProjectReadAccess } from '@/lib/projects/access'
-import { getProjectPromptKnowledgeContext } from '@/lib/knowledge/search'
+import { loadCaptionContext, captionBrandInstructions } from '@/lib/brand/caption-context'
 
 export const runtime = 'nodejs'
 export const maxDuration = 30
@@ -65,6 +63,7 @@ function buildSystemPrompt(
   includeHashtags: boolean,
   projectName: string,
   knowledgeContext: string,
+  identity: string,
 ): string {
   const toneInstruction = TONE_INSTRUCTIONS[tone] || TONE_INSTRUCTIONS.casual
   const postConfig = POST_TYPE_CONFIG[postType] || POST_TYPE_CONFIG.POST
@@ -77,24 +76,25 @@ function buildSystemPrompt(
 
 PROJETO: ${projectName}
 
-TOM DA LEGENDA: ${toneInstruction}
+TOM SUGERIDO (somente se compatível com a identidade): ${toneInstruction}
 
 TIPO DE POST: ${postConfig.description}
 ${knowledgeSection}
+${captionBrandInstructions(identity)}
 
 REGRAS OBRIGATÓRIAS:
 1. A legenda deve ter NO MÁXIMO ${maxLength} caracteres (incluindo emojis e espaços)
 2. Comece com um hook que prenda a atenção
 3. Seja conciso e direto - cada palavra deve ter propósito
-4. Inclua um call-to-action quando apropriado (ex: "Marque alguém", "Comente", "Salve este post")
-5. Use emojis de forma estratégica (máximo 3-5)
+4. Inclua um call-to-action quando apropriado, respeitando a lista e as condições da marca
+5. Emojis somente quando permitidos pela marca (máximo 3-5)
 6. ${includeHashtags ? 'Inclua até 3 hashtags relevantes no final' : 'NÃO inclua hashtags'}
 7. Use português brasileiro natural
 8. NÃO invente informações como preços, horários ou endereços se não estiverem no contexto
 9. Se houver informações do projeto (horários, cardápio, diferenciais), incorpore naturalmente
 
 ${postType === 'STORY' ? 'Para stories: seja mais direto e casual, sem hashtags. Máximo 2 linhas.' : ''}
-${postType === 'CAROUSEL' ? 'Para carrossel: gere curiosidade, pode mencionar "arrasta para ver mais".' : ''}
+${postType === 'CAROUSEL' ? 'Para carrossel: gere curiosidade; interação somente conforme a marca.' : ''}
 
 FORMATO DA RESPOSTA:
 Retorne APENAS a legenda em texto puro, sem markdown, sem aspas, sem explicações.
@@ -120,26 +120,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Erro ao processar requisição' }, { status: 400 })
   }
 
-  // Verificar acesso ao projeto
-  const project = await fetchProjectWithShares(body.projectId)
-  if (!project || !hasProjectReadAccess(project, { userId, orgId })) {
-    return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
-  }
-
-  // Buscar nome do projeto
-  const projectMeta = await db.project.findUnique({
-    where: { id: body.projectId },
-    select: { name: true },
-  })
-
-  const projectName = projectMeta?.name || 'Projeto'
-
-  // Buscar contexto da base de conhecimento via RAG
-  const knowledgeResult = await getProjectPromptKnowledgeContext(
-    body.prompt,
-    { projectId: body.projectId },
-    { topKPerCategory: 2, maxTokens: 800, minScore: 0.6 },
-  )
+  const context = await loadCaptionContext(body.projectId, { userId, orgId }, body.prompt)
+  if (!context) return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
+  const projectName = context.projectName
+  const knowledgeResult = context.knowledge
 
   const postConfig = POST_TYPE_CONFIG[body.postType] || POST_TYPE_CONFIG.POST
   const maxLength = body.maxLength || postConfig.maxLength
@@ -152,6 +136,7 @@ export async function POST(request: NextRequest) {
     includeHashtags,
     projectName,
     knowledgeResult.context,
+    context.identity,
   )
 
   try {

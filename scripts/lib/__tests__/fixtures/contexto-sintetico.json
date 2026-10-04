@@ -1,0 +1,31 @@
+{
+  "voz": {
+    "versao": "voz-v1",
+    "descricao": "Direto e acolhedor no cenário fictício.",
+    "tratamento": "você",
+    "termos": [],
+    "exemplos": [
+      "CTAs (lista fechada): Explore o planeta! · Acenda a estrela! · Faça sua órbita!"
+    ],
+    "proibicoes": [
+      "CTAs: lista fechada, cópia literal."
+    ],
+    "antesDepois": [],
+    "regras": [
+      {
+        "id": "fixture-cycle",
+        "texto": "Use “Faça sua órbita!” somente no ciclo de testes ativo; não use em outros ciclos.",
+        "motivo": "Condição inteiramente sintética.",
+        "em": "2030-01-02",
+        "escopo": "copy",
+        "ativa": true
+      }
+    ]
+  },
+  "dna": {
+    "toneOfVoice": "CTAs (lista fechada): Explore o planeta!",
+    "contentRules": ""
+  },
+  "pergunta": "Apenas o projeto fictício Aurora: manter “Acenda a estrela!” e usar “Faça sua órbita!” somente no ciclo de testes ativo. Você aprova essa simulação?",
+  "resposta": "Sim, aprovo a simulação"
+}

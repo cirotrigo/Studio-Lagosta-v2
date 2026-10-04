@@ -28,6 +28,7 @@
  *   a pessoa ver o que pode ter ficado de fora, não para decidir sozinha.
  */
 
+import { ctasAtestados, hashDaFonteAtestada, type ContextoDeTextoAprovado } from './texto-aprovado'
 import { createHash } from 'node:crypto'
 import { temMarcaDeIndexado } from '../knowledge/marca-de-indexado'
 import { computeDe, nomeDoBancoDe } from '../compute-do-banco'
@@ -89,6 +90,7 @@ export interface PreviaDaMigracao {
   nome: string
   versaoDaPrevia: string
   geradaEm: string
+  fonteDeTextoSha256?: string
   antes: {
     toneOfVoiceChars: number
     contentRulesChars: number
@@ -498,16 +500,17 @@ export interface ConferenciaDeMarca {
  * - `cta-ausente-na-voz`: CTA de lista do DNA que a voz não traz — salvo o que ela retira de propósito, citando-o numa proibição, numa regra que veta ou no "antes" de uma reescrita;
  * - `lista-fechada-sem-aviso`: o DNA fecha a lista de CTAs e a voz não diz que é fechada.
  */
-export function conferirTextoDeMarca(voz: VozCompacta, dna: DnaDeTexto): ConferenciaDeMarca {
+export function conferirTextoDeMarca(voz: VozCompacta, dna: DnaDeTexto, aprovado?: ContextoDeTextoAprovado): ConferenciaDeMarca {
+  const externos = aprovado ? ctasAtestados(aprovado, voz, dna) : []
   const dnaPlano = soEspacos([dna.toneOfVoice, dna.contentRules].filter((t): t is string => !!t).join('\n'))
   const frases = frasesDeMarcaDaVoz(voz)
   const divergencias: DivergenciaDeMarca[] = []
   for (const f of frases) {
-    if (dnaPlano.includes(soEspacos(f.frase))) continue
+    if (dnaPlano.includes(soEspacos(f.frase)) || externos.includes(f.frase)) continue
     divergencias.push({ tipo: 'fora-do-dna', caminho: f.caminho, frase: f.frase, mensagem: `${f.caminho}: "${f.frase}" não está no DNA — ${f.cta ? 'CTA' : 'exemplo'} da voz vem do DNA, verbatim (caixa e acento contam)` })
   }
   const listasDoDna = [...listasDeCtas(dna.toneOfVoice), ...listasDeCtas(dna.contentRules)]
-  const ctasDoDna = [...new Set(listasDoDna.flatMap((l) => l.itens))]
+  const ctasDoDna = [...new Set([...listasDoDna.flatMap((l) => l.itens), ...externos])]
   const naVoz = new Set(frases.map((f) => semPontoFinal(f.frase)))
   const retirados = ctasRetiradosPelaVoz(voz)
   const retiradosPelaVoz: string[] = []
@@ -558,14 +561,14 @@ function jsonEstavel(valor: unknown): string {
 }
 
 /** A versão da prévia é do CONTEÚDO: o DNA de texto como está + a voz proposta. Mudou um, muda a versão, e a aprovação anterior não vale. */
-export function versaoDaPrevia(args: { dna: DnaDeTexto; voz: unknown }): string {
+export function versaoDaPrevia(args: { dna: DnaDeTexto; voz: unknown; textoAprovado?: ContextoDeTextoAprovado }): string {
   return createHash('sha256')
-    .update(jsonEstavel({ toneOfVoice: args.dna.toneOfVoice ?? null, contentRules: args.dna.contentRules ?? null, voz: args.voz }))
+    .update(jsonEstavel({ toneOfVoice: args.dna.toneOfVoice ?? null, contentRules: args.dna.contentRules ?? null, voz: args.voz, ...(args.textoAprovado ? { fonteDeTextoSha256: hashDaFonteAtestada(args.textoAprovado.fonte) } : {}) }))
     .digest('hex')
     .slice(0, 16)
 }
 
-export function montarPrevia(args: { projectId: number; nome: string; dna: DnaDeTexto; voz: unknown; agora?: Date }): PreviaDaMigracao {
+export function montarPrevia(args: { projectId: number; nome: string; dna: DnaDeTexto; voz: unknown; agora?: Date; textoAprovado?: ContextoDeTextoAprovado }): PreviaDaMigracao {
   const lida = lerVoz(args.voz)
   const voz = lida.voz
   const avisos: string[] = []
@@ -573,7 +576,7 @@ export function montarPrevia(args: { projectId: number; nome: string; dna: DnaDe
   const naVoz = voz ? fatosNaVoz(voz) : []
   const noLegado = fatosNoDna(args.dna)
   const prompt = voz ? vozParaPrompt(voz, { escopo: 'copy' }) : ''
-  const textoDeMarca = voz ? conferirTextoDeMarca(voz, args.dna) : null
+  const textoDeMarca = voz ? conferirTextoDeMarca(voz, args.dna, args.textoAprovado ? { ...args.textoAprovado, projectId: args.projectId } : undefined) : null
   for (const d of textoDeMarca?.divergencias ?? []) avisos.push(`⛔ ${d.mensagem} (bloqueia a migração deste cliente)`)
   const semCorrespondente = regrasLegadas.filter((r) => r.situacao === 'sem-correspondente')
   if (semCorrespondente.length > 0) avisos.push(`${semCorrespondente.length} regra(s) aprendida(s) do DNA sem correspondente na voz — confira se foram absorvidas na descrição/exemplos ou se ficaram de fora de propósito.`)
@@ -584,8 +587,9 @@ export function montarPrevia(args: { projectId: number; nome: string; dna: DnaDe
   return {
     projectId: args.projectId,
     nome: args.nome,
-    versaoDaPrevia: versaoDaPrevia({ dna: args.dna, voz: args.voz }),
+    versaoDaPrevia: versaoDaPrevia({ dna: args.dna, voz: args.voz, textoAprovado: args.textoAprovado }),
     geradaEm: (args.agora ?? new Date()).toISOString(),
+    ...(args.textoAprovado ? { fonteDeTextoSha256: hashDaFonteAtestada(args.textoAprovado.fonte) } : {}),
     antes: {
       toneOfVoiceChars: args.dna.toneOfVoice?.length ?? 0,
       contentRulesChars: args.dna.contentRules?.length ?? 0,
@@ -616,6 +620,7 @@ export function previaParaMarkdown(p: PreviaDaMigracao): string {
   L.push(`# ${p.nome} (projeto ${p.projectId}) — prévia da migração da voz`)
   L.push('')
   L.push(`Versão da prévia: \`${p.versaoDaPrevia}\` · gerada em ${p.geradaEm}`)
+  if (p.fonteDeTextoSha256) L.push(`Fonte de texto atestada (SHA-256): \`${p.fonteDeTextoSha256}\``)
   L.push('')
   L.push('## Antes (o DNA de texto que a copy lê hoje)')
   L.push('')
@@ -719,6 +724,7 @@ export const clienteDoManifestoSchema = z
     aprovadoPor: z.string().min(1).optional(),
     aprovadoEm: diaDoCalendario.optional(),
     observacao: z.string().max(600).optional(),
+    fonteDeTextoSha256: z.string().regex(/^[a-f0-9]{64}$/).optional(),
     fatosParaABase: z.array(fatoParaABaseSchema).max(40).default([]),
   })
   .strict()
@@ -758,7 +764,7 @@ export function manifestoEmBranco(previas: PreviaDaMigracao[], agora: Date = new
   return {
     versao: VERSAO_DO_MANIFESTO,
     geradoEm: agora.toISOString(),
-    clientes: previas.map((p) => ({ projectId: p.projectId, nome: p.nome, versaoDaPrevia: p.versaoDaPrevia, decisao: 'pendente' as const, fatosParaABase: [] })),
+    clientes: previas.map((p) => ({ projectId: p.projectId, nome: p.nome, versaoDaPrevia: p.versaoDaPrevia, ...(p.fonteDeTextoSha256 ? { fonteDeTextoSha256: p.fonteDeTextoSha256 } : {}), decisao: 'pendente' as const, fatosParaABase: [] })),
   }
 }
 
@@ -984,6 +990,7 @@ function diaEmBrasilia(d: Date | string): string | null {
 export interface EstadoDoCliente {
   /** A versão da prévia CALCULADA AGORA (DNA atual + voz proposta atual). */
   versaoDaPreviaAtual: string
+  fonteDeTextoSha256?: string
   /** Os trechos de fato que a prévia atual lista (os detectados). */
   trechosDeFato: string[]
   /**
@@ -1007,11 +1014,13 @@ export interface EstadoDoCliente {
  * de CTAs do DNA incompleta na voz (`conferirTextoDeMarca`). Vazio = pode.
  * Sem `dna`, só o contrato e os fatos — quem decide migrar (o script) passa o DNA.
  */
-export function problemasParaMigrar(voz: unknown, dna?: DnaDeTexto): string[] {
+export function problemasParaMigrar(voz: unknown, dna?: DnaDeTexto, aprovado?: ContextoDeTextoAprovado): string[] {
   const lida = lerVoz(voz)
   if (!lida.voz) return lida.problemas.map((p) => `${p.caminho}: ${p.mensagem}`)
   const fatos = fatosNaVoz(lida.voz).map((f) => `${f.caminho} carrega ${f.tipos.join('/')}: "${f.trecho.slice(0, 80)}"`)
-  const marca = dna ? conferirTextoDeMarca(lida.voz, dna).divergencias.map((d) => d.mensagem) : []
+  if (aprovado && !dna) return [...fatos, 'Fonte aprovada exige DNA atual']
+  let marca: string[] = []
+  try { marca = dna ? conferirTextoDeMarca(lida.voz, dna, aprovado).divergencias.map((d) => d.mensagem) : [] } catch (e) { marca = [e instanceof Error ? e.message : String(e)] }
   return [...fatos, ...marca]
 }
 
@@ -1034,6 +1043,7 @@ export function planoDeAplicacao(manifesto: Manifesto, estados: Map<number, Esta
     const estado = estados.get(c.projectId)
     if (!estado) return { ...base, acao: 'bloqueado' as const, motivo: 'o cliente não está no estado lido (sem DNA ou sem voz proposta)' }
     if (estado.registro?.migradaEm) return { ...base, acao: 'ja-migrado' as const }
+    if (c.fonteDeTextoSha256 !== estado.fonteDeTextoSha256) return { ...base, acao: 'bloqueado' as const, motivo: 'a fonte de texto aprovada não corresponde à fonte atestada da prévia' }
     if (!estado.vozValida) return { ...base, acao: 'bloqueado' as const, motivo: `a voz proposta não pode migrar agora: ${(estado.problemasDaVoz ?? ['não passa no contrato']).join(' · ')}` }
     if (estado.versaoDaPreviaAtual !== c.versaoDaPrevia) {
       return { ...base, acao: 'bloqueado' as const, motivo: `a prévia mudou desde a aprovação (aprovada ${c.versaoDaPrevia}, atual ${estado.versaoDaPreviaAtual}): refaça a prévia e peça aprovação nova` }

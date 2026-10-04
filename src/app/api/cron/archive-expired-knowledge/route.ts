@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { deleteVectorsByEntry } from '@/lib/knowledge/vector-client'
-import { invalidateProjectCache } from '@/lib/knowledge/cache'
+import { arquivarEntradaBase } from '@/lib/knowledge/archive'
+import { LIMPEZA_ARQUIVAMENTO_PENDENTE } from '@/lib/knowledge/marca-de-indexado'
+import { hashDoConteudo } from '@/lib/knowledge/entry-fingerprint'
 import { expirarSugestoesPendentes } from '@/lib/aprendizado/captura'
 
 export const runtime = 'nodejs'
@@ -45,13 +46,13 @@ export async function GET(req: Request) {
       )
     }
 
-    // Buscar entradas expiradas que ainda estão ACTIVE
+    // Expiradas ACTIVE e limpezas ARCHIVED pendentes (inclusive queda antes do recibo).
     const expiredEntries = await db.knowledgeBaseEntry.findMany({
       where: {
-        expiresAt: {
-          lte: now, // Menor ou igual a agora (já expirou)
-        },
-        status: 'ACTIVE',
+        OR: [
+          { status: 'ACTIVE', expiresAt: { lte: now } },
+          { status: 'ARCHIVED', metadata: { path: [LIMPEZA_ARQUIVAMENTO_PENDENTE], equals: true } },
+        ],
       },
       select: {
         id: true,
@@ -61,6 +62,8 @@ export async function GET(req: Request) {
         title: true,
         category: true,
         expiresAt: true,
+        updatedAt: true,
+        content: true,
       },
     })
 
@@ -75,11 +78,7 @@ export async function GET(req: Request) {
       })
     }
 
-    const projectIdsToInvalidate = new Set<number>()
-    for (const entry of expiredEntries) {
-      projectIdsToInvalidate.add(entry.projectId)
-    }
-
+    const receipts: Array<Awaited<ReturnType<typeof arquivarEntradaBase>>> = []
     console.log(`[cron:archive-expired-knowledge] Found ${expiredEntries.length} expired entries`)
 
     let archivedCount = 0
@@ -89,25 +88,11 @@ export async function GET(req: Request) {
     // Processar cada entrada expirada
     for (const entry of expiredEntries) {
       try {
-        // 1. Deletar vetores do Upstash
-        const deletedVectors = await deleteVectorsByEntry(entry.id, {
-          projectId: entry.projectId,
-          userId: entry.userId ?? undefined,
-          workspaceId: entry.workspaceId ?? undefined,
-        })
-
-        vectorsDeletedCount += deletedVectors
-
-        // 2. Arquivar entrada no banco
-        await db.knowledgeBaseEntry.update({
-          where: { id: entry.id },
-          data: {
-            status: 'ARCHIVED',
-            updatedBy: 'system:cron:archive-expired',
-          },
-        })
-
-        archivedCount++
+        const receipt = await arquivarEntradaBase({ entryId: entry.id, projectId: entry.projectId,
+          autor: 'system:cron:archive-expired', updatedAt: entry.updatedAt, contentHash: hashDoConteudo(entry.content) })
+        receipts.push(receipt)
+        if (receipt.arquivada) archivedCount++
+        if (receipt.vectors.status === 'confirmed') vectorsDeletedCount += receipt.vectors.deleted ?? 0
 
         console.log(
           `[cron:archive-expired-knowledge] Archived entry ${entry.id} - "${entry.title}" (expired at ${entry.expiresAt?.toISOString()})`
@@ -119,24 +104,6 @@ export async function GET(req: Request) {
       }
     }
 
-    // Invalidate RAG cache for affected projects (best-effort)
-    const cacheInvalidationErrors: Array<{ projectId: number; error: string }> = []
-    await Promise.all(
-      Array.from(projectIdsToInvalidate).map(async (projectId) => {
-        try {
-          await invalidateProjectCache(projectId)
-        } catch (err) {
-          cacheInvalidationErrors.push({
-            projectId,
-            error: err instanceof Error ? err.message : 'Unknown error',
-          })
-        }
-      })
-    )
-    if (cacheInvalidationErrors.length > 0) {
-      console.error('[cron:archive-expired-knowledge] Cache invalidation errors:', cacheInvalidationErrors)
-    }
-
     const durationMs = Date.now() - startTime
 
     console.log(
@@ -144,14 +111,14 @@ export async function GET(req: Request) {
     )
 
     return NextResponse.json({
-      success: true,
+      success: errors.length === 0 && receipts.every(receipt => receipt.status === 'complete'),
       archived: archivedCount,
       sugestoesExpiradas,
       total: expiredEntries.length,
       vectorsDeleted: vectorsDeletedCount,
       errors: errors.length > 0 ? errors : undefined,
-      cacheInvalidatedProjects: projectIdsToInvalidate.size,
-      cacheInvalidationErrors: cacheInvalidationErrors.length > 0 ? cacheInvalidationErrors : undefined,
+      cacheInvalidatedProjects: new Set(receipts.filter(receipt => receipt.cache.status === 'confirmed').map(receipt => receipt.cache.projectId)).size,
+      partial: receipts.filter(receipt => receipt.status === 'partial').map(({ entradaId, database, vectors, cache, estadoAtual }) => ({ entradaId, database, vectors, cache, estadoAtual })),
       durationMs,
     })
   } catch (error) {

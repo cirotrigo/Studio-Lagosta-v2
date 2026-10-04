@@ -171,8 +171,11 @@ export async function loadBrandContext(projectId: number): Promise<BrandContext 
 export async function updateBrandDNA(
   projectId: number,
   patch: Partial<Record<BrandDNAField, string | null>>,
-  cliente: Pick<typeof db, 'brandDNA'> = db,
+  cliente?: Pick<typeof db, 'brandDNA' | '$queryRaw'>,
 ): Promise<BrandDNASections> {
+  // Project protege inclusive a criação quando a linha BrandDNA ainda não existe.
+  if (!cliente) return db.$transaction((tx) => updateBrandDNA(projectId, patch, tx))
+  await travarProjeto(cliente, projectId)
   const data: Record<string, string | null> = {}
   for (const field of BRAND_DNA_FIELDS) {
     if (Object.prototype.hasOwnProperty.call(patch, field)) {
@@ -333,59 +336,38 @@ export async function virarRegra(args: VirarRegraArgs): Promise<VirarRegraResult
     )
   }
 
-  const atual = await db.brandDNA.findUnique({ where: { projectId: args.projectId } })
-  const antes = nonEmpty(atual?.[secao] ?? null)
-  // No legado não há substituição: a regra nova é acrescentada e a antiga
-  // continua valendo. O aviso mostra as linhas que falam do mesmo assunto.
-  const conflitos = conflitosNoTextoLegado(antes, regra)
-
-  const linhaAdicionada = `- ${regra} (${dia} — ${motivo})`
-
-  let depois: string
-  if (!antes) {
-    depois = `${APRENDIZADO_HEADER}\n${linhaAdicionada}`
-  } else if (antes.includes(APRENDIZADO_HEADER)) {
-    // Já existe a lista: a linha entra no fim dela, que é o fim da seção.
-    depois = `${antes.trimEnd()}\n${linhaAdicionada}`
-  } else {
-    depois = `${antes.trimEnd()}\n\n${APRENDIZADO_HEADER}\n${linhaAdicionada}`
-  }
-
-  if (depois.length > BRAND_DNA_MAX_CHARS) {
-    throw new Error(
-      `A seção ${secao} passaria de ${BRAND_DNA_MAX_CHARS} caracteres. O DNA é síntese: consolide as regras antigas antes de somar outra.`,
-    )
-  }
-
-  if (args.confirmado) {
-    if (secaoDeTexto) {
-      /**
-       * A migração pode ser LIGADA entre a escolha deste ramo e a escrita: a
-       * regra cairia no DNA de texto que já não manda na copy. Quem trava é a
-       * linha do PROJETO (`travarProjeto`), não a da voz: sem voz gravada o
-       * `FOR UPDATE` em `BrandVoice` não travava nada, e a voz podia ser
-       * criada e migrada nessa janela (PR7-R9-01 da revisão final do Codex,
-       * 20/09/2026). `migrarParaVoz` toma a MESMA trava, então as duas se
-       * serializam; o estado da migração é RELIDO dentro dela.
-       */
-      await db.$transaction(async (tx) => {
-        await travarProjeto(tx, args.projectId)
-        const voz = await tx.brandVoice.findUnique({ where: { projectId: args.projectId }, select: { migradaEm: true } })
-        if (voz?.migradaEm) {
-          throw new CreativeError(
-            'REGRA_DESTINO_MUDOU',
-            'O cliente foi migrado para a voz compacta enquanto a regra era confirmada: o DNA de texto não manda mais na copy. Nada foi gravado — peça a proposta de novo.',
-            409,
-          )
-        }
-        await updateBrandDNA(args.projectId, { [secao]: depois }, tx)
-      })
-    } else {
-      await updateBrandDNA(args.projectId, { [secao]: depois })
+  const preparar = (atual: Partial<Record<BrandDNAField, string | null>> | null): VirarRegraResultDNA => {
+    const antes = nonEmpty(atual?.[secao] ?? null)
+    const conflitos = conflitosNoTextoLegado(antes, regra)
+    const linhaAdicionada = `- ${regra} (${dia} — ${motivo})`
+    const depois = !antes
+      ? `${APRENDIZADO_HEADER}\n${linhaAdicionada}`
+      : antes.includes(APRENDIZADO_HEADER)
+        ? `${antes.trimEnd()}\n${linhaAdicionada}`
+        : `${antes.trimEnd()}\n\n${APRENDIZADO_HEADER}\n${linhaAdicionada}`
+    if (depois.length > BRAND_DNA_MAX_CHARS) {
+      throw new Error(`A seção ${secao} passaria de ${BRAND_DNA_MAX_CHARS} caracteres. O DNA é síntese: consolide as regras antigas antes de somar outra.`)
     }
+    return { destino: 'dna', secao, antes, depois, linhaAdicionada, gravado: false, conflitos }
   }
+  if (!args.confirmado) return preparar(await db.brandDNA.findUnique({ where: { projectId: args.projectId } }))
 
-  return { destino: 'dna', secao, antes, depois, linhaAdicionada, gravado: !!args.confirmado, conflitos }
+  return db.$transaction(async (tx) => {
+    // Ler/calcular só DEPOIS da trava: duas confirmações ou uma edição da UI
+    // devem acrescentar sobre o estado vigente, jamais sobre uma cópia antiga.
+    // Project cobre ausência/criação; a linha DNA também bloqueia UPDATE solto.
+    await travarProjeto(tx, args.projectId)
+    if (secaoDeTexto) {
+      const voz = await tx.brandVoice.findUnique({ where: { projectId: args.projectId }, select: { migradaEm: true } })
+      if (voz?.migradaEm) {
+        throw new CreativeError('REGRA_DESTINO_MUDOU', 'O cliente foi migrado para a voz compacta enquanto a regra era confirmada: o DNA de texto não manda mais na copy. Nada foi gravado — peça a proposta de novo.', 409)
+      }
+    }
+    await tx.$queryRaw`SELECT "id" FROM "BrandDNA" WHERE "projectId" = ${args.projectId} FOR UPDATE`
+    const resultado = preparar(await tx.brandDNA.findUnique({ where: { projectId: args.projectId } }))
+    await updateBrandDNA(args.projectId, { [secao]: resultado.depois }, tx)
+    return { ...resultado, gravado: true }
+  })
 }
 
 /**

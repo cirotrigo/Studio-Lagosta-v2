@@ -1,3 +1,4 @@
+import { travarProjeto } from '@/lib/brand/voz-service'
 /**
  * Lê as peças APROVADAS de um cliente por visão e destila o estilo real da
  * marca — `BrandDNA.estiloDasReferencias` (05/09/2026).
@@ -140,9 +141,12 @@ export async function analisarReferenciasDeEstilo(
 /** Grava (upsert da linha do DNA; só esta coluna). */
 export async function salvarEstiloDasReferencias(projectId: number, estilo: EstiloDasReferenciasGravado): Promise<void> {
   const data = JSON.parse(JSON.stringify(estilo))
-  await db.brandDNA.upsert({
-    where: { projectId },
-    create: { projectId, estiloDasReferencias: data },
-    update: { estiloDasReferencias: data },
+  await db.$transaction(async (tx) => {
+    await travarProjeto(tx, projectId)
+    await tx.brandDNA.upsert({
+      where: { projectId },
+      create: { projectId, estiloDasReferencias: data },
+      update: { estiloDasReferencias: data },
+    })
   })
 }

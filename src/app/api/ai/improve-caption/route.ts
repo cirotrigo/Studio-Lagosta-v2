@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { generateText } from 'ai'
 import { openai } from '@ai-sdk/openai'
 import { z } from 'zod'
+import { loadCaptionContext, captionBrandInstructions } from '@/lib/brand/caption-context'
 import { validateCreditsForFeature, deductCreditsForFeature, refundCreditsForFeature } from '@/lib/credits/deduct'
 import { InsufficientCreditsError } from '@/lib/credits/errors'
 
@@ -17,7 +18,7 @@ const POST_TYPE_CONTEXT: Record<string, string> = {
   'CAROUSEL': 'um carrossel do Instagram (múltiplas imagens, contar uma história)',
 }
 
-function buildSystemPrompt(postType: string): string {
+function buildSystemPrompt(postType: string, identity: string, knowledge: string): string {
   const typeContext = POST_TYPE_CONTEXT[postType] || POST_TYPE_CONTEXT['POST']
 
   return `# Role
@@ -30,6 +31,8 @@ Transformar uma legenda simples em uma legenda otimizada para ${typeContext}, ma
 - Tipo de post: ${postType} (${typeContext})
 - Plataforma: Instagram
 - Objetivo: Aumentar engajamento, alcance e conexão com a audiência
+${captionBrandInstructions(identity)}
+${knowledge ? `BASE DO PROJETO — fatos, nunca inventar condições:\n${knowledge}` : ''}
 
 # Diretrizes de Criação
 
@@ -45,8 +48,8 @@ Transformar uma legenda simples em uma legenda otimizada para ${typeContext}, ma
    - Quebras de linha para facilitar a leitura
 
 3. **Call-to-Action (CTA)**
-   - Inclua uma pergunta ou convite à interação
-   - Exemplos: "Comenta aqui", "Salva esse post", "Marca quem precisa ver"
+   - Inclua pergunta ou convite à interação somente se permitido pela marca
+   - Use somente convite permitido pela marca; respeite CTAs fechados e condições de uso
 
 4. **Hashtags Estratégicas**
    - Sugira 5-10 hashtags relevantes ao final
@@ -55,7 +58,7 @@ Transformar uma legenda simples em uma legenda otimizada para ${typeContext}, ma
 
 5. **Emojis**
    - Use emojis de forma estratégica para destacar pontos importantes
-   - Não exagere - 3 a 5 emojis por legenda é ideal
+   - Somente se a marca permitir; no máximo 3 a 5 emojis
    - Emojis no início de linhas funcionam como bullet points visuais
 
 # Regras Específicas por Tipo
@@ -63,8 +66,8 @@ Transformar uma legenda simples em uma legenda otimizada para ${typeContext}, ma
 ${postType === 'STORY' ? `
 **Para Stories:**
 - Legendas mais curtas e diretas
-- Tom mais casual e urgente
-- Foco em interação rápida (enquetes, perguntas)
+- Tom mais casual; urgência somente se permitida pela marca e sustentada pela Base
+- Interação rápida somente se permitida pela marca
 - Sem hashtags (não aparecem em stories)
 ` : ''}
 
@@ -73,15 +76,15 @@ ${postType === 'REEL' ? `
 - Hook MUITO forte nas primeiras palavras
 - Legenda complementa o vídeo, não repete
 - Hashtags importantes para descoberta
-- CTA para assistir até o final ou seguir
+- CTA somente conforme a marca; assistir até o final ou seguir apenas se permitido
 ` : ''}
 
 ${postType === 'CAROUSEL' ? `
 **Para Carrossel:**
 - Gere curiosidade para passar os slides
-- Mencione "Arrasta para o lado" ou similar
+- Convite para passar os slides somente se permitido pela marca
 - Resumo do conteúdo na legenda
-- CTA para salvar (carrosséis salvos = alcance)
+- CTA conforme a marca; salvar o carrossel apenas se permitido
 ` : ''}
 
 # REGRAS CRÍTICAS
@@ -112,6 +115,10 @@ export async function POST(request: Request) {
     const { caption, projectId, postType } = improveCaptionSchema.parse(body)
 
     console.log('[Improve Caption] Starting for user:', userId, 'caption length:', caption.length, 'postType:', postType)
+
+    // Autorização e contexto antes de qualquer cobrança.
+    const context = await loadCaptionContext(projectId, { userId, orgId }, caption)
+    if (!context) return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
 
     // Validate credits (1 credit for text generation)
     try {
@@ -144,7 +151,7 @@ export async function POST(request: Request) {
     })
 
     try {
-      const systemPrompt = buildSystemPrompt(postType)
+      const systemPrompt = buildSystemPrompt(postType, context.identity, context.knowledge.context)
       const { text } = await generateText({
         model: openai('gpt-4o-mini'),
         system: systemPrompt,

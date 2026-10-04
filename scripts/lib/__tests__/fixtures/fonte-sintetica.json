@@ -1,0 +1,22 @@
+{
+  "projectId": 7001,
+  "fonte": {
+    "referencia": "fixture-reference-alpha",
+    "trecho": "Assistente fictício: Apenas o projeto fictício Aurora: manter “Acenda a estrela!” e usar “Faça sua órbita!” somente no ciclo de testes ativo. Você aprova essa simulação?\nPessoa fictícia: Sim, aprovo a simulação",
+    "aprovadoPor": "Pessoa fictícia",
+    "aprovadoEm": "2030-01-02"
+  },
+  "ctas": [
+    {
+      "literal": "Acenda a estrela!",
+      "condicao": null
+    },
+    {
+      "literal": "Faça sua órbita!",
+      "condicao": {
+        "regraId": "fixture-cycle",
+        "texto": "Use “Faça sua órbita!” somente no ciclo de testes ativo; não use em outros ciclos."
+      }
+    }
+  ]
+}

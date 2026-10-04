@@ -6,7 +6,10 @@
 import { generateEmbedding } from './embeddings'
 import { queryVectors, type TenantKey } from './vector-client'
 import { db } from '@/lib/db'
-import { KnowledgeCategory, type EntryStatus } from '@prisma/client'
+import { KnowledgeCategory, type EntryStatus } from '../../../prisma/generated/client'
+import { hashDaVersaoIndexada } from './entry-fingerprint'
+import { chunkText } from './chunking'
+import { arrendamentoVigenteDe } from './marca-de-indexado'
 import { getCachedResults, setCachedResults } from './cache'
 
 export interface SearchResult {
@@ -15,6 +18,7 @@ export interface SearchResult {
   content: string
   score: number
   ordinal: number
+  sourceVersion?: string
   entry?: {
     id: string
     title: string
@@ -300,6 +304,36 @@ export async function getProjectPromptKnowledgeContext(
   }
 }
 
+/** Uma hidratação para busca fresca e cache; consulta limitada aos candidatos. */
+async function hydrateCandidates(
+  candidates: { id?: string; chunkId?: string; score: number }[], tenant: TenantKey,
+  includeStatuses: ('ACTIVE' | 'DRAFT' | 'ARCHIVED')[], includeEntryMetadata: boolean,
+  categoryFilter?: KnowledgeCategory,
+): Promise<SearchResult[]> {
+  if (!candidates.length) return []
+  const chunks = await db.knowledgeChunk.findMany({
+    where: {
+      ...(candidates[0].chunkId ? { id: { in: candidates.map(c => c.chunkId!) } } : { vectorId: { in: candidates.map(c => String(c.id)) } }),
+      entry: { projectId: tenant.projectId, status: { in: includeStatuses },
+        ...(categoryFilter ? { category: categoryFilter } : {}),
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+      },
+    },
+    include: { entry: { select: { id: true, title: true, tags: true, projectId: true, category: true, status: true, content: true, metadata: true } } },
+  })
+  const currentChunks = new Map<string, ReturnType<typeof chunkText>>()
+  return candidates.flatMap(candidate => {
+    const chunk = chunks.find(c => candidate.chunkId ? c.id === candidate.chunkId : c.vectorId === String(candidate.id))
+    if (!chunk || arrendamentoVigenteDe(chunk.entry.metadata, Date.now())) return []
+    let generated = currentChunks.get(chunk.entryId)
+    if (!generated) { generated = chunkText(chunk.entry.content); currentChunks.set(chunk.entryId, generated) }
+    if (!generated.some(c => c.ordinal === chunk.ordinal && c.content === chunk.content)) return []
+    const { content: _content, metadata: _metadata, ...entry } = chunk.entry
+    return [{ entryId: chunk.entryId, chunkId: chunk.id, content: chunk.content, score: candidate.score,
+      ordinal: chunk.ordinal, sourceVersion: hashDaVersaoIndexada(chunk.entry), entry: includeEntryMetadata ? entry : undefined }]
+  })
+}
+
 /**
  * Search knowledge base by semantic similarity
  * @param query User query text
@@ -352,20 +386,22 @@ export async function searchKnowledgeBase(
       minScore,
       includeEntryMetadata,
     })
-    if (cached != null) {
-      if (telemetryEnabled) {
-        console.log('[RAG]', {
-          event: 'cache_hit',
-          projectId: tenant.projectId,
-          category: categoryFilter ?? null,
-          topK,
-          minScore,
-          results: cached.length,
-          ms: Date.now() - overallStart,
-          cacheMs: Date.now() - cacheStart,
-        })
+    if (cached != null && cached.length > 0) {
+      const hydrated = await hydrateCandidates(cached, tenant, includeStatuses, includeEntryMetadata, categoryFilter)
+      const valid = hydrated.length === cached.length && hydrated.every((r, i) =>
+        r.entryId === cached[i].entryId && r.content === cached[i].content && r.ordinal === cached[i].ordinal &&
+        r.sourceVersion === cached[i].sourceVersion)
+      if (valid) {
+        if (telemetryEnabled) {
+          console.log('[RAG]', {
+            event: 'cache_hit', projectId: tenant.projectId,
+            category: categoryFilter ?? null, topK, minScore,
+            results: hydrated.length, ms: Date.now() - overallStart,
+            cacheMs: Date.now() - cacheStart,
+          })
+        }
+        return hydrated
       }
-      return cached
     }
     if (telemetryEnabled) {
       console.log('[RAG]', {
@@ -424,57 +460,8 @@ export async function searchKnowledgeBase(
 
   // Get chunk details from database
   const dbStart = Date.now()
-  const chunkIds = filteredResults.map(r => String(r.id))
-  const chunks = await db.knowledgeChunk.findMany({
-    where: {
-      vectorId: { in: chunkIds },
-      entry: {
-        projectId: tenant.projectId,
-        status: { in: includeStatuses },
-        ...(categoryFilter ? { category: categoryFilter } : {}),
-        // Filtrar entradas expiradas (ou que ainda não expiraram)
-        OR: [
-          { expiresAt: null }, // Sem expiração
-          { expiresAt: { gt: new Date() } }, // Ainda não expirou
-        ],
-      },
-    },
-    include: includeEntryMetadata
-      ? {
-          entry: {
-            select: {
-              id: true,
-              title: true,
-              tags: true,
-              projectId: true,
-              category: true,
-              status: true,
-            },
-          },
-        }
-      : undefined,
-  })
+  const results = await hydrateCandidates(filteredResults.map(r => ({ id: String(r.id), score: r.score })), tenant, includeStatuses, includeEntryMetadata, categoryFilter)
   const dbMs = Date.now() - dbStart
-
-  // Map results
-  const results: SearchResult[] = filteredResults
-    .map(vectorResult => {
-      const chunk = chunks.find(c => c.vectorId === String(vectorResult.id))
-
-      if (!chunk) {
-        return null
-      }
-
-      return {
-        entryId: chunk.entryId,
-        chunkId: chunk.id,
-        content: chunk.content,
-        score: vectorResult.score,
-        ordinal: chunk.ordinal,
-        entry: includeEntryMetadata && 'entry' in chunk ? chunk.entry : undefined,
-      }
-    })
-    .filter((r): r is NonNullable<typeof r> => r !== null)
 
   // Cache results if enabled (only for ACTIVE status queries; includes empty result caching)
   if (useCache && includeStatuses.length === 1 && includeStatuses[0] === 'ACTIVE') {
@@ -494,7 +481,7 @@ export async function searchKnowledgeBase(
       minScore,
       vectorResults: vectorResults.length,
       filtered: filteredResults.length,
-      chunks: chunks.length,
+      chunks: results.length,
       results: results.length,
       embeddingMs,
       vectorMs,

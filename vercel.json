@@ -1,6 +1,11 @@
 {
   "installCommand": "npm install --include=optional",
   "buildCommand": "npm run vercel-build",
+  "git": {
+    "deploymentEnabled": {
+      "codex/marca-caption-base-revisao": false
+    }
+  },
   "functions": {
     "app/api/**/*.ts": {
       "maxDuration": 60

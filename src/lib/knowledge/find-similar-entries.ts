@@ -1,5 +1,6 @@
 import { KnowledgeCategory } from '@prisma/client'
 import { searchKnowledgeBase } from './search'
+import { hashDoConteudo } from './entry-fingerprint'
 import { db } from '@/lib/db'
 
 export interface SimilarEntryMatch {
@@ -8,6 +9,8 @@ export interface SimilarEntryMatch {
   content: string
   score: number
   category: KnowledgeCategory
+  updatedAt?: string
+  contentHash?: string
 }
 
 export async function findSimilarEntries(
@@ -46,12 +49,15 @@ export async function findSimilarEntries(
     where: {
       id: { in: entryIds },
       projectId,
+      status: 'ACTIVE',
+      OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
     },
     select: {
       id: true,
       title: true,
       content: true,
       category: true,
+      updatedAt: true,
     },
   })
 
@@ -66,7 +72,7 @@ export async function findSimilarEntries(
   }
 
   return entryIds
-    .map(entryId => {
+    .map<SimilarEntryMatch | null>(entryId => {
       const entry = entriesMap.get(entryId)
       if (!entry) return null
 
@@ -76,6 +82,8 @@ export async function findSimilarEntries(
         title: entry.title,
         content: entry.content,
         category: entry.category,
+        updatedAt: entry.updatedAt.toISOString(),
+        contentHash: hashDoConteudo(entry.content),
         score,
       }
     })

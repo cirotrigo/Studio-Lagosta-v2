@@ -144,7 +144,14 @@ export function useDeleteOrgKnowledgeEntry() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/api/knowledge/${id}`),
+    mutationFn: async (id: string) => {
+      const result = await api.delete<{ exclusao?: { status: string }; aviso?: string }>(`/api/knowledge/${id}`)
+      if (result.exclusao?.status === 'partial') {
+        await queryClient.invalidateQueries({ queryKey: ['org', 'knowledge'] })
+        throw new Error(result.aviso || 'Exclusão não concluída; confira a recuperação do índice antes de tentar novamente.')
+      }
+      return result
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['org', 'knowledge'] })
     },

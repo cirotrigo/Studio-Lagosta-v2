@@ -21,11 +21,13 @@
  * chamadas que respeitam o aborto; a exclusão dos chunks é, além disso,
  * condicionada ao token no próprio `DELETE`.
  */
+import { CreativeError } from '@/lib/creatives/errors'
 import { db } from '@/lib/db'
 import type { KnowledgeCategory, Prisma } from '@prisma/client'
 import {
   ArrendamentoPerdido,
   CICLO_DE_INDEXACAO,
+  LIMPEZA_ARQUIVAMENTO_PENDENTE,
   DURACAO_DO_ARRENDAMENTO_MS,
   EXPIRACAO_DO_CICLO,
   IndexacaoEmAndamento,
@@ -90,6 +92,8 @@ export interface ArrendamentoDaEntrada {
   publicarMarca(em: Date, etapa?: string): Promise<void>
   /** Tira o prazo se o token ainda é este (o token fica como o último ciclo), MESMO com a versão superada. `false` quando não era mais seu. */
   liberar(): Promise<boolean>
+  /** Limpa a pendência durável só no ciclo arquivado ainda possuído. */
+  concluirLimpezaArquivada(): Promise<void>
 }
 
 /**
@@ -97,12 +101,13 @@ export interface ArrendamentoDaEntrada {
  * token (ou do mesmo, usado duas vezes) → `IndexacaoEmAndamento`, sem escrita.
  * Adquirir invalida a marca de indexado (PR13-36) na mesma escrita.
  */
-export async function adquirirArrendamento(entryId: string, ciclo: string): Promise<ArrendamentoDaEntrada> {
+export async function adquirirArrendamento(entryId: string, ciclo: string, opcoes: { permitirArquivada?: boolean } = {}): Promise<ArrendamentoDaEntrada> {
   for (let i = 0; i < TENTATIVAS; i++) {
     const lida = await ler(entryId)
     if (!lida) throw new Error('Entry not found')
     const agora = Date.now()
     if (arrendamentoVigenteDe(lida.metadata, agora)) throw new IndexacaoEmAndamento(entryId, expiracaoDe(lida.metadata))
+    if (lida.status === 'ARCHIVED' && !opcoes.permitirArquivada) throw new Error('Entrada arquivada não pode ser indexada')
     if (await gravarSeNaoMudou(entryId, lida, comArrendamento(lida.metadata, ciclo, agora + DURACAO_DO_ARRENDAMENTO_MS), cicloDeIndexacaoDe(lida.metadata))) {
       // O compare-and-set garante que o conteúdo desta leitura é o da linha no instante da aquisição.
       return arrendamentoDe(entryId, ciclo, temMarcaDeIndexado(lida.metadata), { content: lida.content, category: lida.category, status: lida.status })
@@ -143,6 +148,14 @@ function arrendamentoDe(entryId: string, ciclo: string, tinhaMarcaDeIndexado: bo
     },
     async publicarMarca(em, etapa = 'repor a marca de indexado') {
       lancarSeNaoGravou(await comOProprioToken((m) => comMarcaDeIndexado(m, em), true), etapa)
+    },
+    async concluirLimpezaArquivada() {
+      if (indexada.status !== 'ARCHIVED') throw new IndexacaoSuperada(entryId, 'concluir limpeza arquivada')
+      lancarSeNaoGravou(await comOProprioToken((m) => {
+        const metadata = { ...metadataComoObjeto(m) }
+        delete metadata[LIMPEZA_ARQUIVAMENTO_PENDENTE]
+        return metadata
+      }, true), 'concluir limpeza arquivada')
     },
     async liberar() {
       // Sem conferir a versão: o ciclo superado ainda precisa soltar a entrada, senão a reindexação da edição espera o prazo.
@@ -189,4 +202,18 @@ export async function editarEntradaCoordenada(entryId: string, edicao: EdicaoDaE
     if (r.count === 1) return { antes: lida, mudouIndice }
   }
   throw new Error(`a entrada ${entryId} mudou ${TENTATIVAS} vezes seguidas enquanto a edição era gravada: nada foi salvo, tente de novo`)
+}
+
+/** Transição e posse da limpeza na MESMA escrita CAS; não absorve edição concorrente. */
+export async function arquivarComArrendamento(entryId: string, projectId: number, esperado: Date, autor: string, ciclo: string): Promise<ArrendamentoDaEntrada> {
+  const lida = await ler(entryId)
+  if (!lida || lida.updatedAt.getTime() !== esperado.getTime()) throw new CreativeError('CONFLITO_ARQUIVAMENTO', 'CONFLITO_ARQUIVAMENTO: versão mudou; consulte novamente', 409)
+  if (arrendamentoVigenteDe(lida.metadata, Date.now())) throw new IndexacaoEmAndamento(entryId, expiracaoDe(lida.metadata))
+  const metadata = comArrendamento({ ...metadataComoObjeto(lida.metadata), [LIMPEZA_ARQUIVAMENTO_PENDENTE]: true }, ciclo, Date.now() + DURACAO_DO_ARRENDAMENTO_MS)
+  const r = await db.knowledgeBaseEntry.updateMany({
+    where: { id: entryId, projectId, updatedAt: esperado },
+    data: { status: 'ARCHIVED', updatedBy: autor, metadata: metadata as Prisma.InputJsonValue, updatedAt: carimboSeguinte(lida) },
+  })
+  if (r.count !== 1) throw new CreativeError('CONFLITO_ARQUIVAMENTO', 'CONFLITO_ARQUIVAMENTO: versão mudou; nada foi arquivado', 409)
+  return arrendamentoDe(entryId, ciclo, false, { content: lida.content, category: lida.category, status: 'ARCHIVED' })
 }
