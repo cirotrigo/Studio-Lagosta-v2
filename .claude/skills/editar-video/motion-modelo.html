@@ -1,0 +1,55 @@
+<!doctype html>
+<!--
+  Modelo de grafismos (HyperFrames) da skill editar-video. Copie para 04_DAVINCI/motion/<ID>/index.html.
+  Contrato (o motion.py confere o que dá para conferir):
+  - 1080x1920 a 29,97 (data-fps="30000/1001"); data-duration = quadros da peça × 1001 / 30000.
+  - FUNDO TRANSPARENTE: nada de background no #root nem bloco opaco de tela cheia o tempo todo (cobre o vídeo; o
+    motion.py recusa composição sem nenhum quadro transparente). O de html e body o HyperFrames limpa sozinho.
+  - Tempo em SEGUNDOS DA TIMELINE: o .mov entra no quadro 0 da peça, na trilha GRAFISMOS (sobrepor.py).
+  - Fontes e imagens dentro desta pasta (o HyperFrames só serve a pasta da composição): copie as do cliente de
+    06_ELEMENTOS/Assets/fontes para ./fontes.
+  - Zona segura dos Reels (a mesma da legenda): topo 200, rodapé 250, margens 120.
+  - Regras do HyperFrames (skill hyperframes-core): estado inicial dentro do gsap.fromTo, nunca transform no CSS de
+    quem a GSAP anima; centralizar com flex/inset; uma linha de texto por elemento (sem <br>).
+-->
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=1080, height=1920" />
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+<style>
+  @font-face { font-family: "Titulo"; src: url("fontes/titulo.ttf"); }
+  @font-face { font-family: "Apoio"; src: url("fontes/apoio.ttf"); }
+  :root { --texto: #ffffff; --sombra: rgba(0, 0, 0, 0.55); }
+  body { margin: 0; }
+  #root { position: relative; width: 100%; height: 100%; overflow: hidden; }
+  #veu { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 50%, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0) 70%); }
+  #cartao { position: absolute; inset: 200px 120px 250px; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; gap: 28px; text-align: center; color: var(--texto); }
+  .linha { text-shadow: 0 4px 24px var(--sombra); }
+  #l1 { font: 120px/1 "Titulo", sans-serif; letter-spacing: 0.02em; }
+  #l2, #l3 { font: 56px/1.1 "Apoio", sans-serif; }
+</style>
+</head>
+<body>
+<div id="root" data-composition-id="grafismos" data-start="0" data-width="1080" data-height="1920"
+     data-fps="30000/1001" data-duration="4">
+  <!-- sem data-start nos blocos: quem esconde antes de ENTRA é o fromTo (o lint pede sub-composição para bloco
+       temporizado com filhos) -->
+  <div id="veu"></div>
+  <div id="cartao">
+    <div id="l1" class="linha">TÍTULO</div>
+    <div id="l2" class="linha">linha de apoio</div>
+    <div id="l3" class="linha">serviço</div>
+  </div>
+</div>
+<script>
+  const ENTRA = 1.0;  // segundo da TIMELINE (a batida medida)
+  const tl = gsap.timeline({ paused: true });
+  tl.fromTo("#veu", { opacity: 0 }, { opacity: 1, duration: 0.4, ease: "power1.out" }, ENTRA);
+  tl.fromTo(".linha", { y: 60, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: "power3.out", stagger: 0.12 }, ENTRA);
+  // saída, quando o cartão não fica até o fim: tl.to(["#veu", ".linha"], { opacity: 0, duration: 0.3 }, SAI);
+  window.__timelines["grafismos"] = tl;
+</script>
+</body>
+</html>

@@ -58,6 +58,7 @@ comentários.
 | `musica` | não | ver abaixo |
 | `planos` | sim | em ordem, na V1 |
 | `logo` | não | ver abaixo |
+| `grafismos` | não | ver abaixo; quem lê são o `motion.py` e o `sobrepor.py` (o `montar.py` não põe) |
 
 **Música** (A1)
 
@@ -94,6 +95,14 @@ A faixa é cortada no comprimento real da V1 (não no pedido).
 | `escala` | `ZoomX = ZoomY` (0,65 é o que o Ciro usou nos Reels da Real). A logo entra com `Scaling = Fit`, para não herdar o `scaleToCrop` do projeto |
 
 Logo que ainda não existe no disco não trava a montagem: a peça sai sem logo, com aviso.
+
+**Grafismos** (trilha GRAFISMOS, no topo; passo 10 do SKILL.md)
+
+| campo | o que é |
+|---|---|
+| `composicao` | pasta da composição do HyperFrames, com o `index.html` (ex.: `04_DAVINCI/motion/A1`) |
+| `arquivo` | o .mov que o `motion.py` grava (ex.: `06_ELEMENTOS/Motion/QP-SFD-A1-grafismos.mov`); do comprimento da peça, entra no quadro 0 |
+| `alfa` | "Alpha mode" que o `sobrepor.py` põe. Padrão `"Straight"` (o `motion.py` grava alfa direto); `"Premultiplied"` para .mov feito pelo PIL |
 
 ## Como os quadros são contados (medido em 18–20/09; o que é modelo está dito)
 

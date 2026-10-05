@@ -192,7 +192,7 @@ A fase da grade é conferida antes de cortar na batida. A confiança do
 | Locução pela ElevenLabs → `05_AUDIO/Locucao` | **a desenhar** |
 | Efeitos sonoros pela Envato → `05_AUDIO/Efeitos Sonoros` | **a desenhar** (o MCP da Envato já busca: `search_sound_effects`) |
 | Plano de montagem `04_DAVINCI/montagem.json` e montagem no Resolve | passo 8 (`montar.py`, `estabilizar.py`); peça com fala: passo 9 (`montar_fala.py`) |
-| Animação de logo e textos (Fusion no Resolve; Remotion se ficar melhor) → `06_ELEMENTOS/Motion` | **em teste** (`texto_fusion.py` do Empório; skill `human-motion`) |
+| Grafismos em motion (cartão, título, chamada, logo) → `06_ELEMENTOS/Motion` | passo 10: HyperFrames (`motion.py` → `sobrepor.py`), **em teste** desde 03/10/2026; no lugar do Fusion e do Remotion |
 | ⏸ Timeline pronta | o Ciro olha no Resolve |
 | Render → `08_EXPORTACOES/01_PREVIAS`; aprovado → `02_APROVADOS` | passo 8 (`render.py` + `masterizar.py`) |
 
@@ -249,6 +249,70 @@ música com entrada e fade, planos com arquivo, `inicio_q` (quadro da fonte),
    .mov em `06_ELEMENTOS/Motion` (nunca sobrescreve: cria -v2, -v3). Confira os PNGs.
 6. **Montar:** `montar_fala.py` (mesmas variáveis do `montar.py`; `APAGAR = True` só enquanto
    ninguém mexeu na timeline), depois `estabilizar.py`, ⏸ timeline, render e masterizar.
+
+## 10. Grafismos em motion: HyperFrames (em teste desde 03/10/2026)
+
+Cartão final, título, chamada, lower third e assinatura de logo (quando o cliente não tem a logo animada) saem
+de uma composição HTML do **HyperFrames** (github.com/heygen-com/hyperframes, Apache 2.0): CSS + GSAP renderizados
+quadro a quadro num Chrome sem janela, sempre iguais. Substitui o Fusion e o Remotion nesse papel. A legenda da
+fala continua no `legenda.py`.
+
+1. **Plano:** `pc.grafismos = {"composicao": "04_DAVINCI/motion/<ID>", "arquivo": "06_ELEMENTOS/Motion/<peça>-grafismos.mov"}`
+   no `montagem.json` (formato no `montagem.md`).
+2. **Composição:** copie `motion-modelo.html` desta pasta para `04_DAVINCI/motion/<ID>/index.html`, e as fontes do
+   cliente (`fontes.ts`, passo 9.4) para `04_DAVINCI/motion/<ID>/fontes/`. O contrato está no topo do modelo:
+   - um .mov do **comprimento da peça**, transparente onde não há grafismo, que entra no quadro 0. O tempo da
+     composição é o **segundo da timeline** (batida medida no tempo da faixa: tire o `musica.inicio_s`).
+     `data-duration` ≥ duração da peça: o `sobrepor.py` corta no fim da V1;
+   - zona segura dos Reels (topo 200, rodapé 250, margens 120); cores e fontes do DNA do cliente
+     (`consultar-dna`); texto só depois da ⏸ copy da tela;
+   - para escrever bem, as skills `hyperframes-core` (contrato e armadilhas do lint), `hyperframes-animation`
+     (regras de movimento, 24 efeitos de texto, transições), `hyperframes-keyframes` (zoom, máscara, SVG),
+     `hyperframes-registry` (~400 blocos prontos, como logo-outro, grão e brilho: procure antes de desenhar à mão)
+     e `hyperframes-cli`.
+3. **Conferir:** `python3 .claude/skills/editar-video/motion.py --peca "<pasta>" <ID> --quadros 28.2,29.0,30.1`
+   roda o `hyperframes check` e grava PNGs sobre cinza (segundos da timeline) numa pasta nova de `07_TEMPORARIOS`.
+   Olhe todos. Para o Ciro mexer no navegador: `hyperframes preview "<pasta>/04_DAVINCI/motion/<ID>"`.
+4. **Render:** o mesmo comando sem `--quadros` grava o .mov em `06_ELEMENTOS/Motion` (nunca sobrescreve: -v2,
+   -v3). Peça de 35 s: 23 s e 210 MB (medido em 03/10/2026).
+5. **Timeline:** `RAIZ = "<pasta>"; IDS = ["<ID>"]; exec(open("<repo>/.claude/skills/editar-video/sobrepor.py").read())`,
+   com `UID = "<GetUniqueId>"` opcional → trilha GRAFISMOS no topo, quadro 0, Alpha mode Straight, Scaling Fit.
+   Não remonta nada. Versão nova (-v2): `trocar_midia.py` e atualize o `pc.grafismos.arquivo`.
+
+Medido em 03/10/2026 (v0.8.114), e é por isso que o `motion.py` existe:
+- O `--format mov` do HyperFrames converte com a matriz **BT.601** e não marca o arquivo. Lido como Rec.709 (o
+  padrão do vídeo HD, e o que a logo do Quintal declara), a cor saturada desvia: vermelho puro viraria ~255,25,0.
+  O `motion.py` pede PNG e codifica o ProRes 4444 com BT.709 e marcação completa, igual à logo. Conferido no
+  Resolve: um still bateu a cor do texto exata (#F5F0E8 = 245,240,232, desvio zero em 11.666 pixels opacos), com
+  Alpha mode Straight.
+- O alfa do Chrome é **direto** (branco a 50% → RGB 255, A 128): Alpha mode "Straight". O `legenda.py` grava
+  premultiplicado. Modo trocado dá borda escura ou clara.
+- Fundo no `html`/`body` o HyperFrames limpa sozinho. No `#root`, ele grava PNG sem alfa e o .mov cobriria o
+  vídeo. Fonte fora da pasta da composição sai na fonte de reserva, sem aviso. O `motion.py` recusa os dois.
+- `--fps 30000/1001` é exato (29,97 no ffprobe). A documentação que diz "24, 30 ou 60" está velha.
+- Em **exFAT** (o HD Extreme Pro) o `--format png-sequence` sai quebrado: todo `frame_*.png` vira um cabeçalho
+  AppleDouble de 4096 bytes, sem imagem, ao lado do `._` correspondente. Por isso o `motion.py` grava os PNGs no
+  disco do Mac e só o .mov no `07_TEMPORARIOS`. O `snapshot` (`--quadros`) funciona no HD.
+- `hyperframes add` em exFAT falha com ENOTSUP (link físico): instale o bloco numa pasta do disco do Mac e copie
+  para a composição.
+
+**Instalação (por Mac; feita no Mac do Ciro em 03/10/2026).** Instalar só com o Ciro pedindo:
+
+```bash
+npm i -g hyperframes@0.8.114 && hyperframes telemetry disable
+```
+
+As skills são cópias de `skills/<nome>` da tag `v0.8.114` do repositório (core, animation, keyframes, cli e
+registry) em `~/Documents/edicao-video-claude/.claude/skills/`. Só nessa pasta, para não carregar nas sessões do
+Studio. Confira com `python3 .claude/skills/editar-video/motion.py` (autoconferência, ~50 s): tem de dar `ok`.
+
+- **A versão é fixa.** A cada comando, o CLI se atualiza sozinho em segundo plano (sai versão nova várias vezes
+  por dia). `HYPERFRAMES_NO_AUTO_INSTALL=1` está no `motion.py` e no `env` do `.claude/settings.json` da pasta de
+  edição. Subir de versão é decisão: `npm i -g hyperframes@<nova>`, as 5 pastas de skill para a lixeira, copiar as
+  da mesma tag e rodar `python3 motion.py`.
+- **Não use** `hyperframes init`, `hyperframes skills` nem as skills `/hyperframes` e `/motion-graphics`. Elas
+  instalam skills globais (o roteador `/hyperframes` se diz "entrada obrigatória" para qualquer vídeo e disputaria
+  com esta skill) e trazem processo próprio (briefing, subagentes, aprovação) que atropela as paradas daqui.
 
 ## Armadilhas medidas
 
