@@ -1,0 +1,192 @@
+{
+ "summary": {
+  "health_score": 47,
+  "business_type": "Agência de marketing gastronômico (service-area), Vitória–ES",
+  "top_findings": [
+   "robots/sitemap/llms.txt redirecionam para o login",
+   "vídeo de depoimento bloqueado e com 28 MB",
+   "FAQ e planos fora do HTML",
+   "Vitória ausente de título, descrição e texto",
+   "Clerk de desenvolvimento em produção"
+  ],
+  "quick_wins": [
+   "robots/sitemap/llms",
+   "forceMount no FAQ e planos",
+   "título e descrição locais",
+   "tirar 'Em breve'",
+   "noindex no login",
+   "next/image nas logos"
+  ]
+ },
+ "categories": [
+  {
+   "name": "Technical SEO",
+   "score": 58,
+   "what_works": [],
+   "findings": [
+    {
+     "title": "robots/sitemap/llms em 307",
+     "severity": "Critical",
+     "description": "robots/sitemap/llms em 307",
+     "recommendation": "ver findings/"
+    },
+    {
+     "title": "URL inexistente vai para o login",
+     "severity": "Critical",
+     "description": "URL inexistente vai para o login",
+     "recommendation": "ver findings/"
+    },
+    {
+     "title": "Clerk dev em produção",
+     "severity": "High",
+     "description": "Clerk dev em produção",
+     "recommendation": "ver findings/"
+    },
+    {
+     "title": "sign-in indexável",
+     "severity": "High",
+     "description": "sign-in indexável",
+     "recommendation": "ver findings/"
+    }
+   ]
+  },
+  {
+   "name": "Content Quality",
+   "score": 52,
+   "what_works": [],
+   "findings": [
+    {
+     "title": "Uma URL para cinco serviços",
+     "severity": "Critical",
+     "description": "Uma URL para cinco serviços",
+     "recommendation": "ver findings/"
+    },
+    {
+     "title": "Prova social fraca, 'Em breve' no ar",
+     "severity": "High",
+     "description": "Prova social fraca, 'Em breve' no ar",
+     "recommendation": "ver findings/"
+    }
+   ]
+  },
+  {
+   "name": "On-Page SEO",
+   "score": 45,
+   "what_works": [],
+   "findings": [
+    {
+     "title": "Vitória ausente",
+     "severity": "Critical",
+     "description": "Vitória ausente",
+     "recommendation": "ver findings/"
+    },
+    {
+     "title": "Descrição com ~210 caracteres",
+     "severity": "High",
+     "description": "Descrição com ~210 caracteres",
+     "recommendation": "ver findings/"
+    }
+   ]
+  },
+  {
+   "name": "Schema / Structured Data",
+   "score": 5,
+   "what_works": [],
+   "findings": [
+    {
+     "title": "Nenhum JSON-LD em produção",
+     "severity": "High",
+     "description": "Nenhum JSON-LD em produção",
+     "recommendation": "ver findings/"
+    }
+   ]
+  },
+  {
+   "name": "Performance (CWV)",
+   "score": 58,
+   "what_works": [],
+   "findings": [
+    {
+     "title": "LCP mobile 10,1 s",
+     "severity": "Critical",
+     "description": "LCP mobile 10,1 s",
+     "recommendation": "ver findings/"
+    },
+    {
+     "title": "Vídeo 28 MB",
+     "severity": "Critical",
+     "description": "Vídeo 28 MB",
+     "recommendation": "ver findings/"
+    }
+   ]
+  },
+  {
+   "name": "AI Search Readiness",
+   "score": 43,
+   "what_works": [],
+   "findings": [
+    {
+     "title": "Sem robots/llms.txt",
+     "severity": "Critical",
+     "description": "Sem robots/llms.txt",
+     "recommendation": "ver findings/"
+    },
+    {
+     "title": "FAQ e planos fora do HTML",
+     "severity": "High",
+     "description": "FAQ e planos fora do HTML",
+     "recommendation": "ver findings/"
+    }
+   ]
+  },
+  {
+   "name": "Images",
+   "score": 45,
+   "what_works": [],
+   "findings": [
+    {
+     "title": "Logos PNG pesadas",
+     "severity": "Critical",
+     "description": "Logos PNG pesadas",
+     "recommendation": "ver findings/"
+    },
+    {
+     "title": "Alt genérico",
+     "severity": "Medium",
+     "description": "Alt genérico",
+     "recommendation": "ver findings/"
+    }
+   ]
+  }
+ ],
+ "action_plan": {
+  "phases": [
+   {
+    "name": "Phase 1: Critical Fixes",
+    "timeframe": "Week 1",
+    "items": [
+     "ver ACTION-PLAN.md"
+    ]
+   },
+   {
+    "name": "Phase 2: High-Impact Improvements",
+    "timeframe": "Weeks 2-3",
+    "items": []
+   },
+   {
+    "name": "Phase 3: Content & Authority",
+    "timeframe": "Month 2",
+    "items": []
+   },
+   {
+    "name": "Phase 4: Monitoring & Iteration",
+    "timeframe": "Ongoing",
+    "items": []
+   }
+  ]
+ },
+ "artifacts": {
+  "findings_dir": "findings/",
+  "screenshots_dir": "screenshots/"
+ }
+}

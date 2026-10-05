@@ -13,7 +13,7 @@ export function SalesFooter() {
                     <div className="col-span-1 md:col-span-1">
                         <div className="w-40 h-16 mb-4 relative">
                             <img
-                                src="/lagosta-logo.png"
+                                src="/lagosta-logo.webp"
                                 alt="Lagosta Criativa"
                                 className="w-full h-full object-contain object-left"
                             />
@@ -36,7 +36,9 @@ export function SalesFooter() {
                                     <li><Link href="#cases" className="hover:text-foreground">Casos de Sucesso</Link></li>
                                     <li><Link href="#sites" className="hover:text-foreground">Sites</Link></li>
                                     <li><Link href="#pricing" className="hover:text-foreground">Planos</Link></li>
-                                    <li><Link href="/sign-in" className="hover:text-foreground">Entrar no Studio</Link></li>
+                                    <li><Link href="/sign-in" rel="nofollow" className="hover:text-foreground">Entrar no Studio</Link></li>
+                                    <li><Link href="/privacy-policy" className="hover:text-foreground">Política de Privacidade</Link></li>
+                                    <li><Link href="/terms-of-service" className="hover:text-foreground">Termos de Uso</Link></li>
                                 </ul>
                             </div>
                         </div>

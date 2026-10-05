@@ -25,6 +25,9 @@ function VideoPlayer() {
                 ref={videoRef}
                 className="w-full h-full object-cover"
                 playsInline
+                // 7,9 MB: só baixa quando a pessoa clica; até lá, a capa.
+                preload="none"
+                poster="/videos/depoimento-jefinho-coronel.webp"
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
                 controls={isPlaying} // Show controls only when playing
@@ -66,22 +69,12 @@ export function SocialProofSection() {
                     O que dizem nossos parceiros
                 </h2>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {/* Real Video */}
+                {/* Um depoimento por enquanto. Os cards "Depoimento — Em breve" saíram
+                    (auditoria de SEO, 05/10/2026): placeholder no ar tira confiança. */}
+                <div className="max-w-sm mx-auto">
                     <div className="aspect-[9/16] bg-black rounded-2xl overflow-hidden border border-border relative group cursor-pointer shadow-lg hover:shadow-orange-500/10 transition-all duration-300">
                         <VideoPlayer />
                     </div>
-
-                    {/* Placeholders */}
-                    {[1, 2].map((i) => (
-                        <div key={i} className="aspect-[9/16] bg-muted/50 relative rounded-2xl overflow-hidden border border-border flex flex-col justify-center items-center text-center p-6">
-                            <div className="h-16 w-16 bg-muted rounded-full flex items-center justify-center mb-4 opacity-50">
-                                <Play className="h-8 w-8 text-muted-foreground ml-1" />
-                            </div>
-                            <p className="font-semibold text-muted-foreground">Depoimento {i + 1}</p>
-                            <p className="text-sm text-muted-foreground/60">Em breve</p>
-                        </div>
-                    ))}
                 </div>
             </div>
         </section>

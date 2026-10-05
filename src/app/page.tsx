@@ -1,12 +1,16 @@
 import { SalesPage } from "@/components/sales/SalesPage"
+import { categories } from "@/components/sales/planos"
 import { Metadata } from "next"
 
 export const revalidate = 0
 
 const SITE_URL = 'https://lagostacriativa.com.br'
-const TITLE = "Lagosta Criativa | Marketing Gastronômico que Gera Vendas"
+// Auditoria de SEO de 05/10/2026: a cidade entra no título e na descrição (antes
+// "Vitória" não aparecia em lugar nenhum da página) e a descrição cabe nos ~155
+// caracteres que o Google mostra — sem "a única empresa do ES", que o site não prova.
+const TITLE = "Marketing para Restaurantes em Vitória–ES | Lagosta Criativa"
 const DESCRIPTION =
-  "Não vendemos posts. Vendemos mesas ocupadas. Foto e vídeo, gestão de redes, atendimento com IA, sites e tráfego pago para restaurantes — a única empresa do ES que une tudo isso com método."
+  "Foto e vídeo, gestão de redes, atendimento com IA, site com cardápio digital e tráfego pago para restaurantes em Vitória e no Espírito Santo."
 
 // A metadata da raiz (`src/app/layout.tsx`) vem do SiteSettings do admin, que
 // é do STUDIO (a ferramenta). A Home é a página de vendas da AGÊNCIA, então ela
@@ -48,12 +52,54 @@ export const metadata: Metadata = {
   },
 }
 
+const AGENCIA = `${SITE_URL}/#lagosta-criativa`
+
+// "R$ 1.990" → "1990"; "Sob consulta" e "Incluso" → null (preço não se inventa).
+function precoDe(texto: string): string | null {
+  const m = texto.match(/^R\$\s*([\d.]+)(?:,(\d{2}))?$/)
+  return m ? m[1].replace(/\./g, '') + (m[2] ? `.${m[2]}` : '') : null
+}
+
+// O catálogo sai da MESMA lista que a tabela de planos mostra (planos.ts):
+// mudou o preço lá, o JSON-LD acompanha.
+const CATALOGO = {
+  '@type': 'OfferCatalog',
+  name: 'Serviços de marketing gastronômico',
+  itemListElement: categories.flatMap((cat) =>
+    cat.plans.map((plano) => {
+      const preco = precoDe(plano.price)
+      const mensal = plano.period === '/mês'
+      return {
+        '@type': 'Offer',
+        ...(preco
+          ? {
+              price: preco,
+              priceCurrency: 'BRL',
+              priceSpecification: {
+                '@type': 'UnitPriceSpecification',
+                price: preco,
+                priceCurrency: 'BRL',
+                ...(mensal ? { unitCode: 'MON', unitText: 'mês' } : { unitText: plano.period.replace(/^por\s+/, '') }),
+              },
+            }
+          : {}),
+        itemOffered: {
+          '@type': 'Service',
+          name: plano.name,
+          serviceType: cat.label,
+          description: [plano.description, ...plano.features].join(' · '),
+          provider: { '@id': AGENCIA },
+        },
+      }
+    }),
+  ),
+}
+
 // Dados estruturados da agência. O `@id` do fundador é o MESMO que o
 // cirotrigo.com.br usa: é ele que faz o Google juntar a pessoa dos dois sites.
-const JSON_LD = {
-  '@context': 'https://schema.org',
+const AGENCIA_LD = {
   '@type': 'ProfessionalService',
-  '@id': `${SITE_URL}/#lagosta-criativa`,
+  '@id': AGENCIA,
   name: 'Lagosta Criativa',
   url: SITE_URL,
   logo: `${SITE_URL}/lagosta-logo.png`,
@@ -74,6 +120,22 @@ const JSON_LD = {
     url: 'https://cirotrigo.com.br/sobre',
     sameAs: ['https://www.instagram.com/cirotrigo/', 'https://www.linkedin.com/in/ciro-trigo/'],
   },
+  hasOfferCatalog: CATALOGO,
+}
+
+const JSON_LD = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'WebSite',
+      '@id': `${SITE_URL}/#website`,
+      url: SITE_URL,
+      name: 'Lagosta Criativa',
+      inLanguage: 'pt-BR',
+      publisher: { '@id': AGENCIA },
+    },
+    AGENCIA_LD,
+  ],
 }
 
 export default function HomePage() {
