@@ -10,6 +10,7 @@
  */
 
 import * as React from 'react'
+import { chaveDoSlot, formatoDoSlotDaPeca, quandoDaPeca, reconciliarSlot, slotsParaAPeca } from '@/lib/posts/contexto-da-semana'
 import Image from 'next/image'
 import { useQuery } from '@tanstack/react-query'
 import { Plus, ChevronDown, Image as ImageIcon, X } from 'lucide-react'
@@ -65,6 +66,8 @@ const FORMATOS: Array<{ valor: Formato; titulo: string }> = [
 interface SugestaoSlot {
   /** "YYYY-MM-DD HH:mm" em BRT — o que vai para o agendamento. */
   scheduledDatetime: string
+  /** story × feed — o formato que o slot serve (PR 6). Ausente em resposta antiga = story. */
+  formato?: 'story' | 'feed'
   data: string
   quandoBRT: string
   diaSemana: string
@@ -202,22 +205,33 @@ export function BancadaCompositor({ projectId }: { projectId: number }) {
    * mesma leva nasceriam no mesmo horário e o operador só descobriria ao
    * agendar o segundo.
    */
+  // A reserva é por horário E FORMATO (R22, PR 6): o item de feed na fila não
+  // ocupa o slot de story do mesmo horário — e a peça só vê os slots do
+  // formato dela (um horário livre para feed não é livre para outro story).
   const reservados = React.useMemo(
-    () => new Set(itens.filter((i) => i.projectId === projectId && i.quando).map((i) => i.quando!)),
+    () => new Set(itens.filter((i) => i.projectId === projectId && i.quando).map((i) => chaveDoSlot(i.quando!, formatoDoSlotDaPeca(i.formato)))),
     [itens, projectId],
   )
+  const formatoDaPeca = ehCarrossel ? 'feed' : formato
   const disponiveis = React.useMemo(
-    () => (slots?.sugestoes ?? []).filter((s) => !reservados.has(s.scheduledDatetime)),
-    [slots, reservados],
+    () => slotsParaAPeca(slots?.sugestoes ?? [], formatoDaPeca, reservados),
+    [slots, reservados, formatoDaPeca],
   )
 
-  // O próximo slot livre já vem escolhido; a cada item adicionado, avança.
+  // O próximo slot livre já vem escolhido; a cada item adicionado, avança — e
+  // o slot que SAIU da lista (a peça mudou de formato ou de tipo, ou outro item
+  // reservou o horário) é substituído ou limpo, nunca mantido (R25): o story
+  // das 19h pré-selecionado não pode virar o horário de um feed em cima do feed
+  // que ocupa as 19h.
   React.useEffect(() => {
-    if (!slot && disponiveis.length > 0) setSlot(disponiveis[0].scheduledDatetime)
+    const proximo = reconciliarSlot(slot, disponiveis)
+    if (proximo !== slot) setSlot(proximo)
   }, [disponiveis, slot])
 
   const quandoManual = dataManual && horaManual ? `${dataManual} ${horaManual}` : ''
-  const quando = quandoManual || slot || null
+  // O horário automático só existe enquanto o slot é uma proposta VÁLIDA (na
+  // lista); o manual vence. `propostaDoSlot` é quem recebe o desfecho.
+  const { quando, proposta: propostaDoSlot } = React.useMemo(() => quandoDaPeca({ quandoManual, slot, disponiveis }), [quandoManual, slot, disponiveis])
 
   const impedimento = (() => {
     if (ehCarrossel) {
@@ -263,7 +277,7 @@ export function BancadaCompositor({ projectId }: { projectId: number }) {
    */
   const executarAdicao = () => {
     if (impedimento) return
-    const proposta = disponiveis.find((s) => s.scheduledDatetime === slot)
+    const proposta = propostaDoSlot
     const motivo = proposta?.motivo
 
     /**

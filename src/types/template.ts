@@ -116,7 +116,24 @@ export interface Layer {
     /** Trim do vídeo em segundos (editor E export reproduzem só o trecho). */
     trimStart?: number
     trimEnd?: number
+    /**
+     * Motion: vídeo com fundo transparente (WebM com alfa) por cima de uma foto
+     * ou de outro vídeo. Ver src/lib/video/camadas-de-video.ts.
+     */
+    overlay?: boolean
   }
+  /**
+   * Clipe da linha do tempo (foto ou vídeo em sequência, Fase 3). Foto:
+   * `duracao` em segundos (0,5–60; padrão 3). Vídeo: a duração é o trecho.
+   * `transicao`: como este clipe ENTRA (ausente = corte; ignorada no primeiro).
+   * Ver src/lib/video/linha-do-tempo.ts.
+   */
+  clipe?: { duracao?: number; transicao?: 'dissolver' | 'deslizar' }
+  /**
+   * Movimento da foto (só `image`, só em página-vídeo): zoom e deslize do
+   * conteúdo dentro da caixa. Ausente = parada. Ver src/lib/video/movimento.ts.
+   */
+  movimento?: 'aproximar' | 'afastar' | 'deslizar'
   // Rich text support - estilos aplicados a trechos específicos do texto
   richTextStyles?: RichTextStyle[]
   [key: string]: unknown
@@ -291,6 +308,8 @@ export type FieldValues = Record<string, unknown>
 
 // Multi-page support interfaces
 export interface Page {
+  /** C9-11: a página tem contrato da copy (`Page.copyAutoral`)? O editor só tira o papel da camada copiada quando tem. */
+  temCopyAutoral?: boolean
   id: string
   name: string
   width: number

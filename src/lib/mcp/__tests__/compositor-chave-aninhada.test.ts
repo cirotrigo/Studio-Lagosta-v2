@@ -43,7 +43,7 @@ beforeEach(() => {
 describe('compor-arte: chave desconhecida em cada nível é recusada com o caminho', () => {
   it.each([
     ['raiz', { destaque: ['dobro'] }, 'A ferramenta compor-arte não conhece "destaque"'],
-    ['bloco', { blocos: [{ ...bloco, herdaDe: 'apoio' }] }, '"blocos.0" não aceita "herdaDe"'],
+    ['bloco', { blocos: [{ ...bloco, fonteSecreta: 'x' }] }, '"blocos.0" não aceita "fonteSecreta"'],
     ['preferencias', { preferencias: { ancora: 'rodape', canto: 'inferior-direito' } }, '"preferencias" não aceita "canto"'],
     ['carrossel', { carrossel: { slide: 2, total: 5 } }, '"carrossel" não aceita "total"'],
   ])('%s', async (_nivel, troca, mensagem) => {
@@ -74,7 +74,7 @@ describe('compor-leva: chave desconhecida em cada nível recusa a leva inteira',
   it.each([
     ['raiz', { provar: true }, 'A ferramenta compor-leva não conhece "provar"'],
     ['item', { itens: [peca, { ...peca, provar: true }] }, '"itens.1" não aceita "provar"'],
-    ['bloco do item', { itens: [{ ...peca, blocos: [{ ...bloco, herdaDe: 'apoio' }] }] }, '"itens.0.blocos.0" não aceita "herdaDe"'],
+    ['bloco do item', { itens: [{ ...peca, blocos: [{ ...bloco, fonteSecreta: 'x' }] }] }, '"itens.0.blocos.0" não aceita "fonteSecreta"'],
     ['preferencias do item', { itens: [{ ...peca, preferencias: { canto: 'inferior-direito' } }] }, '"itens.0.preferencias" não aceita "canto"'],
     ['carrossel do item', { itens: [{ ...peca, carrossel: { slide: 2, total: 5 } }] }, '"itens.0.carrossel" não aceita "total"'],
   ])('%s', async (_nivel, troca, mensagem) => {

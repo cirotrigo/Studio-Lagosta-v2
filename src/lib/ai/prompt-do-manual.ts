@@ -309,6 +309,13 @@ Texto além do fornecido — nem preço, CTA, endereço ou telefone que não est
   )
   secoes.push(...numeradas.map((t, i) => `${i + 1}. ${t}`))
 
+  // Regras de ARTE nascidas depois da migração para a voz compacta — o manual e
+  // o DNA não as têm. Antes da copy exata, que continua sendo a última seção
+  // (PR7-FINAL-03 da revisão do Codex, 18/09/2026: o molde é o fallback
+  // do diretor, e a regra sumia justamente nele).
+  const regrasDeArte = brand.voz?.regrasDeArte?.trim()
+  if (regrasDeArte) secoes.push(regrasDeArte)
+
   if (nota) secoes.push(`OBSERVAÇÃO DE QUEM PEDIU A PEÇA — atenda sem sair do manual:\n${nota}`)
 
   secoes.push(`TEXTOS EXATOS — NÃO MODIFICAR:\n${copy.map((t) => t.replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n')}`)

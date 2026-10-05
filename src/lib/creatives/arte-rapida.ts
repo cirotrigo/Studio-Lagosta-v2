@@ -41,6 +41,7 @@ import { fecharSugestaoDeFoto } from '@/lib/aprendizado/sinal-de-foto'
 import { registrarUsoDeModelo } from '@/lib/aprendizado/uso-de-modelo'
 import { registrarUsoDeFoto } from '@/lib/creatives/uso-de-foto'
 import { vigenteEm } from '@/lib/knowledge/vigencia'
+import { precedenciaDaVoz, type ContextoDeVoz } from '@/lib/brand/voz'
 import { reflowLayersAfterFill } from '@/lib/combo-stack-reflow'
 import { casaDiaComNome, casaTemaComTags } from '@/lib/creatives/casar-tema'
 import { createServerTextMeasurer } from '@/lib/creatives/server-text-measurer'
@@ -54,9 +55,13 @@ import type { LayoutPelaFoto } from '@/lib/creatives/halo/layout-pela-foto'
 import { registerProjectFonts } from '@/lib/posts/register-project-fonts'
 import type { Layer } from '@/types/template'
 import { problemaDoAjuste, type Ajuste } from '@/lib/creatives/revisao/contrato'
+import { copyAutoralDaPagina, recusaDaRevisao, revisaoDaPaginaComCamadas } from '@/lib/copy-autoral/revisar-pagina'
+import { lerCopyAutoral, tentarCopyEfetivaDasCamadas } from '@/lib/copy-autoral'
+import { bakeLayers } from '@/lib/creatives/bake-layers'
 import { aplicarAjustes, type AjusteAplicado, type AjusteRecusado } from '@/lib/creatives/revisao/aplicar-ajustes'
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
-import { semMarcaDoRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
+import { MOTIVO_DO_AJUSTE_DO_REVISOR } from '@/lib/relatorios/qualidade-da-copy-contrato'
+import { MENSAGEM_PAGINA_COM_VIDEO, videoNaPagina } from '@/lib/video/pagina-com-video'
 
 export { CreativeError, getPublicAppUrl }
 
@@ -206,7 +211,14 @@ export interface PrepareCreativeResult {
     logos: unknown[]
     colors: unknown[]
     fonts: unknown[]
-    /** DNA da marca (aba Marca) — identidade que vale para TODA arte/copy. */
+    /**
+     * DNA da marca (aba Marca) — identidade que vale para TODA arte/copy.
+     * `toneOfVoice` e `contentRules` são a identidade de TEXTO EFETIVA pela
+     * precedência (PR 7): no cliente migrado, o texto compacto da voz (e
+     * `contentRules` null — as regras já estão nele); no legado, o DNA como
+     * sempre. É o que mantém os chamadores antigos (skills, API externa)
+     * recebendo a identidade certa sem mudar o contrato (PR7-01).
+     */
     dna: {
       toneOfVoice: string | null
       contentRules: string | null
@@ -214,6 +226,8 @@ export interface PrepareCreativeResult {
       visualStyle: string | null
       photoDirection: string | null
     } | null
+    /** A precedência resolvida (fonte, versão, regras de arte da voz) — para quem quiser mais que os dois campos acima. */
+    voz: ContextoDeVoz
   }
   knowledge: Record<string, string>
 }
@@ -231,6 +245,7 @@ const PROJECT_SELECT = {
   brandStyleDescription: true,
   cuisineType: true,
   brandDNA: true,
+  brandVoice: { select: { voz: true, versao: true, migradaEm: true } },
   BrandColor: { select: { name: true, hexCode: true }, orderBy: { id: 'asc' } },
   CustomFont: { select: { name: true, fontFamily: true, fileUrl: true }, orderBy: { id: 'asc' } },
   Logo: {
@@ -444,6 +459,12 @@ export async function prepareCreative(input: PrepareCreativeInput): Promise<Prep
     orderBy: { category: 'asc' },
   })
 
+  // A identidade de TEXTO pela precedência (voz compacta × DNA legado) — a
+  // mesma conta do loader único, sobre o que este select já traz (PR7-01).
+  const voz = precedenciaDaVoz({
+    registro: project.brandVoice ?? null,
+    dna: { toneOfVoice: project.brandDNA?.toneOfVoice ?? null, contentRules: project.brandDNA?.contentRules ?? null },
+  })
   const knowledge: Record<string, string> = {}
   for (const entry of kbEntries) {
     const key = KB_KEYS[entry.category] ?? entry.category
@@ -481,15 +502,20 @@ export async function prepareCreative(input: PrepareCreativeInput): Promise<Prep
       logos: project.Logo,
       colors: project.BrandColor,
       fonts: project.CustomFont,
-      dna: project.brandDNA
-        ? {
-            toneOfVoice: project.brandDNA.toneOfVoice,
-            contentRules: project.brandDNA.contentRules,
-            composition: project.brandDNA.composition,
-            visualStyle: project.brandDNA.visualStyle,
-            photoDirection: project.brandDNA.photoDirection,
-          }
-        : null,
+      // Com voz MIGRADA o bloco existe mesmo sem BrandDNA (o schema e
+      // `migrarParaVoz` permitem): senão o chamador antigo lia `dna: null` e
+      // ficava sem a identidade efetiva (PR7-01-R da revisão do Codex).
+      dna:
+        project.brandDNA || voz.fonte === 'voz'
+          ? {
+              toneOfVoice: voz.fonte === 'voz' ? voz.texto : (project.brandDNA?.toneOfVoice ?? null),
+              contentRules: voz.fonte === 'voz' ? voz.regrasDaMarca : (project.brandDNA?.contentRules ?? null),
+              composition: project.brandDNA?.composition ?? null,
+              visualStyle: project.brandDNA?.visualStyle ?? null,
+              photoDirection: project.brandDNA?.photoDirection ?? null,
+            }
+          : null,
+      voz,
     },
     knowledge,
   }
@@ -537,6 +563,13 @@ export interface CreateArteRapidaInput {
    * — ver `halo/layout-pela-foto.ts`. Com `true`, a página pedida é a usada.
    */
   layoutFixo?: boolean
+  /**
+   * F1 (PR 5): o CONTRATO da copy autoral desta peça. Os slots já vêm casados
+   * por papel (`mapearContratoParaCampos`); aqui o contrato é validado, a copy
+   * EFETIVA é lida das camadas finais e as duas são gravadas — a efetiva na
+   * página, original+efetiva na Generation — como o compositor faz.
+   */
+  copyAutoral?: unknown
 }
 
 export interface CreateArteRapidaResult {
@@ -567,61 +600,6 @@ export interface CreateArteRapidaResult {
   layoutEscolhido?: { layout: LayoutPelaFoto; motivo: string; pageId: string; pageName: string }
 }
 
-/**
- * Bake slot values and the background image into a copy of the source layers.
- *
- * Image placement: an explicit `fileUrl` slot always wins. Otherwise the photo
- * goes to the first empty dynamic image layer (the common case); if every
- * candidate already carries a static image, it replaces the first one — without
- * that fallback, templates with a hardcoded background silently ignore the photo.
- */
-function bakeLayers(
-  sourceLayers: any[],
-  slotValues: Record<string, unknown>,
-  imageUrl: string | null,
-): { layers: any[]; imageApplied: boolean; changedTextIds: string[] } {
-  const explicitFileUrl = new Set<string>()
-  const changedTextIds: string[] = []
-
-  const layers = sourceLayers.map((layer: any) => {
-    const slot = slotValues[layer.id] ?? slotValues[layer.name]
-    const updated = { ...layer }
-
-    if (typeof slot === 'string') {
-      updated.content = slot
-      if (layer.type === 'text') changedTextIds.push(layer.id)
-    } else if (slot && typeof slot === 'object') {
-      const slotObj = slot as Record<string, unknown>
-      if (typeof slotObj.content === 'string') {
-        updated.content = slotObj.content
-        if (layer.type === 'text') changedTextIds.push(layer.id)
-      }
-      if (typeof slotObj.fileUrl === 'string') {
-        updated.fileUrl = slotObj.fileUrl
-        explicitFileUrl.add(layer.id)
-      }
-      // O render pula `visible === false` — e o editor mostra a camada como
-      // oculta, então quem abrir a arte consegue religá-la. `hidden: true` é
-      // instrução HUMANA explícita: uma marca antiga de "escondida pelo
-      // revisor" não pode encobri-la (REV-8AD-02).
-      if (slotObj.hidden === true) Object.assign(updated, semMarcaDoRevisor({ ...updated, visible: false }))
-    }
-    return updated
-  })
-
-  if (!imageUrl) return { layers, imageApplied: false, changedTextIds }
-
-  const isImageTarget = (layer: any) =>
-    layer.type === 'image' && (layer.isDynamic || layer.id === 'bg-img') && !explicitFileUrl.has(layer.id)
-
-  const target =
-    layers.find((l: any) => isImageTarget(l) && !l.fileUrl) ?? layers.find(isImageTarget)
-
-  if (!target) return { layers, imageApplied: false, changedTextIds }
-
-  target.fileUrl = imageUrl
-  return { layers, imageApplied: true, changedTextIds }
-}
 
 /**
  * Generate a creative from a source template page: bakes copy and image into
@@ -630,6 +608,13 @@ function bakeLayers(
  */
 export async function createArteRapida(input: CreateArteRapidaInput): Promise<CreateArteRapidaResult> {
   const { projectId, sourcePageId, slotValues } = input
+  // F1: contrato inválido recusa antes de qualquer escrita — mesma regra do item de plano.
+  const contratoRecebido = (() => {
+    if (input.copyAutoral == null) return null
+    const lido = lerCopyAutoral(input.copyAutoral)
+    if (!lido.copy) throw new CreativeError('COPY_AUTORAL_INVALIDA', `O contrato da copy é inválido: ${lido.problemas.join('; ')}`, 400, { problemas: lido.problemas })
+    return lido.copy
+  })()
 
   const project = await db.project.findUnique({
     where: { id: projectId },
@@ -737,7 +722,30 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
 
   const pageName = input.name ?? `${modelo.name} — ${new Date().toLocaleString('pt-BR')}`
 
+  /**
+   * F1 (PR 5): a copy EFETIVA lida das camadas finais sobre o contrato
+   * recebido. A página guarda a efetiva (o contrato do que ela MOSTRA); a
+   * Generation guarda original e efetiva, com `comparavel` e as lacunas — a
+   * mesma forma do compositor (`persistencia.ts`). Os [colchetes] que o modelo
+   * não desenha aparecem como revisão do SISTEMA, nunca como edição de alguém.
+   */
+  // Recusa do contrato na copy lida das camadas finais (histórico cheio no contrato recebido, ou a leitura que não cabe):
+  // a arte segue SEM registro de copy, e o aviso vai no retorno.
+  const avisosDaCopyDoModelo: string[] = []
+  const registroDaCopy = contratoRecebido
+    ? (() => {
+        const lida = tentarCopyEfetivaDasCamadas(contratoRecebido, layers as Layer[], { superficie: 'modelo' })
+        if (lida.ok === false) {
+          avisosDaCopyDoModelo.push(`${lida.aviso} A arte foi gravada sem contrato na página.`)
+          return null
+        }
+        const { efetiva, lacunas } = lida.leitura
+        return { efetiva, registro: { original: contratoRecebido, efetiva, comparavel: contratoRecebido.origem.autor !== 'desconhecido', ...(lacunas.length ? { lacunas } : {}) } }
+      })()
+    : null
+
   const persisted = await persistAndRenderCreative({
+    ...(registroDaCopy ? { copyAutoral: registroDaCopy.efetiva } : {}),
     project,
     templateId: arteTemplate.id,
     templateName: arteTemplate.name,
@@ -763,6 +771,7 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
       driveImageId,
       imageUrl: resolved.url ?? directUrl ?? null,
       slotValues,
+      ...(registroDaCopy ? { copyAutoral: registroDaCopy.registro } : {}),
       autocorrecao: fix.autocorrecao,
       halo: {
         aplicado: halo.aplicado,
@@ -836,7 +845,7 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
     imageApplied,
     ...(imageWarning ? { imageWarning } : {}),
     autocorrecao: fix.autocorrecao,
-    ...(fix.avisos.length > 0 ? { avisos: fix.avisos } : {}),
+    ...(fix.avisos.length + avisosDaCopyDoModelo.length > 0 ? { avisos: [...fix.avisos, ...avisosDaCopyDoModelo] } : {}),
     halo: { aplicado: halo.aplicado, blocos: halo.blocos, avisos: halo.avisos },
     ...(layoutEscolhido ? { layoutEscolhido } : {}),
   }
@@ -922,6 +931,21 @@ export interface AjustarArteResult {
  * futuras daquele tema e os posts agendados que as referenciam — modelo se
  * edita no editor, com a invalidação por mudança visual real do PATCH.
  */
+/**
+ * A recusa de página-MODELO de `ajustarArte` — a MESMA na leitura inicial e na
+ * escrita: a página pode ser promovida a modelo ("Marcar modelo" no editor)
+ * enquanto o ajuste resolve a foto e roda o autofix, e a releitura que confere
+ * conteúdo e contrato não enxergava isso (C3-12 da pré-revisão do commit
+ * 046d2a5e, 12/09/2026).
+ */
+function erroDePaginaModelo(): CreativeError {
+  return new CreativeError(
+    'PAGINA_E_MODELO',
+    'Esta página é um MODELO do cliente, não uma arte gerada. Ajustar aqui mudaria todas as artes futuras do tema — modelos se editam no editor.',
+    400,
+  )
+}
+
 export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteResult> {
   const { projectId, pageId } = input
   const slotValues = input.slotValues ?? {}
@@ -972,13 +996,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
   if (!page || page.Template.projectId !== projectId) {
     throw new CreativeError('PAGE_NOT_FOUND', `Página não encontrada neste projeto: ${pageId}`, 404)
   }
-  if (page.isTemplate) {
-    throw new CreativeError(
-      'PAGINA_E_MODELO',
-      'Esta página é um MODELO do cliente, não uma arte gerada. Ajustar aqui mudaria todas as artes futuras do tema — modelos se editam no editor.',
-      400,
-    )
-  }
+  if (page.isTemplate) throw erroDePaginaModelo()
 
   // A revisão calcula os ajustes sobre UMA versão da página: se ela mudou (a
   // equipe editou, outro ajuste já entrou), os deltas iriam para o lugar errado.
@@ -1064,6 +1082,49 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
 
   const pageName = input.name ?? page.name
   /**
+   * F1: o contrato da copy da página. Texto trocado por aqui é REVISÃO de quem
+   * pediu (o app = `equipe`; o chat = `claude`), gravada NA MESMA ESCRITA das
+   * camadas (nada depois da escrita: uma consulta a mais ali ficava fora da
+   * proteção que garante a agenda avisada — R04 da revisão do Codex). Página
+   * sem contrato segue sem — nada é inventado.
+   */
+  const autorDaRevisao = input.canal === 'studio' ? 'equipe' : 'claude'
+  const revisaoDaCopy = revisaoDaPaginaComCamadas(
+    page.copyAutoral,
+    layers,
+    {
+      autor: autorDaRevisao,
+      motivo: ajustes.length > 0 && Object.keys(slotValues).length === 0 ? MOTIVO_DO_AJUSTE_DO_REVISOR : 'ajustar-arte',
+      superficie: input.canal ?? 'chat',
+    },
+    // As camadas de ANTES do ajuste: o que a leitura corrige nelas é do sistema (PR5-06).
+    { camadasAnteriores: page.layers },
+  )
+  /**
+   * Recusa do contrato — histórico CHEIO (PR2-02) ou copy lida que não cabe (`RevisaoDaCopyInvalida`): o ajuste não falha por isso — as camadas e a arte seguem, a página mantém o
+   * contrato como estava e a arte nasce SEM registro de copy (a efetiva não cabe no histórico), com o aviso no retorno.
+   */
+  const recusaDaCopy = recusaDaRevisao(revisaoDaCopy)
+  const avisosDaCopy: string[] = recusaDaCopy ? [recusaDaCopy] : []
+  const contratoDaPagina = recusaDaCopy ? null : (revisaoDaCopy.copy ?? copyAutoralDaPagina(page.copyAutoral))
+  const copyAutoralDaArte = contratoDaPagina
+    ? (() => {
+        const lida = tentarCopyEfetivaDasCamadas(contratoDaPagina, layers as Layer[], { superficie: 'ajuste-arte' })
+        if (lida.ok === false) {
+          avisosDaCopy.push(lida.aviso)
+          return null
+        }
+        const { efetiva, lacunas } = lida.leitura
+        return {
+          original: contratoDaPagina,
+          efetiva,
+          comparavel: contratoDaPagina.origem.autor !== 'desconhecido',
+          ...(lacunas.length ? { lacunas } : {}),
+        }
+      })()
+    : null
+  if (avisosDaCopy.length > 0) console.warn(`[ajustar-arte] ${page.id}: ${avisosDaCopy.join(' ')}`)
+  /**
    * A miniatura da página é INVALIDADA junto das camadas (REV-127-F01 da
    * revisão FINAL do Codex, 12/09/2026): ela é o PNG do render ANTERIOR, e
    * `agendarPost` a reutiliza como mídia quando a página ainda não tem post —
@@ -1072,7 +1133,12 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
    * recuperação sai sem slide). Nula, o agendamento nasce PENDING e o cron
    * desenha a página ajustada; o render bem-sucedido a regrava.
    */
-  const dadosDaPagina = { layers: layers as any, thumbnail: null as string | null, ...(input.name ? { name: input.name } : {}) }
+  const dadosDaPagina = {
+    layers: layers as any,
+    thumbnail: null as string | null,
+    ...(input.name ? { name: input.name } : {}),
+    ...(revisaoDaCopy.estado === 'registrada' && revisaoDaCopy.copy ? { copyAutoral: revisaoDaCopy.copy as never } : {}),
+  }
   /**
    * A página passa a carregar o ajuste do revisor; a arte do compositor (spec
    * e snapshot) não o conhece. Se o render abaixo e todas as recuperações
@@ -1084,6 +1150,13 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
    * cima (REV-D01 da revisão do Codex, 12/09/2026). Se a trava falhar, a
    * página não é gravada: ajuste sem proteção é ajuste que a fila desfaz.
    */
+  // ANTES da primeira escrita: o render de servidor é imagem e recusa página
+  // com vídeo. Recusar só lá deixava as camadas já gravadas, a miniatura
+  // apagada e a agenda invalidada numa operação que respondeu "recusada".
+  if (videoNaPagina(layers) === 'tem-video') {
+    throw new CreativeError('PAGINA_COM_VIDEO', MENSAGEM_PAGINA_COM_VIDEO, 422, { pageId: page.id, ajusteGravado: false })
+  }
+
   const travar = !!revisao && revisao.aplicados.length > 0
   const { travarRecomposicaoDaArte } = travar ? await import('@/lib/compositor/recompor') : { travarRecomposicaoDaArte: null }
   await db.$transaction(
@@ -1091,8 +1164,11 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
       if (input.versaoEsperada) {
         // Compare-and-set: a conferência de versão lá em cima e esta escrita
         // não são atômicas, e o autosave do editor pode cair no meio.
-        const gravada = await tx.page.updateMany({ where: { id: page.id, updatedAt: page.updatedAt }, data: dadosDaPagina })
+        // `isTemplate: false` também na escrita: a página promovida a modelo no meio do ajuste não é gravada (C3-12).
+        const gravada = await tx.page.updateMany({ where: { id: page.id, updatedAt: page.updatedAt, isTemplate: false }, data: dadosDaPagina })
         if (gravada.count === 0) {
+          const agora = await tx.page.findUnique({ where: { id: page.id }, select: { isTemplate: true } })
+          if (agora?.isTemplate) throw erroDePaginaModelo()
           throw new CreativeError(
             'VERSAO_DIVERGENTE',
             'A página mudou enquanto o ajuste era aplicado. Rode revisar-arte de novo.',
@@ -1101,7 +1177,61 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
           )
         }
       } else {
-        await tx.page.update({ where: { id: page.id }, data: dadosDaPagina })
+        /**
+         * 🔴 SEM `versaoEsperada` a escrita também é protegida (C3-01 da
+         * pré-revisão do commit bf85cb26, 12/09/2026). O ajuste só de foto ou
+         * de nome, vindo do chat, lia a página, levava segundos resolvendo a
+         * imagem, medindo e rodando o autofix, e gravava com `update` cru: se o
+         * editor salvasse texto novo no meio (camadas Y com o contrato Y), a
+         * revisão calculada contra a leitura antiga saía `sem-mudanca`, as
+         * camadas X iam por cima e o contrato ficava o de Y — e a próxima
+         * edição no editor assinava como `equipe` a volta de Y para X.
+         *
+         * O carimbo `updatedAt` sozinho NÃO é a versão: ele muda em qualquer
+         * escrita, e com o editor aberto o autosave grava a miniatura e
+         * camadas idênticas a cada pausa. Por isso, perdida a corrida, a
+         * página é RELIDA e o ajuste só segue se o que ele leu continua
+         * valendo — o mesmo CONTEÚDO (`versaoDaPagina`) e o mesmo contrato;
+         * então tudo o que foi decidido contra a leitura (bake, revisão da
+         * copy, aprendizado) segue exato. Mudou o conteúdo ou o contrato: nada
+         * é gravado e o ajuste volta com 409. A mensagem manda o chat REVER a
+         * arte e confirmar com a pessoa antes de repetir — repetir na hora
+         * regravaria o texto que a equipe acabou de editar. Vale para página
+         * com e sem contrato: sem contrato, gravar por cima apagava em
+         * silêncio a edição da equipe e o diff do aprendizado ainda saía
+         * contra a leitura velha.
+         *
+         * A releitura confere também se a página continua sendo ARTE: virou
+         * modelo no meio do ajuste → a recusa de modelo, como na leitura
+         * inicial; e `isTemplate: false` vai no `where` da escrita, para que
+         * nem um escritor que não move o carimbo passe (C3-12).
+         */
+        let carimbo = page.updatedAt
+        let gravou = false
+        for (let volta = 0; volta < 3 && !gravou; volta++) {
+          const gravada = await tx.page.updateMany({ where: { id: page.id, updatedAt: carimbo, isTemplate: false }, data: dadosDaPagina })
+          if (gravada.count > 0) {
+            gravou = true
+            break
+          }
+          const fresca = await tx.page.findUnique({
+            where: { id: page.id },
+            select: { updatedAt: true, width: true, height: true, background: true, layers: true, copyAutoral: true, isTemplate: true },
+          })
+          if (fresca?.isTemplate) throw erroDePaginaModelo()
+          const mesmoConteudo = !!fresca && versaoAntes !== null && versaoDaPagina(fresca) === versaoAntes
+          const mesmoContrato = !!fresca && JSON.stringify(fresca.copyAutoral ?? null) === JSON.stringify(page.copyAutoral ?? null)
+          if (!mesmoConteudo || !mesmoContrato) break
+          carimbo = fresca!.updatedAt
+        }
+        if (!gravou) {
+          throw new CreativeError(
+            'PAGINA_MUDOU_DURANTE_O_AJUSTE',
+            'A arte foi editada enquanto o ajuste era aplicado (no editor ou por outro ajuste) e NADA foi gravado. Não repita o ajuste direto: veja a arte como ela está agora (conferir-arte), conte à pessoa que ela mudou e confirme o que ainda precisa ajustar — repetir sem olhar regravaria o que a equipe acabou de editar.',
+            409,
+            { ajusteGravado: false },
+          )
+        }
       }
       if (travarRecomposicaoDaArte) {
         if (input._prova?.entreGravarETravar) await input._prova.entreGravarETravar()
@@ -1182,6 +1312,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
         driveImageId,
         imageUrl: resolved.url ?? directUrl ?? null,
         autocorrecao: fix.autocorrecao,
+        ...(copyAutoralDaArte ? { copyAutoral: copyAutoralDaArte } : {}),
       },
     })
   } catch (erro) {
@@ -1277,6 +1408,6 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
       ? { postsCongelados: invalidacao.congelados.length }
       : {}),
     autocorrecao: fix.autocorrecao,
-    ...(fix.avisos.length > 0 ? { avisos: fix.avisos } : {}),
+    ...(fix.avisos.length + avisosDaCopy.length > 0 ? { avisos: [...fix.avisos, ...avisosDaCopy] } : {}),
   }
 }

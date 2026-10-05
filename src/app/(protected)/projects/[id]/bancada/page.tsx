@@ -20,6 +20,7 @@ import { BancadaFila } from '@/components/bancada/bancada-fila'
 import { CoberturaDaSemana } from '@/components/bancada/cobertura-da-semana'
 import { useBancadaStore } from '@/stores/bancada-store'
 import { useProject } from '@/hooks/use-project'
+import { PlanejamentoDePilares } from '@/components/projects/direcao-de-arte-avancada'
 
 export default function BancadaPage() {
   const params = useParams()
@@ -129,6 +130,9 @@ export default function BancadaPage() {
           <div className="h-24 animate-pulse rounded-xl bg-muted/30" />
         )}
       </section>
+
+      {/* Os pilares saíram da aba Marca: são planejamento (SOBRE O QUÊ a marca fala), e é aqui que a semana é montada. */}
+      <PlanejamentoDePilares projectId={projectId} />
     </div>
   )
 }

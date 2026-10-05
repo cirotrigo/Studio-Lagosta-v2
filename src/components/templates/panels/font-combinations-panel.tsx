@@ -27,8 +27,7 @@ import {
   associarOrnamentos,
   capturarCombinacao,
   ehTextoDeCombinacao,
-  papelDoTexto,
-} from '@/lib/font-combinations-capture'
+  papelDoTexto, comPapelNoCompositor } from '@/lib/font-combinations-capture'
 import { caixaDoIconeTrocado, elementoNovoParaTexto, iconeNovoParaTexto } from '@/lib/font-combinations-icones'
 import { useProjectElements, type ProjectElement } from '@/hooks/use-project-elements'
 import { IconesDaCombinacao, carregarDimensoes, type LinhaDeIcone } from './combo-icones'
@@ -233,12 +232,8 @@ export function FontCombinationsPanel() {
   /** O papel do texto no compositor fica gravado na camada — é o que a captura salva */
   const definirPapel = React.useCallback(
     (texto: Layer, papel: PapelDaCombinacao | null) => {
-      updateLayer(texto.id, (layer) => {
-        const metadata = { ...(layer.metadata ?? {}) } as Record<string, unknown>
-        if (papel) metadata.compositor = { papel }
-        else delete metadata.compositor
-        return { ...layer, metadata: metadata as Layer['metadata'] }
-      })
+      // MESCLA no `metadata.compositor`: substituir apagava a identidade da copy (extra, bloco, parte…) e o encaixe.
+      updateLayer(texto.id, (layer) => comPapelNoCompositor(layer, papel))
     },
     [updateLayer],
   )

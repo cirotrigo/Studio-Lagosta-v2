@@ -315,10 +315,16 @@ it('interrupção antes do commit não deixa geração órfã e permite retomar'
   await enfileirarPeca(spec)
   expect(banco.generations.size).toBe(1)
 })
-it('mudança de campanha exige outra revisão mesmo com a mesma spec', async () => {
+// Pré-revisão C11-1b do PR 11 (12/09/2026): a revisão do item cobre só o que vira
+// spec. Campanha e escopo são lidos do item na hora de agendar, não da peça — então
+// mudar só a campanha reaproveita a peça pronta; mudar o que vira spec pede peça nova.
+it('mudança só de campanha (fora da spec) reaproveita a peça pronta; mudança de conteúdo que vira spec exige outra revisão mesmo com a mesma spec', async () => {
   const primeira = await enfileirarPeca(spec)
   await rodarComoOCron(primeira.jobId)
   banco.itens.set('item-1', { ...banco.itens.get('item-1'), status: 'editado', campaignId: 'nova' })
+  const mesma = await enfileirarPeca(spec)
+  expect(mesma.generationId).toBe(primeira.generationId)
+  banco.itens.set('item-1', { ...banco.itens.get('item-1'), status: 'editado', tema: 'Outro tema' })
   const nova = await enfileirarPeca(spec)
   expect(nova.generationId).not.toBe(primeira.generationId)
 })

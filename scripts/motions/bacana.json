@@ -1,0 +1,152 @@
+{
+  "saida": "saida/bacana",
+  "kit": {
+    "slug": "bacana",
+    "margem": 70,
+    "topo": 250,
+    "rodape": 1690,
+    "duracao": 8,
+    "alinhamento": "esquerda",
+    "filete": false,
+    "sombra": "rgba(26,20,16,0.7)",
+    "cores": { "branco": "#FFFFFF", "destaque": "#EF6A00" },
+    "fontes": {
+      "BcRegular": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/5/fonts/1760808325382-Cannon-regular.ttf",
+      "BcMedium": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/5/fonts/1760808322914-Cannon-medium.ttf",
+      "BcBold": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/5/fonts/1760808310656-Cannon-bold.ttf",
+      "BcExtrabold": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/5/fonts/1760808315454-Cannon-extrabold.ttf"
+    },
+    "icones": {
+      "local": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/5/elements/1762353516445-icone-local-branci.png"
+    },
+    "logo": {
+      "imagem": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/5/logos/1765457389127-bacana.png",
+      "tamanho": 180,
+      "canto": "inferior-direito"
+    },
+    "estilos": {
+      "pre": { "fonte": "BcRegular", "tam": 40, "ls": 2, "caixaAlta": true, "cor": "branco" },
+      "titulo": { "fonte": "BcExtrabold", "tam": 74, "entrelinha": 1.08, "caixaAlta": true, "cor": "branco" },
+      "apoio": { "fonte": "BcMedium", "tam": 36, "ls": 1, "entrelinha": 1.3, "caixaAlta": true, "cor": "branco", "fonteForte": "BcExtrabold", "corForte": "branco" },
+      "cta": { "fonte": "BcBold", "tam": 32, "ls": 2, "caixaAlta": true, "cor": "branco" },
+      "servico": { "fonte": "BcMedium", "tam": 32, "entrelinha": 1.6, "caixaAlta": true, "cor": "branco", "fonteForte": "BcExtrabold", "corForte": "branco" }
+    }
+  },
+  "pecas": [
+    {
+      "id": "funcionamento-rodape-segunda",
+      "servico": [
+        { "icone": "local", "texto": "Praia da Costa - [11h30 às 23h]" }
+      ]
+    },
+    {
+      "id": "funcionamento-rodape-terca-a-sexta",
+      "servico": [
+        { "icone": "local", "texto": "Praia da Costa - [11h30 às 23h]" },
+        { "icone": "local", "texto": "Bairro de Fátima - [17h às 23h]" }
+      ]
+    },
+    {
+      "id": "funcionamento-rodape-sabado",
+      "servico": [
+        { "icone": "local", "texto": "Praia da Costa - [11h às 23h]" },
+        { "icone": "local", "texto": "Bairro de Fátima - [11h às 23h]" }
+      ]
+    },
+    {
+      "id": "funcionamento-rodape-domingo",
+      "servico": [
+        { "icone": "local", "texto": "Praia da Costa - [11h às 22h]" },
+        { "icone": "local", "texto": "Bairro de Fátima - [11h às 22h]" }
+      ]
+    },
+    {
+      "id": "funcionamento-terca-a-sexta",
+      "titulo": [
+        { "texto": "Churrasco no kilo", "fonte": "BcRegular", "tam": 64 },
+        { "texto": "do jeito Bacana" }
+      ],
+      "servico": [
+        { "icone": "local", "texto": "Praia da Costa - [11h30 às 23h]" },
+        { "icone": "local", "texto": "Bairro de Fátima - [17h às 23h]" }
+      ]
+    },
+    {
+      "id": "funcionamento-domingo-em-familia",
+      "titulo": [
+        { "texto": "Domingo pede aquele", "fonte": "BcRegular", "tam": 64 },
+        { "texto": "Churrasco Bacana" }
+      ],
+      "apoio": ["Pratos [Família], Espaço Kids", "e menu [Bacaninha]"],
+      "servico": [
+        { "icone": "local", "texto": "Praia da Costa - [11h às 22h]" },
+        { "icone": "local", "texto": "Bairro de Fátima - [11h às 22h]" }
+      ]
+    },
+    {
+      "id": "almoco-bacana-1",
+      "titulo": [
+        { "texto": "Almoço com", "fonte": "BcRegular", "tam": 64 },
+        { "texto": "Sabores Bacana" }
+      ],
+      "apoio": ["[Monte seu prato]", "de [segunda a sexta]"],
+      "servico": [
+        { "icone": "local", "texto": "Praia da Costa - [11h30 às 16h]" }
+      ]
+    },
+    {
+      "id": "almoco-bacana-2",
+      "titulo": [
+        { "texto": "De segunda a sexta", "fonte": "BcRegular", "tam": 64 },
+        { "texto": "Almoço Bacana" }
+      ],
+      "apoio": ["O tempero é do Chef,", "quem monta o menu é [você]"],
+      "servico": [
+        { "icone": "local", "texto": "Praia da Costa - [11h30 às 16h]" }
+      ]
+    },
+    {
+      "id": "encomenda-1",
+      "titulo": [
+        { "texto": "Churrasco em casa", "fonte": "BcRegular", "tam": 64 },
+        { "texto": "super profissa" }
+      ],
+      "apoio": ["Faça a encomenda para", "o seu [churrasco Bacana]"],
+      "cta": "Fale com o gerente para encomendar"
+    },
+    {
+      "id": "frase-tem-que-ser-bacana",
+      "titulo": [
+        { "texto": "Encontro em família", "fonte": "BcRegular", "tam": 64 },
+        { "texto": "tem que ser Bacana" }
+      ],
+      "cta": "Reserve sua mesa"
+    },
+    {
+      "id": "frase-sem-taxa-de-servico",
+      "titulo": [
+        { "texto": "Aqui não se cobra", "fonte": "BcRegular", "tam": 64 },
+        { "texto": "taxa de serviço" }
+      ],
+      "apoio": ["A conta vem [sem os 10%]"],
+      "cta": "Esperamos você"
+    },
+    {
+      "id": "frase-drinks-bacana",
+      "titulo": [
+        { "texto": "Jantar com", "fonte": "BcRegular", "tam": 64 },
+        { "texto": "Drinks Bacana" }
+      ],
+      "apoio": ["Uma carta de [drinks autorais]", "só da Bacana"]
+    },
+    {
+      "id": "frase-exageros-do-bacana",
+      "titulo": [
+        { "texto": "Permita-se os", "fonte": "BcRegular", "tam": 64 },
+        { "texto": "exageros do Bacana" }
+      ],
+      "apoio": ["Churrasco em [porção grande]", "para a mesa toda"],
+      "cta": "Te esperamos na brasa"
+    }
+  ]
+}

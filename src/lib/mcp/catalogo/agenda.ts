@@ -23,7 +23,7 @@ export const toolsDeAgenda = [
     nome: 'ver-agenda',
     apelidos: ['list-posts'],
     descricao:
-      'Mostra a agenda do cliente já em linguagem de gente: agrupada por dia, com situação (rascunho/agendado/publicado/falhou), horário de Brasília e a capa de cada arte. Consulte antes de propor data, para não repetir tema nem empilhar posts. Sem período, mostra de ontem em diante. O postId de cada item serve para conferir-arte, editar-post, reagendar-post, aprovar-rascunhos e cancelar-post.\n\nQuando um item traz "aviso", repasse: é post de campanha marcado para depois do fim dela. O campo "escopo" só aparece quando o post não é rotina (campanha ou pontual).',
+      'Mostra a agenda do cliente já em linguagem de gente: agrupada por dia, com situação (rascunho/agendado/publicado/falhou), horário de Brasília, formato (story/feed), a capa de cada arte e os TEXTOS COMPLETOS da peça (`textos`: as camadas de texto da página, ou a copy gravada no post) — é por eles que se revisa repetição de tema e de frase entre os dias, não pelos 140 caracteres da legenda (`legendaCompleta` traz o resto quando há). Consulte antes de propor data, para não repetir tema nem empilhar posts. Sem período, mostra de ontem em diante. O postId de cada item serve para conferir-arte, editar-post, reagendar-post, aprovar-rascunhos e cancelar-post.\n\nQuando um item traz "aviso", repasse: é post de campanha marcado para depois do fim dela. O campo "escopo" só aparece quando o post não é rotina (campanha ou pontual).',
     schema: z.object({
       projectId: z.number().describe('ID do cliente.'),
       from: z.string().optional().describe('Data inicial ("AAAA-MM-DD" ou ISO). Default: ontem.'),
@@ -38,13 +38,14 @@ export const toolsDeAgenda = [
     acesso: { tipo: 'projeto' },
     superficies: ['remoto', 'local'],
     handler: async (args, _principal) => {
-      const [{ db }, { avisosDeCampanhaVencida }, { formatarBRT }, { descreverJanela }, { escopoEmPortugues }] =
+      const [{ db }, { avisosDeCampanhaVencida }, { formatarBRT }, { descreverJanela }, { escopoEmPortugues }, { textosDaPeca, arteEntregue, arteDosFieldValues }] =
         await Promise.all([
           import('../../db'),
           import('../../posts/campanha-vigencia'),
           import('../../posts/agenda-acoes'),
           import('../../posts/freeze-window'),
           import('../../posts/learning-scope'),
+          import('../../posts/textos-da-peca'),
         ])
       const projectId = args.projectId as number
 
@@ -91,10 +92,91 @@ export const toolsDeAgenda = [
           laterPostId: true,
           learningScope: true,
           campaignId: true,
+          pageId: true,
+          slotValues: true,
+          // R51: `NOT_NEEDED` com a mídia de outra arte = a página do post é só vínculo histórico.
+          renderStatus: true,
         },
         orderBy: { scheduledDatetime: 'asc' },
         take: typeof args.limit === 'number' ? Math.min(args.limit, 200) : 50,
       })
+
+      /**
+       * Os TEXTOS COMPLETOS de cada peça (PR 6), como a ARTE os mostra — ver
+       * `textos-da-peca.ts`: peça viva com página = a página com a copy
+       * própria do post por cima (a função do render); carrossel e peça sem
+       * página = slide a slide, pela arte que cada mídia é (a URL casa a
+       * Generation; `generationId` do post é só o primeiro slide); peça
+       * entregue = o snapshot da arte, e sem ele a leitura é declarada
+       * parcial ou indisponível. É o que permite revisar repetição entre os
+       * dias — a legenda cortada em 140 caracteres não dizia o que a arte diz.
+       */
+      const vivas = posts.filter((p) => !arteEntregue(p))
+      const idsDePagina = [...new Set(vivas.map((p) => p.pageId).filter((id): id is string => !!id))]
+      // As artes de TODAS as mídias, casadas SÓ pela URL — a mais recente por
+      // URL vence (`orderBy desc` + primeira gravada), a regra de
+      // `artes-do-post.ts`. 🔴 Sem fallback pelo `generationId` do post: o
+      // re-render grava URL nova sem trocar o vínculo, e o snapshot daquela
+      // Generation é de OUTRA versão da mídia (R12).
+      const urls = [...new Set(posts.flatMap((p) => p.mediaUrls ?? []).filter((u) => u && !u.startsWith('data:')))]
+      const artes = urls.length
+        ? await db.generation.findMany({
+            where: { projectId, resultUrl: { in: urls } },
+            select: { id: true, resultUrl: true, fieldValues: true },
+            orderBy: { createdAt: 'desc' },
+          })
+        : []
+      // A leitura da arte mora no módulo puro (`arteDosFieldValues`): R13, R36, o marcador da copy visual regravada e
+      // a recusa que não apaga o registro do re-render (C6-01) — o teste lê exatamente o que a agenda lê.
+      const arteDe = (g: (typeof artes)[number]) => arteDosFieldValues(g.fieldValues)
+      const artePorUrl = new Map<string, ReturnType<typeof arteDe>>()
+      for (const g of artes) {
+        if (g.resultUrl && !artePorUrl.has(g.resultUrl)) artePorUrl.set(g.resultUrl, arteDe(g))
+      }
+      const arteDoSlide = (_post: (typeof posts)[number], url: string) => artePorUrl.get(url) ?? null
+      // Na peça VIVA, o slide é desenhado da PÁGINA daquela arte: é ela que se lê. A peça ENTREGUE não carrega
+      // página nenhuma — nem o texto dela, nem a estrutura do modelo valem pela mídia congelada: na arte de MODELO
+      // (`post-schedule`) só o registro das camadas desenhadas diz quais valores chegaram à mídia (R46, R47).
+      const idsDePaginaDosSlides = [
+        ...new Set(
+          posts.flatMap((p) =>
+            (p.mediaUrls ?? [])
+              .map((u) => arteDoSlide(p, u))
+              .filter((a) => !!a && !arteEntregue(p))
+              .map((a) => a?.pageId)
+              .filter((id): id is string => !!id),
+          ),
+        ),
+      ]
+      const todasAsPaginas = [...new Set([...idsDePagina, ...idsDePaginaDosSlides])]
+      // Só páginas DESTE projeto (R29 da revisão de 061195d3): `fieldValues.pageId` de uma Generation (e o
+      // `pageId` de um post) podem apontar para página de outro projeto — o konva-export grava `body.pageId`
+      // sem conferir o dono —, e a leitura pelo id nu entregaria os textos de B pela agenda de A. Página de fora
+      // fica sem camadas, e a peça segue como fonte indisponível.
+      const paginas = todasAsPaginas.length
+        ? await db.page.findMany({ where: { id: { in: todasAsPaginas }, Template: { projectId } }, select: { id: true, layers: true, isTemplate: true } })
+        : []
+      const camadasPorPagina = new Map(paginas.map((p) => [p.id, p.layers]))
+      // Página MODELO: é o que decide se o render aplica os slots do post por cima dela (#142). Em página de
+      // CONTEÚDO a página é a peça e manda — ler com os slots aplicados mostraria texto que a arte não tem.
+      const modeloPorPagina = new Map(paginas.map((p) => [p.id, p.isTemplate]))
+      const textosDe = (post: (typeof posts)[number]) =>
+        textosDaPeca(
+          { pageId: post.pageId, slotValues: post.slotValues, status: post.status, laterPostId: post.laterPostId, mediaUrls: post.mediaUrls ?? [], generationId: post.generationId, renderStatus: post.renderStatus },
+          {
+            ...(post.pageId && camadasPorPagina.has(post.pageId)
+              ? { camadas: camadasPorPagina.get(post.pageId), paginaEhModelo: modeloPorPagina.get(post.pageId) === true }
+              : {}),
+            slides: (post.mediaUrls ?? []).map((url) => {
+              const arte = arteDoSlide(post, url)
+              return {
+                url,
+                arte,
+                ...(arte?.pageId && camadasPorPagina.has(arte.pageId) ? { camadasDaPagina: camadasPorPagina.get(arte.pageId) } : {}),
+              }
+            }),
+          },
+        )
 
       // Post de campanha marcado para depois do fim dela: aviso por post, com
       // o texto pronto para o modelo repassar. Nunca esconde nem bloqueia.
@@ -113,10 +195,22 @@ export const toolsDeAgenda = [
         grupo.posts.push({
           postId: post.id,
           tipo: post.postType === 'STORY' ? 'story' : post.postType.toLowerCase(),
+          formato: post.postType === 'STORY' ? 'story' : 'feed',
           situacao: PARA_SITUACAO[post.status] ?? post.status.toLowerCase(),
           hora: `${String(brt.getUTCHours()).padStart(2, '0')}:${String(brt.getUTCMinutes()).padStart(2, '0')}`,
           quando: formatarBRT(quando),
           legenda: post.caption ? post.caption.slice(0, 140) : null,
+          ...(post.caption && post.caption.length > 140 ? { legendaCompleta: post.caption } : {}),
+          ...((() => {
+            const t = textosDe(post)
+            return {
+              // `textos` sai sempre que a leitura deu certo — inclusive vazia (a arte não tem texto); some só quando não há o que afirmar.
+              ...(t.origem ? { textos: t.textos, textosOrigem: t.origem } : {}),
+              ...(t.parcial ? { textosParciais: true, textosNota: t.nota } : {}),
+              ...(t.slides ? { textosPorSlide: t.slides } : {}),
+              ...(t.indisponiveis ? { textosIndisponiveis: t.indisponiveis } : {}),
+            }
+          })()),
           capa: post.mediaUrls?.[0] ?? null,
           publicacao: post.publishType === 'REMINDER' ? 'manual (lembrete no WhatsApp)' : 'automática',
           ...(post.generationId ? { generationId: post.generationId } : {}),
@@ -207,10 +301,12 @@ export const toolsDeAgenda = [
   definirTool({
     nome: 'sugerir-posts',
     descricao:
-      'Sugere os próximos posts a partir da CADÊNCIA real do cliente: analisa as últimas 8 semanas (dia da semana × horário), acha os buracos dos próximos dias e devolve slots prontos — cada um com o motivo, o modelo do cliente para aquele dia (quando existe) e as campanhas da base que citam o dia (ex.: Quinta do Vinho). Use quando a pessoa pedir "o que postar essa semana", ou proativamente ao notar a agenda vazia. Você escreve a copy; a sugestão é o esqueleto de quando/o quê.\n\nCada slot vem com um `sugestaoId`: guarde-o e devolva em colocar-na-agenda quando o post nascer daquele horário, mesmo que você o tenha mudado. É só um dado técnico — nunca fale dele na conversa.',
+      'O CONTEXTO DA SEMANA do cliente, numa chamada: a GRADE COMPLETA por dia da semana (cada horário com a origem — combinado = grade aprovada na base, histórico = o que ele publica de fato, nova = só nas últimas duas semanas —, o formato story/feed, o tema e a evidência), o que JÁ OCUPA a janela (`ocupacao`, rascunhos e agendados, por formato), as exceções (dias sem horário) e os BURACOS prontos para preencher (`sugestoes`) — cada um com o motivo, o modelo do cliente para aquele dia (quando existe) e as campanhas da base que citam o dia. A ocupação é por FORMATO: um feed às 19h não ocupa o story das 19h. Peça a janela com `inicio` e `fim` ("a semana que vem" = segunda a domingo); sem eles, os próximos 7 dias.\n\nApresente a grade UMA vez e não peça aprovação da mesma grade de novo em cada leva: o que volta à conversa é só a DIVERGÊNCIA (horário ocupado, dia sem horário, grade que não bate com o que a pessoa pediu). Você escreve a copy; isto é o esqueleto de quando/o quê.\n\nCada slot vem com um `sugestaoId`: guarde-o e devolva em colocar-na-agenda quando o post nascer daquele horário, mesmo que você o tenha mudado. É só um dado técnico — nunca fale dele na conversa.',
     schema: z.object({
       projectId: z.number().describe('ID do cliente.'),
-      dias: z.number().optional().describe('Quantos dias à frente (default 7, máx 14).'),
+      inicio: z.string().optional().describe('Início da janela, "AAAA-MM-DD" (Brasília). Default: hoje. Data no passado vira hoje.'),
+      fim: z.string().optional().describe('Fim da janela, inclusivo, "AAAA-MM-DD". Default: início + dias − 1. Teto de 21 dias.'),
+      dias: z.number().optional().describe('Quantos dias a partir do início (default 7, máx 21). Ignorado quando `fim` vem.'),
     }),
     // NÃO é readOnly: cada slot emitido vira LearningSignal (a sugestão se
     // registra na EMISSÃO — F1). Idempotente pela chave de proposta.
@@ -222,6 +318,8 @@ export const toolsDeAgenda = [
       return sugerirPosts({
         projectId: args.projectId as number,
         dias: typeof args.dias === 'number' ? args.dias : undefined,
+        inicio: typeof args.inicio === 'string' ? args.inicio : undefined,
+        fim: typeof args.fim === 'string' ? args.fim : undefined,
       })
     },
   }),

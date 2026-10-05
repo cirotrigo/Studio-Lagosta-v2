@@ -322,8 +322,9 @@ export async function prepararDica(
   return {
     insumos: {
       nomeDaMarca: contexto.projectName,
-      tomDeVoz: contexto.dna.toneOfVoice,
-      regrasDeConteudo: contexto.dna.contentRules,
+      // Identidade de TEXTO pela precedência (voz compacta × DNA legado).
+      tomDeVoz: contexto.voz.texto,
+      regrasDeConteudo: contexto.voz.regrasDaMarca,
       perguntasDoCrivo: parseApprovalChecklist(contexto.dna.approvalChecklist),
       perfil,
       desempenho: desempenho?.bloco ?? null,

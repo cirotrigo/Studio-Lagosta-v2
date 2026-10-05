@@ -114,6 +114,7 @@ export const toolsDePlanos = [
                 .describe(
                   'Os blocos de texto da arte, na ordem de leitura (título, apoio, chamada). ESCREVA EM CAIXA NATURAL, como uma frase: "Desacelere e desfrute", nunca "DESACELERE E DESFRUTE". A caixa alta da manchete é decisão de tipografia e quem a toma é a identidade da marca na hora de desenhar a arte — não o texto que você digita. Deixe em maiúsculas só o que é maiúsculo de verdade: sigla, unidade, valor ("50% OFF") e o nome da marca. DESTAQUE: marque com [colchetes] 1 ou 2 palavras da peça que decidem a leitura ("Terça é dia de [rodízio]") — na arte do editor elas saem na cor e no peso de destaque da marca; sem colchetes, sem destaque.',
                 ),
+              copyAutoral: z.record(z.string(), z.unknown()).optional().describe('O CONTRATO da copy autoral (F1): a copy inteira como você a escreveu — {versao: "copy-autoral-v1", origem: {autor: "claude", superficie: "chat"}, blocos: [{id, funcao (pre|headline|apoio|cta|servico), grupoDeLeitura?, ordem, linhas (EXATAS: caixa, acento e [colchetes] como escritos), fatos?: [{entradaId, trecho}], estilo?: {linhasNaVoz2?: [índices]}}], revisoes: []}. Com ele, `texto` é dispensável (vira o espelho posicional). É o que deixa a copy inteira ser comparada com a arte depois (ver-geracao).'),
               legenda: z.string().optional().describe('A legenda do Instagram, quando houver.'),
               fotoDriveId: z.string().optional().describe('A foto do acervo (de buscar-fotos).'),
               fotoUrl: z.string().optional().describe('Alternativa: imagem já no Studio.'),
@@ -206,6 +207,7 @@ export const toolsDePlanos = [
         copyProposta: Array.isArray(i.texto)
           ? i.texto.filter((b: unknown): b is string => typeof b === 'string')
           : null,
+        copyAutoral: i.copyAutoral && typeof i.copyAutoral === 'object' ? i.copyAutoral : undefined,
         legenda: typeof i.legenda === 'string' ? i.legenda : null,
         fotoDriveId: typeof i.fotoDriveId === 'string' ? i.fotoDriveId : null,
         fotoUrl: typeof i.fotoUrl === 'string' ? i.fotoUrl : null,
@@ -268,7 +270,7 @@ export const toolsDePlanos = [
   definirTool({
     nome: 'ver-plano',
     descricao:
-      'Mostra a leva do cliente como ela está agora: cada item com horário de Brasília, tema, texto, situação em português e a capa da arte quando ela já existe, mais o resumo do todo ("3 prontas, 2 gerando, 1 falhou"). Sem informar a leva, mostra a que está em aberto.\n\nCONSULTE antes e depois de produzir: é aqui que a situação dos itens é atualizada — as artes terminam em segundo plano, e nada avisa o plano quando ficam prontas. Item que aparece como "falhou" traz o motivo e pode ser produzido de novo.',
+      'Mostra a leva do cliente como ela está agora: cada item com horário de Brasília, tema, texto, situação em português e a capa da arte quando ela já existe, mais o resumo do todo ("3 prontas, 2 gerando, 1 falhou"). Sem informar a leva, mostra a que está em aberto.\n\nCONSULTE antes e depois de produzir: é aqui que a situação dos itens é atualizada — as artes terminam em segundo plano, e nada avisa o plano quando ficam prontas. Item que aparece como "falhou" traz o motivo e pode ser produzido de novo.\n\nCada item traz itemRevisao, a revisão do CONTEÚDO dele (texto, foto, formato, horário e tema — a legenda não conta). Leia o plano ANTES de montar a copy de uma peça e mande essa itemRevisao em compor-leva junto do itemDePlanoId: se o item mudar depois da leitura, a peça é recusada em vez de sair com o conteúdo antigo.',
     schema: z.object({
       projectId: z.number().describe('ID do cliente.'),
       planoId: z.string().optional().describe('A leva (de criar-plano). Sem isto, a que está em aberto.'),
@@ -347,6 +349,7 @@ export const toolsDePlanos = [
         .describe(
           'Novos blocos de texto da arte (substituem todos). Em caixa natural, como uma frase — a caixa alta da manchete quem decide é a identidade da marca ao desenhar, não o texto digitado aqui. Marque com [colchetes] 1 ou 2 palavras de destaque — na arte do editor elas saem na cor e no peso de destaque da marca.',
         ),
+      copyAutoral: z.record(z.string(), z.unknown()).optional().describe('O CONTRATO da copy autoral (F1): a copy inteira como você a escreveu (substitui o contrato do item por inteiro) — {versao: "copy-autoral-v1", origem: {autor: "claude", superficie: "chat"}, blocos: [{id, funcao (pre|headline|apoio|cta|servico), grupoDeLeitura?, ordem, linhas (EXATAS: caixa, acento e [colchetes] como escritos), fatos?: [{entradaId, trecho}], estilo?: {linhasNaVoz2?: [índices]}}], revisoes: []}. Com ele, `texto` é dispensável (vira o espelho posicional). É o que deixa a copy inteira ser comparada com a arte depois (ver-geracao).'),
       legenda: z.string().optional().describe('Nova legenda.'),
       fotoDriveId: z.string().optional().describe('Outra foto do acervo.'),
       fotoUrl: z.string().optional().describe('Outra imagem já no Studio.'),
@@ -432,12 +435,14 @@ export const toolsDePlanos = [
         planoId,
         itemId: args.itemId as string,
         decididoPor: await quemDecidiu(projectId, principal),
+        autorDaCopy: 'claude',
         patch: {
           ...(args.quando !== undefined ? { quando: args.quando } : {}),
           ...(typeof args.tema === 'string' ? { tema: args.tema } : {}),
           ...(Array.isArray(args.texto)
             ? { copyProposta: args.texto.filter((b: unknown): b is string => typeof b === 'string') }
             : {}),
+          ...(args.copyAutoral && typeof args.copyAutoral === 'object' ? { copyAutoral: args.copyAutoral } : {}),
           ...(typeof args.legenda === 'string' ? { legenda: args.legenda } : {}),
           ...(typeof args.fotoDriveId === 'string' ? { fotoDriveId: args.fotoDriveId } : {}),
           ...(typeof args.fotoUrl === 'string' ? { fotoUrl: args.fotoUrl } : {}),

@@ -9,7 +9,7 @@
 
 import { db } from '@/lib/db'
 import { CreativeError } from '@/lib/creatives/errors'
-import { lerUsosDeFoto, mesclarUsos, type UsoDaFoto } from '@/lib/creatives/uso-de-foto'
+import { lerUsosDeFotoComEstado, mesclarUsos, type UsoDaFoto } from '@/lib/creatives/uso-de-foto'
 import {
   filtrarAcervo,
   calcularIdf,
@@ -20,6 +20,8 @@ import {
   type PilarParaBusca,
   type PreferenciasDeFoto,
 } from '@/lib/creatives/ranquear-acervo'
+import { diaDoUltimoUso, excluirFotos, identidadeDaExclusao, normalizarExclusao } from '@/lib/creatives/excluir-fotos'
+import { dataValida } from '@/lib/posts/contexto-da-semana'
 import { lerPreferenciasDeFoto } from '@/lib/aprendizado/sinal-de-foto'
 import { googleDriveService } from '@/server/google-drive-service'
 import { registrarSugestao } from '@/lib/aprendizado/captura'
@@ -153,6 +155,14 @@ export interface BuscarAcervoInput {
   fileName?: string
   limit?: number
   /**
+   * Fotos JÁ ESCOLHIDAS nesta leva (driveFileId) — saem da lista (PR 6).
+   * Exclusão explícita de quem busca, declarada na resposta; o rodízio só
+   * empurra para baixo.
+   */
+  excluirDriveFileIds?: string[]
+  /** "AAAA-MM-DD": foto com uso registrado a partir desta data sai da lista (PR 6). */
+  evitarUsadasDesde?: string
+  /**
    * Quantas pular antes de montar a página (B2). A ordem é estável DENTRO DO
    * DIA (comparator total do ranking + semente diária), então paginar por
    * posição é seguro aqui. `limit` não tem teto: pedir mais de uma vez costuma
@@ -258,14 +268,17 @@ export async function montarInsumosDeRanking(projectId: number): Promise<{
   destaques: Set<string>
   pilares: PilarParaBusca[]
   usos: Map<string, UsoDaFoto>
+  /** A leitura dos usos deu certo? `false` = mapa vazio por FALHA, não por ausência de uso (R24). */
+  usosLidos: boolean
+  erroDosUsos: string | null
 }> {
-  const [preferencias, destaques, pilares, usos] = await Promise.all([
+  const [preferencias, destaques, pilares, leituraDosUsos] = await Promise.all([
     lerPreferenciasDeFoto(projectId),
     lerDestaques(projectId),
     lerPilaresAprovados(projectId),
-    lerUsosDeFoto(projectId),
+    lerUsosDeFotoComEstado(projectId),
   ])
-  return { preferencias, destaques, pilares, usos }
+  return { preferencias, destaques, pilares, usos: leituraDosUsos.usos, usosLidos: leituraDosUsos.ok, erroDosUsos: leituraDosUsos.erro }
 }
 
 /**
@@ -283,7 +296,7 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
    * deles: a expansão de sinônimo (F2) usa os pilares aprovados do cliente.
    * São todos por projeto — nada aqui depende do resultado do filtro.
    */
-  const { preferencias, destaques, pilares, usos } = await montarInsumosDeRanking(input.projectId)
+  const { preferencias, destaques, pilares, usos, usosLidos, erroDosUsos } = await montarInsumosDeRanking(input.projectId)
 
   // Catálogos regerados (taxonomia v2) não trazem qualidade/tags/bestFor — só a
   // pasta. Aplicar o filtro nesse caso zeraria o acervo inteiro em silêncio;
@@ -368,9 +381,20 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
    * "nunca usada", que é como `ranquearAcervo` desempata.
    */
   const ultimoUso = new Map<string, string>()
+  /**
+   * O DIA em Brasília do último uso, por foto — para a EXCLUSÃO por data, que
+   * compara dias: cada fonte vira dia ANTES de escolher a mais recente. Fundir
+   * pelo texto (`mesclarUsos`) deixava o timestamp do banco vencer a data do
+   * legado que caía num dia posterior em Brasília (R26).
+   */
+  const diaDoUso = new Map<string, string>()
   for (const i of todas) {
-    const uso = mesclarUsos(usos.get(i.driveFileId), ultimoUsoDoCatalogo(i))
+    const doBanco = usos.get(i.driveFileId)
+    const doCatalogo = ultimoUsoDoCatalogo(i)
+    const uso = mesclarUsos(doBanco, doCatalogo)
     if (uso) ultimoUso.set(i.driveFileId, uso)
+    const dia = diaDoUltimoUso(doBanco?.ultimoUso, doCatalogo)
+    if (dia) diaDoUso.set(i.driveFileId, dia)
   }
 
   /**
@@ -378,7 +402,7 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
    * semente diária), que é o que a paginação por offset exige. Score ordena,
    * nunca esconde: `ranqueadas` tem exatamente as fotos filtradas.
    */
-  const ranqueadas = ranquearAcervo({
+  const ranqueadasTodas = ranquearAcervo({
     imagens,
     tema: input.theme ?? null,
     pilares,
@@ -390,6 +414,28 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
     similaridade,
   })
 
+  /**
+   * A EXCLUSÃO pedida por quem busca (PR 6): as fotos já escolhidas na leva e
+   * as usadas a partir de uma data saem da lista ANTES de a proposta ser
+   * registrada — o que se registra é o que a pessoa viu. Data inválida em
+   * `evitarUsadasDesde` não exclui nada e vira aviso.
+   */
+  const exclusao = excluirFotos(ranqueadasTodas, { ids: input.excluirDriveFileIds, usadasDesde: input.evitarUsadasDesde }, diaDoUso)
+  if (input.evitarUsadasDesde && !dataValida(input.evitarUsadasDesde)) {
+    avisos.push(`evitarUsadasDesde ignorado: "${input.evitarUsadasDesde}" não é uma data AAAA-MM-DD que exista no calendário.`)
+  }
+  /**
+   * A leitura dos usos FALHOU e a pessoa pediu corte por uso: a exclusão saiu
+   * só com o legado do catálogo e fotos usadas podem ter voltado à lista. Isso
+   * é dito — `porUso: 0` sem aviso pareceria exclusão cumprida (R24 da
+   * revisão de 386118cc). A busca segue disponível.
+   */
+  const usoIncompleto = Boolean(input.evitarUsadasDesde && dataValida(input.evitarUsadasDesde) && !usosLidos)
+  if (usoIncompleto) {
+    avisos.push(`a exclusão por uso ficou INCOMPLETA: não consegui ler os usos registrados (${erroDosUsos ?? 'falha na consulta'}) — fotos usadas desde ${input.evitarUsadasDesde} podem ter voltado à lista; confira antes de escolher.`)
+  }
+  const ranqueadas = exclusao.mantidas
+
   // As pastas são a espinha semântica destes catálogos: sem elas, quem busca
   // não tem como saber que existe "01_cortes/picanha-bovina" para pedir.
   const pastas = [...new Set(todas.map((i) => i.folder).filter(Boolean))].sort()
@@ -400,10 +446,11 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
    * de fato escolheu — sem isso o aprendizado só enxerga o que foi aceito.
    */
   const sugestaoId =
-    input.registrarSugestao === false ? null : await registrarProposta(input, ranqueadas, ultimoUso, destaques)
+    input.registrarSugestao === false ? null : await registrarProposta(input, ranqueadas, ultimoUso, destaques, exclusao.resumo.idsPorUso)
 
   return {
-    total: imagens.length,
+    total: ranqueadas.length,
+    ...(exclusao.pedida ? { excluidas: { ...exclusao.resumo, ...(usoIncompleto ? { porUsoIncompleta: true } : {}) } } : {}),
     /** Quantas candidatas entraram só pela semelhança (sem casar palavra). */
     viaSemantica,
     acervoCompleto: todas.length,
@@ -487,6 +534,8 @@ async function registrarProposta(
   /** O mesmo mapa que desempatou o ranking — o sinal grava o uso REAL (banco + legado), não só o do catálogo. */
   ultimoUso: Map<string, string>,
   destaques: Set<string>,
+  /** Os ids que saíram por uso nesta busca — entram na identidade da proposta (R21). */
+  excluidasPorUso: string[] = [],
 ): Promise<string | null> {
   /**
    * Busca sem resultado TAMBÉM é registrada (07/09/2026), com `total: 0` e
@@ -496,12 +545,23 @@ async function registrarProposta(
    * `agregarSinaisDeFoto` nem `fecharSugestaoDeFoto` têm o que fechar, e a
    * expiração é neutra.
    */
+  /**
+   * A EXCLUSÃO entra na identidade da proposta (PR 6): a lista que a pessoa
+   * viu com a foto A excluída é OUTRA lista — o topo mudou — e não pode
+   * reutilizar a proposta registrada sem exclusão no mesmo dia (o `upsert`
+   * preservaria o topo antigo e a escolha de B viraria "troca"). Normalizada,
+   * para que os mesmos ids em outra ordem continuem sendo o mesmo pedido; só
+   * entra quando pedida, para não mudar a chave de quem nunca excluiu.
+   */
+  const exclusao = normalizarExclusao({ ids: input.excluirDriveFileIds, usadasDesde: input.evitarUsadasDesde })
   const criterios = {
     theme: input.theme,
     folder: input.folder,
     menuCategory: input.menuCategory,
     tags: input.tags,
     quality: input.quality,
+    ...(exclusao.ids.length > 0 ? { excluir: exclusao.ids } : {}),
+    ...(exclusao.desde ? { evitarUsadasDesde: exclusao.desde } : {}),
   }
 
   return registrarSugestao({
@@ -515,6 +575,10 @@ async function registrarProposta(
       input.projectId,
       resumoEstavel(criterios),
       diaBRT(),
+      // A exclusão com a CAIXA dos ids preservada (`resumoEstavel` passa
+      // strings por minúsculas e "AbC"/"abc" colidiam — R17). Só entra quando
+      // há exclusão: a chave de quem nunca excluiu é a de sempre.
+      ...(identidadeDaExclusao({ ids: input.excluirDriveFileIds, usadasDesde: input.evitarUsadasDesde }, excluidasPorUso) ? [identidadeDaExclusao({ ids: input.excluirDriveFileIds, usadasDesde: input.evitarUsadasDesde }, excluidasPorUso)] : []),
     ),
     sugerido: {
       criterios,

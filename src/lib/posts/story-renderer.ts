@@ -13,6 +13,8 @@ import { slotValuesParaRender } from './copy-segue-a-pagina'
 import { textosDaPagina } from './page-layers'
 import { reflowLayersAfterFill } from '@/lib/combo-stack-reflow'
 import { createServerTextMeasurer } from '@/lib/creatives/server-text-measurer'
+import { paginaEhSequencia, videosDaPagina } from '@/lib/video/camadas-de-video'
+import { camadasNoInstante } from '@/lib/video/linha-do-tempo'
 
 export interface RenderStoryResult {
   buffer: Buffer
@@ -20,10 +22,17 @@ export interface RenderStoryResult {
   width: number
   height: number
   /**
-   * O texto da PÁGINA que foi desenhada. Quem carrega uma cópia dela
-   * (`_copiaDaPagina`) grava isto de volta, para a cópia não envelhecer.
+   * O texto da PÁGINA que foi desenhada. Quem carrega uma cópia dela grava
+   * isto de volta, para a cópia não envelhecer.
    */
   copyDaPagina: Record<string, string>
+  /**
+   * A copy do POST foi aplicada por cima (via de template)? Quando não, a
+   * página é a peça — e é isto, não a marca no `slotValues`, que diz a quem
+   * grava o resultado se a cópia do post acompanha o que acabou de ser
+   * desenhado. A decisão mora num lugar só: `slotValuesParaRender`.
+   */
+  aplicouSlots: boolean
 }
 
 /**
@@ -57,13 +66,15 @@ export async function renderStoryImage(
     height: page.height,
     layers: page.layers,
     background: page.background,
+    audio: page.audio,
   })
 
-  // 3. Slots por cima da página — só a copy PRÓPRIA do post (via de template).
-  // A cópia que o agendamento grava da página nunca volta para a arte: era ela
-  // que desfazia, no re-render, toda edição feita no editor. Ver
+  // 3. Slots por cima da página — só a copy PRÓPRIA do post, e só quando a
+  // página é um MODELO (layout compartilhado). Em página de conteúdo a página
+  // é a peça e manda: o que está em `slotValues` é cópia do texto dela, e era
+  // ela que desfazia, no re-render, toda edição feita no editor. Ver
   // copy-segue-a-pagina.ts.
-  const slots = slotValuesParaRender(slotValues)
+  const slots = slotValuesParaRender(slotValues, page.isTemplate)
   if (slots) {
     designData = applySlotValues(designData, slots)
   }
@@ -71,12 +82,15 @@ export async function renderStoryImage(
   // Guard: o render server-side é imagem estática. Camada de vídeo sairia como
   // buraco transparente em silêncio (render-engine ignora o type 'video') e o
   // post publicaria arte furada com status RENDERED.
-  if (designData.layers.some((layer) => layer?.type === 'video')) {
+  // Camada OCULTA não conta: o render-engine já a pula, e a página é uma imagem.
+  if (videosDaPagina(designData.layers).length > 0 || paginaEhSequencia(designData.layers)) {
     throw new Error(
-      `Página ${pageId} contém camada de vídeo — o render server-side gera imagem estática. ` +
+      `Página ${pageId} contém camada de vídeo (ou uma sequência de clipes) — o render server-side gera imagem estática. ` +
         'Exporte o vídeo pelo editor e agende o MP4 pela aba Criativos.',
     )
   }
+  // Com um clipe só, o quadro de 0 é a página inteira; a chamada deixa a regra num lugar só.
+  designData = { ...designData, layers: camadasNoInstante(designData.layers, 0, { audio: designData.audio }) }
 
   // 4. Register project fonts (dynamic import to avoid static bundling)
   const projectId = page.Template.projectId
@@ -118,5 +132,6 @@ export async function renderStoryImage(
     width: designData.canvas.width,
     height: designData.canvas.height,
     copyDaPagina: textosDaPagina(page.layers),
+    aplicouSlots: Boolean(slots),
   }
 }

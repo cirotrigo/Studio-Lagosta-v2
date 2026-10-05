@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { duplicarCamadasDaPagina, lerCopyAutoral } from '@/lib/copy-autoral'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import {
@@ -55,23 +56,26 @@ export async function POST(
     })
 
     // Regenerar ids das layers — overrides por layerId (agendamento, editor)
-    // assumem ids únicos por página
+    // assumem ids únicos por página. A transformação mora em
+    // `duplicarCamadasDaPagina` (pura, testada contra o leitor da copy): ela
+    // leva para a cópia todo vínculo que só o id antigo dava (R22, R24) e
+    // devolve o contrato da cópia.
     const originalLayers = typeof pageToDuplicate.layers === 'string'
       ? JSON.parse(pageToDuplicate.layers)
       : pageToDuplicate.layers
 
-    let duplicatedLayers = originalLayers
-    if (Array.isArray(originalLayers)) {
-      const idMap = new Map<string, string>(
-        originalLayers.map((layer: any) => [layer.id, crypto.randomUUID()]),
-      )
-      duplicatedLayers = originalLayers.map((layer: any) => ({
-        ...layer,
-        id: idMap.get(layer.id),
-        // parentId referencia outra layer da mesma página (agrupamento)
-        parentId: layer.parentId ? idMap.get(layer.parentId) ?? layer.parentId : layer.parentId,
-      }))
-    }
+    const contratoLido = pageToDuplicate.copyAutoral == null ? null : lerCopyAutoral(pageToDuplicate.copyAutoral).copy
+    const duplicacao = Array.isArray(originalLayers)
+      ? duplicarCamadasDaPagina(originalLayers, () => crypto.randomUUID(), contratoLido)
+      : null
+    const duplicatedLayers = duplicacao ? duplicacao.camadas : originalLayers
+
+    // Contrato ilegível segue como estava; legível sai com os ids inferidos renomeados.
+    const contratoDaCopia = pageToDuplicate.copyAutoral == null
+      ? null
+      : !contratoLido
+        ? pageToDuplicate.copyAutoral
+        : (duplicacao?.contrato ?? contratoLido)
 
     // Criar cópia da página logo após a original
     // IMPORTANTE: Não copiar thumbnail - será gerado automaticamente pelo editor
@@ -85,6 +89,15 @@ export async function POST(
         thumbnail: null, // Não copiar thumbnail - será gerado ao abrir a página
         order: newOrder, // Logo após a página original
         templateId,
+        // A trilha (música, trecho, volumes) é parte da página: sem ela a cópia
+        // nascia "sem trilha configurada" e a música escolhida se perdia. Página
+        // sem trilha continua sem — campo omitido é NULL no banco (`Json?`).
+        ...(pageToDuplicate.audio != null ? { audio: pageToDuplicate.audio as never } : {}),
+        // F1: a cópia leva o contrato da copy (autoria, fatos, histórico) — a
+        // origem é conhecida. Os ids autorais dos blocos não mudam; os blocos
+        // `extra-<id de camada>` (texto solto lido da página) acompanham os ids
+        // regenerados das camadas, no bloco e no histórico.
+        ...(contratoDaCopia != null ? { copyAutoral: contratoDaCopia as never } : {}),
       },
     })
 

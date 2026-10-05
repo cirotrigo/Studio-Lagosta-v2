@@ -25,8 +25,10 @@ const TETO_DO_APOIO = 40
 
 /** Quebra em 2 linhas no espaço mais perto do meio, quando passa do teto. */
 export function quebrarEmDuas(texto: string, teto: number): string[] {
+  // Quebra ESCRITA pelo autor vale como está — a conferência vinha DEPOIS de
+  // colapsar `\s+`, então nunca via o `\n` (defeito da seção 6 do plano).
+  if (texto.includes('\n')) return texto.split('\n').map((l) => l.replace(/[ \t]+/g, ' ').trim()).filter(Boolean)
   const t = texto.replace(/\s+/g, ' ').trim()
-  if (t.includes('\n')) return t.split('\n').map((l) => l.trim()).filter(Boolean)
   const visivel = semColchetes(t).length
   if (visivel <= teto) return [t]
   const meio = visivel / 2
@@ -74,8 +76,12 @@ export interface OpcoesDeCopyParaBlocos {
    * pelo `slice`, sem aviso — é a perda posicional que o contrato da copy (F1)
    * expõe e que o PR 5 fecha. A regra de 04/09/2026 ("só os campos do
    * template") foi substituída em 11/09/2026 por "copy primeiro, campos
-   * depois" — os campos são opcionais, e a camada extra (F3) é o que vai
-   * acomodar o que sobra. Sem a lista, vale a distribuição por contagem.
+   * depois" — os campos são opcionais. A camada extra (PR 9 e 10) acomoda o
+   * texto cujo papel a variante não tem, mas só quando o autor DECLARA a
+   * herança de estilo (`herdaDe` no bloco ou no contrato): a lista posicional
+   * daqui não carrega herança, e deduzi-la seria a transformação silenciosa
+   * que o contrato expõe — por isso o que sobra não vira camada extra.
+   * Sem a lista, vale a distribuição por contagem.
    */
   papeis?: PapelDaSpec[]
   /** Executor semanal: nenhuma condição recebida pode desaparecer no mapeamento. */
@@ -87,7 +93,8 @@ const ORDEM_DE_LEITURA: PapelDaSpec[] = ['pre', 'headline', 'apoio', 'cta']
 const PRIORIDADE: PapelDaSpec[] = ['headline', 'apoio', 'cta', 'pre']
 
 export function copyParaBlocos(copy: string[], opcoes: OpcoesDeCopyParaBlocos = {}): Bloco[] {
-  const limpa = copy.map((c) => c.replace(/\s+/g, ' ').trim()).filter(Boolean)
+  // Espaços colapsam DENTRO de cada linha; a quebra que o autor escreveu fica.
+  const limpa = copy.map((c) => c.split('\n').map((l) => l.replace(/[ \t]+/g, ' ').trim()).filter(Boolean).join('\n')).filter(Boolean)
   if (limpa.length === 0) return []
 
   const disponiveis = opcoes.papeis ? new Set(opcoes.papeis) : null
@@ -113,9 +120,9 @@ export function copyParaBlocos(copy: string[], opcoes: OpcoesDeCopyParaBlocos = 
   }
   const blocos: Bloco[] = resto.slice(0, papeis.length).map((texto, i) => {
     const papel = papeis[i]
-    const linhas = papel === 'headline' ? quebrarEmDuas(texto, TETO_DA_HEADLINE) : papel === 'apoio' ? quebrarEmDuas(texto, TETO_DO_APOIO) : [texto]
+    const linhas = papel === 'headline' ? quebrarEmDuas(texto, TETO_DA_HEADLINE) : papel === 'apoio' ? quebrarEmDuas(texto, TETO_DO_APOIO) : texto.split('\n')
     return { papel, linhas }
   })
-  if (servico && (!disponiveis || disponiveis.has('servico'))) blocos.push({ papel: 'servico', linhas: [servico] })
+  if (servico && (!disponiveis || disponiveis.has('servico'))) blocos.push({ papel: 'servico', linhas: servico.split('\n') })
   return blocos
 }

@@ -17,6 +17,7 @@ import { randomUUID } from 'crypto'
 import { db } from '@/lib/db'
 import { CreativeError } from '@/lib/creatives/errors'
 import { startArtGeneration } from '@/lib/ai/creative-generation-service'
+import { origemDoCarimbo } from '@/lib/brand/voz-na-escrita'
 import type { ArtGenerationJobArgs } from '@/lib/ai/creative-generation-runner'
 
 export interface SlideSpec {
@@ -155,7 +156,7 @@ export async function confirmarEstiloCarrossel(input: {
   const doGrupo = await db.generation.findMany({
     where: { carouselGroupId: input.carrosselId, projectId: input.projectId },
     orderBy: { slideOrder: 'asc' },
-    select: { id: true, slideOrder: true, status: true, fieldValues: true },
+    select: { id: true, slideOrder: true, status: true, fieldValues: true, createdAt: true },
   })
   if (doGrupo.length === 0) {
     throw new CreativeError('CARROSSEL_NAO_ENCONTRADO', 'Carrossel não encontrado neste cliente.', 404)
@@ -188,6 +189,10 @@ export async function confirmarEstiloCarrossel(input: {
     throw new CreativeError('NADA_A_GERAR', 'Todos os slides deste carrossel já foram gerados.', 409)
   }
 
+  // PR 15 (C15-05): a copy destes slides foi escrita quando a série começou
+  // (a spec mora na capa) — o carimbo da voz é o de lá, não o de agora.
+  const carimbo = origemDoCarimbo(capa ?? guia)
+
   const resultados = await Promise.all(
     faltando.map((slide) =>
       startArtGeneration({
@@ -212,6 +217,7 @@ export async function confirmarEstiloCarrossel(input: {
         actorClerkId: input.actorClerkId,
         canal: input.canal ?? null,
         orgId: input.orgId,
+        ...carimbo,
       }).then((r) => ({ ordem: slide.ordem, ...r })),
     ),
   )

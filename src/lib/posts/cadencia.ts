@@ -81,6 +81,17 @@ export const MINIMO_DE_OCORRENCIAS = 2
 /** Horários agregados em blocos de 30min para achar o padrão. */
 export const BLOCO_MIN = 30
 
+/**
+ * O bloco de meia hora de um horário — o MESMO arredondamento para quem cria o
+ * horário típico (aqui) e para quem lhe dá formato (`formatoDoBloco`, PR 6):
+ * publicações às 19h20 formam o horário das 19h30, e é no bloco das 19h30 que
+ * elas têm de ser contadas. Com `floor` de um lado e `round` do outro, o
+ * horário nascia num bloco e era classificado noutro, vazio.
+ */
+export function blocoDeMinutos(minutos: number): number {
+  return Math.round(minutos / BLOCO_MIN) * BLOCO_MIN
+}
+
 /** Janela em que um punhado de posts ainda é "novidade", não rotina. */
 const DIAS_DE_NOVIDADE = 14
 
@@ -260,7 +271,7 @@ export function calcularCadencia(
   for (const post of semCampanhaEncerrada) {
     const { dia, minutos, dataISO } = emBRT(post.quando)
     const info = porDia.get(dia) ?? { blocos: new Map<number, Acumulado>(), datas: new Set<string>(), total: 0 }
-    const bloco = Math.round(minutos / BLOCO_MIN) * BLOCO_MIN
+    const bloco = blocoDeMinutos(minutos)
     const atual = info.blocos.get(bloco) ?? { ocorrencias: 0, peso: 0, pesoForte: 0, ocorrenciasAntigas: 0 }
 
     const peso = pesoDoPost(post, referencia)

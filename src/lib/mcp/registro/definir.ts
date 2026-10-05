@@ -52,6 +52,16 @@ export function definirTool<S extends z.ZodRawShape>(def: ToolDoStudio<S>): Tool
 
   const schemaJson = derivarSchemaJson(def.nome, estrito)
 
+  const fileParams = def.meta?.['openai/fileParams']
+  if (fileParams !== undefined) {
+    const chaves = Object.keys(def.schema.shape)
+    if (!Array.isArray(fileParams) || fileParams.some((c) => typeof c !== 'string' || !chaves.includes(c))) {
+      // Chave que não existe no schema faria o ChatGPT mandar um campo que a
+      // porta estrita recusa — o arquivo nunca chegaria.
+      throw new TypeError(`Tool ${def.nome}: openai/fileParams precisa listar chaves de topo do schema.`)
+    }
+  }
+
   return Object.freeze({
     nome: def.nome,
     apelidos: Object.freeze([...(def.apelidos ?? [])]),
@@ -61,6 +71,7 @@ export function definirTool<S extends z.ZodRawShape>(def: ToolDoStudio<S>): Tool
     annotations: Object.freeze({ ...def.annotations }),
     acesso: Object.freeze({ ...def.acesso }) as ToolPronta['acesso'],
     superficies: Object.freeze([...def.superficies]),
+    ...(def.meta ? { meta: Object.freeze({ ...def.meta }) } : {}),
     handler: def.handler as ToolPronta['handler'],
   })
 }
@@ -79,6 +90,11 @@ function derivarSchemaJson(
   const bruto = zodToJsonSchema(schema, {
     $refStrategy: 'none',
     target: 'jsonSchema7',
+    // PR10-02 (revisão FINAL do Codex sobre o PR 10, 18/09/2026): sem isto o
+    // `pattern` anunciado PERDE a flag do regex — `/^[a-z0-9]…$/i` saía como
+    // `^[a-z0-9]…$`, e um cliente que valide o inputSchema recusava `Nota`,
+    // que o zod do servidor aceita. Com a opção a flag vira classe explícita.
+    applyRegexFlags: true,
   }) as Record<string, unknown>
 
   delete bruto.$schema

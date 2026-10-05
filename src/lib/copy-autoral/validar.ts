@@ -63,6 +63,16 @@ export function problemasLocaisDoBloco(b: BlocoAutoral): ProblemaDaCopy[] {
     for (const i of voz2) {
       if (i >= b.linhas.length) problemas.push({ tipo: 'estilo', bloco: b.id, mensagem: `linhasNaVoz2 aponta para a linha ${i}, e o bloco "${b.id}" tem ${b.linhas.length}` })
     }
+    // As duas vozes são duas CAMADAS empilhadas: a voz 2 só pode ser o fim
+    // contíguo da manchete. Índice no meio não tem como ser desenhado, e
+    // aceitar para depois ignorar seria transformação silenciosa. Regra LOCAL
+    // (só depende do bloco): mora aqui, para o validador do bloco solto e o da
+    // copy inteira concordarem (PR2-04).
+    const ordenados = [...new Set(voz2)].sort((a, b) => a - b)
+    const contiguoAteOFim = ordenados.every((v, k) => v === ordenados[0] + k) && ordenados[0] + ordenados.length === b.linhas.length
+    if (ordenados.every((i) => i < b.linhas.length) && !contiguoAteOFim) {
+      problemas.push({ tipo: 'estilo', bloco: b.id, mensagem: `linhasNaVoz2 precisa ser as ÚLTIMAS linhas da manchete, contíguas até o fim (bloco "${b.id}": veio ${ordenados.join(', ')} de ${b.linhas.length} linhas)` })
+    }
   }
   return problemas
 }

@@ -55,6 +55,8 @@ export interface BlocoMontado {
   elementos?: ElementoDoArranjo[]
   /** A escala dos elementos em relação à base 1080 (a do formato × a da fonte). */
   escalaDosElementos?: number
+  /** As famílias que ENTRARAM na medição (ver `RecusaDeBloco.familiasMedidas`). */
+  familiasMedidas: string[]
 }
 
 export interface OrcamentoDeLinha {
@@ -70,13 +72,22 @@ export interface OrcamentoDeLinha {
 export interface RecusaDeBloco {
   papel: Papel
   orcamento: OrcamentoDeLinha[]
+  /**
+   * As famílias que ENTRARAM na medição deste bloco — a do estilo sempre, a do
+   * destaque só quando a copy tem trecho entre [colchetes] E a marca tem estilo
+   * de destaque. Quem decide se o orçamento vale lê daqui, nunca reinterpreta
+   * os colchetes por fora: a divergência entre as duas leituras é como o
+   * defeito volta (PR4-R2-01).
+   */
+  familiasMedidas: string[]
 }
 
 export type ResultadoDoBloco =
   | { bloco: BlocoMontado; recusa: null; avisos: string[] }
   | { bloco: null; recusa: RecusaDeBloco; avisos: string[] }
 
-function aplicarPrefixo(linhas: string[], prefixo: string | undefined): string[] {
+/** O prefixo da assinatura (o "→ " do CTA) na primeira linha, salvo quando o autor já o escreveu. Exportada para o `medir-copy` medir a linha EFETIVA. */
+export function aplicarPrefixo(linhas: string[], prefixo: string | undefined): string[] {
   if (!prefixo || linhas.length === 0) return linhas
   const primeira = linhas[0]
   return primeira.startsWith(prefixo.trim()) ? linhas : [`${prefixo}${primeira}`, ...linhas.slice(1)]
@@ -88,11 +99,33 @@ export interface DestaqueDoBloco {
   trechosPorLinha: TrechoDestacado[][]
 }
 
+/**
+ * 🔴 O VÍNCULO com a copy do autor, gravado na camada por quem a DESENHA.
+ * `bloco` é o id do bloco do contrato que a originou; `linhas`, as posições
+ * (0-based) daquele bloco que esta camada desenha — o arranjo reparte o serviço
+ * em duas camadas e pode pôr o endereço acima do horário, então a ordem visual
+ * não é a do autor.
+ *
+ * Existe porque deduzir isso DEPOIS, na leitura da copy efetiva (por texto
+ * igual, por bloco vazio ou por ordem visual), errou uma vez por rodada de
+ * revisão: PR3-R8-02, R9-02, R10-01 e R11-01/02. Mesmo precedente de
+ * `spec.carrossel` → `Generation.slideOrder`: quem compõe REGISTRA. A leitura
+ * (`vinculoDaCamada`, em `copy-autoral/efetiva.ts`) usa a marca quando existe e
+ * cai na reserva quando não — página composta antes de 20/09/2026 e camada
+ * criada à mão no editor não têm marca, e continuam valendo.
+ */
+export interface VinculoComACopy {
+  bloco?: string
+  linhas?: number[]
+}
+
 /** A camada de texto de um papel, ainda sem posição (x/y = 0). */
 export function camadaDoPapel(args: {
   papel: Papel
   /** Id e nome da camada — o papel, ou `servico-2` quando o arranjo tem dois textos do mesmo papel. */
   id?: string
+  /** O bloco do contrato que originou esta camada e as linhas dele que ela desenha. */
+  origem?: VinculoComACopy | null
   /** As linhas JÁ sem colchetes. */
   linhas: string[]
   estilo: EstiloDePapel
@@ -102,6 +135,8 @@ export function camadaDoPapel(args: {
   groupId: string
   corDaMancha: string
   destaque?: DestaqueDoBloco | null
+  /** F3: a identidade da camada EXTRA — vai declarada na camada, com o papel de que herda; o `papel` do arg é o de estilo. */
+  extra?: { id: string; funcao: string; herdaDe: string; grupoVisual: string; grupoDeLeitura?: string; ordem?: number } | null
 }): Layer {
   const { estilo } = args
   const fontSize = Math.max(8, Math.round(estilo.fontSize * args.escala))
@@ -150,7 +185,27 @@ export function camadaDoPapel(args: {
           },
         }
       : {},
-    metadata: { groupId: args.groupId, compositor: { papel: args.papel } },
+    // O prefixo que a assinatura desenha ("→ " no CTA) fica DECLARADO: é uma
+    // transformação do sistema sobre o texto do autor, e quem lê a copy
+    // efetiva da peça (`copyEfetivaDasCamadas`) a desconta em vez de atribuí-la
+    // a quem escreveu (PR 4 de "Marca simples, copy melhor", 12/09/2026).
+    metadata: {
+      groupId: args.groupId,
+      // As posições só valem COM o bloco (a leitura as ignora sem ele): sem
+      // contrato na spec, a camada sai como sempre saiu.
+      compositor: {
+        // No extra o `papel` é a FUNÇÃO original (o que a defasagem e a copy por
+        // papel leem); `livre` não é papel e fica sem ele. O estilo veio de
+        // `herdaDe`, declarado ao lado — a camada nunca é confundida com ele.
+        ...(args.extra ? (args.extra.funcao !== 'livre' ? { papel: args.extra.funcao } : {}) : { papel: args.papel }),
+        ...(args.extra ? { extra: { ...args.extra } } : {}),
+        // O vínculo declarado (PR 3) vale para a camada EXTRA como para qualquer
+        // outra: ela também nasce de um bloco do contrato, e é por `bloco` que a
+        // leitura efetiva a reencontra sem depender do id nem da ordem.
+        ...(args.origem?.bloco ? { bloco: args.origem.bloco, ...(args.origem.linhas ? { linhas: [...args.origem.linhas] } : {}) } : {}),
+        ...(linhasFinais[0] !== args.linhas[0] && estilo.prefixo ? { prefixo: estilo.prefixo } : {}),
+      },
+    },
   }
 
   const trechosPorLinha = args.destaque?.trechosPorLinha ?? []
@@ -175,9 +230,10 @@ export function camadaDoPapel(args: {
 
 /**
  * Mede uma linha sozinha, numa caixa larga o bastante para não quebrar.
- * Devolve a largura da tinta e a altura da linha.
+ * Devolve a largura da tinta e a altura da linha. Exportada para o
+ * `medir-copy` (PR 8) medir com a MESMA régua que monta o bloco.
  */
-function medirLinha(medir: MeasureTextBox, base: Layer, linha: string, colunaUtil: number) {
+export function medirLinha(medir: MeasureTextBox, base: Layer, linha: string, colunaUtil: number) {
   const m = medir({
     ...base,
     content: linha,
@@ -186,8 +242,13 @@ function medirLinha(medir: MeasureTextBox, base: Layer, linha: string, colunaUti
   return m ? { largura: m.maxLineWidth, altura: m.height, linhas: m.lineCount } : null
 }
 
-/** Quanto os trechos destacados alargam a linha quando ganham a família mais pesada. */
-function larguraExtraDoDestaque(medir: MeasureTextBox, base: Layer, linha: string, trechos: TrechoDestacado[], familia: string | undefined, colunaUtil: number): number {
+/**
+ * Quanto os trechos destacados alargam a linha quando ganham a família mais
+ * pesada. Exportada para o `medir-copy` medir a linha com a MESMA conta da
+ * montagem (R08 da revisão de fd82505c): a medida por linha e o orçamento da
+ * recusa somam este extra, senão o bloco diz "não cabe" e a linha diz "cabe".
+ */
+export function larguraExtraDoDestaque(medir: MeasureTextBox, base: Layer, linha: string, trechos: TrechoDestacado[], familia: string | undefined, colunaUtil: number): number {
   if (!familia || familia === base.style?.fontFamily || trechos.length === 0) return 0
   const pesada: Layer = { ...base, style: { ...(base.style ?? {}), fontFamily: familia, fontWeight: undefined } }
   let extra = 0
@@ -220,6 +281,10 @@ export function montarBloco(args: {
   medir: MeasureTextBox
   /** O estilo de destaque da marca para este papel; sem ele, [colchetes] saem como texto comum. */
   destaque?: EstiloDeDestaque | null
+  /** O vínculo com a copy do autor (ver `VinculoComACopy`) — vai para `metadata.compositor` das camadas. */
+  origem?: VinculoComACopy | null
+  /** F3: a camada extra que este bloco é (vai à camada, não muda a medida). */
+  extra?: { id: string; funcao: string; herdaDe: string; grupoVisual: string; grupoDeLeitura?: string; ordem?: number } | null
 }): ResultadoDoBloco {
   const avisos: string[] = []
   const lidas = args.linhas.map(lerDestaques)
@@ -233,6 +298,14 @@ export function montarBloco(args: {
   if (pediuDestaque && !temEstilo) {
     avisos.push(`${args.papel}: a copy marcou destaque, mas a marca não tem estilo de destaque (página de assinatura ou Project.assinatura.destaque) — saiu sem destaque`)
   }
+  // 🔴 As famílias que entraram na medição, calculadas UMA vez e devolvidas
+  // tanto no sucesso quanto na recusa: quem decide se a medida vale (o
+  // `TEXTO_NAO_CABE_NA_COLUNA` de `compor.ts`, o `naoMedido` do `medir-copy`)
+  // lê daqui, nunca reinterpreta os colchetes por fora — a divergência entre
+  // as duas leituras é como o defeito volta (PR4-R2-01).
+  const familiasMedidas = [args.estilo.fontFamily, ...(destaque ? [destaque.estilo.fontFamily] : [])].filter(
+    (f): f is string => typeof f === 'string' && f.trim() !== '',
+  )
 
   const coluna = Math.floor(args.colunaUtil * (args.estilo.larguraMaxima ?? 1))
   const linhas = aplicarPrefixo(linhasLimpas, args.estilo.prefixo)
@@ -270,6 +343,7 @@ export function montarBloco(args: {
         escala: Number((escala / args.escalaDoFormato).toFixed(3)),
         cor: args.estilo.color,
         destacado: Boolean(destaque),
+        familiasMedidas,
       },
       recusa: null,
       avisos,
@@ -279,27 +353,42 @@ export function montarBloco(args: {
   // Nada coube nem a 80%: devolve o orçamento medido no tamanho de assinatura.
   const base = camadaDoPapel({ ...semDestaque, escala: args.escalaDoFormato, width: coluna + PADDING_DE_DESENHO * 2 })
   const orcamento: OrcamentoDeLinha[] = linhas
-    .map((linha) => {
+    .map((linha, i) => {
       const m = medirLinha(args.medir, base, linha, coluna)
-      if (!m || m.largura <= coluna) return null
+      if (!m) return null
+      // O destaque alarga a linha também aqui: sem o extra, a linha que só
+      // estourou pela família pesada saía do orçamento e a recusa vinha vazia (R08).
+      const extra = destaque ? larguraExtraDoDestaque(args.medir, base, linhasLimpas[i], destaque.trechosPorLinha[i] ?? [], destaque.estilo.fontFamily, coluna) : 0
+      const largura = m.largura + extra
+      if (largura <= coluna) return null
       return {
         papel: args.papel,
         linha,
-        largura: Math.round(m.largura),
+        largura: Math.round(largura),
         coluna,
-        caracteresQueCabem: Math.max(1, Math.floor((linha.length * coluna) / m.largura)),
+        caracteresQueCabem: Math.max(1, Math.floor((linha.length * coluna) / largura)),
       }
     })
     .filter((o): o is OrcamentoDeLinha => o !== null)
-  return { bloco: null, recusa: { papel: args.papel, orcamento }, avisos }
+  return {
+    bloco: null,
+    recusa: {
+      papel: args.papel,
+      orcamento,
+      familiasMedidas,
+    },
+    avisos,
+  }
 }
 
 /** Vão vertical entre dois papéis consecutivos (o ritmo do `gerar.py`). */
 export function vaoEntre(anterior: Papel | null, proximo: Papel, gapPadrao: number): number {
   if (!anterior) return 0
-  // A segunda voz encosta na primeira: é o mesmo lockup.
-  if (proximo === 'headline2') return 0
-  if (proximo === 'headline') return Math.round(gapPadrao * 0.5)
+  // A segunda voz encosta na primeira (ou na outra caixa da voz 2): é o mesmo
+  // lockup. Manchete INTEIRA na voz 2 começa em `headline2` e leva o vão de
+  // manchete, não o de lockup — senão encostava no pré-título (PR4-02).
+  if (proximo === 'headline2' && (anterior === 'headline' || anterior === 'headline2')) return 0
+  if (proximo === 'headline' || proximo === 'headline2') return Math.round(gapPadrao * 0.5)
   if (proximo === 'cta') return Math.round(gapPadrao * 1.3)
   if (proximo === 'servico') return Math.round(gapPadrao * 1.6)
   return gapPadrao

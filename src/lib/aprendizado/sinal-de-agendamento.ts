@@ -54,10 +54,14 @@ export interface SlotDoPost {
  * o modelo, na conversa) escolheu do zero. Quando a proposta existir e vier
  * pelo `sugestaoId`, quem fecha o ciclo é `fecharSugestaoDeSlot`, e esta linha
  * continua valendo como o registro do que foi comprometido.
+ *
+ * Devolve `false` quando a escrita falhou: a captura engole o erro (nunca
+ * derruba o agendamento), e quem precisa saber se o registro terminou — o lote,
+ * que só carimba `efeitosDoAgendamentoEm` quando tudo rodou — lê o retorno.
  */
-export async function registrarSlotDoPost(entrada: SlotDoPost): Promise<void> {
+export async function registrarSlotDoPost(entrada: SlotDoPost): Promise<boolean> {
   const slot = slotEmBrasilia(entrada.quando)
-  await registrarDecisaoSemSugestao({
+  const id = await registrarDecisaoSemSugestao({
     projectId: entrada.projectId,
     tipo: 'slot',
     escolhido: {
@@ -74,6 +78,7 @@ export async function registrarSlotDoPost(entrada: SlotDoPost): Promise<void> {
     superficie: entrada.superficie ?? 'chat',
     chave: chaveDoSlot(entrada.postId),
   })
+  return id !== null
 }
 
 export interface CopyDoPost {
@@ -114,9 +119,13 @@ export interface CopyDoPost {
  * Peça que não veio de plano continua caindo na decisão absoluta, pelo motivo
  * de sempre: sem proposta registrada antes, chamar isto de "sugestão recusada"
  * inventaria um denominador que não existe.
+ *
+ * Devolve `false` quando o banco falhou no fechamento da dica ou na decisão —
+ * o mesmo contrato de `registrarSlotDoPost`. Sem copy não há o que registrar:
+ * `true`.
  */
-export async function registrarCopyDoPost(entrada: CopyDoPost): Promise<void> {
-  if (!entrada.copyFinal || Object.keys(entrada.copyFinal).length === 0) return
+export async function registrarCopyDoPost(entrada: CopyDoPost): Promise<boolean> {
+  if (!entrada.copyFinal || Object.keys(entrada.copyFinal).length === 0) return true
 
   const diff = entrada.diff && !entrada.diff.ilegivel ? entrada.diff : null
 
@@ -131,9 +140,10 @@ export async function registrarCopyDoPost(entrada: CopyDoPost): Promise<void> {
   })
   // Só `sem-plano` cai na escolha absoluta: em `erro` não dá para saber se
   // havia dica, e perder um sinal é mais barato que gravar a linha paralela.
-  if (!caiNaEscolhaPropria(fechamento)) return
+  if (fechamento === 'erro') return false
+  if (!caiNaEscolhaPropria(fechamento)) return true
 
-  await registrarDecisaoSemSugestao({
+  const id = await registrarDecisaoSemSugestao({
     projectId: entrada.projectId,
     tipo: 'copy',
     escolhido: {
@@ -151,6 +161,7 @@ export async function registrarCopyDoPost(entrada: CopyDoPost): Promise<void> {
     superficie: entrada.superficie ?? 'chat',
     chave: chaveDaCopy(entrada.postId),
   })
+  return id !== null
 }
 
 /**
@@ -186,8 +197,9 @@ export async function fecharSugestaoDeSlot(entrada: {
   campaignId?: string | null
   decididoPor?: string | null
   superficie?: Superficie
-}): Promise<void> {
-  await registrarDesfecho({
+}): Promise<boolean> {
+  // `nao-encontrado` não é falha a refazer: a sugestão não existe, e repetir não a cria.
+  const resultado = await registrarDesfecho({
     sugestaoId: entrada.sugestaoId,
     desfecho: entrada.desfecho,
     escolhido: {
@@ -205,4 +217,5 @@ export async function fecharSugestaoDeSlot(entrada: {
     decididoPor: entrada.decididoPor ?? null,
     superficie: entrada.superficie ?? 'agenda',
   })
+  return resultado !== 'erro'
 }

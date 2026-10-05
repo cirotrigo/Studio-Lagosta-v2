@@ -22,6 +22,7 @@
  */
 
 import { db } from '@/lib/db'
+import type { Prisma } from '../../../prisma/generated/client'
 import type { ArtGenerationJobArgs } from '@/lib/ai/creative-generation-runner'
 import type { ImprovementJobArgs } from '@/lib/ai/creative-improvement-runner'
 
@@ -74,10 +75,13 @@ export async function enfileirarMelhoria(args: ImprovementJobArgs): Promise<stri
  * render de ~3-5s, e por isso a varredura pega um LOTE dela depois dos jobs
  * de IA (ver `processarLoteDaFila`). `maxAttempts` 3: tentar de novo custa
  * só CPU.
+ *
+ * `cliente` é a transação de quem precisa criar o job no MESMO commit da
+ * Generation (a reserva do item de lote, `src/lib/lotes/reserva.ts`).
  */
-export async function enfileirarComposicao(args: ComposicaoJobArgs): Promise<string> {
+export async function enfileirarComposicao(args: ComposicaoJobArgs, cliente: Pick<Prisma.TransactionClient, 'generationJob'> = db): Promise<string> {
   const limpo = JSON.parse(JSON.stringify(args)) as Record<string, unknown>
-  const job = await db.generationJob.upsert({
+  const job = await cliente.generationJob.upsert({
     where: { generationId: args.generationId },
     create: { generationId: args.generationId, kind: 'COMPOR', projectId: args.projectId, payload: limpo as never, maxAttempts: 3 },
     update: {},
@@ -566,7 +570,7 @@ export interface ResultadoRecuperacao {
  * de vídeo cria a Generation PROCESSING e a entrega a OUTRA fila, cujo cron
  * processa um job por vez a cada 2 minutos — ficar mais de 10 minutos em
  * PROCESSING ali é normal, e marcá-la FAILED mataria um vídeo saudável. Aquela
- * fila tem a própria recuperação (`failStuckVideoJobs`).
+ * fila tem a própria recuperação (`recuperarJobsDeVideoPresos`).
  */
 export async function recuperarJobsPerdidos(
   opcoes: {

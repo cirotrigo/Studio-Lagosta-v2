@@ -102,6 +102,8 @@ const nextConfig: NextConfig = {
     // IMPORTANT: Keep ffmpeg-static binary for video processing
     '/api/video-processing/process': ffmpegStaticGlobs,
     '/api/test-ffmpeg': ffmpegStaticGlobs,
+    // A capa dos vídeos da agenda é um quadro extraído pelo ffmpeg
+    '/api/video-thumb': ffmpegStaticGlobs,
     // Fontes Montserrat lidas em runtime pelo CanvasRenderer: sem isto o
     // tracing não as inclui (não são importadas, são abertas por path) e a
     // arte exportada sai com a fonte de fallback do sistema

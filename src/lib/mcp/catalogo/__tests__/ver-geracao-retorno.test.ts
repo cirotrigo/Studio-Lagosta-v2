@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { avisosDoCompositor, falhaDaGeracao, montarRetornoDaPagina } from '../ver-geracao-retorno'
+import { avisosDoCompositor, copyDaArte, falhaDaGeracao, montarRetornoDaPagina } from '../ver-geracao-retorno'
 
 const pagina = { id: 'pg1', name: 'Qua 09/09 · 10:00 · gestão', templateId: 412, isTemplate: false }
 const app = 'https://studio.exemplo'
@@ -59,5 +59,29 @@ describe('a falha só promete orçamento quando ele veio', () => {
   it('melhoria e geração nova têm mensagens próprias', () => {
     expect(falhaDaGeracao({ fieldValues: {}, doCompositor: false, ehMelhoria: true }).mensagem).toContain('melhoria')
     expect(falhaDaGeracao({ fieldValues: {}, doCompositor: false, ehMelhoria: false }).mensagem).toContain('geração falhou')
+  })
+})
+
+describe('a copy da arte de IA (sem camadas) — escrita × enviada × lida (F1, PR 5)', () => {
+  const original = { versao: 'copy-autoral-v1', origem: { autor: 'claude', superficie: 'chat' }, blocos: [{ id: 'headline', funcao: 'headline', ordem: 0, linhas: ['Milk-shake', 'em dobro'] }], revisoes: [] }
+  it('com enviada e conferência: comparável por VISÃO, sem desenhada, lacuna das camadas preservada', () => {
+    const c = copyDaArte({ copyAutoral: { original, enviada: ['MILK-SHAKE\nEM DOBRO'], comparavel: true, lacunas: ['a arte não tem camadas'], conferencia: { lida: ['MILK-SHAKE EM DOBRO'], faltando: [], passou: true, regua: 'copy' } } })
+    expect(c?.comparavel).toBe(true)
+    expect(c?.comparadoPor).toBe('visao')
+    expect(c?.enviada).toEqual(['MILK-SHAKE\nEM DOBRO'])
+    expect(c?.desenhada).toEqual([])
+    expect(c?.conferencia).toEqual({ lida: ['MILK-SHAKE EM DOBRO'], faltando: [], passou: true, regua: 'copy' })
+    expect(c?.lacunas).toEqual(['a arte não tem camadas'])
+  })
+  it('enviada sem conferência (a visão não rodou): NÃO é comparável, e continua declarado por visão', () => {
+    const c = copyDaArte({ copyAutoral: { original, enviada: ['x'], comparavel: true, lacunas: ['a arte não tem camadas'], conferencia: { lida: [], faltando: [], passou: null, regua: 'nenhuma (visão indisponível)' } } })
+    expect(c?.comparavel).toBe(false)
+    expect(c?.comparadoPor).toBe('visao')
+  })
+  it('com efetiva (camadas) continua como antes: comparado por camadas', () => {
+    const c = copyDaArte({ copyAutoral: { original, efetiva: original, comparavel: true, lacunas: [] } })
+    expect(c?.comparadoPor).toBe('camadas')
+    expect(c?.comparavel).toBe(true)
+    expect(c?.enviada).toBeUndefined()
   })
 })

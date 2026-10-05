@@ -15,6 +15,11 @@ import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
 import { mesclarFieldValuesDaArte } from '@/lib/creatives/mesclar-field-values'
 import { convertPageToDesignData } from '@/lib/posts/page-to-design-data'
 import { registerProjectFonts } from '@/lib/posts/register-project-fonts'
+import { videosDaPagina } from '@/lib/video/camadas-de-video'
+import { camadasNoInstante } from '@/lib/video/linha-do-tempo'
+import { ehMovimento } from '@/lib/video/movimento'
+import type { DesignData } from '@/types/template'
+import { MENSAGEM_PAGINA_COM_VIDEO, videoNaPagina } from '@/lib/video/pagina-com-video'
 import { googleDriveService } from '@/server/google-drive-service'
 import type { TemplateType } from '@prisma/client'
 
@@ -56,12 +61,14 @@ export async function ensureArteTemplate(
   type: TemplateType,
   dimensions: string,
   templateName?: string,
+  /** Dentro da trava das artes do post (R12-09), o cliente da transação: o `db` raiz esperaria a conexão que ela segura. */
+  cliente: Pick<typeof db, 'template'> = db,
 ) {
   const name = templateName ?? ARTE_TEMPLATE_NAMES[type]
-  const existing = await db.template.findFirst({ where: { projectId, name } })
+  const existing = await cliente.template.findFirst({ where: { projectId, name } })
   if (existing) return existing
 
-  return db.template.create({
+  return cliente.template.create({
     data: {
       name,
       type,
@@ -173,6 +180,12 @@ export interface PersistCreativeInput {
   generationId?: string | null
   /** Ver `RenderPageInput.slideOrder`. */
   slideOrder?: number | null
+  /**
+   * O contrato da copy autoral da peça (`src/lib/copy-autoral`), gravado em
+   * `Page.copyAutoral` como foi RECEBIDO — antes de qualquer adaptação (F1,
+   * 12/09/2026). Ausente = página sem contrato (nunca se inventa).
+   */
+  copyAutoral?: unknown
 }
 
 export interface PersistCreativeResult {
@@ -194,6 +207,12 @@ export async function persistAndRenderCreative(
 ): Promise<PersistCreativeResult> {
   const { project, templateId, templateName, pageName, width, height, layers, background } = input
 
+  // Antes de criar a página: recusar só no render deixaria uma página órfã,
+  // sem arte, a cada tentativa (modelo com camada de vídeo).
+  if (videoNaPagina(layers) === 'tem-video') {
+    throw new CreativeError('PAGINA_COM_VIDEO', MENSAGEM_PAGINA_COM_VIDEO, 422)
+  }
+
   const page = await db.page.create({
     data: {
       name: pageName,
@@ -205,6 +224,7 @@ export async function persistAndRenderCreative(
       templateId,
       isTemplate: false, // arte renderizada, não um modelo reutilizável
       tags: input.pageTags ?? ['arte-rapida'],
+      ...(input.copyAutoral ? { copyAutoral: input.copyAutoral as any } : {}),
     },
   })
 
@@ -232,6 +252,8 @@ export interface RenderPageInput {
     height: number
     layers: unknown
     background: string | null
+    /** Page.audio. Ausente (quem monta a página à mão), é lido do banco quando há foto em movimento. */
+    audio?: unknown
   }
   fieldValues: Record<string, unknown>
   authorName: string
@@ -290,6 +312,25 @@ export async function renderPageAndRegister(input: RenderPageInput): Promise<Per
     background: page.background,
   })
 
+  // O render do servidor é imagem: a camada de vídeo (ou o motion) seria só
+  // pulada, e o PNG sairia sem ela — parecendo arte pronta. Vale para toda
+  // porta que renderiza uma página: troca de arte do post, ajuste, recomposição.
+  if (videosDaPagina(designData.layers).length > 0) {
+    throw new CreativeError('PAGINA_COM_VIDEO', MENSAGEM_PAGINA_COM_VIDEO, 422, { pageId: page.id })
+  }
+  // A foto em movimento sai no quadro de 0 só em página-vídeo, e com música a
+  // página é vídeo: sem o áudio a arte mostraria outra coisa que o editor.
+  // Quem chama com a página montada à mão não traz o áudio; ele é lido aqui,
+  // e só quando faz diferença.
+  const temMovimento = designData.layers.some((l) => l.type === 'image' && ehMovimento(l.movimento))
+  const audio =
+    page.audio !== undefined
+      ? page.audio
+      : temMovimento
+        ? ((await db.page.findUnique({ where: { id: page.id }, select: { audio: true } }))?.audio ?? null)
+        : null
+  designData.layers = camadasNoInstante(designData.layers, 0, { audio: audio as DesignData['audio'] })
+
   await registerProjectFonts(project.id)
 
   const { CanvasRenderer } = await import('@/lib/canvas-renderer')
@@ -301,7 +342,18 @@ export async function renderPageAndRegister(input: RenderPageInput): Promise<Per
 
   // pageId entra sempre: é como conferir-arte localiza as camadas da arte
   // para o diagnóstico geométrico (sobreposição vs texto faltando).
-  const fieldValues = { ...input.fieldValues, pageId: page.id, thumbnailUrl: blob.url }
+  // `versaoRenderizada`: a versão VISUAL (dimensões, fundo e camadas) que ESTE
+  // PNG desenhou, gravada no mesmo patch da URL. É a prova de que a miniatura
+  // da página ainda é a arte da página — o agendamento do lote só a reaproveita
+  // quando a página continua nessa versão (R12-01; `thumbnailEhAtual`). Leva o
+  // áudio com que o quadro 0 foi desenhado: na foto em movimento, a música
+  // decide se o PNG sai com o zoom.
+  const fieldValues = {
+    ...input.fieldValues,
+    pageId: page.id,
+    thumbnailUrl: blob.url,
+    versaoRenderizada: versaoDaPagina(page, { audio }),
+  }
 
   const dadosDaArteQueFecha = {
     status: 'COMPLETED' as any,

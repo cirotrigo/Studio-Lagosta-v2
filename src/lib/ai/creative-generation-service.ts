@@ -39,6 +39,8 @@ import type {
 } from '@/lib/ai/creative-generation-runner'
 import type { TemplateType } from '@prisma/client'
 import { semColchetes } from '@/lib/compositor/destaques'
+import { identidadeDoContrato, LACUNA_PROMPT_AINDA_NAO_MONTADO, lerCopyAutoral, registroParaIA, textoEnviadoDoContrato, type CopyAutoral } from '@/lib/copy-autoral'
+import { carimboDaGeracao } from '@/lib/brand/voz-na-escrita'
 
 /**
  * Coletor próprio, separado do "Arte Rápida" (render de template) e do "Arte
@@ -68,6 +70,14 @@ export interface StartArtGenerationInput {
   pedido?: string
   /** Blocos de copy verbatim — obrigatório na trilha `arte`. */
   copy?: string[]
+  /**
+   * O CONTRATO da copy autoral (F1, PR 5): quando vem, ele MANDA — `copy` é
+   * derivado dele (blocos com texto, em ordem, linhas do autor unidas por
+   * "\n") e um `copy` que divirja dele é recusado. A Generation grava
+   * `fieldValues.copyAutoral = { original, enviada, comparavel, lacunas }` e a
+   * conferência por visão entra ali como `conferencia` ao terminar.
+   */
+  copyAutoral?: unknown
   formato: FormatoArteIA
   /**
    * Referências com papel. `url` precisa ser do nosso Blob (SSRF); foto do
@@ -120,6 +130,19 @@ export interface StartArtGenerationInput {
    * precedente de `carouselGroupId` para carrossel.
    */
   loteId?: string
+  /**
+   * PR 15: quando a copy foi ESCRITA, se antes desta chamada (o `createdAt` do
+   * item de plano em `executar-plano`). É o que deixa o carimbo da voz
+   * (`fieldValues.vozNaEscrita`) dizer a voz daquele instante — ou declarar que
+   * não sabe. Ausente = a copy chegou nesta mesma chamada.
+   */
+  escritaEm?: Date | string | null
+  /**
+   * PR 15 (C15-05): o carimbo HERDADO de quando a copy foi escrita — "Gerar de
+   * novo" e os slides irmãos do carrossel reproduzem copy antiga. Válido, ele
+   * vence o cálculo pela voz de agora (`carimboDaGeracao`).
+   */
+  vozNaEscrita?: unknown
 }
 
 export interface StartArtGenerationResult {
@@ -145,7 +168,32 @@ export async function startArtGeneration(
   const pedido = input.pedido?.trim() ?? ''
   // Os [colchetes] do destaque são marcação do compositor: a IA os desenharia
   // na arte. Saem aqui, na entrada única da trilha (bancada, plano e MCP).
-  const copy = (input.copy ?? []).map((b) => semColchetes(b).trim()).filter(Boolean)
+  // O contrato manda na copy (F1): `copy` solto continua valendo só sem ele.
+  let contrato: CopyAutoral | null = null
+  if (input.copyAutoral != null) {
+    const lido = lerCopyAutoral(input.copyAutoral)
+    if (!lido.copy) {
+      throw new CreativeError(
+        'COPY_AUTORAL_INVALIDA',
+        `O contrato da copy é inválido: ${lido.problemas.map((p) => (p.bloco ? `${p.bloco}: ${p.mensagem}` : p.mensagem)).join('; ')}`,
+        400,
+        { problemas: lido.problemas },
+      )
+    }
+    contrato = lido.copy
+  }
+  const limparBloco = (b: string) => semColchetes(b).trim()
+  const copyDoContrato = contrato ? textoEnviadoDoContrato(contrato).map(limparBloco).filter(Boolean) : null
+  const copySolta = (input.copy ?? []).map(limparBloco).filter(Boolean)
+  if (copyDoContrato && copySolta.length > 0 && JSON.stringify(copySolta) !== JSON.stringify(copyDoContrato)) {
+    throw new CreativeError(
+      'COPY_DIVERGE_DO_CONTRATO',
+      'A `copy` enviada não bate com os blocos do `copyAutoral`. Mande só o contrato (ou os dois iguais).',
+      400,
+      { copy: copySolta, contrato: copyDoContrato },
+    )
+  }
+  const copy = copyDoContrato ?? copySolta
   // Cópia rasa: a conferência do `generationId` abaixo descarta o marcador que
   // não confere, e não é papel deste serviço mexer no objeto de quem chamou.
   const referencias = (input.referencias ?? []).map((r) => ({ ...r }))
@@ -382,6 +430,12 @@ export async function startArtGeneration(
         fp: input.finalPrompt?.trim() || null,
         // A mesma copy e a mesma foto com OUTRO cliente citado é outra peça.
         mc: marcaDoCliente?.projectId ?? null,
+        // O CONTRATO da copy (F1): mesmos textos com ids, papéis ou autoria
+        // diferentes são peças diferentes, e pedido sem contrato não pode
+        // reaproveitar a geração de um pedido com contrato (nem o contrário)
+        // — o reaproveitado sai `reused` sem runner novo, e o contrato nunca
+        // seria gravado (PR5-01 da revisão do Codex, 12/09/2026).
+        ca: identidadeDoContrato(contrato),
       }),
     )
     .digest('hex')
@@ -442,6 +496,13 @@ export async function startArtGeneration(
     ARTE_IA_TEMPLATE_NAMES[fmt.type],
   )
 
+  // PR 15: a voz em vigor quando a copy foi escrita — best-effort, nunca
+  // derruba a geração (sem carimbo, o relatório conta "sem carimbo").
+  // Import dinâmico, como no compositor: `voz-service` puxa o `Prisma` em runtime.
+  const vozNaEscrita = await carimboDaGeracao({ vozNaEscrita: input.vozNaEscrita, escritaEm: input.escritaEm }, (escritaEm) =>
+    import('@/lib/brand/voz-service').then((m) => m.carimboDaVozAgora(project.id, { escritaEm })),
+  )
+
   // Copy vira slotValues: é a forma que extractExpectedTexts lê — a conferência
   // de texto desta geração E de melhorias futuras desta arte dependem disso.
   const slotValues = Object.fromEntries(copy.map((b, i) => [`bloco${i + 1}`, b]))
@@ -461,6 +522,12 @@ export async function startArtGeneration(
         ...(input.loteId ? { loteId: input.loteId } : {}),
         pedido,
         slotValues,
+        // F1: o contrato do autor e o que vai ao modelo, lado a lado; a
+        // conferência por visão entra como `conferencia` quando o runner termina.
+        // O `enviada` NÃO entra aqui: o prompt ainda não existe, e o runner o lê
+        // do prompt que sair (PR5-10). A lacuna fica até lá — inclusive se a
+        // geração falhar antes de montar o prompt.
+        ...(contrato ? { copyAutoral: registroParaIA(contrato, null, [LACUNA_PROMPT_AINDA_NAO_MONTADO]) } : {}),
         pedidoHash,
         formato: input.formato,
         referencias,
@@ -472,6 +539,7 @@ export async function startArtGeneration(
         inputSize: input.track === 'arte' ? OPENAI_INPUT_SIZE[fmt.formatKey] : null,
         finalSize: `${FINAL_OUTPUT_SIZE[fmt.formatKey].width}x${FINAL_OUTPUT_SIZE[fmt.formatKey].height}`,
         processingStartedAt: new Date().toISOString(),
+        ...(vozNaEscrita ? { vozNaEscrita } : {}),
       } as any,
       templateName: ARTE_IA_TEMPLATE_NAMES[fmt.type],
       projectName: project.name,
@@ -499,6 +567,7 @@ export async function startArtGeneration(
       track: input.track,
       pedido,
       copy,
+      copyAutoral: contrato,
       instrucaoImagem: input.instrucaoImagem?.trim() || null,
       marcaDoCliente,
       formato: input.formato,

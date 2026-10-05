@@ -9,7 +9,8 @@
 import { describe, expect, it } from 'vitest'
 
 import { entradaDePersistencia, TAG_DA_PECA_COMPOSTA } from '../persistencia'
-import type { SpecDePeca } from '../spec'
+import { validarSpec, type SpecDePeca } from '../spec'
+import { MAX_REVISOES_DA_COPY, ORIENTACAO_LINHA_LONGA, VERSAO_DO_CONTRATO, lerCopyAutoral, type CopyAutoral } from '@/lib/copy-autoral'
 
 const spec: SpecDePeca = {
   projectId: 6,
@@ -69,5 +70,59 @@ describe('entradaDePersistencia', () => {
     expect(e.pageTags).toEqual([TAG_DA_PECA_COMPOSTA, 'story'])
     expect(e.templateId).toBe(42)
     expect(e.background).toBe('#111111')
+  })
+
+  it('PR 15: o carimbo da voz vai para fieldValues.vozNaEscrita, fora do contrato da copy', () => {
+    const vozNaEscrita = { fonte: 'voz' as const, versao: 3, lidoEm: '2026-09-13T20:00:00.000Z' }
+    const e = entradaDePersistencia({ ...base, opcoes: {}, vozNaEscrita })
+    expect(e.fieldValues.vozNaEscrita).toEqual(vozNaEscrita)
+    // O contrato estrito da copy NÃO ganha a chave (uma chave a mais o recusaria na leitura).
+    expect((e.fieldValues.copyAutoral as { original: Record<string, unknown> }).original).not.toHaveProperty('vozNaEscrita')
+  })
+
+  it('PR 15: sem carimbo (leitura da voz falhou), a peça sai sem a chave', () => {
+    expect(entradaDePersistencia({ ...base, opcoes: {}, vozNaEscrita: null }).fieldValues).not.toHaveProperty('vozNaEscrita')
+    expect(entradaDePersistencia({ ...base, opcoes: {} }).fieldValues).not.toHaveProperty('vozNaEscrita')
+  })
+})
+
+describe('entradaDePersistencia — a copy que não cabe no contrato não derruba a peça composta (restack sobre e3c1f75f)', () => {
+  it('spec sem contrato com uma linha de 301 caracteres: validarSpec recusa (PR 9), e a persistência, se alcançada, segue SEM contrato com o aviso que manda quebrar a linha', () => {
+    const longa = { ...spec, blocos: [{ papel: 'headline', linhas: ['x'.repeat(301)] }] } as SpecDePeca
+    // Desde o PR 9 a copy derivada da spec passa pelo contrato em `validarSpec`; a persistência continua tolerante.
+    const validada = validarSpec(longa)
+    expect(validada.spec).toBeNull()
+    expect(validada.problemas.join(' ')).toMatch(/blocos\.0\.linhas\.0: .*300/)
+    const e = entradaDePersistencia({ ...base, spec: longa, opcoes: {} })
+    expect(e.copyAutoral).toBeUndefined()
+    const fv = e.fieldValues as Record<string, any>
+    expect(fv.copyAutoral).toBeUndefined()
+    expect(fv.avisosDaCopyAutoral).toHaveLength(1)
+    expect(fv.avisosDaCopyAutoral[0]).toMatch(/SEM contrato/)
+    expect(fv.avisosDaCopyAutoral[0]).toContain(ORIENTACAO_LINHA_LONGA)
+    expect(fv.spec.blocos[0].linhas[0]).toHaveLength(301)
+  })
+
+  it('spec com contrato de histórico CHEIO e camadas que não o descrevem: segue sem contrato novo, com aviso — nunca grava a 201ª', () => {
+    const cheio: CopyAutoral = {
+      versao: VERSAO_DO_CONTRATO,
+      origem: { autor: 'claude', superficie: 'chat' },
+      blocos: [{ id: 'headline', funcao: 'headline', ordem: 0, linhas: ['Sexta é dia de churrasco'] }],
+      revisoes: Array.from({ length: MAX_REVISOES_DA_COPY }, () => ({ em: '2026-09-12T11:00:00.000Z', autor: 'equipe' as const, motivo: 'm', superficie: 'bancada', blocos: ['headline'] })),
+    }
+    expect(lerCopyAutoral(cheio).problemas).toEqual([])
+    const e = entradaDePersistencia({ ...base, spec: { ...spec, copyAutoral: cheio } as SpecDePeca, opcoes: {} })
+    expect(e.copyAutoral).toBeUndefined()
+    const fv = e.fieldValues as Record<string, any>
+    expect(fv.copyAutoral).toBeUndefined()
+    expect(fv.avisosDaCopyAutoral.join(' ')).toMatch(/limite de 200 revisões/)
+  })
+
+  it('controle: a spec que cabe continua gravando original e efetiva, sem aviso', () => {
+    const e = entradaDePersistencia({ ...base, opcoes: {} })
+    const fv = e.fieldValues as Record<string, any>
+    expect(e.copyAutoral).toBeDefined()
+    expect(fv.copyAutoral.original.blocos[0].linhas).toEqual(['Sexta é dia de churrasco'])
+    expect(fv.avisosDaCopyAutoral).toBeUndefined()
   })
 })

@@ -20,6 +20,7 @@ import { CreativeError } from '@/lib/creatives/errors'
 import type { McpPrincipal } from '@/lib/mcp/oauth'
 import { formatarBRT } from '@/lib/posts/agenda-acoes'
 import { lerPlano, planoAtivo } from '@/lib/planos/plano-service'
+import { revisaoDoItem } from '@/lib/planos/revisao-do-item'
 import {
   ROTULO_DO_STATUS,
   normalizarStatusDoItem,
@@ -376,6 +377,10 @@ export function itemParaChat(item: ItemDePlanoParaChat, capa?: string | null) {
   const situacao = normalizarStatusDoItem(item.status) ?? 'proposto'
   return {
     itemId: item.id,
+    // A revisão do CONTEÚDO do item (C11-1a): quem monta uma peça a partir
+    // deste item manda-a de volta em compor-leva, e a peça só sai se o item
+    // não mudou depois desta leitura.
+    itemRevisao: revisaoDoItem(item),
     quando: item.quando ? formatarBRT(item.quando) : null,
     tema: item.tema,
     texto: item.copyProposta,

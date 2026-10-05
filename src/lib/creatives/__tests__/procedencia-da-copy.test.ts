@@ -50,6 +50,38 @@ describe('lerProcedencia — o lado "antes" do diff de copy do agendamento (REV-
     expect(copyVisualDasCamadas(camadas)).toEqual({ Texto: 'Almoço executivo', 'Texto#2': ' Até 15h ', 'Texto#3': 'Terceiro', texto: 'Sem nome nem id' })
   })
 
+  it('R38: arte re-renderizada com slotValues — a copy invalidada não vira copy visual nem proposta; a proposta de aprendizado preservada continua', () => {
+    const reRenderizada = { recomposicao: { estado: 're-renderizada' }, slotValues: { headline: 'Versão A' } }
+    expect(lerProcedencia(reRenderizada, null)).toMatchObject({ copyProposta: null, copyVisual: null, copyInvalidada: true })
+    expect(lerProcedencia({ ...reRenderizada, copyDeAprendizado: { headline: 'Versão A', cta: 'Escondido' } }, null)).toMatchObject({
+      copyProposta: { headline: 'Versão A', cta: 'Escondido' },
+      copyVisual: null,
+      copyInvalidada: true,
+    })
+    // controle: recomposição FEITA (não re-render) e re-render sem slotValues não invalidam nada
+    expect(lerProcedencia({ recomposicao: { estado: 'feita' }, slotValues: { headline: 'B' } }, null)).toMatchObject({ copyVisual: { headline: 'B' }, copyInvalidada: false })
+    expect(lerProcedencia({ recomposicao: { estado: 're-renderizada' } }, null)).toMatchObject({ copyVisual: null, copyInvalidada: false })
+  })
+
+  it('R38 × REV-127-F02: com `recomposicao.copyVisualRegravada` (copy visual regravada no MESMO re-render) a copy é a deste PNG — visual e proposta; só `true` estrito reabilita', () => {
+    const regravada = { recomposicao: { estado: 're-renderizada', copyVisualRegravada: true }, slotValues: { headline: 'Versão B' } }
+    expect(lerProcedencia(regravada, null)).toMatchObject({ copyProposta: { headline: 'Versão B' }, copyVisual: { headline: 'Versão B' }, copyInvalidada: false })
+    // a proposta de aprendizado preservada antes da regravação continua vencendo o lado "antes"
+    expect(lerProcedencia({ ...regravada, copyDeAprendizado: { headline: 'Versão A', cta: 'Escondido' } }, null)).toMatchObject({
+      copyProposta: { headline: 'Versão A', cta: 'Escondido' },
+      copyVisual: { headline: 'Versão B' },
+      copyInvalidada: false,
+    })
+    // controles: sem o marcador, ou com valor que não é `true`, segue invalidada como antes
+    for (const marca of [undefined, false, 'true', 1, null]) {
+      expect(lerProcedencia({ recomposicao: { estado: 're-renderizada', copyVisualRegravada: marca }, slotValues: { headline: 'Versão A' } }, null)).toMatchObject({
+        copyProposta: null,
+        copyVisual: null,
+        copyInvalidada: true,
+      })
+    }
+  })
+
   it('sourcePageId: a coluna vence; o Json só vale fora de ajuste-arte', () => {
     expect(lerProcedencia({ sourcePageId: 'p-json' }, 'p-col').sourcePageId).toBe('p-col')
     expect(lerProcedencia({ sourcePageId: 'p-json' }, null).sourcePageId).toBe('p-json')

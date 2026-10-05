@@ -42,6 +42,7 @@
  */
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { computeDe as endpointDe } from '../src/lib/compute-do-banco'
 import { falhasDoCleanup, limparBancoEBlobs } from './lib/limpeza-de-blobs'
 
 const ROOT = process.cwd()
@@ -58,14 +59,6 @@ function parseEnvFile(caminho: string): Record<string, string> {
     out[m[1]] = m[2].trim().replace(/^["']|["']$/g, '')
   }
   return out
-}
-function endpointDe(url: string | undefined): string | null {
-  if (!url) return null
-  try {
-    return new URL(url).hostname.split('.')[0].replace(/-pooler$/, '')
-  } catch {
-    return null
-  }
 }
 function abortar(titulo: string, linhas: string[] = []): never {
   console.error(`\n✗ ${titulo}\n`)

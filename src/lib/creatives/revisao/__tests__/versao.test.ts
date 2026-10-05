@@ -32,3 +32,25 @@ describe('a versão da página', () => {
     expect(versaoDaPagina({ width: 1080, height: 1920, layers: '{nao é json' })).toBeNull()
   })
 })
+
+describe('a versão com o áudio do quadro 0 (achado 6 do Codex)', () => {
+  const musica = { source: 'library', musicId: 1, startTime: 0, endTime: 10 }
+  const foto = { id: 'f', type: 'image', position: { x: 0, y: 0 }, size: { width: 1080, height: 1920 } }
+
+  it('página sem foto em movimento: o hash é o de sempre, com ou sem música', () => {
+    const pagina = { width: 1080, height: 1920, background: '#000', layers: [foto, ...camadas] }
+    const deSempre = versaoDaPagina(pagina)
+    expect(versaoDaPagina(pagina, { audio: musica })).toBe(deSempre)
+    expect(versaoDaPagina(pagina, { audio: null })).toBe(deSempre)
+  })
+
+  it('foto em movimento: com música o quadro 0 sai com o zoom, e a versão muda', () => {
+    const pagina = { width: 1080, height: 1920, background: '#000', layers: [{ ...foto, movimento: 'afastar' }] }
+    const semMusica = versaoDaPagina(pagina, { audio: null })
+    expect(versaoDaPagina(pagina, { audio: musica })).not.toBe(semMusica)
+    // Sem música o PNG é o da foto parada: a versão é a de quem não passa o áudio
+    expect(semMusica).toBe(versaoDaPagina(pagina))
+    // A versão é do CONTEÚDO: a mesma música em outra forma não muda nada
+    expect(versaoDaPagina(pagina, { audio: { ...musica, volume: 30 } })).toBe(versaoDaPagina(pagina, { audio: musica }))
+  })
+})

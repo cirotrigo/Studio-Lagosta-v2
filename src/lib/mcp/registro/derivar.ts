@@ -24,6 +24,7 @@ export function catalogoParaLista(
       description: tool.descricao,
       inputSchema: tool.schemaJson,
       annotations: { ...tool.annotations },
+      ...(tool.meta ? { _meta: { ...tool.meta } } : {}),
     })
   }
   return lista

@@ -109,3 +109,32 @@ export function audienciaConfere(gravada: string | null | undefined, issuer: str
   const normalizada = normalizarResource(gravada)
   return normalizada !== null && normalizada === audienciaEsperada(issuer)
 }
+
+const LOOPBACK = /^(localhost|127(?:\.\d{1,3}){3}|\[::1\])$/
+
+/**
+ * A redirect_uri REGISTRADA que corresponde à pedida, ou null.
+ *
+ * Igualdade exata primeiro. Para retorno http em loopback, a grafia do host
+ * não conta (RFC 8252 §8.3): o Next 15 (`NextURL`) troca o primeiro
+ * `127.x.x.x` que aparece em QUALQUER lugar da URL por `localhost`, inclusive
+ * dentro da query — o `redirect_uri=http://127.0.0.1:…` do Codex chegava à
+ * tela de consentimento como `localhost` e nunca batia. Devolve sempre o
+ * endereço REGISTRADO: é para ele que o código vai, e é ele que o cliente
+ * manda de volta na troca do token.
+ */
+export function redirectUriRegistrada(registradas: string[], pedida: string): string | null {
+  if (registradas.includes(pedida)) return pedida
+  const semHost = (uri: string) => {
+    try {
+      const u = new URL(uri)
+      if (u.protocol !== 'http:' || !LOOPBACK.test(u.hostname)) return null
+      return `${u.port}${u.pathname}${u.search}`
+    } catch {
+      return null
+    }
+  }
+  const alvo = semHost(pedida)
+  if (alvo === null) return null
+  return registradas.find((r) => semHost(r) === alvo) ?? null
+}

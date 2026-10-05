@@ -29,7 +29,10 @@ import { cropToInstagramFeed } from '@/lib/images/auto-crop'
 import { handlePublishFailure } from './failure-handler'
 import { isVideoUrl } from '@/lib/media-type'
 import { pageContainsVideoLayer } from './page-to-design-data'
+import { recusaComoImagem } from '@/lib/video/pagina-com-video'
 import { ensurePostGeneration } from './ensure-post-generation'
+import { ehExportDeVideo, postDeVideo } from './post-de-video'
+import { vinculoDoVideo } from '@/lib/video/vinculo-do-video'
 
 interface RecurringConfig {
   frequency: RecurrenceFrequency
@@ -195,6 +198,27 @@ export class LaterPostScheduler {
     this.validatePost(data)
     console.log('[Later Scheduler] ✅ Validation passed')
 
+    /**
+     * Vídeo exportado de uma página: a origem fica marcada no post
+     * (`videoDaPagina`, nunca limpa por edição) e, quando o pedido não traz a
+     * página (o composer, as galerias), o post é ligado a ela pela Generation —
+     * é o que dá o "Editar vídeo" na agenda.
+     */
+    let origemDeVideo = postDeVideo({ mediaUrls: data.mediaUrls })
+    if (data.generationId) {
+      const geracao = await db.generation.findUnique({
+        where: { id: data.generationId },
+        select: { projectId: true, fieldValues: true },
+      })
+      if (geracao && geracao.projectId === data.projectId) {
+        if (ehExportDeVideo(geracao.fieldValues)) origemDeVideo = true
+        if (!data.pageId && origemDeVideo) {
+          const vinculo = await vinculoDoVideo(db, geracao)
+          if (vinculo) data = { ...data, pageId: vinculo.pageId, templateId: data.templateId ?? vinculo.templateId }
+        }
+      }
+    }
+
     // Note: Reminders work differently with Later - they're just scheduled posts
     // that users need to manually publish. We'll treat them as scheduled posts.
 
@@ -249,8 +273,22 @@ export class LaterPostScheduler {
 
     if (isTemplateBased) {
       if (data.mediaUrls.length > 0) {
-        // Image already rendered client-side (Konva export), mark as RENDERED
-        renderStatusValue = RenderStatus.RENDERED
+        // 🔴 Foi por aqui que 5 stories foram ao ar como IMAGEM PARADA: o editor
+        // mandava o JPEG do stage de uma página com vídeo. O botão foi escondido
+        // na tela, mas aba aberta antes do deploy e chamada direta não passam
+        // por ele — a trava de verdade é esta. Mídia de vídeo (o MP4 exportado
+        // dessa mesma página) segue passando.
+        const midiaEVideo = data.mediaUrls.some((url) => isVideoUrl(url))
+        if (!midiaEVideo) {
+          const pagina = await db.page.findUnique({ where: { id: data.pageId! }, select: { layers: true, audio: true } })
+          const recusa = pagina ? recusaComoImagem(pagina.layers, pagina.audio) : null
+          if (recusa) throw new Error(recusa.mensagem)
+          // Image already rendered client-side (Konva export), mark as RENDERED
+          renderStatusValue = RenderStatus.RENDERED
+        }
+        // Mídia de vídeo fica NOT_NEEDED (o default): ela não sai do render da
+        // página. RENDERED a deixaria ao alcance da invalidação e do "voltar
+        // para rascunho", que a devolveriam a um render de IMAGEM.
       } else {
         // No image provided, cron will render server-side.
         // Guard: o render server-side é IMAGEM — página com camada de vídeo
@@ -258,7 +296,7 @@ export class LaterPostScheduler {
         // criação, em vez de às 2h da manhã no cron.
         const page = await db.page.findUnique({
           where: { id: data.pageId! },
-          select: { layers: true },
+          select: { layers: true, audio: true },
         })
         if (page && pageContainsVideoLayer(page.layers)) {
           throw new Error(
@@ -266,6 +304,10 @@ export class LaterPostScheduler {
               'Exporte o vídeo pelo editor (botão "Exportar Vídeo") e agende o MP4 pela aba Criativos.',
           )
         }
+        // Este ramo CRIA um post que o cron renderiza como imagem: é publicação,
+        // não render. Página com música só vai ao ar como vídeo.
+        const recusa = page ? recusaComoImagem(page.layers, page.audio) : null
+        if (recusa) throw new Error(recusa.mensagem)
         renderStatusValue = RenderStatus.PENDING
         nextRenderAtValue = new Date()
       }
@@ -297,6 +339,7 @@ export class LaterPostScheduler {
         templateId: data.templateId || null,
         slotValues: data.slotValues ? (data.slotValues as Prisma.InputJsonValue) : null,
         renderStatus: renderStatusValue,
+        videoDaPagina: origemDeVideo,
         renderedImageUrl: isTemplateBased && data.mediaUrls.length > 0 ? data.mediaUrls[0] : null,
         renderedAt: isTemplateBased && data.mediaUrls.length > 0 ? new Date() : null,
         nextRenderAt: nextRenderAtValue,
@@ -632,6 +675,7 @@ export class LaterPostScheduler {
               name: true,
               laterAccountId: true,
               laterProfileId: true,
+              laterLinkedinAccountId: true,
               instagramAccountId: true,
               instagramUsername: true,
               organizationProjects: {
@@ -733,6 +777,11 @@ export class LaterPostScheduler {
             accountId: post.Project.laterAccountId,
             ...(platformSpecificData ? { platformSpecificData } : {}),
           },
+          // LinkedIn não tem story: só feed e carrossel vão para lá, com a mesma legenda.
+          ...(post.Project.laterLinkedinAccountId &&
+          (post.postType === PostType.POST || post.postType === PostType.CAROUSEL)
+            ? [{ platform: 'linkedin', accountId: post.Project.laterLinkedinAccountId }]
+            : []),
         ],
         ...(isFutureSchedule
           ? { scheduledFor: scheduledTime!.toISOString() }

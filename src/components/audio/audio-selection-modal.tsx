@@ -44,6 +44,8 @@ interface AudioSelectionModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   videoDuration: number;
+  /** Sem vídeo com som (foto + música, motion sobre foto, sequência sem vídeo) não há "som do vídeo" a oferecer. */
+  temSomOriginal?: boolean;
   currentConfig?: AudioConfig;
   onConfirm: (config: AudioConfig) => void;
 }
@@ -99,16 +101,32 @@ const AUDIO_SOURCE_OPTIONS: Array<{
   },
 ];
 
-export function AudioSelectionModal({
+/**
+ * O rascunho (fonte, música, trecho, volumes) nasce de currentConfig a cada
+ * ABERTURA: o conteúdo só fica montado enquanto o modal está aberto, então os
+ * estados iniciais são refeitos toda vez que ele abre — e nada os sobrescreve
+ * enquanto a pessoa edita.
+ */
+export function AudioSelectionModal(props: AudioSelectionModalProps) {
+  if (!props.open) return null;
+  return <AudioSelectionModalAberto {...props} />;
+}
+
+function AudioSelectionModalAberto({
   open,
   onOpenChange,
   videoDuration,
+  temSomOriginal = true,
   currentConfig,
   onConfirm,
 }: AudioSelectionModalProps) {
-  const [audioSource, setAudioSource] = useState<AudioConfig['source']>(
-    currentConfig?.source || 'library'
-  );
+  const opcoesDeFonte = temSomOriginal
+    ? AUDIO_SOURCE_OPTIONS
+    : AUDIO_SOURCE_OPTIONS.filter((o) => o.id !== 'original' && o.id !== 'mix');
+  const [audioSource, setAudioSource] = useState<AudioConfig['source']>(() => {
+    const pedido = currentConfig?.source || 'library';
+    return opcoesDeFonte.some((o) => o.id === pedido) ? pedido : 'library';
+  });
   const [busca, setBusca] = useState('');
   const [generoFiltro, setGeneroFiltro] = useState('Todos');
   const [humorFiltro, setHumorFiltro] = useState('Todos');
@@ -130,16 +148,18 @@ export function AudioSelectionModal({
   );
   const { data: stemStatus } = useMusicStemStatus(musicaSelecionada);
 
-  const [startTime, setStartTime] = useState(currentConfig?.startTime || 0);
+  const [startTime, setStartTime] = useState(currentConfig?.startTime ?? 0);
+  // "||" de propósito: fim 0 não é trecho — cai na duração do vídeo
   const [endTime, setEndTime] = useState(currentConfig?.endTime || videoDuration);
 
-  const [volume, setVolume] = useState(currentConfig?.volume || 80);
-  const [volumeOriginal, setVolumeOriginal] = useState(currentConfig?.volumeOriginal || 80);
-  const [volumeMusic, setVolumeMusic] = useState(currentConfig?.volumeMusic || 60);
+  // "??" nos numéricos: volume 0 é escolha válida, não ausência
+  const [volume, setVolume] = useState(currentConfig?.volume ?? 80);
+  const [volumeOriginal, setVolumeOriginal] = useState(currentConfig?.volumeOriginal ?? 80);
+  const [volumeMusic, setVolumeMusic] = useState(currentConfig?.volumeMusic ?? 60);
   const [fadeIn, setFadeIn] = useState(currentConfig?.fadeIn || false);
   const [fadeOut, setFadeOut] = useState(currentConfig?.fadeOut || false);
-  const [fadeInDuration] = useState(currentConfig?.fadeInDuration || 0.5);
-  const [fadeOutDuration] = useState(currentConfig?.fadeOutDuration || 0.5);
+  const [fadeInDuration] = useState(currentConfig?.fadeInDuration ?? 0.5);
+  const [fadeOutDuration] = useState(currentConfig?.fadeOutDuration ?? 0.5);
 
   const musicaAtual = useMemo(
     () => musicas.find((m) => m.id === musicaSelecionada),
@@ -148,12 +168,17 @@ export function AudioSelectionModal({
 
   const handleConfirm = () => {
     const usaMusica = audioSource === 'library' || audioSource === 'mix';
+    const mesmaMusica = musicaSelecionada !== undefined && musicaSelecionada === currentConfig?.musicId;
     const config: AudioConfig = {
       source: audioSource,
       musicId: usaMusica ? musicaSelecionada : undefined,
       audioVersion: usaMusica ? audioVersion : undefined,
-      musicName: usaMusica ? musicaAtual?.name : undefined,
-      musicThumbnailUrl: usaMusica ? musicaAtual?.thumbnailUrl : undefined,
+      // Lista ainda carregando (ou música fora do filtro): a música é a mesma
+      // que estava salva, então nome e capa são os dela — não somem.
+      musicName: usaMusica ? (musicaAtual?.name ?? (mesmaMusica ? currentConfig?.musicName : undefined)) : undefined,
+      musicThumbnailUrl: usaMusica
+        ? (musicaAtual?.thumbnailUrl ?? (mesmaMusica ? currentConfig?.musicThumbnailUrl : undefined))
+        : undefined,
       startTime,
       endTime,
       volume: audioSource === 'mix' ? volumeMusic : volume,
@@ -207,7 +232,7 @@ export function AudioSelectionModal({
                   onValueChange={(value: AudioConfig['source']) => setAudioSource(value)}
                   className="mt-4 grid gap-3 md:grid-cols-2"
                 >
-                  {AUDIO_SOURCE_OPTIONS.map((option) => (
+                  {opcoesDeFonte.map((option) => (
                     <label
                       key={option.id}
                       htmlFor={`source-${option.id}`}
@@ -322,7 +347,9 @@ export function AudioSelectionModal({
             </div>
 
             <div className="space-y-6">
-              {musicaAtual ? (
+              {/* Trecho e volume só fazem sentido com música: em "áudio do vídeo"
+                  ou "sem áudio" a onda avisaria um corte que o export não faz. */}
+              {musicaAtual && (audioSource === 'library' || audioSource === 'mix') ? (
                 <>
                   <section className="space-y-3 rounded-2xl border bg-background p-4 shadow-sm">
                     <div className="flex items-start gap-3">

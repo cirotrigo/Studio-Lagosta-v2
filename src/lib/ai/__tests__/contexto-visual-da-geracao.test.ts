@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BrandContext } from '@/lib/brand/brand-context';
+import { SEM_VOZ } from '@/lib/brand/voz';
 import {
   resolverContextoVisualDaGeracao,
   portaDoFallback,
@@ -18,6 +19,7 @@ function marca(nome = 'Real Gelateria'): BrandContext {
     logoUrl: null,
     brandManualUrl: 'https://example.com/manual.png',
     artDirection: null,
+    voz: SEM_VOZ,
     dna: {
       visualStyle:
         'Editorial; gradiente de leitura sobre a foto; manchete em serifa.',

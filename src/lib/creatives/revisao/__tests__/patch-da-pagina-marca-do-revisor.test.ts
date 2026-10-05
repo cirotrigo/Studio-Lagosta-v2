@@ -6,7 +6,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const banco = vi.hoisted(() => ({ pagina: null as Record<string, any> | null }))
+const banco = vi.hoisted(() => ({ pagina: null as Record<string, any> | null, relogio: 1_000 }))
 
 vi.mock('@clerk/nextjs/server', () => ({ auth: async () => ({ userId: 'user_prova', orgId: null }) }))
 vi.mock('next/server', () => ({
@@ -15,11 +15,29 @@ vi.mock('next/server', () => ({
 }))
 vi.mock('@/lib/db', () => {
   const db: Record<string, any> = {
+    /**
+     * O contrato do Prisma que a rota usa desde o PR 3 (persistência da copy autoral): a leitura
+     * protegida por `findUnique` com `select` (coluna ausente volta `null`, como no banco) e a escrita
+     * por compare-and-set (`updateMany` com `updatedAt` no `where`, `count` 0 quando outra escrita
+     * passou na frente). Toda escrita avança `updatedAt`, como o `@updatedAt` do schema.
+     */
     page: {
-      findFirst: async ({ where }: { where: { id: string } }) => (banco.pagina && where.id === banco.pagina.id ? { ...banco.pagina } : null),
+      findFirst: async ({ where }: { where: { id: string } }) => (banco.pagina && where.id === banco.pagina.id ? structuredClone(banco.pagina) : null),
+      findUnique: async ({ where, select }: { where: { id: string }; select?: Record<string, boolean> }) => {
+        if (!banco.pagina || where.id !== banco.pagina.id) return null
+        const pagina = structuredClone(banco.pagina)
+        if (!select) return pagina
+        return Object.fromEntries(Object.keys(select).filter((k) => select[k]).map((k) => [k, pagina[k] ?? null]))
+      },
+      updateMany: async ({ where, data }: { where: { id: string; updatedAt?: Date }; data: Record<string, unknown> }) => {
+        if (!banco.pagina || where.id !== banco.pagina.id) return { count: 0 }
+        if (where.updatedAt && where.updatedAt.getTime() !== banco.pagina.updatedAt.getTime()) return { count: 0 }
+        banco.pagina = { ...banco.pagina, ...data, updatedAt: new Date(++banco.relogio) }
+        return { count: 1 }
+      },
       update: async ({ data }: { data: Record<string, unknown> }) => {
-        banco.pagina = { ...banco.pagina!, ...data }
-        return { ...banco.pagina }
+        banco.pagina = { ...banco.pagina!, ...data, updatedAt: new Date(++banco.relogio) }
+        return structuredClone(banco.pagina)
       },
     },
     user: { findUnique: async () => null },
@@ -60,7 +78,8 @@ const cta = (camadas: Array<Record<string, any>>) => camadas.find((l) => l.id ==
 
 beforeEach(() => {
   // a base como o ajuste do revisor a gravou: o CTA escondido e marcado
-  banco.pagina = { id: 'p1', templateId: 77, tags: [], background: null, width: 1080, height: 1920, layers: JSON.stringify([titulo, marcada]) }
+  banco.relogio = 1_000
+  banco.pagina = { id: 'p1', templateId: 77, tags: [], background: null, width: 1080, height: 1920, copyAutoral: null, updatedAt: new Date(banco.relogio), layers: JSON.stringify([titulo, marcada]) }
 })
 
 describe('PATCH da página — a marca do revisor não ressuscita (C3-11)', () => {

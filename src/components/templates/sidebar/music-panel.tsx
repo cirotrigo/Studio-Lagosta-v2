@@ -23,6 +23,7 @@ import { MusicCard } from '@/components/audio/music-card'
 import { AudioWaveformTimeline } from '@/components/audio/audio-waveform-timeline'
 import { MusicStemProgress } from '@/components/audio/music-stem-progress'
 import type { PageAudioConfig } from '@/types/template'
+import { duracaoDaPagina, trechoDoVideo, videoPrincipal } from '@/lib/video/camadas-de-video'
 
 const GENEROS = [
   'Todos',
@@ -51,8 +52,10 @@ export function MusicPanel() {
   const { design, setPageAudio } = useTemplateEditor()
 
   const audio = design.audio ?? null
-  const videoLayer = design.layers.find((layer) => layer.type === 'video')
-  const videoDuration = videoLayer?.videoMetadata?.duration ?? DEFAULT_VIDEO_DURATION
+  // Motion por cima não dita a duração quando há um vídeo de fundo
+  const videoLayer = videoPrincipal(design.layers)
+  // O que conta é o TRECHO que toca (trim), não o arquivo inteiro
+  const videoDuration = trechoDoVideo(videoLayer?.videoMetadata).duracao ?? DEFAULT_VIDEO_DURATION
 
   const [busca, setBusca] = React.useState('')
   const [generoFiltro, setGeneroFiltro] = React.useState('Todos')
@@ -68,12 +71,21 @@ export function MusicPanel() {
   const { data: musicaAtiva } = useMusica(activeMusicId)
   const { data: stemStatus } = useMusicStemStatus(activeMusicId > 0 ? activeMusicId : undefined)
 
+  // Dois patches no mesmo tick (arrastar a região, slider de dois polegares)
+  // partiam do mesmo `audio` capturado e o segundo desfazia o primeiro. Cada
+  // patch parte do estado mais recente: o do render ou o do patch anterior.
+  const audioRef = React.useRef(audio)
+  audioRef.current = audio
+
   const patchAudio = React.useCallback(
     (partial: Partial<PageAudioConfig>) => {
-      if (!audio) return
-      setPageAudio({ ...audio, ...partial })
+      const atual = audioRef.current
+      if (!atual) return
+      const proximo = { ...atual, ...partial }
+      audioRef.current = proximo
+      setPageAudio(proximo)
     },
-    [audio, setPageAudio],
+    [setPageAudio],
   )
 
   const handleSelectMusic = React.useCallback(
@@ -102,6 +114,8 @@ export function MusicPanel() {
   )
 
   const hasActiveTrack = Boolean(audio?.musicId)
+  // Sem vídeo, a música É a duração: a página sai como vídeo com o trecho dela
+  const duracaoSoDaMusica = !videoLayer && hasActiveTrack ? duracaoDaPagina(design.layers, audio) : null
 
   return (
     <div className="space-y-4">
@@ -109,8 +123,9 @@ export function MusicPanel() {
         <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400">
           <Film className="mt-0.5 h-4 w-4 shrink-0" />
           <p>
-            Esta página não tem camada de vídeo — a música é usada apenas no
-            export de vídeo.
+            {duracaoSoDaMusica !== null
+              ? `Esta arte sai como vídeo de ${Math.round(duracaoSoDaMusica)} s — a duração é o trecho da música. Para agendar como imagem, tire a música.`
+              : 'Esta página não tem vídeo. Com música, ela passa a sair como vídeo (botão "Exportar Vídeo").'}
           </p>
         </div>
       )}
@@ -193,8 +208,7 @@ export function MusicPanel() {
                 videoDuration={videoDuration}
                 startTime={audio.startTime}
                 endTime={audio.endTime}
-                onStartTimeChange={(v) => patchAudio({ startTime: v })}
-                onEndTimeChange={(v) => patchAudio({ endTime: v })}
+                onRangeChange={(startTime, endTime) => patchAudio({ startTime, endTime })}
               />
             </div>
           )}

@@ -192,7 +192,8 @@ describe('revisões: autor, data e motivo em toda mudança', () => {
   it('mudar só a ordem, a função, o grupo, o estilo ou os fatos É revisão, com os campos nomeados (F02)', () => {
     const casos: Array<[string, (b: (typeof copy.blocos)[number]) => (typeof copy.blocos)[number], string]> = [
       ['ordem', (b) => (b.id === 'apoio' ? { ...b, ordem: 3 } : b.id === 'servico' ? { ...b, ordem: 2 } : b), 'ordem'],
-      ['estilo', (b) => (b.id === 'headline' ? { ...b, estilo: { linhasNaVoz2: [0] } } : b), 'estilo'],
+      // a voz 2 só pode ser o FIM da manchete (PR 4): a mudança de estilo aqui é a herança
+      ['estilo', (b) => (b.id === 'headline' ? { ...b, estilo: { ...b.estilo, herdaDe: 'apoio' } } : b), 'estilo'],
       ['grupo', (b) => (b.id === 'apoio' ? { ...b, grupoDeLeitura: 'frase-1' } : b), 'grupoDeLeitura'],
       ['fatos', (b) => (b.id === 'servico' ? { ...b, fatos: [{ entradaId: 'kb-outro' }] } : b), 'fatos'],
       ['funcao', (b) => (b.id === 'apoio' ? { ...b, funcao: 'cta' as const } : b), 'funcao'],
@@ -207,7 +208,9 @@ describe('revisões: autor, data e motivo em toda mudança', () => {
       expect(validarCopyAutoral(revisada).problemas, nome).toEqual([])
     }
     // combinada com texto noutro bloco: os dois ids ficam registrados
-    const combinada = copy.blocos.map((b) => (b.id === 'headline' ? { ...b, estilo: { linhasNaVoz2: [0] } } : b.id === 'apoio' ? { ...b, linhas: ['outro apoio'] } : b))
+    // a voz 2 só pode ser o FIM contíguo da manchete (PR 4), e desde 9238098f `aplicarRevisao` confere o resultado:
+    // a mudança de estilo combinada é a herança, como no caso de cima
+    const combinada = copy.blocos.map((b) => (b.id === 'headline' ? { ...b, estilo: { ...b.estilo, herdaDe: 'apoio' as const } } : b.id === 'apoio' ? { ...b, linhas: ['outro apoio'] } : b))
     const { copy: r2 } = aplicarRevisao(copy, combinada, { autor: 'equipe', motivo: 'duas' })
     expect(r2.revisoes[0].blocos.sort()).toEqual(['apoio', 'headline'])
     expect(r2.revisoes[0].campos).toEqual({ headline: ['estilo'], apoio: ['linhas'] })

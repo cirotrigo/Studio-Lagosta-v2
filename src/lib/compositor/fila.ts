@@ -28,6 +28,9 @@ import type { CanalDaArte } from '@/lib/creatives/canal'
 import { enfileirarComposicao, pedirNovaTentativa, type ComposicaoJobArgs } from '@/lib/ai/generation-queue'
 import { caminhoAte } from '@/lib/planos/execucao'
 import { normalizarStatusDoItem, type StatusDoItem } from '@/lib/planos/vocabulario'
+import { payloadParaHash, validarIdentidadeDeLote, type DesfechoDoItemDeLote, type IdentidadeDeLote, type SituacaoDaPecaDoLote } from '@/lib/lotes/identidade'
+import { reservarItemDeLote } from '@/lib/lotes/reserva'
+import { descreverArteAtualDoItem, type ArteAtualDoItem } from '@/lib/planos/decisao-do-item'
 
 import { comporPeca } from './compor'
 import { garantirPasta } from './pastas'
@@ -37,30 +40,79 @@ export interface PecaEnfileirada {
   generationId: string
   jobId: string
   spec: SpecDePeca
+  /**
+   * Presente quando a peça veio com identidade de lote (`opcoes.lote`): o que
+   * a chamada fez com o item e como a peça dele está agora. O conflito não
+   * aparece aqui — ele LANÇA `LOTE_ITEM_CONFLITO` (409) sem escrever nada.
+   *
+   * `superada` (decisão do Ciro, 13/09/2026): a repetição reaproveitou a peça
+   * deste pedido, mas o item do plano já aponta OUTRA arte — a descrita aqui.
+   * Nada foi criado nem mudado; quem chama conta à pessoa e pergunta.
+   */
+  lote?: { loteId: string; itemId: string; desfecho: DesfechoDoItemDeLote; situacao: SituacaoDaPecaDoLote; superada?: ArteAtualDoItem }
 }
 
-/** Cria a Generation PROCESSING e o job. Idempotente por Generation. */
-export async function enfileirarPeca(entrada: unknown, opcoes: { decididoPor?: string | null; canal?: CanalDaArte | null; autor?: string | null; itemAtualizadoEm?: Date | string } = {}): Promise<PecaEnfileirada> {
+export interface OpcoesDeEnfileirar {
+  decididoPor?: string | null
+  canal?: CanalDaArte | null
+  autor?: string | null
+  itemAtualizadoEm?: Date | string
+  /**
+   * A identidade durável do item (PR 11): `loteId` + `itemId` vindos de quem
+   * chama, estáveis entre retentativas. Com ela a peça passa pela reserva de
+   * `src/lib/lotes/reserva.ts` — repetir a chamada devolve a MESMA Generation
+   * e o MESMO job; outro conteúdo sob a mesma chave é conflito. Sem ela, o
+   * comportamento de sempre.
+   */
+  lote?: { loteId: string; itemId: string } | null
+  /**
+   * A revisão do item de plano (`itemRevisao` do `ver-plano`) que quem montou a
+   * spec declara ter lido — OBRIGATÓRIA com `lote` e `itemDePlanoId` (pré-revisão
+   * C11-1a). Com lote, o caminho do plano só produz quando ela é a revisão do
+   * item agora, e a linha do lote a grava. Sem lote não é usada.
+   */
+  itemRevisao?: string | null
+}
+
+type ProjetoDaPeca = { id: number; name: string; userId: string }
+type Pasta = Awaited<ReturnType<typeof garantirPasta>>
+
+/** A Generation PROCESSING que a fila fecha — a mesma com e sem identidade de lote. */
+function dadosDaGeracao(spec: SpecDePeca, projeto: ProjetoDaPeca, coletor: Pasta, opcoes: OpcoesDeEnfileirar) {
+  return {
+    status: 'PROCESSING' as const,
+    templateId: coletor.id,
+    projectId: spec.projectId,
+    createdBy: opcoes.autor ?? projeto.userId,
+    authorName: 'compositor',
+    canal: opcoes.canal ?? null,
+    templateName: coletor.name,
+    projectName: projeto.name,
+    fieldValues: { source: 'compositor', spec, fila: 'aguardando' } as never,
+  }
+}
+
+/** Cria a Generation PROCESSING e o job. Idempotente por Generation (e, com `opcoes.lote`, por item do lote). */
+export async function enfileirarPeca(entrada: unknown, opcoes: OpcoesDeEnfileirar = {}): Promise<PecaEnfileirada> {
   const v = validarSpec(entrada)
   if (!v.spec) throw new CreativeError('SPEC_INVALIDA', `Spec inválida — ${v.problemas.join('; ')}`, 400, { problemas: v.problemas })
   const spec = v.spec
 
+  let identidade: IdentidadeDeLote | null = null
+  if (opcoes.lote != null) {
+    const r = validarIdentidadeDeLote(opcoes.lote)
+    if (!r.identidade) throw new CreativeError('LOTE_IDENTIDADE_INVALIDA', `Identidade de lote inválida — ${r.problemas.join('; ')}`, 400, { problemas: r.problemas })
+    identidade = r.identidade
+  }
+
   const projeto = await db.project.findUnique({ where: { id: spec.projectId }, select: { id: true, name: true, userId: true } })
   if (!projeto) throw new CreativeError('PROJECT_NOT_FOUND', `Projeto ${spec.projectId} não encontrado`, 404)
 
+  if (identidade) return enfileirarPecaDoLote(spec, projeto, identidade, opcoes)
+
   const coletor = await garantirPasta(spec.projectId, projeto.userId, spec.quando ?? null, spec.formato)
 
-  const data = {
-      status: 'PROCESSING' as const,
-      templateId: coletor.id,
-      projectId: spec.projectId,
-      createdBy: opcoes.autor ?? projeto.userId,
-      authorName: 'compositor',
-      canal: opcoes.canal ?? null,
-      templateName: coletor.name,
-      projectName: projeto.name,
-      fieldValues: { source: 'compositor', spec, fila: 'aguardando' } as never,
-    }
+  const data = dadosDaGeracao(spec, projeto, coletor, opcoes)
   if (spec.itemDePlanoId) {
     const { enfileirarComposicaoDoPlano } = await import('@/lib/planos/enfileirar-composicao')
     return enfileirarComposicaoDoPlano(spec, data, opcoes.decididoPor ?? null, opcoes.autor ?? null, opcoes.itemAtualizadoEm)
@@ -70,6 +122,97 @@ export async function enfileirarPeca(entrada: unknown, opcoes: { decididoPor?: s
   const jobId = await enfileirarComposicao({ generationId: generation.id, projectId: spec.projectId, spec, decididoPor: opcoes.decididoPor ?? null, autor: opcoes.autor ?? null })
   await reapontarItemDoPlano(spec, 'na-fila', { generationId: generation.id, decididoPor: opcoes.decididoPor ?? null })
   return { generationId: generation.id, jobId, spec }
+}
+
+/**
+ * O caminho COM identidade de lote. A pasta só é garantida quando é preciso
+ * criar (a repetição de uma leva viva não escreve nada), e Generation + job
+ * nascem dentro da transação que segura a linha do item — ver `reserva.ts`.
+ *
+ * Com `itemDePlanoId`, quem cria é o caminho do plano (na mesma transação), e
+ * ele pode devolver a Generation que o item já tinha na mesma revisão. Mas a
+ * repetição de uma chave VIVA é decidida pela identidade de lote antes de
+ * chegar ao plano: mesma chave e mesmo payload são a mesma peça, mesmo que o
+ * item tenha sido revisado fora da spec (campanha, escopo) — revisão nova pede
+ * lote ou item novo.
+ */
+async function enfileirarPecaDoLote(spec: SpecDePeca, projeto: ProjetoDaPeca, identidade: IdentidadeDeLote, opcoes: OpcoesDeEnfileirar): Promise<PecaEnfileirada> {
+  const decididoPor = opcoes.decididoPor ?? null
+  const autor = opcoes.autor ?? null
+  let coletor: Pasta | null = null
+  const pasta = async () => (coletor ??= await garantirPasta(spec.projectId, projeto.userId, spec.quando ?? null, spec.formato))
+  // A revisão do item que QUEM MONTOU a spec declara (o `itemRevisao` do
+  // ver-plano), nunca lida do servidor: a leitura de agora não sabe de qual
+  // leitura a spec saiu (C11-1a). Sem ela a peça de item de plano não reserva nada.
+  const itemRevisao = typeof opcoes.itemRevisao === 'string' ? opcoes.itemRevisao.trim() : ''
+  if (spec.itemDePlanoId && !itemRevisao) {
+    throw new CreativeError(
+      'ITEM_REVISAO_OBRIGATORIA',
+      'Peça de item de plano com identidade de lote precisa da itemRevisao que o ver-plano devolve para o item — é a revisão de onde a copy foi montada. Releia o item e mande a revisão junto.',
+      400,
+      { itemDePlanoId: spec.itemDePlanoId, loteId: identidade.loteId, itemId: identidade.itemId },
+    )
+  }
+  const plano = spec.itemDePlanoId ? await import('@/lib/planos/enfileirar-composicao') : null
+
+  const r = await reservarItemDeLote({
+    projectId: spec.projectId,
+    identidade,
+    payload: payloadParaHash(spec),
+    planoRevisao: plano ? itemRevisao : undefined,
+    preparar: async () => {
+      await pasta()
+    },
+    criar: async (tx, { recuperacao }) => {
+      const data = dadosDaGeracao(spec, projeto, await pasta(), opcoes)
+      if (plano) {
+        // Com `lote`, o caminho do plano compara as specs como o lote (R03) e
+        // decide pela tabela única sob a trava do item (revisão final R05–R06),
+        // que só produz quando a revisão declarada pela chamada é a do item (C11-1a).
+        const p = await plano.enfileirarComposicaoDoPlanoEm(tx, spec, data, decididoPor, autor, opcoes.itemAtualizadoEm, { recuperacao, revisaoDaChamada: itemRevisao })
+        return { generationId: p.generationId, jobId: p.jobId, reaproveitado: p.reaproveitado, retomado: p.retomado }
+      }
+      const generation = await tx.generation.create({ data, select: { id: true } })
+      const jobId = await enfileirarComposicao({ generationId: generation.id, projectId: spec.projectId, spec, decididoPor, autor }, tx)
+      return { generationId: generation.id, jobId }
+    },
+    // O job do item de plano carrega a revisão do item: só o caminho do plano o
+    // monta, e recebe a retomada "só o job" pela `recuperacao` de `criar`.
+    ...(spec.itemDePlanoId
+      ? {}
+      : { criarJob: (tx, generationId) => enfileirarComposicao({ generationId, projectId: spec.projectId, spec, decididoPor, autor }, tx) }),
+  })
+  // A reserva reaproveita pela LINHA do lote, sem olhar o item do plano: o
+  // pedido antigo repetido depois de o item ganhar outra arte devolveria a peça
+  // antiga como se ela fosse a do plano. Só leitura — nada muda (Ciro, 13/09).
+  const superada = plano && r.desfecho === 'reaproveitado' ? await arteQueSuperaAPeca(spec, r.generationId) : null
+  return {
+    generationId: r.generationId,
+    jobId: r.jobId,
+    spec,
+    lote: { loteId: r.loteId, itemId: r.itemId, desfecho: r.desfecho, situacao: r.situacao, ...(superada ? { superada } : {}) },
+  }
+}
+
+/**
+ * A arte que o item do plano aponta AGORA, quando ela não é a peça que a
+ * repetição reaproveitou — "peça superada no plano" (decisão do Ciro,
+ * 13/09/2026). Informativo: leitura sem trava, e a falha dela vira `null` (a
+ * repetição idempotente não pode quebrar por causa do aviso).
+ */
+async function arteQueSuperaAPeca(spec: SpecDePeca, generationId: string): Promise<ArteAtualDoItem | null> {
+  try {
+    const item = await db.itemDePlano.findFirst({
+      where: { id: spec.itemDePlanoId, projectId: spec.projectId, ...(spec.planoId ? { planoId: spec.planoId } : {}) },
+      select: { generationId: true, pageId: true },
+    })
+    if (!item?.generationId || item.generationId === generationId) return null
+    const geracao = await db.generation.findUnique({ where: { id: item.generationId }, select: { status: true, resultUrl: true, createdAt: true, fieldValues: true } })
+    return descreverArteAtualDoItem({ generationId: item.generationId, pageIdDoItem: item.pageId, geracao: geracao ? { ...geracao, status: String(geracao.status) } : null })
+  } catch (erro) {
+    console.warn(`[lote] não deu para conferir se a peça ${generationId} foi superada no plano: ${erro instanceof Error ? erro.message : String(erro)}`)
+    return null
+  }
 }
 
 /** O runner do job COMPOR. Nunca lança: o desfecho fica na Generation. */

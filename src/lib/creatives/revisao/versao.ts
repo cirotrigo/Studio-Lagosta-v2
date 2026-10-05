@@ -18,6 +18,7 @@
 
 import { createHash } from 'node:crypto'
 import { lerCamadas } from '@/lib/posts/page-layers'
+import { quadroZeroEmVideo } from '@/lib/video/movimento'
 
 function estavel(valor: unknown): unknown {
   if (Array.isArray(valor)) return valor.map(estavel)
@@ -33,17 +34,25 @@ function estavel(valor: unknown): unknown {
   return valor
 }
 
-/** `null` quando as camadas são ilegíveis — ilegível nunca vira "a mesma versão". */
-export function versaoDaPagina(pagina: {
-  width: number
-  height: number
-  background?: string | null
-  layers: unknown
-}): string | null {
+/**
+ * `null` quando as camadas são ilegíveis — ilegível nunca vira "a mesma versão".
+ *
+ * `quadro.audio` é para quem compara a versão com um PNG desenhado no quadro 0:
+ * a foto em MOVIMENTO só sai com o zoom quando a página é vídeo, e a música
+ * decide isso (`quadroZeroEmVideo`). Só então entra no hash — página sem
+ * movimento ou sem música, e quem não passa o áudio, têm a versão de sempre.
+ */
+export function versaoDaPagina(
+  pagina: { width: number; height: number; background?: string | null; layers: unknown },
+  quadro?: { audio: unknown },
+): string | null {
   const { camadas, legivel } = lerCamadas(pagina.layers)
   if (!legivel) return null
+  // Só o quadro 0 COM o zoom entra no hash (`estavel` tira o `undefined`): sem
+  // movimento, sem música ou sem `quadro`, o PNG é o de sempre e o hash também.
+  const video = quadro && quadroZeroEmVideo(camadas, quadro.audio) === true ? true : undefined
   const texto = JSON.stringify(
-    estavel({ w: pagina.width, h: pagina.height, bg: pagina.background ?? null, camadas }),
+    estavel({ w: pagina.width, h: pagina.height, bg: pagina.background ?? null, camadas, video }),
   )
   return `v1:${createHash('sha256').update(texto).digest('hex').slice(0, 20)}`
 }

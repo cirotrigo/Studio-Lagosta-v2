@@ -7,6 +7,8 @@ import { Loader2 } from 'lucide-react'
 import { useOrganization } from '@clerk/nextjs'
 import { useRouter } from 'next/navigation'
 import { api } from '@/lib/api-client'
+import { avisoDeAudioDe } from '@/lib/video/audio-do-export'
+import { rotuloDoDestino } from '@/lib/video/destino-do-video'
 import { ROTULO_QUALIDADE, type QualidadeArte } from '@/lib/ai/qualidade-arte'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -1307,9 +1309,12 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
                   onImprove={() => handleImprove(generation)}
                   isImproved={Boolean(generation.sourceGenerationId)}
                   isStyleRef={styleRefLocal[generation.id] ?? Boolean(generation.styleRefAt)}
+                  destinoDoVideo={meta.isVideo ? rotuloDoDestino(generation.fieldValues) : null}
                   avisoConferencia={
                     // Texto A MAIS com dado (endereço de outro estado) vem
                     // com a conferência VERDE — por isso passa na frente.
+                    // Vídeo exportado cujo som saiu diferente do pedido
+                    (meta.isVideo ? avisoDeAudioDe(generation.fieldValues as Record<string, unknown> | null)?.motivo : undefined) ??
                     getStringField(generation.fieldValues, 'textoAMaisAlerta') ??
                     getStringField(generation.fieldValues, 'textCheckAlert') ??
                     // Frase copiada da arte de referência: vem com o texto

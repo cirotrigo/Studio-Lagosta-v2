@@ -20,7 +20,8 @@ interface UpdatePageData {
   background?: string
   audio?: PageAudioConfig | null
   order?: number
-  thumbnail?: string
+  /** `null` apaga a miniatura vencida (página editada sem captura nova). */
+  thumbnail?: string | null
 }
 
 interface PageResponse {
@@ -39,6 +40,8 @@ interface PageResponse {
   /** Temas do modelo. É por elas que `prepareCreative` acha a página a partir
    *  de uma frase — ver src/lib/creatives/arte-rapida.ts. */
   tags?: string[]
+  /** O contrato da copy (F1). A rota devolve o registro inteiro; o editor só pergunta se existe. */
+  copyAutoral?: unknown
   createdAt: string
   updatedAt: string
 }
@@ -116,6 +119,8 @@ export function useCreatePage() {
   })
 }
 
+const CAMPOS_VISUAIS = ['layers', 'background', 'width', 'height', 'audio'] as const
+
 // Mutation: Atualizar página
 export function useUpdatePage(options?: { skipInvalidation?: boolean }) {
   const queryClient = useQueryClient()
@@ -130,10 +135,21 @@ export function useUpdatePage(options?: { skipInvalidation?: boolean }) {
       pageId: string
       data: UpdatePageData
     }) => api.patch(`/api/templates/${templateId}/pages/${pageId}`, data),
-    onSuccess: (updatedPage, { templateId, pageId }) => {
+    onSuccess: (updatedPage, { templateId, pageId, data }) => {
       if (!isPageResponse(updatedPage)) {
         console.warn('[useUpdatePage] Resposta não é uma página (sessão expirada?) — cache preservado')
         return
+      }
+      // A agenda da pasta diz se o vídeo do post ficou para trás da página
+      // (`videoDesatualizado`): a mudança visual tem de chegar lá, inclusive pelo
+      // autosave — que não invalida nada. Só a página que tem post de vídeo relê.
+      if (CAMPOS_VISUAIS.some((campo) => data[campo] !== undefined)) {
+        void queryClient.invalidateQueries({
+          queryKey: ['agenda-das-paginas', templateId],
+          predicate: (q) =>
+            (q.state.data as { paginas?: Array<{ pageId: string; post: { comVideo: boolean } | null }> } | undefined)
+              ?.paginas?.some((p) => p.pageId === pageId && p.post?.comVideo) ?? false,
+        })
       }
       if (options?.skipInvalidation) {
         // Atualizar cache manualmente sem invalidar (sem re-fetch)

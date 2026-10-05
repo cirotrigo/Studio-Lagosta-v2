@@ -36,6 +36,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { KnowledgeCategory } from '@prisma/client'
 import { useProjects } from '@/hooks/use-project'
@@ -63,6 +64,16 @@ export default function OrgKnowledgePage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const projectIdParam = searchParams.get('projectId')
+  // `?category=` vem dos atalhos de "Fatos da casa" (aba Marca): filtra a lista
+  // por categoria. Valor fora do vocabulário é ignorado, nunca erro (PR14-07).
+  const categoriaDaUrl = searchParams.get('category')
+  const [categoriaFiltro, setCategoriaFiltro] = useState<KnowledgeCategory | null>(() =>
+    categoriaDaUrl && (categories as string[]).includes(categoriaDaUrl) ? (categoriaDaUrl as KnowledgeCategory) : null,
+  )
+  useEffect(() => {
+    setCategoriaFiltro(categoriaDaUrl && (categories as string[]).includes(categoriaDaUrl) ? (categoriaDaUrl as KnowledgeCategory) : null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categoriaDaUrl])
   const initialProjectFromQuery = useMemo(() => {
     const parsed = projectIdParam ? Number(projectIdParam) : null
     return parsed && !Number.isNaN(parsed) ? parsed : null
@@ -148,7 +159,7 @@ export default function OrgKnowledgePage() {
       limit: 50,
       search: search || undefined,
       projectId: hasProject ? selectedProjectId! : 0,
-      category: undefined,
+      category: categoriaFiltro ?? undefined,
     },
     { enabled: hasProject }
   )
@@ -458,6 +469,15 @@ export default function OrgKnowledgePage() {
               onChange={(e) => setSearch(e.target.value)}
               className="max-w-md"
             />
+            {categoriaFiltro && (
+              <div className="mt-2 flex items-center gap-2 text-sm">
+                <span className="text-muted-foreground">Categoria:</span>
+                <Badge variant="secondary" className="gap-1">
+                  {categoriaFiltro === 'TOM_DE_VOZ' ? 'TOM DE VOZ (legado)' : categoriaFiltro.replace(/_/g, ' ')}
+                  <button type="button" aria-label="Tirar o filtro de categoria" className="ml-1 rounded hover:bg-muted" onClick={() => setCategoriaFiltro(null)}>×</button>
+                </Badge>
+              </div>
+            )}
           </div>
 
           {/* Entries List */}

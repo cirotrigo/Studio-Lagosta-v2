@@ -1,0 +1,127 @@
+{
+  "saida": "saida/quintal-parrilla",
+  "kit": {
+    "slug": "quintal-parrilla",
+    "margem": 72,
+    "topo": 250,
+    "rodape": 1690,
+    "duracao": 8,
+    "sombra": "rgba(31,27,22,0.62)",
+    "cores": { "creme": "#F5F0E8" },
+    "fontes": {
+      "QpDomani": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/2/fonts/1759895769999-DomaniCP.otf",
+      "QpAmithen": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/2/fonts/1759895756753-Amithen.otf",
+      "QpBook": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/2/fonts/1759896042642-Acumin-Pro-Book.ttf",
+      "QpSemibold": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/2/fonts/1759895737339-Acumin-Pro-Semibold.ttf"
+    },
+    "icones": {
+      "relogio": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/2/elements/1789132901312-icone-relogio.png",
+      "local": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/2/elements/1789132907961-icone-alfinete.png"
+    },
+    "logo": {
+      "imagem": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/2/logos/1759895328790-Ativo_1logo.png",
+      "tamanho": 270,
+      "canto": "inferior-direito"
+    },
+    "filete": { "largura": 200, "altura": 3, "cor": "creme", "ponto": false },
+    "estilos": {
+      "pre": { "fonte": "QpSemibold", "tam": 30, "ls": 3, "caixaAlta": true, "cor": "creme" },
+      "titulo": { "fonte": "QpDomani", "tam": 96, "entrelinha": 1, "cor": "creme" },
+      "apoio": { "fonte": "QpBook", "tam": 38, "entrelinha": 1.25, "cor": "creme", "fonteForte": "QpSemibold", "corForte": "creme" },
+      "cta": { "fonte": "QpAmithen", "tam": 60, "cor": "creme" },
+      "servico": { "fonte": "QpBook", "tam": 32, "entrelinha": 1.6, "cor": "creme", "fonteForte": "QpSemibold", "corForte": "creme" }
+    }
+  },
+  "pecas": [
+    {
+      "id": "funcionamento-rodape",
+      "servico": [
+        { "icone": "relogio", "texto": "Segunda [das 11h às 16h]" },
+        { "icone": "relogio", "texto": "Terça a sábado [das 11h às 00h]" },
+        { "icone": "relogio", "texto": "Domingo [das 11h às 17h]" },
+        { "icone": "local", "texto": "Rua Aleixo Netto, 1158, Praia do Canto" }
+      ]
+    },
+    {
+      "id": "funcionamento-rodape-segunda",
+      "servico": [
+        { "icone": "relogio", "texto": "Funcionamento - [11h às 16h]" },
+        { "icone": "local", "texto": "Rua Aleixo Netto, 1158, Praia do Canto" }
+      ]
+    },
+    {
+      "id": "funcionamento-rodape-terca-a-sabado",
+      "servico": [
+        { "icone": "relogio", "texto": "Funcionamento - [11h às 00h]" },
+        { "icone": "local", "texto": "Rua Aleixo Netto, 1158, Praia do Canto" }
+      ]
+    },
+    {
+      "id": "funcionamento-rodape-domingo",
+      "servico": [
+        { "icone": "relogio", "texto": "Funcionamento - [11h às 17h]" },
+        { "icone": "local", "texto": "Rua Aleixo Netto, 1158, Praia do Canto" }
+      ]
+    },
+    {
+      "id": "funcionamento-seu-quintal",
+      "titulo": [{ "texto": "O encontro é" }, { "texto": "no seu Quintal", "fonte": "QpAmithen", "tam": 150, "entrelinha": 0.8 }],
+      "servico": [
+        { "icone": "relogio", "texto": "Segunda [das 11h às 16h]" },
+        { "icone": "relogio", "texto": "Terça a sábado [das 11h às 00h]" },
+        { "icone": "relogio", "texto": "Domingo [das 11h às 17h]" },
+        { "icone": "local", "texto": "Rua Aleixo Netto, 1158, Praia do Canto" }
+      ]
+    },
+    {
+      "id": "almoco-executivo-1",
+      "pre": "Almoço executivo",
+      "titulo": [{ "texto": "Seu almoço" }, { "texto": "com o melhor da parrilla", "fonte": "QpAmithen", "tam": 112, "entrelinha": 0.9 }],
+      "servico": [{ "icone": "relogio", "texto": "Segunda a sexta - [11h às 16h]" }]
+    },
+    {
+      "id": "almoco-executivo-2",
+      "pre": "Almoço é no Quintal",
+      "titulo": [{ "texto": "Pausa pro" }, { "texto": "almoço executivo", "fonte": "QpAmithen", "tam": 150, "entrelinha": 0.8 }],
+      "servico": [{ "icone": "relogio", "texto": "Segunda a sexta - [11h às 16h]" }]
+    },
+    {
+      "id": "happy-hour-1",
+      "titulo": [{ "texto": "Tem aquele" }, { "texto": "Happy Hour", "fonte": "QpAmithen", "tam": 150, "entrelinha": 0.8 }],
+      "apoio": ["Chope e drinks selecionados [em dobro]"],
+      "cta": "Junta a galera",
+      "servico": [{ "icone": "relogio", "texto": "Terça a sexta - [16h às 19h]" }]
+    },
+    {
+      "id": "happy-hour-2",
+      "pre": "Happy hour é aqui!",
+      "titulo": [{ "texto": "Fim de expediente" }, { "texto": "pede resenha", "fonte": "QpAmithen", "tam": 150, "entrelinha": 0.8 }],
+      "apoio": ["Chope e drinks selecionados [em dobro]"],
+      "servico": [{ "icone": "relogio", "texto": "Terça a sexta - [16h às 19h]" }]
+    },
+    {
+      "id": "frase-brasa-acesa",
+      "pre": "Na parrilla",
+      "titulo": [{ "texto": "A brasa" }, { "texto": "tá acesa", "fonte": "QpAmithen", "tam": 150, "entrelinha": 0.8 }]
+    },
+    {
+      "id": "frase-resenha-garantida",
+      "titulo": [{ "texto": "Resenha" }, { "texto": "garantida", "fonte": "QpAmithen", "tam": 150, "entrelinha": 0.8 }],
+      "cta": "Vem pra cá"
+    },
+    {
+      "id": "frase-junta-a-galera",
+      "alinhamento": "centro",
+      "logo": "inferior-centro",
+      "pre": "Bora pro quintal",
+      "titulo": [{ "texto": "Junta" }, { "texto": "a galera", "fonte": "QpAmithen", "tam": 150, "entrelinha": 0.8 }]
+    },
+    {
+      "id": "frase-parrilla-drinks-resenha",
+      "alinhamento": "centro",
+      "logo": "inferior-centro",
+      "titulo": [{ "texto": "Parrilla, drinks" }, { "texto": "e resenha", "fonte": "QpAmithen", "tam": 150, "entrelinha": 0.8 }],
+      "cta": "Chega mais"
+    }
+  ]
+}

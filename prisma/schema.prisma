@@ -225,6 +225,58 @@ model GenerationJob {
 }
 
 /**
+ * Identidade durável de um item de LOTE (PR 11 de "Marca simples, copy melhor",
+ * 12/09/2026). Uma linha = "o item `itemId` do lote `loteId` deste cliente".
+ * `loteId` e `itemId` vêm de QUEM CHAMA (o Claude no chat) e são estáveis entre
+ * retentativas: repetir a chamada devolve a MESMA Generation e o MESMO job.
+ * A reserva é gravada ANTES da Generation e do job (ver `src/lib/lotes/reserva.ts`).
+ * - Sem tabela de lote: o lote não tem estado próprio além dos itens, e a
+ *   retomada é por item.
+ * - `generationId`/`jobId` SEM FK (vínculo frouxo com entidade apagável,
+ *   precedente de `sourceGenerationId`); `projectId` Int solto, como em
+ *   `GenerationJob` e `LearningSignal`.
+ * - `situacao` é TEXT (`reservado` | `enfileirado`): o desfecho da peça mora na
+ *   Generation e no job, nunca numa cópia aqui.
+ */
+model ItemDeLote {
+  id            String   @id @default(cuid())
+  projectId     Int
+  loteId        String
+  itemId        String
+  /// `lote-v1:<sha256>` do payload canônico — mesma chave com hash diferente é conflito.
+  hashDoPayload String
+  /// O payload que produziu o hash (a spec normalizada), para dizer O QUE difere num conflito.
+  payload       Json
+  situacao      String   @default("reservado")
+  generationId  String?
+  jobId         String?
+  /// A revisão do item de plano (`itemRevisao` do ver-plano) que a CHAMADA declarou ter lido
+  /// ao montar a spec — gravada ao nascer e a cada vínculo, nunca lida do servidor (C11-1a).
+  /// Nula: linha sem item de plano, ou anterior à coluna.
+  planoRevisao  String?
+  /// Quantas Generations este item já criou (a retomada depois de falha cria outra).
+  tentativas    Int      @default(0)
+  /// PR 12: o rascunho que o agendamento deste item criou (ou adotou). Sem FK, como os
+  /// outros vínculos frouxos da casa — apagar o post não arrasta o registro, e o post
+  /// apagado NUNCA é recriado por repetição (POST_REMOVIDO).
+  postId                 String?
+  /// `agendamento-v1:<sha256>` do PEDIDO de agendamento como foi feito na primeira vez
+  /// (quando, tipo, legenda, lembrete, escopo, campanha). Outro pedido sob a mesma chave é
+  /// conflito; a edição que a equipe fez depois no post NÃO entra aqui.
+  hashDoAgendamento      String?
+  agendadoEm             DateTime?
+  /// Os efeitos pós-commit (sinais, pasta, item de plano) terminaram. Nulo com `postId`
+  /// preenchido = a chamada caiu entre o commit e os efeitos; a repetição os refaz.
+  efeitosDoAgendamentoEm DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([projectId, loteId, itemId])
+  @@index([generationId])
+  @@index([postId])
+}
+
+/**
  * Sinal de uso (F1) — a unidade do aprendizado por uso.
  * Uma linha = um fato: "isto foi proposto, aquilo foi escolhido". As duas
  * metades convivem na MESMA linha e qualquer uma pode estar vazia:
@@ -463,8 +515,15 @@ model ItemDePlano {
   /// Quando publicar, em UTC. Nulo enquanto o horário não foi decidido.
   quando       DateTime?
   tema         String?
-  /// Blocos de texto, como a copy da bancada (headline, apoio, CTA).
+  /// Blocos de texto, como a copy da bancada (headline, apoio, CTA). Desde
+  /// 12/09/2026 é ESPELHO de `copyAutoral` quando o contrato existe (uma linha
+  /// por bloco, na ordem de leitura); continua sendo a verdade dos itens sem
+  /// contrato, durante a transição.
   copyProposta String[]  @default([])
+  /// O contrato da copy autoral do item (`src/lib/copy-autoral`), como foi
+  /// recebido — id, função, grupo de leitura, ordem, linhas exatas, fatos,
+  /// estilo, autoria. NULL = item anterior ao contrato (F1, 12/09/2026).
+  copyAutoral  Json?
   legenda      String?
   fotoUrl      String?
   fotoDriveId  String?
@@ -648,10 +707,14 @@ model Project {
   specimenFontFamilies        String[]                @default([])
   chatUploads                 ChatUpload[]
   brandDNA                    BrandDNA?
+  brandVoice                  BrandVoice?
   anchorImages                ProjectAnchorImage[]
   contentPillars              ContentPillar[]
   laterAccountId              String?
   laterProfileId              String?
+  /// Conta de LinkedIn no Zernio (mesmo perfil). Preenchida → post de feed e
+  /// carrossel saem também no LinkedIn, com a mesma legenda. Story não vai.
+  laterLinkedinAccountId      String?
   postingProvider             PostingProvider?        @default(ZAPIER)
   brandStyleDescription       String?
   brandVisualElements         Json?
@@ -740,6 +803,29 @@ model BrandDNA {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   Project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+/// A VOZ COMPACTA da marca (F2/F5 de "Marca simples, copy melhor", PR 7,
+/// 12/09/2026): como a marca fala, em campos curtos e versionados — o que o
+/// Claude lê antes de escrever. Substitui `BrandDNA.toneOfVoice`/`contentRules`
+/// na COPY quando o cliente foi MIGRADO (`migradaEm`); até lá o legado continua
+/// mandando. A precedência mora num lugar só (`src/lib/brand/voz.ts`).
+/// Migration aditiva; nenhum conteúdo é migrado sozinho (isso é o PR 13, por
+/// manifesto e com o olho do Ciro).
+model BrandVoice {
+  id           Int       @id @default(autoincrement())
+  projectId    Int       @unique
+  /// Versão do CONTEÚDO: sobe a cada gravação. É o que a prévia da migração cita e o que a escrita confere (compare-and-set).
+  versao       Int       @default(1)
+  /// A voz em si — contrato `voz-v1` (descrição, tratamento, exemplos, antes→depois, termos, proibições, regras com escopo e substituição).
+  voz          Json
+  /// Quando a voz nova passou a valer para este cliente. Nula = ainda no legado (o DNA continua mandando na copy).
+  migradaEm    DateTime?
+  /// Snapshot SOMENTE LEITURA do DNA de texto no momento da migração (toneOfVoice, contentRules, versão do DNA) — o caminho de volta.
+  dnaArquivado Json?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  Project      Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
 
 /// Anchor sheet do projeto: fotos-âncora canônicas por tipo de cena, usadas
@@ -1054,6 +1140,11 @@ model Page {
   /// Última vez usada como base de uma arte. NULL = nunca usada — e por isso
   /// o rodízio precisa de `nulls: 'first'` explícito (ASC é NULLS LAST no PG).
   lastUsedAt     DateTime?
+  /// O contrato da copy autoral desta peça (`src/lib/copy-autoral`), gravado
+  /// ANTES de qualquer adaptação e revisado a cada mudança de texto com autor,
+  /// data e motivo. NULL = página anterior ao contrato ou sem copy (modelo,
+  /// arte enviada) — nunca é backfillado por inferência (F1, 12/09/2026).
+  copyAutoral    Json?
   Template       Template     @relation(fields: [templateId], references: [id], onDelete: Cascade)
   scheduledPosts SocialPost[]
 
@@ -1429,6 +1520,9 @@ model VideoProcessingJob {
   completedAt     DateTime?
   creditsDeducted Boolean               @default(false)
   creditsUsed     Int                   @default(10)
+  /// Quantas vezes o job foi reservado (o arrendamento). A recuperação devolve
+  /// à fila o job preso enquanto houver tentativa; esgotado, vira FAILED.
+  attempts        Int                   @default(0)
   generationId    String?               @unique
   audioFadeIn     Float?
   audioFadeOut    Float?
@@ -1515,6 +1609,10 @@ model SocialPost {
   renderAttempts       Int                @default(0)
   nextRenderAt         DateTime?
   renderError          String?
+  /// O post é o VÍDEO da página: a mídia é um MP4 exportado dela, e nenhum
+  /// caminho pode trocá-la pelo render (imagem parada) da página. Marca
+  /// persistente: sobrevive à mídia apagada ou trocada à mão (`postDeVideo`).
+  videoDaPagina        Boolean            @default(false)
   // Escopo de aprendizado (ver enum LearningScope). Marcado POR ITEM: uma leva
   // normal mistura rotina, campanha e post pontual.
   learningScope        LearningScope      @default(ROTINA)

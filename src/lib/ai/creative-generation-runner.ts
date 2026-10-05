@@ -13,7 +13,7 @@
  * em fieldValues — o registro atômico que permite aprender com cada run.
  */
 
-import { portaDoFallback } from './contexto-visual-da-geracao'
+import { corpoDoMoldeDaPorta } from './contexto-visual-da-geracao'
 import { criarControleDoDiretor, RESERVA_PARA_GERAR_MS, tempoParaGerar } from './controle-do-diretor'
 
 import sharp from 'sharp'
@@ -26,7 +26,8 @@ import { generateImageWithGemini } from '@/lib/ai/gemini-image-client'
 import { loadBrandContext } from '@/lib/brand/brand-context'
 import { getBrandReferenceCard } from '@/lib/ai/brand-reference-card'
 import { renderTypeSpecimen } from '@/lib/ai/type-specimen'
-import { verifyImageTexts } from '@/lib/ai/creative-text-verification'
+import { verifyImageTexts, type TextCheckResult } from '@/lib/ai/creative-text-verification'
+import { comConferencia, comEnviada, conferenciaDoCheck, enviadaNoPrompt, registroParaIA, type CopyAutoral } from '@/lib/copy-autoral'
 import {
   buildArtePrompt,
   buildImagePromptViaLLM,
@@ -74,8 +75,7 @@ import { pedirNovaTentativa } from '@/lib/ai/generation-queue'
 import { registrarUsoDeFoto } from '@/lib/creatives/uso-de-foto'
 import { qualidadePadraoPara, type QualidadeArte } from '@/lib/ai/qualidade-arte'
 import { modeloLivre } from '@/lib/ai/modelo-livre'
-import { montarPromptDaReferencia } from '@/lib/ai/prompt-da-referencia'
-import { cantoDaLogoDoEstilo, montarPromptDoManual } from '@/lib/ai/prompt-do-manual'
+import { cantoDaLogoDoEstilo } from '@/lib/ai/prompt-do-manual'
 import { MAX_ANCHOR_REFS } from '@/lib/ai/image-prompt-builder'
 import type { FeatureKey } from '@/lib/credits/feature-config'
 
@@ -179,6 +179,8 @@ export interface ArtGenerationJobArgs {
   track: GenerationTrack
   pedido: string
   copy: string[]
+  /** O contrato da copy autoral de que `copy` foi derivado (F1, PR 5) — grava original × enviada × conferência. */
+  copyAutoral?: CopyAutoral | null
   instrucaoImagem: string | null
   /**
    * Co-branding: o cliente CITADO na peça. A logo oficial dele (tabela Logo do
@@ -294,6 +296,8 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
   const deadlineDaGeracao = startedAt + BACKGROUND_BUDGET_MS - FINALIZE_RESERVE_MS
   const controleDiretor = criarControleDoDiretor(deadlineDaGeracao - RESERVA_PARA_GERAR_MS)
   let textCheckInfo: Record<string, unknown> = { textCheck: 'skipped' }
+  /** A última conferência por visão desta run — vira `copyAutoral.conferencia` (F1). */
+  let ultimoCheck: TextCheckResult | null = null
   let promptUsado: string | null = null
   /** O que o diretor de arte fez nesta run (F6, 05/09/2026) — vai para o fieldValues. */
   let plannerGeracaoInfo: Record<string, unknown> = { diretor: controleDiretor.registro }
@@ -926,27 +930,17 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
           cantoParaCompor =
             (porta === 'manual' ? cantoDaLogoDoEstilo(brand?.estiloDasReferencias ?? null) : null) ?? LOGO_CORNER
         }
-        const fallbackPorta = portaDoFallback(porta, referenciaSoParaODiretor)
-        const corpoDaPorta =
-          fallbackPorta === 'referencia'
-            ? montarPromptDaReferencia({
-                marca: brand?.projectName ?? 'the brand',
-                copy: copyDaPorta,
-                formato: args.formato,
-                logoColadaDepois: !!logoParaCompor,
-                layoutLivre: modeloLivre(args.projectId),
-                instrucaoImagem: args.instrucaoImagem,
-                pedido: args.pedido,
-              })
-            : montarPromptDoManual({
-                brand: brand!,
-                estilo: brand?.estiloDasReferencias ?? null,
-                copy: copyDaPorta,
-                formato: args.formato,
-                instrucaoImagem: args.instrucaoImagem,
-                pedido: args.pedido,
-                logo: logoParaCompor ? { modo: 'compor', canto: cantoParaCompor ?? LOGO_CORNER } : { modo: 'modelo' },
-              })
+        const { fallbackPorta, corpo: corpoDaPorta } = corpoDoMoldeDaPorta({
+          porta,
+          referenciaSoParaODiretor,
+          brand,
+          copy: copyDaPorta,
+          formato: args.formato,
+          cantoDaLogoColada: logoParaCompor ? (cantoParaCompor ?? LOGO_CORNER) : null,
+          layoutLivre: modeloLivre(args.projectId),
+          instrucaoImagem: args.instrucaoImagem,
+          pedido: args.pedido,
+        })
         plannerGeracaoInfo = { ...plannerGeracaoInfo, porta, fallbackPorta, planejador: 'fallback' }
         // O que é MECÂNICO vai colado ao fim, onde pesa mais — o canto da
         // marca (quem cola é o código) e a safe area em PIXEL da peça real.
@@ -1160,6 +1154,7 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
           brand?.projectName ?? null,
         )
         const checkMs = Date.now() - checkStartedAt
+        ultimoCheck = check
         attemptsLog.push({ attempt, generationMs, checkMs, passed: check.passed, missing: check.missing })
         console.log(
           `[arte-ia.bg] tentativa ${attempt}: geração ${(generationMs / 1000).toFixed(1)}s, checagem ${(checkMs / 1000).toFixed(1)}s → ${check.passed ? 'texto OK' : `divergente (${check.missing.length})`}`,
@@ -1524,6 +1519,21 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       ...logoInfo,
       ...marcaDoClienteInfo,
       ...textCheckInfo,
+      // F1: o contrato do autor, o que FOI ao modelo (caixa da marca aplicada)
+      // e o que a visão leu de volta — a via de IA não tem camadas, e o
+      // registro diz isso em vez de fingir uma efetiva.
+      ...(args.copyAutoral
+        ? {
+            // `enviada` é lida do PROMPT que saiu (PR5-10): o prompt pronto de
+            // quem chamou vai verbatim, e os moldes colapsam espaços — gravar a
+            // caixa da marca como enviada atribuía ao gerador uma diferença que
+            // nasceu no registro.
+            copyAutoral: comConferencia(
+              comEnviada(registroParaIA(args.copyAutoral, null), enviadaNoPrompt(promptUsado, [copyComCaixaDaMarca(args.copy, brand), args.copy])),
+              conferenciaDoCheck(ultimoCheck, ultimoCheck ? 'copy' : `nenhuma (${String(textCheckInfo.textCheckReason ?? 'a conferência não rodou')})`),
+            ),
+          }
+        : {}),
     })
 
     await db.generation.update({

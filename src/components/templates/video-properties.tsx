@@ -11,6 +11,11 @@ import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { useBlobUpload } from '@/hooks/use-blob-upload'
 import { useToast } from '@/hooks/use-toast'
+import { videoPrincipal } from '@/lib/video/camadas-de-video'
+import { linhaDoTempo } from '@/lib/video/linha-do-tempo'
+import { duracoesDosVideosMontados } from '@/lib/video/videos-montados'
+import { useRelogioDaPagina } from '@/lib/video/relogio-da-pagina'
+import { useMultiPageOpcional } from '@/contexts/multi-page-context'
 
 const formatSeconds = (value: number) => {
   const mins = Math.floor(value / 60)
@@ -36,6 +41,9 @@ export function VideoProperties() {
   const { selectedLayerId, design, updateLayer } = useTemplateEditor()
   const { toast } = useToast()
   const { upload: uploadToBlob, isUploading: isUploadingPoster } = useBlobUpload()
+  // Todo vídeo segue o relógio da página: o painel comanda o relógio, não o
+  // elemento (play/pause/seek chegam ao <video> pelo tique do VideoNode)
+  const { relogio, estado: relogioEstado } = useRelogioDaPagina(useMultiPageOpcional()?.currentPageId)
 
   const selectedLayer = React.useMemo(
     () => design.layers.find((layer) => layer.id === selectedLayerId) ?? null,
@@ -47,6 +55,12 @@ export function VideoProperties() {
   if (!selectedLayer || selectedLayer.type !== 'video') return null
 
   const metadata = selectedLayer.videoMetadata || {}
+  // Motion: vídeo com fundo transparente por cima da página. Quando não é o
+  // vídeo principal (há um vídeo de fundo, ou outro motion antes dele sobre a
+  // foto), ele só acompanha: play, loop e duração são os do principal.
+  const motion = metadata.overlay === true
+  const principal = videoPrincipal(design.layers)
+  const acompanhaVideoDeFundo = motion && !!principal && principal.id !== selectedLayer.id
   const fullDuration = metadata.duration && metadata.duration > 0 ? metadata.duration : null
   const trimStart = metadata.trimStart ?? 0
   const trimEnd = metadata.trimEnd ?? fullDuration ?? 0
@@ -61,37 +75,14 @@ export function VideoProperties() {
       ? Math.min(trimmedDuration, musicSliceDuration)
       : trimmedDuration ?? musicSliceDuration
 
-  const handleTogglePlay = () => {
-    // Dispatch custom event to control video playback
-    window.dispatchEvent(
-      new CustomEvent('video-control', {
-        detail: {
-          layerId: selectedLayer.id,
-          action: metadata.autoplay ? 'pause' : 'play',
-        },
-      }),
-    )
+  // Instante da PÁGINA em que este vídeo entra: 0 fora da linha do tempo; num
+  // clipe, o início dele (o relógio é da página inteira, não do clipe)
+  const inicioNaPagina =
+    linhaDoTempo(design.layers, null, duracoesDosVideosMontados()).clipes.find((c) => c.id === selectedLayer.id)?.inicio ?? 0
 
-    updateLayer(selectedLayer.id, (layer) => ({
-      ...layer,
-      videoMetadata: {
-        ...metadata,
-        autoplay: !metadata.autoplay,
-      },
-    }))
-  }
+  const handleTogglePlay = () => relogio.alternar()
 
   const handleToggleMute = () => {
-    window.dispatchEvent(
-      new CustomEvent('video-control', {
-        detail: {
-          layerId: selectedLayer.id,
-          action: 'mute',
-          value: !metadata.muted,
-        },
-      }),
-    )
-
     updateLayer(selectedLayer.id, (layer) => ({
       ...layer,
       videoMetadata: {
@@ -101,44 +92,12 @@ export function VideoProperties() {
     }))
   }
 
-  const handleToggleLoop = () => {
-    window.dispatchEvent(
-      new CustomEvent('video-control', {
-        detail: {
-          layerId: selectedLayer.id,
-          action: 'loop',
-          value: !metadata.loop,
-        },
-      }),
-    )
-
+  const handleToggleMotion = () => {
     updateLayer(selectedLayer.id, (layer) => ({
       ...layer,
       videoMetadata: {
         ...metadata,
-        loop: !metadata.loop,
-      },
-    }))
-  }
-
-  const handlePlaybackRateChange = (value: number[]) => {
-    const newRate = value[0]
-
-    window.dispatchEvent(
-      new CustomEvent('video-control', {
-        detail: {
-          layerId: selectedLayer.id,
-          action: 'playbackRate',
-          value: newRate,
-        },
-      }),
-    )
-
-    updateLayer(selectedLayer.id, (layer) => ({
-      ...layer,
-      videoMetadata: {
-        ...metadata,
-        playbackRate: newRate,
+        overlay: !motion,
       },
     }))
   }
@@ -157,12 +116,8 @@ export function VideoProperties() {
     if (!fullDuration) return
     const [start, rawEnd] = values
     const end = Math.max(start + 0.5, rawEnd) // trecho mínimo de 0,5s
-    // Reposiciona o preview no início do trecho para o usuário ver o corte
-    window.dispatchEvent(
-      new CustomEvent('video-control', {
-        detail: { layerId: selectedLayer.id, action: 'seek', value: start },
-      }),
-    )
+    // Mostra o corte: alça do início → página em 0; alça do fim → último quadro
+    relogio.ir(inicioNaPagina + (start !== trimStart ? 0 : Math.max(0, end - start - 0.05)))
     updateLayer(
       selectedLayer.id,
       (layer) => ({
@@ -178,13 +133,8 @@ export function VideoProperties() {
     )
   }
 
-  const handleSeekPreview = (values: number[]) => {
-    window.dispatchEvent(
-      new CustomEvent('video-control', {
-        detail: { layerId: selectedLayer.id, action: 'seek', value: values[0] },
-      }),
-    )
-  }
+  // O slider é no tempo do ARQUIVO; o relógio é da página (o clipe entra em `inicioNaPagina`)
+  const handleSeekPreview = (values: number[]) => relogio.ir(inicioNaPagina + values[0] - trimStart)
 
   const handleCapturePoster = async () => {
     const video = findLayerVideoElement(selectedLayer.id)
@@ -196,29 +146,29 @@ export function VideoProperties() {
       return
     }
     try {
-      video.pause()
+      relogio.pausar()
       const canvas = document.createElement('canvas')
       canvas.width = video.videoWidth
       canvas.height = video.videoHeight
       const ctx = canvas.getContext('2d')
       if (!ctx) throw new Error('Canvas 2D indisponível')
       ctx.drawImage(video, 0, 0)
-      const blob = await new Promise<Blob | null>((resolve) =>
-        canvas.toBlob(resolve, 'image/jpeg', 0.85),
-      )
+      // Motion tem fundo transparente: PNG preserva; JPEG pintaria de preto
+      const tipo = motion ? 'image/png' : 'image/jpeg'
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, tipo, 0.85))
       if (!blob) throw new Error('Falha ao capturar o frame')
-      const file = new File([blob], `poster-${selectedLayer.id}.jpg`, { type: 'image/jpeg' })
+      const file = new File([blob], `poster-${selectedLayer.id}.${motion ? 'png' : 'jpg'}`, { type: tipo })
       const posterUrl = await uploadToBlob(file)
       updateLayer(selectedLayer.id, (layer) => ({
         ...layer,
         videoMetadata: { ...metadata, posterUrl },
       }))
-      toast({ title: 'Capa definida', description: 'O frame atual virou a capa do vídeo.' })
+      toast({ title: 'Prévia definida', description: 'Este quadro aparece quando a página não está aberta.' })
     } catch (error) {
       console.error('[VideoProperties] Falha ao capturar poster:', error)
       toast({
         variant: 'destructive',
-        description: error instanceof Error ? error.message : 'Falha ao capturar a capa.',
+        description: error instanceof Error ? error.message : 'Falha ao capturar o quadro.',
       })
     }
   }
@@ -228,21 +178,39 @@ export function VideoProperties() {
       <div className="flex items-center justify-between">
         <span className="font-semibold">Controles de Vídeo</span>
         <span className="rounded-full bg-primary/10 px-2 py-[2px] text-[10px] font-semibold uppercase text-primary">
-          Video
+          {motion ? 'Motion' : 'Video'}
         </span>
       </div>
 
-      {/* Play/Pause */}
+      {/* Motion */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="space-y-0.5">
+          <Label className="text-[11px] uppercase tracking-wide">Motion (fundo transparente)</Label>
+          <p className="text-[10px] text-muted-foreground">
+            {!motion
+              ? 'Ligue quando o arquivo for uma animação com fundo transparente, para ficar por cima da página'
+              : acompanhaVideoDeFundo
+                ? 'Fica por cima, acompanha o vídeo principal da página, toca uma vez e segura o último quadro'
+                : 'Fica por cima da foto; o vídeo final tem a duração do motion'}
+          </p>
+        </div>
+        <Switch checked={motion} onCheckedChange={handleToggleMotion} />
+      </div>
+
+      <Separator className="my-3" />
+
+      {/* Play/Pause da PÁGINA (todos os vídeos e a música andam juntos) */}
       <div className="space-y-2">
-        <Label className="text-[11px] uppercase tracking-wide">Reprodução</Label>
+        <Label className="text-[11px] uppercase tracking-wide">Reprodução da página</Label>
         <div className="flex gap-2">
           <Button
             variant="outline"
             size="sm"
             onClick={handleTogglePlay}
+            disabled={relogioEstado.modo === 'gravacao'}
             className="flex-1 gap-2"
           >
-            {metadata.autoplay ? (
+            {relogioEstado.tocando ? (
               <>
                 <Pause className="h-4 w-4" />
                 Pausar
@@ -268,45 +236,9 @@ export function VideoProperties() {
             )}
           </Button>
         </div>
-      </div>
-
-      <Separator className="my-3" />
-
-      {/* Loop */}
-      <div className="flex items-center justify-between">
-        <div className="space-y-0.5">
-          <Label className="text-[11px] uppercase tracking-wide">Loop Contínuo</Label>
-          <p className="text-[10px] text-muted-foreground">Repetir vídeo automaticamente</p>
-        </div>
-        <Switch
-          checked={metadata.loop ?? true}
-          onCheckedChange={handleToggleLoop}
-        />
-      </div>
-
-      <Separator className="my-3" />
-
-      {/* Velocidade */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Label className="text-[11px] uppercase tracking-wide">Velocidade de Reprodução</Label>
-          <span className="text-sm font-medium text-muted-foreground">
-            {(metadata.playbackRate || 1).toFixed(2)}x
-          </span>
-        </div>
-        <Slider
-          value={[metadata.playbackRate || 1]}
-          onValueChange={handlePlaybackRateChange}
-          min={0.25}
-          max={2}
-          step={0.25}
-          className="w-full"
-        />
-        <div className="flex justify-between text-[10px] text-muted-foreground">
-          <span>0.25x</span>
-          <span>1x</span>
-          <span>2x</span>
-        </div>
+        <p className="text-[10px] text-muted-foreground">
+          No fim da página a prévia volta ao início. Espaço também toca e pausa.
+        </p>
       </div>
 
       <Separator className="my-3" />
@@ -338,7 +270,7 @@ export function VideoProperties() {
       ) : null}
 
       {/* Duração efetiva + limite do Instagram */}
-      {effectiveDuration !== null && (
+      {effectiveDuration !== null && !acompanhaVideoDeFundo && (
         <div className="rounded-md bg-muted/50 p-2 text-[11px]">
           <div className="flex justify-between">
             <span className="text-muted-foreground">Duração do export:</span>
@@ -360,12 +292,12 @@ export function VideoProperties() {
 
       <Separator className="my-3" />
 
-      {/* Posição do preview + capa */}
+      {/* Quadro que representa a página quando ela não está aberta */}
       {fullDuration ? (
         <div className="space-y-2">
-          <Label className="text-[11px] uppercase tracking-wide">Capa do vídeo</Label>
+          <Label className="text-[11px] uppercase tracking-wide">Prévia no editor</Label>
           <Slider
-            defaultValue={[trimStart]}
+            value={[Math.min(trimEnd, trimStart + relogioEstado.t)]}
             onValueChange={handleSeekPreview}
             min={trimStart}
             max={trimEnd}
@@ -373,7 +305,7 @@ export function VideoProperties() {
             className="w-full"
           />
           <p className="text-[10px] text-muted-foreground">
-            Arraste para escolher o frame e capture como capa
+            Quadro mostrado quando a página não está aberta. Não vai para o Instagram.
           </p>
           <div className="flex items-center gap-2">
             <Button
@@ -388,12 +320,12 @@ export function VideoProperties() {
               ) : (
                 <Camera className="h-3.5 w-3.5" />
               )}
-              Usar frame atual como capa
+              Usar o quadro atual
             </Button>
             {metadata.posterUrl && (
               <img
                 src={metadata.posterUrl}
-                alt="Capa do vídeo"
+                alt="Prévia do vídeo"
                 className="h-9 w-9 rounded border border-border/40 object-cover"
               />
             )}
@@ -417,12 +349,16 @@ export function VideoProperties() {
       {/* Object Fit */}
       <div className="space-y-2">
         <Label className="text-[11px] uppercase tracking-wide">Ajuste no Frame</Label>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="flex gap-2 [&>button]:flex-1">
           {[
             { value: 'cover' as const, label: 'Cover', description: 'Preencher' },
             { value: 'contain' as const, label: 'Contain', description: 'Ajustar' },
             { value: 'fill' as const, label: 'Fill', description: 'Esticar' },
-          ].map((fit) => {
+          ]
+            // "Contain" desenha esticado, igual a "Fill": só aparece em camada
+            // antiga que já o usa, para a pessoa poder sair dele.
+            .filter((fit) => fit.value !== 'contain' || metadata.objectFit === 'contain')
+            .map((fit) => {
             const isActive = (metadata.objectFit ?? 'cover') === fit.value
             return (
               <button

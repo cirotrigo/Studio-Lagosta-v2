@@ -58,6 +58,12 @@ export const toolsDeModelos = [
         .string()
         .optional()
         .describe('URL pública da imagem de fundo. Tem prioridade sobre _driveImageId.'),
+      copyAutoral: z
+        .record(z.string(), z.unknown())
+        .optional()
+        .describe(
+          'O CONTRATO da copy autoral (F1), como em compor-arte: {versao: "copy-autoral-v1", origem: {autor: "claude", superficie: "chat"}, blocos: [{id, funcao (pre|headline|apoio|cta|servico), ordem, linhas EXATAS}], revisoes: []}. Com ele, os campos do modelo são casados por PAPEL (não por posição) — mande também os slotValues das chaves reservadas (_driveImageId/_imageUrl) e nada de texto; o bloco sem campo no modelo é AVISADO, nunca perdido, e a arte grava a copy escrita × desenhada (ver-geracao).',
+        ),
     }),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     acesso: { tipo: 'projeto' },
@@ -68,10 +74,33 @@ export const toolsDeModelos = [
         import('../tools'),
       ])
       const projectId = args.projectId as number
-      return createArteRapida({
+      // F1 (PR 5): com contrato, os campos de TEXTO do modelo são casados por
+      // papel aqui (o modelo lê camadas; a tool não recebe a lista dele) e os
+      // avisos do casamento voltam junto da arte.
+      let slotValues = (args.slotValues ?? {}) as Record<string, unknown>
+      let avisosDaCopy: string[] = []
+      if (args.copyAutoral && typeof args.copyAutoral === 'object') {
+        const [{ lerCopyAutoral }, { mapearContratoParaCampos }, { camposDeTextoDaPagina }] = await Promise.all([
+          import('../../copy-autoral'),
+          import('../../planos/execucao'),
+          import('../../planos/executar-plano'),
+        ])
+        const lido = lerCopyAutoral(args.copyAutoral)
+        if (!lido.copy) {
+          const { CreativeError } = await import('../../creatives/errors')
+          throw new CreativeError('COPY_AUTORAL_INVALIDA', `O contrato da copy é inválido: ${lido.problemas.join('; ')}`, 400, { problemas: lido.problemas })
+        }
+        const campos = await camposDeTextoDaPagina(args.sourcePageId as string)
+        const mapa = mapearContratoParaCampos(campos, lido.copy)
+        const reservadas = Object.fromEntries(Object.entries(slotValues).filter(([k]) => k.startsWith('_')))
+        slotValues = { ...reservadas, ...mapa.slotValues, ...Object.fromEntries(mapa.ocultar.map((id) => [id, { hidden: true }])) }
+        avisosDaCopy = mapa.avisos
+      }
+      const arte = await createArteRapida({
         projectId,
         sourcePageId: args.sourcePageId as string,
-        slotValues: (args.slotValues ?? {}) as Record<string, unknown>,
+        slotValues,
+        ...(args.copyAutoral && typeof args.copyAutoral === 'object' ? { copyAutoral: args.copyAutoral } : {}),
         name: args.name as string | undefined,
         imageUrl: args.imageUrl as string | undefined,
         decididoPor: await quemDecidiu(projectId, principal),
@@ -79,6 +108,7 @@ export const toolsDeModelos = [
         createdBy: (await quemDecidiu(projectId, principal)) ?? null,
         canal: canalDoPrincipal(principal),
       })
+      return avisosDaCopy.length > 0 ? { ...arte, avisos: [...(arte.avisos ?? []), ...avisosDaCopy] } : arte
     },
   }),
 

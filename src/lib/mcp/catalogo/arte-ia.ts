@@ -261,6 +261,8 @@ export const toolsDeArteIA = [
         { checkTextGeometry },
         { parseLayers },
         sharpModulo,
+        { blocosAMais },
+        { copyDaArte },
       ] = await Promise.all([
         import('../../db'),
         import('../../creatives/errors'),
@@ -271,6 +273,8 @@ export const toolsDeArteIA = [
         import('../../creatives/text-geometry'),
         import('../../creatives/arte-rapida'),
         import('sharp'),
+        import('../../ai/text-comparison'),
+        import('./ver-geracao-retorno'),
       ])
       const sharp = sharpModulo.default
       const projectId = args.projectId as number
@@ -278,6 +282,8 @@ export const toolsDeArteIA = [
       let url: string | null = null
       let textRefGenerationId: string | null = null
       let pageIdRef: string | null = null
+      /** O `fieldValues` da arte conferida — é onde mora o contrato da copy (F1). */
+      let fvDaArte: Record<string, unknown> | null = null
 
       if (typeof args.generationId === 'string' && args.generationId) {
         const gen = await db.generation.findFirst({
@@ -290,6 +296,7 @@ export const toolsDeArteIA = [
         url = gen.resultUrl
         textRefGenerationId = gen.id
         const fv = (gen.fieldValues ?? {}) as Record<string, unknown>
+        fvDaArte = fv
         pageIdRef =
           typeof fv.pageId === 'string'
             ? fv.pageId
@@ -307,6 +314,10 @@ export const toolsDeArteIA = [
         url = post.mediaUrls?.[0] ?? null
         textRefGenerationId = post.generationId
         pageIdRef = post.pageId
+        if (post.generationId) {
+          const gen = await db.generation.findUnique({ where: { id: post.generationId }, select: { fieldValues: true } })
+          fvDaArte = (gen?.fieldValues ?? null) as Record<string, unknown> | null
+        }
       } else {
         throw new Error('Informe generationId ou postId.')
       }
@@ -329,10 +340,18 @@ export const toolsDeArteIA = [
       let verificacaoTexto: Record<string, unknown> | string = 'sem-referencia'
       if (args.verificarTextos !== false && expected.length > 0) {
         try {
-          const check = await verifyImageTexts(buffer, expected)
+          const projeto = await db.project.findUnique({ where: { id: projectId }, select: { name: true } })
+          const check = await verifyImageTexts(buffer, expected, [], projeto?.name ?? null)
+          // A metade que faltava (F1): o que a visão leu A MAIS (com dado é
+          // alerta), e a grafia que só casou com tolerância. Avisa, nunca veta.
+          const aMais = blocosAMais(check.extracted, expected, projeto?.name ?? null)
+          const extras = {
+            ...(aMais.comDado.length > 0 || aMais.semDado.length > 0 ? { textoAMais: aMais } : {}),
+            ...(check.grafiaDivergente.length > 0 ? { grafiaDivergente: check.grafiaDivergente } : {}),
+          }
           verificacaoTexto = check.passed
-            ? { resultado: 'ok', textosConferidos: expected.length }
-            : { resultado: 'divergente', faltando: check.missing, transcricao: check.extracted.slice(0, 20) }
+            ? { resultado: 'ok', textosConferidos: expected.length, transcricao: check.extracted.slice(0, 20), ...extras }
+            : { resultado: 'divergente', faltando: check.missing, transcricao: check.extracted.slice(0, 20), ...extras }
         } catch (erro) {
           verificacaoTexto = `indisponivel: ${erro instanceof Error ? erro.message : String(erro)}`
         }
@@ -377,11 +396,14 @@ export const toolsDeArteIA = [
 
       const resultado =
         typeof verificacaoTexto === 'object' ? (verificacaoTexto.resultado as string) : null
+      const copy = copyDaArte(fvDaArte)
       const resumo = {
         url,
         largura: meta.width ?? null,
         altura: meta.height ?? null,
         verificacaoTexto,
+        // F1: a copy escrita × enviada/desenhada × lida, quando a arte tem contrato.
+        ...(copy ? { copy } : {}),
         dica:
           resultado === 'sobreposicao'
             ? 'As camadas apontadas estão impressas uma sobre a outra — a leitura falhou por isso, não porque o texto não existe. Encurte o texto com ajustar-arte ou use outro modelo.'
@@ -609,11 +631,42 @@ export const toolsDeArteIA = [
         : null
       const daPagina = montarRetornoDaPagina({ fieldValues: fv, pagina, appUrl: getPublicAppUrl(), projectId, concluida: gen.status === 'COMPLETED' })
 
+      // VÍDEO exportado da página: a página de origem e o destino moram em
+      // `videoDaPagina` (nunca em `fieldValues.pageId`, que é "arte da página").
+      // O vínculo é texto num JSON: a página é conferida contra o projeto.
+      const { lerVideoDaPagina } = await import('../../video/destino-do-video')
+      const video = lerVideoDaPagina(fv)
+      const paginaDoVideo = video
+        ? await db.page.findFirst({
+            where: { id: video.pageId, Template: { projectId } },
+            select: { id: true, name: true, templateId: true },
+          })
+        : null
+      const doVideo = video
+        ? {
+            video: {
+              paginaDeOrigem: paginaDoVideo
+                ? {
+                    pageId: paginaDoVideo.id,
+                    nome: paginaDoVideo.name,
+                    editUrl: `${getPublicAppUrl()}/templates/${paginaDoVideo.templateId}/editor?pageId=${encodeURIComponent(paginaDoVideo.id)}`,
+                  }
+                : null,
+              destino: video.destino.tipo,
+              ...(video.destino.tipo === 'substituir' ? { postId: video.destino.postId } : {}),
+              ...(video.postId ? { postId: video.postId } : {}),
+              ...(video.resultado ? { resultadoDoDestino: video.resultado } : {}),
+              ...(video.aviso ? { aviso: video.aviso } : {}),
+            },
+          }
+        : {}
+
       if (gen.status === 'PROCESSING') {
         const decorrido = Math.round((Date.now() - gen.createdAt.getTime()) / 1000)
         return {
           situacao: 'em-andamento',
           ...daPagina,
+          ...doVideo,
           decorridoSegundos: decorrido,
           mensagem:
             decorrido > 300
@@ -643,6 +696,7 @@ export const toolsDeArteIA = [
           situacao: 'pronta',
           url: gen.resultUrl,
           ...daPagina,
+          ...doVideo,
           verificacaoTexto: fv.textCheck ?? 'skipped',
           ...(typeof fv.regua === 'string' ? { regua: fv.regua } : {}),
           // Aviso vermelho primeiro: texto a mais com dado (endereço, horário)
@@ -661,6 +715,7 @@ export const toolsDeArteIA = [
       return {
         situacao: 'falhou',
         ...daPagina,
+        ...doVideo,
         motivo: typeof fv.error === 'string' ? fv.error : 'Erro desconhecido',
         ...(falha.detalhes ? { detalhes: falha.detalhes } : {}),
         verificacaoTexto: fv.textCheck ?? undefined,
@@ -689,6 +744,12 @@ export const toolsDeArteIA = [
         .optional()
         .describe(
           'Trilha arte: os blocos de texto EXATOS da peça, na ordem de leitura (máx 12 blocos de 200 chars). As PALAVRAS são reproduzidas verbatim e conferidas por visão; a CAIXA das letras, não — quem decide se a manchete sai em caixa alta é a identidade da marca. Escreva em caixa natural ("Desacelere e desfrute"), deixando em maiúsculas só sigla, unidade, valor e o nome da marca.',
+        ),
+      copyAutoral: z
+        .record(z.string(), z.unknown())
+        .optional()
+        .describe(
+          'Trilha arte: o CONTRATO da copy autoral (F1), como em compor-arte: {versao: "copy-autoral-v1", origem: {autor: "claude", superficie: "chat"}, blocos: [{id, funcao (pre|headline|apoio|cta|servico), ordem, linhas EXATAS}], revisoes: []}. Com ele `copy` é dispensável (e, se vier, tem de bater com os blocos); as linhas do autor viram quebras no prompt. A arte grava a copy escrita × enviada × lida por visão (ver-geracao e conferir-arte mostram).',
         ),
       formato: z.enum(FORMATOS).describe('story 9:16, feed 4:5, quadrado 1:1.'),
       referencias: z
@@ -747,6 +808,7 @@ export const toolsDeArteIA = [
         copy: Array.isArray(args.copy)
           ? args.copy.filter((b: unknown): b is string => typeof b === 'string')
           : undefined,
+        ...(args.copyAutoral && typeof args.copyAutoral === 'object' ? { copyAutoral: args.copyAutoral } : {}),
         formato,
         referencias: lerReferencias(args.referencias),
         instrucaoImagem: typeof args.instrucaoImagem === 'string' ? args.instrucaoImagem : null,

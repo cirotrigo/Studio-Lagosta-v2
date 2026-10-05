@@ -7,6 +7,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import type { BrandContext } from '@/lib/brand/brand-context'
+import { SEM_VOZ } from '@/lib/brand/voz'
 import type { EstiloDasReferencias } from '@/lib/brand/estilo-das-referencias'
 import { cantoDaLogoDoEstilo, coresDaPeca, montarPromptDoManual } from '../prompt-do-manual'
 
@@ -27,6 +28,7 @@ function marca(projectId: number, projectName: string): BrandContext {
     logoUrl: null,
     brandManualUrl: 'https://blob/manual.png',
     artDirection: null,
+    voz: SEM_VOZ,
   }
 }
 

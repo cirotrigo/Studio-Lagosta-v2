@@ -148,6 +148,18 @@ describe('linhas da copy nos textos', () => {
       [1, ['das 11h às 15h']],
       [2, ['Rua Aleixo Netto, 1158']],
     ])
+    // PR3-R11-02: cada texto diz QUAIS posições do bloco do autor ele desenha.
+    // Aqui o arranjo INVERTE (o endereço é a linha 0 do autor e vai para o
+    // texto de baixo), e é esta lista que devolve a ordem do autor na leitura
+    // da copy efetiva — sem ela, editar as duas linhas invertia o contrato.
+    expect(r.map((p) => p.indicesDoBloco)).toEqual([[0], [1], [0]])
+  })
+
+  it('a posição do autor viaja quando quem chama já repartiu o bloco (segunda voz, grupos)', () => {
+    // `compor.ts` tira a última linha da manchete para a voz 2 e reparte o
+    // serviço entre grupos: o índice local deixa de ser a posição no bloco.
+    const r = distribuirLinhas(arranjoDoGrupo(), [{ papel: 'servico', linhas: ['Rua Aleixo Netto, 1158'], indicesDoBloco: [3] }])
+    expect(r.map((p) => [p.indice, p.indicesDoBloco])).toEqual([[2, [3]]])
   })
 
   it('linha que sobra entra no último texto usado; texto sem linha some', () => {
@@ -156,6 +168,7 @@ describe('linhas da copy nos textos', () => {
       [1, ['das 11h às 15h']],
       [2, ['Rua Aleixo Netto, 1158', 'Reserve pelo direct']],
     ])
+    expect(tres.map((p) => p.indicesDoBloco)).toEqual([[0], [1, 2]])
     const uma = distribuirLinhas(arranjoDoGrupo(), [{ papel: 'servico', linhas: ['das 11h às 15h'] }])
     expect(uma.map((p) => p.indice)).toEqual([1])
   })
@@ -177,6 +190,19 @@ describe('escolha do arranjo', () => {
   it('o arranjo gravado na spec é mantido na recomposição', () => {
     const r = escolherArranjo([pagina, comCta, doTema], { papeis: ['headline', 'servico'], tema: 'almoço executivo', chave: 'k', preferidos: ['combinacao:a'] })
     expect(r?.arranjo.id).toBe('combinacao:a')
+  })
+  it('R15: a fixação guarda o GRUPO — dois grupos com combinações elegíveis distintas recebem cada um o seu arranjo; a string nua (legado) vale para qualquer grupo; grupo sem entrada cai no legado ou no rodízio', () => {
+    const a = { ...comCta, id: 'combinacao:a', nome: 'A' }
+    const b = { ...comCta, id: 'combinacao:b', nome: 'B' }
+    const fixados = [{ grupo: 'g-topo', arranjo: 'combinacao:a' }, { grupo: 'g-rodape', arranjo: 'combinacao:b' }]
+    expect(escolherArranjo([pagina, a, b], { papeis: ['headline', 'servico'], chave: 'k', grupo: 'g-topo', preferidos: fixados })!.arranjo.id).toBe('combinacao:a')
+    expect(escolherArranjo([pagina, a, b], { papeis: ['headline', 'servico'], chave: 'k', grupo: 'g-rodape', preferidos: fixados })!.arranjo.id).toBe('combinacao:b')
+    // legado: id nu vale para qualquer grupo
+    expect(escolherArranjo([pagina, a, b], { papeis: ['headline', 'servico'], chave: 'k', grupo: 'g-rodape', preferidos: ['combinacao:a'] })!.arranjo.id).toBe('combinacao:a')
+    // grupo sem entrada e sem legado: não é "mantido"
+    expect(escolherArranjo([pagina, a, b], { papeis: ['headline', 'servico'], chave: 'k', grupo: 'g-outro', preferidos: fixados })!.motivo).not.toMatch(/mantido/)
+    // entrada do grupo apontando para arranjo que não cobre os papéis: ignorada, cai no legado
+    expect(escolherArranjo([pagina, a, b], { papeis: ['headline', 'servico'], chave: 'k', grupo: 'g-topo', preferidos: [{ grupo: 'g-topo', arranjo: 'combinacao:inexistente' }, 'combinacao:b'] })!.arranjo.id).toBe('combinacao:b')
   })
 
   it('empate vira rodízio determinístico entre a página e as combinações', () => {

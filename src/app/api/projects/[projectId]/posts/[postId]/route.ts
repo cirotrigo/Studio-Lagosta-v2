@@ -10,6 +10,9 @@ import type { UpdateLaterPostPayload } from '@/lib/later/types'
 import { LaterNotFoundError } from '@/lib/later/errors'
 import { registrarEdicaoDeLegenda } from '@/lib/aprendizado/sinal-de-legenda'
 import { refilarPaginasDoPost } from '@/lib/compositor/pastas'
+import { comTemplateDaPagina } from '@/lib/posts/template-do-post'
+import { postDeVideo } from '@/lib/posts/post-de-video'
+import { estadoDoVideoDosPosts } from '@/lib/video/estado-do-video-do-post'
 
 const areStringArraysEqual = (left?: string[] | null, right?: string[] | null) => {
   const leftValue = left ?? []
@@ -73,6 +76,8 @@ export async function GET(
       where: { id: postId },
       include: {
         Generation: true,
+        // O template ATUAL da página, para o "Editar Template" (comTemplateDaPagina).
+        PageRef: { select: { templateId: true } },
       },
     })
 
@@ -80,7 +85,14 @@ export async function GET(
       return NextResponse.json({ error: 'Post not found' }, { status: 404 })
     }
 
-    return NextResponse.json(post)
+    // Post de VÍDEO: se a página mudou depois dele e como anda a substituição
+    // pedida pelo editor — o que o detalhe do post mostra.
+    const estado = postDeVideo(post) ? (await estadoDoVideoDosPosts(projectId, [post])).get(post.id) : undefined
+
+    return NextResponse.json({
+      ...comTemplateDaPagina(post),
+      ...(estado ? { videoDesatualizado: estado.videoDesatualizado, substituicao: estado.substituicao } : {}),
+    })
   } catch (error) {
     console.error('Error fetching post:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

@@ -65,10 +65,14 @@ pilares da carteira têm modelo, então isso acontece com frequência.
 2. `compor-arte` (uma peça) ou `compor-leva` (a semana).
 **Copy primeiro, campos depois** (regra do Ciro, 11/09/2026): os campos são
 opcionais, a mensagem decide quais blocos a peça precisa e nenhum texto é
-descartado por falta de campo. Até a camada extra (F3) existir: deixe o campo
-vazio, escolha a variante que tem o campo, ou use `criar-arte` com
-`textosLivres`; papel que a variante não tem volta como `PAPEIS_INCOMPATIVEIS`,
-nunca some. Todos os 10 restaurantes têm assinatura cadastrada.
+descartado por falta de campo. Quando a variante não tem o campo de um texto,
+declare de que papel ele herda o estilo (`herdaDe`): ele entra como **camada
+extra** — a tipografia daquele papel, sem virar esse papel, com `id` próprio e
+o lugar dado por `grupoVisual` (`principal`, `topo` ou `rodape`); texto sem
+papel nenhum vai em `camadasExtras` (ou bloco `livre` com `estilo.herdaDe` no
+contrato). A camada extra é editável e sobrevive a editar, trocar a foto e
+recompor. Papel sem `herdaDe` que a variante não tem volta como
+`PAPEIS_INCOMPATIVEIS`, nunca some. Todos os 10 restaurantes têm assinatura cadastrada.
 
 **`ia`** — o gpt-image desenha a peça inteira.
 `gerar-imagem` para uma peça; para uma leva, `criar-plano` + `executar-plano`

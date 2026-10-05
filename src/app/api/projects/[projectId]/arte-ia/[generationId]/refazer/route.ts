@@ -9,6 +9,7 @@ import type { ArtGenerationReference } from '@/lib/ai/creative-generation-runner
 import { enfileirarArte } from '@/lib/ai/generation-queue'
 import { dispararJobAgora } from '@/lib/ai/generation-queue-executor'
 import { QUALIDADES_OFERECIDAS, lerQualidade } from '@/lib/ai/qualidade-arte'
+import { origemDoCarimbo } from '@/lib/brand/voz-na-escrita'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -70,7 +71,7 @@ export async function POST(
     // O `projectId` no where é o que impede refazer arte de outro cliente.
     const original = await db.generation.findFirst({
       where: { id: generationId, projectId },
-      select: { fieldValues: true },
+      select: { fieldValues: true, createdAt: true },
     })
     if (!original) {
       return NextResponse.json({ error: 'Arte não encontrada' }, { status: 404 })
@@ -130,6 +131,8 @@ export async function POST(
        * clicar duas vezes no mesmo botão reaproveita em vez de cobrar duas.
        */
       dedupeWindowMinutes: 10,
+      // PR 15 (C15-05): a copy é a da arte antiga — o carimbo da voz é o de quando ela foi escrita.
+      ...origemDoCarimbo(original),
     })
 
     if (started.runnerArgs) {
