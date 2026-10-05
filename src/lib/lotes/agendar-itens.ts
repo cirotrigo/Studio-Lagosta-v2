@@ -34,6 +34,7 @@
  */
 
 import { db } from '@/lib/db'
+import { recusaComoImagem } from '@/lib/video/pagina-com-video'
 import { CreativeError } from '@/lib/creatives/errors'
 import {
   contextoDosEfeitos,
@@ -566,7 +567,11 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
       const existente = (await ctx.leitor.socialPost.findUnique({ where: { id: antes.postId }, select: SELECAO_DO_POST })) as Post | null
       if (existente) return concluido(ctx, itemId, 'adotado', existente, antes.peca, antes.pagina, avisos)
     }
-    const paginaCrua = await ctx.leitor.page.findUnique({ where: { id: pageId }, select: { thumbnail: true, layers: true, width: true, height: true, background: true } })
+    const paginaCrua = await ctx.leitor.page.findUnique({ where: { id: pageId }, select: { thumbnail: true, layers: true, audio: true, width: true, height: true, background: true } })
+    // A chamada de verdade recusa página com vídeo ou música em resolverAgendamento; a
+    // simulação tem de dar a mesma resposta.
+    const recusa = paginaCrua ? recusaComoImagem(paginaCrua.layers, paginaCrua.audio) : null
+    if (recusa) return falhou(itemId, { codigo: recusa.codigo, motivo: recusa.mensagem }, { pageId })
     const atual = !!paginaCrua && thumbnailEhAtual({ thumbnail: paginaCrua.thumbnail ?? null, resultUrl: antes.peca.resultUrl, pagina: paginaCrua, versaoRenderizada: antes.peca.versaoRenderizada })
     return {
       itemId,
@@ -636,7 +641,9 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
         resolucao = await resolverAgendamento(input, {
           leitor: tx,
           ingerir: false,
-          aceitarThumbnail: (p) => thumbnailEhAtual({ thumbnail: p.thumbnail, resultUrl: sob.peca.resultUrl, pagina: p, versaoRenderizada: sob.peca.versaoRenderizada }),
+          // Sem áudio de propósito: resolverAgendamento recusa página com música
+          // (recusaComoImagem) antes de perguntar pelo thumbnail.
+          aceitarThumbnail: (p) => thumbnailEhAtual({ thumbnail: p.thumbnail, resultUrl: sob.peca.resultUrl, pagina: { ...p, audio: null }, versaoRenderizada: sob.peca.versaoRenderizada }),
         })
         const criado = await criarPostDoAgendamento(tx, resolucao)
         postId = criado.id

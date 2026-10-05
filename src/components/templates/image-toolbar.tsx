@@ -13,11 +13,14 @@ import {
 import { FlipHorizontal2, FlipVertical2, Expand, Shapes, Ban, Crop } from 'lucide-react'
 import { SHAPES_LIBRARY } from '@/lib/assets/shapes-library'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
+import { paginaEVideo } from '@/lib/video/camadas-de-video'
+import { MovimentoDaFoto } from './movimento-da-foto'
 
 /**
  * ImageToolbar - Toolbar contextual de imagem (estilo Polotno)
  *
- * [Flip H] [Flip V] [Ajustar à página] | [Máscara ▾] | Opacidade
+ * [Flip H] [Flip V] [Ajustar à página] | [Máscara ▾] | [Movimento ▾] | Opacidade
+ * (Movimento só em foto de página-vídeo; a barra é a mesma no celular)
  * (o botão Recortar chega junto do crop in-canvas)
  */
 
@@ -160,6 +163,13 @@ export function ImageToolbar({ selectedLayer, onUpdateLayer }: ImageToolbarProps
             </PopoverContent>
           </Popover>
         </div>
+
+        {/* Movimento (só foto, só em página-vídeo) */}
+        {selectedLayer.type === 'image' && paginaEVideo(design.layers, design.audio) && (
+          <div className="flex items-center gap-1 pr-2 border-r border-border/40 flex-shrink-0">
+            <MovimentoDaFoto camada={selectedLayer} />
+          </div>
+        )}
 
         {/* Opacidade */}
         <div className="flex items-center gap-2 flex-shrink-0">

@@ -52,8 +52,14 @@ export function editarPostHref(projectId: number | string, postId: string): stri
  * as rotas que servem o post o resolvem (`comTemplateDaPagina`); a coluna do
  * post fica para trás quando a página muda de pasta.
  */
-export function editarTemplateHref(post: { templateId: number | null; pageId: string | null }): string {
-  return `/templates/${post.templateId}/editor?pageId=${encodeURIComponent(post.pageId ?? '')}&from=agenda`
+export function editarTemplateHref(
+  post: { templateId: number | null; pageId: string | null },
+  opcoes: { postId?: string } = {},
+): string {
+  // Com o `postId` o editor sabe de QUAL post veio — é o que oferece
+  // "Substituir vídeo na agenda" na página-vídeo.
+  const doPost = opcoes.postId ? `&postId=${encodeURIComponent(opcoes.postId)}` : ''
+  return `/templates/${post.templateId}/editor?pageId=${encodeURIComponent(post.pageId ?? '')}&from=agenda${doPost}`
 }
 
 /**

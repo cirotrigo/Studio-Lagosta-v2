@@ -59,9 +59,10 @@ import { DuplicateDialog } from './duplicate-dialog'
 import { ApprovePostsDialog } from './approve-posts-dialog'
 import { ImproveCreativeModal } from '@/components/creatives/improve-creative-modal'
 import { toast } from 'sonner'
-import { getPostDate, formatPostDateTimeBR } from '../calendar/calendar-utils'
+import { getPostDate, formatPostDateTimeBR, isVideoUrl } from '../calendar/calendar-utils'
 import { descreverJanela } from '@/lib/posts/freeze-window'
 import { editarTemplateHref, publicarLembreteHref } from '@/lib/agenda-routes'
+import type { Substituicao } from '@/lib/video/estado-do-video-do-post'
 import type { SocialPost } from '../../../../prisma/generated/client'
 import Image from 'next/image'
 import { cn, isExternalImage } from '@/lib/utils'
@@ -82,11 +83,6 @@ interface PostDetailViewProps {
   /** Tooltips das setas — "seg 31/08 16:00", para saber para onde vai. */
   rotuloAnterior?: string | null
   rotuloProximo?: string | null
-}
-
-const isVideoUrl = (url: string) => {
-  const videoExtensions = ['.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v']
-  return videoExtensions.some((ext) => url.toLowerCase().includes(ext))
 }
 
 /**
@@ -169,12 +165,23 @@ export function PostDetailView({
     },
   })
 
-  const isTemplateBased = !!post.pageId && post.postType === 'STORY'
   const mediaUrls = (post.mediaUrls?.length
     ? post.mediaUrls
     : post.renderedImageUrl
       ? [post.renderedImageUrl]
       : []) as string[]
+  // Story ou reel de VÍDEO feito de uma página: abre no editor para gerar o
+  // vídeo novo e trocar o deste post ("Substituir vídeo na agenda").
+  const ehVideoDaPagina =
+    !!post.pageId &&
+    (post.postType === 'STORY' || post.postType === 'REEL') &&
+    (post.videoDaPagina || (mediaUrls.length > 0 && isVideoUrl(mediaUrls[0])))
+  const isTemplateBased = !!post.pageId && (post.postType === 'STORY' || ehVideoDaPagina)
+  const editarHref = editarTemplateHref(post, ehVideoDaPagina ? { postId: post.id } : {})
+  const rotuloEditar = ehVideoDaPagina ? 'Editar vídeo' : 'Editar Template'
+  // Só o GET do post traz estes dois (a lista da agenda não).
+  const estadoDoVideo = post as SocialPost & { videoDesatualizado?: boolean; substituicao?: Substituicao | null }
+  const substituicao = ehVideoDaPagina ? estadoDoVideo.substituicao ?? null : null
   const isCarousel = post.postType === 'CAROUSEL' && mediaUrls.length > 1
   const isStory = post.postType === 'STORY' || post.postType === 'REEL'
   const gerandoArte =
@@ -872,6 +879,42 @@ export function PostDetailView({
               </div>
             )}
 
+            {/*
+              O vídeo de um post feito de página não acompanha a página: só
+              troca quando alguém gera o novo. Sem estes avisos a pessoa edita
+              e acha que a agenda já mostra a edição.
+            */}
+            {ehVideoDaPagina && substituicao?.estado === 'em-producao' && (
+              <div className="flex items-center gap-2 rounded-md border bg-muted/30 p-3 text-sm">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Vídeo novo em produção — ele troca o deste post quando ficar pronto.
+              </div>
+            )}
+            {ehVideoDaPagina && substituicao?.estado === 'feita' && (
+              <div className="rounded-md border border-emerald-400/50 bg-emerald-50 p-3 text-sm text-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-200">
+                Vídeo substituído em {new Date(substituicao.em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}.
+              </div>
+            )}
+            {ehVideoDaPagina && (substituicao?.estado === 'recusada' || substituicao?.estado === 'falhou') && (
+              <div className="rounded-md border border-amber-400/60 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/20 dark:text-amber-200">
+                <div className="font-semibold">Não substituído: {substituicao.motivo}</div>
+                <p className="mt-1 text-xs">
+                  {substituicao.estado === 'recusada'
+                    ? 'O vídeo novo ficou pronto e está na '
+                    : 'O vídeo novo não ficou pronto. Veja na '}
+                  <Link className="underline" href={`/projects/${post.projectId}?tab=criativos`}>
+                    aba Criativos
+                  </Link>
+                  .
+                </p>
+              </div>
+            )}
+            {ehVideoDaPagina && estadoDoVideo.videoDesatualizado && substituicao?.estado !== 'em-producao' && (
+              <div className="rounded-md border border-amber-400/60 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/20 dark:text-amber-200">
+                A página mudou depois deste vídeo — abra no editor para substituir.
+              </div>
+            )}
+
             {/* Rascunho: o estado mais fácil de confundir com "vai publicar" */}
             {isRascunho && (
               <div className="rounded-md border border-amber-400/60 bg-amber-50 p-3 text-sm dark:bg-amber-950/20">
@@ -1054,7 +1097,7 @@ export function PostDetailView({
                 title="A arte já foi enviada para publicação. Volte o post para rascunho para poder editá-la."
               >
                 <Lock className="mr-2 h-4 w-4" />
-                Editar Template
+                {rotuloEditar}
               </Button>
             ) : (
               <Button
@@ -1063,9 +1106,9 @@ export function PostDetailView({
                 className="hidden flex-1 sm:flex sm:min-w-[9rem] lg:flex-none"
                 asChild
               >
-                <Link href={editarTemplateHref(post)}>
+                <Link href={editarHref}>
                   <Paintbrush className="mr-2 h-4 w-4" />
-                  Editar Template
+                  {rotuloEditar}
                 </Link>
               </Button>
             )
@@ -1114,13 +1157,13 @@ export function PostDetailView({
                 janela.congelado ? (
                   <DropdownMenuItem className="sm:hidden" disabled>
                     <Lock className="mr-2 h-4 w-4" />
-                    Editar Template
+                    {rotuloEditar}
                   </DropdownMenuItem>
                 ) : (
                   <DropdownMenuItem className="sm:hidden" asChild>
-                    <Link href={editarTemplateHref(post)}>
+                    <Link href={editarHref}>
                       <Paintbrush className="mr-2 h-4 w-4" />
-                      Editar Template
+                      {rotuloEditar}
                     </Link>
                   </DropdownMenuItem>
                 )

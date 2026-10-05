@@ -12,9 +12,18 @@
  * render" de um post que é — a edição da página deixaria de chegar a ele em
  * silêncio, que é o defeito que isto existe para evitar.
  *
+ * VÍDEO nunca é coberto: o render da página é imagem. Devolver à fila um post
+ * cuja mídia é o MP4 exportado apagaria o vídeo e, como o render recusa página
+ * com vídeo, o post terminaria em falha de publicação. Medido em 02/10/2026:
+ * zero posts com página e mídia de vídeo em produção — a porta fecha antes de
+ * o caminho ganhar uso.
+ *
  * Módulo puro: a invalidação (Prisma) e a recomposição (`defasagem.ts`) fazem a
  * MESMA pergunta, e as duas metades divergirem é o defeito de origem.
  */
+import { isVideoUrl } from '../media-type'
+
 export function renderDaPaginaCobreAMidia(mediaUrls: readonly unknown[] | null | undefined): boolean {
-  return (mediaUrls?.length ?? 0) <= 1
+  const midias = mediaUrls ?? []
+  return midias.length <= 1 && !midias.some((u) => typeof u === 'string' && isVideoUrl(u))
 }

@@ -25,6 +25,7 @@ import { z } from 'zod'
 
 import type { Layer } from '@/types/template'
 import { lerCamadas } from '@/lib/posts/page-layers'
+import { problemasDosClipes } from '@/lib/video/linha-do-tempo'
 
 export const TIPOS_DE_CAMADA = [
   'text',
@@ -97,6 +98,8 @@ export function validarCamadas(entrada: unknown): ValidacaoDeCamadas {
     const motivos = r.error.issues.map((p) => `${p.path.join('.') || '(raiz)'}: ${p.message}`).join('; ')
     problemas.push(`camada ${id}: ${motivos}`)
   })
+  // Linha do tempo (Fase 3): duração de foto fora de [0,5; 60] s e mais de 10 clipes
+  problemas.push(...problemasDosClipes(validas))
   return { camadas: validas, problemas }
 }
 

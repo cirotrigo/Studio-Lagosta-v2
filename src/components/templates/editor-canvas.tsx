@@ -12,6 +12,10 @@ import { ImageToolbar } from './image-toolbar'
 import { EffectsPanel } from '@/components/canvas/effects'
 import { AlignmentToolbar } from './alignment-toolbar'
 import { RichTextEditorHost } from './rich-text-editor-host'
+import { MotorDaPagina } from './motor-da-pagina'
+import { useMultiPageOpcional } from '@/contexts/multi-page-context'
+import { paginaEVideo } from '@/lib/video/camadas-de-video'
+import { relogioDaPagina } from '@/lib/video/relogio-da-pagina'
 import { getRichTextEditRequest } from './rich-text-edit-store'
 import { ZoomControls } from './zoom-controls'
 import { useEditorViewMode } from '@/hooks/use-editor-view-mode'
@@ -95,6 +99,7 @@ export function EditorCanvas() {
     getStageInstance,
   } = useTemplateEditor()
   const { viewMode } = useEditorViewMode()
+  const relogio = relogioDaPagina(useMultiPageOpcional()?.currentPageId)
   const isMobile = useIsMobile()
   // Mobile fica sempre no modo página única (auto-fit/pinch/drawer próprios)
   const isContinuous = viewMode === 'continuous' && !isMobile
@@ -213,6 +218,14 @@ export function EditorCanvas() {
       // Modo de recorte: Enter/Esc são do overlay; nada de deletar/mover aqui
       if (croppingLayerId) return
 
+      // Espaço toca/pausa a página com vídeo (como num player)
+      if (e.key === ' ' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        if (!paginaEVideo(design.layers, design.audio)) return
+        e.preventDefault()
+        relogio.alternar()
+        return
+      }
+
       // Cmd+G agrupa a seleção; Cmd+Shift+G desagrupa. O navegador usaria os
       // dois para "localizar próximo/anterior" — o preventDefault segura.
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'g') {
@@ -263,6 +276,8 @@ export function EditorCanvas() {
   }, [
     selectedLayerIds,
     design.layers,
+    design.audio,
+    relogio,
     duplicateLayer,
     removeLayer,
     moveLayer,
@@ -316,6 +331,7 @@ export function EditorCanvas() {
       {/* Editor de Rich Text — precisa ficar AQUI, na árvore DOM do app, para
           herdar QueryClient/tema/contexto do editor */}
       <RichTextEditorHost />
+      <MotorDaPagina />
 
       {/* Zona de toolbars com altura FIXA — o canvas nunca se move ao selecionar uma camada */}
       <div

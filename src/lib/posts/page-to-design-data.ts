@@ -14,6 +14,7 @@
 
 import type { DesignData, Layer } from '@/types/template'
 import { lerCamadas } from './page-layers'
+import { videosDaPagina } from '@/lib/video/camadas-de-video'
 
 interface PageRecord {
   id: string
@@ -22,6 +23,8 @@ interface PageRecord {
   height: number
   layers: unknown // Json field from Prisma
   background?: string | null
+  /** Page.audio: com música a página é vídeo, e a foto em movimento sai no quadro de 0 */
+  audio?: unknown
 }
 
 /**
@@ -37,6 +40,7 @@ export function convertPageToDesignData(page: PageRecord): DesignData {
       backgroundColor: page.background ?? '#ffffff',
     },
     layers,
+    audio: (page.audio ?? null) as DesignData['audio'],
   }
 }
 
@@ -138,7 +142,10 @@ export function findUnmatchedSlotKeys(
  * na criação de post template-based e no story-renderer.
  */
 export function pageContainsVideoLayer(layers: unknown): boolean {
-  return camadasDaPagina(layers).some((layer) => layer?.type === 'video')
+  // Camada oculta não conta: o render a pula, então a página é uma imagem.
+  // Sequência só de fotos renderiza (o quadro de 0); quem a impede de ir ao ar
+  // como imagem é `recusaComoImagem`.
+  return videosDaPagina(camadasDaPagina(layers)).length > 0
 }
 
 /**

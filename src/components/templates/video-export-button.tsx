@@ -2,7 +2,8 @@
 
 import * as React from 'react'
 import Image from 'next/image'
-import { Download, Loader2, Film, AlertCircle, Music } from 'lucide-react'
+import { Download, Loader2, Film, AlertCircle, Music, CheckCircle2 } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@clerk/nextjs'
 import {
@@ -16,6 +17,8 @@ import {
 import { Progress } from '@/components/ui/progress'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { useToast } from '@/hooks/use-toast'
 import { useCredits } from '@/hooks/use-credits'
@@ -23,12 +26,27 @@ import {
   exportVideoWithLayers,
   checkVideoExportSupport,
   type VideoExportProgress,
-  generateVideoThumbnail,
 } from '@/lib/konva/konva-video-export'
 import { AudioSelectionModal, type AudioConfig } from '@/components/audio/audio-selection-modal'
-import Konva from 'konva'
 import { upload } from '@vercel/blob/client'
 import { createId } from '@/lib/id'
+import { duracaoDaPagina, paginaEVideo, videoPrincipal } from '@/lib/video/camadas-de-video'
+import { trechosDeVideo } from '@/lib/video/plano-de-som'
+import { useMultiPageOpcional } from '@/contexts/multi-page-context'
+import { relogioDaPagina } from '@/lib/video/relogio-da-pagina'
+import { api } from '@/lib/api-client'
+import { usePageSync } from './page-sync-wrapper'
+import { useAgendaDasPaginas } from '@/hooks/use-agenda-das-paginas'
+import { useHorariosTipicos } from '@/hooks/use-horarios-tipicos'
+import { rotuloCurto } from '@/lib/posts/quando'
+import {
+  antecedenciaParaGravar,
+  motivoDaRecusa,
+  quandoInicialDoVideo,
+  tiposPermitidos,
+  type DestinoDoVideo,
+  type ResultadoDoDestino,
+} from '@/lib/video/destino-do-video'
 
 const sanitizeFileName = (name: string) =>
   name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'video'
@@ -48,26 +66,113 @@ async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
   return await response.blob()
 }
 
-export function VideoExportButton() {
+const doisDigitos = (n: number) => String(n).padStart(2, '0')
+/** O valor do `<input type="datetime-local">`: horário LOCAL de quem clica. */
+const paraCampo = (d: Date) =>
+  `${d.getFullYear()}-${doisDigitos(d.getMonth() + 1)}-${doisDigitos(d.getDate())}T${doisDigitos(d.getHours())}:${doisDigitos(d.getMinutes())}`
+
+type EscolhaDeDestino = 'agenda' | 'galeria' | 'substituir'
+
+interface StatusDoJob {
+  status: string
+  progress?: number | null
+  generationId?: string | null
+  mp4ResultUrl?: string | null
+  thumbnailUrl?: string | null
+  errorMessage?: string | null
+  destino?: { tipo: string; postId: string | null; aviso: string | null; resultado: ResultadoDoDestino | null } | null
+}
+
+interface GerarVideo {
+  /**
+   * Abre o diálogo de gerar vídeo. Com `pageId` de outra página, troca para
+   * ela antes (a gravação é sempre da página aberta); `destino` é o que vem
+   * marcado (a faixa da página pede agenda ou substituição).
+   */
+  abrir: (opcoes?: { pageId?: string; destino?: EscolhaDeDestino }) => void
+  /** Sem crédito ou navegador que não grava: o botão aparece desabilitado. */
+  indisponivel: boolean
+}
+
+const GerarVideoContext = React.createContext<GerarVideo | null>(null)
+
+/**
+ * O contexto ÚNICO de gerar vídeo do editor: os botões do cabeçalho, da tela
+ * cheia, do menu do celular, do "Agendar" do modo clássico e da faixa da
+ * página abrem o MESMO diálogo, com o mesmo destino. `null` fora do editor.
+ */
+export function useGerarVideo(): GerarVideo | null {
+  return React.useContext(GerarVideoContext)
+}
+
+/** O botão de sempre — só abre o diálogo do contexto. */
+export function VideoExportButton({ aoAbrir }: { aoAbrir?: () => void } = {}) {
+  const gerar = useGerarVideo()
+  const { design } = useTemplateEditor()
+  if (!gerar || !paginaEVideo(design.layers, design.audio)) return null
+  return (
+    <Button
+      onClick={() => {
+        aoAbrir?.()
+        gerar.abrir()
+      }}
+      variant="default"
+      size="sm"
+      className="gap-2"
+      disabled={gerar.indisponivel}
+    >
+      <Film className="h-4 w-4" />
+      Exportar Vídeo
+    </Button>
+  )
+}
+
+export function GerarVideoProvider({
+  postIdDaAgenda,
+  aoEnfileirar,
+  children,
+}: {
+  /** O editor veio da agenda a partir deste post: o destino já é substituir o vídeo dele. */
+  postIdDaAgenda?: string
+  /** Chamado quando a fila respondeu com o job (o editor vindo da agenda volta para lá). */
+  aoEnfileirar?: (destino: DestinoDoVideo) => void
+  children: React.ReactNode
+}) {
   const editorContext = useTemplateEditor()
   const { design, zoom, templateId, projectId, getStageInstance } = editorContext
   const designName =
     typeof (design as { name?: string }).name === 'string' ? (design as { name?: string }).name! : 'Sem título'
   const { toast } = useToast()
+  const queryClient = useQueryClient()
   const { userId: clerkUserId } = useAuth()
   const { canPerformOperation, getCost, credits } = useCredits()
+  const pageSync = usePageSync()
 
-  const videoLayer = design.layers.find((layer) => layer.type === 'video')
-  const hasVideo = !!videoLayer
+  // O vídeo de fundo dita duração e som; na página que só tem motion (motion
+  // sobre foto) o próprio motion dita a duração e não há som original. Sem
+  // vídeo nenhum, a MÚSICA faz a página virar vídeo: o stage parado é gravado
+  // pela fatia dela. Numa sequência, o som original é o de cada clipe de
+  // vídeo (Fase 4) — `trechosDeVideo` é a mesma pergunta que a fila faz.
+  const videoLayer = videoPrincipal(design.layers)
+  const paginaVideo = paginaEVideo(design.layers, design.audio)
+  const semSomOriginal = trechosDeVideo(design.layers).length === 0
+  const multiPage = useMultiPageOpcional()
+  const currentPageId = multiPage?.currentPageId ?? null
+  // A gravação é sobre UM design parado: editar, desfazer ou trocar de página
+  // no meio cancela com motivo (lidos por ref, no laço do export)
+  const designRef = React.useRef(design)
+  designRef.current = design
+  const currentPageIdRef = React.useRef(currentPageId)
+  currentPageIdRef.current = currentPageId
 
   const [isOpen, setIsOpen] = React.useState(false)
   const [isExporting, setIsExporting] = React.useState(false)
   const [exportProgress, setExportProgress] = React.useState<VideoExportProgress | null>(null)
-  const [exportFormat, setExportFormat] = React.useState<'webm' | 'mp4'>('mp4')
+  // Depois que a fila responde com o job: o que vai acontecer com o vídeo
+  const [naFila, setNaFila] = React.useState<string | null>(null)
 
   // Estados para configuração de áudio
   const [isAudioModalOpen, setIsAudioModalOpen] = React.useState(false)
-  const [videoDuration, setVideoDuration] = React.useState<number | null>(null)
   const DEFAULT_AUDIO_CONFIG = React.useMemo<AudioConfig>(
     () => ({
       source: 'original',
@@ -103,143 +208,103 @@ export function VideoExportButton() {
     selectedLayerIdsRef.current = editorContext.selectedLayerIds
   }, [editorContext.selectedLayerIds])
 
-  // Obter duração real do vídeo através do Konva Stage
+  // A duração é a da PÁGINA como vídeo (a mesma conta do export): o trecho do
+  // vídeo principal limitado pela música, ou só a fatia da música. A do vídeo
+  // vem da própria camada (o VideoNode grava videoMetadata.duration).
+  const videoDuration = duracaoDaPagina(design.layers, design.audio)
   React.useEffect(() => {
-    if (!videoLayer) {
-      console.log('[Video Export] ❌ videoLayer não existe')
-      return
-    }
-
-    console.log('[Video Export] 🔍 Iniciando detecção de duração do vídeo...')
-    console.log('[Video Export] VideoLayer ID:', videoLayer.id)
-    console.log('[Video Export] VideoLayer fileUrl:', videoLayer.fileUrl)
-
-    let attempts = 0
-    const maxAttempts = 30
-    const retryDelay = 300
-
-    const findAndUpdateDuration = () => {
-      attempts++
-      console.log(`[Video Export] 🔎 Tentativa ${attempts}/${maxAttempts}`)
-
-      // Buscar o vídeo através do Konva Stage
-      const findVideoFromKonva = (): HTMLVideoElement | null => {
-        // Tentar encontrar o stage Konva
-        const stages = (Konva as typeof Konva).stages
-        console.log('[Video Export] 📦 Konva.stages disponíveis:', stages?.length || 0)
-
-        if (!stages || stages.length === 0) {
-          console.log('[Video Export] ⚠️ Nenhum Konva Stage encontrado')
-          return null
-        }
-
-        // Procurar em todos os stages
-        for (const stage of stages) {
-          // Buscar o Image node com o ID do videoLayer
-          const node = stage.findOne(`#${videoLayer.id}`)
-
-          if (node) {
-            console.log('[Video Export] 🎯 Konva node encontrado:', videoLayer.id)
-
-            // Verificar se é realmente um Konva.Image antes de chamar .image()
-            if (node instanceof Konva.Image) {
-              console.log('[Video Export] ✅ Node é um Konva.Image')
-
-              // Pegar o elemento de vídeo HTML do Konva Image
-              const videoElement = node.image() as HTMLVideoElement
-
-              if (videoElement && videoElement.tagName === 'VIDEO') {
-                console.log('[Video Export] ✅ Elemento de vídeo obtido do Konva Image:', {
-                  src: videoElement.src?.substring(0, 50) + '...',
-                  duration: videoElement.duration,
-                  readyState: videoElement.readyState,
-                })
-                return videoElement
-              } else {
-                console.log('[Video Export] ⚠️ Image node não contém vídeo válido')
-              }
-            } else {
-              console.log('[Video Export] ⚠️ Node encontrado mas não é um Konva.Image:', node.getType())
-            }
-          }
-        }
-
-        console.log('[Video Export] ❌ Vídeo não encontrado em nenhum Konva Stage')
-        return null
-      }
-
-      const videoElement = findVideoFromKonva()
-
-      if (!videoElement) {
-        if (attempts < maxAttempts) {
-          console.log(`[Video Export] ⏳ Aguardando ${retryDelay}ms antes da próxima tentativa...`)
-          setTimeout(findAndUpdateDuration, retryDelay)
-        } else {
-          console.error('[Video Export] ❌ Elemento de vídeo não encontrado após', maxAttempts, 'tentativas')
-        }
-        return
-      }
-
-      const updateDuration = () => {
-        console.log('[Video Export] 📊 Atualizando duração...')
-        console.log('[Video Export] Duration:', videoElement.duration)
-        console.log('[Video Export] ReadyState:', videoElement.readyState)
-
-        if (videoElement.duration && Number.isFinite(videoElement.duration) && videoElement.duration > 0) {
-          const realDuration = videoElement.duration
-          console.log('[Video Export] ✅✅✅ DURAÇÃO REAL DETECTADA:', realDuration.toFixed(2), 'segundos')
-          setVideoDuration(realDuration)
-
-          setAudioConfig(prev => {
-            // Trilha salva na página tem trecho escolhido pelo usuário — não
-            // sobrescrever com a duração do vídeo
-            if (hasPersistedAudioRef.current) return prev
-            console.log('[Video Export] Atualizando audioConfig.endTime de', prev.endTime, 'para', realDuration)
-            return {
-              ...prev,
-              endTime: realDuration,
-            }
-          })
-        } else if (attempts < maxAttempts) {
-          console.log(`[Video Export] ⚠️ Vídeo sem duração válida (${videoElement.duration}), tentando novamente...`)
-          setTimeout(findAndUpdateDuration, retryDelay)
-        } else {
-          console.error('[Video Export] ❌ Não foi possível obter duração válida após', maxAttempts, 'tentativas')
-        }
-      }
-
-      // Se já está carregado
-      if (videoElement.readyState >= 1) {
-        console.log('[Video Export] 📺 Vídeo já está carregado (readyState >= 1)')
-        updateDuration()
-      } else {
-        console.log('[Video Export] ⏳ Aguardando evento loadedmetadata...')
-        videoElement.addEventListener('loadedmetadata', () => {
-          console.log('[Video Export] 🎬 Evento loadedmetadata disparado!')
-          updateDuration()
-        }, { once: true })
-        setTimeout(findAndUpdateDuration, retryDelay)
-      }
-    }
-
-    // Iniciar busca com delay para dar tempo do Konva renderizar
-    setTimeout(() => {
-      console.log('[Video Export] 🚀 Iniciando busca através do Konva Stage...')
-      findAndUpdateDuration()
-    }, 1000) // 1 segundo de delay inicial para garantir que o Konva renderizou
-  }, [videoLayer])
+    // Trilha salva na página tem trecho escolhido pela pessoa: não sobrescrever
+    if (videoDuration === null || hasPersistedAudioRef.current) return
+    setAudioConfig((prev) => (prev.endTime === videoDuration ? prev : { ...prev, endTime: videoDuration }))
+  }, [videoDuration, design.audio])
 
   const creditCost = getCost('video_export')
   const hasCredits = canPerformOperation('video_export')
   const hasSelectedMusic =
     (audioConfig.source === 'library' || audioConfig.source === 'mix') && !!audioConfig.musicId
+  // Fatia de música mais curta que 1 s não dá vídeo (sem vídeo ela É a duração)
+  const fatiaCurta = !videoLayer && hasSelectedMusic && (videoDuration ?? 0) < 1
 
   // Verificar suporte do navegador
   const browserSupport = React.useMemo(() => checkVideoExportSupport(), [])
 
+  // ── Destino: "Depois de gerar" ──────────────────────────────────────────
+  // Vindo da agenda, o post é o de onde a pessoa veio, não o mais recente da página.
+  const { data: agendaDaPasta } = useAgendaDasPaginas(templateId, postIdDaAgenda)
+  const { data: horarios } = useHorariosTipicos(projectId)
+  const agendaDaPagina = agendaDaPasta?.paginas.find((p) => p.pageId === currentPageId)
+  // Só o post de VÍDEO ainda trocável desta página pode ter o vídeo substituído
+  const postDaPagina =
+    agendaDaPagina?.post && agendaDaPagina.post.comVideo && agendaDaPagina.post.substituivel
+      ? agendaDaPagina.post
+      : null
+  const postSubstituivelId = postDaPagina?.id ?? null
+  const tipos = tiposPermitidos(design.canvas.width, design.canvas.height)
+  const tipoPadrao = tipos[0]
+  const antecedencia = antecedenciaParaGravar(videoDuration)
+
+  const [escolha, setEscolha] = React.useState<EscolhaDeDestino>('agenda')
+  const [quandoCampo, setQuandoCampo] = React.useState('')
+  const [postType, setPostType] = React.useState<'STORY' | 'REEL'>('STORY')
+  const [legenda, setLegenda] = React.useState('')
+  const [situacao, setSituacao] = React.useState<'agendado' | 'rascunho'>('agendado')
+  const [pedido, setPedido] = React.useState<EscolhaDeDestino | null>(null)
+  // Mexeu no formulário: a chegada atrasada da agenda ou dos horários não o desfaz
+  const [tocado, setTocado] = React.useState(false)
+
+  React.useEffect(() => {
+    if (!isOpen || tocado) return
+    const doPost =
+      postSubstituivelId !== null && (pedido === 'substituir' || (!pedido && postIdDaAgenda === postSubstituivelId))
+    setEscolha(!currentPageId ? 'galeria' : doPost ? 'substituir' : pedido === 'galeria' ? 'galeria' : 'agenda')
+    setQuandoCampo(paraCampo(quandoInicialDoVideo(agendaDaPagina?.quando, horarios?.porDia, new Date(), antecedencia)))
+    setPostType(tipoPadrao)
+  }, [isOpen, tocado, pedido, postIdDaAgenda, postSubstituivelId, currentPageId, agendaDaPagina?.quando, horarios, antecedencia, tipoPadrao])
+
+  const mexer = <T,>(setter: (v: T) => void) => (v: T) => {
+    setTocado(true)
+    setter(v)
+  }
+
+  const problemaDoDestino = (): string | null => {
+    if (escolha === 'galeria') return null
+    if (!currentPageId) return 'Abra a página do vídeo para levá-lo à agenda.'
+    if (escolha === 'substituir') {
+      return postDaPagina ? null : 'O post desta página não pode mais ter o vídeo trocado (já foi publicado ou entregue).'
+    }
+    const quando = new Date(quandoCampo)
+    if (!quandoCampo || Number.isNaN(quando.getTime())) return 'Escolha a data e a hora do post.'
+    if (quando.getTime() - Date.now() < antecedencia) {
+      return `Escolha um horário a partir de ${rotuloCurto(new Date(Date.now() + antecedencia))}: o vídeo ainda precisa ser gravado e preparado.`
+    }
+    if (!tipos.includes(postType)) return 'Story precisa de página vertical (9:16). Esta página só pode ir como Reel.'
+    return null
+  }
+  const problema = isOpen ? problemaDoDestino() : null
+
+  const abrir = React.useCallback<GerarVideo['abrir']>(
+    (opcoes) => {
+      if (opcoes?.pageId && opcoes.pageId !== currentPageIdRef.current) multiPage?.setCurrentPageId(opcoes.pageId)
+      setPedido(opcoes?.destino ?? null)
+      setTocado(false)
+      setNaFila(null)
+      setIsOpen(true)
+    },
+    [multiPage],
+  )
+
+  const fechar = (open: boolean) => {
+    // Gravando, o diálogo não fecha: o canvas voltaria a aceitar clique e a
+    // seleção entraria no vídeo.
+    if (open || isExporting) return
+    setIsOpen(false)
+    setNaFila(null)
+    setPedido(null)
+    setTocado(false)
+  }
+
   const pollJobStatus = React.useCallback(
-    (jobId: string, initialGenerationId?: string, projectIdParam?: number) => {
-      console.log('[VideoExportQueue] Iniciando polling para job:', jobId)
+    (jobId: string, initialGenerationId?: string, projectIdParam?: number, pageId?: string | null) => {
       let pollCount = 0
       const maxPolls = 60
       let linkedGenerationId = initialGenerationId
@@ -257,14 +322,7 @@ export function VideoExportButton() {
         }
 
         try {
-          const response = await fetch(`/api/video-processing/status/${jobId}`)
-          if (!response.ok) {
-            console.error('[VideoExportQueue] Erro na resposta:', response.status)
-            clearInterval(interval)
-            return
-          }
-
-          const job = await response.json()
+          const job = await api.get<StatusDoJob>(`/api/video-processing/status/${jobId}`)
           const currentGenerationId: string | undefined =
             (typeof job?.generationId === 'string' ? job.generationId : undefined) ?? linkedGenerationId
           linkedGenerationId = currentGenerationId
@@ -272,11 +330,9 @@ export function VideoExportButton() {
           const resolvedProgress =
             typeof job.progress === 'number'
               ? job.progress
-              : job.status === 'COMPLETED'
+              : job.status === 'COMPLETED' || job.status === 'FAILED'
                 ? 100
-                : job.status === 'FAILED'
-                  ? 100
-                  : 0
+                : 0
 
           const detail = {
             jobId,
@@ -286,17 +342,42 @@ export function VideoExportButton() {
             status: job.status,
             mp4ResultUrl: job.mp4ResultUrl,
             thumbnailUrl: job.thumbnailUrl,
+            pageId,
           }
 
           window.dispatchEvent(new CustomEvent('video-export-progress', { detail }))
 
           if (job.status === 'COMPLETED') {
             clearInterval(interval)
-            toast({
-              title: '🎉 Vídeo pronto!',
-              description: 'MP4 na aba Criativos — abrimos ela para você agendar.',
-              duration: 8000,
-            })
+            // O destino já foi decidido pelo servidor: dizer o que aconteceu
+            const d = job.destino
+            const resultado = d?.resultado ?? null
+            if (d?.tipo === 'substituir') {
+              toast(
+                resultado?.ok
+                  ? { title: 'Vídeo da agenda substituído', description: 'O post já mostra o vídeo novo.' }
+                  : {
+                      variant: 'destructive',
+                      title: 'O vídeo ficou pronto, mas não substituiu o da agenda',
+                      description: `${motivoDaRecusa(resultado) ?? 'Sem resposta da troca.'} O vídeo novo está na aba Criativos.`,
+                    },
+              )
+            } else if (d?.tipo === 'agenda') {
+              toast(
+                d.postId
+                  ? { title: 'Vídeo pronto e na agenda', description: d.aviso ?? 'O post já está na agenda.' }
+                  : {
+                      variant: 'destructive',
+                      title: 'O vídeo ficou pronto, mas não entrou na agenda',
+                      description: `${motivoDaRecusa(resultado) ?? ''} Ele está na aba Criativos.`.trim(),
+                    },
+              )
+            } else {
+              toast({ title: 'Vídeo pronto', description: 'O MP4 está na aba Criativos.', duration: 8000 })
+            }
+            queryClient.invalidateQueries({ queryKey: ['agenda-das-paginas'] })
+            queryClient.invalidateQueries({ queryKey: ['posts'] })
+            queryClient.invalidateQueries({ queryKey: ['social-post'] })
             window.dispatchEvent(new CustomEvent('video-export-completed', { detail }))
           } else if (job.status === 'FAILED') {
             clearInterval(interval)
@@ -306,12 +387,7 @@ export function VideoExportButton() {
               description: job.errorMessage || 'Falha ao converter o vídeo.',
             })
             window.dispatchEvent(
-              new CustomEvent('video-export-failed', {
-                detail: {
-                  ...detail,
-                  errorMessage: job.errorMessage,
-                },
-              })
+              new CustomEvent('video-export-failed', { detail: { ...detail, errorMessage: job.errorMessage } }),
             )
           }
         } catch (error) {
@@ -322,14 +398,21 @@ export function VideoExportButton() {
 
       return () => clearInterval(interval)
     },
-    [toast]
+    [toast, queryClient],
   )
 
   const handleExport = async () => {
-    if (!hasVideo || !videoLayer) {
+    if (!paginaVideo) {
       toast({
         variant: 'destructive',
-        description: 'Nenhum vídeo encontrado no design',
+        description: 'Esta página não tem vídeo nem música — não há o que exportar como vídeo.',
+      })
+      return
+    }
+    if (fatiaCurta) {
+      toast({
+        variant: 'destructive',
+        description: 'O trecho da música é curto demais: escolha pelo menos 1 segundo na aba Músicas.',
       })
       return
     }
@@ -351,19 +434,14 @@ export function VideoExportButton() {
       return
     }
 
-    if (exportFormat !== 'mp4') {
-      toast({
-        variant: 'destructive',
-        description: 'A fila de processamento está disponível apenas para MP4 no momento.',
-      })
-      setExportFormat('mp4')
+    const motivo = problemaDoDestino()
+    if (motivo) {
+      toast({ variant: 'destructive', description: motivo })
       return
     }
 
     // Com o workspace contínuo existem N stages montados (um por página), e
     // `document.querySelector` devolvia sempre o PRIMEIRO do DOM — a página 1.
-    // Exportar vídeo de qualquer outra página procurava a camada de vídeo no
-    // stage errado e morria em "VideoNode não encontrado no stage".
     // `getStageInstance()` é a fonte da verdade do stage ATIVO.
     const stage = getStageInstance()
 
@@ -398,14 +476,68 @@ export function VideoExportButton() {
       return
     }
 
+    // Linha do tempo: a fila recusa acima de 180 s; story longo demais avisa
+    if ((videoDuration ?? 0) > 180) {
+      toast({ variant: 'destructive', description: 'O vídeo passa de 3 minutos. Encurte a linha do tempo e exporte de novo.' })
+      return
+    }
+    const tetoDoFormato = design.canvas.height > design.canvas.width ? 60 : 90
+    if ((videoDuration ?? 0) > tetoDoFormato) {
+      toast({ description: `O vídeo tem ${Math.round(videoDuration ?? 0)} s — o Instagram corta story em 60 s e reel fica melhor até 90 s.` })
+    }
+
+    // O destino é decidido ANTES de gravar: quem cria o post (ou troca o
+    // vídeo dele) é o servidor, quando o MP4 fica pronto.
+    const destino: DestinoDoVideo =
+      escolha === 'galeria'
+        ? { tipo: 'galeria' }
+        : escolha === 'substituir'
+          ? { tipo: 'substituir', postId: postDaPagina!.id }
+          : {
+              tipo: 'agenda',
+              quando: new Date(quandoCampo).toISOString(),
+              postType,
+              ...(postType === 'REEL' && legenda.trim() ? { legenda: legenda.trim() } : {}),
+              situacao,
+            }
+    const destinoTexto =
+      destino.tipo === 'galeria'
+        ? 'Quando o MP4 ficar pronto, ele aparece na aba Criativos.'
+        : destino.tipo === 'substituir'
+          ? `Quando o MP4 ficar pronto, ele substitui o vídeo do post${
+              postDaPagina?.quando ? ` de ${rotuloCurto(new Date(postDaPagina.quando))}` : ''
+            }.`
+          : `Quando o MP4 ficar pronto, ele entra na agenda ${
+              destino.situacao === 'rascunho' ? 'como rascunho' : 'agendado'
+            } para ${rotuloCurto(new Date(destino.quando))}.`
+
+    // A página no banco é a que a fila compara com o vídeo gravado: o autosave
+    // pendente iria depois e o vídeo nasceria "desatualizado".
+    try {
+      await pageSync?.descarregar()
+    } catch (error) {
+      console.error('[Video Export] Falha ao salvar a página antes de gravar:', error)
+      toast({ variant: 'destructive', description: 'Não deu para salvar a página antes de gravar. Tente de novo.' })
+      return
+    }
+
     setIsExporting(true)
     setExportProgress({ phase: 'preparing', progress: 10 })
 
+    // O MESMO objeto vai para a gravação e para a fila (`designData`)
+    const designGravado = design
+    const paginaGravada = currentPageId
+    const cancelado = () => {
+      if (currentPageIdRef.current !== paginaGravada) return 'A página foi trocada durante a gravação. Exporte de novo.'
+      if (designRef.current !== designGravado) return 'A página foi editada durante a gravação. Exporte de novo.'
+      return null
+    }
+
     try {
-      const videoBlob = await exportVideoWithLayers(
+      const { webm: videoBlob, duracao: exportedDuration, capa } = await exportVideoWithLayers(
         stage,
-        videoLayer,
-        design,
+        videoLayer ?? null,
+        designGravado,
         {
           setSelectedLayerIds: selectLayersFn,
           selectedLayerIdsRef,
@@ -416,18 +548,20 @@ export function VideoExportButton() {
           fps: 30,
           quality: 0.8,
           audioConfig,
+          relogio: relogioDaPagina(paginaGravada),
+          cancelado,
         },
         (progress) => {
           setExportProgress(progress)
         }
       )
 
-      setExportProgress({ phase: 'preparing', progress: 45 })
+      setExportProgress({ phase: 'uploading', progress: 45 })
 
-      // Capa definida no painel de vídeo tem prioridade; sem capa, captura o
-      // primeiro frame do trim
+      // Capa definida no painel de vídeo tem prioridade; sem capa, o quadro 0
+      // que a gravação capturou (primeiro clipe, vídeos no início do trecho)
       let thumbnailBlob: Blob
-      const posterUrl = videoLayer.videoMetadata?.posterUrl
+      const posterUrl = videoLayer?.videoMetadata?.posterUrl
       if (posterUrl) {
         try {
           const posterResponse = await fetch(posterUrl)
@@ -435,19 +569,14 @@ export function VideoExportButton() {
           thumbnailBlob = await posterResponse.blob()
         } catch (error) {
           console.warn('[Video Export] Falha ao usar posterUrl como capa, capturando frame:', error)
-          thumbnailBlob = await dataUrlToBlob(await generateVideoThumbnail(stage, videoLayer))
+          thumbnailBlob = await dataUrlToBlob(capa)
         }
       } else {
-        thumbnailBlob = await dataUrlToBlob(await generateVideoThumbnail(stage, videoLayer))
+        thumbnailBlob = await dataUrlToBlob(capa)
       }
 
       const videoUploadPath = generateUploadPath(clerkUserId, designName)
       const thumbnailUploadPath = generateThumbnailUploadPath(clerkUserId, designName)
-
-      toast({
-        title: 'Gerando vídeo...',
-        description: 'Estamos preparando o arquivo e enviando para processamento.',
-      })
 
       const thumbnailUpload = await upload(thumbnailUploadPath, thumbnailBlob, {
         access: 'public',
@@ -474,22 +603,7 @@ export function VideoExportButton() {
 
       setExportProgress({ phase: 'uploading', progress: 95 })
 
-      // Mesma regra do export: trim do vídeo ∧ trecho da música
-      const trimStart = videoLayer.videoMetadata?.trimStart ?? 0
-      const trimEnd = videoLayer.videoMetadata?.trimEnd
-      const fullDur = videoDuration || videoLayer.videoMetadata?.duration || 10
-      const trimmedDur =
-        trimEnd !== undefined && trimEnd > trimStart
-          ? trimEnd - trimStart
-          : Math.max(0.5, fullDur - trimStart)
-      const musicSlice =
-        (audioConfig?.source === 'library' || audioConfig?.source === 'mix') && audioConfig.musicId
-          ? audioConfig.endTime - audioConfig.startTime
-          : null
-      const exportedDuration =
-        musicSlice && musicSlice > 0 ? Math.min(trimmedDur, musicSlice) : trimmedDur
-
-      const queuePayload = {
+      const queueJson = await api.post<{ jobId?: string; generationId?: string }>('/api/video-processing/queue', {
         templateId,
         projectId: resolvedProjectId,
         videoName: designName || 'vídeo',
@@ -500,35 +614,18 @@ export function VideoExportButton() {
         webmBlobSize: videoBlob.size,
         thumbnailBlobUrl: thumbnailUpload.url,
         thumbnailBlobSize: thumbnailBlob.size,
-        designData: design,
+        designData: designGravado,
         // O WebM acima é MUDO — a fila mixa a trilha via ffmpeg a partir daqui
+        // O PEDIDO, não o efetivo: a fila decide a fonte (`fonteEfetiva`) e
+        // grava o aviso na Generation — enviado já trocado, o aviso se perdia.
         audioConfig,
-      }
-
-      console.log('[Video Export] Enviando para fila:', {
-        ...queuePayload,
-        designData: '[omitido]' // Não logar design completo
+        // A página gravada e para onde o MP4 vai. Quem processa é a própria
+        // rota da fila (o navegador não aciona mais nada depois daqui).
+        ...(paginaGravada ? { pageId: paginaGravada } : {}),
+        destino,
       })
 
-      const queueResponse = await fetch('/api/video-processing/queue', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(queuePayload),
-      })
-
-      const queueJson = await queueResponse.json()
-      if (!queueResponse.ok) {
-        console.error('[Video Export] Erro ao adicionar à fila:', {
-          status: queueResponse.status,
-          statusText: queueResponse.statusText,
-          response: queueJson
-        })
-        const message = queueJson?.error || queueJson?.message || 'Falha ao adicionar vídeo à fila'
-        const details = queueJson?.details ? ` - ${JSON.stringify(queueJson.details)}` : ''
-        throw new Error(message + details)
-      }
-
-      const { jobId, generationId } = queueJson as { jobId?: string; generationId?: string }
+      const { jobId, generationId } = queueJson
       if (!jobId) {
         throw new Error('Resposta inválida ao enfileirar vídeo')
       }
@@ -548,26 +645,19 @@ export function VideoExportButton() {
         )
       }
 
-      setExportProgress({ phase: 'queued', progress: 100 })
-
-      void fetch('/api/video-processing/process', { method: 'POST' }).catch((error) => {
-        console.warn('[VideoExportQueue] Falha ao acionar processamento imediato:', error)
-      })
-
-      pollJobStatus(jobId, generationId, resolvedProjectId)
-
-      toast({
-        title: 'Vídeo na fila de processamento',
-        description: 'Continue sendo criativo! Avisaremos quando o MP4 aparecer na aba Criativos.',
-      })
-
-      setIsOpen(false)
+      pollJobStatus(jobId, generationId, resolvedProjectId, paginaGravada)
+      // A substituição pedida já aparece na faixa da página ("em produção")
+      queryClient.invalidateQueries({ queryKey: ['agenda-das-paginas', templateId] })
+      setNaFila(destinoTexto)
+      toast({ title: 'Vídeo na fila', description: 'Pode fechar esta janela. Avisamos quando ficar pronto.' })
+      aoEnfileirar?.(destino)
     } catch (_error) {
       console.error('Export error:', _error)
       toast({
         variant: 'destructive',
         title: 'Erro ao exportar vídeo',
-        description: _error instanceof Error ? _error.message : 'Erro desconhecido',
+        description:
+          _error instanceof Error ? _error.message.replace(/: \[object Object\]$/, '') : 'Erro desconhecido',
       })
     } finally {
       setIsExporting(false)
@@ -575,52 +665,54 @@ export function VideoExportButton() {
     }
   }
 
-  if (!hasVideo) return null
-
   const getProgressText = () => {
     if (!exportProgress) return ''
 
     switch (exportProgress.phase) {
       case 'preparing':
-        return 'Preparando exportação...'
+        return 'Preparando a gravação…'
       case 'recording':
-        return 'Gravando vídeo...'
+        return 'Gravando — deixe esta aba aberta e visível'
       case 'converting':
-        return 'Convertendo para MP4...'
       case 'finalizing':
-        return 'Finalizando...'
+        return 'Finalizando a gravação…'
       case 'uploading':
-        return 'Enviando vídeo para processamento...'
+        return 'Enviando — ainda não feche esta janela'
       case 'queued':
-        return 'Vídeo adicionado à fila...'
+        return 'Na fila'
       default:
         return ''
     }
   }
 
-  return (
-    <>
-      <Button
-        onClick={() => setIsOpen(true)}
-        variant="default"
-        size="sm"
-        className="gap-2"
-        disabled={!hasCredits || !browserSupport.supported}
-      >
-        <Film className="h-4 w-4" />
-        Exportar Vídeo
-      </Button>
+  const contexto = React.useMemo<GerarVideo>(
+    () => ({ abrir, indisponivel: !hasCredits || !browserSupport.supported }),
+    [abrir, hasCredits, browserSupport.supported],
+  )
 
-      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+  return (
+    <GerarVideoContext.Provider value={contexto}>
+      {children}
+
+      <Dialog open={isOpen} onOpenChange={fechar}>
         <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
           <DialogHeader>
-            <DialogTitle>Exportar vídeo final</DialogTitle>
+            <DialogTitle>Gerar vídeo</DialogTitle>
             <DialogDescription>
-              O MP4 é enviado para a fila de processamento. Você pode continuar editando e será
-              avisado quando ele aparecer na aba Criativos.
+              A gravação leva o tempo do vídeo: deixe esta aba aberta e visível até o vídeo entrar
+              na fila. Depois disso pode fechar e continuar editando.
             </DialogDescription>
           </DialogHeader>
 
+          {naFila ? (
+            <div className="flex items-start gap-3 rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-4">
+              <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+              <div>
+                <p className="text-sm font-semibold">Na fila — pode fechar esta janela</p>
+                <p className="text-xs text-muted-foreground">{naFila}</p>
+              </div>
+            </div>
+          ) : (
           <div className="flex-1 space-y-5 overflow-y-auto py-2 pr-1 -mr-1">
             {!browserSupport.supported && (
               <div className="flex items-start gap-3 rounded-xl border border-destructive/40 bg-destructive/10 p-3">
@@ -630,6 +722,12 @@ export function VideoExportButton() {
                   <p className="text-xs text-muted-foreground">{browserSupport.message}</p>
                 </div>
               </div>
+            )}
+
+            {!paginaVideo && (
+              <p className="rounded-xl border bg-background p-3 text-sm text-muted-foreground">
+                Esta página não tem vídeo nem música — não há o que gerar como vídeo.
+              </p>
             )}
 
             <div className="grid gap-4 md:grid-cols-2">
@@ -655,26 +753,10 @@ export function VideoExportButton() {
                   <p className="font-semibold">Formato do arquivo</p>
                   <Badge variant="secondary">MP4</Badge>
                 </div>
-                <RadioGroup value={exportFormat} className="mt-3 grid gap-3">
-                  <label
-                    htmlFor="mp4"
-                    className="flex cursor-pointer items-start gap-3 rounded-lg border border-primary bg-primary/5 p-3"
-                  >
-                    <RadioGroupItem value="mp4" id="mp4" />
-                    <div>
-                      <div className="flex items-center gap-2 text-sm font-medium">
-                        MP4 (H.264)
-                        <Badge variant="outline" className="text-[10px]">
-                          Fila automática
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Compatível com todas as plataformas. Processamos em segundo plano e o MP4
-                        aparecerá na aba Criativos.
-                      </p>
-                    </div>
-                  </label>
-                </RadioGroup>
+                <p className="mt-3 text-xs text-muted-foreground">
+                  MP4 (H.264), compatível com todas as plataformas. A conversão é feita em segundo
+                  plano.
+                </p>
               </div>
             </div>
 
@@ -714,7 +796,9 @@ export function VideoExportButton() {
                           : 'Mix: áudio do vídeo + música'
                         : audioConfig.source === 'mute'
                           ? 'Sem áudio (mudo)'
-                          : 'Usando o áudio do próprio vídeo'}
+                          : semSomOriginal
+                            ? 'Sem som: esta página não tem vídeo com áudio. Escolha uma música.'
+                            : 'Usando o áudio do próprio vídeo'}
                   </p>
                 </div>
 
@@ -723,6 +807,7 @@ export function VideoExportButton() {
                   size="sm"
                   className="shrink-0"
                   onClick={() => setIsAudioModalOpen(true)}
+                  disabled={isExporting}
                 >
                   <Music className="mr-2 h-4 w-4" />
                   {hasSelectedMusic ? 'Trocar' : 'Escolher música'}
@@ -740,6 +825,108 @@ export function VideoExportButton() {
               )}
             </div>
 
+            <div className="rounded-xl border bg-background p-4 shadow-sm">
+              <p className="text-sm font-semibold">Depois de gerar</p>
+              <RadioGroup
+                value={escolha}
+                onValueChange={(v) => mexer(setEscolha)(v as EscolhaDeDestino)}
+                className="mt-3 grid gap-2"
+                disabled={isExporting}
+              >
+                {postDaPagina && (
+                  <label htmlFor="destino-substituir" className="flex cursor-pointer items-start gap-3 rounded-lg border p-3">
+                    <RadioGroupItem value="substituir" id="destino-substituir" />
+                    <div>
+                      <p className="text-sm font-medium">
+                        Substituir o vídeo de {postDaPagina.quando ? rotuloCurto(new Date(postDaPagina.quando)) : 'post da agenda'}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        O post continua no mesmo horário, com o vídeo novo.
+                        {postDaPagina.videoDesatualizado ? ' A página mudou depois do vídeo que está lá.' : ''}
+                      </p>
+                    </div>
+                  </label>
+                )}
+                {currentPageId && (
+                  <label htmlFor="destino-agenda" className="flex cursor-pointer items-start gap-3 rounded-lg border p-3">
+                    <RadioGroupItem value="agenda" id="destino-agenda" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium">Colocar na agenda</p>
+                      <p className="text-xs text-muted-foreground">
+                        O post é criado quando o vídeo ficar pronto.
+                        {postDaPagina ? ' Esta página já tem um vídeo na agenda: isto cria outro post.' : ''}
+                      </p>
+                    </div>
+                  </label>
+                )}
+                <label htmlFor="destino-galeria" className="flex cursor-pointer items-start gap-3 rounded-lg border p-3">
+                  <RadioGroupItem value="galeria" id="destino-galeria" />
+                  <div>
+                    <p className="text-sm font-medium">Só guardar na galeria</p>
+                    <p className="text-xs text-muted-foreground">O MP4 fica na aba Criativos para agendar depois.</p>
+                  </div>
+                </label>
+              </RadioGroup>
+
+              {escolha === 'agenda' && currentPageId && (
+                <div className="mt-4 grid gap-3 border-t pt-3">
+                  <label className="grid gap-1 text-xs font-medium">
+                    Data e hora
+                    <Input
+                      type="datetime-local"
+                      value={quandoCampo}
+                      onChange={(e) => mexer(setQuandoCampo)(e.target.value)}
+                      disabled={isExporting}
+                    />
+                  </label>
+                  <div className="flex flex-wrap gap-4 text-xs">
+                    <RadioGroup
+                      value={postType}
+                      onValueChange={(v) => mexer(setPostType)(v as 'STORY' | 'REEL')}
+                      className="flex gap-3"
+                      disabled={isExporting}
+                    >
+                      {tipos.map((t) => (
+                        <label key={t} htmlFor={`tipo-${t}`} className="flex cursor-pointer items-center gap-1.5">
+                          <RadioGroupItem value={t} id={`tipo-${t}`} />
+                          {t === 'STORY' ? 'Story' : 'Reel'}
+                        </label>
+                      ))}
+                    </RadioGroup>
+                    <RadioGroup
+                      value={situacao}
+                      onValueChange={(v) => mexer(setSituacao)(v as 'agendado' | 'rascunho')}
+                      className="flex gap-3"
+                      disabled={isExporting}
+                    >
+                      <label htmlFor="situacao-agendado" className="flex cursor-pointer items-center gap-1.5">
+                        <RadioGroupItem value="agendado" id="situacao-agendado" />
+                        Agendado
+                      </label>
+                      <label htmlFor="situacao-rascunho" className="flex cursor-pointer items-center gap-1.5">
+                        <RadioGroupItem value="rascunho" id="situacao-rascunho" />
+                        Rascunho
+                      </label>
+                    </RadioGroup>
+                  </div>
+                  {postType === 'REEL' && (
+                    <label className="grid gap-1 text-xs font-medium">
+                      Legenda
+                      <Textarea
+                        value={legenda}
+                        onChange={(e) => mexer(setLegenda)(e.target.value)}
+                        maxLength={2200}
+                        rows={3}
+                        disabled={isExporting}
+                      />
+                    </label>
+                  )}
+                </div>
+              )}
+
+              {problema && <p className="mt-3 text-xs font-medium text-destructive">{problema}</p>}
+            </div>
+
             {isExporting && exportProgress && (
               <div className="rounded-xl border bg-background p-4 shadow-sm">
                 <div className="flex items-center justify-between text-sm">
@@ -750,36 +937,47 @@ export function VideoExportButton() {
               </div>
             )}
           </div>
+          )}
 
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setIsOpen(false)} disabled={isExporting}>
-              Cancelar
-            </Button>
-            <Button
-              onClick={handleExport}
-              disabled={!hasCredits || isExporting || !browserSupport.supported}
-            >
-              {isExporting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Exportando
-                </>
-              ) : (
-                <>
-                  <Download className="mr-2 h-4 w-4" />
-                  Exportar ({creditCost} créditos)
-                </>
-              )}
-            </Button>
+            {naFila ? (
+              <Button onClick={() => fechar(false)}>Fechar</Button>
+            ) : (
+              <>
+                <Button variant="outline" onClick={() => fechar(false)} disabled={isExporting}>
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handleExport}
+                  disabled={
+                    !paginaVideo || !hasCredits || isExporting || !browserSupport.supported || fatiaCurta || !!problema
+                  }
+                >
+                  {isExporting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Gerando
+                    </>
+                  ) : (
+                    <>
+                      <Download className="mr-2 h-4 w-4" />
+                      Gerar vídeo ({creditCost} créditos)
+                    </>
+                  )}
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Modal de Seleção de Áudio */}
+      {isAudioModalOpen && (
       <AudioSelectionModal
         open={isAudioModalOpen}
         onOpenChange={setIsAudioModalOpen}
-        videoDuration={videoDuration || 10}
+        videoDuration={videoDuration ?? 10}
+        temSomOriginal={!semSomOriginal}
         currentConfig={audioConfig}
         onConfirm={(config) => {
           setAudioConfig(config)
@@ -792,6 +990,7 @@ export function VideoExportButton() {
           })
         }}
       />
-    </>
+      )}
+    </GerarVideoContext.Provider>
   )
 }

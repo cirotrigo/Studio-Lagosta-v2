@@ -16,9 +16,11 @@ interface TemplateEditorClientProps {
   aiEditMode?: boolean
   initialPageId?: string
   agendaMode?: boolean
+  /** Vindo da agenda a partir de um post: o vídeo dele pode ser substituído. */
+  postId?: string
 }
 
-export function TemplateEditorClient({ templateId, prefillDriveImage, aiEditMode, initialPageId, agendaMode }: TemplateEditorClientProps) {
+export function TemplateEditorClient({ templateId, prefillDriveImage, aiEditMode, initialPageId, agendaMode, postId }: TemplateEditorClientProps) {
   const { data, isLoading, isError, refetch } = useTemplate(Number.isFinite(templateId) ? templateId : null)
 
   if (isLoading) {
@@ -46,5 +48,5 @@ export function TemplateEditorClient({ templateId, prefillDriveImage, aiEditMode
     )
   }
 
-  return <TemplateEditorShell template={data} prefillDriveImage={prefillDriveImage} aiEditMode={aiEditMode} initialPageId={initialPageId} agendaMode={agendaMode} />
+  return <TemplateEditorShell template={data} prefillDriveImage={prefillDriveImage} aiEditMode={aiEditMode} initialPageId={initialPageId} agendaMode={agendaMode} postId={postId} />
 }

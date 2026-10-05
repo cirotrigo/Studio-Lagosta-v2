@@ -201,6 +201,18 @@ describe('thumbnailEhAtual', () => {
     expect(thumbnailEhAtual({ ...base, pagina: { ...pagina, height: 1350 } })).toBe(false)
     expect(thumbnailEhAtual({ ...base, pagina: { ...pagina, background: '#ffffff' } })).toBe(false)
   })
+
+  it('achado 6 — foto em movimento: o PNG desenhado com música (quadro 0 com zoom) não serve à página sem música, e vice-versa', () => {
+    const musica = { source: 'library', musicId: 1, startTime: 0, endTime: 10 }
+    const comMovimento = { ...pagina, layers: [{ id: 'f', type: 'image', movimento: 'afastar' }, ...camadas] }
+    // O que o render grava: a versão com o áudio do quadro 0 (renderPageAndRegister)
+    const comMusica = { ...base, pagina: { ...comMovimento, audio: musica }, versaoRenderizada: versaoDaPagina(comMovimento, { audio: musica }) }
+    expect(thumbnailEhAtual(comMusica)).toBe(true)
+    expect(thumbnailEhAtual({ ...comMusica, pagina: { ...comMovimento, audio: null } })).toBe(false)
+    const semMusica = { ...base, pagina: comMovimento, versaoRenderizada: versaoDaPagina(comMovimento, { audio: null }) }
+    expect(thumbnailEhAtual(semMusica)).toBe(true)
+    expect(thumbnailEhAtual({ ...semMusica, pagina: { ...comMovimento, audio: musica } })).toBe(false)
+  })
 })
 
 it('resumirAgendamento conta por situação', () => {

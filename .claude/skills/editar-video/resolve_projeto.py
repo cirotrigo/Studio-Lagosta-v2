@@ -22,18 +22,40 @@ AJUSTES = {
     "timelineFrameRate": "29.97",
     "timelineOutputResMatchTimelineRes": "1",
     "timelineInputResMismatchBehavior": "scaleToCrop",  # bruto 16:9 preenche o 9:16; o reenquadre é na edição
+    "videoMonitorFormat": "HD 1080p 29.97",
+    "perfRenderCacheMode": "smart",
     "perfProxyMediaMode": "1",  # usa o proxy quando existe
     "transcriptionLanguage": "pt",
 }
+# Cache no MESMO disco do projeto (/Volumes/<HD>/CacheClip): o padrão do Resolve é ~/Movies/CacheClip, e o
+# cache inteligente em ProRes HQ de bruto 4K a 120 qps encheu o disco do Mac em um dia (9,9 GB só na
+# Costela do Edd, 24/09/2026: "Cache de Renderização Desativado", sobrou 913 MB).
+_partes = os.path.abspath(RAIZ).split(os.sep)
+if len(_partes) > 2 and _partes[1] == "Volumes":
+    CACHE = os.path.join(os.sep, "Volumes", _partes[2], "CacheClip")
+    os.makedirs(CACHE, exist_ok=True)
+    AJUSTES["perfCacheClipsLocation"] = CACHE
 
+# O projeto nasce do MODELO (.drp vazio, ao lado deste script): a TAXA DE REPRODUÇÃO
+# (timelinePlaybackFrameRate) é só leitura na API e todo CreateProject nasce em 24 —
+# com timeline 29,97, o Resolve toca a 24 e a timeline "agarra" (medido 24/09/2026 na
+# Costela do Edd: o visualizador mostrava ● 24). O modelo já vem com reprodução 29,97.
+MODELO = globals().get("MODELO") or os.path.join(os.path.dirname(os.path.abspath(
+    globals().get("__file__") or "/Users/cirotrigo/Documents/Studio-Lagosta-v2/.claude/skills/editar-video/resolve_projeto.py")),
+    "modelo-vertical-2997.drp")
 pm = resolve.GetProjectManager()
 anterior = pm.GetCurrentProject()
 anterior_nome = anterior.GetName() if anterior else None
 criado = False
+avisos = []
 if NOME in (pm.GetProjectListInCurrentFolder() or []):
     proj = pm.LoadProject(NOME)
 else:
-    proj = pm.CreateProject(NOME)
+    if os.path.exists(MODELO) and pm.ImportProject(MODELO, NOME):
+        proj = pm.LoadProject(NOME)
+    else:
+        avisos.append(f"modelo não encontrado/importado ({MODELO}): projeto criado vazio")
+        proj = pm.CreateProject(NOME)
     criado = True
 if not proj:
     raise RuntimeError(f"não consegui abrir nem criar o projeto '{NOME}'")
@@ -87,14 +109,20 @@ for topo in PASTAS_IMPORTADAS:
 # Timecode de cada bruto COMO O RESOLVE O LÊ. O proxy só liga se tiver o mesmo, e a Sony
 # a 120p é lida como 17:28:14;030 (base 60, com ;) enquanto o ffprobe diz 17:28:14:60 —
 # o mesmo instante escrito de outro jeito. proxies.ts grava ESTE texto no proxy.
+# E o FPS como o Resolve o lê: o iPhone grava VFR (avg 176700/5893; r_frame_rate 30000/1001 em uns)
+# e o Resolve lê 30.0 em todos; proxy a 29,97 é recusado (Salt, Fire & Drive, 02/10/2026).
+# proxies.ts gera o proxy NESTE fps.
 import json
-tcs = {}
+tcs, fps = {}, {}
 for caminho, clip in ja.items():
     if caminho.startswith(os.path.join(RAIZ, "01_BRUTO") + os.sep):
-        tcs[os.path.relpath(caminho, RAIZ)] = clip.GetClipProperty("Start TC")
+        rel = os.path.relpath(caminho, RAIZ)
+        tcs[rel] = clip.GetClipProperty("Start TC")
+        fps[rel] = clip.GetClipProperty("FPS")
 os.makedirs(os.path.join(RAIZ, "04_DAVINCI"), exist_ok=True)
-with open(os.path.join(RAIZ, "04_DAVINCI", "timecodes.json"), "w") as f:
-    json.dump(tcs, f, indent=2, ensure_ascii=False)
+for nome, dados in (("timecodes.json", tcs), ("fps.json", fps)):
+    with open(os.path.join(RAIZ, "04_DAVINCI", nome), "w") as f:
+        json.dump(dados, f, indent=2, ensure_ascii=False)
 
 # Proxies: 02_PROXIES espelha 01_BRUTO com extensão .mp4
 ligados, sem_proxy = 0, []
@@ -109,8 +137,15 @@ for caminho, clip in ja.items():
     else:
         sem_proxy.append(rel)
 
+reproducao = str(proj.GetSetting("timelinePlaybackFrameRate"))
+if reproducao != "29.97":
+    avisos.append(f"o Resolve vai REPRODUZIR a {reproducao} qps (timeline 29,97) e a timeline vai agarrar: "
+                  "ajuste em Configurações do Projeto > Configurações Principais > Taxa de quadro da reprodução = 29.97 "
+                  "(a API não muda esse campo)")
 pm.SaveProject()
 result = {
+    "avisos": avisos,
+    "reproducao_qps": reproducao,
     "projeto": NOME,
     "criado": criado,
     "projeto_anterior": anterior_nome,

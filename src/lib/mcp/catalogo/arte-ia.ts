@@ -631,11 +631,42 @@ export const toolsDeArteIA = [
         : null
       const daPagina = montarRetornoDaPagina({ fieldValues: fv, pagina, appUrl: getPublicAppUrl(), projectId, concluida: gen.status === 'COMPLETED' })
 
+      // VÍDEO exportado da página: a página de origem e o destino moram em
+      // `videoDaPagina` (nunca em `fieldValues.pageId`, que é "arte da página").
+      // O vínculo é texto num JSON: a página é conferida contra o projeto.
+      const { lerVideoDaPagina } = await import('../../video/destino-do-video')
+      const video = lerVideoDaPagina(fv)
+      const paginaDoVideo = video
+        ? await db.page.findFirst({
+            where: { id: video.pageId, Template: { projectId } },
+            select: { id: true, name: true, templateId: true },
+          })
+        : null
+      const doVideo = video
+        ? {
+            video: {
+              paginaDeOrigem: paginaDoVideo
+                ? {
+                    pageId: paginaDoVideo.id,
+                    nome: paginaDoVideo.name,
+                    editUrl: `${getPublicAppUrl()}/templates/${paginaDoVideo.templateId}/editor?pageId=${encodeURIComponent(paginaDoVideo.id)}`,
+                  }
+                : null,
+              destino: video.destino.tipo,
+              ...(video.destino.tipo === 'substituir' ? { postId: video.destino.postId } : {}),
+              ...(video.postId ? { postId: video.postId } : {}),
+              ...(video.resultado ? { resultadoDoDestino: video.resultado } : {}),
+              ...(video.aviso ? { aviso: video.aviso } : {}),
+            },
+          }
+        : {}
+
       if (gen.status === 'PROCESSING') {
         const decorrido = Math.round((Date.now() - gen.createdAt.getTime()) / 1000)
         return {
           situacao: 'em-andamento',
           ...daPagina,
+          ...doVideo,
           decorridoSegundos: decorrido,
           mensagem:
             decorrido > 300
@@ -665,6 +696,7 @@ export const toolsDeArteIA = [
           situacao: 'pronta',
           url: gen.resultUrl,
           ...daPagina,
+          ...doVideo,
           verificacaoTexto: fv.textCheck ?? 'skipped',
           ...(typeof fv.regua === 'string' ? { regua: fv.regua } : {}),
           // Aviso vermelho primeiro: texto a mais com dado (endereço, horário)
@@ -683,6 +715,7 @@ export const toolsDeArteIA = [
       return {
         situacao: 'falhou',
         ...daPagina,
+        ...doVideo,
         motivo: typeof fv.error === 'string' ? fv.error : 'Erro desconhecido',
         ...(falha.detalhes ? { detalhes: falha.detalhes } : {}),
         verificacaoTexto: fv.textCheck ?? undefined,

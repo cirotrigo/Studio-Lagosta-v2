@@ -26,6 +26,10 @@ import {
 import { registrarLegendaDoPost } from '@/lib/aprendizado/sinal-de-legenda'
 import { registrarArtesDoPost } from '@/lib/posts/artes-do-post'
 import { comoCopiaDaPagina } from '@/lib/posts/copy-segue-a-pagina'
+import { recusaComoImagem } from '@/lib/video/pagina-com-video'
+import { vinculoDoVideo } from '@/lib/video/vinculo-do-video'
+import { ehExportDeVideo } from '@/lib/posts/post-de-video'
+import { isVideoUrl } from '@/lib/media-type'
 import type { Superficie } from '@/lib/aprendizado/vocabulario'
 import { PostType, PostStatus, Prisma } from '@prisma/client'
 import { formatarBRT, parseBRT } from './data-brt'
@@ -142,7 +146,14 @@ export interface OpcoesDaResolucao {
 export interface AgendamentoResolvido {
   input: AgendarPostInput
   project: { id: number; name: string; userId: string; instagramAccountId: string | null }
+  /**
+   * A página do post: a pedida, ou — agendando só o VÍDEO da galeria — a página
+   * de onde ele saiu (`vinculoDoVideo`), para o "Editar vídeo" da agenda.
+   */
+  pageId: string | null
   templateId: number | null
+  /** O post é o vídeo da página (`SocialPost.videoDaPagina`): mídia de vídeo ou Generation de export de vídeo. */
+  videoDaPagina: boolean
   mediaUrls: string[]
   midiaVeioDaPagina: boolean
   generationId: string | null
@@ -163,6 +174,8 @@ export interface AgendamentoResolvido {
    * que os efeitos registram no corpus; nunca é a cópia do post.
    */
   copyDoCorpus: Record<string, string> | null
+  /** A proposta (o lado "antes" do diff) — para quem troca a decisão por outra leitura, como o vídeo gravado. */
+  copyPropostaTexto: Record<string, string> | null
   diffDaCopy: DiffDeCopy | null
 }
 
@@ -212,6 +225,8 @@ export async function resolverAgendamento(input: AgendarPostInput, opcoes: Opcoe
         templateId: true,
         thumbnail: true,
         layers: true,
+        // A trilha: página com música só vai ao ar como vídeo
+        audio: true,
         // A versão visual da página (R12-01): quem aceita o thumbnail confere dimensões e fundo, não só as camadas.
         width: true,
         height: true,
@@ -229,6 +244,22 @@ export async function resolverAgendamento(input: AgendarPostInput, opcoes: Opcoe
         400,
       )
     }
+    /**
+     * 🔴 Página com VÍDEO (ou com MÚSICA) não vira post como imagem. Sem mídia trazida por quem
+     * chama, a arte sairia da própria página — o `thumbnail` ou o render do
+     * cron —, e os dois são um quadro PARADO: o story ia ao ar como imagem, sem
+     * aviso (ou, sem thumbnail, o erro só aparecia minutos depois, no cron).
+     *
+     * A trava mora aqui porque todo agendamento por PÁGINA passa por esta
+     * função (agenda das páginas, bancada, conector, lote). Com `mediaUrls`
+     * ela não vale — é assim que o MP4 exportado desta mesma página é agendado
+     * —, e sem `pageId` (só a Generation) este bloco nem roda.
+     *
+     * Camadas ILEGÍVEIS seguem como sempre (não é esta trava que as recusa):
+     * com thumbnail do Blob o post nasce com o PNG; sem ele, o render lança.
+     */
+    const recusa = mediaUrls.length === 0 ? recusaComoImagem(page.layers, page.audio) : null
+    if (recusa) throw new CreativeError(recusa.codigo, recusa.mensagem, 422, { pageId: input.pageId })
     templateId = page.templateId
     camadasDaPagina = page.layers
     // A arte já foi renderizada na criação; reusar o PNG evita re-render na fila.
@@ -269,6 +300,8 @@ export async function resolverAgendamento(input: AgendarPostInput, opcoes: Opcoe
   let copyVisual: Record<string, unknown> | null = null
   let sourcePageId: string | null = null
   let copyInvalidada = false
+  let geracaoEhVideo = false
+  let pageId: string | null = input.pageId ?? null
 
   if (input.generationId) {
     const gen = await leitor.generation.findFirst({
@@ -283,7 +316,12 @@ export async function resolverAgendamento(input: AgendarPostInput, opcoes: Opcoe
       )
     }
     generationId = gen.id
+    geracaoEhVideo = ehExportDeVideo(gen.fieldValues)
     ;({ copyProposta, copyVisual, sourcePageId, copyInvalidada } = lerProcedencia(gen.fieldValues, gen.sourcePageId))
+    if (!pageId) {
+      const vinculo = await vinculoDoVideo(leitor, { projectId: project.id, fieldValues: gen.fieldValues })
+      if (vinculo) ({ pageId, templateId } = vinculo)
+    }
     // Sem mídia e sem página, o generationId basta: a arte é o resultUrl da
     // própria Generation — é o caso da arte MELHORADA (que não tem página) e
     // poupa o chat de copiar URL à mão, com os erros que isso traz.
@@ -305,6 +343,11 @@ export async function resolverAgendamento(input: AgendarPostInput, opcoes: Opcoe
     })
     generationId = gen?.id ?? null
     if (gen) ({ copyProposta, copyVisual, sourcePageId, copyInvalidada } = lerProcedencia(gen.fieldValues, gen.sourcePageId))
+    if (gen) geracaoEhVideo = ehExportDeVideo(gen.fieldValues)
+    if (gen && !pageId) {
+      const vinculo = await vinculoDoVideo(leitor, { projectId: project.id, fieldValues: gen.fieldValues })
+      if (vinculo) ({ pageId, templateId } = vinculo)
+    }
   }
 
   /**
@@ -428,7 +471,9 @@ export async function resolverAgendamento(input: AgendarPostInput, opcoes: Opcoe
   return {
     input,
     project,
+    pageId,
     templateId,
+    videoDaPagina: geracaoEhVideo || mediaUrls.some((u) => isVideoUrl(u)),
     mediaUrls,
     midiaVeioDaPagina,
     generationId,
@@ -442,6 +487,7 @@ export async function resolverAgendamento(input: AgendarPostInput, opcoes: Opcoe
     copyDaPagina,
     copyFinal,
     copyDoCorpus,
+    copyPropostaTexto,
     diffDaCopy,
   }
 }
@@ -463,9 +509,10 @@ export async function criarPostDoAgendamento(client: EscritorDoAgendamento, r: A
       // lembretes; DIRECT é o default do schema e fica implícito.
       ...(input.lembrete ? { publishType: 'REMINDER' as const } : {}),
       reminderExtraInfo: observacao,
-      pageId: input.pageId ?? null,
+      pageId: r.pageId,
       templateId: r.templateId,
       generationId: r.generationId,
+      videoDaPagina: r.videoDaPagina,
       renderStatus: (mediaUrls.length === 0
         ? 'PENDING'
         : midiaVeioDaPagina
@@ -533,7 +580,7 @@ export function contextoDosEfeitos(r: AgendamentoResolvido): ContextoDosEfeitos 
     userId: r.project.userId,
     quando: r.quando,
     situacao: r.vaiPublicar ? 'agendado' : 'rascunho',
-    pageId: r.input.pageId ?? null,
+    pageId: r.pageId,
     generationId: r.generationId,
     campaignId: r.input.campaignId ?? null,
     sourcePageId: r.sourcePageId,

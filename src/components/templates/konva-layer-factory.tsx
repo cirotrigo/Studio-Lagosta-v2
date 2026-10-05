@@ -12,6 +12,15 @@ import { KonvaMultiStyledText } from './konva-multi-styled-text'
 import { calculateImageCrop } from '@/lib/image-crop-utils'
 import { cropForResizedBox, resolveImageSourceRect } from '@/lib/image-fit'
 import { escalaDoBlur, folgaDoBlur } from '@/lib/creatives/halo/fundo-de-texto'
+import { ehClipe, ehMotion, passoDoVideo } from '@/lib/video/camadas-de-video'
+import { linhaDoTempo } from '@/lib/video/linha-do-tempo'
+import { volumeDoVideoNaPagina } from '@/lib/video/plano-de-som'
+import { useClipeAtivo } from '@/lib/video/clipe-ativo'
+import { GRUPO_DE_EFEITO, GRUPO_DE_MOVIMENTO } from '@/lib/video/aplicar-quadro'
+import { DENSIDADE_DO_CACHE_DO_MOVIMENTO, ehMovimento, raioDoBlurNoCache } from '@/lib/video/movimento'
+import { relogioDaPagina } from '@/lib/video/relogio-da-pagina'
+import { registrarVideoMontado } from '@/lib/video/videos-montados'
+import { useMultiPageOpcional } from '@/contexts/multi-page-context'
 
 /**
  * Alças do MEIO. O `keepRatio` do Konva só vale nos cantos, então são estas que
@@ -261,7 +270,39 @@ export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDra
   const isLocked = !!layer.locked
   const opacityBase = isVisible ? layer.style?.opacity ?? 1 : 0.25
   const opacity = dimmed ? opacityBase * 0.12 : opacityBase
-  const interactionsDisabled = disableInteractions || !isVisible
+
+  // Linha do tempo: QUAL clipe aparece (e os dois da junção, durante a
+  // transição) é do aplicador do quadro, no grupo de efeito — aqui o clipe fora
+  // do intervalo dele só deixa de ser interativo e de tocar som. Quem publica o
+  // clipe ativo é o motor da página. Só vale para clipe DESTA página (a prévia
+  // de outra página desenha o quadro de 0 por conta própria).
+  const editor = useTemplateEditor()
+  const chave = useMultiPageOpcional()?.currentPageId
+  const publicado = useClipeAtivo(chave)
+  const linha = React.useMemo(
+    () => (ehClipe(layer) ? linhaDoTempo(editor?.design?.layers ?? [], null) : null),
+    [layer, editor?.design?.layers],
+  )
+  const clipeDaPagina = linha?.clipes.find((c) => c.id === layer.id) ?? null
+  const clipeAtivoId = publicado === undefined ? linha?.clipes[0]?.id : publicado
+  // Clipe visível fora da linha (além do teto de 10) também fica oculto: a
+  // leitura o descarta, então ele nunca é o ativo — e não pode ficar por cima
+  const clipeOculto = (!!clipeDaPagina || (ehClipe(layer) && isVisible)) && clipeAtivoId !== layer.id
+  const interactionsDisabled = disableInteractions || !isVisible || clipeOculto
+  // Fase 4: o som da prévia é o que o export vai ter — `trechosOriginais`, a
+  // MESMA conta da fila: só com a trilha em original/mix, e só o clipe ATIVO
+  // (fora do intervalo dele o vídeo fica mudo). Miniatura nunca toca som.
+  // ponytail: as durações carregadas não entram nas deps — só o clamp pela
+  // música dependeria delas, e o `[]` no cliente já é a regra do `linha` acima.
+  const audioDaPagina = editor?.design?.audio
+  const volumeDoSom = React.useMemo(
+    () =>
+      layer.type === 'video'
+        ? volumeDoVideoNaPagina(editor?.design?.layers ?? [], audioDaPagina ?? { source: 'original' }, layer.id)
+        : 0,
+    [layer.type, layer.id, editor?.design?.layers, audioDaPagina],
+  )
+  const somDoVideo = clipeOculto || disableInteractions ? 0 : volumeDoSom
 
   const handleSelect = React.useCallback(
     (event: KonvaEventObject<MouseEvent | TouchEvent>) => {
@@ -455,11 +496,16 @@ export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDra
 
     case 'image':
     case 'logo':
-    case 'element':
-      return <ImageNode layer={layer} commonProps={commonProps} shapeRef={shapeRef} borderColor={borderColor} borderWidth={borderWidth} borderRadius={borderRadius} onChange={onChange} stageRef={stageRef} />
+    case 'element': {
+      const no = <ImageNode layer={layer} commonProps={commonProps} shapeRef={shapeRef} borderColor={borderColor} borderWidth={borderWidth} borderRadius={borderRadius} onChange={onChange} stageRef={stageRef} />
+      return layer.type === 'image' ? comEfeitoDeTempo(layer.id, no) : no
+    }
 
     case 'video':
-      return <VideoNode layer={layer} commonProps={commonProps} shapeRef={shapeRef} borderColor={borderColor} borderWidth={borderWidth} borderRadius={borderRadius} onChange={onChange} />
+      return comEfeitoDeTempo(
+        layer.id,
+        <VideoNode layer={layer} commonProps={commonProps} shapeRef={shapeRef} borderColor={borderColor} borderWidth={borderWidth} borderRadius={borderRadius} onChange={onChange} inicioDoClipe={clipeDaPagina?.inicio ?? 0} somDoVideo={somDoVideo} />,
+      )
 
     case 'gradient':
     case 'gradient2':
@@ -491,6 +537,21 @@ export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDra
   }
 }
 
+/**
+ * O grupo de efeito (Decisão 9 do plano de 03/10/2026): o aplicador do quadro
+ * (`aplicar-quadro.ts`) escreve AQUI a visibilidade e a transição, nunca no nó
+ * editável. O movimento da foto mora num grupo DENTRO do nó (ImageNode), para
+ * a máscara, os cantos e a borda ficarem presos à caixa. Sem id: `findOne('#id')`
+ * e o Transformer continuam achando o nó de dentro; `camadaId` liga à camada.
+ */
+function comEfeitoDeTempo(camadaId: string, no: React.ReactNode) {
+  return (
+    <Group name={GRUPO_DE_EFEITO} camadaId={camadaId}>
+      {no}
+    </Group>
+  )
+}
+
 type VideoNodeProps = {
   layer: Layer
   commonProps: CommonProps
@@ -499,13 +560,23 @@ type VideoNodeProps = {
   borderWidth: number
   borderRadius: number
   onChange: (updates: Partial<Layer>) => void
+  /** Instante da página em que este clipe entra (0 fora da linha do tempo) */
+  inicioDoClipe: number
+  /** O som deste vídeo toca na prévia (Fase 4: trilha em original/mix E clipe ativo) */
+  /** Volume do som original (0–1); 0 = mudo. `volumeDoVideoNaPagina`, a mesma regra da fila. */
+  somDoVideo: number
 }
 
-function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, borderRadius, onChange }: VideoNodeProps) {
+function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, borderRadius, onChange, inicioDoClipe, somDoVideo }: VideoNodeProps) {
   const videoUrl = layer.fileUrl || ''
   const videoRef = React.useRef<HTMLVideoElement | null>(null)
-  const autoplayRef = React.useRef(layer.videoMetadata?.autoplay)
-  const loopRef = React.useRef(layer.videoMetadata?.loop)
+  // Nenhum vídeo tem relógio próprio: TODOS se reconciliam, a cada quadro, com
+  // o relógio da PÁGINA (relogio-da-pagina.ts), que nasce parado em 0. O
+  // instante 0 da página é o início do trecho de cada vídeo; passado o fim do
+  // próprio trecho, o vídeo segura o último quadro. `autoplay`, `loop` e
+  // `playbackRate` do metadata não são mais lidos (decisão 8 do plano).
+  const isMotion = ehMotion(layer)
+  const relogio = relogioDaPagina(useMultiPageOpcional()?.currentPageId)
   // Trim em refs: o elemento <video> é criado uma vez por URL; mudar o trim
   // não pode recriá-lo (perderia o frame atual e o estado de reprodução)
   const trimStartRef = React.useRef(layer.videoMetadata?.trimStart ?? 0)
@@ -514,6 +585,10 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
   // estado atual sem recriar o elemento
   const onChangeRef = React.useRef(onChange)
   const videoMetadataRef = React.useRef(layer.videoMetadata)
+  // O tique lê o início do clipe por ref: o relógio da página vira relógio
+  // LOCAL do clipe (t - inicio), sem recriar a animação quando a sequência muda
+  const inicioDoClipeRef = React.useRef(inicioDoClipe)
+  inicioDoClipeRef.current = inicioDoClipe
   const [videoMetaVersion, setVideoMetaVersion] = React.useState(0)
 
   React.useEffect(() => {
@@ -525,28 +600,10 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
   }, [layer.videoMetadata])
 
   React.useEffect(() => {
-    autoplayRef.current = layer.videoMetadata?.autoplay
-  }, [layer.videoMetadata?.autoplay])
-
-  React.useEffect(() => {
-    loopRef.current = layer.videoMetadata?.loop
-  }, [layer.videoMetadata?.loop])
-
-  React.useEffect(() => {
+    // Trecho mudou: o tique seguinte reposiciona pelo relógio (0 da página =
+    // início do trecho novo)
     trimStartRef.current = layer.videoMetadata?.trimStart ?? 0
     trimEndRef.current = layer.videoMetadata?.trimEnd
-    // Trecho mudou: se o frame atual ficou fora do trim, reposicionar
-    const video = videoRef.current
-    if (!video) return
-    const start = trimStartRef.current
-    const end = trimEndRef.current
-    if (video.currentTime < start || (end !== undefined && video.currentTime > end)) {
-      try {
-        video.currentTime = start
-      } catch {
-        // metadados ainda não carregados — o loadedmetadata posiciona
-      }
-    }
   }, [layer.videoMetadata?.trimStart, layer.videoMetadata?.trimEnd])
   const imageRef = React.useRef<Konva.Image>(null)
 
@@ -569,6 +626,9 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
     // Configurações mínimas (como exemplo oficial)
     video.muted = true // Para permitir autoplay
     video.playsInline = true
+    // A página abre PARADA: sem `auto` o Chrome para em HAVE_METADATA e o
+    // quadro de 0 (o que a página mostra e a miniatura captura) não chega
+    video.preload = 'auto'
 
     // NÃO adicionar ao DOM - deixar como elemento independente (como exemplo oficial)
 
@@ -587,7 +647,8 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
           videoMetadata: { ...videoMetadataRef.current, duration: dur },
         })
       }
-      // Começar no início do trim (0 quando não há trim)
+      // Começar no início do trim (0 quando não há trim) — é o quadro que a
+      // página parada mostra e que a miniatura captura
       if (trimStartRef.current > 0) {
         try {
           video.currentTime = trimStartRef.current
@@ -595,31 +656,7 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
           // ignore
         }
       }
-      // Autoplay se configurado
-      if (autoplayRef.current !== false) {
-        video.play().catch((err) => console.warn('[VideoNode] Autoplay falhou:', err))
-      }
       setVideoMetaVersion((prev) => prev + 1)
-    })
-
-    // Loop manual simples (volta para o início do trim)
-    video.addEventListener('ended', () => {
-      if (loopRef.current ?? true) {
-        video.currentTime = trimStartRef.current
-        video.play()
-      }
-    })
-
-    // Trim de fim: ao passar do trimEnd, loopa para o trimStart (ou pausa)
-    video.addEventListener('timeupdate', () => {
-      const end = trimEndRef.current
-      if (end === undefined || video.currentTime < end) return
-      if (loopRef.current ?? true) {
-        video.currentTime = trimStartRef.current
-      } else {
-        video.pause()
-        video.currentTime = trimStartRef.current
-      }
     })
 
     videoRef.current = video
@@ -632,20 +669,24 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
     }
   }, [videoUrl])
 
-  // Atualizar propriedades do vídeo quando metadata mudar (sem recriar o elemento)
+  // Registra o elemento para o motor da página (duração, loop) e para a
+  // miniatura (quadro de 0 decodificado). Declarado DEPOIS do efeito que cria
+  // o <video>: os efeitos rodam em ordem, então videoRef já aponta o novo.
   React.useEffect(() => {
     const video = videoRef.current
     if (!video) return
+    return registrarVideoMontado(layer.id, video)
+  }, [videoUrl, layer.id])
 
-    // Aplicar metadata sem recriar elemento
-    const muted = layer.videoMetadata?.muted ?? true
-    const playbackRate = layer.videoMetadata?.playbackRate ?? 1
-
+  // O som do elemento é o que o export vai ter: volume do original pela trilha
+  // e o interruptor "sem som" do painel (`volumeDoVideoNaPagina`, a regra da fila).
+  React.useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    const muted = somDoVideo <= 0
     if (video.muted !== muted) video.muted = muted
-    if (video.playbackRate !== playbackRate) video.playbackRate = playbackRate
-
-    console.log('[VideoNode] Propriedades atualizadas:', { muted, playbackRate })
-  }, [layer.videoMetadata?.muted, layer.videoMetadata?.playbackRate])
+    if (!muted && video.volume !== somDoVideo) video.volume = somDoVideo
+  }, [somDoVideo, videoMetaVersion])
 
   // ✨ Animação EXATAMENTE como exemplo oficial do Konva
   React.useEffect(() => {
@@ -668,9 +709,48 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
       return
     }
 
-    // Exemplo oficial: função vazia, Konva cuida do resto
+    // O Konva redesenha a camada a cada quadro (exemplo oficial: função vazia).
+    // O vídeo aproveita o tique para se RECONCILIAR com o relógio da página:
+    // sem estado próprio, sobrevive a ordem de carregamento, play/pause, volta
+    // do loop, trim e desfazer/refazer. O export (modo `gravacao`) faz a mesma
+    // reconciliação por conta própria, quadro a quadro, fora deste tique.
+    let avisouPlay = false
     const anim = new Konva.Animation(function () {
-      // empty function - Konva continuously redraws
+      if (!Number.isFinite(video.duration)) return
+      const estado = relogio.estado()
+      if (estado.modo === 'gravacao') return
+      // Antes do intervalo do clipe: parado no início do trecho
+      const tLocal = relogio.agora() - inicioDoClipeRef.current
+      const passo = passoDoVideo(
+        { t: Math.max(0, tLocal), tocando: estado.tocando && tLocal >= 0 },
+        {
+          tempo: video.currentTime,
+          inicio: trimStartRef.current,
+          fim: trimEndRef.current ?? video.duration,
+          pausado: video.paused || video.ended,
+          readyState: video.readyState,
+          seeking: video.seeking,
+        },
+      )
+      if (passo.irPara !== undefined && !video.seeking) {
+        try {
+          video.currentTime = passo.irPara
+        } catch {
+          // elemento sendo desmontado
+        }
+      }
+      if (passo.pausar) video.pause()
+      if (passo.tocar) {
+        video.play().catch((err) => {
+          // play() recusado (autoplay bloqueado, fonte inválida) não é engolido:
+          // o relógio para, senão a página "toca" com o vídeo parado
+          if (!avisouPlay) {
+            avisouPlay = true
+            console.warn('[VideoNode] O navegador recusou tocar o vídeo:', err)
+          }
+          relogio.pausar()
+        })
+      }
     }, konvaLayer)
 
     anim.start()
@@ -680,52 +760,7 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
       anim.stop()
       console.log('[VideoNode] Animação parada')
     }
-  }, [videoMetaVersion, width, height, layer.id])
-
-  // Escutar eventos de controle de vídeo
-  React.useEffect(() => {
-    const video = videoRef.current
-    if (!video) return
-
-    const handleVideoControl = (event: Event) => {
-      const customEvent = event as CustomEvent
-      const { layerId, action, value } = customEvent.detail
-
-      // Apenas processar eventos para esta camada
-      if (layerId !== layer.id) return
-
-      switch (action) {
-        case 'play':
-          video.play().catch((err) => console.warn('[VideoNode] Play falhou:', err))
-          break
-        case 'pause':
-          video.pause()
-          break
-        case 'mute':
-          video.muted = value
-          break
-        case 'loop':
-          video.loop = value
-          break
-        case 'playbackRate':
-          video.playbackRate = value
-          break
-        case 'seek':
-          try {
-            video.currentTime = value
-          } catch (err) {
-            console.warn('[VideoNode] Seek falhou:', err)
-          }
-          break
-      }
-    }
-
-    window.addEventListener('video-control', handleVideoControl)
-
-    return () => {
-      window.removeEventListener('video-control', handleVideoControl)
-    }
-  }, [layer.id])
+  }, [videoMetaVersion, width, height, layer.id, relogio])
 
   // Calcular crop para objectFit: cover
   const crop = React.useMemo(() => {
@@ -744,26 +779,6 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
 
     return undefined
   }, [videoMetaVersion, width, height, layer.videoMetadata?.objectFit])
-
-  // Estado para rastrear se estava tocando antes da transformação
-  const wasPlayingRef = React.useRef(false)
-
-  // Handler de início de transformação - pausar vídeo para melhor performance
-  const handleTransformStart = React.useCallback(() => {
-    const video = videoRef.current
-    if (!video) return
-
-    // Salvar estado de reprodução
-    wasPlayingRef.current = !video.paused
-
-    // Pausar vídeo durante transform para melhor performance
-    if (!video.paused) {
-      video.pause()
-    }
-
-    // NÃO pausar a animação Konva - ela precisa continuar rodando
-    // para manter o vídeo visível durante a transformação
-  }, [])
 
   // Handler de transformação
   const handleTransformEnd = React.useCallback(() => {
@@ -801,13 +816,6 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
 
     node.getLayer()?.batchDraw()
 
-    // Retomar reprodução se estava tocando antes
-    if (wasPlayingRef.current && layer.videoMetadata?.autoplay !== false) {
-      video.play().catch((err) => console.warn('[VideoNode] Falha ao retomar reprodução:', err))
-    }
-
-    // A animação Konva já está rodando continuamente, não precisa reiniciar
-
     onChange({
       position: {
         x: Math.round(node.x()),
@@ -819,7 +827,7 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
       },
       rotation: Math.round(node.rotation()),
     })
-  }, [onChange, layer.videoMetadata?.objectFit, layer.videoMetadata?.autoplay])
+  }, [onChange, layer.videoMetadata?.objectFit])
 
   // Placeholder enquanto o vídeo carrega
   if (!videoRef.current) {
@@ -830,7 +838,8 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
         width={width}
         height={height}
         cornerRadius={borderRadius}
-        fill="#1f2937"
+        // Motion carregando não pode tapar a foto ou o vídeo que está embaixo
+        fill={isMotion ? undefined : '#1f2937'}
         stroke="#374151"
         dash={[8, 4]}
       />
@@ -850,7 +859,6 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
       cornerRadius={borderRadius}
       stroke={borderWidth > 0 ? borderColor : undefined}
       strokeWidth={borderWidth > 0 ? borderWidth : undefined}
-      onTransformStart={handleTransformStart}
       onTransformEnd={handleTransformEnd}
     />
   )
@@ -872,6 +880,22 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
   const [image] = useImage(imageUrl, imageUrl.startsWith('http') ? 'anonymous' : undefined)
   const imageRef = React.useRef<Konva.Image>(null)
   const groupRef = React.useRef<Konva.Group>(null)
+  // O recorte da foto em movimento: o Konva não recorta o getClientRect pelo
+  // clipFunc, e sem isto o Transformer e as guias mediriam a foto ampliada (até
+  // 1,15×) — as alças sairiam da caixa
+  const medirPelaCaixa = React.useCallback((g: Konva.Group | null) => {
+    if (!g) return
+    g.getClientRect = (config) => {
+      const w = imageRef.current?.width() ?? 0
+      const h = imageRef.current?.height() ?? 0
+      if (config?.skipTransform) return { x: 0, y: 0, width: w, height: h }
+      const t = g.getAbsoluteTransform(config?.relativeTo)
+      const cantos = [t.point({ x: 0, y: 0 }), t.point({ x: w, y: 0 }), t.point({ x: 0, y: h }), t.point({ x: w, y: h })]
+      const x = Math.min(...cantos.map((p) => p.x))
+      const y = Math.min(...cantos.map((p) => p.y))
+      return { x, y, width: Math.max(...cantos.map((p) => p.x)) - x, height: Math.max(...cantos.map((p) => p.y)) - y }
+    }
+  }, [])
 
   // Máscara e flip vivem num Group wrapper: a máscara é clipFunc do Group e o
   // flip é scale NEGATIVO no KonvaImage interno — nunca no node transformado,
@@ -879,7 +903,11 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
   const flipH = layer.style?.flipH === true
   const flipV = layer.style?.flipV === true
   const maskPath = layer.style?.mask?.path
-  const hasWrapper = Boolean(maskPath || flipH || flipV)
+  // Foto em movimento também vive no wrapper: dentro dele, o recorte (máscara +
+  // cantos) e a borda ficam presos à caixa e só a imagem se move (grupo de
+  // movimento, escrito pelo aplicador do quadro)
+  const emMovimento = layer.type === 'image' && ehMovimento(layer.movimento)
+  const hasWrapper = Boolean(maskPath || flipH || flipV || emMovimento)
   const { setCroppingLayerId } = useTemplateEditor()
 
   // Duplo clique entra no recorte in-canvas (v1 não suporta camada rotacionada)
@@ -945,6 +973,18 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
     return list
   }, [layer.style])
 
+  // Foto em movimento chega a 1,15×: o bitmap do filtro é feito nessa
+  // densidade, senão o zoom amacia a foto (o cache nasce no devicePixelRatio).
+  // O raio do desfoque é em pixels do bitmap, e por isso é compensado pela
+  // mesma densidade (raioDoBlurNoCache) — senão o desfoque encolhe 1,15×
+  const opcoesDoCache = React.useMemo(
+    () =>
+      emMovimento
+        ? { pixelRatio: (typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1) * DENSIDADE_DO_CACHE_DO_MOVIMENTO }
+        : undefined,
+    [emMovimento],
+  )
+
   // Cache only when filters are applied (Konva performance best practice)
   React.useEffect(() => {
     if (!imageRef.current) return
@@ -952,11 +992,11 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
       imageRef.current.clearCache()
       return
     }
-    imageRef.current.cache()
+    imageRef.current.cache(opcoesDoCache)
     imageRef.current.getLayer()?.batchDraw()
     // objectFit/cropPosition mudam o recorte desenhado — sem eles aqui, imagem
     // com filtro (bitmap cacheado) não redesenha ao mudar o enquadramento
-  }, [filters, image, layer.size?.width, layer.size?.height, layer.style?.objectFit, layer.style?.cropPosition])
+  }, [filters, image, layer.size?.width, layer.size?.height, layer.style?.objectFit, layer.style?.cropPosition, opcoesDoCache])
 
   const width = Math.max(20, layer.size?.width ?? 0)
   const height = Math.max(20, layer.size?.height ?? 0)
@@ -1079,7 +1119,7 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
           imageNode.x(flipH ? newWidth : 0)
           imageNode.y(flipV ? newHeight : 0)
         }
-        if (filters.length > 0) imageNode.cache()
+        if (filters.length > 0) imageNode.cache(opcoesDoCache)
         node.getLayer()?.batchDraw()
 
         onChange({
@@ -1120,7 +1160,7 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
 
     // ✅ Reaplicar cache após transform
     if (filters.length > 0) {
-      imageNode.cache()
+      imageNode.cache(opcoesDoCache)
     }
 
     // Forçar re-draw
@@ -1148,6 +1188,7 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
     flipV,
     anchorAtual,
     recorteParaCaixa,
+    opcoesDoCache,
   ])
 
   if (!image) {
@@ -1181,28 +1222,50 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
     blacks: layer.style?.blacks ?? 0,
     saturation: layer.style?.saturation ?? 0,
     // Effects filters
-    blurRadius: layer.style?.blur ?? 0,
+    blurRadius: raioDoBlurNoCache(layer.style?.blur ?? 0, emMovimento),
     vignette: layer.style?.vignette ?? 0,
-    // Styling
-    cornerRadius: borderRadius,
-    stroke: borderWidth > 0 ? borderColor : undefined,
-    strokeWidth: borderWidth > 0 ? borderWidth : undefined,
+    // Styling — na foto em movimento cantos e borda saem do nó que se move
+    // (iriam junto com a escala) e são desenhados presos à caixa, no wrapper
+    cornerRadius: emMovimento ? 0 : borderRadius,
+    stroke: !emMovimento && borderWidth > 0 ? borderColor : undefined,
+    strokeWidth: !emMovimento && borderWidth > 0 ? borderWidth : undefined,
+  }
+
+  // A caixa VIVA da imagem: a alça lateral muda o tamanho antes de o React gravar
+  const caixaViva = () => ({ w: imageRef.current?.width() ?? width, h: imageRef.current?.height() ?? height })
+  // Path congelado em viewBox 0 0 100 100 escalado para a caixa; desfaz a escala
+  // em seguida para não afetar os filhos
+  const tracarMascara = (ctx: Konva.Context, w: number, h: number) => {
+    if (!maskPath) return
+    ctx.scale(w / 100, h / 100)
+    traceSvgPath(ctx, maskPath)
+    ctx.scale(100 / w, 100 / h)
+  }
+  const tracarCaixa = (ctx: Konva.Context, w: number, h: number) => {
+    if (borderRadius > 0) Konva.Util.drawRoundedRectPath(ctx, w, h, borderRadius)
+    else ctx.rect(0, 0, w, h)
   }
 
   if (hasWrapper) {
+    const imagem = (
+      <KonvaImage
+        ref={imageRef}
+        {...visualProps}
+        x={flipH ? width : 0}
+        y={flipV ? height : 0}
+        scaleX={flipH ? -1 : 1}
+        scaleY={flipV ? -1 : 1}
+        width={width}
+        height={height}
+      />
+    )
     return (
       <Group
         {...imageProps}
         ref={groupRef}
         clipFunc={
-          maskPath
-            ? (ctx: Konva.Context) => {
-                // Path congelado em viewBox 0 0 100 100 escalado para a caixa;
-                // desfaz a escala em seguida para não afetar os filhos
-                ctx.scale(width / 100, height / 100)
-                traceSvgPath(ctx, maskPath)
-                ctx.scale(100 / width, 100 / height)
-              }
+          maskPath && !emMovimento
+            ? (ctx: Konva.Context) => tracarMascara(ctx, width, height)
             : undefined
         }
         onTransformStart={handleTransformStart}
@@ -1214,16 +1277,45 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
         onDblClick={handleDblClick}
         onDblTap={handleDblClick}
       >
-        <KonvaImage
-          ref={imageRef}
-          {...visualProps}
-          x={flipH ? width : 0}
-          y={flipV ? height : 0}
-          scaleX={flipH ? -1 : 1}
-          scaleY={flipV ? -1 : 1}
-          width={width}
-          height={height}
-        />
+        {emMovimento ? (
+          <>
+            {/* Recorte preso à caixa: máscara ∩ cantos. O clip interno da
+                máscara mais o do Konva no path dos cantos dão a interseção */}
+            <Group
+              ref={medirPelaCaixa}
+              clipFunc={(ctx: Konva.Context) => {
+                const { w, h } = caixaViva()
+                if (maskPath) {
+                  tracarMascara(ctx, w, h)
+                  ctx.clip()
+                  ctx.beginPath()
+                }
+                tracarCaixa(ctx, w, h)
+              }}
+            >
+              <Group name={GRUPO_DE_MOVIMENTO}>{imagem}</Group>
+            </Group>
+            {borderWidth > 0 && (
+              // Borda por cima e sem recorte, como o render de servidor; o traço
+              // é do contexto (não `stroke` do nó) para não entrar na caixa das
+              // alças do Transformer
+              <Shape
+                listening={false}
+                sceneFunc={(ctx: Konva.Context) => {
+                  const { w, h } = caixaViva()
+                  ctx.beginPath()
+                  tracarCaixa(ctx, w, h)
+                  ctx.closePath()
+                  ctx.setAttr('strokeStyle', borderColor)
+                  ctx.setAttr('lineWidth', borderWidth)
+                  ctx.stroke()
+                }}
+              />
+            )}
+          </>
+        ) : (
+          imagem
+        )}
       </Group>
     )
   }

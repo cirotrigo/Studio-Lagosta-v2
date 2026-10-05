@@ -16,6 +16,7 @@ import { parseBRT } from '@/lib/creatives/agendar'
 import { refilarPaginasDoPost } from '@/lib/compositor/pastas'
 import { ehHostProprio } from '@/lib/creatives/ingerir-midia'
 import { CreativeError } from '@/lib/creatives/errors'
+import { MOTIVO_VIDEO_REMOVIDO, postDeVideo } from '@/lib/posts/post-de-video'
 import { avisosDeCampanhaVencida } from '@/lib/posts/campanha-vigencia'
 import { fecharSugestaoDeSlot, registrarSlotDoPost } from '@/lib/aprendizado/sinal-de-agendamento'
 import { registrarEdicaoDeLegenda } from '@/lib/aprendizado/sinal-de-legenda'
@@ -111,6 +112,7 @@ export async function processarAprovacao(params: {
       mediaUrls: true,
       pageId: true,
       renderStatus: true,
+      videoDaPagina: true,
       campaignId: true,
       // Para o registro de aprendizado da aprovação (ver abaixo).
       postType: true,
@@ -159,6 +161,13 @@ export async function processarAprovacao(params: {
           postId: post.id,
           motivo: `O horário já passou (${formatarBRT(post.scheduledDatetime)}). Reagende antes de aprovar.`,
         })
+        continue
+      }
+
+      // Post de VÍDEO sem mídia não se refaz pela página (o render dela é uma
+      // imagem parada): aprovado, ele publicaria um quadro no lugar do vídeo.
+      if (post.mediaUrls.length === 0 && postDeVideo(post)) {
+        ignorados.push({ postId: post.id, motivo: MOTIVO_VIDEO_REMOVIDO })
         continue
       }
 
@@ -317,7 +326,9 @@ export async function processarAprovacao(params: {
      * anterior enquanto o render novo não chega, e um render que falhe não
      * deixa o post sem imagem nenhuma.
      */
-    const reconstroiArte = post.pageId !== null && post.renderStatus === RenderStatus.RENDERED
+    // Post de vídeo nunca é redesenhado como imagem (`postDeVideo`).
+    const reconstroiArte =
+      post.pageId !== null && post.renderStatus === RenderStatus.RENDERED && !postDeVideo(post)
 
     await db.socialPost.update({
       where: { id: post.id },
