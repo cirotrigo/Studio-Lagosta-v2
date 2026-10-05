@@ -42,6 +42,11 @@ export function lerFps(r: string): Fps {
   return { num, den }
 }
 
+/** fps comparado como número (tolerância 0,1%): o iPhone grava VFR (avg 992400/33083) e o proxy sai 30/1. */
+export function mesmoFps(a: Fps, b: Fps) {
+  return Math.abs(a.num / a.den - b.num / b.den) / (b.num / b.den) < 0.001
+}
+
 /** Segundos → quadros da fonte. Fim EXCLUSIVO, como o AppendToTimeline espera. */
 export function paraQuadros(inicioS: number, fimS: number, fps: Fps, totalQuadros: number) {
   const q = (s: number) => (s * fps.num) / fps.den
@@ -85,6 +90,8 @@ function autoteste() {
   if (!Number.isNaN(segundos('abc'))) throw new Error('texto ilegível tem de dar NaN')
   eq(chaveDaPergunta('  Melhor  PLANO ', 'm', 2), chaveDaPergunta('melhor plano', 'm', 2))
   if (chaveDaPergunta('a', 'm', 2) === chaveDaPergunta('a', 'm', 4)) throw new Error('fps tem de entrar na chave')
+  if (!mesmoFps(lerFps('30/1'), lerFps('992400/33083'))) throw new Error('VFR do iPhone tem de conferir com 30/1')
+  if (mesmoFps(lerFps('30/1'), lerFps('30000/1001'))) throw new Error('29,97 não é 30')
   console.log('autoteste ok')
 }
 
@@ -158,7 +165,7 @@ function proxyDoProjeto(m: Midia): string | null {
   if (!existsSync(p)) return null
   try {
     const x = sondar(p)
-    return x.fpsTexto === m.fpsTexto && Math.abs(x.quadros - m.quadros) <= 1 ? p : null
+    return mesmoFps(x.fps, m.fps) && Math.abs(x.quadros - m.quadros) <= 1 ? p : null
   } catch {
     return null
   }
