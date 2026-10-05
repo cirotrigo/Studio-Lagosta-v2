@@ -10,16 +10,16 @@ import { motion, useMotionValue, useMotionTemplate } from 'framer-motion';
 // Ordem de exibição da faixa "Confirmado por gigantes do ES". Empório Fonseca
 // e Ilha do Caranguejo entraram em 23/08 a pedido do Ciro.
 const clientLogos = [
-    { src: '/clients/client-1.png', alt: 'Bacana' },
-    { src: '/clients/client-2.png', alt: 'Cliente Lagosta Criativa' },
-    { src: '/clients/client-9.png', alt: 'Empório Fonseca' },
-    { src: '/clients/client-3.png', alt: 'Cliente Lagosta Criativa' },
-    { src: '/clients/client-4.png', alt: 'Cliente Lagosta Criativa' },
-    { src: '/clients/client-10.png', alt: 'Ilha do Caranguejo' },
-    { src: '/clients/client-5.png', alt: 'Cliente Lagosta Criativa' },
-    { src: '/clients/client-6.png', alt: 'Seu Quinto' },
-    { src: '/clients/client-7.png', alt: 'Tero' },
-    { src: '/clients/client-8.png', alt: 'Coronel Picanha' },
+    { src: '/clients/client-1.webp', alt: 'Bacana' },
+    { src: '/clients/client-2.webp', alt: 'By Rock' },
+    { src: '/clients/client-9.webp', alt: 'Empório Fonseca' },
+    { src: '/clients/client-3.webp', alt: 'Espeto Gaúcho' },
+    { src: '/clients/client-4.webp', alt: 'O Quintal' },
+    { src: '/clients/client-10.webp', alt: 'Ilha do Caranguejo' },
+    { src: '/clients/client-5.webp', alt: 'Real Gelateria' },
+    { src: '/clients/client-6.webp', alt: 'Seu Quinto' },
+    { src: '/clients/client-7.webp', alt: 'Tero' },
+    { src: '/clients/client-8.webp', alt: 'Coronel Picanha' },
 ];
 
 export function HeroSection() {
@@ -74,9 +74,13 @@ export function HeroSection() {
                 <div className="mb-6 relative w-full flex justify-center">
                     {/* Logo Image */}
                     <div className="relative w-64 h-24 md:w-96 md:h-36">
+                        {/* É o LCP da home: WebP de 40 KB no lugar do PNG de 207 KB, com prioridade. */}
                         <img
-                            src="/lagosta-logo.png"
+                            src="/lagosta-logo.webp"
                             alt="Lagosta Criativa"
+                            width={768}
+                            height={314}
+                            fetchPriority="high"
                             className="w-full h-full object-contain drop-shadow-2xl"
                         />
                     </div>
@@ -89,7 +93,7 @@ export function HeroSection() {
                 </h1>
 
                 <p className="text-xl md:text-2xl text-muted-foreground max-w-3xl mb-10 leading-relaxed">
-                    Não vendemos posts. Vendemos <span className="text-foreground font-semibold">mesas ocupadas</span>, <span className="text-foreground font-semibold">ticket médio maior</span> e <span className="text-foreground font-semibold">marca memorável</span>.
+                    Não vendemos posts. Vendemos <span className="text-foreground font-semibold">mesas ocupadas</span>, <span className="text-foreground font-semibold">ticket médio maior</span> e <span className="text-foreground font-semibold">marca memorável</span> — para restaurantes de Vitória e de todo o Espírito Santo.
                 </p>
 
                 <div className="flex flex-col sm:flex-row gap-4 w-full justify-center mb-16">

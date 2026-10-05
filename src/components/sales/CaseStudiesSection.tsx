@@ -11,7 +11,7 @@ const cases = [
         result: "Redução no tempo de atendimento",
         metric: "+ Reservas Mensais",
         highlight: true,
-        logo: "/clients/client-8.png",
+        logo: "/clients/client-8.webp",
         quote: "O atendimento automatizado resolveu nosso maior gargalo operacional com eficiência."
     },
     {
@@ -20,7 +20,7 @@ const cases = [
         result: "Elevação de receita no FDS",
         metric: "Crescimento Real",
         highlight: false,
-        logo: "/clients/client-6.png",
+        logo: "/clients/client-6.webp",
         quote: "Campanhas fortes que aumentam feijoada, samba e movimento todo fim de semana."
     },
     {
@@ -29,7 +29,7 @@ const cases = [
         result: "Parrilla Premium",
         metric: "+ Percepção de Valor",
         highlight: false,
-        logo: "/clients/client-7.png",
+        logo: "/clients/client-7.webp",
         quote: "O audiovisual deles nos permitiu defender preço e reforçar posicionamento premium."
     },
     {
@@ -38,7 +38,7 @@ const cases = [
         result: "Alta demanda em retiradas",
         metric: "Recorde de Pedidos",
         highlight: false,
-        logo: "/clients/client-3.png",
+        logo: "/clients/client-3.webp",
         quote: "Clareza na comunicação aumentou demais nossos pedidos de retirada nos finais de semana."
     }
 ]

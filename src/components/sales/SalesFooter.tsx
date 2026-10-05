@@ -13,7 +13,7 @@ export function SalesFooter() {
                     <div className="col-span-1 md:col-span-1">
                         <div className="w-40 h-16 mb-4 relative">
                             <img
-                                src="/lagosta-logo.png"
+                                src="/lagosta-logo.webp"
                                 alt="Lagosta Criativa"
                                 className="w-full h-full object-contain object-left"
                             />
@@ -36,7 +36,9 @@ export function SalesFooter() {
                                     <li><Link href="#cases" className="hover:text-foreground">Casos de Sucesso</Link></li>
                                     <li><Link href="#sites" className="hover:text-foreground">Sites</Link></li>
                                     <li><Link href="#pricing" className="hover:text-foreground">Planos</Link></li>
-                                    <li><Link href="/sign-in" className="hover:text-foreground">Entrar no Studio</Link></li>
+                                    <li><Link href="/sign-in" rel="nofollow" className="hover:text-foreground">Entrar no Studio</Link></li>
+                                    <li><Link href="/privacy-policy" className="hover:text-foreground">Política de Privacidade</Link></li>
+                                    <li><Link href="/terms-of-service" className="hover:text-foreground">Termos de Uso</Link></li>
                                 </ul>
                             </div>
                         </div>
@@ -49,7 +51,7 @@ export function SalesFooter() {
                             <p>contato@lagostacriativa.com.br</p>
                             <p className="mt-4 text-xs opacity-50">CNPJ: 21.339.876/0001-37</p>
                         </address>
-                        <p className="text-xs text-muted-foreground mt-4">Responsável Técnico: Ciro Trigo</p>
+                        <p className="text-xs text-muted-foreground mt-4">Responsável Técnico: <Link href="https://cirotrigo.com.br/sobre" target="_blank" rel="noopener" className="underline hover:text-foreground">Ciro Trigo</Link></p>
                     </div>
 
                 </div>
