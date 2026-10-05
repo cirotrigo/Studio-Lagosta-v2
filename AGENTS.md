@@ -201,7 +201,7 @@ Consequences:
   `migration.sql` + `npm run db:deploy`. Reserve `db:push` for local experiments —
   do not use it to ship schema changes. *(Corrigido em 05/10/2026: o texto antigo
   mandava rodar o `npx prisma migrate dev` cru.)*
-- ⚠️ **`migrate dev` só é seguro contra um banco local.** O `.env` aponta para
+- ⚠️ **`migrate dev` só é seguro contra um banco de desenvolvimento isolado (o branch do Neon).** O `.env` aponta para
   PRODUÇÃO, e o banco tem drift (tabelas e colunas criadas fora do histórico por
   `db push`), então o `migrate dev` pede para **resetar o banco** para
   reconciliar. Contra produção, escreva o `migration.sql` à mão e aplique com
