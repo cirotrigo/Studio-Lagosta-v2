@@ -49,7 +49,7 @@ export function SalesFooter() {
                             <p>contato@lagostacriativa.com.br</p>
                             <p className="mt-4 text-xs opacity-50">CNPJ: 21.339.876/0001-37</p>
                         </address>
-                        <p className="text-xs text-muted-foreground mt-4">Responsável Técnico: Ciro Trigo</p>
+                        <p className="text-xs text-muted-foreground mt-4">Responsável Técnico: <Link href="https://cirotrigo.com.br/sobre" target="_blank" rel="noopener" className="underline hover:text-foreground">Ciro Trigo</Link></p>
                     </div>
 
                 </div>
