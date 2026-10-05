@@ -195,8 +195,12 @@ so every `prisma migrate dev` failed on the shadow database. That is why some
 tables used to be created with direct SQL or `db push`.
 
 Consequences:
-- **Schema changes now go through `npx prisma migrate dev --name <change>`.**
-  Reserve `db:push` for local experiments — do not use it to ship schema changes.
+- **Schema changes go through `npm run db:migrate -- --name <change>`** (runs
+  `prisma migrate dev` against the Neon dev branch; never `npx prisma migrate dev`
+  raw, which reads the production `.env`). Production: hand-written
+  `migration.sql` + `npm run db:deploy`. Reserve `db:push` for local experiments —
+  do not use it to ship schema changes. *(Corrigido em 05/10/2026: o texto antigo
+  mandava rodar o `npx prisma migrate dev` cru.)*
 - ⚠️ **`migrate dev` só é seguro contra um banco local.** O `.env` aponta para
   PRODUÇÃO, e o banco tem drift (tabelas e colunas criadas fora do histórico por
   `db push`), então o `migrate dev` pede para **resetar o banco** para
@@ -356,7 +360,11 @@ src/
 ### API Pattern
 All API routes follow this pattern:
 1. Authenticate user with `await auth()` from Clerk
-2. Get or create database user with `getUserFromClerkId()`
+2. Resolve the database user: `getUserFromClerkId()` CREATES the user when it is
+   missing — use it only where creating is the intent (first access). Reads, audit
+   and credit checks use `findUnique` by `clerkId` (see the "Users fantasma" trap
+   above). *(Corrigido em 05/10/2026: o texto antigo mandava "get or create" em
+   toda rota.)*
 3. Verify resource ownership when applicable
 4. Return JSON response with appropriate status codes
 
