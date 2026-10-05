@@ -26,6 +26,7 @@ import {
   dnaDiverge,
   lerVoz,
   precedenciaDaVoz,
+  problemasDaVozEmPortugues,
   regrasAtivas,
   type ContextoDeVoz,
   type NovaRegra,
@@ -107,7 +108,7 @@ export interface GravarVozArgs {
 export async function gravarVoz(args: GravarVozArgs): Promise<{ versao: number; voz: VozCompacta; criada: boolean }> {
   const { voz, problemas } = lerVoz(args.voz)
   if (!voz) {
-    throw new CreativeError('VOZ_INVALIDA', `A voz não passa no contrato (${problemas.length} problema${problemas.length === 1 ? '' : 's'}): ${problemas.map((p) => `${p.caminho}: ${p.mensagem}`).join(' · ')}`, 400, { problemas })
+    throw new CreativeError('VOZ_INVALIDA', `Ainda não dá para salvar a voz (${problemas.length} ponto${problemas.length === 1 ? '' : 's'} a resolver): ${problemasDaVozEmPortugues(problemas).join(' · ')}`, 400, { problemas })
   }
   const atual = await db.brandVoice.findUnique({ where: { projectId: args.projectId }, select: { versao: true } })
   // PR13-38: quem detém uma trava externa (a migração por manifesto) confere a POSSE aqui — depois da leitura,
@@ -198,7 +199,7 @@ export async function migrarParaVoz(args: {
     await travarProjeto(tx, args.projectId)
     const registro = await lerRegistroDaVoz(args.projectId, tx)
     if (!registro) throw new CreativeError('VOZ_INEXISTENTE', 'Não há voz gravada para migrar: grave a voz primeiro.', 404)
-    if (!registro.voz) throw new CreativeError('VOZ_INVALIDA', `A voz gravada não passa no contrato: ${registro.problemas.map((p) => `${p.caminho}: ${p.mensagem}`).join(' · ')}`, 400, { problemas: registro.problemas })
+    if (!registro.voz) throw new CreativeError('VOZ_INVALIDA', `A voz que está gravada tem pontos a resolver: ${problemasDaVozEmPortugues(registro.problemas).join(' · ')}`, 400, { problemas: registro.problemas })
     if (registro.migradaEm) return { migradaEm: registro.migradaEm, jaEstava: true, versao: registro.versao }
     if (registro.versao !== args.versaoEsperada) {
       throw new CreativeError('VOZ_DIVERGENTE', `A voz mudou (versão esperada ${args.versaoEsperada}, atual ${registro.versao}). Releia a voz antes de migrar.`, 409, { versaoEsperada: args.versaoEsperada, versaoAtual: registro.versao })
