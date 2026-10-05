@@ -19,6 +19,7 @@
  */
 
 import { z } from 'zod'
+import { zodToJsonSchema } from 'zod-to-json-schema'
 import { CATALOGO, INDICE_DO_CATALOGO } from '../src/lib/mcp/catalogo/index'
 import { INSTRUCOES } from '../src/lib/mcp/instrucoes'
 import { definirTool } from '../src/lib/mcp/registro/definir'
@@ -122,6 +123,37 @@ for (const tool of CATALOGO.values()) {
     `${rotulo} schema zod é strict`,
     (tool.schema as unknown as { _def: { unknownKeys?: string } })._def.unknownKeys === 'strict',
   )
+  const descartam = objetosQueDescartam(tool.schema)
+  confere(
+    `${rotulo} nenhum objeto aninhado descarta chave desconhecida`,
+    descartam.length === 0,
+    `sem .strict() (ou .passthrough() declarado): ${descartam.join(', ')}`,
+  )
+}
+
+/**
+ * `definirTool` fecha só a RAIZ, e o objeto zod aninhado em modo "strip"
+ * DESCARTA a chave desconhecida em silêncio (R12-03, 18/09/2026). O JSON
+ * publicado não denuncia: o zod-to-json-schema emite `additionalProperties:
+ * false` para "strip" igual a "strict". Só a derivação com
+ * `removeAdditionalStrategy: 'strict'` o mostra aberto; o que abre SÓ nela é
+ * "strip". `.passthrough()` abre nas duas — é abertura declarada (a chave
+ * chega ao handler) e fica de fora, como `textosLivres` de criar-arte.
+ */
+function objetosQueDescartam(schema: z.ZodTypeAny): string[] {
+  const base = { $refStrategy: 'none', target: 'jsonSchema7' } as const
+  const declarados = new Set(objetosAbertos(zodToJsonSchema(schema, base)))
+  return objetosAbertos(zodToJsonSchema(schema, { ...base, removeAdditionalStrategy: 'strict' })).filter(
+    (caminho) => !declarados.has(caminho),
+  )
+}
+
+/** Caminhos, no JSON Schema, dos objetos que aceitam chave fora das `properties`. */
+function objetosAbertos(no: unknown, caminho = ''): string[] {
+  if (!no || typeof no !== 'object') return []
+  const o = no as Record<string, unknown>
+  const aqui = o.type === 'object' && 'properties' in o && o.additionalProperties !== false ? [caminho || '(raiz)'] : []
+  return aqui.concat(...Object.entries(o).map(([k, v]) => objetosAbertos(v, caminho ? `${caminho}.${k}` : k)))
 }
 
 for (const tool of CATALOGO.values()) {

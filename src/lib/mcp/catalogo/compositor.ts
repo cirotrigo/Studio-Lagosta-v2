@@ -3,6 +3,10 @@
  *
  * Mesma regra de clientes.ts: import estático só de módulo puro; serviço e
  * helpers por `await import()` relativo dentro do handler.
+ *
+ * 🔴 Todo objeto aninhado é `.strict()`: `definirTool` fecha só a raiz, e o zod
+ * aninhado sem ele descarta chave desconhecida em silêncio (R12-03). A seção A
+ * de `scripts/validar-registro-mcp.ts` recusa isso no CI.
  */
 
 import { z } from 'zod'
@@ -48,7 +52,7 @@ const bloco = z.object({
   grupoVisual: grupoVisual.optional(),
   grupoDeLeitura: grupoDeLeitura.optional(),
   ordem: ordemDeLeitura.optional(),
-})
+}).strict()
 
 const camadaExtra = z.object({
   id: idDaCamadaExtra.describe('O id da camada extra, do autor e único na peça (mesmas proibições do id do bloco).'),
@@ -57,7 +61,7 @@ const camadaExtra = z.object({
   grupoVisual: grupoVisual.optional(),
   grupoDeLeitura: grupoDeLeitura.optional(),
   ordem: ordemDeLeitura.optional(),
-})
+}).strict()
 
 const preferencias = z
   .object({
@@ -71,11 +75,12 @@ const preferencias = z
     enquadramento: z.enum(['auto', 'fixo']).optional().describe('"auto" (default) deixa o compositor deslocar o corte da foto para abrir área livre; "fixo" mantém o centro.'),
     variante: z.string().optional().describe('A variante da assinatura, quando o cliente tem mais de uma página no formato: o `id` da página (ver-assinatura lista; vence nome e tag, e é o que fixa a variante sem ambiguidade), ou o nome/tag. Sem isso: foto clara/escura escolhe entre as marcadas, e o rodízio varia entre as demais. A recomposição fixa sozinha a variante com que a peça nasceu.'),
     arranjos: z
-      .array(z.union([z.string().max(160), z.object({ grupo: z.string().max(80), arranjo: z.string().max(160) })]))
+      .array(z.union([z.string().max(160), z.object({ grupo: z.string().max(80), arranjo: z.string().max(160) }).strict()]))
       .max(8)
       .optional()
       .describe('Os arranjos de texto a REPETIR, por grupo: a `fixacao.arranjos` que medir-copy devolveu ([{ grupo, arranjo }]). Sem isso o rodízio de arranjos usa a chave da peça (que inclui a foto) e pode escolher outra combinação salva para um grupo — fonte, tamanho e distribuição das linhas mudam, e uma copy medida como "cabe" pode ser recusada. Mande junto com preferencias.variante para reproduzir uma medição.'),
   })
+  .strict()
   .optional()
 
 const spec = {
@@ -110,6 +115,7 @@ const spec = {
       slide: z.number().int().min(1).max(20).describe('A posição desta peça no carrossel como ele sai no Instagram — 1 é a capa. Carrossel cuja capa é foto do acervo começa as peças compostas no 2.'),
       de: z.number().int().min(2).max(20).optional().describe('Quantas mídias o carrossel tem no total.'),
     })
+    .strict()
     .optional()
     .describe('Só quando a peça é SLIDE de um carrossel. É o que dá nome próprio a cada slide na pasta ("slide 2/5") e mantém a ordem deles — sem isso os irmãos ficam com nomes idênticos e a equipe não sabe qual é qual ao aprovar.'),
 }
@@ -479,7 +485,7 @@ export const toolsDoCompositor = [
             planoId: spec.planoId,
             quando: spec.quando,
             carrossel: spec.carrossel,
-          }),
+          }).strict(),
         )
         .min(1)
         .max(60)

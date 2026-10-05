@@ -250,6 +250,9 @@ export const toolsDeFotos = [
           mime_type: z.string().optional(),
           file_name: z.string().optional(),
         })
+        // passthrough de propósito: quem preenche é o ChatGPT (openai/fileParams), e
+        // recusar uma chave que a OpenAI acrescente quebraria a importação.
+        .passthrough()
         .optional()
         .describe('O arquivo da imagem na conversa (preenchido pelo ChatGPT).'),
       uploadId: z
