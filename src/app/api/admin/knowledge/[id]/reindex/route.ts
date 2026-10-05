@@ -8,6 +8,7 @@ import { auth } from '@clerk/nextjs/server'
 import { getUserFromClerkId } from '@/lib/auth-utils'
 import { reindexEntry } from '@/lib/knowledge/indexer'
 import { invalidateProjectCache } from '@/lib/knowledge/cache'
+import { ehIndexacaoEmAndamento, perdeuOArrendamento } from '@/lib/knowledge/marca-de-indexado'
 import { db } from '@/lib/db'
 
 export const runtime = 'nodejs'
@@ -76,6 +77,11 @@ export async function POST(
     return NextResponse.json(result)
   } catch (error) {
     console.error('Error reindexing knowledge entry:', error)
+
+    // Outra execução detém (ou tomou) o arrendamento da entrada (PR13-41): nada desta chamada apagou o que é dela.
+    if (ehIndexacaoEmAndamento(error) || perdeuOArrendamento(error)) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 409 })
+    }
 
     if (error instanceof Error) {
       if (error.message === 'Entry not found') {

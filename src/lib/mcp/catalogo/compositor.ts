@@ -7,16 +7,56 @@
 
 import { z } from 'zod'
 import { definirTool } from '../registro/definir'
+// Módulos PUROS (zod + tipos): o catálogo continua carregando sem env.
+import { GRUPOS_VISUAIS, PAPEIS, blocoSchema } from '../../compositor/spec'
+import { MAX_LINHAS } from '../../copy-autoral/contrato'
+
+/**
+ * 🔴 Os limites do bloco vêm do schema da SPEC, nunca redeclarados aqui (R02 da
+ * revisão dos patches do PR 10, 12/09/2026). O schema público exigia linha não
+ * vazia e até 6 linhas, e `compor-arte`, `compor-leva` e `medir-copy` recusavam
+ * na porta o respiro ("") e as 7 a 12 linhas que `validarSpec` e o contrato
+ * aceitam. O id, o grupo de leitura e a ordem saem da mesma fonte, e os tetos
+ * que ficam literais (40 blocos, 3 candidatas, 20 slides, 8 arranjos) têm teste
+ * de paridade com a spec.
+ */
+const papelDaAssinatura = z.enum(PAPEIS)
+const linhasDoBloco = blocoSchema.shape.linhas.describe(
+  `As linhas do bloco, JÁ quebradas como devem aparecer (uma string por linha). Headline em 1-2 linhas curtas; apoio em 1-2 linhas. Linha vazia ("") é respiro e fica onde está; até ${MAX_LINHAS} linhas. Palavra-chave entre [colchetes] sai DESTACADA na cor e no peso de destaque da marca (ex.: "Seu milk-shake vem [em dobro]") — marque 1 ou 2 por peça, só o que decide a leitura (preço, dia, a oferta); sem colchetes, sem destaque.`,
+)
+/** O id de camada da spec (`idDeCamadaSchema`). */
+const idDaCamadaExtra = blocoSchema.shape.id.unwrap()
+const grupoVisual = z
+  .enum(GRUPOS_VISUAIS)
+  .describe('Onde a camada extra POUSA: principal (junto do bloco da manchete, depois dele), topo ou rodape (grupo próprio naquela borda). Padrão: servico vai ao rodape; o resto, ao principal. Nunca o lugar do papel de que ela herda o estilo.')
+const grupoDeLeitura = blocoSchema.shape.grupoDeLeitura
+  .unwrap()
+  .describe('Os blocos que se leem como UMA frase têm o mesmo nome (pelo menos dois). É do autor: não muda posição — posição é o grupoVisual.')
+const ordemDeLeitura = blocoSchema.shape.ordem
+  .unwrap()
+  .describe('A ordem de leitura da camada extra: os extras dos blocos e os de camadasExtras são ordenados JUNTOS por ela; sem ordem, vale a posição (blocos antes de camadasExtras).')
 
 const bloco = z.object({
-  papel: z
-    .enum(['pre', 'headline', 'apoio', 'cta', 'servico'])
-    .describe('O papel do texto: pre (pré-título curto), headline (a manchete), apoio (a frase de apoio), cta (a chamada), servico (horário/endereço — vai para o rodapé).'),
-  linhas: z
-    .array(z.string().min(1))
-    .min(1)
-    .max(6)
-    .describe('As linhas do bloco, JÁ quebradas como devem aparecer (uma string por linha). Headline em 1-2 linhas curtas; apoio em 1-2 linhas. Palavra-chave entre [colchetes] sai DESTACADA na cor e no peso de destaque da marca (ex.: "Seu milk-shake vem [em dobro]") — marque 1 ou 2 por peça, só o que decide a leitura (preço, dia, a oferta); sem colchetes, sem destaque.'),
+  papel: papelDaAssinatura.describe('O papel (a FUNÇÃO) do texto: pre (pré-título curto), headline (a manchete), apoio (a frase de apoio), cta (a chamada), servico (horário/endereço — vai para o rodapé).'),
+  linhas: linhasDoBloco,
+  herdaDe: papelDaAssinatura
+    .optional()
+    .describe('CAMADA EXTRA: o papel da assinatura de que este texto veste o estilo (fonte, peso, corpo, entrelinha, cor, sombra e prefixo) SEM virar esse papel e sem herdar a posição dele. Use quando a variante escolhida não tem o papel do texto — a linha de horário numa variante sem servico: papel "servico", herdaDe "apoio" — em vez de trocar de variante; ou para repetir um papel com estilo emprestado (a segunda linha de serviço). O herdaDe é sempre honrado, mesmo quando a variante tem o papel. A manchete nunca herda.'),
+  id: idDaCamadaExtra
+    .optional()
+    .describe('Só com herdaDe: o id da camada extra, do autor e único na peça — obrigatório quando o papel se repete. Sem herdaDe a camada se chama pelo papel e um id é recusado. Não pode ser headline2, <papel>-N, bg-foto, logo, gradiente-leitura-* nem <texto>-elemento-N (a composição gera esses).'),
+  grupoVisual: grupoVisual.optional(),
+  grupoDeLeitura: grupoDeLeitura.optional(),
+  ordem: ordemDeLeitura.optional(),
+})
+
+const camadaExtra = z.object({
+  id: idDaCamadaExtra.describe('O id da camada extra, do autor e único na peça (mesmas proibições do id do bloco).'),
+  linhas: linhasDoBloco,
+  herdaDe: papelDaAssinatura.describe('O papel da assinatura de que a camada veste o estilo — sem virar esse papel e sem a posição dele.'),
+  grupoVisual: grupoVisual.optional(),
+  grupoDeLeitura: grupoDeLeitura.optional(),
+  ordem: ordemDeLeitura.optional(),
 })
 
 const preferencias = z
@@ -29,7 +69,12 @@ const preferencias = z
       .optional()
       .describe('Canto da logo. "auto" (default) escolhe o canto mais calmo e escuro que não encosta no texto; "nenhum" tira a logo.'),
     enquadramento: z.enum(['auto', 'fixo']).optional().describe('"auto" (default) deixa o compositor deslocar o corte da foto para abrir área livre; "fixo" mantém o centro.'),
-    variante: z.string().optional().describe('Nome (ou tag) de uma variante da assinatura, quando o cliente tem mais de uma página no formato (ver-assinatura lista). Sem isso: foto clara/escura escolhe entre as marcadas, e o rodízio varia entre as demais.'),
+    variante: z.string().optional().describe('A variante da assinatura, quando o cliente tem mais de uma página no formato: o `id` da página (ver-assinatura lista; vence nome e tag, e é o que fixa a variante sem ambiguidade), ou o nome/tag. Sem isso: foto clara/escura escolhe entre as marcadas, e o rodízio varia entre as demais. A recomposição fixa sozinha a variante com que a peça nasceu.'),
+    arranjos: z
+      .array(z.union([z.string().max(160), z.object({ grupo: z.string().max(80), arranjo: z.string().max(160) })]))
+      .max(8)
+      .optional()
+      .describe('Os arranjos de texto a REPETIR, por grupo: a `fixacao.arranjos` que medir-copy devolveu ([{ grupo, arranjo }]). Sem isso o rodízio de arranjos usa a chave da peça (que inclui a foto) e pode escolher outra combinação salva para um grupo — fonte, tamanho e distribuição das linhas mudam, e uma copy medida como "cabe" pode ser recusada. Mande junto com preferencias.variante para reproduzir uma medição.'),
   })
   .optional()
 
@@ -40,7 +85,17 @@ const spec = {
   selecaoExperimental: z.boolean().optional().describe('Opt-in explícito para comparar variantes com o baseline. Default false: candidatas presentes não ativam seleção nem alteram o layout. Comparação técnica, sem aprovação estética automática.'),
   fotosCandidatas: z.array(z.string().min(1)).min(1).max(3).optional().describe('Só com selecaoExperimental: true. Até 3 driveFileIds já curados por buscar-fotos, em ordem de relevância. Avalia até 6 combinações com variantes, sem geração paga. Foto explícita prevalece. Sem combinação utilizável retorna diagnóstico; não remove copy.'),
   fotoUrl: z.string().optional().describe('URL pública da foto, quando ela não está no acervo (ex.: fotoUrl de ver-foto-enviada).'),
-  blocos: z.array(bloco).min(1).max(5).describe('A copy por papel. Um bloco por papel; a ordem dos papéis é a ordem de leitura.'),
+  blocos: z
+    .array(bloco)
+    .max(40)
+    .optional()
+    .describe('A copy por papel, na ordem de leitura. Um bloco por papel; o papel só se repete como CAMADA EXTRA (herdaDe + id próprio). Dispensável quando copyAutoral vem — aí os blocos saem do contrato. Blocos e camadasExtras somados: até 40.'),
+  camadasExtras: z
+    .array(camadaExtra)
+    .max(40)
+    .optional()
+    .describe('Texto SEM papel (uma nota, "vale só no almoço", um aviso) que veste o estilo de um papel da assinatura: {id, linhas, herdaDe, grupoVisual?, grupoDeLeitura?, ordem?}. Vira camada editável na página, com o id dado. Com copyAutoral não mande aqui: declare o bloco com funcao "livre" e estilo.herdaDe no contrato (as camadas extras saem dele).'),
+  copyAutoral: z.record(z.string(), z.unknown()).optional().describe('O CONTRATO da copy autoral (F1): a copy inteira como você a escreveu — {versao: "copy-autoral-v1", origem: {autor: "claude", superficie: "chat"}, blocos: [{id, funcao (pre|headline|apoio|cta|servico|livre), grupoDeLeitura?, ordem, linhas (EXATAS: caixa, acento e [colchetes] como escritos), fatos?: [{entradaId, trecho}], estilo?: {herdaDe?, grupoVisual?, linhasNaVoz2?: [índices]}}], revisoes: []}. Com ele, `blocos` e `camadasExtras` são dispensáveis (saem do contrato, sem transformar texto). CAMADA EXTRA no contrato: bloco com estilo.herdaDe (o papel de que veste o estilo) e estilo.grupoVisual (principal|topo|rodape) — um bloco com função que a variante não tem (funcao "servico", herdaDe "apoio") ou um texto sem papel (funcao "livre", que EXIGE herdaDe). É o que deixa a copy inteira ser comparada com a arte depois (ver-geracao). O contrato é gravado ANTES de qualquer adaptação (página, arte e item).'),
   preferencias,
   nome: z.string().optional().describe('Nome da peça na galeria (opcional).'),
   tema: z.string().optional().describe('Tema/assunto, para o registro e o rodízio de layout.'),
@@ -67,6 +122,8 @@ function specDe(args: Record<string, unknown>) {
     fotosCandidatas: args.fotosCandidatas,
     selecaoExperimental: args.selecaoExperimental,
     blocos: args.blocos,
+    ...(Array.isArray(args.camadasExtras) ? { camadasExtras: args.camadasExtras } : {}),
+    ...(args.copyAutoral && typeof args.copyAutoral === 'object' ? { copyAutoral: args.copyAutoral } : {}),
     ...(args.preferencias ? { preferencias: args.preferencias } : {}),
     ...(args.nome ? { nome: args.nome } : {}),
     ...(args.tema ? { tema: args.tema } : {}),
@@ -75,6 +132,47 @@ function specDe(args: Record<string, unknown>) {
     ...(args.quando ? { quando: args.quando } : {}),
     ...(args.carrossel ? { carrossel: args.carrossel } : {}),
   }
+}
+
+/**
+ * Os problemas da identidade de lote de uma chamada de `compor-leva` (vazio =
+ * pode enfileirar). Com `loteId`, todo item precisa de `itemId`, válido pelo
+ * contrato do lote e único na chamada DEPOIS da normalização (o contrato apara
+ * espaços: "a" e "a " são a mesma chave). `itemId` sem `loteId` é recusado, não
+ * ignorado — quem mandou acha que a leva está protegida contra duplicar. Pelo
+ * mesmo motivo, `itemRevisao` sem `loteId` (C11-1a). A FALTA da `itemRevisao`
+ * num item de plano é problema daquele item só, e volta em `falhas`.
+ */
+function identidadeDaLevaComProblemas(
+  loteId: string | undefined,
+  itens: Array<Record<string, unknown>>,
+  // `strict: false` deixa as chaves do z.infer opcionais: o tipo precisa admitir isso.
+  validar: (entrada: unknown) => { identidade: { itemId?: string } | null; problemas: string[] },
+): string[] {
+  const problemas = new Set<string>()
+  if (loteId === undefined) {
+    const comItemId = itens.flatMap((item, indice) => (item.itemId !== undefined ? [indice] : []))
+    if (comItemId.length > 0) problemas.add(`itemId sem loteId (itens ${comItemId.join(', ')}): mande o loteId da leva junto, ou tire os itemId`)
+    const comRevisao = itens.flatMap((item, indice) => (item.itemRevisao !== undefined ? [indice] : []))
+    if (comRevisao.length > 0) problemas.add(`itemRevisao sem loteId (itens ${comRevisao.join(', ')}): a revisão do item só vale numa leva com loteId`)
+    return Array.from(problemas)
+  }
+  const vistos = new Map<string, number>()
+  for (const [indice, item] of itens.entries()) {
+    if (item.itemId === undefined) {
+      problemas.add(`itens.${indice}.itemId: obrigatório quando loteId vem`)
+      continue
+    }
+    const r = validar({ loteId, itemId: item.itemId })
+    if (!r.identidade) {
+      for (const p of r.problemas) problemas.add(p.startsWith('itemId') ? `itens.${indice}.${p}` : p)
+      continue
+    }
+    const anterior = vistos.get(r.identidade.itemId)
+    if (anterior !== undefined) problemas.add(`itens.${indice}.itemId: "${r.identidade.itemId}" repete o itemId do item ${anterior} — cada peça da leva tem o seu`)
+    else vistos.set(r.identidade.itemId, indice)
+  }
+  return Array.from(problemas)
 }
 
 export const toolsDoCompositor = [
@@ -132,17 +230,20 @@ export const toolsDoCompositor = [
     superficies: ['remoto', 'local'],
     handler: async (args) => {
       const { carregarAssinatura } = await import('../../compositor/compor')
+      const { descreverVariantes } = await import('../../compositor/medir-copy-service')
       const { getPublicAppUrl } = await import('../../creatives/persist')
       const projectId = args.projectId as number
       const formato = (args.formato as 'story' | 'feed' | 'quadrado' | undefined) ?? 'story'
       const a = await carregarAssinatura(projectId, formato)
-      const { paginasDeAssinatura } = await import('../../compositor/compor')
-      const { templateId, paginas } = await paginasDeAssinatura(projectId)
+      // Cada variante com os PRÓPRIOS estilos, a fonte disponível no servidor,
+      // a área útil do formato pedido e o orçamento por papel (PR 8).
+      const { templateId, variantes } = await descreverVariantes(projectId, formato)
       const template = templateId ? { id: templateId } : null
       return {
         temAssinatura: Boolean(a.origem.pageId),
         formatoDaPagina: a.origem.formatoDaPagina,
-        variantes: paginas.map((p) => ({ id: p.id, nome: p.name, formato: p.formato, papeis: p.papeis, aceitaServico: p.papeis.includes('servico'), tags: p.tags.filter((t) => t !== 'assinatura') })),
+        varianteCarregada: a.origem.pageId ? { id: a.origem.pageId, nome: a.origem.variante, motivo: a.origem.motivoDaVariante ?? null } : null,
+        variantes,
         papeis: Object.fromEntries(
           Object.entries(a.papeis).map(([papel, e]) => [
             papel,
@@ -162,8 +263,144 @@ export const toolsDoCompositor = [
         numeros: a.numeros,
         editorUrl: template ? `${getPublicAppUrl()}/templates/${template.id}/editor` : null,
         dica: a.origem.pageId
-          ? 'A equipe ajusta fonte, tamanho, cor e destaque de cada papel abrindo a página de assinatura no editor; uma camada de gradiente na página manda na cor e na curva do gradiente de leitura. O próximo lote sai com a mudança.'
+          ? 'A equipe ajusta fonte, tamanho, cor e destaque de cada papel abrindo a página de assinatura no editor; uma camada de gradiente na página manda na cor e na curva do gradiente de leitura. O próximo lote sai com a mudança. Cada variante traz o orçamento por papel (caracteres por linha, aproximado) e a fonte disponível: papel com fonteDisponivel false sai na fonte de fallback e a medida não vale. Antes de compor, medir-copy mede a copy escrita contra a variante.'
           : 'Este cliente ainda não tem página de assinatura. Peça para a equipe criar (template "Assinatura", uma página por formato com camadas de texto chamadas pre, headline, apoio, cta, servico).',
+      }
+    },
+  }),
+
+  definirTool({
+    nome: 'medir-copy',
+    descricao:
+      'MEDE a copy ANTES de compor, com a MESMA preparação da composição (agrupamento pela assinatura, arranjos, divisão das linhas, segunda voz, estilos, ids dos blocos) e o MESMO medidor do render que compor-arte usa — sem gravar nada (nem página, nem arte, nem prova). Para cada bloco diz se cabe na coluna útil da variante no tamanho da assinatura (cabe), só com a fonte reduzida até 80% (cabe-reduzido, com a escala), ou não cabe nem assim (nao-cabe, com o orçamento: quantos caracteres cabem em cada linha) — e se a variante não tem o papel (papel-ausente). Cada linha volta com a largura medida e os caracteres que cabem; cada bloco com o corpo final, a caixa e as linhas.\n\nA medida é dita pelo que é: naoMedido = a fonte do papel não está carregada no servidor (os números saíram na fonte de fallback e NÃO valem — avise a pessoa e não confie neles); aproximado = há destaque entre [colchetes] e a largura extra do trecho é estimada. A resposta também mede a copy contra as OUTRAS variantes do formato (outrasVariantes: cabe tudo? falta papel?) para você escolher a variante pela capacidade, não só pelo nome. Use antes de compor-arte/compor-leva quando a copy estiver perto do limite ou quando a peça tiver muitos blocos; ver-assinatura já traz o orçamento aproximado por papel antes de escrever.',
+    schema: z.object({
+      projectId: spec.projectId,
+      formato: spec.formato,
+      blocos: spec.blocos,
+      camadasExtras: spec.camadasExtras,
+      copyAutoral: spec.copyAutoral,
+      variante: z.string().optional().describe('A variante a medir (id da página, nome ou tag, como em compor-arte). Sem ela, a que a composição escolheria para esta copy — mande também nome, tema e a foto (a luz da foto e a chave da peça entram nessa escolha); sem a LUZ da foto (foto ausente, ou que não carregou) a escolha é PROVISÓRIA (escolhaProvisoria: true, com os motivos) — o rodízio de arranjos também usa a chave da peça, que inclui a foto, então fixar só a variante não basta: repita a medição com a foto definitiva antes de confiar nas medidas, ou fixe ao compor a `fixacao` inteira (preferencias.variante E preferencias.arranjos).'),
+      tema: spec.tema,
+      nome: spec.nome,
+      fotoDriveId: spec.fotoDriveId,
+      fotoUrl: spec.fotoUrl,
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    acesso: { tipo: 'projeto' },
+    superficies: ['remoto', 'local'],
+    handler: async (args) => {
+      const { medirCopyDoProjeto } = await import('../../compositor/medir-copy-service')
+      const r = await medirCopyDoProjeto({
+        projectId: args.projectId as number,
+        formato: args.formato as 'story' | 'feed' | 'quadrado',
+        blocos: args.blocos as NonNullable<Parameters<typeof medirCopyDoProjeto>[0]['blocos']> | undefined,
+        ...(Array.isArray(args.camadasExtras) ? { camadasExtras: args.camadasExtras as NonNullable<Parameters<typeof medirCopyDoProjeto>[0]['camadasExtras']> } : {}),
+        ...(args.copyAutoral && typeof args.copyAutoral === 'object' ? { copyAutoral: args.copyAutoral } : {}),
+        variante: typeof args.variante === 'string' ? args.variante : null,
+        tema: typeof args.tema === 'string' ? args.tema : null,
+        nome: typeof args.nome === 'string' ? args.nome : null,
+        fotoDriveId: typeof args.fotoDriveId === 'string' ? args.fotoDriveId : null,
+        fotoUrl: typeof args.fotoUrl === 'string' ? args.fotoUrl : null,
+      })
+      const m = r.medicao
+      return {
+        variante: r.variante,
+        // O que reproduz ESTA medição na composição: variante E arranjos (o rodízio de arranjos usa a chave da
+        // peça, que inclui a foto — fixar só a variante não fixa o segundo sorteio, R12).
+        fixacao: r.fixacao,
+        ...(r.escolhaProvisoria
+          ? {
+              escolhaProvisoria: true,
+              motivos: r.motivosDaProvisoriedade,
+              comoFixar: `repita a medição com a foto definitiva antes de confiar nas medidas; para reutilizar ESTA medição ao compor, mande preferencias.variante = ${JSON.stringify(r.fixacao.variante)} E preferencias.arranjos = ${JSON.stringify(r.fixacao.arranjos)} — sem os dois a composição pode escolher outra variante (luz clara/escura e rodízio) e outro arranjo (o rodízio de arranjos usa a chave da peça, que inclui a foto).`,
+            }
+          : {}),
+        formato: args.formato,
+        areaUtil: m.areaUtil,
+        cabeTudo: m.cabeTudo,
+        naoMedido: m.naoMedido,
+        aproximado: m.aproximado,
+        ...(m.papeisAusentes.length ? { papeisAusentes: m.papeisAusentes } : {}),
+        ...(m.fontesNaoCarregadas.length ? { fontesNaoCarregadas: m.fontesNaoCarregadas } : {}),
+        arranjos: m.arranjos,
+        blocos: m.blocos.map((b) => ({
+          id: b.id,
+          papel: b.papel,
+          // A camada extra diz a FUNÇÃO e de que papel veio o estilo — `papel` aqui é o de estilo.
+          ...(b.extra ? { extra: b.extra } : {}),
+          situacao: b.situacao,
+          ...(b.fonte ? { fonte: b.fonte } : {}),
+          ...(b.escala !== null ? { escala: b.escala } : {}),
+          ...(b.fontSize !== null ? { corpo: b.fontSize } : {}),
+          ...(b.width !== null && b.height !== null ? { caixa: { largura: b.width, altura: b.height } } : {}),
+          linhas: b.linhasMedidas.map((l) => ({ linha: l.linha, largura: l.largura, coluna: l.coluna, cabe: l.cabe, caracteresQueCabem: l.caracteresQueCabem })),
+          ...(b.naoMedido ? { naoMedido: true } : {}),
+          ...(b.aproximado ? { aproximado: true } : {}),
+          ...(b.orcamento ? { orcamento: b.orcamento } : {}),
+          ...(b.avisos.length ? { avisos: b.avisos } : {}),
+        })),
+        alturaDosBlocos: m.alturaDosBlocos,
+        segundaVoz: m.segundaVoz,
+        outrasVariantes: r.outrasVariantes,
+        ...(m.avisos.length ? { avisos: m.avisos } : {}),
+        nota: m.naoMedido
+          ? 'Há bloco NÃO MEDIDO: a fonte dele não está no servidor de render, e a peça sairia na fonte de fallback — avise a pessoa (a equipe cadastra a fonte em Configurações → Fontes) antes de compor.'
+          : m.cabeTudo
+            ? 'Tudo cabe nesta variante. Nada foi gravado: compor-arte é o próximo passo.'
+            : 'Algum bloco não cabe (ou falta papel na variante): reescreva com o orçamento devolvido ou escolha outra variante (outrasVariantes) — nunca insista com o mesmo texto.',
+      }
+    },
+  }),
+
+  definirTool({
+    nome: 'revisar-arte',
+    descricao:
+      'Revisa uma arte feita no EDITOR — peça do compositor, arte de modelo ou página editada — ANTES de ela ir para a agenda, e devolve o que está errado COM A MEDIDA e os AJUSTES prontos para aplicar. Não grava nada.\n\nDuas camadas. O código mede: texto cortado, fonte não cadastrada, colisão, texto fora da margem de segurança, logo sobre texto, texto sem leitura sobre a foto (a régua de contraste — o "horário não deu leitura"), gradiente mais forte do que o texto precisa, título grande demais para a peça ou maior que o modelo, entrelinha grande, texto pequeno, palavra sozinha na última linha e texto sobre o assunto da foto. A visão olha a peça renderizada, com cada bloco marcado (T1, T2… e L1 para a logo), e aponta o que a medida não vê — bloco mal colocado, gradiente pesando na foto, respiro desequilibrado. A resposta traz a miniatura com as marcas para você conferir.\n\nCada achado tem severidade (problema, aviso, sugestão), a evidência e os índices dos ajustes que o corrigem; o número de todo ajuste é calculado pelas medidas. Para corrigir: ajustar-arte com o pageId, versaoEsperada = a `versao` desta revisão e os ajustes que decidir aplicar — todos, ou só os que concordar (sugestão é gosto; achado de confiança média, confira na miniatura) — e revise de novo. No máximo DUAS rodadas por peça; o que sobrar vira observação para a pessoa. A revisão nunca bloqueia: peça com pendência vai para a agenda como rascunho do mesmo jeito, com a pendência dita. Achado sem ajuste é decisão de gente (trocar a foto, reescrever, mudar o bloco de borda) — proponha em vez de insistir.\n\nNa leva (compor-leva), revise pelo generationId assim que a peça aparecer pronta em ver-geracao. Com a visão leva ~20 a 40 segundos por peça; visao: false devolve só as medidas em poucos segundos.',
+    schema: z.object({
+      projectId: z.number().describe('ID do cliente.'),
+      pageId: z.string().optional().describe('A peça (pageId de compor-arte, criar-arte, ajustar-arte ou do post).'),
+      generationId: z.string().optional().describe('Alternativa ao pageId: o id da arte (compor-leva devolve só este); a página é achada por ele.'),
+      visao: z.boolean().optional().describe('Olhar da visão sobre a peça renderizada (default true). false = só as medidas, mais rápido.'),
+      previa: z.boolean().optional().describe('Devolver a miniatura com as marcas (default true).'),
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    acesso: { tipo: 'projeto' },
+    superficies: ['remoto', 'local'],
+    handler: async (args) => {
+      const [{ revisarArte }, { CreativeError }] = await Promise.all([
+        import('../../creatives/revisao/revisar-arte'),
+        import('../../creatives/errors'),
+      ])
+      const projectId = args.projectId as number
+      const pageId = typeof args.pageId === 'string' && args.pageId.trim() ? args.pageId.trim() : null
+      const generationId = typeof args.generationId === 'string' && args.generationId.trim() ? args.generationId.trim() : null
+      if (!pageId && !generationId) throw new CreativeError('SEM_PAGINA', 'Informe pageId ou generationId da peça.', 400)
+      const r = await revisarArte({ projectId, pageId, generationId, visao: args.visao !== false, previa: args.previa !== false })
+      const corpo = {
+        pageId: r.pageId,
+        pagina: r.pagina,
+        editUrl: r.editUrl,
+        formato: r.formato,
+        versao: r.versao,
+        aplicavel: r.aplicavel,
+        ...(r.motivo ? { motivo: r.motivo } : {}),
+        resumo: r.relatorio.resumo,
+        achados: r.relatorio.achados,
+        ajustes: r.relatorio.ajustes,
+        cobertura: r.relatorio.cobertura,
+        visao: r.visao,
+        ...(r.referencia ? { referencia: r.referencia } : {}),
+        comoAplicar:
+          r.aplicavel && r.relatorio.ajustes.length > 0
+            ? `ajustar-arte com projectId ${projectId}, pageId "${r.pageId}", versaoEsperada "${r.versao}" e os ajustes escolhidos (a lista inteira ou só os que fizerem sentido). Depois, revisar-arte de novo.`
+            : null,
+      }
+      if (!r.previa) return corpo
+      return {
+        _mcpContent: [
+          { type: 'text', text: JSON.stringify(corpo, null, 2) },
+          { type: 'image', data: r.previa.toString('base64'), mimeType: 'image/jpeg' },
+        ],
       }
     },
   }),
@@ -171,7 +408,7 @@ export const toolsDoCompositor = [
   definirTool({
     nome: 'compor-arte',
     descricao:
-      'Compõe UMA arte pelo EDITOR, sem crédito de imagem: a copy (por papel e por linha) pousa na área livre da foto — o compositor mede a foto, escolhe posição e enquadramento, desenha um gradiente de leitura sutil na borda onde o texto pousou (topo, rodapé ou os dois, em camadas independentes), destaca as palavras marcadas com [colchetes] e põe a logo no canto pela luz — e a peça nasce como página editável, onde a equipe ajusta na mão. Use para peça avulsa ou para testar antes de uma leva (compor-leva). Sem foto, a peça sai sobre o fundo liso da marca.\n\nAntes: ver-assinatura (o cliente precisa de página de assinatura) e consultar-dna/consultar-base para a copy. A COPY É ESCRITA SOBRE OS PAPÉIS QUE A VARIANTE TEM — ver-assinatura lista os papéis de cada variante por formato; papel pedido que a página não tem causa erro antes de salvar; escolha variante compatível sem omitir condições obrigatórias. Nunca escreva um bloco para um campo que o template não tem. Se a variante tem headline2, a última de duas ou mais linhas da headline recebe essa segunda voz automaticamente; não envie headline2 como papel. DESTAQUE: marque com [colchetes] 1 ou 2 palavras-chave da peça (preço, dia, a oferta) — sem colchetes a peça sai sem destaque. selecaoExperimental: true habilita a comparação conservadora com o baseline; fotosCandidatas sozinha não ativa seleção; a foto explícita prevalece. Se a resposta disser "texto não cabe", reescreva com o orçamento devolvido (caracteres que cabem por linha) — nunca insista igual.\n\nprovar: true renderiza e devolve só a prova (URL do PNG + diagnóstico), sem gravar nada na galeria.',
+      'Compõe UMA arte pelo EDITOR, sem crédito de imagem: a copy (por papel e por linha) pousa na área livre da foto — o compositor mede a foto, escolhe posição e enquadramento, desenha um gradiente de leitura sutil na borda onde o texto pousou (topo, rodapé ou os dois, em camadas independentes), destaca as palavras marcadas com [colchetes] e põe a logo no canto pela luz — e a peça nasce como página editável, onde a equipe ajusta na mão. Use para peça avulsa ou para testar antes de uma leva (compor-leva). Sem foto, a peça sai sobre o fundo liso da marca.\n\nAntes: ver-assinatura (o cliente precisa de página de assinatura) e consultar-dna/consultar-base para a copy. OS CAMPOS SÃO OPCIONAIS: a mensagem decide quais blocos a peça precisa; nada é escrito para preencher espaço e nenhum texto é descartado por falta de campo. CAMADA EXTRA: quando a variante escolhida não tem o papel de um texto, não troque de variante só por isso — declare no bloco de que papel ele herda o estilo (herdaDe): ele entra como camada extra, com id próprio, a tipografia daquele papel e o lugar dado por grupoVisual (principal, topo ou rodape; serviço vai ao rodapé por padrão), sem virar esse papel (a linha de horário numa variante sem servico: papel "servico", herdaDe "apoio"). Texto sem papel nenhum (uma nota) vai em camadasExtras, ou como bloco livre com estilo.herdaDe no copyAutoral. A camada extra é editável no editor e sobrevive a editar o texto, trocar a foto e recompor. Papel sem herdaDe que a variante não tem, ou herdaDe de um papel que ela também não tem, devolve PAPEIS_INCOMPATIVEIS antes de gravar — nunca some em silêncio. Se a variante tem headline2, a última de duas ou mais linhas da headline recebe essa segunda voz automaticamente; não envie headline2 como papel. DESTAQUE: marque com [colchetes] 1 ou 2 palavras-chave da peça (preço, dia, a oferta) — sem colchetes a peça sai sem destaque. selecaoExperimental: true habilita a comparação conservadora com o baseline; fotosCandidatas sozinha não ativa seleção; a foto explícita prevalece. Se a resposta disser "texto não cabe", reescreva com o orçamento devolvido (caracteres que cabem por linha) — nunca insista igual.\n\nprovar: true renderiza e devolve só a prova (URL do PNG + diagnóstico), sem gravar nada na galeria.',
     schema: z.object({
       ...spec,
       provar: z.boolean().optional().describe('true = só a prova (PNG + diagnóstico), nada gravado. Default false: grava a peça na galeria como página editável.'),
@@ -218,18 +455,23 @@ export const toolsDoCompositor = [
   definirTool({
     nome: 'compor-leva',
     descricao:
-      'Compõe VÁRIAS artes pelo editor de uma vez (uma semana, uma sessão de fotos), sem crédito de imagem. Cada item vira uma peça na fila durável — nada espera na conversa: a resposta traz os ids para acompanhar com ver-geracao, e as peças aparecem na galeria em poucos minutos (a fila roda de minuto em minuto, ~12 peças por varredura). Mesmos campos de compor-arte por item, inclusive o destaque com [colchetes] nas linhas. Teto de 60 itens.\n\nUse depois de montar a copy de cada peça (consultar-dna + consultar-base) e de escolher as fotos (buscar-fotos, sem repetir na leva). Antes de uma leva grande, prove UMA peça com compor-arte e mostre à pessoa.',
+      'Compõe VÁRIAS artes pelo editor de uma vez (uma semana, uma sessão de fotos), sem crédito de imagem. Cada item vira uma peça na fila durável — nada espera na conversa: a resposta traz os ids para acompanhar com ver-geracao, e as peças aparecem na galeria em poucos minutos (a fila roda de minuto em minuto, ~12 peças por varredura). Mesmos campos de compor-arte por item, inclusive o destaque com [colchetes] nas linhas. Teto de 60 itens.\n\nUse depois de montar a copy de cada peça (consultar-dna + consultar-base) e de escolher as fotos (buscar-fotos, sem repetir na leva). Antes de uma leva grande, prove UMA peça com compor-arte e mostre à pessoa.\n\nIDEMPOTÊNCIA: mande `loteId` (a leva) e, em cada item, `itemId` (a peça), estáveis e iguais em qualquer retentativa. Repetir a chamada inteira (timeout, erro no meio) devolve as peças que já existem e cria só as que faltaram; nada duplica. Mudou o conteúdo de um item? É outra peça: use outro itemId. O mesmo itemId com outro conteúdo volta em `conflitos`, sem alterar nada.\n\nITEM DA LEVA DE CONTEÚDO: peça que sai de um item de plano (itemDePlanoId) numa leva com loteId leva também `itemRevisao`, a revisão que o ver-plano devolveu para o item, lida ANTES de montar a copy; sem ela o item volta em `falhas`. Se o item mudou depois dessa leitura, a peça volta recusada em `falhas` (motivo chamada-vencida) em vez de sair com o conteúdo antigo: releia o item com ver-plano, remonte a peça com o conteúdo atual e mande com OUTRO itemId e a itemRevisao nova.\n\nARTE MAIS NOVA NO PLANO: se o item do plano já tem outra arte, mais recente que o pedido que chegou (a pessoa refez pela bancada ou por outra leva), a peça volta em `superadas` e NADA é criado — nem a peça antiga é devolvida como se fosse a do plano. Cada uma traz `arteAtualDoItem` (a arte, a página, quando foi feita e se está pronta ou em produção). Conte isso à pessoa e pergunte o que ela quer: manter a arte atual, ou refazer com o conteúdo atual do item — aí releia o item com ver-plano, remonte a peça e mande com OUTRO itemId e a itemRevisao atual. Nunca refaça sem ela pedir.',
     schema: z.object({
       projectId: z.number().describe('ID do cliente.'),
+      loteId: z.string().min(1).max(120).optional().describe('Identidade ESTÁVEL desta leva (ex.: "semana-2026-09-14"). A MESMA em toda retentativa da leva.'),
       itens: z
         .array(
           z.object({
+            itemId: z.string().min(1).max(120).optional().describe('Identidade ESTÁVEL desta peça na leva (ex.: "seg-19h-happy"). Obrigatório quando loteId vem; único na chamada.'),
+            itemRevisao: z.string().min(1).max(200).optional().describe('A revisão do item de plano que o ver-plano devolveu para ele (itemRevisao), lida ANTES de montar a copy desta peça. Obrigatória quando o item traz itemDePlanoId e a leva tem loteId: se o item mudou depois dessa leitura, a peça é recusada em vez de sair com o conteúdo antigo.'),
             formato: spec.formato,
             fotoDriveId: spec.fotoDriveId,
             fotoUrl: spec.fotoUrl,
             fotosCandidatas: spec.fotosCandidatas,
             selecaoExperimental: spec.selecaoExperimental,
             blocos: spec.blocos,
+            camadasExtras: spec.camadasExtras,
+            copyAutoral: spec.copyAutoral,
             preferencias,
             nome: spec.nome,
             tema: spec.tema,
@@ -247,26 +489,190 @@ export const toolsDoCompositor = [
     acesso: { tipo: 'projeto' },
     superficies: ['remoto', 'local'],
     handler: async (args, principal) => {
-      const [{ enfileirarPeca }, { quemDecidiu, canalDoPrincipal }] = await Promise.all([import('../../compositor/fila'), import('../tools')])
+      const [{ enfileirarPeca }, { quemDecidiu, canalDoPrincipal }, { CreativeError }, { validarIdentidadeDeLote }] = await Promise.all([
+        import('../../compositor/fila'),
+        import('../tools'),
+        import('../../creatives/errors'),
+        import('../../lotes/identidade'),
+      ])
       const projectId = args.projectId as number
-      const decididoPor = await quemDecidiu(projectId, principal)
       const itens = args.itens as Array<Record<string, unknown>>
-      const enfileiradas: Array<{ indice: number; generationId: string; nome: string | null }> = []
-      const falhas: Array<{ indice: number; erro: string }> = []
+      const loteId = args.loteId as string | undefined
+
+      // A identidade da leva é conferida INTEIRA antes de enfileirar qualquer
+      // peça: metade da leva na fila e a outra metade recusada é justamente a
+      // retomada que a identidade existe para tornar segura.
+      const problemas = identidadeDaLevaComProblemas(loteId, itens, validarIdentidadeDeLote)
+      if (problemas.length > 0) {
+        throw new CreativeError('LOTE_IDENTIDADE_INVALIDA', `Identidade de lote inválida — ${problemas.join('; ')}. Nada foi enfileirado.`, 400, { problemas })
+      }
+
+      const decididoPor = await quemDecidiu(projectId, principal)
+      const pecas: Array<{ indice: number; itemId: string | null; generationId: string; nome: string | null; desfecho: 'criado' | 'reaproveitado' | 'retomado'; situacao: 'pendente' | 'pronta' | 'falhou' }> = []
+      const falhas: Array<{ indice: number; erro: string; codigo?: string; motivo?: string }> = []
+      const conflitos: Array<{ indice: number; itemId: string | null; diferencas: string[]; generationId: string | null }> = []
+      // "Peça superada no plano" (decisão do Ciro, 13/09/2026): o item já tem
+      // outra arte, mais recente que este pedido. Nada foi criado — nem vai para
+      // `pecas`, que o chat leria como a arte do plano.
+      const superadas: Array<{ indice: number; itemId: string | null; arteDestePedido: string | null; arteAtualDoItem: unknown }> = []
       // Em SÉRIE, como todo lote da casa: cada item valida e grava sozinho.
       for (const [indice, item] of itens.entries()) {
+        const itemId = (item.itemId as string | undefined) ?? null
+        const itemRevisao = typeof item.itemRevisao === 'string' ? item.itemRevisao.trim() : ''
+        const doPlano = loteId !== undefined && !!item.itemDePlanoId
+        // A revisão lida no ver-plano é obrigatória para peça de item de plano
+        // numa leva com identidade (C11-1a); a falta é problema DESTE item só.
+        if (doPlano && !itemRevisao) {
+          falhas.push({
+            indice,
+            erro: 'ITEM_REVISAO_OBRIGATORIA — peça de item de plano precisa da itemRevisao que o ver-plano devolve para o item, lida antes de montar a copy. Releia o item e mande a revisão junto.',
+            codigo: 'ITEM_REVISAO_OBRIGATORIA',
+          })
+          continue
+        }
         try {
-          const r = await enfileirarPeca(specDe({ ...item, projectId }), { decididoPor, autor: decididoPor, canal: canalDoPrincipal(principal) })
-          enfileiradas.push({ indice, generationId: r.generationId, nome: (item.nome as string | undefined) ?? null })
+          // `specDe` só copia os campos da spec: o itemId nunca entra nela (nem no hash do lote).
+          const r = await enfileirarPeca(specDe({ ...item, projectId }), {
+            decididoPor,
+            autor: decididoPor,
+            canal: canalDoPrincipal(principal),
+            ...(loteId !== undefined ? { lote: { loteId, itemId: itemId as string } } : {}),
+            ...(doPlano ? { itemRevisao } : {}),
+          })
+          if (r.lote?.superada) {
+            superadas.push({ indice, itemId, arteDestePedido: r.generationId, arteAtualDoItem: r.lote.superada })
+            continue
+          }
+          pecas.push({ indice, itemId, generationId: r.generationId, nome: (item.nome as string | undefined) ?? null, desfecho: r.lote?.desfecho ?? 'criado', situacao: r.lote?.situacao ?? 'pendente' })
         } catch (erro) {
-          falhas.push({ indice, erro: erro instanceof Error ? erro.message : String(erro) })
+          const e = erro as { code?: unknown; details?: Record<string, unknown> }
+          if (e?.code === 'LOTE_ITEM_CONFLITO') {
+            const diferencas = Array.isArray(e.details?.diferencas) ? (e.details.diferencas as string[]) : []
+            const generationId = typeof e.details?.generationId === 'string' ? e.details.generationId : null
+            conflitos.push({ indice, itemId, diferencas, generationId })
+            continue
+          }
+          const codigo = typeof e?.code === 'string' ? e.code : undefined
+          const motivo = typeof e?.details?.motivo === 'string' ? e.details.motivo : undefined
+          if (motivo === 'superada') {
+            superadas.push({ indice, itemId, arteDestePedido: null, arteAtualDoItem: e.details?.arteAtualDoItem ?? null })
+            continue
+          }
+          falhas.push({ indice, erro: erro instanceof Error ? erro.message : String(erro), ...(codigo ? { codigo } : {}), ...(motivo ? { motivo } : {}) })
         }
       }
+      const contar = (d: string) => pecas.filter((p) => p.desfecho === d).length
+      const reaproveitadas = contar('reaproveitado')
+      const retomadas = contar('retomado')
       return {
-        enfileiradas: enfileiradas.length,
+        enfileiradas: contar('criado'),
+        reaproveitadas,
+        retomadas,
         falhas,
-        pecas: enfileiradas,
-        nota: 'As peças entram na galeria conforme a fila roda (ver-geracao com cada generationId). Nada foi cobrado.',
+        conflitos,
+        superadas,
+        pecas,
+        nota: [
+          'As peças entram na galeria conforme a fila roda (ver-geracao com cada generationId). Nada foi cobrado.',
+          ...(reaproveitadas + retomadas > 0 ? ['Reaproveitadas já existiam nesta leva com o mesmo conteúdo e não foram duplicadas; retomadas tinham falhado ou se perdido e voltaram à fila.'] : []),
+          ...(falhas.some((f) => f.motivo === 'chamada-vencida') ? ['Recusadas por chamada vencida: o item mudou depois da leitura que montou a peça — releia com ver-plano, remonte a peça com o conteúdo atual e mande com outro itemId e a itemRevisao nova.'] : []),
+          ...(superadas.length > 0
+            ? ['Superadas: o item do plano já tem outra arte, mais recente que o pedido que chegou — nada foi criado. Conte à pessoa qual é a arte atual (arteAtualDoItem: quando foi feita e se está pronta ou em produção) e pergunte o que ela quer: manter essa arte, ou refazer com o conteúdo atual do item (releia com ver-plano, remonte a peça e mande com outro itemId e a itemRevisao atual). Não refaça sem ela pedir.']
+            : []),
+          ...(conflitos.length > 0 ? ['Conflitos: o itemId já foi pedido com outro conteúdo e nada foi alterado — repita o conteúdo original para reaproveitar a peça, ou use outro itemId para uma peça nova.'] : []),
+        ].join(' '),
+      }
+    },
+  }),
+
+  definirTool({
+    nome: 'agendar-leva',
+    descricao:
+      'Põe na agenda, como RASCUNHO, as peças de uma leva composta por compor-leva — pela PÁGINA de cada peça (é o que dá "Editar Template" na agenda e faz a arte acompanhar o que a equipe mexer), no horário que a composição previu ou no quando do item. Use quando as peças aparecerem prontas em ver-geracao, com o MESMO loteId e os MESMOS itemId de compor-leva.\n\nIDEMPOTENTE: repetir a chamada (timeout, erro no meio) devolve os rascunhos que já existem e cria só os que faltaram — nunca duplica. Rascunho que a equipe remarcou ou editou depois fica como a equipe deixou. Outro pedido sob o mesmo itemId (horário, tipo, legenda, lembrete, escopo ou campanha diferentes) volta como conflito, sem alterar nada — mude o post na agenda. Uma peça que estava pendente e ficou pronta entra na repetição — é o que faltava, não duplicata.\n\nPLANO: peça que nasceu de item de plano só entra se o item aponta esta arte e está pronto. Item reprovado, reaberto ou refeito volta como PECA_SUPERADA_NO_PLANO, sem criar nada. Quando o item já tem arte mais recente, a resposta traz arteAtualDoItem: conte à pessoa qual é e quando foi feita e pergunte se ela quer manter essa arte (agendá-la pela página dela quando estiver pronta) ou refazer com o conteúdo atual do item (ver-plano, compor-leva com outro itemId e a itemRevisao atual). Não agende nem refaça sem ela pedir.\n\nRASCUNHO APAGADO PELA EQUIPE: não volta sozinho. O item vem como falhou (POST_REMOVIDO) com rascunhoApagado (dia e horário do pedido original — nulo quando esta chamada pede outro —, tema, manchete): conte à pessoa qual era e pergunte se ela quer de volta. Só com a confirmação dela repita a chamada com recriarRascunhoApagado: true NAQUELE item — o rascunho volta com a mesma arte da leva (desfecho recriado), e repetir a confirmação não cria outro.\n\nAntes, chame com simular: true e mostre a conta à pessoa (quantos entram, quantos ainda estão sendo compostos, quais falharam e por quê); só então chame sem simular. Cada item volta concluido (desfecho criado, adotado — a peça já tinha post na agenda, rascunho ou agendado —, reaproveitado ou recriado, e estadoDoPost diz o que o post é agora: só rascunho espera aprovar-rascunhos), pendente (peça ainda na fila: repita em alguns minutos) ou falhou (codigo e motivo). Nunca publica: virar publicação é aprovar-rascunhos, com confirmação.',
+    schema: z.object({
+      projectId: z.number().describe('ID do cliente.'),
+      loteId: z.string().min(1).max(120).describe('O MESMO loteId usado em compor-leva.'),
+      itens: z
+        .array(
+          z.object({
+            itemId: z.string().min(1).max(120).describe('O MESMO itemId da peça em compor-leva.'),
+            quando: z.string().optional().describe('Horário do rascunho: "AAAA-MM-DD HH:mm" (Brasília) ou ISO. Sem ele, vale o horário previsto na composição. Vazio ou ilegível volta como erro DESTE item, sem derrubar a leva.'),
+            postType: z.enum(['STORY', 'POST']).optional().describe('Só para contrariar o formato da peça (story vira STORY; feed e quadrado viram POST). Normalmente omita.'),
+            caption: z.string().optional().describe('Legenda do post, até 2200 caracteres (acima disso o item volta com erro, sem derrubar a leva). Story costuma ir sem.'),
+            lembrete: z.boolean().optional().describe('true = lembrete de publicação manual: o sistema não publica, o grupo do WhatsApp recebe a arte no horário.'),
+            escopo: z.enum(['rotina', 'campanha', 'pontual']).optional().describe('O que o sistema pode aprender com o post — a mesma escolha de colocar-na-agenda (padrão rotina).'),
+            campanhaId: z.string().optional().describe('Id da entrada de CAMPANHAS da base a que o post pertence (de consultar-base).'),
+            recriarRascunhoApagado: z
+              .boolean()
+              .optional()
+              .describe('true SÓ depois de a pessoa confirmar que quer de volta o rascunho deste item que a equipe apagou (o item veio como POST_REMOVIDO). Recria o rascunho com a mesma arte da leva e o pedido original; repetir não cria outro. Omita em qualquer outro caso.'),
+          })
+          // `definirTool` fecha só a RAIZ: sem isto o zod DESCARTAVA a chave
+          // desconhecida do item (`horario` no lugar de `quando`) e o rascunho
+          // nascia no horário da composição, sem aviso (R12-03). O JSON Schema
+          // já anunciava `additionalProperties: false` — agora a porta cumpre.
+          .strict(),
+        )
+        .min(1)
+        .max(60)
+        .describe('Um item por peça da leva.'),
+      simular: z.boolean().optional().describe('true = faz a conta (o que entraria, o que ainda está pendente, o que falharia) sem gravar nada. Use antes da chamada de verdade.'),
+    }),
+    // Idempotente por construção: loteId e itemId são obrigatórios, e a mesma
+    // chamada devolve os mesmos rascunhos. Não publica nada (rascunho).
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    acesso: { tipo: 'projeto' },
+    superficies: ['remoto', 'local'],
+    handler: async (args, principal) => {
+      const [{ agendarItensDoLote }, { quemDecidiu }] = await Promise.all([import('../../lotes/agendar-itens'), import('../tools')])
+      const projectId = args.projectId as number
+      const decididoPor = await quemDecidiu(projectId, principal)
+      const r = await agendarItensDoLote({
+        projectId,
+        loteId: args.loteId as string,
+        itens: args.itens as unknown[],
+        simular: args.simular === true,
+        // User.id INTERNO — nunca o clerkId. Falha aqui não derruba o agendamento.
+        decididoPor: decididoPor ?? null,
+        superficie: 'chat',
+      })
+      // Decisões do Ciro (13/09/2026): rascunho apagado e peça superada não se
+      // resolvem sozinhos — o chat avisa a pessoa e pergunta, em simulação também.
+      const perguntar = [
+        ...(r.itens.some((i) => i.codigo === 'POST_REMOVIDO')
+          ? ['Rascunho apagado pela equipe (POST_REMOVIDO): nada foi recriado. Conte à pessoa qual era (rascunhoApagado: dia e horário, tema ou manchete) e pergunte se ela quer de volta; só com a confirmação dela repita a chamada com recriarRascunhoApagado: true nesse item.']
+          : []),
+        ...(r.itens.some((i) => i.codigo === 'PECA_SUPERADA_NO_PLANO' && i.arteAtualDoItem)
+          ? ['Peça superada no plano: o item já tem arte mais recente (arteAtualDoItem) — nada foi criado. Conte à pessoa qual é e quando foi feita, e pergunte se ela quer manter essa arte ou refazer com o conteúdo atual do item (ver-plano, compor-leva com outro itemId e a itemRevisao atual). Não agende nem refaça sem ela pedir.']
+          : []),
+      ]
+      // R12-06: "nada publica até aprovar-rascunhos" só vale para o que É rascunho.
+      // O lote adota post agendado, e a repetição devolve o post como a equipe o
+      // deixou (aprovado, publicado) — a nota diz o que cada um é, sem mudar nada.
+      const concluidos = r.itens.filter((i) => i.situacao === 'concluido')
+      const rascunhos = concluidos.filter((i) => i.estadoDoPost === 'rascunho').length
+      const outros = concluidos.filter((i) => i.estadoDoPost && i.estadoDoPost !== 'rascunho').length
+      const estados = [
+        ...(rascunhos > 0
+          ? [`${rascunhos === concluidos.length ? 'Os concluídos estão' : rascunhos === 1 ? '1 dos concluídos está' : `${rascunhos} dos concluídos estão`} na agenda como rascunho — nada publica até aprovar-rascunhos.`]
+          : []),
+        ...(outros > 0
+          ? [`${outros === 1 ? '1 concluído NÃO é rascunho' : `${outros} concluídos NÃO são rascunho`} (estadoDoPost: agendado, publicando, publicado ou falha-na-publicacao) — a equipe já aprovou ou o post já seguiu; a leva não mudou nada nele. Conte à pessoa o estado de cada um.`]
+          : []),
+        ...(concluidos.some((i) => i.entregueParaPublicar)
+          ? ['Os marcados entregueParaPublicar já foram entregues para publicar: vai ao ar a arte entregue, e mexer na página não a muda mais.']
+          : []),
+      ]
+      return {
+        ...r,
+        nota: r.simulado
+          ? ['Simulação: nada foi gravado. Mostre a conta à pessoa e só então chame sem simular.', ...perguntar].join(' ')
+          : [
+              ...estados,
+              ...(r.resumo.pendentes > 0 ? ['Pendentes: a peça ainda está sendo composta; repita a MESMA chamada em alguns minutos.'] : []),
+              ...(r.resumo.falhas > 0 ? ['Falhas: leia o codigo e o motivo de cada item; repetir a mesma chamada não resolve conflito.'] : []),
+              ...perguntar,
+            ].join(' '),
       }
     },
   }),

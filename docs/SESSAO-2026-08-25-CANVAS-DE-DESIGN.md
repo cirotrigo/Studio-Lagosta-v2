@@ -344,3 +344,96 @@ resolvem e a peça sai só com texto — sem erro nenhum.
   que eu leio para montar os canvases — fechando o ciclo sem passar pelo chat.
 - A escolha de foto acontece **antes** do canvas: dentro dele só existem as
   imagens embutidas, e trocar exige re-seed.
+
+---
+
+## 7. Medido em 09-10/09/2026 — o aviso silencioso, o tempo, e as referências
+
+Levantado ao gerar três stories de teste do Espeto Gaúcho pelo Pillow
+(`design-canvas/espeto-teste-pillow/`) e comparar com o compositor.
+
+### 7.1 🔴 O aviso de "título não cabe" só valia para a ÚLTIMA peça da leva
+
+`cabe()` mede a headline na PRÓPRIA Bevan e enche `AVISOS` — e o README do
+espeto-semana1 prometia que "o aviso é confiável". Ele nunca chegava ao
+terminal.
+
+A causa é o laço por peça: a sonda do halo roda o layout **duas vezes** (uma
+sem mancha, só para medir o retângulo de cada grupo), então havia um
+`del AVISOS[:]` antes de cada passada, para não duplicar. Mas ele zera a lista
+INTEIRA — inclusive os avisos da peça anterior. Ao chegar no print final, só
+sobrava o que a última peça tivesse acumulado.
+
+Medido: das 3 peças do teste, duas estouravam a largura e **zero avisos
+saíram**, porque a última cabia. Numa leva de 20, 19 peças podem transbordar em
+silêncio.
+
+O conserto é um acumulador de leva (`TODOS_AVISOS`), preenchido logo após a
+passada real de cada peça. Aplicado em `espeto-semana1/gerar.py` e no
+`espeto-teste-pillow`. **Os outros 22 geradores não têm o defeito** — eles não
+zeram `AVISOS`, porque não fazem a passada dupla da sonda; conferido um a um.
+
+⚠️ Gerador novo que copie o `espeto-semana1` herda a sonda dupla. Se você
+escrever `del AVISOS[:]`, precisa do acumulador junto.
+
+### 7.2 O aviso precisa dizer O QUE FAZER
+
+A mensagem antiga era "passa de 690 e vai quebrar". Sem o quanto passou nem o
+corpo que caberia, o conserto era tentativa e erro no olho. Bevan escala
+linearmente na largura, então o maior corpo que cabe é exato:
+
+```
+"ATÉ #MEIA-NOITE" mede 716px em 70px — passa 26px de 690. Cabe em 67px,
+ou encurte a linha.
+```
+
+### 7.3 A colisão com a marca não era falta de conta — era falta de aviso
+
+`UTIL_STORY_COM_MARCA = UTIL - 210` já existe e **já é aplicado** nos arranjos
+`split` e `topo` (os que põem a marca ao lado da headline). A conta estava
+certa desde sempre; o que faltava era a pessoa ser avisada quando a linha
+passava dela. Não mexa na constante achando que o defeito é geométrico.
+
+### 7.4 Tempo medido: Pillow × compositor, nas MESMAS 3 peças
+
+| | 3 peças | por peça |
+|---|---|---|
+| Pillow (`gerar.py` + `render.py`) | 9,5s | ~3,2s |
+| Compositor (`comporPeca`, modo prova) | 33–41s | ~11–14s |
+
+🔴 **A comparação crua engana.** Os 9,5s do Pillow são SÓ gerar e renderizar:
+não incluem criar a pasta, copiar gerador, fontes e logo, nem **baixar as
+fotos do Drive** — e só foram possíveis porque o Espeto já tinha gerador. Os
+11–14s do compositor incluem tudo (busca a foto pelo id, mede a área calma,
+escolhe posição, enquadramento e variante, calibra o halo, renderiza) e o
+preparo é ZERO: a assinatura já está cadastrada nos 10 clientes.
+
+E a saída difere: o Pillow entrega PNG chapado (precisa de `upload-creative`,
+e no editor vira camada de imagem); o compositor entrega página com camadas,
+editável.
+
+**Conclusão prática:** primeira peça de um cliente → compositor. Vigésima peça
+de uma leva já montada → Pillow. E o cronômetro é o menor pedaço do trabalho:
+ler base e DNA, escolher fotos e escrever a copy levou ~20 minutos nos dois.
+
+### 7.5 O gerador NÃO olha as artes com estrela — ele CARREGA o padrão delas
+
+Pergunta que apareceu: o Pillow consegue fazer arte com referência nas artes
+aprovadas? Sim, mas não como a IA faz. Ele é código determinístico: não recebe
+imagem de referência em tempo de execução. O que existe é uma **destilação** —
+alguém lê as artes aprovadas e escreve o sistema no gerador.
+
+É exatamente como cada `gerar.py` nasceu. O da Real Gelateria declara as
+fontes no docstring: manual do designer (prioridade absoluta), DNA, **6
+referências de estilo marcadas pelo designer** (`styleRefAt`), **6 artes de IA
+com "gostei"** e 5 publicadas, conferidas uma a uma em 29/08/2026.
+
+Vantagem sobre a IA: é determinístico e repetível — a peça sai igual toda vez.
+Preço: a destilação **tem data e envelhece**. Marcar uma arte nova com estrela
+não muda o gerador; alguém precisa reler e reescrever.
+
+**Antes de usar um gerador, compare as duas datas**: o sinal aprovado mais
+recente do cliente contra a data da destilação no docstring. Na Real, medido em
+10/09/2026: sinal mais novo 28/08, destilação 29/08 — em dia. As 6 referências
+de estilo dela continuam sendo consumidas, mas pela IA (rodízio usou em 02, 05,
+07, 08 e 09/09); o Pillow as consumiu uma vez, na bancada de trabalho.

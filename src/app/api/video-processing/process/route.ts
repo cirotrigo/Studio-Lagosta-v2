@@ -2,7 +2,13 @@ import { NextResponse } from 'next/server'
 import { processNextVideoJob } from '@/lib/video/process-video-job'
 
 export const runtime = 'nodejs'
+export const maxDuration = 300
 
+/**
+ * Processa o PENDING mais antigo. O editor não chama mais esta rota (a fila
+ * processa o próprio job em `after()`); ela fica para o script local
+ * `scripts/process-video-queue.sh` e para disparo manual.
+ */
 async function processNextJob(): Promise<NextResponse> {
   try {
     const result = await processNextVideoJob()
@@ -13,13 +19,13 @@ async function processNextJob(): Promise<NextResponse> {
 
     if (result.outcome === 'failed') {
       return NextResponse.json(
-        {
-          error: 'Failed to process video',
-          jobId: result.jobId,
-          details: result.error,
-        },
+        { error: 'Failed to process video', jobId: result.jobId, details: result.error },
         { status: 500 },
       )
+    }
+
+    if (result.outcome === 'interrompido') {
+      return NextResponse.json({ interrompido: true, jobId: result.jobId, motivo: result.motivo }, { status: 202 })
     }
 
     return NextResponse.json({

@@ -1,0 +1,29 @@
+[
+ {
+  "artboard": "Main.dc.html",
+  "pagina": "Stories · Quinta 10/09 (teste)",
+  "slide": 1,
+  "nome": "Qui12Funcionamento",
+  "layout": "story",
+  "foto": "qui12",
+  "alt": 1920
+ },
+ {
+  "artboard": "Qui15Cupim.dc.html",
+  "pagina": "Stories · Quinta 10/09 (teste)",
+  "slide": 2,
+  "nome": "Qui15Cupim",
+  "layout": "story",
+  "foto": "qui15",
+  "alt": 1920
+ },
+ {
+  "artboard": "Qui18Rodizio.dc.html",
+  "pagina": "Stories · Quinta 10/09 (teste)",
+  "slide": 3,
+  "nome": "Qui18Rodizio",
+  "layout": "story",
+  "foto": "qui18",
+  "alt": 1920
+ }
+]

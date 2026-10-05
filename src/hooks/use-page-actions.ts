@@ -5,6 +5,7 @@ import { useToast } from '@/hooks/use-toast'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { useMultiPage } from '@/contexts/multi-page-context'
 import { useCreatePage, useDuplicatePage, useDeletePage, useReorderPages } from '@/hooks/use-pages'
+import { usePageSync } from '@/components/templates/page-sync-wrapper'
 import type { Page } from '@/types/template'
 
 /**
@@ -20,6 +21,7 @@ export function usePageActions() {
   const duplicatePageMutation = useDuplicatePage()
   const deletePageMutation = useDeletePage()
   const reorderPagesMutation = useReorderPages()
+  const pageSync = usePageSync()
 
   const sortedPages = React.useMemo<Page[]>(() => {
     return [...pages].sort((a, b) => a.order - b.order)
@@ -109,6 +111,9 @@ export function usePageActions() {
   const duplicatePage = React.useCallback(
     async (pageId: string) => {
       try {
+        // A duplicação copia o BANCO: a edição ainda no autosave (trilha,
+        // camadas) ficaria para trás na cópia.
+        await pageSync?.descarregar()
         await duplicatePageMutation.mutateAsync({ templateId, pageId })
         toast({
           title: 'Página duplicada!',
@@ -123,7 +128,7 @@ export function usePageActions() {
         })
       }
     },
-    [templateId, duplicatePageMutation, toast],
+    [templateId, duplicatePageMutation, pageSync, toast],
   )
 
   const deletePage = React.useCallback(

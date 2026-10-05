@@ -59,6 +59,8 @@ interface GalleryItemProps {
    * A arte saiu mesmo assim — o badge existe para pedir o olho de quem aprova.
    */
   avisoConferencia?: string | null
+  /** Para onde o vídeo exportado vai (agenda, substituição) e a recusa, quando houve. */
+  destinoDoVideo?: { texto: string; recusa: boolean } | null
   onToggleSelect: () => void
   onDownload: () => void
   onDelete: () => void
@@ -136,6 +138,7 @@ export function GalleryItem({
   isStyleRef,
   onToggleStyleRef,
   avisoConferencia,
+  destinoDoVideo,
   onRefazer,
   refazendo,
   onToggleSelect,
@@ -568,6 +571,20 @@ export function GalleryItem({
               >
                 <AlertTriangle className="h-2.5 w-2.5" />
                 conferir texto
+              </span>
+            )}
+            {destinoDoVideo && (
+              <span
+                title={destinoDoVideo.texto}
+                className={cn(
+                  'inline-flex max-w-[12rem] items-center gap-1 truncate rounded-full border px-2 py-0.5 text-[10px] font-semibold backdrop-blur-sm',
+                  destinoDoVideo.recusa
+                    ? 'border-amber-400/50 bg-amber-500/20 text-amber-200'
+                    : 'border-white/20 bg-white/10 text-white',
+                )}
+              >
+                <Calendar className="h-2.5 w-2.5 flex-shrink-0" />
+                <span className="truncate">{destinoDoVideo.texto}</span>
               </span>
             )}
             {status === 'COMPLETED' && (

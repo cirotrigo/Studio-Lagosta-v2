@@ -125,3 +125,21 @@ export async function registerProjectFonts(projectId: number): Promise<void> {
     console.log(`[fonts] ${fonts.length} fonts processed for project ${projectId}`)
   }
 }
+
+/**
+ * Das famílias pedidas, as que NÃO estão carregadas no registro do napi-rs
+ * (nem como fonte do projeto, nem como fonte do sistema). Texto nessas
+ * famílias é medido e desenhado na fonte de FALLBACK — a medida não vale, e
+ * quem compõe precisa dizer "não medido" em vez de fingir que mediu (PR 4 de
+ * "Marca simples, copy melhor", 12/09/2026). Nunca lança: sem o módulo nativo
+ * devolve todas como não carregadas, que é o lado honesto do erro.
+ */
+export async function familiasNaoCarregadas(familias: string[]): Promise<Set<string>> {
+  const pedidas = [...new Set(familias.filter((f) => typeof f === 'string' && f.trim()))]
+  try {
+    const { GlobalFonts } = await import('@napi-rs/canvas')
+    return new Set(pedidas.filter((f) => !GlobalFonts.has(f)))
+  } catch {
+    return new Set(pedidas)
+  }
+}

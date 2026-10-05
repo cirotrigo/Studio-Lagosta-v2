@@ -12,6 +12,8 @@ export interface PageStatePatch {
   background?: string
   /** Trilha sonora da página; null limpa a trilha. Fora do diff visual (não invalida renders). */
   audio?: PageAudioConfig | null
+  /** `null` apaga a miniatura vencida (página-vídeo salva sem captura nova). */
+  thumbnail?: null
 }
 
 interface MultiPageContextValue {
@@ -21,7 +23,7 @@ interface MultiPageContextValue {
   currentPage: Page | null
   setCurrentPageId: (pageId: string) => void
   isLoading: boolean
-  updatePageThumbnail: (pageId: string, thumbnail: string) => Promise<void>
+  updatePageThumbnail: (pageId: string, thumbnail: string | null) => Promise<void>
   savePageLayers: (pageId: string, layers: unknown[]) => Promise<void>
   savePageState: (pageId: string, data: PageStatePatch) => Promise<void>
 }
@@ -77,6 +79,8 @@ export function MultiPageProvider({ templateId, children, initialPageId }: Multi
       isTemplate: p.isTemplate,
       templateName: p.templateName ?? undefined,
       tags: p.tags ?? [],
+      // C9-11: o editor precisa saber se a página tem contrato da copy (duplicar e colar só tiram o papel quando tem).
+      temCopyAutoral: p.copyAutoral !== undefined && p.copyAutoral !== null,
       createdAt: new Date(p.createdAt),
       updatedAt: new Date(p.updatedAt),
     }))
@@ -114,7 +118,7 @@ export function MultiPageProvider({ templateId, children, initialPageId }: Multi
   }, [])
 
   const updatePageThumbnail = React.useCallback(
-    async (pageId: string, thumbnail: string) => {
+    async (pageId: string, thumbnail: string | null) => {
       // Guarda: um caller sem pageId virava PATCH /pages/undefined (404 no
       // console a cada autosave). O trace identifica o caller em dev.
       if (!pageId) {
@@ -191,6 +195,11 @@ export function MultiPageProvider({ templateId, children, initialPageId }: Multi
   )
 
   return <MultiPageContext.Provider value={value}>{children}</MultiPageContext.Provider>
+}
+
+/** O contexto multipágina quando existe — sem lançar fora do provider (C9-11: o editor pergunta se a página aberta tem contrato). */
+export function useMultiPageOpcional() {
+  return React.useContext(MultiPageContext)
 }
 
 export function useMultiPage() {

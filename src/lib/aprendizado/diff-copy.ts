@@ -25,6 +25,7 @@
 import { normalizeForComparison } from '@/lib/ai/text-comparison'
 import { semColchetes } from '@/lib/compositor/destaques'
 import { lerCamadas, textosDaPagina } from '@/lib/posts/page-layers'
+import { camadasParaDecisao } from '@/lib/creatives/revisao/oculta-pelo-revisor'
 import type { Desfecho } from './vocabulario'
 
 /**
@@ -43,11 +44,20 @@ export interface CampoAlterado {
   antes: string
   depois: string
   /**
-   * `true` quando a diferença some na normalização da casa (caixa, acento,
-   * separador de lista, espaço do "R$"). É edição de DIAGRAMAÇÃO, não de
-   * conteúdo — a F2 vai querer pesá-la diferente.
+   * `true` quando a diferença é só de DIAGRAMAÇÃO — caixa, espaço, separador
+   * de lista, traço, espaço do "R$" — e o texto mantém as MESMAS letras com os
+   * MESMOS acentos. Correção de acento ou cedilha NÃO é formatação: é correção
+   * de redação, e conta como correção (decisão do plano "Marca simples, copy
+   * melhor", 12/09/2026 — antes ela sumia da métrica porque
+   * `normalizeForComparison` tira o acento).
    */
   apenasFormatacao: boolean
+  /**
+   * O que mudou: `formatacao` (caixa/espaço/separador), `acento` (só acento
+   * ou cedilha — as mesmas letras de base) ou `conteudo` (palavra trocada,
+   * acrescentada ou tirada).
+   */
+  diferenca: 'formatacao' | 'acento' | 'conteudo'
   /** 0..1, quanto os dois textos se parecem (bigramas). */
   semelhanca: number
 }
@@ -158,12 +168,43 @@ export function semelhanca(a: string, b: string): number {
   return (2 * comuns) / (x.length - 1 + (y.length - 1))
 }
 
+/**
+ * A normalização da casa SEM tirar o acento: caixa, espaço, separador, traço e
+ * o espaço do "R$" continuam sendo diagramação; "familia" e "família" não.
+ * Espelha `normalizeForComparison` passo a passo, só sem o NFD.
+ */
+export function normalizarMantendoAcento(value: string): string {
+  return value
+    // NFC: "Café" composto e "Cafe\u0301" decomposto são o MESMO acento —
+    // sem isto a forma Unicode contava como correção de acento (nota do Codex).
+    .normalize('NFC')
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/[‘’‚′]/g, "'")
+    .replace(/[“”„″]/g, '"')
+    .replace(/[–—−]/g, '-')
+    .replace(/[•∙●・·|]/g, ' ')
+    .replace(/-/g, ' ')
+    .replace(/\s*([.,;:!?])\s*/g, '$1')
+    .replace(/R\$\s+/gi, 'R$')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase()
+}
+
+/** Classifica a diferença entre dois textos que NÃO são idênticos. */
+export function classificarDiferenca(antes: string, depois: string): CampoAlterado['diferenca'] {
+  if (normalizeForComparison(antes) !== normalizeForComparison(depois)) return 'conteudo'
+  return normalizarMantendoAcento(antes) === normalizarMantendoAcento(depois) ? 'formatacao' : 'acento'
+}
+
 function alteracao(campo: string | null, antes: string, depois: string): CampoAlterado {
+  const diferenca = classificarDiferenca(antes, depois)
   return {
     campo,
     antes,
     depois,
-    apenasFormatacao: normalizeForComparison(antes) === normalizeForComparison(depois),
+    apenasFormatacao: diferenca === 'formatacao',
+    diferenca,
     semelhanca: semelhanca(antes, depois),
   }
 }
@@ -268,6 +309,24 @@ export function copyDeCamadas(layers: unknown): Record<string, string> | null {
   const { legivel } = lerCamadas(layers)
   if (!legivel) return null
   return textosDaPagina(layers)
+}
+
+/**
+ * A copy da página como o APRENDIZADO a compara: igual a `copyDeCamadas`, mas
+ * a camada que o REVISOR escondeu (ajuste mecânico de visibilidade, marcada
+ * em `metadata.revisao.ocultaPeloRevisor`) conta como presente — esconder por
+ * ajuste não é a pessoa apagando o texto, e lê-lo como remoção no agendamento
+ * contaminava o corpus com `editada` e ainda substituía um aceite anterior
+ * (REV-9E-01 da revisão do Codex, 12/09/2026). Camada escondida SEM a marca
+ * (editor, ajuste sem revisão) continua fora: é decisão humana.
+ *
+ * Só para o diff/fechamento de dica e a decisão sem sugestão. O render, a
+ * cópia que o post carrega e a defasagem continuam em `copyDeCamadas`.
+ */
+export function copyParaDecisao(layers: unknown): Record<string, string> | null {
+  const { camadas, legivel } = lerCamadas(layers)
+  if (!legivel) return null
+  return textosDaPagina(camadasParaDecisao(camadas))
 }
 
 /**

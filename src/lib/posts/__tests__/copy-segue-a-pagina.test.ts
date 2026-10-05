@@ -9,6 +9,10 @@ import {
   textosDoSlot,
 } from '../copy-segue-a-pagina'
 
+/** `Page.isTemplate`: layout compartilhado (a via de template) × a peça. */
+const MODELO = true
+const PECA = false
+
 describe('a cópia da página não volta para a arte', () => {
   const copyDaPagina = {
     pre: 'Amanhã, 12 de setembro',
@@ -19,20 +23,20 @@ describe('a cópia da página não volta para a arte', () => {
   it('o agendamento marca a cópia, e o render desenha a página como está', () => {
     const slot = comoCopiaDaPagina(copyDaPagina)
     expect(ehCopiaDaPagina(slot)).toBe(true)
-    expect(slotValuesParaRender(slot)).toBeUndefined()
+    expect(slotValuesParaRender(slot, MODELO)).toBeUndefined()
   })
 
   it('o caso da Real Gelateria (10/09): cópia que divergiu da página continua fora da arte', () => {
     // O ajuste pelo chat reescreveu a página; a cópia ficou com o texto da manhã.
     const slot = comoCopiaDaPagina({ ...copyDaPagina, apoio: 'Na compra de um milk-shake,\nvocê leva dois.' })
     expect(copyIgual(textosDoSlot(slot), copyDaPagina)).toBe(false)
-    expect(slotValuesParaRender(slot)).toBeUndefined()
+    expect(slotValuesParaRender(slot, MODELO)).toBeUndefined()
   })
 
   it('a copy própria da via de template continua sobrepondo a página', () => {
     const slot = { Titulo: 'HAPPY HOUR', 'Pre-titulo': 'QUARTA-FEIRA', _driveImageId: 'abc' }
     expect(ehCopiaDaPagina(slot)).toBe(false)
-    expect(slotValuesParaRender(slot)).toEqual(slot)
+    expect(slotValuesParaRender(slot, MODELO)).toEqual(slot)
   })
 
   it('só o true literal marca', () => {
@@ -43,10 +47,32 @@ describe('a cópia da página não volta para a arte', () => {
   })
 
   it('sem slot nenhum não há o que aplicar', () => {
-    expect(slotValuesParaRender({})).toBeUndefined()
-    expect(slotValuesParaRender(null)).toBeUndefined()
-    expect(slotValuesParaRender(undefined)).toBeUndefined()
-    expect(slotValuesParaRender(['a'])).toBeUndefined()
+    expect(slotValuesParaRender({}, MODELO)).toBeUndefined()
+    expect(slotValuesParaRender(null, MODELO)).toBeUndefined()
+    expect(slotValuesParaRender(undefined, MODELO)).toBeUndefined()
+    expect(slotValuesParaRender(['a'], MODELO)).toBeUndefined()
+  })
+
+  it('a MARCA não é obrigatória: em página de conteúdo a página manda de qualquer jeito', () => {
+    /*
+     * O caso da Real Gelateria de 20/09/2026: o feed do Dia Nacional do
+     * Sorvete foi editado no editor, salvo, invalidado e re-renderizado — e
+     * saiu com a manchete anterior, porque este post estava sem a marca (eram
+     * 35 assim na carteira, 7 já com a copy divergindo da página). Sem esta
+     * regra, um `true` esquecido em qualquer um dos seis escritores de
+     * `slotValues` reintroduz o defeito inteiro, em silêncio.
+     */
+    const semMarca = { ...copyDaPagina, headline: 'Amanhã, Dia do Milk-shake\nem Dobro' }
+    expect(ehCopiaDaPagina(semMarca)).toBe(false)
+    expect(slotValuesParaRender(semMarca, PECA)).toBeUndefined()
+    // Na via de template a página é layout de N posts: ali os slots vencem.
+    expect(slotValuesParaRender(semMarca, MODELO)).toEqual(semMarca)
+  })
+
+  it('a marca continua vencendo, até em página modelo', () => {
+    const slot = comoCopiaDaPagina(copyDaPagina)
+    expect(slotValuesParaRender(slot, MODELO)).toBeUndefined()
+    expect(slotValuesParaRender(slot, PECA)).toBeUndefined()
   })
 
   it('a marca não vira texto para quem lê a copy, e sobrevive à sincronização com o render', () => {

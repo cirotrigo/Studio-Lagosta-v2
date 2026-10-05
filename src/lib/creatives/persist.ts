@@ -8,10 +8,18 @@
  */
 
 import type { CanalDaArte } from './canal'
-import { put } from '@vercel/blob'
+import { del, put } from '@vercel/blob'
 import { db } from '@/lib/db'
+import { CreativeError } from '@/lib/creatives/errors'
+import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
+import { mesclarFieldValuesDaArte } from '@/lib/creatives/mesclar-field-values'
 import { convertPageToDesignData } from '@/lib/posts/page-to-design-data'
 import { registerProjectFonts } from '@/lib/posts/register-project-fonts'
+import { videosDaPagina } from '@/lib/video/camadas-de-video'
+import { camadasNoInstante } from '@/lib/video/linha-do-tempo'
+import { ehMovimento } from '@/lib/video/movimento'
+import type { DesignData } from '@/types/template'
+import { MENSAGEM_PAGINA_COM_VIDEO, videoNaPagina } from '@/lib/video/pagina-com-video'
 import { googleDriveService } from '@/server/google-drive-service'
 import type { TemplateType } from '@prisma/client'
 
@@ -53,12 +61,14 @@ export async function ensureArteTemplate(
   type: TemplateType,
   dimensions: string,
   templateName?: string,
+  /** Dentro da trava das artes do post (R12-09), o cliente da transação: o `db` raiz esperaria a conexão que ela segura. */
+  cliente: Pick<typeof db, 'template'> = db,
 ) {
   const name = templateName ?? ARTE_TEMPLATE_NAMES[type]
-  const existing = await db.template.findFirst({ where: { projectId, name } })
+  const existing = await cliente.template.findFirst({ where: { projectId, name } })
   if (existing) return existing
 
-  return db.template.create({
+  return cliente.template.create({
     data: {
       name,
       type,
@@ -170,6 +180,12 @@ export interface PersistCreativeInput {
   generationId?: string | null
   /** Ver `RenderPageInput.slideOrder`. */
   slideOrder?: number | null
+  /**
+   * O contrato da copy autoral da peça (`src/lib/copy-autoral`), gravado em
+   * `Page.copyAutoral` como foi RECEBIDO — antes de qualquer adaptação (F1,
+   * 12/09/2026). Ausente = página sem contrato (nunca se inventa).
+   */
+  copyAutoral?: unknown
 }
 
 export interface PersistCreativeResult {
@@ -191,6 +207,12 @@ export async function persistAndRenderCreative(
 ): Promise<PersistCreativeResult> {
   const { project, templateId, templateName, pageName, width, height, layers, background } = input
 
+  // Antes de criar a página: recusar só no render deixaria uma página órfã,
+  // sem arte, a cada tentativa (modelo com camada de vídeo).
+  if (videoNaPagina(layers) === 'tem-video') {
+    throw new CreativeError('PAGINA_COM_VIDEO', MENSAGEM_PAGINA_COM_VIDEO, 422)
+  }
+
   const page = await db.page.create({
     data: {
       name: pageName,
@@ -202,6 +224,7 @@ export async function persistAndRenderCreative(
       templateId,
       isTemplate: false, // arte renderizada, não um modelo reutilizável
       tags: input.pageTags ?? ['arte-rapida'],
+      ...(input.copyAutoral ? { copyAutoral: input.copyAutoral as any } : {}),
     },
   })
 
@@ -229,6 +252,8 @@ export interface RenderPageInput {
     height: number
     layers: unknown
     background: string | null
+    /** Page.audio. Ausente (quem monta a página à mão), é lido do banco quando há foto em movimento. */
+    audio?: unknown
   }
   fieldValues: Record<string, unknown>
   authorName: string
@@ -246,6 +271,28 @@ export interface RenderPageInput {
    * que dispensa deduzir o slide do `SocialPost.mediaUrls` depois.
    */
   slideOrder?: number | null
+  /**
+   * A VERSÃO VISUAL (`versaoDaPagina`) da página que ESTE render desenha.
+   * Quando vem, a miniatura da página e o registro da Generation só são
+   * publicados se a página AINDA estiver nessa versão — conferido e escrito
+   * numa transação só, com a linha da página travada (REV-FINAL-01 da revisão
+   * FINAL do Codex sobre 618e45f7, 12/09/2026). Mudou → o PNG é apagado, nada
+   * é publicado e sobe `PAGINA_MUDOU_DURANTE` (409): quem gravou a versão
+   * seguinte é que responde pela arte dela. Sem isto, o render de um ajuste que
+   * terminava DEPOIS do render do ajuste seguinte regravava a miniatura e virava
+   * a Generation mais recente com a versão velha — e `agendarPost` reutiliza a
+   * miniatura como mídia `RENDERED`, fora da fila de renders pendentes.
+   * Quem não passa (a fila COMPOR, a recomposição, a arte nova) segue como
+   * sempre.
+   */
+  versaoEsperada?: string | null
+  /**
+   * SÓ PARA PROVA: roda depois de o PNG subir ao Blob e antes da publicação condicionada pela versão. Recebe a URL
+   * do PNG recém-subido: quem costura registra essa URL para a limpeza ANTES de fazer qualquer outra coisa — se a
+   * costura lançar, ou se o `del` da versão descartada falhar (vira só aviso), é a única forma de o PNG não ficar no
+   * Blob sem ninguém saber (REV-90AA-01).
+   */
+  antesDePublicar?: (png: { url: string }) => Promise<void>
 }
 
 /**
@@ -265,6 +312,25 @@ export async function renderPageAndRegister(input: RenderPageInput): Promise<Per
     background: page.background,
   })
 
+  // O render do servidor é imagem: a camada de vídeo (ou o motion) seria só
+  // pulada, e o PNG sairia sem ela — parecendo arte pronta. Vale para toda
+  // porta que renderiza uma página: troca de arte do post, ajuste, recomposição.
+  if (videosDaPagina(designData.layers).length > 0) {
+    throw new CreativeError('PAGINA_COM_VIDEO', MENSAGEM_PAGINA_COM_VIDEO, 422, { pageId: page.id })
+  }
+  // A foto em movimento sai no quadro de 0 só em página-vídeo, e com música a
+  // página é vídeo: sem o áudio a arte mostraria outra coisa que o editor.
+  // Quem chama com a página montada à mão não traz o áudio; ele é lido aqui,
+  // e só quando faz diferença.
+  const temMovimento = designData.layers.some((l) => l.type === 'image' && ehMovimento(l.movimento))
+  const audio =
+    page.audio !== undefined
+      ? page.audio
+      : temMovimento
+        ? ((await db.page.findUnique({ where: { id: page.id }, select: { audio: true } }))?.audio ?? null)
+        : null
+  designData.layers = camadasNoInstante(designData.layers, 0, { audio: audio as DesignData['audio'] })
+
   await registerProjectFonts(project.id)
 
   const { CanvasRenderer } = await import('@/lib/canvas-renderer')
@@ -274,59 +340,129 @@ export async function renderPageAndRegister(input: RenderPageInput): Promise<Per
   const blobPath = `arte-rapida/${project.id}/${page.id}-${Date.now()}.png`
   const blob = await put(blobPath, buffer, { access: 'public', contentType: 'image/png' })
 
-  await db.page.update({ where: { id: page.id }, data: { thumbnail: blob.url } })
-
   // pageId entra sempre: é como conferir-arte localiza as camadas da arte
   // para o diagnóstico geométrico (sobreposição vs texto faltando).
-  const fieldValues = { ...input.fieldValues, pageId: page.id, thumbnailUrl: blob.url }
+  // `versaoRenderizada`: a versão VISUAL (dimensões, fundo e camadas) que ESTE
+  // PNG desenhou, gravada no mesmo patch da URL. É a prova de que a miniatura
+  // da página ainda é a arte da página — o agendamento do lote só a reaproveita
+  // quando a página continua nessa versão (R12-01; `thumbnailEhAtual`). Leva o
+  // áudio com que o quadro 0 foi desenhado: na foto em movimento, a música
+  // decide se o PNG sai com o zoom.
+  const fieldValues = {
+    ...input.fieldValues,
+    pageId: page.id,
+    thumbnailUrl: blob.url,
+    versaoRenderizada: versaoDaPagina(page, { audio }),
+  }
+
+  const dadosDaArteQueFecha = {
+    status: 'COMPLETED' as any,
+    templateId,
+    sourcePageId: input.sourcePageId ?? null,
+    ...(input.slideOrder != null ? { slideOrder: input.slideOrder } : {}),
+    resultUrl: blob.url,
+    authorName: input.authorName,
+    ...(input.createdBy ? { createdBy: input.createdBy } : {}),
+    // A Generation da fila já nasceu com canal; só sobrescreve se vier.
+    ...(input.canal ? { canal: input.canal } : {}),
+    templateName,
+    completedAt: new Date(),
+    fileName: `${page.name}.png`,
+  }
+  const dadosDaArteNova = {
+    status: 'COMPLETED' as any,
+    templateId,
+    fieldValues: fieldValues as any,
+    sourcePageId: input.sourcePageId ?? null,
+    slideOrder: input.slideOrder ?? null,
+    resultUrl: blob.url,
+    projectId: project.id,
+    createdBy: input.createdBy ?? project.userId,
+    authorName: input.authorName,
+    canal: input.canal ?? null,
+    templateName,
+    projectName: project.name,
+    completedAt: new Date(),
+    fileName: `${page.name}.png`,
+  }
+
+  if (input.antesDePublicar) await input.antesDePublicar({ url: blob.url })
+
+  if (input.versaoEsperada) {
+    /**
+     * Publicação CONDICIONADA à versão renderizada (REV-FINAL-01): a linha da
+     * página é travada (`FOR UPDATE` — o ajuste concorrente espera este
+     * commit), a versão é relida DENTRO da transação e só então a miniatura e
+     * a Generation são gravadas. A versão é a do CONTEÚDO, nunca `updatedAt`:
+     * o autosave do editor que só troca a miniatura não muda o que a arte
+     * desenha. Dentro da transação nada usa `db` (ver `mesclar-field-values`).
+     */
+    const publicada = await db.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT "id" FROM "Page" WHERE "id" = ${page.id} FOR UPDATE`
+        const atual = await tx.page.findUnique({
+          where: { id: page.id },
+          select: { width: true, height: true, background: true, layers: true },
+        })
+        // Ilegível nunca é "a mesma versão".
+        if (!atual || versaoDaPagina(atual) !== input.versaoEsperada) return null
+        await tx.page.update({ where: { id: page.id }, data: { thumbnail: blob.url } })
+        if (input.generationId) {
+          await mesclarFieldValuesDaArte(tx, input.generationId, fieldValues)
+          return tx.generation.update({ where: { id: input.generationId }, data: dadosDaArteQueFecha, select: { id: true } })
+        }
+        return tx.generation.create({ data: dadosDaArteNova, select: { id: true } })
+      },
+      { maxWait: 10_000, timeout: 20_000 },
+    )
+    if (!publicada) {
+      await del(blob.url).catch((erro) => console.warn('[persist] PNG da versão descartada não foi apagado do Blob:', blob.url, erro))
+      throw new CreativeError(
+        'PAGINA_MUDOU_DURANTE',
+        'A página mudou enquanto a arte era renderizada: a arte desta versão foi descartada (não virou miniatura nem entrou na galeria). A versão atual da página é a que vale.',
+        409,
+        { pageId: page.id, versaoEsperada: input.versaoEsperada },
+      )
+    }
+    return resultadoDoRender(input, publicada.id, blob.url, designData, buffer)
+  }
+
+  await db.page.update({ where: { id: page.id }, data: { thumbnail: blob.url } })
+  /**
+   * Arte que JÁ existe (a Generation da fila, a arte recomposta): o
+   * `fieldValues` entra por MERGE NO BANCO (jsonb `||`), no mesmo lote das
+   * colunas. O worker que chega aqui leu `fieldValues` dezenas de segundos
+   * antes; a trava `somenteReRender` que o revisor gravou nesse intervalo
+   * seria apagada por um `update` com o objeto inteiro (REV-R01 da revisão
+   * do Codex, 12/09/2026). Chave ausente do patch fica como está.
+   */
   const generation = input.generationId
-    ? await db.generation.update({
-        where: { id: input.generationId },
-        data: {
-          status: 'COMPLETED' as any,
-          templateId,
-          fieldValues: fieldValues as any,
-          sourcePageId: input.sourcePageId ?? null,
-          ...(input.slideOrder != null ? { slideOrder: input.slideOrder } : {}),
-          resultUrl: blob.url,
-          authorName: input.authorName,
-          ...(input.createdBy ? { createdBy: input.createdBy } : {}),
-          // A Generation da fila já nasceu com canal; só sobrescreve se vier.
-          ...(input.canal ? { canal: input.canal } : {}),
-          templateName,
-          completedAt: new Date(),
-          fileName: `${page.name}.png`,
-        },
-        select: { id: true },
-      })
-    : await db.generation.create({
-        data: {
-          status: 'COMPLETED' as any,
-          templateId,
-          fieldValues: fieldValues as any,
-          sourcePageId: input.sourcePageId ?? null,
-          slideOrder: input.slideOrder ?? null,
-          resultUrl: blob.url,
-          projectId: project.id,
-          createdBy: input.createdBy ?? project.userId,
-          authorName: input.authorName,
-          canal: input.canal ?? null,
-          templateName,
-          projectName: project.name,
-          completedAt: new Date(),
-          fileName: `${page.name}.png`,
-        },
-        select: { id: true },
-      })
+    ? await db
+        .$transaction([
+          mesclarFieldValuesDaArte(db, input.generationId, fieldValues),
+          db.generation.update({ where: { id: input.generationId }, data: dadosDaArteQueFecha, select: { id: true } }),
+        ])
+        .then(([, atualizada]) => atualizada)
+    : await db.generation.create({ data: dadosDaArteNova, select: { id: true } })
 
+  return resultadoDoRender(input, generation.id, blob.url, designData, buffer)
+}
+
+function resultadoDoRender(
+  input: RenderPageInput,
+  generationId: string,
+  url: string,
+  designData: { canvas: { width: number; height: number } },
+  buffer: Buffer,
+): PersistCreativeResult {
   const appUrl = getPublicAppUrl()
-
+  const { project, templateId, templateName, page } = input
   return {
-    generationId: generation.id,
+    generationId,
     pageId: page.id,
     templateId,
     templateName,
-    url: blob.url,
+    url,
     editUrl: `${appUrl}/templates/${templateId}/editor?pageId=${encodeURIComponent(page.id)}`,
     galleryUrl: `${appUrl}/projects/${project.id}?tab=criativos`,
     width: designData.canvas.width,

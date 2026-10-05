@@ -1,0 +1,524 @@
+<title>__TITULO__</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --chao:#F1F2EE; --superficie:#FFFFFF; --tinta:#1B201E; --tinta-2:#59615D; --linha:#DADDD6; --realce:#E6E9E3;
+  --ok:#2C6A54; --ok-fundo:#DAEBE2; --mudar:#865C10; --mudar-fundo:#F3E6CB; --alerta:#AD4328; --alerta-fundo:#F6DFD5;
+  --foco:#2C6A54; --faixa:#1B201E; --faixa-texto:#F1F2EE;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --chao:#141816; --superficie:#1C211F; --tinta:#ECEFEA; --tinta-2:#A5ADA8; --linha:#2E3531; --realce:#212825;
+    --ok:#86C3A6; --ok-fundo:#1F3A2F; --mudar:#E2BE74; --mudar-fundo:#3A3222; --alerta:#EE9A7B; --alerta-fundo:#3E251C;
+    --foco:#86C3A6; --faixa:#ECEFEA; --faixa-texto:#141816;
+  }
+}
+:root[data-theme="dark"]{
+  --chao:#141816; --superficie:#1C211F; --tinta:#ECEFEA; --tinta-2:#A5ADA8; --linha:#2E3531; --realce:#212825;
+  --ok:#86C3A6; --ok-fundo:#1F3A2F; --mudar:#E2BE74; --mudar-fundo:#3A3222; --alerta:#EE9A7B; --alerta-fundo:#3E251C;
+  --foco:#86C3A6; --faixa:#ECEFEA; --faixa-texto:#141816;
+}
+
+*{box-sizing:border-box}
+body{background:var(--chao);color:var(--tinta);font-family:"Instrument Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:15px;line-height:1.5;padding-inline:20px;padding-block:28px 64px}
+.pagina{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:26px}
+h1,h2,h3{margin:0;text-wrap:balance}
+.rotulo{font-weight:600;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--tinta-2)}
+button,input,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--foco);outline-offset:2px}
+
+.exemplo{margin:0;padding:12px 16px;border-radius:8px;background:var(--faixa);color:var(--faixa-texto);font-size:14px;max-width:none}
+.exemplo b{font-weight:600}
+
+.topo{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px 32px;align-items:end;border-bottom:1px solid var(--linha);padding-bottom:22px}
+.topo h1{font-size:clamp(30px,4.6vw,48px);line-height:1.02;letter-spacing:-.02em;font-weight:600}
+.topo p{margin:10px 0 0;max-width:66ch;color:var(--tinta-2)}
+.placar{display:flex;gap:20px;font-variant-numeric:tabular-nums}
+.placar div{display:flex;flex-direction:column;align-items:flex-end}
+.placar b{font-size:30px;line-height:1;font-weight:600}
+.aviso-db{grid-column:1/-1;margin:0;font-size:13px;color:var(--alerta)}
+
+.filtros{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.filtros button{border:1px solid var(--linha);background:var(--superficie);border-radius:999px;padding:5px 13px;font-size:13px;cursor:pointer;display:inline-flex;gap:7px;align-items:center}
+.filtros button[aria-pressed="true"]{background:var(--tinta);color:var(--chao);border-color:var(--tinta)}
+.filtros .ponto{width:10px;height:10px;border-radius:50%;flex:none;box-shadow:0 0 0 1px var(--linha)}
+
+/* cliente */
+.cliente{display:flex;flex-direction:column;gap:18px;border-top:2px solid var(--tinta);padding-top:22px}
+.cliente-topo{display:grid;grid-template-columns:auto minmax(0,1fr);gap:14px 18px;align-items:center}
+/* cinza médio: as logos da carteira vão do branco ao quase preto, e só esse fundo segura as duas */
+.selo{width:72px;height:72px;border-radius:12px;display:grid;place-items:center;padding:10px;background:#8C918D}
+.selo img{max-width:100%;max-height:100%;object-fit:contain}
+.cliente-topo h2{font-size:clamp(26px,3.4vw,38px);line-height:1.05;font-weight:400;font-synthesis:none}
+.cliente-topo .meta{margin:4px 0 0;font-size:13px;color:var(--tinta-2)}
+.regras{grid-column:1/-1;border:1px solid var(--linha);border-radius:8px;background:var(--superficie);padding:10px 14px;font-size:13px}
+.regras summary{cursor:pointer;font-weight:600}
+.regras dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 14px;margin:10px 0 2px}
+.regras dt{color:var(--tinta-2)}
+.regras dd{margin:0}
+.regras .falta{color:var(--alerta)}
+
+/* campanha */
+.campanha{background:var(--realce);border:1px solid var(--linha);border-radius:10px;padding:20px;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:18px 30px}
+.campanha h3{font-size:24px;line-height:1.15;font-weight:600;margin-top:4px}
+.campanha p{margin:10px 0 0;max-width:64ch}
+.campanha ol{margin:6px 0 14px;padding-left:20px;display:flex;flex-direction:column;gap:6px}
+.confirma{display:flex;gap:10px;align-items:center;font-weight:600}
+.confirma input{width:18px;height:18px;accent-color:var(--ok)}
+.campanha textarea{width:100%;min-height:70px;margin-top:10px;padding:9px 12px;border:1px solid var(--linha);border-radius:8px;background:var(--superficie);resize:vertical}
+
+/* stories */
+.lista{display:flex;flex-direction:column}
+.story{display:grid;grid-template-columns:216px minmax(0,1fr);gap:28px;padding-block:26px;border-top:1px solid var(--linha)}
+.story[hidden],.cliente[hidden]{display:none}
+.celular{width:216px;max-width:100%;aspect-ratio:9/16;border-radius:18px;overflow:hidden;position:relative;background:#111;box-shadow:0 1px 0 var(--linha),0 12px 28px -18px rgba(20,26,24,.6);container-type:inline-size;align-self:start;position:sticky;top:16px;--u:calc(100cqw / 1080)}
+.celular img.quadro{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.celular .grad,.celular .guia{position:absolute;left:0;right:0;pointer-events:none}
+.celular .guia{border-top:1px dashed rgba(255,255,255,.42)}
+.celular img.logo{position:absolute;height:auto}
+.celular .grupo{position:absolute;left:0;right:0;display:flex;flex-direction:column}
+.celular .bloco{display:flex;flex-direction:column;font-synthesis:none;text-shadow:0 calc(2 * var(--u)) calc(16 * var(--u)) rgba(0,0,0,.35)}
+.celular .bloco span{white-space:pre;display:block}
+.celular .bloco.passa{outline:1px solid #FF5A3C;outline-offset:1px}
+
+.corpo{display:flex;flex-direction:column;gap:15px;min-width:0}
+.cabeca{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:baseline}
+.cabeca h3{font-size:22px;line-height:1.15;font-weight:600;flex:1 1 320px}
+.chip,.estado{font-size:12px;font-weight:600;border-radius:999px;padding:3px 10px;white-space:nowrap}
+.chip{background:var(--realce);border:1px solid var(--linha)}
+.estado.pendente{background:var(--linha);color:var(--tinta)}
+.estado.aprovado{background:var(--ok-fundo);color:var(--ok)}
+.estado.mudar{background:var(--mudar-fundo);color:var(--mudar)}
+.estado.descartado{background:var(--alerta-fundo);color:var(--alerta)}
+
+.ficha{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 14px;margin:0;font-size:13px}
+.ficha dt{color:var(--tinta-2)}
+.ficha dd{margin:0;overflow-wrap:anywhere}
+.ficha ol{margin:0;padding-left:18px}
+
+.campos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 18px}
+.campo{display:flex;flex-direction:column;gap:4px;min-width:0}
+.campo label{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px}
+.campo .estilo{font-size:12px;color:var(--tinta-2);display:inline-flex;align-items:center;gap:5px}
+.campo .amostra{width:10px;height:10px;border-radius:2px;box-shadow:0 0 0 1px var(--linha);flex:none}
+.campo input,.campo textarea{width:100%;border:1px solid var(--linha);background:var(--superficie);border-radius:8px;padding:8px 10px;resize:vertical;line-height:1.35}
+.campo small{font-size:12px;color:var(--tinta-2);display:flex;justify-content:space-between;gap:8px}
+.campo.sem-lugar input,.campo.sem-lugar textarea{border-color:var(--alerta)}
+.medida{font-variant-numeric:tabular-nums;white-space:nowrap}
+.medida.encolhe{color:var(--mudar);font-weight:600}
+.medida.passa{color:var(--alerta);font-weight:600}
+
+.confirmar{margin:0;padding:10px 14px;border-radius:8px;background:var(--mudar-fundo);color:var(--mudar);font-size:13px;list-style:none;display:flex;flex-direction:column;gap:4px}
+.confirmar li::before{content:"Confirmar · ";font-weight:600}
+.nota{margin:0;font-size:13px;color:var(--tinta-2);max-width:74ch}
+.alertas{margin:0;padding:0;list-style:none;font-size:13px;color:var(--alerta);display:flex;flex-direction:column;gap:2px}
+
+.acoes{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.acoes button{border:1px solid var(--linha);background:var(--superficie);border-radius:8px;padding:7px 14px;cursor:pointer;font-weight:600}
+.acoes button.aprovar[aria-pressed="true"]{background:var(--ok);border-color:var(--ok);color:var(--chao)}
+.acoes button.mudar[aria-pressed="true"]{background:var(--mudar);border-color:var(--mudar);color:var(--chao)}
+.acoes button.descartar[aria-pressed="true"]{background:var(--alerta);border-color:var(--alerta);color:var(--chao)}
+.acoes button.voltar{border:none;background:none;text-decoration:underline;text-underline-offset:3px;color:var(--tinta-2);padding-inline:4px;font-weight:500}
+.salvo{font-size:12px;color:var(--tinta-2);margin-left:auto}
+.comentario{width:100%;min-height:56px;border:1px solid var(--linha);background:var(--superficie);border-radius:8px;padding:8px 10px;resize:vertical}
+
+.descartados{border-top:1px solid var(--linha);padding-top:22px;color:var(--tinta-2);font-size:14px;max-width:80ch}
+.descartados h2{font-size:20px;color:var(--tinta);margin-bottom:6px;font-weight:600}
+
+@media (max-width:760px){
+  .topo{grid-template-columns:1fr}
+  .placar{justify-content:flex-start}
+  .placar div{align-items:flex-start}
+  .campanha{grid-template-columns:1fr}
+  .story{grid-template-columns:1fr}
+  .celular{position:relative;top:0;margin-inline:auto}
+  .campos{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+<style>__FONTES__</style>
+
+<div class="pagina">
+  <p class="exemplo" id="exemplo" hidden></p>
+  <header class="topo">
+    <div>
+      <span class="rotulo" id="sobre"></span>
+      <h1 id="titulo"></h1>
+      <p id="subtitulo"></p>
+    </div>
+    <div class="placar" aria-live="polite">
+      <div><b id="n-aprovado">0</b><span class="rotulo">aprovados</span></div>
+      <div><b id="n-mudar">0</b><span class="rotulo">mudar</span></div>
+      <div><b id="n-descartado">0</b><span class="rotulo">descartados</span></div>
+      <div><b id="n-pendente">0</b><span class="rotulo">pendentes</span></div>
+    </div>
+    <p class="aviso-db" id="aviso-db" hidden>Esta visualização não está conectada ao banco da página: as mudanças aparecem na prévia, mas não ficam salvas.</p>
+  </header>
+
+  <nav class="filtros" id="filtro-cliente" aria-label="Filtrar por cliente" hidden></nav>
+  <nav class="filtros" id="filtro-uso" aria-label="Filtrar por uso"></nav>
+
+  <div id="clientes"></div>
+
+  <section class="descartados" id="bloco-descartados" hidden>
+    <h2>O que ficou de fora do texto</h2>
+    <p id="descartados"></p>
+  </section>
+</div>
+
+<script>
+const D = __DADOS__;
+
+// Os papéis de texto do compositor (src/lib/compositor/spec.ts), na ordem em que se leem.
+const PAPEIS = ["pre", "headline", "headline2", "apoio", "servico", "cta"];
+const NOME = { pre: "Pré-título", headline: "Manchete", headline2: "Manchete · 2ª voz", apoio: "Apoio", servico: "Serviço", cta: "CTA" };
+const LINHA_UNICA = new Set(["pre", "cta"]);
+const ESCALA_MINIMA = 0.8; // o compositor encolhe a fonte até 80% antes de recusar a linha
+const MAX_PALAVRAS = 25;   // ponytail: teto fixo de "poucos textos"; vira campo por cliente se algum pedir outro
+const DADO = /R\$\s?\d|\d+\s?%|\b\d{1,2}h\d{0,2}\b|\b\d{1,2}:\d{2}\b|\b\d{1,2}\/\d{1,2}\b|em dobro|gr[aá]tis|promo|desconto|\boff\b/i;
+const NOME_ESTADO = { pendente: "Pendente", aprovado: "Aprovado", mudar: "Pedir mudança", descartado: "Descartado" };
+
+const clientes = new Map(D.clientes.map((c) => [c.projectId, c]));
+const variantes = new Map(D.clientes.flatMap((c) => c.variantes.map((v) => [v.id, v])));
+const porId = new Map(D.stories.map((s) => [s.id, s]));
+const estado = new Map();      // id -> { <papel>: texto, status, comentario }
+const linhas = new Map();      // id -> elementos da story
+const confirmadas = new Map(); // slug da campanha -> boolean
+const tela = document.createElement("canvas").getContext("2d");
+const filtro = { cliente: "todos", uso: "todos" };
+let db = null;
+
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const norm = (t) => String(t ?? "").normalize("NFD").replace(/\p{M}/gu, "").toLocaleLowerCase("pt-BR").replace(/[^\p{L}\d@.]+/gu, " ").trim();
+const semColchetes = (t) => String(t ?? "").replace(/\[([^\]]*)\]/g, "$1");
+const naCaixa = (e, t) => (e.caixa === "uppercase" ? t.toLocaleUpperCase("pt-BR") : t);
+const linhasDe = (t) => String(t ?? "").split("\n").filter((x) => x.trim());
+const rgba = (hex, a) => { const h = hex.replace("#", ""); const n = parseInt(h.length === 3 ? h.replace(/./g, "$&$&") : h.slice(0, 6), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; };
+
+function largura(e, texto) {
+  const t = naCaixa(e, semColchetes(texto));
+  tela.font = `${e.tamanho}px "${e.css}"`;
+  return Math.round(tela.measureText(t).width + t.length * e.tracking);
+}
+
+function papeisDa(s) {
+  const v = variantes.get(s.variante);
+  return PAPEIS.filter((p) => v.papeis[p] || (s.copy[p] ?? "") !== "");
+}
+
+// ── prévia ────────────────────────────────────────────────────────────────
+function previa(s) {
+  const v = variantes.get(s.variante), st = estado.get(s.id), el = linhas.get(s.id), c = clientes.get(s.projectId);
+  const grupos = { topo: [], rodape: [] };
+  for (const p of PAPEIS) {
+    const e = v.papeis[p];
+    const ls = linhasDe(st[p]);
+    if (!e || !ls.length) continue;
+    const maior = Math.max(...ls.map((x) => largura(e, x)));
+    const escala = Math.max(ESCALA_MINIMA, Math.min(1, v.coluna / maior));
+    grupos[s.posicao || e.grupo].push({ p, e, ls, escala, passa: maior * ESCALA_MINIMA > v.coluna });
+  }
+  let html = `<img class="quadro" src="${D.quadros[s.quadro] || ""}" alt="">`;
+  for (const lado of ["topo", "rodape"]) {
+    const bs = grupos[lado].sort((a, b) => a.e.ordem - b.e.ordem);
+    if (!bs.length) continue;
+    // o vão é o da página de assinatura; com a posição forçada, os papéis vêm de lugares diferentes e valem o vão da casa
+    const vao = (b, i) => (i ? (s.posicao ? v.gap : b.e.vao) : 0);
+    const altura = bs.reduce((h, b, i) => h + b.ls.length * b.e.tamanho * b.escala * b.e.entrelinha + vao(b, i), 0);
+    const alcance = (lado === "topo" ? v.safeTopo : v.safeRodape) + altura + 180;
+    html += `<div class="grad" style="${lado === "topo" ? "top:0" : "bottom:0"};height:calc(${alcance} * var(--u));background:linear-gradient(${lado === "topo" ? "to bottom" : "to top"},${rgba(v.mancha, 0.62)},${rgba(v.mancha, 0)})"></div>`;
+    html += `<div class="grupo" style="${lado === "topo" ? `top:calc(${v.safeTopo} * var(--u))` : `bottom:calc(${v.safeRodape} * var(--u))`};padding-inline:calc(${v.margemH} * var(--u))">`;
+    bs.forEach((b, i) => {
+      const al = s.alinhamento || b.e.alinhamento;
+      const alinha = al === "centro" ? "center" : al === "direita" ? "flex-end" : "flex-start";
+      const cor = b.e.destaque;
+      html += `<div class="bloco${b.passa ? " passa" : ""}" style="align-items:${alinha};text-align:${al === "centro" ? "center" : al === "direita" ? "right" : "left"};margin-top:calc(${vao(b, i)} * var(--u));font-family:'${b.e.css}',sans-serif;font-size:calc(${b.e.tamanho * b.escala} * var(--u));line-height:${b.e.entrelinha};letter-spacing:calc(${b.e.tracking * b.escala} * var(--u));color:${b.e.cor};text-transform:${b.e.caixa === "uppercase" ? "uppercase" : "none"}">`;
+      html += b.ls.map((x) => `<span>${esc(x).replace(/\[([^\]]*)\]/g, (_, y) => `<b style="font-weight:inherit;color:${cor}">${y}</b>`)}</span>`).join("");
+      html += `</div>`;
+    });
+    html += `</div>`;
+  }
+  html += `<div class="guia" style="top:calc(${v.safeTopo} * var(--u))"></div><div class="guia" style="top:calc(${v.H - v.safeRodape} * var(--u))"></div>`;
+  if (v.logo && D.quadros[v.logo.src]) html += `<img class="logo" src="${D.quadros[v.logo.src]}" alt="" style="left:calc(${v.logo.x} * var(--u));top:calc(${v.logo.y} * var(--u));width:calc(${v.logo.largura} * var(--u))">`;
+  el.celular.innerHTML = html;
+}
+
+// ── avisos ────────────────────────────────────────────────────────────────
+function avisosDa(s) {
+  const v = variantes.get(s.variante), st = estado.get(s.id), el = linhas.get(s.id), c = clientes.get(s.projectId);
+  const permitidas = new Set((s.permitir || []).map(norm));
+  const vetadas = c.proibidas.filter((w) => !permitidas.has(norm(w)));
+  const avisos = [];
+  for (const p of el.papeis) {
+    const e = v.papeis[p], txt = st[p] ?? "", ls = linhasDe(txt);
+    el.campos[p].classList.toggle("sem-lugar", !e && ls.length > 0);
+    if (!ls.length) { el.medidas[p].textContent = ""; continue; }
+    if (!e) { el.medidas[p].textContent = ""; avisos.push(`${NOME[p]}: a variante "${v.nome}" não tem este campo. Troque a variante ou leve o texto para outro campo; texto sem lugar é recusado pelo compositor.`); continue; }
+    const ws = ls.map((x) => largura(e, x)), maior = Math.max(...ws);
+    el.medidas[p].textContent = `${ws.join(" · ")} / ${v.coluna} px`;
+    el.medidas[p].className = "medida" + (maior * ESCALA_MINIMA > v.coluna ? " passa" : maior > v.coluna ? " encolhe" : "");
+    if (maior * ESCALA_MINIMA > v.coluna) avisos.push(`${NOME[p]}: não cabe na coluna nem a 80% da fonte (${maior} de ${v.coluna} px). Encurte ou quebre a linha.`);
+    else if (maior > v.coluna) avisos.push(`${NOME[p]}: passa da coluna (${maior} de ${v.coluna} px); a fonte sai a ${Math.round((v.coluna / maior) * 100)}%.`);
+    if (e.faltando) avisos.push(`${NOME[p]}: a fonte "${e.familia}" não está cadastrada no projeto nem vem com o repositório. A prévia usa outra, e o render do Studio pode sair sem este texto.`);
+    for (const w of vetadas) {
+      const n = norm(w);
+      const achou = n ? new RegExp(`(^| )${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}( |$)`, "u").test(norm(semColchetes(txt))) : txt.includes(w);
+      if (achou) avisos.push(`${NOME[p]}: "${w}" está vetado pelo DNA.`);
+    }
+    if (p === "pre" && /\[[^\]]+\]/.test(txt)) avisos.push("Pré-título: fica pequeno e em cor clara, sem destaque. Tire os colchetes.");
+    const seguinte = p === "headline" && linhasDe(st.headline2).length && v.papeis.headline2;
+    const alvo = seguinte ? ls : ls.slice(0, -1);
+    if (e.entrelinha <= 1.02) {
+      for (const x of alvo) {
+        const m = naCaixa(e, semColchetes(x)).match(/[gjpqyçQÇ]/u);
+        if (m) { avisos.push(`${NOME[p]}: a cauda do "${m[0]}" em "${x}" pode encostar na linha de baixo (entrelinha ${e.entrelinha}). Confira na prévia.`); break; }
+      }
+    }
+  }
+  const eh = v.papeis.headline, h = semColchetes(st.headline ?? "");
+  if (c.caixaDaManchete && eh && eh.caixa !== "uppercase" && /\p{L}/u.test(h)) {
+    const alta = h === h.toLocaleUpperCase("pt-BR");
+    if (c.caixaDaManchete === "natural" && alta) avisos.push("Manchete em caixa alta: esta marca pede caixa natural, e a arte sai na caixa em que o texto foi escrito.");
+    if (c.caixaDaManchete === "alta" && !alta) avisos.push("Manchete em caixa natural: esta marca pede caixa alta, e a arte sai na caixa em que o texto foi escrito.");
+  }
+  if (c.ctas.length && linhasDe(st.cta).length && !c.ctas.some((x) => norm(x) === norm(semColchetes(st.cta)))) avisos.push(`CTA fora da lista aprovada do DNA: "${st.cta}".`);
+  const tudo = el.papeis.map((p) => st[p] ?? "").join("\n");
+  if (DADO.test(tudo) && !(s.fatos && s.fatos.length)) avisos.push("Tem preço, horário, data ou mecânica sem entrada da base em \"fatos\". Confirme na base antes de aprovar.");
+  const palavras = semColchetes(tudo).split(/\s+/).filter(Boolean).length;
+  if (palavras > MAX_PALAVRAS) avisos.push(`Texto demais para um story: ${palavras} palavras.`);
+  if (s.campanha && !confirmadas.get(s.campanha)) avisos.push("Depende da mecânica da campanha, que ainda não foi confirmada no quadro acima.");
+  return avisos;
+}
+
+function atualizar(s) {
+  const st = estado.get(s.id), el = linhas.get(s.id);
+  previa(s);
+  el.alertas.innerHTML = avisosDa(s).map((a) => `<li>${esc(a)}</li>`).join("");
+  el.estado.className = "estado " + st.status;
+  el.estado.textContent = NOME_ESTADO[st.status];
+  el.botoes.forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.status === st.status)));
+}
+
+function placar() {
+  const n = { aprovado: 0, mudar: 0, descartado: 0, pendente: 0 };
+  for (const st of estado.values()) n[st.status]++;
+  for (const k in n) document.getElementById("n-" + k).textContent = n[k];
+}
+
+// ── gravação: uma escrita por vez por documento, depois de uma pausa na digitação ──
+const timers = new Map(), filas = new Map();
+function agendar(id) { clearTimeout(timers.get(id)); timers.set(id, setTimeout(() => gravar(id), 700)); }
+function gravar(id) {
+  clearTimeout(timers.get(id));
+  if (!db) return;
+  const s = porId.get(id), el = linhas.get(id), st = estado.get(id);
+  const corpo = { projectId: s.projectId, variante: s.variante, status: st.status, comentario: st.comentario, atualizadoEm: new Date().toISOString() };
+  for (const p of el.papeis) corpo[p] = st[p] ?? "";
+  const agora = (filas.get(id) || Promise.resolve()).then(async () => {
+    el.salvo.textContent = "Salvando…";
+    try { await db.doc("stories/" + id).set(corpo); el.salvo.textContent = "Salvo"; }
+    catch (e) { el.salvo.textContent = e && e.code === "quota_exceeded" ? "Sem espaço no banco da página" : "Não salvou. Tente de novo."; }
+  });
+  filas.set(id, agora);
+}
+
+// ── montagem ──────────────────────────────────────────────────────────────
+function montarStory(s) {
+  const v = variantes.get(s.variante), papeis = papeisDa(s);
+  const art = document.createElement("article");
+  art.className = "story";
+  art.id = "story-" + s.id;
+  const ficha = [...(s.ficha || []), { rotulo: "Variante", valor: v.nome }, ...(s.fotoRotulo ? [{ rotulo: "Foto", valor: s.fotoRotulo }] : [])];
+  art.innerHTML = `
+    <div class="celular" aria-hidden="true"></div>
+    <div class="corpo">
+      <div class="cabeca">
+        <h3>${esc(s.titulo)}</h3>
+        ${s.uso ? `<span class="chip">${esc(s.uso)}</span>` : ""}
+        <span class="estado pendente">Pendente</span>
+      </div>
+      <dl class="ficha">${ficha.map((f) => `<dt>${esc(f.rotulo)}</dt><dd>${Array.isArray(f.valor) ? `<ol>${f.valor.map((x) => `<li>${esc(x)}</li>`).join("")}</ol>` : esc(f.valor)}</dd>`).join("")}</dl>
+      <div class="campos">
+        ${papeis.map((p) => {
+          const e = v.papeis[p], id = `${s.id}-${p}`;
+          const estilo = e ? `<span class="estilo"><i class="amostra" style="background:${e.cor}"></i>${esc(e.familia)} · ${Math.round(e.tamanho)} px${e.caixa === "uppercase" ? " · caixa alta" : ""}</span>` : `<span class="estilo">sem lugar nesta variante</span>`;
+          const lista = p === "cta" ? `list="ctas-${s.projectId}"` : p === "pre" ? `list="pres-${s.projectId}"` : "";
+          const campo = LINHA_UNICA.has(p) ? `<input id="${id}" data-campo="${p}" autocomplete="off" ${lista}>` : `<textarea id="${id}" data-campo="${p}" rows="1"></textarea>`;
+          return `<div class="campo" data-papel="${p}"><label for="${id}"><span class="rotulo">${NOME[p]}</span>${estilo}</label>${campo}<small><span>${esc((s.origem || {})[p] || "")}</span><span class="medida" data-medida="${p}"></span></small></div>`;
+        }).join("")}
+      </div>
+      ${s.confirmar && s.confirmar.length ? `<ul class="confirmar">${s.confirmar.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+      ${s.fatos && s.fatos.length ? `<p class="nota">Fatos da base: ${esc(s.fatos.join(" · "))}</p>` : ""}
+      ${s.nota ? `<p class="nota">${esc(s.nota)}</p>` : ""}
+      <ul class="alertas"></ul>
+      <div class="acoes">
+        <button type="button" class="aprovar" data-status="aprovado" aria-pressed="false">Aprovar</button>
+        <button type="button" class="mudar" data-status="mudar" aria-pressed="false">Pedir mudança</button>
+        <button type="button" class="descartar" data-status="descartado" aria-pressed="false">Descartar</button>
+        <button type="button" class="voltar">Voltar à sugestão</button>
+        <span class="salvo" aria-live="polite"></span>
+      </div>
+      <label class="rotulo" for="${s.id}-comentario">Comentário</label>
+      <textarea class="comentario" id="${s.id}-comentario" placeholder="O que mudar, qual foto trocar, outra ideia de copy"></textarea>
+    </div>`;
+  const el = {
+    art, papeis,
+    celular: art.querySelector(".celular"),
+    inputs: Object.fromEntries(papeis.map((p) => [p, art.querySelector(`[data-campo="${p}"]`)])),
+    campos: Object.fromEntries(papeis.map((p) => [p, art.querySelector(`.campo[data-papel="${p}"]`)])),
+    medidas: Object.fromEntries(papeis.map((p) => [p, art.querySelector(`[data-medida="${p}"]`)])),
+    estado: art.querySelector(".estado"),
+    botoes: [...art.querySelectorAll("[data-status]")],
+    alertas: art.querySelector(".alertas"),
+    comentario: art.querySelector(".comentario"),
+    salvo: art.querySelector(".salvo"),
+  };
+  const linhasDoCampo = (i) => { if (i.tagName === "TEXTAREA") i.rows = Math.max(1, i.value.split("\n").length); };
+  for (const p of papeis) {
+    el.inputs[p].addEventListener("input", () => { estado.get(s.id)[p] = el.inputs[p].value; linhasDoCampo(el.inputs[p]); atualizar(s); agendar(s.id); });
+  }
+  el.comentario.addEventListener("input", () => { estado.get(s.id).comentario = el.comentario.value; agendar(s.id); });
+  el.botoes.forEach((b) => b.addEventListener("click", () => {
+    const st = estado.get(s.id);
+    st.status = st.status === b.dataset.status ? "pendente" : b.dataset.status;
+    atualizar(s); placar(); gravar(s.id);
+  }));
+  art.querySelector(".voltar").addEventListener("click", () => {
+    const st = estado.get(s.id);
+    for (const p of papeis) { st[p] = s.copy[p] ?? ""; el.inputs[p].value = st[p]; linhasDoCampo(el.inputs[p]); }
+    atualizar(s); gravar(s.id);
+  });
+  linhas.set(s.id, el);
+  estado.set(s.id, { ...Object.fromEntries(papeis.map((p) => [p, s.copy[p] ?? ""])), status: "pendente", comentario: "" });
+  for (const p of papeis) { el.inputs[p].value = s.copy[p] ?? ""; linhasDoCampo(el.inputs[p]); }
+  return art;
+}
+
+function montarCampanha(k) {
+  const box = document.createElement("section");
+  box.className = "campanha";
+  box.innerHTML = `
+    <div>
+      <span class="rotulo">Confirme antes de anunciar</span>
+      <h3>${esc(k.titulo)}</h3>
+      <p>${esc(k.resumo)}</p>
+    </div>
+    <div>
+      <span class="rotulo">O que a base não responde</span>
+      <ol>${(k.perguntas || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ol>
+      <label class="confirma"><input type="checkbox" id="campanha-${k.slug}"> A mecânica está confirmada e pode ser anunciada</label>
+      <label class="rotulo" for="campanha-${k.slug}-obs" hidden>Observação</label>
+      <textarea id="campanha-${k.slug}-obs" placeholder="Respostas ou ajustes da mecânica"></textarea>
+    </div>`;
+  const chk = box.querySelector("input"), obs = box.querySelector("textarea");
+  let t = null, fila = Promise.resolve();
+  const reavaliar = () => { confirmadas.set(k.slug, chk.checked); for (const s of D.stories) if (s.campanha === k.slug) atualizar(s); };
+  const gravarCampanha = () => {
+    if (!db) return;
+    const corpo = { confirmada: chk.checked, observacao: obs.value, atualizadoEm: new Date().toISOString() };
+    fila = fila.then(() => db.doc("campanha/" + k.slug).set(corpo).catch(() => {}));
+  };
+  chk.addEventListener("change", () => { reavaliar(); gravarCampanha(); });
+  obs.addEventListener("input", () => { clearTimeout(t); t = setTimeout(gravarCampanha, 700); });
+  k.el = { chk, obs, reavaliar };
+  return box;
+}
+
+function montarCliente(c) {
+  const sec = document.createElement("section");
+  sec.className = "cliente";
+  sec.id = "cliente-" + c.projectId;
+  const minhas = D.stories.filter((s) => s.projectId === c.projectId).sort((a, b) => a.ordem - b.ordem);
+  const fonteManchete = c.variantes[0]?.papeis.headline?.css;
+  const faltando = [...new Set(c.variantes.flatMap((v) => Object.values(v.papeis).filter((e) => e.faltando).map((e) => e.familia)))];
+  sec.innerHTML = `
+    <header class="cliente-topo">
+      <div class="selo">${c.logo && D.quadros[c.logo] ? `<img src="${D.quadros[c.logo]}" alt="Logo ${esc(c.nome)}">` : ""}</div>
+      <div>
+        <h2 style="${fonteManchete ? `font-family:'${fonteManchete}',sans-serif` : ""}">${esc(c.nome)}</h2>
+        <p class="meta">${minhas.length} ${minhas.length === 1 ? "story" : "stories"} · caixa da manchete: ${c.caixaDaManchete === "alta" ? "alta" : c.caixaDaManchete === "natural" ? "natural" : "a da assinatura"}</p>
+      </div>
+      <details class="regras">
+        <summary>Regras desta marca</summary>
+        <dl>
+          <dt>Palavras vetadas</dt><dd>${c.proibidas.length ? esc(c.proibidas.join(" · ")) : "nenhuma listada"}</dd>
+          <dt>CTAs aprovados</dt><dd>${c.ctas.length ? esc(c.ctas.join(" · ")) : "sem lista fechada"}</dd>
+          <dt>Pré-títulos aprovados</dt><dd>${c.preTitulos.length ? esc(c.preTitulos.join(" · ")) : "sem lista fechada"}</dd>
+          ${faltando.length ? `<dt class="falta">Fontes não cadastradas</dt><dd class="falta">${esc(faltando.join(" · "))}</dd>` : ""}
+        </dl>
+      </details>
+    </header>
+    <datalist id="ctas-${c.projectId}">${c.ctas.map((x) => `<option value="${esc(x)}"></option>`).join("")}</datalist>
+    <datalist id="pres-${c.projectId}">${c.preTitulos.map((x) => `<option value="${esc(x)}"></option>`).join("")}</datalist>`;
+  for (const k of D.campanhas.filter((k) => k.projectId === c.projectId)) sec.appendChild(montarCampanha(k));
+  const lista = document.createElement("div");
+  lista.className = "lista";
+  for (const s of minhas) lista.appendChild(montarStory(s));
+  sec.appendChild(lista);
+  return sec;
+}
+
+function botoesDeFiltro(nav, chave, opcoes) {
+  nav.innerHTML = `<span class="rotulo">${chave === "cliente" ? "Cliente" : "Mostrar"}</span>` + opcoes.map((o) => `<button type="button" data-${chave}="${esc(o.valor)}" aria-pressed="${o.valor === "todos"}">${o.cor ? `<i class="ponto" style="background:${o.cor}"></i>` : ""}${esc(o.rotulo)}</button>`).join("");
+  nav.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
+    filtro[chave] = b.dataset[chave];
+    nav.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    for (const s of D.stories) {
+      const ok = (filtro.cliente === "todos" || String(s.projectId) === filtro.cliente) && (filtro.uso === "todos" || s.uso === filtro.uso);
+      linhas.get(s.id).art.hidden = !ok;
+    }
+    for (const c of D.clientes) document.getElementById("cliente-" + c.projectId).hidden = !D.stories.some((s) => s.projectId === c.projectId && !linhas.get(s.id).art.hidden);
+  }));
+}
+
+// página em repouso: as propostas aparecem na hora; o banco sobrepõe o que já foi editado
+document.getElementById("titulo").textContent = D.pagina.titulo;
+document.getElementById("subtitulo").textContent = D.pagina.subtitulo || "";
+document.getElementById("sobre").textContent = D.clientes.length > 1 ? `${D.clientes.length} clientes · ${D.stories.length} stories` : `${D.clientes[0].nome} · ${D.stories.length} stories`;
+if (D.pagina.exemplo) { const x = document.getElementById("exemplo"); x.innerHTML = `<b>Exemplo do padrão.</b> ${esc(D.pagina.exemplo)}`; x.hidden = false; }
+if (D.pagina.descartados) { document.getElementById("descartados").textContent = D.pagina.descartados; document.getElementById("bloco-descartados").hidden = false; }
+const raiz = document.getElementById("clientes");
+for (const c of D.clientes) raiz.appendChild(montarCliente(c));
+if (D.clientes.length > 1) {
+  const nav = document.getElementById("filtro-cliente");
+  botoesDeFiltro(nav, "cliente", [{ valor: "todos", rotulo: "Todos" }, ...D.clientes.map((c) => ({ valor: String(c.projectId), rotulo: c.nome, cor: c.mancha }))]);
+  nav.hidden = false;
+}
+const usos = [...new Set(D.stories.map((s) => s.uso).filter(Boolean))];
+if (usos.length > 1) botoesDeFiltro(document.getElementById("filtro-uso"), "uso", [{ valor: "todos", rotulo: "Todos" }, ...usos.map((u) => ({ valor: u, rotulo: u }))]);
+for (const s of D.stories) atualizar(s);
+placar();
+
+const fontes = [...new Set(D.clientes.flatMap((c) => c.variantes.flatMap((v) => Object.values(v.papeis).map((e) => `${e.tamanho}px "${e.css}"`))))];
+Promise.all(fontes.map((f) => document.fonts.load(f).catch(() => null))).then(() => { for (const s of D.stories) atualizar(s); });
+
+(async () => {
+  db = await window.claude?.use?.("db") ?? null;
+  if (!db) { document.getElementById("aviso-db").hidden = false; return; }
+  db.collection("stories").onSnapshot((snap) => {
+    for (const d of snap.docs) {
+      const s = porId.get(d.id), dados = d.data();
+      if (!s || !dados) continue;
+      const st = estado.get(d.id), el = linhas.get(d.id);
+      for (const p of el.papeis) {
+        if (typeof dados[p] === "string" && document.activeElement !== el.inputs[p]) { st[p] = dados[p]; el.inputs[p].value = dados[p]; if (el.inputs[p].tagName === "TEXTAREA") el.inputs[p].rows = Math.max(1, dados[p].split("\n").length); }
+      }
+      if (typeof dados.status === "string" && NOME_ESTADO[dados.status]) st.status = dados.status;
+      if (typeof dados.comentario === "string" && document.activeElement !== el.comentario) { st.comentario = dados.comentario; el.comentario.value = dados.comentario; }
+      atualizar(s);
+    }
+    placar();
+  }, () => { document.getElementById("aviso-db").hidden = false; });
+  for (const k of D.campanhas) {
+    db.doc("campanha/" + k.slug).onSnapshot((d) => {
+      const dados = d.exists ? d.data() : null;
+      if (!dados) return;
+      k.el.chk.checked = !!dados.confirmada;
+      if (document.activeElement !== k.el.obs && typeof dados.observacao === "string") k.el.obs.value = dados.observacao;
+      k.el.reavaliar();
+    }, () => {});
+  }
+})();
+</script>

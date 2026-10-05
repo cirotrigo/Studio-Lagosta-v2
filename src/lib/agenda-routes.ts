@@ -47,6 +47,22 @@ export function editarPostHref(projectId: number | string, postId: string): stri
 }
 
 /**
+ * "Editar Template": o editor aberto na página da arte do post, voltando para
+ * a agenda. O `templateId` tem de ser o template em que a página mora HOJE —
+ * as rotas que servem o post o resolvem (`comTemplateDaPagina`); a coluna do
+ * post fica para trás quando a página muda de pasta.
+ */
+export function editarTemplateHref(
+  post: { templateId: number | null; pageId: string | null },
+  opcoes: { postId?: string } = {},
+): string {
+  // Com o `postId` o editor sabe de QUAL post veio — é o que oferece
+  // "Substituir vídeo na agenda" na página-vídeo.
+  const doPost = opcoes.postId ? `&postId=${encodeURIComponent(opcoes.postId)}` : ''
+  return `/templates/${post.templateId}/editor?pageId=${encodeURIComponent(post.pageId ?? '')}&from=agenda${doPost}`
+}
+
+/**
  * Publicar um lembrete na mão: as artes para salvar no rolo, a legenda e o
  * primeiro comentário para copiar, e o atalho que abre o Instagram. É para
  * onde apontam o "Publicar agora" da tela do post e o do card da agenda

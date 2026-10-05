@@ -723,6 +723,19 @@ toolEstrita(
         resolvedTemplateId = page?.templateId ?? undefined
       }
 
+      // Post pela página que vai ao ar como IMAGEM: vídeo, sequência ou música
+      // na página sairiam como um quadro parado. O MP4 exportado (mídia de
+      // vídeo) passa — é a página publicada como vídeo.
+      if (pageId) {
+        const { isVideoUrl } = await import('../src/lib/media-type')
+        if (!(mediaUrls ?? []).some((url) => isVideoUrl(url))) {
+          const pagina = await prisma.page.findUnique({ where: { id: pageId }, select: { layers: true, audio: true } })
+          const { recusaComoImagem } = await import('../src/lib/video/pagina-com-video')
+          const recusa = pagina ? recusaComoImagem(pagina.layers, pagina.audio) : null
+          if (recusa) return { content: [{ type: 'text' as const, text: `Error: ${recusa.mensagem}` }], isError: true }
+        }
+      }
+
       const parsedSlotValues = slotValues ? JSON.parse(slotValues) : undefined
       const postStatus = status ?? 'DRAFT'
       const hasPage = !!pageId
@@ -747,6 +760,8 @@ toolEstrita(
           templateId: resolvedTemplateId ?? null,
           slotValues: parsedSlotValues ?? undefined,
           renderStatus: renderStatus as any,
+          // A origem de vídeo fica no post: limpar a mídia depois não o devolve ao render.
+          videoDaPagina: (await import('../src/lib/posts/post-de-video')).postDeVideo({ mediaUrls: mediaUrls ?? [] }),
           // O cron filtra por `nextRenderAt <= agora`, e null não passa nesse
           // filtro: PENDING sem esta data ficava fora da fila para sempre — o
           // post nunca ganhava arte e o executor o pulava indefinidamente.
@@ -792,11 +807,12 @@ toolEstrita(
     try {
       const existing = await prisma.socialPost.findUnique({
         where: { id: postId },
-        select: { pageId: true, mediaUrls: true, status: true, laterPostId: true, projectId: true, scheduledDatetime: true },
+        select: { pageId: true, mediaUrls: true, status: true, laterPostId: true, projectId: true, scheduledDatetime: true, videoDaPagina: true },
       })
       if (!existing) {
         return { content: [{ type: 'text' as const, text: `Error: post ${postId} not found` }], isError: true }
       }
+      const { postDeVideo, MOTIVO_VIDEO_REMOVIDO } = await import('../src/lib/posts/post-de-video')
 
       const data: any = {}
       if (caption !== undefined) data.caption = caption
@@ -824,6 +840,10 @@ toolEstrita(
           const effectivePageId = pageId ?? existing.pageId
           const effectiveMedia = mediaUrls ?? existing.mediaUrls
           if (effectivePageId && (!effectiveMedia || effectiveMedia.length === 0)) {
+            // Post de vídeo sem a mídia não vira imagem pelo render da página.
+            if (postDeVideo({ videoDaPagina: existing.videoDaPagina, mediaUrls: effectiveMedia })) {
+              return { content: [{ type: 'text' as const, text: `Error: ${MOTIVO_VIDEO_REMOVIDO} Nada foi alterado.` }], isError: true }
+            }
             data.renderStatus = 'PENDING'
           }
         }
@@ -1264,10 +1284,21 @@ toolEstrita(
       // 1. Fetch post
       const post = await prisma.socialPost.findUnique({
         where: { id: postId },
-        select: { id: true, pageId: true, slotValues: true, renderStatus: true },
+        select: { id: true, pageId: true, slotValues: true, renderStatus: true, mediaUrls: true, videoDaPagina: true },
       })
       if (!post) return { content: [{ type: 'text' as const, text: 'Error: Post not found' }], isError: true }
       if (!post.pageId) return { content: [{ type: 'text' as const, text: 'Error: Post has no pageId (not template-based)' }], isError: true }
+      // Post de vídeo nunca é redesenhado como imagem — nem com a mídia limpa.
+      const { postDeVideo, MOTIVO_VIDEO_REMOVIDO } = await import('../src/lib/posts/post-de-video')
+      if (postDeVideo(post)) {
+        const motivo = post.mediaUrls.length === 0 ? MOTIVO_VIDEO_REMOVIDO : 'A mídia deste post é um vídeo — renderizar a página a trocaria por uma imagem.'
+        return { content: [{ type: 'text' as const, text: `Error: ${motivo} Nada foi alterado.` }], isError: true }
+      }
+      // O render grava `mediaUrls: [png]`: vídeo e carrossel seriam apagados por ele.
+      const { renderDaPaginaCobreAMidia } = await import('../src/lib/posts/render-da-pagina')
+      if (!renderDaPaginaCobreAMidia(post.mediaUrls)) {
+        return { content: [{ type: 'text' as const, text: 'Error: a mídia deste post é um vídeo ou um carrossel — renderizar a página apagaria essa mídia. Nada foi alterado.' }], isError: true }
+      }
 
       // 2. Fetch page with template
       const page = await prisma.page.findUnique({
@@ -1275,6 +1306,12 @@ toolEstrita(
         include: { Template: { select: { projectId: true } } },
       })
       if (!page) return { content: [{ type: 'text' as const, text: `Error: Page not found: ${post.pageId}` }], isError: true }
+      // O render é IMAGEM: vídeo visível ou sequência sairiam como um quadro
+      // parado. A música não entra aqui — post de imagem anterior à música
+      // segue renderizando, como no cron (`story-renderer`).
+      const { recusaPorCamadas } = await import('../src/lib/video/pagina-com-video')
+      const recusaDaPagina = recusaPorCamadas(page.layers)
+      if (recusaDaPagina) return { content: [{ type: 'text' as const, text: `Error: ${recusaDaPagina.mensagem} Nada foi alterado.` }], isError: true }
 
       // 3. Lock the post
       await prisma.socialPost.update({
@@ -1291,13 +1328,15 @@ toolEstrita(
         height: page.height,
         layers: page.layers,
         background: page.background,
+        audio: page.audio,
       })
 
-      // 5. Apply slot values — só a copy PRÓPRIA do post. A cópia que o
-      // agendamento grava da página (`_copiaDaPagina`) nunca volta para a arte.
+      // 5. Apply slot values — só a copy PRÓPRIA do post, e só em página
+      // MODELO. Em página de conteúdo a página é a peça: o que está em
+      // `slotValues` é cópia do texto dela e nunca volta para a arte.
       const slotValues = (post.slotValues as Record<string, unknown>) ?? {}
       const { slotValuesParaRender } = await import('../src/lib/posts/copy-segue-a-pagina')
-      const slots = slotValuesParaRender(slotValues)
+      const slots = slotValuesParaRender(slotValues, page.isTemplate)
       if (slots) {
         designData = applySlotValues(designData, slots)
       }
@@ -1350,6 +1389,10 @@ toolEstrita(
 
       // 7. Render
       const { CanvasRenderer } = await import('../src/lib/canvas-renderer')
+      const { camadasNoInstante } = await import('../src/lib/video/linha-do-tempo')
+      // A linha do tempo desenha o quadro de 0 (a recusa de vídeo/sequência rodou antes da trava)
+      // (com a música: ela faz da foto em movimento uma página-vídeo, como no story-renderer)
+      designData = { ...designData, layers: camadasNoInstante(designData.layers, 0, { audio: designData.audio }) }
       const renderer = new CanvasRenderer(designData.canvas.width, designData.canvas.height)
       const buffer = await renderer.renderDesign(designData, {})
 
@@ -1358,9 +1401,10 @@ toolEstrita(
       const blobPath = `posts/rendered/${postId}-${timestamp}.png`
       const blob = await put(blobPath, buffer, { access: 'public', contentType: 'image/png' })
 
-      // 9. Update post
-      await prisma.socialPost.update({
-        where: { id: postId },
+      // 9. Update post — só se a mídia ainda é a que a guarda leu: trocada no
+      // meio do render (por um vídeo, por exemplo), o PNG não entra por cima.
+      const gravado = await prisma.socialPost.updateMany({
+        where: { id: postId, mediaUrls: { equals: post.mediaUrls } },
         data: {
           renderStatus: 'RENDERED',
           renderedImageUrl: blob.url,
@@ -1369,6 +1413,13 @@ toolEstrita(
           blobPathnames: [blobPath],
         },
       })
+      if (gravado.count === 0) {
+        await prisma.socialPost.updateMany({
+          where: { id: postId, renderStatus: 'RENDERING' },
+          data: { renderStatus: post.renderStatus },
+        })
+        return { content: [{ type: 'text' as const, text: 'Error: a mídia do post mudou durante o render. Nada foi alterado; confira o post e renderize de novo se ainda fizer sentido.' }], isError: true }
+      }
 
       // Build a clickable admin URL for editing this specific post.
       // Uses STUDIO_LAGOSTA_PUBLIC_URL (or NEXT_PUBLIC_APP_URL fallback) so the

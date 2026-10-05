@@ -469,6 +469,57 @@ export function referenciasParaServidor(
     }))
 }
 
+/**
+ * O modal "Editar a peça" (`bancada-editar-item.tsx`) edita a copy com UM campo
+ * por BLOCO, e as linhas internas do bloco — quebras e linhas vazias inclusive —
+ * ficam como estão. Até 18/09/2026 ele juntava os blocos num textarea só e
+ * separava por quebra de linha: um bloco de duas linhas virava dois, as linhas
+ * vazias sumiam, e salvar SÓ a legenda descartava o contrato do item (mudou o
+ * número de blocos) ou registrava a normalização como revisão da equipe
+ * (PR3-R8-01 da revisão FINAL do Codex sobre cc14f30a).
+ */
+export function blocosParaEdicao(copy: string[]): string[] {
+  return copy.length > 0 ? [...copy] : ['']
+}
+
+/**
+ * A copy que o modal devolve. Campo vazio (ou só com espaço) é bloco tirado,
+ * como no espelho do contrato; o conteúdo do bloco nunca é aparado. Sem
+ * mudança, devolve a lista ORIGINAL e `editada: false`.
+ */
+export function copyDaEdicao(original: string[], campos: string[]): { copy: string[]; editada: boolean } {
+  const final = campos.filter((b) => b.trim() !== '')
+  const editada = final.length !== original.length || final.some((b, i) => b !== original[i])
+  return { copy: editada ? final : original, editada }
+}
+
+/**
+ * O patch do item de plano a partir do que o modal salvou. `copyProposta` só
+ * viaja quando a copy foi EDITADA — salvar a legenda não reescreve a copy (nem
+ * a de outra aba que a mudou no meio tempo).
+ */
+export function patchDaEdicaoDoItem(e: {
+  copy: string[]
+  copyEditada: boolean
+  legenda: string | null
+  pedido: string
+  instrucaoImagem: string | null
+  referencias: BancadaItem['referencias']
+}) {
+  const cena = e.referencias.find((r) => r.papel === 'subject')
+  // A lista inteira viaja; o espelho fotoDriveId/fotoUrl vai junto para o caso
+  // de lista vazia (o serviço deriva o espelho da lista quando ela existe).
+  return {
+    ...(e.copyEditada ? { copyProposta: e.copy } : {}),
+    legenda: e.legenda,
+    fotoDriveId: cena?.driveFileId ?? null,
+    fotoUrl: cena?.url ?? null,
+    referencias: referenciasParaServidor(e.referencias),
+    direcao: e.pedido?.trim() || null,
+    ajusteDaFoto: e.instrucaoImagem?.trim() || null,
+  }
+}
+
 export function paraItemDaBancada(
   doServidor: ItemDePlanoDoServidor,
   plano: PlanoDoServidor,

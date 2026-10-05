@@ -1,7 +1,8 @@
 "use client"
 
 import * as React from 'react'
-import { CalendarCheck, CalendarPlus, Copy, Layers, Loader2, Plus, Trash2 } from 'lucide-react'
+import { CalendarCheck, CalendarPlus, Copy, ImageIcon, Layers, Loader2, Plus, RefreshCw, Trash2, Video } from 'lucide-react'
+import { BotaoPlayPause } from '../botao-play-pause'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
@@ -9,8 +10,11 @@ import { useMultiPage } from '@/contexts/multi-page-context'
 import { usePageActions } from '@/hooks/use-page-actions'
 import { useAgendaDasPaginas, useAgendarPagina, type AgendaDaPagina } from '@/hooks/use-agenda-das-paginas'
 import { horarioCurto } from '@/lib/compositor/pasta-da-semana'
+import { recusaComoImagem, type RecusaComoImagem } from '@/lib/video/pagina-com-video'
 import { KonvaEditorStage } from '../konva-editor-stage'
+import { useGerarVideo } from '../video-export-button'
 import { PagePreview } from './page-preview'
+import type Konva from 'konva'
 import type { Layer } from '@/types/template'
 
 /**
@@ -28,12 +32,18 @@ import type { Layer } from '@/types/template'
  */
 function ControleDeAgenda({
   agenda,
+  recusa,
   aoAgendar,
   agendando,
+  aoGerarVideo,
 }: {
   agenda: AgendaDaPagina | undefined
+  /** A página tem vídeo (ou motion) visível, ou música: ela não se agenda como imagem. */
+  recusa: RecusaComoImagem | null
   aoAgendar: () => void
   agendando: boolean
+  /** Abre o diálogo de gerar vídeo desta página. Fora do editor, `null`. */
+  aoGerarVideo: ((destino: 'agenda' | 'substituir') => void) | null
 }) {
   if (!agenda) return null
 
@@ -42,6 +52,52 @@ function ControleDeAgenda({
     // O botão cria RASCUNHO, então dizer "Agendado" logo depois do clique
     // mentiria: rascunho aparece na agenda mas não publica sozinho.
     const rascunho = agenda.post.status === 'DRAFT'
+    const sub = agenda.post.substituicao
+    // Vídeo novo a caminho: a troca acontece sozinha quando o MP4 ficar pronto.
+    if (agenda.post.comVideo && sub?.estado === 'em-producao') {
+      return (
+        <span
+          className="flex h-6 items-center gap-1 rounded bg-white/5 px-1.5 text-[11px] font-medium text-muted-foreground"
+          title={`O vídeo novo está sendo preparado e vai substituir o do post${quando ? ` de ${quando}` : ''}.`}
+        >
+          <Loader2 className="h-3 w-3 animate-spin" />
+          vídeo novo em produção
+        </span>
+      )
+    }
+    // A página mudou depois do vídeo que está na agenda: oferecer a troca.
+    if (agenda.post.comVideo && agenda.post.videoDesatualizado && agenda.post.substituivel && aoGerarVideo) {
+      const naoTrocou = sub && (sub.estado === 'recusada' || sub.estado === 'falhou') ? sub.motivo : null
+      return (
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-6 gap-1 px-1.5 text-[11px] font-medium text-amber-600 hover:text-amber-700 dark:text-amber-400"
+          title={`A página mudou depois do vídeo que está na agenda${quando ? ` (${quando})` : ''}. Gerar o novo e trocar no post.${
+            naoTrocou ? ` Última tentativa não substituiu: ${naoTrocou}` : ''
+          }`}
+          onClick={() => aoGerarVideo('substituir')}
+        >
+          <RefreshCw className="h-3 w-3" />
+          vídeo desatualizado · Substituir
+        </Button>
+      )
+    }
+    // O post nasceu ANTES de a página virar vídeo (ganhou música ou vídeo
+    // depois): ele continua sendo uma imagem, e o som não vai junto.
+    if (recusa && !agenda.post.comVideo) {
+      return (
+        <span
+          className="flex h-6 items-center gap-1 rounded bg-amber-500/10 px-1.5 text-[11px] font-medium text-amber-600 dark:text-amber-400"
+          title={`Esta página já está na agenda como IMAGEM${quando ? ` (${quando})` : ''}: ${
+            recusa.codigo === 'PAGINA_COM_MUSICA' ? 'a música' : 'o vídeo'
+          } não vai junto. Exporte o vídeo e troque a mídia do post.`}
+        >
+          <ImageIcon className="h-3 w-3" />
+          na agenda como imagem
+        </span>
+      )
+    }
     return (
       // Sem borda de propósito: `border-emerald-500/30` não pintou na medição
       // de 04/09/2026 (caiu no cinza do reset). Fundo e texto foram medidos.
@@ -69,6 +125,44 @@ function ControleDeAgenda({
       >
         <Layers className="h-3 w-3" />
         {agenda.slide ? `slide ${agenda.slide}` : 'slide'}
+      </span>
+    )
+  }
+
+  /**
+   * 🔴 Página com vídeo (ou com música) NÃO se agenda como imagem: "Agendar"
+   * mandaria um quadro parado. O botão dela abre o diálogo de gerar vídeo com
+   * destino agenda — o post nasce quando o MP4 fica pronto. Quem recusa a
+   * imagem de verdade é `agendarPost` (`PAGINA_COM_VIDEO`). Vem antes do
+   * horário: vale mesmo na página sem horário previsto, que é a maioria das
+   * de vídeo.
+   */
+  if (recusa && aoGerarVideo) {
+    return (
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-6 gap-1 px-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+        title="Gerar o vídeo desta página e colocar na agenda quando ele ficar pronto"
+        onClick={() => aoGerarVideo('agenda')}
+      >
+        <Video className="h-3 w-3" />
+        Agendar
+      </Button>
+    )
+  }
+  if (recusa) {
+    return (
+      <span
+        className="flex h-6 items-center gap-1 rounded bg-white/5 px-1.5 text-[11px] font-medium text-muted-foreground"
+        title={
+          recusa.codigo === 'PAGINA_COM_MUSICA'
+            ? 'Esta página tem música: ela vai ao ar como vídeo. Use "Exportar Vídeo" — ou tire a música para agendar a imagem.'
+            : 'Esta página tem vídeo: use "Exportar Vídeo" e agende o MP4 pela aba Criativos.'
+        }
+      >
+        <Video className="h-3 w-3" />
+        vídeo
       </span>
     )
   }
@@ -136,9 +230,11 @@ const PROGRAMMATIC_SCROLL_MS = 900
 const CAPTURE_WIDTH = 450
 
 export function ContinuousWorkspace() {
-  const { design, zoom, setZoom, croppingLayerId, generateThumbnail, selectLayer, templateId } = useTemplateEditor()
+  const { design, zoom, setZoom, croppingLayerId, generateThumbnail, selectLayer, templateId, getStageInstance } =
+    useTemplateEditor()
   const { data: agendaDaPasta } = useAgendaDasPaginas(templateId)
   const agendarPagina = useAgendarPagina(templateId)
+  const gerarVideo = useGerarVideo()
   const [agendandoId, setAgendandoId] = React.useState<string | null>(null)
   const agendaPorPagina = React.useMemo(
     () => new Map((agendaDaPasta?.paginas ?? []).map((a) => [a.pageId, a])),
@@ -345,13 +441,15 @@ export function ContinuousWorkspace() {
       const previousPageId = currentPageIdRef.current
       if (previousPageId) {
         void generateThumbnail(CAPTURE_WIDTH).then((url) => {
-          if (url) {
-            setCaptures((prev) => {
-              const next = new Map(prev)
-              next.set(previousPageId, url)
-              return next
-            })
-          }
+          // Sem captura nova (vídeo fora do quadro de 0), a anterior é de uma
+          // versão que pode ter sido editada: some, e a prévia cai no stage vivo
+          setCaptures((prev) => {
+            if (!url && !prev.has(previousPageId)) return prev
+            const next = new Map(prev)
+            if (url) next.set(previousPageId, url)
+            else next.delete(previousPageId)
+            return next
+          })
         })
       }
       setCurrentPageId(pageId)
@@ -368,6 +466,26 @@ export function ContinuousWorkspace() {
   // (loadTemplate limpa a seleção — selecionar antes seria desfeito)
   const pendingSelectRef = React.useRef<{ pageId: string; layerId: string } | null>(null)
 
+  // Duplo clique em página inativa: o 1º mousedown acorda a página (a prévia
+  // vira stage), então o Konva nunca recebe os dois cliques e o dblclick dele
+  // não dispara — a pessoa via só a seleção e o texto digitado em seguida se
+  // perdia. O dblclick DOM ainda chega ao slot: ele marca a camada, e quem
+  // chegar por último (ele ou a seleção pendente) repassa o dblclick ao nó.
+  const acordouRef = React.useRef<{ pageId: string; layerId: string; em: number } | null>(null)
+  const edicaoPendenteRef = React.useRef<{ pageId: string; layerId: string } | null>(null)
+
+  const abrirEdicaoPendente = React.useCallback(() => {
+    const pendente = edicaoPendenteRef.current
+    if (!pendente || currentPageIdRef.current !== pendente.pageId) return
+    // O nó mais fundo com o id: com máscara/flip há um Group com o mesmo id
+    // por fora, e o dblclick do texto está no Text (eventos sobem, não descem)
+    const nos = getStageInstance()?.find((n: Konva.Node) => n.id() === pendente.layerId) ?? []
+    const no = nos[nos.length - 1]
+    if (!no) return // design ainda não carregou: a seleção pendente tenta de novo
+    edicaoPendenteRef.current = null
+    no.fire('dblclick')
+  }, [getStageInstance])
+
   React.useEffect(() => {
     const pending = pendingSelectRef.current
     if (!pending || pending.pageId !== currentPageId) return
@@ -378,9 +496,21 @@ export function ContinuousWorkspace() {
     window.setTimeout(() => {
       if (currentPageIdRef.current === pageId) {
         selectLayer(layerId)
+        abrirEdicaoPendente()
       }
     }, 80)
-  }, [currentPageId, design.layers, selectLayer])
+  }, [currentPageId, design.layers, selectLayer, abrirEdicaoPendente])
+
+  const handleSlotDoubleClick = React.useCallback(
+    (pageId: string) => {
+      const acordou = acordouRef.current
+      acordouRef.current = null
+      if (!acordou || acordou.pageId !== pageId || Date.now() - acordou.em > 1000) return
+      edicaoPendenteRef.current = { pageId, layerId: acordou.layerId }
+      abrirEdicaoPendente()
+    },
+    [abrirEdicaoPendente],
+  )
 
   /**
    * Clique na área ao redor das páginas desmarca o que estiver selecionado.
@@ -409,6 +539,7 @@ export function ContinuousWorkspace() {
         const canvasY = (event.clientY - rect.top) / (zoomRef.current || 1)
         const hit = hitTestPageLayer(Array.isArray(page.layers) ? (page.layers as Layer[]) : [], canvasX, canvasY)
         pendingSelectRef.current = hit ? { pageId, layerId: hit.id } : null
+        acordouRef.current = hit ? { pageId, layerId: hit.id, em: Date.now() } : null
       }
       activatePage(pageId)
     },
@@ -481,21 +612,28 @@ export function ContinuousWorkspace() {
   }, [])
 
   // Auto-fit inicial pela largura do container + scroll até a página corrente
-  // (link da agenda entra com initialPageId no meio do template)
+  // (link da agenda entra com initialPageId no meio do template).
+  // Duas fases: primeiro o zoom, e só com ele JÁ aplicado o scroll. Rolar no
+  // mesmo passo do setZoom media os slots no zoom antigo: se o re-render do
+  // zoom chegava depois do rAF, a coluna crescia por baixo do scrollTop e a
+  // tela parava páginas ACIMA da ativa (agenda abria na Pag.09 com 17/32).
+  const autoFitDoneRef = React.useRef(false)
   React.useEffect(() => {
     if (initialScrollDoneRef.current) return
     if (isLoading || sortedPages.length === 0 || !currentPageId) return
-    initialScrollDoneRef.current = true
 
     const container = containerRef.current
-    if (container) {
+    if (container && !autoFitDoneRef.current) {
+      autoFitDoneRef.current = true
       const maxPageWidth = Math.max(...sortedPages.map((p) => p.width || 1080))
       const fit = (container.clientWidth - 96) / maxPageWidth
       const clamped = Math.min(0.6, Math.max(0.25, fit))
       if (Number.isFinite(clamped) && Math.abs(clamped - zoom) > 0.02) {
         setZoom(clamped)
+        return // o efeito volta com o zoom novo e aí rola
       }
     }
+    initialScrollDoneRef.current = true
     requestAnimationFrame(() => {
       scrollToPage(currentPageId, 'auto')
       // Primeira âncora: quem dá zoom sem ter rolado nada ainda precisa de uma
@@ -503,7 +641,7 @@ export function ContinuousWorkspace() {
       requestAnimationFrame(captureAnchor)
     })
 
-  }, [isLoading, sortedPages, currentPageId])
+  }, [isLoading, sortedPages, currentPageId, zoom])
 
   if (isLoading && sortedPages.length === 0) {
     return (
@@ -542,9 +680,18 @@ export function ContinuousWorkspace() {
                 <div className="flex items-center gap-0.5 opacity-50 transition-opacity hover:opacity-100">
                   <ControleDeAgenda
                     agenda={agendaPorPagina.get(page.id)}
+                    // A ativa lê as camadas vivas do editor: o vídeo recém-inserido
+                    // ainda não chegou à Page (autosave).
+                    recusa={recusaComoImagem(isActive ? design.layers : page.layers, isActive ? design.audio : page.audio)}
                     agendando={agendandoId === page.id}
                     aoAgendar={() => colocarNaAgenda(page.id, page.name)}
+                    aoGerarVideo={
+                      gerarVideo && !gerarVideo.indisponivel
+                        ? (destino) => gerarVideo.abrir({ pageId: page.id, destino })
+                        : null
+                    }
                   />
+                  {isActive && <BotaoPlayPause compacto />}
                   <Button
                     size="sm"
                     variant="ghost"
@@ -585,6 +732,7 @@ export function ContinuousWorkspace() {
                 }`}
                 style={{ width: slotWidth, height: slotHeight }}
                 onMouseDown={(event) => handleSlotMouseDown(event, page.id)}
+                onDoubleClick={() => handleSlotDoubleClick(page.id)}
               >
                 {isActive ? (
                   <KonvaEditorStage embedded />

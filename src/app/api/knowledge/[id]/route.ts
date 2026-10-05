@@ -10,6 +10,8 @@ import { auth } from '@clerk/nextjs/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
 import { reindexEntry, deleteEntry } from '@/lib/knowledge/indexer'
+import { editarEntradaCoordenada } from '@/lib/knowledge/arrendamento'
+import { ehIndexacaoEmAndamento } from '@/lib/knowledge/marca-de-indexado'
 import { invalidateProjectCache } from '@/lib/knowledge/cache'
 import { KnowledgeCategory } from '@prisma/client'
 import { getUserFromClerkId } from '@/lib/auth-utils'
@@ -179,14 +181,12 @@ export async function PUT(
       )
     }
 
-    // Check if content changed - if so, need to reindex
-    const contentChanged = content && content !== existingEntry.content
-    const titleChanged = title && title !== existingEntry.title
-
-    // Update entry
-    const updatedEntry = await db.knowledgeBaseEntry.update({
-      where: { id },
-      data: {
+    // A edição é COORDENADA com o arrendamento da indexação (PR13-42): trocar conteúdo, categoria ou status enquanto
+    // outra execução indexa a entrada é recusado ANTES de salvar. Salvar e deixar a reindexação ser recusada em
+    // silêncio deixava o texto novo no cadastro e o antigo na busca.
+    let edicao: Awaited<ReturnType<typeof editarEntradaCoordenada>>
+    try {
+      edicao = await editarEntradaCoordenada(id, {
         ...(title && { title }),
         ...(content && { content }),
         ...(tags && { tags }),
@@ -195,14 +195,36 @@ export async function PUT(
         ...(parsed.data.metadata !== undefined && { metadata: parsed.data.metadata }),
         ...(expiresAt !== undefined && { expiresAt }),
         updatedBy: dbUser.id,
-        updatedAt: new Date(),
-      },
+      })
+    } catch (erro) {
+      if (ehIndexacaoEmAndamento(erro)) {
+        return NextResponse.json(
+          {
+            error: 'Esta entrada está sendo indexada para a busca agora. Nada foi salvo: tente de novo em alguns minutos.',
+            code: erro.code,
+            expiraEm: erro.expiraEm,
+          },
+          { status: 409 }
+        )
+      }
+      throw erro
+    }
+
+    // Check if content changed - if so, need to reindex (contra a linha lida na MESMA leitura que gravou)
+    const contentChanged = content && content !== edicao.antes.content
+    const titleChanged = title && title !== edicao.antes.title
+
+    const updatedEntry = await db.knowledgeBaseEntry.findUnique({
+      where: { id },
       include: {
         _count: {
           select: { chunks: true },
         },
       },
     })
+    if (!updatedEntry) {
+      return NextResponse.json({ error: 'Entrada não encontrada' }, { status: 404 })
+    }
 
     // If content or title changed, reindex
     if (contentChanged || titleChanged) {
@@ -214,7 +236,8 @@ export async function PUT(
         })
       } catch (reindexError) {
         console.error('Error reindexing after update:', reindexError)
-        // Don't fail the update if reindex fails
+        // Don't fail the update if reindex fails. `INDEXACAO_EM_ANDAMENTO` aqui é uma indexação adquirida DEPOIS da
+        // edição gravada — ela leu o conteúdo novo.
       }
     }
 

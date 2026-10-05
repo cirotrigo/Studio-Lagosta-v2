@@ -28,6 +28,10 @@ export function usePost(projectId: number, postId: string) {
       if (post.pageId && (post.renderStatus === 'PENDING' || post.renderStatus === 'RENDERING')) {
         return 20_000
       }
+      // O vídeo novo da página troca o deste post quando o MP4 fica pronto.
+      if ((post as { substituicao?: { estado?: string } | null }).substituicao?.estado === 'em-producao') {
+        return 15_000
+      }
       return false
     },
   })

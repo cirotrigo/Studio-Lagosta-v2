@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
+import type { Substituicao } from '@/lib/video/estado-do-video-do-post'
 
 /**
  * A agenda das páginas de uma pasta — o horário previsto de cada peça e o
@@ -21,7 +22,21 @@ export interface AgendaDaPagina {
   slide: number | null
   /** A peça é slide de carrossel: ela não se agenda sozinha. */
   ehSlide: boolean
-  post: { id: string; status: string; quando: string | null } | null
+  /**
+   * `comVideo`: o post é de vídeo (`postDeVideo`). `substituivel`: vídeo ainda
+   * trocável pelo editor (rascunho ou agendado, não entregue).
+   * `videoDesatualizado`: a página mudou depois do vídeo. `substituicao`: a
+   * troca pedida mais recente.
+   */
+  post: {
+    id: string
+    status: string
+    quando: string | null
+    comVideo: boolean
+    substituivel: boolean
+    videoDesatualizado: boolean
+    substituicao: Substituicao | null
+  } | null
 }
 
 interface AgendaDasPaginas {
@@ -29,12 +44,25 @@ interface AgendaDasPaginas {
   paginas: AgendaDaPagina[]
 }
 
-export function useAgendaDasPaginas(templateId: number | null) {
+/**
+ * `postId`: o editor aberto pela agenda a partir de UM post. A página pode ter
+ * mais de um post, e a rota devolve o mais recente — com o `postId` ela devolve
+ * este, que é o que a pessoa veio editar (o vídeo trocado tem de ser o dele).
+ * A chave começa por `['agenda-das-paginas', templateId]`: quem invalida por
+ * esse prefixo alcança as duas formas.
+ */
+export function useAgendaDasPaginas(templateId: number | null, postId?: string | null) {
   return useQuery<AgendaDasPaginas>({
-    queryKey: ['agenda-das-paginas', templateId],
-    queryFn: () => api.get(`/api/templates/${templateId}/agenda-das-paginas`),
+    queryKey: ['agenda-das-paginas', templateId, postId ?? null],
+    queryFn: () =>
+      api.get(
+        `/api/templates/${templateId}/agenda-das-paginas${postId ? `?postId=${encodeURIComponent(postId)}` : ''}`,
+      ),
     enabled: Boolean(templateId),
     staleTime: 30_000,
+    // A troca de vídeo pedida termina sozinha, no servidor, sem ninguém tocar na tela.
+    refetchInterval: (query) =>
+      query.state.data?.paginas.some((p) => p.post?.substituicao?.estado === 'em-producao') ? 15_000 : false,
   })
 }
 

@@ -18,6 +18,7 @@ export async function GET(req: NextRequest) {
     const results = {
       generationsRepointed: 0,
       generationsRecovered: 0,
+      videosPulados: 0,
       generationsDeleted: 0,
       generationBlobsDeleted: 0,
       generationBudgetExceeded: false,
@@ -33,6 +34,7 @@ export async function GET(req: NextRequest) {
     const generationStats = await cleanupGenerations()
     results.generationsRepointed = generationStats.generationsRepointed
     results.generationsRecovered = generationStats.generationsRecovered
+    results.videosPulados = generationStats.videosPulados
     results.generationsDeleted = generationStats.generationsDeleted
     results.generationBlobsDeleted = generationStats.blobsDeleted
     results.generationBudgetExceeded = generationStats.budgetExceeded

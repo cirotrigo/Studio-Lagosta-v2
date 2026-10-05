@@ -42,10 +42,11 @@ export const toolsDeBaseEDna = [
     nome: 'consultar-base',
     apelidos: ['get-knowledge'],
     descricao:
-      'Base de conhecimento do cliente: tom de voz, horário de funcionamento, cardápio, diferenciais e campanhas. CONSULTE SEMPRE antes de escrever qualquer texto — é o que evita prometer horário errado ou inventar preço. Se achar informação conflitante, aponte para a pessoa em vez de escolher sozinho.\n\nEntrada com validade vencida não aparece aqui. Cada entrada traz `validade` quando tem prazo — se você está escrevendo para uma data FUTURA, confira se a campanha ainda estará no ar naquele dia.',
+      'Base de conhecimento do cliente: horário de funcionamento, cardápio, diferenciais, campanhas e políticas — os FATOS. CONSULTE SEMPRE antes de escrever qualquer texto — é o que evita prometer horário errado ou inventar preço. Se achar informação conflitante, aponte para a pessoa em vez de escolher sozinho.\n\nPasse `em` com a DATA EM QUE A PEÇA VAI AO AR: só entra o que ainda vale naquele dia (campanha que vence antes fica de fora), e a resposta diz a data de referência. Sem `em`, vale hoje. Cada entrada traz `validade` quando tem prazo, e `dados` com o que foi gravado estruturado (preços, horários, produto, unidade) quando há.\n\nTrês horários que não se confundem: o HORÁRIO DE PUBLICAÇÃO é a grade (sugerir-posts); o HORÁRIO DO SERVIÇO é o funcionamento/happy hour que vai na copy (categoria HORARIOS); a VIGÊNCIA é até quando a oferta vale (`validade`). A identidade de texto (tom de voz) NÃO mora aqui: é consultar-dna / consultar-voz.',
     schema: z.object({
       projectId: z.number().describe('ID do projeto.'),
       category: z.enum(CATEGORIAS_DA_BASE).optional().describe('Filtra por categoria. Omita para trazer tudo.'),
+      em: z.string().optional().describe('Data de USO do conteúdo, "AAAA-MM-DD" (Brasília): só o que ainda vale nesse dia entra. Default: hoje.'),
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     acesso: { tipo: 'projeto' },
@@ -57,6 +58,24 @@ export const toolsDeBaseEDna = [
       ])
       const projectId = args.projectId as number
       const category = typeof args.category === 'string' ? args.category : undefined
+      /**
+       * A referência é a DATA DE USO (PR 6): quem escreve a peça de sexta
+       * confere a base contra a sexta, não contra hoje — campanha que vence na
+       * quarta não pode entrar na copy de sexta. Data pura é o COMEÇO daquele
+       * dia em Brasília: o que vence durante o dia ainda vale para a peça que
+       * sai nele (o fim do dia excluiria a oferta "até sexta" da própria sexta).
+       */
+      let referencia = new Date()
+      if (typeof args.em === 'string' && args.em.trim()) {
+        const texto = args.em.trim()
+        // Dia que não existe ("2026-02-31") é recusado, não normalizado: o
+        // `Date` o levaria para março e a base seria lida para outro dia.
+        const { dataValida } = await import('../../posts/contexto-da-semana')
+        if (!dataValida(texto)) {
+          throw new Error(`Data inválida em "em": "${texto}". Use AAAA-MM-DD (um dia que exista no calendário).`)
+        }
+        referencia = new Date(`${texto}T00:00:00-03:00`)
+      }
       const entries = await db.knowledgeBaseEntry.findMany({
         where: {
           projectId,
@@ -64,7 +83,7 @@ export const toolsDeBaseEDna = [
           // Campanha vencida não pode alimentar texto nenhum. O cron diário
           // arquiva, mas ele roda uma vez por dia — o filtro é o que garante
           // que ninguém leia a entrada nas horas entre o vencimento e a faxina.
-          ...vigenteEm(),
+          ...vigenteEm(referencia),
           ...(category ? { category: category as never } : {}),
         },
         select: {
@@ -75,14 +94,23 @@ export const toolsDeBaseEDna = [
           tags: true,
           updatedAt: true,
           expiresAt: true,
+          metadata: true,
         },
         orderBy: { category: 'asc' },
       })
+      const dadosDe = (metadata: unknown): Record<string, unknown> | undefined => {
+        if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return undefined
+        // `origem`/`revisao` são carimbos de quem gravou, não fato do cliente.
+        const { origem: _o, revisao: _r, ...resto } = metadata as Record<string, unknown>
+        return Object.keys(resto).length > 0 ? resto : undefined
+      }
       return {
+        referencia: new Date(referencia.getTime() - 3 * 3600_000).toISOString().slice(0, 10),
         count: entries.length,
-        entries: entries.map(({ expiresAt, ...resto }) => ({
+        entries: entries.map(({ expiresAt, metadata, ...resto }) => ({
           ...resto,
           validade: expiresAt ? formatarValidade(expiresAt) : null,
+          ...(dadosDe(metadata) ? { dados: dadosDe(metadata) } : {}),
         })),
       }
     },
@@ -194,9 +222,50 @@ export const toolsDeBaseEDna = [
   }),
 
   definirTool({
+    nome: 'consultar-voz',
+    descricao:
+      'Mostra a VOZ COMPACTA do cliente (a identidade de TEXTO curta e versionada: descrição, tratamento, termos da casa, proibições, exemplos aprovados, reescritas e as regras recentes com escopo, motivo e data) e diz QUEM MANDA na copy hoje: `fonte: "voz"` (cliente MIGRADO — a voz vence o toneOfVoice/contentRules do DNA), `"legado"` (o DNA de texto ainda manda; a voz, se existir, é prévia) ou `"nenhuma"`. Só leitura.\n\nUse ANTES de escrever copy quando quiser saber se o cliente já está na voz compacta, e antes de virar-regra para saber quais regras ativas existem (o id delas é o que `substitui` recebe). A migração é decisão do Ciro, cliente a cliente — esta tool não migra nada.',
+    schema: z.object({ projectId: z.number().describe('ID do cliente.') }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    acesso: { tipo: 'projeto' },
+    superficies: ['remoto', 'local'],
+    handler: async (args) => {
+      const [{ lerRegistroDaVoz, contextoDeVoz }, { db }] = await Promise.all([import('../../brand/voz-service'), import('../../db')])
+      const projectId = args.projectId as number
+      const [registro, contexto, dna] = await Promise.all([
+        lerRegistroDaVoz(projectId),
+        contextoDeVoz(projectId),
+        db.brandDNA.findUnique({ where: { projectId }, select: { toneOfVoice: true, contentRules: true } }),
+      ])
+      const legado = {
+        toneOfVoiceCaracteres: dna?.toneOfVoice?.length ?? 0,
+        contentRulesCaracteres: dna?.contentRules?.length ?? 0,
+      }
+      return {
+        fonte: contexto.fonte,
+        migradaEm: contexto.migradaEm,
+        vozPendente: contexto.vozPendente,
+        versao: registro?.versao ?? null,
+        voz: registro?.voz ?? null,
+        problemasDaVoz: registro?.problemas ?? [],
+        textoNoPromptDeCopy: contexto.texto,
+        caracteresNoPrompt: contexto.texto?.length ?? 0,
+        regrasDeArte: contexto.regrasDeArte,
+        legado,
+        mensagem:
+          contexto.fonte === 'voz'
+            ? `Cliente MIGRADO: a voz compacta (versão ${registro?.versao}) é a lei do TEXTO — ${contexto.texto?.length ?? 0} caracteres no prompt, contra ${legado.toneOfVoiceCaracteres + legado.contentRulesCaracteres} do DNA legado.`
+            : registro
+              ? `A voz existe (versão ${registro.versao}) mas o cliente NÃO foi migrado: o DNA de texto continua mandando. Migrar é decisão do Ciro.`
+              : 'Este cliente não tem voz compacta: o DNA de texto (toneOfVoice + contentRules) é a identidade de copy.',
+      }
+    },
+  }),
+
+  definirTool({
     nome: 'virar-regra',
     descricao:
-      'Transforma uma correção que a pessoa aprovou na conversa numa regra que vale daqui para a frente. Use quando alguém corrigir a arte ou o texto e a correção não for só para aquela peça.\n\n⚖️ TRIAGEM, antes de chamar: **regra temporária ou de campanha → base de conhecimento com validade** (mande `validade`; ex: "durante o Festival Italiano o rótulo aparece na foto"). **Identidade permanente da marca → DNA** (mande `secao`; ex: "a logo sempre no canto direito", "nunca escrever preço em vermelho"). O DNA é eterno e entra em TODO prompt — regra com prazo ali continuaria mandando meses depois do fim da campanha, e ninguém lembraria de tirar. Na dúvida, pergunte à pessoa até quando a regra vale.\n\nNo DNA a regra é ACRESCENTADA ao fim da seção, o texto que já existia fica intacto (diferente de atualizar-dna, que substitui).\n\nFluxo: chame primeiro sem `confirmado` para ver a proposta, mostre à pessoa o que será gravado e só então chame com `confirmado: true`. Nunca registre dedução sua como regra — só o que a pessoa confirmou.',
+      'Transforma uma correção que a pessoa aprovou na conversa numa regra que vale daqui para a frente. Use quando alguém corrigir a arte ou o texto e a correção não for só para aquela peça.\n\n⚖️ TRIAGEM, antes de chamar: **regra temporária ou de campanha → base de conhecimento com validade** (mande `validade`; ex: "durante o Festival Italiano o rótulo aparece na foto"). **Identidade permanente da marca → DNA** (mande `secao`; ex: "a logo sempre no canto direito", "nunca escrever preço em vermelho"). O DNA é eterno e entra em TODO prompt — regra com prazo ali continuaria mandando meses depois do fim da campanha, e ninguém lembraria de tirar. Na dúvida, pergunte à pessoa até quando a regra vale.\n\nNo DNA a regra é ACRESCENTADA ao fim da seção, o texto que já existia fica intacto (diferente de atualizar-dna, que substitui). A resposta traz `conflitos`: linhas da seção que falam do mesmo assunto — no DNA não há substituição mecânica, então mostre-as à pessoa.\n\n🗣️ Cliente MIGRADO para a VOZ COMPACTA (consultar-voz diz): regra de TEXTO (sem `secao`, ou em toneOfVoice/contentRules) vai para a VOZ, com `escopo` (copy · arte · ambas), motivo e data; a proposta devolve `versaoLida`, e a confirmação exige `versaoDaVoz` igual a ela. Se ela fala do mesmo assunto de uma regra ativa, a tool RECUSA com `CONFLITO_DE_REGRA` e lista as regras: pergunte à pessoa e chame de novo com `substitui` (o id da antiga, que sai do prompt e fica no histórico) ou `conviver: true` (as duas ficam). As seções de ARTE do DNA (composition, visualStyle, photoDirection, approvalChecklist) continuam no DNA mesmo no cliente migrado.\n\nFluxo: chame primeiro sem `confirmado` para ver a proposta, mostre à pessoa o que será gravado e só então chame com `confirmado: true`. Nunca registre dedução sua como regra — só o que a pessoa confirmou.',
     schema: z.object({
       projectId: z.number().describe('ID do cliente.'),
       secao: z
@@ -221,6 +290,22 @@ export const toolsDeBaseEDna = [
         .boolean()
         .optional()
         .describe('Só grava com true. Sem isto devolve a proposta para você mostrar à pessoa.'),
+      escopo: z
+        .enum(['copy', 'arte', 'ambas'])
+        .optional()
+        .describe('Voz compacta: onde a regra manda — só na copy, só na arte, ou nas duas (padrão). Ignorado no DNA legado e na base.'),
+      substitui: z
+        .string()
+        .optional()
+        .describe('Voz compacta: id da regra ativa que esta SUBSTITUI (a antiga sai do prompt e fica no histórico). Use quando a tool devolver CONFLITO_DE_REGRA e a pessoa disser que a nova vale no lugar da antiga.'),
+      conviver: z
+        .boolean()
+        .optional()
+        .describe('Voz compacta: manter as duas regras mesmo com conflito apontado — só com a decisão explícita da pessoa.'),
+      versaoDaVoz: z
+        .number()
+        .optional()
+        .describe('Voz compacta: a `versaoLida` que a PROPOSTA devolveu. OBRIGATÓRIA ao confirmar (a gravação é recusada com VOZ_DIVERGENTE se a voz mudou desde a proposta). Ignorado no DNA legado e na base.'),
     }),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     acesso: { tipo: 'projeto' },
@@ -246,7 +331,29 @@ export const toolsDeBaseEDna = [
         // Só o ramo com prazo escreve na base, e só ele precisa de autor.
         autor: validade ? await resolverAutor(projectId, principal) : undefined,
         confirmado: args.confirmado === true,
+        escopo: args.escopo === 'copy' || args.escopo === 'arte' || args.escopo === 'ambas' ? args.escopo : undefined,
+        substitui: typeof args.substitui === 'string' && args.substitui.trim() ? args.substitui.trim() : undefined,
+        conviver: args.conviver === true,
+        versaoDaVoz: typeof args.versaoDaVoz === 'number' ? args.versaoDaVoz : undefined,
       })
+
+      if (resultado.destino === 'voz') {
+        if (resultado.ok === false) {
+          return {
+            ...resultado,
+            mensagem:
+              resultado.erro === 'CONFLITO_DE_REGRA'
+                ? `NADA foi gravado: ${resultado.mensagem} Pergunte à pessoa e chame de novo com \`substitui\` (id da regra antiga) ou \`conviver: true\`.`
+                : `NADA foi gravado: ${resultado.mensagem}`,
+          }
+        }
+        return {
+          ...resultado,
+          mensagem: resultado.gravado
+            ? `Regra gravada na voz compacta (versão ${resultado.versaoGravada}, escopo ${resultado.regra.escopo})${resultado.substituida ? `, substituindo "${resultado.substituida.id}"` : ''}. Vale a partir da próxima copy.`
+            : `Proposta montada, NADA foi gravado ainda. Mostre à pessoa a regra${resultado.substituida ? ` (substitui "${resultado.substituida.id}")` : ''}${resultado.conflitos.length ? ` — convive com ${resultado.conflitos.length} regra(s) sobre o mesmo assunto` : ''} e, com o sim dela, chame de novo com confirmado: true E versaoDaVoz: ${resultado.versaoLida} (a versão desta proposta).`,
+        }
+      }
 
       if (resultado.destino === 'base') {
         return {
@@ -361,6 +468,8 @@ export const toolsDeBaseEDna = [
         { reindexEntry },
         { invalidateProjectCache },
         { resolverAutor },
+        { editarEntradaCoordenada },
+        { ehIndexacaoEmAndamento },
       ] = await Promise.all([
         import('../../db'),
         import('../../creatives/errors'),
@@ -368,6 +477,8 @@ export const toolsDeBaseEDna = [
         import('../../knowledge/indexer'),
         import('../../knowledge/cache'),
         import('../tools'),
+        import('../../knowledge/arrendamento'),
+        import('../../knowledge/marca-de-indexado'),
       ])
       const projectId = args.projectId as number
       const entradaId = args.entradaId as string
@@ -415,24 +526,36 @@ export const toolsDeBaseEDna = [
         throw new Error('Nada para atualizar: envie title, content, tags, category ou validade.')
       }
 
-      await db.knowledgeBaseEntry.update({
-        where: { id: entradaId },
-        data: {
+      // Coordenada com o arrendamento da indexação (PR13-42): texto ou categoria
+      // novos enquanto outra execução indexa a entrada são recusados ANTES de
+      // salvar — senão o texto novo ficava no cadastro e o antigo na busca.
+      let antes: { content: string; title: string; category: string }
+      try {
+        ;({ antes } = await editarEntradaCoordenada(entradaId, {
           ...(title !== undefined ? { title } : {}),
           ...(content !== undefined ? { content } : {}),
           ...(tags !== undefined ? { tags } : {}),
           ...(category !== undefined ? { category: category as never } : {}),
           ...(expiresAt !== undefined ? { expiresAt } : {}),
           updatedBy: autor,
-        },
-      })
+        }))
+      } catch (erro) {
+        if (ehIndexacaoEmAndamento(erro)) {
+          throw new CreativeError(
+            'INDEXACAO_EM_ANDAMENTO',
+            'Esta entrada está sendo indexada para a busca agora. Nada foi salvo: tente de novo em alguns minutos.',
+            409,
+          )
+        }
+        throw erro
+      }
 
       // Texto ou categoria novos exigem reindexar: os vetores carregam o texto
       // E a categoria nos metadados, e a busca filtra por eles.
       const mudouIndice =
-        (content !== undefined && content !== existente.content) ||
-        (title !== undefined && title !== existente.title) ||
-        (category !== undefined && category !== existente.category)
+        (content !== undefined && content !== antes.content) ||
+        (title !== undefined && title !== antes.title) ||
+        (category !== undefined && category !== antes.category)
 
       let avisoBusca: string | undefined
       if (mudouIndice) {
@@ -444,7 +567,9 @@ export const toolsDeBaseEDna = [
           // salvo está correto, então não desfazemos — mas quem chamou precisa
           // saber, senão a falha morre no log.
           console.error('[mcp] reindexEntry falhou após atualizar a entrada:', erro)
-          avisoBusca =
+          // Indexação em andamento aqui foi adquirida DEPOIS da edição gravada
+          // (a edição que muda o índice é recusada antes): ela leu o texto novo.
+          if (!ehIndexacaoEmAndamento(erro)) avisoBusca =
             'O texto foi salvo, mas a indexação da busca falhou — a entrada pode não aparecer em buscas até ser reindexada pela interface do Studio (avise a pessoa).'
         }
       }

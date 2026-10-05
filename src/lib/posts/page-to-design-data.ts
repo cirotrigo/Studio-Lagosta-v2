@@ -14,6 +14,7 @@
 
 import type { DesignData, Layer } from '@/types/template'
 import { lerCamadas } from './page-layers'
+import { videosDaPagina } from '@/lib/video/camadas-de-video'
 
 interface PageRecord {
   id: string
@@ -22,6 +23,8 @@ interface PageRecord {
   height: number
   layers: unknown // Json field from Prisma
   background?: string | null
+  /** Page.audio: com música a página é vídeo, e a foto em movimento sai no quadro de 0 */
+  audio?: unknown
 }
 
 /**
@@ -37,6 +40,7 @@ export function convertPageToDesignData(page: PageRecord): DesignData {
       backgroundColor: page.background ?? '#ffffff',
     },
     layers,
+    audio: (page.audio ?? null) as DesignData['audio'],
   }
 }
 
@@ -65,30 +69,43 @@ export function applySlotValues(
     )
   }
 
-  const layers = designData.layers.map((layer) => {
-    // Match by layer ID or name
-    const slot = slotValues[layer.id] ?? slotValues[layer.name]
-    if (!slot) return layer
-
-    const updated = { ...layer }
-
-    if (typeof slot === 'string') {
-      // Simple string: replace text content
-      updated.content = slot
-    } else if (typeof slot === 'object' && slot !== null) {
-      const slotObj = slot as Record<string, unknown>
-      if (typeof slotObj.content === 'string') {
-        updated.content = slotObj.content
-      }
-      if (typeof slotObj.fileUrl === 'string') {
-        updated.fileUrl = slotObj.fileUrl
-      }
-    }
-
-    return updated
-  })
+  const layers = designData.layers.map((layer) => aplicarSlotNaCamada(layer, slotValues))
 
   return { ...designData, layers }
+}
+
+/**
+ * UMA camada com o slot aplicado — a semântica do render, num lugar só, para
+ * quem LÊ a peça ler o que o render desenha (`textos-da-peca.ts`, PR 6):
+ * casa por id e depois por nome (`??` — id presente, ainda que vazio, vence);
+ * slot ausente ou string VAZIA mantém a camada como está; string troca o
+ * texto; objeto troca `content` quando é string (inclusive vazia) e `fileUrl`
+ * quando é string.
+ */
+export function aplicarSlotNaCamada<T extends { id?: string; name?: string; content?: unknown; fileUrl?: unknown }>(
+  layer: T,
+  slotValues: Record<string, unknown>,
+): T {
+  // Match by layer ID or name
+  const slot = (layer.id !== undefined ? slotValues[layer.id] : undefined) ?? (layer.name !== undefined ? slotValues[layer.name] : undefined)
+  if (!slot) return layer
+
+  const updated = { ...layer }
+
+  if (typeof slot === 'string') {
+    // Simple string: replace text content
+    updated.content = slot
+  } else if (typeof slot === 'object' && slot !== null) {
+    const slotObj = slot as Record<string, unknown>
+    if (typeof slotObj.content === 'string') {
+      updated.content = slotObj.content
+    }
+    if (typeof slotObj.fileUrl === 'string') {
+      updated.fileUrl = slotObj.fileUrl
+    }
+  }
+
+  return updated
 }
 
 /**
@@ -125,7 +142,10 @@ export function findUnmatchedSlotKeys(
  * na criação de post template-based e no story-renderer.
  */
 export function pageContainsVideoLayer(layers: unknown): boolean {
-  return camadasDaPagina(layers).some((layer) => layer?.type === 'video')
+  // Camada oculta não conta: o render a pula, então a página é uma imagem.
+  // Sequência só de fotos renderiza (o quadro de 0); quem a impede de ir ao ar
+  // como imagem é `recusaComoImagem`.
+  return videosDaPagina(camadasDaPagina(layers)).length > 0
 }
 
 /**

@@ -19,6 +19,7 @@
  */
 
 import type { Pilar } from '@/lib/aprendizado/pilares'
+import { chaveDaPropostaDeSlot, formatoDoSlotDaPeca, slotOcupado, type FormatoDaPeca } from '@/lib/posts/contexto-da-semana'
 
 // ── Horários ────────────────────────────────────────────────────────────────
 
@@ -75,6 +76,8 @@ export const ROTULO_DE_COMPLEMENTO =
   'completei para o ritmo de 3 por dia — este cliente vem postando menos que isso'
 
 export interface SlotParaProposta {
+  /** story × feed — o formato do slot (PR 6); ausente na semente. */
+  formato?: 'story' | 'feed'
   /** "AAAA-MM-DD HH:mm" em Brasília, pronto para `criarPlano`. */
   scheduledDatetime: string
   /** "AAAA-MM-DD" em Brasília — a chave do espalhamento por dia. */
@@ -132,9 +135,12 @@ export function gradeSemente(opcoes: {
    * `ROTULO_DE_COMPLEMENTO` — dizer "não conheço a rotina" seria falso.
    */
   rotulo?: string
+  /** Horário JÁ tomado na agenda (mesmo formato, dentro da tolerância): a semente pula e segue para o próximo (R34). */
+  ocupado?: (data: string, hora: string) => boolean
 }): SlotParaProposta[] {
   const { agora, dias, maxItens } = opcoes
   const rotulo = opcoes.rotulo ?? ROTULO_DE_COLD_START
+  const ocupado = opcoes.ocupado ?? (() => false)
   const slots: SlotParaProposta[] = []
 
   // Dia a dia, COMEÇANDO POR HOJE, e dentro do dia os três horários — assim um
@@ -147,6 +153,9 @@ export function gradeSemente(opcoes: {
     for (const hora of HORARIOS_SEMENTE) {
       if (slots.length >= maxItens) break
       if (offset === 0 && hora < horaMinimaHoje(agora)) continue
+      // Em cima de um post já agendado do mesmo formato não se inventa outro (R34) — e a
+      // conferência é AQUI, no preenchimento: filtrar depois deixava um teto baixo sem nada.
+      if (ocupado(data, hora)) continue
       slots.push({
         scheduledDatetime: `${data} ${hora}`,
         data,
@@ -198,9 +207,10 @@ export function diasAteDomingoBRT(agora: Date): number {
  */
 export function completarAteOAlvo(
   slots: SlotParaProposta[],
-  opcoes: { agora: Date; dias: number; alvoPorDia?: number; maxItens: number },
+  opcoes: { agora: Date; dias: number; alvoPorDia?: number; maxItens: number; ocupado?: (data: string, hora: string) => boolean },
 ): SlotParaProposta[] {
   const alvo = Math.max(1, opcoes.alvoPorDia ?? POSTS_POR_DIA_ALVO)
+  const ocupado = opcoes.ocupado ?? (() => false)
   const porDia = new Map<string, SlotParaProposta[]>()
   for (const s of slots) {
     const lista = porDia.get(s.data)
@@ -224,6 +234,8 @@ export function completarAteOAlvo(
       if (ocupadas.has(hora)) continue
       // Hoje só completa com horário que ainda dá para cumprir.
       if (offset === 0 && hora < horaMinimaHoje(opcoes.agora)) continue
+      // Post já agendado do mesmo formato naquele horário: não completa em cima (R34).
+      if (ocupado(data, hora)) continue
       const novo: SlotParaProposta = {
         scheduledDatetime: `${data} ${hora}`,
         data,
@@ -597,4 +609,186 @@ export function lerFotoCandidatas(bruto: unknown): CandidataDeFoto[] {
     })
   }
   return saida
+}
+
+// ── a leva contra a OCUPAÇÃO (R34 da revisão final do PR 6, 12/09/2026) ─────
+
+/** Um horário já tomado na janela, como `sugerirPosts` devolve em `ocupacao` (Brasília). */
+export interface OcupacaoParaALeva {
+  data: string
+  hora: string
+  formato: FormatoDaPeca
+}
+
+/** Slot ocupado se já existe post do MESMO formato a menos de 45 min dele — a mesma régua de `sugerirPosts`. */
+export const TOLERANCIA_DA_SEMENTE_MIN = 45
+
+function utcDeBrasilia(data: string, hora: string): number {
+  return new Date(`${data}T${hora}:00-03:00`).getTime()
+}
+
+/**
+ * Tira de uma lista já montada os slots que caem em cima de um post JÁ
+ * EXISTENTE do mesmo formato. A conferência PRINCIPAL mora no preenchimento
+ * (`gradeSemente`/`completarAteOAlvo` recebem `ocupado` e pulam para o
+ * próximo horário — filtrar depois deixava um teto baixo sem nada); esta
+ * função serve a quem já tem a lista pronta. O caso: `sugerirPosts` só
+ * devolve horário livre, mas a semente INVENTA horários (11:30, 15:00, 18:30)
+ * sem olhar a agenda, e o filtro por formato (R22) podia esvaziar a cadência
+ * e cair justamente nela — às 8h, com o story das 11h30 já agendado e só o
+ * feed das 19h livre, a leva de story propunha OUTRO story às 11h30 (R34).
+ */
+export function semOcupados(
+  slots: SlotParaProposta[],
+  ocupacao: OcupacaoParaALeva[],
+  formato: FormatoDaPeca,
+  toleranciaMin: number = TOLERANCIA_DA_SEMENTE_MIN,
+): SlotParaProposta[] {
+  if (ocupacao.length === 0) return slots
+  const ocupantes = ocupacao.map((o) => ({ t: utcDeBrasilia(o.data, o.hora), formato: o.formato }))
+  return slots.filter((s) => !slotOcupado(ocupantes, utcDeBrasilia(s.data, s.hora), formato, toleranciaMin))
+}
+
+export interface SlotsDaLeva {
+  slots: SlotParaProposta[]
+  coldStart: boolean
+  /** Os slots INVENTADOS (semente ou complemento) — são os que a orquestração registra como sugestão. */
+  semeados: SlotParaProposta[]
+  avisos: string[]
+}
+
+/**
+ * Monta os horários de uma leva a partir do que a cadência devolveu, PURO:
+ * espalha por dia, completa até o alvo ou cai na grade-semente — e em todos
+ * os caminhos os horários inventados passam pela ocupação do formato da
+ * leva. É a única função que decide horário na proposta da semana; o
+ * orquestrador só registra o que ela devolve em `semeados`.
+ */
+export function montarSlotsDaLeva(entrada: {
+  daCadencia: SlotParaProposta[]
+  ocupacao: OcupacaoParaALeva[]
+  /** O formato da LEVA (story, feed, carrossel, quadrado) — a ocupação é conferida no formato do slot dele. */
+  formato: string
+  agora: Date
+  dias: number
+  maxItens: number
+  temRotinaConhecida: boolean
+  alvoPorDia?: number
+}): SlotsDaLeva {
+  const { agora, dias, maxItens } = entrada
+  const formatoDoSlot = formatoDoSlotDaPeca(entrada.formato)
+  const ocupantes = entrada.ocupacao.map((o) => ({ t: utcDeBrasilia(o.data, o.hora), formato: o.formato }))
+  const ocupado = (data: string, hora: string) => slotOcupado(ocupantes, utcDeBrasilia(data, hora), formatoDoSlot, TOLERANCIA_DA_SEMENTE_MIN)
+  const avisos: string[] = []
+  let slots = espalharPorDia(entrada.daCadencia, maxItens)
+  const coldStart = slots.length === 0
+  let semeados: SlotParaProposta[] = []
+
+  if (!coldStart) {
+    const antes = slots.length
+    slots = completarAteOAlvo(slots, { agora, dias, maxItens, alvoPorDia: entrada.alvoPorDia, ocupado })
+    const inventados = slots.filter((s) => s.semente)
+    if (inventados.length > 0) {
+      // O slot inventado leva o FORMATO da leva (R40): é ele que entra na
+      // identidade da proposta registrada — sem isso o story e o feed
+      // semeados às 11h30 do mesmo dia compartilhavam o `sugestaoId`.
+      for (const s of inventados) s.formato = formatoDoSlot
+      semeados = inventados
+      avisos.push(
+        `Este cliente vem publicando menos que ${entrada.alvoPorDia ?? POSTS_POR_DIA_ALVO} por dia; completei ${slots.length - antes} horário(s) para fechar o ritmo. Eles vêm marcados — ajuste ou tire o que não fizer sentido.`,
+      )
+    }
+    return { slots, coldStart, semeados, avisos }
+  }
+
+  const rotulo = entrada.temRotinaConhecida ? ROTULO_DE_COMPLEMENTO : ROTULO_DE_COLD_START
+  const semente = gradeSemente({ agora, dias, maxItens, rotulo, ocupado })
+  for (const s of semente) s.formato = formatoDoSlot // R40, como acima
+  semeados = semente
+  slots = semente
+  avisos.push(
+    entrada.temRotinaConhecida
+      ? `A rotina deste cliente não tem horário típico nos dias pedidos — montei a grade no ritmo de ${POSTS_POR_DIA_ALVO} por dia para você ajustar.`
+      : `${ROTULO_DE_COLD_START}. Os horários abaixo são um começo para ajustar com ele, não uma leitura do que ele já faz.`,
+  )
+  return { slots, coldStart, semeados, avisos }
+}
+
+/**
+ * A identidade da proposta de um slot SEMEADO (grade-semente e complementação)
+ * — a mesma conta de `sugerir-posts` (R33): versão, projeto, horário E
+ * FORMATO. Até o R40 a semente entrava só com versão, projeto e horário, e
+ * duas levas do mesmo dia, uma de story e outra de feed, recebiam o MESMO
+ * `sugestaoId` às 11h30: descartar o story marcava como descartada a proposta
+ * do feed (aceitar depois não vence esse desfecho), e as dicas de copy dos
+ * dois formatos, ancoradas nesse id, eram comparadas como uma proposta só.
+ * Slot sem formato (registro legado, ou semente de uma versão anterior) fica
+ * com a chave antiga — nunca reescrita.
+ */
+export function chaveDaSemente(projectId: number, slot: Pick<SlotParaProposta, 'scheduledDatetime' | 'formato'>, versao: string): string {
+  // Sem formato, `chaveDaPropostaDeSlot` devolve a chave LEGADA (`slot|versao|projeto|horário`) — a mesma que
+  // `chaveDeSugestao('slot', …)` montava. Este módulo entra no bundle da BANCADA (via `para-bancada`), e
+  // `aprendizado/chaves` importa `node:crypto`: importá-lo daqui quebrava a compilação cliente (R41).
+  return chaveDaPropostaDeSlot(projectId, slot.scheduledDatetime, versao, slot.formato ?? null)
+}
+
+export interface SugestaoDaSemente {
+  projectId: number
+  tipo: 'slot'
+  servico: string
+  versao: string
+  chave: string
+  sugerido: {
+    scheduledDatetime: string
+    data: string
+    hora: string
+    diaSemana?: string
+    motivo: string
+    semente: true
+    /** O formato do slot semeado (R40) — ausente só no registro legado. */
+    formato?: FormatoDaPeca
+  }
+}
+
+/**
+ * O que registrar de uma leva de slots semeados, dado o que JÁ foi emitido
+ * (chave → id): os índices que reutilizam um id e as sugestões novas, com a
+ * chave e o `sugerido.formato` por slot. Puro — quem chama consulta e grava.
+ */
+export function planoDaSemente(
+  projectId: number,
+  semente: SlotParaProposta[],
+  jaEmitidas: ReadonlyMap<string, string>,
+  opcoes: { versao: string; servico: string },
+): { chaves: string[]; reutilizados: Array<{ indice: number; id: string }>; novas: Array<{ indice: number; sugestao: SugestaoDaSemente }> } {
+  const chaves = semente.map((s) => chaveDaSemente(projectId, s, opcoes.versao))
+  const reutilizados: Array<{ indice: number; id: string }> = []
+  const novas: Array<{ indice: number; sugestao: SugestaoDaSemente }> = []
+  semente.forEach((s, indice) => {
+    const id = jaEmitidas.get(chaves[indice])
+    if (id) {
+      reutilizados.push({ indice, id })
+      return
+    }
+    novas.push({
+      indice,
+      sugestao: {
+        projectId,
+        tipo: 'slot',
+        servico: opcoes.servico,
+        versao: opcoes.versao,
+        chave: chaves[indice],
+        sugerido: {
+          scheduledDatetime: s.scheduledDatetime,
+          data: s.data,
+          hora: s.hora,
+          diaSemana: s.diaSemana,
+          motivo: s.motivo,
+          semente: true,
+          ...(s.formato ? { formato: s.formato } : {}),
+        },
+      },
+    })
+  })
+  return { chaves, reutilizados, novas }
 }

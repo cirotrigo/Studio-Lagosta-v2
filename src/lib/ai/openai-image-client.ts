@@ -186,6 +186,8 @@ function buildBrandIdentitySection(
   if (brand.dna.contentRules) {
     lines.push(`Regras da marca (respeite sempre): ${brand.dna.contentRules}`)
   }
+  // Regras de ARTE nascidas depois da migração para a voz compacta (o DNA não as tem).
+  if (brand.voz?.regrasDeArte) lines.push(brand.voz.regrasDeArte)
   if (brand.cuisineType) {
     lines.push(`Tipo de cozinha: ${brand.cuisineType}`)
   }
@@ -649,6 +651,8 @@ interface ImproveCreativeOptions {
    */
   promptPronto?: string | null
   timeoutMs?: number
+  /** Recebe o prompt EXATO que vai ao modelo — é dele que o registro da copy lê o que foi enviado (PR5-10). */
+  aoMontarPrompt?: (prompt: string) => void
 }
 
 // Tempo máximo da chamada à OpenAI. O endpoint /improve roda em background
@@ -685,6 +689,7 @@ export async function improveCreative({
   logoCompor = false,
   promptPronto = null,
   timeoutMs = DEFAULT_TIMEOUT_MS,
+  aoMontarPrompt,
 }: ImproveCreativeOptions): Promise<Buffer> {
   const client = getClient()
 
@@ -694,6 +699,7 @@ export async function improveCreative({
     buildPrompt({
       userRequest, references, brandColors, artDirection, brand, expectedTexts, instrucaoImagem, arteSemTexto, enxuto, logoCompor,
     })
+  aoMontarPrompt?.(prompt)
 
   const primaryFile = await toFile(imageBuffer, `original.${extensionFromMime(mimeType)}`, {
     type: mimeType,

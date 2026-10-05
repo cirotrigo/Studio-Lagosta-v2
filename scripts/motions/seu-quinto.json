@@ -1,0 +1,297 @@
+{
+  "saida": "saida/seu-quinto",
+  "kit": {
+    "slug": "seu-quinto",
+    "margem": 70,
+    "topo": 410,
+    "rodape": 1690,
+    "duracao": 8,
+    "alinhamento": "centro",
+    "filete": false,
+    "sombra": "rgba(14,11,8,1)",
+    "cores": {
+      "branco": "#FFFFFF",
+      "amarelo": "#FAA61A",
+      "vermelho": "#ED1C24",
+      "verde": "#008C44"
+    },
+    "fontes": {
+      "SqBonoco": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/4/fonts/1759932348307-Bonoco2023.otf",
+      "SqKathy": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/The%20Kathy%20Room.ttf"
+    },
+    "logo": {
+      "imagem": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/4/logos/1759948048349-Ativo_4icones.png",
+      "tamanho": 124,
+      "canto": "superior-centro",
+      "topo": 250
+    },
+    "estilos": {
+      "pre": {
+        "fonte": "SqKathy",
+        "tam": 59,
+        "ls": 0,
+        "cor": "branco"
+      },
+      "titulo": {
+        "fonte": "SqBonoco",
+        "tam": 92,
+        "ls": -1,
+        "entrelinha": 0.98,
+        "caixaAlta": true,
+        "cor": "branco",
+        "sombraDura": {
+          "cor": "vermelho",
+          "dx": 5,
+          "dy": 6
+        }
+      },
+      "apoio": {
+        "fonte": "SqBonoco",
+        "tam": 42,
+        "ls": 1,
+        "entrelinha": 1.2,
+        "caixaAlta": true,
+        "cor": "branco",
+        "corForte": "amarelo"
+      },
+      "cta": {
+        "fonte": "SqKathy",
+        "tam": 59,
+        "cor": "branco"
+      },
+      "servico": {
+        "fonte": "SqBonoco",
+        "tam": 36,
+        "ls": 1,
+        "entrelinha": 1.45,
+        "caixaAlta": true,
+        "cor": "branco",
+        "corForte": "amarelo"
+      }
+    }
+  },
+  "pecas": [
+    {
+      "id": "funcionamento-rodape",
+      "alinhamento": "esquerda",
+      "logo": "inferior-direito",
+      "servico": [
+        {
+          "texto": "Segunda a sexta - [16h às 23h30]"
+        },
+        {
+          "texto": "Sábado - [11h às 23h30]"
+        },
+        {
+          "texto": "Domingo - [11h às 16h]"
+        },
+        {
+          "texto": "Praia do Canto, Vitória-ES"
+        }
+      ]
+    },
+    {
+      "id": "funcionamento-rodape-semana",
+      "alinhamento": "esquerda",
+      "logo": "inferior-direito",
+      "servico": [
+        {
+          "texto": "Segunda a sexta - [16h às 23h30]"
+        },
+        {
+          "texto": "Praia do Canto, Vitória-ES"
+        }
+      ]
+    },
+    {
+      "id": "funcionamento-rodape-sabado",
+      "alinhamento": "esquerda",
+      "logo": "inferior-direito",
+      "servico": [
+        {
+          "texto": "Sábado - [11h às 23h30]"
+        },
+        {
+          "texto": "Praia do Canto, Vitória-ES"
+        }
+      ]
+    },
+    {
+      "id": "funcionamento-rodape-domingo",
+      "alinhamento": "esquerda",
+      "logo": "inferior-direito",
+      "servico": [
+        {
+          "texto": "Domingo - [11h às 16h]"
+        },
+        {
+          "texto": "Praia do Canto, Vitória-ES"
+        }
+      ]
+    },
+    {
+      "id": "funcionamento-chega-no-seu-quinto",
+      "pre": "O boteco da hora",
+      "titulo": [
+        {
+          "texto": "Chega no"
+        },
+        {
+          "texto": "Seu Quinto!",
+          "cor": "amarelo"
+        }
+      ],
+      "servico": [
+        {
+          "texto": "Segunda a sexta - [16h às 23h30]"
+        },
+        {
+          "texto": "Sábado - [11h às 23h30]"
+        },
+        {
+          "texto": "Domingo - [11h às 16h]"
+        },
+        {
+          "texto": "Praia do Canto, Vitória-ES"
+        }
+      ]
+    },
+    {
+      "id": "happy-hour-1",
+      "pre": "Seu boteco favorito",
+      "titulo": [
+        {
+          "texto": "Happy hour"
+        },
+        {
+          "texto": "no Seu Quinto",
+          "cor": "amarelo"
+        }
+      ],
+      "apoio": [
+        "Chopp e drinks selecionados",
+        "[em dobro]"
+      ],
+      "servico": [
+        {
+          "texto": "Segunda a sexta - [16h às 19h]"
+        }
+      ]
+    },
+    {
+      "id": "happy-hour-2",
+      "titulo": [
+        {
+          "texto": "Happy"
+        },
+        {
+          "texto": "em dobro",
+          "cor": "amarelo"
+        }
+      ],
+      "apoio": [
+        "Chopp e drinks selecionados"
+      ],
+      "cta": "Vem pro Seu Quinto",
+      "servico": [
+        {
+          "texto": "Segunda a sexta - [16h às 19h]"
+        }
+      ]
+    },
+    {
+      "id": "samba-do-canto-1",
+      "pre": "Sábado de boteco",
+      "titulo": [
+        {
+          "texto": "Samba"
+        },
+        {
+          "texto": "do Canto",
+          "cor": "amarelo"
+        }
+      ],
+      "apoio": [
+        "Ao vivo, [a partir das 12h]"
+      ],
+      "servico": [
+        {
+          "texto": "Sábado - [11h às 23h30]"
+        }
+      ]
+    },
+    {
+      "id": "almoco-ao-vivo-1",
+      "pre": "Domingo é de boteco",
+      "titulo": [
+        {
+          "texto": "Almoço"
+        },
+        {
+          "texto": "ao vivo",
+          "cor": "amarelo"
+        }
+      ],
+      "apoio": [
+        "Música ao vivo [até as 16h]"
+      ],
+      "servico": [
+        {
+          "texto": "Domingo - [11h às 16h]"
+        }
+      ]
+    },
+    {
+      "id": "frase-ja-estamos-abertos",
+      "titulo": [
+        {
+          "texto": "Já estamos"
+        },
+        {
+          "texto": "abertos",
+          "cor": "amarelo"
+        }
+      ],
+      "cta": "Venha pro boteco"
+    },
+    {
+      "id": "frase-dia-de-botecar",
+      "titulo": [
+        {
+          "texto": "Todo dia é"
+        },
+        {
+          "texto": "dia de botecar",
+          "cor": "amarelo"
+        }
+      ],
+      "cta": "Vem pro Seu Quinto"
+    },
+    {
+      "id": "frase-chopp-trincando",
+      "titulo": [
+        {
+          "texto": "Chopp"
+        },
+        {
+          "texto": "trincando",
+          "cor": "amarelo"
+        }
+      ],
+      "cta": "Chega no Seu Quinto"
+    },
+    {
+      "id": "frase-seu-boteco-favorito",
+      "titulo": [
+        {
+          "texto": "Seu boteco"
+        },
+        {
+          "texto": "favorito",
+          "cor": "amarelo"
+        }
+      ],
+      "cta": "A mesa tá reservada pra você"
+    }
+  ]
+}

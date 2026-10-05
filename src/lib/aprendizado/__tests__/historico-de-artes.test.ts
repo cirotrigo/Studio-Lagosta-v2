@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { contarUsosPorModelo, dedupar, type UsoDeModelo } from '../historico-de-artes'
+import { contarUsosPorModelo, dedupar, type UsoDeModelo } from '../historico-de-artes-contrato'
 
 const uso = (p: Partial<UsoDeModelo> & Pick<UsoDeModelo, 'modeloPageId' | 'via' | 'quando'>): UsoDeModelo => ({
   generationId: null,

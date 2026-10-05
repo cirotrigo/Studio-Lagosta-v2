@@ -14,6 +14,7 @@ import { LaterNotFoundError } from '@/lib/later/errors'
 import { NOTIFY_AFTER_ATTEMPT, notifyPublishFailure } from './failure-handler'
 import { FREEZE_WINDOW_MS } from './freeze-window'
 import { renderPostArt } from './render-post-art'
+import { MOTIVO_VIDEO_REMOVIDO, falharPostDeVideoSemMidia, postDeVideo } from './post-de-video'
 
 export class PostExecutor {
   private scheduler: PostScheduler
@@ -203,8 +204,26 @@ export class PostExecutor {
           }
         }
 
-        // Guard: template-based Stories must be rendered before sending
-        if (post.postType === PostType.STORY && post.pageId) {
+        /**
+         * Post de VÍDEO sem a mídia (limpa à mão pela agenda): não há o que
+         * publicar, e o render da página daria uma foto parada no lugar do
+         * vídeo. Falha sem nova tentativa — reenviar não traz o vídeo de volta
+         * — e avisa a equipe, que gera de novo no editor. A escrita confere a
+         * mídia vazia e a revisão lidas: se a substituição repôs o MP4 no meio,
+         * nada é marcado nem avisado, e o post sai na próxima passada.
+         */
+        if (postDeVideo(post) && (post.mediaUrls ?? []).length === 0) {
+          if (await falharPostDeVideoSemMidia(db, post)) {
+            await this.registrarFalhaDeArte(post.id, MOTIVO_VIDEO_REMOVIDO, MOTIVO_VIDEO_REMOVIDO)
+            failureCount++
+          }
+          continue
+        }
+
+        // Guard: template-based Stories must be rendered before sending.
+        // Post de vídeo (com a mídia, que o guard acima garante) segue como
+        // está: o render da página nunca o desenha.
+        if (post.postType === PostType.STORY && post.pageId && !postDeVideo(post)) {
           if (post.renderStatus === RenderStatus.PENDING || post.renderStatus === RenderStatus.RENDERING) {
             /**
              * Arte ainda não pronta na hora de publicar.
@@ -263,6 +282,10 @@ export class PostExecutor {
                 // o objeto coerente com o que já foi gravado.
                 post.mediaUrls = [render.url]
                 post.renderStatus = RenderStatus.RENDERED
+              } else if (render.motivo === 'midia-propria') {
+                // A mídia do post é vídeo (ou carrossel): não há o que
+                // renderizar, e ela segue para a entrega como está.
+                post.renderStatus = RenderStatus.NOT_NEEDED
               } else if (render.motivo === 'falhou') {
                 // Vencido e sem arte é falha de publicação, não silêncio.
                 if (isOverdue) {

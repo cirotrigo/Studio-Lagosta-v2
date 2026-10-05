@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { z } from 'zod'
 import { findClient, issueAuthorizationCode, oauthIssuer } from '@/lib/mcp/oauth'
-import { audienciaEsperada, normalizarResource, resourceAceito } from '@/lib/mcp/oauth-regras'
+import { audienciaEsperada, normalizarResource, redirectUriRegistrada, resourceAceito } from '@/lib/mcp/oauth-regras'
 
 /**
  * Emite o código de autorização depois do usuário aprovar na tela de consentimento.
@@ -34,7 +34,8 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       )
     }
-    if (!client.redirectUris.includes(body.redirectUri)) {
+    const redirectUri = redirectUriRegistrada(client.redirectUris, body.redirectUri)
+    if (!redirectUri) {
       return NextResponse.json(
         { error: 'invalid_request', error_description: 'redirect_uri não registrada para este cliente' },
         { status: 400 },
@@ -53,12 +54,12 @@ export async function POST(req: NextRequest) {
     const code = await issueAuthorizationCode({
       clientId: client.id,
       userId,
-      redirectUri: body.redirectUri,
+      redirectUri,
       codeChallenge: body.codeChallenge,
       resource: body.resource ? normalizarResource(body.resource) : null,
     })
 
-    const destino = new URL(body.redirectUri)
+    const destino = new URL(redirectUri)
     destino.searchParams.set('code', code)
     if (body.state) destino.searchParams.set('state', body.state)
 

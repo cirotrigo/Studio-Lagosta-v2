@@ -162,10 +162,12 @@ export async function startImprovement(
     throw new CreativeError('PROJECT_NOT_FOUND', 'Projeto não encontrado', 404)
   }
 
-  // Slide do carrossel a substituir e se os textos da Generation de origem
-  // valem para ele (ver o bloco do post logo abaixo)
+  // Slide do carrossel a substituir e se a imagem melhorada É a arte da
+  // Generation de origem (ver o bloco do post logo abaixo). É o FATO: dele
+  // saem a régua de texto (`skipTextVerification`) e a herança do contrato da
+  // copy — decidir a segunda pela primeira era ler a consequência (PR5-14).
   let mediaIndex: number | null = null
-  let skipTextVerification = false
+  let melhoraOutraImagem = false
 
   let itemDaBancada: { itemId: string; planoId: string; slideOrdem: number | null } | null = null
   if (input.applyToItemDePlanoId) {
@@ -195,7 +197,7 @@ export async function startImprovement(
       }
       // A régua do banco é da Generation de ORIGEM; num carrossel a arte
       // melhorada é a do slide, e o slide tem a própria Generation.
-      skipTextVerification = !!slide.generationId && slide.generationId !== original.id
+      melhoraOutraImagem = !!slide.generationId && slide.generationId !== original.id
     }
     itemDaBancada = { itemId: item.id, planoId: item.planoId, slideOrdem }
   }
@@ -266,7 +268,7 @@ export async function startImprovement(
        * arte daquela Generation. Post de imagem única não muda de
        * comportamento.
        */
-      skipTextVerification = midias.length > 1 && midias[pedido] !== original.resultUrl
+      melhoraOutraImagem = midias.length > 1 && midias[pedido] !== original.resultUrl
     }
   }
 
@@ -354,7 +356,9 @@ export async function startImprovement(
       applyToItemDePlanoId: itemDaBancada?.itemId ?? null,
       applyToPlanoId: itemDaBancada?.planoId ?? null,
       applyToSlideOrdem: itemDaBancada?.slideOrdem ?? null,
-      skipTextVerification,
+      melhoraOutraImagem,
+      // A conferência de texto é pulada porque a régua do banco é de OUTRA imagem.
+      skipTextVerification: melhoraOutraImagem,
       userId: input.actorClerkId,
       orgId: input.orgId,
       projectId: original.projectId,
@@ -362,6 +366,9 @@ export async function startImprovement(
       projectGoogleDriveFolderId: project.googleDriveFolderId ?? null,
       templateName: original.templateName,
       userRequest,
+      // Quem ASSINA a revisão de copy do refino sai daqui (PR5-13): `studio` é
+      // a pessoa na tela; o conector manda o canal do principal.
+      canal: input.canal ?? null,
       instrucaoImagem,
       quality: tier,
       // O runner precisa distinguir tier ESCOLHIDO de tier padrão: só o padrão

@@ -90,7 +90,7 @@ export async function GET(req: NextRequest) {
         continue
       }
 
-      if (result.motivo === 'falhou') {
+      if (result.motivo === 'falhou' || result.motivo === 'video-removido') {
         console.error(`[render-stories] ✗ ${post.id} failed:`, result.erro)
         failed++
       } else {

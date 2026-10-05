@@ -1,0 +1,118 @@
+{
+  "saida": "saida/wine-vix",
+  "kit": {
+    "slug": "wine-vix",
+    "margem": 80,
+    "topo": 250,
+    "rodape": 1690,
+    "duracao": 8,
+    "cores": { "creme": "#F9F7F2", "destaque": "#FCE77B" },
+    "fontes": {
+      "WvTitulo": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/11/fonts/1769976662078-PlayfairDisplay-SemiBoldItalic.ttf",
+      "WvCta": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/11/fonts/1769976657591-PlayfairDisplay-MediumItalic.ttf",
+      "WvBold": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/11/fonts/1769977033854-Lato-Bold.ttf",
+      "WvRegular": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/11/fonts/1769977041174-Lato-Regular.ttf"
+    },
+    "icones": {
+      "relogio": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/11/elements/1785788570874-relogio-dourado.png",
+      "local": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/11/elements/1785788564142-localizacao-dourado.png"
+    },
+    "logo": {
+      "video": "/Volumes/Extreme Pro/EDITANDO/Wine Vix/Noite Chilena/06_ELEMENTOS/Logo/WV_LOGO_Adesivo_Flicker_ALPHA_v02.mov",
+      "tamanho": 190,
+      "canto": "inferior-direito"
+    },
+    "estilos": {
+      "pre": { "fonte": "WvBold", "tam": 30, "ls": 4, "caixaAlta": true, "cor": "creme" },
+      "titulo": { "fonte": "WvTitulo", "tam": 104, "entrelinha": 0.98, "cor": "creme" },
+      "apoio": { "fonte": "WvRegular", "tam": 38, "entrelinha": 1.3, "cor": "creme", "fonteForte": "WvBold", "corForte": "destaque" },
+      "cta": { "fonte": "WvCta", "tam": 40, "cor": "destaque" },
+      "servico": { "fonte": "WvRegular", "tam": 34, "entrelinha": 1.8, "cor": "creme", "fonteForte": "WvBold", "corForte": "destaque" }
+    }
+  },
+  "pecas": [
+    {
+      "id": "funcionamento-rodape",
+      "servico": [
+        { "icone": "relogio", "texto": "Segunda a sábado - [10h às 22h]" },
+        { "icone": "local", "texto": "Rua Elesbão Linhares, 52, Praia do Canto" }
+      ]
+    },
+    {
+      "id": "funcionamento-venha-nos-visitar",
+      "pre": "Venha nos visitar",
+      "titulo": [{ "texto": "Adega" }, { "texto": "& Bistrô", "cor": "destaque" }],
+      "apoio": ["Vinho, sabor e aconchego", "na Praia do Canto"],
+      "servico": [
+        { "icone": "relogio", "texto": "Segunda a sábado - [10h às 22h]" },
+        { "icone": "local", "texto": "Rua Elesbão Linhares, 52, Praia do Canto" }
+      ]
+    },
+    {
+      "id": "almoco-executivo-1",
+      "pre": "Pausa para almoçar bem",
+      "titulo": [{ "texto": "Almoço" }, { "texto": "Executivo", "cor": "destaque" }],
+      "apoio": ["Entrada, prato principal", "e sobremesa"],
+      "servico": [{ "icone": "relogio", "texto": "Segunda a sexta - [11h às 15h]" }]
+    },
+    {
+      "id": "almoco-executivo-2",
+      "pre": "Hora do almoço",
+      "titulo": [{ "texto": "Almoço" }, { "texto": "Executivo", "cor": "destaque" }],
+      "apoio": ["Uma pausa que", "eleva seu dia"],
+      "servico": [{ "icone": "relogio", "texto": "Segunda a sexta - [11h às 15h]" }]
+    },
+    {
+      "id": "happy-hour-1",
+      "titulo": [{ "texto": "Happy" }, { "texto": "Hour", "cor": "destaque" }],
+      "apoio": ["Um convite", "aos bons encontros"],
+      "servico": [{ "icone": "relogio", "texto": "Segunda a sábado - [16h às 19h]" }]
+    },
+    {
+      "id": "happy-hour-2",
+      "pre": "Fim de tarde na Wine Vix",
+      "titulo": [{ "texto": "O tempo passa" }, { "texto": "mais devagar aqui", "cor": "destaque" }],
+      "apoio": ["Vinhos selecionados", "com condições especiais"],
+      "servico": [{ "icone": "relogio", "texto": "Segunda a sábado - [16h às 19h]" }]
+    },
+    {
+      "id": "sabado-taca-de-cortesia-1",
+      "pre": "Sábado especial",
+      "titulo": [{ "texto": "Aos sábados" }, { "texto": "você é recebido", "cor": "destaque" }],
+      "apoio": ["com uma [taça de cortesia]", "para iniciar sua experiência"],
+      "servico": [{ "icone": "relogio", "texto": "Sábado - [10h às 22h]" }]
+    },
+    {
+      "id": "sabado-taca-de-cortesia-2",
+      "pre": "Sábado para celebrar",
+      "titulo": [{ "texto": "Uma taça" }, { "texto": "de cortesia", "cor": "destaque" }],
+      "apoio": ["Todo sábado, um brinde", "por conta da casa"],
+      "servico": [{ "icone": "relogio", "texto": "Sábado - [10h às 22h]" }]
+    },
+    {
+      "id": "frase-desacelere",
+      "titulo": [{ "texto": "Desacelere" }, { "texto": "e desfrute", "cor": "destaque" }],
+      "apoio": ["cada detalhe"]
+    },
+    {
+      "id": "frase-bons-encontros",
+      "titulo": [{ "texto": "Um brinde" }, { "texto": "aos bons encontros", "cor": "destaque" }],
+      "cta": "Sua mesa já sente sua falta"
+    },
+    {
+      "id": "frase-vinho-sabor-aconchego",
+      "pre": "Venha nos visitar",
+      "titulo": [{ "texto": "Vinho, sabor" }, { "texto": "e aconchego", "cor": "destaque" }]
+    },
+    {
+      "id": "frase-taca-certa",
+      "titulo": [{ "texto": "A taça certa" }, { "texto": "para o seu momento", "cor": "destaque" }],
+      "cta": "A adega tem o rótulo certo para você"
+    },
+    {
+      "id": "frase-sua-mesa",
+      "titulo": [{ "texto": "Sua mesa já" }, { "texto": "sente sua falta", "cor": "destaque" }],
+      "cta": "Reserve no direct"
+    }
+  ]
+}

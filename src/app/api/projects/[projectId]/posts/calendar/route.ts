@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
+import { fetchProjectWithShares, hasProjectReadAccess } from '@/lib/projects/access'
+import { comTemplateDaPagina } from '@/lib/posts/template-do-post'
 import type { PostType } from '../../../../../../../prisma/generated/client'
 
 export async function GET(
@@ -9,14 +11,25 @@ export async function GET(
 ) {
   const { projectId: projectIdParam } = await params
   try {
-    const { userId: clerkUserId } = await auth()
+    const { userId: clerkUserId, orgId } = await auth()
     if (!clerkUserId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Note: We don't need to get the user anymore since we removed userId filter
-    // This allows all organization members to see posts from the shared project
-    const projectId = parseInt(projectIdParam)
+    const projectId = parseInt(projectIdParam, 10)
+    if (isNaN(projectId)) {
+      return NextResponse.json({ error: 'Invalid project ID' }, { status: 400 })
+    }
+
+    // The posts below are not filtered by userId (every org member sees the
+    // shared project's calendar), so the project gate is the only access check.
+    const project = await fetchProjectWithShares(projectId)
+    if (!project) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+    }
+    if (!hasProjectReadAccess(project, { userId: clerkUserId, orgId })) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+    }
 
     const { searchParams } = new URL(req.url)
     const startDate = searchParams.get('startDate')
@@ -92,6 +105,8 @@ export async function GET(
         // Template-based scheduling fields
         pageId: true,
         templateId: true,
+        // O template ATUAL da página, para o "Editar Template" (comTemplateDaPagina).
+        PageRef: { select: { templateId: true } },
         renderStatus: true,
         renderedImageUrl: true,
         // Só para derivar `congelado` abaixo — o id do publicador externo não
@@ -165,6 +180,8 @@ export async function GET(
         // Template-based scheduling fields
         pageId: true,
         templateId: true,
+        // O template ATUAL da página, para o "Editar Template" (comTemplateDaPagina).
+        PageRef: { select: { templateId: true } },
         renderStatus: true,
         renderedImageUrl: true,
         // Só para derivar `congelado` abaixo — o id do publicador externo não
@@ -231,7 +248,7 @@ export async function GET(
      * trafegar para o cliente (mesma regra do `hasInstagramToken`).
      */
     const resposta = allPosts.map(({ laterPostId, ...post }) => ({
-      ...post,
+      ...comTemplateDaPagina(post),
       congelado: laterPostId != null,
     }))
 

@@ -7,6 +7,16 @@ import type { AlignAxis, AlignMode } from '@/lib/konva-alignment'
 import { FONT_CONFIG } from '@/lib/font-config'
 import { aplicarGradienteSuave, ID_GRADIENTE_SUAVE } from '@/lib/creatives/gradiente-suave'
 import { createId } from '@/lib/id'
+import { camadaDuplicadaNoEditor, camadasColadasNoEditor, paginaTemContrato } from '@/lib/copy-autoral/camada-copiada'
+import { useMultiPageOpcional } from '@/contexts/multi-page-context'
+import { relogioDaPagina } from '@/lib/video/relogio-da-pagina'
+import { mesmaEntradaDeDesfazer } from '@/lib/historico-do-editor'
+import { duracoesDosVideosMontados, videosProntosEmZero } from '@/lib/video/videos-montados'
+import { aplicarQuadro } from '@/lib/video/aplicar-quadro'
+import { ehClipe } from '@/lib/video/camadas-de-video'
+import { criarReservaDeClipes, inserirClipe, MENSAGEM_TETO_DE_CLIPES, normalizarClipes } from '@/lib/video/linha-do-tempo'
+import { toast } from '@/hooks/use-toast'
+import { consumirInsercaoDeClipe } from '@/lib/video/insercao-de-clipe'
 import { useQueryClient } from '@tanstack/react-query'
 import { canonicalizeShapeStyleForPersistence } from '@/lib/shape-style'
 
@@ -40,7 +50,16 @@ export interface TemplateEditorContextValue {
   groupSelectedLayers: () => void
   /** Desfaz o(s) grupo(s) a que as camadas pertencem (sem `ids`, a seleção) — nada é desselecionado */
   ungroupLayers: (ids?: string[]) => void
-  updateLayer: (id: string, updater: (layer: Layer) => Layer, options?: { coalesceKey?: string }) => void
+  updateLayer: (
+    id: string,
+    updater: (layer: Layer) => Layer,
+    /**
+     * `gesto`: a mesma `coalesceKey` vira UMA entrada de desfazer pelo gesto
+     * inteiro, sem a janela de 800 ms. Desfazer/refazer no meio zera a chave,
+     * então a escrita seguinte abre entrada nova (e descarta o refazer velho).
+     */
+    options?: { coalesceKey?: string; gesto?: boolean },
+  ) => void
   updateLayerPartial: (id: string, partial: Partial<Layer>) => void
   updateLayerStyle: (id: string, style: Layer['style']) => void
   moveLayer: (id: string, deltaX: number, deltaY: number) => void
@@ -164,9 +183,11 @@ interface TemplateEditorProviderProps {
 }
 
 function normalizeLayerOrder(layers: Layer[]): Layer[] {
-  return layers
-    .map((layer, idx) => ({ ...layer, order: idx }))
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+  // Toda escrita passa aqui: os clipes da linha do tempo ficam no bloco
+  // contíguo do fundo (desmarcar um do meio, reordenar pelo painel Camadas,
+  // trazer para frente) — uma camada solta entre clipes cobriria um e ficaria
+  // atrás de outro. Página sem clipe: a ordem do array, como sempre.
+  return normalizarClipes(layers.map((layer, idx) => ({ ...layer, order: idx })))
 }
 
 function cloneDesign(design: DesignData): DesignData {
@@ -177,12 +198,22 @@ function cloneDesign(design: DesignData): DesignData {
 }
 
 export function TemplateEditorProvider({ template, children }: TemplateEditorProviderProps) {
+  // C9-11: duplicar e colar só tiram o papel da cópia quando a página ABERTA tem contrato da copy.
+  const multiPage = useMultiPageOpcional()
+  const temCopyAutoral = paginaTemContrato(multiPage?.currentPage ?? null)
   const queryClient = useQueryClient()
   const [name, setName] = React.useState(template.name)
   const [design, setDesign] = React.useState<DesignData>(() => ({
     canvas: { ...template.designData.canvas },
     layers: normalizeLayerOrder(template.designData.layers ?? []),
   }))
+  // Para as travas que precisam do design ANTES de mexer (teto de clipes) sem
+  // recriar os callbacks a cada edição
+  const designAtualRef = React.useRef(design)
+  designAtualRef.current = design
+  // Teto de clipes em lote: o `design` desta renderização já conta o que entrou
+  const reservaDeClipesRef = React.useRef(criarReservaDeClipes())
+  reservaDeClipesRef.current.zerar()
   const [dynamicFields, setDynamicFieldsState] = React.useState<DynamicField[]>(() =>
     Array.isArray(template.dynamicFields) ? [...template.dynamicFields] : [],
   )
@@ -267,18 +298,20 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
   const getStageInstance = React.useCallback(() => stageInstanceRef.current, [])
 
   const applyDesign = React.useCallback(
-    (updater: (prev: DesignData) => DesignData, options?: { skipHistory?: boolean; coalesceKey?: string }) => {
+    (
+      updater: (prev: DesignData) => DesignData,
+      // skipHistory só pula o histórico; `markDirty: false` é a carga de página
+      options?: { skipHistory?: boolean; coalesceKey?: string; gesto?: boolean; markDirty?: boolean },
+    ) => {
       setDesign((prev) => {
         const next = updater(prev)
         if (next === prev) return prev
+        if (options?.markDirty !== false) setDirty(true)
         if (!options?.skipHistory) {
           // Mesma coalesceKey dentro da janela = mesmo gesto: o snapshot
           // pré-gesto já está na pilha, não empilhar de novo
           const now = Date.now()
-          const sameGesture =
-            options?.coalesceKey !== undefined &&
-            lastCoalesceRef.current.key === options.coalesceKey &&
-            now - lastCoalesceRef.current.time < 800
+          const sameGesture = mesmaEntradaDeDesfazer(lastCoalesceRef.current, options, now)
 
           if (!sameGesture) {
             const snapshot = cloneDesign(prev)
@@ -286,7 +319,6 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
           }
           lastCoalesceRef.current = { key: options?.coalesceKey ?? null, time: now }
           historyRef.current.future = []
-          setDirty(true)
         }
         updateHistoryMeta()
         return next
@@ -369,7 +401,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
   }, [applyDesign])
 
   const updateLayer = React.useCallback(
-    (id: string, updater: (layer: Layer) => Layer, options?: { coalesceKey?: string }) => {
+    (id: string, updater: (layer: Layer) => Layer, options?: { coalesceKey?: string; gesto?: boolean }) => {
       applyDesign(
         (prev) => {
           let changed = false
@@ -385,7 +417,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
         // Edições contínuas na mesma camada (digitação, slider) coalescem num
         // undo só; quem precisa agrupar VÁRIAS camadas num gesto (drag em
         // grupo, alinhamento) passa a própria chave
-        { coalesceKey: options?.coalesceKey ?? `layer:${id}` },
+        { coalesceKey: options?.coalesceKey ?? `layer:${id}`, gesto: options?.gesto },
       )
     },
     [applyDesign],
@@ -428,8 +460,16 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
 
   const addLayer = React.useCallback(
     (layer: Layer) => {
+      // O "+" da linha do tempo armou a aba: a foto/vídeo entra como clipe
+      const comoClipe = consumirInsercaoDeClipe() && (layer.type === 'image' || layer.type === 'video')
+      if ((comoClipe || ehClipe(layer)) && !reservaDeClipesRef.current.reservar(designAtualRef.current.layers)) {
+        toast({ variant: 'destructive', description: MENSAGEM_TETO_DE_CLIPES })
+        return
+      }
       applyDesign((prev) => {
-        const nextLayers = normalizeLayerOrder([...prev.layers, layer])
+        const nextLayers = comoClipe
+          ? inserirClipe(prev.layers, layer, prev.canvas)
+          : normalizeLayerOrder([...prev.layers, layer])
         return { ...prev, layers: nextLayers }
       })
       setSelectedLayerIds([layer.id])
@@ -449,19 +489,26 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
     (id: string) => {
       const source = design.layers.find((layer) => layer.id === id)
       if (!source) return
-      const newLayer: Layer = {
-        ...source,
-        id: createId(),
-        name: `${source.name} Copy`,
-        position: {
-          x: (source.position?.x ?? 0) + 16,
-          y: (source.position?.y ?? 0) + 16,
-        },
-        locked: false,
+      // C9-02/C9-11: a cópia é texto NOVO — sem a identidade autoral da original (e sem o papel, se a página tem
+      // contrato). A transformação é pura e testada em `camada-copiada.ts`.
+      const copia = camadaDuplicadaNoEditor(source, { novoId: createId(), paginaTemContrato: temCopyAutoral })
+      if (ehClipe(source)) {
+        if (!reservaDeClipesRef.current.reservar(designAtualRef.current.layers)) {
+          toast({ variant: 'destructive', description: MENSAGEM_TETO_DE_CLIPES })
+          return
+        }
+        // Clipe duplicado fica no MESMO lugar (tela cheia) e entra logo depois do original na sequência
+        applyDesign((prev) => {
+          const ids = normalizarClipes(prev.layers).filter((l) => ehClipe(l)).map((l) => l.id)
+          ids.splice(ids.indexOf(source.id) + 1, 0, copia.id)
+          return { ...prev, layers: normalizarClipes([...prev.layers, { ...copia, position: source.position }], ids) }
+        })
+        setSelectedLayerIds([copia.id])
+        return
       }
-      addLayer(newLayer)
+      addLayer(copia)
     },
-    [addLayer, design.layers],
+    [addLayer, applyDesign, design.layers, temCopyAutoral],
   )
 
   const removeLayer = React.useCallback(
@@ -537,34 +584,19 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
     const clipboard = clipboardRef.current
     if (!clipboard || clipboard.length === 0) return
 
-    const clones = clipboard.map((layer, index) => {
-      const cloned = (() => {
-        try {
-          return structuredClone(layer)
-        } catch {
-          return JSON.parse(JSON.stringify(layer)) as Layer
-        }
-      })()
-      const newId = createId()
-      return {
-        ...cloned,
-        id: newId,
-        name: `${cloned.name ?? cloned.type} Copy`,
-        locked: false,
-        order: 0,
-        position: {
-          x: Math.round((cloned.position?.x ?? 0) + 24 + index * 12),
-          y: Math.round((cloned.position?.y ?? 0) + 24 + index * 12),
-        },
-      }
-    })
+    // C9-02/C9-11: colar é duplicar — a transformação é a mesma, pura e testada em `camada-copiada.ts`.
+    const clones = camadasColadasNoEditor(clipboard, { novoId: createId, paginaTemContrato: temCopyAutoral })
+    if (!reservaDeClipesRef.current.reservar(designAtualRef.current.layers, clones.filter((l) => ehClipe(l)).length)) {
+      toast({ variant: 'destructive', description: MENSAGEM_TETO_DE_CLIPES })
+      return
+    }
 
     applyDesign((prev) => {
       const nextLayers = normalizeLayerOrder([...prev.layers, ...clones])
       return { ...prev, layers: nextLayers }
     })
     setSelectedLayerIds(clones.map((layer) => layer.id))
-  }, [applyDesign])
+  }, [applyDesign, temCopyAutoral])
 
   const undo = React.useCallback(() => {
     lastCoalesceRef.current = { key: null, time: 0 }
@@ -611,6 +643,14 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
       if (typeof document === 'undefined') {
         return null
       }
+
+      // A miniatura é o quadro de 0 da página: com vídeo tocando, fora do 0 ou
+      // ainda sem o quadro decodificado, a captura sairia de um instante
+      // qualquer — quem chama já trata `null` (mantém a anterior ou cai no
+      // PagePreviewStage).
+      const relogio = relogioDaPagina(multiPage?.currentPageId).estado()
+      if (relogio.tocando || relogio.t !== 0 || relogio.modo === 'gravacao') return null
+      if (!videosProntosEmZero(design.layers)) return null
 
       const canvasWidth = design.canvas.width
       const canvasHeight = design.canvas.height
@@ -665,11 +705,21 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
           }
         })
 
+        // O quadro de 0 como o export e o render de servidor o desenham: o
+        // clone herda o que a prévia escreveu nos grupos de efeito (um gesto
+        // suspenso, o instante em que a página parou), não o quadro de 0
+        aplicarQuadro(
+          cloneStage,
+          { layers: design.layers, audio: design.audio ?? null, canvas: { width: canvasWidth } },
+          0,
+          { gravando: true, duracoes: duracoesDosVideosMontados() },
+        )
+
         // Respeitar camadas invisíveis
         const contentLayer = cloneStage.findOne('.content-layer') as Konva.Layer | undefined
         if (contentLayer) {
           contentLayer.getChildren().forEach((node: Konva.Node) => {
-            const layerId = node.id()
+            const layerId = node.id() || node.getAttr('camadaId')
             const layer = design.layers.find((l) => l.id === layerId)
             if (layer && layer.visible === false) {
               node.visible(false)
@@ -698,7 +748,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
         }
       }
     },
-    [design.canvas.width, design.canvas.height, design.layers],
+    [design.canvas.width, design.canvas.height, design.layers, design.audio, multiPage?.currentPageId],
   )
 
   /**
@@ -735,7 +785,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
         // Hide invisible layers
         const contentLayer = stage.findOne('.content-layer') as Konva.Layer | undefined
         contentLayer?.getChildren().forEach((node: Konva.Node) => {
-          const layerId = node.id()
+          const layerId = node.id() || node.getAttr('camadaId')
           const layer = design.layers.find((l) => l.id === layerId)
           if (layer && layer.visible === false) {
             invisibleNodes.push({ node, wasVisible: node.visible() })
@@ -822,7 +872,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
           const children = (contentLayer as Konva.Layer).getChildren()
 
           children.forEach((node: Konva.Node) => {
-            const layerId = node.id()
+            const layerId = node.id() || node.getAttr('camadaId')
             const layer = design.layers.find((l) => l.id === layerId)
 
             // Se a camada está marcada como invisível, ocultar completamente para exportação
@@ -1028,7 +1078,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
       const clonedDesign: DesignData = cloneDesign(designData)
       clonedDesign.layers = normalizeLayerOrder(clonedDesign.layers ?? [])
 
-      applyDesign(() => clonedDesign, { skipHistory: true })
+      applyDesign(() => clonedDesign, { skipHistory: true, markDirty: false })
       if (historyKey) {
         const histories = historiesRef.current
         let entry = histories.get(historyKey)

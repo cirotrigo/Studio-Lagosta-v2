@@ -5,12 +5,31 @@ import Image from 'next/image'
 import { HardDrive, Upload, Loader2, FolderOpen, ChevronRight, ArrowLeft, Folder, Film } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { useTemplateEditor, createDefaultLayer } from '@/contexts/template-editor-context'
 import { useToast } from '@/hooks/use-toast'
 import { useProject } from '@/hooks/use-project'
 import { useBlobUpload } from '@/hooks/use-blob-upload'
 import type { GoogleDriveItem } from '@/types/google-drive'
+import { caixaDoMotion, pareceMotion } from '@/lib/video/camadas-de-video'
+
+/** Largura e altura do vídeo, pelos metadados. `null` se não der para ler em 8 s. */
+function medirVideo(url: string): Promise<{ width: number; height: number } | null> {
+  return new Promise((resolve) => {
+    const video = document.createElement('video')
+    const fim = (r: { width: number; height: number } | null) => {
+      clearTimeout(prazo)
+      video.removeAttribute('src')
+      video.load()
+      resolve(r)
+    }
+    const prazo = setTimeout(() => fim(null), 8000)
+    video.preload = 'metadata'
+    video.muted = true
+    video.onloadedmetadata = () => fim(video.videoWidth ? { width: video.videoWidth, height: video.videoHeight } : null)
+    video.onerror = () => fim(null)
+    video.src = url
+  })
+}
 
 const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/quicktime']
 const MAX_VIDEO_SIZE = 100 * 1024 * 1024 // 100MB
@@ -51,27 +70,41 @@ export function VideosPanel() {
   const canvasHeight = design.canvas.height
 
   const insertVideoLayer = React.useCallback(
-    (url: string, name?: string) => {
+    async (url: string, name?: string) => {
       const base = createDefaultLayer('video')
+      // WebM com fundo transparente entra como MOTION: por cima da página,
+      // tocando uma vez (ver src/lib/video/camadas-de-video.ts)
+      const motion = pareceMotion(url) || pareceMotion(name)
+      // Motion fora da proporção da página (a logo animada 1:1) entra solto,
+      // na própria proporção; o vídeo comum sempre cobre a página.
+      const caixa = caixaDoMotion(motion ? await medirVideo(url) : null, { width: canvasWidth, height: canvasHeight })
       addLayer({
         ...base,
-        name: name ? `Vídeo - ${name}` : 'Vídeo',
+        name: `${motion ? 'Motion' : 'Vídeo'}${name ? ` - ${name}` : ''}`,
         fileUrl: url,
-        size: { width: canvasWidth, height: canvasHeight },
-        position: { x: 0, y: 0 },
+        ...caixa,
         videoMetadata: {
           ...base.videoMetadata,
           autoplay: true,
-          loop: true,
+          loop: !motion,
           muted: true,
           objectFit: 'cover',
+          ...(motion ? { overlay: true } : {}),
         },
       })
 
-      toast({
-        title: 'Vídeo adicionado',
-        description: 'O vídeo foi ajustado para preencher o canvas.',
-      })
+      toast(
+        motion
+          ? {
+              title: 'Motion adicionado',
+              description:
+                'Entrou por cima da página e toca uma vez no vídeo final. Se for um vídeo comum, desligue "Motion" no painel do vídeo.',
+            }
+          : {
+              title: 'Vídeo adicionado',
+              description: 'O vídeo foi ajustado para preencher o canvas.',
+            },
+      )
     },
     [addLayer, canvasHeight, canvasWidth, toast],
   )
@@ -224,7 +257,7 @@ export function VideosPanel() {
         if (!uploaded.url) {
           throw new Error('Resposta inválida ao importar vídeo do Google Drive')
         }
-        insertVideoLayer(uploaded.url, uploaded.name ?? item.name)
+        await insertVideoLayer(uploaded.url, uploaded.name ?? item.name)
       } catch (_error) {
         console.error('[VideosPanel] Drive import failed', _error)
         toast({
@@ -289,7 +322,7 @@ export function VideosPanel() {
         const videoUrl = await uploadToBlob(file)
 
         const baseName = file.name.replace(/\.[^/.]+$/, '')
-        insertVideoLayer(videoUrl, baseName)
+        await insertVideoLayer(videoUrl, baseName)
 
         toast({
           title: 'Upload concluído',
@@ -361,6 +394,18 @@ export function VideosPanel() {
 
   const isBusy = isUploading || isApplying
 
+  const driveFolders = driveItems.filter((item) => item.kind === 'folder')
+  const driveFiles = driveItems.filter((item) => item.kind !== 'folder')
+
+  /**
+   * Breadcrumbs compactados, como na aba Imagens: a partir de 4 níveis mostramos
+   * raiz … últimos dois. Os intermediários seguem alcançáveis pelo voltar.
+   */
+  const visibleCrumbs: Array<BreadcrumbItem | null> =
+    breadcrumbs.length > 3
+      ? [breadcrumbs[0], null, ...breadcrumbs.slice(-2)]
+      : breadcrumbs
+
   return (
     <div className="relative">
       <input
@@ -371,14 +416,20 @@ export function VideosPanel() {
         onChange={handleFileChange}
       />
 
-      <Tabs defaultValue={driveFolderId ? 'drive' : 'upload'} className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="drive" className="text-xs">
-            <HardDrive className="mr-1 h-3 w-3" />
+      <Tabs defaultValue="drive" className="w-full">
+        <TabsList className="grid w-full grid-cols-2 bg-muted/40 p-1 rounded-lg border border-border/20">
+          <TabsTrigger
+            value="drive"
+            className="text-xs font-medium data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm transition-all"
+          >
+            <HardDrive className="mr-1.5 h-3.5 w-3.5" />
             Google Drive
           </TabsTrigger>
-          <TabsTrigger value="upload" className="text-xs">
-            <Upload className="mr-1 h-3 w-3" />
+          <TabsTrigger
+            value="upload"
+            className="text-xs font-medium data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm transition-all"
+          >
+            <Upload className="mr-1.5 h-3.5 w-3.5" />
             Upload
           </TabsTrigger>
         </TabsList>
@@ -400,17 +451,24 @@ export function VideosPanel() {
               )}
 
               <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground min-w-0">
-                {breadcrumbs.map((crumb, index) => (
-                  <React.Fragment key={crumb.id}>
+                {visibleCrumbs.map((crumb, index) => (
+                  <React.Fragment key={crumb?.id ?? `ellipsis-${index}`}>
                     {index > 0 && <ChevronRight className="h-3 w-3 flex-shrink-0" />}
-                    <button
-                      onClick={() => navigateToFolder(crumb.id, crumb.name)}
-                      className={`truncate max-w-[100px] hover:text-foreground ${index === breadcrumbs.length - 1 ? 'font-medium text-foreground' : ''
+                    {crumb ? (
+                      <button
+                        onClick={() => navigateToFolder(crumb.id, crumb.name)}
+                        className={`truncate max-w-[100px] hover:text-foreground ${
+                          crumb.id === breadcrumbs[breadcrumbs.length - 1]?.id
+                            ? 'font-medium text-foreground'
+                            : ''
                         }`}
-                      title={crumb.name}
-                    >
-                      {crumb.name}
-                    </button>
+                        title={crumb.name}
+                      >
+                        {crumb.name}
+                      </button>
+                    ) : (
+                      <span title="Use o botão de voltar para os níveis intermediários">…</span>
+                    )}
                   </React.Fragment>
                 ))}
               </div>
@@ -420,7 +478,7 @@ export function VideosPanel() {
           {!driveFolderId ? (
             <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border/60 py-8">
               <HardDrive className="mb-2 h-10 w-10 text-muted-foreground/50" />
-              <p className="text-sm font-medium text-muted-foreground">Pasta não configurada</p>
+              <p className="text-sm font-medium text-muted-foreground">Google Drive não configurado</p>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 Configure nas configurações do projeto
               </p>
@@ -436,54 +494,72 @@ export function VideosPanel() {
               <p className="mt-0.5 text-xs text-muted-foreground">Nenhum vídeo encontrado</p>
             </div>
           ) : (
-            <ScrollArea className="h-[520px]">
-              <div className="grid grid-cols-3 gap-2">
-                {driveItems.map((item) => {
-                  const isFolder = item.kind === 'folder'
-                  return (
+            <div className="space-y-2">
+              {/* Pastas em LISTA, como na aba Imagens: o nome ("Motions") fica
+                  sempre visível, em qualquer largura de painel. */}
+              {driveFolders.length > 0 && (
+                <div className="space-y-1">
+                  {driveFolders.map((folder) => (
+                    <button
+                      key={folder.id}
+                      type="button"
+                      onClick={() => handleDriveItemClick(folder)}
+                      disabled={isBusy}
+                      title={folder.name}
+                      className="group flex w-full items-center gap-2 rounded-lg border border-border/40 bg-card/50 px-2.5 py-2 text-left transition-colors hover:border-primary/50 hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Folder className="h-4 w-4 flex-shrink-0 text-primary/80" />
+                      <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">
+                        {folder.name}
+                      </span>
+                      <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {driveFolders.length > 0 && driveFiles.length > 0 && (
+                <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  Vídeos ({driveFiles.length}{nextPageToken ? '+' : ''})
+                </p>
+              )}
+
+              {driveFiles.length > 0 && (
+                <div className="grid grid-cols-3 gap-2 md:grid-cols-2 xl:grid-cols-3">
+                  {driveFiles.map((item) => (
                     <button
                       key={item.id}
                       onClick={() => handleDriveItemClick(item)}
                       disabled={isBusy}
-                      className="group relative aspect-square overflow-hidden rounded-lg border border-border/40 bg-muted/30 transition hover:border-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-60"
+                      title={item.name}
+                      className="group relative aspect-square overflow-hidden rounded-xl border border-border/40 bg-card/50 transition-all hover:border-primary/50 hover:bg-muted/50 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {isFolder ? (
-                        <div className="flex h-full w-full flex-col items-center justify-center gap-2" title={item.name}>
-                          <Folder className="h-12 w-12 text-primary/70" />
-                          <p className="px-1 text-xs font-medium text-foreground text-center line-clamp-3 break-words leading-tight opacity-90">
-                            {item.name}
-                          </p>
-                        </div>
-                      ) : item.thumbnailLink ? (
+                      {item.thumbnailLink ? (
                         <div className="relative h-full w-full">
                           <Image
                             src={item.thumbnailLink}
                             alt={item.name}
                             fill
-                            className="object-cover"
+                            className="object-cover transition-transform duration-500 group-hover:scale-105"
                           />
                         </div>
                       ) : (
                         <div className="flex h-full w-full items-center justify-center">
-                          <Film className="h-10 w-10 text-muted-foreground/60" />
+                          <Film className="h-8 w-8 text-muted-foreground/30" />
                         </div>
                       )}
-
-                      {!isFolder && (
-                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2 opacity-0 transition group-hover:opacity-100">
-                          <p className="truncate text-xs font-medium text-white">
-                            {item.name}
-                          </p>
-                        </div>
-                      )}
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 via-black/30 to-transparent p-1.5 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+                        <p className="truncate text-[10px] font-medium text-white/90">
+                          {item.name}
+                        </p>
+                      </div>
                     </button>
-                  )
-                })}
-              </div>
+                  ))}
+                </div>
+              )}
 
-              {/* Load More Button */}
               {nextPageToken && (
-                <div className="mt-3 flex justify-center">
+                <div className="flex justify-center">
                   <Button
                     variant="outline"
                     size="sm"
@@ -497,12 +573,12 @@ export function VideosPanel() {
                         Carregando...
                       </>
                     ) : (
-                      `Carregar mais (${driveItems.filter(item => item.kind !== 'folder').length})`
+                      'Carregar mais'
                     )}
                   </Button>
                 </div>
               )}
-            </ScrollArea>
+            </div>
           )}
         </TabsContent>
 
@@ -512,9 +588,9 @@ export function VideosPanel() {
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            className={`cursor-pointer rounded-lg border-2 border-dashed p-12 text-center transition ${isDragging
-                ? 'border-primary bg-primary/10'
-                : 'border-border/60 hover:border-primary/50 hover:bg-muted/50'
+            className={`group cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition-all duration-300 ${isDragging
+              ? 'border-primary bg-primary/5 scale-[0.99]'
+              : 'border-border/40 hover:border-primary/50 hover:bg-muted/30'
               }`}
             onClick={() => {
               if (!isBusy) {
@@ -523,25 +599,33 @@ export function VideosPanel() {
             }}
           >
             {isUploading ? (
-              <div className="flex flex-col items-center justify-center">
-                <Loader2 className="mb-3 h-12 w-12 animate-spin text-primary" />
-                <p className="text-sm font-medium text-foreground">Processando vídeo...</p>
+              <div className="flex flex-col items-center justify-center py-4">
+                <div className="relative mb-4">
+                  <div className="absolute inset-0 animate-ping rounded-full bg-primary/20" />
+                  <Loader2 className="relative h-10 w-10 animate-spin text-primary" />
+                </div>
+                <p className="text-sm font-medium text-foreground">Enviando vídeo...</p>
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center">
-                <Upload className="mb-3 h-12 w-12 text-muted-foreground/50" />
+              <div className="flex flex-col items-center justify-center py-4">
+                <div className="mb-4 rounded-full bg-muted/50 p-3 ring-1 ring-border/50 transition-all group-hover:scale-110 group-hover:bg-primary/10 group-hover:text-primary">
+                  <Upload className="h-6 w-6 text-muted-foreground group-hover:text-primary" />
+                </div>
                 <p className="mb-1 text-sm font-medium text-foreground">
-                  {isDragging ? 'Solte o vídeo aqui' : 'Arraste um vídeo ou clique'}
+                  {isDragging ? 'Solte o vídeo aqui' : 'Clique ou arraste vídeos'}
                 </p>
-                <p className="text-xs text-muted-foreground">MP4, WebM ou MOV até 100MB</p>
+                <p className="text-xs text-muted-foreground/70">MP4, WebM ou MOV até 100MB</p>
               </div>
             )}
           </div>
         </TabsContent>
       </Tabs>
       {isBusy && (
-        <div className="absolute inset-0 z-40 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+        <div className="absolute inset-0 z-40 flex items-start justify-center bg-background/80 backdrop-blur-sm">
+          {/* O conteúdo rola no host (sem ScrollArea de altura fixa), então o
+              overlay pode ficar mais alto que a janela — o sticky mantém o
+              aviso à vista, como na aba Imagens. */}
+          <div className="sticky top-[35vh] flex items-center gap-2 text-sm font-medium text-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
             Aplicando vídeo...
           </div>
