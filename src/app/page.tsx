@@ -48,6 +48,43 @@ export const metadata: Metadata = {
   },
 }
 
+// Dados estruturados da agência. O `@id` do fundador é o MESMO que o
+// cirotrigo.com.br usa: é ele que faz o Google juntar a pessoa dos dois sites.
+const JSON_LD = {
+  '@context': 'https://schema.org',
+  '@type': 'ProfessionalService',
+  '@id': `${SITE_URL}/#lagosta-criativa`,
+  name: 'Lagosta Criativa',
+  url: SITE_URL,
+  logo: `${SITE_URL}/lagosta-logo.png`,
+  image: `${SITE_URL}/og-lagosta.png`,
+  description: DESCRIPTION,
+  email: 'contato@lagostacriativa.com.br',
+  address: { '@type': 'PostalAddress', addressLocality: 'Vitória', addressRegion: 'ES', addressCountry: 'BR' },
+  taxID: '21.339.876/0001-37',
+  areaServed: [
+    { '@type': 'City', name: 'Vitória' },
+    { '@type': 'State', name: 'Espírito Santo' },
+  ],
+  sameAs: ['https://www.instagram.com/lagostacriativa/'],
+  founder: {
+    '@type': 'Person',
+    '@id': 'https://cirotrigo.com.br/#ciro-trigo',
+    name: 'Ciro Trigo',
+    url: 'https://cirotrigo.com.br/sobre',
+    sameAs: ['https://www.instagram.com/cirotrigo/', 'https://www.linkedin.com/in/ciro-trigo/'],
+  },
+}
+
 export default function HomePage() {
-  return <SalesPage />
+  return (
+    <>
+      <script
+        type="application/ld+json"
+        // JSON.stringify não escapa "<"; o replace impede um "</script>" no texto.
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD).replace(/</g, '\\u003c') }}
+      />
+      <SalesPage />
+    </>
+  )
 }
