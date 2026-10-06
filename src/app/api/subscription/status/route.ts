@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
+import { previewSideEffectsAreDisabled } from '@/lib/preview-isolation'
 
 type ClerkSubscriptionItem = { plan_id?: unknown; plan?: { id?: unknown } }
 type ClerkSubscription = {
@@ -25,6 +26,11 @@ export async function GET() {
   try {
     const { userId } = await auth()
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    // O smoke sintético não consulta billing nem simula uma assinatura real.
+    if (previewSideEffectsAreDisabled(process.env)) {
+      return NextResponse.json({ isActive: true, plan: null, syntheticPreview: true })
+    }
 
     const token = process.env.CLERK_BILLING_API_KEY || process.env.CLERK_SECRET_KEY
     if (token) {

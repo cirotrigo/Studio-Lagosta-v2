@@ -4,12 +4,13 @@ import { randomUUID } from 'node:crypto'
  * Handles creating, updating, and deleting indexed entries
  */
 
+import { CreativeError } from '@/lib/creatives/errors'
 import { db } from '@/lib/db'
 import { chunkText, parseFileContent } from './chunking'
 import { generateEmbeddings } from './embeddings'
 import { upsertVectors, deleteVectorsByEntry, type TenantKey } from './vector-client'
 import { EscritaAbortada, lancarSeAbortado, motivoDoAborto } from './aborto'
-import { CICLO_DE_INDEXACAO, PRAZO_DO_PASSO_MS, indexacaoPendenteDe, metadataDaPessoa, type IndexacaoPendente } from './marca-de-indexado'
+import { CICLO_DE_INDEXACAO, PRAZO_DO_PASSO_MS, indexacaoPendenteDe, metadataDaPessoa, semChavesTransitorias, type IndexacaoPendente } from './marca-de-indexado'
 import { adquirirArrendamento, editarEntradaCoordenada, type ArrendamentoDaEntrada } from './arrendamento'
 import type { KnowledgeCategory, Prisma } from '@prisma/client'
 
@@ -80,52 +81,12 @@ export async function indexEntry(input: IndexEntryInput) {
     },
   })
 
-  // Chunk the content
-  const chunks = chunkText(content)
+  // Entrada já arquivada é histórico: não publica chunks/vetores.
+  if (status === 'ARCHIVED') return { entry, chunks: [] }
+  // Criação e upload percorrem o MESMO ciclo arrendado da reindexação.
+  const indexed = await reindexEntry(entry.id, tenant)
+  return { entry: indexed.entry, chunks: indexed.chunks }
 
-  if (chunks.length === 0) {
-    throw new Error('Content is too short to create chunks')
-  }
-
-  // Generate embeddings for all chunks
-  const embeddings = await generateEmbeddings(chunks.map(c => c.content))
-
-  // Create chunks in database
-  const createdChunks = await Promise.all(
-    chunks.map((chunk) =>
-      db.knowledgeChunk.create({
-        data: {
-          entryId: entry.id,
-          ordinal: chunk.ordinal,
-          content: chunk.content,
-          tokens: chunk.tokens,
-          vectorId: `${entry.id}:${chunk.ordinal}`,
-        },
-      })
-    )
-  )
-
-  // Upsert vectors to Upstash
-  await upsertVectors(
-    createdChunks.map((chunk, index) => ({
-      id: chunk.vectorId,
-      vector: embeddings[index],
-      metadata: {
-        entryId: chunk.entryId,
-        ordinal: chunk.ordinal,
-        projectId: tenant.projectId,
-        category,
-        status: entry.status,
-        userId: tenant.userId,
-        workspaceId: tenant.workspaceId,
-      },
-    }))
-  )
-
-  return {
-    entry,
-    chunks: createdChunks,
-  }
 }
 
 /**
@@ -154,7 +115,7 @@ export async function indexFile(input: IndexFileInput) {
  * `true`: o arrendamento NÃO é liberado e vence sozinho, para uma chamada
  * cancelada que ainda chegue ao destino não cair sobre o ciclo de outra execução.
  */
-async function passoArrendado<T>(
+export async function passoArrendado<T>(
   etapa: string,
   arrendamento: ArrendamentoDaEntrada,
   signal: AbortSignal | undefined,
@@ -379,7 +340,7 @@ export async function updateEntry(
 
   // If content changed, reindex
   let indexacaoPendente: IndexacaoPendente | null = null
-  if (updates.content && updates.content !== antes.content) {
+  if (entry?.status !== 'ARCHIVED' && ((updates.content && updates.content !== antes.content) || (updates.status && updates.status !== antes.status) || (updates.category && updates.category !== antes.category))) {
     try {
       await reindexEntry(entryId, tenant)
     } catch (erro) {
@@ -400,7 +361,16 @@ export async function updateEntry(
  * @param entryId Entry ID to delete
  * @param tenant Tenant keys
  */
-export async function deleteEntry(entryId: string, tenant: TenantKey) {
+export interface DeleteEntryReceipt {
+  success: boolean
+  status: 'complete' | 'partial'
+  database: 'deleted' | 'preserved' | 'unverified'
+  vectors: { cleanup: 'confirmed' | 'uncertain' }
+  code?: string
+  recovery?: { status: 'reindexed' | 'pending' | 'not_needed'; issue?: string }
+}
+
+export async function deleteEntry(entryId: string, tenant: TenantKey): Promise<DeleteEntryReceipt> {
   // Get entry to verify ownership
   const entry = await db.knowledgeBaseEntry.findUnique({
     where: { id: entryId },
@@ -415,13 +385,67 @@ export async function deleteEntry(entryId: string, tenant: TenantKey) {
     throw new Error('Unauthorized access to entry')
   }
 
-  // Delete vectors
-  await deleteVectorsByEntry(entryId, tenant)
-
-  // Delete entry (chunks cascade delete via Prisma schema)
-  await db.knowledgeBaseEntry.delete({
-    where: { id: entryId },
-  })
-
-  return { success: true }
+  // Exclusão existente: posse e CAS impedem apagar o trabalho de outro ciclo.
+  // Não oferece novo purge nem reutiliza esta exclusão no arquivamento.
+  const ciclo = randomUUID()
+  const lease = await adquirirArrendamento(entryId, ciclo, { permitirArquivada: true })
+  const controle = { emVoo: false }
+  let cleaningStarted = false
+  let cleaningConfirmed = false
+  let leaseReleased = false
+  let failureCode = 'EXCLUSAO_PARCIAL'
+  const humanState = (row: typeof entry) => JSON.stringify([row.title, row.content, row.category, row.status, row.tags, row.expiresAt, semChavesTransitorias(row.metadata)])
+  async function conferirRegistro() {
+    const current = await db.knowledgeBaseEntry.findUnique({ where: { id: entryId } })
+    if (!current || current.projectId !== tenant.projectId || humanState(current) !== humanState(entry)) {
+      throw new CreativeError('CONFLITO_EXCLUSAO', 'A entrada mudou; registro preservado. Consulte novamente antes de excluir.', 409)
+    }
+    return current
+  }
+  try {
+    // Drift anterior ao passo externo não pode custar o índice da edição humana.
+    await lease.renovar('conferir registro antes da limpeza')
+    await conferirRegistro()
+    await passoArrendado('apagar vetores da exclusão', lease, undefined, controle, signal =>
+      deleteVectorsByEntry(entryId, tenant, { signal, confirmarAusencia: true, antesDeApagar: async () => {
+        await lease.renovar('apagar vetores da exclusão')
+        await conferirRegistro() // também depois da query, antes de emitir DELETE externo
+        cleaningStarted = true
+      } }))
+    cleaningConfirmed = true
+    await passoArrendado('excluir registro', lease, undefined, controle, async () => {
+      const current = await conferirRegistro()
+      const removed = await db.knowledgeBaseEntry.deleteMany({ where: {
+        id: entryId, projectId: tenant.projectId, updatedAt: current.updatedAt,
+        content: lease.indexada.content, category: lease.indexada.category as KnowledgeCategory, status: lease.indexada.status as 'ACTIVE' | 'DRAFT' | 'ARCHIVED',
+        metadata: { path: [CICLO_DE_INDEXACAO], equals: ciclo },
+      } })
+      if (removed.count !== 1) throw new CreativeError('CONFLITO_EXCLUSAO', 'A entrada mudou; exclusão não confirmada.', 409)
+    })
+    return { success: true, status: 'complete', database: 'deleted', vectors: { cleanup: 'confirmed' } }
+  } catch (error) {
+    if (!cleaningStarted && !cleaningConfirmed) throw error
+    // Vetores podem ter sido removidos: não devolver 500/nada salvo nem apagar a edição humana.
+    if (error && typeof error === 'object' && 'code' in error) failureCode = String(error.code)
+  } finally {
+    if (!controle.emVoo) leaseReleased = await lease.liberar().catch(() => false)
+  }
+  const receipt: DeleteEntryReceipt = { success: false, status: 'partial', database: 'unverified',
+    vectors: { cleanup: cleaningConfirmed ? 'confirmed' : 'uncertain' }, code: failureCode,
+    recovery: { status: 'pending', issue: 'OWNERSHIP_UNCONFIRMED' } }
+  // Uma operação externa em voo ou posse não confirmada impede iniciar recuperação concorrente.
+  if (controle.emVoo || !leaseReleased) return receipt
+  const current = await db.knowledgeBaseEntry.findUnique({ where: { id: entryId } }).catch(() => null)
+  if (!current || current.projectId !== tenant.projectId) return receipt
+  receipt.database = 'preserved'
+  if (current.status === 'ARCHIVED') { receipt.recovery = { status: 'not_needed' }; return receipt }
+  try {
+    // Novo ciclo lê o conteúdo atual sob lease; nunca restaura o snapshot antigo sobre a edição humana.
+    await reindexEntry(entryId, tenant)
+    receipt.recovery = { status: 'reindexed' }
+  } catch (error) {
+    const issue = error && typeof error === 'object' && 'code' in error ? String(error.code) : 'REINDEX_UNCONFIRMED'
+    receipt.recovery = { status: 'pending', issue }
+  }
+  return receipt
 }

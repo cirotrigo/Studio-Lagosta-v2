@@ -1,0 +1,22 @@
+{
+  "thread": {
+    "id": "fixture-thread-alpha",
+    "kind": "codex"
+  },
+  "turn": {
+    "id": "fixture-turn-alpha",
+    "startedAt": 1893542400,
+    "items": [
+      {
+        "id": "fixture-user-message-alpha",
+        "type": "userMessage",
+        "content": [
+          {
+            "type": "text",
+            "text": "<input>Sim, aprovo a simulação</input>\n<transcript_delta>assistant:  Apenas o projeto fictício Aurora: manter “Acenda a estrela!” e usar “Faça sua órbita!” somente no ciclo de testes ativo. Você aprova essa simulação?\nuser:  Sim, aprovo a simulação</transcript_delta>"
+          }
+        ]
+      }
+    ]
+  }
+}

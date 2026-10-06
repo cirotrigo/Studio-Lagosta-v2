@@ -189,8 +189,14 @@ export function useDeleteKnowledgeEntry() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (entryId: string) =>
-      api.delete(`/api/admin/knowledge/${entryId}`),
+    mutationFn: async (entryId: string) => {
+      const result = await api.delete<{ exclusao?: { status: string }; aviso?: string }>(`/api/admin/knowledge/${entryId}`)
+      if (result.exclusao?.status === 'partial') {
+        await queryClient.invalidateQueries({ queryKey: ['admin', 'knowledge'] })
+        throw new Error(result.aviso || 'Exclusão não concluída; confira a recuperação do índice antes de tentar novamente.')
+      }
+      return result
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'knowledge'] })
     },

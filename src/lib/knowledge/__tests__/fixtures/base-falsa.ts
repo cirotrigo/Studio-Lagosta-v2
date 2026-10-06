@@ -132,9 +132,14 @@ export const dbFalso = {
       return { count: 1 }
     }),
     /** A compensação condicionada ao ciclo (PR13-43): apaga (com os chunks, em cascata) só se o filtro do metadata casar. */
-    deleteMany: vi.fn(async ({ where }: { where: { id: string; metadata?: FiltroDeCaminho } }) => {
+    deleteMany: vi.fn(async ({ where }: { where: { id: string; metadata?: FiltroDeCaminho; updatedAt?: Date; projectId?: number; content?: string; category?: string; status?: string } }) => {
       const l = base.entradas.get(where.id)
       if (!l || !casaMetadata(l.metadata, where.metadata)) return { count: 0 }
+      if (where.updatedAt && l.updatedAt.getTime() !== where.updatedAt.getTime()) return { count: 0 }
+      if (where.projectId !== undefined && l.projectId !== where.projectId) return { count: 0 }
+      if (where.content !== undefined && l.content !== where.content) return { count: 0 }
+      if (where.category !== undefined && l.category !== where.category) return { count: 0 }
+      if (where.status !== undefined && l.status !== where.status) return { count: 0 }
       base.entradas.delete(where.id)
       base.chunks = base.chunks.filter((c) => c.entryId !== where.id)
       return { count: 1 }

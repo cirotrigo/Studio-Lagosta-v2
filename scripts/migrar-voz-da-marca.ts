@@ -1,3 +1,5 @@
+import { hashDaFonteAtestada, type ContextoDeTextoAprovado, type FonteDeTextoAtestada } from '../src/lib/brand/texto-aprovado'
+import type { VozCompacta } from '../src/lib/brand/voz'
 import { randomUUID } from 'node:crypto'
 /**
  * A MIGRAÇÃO DA VOZ, cliente a cliente (PR 13 de "Marca simples, copy
@@ -29,7 +31,7 @@ import { randomUUID } from 'node:crypto'
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import type { PrismaClient } from '@prisma/client'
+import type { PrismaClient } from '../prisma/generated/client'
 import { VOZES_PROPOSTAS, PROJETOS_COM_VOZ_PROPOSTA } from './lib/vozes-propostas'
 import {
   fatosNoDna,
@@ -165,8 +167,8 @@ async function lerRegistroTolerante(db: Db, projectId: number): Promise<{ versao
   return db.brandVoice.findUnique({ where: { projectId }, select: { versao: true, migradaEm: true } })
 }
 
-export async function lerEstadoDoCliente(db: Db, projectId: number): Promise<{ nome: string; dna: DnaDeTexto; estado: EstadoDoCliente; previa: PreviaDaMigracao } | null> {
-  const proposta = VOZES_PROPOSTAS[projectId]
+export async function lerEstadoDoCliente(db: Db, projectId: number, opcoes: { voz?: VozCompacta; textoAprovado?: ContextoDeTextoAprovado } = {}): Promise<{ nome: string; dna: DnaDeTexto; estado: EstadoDoCliente; previa: PreviaDaMigracao } | null> {
+  const proposta = opcoes.voz ? { nome: VOZES_PROPOSTAS[projectId]?.nome ?? String(projectId), voz: opcoes.voz } : VOZES_PROPOSTAS[projectId]
   if (!proposta) return null
   const [projeto, dna, registro] = await Promise.all([
     db.project.findUnique({ where: { id: projectId }, select: { id: true, name: true, userId: true } }),
@@ -175,10 +177,11 @@ export async function lerEstadoDoCliente(db: Db, projectId: number): Promise<{ n
   ])
   if (!projeto) return null
   const dnaDeTexto: DnaDeTexto = { toneOfVoice: dna?.toneOfVoice ?? null, contentRules: dna?.contentRules ?? null, updatedAt: dna?.updatedAt ?? null }
-  const previa = montarPrevia({ projectId, nome: proposta.nome, dna: dnaDeTexto, voz: proposta.voz })
-  const problemasDaVoz = problemasParaMigrar(proposta.voz, dnaDeTexto)
+  const previa = montarPrevia({ projectId, nome: proposta.nome, dna: dnaDeTexto, voz: proposta.voz, textoAprovado: opcoes.textoAprovado })
+  const problemasDaVoz = problemasParaMigrar(proposta.voz, dnaDeTexto, opcoes.textoAprovado)
   const estado: EstadoDoCliente = {
-    versaoDaPreviaAtual: versaoDaPrevia({ dna: dnaDeTexto, voz: proposta.voz }),
+    versaoDaPreviaAtual: versaoDaPrevia({ dna: dnaDeTexto, voz: proposta.voz, textoAprovado: opcoes.textoAprovado }),
+    ...(opcoes.textoAprovado ? { fonteDeTextoSha256: hashDaFonteAtestada(opcoes.textoAprovado.fonte) } : {}),
     trechosDeFato: fatosNoDna(dnaDeTexto).map((f) => f.trecho),
     frasesDoDna: frasesDoDna(dnaDeTexto),
     registro: registro ? { versao: registro.versao, migradaEm: registro.migradaEm } : null,
@@ -209,6 +212,8 @@ export interface FatoACriar {
 }
 
 export interface ResultadoDaAplicacao {
+  /** Vínculo com documento de origem preservado junto ao manifesto revisado. */
+  fonteDeTextoSha256?: string
   projectId: number
   nome: string
   acao: AcaoDoPlano['acao']
@@ -224,6 +229,9 @@ export interface ResultadoDaAplicacao {
 }
 
 export interface AplicarOpcoes {
+  /** Somente capacidades atestadas pela execução autorizada; não entram pelo manifesto/HTTP. */
+  fontesDeTexto?: ReadonlyMap<number, FonteDeTextoAtestada>
+  vozesPropostas?: ReadonlyMap<number, VozCompacta>
   /** Quem grava o fato na base. O padrão é `criarEntradaBase` (indexa na busca); a prova injeta um registrador. */
   criarFato?: (fato: FatoACriar, autor: string, signal?: AbortSignal) => Promise<void>
   /**
@@ -504,7 +512,8 @@ export async function aplicarManifesto(db: Db, manifesto: Manifesto, opcoes: Apl
   const dnas = new Map<number, DnaDeTexto>()
   const donos = new Map<number, string>()
   for (const c of manifesto.clientes) {
-    const lido = await lerEstadoDoCliente(db, c.projectId)
+    const fonte = opcoes.fontesDeTexto?.get(c.projectId)
+    const lido = await lerEstadoDoCliente(db, c.projectId, { voz: opcoes.vozesPropostas?.get(c.projectId), textoAprovado: fonte ? { projectId: c.projectId, fonte } : undefined })
     if (lido) {
       estados.set(c.projectId, lido.estado)
       dnas.set(c.projectId, lido.dna)
@@ -524,6 +533,9 @@ export async function aplicarManifesto(db: Db, manifesto: Manifesto, opcoes: Apl
       continue
     }
     const cliente = manifesto.clientes.find((c) => c.projectId === acao.projectId)!
+    const fonte = opcoes.fontesDeTexto?.get(acao.projectId)
+    const textoAprovado = fonte ? { projectId: acao.projectId, fonte } : undefined
+    const vozProposta = opcoes.vozesPropostas?.get(acao.projectId) ?? VOZES_PROPOSTAS[acao.projectId].voz
     const autor = donos.get(acao.projectId)
     const dna = dnas.get(acao.projectId)
     // Contados FORA do try: uma falha no meio devolve quantos fatos já estão na base (a retomada não os recria).
@@ -538,6 +550,8 @@ export async function aplicarManifesto(db: Db, manifesto: Manifesto, opcoes: Apl
       // vezes — a chave em JSON não tem unicidade (PR13-10). Quem não consegue a trava é bloqueado, sem esperar.
       const comTrava = opcoes.comTrava ?? travaPorProjeto()
       const desfecho = await comTrava(acao.projectId, async (trava) => {
+          const atual = await lerEstadoDoCliente(db, acao.projectId, { voz: vozProposta, textoAprovado })
+          if (!atual || !atual.estado.vozValida || atual.estado.versaoDaPreviaAtual !== cliente.versaoDaPrevia) return { bloqueado: 'voz/DNA/fonte mudou sob trava; refaça a prévia' }
           // Trecho repetido no mesmo cliente é a mesma identidade de fato duas vezes: duas linhas numa só aplicação
           // (PR13-17). `lerManifesto` já recusa; aqui é a última porta antes de escrever.
           const repetidos = trechosRepetidos(acao.fatos)
@@ -590,12 +604,12 @@ export async function aplicarManifesto(db: Db, manifesto: Manifesto, opcoes: Apl
           // CAS por causa dessa escrita) (PR13-37).
           await trava.conferir()
           // PR13-38: a posse é conferida DENTRO do serviço, depois das leituras dele e imediatamente antes de escrever.
-          const gravada = await gravarVoz({ projectId: acao.projectId, voz: VOZES_PROPOSTAS[acao.projectId].voz, ...(acao.versaoEsperadaDaVoz > 0 ? { versaoEsperada: acao.versaoEsperadaDaVoz } : {}), antesDeEscrever: () => trava.conferir() })
+          const gravada = await gravarVoz({ projectId: acao.projectId, voz: vozProposta, ...(acao.versaoEsperadaDaVoz > 0 ? { versaoEsperada: acao.versaoEsperadaDaVoz } : {}), antesDeEscrever: () => trava.conferir() })
           await opcoes.seams?.antesDeAtivar?.(acao.projectId)
           await trava.conferir()
           // A ativação confere, na mesma transação dela, que o DNA de texto ainda é o que a prévia aprovada leu (PR13-02)
           // e que os fatos aprovados continuam na base como foram conferidos (PR13-35).
-          const migrada = await migrarParaVoz({ projectId: acao.projectId, versaoEsperada: gravada.versao, em: opcoes.agora, dnaEsperado: { toneOfVoice: dna.toneOfVoice, contentRules: dna.contentRules }, fatosEsperados, antesDeEscrever: () => trava.conferir() })
+          const migrada = await migrarParaVoz({ projectId: acao.projectId, versaoEsperada: gravada.versao, em: opcoes.agora, dnaEsperado: { toneOfVoice: dna.toneOfVoice, contentRules: dna.contentRules }, fatosEsperados, textoAprovado, antesDeEscrever: () => trava.conferir() })
           return { vozVersao: gravada.versao, migradaEm: migrada.migradaEm.toISOString() }
       })
       if ('bloqueado' in desfecho) {
@@ -607,7 +621,10 @@ export async function aplicarManifesto(db: Db, manifesto: Manifesto, opcoes: Apl
       resultados.push({ projectId: acao.projectId, nome: acao.nome, acao: 'migrar', erro: e instanceof Error ? e.message : String(e), fatosCriados, fatosJaExistentes, fatosReindexados })
     }
   }
-  return resultados
+  return resultados.map((r) => {
+    const hash = estados.get(r.projectId)?.fonteDeTextoSha256
+    return hash ? { ...r, fonteDeTextoSha256: hash } : r
+  })
 }
 
 function slug(nome: string): string {

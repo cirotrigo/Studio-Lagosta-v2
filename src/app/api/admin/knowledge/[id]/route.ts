@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { z } from 'zod'
+import { CreativeError } from '@/lib/creatives/errors'
 import { db } from '@/lib/db'
 import { getUserFromClerkId } from '@/lib/auth-utils'
 import { updateEntry, deleteEntry } from '@/lib/knowledge/indexer'
@@ -195,7 +196,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Entrada não encontrada' }, { status: 404 })
     }
 
-    await deleteEntry(id, {
+    const exclusao = await deleteEntry(id, {
       projectId: existingEntry.projectId,
       userId: dbUser.id,
     })
@@ -206,9 +207,12 @@ export async function DELETE(
       console.error('[admin/knowledge] Failed to invalidate RAG cache after entry delete', cacheError)
     }
 
-    return NextResponse.json({ success: true })
+    if (exclusao.status === 'partial') return NextResponse.json({ success: false, exclusao, aviso: 'Exclusão não concluída; confira a recuperação do índice antes de tentar novamente.' }, { status: 202 })
+    return NextResponse.json({ success: true, exclusao })
   } catch (error) {
     console.error('Error deleting knowledge entry:', error)
+    if (error instanceof CreativeError) return NextResponse.json(error.toJSON(), { status: error.status })
+    if (ehIndexacaoEmAndamento(error)) return NextResponse.json({ error: error.message, code: error.code }, { status: 409 })
 
     if (error.message === 'Entry not found') {
       return NextResponse.json({ error: 'Entrada não encontrada' }, { status: 404 })

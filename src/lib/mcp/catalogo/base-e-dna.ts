@@ -98,6 +98,7 @@ export const toolsDeBaseEDna = [
         },
         orderBy: { category: 'asc' },
       })
+      const { hashDoConteudo } = await import('../../knowledge/entry-fingerprint')
       const dadosDe = (metadata: unknown): Record<string, unknown> | undefined => {
         if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return undefined
         // `origem`/`revisao` são carimbos de quem gravou, não fato do cliente.
@@ -109,6 +110,7 @@ export const toolsDeBaseEDna = [
         count: entries.length,
         entries: entries.map(({ expiresAt, metadata, ...resto }) => ({
           ...resto,
+          contentHash: hashDoConteudo(resto.content),
           validade: expiresAt ? formatarValidade(expiresAt) : null,
           ...(dadosDe(metadata) ? { dados: dadosDe(metadata) } : {}),
         })),
@@ -598,54 +600,42 @@ export const toolsDeBaseEDna = [
   }),
 
   definirTool({
+    nome: 'consultar-entrada-base',
+    descricao: 'Lê uma entrada pelo ID, inclusive arquivada, para conferir status, conteúdo, versão e hash antes de retomar limpeza após falha. Restrita ao cliente informado. Fonte arquivada ou expirada não deve alimentar textos.',
+    schema: z.object({ projectId: z.number(), entradaId: z.string() }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    acesso: { tipo: 'projeto' },
+    superficies: ['remoto', 'local'],
+    handler: async (args, _principal) => {
+      const { lerEntradaParaArquivamento } = await import('../../knowledge/archive')
+      return lerEntradaParaArquivamento(args.entradaId as string, args.projectId as number)
+    },
+  }),
+  definirTool({
     nome: 'arquivar-entrada-base',
     descricao:
-      'Arquiva uma entrada da base de conhecimento: ela sai da consulta e deixa de alimentar os textos. O registro não é apagado, mas reativar exige a interface do Studio (e uma reindexação por lá para ela voltar às buscas) — então trate como decisão de mão única. Use para campanha encerrada ou informação que não vale mais, e confirme com a pessoa antes, citando o título.',
+      'Arquiva uma entrada da base de conhecimento: ela sai da consulta e deixa de alimentar os textos. O registro não é apagado, mas reativar exige a interface do Studio (e uma reindexação por lá para ela voltar às buscas) — então trate como decisão de mão única. Envie updatedAt e contentHash da leitura aprovada de consultar-base; se a entrada mudou, consulte e confirme novamente. Para recuperação por ID, inclusive após perda do recibo, use consultar-entrada-base. O recibo complete confirma banco, limpeza vetorial e invalidação; partial exige conferir as pendências antes de afirmar conclusão. Use para campanha encerrada ou informação que não vale mais, e confirme com a pessoa antes, citando o título.',
     schema: z.object({
       projectId: z.number().describe('ID do cliente.'),
       entradaId: z.string().describe('Id da entrada (de consultar-base).'),
+      updatedAt: z.string().datetime().describe('Versão de consultar-base aprovada pela pessoa.'),
+      contentHash: z.string().regex(/^[a-f0-9]{64}$/).describe('Hash do conteúdo de consultar-base aprovado.'),
     }),
     // "Decisão de mão única": os vetores são apagados e reativar exige a
     // interface — destructive é o rótulo honesto.
-    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     acesso: { tipo: 'projeto' },
     superficies: ['remoto', 'local'],
     handler: async (args, principal) => {
-      const [{ db }, { CreativeError }, { deleteVectorsByEntry }, { invalidateProjectCache }, { resolverAutor }] =
-        await Promise.all([
-          import('../../db'),
-          import('../../creatives/errors'),
-          import('../../knowledge/vector-client'),
-          import('../../knowledge/cache'),
-          import('../tools'),
-        ])
+      const [{ arquivarEntradaBase }, { resolverAutor }] = await Promise.all([
+        import('../../knowledge/archive'), import('../tools'),
+      ])
       const projectId = args.projectId as number
-      const entradaId = args.entradaId as string
       const autor = await resolverAutor(projectId, principal)
-
-      const existente = await db.knowledgeBaseEntry.findUnique({ where: { id: entradaId } })
-      if (!existente || existente.projectId !== projectId) {
-        throw new CreativeError('ENTRADA_NAO_ENCONTRADA', 'Entrada não encontrada neste cliente.', 404)
-      }
-      if (existente.status === 'ARCHIVED') {
-        return { arquivada: true, entradaId, mensagem: `"${existente.title}" já estava arquivada.` }
-      }
-
-      // Mesmo padrão do cron de expiração: vetores fora ANTES do status, senão
-      // a busca RAG continua servindo o conteúdo arquivado.
-      await deleteVectorsByEntry(entradaId, { projectId, userId: autor })
-      await db.knowledgeBaseEntry.update({
-        where: { id: entradaId },
-        data: { status: 'ARCHIVED', updatedBy: autor },
+      return arquivarEntradaBase({
+        entryId: args.entradaId as string, projectId, autor,
+        updatedAt: new Date(args.updatedAt as string), contentHash: args.contentHash as string,
       })
-      await invalidateProjectCache(projectId).catch((e) =>
-        console.error('[mcp] invalidateProjectCache falhou:', e))
-
-      return {
-        arquivada: true,
-        entradaId,
-        mensagem: `Entrada "${existente.title}" arquivada. Não alimenta mais os textos.`,
-      }
     },
   }),
 ]

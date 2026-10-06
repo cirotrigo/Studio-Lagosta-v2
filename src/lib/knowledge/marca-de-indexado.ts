@@ -13,6 +13,8 @@
  * preservando `chaveDoFato` e o resto do metadata. Módulo PURO, sem Prisma.
  */
 export const MARCA_DE_INDEXADO = 'indexadoEm'
+/** Pendência durável de limpeza externa; nasce no CAS de ARCHIVED e só o dono a conclui. */
+export const LIMPEZA_ARQUIVAMENTO_PENDENTE = 'limpezaArquivamentoPendente'
 /**
  * O CICLO de indexação em curso (`metadata.cicloDeIndexacao`): quem começa a
  * indexar (criar ou reindexar) carimba um token próprio; a marca de indexado só
@@ -233,7 +235,7 @@ export function edicaoMudaIndice(atual: CamposIndexados, edicao: Partial<CamposI
 export const CHAVE_DO_FATO = 'chaveDoFato'
 export const CHAVES_DE_IDENTIDADE = [CHAVE_DO_FATO, 'origem', 'versaoDaPrevia'] as const
 export const CHAVES_TRANSITORIAS = [MARCA_DE_INDEXADO, CICLO_DE_INDEXACAO, EXPIRACAO_DO_CICLO] as const
-export const CHAVES_DO_SISTEMA = [...CHAVES_DE_IDENTIDADE, ...CHAVES_TRANSITORIAS] as const
+export const CHAVES_DO_SISTEMA = [...CHAVES_DE_IDENTIDADE, ...CHAVES_TRANSITORIAS, LIMPEZA_ARQUIVAMENTO_PENDENTE] as const
 
 function soAsChaves(metadata: unknown, chaves: readonly string[]): Record<string, unknown> {
   const obj = metadataComoObjeto(metadata)
@@ -260,7 +262,7 @@ export function identidadeDo(metadata: unknown): Record<string, unknown> {
  */
 export function metadataDaPessoa(metadata: unknown): Record<string, unknown> {
   const forjaIdentidade = CHAVE_DO_FATO in metadataComoObjeto(metadata)
-  return semAsChaves(metadata, forjaIdentidade ? CHAVES_DO_SISTEMA : [CHAVE_DO_FATO, ...CHAVES_TRANSITORIAS])
+  return semAsChaves(metadata, forjaIdentidade ? CHAVES_DO_SISTEMA : [CHAVE_DO_FATO, ...CHAVES_TRANSITORIAS, LIMPEZA_ARQUIVAMENTO_PENDENTE])
 }
 /** O metadata sem as marcas transitórias da indexação: quem CRIA nunca chega com marca, token ou prazo prontos. */
 export function semChavesTransitorias(metadata: unknown): Record<string, unknown> {
@@ -277,7 +279,7 @@ export function semChavesTransitorias(metadata: unknown): Record<string, unknown
  */
 export function metadataDaEdicao(atual: unknown, pedido: unknown, mudaIndice: boolean): unknown {
   const transitoriasAtuais = soAsChaves(atual, CHAVES_TRANSITORIAS)
-  const doSistema = { ...identidadeDo(atual), ...(mudaIndice ? {} : transitoriasAtuais) }
+  const doSistema = { ...soAsChaves(atual, [LIMPEZA_ARQUIVAMENTO_PENDENTE]), ...identidadeDo(atual), ...(mudaIndice ? {} : transitoriasAtuais) }
   if (pedido === undefined) return mudaIndice && Object.keys(transitoriasAtuais).length > 0 ? semChavesTransitorias(atual) : undefined
   if (pedido === null) return Object.keys(doSistema).length > 0 ? doSistema : null
   return { ...metadataDaPessoa(pedido), ...doSistema }

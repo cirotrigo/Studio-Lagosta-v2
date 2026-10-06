@@ -156,7 +156,7 @@ export async function queryVectors(
 export async function deleteVectorsByEntry(
   entryId: string,
   tenant: TenantKey,
-  opcoes: { signal?: AbortSignal; antesDeApagar?: () => Promise<void> } = {}
+  opcoes: { signal?: AbortSignal; antesDeApagar?: () => Promise<void>; confirmarAusencia?: boolean } = {}
 ): Promise<number> {
   if (!tenant?.projectId) {
     throw new Error('projectId is required to delete vectors')
@@ -172,6 +172,7 @@ export async function deleteVectorsByEntry(
     filter,
   })
 
+  if (opcoes.confirmarAusencia && results.length >= 1000) throw new Error('Limpeza não confirmada: consulta atingiu limite de vetores')
   if (results.length > 0) {
     const idsToDelete = results.map(r => String(r.id))
     lancarSeAbortado(opcoes.signal, 'apagar vetores')
@@ -182,6 +183,13 @@ export async function deleteVectorsByEntry(
     await clienteComSinal(opcoes.signal).delete(idsToDelete)
     // Abortada no meio, a resposta do cliente não prova nada: quem chamou precisa saber que o delete ficou incerto.
     lancarSeAbortado(opcoes.signal, 'confirmar a exclusão de vetores')
+    if (opcoes.confirmarAusencia) {
+      await opcoes.antesDeApagar?.()
+      lancarSeAbortado(opcoes.signal, 'conferir ausência de vetores')
+      const restantes = await clienteComSinal(opcoes.signal).query({ vector: new Array(1536).fill(0), topK: 1, filter })
+      lancarSeAbortado(opcoes.signal, 'confirmar ausência de vetores')
+      if (restantes.length) throw new Error('Limpeza vetorial incompleta')
+    }
     return results.length
   }
 

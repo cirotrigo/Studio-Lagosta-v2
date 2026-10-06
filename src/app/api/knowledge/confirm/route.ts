@@ -5,7 +5,8 @@ import { KnowledgeCategory } from '@prisma/client'
 import { db } from '@/lib/db'
 import { getUserFromClerkId } from '@/lib/auth-utils'
 import { indexEntry, updateEntry } from '@/lib/knowledge/indexer'
-import { deleteVectorsByEntry } from '@/lib/knowledge/vector-client'
+import { arquivarEntradaBase } from '@/lib/knowledge/archive'
+import { CreativeError } from '@/lib/creatives/errors'
 import { invalidateProjectCache } from '@/lib/knowledge/cache'
 import { ehIndexacaoEmAndamento, type IndexacaoPendente } from '@/lib/knowledge/marca-de-indexado'
 
@@ -17,6 +18,8 @@ const MatchSchema = z.object({
   content: z.string(),
   score: z.number(),
   category: z.nativeEnum(KnowledgeCategory),
+  updatedAt: z.string().datetime().optional(),
+  contentHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
 })
 
 const PreviewSchema = z.object({
@@ -77,6 +80,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Projeto não encontrado ou acesso negado' }, { status: 404 })
     }
 
+    let arquivamento: Awaited<ReturnType<typeof arquivarEntradaBase>> | undefined
     let conversationIdToUse: string | null = null
 
     if (conversationId) {
@@ -182,19 +186,12 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: 'Entrada não encontrada' }, { status: 404 })
       }
 
-      await deleteVectorsByEntry(preview.targetEntryId, {
-        projectId,
-        userId: dbUser.id,
-        workspaceId: orgId ?? undefined,
-      })
-
-      await db.knowledgeBaseEntry.update({
-        where: { id: preview.targetEntryId },
-        data: {
-          status: 'ARCHIVED',
-          updatedBy: dbUser.id,
-        },
-      })
+      const approved = preview.matches?.find(match => match.entryId === preview.targetEntryId)
+      if (!approved?.updatedAt || !approved.contentHash) {
+        return NextResponse.json({ error: 'Consulte novamente a entrada antes de confirmar o arquivamento.', code: 'VERSAO_ARQUIVAMENTO_OBRIGATORIA' }, { status: 409 })
+      }
+      arquivamento = await arquivarEntradaBase({ entryId: preview.targetEntryId, projectId, autor: dbUser.id,
+        updatedAt: new Date(approved.updatedAt), contentHash: approved.contentHash })
 
       entryId = preview.targetEntryId
     }
@@ -208,8 +205,9 @@ export async function POST(req: Request) {
     }
 
     // Invalidar cache do projeto após modificação
-    await invalidateProjectCache(projectId)
+    if (!arquivamento) await invalidateProjectCache(projectId)
 
+    if (arquivamento) return NextResponse.json({ success: arquivamento.arquivada, entryId, arquivamento }, { status: arquivamento.status === 'complete' ? 200 : 202 })
     if (indexacaoPendente) {
       return NextResponse.json(
         { success: true, entryId, indexacao: 'pendente', code: indexacaoPendente.code, aviso: indexacaoPendente.aviso },
@@ -219,6 +217,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, entryId })
   } catch (error) {
     console.error('[knowledge/confirm] Error confirming knowledge action', error)
+    if (error instanceof CreativeError) return NextResponse.json(error.toJSON(), { status: error.status })
     // Edição de campo indexado durante a indexação de outra execução é recusada ANTES de salvar (PR13-42). É o único
     // `IndexacaoEmAndamento` que `updateEntry` lança: o conflito DEPOIS de salvar volta em `indexacaoPendente` (PR13-45).
     if (ehIndexacaoEmAndamento(error)) {

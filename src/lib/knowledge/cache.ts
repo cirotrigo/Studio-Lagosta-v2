@@ -382,23 +382,39 @@ export async function setCachedResults(
 
 /**
  * Invalida cache para um projeto específico
- * Usa SCAN para evitar bloqueio do Redis
+ * Incrementa a versão do projeto; SCAN/DEL são limpeza opcional.
  * @param projectId ID do projeto
  * @returns Número de chaves deletadas
  */
-export async function invalidateProjectCache(projectId: number): Promise<number> {
-  const redis = await getRedisClient()
-  if (!redis) return 0
+export interface CacheInvalidationReceipt {
+  projectId: number
+  status: 'confirmed' | 'unavailable' | 'failed'
+  version?: number
+  deletedCount: number
+  cleanupFailed?: boolean
+}
 
+/** Compatibilidade: o número continua contando somente chaves removidas. */
+export async function invalidateProjectCache(projectId: number): Promise<number> {
+  return (await invalidateProjectCacheWithReceipt(projectId)).deletedCount
+}
+
+export async function invalidateProjectCacheWithReceipt(projectId: number): Promise<CacheInvalidationReceipt> {
+  const redis = await getRedisClient()
+  if (!redis) return { projectId, status: 'unavailable', deletedCount: 0 }
+
+  let confirmedVersion: number | undefined
   try {
     const startedAt = Date.now()
     const versionKey = getProjectVersionKey(projectId)
     const newVersion = await redis.incr(versionKey)
+    if (!Number.isSafeInteger(newVersion) || newVersion < 1) throw new Error('Redis não confirmou a versão')
+    confirmedVersion = newVersion
     logCache('BUMP', { projectId, versionKey, newVersion, ms: Date.now() - startedAt })
 
     // Optional hard invalidation (SCAN + DEL) for manual cleanup/debugging.
     if (process.env.RAG_CACHE_HARD_INVALIDATION !== '1') {
-      return 0
+      return { projectId, status: 'confirmed', version: newVersion, deletedCount: 0 }
     }
 
     const pattern = getProjectCachePattern(projectId)
@@ -408,7 +424,7 @@ export async function invalidateProjectCache(projectId: number): Promise<number>
 
     do {
       const scanResult = await redis.scan(cursor, { match: pattern, count: batchSize })
-      if (!Array.isArray(scanResult) || scanResult.length < 2) break
+      if (!Array.isArray(scanResult) || scanResult.length < 2) throw new Error('SCAN inválido')
       const [nextCursor, keys] = scanResult
       cursor = typeof nextCursor === 'string' ? parseInt(nextCursor, 10) : nextCursor
       if (Array.isArray(keys) && keys.length > 0) {
@@ -418,10 +434,10 @@ export async function invalidateProjectCache(projectId: number): Promise<number>
     } while (cursor !== 0)
 
     logCache('HARD_INVALIDATE', { projectId, deletedCount })
-    return deletedCount
+    return { projectId, status: 'confirmed', version: newVersion, deletedCount }
   } catch (error) {
     console.error('[cache] Error invalidating project cache:', error)
-    return 0
+    return { projectId, status: confirmedVersion === undefined ? 'failed' : 'confirmed', version: confirmedVersion, deletedCount: 0, cleanupFailed: confirmedVersion !== undefined }
   }
 }
 
