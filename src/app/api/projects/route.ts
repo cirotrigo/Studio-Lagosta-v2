@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { createProjectSchema } from '@/lib/validations/studio'
 import { fulfillInviteForUser } from '@/lib/services/client-invite-service'
+import { projectOwnerIdsFor } from '@/lib/projects/access'
 import { getLaterClient } from '@/lib/later/client'
 
 export const runtime = 'nodejs'
@@ -37,7 +38,8 @@ export async function GET() {
   const [ownedProjects, sharedProjects] = await Promise.all([
     // Owned projects query
     db.project.findMany({
-      where: { userId },
+      // Project.userId é o id interno; o clerkId fica pela tolerância a linha legada
+      where: { userId: { in: await projectOwnerIdsFor(userId) } },
       select: {
         id: true,
         name: true,
@@ -211,6 +213,14 @@ export async function POST(req: Request) {
     const payload = await req.json()
     const parsed = createProjectSchema.parse(payload)
 
+    // Project.userId guarda o id INTERNO do User, nunca o clerkId: o publicador
+    // procura o autor do post por ele (src/lib/projects/access.ts). Leitura, não
+    // getUserFromClerkId — quem cria projeto já tem User.
+    const dbUser = await db.user.findUnique({ where: { clerkId: userId }, select: { id: true } })
+    if (!dbUser) {
+      return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 })
+    }
+
     let organization: { id: string; maxProjects: number | null } | null = null
 
     if (orgId) {
@@ -244,7 +254,7 @@ export async function POST(req: Request) {
           description: parsed.description,
           logoUrl: parsed.logoUrl,
           status: parsed.status ?? 'ACTIVE',
-          userId,
+          userId: dbUser.id,
         },
       })
 
