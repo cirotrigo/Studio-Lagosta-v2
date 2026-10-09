@@ -294,7 +294,8 @@ export async function fulfillInviteForUser(params: {
         data: {
           name: invite.projectName,
           description: invite.projectDescription,
-          userId: params.clerkUserId,
+          // id INTERNO, nunca o clerkId (ver src/lib/projects/access.ts)
+          userId: params.userId,
           status: 'ACTIVE',
           isClientProject: true,
           googleDriveFolderId: invite.googleDriveFolderId,

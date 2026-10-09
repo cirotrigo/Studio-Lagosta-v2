@@ -711,11 +711,13 @@ export class LaterPostScheduler {
         )
       }
 
-      // Get post author for credit deduction
-      const postAuthor = await db.user.findUnique({
-        where: { id: post.userId },
-        select: { clerkId: true },
-      })
+      // Get post author for credit deduction. `post.userId` é o id INTERNO, mas
+      // projeto criado antes de 09/10/2026 podia ter o clerkId em
+      // `Project.userId`, e o agendar copiava para o post (Coronel Picanha:
+      // 32 posts). Mesma tolerância e mesma ordem de `resolveOwnerClerkId`.
+      const postAuthor =
+        (await db.user.findUnique({ where: { id: post.userId }, select: { clerkId: true } })) ??
+        (await db.user.findUnique({ where: { clerkId: post.userId }, select: { clerkId: true } }))
 
       if (!postAuthor?.clerkId) {
         throw new Error('Clerk user ID not found for post author')
