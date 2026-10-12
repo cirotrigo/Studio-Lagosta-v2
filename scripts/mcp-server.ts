@@ -1358,6 +1358,16 @@ toolEstrita(
       if (travado === 0) {
         return { content: [{ type: 'text' as const, text: 'Error: o post mudou antes do render (passou a usar o contrato semântico, ou sumiu). Nada foi alterado.' }], isError: true }
       }
+      // O pedido desenhado tem de ser o da linha TRAVADA (Codex, B1d checkpoint d): editado entre a leitura lá
+      // de cima e a trava, o PNG seria do pedido antigo. Devolve à fila — só a própria reserva — e o cron desenha o novo.
+      const reservado = await prisma.socialPost.findUnique({ where: { id: postId }, select: { pageId: true, slotValues: true } })
+      if (!reservado || reservado.pageId !== post.pageId || JSON.stringify(reservado.slotValues) !== JSON.stringify(post.slotValues)) {
+        await prisma.socialPost.updateMany({
+          where: { id: postId, renderStatus: 'RENDERING', nextRenderAt: ficha },
+          data: { renderStatus: 'PENDING', nextRenderAt: new Date() },
+        })
+        return { content: [{ type: 'text' as const, text: 'Error: o pedido do post mudou antes do render. Nada foi desenhado; o post voltou à fila do render (cron render-stories).' }], isError: true }
+      }
 
       // 4. Convert Page → DesignData
       const { convertPageToDesignData, applySlotValues } = await import('../src/lib/posts/page-to-design-data')
