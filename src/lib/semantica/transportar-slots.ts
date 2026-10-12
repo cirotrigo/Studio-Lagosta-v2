@@ -10,7 +10,8 @@
  *     repetir id — o contador de repetição é por grupo);
  *  2. o papel dos dois lados é válido e igual;
  *  3. o bloco do contrato (`metadata.compositor.bloco`): nenhum lado tem, ou os
- *     dois têm o MESMO. Um lado só com bloco não casa.
+ *     dois têm o MESMO. Um lado só com bloco não casa;
+ *  4. as linhas do bloco que a camada desenha: idem (bloco repartido).
  * E nunca sobrescreve: a camada nova que já declara slot fica com o dela; o
  * transporte que faria dois slots iguais não acontece.
  *
@@ -22,6 +23,7 @@
  */
 
 import type { Layer } from '@/types/template'
+import { vinculoDaCamada } from '@/lib/copy-autoral/efetiva'
 import { lerSemanticRole, lerSlotId } from './ler'
 
 export type AvisoDeSlot =
@@ -30,6 +32,7 @@ export type AvisoDeSlot =
   | { codigo: 'ID_REPETIDO'; layerId: string; slotId: string }
   | { codigo: 'PAPEL_DIVERGENTE'; layerId: string; slotId: string }
   | { codigo: 'BLOCO_DIVERGENTE'; layerId: string; slotId: string }
+  | { codigo: 'LINHAS_DIVERGENTES'; layerId: string; slotId: string }
   | { codigo: 'SLOT_NOVO_PREEXISTENTE'; layerId: string; slotId: string; slotNovo: string }
   | { codigo: 'SLOT_NOVO_INVALIDO'; layerId: string; slotId: string }
   | { codigo: 'SLOT_DUPLICARIA'; layerId: string; slotId: string }
@@ -50,6 +53,25 @@ function blocosCasam(a: Layer, b: Layer): boolean {
   const y = blocoDe(b)
   if (x === undefined && y === undefined) return true
   return typeof x === 'string' && typeof y === 'string' && x === y
+}
+
+/**
+ * As linhas do bloco que a camada desenha (`metadata.compositor.linhas`): num
+ * bloco REPARTIDO (`servico` e `servico-2` com o mesmo bloco) são elas que dizem
+ * qual parte é de qual camada. Nenhum lado declara → casa; um lado só, ou
+ * linhas diferentes → não casa (a edição redistribuiu as partes, e o slot
+ * seguiria a linha errada — revisão adversarial do B0, F2). A leitura é a de
+ * `vinculoDaCamada`, a fonte de verdade de "de quem é esta camada".
+ */
+function linhasCasam(a: Layer, b: Layer): boolean {
+  const declara = (l: Layer) => {
+    const c = (l.metadata as { compositor?: unknown } | undefined)?.compositor
+    return !!c && typeof c === 'object' && (c as { linhas?: unknown }).linhas !== undefined
+  }
+  if (!declara(a) && !declara(b)) return true
+  const x = vinculoDaCamada(a)?.linhas
+  const y = vinculoDaCamada(b)?.linhas
+  return !!x && !!y && x.length === y.length && x.every((n, i) => n === y[i])
 }
 
 function papeisCasam(a: Layer, b: Layer): boolean {
@@ -104,6 +126,10 @@ export function transportarSlots<T extends Layer>(anteriores: readonly Layer[], 
       avisos.push({ codigo: 'BLOCO_DIVERGENTE', ...base })
       continue
     }
+    if (!linhasCasam(antiga, novaCamada)) {
+      avisos.push({ codigo: 'LINHAS_DIVERGENTES', ...base })
+      continue
+    }
     if (ocupados.has(slotId)) {
       avisos.push({ codigo: 'SLOT_DUPLICARIA', ...base })
       continue
@@ -133,6 +159,8 @@ export function descreverAvisoDeSlot(a: AvisoDeSlot): string {
       return `O slot "${a.slotId}" se perdeu: há mais de uma camada com o id "${a.layerId}".`
     case 'PAPEL_DIVERGENTE':
       return `O slot "${a.slotId}" se perdeu: a ${alvo} mudou de papel.`
+    case 'LINHAS_DIVERGENTES':
+      return `O slot "${a.slotId}" se perdeu: a ${alvo} passou a desenhar outras linhas do bloco.`
     case 'BLOCO_DIVERGENTE':
       return `O slot "${a.slotId}" se perdeu: a ${alvo} passou a desenhar outro bloco da copy.`
     case 'SLOT_NOVO_PREEXISTENTE':

@@ -117,3 +117,25 @@ describe('transportarSlots — idempotência e não regressão', () => {
     expect(JSON.stringify(novas)).toBe(n)
   })
 })
+
+describe('transportarSlots — bloco repartido: as linhas também identificam a camada (revisão adversarial B0, F2)', () => {
+  const parte = (papel: string, bloco: string, linhas?: number[]) => ({ compositor: { papel, bloco, ...(linhas ? { linhas } : {}) } })
+
+  it('mesmas linhas → transporta', () => {
+    const r = transportarSlots([antiga('servico', comSlot(parte('servico', 'info', [0]), 'servico-horario'))], [nova('servico', parte('servico', 'info', [0]))])
+    expect(slotDe(r.camadas[0])).toEqual({ id: 'servico-horario' })
+  })
+
+  it('as linhas trocaram de camada → nenhum slot segue a linha errada', () => {
+    const antigas = [antiga('servico', comSlot(parte('servico', 'info', [0]), 'servico-horario')), antiga('servico-2', comSlot(parte('servico', 'info', [1]), 'servico-endereco'))]
+    const novas = [nova('servico', parte('servico', 'info', [1])), nova('servico-2', parte('servico', 'info', [0]))]
+    const r = transportarSlots(antigas, novas)
+    expect(r.camadas.map(slotDe)).toEqual([undefined, undefined])
+    expect(r.avisos.map((a) => a.codigo)).toEqual(['LINHAS_DIVERGENTES', 'LINHAS_DIVERGENTES'])
+  })
+
+  it('só um lado declara linhas → não transporta', () => {
+    const r = transportarSlots([antiga('servico', comSlot(parte('servico', 'info', [0]), 's'))], [nova('servico', parte('servico', 'info'))])
+    expect(r.avisos.map((a) => a.codigo)).toEqual(['LINHAS_DIVERGENTES'])
+  })
+})

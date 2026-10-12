@@ -130,14 +130,14 @@ function patchDaArte(): Record<string, any> {
 const slotDe = (l: Record<string, any>) => l.metadata?.slot
 
 /** Monta a página editada (só a manchete mudou) e roda a recomposição. */
-async function recomporCom(paginaEditada: Array<Record<string, any>>) {
+async function recomporCom(paginaEditada: Array<Record<string, any>>, composicao: Array<Record<string, any>> = composta('Almoço de sexta')) {
   const entrada = entradaDePersistencia({ spec, opcoes: {}, projeto: { id: 8, name: 'Lagosta', userId: 'dono-interno' }, pasta: { id: 77, name: 'Programação' }, nome: 'Sexta', ordem: 0, canvas: { width: 1080, height: 1920 }, layers: composta('Almoço executivo') as unknown as Layer[], fundo: '#000', diagnostico: {}, fotoUrl: 'https://blob.test/foto.png' })
   const daPagina = lerCopyAutoral(entrada.copyAutoral).copy!
   const revisao = revisaoDaPaginaComCamadas(daPagina, paginaEditada, { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor' })
   expect(revisao.estado).toBe('registrada')
   banco.pagina = { id: 'p9', name: 'Sexta', width: 1080, height: 1920, background: null, isTemplate: false, templateId: 77, updatedAt: new Date(5_000), layers: paginaEditada, copyAutoral: revisao.copy }
   banco.generations = [{ id: 'gen-antiga', projectId: 8, resultUrl: URL_ANTIGA, authorName: 'compositor', sourcePageId: null, fieldValues: { ...entrada.fieldValues, pageId: 'p9' } }]
-  banco.composta = composta('Almoço de sexta')
+  banco.composta = composicao
   return recomporPaginaDefasada({ pageId: 'p9' })
 }
 
@@ -180,5 +180,19 @@ describe('recomposição preserva metadata.slot (PR B0)', () => {
     await recomporCom(composta('Almoço de sexta'))
     expect(banco.pagina!.layers).toEqual(prepararCamadasParaGravar(composta('Almoço de sexta')).camadas)
     expect(patchDaArte().layersSnapshot).toEqual(banco.pagina!.layers)
+  })
+})
+
+describe('recomposição com bloco repartido que troca as linhas de camada (revisão adversarial B0, F2)', () => {
+  const parte = (id: string, y: number, content: string, linhas: number[], slot?: string) =>
+    ({ ...texto(id, 'servico', y, content), metadata: { compositor: { papel: 'servico', bloco: 'servico', linhas }, ...(slot ? { slot: { id: slot } } : {}) } }) as Record<string, any>
+
+  it('o arranjo inverte as partes entre os ids: nenhum slot segue a linha errada, e os dois avisos saem', async () => {
+    const editada = [texto('headline', 'headline', 300, 'Almoço de sexta'), parte('servico', 1600, 'Das 11h às 15h', [0], 'servico-horario'), parte('servico-2', 1680, 'Rua Aleixo Netto, 1158', [1], 'servico-endereco')]
+    const invertida = [texto('headline', 'headline', 300, 'Almoço de sexta'), parte('servico', 1600, 'Rua Aleixo Netto, 1158', [1]), parte('servico-2', 1680, 'Das 11h às 15h', [0])]
+    const r = await recomporCom(editada, invertida)
+    expect(r.recomposta).toBe(true)
+    expect((banco.pagina!.layers as Array<Record<string, any>>).map(slotDe)).toEqual([undefined, undefined, undefined])
+    expect(r.avisos.filter((a) => a.includes('outras linhas do bloco'))).toHaveLength(2)
   })
 })
