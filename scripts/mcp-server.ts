@@ -1347,16 +1347,20 @@ toolEstrita(
       // 3. Lock the post — atômico com a recusa do contrato semântico (Codex, B1d checkpoint d): um
       // update-post que acrescente _slots/_papeis depois da leitura acima não é desenhado por este renderer
       // legado. A edição semântica volta a linha a PENDING, e as gravações abaixo exigem RENDERING.
+      // Também não toma a reserva VIVA de outra execução (o cron): só a presa há mais de 10 min (o render do cron
+      // tem teto de 120 s), para forçar continuar destravando post preso.
       const agora = new Date()
+      const reservaPresaAntesDe = new Date(agora.getTime() - 10 * 60_000)
       const travado = await prisma.$executeRaw`
         UPDATE "SocialPost" SET "renderStatus" = 'RENDERING'::"RenderStatus", "nextRenderAt" = ${ficha}, "updatedAt" = ${agora}
         WHERE "id" = ${postId}
+          AND ("renderStatus" <> 'RENDERING'::"RenderStatus" OR "updatedAt" < ${reservaPresaAntesDe})
           AND (
             jsonb_typeof("slotValues") IS DISTINCT FROM 'object'
             OR (NOT jsonb_exists("slotValues", '_slots') AND NOT jsonb_exists("slotValues", '_papeis'))
           )`
       if (travado === 0) {
-        return { content: [{ type: 'text' as const, text: 'Error: o post mudou antes do render (passou a usar o contrato semântico, ou sumiu). Nada foi alterado.' }], isError: true }
+        return { content: [{ type: 'text' as const, text: 'Error: o post não pôde ser travado para o render: outro render está em andamento, ou o post passou a usar o contrato semântico, ou sumiu. Nada foi alterado.' }], isError: true }
       }
       // O pedido E a página desenhados têm de ser os de DEPOIS da trava (Codex, B1d checkpoint d): editados (e
       // invalidados) entre a leitura lá de cima e a trava, o PNG seria do antigo — e a trava teria passado por cima
