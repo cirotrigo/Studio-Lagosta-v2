@@ -27,12 +27,15 @@ export function bakeLayers(
   slotValues: Record<string, unknown>,
   imageUrl: string | null,
   valores?: ReadonlyMap<number, ValorResolvido>,
-): { layers: any[]; imageApplied: boolean; changedTextIds: string[]; explicitFileUrlIds: string[] } {
+): { layers: any[]; imageApplied: boolean; changedTextIds: string[]; explicitFileUrlIds: string[]; imageBloqueadaPeloSemantico: boolean } {
   const explicitFileUrl = new Set<string>()
+  /** Índices cujo `fileUrl` explícito veio de _slots/_papeis (não do legado por id/nome). */
+  const fileUrlSemantico = new Set<number>()
   const changedTextIds: string[] = []
 
   const layers = sourceLayers.map((layer: any, i: number) => {
-    const slot = slotValues[layer.id] ?? valores?.get(i)?.valor ?? slotValues[layer.name]
+    const semantico = slotValues[layer.id] == null ? valores?.get(i)?.valor : undefined
+    const slot = slotValues[layer.id] ?? semantico ?? slotValues[layer.name]
     const updated = { ...layer }
 
     // 🔴 Camada que RECEBE conteúdo não herda a declaração de prefixo: ela
@@ -63,6 +66,7 @@ export function bakeLayers(
       if (typeof slotObj.fileUrl === 'string') {
         updated.fileUrl = slotObj.fileUrl
         explicitFileUrl.add(layer.id)
+        if (semantico != null) fileUrlSemantico.add(i)
       }
       // O render pula `visible === false` — e o editor mostra a camada como
       // oculta, então quem abrir a arte consegue religá-la. `hidden: true` é
@@ -84,7 +88,19 @@ export function bakeLayers(
   })
 
   const explicitFileUrlIds = [...explicitFileUrl]
-  if (!imageUrl) return { layers, imageApplied: false, changedTextIds, explicitFileUrlIds }
+  if (!imageUrl) return { layers, imageApplied: false, changedTextIds, explicitFileUrlIds, imageBloqueadaPeloSemantico: false }
+
+  /**
+   * Contrato NOVO estrito (opção C do #208): se o alvo NATURAL da foto — o que esta regra escolheria sem nenhum valor
+   * explícito — recebeu `fileUrl` por _slots/_papeis, a foto genérica não escorre para outra imagem. O legado por
+   * id/nome segue tolerante: a foto cai na próxima vaga dinâmica, como sempre.
+   */
+  const vaga = (layer: any) => layer.type === 'image' && (layer.isDynamic || layer.id === 'bg-img')
+  const vazia = sourceLayers.findIndex((l: any) => vaga(l) && !l.fileUrl)
+  const natural = vazia !== -1 ? vazia : sourceLayers.findIndex(vaga)
+  if (natural !== -1 && fileUrlSemantico.has(natural)) {
+    return { layers, imageApplied: false, changedTextIds, explicitFileUrlIds, imageBloqueadaPeloSemantico: true }
+  }
 
   const isImageTarget = (layer: any) =>
     layer.type === 'image' && (layer.isDynamic || layer.id === 'bg-img') && !explicitFileUrl.has(layer.id)
@@ -92,8 +108,8 @@ export function bakeLayers(
   const target =
     layers.find((l: any) => isImageTarget(l) && !l.fileUrl) ?? layers.find(isImageTarget)
 
-  if (!target) return { layers, imageApplied: false, changedTextIds, explicitFileUrlIds }
+  if (!target) return { layers, imageApplied: false, changedTextIds, explicitFileUrlIds, imageBloqueadaPeloSemantico: false }
 
   target.fileUrl = imageUrl
-  return { layers, imageApplied: true, changedTextIds, explicitFileUrlIds }
+  return { layers, imageApplied: true, changedTextIds, explicitFileUrlIds, imageBloqueadaPeloSemantico: false }
 }

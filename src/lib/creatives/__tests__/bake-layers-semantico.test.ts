@@ -38,3 +38,41 @@ describe('bakeLayers com valores semânticos por índice', () => {
     expect(bakeLayers(camadas, sv, null, new Map())).toEqual(bakeLayers(camadas, sv, null))
   })
 })
+
+describe('opção C (#208): fileUrl SEMÂNTICO no primeiro alvo da foto é estrito; o legado segue como sempre', () => {
+  const dyn = (id: string) => ({ id, name: id, type: 'image', isDynamic: true, visible: true })
+  const semantico = (i: number, fileUrl: string) => new Map([valor(i, { fileUrl })])
+
+  it('1. semântico no primeiro alvo: preserva, não escorre para a segunda, imageApplied false e motivo', () => {
+    const r = bakeLayers([dyn('bg'), dyn('segunda')], {}, 'https://generica', semantico(0, 'https://semantica'))
+    expect(r.layers.map((l) => l.fileUrl)).toEqual(['https://semantica', undefined])
+    expect(r.imageApplied).toBe(false)
+    expect(r.imageBloqueadaPeloSemantico).toBe(true)
+  })
+
+  it('2. semântico na segunda, primeira livre: a genérica vai para a primeira', () => {
+    const r = bakeLayers([dyn('bg'), dyn('segunda')], {}, 'https://generica', semantico(1, 'https://semantica'))
+    expect(r.layers.map((l) => l.fileUrl)).toEqual(['https://generica', 'https://semantica'])
+    expect(r.imageApplied).toBe(true)
+    expect(r.imageBloqueadaPeloSemantico).toBe(false)
+  })
+
+  it('3. LEGADO por layerId no primeiro alvo: comportamento histórico (a genérica cai na próxima dinâmica)', () => {
+    const r = bakeLayers([dyn('bg'), dyn('segunda')], { bg: { fileUrl: 'https://legado' } }, 'https://generica')
+    expect(r.layers.map((l) => l.fileUrl)).toEqual(['https://legado', 'https://generica'])
+    expect(r.imageApplied).toBe(true)
+    expect(r.imageBloqueadaPeloSemantico).toBe(false)
+  })
+
+  it('3b. LEGADO pelo nome no primeiro alvo: idem', () => {
+    const r = bakeLayers([{ ...dyn('bg'), name: 'Fundo' }, dyn('segunda')], { Fundo: { fileUrl: 'https://legado' } }, 'https://generica')
+    expect(r.layers.map((l) => l.fileUrl)).toEqual(['https://legado', 'https://generica'])
+  })
+
+  it('4. origem semanticRole (_papeis): mesma regra de _slots', () => {
+    const papel = new Map([[0, { indice: 0, valor: { fileUrl: 'https://papel' }, origem: { tipo: 'semanticRole' as const, chave: 'foto' } }]])
+    const r = bakeLayers([dyn('bg'), dyn('segunda')], {}, 'https://generica', papel)
+    expect(r.layers.map((l) => l.fileUrl)).toEqual(['https://papel', undefined])
+    expect(r.imageBloqueadaPeloSemantico).toBe(true)
+  })
+})

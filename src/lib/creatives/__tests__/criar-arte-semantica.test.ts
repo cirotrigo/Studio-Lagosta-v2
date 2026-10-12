@@ -452,3 +452,30 @@ it('Codex #208 — CP5 (rodada 3): semântico só de imagem numa página com "_n
   await createArteRapida({ projectId: 8, sourcePageId: 'p-m2', slotValues: { _slots: { f: { fileUrl: 'https://f' } } } })
   expect(conteudo('i').fileUrl).toBe('https://f')
 })
+
+describe('opção C (#208) na CRIAÇÃO: fileUrl semântico no primeiro alvo não deixa a foto escorrer', () => {
+  const duasFotos = () => estado.paginas.set('p-2f', pagina('p-2f', [foto('bg', { metadata: { slot: { id: 'fundo' } } }), foto('segunda', { metadata: { slot: { id: 'detalhe' } } })]))
+
+  it('_slots no fundo + _imageUrl: segunda intacta, imageApplied false, aviso com a causa', async () => {
+    duasFotos()
+    const r = await createArteRapida({ projectId: 8, sourcePageId: 'p-2f', slotValues: { _imageUrl: 'https://generica', _slots: { fundo: { fileUrl: 'https://semantica' } } } })
+    expect(conteudo('bg').fileUrl).toBe('https://semantica')
+    expect(conteudo('segunda').fileUrl).toBeUndefined()
+    expect(r.imageApplied).toBe(false)
+    expect(r.imageWarning).toMatch(/_slots\/_papeis/)
+  })
+
+  it('_slots na segunda: a genérica vai para o fundo', async () => {
+    duasFotos()
+    const r = await createArteRapida({ projectId: 8, sourcePageId: 'p-2f', slotValues: { _imageUrl: 'https://generica', _slots: { detalhe: { fileUrl: 'https://semantica' } } } })
+    expect([conteudo('bg').fileUrl, conteudo('segunda').fileUrl]).toEqual(['https://generica', 'https://semantica'])
+    expect(r.imageApplied).toBe(true)
+  })
+
+  it('LEGADO por layerId no fundo: a genérica cai na segunda, como sempre', async () => {
+    duasFotos()
+    const r = await createArteRapida({ projectId: 8, sourcePageId: 'p-2f', slotValues: { _imageUrl: 'https://generica', bg: { fileUrl: 'https://legado' } } })
+    expect([conteudo('bg').fileUrl, conteudo('segunda').fileUrl]).toEqual(['https://legado', 'https://generica'])
+    expect(r.imageApplied).toBe(true)
+  })
+})

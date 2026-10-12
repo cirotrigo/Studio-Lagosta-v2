@@ -421,3 +421,30 @@ it('Codex #208 — fallback: _papeis {foto: {fileUrl}} no fundo + imageUrl: logo
   expect(camada('logo').fileUrl).toBe('https://blob.test/logo.png')
   expect(r.imageApplied).toBe(false)
 })
+
+describe('opção C (#208) no AJUSTE: fileUrl semântico no primeiro alvo não deixa a foto escorrer', () => {
+  const dyn = (id: string, extra: Record<string, unknown> = {}) => ({ id, name: id, type: 'image', isDynamic: true, visible: true, order: 0, position: { x: 0, y: 0 }, size: { width: 100, height: 100 }, ...extra })
+  const camada = (id: string) => (banco.pagina.layers as Array<Record<string, any>>).find((l) => l.id === id)!
+  const duasFotos = () => {
+    banco.pagina = { ...banco.pagina, layers: [dyn('bg', { metadata: { compositor: { papel: 'foto' }, slot: { id: 'fundo' } } }), dyn('segunda'), ...(banco.pagina.layers as unknown[])] }
+  }
+
+  it.each([
+    ['_slots', { _slots: { fundo: { fileUrl: 'https://blob.test/semantica.jpg' } } }],
+    ['_papeis', { _papeis: { foto: { fileUrl: 'https://blob.test/semantica.jpg' } } }],
+  ])('%s no fundo + imageUrl: segunda intacta, imageApplied false, aviso com a causa', async (_n, slotValues) => {
+    duasFotos()
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', imageUrl: 'https://blob.test/generica.jpg', slotValues })
+    expect(camada('bg').fileUrl).toBe('https://blob.test/semantica.jpg')
+    expect(camada('segunda').fileUrl).toBeUndefined()
+    expect(r.imageApplied).toBe(false)
+    expect(r.imageWarning).toMatch(/_slots\/_papeis/)
+  })
+
+  it('LEGADO por layerId no fundo: a genérica cai na segunda, como sempre', async () => {
+    duasFotos()
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', imageUrl: 'https://blob.test/generica.jpg', slotValues: { bg: { fileUrl: 'https://blob.test/legado.jpg' } } })
+    expect([camada('bg').fileUrl, camada('segunda').fileUrl]).toEqual(['https://blob.test/legado.jpg', 'https://blob.test/generica.jpg'])
+    expect(r.imageApplied).toBe(true)
+  })
+})

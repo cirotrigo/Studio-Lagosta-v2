@@ -623,6 +623,10 @@ export interface CreateArteRapidaResult {
 /** As chaves de `slotValues` que não endereçam camada: controles da foto e endereçamento semântico. */
 const CHAVES_RESERVADAS = new Set(['_driveImageId', '_imageUrl', '_slots', '_papeis'])
 
+/** O alvo principal da foto recebeu `fileUrl` por _slots/_papeis: a foto genérica não escorre (opção C do #208). */
+const AVISO_FOTO_BLOQUEADA_PELO_SEMANTICO =
+  'A foto não foi aplicada: o alvo principal da foto já recebeu um fileUrl por _slots/_papeis. Pelo contrato semântico, endereçe cada imagem explicitamente.'
+
 /** Erros do resolvedor semântico viram UM CreativeError: o código do primeiro, todos em `details.erros` (sem conteúdo). */
 function erroDeValores(erros: ErroDeValor[], status: number): CreativeError {
   return new CreativeError(erros[0].codigo, `Os valores semânticos não puderam ser aplicados (${erros.map((e) => e.codigo).join(', ')}).`, status, { erros })
@@ -807,7 +811,7 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
     sourcePage.Template.dimensions,
   )
 
-  const { layers: bakedLayers, imageApplied, changedTextIds } = bakeLayers(camadasDoModelo, efetivo, resolved.url, valores)
+  const { layers: bakedLayers, imageApplied, changedTextIds, imageBloqueadaPeloSemantico } = bakeLayers(camadasDoModelo, efetivo, resolved.url, valores)
 
   // Texto novo maior (ou menor) que o do template: medir a quebra real e
   // reacomodar as pilhas de combinação; texto solto cresce a própria caixa
@@ -844,7 +848,9 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
   const imageWarning =
     resolved.warning ??
     (resolved.url && !imageApplied
-      ? 'A imagem foi resolvida mas o template não tem camada de imagem dinâmica para recebê-la'
+      ? imageBloqueadaPeloSemantico
+        ? AVISO_FOTO_BLOQUEADA_PELO_SEMANTICO
+        : 'A imagem foi resolvida mas o template não tem camada de imagem dinâmica para recebê-la'
       : undefined)
 
   const pageName = input.name ?? `${modelo.name} — ${new Date().toLocaleString('pt-BR')}`
@@ -1175,7 +1181,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
   // Só o FUNDO: se ele recebeu `fileUrl` explícito (legado ou _slots/_papeis), a foto genérica não é aplicada — nem
   // nele (descartaria o valor pedido) nem na imagem seguinte, que pode ser a logo (codex review do B1c, #208).
   let fundoComFileUrlExplicito = false
-  if (!imageApplied && resolved.url) {
+  if (!imageApplied && resolved.url && !baked.imageBloqueadaPeloSemantico) {
     const fundo = (bakedLayers as any[]).find((l) => l.type === 'image')
     fundoComFileUrlExplicito = !!fundo && baked.explicitFileUrlIds.includes(fundo.id)
     if (fundo && !fundoComFileUrlExplicito) {
@@ -1218,7 +1224,9 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
   const imageWarning =
     resolved.warning ??
     (resolved.url && !imageApplied
-      ? fundoComFileUrlExplicito
+      ? baked.imageBloqueadaPeloSemantico
+        ? AVISO_FOTO_BLOQUEADA_PELO_SEMANTICO
+        : fundoComFileUrlExplicito
         ? 'A foto não foi aplicada: o fundo recebeu um fileUrl explícito nesta mesma chamada.'
         : 'A imagem foi resolvida mas a arte não tem camada de imagem dinâmica para recebê-la'
       : undefined)
