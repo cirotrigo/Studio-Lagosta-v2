@@ -158,3 +158,29 @@ describe('a fronteira antes da adoção: _slots e _papeis são IGNORADOS pelo le
     expect(aviso).not.toHaveBeenCalled()
   })
 })
+
+describe('o casamento legado NÃO exclui chaves com "_" (isControlKey só serve ao diagnóstico)', () => {
+  it('layer com id começando com "_" casa pelo id, nos dois caminhos', () => {
+    const l = texto('_x', 'nome', 'Modelo')
+    expect(bakeLayers([l], { _x: 'pelo id' }, null).layers[0].content).toBe('pelo id')
+    expect(aplicarSlotNaCamada(l, { _x: 'pelo id' }).content).toBe('pelo id')
+  })
+
+  it('layer com name começando com "_" casa pelo nome, nos dois caminhos', () => {
+    const l = texto('l1', '_n', 'Modelo')
+    expect(bakeLayers([l], { _n: 'pelo nome' }, null).layers[0].content).toBe('pelo nome')
+    expect(aplicarSlotNaCamada(l, { _n: 'pelo nome' }).content).toBe('pelo nome')
+  })
+
+  it('id presente vence o nome também com "_"', () => {
+    const l = texto('_x', '_n', 'Modelo')
+    expect(bakeLayers([l], { _x: 'id', _n: 'nome' }, null).layers[0].content).toBe('id')
+    expect(aplicarSlotNaCamada(l, { _x: 'id', _n: 'nome' }).content).toBe('id')
+  })
+
+  it('id com null/undefined deixa cair para o nome (a regra ??)', () => {
+    const l = texto('l1', 'headline', 'Modelo')
+    expect(bakeLayers([l], { l1: null, headline: 'nome' }, null).layers[0].content).toBe('nome')
+    expect(aplicarSlotNaCamada(l, { l1: undefined, headline: 'nome' }).content).toBe('nome')
+  })
+})

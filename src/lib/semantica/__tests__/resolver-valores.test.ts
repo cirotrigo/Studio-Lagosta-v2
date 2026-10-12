@@ -109,8 +109,8 @@ describe('conflito entre _slots e _papeis na MESMA camada', () => {
     expect(codigos(resolverValoresSemanticos(pagina, { _slots: { titulo: '' }, _papeis: { headline: { content: '' } } }))).toEqual(['VALOR_CONFLITANTE'])
   })
 
-  it('objeto com chave desconhecida nunca é equivalente', () => {
-    expect(codigos(resolverValoresSemanticos(pagina, { _slots: { titulo: { content: 'A', x: 1 } }, _papeis: { headline: { content: 'A', x: 1 } } }))).toEqual(['VALOR_CONFLITANTE'])
+  it('objeto com chave fora do contrato semântico é VALOR_INVALIDO (fail-closed), nunca entra na comparação', () => {
+    expect(codigos(resolverValoresSemanticos(pagina, { _slots: { titulo: { content: 'A', x: 1 } }, _papeis: { headline: { content: 'A', x: 1 } } }))).toEqual(['VALOR_INVALIDO', 'VALOR_INVALIDO'])
   })
 })
 
@@ -160,5 +160,81 @@ describe('revisão adversarial B1a', () => {
     const r = resolverValoresSemanticos(foraDeOrdem, { _slots: { titulo: 'X' } })
     expect([...r.valores.keys()]).toEqual([1])
     expect(foraDeOrdem[1].id).toBe('a')
+  })
+})
+
+describe('contrato SEMÂNTICO: string ou { content?, fileUrl?, hidden: true } — fail-closed', () => {
+  const valida = (valor: unknown) => codigos(resolverValoresSemanticos(pagina, { _slots: { titulo: valor } }))
+
+  it('válidos', () => {
+    for (const v of ['X', '', { content: 'X' }, { content: '' }, { fileUrl: 'https://x' }, { hidden: true }, { content: 'X', hidden: true }, { content: 'X', fileUrl: 'https://x' }]) {
+      expect(valida(v)).toEqual([])
+    }
+  })
+
+  it('papel e bloco são identidade interna: inválidos no contrato semântico', () => {
+    expect(valida({ papel: 'cta' })).toEqual(['VALOR_INVALIDO'])
+    expect(valida({ bloco: 'b1' })).toEqual(['VALOR_INVALIDO'])
+    expect(valida({ content: 'X', papel: 'cta' })).toEqual(['VALOR_INVALIDO'])
+  })
+
+  it('chave desconhecida, objeto vazio, array e null: inválidos', () => {
+    for (const v of [{ banana: 123 }, {}, ['x'], null]) expect(valida(v)).toEqual(['VALOR_INVALIDO'])
+  })
+
+  it('tipos errados e operações sem efeito: inválidos', () => {
+    for (const v of [{ content: 3 }, { fileUrl: '' }, { fileUrl: 7 }, { hidden: false }, { hidden: 'sim' }]) expect(valida(v)).toEqual(['VALOR_INVALIDO'])
+  })
+})
+
+describe('a fonte legada espelha o casamento real (id ?? nome), inclusive com "_"', () => {
+  const comUnderscore: Layer[] = [camada({ id: '_x', name: '_n', metadata: papel('headline', 'titulo') })]
+
+  it('id com "_" é fonte legada efetiva → conflita', () => {
+    expect(resolverValoresSemanticos(comUnderscore, { _x: 'A', _slots: { titulo: 'B' } }).erros[0]).toMatchObject({ codigo: 'VALOR_CONFLITANTE', origens: [{ tipo: 'layerId', chave: '_x' }, { tipo: 'slotId', chave: 'titulo' }] })
+  })
+
+  it('name com "_" sem id → fonte efetiva → conflita', () => {
+    expect(resolverValoresSemanticos(comUnderscore, { _n: 'A', _slots: { titulo: 'B' } }).erros[0]).toMatchObject({ codigo: 'VALOR_CONFLITANTE', origens: [{ tipo: 'name', chave: '_n' }, { tipo: 'slotId', chave: 'titulo' }] })
+  })
+
+  it('id null deixa o nome ser a fonte efetiva', () => {
+    expect(resolverValoresSemanticos(pagina, { 'text-h': null, Título: 'B', _slots: { titulo: 'A' } }).erros[0]).toMatchObject({ codigo: 'VALOR_CONFLITANTE', origens: [{ tipo: 'name', chave: 'Título' }, { tipo: 'slotId', chave: 'titulo' }] })
+  })
+})
+
+describe('_slots e _papeis são reservados: não podem colidir com id/name de layer', () => {
+  it('layer com id "_slots" e o contrato novo em uso → CHAVE_RESERVADA_COLIDE_COM_LAYER, nada resolvido daquele campo', () => {
+    const colide: Layer[] = [...pagina, camada({ id: '_slots', name: 'x' })]
+    const r = resolverValoresSemanticos(colide, { _slots: { titulo: 'A' } })
+    expect(r.erros).toEqual([{ codigo: 'CHAVE_RESERVADA_COLIDE_COM_LAYER', chave: '_slots', indice: 4, layerId: '_slots' }])
+    expect(r.valores.size).toBe(0)
+  })
+
+  it('layer com name "_papeis" também colide', () => {
+    const colide: Layer[] = [...pagina, camada({ id: 'l9', name: '_papeis' })]
+    expect(codigos(resolverValoresSemanticos(colide, { _papeis: { cta: 'A' } }))).toEqual(['CHAVE_RESERVADA_COLIDE_COM_LAYER'])
+  })
+
+  it('sem o campo reservado em uso, a layer de nome reservado não é problema desta função', () => {
+    const colide: Layer[] = [...pagina, camada({ id: 'l9', name: '_papeis' })]
+    expect(resolverValoresSemanticos(colide, { _slots: { titulo: 'A' } }).erros).toEqual([])
+  })
+})
+
+describe('equivalência legado ↔ semântico pelo EFEITO editável', () => {
+  it('legado com papel/bloco internos e o mesmo content não conflita', () => {
+    expect(resolverValoresSemanticos(pagina, { 'text-h': { content: 'Reserve', papel: 'headline', bloco: 'b1' }, _slots: { titulo: { content: 'Reserve' } } }).erros).toEqual([])
+    expect(resolverValoresSemanticos(pagina, { 'text-h': { content: 'Reserve', papel: 'headline' }, _slots: { titulo: 'Reserve' } }).erros).toEqual([])
+  })
+
+  it('diferenças reais continuam conflito: content, fileUrl, hidden', () => {
+    expect(codigos(resolverValoresSemanticos(pagina, { 'text-h': { content: 'A', papel: 'headline' }, _slots: { titulo: { content: 'B' } } }))).toEqual(['VALOR_CONFLITANTE'])
+    expect(codigos(resolverValoresSemanticos(pagina, { 'text-h': { fileUrl: 'https://a' }, _slots: { titulo: { fileUrl: 'https://b' } } }))).toEqual(['VALOR_CONFLITANTE'])
+    expect(codigos(resolverValoresSemanticos(pagina, { 'text-h': { content: 'A' }, _slots: { titulo: { content: 'A', hidden: true } } }))).toEqual(['VALOR_CONFLITANTE'])
+  })
+
+  it('"" × { content: "" } continua conflito, também contra o legado', () => {
+    expect(codigos(resolverValoresSemanticos(pagina, { 'text-h': '', _slots: { titulo: { content: '' } } }))).toEqual(['VALOR_CONFLITANTE'])
   })
 })
