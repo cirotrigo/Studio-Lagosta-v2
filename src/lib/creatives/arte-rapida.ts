@@ -51,7 +51,7 @@ import {
   escolherPaginaPelaFoto,
   lerFotoParaMedicao,
 } from '@/lib/creatives/halo/integracao-arte-rapida'
-import type { LayoutPelaFoto } from '@/lib/creatives/halo/layout-pela-foto'
+import { ehTemplateDeTresLayouts, type LayoutPelaFoto } from '@/lib/creatives/halo/layout-pela-foto'
 import { registerProjectFonts } from '@/lib/posts/register-project-fonts'
 import type { Layer } from '@/types/template'
 import { problemaDoAjuste, type Ajuste } from '@/lib/creatives/revisao/contrato'
@@ -402,7 +402,11 @@ export async function prepareCreative(input: PrepareCreativeInput): Promise<Prep
       })
     : []
   // A MESMA análise da principal (B1b): campos e diagnóstico, nenhuma query a mais.
-  const altAnaliseById = new Map(altLayers.map((p) => [p.id, analisarSlotFields(p.layers)]))
+  // Família "(3 layouts)": a criação pode assar sobre uma irmã, então nenhum layerId é prometido (B1b).
+  const nomeDoTemplateDaAlternativa = new Map(altRefs.map((p: any) => [p.id, p.templateName as string]))
+  const altAnaliseById = new Map(
+    altLayers.map((p) => [p.id, analisarSlotFields(p.layers, { paginaPodeSerSubstituida: ehTemplateDeTresLayouts(nomeDoTemplateDaAlternativa.get(p.id)) })]),
+  )
   const alternatives = altRefs.map((p: any) => ({
     id: p.id,
     name: p.name,
@@ -431,7 +435,7 @@ export async function prepareCreative(input: PrepareCreativeInput): Promise<Prep
     throw new CreativeError('PAGE_NOT_FOUND', `Page not found: ${bestRef.id}`, 404)
   }
 
-  const { slotFields, semanticIssues } = analisarSlotFields(page.layers)
+  const { slotFields, semanticIssues } = analisarSlotFields(page.layers, { paginaPodeSerSubstituida: ehTemplateDeTresLayouts(bestRef.templateName) })
 
   /**
    * O ÚNICO ponto que enxerga os modelos rejeitados. Daqui para a frente a

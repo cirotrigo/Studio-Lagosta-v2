@@ -266,3 +266,37 @@ describe('camada oculta no modelo não é prometida (codex review do B1b)', () =
     expect(r.slotFields[1].semantic.addressableBy).toEqual(['layerId'])
   })
 })
+
+describe('página que a criação pode trocar por uma irmã (família "(3 layouts)") — decisão do Ciro, opção B', () => {
+  const pagina = [
+    texto('t-e', 'Endereço', 'Rua A', papel('servico', 'servico-endereco')),
+    texto('t-h', 'Horário', '18h', papel('servico', 'servico-horario')),
+    texto('t-t', 'headline', 'Título'),
+  ]
+
+  it('template normal: a camada segura promete layerId', () => {
+    expect(analisarSlotFields(pagina).slotFields.map((f) => f.semantic.addressableBy)).toEqual([['layerId'], ['layerId'], ['layerId']])
+    expect(analisarSlotFields(pagina, { paginaPodeSerSubstituida: false }).slotFields[2].semantic.addressableBy).toEqual(['layerId'])
+  })
+
+  it('a mesma página numa família que troca: nada prometido, com PAGE_MAY_CHANGE_BY_LAYOUT no field', () => {
+    for (const f of analisarSlotFields(pagina, { paginaPodeSerSubstituida: true }).slotFields) {
+      expect(f.semantic.addressableBy).toEqual([])
+      expect(f.semantic.problems).toContainEqual({ code: 'PAGE_MAY_CHANGE_BY_LAYOUT' })
+    }
+  })
+
+  it('a semântica continua inteira: slot, papel, ambiguidade e os outros problemas', () => {
+    const comOculta = [...pagina, texto('t-o', 'Oculta', 'x', undefined, { visible: false })]
+    const r = analisarSlotFields(comOculta, { paginaPodeSerSubstituida: true })
+    expect(r.slotFields[0].semantic.slot).toEqual({ status: 'declared', id: 'servico-endereco' })
+    expect(r.slotFields[0].semantic.role).toMatchObject({ status: 'declared', value: 'servico', occurrences: 2, ambiguous: true })
+    expect(r.slotFields[2].semantic.role).toMatchObject({ status: 'inferred', value: 'headline' })
+    expect(r.slotFields[3].semantic.problems).toEqual([{ code: 'LAYER_HIDDEN' }, { code: 'PAGE_MAY_CHANGE_BY_LAYOUT' }])
+  })
+
+  it('não é corrupção: nenhum semanticIssue a mais', () => {
+    expect(analisarSlotFields(pagina, { paginaPodeSerSubstituida: true }).semanticIssues).toEqual(analisarSlotFields(pagina).semanticIssues)
+    expect(analisarSlotFields(pagina, { paginaPodeSerSubstituida: true }).semanticIssues).toEqual([])
+  })
+})

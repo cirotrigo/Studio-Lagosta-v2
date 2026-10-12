@@ -20,9 +20,18 @@
  * camadas) e nenhuma OUTRA camada tem esse id como nome (pelo `id ?? nome` do
  * legado, a chave também cairia nela) e o tipo da camada desenha o valor
  * preenchido (texto, rich-text, imagem — forma, gradiente e logo não), e a
- * camada não está oculta no modelo (o preenchimento não a torna visível). `slotId` e `semanticRole` continuam DESCRITOS em `slot`/`role`,
+ * camada não está oculta no modelo (o preenchimento não a torna visível), e a
+ * página não pode ser trocada pela criação (família "(3 layouts)": com foto,
+ * `createArteRapida` pode assar sobre uma irmã, onde o layerId pode não existir;
+ * a promessa é incondicional, então não depende de haver foto ou `layoutFixo`). `slotId` e `semanticRole` continuam DESCRITOS em `slot`/`role`,
  * mas não prometidos (F1 da revisão adversarial do B1b: anunciá-los antes do
  * preenchimento deixava o agente gerar arte sem o conteúdo, sem erro).
+ *
+ * 🔴 Requisito do B1c para a família "(3 layouts)": antes de anunciar `slotId`
+ * de ponta a ponta nela, provar que a MESMA ocorrência lógica tem o MESMO
+ * `metadata.slot.id` nas páginas irmãs (Topo/Rodapé/Dividido) — são páginas
+ * distintas, não cópias. Se os irmãos não compartilham slotIds, é pré-requisito
+ * de migração/marcação, nunca fallback por nome.
  *
  * 🔴 Requisito do B1c: o MESMO PR que tornar `_slots` preenchível acrescenta
  * `slotId` aqui; o que tornar `_papeis` preenchível acrescenta `semanticRole` —
@@ -60,6 +69,12 @@ export type ProblemaDoCampo =
   | { code: 'TYPE_NOT_FILLABLE' }
   /** Oculta no modelo: o preenchimento grava o valor, mas não a torna visível, e o render a pula. */
   | { code: 'LAYER_HIDDEN' }
+  /**
+   * A criação padrão pode trocar esta página por uma irmã (família "(3 layouts)", pela foto): o layerId daqui
+   * pode não existir na página realmente usada. Limitação da via de criação — não é corrupção (fica fora de
+   * `semanticIssues`).
+   */
+  | { code: 'PAGE_MAY_CHANGE_BY_LAYOUT' }
 
 export interface SemanticaDoCampo {
   role: {
@@ -117,7 +132,13 @@ export function analiseDePaginaAusente(): AnaliseDosCampos {
   return { slotFields: [], semanticIssues: [{ code: 'PAGE_NOT_LOADED', layerIds: [] }] }
 }
 
-export function analisarSlotFields(raw: unknown): AnaliseDosCampos {
+/** O contexto da via de criação que consome estes campos. */
+export interface ContextoDosCampos {
+  /** A criação padrão pode trocar esta página por uma irmã (família "(3 layouts)"). */
+  paginaPodeSerSubstituida?: boolean
+}
+
+export function analisarSlotFields(raw: unknown, contexto: ContextoDosCampos = {}): AnaliseDosCampos {
   const { camadas: lidas, legivel } = lerCamadas(raw)
   // Ilegível continua com a lista vazia de sempre, mas DIAGNOSTICADA: a criação recusaria essa página.
   if (!legivel) return { slotFields: [], semanticIssues: [{ code: 'LAYERS_UNREADABLE', layerIds: [] }] }
@@ -194,9 +215,11 @@ export function analisarSlotFields(raw: unknown): AnaliseDosCampos {
     if (!preenchivel) problems.push({ code: 'TYPE_NOT_FILLABLE' })
     const oculta = l.visible === false
     if (oculta) problems.push({ code: 'LAYER_HIDDEN' })
+    const podeTrocar = contexto.paginaPodeSerSubstituida === true
+    if (podeTrocar) problems.push({ code: 'PAGE_MAY_CHANGE_BY_LAYOUT' })
     const porLayerId = resolverAlvo(camadas, { layerId: d.layerId })
     const addressableBy: SemanticaDoCampo['addressableBy'] =
-      preenchivel && !oculta && 'indice' in porLayerId && porLayerId.indice === i && sombras.length === 0 ? ['layerId'] : []
+      preenchivel && !oculta && !podeTrocar && 'indice' in porLayerId && porLayerId.indice === i && sombras.length === 0 ? ['layerId'] : []
 
     slotFields.push({
       layerId: l.id,

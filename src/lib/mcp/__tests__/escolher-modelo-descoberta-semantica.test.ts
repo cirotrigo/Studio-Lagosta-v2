@@ -6,6 +6,8 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 
+const estado = vi.hoisted(() => ({ nomeDoTemplate: 'Stories' }))
+
 const camadasPrincipal = [
   { id: 't-h', name: 'headline', type: 'text', content: 'Happy hour' },
   { id: 't-e', name: 'Endereço', type: 'text', content: 'Rua A', metadata: { compositor: { papel: 'servico' }, slot: { id: 'servico-endereco' } } },
@@ -21,7 +23,7 @@ vi.mock('@/lib/db', () => ({
     project: { findUnique: vi.fn(async () => ({ id: 1, name: 'Bacana', status: 'ACTIVE', instagramUsername: null, googleDriveImagesFolderId: null, googleDriveFolderId: null })) },
     template: {
       findMany: vi.fn(async () => [
-        { id: 10, name: 'Stories', tags: [], Page: [
+        { id: 10, name: estado.nomeDoTemplate, tags: [], Page: [
           { id: 'p-main', name: 'Happy 1', templateId: 10, tags: ['happy hour'] },
           { id: 'p-alt', name: 'Happy 2', templateId: 10, tags: ['happy hour'] },
         ] },
@@ -85,5 +87,30 @@ describe('alternativa que não volta da consulta (revisão adversarial B1b, F2)'
     const r = await escolher()
     expect(r.alternatives[0].slotFields).toEqual([])
     expect(r.alternatives[0].semanticIssues).toEqual([{ code: 'PAGE_NOT_LOADED', layerIds: [] }])
+  })
+})
+
+describe('família "(3 layouts)": a criação pode trocar a página — nada prometido, na principal e na alternativa', () => {
+  it('principal e alternativa: addressableBy vazio e PAGE_MAY_CHANGE_BY_LAYOUT; a semântica segue descrita; sem query a mais', async () => {
+    const { db } = await import('@/lib/db')
+    vi.clearAllMocks()
+    estado.nomeDoTemplate = 'Stories (3 layouts)'
+    try {
+      const r = await escolher()
+      for (const f of [...r.page.slotFields, ...r.alternatives[0].slotFields]) {
+        expect(f.semantic.addressableBy).toEqual([])
+        expect(f.semantic.problems).toContainEqual({ code: 'PAGE_MAY_CHANGE_BY_LAYOUT' })
+      }
+      expect(r.page.slotFields[1].semantic.slot).toEqual({ status: 'declared', id: 'servico-endereco' })
+      // não é corrupção: o diagnóstico da página não muda por isso
+      expect(r.page.semanticIssues).toEqual([])
+      expect(r.alternatives[0].semanticIssues).toEqual([{ code: 'SLOT_INVALID', layerIds: ['shape-1'] }])
+      // as mesmas consultas de sempre: uma de templates, uma das alternativas, uma da principal
+      expect((db.template.findMany as any).mock.calls).toHaveLength(1)
+      expect((db.page.findMany as any).mock.calls).toHaveLength(1)
+      expect((db.page.findUnique as any).mock.calls).toHaveLength(1)
+    } finally {
+      estado.nomeDoTemplate = 'Stories'
+    }
   })
 })
