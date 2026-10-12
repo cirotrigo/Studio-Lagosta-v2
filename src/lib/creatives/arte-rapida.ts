@@ -131,7 +131,7 @@ function camadasParaBake(raw: unknown, page: { id: string; name?: string | null 
  * slot declarado, com a semântica de cada um (B1b). Moram em `slot-fields.ts`,
  * módulo puro; o reexport mantém quem importava daqui.
  */
-import { analisarSlotFields, type SemanticIssue, type SlotField } from './slot-fields'
+import { analiseDePaginaAusente, analisarSlotFields, type SemanticIssue, type SlotField } from './slot-fields'
 export { analisarSlotFields, slotFieldsFromLayers, type SemanticIssue, type SlotField } from './slot-fields'
 
 // ─── prepare-creative ────────────────────────────────────────────────
@@ -410,8 +410,8 @@ export async function prepareCreative(input: PrepareCreativeInput): Promise<Prep
     templateName: p.templateName,
     tags: p.tags ?? [],
     templateTags: p.templateTags ?? [],
-    slotFields: altAnaliseById.get(p.id)?.slotFields ?? [],
-    semanticIssues: altAnaliseById.get(p.id)?.semanticIssues ?? [],
+    slotFields: (altAnaliseById.get(p.id) ?? analiseDePaginaAusente()).slotFields,
+    semanticIssues: (altAnaliseById.get(p.id) ?? analiseDePaginaAusente()).semanticIssues,
   }))
 
   const page = await db.page.findUnique({

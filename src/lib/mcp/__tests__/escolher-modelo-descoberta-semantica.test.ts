@@ -77,3 +77,13 @@ describe('escolher-modelo devolve a descoberta semântica (B1b)', () => {
     expect(r.page.slotFields[0]).toMatchObject({ layerId: 't-h', name: 'headline', type: 'text', isDynamic: false, currentValue: 'Happy hour' })
   })
 })
+
+describe('alternativa que não volta da consulta (revisão adversarial B1b, F2)', () => {
+  it('não vira "modelo sem campos": PAGE_NOT_LOADED no diagnóstico dela', async () => {
+    const { db } = await import('@/lib/db')
+    ;(db.page.findMany as any).mockResolvedValueOnce([])
+    const r = await escolher()
+    expect(r.alternatives[0].slotFields).toEqual([])
+    expect(r.alternatives[0].semanticIssues).toEqual([{ code: 'PAGE_NOT_LOADED', layerIds: [] }])
+  })
+})

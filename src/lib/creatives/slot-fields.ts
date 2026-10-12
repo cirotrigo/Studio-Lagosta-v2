@@ -21,10 +21,15 @@
  * papel). Multiplicidade de papel não é problema — está em `occurrences` e
  * `ambiguous`; slot e id de camada repetidos são (o `resolverAlvo` os recusa).
  *
+ * `currentValue` só existe para quem já entrava; a camada que entra apenas pelo
+ * slot sai com `""` — sem expor conteúdo que a resposta nunca teve. Camadas
+ * ilegíveis e página que não voltou da consulta aparecem em `semanticIssues`
+ * (`LAYERS_UNREADABLE`, `PAGE_NOT_LOADED`), nunca como "modelo sem campos".
+ *
  * Módulo PURO (não importa o banco): `arte-rapida.ts` reexporta.
  */
 
-import { parsePageLayers } from '@/lib/posts/page-layers'
+import { lerCamadas } from '@/lib/posts/page-layers'
 import { descreverAlvos } from '@/lib/semantica/descritores'
 import { resolverAlvo } from '@/lib/semantica/resolver-alvo'
 import type { OrigemDoPapel } from '@/lib/semantica/ler'
@@ -67,6 +72,10 @@ export type SemanticIssue =
   | { code: 'SLOT_INVALID'; layerIds: string[] }
   | { code: 'SLOT_DUPLICATE'; layerIds: string[]; slotId: string }
   | { code: 'LAYER_ID_DUPLICATE'; layerIds: string[]; occurrences: number }
+  /** As camadas da página não puderam ser lidas: lista vazia NÃO quer dizer modelo sem campos. */
+  | { code: 'LAYERS_UNREADABLE'; layerIds: [] }
+  /** A página não voltou da consulta (alternativa removida no meio): idem. */
+  | { code: 'PAGE_NOT_LOADED'; layerIds: [] }
 
 export interface AnaliseDosCampos {
   slotFields: SlotField[]
@@ -75,8 +84,16 @@ export interface AnaliseDosCampos {
 
 const entraPeloLegado = (l: any) => l?.type === 'text' || (l?.type === 'image' && l?.isDynamic)
 
+/** A análise de uma página que não voltou da consulta — vazia, mas dita (revisão adversarial do B1b, F2). */
+export function analiseDePaginaAusente(): AnaliseDosCampos {
+  return { slotFields: [], semanticIssues: [{ code: 'PAGE_NOT_LOADED', layerIds: [] }] }
+}
+
 export function analisarSlotFields(raw: unknown): AnaliseDosCampos {
-  const camadas = parsePageLayers(raw) as Layer[]
+  const { camadas: lidas, legivel } = lerCamadas(raw)
+  // Ilegível continua com a lista vazia de sempre, mas DIAGNOSTICADA: a criação recusaria essa página.
+  if (!legivel) return { slotFields: [], semanticIssues: [{ code: 'LAYERS_UNREADABLE', layerIds: [] }] }
+  const camadas = lidas as Layer[]
   const descritores = descreverAlvos(camadas)
 
   const porId = new Map<string, number[]>()
@@ -109,7 +126,8 @@ export function analisarSlotFields(raw: unknown): AnaliseDosCampos {
   const slotFields: SlotField[] = []
   descritores.forEach((d, i) => {
     const l = camadas[i] as any
-    if (!entraPeloLegado(l) && d.slot.status !== 'valido') return
+    const peloLegado = entraPeloLegado(l)
+    if (!peloLegado && d.slot.status !== 'valido') return
 
     const problems: ProblemaDoCampo[] = []
     const idRepetido = porId.get(d.layerId)!.length > 1
@@ -154,7 +172,9 @@ export function analisarSlotFields(raw: unknown): AnaliseDosCampos {
       name: l.name,
       type: l.type,
       isDynamic: !!l.isDynamic,
-      currentValue: l.type === 'text' ? (l.content ?? '') : (l.fileUrl ?? ''),
+      // Só quem já entrava expõe o valor (a fórmula de sempre). Quem entra SÓ pelo slot (imagem estática, logo,
+      // forma) sai com "": a URL dela nunca constou da resposta (revisão adversarial do B1b, F3).
+      currentValue: !peloLegado ? '' : l.type === 'text' ? (l.content ?? '') : (l.fileUrl ?? ''),
       semantic: { role, slot, addressableBy, problems },
     })
   })

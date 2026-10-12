@@ -55,8 +55,12 @@ describe('compatibilidade aditiva', () => {
     expect(JSON.parse(JSON.stringify(r))).toEqual(r)
   })
 
-  it('camadas ilegíveis: lista vazia, sem issues (o comportamento de antes)', () => {
-    expect(analisarSlotFields('{nao-json')).toEqual({ slotFields: [], semanticIssues: [] })
+  it('camadas ilegíveis: lista vazia (como antes), mas DIAGNOSTICADA — não se confunde com modelo sem campos', () => {
+    expect(analisarSlotFields('{nao-json')).toEqual({ slotFields: [], semanticIssues: [{ code: 'LAYERS_UNREADABLE', layerIds: [] }] })
+  })
+
+  it('página legível sem camadas: lista vazia e SEM issue', () => {
+    expect(analisarSlotFields([])).toEqual({ slotFields: [], semanticIssues: [] })
   })
 })
 
@@ -95,6 +99,7 @@ describe('role.status: declarado, inferido, ausente, inválido', () => {
       { id: 'bg-foto', name: 'Fundo', type: 'image', isDynamic: true, fileUrl: 'https://x' },
       { id: 'logo', name: 'Logo', type: 'logo', metadata: { slot: { id: 'logo-principal' } } },
     ])
+    expect(r.slotFields[1].currentValue).toBe('')
     expect(r.slotFields.map((f) => [f.layerId, f.semantic.role.value, f.semantic.role.origin])).toEqual([
       ['bg-foto', 'foto', 'id-reservado'],
       ['logo', 'logo', 'tipo'],
@@ -104,10 +109,17 @@ describe('role.status: declarado, inferido, ausente, inválido', () => {
 })
 
 describe('slot e entrada de camadas', () => {
-  it('slot explícito numa camada fora do filtro legado: entra, com isDynamic honesto', () => {
-    const r = analisarSlotFields([{ id: 'img-fixa', name: 'Fixa', type: 'image', fileUrl: 'https://x', metadata: { slot: { id: 'foto-fixa' } } }])
+  it('slot explícito numa camada fora do filtro legado: entra, com isDynamic honesto e SEM expor o conteúdo dela', () => {
+    const r = analisarSlotFields([{ id: 'img-fixa', name: 'Fixa', type: 'image', fileUrl: 'https://x/interno?token=1', metadata: { slot: { id: 'foto-fixa' } } }])
     expect(r.slotFields).toHaveLength(1)
-    expect(r.slotFields[0]).toMatchObject({ layerId: 'img-fixa', isDynamic: false, currentValue: 'https://x', semantic: { slot: { status: 'declared', id: 'foto-fixa' } } })
+    // a URL da imagem estática nunca constou da resposta: quem entra SÓ pelo slot não ganha currentValue
+    expect(r.slotFields[0]).toMatchObject({ layerId: 'img-fixa', isDynamic: false, currentValue: '', semantic: { slot: { status: 'declared', id: 'foto-fixa' } } })
+    expect(JSON.stringify(r)).not.toContain('interno')
+  })
+
+  it('texto e imagem dinâmica com slot continuam com o currentValue de sempre', () => {
+    const r = analisarSlotFields([texto('t1', 'T', 'Olá', { slot: { id: 's1' } }), { id: 'i1', name: 'I', type: 'image', isDynamic: true, fileUrl: 'https://dyn', metadata: { slot: { id: 's2' } } }])
+    expect(r.slotFields.map((f) => f.currentValue)).toEqual(['Olá', 'https://dyn'])
   })
 
   it('dois servico com slots: os dois ambíguos por papel, cada um endereçável pelo seu slot; não é issue', () => {
