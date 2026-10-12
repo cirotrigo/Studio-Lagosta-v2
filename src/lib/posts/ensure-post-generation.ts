@@ -49,7 +49,13 @@ export const chaveDasArtesDoPost = (postId: string) => `catalogo-do-post:${postI
  * quando faltar. Nunca lança: se falhar, o post segue sem o vínculo (o botão
  * some, mas a publicação não pode quebrar por causa disso).
  */
-export async function ensurePostGeneration(postId: string): Promise<string | null> {
+/**
+ * `midiaEsperada` (B1d checkpoint d, Codex rodada 9): o render passa a URL que ESTA execução confirmou. O vínculo só
+ * acontece se o post ainda aponta para ela — o CAS exige `mediaUrls = [url]` e `renderedImageUrl = url`, nos dois
+ * ramos. Sem isso, uma execução vencida (a arte foi invalidada e outra reservou) gravava o `generationId` da arte
+ * antiga, e o render seguinte não o corrigia. Os outros chamadores não passam nada: comportamento de sempre.
+ */
+export async function ensurePostGeneration(postId: string, opcoes: { midiaEsperada?: string } = {}): Promise<string | null> {
   try {
     // O post que já tem vínculo não espera ninguém: um vínculo não é desfeito por quem cria.
     const previa = await db.socialPost.findUnique({ where: { id: postId }, select: { generationId: true } })
@@ -62,8 +68,10 @@ export async function ensurePostGeneration(postId: string): Promise<string | nul
      * ficava órfã na galeria. Sob a trava do post, quem chega depois relê e
      * encontra o vínculo que a primeira gravou.
      */
-    return await comTravaPorChave(chaveDasArtesDoPost(postId), (tx) => vincularSobATrava(tx, postId))
+    return await comTravaPorChave(chaveDasArtesDoPost(postId), (tx) => vincularSobATrava(tx, postId, opcoes.midiaEsperada))
   } catch (error) {
+    // A arte mudou no meio do vínculo: a transação desfez a Generation criada — não é falha.
+    if (error === ARTE_MUDOU) return null
     // Nunca derruba quem chamou: agendar e publicar são mais importantes que
     // o vínculo que habilita a melhoria.
     console.error(`[ensure-post-generation] falhou para o post ${postId}:`, error)
@@ -71,8 +79,11 @@ export async function ensurePostGeneration(postId: string): Promise<string | nul
   }
 }
 
+/** Lançado dentro da transação para desfazer a Generation recém-criada quando o CAS do vínculo falha pela mídia. */
+const ARTE_MUDOU = Symbol('arte-mudou')
+
 /** O vínculo, com todas as leituras e escritas pela transação que segura a trava do post. */
-async function vincularSobATrava(tx: Prisma.TransactionClient, postId: string): Promise<string | null> {
+async function vincularSobATrava(tx: Prisma.TransactionClient, postId: string, midiaEsperada?: string): Promise<string | null> {
   const post = await tx.socialPost.findUnique({
     where: { id: postId },
     select: {
@@ -91,7 +102,10 @@ async function vincularSobATrava(tx: Prisma.TransactionClient, postId: string): 
   if (!post) return null
   if (post.generationId) return post.generationId
 
+  // Checagem antecipada só poupa trabalho; quem garante é o CAS do vínculo, abaixo.
+  if (midiaEsperada && !(post.mediaUrls?.length === 1 && post.mediaUrls[0] === midiaEsperada && post.renderedImageUrl === midiaEsperada)) return null
   const arte = post.mediaUrls?.[0] ?? post.renderedImageUrl
+  const doVinculo = { id: post.id, generationId: null, ...(midiaEsperada ? { mediaUrls: { equals: [midiaEsperada] }, renderedImageUrl: midiaEsperada } : {}) }
   // Sem arte não há o que registrar. Post de página nasce assim e volta aqui
   // depois do render (renderPostArt chama de novo).
   if (!arte) return null
@@ -120,10 +134,8 @@ async function vincularSobATrava(tx: Prisma.TransactionClient, postId: string): 
   })
 
   if (existente) {
-    await tx.socialPost.updateMany({
-      where: { id: post.id, generationId: null },
-      data: { generationId: existente.id },
-    })
+    const vinculado = await tx.socialPost.updateMany({ where: doVinculo, data: { generationId: existente.id } })
+    if (vinculado.count === 0 && midiaEsperada) return null
     return existente.id
   }
 
@@ -159,11 +171,12 @@ async function vincularSobATrava(tx: Prisma.TransactionClient, postId: string): 
   // cria não acontece mais, mas outro escritor do vínculo (trocar-arte, a
   // melhoria) não passa por ela — o vínculo dele vale.
   const vinculado = await tx.socialPost.updateMany({
-    where: { id: post.id, generationId: null },
+    where: doVinculo,
     data: { generationId: generation.id },
   })
 
   if (vinculado.count === 0) {
+    if (midiaEsperada) throw ARTE_MUDOU
     const atual = await tx.socialPost.findUnique({
       where: { id: post.id },
       select: { generationId: true },

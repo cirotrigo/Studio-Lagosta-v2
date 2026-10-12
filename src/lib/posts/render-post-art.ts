@@ -187,7 +187,7 @@ export async function renderPostArt(post: RenderablePost): Promise<RenderPostArt
      * o post já tem `generationId`, então a arte melhorada continua sendo a
      * dona do vínculo.
      */
-    await ensurePostGeneration(post.id)
+    await ensurePostGeneration(post.id, { midiaEsperada: result.url })
 
     return { ok: true, url: result.url }
   } catch (error) {
