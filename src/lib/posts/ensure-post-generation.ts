@@ -34,7 +34,7 @@ import { db } from '@/lib/db'
  */
 import { textosDaPagina } from '@/lib/posts/page-layers'
 import { comTravaPorChave } from '@/lib/trava-por-chave'
-import type { Prisma } from '../../../prisma/generated/client'
+import { RenderStatus, type Prisma } from '../../../prisma/generated/client'
 
 /**
  * A chave da trava das artes de UM post (R12-09) — a mesma para quem cria a
@@ -51,8 +51,9 @@ export const chaveDasArtesDoPost = (postId: string) => `catalogo-do-post:${postI
  */
 /**
  * `midiaEsperada` (B1d checkpoint d, Codex rodada 9): o render passa a URL que ESTA execução confirmou. O vínculo só
- * acontece se o post ainda aponta para ela — o CAS exige `mediaUrls = [url]` e `renderedImageUrl = url`, nos dois
- * ramos. Sem isso, uma execução vencida (a arte foi invalidada e outra reservou) gravava o `generationId` da arte
+ * acontece se o post ainda aponta para ela E ainda está RENDERED — o CAS exige `mediaUrls = [url]`,
+ * `renderedImageUrl = url` e `renderStatus = RENDERED`, nos dois ramos (voltar a rascunho mantém a URL e só troca
+ * o status, Codex rodada 10). Sem isso, uma execução vencida (a arte foi invalidada e outra reservou) gravava o `generationId` da arte
  * antiga, e o render seguinte não o corrigia. Os outros chamadores não passam nada: comportamento de sempre.
  */
 export async function ensurePostGeneration(postId: string, opcoes: { midiaEsperada?: string } = {}): Promise<string | null> {
@@ -94,6 +95,7 @@ async function vincularSobATrava(tx: Prisma.TransactionClient, postId: string, m
       generationId: true,
       mediaUrls: true,
       renderedImageUrl: true,
+      renderStatus: true,
       slotValues: true,
       Project: { select: { userId: true, name: true } },
     },
@@ -103,9 +105,9 @@ async function vincularSobATrava(tx: Prisma.TransactionClient, postId: string, m
   if (post.generationId) return post.generationId
 
   // Checagem antecipada só poupa trabalho; quem garante é o CAS do vínculo, abaixo.
-  if (midiaEsperada && !(post.mediaUrls?.length === 1 && post.mediaUrls[0] === midiaEsperada && post.renderedImageUrl === midiaEsperada)) return null
+  if (midiaEsperada && !(post.mediaUrls?.length === 1 && post.mediaUrls[0] === midiaEsperada && post.renderedImageUrl === midiaEsperada && post.renderStatus === RenderStatus.RENDERED)) return null
   const arte = post.mediaUrls?.[0] ?? post.renderedImageUrl
-  const doVinculo = { id: post.id, generationId: null, ...(midiaEsperada ? { mediaUrls: { equals: [midiaEsperada] }, renderedImageUrl: midiaEsperada } : {}) }
+  const doVinculo = { id: post.id, generationId: null, ...(midiaEsperada ? { mediaUrls: { equals: [midiaEsperada] }, renderedImageUrl: midiaEsperada, renderStatus: RenderStatus.RENDERED } : {}) }
   // Sem arte não há o que registrar. Post de página nasce assim e volta aqui
   // depois do render (renderPostArt chama de novo).
   if (!arte) return null

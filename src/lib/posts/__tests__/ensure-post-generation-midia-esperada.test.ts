@@ -26,6 +26,7 @@ const tx = {
       if (!p || p.generationId !== where.generationId) return { count: 0 }
       if ('mediaUrls' in where && !igual(p.mediaUrls, where.mediaUrls.equals)) return { count: 0 }
       if ('renderedImageUrl' in where && p.renderedImageUrl !== where.renderedImageUrl) return { count: 0 }
+      if ('renderStatus' in where && p.renderStatus !== where.renderStatus) return { count: 0 }
       estado.post = { ...p, ...data }
       return { count: 1 }
     }),
@@ -63,7 +64,7 @@ const invalidar = () => {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  estado.post = { id: 'post-1', projectId: 8, templateId: 7, pageId: 'p1', generationId: null, mediaUrls: [URL_A], renderedImageUrl: URL_A, slotValues: null }
+  estado.post = { id: 'post-1', projectId: 8, templateId: 7, pageId: 'p1', generationId: null, renderStatus: 'RENDERED', mediaUrls: [URL_A], renderedImageUrl: URL_A, slotValues: null }
   estado.geracoes = []
   estado.antesDoCas = null
 })
@@ -99,6 +100,26 @@ describe('com a mídia esperada: o vínculo só vale para a arte que esta execu�
     estado.geracoes = [{ id: 'g-existente', projectId: 8, resultUrl: URL_A }]
     expect(await ensurePostGeneration('post-1', { midiaEsperada: URL_A })).toBe('g-existente')
     expect(estado.post.generationId).toBe('g-existente')
+  })
+})
+
+describe('Codex rodada 10: a URL ainda é A, mas o post saiu de RENDERED (voltou a rascunho) — o vínculo atrasado não vale', () => {
+  const voltarARascunho = () => {
+    estado.post = { ...estado.post, renderStatus: 'PENDING' } // mediaUrls e renderedImageUrl continuam A
+  }
+
+  it('Generation NOVA: CAS falha, generationId fica nulo e a Generation é desfeita', async () => {
+    estado.antesDoCas = voltarARascunho
+    expect(await ensurePostGeneration('post-1', { midiaEsperada: URL_A })).toBeNull()
+    expect(estado.post.generationId).toBeNull()
+    expect(estado.geracoes).toEqual([])
+  })
+
+  it('Generation EXISTENTE: CAS falha e generationId fica nulo', async () => {
+    estado.geracoes = [{ id: 'g-antiga', projectId: 8, resultUrl: URL_A }]
+    estado.antesDoCas = voltarARascunho
+    expect(await ensurePostGeneration('post-1', { midiaEsperada: URL_A })).toBeNull()
+    expect(estado.post.generationId).toBeNull()
   })
 })
 
