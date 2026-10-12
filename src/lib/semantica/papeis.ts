@@ -18,6 +18,27 @@ export function ehSemanticRole(valor: unknown): valor is SemanticRole {
   return typeof valor === 'string' && (SEMANTIC_ROLES as readonly string[]).includes(valor)
 }
 
+/**
+ * Que tipo de camada pode cumprir cada papel. O compositor só grava papel em
+ * camada de TEXTO (`camadaDoPapel`); sem esta guarda, uma imagem chamada
+ * "headline" virava a manchete da página (revisão adversarial do PR A, F2).
+ */
+const TIPOS_DE_TEXTO = ['text', 'rich-text'] as const
+const TIPOS_DO_PAPEL: Readonly<Record<SemanticRole, readonly string[]>> = {
+  pre: TIPOS_DE_TEXTO,
+  headline: TIPOS_DE_TEXTO,
+  headline2: TIPOS_DE_TEXTO,
+  apoio: TIPOS_DE_TEXTO,
+  cta: TIPOS_DE_TEXTO,
+  servico: TIPOS_DE_TEXTO,
+  foto: ['image', 'video'],
+  logo: ['logo', 'image', 'element'],
+}
+
+export function papelCabeNoTipo(papel: SemanticRole, tipo: unknown): boolean {
+  return typeof tipo === 'string' && TIPOS_DO_PAPEL[papel].includes(tipo)
+}
+
 export type Cardinalidade = 'ONE' | 'OPTIONAL' | 'MANY'
 
 /**

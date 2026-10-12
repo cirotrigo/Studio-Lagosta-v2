@@ -12,21 +12,26 @@
  * numa camada de id `servico` sai `invalido`. O legado (`papelDaCamada`)
  * continua caindo para o id nos consumidores antigos; a fundação só passa a
  * DIAGNOSTICAR. Sem declaração, a inferência segue a ordem de `papelDaCamada`
- * (id, depois nome) — `ler.test.ts` confere a paridade.
+ * (id, depois nome) — `ler.test.ts` confere a paridade em camadas de texto.
+ *
+ * Papel e tipo têm de casar (`papelCabeNoTipo`): papel de texto declarado numa
+ * imagem sai `invalido` com `motivo: 'tipo'`, e a inferência por id/nome não
+ * transforma uma imagem chamada "headline" em manchete. Aqui a fundação
+ * diverge de `papelDaCamada`, que não olha o tipo.
  *
  * Módulo PURO.
  */
 
 import type { Layer } from '@/types/template'
 import { ehPapel } from '@/lib/compositor/papel-do-nome'
-import { ehSemanticRole, type SemanticRole } from './papeis'
+import { ehSemanticRole, papelCabeNoTipo, type SemanticRole } from './papeis'
 
 export type OrigemDoPapel = 'metadata' | 'id' | 'nome' | 'tipo' | 'id-reservado'
 
 export type LeituraDoPapel =
   | { status: 'ausente' }
   | { status: 'valido'; papel: SemanticRole; origem: OrigemDoPapel }
-  | { status: 'invalido'; valor: unknown }
+  | { status: 'invalido'; valor: unknown; motivo: 'valor' | 'tipo' }
 
 export type LeituraDoSlot = { status: 'ausente' } | { status: 'valido'; slotId: string } | { status: 'invalido'; valor: unknown }
 
@@ -45,10 +50,12 @@ export function lerSemanticRole(camada: CamadaLida): LeituraDoPapel {
   const compositor = compositorDe(camada)
   if (compositor && 'papel' in compositor && compositor.papel !== undefined) {
     const valor = compositor.papel
-    return ehSemanticRole(valor) ? { status: 'valido', papel: valor, origem: 'metadata' } : { status: 'invalido', valor }
+    if (!ehSemanticRole(valor)) return { status: 'invalido', valor, motivo: 'valor' }
+    if (!papelCabeNoTipo(valor, camada.type)) return { status: 'invalido', valor, motivo: 'tipo' }
+    return { status: 'valido', papel: valor, origem: 'metadata' }
   }
-  if (ehPapel(camada.id)) return { status: 'valido', papel: camada.id, origem: 'id' }
-  if (ehPapel(camada.name)) return { status: 'valido', papel: camada.name, origem: 'nome' }
+  if (ehPapel(camada.id) && papelCabeNoTipo(camada.id, camada.type)) return { status: 'valido', papel: camada.id, origem: 'id' }
+  if (ehPapel(camada.name) && papelCabeNoTipo(camada.name, camada.type)) return { status: 'valido', papel: camada.name, origem: 'nome' }
   if (camada.type === 'logo') return { status: 'valido', papel: 'logo', origem: 'tipo' }
   if (camada.id === 'bg-foto') return { status: 'valido', papel: 'foto', origem: 'id-reservado' }
   return { status: 'ausente' }

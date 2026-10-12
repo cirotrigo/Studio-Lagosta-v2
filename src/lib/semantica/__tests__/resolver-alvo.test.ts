@@ -172,3 +172,25 @@ describe('resolverAlvo — combinações e entrada', () => {
     }
   })
 })
+
+describe('resolverAlvo — id físico duplicado em qualquer via (revisão adversarial F3)', () => {
+  const pagina = [
+    camada({ id: 'dup', metadata: { compositor: { papel: 'apoio' } } }),
+    camada({ id: 'dup', metadata: { compositor: { papel: 'cta' }, slot: { id: 'cta-principal' } } }),
+  ]
+
+  it('por slot: a camada achada tem id repetido → LAYER_DUPLICADO', () => {
+    expect(codigoDe(resolverAlvo(pagina, { slotId: 'cta-principal' }))).toBe('LAYER_DUPLICADO')
+  })
+
+  it('por papel: idem', () => {
+    expect(codigoDe(resolverAlvo(pagina, { semanticRole: 'cta' }))).toBe('LAYER_DUPLICADO')
+  })
+})
+
+describe('resolverAlvo — tipo (revisão adversarial F2)', () => {
+  it('imagem chamada "headline" não é resolvida como headline', () => {
+    const pagina = [camada({ id: 'img', name: 'headline', type: 'image' }), camada({ id: 'headline' })]
+    expect(idDe(resolverAlvo(pagina, { semanticRole: 'headline' }))).toBe('headline')
+  })
+})

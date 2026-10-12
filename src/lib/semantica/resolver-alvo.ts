@@ -22,6 +22,8 @@
  *    nunca texto ou URL da página. Apresentar conteúdo é da camada de cima,
  *    depois de o acesso à página estar autorizado.
  *
+ * Id físico repetido na página invalida qualquer via (LAYER_DUPLICADO).
+ *
  * Camada oculta conta: filtrá-la esconderia uma ambiguidade real.
  *
  * Módulo PURO.
@@ -138,6 +140,11 @@ export function resolverAlvo(camadas: readonly Layer[], alvo: Alvo): ResultadoDo
   // `in`, não `!r.ok`: com strict:false o TS não estreita a união pelo literal booleano.
   if ('erro' in r) return { ok: false, erro: r.erro }
   const camada = camadas[r.indice]
+  // Id físico repetido invalida QUALQUER via: quem consome o resultado endereça
+  // pelo `layerId`, e a rota de edição por id altera a PRIMEIRA camada com ele
+  // (`findIndex`) — não necessariamente a que o slot ou o papel achou (F3).
+  const mesmoId = indicesOnde(camadas, (c) => c.id === camada.id)
+  if (mesmoId.length > 1) return { ok: false, erro: { codigo: 'LAYER_DUPLICADO', layerId: camada.id, candidatos: candidatos(camadas, mesmoId) } }
   const conflito = (campo: 'slotId' | 'semanticRole'): ResultadoDoAlvo => ({
     ok: false,
     erro: { codigo: 'ALVO_CONFLITANTE', campo, candidatos: [candidatoDe(camada, r.indice)] },

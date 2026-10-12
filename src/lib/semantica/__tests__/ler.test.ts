@@ -61,11 +61,11 @@ describe('lerSemanticRole', () => {
   })
 
   it('🔴 declaração INVÁLIDA não é substituída pela inferência do id', () => {
-    expect(lerSemanticRole(papelInvalidoComIdDePapel[0])).toEqual({ status: 'invalido', valor: 'servicoo' })
+    expect(lerSemanticRole(papelInvalidoComIdDePapel[0])).toEqual({ status: 'invalido', valor: 'servicoo', motivo: 'valor' })
   })
 
   it('papel declarado que não é string também é inválido', () => {
-    expect(lerSemanticRole(camada({ id: 'cta', metadata: { compositor: { papel: 3 } } }))).toEqual({ status: 'invalido', valor: 3 })
+    expect(lerSemanticRole(camada({ id: 'cta', metadata: { compositor: { papel: 3 } } }))).toEqual({ status: 'invalido', valor: 3, motivo: 'valor' })
   })
 
   it('paridade com o legado: concorda com papelDaCamada onde não há metadata inválida', () => {
@@ -93,5 +93,27 @@ describe('lerSlotId', () => {
   it('inválido: slot que não é objeto, ou sem id string', () => {
     expect(lerSlotId(camada({ id: 'a', metadata: { slot: 'cta' } }))).toEqual({ status: 'invalido', valor: 'cta' })
     expect(lerSlotId(camada({ id: 'b', metadata: { slot: { id: 7 } } }))).toEqual({ status: 'invalido', valor: { id: 7 } })
+  })
+})
+
+describe('lerSemanticRole — papel compatível com o tipo (revisão adversarial F2)', () => {
+  it('imagem chamada "headline" não vira headline', () => {
+    expect(lerSemanticRole(camada({ id: 'img-1', name: 'headline', type: 'image' }))).toEqual({ status: 'ausente' })
+  })
+
+  it('logo de id "cta" continua logo, pelo tipo', () => {
+    expect(lerSemanticRole(camada({ id: 'cta', type: 'logo' }))).toEqual({ status: 'valido', papel: 'logo', origem: 'tipo' })
+  })
+
+  it('papel de texto declarado numa imagem é inválido por tipo', () => {
+    expect(lerSemanticRole(camada({ id: 'x', type: 'image', metadata: { compositor: { papel: 'headline' } } }))).toEqual({ status: 'invalido', valor: 'headline', motivo: 'tipo' })
+  })
+
+  it('foto declarada num texto é inválida por tipo', () => {
+    expect(lerSemanticRole(camada({ id: 'x', metadata: { compositor: { papel: 'foto' } } }))).toEqual({ status: 'invalido', valor: 'foto', motivo: 'tipo' })
+  })
+
+  it('rich-text aceita papel de texto', () => {
+    expect(lerSemanticRole(camada({ id: 'cta', type: 'rich-text' }))).toEqual({ status: 'valido', papel: 'cta', origem: 'id' })
   })
 })
