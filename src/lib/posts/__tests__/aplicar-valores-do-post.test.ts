@@ -149,3 +149,12 @@ describe('checkpoint d: o helper diz quais camadas de TEXTO receberam conteúdo 
     expect('changedTextIds' in aplicarValoresDoPost(camadas, { _slots: { inexistente: 'X' } })).toBe(false)
   })
 })
+
+describe('checkpoint d (Codex): post MISTO — o texto legado em outra camada também entra no reflow', () => {
+  it('_slots numa camada e chave legada noutra: as camadas de texto do legado entram pelo critério de hoje (inclusive "")', () => {
+    const camadas = [texto('a', { metadata: { slot: { id: 'sa' } } }), texto('b', { name: 'Título' }), texto('c'), { id: 'i', name: 'Foto', type: 'image', fileUrl: 'x', visible: true }]
+    const r = aplicarValoresDoPost(camadas, { _slots: { sa: 'Semântico' }, Título: 'Legado bem maior', c: '', i: { fileUrl: 'y' } })
+    // o legado mantém o critério de hoje do render: (slots[id] ?? slots[name]) !== undefined em camada text
+    expect(r.changedTextIds).toEqual(['a', 'b', 'c'])
+  })
+})

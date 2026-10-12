@@ -36,9 +36,10 @@ export interface ValoresAplicados<T> {
   erros: ErroDeValor[]
   avisos: AvisoDoPost[]
   /**
-   * Só no sucesso do contrato novo: ids das camadas `text` que receberam conteúdo semântico (string ou
-   * `{ content }`, inclusive igual ao original — o precedente do `bakeLayers`). É a fonte do reflow; `{ fileUrl }`
-   * não entra. No legado o render mantém o cálculo de sempre.
+   * Só no sucesso do contrato novo: ids das camadas `text` que receberam conteúdo — semântico (string ou
+   * `{ content }`, inclusive igual ao original — o precedente do `bakeLayers`) ou, num post misto, legado pelo
+   * critério de hoje do render (`(slots[id] ?? slots[name]) !== undefined`). É a fonte do reflow; `{ fileUrl }` não
+   * entra. No post puramente legado o render mantém o cálculo de sempre.
    */
   changedTextIds?: string[]
 }
@@ -79,7 +80,13 @@ export function aplicarValoresDoPost<T extends CamadaAplicavel>(
   const changedTextIds: string[] = []
   const aplicadas = camadas.map((c, i) => {
     const resolvido = r.valores.get(i)
-    if (!resolvido) return aplicarSlotNaCamada(c, slotValues)
+    if (!resolvido) {
+      // Post MISTO: o texto legado de outra camada também cresce e precisa de reflow (Codex, checkpoint d) —
+      // pelo MESMO critério que o render usa no legado.
+      const legado = (c.id !== undefined ? slotValues[c.id] : undefined) ?? (c.name !== undefined ? slotValues[c.name] : undefined)
+      if ((c as { type?: unknown }).type === 'text' && legado !== undefined && c.id) changedTextIds.push(c.id)
+      return aplicarSlotNaCamada(c, slotValues)
+    }
     const v = resolvido.valor
     if ((c as { type?: unknown }).type === 'text' && (typeof v === 'string' || v.content !== undefined) && c.id) changedTextIds.push(c.id)
     return aplicarSemantico(c, v)

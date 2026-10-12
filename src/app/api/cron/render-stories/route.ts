@@ -93,6 +93,10 @@ export async function GET(req: NextRequest) {
       if (result.motivo === 'falhou' || result.motivo === 'video-removido') {
         console.error(`[render-stories] ✗ ${post.id} failed:`, result.erro)
         failed++
+      } else if (result.motivo === 'falha-semantica') {
+        // B1d (checkpoint d): terminal — RENDER_FAILED já gravado; não volta à fila. A arte precisa de correção.
+        console.error(`[render-stories] ✗ ${post.id} recusa semântica (terminal):`, result.erro)
+        failed++
       } else {
         console.log(`[render-stories] ↩ ${post.id} ${result.motivo} — será renderizado no próximo ciclo`)
       }
