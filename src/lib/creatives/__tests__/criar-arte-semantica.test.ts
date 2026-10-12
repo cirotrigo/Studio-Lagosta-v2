@@ -337,3 +337,22 @@ describe('Codex #208 — CP1: copy posicional VAZIA não é copy (o item sem tex
     expect(r.avisos?.some((a) => a.includes('Rico')) ?? false).toBe(false)
   })
 })
+
+describe('Codex #208 — CP2: contrato autoral sem texto nenhum não publica o texto do modelo como se fosse a copy', () => {
+  it('todos os blocos vazios: COPY_AUTORAL_SEM_TEXTO 422, sem efeito', async () => {
+    const vazio = contrato([{ id: 'h', funcao: 'headline', linhas: [] }])
+    const e = await falha(createArteRapida({ projectId: 8, sourcePageId: 'p-a', slotValues: {}, copyAutoral: vazio }))
+    expect(e).toMatchObject({ code: 'COPY_AUTORAL_SEM_TEXTO', status: 422 })
+    semEfeito()
+  })
+
+  it('bloco vazio ao lado de bloco com texto: o campo do vazio sai oculto (não é perda)', async () => {
+    const misto = contrato([
+      { id: 'h', funcao: 'headline', linhas: ['Noite do vinho'] },
+      { id: 's', funcao: 'servico', linhas: [] },
+    ])
+    await createArteRapida({ projectId: 8, sourcePageId: 'p-a', slotValues: {}, copyAutoral: misto })
+    expect(conteudo('a-h').content).toBe('Noite do vinho')
+    expect(conteudo('a-s').visible).toBe(false)
+  })
+})

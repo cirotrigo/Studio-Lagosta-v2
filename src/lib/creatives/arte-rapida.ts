@@ -703,6 +703,11 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
     if (input.copyAutoral == null) return null
     const lido = lerCopyAutoral(input.copyAutoral)
     if (!lido.copy) throw new CreativeError('COPY_AUTORAL_INVALIDA', `O contrato da copy é inválido: ${lido.problemas.join('; ')}`, 400, { problemas: lido.problemas })
+    // Contrato sem texto nenhum publicaria o texto do MODELO como se fosse a copy aprovada (Codex #208, CP2). Bloco
+    // vazio ao lado de bloco com texto não cai aqui: o campo dele fica descoberto e sai oculto.
+    if (!lido.copy.blocos.some((b) => b.linhas.some((l) => l.trim().length > 0))) {
+      throw new CreativeError('COPY_AUTORAL_SEM_TEXTO', 'O contrato da copy não tem texto em nenhum bloco. Escreva a copy ou crie a arte sem copyAutoral.', 422)
+    }
     return lido.copy
   })()
   const copyPosicional = input.copyPosicional ?? null
