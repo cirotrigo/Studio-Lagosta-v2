@@ -35,6 +35,20 @@
 /** Chave de controle: este `slotValues` é uma cópia do texto da página, não copy própria do post. */
 export const COPIA_DA_PAGINA = '_copiaDaPagina'
 
+/** As chaves que identificam o contrato semântico NOVO num `SocialPost.slotValues` (B1d). */
+export const CHAVES_DO_CONTRATO_SEMANTICO = ['_slots', '_papeis'] as const
+
+/**
+ * O post usa o contrato semântico NOVO (`_slots`/`_papeis`)? Só IDENTIDADE: a presença PRÓPRIA da chave, com
+ * qualquer valor (`{ _slots: null }` conta). Não valida forma, não resolve alvo, não aplica nada — isso é de
+ * `resolverValoresSemanticos`, nos checkpoints seguintes do B1d. Leia sempre o valor PERSISTIDO: uma chave com
+ * `undefined` não sobrevive ao JSON do banco.
+ */
+export function temContratoSemantico(slotValues: unknown): boolean {
+  if (!slotValues || typeof slotValues !== 'object' || Array.isArray(slotValues)) return false
+  return CHAVES_DO_CONTRATO_SEMANTICO.some((chave) => Object.prototype.hasOwnProperty.call(slotValues, chave))
+}
+
 /** A copy da página, marcada como cópia — o formato que o agendamento grava. */
 export function comoCopiaDaPagina(copy: Record<string, unknown>): Record<string, unknown> {
   return { ...copy, [COPIA_DA_PAGINA]: true }
