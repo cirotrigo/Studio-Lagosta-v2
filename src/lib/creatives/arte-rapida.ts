@@ -51,7 +51,7 @@ import {
   escolherPaginaPelaFoto,
   lerFotoParaMedicao,
 } from '@/lib/creatives/halo/integracao-arte-rapida'
-import type { LayoutPelaFoto } from '@/lib/creatives/halo/layout-pela-foto'
+import { ehTemplateDeTresLayouts, type LayoutPelaFoto } from '@/lib/creatives/halo/layout-pela-foto'
 import { registerProjectFonts } from '@/lib/posts/register-project-fonts'
 import type { Layer } from '@/types/template'
 import { problemaDoAjuste, type Ajuste } from '@/lib/creatives/revisao/contrato'
@@ -126,18 +126,13 @@ function camadasParaBake(raw: unknown, page: { id: string; name?: string | null 
   return camadas as any[]
 }
 
-/** Campos preenchíveis de uma página: textos e imagens dinâmicas. */
-export function slotFieldsFromLayers(raw: unknown): SlotField[] {
-  return parseLayers(raw)
-    .filter((l: any) => l.type === 'text' || (l.type === 'image' && l.isDynamic))
-    .map((l: any) => ({
-      layerId: l.id,
-      name: l.name,
-      type: l.type,
-      isDynamic: !!l.isDynamic,
-      currentValue: l.type === 'text' ? (l.content ?? '') : (l.fileUrl ?? ''),
-    }))
-}
+/**
+ * Campos preenchíveis de uma página: textos, imagens dinâmicas e camadas com
+ * slot declarado, com a semântica de cada um (B1b). Moram em `slot-fields.ts`,
+ * módulo puro; o reexport mantém quem importava daqui.
+ */
+import { analiseDePaginaAusente, analisarSlotFields, type SemanticIssue, type SlotField } from './slot-fields'
+export { analisarSlotFields, slotFieldsFromLayers, type SemanticIssue, type SlotField } from './slot-fields'
 
 // ─── prepare-creative ────────────────────────────────────────────────
 
@@ -166,14 +161,6 @@ export interface PrepareCreativeInput {
   day?: string
 }
 
-export interface SlotField {
-  layerId: string
-  name: string
-  type: string
-  isDynamic: boolean
-  currentValue: string
-}
-
 export interface PrepareCreativeResult {
   project: {
     id: number
@@ -191,6 +178,8 @@ export interface PrepareCreativeResult {
     tags: string[]
     templateTags: string[]
     slotFields: SlotField[]
+    /** Diagnóstico semântico da página INTEIRA (B1b), inclusive de camadas que não viram campo. */
+    semanticIssues: SemanticIssue[]
   }
   alternatives: Array<{
     id: string
@@ -201,6 +190,7 @@ export interface PrepareCreativeResult {
     templateTags: string[]
     /** Mesmo formato do principal — sem isso a alternativa era escolha às cegas. */
     slotFields: SlotField[]
+    semanticIssues: SemanticIssue[]
   }>
   /**
    * Id do sinal de aprendizado que registrou ESTA proposta de modelo (`null`
@@ -411,7 +401,12 @@ export async function prepareCreative(input: PrepareCreativeInput): Promise<Prep
         select: { id: true, layers: true },
       })
     : []
-  const altSlotsById = new Map(altLayers.map((p) => [p.id, slotFieldsFromLayers(p.layers)]))
+  // A MESMA análise da principal (B1b): campos e diagnóstico, nenhuma query a mais.
+  // Família "(3 layouts)": a criação pode assar sobre uma irmã, então nenhum layerId é prometido (B1b).
+  const nomeDoTemplateDaAlternativa = new Map(altRefs.map((p: any) => [p.id, p.templateName as string]))
+  const altAnaliseById = new Map(
+    altLayers.map((p) => [p.id, analisarSlotFields(p.layers, { paginaPodeSerSubstituida: ehTemplateDeTresLayouts(nomeDoTemplateDaAlternativa.get(p.id)) })]),
+  )
   const alternatives = altRefs.map((p: any) => ({
     id: p.id,
     name: p.name,
@@ -419,7 +414,8 @@ export async function prepareCreative(input: PrepareCreativeInput): Promise<Prep
     templateName: p.templateName,
     tags: p.tags ?? [],
     templateTags: p.templateTags ?? [],
-    slotFields: altSlotsById.get(p.id) ?? [],
+    slotFields: (altAnaliseById.get(p.id) ?? analiseDePaginaAusente()).slotFields,
+    semanticIssues: (altAnaliseById.get(p.id) ?? analiseDePaginaAusente()).semanticIssues,
   }))
 
   const page = await db.page.findUnique({
@@ -439,7 +435,7 @@ export async function prepareCreative(input: PrepareCreativeInput): Promise<Prep
     throw new CreativeError('PAGE_NOT_FOUND', `Page not found: ${bestRef.id}`, 404)
   }
 
-  const slotFields: SlotField[] = slotFieldsFromLayers(page.layers)
+  const { slotFields, semanticIssues } = analisarSlotFields(page.layers, { paginaPodeSerSubstituida: ehTemplateDeTresLayouts(bestRef.templateName) })
 
   /**
    * O ÚNICO ponto que enxerga os modelos rejeitados. Daqui para a frente a
@@ -502,6 +498,7 @@ export async function prepareCreative(input: PrepareCreativeInput): Promise<Prep
       tags: page.tags ?? [],
       templateTags: bestRef.templateTags ?? [],
       slotFields,
+      semanticIssues,
     },
     alternatives,
     sugestaoId,
