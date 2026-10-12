@@ -134,6 +134,9 @@ describe('G–H. o MCP local usa as MESMAS funções (sem lógica copiada no scr
     expect(releitura).toBeGreaterThan(b.indexOf('if (travado === 0)'))
     expect(releitura).toBeLessThan(b.indexOf('convertPageToDesignData('))
     expect(b).toMatch(/JSON\.stringify\(reservado\.slotValues\) !== JSON\.stringify\(post\.slotValues\)/)
+    // e a PÁGINA também (rodada 5): editada e invalidada entre a leitura e a trava, o MCP desenharia as camadas antigas
+    expect(b).toMatch(/const paginaReservada = await prisma\.page\.findUnique\(/)
+    expect(b).toMatch(/assinaturaDaPagina\(paginaReservada\) !== assinaturaDaPagina\(page\)/)
     expect(b).toMatch(/where: \{ id: postId, renderStatus: 'RENDERING', nextRenderAt: ficha \},\s*data: \{ renderStatus: 'PENDING', nextRenderAt: new Date\(\) \}/)
   })
 })

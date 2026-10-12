@@ -1358,15 +1358,25 @@ toolEstrita(
       if (travado === 0) {
         return { content: [{ type: 'text' as const, text: 'Error: o post mudou antes do render (passou a usar o contrato semântico, ou sumiu). Nada foi alterado.' }], isError: true }
       }
-      // O pedido desenhado tem de ser o da linha TRAVADA (Codex, B1d checkpoint d): editado entre a leitura lá
-      // de cima e a trava, o PNG seria do pedido antigo. Devolve à fila — só a própria reserva — e o cron desenha o novo.
+      // O pedido E a página desenhados têm de ser os de DEPOIS da trava (Codex, B1d checkpoint d): editados (e
+      // invalidados) entre a leitura lá de cima e a trava, o PNG seria do antigo — e a trava teria passado por cima
+      // da invalidação. Devolve à fila — só a própria reserva — e o cron desenha o novo. Edição DEPOIS da trava
+      // invalida a linha, e a gravação final (ficha) não a alcança.
       const reservado = await prisma.socialPost.findUnique({ where: { id: postId }, select: { pageId: true, slotValues: true } })
-      if (!reservado || reservado.pageId !== post.pageId || JSON.stringify(reservado.slotValues) !== JSON.stringify(post.slotValues)) {
+      const assinaturaDaPagina = (p: { layers: unknown; background: unknown; width: unknown; height: unknown; audio: unknown; isTemplate: unknown } | null) =>
+        p && JSON.stringify([p.layers, p.background, p.width, p.height, p.audio, p.isTemplate])
+      const paginaReservada = await prisma.page.findUnique({ where: { id: post.pageId }, select: { layers: true, background: true, width: true, height: true, audio: true, isTemplate: true } })
+      if (
+        !reservado ||
+        reservado.pageId !== post.pageId ||
+        JSON.stringify(reservado.slotValues) !== JSON.stringify(post.slotValues) ||
+        assinaturaDaPagina(paginaReservada) !== assinaturaDaPagina(page)
+      ) {
         await prisma.socialPost.updateMany({
           where: { id: postId, renderStatus: 'RENDERING', nextRenderAt: ficha },
           data: { renderStatus: 'PENDING', nextRenderAt: new Date() },
         })
-        return { content: [{ type: 'text' as const, text: 'Error: o pedido do post mudou antes do render. Nada foi desenhado; o post voltou à fila do render (cron render-stories).' }], isError: true }
+        return { content: [{ type: 'text' as const, text: 'Error: o pedido do post (ou a página) mudou antes do render. Nada foi desenhado; o post voltou à fila do render (cron render-stories).' }], isError: true }
       }
 
       // 4. Convert Page → DesignData
