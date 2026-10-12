@@ -731,6 +731,13 @@ toolEstrita(
       }
 
       const parsedSlotValues = slotValues ? JSON.parse(slotValues) : undefined
+      // B1d (checkpoint c): o MESMO portão do createPost para o contrato semântico novo (_slots/_papeis).
+      const { admitirPedidoSemantico } = await import('../src/lib/posts/admitir-pedido-semantico')
+      try {
+        await admitirPedidoSemantico(prisma, { projectId, postType, pageId, mediaUrls: mediaUrls ?? [], slotValues: parsedSlotValues })
+      } catch (erro) {
+        return { content: [{ type: 'text' as const, text: `Error: ${(erro as Error).message} Nada foi criado.` }], isError: true }
+      }
       const postStatus = status ?? 'DRAFT'
       const hasPage = !!pageId
 
@@ -843,11 +850,31 @@ toolEstrita(
         }
       }
 
-      const updated = await prisma.socialPost.update({
-        where: { id: postId },
-        data,
-        select: { id: true, status: true, renderStatus: true, scheduledDatetime: true, caption: true, laterPostId: true },
-      })
+      const selecao = { id: true, status: true, renderStatus: true, scheduledDatetime: true, caption: true, laterPostId: true } as const
+      let updated
+      if (slotValues !== undefined || pageId !== undefined || mediaUrls !== undefined) {
+        // B1d (checkpoint c): o contrato semântico novo passa pela mesma admissão do createPost, com a linha
+        // travada (SELECT … FOR UPDATE) na transação que grava. Legado: a mesma escrita de sempre.
+        const { prepararEdicaoSemantica } = await import('../src/lib/posts/edicao-semantica-do-post')
+        try {
+          updated = await prisma.$transaction(async (tx) => {
+            const edicao = await prepararEdicaoSemantica(tx as any, postId, {
+              pageId,
+              slotValues: data.slotValues,
+              mediaUrls,
+            })
+            return tx.socialPost.update({ where: { id: postId }, data: edicao.semantico ? { ...data, ...edicao.data } : data, select: selecao })
+          })
+        } catch (erro) {
+          const nome = (erro as Error).name
+          if (nome === 'ErroAdmissaoSemantica' || nome === 'ErroEdicaoSemantica') {
+            return { content: [{ type: 'text' as const, text: `Error: ${(erro as Error).message} Nada foi alterado.` }], isError: true }
+          }
+          throw erro
+        }
+      } else {
+        updated = await prisma.socialPost.update({ where: { id: postId }, data, select: selecao })
+      }
 
       // Remarcou? As páginas da arte seguem para a semana nova (pasta, nome e
       // ordem) — senão a pasta e o nome da página guardam a data velha, e é

@@ -42,7 +42,7 @@ import {
   type RecusaDaTroca,
 } from './troca-de-arte'
 import { formatarBRT } from './agenda-acoes'
-import { comoCopiaDaPagina } from './copy-segue-a-pagina'
+import { copiaDaPagina } from './copy-segue-a-pagina'
 import { PostLogEvent, Prisma } from '../../../prisma/generated/client'
 
 /** Versão da regra, para a chave de idempotência do sinal de aprendizado. */
@@ -326,7 +326,7 @@ export async function trocarArteDoPost(
    */
   const trocaDePagina = decisao.vinculaPagina && pageId !== post.pageId
   const slotValuesNovo = novosTextos
-    ? { slotValues: (origem === 'pagina' ? comoCopiaDaPagina(novosTextos) : novosTextos) as Prisma.InputJsonValue }
+    ? { slotValues: (origem === 'pagina' ? copiaDaPagina(novosTextos) : novosTextos) as Prisma.InputJsonValue }
     : copyDaArteInvalidada || trocaDePagina || origem === 'galeria'
       ? { slotValues: Prisma.DbNull }
       : {}

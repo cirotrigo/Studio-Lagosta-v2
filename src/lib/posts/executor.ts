@@ -335,7 +335,12 @@ export class PostExecutor {
 
         try {
           console.log(`📤 Sending post ${post.id} to Later API...`)
-          await this.scheduler.sendToLater(post.id)
+          const envio = await this.scheduler.sendToLater(post.id)
+          // B1d (checkpoint c): contrato semântico sem prova do render não foi enviado — não é sucesso.
+          if (envio && 'bloqueado' in envio && envio.bloqueado) {
+            console.warn(`⛔ Post ${post.id} não enviado: ${envio.bloqueado}`)
+            continue
+          }
           successCount++
         } catch (error) {
           console.error(`❌ Erro ao enviar post ${post.id}:`, error)
@@ -415,7 +420,16 @@ export class PostExecutor {
 
           // Try to send again - route to appropriate scheduler
           console.log(`🔄 Retrying post ${retry.postId} via Late API...`)
-          await this.scheduler.sendToLater(retry.postId)
+          const envio = await this.scheduler.sendToLater(retry.postId)
+          // B1d (checkpoint c): bloqueio do contrato semântico não é sucesso nem falha de envio — a
+          // tentativa termina sem agendar outra (repetir só repetiria o bloqueio).
+          if (envio && 'bloqueado' in envio && envio.bloqueado) {
+            await db.postRetry.update({
+              where: { id: retry.id },
+              data: { status: RetryStatus.FAILED, errorMessage: envio.bloqueado },
+            })
+            continue
+          }
 
           // Mark retry as success
           await db.postRetry.update({

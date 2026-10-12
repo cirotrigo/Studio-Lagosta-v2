@@ -49,6 +49,17 @@ export function temContratoSemantico(slotValues: unknown): boolean {
   return CHAVES_DO_CONTRATO_SEMANTICO.some((chave) => Object.prototype.hasOwnProperty.call(slotValues, chave))
 }
 
+/**
+ * A cópia dos textos da PÁGINA pronta para o post: marcada e sem as chaves do contrato semântico novo. A cópia
+ * tem o nome da camada como chave, e uma camada chamada `_slots`/`_papeis` não é pedido — gravada assim, viraria
+ * contrato novo por acidente e a guarda de envio bloquearia um post legado (B1d, checkpoint c). Os leitores já
+ * ignoram toda chave `_…`, então nada visível se perde. É a forma que os escritores de cópia da página usam.
+ */
+export function copiaDaPagina(copy: Record<string, unknown>): Record<string, unknown> {
+  const semContrato = Object.fromEntries(Object.entries(copy).filter(([k]) => !(CHAVES_DO_CONTRATO_SEMANTICO as readonly string[]).includes(k)))
+  return comoCopiaDaPagina(semContrato)
+}
+
 /** A copy da página, marcada como cópia — o formato que o agendamento grava. */
 export function comoCopiaDaPagina(copy: Record<string, unknown>): Record<string, unknown> {
   return { ...copy, [COPIA_DA_PAGINA]: true }
@@ -173,5 +184,7 @@ export function slotValuesSeguindo(
       if (!ehTexto) base[k] = v
     }
   }
-  return { ...base, ...copyDepois }
+  // Texto de camada não cria nem sobrescreve o contrato semântico (B1d, checkpoint c): ver `copiaDaPagina`.
+  const textos = Object.fromEntries(Object.entries(copyDepois).filter(([k]) => !(CHAVES_DO_CONTRATO_SEMANTICO as readonly string[]).includes(k)))
+  return { ...base, ...textos }
 }

@@ -33,6 +33,8 @@ import { recusaComoImagem } from '@/lib/video/pagina-com-video'
 import { ensurePostGeneration } from './ensure-post-generation'
 import { ehExportDeVideo, postDeVideo } from './post-de-video'
 import { vinculoDoVideo } from '@/lib/video/vinculo-do-video'
+import { admitirPedidoSemantico } from './admitir-pedido-semantico'
+import { temContratoSemantico } from './copy-segue-a-pagina'
 
 interface RecurringConfig {
   frequency: RecurrenceFrequency
@@ -192,6 +194,16 @@ export class LaterPostScheduler {
     console.log('[Later Scheduler] Post type:', data.postType)
     console.log('[Later Scheduler] Media count:', data.mediaUrls.length)
     console.log('========================================')
+
+    // B1d (checkpoint c): contrato semântico novo (_slots/_papeis) só entra se o render do servidor puder
+    // desenhá-lo — conferido contra a página ANTES de qualquer efeito. Sem as chaves, não lê nada.
+    await admitirPedidoSemantico(db, {
+      projectId: data.projectId,
+      postType: data.postType,
+      pageId: data.pageId,
+      mediaUrls: data.mediaUrls,
+      slotValues: data.slotValues,
+    })
 
     // Validate post type and media count
     console.log('[Later Scheduler] Validating post...')
@@ -637,28 +649,43 @@ export class LaterPostScheduler {
        *
        * O que NÃO dá para exigir é `status: SCHEDULED`: quebraria o retry,
        * porque post que falha fica FAILED e é reenviado por `executeRetries`.
+       *
+       * B1d (checkpoint c): o WHERE também exige a AUSÊNCIA das chaves do contrato semântico novo
+       * (`_slots`/`_papeis`) no `slotValues` desta linha. Post semântico não chega ao Zernio enquanto não
+       * existir prova do render ligada à mídia (checkpoint e) — nem com `RENDERED`, que mídia fornecida também
+       * recebe. É a linha CORRENTE que o UPDATE avalia: edição entre uma leitura e a reserva não escapa. O
+       * Prisma não expressa "chave presente" num filtro Json (nem com valor null), por isso o SQL. Sem as
+       * chaves (o legado), a reserva é a de sempre.
        */
-      const reserva = await db.socialPost.updateMany({
-        where: {
-          id: postId,
-          laterPostId: null,
-          status: { notIn: [PostStatus.POSTING, PostStatus.POSTED] },
-        },
-        data: {
-          status: PostStatus.POSTING,
-          processingStartedAt: new Date(),
-        },
-      })
+      const agora = new Date()
+      const reservadas = await db.$executeRaw`
+        UPDATE "SocialPost"
+        SET "status" = 'POSTING'::"PostStatus", "processingStartedAt" = ${agora}, "updatedAt" = ${agora}
+        WHERE "id" = ${postId}
+          AND "laterPostId" IS NULL
+          AND "status" NOT IN ('POSTING'::"PostStatus", 'POSTED'::"PostStatus")
+          AND (
+            jsonb_typeof("slotValues") IS DISTINCT FROM 'object'
+            OR (NOT jsonb_exists("slotValues", '_slots') AND NOT jsonb_exists("slotValues", '_papeis'))
+          )
+      `
 
-      if (reserva.count === 0) {
+      if (reservadas === 0) {
         // Não conseguiu reservar: ou já foi entregue, ou outra execução pegou
-        // primeiro, ou o post sumiu. Leitura barata só para o log dizer qual.
+        // primeiro, ou o post sumiu, ou é contrato semântico sem prova do
+        // render. Leitura barata só para dizer qual.
         const atual = await db.socialPost.findUnique({
           where: { id: postId },
-          select: { id: true, laterPostId: true, status: true },
+          select: { id: true, laterPostId: true, status: true, slotValues: true },
         })
         if (!atual) {
           throw new Error('Post não encontrado')
+        }
+        if (!atual.laterPostId && atual.status !== PostStatus.POSTING && atual.status !== PostStatus.POSTED && temContratoSemantico(atual.slotValues)) {
+          console.warn(
+            `[Later Scheduler] Post ${postId} usa o contrato semântico (_slots/_papeis) e ainda não tem prova do render — envio bloqueado`
+          )
+          return { success: false, skipped: true, bloqueado: 'CONTRATO_SEM_PROVA_DE_RENDER' as const }
         }
         console.log(
           `[Later Scheduler] Post ${postId} não reservado (laterPostId=${atual.laterPostId ?? 'null'}, status=${atual.status}) — envio duplicado evitado`

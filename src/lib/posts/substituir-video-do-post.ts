@@ -18,7 +18,7 @@
 import type { Prisma } from '@prisma/client'
 import { isVideoUrl } from '@/lib/media-type'
 import { mesclarFieldValuesDaArte } from '@/lib/creatives/mesclar-field-values'
-import { comoCopiaDaPagina } from '@/lib/posts/copy-segue-a-pagina'
+import { copiaDaPagina } from '@/lib/posts/copy-segue-a-pagina'
 import { postDeVideo } from '@/lib/posts/post-de-video'
 import {
   decidirSubstituicao,
@@ -86,7 +86,7 @@ export async function substituirVideoDoPost(
         videoDaPagina: true,
         renderStatus: 'NOT_NEEDED',
         ...(post!.renderedImageUrl && post!.renderedImageUrl === anterior ? { renderedImageUrl: params.mp4Url } : {}),
-        ...(params.copyGravada ? { slotValues: comoCopiaDaPagina(params.copyGravada) as Prisma.InputJsonValue } : {}),
+        ...(params.copyGravada ? { slotValues: copiaDaPagina(params.copyGravada) as Prisma.InputJsonValue } : {}),
       },
       select: { updatedAt: true },
     })
