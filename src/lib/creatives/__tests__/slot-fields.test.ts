@@ -341,3 +341,39 @@ describe('B1c: slotId e semanticRole entram em addressableBy — com as mesmas p
     expect(ab([{ id: 'i1', name: 'Foto', type: 'image', isDynamic: true, visible: true, metadata: { compositor: { papel: 'foto' }, slot: { id: 'foto-1' } } }])).toEqual([['layerId', 'slotId', 'semanticRole']])
   })
 })
+
+describe('Codex #208 — CP3: camada que usa _slots/_papeis como id ou nome tira a promessa que a escrita recusaria', () => {
+  it('camada chamada "_slots": nenhum campo promete slotId; o papel continua', () => {
+    const r = analisarSlotFields([texto('t1', 'Título', 'a', papel('headline', 's')), texto('t2', '_slots', 'b')])
+    expect(r.slotFields[0].semantic.addressableBy).toEqual(['layerId', 'semanticRole'])
+    expect(r.slotFields[0].semantic.problems).toContainEqual({ code: 'RESERVED_KEY_COLLISION', key: '_slots' })
+  })
+
+  it('camada com id "_papeis": nenhum campo promete semanticRole; o slot continua', () => {
+    const r = analisarSlotFields([texto('t1', 'Título', 'a', papel('headline', 's')), texto('_papeis', 'X', 'b')])
+    expect(r.slotFields[0].semantic.addressableBy).toEqual(['layerId', 'slotId'])
+    expect(r.slotFields[0].semantic.problems).toContainEqual({ code: 'RESERVED_KEY_COLLISION', key: '_papeis' })
+  })
+})
+
+describe('Codex #208 — CP3 (rodada 2): camada cujo id é uma chave reservada não promete layerId', () => {
+  it.each(['_slots', '_papeis', '_imageUrl', '_driveImageId'])('id "%s": a chave seria lida como reservada, não como a camada', (id) => {
+    const r = analisarSlotFields([texto(id, 'X', 'b')])
+    expect(r.slotFields[0].semantic.addressableBy).toEqual([])
+  })
+})
+
+describe('Codex #208 — CP3 (rodada 3): id ou nome reservado não promete NENHUM endereço (a chave pode vir na mesma chamada)', () => {
+  const chaves = ['_slots', '_papeis', '_imageUrl', '_driveImageId']
+  it.each(chaves)('id "%s" com slot e papel declarados: addressableBy vazio', (k) => {
+    expect(analisarSlotFields([texto(k, 'X', 'b', papel('headline', 'titulo'))]).slotFields[0].semantic.addressableBy).toEqual([])
+  })
+  it.each(chaves)('nome "%s" com slot e papel declarados: addressableBy vazio', (k) => {
+    expect(analisarSlotFields([texto('t1', k, 'b', papel('headline', 'titulo'))]).slotFields[0].semantic.addressableBy).toEqual([])
+  })
+})
+
+it('Codex #208 — CP3: o problema da colisão aparece uma vez só', () => {
+  const p = analisarSlotFields([texto('_slots', 'X', 'b', papel('headline', 'titulo'))]).slotFields[0].semantic.problems
+  expect(p.filter((x) => x.code === 'RESERVED_KEY_COLLISION')).toEqual([{ code: 'RESERVED_KEY_COLLISION', key: '_slots' }])
+})

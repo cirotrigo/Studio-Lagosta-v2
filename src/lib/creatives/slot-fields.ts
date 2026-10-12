@@ -75,6 +75,11 @@ export type ProblemaDoCampo =
    * `semanticIssues`).
    */
   | { code: 'PAGE_MAY_CHANGE_BY_LAYOUT' }
+  /**
+   * Uma chave reservada colide: outra camada usa `_slots`/`_papeis` como id ou nome (a escrita recusa a chave inteira,
+   * CHAVE_RESERVADA_COLIDE_COM_LAYER), ou o id/nome DESTA camada é uma chave reservada (nenhum endereço é seguro).
+   */
+  | { code: 'RESERVED_KEY_COLLISION'; key: ChaveReservada }
 
 export interface SemanticaDoCampo {
   role: {
@@ -116,6 +121,11 @@ export interface AnaliseDosCampos {
   slotFields: SlotField[]
   semanticIssues: SemanticIssue[]
 }
+
+/** As chaves de `slotValues` que nunca endereçam camada pelo id/nome (as mesmas de `createArteRapida`). */
+const CHAVES_RESERVADAS = ['_driveImageId', '_imageUrl', '_slots', '_papeis'] as const
+type ChaveReservada = (typeof CHAVES_RESERVADAS)[number]
+const ehChaveReservada = (k: string): k is ChaveReservada => (CHAVES_RESERVADAS as readonly string[]).includes(k)
 
 const entraPeloLegado = (l: any) => l?.type === 'text' || (l?.type === 'image' && l?.isDynamic)
 
@@ -172,6 +182,11 @@ export function analisarSlotFields(raw: unknown, contexto: ContextoDosCampos = {
     }
   })
 
+  // A mesma guarda global do resolvedor: com uma camada chamada (ou com id) _slots/_papeis, a chave inteira é recusada.
+  const colide = (chave: string) => camadas.some((c: any) => c?.id === chave || c?.name === chave)
+  const slotsColidem = colide('_slots')
+  const papeisColidem = colide('_papeis')
+
   const slotFields: SlotField[] = []
   descritores.forEach((d, i) => {
     const l = camadas[i] as any
@@ -221,11 +236,19 @@ export function analisarSlotFields(raw: unknown, contexto: ContextoDosCampos = {
     // `resolverAlvo` devolve esta camada, e o papel é DECLARADO (inferido é PAPEL_NAO_DECLARADO). A sombra de
     // nome só afeta a chave legada; o semântico aplica por índice.
     const eEsta = (r: ReturnType<typeof resolverAlvo>) => 'indice' in r && r.indice === i
+    const temSlot = d.slot.status === 'valido'
+    const temPapelDeclarado = p.status === 'valido' && p.origem === 'metadata'
+    // Id ou nome que é chave reservada: a mesma chave pode vir na chamada (a foto, o _slots) e o casamento legado
+    // por id/nome a leria como valor DESTA camada — nenhum endereço é seguro (Codex #208, CP3).
+    const reservadaPropria = [d.layerId, l.name].find((k): k is ChaveReservada => typeof k === 'string' && ehChaveReservada(k))
+    if (reservadaPropria) problems.push({ code: 'RESERVED_KEY_COLLISION', key: reservadaPropria })
+    if (temSlot && slotsColidem && reservadaPropria !== '_slots') problems.push({ code: 'RESERVED_KEY_COLLISION', key: '_slots' })
+    if (temPapelDeclarado && papeisColidem && reservadaPropria !== '_papeis') problems.push({ code: 'RESERVED_KEY_COLLISION', key: '_papeis' })
     const addressableBy: SemanticaDoCampo['addressableBy'] = []
-    if (preenchivel && !oculta && !podeTrocar) {
+    if (preenchivel && !oculta && !podeTrocar && !reservadaPropria) {
       if (sombras.length === 0 && eEsta(resolverAlvo(camadas, { layerId: d.layerId }))) addressableBy.push('layerId')
-      if (d.slot.status === 'valido' && eEsta(resolverAlvo(camadas, { slotId: d.slot.slotId }))) addressableBy.push('slotId')
-      if (p.status === 'valido' && p.origem === 'metadata' && eEsta(resolverAlvo(camadas, { semanticRole: p.papel }))) addressableBy.push('semanticRole')
+      if (d.slot.status === 'valido' && !slotsColidem && eEsta(resolverAlvo(camadas, { slotId: d.slot.slotId }))) addressableBy.push('slotId')
+      if (temPapelDeclarado && !papeisColidem && eEsta(resolverAlvo(camadas, { semanticRole: p.papel }))) addressableBy.push('semanticRole')
     }
 
     slotFields.push({
