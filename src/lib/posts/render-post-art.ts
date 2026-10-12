@@ -20,6 +20,7 @@ import { renderDaPaginaCobreAMidia } from './render-da-pagina'
 import { MOTIVO_VIDEO_REMOVIDO, postDeVideo } from './post-de-video'
 import { ErroRenderSemantico } from './erro-render-semantico'
 import { RenderStatus, type Prisma } from '../../../prisma/generated/client'
+import { fichaDeReserva } from './ficha-de-reserva'
 
 /**
  * Shape único em vez de união discriminada: o tsconfig do projeto roda com
@@ -98,9 +99,10 @@ export async function renderPostArt(post: RenderablePost): Promise<RenderPostArt
     return { ok: false, motivo: 'midia-propria' }
   }
 
+  const ficha = fichaDeReserva()
   const reserva = await db.socialPost.updateMany({
     where: { id: post.id, renderStatus: RenderStatus.PENDING },
-    data: { renderStatus: RenderStatus.RENDERING },
+    data: { renderStatus: RenderStatus.RENDERING, nextRenderAt: ficha },
   })
 
   if (reserva.count === 0) {
@@ -109,17 +111,21 @@ export async function renderPostArt(post: RenderablePost): Promise<RenderPostArt
     return { ok: false, motivo: 'ocupado' }
   }
 
-  /**
-   * O pedido desenhado é o da linha JÁ RESERVADA, não o que o chamador leu antes (Codex, B1d checkpoint d):
-   * uma edição entre aquela leitura e a reserva mandaria desenhar — ou, no contrato semântico, falhar em
-   * definitivo — o pedido antigo. Edição DEPOIS daqui volta a linha a PENDING, e as gravações abaixo, que exigem
-   * RENDERING, não a alcançam.
-   */
-  const pedido = await db.socialPost.findUnique({ where: { id: post.id }, select: { pageId: true, slotValues: true } })
-  const pageId = pedido?.pageId ?? post.pageId
-  const slotValues = pedido ? pedido.slotValues : post.slotValues
+  // Toda gravação daqui em diante é só desta reserva (ver `fichaDeReserva`).
+  const daReserva = { id: post.id, renderStatus: RenderStatus.RENDERING, nextRenderAt: ficha }
+  let pedido: { pageId: string | null; slotValues: unknown; renderAttempts: number } | null = null
 
   try {
+    /**
+     * O pedido desenhado — e a contagem de tentativas — são os da linha JÁ RESERVADA, não o que o chamador leu
+     * antes (Codex, B1d checkpoint d): uma edição entre aquela leitura e a reserva mandaria desenhar (ou, no
+     * contrato semântico, falhar em definitivo) o pedido antigo. Dentro do try: se a leitura falhar, a linha
+     * volta à fila pelo retry de sempre em vez de ficar presa em RENDERING.
+     */
+    pedido = await db.socialPost.findUnique({ where: { id: post.id }, select: { pageId: true, slotValues: true, renderAttempts: true } })
+    const pageId = pedido?.pageId ?? post.pageId
+    const slotValues = pedido ? pedido.slotValues : post.slotValues
+
     const result = await renderStoryImage(
       pageId,
       post.id,
@@ -129,7 +135,7 @@ export async function renderPostArt(post: RenderablePost): Promise<RenderPostArt
     const confirmed = await db.socialPost.updateMany({
       // A mídia entra no predicado: trocada DURANTE o render (o PUT do post não
       // mexe em `renderStatus`), o PNG não pode entrar por cima dela.
-      where: { id: post.id, renderStatus: RenderStatus.RENDERING, mediaUrls: { equals: atual?.mediaUrls ?? [] } },
+      where: { ...daReserva, mediaUrls: { equals: atual?.mediaUrls ?? [] } },
       data: {
         renderStatus: RenderStatus.RENDERED,
         renderedImageUrl: result.url,
@@ -165,7 +171,7 @@ export async function renderPostArt(post: RenderablePost): Promise<RenderPostArt
       // da fila; imagem é desenhada de novo). Invalidado de verdade já está
       // PENDING, e este update não o alcança.
       await db.socialPost.updateMany({
-        where: { id: post.id, renderStatus: RenderStatus.RENDERING },
+        where: daReserva,
         data: { renderStatus: RenderStatus.PENDING, nextRenderAt: new Date() },
       })
       return { ok: false, motivo: 'invalidado' }
@@ -185,7 +191,7 @@ export async function renderPostArt(post: RenderablePost): Promise<RenderPostArt
 
     return { ok: true, url: result.url }
   } catch (error) {
-    const newAttempts = post.renderAttempts + 1
+    const newAttempts = (pedido?.renderAttempts ?? post.renderAttempts) + 1
 
     /**
      * B1d (checkpoint d): o contrato semântico não casa com a página no momento do render. É DETERMINÍSTICO —
@@ -196,10 +202,10 @@ export async function renderPostArt(post: RenderablePost): Promise<RenderPostArt
     if (error instanceof ErroRenderSemantico) {
       const envelope = error.paraRenderError()
       const terminal = await db.socialPost.updateMany({
-        where: { id: post.id, renderStatus: RenderStatus.RENDERING },
+        where: daReserva,
         data: { renderStatus: RenderStatus.RENDER_FAILED, renderAttempts: newAttempts, renderError: envelope, nextRenderAt: null },
       })
-      // A linha saiu de RENDERING durante o voo (invalidada): a fila nova vale, não esta falha.
+      // A reserva deixou de ser desta execução (invalidada, ou já reservada por outra): o pedido novo vale.
       if (terminal.count === 0) return { ok: false, motivo: 'invalidado' }
       return { ok: false, motivo: 'falha-semantica', erro: envelope }
     }
@@ -208,7 +214,7 @@ export async function renderPostArt(post: RenderablePost): Promise<RenderPostArt
 
     if (newAttempts >= 3) {
       await db.socialPost.updateMany({
-        where: { id: post.id, renderStatus: RenderStatus.RENDERING },
+        where: daReserva,
         data: {
           renderStatus: RenderStatus.RENDER_FAILED,
           renderAttempts: newAttempts,
@@ -219,7 +225,7 @@ export async function renderPostArt(post: RenderablePost): Promise<RenderPostArt
       // Backoff exponencial: 2^tentativas * 2 minutos
       const backoffMs = Math.pow(2, newAttempts) * 2 * 60 * 1000
       await db.socialPost.updateMany({
-        where: { id: post.id, renderStatus: RenderStatus.RENDERING },
+        where: daReserva,
         data: {
           renderStatus: RenderStatus.PENDING,
           renderAttempts: newAttempts,

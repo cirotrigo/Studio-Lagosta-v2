@@ -1301,6 +1301,9 @@ toolEstrita(
     postId: z.string().describe('Post ID to render'),
   },
   async ({ postId }) => {
+    // Gravações do render só desta reserva (ver fichaDeReserva) — fora do try: o catch também a exige.
+    const { fichaDeReserva } = await import('../src/lib/posts/ficha-de-reserva')
+    const ficha = fichaDeReserva()
     try {
       // 1. Fetch post
       const post = await prisma.socialPost.findUnique({
@@ -1346,7 +1349,7 @@ toolEstrita(
       // legado. A edição semântica volta a linha a PENDING, e as gravações abaixo exigem RENDERING.
       const agora = new Date()
       const travado = await prisma.$executeRaw`
-        UPDATE "SocialPost" SET "renderStatus" = 'RENDERING'::"RenderStatus", "updatedAt" = ${agora}
+        UPDATE "SocialPost" SET "renderStatus" = 'RENDERING'::"RenderStatus", "nextRenderAt" = ${ficha}, "updatedAt" = ${agora}
         WHERE "id" = ${postId}
           AND (
             jsonb_typeof("slotValues") IS DISTINCT FROM 'object'
@@ -1441,7 +1444,7 @@ toolEstrita(
       // 9. Update post — só se a mídia ainda é a que a guarda leu: trocada no
       // meio do render (por um vídeo, por exemplo), o PNG não entra por cima.
       const gravado = await prisma.socialPost.updateMany({
-        where: { id: postId, renderStatus: 'RENDERING', mediaUrls: { equals: post.mediaUrls } },
+        where: { id: postId, renderStatus: 'RENDERING', nextRenderAt: ficha, mediaUrls: { equals: post.mediaUrls } },
         data: {
           renderStatus: 'RENDERED',
           renderedImageUrl: blob.url,
@@ -1452,7 +1455,7 @@ toolEstrita(
       })
       if (gravado.count === 0) {
         await prisma.socialPost.updateMany({
-          where: { id: postId, renderStatus: 'RENDERING' },
+          where: { id: postId, renderStatus: 'RENDERING', nextRenderAt: ficha },
           data: { renderStatus: post.renderStatus },
         })
         return { content: [{ type: 'text' as const, text: 'Error: o post mudou durante o render (mídia ou pedido). Nada foi alterado; confira o post e renderize de novo se ainda fizer sentido.' }], isError: true }
@@ -1483,7 +1486,7 @@ toolEstrita(
       // Reset render status on failure — só a linha que ESTE render travou (uma edição no meio já a devolveu à fila)
       try {
         await prisma.socialPost.updateMany({
-          where: { id: postId, renderStatus: 'RENDERING' },
+          where: { id: postId, renderStatus: 'RENDERING', nextRenderAt: ficha },
           data: { renderStatus: 'RENDER_FAILED', renderError: error.message },
         })
       } catch { /* ignore */ }

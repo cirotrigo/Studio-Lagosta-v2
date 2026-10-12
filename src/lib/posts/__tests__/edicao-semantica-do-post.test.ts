@@ -123,6 +123,8 @@ describe('G–H. o MCP local usa as MESMAS funções (sem lógica copiada no scr
     expect(trava).toBeGreaterThan(-1)
     expect(b.slice(trava, b.indexOf('`', trava + 30))).toMatch(/SET "renderStatus" = 'RENDERING'[\s\S]*jsonb_exists\("slotValues", '_slots'\)[\s\S]*jsonb_exists\("slotValues", '_papeis'\)/)
     expect(b).not.toMatch(/prisma\.socialPost\.update\(/) // nada incondicional: nem a trava, nem a falha
-    expect(b).toMatch(/where: \{ id: postId, renderStatus: 'RENDERING', mediaUrls: \{ equals: post\.mediaUrls \} \}/)
+    expect(b).toMatch(/"nextRenderAt" = \$\{ficha\}/) // a trava carimba a ficha desta reserva (Codex, rodada 3)
+    expect(b).toMatch(/where: \{ id: postId, renderStatus: 'RENDERING', nextRenderAt: ficha, mediaUrls: \{ equals: post\.mediaUrls \} \}/)
+    expect(b.match(/where: \{ id: postId, renderStatus: 'RENDERING', nextRenderAt: ficha \}/g)).toHaveLength(2) // volta e falha
   })
 })
