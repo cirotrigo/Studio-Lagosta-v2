@@ -46,7 +46,7 @@ Pontos marcados no diagrama:
 
 - O stdio fala com o banco por fora dos serviços, num `PrismaClient` próprio. CONFIRMADO
   (`scripts/mcp-server.ts:33`).
-- Não há `src/server` nem server actions (`"use server"` não aparece em `src`). CONFIRMADO.
+- Não há server actions (`"use server"` não aparece em `src`). `src/server` tem um único arquivo, `google-drive-service.ts`, importado por rotas. CONFIRMADO.
 
 ---
 
@@ -126,10 +126,10 @@ CONFIRMADO.
 |---|---|---|
 | PATCH de camada (`api/pages/[pageId]/layers/[layerId]`) | **Sim** | `invalidateScheduledRenders(tx)` dentro da transação; recomposição depois |
 | PUT do template (`api/templates/[id]`) | **Sim** | dentro da transação; recomposição depois |
-| `reverterCamadasDaArte` (`compositor/reverter.ts`) | **Sim** | — |
+| `reverterCamadasDaArte` (`compositor/reverter.ts`) | **Sim** | `invalidateScheduledRenders(tx)` dentro da transação (`:56`); recomposição depois (`:69`) |
 | PATCH da página / editor (`api/templates/[id]/pages/[pageId]`) | **Não**: laço de CAS próprio e revisão inline (`:266-312`) | dentro da transação; recomposição depois |
-| `ajustarArte` (`creatives/arte-rapida.ts:1106-1226`) | **Não**: laço próprio com `isTemplate: false` | **fora** da transação, depois do render |
-| Recomposição (`compositor/recompor.ts:543`) | **Não**: CAS próprio | — |
+| `ajustarArte` (`creatives/arte-rapida.ts:963`; o laço começa em `:1182`) | **Não**: laço próprio com `isTemplate: false` | **fora** da transação, depois do render |
+| Recomposição (`compositor/recompor.ts:543`) | **Não**: CAS próprio | `invalidateScheduledRenders(db)` fora da transação quando recompõe (`:715`); não pede outra recomposição |
 
 O próprio cabeçalho de `persistir.ts` registra que esses três últimos "têm a mesma regra escrita
 no próprio laço". CONFIRMADO.
@@ -142,7 +142,7 @@ Há **seis vocabulários paralelos**, todos CONFIRMADOS:
 
 | # | Vocabulário | Onde |
 |---|---|---|
-| 1 | **Papéis do compositor** `pre, headline, headline2, apoio, cta, servico`, gravados em `metadata.compositor.papel` | `compositor/spec.ts:18`, `blocos.ts:192` |
+| 1 | **Papéis do compositor** `pre, headline, headline2, apoio, cta, servico`, gravados em `metadata.compositor.papel` | `compositor/papel-do-nome.ts:13` (`PAPEIS_DO_COMPOSITOR`; `PAPEIS` em `spec.ts:18` não inclui `headline2`), `blocos.ts:192` |
 | 2 | **Funções da copy autoral** `pre, headline, apoio, cta, servico, livre`, em tabela lateral `Page.copyAutoral` ligada pela `metadata.compositor.bloco` | `copy-autoral/contrato.ts:69` |
 | 3 | `horario` / `endereco` **deduzidos por regex** no texto do `servico` | `ai/blocos-de-servico.ts:128` |
 | 4 | Combinações de texto: `role: title/subtitle/body` | `font-combinations-schema.ts:66` |
@@ -152,7 +152,7 @@ Há **seis vocabulários paralelos**, todos CONFIRMADOS:
 Existem também duas leituras de papel com regras diferentes. CONFIRMADO.
 
 - **`papelDaCamada`** é exata: `metadata.compositor.papel` → `id` → `name`
-  (`compositor/defasagem.ts:162`).
+  (`compositor/defasagem.ts:164`).
 - **`papelDoNome`** aceita sinônimos como `titulo`, `manchete`, `rodape`, `footer`
   (`compositor/papel-do-nome.ts:20`).
 
@@ -211,7 +211,7 @@ O detalhe de cada via está na seção 3 da [arquitetura alvo](studio-target-arc
 - **Recusas:** ajuste incompleto, camada inexistente, tipo errado. Nunca aplica pela metade.
 - **Reflow próprio:** a pilha da mesma coluna e o elemento ligado ao texto acompanham.
 - **Saída:** devolve `alteradas`, que o autofix confere.
-- **Quem chama:** só o `ajustarArte`, que exige `versaoEsperada`.
+- **Quem chama:** em produção, só o `ajustarArte`, que exige `versaoEsperada`. Fora da produção, também o script `scripts/revisar-antes-depois.ts`.
 - **Testes:** `revisao/__tests__/aplicar-ajustes.test.ts`.
 
 ### 4.3 Papéis se repetem
@@ -371,7 +371,7 @@ Todas as transições foram CONFIRMADAS. Três caminhos marcam `FAILED` **sem** 
 | Resources e prompts | Não existem. | CONFIRMADO |
 | Autenticação | Remoto: Bearer de serviço, ou OAuth próprio (DCR, PKCE, refresh rotativo, tokens em hash, escopo único `mcp`). Stdio: sem autenticação. | CONFIRMADO |
 | Autorização | Gate por tool (`projeto` / `curador`). **O escopo OAuth não é verificado.** | CONFIRMADO |
-| 🔴 Brecha (**corrigida no PR #202**, depois desta auditoria) | O gate só roda quando `projectId` é número (`porta.ts:66`). `escolher-modelo` aceita `projectHint`, e `resolveProject` procura em **todos** os projetos ativos (`arte-rapida.ts:269` em `f509b0fd`). O usuário OAuth lê modelos de cliente alheio, e o erro `AMBIGUOUS_PROJECT` lista nomes e ids de outros clientes. | CONFIRMADO |
+| 🔴 Brecha (**corrigida no PR #202**, depois desta auditoria) | O gate só roda quando `projectId` é número (`porta.ts:66`). `escolher-modelo` aceita `projectHint`, e `resolveProject` procura em **todos** os projetos ativos (`arte-rapida.ts:269` em `f509b0fd`). Antes da correção, o usuário OAuth lia modelos de cliente alheio, e o erro `AMBIGUOUS_PROJECT` listava nomes e ids de outros clientes. | CONFIRMADO |
 | Escrita destrutiva | `postar-agora`, `cancelar-post` (delete), `arquivar-entrada-base`, `reverter-arte`; nas legadas, `delete-posts` (em massa) e `update-post` (grava status direto). `aprovar-rascunhos` publica, mas está declarada como não destrutiva. | CONFIRMADO |
 | Erros | Três formatos: `CreativeError`, `ErroDeTool` (usado uma vez) e texto livre. | CONFIRMADO |
 | Auditoria | **Não há registro por chamada** (quem, qual tool, quais argumentos, resultado). Só rastros por domínio (`Generation.canal`, `decididoPor`, `PostLog`). | CONFIRMADO |
@@ -418,7 +418,7 @@ Divergências já reais entre a web e o MCP, todas CONFIRMADAS:
   sessão; o MCP usa `projetosVisiveis` / `ehCuradorDoProjeto`. CONFIRMADO.
 - **Operações de camada fora do alcance de um agente:**
   - **O que o MCP cobre:** `ajustar-arte` troca textos e a foto e faz cinco ajustes (`fonte`,
-    `mover`, `gradiente`, `visibilidade`, `caixa`; `revisao/contrato.ts:90`).
+    `mover`, `gradiente`, `visibilidade`, `caixa`; `revisao/contrato.ts:82`).
   - **O que fica de fora:** cor, troca de família de fonte, rotação, adicionar ou remover
     camada, ordem de empilhamento, alinhamento, efeitos, páginas, timeline. Também não é
     possível editar uma página-modelo.

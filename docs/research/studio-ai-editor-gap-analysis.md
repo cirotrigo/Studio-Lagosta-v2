@@ -154,7 +154,7 @@ framework de comandos; é preciso convergir para ela.
   - Tem cinco operações: `fonte`, `mover`, `gradiente`, `visibilidade` e `caixa`.
   - Endereça só por id de camada.
   - Recusa o que não aplica e nunca aplica pela metade.
-  - Só o `ajustarArte` o chama.
+  - Em produção, só o `ajustarArte` o chama.
 - **Problema:** um agente precisa saber o id físico, e não pode mudar cor, família, alinhamento,
   ordem nem adicionar ou remover camada.
 - **Divisão:**
@@ -197,7 +197,7 @@ operações de intenção. O MCP **não** precisa ser redesenhado.
 - **LOW 2:** em `PrepareCreativeInput`, "ausente = acesso global" é uma armadilha. Substituir
   por `ProjectScope = { type: 'all' } | { type: 'restricted'; ids: number[] }`.
 
-### D3. 23 tools legadas no stdio, fora do registro. — **P1**
+### D3. 24 tools legadas no stdio, fora do registro (23 além da `prepare-creative` de D2). — **P1**
 
 ### D4. Não há auditoria por chamada. — **P1**
 

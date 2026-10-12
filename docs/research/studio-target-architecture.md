@@ -75,15 +75,17 @@ Quem **reimplementa o mesmo laço** (CONFIRMADO; o próprio cabeçalho do módul
 | Caminho | Onde | Diferenças |
 |---|---|---|
 | PATCH do editor | `api/templates/[id]/pages/[pageId]/route.ts:266-312` | Laço de CAS próprio; `invalidateScheduledRenders(tx)` **dentro** da transação |
-| `ajustarArte` | `creatives/arte-rapida.ts:1106-1226` | Laço próprio com `isTemplate: false` no `where` (recusa página-modelo); invalidação **fora** da transação, depois do render |
+| `ajustarArte` | `creatives/arte-rapida.ts:963` (o laço começa em `:1182`) | Laço próprio com `isTemplate: false` no `where` (recusa página-modelo); invalidação **fora** da transação, depois do render |
 | Recomposição | `compositor/recompor.ts:543` | CAS próprio |
 
 **Efeitos dentro e fora da transação, hoje:**
 
 - **Dentro:** as camadas, o contrato e os `dados`. No PATCH do editor e no de camada,
-  `invalidateScheduledRenders(tx)` também roda dentro.
-- **Fora, depois do commit:** `pedirRecomposicaoDaArteCongelada`, que enfileira um job; em todos
-  os caminhos. Em `ajustarArte` também `invalidateScheduledRenders(db)`, depois do render.
+  `invalidateScheduledRenders(tx)` também roda dentro no PATCH do editor, no PATCH de camada, no PUT do
+  template e no `reverter`.
+- **Fora, depois do commit:** `pedirRecomposicaoDaArteCongelada`, que enfileira um job, em todos
+  os caminhos menos a própria recomposição. Em `ajustarArte` também `invalidateScheduledRenders(db)`,
+  depois do render, e na recomposição `invalidateScheduledRenders(db)` quando ela recompõe.
 
 **Proposta:**
 
@@ -95,7 +97,7 @@ Quem **reimplementa o mesmo laço** (CONFIRMADO; o próprio cabeçalho do módul
      e não pode ser desfeita por rollback).
    - Uma função pequena `depoisDeGravarCamadas(pageIds, visualMudou)` cobre o "depois". Não é um
      mecanismo novo: ela junta as duas chamadas que hoje se repetem em cada caminho de gravação (PATCH da
-     página, PATCH da camada, PUT do template, `ajustarArte`).
+     página, PATCH da camada, PUT do template, `reverter` e `ajustarArte`).
 3. **A codificação de `Page.layers` não muda agora.** `gravarCamadasComRevisao` grava **string
    JSON** ("a forma da coluna"), e `lerCamadas` lê as três formas. A primeira versão desta
    proposta queria gravar array nativo, o que mexeria em todos os leitores. Fica como P2, e só
@@ -255,7 +257,7 @@ CONFIRMADO.
 | Reflow próprio | A pilha **da mesma coluna** acompanha o delta de altura, medido pelo **mesmo medidor** antes e depois; o elemento acompanha o seu texto (`elementoDe`). |
 | Medição | Injetada. O `rich-text` é medido como texto simples. |
 | Saída para o autofix | `alteradas`: as camadas cujo corpo, caixa ou entrelinha mudou. |
-| Quem chama | Só `ajustarArte` (`arte-rapida.ts:1072`), que exige `versaoEsperada` quando há ajustes. |
+| Quem chama | Em produção, só `ajustarArte` (`arte-rapida.ts:1072`), que exige `versaoEsperada` quando há ajustes. Fora dela, o script `scripts/revisar-antes-depois.ts`. |
 | Testes | `revisao/__tests__/aplicar-ajustes.test.ts` |
 
 **Operações que faltam**, na ordem provável de necessidade:
