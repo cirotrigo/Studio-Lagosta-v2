@@ -20,6 +20,7 @@ import {
   type ViaDoItem,
 } from '@/lib/planos/vocabulario'
 import { semColchetes } from '@/lib/compositor/destaques'
+import { papelDaCamada } from '@/lib/compositor/defasagem'
 
 // ── Orçamento de tempo ──────────────────────────────────────────────────────
 
@@ -174,6 +175,23 @@ export interface MapaDeCopy {
   ocultar: string[]
   /** O que quem chamou precisa repassar — nunca derruba a leva. */
   avisos: string[]
+  /**
+   * POSIÇÕES (0-based) dos blocos que não acharam campo — copy que não chegaria à arte. Quem cria a arte
+   * (`createArteRapida`, B1c) recusa com COPY_NAO_CASA_COM_O_MODELO em vez de publicar copy incompleta.
+   */
+  semCampo: number[]
+}
+
+/**
+ * Os campos de texto de um modelo, a partir das camadas JÁ LIDAS — o mesmo critério de
+ * `camposDeTextoDoModelo` (camadas `text`, com id; o papel por `papelDaCamada`), sem consulta. É como
+ * `createArteRapida` mapeia a copy contra o modelo EFETIVO, depois da troca de layout pela foto (B1c).
+ */
+export function camposDeTextoDasCamadas(camadas: readonly unknown[]): CampoDeTexto[] {
+  return (camadas as Array<Record<string, unknown>>)
+    .filter((c) => c?.type === 'text')
+    .map((c) => ({ layerId: String(c.id ?? ''), name: typeof c.name === 'string' ? c.name : null, papel: papelDaCamada(c as never) }))
+    .filter((c) => !!c.layerId)
 }
 
 /**
@@ -212,7 +230,7 @@ export function mapearCopyParaSlots(campos: CampoDeTexto[], copy: string[]): Map
     if (alvos.length > 0) {
       avisos.push('Este item não tem texto próprio — a arte sai com os textos que já estão no modelo.')
     }
-    return { slotValues, ocultar, avisos }
+    return { slotValues, ocultar, avisos, semCampo: [] }
   }
 
   if (alvos.length === 0) {
@@ -220,11 +238,12 @@ export function mapearCopyParaSlots(campos: CampoDeTexto[], copy: string[]): Map
       `O modelo escolhido não tem campo de texto para receber a copy — ${plural(blocos.length, 'bloco', 'blocos')} ` +
         'não ficaram na arte.',
     )
-    return { slotValues, ocultar, avisos }
+    return { slotValues, ocultar, avisos, semCampo: blocos.map((_, i) => i) }
   }
 
   const usados = Math.min(blocos.length, alvos.length)
   for (let i = 0; i < usados; i++) slotValues[alvos[i].layerId] = blocos[i]
+  const semCampo = blocos.map((_, i) => i).filter((i) => i >= alvos.length)
 
   if (blocos.length > alvos.length) {
     const sobrando = blocos.slice(alvos.length)
@@ -244,7 +263,7 @@ export function mapearCopyParaSlots(campos: CampoDeTexto[], copy: string[]): Map
     )
   }
 
-  return { slotValues, ocultar, avisos }
+  return { slotValues, ocultar, avisos, semCampo }
 }
 
 /** O que vai no slot de um campo do modelo quando a copy vem pelo CONTRATO: o texto e o bloco/papel de origem, que `bakeLayers` carimba na camada. */
@@ -254,7 +273,7 @@ export interface SlotDoContrato {
   papel?: PapelDoModelo
 }
 
-export interface MapaDoContrato extends Omit<MapaDeCopy, 'slotValues'> {
+export interface MapaDoContrato extends Omit<MapaDeCopy, 'slotValues' | 'semCampo'> {
   /** Pronto para o `slotValues` de `createArteRapida` (chave = id da camada), com a origem de cada texto. */
   slotValues: Record<string, SlotDoContrato>
   /** Bloco do contrato → camada do modelo que o recebeu, e por quê. */

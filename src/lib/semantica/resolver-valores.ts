@@ -45,6 +45,7 @@
  */
 
 import type { Layer } from '@/types/template'
+import { lerSemanticRole } from './ler'
 import { resolverAlvo, type ErroDoAlvo } from './resolver-alvo'
 import type { SemanticRole } from './papeis'
 
@@ -69,6 +70,12 @@ export type ErroDeValor =
   | { codigo: 'VALOR_INVALIDO'; origem: OrigemSemantica }
   | { codigo: 'ALVO_NAO_RESOLVIDO'; origem: OrigemSemantica; erro: ErroDoAlvo }
   | { codigo: 'VALOR_CONFLITANTE'; indice: number; layerId: string; origens: OrigemDoValor[] }
+  /** `_papeis` achou a camada por papel INFERIDO (id, nome, tipo, id reservado): não é endereço de escrita estável. */
+  | { codigo: 'PAPEL_NAO_DECLARADO'; origem: OrigemSemantica; layerId: string }
+  /** O efeito pedido não é desenhado por este tipo de camada (seria gravado e ignorado pelo render). */
+  | { codigo: 'VALOR_INCOMPATIVEL_COM_CAMADA'; layerId: string; type: string; origem: OrigemSemantica; efeito: EfeitoPedido }
+
+export type EfeitoPedido = 'content' | 'fileUrl' | 'content+fileUrl'
 
 export type AvisoDeValor = { codigo: 'FONTES_EQUIVALENTES'; indice: number; origens: OrigemDoValor[] }
 
@@ -113,16 +120,56 @@ function efeito(v: unknown): string {
   return JSON.stringify(e)
 }
 
+const ENTRADAS: Array<{ campo: CampoReservado; tipo: OrigemSemantica['tipo'] }> = [
+  { campo: '_slots', tipo: 'slotId' },
+  { campo: '_papeis', tipo: 'semanticRole' },
+]
+
+/** A validação ESTRUTURAL de um campo reservado: forma e ValorSemantico. Devolve as entradas válidas. */
+function estruturaDoCampo(campo: CampoReservado, tipo: OrigemSemantica['tipo'], bruto: unknown) {
+  const erros: ErroDeValor[] = []
+  const validas: Array<{ origem: OrigemSemantica; valor: ValorSemantico }> = []
+  if (!objetoSimples(bruto)) return { erros: [{ codigo: 'ENTRADA_INVALIDA', campo } as ErroDeValor], validas }
+  for (const [chave, valor] of Object.entries(bruto)) {
+    const origem: OrigemSemantica = { tipo, chave }
+    if (valorSemanticoValido(valor)) validas.push({ origem, valor })
+    else erros.push({ codigo: 'VALOR_INVALIDO', origem })
+  }
+  return { erros, validas }
+}
+
+/**
+ * Só a parte ESTRUTURAL de `_slots`/`_papeis` — sem página: forma e
+ * ValorSemantico. É o que dá para recusar antes de ler a foto e escolher o
+ * modelo (B1c); o resto (endereço, papel declarado, tipo, conflito) depende da
+ * página efetiva e fica em `resolverValoresSemanticos`, que usa ESTA mesma
+ * validação.
+ */
+export function validarEntradaSemantica(slotValues: Record<string, unknown>): ErroDeValor[] {
+  return ENTRADAS.flatMap(({ campo, tipo }) => (fornecido(slotValues[campo]) ? estruturaDoCampo(campo, tipo, slotValues[campo]).erros : []))
+}
+
+const TIPOS_DE_TEXTO = new Set(['text', 'rich-text'])
+
+function efeitoPedido(v: ValorSemantico): EfeitoPedido {
+  if (typeof v === 'string') return 'content'
+  if (v.content !== undefined && v.fileUrl !== undefined) return 'content+fileUrl'
+  return v.content !== undefined ? 'content' : 'fileUrl'
+}
+
+/** O tipo desenha o efeito? content → texto/rich-text; fileUrl → imagem; os dois juntos → nenhum, por ora. */
+function tipoDesenha(efeito: EfeitoPedido, tipo: unknown): boolean {
+  if (efeito === 'content') return typeof tipo === 'string' && TIPOS_DE_TEXTO.has(tipo)
+  if (efeito === 'fileUrl') return tipo === 'image'
+  return false
+}
+
 export function resolverValoresSemanticos(camadas: readonly Layer[], slotValues: Record<string, unknown>): ValoresSemanticos {
   const erros: ErroDeValor[] = []
   const avisos: AvisoDeValor[] = []
   const porIndice = new Map<number, Array<{ origem: OrigemSemantica; valor: ValorSemantico }>>()
 
-  const entradas: Array<{ campo: CampoReservado; tipo: OrigemSemantica['tipo'] }> = [
-    { campo: '_slots', tipo: 'slotId' },
-    { campo: '_papeis', tipo: 'semanticRole' },
-  ]
-  for (const { campo, tipo } of entradas) {
+  for (const { campo, tipo } of ENTRADAS) {
     const bruto = slotValues[campo]
     if (!fornecido(bruto)) continue
     const colide = camadas.findIndex((l) => l.id === campo || l.name === campo)
@@ -130,19 +177,27 @@ export function resolverValoresSemanticos(camadas: readonly Layer[], slotValues:
       erros.push({ codigo: 'CHAVE_RESERVADA_COLIDE_COM_LAYER', chave: campo, indice: colide, layerId: camadas[colide].id })
       continue
     }
-    if (!objetoSimples(bruto)) {
-      erros.push({ codigo: 'ENTRADA_INVALIDA', campo })
-      continue
-    }
-    for (const [chave, valor] of Object.entries(bruto)) {
-      const origem: OrigemSemantica = { tipo, chave }
-      if (!valorSemanticoValido(valor)) {
-        erros.push({ codigo: 'VALOR_INVALIDO', origem })
-        continue
-      }
-      const r = resolverAlvo(camadas, tipo === 'slotId' ? { slotId: chave } : { semanticRole: chave as SemanticRole })
+    const estrutura = estruturaDoCampo(campo, tipo, bruto)
+    erros.push(...estrutura.erros)
+    for (const { origem, valor } of estrutura.validas) {
+      const r = resolverAlvo(camadas, tipo === 'slotId' ? { slotId: origem.chave } : { semanticRole: origem.chave as SemanticRole })
       if ('erro' in r) {
         erros.push({ codigo: 'ALVO_NAO_RESOLVIDO', origem, erro: r.erro })
+        continue
+      }
+      const layer = camadas[r.indice]
+      // Política de ESCRITA (B1c; o resolverAlvo não muda): papel só endereça escrita quando DECLARADO.
+      if (tipo === 'semanticRole') {
+        const p = lerSemanticRole(layer)
+        if (!(p.status === 'valido' && p.origem === 'metadata')) {
+          erros.push({ codigo: 'PAPEL_NAO_DECLARADO', origem, layerId: layer.id })
+          continue
+        }
+      }
+      // O efeito tem de ser desenhado pelo tipo: senão seria gravado e ignorado pelo render.
+      const efeito = efeitoPedido(valor)
+      if (!tipoDesenha(efeito, layer.type)) {
+        erros.push({ codigo: 'VALOR_INCOMPATIVEL_COM_CAMADA', layerId: layer.id, type: String(layer.type), origem, efeito })
         continue
       }
       porIndice.set(r.indice, [...(porIndice.get(r.indice) ?? []), { origem, valor }])

@@ -8,6 +8,7 @@
  */
 import { semPrefixoHerdado } from '@/lib/copy-autoral'
 import { semMarcaDoRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
+import type { ValorResolvido } from '@/lib/semantica/resolver-valores'
 
 /**
  * Bake slot values and the background image into a copy of the source layers.
@@ -16,17 +17,22 @@ import { semMarcaDoRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
  * goes to the first empty dynamic image layer (the common case); if every
  * candidate already carries a static image, it replaces the first one — without
  * that fallback, templates with a hardcoded background silently ignore the photo.
+ *
+ * `valores` (B1c): os valores de `_slots`/`_papeis` já resolvidos por ÍNDICE do
+ * mesmo array (`resolverValoresSemanticos`). Entram entre a chave legada pelo id
+ * e a chave pelo nome; quem resolveu já recusou fontes divergentes.
  */
 export function bakeLayers(
   sourceLayers: any[],
   slotValues: Record<string, unknown>,
   imageUrl: string | null,
+  valores?: ReadonlyMap<number, ValorResolvido>,
 ): { layers: any[]; imageApplied: boolean; changedTextIds: string[] } {
   const explicitFileUrl = new Set<string>()
   const changedTextIds: string[] = []
 
-  const layers = sourceLayers.map((layer: any) => {
-    const slot = slotValues[layer.id] ?? slotValues[layer.name]
+  const layers = sourceLayers.map((layer: any, i: number) => {
+    const slot = slotValues[layer.id] ?? valores?.get(i)?.valor ?? slotValues[layer.name]
     const updated = { ...layer }
 
     // 🔴 Camada que RECEBE conteúdo não herda a declaração de prefixo: ela

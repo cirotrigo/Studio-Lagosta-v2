@@ -58,8 +58,8 @@ describe('escolher-modelo devolve a descoberta semântica (B1b)', () => {
     const r = await escolher()
     expect(r.page.slotFields.map((f: any) => [f.layerId, f.semantic.slot.id, f.semantic.addressableBy])).toEqual([
       ['t-h', null, ['layerId']],
-      ['t-e', 'servico-endereco', ['layerId']],
-      ['t-o', 'servico-horario', ['layerId']],
+      ['t-e', 'servico-endereco', ['layerId', 'slotId']],
+      ['t-o', 'servico-horario', ['layerId', 'slotId']],
     ])
     expect(r.page.semanticIssues).toEqual([])
   })

@@ -153,7 +153,7 @@ const LITERAL_CRIAR_ARTE_DE_MODELO = {
     slotValues: {
       type: 'object',
       description:
-        'Valores por slot, com as chaves do template (layerId ou nome da camada). String define texto; objeto aceita {content, fileUrl}. Chaves reservadas: _driveImageId, _imageUrl.',
+        'Valores por slot, com as chaves do template (layerId ou nome da camada). String define texto; objeto aceita {content, fileUrl}. Chaves reservadas: _driveImageId, _imageUrl, _slots ({slotId: valor}) e _papeis ({papel declarado: valor}) — use só o que escolher-modelo marcou em addressableBy; texto (string ou {content}) só em camada de texto, {fileUrl} só em imagem. Com copyAutoral, só chaves reservadas.',
       additionalProperties: true,
     },
     name: { type: 'string', description: 'Nome da página gerada (opcional).' },
@@ -162,7 +162,7 @@ const LITERAL_CRIAR_ARTE_DE_MODELO = {
     copyAutoral: {
       type: 'object',
       description:
-        'O CONTRATO da copy autoral (F1), como em compor-arte: {versao: "copy-autoral-v1", origem: {autor: "claude", superficie: "chat"}, blocos: [{id, funcao (pre|headline|apoio|cta|servico), ordem, linhas EXATAS}], revisoes: []}. Com ele, os campos do modelo são casados por PAPEL (não por posição) — mande também os slotValues das chaves reservadas (_driveImageId/_imageUrl) e nada de texto; o bloco sem campo no modelo é AVISADO, nunca perdido, e a arte grava a copy escrita × desenhada (ver-geracao).',
+        'O CONTRATO da copy autoral (F1), como em compor-arte: {versao: "copy-autoral-v1", origem: {autor: "claude", superficie: "chat"}, blocos: [{id, funcao (pre|headline|apoio|cta|servico), ordem, linhas EXATAS}], revisoes: []}. Com ele, os campos do modelo são casados por PAPEL (não por posição) — mande nos slotValues só chaves reservadas (_driveImageId/_imageUrl/_slots/_papeis), nunca texto por layerId ou nome (recusado: COPY_AUTORAL_COM_CHAVES_LEGADAS). O casamento é feito contra a página que a arte usa de fato; campo de texto que a copy não cobriu sai oculto, e bloco sem campo no modelo RECUSA a arte (COPY_NAO_CASA_COM_O_MODELO) em vez de sumir. A arte grava a copy escrita × desenhada (ver-geracao).',
       additionalProperties: {},
     },
   },
@@ -862,7 +862,7 @@ const LITERAIS_ARTE_IA: Record<string, unknown> = {
       pageId: { type: 'string', description: 'A arte a ajustar (pageId devolvido por criar-arte ou criar-arte-de-modelo).' },
       slotValues: {
         type: 'object',
-        description: 'Só o que muda: chave = id ou nome da camada, valor = novo texto (string) ou {content, fileUrl}.',
+        description: 'Só o que muda: chave = id ou nome da camada, valor = novo texto (string) ou {content, fileUrl}. Também _slots ({slotId: valor}) e _papeis ({papel declarado: valor}), resolvidos nesta página; texto só em camada de texto, {fileUrl} só em imagem.',
         additionalProperties: true,
       },
       imageUrl: { type: 'string', description: 'Nova foto de fundo (URL pública).' },

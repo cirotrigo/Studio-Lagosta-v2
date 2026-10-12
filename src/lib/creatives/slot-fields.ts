@@ -14,8 +14,7 @@
  *  - papel inferido SOZINHO nunca faz uma camada entrar.
  *
  * `addressableBy` = os endereços que o Studio de HOJE executa DE PONTA A PONTA —
- * não "o que o `resolverAlvo` localiza". No B1b o preenchimento só entende o
- * contrato legado (id/nome), então só entra `layerId`, e só quando é seguro:
+ * não "o que o `resolverAlvo` localiza". `layerId` só quando é seguro:
  * `resolverAlvo({ layerId })` aceita (id repetido aplicaria o valor nas duas
  * camadas) e nenhuma OUTRA camada tem esse id como nome (pelo `id ?? nome` do
  * legado, a chave também cairia nela) e o tipo da camada desenha o valor
@@ -23,20 +22,21 @@
  * camada não está oculta no modelo (o preenchimento não a torna visível), e a
  * página não pode ser trocada pela criação (família "(3 layouts)": com foto,
  * `createArteRapida` pode assar sobre uma irmã, onde o layerId pode não existir;
- * a promessa é incondicional, então não depende de haver foto ou `layoutFixo`). `slotId` e `semanticRole` continuam DESCRITOS em `slot`/`role`,
- * mas não prometidos (F1 da revisão adversarial do B1b: anunciá-los antes do
- * preenchimento deixava o agente gerar arte sem o conteúdo, sem erro).
+ * a promessa é incondicional, então não depende de haver foto ou `layoutFixo`).
  *
- * 🔴 Requisito do B1c para a família "(3 layouts)": antes de anunciar `slotId`
- * de ponta a ponta nela, provar que a MESMA ocorrência lógica tem o MESMO
- * `metadata.slot.id` nas páginas irmãs (Topo/Rodapé/Dividido) — são páginas
- * distintas, não cópias. Se os irmãos não compartilham slotIds, é pré-requisito
- * de migração/marcação, nunca fallback por nome.
+ * B1c: `_slots`/`_papeis` passaram a ser preenchidos (`createArteRapida` e
+ * `ajustarArte`, por `resolverValoresSemanticos`), e entram aqui sob as MESMAS
+ * portas de tipo, visibilidade e página: `slotId` quando o slot é válido e o
+ * `resolverAlvo({ slotId })` devolve esta camada; `semanticRole` quando o papel é
+ * DECLARADO (inferido a escrita recusa: PAPEL_NAO_DECLARADO) e o
+ * `resolverAlvo({ semanticRole })` devolve esta camada (papel ambíguo, não). A
+ * sombra de nome tira só o `layerId`: o semântico aplica por índice.
  *
- * 🔴 Requisito do B1c: o MESMO PR que tornar `_slots` preenchível acrescenta
- * `slotId` aqui; o que tornar `_papeis` preenchível acrescenta `semanticRole` —
- * com teste ponta a ponta (anunciado → aceito na criação/ajuste → a camada certa
- * recebe → conflito/ambiguidade falha explícito).
+ * 🔴 Família "(3 layouts)" continua SEM endereço nenhum: a criação resolve
+ * `_slots` na irmã efetiva (ALVO_NAO_RESOLVIDO explícito se ela não tiver o
+ * slot), mas prometer exige que as irmãs compartilhem os slotIds — em produção
+ * (12/10/2026) nenhuma página tem slot, e as famílias 207 e 308 divergem até nos
+ * layerIds. É pré-requisito de migração/marcação, nunca fallback por nome.
  *
  * `semanticIssues` diagnostica a PÁGINA, inclusive camadas que não viram campo
  * (um slot inválido numa forma, um papel inválido que bloqueia a resolução por
@@ -88,8 +88,8 @@ export interface SemanticaDoCampo {
     ambiguous: boolean
   }
   slot: { status: 'declared' | 'absent' | 'invalid' | 'duplicate'; id: string | null }
-  /** Endereços executáveis HOJE, de ponta a ponta. B1b: só `layerId` (ver o cabeçalho). */
-  addressableBy: Array<'layerId'>
+  /** Endereços executáveis HOJE, de ponta a ponta (ver o cabeçalho). */
+  addressableBy: Array<'layerId' | 'slotId' | 'semanticRole'>
   problems: ProblemaDoCampo[]
 }
 
@@ -217,9 +217,16 @@ export function analisarSlotFields(raw: unknown, contexto: ContextoDosCampos = {
     if (oculta) problems.push({ code: 'LAYER_HIDDEN' })
     const podeTrocar = contexto.paginaPodeSerSubstituida === true
     if (podeTrocar) problems.push({ code: 'PAGE_MAY_CHANGE_BY_LAYOUT' })
-    const porLayerId = resolverAlvo(camadas, { layerId: d.layerId })
-    const addressableBy: SemanticaDoCampo['addressableBy'] =
-      preenchivel && !oculta && !podeTrocar && 'indice' in porLayerId && porLayerId.indice === i && sombras.length === 0 ? ['layerId'] : []
+    // B1c: slotId e semanticRole entram quando a escrita (`resolverValoresSemanticos`) os executa: o MESMO
+    // `resolverAlvo` devolve esta camada, e o papel é DECLARADO (inferido é PAPEL_NAO_DECLARADO). A sombra de
+    // nome só afeta a chave legada; o semântico aplica por índice.
+    const eEsta = (r: ReturnType<typeof resolverAlvo>) => 'indice' in r && r.indice === i
+    const addressableBy: SemanticaDoCampo['addressableBy'] = []
+    if (preenchivel && !oculta && !podeTrocar) {
+      if (sombras.length === 0 && eEsta(resolverAlvo(camadas, { layerId: d.layerId }))) addressableBy.push('layerId')
+      if (d.slot.status === 'valido' && eEsta(resolverAlvo(camadas, { slotId: d.slot.slotId }))) addressableBy.push('slotId')
+      if (p.status === 'valido' && p.origem === 'metadata' && eEsta(resolverAlvo(camadas, { semanticRole: p.papel }))) addressableBy.push('semanticRole')
+    }
 
     slotFields.push({
       layerId: l.id,

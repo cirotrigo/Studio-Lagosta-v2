@@ -320,3 +320,43 @@ describe('página com vídeo é recusada ANTES de qualquer escrita (2ª revisão
     expect(banco.generations).toHaveLength(0)
   })
 })
+
+describe('B1c — _slots/_papeis em ajustarArte, sobre as camadas da própria página', () => {
+  const comSlot = () => {
+    banco.pagina = {
+      ...banco.pagina,
+      layers: (banco.pagina.layers as Array<Record<string, any>>).map((l) =>
+        l.id === 'headline' ? { ...l, metadata: { ...l.metadata, slot: { id: 'manchete' } } } : l,
+      ),
+    }
+  }
+
+  it('_slots preenche a camada do slot', async () => {
+    comSlot()
+    await ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { _slots: { manchete: 'Almoço de sexta' } } })
+    expect(manchete()).toBe('Almoço de sexta')
+  })
+
+  it('_papeis preenche a camada com o papel DECLARADO', async () => {
+    await ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { _papeis: { headline: 'Almoço de sábado' } } })
+    expect(manchete()).toBe('Almoço de sábado')
+  })
+
+  it('valor incompatível: 422 antes de resolver a foto e de qualquer escrita', async () => {
+    comSlot()
+    const antes = banco.pagina.updatedAt.getTime()
+    const erro = await erroDe(ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { _imageUrl: 'https://f', _slots: { manchete: { fileUrl: 'https://x' } } } }))
+    expect((erro as CreativeError).code).toBe('VALOR_INCOMPATIVEL_COM_CAMADA')
+    expect((erro as CreativeError).status).toBe(422)
+    expect(banco.pagina.updatedAt.getTime()).toBe(antes)
+    expect(banco.generations).toHaveLength(0)
+    expect(banco.putSeq).toBe(0)
+  })
+
+  it('slot legado pelo id e _slots divergentes no mesmo campo: VALOR_CONFLITANTE, nada gravado', async () => {
+    comSlot()
+    const erro = await erroDe(ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { headline: 'A', _slots: { manchete: 'B' } } }))
+    expect((erro as CreativeError).code).toBe('VALOR_CONFLITANTE')
+    expect(banco.generations).toHaveLength(0)
+  })
+})

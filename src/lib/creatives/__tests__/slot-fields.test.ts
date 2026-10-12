@@ -2,9 +2,9 @@
  * B1b — descoberta semântica: `analisarSlotFields` enriquece os campos que o
  * `escolher-modelo` já devolvia, sem mudar os cinco campos legados, e
  * diagnostica a página inteira em `semanticIssues`. `addressableBy` é o que o
- * Studio de HOJE executa de ponta a ponta — só `layerId` seguro no B1b (o B1c
- * acrescenta slotId/semanticRole no mesmo PR que os torna preenchíveis). Vem do
- * `resolverAlvo({ layerId })`: id repetido não é endereço seguro.
+ * Studio de HOJE executa de ponta a ponta — `layerId` seguro desde o B1b; o B1c
+ * acrescenta slotId/semanticRole, que passou a preencher. Vem do `resolverAlvo`:
+ * id, slot ou papel repetido não é endereço seguro.
  */
 import { describe, expect, it } from 'vitest'
 import { analisarSlotFields, slotFieldsFromLayers } from '../slot-fields'
@@ -128,14 +128,14 @@ describe('slot e entrada de camadas', () => {
     expect(r.slotFields.map((f) => f.currentValue)).toEqual(['Olá', 'https://dyn'])
   })
 
-  it('dois servico com slots: os dois slots descritos, o papel ambíguo, nada prometido além do layerId; não é issue', () => {
+  it('dois servico com slots: os dois slots descritos e prometidos, o papel ambíguo (semanticRole fora); não é issue', () => {
     const r = analisarSlotFields([texto('t-e', 'Endereço', 'Rua A', papel('servico', 'servico-endereco')), texto('t-h', 'Horário', '18h', papel('servico', 'servico-horario'))])
     expect(r.semanticIssues).toEqual([])
     for (const f of r.slotFields) {
       expect(f.semantic.role).toMatchObject({ value: 'servico', occurrences: 2, ambiguous: true, expectedCardinality: 'MANY' })
-      // os dois slots aparecem, o papel é ambíguo, e nem slotId nem semanticRole são prometidos
+      // B1c: o slot de cada um é endereço executável; o papel, ambíguo, não
       expect(f.semantic.slot.status).toBe('declared')
-      expect(f.semantic.addressableBy).toEqual(['layerId'])
+      expect(f.semantic.addressableBy).toEqual(['layerId', 'slotId'])
     }
     expect(r.slotFields.map((f) => f.semantic.slot.id)).toEqual(['servico-endereco', 'servico-horario'])
   })
@@ -165,7 +165,8 @@ describe('slot e entrada de camadas', () => {
     expect(r.semanticIssues).toEqual([{ code: 'SLOT_DUPLICATE', layerIds: ['a', 'b'], slotId: 'principal' }])
     for (const f of r.slotFields) {
       expect(f.semantic.slot).toEqual({ status: 'duplicate', id: 'principal' })
-      expect(f.semantic.addressableBy).toEqual(['layerId'])
+      // sem slotId; o papel declarado de cada um (cta, apoio) é único, então semanticRole entra
+      expect(f.semantic.addressableBy).toEqual(['layerId', 'semanticRole'])
       expect(f.semantic.problems).toContainEqual({ code: 'SLOT_DUPLICATE', layerIds: ['a', 'b'] })
     }
   })
@@ -198,7 +199,7 @@ describe('corrupção FORA dos fields aparece em semanticIssues', () => {
   })
 })
 
-describe('addressableBy = capacidade executável HOJE (decisão do Ciro sobre o F1 do B1b)', () => {
+describe('addressableBy = capacidade executável HOJE (F1 do B1b; B1c acrescenta slotId e semanticRole)', () => {
   const paginas: unknown[][] = [
     [texto('text-a1', 'headline', 'x')],
     [texto('t-e', 'E', 'x', papel('servico', 'servico-endereco')), texto('t-h', 'H', 'y', papel('servico', 'servico-horario'))],
@@ -206,10 +207,13 @@ describe('addressableBy = capacidade executável HOJE (decisão do Ciro sobre o 
     [{ id: 'bg-foto', name: 'F', type: 'image', isDynamic: true }, { id: 'logo', name: 'L', type: 'logo', metadata: { slot: { id: 'logo-1' } } }],
   ]
 
-  it('nunca anuncia slotId nem semanticRole, mesmo quando o resolverAlvo os resolveria', () => {
-    for (const p of paginas) {
-      for (const f of analisarSlotFields(p).slotFields) expect(f.semantic.addressableBy.every((a) => a === 'layerId')).toBe(true)
-    }
+  it('B1c: slotId só com slot único, semanticRole só com papel DECLARADO e único; logo não desenha o valor', () => {
+    expect(paginas.map((p) => analisarSlotFields(p).slotFields.map((f) => f.semantic.addressableBy))).toEqual([
+      [['layerId']],
+      [['layerId', 'slotId'], ['layerId', 'slotId']],
+      [['layerId', 'slotId', 'semanticRole']],
+      [['layerId'], []],
+    ])
   })
 
   it('a descrição semântica continua inteira: slot, papel e problemas aparecem', () => {
@@ -247,13 +251,13 @@ describe('só tipos cujo valor o render desenha são prometidos (codex review do
     }
   })
 
-  it('texto, rich-text e imagem com slot: layerId prometido', () => {
+  it('texto, rich-text e imagem com slot: layerId e slotId prometidos', () => {
     const r = analisarSlotFields([
       texto('t1', 'T', 'a', { slot: { id: 's1' } }),
       { id: 'rt-1', name: 'R', type: 'rich-text', content: 'b', metadata: { slot: { id: 's2' } } },
       { id: 'img-1', name: 'I', type: 'image', metadata: { slot: { id: 's3' } } },
     ])
-    expect(r.slotFields.map((f) => f.semantic.addressableBy)).toEqual([['layerId'], ['layerId'], ['layerId']])
+    expect(r.slotFields.map((f) => f.semantic.addressableBy)).toEqual([['layerId', 'slotId'], ['layerId', 'slotId'], ['layerId', 'slotId']])
   })
 })
 
@@ -275,7 +279,7 @@ describe('página que a criação pode trocar por uma irmã (família "(3 layout
   ]
 
   it('template normal: a camada segura promete layerId', () => {
-    expect(analisarSlotFields(pagina).slotFields.map((f) => f.semantic.addressableBy)).toEqual([['layerId'], ['layerId'], ['layerId']])
+    expect(analisarSlotFields(pagina).slotFields.map((f) => f.semantic.addressableBy)).toEqual([['layerId', 'slotId'], ['layerId', 'slotId'], ['layerId']])
     expect(analisarSlotFields(pagina, { paginaPodeSerSubstituida: false }).slotFields[2].semantic.addressableBy).toEqual(['layerId'])
   })
 
@@ -298,5 +302,42 @@ describe('página que a criação pode trocar por uma irmã (família "(3 layout
   it('não é corrupção: nenhum semanticIssue a mais', () => {
     expect(analisarSlotFields(pagina, { paginaPodeSerSubstituida: true }).semanticIssues).toEqual(analisarSlotFields(pagina).semanticIssues)
     expect(analisarSlotFields(pagina, { paginaPodeSerSubstituida: true }).semanticIssues).toEqual([])
+  })
+})
+
+describe('B1c: slotId e semanticRole entram em addressableBy — com as mesmas portas da escrita', () => {
+  const ab = (camadas: any[], ctx = {}) => analisarSlotFields(camadas, ctx).slotFields.map((f) => f.semantic.addressableBy)
+
+  it('slot válido e único + papel DECLARADO e único: os três endereços', () => {
+    expect(ab([texto('t1', 'Título', 'a', papel('headline', 'manchete'))])).toEqual([['layerId', 'slotId', 'semanticRole']])
+  })
+
+  it('papel INFERIDO (pelo nome) não é prometido: a escrita recusa (PAPEL_NAO_DECLARADO)', () => {
+    expect(ab([texto('t1', 'headline', 'a')])).toEqual([['layerId']])
+  })
+
+  it('papel declarado repetido: semanticRole fora (ambíguo), o slot de cada um continua', () => {
+    expect(ab([texto('t1', 'A', 'a', papel('servico', 's1')), texto('t2', 'B', 'b', papel('servico', 's2'))])).toEqual([
+      ['layerId', 'slotId'],
+      ['layerId', 'slotId'],
+    ])
+  })
+
+  it('slot duplicado: slotId fora', () => {
+    expect(ab([texto('t1', 'A', 'a', { slot: { id: 's' } }), texto('t2', 'B', 'b', { slot: { id: 's' } })])).toEqual([['layerId'], ['layerId']])
+  })
+
+  it('id sombreado por nome tira só o layerId: slot e papel não passam pela chave legada', () => {
+    expect(ab([texto('x', 'A', 'a', papel('headline', 'manchete')), texto('y', 'x', 'b')])).toEqual([['slotId', 'semanticRole'], ['layerId']])
+  })
+
+  it('oculta, tipo que não desenha e família "(3 layouts)": nenhum endereço', () => {
+    expect(ab([texto('t1', 'A', 'a', papel('headline', 'm'), { visible: false })])).toEqual([[]])
+    expect(ab([{ id: 's1', name: 'F', type: 'shape', metadata: { slot: { id: 'f' } } }])).toEqual([[]])
+    expect(ab([texto('t1', 'A', 'a', papel('headline', 'm'))], { paginaPodeSerSubstituida: true })).toEqual([[]])
+  })
+
+  it('imagem com slot e papel foto declarado: os três', () => {
+    expect(ab([{ id: 'i1', name: 'Foto', type: 'image', isDynamic: true, visible: true, metadata: { compositor: { papel: 'foto' }, slot: { id: 'foto-1' } } }])).toEqual([['layerId', 'slotId', 'semanticRole']])
   })
 })
