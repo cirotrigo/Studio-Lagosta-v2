@@ -719,7 +719,7 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
   const chavesLegadas = contratoRecebido || copyPosicional ? Object.keys(slotValues).filter((k) => !CHAVES_RESERVADAS.has(k)) : []
   if (chavesLegadas.length > 0) {
     throw new CreativeError(
-      'COPY_AUTORAL_COM_CHAVES_LEGADAS',
+      'COPY_COM_CHAVES_LEGADAS',
       `Com ${contratoRecebido ? 'copyAutoral' : 'copyPosicional'}, não envie texto diretamente por layerId ou nome da camada. Use _slots/_papeis para endereçamento semântico ou apenas controles de imagem.`,
       400,
       { chaves: chavesLegadas },

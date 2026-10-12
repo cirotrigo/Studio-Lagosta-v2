@@ -67,7 +67,7 @@ export const toolsDeModelos = [
         .record(z.string(), z.unknown())
         .optional()
         .describe(
-          'O CONTRATO da copy autoral (F1), como em compor-arte: {versao: "copy-autoral-v1", origem: {autor: "claude", superficie: "chat"}, blocos: [{id, funcao (pre|headline|apoio|cta|servico), ordem, linhas EXATAS}], revisoes: []}. Com ele, os campos do modelo são casados por PAPEL (não por posição) — mande nos slotValues só chaves reservadas (_driveImageId/_imageUrl/_slots/_papeis), nunca texto por layerId ou nome (recusado: COPY_AUTORAL_COM_CHAVES_LEGADAS). O casamento é feito contra a página que a arte usa de fato; campo de texto que a copy não cobriu sai oculto, e bloco sem campo no modelo RECUSA a arte (COPY_NAO_CASA_COM_O_MODELO) em vez de sumir. A arte grava a copy escrita × desenhada (ver-geracao).',
+          'O CONTRATO da copy autoral (F1), como em compor-arte: {versao: "copy-autoral-v1", origem: {autor: "claude", superficie: "chat"}, blocos: [{id, funcao (pre|headline|apoio|cta|servico), ordem, linhas EXATAS}], revisoes: []}. Com ele, os campos do modelo são casados por PAPEL (não por posição) — mande nos slotValues só chaves reservadas (_driveImageId/_imageUrl/_slots/_papeis), nunca texto por layerId ou nome (recusado: COPY_COM_CHAVES_LEGADAS). O casamento é feito contra a página que a arte usa de fato; campo de texto que a copy não cobriu sai oculto, e bloco sem campo no modelo RECUSA a arte (COPY_NAO_CASA_COM_O_MODELO) em vez de sumir. A arte grava a copy escrita × desenhada (ver-geracao).',
         ),
     }),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },

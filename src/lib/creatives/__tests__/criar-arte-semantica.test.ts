@@ -145,10 +145,10 @@ describe('B/C. copy que não cabe no modelo recusa — nunca some', () => {
 })
 
 describe('D. entradas que se excluem', () => {
-  it('copyAutoral + chave legada de texto: COPY_AUTORAL_COM_CHAVES_LEGADAS, com a mensagem combinada', async () => {
+  it('copyAutoral + chave legada de texto: COPY_COM_CHAVES_LEGADAS, com a mensagem combinada', async () => {
     const e = await falha(createArteRapida({ projectId: 8, sourcePageId: 'p-a', slotValues: { 'a-h': 'Outro' }, copyAutoral: SO_MANCHETE }))
     expect(e).toMatchObject({
-      code: 'COPY_AUTORAL_COM_CHAVES_LEGADAS',
+      code: 'COPY_COM_CHAVES_LEGADAS',
       status: 400,
       message: 'Com copyAutoral, não envie texto diretamente por layerId ou nome da camada. Use _slots/_papeis para endereçamento semântico ou apenas controles de imagem.',
       details: { chaves: ['a-h'] },
@@ -251,7 +251,7 @@ describe('chamador legado (sem copy, sem _slots/_papeis): nada muda', () => {
 describe('posicional também não aceita texto legado ao lado', () => {
   it('copyPosicional + chave de texto: 400, nada some em silêncio debaixo do oculto', async () => {
     const e = await falha(createArteRapida({ projectId: 8, sourcePageId: 'p-a', slotValues: { 'a-s': 'Sex 19h' }, copyPosicional: ['Noite do vinho'] }))
-    expect(e).toMatchObject({ code: 'COPY_AUTORAL_COM_CHAVES_LEGADAS', status: 400, details: { chaves: ['a-s'] } })
+    expect(e).toMatchObject({ code: 'COPY_COM_CHAVES_LEGADAS', status: 400, details: { chaves: ['a-s'] } })
     semEfeito()
   })
 })
@@ -322,9 +322,9 @@ describe('revisão adversarial do B1c', () => {
     expect(r.avisos?.some((a) => a.includes('Rico'))).toBe(true)
   })
 
-  it('chave com "_" fora das reservadas, com copy: COPY_AUTORAL_COM_CHAVES_LEGADAS', async () => {
+  it('chave com "_" fora das reservadas, com copy: COPY_COM_CHAVES_LEGADAS', async () => {
     const e = await falha(createArteRapida({ projectId: 8, sourcePageId: 'p-a', slotValues: { _titulo: 'x' }, copyAutoral: SO_MANCHETE }))
-    expect(e).toMatchObject({ code: 'COPY_AUTORAL_COM_CHAVES_LEGADAS', details: { chaves: ['_titulo'] } })
+    expect(e).toMatchObject({ code: 'COPY_COM_CHAVES_LEGADAS', details: { chaves: ['_titulo'] } })
   })
 })
 
