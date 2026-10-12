@@ -9,6 +9,9 @@ import { db } from '@/lib/db'
 import { CreativeError } from '@/lib/creatives/errors'
 import { invalidateScheduledRenders } from '@/lib/posts/invalidate-renders'
 import { validarCamadas } from '@/lib/creatives/layer-contract'
+import { lerCamadas } from '@/lib/posts/page-layers'
+import { descreverAvisoDeSlot, semSlots, transportarSlots, type AvisoDeSlot } from '@/lib/semantica/transportar-slots'
+import type { Layer } from '@/types/template'
 
 export interface ReversaoDeArte {
   generationId: string
@@ -43,11 +46,24 @@ export async function reverterCamadasDaArte(generationId: string, opts: { projec
   // Codex sobre abac9b34, 18/09/2026): lida antes, um PATCH no meio deixava as
   // camadas do snapshot com o contrato do PATCH e apagava a revisão dele.
   const { gravarCamadasComRevisao } = await import('@/lib/copy-autoral/persistir')
-  const camadasDoSnapshot = JSON.stringify(v.camadas)
+  /**
+   * PR B0: o snapshot é o VISUAL a restaurar; a identidade lógica das camadas
+   * (`metadata.slot`) vem da página RELIDA a cada volta do compare-and-set —
+   * reconciliar com uma leitura anterior perderia o slot que um PATCH gravou no
+   * meio. O slot que o PRÓPRIO snapshot carrega não conta (`semSlots`): a
+   * identidade é a da página — um slot trocado ou removido depois não volta.
+   * Os avisos são os da volta que gravou.
+   */
+  let avisosDeSlot: AvisoDeSlot[] = []
+  const camadasDaReversao = (base: { layers: unknown }) => {
+    const r = transportarSlots(lerCamadas(base.layers).camadas as unknown as Layer[], semSlots(v.camadas as unknown as Layer[]))
+    avisosDeSlot = r.avisos
+    return JSON.stringify(r.camadas)
+  }
   const r = await db.$transaction(async (tx) => {
     const g = await gravarCamadasComRevisao(tx, {
       pageId,
-      camadas: () => camadasDoSnapshot,
+      camadas: camadasDaReversao,
       quem: { autor: 'sistema', motivo: 'reverter-arte (camadas do snapshot)', superficie: 'reverter-arte' },
       // A leitura de hoje sobre as camadas de ANTES é do sistema (PR5-06); a diferença para o snapshot é da reversão.
       reconciliarComAnteriores: true,
@@ -57,7 +73,7 @@ export async function reverterCamadasDaArte(generationId: string, opts: { projec
     return { ...inv, aviso: g.aviso }
   })
   // Recusa do contrato (histórico cheio, copy que não cabe): a reversão segue, o contrato fica como estava e o motivo sai no retorno.
-  const avisos = r.aviso ? [r.aviso] : []
+  const avisos = [...(r.aviso ? [r.aviso] : []), ...avisosDeSlot.map(descreverAvisoDeSlot)]
   if (avisos.length > 0) console.warn(`[reverter-arte] ${pageId}: ${avisos[0]}`)
   /**
    * O outro lado da invalidação: a arte CONGELADA desta página (o slide de
