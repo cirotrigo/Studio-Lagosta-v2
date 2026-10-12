@@ -22,14 +22,19 @@ export const toolsDeModelos = [
     }),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     // O gate declarado dispara quando projectId vem como número; sem ele o
-    // serviço resolve por projectHint — mesmo contrato de sempre.
+    // serviço resolve por projectHint SÓ entre os projetos visíveis ao
+    // principal — o filtro é o gate do projeto resolvido (mesma fonte do
+    // assertProjetoPermitido), e o erro de ambiguidade não vaza cliente alheio.
     acesso: { tipo: 'projeto' },
     superficies: ['remoto', 'local'],
-    handler: async (args, _principal) => {
+    handler: async (args, principal) => {
       const { prepareCreative } = await import('../../creatives/arte-rapida')
+      const projectId = typeof args.projectId === 'number' ? args.projectId : undefined
+      const { projetosVisiveis } = await import('../tools')
       return prepareCreative({
-        projectId: typeof args.projectId === 'number' ? args.projectId : undefined,
+        projectId,
         projectHint: typeof args.projectHint === 'string' ? args.projectHint : undefined,
+        projetosVisiveis: projectId === undefined ? await projetosVisiveis(principal) : null,
         theme: args.theme as string,
         day: typeof args.day === 'string' ? args.day : undefined,
       })

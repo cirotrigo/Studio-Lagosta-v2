@@ -147,6 +147,14 @@ export interface PrepareCreativeInput {
   /** Exact project id — skips name matching. Preferred by service callers. */
   projectId?: number
   /**
+   * Projetos que quem chama enxerga (`projetosVisiveis` do MCP). A busca por
+   * `projectHint` fica restrita a eles — sem isto um usuário OAuth do conector
+   * lia modelos de cliente alheio, e o AMBIGUOUS_PROJECT listava ids e nomes
+   * de outros clientes (auditoria de 12/10/2026). `null`/ausente = tudo
+   * (principal 'service' e a rota /api/external).
+   */
+  projetosVisiveis?: number[] | null
+  /**
    * Theme of the creative (e.g., "almoço executivo", "happy hour").
    *
    * Com tema, o casamento é SÓ por tag (`casaTemaComTags`) — tema que não
@@ -254,7 +262,9 @@ const PROJECT_SELECT = {
   },
 } as const
 
-async function resolveProject(input: Pick<PrepareCreativeInput, 'projectId' | 'projectHint'>) {
+export async function resolveProject(
+  input: Pick<PrepareCreativeInput, 'projectId' | 'projectHint' | 'projetosVisiveis'>,
+) {
   if (input.projectId) {
     const project = await db.project.findUnique({
       where: { id: input.projectId },
@@ -272,7 +282,11 @@ async function resolveProject(input: Pick<PrepareCreativeInput, 'projectId' | 'p
   }
 
   const projects = await db.project.findMany({
-    where: { status: 'ACTIVE', name: { contains: hint, mode: 'insensitive' } },
+    where: {
+      status: 'ACTIVE',
+      name: { contains: hint, mode: 'insensitive' },
+      ...(input.projetosVisiveis ? { id: { in: input.projetosVisiveis } } : {}),
+    },
     select: PROJECT_SELECT as any,
     orderBy: { name: 'asc' },
   })
