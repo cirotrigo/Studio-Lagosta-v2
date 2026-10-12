@@ -937,7 +937,7 @@ describe('recomporPaginaDefasada — PR B0: slot da camada extra livre', () => {
     return { entrada, amanha, ehNota }
   }
 
-  async function recompor(paginaComSlot: Layer[], composicao: Layer[], entrada: { copyAutoral: unknown; fieldValues: unknown }) {
+  async function recompor(paginaComSlot: Layer[], composicao: Layer[], entrada: { copyAutoral?: unknown; fieldValues: unknown }) {
     estado.page = {
       id: 'pg-1', name: 'slide', width: 1080, height: 1920, layers: paginaComSlot, background: '#000',
       isTemplate: false, templateId: 't-1', copyAutoral: entrada.copyAutoral, updatedAt: new Date('2026-09-12T15:00:00.000Z'),
