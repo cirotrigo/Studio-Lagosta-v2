@@ -117,3 +117,21 @@ describe('lerSemanticRole — papel compatível com o tipo (revisão adversarial
     expect(lerSemanticRole(camada({ id: 'cta', type: 'rich-text' }))).toEqual({ status: 'valido', papel: 'cta', origem: 'id' })
   })
 })
+
+describe('lerSemanticRole — revisão do diff (codex review)', () => {
+  it('texto com o id reservado bg-foto não é foto', () => {
+    expect(lerSemanticRole(camada({ id: 'bg-foto', type: 'text' }))).toEqual({ status: 'ausente' })
+  })
+
+  it('metadata.compositor que não é objeto é declaração corrompida, sem cair na inferência', () => {
+    expect(lerSemanticRole(camada({ id: 'servico', metadata: { compositor: 'servico' } }))).toEqual({ status: 'invalido', valor: 'servico', motivo: 'valor' })
+  })
+
+  it('compositor sem papel é legítimo (camada extra livre) e cai na inferência', () => {
+    expect(lerSemanticRole(camada({ id: 'texto-1', metadata: { compositor: { bloco: 'b1' } } }))).toEqual({ status: 'ausente' })
+  })
+
+  it('papel null (guardável em JSON) é inválido', () => {
+    expect(lerSemanticRole(camada({ id: 'cta', metadata: { compositor: { papel: null } } }))).toEqual({ status: 'invalido', valor: null, motivo: 'valor' })
+  })
+})

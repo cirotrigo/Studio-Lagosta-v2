@@ -41,13 +41,15 @@ const MAX_SLOT = 100
 
 type CamadaLida = Pick<Layer, 'id' | 'name' | 'type' | 'metadata'>
 
-function compositorDe(camada: CamadaLida): Record<string, unknown> | undefined {
-  const c = (camada.metadata as { compositor?: unknown } | undefined)?.compositor
-  return c && typeof c === 'object' ? (c as Record<string, unknown>) : undefined
-}
-
 export function lerSemanticRole(camada: CamadaLida): LeituraDoPapel {
-  const compositor = compositorDe(camada)
+  const bruto = (camada.metadata as { compositor?: unknown } | undefined)?.compositor
+  // `compositor` presente mas que não é objeto é declaração corrompida — não
+  // cai na inferência. Objeto SEM `papel` é legítimo: a camada extra `livre`
+  // é gravada assim de propósito (`compositor/blocos.ts`, `camadaDoPapel`).
+  if (bruto !== undefined && (bruto === null || typeof bruto !== 'object' || Array.isArray(bruto))) {
+    return { status: 'invalido', valor: bruto, motivo: 'valor' }
+  }
+  const compositor = bruto as Record<string, unknown> | undefined
   if (compositor && 'papel' in compositor && compositor.papel !== undefined) {
     const valor = compositor.papel
     if (!ehSemanticRole(valor)) return { status: 'invalido', valor, motivo: 'valor' }
@@ -57,7 +59,7 @@ export function lerSemanticRole(camada: CamadaLida): LeituraDoPapel {
   if (ehPapel(camada.id) && papelCabeNoTipo(camada.id, camada.type)) return { status: 'valido', papel: camada.id, origem: 'id' }
   if (ehPapel(camada.name) && papelCabeNoTipo(camada.name, camada.type)) return { status: 'valido', papel: camada.name, origem: 'nome' }
   if (camada.type === 'logo') return { status: 'valido', papel: 'logo', origem: 'tipo' }
-  if (camada.id === 'bg-foto') return { status: 'valido', papel: 'foto', origem: 'id-reservado' }
+  if (camada.id === 'bg-foto' && papelCabeNoTipo('foto', camada.type)) return { status: 'valido', papel: 'foto', origem: 'id-reservado' }
   return { status: 'ausente' }
 }
 
