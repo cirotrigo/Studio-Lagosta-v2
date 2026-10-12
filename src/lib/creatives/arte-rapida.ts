@@ -1172,12 +1172,13 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
   // Arte-livre não marca o fundo como dinâmico (a camada nasce aqui, não num
   // template): sem este fallback, trocar a foto de uma arte criada do zero
   // seria impossível. A primeira camada de imagem é o fundo nos dois geradores.
-  // A camada que recebeu `fileUrl` explícito (legado ou _slots/_papeis) não é fundo disponível: sobrescrevê-la
-  // descartava em silêncio o valor pedido (codex review do B1c).
+  // Só o FUNDO: se ele recebeu `fileUrl` explícito (legado ou _slots/_papeis), a foto genérica não é aplicada — nem
+  // nele (descartaria o valor pedido) nem na imagem seguinte, que pode ser a logo (codex review do B1c, #208).
+  let fundoComFileUrlExplicito = false
   if (!imageApplied && resolved.url) {
-    const explicitas = new Set(baked.explicitFileUrlIds)
-    const fundo = (bakedLayers as any[]).find((l) => l.type === 'image' && !explicitas.has(l.id))
-    if (fundo) {
+    const fundo = (bakedLayers as any[]).find((l) => l.type === 'image')
+    fundoComFileUrlExplicito = !!fundo && baked.explicitFileUrlIds.includes(fundo.id)
+    if (fundo && !fundoComFileUrlExplicito) {
       fundo.fileUrl = resolved.url
       imageApplied = true
     }
@@ -1217,7 +1218,9 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
   const imageWarning =
     resolved.warning ??
     (resolved.url && !imageApplied
-      ? 'A imagem foi resolvida mas a arte não tem camada de imagem dinâmica para recebê-la'
+      ? fundoComFileUrlExplicito
+        ? 'A foto não foi aplicada: o fundo recebeu um fileUrl explícito nesta mesma chamada.'
+        : 'A imagem foi resolvida mas a arte não tem camada de imagem dinâmica para recebê-la'
       : undefined)
 
   const pageName = input.name ?? page.name

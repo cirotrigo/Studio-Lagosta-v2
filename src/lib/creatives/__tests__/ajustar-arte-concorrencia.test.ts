@@ -374,3 +374,50 @@ describe('B1c (codex review) — fileUrl explícito não é sobrescrito pelo fal
     expect((banco.pagina.layers as Array<Record<string, any>>).find((l) => l.id === 'img')!.fileUrl).toBe('https://blob.test/pedida.jpg')
   })
 })
+
+describe('Codex #208 — fallback da foto genérica só no FUNDO (a primeira imagem), nunca na logo', () => {
+  const img = (id: string, fileUrl: string, extra: Record<string, unknown> = {}) => ({ id, name: id, type: 'image', visible: true, order: 0, position: { x: 0, y: 0 }, size: { width: 100, height: 100 }, fileUrl, ...extra })
+  const comFundoELogo = () => {
+    banco.pagina = {
+      ...banco.pagina,
+      layers: [img('fundo', 'https://blob.test/fundo-antigo.jpg', { metadata: { slot: { id: 'fundo' } } }), img('logo', 'https://blob.test/logo.png'), ...(banco.pagina.layers as unknown[])],
+    }
+  }
+  const camada = (id: string) => (banco.pagina.layers as Array<Record<string, any>>).find((l) => l.id === id)!
+
+  it('_slots com {fileUrl} no fundo + imageUrl: o fundo fica com a pedida, a logo intacta, imageApplied false e aviso', async () => {
+    comFundoELogo()
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', imageUrl: 'https://blob.test/generica.jpg', slotValues: { _slots: { fundo: { fileUrl: 'https://blob.test/pedida.jpg' } } } })
+    expect(camada('fundo').fileUrl).toBe('https://blob.test/pedida.jpg')
+    expect(camada('logo').fileUrl).toBe('https://blob.test/logo.png')
+    expect(r.imageApplied).toBe(false)
+    expect(r.imageWarning).toMatch(/não foi aplicada/)
+  })
+
+  it('fileUrl LEGADO por layerId no fundo + imageUrl: mesma regra', async () => {
+    comFundoELogo()
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', imageUrl: 'https://blob.test/generica.jpg', slotValues: { fundo: { fileUrl: 'https://blob.test/pedida.jpg' } } })
+    expect(camada('fundo').fileUrl).toBe('https://blob.test/pedida.jpg')
+    expect(camada('logo').fileUrl).toBe('https://blob.test/logo.png')
+    expect(r.imageApplied).toBe(false)
+    expect(r.imageWarning).toMatch(/não foi aplicada/)
+  })
+
+  it('sem fileUrl explícito: a foto genérica vai para o fundo, como sempre', async () => {
+    comFundoELogo()
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', imageUrl: 'https://blob.test/generica.jpg' })
+    expect(camada('fundo').fileUrl).toBe('https://blob.test/generica.jpg')
+    expect(camada('logo').fileUrl).toBe('https://blob.test/logo.png')
+    expect(r.imageApplied).toBe(true)
+  })
+})
+
+it('Codex #208 — fallback: _papeis {foto: {fileUrl}} no fundo + imageUrl: logo intacta', async () => {
+  const img = (id: string, fileUrl: string, extra: Record<string, unknown> = {}) => ({ id, name: id, type: 'image', visible: true, order: 0, position: { x: 0, y: 0 }, size: { width: 100, height: 100 }, fileUrl, ...extra })
+  banco.pagina = { ...banco.pagina, layers: [img('fundo', 'https://blob.test/fundo-antigo.jpg', { metadata: { compositor: { papel: 'foto' } } }), img('logo', 'https://blob.test/logo.png'), ...(banco.pagina.layers as unknown[])] }
+  const r = await ajustarArte({ projectId: 8, pageId: 'p1', imageUrl: 'https://blob.test/generica.jpg', slotValues: { _papeis: { foto: { fileUrl: 'https://blob.test/pedida.jpg' } } } })
+  const camada = (id: string) => (banco.pagina.layers as Array<Record<string, any>>).find((l) => l.id === id)!
+  expect(camada('fundo').fileUrl).toBe('https://blob.test/pedida.jpg')
+  expect(camada('logo').fileUrl).toBe('https://blob.test/logo.png')
+  expect(r.imageApplied).toBe(false)
+})
