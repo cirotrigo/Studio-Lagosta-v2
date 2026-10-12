@@ -127,6 +127,8 @@ describe('H. quem grava `SocialPost.slotValues` (src/ e scripts/)', () => {
    * classificado aqui. Um escritor novo derruba o teste até ser classificado — é por ele que o contrato novo
    * pode entrar (ou ser apagado) sem passar pela validação do B1d.
    *
+   * Inclui SQL cru (UPDATE/INSERT em SocialPost perto de slotValues, ou UPDATE com tabela dinâmica).
+   *
    * Produção: 9 pontos de escrita, 10 operações (trocarArteDoPost tem duas). As portas do pedido CRU — onde
    * `_slots`/`_papeis` podem chegar — são createPost (src) e create-post/update-post do MCP LOCAL, que gravam
    * pelo Prisma direto, sem passar pelo createPost.
@@ -143,6 +145,7 @@ describe('H. quem grava `SocialPost.slotValues` (src/ e scripts/)', () => {
   const ESCRITORES_PONTUAIS: Record<string, string> = {
     'scripts/create-tero-week-posts.ts': 'uso único (TERO, abril/2026): insert de textos por nome',
     'scripts/marcar-copia-da-pagina.ts': 'backfill da marca _copiaDaPagina: updateMany com slotValuesSeguindo (preserva `_…`)',
+    'scripts/recover-blob-db-update.ts': 'recuperação (SQL cru, tabela e coluna DINÂMICAS): troca o host do Blob em toda coluna texto/jsonb, inclusive SocialPost.slotValues — só o host das URLs',
   }
   const PROVAS_DE_INTEGRACAO: Record<string, string> = Object.fromEntries(
     ['validar-camadas-extras', 'validar-contexto-da-semana', 'validar-copy-autoral', 'validar-desfecho-no-agendamento', 'validar-revisor-da-arte', 'validar-video-na-agenda'].map((n) => [`scripts/${n}.ts`, 'prova no banco de dev: fixtures e leituras']),
@@ -170,7 +173,12 @@ describe('H. quem grava `SocialPost.slotValues` (src/ e scripts/)', () => {
     const candidatos = [...arquivosTs(join(raiz, 'src')), ...arquivosTs(join(raiz, 'scripts'))]
       .filter((f) => {
         const t = readFileSync(f, 'utf8')
-        return /socialPost\.(create|createMany|update|updateMany|upsert)\b/.test(t) && /\bslotValues\b/.test(t)
+        const peloPrisma = /socialPost\.(create|createMany|update|updateMany|upsert)\b/.test(t) && /\bslotValues\b/.test(t)
+        // SQL cru: UPDATE/INSERT em SocialPost perto de slotValues, ou UPDATE com tabela DINÂMICA (alcança qualquer coluna)
+        const peloSqlCru =
+          [...t.matchAll(/(UPDATE|INSERT INTO)\s+"?SocialPost"?/gi)].some((m) => /slotValues/.test(t.slice(m.index, (m.index ?? 0) + 700))) ||
+          /(UPDATE|INSERT INTO)\s+"\$\{[^}]+\}"/i.test(t)
+        return peloPrisma || peloSqlCru
       })
       .map((f) => relative(raiz, f))
       .sort()
