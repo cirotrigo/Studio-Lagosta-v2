@@ -56,7 +56,7 @@ export const toolsDeModelos = [
         .record(z.any())
         .optional()
         .describe(
-          'Valores por slot, com as chaves do template (layerId ou nome da camada). String define texto; objeto aceita {content, fileUrl}. Chaves reservadas: _driveImageId, _imageUrl.',
+          'Valores por slot, com as chaves do template (layerId ou nome da camada). String define texto; objeto aceita {content, fileUrl}. Chaves reservadas: _driveImageId, _imageUrl, _slots ({slotId: valor}) e _papeis ({papel declarado: valor}) — use só o que escolher-modelo marcou em addressableBy; texto (string ou {content}) só em camada de texto, {fileUrl} só em imagem. Com copyAutoral, só chaves reservadas, e o texto vem da copy: na prática só os endereços de IMAGEM servem (camada oculta não é endereço).',
         ),
       name: z.string().optional().describe('Nome da página gerada (opcional).'),
       imageUrl: z
@@ -67,7 +67,7 @@ export const toolsDeModelos = [
         .record(z.string(), z.unknown())
         .optional()
         .describe(
-          'O CONTRATO da copy autoral (F1), como em compor-arte: {versao: "copy-autoral-v1", origem: {autor: "claude", superficie: "chat"}, blocos: [{id, funcao (pre|headline|apoio|cta|servico), ordem, linhas EXATAS}], revisoes: []}. Com ele, os campos do modelo são casados por PAPEL (não por posição) — mande também os slotValues das chaves reservadas (_driveImageId/_imageUrl) e nada de texto; o bloco sem campo no modelo é AVISADO, nunca perdido, e a arte grava a copy escrita × desenhada (ver-geracao).',
+          'O CONTRATO da copy autoral (F1), como em compor-arte: {versao: "copy-autoral-v1", origem: {autor: "claude", superficie: "chat"}, blocos: [{id, funcao (pre|headline|apoio|cta|servico), ordem, linhas EXATAS}], revisoes: []}. Com ele, os campos do modelo são casados por PAPEL (não por posição) — mande nos slotValues só chaves reservadas (_driveImageId/_imageUrl/_slots/_papeis), nunca texto por layerId ou nome (recusado: COPY_COM_CHAVES_LEGADAS). O casamento é feito contra a página que a arte usa de fato; campo de texto que a copy não cobriu sai oculto, e bloco sem campo no modelo RECUSA a arte (COPY_NAO_CASA_COM_O_MODELO) em vez de sumir. A arte grava a copy escrita × desenhada (ver-geracao).',
         ),
     }),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
@@ -79,29 +79,10 @@ export const toolsDeModelos = [
         import('../tools'),
       ])
       const projectId = args.projectId as number
-      // F1 (PR 5): com contrato, os campos de TEXTO do modelo são casados por
-      // papel aqui (o modelo lê camadas; a tool não recebe a lista dele) e os
-      // avisos do casamento voltam junto da arte.
-      let slotValues = (args.slotValues ?? {}) as Record<string, unknown>
-      let avisosDaCopy: string[] = []
-      if (args.copyAutoral && typeof args.copyAutoral === 'object') {
-        const [{ lerCopyAutoral }, { mapearContratoParaCampos }, { camposDeTextoDaPagina }] = await Promise.all([
-          import('../../copy-autoral'),
-          import('../../planos/execucao'),
-          import('../../planos/executar-plano'),
-        ])
-        const lido = lerCopyAutoral(args.copyAutoral)
-        if (!lido.copy) {
-          const { CreativeError } = await import('../../creatives/errors')
-          throw new CreativeError('COPY_AUTORAL_INVALIDA', `O contrato da copy é inválido: ${lido.problemas.join('; ')}`, 400, { problemas: lido.problemas })
-        }
-        const campos = await camposDeTextoDaPagina(args.sourcePageId as string)
-        const mapa = mapearContratoParaCampos(campos, lido.copy)
-        const reservadas = Object.fromEntries(Object.entries(slotValues).filter(([k]) => k.startsWith('_')))
-        slotValues = { ...reservadas, ...mapa.slotValues, ...Object.fromEntries(mapa.ocultar.map((id) => [id, { hidden: true }])) }
-        avisosDaCopy = mapa.avisos
-      }
-      const arte = await createArteRapida({
+      // B1c: contrato e slotValues vão CRUS — `createArteRapida` casa a copy contra a página
+      // EFETIVA (a foto pode trocar de irmã) e devolve os avisos do casamento na arte.
+      const slotValues = (args.slotValues ?? {}) as Record<string, unknown>
+      return createArteRapida({
         projectId,
         sourcePageId: args.sourcePageId as string,
         slotValues,
@@ -113,7 +94,6 @@ export const toolsDeModelos = [
         createdBy: (await quemDecidiu(projectId, principal)) ?? null,
         canal: canalDoPrincipal(principal),
       })
-      return avisosDaCopy.length > 0 ? { ...arte, avisos: [...(arte.avisos ?? []), ...avisosDaCopy] } : arte
     },
   }),
 

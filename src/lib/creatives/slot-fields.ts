@@ -14,8 +14,7 @@
  *  - papel inferido SOZINHO nunca faz uma camada entrar.
  *
  * `addressableBy` = os endereços que o Studio de HOJE executa DE PONTA A PONTA —
- * não "o que o `resolverAlvo` localiza". No B1b o preenchimento só entende o
- * contrato legado (id/nome), então só entra `layerId`, e só quando é seguro:
+ * não "o que o `resolverAlvo` localiza". `layerId` só quando é seguro:
  * `resolverAlvo({ layerId })` aceita (id repetido aplicaria o valor nas duas
  * camadas) e nenhuma OUTRA camada tem esse id como nome (pelo `id ?? nome` do
  * legado, a chave também cairia nela) e o tipo da camada desenha o valor
@@ -23,20 +22,21 @@
  * camada não está oculta no modelo (o preenchimento não a torna visível), e a
  * página não pode ser trocada pela criação (família "(3 layouts)": com foto,
  * `createArteRapida` pode assar sobre uma irmã, onde o layerId pode não existir;
- * a promessa é incondicional, então não depende de haver foto ou `layoutFixo`). `slotId` e `semanticRole` continuam DESCRITOS em `slot`/`role`,
- * mas não prometidos (F1 da revisão adversarial do B1b: anunciá-los antes do
- * preenchimento deixava o agente gerar arte sem o conteúdo, sem erro).
+ * a promessa é incondicional, então não depende de haver foto ou `layoutFixo`).
  *
- * 🔴 Requisito do B1c para a família "(3 layouts)": antes de anunciar `slotId`
- * de ponta a ponta nela, provar que a MESMA ocorrência lógica tem o MESMO
- * `metadata.slot.id` nas páginas irmãs (Topo/Rodapé/Dividido) — são páginas
- * distintas, não cópias. Se os irmãos não compartilham slotIds, é pré-requisito
- * de migração/marcação, nunca fallback por nome.
+ * B1c: `_slots`/`_papeis` passaram a ser preenchidos (`createArteRapida` e
+ * `ajustarArte`, por `resolverValoresSemanticos`), e entram aqui sob as MESMAS
+ * portas de tipo, visibilidade e página: `slotId` quando o slot é válido e o
+ * `resolverAlvo({ slotId })` devolve esta camada; `semanticRole` quando o papel é
+ * DECLARADO (inferido a escrita recusa: PAPEL_NAO_DECLARADO) e o
+ * `resolverAlvo({ semanticRole })` devolve esta camada (papel ambíguo, não). A
+ * sombra de nome tira só o `layerId`: o semântico aplica por índice.
  *
- * 🔴 Requisito do B1c: o MESMO PR que tornar `_slots` preenchível acrescenta
- * `slotId` aqui; o que tornar `_papeis` preenchível acrescenta `semanticRole` —
- * com teste ponta a ponta (anunciado → aceito na criação/ajuste → a camada certa
- * recebe → conflito/ambiguidade falha explícito).
+ * 🔴 Família "(3 layouts)" continua SEM endereço nenhum: a criação resolve
+ * `_slots` na irmã efetiva (ALVO_NAO_RESOLVIDO explícito se ela não tiver o
+ * slot), mas prometer exige que as irmãs compartilhem os slotIds — em produção
+ * (12/10/2026) nenhuma página tem slot, e as famílias 207 e 308 divergem até nos
+ * layerIds. É pré-requisito de migração/marcação, nunca fallback por nome.
  *
  * `semanticIssues` diagnostica a PÁGINA, inclusive camadas que não viram campo
  * (um slot inválido numa forma, um papel inválido que bloqueia a resolução por
@@ -75,6 +75,16 @@ export type ProblemaDoCampo =
    * `semanticIssues`).
    */
   | { code: 'PAGE_MAY_CHANGE_BY_LAYOUT' }
+  /**
+   * Uma chave reservada colide: outra camada usa `_slots`/`_papeis` como id ou nome (a escrita recusa a chave inteira,
+   * CHAVE_RESERVADA_COLIDE_COM_LAYER), ou o id/nome DESTA camada é uma chave reservada (nenhum endereço é seguro).
+   */
+  | { code: 'RESERVED_KEY_COLLISION'; key: ChaveReservada }
+  /**
+   * Campo de texto cuja chave visual (`name ?? id`) começa com `_`, ou página com algum texto visível assim: a escrita
+   * semântica de texto recusa (CHAVE_VISUAL_RESERVADA).
+   */
+  | { code: 'VISUAL_KEY_RESERVED' }
 
 export interface SemanticaDoCampo {
   role: {
@@ -88,8 +98,8 @@ export interface SemanticaDoCampo {
     ambiguous: boolean
   }
   slot: { status: 'declared' | 'absent' | 'invalid' | 'duplicate'; id: string | null }
-  /** Endereços executáveis HOJE, de ponta a ponta. B1b: só `layerId` (ver o cabeçalho). */
-  addressableBy: Array<'layerId'>
+  /** Endereços executáveis HOJE, de ponta a ponta (ver o cabeçalho). */
+  addressableBy: Array<'layerId' | 'slotId' | 'semanticRole'>
   problems: ProblemaDoCampo[]
 }
 
@@ -117,6 +127,11 @@ export interface AnaliseDosCampos {
   semanticIssues: SemanticIssue[]
 }
 
+/** As chaves de `slotValues` que nunca endereçam camada pelo id/nome (as mesmas de `createArteRapida`). */
+const CHAVES_RESERVADAS = ['_driveImageId', '_imageUrl', '_slots', '_papeis'] as const
+type ChaveReservada = (typeof CHAVES_RESERVADAS)[number]
+const ehChaveReservada = (k: string): k is ChaveReservada => (CHAVES_RESERVADAS as readonly string[]).includes(k)
+
 const entraPeloLegado = (l: any) => l?.type === 'text' || (l?.type === 'image' && l?.isDynamic)
 
 /**
@@ -126,6 +141,7 @@ const entraPeloLegado = (l: any) => l?.type === 'text' || (l?.type === 'image' &
  * prometido (codex review do B1b).
  */
 const TIPOS_PREENCHIVEIS = new Set(['text', 'rich-text', 'image'])
+const TIPOS_DE_TEXTO = new Set(['text', 'rich-text'])
 
 /** A análise de uma página que não voltou da consulta — vazia, mas dita (revisão adversarial do B1b, F2). */
 export function analiseDePaginaAusente(): AnaliseDosCampos {
@@ -172,6 +188,14 @@ export function analisarSlotFields(raw: unknown, contexto: ContextoDosCampos = {
     }
   })
 
+  // A mesma guarda global do resolvedor: com uma camada chamada (ou com id) _slots/_papeis, a chave inteira é recusada.
+  const colide = (chave: string) => camadas.some((c: any) => c?.id === chave || c?.name === chave)
+  // Texto visível com chave visual "_…" em QUALQUER camada: com texto semântico, a criação recusa a página inteira.
+  const chaveVisualReservadaDe = (c: any) => TIPOS_DE_TEXTO.has(c?.type) && String(c?.name ?? c?.id).startsWith('_')
+  const paginaComChaveVisualReservada = camadas.some((c: any) => chaveVisualReservadaDe(c) && c.visible !== false)
+  const slotsColidem = colide('_slots')
+  const papeisColidem = colide('_papeis')
+
   const slotFields: SlotField[] = []
   descritores.forEach((d, i) => {
     const l = camadas[i] as any
@@ -217,9 +241,26 @@ export function analisarSlotFields(raw: unknown, contexto: ContextoDosCampos = {
     if (oculta) problems.push({ code: 'LAYER_HIDDEN' })
     const podeTrocar = contexto.paginaPodeSerSubstituida === true
     if (podeTrocar) problems.push({ code: 'PAGE_MAY_CHANGE_BY_LAYOUT' })
-    const porLayerId = resolverAlvo(camadas, { layerId: d.layerId })
-    const addressableBy: SemanticaDoCampo['addressableBy'] =
-      preenchivel && !oculta && !podeTrocar && 'indice' in porLayerId && porLayerId.indice === i && sombras.length === 0 ? ['layerId'] : []
+    // B1c: slotId e semanticRole entram quando a escrita (`resolverValoresSemanticos`) os executa: o MESMO
+    // `resolverAlvo` devolve esta camada, e o papel é DECLARADO (inferido é PAPEL_NAO_DECLARADO). A sombra de
+    // nome só afeta a chave legada; o semântico aplica por índice.
+    const eEsta = (r: ReturnType<typeof resolverAlvo>) => 'indice' in r && r.indice === i
+    const temSlot = d.slot.status === 'valido'
+    const temPapelDeclarado = p.status === 'valido' && p.origem === 'metadata'
+    // Id ou nome que é chave reservada: a mesma chave pode vir na chamada (a foto, o _slots) e o casamento legado
+    // por id/nome a leria como valor DESTA camada — nenhum endereço é seguro (Codex #208, CP3).
+    const reservadaPropria = [d.layerId, l.name].find((k): k is ChaveReservada => typeof k === 'string' && ehChaveReservada(k))
+    if (reservadaPropria) problems.push({ code: 'RESERVED_KEY_COLLISION', key: reservadaPropria })
+    const chaveVisualReservada = TIPOS_DE_TEXTO.has(l.type) && (chaveVisualReservadaDe(l) || paginaComChaveVisualReservada)
+    if (chaveVisualReservada && !reservadaPropria) problems.push({ code: 'VISUAL_KEY_RESERVED' })
+    if (temSlot && slotsColidem && reservadaPropria !== '_slots') problems.push({ code: 'RESERVED_KEY_COLLISION', key: '_slots' })
+    if (temPapelDeclarado && papeisColidem && reservadaPropria !== '_papeis') problems.push({ code: 'RESERVED_KEY_COLLISION', key: '_papeis' })
+    const addressableBy: SemanticaDoCampo['addressableBy'] = []
+    if (preenchivel && !oculta && !podeTrocar && !reservadaPropria) {
+      if (sombras.length === 0 && eEsta(resolverAlvo(camadas, { layerId: d.layerId }))) addressableBy.push('layerId')
+      if (d.slot.status === 'valido' && !slotsColidem && !chaveVisualReservada && eEsta(resolverAlvo(camadas, { slotId: d.slot.slotId }))) addressableBy.push('slotId')
+      if (temPapelDeclarado && !papeisColidem && !chaveVisualReservada && eEsta(resolverAlvo(camadas, { semanticRole: p.papel }))) addressableBy.push('semanticRole')
+    }
 
     slotFields.push({
       layerId: l.id,

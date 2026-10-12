@@ -58,6 +58,9 @@ import { problemaDoAjuste, type Ajuste } from '@/lib/creatives/revisao/contrato'
 import { copyAutoralDaPagina, recusaDaRevisao, revisaoDaPaginaComCamadas } from '@/lib/copy-autoral/revisar-pagina'
 import { lerCopyAutoral, tentarCopyEfetivaDasCamadas } from '@/lib/copy-autoral'
 import { bakeLayers } from '@/lib/creatives/bake-layers'
+import { camposDeTextoDasCamadas, mapearContratoParaCampos, mapearCopyParaSlots } from '@/lib/planos/execucao'
+import { semColchetes } from '@/lib/compositor/destaques'
+import { resolverValoresSemanticos, validarEntradaSemantica, type ErroDeValor, type ValorResolvido } from '@/lib/semantica/resolver-valores'
 import { aplicarAjustes, type AjusteAplicado, type AjusteRecusado } from '@/lib/creatives/revisao/aplicar-ajustes'
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
 import { MOTIVO_DO_AJUSTE_DO_REVISOR } from '@/lib/relatorios/qualidade-da-copy-contrato'
@@ -581,6 +584,11 @@ export interface CreateArteRapidaInput {
    * página, original+efetiva na Generation — como o compositor faz.
    */
   copyAutoral?: unknown
+  /**
+   * B1c: a copy POSICIONAL do item de plano (`copyProposta`), crua. Casada aqui, contra a página
+   * efetiva, como o contrato — nunca antes. Exclusiva com `copyAutoral`.
+   */
+  copyPosicional?: string[]
 }
 
 export interface CreateArteRapidaResult {
@@ -612,6 +620,92 @@ export interface CreateArteRapidaResult {
 }
 
 
+/** As chaves de `slotValues` que não endereçam camada: controles da foto e endereçamento semântico. */
+const CHAVES_RESERVADAS = new Set(['_driveImageId', '_imageUrl', '_slots', '_papeis'])
+
+/** O alvo principal da foto recebeu `fileUrl` por _slots/_papeis: a foto genérica não escorre (opção C do #208). */
+const AVISO_FOTO_BLOQUEADA_PELO_SEMANTICO =
+  'A foto não foi aplicada: o alvo principal da foto já recebeu um fileUrl por _slots/_papeis. Pelo contrato semântico, endereçe cada imagem explicitamente.'
+
+/** Erros do resolvedor semântico viram UM CreativeError: o código do primeiro, todos em `details.erros` (sem conteúdo). */
+function erroDeValores(erros: ErroDeValor[], status: number): CreativeError {
+  return new CreativeError(erros[0].codigo, `Os valores semânticos não puderam ser aplicados (${erros.map((e) => e.codigo).join(', ')}).`, status, { erros })
+}
+
+/**
+ * B1c: o mapa EFETIVO de valores da arte sobre as camadas do modelo efetivo — a copy (contrato ou
+ * posicional) casada aqui, os campos que ela não cobriu ocultos, e `_slots`/`_papeis` resolvidos
+ * por índice. A copy é a autoridade textual: valor semântico de texto só entra num campo que ela
+ * cobriu (e então tem de ser o MESMO texto — o resolvedor recusa o divergente).
+ */
+function valoresDaArte(
+  camadas: any[],
+  slotValues: Record<string, unknown>,
+  contrato: ReturnType<typeof lerCopyAutoral>['copy'],
+  copyPosicional: string[] | null,
+  pageId: string,
+): { efetivo: Record<string, unknown>; valores: Map<number, ValorResolvido>; avisosDoCasamento: string[]; temTextoSemantico: boolean } {
+  const temCopy = !!contrato || !!copyPosicional
+  let efetivo = slotValues
+  let ocultar: string[] = []
+  let cobertos = new Set<string>()
+  let avisosDoCasamento: string[] = []
+  if (temCopy) {
+    const campos = camposDeTextoDasCamadas(camadas)
+    // Id repetido: a copy de um campo cairia nos dois, ou o oculto de um apagaria o outro (revisão adversarial do B1c).
+    const contagem = new Map<string, number>()
+    for (const c of camadas) contagem.set(String(c?.id), (contagem.get(String(c?.id)) ?? 0) + 1)
+    const duplicados = [...new Set(campos.map((c) => c.layerId).filter((id) => contagem.get(id)! > 1))]
+    if (duplicados.length > 0) {
+      throw new CreativeError('CAMPO_DE_TEXTO_DUPLICADO', 'O modelo tem campos de texto com o mesmo id de camada — abra o modelo no editor e salve de novo antes de usar copy nele.', 422, { pageId, layerIds: duplicados })
+    }
+    const mapa = contrato ? mapearContratoParaCampos(campos, contrato) : mapearCopyParaSlots(campos, copyPosicional!.map((b) => semColchetes(b)))
+    if (mapa.semCampo.length > 0) {
+      throw new CreativeError(
+        'COPY_NAO_CASA_COM_O_MODELO',
+        `O modelo não tem campo de texto para ${mapa.semCampo.length} bloco(s) da copy. Escolha um modelo com esses campos ou outra forma de arte.`,
+        422,
+        { pageId, quantidade: mapa.semCampo.length, ...(contrato ? { blockIds: mapa.semCampo } : { semCampo: mapa.semCampo }) },
+      )
+    }
+    efetivo = { ...slotValues, ...mapa.slotValues }
+    // Rich-text não recebe copy; com copy, o texto dele é placeholder como o do campo não coberto. Copy SEM texto
+    // (item só com foto: `copyPosicional: []`) não oculta nada — a arte sai com o modelo inteiro (Codex #208, CP1).
+    const copyComTexto = Object.keys(mapa.slotValues).length > 0
+    const ricos = copyComTexto ? camadas.filter((c) => c?.type === 'rich-text' && c.visible !== false) : []
+    ocultar = [...mapa.ocultar, ...ricos.map((c) => String(c.id))]
+    if (ricos.length > 0) mapa.avisos.push(`Texto rico não recebe a copy e ficou oculto na arte: ${ricos.map((c) => `"${c.name || c.id}"`).join(', ')}.`)
+    cobertos = new Set(Object.keys(mapa.slotValues))
+    avisosDoCasamento = mapa.avisos
+  }
+  const r = resolverValoresSemanticos(camadas, efetivo)
+  if (r.erros.length > 0) throw erroDeValores(r.erros, 422)
+  // Com texto semântico, a Generation registra a copy VISUAL das camadas finais (chave `name ?? id`). Texto visível
+  // em chave `_…` sumiria dos leitores — inclusive o de OUTRA camada, preenchido pelo legado (Codex #208, CP5).
+  const temTextoSemantico = [...r.valores.values()].some((v) => typeof v.valor === 'string' || v.valor.content !== undefined)
+  if (temTextoSemantico) {
+    const reservadas = camadas
+      .filter((c) => (c?.type === 'text' || c?.type === 'rich-text') && c.visible !== false && String(c.name ?? c.id).startsWith('_'))
+      .map((c) => String(c.id))
+    if (reservadas.length > 0) {
+      throw new CreativeError('CHAVE_VISUAL_RESERVADA', 'Com texto por _slots/_papeis, a página não pode ter camada de texto visível com nome (ou id, sem nome) começado por "_": a copy registrada da arte perderia esse texto. Renomeie a camada no editor.', 422, { layerIds: reservadas })
+    }
+  }
+  if (temCopy) {
+    const fora = [...r.valores.keys()].filter((i) => (camadas[i].type === 'text' || camadas[i].type === 'rich-text') && !cobertos.has(String(camadas[i].id)))
+    if (fora.length > 0) {
+      throw new CreativeError(
+        'VALOR_FORA_DA_COPY_AUTORAL',
+        'Com copy, o texto vem dela: _slots/_papeis só preenchem um campo de texto que a copy cobriu, e com o mesmo texto.',
+        422,
+        { layerIds: fora.map((i) => String(camadas[i].id)) },
+      )
+    }
+    if (ocultar.length > 0) efetivo = { ...efetivo, ...Object.fromEntries(ocultar.map((id) => [id, { hidden: true }])) }
+  }
+  return { efetivo, valores: r.valores, avisosDoCasamento, temTextoSemantico }
+}
+
 /**
  * Generate a creative from a source template page: bakes copy and image into
  * the layers, persists an editable Page under the project's "Arte Rápida"
@@ -624,8 +718,30 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
     if (input.copyAutoral == null) return null
     const lido = lerCopyAutoral(input.copyAutoral)
     if (!lido.copy) throw new CreativeError('COPY_AUTORAL_INVALIDA', `O contrato da copy é inválido: ${lido.problemas.join('; ')}`, 400, { problemas: lido.problemas })
+    // Contrato sem texto nenhum publicaria o texto do MODELO como se fosse a copy aprovada (Codex #208, CP2). Bloco
+    // vazio ao lado de bloco com texto não cai aqui: o campo dele fica descoberto e sai oculto.
+    if (!lido.copy.blocos.some((b) => b.linhas.some((l) => l.trim().length > 0))) {
+      throw new CreativeError('COPY_AUTORAL_SEM_TEXTO', 'O contrato da copy não tem texto em nenhum bloco. Escreva a copy ou crie a arte sem copyAutoral.', 422)
+    }
     return lido.copy
   })()
+  const copyPosicional = input.copyPosicional ?? null
+  if (contratoRecebido && copyPosicional) {
+    throw new CreativeError('COPY_DUPLICADA', 'Envie a copy por copyAutoral OU por copyPosicional, nunca as duas.', 400)
+  }
+  // A copy é a autoridade textual: com ela, texto por layerId/nome seria uma segunda fonte — e o
+  // campo que a copy não cobre sai oculto por cima dele, em silêncio.
+  const chavesLegadas = contratoRecebido || copyPosicional ? Object.keys(slotValues).filter((k) => !CHAVES_RESERVADAS.has(k)) : []
+  if (chavesLegadas.length > 0) {
+    throw new CreativeError(
+      'COPY_COM_CHAVES_LEGADAS',
+      `Com ${contratoRecebido ? 'copyAutoral' : 'copyPosicional'}, não envie texto diretamente por layerId ou nome da camada. Use _slots/_papeis para endereçamento semântico ou apenas controles de imagem.`,
+      400,
+      { chaves: chavesLegadas },
+    )
+  }
+  const errosDeEntrada = validarEntradaSemantica(slotValues)
+  if (errosDeEntrada.length > 0) throw erroDeValores(errosDeEntrada, 400)
 
   const project = await db.project.findUnique({
     where: { id: projectId },
@@ -649,13 +765,6 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
       400,
     )
   }
-
-  const arteTemplate = await ensureArteTemplate(
-    projectId,
-    project.userId,
-    sourcePage.Template.type,
-    sourcePage.Template.dimensions,
-  )
 
   const driveImageId = typeof slotValues._driveImageId === 'string' ? slotValues._driveImageId : null
   const directUrl =
@@ -687,11 +796,22 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
       ? { layout: escolha.layout, motivo: escolha.motivo, pageId: paginaModelo.id, pageName: paginaModelo.name }
       : undefined
 
-  const { layers: bakedLayers, imageApplied, changedTextIds } = bakeLayers(
-    camadasParaBake(modelo.layers, modelo),
-    slotValues,
-    resolved.url,
+  /**
+   * B1c: tudo o que depende do modelo é decidido AQUI, contra a página efetiva (a irmã que a foto
+   * escolheu, se for o caso) — os ids das irmãs divergem em produção (famílias 207 e 308). E tudo o
+   * que recusa recusa antes de criar o template, persistir ou renderizar.
+   */
+  const camadasDoModelo = camadasParaBake(modelo.layers, modelo)
+  const { efetivo, valores, avisosDoCasamento, temTextoSemantico } = valoresDaArte(camadasDoModelo, slotValues, contratoRecebido, copyPosicional, modelo.id)
+
+  const arteTemplate = await ensureArteTemplate(
+    projectId,
+    project.userId,
+    sourcePage.Template.type,
+    sourcePage.Template.dimensions,
   )
+
+  const { layers: bakedLayers, imageApplied, changedTextIds, imageBloqueadaPeloSemantico } = bakeLayers(camadasDoModelo, efetivo, resolved.url, valores)
 
   // Texto novo maior (ou menor) que o do template: medir a quebra real e
   // reacomodar as pilhas de combinação; texto solto cresce a própria caixa
@@ -728,7 +848,9 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
   const imageWarning =
     resolved.warning ??
     (resolved.url && !imageApplied
-      ? 'A imagem foi resolvida mas o template não tem camada de imagem dinâmica para recebê-la'
+      ? imageBloqueadaPeloSemantico
+        ? AVISO_FOTO_BLOQUEADA_PELO_SEMANTICO
+        : 'A imagem foi resolvida mas o template não tem camada de imagem dinâmica para recebê-la'
       : undefined)
 
   const pageName = input.name ?? `${modelo.name} — ${new Date().toLocaleString('pt-BR')}`
@@ -742,7 +864,7 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
    */
   // Recusa do contrato na copy lida das camadas finais (histórico cheio no contrato recebido, ou a leitura que não cabe):
   // a arte segue SEM registro de copy, e o aviso vai no retorno.
-  const avisosDaCopyDoModelo: string[] = []
+  const avisosDaCopyDoModelo: string[] = [...avisosDoCasamento]
   const registroDaCopy = contratoRecebido
     ? (() => {
         const lida = tentarCopyEfetivaDasCamadas(contratoRecebido, layers as Layer[], { superficie: 'modelo' })
@@ -781,7 +903,11 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
       sourceTags: modelo.tags ?? [],
       driveImageId,
       imageUrl: resolved.url ?? directUrl ?? null,
-      slotValues,
+      // Com TEXTO vindo de _slots/_papeis, a copy registrada é a VISUAL das camadas finais (o formato de ajustarArte e
+      // da recomposição: chave de textosDaPagina) — os leitores ignoram chaves `_` e o diff de aprendizado compara por
+      // chave. O mapa recebido, com bloco/papel e o endereçamento, fica em slotValuesRecebidos. Sem texto semântico, o
+      // registro de sempre (Codex #208, CP5, opção B).
+      ...(temTextoSemantico ? { slotValues: copyVisualDasCamadas(layers) ?? {}, slotValuesRecebidos: efetivo } : { slotValues: efetivo }),
       ...(registroDaCopy ? { copyAutoral: registroDaCopy.registro } : {}),
       autocorrecao: fix.autocorrecao,
       halo: {
@@ -991,6 +1117,8 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
       400,
     )
   }
+  const errosDeEntrada = validarEntradaSemantica(slotValues)
+  if (errosDeEntrada.length > 0) throw erroDeValores(errosDeEntrada, 400)
 
   const project = await db.project.findUnique({
     where: { id: projectId },
@@ -1021,6 +1149,11 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
     )
   }
 
+  // B1c: _slots/_papeis resolvem sobre as camadas DESTA página, antes de qualquer efeito (foto inclusive).
+  const sourceLayers = camadasParaBake(page.layers, page)
+  const semanticos = resolverValoresSemanticos(sourceLayers, slotValues)
+  if (semanticos.erros.length > 0) throw erroDeValores(semanticos.erros, 422)
+
   const driveImageId =
     input.driveImageId ??
     (typeof slotValues._driveImageId === 'string' ? slotValues._driveImageId : null)
@@ -1038,17 +1171,20 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
   // Lado do APRENDIZADO: a camada escondida por ajuste anterior do revisor conta como presente (REV-9E-01).
   const copyAntes = copyParaDecisao(page.layers)
 
-  const sourceLayers = camadasParaBake(page.layers, page)
-  const baked = bakeLayers(sourceLayers, slotValues, resolved.url)
+  const baked = bakeLayers(sourceLayers, slotValues, resolved.url, semanticos.valores)
   const { layers: bakedLayers, changedTextIds } = baked
   let imageApplied = baked.imageApplied
 
   // Arte-livre não marca o fundo como dinâmico (a camada nasce aqui, não num
   // template): sem este fallback, trocar a foto de uma arte criada do zero
   // seria impossível. A primeira camada de imagem é o fundo nos dois geradores.
-  if (!imageApplied && resolved.url) {
+  // Só o FUNDO: se ele recebeu `fileUrl` explícito (legado ou _slots/_papeis), a foto genérica não é aplicada — nem
+  // nele (descartaria o valor pedido) nem na imagem seguinte, que pode ser a logo (codex review do B1c, #208).
+  let fundoComFileUrlExplicito = false
+  if (!imageApplied && resolved.url && !baked.imageBloqueadaPeloSemantico) {
     const fundo = (bakedLayers as any[]).find((l) => l.type === 'image')
-    if (fundo) {
+    fundoComFileUrlExplicito = !!fundo && baked.explicitFileUrlIds.includes(fundo.id)
+    if (fundo && !fundoComFileUrlExplicito) {
       fundo.fileUrl = resolved.url
       imageApplied = true
     }
@@ -1088,7 +1224,11 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
   const imageWarning =
     resolved.warning ??
     (resolved.url && !imageApplied
-      ? 'A imagem foi resolvida mas a arte não tem camada de imagem dinâmica para recebê-la'
+      ? baked.imageBloqueadaPeloSemantico
+        ? AVISO_FOTO_BLOQUEADA_PELO_SEMANTICO
+        : fundoComFileUrlExplicito
+        ? 'A foto não foi aplicada: o fundo recebeu um fileUrl explícito nesta mesma chamada.'
+        : 'A imagem foi resolvida mas a arte não tem camada de imagem dinâmica para recebê-la'
       : undefined)
 
   const pageName = input.name ?? page.name

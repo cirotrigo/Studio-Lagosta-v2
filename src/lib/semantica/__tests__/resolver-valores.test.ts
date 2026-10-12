@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Layer } from '@/types/template'
-import { resolverValoresSemanticos } from '../resolver-valores'
+import { resolverValoresSemanticos, validarEntradaSemantica } from '../resolver-valores'
 import { camada } from './fixtures'
 
 const papel = (p: string, slot?: string) => ({ compositor: { papel: p }, ...(slot ? { slot: { id: slot } } : {}) })
@@ -28,8 +28,8 @@ describe('resolverValoresSemanticos — só lê _slots e _papeis', () => {
   })
 
   it('_papeis: papel único resolve, e o valor original (objeto) é preservado', () => {
-    const r = resolverValoresSemanticos(pagina, { _papeis: { cta: { content: 'Reserve', fileUrl: 'https://x' } } })
-    expect(r.valores.get(3)).toEqual({ indice: 3, valor: { content: 'Reserve', fileUrl: 'https://x' }, origem: { tipo: 'semanticRole', chave: 'cta' } })
+    const r = resolverValoresSemanticos(pagina, { _papeis: { cta: { content: 'Reserve' } } })
+    expect(r.valores.get(3)).toEqual({ indice: 3, valor: { content: 'Reserve' }, origem: { tipo: 'semanticRole', chave: 'cta' } })
   })
 
   it('não aplica nada: as camadas de entrada saem intocadas', () => {
@@ -164,7 +164,8 @@ describe('revisão adversarial B1a', () => {
 })
 
 describe('contrato SEMÂNTICO: string ou { content?, fileUrl? } — fail-closed', () => {
-  const valida = (valor: unknown) => codigos(resolverValoresSemanticos(pagina, { _slots: { titulo: valor } }))
+  // a validade ESTRUTURAL do contrato (o tipo da camada é outra regra, testada à parte)
+  const valida = (valor: unknown) => validarEntradaSemantica({ _slots: { titulo: valor } }).map((e) => e.codigo)
 
   it('válidos', () => {
     for (const v of ['X', '', { content: 'X' }, { content: '' }, { fileUrl: 'https://x' }, { content: 'X', fileUrl: 'https://x' }]) {
@@ -192,14 +193,15 @@ describe('contrato SEMÂNTICO: string ou { content?, fileUrl? } — fail-closed'
 })
 
 describe('a fonte legada espelha o casamento real (id ?? nome), inclusive com "_"', () => {
-  const comUnderscore: Layer[] = [camada({ id: '_x', name: '_n', metadata: papel('headline', 'titulo') })]
+  // Imagem: texto em chave visual "_…" é CHAVE_VISUAL_RESERVADA (Codex #208); o espelho da fonte legada se prova com fileUrl.
+  const comUnderscore: Layer[] = [camada({ id: '_x', name: '_n', type: 'image', metadata: papel('foto', 'titulo') })]
 
   it('id com "_" é fonte legada efetiva → conflita', () => {
-    expect(resolverValoresSemanticos(comUnderscore, { _x: 'A', _slots: { titulo: 'B' } }).erros[0]).toMatchObject({ codigo: 'VALOR_CONFLITANTE', origens: [{ tipo: 'layerId', chave: '_x' }, { tipo: 'slotId', chave: 'titulo' }] })
+    expect(resolverValoresSemanticos(comUnderscore, { _x: { fileUrl: 'A' }, _slots: { titulo: { fileUrl: 'B' } } }).erros[0]).toMatchObject({ codigo: 'VALOR_CONFLITANTE', origens: [{ tipo: 'layerId', chave: '_x' }, { tipo: 'slotId', chave: 'titulo' }] })
   })
 
   it('name com "_" sem id → fonte efetiva → conflita', () => {
-    expect(resolverValoresSemanticos(comUnderscore, { _n: 'A', _slots: { titulo: 'B' } }).erros[0]).toMatchObject({ codigo: 'VALOR_CONFLITANTE', origens: [{ tipo: 'name', chave: '_n' }, { tipo: 'slotId', chave: 'titulo' }] })
+    expect(resolverValoresSemanticos(comUnderscore, { _n: { fileUrl: 'A' }, _slots: { titulo: { fileUrl: 'B' } } }).erros[0]).toMatchObject({ codigo: 'VALOR_CONFLITANTE', origens: [{ tipo: 'name', chave: '_n' }, { tipo: 'slotId', chave: 'titulo' }] })
   })
 
   it('id null deixa o nome ser a fonte efetiva', () => {
@@ -234,12 +236,101 @@ describe('equivalência legado ↔ semântico pelo EFEITO editável', () => {
 
   it('diferenças reais continuam conflito: content, fileUrl, hidden', () => {
     expect(codigos(resolverValoresSemanticos(pagina, { 'text-h': { content: 'A', papel: 'headline' }, _slots: { titulo: { content: 'B' } } }))).toEqual(['VALOR_CONFLITANTE'])
-    expect(codigos(resolverValoresSemanticos(pagina, { 'text-h': { fileUrl: 'https://a' }, _slots: { titulo: { fileUrl: 'https://b' } } }))).toEqual(['VALOR_CONFLITANTE'])
+    const comImagem: Layer[] = [camada({ id: 'img', type: 'image', metadata: { slot: { id: 'foto' } } })]
+    expect(codigos(resolverValoresSemanticos(comImagem, { img: { fileUrl: 'https://a' }, _slots: { foto: { fileUrl: 'https://b' } } }))).toEqual(['VALOR_CONFLITANTE'])
     // hidden LEGADO é efeito real (a camada some): não equivale ao mesmo content sem ele
     expect(codigos(resolverValoresSemanticos(pagina, { 'text-h': { content: 'A', hidden: true }, _slots: { titulo: { content: 'A' } } }))).toEqual(['VALOR_CONFLITANTE'])
   })
 
   it('"" × { content: "" } continua conflito, também contra o legado', () => {
     expect(codigos(resolverValoresSemanticos(pagina, { 'text-h': '', _slots: { titulo: { content: '' } } }))).toEqual(['VALOR_CONFLITANTE'])
+  })
+})
+
+describe('B1c — validarEntradaSemantica: a parte estrutural, sem página', () => {
+  it('valida só a forma de _slots/_papeis e o ValorSemantico — os mesmos códigos do resolvedor', async () => {
+    const { validarEntradaSemantica } = await import('../resolver-valores')
+    expect(validarEntradaSemantica({ _slots: { a: 'x' }, _papeis: { cta: { content: 'y' } } })).toEqual([])
+    expect(validarEntradaSemantica({ _slots: 'x' }).map((e) => e.codigo)).toEqual(['ENTRADA_INVALIDA'])
+    expect(validarEntradaSemantica({ _slots: { a: { papel: 'cta' } } }).map((e) => e.codigo)).toEqual(['VALOR_INVALIDO'])
+    expect(validarEntradaSemantica({ titulo: 'legado' })).toEqual([])
+  })
+})
+
+describe('B1c — PAPEL_NAO_DECLARADO: _papeis só escreve em papel declarado em metadata', () => {
+  it('papel inferido pelo id resolve no resolverAlvo, mas a escrita recusa', () => {
+    const inferido: Layer[] = [camada({ id: 'cta', name: 'Botão' })]
+    expect(resolverValoresSemanticos(inferido, { _papeis: { cta: 'Reserve' } }).erros).toEqual([
+      { codigo: 'PAPEL_NAO_DECLARADO', origem: { tipo: 'semanticRole', chave: 'cta' }, layerId: 'cta' },
+    ])
+  })
+
+  it('papel inferido pelo nome, pelo tipo e pelo id reservado também recusam', () => {
+    const r1 = resolverValoresSemanticos([camada({ id: 't1', name: 'headline' })], { _papeis: { headline: 'X' } })
+    const r2 = resolverValoresSemanticos([camada({ id: 'l1', type: 'logo' })], { _papeis: { logo: { fileUrl: 'https://x' } } })
+    const r3 = resolverValoresSemanticos([camada({ id: 'bg-foto', type: 'image' })], { _papeis: { foto: { fileUrl: 'https://x' } } })
+    for (const r of [r1, r2, r3]) expect(r.erros.map((e) => e.codigo)).toEqual(['PAPEL_NAO_DECLARADO'])
+  })
+
+  it('papel declarado escreve', () => {
+    expect(resolverValoresSemanticos(pagina, { _papeis: { cta: 'Reserve' } }).erros).toEqual([])
+  })
+})
+
+describe('B1c — VALOR_INCOMPATIVEL_COM_CAMADA: o efeito pedido tem de ser desenhado pelo tipo', () => {
+  const misto: Layer[] = [
+    camada({ id: 't1', metadata: papel('headline', 'titulo') }),
+    camada({ id: 'r1', type: 'rich-text', metadata: { slot: { id: 'rico' } } }),
+    camada({ id: 'i1', type: 'image', metadata: { slot: { id: 'foto' } } }),
+  ]
+  const erroDe = (slotValues: Record<string, unknown>) => resolverValoresSemanticos(misto, slotValues).erros
+
+  it('string e { content } em texto e rich-text: ok; { fileUrl } em imagem: ok', () => {
+    expect(erroDe({ _slots: { titulo: 'X', rico: { content: 'Y' }, foto: { fileUrl: 'https://x' } } })).toEqual([])
+  })
+
+  it('{ fileUrl } em texto → incompatível, com o efeito e sem a URL', () => {
+    const e = erroDe({ _slots: { titulo: { fileUrl: 'https://segredo' } } })
+    expect(e).toEqual([{ codigo: 'VALOR_INCOMPATIVEL_COM_CAMADA', layerId: 't1', type: 'text', origem: { tipo: 'slotId', chave: 'titulo' }, efeito: 'fileUrl' }])
+    expect(JSON.stringify(e)).not.toContain('segredo')
+  })
+
+  it('string ou { content } em imagem → incompatível', () => {
+    expect(erroDe({ _slots: { foto: 'texto' } })[0]).toMatchObject({ codigo: 'VALOR_INCOMPATIVEL_COM_CAMADA', type: 'image', efeito: 'content' })
+    expect(erroDe({ _slots: { foto: { content: 'x' } } })[0]).toMatchObject({ codigo: 'VALOR_INCOMPATIVEL_COM_CAMADA', efeito: 'content' })
+  })
+
+  it('{ content, fileUrl } → incompatível em qualquer camada', () => {
+    expect(erroDe({ _slots: { titulo: { content: 'x', fileUrl: 'https://x' } } })[0]).toMatchObject({ codigo: 'VALOR_INCOMPATIVEL_COM_CAMADA', efeito: 'content+fileUrl' })
+    expect(erroDe({ _slots: { foto: { content: 'x', fileUrl: 'https://x' } } })[0]).toMatchObject({ codigo: 'VALOR_INCOMPATIVEL_COM_CAMADA', efeito: 'content+fileUrl' })
+  })
+})
+
+describe('B1c (revisão adversarial): camada oculta não recebe valor semântico', () => {
+  it('CAMADA_OCULTA: o valor seria gravado e o render pularia a camada', () => {
+    const camadas = [{ id: 'h', name: 'T', type: 'text', visible: false, metadata: { slot: { id: 's' } } }] as never
+    const r = resolverValoresSemanticos(camadas, { _slots: { s: 'x' } })
+    expect(r.erros).toEqual([{ codigo: 'CAMADA_OCULTA', layerId: 'h', origem: { tipo: 'slotId', chave: 's' } }])
+    expect(r.valores.size).toBe(0)
+  })
+})
+
+describe('Codex #208 — CP5 (fail-closed): texto semântico em camada com chave visual "_…" é recusado', () => {
+  it('nome "_n": CHAVE_VISUAL_RESERVADA (os leitores da copy descartariam o texto)', () => {
+    const camadas = [{ id: '_x', name: '_n', type: 'text', visible: true, metadata: { slot: { id: 's' } } }] as never
+    const r = resolverValoresSemanticos(camadas, { _slots: { s: 'x' } })
+    expect(r.erros).toEqual([{ codigo: 'CHAVE_VISUAL_RESERVADA', layerId: '_x', origem: { tipo: 'slotId', chave: 's' } }])
+  })
+  it('sem nome e id "_x": a chave visual é o id — recusado', () => {
+    const camadas = [{ id: '_x', type: 'text', visible: true, metadata: { slot: { id: 's' } } }] as never
+    expect(resolverValoresSemanticos(camadas, { _slots: { s: 'x' } }).erros[0]).toMatchObject({ codigo: 'CHAVE_VISUAL_RESERVADA' })
+  })
+  it('id "_x" com nome legível: aceito (a chave visual é o nome)', () => {
+    const camadas = [{ id: '_x', name: 'Título', type: 'text', visible: true, metadata: { slot: { id: 's' } } }] as never
+    expect(resolverValoresSemanticos(camadas, { _slots: { s: 'x' } }).erros).toEqual([])
+  })
+  it('imagem com nome "_n" e {fileUrl}: aceito (não é copy)', () => {
+    const camadas = [{ id: 'i', name: '_n', type: 'image', visible: true, metadata: { slot: { id: 's' } } }] as never
+    expect(resolverValoresSemanticos(camadas, { _slots: { s: { fileUrl: 'https://f' } } }).erros).toEqual([])
   })
 })

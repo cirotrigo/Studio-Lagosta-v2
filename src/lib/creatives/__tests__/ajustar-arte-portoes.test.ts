@@ -47,3 +47,12 @@ describe('portões de ajustarArte', () => {
     expect(mocks.findProject).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('B1c: entrada semântica malformada recusa antes do banco', () => {
+  it('_slots com valor inválido: 400, sem ir ao banco', async () => {
+    mocks.findProject.mockClear()
+    const r = ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { _slots: { manchete: { hidden: true } } } })
+    await expect(r).rejects.toMatchObject({ code: 'VALOR_INVALIDO', status: 400 })
+    expect(mocks.findProject).not.toHaveBeenCalled()
+  })
+})

@@ -174,7 +174,7 @@ export const toolsDeArteIA = [
       slotValues: z
         .record(z.any())
         .optional()
-        .describe('Só o que muda: chave = id ou nome da camada, valor = novo texto (string) ou {content, fileUrl}.'),
+        .describe('Só o que muda: chave = id ou nome da camada, valor = novo texto (string) ou {content, fileUrl}. Também _slots ({slotId: valor}) e _papeis ({papel declarado: valor}), resolvidos nesta página; texto só em camada de texto, {fileUrl} só em imagem.'),
       imageUrl: z.string().optional().describe('Nova foto de fundo (URL pública).'),
       driveImageId: z.string().optional().describe('Nova foto de fundo pelo id do Drive (de buscar-fotos).'),
       name: z.string().optional().describe('Novo nome da página (opcional).'),

@@ -320,3 +320,131 @@ describe('página com vídeo é recusada ANTES de qualquer escrita (2ª revisão
     expect(banco.generations).toHaveLength(0)
   })
 })
+
+describe('B1c — _slots/_papeis em ajustarArte, sobre as camadas da própria página', () => {
+  const comSlot = () => {
+    banco.pagina = {
+      ...banco.pagina,
+      layers: (banco.pagina.layers as Array<Record<string, any>>).map((l) =>
+        l.id === 'headline' ? { ...l, metadata: { ...l.metadata, slot: { id: 'manchete' } } } : l,
+      ),
+    }
+  }
+
+  it('_slots preenche a camada do slot', async () => {
+    comSlot()
+    await ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { _slots: { manchete: 'Almoço de sexta' } } })
+    expect(manchete()).toBe('Almoço de sexta')
+  })
+
+  it('_papeis preenche a camada com o papel DECLARADO', async () => {
+    await ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { _papeis: { headline: 'Almoço de sábado' } } })
+    expect(manchete()).toBe('Almoço de sábado')
+  })
+
+  it('valor incompatível: 422 antes de resolver a foto e de qualquer escrita', async () => {
+    comSlot()
+    const antes = banco.pagina.updatedAt.getTime()
+    const erro = await erroDe(ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { _imageUrl: 'https://f', _slots: { manchete: { fileUrl: 'https://x' } } } }))
+    expect((erro as CreativeError).code).toBe('VALOR_INCOMPATIVEL_COM_CAMADA')
+    expect((erro as CreativeError).status).toBe(422)
+    expect(banco.pagina.updatedAt.getTime()).toBe(antes)
+    expect(banco.generations).toHaveLength(0)
+    expect(banco.putSeq).toBe(0)
+  })
+
+  it('slot legado pelo id e _slots divergentes no mesmo campo: VALOR_CONFLITANTE, nada gravado', async () => {
+    comSlot()
+    const erro = await erroDe(ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { headline: 'A', _slots: { manchete: 'B' } } }))
+    expect((erro as CreativeError).code).toBe('VALOR_CONFLITANTE')
+    expect(banco.generations).toHaveLength(0)
+  })
+})
+
+describe('B1c (codex review) — fileUrl explícito não é sobrescrito pelo fallback da foto genérica', () => {
+  it('_slots com {fileUrl} na única imagem + imageUrl: a imagem fica com a URL pedida', async () => {
+    banco.pagina = {
+      ...banco.pagina,
+      layers: [
+        ...(banco.pagina.layers as unknown[]),
+        { id: 'img', name: 'Foto', type: 'image', visible: true, order: 0, position: { x: 0, y: 0 }, size: { width: 1080, height: 1920 }, fileUrl: 'https://blob.test/antiga.jpg', metadata: { slot: { id: 'foto' } } },
+      ],
+    }
+    await ajustarArte({ projectId: 8, pageId: 'p1', imageUrl: 'https://blob.test/generica.jpg', slotValues: { _slots: { foto: { fileUrl: 'https://blob.test/pedida.jpg' } } } })
+    expect((banco.pagina.layers as Array<Record<string, any>>).find((l) => l.id === 'img')!.fileUrl).toBe('https://blob.test/pedida.jpg')
+  })
+})
+
+describe('Codex #208 — fallback da foto genérica só no FUNDO (a primeira imagem), nunca na logo', () => {
+  const img = (id: string, fileUrl: string, extra: Record<string, unknown> = {}) => ({ id, name: id, type: 'image', visible: true, order: 0, position: { x: 0, y: 0 }, size: { width: 100, height: 100 }, fileUrl, ...extra })
+  const comFundoELogo = () => {
+    banco.pagina = {
+      ...banco.pagina,
+      layers: [img('fundo', 'https://blob.test/fundo-antigo.jpg', { metadata: { slot: { id: 'fundo' } } }), img('logo', 'https://blob.test/logo.png'), ...(banco.pagina.layers as unknown[])],
+    }
+  }
+  const camada = (id: string) => (banco.pagina.layers as Array<Record<string, any>>).find((l) => l.id === id)!
+
+  it('_slots com {fileUrl} no fundo + imageUrl: o fundo fica com a pedida, a logo intacta, imageApplied false e aviso', async () => {
+    comFundoELogo()
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', imageUrl: 'https://blob.test/generica.jpg', slotValues: { _slots: { fundo: { fileUrl: 'https://blob.test/pedida.jpg' } } } })
+    expect(camada('fundo').fileUrl).toBe('https://blob.test/pedida.jpg')
+    expect(camada('logo').fileUrl).toBe('https://blob.test/logo.png')
+    expect(r.imageApplied).toBe(false)
+    expect(r.imageWarning).toMatch(/não foi aplicada/)
+  })
+
+  it('fileUrl LEGADO por layerId no fundo + imageUrl: mesma regra', async () => {
+    comFundoELogo()
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', imageUrl: 'https://blob.test/generica.jpg', slotValues: { fundo: { fileUrl: 'https://blob.test/pedida.jpg' } } })
+    expect(camada('fundo').fileUrl).toBe('https://blob.test/pedida.jpg')
+    expect(camada('logo').fileUrl).toBe('https://blob.test/logo.png')
+    expect(r.imageApplied).toBe(false)
+    expect(r.imageWarning).toMatch(/não foi aplicada/)
+  })
+
+  it('sem fileUrl explícito: a foto genérica vai para o fundo, como sempre', async () => {
+    comFundoELogo()
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', imageUrl: 'https://blob.test/generica.jpg' })
+    expect(camada('fundo').fileUrl).toBe('https://blob.test/generica.jpg')
+    expect(camada('logo').fileUrl).toBe('https://blob.test/logo.png')
+    expect(r.imageApplied).toBe(true)
+  })
+})
+
+it('Codex #208 — fallback: _papeis {foto: {fileUrl}} no fundo + imageUrl: logo intacta', async () => {
+  const img = (id: string, fileUrl: string, extra: Record<string, unknown> = {}) => ({ id, name: id, type: 'image', visible: true, order: 0, position: { x: 0, y: 0 }, size: { width: 100, height: 100 }, fileUrl, ...extra })
+  banco.pagina = { ...banco.pagina, layers: [img('fundo', 'https://blob.test/fundo-antigo.jpg', { metadata: { compositor: { papel: 'foto' } } }), img('logo', 'https://blob.test/logo.png'), ...(banco.pagina.layers as unknown[])] }
+  const r = await ajustarArte({ projectId: 8, pageId: 'p1', imageUrl: 'https://blob.test/generica.jpg', slotValues: { _papeis: { foto: { fileUrl: 'https://blob.test/pedida.jpg' } } } })
+  const camada = (id: string) => (banco.pagina.layers as Array<Record<string, any>>).find((l) => l.id === id)!
+  expect(camada('fundo').fileUrl).toBe('https://blob.test/pedida.jpg')
+  expect(camada('logo').fileUrl).toBe('https://blob.test/logo.png')
+  expect(r.imageApplied).toBe(false)
+})
+
+describe('opção C (#208) no AJUSTE: fileUrl semântico no primeiro alvo não deixa a foto escorrer', () => {
+  const dyn = (id: string, extra: Record<string, unknown> = {}) => ({ id, name: id, type: 'image', isDynamic: true, visible: true, order: 0, position: { x: 0, y: 0 }, size: { width: 100, height: 100 }, ...extra })
+  const camada = (id: string) => (banco.pagina.layers as Array<Record<string, any>>).find((l) => l.id === id)!
+  const duasFotos = () => {
+    banco.pagina = { ...banco.pagina, layers: [dyn('bg', { metadata: { compositor: { papel: 'foto' }, slot: { id: 'fundo' } } }), dyn('segunda'), ...(banco.pagina.layers as unknown[])] }
+  }
+
+  it.each([
+    ['_slots', { _slots: { fundo: { fileUrl: 'https://blob.test/semantica.jpg' } } }],
+    ['_papeis', { _papeis: { foto: { fileUrl: 'https://blob.test/semantica.jpg' } } }],
+  ])('%s no fundo + imageUrl: segunda intacta, imageApplied false, aviso com a causa', async (_n, slotValues) => {
+    duasFotos()
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', imageUrl: 'https://blob.test/generica.jpg', slotValues })
+    expect(camada('bg').fileUrl).toBe('https://blob.test/semantica.jpg')
+    expect(camada('segunda').fileUrl).toBeUndefined()
+    expect(r.imageApplied).toBe(false)
+    expect(r.imageWarning).toMatch(/_slots\/_papeis/)
+  })
+
+  it('LEGADO por layerId no fundo: a genérica cai na segunda, como sempre', async () => {
+    duasFotos()
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', imageUrl: 'https://blob.test/generica.jpg', slotValues: { bg: { fileUrl: 'https://blob.test/legado.jpg' } } })
+    expect([camada('bg').fileUrl, camada('segunda').fileUrl]).toEqual(['https://blob.test/legado.jpg', 'https://blob.test/generica.jpg'])
+    expect(r.imageApplied).toBe(true)
+  })
+})
