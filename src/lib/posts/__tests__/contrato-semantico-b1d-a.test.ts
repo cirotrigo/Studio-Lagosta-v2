@@ -121,19 +121,32 @@ describe('F–G. legado intacto', () => {
   })
 })
 
-describe('H. quem grava `SocialPost.slotValues`: 5 pontos de escrita, 6 operações', () => {
+describe('H. quem grava `SocialPost.slotValues` (src/ e scripts/)', () => {
   /**
-   * Tripwire: todo arquivo de produção que escreve em `socialPost` E menciona `slotValues` tem de estar
-   * classificado aqui. Um escritor novo derruba o teste até ser classificado — é por ele que o contrato
-   * novo pode entrar (ou ser apagado) sem passar pela validação do B1d.
+   * Tripwire: todo arquivo (src/ ou scripts/) que escreve em `socialPost` E menciona `slotValues` tem de estar
+   * classificado aqui. Um escritor novo derruba o teste até ser classificado — é por ele que o contrato novo
+   * pode entrar (ou ser apagado) sem passar pela validação do B1d.
+   *
+   * Produção: 9 pontos de escrita, 10 operações (trocarArteDoPost tem duas). As portas do pedido CRU — onde
+   * `_slots`/`_papeis` podem chegar — são createPost (src) e create-post/update-post do MCP LOCAL, que gravam
+   * pelo Prisma direto, sem passar pelo createPost.
    */
-  const ESCREVEM_SLOTVALUES: Record<string, string> = {
-    'src/lib/posts/later-scheduler.ts': 'createPost — insert com o mapa CRU recebido (API de posts / PostScheduler): a ÚNICA porta do pedido semântico',
-    'src/lib/creatives/agendar.ts': 'criarPostDoAgendamento — insert com a copy derivada da página (marcada) ou da Generation; nunca `_slots`',
+  const ESCRITORES_DE_PRODUCAO: Record<string, string> = {
+    'src/lib/posts/later-scheduler.ts': 'createPost — insert com o mapa CRU recebido (API de posts / PostScheduler)',
+    'src/lib/creatives/agendar.ts': 'criarPostDoAgendamento — insert com a copy derivada da página (marcada) ou da Generation',
     'src/lib/posts/render-post-art.ts': 'renderPostArt — updateMany após render sem slots aplicados: regrava a cópia da página preservando `_…`',
     'src/lib/posts/trocar-arte-do-post.ts': 'trocarArteDoPost — update em DUAS operações: troca por PÁGINA (cópia marcada) e por GENERATION/galeria (copy visual, ou DbNull)',
-    'src/lib/posts/substituir-video-do-post.ts': 'substituirVideoDoPost — update com a cópia dos textos da página (marcada), dentro de transação',
+    'src/lib/posts/substituir-video-do-post.ts': 'substituirVideoDoPost — update com a cópia dos textos da página (marcada)',
+    'scripts/mcp-server.ts': 'MCP LOCAL — create-post (insert CRU do JSON recebido), update-post (EDIÇÃO crua de slotValues) e plan-week (insert de textos por nome + _driveImageId)',
+    'scripts/plan-week.ts': 'plan-week (CLI) — insert de textos por nome + _driveImageId',
   }
+  const ESCRITORES_PONTUAIS: Record<string, string> = {
+    'scripts/create-tero-week-posts.ts': 'uso único (TERO, abril/2026): insert de textos por nome',
+    'scripts/marcar-copia-da-pagina.ts': 'backfill da marca _copiaDaPagina: updateMany com slotValuesSeguindo (preserva `_…`)',
+  }
+  const PROVAS_DE_INTEGRACAO: Record<string, string> = Object.fromEntries(
+    ['validar-camadas-extras', 'validar-contexto-da-semana', 'validar-copy-autoral', 'validar-desfecho-no-agendamento', 'validar-revisor-da-arte', 'validar-video-na-agenda'].map((n) => [`scripts/${n}.ts`, 'prova no banco de dev: fixtures e leituras']),
+  )
   const NAO_ESCREVEM: Record<string, string> = {
     'src/lib/posts/scheduler.ts': 'PostScheduler: tipa e repassa slotValues ao createPost do later-scheduler',
     'src/lib/posts/executor.ts': 'lê post.slotValues e o passa ao renderPostArt',
@@ -152,26 +165,39 @@ describe('H. quem grava `SocialPost.slotValues`: 5 pontos de escrita, 6 operaç�
     })
   }
 
-  it('o conjunto de candidatos é exatamente o classificado (5 escritores + leitores conhecidos)', () => {
+  it('o conjunto de candidatos em src/ e scripts/ é exatamente o classificado', () => {
     const raiz = process.cwd()
-    const candidatos = arquivosTs(join(raiz, 'src'))
+    const candidatos = [...arquivosTs(join(raiz, 'src')), ...arquivosTs(join(raiz, 'scripts'))]
       .filter((f) => {
         const t = readFileSync(f, 'utf8')
         return /socialPost\.(create|createMany|update|updateMany|upsert)\b/.test(t) && /\bslotValues\b/.test(t)
       })
       .map((f) => relative(raiz, f))
       .sort()
-    expect(candidatos).toEqual([...Object.keys(ESCREVEM_SLOTVALUES), ...Object.keys(NAO_ESCREVEM)].sort())
-    expect(Object.keys(ESCREVEM_SLOTVALUES)).toHaveLength(5)
+    const classificados = [ESCRITORES_DE_PRODUCAO, ESCRITORES_PONTUAIS, PROVAS_DE_INTEGRACAO, NAO_ESCREVEM].flatMap((m) => Object.keys(m))
+    expect(candidatos).toEqual(classificados.sort())
   })
 
-  it('a edição de post (PUT da API e editar-post do MCP) não grava slotValues', () => {
+  it('MCP local: create-post e update-post gravam o slotValues CRU recebido; plan-week grava textos por nome', () => {
+    const mcp = readFileSync(join(process.cwd(), 'scripts/mcp-server.ts'), 'utf8')
+    expect(mcp).toMatch(/slotValues: parsedSlotValues \?\? undefined/) // create-post
+    expect(mcp).toMatch(/if \(slotValues !== undefined\) data\.slotValues = JSON\.parse\(slotValues\)/) // update-post
+    expect(mcp).toMatch(/const slotValues: Record<string, unknown> = \{ \.\.\.story\.texts \}/) // plan-week
+  })
+
+  it('MCP local render-story: SEGUNDO caminho de render — lê slotValues e usa slotValuesParaRender (leitor, não escritor)', () => {
+    const mcp = readFileSync(join(process.cwd(), 'scripts/mcp-server.ts'), 'utf8')
+    const bloco = mcp.slice(mcp.indexOf("'render-story',"), mcp.indexOf("'plan-week',"))
+    expect(bloco).toMatch(/slotValuesParaRender\(slotValues, page\.isTemplate\)/)
+  })
+
+  it('a edição pelo PUT da API e pelo editar-post do MCP remoto não grava slotValues', () => {
     const put = readFileSync(join(process.cwd(), 'src/app/api/projects/[projectId]/posts/[postId]/route.ts'), 'utf8')
     expect(put).not.toMatch(/\bslotValues\b/)
     const agenda = readFileSync(join(process.cwd(), 'src/lib/mcp/catalogo/agenda.ts'), 'utf8')
     const ini = agenda.indexOf("nome: 'editar-post'")
     expect(ini).toBeGreaterThan(-1)
-    const bloco = agenda.slice(ini, agenda.indexOf("definirTool(", ini))
+    const bloco = agenda.slice(ini, agenda.indexOf('definirTool(', ini))
     expect(bloco).not.toMatch(/\bslotValues\b/)
   })
 
