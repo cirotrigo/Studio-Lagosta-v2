@@ -18,7 +18,8 @@
  * contrato legado (id/nome), então só entra `layerId`, e só quando é seguro:
  * `resolverAlvo({ layerId })` aceita (id repetido aplicaria o valor nas duas
  * camadas) e nenhuma OUTRA camada tem esse id como nome (pelo `id ?? nome` do
- * legado, a chave também cairia nela). `slotId` e `semanticRole` continuam DESCRITOS em `slot`/`role`,
+ * legado, a chave também cairia nela) e o tipo da camada desenha o valor
+ * preenchido (texto, rich-text, imagem — forma, gradiente e logo não). `slotId` e `semanticRole` continuam DESCRITOS em `slot`/`role`,
  * mas não prometidos (F1 da revisão adversarial do B1b: anunciá-los antes do
  * preenchimento deixava o agente gerar arte sem o conteúdo, sem erro).
  *
@@ -54,6 +55,8 @@ export type ProblemaDoCampo =
   | { code: 'LAYER_ID_DUPLICATE' }
   /** Outra camada tem este id como NOME: o legado (`id ?? nome`) aplicaria o valor nas duas. */
   | { code: 'LAYER_ID_MATCHES_OTHER_NAME'; layerIds: string[] }
+  /** O valor que o preenchimento grava (`content`/`fileUrl`) não chega ao desenho deste tipo de camada. */
+  | { code: 'TYPE_NOT_FILLABLE' }
 
 export interface SemanticaDoCampo {
   role: {
@@ -97,6 +100,14 @@ export interface AnaliseDosCampos {
 }
 
 const entraPeloLegado = (l: any) => l?.type === 'text' || (l?.type === 'image' && l?.isDynamic)
+
+/**
+ * Tipos cujo valor preenchido o render DESENHA: texto e rich-text (`content`) e
+ * imagem (`fileUrl`). Forma, gradiente, ícone e afins não usam nenhum dos dois;
+ * a logo é desenhada pelo `logoId`. Nesses, o campo é descrito, mas não
+ * prometido (codex review do B1b).
+ */
+const TIPOS_PREENCHIVEIS = new Set(['text', 'rich-text', 'image'])
 
 /** A análise de uma página que não voltou da consulta — vazia, mas dita (revisão adversarial do B1b, F2). */
 export function analiseDePaginaAusente(): AnaliseDosCampos {
@@ -176,8 +187,11 @@ export function analisarSlotFields(raw: unknown): AnaliseDosCampos {
     // cairia nas duas).
     const sombras = camadas.flatMap((c: any, j) => (j !== i && c?.name === d.layerId ? [String(c.id)] : []))
     if (sombras.length > 0) problems.push({ code: 'LAYER_ID_MATCHES_OTHER_NAME', layerIds: sombras })
+    const preenchivel = TIPOS_PREENCHIVEIS.has(l.type)
+    if (!preenchivel) problems.push({ code: 'TYPE_NOT_FILLABLE' })
     const porLayerId = resolverAlvo(camadas, { layerId: d.layerId })
-    const addressableBy: SemanticaDoCampo['addressableBy'] = 'indice' in porLayerId && porLayerId.indice === i && sombras.length === 0 ? ['layerId'] : []
+    const addressableBy: SemanticaDoCampo['addressableBy'] =
+      preenchivel && 'indice' in porLayerId && porLayerId.indice === i && sombras.length === 0 ? ['layerId'] : []
 
     slotFields.push({
       layerId: l.id,

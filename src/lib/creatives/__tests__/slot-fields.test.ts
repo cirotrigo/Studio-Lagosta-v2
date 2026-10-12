@@ -108,7 +108,9 @@ describe('role.status: declarado, inferido, ausente, inválido', () => {
       ['logo', 'logo', 'tipo'],
     ])
     expect(r.slotFields[1].semantic.slot).toEqual({ status: 'declared', id: 'logo-principal' })
-    expect(r.slotFields[1].semantic.addressableBy).toEqual(['layerId'])
+    // a logo é desenhada pelo logoId: content/fileUrl não chegam ao render — descrita, mas não prometida
+    expect(r.slotFields[1].semantic.addressableBy).toEqual([])
+    expect(r.slotFields[1].semantic.problems).toContainEqual({ code: 'TYPE_NOT_FILLABLE' })
   })
 })
 
@@ -228,5 +230,29 @@ describe('layerId só é seguro se nenhuma OUTRA camada tem esse valor como nome
 
   it('o nome igual ao PRÓPRIO id não é colisão (as camadas do compositor são assim)', () => {
     expect(analisarSlotFields([texto('headline', 'headline', 'a')]).slotFields[0].semantic.addressableBy).toEqual(['layerId'])
+  })
+})
+
+describe('só tipos cujo valor o render desenha são prometidos (codex review do B1b)', () => {
+  it('forma e gradiente com slot: continuam campos (descritos), mas sem addressableBy e com o motivo', () => {
+    const r = analisarSlotFields([
+      { id: 'shape-1', name: 'Botão', type: 'shape', metadata: { slot: { id: 'botao' } } },
+      { id: 'grad-1', name: 'Gradiente', type: 'gradient', metadata: { slot: { id: 'grad' } } },
+    ])
+    expect(r.slotFields.map((f) => f.layerId)).toEqual(['shape-1', 'grad-1'])
+    for (const f of r.slotFields) {
+      expect(f.semantic.slot.status).toBe('declared')
+      expect(f.semantic.addressableBy).toEqual([])
+      expect(f.semantic.problems).toContainEqual({ code: 'TYPE_NOT_FILLABLE' })
+    }
+  })
+
+  it('texto, rich-text e imagem com slot: layerId prometido', () => {
+    const r = analisarSlotFields([
+      texto('t1', 'T', 'a', { slot: { id: 's1' } }),
+      { id: 'rt-1', name: 'R', type: 'rich-text', content: 'b', metadata: { slot: { id: 's2' } } },
+      { id: 'img-1', name: 'I', type: 'image', metadata: { slot: { id: 's3' } } },
+    ])
+    expect(r.slotFields.map((f) => f.semantic.addressableBy)).toEqual([['layerId'], ['layerId'], ['layerId']])
   })
 })
