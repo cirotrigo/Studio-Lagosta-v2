@@ -163,11 +163,11 @@ describe('revisão adversarial B1a', () => {
   })
 })
 
-describe('contrato SEMÂNTICO: string ou { content?, fileUrl?, hidden: true } — fail-closed', () => {
+describe('contrato SEMÂNTICO: string ou { content?, fileUrl? } — fail-closed', () => {
   const valida = (valor: unknown) => codigos(resolverValoresSemanticos(pagina, { _slots: { titulo: valor } }))
 
   it('válidos', () => {
-    for (const v of ['X', '', { content: 'X' }, { content: '' }, { fileUrl: 'https://x' }, { hidden: true }, { content: 'X', hidden: true }, { content: 'X', fileUrl: 'https://x' }]) {
+    for (const v of ['X', '', { content: 'X' }, { content: '' }, { fileUrl: 'https://x' }, { content: 'X', fileUrl: 'https://x' }]) {
       expect(valida(v)).toEqual([])
     }
   })
@@ -183,7 +183,11 @@ describe('contrato SEMÂNTICO: string ou { content?, fileUrl?, hidden: true } �
   })
 
   it('tipos errados e operações sem efeito: inválidos', () => {
-    for (const v of [{ content: 3 }, { fileUrl: '' }, { fileUrl: 7 }, { hidden: false }, { hidden: 'sim' }]) expect(valida(v)).toEqual(['VALOR_INVALIDO'])
+    for (const v of [{ content: 3 }, { fileUrl: '' }, { fileUrl: 7 }]) expect(valida(v)).toEqual(['VALOR_INVALIDO'])
+  })
+
+  it('hidden NÃO faz parte do contrato semântico (a via do render não o aplica): inválido, true ou false', () => {
+    for (const v of [{ hidden: true }, { hidden: false }, { content: 'X', hidden: true }]) expect(valida(v)).toEqual(['VALOR_INVALIDO'])
   })
 })
 
@@ -231,7 +235,8 @@ describe('equivalência legado ↔ semântico pelo EFEITO editável', () => {
   it('diferenças reais continuam conflito: content, fileUrl, hidden', () => {
     expect(codigos(resolverValoresSemanticos(pagina, { 'text-h': { content: 'A', papel: 'headline' }, _slots: { titulo: { content: 'B' } } }))).toEqual(['VALOR_CONFLITANTE'])
     expect(codigos(resolverValoresSemanticos(pagina, { 'text-h': { fileUrl: 'https://a' }, _slots: { titulo: { fileUrl: 'https://b' } } }))).toEqual(['VALOR_CONFLITANTE'])
-    expect(codigos(resolverValoresSemanticos(pagina, { 'text-h': { content: 'A' }, _slots: { titulo: { content: 'A', hidden: true } } }))).toEqual(['VALOR_CONFLITANTE'])
+    // hidden LEGADO é efeito real (a camada some): não equivale ao mesmo content sem ele
+    expect(codigos(resolverValoresSemanticos(pagina, { 'text-h': { content: 'A', hidden: true }, _slots: { titulo: { content: 'A' } } }))).toEqual(['VALOR_CONFLITANTE'])
   })
 
   it('"" × { content: "" } continua conflito, também contra o legado', () => {

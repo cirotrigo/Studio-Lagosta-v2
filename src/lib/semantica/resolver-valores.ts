@@ -13,14 +13,13 @@
  *  - o LEGADO (as chaves por id/nome) continua entendendo `content`, `fileUrl`,
  *    `hidden`, `papel` e `bloco` — a copy autoral depende das duas marcas;
  *  - o SEMÂNTICO (`ValorSemantico`, só em `_slots`/`_papeis`) é conteúdo pedido
- *    por quem preenche: string, ou objeto com `content`, `fileUrl` e
- *    `hidden: true`. `papel` e `bloco` são identidade interna da composição e
- *    da copy e NÃO podem ser redefinidos por aqui. Fail-closed: chave fora do
- *    contrato, tipo errado, objeto vazio ou operação sem efeito
- *    (`hidden: false`, `fileUrl: ""`) é VALOR_INVALIDO.
- *    ⚠️ `hidden` hoje só tem efeito na via de criação (`bakeLayers`); a via do
- *    render (`aplicarSlotNaCamada`) não o entende — o B1d tem de implementá-lo
- *    ou recusá-lo.
+ *    por quem preenche: string, ou objeto com `content` e/ou `fileUrl` — só o
+ *    que as DUAS vias futuras aplicam do mesmo jeito. `hidden` fica de fora: a
+ *    via de criação (`bakeLayers`) o entende, a do render
+ *    (`aplicarSlotNaCamada`) não (finding do Codex no B1a). `papel` e `bloco`
+ *    são identidade interna da composição e da copy e NÃO podem ser redefinidos
+ *    por aqui. Fail-closed: chave fora do contrato, tipo errado, objeto vazio
+ *    ou `fileUrl: ""` é VALOR_INVALIDO.
  *
  * Conflito nunca é escolhido em silêncio: duas fontes explicitamente enviadas
  * para a MESMA camada — `_slots` e `_papeis`, ou uma delas e a chave legada
@@ -50,7 +49,7 @@ import { resolverAlvo, type ErroDoAlvo } from './resolver-alvo'
 import type { SemanticRole } from './papeis'
 
 /** O contrato SEMÂNTICO: o que `_slots`/`_papeis` podem pedir para uma camada. */
-export type ValorSemantico = string | { content?: string; fileUrl?: string; hidden?: true }
+export type ValorSemantico = string | { content?: string; fileUrl?: string }
 
 export type OrigemSemantica = { tipo: 'slotId' | 'semanticRole'; chave: string }
 export type OrigemDoValor = OrigemSemantica | { tipo: 'layerId' | 'name'; chave: string }
@@ -91,16 +90,16 @@ function valorSemanticoValido(v: unknown): v is ValorSemantico {
   return chaves.every((k) => {
     if (k === 'content') return typeof v.content === 'string'
     if (k === 'fileUrl') return typeof v.fileUrl === 'string' && v.fileUrl !== ''
-    if (k === 'hidden') return v.hidden === true
     return false
   })
 }
 
 /**
- * O EFEITO editável de um valor — legado ou semântico — no que o contrato
- * semântico pode pedir: `content` (string), `fileUrl` (string) e `hidden`
- * (só `true` age). `papel`/`bloco` e chaves que o legado ignora ficam de fora:
- * a metadata interna do legado não é conflito. String não vazia `s` equivale a
+ * O EFEITO visual de um valor — legado ou semântico: `content` (string),
+ * `fileUrl` (string) e o `hidden: true` do LEGADO (a camada some — efeito
+ * real, que o contrato semântico não pede, e por isso conflita com ele).
+ * `papel`/`bloco` e chaves que o legado ignora ficam de fora: a metadata
+ * interna do legado não é conflito. String não vazia `s` equivale a
  * `{ content: s }`; `""` é um efeito próprio (no render ela MANTÉM a camada, e
  * `{ content: "" }` a apaga).
  */
