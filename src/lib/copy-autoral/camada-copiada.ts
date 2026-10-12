@@ -59,10 +59,26 @@ export function semIdentidadeAutoral<T extends Pick<Layer, 'metadata'>>(camada: 
   return { ...limpa, metadata: { ...(limpa.metadata ?? {}), compositor: { papel } } }
 }
 
-/** `duplicateLayer`: id novo, nome "Copy", 16px abaixo e à direita, destravada — sem a identidade da original. */
+/**
+ * A cópia é uma NOVA ocorrência lógica: nasce sem o slot da original
+ * (`metadata.slot`, a identidade lógica que a fundação semântica lê) — e sem
+ * slot novo gerado; fica sem identidade de slot até alguém marcá-la. Mantido o
+ * slot, a página teria dois slots iguais e nenhum endereçável. O oposto da
+ * recomposição e da reversão, que mantêm a MESMA ocorrência e transportam o
+ * slot (`semantica/transportar-slots.ts`). Separado de `semIdentidadeAutoral`
+ * de propósito: aquela é a autoria da copy; esta, a identidade do slot.
+ */
+function semIdentidadeDeSlot<T extends Pick<Layer, 'metadata'>>(camada: T): T {
+  const meta = camada.metadata as Record<string, unknown> | undefined
+  if (!meta || !('slot' in meta)) return camada
+  const { slot: _slot, ...resto } = meta
+  return { ...camada, metadata: resto }
+}
+
+/** `duplicateLayer`: id novo, nome "Copy", 16px abaixo e à direita, destravada — sem a identidade da original nem o slot dela. */
 export function camadaDuplicadaNoEditor(origem: Layer, opcoes: OpcoesDaCopia & { novoId: string }): Layer {
   return {
-    ...semIdentidadeAutoral(origem, opcoes),
+    ...semIdentidadeDeSlot(semIdentidadeAutoral(origem, opcoes)),
     id: opcoes.novoId,
     name: `${origem.name} Copy`,
     position: {
@@ -86,7 +102,7 @@ export function camadasColadasNoEditor(clipboard: Layer[], opcoes: OpcoesDaCopia
   return clipboard.map((layer, index) => {
     const cloned = clonar(layer)
     return {
-      ...semIdentidadeAutoral(cloned, opcoes),
+      ...semIdentidadeDeSlot(semIdentidadeAutoral(cloned, opcoes)),
       id: opcoes.novoId(),
       name: `${cloned.name ?? cloned.type} Copy`,
       locked: false,

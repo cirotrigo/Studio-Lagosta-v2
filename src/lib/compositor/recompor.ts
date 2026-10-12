@@ -58,6 +58,7 @@ import { invalidateScheduledRenders } from '@/lib/posts/invalidate-renders'
 import { montarNovasMidias } from '@/lib/posts/troca-de-arte'
 import { postDeVideo } from '@/lib/posts/post-de-video'
 import { ehArteDaPagina } from './arte-da-pagina'
+import { descreverAvisoDeSlot, transportarSlots } from '@/lib/semantica/transportar-slots'
 import { PostLogEvent, type Prisma } from '../../../prisma/generated/client'
 
 import { comporPeca } from './compor'
@@ -513,6 +514,18 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
 
     const camadas = prepararCamadasParaGravar(composicao.layers)
     avisos.push(...camadas.avisos)
+    /**
+     * PR B0: a recomposição mantém a MESMA ocorrência lógica de cada camada, mas
+     * `comporPeca` desenha do zero e não conhece slots — o `metadata.slot` da
+     * página é reconciliado sobre as camadas novas (`transportarSlots`: id único,
+     * mesmo papel, mesmo bloco; na dúvida, perde com aviso). `page.layers` é a
+     * leitura que o compare-and-set abaixo protege. A partir daqui TUDO que
+     * representa o estado final usa este array: a copy efetiva, `Page.layers`, a
+     * versão e o `layersSnapshot`. O PNG composto antes vale: o slot não é visual.
+     */
+    const reconciliacao = transportarSlots(lerCamadas(page.layers).camadas as unknown as Layer[], camadas.camadas as unknown as Layer[])
+    avisos.push(...reconciliacao.avisos.map(descreverAvisoDeSlot))
+    const camadasFinais = reconciliacao.camadas
     const blob = await put(`arte-rapida/${projeto.id}/${page.id}-${Date.now()}.png`, composicao.prova, {
       access: 'public',
       contentType: 'image/png',
@@ -525,7 +538,7 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
     // sobre o contrato atual. Vai para a página (o contrato do que ela mostra)
     // e para a Generation (`copyAutoral.efetiva`); o `original` fica intacto.
     // A peça já está composta e o PNG no Blob: o histórico cheio não a descarta — grava sem contrato novo, com aviso.
-    const leituraRecomposta = contratoAtual ? tentarCopyEfetivaDasCamadas(contratoAtual, camadas.camadas as unknown as Layer[], { superficie: 'recomposicao' }) : null
+    const leituraRecomposta = contratoAtual ? tentarCopyEfetivaDasCamadas(contratoAtual, camadasFinais, { superficie: 'recomposicao' }) : null
     if (leituraRecomposta && leituraRecomposta.ok === false) avisos.push(`${leituraRecomposta.aviso} A página e a arte foram gravadas sem contrato novo.`)
     const efetivaRecomposta = leituraRecomposta && leituraRecomposta.ok ? leituraRecomposta.leitura : null
     const copyAutoralAnterior = arte.fieldValues.copyAutoral && typeof arte.fieldValues.copyAutoral === 'object' ? (arte.fieldValues.copyAutoral as Record<string, unknown>) : null
@@ -542,13 +555,13 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
      */
     const gravada = await db.page.updateMany({
       where: { id: page.id, updatedAt: page.updatedAt },
-      data: { layers: camadas.camadas as never, thumbnail: blob.url, ...(efetivaRecomposta ? { copyAutoral: efetivaRecomposta.efetiva as never } : {}) },
+      data: { layers: camadasFinais as never, thumbnail: blob.url, ...(efetivaRecomposta ? { copyAutoral: efetivaRecomposta.efetiva as never } : {}) },
     })
     if (gravada.count === 0) {
       await del(blob.url).catch(() => undefined)
       throw new CreativeError('PAGINA_MUDOU_DURANTE', 'A página foi editada enquanto a arte era refeita; a composição foi descartada e a arte será refeita a partir da página nova.', 409)
     }
-    versaoGravada = versaoDaPagina({ width: page.width, height: page.height, background: page.background, layers: camadas.camadas })
+    versaoGravada = versaoDaPagina({ width: page.width, height: page.height, background: page.background, layers: camadasFinais })
     if (input.entreGravarPaginaEArte) await input.entreGravarPaginaEArte()
     /**
      * MERGE no banco, nunca `{ ...arte.fieldValues, … }`: `arte.fieldValues`
@@ -568,7 +581,7 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
         // gravar a entrada deixava a nota só no contrato, e quem lê `spec.camadasExtras` a perdia.
         spec: validarSpec(spec).spec ?? spec,
         composicao: composicao.diagnostico,
-        layersSnapshot: camadas.camadas,
+        layersSnapshot: camadasFinais,
         thumbnailUrl: blob.url,
         // A versão visual que este PNG desenhou, junto da URL dele — a mesma que o
         // `renderPageAndRegister` grava no re-render (R12-01, `thumbnailEhAtual`).
