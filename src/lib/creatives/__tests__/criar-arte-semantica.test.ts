@@ -327,3 +327,13 @@ describe('revisão adversarial do B1c', () => {
     expect(e).toMatchObject({ code: 'COPY_AUTORAL_COM_CHAVES_LEGADAS', details: { chaves: ['_titulo'] } })
   })
 })
+
+describe('Codex #208 — CP1: copy posicional VAZIA não é copy (o item sem texto sai com o modelo inteiro)', () => {
+  it('copyPosicional: [] não oculta rich-text nem avisa', async () => {
+    estado.paginas.set('p-r', pagina('p-r', [texto('h', 'Título', declarada('headline', 'm')), { id: 'rt', name: 'Rico', type: 'rich-text', content: 'Até 15h', visible: true }]))
+    const r = await createArteRapida({ projectId: 8, sourcePageId: 'p-r', slotValues: { _driveImageId: 'd1' }, copyPosicional: [] })
+    expect(conteudo('rt').visible).toBe(true)
+    expect(conteudo('h').content).toBe('modelo h')
+    expect(r.avisos?.some((a) => a.includes('Rico')) ?? false).toBe(false)
+  })
+})

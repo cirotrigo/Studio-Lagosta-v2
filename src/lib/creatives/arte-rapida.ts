@@ -665,8 +665,10 @@ function valoresDaArte(
       )
     }
     efetivo = { ...slotValues, ...mapa.slotValues }
-    // Rich-text não recebe copy; com copy, o texto dele é placeholder como o do campo não coberto.
-    const ricos = camadas.filter((c) => c?.type === 'rich-text' && c.visible !== false)
+    // Rich-text não recebe copy; com copy, o texto dele é placeholder como o do campo não coberto. Copy SEM texto
+    // (item só com foto: `copyPosicional: []`) não oculta nada — a arte sai com o modelo inteiro (Codex #208, CP1).
+    const copyComTexto = Object.keys(mapa.slotValues).length > 0
+    const ricos = copyComTexto ? camadas.filter((c) => c?.type === 'rich-text' && c.visible !== false) : []
     ocultar = [...mapa.ocultar, ...ricos.map((c) => String(c.id))]
     if (ricos.length > 0) mapa.avisos.push(`Texto rico não recebe a copy e ficou oculto na arte: ${ricos.map((c) => `"${c.name || c.id}"`).join(', ')}.`)
     cobertos = new Set(Object.keys(mapa.slotValues))
