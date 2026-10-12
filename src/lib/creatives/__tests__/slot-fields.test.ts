@@ -216,3 +216,17 @@ describe('addressableBy = capacidade executável HOJE (decisão do Ciro sobre o 
     expect(f.semantic.role).toMatchObject({ status: 'declared', value: 'cta', occurrences: 1, ambiguous: false })
   })
 })
+
+describe('layerId só é seguro se nenhuma OUTRA camada tem esse valor como nome (revisão adversarial curta do B1b)', () => {
+  it('id "x" de uma camada é o nome de outra: o legado aplicaria nas duas → não anunciado, com o motivo', () => {
+    const r = analisarSlotFields([texto('x', 'Título', 'a'), texto('y', 'x', 'b')])
+    expect(r.slotFields[0].semantic.addressableBy).toEqual([])
+    expect(r.slotFields[0].semantic.problems).toContainEqual({ code: 'LAYER_ID_MATCHES_OTHER_NAME', layerIds: ['y'] })
+    // a outra camada continua segura pelo próprio id
+    expect(r.slotFields[1].semantic.addressableBy).toEqual(['layerId'])
+  })
+
+  it('o nome igual ao PRÓPRIO id não é colisão (as camadas do compositor são assim)', () => {
+    expect(analisarSlotFields([texto('headline', 'headline', 'a')]).slotFields[0].semantic.addressableBy).toEqual(['layerId'])
+  })
+})

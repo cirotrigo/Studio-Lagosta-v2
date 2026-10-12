@@ -15,9 +15,10 @@
  *
  * `addressableBy` = os endereços que o Studio de HOJE executa DE PONTA A PONTA —
  * não "o que o `resolverAlvo` localiza". No B1b o preenchimento só entende o
- * contrato legado (id/nome), então só entra `layerId`, e só quando é seguro
- * (`resolverAlvo({ layerId })` aceita: id repetido aplicaria o valor nas duas
- * camadas). `slotId` e `semanticRole` continuam DESCRITOS em `slot`/`role`,
+ * contrato legado (id/nome), então só entra `layerId`, e só quando é seguro:
+ * `resolverAlvo({ layerId })` aceita (id repetido aplicaria o valor nas duas
+ * camadas) e nenhuma OUTRA camada tem esse id como nome (pelo `id ?? nome` do
+ * legado, a chave também cairia nela). `slotId` e `semanticRole` continuam DESCRITOS em `slot`/`role`,
  * mas não prometidos (F1 da revisão adversarial do B1b: anunciá-los antes do
  * preenchimento deixava o agente gerar arte sem o conteúdo, sem erro).
  *
@@ -51,6 +52,8 @@ export type ProblemaDoCampo =
   | { code: 'SLOT_INVALID' }
   | { code: 'SLOT_DUPLICATE'; layerIds: string[] }
   | { code: 'LAYER_ID_DUPLICATE' }
+  /** Outra camada tem este id como NOME: o legado (`id ?? nome`) aplicaria o valor nas duas. */
+  | { code: 'LAYER_ID_MATCHES_OTHER_NAME'; layerIds: string[] }
 
 export interface SemanticaDoCampo {
   role: {
@@ -168,9 +171,13 @@ export function analisarSlotFields(raw: unknown): AnaliseDosCampos {
       if (mesmos.length > 1) problems.push({ code: 'SLOT_DUPLICATE', layerIds: idsDe(mesmos) })
     }
 
-    // O único endereço que o preenchimento de HOJE executa: o layerId, quando o resolverAlvo o aceita (único).
+    // O único endereço que o preenchimento de HOJE executa: o layerId — seguro só quando o resolverAlvo o
+    // aceita (único) E nenhuma OUTRA camada tem esse valor como nome (o legado casa `id ?? nome`, então a chave
+    // cairia nas duas).
+    const sombras = camadas.flatMap((c: any, j) => (j !== i && c?.name === d.layerId ? [String(c.id)] : []))
+    if (sombras.length > 0) problems.push({ code: 'LAYER_ID_MATCHES_OTHER_NAME', layerIds: sombras })
     const porLayerId = resolverAlvo(camadas, { layerId: d.layerId })
-    const addressableBy: SemanticaDoCampo['addressableBy'] = 'indice' in porLayerId && porLayerId.indice === i ? ['layerId'] : []
+    const addressableBy: SemanticaDoCampo['addressableBy'] = 'indice' in porLayerId && porLayerId.indice === i && sombras.length === 0 ? ['layerId'] : []
 
     slotFields.push({
       layerId: l.id,
