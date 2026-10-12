@@ -892,3 +892,94 @@ describe('recomporPaginaDefasada — COMPORTAMENTO ATUAL (documentado): peça SE
     expect(estado.posts.get('post-carrossel')!.mediaUrls).toEqual([capa, URL_ANTIGA, slide3])
   })
 })
+
+/**
+ * PR B0 / F1 da revisão adversarial: a camada extra LIVRE não tem papel, por
+ * design — a identidade dela é o `extra.id`. Recomposta como a MESMA camada
+ * extra, ela mantém o `metadata.slot`; com outro `extra.id` ou outro vínculo,
+ * o slot não é transferido. Mesmo cenário real do R15 (`prepararBlocos`).
+ */
+describe('recomporPaginaDefasada — PR B0: slot da camada extra livre', () => {
+  const idDoExtra = (l: Layer) => (l.metadata?.compositor as { extra?: { id?: string } } | undefined)?.extra?.id
+  const comSlot = (l: Layer, id: string): Layer => ({ ...l, metadata: { ...(l.metadata ?? {}), slot: { id } } })
+
+  function cenario() {
+    const assinatura = montarAssinatura({
+      pagina: {
+        id: 'p-assinatura', name: 'Story', width: 1080, height: 1920,
+        layers: [
+          texto('headline', { fontFamily: 'Bevan', fontSize: 100, color: '#FFFFFF', lineHeight: 1 }, 'Título', { metadata: { groupId: 'g1' } }),
+          texto('apoio', { fontFamily: 'Barlow', fontSize: 40, color: '#FFEEDD', lineHeight: 1.2 }, 'Apoio', { position: { x: 92, y: 320 }, metadata: { groupId: 'g1' } }),
+        ],
+      },
+      formatoDaPagina: 'story',
+      numerosDoProjeto: null,
+    })
+    const copy: CopyAutoral = {
+      versao: VERSAO_DO_CONTRATO, origem: { autor: 'claude', superficie: 'chat', em: '2026-09-12T12:00:00.000Z' }, revisoes: [],
+      blocos: [
+        { id: 'h', funcao: 'headline', ordem: 0, linhas: ['Costela'] },
+        { id: 'nota', funcao: 'livre', ordem: 1, linhas: ['Hoje'], estilo: { herdaDe: 'apoio' } },
+      ],
+    }
+    const spec = validarSpec({ projectId: 8, formato: 'story', copyAutoral: copy }).spec as SpecDePeca
+    const preparados = prepararBlocos({
+      assinatura, colunaUtil: 1080 - 2 * assinatura.numeros.geometria.story.margemH, escalaDoFormato: 1, mancha: '#000000',
+      medir: medirFalso, familias: ['Bevan', 'Barlow'], combinacoesSalvas: [], spec,
+    })
+    const camadasHoje = preparados.montados.map((b) => b.layer)
+    const entrada = entradaDePersistencia({
+      spec, opcoes: {}, projeto: { id: 8, name: 'Lagosta', userId: 'dono' }, pasta: { id: 1, name: 'p' },
+      nome: 'n', ordem: 0, canvas: { width: 1080, height: 1920 }, layers: camadasHoje, fundo: '#000', diagnostico: {}, fotoUrl: null,
+    })
+    const ehNota = (l: Layer) => idDoExtra(l) === 'nota'
+    const amanha = camadasHoje.map((l) => (ehNota(l) ? { ...l, content: 'Amanhã' } : l))
+    return { entrada, amanha, ehNota }
+  }
+
+  async function recompor(paginaComSlot: Layer[], composicao: Layer[], entrada: { copyAutoral: unknown; fieldValues: unknown }) {
+    estado.page = {
+      id: 'pg-1', name: 'slide', width: 1080, height: 1920, layers: paginaComSlot, background: '#000',
+      isTemplate: false, templateId: 't-1', copyAutoral: entrada.copyAutoral, updatedAt: new Date('2026-09-12T15:00:00.000Z'),
+      Template: { id: 't-1', name: 'Stories', projectId: 8 },
+    }
+    estado.generation = { id: 'gen-1', resultUrl: URL_ANTIGA, authorName: 'compositor', sourcePageId: null, fieldValues: { ...(entrada.fieldValues as Record<string, unknown>), pageId: 'pg-1' } }
+    estado.posts = new Map([['post-carrossel', { id: 'post-carrossel', projectId: 8, status: 'SCHEDULED', pageId: null, renderStatus: 'NOT_NEEDED', laterPostId: null, mediaUrls: ['https://blob.exemplo/capa.png', URL_ANTIGA] }]])
+    estado.camadasDaComposicao = composicao
+    estado.comporCamadas = null
+    estado.paginaGravada = null
+    estado.generationGravada = null
+    estado.specsCompostas = []
+    const { recomporPaginaDefasada } = await import('../recompor')
+    return recomporPaginaDefasada({ pageId: 'pg-1' })
+  }
+
+  const slotDaNota = (camadas: unknown, ehNota: (l: Layer) => boolean) => (camadas as Layer[]).find(ehNota)?.metadata?.slot
+
+  it('a MESMA camada extra (papel ausente, mesmo extra.id e vínculo): o slot sobrevive em Page.layers e no layersSnapshot', async () => {
+    const { entrada, amanha, ehNota } = cenario()
+    const nota = amanha.find(ehNota)!
+    expect(nota.metadata?.compositor).not.toHaveProperty('papel')
+    const r = await recompor(amanha.map((l) => (ehNota(l) ? comSlot(l, 'nota-do-dia') : l)), amanha, entrada)
+    expect(r.recomposta).toBe(true)
+    expect(slotDaNota(estado.paginaGravada?.layers, ehNota)).toEqual({ id: 'nota-do-dia' })
+    expect(slotDaNota((estado.generationGravada?.fieldValues as Record<string, unknown>).layersSnapshot, ehNota)).toEqual({ id: 'nota-do-dia' })
+  })
+
+  it('negativo: a composição devolve OUTRO extra.id na mesma camada → o slot não é transferido', async () => {
+    const { entrada, amanha, ehNota } = cenario()
+    const trocada = amanha.map((l) => (ehNota(l) ? { ...l, metadata: { ...l.metadata, compositor: { ...(l.metadata?.compositor as object), extra: { ...((l.metadata?.compositor as { extra: object }).extra), id: 'outra' } } } } : l))
+    const r = await recompor(amanha.map((l) => (ehNota(l) ? comSlot(l, 'nota-do-dia') : l)), trocada, entrada)
+    const gravadas = estado.paginaGravada?.layers as Layer[]
+    expect(gravadas.some((l) => l.metadata?.slot)).toBe(false)
+    expect(r.avisos.some((a) => a.includes('deixou de ser a mesma camada extra'))).toBe(true)
+  })
+
+  it('negativo: a composição devolve OUTRO vínculo de bloco → o slot não é transferido', async () => {
+    const { entrada, amanha, ehNota } = cenario()
+    const outroVinculo = amanha.map((l) => (ehNota(l) ? { ...l, metadata: { ...l.metadata, compositor: { ...(l.metadata?.compositor as object), bloco: 'outro-bloco' } } } : l))
+    await recompor(amanha.map((l) => (ehNota(l) ? comSlot(l, 'nota-do-dia') : l)), outroVinculo, entrada)
+    const gravadas = estado.paginaGravada?.layers as Layer[] | undefined
+    expect((gravadas ?? []).some((l) => l.metadata?.slot)).toBe(false)
+  })
+})

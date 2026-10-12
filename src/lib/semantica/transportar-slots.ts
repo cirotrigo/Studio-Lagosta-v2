@@ -8,7 +8,9 @@
  * Um slot antigo só vai para a camada nova quando:
  *  1. o `layer.id` é o mesmo e é ÚNICO dos dois lados (o compositor pode
  *     repetir id — o contador de repetição é por grupo);
- *  2. o papel dos dois lados é válido e igual;
+ *  2. o papel dos dois lados é válido e igual — ou, na camada extra LIVRE
+ *     (sem papel por design), o papel é ausente dos dois lados e o `extra.id`
+ *     é o mesmo;
  *  3. o bloco do contrato (`metadata.compositor.bloco`): nenhum lado tem, ou os
  *     dois têm o MESMO. Um lado só com bloco não casa;
  *  4. as linhas do bloco que a camada desenha: idem (bloco repartido).
@@ -24,6 +26,7 @@
 
 import type { Layer } from '@/types/template'
 import { vinculoDaCamada } from '@/lib/copy-autoral/efetiva'
+import { idDoExtraDaCamada } from '@/lib/compositor/defasagem'
 import { lerSemanticRole, lerSlotId } from './ler'
 
 export type AvisoDeSlot =
@@ -32,6 +35,8 @@ export type AvisoDeSlot =
   | { codigo: 'CAMADA_NOVA_NAO_ENCONTRADA'; layerId: string; slotId: string }
   | { codigo: 'ID_REPETIDO'; layerId: string; slotId: string }
   | { codigo: 'PAPEL_DIVERGENTE'; layerId: string; slotId: string }
+  | { codigo: 'IDENTIDADE_EXTRA_DIVERGENTE'; layerId: string; slotId: string }
+  | { codigo: 'SEM_IDENTIDADE'; layerId: string; slotId: string }
   | { codigo: 'BLOCO_DIVERGENTE'; layerId: string; slotId: string }
   | { codigo: 'LINHAS_DIVERGENTES'; layerId: string; slotId: string }
   | { codigo: 'SLOT_NOVO_PREEXISTENTE'; layerId: string; slotId: string; slotNovo: string }
@@ -75,10 +80,43 @@ function linhasCasam(a: Layer, b: Layer): boolean {
   return !!x && !!y && x.length === y.length && x.every((n, i) => n === y[i])
 }
 
-function papeisCasam(a: Layer, b: Layer): boolean {
+/**
+ * A identidade da camada EXTRA LIVRE — a que o compositor grava SEM papel, por
+ * design (`compositor/blocos.ts`, `camadaDoPapel`): o `extra.id`, lido pela
+ * fonte de sempre (`idDoExtraDaCamada`), só quando `extra` é um objeto e a
+ * função é `livre`. Extra com função (servico, cta…) tem papel e segue o
+ * caminho normal. `herdaDe` é estilo, não identidade.
+ */
+function idDoExtraLivre(camada: Layer): string | null {
+  const extra = (camada.metadata as { compositor?: { extra?: unknown } } | undefined)?.compositor?.extra
+  if (!extra || typeof extra !== 'object' || Array.isArray(extra)) return null
+  if ((extra as { funcao?: unknown }).funcao !== 'livre') return null
+  return idDoExtraDaCamada(camada)
+}
+
+type CodigoDaIdentidade = 'PAPEL_DIVERGENTE' | 'IDENTIDADE_EXTRA_DIVERGENTE' | 'SEM_IDENTIDADE'
+
+/**
+ * A mesma ocorrência lógica? `null` = casa; senão, o motivo.
+ *  - Papel válido dos dois lados: tem de ser o mesmo (o caminho normal).
+ *  - Papel AUSENTE dos dois lados (nunca inválido): só a camada extra livre
+ *    tem identidade explícita — o mesmo `extra.id` nos dois. Sem extra, não há
+ *    o que casar; nada se adivinha (F1 da revisão adversarial do B0).
+ *  - Qualquer outra combinação (um lado com papel, papel inválido): não casa.
+ * O id da camada, o bloco e as linhas continuam sendo conferidos à parte.
+ */
+function identidadeCasa(a: Layer, b: Layer): CodigoDaIdentidade | null {
   const x = lerSemanticRole(a)
   const y = lerSemanticRole(b)
-  return x.status === 'valido' && y.status === 'valido' && x.papel === y.papel
+  if (x.status === 'valido' && y.status === 'valido') return x.papel === y.papel ? null : 'PAPEL_DIVERGENTE'
+  if (x.status === 'invalido' || y.status === 'invalido') return 'PAPEL_DIVERGENTE'
+  const ea = idDoExtraLivre(a)
+  const eb = idDoExtraLivre(b)
+  if (x.status === 'ausente' && y.status === 'ausente') {
+    if (!ea && !eb) return 'SEM_IDENTIDADE'
+    return ea && eb && ea === eb ? null : 'IDENTIDADE_EXTRA_DIVERGENTE'
+  }
+  return ea || eb ? 'IDENTIDADE_EXTRA_DIVERGENTE' : 'PAPEL_DIVERGENTE'
 }
 
 export function transportarSlots<T extends Layer>(anteriores: readonly Layer[], novas: readonly T[]): SlotsTransportados<T> {
@@ -130,8 +168,9 @@ export function transportarSlots<T extends Layer>(anteriores: readonly Layer[], 
       avisos.push({ codigo: 'SLOT_NOVO_INVALIDO', ...base })
       continue
     }
-    if (!papeisCasam(antiga, novaCamada)) {
-      avisos.push({ codigo: 'PAPEL_DIVERGENTE', ...base })
+    const divergencia = identidadeCasa(antiga, novaCamada)
+    if (divergencia) {
+      avisos.push({ codigo: divergencia, ...base })
       continue
     }
     if (!blocosCasam(antiga, novaCamada)) {
@@ -171,6 +210,10 @@ export function descreverAvisoDeSlot(a: AvisoDeSlot): string {
       return `O slot "${a.slotId}" se perdeu: a ${alvo} não existe mais.`
     case 'ID_REPETIDO':
       return `O slot "${a.slotId}" se perdeu: há mais de uma camada com o id "${a.layerId}".`
+    case 'IDENTIDADE_EXTRA_DIVERGENTE':
+      return `O slot "${a.slotId}" se perdeu: a ${alvo} deixou de ser a mesma camada extra.`
+    case 'SEM_IDENTIDADE':
+      return `O slot "${a.slotId}" se perdeu: a ${alvo} não tem papel nem identidade de extra que a reconheça.`
     case 'PAPEL_DIVERGENTE':
       return `O slot "${a.slotId}" se perdeu: a ${alvo} mudou de papel.`
     case 'LINHAS_DIVERGENTES':

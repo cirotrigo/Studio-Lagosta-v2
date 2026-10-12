@@ -149,3 +149,80 @@ describe('transportarSlots — slot duplicado na ORIGEM (codex review B0)', () =
     expect(r.avisos.map((x) => x.codigo)).toEqual(['SLOT_ANTIGO_DUPLICADO', 'SLOT_ANTIGO_DUPLICADO'])
   })
 })
+
+describe('transportarSlots — exceção para a camada extra LIVRE (F1 da revisão adversarial B0)', () => {
+  /** A marca que o compositor grava na camada extra livre: sem papel, com `extra` e o vínculo de bloco. */
+  const livre = (extraId: unknown, vinculo: { bloco?: string; linhas?: number[] } = { bloco: 'nota', linhas: [0] }, extraExtra: Record<string, unknown> = {}) => ({
+    compositor: { extra: { id: extraId, funcao: 'livre', herdaDe: 'apoio', grupoVisual: 'principal', ...extraExtra }, ...vinculo },
+  })
+
+  it('1. mesmo layer.id, mesmo extra.id, mesmo bloco e linhas → transporta', () => {
+    const r = transportarSlots([antiga('extra-nota', comSlot(livre('nota'), 'nota-rodape'))], [nova('extra-nota', livre('nota'))])
+    expect(slotDe(r.camadas[0])).toEqual({ id: 'nota-rodape' })
+    expect(r.avisos).toEqual([])
+  })
+
+  it('2. mesmo layer.id, extra.id diferente → não transporta', () => {
+    const r = transportarSlots([antiga('extra-nota', comSlot(livre('nota'), 's'))], [nova('extra-nota', livre('outra'))])
+    expect(slotDe(r.camadas[0])).toBeUndefined()
+    expect(r.avisos.map((a) => a.codigo)).toEqual(['IDENTIDADE_EXTRA_DIVERGENTE'])
+  })
+
+  it('3. papel ausente nos dois lados mas SEM extra → não adivinha', () => {
+    const r = transportarSlots([antiga('texto-1', comSlot({ compositor: { bloco: 'b1' } }, 's'))], [nova('texto-1', { compositor: { bloco: 'b1' } })])
+    expect(slotDe(r.camadas[0])).toBeUndefined()
+    expect(r.avisos.map((a) => a.codigo)).toEqual(['SEM_IDENTIDADE'])
+  })
+
+  it('3b. extra sem id (ou id vazio) → não usa a exceção', () => {
+    const r = transportarSlots([antiga('extra-nota', comSlot(livre(''), 's'))], [nova('extra-nota', livre(''))])
+    expect(slotDe(r.camadas[0])).toBeUndefined()
+    expect(r.avisos.map((a) => a.codigo)).toEqual(['SEM_IDENTIDADE'])
+  })
+
+  it('4. um lado livre, o outro com papel válido → não transporta', () => {
+    const r = transportarSlots([antiga('extra-nota', comSlot(livre('nota'), 's'))], [nova('extra-nota', { compositor: { papel: 'apoio', bloco: 'nota', linhas: [0] } })])
+    expect(slotDe(r.camadas[0])).toBeUndefined()
+    expect(r.avisos.map((a) => a.codigo)).toEqual(['IDENTIDADE_EXTRA_DIVERGENTE'])
+  })
+
+  it('5. papel INVÁLIDO + extra.id igual → NÃO usa a exceção', () => {
+    const invalido = { compositor: { papel: 'livree', extra: { id: 'nota', funcao: 'livre' }, bloco: 'nota', linhas: [0] } }
+    const r = transportarSlots([antiga('extra-nota', comSlot(invalido, 's'))], [nova('extra-nota', invalido)])
+    expect(slotDe(r.camadas[0])).toBeUndefined()
+    expect(r.avisos.map((a) => a.codigo)).toEqual(['PAPEL_DIVERGENTE'])
+  })
+
+  it('5b. extra com função que não é livre não usa a exceção', () => {
+    const r = transportarSlots([antiga('extra-x', comSlot(livre('x', undefined, { funcao: 'servico' }), 's'))], [nova('extra-x', livre('x', undefined, { funcao: 'servico' }))])
+    expect(slotDe(r.camadas[0])).toBeUndefined()
+  })
+
+  it('6. mesmo extra.id, bloco diferente → não transporta', () => {
+    const r = transportarSlots([antiga('extra-nota', comSlot(livre('nota', { bloco: 'nota', linhas: [0] }), 's'))], [nova('extra-nota', livre('nota', { bloco: 'outro', linhas: [0] }))])
+    expect(r.avisos.map((a) => a.codigo)).toEqual(['BLOCO_DIVERGENTE'])
+  })
+
+  it('7. mesmo extra.id, linhas diferentes → não transporta', () => {
+    const r = transportarSlots([antiga('extra-nota', comSlot(livre('nota', { bloco: 'nota', linhas: [0] }), 's'))], [nova('extra-nota', livre('nota', { bloco: 'nota', linhas: [1] }))])
+    expect(r.avisos.map((a) => a.codigo)).toEqual(['LINHAS_DIVERGENTES'])
+  })
+
+  it('8. slot duplicado na origem continua bloqueando', () => {
+    const antigas = [antiga('extra-a', comSlot(livre('a'), 'dup')), antiga('extra-b', comSlot(livre('b'), 'dup'))]
+    const r = transportarSlots(antigas, [nova('extra-a', livre('a')), nova('extra-b', livre('b'))])
+    expect(r.avisos.map((a) => a.codigo)).toEqual(['SLOT_ANTIGO_DUPLICADO', 'SLOT_ANTIGO_DUPLICADO'])
+  })
+
+  it('9. slot novo preexistente continua vencendo', () => {
+    const n = nova('extra-nota', comSlot(livre('nota'), 'slot-novo'))
+    const r = transportarSlots([antiga('extra-nota', comSlot(livre('nota'), 'slot-velho'))], [n])
+    expect(r.camadas[0]).toBe(n)
+    expect(r.avisos.map((a) => a.codigo)).toEqual(['SLOT_NOVO_PREEXISTENTE'])
+  })
+
+  it('o herdaDe pode mudar (estilo) sem mudar a identidade', () => {
+    const r = transportarSlots([antiga('extra-nota', comSlot(livre('nota', undefined, { herdaDe: 'apoio' }), 's'))], [nova('extra-nota', livre('nota', undefined, { herdaDe: 'servico' }))])
+    expect(slotDe(r.camadas[0])).toEqual({ id: 's' })
+  })
+})
