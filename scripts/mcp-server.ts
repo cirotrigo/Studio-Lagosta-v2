@@ -1480,9 +1480,11 @@ toolEstrita(
         },
       })
       if (gravado.count === 0) {
+        // Volta à fila, nunca ao status lido ANTES da trava (podia ser um RENDERING velho, e o post ficaria preso):
+        // estado anterior à ficha é histórico, não autoridade. O render canônico decide o próximo (ex.: NOT_NEEDED).
         await prisma.socialPost.updateMany({
           where: { id: postId, renderStatus: 'RENDERING', nextRenderAt: ficha },
-          data: { renderStatus: post.renderStatus },
+          data: { renderStatus: 'PENDING', nextRenderAt: new Date() },
         })
         return { content: [{ type: 'text' as const, text: 'Error: o post mudou durante o render (mídia ou pedido). Nada foi alterado; confira o post e renderize de novo se ainda fizer sentido.' }], isError: true }
       }

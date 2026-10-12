@@ -130,6 +130,15 @@ describe('G–H. o MCP local usa as MESMAS funções (sem lógica copiada no scr
     expect(b.match(/where: \{ id: postId, renderStatus: 'RENDERING', nextRenderAt: ficha \}/g)).toHaveLength(3) // pedido mudou, volta e falha
   })
 
+  it('render-story (Codex, rodada 8): a reversão do CAS final com a PRÓPRIA ficha devolve a PENDING agora — nunca restaura o status lido antes da trava (RENDERING velho)', () => {
+    const b = bloco('render-story', 'list-drive-images')
+    const cas = b.indexOf('if (gravado.count === 0) {')
+    expect(cas).toBeGreaterThan(-1)
+    const reversao = b.slice(cas, b.indexOf('return', cas))
+    expect(reversao).toMatch(/where: \{ id: postId, renderStatus: 'RENDERING', nextRenderAt: ficha \},\s*data: \{ renderStatus: 'PENDING', nextRenderAt: new Date\(\) \}/)
+    expect(b).not.toMatch(/renderStatus: post\.renderStatus/) // estado anterior à ficha é histórico, não autoridade
+  })
+
   it('render-story (Codex, rodada 4): pedido editado entre a leitura e a trava → devolve à fila (só a sua reserva) e não desenha o antigo', () => {
     const b = bloco('render-story', 'list-drive-images')
     const releitura = b.indexOf('const reservado = await prisma.socialPost.findUnique(')
