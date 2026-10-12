@@ -360,3 +360,17 @@ describe('B1c — _slots/_papeis em ajustarArte, sobre as camadas da própria p�
     expect(banco.generations).toHaveLength(0)
   })
 })
+
+describe('B1c (codex review) — fileUrl explícito não é sobrescrito pelo fallback da foto genérica', () => {
+  it('_slots com {fileUrl} na única imagem + imageUrl: a imagem fica com a URL pedida', async () => {
+    banco.pagina = {
+      ...banco.pagina,
+      layers: [
+        ...(banco.pagina.layers as unknown[]),
+        { id: 'img', name: 'Foto', type: 'image', visible: true, order: 0, position: { x: 0, y: 0 }, size: { width: 1080, height: 1920 }, fileUrl: 'https://blob.test/antiga.jpg', metadata: { slot: { id: 'foto' } } },
+      ],
+    }
+    await ajustarArte({ projectId: 8, pageId: 'p1', imageUrl: 'https://blob.test/generica.jpg', slotValues: { _slots: { foto: { fileUrl: 'https://blob.test/pedida.jpg' } } } })
+    expect((banco.pagina.layers as Array<Record<string, any>>).find((l) => l.id === 'img')!.fileUrl).toBe('https://blob.test/pedida.jpg')
+  })
+})

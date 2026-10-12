@@ -292,3 +292,38 @@ describe('a promessa do escolher-modelo é a capacidade da criação (addressabl
     semEfeito()
   })
 })
+
+describe('revisão adversarial do B1c', () => {
+  it('A. campo de texto com id repetido na página: 422 CAMPO_DE_TEXTO_DUPLICADO, nada some', async () => {
+    estado.paginas.set('p-d', pagina('p-d', [texto('x', 'A'), texto('y', 'B'), texto('x', 'C')]))
+    const e = await falha(createArteRapida({ projectId: 8, sourcePageId: 'p-d', slotValues: {}, copyPosicional: ['Um', 'Dois'] }))
+    expect(e).toMatchObject({ code: 'CAMPO_DE_TEXTO_DUPLICADO', status: 422, details: { pageId: 'p-d', layerIds: ['x'] } })
+    semEfeito()
+  })
+
+  it('B. campo oculto no modelo não recebe copy: o bloco fica sem campo e a arte recusa', async () => {
+    estado.paginas.set('p-o', pagina('p-o', [texto('h', 'Título', { ...declarada('headline', 'm'), visible: false })]))
+    const e = await falha(createArteRapida({ projectId: 8, sourcePageId: 'p-o', slotValues: {}, copyAutoral: SO_MANCHETE }))
+    expect(e).toMatchObject({ code: 'COPY_NAO_CASA_COM_O_MODELO', status: 422 })
+    semEfeito()
+  })
+
+  it('C. _slots numa camada oculta: CAMADA_OCULTA 422', async () => {
+    estado.paginas.set('p-o', pagina('p-o', [texto('h', 'Título', { ...declarada('headline', 'm'), visible: false })]))
+    const e = await falha(createArteRapida({ projectId: 8, sourcePageId: 'p-o', slotValues: { _slots: { m: 'novo' } } }))
+    expect(e).toMatchObject({ code: 'CAMADA_OCULTA', status: 422 })
+    semEfeito()
+  })
+
+  it('D. com copy, rich-text que ela não cobre sai oculto (o placeholder não é publicado)', async () => {
+    estado.paginas.set('p-r', pagina('p-r', [texto('h', 'Título', declarada('headline', 'm')), { id: 'rt', name: 'Rico', type: 'rich-text', content: 'placeholder rico', visible: true }]))
+    const r = await createArteRapida({ projectId: 8, sourcePageId: 'p-r', slotValues: {}, copyAutoral: SO_MANCHETE })
+    expect(conteudo('rt').visible).toBe(false)
+    expect(r.avisos?.some((a) => a.includes('Rico'))).toBe(true)
+  })
+
+  it('chave com "_" fora das reservadas, com copy: COPY_AUTORAL_COM_CHAVES_LEGADAS', async () => {
+    const e = await falha(createArteRapida({ projectId: 8, sourcePageId: 'p-a', slotValues: { _titulo: 'x' }, copyAutoral: SO_MANCHETE }))
+    expect(e).toMatchObject({ code: 'COPY_AUTORAL_COM_CHAVES_LEGADAS', details: { chaves: ['_titulo'] } })
+  })
+})

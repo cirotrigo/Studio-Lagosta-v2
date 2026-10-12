@@ -189,7 +189,8 @@ export interface MapaDeCopy {
  */
 export function camposDeTextoDasCamadas(camadas: readonly unknown[]): CampoDeTexto[] {
   return (camadas as Array<Record<string, unknown>>)
-    .filter((c) => c?.type === 'text')
+    // Campo oculto no modelo não é campo: a copy cairia nele e ficaria invisível (revisão adversarial do B1c).
+    .filter((c) => c?.type === 'text' && c.visible !== false)
     .map((c) => ({ layerId: String(c.id ?? ''), name: typeof c.name === 'string' ? c.name : null, papel: papelDaCamada(c as never) }))
     .filter((c) => !!c.layerId)
 }

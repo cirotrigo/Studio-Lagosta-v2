@@ -72,6 +72,8 @@ export type ErroDeValor =
   | { codigo: 'VALOR_CONFLITANTE'; indice: number; layerId: string; origens: OrigemDoValor[] }
   /** `_papeis` achou a camada por papel INFERIDO (id, nome, tipo, id reservado): não é endereço de escrita estável. */
   | { codigo: 'PAPEL_NAO_DECLARADO'; origem: OrigemSemantica; layerId: string }
+  /** Oculta na página: o valor seria gravado e o render pularia a camada (espelha o LAYER_HIDDEN do addressableBy). */
+  | { codigo: 'CAMADA_OCULTA'; layerId: string; origem: OrigemSemantica }
   /** O efeito pedido não é desenhado por este tipo de camada (seria gravado e ignorado pelo render). */
   | { codigo: 'VALOR_INCOMPATIVEL_COM_CAMADA'; layerId: string; type: string; origem: OrigemSemantica; efeito: EfeitoPedido }
 
@@ -193,6 +195,10 @@ export function resolverValoresSemanticos(camadas: readonly Layer[], slotValues:
           erros.push({ codigo: 'PAPEL_NAO_DECLARADO', origem, layerId: layer.id })
           continue
         }
+      }
+      if (layer.visible === false) {
+        erros.push({ codigo: 'CAMADA_OCULTA', layerId: layer.id, origem })
+        continue
       }
       // O efeito tem de ser desenhado pelo tipo: senão seria gravado e ignorado pelo render.
       const efeito = efeitoPedido(valor)

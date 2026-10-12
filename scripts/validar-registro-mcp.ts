@@ -153,7 +153,7 @@ const LITERAL_CRIAR_ARTE_DE_MODELO = {
     slotValues: {
       type: 'object',
       description:
-        'Valores por slot, com as chaves do template (layerId ou nome da camada). String define texto; objeto aceita {content, fileUrl}. Chaves reservadas: _driveImageId, _imageUrl, _slots ({slotId: valor}) e _papeis ({papel declarado: valor}) — use só o que escolher-modelo marcou em addressableBy; texto (string ou {content}) só em camada de texto, {fileUrl} só em imagem. Com copyAutoral, só chaves reservadas.',
+        'Valores por slot, com as chaves do template (layerId ou nome da camada). String define texto; objeto aceita {content, fileUrl}. Chaves reservadas: _driveImageId, _imageUrl, _slots ({slotId: valor}) e _papeis ({papel declarado: valor}) — use só o que escolher-modelo marcou em addressableBy; texto (string ou {content}) só em camada de texto, {fileUrl} só em imagem. Com copyAutoral, só chaves reservadas, e o texto vem da copy: na prática só os endereços de IMAGEM servem (camada oculta não é endereço).',
       additionalProperties: true,
     },
     name: { type: 'string', description: 'Nome da página gerada (opcional).' },

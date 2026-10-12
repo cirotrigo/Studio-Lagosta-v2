@@ -620,6 +620,9 @@ export interface CreateArteRapidaResult {
 }
 
 
+/** As chaves de `slotValues` que não endereçam camada: controles da foto e endereçamento semântico. */
+const CHAVES_RESERVADAS = new Set(['_driveImageId', '_imageUrl', '_slots', '_papeis'])
+
 /** Erros do resolvedor semântico viram UM CreativeError: o código do primeiro, todos em `details.erros` (sem conteúdo). */
 function erroDeValores(erros: ErroDeValor[], status: number): CreativeError {
   return new CreativeError(erros[0].codigo, `Os valores semânticos não puderam ser aplicados (${erros.map((e) => e.codigo).join(', ')}).`, status, { erros })
@@ -645,6 +648,13 @@ function valoresDaArte(
   let avisosDoCasamento: string[] = []
   if (temCopy) {
     const campos = camposDeTextoDasCamadas(camadas)
+    // Id repetido: a copy de um campo cairia nos dois, ou o oculto de um apagaria o outro (revisão adversarial do B1c).
+    const contagem = new Map<string, number>()
+    for (const c of camadas) contagem.set(String(c?.id), (contagem.get(String(c?.id)) ?? 0) + 1)
+    const duplicados = [...new Set(campos.map((c) => c.layerId).filter((id) => contagem.get(id)! > 1))]
+    if (duplicados.length > 0) {
+      throw new CreativeError('CAMPO_DE_TEXTO_DUPLICADO', 'O modelo tem campos de texto com o mesmo id de camada — abra o modelo no editor e salve de novo antes de usar copy nele.', 422, { pageId, layerIds: duplicados })
+    }
     const mapa = contrato ? mapearContratoParaCampos(campos, contrato) : mapearCopyParaSlots(campos, copyPosicional!.map((b) => semColchetes(b)))
     if (mapa.semCampo.length > 0) {
       throw new CreativeError(
@@ -655,7 +665,10 @@ function valoresDaArte(
       )
     }
     efetivo = { ...slotValues, ...mapa.slotValues }
-    ocultar = mapa.ocultar
+    // Rich-text não recebe copy; com copy, o texto dele é placeholder como o do campo não coberto.
+    const ricos = camadas.filter((c) => c?.type === 'rich-text' && c.visible !== false)
+    ocultar = [...mapa.ocultar, ...ricos.map((c) => String(c.id))]
+    if (ricos.length > 0) mapa.avisos.push(`Texto rico não recebe a copy e ficou oculto na arte: ${ricos.map((c) => `"${c.name || c.id}"`).join(', ')}.`)
     cobertos = new Set(Object.keys(mapa.slotValues))
     avisosDoCasamento = mapa.avisos
   }
@@ -696,7 +709,7 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
   }
   // A copy é a autoridade textual: com ela, texto por layerId/nome seria uma segunda fonte — e o
   // campo que a copy não cobre sai oculto por cima dele, em silêncio.
-  const chavesLegadas = contratoRecebido || copyPosicional ? Object.keys(slotValues).filter((k) => !k.startsWith('_')) : []
+  const chavesLegadas = contratoRecebido || copyPosicional ? Object.keys(slotValues).filter((k) => !CHAVES_RESERVADAS.has(k)) : []
   if (chavesLegadas.length > 0) {
     throw new CreativeError(
       'COPY_AUTORAL_COM_CHAVES_LEGADAS',
@@ -1137,8 +1150,11 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
   // Arte-livre não marca o fundo como dinâmico (a camada nasce aqui, não num
   // template): sem este fallback, trocar a foto de uma arte criada do zero
   // seria impossível. A primeira camada de imagem é o fundo nos dois geradores.
+  // A camada que recebeu `fileUrl` explícito (legado ou _slots/_papeis) não é fundo disponível: sobrescrevê-la
+  // descartava em silêncio o valor pedido (codex review do B1c).
   if (!imageApplied && resolved.url) {
-    const fundo = (bakedLayers as any[]).find((l) => l.type === 'image')
+    const explicitas = new Set(baked.explicitFileUrlIds)
+    const fundo = (bakedLayers as any[]).find((l) => l.type === 'image' && !explicitas.has(l.id))
     if (fundo) {
       fundo.fileUrl = resolved.url
       imageApplied = true

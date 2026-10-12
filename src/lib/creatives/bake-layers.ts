@@ -27,7 +27,7 @@ export function bakeLayers(
   slotValues: Record<string, unknown>,
   imageUrl: string | null,
   valores?: ReadonlyMap<number, ValorResolvido>,
-): { layers: any[]; imageApplied: boolean; changedTextIds: string[] } {
+): { layers: any[]; imageApplied: boolean; changedTextIds: string[]; explicitFileUrlIds: string[] } {
   const explicitFileUrl = new Set<string>()
   const changedTextIds: string[] = []
 
@@ -83,7 +83,8 @@ export function bakeLayers(
     return updated
   })
 
-  if (!imageUrl) return { layers, imageApplied: false, changedTextIds }
+  const explicitFileUrlIds = [...explicitFileUrl]
+  if (!imageUrl) return { layers, imageApplied: false, changedTextIds, explicitFileUrlIds }
 
   const isImageTarget = (layer: any) =>
     layer.type === 'image' && (layer.isDynamic || layer.id === 'bg-img') && !explicitFileUrl.has(layer.id)
@@ -91,8 +92,8 @@ export function bakeLayers(
   const target =
     layers.find((l: any) => isImageTarget(l) && !l.fileUrl) ?? layers.find(isImageTarget)
 
-  if (!target) return { layers, imageApplied: false, changedTextIds }
+  if (!target) return { layers, imageApplied: false, changedTextIds, explicitFileUrlIds }
 
   target.fileUrl = imageUrl
-  return { layers, imageApplied: true, changedTextIds }
+  return { layers, imageApplied: true, changedTextIds, explicitFileUrlIds }
 }

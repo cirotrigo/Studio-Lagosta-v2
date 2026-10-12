@@ -304,3 +304,12 @@ describe('B1c — VALOR_INCOMPATIVEL_COM_CAMADA: o efeito pedido tem de ser dese
     expect(erroDe({ _slots: { foto: { content: 'x', fileUrl: 'https://x' } } })[0]).toMatchObject({ codigo: 'VALOR_INCOMPATIVEL_COM_CAMADA', efeito: 'content+fileUrl' })
   })
 })
+
+describe('B1c (revisão adversarial): camada oculta não recebe valor semântico', () => {
+  it('CAMADA_OCULTA: o valor seria gravado e o render pularia a camada', () => {
+    const camadas = [{ id: 'h', name: 'T', type: 'text', visible: false, metadata: { slot: { id: 's' } } }] as never
+    const r = resolverValoresSemanticos(camadas, { _slots: { s: 'x' } })
+    expect(r.erros).toEqual([{ codigo: 'CAMADA_OCULTA', layerId: 'h', origem: { tipo: 'slotId', chave: 's' } }])
+    expect(r.valores.size).toBe(0)
+  })
+})
