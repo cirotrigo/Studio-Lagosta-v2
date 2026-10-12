@@ -10,7 +10,7 @@ import { CreativeError } from '@/lib/creatives/errors'
 import { invalidateScheduledRenders } from '@/lib/posts/invalidate-renders'
 import { validarCamadas } from '@/lib/creatives/layer-contract'
 import { lerCamadas } from '@/lib/posts/page-layers'
-import { descreverAvisoDeSlot, transportarSlots, type AvisoDeSlot } from '@/lib/semantica/transportar-slots'
+import { descreverAvisoDeSlot, semSlots, transportarSlots, type AvisoDeSlot } from '@/lib/semantica/transportar-slots'
 import type { Layer } from '@/types/template'
 
 export interface ReversaoDeArte {
@@ -50,11 +50,13 @@ export async function reverterCamadasDaArte(generationId: string, opts: { projec
    * PR B0: o snapshot é o VISUAL a restaurar; a identidade lógica das camadas
    * (`metadata.slot`) vem da página RELIDA a cada volta do compare-and-set —
    * reconciliar com uma leitura anterior perderia o slot que um PATCH gravou no
-   * meio. Os avisos são os da volta que gravou.
+   * meio. O slot que o PRÓPRIO snapshot carrega não conta (`semSlots`): a
+   * identidade é a da página — um slot trocado ou removido depois não volta.
+   * Os avisos são os da volta que gravou.
    */
   let avisosDeSlot: AvisoDeSlot[] = []
   const camadasDaReversao = (base: { layers: unknown }) => {
-    const r = transportarSlots(lerCamadas(base.layers).camadas as unknown as Layer[], v.camadas as unknown as Layer[])
+    const r = transportarSlots(lerCamadas(base.layers).camadas as unknown as Layer[], semSlots(v.camadas as unknown as Layer[]))
     avisosDeSlot = r.avisos
     return JSON.stringify(r.camadas)
   }

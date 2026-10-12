@@ -122,3 +122,21 @@ describe('reverter preserva metadata.slot (PR B0)', () => {
     expect(camadasGravadas()).toEqual(snapshotX)
   })
 })
+
+describe('reverter: a identidade vem da página, não do snapshot (codex review B0)', () => {
+  const snapshotComSlot = [texto('headline', 200, 'Milk-shake'), texto('apoio', 400, 'Sexta é dia', { slot: { id: 'slot-velho' } })]
+
+  it('o slot do snapshot não vence o slot atual da página', async () => {
+    banco.arte = { id: 'gen-1', projectId: 8, fieldValues: { pageId: 'p1', layersSnapshot: snapshotComSlot } }
+    banco.pagina = { id: 'p1', isTemplate: false, layers: JSON.stringify(comSlotNoApoio('Sexta é dia')), copyAutoral: contratoX, updatedAt: new Date(banco.relogio) }
+    await reverterCamadasDaArte('gen-1')
+    expect(slots()).toEqual([undefined, { id: 'apoio-principal' }])
+  })
+
+  it('slot removido da página não ressuscita pelo snapshot', async () => {
+    banco.arte = { id: 'gen-1', projectId: 8, fieldValues: { pageId: 'p1', layersSnapshot: snapshotComSlot } }
+    banco.pagina = { id: 'p1', isTemplate: false, layers: JSON.stringify(snapshotX), copyAutoral: contratoX, updatedAt: new Date(banco.relogio) }
+    await reverterCamadasDaArte('gen-1')
+    expect(slots()).toEqual([undefined, undefined])
+  })
+})

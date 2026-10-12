@@ -28,6 +28,7 @@ import { lerSemanticRole, lerSlotId } from './ler'
 
 export type AvisoDeSlot =
   | { codigo: 'SLOT_ANTIGO_INVALIDO'; layerId: string }
+  | { codigo: 'SLOT_ANTIGO_DUPLICADO'; layerId: string; slotId: string }
   | { codigo: 'CAMADA_NOVA_NAO_ENCONTRADA'; layerId: string; slotId: string }
   | { codigo: 'ID_REPETIDO'; layerId: string; slotId: string }
   | { codigo: 'PAPEL_DIVERGENTE'; layerId: string; slotId: string }
@@ -89,6 +90,13 @@ export function transportarSlots<T extends Layer>(anteriores: readonly Layer[], 
     if (s.status === 'valido') ocupados.add(s.slotId)
   }
   const transporte = new Map<number, unknown>()
+  // Slot repetido na ORIGEM é ambíguo: transportar a primeira ocorrência seria
+  // escolher pela ordem do array (codex review do B0). Nenhuma vai.
+  const naOrigem = new Map<string, number>()
+  for (const a of anteriores) {
+    const s = lerSlotId(a)
+    if (s.status === 'valido') naOrigem.set(s.slotId, (naOrigem.get(s.slotId) ?? 0) + 1)
+  }
 
   for (const antiga of anteriores) {
     const slotAntigo = lerSlotId(antiga)
@@ -99,6 +107,10 @@ export function transportarSlots<T extends Layer>(anteriores: readonly Layer[], 
     }
     const { slotId } = slotAntigo
     const base = { layerId: antiga.id, slotId }
+    if ((naOrigem.get(slotId) ?? 0) > 1) {
+      avisos.push({ codigo: 'SLOT_ANTIGO_DUPLICADO', ...base })
+      continue
+    }
     const indice = novas.findIndex((n) => n.id === antiga.id)
     if (indice === -1) {
       avisos.push({ codigo: 'CAMADA_NOVA_NAO_ENCONTRADA', ...base })
@@ -151,6 +163,8 @@ export function transportarSlots<T extends Layer>(anteriores: readonly Layer[], 
 export function descreverAvisoDeSlot(a: AvisoDeSlot): string {
   const alvo = `camada "${a.layerId}"`
   switch (a.codigo) {
+    case 'SLOT_ANTIGO_DUPLICADO':
+      return `O slot "${a.slotId}" estava em mais de uma camada e não foi transportado (${alvo}).`
     case 'SLOT_ANTIGO_INVALIDO':
       return `Slot inválido na ${alvo} não foi transportado.`
     case 'CAMADA_NOVA_NAO_ENCONTRADA':
@@ -170,4 +184,20 @@ export function descreverAvisoDeSlot(a: AvisoDeSlot): string {
     case 'SLOT_DUPLICARIA':
       return `O slot "${a.slotId}" não foi transportado para a ${alvo}: outra camada já o declara.`
   }
+}
+
+/**
+ * As camadas sem `metadata.slot`. Para quando o lado "novo" não é fonte de
+ * identidade: na reversão o snapshot é só o VISUAL a restaurar, e o slot que
+ * ele carrega (a recomposição grava o snapshot com slots) é antigo — vencendo a
+ * página, restauraria um slot trocado ou ressuscitaria um removido (codex
+ * review do B0). Camada sem slot volta a MESMA.
+ */
+export function semSlots<T extends Layer>(camadas: readonly T[]): T[] {
+  return camadas.map((c) => {
+    const meta = c.metadata as Record<string, unknown> | undefined
+    if (!meta || !('slot' in meta)) return c
+    const { slot: _slot, ...resto } = meta
+    return { ...c, metadata: resto }
+  })
 }

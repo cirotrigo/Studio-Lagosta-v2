@@ -139,3 +139,13 @@ describe('transportarSlots — bloco repartido: as linhas também identificam a 
     expect(r.avisos.map((a) => a.codigo)).toEqual(['LINHAS_DIVERGENTES'])
   })
 })
+
+describe('transportarSlots — slot duplicado na ORIGEM (codex review B0)', () => {
+  it('duas camadas antigas com o mesmo slot: nenhuma ocorrência é transportada (nada pela ordem)', () => {
+    const antigas = [antiga('a', comSlot(comp('cta'), 'principal')), antiga('b', comSlot(comp('apoio'), 'principal'))]
+    const novas = [nova('a', comp('cta')), nova('b', comp('apoio'))]
+    const r = transportarSlots(antigas, novas)
+    expect(r.camadas).toBe(novas)
+    expect(r.avisos.map((x) => x.codigo)).toEqual(['SLOT_ANTIGO_DUPLICADO', 'SLOT_ANTIGO_DUPLICADO'])
+  })
+})
