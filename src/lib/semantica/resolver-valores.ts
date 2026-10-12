@@ -15,6 +15,12 @@
  * VALOR_CONFLITANTE. "Enviada" segue a regra `??` do legado: `undefined` e
  * `null` são ausentes; `""` é valor.
  *
+ * 🔴 O ÍNDICE é a posição no array RECEBIDO — não a ordem de desenho (`order`).
+ * Quem aplica tem de aplicar sobre o MESMO array que resolveu, antes de
+ * qualquer ordenação (a leitura da agenda ordena por `emOrdemDoRender`), ou
+ * levar a posição original junto da camada. Aplicar o índice num array
+ * reordenado acerta outra camada (revisão adversarial do B1a, F2).
+ *
  * Só lê. A aplicação (bakeLayers, aplicarSlotNaCamada) é dos PRs seguintes.
  *
  * Módulo PURO.
@@ -111,14 +117,13 @@ export function resolverValoresSemanticos(camadas: readonly Layer[], slotValues:
   const valores = new Map<number, ValorResolvido>()
   for (const [indice, semanticas] of [...porIndice.entries()].sort((a, b) => a[0] - b[0])) {
     const layer = camadas[indice]
-    // As fontes enviadas para esta camada, na ordem: legado pelo id, legado pelo nome, slotId, papel.
+    // As fontes que CHEGARIAM a esta camada: a legada EFETIVA (a regra `id ?? nome` do legado — o nome só
+    // quando o id não veio; um nome que o legado ignora não conflita, revisão adversarial do B1a, F1), depois
+    // slotId e papel.
     const fontes: Array<{ origem: OrigemDoValor; valor: unknown }> = []
-    if (typeof layer.id === 'string' && !layer.id.startsWith('_') && fornecido(slotValues[layer.id])) {
-      fontes.push({ origem: { tipo: 'layerId', chave: layer.id }, valor: slotValues[layer.id] })
-    }
-    if (typeof layer.name === 'string' && layer.name !== layer.id && !layer.name.startsWith('_') && fornecido(slotValues[layer.name])) {
-      fontes.push({ origem: { tipo: 'name', chave: layer.name }, valor: slotValues[layer.name] })
-    }
+    const chaveLegada = (c: unknown): c is string => typeof c === 'string' && !c.startsWith('_') && fornecido(slotValues[c])
+    if (chaveLegada(layer.id)) fontes.push({ origem: { tipo: 'layerId', chave: layer.id }, valor: slotValues[layer.id] })
+    else if (chaveLegada(layer.name)) fontes.push({ origem: { tipo: 'name', chave: layer.name }, valor: slotValues[layer.name] })
     fontes.push(...semanticas)
     const origens = fontes.map((f) => f.origem)
     if (fontes.some((f) => !equivalentes(f.valor, semanticas[0].valor))) {

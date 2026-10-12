@@ -141,3 +141,24 @@ describe('conflito com a chave LEGADA explicitamente enviada para a mesma camada
     expect(resolverValoresSemanticos(pagina, { 'text-c': 'A', _slots: { titulo: 'B' } }).erros).toEqual([])
   })
 })
+
+describe('revisão adversarial B1a', () => {
+  it('F1: só a fonte legada EFETIVA (id ?? nome) conta — nome ignorado pelo legado não gera conflito falso', () => {
+    // o legado aplica 'A' (o id vence); 'B' pelo nome nunca chega a esta camada
+    expect(resolverValoresSemanticos(pagina, { 'text-h': 'A', Título: 'B', _slots: { titulo: 'A' } }).erros).toEqual([])
+  })
+
+  it('F1: sem chave pelo id, o nome É a fonte efetiva e conflita', () => {
+    expect(codigos(resolverValoresSemanticos(pagina, { Título: 'B', _slots: { titulo: 'A' } }))).toEqual(['VALOR_CONFLITANTE'])
+  })
+
+  it('F2: o índice é a posição no ARRAY RECEBIDO, não a ordem de desenho (`order`)', () => {
+    const foraDeOrdem = [
+      camada({ id: 'b', order: 1, metadata: papel('apoio', 'apoio') }),
+      camada({ id: 'a', order: 0, metadata: papel('headline', 'titulo') }),
+    ]
+    const r = resolverValoresSemanticos(foraDeOrdem, { _slots: { titulo: 'X' } })
+    expect([...r.valores.keys()]).toEqual([1])
+    expect(foraDeOrdem[1].id).toBe('a')
+  })
+})
