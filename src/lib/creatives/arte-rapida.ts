@@ -640,7 +640,7 @@ function valoresDaArte(
   contrato: ReturnType<typeof lerCopyAutoral>['copy'],
   copyPosicional: string[] | null,
   pageId: string,
-): { efetivo: Record<string, unknown>; valores: Map<number, ValorResolvido>; avisosDoCasamento: string[] } {
+): { efetivo: Record<string, unknown>; valores: Map<number, ValorResolvido>; avisosDoCasamento: string[]; temTextoSemantico: boolean } {
   const temCopy = !!contrato || !!copyPosicional
   let efetivo = slotValues
   let ocultar: string[] = []
@@ -676,6 +676,17 @@ function valoresDaArte(
   }
   const r = resolverValoresSemanticos(camadas, efetivo)
   if (r.erros.length > 0) throw erroDeValores(r.erros, 422)
+  // Com texto semântico, a Generation registra a copy VISUAL das camadas finais (chave `name ?? id`). Texto visível
+  // em chave `_…` sumiria dos leitores — inclusive o de OUTRA camada, preenchido pelo legado (Codex #208, CP5).
+  const temTextoSemantico = [...r.valores.values()].some((v) => typeof v.valor === 'string' || v.valor.content !== undefined)
+  if (temTextoSemantico) {
+    const reservadas = camadas
+      .filter((c) => (c?.type === 'text' || c?.type === 'rich-text') && c.visible !== false && String(c.name ?? c.id).startsWith('_'))
+      .map((c) => String(c.id))
+    if (reservadas.length > 0) {
+      throw new CreativeError('CHAVE_VISUAL_RESERVADA', 'Com texto por _slots/_papeis, a página não pode ter camada de texto visível com nome (ou id, sem nome) começado por "_": a copy registrada da arte perderia esse texto. Renomeie a camada no editor.', 422, { layerIds: reservadas })
+    }
+  }
   if (temCopy) {
     const fora = [...r.valores.keys()].filter((i) => (camadas[i].type === 'text' || camadas[i].type === 'rich-text') && !cobertos.has(String(camadas[i].id)))
     if (fora.length > 0) {
@@ -688,7 +699,7 @@ function valoresDaArte(
     }
     if (ocultar.length > 0) efetivo = { ...efetivo, ...Object.fromEntries(ocultar.map((id) => [id, { hidden: true }])) }
   }
-  return { efetivo, valores: r.valores, avisosDoCasamento }
+  return { efetivo, valores: r.valores, avisosDoCasamento, temTextoSemantico }
 }
 
 /**
@@ -787,7 +798,7 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
    * que recusa recusa antes de criar o template, persistir ou renderizar.
    */
   const camadasDoModelo = camadasParaBake(modelo.layers, modelo)
-  const { efetivo, valores, avisosDoCasamento } = valoresDaArte(camadasDoModelo, slotValues, contratoRecebido, copyPosicional, modelo.id)
+  const { efetivo, valores, avisosDoCasamento, temTextoSemantico } = valoresDaArte(camadasDoModelo, slotValues, contratoRecebido, copyPosicional, modelo.id)
 
   const arteTemplate = await ensureArteTemplate(
     projectId,
@@ -886,7 +897,11 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
       sourceTags: modelo.tags ?? [],
       driveImageId,
       imageUrl: resolved.url ?? directUrl ?? null,
-      slotValues: efetivo,
+      // Com TEXTO vindo de _slots/_papeis, a copy registrada é a VISUAL das camadas finais (o formato de ajustarArte e
+      // da recomposição: chave de textosDaPagina) — os leitores ignoram chaves `_` e o diff de aprendizado compara por
+      // chave. O mapa recebido, com bloco/papel e o endereçamento, fica em slotValuesRecebidos. Sem texto semântico, o
+      // registro de sempre (Codex #208, CP5, opção B).
+      ...(temTextoSemantico ? { slotValues: copyVisualDasCamadas(layers) ?? {}, slotValuesRecebidos: efetivo } : { slotValues: efetivo }),
       ...(registroDaCopy ? { copyAutoral: registroDaCopy.registro } : {}),
       autocorrecao: fix.autocorrecao,
       halo: {

@@ -356,3 +356,99 @@ describe('Codex #208 — CP2: contrato autoral sem texto nenhum não publica o t
     expect(conteudo('a-s').visible).toBe(false)
   })
 })
+
+describe('Codex #208 — CP5 (opção B): com texto semântico, a Generation registra a copy VISUAL das camadas finais', () => {
+  const leitores = async () => {
+    const { textosDaGeneration } = await import('@/lib/posts/troca-de-arte')
+    const { extractExpectedTexts } = await import('@/lib/ai/creative-text-verification')
+    const { copyParaDecisao, diffDeCopy } = await import('@/lib/aprendizado/diff-copy')
+    const fv = persistido().fieldValues
+    const post = textosDaGeneration(fv)
+    return { fv, post, conferencia: extractExpectedTexts(fv), diff: diffDeCopy(post, copyParaDecisao(persistido().layers)) }
+  }
+  const visivelDaPagina = () => persistido().layers.filter((l: any) => (l.type === 'text' || l.type === 'rich-text') && l.visible !== false).map((l: any) => l.content).sort()
+
+  it('sem copy: slotValues = o que a página desenha, a entrada fica em slotValuesRecebidos, e não há falso diff', async () => {
+    const entrada = { _slots: { manchete: 'Por slot' } }
+    await createArteRapida({ projectId: 8, sourcePageId: 'p-a', slotValues: entrada })
+    const { fv, post, conferencia, diff } = await leitores()
+    expect(fv.slotValuesRecebidos).toEqual(entrada)
+    expect(Object.values(post ?? {}).sort()).toEqual(visivelDaPagina())
+    expect([...conferencia].sort()).toEqual(visivelDaPagina())
+    expect(diff.mudou).toBe(false)
+  })
+
+  it('copy casada em id "_x" + _slots equivalente: o texto chega aos leitores', async () => {
+    estado.paginas.set('p-u', pagina('p-u', [texto('_x', 'Título', declarada('headline', 'm'))]))
+    await createArteRapida({ projectId: 8, sourcePageId: 'p-u', slotValues: { _slots: { m: 'Noite do vinho' } }, copyAutoral: SO_MANCHETE })
+    const { fv, post, conferencia } = await leitores()
+    expect(post).toEqual({ Título: 'Noite do vinho' })
+    expect(conferencia).toEqual(['Noite do vinho'])
+    expect(fv.slotValuesRecebidos._x).toMatchObject({ content: 'Noite do vinho', bloco: 'h' })
+  })
+
+  it('nomes repetidos e id de uma = nome de outra: todos os textos, uma vez cada, sem falso diff', async () => {
+    estado.paginas.set('p-c', pagina('p-c', [
+      texto('foo', 'Texto', { metadata: { slot: { id: 's1' } } }),
+      texto('b', 'Texto', { metadata: { slot: { id: 's2' } } }),
+      texto('c', 'foo', { metadata: { slot: { id: 's3' } } }),
+    ]))
+    await createArteRapida({ projectId: 8, sourcePageId: 'p-c', slotValues: { _slots: { s1: 'Um', s2: 'Dois', s3: 'Três' } } })
+    const { post, conferencia, diff } = await leitores()
+    expect(Object.values(post ?? {}).sort()).toEqual(['Dois', 'Três', 'Um'])
+    expect([...conferencia].sort()).toEqual(['Dois', 'Três', 'Um'])
+    expect(diff.mudou).toBe(false)
+  })
+
+  it('valor legado equivalente pelo nome: o texto não duplica', async () => {
+    await createArteRapida({ projectId: 8, sourcePageId: 'p-a', slotValues: { Título: 'Igual', _slots: { manchete: 'Igual' } } })
+    const { post } = await leitores()
+    expect(Object.values(post ?? {}).filter((t) => t === 'Igual')).toHaveLength(1)
+  })
+
+  it('campo oculto pela copy não aparece na copy registrada', async () => {
+    await createArteRapida({ projectId: 8, sourcePageId: 'p-a', slotValues: { _slots: { manchete: 'Noite do vinho' } }, copyAutoral: SO_MANCHETE })
+    const { post } = await leitores()
+    expect(post).toEqual({ Título: 'Noite do vinho' })
+  })
+
+  it('semântico só de imagem: o registro é o de sempre (o mesmo objeto, sem slotValuesRecebidos)', async () => {
+    const entrada = { _slots: { 'foto-principal': { fileUrl: 'https://f' } } }
+    await createArteRapida({ projectId: 8, sourcePageId: 'p-a', slotValues: entrada })
+    expect(persistido().fieldValues.slotValues).toBe(entrada)
+    expect(persistido().fieldValues.slotValuesRecebidos).toBeUndefined()
+  })
+
+  it('camadas finais alteradas pelo autofix: a copy registrada é a final', async () => {
+    const { aplicarAutofixOuFalhar } = await import('@/lib/creatives/text-autofix')
+    vi.mocked(aplicarAutofixOuFalhar).mockImplementationOnce(async ({ layers }: any) => ({
+      layers: layers.map((l: any) => (l.id === 'a-h' ? { ...l, content: 'Ajustado' } : l)),
+      autocorrecao: { aplicada: true } as any,
+      avisos: [],
+    }))
+    await createArteRapida({ projectId: 8, sourcePageId: 'p-a', slotValues: { _slots: { manchete: 'Por slot' } } })
+    const { post } = await leitores()
+    expect(Object.values(post ?? {})).toContain('Ajustado')
+    expect(Object.values(post ?? {})).not.toContain('Por slot')
+  })
+})
+
+it('Codex #208 — CP5 (fail-closed): _slots de texto em camada nomeada "_n" recusa antes de qualquer efeito', async () => {
+  estado.paginas.set('p-n2', pagina('p-n2', [texto('_x', '_n', { metadata: { slot: { id: 's' } } })]))
+  const e = await falha(createArteRapida({ projectId: 8, sourcePageId: 'p-n2', slotValues: { _slots: { s: 'Manchete' } } }))
+  expect(e).toMatchObject({ code: 'CHAVE_VISUAL_RESERVADA', status: 422 })
+  semEfeito()
+})
+
+it('Codex #208 — CP5 (rodada 3): texto legado em camada nomeada "_n" + texto semântico em OUTRA camada recusa antes de qualquer efeito', async () => {
+  estado.paginas.set('p-m', pagina('p-m', [texto('ok', '_n'), texto('t', 'Título', { metadata: { slot: { id: 's' } } })]))
+  const e = await falha(createArteRapida({ projectId: 8, sourcePageId: 'p-m', slotValues: { ok: 'Legado', _slots: { s: 'Semântico' } } }))
+  expect(e).toMatchObject({ code: 'CHAVE_VISUAL_RESERVADA', status: 422, details: { layerIds: ['ok'] } })
+  semEfeito()
+})
+
+it('Codex #208 — CP5 (rodada 3): semântico só de imagem numa página com "_n" segue normal', async () => {
+  estado.paginas.set('p-m2', pagina('p-m2', [texto('ok', '_n'), foto('i', { metadata: { slot: { id: 'f' } } })]))
+  await createArteRapida({ projectId: 8, sourcePageId: 'p-m2', slotValues: { _slots: { f: { fileUrl: 'https://f' } } } })
+  expect(conteudo('i').fileUrl).toBe('https://f')
+})

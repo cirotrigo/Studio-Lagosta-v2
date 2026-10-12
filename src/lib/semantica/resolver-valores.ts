@@ -74,6 +74,11 @@ export type ErroDeValor =
   | { codigo: 'PAPEL_NAO_DECLARADO'; origem: OrigemSemantica; layerId: string }
   /** Oculta na página: o valor seria gravado e o render pularia a camada (espelha o LAYER_HIDDEN do addressableBy). */
   | { codigo: 'CAMADA_OCULTA'; layerId: string; origem: OrigemSemantica }
+  /**
+   * Texto numa camada cuja chave visual (`name ?? id`, a de textosDaPagina/copyVisualDasCamadas) começa com `_`: a
+   * copy registrada da arte cairia numa chave que os leitores descartam (Codex #208; a convenção é requisito do B1d).
+   */
+  | { codigo: 'CHAVE_VISUAL_RESERVADA'; layerId: string; origem: OrigemSemantica }
   /** O efeito pedido não é desenhado por este tipo de camada (seria gravado e ignorado pelo render). */
   | { codigo: 'VALOR_INCOMPATIVEL_COM_CAMADA'; layerId: string; type: string; origem: OrigemSemantica; efeito: EfeitoPedido }
 
@@ -204,6 +209,10 @@ export function resolverValoresSemanticos(camadas: readonly Layer[], slotValues:
       const efeito = efeitoPedido(valor)
       if (!tipoDesenha(efeito, layer.type)) {
         erros.push({ codigo: 'VALOR_INCOMPATIVEL_COM_CAMADA', layerId: layer.id, type: String(layer.type), origem, efeito })
+        continue
+      }
+      if (efeito === 'content' && String(layer.name ?? layer.id).startsWith('_')) {
+        erros.push({ codigo: 'CHAVE_VISUAL_RESERVADA', layerId: layer.id, origem })
         continue
       }
       porIndice.set(r.indice, [...(porIndice.get(r.indice) ?? []), { origem, valor }])

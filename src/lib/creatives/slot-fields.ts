@@ -80,6 +80,11 @@ export type ProblemaDoCampo =
    * CHAVE_RESERVADA_COLIDE_COM_LAYER), ou o id/nome DESTA camada é uma chave reservada (nenhum endereço é seguro).
    */
   | { code: 'RESERVED_KEY_COLLISION'; key: ChaveReservada }
+  /**
+   * Campo de texto cuja chave visual (`name ?? id`) começa com `_`, ou página com algum texto visível assim: a escrita
+   * semântica de texto recusa (CHAVE_VISUAL_RESERVADA).
+   */
+  | { code: 'VISUAL_KEY_RESERVED' }
 
 export interface SemanticaDoCampo {
   role: {
@@ -136,6 +141,7 @@ const entraPeloLegado = (l: any) => l?.type === 'text' || (l?.type === 'image' &
  * prometido (codex review do B1b).
  */
 const TIPOS_PREENCHIVEIS = new Set(['text', 'rich-text', 'image'])
+const TIPOS_DE_TEXTO = new Set(['text', 'rich-text'])
 
 /** A análise de uma página que não voltou da consulta — vazia, mas dita (revisão adversarial do B1b, F2). */
 export function analiseDePaginaAusente(): AnaliseDosCampos {
@@ -184,6 +190,9 @@ export function analisarSlotFields(raw: unknown, contexto: ContextoDosCampos = {
 
   // A mesma guarda global do resolvedor: com uma camada chamada (ou com id) _slots/_papeis, a chave inteira é recusada.
   const colide = (chave: string) => camadas.some((c: any) => c?.id === chave || c?.name === chave)
+  // Texto visível com chave visual "_…" em QUALQUER camada: com texto semântico, a criação recusa a página inteira.
+  const chaveVisualReservadaDe = (c: any) => TIPOS_DE_TEXTO.has(c?.type) && String(c?.name ?? c?.id).startsWith('_')
+  const paginaComChaveVisualReservada = camadas.some((c: any) => chaveVisualReservadaDe(c) && c.visible !== false)
   const slotsColidem = colide('_slots')
   const papeisColidem = colide('_papeis')
 
@@ -242,13 +251,15 @@ export function analisarSlotFields(raw: unknown, contexto: ContextoDosCampos = {
     // por id/nome a leria como valor DESTA camada — nenhum endereço é seguro (Codex #208, CP3).
     const reservadaPropria = [d.layerId, l.name].find((k): k is ChaveReservada => typeof k === 'string' && ehChaveReservada(k))
     if (reservadaPropria) problems.push({ code: 'RESERVED_KEY_COLLISION', key: reservadaPropria })
+    const chaveVisualReservada = TIPOS_DE_TEXTO.has(l.type) && (chaveVisualReservadaDe(l) || paginaComChaveVisualReservada)
+    if (chaveVisualReservada && !reservadaPropria) problems.push({ code: 'VISUAL_KEY_RESERVED' })
     if (temSlot && slotsColidem && reservadaPropria !== '_slots') problems.push({ code: 'RESERVED_KEY_COLLISION', key: '_slots' })
     if (temPapelDeclarado && papeisColidem && reservadaPropria !== '_papeis') problems.push({ code: 'RESERVED_KEY_COLLISION', key: '_papeis' })
     const addressableBy: SemanticaDoCampo['addressableBy'] = []
     if (preenchivel && !oculta && !podeTrocar && !reservadaPropria) {
       if (sombras.length === 0 && eEsta(resolverAlvo(camadas, { layerId: d.layerId }))) addressableBy.push('layerId')
-      if (d.slot.status === 'valido' && !slotsColidem && eEsta(resolverAlvo(camadas, { slotId: d.slot.slotId }))) addressableBy.push('slotId')
-      if (temPapelDeclarado && !papeisColidem && eEsta(resolverAlvo(camadas, { semanticRole: p.papel }))) addressableBy.push('semanticRole')
+      if (d.slot.status === 'valido' && !slotsColidem && !chaveVisualReservada && eEsta(resolverAlvo(camadas, { slotId: d.slot.slotId }))) addressableBy.push('slotId')
+      if (temPapelDeclarado && !papeisColidem && !chaveVisualReservada && eEsta(resolverAlvo(camadas, { semanticRole: p.papel }))) addressableBy.push('semanticRole')
     }
 
     slotFields.push({

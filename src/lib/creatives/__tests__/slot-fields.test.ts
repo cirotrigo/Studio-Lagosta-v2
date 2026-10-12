@@ -344,7 +344,8 @@ describe('B1c: slotId e semanticRole entram em addressableBy — com as mesmas p
 
 describe('Codex #208 — CP3: camada que usa _slots/_papeis como id ou nome tira a promessa que a escrita recusaria', () => {
   it('camada chamada "_slots": nenhum campo promete slotId; o papel continua', () => {
-    const r = analisarSlotFields([texto('t1', 'Título', 'a', papel('headline', 's')), texto('t2', '_slots', 'b')])
+    // Forma (não texto): a colisão é só da chave _slots; texto visível "_…" teria a regra visual (CP5) por cima.
+    const r = analisarSlotFields([texto('t1', 'Título', 'a', papel('headline', 's')), { id: 't2', name: '_slots', type: 'shape' }])
     expect(r.slotFields[0].semantic.addressableBy).toEqual(['layerId', 'semanticRole'])
     expect(r.slotFields[0].semantic.problems).toContainEqual({ code: 'RESERVED_KEY_COLLISION', key: '_slots' })
   })
@@ -376,4 +377,26 @@ describe('Codex #208 — CP3 (rodada 3): id ou nome reservado não promete NENHU
 it('Codex #208 — CP3: o problema da colisão aparece uma vez só', () => {
   const p = analisarSlotFields([texto('_slots', 'X', 'b', papel('headline', 'titulo'))]).slotFields[0].semantic.problems
   expect(p.filter((x) => x.code === 'RESERVED_KEY_COLLISION')).toEqual([{ code: 'RESERVED_KEY_COLLISION', key: '_slots' }])
+})
+
+describe('Codex #208 — CP5 (fail-closed): campo de texto com chave visual "_…" não promete endereço semântico', () => {
+  it('nome "_n": sem slotId/semanticRole, com VISUAL_KEY_RESERVED; o layerId legível continua', () => {
+    const f = analisarSlotFields([texto('ok', '_n', 'a', papel('headline', 's'))]).slotFields[0]
+    expect(f.semantic.addressableBy).toEqual(['layerId'])
+    expect(f.semantic.problems).toContainEqual({ code: 'VISUAL_KEY_RESERVED' })
+  })
+  it('imagem com nome "_n": slotId e papel continuam (fileUrl não é copy)', () => {
+    const f = analisarSlotFields([{ id: 'i1', name: '_n', type: 'image', isDynamic: true, visible: true, metadata: { compositor: { papel: 'foto' }, slot: { id: 'f' } } }]).slotFields[0]
+    expect(f.semantic.addressableBy).toEqual(['layerId', 'slotId', 'semanticRole'])
+  })
+})
+
+it('Codex #208 — CP5 (rodada 3): página com texto visível de chave "_…": nenhum campo de texto promete endereço semântico; imagem continua', () => {
+  const r = analisarSlotFields([
+    texto('ok', '_n', 'a'),
+    texto('t', 'Título', 'b', papel('headline', 's')),
+    { id: 'i1', name: 'Foto', type: 'image', isDynamic: true, visible: true, metadata: { compositor: { papel: 'foto' }, slot: { id: 'f' } } },
+  ])
+  expect(r.slotFields.map((f) => f.semantic.addressableBy)).toEqual([['layerId'], ['layerId'], ['layerId', 'slotId', 'semanticRole']])
+  expect(r.slotFields[1].semantic.problems).toContainEqual({ code: 'VISUAL_KEY_RESERVED' })
 })
