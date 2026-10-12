@@ -1349,6 +1349,8 @@ toolEstrita(
       // legado. A edição semântica volta a linha a PENDING, e as gravações abaixo exigem RENDERING.
       // Também não toma a reserva VIVA de outra execução (o cron): só a presa há mais de 10 min (o render do cron
       // tem teto de 120 s), para forçar continuar destravando post preso.
+      // 10 min é lease de recuperação do renderer manual legado; execução antiga perde a ficha e não pode gravar.
+      // (OWNER_ACCEPTED_KNOWN_LIMITATION: dois forces manuais com o 1º > 10 min — trabalho duplicado, nunca arte errada.)
       const agora = new Date()
       const reservaPresaAntesDe = new Date(agora.getTime() - 10 * 60_000)
       const travado = await prisma.$executeRaw`
