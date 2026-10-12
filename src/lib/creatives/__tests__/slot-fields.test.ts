@@ -1,8 +1,10 @@
 /**
  * B1b — descoberta semântica: `analisarSlotFields` enriquece os campos que o
  * `escolher-modelo` já devolvia, sem mudar os cinco campos legados, e
- * diagnostica a página inteira em `semanticIssues`. `addressableBy` vem do
- * `resolverAlvo`: a descoberta promete só o que o preenchimento resolverá.
+ * diagnostica a página inteira em `semanticIssues`. `addressableBy` é o que o
+ * Studio de HOJE executa de ponta a ponta — só `layerId` seguro no B1b (o B1c
+ * acrescenta slotId/semanticRole no mesmo PR que os torna preenchíveis). Vem do
+ * `resolverAlvo({ layerId })`: id repetido não é endereço seguro.
  */
 import { describe, expect, it } from 'vitest'
 import { analisarSlotFields, slotFieldsFromLayers } from '../slot-fields'
@@ -68,7 +70,8 @@ describe('role.status: declarado, inferido, ausente, inválido', () => {
   it('inferido pelo nome', () => {
     const [f] = analisarSlotFields([texto('text-a1', 'headline', 'X')]).slotFields
     expect(f.semantic.role).toEqual({ status: 'inferred', value: 'headline', origin: 'nome', expectedCardinality: 'ONE', occurrences: 1, ambiguous: false })
-    expect(f.semantic.addressableBy).toEqual(['semanticRole', 'layerId'])
+    // o papel é descrito, mas ainda não é capacidade executável
+    expect(f.semantic.addressableBy).toEqual(['layerId'])
   })
 
   it('inferido pelo id', () => {
@@ -104,7 +107,8 @@ describe('role.status: declarado, inferido, ausente, inválido', () => {
       ['bg-foto', 'foto', 'id-reservado'],
       ['logo', 'logo', 'tipo'],
     ])
-    expect(r.slotFields[1].semantic.addressableBy).toEqual(['slotId', 'semanticRole', 'layerId'])
+    expect(r.slotFields[1].semantic.slot).toEqual({ status: 'declared', id: 'logo-principal' })
+    expect(r.slotFields[1].semantic.addressableBy).toEqual(['layerId'])
   })
 })
 
@@ -122,12 +126,14 @@ describe('slot e entrada de camadas', () => {
     expect(r.slotFields.map((f) => f.currentValue)).toEqual(['Olá', 'https://dyn'])
   })
 
-  it('dois servico com slots: os dois ambíguos por papel, cada um endereçável pelo seu slot; não é issue', () => {
+  it('dois servico com slots: os dois slots descritos, o papel ambíguo, nada prometido além do layerId; não é issue', () => {
     const r = analisarSlotFields([texto('t-e', 'Endereço', 'Rua A', papel('servico', 'servico-endereco')), texto('t-h', 'Horário', '18h', papel('servico', 'servico-horario'))])
     expect(r.semanticIssues).toEqual([])
     for (const f of r.slotFields) {
       expect(f.semantic.role).toMatchObject({ value: 'servico', occurrences: 2, ambiguous: true, expectedCardinality: 'MANY' })
-      expect(f.semantic.addressableBy).toEqual(['slotId', 'layerId'])
+      // os dois slots aparecem, o papel é ambíguo, e nem slotId nem semanticRole são prometidos
+      expect(f.semantic.slot.status).toBe('declared')
+      expect(f.semantic.addressableBy).toEqual(['layerId'])
     }
     expect(r.slotFields.map((f) => f.semantic.slot.id)).toEqual(['servico-endereco', 'servico-horario'])
   })
@@ -141,7 +147,7 @@ describe('slot e entrada de camadas', () => {
   it('dois papéis iguais SEM slot: ambiguous, nenhum semanticRole em addressableBy, e NÃO é semanticIssue', () => {
     const r = analisarSlotFields([texto('a', 'A', 'x', papel('cta')), texto('b', 'B', 'y', papel('cta'))])
     expect(r.semanticIssues).toEqual([])
-    expect(r.slotFields.every((f) => f.semantic.role.ambiguous && !f.semantic.addressableBy.includes('semanticRole'))).toBe(true)
+    expect(r.slotFields.every((f) => f.semantic.role.ambiguous && !(f.semantic.addressableBy as string[]).includes('semanticRole'))).toBe(true)
   })
 
   it('slot inválido: status invalid, sem id, problema no field e na página', () => {
@@ -157,7 +163,7 @@ describe('slot e entrada de camadas', () => {
     expect(r.semanticIssues).toEqual([{ code: 'SLOT_DUPLICATE', layerIds: ['a', 'b'], slotId: 'principal' }])
     for (const f of r.slotFields) {
       expect(f.semantic.slot).toEqual({ status: 'duplicate', id: 'principal' })
-      expect(f.semantic.addressableBy).not.toContain('slotId')
+      expect(f.semantic.addressableBy).toEqual(['layerId'])
       expect(f.semantic.problems).toContainEqual({ code: 'SLOT_DUPLICATE', layerIds: ['a', 'b'] })
     }
   })
@@ -165,7 +171,7 @@ describe('slot e entrada de camadas', () => {
   it('layerId duplicado: issue da página e layerId fora de addressableBy', () => {
     const r = analisarSlotFields([texto('dup', 'A', 'x'), texto('dup', 'B', 'y')])
     expect(r.semanticIssues).toEqual([{ code: 'LAYER_ID_DUPLICATE', layerIds: ['dup'], occurrences: 2 }])
-    expect(r.slotFields.every((f) => !f.semantic.addressableBy.includes('layerId'))).toBe(true)
+    expect(r.slotFields.map((f) => f.semantic.addressableBy)).toEqual([[], []])
   })
 })
 
@@ -187,5 +193,26 @@ describe('corrupção FORA dos fields aparece em semanticIssues', () => {
     const r = analisarSlotFields([{ id: 'shape-1', name: 'Forma', type: 'shape', content: 'segredo', fileUrl: 'https://interno', metadata: { slot: { id: 'x y' }, compositor: { papel: 'nada', bloco: 'b-secreto' } } }])
     const issues = JSON.stringify(r.semanticIssues)
     for (const proibido of ['segredo', 'https://interno', 'x y', 'b-secreto', 'nada']) expect(issues).not.toContain(proibido)
+  })
+})
+
+describe('addressableBy = capacidade executável HOJE (decisão do Ciro sobre o F1 do B1b)', () => {
+  const paginas: unknown[][] = [
+    [texto('text-a1', 'headline', 'x')],
+    [texto('t-e', 'E', 'x', papel('servico', 'servico-endereco')), texto('t-h', 'H', 'y', papel('servico', 'servico-horario'))],
+    [texto('a', 'A', 'x', papel('cta', 's'))],
+    [{ id: 'bg-foto', name: 'F', type: 'image', isDynamic: true }, { id: 'logo', name: 'L', type: 'logo', metadata: { slot: { id: 'logo-1' } } }],
+  ]
+
+  it('nunca anuncia slotId nem semanticRole, mesmo quando o resolverAlvo os resolveria', () => {
+    for (const p of paginas) {
+      for (const f of analisarSlotFields(p).slotFields) expect(f.semantic.addressableBy.every((a) => a === 'layerId')).toBe(true)
+    }
+  })
+
+  it('a descrição semântica continua inteira: slot, papel e problemas aparecem', () => {
+    const [f] = analisarSlotFields(paginas[2]).slotFields
+    expect(f.semantic.slot).toEqual({ status: 'declared', id: 's' })
+    expect(f.semantic.role).toMatchObject({ status: 'declared', value: 'cta', occurrences: 1, ambiguous: false })
   })
 })

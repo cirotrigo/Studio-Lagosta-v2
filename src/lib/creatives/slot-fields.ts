@@ -13,8 +13,18 @@
  *  - mais as que declaram `metadata.slot.id` válido, de qualquer tipo;
  *  - papel inferido SOZINHO nunca faz uma camada entrar.
  *
- * `addressableBy` vem do `resolverAlvo`, não de uma cópia das regras dele: a
- * descoberta promete exatamente o que o preenchimento (B1c) resolverá.
+ * `addressableBy` = os endereços que o Studio de HOJE executa DE PONTA A PONTA —
+ * não "o que o `resolverAlvo` localiza". No B1b o preenchimento só entende o
+ * contrato legado (id/nome), então só entra `layerId`, e só quando é seguro
+ * (`resolverAlvo({ layerId })` aceita: id repetido aplicaria o valor nas duas
+ * camadas). `slotId` e `semanticRole` continuam DESCRITOS em `slot`/`role`,
+ * mas não prometidos (F1 da revisão adversarial do B1b: anunciá-los antes do
+ * preenchimento deixava o agente gerar arte sem o conteúdo, sem erro).
+ *
+ * 🔴 Requisito do B1c: o MESMO PR que tornar `_slots` preenchível acrescenta
+ * `slotId` aqui; o que tornar `_papeis` preenchível acrescenta `semanticRole` —
+ * com teste ponta a ponta (anunciado → aceito na criação/ajuste → a camada certa
+ * recebe → conflito/ambiguidade falha explícito).
  *
  * `semanticIssues` diagnostica a PÁGINA, inclusive camadas que não viram campo
  * (um slot inválido numa forma, um papel inválido que bloqueia a resolução por
@@ -54,7 +64,8 @@ export interface SemanticaDoCampo {
     ambiguous: boolean
   }
   slot: { status: 'declared' | 'absent' | 'invalid' | 'duplicate'; id: string | null }
-  addressableBy: Array<'slotId' | 'semanticRole' | 'layerId'>
+  /** Endereços executáveis HOJE, de ponta a ponta. B1b: só `layerId` (ver o cabeçalho). */
+  addressableBy: Array<'layerId'>
   problems: ProblemaDoCampo[]
 }
 
@@ -157,15 +168,9 @@ export function analisarSlotFields(raw: unknown): AnaliseDosCampos {
       if (mesmos.length > 1) problems.push({ code: 'SLOT_DUPLICATE', layerIds: idsDe(mesmos) })
     }
 
-    // Por onde o preenchimento resolverá ESTA camada — perguntado ao próprio resolverAlvo.
-    const resolveAqui = (alvo: Parameters<typeof resolverAlvo>[1]) => {
-      const r = resolverAlvo(camadas, alvo)
-      return 'indice' in r && r.indice === i
-    }
-    const addressableBy: SemanticaDoCampo['addressableBy'] = []
-    if (d.slot.status === 'valido' && resolveAqui({ slotId: d.slot.slotId })) addressableBy.push('slotId')
-    if (p.status === 'valido' && resolveAqui({ semanticRole: p.papel })) addressableBy.push('semanticRole')
-    if (resolveAqui({ layerId: d.layerId })) addressableBy.push('layerId')
+    // O único endereço que o preenchimento de HOJE executa: o layerId, quando o resolverAlvo o aceita (único).
+    const porLayerId = resolverAlvo(camadas, { layerId: d.layerId })
+    const addressableBy: SemanticaDoCampo['addressableBy'] = 'indice' in porLayerId && porLayerId.indice === i ? ['layerId'] : []
 
     slotFields.push({
       layerId: l.id,
