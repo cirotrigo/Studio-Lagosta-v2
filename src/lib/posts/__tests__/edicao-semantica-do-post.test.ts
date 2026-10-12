@@ -116,4 +116,13 @@ describe('G–H. o MCP local usa as MESMAS funções (sem lógica copiada no scr
     expect(b).toMatch(/return tx\.socialPost\.update\(\{ where: \{ id: postId \}, data: edicao\.semantico \? \{ \.\.\.data, \.\.\.edicao\.data \} : data/)
     expect(b).toMatch(/Nada foi alterado\./)
   })
+
+  it('render-story (Codex, rodada 2): trava atômica que recusa o contrato, e só grava (sucesso ou falha) a linha que ainda está RENDERING', () => {
+    const b = bloco('render-story', 'list-drive-images')
+    const trava = b.indexOf('await prisma.$executeRaw`')
+    expect(trava).toBeGreaterThan(-1)
+    expect(b.slice(trava, b.indexOf('`', trava + 30))).toMatch(/SET "renderStatus" = 'RENDERING'[\s\S]*jsonb_exists\("slotValues", '_slots'\)[\s\S]*jsonb_exists\("slotValues", '_papeis'\)/)
+    expect(b).not.toMatch(/prisma\.socialPost\.update\(/) // nada incondicional: nem a trava, nem a falha
+    expect(b).toMatch(/where: \{ id: postId, renderStatus: 'RENDERING', mediaUrls: \{ equals: post\.mediaUrls \} \}/)
+  })
 })

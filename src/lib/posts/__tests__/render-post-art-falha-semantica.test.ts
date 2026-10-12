@@ -5,12 +5,12 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const banco = vi.hoisted(() => ({ post: null as any, falha: null as null | (() => Error) }))
+const banco = vi.hoisted(() => ({ post: null as any, falha: null as null | (() => Error), chamada: null as unknown }))
 
 vi.mock('@/lib/db', () => ({
   db: {
     socialPost: {
-      findUnique: async () => (banco.post ? { mediaUrls: banco.post.mediaUrls } : null),
+      findUnique: async () => banco.post,
       updateMany: async ({ where, data }: { where: { renderStatus?: string }; data: Record<string, unknown> }) => {
         if (!banco.post) return { count: 0 }
         if (where.renderStatus && banco.post.renderStatus !== where.renderStatus) return { count: 0 }
@@ -21,7 +21,8 @@ vi.mock('@/lib/db', () => ({
   },
 }))
 vi.mock('@/lib/posts/story-renderer', () => ({
-  renderStoryImage: async () => {
+  renderStoryImage: async (...args: unknown[]) => {
+    banco.chamada = args
     throw banco.falha!()
   },
 }))
@@ -36,7 +37,8 @@ import { ErroRenderSemantico, lerErroRenderSemantico } from '../erro-render-sema
 const erros = [{ codigo: 'ALVO_NAO_RESOLVIDO', origem: { tipo: 'slotId', chave: 'manchete' }, erro: { codigo: 'SLOT_NAO_ENCONTRADO' } }] as never
 
 beforeEach(() => {
-  banco.post = { renderStatus: 'PENDING', mediaUrls: [], renderAttempts: 0, nextRenderAt: null }
+  banco.post = { pageId: 'p1', slotValues: null, renderStatus: 'PENDING', mediaUrls: [], renderAttempts: 0, nextRenderAt: null }
+  banco.chamada = null
 })
 
 describe('H. falha semântica: terminal na primeira tentativa', () => {
@@ -71,5 +73,14 @@ describe('I. erro comum (fonte/Blob/canvas): o retry de sempre', () => {
     await renderPostArt({ id: 'post-1', pageId: 'p1', slotValues: null, renderAttempts: 2 })
     expect(banco.post).toMatchObject({ renderStatus: 'RENDER_FAILED', renderAttempts: 3, renderError: 'Blob upload failed: 503' })
     expect(lerErroRenderSemantico(banco.post.renderError)).toBeNull()
+  })
+})
+
+describe('Codex (rodada 2): o pedido desenhado é o da linha RESERVADA, não o que o cron leu antes', () => {
+  it('editado entre a leitura do cron e a reserva: renderiza o pageId e o slotValues atuais', async () => {
+    banco.post = { ...banco.post, pageId: 'p2', slotValues: { _slots: { manchete: 'Novo' } } }
+    banco.falha = () => new ErroRenderSemantico('CONTRATO_INVALIDO', 'p1', erros)
+    await renderPostArt({ id: 'post-1', pageId: 'p1', slotValues: { _slots: { manchete: 'Velho' } }, renderAttempts: 0 })
+    expect(banco.chamada).toEqual(['p2', 'post-1', { _slots: { manchete: 'Novo' } }])
   })
 })

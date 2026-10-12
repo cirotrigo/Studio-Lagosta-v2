@@ -1341,11 +1341,20 @@ toolEstrita(
       const recusaDaPagina = recusaPorCamadas(page.layers)
       if (recusaDaPagina) return { content: [{ type: 'text' as const, text: `Error: ${recusaDaPagina.mensagem} Nada foi alterado.` }], isError: true }
 
-      // 3. Lock the post
-      await prisma.socialPost.update({
-        where: { id: postId },
-        data: { renderStatus: 'RENDERING' },
-      })
+      // 3. Lock the post — atômico com a recusa do contrato semântico (Codex, B1d checkpoint d): um
+      // update-post que acrescente _slots/_papeis depois da leitura acima não é desenhado por este renderer
+      // legado. A edição semântica volta a linha a PENDING, e as gravações abaixo exigem RENDERING.
+      const agora = new Date()
+      const travado = await prisma.$executeRaw`
+        UPDATE "SocialPost" SET "renderStatus" = 'RENDERING'::"RenderStatus", "updatedAt" = ${agora}
+        WHERE "id" = ${postId}
+          AND (
+            jsonb_typeof("slotValues") IS DISTINCT FROM 'object'
+            OR (NOT jsonb_exists("slotValues", '_slots') AND NOT jsonb_exists("slotValues", '_papeis'))
+          )`
+      if (travado === 0) {
+        return { content: [{ type: 'text' as const, text: 'Error: o post mudou antes do render (passou a usar o contrato semântico, ou sumiu). Nada foi alterado.' }], isError: true }
+      }
 
       // 4. Convert Page → DesignData
       const { convertPageToDesignData, applySlotValues } = await import('../src/lib/posts/page-to-design-data')
@@ -1432,7 +1441,7 @@ toolEstrita(
       // 9. Update post — só se a mídia ainda é a que a guarda leu: trocada no
       // meio do render (por um vídeo, por exemplo), o PNG não entra por cima.
       const gravado = await prisma.socialPost.updateMany({
-        where: { id: postId, mediaUrls: { equals: post.mediaUrls } },
+        where: { id: postId, renderStatus: 'RENDERING', mediaUrls: { equals: post.mediaUrls } },
         data: {
           renderStatus: 'RENDERED',
           renderedImageUrl: blob.url,
@@ -1446,7 +1455,7 @@ toolEstrita(
           where: { id: postId, renderStatus: 'RENDERING' },
           data: { renderStatus: post.renderStatus },
         })
-        return { content: [{ type: 'text' as const, text: 'Error: a mídia do post mudou durante o render. Nada foi alterado; confira o post e renderize de novo se ainda fizer sentido.' }], isError: true }
+        return { content: [{ type: 'text' as const, text: 'Error: o post mudou durante o render (mídia ou pedido). Nada foi alterado; confira o post e renderize de novo se ainda fizer sentido.' }], isError: true }
       }
 
       // Build a clickable admin URL for editing this specific post.
@@ -1471,10 +1480,10 @@ toolEstrita(
         }],
       }
     } catch (error: any) {
-      // Reset render status on failure
+      // Reset render status on failure — só a linha que ESTE render travou (uma edição no meio já a devolveu à fila)
       try {
-        await prisma.socialPost.update({
-          where: { id: postId },
+        await prisma.socialPost.updateMany({
+          where: { id: postId, renderStatus: 'RENDERING' },
           data: { renderStatus: 'RENDER_FAILED', renderError: error.message },
         })
       } catch { /* ignore */ }

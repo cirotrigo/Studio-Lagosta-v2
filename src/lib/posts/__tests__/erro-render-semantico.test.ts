@@ -53,7 +53,7 @@ describe('N. os dois caminhos de render e o executor (estrutura)', () => {
     const bloco = t.slice(t.indexOf("'render-story',"), t.indexOf("'plan-week',"))
     const recusa = bloco.indexOf('if (temContratoSemantico(post.slotValues))')
     expect(recusa).toBeGreaterThan(-1)
-    expect(recusa).toBeLessThan(bloco.indexOf('prisma.socialPost.update('))
+    expect(recusa).toBeLessThan(bloco.indexOf('prisma.$executeRaw')) // a primeira escrita é a trava atômica
     expect(bloco).not.toMatch(/aplicarValoresDoPost|resolverValoresSemanticos/)
   })
 

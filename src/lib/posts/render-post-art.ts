@@ -109,11 +109,21 @@ export async function renderPostArt(post: RenderablePost): Promise<RenderPostArt
     return { ok: false, motivo: 'ocupado' }
   }
 
+  /**
+   * O pedido desenhado é o da linha JÁ RESERVADA, não o que o chamador leu antes (Codex, B1d checkpoint d):
+   * uma edição entre aquela leitura e a reserva mandaria desenhar — ou, no contrato semântico, falhar em
+   * definitivo — o pedido antigo. Edição DEPOIS daqui volta a linha a PENDING, e as gravações abaixo, que exigem
+   * RENDERING, não a alcançam.
+   */
+  const pedido = await db.socialPost.findUnique({ where: { id: post.id }, select: { pageId: true, slotValues: true } })
+  const pageId = pedido?.pageId ?? post.pageId
+  const slotValues = pedido ? pedido.slotValues : post.slotValues
+
   try {
     const result = await renderStoryImage(
-      post.pageId,
+      pageId,
       post.id,
-      post.slotValues as Record<string, unknown> | undefined,
+      slotValues as Record<string, unknown> | undefined,
     )
 
     const confirmed = await db.socialPost.updateMany({
@@ -139,10 +149,10 @@ export async function renderPostArt(post: RenderablePost): Promise<RenderPostArt
          * defeito aparecia. Sai daqui já MARCADA — o re-render cura a marca que
          * faltou, sem backfill.
          */
-        ...(!result.aplicouSlots && post.slotValues
+        ...(!result.aplicouSlots && slotValues
           ? {
               slotValues: comoCopiaDaPagina(
-                slotValuesSeguindo(post.slotValues, result.copyDaPagina),
+                slotValuesSeguindo(slotValues, result.copyDaPagina),
               ) as Prisma.InputJsonValue,
             }
           : {}),
