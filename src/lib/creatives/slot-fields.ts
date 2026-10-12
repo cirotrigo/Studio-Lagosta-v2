@@ -19,7 +19,8 @@
  * `resolverAlvo({ layerId })` aceita (id repetido aplicaria o valor nas duas
  * camadas) e nenhuma OUTRA camada tem esse id como nome (pelo `id ?? nome` do
  * legado, a chave também cairia nela) e o tipo da camada desenha o valor
- * preenchido (texto, rich-text, imagem — forma, gradiente e logo não). `slotId` e `semanticRole` continuam DESCRITOS em `slot`/`role`,
+ * preenchido (texto, rich-text, imagem — forma, gradiente e logo não), e a
+ * camada não está oculta no modelo (o preenchimento não a torna visível). `slotId` e `semanticRole` continuam DESCRITOS em `slot`/`role`,
  * mas não prometidos (F1 da revisão adversarial do B1b: anunciá-los antes do
  * preenchimento deixava o agente gerar arte sem o conteúdo, sem erro).
  *
@@ -57,6 +58,8 @@ export type ProblemaDoCampo =
   | { code: 'LAYER_ID_MATCHES_OTHER_NAME'; layerIds: string[] }
   /** O valor que o preenchimento grava (`content`/`fileUrl`) não chega ao desenho deste tipo de camada. */
   | { code: 'TYPE_NOT_FILLABLE' }
+  /** Oculta no modelo: o preenchimento grava o valor, mas não a torna visível, e o render a pula. */
+  | { code: 'LAYER_HIDDEN' }
 
 export interface SemanticaDoCampo {
   role: {
@@ -189,9 +192,11 @@ export function analisarSlotFields(raw: unknown): AnaliseDosCampos {
     if (sombras.length > 0) problems.push({ code: 'LAYER_ID_MATCHES_OTHER_NAME', layerIds: sombras })
     const preenchivel = TIPOS_PREENCHIVEIS.has(l.type)
     if (!preenchivel) problems.push({ code: 'TYPE_NOT_FILLABLE' })
+    const oculta = l.visible === false
+    if (oculta) problems.push({ code: 'LAYER_HIDDEN' })
     const porLayerId = resolverAlvo(camadas, { layerId: d.layerId })
     const addressableBy: SemanticaDoCampo['addressableBy'] =
-      preenchivel && 'indice' in porLayerId && porLayerId.indice === i && sombras.length === 0 ? ['layerId'] : []
+      preenchivel && !oculta && 'indice' in porLayerId && porLayerId.indice === i && sombras.length === 0 ? ['layerId'] : []
 
     slotFields.push({
       layerId: l.id,

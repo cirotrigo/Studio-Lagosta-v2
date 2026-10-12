@@ -256,3 +256,13 @@ describe('só tipos cujo valor o render desenha são prometidos (codex review do
     expect(r.slotFields.map((f) => f.semantic.addressableBy)).toEqual([['layerId'], ['layerId'], ['layerId']])
   })
 })
+
+describe('camada oculta no modelo não é prometida (codex review do B1b)', () => {
+  it('visible: false → continua campo, sem addressableBy, com LAYER_HIDDEN (o preenchimento não a torna visível)', () => {
+    const r = analisarSlotFields([texto('t1', 'Apoio', 'x', undefined, { visible: false }), texto('t2', 'Título', 'y')])
+    expect(r.slotFields.map((f) => f.layerId)).toEqual(['t1', 't2'])
+    expect(r.slotFields[0].semantic.addressableBy).toEqual([])
+    expect(r.slotFields[0].semantic.problems).toContainEqual({ code: 'LAYER_HIDDEN' })
+    expect(r.slotFields[1].semantic.addressableBy).toEqual(['layerId'])
+  })
+})
