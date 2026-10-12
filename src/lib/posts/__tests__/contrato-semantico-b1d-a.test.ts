@@ -4,7 +4,7 @@
  * Fixa (1) quando um post usa o contrato novo — presença PRÓPRIA da chave `_slots` ou `_papeis`, nunca o
  * valor; (2) quais caminhos gravam `SocialPost.slotValues`; (3) a diferença página MODELO × CONTEÚDO; (4) o
  * que o legado faz hoje e continua fazendo. Nada aqui aplica, valida ou recusa o contrato: isso é dos
- * checkpoints b–g. Os `it.fails` marcam o comportamento que o B1d vai mudar — passam enquanto o gap existe.
+ * checkpoints b–g. Os gaps D/E foram fechados no checkpoint d — no render, não nestes primitivos legados.
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
@@ -76,8 +76,10 @@ describe('D. página MODELO com `_slots`: o mapa chega ao render, mas `_slots` n
     expect(aplicarSlotNaCamada(camada, sv).content).toBe('modelo')
   })
 
-  it.fails('B1d (c–d): a camada do slot `manchete` recebe o texto pedido', () => {
-    expect(aplicarSlotNaCamada(camada, sv).content).toBe('Noite do vinho')
+  // Checkpoint d: o gap fechou no RENDER (aplicarValoresDoPost em renderStoryImage — ver
+  // story-renderer-contrato-semantico.test.ts, A e B); este primitivo continua sendo só o legado, de propósito.
+  it('o primitivo legado continua sem aplicar `_slots` — a aplicação semântica é do helper do render', () => {
+    expect(aplicarSlotNaCamada(camada, sv).content).toBe('modelo')
   })
 })
 
@@ -96,9 +98,11 @@ describe('E. página de CONTEÚDO com `_slots`: hoje o contrato é ignorado em s
     expect(copyPropriaDoPost(regravado)).toBeUndefined() // …mas o contrato nunca chega à arte
   })
 
-  it.fails('B1d (c): contrato novo em página de conteúdo é RECUSADO, não ignorado', () => {
-    // Hoje não há recusa: slotValuesParaRender devolve undefined e nada lança.
-    expect(() => slotValuesParaRender(sv, CONTEUDO)).toThrow()
+  // Checkpoints c–d: a recusa é da ADMISSÃO (CONTRATO_EM_PAGINA_DE_CONTEUDO) e do RENDER (ErroRenderSemantico
+  // PAGINA_DE_CONTEUDO, ver story-renderer-contrato-semantico.test.ts, M). slotValuesParaRender segue sendo só o
+  // legado: o render detecta o contrato ANTES de chamá-lo.
+  it('slotValuesParaRender segue sendo do legado (não lança); quem recusa é a admissão e o render', () => {
+    expect(() => slotValuesParaRender(sv, CONTEUDO)).not.toThrow()
   })
 })
 

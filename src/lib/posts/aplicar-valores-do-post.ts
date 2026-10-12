@@ -35,6 +35,12 @@ export interface ValoresAplicados<T> {
   /** Recusas do contrato novo — sem texto nem URL pedidos. Com erro, `camadas` é o array recebido, intacto. */
   erros: ErroDeValor[]
   avisos: AvisoDoPost[]
+  /**
+   * Só no sucesso do contrato novo: ids das camadas `text` que receberam conteúdo semântico (string ou
+   * `{ content }`, inclusive igual ao original — o precedente do `bakeLayers`). É a fonte do reflow; `{ fileUrl }`
+   * não entra. No legado o render mantém o cálculo de sempre.
+   */
+  changedTextIds?: string[]
 }
 
 function aplicarSemantico<T extends CamadaAplicavel>(camada: T, valor: ValorSemantico): T {
@@ -70,13 +76,13 @@ export function aplicarValoresDoPost<T extends CamadaAplicavel>(
   const r = resolverValoresSemanticos(camadas as unknown as Layer[], slotValues)
   if (r.erros.length > 0) return { camadas, semantico: true, erros: r.erros, avisos: [...avisos, ...r.avisos] }
 
-  return {
-    camadas: camadas.map((c, i) => {
-      const resolvido = r.valores.get(i)
-      return resolvido ? aplicarSemantico(c, resolvido.valor) : aplicarSlotNaCamada(c, slotValues)
-    }),
-    semantico: true,
-    erros: [],
-    avisos: [...avisos, ...r.avisos],
-  }
+  const changedTextIds: string[] = []
+  const aplicadas = camadas.map((c, i) => {
+    const resolvido = r.valores.get(i)
+    if (!resolvido) return aplicarSlotNaCamada(c, slotValues)
+    const v = resolvido.valor
+    if ((c as { type?: unknown }).type === 'text' && (typeof v === 'string' || v.content !== undefined) && c.id) changedTextIds.push(c.id)
+    return aplicarSemantico(c, v)
+  })
+  return { camadas: aplicadas, semantico: true, erros: [], avisos: [...avisos, ...r.avisos], changedTextIds }
 }

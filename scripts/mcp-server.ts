@@ -1309,6 +1309,13 @@ toolEstrita(
       })
       if (!post) return { content: [{ type: 'text' as const, text: 'Error: Post not found' }], isError: true }
       if (!post.pageId) return { content: [{ type: 'text' as const, text: 'Error: Post has no pageId (not template-based)' }], isError: true }
+      // B1d (checkpoint d): este é um SEGUNDO renderer, com aplicador próprio (só o legado). Post com o contrato
+      // semântico novo (_slots/_papeis) não passa por ele — seria desenhado ignorando o contrato. Recusa antes
+      // de qualquer escrita; o caminho é o render canônico (cron render-stories / renderPostArt).
+      const { temContratoSemantico } = await import('../src/lib/posts/copy-segue-a-pagina')
+      if (temContratoSemantico(post.slotValues)) {
+        return { content: [{ type: 'text' as const, text: 'Error: este post usa o contrato semântico (_slots/_papeis) e só é renderizado pelo pipeline canônico (cron render-stories). Para renderizar de novo, volte o post para PENDING (update-post com o pedido) e deixe o cron renderizar. Nada foi alterado.' }], isError: true }
+      }
       // Post de vídeo nunca é redesenhado como imagem — nem com a mídia limpa.
       const { postDeVideo, MOTIVO_VIDEO_REMOVIDO } = await import('../src/lib/posts/post-de-video')
       if (postDeVideo(post)) {

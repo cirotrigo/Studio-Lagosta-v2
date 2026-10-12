@@ -18,6 +18,7 @@ import { ensurePostGeneration } from './ensure-post-generation'
 import { comoCopiaDaPagina, slotValuesSeguindo } from './copy-segue-a-pagina'
 import { renderDaPaginaCobreAMidia } from './render-da-pagina'
 import { MOTIVO_VIDEO_REMOVIDO, postDeVideo } from './post-de-video'
+import { ErroRenderSemantico } from './erro-render-semantico'
 import { RenderStatus, type Prisma } from '../../../prisma/generated/client'
 
 /**
@@ -29,7 +30,7 @@ import { RenderStatus, type Prisma } from '../../../prisma/generated/client'
 export interface RenderPostArtResult {
   ok: boolean
   url?: string
-  motivo?: 'sem-pagina' | 'midia-propria' | 'video-removido' | 'ocupado' | 'invalidado' | 'falhou'
+  motivo?: 'sem-pagina' | 'midia-propria' | 'video-removido' | 'ocupado' | 'invalidado' | 'falhou' | 'falha-semantica'
   erro?: string
 }
 
@@ -174,8 +175,26 @@ export async function renderPostArt(post: RenderablePost): Promise<RenderPostArt
 
     return { ok: true, url: result.url }
   } catch (error) {
-    const erro = error instanceof Error ? error.message : 'Unknown error'
     const newAttempts = post.renderAttempts + 1
+
+    /**
+     * B1d (checkpoint d): o contrato semântico não casa com a página no momento do render. É DETERMINÍSTICO —
+     * repetir dá o mesmo resultado —, então é terminal já nesta tentativa: RENDER_FAILED, sem backoff, com o
+     * envelope seguro (código e erros estruturados, nunca o texto pedido) em renderError. Nada foi desenhado
+     * nem subido: a recusa acontece antes. Erros comuns seguem o retry de sempre, logo abaixo.
+     */
+    if (error instanceof ErroRenderSemantico) {
+      const envelope = error.paraRenderError()
+      const terminal = await db.socialPost.updateMany({
+        where: { id: post.id, renderStatus: RenderStatus.RENDERING },
+        data: { renderStatus: RenderStatus.RENDER_FAILED, renderAttempts: newAttempts, renderError: envelope, nextRenderAt: null },
+      })
+      // A linha saiu de RENDERING durante o voo (invalidada): a fila nova vale, não esta falha.
+      if (terminal.count === 0) return { ok: false, motivo: 'invalidado' }
+      return { ok: false, motivo: 'falha-semantica', erro: envelope }
+    }
+
+    const erro = error instanceof Error ? error.message : 'Unknown error'
 
     if (newAttempts >= 3) {
       await db.socialPost.updateMany({

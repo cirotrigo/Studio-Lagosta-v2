@@ -128,3 +128,24 @@ describe('com contrato novo: valida, resolve uma vez, aplica por índice no arra
     })
   })
 })
+
+describe('checkpoint d: o helper diz quais camadas de TEXTO receberam conteúdo semântico (fonte do reflow)', () => {
+  const camadas = [
+    texto('a', { metadata: { slot: { id: 'sa' } } }),
+    texto('b', { metadata: { slot: { id: 'sb' } } }),
+    { id: 'i', name: 'Foto', type: 'image', fileUrl: 'antiga', visible: true, metadata: { slot: { id: 'f' } } },
+  ]
+
+  it('string e { content } em text entram; { fileUrl } em imagem não; conteúdo igual ao original também entra (precedente do bakeLayers)', () => {
+    const r = aplicarValoresDoPost(camadas, { _slots: { sa: 'Novo', sb: { content: 'modelo b' }, f: { fileUrl: 'nova' } } })
+    expect(r.changedTextIds).toEqual(['a', 'b'])
+  })
+
+  it('legado: o campo não aparece (o render mantém o cálculo de hoje)', () => {
+    expect('changedTextIds' in aplicarValoresDoPost(camadas, { a: 'X' })).toBe(false)
+  })
+
+  it('com erro: o campo não aparece', () => {
+    expect('changedTextIds' in aplicarValoresDoPost(camadas, { _slots: { inexistente: 'X' } })).toBe(false)
+  })
+})

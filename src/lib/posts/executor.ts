@@ -14,6 +14,7 @@ import { LaterNotFoundError } from '@/lib/later/errors'
 import { NOTIFY_AFTER_ATTEMPT, notifyPublishFailure } from './failure-handler'
 import { FREEZE_WINDOW_MS } from './freeze-window'
 import { renderPostArt } from './render-post-art'
+import { mensagensDaFalhaDeArte } from './erro-render-semantico'
 import { MOTIVO_VIDEO_REMOVIDO, falharPostDeVideoSemMidia, postDeVideo } from './post-de-video'
 
 export class PostExecutor {
@@ -286,6 +287,12 @@ export class PostExecutor {
                 // A mídia do post é vídeo (ou carrossel): não há o que
                 // renderizar, e ela segue para a entrega como está.
                 post.renderStatus = RenderStatus.NOT_NEEDED
+              } else if (render.motivo === 'falha-semantica') {
+                // B1d (checkpoint d): o contrato semântico não casa mais com a página — terminal, sem
+                // tentar de novo. Segue para o ramo RENDER_FAILED logo abaixo, que avisa que a arte precisa de
+                // correção (sem falar em "3 tentativas").
+                post.renderStatus = RenderStatus.RENDER_FAILED
+                post.renderError = render.erro ?? null
               } else if (render.motivo === 'falhou') {
                 // Vencido e sem arte é falha de publicação, não silêncio.
                 if (isOverdue) {
@@ -309,12 +316,14 @@ export class PostExecutor {
             }
           }
           if (post.renderStatus === RenderStatus.RENDER_FAILED) {
-            console.log(`❌ Post ${post.id} — render failed after 3 attempts, marking FAILED`)
+            // A recusa semântica (B1d, checkpoint d) não é "3 tentativas": a arte precisa de correção.
+            const falha = mensagensDaFalhaDeArte(post.renderError)
+            console.log(`❌ Post ${post.id} — ${falha.erroDoPost}, marking FAILED`)
             await db.socialPost.update({
               where: { id: post.id },
               data: {
                 status: PostStatus.FAILED,
-                errorMessage: 'Story image rendering failed after 3 attempts',
+                errorMessage: falha.erroDoPost,
                 failedAt: new Date(),
               },
             })
@@ -322,11 +331,7 @@ export class PostExecutor {
             // não muda nada. Avisa a equipe — pela mesma trava de 15 min, para
             // não emendar num aviso que o render de última hora acabou de
             // mandar sobre este mesmo post.
-            await this.registrarFalhaDeArte(
-              post.id,
-              'Story image rendering failed after 3 attempts',
-              'Não foi possível gerar a arte do story depois de 3 tentativas'
-            )
+            await this.registrarFalhaDeArte(post.id, falha.log, falha.aviso)
             failureCount++
             continue
           }
