@@ -156,7 +156,12 @@ export function validarEntradaSemantica(slotValues: Record<string, unknown>): Er
   return ENTRADAS.flatMap(({ campo, tipo }) => (fornecido(slotValues[campo]) ? estruturaDoCampo(campo, tipo, slotValues[campo]).erros : []))
 }
 
-const TIPOS_DE_TEXTO = new Set(['text', 'rich-text'])
+/**
+ * Os tipos em que o contrato NOVO escreve `content`. Rich-text fica FORA até a issue #209 (quarentena): trocar o
+ * `content` sem reconstruir os trechos e estilos deixa a peça difícil de editar depois. O legado (layerId/nome
+ * direto) não passa por aqui e continua como sempre.
+ */
+const TIPOS_DE_TEXTO = new Set(['text'])
 
 function efeitoPedido(v: ValorSemantico): EfeitoPedido {
   if (typeof v === 'string') return 'content'
@@ -164,7 +169,7 @@ function efeitoPedido(v: ValorSemantico): EfeitoPedido {
   return v.content !== undefined ? 'content' : 'fileUrl'
 }
 
-/** O tipo desenha o efeito? content → texto/rich-text; fileUrl → imagem; os dois juntos → nenhum, por ora. */
+/** O tipo recebe o efeito pelo contrato novo? content → texto (rich-text em quarentena, #209); fileUrl → imagem; os dois juntos → nenhum, por ora. */
 function tipoDesenha(efeito: EfeitoPedido, tipo: unknown): boolean {
   if (efeito === 'content') return typeof tipo === 'string' && TIPOS_DE_TEXTO.has(tipo)
   if (efeito === 'fileUrl') return tipo === 'image'

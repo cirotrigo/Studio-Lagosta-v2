@@ -251,13 +251,15 @@ describe('só tipos cujo valor o render desenha são prometidos (codex review do
     }
   })
 
-  it('texto, rich-text e imagem com slot: layerId e slotId prometidos', () => {
+  it('texto e imagem com slot: layerId e slotId prometidos; rich-text em quarentena (#209): descrito, sem promessa', () => {
     const r = analisarSlotFields([
       texto('t1', 'T', 'a', { slot: { id: 's1' } }),
       { id: 'rt-1', name: 'R', type: 'rich-text', content: 'b', metadata: { slot: { id: 's2' } } },
       { id: 'img-1', name: 'I', type: 'image', metadata: { slot: { id: 's3' } } },
     ])
-    expect(r.slotFields.map((f) => f.semantic.addressableBy)).toEqual([['layerId', 'slotId'], ['layerId', 'slotId'], ['layerId', 'slotId']])
+    expect(r.slotFields.map((f) => f.semantic.addressableBy)).toEqual([['layerId', 'slotId'], [], ['layerId', 'slotId']])
+    expect(r.slotFields[1].semantic.slot).toEqual({ status: 'declared', id: 's2' })
+    expect(r.slotFields[1].semantic.problems).toContainEqual({ code: 'RICH_TEXT_NOT_SUPPORTED' })
   })
 })
 

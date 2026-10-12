@@ -285,8 +285,13 @@ describe('B1c — VALOR_INCOMPATIVEL_COM_CAMADA: o efeito pedido tem de ser dese
   ]
   const erroDe = (slotValues: Record<string, unknown>) => resolverValoresSemanticos(misto, slotValues).erros
 
-  it('string e { content } em texto e rich-text: ok; { fileUrl } em imagem: ok', () => {
-    expect(erroDe({ _slots: { titulo: 'X', rico: { content: 'Y' }, foto: { fileUrl: 'https://x' } } })).toEqual([])
+  it('string e { content } em texto: ok; { fileUrl } em imagem: ok', () => {
+    expect(erroDe({ _slots: { titulo: 'X', foto: { fileUrl: 'https://x' } } })).toEqual([])
+    expect(erroDe({ _slots: { titulo: { content: 'Y' } } })).toEqual([])
+  })
+
+  it('rich-text em quarentena (#209): content pelo contrato novo é incompatível', () => {
+    expect(erroDe({ _slots: { rico: { content: 'Y' } } })[0]).toMatchObject({ codigo: 'VALOR_INCOMPATIVEL_COM_CAMADA', layerId: 'r1', type: 'rich-text', efeito: 'content' })
   })
 
   it('{ fileUrl } em texto → incompatível, com o efeito e sem a URL', () => {

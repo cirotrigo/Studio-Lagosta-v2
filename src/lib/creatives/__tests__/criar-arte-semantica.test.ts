@@ -479,3 +479,18 @@ describe('opção C (#208) na CRIAÇÃO: fileUrl semântico no primeiro alvo nã
     expect(r.imageApplied).toBe(true)
   })
 })
+
+describe('quarentena do rich-text (#209) na CRIAÇÃO', () => {
+  it('_slots em rich-text: VALOR_INCOMPATIVEL_COM_CAMADA 422 antes de qualquer efeito', async () => {
+    estado.paginas.set('p-rq', pagina('p-rq', [{ id: 'rt', name: 'Rico', type: 'rich-text', content: 'rico', visible: true, metadata: { slot: { id: 'rico' } } }]))
+    const e = await falha(createArteRapida({ projectId: 8, sourcePageId: 'p-rq', slotValues: { _slots: { rico: 'Novo' } } }))
+    expect(e).toMatchObject({ code: 'VALOR_INCOMPATIVEL_COM_CAMADA', status: 422 })
+    semEfeito()
+  })
+
+  it('legado por layerId em rich-text: aplicado como sempre', async () => {
+    estado.paginas.set('p-rl', pagina('p-rl', [{ id: 'rt', name: 'Rico', type: 'rich-text', content: 'rico', visible: true }]))
+    await createArteRapida({ projectId: 8, sourcePageId: 'p-rl', slotValues: { rt: 'Novo' } })
+    expect(conteudo('rt').content).toBe('Novo')
+  })
+})

@@ -18,7 +18,7 @@
  * `resolverAlvo({ layerId })` aceita (id repetido aplicaria o valor nas duas
  * camadas) e nenhuma OUTRA camada tem esse id como nome (pelo `id ?? nome` do
  * legado, a chave também cairia nela) e o tipo da camada desenha o valor
- * preenchido (texto, rich-text, imagem — forma, gradiente e logo não), e a
+ * preenchido (texto e imagem; rich-text em quarentena até a #209 — forma, gradiente e logo não), e a
  * camada não está oculta no modelo (o preenchimento não a torna visível), e a
  * página não pode ser trocada pela criação (família "(3 layouts)": com foto,
  * `createArteRapida` pode assar sobre uma irmã, onde o layerId pode não existir;
@@ -75,6 +75,11 @@ export type ProblemaDoCampo =
    * `semanticIssues`).
    */
   | { code: 'PAGE_MAY_CHANGE_BY_LAYOUT' }
+  /**
+   * Rich-text em quarentena até a issue #209: descrito (slot, papel), mas não oferecido ao agente como campo
+   * editável — o contrato novo recusa escrevê-lo (VALOR_INCOMPATIVEL_COM_CAMADA) e o legado não é prometido.
+   */
+  | { code: 'RICH_TEXT_NOT_SUPPORTED' }
   /**
    * Uma chave reservada colide: outra camada usa `_slots`/`_papeis` como id ou nome (a escrita recusa a chave inteira,
    * CHAVE_RESERVADA_COLIDE_COM_LAYER), ou o id/nome DESTA camada é uma chave reservada (nenhum endereço é seguro).
@@ -138,7 +143,8 @@ const entraPeloLegado = (l: any) => l?.type === 'text' || (l?.type === 'image' &
  * Tipos cujo valor preenchido o render DESENHA: texto e rich-text (`content`) e
  * imagem (`fileUrl`). Forma, gradiente, ícone e afins não usam nenhum dos dois;
  * a logo é desenhada pelo `logoId`. Nesses, o campo é descrito, mas não
- * prometido (codex review do B1b).
+ * prometido (codex review do B1b). Rich-text está aqui porque o render o desenha, mas fica fora de
+ * `addressableBy` pela quarentena da #209 (RICH_TEXT_NOT_SUPPORTED).
  */
 const TIPOS_PREENCHIVEIS = new Set(['text', 'rich-text', 'image'])
 const TIPOS_DE_TEXTO = new Set(['text', 'rich-text'])
@@ -238,6 +244,8 @@ export function analisarSlotFields(raw: unknown, contexto: ContextoDosCampos = {
     const preenchivel = TIPOS_PREENCHIVEIS.has(l.type)
     if (!preenchivel) problems.push({ code: 'TYPE_NOT_FILLABLE' })
     const oculta = l.visible === false
+    const richTextEmQuarentena = l.type === 'rich-text'
+    if (richTextEmQuarentena) problems.push({ code: 'RICH_TEXT_NOT_SUPPORTED' })
     if (oculta) problems.push({ code: 'LAYER_HIDDEN' })
     const podeTrocar = contexto.paginaPodeSerSubstituida === true
     if (podeTrocar) problems.push({ code: 'PAGE_MAY_CHANGE_BY_LAYOUT' })
@@ -256,7 +264,7 @@ export function analisarSlotFields(raw: unknown, contexto: ContextoDosCampos = {
     if (temSlot && slotsColidem && reservadaPropria !== '_slots') problems.push({ code: 'RESERVED_KEY_COLLISION', key: '_slots' })
     if (temPapelDeclarado && papeisColidem && reservadaPropria !== '_papeis') problems.push({ code: 'RESERVED_KEY_COLLISION', key: '_papeis' })
     const addressableBy: SemanticaDoCampo['addressableBy'] = []
-    if (preenchivel && !oculta && !podeTrocar && !reservadaPropria) {
+    if (preenchivel && !oculta && !podeTrocar && !reservadaPropria && !richTextEmQuarentena) {
       if (sombras.length === 0 && eEsta(resolverAlvo(camadas, { layerId: d.layerId }))) addressableBy.push('layerId')
       if (d.slot.status === 'valido' && !slotsColidem && !chaveVisualReservada && eEsta(resolverAlvo(camadas, { slotId: d.slot.slotId }))) addressableBy.push('slotId')
       if (temPapelDeclarado && !papeisColidem && !chaveVisualReservada && eEsta(resolverAlvo(camadas, { semanticRole: p.papel }))) addressableBy.push('semanticRole')
