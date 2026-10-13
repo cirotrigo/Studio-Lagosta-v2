@@ -17,8 +17,11 @@ const banco = vi.hoisted(() => ({
   paginas: [] as Array<Record<string, any>>,
 }))
 
-vi.mock('@/lib/db', () => ({
-  db: {
+vi.mock('@/lib/db', () => {
+  const db: any = {
+    // B1d (checkpoint e): a troca de arte decide com a linha travada, na transação da escrita.
+    $transaction: async (fazer: (tx: unknown) => Promise<unknown>) => fazer(db),
+    $queryRaw: async () => [{ slotValues: banco.post?.slotValues ?? null }],
     socialPost: {
       findUnique: async () => structuredClone(banco.post),
       findMany: async () => [structuredClone(banco.post)],
@@ -39,8 +42,9 @@ vi.mock('@/lib/db', () => ({
     },
     knowledgeBaseEntry: { findMany: async () => [] },
     postLog: { create: async () => ({}) },
-  },
-}))
+  }
+  return { db }
+})
 vi.mock('@prisma/client', async () => await import('../../../../../prisma/generated/client'))
 vi.mock('@/lib/creatives/ingerir-midia', () => ({ ingerirMidiaExterna: async (urls: string[]) => ({ urls, falhas: [] }), ehHostProprio: () => true }))
 vi.mock('@/lib/creatives/persist', () => ({ getPublicAppUrl: () => 'https://studio.test', renderPageAndRegister: vi.fn() }))

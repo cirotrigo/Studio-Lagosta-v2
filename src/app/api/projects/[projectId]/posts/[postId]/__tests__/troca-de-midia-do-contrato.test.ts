@@ -8,7 +8,7 @@
 import { NextRequest } from 'next/server'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const banco = vi.hoisted(() => ({ post: null as any, sql: [] as string[], atualizado: null as any, zernio: [] as unknown[] }))
+const banco = vi.hoisted(() => ({ post: null as any, travada: undefined as any, sql: [] as string[], atualizado: null as any, zernio: [] as unknown[] }))
 
 vi.mock('@clerk/nextjs/server', () => ({ auth: async () => ({ userId: 'clerk-1', orgId: null }) }))
 vi.mock('@/lib/projects/access', () => ({ hasProjectReadAccess: () => true, hasProjectWriteAccess: () => true, withProjectOwner: async (p: unknown) => p }))
@@ -29,7 +29,8 @@ vi.mock('@/lib/db', () => {
     },
     $queryRaw: async (partes: TemplateStringsArray) => {
       banco.sql.push(partes.join('?'))
-      return [{ slotValues: banco.post.slotValues }]
+      const linha = banco.travada ?? banco.post
+      return [{ slotValues: linha.slotValues, mediaUrls: linha.mediaUrls }]
     },
     $transaction: async (fazer: (tx: unknown) => Promise<unknown>) => fazer(db),
   }
@@ -43,6 +44,7 @@ const put = (body: Record<string, unknown>) =>
 
 beforeEach(() => {
   banco.sql = []
+  banco.travada = undefined
   banco.atualizado = null
   banco.zernio = []
   banco.post = {
@@ -72,6 +74,14 @@ describe('PUT: a mídia de um post semântico não é trocada', () => {
     const r = await put({ caption: 'nova legenda', mediaUrls: ['https://blob.test/provada.png'] })
     expect(r.status).toBe(200)
     expect(banco.atualizado).toMatchObject({ caption: 'nova legenda' })
+  })
+
+  it('corrida (Codex, rodada 2): leu [] mas o render confirmou a mídia provada antes da trava — mandar [] é troca, e é recusado', async () => {
+    banco.post.mediaUrls = []
+    banco.travada = { ...banco.post, mediaUrls: ['https://blob.test/provada.png'] }
+    const r = await put({ caption: 'x', mediaUrls: [] })
+    expect(r.status).toBe(422)
+    expect(banco.atualizado).toBeNull()
   })
 
   it('legado: troca de mídia como sempre', async () => {

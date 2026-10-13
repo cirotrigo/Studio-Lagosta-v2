@@ -263,13 +263,15 @@ export async function PUT(
      * B1d (checkpoint e): a mídia de um post com o contrato semântico é a que o render canônico produziu e PROVOU.
      * Trocá-la por outra — inclusive depois da entrega, quando este PUT sincroniza a mídia nova com o Zernio —
      * publicaria e faria a agenda ler uma mídia sem prova. A decisão vale para a linha que será gravada: travada
-     * com FOR UPDATE na mesma transação. Sem troca de mídia, ou no legado, a escrita de sempre.
+     * com FOR UPDATE na mesma transação, e a mídia pedida é comparada com a da linha TRAVADA (não com a leitura lá
+     * de cima: o render pode ter confirmado a mídia provada no meio). Sem mídia no body: a escrita de sempre.
      */
-    const trocaMidia = Array.isArray(mediaUrls) && !areStringArraysEqual(mediaUrls, existingPost.mediaUrls)
-    const updatedPost = trocaMidia
+    const updatedPost = Array.isArray(mediaUrls)
       ? await db.$transaction(async (tx) => {
-          const [linha] = await tx.$queryRaw<Array<{ slotValues: unknown }>>`SELECT "slotValues" FROM "SocialPost" WHERE "id" = ${postId} FOR UPDATE`
-          if (temContratoSemantico(linha?.slotValues)) throw new ErroAdmissaoSemantica('CONTRATO_COM_MIDIA_PRONTA')
+          const [linha] = await tx.$queryRaw<Array<{ slotValues: unknown; mediaUrls: string[] }>>`SELECT "slotValues", "mediaUrls" FROM "SocialPost" WHERE "id" = ${postId} FOR UPDATE`
+          if (temContratoSemantico(linha?.slotValues) && !areStringArraysEqual(mediaUrls, linha?.mediaUrls)) {
+            throw new ErroAdmissaoSemantica('CONTRATO_COM_MIDIA_PRONTA')
+          }
           return atualizar(tx)
         })
       : await atualizar(db)
