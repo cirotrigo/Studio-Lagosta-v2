@@ -31,6 +31,7 @@ import { ChevronDown, RefreshCw, Star, Wand2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useModelosDoProjeto, type ModeloDoProjeto } from '@/hooks/use-modelos-do-projeto'
 import { useArtesDeReferencia } from '@/hooks/use-artes-de-referencia'
+import { useCobrancaLigada } from '@/hooks/use-credits'
 import type { ViaDoItem } from '@/lib/planos/vocabulario'
 
 /** O que o card decide quando alguém mexe no seletor. */
@@ -93,6 +94,8 @@ export function BancadaEscolhaDeModelo({
   desabilitado?: boolean
 }) {
   const [aberto, setAberto] = React.useState(false)
+  // Modo interno: as opções não falam em créditos.
+  const cobrancaLigada = useCobrancaLigada()
   // As consultas só rodam quando é preciso: a grade aberta, ou uma escolha já
   // feita cujo NOME/estado a linha resumida precisa mostrar. Uma query por
   // projeto (cacheada), não por card.
@@ -126,7 +129,7 @@ export function BancadaEscolhaDeModelo({
   const resumo =
     via === 'template'
       ? `modelo do editor — ${sourcePageId ? (modeloEscolhido?.name ?? 'modelo escolhido') : 'rotação automática'} · sem custo`
-      : `IA com referência — ${refGenerationId ? 'arte escolhida' : 'rodízio automático'} · 25 créditos`
+      : `IA com referência — ${refGenerationId ? 'arte escolhida' : 'rodízio automático'}${cobrancaLigada ? ' · 25 créditos' : ''}`
 
   return (
     <div className="w-full">
@@ -175,7 +178,7 @@ export function BancadaEscolhaDeModelo({
                   : 'border-border/60 text-muted-foreground hover:border-primary/50',
               )}
             >
-              Arte de referência · IA, 25 créditos
+              Arte de referência · IA{cobrancaLigada && ', 25 créditos'}
             </button>
           </div>
 
@@ -233,7 +236,7 @@ export function BancadaEscolhaDeModelo({
           {via === 'ia' && (
             <>
               <p className="text-[11px] text-muted-foreground">
-                A IA gera a peça seguindo a arte escolhida (25 créditos). Sem escolha, o rodízio
+                A IA gera a peça seguindo a arte escolhida{cobrancaLigada && ' (25 créditos)'}. Sem escolha, o rodízio
                 manda a menos usada — a grade está nessa ordem, com a próxima marcada.
               </p>
               <div className="flex flex-wrap gap-2">
