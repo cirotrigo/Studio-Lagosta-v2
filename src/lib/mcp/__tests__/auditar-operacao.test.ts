@@ -13,6 +13,7 @@ const m = vi.hoisted(() => ({
   posts: [] as any[],
   grades: [] as any[],
   templates: [] as Array<{ projectId: number }>,
+  semHorario: [] as Array<{ projectId: number; _count: { _all: number } }>,
   chamadas: [] as string[],
   visiveis: vi.fn(),
   registrarSugestoes: vi.fn(),
@@ -48,6 +49,9 @@ vi.mock('@/lib/db', () => ({
             (where.status ? p.status === where.status : true)
         )
       ),
+      groupBy: leitura('socialPost.groupBy', ({ where }) =>
+        m.semHorario.filter((g) => noEscopo(where, g.projectId))
+      ),
     },
     knowledgeBaseEntry: {
       findMany: leitura('knowledgeBaseEntry', ({ where }) =>
@@ -82,6 +86,7 @@ function carteira(n: number) {
     content: 'SLOT 1 — 10h, todos os dias',
   }));
   m.templates = m.projetos.map((p) => ({ projectId: p.id }));
+  m.semHorario = [];
   m.posts = m.projetos.flatMap((p) => [
     {
       id: `a${p.id}`,
@@ -165,7 +170,7 @@ describe('auditar-operacao', () => {
     carteira(12);
     await auditar({ kind: 'service' });
     expect(m.chamadas.length).toBe(comUm.length);
-    expect(m.chamadas.length).toBeLessThanOrEqual(6);
+    expect(m.chamadas.length).toBeLessThanOrEqual(7);
   });
 
   it('saída por cliente: estruturada e compacta', async () => {
@@ -177,6 +182,7 @@ describe('auditar-operacao', () => {
     expect(Object.keys(c).sort()).toEqual(
       [
         'acao',
+        'rascunhosSemHorario',
         'acoes',
         'agendados',
         'amanha',
@@ -198,5 +204,17 @@ describe('auditar-operacao', () => {
     expect(c.depoisDeAmanha.estado).toBe('falta');
     expect(c.diasAdiantados).toBe(1);
     expect(c.acao.codigo).toBe('COMPOR');
+  });
+
+  it('rascunho sem horário segura o COMPOR atrás da conferência', async () => {
+    carteira(1);
+    m.semHorario = [{ projectId: 1, _count: { _all: 2 } }];
+    m.visiveis.mockResolvedValue(null);
+    const [c] = (await auditar({ kind: 'service' })).clientes;
+    expect(c.rascunhosSemHorario).toBe(2);
+    expect(c.acoes.map((a: any) => a.codigo)).toEqual([
+      'CONSERTO_PENDENTE',
+      'COMPOR',
+    ]);
   });
 });

@@ -563,6 +563,11 @@ export interface ClienteAuditado extends CoberturaDoProjeto {
   projectId: number;
   nome: string;
   assinatura: boolean;
+  /**
+   * Rascunhos SEM horário. Não ocupam slot nenhum, mas podem ter sido feitos
+   * para um dos horários vazios. Enquanto existirem, compor fica atrás da conferência.
+   */
+  rascunhosSemHorario: number;
   /** A mais urgente: o que o Dot faz primeiro neste cliente. */
   acao: AcaoRecomendada;
   /** Todas as que valem, da mais urgente para a menos. A primeira é `acao`. */
@@ -576,7 +581,8 @@ export interface ClienteAuditado extends CoberturaDoProjeto {
  */
 export function acoesDoCliente(
   c: CoberturaDoProjeto,
-  assinatura: boolean
+  assinatura: boolean,
+  rascunhosSemHorario = 0
 ): AcaoRecomendada[] {
   const acoes: AcaoRecomendada[] = [];
   if (c.falhas.length) {
@@ -594,6 +600,14 @@ export function acoesDoCliente(
     return acoes;
   }
   const vazios = c.buracos.filter((b) => b.estado === 'vazio');
+  if (vazios.length && assinatura && rascunhosSemHorario > 0) {
+    // Um rascunho sem horário não ocupa slot, mas pode ser a peça de um dos
+    // vazios: compor antes de conferir duplicaria (revisão do Codex, H2).
+    acoes.push({
+      codigo: 'CONSERTO_PENDENTE',
+      motivo: `${rascunhosSemHorario} rascunho(s) sem horário — confira se algum é para os horários vazios antes de compor`,
+    });
+  }
   if (vazios.length) {
     acoes.push(
       assinatura
@@ -685,6 +699,8 @@ export function auditarCarteira(args: {
   entradasDaGrade: Array<{ projectId: number; title: string; content: string }>;
   campanhas: CampanhaDaBase[];
   comAssinatura: ReadonlySet<number>;
+  /** projectId → quantos rascunhos sem horário. */
+  rascunhosSemHorario?: ReadonlyMap<number, number>;
   agora: Date;
 }): AuditoriaDaCarteira {
   const { agora } = args;
@@ -725,12 +741,14 @@ export function auditarCarteira(args: {
       agora,
     });
     const assinatura = args.comAssinatura.has(projeto.id);
-    const acoes = acoesDoCliente(cobertura, assinatura);
+    const semHorario = args.rascunhosSemHorario?.get(projeto.id) ?? 0;
+    const acoes = acoesDoCliente(cobertura, assinatura, semHorario);
     return {
       projectId: projeto.id,
       nome: projeto.name,
       ...cobertura,
       assinatura,
+      rascunhosSemHorario: semHorario,
       acao: acoes[0],
       acoes,
     };

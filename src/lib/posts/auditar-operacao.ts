@@ -67,82 +67,95 @@ export async function auditarOperacao(args: {
     TOLERANCIA_SLOT_MIN
   );
 
-  const [historico, posts, entradasDaGrade, assinaturas] = await Promise.all([
-    // A mesma população da cadência de `sugerirPosts`: só POSTED, sem PONTUAL.
-    db.socialPost.findMany({
-      where: {
-        projectId: { in: ids },
-        status: 'POSTED',
-        scheduledDatetime: { gte: inicioHistorico, lte: agora },
-        learningScope: { not: 'PONTUAL' },
-      },
-      select: {
-        projectId: true,
-        scheduledDatetime: true,
-        origem: true,
-        learningScope: true,
-        campaignId: true,
-        postType: true,
-      },
-    }),
-    // Todas as situações, FAILED inclusive: falha não cobre, mas ocupa o
-    // horário (não se compõe por cima) e é relatada.
-    db.socialPost.findMany({
-      where: {
-        projectId: { in: ids },
-        scheduledDatetime: { gte: consulta.inicio, lte: consulta.fim },
-      },
-      select: {
-        id: true,
-        projectId: true,
-        scheduledDatetime: true,
-        postType: true,
-        status: true,
-        mediaUrls: true,
-        pageId: true,
-        renderStatus: true,
-        renderError: true,
-        errorMessage: true,
-        verificationStatus: true,
-        campaignId: true,
-      },
-      orderBy: { scheduledDatetime: 'asc' },
-    }),
-    // O mesmo filtro da grade em `sugerirPosts`. Falha aqui degrada para a cadência, como lá.
-    db.knowledgeBaseEntry
-      .findMany({
+  const [historico, posts, entradasDaGrade, assinaturas, semHorario] =
+    await Promise.all([
+      // A mesma população da cadência de `sugerirPosts`: só POSTED, sem PONTUAL.
+      db.socialPost.findMany({
         where: {
           projectId: { in: ids },
-          status: 'ACTIVE',
-          category: { in: ['POLITICAS', 'HORARIOS'] },
-          OR: [
-            { title: { contains: 'Padrões de Postagem', mode: 'insensitive' } },
-            { tags: { hasSome: ['grade', 'cadencia'] } },
-          ],
+          status: 'POSTED',
+          scheduledDatetime: { gte: inicioHistorico, lte: agora },
+          learningScope: { not: 'PONTUAL' },
         },
-        select: { projectId: true, title: true, content: true },
-      })
-      .catch((erro: unknown) => {
-        console.error(
-          '[auditar-operacao] não deu para ler as grades da base (seguindo pela cadência):',
-          erro
-        );
-        return [] as Array<{
-          projectId: number;
-          title: string;
-          content: string;
-        }>;
+        select: {
+          projectId: true,
+          scheduledDatetime: true,
+          origem: true,
+          learningScope: true,
+          campaignId: true,
+          postType: true,
+        },
       }),
-    // A mesma regra de `projetoTemAssinatura`: o template "Assinatura" com ao menos uma página.
-    db.template.findMany({
-      where: {
-        projectId: { in: ids },
-        name: NOME_DO_TEMPLATE_DE_ASSINATURA,
-        Page: { some: {} },
-      },
-      select: { projectId: true },
-    }),
-  ]);
+      // Todas as situações, FAILED inclusive: falha não cobre, mas ocupa o
+      // horário (não se compõe por cima) e é relatada.
+      db.socialPost.findMany({
+        where: {
+          projectId: { in: ids },
+          scheduledDatetime: { gte: consulta.inicio, lte: consulta.fim },
+        },
+        select: {
+          id: true,
+          projectId: true,
+          scheduledDatetime: true,
+          postType: true,
+          status: true,
+          mediaUrls: true,
+          pageId: true,
+          renderStatus: true,
+          renderError: true,
+          errorMessage: true,
+          verificationStatus: true,
+          campaignId: true,
+        },
+        orderBy: { scheduledDatetime: 'asc' },
+      }),
+      // O mesmo filtro da grade em `sugerirPosts`. Falha aqui degrada para a cadência, como lá.
+      db.knowledgeBaseEntry
+        .findMany({
+          where: {
+            projectId: { in: ids },
+            status: 'ACTIVE',
+            category: { in: ['POLITICAS', 'HORARIOS'] },
+            OR: [
+              {
+                title: { contains: 'Padrões de Postagem', mode: 'insensitive' },
+              },
+              { tags: { hasSome: ['grade', 'cadencia'] } },
+            ],
+          },
+          select: { projectId: true, title: true, content: true },
+        })
+        .catch((erro: unknown) => {
+          console.error(
+            '[auditar-operacao] não deu para ler as grades da base (seguindo pela cadência):',
+            erro
+          );
+          return [] as Array<{
+            projectId: number;
+            title: string;
+            content: string;
+          }>;
+        }),
+      // A mesma regra de `projetoTemAssinatura`: o template "Assinatura" com ao menos uma página.
+      db.template.findMany({
+        where: {
+          projectId: { in: ids },
+          name: NOME_DO_TEMPLATE_DE_ASSINATURA,
+          Page: { some: {} },
+        },
+        select: { projectId: true },
+      }),
+      // Rascunho sem horário não ocupa slot, mas pode ser a peça de um vazio.
+      db.socialPost.groupBy({
+        by: ['projectId'],
+        where: {
+          projectId: { in: ids },
+          status: 'DRAFT',
+          scheduledDatetime: null,
+        },
+        _count: { _all: true },
+      }),
+    ]);
 
   // Campanhas citadas pelo histórico (encerrada sai da cadência) e pela janela
   // (vencida não cobre). Leitura defensiva como `campanhasEncerradas`: erro
@@ -184,6 +197,9 @@ export async function auditarOperacao(args: {
     entradasDaGrade,
     campanhas,
     comAssinatura: new Set(assinaturas.map((t) => t.projectId)),
+    rascunhosSemHorario: new Map(
+      semHorario.map((g) => [g.projectId, g._count._all])
+    ),
     agora,
   });
 }
