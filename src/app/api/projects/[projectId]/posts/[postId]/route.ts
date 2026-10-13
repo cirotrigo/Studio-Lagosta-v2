@@ -13,6 +13,8 @@ import { refilarPaginasDoPost } from '@/lib/compositor/pastas'
 import { comTemplateDaPagina } from '@/lib/posts/template-do-post'
 import { postDeVideo } from '@/lib/posts/post-de-video'
 import { estadoDoVideoDosPosts } from '@/lib/video/estado-do-video-do-post'
+import { ErroAdmissaoSemantica } from '@/lib/posts/admitir-pedido-semantico'
+import { temContratoSemantico } from '@/lib/posts/copy-segue-a-pagina'
 
 const areStringArraysEqual = (left?: string[] | null, right?: string[] | null) => {
   const leftValue = left ?? []
@@ -244,18 +246,33 @@ export async function PUT(
     }
 
     // Update post
-    const updatedPost = await db.socialPost.update({
-      where: { id: postId },
-      data: updateData,
-      include: {
-        Generation: true,
-        Project: {
-          select: {
-            laterAccountId: true,
+    const atualizar = (cliente: Pick<typeof db, 'socialPost'>) =>
+      cliente.socialPost.update({
+        where: { id: postId },
+        data: updateData,
+        include: {
+          Generation: true,
+          Project: {
+            select: {
+              laterAccountId: true,
+            },
           },
         },
-      },
-    })
+      })
+    /**
+     * B1d (checkpoint e): a mídia de um post com o contrato semântico é a que o render canônico produziu e PROVOU.
+     * Trocá-la por outra — inclusive depois da entrega, quando este PUT sincroniza a mídia nova com o Zernio —
+     * publicaria e faria a agenda ler uma mídia sem prova. A decisão vale para a linha que será gravada: travada
+     * com FOR UPDATE na mesma transação. Sem troca de mídia, ou no legado, a escrita de sempre.
+     */
+    const trocaMidia = Array.isArray(mediaUrls) && !areStringArraysEqual(mediaUrls, existingPost.mediaUrls)
+    const updatedPost = trocaMidia
+      ? await db.$transaction(async (tx) => {
+          const [linha] = await tx.$queryRaw<Array<{ slotValues: unknown }>>`SELECT "slotValues" FROM "SocialPost" WHERE "id" = ${postId} FOR UPDATE`
+          if (temContratoSemantico(linha?.slotValues)) throw new ErroAdmissaoSemantica('CONTRATO_COM_MIDIA_PRONTA')
+          return atualizar(tx)
+        })
+      : await atualizar(db)
 
     // Remarcou? As páginas da arte seguem para a semana nova — pasta, nome e
     // ordem. Sem isto a pasta da semana e o nome da página passam a mentir a
@@ -469,6 +486,9 @@ export async function PUT(
 
     return NextResponse.json(updatedPost)
   } catch (error) {
+    if (error instanceof ErroAdmissaoSemantica) {
+      return NextResponse.json({ error: error.codigo, message: error.message, erros: error.erros }, { status: 422 })
+    }
     console.error('Error updating post:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }

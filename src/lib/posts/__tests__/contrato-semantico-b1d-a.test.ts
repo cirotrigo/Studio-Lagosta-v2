@@ -155,6 +155,7 @@ describe('H. quem grava `SocialPost.slotValues` (src/ e scripts/)', () => {
     ['validar-camadas-extras', 'validar-contexto-da-semana', 'validar-copy-autoral', 'validar-desfecho-no-agendamento', 'validar-guarda-de-envio-da-prova', 'validar-revisor-da-arte', 'validar-video-na-agenda'].map((n) => [`scripts/${n}.ts`, 'prova no banco de dev: fixtures e leituras']),
   )
   const NAO_ESCREVEM: Record<string, string> = {
+    'src/app/api/projects/[projectId]/posts/[postId]/route.ts': 'PUT: só LÊ slotValues (FOR UPDATE) para recusar troca de mídia do contrato (checkpoint e); o update não grava slotValues',
     'src/lib/posts/scheduler.ts': 'PostScheduler: tipa e repassa slotValues ao createPost do later-scheduler',
     'src/lib/posts/executor.ts': 'lê post.slotValues e o passa ao renderPostArt',
     'src/lib/posts/ensure-post-generation.ts': 'lê post.slotValues e grava em Generation.fieldValues (outra tabela)',
@@ -205,7 +206,15 @@ describe('H. quem grava `SocialPost.slotValues` (src/ e scripts/)', () => {
 
   it('a edição pelo PUT da API e pelo editar-post do MCP remoto não grava slotValues', () => {
     const put = readFileSync(join(process.cwd(), 'src/app/api/projects/[projectId]/posts/[postId]/route.ts'), 'utf8')
-    expect(put).not.toMatch(/\bslotValues\b/)
+    // O que o PUT GRAVA: os campos que ele lê do body e o updateData. slotValues não está em nenhum (checkpoint e: ele
+    // só o LÊ, com FOR UPDATE, para recusar trocar a mídia de um post com o contrato).
+    const corpo = put.slice(put.indexOf('const {\n      postType,'), put.indexOf('} = body'))
+    const dados = put.slice(put.indexOf('const updateData'), put.indexOf('// If changing to IMMEDIATE'))
+    expect(corpo.length).toBeGreaterThan(0)
+    expect(dados.length).toBeGreaterThan(0)
+    expect(corpo).not.toMatch(/\bslotValues\b/)
+    expect(dados).not.toMatch(/\bslotValues\b/)
+    expect(put.match(/\bslotValues\b/g)).toEqual(['slotValues', 'slotValues', 'slotValues']) // o SELECT … FOR UPDATE e a sua leitura
     const agenda = readFileSync(join(process.cwd(), 'src/lib/mcp/catalogo/agenda.ts'), 'utf8')
     const ini = agenda.indexOf("nome: 'editar-post'")
     expect(ini).toBeGreaterThan(-1)
