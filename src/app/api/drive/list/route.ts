@@ -4,9 +4,12 @@ import { z } from 'zod'
 import { googleDriveService } from '@/server/google-drive-service'
 import { assertRateLimit, RateLimitError } from '@/lib/rate-limit'
 import { db } from '@/lib/db'
+import { idsDoDriveNaRotaDoProjeto } from '@/lib/google-drive/escopo'
 import { PermissionError, requireProjectAccess } from '@/lib/permissions'
 import type { DriveFolderType } from '@/types/drive'
 import type { GoogleDriveItem } from '@/types/google-drive'
+
+const naoEncontrado = () => NextResponse.json({ error: 'Não encontrado' }, { status: 404 })
 
 const querySchema = z.object({
   projectId: z.coerce.number().int().positive(),
@@ -121,7 +124,16 @@ export async function GET(req: Request) {
         ? project.googleDriveVideosFolderId ?? project.googleDriveFolderId
         : project.googleDriveImagesFolderId ?? project.googleDriveFolderId
 
-    const effectiveFolderId = folderId ?? defaultFolderId
+    let effectiveFolderId = folderId ?? defaultFolderId
+
+    // Pasta pedida: só sob as pastas deste projeto (admin: Drive inteiro).
+    if (folderId) {
+      const permitidos = await idsDoDriveNaRotaDoProjeto(userId, projectId, [folderId])
+      if (!permitidos) {
+        return naoEncontrado()
+      }
+      effectiveFolderId = permitidos[0]
+    }
 
     if (!effectiveFolderId) {
       return NextResponse.json({
@@ -217,8 +229,9 @@ export async function GET(req: Request) {
 
     return NextResponse.json(payload)
   } catch (error) {
+    // Projeto inexistente, sem acesso e pasta fora do projeto: a mesma resposta.
     if (error instanceof PermissionError) {
-      return NextResponse.json({ error: error.message }, { status: error.status })
+      return naoEncontrado()
     }
 
     if (error instanceof RateLimitError) {

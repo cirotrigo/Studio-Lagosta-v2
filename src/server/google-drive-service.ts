@@ -478,7 +478,8 @@ export class GoogleDriveService {
     return resultados
   }
 
-  async getFolderBreadcrumbs(folderId: string) {
+  /** `parada`: para ao chegar numa dessas pastas (nada acima dela é lido). */
+  async getFolderBreadcrumbs(folderId: string, parada?: ReadonlySet<string>) {
     this.ensureEnabled()
 
     const breadcrumbs: Array<{ id: string; name: string }> = []
@@ -506,6 +507,9 @@ export class GoogleDriveService {
         id: metadata.data.id,
         name: metadata.data.name ?? 'Sem nome',
       })
+      if (parada?.has(metadata.data.id)) {
+        break
+      }
 
       const parentId = metadata.data.parents?.[0]
       if (!parentId || parentId === 'root') {

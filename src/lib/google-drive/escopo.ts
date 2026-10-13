@@ -129,6 +129,12 @@ export async function todosPermitidos(
   raizes: ReadonlySet<string>,
   memo: MemoDoDrive = new Map(),
 ): Promise<string[] | null> {
+  // Formato primeiro: um id inválido recusa o lote antes de qualquer consulta.
+  const invalido = ids.find((id) => !idDoDriveValido(id))
+  if (invalido !== undefined) {
+    recusar('id-invalido', invalido)
+    return null
+  }
   const decisoes = await Promise.all(ids.map((id) => driveItemPermitido(id, raizes, { memo })))
   return decisoes.every((d) => d.permitido)
     ? decisoes.map((d) => (d as { idEfetivo: string }).idEfetivo)
@@ -204,17 +210,19 @@ export async function escopoDoDriveWeb(userId: string): Promise<EscopoDoDrive> {
   return { admin: false, raizes, raizesComNome }
 }
 
-/**
- * Rotas web com projeto: admin passa direto; os demais só com todos os ids
- * sob as pastas DAQUELE projeto. Devolve os ids efetivos ou `null`.
- */
+/** Rotas web com projeto: `null` para admin (Drive inteiro); senão, as pastas DAQUELE projeto. */
+export async function raizesNaRotaDoProjeto(userId: string, projectId: number): Promise<Set<string> | null> {
+  return (await isAdmin(userId)) ? null : raizesDoProjeto(projectId)
+}
+
+/** Rotas web com projeto: os ids efetivos, ou `null` se algum estiver fora das pastas do projeto. */
 export async function idsDoDriveNaRotaDoProjeto(
   userId: string,
   projectId: number,
   ids: readonly unknown[],
 ): Promise<string[] | null> {
-  if (await isAdmin(userId)) return ids as string[]
-  return todosPermitidos(ids, await raizesDoProjeto(projectId))
+  const raizes = await raizesNaRotaDoProjeto(userId, projectId)
+  return raizes ? todosPermitidos(ids, raizes) : (ids as string[])
 }
 
 /**

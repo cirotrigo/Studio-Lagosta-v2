@@ -58,7 +58,9 @@ async function corpo(r: Response) {
   return { status: r.status, body: await r.json() }
 }
 
-const ADVERSARIOS = ['../rootB', '%2e%2e%2frootB', 'root', '', ' rootB', 'a'.repeat(10_000), 'rootA\u0000', "x' in parents or 'rootB"]
+const ADVERSARIOS = ['../rootB', '%2e%2e%2frootB', 'root', '', ' rootB', 'a'.repeat(10_000), 'rootA\u0000', "x' in parents or 'rootB"].map(
+  (id) => [JSON.stringify(id.slice(0, 30)), id] as const,
+)
 
 describe('GET /api/google-drive/files', () => {
   it('admin: a raiz é o Drive inteiro', async () => {
@@ -108,7 +110,7 @@ describe('GET /api/google-drive/files', () => {
     expect(drive.listFiles).toHaveBeenCalledTimes(1)
     expect(drive.listFiles).toHaveBeenCalledWith(expect.objectContaining({ folderId: 'childA' }))
   })
-  it.each(ADVERSARIOS.filter(Boolean))('folderId adversário %j: recusado sem tocar o Drive', async (id) => {
+  it.each(ADVERSARIOS.filter(([, id]) => id))('folderId adversário %s: recusado sem tocar o Drive', async (_r, id) => {
     const r = await lista(`?folderId=${encodeURIComponent(id)}`)
     expect(r.status).toBe(404)
     expect(drive.getFileMetadata).not.toHaveBeenCalled()
@@ -152,7 +154,7 @@ describe.each([
     expect((await comId(rota, 'fileA')).status).toBe(404)
     expect(drive.getFileMetadata).not.toHaveBeenCalled()
   })
-  it.each(ADVERSARIOS)('id adversário %j: recusado sem tocar o Drive', async (id) => {
+  it.each(ADVERSARIOS)('id adversário %s: recusado sem tocar o Drive', async (_r, id) => {
     expect([400, 404]).toContain((await comId(rota, id)).status)
     expect(drive.getFileMetadata).not.toHaveBeenCalled()
     expect(leitura).not.toHaveBeenCalled()
@@ -173,7 +175,7 @@ describe('POST /api/upload/google-drive (cópia para o Blob)', () => {
     expect(drive.getFileStream).not.toHaveBeenCalled()
     expect(blobPut).not.toHaveBeenCalled()
   })
-  it.each(ADVERSARIOS)('id adversário %j: recusado sem Drive e sem Blob', async (id) => {
+  it.each(ADVERSARIOS)('id adversário %s: recusado sem Drive e sem Blob', async (_r, id) => {
     expect([400, 404]).toContain((await blob(id)).status)
     expect(drive.getFileMetadata).not.toHaveBeenCalled()
     expect(blobPut).not.toHaveBeenCalled()
@@ -216,7 +218,7 @@ describe('POST /api/drive/upload-image', () => {
     expect(fetchFalso).not.toHaveBeenCalled()
     expect(drive.uploadFileToFolder).not.toHaveBeenCalled()
   })
-  it.each(ADVERSARIOS)('folderId adversário %j: recusado sem Drive', async (id) => {
+  it.each(ADVERSARIOS)('folderId adversário %s: recusado sem Drive', async (_r, id) => {
     expect([400, 404]).toContain((await upload(id)).status)
     expect(drive.getFileMetadata).not.toHaveBeenCalled()
     expect(fetchFalso).not.toHaveBeenCalled()

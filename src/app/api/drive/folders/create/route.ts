@@ -3,8 +3,11 @@ import { auth } from '@clerk/nextjs/server'
 import { z } from 'zod'
 import { googleDriveService } from '@/server/google-drive-service'
 import { db } from '@/lib/db'
+import { idsDoDriveNaRotaDoProjeto } from '@/lib/google-drive/escopo'
 import { PermissionError, requireProjectAccess } from '@/lib/permissions'
 import type { DriveFolderType } from '@/types/drive'
+
+const naoEncontrado = () => NextResponse.json({ error: 'Não encontrado' }, { status: 404 })
 
 const bodySchema = z.object({
   name: z.string().trim().min(1, 'Nome da pasta é obrigatório'),
@@ -48,6 +51,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Projeto não possui pasta configurada' }, { status: 400 })
     }
 
+    // Pasta-mãe pedida: sob as pastas deste projeto e pasta de verdade (não atalho).
+    if (parentId) {
+      const permitidos = await idsDoDriveNaRotaDoProjeto(userId, projectId, [parentId])
+      if (!permitidos || permitidos[0] !== parentId) {
+        return naoEncontrado()
+      }
+    }
+
     const folderId = await googleDriveService.createFolder(name, targetParent)
 
     try {
@@ -75,8 +86,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ id: folderId, name, parentId: targetParent })
   } catch (error) {
+    // Projeto inexistente, sem acesso e pasta fora do projeto: a mesma resposta.
     if (error instanceof PermissionError) {
-      return NextResponse.json({ error: error.message }, { status: error.status })
+      return naoEncontrado()
     }
 
     console.error('[Drive API] Failed to create folder', error)

@@ -2,7 +2,10 @@ import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { z } from 'zod'
 import { googleDriveService } from '@/server/google-drive-service'
+import { idsDoDriveNaRotaDoProjeto } from '@/lib/google-drive/escopo'
 import { PermissionError, requireProjectAccess } from '@/lib/permissions'
+
+const naoEncontrado = () => NextResponse.json({ error: 'Não encontrado' }, { status: 404 })
 
 const querySchema = z.object({
   folderId: z.string().trim().min(1),
@@ -32,8 +35,15 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Parâmetros inválidos', details: parsed.error.flatten() }, { status: 400 })
     }
 
-    const { folderId, projectId, fileIds } = parsed.data
+    const { folderId: pastaPedida, projectId, fileIds: arquivosPedidos } = parsed.data
     await requireProjectAccess(projectId, { userId, orgId })
+
+    // Pasta e arquivos: todos sob as pastas deste projeto, ou nada.
+    const permitidos = await idsDoDriveNaRotaDoProjeto(userId, projectId, [pastaPedida, ...(arquivosPedidos ?? [])])
+    if (!permitidos) {
+      return naoEncontrado()
+    }
+    const [folderId, ...fileIds] = permitidos
 
     const folderMetaPromise = googleDriveService.getFileMetadata(folderId, 'id, name')
     const filesPromise = fileIds?.length
@@ -71,8 +81,9 @@ export async function GET(req: Request) {
       files: mapped,
     })
   } catch (error) {
+    // Projeto inexistente, sem acesso e pasta fora do projeto: a mesma resposta.
     if (error instanceof PermissionError) {
-      return NextResponse.json({ error: error.message }, { status: error.status })
+      return naoEncontrado()
     }
 
     console.error('[Drive API] Failed to load folder for download', error)
