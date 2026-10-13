@@ -170,7 +170,6 @@ describe('modo interno (flag desligada, o padrão)', () => {
     expect(estado.usageHistory).toEqual([expect.objectContaining({ userId: 'u1', creditBalanceId: 'cb1', creditsUsed: esperado })])
     expect(gancho).toHaveBeenCalledTimes(1)
     expect(gancho.mock.calls[0][0]).toHaveProperty('usageHistory')
-    expect(chamadas.getUserFromClerkId).not.toHaveBeenCalled()
   })
 
   it('deduct pessoal sem CreditBalance: cria o saldo (FK do registro) e não debita', async () => {
@@ -181,16 +180,14 @@ describe('modo interno (flag desligada, o padrão)', () => {
     expect(chamadas.balanceUpdateMany).not.toHaveBeenCalled()
   })
 
-  it('deduct sem User: não cria User nem registro, mas o gancho roda na transação', async () => {
+  it('deduct sem User: o primeiro acesso cria o User (depois da autorização) e o uso é registrado', async () => {
     estado.user = null
+    estado.creditBalance = null
     const gancho = vi.fn(async () => {})
-    await expect(
-      deductCreditsForFeature({ clerkUserId: 'user_fantasma', feature: 'video_export', noMesmoCommit: gancho }),
-    ).resolves.toEqual({ creditsRemaining: 0 })
-    expect(chamadas.userCreate).not.toHaveBeenCalled()
-    expect(chamadas.getUserFromClerkId).not.toHaveBeenCalled()
-    expect(estado.user).toBeNull()
-    expect(estado.usageHistory).toHaveLength(0)
+    await deductCreditsForFeature({ clerkUserId: 'user_novo', feature: 'video_export', noMesmoCommit: gancho })
+    expect(chamadas.getUserFromClerkId).toHaveBeenCalledWith('user_novo')
+    expect(estado.usageHistory).toEqual([expect.objectContaining({ userId: 'u-novo', creditsUsed: 10 })])
+    expect(chamadas.balanceUpdateMany).not.toHaveBeenCalled()
     expect(gancho).toHaveBeenCalledTimes(1)
   })
 
@@ -246,15 +243,14 @@ describe('modo interno (flag desligada, o padrão)', () => {
     })
     expect(estado.usageHistory).toEqual([expect.objectContaining({ creditsUsed: -10 })])
     expect(chamadas.balanceUpdate).not.toHaveBeenCalled()
-    expect(chamadas.getUserFromClerkId).not.toHaveBeenCalled()
   })
 
-  it('refund pessoal sem User: não cria User', async () => {
+  it('refund pessoal sem User nem saldo: a linha negativa é registrada, o saldo não recebe nada', async () => {
     estado.user = null
-    await refundCreditsForFeature({ clerkUserId: 'user_fantasma', feature: 'video_export' })
-    expect(chamadas.userCreate).not.toHaveBeenCalled()
-    expect(chamadas.getUserFromClerkId).not.toHaveBeenCalled()
-    expect(estado.usageHistory).toHaveLength(0)
+    estado.creditBalance = null
+    await refundCreditsForFeature({ clerkUserId: 'user_novo', feature: 'video_export' })
+    expect(estado.usageHistory).toEqual([expect.objectContaining({ userId: 'u-novo', creditsUsed: -10 })])
+    expect(chamadas.balanceUpdate).not.toHaveBeenCalled()
   })
 
   it('refund de organização: linha negativa, sem devolver ao saldo', async () => {

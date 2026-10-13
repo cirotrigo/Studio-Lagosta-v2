@@ -289,11 +289,10 @@ export async function deductCreditsForFeature({
     }
 
     const aplicados = creditosAplicados()
-    // Modo interno: só lê o User, nunca o cria (sem User, não há registro de uso).
-    const user = aplicados
-      ? await getUserFromClerkId(clerkUserId)
-      : await db.user.findUnique({ where: { clerkId: clerkUserId } })
-    console.log('[DEDUCT] User found:', user?.id ?? null)
+    // Nos dois modos: o débito roda DEPOIS da autorização e do trabalho, então
+    // criar o User aqui é o primeiro acesso legítimo — e o uso sempre fica registrado.
+    const user = await getUserFromClerkId(clerkUserId)
+    console.log('[DEDUCT] User found:', user.id)
     const creditsToUse = await creditosADebitar(feature, quantity, creditsTotal)
     console.log('[DEDUCT] Credits to use:', creditsToUse)
     const op = toPrismaOperationType(feature)
@@ -301,11 +300,6 @@ export async function deductCreditsForFeature({
 
     const result = await db.$transaction(async (tx) => {
       try {
-        if (!user) {
-          if (noMesmoCommit) await noMesmoCommit(tx)
-          return { creditsRemaining: 0 }
-        }
-
         let creditBalance = await tx.creditBalance.findUnique({ where: { userId: user.id } })
         if (!creditBalance) {
           try {
@@ -404,16 +398,12 @@ export async function refundCreditsForFeature({
     }
 
     const aplicados = creditosAplicados()
-    const user = aplicados
-      ? await getUserFromClerkId(clerkUserId)
-      : await db.user.findUnique({ where: { clerkId: clerkUserId } })
+    const user = await getUserFromClerkId(clerkUserId)
     const refundAmount = (await getFeatureCost(feature)) * Math.max(1, quantity)
     const op = toPrismaOperationType(feature)
 
     const result = await db.$transaction(async (tx) => {
-      let creditBalance = user ? await tx.creditBalance.findUnique({ where: { userId: user.id } }) : null
-      // Modo interno: sem User ou sem saldo não houve cobrança a estornar (e o registro precisa dos dois).
-      if (!aplicados && !creditBalance) return { creditsRemaining: 0 }
+      let creditBalance = await tx.creditBalance.findUnique({ where: { userId: user.id } })
       if (!creditBalance) {
         creditBalance = await tx.creditBalance.create({
           data: {
@@ -434,6 +424,7 @@ export async function refundCreditsForFeature({
         },
       })
 
+      // Modo interno: o estorno fica só no registro; o saldo não é tocado.
       if (!aplicados) return { creditsRemaining: creditBalance.creditsRemaining }
 
       const updated = await tx.creditBalance.update({
