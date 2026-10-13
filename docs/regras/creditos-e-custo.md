@@ -120,14 +120,19 @@ lida a cada chamada. **Padrão: desligada** (qualquer valor que não seja `true`
     sem `handlePublishFailure`, com `PostLog` `{ laterPostId,
     persistenciaIncerta: true }`, e `sendToLater` devolve `{ success: false,
     incerto: true }` (o executor não conta sucesso nem agenda nova tentativa).
-    Quem resolve é a varredura de travados (caso a, 30 min): ela reenvia, e o
-    Zernio recusa o conteúdo repetido (409, deduplicação de 24h), que
-    `tryAdoptExistingPost` adota. ⚠️ A proteção contra publicação dupla aí é a
-    deduplicação do Zernio, não nossa.
+    A varredura de travados (`checkStuckPosts`, caso a) procura esse log antes
+    de tratar o POSTING sem id como "nunca enviado": achando, devolve o
+    `laterPostId` à linha (CAS `laterPostId IS NULL`, `lastSyncAt: null`) e o
+    `syncLateStatus` assume — sem FAILED nem reenvio. ⚠️ Se nem o log foi
+    gravado (banco fora), a varredura segue como antes: FAILED + retry, e a
+    proteção contra publicação dupla fica com a deduplicação do Zernio (409,
+    24h, adotado por `tryAdoptExistingPost`).
   - O job de vídeo com `InsufficientCreditsError` conclui sem cobrar
     (`creditsDeducted: false`, que agora reflete a cobrança real) e a arte ganha
-    `cobrancaAviso: 'saldo-insuficiente'` por merge no banco. `cobrarUmaVez`
-    manteve o contrato.
+    `cobrancaAviso: 'saldo-insuficiente'` por merge no banco, gravado NA HORA da
+    recusa. A recuperação de jobs presos considera o vídeo pronto com MP4 e
+    (`creditsDeducted` OU essa marca), então uma queda depois do MP4 não falha o
+    vídeo. `cobrarUmaVez` manteve o contrato.
   - `POST /api/video-processing/queue` confere o acesso ao projeto **antes** de
     `getUserFromClerkId` e da validação de créditos: sem acesso, o mesmo 404 com
     ou sem saldo, e nenhum User criado.
