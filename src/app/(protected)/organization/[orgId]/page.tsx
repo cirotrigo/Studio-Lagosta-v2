@@ -18,6 +18,7 @@ import {
   useOrganizationProjects,
   useOrganizationCreditsUsage,
 } from "@/hooks/use-organizations"
+import { useCobrancaLigada } from "@/hooks/use-credits"
 import { useParams } from "next/navigation"
 import { CreditUsageCard, UsagePoint } from "@/components/organization/credit-usage-card"
 import { CreditActivityFeed, CreditActivityEntry } from "@/components/organization/credit-activity-feed"
@@ -45,6 +46,8 @@ export default function OrganizationDashboardPage() {
   const projectsCount = projectsData?.projects.length ?? 0
   const creditsCurrent = creditsData?.credits.current ?? 0
   const creditsTotal = creditsData?.limits.creditsPerMonth ?? 0
+  // Modo interno: sem botão "Créditos" nem cartão de saldo (o consumo fica).
+  const cobrancaLigada = useCobrancaLigada()
   useSetPageMetadata({
     title: organization?.name ?? "Organização",
     description: organization
@@ -116,20 +119,24 @@ export default function OrganizationDashboardPage() {
               <Button variant="outline" asChild>
                 <Link href={`/organization/${organization.id}/analytics`}>Analytics</Link>
               </Button>
-              <Button variant="default" asChild>
-                <Link href={`/organization/${organization.id}/credits`}>Créditos</Link>
-              </Button>
+              {cobrancaLigada && (
+                <Button variant="default" asChild>
+                  <Link href={`/organization/${organization.id}/credits`}>Créditos</Link>
+                </Button>
+              )}
             </div>
           </div>
         </Card>
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <SummaryCard
-            title="Créditos disponíveis"
-            value={creditsLoading ? "…" : creditsCurrent.toLocaleString()}
-            subtitle={creditsTotal ? `de ${creditsTotal.toLocaleString()} por ciclo` : ""}
-            icon={Coins}
-          />
+          {cobrancaLigada && (
+            <SummaryCard
+              title="Créditos disponíveis"
+              value={creditsLoading ? "…" : creditsCurrent.toLocaleString()}
+              subtitle={creditsTotal ? `de ${creditsTotal.toLocaleString()} por ciclo` : ""}
+              icon={Coins}
+            />
+          )}
           <SummaryCard
             title="Projetos compartilhados"
             value={projectsLoading ? "…" : projectsCount}
@@ -188,6 +195,7 @@ export default function OrganizationDashboardPage() {
       </div>
     )
   }, [
+    cobrancaLigada,
     creditsCurrent,
     creditsLoading,
     creditsTotal,
