@@ -135,7 +135,8 @@ export interface AnaliseDosCampos {
 /** As chaves de `slotValues` que nunca endereçam camada pelo id/nome (as mesmas de `createArteRapida`). */
 const CHAVES_RESERVADAS = ['_driveImageId', '_imageUrl', '_slots', '_papeis'] as const
 type ChaveReservada = (typeof CHAVES_RESERVADAS)[number]
-const ehChaveReservada = (k: string): k is ChaveReservada => (CHAVES_RESERVADAS as readonly string[]).includes(k)
+/** As chaves que o pedido de criação/ajuste RESERVA (controles e o contrato semântico) — não são campos da arte. */
+export const ehChaveReservada = (k: string): k is ChaveReservada => (CHAVES_RESERVADAS as readonly string[]).includes(k)
 
 const entraPeloLegado = (l: any) => l?.type === 'text' || (l?.type === 'image' && l?.isDynamic)
 

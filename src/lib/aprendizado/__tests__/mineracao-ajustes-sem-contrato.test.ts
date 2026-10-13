@@ -34,3 +34,7 @@ describe('pedido semântico MISTO (Codex, checkpoint g)', () => {
     expect(camposDosAjustes([{ ajustes: { Foto2: { fileUrl: 'https://b' } } }]).map((c) => c.campo)).toEqual(['Foto2'])
   })
 })
+
+it('legado: camada chamada "_titulo" é campo de texto (só as chaves RESERVADAS do pedido são controle)', () => {
+  expect(camposDosAjustes([{ ajustes: { _titulo: 'Noite', _imageUrl: 'https://f' } }]).map((c) => c.campo)).toEqual(['_titulo'])
+})

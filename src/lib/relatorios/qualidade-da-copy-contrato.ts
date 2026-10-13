@@ -71,6 +71,7 @@ import type { CopyAutoral, RevisaoDaCopy } from '@/lib/copy-autoral/contrato'
 import { lerCopyAutoral } from '@/lib/copy-autoral/serializar'
 import { blocosEmOrdem } from '@/lib/copy-autoral/validar'
 import { lerCamadas } from '@/lib/posts/page-layers'
+import { ehChaveReservada } from '@/lib/creatives/slot-fields'
 import { lerCarimboDaVoz, type CarimboDaVoz, type FonteDaVoz } from '@/lib/brand/voz-na-escrita'
 import { ocultaPeloRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
 
@@ -416,7 +417,7 @@ export interface PecaParaMedir {
 }
 
 /**
- * O ajuste trocou TEXTO? `ajustes` é o pedido cru do ajustarArte: controles `_…` (`_imageUrl`, `_driveImageId`) e
+ * O ajuste trocou TEXTO? `ajustes` é o pedido cru do ajustarArte: as chaves RESERVADAS de controle (`_imageUrl`, `_driveImageId`) e
  * endereçamento só de imagem (`_slots: { foto: { fileUrl } }`) não são texto; texto por `_slots`/`_papeis` (string ou
  * `{ content }`) é (B1d, checkpoint g).
  */
@@ -427,7 +428,7 @@ export function ajusteTemTexto(ajustes: unknown): boolean {
   // Pedido semântico MISTO: a chave legada também é pedido — só conta se for texto. Sem contrato, o critério de sempre.
   const semantico = '_slots' in a || '_papeis' in a
   return Object.entries(a).some(([k, v]) =>
-    k === '_slots' || k === '_papeis' ? Object.values(objeto(v) ?? {}).some(ehTexto) : !k.startsWith('_') && (!semantico || ehTexto(v)),
+    k === '_slots' || k === '_papeis' ? Object.values(objeto(v) ?? {}).some(ehTexto) : !ehChaveReservada(k) && (!semantico || ehTexto(v)),
   )
 }
 

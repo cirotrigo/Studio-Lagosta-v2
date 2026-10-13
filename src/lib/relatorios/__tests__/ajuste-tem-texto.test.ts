@@ -19,6 +19,7 @@ describe('ajusteTemTexto', () => {
     ['misto: _slots de imagem + chave legada de IMAGEM (Codex)', { _slots: { foto1: { fileUrl: 'https://a' } }, Foto2: { fileUrl: 'https://b' } }, false],
     ['misto: _slots de imagem + chave legada de texto', { _slots: { foto1: { fileUrl: 'https://a' } }, Título: 'Noite' }, true],
     ['legado sem contrato com chave de imagem: como sempre (conta)', { Foto2: { fileUrl: 'https://b' } }, true],
+    ['legado: camada de texto chamada "_titulo" é texto, não controle (Codex)', { _titulo: 'Noite' }, true],
   ])('%s → %s', (_n, ajustes, esperado) => {
     expect(ajusteTemTexto(ajustes)).toBe(esperado)
   })

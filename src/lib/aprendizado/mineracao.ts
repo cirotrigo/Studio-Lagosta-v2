@@ -24,6 +24,7 @@ import { contarUsosPorModelo, lerUsosDeModelo, type UsoDeModelo } from './histor
 import { PILAR_OUTRO, PILAR_SEM_TEXTO } from './pilares'
 import { DIAS_SEMANA_CADENCIA, emBRT } from '@/lib/posts/cadencia'
 import { temContratoSemantico } from '@/lib/posts/copy-segue-a-pagina'
+import { ehChaveReservada } from '@/lib/creatives/slot-fields'
 
 /** Abaixo disto o número existe, mas não sustenta conclusão nenhuma. */
 export const AMOSTRA_MINIMA = 3
@@ -300,8 +301,8 @@ export async function minerarHistorico(
 
 /**
  * Os campos de TEXTO que alguém mandou ajustar, com exemplos. `fieldValues.ajustes` é o pedido cru do ajustarArte: as
- * chaves `_…` (controles como `_imageUrl`/`_driveImageId` e o contrato semântico `_slots`/`_papeis`, B1d
- * checkpoint g) não são campos da arte — não viram "campo que a IA erra" no prompt do perfil, nem URL vira exemplo.
+ * chaves RESERVADAS dele (controles `_imageUrl`/`_driveImageId` e o contrato semântico `_slots`/`_papeis`, B1d
+ * checkpoint g) não são campos da arte — uma camada legítima chamada `_titulo` é — não viram "campo que a IA erra" no prompt do perfil, nem URL vira exemplo.
  */
 export function camposDosAjustes(linhas: Array<{ ajustes: unknown }>): AjusteMinerado[] {
   const porCampo = new Map<string, { ocorrencias: number; exemplos: string[] }>()
@@ -311,7 +312,7 @@ export function camposDosAjustes(linhas: Array<{ ajustes: unknown }>): AjusteMin
     // Pedido semântico MISTO: as chaves legadas dele também são pedido — só a de TEXTO (string ou { content }) conta.
     const semantico = temContratoSemantico(ajustes)
     for (const [campo, valor] of Object.entries(ajustes)) {
-      if (campo.startsWith('_')) continue
+      if (ehChaveReservada(campo)) continue
       if (semantico && !(typeof valor === 'string' || (!!valor && typeof valor === 'object' && (valor as { content?: unknown }).content !== undefined))) continue
       const atual = porCampo.get(campo) ?? { ocorrencias: 0, exemplos: [] }
       atual.ocorrencias += 1
