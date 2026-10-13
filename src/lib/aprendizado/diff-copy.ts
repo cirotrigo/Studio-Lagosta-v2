@@ -346,8 +346,8 @@ export function copyParaDecisao(layers: unknown): Record<string, string> | null 
  * nome repetido) entra para as duas, porque o bake preencheu as duas. A
  * tradução é por IDENTIDADE, nunca por conteúdo: troca de texto entre campos
  * continua sendo edição. Camada de texto fora da arte (oculta pela pessoa,
- * vazia) que recebeu texto ganha uma chave que não casa com a página — conta
- * como removido. Chave que não atingiu camada nenhuma fica como veio. Página
+ * vazia) que recebeu texto PELO ID ganha uma chave que não casa com a página —
+ * conta como removido; por nome, ela fica fora como sempre ficou. Chave que não atingiu camada nenhuma fica como veio. Página
  * ilegível devolve a proposta intacta.
  *
  * 🔴 Devolve `null` — "não sei", sem diff e sem sinal — quando uma chave da
@@ -407,7 +407,10 @@ export function alinharChavesDaProposta(
     if (!ehTexto(c) || naArte.has(i)) continue
     const id = typeof c.id === 'string' ? c.id : null
     const nome = typeof c.name === 'string' ? c.name : null
-    const texto = valorDa(id, nome)
+    // Só a camada endereçada pelo ID: por nome, a camada que já nascia oculta no
+    // modelo não é copy da peça — é o comportamento de antes, e marcá-la como
+    // "fora da arte" acusava remoção sem edição (rodada 7 do Codex).
+    const texto = valorDa(id)
     if (texto == null) continue
     const base = `${nome ?? id ?? 'texto'} (fora da arte)`
     let chave = base

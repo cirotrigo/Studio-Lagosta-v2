@@ -288,6 +288,16 @@ describe('alinharChavesDaProposta — layerId da proposta × nome da página', (
     expect(diffDeCopy(alinharChavesDaProposta({ A: 'X' }, colisao.slice(0, 2)), copyParaDecisao(colisao.slice(0, 2))).mudou).toBe(false)
   })
 
+  it('nome repetido com uma camada já oculta no modelo: proposta por nome é aceita (Codex, rodada 7)', () => {
+    const comOculta = [
+      { id: 'v', name: 'Título', type: 'text', content: 'Noite', visible: true },
+      { id: 'o', name: 'Título', type: 'text', content: 'Noite', visible: false },
+    ]
+    const proposta = alinharChavesDaProposta({ Título: 'Noite' }, comOculta)
+    expect(proposta).toEqual({ Título: 'Noite' })
+    expect(desfechoPeloDiff(diffDeCopy(proposta, copyParaDecisao(comOculta)))).toBe('aceita-como-veio')
+  })
+
   it('proposta já no formato da página (com #2) segue pareada pela chave da página', () => {
     expect(alinharChavesDaProposta({ Título: 'Noite do vinho', 'Título#2': 'Toda quinta' }, camadas)).toEqual({
       Título: 'Noite do vinho',
