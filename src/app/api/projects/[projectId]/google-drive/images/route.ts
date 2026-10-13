@@ -23,8 +23,9 @@ interface ProjectDriveImagesPayload {
 
 /**
  * O cache guarda a listagem INTEIRA como veio do Drive (com
- * `shortcutDetails`): a conferência dos atalhos e a paginação são refeitas a
- * cada resposta, para o offset sempre bater com o que foi devolvido.
+ * `shortcutDetails`). O offset é posição NELA, não na lista filtrada: assim
+ * um atalho que sai do escopo entre uma página e outra não desloca imagem
+ * válida para fora das duas.
  */
 const projectDriveImagesCache = new Map<string, { payload: GoogleDriveItem[]; timestamp: number }>()
 
@@ -60,22 +61,23 @@ export async function GET(
 ) {
   let cacheKey: string | null = null
   // O cache guarda a listagem, nunca a decisão: toda resposta (cache
-  // inclusive) reconfere os atalhos contra as pastas do projeto de AGORA e
-  // só DEPOIS pagina (paginação manual: o Drive devolve a pasta inteira).
+  // inclusive) recorta a página da listagem guardada e reconfere os atalhos
+  // DELA contra as pastas do projeto de AGORA. A página pode vir com menos
+  // de `limit` itens; o cliente segue o `nextOffset`, não o tamanho.
   let raizes: Set<string> | null = null
   let offset = 0
   let limit = 20
   const responder = async (itens: GoogleDriveItem[]): Promise<ProjectDriveImagesPayload> => {
-    const validos = raizes ? await filtrarAtalhosDoEscopo(itens, raizes) : itens
+    const pagina = itens.slice(offset, offset + limit)
     return {
-      images: validos.slice(offset, offset + limit).map((file) => ({
+      images: (raizes ? await filtrarAtalhosDoEscopo(pagina, raizes) : pagina).map((file) => ({
         id: file.id,
         name: file.name,
         mimeType: file.mimeType,
         thumbnailLink: file.thumbnailLink,
         webContentLink: file.webContentLink,
       })),
-      nextOffset: offset + limit < validos.length ? offset + limit : undefined,
+      nextOffset: offset + limit < itens.length ? offset + limit : undefined,
     }
   }
   try {

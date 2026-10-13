@@ -164,29 +164,34 @@ describe('cache não dispensa a conferência do atalho', () => {
   })
 })
 
-describe('projects/[id]/google-drive/images: paginação depois da reconferência', () => {
+describe('projects/[id]/google-drive/images: offset é posição na listagem guardada', () => {
   const pagina = (offset: number) =>
     imagensDoProjeto(new Request(`http://t/x?offset=${offset}&limit=20`), { params: Promise.resolve({ projectId: '1' }) })
 
-  it('atalho que sai do escopo não empurra imagem válida para fora das duas páginas', async () => {
+  // Sequência do cliente (useProjectGoogleDriveImages): pede a página 2 com o
+  // nextOffset recebido na página 1 e só para quando ele não vem.
+  it('atalho que sai do escopo entre as páginas não faz imagem válida sumir', async () => {
     m.userId = 'userAB'
     const fotos = Array.from({ length: 20 }, (_, i) => ({ id: `foto${i}`, name: `foto${i}`, mimeType: 'image/jpeg', kind: 'file' as const }))
     const atalho = { id: 'shortImg', name: 'atalho', mimeType: 'image/jpeg', kind: 'file' as const, shortcutDetails: { targetId: 'fileA', targetMimeType: 'image/jpeg' } }
     drive.listFiles.mockResolvedValueOnce({ items: [...fotos.slice(0, 5), atalho, ...fotos.slice(5)] })
 
-    const antes = await corpo(await pagina(0))
-    expect(ids(antes.body.images)).toContain('shortImg')
-    expect(antes.body.nextOffset).toBe(20)
+    const p1 = await corpo(await pagina(0))
+    expect(ids(p1.body.images)).toContain('shortImg')
+    expect(p1.body.nextOffset).toBe(20)
 
     const original = ARVORE.fileA.parents
     ARVORE.fileA.parents = ['rootB']
     try {
-      const p1 = await corpo(await pagina(0))
-      const p2 = await corpo(await pagina(20))
-      const vistas = [...ids(p1.body.images), ...ids(p2.body.images)]
-      expect(vistas).toEqual(fotos.map((f) => f.id))
-      expect(p1.body.nextOffset).toBeUndefined()
+      const p2 = await corpo(await pagina(p1.body.nextOffset))
+      expect(p2.texto).not.toContain('shortImg')
       expect(p2.body.nextOffset).toBeUndefined()
+      const validas = [...ids(p1.body.images), ...ids(p2.body.images)].filter((id) => id !== 'shortImg')
+      expect(validas).toEqual(fotos.map((f) => f.id))
+      // a página 1 pedida de novo já sai sem o atalho (e com menos itens)
+      const p1Depois = await corpo(await pagina(0))
+      expect(ids(p1Depois.body.images)).toEqual(fotos.slice(0, 19).map((f) => f.id))
+      expect(p1Depois.body.nextOffset).toBe(20)
     } finally {
       ARVORE.fileA.parents = original
     }
