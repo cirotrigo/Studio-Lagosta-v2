@@ -19,11 +19,11 @@ import { db } from '@/lib/db'
 import { isAdmin } from '@/lib/admin-utils'
 import { CreativeError } from '@/lib/creatives/errors'
 import { googleDriveService } from '@/server/google-drive-service'
+import { idDoDriveValido } from '@/lib/google-drive/id'
 
 const ATALHO = 'application/vnd.google-apps.shortcut'
 const CAMPOS = 'id, parents, trashed, mimeType, driveId, shortcutDetails(targetId)'
 const PROFUNDIDADE_MAXIMA = 10
-const ID_DO_DRIVE = /^[A-Za-z0-9_-]{1,200}$/
 
 export interface MetaDoDrive {
   id: string
@@ -38,10 +38,7 @@ export type MemoDoDrive = Map<string, Promise<MetaDoDrive | null>>
 
 export type DecisaoDoDrive = { permitido: true; idEfetivo: string } | { permitido: false; motivo: string }
 
-/** Id no formato do Drive. `root` (o Meu Drive) nunca vale. */
-export function idDoDriveValido(id: unknown): id is string {
-  return typeof id === 'string' && id !== 'root' && ID_DO_DRIVE.test(id)
-}
+export { idDoDriveValido }
 
 function lerMeta(id: string, memo?: MemoDoDrive): Promise<MetaDoDrive | null> {
   const guardado = memo?.get(id)
@@ -232,14 +229,18 @@ export async function raizesNaRotaDoProjeto(userId: string, projectId: number): 
   return (await isAdmin(userId)) ? null : raizesDoProjeto(projectId)
 }
 
-/** Rotas web com projeto: os ids efetivos, ou `null` se algum estiver fora das pastas do projeto. */
+/**
+ * Rotas web com projeto: os ids efetivos, ou `null` se algum estiver fora das
+ * pastas do projeto. Admin passa com qualquer id no formato do Drive.
+ */
 export async function idsDoDriveNaRotaDoProjeto(
   userId: string,
   projectId: number,
   ids: readonly unknown[],
 ): Promise<string[] | null> {
   const raizes = await raizesNaRotaDoProjeto(userId, projectId)
-  return raizes ? todosPermitidos(ids, raizes) : (ids as string[])
+  if (raizes) return todosPermitidos(ids, raizes)
+  return ids.every(idDoDriveValido) ? (ids as string[]) : null
 }
 
 /**
