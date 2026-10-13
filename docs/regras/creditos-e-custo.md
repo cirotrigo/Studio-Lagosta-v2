@@ -146,3 +146,10 @@ lida a cada chamada. **Padrão: desligada** (qualquer valor que não seja `true`
     mesmo 404.
 - **Religar a cobrança**: `CREDITOS_APLICADOS=true` no env do servidor (Vercel)
   e redeploy. O comportamento volta ao de antes, com os endurecimentos acima.
+  ⚠️ Residual aceito com a cobrança LIGADA (revisão do Codex, 13/10/2026): a
+  validação de saldo antes do Zernio é leitura, não reserva — dois posts que
+  dividem o último crédito podem passar os dois, publicar, e o segundo ficar
+  sem cobrança (o débito recusado depois do envio não falha o post). Na main
+  anterior o mesmo caso marcava FAILED um post já publicado. Se a cobrança
+  voltar a valer como regra, trocar a validação por reserva atômica antes do
+  Zernio, com estorno idempotente quando o envio falhar de vez.
