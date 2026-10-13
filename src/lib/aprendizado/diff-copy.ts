@@ -349,7 +349,7 @@ export function copyParaDecisao(layers: unknown): Record<string, string> | null 
  * oculta pelo REVISOR conta como presente, como em `copyParaDecisao`.
  *
  * 🔴 Devolve `null` — "não sei", sem diff e sem sinal — quando uma chave é o id
- * de uma camada de texto E o nome de OUTRA: a procedência não diz em que
+ * de uma camada de texto E o nome (ou a chave `#2` na página) de OUTRA: a procedência não diz em que
  * formato a proposta foi gravada (`copyDeAprendizado ?? slotValues`).
  *
  * Use as MESMAS camadas que geraram o lado final do diff (no vídeo, as
@@ -370,8 +370,15 @@ export function alinharChavesDaProposta(
   const ehTexto = (c: Record<string, unknown>) => c?.type === 'text' || c?.type === 'rich-text'
   const textos = (decisao as Array<Record<string, unknown>>).filter(ehTexto)
   const itens = textosDaPaginaPorCamada(decisao)
+  // Ambígua: a chave é o id de uma camada E o nome — ou a chave na página, com
+  // o `#2` do nome repetido — de OUTRA (rodadas 4 e 9 do Codex).
   const ambigua = Object.keys(proposta).some((chave) =>
-    textos.some((x) => x.id === chave && textos.some((y) => y !== x && y.name === chave)),
+    textos.some(
+      (x) =>
+        x.id === chave &&
+        (textos.some((y) => y !== x && y.name === chave) ||
+          itens.some((t) => t.chave === chave && decisao[t.indice] !== x)),
+    ),
   )
   if (ambigua) return null
 

@@ -298,6 +298,15 @@ describe('alinharChavesDaProposta — layerId da proposta × nome da página', (
     expect(desfechoPeloDiff(diffDeCopy(proposta, copyParaDecisao(comOculta)))).toBe('aceita-como-veio')
   })
 
+  it('id de uma camada igual à chave #2 de outra: ambígua, sem diff (Codex, rodada 9)', () => {
+    const colisao = [
+      { id: 'p', name: 'A', type: 'text', content: 'um', visible: true },
+      { id: 'q', name: 'A', type: 'text', content: 'dois', visible: true },
+      { id: 'A#2', name: 'C', type: 'text', content: 'três', visible: true },
+    ]
+    expect(alinharChavesDaProposta({ A: 'um', 'A#2': 'dois', C: 'três' }, colisao)).toBeNull()
+  })
+
   it('proposta já no formato da página (com #2) segue pareada pela chave da página', () => {
     expect(alinharChavesDaProposta({ Título: 'Noite do vinho', 'Título#2': 'Toda quinta' }, camadas)).toEqual({
       Título: 'Noite do vinho',
