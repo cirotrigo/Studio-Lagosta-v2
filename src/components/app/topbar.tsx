@@ -7,11 +7,12 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Menu } from "lucide-react";
-import { OrganizationSwitcher, SignedIn, SignedOut, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
+import { OrganizationSwitcher, SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/nextjs";
 import { CreditStatus } from "@/components/credits/credit-status";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetClose, SheetFooter } from "@/components/ui/sheet";
 import { useResolvedNavigationItems } from "@/components/app/sidebar";
 import { useOrganizationCreationLimits } from "@/hooks/use-organizations";
+import { useCobrancaLigada } from "@/hooks/use-credits";
 import { DynamicLogo } from "@/components/app/dynamic-logo";
 import { useSiteConfig } from "@/hooks/use-site-config";
 import { site } from "@/lib/brand-config";
@@ -27,8 +28,10 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
   const navItems = useResolvedNavigationItems();
   const config = siteConfig || site;
   const createMode: "modal" | "navigation" = "modal";
+  // Modo interno: sem aviso de plano (limite comercial) no menu.
+  const cobrancaLigada = useCobrancaLigada();
   const creationReminder =
-    creationLimits?.canCreate === false
+    cobrancaLigada && creationLimits?.canCreate === false
       ? creationLimits.limits.orgCountLimit != null
         ? `Seu plano permite até ${creationLimits.limits.orgCountLimit} organização(ões) ativa(s).`
         : 'Seu plano atual não permite criar novas organizações.'
@@ -115,12 +118,10 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
                     </SignedIn>
                     <SignedOut>
                       <div className="flex items-center gap-2">
+                        {/* Sem "Inscrever-se": o acesso é só por convite (o convite cai em /sign-up). */}
                         <SignInButton mode="modal">
                           <Button variant="ghost" size="sm">Entrar</Button>
                         </SignInButton>
-                        <SignUpButton mode="modal">
-                          <Button size="sm">Inscrever-se</Button>
-                        </SignUpButton>
                       </div>
                     </SignedOut>
                   </div>
@@ -190,11 +191,6 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
                 Entrar
               </Button>
             </SignInButton>
-            <SignUpButton mode="modal">
-              <Button size="sm">
-                Inscrever-se
-              </Button>
-            </SignUpButton>
           </SignedOut>
         </div>
       </div>

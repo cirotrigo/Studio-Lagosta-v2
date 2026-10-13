@@ -70,9 +70,9 @@ export function LayerActionsToolbar({
           <span className="flex-1 text-left">
             {isBackgroundRemoved ? 'Fundo ja removido' : 'Remover Fundo'}
           </span>
-          <span className="text-xs text-muted-foreground">3 creditos</span>
+          {creditosAplicados === true && <span className="text-xs text-muted-foreground">3 creditos</span>}
         </Button>
-        {creditosAplicados !== false && credits && credits.creditsRemaining < 3 && !isBackgroundRemoved && (
+        {creditosAplicados === true && credits && credits.creditsRemaining < 3 && !isBackgroundRemoved && (
           <p className="text-xs text-destructive">Creditos insuficientes</p>
         )}
       </div>

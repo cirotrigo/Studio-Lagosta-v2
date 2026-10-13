@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
+import { useCobrancaLigada } from '@/hooks/use-credits'
 import { useSocialPosts } from '@/hooks/use-social-posts'
 import { useToast } from '@/hooks/use-toast'
 import { api } from '@/lib/api-client'
@@ -62,6 +63,7 @@ export function ScheduleStoryModal({
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [submitStatus, setSubmitStatus] = React.useState('')
   const [aiInstruction, setAiInstruction] = React.useState('')
+  const cobrancaLigada = useCobrancaLigada()
 
   React.useEffect(() => {
     if (open) setAiInstruction('')
@@ -333,7 +335,7 @@ export function ScheduleStoryModal({
           />
           <p className="text-xs text-muted-foreground">
             {aiInstruction.trim()
-              ? `A arte passa pela melhoria com IA antes de ser agendada (+${AI_IMPROVEMENT_CREDIT_COST} créditos). O agendamento espera o resultado — pode levar até 2 minutos.`
+              ? `A arte passa pela melhoria com IA antes de ser agendada${cobrancaLigada ? ` (+${AI_IMPROVEMENT_CREDIT_COST} créditos)` : ''}. O agendamento espera o resultado — pode levar até 2 minutos.`
               : 'Deixe em branco para agendar a arte exatamente como está no editor.'}
           </p>
         </div>

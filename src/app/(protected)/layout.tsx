@@ -12,6 +12,8 @@ import { ContextIndicator } from "@/components/app/context-indicator";
 import { PageMetadataProvider } from "@/contexts/page-metadata";
 import { AudioPlayerProvider } from "@/contexts/audio-player-context";
 import { useSubscription } from "@/hooks/use-subscription";
+import { useCobrancaLigada } from "@/hooks/use-credits";
+import { deveIrParaAssinatura } from "@/lib/app/acesso-por-assinatura";
 import { ImproveQueueProvider } from "@/components/creatives/improve-queue-provider";
 
 export default function ProtectedLayout({
@@ -39,6 +41,8 @@ export default function ProtectedLayout({
 
   // Use TanStack Query for subscription status
   const { data: subscriptionStatus, isLoading: isLoadingSubscription } = useSubscription();
+  // Modo interno (acesso por convite): sem exigir plano — ver `deveIrParaAssinatura`.
+  const cobrancaLigada = useCobrancaLigada();
 
   const toggleCollapse = React.useCallback(() => {
     setCollapsed((c) => {
@@ -57,19 +61,21 @@ export default function ProtectedLayout({
     }
   }, [isLoaded, isSignedIn, router]);
 
-  // After auth, verify subscription access. Allow billing page even without plan.
+  // After auth, verify subscription access — só com a cobrança ligada (regra
+  // comercial, não de autorização). /billing e /subscribe seguem liberados.
   React.useEffect(() => {
     if (!isLoaded || !isSignedIn || isLoadingSubscription) return;
 
-    const isActive = Boolean(subscriptionStatus?.isActive);
-    // Allow access to billing and subscribe pages even without active subscription
-    const allowedPaths = ['/subscribe', '/billing'];
-    const isOnAllowedPath = allowedPaths.some(path => pathname.startsWith(path));
-
-    if (!isActive && !isOnAllowedPath) {
+    if (
+      deveIrParaAssinatura({
+        cobrancaLigada,
+        assinaturaAtiva: Boolean(subscriptionStatus?.isActive),
+        pathname,
+      })
+    ) {
       router.replace('/subscribe');
     }
-  }, [isLoaded, isSignedIn, isLoadingSubscription, subscriptionStatus?.isActive, pathname, router]);
+  }, [isLoaded, isSignedIn, isLoadingSubscription, subscriptionStatus?.isActive, cobrancaLigada, pathname, router]);
 
   // Show loading state while checking authentication
   if (!isLoaded || isLoadingSubscription) {

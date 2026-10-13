@@ -1637,7 +1637,8 @@ function GenerateImageForm({
 
         <div className="flex items-center justify-between">
           <span className="text-xs text-muted-foreground">
-            Custo: {cost} {cost === 1 ? 'crédito' : 'créditos'}
+            {/* O span fica (vazio) para o botão seguir à direita. */}
+            {creditosAplicados === true && `Custo: ${cost} ${cost === 1 ? 'crédito' : 'créditos'}`}
           </span>
           <Button
             onClick={handleGenerate}

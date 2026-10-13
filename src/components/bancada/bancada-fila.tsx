@@ -53,6 +53,7 @@ import {
 } from '@/components/bancada/bancada-escolha-de-modelo'
 import { useAnexarItensAoPlano, useAtualizarItemDoPlano } from '@/hooks/use-planos'
 import { useToast } from '@/hooks/use-toast'
+import { useCobrancaLigada } from '@/hooks/use-credits'
 import { itemEditavel, progressoDoPlano, ROTULO_DO_STATUS, VIAS, type StatusDoItem } from '@/lib/planos/vocabulario'
 import { useBancadaStore, type BancadaItem, type NovoItem } from '@/stores/bancada-store'
 
@@ -593,6 +594,9 @@ function Card({
   // Prévia: só o que JÁ virou arte. Miniatura de referência não entra — ver a
   // foto crua em tela cheia não ajuda a decidir se a peça está boa.
   const [previewAberta, setPreviewAberta] = React.useState(false)
+  // Modo interno: os botões não falam em créditos.
+  const cobrancaLigada = useCobrancaLigada()
+  const custo = (n: number) => (cobrancaLigada ? ` (${n} créditos)` : '')
   const [editando, setEditando] = React.useState(false)
   const [previewInicial, setPreviewInicial] = React.useState<number | undefined>()
   const slidesDaPreview: PreviewSlide[] = React.useMemo(() => {
@@ -743,10 +747,10 @@ function Card({
           {doPlano && via && (
             <span
               className="rounded-full border border-border/60 px-2 py-0.5 text-[10px] text-muted-foreground"
-              title={via.custo}
+              title={cobrancaLigada ? via.custo : undefined}
             >
               {via.rotulo}
-              {via.valor === 'template' ? ' · sem custo de imagem' : ''}
+              {cobrancaLigada && via.valor === 'template' ? ' · sem custo de imagem' : ''}
             </span>
           )}
           <span className="text-[11px] text-muted-foreground">
@@ -917,8 +921,8 @@ function Card({
                       <Sparkles className="mr-2 h-4 w-4" />
                     )}
                     {item.status === 'erro' && !viaTemplate
-                      ? 'Tentar de novo por IA (25 créditos)'
-                      : 'Gerar por IA (25 créditos)'}
+                      ? `Tentar de novo por IA${custo(25)}`
+                      : `Gerar por IA${custo(25)}`}
                   </Button>
                 </div>
                 <BancadaEscolhaDeModelo
@@ -943,8 +947,8 @@ function Card({
                 {item.status === 'erro'
                   ? 'Tentar de novo'
                   : ehCarrossel
-                    ? 'Gerar capa e guia (50 créditos)'
-                    : 'Gerar arte (25 créditos)'}
+                    ? `Gerar capa e guia${custo(50)}`
+                    : `Gerar arte${custo(25)}`}
               </Button>
             ))}
 
@@ -960,7 +964,7 @@ function Card({
                   </p>
                   <Button size="sm" onClick={onConfirmarEstilo}>
                     <Sparkles className="mr-2 h-4 w-4" />
-                    Confirmar estilo e gerar o resto ({faltam * 25} créditos)
+                    Confirmar estilo e gerar o resto{custo(faltam * 25)}
                   </Button>
                 </div>
               )
@@ -986,7 +990,7 @@ function Card({
               {item.tipo !== 'carrossel' && (
                 <Button size="sm" variant="outline" onClick={onGerar}>
                   <RefreshCw className="mr-2 h-3.5 w-3.5" />
-                  Corrigir — gerar de novo (25 créditos)
+                  Corrigir — gerar de novo{custo(25)}
                 </Button>
               )}
             </div>
@@ -1127,6 +1131,8 @@ function DialogoDaConta({
   confirmando: boolean
   onConfirmar: () => void
 }) {
+  // Modo interno: o saldo não decide nada, então o aviso de saldo não aparece.
+  const cobrancaLigada = useCobrancaLigada()
   if (!resultado) return null
 
   const c = resultado.conta
@@ -1184,7 +1190,7 @@ function DialogoDaConta({
             </ul>
           )}
 
-          {c.saldoSuficiente === false && (
+          {cobrancaLigada && c.saldoSuficiente === false && (
             <p className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-500">
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               O saldo de hoje pode não cobrir a leva inteira — parte das peças pode falhar. Dá para

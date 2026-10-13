@@ -145,7 +145,7 @@ export function GerarVideoProvider({
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const { userId: clerkUserId } = useAuth()
-  const { canPerformOperation, getCost, credits } = useCredits()
+  const { canPerformOperation, getCost, credits, creditosAplicados } = useCredits()
   const pageSync = usePageSync()
 
   // O vídeo de fundo dita duração e som; na página que só tem motion (motion
@@ -731,6 +731,8 @@ export function GerarVideoProvider({
             )}
 
             <div className="grid gap-4 md:grid-cols-2">
+              {/* Modo interno: sem cartão de créditos (volta com a cobrança ligada). */}
+              {creditosAplicados === true && (
               <div className="rounded-xl border bg-background p-4 shadow-sm">
                 <div className="flex items-center justify-between">
                   <div>
@@ -747,6 +749,7 @@ export function GerarVideoProvider({
                   </p>
                 )}
               </div>
+              )}
 
               <div className="rounded-xl border bg-background p-4 shadow-sm">
                 <div className="flex items-center justify-between text-sm">
@@ -961,7 +964,7 @@ export function GerarVideoProvider({
                   ) : (
                     <>
                       <Download className="mr-2 h-4 w-4" />
-                      Gerar vídeo ({creditCost} créditos)
+                      Gerar vídeo{creditosAplicados === true && ` (${creditCost} créditos)`}
                     </>
                   )}
                 </Button>

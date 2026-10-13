@@ -21,6 +21,7 @@ import {
   MessagesSquare,
 } from "lucide-react";
 import { useIsAdmin } from "@/hooks/use-is-admin";
+import { useCobrancaLigada } from "@/hooks/use-credits";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -51,17 +52,32 @@ export const navigationItems = [
   { name: "Cobrança", href: "/billing", icon: CreditCard },
 ];
 
-// Items visíveis somente para admins. Inseridos logo depois de "Cobrança".
+// Items visíveis somente para admins. Inseridos no fim da lista.
 export const adminNavigationItems = [
   { name: "Gastos & Uso", href: "/admin/spending", icon: Wallet },
 ];
 
+// Páginas comerciais: só aparecem com a cobrança ligada (CREDITOS_APLICADOS).
+// A rota continua no ar; só a entrada do menu some no modo interno.
+const ROTAS_COMERCIAIS = new Set(["/billing"]);
+
+/** Lista do menu para o usuário atual (puro, para testar sem React). */
+export function itensDoMenu<T extends { href: string }>(
+  base: T[],
+  admin: T[],
+  { isAdmin, creditosAplicados }: { isAdmin: boolean; creditosAplicados: boolean | undefined },
+): T[] {
+  const itens = creditosAplicados === true ? base : base.filter((i) => !ROTAS_COMERCIAIS.has(i.href));
+  return isAdmin ? [...itens, ...admin] : itens;
+}
+
 /** Hook que retorna a lista final de items pro usuário atual. */
 export function useResolvedNavigationItems() {
   const { isAdmin } = useIsAdmin();
+  const creditosAplicados = useCobrancaLigada();
   return React.useMemo(
-    () => (isAdmin ? [...navigationItems, ...adminNavigationItems] : navigationItems),
-    [isAdmin]
+    () => itensDoMenu(navigationItems, adminNavigationItems, { isAdmin, creditosAplicados }),
+    [isAdmin, creditosAplicados]
   );
 }
 

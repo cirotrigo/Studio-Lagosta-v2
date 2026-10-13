@@ -460,7 +460,8 @@ export function AIEditModal({
               />
             </div>
 
-            {/* Credits Info */}
+            {/* Credits Info — só com a cobrança ligada */}
+            {creditosAplicados === true && (
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted-foreground">
                 Custo: <strong>{creditsRequired} créditos</strong>
@@ -469,6 +470,7 @@ export function AIEditModal({
                 Disponível: {credits?.creditsRemaining ?? 0} créditos
               </span>
             </div>
+            )}
           </div>
         </div>
 

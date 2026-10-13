@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { QUALIDADES_OFERECIDAS, ROTULO_QUALIDADE, type QualidadeArte } from '@/lib/ai/qualidade-arte'
 import { cn } from '@/lib/utils'
+import { useCobrancaLigada } from '@/hooks/use-credits'
 import { MemberAvatar } from '@/components/members/member-avatar'
 
 interface GalleryItemProps {
@@ -155,6 +156,7 @@ export function GalleryItem({
   pswpHeight,
 }: GalleryItemProps) {
   const [imageLoaded, setImageLoaded] = React.useState(false)
+  const cobrancaLigada = useCobrancaLigada()
   const [isInView, setIsInView] = React.useState(false)
   /**
    * Proporção medida na miniatura, quando ela já carregou.
@@ -657,7 +659,7 @@ export function GalleryItem({
               e.stopPropagation()
               onImprove()
             }}
-            title="Melhorar com IA (25 créditos)"
+            title={cobrancaLigada ? 'Melhorar com IA (25 créditos)' : 'Melhorar com IA'}
           >
             <Sparkles className="h-3.5 w-3.5" />
           </Button>

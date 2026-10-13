@@ -17,6 +17,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
+import { useCobrancaLigada } from '@/hooks/use-credits'
 import {
   AI_INSTRUCTION_MAX_CHARS,
   AI_INSTRUCTION_PLACEHOLDER,
@@ -53,6 +54,8 @@ export function GenerateCreativesModal({
 }: GenerateCreativesModalProps) {
   const [selectedPageIds, setSelectedPageIds] = React.useState<Set<string>>(new Set())
   const [aiInstruction, setAiInstruction] = React.useState('')
+  // Modo interno: o resumo não fala em créditos.
+  const cobrancaLigada = useCobrancaLigada()
 
   // Ordenar páginas por order
   const sortedPages = React.useMemo(() => {
@@ -263,7 +266,7 @@ export function GenerateCreativesModal({
             />
             <p className="text-xs text-muted-foreground">
               {wantsImprovement
-                ? `A arte gerada entra na fila de melhoria com IA (+${AI_IMPROVEMENT_CREDIT_COST} créditos por página). O criativo original continua salvo.`
+                ? `A arte gerada entra na fila de melhoria com IA${cobrancaLigada ? ` (+${AI_IMPROVEMENT_CREDIT_COST} créditos por página)` : ''}. O criativo original continua salvo.`
                 : 'Deixe em branco para gerar a arte exatamente como está no editor.'}
             </p>
           </div>
@@ -278,6 +281,7 @@ export function GenerateCreativesModal({
                   {selectedPageIds.size} de {sortedPages.length}
                 </span>
               </div>
+              {cobrancaLigada && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Custo total:</span>
                 <span className="font-medium">
@@ -287,6 +291,7 @@ export function GenerateCreativesModal({
                     : ` (${creditCost} créditos/página)`}
                 </span>
               </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Tempo estimado:</span>
                 <span className="font-medium">~{estimatedTime} segundos</span>

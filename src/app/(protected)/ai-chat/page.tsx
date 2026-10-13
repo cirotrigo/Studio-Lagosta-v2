@@ -1431,7 +1431,7 @@ export default function AIChatPage() {
 
               <div className="absolute -bottom-6 left-0 right-0 flex justify-center opacity-0 transition-opacity focus-within:opacity-100 pointer-events-none">
                 <span className="text-[10px] text-muted-foreground">
-                  {mode === 'image' ? `Custo aprox: ${getCost('ai_image_generation')} créditos` : trainingMode ? "Modo de Treinamento Ativo" : "Shift + Enter para quebrar linha"}
+                  {mode === 'image' && creditosAplicados === true ? `Custo aprox: ${getCost('ai_image_generation')} créditos` : trainingMode ? "Modo de Treinamento Ativo" : "Shift + Enter para quebrar linha"}
                 </span>
               </div>
             </form>

@@ -5,6 +5,7 @@ import Image from 'next/image'
 import { Button } from '@/components/ui/button'
 import { Download, Calendar, Play, Check, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useCobrancaLigada } from '@/hooks/use-credits'
 
 interface CreativeCardProps {
   id: string
@@ -38,6 +39,7 @@ export function CreativeCard({
   onImprove,
 }: CreativeCardProps) {
   const [imageLoaded, setImageLoaded] = React.useState(false)
+  const cobrancaLigada = useCobrancaLigada()
 
   const effectiveDisplayUrl = displayUrl ?? undefined
   const resolvedAssetUrl = assetUrl ?? (status === 'COMPLETED' ? displayUrl : null)
@@ -156,7 +158,7 @@ export function CreativeCard({
                 e.stopPropagation()
                 onImprove()
               }}
-              title="Melhorar com IA (25 créditos)"
+              title={cobrancaLigada ? 'Melhorar com IA (25 créditos)' : 'Melhorar com IA'}
             >
               <Sparkles className="h-4 w-4" />
             </Button>
