@@ -27,6 +27,7 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/hooks/use-toast'
+import { useCobrancaLigada } from '@/hooks/use-credits'
 import { api } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import {
@@ -59,6 +60,7 @@ export function GerarArteIaModal({ projectId, open, onOpenChange }: Props) {
   const queryClient = useQueryClient()
 
   const [trilha, setTrilha] = React.useState<Trilha>('arte')
+  const cobrancaLigada = useCobrancaLigada()
   const [formato, setFormato] = React.useState<Formato>('story')
   const [copyTexto, setCopyTexto] = React.useState('')
   const [pedido, setPedido] = React.useState('')
@@ -289,7 +291,7 @@ export function GerarArteIaModal({ projectId, open, onOpenChange }: Props) {
 
         <DialogFooter className="flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-muted-foreground">
-            {impedimento ?? `Pronto para gerar · ${custo}`}
+            {impedimento ?? (cobrancaLigada ? `Pronto para gerar · ${custo}` : 'Pronto para gerar')}
           </p>
           <div className="flex gap-2">
             <Button variant="outline" onClick={fechar}>
@@ -297,7 +299,7 @@ export function GerarArteIaModal({ projectId, open, onOpenChange }: Props) {
             </Button>
             <Button onClick={enviar} disabled={!!impedimento || enviando}>
               <Sparkles className="mr-2 h-4 w-4" />
-              {enviando ? 'Iniciando…' : `Gerar (${custo})`}
+              {enviando ? 'Iniciando…' : cobrancaLigada ? `Gerar (${custo})` : 'Gerar'}
             </Button>
           </div>
         </DialogFooter>
