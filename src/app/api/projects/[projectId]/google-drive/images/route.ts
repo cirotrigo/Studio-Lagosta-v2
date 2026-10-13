@@ -6,6 +6,7 @@ import { assertRateLimit, RateLimitError } from '@/lib/rate-limit'
 import { fetchProjectWithShares, hasProjectReadAccess } from '@/lib/projects/access'
 import type { GoogleDriveItem } from '@/types/google-drive'
 import { idDoDriveValido } from '@/lib/google-drive/id'
+import { DriveIndisponivelError, filtrarAtalhosDoEscopo, raizesNaRotaDoProjeto } from '@/lib/google-drive/escopo'
 
 const querySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
@@ -20,22 +21,24 @@ interface ProjectDriveImagesPayload {
   nextOffset?: number
 }
 
-const projectDriveImagesCache = new Map<string, { payload: ProjectDriveImagesPayload; timestamp: number }>()
+/**
+ * O cache guarda a listagem INTEIRA como veio do Drive (com
+ * `shortcutDetails`). O offset é posição NELA, não na lista filtrada: assim
+ * um atalho que sai do escopo entre uma página e outra não desloca imagem
+ * válida para fora das duas.
+ */
+const projectDriveImagesCache = new Map<string, { payload: GoogleDriveItem[]; timestamp: number }>()
 
 function getProjectDriveImagesCacheKey({
   userId,
   projectId,
   driveFolderId,
-  offset,
-  limit,
 }: {
   userId: string
   projectId: number
   driveFolderId: string
-  offset: number
-  limit: number
 }) {
-  return [userId, projectId, driveFolderId, offset, limit].join(':')
+  return [userId, projectId, driveFolderId].join(':')
 }
 
 function getCachedProjectDriveImages(cacheKey: string) {
@@ -57,6 +60,26 @@ export async function GET(
   { params }: { params: Promise<{ projectId: string }> }
 ) {
   let cacheKey: string | null = null
+  // O cache guarda a listagem, nunca a decisão: toda resposta (cache
+  // inclusive) recorta a página da listagem guardada e reconfere os atalhos
+  // DELA contra as pastas do projeto de AGORA. A página pode vir com menos
+  // de `limit` itens; o cliente segue o `nextOffset`, não o tamanho.
+  let raizes: Set<string> | null = null
+  let offset = 0
+  let limit = 20
+  const responder = async (itens: GoogleDriveItem[]): Promise<ProjectDriveImagesPayload> => {
+    const pagina = itens.slice(offset, offset + limit)
+    return {
+      images: (raizes ? await filtrarAtalhosDoEscopo(pagina, raizes) : pagina).map((file) => ({
+        id: file.id,
+        name: file.name,
+        mimeType: file.mimeType,
+        thumbnailLink: file.thumbnailLink,
+        webContentLink: file.webContentLink,
+      })),
+      nextOffset: offset + limit < itens.length ? offset + limit : undefined,
+    }
+  }
   try {
     const { userId, orgId } = await auth()
     if (!userId) {
@@ -113,13 +136,18 @@ export async function GET(
       )
     }
 
-    const { offset, limit } = parseResult.data
+    offset = parseResult.data.offset
+    limit = parseResult.data.limit
+
+    // A pasta é a do projeto, os filhos não são conferidos: atalho para fora
+    // do projeto sai (admin: Drive inteiro).
+    raizes = await raizesNaRotaDoProjeto(userId, projectId)
 
     // Listar imagens da pasta
-    cacheKey = getProjectDriveImagesCacheKey({ userId, projectId, driveFolderId, offset, limit })
+    cacheKey = getProjectDriveImagesCacheKey({ userId, projectId, driveFolderId })
     const cachedPayload = getCachedProjectDriveImages(cacheKey)
     if (cachedPayload) {
-      return NextResponse.json(cachedPayload, {
+      return NextResponse.json(await responder(cachedPayload), {
         headers: { 'X-Drive-Cache': 'HIT' },
       })
     }
@@ -141,35 +169,23 @@ export async function GET(
       })
     }
 
-    // Aplicar paginação manual (já que o Google Drive retorna todos os arquivos)
-    const paginatedFiles = result.items.slice(offset, offset + limit)
-    const hasMore = offset + limit < result.items.length
-    const nextOffset = hasMore ? offset + limit : undefined
-
-    // Mapear para o formato esperado
-    const payload: ProjectDriveImagesPayload = {
-      images: paginatedFiles.map((file) => ({
-        id: file.id,
-        name: file.name,
-        mimeType: file.mimeType,
-        thumbnailLink: file.thumbnailLink,
-        webContentLink: file.webContentLink,
-      })),
-      nextOffset,
-    }
-
+    // Responde antes de guardar: atalho sem conferência (503) não vai ao cache.
+    const resposta = await responder(result.items)
     projectDriveImagesCache.set(cacheKey, {
-      payload,
+      payload: result.items,
       timestamp: Date.now(),
     })
 
-    return NextResponse.json(payload)
+    return NextResponse.json(resposta)
   } catch (error) {
+    if (error instanceof DriveIndisponivelError) {
+      return NextResponse.json({ error: 'Google Drive indisponível, tente de novo' }, { status: 503 })
+    }
     if (error instanceof RateLimitError) {
       if (cacheKey) {
         const cachedPayload = getCachedProjectDriveImages(cacheKey)
         if (cachedPayload) {
-          return NextResponse.json(cachedPayload, {
+          return NextResponse.json(await responder(cachedPayload), {
             headers: {
               'Retry-After': String(error.retryAfter),
               'X-Drive-Cache': 'STALE',

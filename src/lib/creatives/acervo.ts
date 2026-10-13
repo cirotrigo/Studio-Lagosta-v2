@@ -9,6 +9,7 @@
 
 import { db } from '@/lib/db'
 import { idDoDriveValido } from '@/lib/google-drive/id'
+import { filtrarAtalhosDoEscopo, raizesDoProjeto } from '@/lib/google-drive/escopo'
 import { CreativeError } from '@/lib/creatives/errors'
 import { lerUsosDeFotoComEstado, mesclarUsos, type UsoDaFoto } from '@/lib/creatives/uso-de-foto'
 import {
@@ -635,6 +636,9 @@ const PASTAS_VISITADAS_MAX = 250
  */
 export async function listarImagensDoDrive(projectId: number, limit = 30, folder?: string) {
   const raiz = await pastaDeImagens(projectId)
+  // Atalho só entra se o destino também for deste projeto (qualquer chamador).
+  const raizes = await raizesDoProjeto(projectId)
+  const memo = new Map()
 
   const imagens: Array<{ driveFileId: string; fileName: string; mimeType: string; folder: string }> = []
   const pastas = new Set<string>()
@@ -644,7 +648,7 @@ export async function listarImagensDoDrive(projectId: number, limit = 30, folder
     if (visitadas >= PASTAS_VISITADAS_MAX) return
     visitadas++
 
-    const arquivos = await googleDriveService.listFolderFiles(folderId)
+    const arquivos = await filtrarAtalhosDoEscopo(await googleDriveService.listFolderFiles(folderId), raizes, { memo })
     for (const f of arquivos) {
       if (!(f.mimeType ?? '').startsWith('image/')) continue
       if (caminho) pastas.add(caminho)
