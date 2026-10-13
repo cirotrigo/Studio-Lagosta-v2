@@ -418,11 +418,14 @@ export async function processVideoJob(
         startedAt,
         // Saldo insuficiente é decidido antes do débito: o único erro que prova que nada foi cobrado.
         definitivo: (erro) => erro instanceof InsufficientCreditsError,
-      }).catch((erro) => {
+      }).catch(async (erro) => {
         // Nada foi cobrado (o erro é definitivo): o vídeo pronto não se perde por saldo.
         if (!(erro instanceof InsufficientCreditsError)) throw erro
         console.warn('[Video Processor] Saldo insuficiente — o vídeo segue sem cobrança:', job.id)
         semSaldo = true
+        // Marca DURÁVEL já agora (merge no banco): se cair antes de concluir, a
+        // recuperação lê a marca e conclui o vídeo pronto em vez de falhá-lo.
+        await naArte({ cobrancaAviso: 'saldo-insuficiente' })
         return 'sem-saldo' as const
       })
       if (cobranca === 'arrendamento-perdido') throw new ArrendamentoPerdido()
@@ -789,7 +792,14 @@ export async function recuperarJobsDeVideoPresos(
   const placar = { devolvidos: 0, falhados: 0, concluidos: 0 }
   for (const job of presos) {
     const lido = { id: job.id, status: 'PROCESSING' as const, startedAt: job.startedAt }
-    const decisao = decidirRecuperacao({ attempts: job.attempts, videoPronto: !!job.mp4ResultUrl && job.creditsDeducted })
+    // Pronto = MP4 e cobrança resolvida: cobrado, ou recusado por saldo (marca gravada na hora da recusa).
+    const semSaldo =
+      !!job.mp4ResultUrl && !job.creditsDeducted && !!job.generationId &&
+      comoObjeto(
+        (await db.generation.findUnique({ where: { id: job.generationId }, select: { fieldValues: true } }).catch(() => null))
+          ?.fieldValues,
+      )?.cobrancaAviso === 'saldo-insuficiente'
+    const decisao = decidirRecuperacao({ attempts: job.attempts, videoPronto: !!job.mp4ResultUrl && (job.creditsDeducted || semSaldo) })
     try {
       if (decisao === 'devolver') {
         const r = await db.videoProcessingJob.updateMany({ where: lido, data: { status: 'PENDING' } })
