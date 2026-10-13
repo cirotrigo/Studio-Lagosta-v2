@@ -1,7 +1,7 @@
 import { NextResponse, after } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { z } from 'zod'
-import { fetchProjectWithShares, hasProjectWriteAccess } from '@/lib/projects/access'
+import { fetchProjectWithShares, hasProjectReadAccess, hasProjectWriteAccess } from '@/lib/projects/access'
 import { CreativeError } from '@/lib/creatives/errors'
 import { startArtGeneration } from '@/lib/ai/creative-generation-service'
 import type { ArtGenerationReference, CarouselMeta } from '@/lib/ai/creative-generation-runner'
@@ -93,6 +93,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ project
     }
     if (!hasProjectWriteAccess(project, { userId, orgId })) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
+    }
+
+    // O cliente citado também tem de estar no alcance de quem pede; sem
+    // leitura nele, responde como inexistente.
+    const citado = parsed.data.marcaDoClienteProjectId
+    if (citado && !hasProjectReadAccess(await fetchProjectWithShares(citado), { userId, orgId })) {
+      return NextResponse.json({ error: 'Cliente citado não encontrado' }, { status: 404 })
     }
 
     const started = await startArtGeneration({
