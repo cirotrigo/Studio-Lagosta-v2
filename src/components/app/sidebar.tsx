@@ -21,7 +21,7 @@ import {
   MessagesSquare,
 } from "lucide-react";
 import { useIsAdmin } from "@/hooks/use-is-admin";
-import { useCredits } from "@/hooks/use-credits";
+import { useCobrancaLigada } from "@/hooks/use-credits";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -74,7 +74,7 @@ export function itensDoMenu<T extends { href: string }>(
 /** Hook que retorna a lista final de items pro usuário atual. */
 export function useResolvedNavigationItems() {
   const { isAdmin } = useIsAdmin();
-  const { creditosAplicados } = useCredits();
+  const creditosAplicados = useCobrancaLigada();
   return React.useMemo(
     () => itensDoMenu(navigationItems, adminNavigationItems, { isAdmin, creditosAplicados }),
     [isAdmin, creditosAplicados]
