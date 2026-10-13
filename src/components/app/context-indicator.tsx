@@ -5,10 +5,13 @@ import { useOrganization, useUser } from "@clerk/nextjs"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
+import { useCredits } from "@/hooks/use-credits"
 
 export function ContextIndicator() {
   const { organization, membership, isLoaded: isOrganizationLoaded } = useOrganization()
   const { user, isLoaded: isUserLoaded } = useUser()
+  // Modo interno: o texto fala do acesso, não de créditos.
+  const { creditosAplicados } = useCredits()
 
   if (!isOrganizationLoaded || !isUserLoaded) {
     return <Skeleton className="mb-6 h-16 w-full" />
@@ -26,7 +29,9 @@ export function ContextIndicator() {
           <div>
             <p className="text-sm font-semibold text-foreground">Conta pessoal ativa</p>
             <p className="text-xs text-muted-foreground">
-              Usando créditos e recursos do plano pessoal de {user.fullName ?? "você"}
+              {creditosAplicados === true
+                ? `Usando créditos e recursos do plano pessoal de ${user.fullName ?? "você"}`
+                : `Conta de ${user.fullName ?? "você"}`}
             </p>
           </div>
         </div>
@@ -56,7 +61,9 @@ export function ContextIndicator() {
             {organization.name ?? "Organização ativa"}
           </p>
           <p className="text-xs text-muted-foreground">
-            Usando créditos compartilhados da organização — acesso como {roleLabel}
+            {creditosAplicados === true
+              ? `Usando créditos compartilhados da organização — acesso como ${roleLabel}`
+              : `Acesso como ${roleLabel}`}
           </p>
         </div>
       </div>
