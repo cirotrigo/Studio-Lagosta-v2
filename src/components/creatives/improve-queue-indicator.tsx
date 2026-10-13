@@ -17,6 +17,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
+import { useCobrancaLigada } from '@/hooks/use-credits'
 import {
   useImproveQueueStore,
   type ImproveJob,
@@ -35,6 +36,7 @@ const STATUS_CONFIG: Record<
 
 export function ImproveQueueIndicator() {
   const [open, setOpen] = React.useState(false)
+  const cobrancaLigada = useCobrancaLigada()
   const hasHydrated = useImproveQueueStore((s) => s.hasHydrated)
   const jobs = useImproveQueueStore((s) => s.jobs)
   const activeCount = React.useMemo(
@@ -82,7 +84,9 @@ export function ImproveQueueIndicator() {
               Fila de melhorias
             </SheetTitle>
             <SheetDescription>
-              Cada melhoria custa 25 créditos e é processada uma de cada vez.
+              {cobrancaLigada
+                ? 'Cada melhoria custa 25 créditos e é processada uma de cada vez.'
+                : 'Cada melhoria é processada uma de cada vez.'}
             </SheetDescription>
           </SheetHeader>
 
