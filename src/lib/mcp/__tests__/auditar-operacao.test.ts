@@ -217,4 +217,15 @@ describe('auditar-operacao', () => {
       'COMPOR',
     ]);
   });
+
+  it('A. inclui o manual canônico do agente operacional, com versão', async () => {
+    carteira(1);
+    m.visiveis.mockResolvedValue(null);
+    const r = await auditar({ kind: 'service' });
+    const { MANUAL_DO_DOT, DOT_OPERACAO_VERSAO } =
+      await import('@/lib/mcp/operacao-dot');
+    expect(r.manual).toBe(MANUAL_DO_DOT);
+    expect(r.manual.versao).toBe(DOT_OPERACAO_VERSAO);
+    expect(r.manual.alvoDias).toBe(r.alvoDias);
+  });
 });

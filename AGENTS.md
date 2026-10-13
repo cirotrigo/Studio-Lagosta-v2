@@ -40,6 +40,7 @@ este mesmo arquivo** (o `CLAUDE.md` é só um `@AGENTS.md`, o import do Claude C
 | `docs/regras/revisor-da-arte.md` | revisar-arte e ajustar-arte por medida e visão, recuperação forçada, versão visual, merge no banco de fieldValues |
 | `docs/regras/copy-autoral.md` | contrato (PR 2), persistência (PR 3), compositor fiel (PR 4), medir-copy (PR 8), vias que consomem o contrato (PR 5), camada extra (PRs 9 e 10) |
 | `docs/regras/lotes.md` | compor-leva idempotente (PR 11) e agendar-leva até os rascunhos (PR 12) |
+| `docs/regras/dot-lagosta-operacao.md` | Constituição operacional do Dot Lagosta: missão, estados da auditoria (coberto/pendente/vazio), autonomia até rascunho, gate humano, idempotência da leva, relatório; o manual canônico é `src/lib/mcp/operacao-dot.ts` |
 | `docs/regras/arquitetura-geral.md` | o antigo `AGENTS.md` (Warp, ago/2026): camadas de acesso a dados, créditos, organizações, editor Konva, CMS, admin, `usePageConfig` — com as correções de 05/10/2026 no topo |
 
 ## Armadilhas que valem em qualquer área
