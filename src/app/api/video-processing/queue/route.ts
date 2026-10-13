@@ -92,19 +92,16 @@ export async function POST(request: Request) {
       videoName: body.videoName,
     })
 
-    // 1. Obter usuário do banco
-    const user = await getUserFromClerkId(clerkUserId)
-
-    // 2. Validar créditos ANTES de adicionar à fila
-    await validateCreditsForFeature(clerkUserId, 'video_export', 1, {
-      organizationId: orgId ?? undefined,
-    })
+    // 1. Acesso ao projeto ANTES de User e créditos: quem não tem acesso recebe
+    // o mesmo 404 com ou sem saldo, e não ganha User no banco (`getUserFromClerkId`
+    // CRIA). Só LÊ o User aqui — User recém-criado não é dono de projeto nenhum.
+    const existente = await db.user.findUnique({ where: { clerkId: clerkUserId }, select: { id: true } })
 
     // Validate project access: owner OR organization member
     console.log('[Queue Video] Validando acesso ao projeto:', {
       projectId: body.projectId,
       clerkUserId,
-      userId: user.id,
+      userId: existente?.id ?? null,
       orgId,
     })
 
@@ -114,7 +111,7 @@ export async function POST(request: Request) {
         OR: [
           // Direct ownership
           { userId: clerkUserId },
-          { userId: user.id },
+          ...(existente ? [{ userId: existente.id }] : []),
           // Shared with organization (need to query through organization.clerkOrgId)
           ...(orgId
             ? [
@@ -184,6 +181,14 @@ export async function POST(request: Request) {
         { status: 404 }
       )
     }
+
+    // 2. Obter usuário do banco
+    const user = await getUserFromClerkId(clerkUserId)
+
+    // 3. Validar créditos ANTES de adicionar à fila
+    await validateCreditsForFeature(clerkUserId, 'video_export', 1, {
+      organizationId: orgId ?? undefined,
+    })
 
     // O destino é validado ANTES de qualquer upload ou cobrança.
     const preparo = await prepararVideoDaPagina({
