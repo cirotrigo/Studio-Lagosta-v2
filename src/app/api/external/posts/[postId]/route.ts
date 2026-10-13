@@ -7,6 +7,8 @@ import { refilarPaginasDoPost } from '@/lib/compositor/pastas'
 import { getLaterClient } from '@/lib/later'
 import type { UpdateLaterPostPayload } from '@/lib/later/types'
 import { PostStatus, PostType } from '../../../../../../prisma/generated/client'
+import { ErroAdmissaoSemantica } from '@/lib/posts/admitir-pedido-semantico'
+import { temContratoSemantico } from '@/lib/posts/copy-segue-a-pagina'
 
 export const maxDuration = 60
 
@@ -122,7 +124,8 @@ export async function PATCH(
 
     const isRescheduling = data.scheduledDatetime !== undefined
 
-    await db.socialPost.update({
+    const atualizar = (cliente: Pick<typeof db, 'socialPost'>) =>
+      cliente.socialPost.update({
       where: { id: postId },
       data: {
         ...(data.caption !== undefined && { caption: data.caption }),
@@ -135,7 +138,23 @@ export async function PATCH(
           processingStartedAt: null,
         }),
       },
-    })
+      })
+    /**
+     * B1d (checkpoint e): a mídia de um post com o contrato semântico é a provada pelo render canônico; trocá-la
+     * (e sincronizar a nova com o Zernio, logo abaixo) publicaria mídia sem prova. A mídia pedida é comparada com a
+     * da linha TRAVADA, na mesma transação da escrita. Sem mídia no body: a escrita de sempre.
+     */
+    if (data.mediaUrls !== undefined) {
+      await db.$transaction(async (tx) => {
+        const [linha] = await tx.$queryRaw<Array<{ slotValues: unknown; mediaUrls: string[] }>>`SELECT "slotValues", "mediaUrls" FROM "SocialPost" WHERE "id" = ${postId} FOR UPDATE`
+        if (temContratoSemantico(linha?.slotValues) && !areStringArraysEqual(data.mediaUrls, linha?.mediaUrls)) {
+          throw new ErroAdmissaoSemantica('CONTRATO_COM_MIDIA_PRONTA')
+        }
+        await atualizar(tx)
+      })
+    } else {
+      await atualizar(db)
+    }
 
     // Remarcou? As páginas da arte seguem para a semana nova (pasta, nome e
     // ordem). Post criado por esta API nasce sem página, então aqui costuma ser
@@ -202,6 +221,9 @@ export async function PATCH(
 
     return NextResponse.json({ success: true, zernioSynced, post })
   } catch (error) {
+    if (error instanceof ErroAdmissaoSemantica) {
+      return NextResponse.json({ error: error.codigo, message: error.message }, { status: 422 })
+    }
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { error: 'Validation error', details: error.errors },
