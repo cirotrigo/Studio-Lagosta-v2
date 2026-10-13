@@ -16,6 +16,7 @@ const b = vi.hoisted(() => ({
   jobsConcluidos: [] as any[],
   falhas: [] as unknown[],
   falharMarca: false,
+  falharLeitura: false,
 }))
 
 vi.mock('@/lib/db', () => {
@@ -58,7 +59,12 @@ vi.mock('@/lib/db', () => {
           startedAt: b.startedAt,
         }),
       },
-      generation: { findUnique: async ({ select }: any) => (select?.fieldValues && b.presos.length ? { fieldValues: b.fieldValues } : null) },
+      generation: {
+        findUnique: async ({ select }: any) => {
+          if (b.falharLeitura) throw new Error('conexão caiu ao ler a arte')
+          return select?.fieldValues && b.presos.length ? { fieldValues: b.fieldValues } : null
+        },
+      },
       // O patch da arte vai como JSON nos valores do SQL (o merge `||` no banco).
       $executeRaw: async (_partes: TemplateStringsArray, ...valores: unknown[]) => {
         if (b.falharMarca && valores.some((v) => typeof v === 'string' && v.includes('cobrancaAviso'))) {
@@ -100,6 +106,7 @@ beforeEach(() => {
   b.jobsConcluidos = []
   b.falhas = []
   b.falharMarca = false
+  b.falharLeitura = false
   vi.spyOn(console, 'log').mockImplementation(() => undefined)
   vi.spyOn(console, 'warn').mockImplementation(() => undefined)
   vi.spyOn(console, 'error').mockImplementation(() => undefined)
@@ -170,6 +177,15 @@ describe('recuperarJobsDeVideoPresos: vídeo pronto sem saldo', () => {
     expect(r).toEqual({ devolvidos: 0, falhados: 0, concluidos: 1 })
     expect(b.jobsConcluidos).toEqual([expect.objectContaining({ status: 'COMPLETED' })])
     expect(b.falhas).toHaveLength(0)
+  })
+
+  it('a leitura da marca falha na última tentativa: deixa o job para a próxima varredura, não falha (Codex)', async () => {
+    b.presos = [preso()]
+    b.fieldValues = { cobrancaAviso: 'saldo-insuficiente' }
+    b.falharLeitura = true
+    expect(await recuperarJobsDeVideoPresos(agora)).toEqual({ devolvidos: 0, falhados: 0, concluidos: 0 })
+    expect(b.falhas).toHaveLength(0)
+    expect(b.jobsConcluidos).toHaveLength(0)
   })
 
   it('MP4 sem cobrança e sem a marca: falha, como antes', async () => {

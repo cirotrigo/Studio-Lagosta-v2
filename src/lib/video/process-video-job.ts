@@ -798,12 +798,18 @@ export async function recuperarJobsDeVideoPresos(
   for (const job of presos) {
     const lido = { id: job.id, status: 'PROCESSING' as const, startedAt: job.startedAt }
     // Pronto = MP4 e cobrança resolvida: cobrado, ou recusado por saldo (marca gravada na hora da recusa).
-    const semSaldo =
-      !!job.mp4ResultUrl && !job.creditsDeducted && !!job.generationId &&
-      comoObjeto(
-        (await db.generation.findUnique({ where: { id: job.generationId }, select: { fieldValues: true } }).catch(() => null))
-          ?.fieldValues,
-      )?.cobrancaAviso === 'saldo-insuficiente'
+    let semSaldo = false
+    if (job.mp4ResultUrl && !job.creditsDeducted && job.generationId) {
+      let gen: { fieldValues: unknown } | null
+      try {
+        gen = await db.generation.findUnique({ where: { id: job.generationId }, select: { fieldValues: true } })
+      } catch (erro) {
+        // Erro de leitura não é "sem a marca": falhar aqui reprovaria um vídeo pronto. Fica PROCESSING para a próxima varredura.
+        console.error(`[video] recuperação do job ${job.id}: não deu para ler a marca sem saldo, fica para a próxima varredura:`, erro)
+        continue
+      }
+      semSaldo = comoObjeto(gen?.fieldValues)?.cobrancaAviso === 'saldo-insuficiente'
+    }
     const decisao = decidirRecuperacao({ attempts: job.attempts, videoPronto: !!job.mp4ResultUrl && (job.creditsDeducted || semSaldo) })
     try {
       if (decisao === 'devolver') {
