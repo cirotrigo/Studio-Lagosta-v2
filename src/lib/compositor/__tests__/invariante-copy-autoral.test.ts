@@ -392,7 +392,8 @@ function leituraLegada(contrato: CopyAutoral, preparadas: Layer[]): { esperado: 
 }
 
 describe('INVARIANTE: a copy autoral sobrevive a preparar → persistir → ler, duplicar, ocultar, excluir e recompor', () => {
-  it('todo contrato aceito × arranjo × operação mantém ids, linhas e dono', () => {
+  // Exaustivo (todas as combinações): no runner do CI passa de 7 s; o teto padrão de 5 s derrubava o gate (H5).
+  it('todo contrato aceito × arranjo × operação mantém ids, linhas e dono', { timeout: 60_000 }, () => {
     const casos = enumerarCasos()
     const falhas: string[] = []
     const contagem = { casos: casos.length, recusadosPelaSpec: 0, recusadosNaPreparacao: 0, aceitos: 0, variantes: 0, operacoes: 0, encadeadas: 0, foraDoEscopo: {} as Record<string, number>, posicaoSemMarca: 0 }
