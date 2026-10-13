@@ -2267,15 +2267,16 @@ toolEstrita(
     theme: z.string().describe('Theme of the creative (e.g., "almo\u00e7o executivo", "happy hour", "delivery")'),
     day: z.string().optional().describe('Optional day of week in PT (e.g., "sexta", "sabado", "sexta-feira")'),
   },
-  async ({ projectHint, projectId, theme, day }) => {
-    try {
-      const { prepareCreative } = await import('../src/lib/creatives/arte-rapida')
-      const result = await prepareCreative({ projectHint, projectId, theme, day })
-      return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] }
-    } catch (error: any) {
-      return { content: [{ type: 'text' as const, text: formatCreativeError(error) }], isError: true }
-    }
-  },
+  // Mesmo contrato do `escolher-modelo` do catálogo, então delega para a porta
+  // dele com o MESMO principal das tools PT: com STUDIO_AUTOR é a pessoa do
+  // Mac (só os clientes dela, gate no id), sem ele é o serviço (tudo). Antes
+  // chamava prepareCreative direto, sem escopo nem gate (pós-merge do #202).
+  async ({ projectHint, projectId, theme, day }) =>
+    executarToolLocal(
+      'escolher-modelo',
+      Object.fromEntries(Object.entries({ projectHint, projectId, theme, day }).filter(([, v]) => v !== undefined)),
+      principalLocal(AUTOR_LOCAL),
+    ) as never,
 )
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -2686,8 +2687,8 @@ toolEstrita(
 //
 // As 48 tools PT do conector remoto passam a existir AQUI também, vindas do
 // MESMO catálogo (src/lib/mcp/catalogo) — declaração única, validação única
-// (a porta executarToolLocal), gates com principal de serviço (a máquina do
-// dono tem o mesmo poder de sempre).
+// (a porta executarToolLocal), gates com o principal local — a pessoa do Mac
+// quando STUDIO_AUTOR a declara, senão o serviço (ver autor-local.ts).
 //
 // ⚠️ As 6 tools inglesas acima que PARECEM duplicatas (list-projects,
 // list-posts, list-drive-images, get-knowledge, prepare-creative,
@@ -2698,6 +2699,9 @@ toolEstrita(
 // schedule-content, plan-week) consomem ESSAS formas. Elas ficam como camada
 // de compatibilidade explícita; os nomes PT do catálogo são os canônicos.
 // Migrar as skills para os nomes PT aposenta a camada — decisão futura.
+// Exceção: prepare-creative TEM o mesmo contrato do escolher-modelo e, desde
+// 13/10/2026, delega para a porta dele (escopo e gate do principal local). As
+// outras seguem sem gate por principal — dívida registrada no PR do hardening.
 
 // Quem está sentado neste Mac (STUDIO_AUTOR, ver src/lib/mcp/autor-local.ts).
 // Resolvido em main(), antes de o transporte abrir; até lá, o serviço.
