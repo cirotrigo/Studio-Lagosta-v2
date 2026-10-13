@@ -96,9 +96,11 @@ lida a cada chamada. **Padrão: desligada** (qualquer valor que não seja `true`
   nunca lança `InsufficientCreditsError`, mas **segue gravando** a
   `UsageHistory` (mesmo `creditsUsed` de `creditosADebitar`) ou a
   `OrganizationUsage`, e roda o `noMesmoCommit` na mesma transação — a marca
-  `creditsDeducted` do vídeo continua saindo junto. O User é só LIDO
-  (`findUnique`): sem User, sem registro, mas o gancho roda. O CreditBalance
-  pessoal ainda é criado se faltar, porque a `UsageHistory` tem FK para ele.
+  `creditsDeducted` do vídeo continua saindo junto. Débito e estorno usam
+  `getUserFromClerkId` nos dois modos: rodam DEPOIS da autorização e do
+  trabalho, então criar o User ali é o primeiro acesso legítimo — e o uso
+  nunca se perde (com `findUnique`, User ausente sumia com o registro). O
+  CreditBalance pessoal ainda é criado se faltar (FK da `UsageHistory`).
   `refundCreditsForFeature` grava a linha negativa e não devolve ao saldo.
 - **A interface** lê a flag por `/api/credits/settings` (`creditosAplicados`) —
   `NEXT_PUBLIC_` seria embutida no build, e o módulo vive ao lado do Prisma.
@@ -112,6 +114,16 @@ lida a cada chamada. **Padrão: desligada** (qualquer valor que não seja `true`
     reenviaria. Falha da cobrança agora vira `PostLog` SENT com
     `{ cobrancaFalhou: true, laterPostId }`, nunca falha do post. Falha antes do
     Zernio segue FAILED + `handlePublishFailure`.
+  - Se a gravação do `laterPostId` falhar DEPOIS do `createPost`, o envio é
+    INCERTO, não FAILED: tenta uma gravação mínima só do `laterPostId`
+    (`where laterPostId IS NULL`); se ela também falhar, a linha fica POSTING,
+    sem `handlePublishFailure`, com `PostLog` `{ laterPostId,
+    persistenciaIncerta: true }`, e `sendToLater` devolve `{ success: false,
+    incerto: true }` (o executor não conta sucesso nem agenda nova tentativa).
+    Quem resolve é a varredura de travados (caso a, 30 min): ela reenvia, e o
+    Zernio recusa o conteúdo repetido (409, deduplicação de 24h), que
+    `tryAdoptExistingPost` adota. ⚠️ A proteção contra publicação dupla aí é a
+    deduplicação do Zernio, não nossa.
   - O job de vídeo com `InsufficientCreditsError` conclui sem cobrar
     (`creditsDeducted: false`, que agora reflete a cobrança real) e a arte ganha
     `cobrancaAviso: 'saldo-insuficiente'` por merge no banco. `cobrarUmaVez`
@@ -119,5 +131,10 @@ lida a cada chamada. **Padrão: desligada** (qualquer valor que não seja `true`
   - `POST /api/video-processing/queue` confere o acesso ao projeto **antes** de
     `getUserFromClerkId` e da validação de créditos: sem acesso, o mesmo 404 com
     ou sem saldo, e nenhum User criado.
+  - Sem saldo nada limita as rotas pagas, então elas exigem acesso de ESCRITA
+    ao projeto antes do provedor e do registro de uso: `ai/remove-background`,
+    `ai/improve-caption` e `templates/export` (pelo projeto do template; sem
+    template, o uso não vai para projeto nenhum). Alheio ou inexistente: o
+    mesmo 404.
 - **Religar a cobrança**: `CREDITOS_APLICADOS=true` no env do servidor (Vercel)
   e redeploy. O comportamento volta ao de antes, com os endurecimentos acima.
