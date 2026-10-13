@@ -4,7 +4,8 @@
  */
 
 import { db } from '@/lib/db'
-import { deductCreditsForFeature } from '@/lib/credits/deduct'
+import { deductCreditsForFeature, validateCreditsForFeature } from '@/lib/credits/deduct'
+import { creditosAplicados } from '@/lib/credits/aplicados'
 import { put } from '@vercel/blob'
 import {
   Prisma,
@@ -785,6 +786,16 @@ export class LaterPostScheduler {
 
       if (!postAuthor?.clerkId) {
         throw new Error('Clerk user ID not found for post author')
+      }
+
+      // Com a cobrança ligada, saldo insuficiente impede o envio — ANTES do
+      // Zernio, quando nada saiu ainda: o erro cai no catch abaixo (FAILED +
+      // `handlePublishFailure`, que não retenta crédito). A cobrança em si vem
+      // depois de gravar o `laterPostId`. Desligada (modo interno), nada aqui.
+      if (creditosAplicados() && !skipCreditDeduction) {
+        await validateCreditsForFeature(postAuthor.clerkId, 'social_media_post', 1, {
+          organizationId: post.Project.organizationProjects?.[0]?.organization?.clerkOrgId,
+        })
       }
 
       console.log(`[Later Scheduler] Sending post ${post.id} to Later API`)

@@ -4,7 +4,7 @@
  * (o retry o reenviaria — publicação dupla). A falha da cobrança vira log, não
  * falha do post. Falha ANTES do Zernio segue FAILED + `handlePublishFailure`.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const post = {
   id: 'p1',
@@ -32,7 +32,7 @@ vi.mock('@/lib/db', () => ({
     $queryRaw: vi.fn(async () => [{ mediaUrls: post.mediaUrls, slotValues: null }]),
   },
 }))
-vi.mock('@/lib/credits/deduct', () => ({ deductCreditsForFeature: vi.fn() }))
+vi.mock('@/lib/credits/deduct', () => ({ deductCreditsForFeature: vi.fn(), validateCreditsForFeature: vi.fn() }))
 vi.mock('@vercel/blob', () => ({ put: vi.fn() }))
 vi.mock('@/lib/posts/verification/tag-generator', () => ({ generateVerificationTag: () => 'TAG' }))
 const zernio = vi.hoisted(() => ({ createPost: vi.fn(), createPostWithMedia: vi.fn() }))
@@ -43,7 +43,7 @@ vi.mock('../ensure-post-generation', () => ({ ensurePostGeneration: vi.fn(async 
 
 import { LaterPostScheduler } from '../later-scheduler'
 import { db } from '@/lib/db'
-import { deductCreditsForFeature } from '@/lib/credits/deduct'
+import { deductCreditsForFeature, validateCreditsForFeature } from '@/lib/credits/deduct'
 import { InsufficientCreditsError } from '@/lib/credits/errors'
 import { handlePublishFailure } from '../failure-handler'
 
@@ -144,5 +144,48 @@ describe('sendToLater: depois do laterPostId gravado, falha nenhuma vira FAILED'
     } finally {
       vi.mocked(db.postLog.create).mockReset().mockResolvedValue({} as never)
     }
+  })
+})
+
+/**
+ * Com `CREDITOS_APLICADOS=true`, saldo zero volta a impedir a publicação: a
+ * validação vem ANTES do Zernio (nada foi enviado ainda), e a recusa segue o
+ * caminho de falha de antes — FAILED + `handlePublishFailure`, que trata
+ * crédito insuficiente como não-retentável. Desligada, nenhuma checagem.
+ */
+describe('sendToLater: validação de saldo antes do Zernio (flag ligada)', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('flag ligada, saldo 0: não chama o Zernio, FAILED + handlePublishFailure com o erro de crédito', async () => {
+    vi.stubEnv('CREDITOS_APLICADOS', 'true')
+    vi.mocked(validateCreditsForFeature).mockRejectedValueOnce(new InsufficientCreditsError(3, 0))
+    await expect(new LaterPostScheduler().sendToLater('p1')).rejects.toBeInstanceOf(InsufficientCreditsError)
+    expect(zernio.createPost).not.toHaveBeenCalled()
+    expect(atualizacoes()).toEqual([expect.objectContaining({ status: 'FAILED' })])
+    expect(handlePublishFailure).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(handlePublishFailure).mock.calls[0][1]).toBeInstanceOf(InsufficientCreditsError)
+    expect(deductCreditsForFeature).not.toHaveBeenCalled()
+  })
+
+  it('flag ligada, saldo ok: valida, publica e cobra depois do laterPostId', async () => {
+    vi.stubEnv('CREDITOS_APLICADOS', 'true')
+    vi.mocked(validateCreditsForFeature).mockResolvedValueOnce({ available: 10, needed: 3 })
+    vi.mocked(deductCreditsForFeature).mockResolvedValueOnce({ creditsRemaining: 7 })
+    const r = await new LaterPostScheduler().sendToLater('p1')
+    expect(r).toEqual({ success: true, laterPostId: 'z1' })
+    expect(validateCreditsForFeature).toHaveBeenCalledWith('user_1', 'social_media_post', 1, { organizationId: undefined })
+    expect(vi.mocked(validateCreditsForFeature).mock.invocationCallOrder[0]).toBeLessThan(zernio.createPost.mock.invocationCallOrder[0])
+    expect(vi.mocked(db.socialPost.update).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(deductCreditsForFeature).mock.invocationCallOrder[0],
+    )
+  })
+
+  it('flag desligada: nenhuma validação, publica', async () => {
+    vi.stubEnv('CREDITOS_APLICADOS', '')
+    const r = await new LaterPostScheduler().sendToLater('p1')
+    expect(r).toEqual({ success: true, laterPostId: 'z1' })
+    expect(validateCreditsForFeature).not.toHaveBeenCalled()
   })
 })
