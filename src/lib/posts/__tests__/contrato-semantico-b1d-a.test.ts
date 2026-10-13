@@ -152,7 +152,7 @@ describe('H. quem grava `SocialPost.slotValues` (src/ e scripts/)', () => {
     'scripts/recover-blob-db-update.ts': 'recuperação (SQL cru, tabela e coluna DINÂMICAS): troca o host do Blob em toda coluna texto/jsonb, inclusive SocialPost.slotValues — só o host das URLs',
   }
   const PROVAS_DE_INTEGRACAO: Record<string, string> = Object.fromEntries(
-    ['validar-camadas-extras', 'validar-contexto-da-semana', 'validar-copy-autoral', 'validar-desfecho-no-agendamento', 'validar-revisor-da-arte', 'validar-video-na-agenda'].map((n) => [`scripts/${n}.ts`, 'prova no banco de dev: fixtures e leituras']),
+    ['validar-camadas-extras', 'validar-contexto-da-semana', 'validar-copy-autoral', 'validar-desfecho-no-agendamento', 'validar-guarda-de-envio-da-prova', 'validar-revisor-da-arte', 'validar-video-na-agenda'].map((n) => [`scripts/${n}.ts`, 'prova no banco de dev: fixtures e leituras']),
   )
   const NAO_ESCREVEM: Record<string, string> = {
     'src/lib/posts/scheduler.ts': 'PostScheduler: tipa e repassa slotValues ao createPost do later-scheduler',

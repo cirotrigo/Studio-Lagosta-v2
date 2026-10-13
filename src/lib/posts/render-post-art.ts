@@ -21,6 +21,7 @@ import { MOTIVO_VIDEO_REMOVIDO, postDeVideo } from './post-de-video'
 import { ErroRenderSemantico } from './erro-render-semantico'
 import { RenderStatus, type Prisma } from '../../../prisma/generated/client'
 import { fichaDeReserva } from './ficha-de-reserva'
+import { VERSAO_DA_PROVA } from './prova-do-render'
 
 /**
  * Shape único em vez de união discriminada: o tsconfig do projeto roda com
@@ -132,7 +133,16 @@ export async function renderPostArt(post: RenderablePost): Promise<RenderPostArt
       slotValues as Record<string, unknown> | undefined,
     )
 
-    const confirmed = await db.socialPost.updateMany({
+    /**
+     * B1d (checkpoint e): a confirmação da mídia e a PROVA do render ("estas camadas produziram ESTA mídia") são
+     * UMA transação. O CAS vem primeiro: sem a reserva (ficha) ou com a mídia trocada, nada é confirmado e nenhuma
+     * prova nasce — o Blob vencido fica sem autoridade. Pegou a linha: a prova (post, URL confirmada, camadas
+     * entregues ao canvas) é inserida no mesmo commit; se o INSERT falhar, o RENDERED volta atrás (opção A) e o
+     * erro segue o retry comum. Vale para todo render canônico de página, legado também; só o envio do contrato
+     * semântico a EXIGE (later-scheduler). Append-only: só create.
+     */
+    const confirmed = await db.$transaction(async (tx) => {
+      const cas = await tx.socialPost.updateMany({
       // A mídia entra no predicado: trocada DURANTE o render (o PUT do post não
       // mexe em `renderStatus`), o PNG não pode entrar por cima dela.
       where: { ...daReserva, mediaUrls: { equals: atual?.mediaUrls ?? [] } },
@@ -163,6 +173,12 @@ export async function renderPostArt(post: RenderablePost): Promise<RenderPostArt
             }
           : {}),
       },
+      })
+      if (cas.count !== 1) return cas
+      await tx.postRenderProof.create({
+        data: { postId: post.id, mediaUrl: result.url, proofVersion: VERSAO_DA_PROVA, layersSnapshot: result.camadasEfetivas as Prisma.InputJsonValue },
+      })
+      return cas
     })
 
     if (confirmed.count === 0) {

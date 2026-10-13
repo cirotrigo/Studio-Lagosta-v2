@@ -34,6 +34,7 @@ import { db } from '@/lib/db'
  */
 import { textosDaPagina } from '@/lib/posts/page-layers'
 import { comTravaPorChave } from '@/lib/trava-por-chave'
+import { CHAVES_DO_CONTRATO_SEMANTICO, temContratoSemantico } from '@/lib/posts/copy-segue-a-pagina'
 import { RenderStatus, type Prisma } from '../../../prisma/generated/client'
 
 /**
@@ -141,8 +142,15 @@ async function vincularSobATrava(tx: Prisma.TransactionClient, postId: string, m
     return existente.id
   }
 
-  const slotValues =
-    post.slotValues && typeof post.slotValues === 'object' && Object.keys(post.slotValues).length > 0
+  /**
+   * B1d (checkpoint e): `_slots`/`_papeis` são o PEDIDO, não o texto da arte — não entram como texto esperado.
+   * E o texto da página também não: num post semântico a página é o MODELO, e o texto cru dele não é o desta
+   * mídia. O que foi desenhado mora na prova do render (`PostRenderProof`); a copy visual da Generation fica para
+   * o checkpoint g.
+   */
+  const slotValues = temContratoSemantico(post.slotValues)
+    ? Object.fromEntries(Object.entries(post.slotValues as Record<string, unknown>).filter(([k]) => !(CHAVES_DO_CONTRATO_SEMANTICO as readonly string[]).includes(k)))
+    : post.slotValues && typeof post.slotValues === 'object' && Object.keys(post.slotValues).length > 0
       ? (post.slotValues as Record<string, unknown>)
       : textosDaPagina(page.layers)
 

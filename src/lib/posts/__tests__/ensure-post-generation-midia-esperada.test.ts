@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const estado = vi.hoisted(() => ({
   post: null as any,
-  geracoes: [] as Array<{ id: string; projectId: number; resultUrl: string }>,
+  geracoes: [] as Array<{ id: string; projectId: number; resultUrl: string; fieldValues?: any }>,
   /** Corre no meio do vínculo, entre a leitura e o CAS: a edição semântica que invalida a arte. */
   antesDoCas: null as null | (() => void),
 }))
@@ -31,11 +31,11 @@ const tx = {
       return { count: 1 }
     }),
   },
-  page: { findUnique: vi.fn(async () => ({ id: 'p1', name: 'Página', layers: [], templateId: 7, Template: { name: 'T' } })) },
+  page: { findUnique: vi.fn(async () => ({ id: 'p1', name: 'Página', layers: [{ id: 't-h', name: 'Título', type: 'text', content: 'texto do MODELO', visible: true }], templateId: 7, Template: { name: 'T' } })) },
   generation: {
     findFirst: vi.fn(async ({ where }: any) => estado.geracoes.find((g) => g.projectId === where.projectId && g.resultUrl === where.resultUrl) ?? null),
     create: vi.fn(async ({ data }: any) => {
-      const g = { id: `g${estado.geracoes.length + 1}`, projectId: data.projectId, resultUrl: data.resultUrl }
+      const g = { id: `g${estado.geracoes.length + 1}`, projectId: data.projectId, resultUrl: data.resultUrl, fieldValues: data.fieldValues }
       estado.geracoes.push(g)
       return { id: g.id }
     }),
@@ -128,5 +128,21 @@ describe('sem a mídia esperada: o comportamento de sempre (outros chamadores)',
     expect(await ensurePostGeneration('post-1')).toBe('g1')
     const where = tx.socialPost.updateMany.mock.calls.at(-1)![0].where
     expect(where).toEqual({ id: 'post-1', generationId: null })
+  })
+})
+
+describe('checkpoint e: a Generation de um post semântico não grava o PEDIDO como texto esperado', () => {
+  it('_slots/_papeis ficam fora de fieldValues.slotValues — e o texto do modelo também não entra no lugar', async () => {
+    estado.post = { ...estado.post, slotValues: { _slots: { manchete: 'Noite do vinho' }, _papeis: { cta: 'Reserve' } } }
+    await ensurePostGeneration('post-1', { midiaEsperada: URL_A })
+    const sv = estado.geracoes[0].fieldValues.slotValues
+    expect(JSON.stringify(sv)).not.toMatch(/_slots|_papeis|Noite do vinho|Reserve/)
+    expect(JSON.stringify(sv)).not.toMatch(/texto do MODELO/)
+  })
+
+  it('legado: como sempre (copy do post, ou o texto da página quando o post não tem copy)', async () => {
+    estado.post = { ...estado.post, slotValues: null }
+    await ensurePostGeneration('post-1', { midiaEsperada: URL_A })
+    expect(JSON.stringify(estado.geracoes[0].fieldValues.slotValues)).toMatch(/texto do MODELO/)
   })
 })

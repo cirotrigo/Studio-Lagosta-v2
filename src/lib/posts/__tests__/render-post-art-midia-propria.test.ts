@@ -13,8 +13,11 @@ const banco = vi.hoisted(() => ({
   duranteORender: null as null | (() => void),
 }))
 
-vi.mock('@/lib/db', () => ({
-  db: {
+vi.mock('@/lib/db', () => {
+  const db: any = {
+    // B1d (checkpoint e): a confirmação do render e a prova são uma transação.
+    $transaction: async (fazer: (tx: unknown) => Promise<unknown>) => fazer(db),
+    postRenderProof: { create: async ({ data }: any) => data },
     socialPost: {
       findUnique: async () => (banco.post ? { mediaUrls: banco.post.mediaUrls } : null),
       updateMany: async ({ where, data }: { where: { renderStatus?: string; mediaUrls?: { equals: string[] } }; data: Record<string, unknown> }) => {
@@ -25,8 +28,9 @@ vi.mock('@/lib/db', () => ({
         return { count: 1 }
       },
     },
-  },
-}))
+  }
+  return { db }
+})
 vi.mock('@/lib/posts/story-renderer', () => ({
   renderStoryImage: async () => {
     banco.renders++

@@ -45,6 +45,8 @@ import { lerCamadas, type PageLayer } from '@/lib/posts/page-layers'
 import { aplicarSlotNaCamada } from '@/lib/posts/page-to-design-data'
 import { copyIgual, copyPropriaDoPost, ehCopiaDaPagina, slotValuesParaRender, textosDoSlot } from '@/lib/posts/copy-segue-a-pagina'
 import { aplicarCaixa } from '@/lib/posts/caixa-do-texto'
+import { temContratoSemantico } from '@/lib/posts/copy-segue-a-pagina'
+import { aplicarValoresDoPost } from '@/lib/posts/aplicar-valores-do-post'
 
 export type OrigemDosTextos =
   /** As camadas de texto visíveis da página (o post não tem copy própria). */
@@ -132,6 +134,11 @@ export interface FontesDaPeca {
   paginaEhModelo?: boolean
   /** As mídias do post, na ordem, com a arte de cada uma. */
   slides?: SlideDaPeca[]
+  /**
+   * B1d (checkpoint e): a PROVA do render da mídia do post (`PostRenderProof`), carregada por quem chama casando
+   * post + URL. Só a leitura do contrato semântico a usa; o legado lê como sempre.
+   */
+  provaDaMidia?: { mediaUrl: string; layersSnapshot: unknown } | null
 }
 
 export interface TextosDeSlide {
@@ -442,7 +449,38 @@ export function paginaDoPostEHistorica(post: Pick<PecaParaTextos, 'pageId' | 're
   return arteDaMidia?.pageId !== post.pageId
 }
 
+/**
+ * B1d (checkpoint e): a peça com o contrato semântico (`_slots`/`_papeis`). O pedido nunca é texto.
+ *
+ *  - VIVA: o que o render desenharia agora — `aplicarValoresDoPost` nas camadas atuais da página MODELO, por índice,
+ *    ANTES da ordenação da leitura. Página de conteúdo, não carregada, ilegível ou contrato que não casa mais:
+ *    indisponível (o render recusaria).
+ *  - ENTREGUE: só a prova do render da URL entregue (`layersSnapshot`, as camadas que produziram aquele PNG). O
+ *    modelo de hoje e a Generation casada não dizem nada sobre aquela mídia; sem prova, indisponível.
+ */
+function textosDoContratoSemantico(post: PecaParaTextos, fontes: FontesDaPeca): TextosDaPeca {
+  const indisponivel = (motivo: string): TextosDaPeca => ({ textos: [], indisponiveis: `${motivo}: nada a afirmar (o pedido _slots/_papeis não é o texto desenhado).` })
+  if (arteEntregue(post)) {
+    const midia = post.mediaUrls.length === 1 ? post.mediaUrls[0] : null
+    const prova = fontes.provaDaMidia
+    if (!midia || !prova || prova.mediaUrl !== midia) return indisponivel('peça entregue sem prova do render para a mídia entregue')
+    const doSnapshot = textosDasCamadas(prova.layersSnapshot)
+    return doSnapshot === null ? indisponivel('a prova do render desta mídia não pôde ser lida') : { textos: doSnapshot, origem: 'arte' }
+  }
+  if (fontes.camadas === undefined) return indisponivel('a página modelo desta peça não pôde ser carregada')
+  if (fontes.paginaEhModelo !== true) return indisponivel('a página desta peça não é um modelo, e o render recusa o contrato semântico nela')
+  const lidas = lerCamadas(fontes.camadas)
+  if (!lidas.legivel) return indisponivel('as camadas da página não puderam ser lidas')
+  const aplicado = aplicarValoresDoPost(lidas.camadas as Array<PageLayer & { id: string }>, post.slotValues as Record<string, unknown>)
+  if (aplicado.erros.length > 0) {
+    return indisponivel(`o contrato semântico não casa com a página atual (${aplicado.erros.map((e) => e.codigo).join(', ')}) e o render o recusaria`)
+  }
+  const textos = textosDasCamadas(aplicado.camadas)
+  return textos === null ? indisponivel('as camadas da página não puderam ser lidas') : { textos, origem: 'pagina-com-copy-do-post' }
+}
+
 export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): TextosDaPeca {
+  if (temContratoSemantico(post.slotValues)) return textosDoContratoSemantico(post, fontes)
   const sv = post.slotValues
   const entregue = arteEntregue(post)
   const carrossel = post.mediaUrls.length > 1

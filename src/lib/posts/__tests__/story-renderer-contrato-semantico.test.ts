@@ -21,9 +21,10 @@ vi.mock('@vercel/blob', () => ({
 vi.mock('../register-project-fonts', () => ({ registerProjectFonts: vi.fn(async () => void estado.efeitos.push('fontes')) }))
 vi.mock('@/lib/creatives/server-text-measurer', () => ({ createServerTextMeasurer: vi.fn(async () => () => 100) }))
 vi.mock('@/lib/combo-stack-reflow', () => ({
-  reflowLayersAfterFill: vi.fn((layers: unknown[], ids: string[]) => {
+  // O reflow muda a geometria de quem cresceu — a prova tem de carregar a geometria FINAL.
+  reflowLayersAfterFill: vi.fn((layers: any[], ids: string[]) => {
     estado.efeitos.push(`reflow:${ids.join(',')}`)
-    return layers
+    return layers.map((l) => (ids.includes(l.id) ? { ...l, size: { ...l.size, height: 999 } } : l))
   }),
 }))
 vi.mock('@/lib/canvas-renderer', () => ({
@@ -158,5 +159,30 @@ describe('L. legado pelo caminho real do render: intacto', () => {
     expect(desenhado('t-h').content).toBe('modelo t-h')
     expect(r.aplicouSlots).toBe(false)
     expect(estado.efeitos).toEqual(['fontes', 'canvas', 'upload'])
+  })
+})
+
+describe('checkpoint e: camadasEfetivas = exatamente o que o canvas recebeu (a matéria da prova)', () => {
+  it('B/C. semântico: content FINAL e geometria FINAL (depois do reflow), iguais às camadas entregues ao renderDesign', async () => {
+    estado.pagina = pagina(true)
+    const r = await renderStoryImage('p1', 'post-1', { _slots: { manchete: 'Noite do vinho' } })
+    const efetiva = r.camadasEfetivas.find((l: any) => l.id === 't-h') as any
+    expect(efetiva.content).toBe('Noite do vinho')
+    expect(efetiva.size.height).toBe(999)
+    expect(r.camadasEfetivas).toEqual(estado.desenhado.layers)
+  })
+
+  it('legado também devolve as camadas efetivas (a prova vale para todo render canônico)', async () => {
+    estado.pagina = pagina(true)
+    const r = await renderStoryImage('p1', 'post-1', { 't-h': 'Por id' })
+    expect(r.camadasEfetivas).toEqual(estado.desenhado.layers)
+    expect((r.camadasEfetivas.find((l: any) => l.id === 't-h') as any).content).toBe('Por id')
+  })
+
+  it('é uma CÓPIA: o que o renderer fizer com o objeto depois não reescreve a prova', async () => {
+    estado.pagina = pagina(true)
+    const r = await renderStoryImage('p1', 'post-1', { _slots: { manchete: 'X' } })
+    estado.desenhado.layers[0].content = 'mexido depois'
+    expect((r.camadasEfetivas[0] as any).content).toBe('X')
   })
 })

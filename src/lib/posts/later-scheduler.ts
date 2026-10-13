@@ -35,6 +35,36 @@ import { ehExportDeVideo, postDeVideo } from './post-de-video'
 import { vinculoDoVideo } from '@/lib/video/vinculo-do-video'
 import { admitirPedidoSemantico } from './admitir-pedido-semantico'
 import { temContratoSemantico } from './copy-segue-a-pagina'
+import { VERSAO_DA_PROVA } from './prova-do-render'
+
+/**
+ * O post da linha corrente de "SocialPost" pode ir ao publicador quanto ao CONTRATO SEMÂNTICO?
+ *
+ * - Sem `_slots`/`_papeis` (o legado): sim, como sempre — a ausência de prova histórica não bloqueia.
+ * - Com o contrato: só com a mídia RENDERIZADA e PROVADA — `RENDERED`, exatamente uma mídia, a mesma de
+ *   `renderedImageUrl`, e uma prova DESTE post para ESSA URL, na versão corrente e com camadas. Prova de URL
+ *   anterior, de outro post, ou mídia fornecida (que nunca ganha prova) não passam.
+ *
+ * `mediaUrls` é `text[]` do Postgres: `cardinality` e índice 1, nunca JSON. Fragmento para o WHERE de um
+ * `UPDATE "SocialPost"` sem alias — a decisão de envio continua num único gate atômico. Exportado para
+ * a validação contra um Postgres de verdade usar o MESMO SQL.
+ */
+export const CONTRATO_PODE_SER_ENVIADO = Prisma.sql`(
+  jsonb_typeof("SocialPost"."slotValues") IS DISTINCT FROM 'object'
+  OR (NOT jsonb_exists("SocialPost"."slotValues", '_slots') AND NOT jsonb_exists("SocialPost"."slotValues", '_papeis'))
+  OR (
+    "SocialPost"."renderStatus" = 'RENDERED'::"RenderStatus"
+    AND cardinality("SocialPost"."mediaUrls") = 1
+    AND "SocialPost"."mediaUrls"[1] = "SocialPost"."renderedImageUrl"
+    AND EXISTS (
+      SELECT 1 FROM "PostRenderProof" AS prova
+      WHERE prova."postId" = "SocialPost"."id"
+        AND prova."mediaUrl" = "SocialPost"."renderedImageUrl"
+        AND prova."proofVersion" = ${VERSAO_DA_PROVA}
+        AND jsonb_typeof(prova."layersSnapshot") = 'array'
+    )
+  )
+)`
 
 interface RecurringConfig {
   frequency: RecurrenceFrequency
@@ -656,19 +686,22 @@ export class LaterPostScheduler {
        * recebe. É a linha CORRENTE que o UPDATE avalia: edição entre uma leitura e a reserva não escapa. O
        * Prisma não expressa "chave presente" num filtro Json (nem com valor null), por isso o SQL. Sem as
        * chaves (o legado), a reserva é a de sempre.
+       *
+       * B1d (checkpoint e): com o contrato, o MESMO UPDATE passa quando existe a PROVA do render para a mídia
+       * atual (`CONTRATO_PODE_SER_ENVIADO`). O `RETURNING` devolve a mídia que o gate viu: o post semântico envia
+       * EXATAMENTE essa (a provada), não o que uma releitura posterior encontrar.
        */
       const agora = new Date()
-      const reservadas = await db.$executeRaw`
+      const linhasReservadas = await db.$queryRaw<Array<{ mediaUrls: string[]; slotValues: unknown }>>`
         UPDATE "SocialPost"
         SET "status" = 'POSTING'::"PostStatus", "processingStartedAt" = ${agora}, "updatedAt" = ${agora}
         WHERE "id" = ${postId}
           AND "laterPostId" IS NULL
           AND "status" NOT IN ('POSTING'::"PostStatus", 'POSTED'::"PostStatus")
-          AND (
-            jsonb_typeof("slotValues") IS DISTINCT FROM 'object'
-            OR (NOT jsonb_exists("slotValues", '_slots') AND NOT jsonb_exists("slotValues", '_papeis'))
-          )
+          AND ${CONTRATO_PODE_SER_ENVIADO}
+        RETURNING "mediaUrls", "slotValues"
       `
+      const reservadas = linhasReservadas.length
 
       if (reservadas === 0) {
         // Não conseguiu reservar: ou já foi entregue, ou outra execução pegou
@@ -683,7 +716,7 @@ export class LaterPostScheduler {
         }
         if (!atual.laterPostId && atual.status !== PostStatus.POSTING && atual.status !== PostStatus.POSTED && temContratoSemantico(atual.slotValues)) {
           console.warn(
-            `[Later Scheduler] Post ${postId} usa o contrato semântico (_slots/_papeis) e ainda não tem prova do render — envio bloqueado`
+            `[Later Scheduler] Post ${postId} usa o contrato semântico (_slots/_papeis) e não tem prova do render para a mídia atual — envio bloqueado`
           )
           return { success: false, skipped: true, bloqueado: 'CONTRATO_SEM_PROVA_DE_RENDER' as const }
         }
@@ -725,6 +758,8 @@ export class LaterPostScheduler {
       }
 
       console.log(`[Later Scheduler] Post ${postId} reservado (status: ${post.status})`)
+      // B1d (checkpoint e): o contrato semântico publica a mídia que o gate PROVOU, nunca outra.
+      if (temContratoSemantico(linhasReservadas[0].slotValues)) post.mediaUrls = linhasReservadas[0].mediaUrls
 
       // NOTE: Media normalization already done in createPost() - no need to re-normalize here
       console.log('[Later Scheduler] Using pre-normalized media URLs from database')

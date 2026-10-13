@@ -35,6 +35,12 @@ export interface RenderStoryResult {
    * desenhado. A decisão mora num lugar só: `slotValuesParaRender`.
    */
   aplicouSlots: boolean
+  /**
+   * B1d (checkpoint e): as camadas EXATAMENTE como foram entregues ao `CanvasRenderer.renderDesign` — depois da
+   * aplicação de valores (legado ou semântico), de `camadasNoInstante` e do reflow. É a matéria da prova
+   * (`PostRenderProof.layersSnapshot`), nunca `Page.layers` bruto. Cópia serializada, tirada antes do desenho.
+   */
+  camadasEfetivas: unknown[]
 }
 
 /**
@@ -133,6 +139,7 @@ export async function renderStoryImage(
   console.log(`[story-renderer] Rendering page ${pageId} (${page.width}×${page.height})...`)
   const { CanvasRenderer } = await import('@/lib/canvas-renderer')
   const renderer = new CanvasRenderer(designData.canvas.width, designData.canvas.height)
+  const camadasEfetivas = JSON.parse(JSON.stringify(designData.layers)) as unknown[]
   const buffer = await renderer.renderDesign(designData, {})
   console.log(`[story-renderer] Rendered: ${(buffer.length / 1024).toFixed(0)} KB`)
 
@@ -154,5 +161,6 @@ export async function renderStoryImage(
     height: designData.canvas.height,
     copyDaPagina: textosDaPagina(page.layers),
     aplicouSlots: Boolean(slots) || textosSemanticos !== undefined,
+    camadasEfetivas,
   }
 }
