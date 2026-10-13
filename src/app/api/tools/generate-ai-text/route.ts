@@ -10,6 +10,7 @@ import { getInstagramTemplatePreset } from '@/lib/instagram-template-presets'
 import { getProjectPromptKnowledgeContext, searchKnowledgeBase } from '@/lib/knowledge/search'
 import { loadBrandContext } from '@/lib/brand/brand-context'
 import { googleDriveService } from '@/server/google-drive-service'
+import { assertDriveDoProjeto } from '@/lib/google-drive/escopo'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -226,7 +227,7 @@ function extractGoogleDriveFileId(url: string): string | null {
   return match?.[1] ?? null
 }
 
-async function fetchImageAsBuffer(url: string): Promise<{ buffer: Buffer; mimeType: string } | null> {
+async function fetchImageAsBuffer(url: string, projectId: number): Promise<{ buffer: Buffer; mimeType: string } | null> {
   try {
     const driveFileId = extractGoogleDriveFileId(url)
 
@@ -236,7 +237,9 @@ async function fetchImageAsBuffer(url: string): Promise<{ buffer: Buffer; mimeTy
         return null
       }
 
-      const { stream, mimeType } = await googleDriveService.getFileStream(driveFileId)
+      // Foto do Drive so sob as pastas do projeto; fora delas, sem analise.
+      const idEfetivo = await assertDriveDoProjeto(projectId, driveFileId)
+      const { stream, mimeType } = await googleDriveService.getFileStream(idEfetivo)
       const chunks: Buffer[] = []
       for await (const chunk of stream) {
         chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
@@ -488,8 +491,9 @@ async function getFocusedVisualKnowledge(
 async function analyzeImageContext(
   prompt: string,
   imageUrl: string,
+  projectId: number,
 ): Promise<ImageContextModelOutput> {
-  const image = await fetchImageAsBuffer(imageUrl)
+  const image = await fetchImageAsBuffer(imageUrl, projectId)
   if (!image) {
     throw new Error('Nao foi possivel carregar a imagem para analise contextual.')
   }
@@ -2060,7 +2064,7 @@ export async function generateAiTextPayload(
       visualWarnings.push('Analise visual indisponivel no ambiente atual; fluxo segue sem enriquecimento por imagem.')
     } else {
       try {
-        visualAnalysis = await analyzeImageContext(body.prompt, sourceImageUrl)
+        visualAnalysis = await analyzeImageContext(body.prompt, sourceImageUrl, body.projectId)
         const focusedKnowledge = await getFocusedVisualKnowledge(
           body.projectId,
           body.prompt,

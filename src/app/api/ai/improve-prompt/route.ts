@@ -6,6 +6,8 @@ import { z } from 'zod'
 import { validateCreditsForFeature, deductCreditsForFeature, refundCreditsForFeature } from '@/lib/credits/deduct'
 import { InsufficientCreditsError } from '@/lib/credits/errors'
 import { googleDriveService } from '@/server/google-drive-service'
+import { assertDriveDoProjeto } from '@/lib/google-drive/escopo'
+import { fetchProjectWithShares, hasProjectReadAccess } from '@/lib/projects/access'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -152,7 +154,7 @@ function extractGoogleDriveFileId(url: string): string | null {
 /**
  * Fetch image from a URL and return as buffer with mime type
  */
-async function fetchImageAsBuffer(url: string): Promise<{ buffer: Buffer; mimeType: string } | null> {
+async function fetchImageAsBuffer(url: string, projectId: number): Promise<{ buffer: Buffer; mimeType: string } | null> {
   try {
     // Check if it's a Google Drive internal URL
     const driveFileId = extractGoogleDriveFileId(url)
@@ -162,7 +164,9 @@ async function fetchImageAsBuffer(url: string): Promise<{ buffer: Buffer; mimeTy
         return null
       }
 
-      const { stream, mimeType } = await googleDriveService.getFileStream(driveFileId)
+      // Foto do Drive só sob as pastas do projeto; fora delas, fica de fora.
+      const idEfetivo = await assertDriveDoProjeto(projectId, driveFileId)
+      const { stream, mimeType } = await googleDriveService.getFileStream(idEfetivo)
       const chunks: Buffer[] = []
       for await (const chunk of stream) {
         chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
@@ -205,6 +209,11 @@ export async function POST(request: Request) {
     const body = await request.json()
     const { prompt, projectId, aspectRatio, referenceImages } = improvePromptSchema.parse(body)
 
+    const project = await fetchProjectWithShares(projectId)
+    if (!project || !hasProjectReadAccess(project, { userId, orgId })) {
+      return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
+    }
+
     const hasReferenceImages = referenceImages && referenceImages.length > 0
     console.log('[Improve Prompt] Starting for user:', userId, 'prompt length:', prompt.length, 'images:', referenceImages?.length || 0)
 
@@ -243,7 +252,7 @@ export async function POST(request: Request) {
       let imageBuffers: Array<{ buffer: Buffer; mimeType: string }> = []
       if (hasReferenceImages) {
         console.log('[Improve Prompt] Fetching reference images for analysis...')
-        const results = await Promise.all(referenceImages.map(fetchImageAsBuffer))
+        const results = await Promise.all(referenceImages.map((url) => fetchImageAsBuffer(url, projectId)))
         imageBuffers = results.filter((r): r is { buffer: Buffer; mimeType: string } => r !== null)
         console.log('[Improve Prompt] Successfully fetched', imageBuffers.length, 'of', referenceImages.length, 'images')
       }
