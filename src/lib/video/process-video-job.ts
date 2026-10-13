@@ -422,7 +422,6 @@ export async function processVideoJob(
         // Nada foi cobrado (o erro é definitivo): o vídeo pronto não se perde por saldo.
         if (!(erro instanceof InsufficientCreditsError)) throw erro
         console.warn('[Video Processor] Saldo insuficiente — o vídeo segue sem cobrança:', job.id)
-        semSaldo = true
         // Marca DURÁVEL já agora (merge no banco): se cair antes de concluir, a
         // recuperação lê a marca e conclui o vídeo pronto em vez de falhá-lo.
         // Sem a marca, a decisão da cobrança fica em aberto: interrupção
@@ -431,6 +430,8 @@ export async function processVideoJob(
         await naArte({ cobrancaAviso: 'saldo-insuficiente' }).catch((falha) => {
           throw new CobrancaIncerta(falha)
         })
+        // Só com a marca gravada: daqui em diante a cobrança está resolvida (sem saldo).
+        semSaldo = true
         return 'sem-saldo' as const
       })
       if (cobranca === 'arrendamento-perdido') throw new ArrendamentoPerdido()
@@ -476,12 +477,15 @@ export async function processVideoJob(
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    // Sem o arrendamento, cobrança incerta, ou já cobrado: não escreve nada — a recuperação decide.
+    // Sem o arrendamento, cobrança incerta, ou cobrança resolvida (cobrado, ou
+    // recusado por saldo com a marca gravada): não escreve nada — a recuperação
+    // decide e conclui o vídeo pronto em vez de falhá-lo.
     if (
       error instanceof ArrendamentoPerdido ||
       error instanceof QuedaSimulada ||
       error instanceof CobrancaIncerta ||
-      cobrado
+      cobrado ||
+      semSaldo
     ) {
       console.warn('[Video Processor] Job interrompido:', job.id, errorMessage)
       return { outcome: 'interrompido', jobId: job.id, motivo: errorMessage }
