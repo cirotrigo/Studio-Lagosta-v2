@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { put } from '@vercel/blob'
 import { generateThumbnail } from '@/lib/render-engine'
+import { db } from '@/lib/db'
+import { PermissionError, requireProjectAccess } from '@/lib/permissions'
 import type { DesignData } from '@/types/template'
 
 export const runtime = 'nodejs'
@@ -31,7 +33,7 @@ export const maxDuration = 60
  * entrada: `guardarMiniatura` em src/lib/templates/miniatura.ts.
  */
 export async function POST(req: Request) {
-  const { userId } = await auth()
+  const { userId, orgId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
@@ -42,6 +44,16 @@ export async function POST(req: Request) {
 
     if (!designData) {
       return NextResponse.json({ error: 'designData é obrigatório' }, { status: 400 })
+    }
+
+    // Com template, o caminho é o da miniatura dele: sobrescrever exige
+    // escrita no projeto do template.
+    if (Number.isInteger(templateId)) {
+      const template = await db.template.findUnique({ where: { id: templateId }, select: { projectId: true } })
+      if (!template) {
+        return NextResponse.json({ error: 'Template não encontrado' }, { status: 404 })
+      }
+      await requireProjectAccess(template.projectId, { userId, orgId, write: true })
     }
 
     const buffer = await generateThumbnail(designData as DesignData, {}, { width, height })
@@ -59,6 +71,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ thumbnailUrl: blob.url })
   } catch (error) {
+    if (error instanceof PermissionError) {
+      return NextResponse.json({ error: error.message }, { status: error.status })
+    }
     console.error('Error generating thumbnail:', error)
     return NextResponse.json({ error: 'Erro ao gerar thumbnail' }, { status: 500 })
   }

@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { db } from '@/lib/db'
 import { put } from '@vercel/blob'
 import { registrarUsoDeModelo } from '@/lib/aprendizado/uso-de-modelo'
+import { PermissionError, requireProjectAccess } from '@/lib/permissions'
 import type { Layer } from '@/types/template'
 
 export const runtime = 'nodejs'
@@ -35,7 +36,7 @@ const finalizeSchema = z.object({
 })
 
 export async function POST(request: Request) {
-  const { userId } = await auth()
+  const { userId, orgId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -48,9 +49,10 @@ export async function POST(request: Request) {
     console.log('[Gerar Criativo Finalize] Has dataUrl:', !!dataUrl)
     console.log('[Gerar Criativo Finalize] Input layers count:', layers.length)
 
-    // 1. Fetch model page and template with project
+    // 1. Fetch model page and template with project — a página tem de ser do
+    // template informado, que é onde a página nova vai ser criada.
     const templatePage = await db.page.findFirst({
-      where: { id: templatePageId, isTemplate: true },
+      where: { id: templatePageId, templateId, isTemplate: true },
       include: {
         Template: {
           include: {
@@ -63,6 +65,9 @@ export async function POST(request: Request) {
     if (!templatePage) {
       return NextResponse.json({ error: 'Template page not found' }, { status: 404 })
     }
+
+    // Grava página e arte no projeto do template: exige escrita nele.
+    await requireProjectAccess(templatePage.Template.projectId, { userId, orgId, write: true })
 
     // 2. Process layers for storage (apply overrides)
     const visibleLayers = layers.filter((l) => !hiddenLayerIds.includes(l.id))
@@ -210,6 +215,10 @@ export async function POST(request: Request) {
       resultUrl: blob.url,
     })
   } catch (error) {
+    if (error instanceof PermissionError) {
+      return NextResponse.json({ error: error.message }, { status: error.status })
+    }
+
     console.error('[Gerar Criativo Finalize] Error:', error)
 
     if (error instanceof z.ZodError) {

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
+import { PermissionError, requireProjectAccess } from '@/lib/permissions'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60 // Registro é rápido, não precisa de 300s
@@ -16,7 +17,7 @@ export const maxDuration = 60 // Registro é rápido, não precisa de 300s
  */
 export async function POST(req: Request) {
   try {
-    const { userId } = await auth()
+    const { userId, orgId } = await auth()
     if (!userId) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
@@ -59,6 +60,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Projeto não corresponde ao template' }, { status: 400 })
     }
 
+    await requireProjectAccess(template.Project.id, { userId, orgId, write: true })
+
     // Salvar geração no banco de dados
     const generation = await db.generation.create({
       data: {
@@ -90,6 +93,9 @@ export async function POST(req: Request) {
       },
     })
   } catch (error) {
+    if (error instanceof PermissionError) {
+      return NextResponse.json({ error: error.message }, { status: error.status })
+    }
     console.error('[VIDEO_SAVE] Failed to save video:', error)
     return NextResponse.json(
       { error: 'Erro ao salvar vídeo' },
