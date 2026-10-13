@@ -147,7 +147,7 @@ certa em parte e mandava para o conserto errado.
 
 ### O registro único de tools MCP (25/08/2026)
 
-As 48 tools do conector vivem em **`src/lib/mcp/catalogo/`** (um arquivo por
+As tools do conector (48 na migração; 62 em 13/10/2026) vivem em **`src/lib/mcp/catalogo/`** (um arquivo por
 domínio), declaradas UMA vez com `definirTool` — schema zod (`.strict()`
 aplicado pelo construtor), `annotations` obrigatórias, `acesso` declarado,
 `superficies` — e executadas pela porta única
@@ -180,7 +180,8 @@ gate → handler. O desenho nasceu da análise do framework Invokta (24/08);
   são duplicatas**: os contratos divergem (list-posts usa dateFrom/status EN e
   devolve lista crua) e as skills consomem ESSAS formas. São camada de
   compatibilidade explícita; os nomes PT do catálogo são os canônicos, e o
-  stdio serve os dois (72 tools). Migrar as skills aposenta a camada.
+  stdio serve os dois (em 13/10/2026: 61 do catálogo com superfície local + 24
+  inglesas fora da porta, sem gate por principal). Migrar as skills aposenta a camada.
 - **Snapshot é a rede da migração e o padrão para MUDAR schema**: os literais
   antigos vivem como fixtures em `validar-registro-mcp.ts` (48 snapshots).
   Mudança deliberada de schema atualiza o fixture no mesmo commit — o teste
@@ -227,3 +228,34 @@ ARTE de verdade no Studio (galeria, editor, conferir/melhorar, agenda por
   `classificarFormato`): o ChatGPT entrega 1024x1536 (2:3), que entra como
   story sem ser 9:16.
 - Só no **remoto**: no local o caminho é `upload-creative` (lê do disco).
+
+### Auditoria da carteira: `auditar-operacao` (13/10/2026)
+
+Primeira peça do Dot Lagosta como gerente operacional (H2; o mapa e as decisões
+estão em `docs/PLANO-2026-10-13-DOT-OPERACAO-H1.md`). Uma chamada mostra, para
+cada cliente ativo que o principal enxerga, se hoje, amanhã e depois de amanhã
+estão cobertos, os buracos, as falhas e a ação recomendada.
+
+- **A expectativa é uma só**: `expectativaDoProjeto` (`src/lib/posts/cobertura.ts`)
+  saiu de dentro de `sugerirPosts`, que passou a chamá-la. Auditoria e sugestão
+  nunca divergem sobre que horários existem. O snapshot
+  `sugerir-posts-paridade.test.ts` foi gravado ANTES da extração: se ele mudar,
+  a extração mudou a sugestão. Investigue, não atualize.
+- **Coberto ≠ ocupado.** A sugestão pergunta "há algo no horário?" (para não
+  empilhar). A cobertura pergunta "há conteúdo PRONTO?". Rascunho sem mídia
+  (mesmo com `pageId`), render que falhou, campanha vencida e FAILED deixam o
+  horário PENDENTE: há post a resolver, e criar outro por cima duplicaria. Só
+  VAZIO pede produção nova.
+- **`TARGET_DAYS_AHEAD = 2` = amanhã e depois de amanhã completos.** Hoje
+  aparece à parte e não entra em `diasAdiantados`.
+- 🔴 **Só leitura de verdade**: não chama `sugerirPosts` (ele registra cada slot
+  como LearningSignal) e não grava nada. Um slot que ninguém viu no
+  denominador da taxa de aceitação é o defeito que isso evita.
+- **Número fixo de consultas para a carteira inteira** (`src/lib/posts/auditar-operacao.ts`:
+  projetos, POSTED de 56 dias, posts da janela, grades, assinaturas, campanhas),
+  todas com `projectId in [...]`. Nunca um laço com consulta por cliente.
+- **Motivo de falha é lista de permissão** (`motivoSaneado`): `errorMessage` e
+  `renderError` brutos nunca saem; o que não casa com causa conhecida vira
+  "falha sem diagnóstico disponível".
+- `horariosTipicosDoProjeto` ainda funde sem `formatoDe` (é a cópia sem formato
+  da expectativa). Não foi trocada no H2 porque mudaria o resultado dela.

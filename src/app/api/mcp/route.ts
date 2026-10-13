@@ -80,7 +80,7 @@ async function handleMessage(message: any, principal: McpPrincipal) {
       return result(id, {})
 
     case 'tools/list':
-      return result(id, { tools: listarToolsRemotas() })
+      return result(id, { tools: listarToolsRemotas(principal) })
 
     case 'tools/call': {
       const name = params?.name

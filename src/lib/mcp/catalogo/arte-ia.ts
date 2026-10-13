@@ -87,6 +87,17 @@ function lerReferencias(v: unknown): ArtGenerationReference[] {
     : []
 }
 
+/**
+ * Perfil draft-only (H4): imagem só pelo acervo. `_imageUrl` e o `fileUrl` de qualquer camada (direto, em `_slots` ou
+ * em `_papeis`) são URL de fora. Varre o objeto inteiro: chave nova com URL também cai aqui.
+ */
+function temUrlExterna(valor: unknown, profundidade = 0): boolean {
+  if (!valor || typeof valor !== 'object' || profundidade > 4) return false
+  return Object.entries(valor as Record<string, unknown>).some(
+    ([k, v]) => ((k === '_imageUrl' || k === 'fileUrl') && typeof v === 'string' && v.trim() !== '') || temUrlExterna(v, profundidade + 1),
+  )
+}
+
 export const toolsDeArteIA = [
   definirTool({
     nome: 'criar-arte',
@@ -192,11 +203,26 @@ export const toolsDeArteIA = [
     acesso: { tipo: 'projeto' },
     superficies: ['remoto', 'local'],
     handler: async (args, principal) => {
-      const [{ ajustarArte }, { quemDecidiu, canalDoPrincipal }] = await Promise.all([
+      const [{ ajustarArte }, { quemDecidiu, canalDoPrincipal }, { perfilDoPrincipal }] = await Promise.all([
         import('../../creatives/arte-rapida'),
         import('../tools'),
+        import('../registro/perfil'),
       ])
       const projectId = args.projectId as number
+      // Perfil draft-only (H4): só a peça que ninguém aprovou, e só com foto do acervo (sem URL de fora).
+      // A conferência vem ANTES de qualquer escrita, e erro de leitura recusa.
+      if (perfilDoPrincipal(principal) === 'draft-only') {
+        const [{ assertPaginaSoEmRascunho }, { CreativeError }] = await Promise.all([
+          import('../guardas-draft-only'),
+          import('../../creatives/errors'),
+        ])
+        if (typeof args.imageUrl === 'string' || temUrlExterna(args.slotValues)) {
+          throw new CreativeError('URL_EXTERNA_RECUSADA', 'Este perfil troca a foto só pelo acervo (driveImageId de buscar-fotos), nunca por URL externa. Nada foi alterado.', 400)
+        }
+        await assertPaginaSoEmRascunho(args.pageId as string, projectId)
+        // ponytail: a conferência e a escrita não estão na mesma trava; um post aprovado nos segundos entre as duas
+        // re-renderiza com o ajuste. Fechar pedindo ao ajustarArte que só invalide DRAFT se isso acontecer de verdade.
+      }
       const r = await ajustarArte({
         projectId,
         pageId: args.pageId as string,
@@ -208,6 +234,7 @@ export const toolsDeArteIA = [
         canal: canalDoPrincipal(principal),
         ajustes: Array.isArray(args.ajustes) ? (args.ajustes as Ajuste[]) : undefined,
         versaoEsperada: typeof args.versaoEsperada === 'string' ? args.versaoEsperada : undefined,
+        apenasRascunho: perfilDoPrincipal(principal) === 'draft-only',
       })
 
       /**

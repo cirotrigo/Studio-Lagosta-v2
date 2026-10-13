@@ -21,6 +21,7 @@
 import { z } from 'zod'
 import { CATALOGO, INDICE_DO_CATALOGO } from '../src/lib/mcp/catalogo/index'
 import { INSTRUCOES } from '../src/lib/mcp/instrucoes'
+import { DOT_OPERACAO_VERSAO, MANUAL_DO_DOT } from '../src/lib/mcp/operacao-dot'
 import { definirTool } from '../src/lib/mcp/registro/definir'
 import { executarTool } from '../src/lib/mcp/registro/porta'
 import { ErroDeTool, type ToolPronta } from '../src/lib/mcp/registro/tipos'
@@ -2518,6 +2519,25 @@ const PALAVRAS_PERMITIDAS = new Set<string>([
     desconhecidos.length === 0,
     `desconhecidos: ${desconhecidos.join(', ')}`,
   )
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// E. O manual do agente operacional só cita tools que existem
+// ─────────────────────────────────────────────────────────────────────────
+
+console.log('\nE. Referências de tools no MANUAL do agente operacional')
+
+{
+  // A versão é a única palavra hifenizada do manual que não é tool.
+  const permitidas = new Set<string>([DOT_OPERACAO_VERSAO])
+  const tokens = JSON.stringify(MANUAL_DO_DOT).match(/\b[a-z][a-z0-9]*(?:-[a-z0-9]+)+\b/g) ?? []
+  const desconhecidos = Array.from(new Set(tokens)).filter((t) => !INDICE_DO_CATALOGO.has(t) && !permitidas.has(t))
+  confere(
+    'todo nome hifenizado do MANUAL do agente é tool do catálogo (ou a versão)',
+    desconhecidos.length === 0,
+    `desconhecidos: ${desconhecidos.join(', ')}`,
+  )
+  confere('auditar-operacao existe e é a primeira etapa do manual', INDICE_DO_CATALOGO.has('auditar-operacao') && MANUAL_DO_DOT.ordem[0].startsWith('auditar-operacao'))
 }
 
 secaoC()

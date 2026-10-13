@@ -32,6 +32,14 @@ vi.mock('@/lib/db', () => ({
 }))
 vi.mock('@prisma/client', async () => await import('../../../../../prisma/generated/client'))
 
+/**
+ * O banco falso entra no cache ANTES de qualquer handler rodar. O `ver-agenda` faz `Promise.all` de vários
+ * `import()` dinâmicos, e três requisições concorrentes ao módulo mockado (`../../db`, `campanha-vigencia` e
+ * `agenda-acoes`, que importam `@/lib/db`) fazem o Vitest 4 entregar a uma delas o `db.ts` REAL enquanto a
+ * factory ainda resolve. Sem DATABASE_URL isso quebrava; com ela, carregava em silêncio um PrismaClient de
+ * verdade num teste de "banco falso". Aquecido aqui, todo import seguinte recebe o mock do cache.
+ */
+import '@/lib/db'
 import { toolsDeAgenda } from '../agenda'
 
 const verAgenda = toolsDeAgenda.find((t) => t.nome === 'ver-agenda')!

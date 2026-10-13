@@ -1042,6 +1042,12 @@ export interface AjustarArteInput {
   ajustes?: Ajuste[]
   /** A `versao` da revisão: página que mudou desde então recusa o ajuste (VERSAO_DIVERGENTE). */
   versaoEsperada?: string | null
+  /**
+   * Perfil draft-only (H4): o ajuste só alcança os RASCUNHOS da página. A invalidação deixa o agendado de fora e
+   * a recomposição da arte congelada (slide de carrossel) não é pedida. É a rede debaixo da guarda da tool: um
+   * post aprovado que ela não viu, ou aprovado entre a conferência e a escrita, fica com a arte que foi aprovada.
+   */
+  apenasRascunho?: boolean
   /** Só para a prova de integração: costura que roda DENTRO da transação, entre a escrita da página e a trava. */
   _prova?: {
     entreGravarETravar?: () => Promise<void>
@@ -1343,6 +1349,22 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
   const { travarRecomposicaoDaArte } = travar ? await import('@/lib/compositor/recompor') : { travarRecomposicaoDaArte: null }
   await db.$transaction(
     async (tx) => {
+      /**
+       * Perfil draft-only (H4): a conferência que fecha a corrida mora AQUI, na transação que grava a página. Os
+       * posts que renderizam desta página são travados (FOR UPDATE). Uma aprovação concorrente espera este commit,
+       * e se ela já aconteceu a página não é gravada. A conferência larga da tool (`assertPaginaSoEmRascunho`)
+       * cobre os outros vínculos, que não re-renderizam da página.
+       */
+      if (input.apenasRascunho) {
+        const ligados = await tx.$queryRaw<Array<{ status: string; laterPostId: string | null }>>`SELECT "status"::text AS status, "laterPostId" FROM "SocialPost" WHERE "pageId" = ${page.id} FOR UPDATE`
+        if (ligados.some((p) => p.status !== 'DRAFT' || !!p.laterPostId)) {
+          throw new CreativeError(
+            'POST_APROVADO_INTOCAVEL',
+            'A página desta arte está num post aprovado (agendado, publicando, publicado, falhou ou entregue ao publicador). Este perfil só trabalha em rascunho: nada foi alterado.',
+            409,
+          )
+        }
+      }
       if (input.versaoEsperada) {
         // Compare-and-set: a conferência de versão lá em cima e esta escrita
         // não são atômicas, e o autosave do editor pode cair no meio.
@@ -1434,7 +1456,8 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
   const avisarAgenda = async (opcoes: { renderFalhou?: boolean } = {}) => {
     // Page.layers mudou: posts da agenda que usam esta página precisam voltar à
     // fila de render, senão publicam a arte antiga em silêncio.
-    const resultado = await invalidateScheduledRenders(db, { pageIds: [page.id] })
+    const resultado = await invalidateScheduledRenders(db, { pageIds: [page.id], apenasRascunho: input.apenasRascunho === true })
+    if (input.apenasRascunho) return resultado
     /**
      * O outro lado da invalidação: a arte CONGELADA desta página — o slide de
      * carrossel, que é `NOT_NEEDED` e fica FORA do alcance do re-render. Sem

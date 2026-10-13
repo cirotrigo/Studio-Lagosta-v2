@@ -513,7 +513,7 @@ export const toolsDeAgenda = [
         .array(z.string())
         .describe('Ids dos posts a aprovar (de ver-agenda ou do retorno de colocar-na-agenda).'),
     }),
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     acesso: { tipo: 'projeto' },
     superficies: ['remoto', 'local'],
     handler: async (args, principal) => {
@@ -660,6 +660,35 @@ export const toolsDeAgenda = [
     handler: async (args, _principal) => {
       const { cancelarPost } = await import('../../posts/agenda-acoes')
       return cancelarPost({ projectId: args.projectId as number, postId: args.postId as string })
+    },
+  }),
+
+  definirTool({
+    nome: 'auditar-operacao',
+    descricao:
+      'Audita a CARTEIRA INTEIRA numa chamada: para cada cliente ativo que você enxerga, diz se HOJE, AMANHÃ e DEPOIS DE AMANHÃ estão cobertos, quantos dias à frente estão prontos (diasAdiantados, contados a partir de amanhã; o alvo é 2), os buracos, as falhas e a ação recomendada. Só leitura: não registra sugestão nem sinal de aprendizado. Comece a rodada da operação por aqui.\n\nO esperado de cada dia vem da grade aprovada na base mais a cadência do que o cliente publicou (a mesma conta de sugerir-posts). Cada horário esperado fica COBERTO (agendado, publicando, publicado, ou rascunho com arte pronta e sem render em curso), PENDENTE (há post no horário, mas ele não resolve: rascunho sem arte ou com render pendente, render que falhou, campanha vencida, post que falhou; conserte o post existente, não crie outro por cima) ou VAZIO (nada no horário; é o único que pede produção nova). Falha é relatada, nunca substituída: a recuperação já tem rotina própria. Cliente sem grade e sem histórico vem como sem-rotina, nunca como coberto. acao.codigo é NENHUMA, COMPOR, CONSERTO_PENDENTE, RELATAR_FALHA, SEM_ROTINA ou SEM_ASSINATURA (sem página de assinatura não há produção automática). Os clientes vêm do mais urgente para o mais saudável. A auditoria envelhece: antes de escrever, confira de novo o horário com ver-agenda. A resposta traz `manual`, o contrato do agente operacional (versão em manual.versao): quem opera a carteira sozinho segue o manual.',
+    schema: z.object({}),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    acesso: { tipo: 'autenticado' },
+    superficies: ['remoto', 'local'],
+    handler: async (_args, principal) => {
+      const [{ projetosVisiveis, quemEstaConectado }, { auditarOperacao }, { MANUAL_DO_DOT }] = await Promise.all([
+        import('../tools'),
+        import('../../posts/auditar-operacao'),
+        import('../operacao-dot'),
+      ])
+      // O escopo é o de listar-clientes: só o que o principal enxerga.
+      const permitidos = await projetosVisiveis(principal)
+      // O manual é a fonte canônica (operacao-dot.ts): vai inteiro, nunca reescrito aqui.
+      const auditoria = { ...(await auditarOperacao({ permitidos })), manual: MANUAL_DO_DOT }
+      if (permitidos && permitidos.length === 0) {
+        const quem = await quemEstaConectado(principal)
+        return {
+          ...auditoria,
+          aviso: `Nenhum cliente visível: a conexão está autenticada como ${quem}, e essa conta não é dona de nenhum projeto nem participa de uma organização que tenha algum.`,
+        }
+      }
+      return auditoria
     },
   }),
 ]

@@ -27,6 +27,14 @@
 import { db } from '@/lib/db'
 import type { Prisma } from '../../prisma/generated/client'
 
+/**
+ * A chave da AGENDA de um cliente (H4): quem cria post para o projeto a pega, e a guarda HORARIO_OCUPADO do
+ * agendar-leva rechecha o horário sob ela. Por projeto, nunca global.
+ */
+export function chaveDaAgenda(projectId: number): string {
+  return `agenda-slot:${projectId}`
+}
+
 export async function comTravaPorChave<T>(chave: string, fazer: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
   return db.$transaction(
     async (tx) => {
