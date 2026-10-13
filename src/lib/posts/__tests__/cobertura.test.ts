@@ -570,3 +570,70 @@ describe('W. motivo de falha saneado', () => {
     );
   });
 });
+
+describe('H6 — conflitos de horário: dois ou mais posts no mesmo horário esperado (só informa)', () => {
+  const conflitos = (posts: PostDaJanela[]) => cobrir(posts).conflitosDeHorario
+
+  it('1. um post → sem conflito', () => {
+    expect(conflitos([pronto('a', `${AMANHA} 10:00`)])).toEqual([])
+  })
+
+  it('2. dois DRAFT → conflito, com a quantidade e os postIds', () => {
+    expect(conflitos([pronto('b', `${AMANHA} 10:00`), pronto('a', `${AMANHA} 10:20`)])).toEqual([
+      { data: AMANHA, hora: '10:00', formato: 'story', quantidade: 2, postIds: ['a', 'b'] },
+    ])
+  })
+
+  it('3. DRAFT + SCHEDULED → conflito; 4. dois SCHEDULED → conflito', () => {
+    expect(conflitos([pronto('a', `${AMANHA} 10:00`), pronto('b', `${AMANHA} 10:00`, 'SCHEDULED')])).toHaveLength(1)
+    expect(conflitos([pronto('a', `${DEPOIS} 10:00`, 'SCHEDULED'), pronto('b', `${DEPOIS} 09:30`, 'SCHEDULED')])).toEqual([
+      expect.objectContaining({ data: DEPOIS, quantidade: 2 }),
+    ])
+  })
+
+  it('5. formatos diferentes → sem conflito (feed não ocupa o story)', () => {
+    expect(conflitos([pronto('a', `${AMANHA} 10:00`), pronto('b', `${AMANHA} 10:00`, 'DRAFT', { postType: 'POST' })])).toEqual([])
+  })
+
+  it('6. fora da tolerância de 45 min → sem conflito', () => {
+    expect(conflitos([pronto('a', `${AMANHA} 10:00`), pronto('b', `${AMANHA} 10:46`)])).toEqual([])
+  })
+
+  it('7. conflito nunca gera COMPOR para aquele horário; a ação é relatar', () => {
+    const c = cobrir([post('a', `${AMANHA} 10:00`, 'FAILED'), post('b', `${AMANHA} 10:10`, 'DRAFT')])
+    expect(c.conflitosDeHorario).toHaveLength(1)
+    expect(c.buracos.filter((b) => b.data === AMANHA && b.estado === 'vazio')).toEqual([])
+    const acoes = acoesDoCliente(c, true).map((a) => a.codigo)
+    expect(acoes).toContain('CONFLITO_DE_HORARIO')
+    // O COMPOR que existir é do outro dia (depois de amanhã está vazio), nunca do horário em conflito.
+    expect(c.buracos.filter((b) => b.estado === 'vazio').every((b) => b.data !== AMANHA)).toBe(true)
+    // Cliente coberto com conflito não aparece como saudável.
+    const coberto = cobrir([pronto('a', `${AMANHA} 10:00`), pronto('b', `${AMANHA} 10:05`), pronto('c', `${DEPOIS} 10:00`)])
+    expect(coberto.diasAdiantados).toBe(2)
+    expect(acoesDoCliente(coberto, true)[0].codigo).toBe('CONFLITO_DE_HORARIO')
+  })
+
+  it('8. a auditoria continua só leitura: a lista de posts entra e sai intacta', () => {
+    const posts = [pronto('a', `${AMANHA} 10:00`), pronto('b', `${AMANHA} 10:00`)]
+    const antes = structuredClone(posts)
+    cobrir(posts)
+    expect(posts).toEqual(antes)
+  })
+
+  it('grade com horários vizinhos (10h e 10h30): um post em cada NÃO é conflito; um terceiro é, e aparece uma vez', () => {
+    const grade = { title: 'Padrões de Postagem — Teste', content: 'SLOT 1 — 10h, todos os dias\nSLOT 2 — 10h30, todos os dias' }
+    const expectativa = expectativaDoProjeto({ historico: [], encerradas: new Set(), entradasDaGrade: [grade], agora: AGORA })
+    expect(slotsEsperadosNaData(expectativa, AMANHA).map((s) => s.hora)).toEqual(['10:00', '10:30'])
+    const rodar = (posts: PostDaJanela[]) => coberturaDoProjeto({ expectativa, posts, campanhasExpiram: new Map(), agora: AGORA })
+    const certos = [pronto('a', `${AMANHA} 10:00`), pronto('b', `${AMANHA} 10:30`)]
+    expect(rodar(certos).conflitosDeHorario).toEqual([])
+    // Um terceiro, empatado entre os dois, vai para o mais cedo: conflito às 10h.
+    expect(rodar([...certos, pronto('c', `${AMANHA} 10:15`)]).conflitosDeHorario).toEqual([
+      { data: AMANHA, hora: '10:00', formato: 'story', quantidade: 2, postIds: ['a', 'c'] },
+    ])
+    // Dois posts às 10h (duplicata) numa grade 10h + 10h30: conflito, mesmo com o 10h30 "ocupado" pela tolerância.
+    expect(rodar([pronto('a', `${AMANHA} 10:00`), pronto('d', `${AMANHA} 10:00`)]).conflitosDeHorario).toEqual([
+      { data: AMANHA, hora: '10:00', formato: 'story', quantidade: 2, postIds: ['a', 'd'] },
+    ])
+  })
+})

@@ -289,13 +289,53 @@ interface Ocupante {
   avaliacao: AvaliacaoDoOcupante;
 }
 
+/** Os posts que ocupam o horário esperado: a regra única de ocupação (mesmo formato, ±45 min). */
+function ocupantesDoSlot(slot: SlotEsperado, ocupantes: Ocupante[]): Ocupante[] {
+  return ocupantes.filter((o) =>
+    ocupaOSlot(o, slot.quandoUTC, slot.formato, TOLERANCIA_SLOT_MIN)
+  );
+}
+
+/**
+ * Dois ou mais posts no mesmo horário esperado (H6). Só INFORMA: ninguém é bloqueado, apagado nem remarcado.
+ * Qualquer situação conta, como na guarda HORARIO_OCUPADO. É o caso de um criador sem a trava da agenda
+ * (job de vídeo, sync do Zernio, stdio) pôr um segundo post num horário já fechado.
+ */
+export interface ConflitoDeHorario {
+  data: string;
+  hora: string;
+  formato: FormatoDaPeca;
+  quantidade: number;
+  postIds: string[];
+}
+
+/**
+ * Os conflitos de um dia. Cada post que ocupa algum horário esperado (`ocupaOSlot`) é contado no horário
+ * esperado MAIS PRÓXIMO dentre os que ele ocupa (empate: o mais cedo). Conflito = dois ou mais posts no mesmo
+ * horário. Assim, numa grade com 11h e 11h30, um post em cada não é conflito, e dois posts às 11h são (revisão
+ * do Codex, H6: contar quantos posts ocupam o horário confundia os dois casos).
+ */
+function conflitosDoDia(slots: SlotEsperado[], ocupantes: Ocupante[]): ConflitoDeHorario[] {
+  const porSlot = new Map<SlotEsperado, Ocupante[]>()
+  for (const o of ocupantes) {
+    const ocupados = slots.filter((s) => ocupaOSlot(o, s.quandoUTC, s.formato, TOLERANCIA_SLOT_MIN))
+    if (ocupados.length === 0) continue
+    const [maisPerto] = [...ocupados].sort((a, b) => Math.abs(o.t - a.quandoUTC) - Math.abs(o.t - b.quandoUTC) || a.quandoUTC - b.quandoUTC)
+    porSlot.set(maisPerto, [...(porSlot.get(maisPerto) ?? []), o])
+  }
+  return slots
+    .filter((s) => (porSlot.get(s)?.length ?? 0) >= 2)
+    .map((s) => {
+      const no = porSlot.get(s)!
+      return { data: s.data, hora: s.hora, formato: s.formato, quantidade: no.length, postIds: no.map((o) => o.post.id).sort() }
+    })
+}
+
 function classificarSlot(
   slot: SlotEsperado,
   ocupantes: Ocupante[]
 ): { estado: 'coberto'; postId: string } | Buraco {
-  const no = ocupantes.filter((o) =>
-    ocupaOSlot(o, slot.quandoUTC, slot.formato, TOLERANCIA_SLOT_MIN)
-  );
+  const no = ocupantesDoSlot(slot, ocupantes);
   const base = { data: slot.data, hora: slot.hora, formato: slot.formato };
   if (no.length === 0) return { ...base, estado: 'vazio' };
   const valido = no.find((o) => o.avaliacao.valido);
@@ -422,20 +462,24 @@ export interface CoberturaDoProjeto {
   falhas: FalhaDaJanela[];
   /** Rascunhos e agendados da janela cuja campanha termina antes do post. */
   avisosDeCampanha: number;
+  /** Horários esperados (hoje, amanhã e depois) com 2+ posts. Só informa; o agente relata e não produz ali. */
+  conflitosDeHorario: ConflitoDeHorario[];
 }
 
 function avaliarDia(
   slots: SlotEsperado[],
   ocupantes: Ocupante[],
   semRotina: boolean
-): { dia: DiaDeCobertura; buracos: Buraco[] } {
+): { dia: DiaDeCobertura; buracos: Buraco[]; conflitos: ConflitoDeHorario[] } {
   const data = slots[0]?.data;
   if (semRotina)
     return {
       dia: { data, estado: 'sem-rotina', esperados: 0, cobertos: 0 },
       buracos: [],
+      conflitos: [],
     };
   const buracos: Buraco[] = [];
+  const conflitos = conflitosDoDia(slots, ocupantes);
   let cobertos = 0;
   for (const slot of slots) {
     const r = classificarSlot(slot, ocupantes);
@@ -447,7 +491,7 @@ function avaliarDia(
     : buracos.length
       ? 'pendente'
       : 'coberto';
-  return { dia: { data, estado, esperados: slots.length, cobertos }, buracos };
+  return { dia: { data, estado, esperados: slots.length, cobertos }, buracos, conflitos };
 }
 
 /**
@@ -499,7 +543,7 @@ export function coberturaDoProjeto(args: {
       ocupantes,
       semRotina
     );
-    return { dia: { ...r.dia, data }, buracos: r.buracos };
+    return { dia: { ...r.dia, data }, buracos: r.buracos, conflitos: r.conflitos };
   });
 
   let diasAdiantados = 0;
@@ -539,6 +583,7 @@ export function coberturaDoProjeto(args: {
       const expira = p.campaignId ? campanhasExpiram.get(p.campaignId) : null;
       return !!expira && p.scheduledDatetime!.getTime() > expira.getTime();
     }).length,
+    conflitosDeHorario: [...hojeAvaliado.conflitos, ...dias.flatMap((d) => d.conflitos)],
   };
 }
 
@@ -550,7 +595,8 @@ export type CodigoDaAcao =
   | 'CONSERTO_PENDENTE'
   | 'RELATAR_FALHA'
   | 'SEM_ROTINA'
-  | 'SEM_ASSINATURA';
+  | 'SEM_ASSINATURA'
+  | 'CONFLITO_DE_HORARIO';
 
 export interface AcaoRecomendada {
   codigo: CodigoDaAcao;
@@ -587,6 +633,12 @@ export function acoesDoCliente(
     acoes.push({
       codigo: 'RELATAR_FALHA',
       motivo: `${c.falhas.length} falha(s) entre hoje e depois de amanhã — relatar, não substituir`,
+    });
+  }
+  if (c.conflitosDeHorario.length) {
+    acoes.push({
+      codigo: 'CONFLITO_DE_HORARIO',
+      motivo: `${c.conflitosDeHorario.length} horário(s) com dois ou mais posts — relatar; não criar nem remover`,
     });
   }
   if (c.fonte === 'sem-rotina') {
@@ -647,7 +699,7 @@ export function rankDoCliente(c: ClienteAuditado): number {
     return 0;
   if (c.fonte !== 'sem-rotina' && c.diasAdiantados < TARGET_DAYS_AHEAD)
     return 1;
-  if (c.buracos.some((b) => b.estado === 'pendente')) return 2;
+  if (c.buracos.some((b) => b.estado === 'pendente') || c.conflitosDeHorario.length) return 2;
   if (c.falhas.length) return 3;
   if (c.fonte === 'sem-rotina') return 4;
   return 5;

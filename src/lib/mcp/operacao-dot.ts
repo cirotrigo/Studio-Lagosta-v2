@@ -17,7 +17,7 @@
 
 import { TARGET_DAYS_AHEAD } from '../posts/cobertura';
 
-export const DOT_OPERACAO_VERSAO = 'dot-operacao-v2';
+export const DOT_OPERACAO_VERSAO = 'dot-operacao-v3';
 
 /** Ciclos de revisar-arte → ajustar-arte numa peça antes de parar e chamar gente. */
 export const MAX_CICLOS_DE_REVISAO = 2;
@@ -49,6 +49,8 @@ export const MANUAL_DO_DOT = {
       'informar; o sistema cuida da recuperação; nunca criar substituto',
     SEM_ROTINA: 'não inventar agenda; relatar',
     SEM_ASSINATURA: 'não produzir; relatar CONFIGURACAO_NECESSARIA',
+    CONFLITO_DE_HORARIO:
+      'dois ou mais posts no mesmo horário: relatar; não criar outro nem remover nenhum',
     NENHUMA: 'nenhuma produção necessária',
   },
   leitura: {
