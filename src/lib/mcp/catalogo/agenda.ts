@@ -672,7 +672,7 @@ export const toolsDeAgenda = [
     acesso: { tipo: 'autenticado' },
     superficies: ['remoto', 'local'],
     handler: async (_args, principal) => {
-      const [{ projetosVisiveis, quemEstaConectado }, { auditarOperacao }, { MANUAL_DO_DOT }, { perfilDoPrincipal }] = await Promise.all([
+      const [{ projetosVisiveis }, { auditarOperacao }, { MANUAL_DO_DOT }, { perfilDoPrincipal }] = await Promise.all([
         import('../tools'),
         import('../../posts/auditar-operacao'),
         import('../operacao-dot'),
@@ -690,10 +690,10 @@ export const toolsDeAgenda = [
         seguranca: { perfilEfetivo: perfilDoPrincipal(principal) },
       }
       if (permitidos && permitidos.length === 0) {
-        const quem = await quemEstaConectado(principal)
+        // Sem identificar a conta (nem e-mail nem id): a resposta da auditoria não carrega identidade.
         return {
           ...auditoria,
-          aviso: `Nenhum cliente visível: a conexão está autenticada como ${quem}, e essa conta não é dona de nenhum projeto nem participa de uma organização que tenha algum.`,
+          aviso: 'Nenhum cliente visível: a conta desta conexão não é dona de nenhum projeto nem participa de uma organização que tenha algum. Reconecte com a conta da agência.',
         }
       }
       return auditoria

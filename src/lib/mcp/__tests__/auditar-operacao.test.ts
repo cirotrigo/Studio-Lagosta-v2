@@ -277,5 +277,13 @@ describe('auditar-operacao', () => {
       expect(m.registrarSugestoes).not.toHaveBeenCalled();
       // O dublê do banco só tem leituras (findMany/groupBy): qualquer escrita quebraria aqui.
     });
+
+    it('G2. sem projeto visível, o aviso também não identifica a conta', async () => {
+      carteira(1);
+      m.visiveis.mockResolvedValue([]);
+      const r = await auditar(usuario(CLIENTE));
+      expect(r.aviso).toMatch(/Nenhum cliente visível/);
+      expect(JSON.stringify(r)).not.toMatch(/fulano@exemplo|clerk-sintetico-123|cliente-chatgpt-sintetico/);
+    });
   });
 });
