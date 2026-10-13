@@ -684,12 +684,14 @@ function valoresDaArte(
   // Com texto semântico, a Generation registra a copy VISUAL das camadas finais (chave `name ?? id`). Texto visível
   // em chave `_…` sumiria dos leitores — inclusive o de OUTRA camada, preenchido pelo legado (Codex #208, CP5).
   const temTextoSemantico = [...r.valores.values()].some((v) => typeof v.valor === 'string' || v.valor.content !== undefined)
-  if (temTextoSemantico) {
+  // Checkpoint g: com QUALQUER pedido semântico (inclusive só de imagem) a copy registrada também é a visual das camadas
+  // — a mesma guarda vale (Codex, checkpoint g).
+  if (temTextoSemantico || temContratoSemantico(efetivo)) {
     const reservadas = camadas
       .filter((c) => (c?.type === 'text' || c?.type === 'rich-text') && c.visible !== false && String(c.name ?? c.id).startsWith('_'))
       .map((c) => String(c.id))
     if (reservadas.length > 0) {
-      throw new CreativeError('CHAVE_VISUAL_RESERVADA', 'Com texto por _slots/_papeis, a página não pode ter camada de texto visível com nome (ou id, sem nome) começado por "_": a copy registrada da arte perderia esse texto. Renomeie a camada no editor.', 422, { layerIds: reservadas })
+      throw new CreativeError('CHAVE_VISUAL_RESERVADA', 'Com _slots/_papeis, a página não pode ter camada de texto visível com nome (ou id, sem nome) começado por "_": a copy registrada da arte perderia esse texto. Renomeie a camada no editor.', 422, { layerIds: reservadas })
     }
   }
   if (temCopy) {

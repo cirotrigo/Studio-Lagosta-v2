@@ -451,6 +451,13 @@ it('Codex #208 — CP5 (fail-closed): _slots de texto em camada nomeada "_n" rec
   semEfeito()
 })
 
+it('checkpoint g (Codex): pedido semântico só de IMAGEM + texto visível em camada nomeada "_aviso" recusa — a copy visual perderia esse texto', async () => {
+  estado.paginas.set('p-r', pagina('p-r', [texto('av', '_aviso'), foto('f', { metadata: { slot: { id: 'foto' } } })]))
+  const e = await falha(createArteRapida({ projectId: 8, sourcePageId: 'p-r', slotValues: { _slots: { foto: { fileUrl: 'https://f' } } } }))
+  expect(e).toMatchObject({ code: 'CHAVE_VISUAL_RESERVADA', status: 422, details: { layerIds: ['av'] } })
+  semEfeito()
+})
+
 it('Codex #208 — CP5 (rodada 3): texto legado em camada nomeada "_n" + texto semântico em OUTRA camada recusa antes de qualquer efeito', async () => {
   estado.paginas.set('p-m', pagina('p-m', [texto('ok', '_n'), texto('t', 'Título', { metadata: { slot: { id: 's' } } })]))
   const e = await falha(createArteRapida({ projectId: 8, sourcePageId: 'p-m', slotValues: { ok: 'Legado', _slots: { s: 'Semântico' } } }))
@@ -458,8 +465,11 @@ it('Codex #208 — CP5 (rodada 3): texto legado em camada nomeada "_n" + texto s
   semEfeito()
 })
 
-it('Codex #208 — CP5 (rodada 3): semântico só de imagem numa página com "_n" segue normal', async () => {
-  estado.paginas.set('p-m2', pagina('p-m2', [texto('ok', '_n'), foto('i', { metadata: { slot: { id: 'f' } } })]))
+// "Codex #208 — CP5 (rodada 3): semântico só de imagem numa página com _n segue normal" foi SUBSTITUÍDO no B1d checkpoint
+// g: o pedido só de imagem passou a registrar a copy VISUAL das camadas (não mais o pedido), e a mesma guarda de nome
+// reservado vale — ver o teste "pedido semântico só de IMAGEM + texto visível em camada nomeada _aviso recusa".
+it('checkpoint g: semântico só de imagem numa página SEM camada "_" segue normal (a foto entra)', async () => {
+  estado.paginas.set('p-m2', pagina('p-m2', [texto('ok', 'Título'), foto('i', { metadata: { slot: { id: 'f' } } })]))
   await createArteRapida({ projectId: 8, sourcePageId: 'p-m2', slotValues: { _slots: { f: { fileUrl: 'https://f' } } } })
   expect(conteudo('i').fileUrl).toBe('https://f')
 })
