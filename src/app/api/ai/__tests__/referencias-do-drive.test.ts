@@ -93,6 +93,20 @@ describe('POST /api/ai/improve-prompt', () => {
     // Mesma resposta de uma referência que não existe.
     expect(await r.json()).toEqual(await (await pedir(1, ['naoExiste'])).json())
   })
+  it.each([
+    ['lh3', 'https://lh3.googleusercontent.com/d/fileB=w1000'],
+    ['uc', 'https://drive.google.com/uc?export=view&id=fileB'],
+  ])('URL %s do Drive de outro projeto: 404 antes de cobrar ou ler', async (_formato, url) => {
+    const fetchEspiao = vi.spyOn(globalThis, 'fetch')
+    const r = await melhorarPrompt(
+      new Request('http://t/x', { method: 'POST', body: JSON.stringify({ prompt: 'p', projectId: 1, referenceImages: [url] }) }),
+    )
+    expect(r.status).toBe(404)
+    expect(m.cobrado).toBe(0)
+    expect(lidos()).toEqual([])
+    expect(fetchEspiao).not.toHaveBeenCalled()
+    fetchEspiao.mockRestore()
+  })
   it('projeto sem acesso: 404 antes de cobrar ou ler', async () => {
     expect((await pedir(2, ['fileB'])).status).toBe(404)
     expect(m.cobrado).toBe(0)
@@ -118,6 +132,25 @@ describe('POST /api/ai/generate-image', () => {
   it('referência do projeto é lida', async () => {
     await gerar(['fileA'])
     expect(lidos()).toEqual(['fileA'])
+  })
+  it('URL lh3 do Drive de outro projeto: recusa sem ler bytes', async () => {
+    const fetchEspiao = vi.spyOn(globalThis, 'fetch')
+    const r = await gerarImagem(
+      new Request('http://t/x', {
+        method: 'POST',
+        body: JSON.stringify({
+          prompt: 'cena',
+          projectId: 1,
+          model: 'nano-banana-2',
+          aspectRatio: '9:16',
+          referenceImages: ['https://lh3.googleusercontent.com/d/fileB=w1000'],
+        }),
+      }),
+    )
+    expect(r.status).toBeGreaterThanOrEqual(400)
+    expect(lidos()).not.toContain('fileB')
+    expect(fetchEspiao.mock.calls.map((c) => String(c[0]))).not.toContain('https://lh3.googleusercontent.com/d/fileB=w1000')
+    fetchEspiao.mockRestore()
   })
   it('referência de outro projeto: recusa sem ler bytes', async () => {
     const r = await gerar(['fileA', 'fileB'])

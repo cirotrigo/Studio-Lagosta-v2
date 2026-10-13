@@ -11,6 +11,7 @@ import { getProjectPromptKnowledgeContext, searchKnowledgeBase } from '@/lib/kno
 import { loadBrandContext } from '@/lib/brand/brand-context'
 import { googleDriveService } from '@/server/google-drive-service'
 import { assertDriveDoProjeto } from '@/lib/google-drive/escopo'
+import { extractDriveFileId } from '@/lib/ai/fetch-image-source'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -223,8 +224,9 @@ function normalizeLooseText(value: string): string {
 }
 
 function extractGoogleDriveFileId(url: string): string | null {
-  const match = url.match(/\/api\/(?:google-drive\/image|drive\/thumbnail)\/([^/?]+)/)
-  return match?.[1] ?? null
+  // Todos os formatos de URL do Drive (proxy, lh3, uc): uma URL alternativa não
+  // pode escapar da conferência das pastas do projeto.
+  return extractDriveFileId(url)
 }
 
 async function fetchImageAsBuffer(url: string, projectId: number): Promise<{ buffer: Buffer; mimeType: string } | null> {

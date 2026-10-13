@@ -10,6 +10,7 @@ import {
 import { googleDriveService } from '@/server/google-drive-service'
 import { generateImageWithGemini } from '@/lib/ai/gemini-image-client'
 import { assertDriveDoProjeto } from '@/lib/google-drive/escopo'
+import { extractDriveFileId } from '@/lib/ai/fetch-image-source'
 
 type ImageResolution = '1K' | '2K' | '4K'
 
@@ -71,8 +72,9 @@ function calculateDimensions(aspectRatio: string): { width: number; height: numb
 }
 
 function extractGoogleDriveFileId(url: string): string | null {
-  const match = url.match(/\/api\/(?:google-drive\/image|drive\/thumbnail)\/([^/?]+)/)
-  return match?.[1] ?? null
+  // Todos os formatos de URL do Drive (proxy, lh3, uc): uma URL alternativa não
+  // pode escapar da conferência das pastas do projeto.
+  return extractDriveFileId(url)
 }
 
 async function streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {

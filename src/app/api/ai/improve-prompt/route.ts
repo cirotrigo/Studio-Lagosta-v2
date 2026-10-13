@@ -8,6 +8,7 @@ import { InsufficientCreditsError } from '@/lib/credits/errors'
 import { googleDriveService } from '@/server/google-drive-service'
 import { assertDriveDoProjeto } from '@/lib/google-drive/escopo'
 import { fetchProjectWithShares, hasProjectReadAccess } from '@/lib/projects/access'
+import { extractDriveFileId } from '@/lib/ai/fetch-image-source'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -147,8 +148,9 @@ const improvePromptSchema = z.object({
  * Extract file ID from Google Drive internal API URL
  */
 function extractGoogleDriveFileId(url: string): string | null {
-  const match = url.match(/\/api\/(?:google-drive\/image|drive\/thumbnail)\/([^/?]+)/)
-  return match?.[1] ?? null
+  // Todos os formatos de URL do Drive (proxy, lh3, uc): uma URL alternativa não
+  // pode escapar da conferência das pastas do projeto.
+  return extractDriveFileId(url)
 }
 
 /**

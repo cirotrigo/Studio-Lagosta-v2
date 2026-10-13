@@ -13,6 +13,7 @@ import { fetchProjectWithAccess } from '@/lib/projects/access'
 import { googleDriveService } from '@/server/google-drive-service'
 import { assertDriveDoProjeto } from '@/lib/google-drive/escopo'
 import { generateImageWithGemini, isGeminiRetryableError } from '@/lib/ai/gemini-image-client'
+import { extractDriveFileId } from '@/lib/ai/fetch-image-source'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300 // 5 minutes for AI image generation (needed for 4K images)
@@ -1016,9 +1017,9 @@ function isRetryableError(errorMessage: string): boolean {
  * - /api/drive/thumbnail/{fileId}
  */
 function extractGoogleDriveFileId(url: string): string | null {
-  // Match /api/google-drive/image/{fileId} or /api/drive/thumbnail/{fileId}
-  const match = url.match(/\/api\/(?:google-drive\/image|drive\/thumbnail)\/([^/?]+)/)
-  return match?.[1] ?? null
+  // Todos os formatos de URL do Drive (proxy, lh3, uc): uma URL alternativa não
+  // pode escapar da conferência das pastas do projeto.
+  return extractDriveFileId(url)
 }
 
 /**
