@@ -182,10 +182,14 @@ identidade dele passar do rascunho.
     `renderedImageUrl`, pelo item de lote e pelo item de plano. Só aceita foto
     do acervo: `imageUrl`, `_imageUrl` e `fileUrl` em `slotValues` são
     recusados.
-  - **Rede debaixo da guarda:** no perfil, o próprio ajuste só invalida os
-    RASCUNHOS da página e não pede recomposição. Um post aprovado que a guarda
-    não viu, ou aprovado entre a conferência e a escrita, fica com a arte
-    aprovada.
+  - **A corrida guarda × escrita está fechada na transação da página.** No
+    perfil, o `ajustarArte` trava com `FOR UPDATE` os posts que renderizam da
+    página e confere que todos são rascunho ANTES de gravar. Uma aprovação
+    concorrente espera esse commit; se ela já aconteceu, nada é gravado.
+  - **Rede debaixo da guarda:** o ajuste do perfil só invalida os RASCUNHOS da
+    página e não pede recomposição.
+  - **Slide de carrossel não é do perfil** (`CARROSSEL_FORA_DO_PERFIL`): a
+    mudança só chegaria ao post pela recomposição, que alcança agendados.
   - `compor-leva` não devolve à produção um item já em post aprovado.
   - `agendar-leva` não adota post aprovado, não roda efeitos em volta dele e
     não recria rascunho apagado sem gente.
@@ -197,17 +201,26 @@ identidade dele passar do rascunho.
   - **No perfil normal não há regressão:** a pessoa pode pôr dois stories no
     mesmo horário de propósito. A revisão do Codex apontou que aplicar a todos
     mudava esse fluxo.
-  - **Quem também pega a trava:** o `agendar-leva` (todos os perfis) e o
-    `agendarPost`, que é a criação de `colocar-na-agenda` e da agenda web. Um
-    post criado por esses caminhos enquanto o agente rechecha é visto por ele.
+  - **Quem também pega a trava:**
+    - o `agendar-leva` (todos os perfis);
+    - o `agendarPost` (`colocar-na-agenda` e a agenda web);
+    - o `createPost` do `later-scheduler` (`PostScheduler`, as rotas de posts e
+      a API externa).
+
+    Um post criado por esses caminhos enquanto o agente rechecha é visto por ele.
   - **Por que não `SELECT Project FOR UPDATE`, como o plano previa:** a
     evidência do código mostrou que essa trava conflita com o `FOR KEY SHARE`
     que toda escrita filha do projeto pega, e enfileiraria o projeto inteiro.
     Também arriscaria deadlock com a trava da página.
-  - **O que a trava NÃO fecha:** a corrida, na janela de milissegundos do
-    commit, com caminhos que criam post sem passar por ela. São eles o
-    `plan-week` e o `create-post` do stdio, o job de vídeo e a sincronização do
-    Zernio. Nenhum deles é do perfil.
+  - **O que a trava NÃO fecha (risco residual aceito):** a corrida, na janela
+    de milissegundos do commit, com criadores que não passam por ela:
+    - o `plan-week` e o `create-post` do stdio sem a flag;
+    - o job de vídeo, que cria o post dentro de uma transação que já segura
+      outras travas. Pôr a chave ali arriscaria deadlock com a ordem
+      chave → página do `agendar-leva`;
+    - a sincronização do Zernio, que importa o que já existe fora.
+
+    Nenhum deles é do perfil.
 - **Stdio local:** com `STUDIO_SO_RASCUNHO=1`, o PROCESSO inteiro é
   draft-only, qualquer que seja o principal local. Ele registra só as inglesas
   de leitura e as tools do catálogo da allowlist, e as guardas das mutações

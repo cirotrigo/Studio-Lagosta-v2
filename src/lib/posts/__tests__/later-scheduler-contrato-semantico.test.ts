@@ -21,6 +21,11 @@ const banco = vi.hoisted(() => ({
   criados: [] as any[],
 }))
 
+// A trava da agenda do projeto (H4) roda a criação numa transação; aqui ela só repassa o banco falso.
+vi.mock('@/lib/trava-por-chave', async () => {
+  const { db } = await import('@/lib/db')
+  return { chaveDaAgenda: (id: number) => `agenda-slot:${id}`, comTravaPorChave: async (_chave: string, fazer: (tx: unknown) => unknown) => fazer(db) }
+})
 vi.mock('@/lib/db', () => ({
   db: {
     page: { findUnique: vi.fn(async () => banco.pagina) },

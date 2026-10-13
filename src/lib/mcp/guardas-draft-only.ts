@@ -66,7 +66,7 @@ export async function assertPaginaSoEmRascunho(
           ...(urls.length ? [{ mediaUrls: { hasSome: urls } }, { renderedImageUrl: { in: urls } }] : []),
         ],
       },
-      select: { status: true, laterPostId: true },
+      select: { status: true, laterPostId: true, mediaUrls: true },
     }),
     geracoes.length
       ? db.itemDeLote.findMany({
@@ -91,6 +91,15 @@ export async function assertPaginaSoEmRascunho(
     }),
   ]);
   if (porVinculo.some(postAprovado)) throw recusa('A página desta arte');
+  // Slide de carrossel: a mudança só chega ao post pela recomposição, que o perfil não pede (ela alcança agendados).
+  // Carrossel não é do loop do agente; ajustar o slide é de gente.
+  if (porVinculo.some((p) => (p.mediaUrls ?? []).length > 1)) {
+    throw new CreativeError(
+      'CARROSSEL_FORA_DO_PERFIL',
+      'Esta arte é slide de um carrossel na agenda. Ajustar slide de carrossel é com a equipe neste perfil: nada foi alterado.',
+      409,
+    );
+  }
 
   const outros = [...doLote, ...doPlano]
     .map((l) => l.postId)

@@ -356,8 +356,11 @@ export class LaterPostScheduler {
       }
     }
 
-    // Create post in database with SCHEDULED status (using normalized URLs)
-    let post = await db.socialPost.create({
+    // Create post in database with SCHEDULED status (using normalized URLs).
+    // Sob a trava da agenda do projeto (H4): o agente draft-only que rechecha o mesmo horário espera este
+    // commit e passa a ver o post.
+    const { comTravaPorChave, chaveDaAgenda } = await import('@/lib/trava-por-chave')
+    let post = await comTravaPorChave(chaveDaAgenda(data.projectId), (tx) => tx.socialPost.create({
       data: {
         projectId: data.projectId,
         userId: data.userId,
@@ -387,7 +390,7 @@ export class LaterPostScheduler {
         renderedAt: isTemplateBased && data.mediaUrls.length > 0 ? new Date() : null,
         nextRenderAt: nextRenderAtValue,
       },
-    })
+    }))
 
     // Generate verification tag for stories
     if (post.postType === PostType.STORY) {

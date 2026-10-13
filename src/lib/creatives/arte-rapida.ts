@@ -1349,6 +1349,22 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
   const { travarRecomposicaoDaArte } = travar ? await import('@/lib/compositor/recompor') : { travarRecomposicaoDaArte: null }
   await db.$transaction(
     async (tx) => {
+      /**
+       * Perfil draft-only (H4): a conferência que fecha a corrida mora AQUI, na transação que grava a página. Os
+       * posts que renderizam desta página são travados (FOR UPDATE). Uma aprovação concorrente espera este commit,
+       * e se ela já aconteceu a página não é gravada. A conferência larga da tool (`assertPaginaSoEmRascunho`)
+       * cobre os outros vínculos, que não re-renderizam da página.
+       */
+      if (input.apenasRascunho) {
+        const ligados = await tx.$queryRaw<Array<{ status: string; laterPostId: string | null }>>`SELECT "status"::text AS status, "laterPostId" FROM "SocialPost" WHERE "pageId" = ${page.id} FOR UPDATE`
+        if (ligados.some((p) => p.status !== 'DRAFT' || !!p.laterPostId)) {
+          throw new CreativeError(
+            'POST_APROVADO_INTOCAVEL',
+            'A página desta arte está num post aprovado (agendado, publicando, publicado, falhou ou entregue ao publicador). Este perfil só trabalha em rascunho: nada foi alterado.',
+            409,
+          )
+        }
+      }
       if (input.versaoEsperada) {
         // Compare-and-set: a conferência de versão lá em cima e esta escrita
         // não são atômicas, e o autosave do editor pode cair no meio.

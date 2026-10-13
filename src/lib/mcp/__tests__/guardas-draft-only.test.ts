@@ -175,6 +175,12 @@ describe('ajustar-arte no perfil draft-only', () => {
     expect(m.ajustarArte).not.toHaveBeenCalled();
   });
 
+  it('slide de carrossel em RASCUNHO: recusado (a recomposição não é pedida no perfil)', async () => {
+    m.posts = [post({ mediaUrls: ['https://blob.test/pg-1-v1.png', 'https://blob.test/x.png'] })]
+    await expect(ajustar(DOT)).rejects.toMatchObject({ code: 'CARROSSEL_FORA_DO_PERFIL' })
+    expect(m.ajustarArte).not.toHaveBeenCalled()
+  })
+
   it('vínculo por URL ANTERIOR da arte ou por renderedImageUrl: recusado (Codex, H4)', async () => {
     m.generations[0].fieldValues = { pageId: 'pg-1', recomposicao: { urlsAnteriores: ['https://blob.test/pg-1-v0.png'] } }
     m.posts = [post({ mediaUrls: ['https://blob.test/pg-1-v0.png'], status: 'SCHEDULED' })]
@@ -295,3 +301,21 @@ describe('agendar-leva no perfil draft-only', () => {
     expect(m.agendarItensDoLote).not.toHaveBeenCalled();
   });
 });
+
+describe('ajustarArte: a conferência que fecha a corrida mora na transação da página', () => {
+  it('no perfil, os posts da página são travados (FOR UPDATE) e conferidos ANTES de qualquer escrita da página', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { join } = await import('node:path')
+    const fonte = readFileSync(join(process.cwd(), 'src/lib/creatives/arte-rapida.ts'), 'utf8')
+    const transacao = fonte.indexOf('await db.$transaction(\n    async (tx) => {', fonte.indexOf('export async function ajustarArte'))
+    expect(transacao).toBeGreaterThan(0)
+    const conferencia = fonte.indexOf('if (input.apenasRascunho) {', transacao)
+    const travaDosPosts = fonte.indexOf('FROM "SocialPost" WHERE "pageId" = ${page.id} FOR UPDATE', transacao)
+    const primeiraEscrita = fonte.indexOf('tx.page.updateMany', transacao)
+    expect(conferencia).toBeGreaterThan(transacao)
+    expect(travaDosPosts).toBeGreaterThan(conferencia)
+    expect(primeiraEscrita).toBeGreaterThan(travaDosPosts)
+    // E a invalidação do perfil fica restrita a rascunho, sem recomposição.
+    expect(fonte).toMatch(/invalidateScheduledRenders\(db, \{ pageIds: \[page\.id\], apenasRascunho: input\.apenasRascunho === true \}\)\n\s*if \(input\.apenasRascunho\) return resultado/)
+  })
+})
