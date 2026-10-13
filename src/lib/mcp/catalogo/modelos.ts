@@ -29,12 +29,12 @@ export const toolsDeModelos = [
     superficies: ['remoto', 'local'],
     handler: async (args, principal) => {
       const { prepareCreative } = await import('../../creatives/arte-rapida')
-      const projectId = typeof args.projectId === 'number' ? args.projectId : undefined
       const { projetosVisiveis } = await import('../tools')
       return prepareCreative({
-        projectId,
+        projectId: typeof args.projectId === 'number' ? args.projectId : undefined,
         projectHint: typeof args.projectHint === 'string' ? args.projectHint : undefined,
-        projetosVisiveis: projectId === undefined ? await projetosVisiveis(principal) : null,
+        // null de projetosVisiveis é o principal 'service' — e só ele vê tudo.
+        projetosVisiveis: (await projetosVisiveis(principal)) ?? 'todos',
         theme: args.theme as string,
         day: typeof args.day === 'string' ? args.day : undefined,
       })

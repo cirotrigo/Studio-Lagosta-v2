@@ -146,13 +146,17 @@ export interface PrepareCreativeInput {
   /** Exact project id — skips name matching. Preferred by service callers. */
   projectId?: number
   /**
-   * Projetos que quem chama enxerga (`projetosVisiveis` do MCP). A busca por
-   * `projectHint` fica restrita a eles — sem isto um usuário OAuth do conector
-   * lia modelos de cliente alheio, e o AMBIGUOUS_PROJECT listava ids e nomes
-   * de outros clientes (auditoria de 12/10/2026). `null`/ausente = tudo
-   * (principal 'service' e a rota /api/external).
+   * Escopo OBRIGATÓRIO da resolução: os projetos que quem chama enxerga
+   * (`projetosVisiveis` do MCP) ou `'todos'` — decisão EXPLÍCITA de serviço
+   * (principal 'service', rota /api/external, scripts de operação). Vale para
+   * o hint E para o id: fora do escopo é igual a inexistente. Sem isto um
+   * usuário OAuth do conector lia modelos de cliente alheio, e o
+   * AMBIGUOUS_PROJECT listava ids e nomes de outros clientes (auditoria de
+   * 12/10/2026). Ausente/null LANÇA `MISSING_SCOPE` em vez de virar "todos":
+   * com `strict: false` o TS não barra null/undefined, então a garantia é o
+   * runtime (pós-merge do #202, 13/10/2026).
    */
-  projetosVisiveis?: number[] | null
+  projetosVisiveis: number[] | 'todos'
   /**
    * Theme of the creative (e.g., "almoço executivo", "happy hour").
    *
@@ -259,13 +263,21 @@ const PROJECT_SELECT = {
 export async function resolveProject(
   input: Pick<PrepareCreativeInput, 'projectId' | 'projectHint' | 'projetosVisiveis'>,
 ) {
-  if (input.projectId) {
-    const project = await db.project.findUnique({
-      where: { id: input.projectId },
-      select: PROJECT_SELECT as any,
-    })
-    if (!project) {
-      throw new CreativeError('PROJECT_NOT_FOUND', `Project not found: ${input.projectId}`, 404)
+  const escopo = input.projetosVisiveis
+  if (escopo !== 'todos' && !Array.isArray(escopo)) {
+    throw new CreativeError('MISSING_SCOPE', "resolveProject exige projetosVisiveis: number[] ou 'todos'", 500)
+  }
+
+  // Id presente é id — 0, negativo ou fracionário não caem na busca por nome
+  // (o `if (projectId)` antigo mandava o 0 para o hint) nem chegam ao Prisma.
+  if (input.projectId != null) {
+    const id = input.projectId
+    const project =
+      Number.isInteger(id) && id > 0
+        ? await db.project.findUnique({ where: { id }, select: PROJECT_SELECT as any })
+        : null
+    if (!project || (escopo !== 'todos' && !escopo.includes(id))) {
+      throw new CreativeError('PROJECT_NOT_FOUND', `Project not found: ${id}`, 404)
     }
     return project as any
   }
@@ -279,7 +291,8 @@ export async function resolveProject(
     where: {
       status: 'ACTIVE',
       name: { contains: hint, mode: 'insensitive' },
-      ...(input.projetosVisiveis ? { id: { in: input.projetosVisiveis } } : {}),
+      // Filtra ANTES de contar: invisível não vira candidato nem ambiguidade.
+      ...(escopo === 'todos' ? {} : { id: { in: escopo } }),
     },
     select: PROJECT_SELECT as any,
     orderBy: { name: 'asc' },
