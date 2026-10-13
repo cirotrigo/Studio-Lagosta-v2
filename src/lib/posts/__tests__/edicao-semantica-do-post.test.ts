@@ -10,6 +10,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { prepararEdicaoSemantica, ErroEdicaoSemantica } from '../edicao-semantica-do-post'
 import { ErroAdmissaoSemantica } from '../admitir-pedido-semantico'
+import { ErroRenderSemantico } from '../erro-render-semantico'
 
 const camadas = [{ id: 't-h', name: 'Título', type: 'text', content: 'modelo', visible: true, metadata: { slot: { id: 'manchete' } } }]
 const paginas: Record<string, unknown> = {
@@ -19,10 +20,11 @@ const paginas: Record<string, unknown> = {
 }
 const linha = (extra: Record<string, unknown> = {}) => ({ id: 'post', projectId: 8, postType: 'STORY', pageId: 'modelo', slotValues: null, laterPostId: null, status: 'SCHEDULED', renderStatus: 'RENDERED', mediaUrls: ['https://render-antigo.png'], ...extra })
 
-function tx(row: unknown) {
+function tx(row: unknown, retriesAtivos = 0) {
   const sql: string[] = []
   return {
     sql,
+    postRetry: { count: vi.fn(async () => retriesAtivos) },
     $queryRaw: vi.fn(async (partes: TemplateStringsArray) => {
       sql.push(partes.join('?'))
       return row ? [row] : []
@@ -85,8 +87,8 @@ describe('H. contrato novo: mesma admissão do createPost, contra a página EFET
     await expect(prepararEdicaoSemantica(tx(linha(extra)) as any, 'post', { slotValues: { _slots: { manchete: 'N' } } })).rejects.toMatchObject({ codigo: 'POST_JA_ENTREGUE' })
   })
 
-  it('RENDER_FAILED → RENDER_FAILED_SEM_RECUPERACAO (reabrir é do checkpoint f)', async () => {
-    await expect(prepararEdicaoSemantica(tx(linha({ renderStatus: 'RENDER_FAILED' })) as any, 'post', { slotValues: { _slots: { manchete: 'N' } } })).rejects.toBeInstanceOf(ErroEdicaoSemantica)
+  it('M. RENDER_FAILED por erro COMUM → RENDER_FAILED_SEM_RECUPERACAO (continua terminal)', async () => {
+    await expect(prepararEdicaoSemantica(tx(linha({ renderStatus: 'RENDER_FAILED', renderError: 'Blob upload failed: 503' })) as any, 'post', { slotValues: { _slots: { manchete: 'N' } } })).rejects.toMatchObject({ codigo: 'RENDER_FAILED_SEM_RECUPERACAO' })
   })
 
   it('post inexistente → POST_NAO_ENCONTRADO', async () => {
@@ -107,6 +109,13 @@ describe('G–H. o MCP local usa as MESMAS funções (sem lógica copiada no scr
     expect(admissao).toBeGreaterThan(-1)
     expect(admissao).toBeLessThan(b.indexOf('prisma.socialPost.create('))
     expect(b).toMatch(/Nada foi criado\./)
+  })
+
+  it('checkpoint f: update-post passa status e data EFETIVOS à preparação, e o ramo só de status não repõe falha semântica', () => {
+    const b = bloco('update-post', 'recover-stuck-post')
+    expect(b).toMatch(/prepararEdicaoSemantica\(tx as any, postId, \{[\s\S]*status: data\.status,[\s\S]*scheduledDatetime: data\.scheduledDatetime,/)
+    // o reset do render no ramo só de status é uma escrita CONDICIONAL à linha corrente, não um campo do update cru
+    expect(b).toMatch(/where: \{ id: postId, \.\.\.NAO_E_FALHA_SEMANTICA \}/)
   })
 
   it('H. update-post: mexeu em slotValues/pageId/mediaUrls → prepararEdicaoSemantica dentro de $transaction, gravando com o tx', () => {
@@ -149,5 +158,70 @@ describe('G–H. o MCP local usa as MESMAS funções (sem lógica copiada no scr
     expect(b).toMatch(/const paginaReservada = await prisma\.page\.findUnique\(/)
     expect(b).toMatch(/assinaturaDaPagina\(paginaReservada\) !== assinaturaDaPagina\(page\)/)
     expect(b).toMatch(/where: \{ id: postId, renderStatus: 'RENDERING', nextRenderAt: ficha \},\s*data: \{ renderStatus: 'PENDING', nextRenderAt: new Date\(\) \}/)
+  })
+})
+
+describe('checkpoint f: corrigir o pedido recupera a falha SEMÂNTICA de render — com todos os gates', () => {
+  const envelope = new ErroRenderSemantico('CONTRATO_INVALIDO', 'modelo', []).paraRenderError()
+  const falhou = (extra: Record<string, unknown> = {}) =>
+    linha({ slotValues: { _slots: { inexistente: 'velho' } }, renderStatus: 'RENDER_FAILED', renderError: envelope, mediaUrls: [], status: 'DRAFT', scheduledDatetime: null, videoDaPagina: false, ...extra })
+  const corrigir = { slotValues: { _slots: { manchete: 'Noite' } } }
+  const futuro = new Date(Date.now() + 3_600_000)
+
+  it('J. _slots corrigido → PENDING com a transição completa', async () => {
+    const r = await prepararEdicaoSemantica(tx(falhou()) as any, 'post', corrigir)
+    expect(r).toEqual({ semantico: true, data: expect.objectContaining({ renderStatus: 'PENDING', renderAttempts: 0, renderError: null, mediaUrls: [], renderedImageUrl: null, renderedAt: null, nextRenderAt: expect.any(Date) }) })
+  })
+
+  it('K. _papeis corrigido → PENDING', async () => {
+    const t = tx(falhou({ slotValues: { _papeis: { headline: 'velho' } } }))
+    t.page.findUnique = vi.fn(async () => ({ isTemplate: true, layers: [{ ...camadas[0], metadata: { compositor: { papel: 'headline' } } }], Template: { projectId: 8 } })) as any
+    expect(await prepararEdicaoSemantica(t as any, 'post', { slotValues: { _papeis: { headline: 'Novo' } } })).toMatchObject({ semantico: true })
+  })
+
+  it('SCHEDULED futuro também recupera; a mídia velha não conta como pronta', async () => {
+    const r = await prepararEdicaoSemantica(tx(falhou({ status: 'SCHEDULED', scheduledDatetime: futuro, mediaUrls: ['https://blob.test/velha.png'] })) as any, 'post', corrigir)
+    expect(r).toMatchObject({ semantico: true, data: { mediaUrls: [] } })
+  })
+
+  it('a página corrigida desde a falha: reenviar o mesmo pedido (só pageId) também reabre', async () => {
+    expect(await prepararEdicaoSemantica(tx(falhou({ slotValues: { _slots: { manchete: 'X' } } })) as any, 'post', { pageId: 'modelo' })).toMatchObject({ semantico: true })
+  })
+
+  it('L. pedido novo ainda inválido → erro de admissão (a transação de quem chama não grava)', async () => {
+    await expect(prepararEdicaoSemantica(tx(falhou()) as any, 'post', { slotValues: { _slots: { inexistente: 'ainda' } } })).rejects.toBeInstanceOf(ErroAdmissaoSemantica)
+  })
+
+  it.each([
+    ['H. SCHEDULED vencido', { status: 'SCHEDULED', scheduledDatetime: new Date(Date.now() - 60_000) }, {}],
+    ['H. SCHEDULED sem horário', { status: 'SCHEDULED', scheduledDatetime: null }, {}],
+    ['I. PostStatus FAILED', { status: 'FAILED' }, {}],
+    ['I. a própria edição põe FAILED', {}, { status: 'FAILED' }],
+    ['H. a própria edição põe uma data passada', { status: 'SCHEDULED', scheduledDatetime: futuro }, { scheduledDatetime: new Date(Date.now() - 60_000) }],
+    ['S. vídeo da página', { videoDaPagina: true }, {}],
+    ['S. carrossel', { mediaUrls: ['https://a.png', 'https://b.png'] }, {}],
+  ])('%s → não recupera', async (_n, extra, mudanca) => {
+    await expect(prepararEdicaoSemantica(tx(falhou(extra)) as any, 'post', { ...corrigir, ...mudanca })).rejects.toBeInstanceOf(ErroEdicaoSemantica)
+  })
+
+  it('retry de publicação ativo → não recupera (enviaria cedo a arte nova)', async () => {
+    await expect(prepararEdicaoSemantica(tx(falhou(), 1) as any, 'post', corrigir)).rejects.toMatchObject({ codigo: 'RECUPERACAO_COM_PUBLICACAO_PENDENTE' })
+  })
+
+  it('F/G. entregue (laterPostId, POSTING, POSTED) → POST_JA_ENTREGUE, antes de tudo', async () => {
+    for (const extra of [{ laterPostId: 'z1' }, { status: 'POSTING' }, { status: 'POSTED' }]) {
+      await expect(prepararEdicaoSemantica(tx(falhou(extra)) as any, 'post', corrigir)).rejects.toMatchObject({ codigo: 'POST_JA_ENTREGUE' })
+    }
+    await expect(prepararEdicaoSemantica(tx(falhou()) as any, 'post', { ...corrigir, status: 'POSTED' })).rejects.toMatchObject({ codigo: 'POST_JA_ENTREGUE' })
+  })
+
+  it('retirar o contrato de um post em falha semântica continua recusado', async () => {
+    await expect(prepararEdicaoSemantica(tx(falhou()) as any, 'post', { slotValues: { 't-h': 'X' } })).rejects.toMatchObject({ codigo: 'CONTRATO_NAO_PODE_SER_REMOVIDO' })
+  })
+
+  it('o FOR UPDATE lê o que os gates precisam (erro, data, vídeo, mídia)', async () => {
+    const t = tx(falhou())
+    await prepararEdicaoSemantica(t as any, 'post', corrigir)
+    expect(t.sql[0]).toMatch(/"renderError"[\s\S]*"scheduledDatetime"[\s\S]*"videoDaPagina"[\s\S]*"mediaUrls"[\s\S]*FOR UPDATE/)
   })
 })

@@ -210,14 +210,26 @@ export const toolsDeModelos = [
         ? (args.tags as string[]).filter((t) => t.trim().length > 0)
         : undefined
 
-      const updated = await db.page.update({
-        where: { id: pageId },
-        data: {
-          isTemplate: marcar,
-          ...(tags !== undefined ? { tags } : {}),
-        },
-        select: { id: true, name: true, isTemplate: true, tags: true },
-      })
+      const atualizar = (cliente: Pick<typeof db, 'page'>) =>
+        cliente.page.update({
+          where: { id: pageId },
+          data: {
+            isTemplate: marcar,
+            ...(tags !== undefined ? { tags } : {}),
+          },
+          select: { id: true, name: true, isTemplate: true, tags: true },
+        })
+      // B1d (checkpoint f): trocar isTemplate muda o que o render desenha — os renders da página voltam à fila na
+      // mesma transação (e uma falha semântica PAGINA_DE_CONTEUDO se recupera quando a página vira modelo).
+      const { invalidateScheduledRenders } = await import('../../posts/invalidate-renders')
+      const updated =
+        page.isTemplate !== marcar
+          ? await db.$transaction(async (tx) => {
+              const r = await atualizar(tx)
+              await invalidateScheduledRenders(tx, { pageIds: [pageId] })
+              return r
+            })
+          : await atualizar(db)
 
       const tagsFinais = updated.tags ?? []
       return {

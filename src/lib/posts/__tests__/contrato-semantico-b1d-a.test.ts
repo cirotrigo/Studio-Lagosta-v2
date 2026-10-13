@@ -155,6 +155,7 @@ describe('H. quem grava `SocialPost.slotValues` (src/ e scripts/)', () => {
     ['validar-camadas-extras', 'validar-contexto-da-semana', 'validar-copy-autoral', 'validar-desfecho-no-agendamento', 'validar-guarda-de-envio-da-prova', 'validar-revisor-da-arte', 'validar-video-na-agenda'].map((n) => [`scripts/${n}.ts`, 'prova no banco de dev: fixtures e leituras']),
   )
   const NAO_ESCREVEM: Record<string, string> = {
+    'src/lib/posts/invalidate-renders.ts': 'recuperação semântica (checkpoint f): só LÊ slotValues para validar o pedido contra a página atual; grava só os campos da arte',
     'src/app/api/external/posts/[postId]/route.ts': 'PATCH externo: só LÊ slotValues (FOR UPDATE) para recusar troca de mídia do contrato (checkpoint e)',
     'src/lib/cleanup/reapontar-midias.ts': 'limpeza: só LÊ slotValues para preservar a URL provada do post semântico (checkpoint e)',
     'src/app/api/projects/[projectId]/posts/[postId]/route.ts': 'PUT: só LÊ slotValues (FOR UPDATE) para recusar troca de mídia do contrato (checkpoint e); o update não grava slotValues',

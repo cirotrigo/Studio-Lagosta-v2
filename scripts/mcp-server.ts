@@ -862,6 +862,9 @@ toolEstrita(
               pageId,
               slotValues: data.slotValues,
               mediaUrls,
+              // checkpoint f: os gates da recuperação olham o status e a data que ESTA escrita grava
+              status: data.status,
+              scheduledDatetime: data.scheduledDatetime,
             })
             return tx.socialPost.update({ where: { id: postId }, data: edicao.semantico ? { ...data, ...edicao.data } : data, select: selecao })
           })
@@ -873,6 +876,13 @@ toolEstrita(
           throw erro
         }
       } else {
+        // B1d (checkpoint f): repor o render pelo status não reabre uma falha SEMÂNTICA (sem validar o pedido e
+        // apagando o envelope). A reposição é uma escrita condicional à linha corrente, antes do status.
+        if (data.renderStatus === 'PENDING') {
+          delete data.renderStatus
+          const { NAO_E_FALHA_SEMANTICA } = await import('../src/lib/posts/erro-render-semantico')
+          await prisma.socialPost.updateMany({ where: { id: postId, ...NAO_E_FALHA_SEMANTICA }, data: { renderStatus: 'PENDING' } })
+        }
         updated = await prisma.socialPost.update({ where: { id: postId }, data, select: selecao })
       }
 

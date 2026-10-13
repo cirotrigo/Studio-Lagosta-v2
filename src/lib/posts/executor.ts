@@ -319,14 +319,29 @@ export class PostExecutor {
             // A recusa semântica (B1d, checkpoint d) não é "3 tentativas": a arte precisa de correção.
             const falha = mensagensDaFalhaDeArte(post.renderError)
             console.log(`❌ Post ${post.id} — ${falha.erroDoPost}, marking FAILED`)
-            await db.socialPost.update({
-              where: { id: post.id },
+            /**
+             * B1d (checkpoint f): CAS sobre a falha LIDA. A leitura do laço pode ter minutos; se a recuperação
+             * semântica reabriu o post (RENDER_FAILED → PENDING) ou ele foi entregue por outra via, marcar FAILED
+             * mataria a correção da pessoa e dispararia um aviso falso.
+             */
+            const marcado = await db.socialPost.updateMany({
+              where: {
+                id: post.id,
+                status: PostStatus.SCHEDULED,
+                laterPostId: null,
+                renderStatus: RenderStatus.RENDER_FAILED,
+                renderError: post.renderError ?? null,
+              },
               data: {
                 status: PostStatus.FAILED,
                 errorMessage: falha.erroDoPost,
                 failedAt: new Date(),
               },
             })
+            if (marcado.count === 0) {
+              console.log(`↩ ${post.id} — a arte mudou desde a leitura (recuperada ou entregue); não marcado FAILED`)
+              continue
+            }
             // Sem retry: a arte já falhou nas 3 tentativas de render, reenviar
             // não muda nada. Avisa a equipe — pela mesma trava de 15 min, para
             // não emendar num aviso que o render de última hora acabou de

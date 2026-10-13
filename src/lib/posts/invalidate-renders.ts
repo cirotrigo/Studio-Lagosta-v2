@@ -16,9 +16,12 @@
  * reconstrói a publicação a partir dele — com o campo preenchido, um recover
  * manual num post PENDING mandaria a arte velha.
  */
-import { PostStatus, RenderStatus, type Prisma, type PrismaClient } from '../../../prisma/generated/client'
+import { PostStatus, RenderStatus, RetryStatus, type Prisma, type PrismaClient } from '../../../prisma/generated/client'
 import { renderDaPaginaCobreAMidia } from './render-da-pagina'
 import { postDeVideo } from './post-de-video'
+import { lerErroRenderSemantico, PREFIXO_DO_ENVELOPE } from './erro-render-semantico'
+import { temContratoSemantico } from './copy-segue-a-pagina'
+import { admitirPedidoSemantico, ErroAdmissaoSemantica, type ClienteDeAdmissao } from './admitir-pedido-semantico'
 
 /**
  * `normalizeLayersString` mudou de casa para `page-layers.ts` — um módulo SEM
@@ -50,13 +53,15 @@ export interface InvalidateResult {
    * janela de congelamento veio corrigir.
    */
   congelados: string[]
+  /** B1d (checkpoint f): falhas SEMÂNTICAS de render que a edição corrigiu e voltaram à fila (RENDER_FAILED → PENDING). */
+  reabertos: number
 }
 
 export async function invalidateScheduledRenders(
   client: DbClient,
   target: InvalidateTarget,
 ): Promise<InvalidateResult> {
-  const vazio: InvalidateResult = { invalidados: 0, congelados: [] }
+  const vazio: InvalidateResult = { invalidados: 0, congelados: [], reabertos: 0 }
   if ('pageIds' in target && target.pageIds.length === 0) return vazio
   if ('postIds' in target && target.postIds.length === 0) return vazio
 
@@ -118,8 +123,10 @@ export async function invalidateScheduledRenders(
       `[invalidate-renders] ${candidatos.length - alvos.length} post(s) com várias mídias ficaram fora da fila de render`,
     )
   }
+  // B1d (checkpoint f): antes de qualquer saída — a recuperação semântica tem filtro e CAS próprios.
+  const reabertos = await reabrirFalhasSemanticas(client, alvo)
   if (alvos.length === 0) {
-    return { invalidados: 0, congelados: congeladosRows.map((p) => p.id) }
+    return { invalidados: 0, congelados: congeladosRows.map((p) => p.id), reabertos }
   }
 
   const result = await client.socialPost.updateMany({
@@ -135,6 +142,51 @@ export async function invalidateScheduledRenders(
     },
   })
 
-  return { invalidados: result.count, congelados: congeladosRows.map((p) => p.id) }
+  return { invalidados: result.count, congelados: congeladosRows.map((p) => p.id), reabertos }
+}
+
+/**
+ * B1d (checkpoint f): a edição da página RECUPERA uma falha semântica de render — e só ela.
+ *
+ * `RENDER_FAILED` não entra no `base` da invalidação: lá ele reabriria falha de fonte, Blob, Canvas e legado
+ * quebrado. Aqui reabre apenas quem tem o envelope semântico (confirmado pelo leitor estrito, não só pelo prefixo),
+ * o contrato `_slots`/`_papeis`, `laterPostId` nulo, DRAFT ou SCHEDULED com horário FUTURO (post vencido não
+ * ressuscita: o executor o publicaria atrasado), sem vídeo, mídia coberta pelo render da página, nenhum retry de
+ * publicação ativo (ele enviaria cedo a arte nova) — e cujo pedido agora casa com a página ATUAL, pela MESMA
+ * admissão do agendamento, com `mediaUrls: []` (a mídia velha vai ser descartada, não é "mídia pronta").
+ *
+ * A escrita é CAS por post sobre a linha lida (status, envelope, página, `updatedAt`): entrega, nova falha ou
+ * edição no meio do caminho vencem. Só os campos da arte mudam — pedido, página e `PostRenderProof` ficam (a prova
+ * da URL antiga deixa de autorizar sozinha: a mídia atual some). Nenhum retry, nenhum envio, nenhum aviso.
+ */
+async function reabrirFalhasSemanticas(client: DbClient, alvo: Prisma.SocialPostWhereInput): Promise<number> {
+  const agora = new Date()
+  const recuperavel = {
+    laterPostId: null,
+    OR: [{ status: PostStatus.DRAFT }, { status: PostStatus.SCHEDULED, scheduledDatetime: { gt: agora } }],
+    retries: { none: { status: { in: [RetryStatus.PENDING, RetryStatus.PROCESSING] } } },
+  } satisfies Prisma.SocialPostWhereInput
+  const falhas = await client.socialPost.findMany({
+    where: { ...alvo, ...recuperavel, renderStatus: RenderStatus.RENDER_FAILED, renderError: { startsWith: PREFIXO_DO_ENVELOPE } },
+    select: { id: true, projectId: true, postType: true, pageId: true, slotValues: true, mediaUrls: true, videoDaPagina: true, renderError: true, updatedAt: true },
+  })
+
+  let reabertos = 0
+  for (const p of falhas) {
+    if (!lerErroRenderSemantico(p.renderError) || !temContratoSemantico(p.slotValues)) continue
+    if (!renderDaPaginaCobreAMidia(p.mediaUrls) || postDeVideo(p)) continue
+    try {
+      await admitirPedidoSemantico(client as unknown as ClienteDeAdmissao, { projectId: p.projectId, postType: p.postType, pageId: p.pageId, mediaUrls: [], slotValues: p.slotValues })
+    } catch (erro) {
+      if (erro instanceof ErroAdmissaoSemantica) continue // ainda não casa: fica RENDER_FAILED, sem nova tentativa nem aviso
+      throw erro
+    }
+    const r = await client.socialPost.updateMany({
+      where: { id: p.id, ...recuperavel, renderStatus: RenderStatus.RENDER_FAILED, renderError: p.renderError, pageId: p.pageId, updatedAt: p.updatedAt },
+      data: { renderStatus: RenderStatus.PENDING, renderAttempts: 0, renderError: null, nextRenderAt: agora, renderedImageUrl: null, renderedAt: null, mediaUrls: [] },
+    })
+    reabertos += r.count
+  }
+  return reabertos
 }
 

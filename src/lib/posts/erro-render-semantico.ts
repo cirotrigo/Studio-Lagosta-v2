@@ -43,6 +43,22 @@ export class ErroRenderSemantico extends Error {
   }
 }
 
+/**
+ * O começo LITERAL de `paraRenderError()` (`codigo` é a primeira chave do objeto serializado). Serve só para o banco
+ * pré-filtrar; quem decide é `lerErroRenderSemantico`.
+ */
+export const PREFIXO_DO_ENVELOPE = '{"codigo":"RENDER_SEMANTICO_INVALIDO"'
+
+/**
+ * B1d (checkpoint f): filtro de banco "esta linha NÃO é uma falha semântica de render" — para escritas que repõem o
+ * render (aprovar rascunho, update-post só de status) e não podem reabrir a falha sem validar o pedido (isso é da
+ * recuperação: invalidateScheduledRenders / prepararEdicaoSemantica). Escrito com OR explícito: um NOT sobre
+ * `renderError` nulo cairia na lógica de três valores do SQL. Prefixo junk conta como semântico (falha fechada).
+ */
+export const NAO_E_FALHA_SEMANTICA = {
+  OR: [{ renderStatus: { not: 'RENDER_FAILED' as const } }, { renderError: null }, { NOT: { renderError: { startsWith: PREFIXO_DO_ENVELOPE } } }],
+}
+
 /** Lê o envelope de `renderError`; `null` para qualquer outra coisa (inclusive os erros comuns de hoje). */
 export function lerErroRenderSemantico(renderError: string | null | undefined): FalhaDeRenderSemantico | null {
   if (!renderError || renderError[0] !== '{') return null

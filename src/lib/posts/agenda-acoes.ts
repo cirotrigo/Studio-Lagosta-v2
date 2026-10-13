@@ -17,6 +17,7 @@ import { refilarPaginasDoPost } from '@/lib/compositor/pastas'
 import { ehHostProprio } from '@/lib/creatives/ingerir-midia'
 import { CreativeError } from '@/lib/creatives/errors'
 import { MOTIVO_VIDEO_REMOVIDO, postDeVideo } from '@/lib/posts/post-de-video'
+import { NAO_E_FALHA_SEMANTICA } from '@/lib/posts/erro-render-semantico'
 import { avisosDeCampanhaVencida } from '@/lib/posts/campanha-vigencia'
 import { fecharSugestaoDeSlot, registrarSlotDoPost } from '@/lib/aprendizado/sinal-de-agendamento'
 import { registrarEdicaoDeLegenda } from '@/lib/aprendizado/sinal-de-legenda'
@@ -190,6 +191,17 @@ export async function processarAprovacao(params: {
       // preso para sempre fora do filtro renderAttempts < 3 do cron.
       const precisaRender = post.pageId !== null && post.mediaUrls.length === 0
 
+      /**
+       * B1d (checkpoint f): a falha SEMÂNTICA de render não volta à fila pela aprovação — ela não valida o pedido, e
+       * repor aqui apagaria o envelope. Só a recuperação (página corrigida / pedido corrigido) a reabre. A condição é
+       * da linha CORRENTE (escrita condicional), e vem antes do status: nunca um SCHEDULED sem a arte reposta.
+       */
+      if (precisaRender) {
+        await db.socialPost.updateMany({
+          where: { id: post.id, ...NAO_E_FALHA_SEMANTICA },
+          data: { renderStatus: 'PENDING', nextRenderAt: agora, renderAttempts: 0, renderError: null },
+        })
+      }
       await db.socialPost.update({
         where: { id: post.id },
         data: {
@@ -197,9 +209,6 @@ export async function processarAprovacao(params: {
           errorMessage: null,
           failedAt: null,
           processingStartedAt: null,
-          ...(precisaRender
-            ? { renderStatus: 'PENDING', nextRenderAt: agora, renderAttempts: 0, renderError: null }
-            : {}),
         },
       })
       processados.push(post.id)
