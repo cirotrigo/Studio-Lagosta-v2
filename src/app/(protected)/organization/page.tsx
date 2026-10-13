@@ -10,11 +10,14 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { useSetPageMetadata } from "@/contexts/page-metadata"
 import { useOrganizationCreationLimits } from "@/hooks/use-organizations"
+import { useCobrancaLigada } from "@/hooks/use-credits"
 
 export default function OrganizationLandingPage() {
   const { organization, isLoaded } = useOrganization()
   const router = useRouter()
   const { data: creationLimits } = useOrganizationCreationLimits()
+  // Modo interno: sem créditos nem planos nos textos desta página.
+  const cobrancaLigada = useCobrancaLigada()
 
   useSetPageMetadata({
     title: "Organizações",
@@ -84,7 +87,7 @@ export default function OrganizationLandingPage() {
               <p className="text-sm text-muted-foreground">
                 Use a lista abaixo para criar, gerenciar ou entrar em equipes existentes.
               </p>
-              {creationLimits && creationLimits.canCreate === false && (
+              {cobrancaLigada && creationLimits && creationLimits.canCreate === false && (
                 <p className="mt-2 text-xs text-muted-foreground">
                   {creationLimits.limits.orgCountLimit != null
                     ? `Limite atingido: ${creationLimits.limits.orgCountLimit} organização(ões) ativa(s) para o plano atual.`
@@ -117,10 +120,12 @@ export default function OrganizationLandingPage() {
           <h3 className="text-lg font-semibold">Como funciona</h3>
           <div className="mt-4 space-y-3 text-sm text-muted-foreground">
             <p>
-              • Selecione uma organização ativa com o seletor no topo ou com a lista ao lado para que os créditos e projetos sejam compartilhados com sua equipe.
+              • Selecione uma organização ativa com o seletor no topo ou com a lista ao lado para que{" "}
+              {cobrancaLigada ? "os créditos e projetos sejam compartilhados" : "os projetos sejam compartilhados"} com sua equipe.
             </p>
             <p>
-              • Cada organização possui permissões específicas. Os administradores podem convidar membros, ajustar créditos e definir limites.
+              • Cada organização possui permissões específicas. Os administradores podem convidar membros
+              {cobrancaLigada ? ", ajustar créditos e definir limites." : " e gerenciar os projetos compartilhados."}
             </p>
             <p>
               • O contexto pessoal continua disponível para projetos individuais. Volte a ele a qualquer momento pelo seletor de organização.

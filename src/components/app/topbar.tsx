@@ -12,6 +12,7 @@ import { CreditStatus } from "@/components/credits/credit-status";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetClose, SheetFooter } from "@/components/ui/sheet";
 import { useResolvedNavigationItems } from "@/components/app/sidebar";
 import { useOrganizationCreationLimits } from "@/hooks/use-organizations";
+import { useCobrancaLigada } from "@/hooks/use-credits";
 import { DynamicLogo } from "@/components/app/dynamic-logo";
 import { useSiteConfig } from "@/hooks/use-site-config";
 import { site } from "@/lib/brand-config";
@@ -27,8 +28,10 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
   const navItems = useResolvedNavigationItems();
   const config = siteConfig || site;
   const createMode: "modal" | "navigation" = "modal";
+  // Modo interno: sem aviso de plano (limite comercial) no menu.
+  const cobrancaLigada = useCobrancaLigada();
   const creationReminder =
-    creationLimits?.canCreate === false
+    cobrancaLigada && creationLimits?.canCreate === false
       ? creationLimits.limits.orgCountLimit != null
         ? `Seu plano permite até ${creationLimits.limits.orgCountLimit} organização(ões) ativa(s).`
         : 'Seu plano atual não permite criar novas organizações.'
