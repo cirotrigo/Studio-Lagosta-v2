@@ -9,6 +9,7 @@ import {
 } from '@/lib/ai/image-models-config'
 import { googleDriveService } from '@/server/google-drive-service'
 import { generateImageWithGemini } from '@/lib/ai/gemini-image-client'
+import { assertDriveDoProjeto } from '@/lib/google-drive/escopo'
 
 type ImageResolution = '1K' | '2K' | '4K'
 
@@ -93,10 +94,11 @@ async function fetchGoogleDriveImage(fileId: string): Promise<{ buffer: Buffer; 
   return { buffer, contentType: mimeType }
 }
 
-async function fetchImageAsBuffer(url: string): Promise<{ buffer: Buffer; contentType: string }> {
+async function fetchImageAsBuffer(url: string, projectId: number): Promise<{ buffer: Buffer; contentType: string }> {
   const driveFileId = extractGoogleDriveFileId(url)
   if (driveFileId) {
-    return fetchGoogleDriveImage(driveFileId)
+    // Foto do Drive só sob as pastas do projeto da geração.
+    return fetchGoogleDriveImage(await assertDriveDoProjeto(projectId, driveFileId))
   }
 
   const response = await fetch(url, { signal: AbortSignal.timeout(15000) })
@@ -139,7 +141,7 @@ export async function generateStoredAiImage(
   })
 
   const referenceSources = (params.referenceImages ?? []).slice(0, 14)
-  const referenceResults = await Promise.all(referenceSources.map(fetchImageAsBuffer))
+  const referenceResults = await Promise.all(referenceSources.map((url) => fetchImageAsBuffer(url, params.projectId)))
   const referenceBuffers = referenceResults.map((item) => item.buffer)
   const referenceBufferTypes = referenceResults.map((item) => item.contentType)
 

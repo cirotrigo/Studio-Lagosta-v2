@@ -57,6 +57,7 @@ vi.mock('@vercel/blob', () => ({ put: async () => ({ url: 'https://loja.public.b
 import { POST as melhorarPrompt } from '../improve-prompt/route'
 import { POST as gerarImagem } from '../generate-image/route'
 import { generateAiTextPayload } from '../../tools/generate-ai-text/route'
+import { generateStoredAiImage } from '@/lib/ai/generate-image-service'
 
 const URL_DO_DRIVE = (id: string) => `https://studio.example/api/google-drive/image/${id}`
 const lidos = () => drive.getFileStream.mock.calls.map((c) => c[0])
@@ -141,6 +142,19 @@ describe('generateAiTextPayload (análise da imagem)', () => {
     expect(lidos()).toEqual(['fileA'])
     drive.getFileStream.mockClear()
     await analisar('fileB')
+    expect(lidos()).toEqual([])
+  })
+})
+
+describe('generateStoredAiImage (gerar-criativo/quick-generate)', () => {
+  const gerar = (id: string) =>
+    generateStoredAiImage({ clerkUserId: 'userA', projectId: 1, prompt: 'p', aspectRatio: '9:16', referenceImages: [URL_DO_DRIVE(id)] })
+
+  it('referência do projeto é lida; a de outro projeto é recusada sem ler bytes', async () => {
+    await expect(gerar('fileA')).rejects.toThrow('parou depois das referências')
+    expect(lidos()).toEqual(['fileA'])
+    drive.getFileStream.mockClear()
+    await expect(gerar('fileB')).rejects.toMatchObject({ status: 404 })
     expect(lidos()).toEqual([])
   })
 })
