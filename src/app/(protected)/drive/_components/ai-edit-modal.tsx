@@ -68,7 +68,7 @@ export function AIEditModal({
   onGenerationError,
   initialReferenceImages = [],
 }: AIEditModalProps) {
-  const { credits, refresh: refreshCredits } = useCredits()
+  const { credits, creditosAplicados, refresh: refreshCredits } = useCredits()
   const queryClient = useQueryClient()
   const uploadToDrive = useUploadImageToDrive()
   const improvePrompt = useImprovePrompt()
@@ -109,7 +109,8 @@ export function AIEditModal({
   const fullImageUrl = resolvedFileId ? `/api/google-drive/image/${resolvedFileId}` : null
 
   const creditsRequired = calculateCreditsForModel(selectedModel, resolution)
-  const hasEnoughCredits = credits && credits.creditsRemaining >= creditsRequired
+  // Modo interno (creditosAplicados === false): o saldo não bloqueia.
+  const hasEnoughCredits = creditosAplicados === false || (credits && credits.creditsRemaining >= creditsRequired)
 
   const handleImprovePrompt = () => {
     if (!prompt.trim()) {
