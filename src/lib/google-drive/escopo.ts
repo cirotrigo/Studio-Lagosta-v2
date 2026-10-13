@@ -80,9 +80,43 @@ function recusar(motivo: string, id: unknown): DecisaoDoDrive {
 }
 
 /**
- * O item vale se ele MESMO for uma das raízes ou se um ancestral for. Atalho
- * vale pela posição dele, e o id efetivo é o destino; o id cru do destino é
- * julgado pela própria ascendência.
+ * A posição do item: ele MESMO é uma das raízes ou um ancestral é — e cada um
+ * deles (a raiz inclusive) existe e está fora da lixeira. A profundidade conta
+ * antes de aceitar a raiz.
+ */
+async function posicaoPermitida(
+  itemId: string,
+  validas: ReadonlySet<string>,
+  memo: MemoDoDrive | undefined,
+  maxima: number,
+): Promise<{ meta: MetaDoDrive } | { motivo: string }> {
+  const item = await lerMeta(itemId, memo)
+  if (!item) return { motivo: 'nao-encontrado' }
+  if (item.trashed) return { motivo: 'lixeira' }
+  if (validas.has(itemId)) return { meta: item }
+
+  const vistos = new Set([itemId])
+  let atual = item
+  for (let profundidade = 1; ; profundidade++) {
+    if (atual.parents.length === 0) return { motivo: 'sem-pai' }
+    if (atual.parents.length > 1) return { motivo: 'varios-pais' }
+    const pai = atual.parents[0]
+    if (!idDoDriveValido(pai)) return { motivo: 'sem-pai' }
+    if (vistos.has(pai)) return { motivo: 'ciclo' }
+    if (profundidade > maxima) return { motivo: 'profundidade' }
+    vistos.add(pai)
+    const meta = await lerMeta(pai, memo)
+    if (!meta) return { motivo: 'pai-nao-encontrado' }
+    if (meta.trashed) return { motivo: 'lixeira' }
+    if (validas.has(pai)) return { meta: item }
+    atual = meta
+  }
+}
+
+/**
+ * O item vale se ele mesmo for uma das raízes ou se um ancestral for. Atalho
+ * só vale se o destino TAMBÉM estiver sob as mesmas raízes (e não for outro
+ * atalho); o id efetivo é o destino.
  */
 export async function driveItemPermitido(
   itemId: unknown,
@@ -94,33 +128,16 @@ export async function driveItemPermitido(
   if (validas.size === 0) return recusar('sem-raizes', itemId)
   const maxima = opts.profundidadeMaxima ?? PROFUNDIDADE_MAXIMA
 
-  const item = await lerMeta(itemId, opts.memo)
-  if (!item) return recusar('nao-encontrado', itemId)
-  if (item.trashed) return recusar('lixeira', itemId)
+  const posicao = await posicaoPermitida(itemId, validas, opts.memo, maxima)
+  if ('motivo' in posicao) return recusar(posicao.motivo, itemId)
+  if (posicao.meta.mimeType !== ATALHO) return { permitido: true, idEfetivo: itemId }
 
-  let idEfetivo = itemId
-  if (item.mimeType === ATALHO) {
-    if (!idDoDriveValido(item.targetId)) return recusar('atalho-sem-destino', itemId)
-    idEfetivo = item.targetId
-  }
-  if (validas.has(itemId)) return { permitido: true, idEfetivo }
-
-  const vistos = new Set([itemId])
-  let atual = item
-  for (let profundidade = 1; ; profundidade++) {
-    if (atual.parents.length === 0) return recusar('sem-pai', itemId)
-    if (atual.parents.length > 1) return recusar('varios-pais', itemId)
-    const pai = atual.parents[0]
-    if (!idDoDriveValido(pai)) return recusar('sem-pai', itemId)
-    if (validas.has(pai)) return { permitido: true, idEfetivo }
-    if (vistos.has(pai)) return recusar('ciclo', itemId)
-    if (profundidade > maxima) return recusar('profundidade', itemId)
-    vistos.add(pai)
-    const meta = await lerMeta(pai, opts.memo)
-    if (!meta) return recusar('pai-nao-encontrado', itemId)
-    if (meta.trashed) return recusar('lixeira', itemId)
-    atual = meta
-  }
+  const destino = posicao.meta.targetId
+  if (!idDoDriveValido(destino)) return recusar('atalho-sem-destino', itemId)
+  const doDestino = await posicaoPermitida(destino, validas, opts.memo, maxima)
+  if ('motivo' in doDestino) return recusar(`destino-${doDestino.motivo}`, itemId)
+  if (doDestino.meta.mimeType === ATALHO) return recusar('atalho-para-atalho', itemId)
+  return { permitido: true, idEfetivo: destino }
 }
 
 /** Todos ou nenhum: os ids efetivos, ou `null` se algum for recusado. */
@@ -227,9 +244,9 @@ export async function idsDoDriveNaRotaDoProjeto(
 
 /**
  * A foto do Drive precisa estar sob as pastas DESTE projeto — vale para
- * qualquer chamador (pessoa, serviço ou admin) em operação de projeto.
- * Atalho rápido: a foto indexada no próprio projeto (PhotoEmbedding, escrito
- * só pelo indexador). Devolve o id efetivo.
+ * qualquer chamador (pessoa, serviço ou admin) em operação de projeto. Vale
+ * o estado ATUAL do Drive (o índice de fotos pode estar velho). Devolve o id
+ * efetivo.
  */
 export async function assertDriveDoProjeto(
   projectId: number,
@@ -241,11 +258,6 @@ export async function assertDriveDoProjeto(
     recusar('id-invalido', driveId)
     throw naoEncontrada()
   }
-  const indexada = await db.photoEmbedding.findUnique({
-    where: { projectId_driveFileId: { projectId, driveFileId: driveId } },
-    select: { id: true },
-  })
-  if (indexada) return driveId
   const r = await driveItemPermitido(driveId, await raizesDoProjeto(projectId), opts)
   if (!r.permitido) throw naoEncontrada()
   return r.idEfetivo

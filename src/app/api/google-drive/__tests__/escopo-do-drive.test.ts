@@ -134,8 +134,10 @@ describe.each([
   it('userA lê a foto da A (e o destino do atalho); admin lê qualquer uma', async () => {
     expect((await comId(rota, 'fileA')).status).toBe(200)
     expect(leitura).toHaveBeenLastCalledWith('fileA', ...(leitura === drive.getFileStream ? [undefined] : [400]))
-    expect((await comId(rota, 'shortA')).status).toBe(200)
-    expect(leitura.mock.lastCall?.[0]).toBe('fileB')
+    expect((await comId(rota, 'shortOk')).status).toBe(200)
+    expect(leitura.mock.lastCall?.[0]).toBe('fileAimg')
+    // atalho na A para foto da B: recusado
+    expect((await comId(rota, 'shortA')).status).toBe(404)
     m.userId = 'user_admin'
     expect((await comId(rota, 'fileB')).status).toBe(200)
   })
@@ -203,7 +205,7 @@ describe('POST /api/drive/upload-image', () => {
     expect(drive.uploadFileToFolder).not.toHaveBeenCalled()
   })
   it('atalho como destino não vale (escrita só em pasta de verdade)', async () => {
-    expect((await upload('shortA')).status).toBe(404)
+    expect((await upload('shortOk')).status).toBe(404)
     expect(drive.uploadFileToFolder).not.toHaveBeenCalled()
   })
   it.each([

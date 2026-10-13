@@ -74,10 +74,10 @@ async function corpo(r: Response) {
 
 describe.each(ROTAS)('%s', (_nome, baixar) => {
   it('userA copia fotos do projeto 1 (pasta geral, de imagens e atalho pelo destino)', async () => {
-    const r = await corpo(await baixar(1, ['fileA', 'fileAimg', 'shortA']))
+    const r = await corpo(await baixar(1, ['fileA', 'fileAimg', 'shortOk']))
     expect(r.status).toBe(200)
     expect(r.body.uploaded).toBe(3)
-    expect(m.baixados).toEqual(['fileA', 'fileAimg', 'fileB'])
+    expect(m.baixados).toEqual(['fileA', 'fileAimg', 'fileAimg'])
   })
   it('foto alheia, inexistente, projeto sem acesso e projeto inexistente: o mesmo 404, nada copiado', async () => {
     const alheia = await corpo(await baixar(1, ['fileB']))
@@ -87,6 +87,7 @@ describe.each(ROTAS)('%s', (_nome, baixar) => {
       await corpo(await baixar(99, ['fileA'])),
       await corpo(await baixar(1, ['fileA', 'fileB'])),
       await corpo(await baixar(1, ['root'])),
+      await corpo(await baixar(1, ['shortA'])),
       await corpo(await baixar(1, ["x' or 'rootB"])),
     ]
     expect(alheia.status).toBe(404)

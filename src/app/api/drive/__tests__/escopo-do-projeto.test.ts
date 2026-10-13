@@ -123,15 +123,15 @@ describe('casos de cada rota', () => {
     expect(drive.deleteFiles).not.toHaveBeenCalled()
   })
   it('move e delete agem sobre o atalho, nunca sobre o destino dele', async () => {
-    expect((await json(mover, { fileIds: ['shortA'], targetFolderId: 'grandA', projectId: 1 })).status).toBe(200)
-    expect(drive.moveFiles).toHaveBeenCalledWith(['shortA'], 'grandA')
-    expect((await json(apagar, { fileIds: ['shortA'], projectId: 1 }, 'DELETE')).status).toBe(200)
-    expect(drive.deleteFiles).toHaveBeenCalledWith(['shortA'])
+    expect((await json(mover, { fileIds: ['shortOk'], targetFolderId: 'grandA', projectId: 1 })).status).toBe(200)
+    expect(drive.moveFiles).toHaveBeenCalledWith(['shortOk'], 'grandA')
+    expect((await json(apagar, { fileIds: ['shortOk'], projectId: 1 }, 'DELETE')).status).toBe(200)
+    expect(drive.deleteFiles).toHaveBeenCalledWith(['shortOk'])
   })
   it('atalho não vale como destino de escrita', async () => {
-    expect((await json(mover, { fileIds: ['fileA'], targetFolderId: 'shortA', projectId: 1 })).status).toBe(404)
-    expect((await json(criarPasta, { name: 'N', parentId: 'shortA', projectId: 1 })).status).toBe(404)
-    expect((await upload(1, 'shortA')).status).toBe(404)
+    expect((await json(mover, { fileIds: ['fileA'], targetFolderId: 'shortOk', projectId: 1 })).status).toBe(404)
+    expect((await json(criarPasta, { name: 'N', parentId: 'shortOk', projectId: 1 })).status).toBe(404)
+    expect((await upload(1, 'shortOk')).status).toBe(404)
     expect(chamadasDeDados()).toBe(0)
   })
   it('parâmetro repetido: baixa a pasta conferida', async () => {

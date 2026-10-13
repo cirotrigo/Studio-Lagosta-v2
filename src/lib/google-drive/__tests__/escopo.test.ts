@@ -43,12 +43,32 @@ describe('driveItemPermitido', () => {
     expect(await driveItemPermitido(id, A)).toEqual({ permitido: true, idEfetivo: efetivo })
   })
 
-  it('atalho vale pela posição DELE e devolve o destino; o destino cru vale pela própria ascendência', async () => {
-    expect(await driveItemPermitido('shortA', A)).toEqual({ permitido: true, idEfetivo: 'fileB' })
+  it('atalho só vale se ele E o destino estiverem sob as mesmas raízes; atalho para atalho nunca', async () => {
+    expect(await driveItemPermitido('shortOk', A)).toEqual({ permitido: true, idEfetivo: 'fileAimg' })
+    expect((await driveItemPermitido('shortA', A)).permitido).toBe(false)
     expect((await driveItemPermitido('fileB', A)).permitido).toBe(false)
-    expect(await driveItemPermitido('shortB', B)).toEqual({ permitido: true, idEfetivo: 'fileA' })
+    expect((await driveItemPermitido('shortB', B)).permitido).toBe(false)
     expect((await driveItemPermitido('shortB', A)).permitido).toBe(false)
+    expect((await driveItemPermitido('shortA', new Set(['rootA', 'rootB']))).permitido).toBe(true)
+    expect((await driveItemPermitido('shortChain', A)).permitido).toBe(false)
+    expect((await driveItemPermitido('shortLixo', A)).permitido).toBe(false)
     expect((await driveItemPermitido('semDestino', A)).permitido).toBe(false)
+  })
+
+  it('raiz na lixeira ou inexistente não vale (nem como item, nem como ancestral)', async () => {
+    const lixo = new Set(['lixeiraA'])
+    expect((await driveItemPermitido('lixeiraA', lixo)).permitido).toBe(false)
+    expect((await driveItemPermitido('sobLixeira', lixo)).permitido).toBe(false)
+    const sumida = new Set(['sumido'])
+    expect((await driveItemPermitido('sumido', sumida)).permitido).toBe(false)
+    expect((await driveItemPermitido('orphanDeep', sumida)).permitido).toBe(false)
+    expect(drive.getFileMetadata).toHaveBeenCalledWith('sumido', expect.any(String))
+  })
+
+  it('a profundidade conta antes de aceitar a raiz', async () => {
+    // fundo3 → fundo2 → fundo1 → fundo0 → rootA: a raiz é o 4º ancestral
+    expect((await driveItemPermitido('fundo3', new Set(['rootA']), { profundidadeMaxima: 3 })).permitido).toBe(false)
+    expect((await driveItemPermitido('fundo3', new Set(['rootA']), { profundidadeMaxima: 4 })).permitido).toBe(true)
   })
 
   it.each([
@@ -156,7 +176,8 @@ describe('escopoDoDriveWeb', () => {
 describe('assertDriveDoProjeto', () => {
   it('foto sob as pastas do projeto passa e devolve o id efetivo', async () => {
     expect(await assertDriveDoProjeto(1, 'fileA')).toBe('fileA')
-    expect(await assertDriveDoProjeto(1, 'shortA')).toBe('fileB')
+    expect(await assertDriveDoProjeto(1, 'shortOk')).toBe('fileAimg')
+    await expect(assertDriveDoProjeto(1, 'shortA')).rejects.toMatchObject({ status: 404 })
   })
   it('foto de outro projeto, inexistente ou com erro do Drive: o mesmo 404', async () => {
     const erros = await Promise.all(
@@ -166,14 +187,12 @@ describe('assertDriveDoProjeto', () => {
       expect(e).toMatchObject({ code: 'FOTO_NAO_ENCONTRADA', status: 404, message: 'Foto não encontrada.' })
     }
   })
-  it('foto indexada no projeto passa sem consultar o Drive; indexada em OUTRO projeto, não', async () => {
+  it('o índice de fotos não autoriza: vale o estado atual do Drive', async () => {
     embeddings.add('1:fileB')
-    expect(await assertDriveDoProjeto(1, 'fileB')).toBe('fileB')
-    expect(drive.getFileMetadata).not.toHaveBeenCalled()
-    await expect(assertDriveDoProjeto(2, 'fileA')).rejects.toMatchObject({ status: 404 })
-    embeddings.clear()
-    embeddings.add('2:fileA')
+    embeddings.add('1:trashedA')
     await expect(assertDriveDoProjeto(1, 'fileB')).rejects.toMatchObject({ status: 404 })
+    await expect(assertDriveDoProjeto(1, 'trashedA')).rejects.toMatchObject({ status: 404 })
+    expect(dbFalso.photoEmbedding.findUnique).not.toHaveBeenCalled()
   })
   it('id inválido é recusado antes do banco e do Drive', async () => {
     await expect(assertDriveDoProjeto(1, "x' in parents or 'rootA")).rejects.toMatchObject({ status: 404 })

@@ -44,12 +44,13 @@ describe('resolveImageUrl', () => {
     expect(blobPut.mock.calls[1][0]).toBe(chave)
   })
   it('atalho na pasta do projeto: copia o destino', async () => {
-    await resolveImageUrl(undefined, 'shortA', 1)
-    expect(drive.getFileMetadata).toHaveBeenCalledWith('fileB', 'thumbnailLink')
-    expect(m.baixado).toEqual(['https://lh3.example/miniatura-fileB=s1920'])
+    await resolveImageUrl(undefined, 'shortOk', 1)
+    expect(drive.getFileMetadata).toHaveBeenCalledWith('fileAimg', 'thumbnailLink')
+    expect(m.baixado).toEqual(['https://lh3.example/miniatura-fileAimg=s1920'])
   })
   it.each([
     [undefined, 'fileB'],
+    [undefined, 'shortA'],
     [undefined, 'nao-existe'],
     [undefined, 'root'],
     ['https://studio.example/api/google-drive/image/fileB', undefined],

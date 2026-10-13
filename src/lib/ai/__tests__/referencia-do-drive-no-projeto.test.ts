@@ -58,12 +58,12 @@ const gerar = (driveFileId: string) =>
 
 describe('startArtGeneration — referência do Drive', () => {
   it('foto sob as pastas do projeto passa da conferência (o resto da geração não é deste teste)', async () => {
-    for (const id of ['fileA', 'fileAimg', 'shortA']) {
+    for (const id of ['fileA', 'fileAimg', 'shortOk']) {
       const erro = await gerar(id).catch((e) => e)
       expect(erro?.code).not.toBe('FOTO_NAO_ENCONTRADA')
     }
   })
-  it.each(['fileB', 'nao-existe', 'boom', 'root', "x' in parents or 'rootA"])(
+  it.each(['fileB', 'shortA', 'nao-existe', 'boom', 'root', "x' in parents or 'rootA"])(
     'foto fora do projeto (%s): 404 antes de qualquer job, mesmo para admin/serviço',
     async (id) => {
       await expect(gerar(id)).rejects.toMatchObject({ code: 'FOTO_NAO_ENCONTRADA', status: 404 })

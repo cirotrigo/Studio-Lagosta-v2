@@ -43,6 +43,12 @@ export const ARVORE: Record<string, NoFalso> = {
   sobLixeira: foto(['lixeiraA']),
   shortA: { parents: ['childA'], mimeType: ATALHO, targetId: 'fileB' },
   shortB: { parents: ['rootB'], mimeType: ATALHO, targetId: 'fileA' },
+  // atalho na A apontando para a pasta de imagens da A (destino também sob as raízes)
+  shortOk: { parents: ['childA'], mimeType: ATALHO, targetId: 'fileAimg' },
+  // atalho para atalho: nunca vale
+  shortChain: { parents: ['childA'], mimeType: ATALHO, targetId: 'shortOk' },
+  // atalho para arquivo na lixeira
+  shortLixo: { parents: ['childA'], mimeType: ATALHO, targetId: 'trashedA' },
   multi: foto(['rootA', 'rootB']),
   semDestino: { parents: ['rootA'], mimeType: ATALHO },
 }
