@@ -19,7 +19,7 @@ import { comoCopiaDaPagina, slotValuesSeguindo } from './copy-segue-a-pagina'
 import { renderDaPaginaCobreAMidia } from './render-da-pagina'
 import { MOTIVO_VIDEO_REMOVIDO, postDeVideo } from './post-de-video'
 import { ErroRenderSemantico } from './erro-render-semantico'
-import { RenderStatus, type Prisma } from '../../../prisma/generated/client'
+import { PostStatus, RenderStatus, type Prisma } from '../../../prisma/generated/client'
 import { fichaDeReserva } from './ficha-de-reserva'
 import { VERSAO_DA_PROVA } from './prova-do-render'
 
@@ -100,9 +100,16 @@ export async function renderPostArt(post: RenderablePost): Promise<RenderPostArt
     return { ok: false, motivo: 'midia-propria' }
   }
 
+  /**
+   * Gate final do B1d (Codex R2): só se desenha a arte de um post que ainda NÃO saiu para o publicador — rascunho ou
+   * agendado, sem `laterPostId`. Uma aprovação atrasada pode repor PENDING num post já POSTING; sem isto o render
+   * trocaria a mídia (e criaria prova) de um post que o Zernio já está publicando com a anterior. Vale na reserva e
+   * na confirmação; as reversões continuam presas só à ficha, para nunca deixar a linha em RENDERING.
+   */
+  const aindaNaoEntregue = { laterPostId: null, status: { in: [PostStatus.DRAFT, PostStatus.SCHEDULED] } }
   const ficha = fichaDeReserva()
   const reserva = await db.socialPost.updateMany({
-    where: { id: post.id, renderStatus: RenderStatus.PENDING },
+    where: { id: post.id, renderStatus: RenderStatus.PENDING, ...aindaNaoEntregue },
     data: { renderStatus: RenderStatus.RENDERING, nextRenderAt: ficha },
   })
 
@@ -145,7 +152,7 @@ export async function renderPostArt(post: RenderablePost): Promise<RenderPostArt
       const cas = await tx.socialPost.updateMany({
       // A mídia entra no predicado: trocada DURANTE o render (o PUT do post não
       // mexe em `renderStatus`), o PNG não pode entrar por cima dela.
-      where: { ...daReserva, mediaUrls: { equals: atual?.mediaUrls ?? [] } },
+      where: { ...daReserva, ...aindaNaoEntregue, mediaUrls: { equals: atual?.mediaUrls ?? [] } },
       data: {
         renderStatus: RenderStatus.RENDERED,
         renderedImageUrl: result.url,

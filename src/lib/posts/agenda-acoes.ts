@@ -197,8 +197,10 @@ export async function processarAprovacao(params: {
        * na hora. Só a recuperação (página / pedido corrigidos) o reabre. Status e reposição numa ÚNICA escrita,
        * condicional à linha CORRENTE (Codex, checkpoint f).
        */
+      // Gate final (Codex R2): a escrita também exige a linha AINDA rascunho e não entregue — uma aprovação atrasada
+      // não pode reabrir (SCHEDULED + render PENDING) um post que outra aprovação já agendou e o envio já reservou.
       const aprovado = await db.socialPost.updateMany({
-        where: { id: post.id, ...NAO_E_FALHA_SEMANTICA },
+        where: { id: post.id, status: PostStatus.DRAFT, laterPostId: null, ...NAO_E_FALHA_SEMANTICA },
         data: {
           status: PostStatus.SCHEDULED,
           errorMessage: null,
@@ -212,7 +214,7 @@ export async function processarAprovacao(params: {
       if (aprovado.count === 0) {
         ignorados.push({
           postId: post.id,
-          motivo: 'A arte deste rascunho falhou: o contrato semântico não casa com a página. Corrija a página ou o pedido (a arte volta a ser gerada sozinha) e aprove depois.',
+          motivo: 'Não aprovado: o rascunho mudou desde a leitura (já foi aprovado ou entregue), ou a arte dele falhou no contrato semântico — nesse caso, corrija a página ou o pedido (a arte volta a ser gerada sozinha) e aprove depois.',
         })
         continue
       }

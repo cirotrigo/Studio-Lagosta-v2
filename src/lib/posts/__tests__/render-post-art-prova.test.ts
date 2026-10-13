@@ -26,6 +26,8 @@ vi.mock('@/lib/db', () => {
       updateMany: async ({ where, data }: { where: Record<string, any>; data: Record<string, unknown> }) => {
         if (!banco.post) return { count: 0 }
         for (const k of ['renderStatus', 'nextRenderAt']) if (k in where && !igual(banco.post[k], where[k])) return { count: 0 }
+        if ('laterPostId' in where && (banco.post.laterPostId ?? null) !== where.laterPostId) return { count: 0 }
+        if ('status' in where && !where.status.in.includes(banco.post.status)) return { count: 0 }
         if ('mediaUrls' in where && !igual(banco.post.mediaUrls, where.mediaUrls.equals)) return { count: 0 }
         banco.post = { ...banco.post, ...data }
         return { count: 1 }
@@ -62,6 +64,7 @@ vi.mock('@/lib/posts/story-renderer', () => ({
 vi.mock('../ensure-post-generation', () => ({ ensurePostGeneration: async () => null }))
 vi.mock('../../../../prisma/generated/client', () => ({
   RenderStatus: { PENDING: 'PENDING', RENDERING: 'RENDERING', RENDERED: 'RENDERED', RENDER_FAILED: 'RENDER_FAILED', NOT_NEEDED: 'NOT_NEEDED' },
+  PostStatus: { DRAFT: 'DRAFT', SCHEDULED: 'SCHEDULED', POSTING: 'POSTING', POSTED: 'POSTED', FAILED: 'FAILED' },
 }))
 
 import { renderPostArt } from '../render-post-art'
@@ -69,7 +72,7 @@ import { renderPostArt } from '../render-post-art'
 const semantico = { _slots: { manchete: 'Noite do vinho' } }
 
 beforeEach(() => {
-  banco.post = { id: 'post-1', pageId: 'p1', slotValues: semantico, renderStatus: 'PENDING', mediaUrls: [], renderedImageUrl: null, renderAttempts: 0, nextRenderAt: null }
+  banco.post = { id: 'post-1', status: 'SCHEDULED', laterPostId: null, pageId: 'p1', slotValues: semantico, renderStatus: 'PENDING', mediaUrls: [], renderedImageUrl: null, renderAttempts: 0, nextRenderAt: null }
   banco.provas = []
   banco.falhaNaProva = false
   banco.duranteRender = null
@@ -178,5 +181,30 @@ describe('D. a prova é APPEND-ONLY: ninguém atualiza nem sobrescreve uma prova
     expect(escritas.length).toBeGreaterThan(0)
     expect(escritas.filter((e) => /:(update|updateMany|upsert|delete|deleteMany|createMany)$/.test(e))).toEqual([])
     expect(arquivos.filter((a) => /UPDATE\s+"PostRenderProof"|DELETE\s+FROM\s+"PostRenderProof"/.test(readFileSync(a, 'utf8')))).toEqual([])
+  })
+})
+
+describe('GATE FINAL (Codex R2): post já reservado/entregue nunca tem a mídia trocada pelo render', () => {
+  it('PENDING mas já com laterPostId (entregue): não reserva, não desenha, sem prova', async () => {
+    banco.post = { ...banco.post, laterPostId: 'z1' }
+    expect(await renderizar()).toMatchObject({ ok: false, motivo: 'ocupado' })
+    expect(banco.provas).toEqual([])
+    expect(banco.post.renderStatus).toBe('PENDING')
+  })
+
+  it('PENDING mas POSTING (aprovação atrasada repôs o render): não reserva', async () => {
+    banco.post = { ...banco.post, status: 'POSTING' }
+    expect(await renderizar()).toMatchObject({ ok: false, motivo: 'ocupado' })
+    expect(banco.provas).toEqual([])
+  })
+
+  it('virou POSTING DURANTE o render: a confirmação não grava mídia nem prova', async () => {
+    banco.duranteRender = () => {
+      banco.post = { ...banco.post, status: 'POSTING', mediaUrls: [] }
+    }
+    const r = await renderizar()
+    expect(r.ok).toBe(false)
+    expect(banco.provas).toEqual([])
+    expect(banco.post.renderedImageUrl).toBeNull()
   })
 })

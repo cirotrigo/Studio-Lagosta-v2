@@ -8,7 +8,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const banco = vi.hoisted(() => ({ posts: [] as any[] }))
+const banco = vi.hoisted(() => ({ posts: [] as any[], lidos: null as any[] | null }))
 
 function casa(l: any, where: any): boolean {
   return Object.entries(where).every(([k, c]: [string, any]) => {
@@ -28,7 +28,8 @@ vi.mock('@/lib/db', () => ({
   db: {
     project: { findUnique: async () => ({ name: 'P', instagramAccountId: 'ig' }) },
     socialPost: {
-      findMany: async () => banco.posts,
+      // `lidos`: o que a aprovação LEU (pode estar velho); `posts`: a linha corrente, onde a escrita decide.
+      findMany: async () => banco.lidos ?? banco.posts,
       update: async ({ where, data }: any) => {
         banco.posts = banco.posts.map((p) => (p.id === where.id ? { ...p, ...data } : p))
         return banco.posts.find((p) => p.id === where.id)
@@ -58,6 +59,7 @@ const aprovar = () => processarAprovacao({ projectId: 8, postIds: ['post-1'], ac
 
 beforeEach(() => {
   banco.posts = []
+  banco.lidos = null
 })
 
 describe('aprovar rascunho sem mídia', () => {
@@ -92,5 +94,17 @@ describe('aprovar rascunho sem mídia', () => {
     banco.posts = [rascunho({ renderStatus: 'PENDING', renderError: null, renderAttempts: 0 })]
     await aprovar()
     expect(banco.posts[0]).toMatchObject({ status: 'SCHEDULED', renderStatus: 'PENDING' })
+  })
+})
+
+describe('GATE FINAL (Codex R2): aprovação atrasada não reabre post já reservado ou entregue', () => {
+  it('leu DRAFT, mas outra aprovação já agendou e o envio reservou (POSTING, laterPostId): nada é gravado', async () => {
+    const lido = rascunho({ renderStatus: 'PENDING', renderError: null, slotValues: { 't-h': 'X' } })
+    const emEntrega = { ...lido, status: 'POSTING', laterPostId: 'z1', renderStatus: 'RENDERED', mediaUrls: ['https://u.png'], processingStartedAt: new Date() }
+    banco.lidos = [lido]
+    banco.posts = [emEntrega]
+    const r = await aprovar()
+    expect(banco.posts[0]).toEqual(emEntrega)
+    expect(r.processados ?? []).not.toContain('post-1')
   })
 })
