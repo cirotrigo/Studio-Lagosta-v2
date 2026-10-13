@@ -111,9 +111,11 @@ export function textosDaPagina(layers: unknown): Record<string, string> {
  * chave — é o que deixa traduzir para a chave da página uma copy guardada
  * pelo layerId (`alinharChavesDaProposta`).
  */
-export function textosDaPaginaPorCamada(layers: unknown): Array<{ id: string | null; chave: string; conteudo: string }> {
+export function textosDaPaginaPorCamada(
+  layers: unknown,
+): Array<{ id: string | null; nome: string | null; chave: string; conteudo: string }> {
   const out: Record<string, string> = {}
-  const itens: Array<{ id: string | null; chave: string; conteudo: string }> = []
+  const itens: Array<{ id: string | null; nome: string | null; chave: string; conteudo: string }> = []
   for (const layer of parsePageLayers(layers)) {
     if (layer?.type !== 'text' && layer?.type !== 'rich-text') continue
     // Camada OCULTA não é copy da peça: desde 13/08/2026 o campo que a copy
@@ -124,7 +126,12 @@ export function textosDaPaginaPorCamada(layers: unknown): Array<{ id: string | n
     if (!conteudo) continue
     const chave = chaveUnicaDeTexto(out, layer)
     out[chave] = conteudo
-    itens.push({ id: typeof layer.id === 'string' ? layer.id : null, chave, conteudo })
+    itens.push({
+      id: typeof layer.id === 'string' ? layer.id : null,
+      nome: typeof layer.name === 'string' ? layer.name : null,
+      chave,
+      conteudo,
+    })
   }
   return itens
 }

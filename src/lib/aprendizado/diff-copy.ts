@@ -330,8 +330,8 @@ export function copyParaDecisao(layers: unknown): Record<string, string> | null 
 }
 
 /**
- * Traduz para a chave da PÁGINA (nome da camada, com o sufixo `#2`…) as
- * chaves da proposta que são `layerId` de uma camada de texto dela.
+ * Reescreve a proposta nas chaves da PÁGINA (nome da camada, com o sufixo
+ * `#2`…), camada por camada, do jeito que o bake a aplicou.
  *
  * A proposta da via não-semântica guarda a copy pela chave do PEDIDO — e o
  * pedido pode endereçar a camada pelo id — enquanto `copyParaDecisao` lê a
@@ -339,14 +339,16 @@ export function copyParaDecisao(layers: unknown): Record<string, string> | null 
  * agendamento gravava uma edição que ninguém fez (FALSE_LEARNING_DIFF,
  * caracterizado no B1d; corrigido em 13/10/2026).
  *
- * A tradução é por IDENTIDADE da camada, nunca por conteúdo — troca de texto
- * entre campos continua sendo edição — e o id vence o nome, como no
- * endereçamento do bake (`slotValues[layer.id] ?? … ?? slotValues[layer.name]`):
- * uma chave que é id de uma camada E nome de outra é da primeira. Camada de
- * texto que existe mas está fora da arte (oculta pela pessoa, vazia) recebe
- * uma chave que não casa com nada da página, e o texto conta como removido.
- * Chave que não é id de camada fica como veio; página ilegível devolve a
- * proposta intacta.
+ * Para cada camada de texto vale a precedência do bake
+ * (`slotValues[layer.id] ?? … ?? slotValues[layer.name]`), com a chave da
+ * página entre as duas (proposta que já veio no formato de `textosDaPagina`,
+ * com `#2`). Uma chave que atinge DUAS camadas (id de uma e nome de outra,
+ * nome repetido) entra para as duas, porque o bake preencheu as duas. A
+ * tradução é por IDENTIDADE, nunca por conteúdo: troca de texto entre campos
+ * continua sendo edição. Camada de texto fora da arte (oculta pela pessoa,
+ * vazia) que recebeu texto ganha uma chave que não casa com a página — conta
+ * como removido. Chave que não atingiu camada nenhuma fica como veio. Página
+ * ilegível devolve a proposta intacta.
  *
  * Use as MESMAS camadas que geraram o lado final do diff (no vídeo, as
  * gravadas no MP4, não as da página de agora).
@@ -358,30 +360,40 @@ export function alinharChavesDaProposta(
   if (!proposta) return proposta
   const { camadas, legivel } = lerCamadas(layers)
   if (!legivel) return proposta
-  // Mesmas camadas que `copyParaDecisao` lê — as chaves têm de ser as dela.
-  const itens = textosDaPaginaPorCamada(camadasParaDecisao(camadas))
-  const chavePorId = new Map(itens.filter((t) => t.id).map((t) => [t.id as string, t.chave]))
-  const nomePorIdDeTexto = new Map<string, string>()
-  for (const c of camadas as Array<Record<string, unknown>>) {
-    if ((c?.type === 'text' || c?.type === 'rich-text') && typeof c.id === 'string') {
-      nomePorIdDeTexto.set(c.id, String(c.name ?? c.id))
+
+  const usadas = new Set<string>()
+  const valorDa = (...chaves: Array<string | null | undefined>) => {
+    for (const chave of chaves) {
+      if (chave != null && proposta[chave] != null) {
+        usadas.add(chave)
+        return proposta[chave]
+      }
     }
+    return undefined
   }
-  const ocupadas = new Set(itens.map((t) => t.chave))
 
   const out: Record<string, string> = {}
-  for (const [chave, texto] of Object.entries(proposta)) {
-    if (!nomePorIdDeTexto.has(chave)) out[chave] = texto
+  // Mesmas camadas que `copyParaDecisao` lê — as chaves têm de ser as dela.
+  const itens = textosDaPaginaPorCamada(camadasParaDecisao(camadas))
+  const naArte = new Set(itens.map((t) => t.id).filter(Boolean))
+  for (const t of itens) {
+    const texto = valorDa(t.id, t.chave, t.nome)
+    if (texto != null) out[t.chave] = texto
+  }
+  for (const c of camadas as Array<Record<string, unknown>>) {
+    if (c?.type !== 'text' && c?.type !== 'rich-text') continue
+    const id = typeof c.id === 'string' ? c.id : null
+    if (id && naArte.has(id)) continue
+    const nome = typeof c.name === 'string' ? c.name : null
+    const texto = valorDa(id, nome)
+    if (texto == null) continue
+    const base = `${nome ?? id ?? 'texto'} (fora da arte)`
+    let chave = base
+    for (let n = 2; chave in out; n++) chave = `${base}#${n}`
+    out[chave] = texto
   }
   for (const [chave, texto] of Object.entries(proposta)) {
-    if (!nomePorIdDeTexto.has(chave)) continue
-    let destino = chavePorId.get(chave)
-    if (!destino) {
-      const base = `${nomePorIdDeTexto.get(chave)} (fora da arte)`
-      destino = base
-      for (let n = 2; ocupadas.has(destino) || destino in out; n++) destino = `${base}#${n}`
-    }
-    out[destino] = texto
+    if (!usadas.has(chave) && !(chave in out)) out[chave] = texto
   }
   return out
 }

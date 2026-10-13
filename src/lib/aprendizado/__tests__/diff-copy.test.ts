@@ -235,7 +235,8 @@ describe('alinharChavesDaProposta — layerId da proposta × nome da página', (
   })
 
   it('chave por nome, chave desconhecida e página ilegível ficam como vieram', () => {
-    expect(alinharChavesDaProposta({ Título: 'x', outra: 'y' }, camadas)).toEqual({ Título: 'x', outra: 'y' })
+    // Por nome, "Título" atinge as duas camadas de mesmo nome — como no bake.
+    expect(alinharChavesDaProposta({ Título: 'x', outra: 'y' }, camadas)).toEqual({ Título: 'x', 'Título#2': 'x', outra: 'y' })
     expect(alinharChavesDaProposta({ l1: 'x' }, 'lixo{')).toEqual({ l1: 'x' })
     expect(alinharChavesDaProposta(null, camadas)).toBeNull()
   })
@@ -244,15 +245,43 @@ describe('alinharChavesDaProposta — layerId da proposta × nome da página', (
     expect(alinharChavesDaProposta({ CTA: 'Reserve', l3: 'Outro' }, camadas)).toEqual({ CTA: 'Outro' })
   })
 
+  it('uma chave que o bake aplicou a DUAS camadas entra para as duas (Codex, rodada 3)', () => {
+    // {cta} é id da segunda e nome da primeira: o bake preencheu as duas, e a arte sem edição é aceita.
+    const dupla = [
+      { id: 'a', name: 'cta', type: 'text', content: 'Reserve', visible: true },
+      { id: 'cta', name: 'headline', type: 'text', content: 'Reserve', visible: true },
+    ]
+    const d = diffDeCopy(alinharChavesDaProposta({ cta: 'Reserve' }, dupla), copyParaDecisao(dupla))
+    expect(d.mudou).toBe(false)
+    expect(desfechoPeloDiff(d)).toBe('aceita-como-veio')
+  })
+
+  it('nome repetido: a chave por nome preencheu as duas camadas (Título e Título#2)', () => {
+    const repetido = [
+      { id: 'x1', name: 'Título', type: 'text', content: 'Noite', visible: true },
+      { id: 'x2', name: 'Título', type: 'text', content: 'Noite', visible: true },
+    ]
+    expect(diffDeCopy(alinharChavesDaProposta({ Título: 'Noite' }, repetido), copyParaDecisao(repetido)).mudou).toBe(false)
+  })
+
+  it('proposta já no formato da página (com #2) segue pareada pela chave da página', () => {
+    expect(alinharChavesDaProposta({ Título: 'Noite do vinho', 'Título#2': 'Toda quinta' }, camadas)).toEqual({
+      Título: 'Noite do vinho',
+      'Título#2': 'Toda quinta',
+    })
+  })
+
   it('id de uma camada igual ao NOME de outra: a chave é da camada do id (achado do Codex, rodada 2)', () => {
     const colisao = [
       { id: 'cta', name: 'headline', type: 'text', content: 'Texto A', visible: false },
       { id: 'b', name: 'cta', type: 'text', content: 'Texto A', visible: true },
     ]
-    // A (id "cta") foi ocultada pela pessoa; B (nome "cta") tem o mesmo texto. Não é "aceita como veio".
+    // O bake preencheu A (pelo id) e B (pelo nome); a pessoa ocultou A. Não é "aceita como veio".
     const proposta = alinharChavesDaProposta({ cta: 'Texto A' }, colisao)
-    expect(proposta).toEqual({ 'headline (fora da arte)': 'Texto A' })
-    expect(diffDeCopy(proposta, copyParaDecisao(colisao)).mudou).toBe(true)
+    expect(proposta).toEqual({ cta: 'Texto A', 'headline (fora da arte)': 'Texto A' })
+    const d = diffDeCopy(proposta, copyParaDecisao(colisao))
+    expect(d.mudou).toBe(true)
+    expect(d.removidos.map((r) => r.campo)).toEqual(['headline (fora da arte)'])
   })
 
   it('camada vazia ou oculta pela pessoa: o texto proposto conta como removido', () => {
