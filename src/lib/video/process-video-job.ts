@@ -301,6 +301,8 @@ export async function processVideoJob(
   const organizationId = (designData?.__organizationId as string | null | undefined) ?? null
 
   let cobrado = job.creditsDeducted
+  /** Saldo recusou a cobrança: o vídeo segue (o MP4 já existe) e a arte leva o aviso. */
+  let semSaldo = false
   let generationId = job.generationId
   try {
     // Generation da galeria (a fila sempre cria; job antigo sem ela ganha uma).
@@ -416,9 +418,15 @@ export async function processVideoJob(
         startedAt,
         // Saldo insuficiente é decidido antes do débito: o único erro que prova que nada foi cobrado.
         definitivo: (erro) => erro instanceof InsufficientCreditsError,
+      }).catch((erro) => {
+        // Nada foi cobrado (o erro é definitivo): o vídeo pronto não se perde por saldo.
+        if (!(erro instanceof InsufficientCreditsError)) throw erro
+        console.warn('[Video Processor] Saldo insuficiente — o vídeo segue sem cobrança:', job.id)
+        semSaldo = true
+        return 'sem-saldo' as const
       })
       if (cobranca === 'arrendamento-perdido') throw new ArrendamentoPerdido()
-      cobrado = true
+      cobrado = cobranca === 'cobrado'
     }
     await costuras.depoisDeCobrar?.()
 
@@ -437,6 +445,7 @@ export async function processVideoJob(
           ...(audioAviso
             ? { audioAviso, audioAvisoMotivo: MOTIVO_DO_AVISO_DE_AUDIO[audioAviso] }
             : {}),
+          ...(semSaldo ? { cobrancaAviso: 'saldo-insuficiente' } : {}),
         },
         { resultUrl: mp4Url },
       )
@@ -448,7 +457,7 @@ export async function processVideoJob(
 
     // (5) Job COMPLETED.
     await costuras.antesDeConcluir?.()
-    await noJob({ status: 'COMPLETED', progress: 100, completedAt, creditsDeducted: true })
+    await noJob({ status: 'COMPLETED', progress: 100, completedAt, creditsDeducted: cobrado })
 
     console.log('[Video Processor] Job concluído:', job.id)
     return {
