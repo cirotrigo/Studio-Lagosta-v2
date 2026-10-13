@@ -21,7 +21,7 @@ import { textosDaGeneration } from '@/lib/posts/troca-de-arte'
 import { extractExpectedTexts } from '@/lib/ai/creative-text-verification'
 import { arteDosFieldValues, textosDaPeca } from '@/lib/posts/textos-da-peca'
 import { montarRetornoDaPagina } from '@/lib/mcp/catalogo/ver-geracao-retorno'
-import { diffDeCopy, copyDeCamadas } from '@/lib/aprendizado/diff-copy'
+import { alinharChavesDaProposta, diffDeCopy, copyDeCamadas } from '@/lib/aprendizado/diff-copy'
 
 /** O caso central do dono: a Generation produzida por texto semântico. */
 const PEDIDO = { _slots: { 'headline-principal': 'Festival de Massas' }, _papeis: { headline: { content: 'Festival de Massas' } } }
@@ -163,12 +163,13 @@ describe('M. refazer / duplicar de arte-ia: comportamento histórico (copy visua
   })
 })
 
-describe('T. OUT_OF_SCOPE_FALSE_LEARNING_DIFF — só caracterizado, não corrigido no B1d', () => {
-  it('copy proposta por layerId × copy final por nome: o diff acusa troca onde o texto é o mesmo (comportamento ATUAL)', () => {
+describe('T. FALSE_LEARNING_DIFF — corrigido depois do B1d', () => {
+  it('copy proposta por layerId × copy final por nome: mesmo texto não é edição', () => {
     // A proposta guardada pela via não-semântica usa a chave do pedido (layerId); o lado final vem da página por nome.
-    // Mesmo texto, chaves diferentes → "removido + adicionado". Registrado como fora do B1d: este teste só fixa o hoje.
-    const final = copyDeCamadas([{ id: 'layer-123', name: 'Título', type: 'text', content: 'Noite do vinho', visible: true }])
-    const d = diffDeCopy({ 'layer-123': 'Noite do vinho' } as never, final as never)
-    expect(d.mudou).toBe(true)
+    // O agendamento traduz a chave da proposta pela identidade da camada (alinharChavesDaProposta) antes do diff.
+    const camadas = [{ id: 'layer-123', name: 'Título', type: 'text', content: 'Noite do vinho', visible: true }]
+    const final = copyDeCamadas(camadas)
+    const d = diffDeCopy(alinharChavesDaProposta({ 'layer-123': 'Noite do vinho' }, camadas) as never, final as never)
+    expect(d.mudou).toBe(false)
   })
 })

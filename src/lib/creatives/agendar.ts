@@ -16,7 +16,7 @@ import {
   type EscopoAprendizado,
   type OrigemDecisao,
 } from '@/lib/posts/learning-scope'
-import { copyDeCamadas, copyParaDecisao, diffDeCopy, type DiffDeCopy } from '@/lib/aprendizado/diff-copy'
+import { alinharChavesDaProposta, copyDeCamadas, copyParaDecisao, diffDeCopy, type DiffDeCopy } from '@/lib/aprendizado/diff-copy'
 import { lerProcedencia, AVISO_COPY_DE_ARTE_RE_RENDERIZADA } from '@/lib/creatives/procedencia-da-copy'
 import {
   fecharSugestaoDeSlot,
@@ -458,8 +458,11 @@ export async function resolverAgendamento(input: AgendarPostInput, opcoes: Opcoe
    * ser legível, senão o diff diria "não mudou nada" justamente onde não se
    * sabe nada.
    */
-  const diffDaCopy =
-    copyPropostaTexto && copyDaDecisao ? diffDeCopy(copyPropostaTexto, copyDaDecisao) : null
+  // A proposta pode vir por layerId; a página é lida por nome. Traduz pela
+  // identidade da camada, senão o diff acusa edição onde o texto é o mesmo —
+  // e chave ambígua (id de uma camada, nome de outra) fica sem diff.
+  const propostaAlinhada = copyDaDecisao ? alinharChavesDaProposta(copyPropostaTexto, camadasDaPagina) : null
+  const diffDaCopy = propostaAlinhada && copyDaDecisao ? diffDeCopy(propostaAlinhada, copyDaDecisao) : null
 
   const observacao = input.observacao?.trim() || null
   // Guardada mesmo assim (quem trocar para manual na agenda a encontra), mas o

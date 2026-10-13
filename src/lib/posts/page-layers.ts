@@ -103,8 +103,22 @@ export function normalizeLayersString(raw: unknown): string | null {
  * recomposição, que refazia a arte sem ele.
  */
 export function textosDaPagina(layers: unknown): Record<string, string> {
+  return Object.fromEntries(textosDaPaginaPorCamada(layers).map((t) => [t.chave, t.conteudo]))
+}
+
+/**
+ * O mesmo que `textosDaPagina`, item a item, com o `id` da camada de cada
+ * chave — é o que deixa traduzir para a chave da página uma copy guardada
+ * pelo layerId (`alinharChavesDaProposta`).
+ */
+export function textosDaPaginaPorCamada(
+  layers: unknown,
+): Array<{ indice: number; id: string | null; nome: string | null; chave: string; conteudo: string }> {
   const out: Record<string, string> = {}
-  for (const layer of parsePageLayers(layers)) {
+  const itens: Array<{ indice: number; id: string | null; nome: string | null; chave: string; conteudo: string }> = []
+  const camadas = parsePageLayers(layers)
+  for (let indice = 0; indice < camadas.length; indice++) {
+    const layer = camadas[indice]
     if (layer?.type !== 'text' && layer?.type !== 'rich-text') continue
     // Camada OCULTA não é copy da peça: desde 13/08/2026 o campo que a copy
     // não cobre sai invisível (placeholder do modelo), e contá-lo aqui poria
@@ -112,9 +126,17 @@ export function textosDaPagina(layers: unknown): Record<string, string> {
     if (layer.visible === false) continue
     const conteudo = typeof layer.content === 'string' ? layer.content.trim() : ''
     if (!conteudo) continue
-    out[chaveUnicaDeTexto(out, layer)] = conteudo
+    const chave = chaveUnicaDeTexto(out, layer)
+    out[chave] = conteudo
+    itens.push({
+      indice,
+      id: typeof layer.id === 'string' ? layer.id : null,
+      nome: typeof layer.name === 'string' ? layer.name : null,
+      chave,
+      conteudo,
+    })
   }
-  return out
+  return itens
 }
 
 /**
