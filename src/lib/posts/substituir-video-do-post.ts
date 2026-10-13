@@ -59,6 +59,7 @@ export async function substituirVideoDoPost(
       mediaUrls: true,
       renderedImageUrl: true,
       videoDaPagina: true,
+      slotValues: true,
     },
   })
 

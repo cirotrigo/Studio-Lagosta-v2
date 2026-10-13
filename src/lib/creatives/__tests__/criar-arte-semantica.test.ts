@@ -412,8 +412,15 @@ describe('Codex #208 — CP5 (opção B): com texto semântico, a Generation reg
     expect(post).toEqual({ Título: 'Noite do vinho' })
   })
 
-  it('semântico só de imagem: o registro é o de sempre (o mesmo objeto, sem slotValuesRecebidos)', async () => {
-    const entrada = { _slots: { 'foto-principal': { fileUrl: 'https://f' } } }
+  it('semântico só de imagem (checkpoint g): o pedido vai para slotValuesRecebidos; slotValues (copy visual) fica sem _slots/_papeis', async () => {
+    const entrada = { _slots: { 'foto-principal': { fileUrl: 'https://f' } }, _driveImageId: 'd1' }
+    await createArteRapida({ projectId: 8, sourcePageId: 'p-a', slotValues: entrada })
+    expect(persistido().fieldValues.slotValues).toEqual({ _driveImageId: 'd1' })
+    expect(persistido().fieldValues.slotValuesRecebidos).toBe(entrada)
+  })
+
+  it('legado (sem contrato): o registro de sempre — o mesmo objeto, sem slotValuesRecebidos', async () => {
+    const entrada = { Título: 'Noite' }
     await createArteRapida({ projectId: 8, sourcePageId: 'p-a', slotValues: entrada })
     expect(persistido().fieldValues.slotValues).toBe(entrada)
     expect(persistido().fieldValues.slotValuesRecebidos).toBeUndefined()

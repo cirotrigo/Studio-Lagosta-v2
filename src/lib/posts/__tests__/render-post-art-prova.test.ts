@@ -15,7 +15,7 @@ const banco = vi.hoisted(() => ({
   provas: [] as Array<{ postId: string; mediaUrl: string; proofVersion?: number; layersSnapshot: unknown }>,
   falhaNaProva: false,
   duranteRender: null as null | (() => void),
-  render: { url: 'https://blob.test/posts/rendered/novo.png', camadas: [{ id: 't-h', type: 'text', content: 'Noite do vinho' }] as unknown[] },
+  render: { url: 'https://blob.test/posts/rendered/novo.png', camadas: [{ id: 't-h', type: 'text', content: 'Noite do vinho' }] as unknown[], aplicouSlots: true, copyDaPagina: {} as Record<string, string> },
 }))
 const igual = (a: unknown, b: unknown) => (a instanceof Date && b instanceof Date ? a.getTime() === b.getTime() : JSON.stringify(a) === JSON.stringify(b))
 
@@ -56,7 +56,7 @@ vi.mock('@/lib/db', () => {
 vi.mock('@/lib/posts/story-renderer', () => ({
   renderStoryImage: async () => {
     banco.duranteRender?.()
-    return { url: banco.render.url, aplicouSlots: true, copyDaPagina: {}, camadasEfetivas: banco.render.camadas }
+    return { url: banco.render.url, aplicouSlots: banco.render.aplicouSlots, copyDaPagina: banco.render.copyDaPagina, camadasEfetivas: banco.render.camadas }
   },
 }))
 vi.mock('../ensure-post-generation', () => ({ ensurePostGeneration: async () => null }))
@@ -73,7 +73,7 @@ beforeEach(() => {
   banco.provas = []
   banco.falhaNaProva = false
   banco.duranteRender = null
-  banco.render = { url: 'https://blob.test/posts/rendered/novo.png', camadas: [{ id: 't-h', type: 'text', content: 'Noite do vinho' }] }
+  banco.render = { url: 'https://blob.test/posts/rendered/novo.png', camadas: [{ id: 't-h', type: 'text', content: 'Noite do vinho' }], aplicouSlots: true, copyDaPagina: {} }
 })
 
 const renderizar = () => renderPostArt({ id: 'post-1', pageId: 'p1', slotValues: banco.post.slotValues, renderAttempts: 0 })
@@ -84,6 +84,18 @@ describe('A. render confirmado: a URL confirmada tem prova com as camadas efetiv
     expect(r).toMatchObject({ ok: true, url: banco.render.url })
     expect(banco.post).toMatchObject({ renderStatus: 'RENDERED', renderedImageUrl: banco.render.url, mediaUrls: [banco.render.url] })
     expect(banco.provas).toEqual([{ postId: 'post-1', mediaUrl: banco.render.url, proofVersion: 1, layersSnapshot: banco.render.camadas }])
+  })
+
+  it('O (checkpoint g): legado de página de conteúdo — a cópia da página continua sendo regravada, como sempre', async () => {
+    banco.post.slotValues = { Título: 'cópia velha' }
+    banco.render = { ...banco.render, aplicouSlots: false, copyDaPagina: { Título: 'texto novo da página' } }
+    await renderizar()
+    expect(banco.post.slotValues).toMatchObject({ Título: 'texto novo da página' })
+  })
+
+  it('P (checkpoint g): o render semântico não regrava SocialPost.slotValues — o pedido _slots/_papeis fica', async () => {
+    await renderizar()
+    expect(banco.post.slotValues).toEqual(semantico)
   })
 
   it('legado também registra prova (a entidade é "estas camadas produziram esta mídia", não "post semântico")', async () => {
@@ -132,7 +144,7 @@ describe('F. re-render: a URL nova ganha a sua prova; a anterior mantém a dela'
     await renderizar()
     const primeira = { ...banco.provas[0] }
     banco.post = { ...banco.post, renderStatus: 'PENDING' } // invalidado (edição)
-    banco.render = { url: 'https://blob.test/posts/rendered/segundo.png', camadas: [{ id: 't-h', type: 'text', content: 'Outro texto' }] }
+    banco.render = { ...banco.render, url: 'https://blob.test/posts/rendered/segundo.png', camadas: [{ id: 't-h', type: 'text', content: 'Outro texto' }] }
     await renderPostArt({ id: 'post-1', pageId: 'p1', slotValues: semantico, renderAttempts: 0 })
     expect(banco.provas).toHaveLength(2)
     expect(banco.provas[0]).toEqual(primeira)

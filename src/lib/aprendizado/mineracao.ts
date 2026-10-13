@@ -261,22 +261,7 @@ export async function minerarHistorico(
     .slice(0, 40)
 
   // ── Onde a IA mais erra: os campos que alguém mandou ajustar ─────────────
-  const porCampo = new Map<string, { ocorrencias: number; exemplos: string[] }>()
-  for (const linha of ajustesBrutos) {
-    const ajustes = linha.ajustes
-    if (!ajustes || typeof ajustes !== 'object') continue
-    for (const [campo, valor] of Object.entries(ajustes)) {
-      const atual = porCampo.get(campo) ?? { ocorrencias: 0, exemplos: [] }
-      atual.ocorrencias += 1
-      if (typeof valor === 'string' && atual.exemplos.length < 3) {
-        atual.exemplos.push(valor.replace(/\s+/g, ' ').slice(0, 80))
-      }
-      porCampo.set(campo, atual)
-    }
-  }
-  const ajustes: AjusteMinerado[] = [...porCampo.entries()]
-    .map(([campo, v]) => ({ campo, ...v }))
-    .sort((a, b) => b.ocorrencias - a.ocorrencias)
+  const ajustes = camposDosAjustes(ajustesBrutos)
 
   // ── Cobertura: o que estes números NÃO sustentam ─────────────────────────
   const postsComPilar = posts.filter((p) => pilarReal(p.pilar)).length
@@ -310,4 +295,27 @@ export async function minerarHistorico(
       ressalvas,
     },
   }
+}
+
+/**
+ * Os campos de TEXTO que alguém mandou ajustar, com exemplos. `fieldValues.ajustes` é o pedido cru do ajustarArte: as
+ * chaves `_…` (controles como `_imageUrl`/`_driveImageId` e o contrato semântico `_slots`/`_papeis`, B1d
+ * checkpoint g) não são campos da arte — não viram "campo que a IA erra" no prompt do perfil, nem URL vira exemplo.
+ */
+export function camposDosAjustes(linhas: Array<{ ajustes: unknown }>): AjusteMinerado[] {
+  const porCampo = new Map<string, { ocorrencias: number; exemplos: string[] }>()
+  for (const linha of linhas) {
+    const ajustes = linha.ajustes
+    if (!ajustes || typeof ajustes !== 'object') continue
+    for (const [campo, valor] of Object.entries(ajustes)) {
+      if (campo.startsWith('_')) continue
+      const atual = porCampo.get(campo) ?? { ocorrencias: 0, exemplos: [] }
+      atual.ocorrencias += 1
+      if (typeof valor === 'string' && atual.exemplos.length < 3) {
+        atual.exemplos.push(valor.replace(/\s+/g, ' ').slice(0, 80))
+      }
+      porCampo.set(campo, atual)
+    }
+  }
+  return [...porCampo.entries()].map(([campo, v]) => ({ campo, ...v })).sort((a, b) => b.ocorrencias - a.ocorrencias)
 }

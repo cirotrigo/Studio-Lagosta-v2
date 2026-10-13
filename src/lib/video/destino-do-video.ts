@@ -13,6 +13,7 @@
  */
 import { z } from 'zod'
 import { horarioPadrao, rotuloCurto, type HorariosPorDia } from '@/lib/posts/quando'
+import { temContratoSemantico } from '@/lib/posts/copy-segue-a-pagina'
 
 export const ANTECEDENCIA_MINIMA_MS = 10 * 60_000
 /** Abaixo disto o horário pedido virou passado durante o processamento: o post nasce rascunho. */
@@ -118,6 +119,8 @@ export interface PostParaSubstituir {
   updatedAt: Date
   mediaUrls: string[]
   videoDaPagina?: boolean | null
+  /** B1d (checkpoint g): com `_slots`/`_papeis`, é o PEDIDO semântico — a troca de vídeo o sobrescreveria. */
+  slotValues?: unknown
 }
 
 const SITUACOES_EDITAVEIS = new Set(['DRAFT', 'SCHEDULED'])
@@ -133,6 +136,9 @@ function motivoDoPost(
   if (!SITUACOES_EDITAVEIS.has(post.status)) return 'O post já saiu da agenda (publicado ou com falha).'
   if (post.pageId !== pageId) return 'O post está ligado a outra página.'
   if (!ehVideo) return 'Esse post não é de vídeo.'
+  // B1d (checkpoint g): a mídia de um post semântico é o render provado da página modelo; trocar por vídeo gravaria a
+  // cópia da página por cima do pedido (_slots/_papeis) e marcaria o post NOT_NEEDED.
+  if (temContratoSemantico(post.slotValues)) return 'Esse post usa o pedido semântico (_slots/_papeis): a mídia dele é o render da página modelo, não um vídeo.'
   return null
 }
 

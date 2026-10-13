@@ -34,7 +34,8 @@ import { db } from '@/lib/db'
  */
 import { textosDaPagina } from '@/lib/posts/page-layers'
 import { comTravaPorChave } from '@/lib/trava-por-chave'
-import { CHAVES_DO_CONTRATO_SEMANTICO, temContratoSemantico } from '@/lib/posts/copy-segue-a-pagina'
+import { temContratoSemantico } from '@/lib/posts/copy-segue-a-pagina'
+import { copyVisualDasCamadas } from '@/lib/creatives/procedencia-da-copy'
 import { RenderStatus, type Prisma } from '../../../prisma/generated/client'
 
 /**
@@ -143,13 +144,23 @@ async function vincularSobATrava(tx: Prisma.TransactionClient, postId: string, m
   }
 
   /**
-   * B1d (checkpoint e): `_slots`/`_papeis` são o PEDIDO, não o texto da arte — não entram como texto esperado.
-   * E o texto da página também não: num post semântico a página é o MODELO, e o texto cru dele não é o desta
-   * mídia. O que foi desenhado mora na prova do render (`PostRenderProof`); a copy visual da Generation fica para
-   * o checkpoint g.
+   * B1d: `_slots`/`_papeis` são o PEDIDO, não o texto da arte — nunca entram em `slotValues` (a COPY VISUAL que
+   * a melhoria, o agendamento por Generation e a troca de arte leem). Nem o texto da página: num post semântico a
+   * página é o MODELO, e o texto cru dele não é o desta mídia.
+   *
+   * Checkpoint g: a copy visual sai das camadas que PRODUZIRAM esta mídia — a prova do render da URL (`PostRenderProof`,
+   * casada por post + URL, no formato da arte-rápida/recomposição: `copyVisualDasCamadas`). Sem prova dessa URL, nada
+   * se afirma (sem `slotValues`): melhor "não sei" do que o pedido no campo errado. O pedido fica em
+   * `slotValuesRecebidos`, só como auditoria.
    */
-  const slotValues = temContratoSemantico(post.slotValues)
-    ? Object.fromEntries(Object.entries(post.slotValues as Record<string, unknown>).filter(([k]) => !(CHAVES_DO_CONTRATO_SEMANTICO as readonly string[]).includes(k)))
+  const semantico = temContratoSemantico(post.slotValues)
+  const prova = semantico
+    ? await tx.postRenderProof.findUnique({ where: { postId_mediaUrl: { postId: post.id, mediaUrl: arte } }, select: { layersSnapshot: true } })
+    : null
+  const copyVisual = semantico
+    ? prova
+      ? copyVisualDasCamadas(prova.layersSnapshot)
+      : null
     : post.slotValues && typeof post.slotValues === 'object' && Object.keys(post.slotValues).length > 0
       ? (post.slotValues as Record<string, unknown>)
       : textosDaPagina(page.layers)
@@ -164,7 +175,8 @@ async function vincularSobATrava(tx: Prisma.TransactionClient, postId: string, m
         // pageId sempre: é como conferir-arte localiza as camadas para o
         // diagnóstico geométrico (sobreposição vs texto faltando).
         pageId: page.id,
-        slotValues,
+        ...(copyVisual ? { slotValues: copyVisual } : {}),
+        ...(semantico ? { slotValuesRecebidos: post.slotValues } : {}),
       } as never,
       resultUrl: arte,
       projectId: post.projectId,

@@ -11,6 +11,8 @@ const estado = vi.hoisted(() => ({
   geracoes: [] as Array<{ id: string; projectId: number; resultUrl: string; fieldValues?: any }>,
   /** Corre no meio do vínculo, entre a leitura e o CAS: a edição semântica que invalida a arte. */
   antesDoCas: null as null | (() => void),
+  /** PostRenderProof por "postId|mediaUrl". */
+  provas: {} as Record<string, { layersSnapshot: unknown }>,
 }))
 
 const URL_A = 'https://blob.test/posts/rendered/a.png'
@@ -30,6 +32,9 @@ const tx = {
       estado.post = { ...p, ...data }
       return { count: 1 }
     }),
+  },
+  postRenderProof: {
+    findUnique: vi.fn(async ({ where }: any) => estado.provas[`${where.postId_mediaUrl.postId}|${where.postId_mediaUrl.mediaUrl}`] ?? null),
   },
   page: { findUnique: vi.fn(async () => ({ id: 'p1', name: 'Página', layers: [{ id: 't-h', name: 'Título', type: 'text', content: 'texto do MODELO', visible: true }], templateId: 7, Template: { name: 'T' } })) },
   generation: {
@@ -67,6 +72,7 @@ beforeEach(() => {
   estado.post = { id: 'post-1', projectId: 8, templateId: 7, pageId: 'p1', generationId: null, renderStatus: 'RENDERED', mediaUrls: [URL_A], renderedImageUrl: URL_A, slotValues: null }
   estado.geracoes = []
   estado.antesDoCas = null
+  estado.provas = {}
 })
 
 describe('com a mídia esperada: o vínculo só vale para a arte que esta execução confirmou', () => {
@@ -132,12 +138,32 @@ describe('sem a mídia esperada: o comportamento de sempre (outros chamadores)',
 })
 
 describe('checkpoint e: a Generation de um post semântico não grava o PEDIDO como texto esperado', () => {
-  it('_slots/_papeis ficam fora de fieldValues.slotValues — e o texto do modelo também não entra no lugar', async () => {
-    estado.post = { ...estado.post, slotValues: { _slots: { manchete: 'Noite do vinho' }, _papeis: { cta: 'Reserve' } } }
+  it('J. sem prova da mídia: NÃO afirma copy visual (nem o pedido, nem o texto do modelo); o pedido fica em slotValuesRecebidos', async () => {
+    const pedido = { _slots: { manchete: 'Noite do vinho' }, _papeis: { cta: 'Reserve' } }
+    estado.post = { ...estado.post, slotValues: pedido }
     await ensurePostGeneration('post-1', { midiaEsperada: URL_A })
-    const sv = estado.geracoes[0].fieldValues.slotValues
-    expect(JSON.stringify(sv)).not.toMatch(/_slots|_papeis|Noite do vinho|Reserve/)
-    expect(JSON.stringify(sv)).not.toMatch(/texto do MODELO/)
+    const fv = estado.geracoes[0].fieldValues
+    expect('slotValues' in fv).toBe(false)
+    expect(fv.slotValuesRecebidos).toEqual(pedido)
+    expect(JSON.stringify(fv)).not.toMatch(/texto do MODELO/)
+  })
+
+  it('J. com a prova da URL: a copy visual são os textos das camadas que PRODUZIRAM a mídia', async () => {
+    const pedido = { _slots: { 'headline-principal': 'Festival de Massas' } }
+    estado.post = { ...estado.post, slotValues: pedido }
+    estado.provas[`post-1|${URL_A}`] = { layersSnapshot: [{ id: 't-h', name: 'Título', type: 'text', content: 'Festival de Massas', visible: true }] }
+    await ensurePostGeneration('post-1', { midiaEsperada: URL_A })
+    const fv = estado.geracoes[0].fieldValues
+    expect(fv.slotValues).toEqual({ Título: 'Festival de Massas' })
+    expect(fv.slotValuesRecebidos).toEqual(pedido)
+    expect(JSON.stringify(fv.slotValues)).not.toMatch(/_slots|_papeis|headline-principal/)
+  })
+
+  it('prova de OUTRA URL não serve de copy visual', async () => {
+    estado.post = { ...estado.post, slotValues: { _slots: { manchete: 'X' } } }
+    estado.provas['post-1|https://blob.test/outra.png'] = { layersSnapshot: [{ id: 't', name: 'T', type: 'text', content: 'OUTRA', visible: true }] }
+    await ensurePostGeneration('post-1', { midiaEsperada: URL_A })
+    expect('slotValues' in estado.geracoes[0].fieldValues).toBe(false)
   })
 
   it('legado: como sempre (copy do post, ou o texto da página quando o post não tem copy)', async () => {
