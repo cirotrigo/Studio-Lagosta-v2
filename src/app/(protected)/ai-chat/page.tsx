@@ -428,7 +428,7 @@ export default function AIChatPage() {
     setConversationSearch('')
   }, [selectedProjectId, setMessages])
 
-  const { credits, canPerformOperation, getCost, refresh } = useCredits()
+  const { credits, creditosAplicados, canPerformOperation, getCost, refresh } = useCredits()
 
   // Use TanStack Query for OpenRouter models
   const {
@@ -962,6 +962,8 @@ export default function AIChatPage() {
     const current = credits?.creditsRemaining ?? null
     const prev = prevCreditsRef.current
     prevCreditsRef.current = current
+    // Modo interno: saldo zerado não é aviso (o chat segue).
+    if (creditosAplicados === false) return
     if (prev != null && prev > 0 && current === 0) {
       const hasTip = messages.some(m => m.id?.toString().startsWith('sys-nocred-'))
       if (!hasTip) {
@@ -970,7 +972,7 @@ export default function AIChatPage() {
 
       }
     }
-  }, [credits?.creditsRemaining])
+  }, [credits?.creditsRemaining, creditosAplicados])
 
   return (
     <div className="flex h-[calc(100dvh-6rem)] flex-col md:flex-row gap-4">

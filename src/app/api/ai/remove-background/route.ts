@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { put } from '@vercel/blob'
 import { validateCreditsForFeature, deductCreditsForFeature } from '@/lib/credits/deduct'
 import { getPhotoroomClient, PhotoroomAPIError } from '@/lib/photoroom/client'
+import { fetchProjectWithShares, hasProjectWriteAccess } from '@/lib/projects/access'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -24,6 +25,12 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
     const { imageUrl, projectId } = removeBackgroundSchema.parse(body)
+
+    // Acesso de escrita ao projeto ANTES do Photoroom e do registro de uso.
+    // Alheio ou inexistente: o mesmo 404 (não revela que o projeto existe).
+    if (!hasProjectWriteAccess(await fetchProjectWithShares(projectId), { userId, orgId })) {
+      return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
+    }
 
     console.log('[Remove Background] Starting for user:', userId, 'imageUrl:', imageUrl)
 

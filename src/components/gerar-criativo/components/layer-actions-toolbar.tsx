@@ -22,7 +22,7 @@ export function LayerActionsToolbar({
   overrideImageUrl,
 }: LayerActionsToolbarProps) {
   const removeBackground = useBackgroundRemoval()
-  const { credits, canPerformOperation } = useCredits()
+  const { credits, creditosAplicados, canPerformOperation } = useCredits()
 
   const isBackgroundRemoved = Boolean(layer.metadata?.isBackgroundRemoved)
   // Use selected image URL if available, otherwise fall back to layer's original URL
@@ -72,7 +72,7 @@ export function LayerActionsToolbar({
           </span>
           <span className="text-xs text-muted-foreground">3 creditos</span>
         </Button>
-        {credits && credits.creditsRemaining < 3 && !isBackgroundRemoved && (
+        {creditosAplicados !== false && credits && credits.creditsRemaining < 3 && !isBackgroundRemoved && (
           <p className="text-xs text-destructive">Creditos insuficientes</p>
         )}
       </div>

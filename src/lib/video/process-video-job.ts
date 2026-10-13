@@ -301,6 +301,8 @@ export async function processVideoJob(
   const organizationId = (designData?.__organizationId as string | null | undefined) ?? null
 
   let cobrado = job.creditsDeducted
+  /** Saldo recusou a cobrança: o vídeo segue (o MP4 já existe) e a arte leva o aviso. */
+  let semSaldo = false
   let generationId = job.generationId
   try {
     // Generation da galeria (a fila sempre cria; job antigo sem ela ganha uma).
@@ -394,9 +396,21 @@ export async function processVideoJob(
       })
     }
 
+    // Retomada de um job com MP4 e sem cobrança: a recusa por saldo pode já ter
+    // sido decidida (marca durável na arte). Relida, a cobrança está resolvida e
+    // não se repete; erro na leitura é interrupção recuperável, nunca FAILED.
+    if (!cobrado && job.mp4ResultUrl && generationId) {
+      const gen = await db.generation
+        .findUnique({ where: { id: generationId }, select: { fieldValues: true } })
+        .catch((falha) => {
+          throw new CobrancaIncerta(falha)
+        })
+      semSaldo = comoObjeto(gen?.fieldValues)?.cobrancaAviso === 'saldo-insuficiente'
+    }
+
     // (2) Cobrança — a marca sai no mesmo commit do débito, e o erro AMBÍGUO
     // (a confirmação que se perde com o débito já gravado) é decidido pela marca relida.
-    if (!cobrado) {
+    if (!cobrado && !semSaldo) {
       const debitar = () =>
         deductCreditsForFeature({
           clerkUserId: job.clerkUserId,
@@ -416,9 +430,24 @@ export async function processVideoJob(
         startedAt,
         // Saldo insuficiente é decidido antes do débito: o único erro que prova que nada foi cobrado.
         definitivo: (erro) => erro instanceof InsufficientCreditsError,
+      }).catch(async (erro) => {
+        // Nada foi cobrado (o erro é definitivo): o vídeo pronto não se perde por saldo.
+        if (!(erro instanceof InsufficientCreditsError)) throw erro
+        console.warn('[Video Processor] Saldo insuficiente — o vídeo segue sem cobrança:', job.id)
+        // Marca DURÁVEL já agora (merge no banco): se cair antes de concluir, a
+        // recuperação lê a marca e conclui o vídeo pronto em vez de falhá-lo.
+        // Sem a marca, a decisão da cobrança fica em aberto: interrupção
+        // RECUPERÁVEL (como a cobrança incerta), nunca FAILED — a próxima
+        // tentativa refaz a cobrança e a marca.
+        await naArte({ cobrancaAviso: 'saldo-insuficiente' }).catch((falha) => {
+          throw new CobrancaIncerta(falha)
+        })
+        // Só com a marca gravada: daqui em diante a cobrança está resolvida (sem saldo).
+        semSaldo = true
+        return 'sem-saldo' as const
       })
       if (cobranca === 'arrendamento-perdido') throw new ArrendamentoPerdido()
-      cobrado = true
+      cobrado = cobranca === 'cobrado'
     }
     await costuras.depoisDeCobrar?.()
 
@@ -437,6 +466,7 @@ export async function processVideoJob(
           ...(audioAviso
             ? { audioAviso, audioAvisoMotivo: MOTIVO_DO_AVISO_DE_AUDIO[audioAviso] }
             : {}),
+          ...(semSaldo ? { cobrancaAviso: 'saldo-insuficiente' } : {}),
         },
         { resultUrl: mp4Url },
       )
@@ -448,7 +478,7 @@ export async function processVideoJob(
 
     // (5) Job COMPLETED.
     await costuras.antesDeConcluir?.()
-    await noJob({ status: 'COMPLETED', progress: 100, completedAt, creditsDeducted: true })
+    await noJob({ status: 'COMPLETED', progress: 100, completedAt, creditsDeducted: cobrado })
 
     console.log('[Video Processor] Job concluído:', job.id)
     return {
@@ -459,12 +489,15 @@ export async function processVideoJob(
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    // Sem o arrendamento, cobrança incerta, ou já cobrado: não escreve nada — a recuperação decide.
+    // Sem o arrendamento, cobrança incerta, ou cobrança resolvida (cobrado, ou
+    // recusado por saldo com a marca gravada): não escreve nada — a recuperação
+    // decide e conclui o vídeo pronto em vez de falhá-lo.
     if (
       error instanceof ArrendamentoPerdido ||
       error instanceof QuedaSimulada ||
       error instanceof CobrancaIncerta ||
-      cobrado
+      cobrado ||
+      semSaldo
     ) {
       console.warn('[Video Processor] Job interrompido:', job.id, errorMessage)
       return { outcome: 'interrompido', jobId: job.id, motivo: errorMessage }
@@ -780,7 +813,20 @@ export async function recuperarJobsDeVideoPresos(
   const placar = { devolvidos: 0, falhados: 0, concluidos: 0 }
   for (const job of presos) {
     const lido = { id: job.id, status: 'PROCESSING' as const, startedAt: job.startedAt }
-    const decisao = decidirRecuperacao({ attempts: job.attempts, videoPronto: !!job.mp4ResultUrl && job.creditsDeducted })
+    // Pronto = MP4 e cobrança resolvida: cobrado, ou recusado por saldo (marca gravada na hora da recusa).
+    let semSaldo = false
+    if (job.mp4ResultUrl && !job.creditsDeducted && job.generationId) {
+      let gen: { fieldValues: unknown } | null
+      try {
+        gen = await db.generation.findUnique({ where: { id: job.generationId }, select: { fieldValues: true } })
+      } catch (erro) {
+        // Erro de leitura não é "sem a marca": falhar aqui reprovaria um vídeo pronto. Fica PROCESSING para a próxima varredura.
+        console.error(`[video] recuperação do job ${job.id}: não deu para ler a marca sem saldo, fica para a próxima varredura:`, erro)
+        continue
+      }
+      semSaldo = comoObjeto(gen?.fieldValues)?.cobrancaAviso === 'saldo-insuficiente'
+    }
+    const decisao = decidirRecuperacao({ attempts: job.attempts, videoPronto: !!job.mp4ResultUrl && (job.creditsDeducted || semSaldo) })
     try {
       if (decisao === 'devolver') {
         const r = await db.videoProcessingJob.updateMany({ where: lido, data: { status: 'PENDING' } })

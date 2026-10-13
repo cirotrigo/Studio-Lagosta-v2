@@ -4,7 +4,8 @@
  */
 
 import { db } from '@/lib/db'
-import { deductCreditsForFeature } from '@/lib/credits/deduct'
+import { deductCreditsForFeature, validateCreditsForFeature } from '@/lib/credits/deduct'
+import { creditosAplicados } from '@/lib/credits/aplicados'
 import { put } from '@vercel/blob'
 import {
   Prisma,
@@ -652,6 +653,8 @@ export class LaterPostScheduler {
   ) {
     const skipCreditDeduction = options?.skipCreditDeduction ?? false
     const forceImmediate = options?.forceImmediate ?? false
+    /** Preenchido assim que o `laterPostId` está no banco: dali em diante o post é intocável. */
+    let laterPostIdGravado: string | null = null
     try {
       console.log(`[Later Scheduler] Starting sendToLater for post ${postId}`, {
         skipCreditDeduction,
@@ -785,6 +788,16 @@ export class LaterPostScheduler {
         throw new Error('Clerk user ID not found for post author')
       }
 
+      // Com a cobrança ligada, saldo insuficiente impede o envio — ANTES do
+      // Zernio, quando nada saiu ainda: o erro cai no catch abaixo (FAILED +
+      // `handlePublishFailure`, que não retenta crédito). A cobrança em si vem
+      // depois de gravar o `laterPostId`. Desligada (modo interno), nada aqui.
+      if (creditosAplicados() && !skipCreditDeduction) {
+        await validateCreditsForFeature(postAuthor.clerkId, 'social_media_post', 1, {
+          organizationId: post.Project.organizationProjects?.[0]?.organization?.clerkOrgId,
+        })
+      }
+
       console.log(`[Later Scheduler] Sending post ${post.id} to Later API`)
       console.log(`[Later Scheduler] Project: ${post.Project.name} (ID: ${post.projectId})`)
       console.log(`[Later Scheduler] Later Account ID: ${post.Project.laterAccountId}`)
@@ -916,29 +929,7 @@ export class LaterPostScheduler {
         idType: typeof laterPost.id,
       })
 
-      // 6. Deduct credits AFTER successful post creation
-      // Skipped on recovery flows where credits were already charged on the first attempt.
-      const organizationId =
-        post.Project.organizationProjects?.[0]?.organization?.clerkOrgId
-      if (skipCreditDeduction) {
-        console.log('[Later Scheduler] ⏭️  Skipping credit deduction (recovery flow)')
-      } else {
-        console.log('[Later Scheduler] Deducting credits...')
-        await deductCreditsForFeature({
-          clerkUserId: postAuthor.clerkId,
-          feature: 'social_media_post',
-          details: {
-            postId: post.id,
-            postType: post.postType,
-            projectId: post.projectId,
-            laterPostId: laterPost.id,
-          },
-          organizationId,
-          projectId: post.projectId,
-        })
-      }
-
-      // 7. Update post in database
+      // 6. Update post in database
       const newStatus =
         laterPost.status === 'published'
           ? PostStatus.POSTED
@@ -1012,6 +1003,7 @@ export class LaterPostScheduler {
           },
         })
 
+        laterPostIdGravado = laterPost.id
         console.log(`[Later Scheduler] ✅ Database updated successfully`)
         console.log(`[Later Scheduler] 🔍 Verify save:`, {
           savedLaterPostId: updatedPost.laterPostId,
@@ -1019,22 +1011,81 @@ export class LaterPostScheduler {
         })
       } catch (updateError) {
         console.error(`[Later Scheduler] ❌❌❌ DATABASE UPDATE FAILED:`, updateError)
-        throw updateError
+        // O post JÁ ESTÁ no Zernio: isto é INCERTO, nunca FAILED. O catch abaixo
+        // marcaria FAILED sem `laterPostId` e o retry o reenviaria (publicação
+        // dupla). Tenta gravar só o `laterPostId`; se nem isso, a linha fica
+        // POSTING e a varredura de travados a reenvia em 30 min — o Zernio
+        // recusa o conteúdo repetido (409) e `tryAdoptExistingPost` adota o post.
+        const salvo = await db.socialPost
+          .updateMany({ where: { id: post.id, laterPostId: null }, data: { laterPostId: laterPost.id } })
+          .then((r) => r.count === 1)
+          .catch((casError) => {
+            console.error('[Later Scheduler] ❌ Gravação mínima do laterPostId também falhou:', casError)
+            return false
+          })
+        if (!salvo) {
+          console.error(
+            `[Later Scheduler] 🚨 Post ${post.id} criado no Zernio (${laterPost.id}) SEM laterPostId gravado — persistência incerta`
+          )
+          await this.createLog(post.id, PostLogEvent.SENT, 'Post criado no Zernio, mas o laterPostId não foi gravado', {
+            laterPostId: laterPost.id,
+            persistenciaIncerta: true,
+          }).catch((logError) => console.error('[Later Scheduler] Log da persistência incerta falhou:', logError))
+          return { success: false, incerto: true as const, laterPostId: laterPost.id }
+        }
+        laterPostIdGravado = laterPost.id
+      }
+
+      // 7. Cobrança DEPOIS de gravar o `laterPostId`. O post já está no Zernio:
+      // falha aqui (saldo, banco) não pode cair no catch abaixo, que o marcaria
+      // FAILED sem `laterPostId` e o retry o reenviaria — publicação dupla.
+      // Vira log, nunca falha do post. Pulada na recuperação (já cobrado antes).
+      if (skipCreditDeduction) {
+        console.log('[Later Scheduler] ⏭️  Skipping credit deduction (recovery flow)')
+      } else {
+        try {
+          await deductCreditsForFeature({
+            clerkUserId: postAuthor.clerkId,
+            feature: 'social_media_post',
+            details: {
+              postId: post.id,
+              postType: post.postType,
+              projectId: post.projectId,
+              laterPostId: laterPost.id,
+            },
+            organizationId: post.Project.organizationProjects?.[0]?.organization?.clerkOrgId,
+            projectId: post.projectId,
+          })
+        } catch (cobrancaError) {
+          console.error(`[Later Scheduler] Cobrança do post ${post.id} falhou — o post segue:`, cobrancaError)
+          await this.createLog(post.id, PostLogEvent.SENT, 'Post enviado, mas a cobrança falhou', {
+            cobrancaFalhou: true,
+            laterPostId: laterPost.id,
+          }).catch((logError) => console.error('[Later Scheduler] Log da cobrança falhou:', logError))
+        }
       }
 
       // 8. Create log
       const logMessage = 'Post enviado para Later - publicação imediata'
 
+      // Só log: com o `laterPostId` gravado, falha aqui não muda o estado do post.
       await this.createLog(post.id, PostLogEvent.SENT, logMessage, {
         laterPostId: laterPost.id,
         laterStatus: laterPost.status,
-      })
+      }).catch((logError) => console.error('[Later Scheduler] Log do envio falhou — o post segue:', logError))
 
       console.log(`[Later Scheduler] ✅ Post ${post.id} processed successfully`)
 
       return { success: true, laterPostId: laterPost.id }
     } catch (error) {
       console.error(`[Later Scheduler] ❌ Error sending post ${postId}:`, error)
+
+      // Guarda: o post já está no Zernio e o `laterPostId` no banco. Marcar FAILED
+      // mostraria falha falsa na agenda e dispararia aviso falso — só log.
+      if (laterPostIdGravado) {
+        console.error(`[Later Scheduler] Post ${postId} já entregue (${laterPostIdGravado}) — erro depois da gravação ignorado`)
+        return { success: true, laterPostId: laterPostIdGravado }
+      }
 
       // Handle rate limit errors
       if (isRateLimitError(error)) {

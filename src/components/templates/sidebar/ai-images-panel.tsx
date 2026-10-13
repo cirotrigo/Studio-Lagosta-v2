@@ -333,7 +333,7 @@ function GenerateImageForm({
   console.log('[GenerateImageForm] Component rendered with imageToEdit:', imageToEdit)
 
   const { toast } = useToast()
-  const { credits, canPerformOperation, getCost, refresh } = useCredits()
+  const { credits, creditosAplicados, canPerformOperation, getCost, refresh } = useCredits()
   const queryClient = useQueryClient()
   const { addLayer, design } = useTemplateEditor()
   const { data: project } = useProject(projectId)
@@ -793,7 +793,8 @@ function GenerateImageForm({
 
     // Verificar créditos manualmente (a função canPerformOperation usa custo fixo)
     // Por isso verificamos diretamente os créditos disponíveis
-    if (!credits || credits.creditsRemaining < creditsRequired) {
+    // Modo interno (creditosAplicados === false): o saldo não bloqueia.
+    if (creditosAplicados !== false && (!credits || credits.creditsRemaining < creditsRequired)) {
       toast({
         variant: 'destructive',
         description: `Créditos insuficientes (necessário: ${creditsRequired}, disponível: ${credits?.creditsRemaining ?? 0})`

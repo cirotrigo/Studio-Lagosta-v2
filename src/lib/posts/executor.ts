@@ -361,6 +361,12 @@ export class PostExecutor {
             console.warn(`⛔ Post ${post.id} não enviado: ${envio.bloqueado}`)
             continue
           }
+          // Criado no Zernio sem `laterPostId` gravado: não é sucesso, e reenviar daqui duplicaria.
+          if (envio && 'incerto' in envio && envio.incerto) {
+            console.error(`🚨 Post ${post.id} com persistência incerta (Zernio ${envio.laterPostId})`)
+            failureCount++
+            continue
+          }
           successCount++
         } catch (error) {
           console.error(`❌ Erro ao enviar post ${post.id}:`, error)
@@ -447,6 +453,14 @@ export class PostExecutor {
             await db.postRetry.update({
               where: { id: retry.id },
               data: { status: RetryStatus.FAILED, errorMessage: envio.bloqueado },
+            })
+            continue
+          }
+          // Criado no Zernio sem `laterPostId` gravado: sem nova tentativa (duplicaria) — a varredura de travados decide.
+          if (envio && 'incerto' in envio && envio.incerto) {
+            await db.postRetry.update({
+              where: { id: retry.id },
+              data: { status: RetryStatus.FAILED, errorMessage: `Persistência incerta (Zernio ${envio.laterPostId})` },
             })
             continue
           }

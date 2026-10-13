@@ -4,7 +4,7 @@
  * gravada) desfaz o próprio débito — um débito só, nas duas ramificações
  * (usuário e organização).
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 interface Estado {
   creditBalance: { id: string; userId: string; creditsRemaining: number } | null
@@ -57,6 +57,7 @@ function fakeTx() {
 
 vi.mock('@/lib/db', () => ({
   db: {
+    user: { findUnique: async () => ({ id: 'u1' }) },
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) => {
       // Transação de verdade no falso: o que o callback mudou volta se ele lançar.
       const copia = structuredClone(estado)
@@ -88,6 +89,11 @@ beforeEach(() => {
   }
   vi.spyOn(console, 'error').mockImplementation(() => {})
   vi.spyOn(console, 'log').mockImplementation(() => {})
+  // A cobrança de antes: os casos abaixo valem com a flag ligada (o modo interno tem bloco próprio no fim).
+  vi.stubEnv('CREDITOS_APLICADOS', 'true')
+})
+afterEach(() => {
+  vi.unstubAllEnvs()
 })
 
 describe.each([
@@ -203,5 +209,48 @@ describe.each([
     await expect(umaVez(debitar)).rejects.toBeInstanceOf(InsufficientCreditsError)
     expect(usos()).toBe(0)
     expect(estado.job.creditsDeducted).toBe(false)
+  })
+})
+
+/**
+ * Modo interno (flag desligada): saldo zero não recusa a cobrança — a marca e o
+ * registro de uso saem no mesmo commit, e o saldo fica intacto.
+ */
+describe.each([
+  ['usuário', undefined],
+  ['organização', 'org_x'],
+])('modo interno (%s)', (_nome, organizationId) => {
+  const saldo = () => (organizationId ? estado.orgBalance.credits : estado.creditBalance!.creditsRemaining)
+  const usos = () => (organizationId ? estado.orgUsage : estado.usageHistory).length
+  beforeEach(() => {
+    estado.orgBalance.credits = 0
+    estado.creditBalance!.creditsRemaining = 0
+  })
+  const umaVez = () =>
+    cobrarUmaVez({
+      cobrar: () =>
+        deductCreditsForFeature({
+          clerkUserId: 'user_1',
+          feature: 'video_export',
+          organizationId,
+          noMesmoCommit: marcarCobrancaNoMesmoCommit('j1', inicio),
+        }),
+      reler: async () => ({ ...estado.job }),
+      startedAt: inicio,
+      definitivo: (e) => e instanceof InsufficientCreditsError,
+    })
+
+  it('flag desligada, saldo 0: marca gravada, uso registrado, saldo intacto', async () => {
+    vi.stubEnv('CREDITOS_APLICADOS', '')
+    await expect(umaVez()).resolves.toBe('cobrado')
+    expect(estado.job.creditsDeducted).toBe(true)
+    expect(usos()).toBe(1)
+    expect(saldo()).toBe(0)
+  })
+
+  it('flag ligada, saldo 0: recusa como antes, sem marca', async () => {
+    await expect(umaVez()).rejects.toBeInstanceOf(InsufficientCreditsError)
+    expect(estado.job.creditsDeducted).toBe(false)
+    expect(usos()).toBe(0)
   })
 })

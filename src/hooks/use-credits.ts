@@ -36,9 +36,32 @@ export interface CreditData {
   isEmpty: boolean;
 }
 
+/**
+ * Pode rodar a operação? Com a cobrança desligada (`creditosAplicados: false`,
+ * o modo interno) ou ainda desconhecida, sempre — inclusive enquanto os
+ * créditos carregam. Só com ela ligada explicitamente, a comparação de antes.
+ */
+export function podeExecutar({
+  aplicados,
+  creditsRemaining,
+  cost,
+}: {
+  aplicados: boolean | undefined;
+  creditsRemaining: number | null | undefined;
+  cost: number;
+}): boolean {
+  // Só a cobrança ligada EXPLICITAMENTE trava: configuração que não chegou ou
+  // falhou não pode bloquear a tela — quem decide a cobrança é o servidor.
+  if (aplicados !== true) return true;
+  if (creditsRemaining == null) return false;
+  return creditsRemaining >= cost;
+}
+
 export function useCredits(): {
   credits: CreditData | null;
   isLoading: boolean;
+  /** `false` no modo interno: o saldo não bloqueia nada (ver `podeExecutar`). */
+  creditosAplicados: boolean | undefined;
   canPerformOperation: (operation: OperationType) => boolean;
   getCost: (operation: OperationType) => number;
   refresh: () => void;
@@ -49,7 +72,7 @@ export function useCredits(): {
   const queryClient = useQueryClient();
 
   // Fetch dynamic settings
-  const { data: settings } = useQuery<{ featureCosts?: Record<string, number>; planCredits?: Record<string, number> } | null>({
+  const { data: settings } = useQuery<{ featureCosts?: Record<string, number>; planCredits?: Record<string, number>; creditosAplicados?: boolean } | null>({
     queryKey: ['credit-settings'],
     queryFn: () => api.get('/api/credits/settings'),
     staleTime: 60_000,
@@ -139,12 +162,19 @@ export function useCredits(): {
     return base;
   };
 
-  const canPerformOperation = (operation: OperationType) => {
-    if (!credits) return false;
-    const costs = getDynamicCosts();
-    const cost = costs[operation];
-    return credits.creditsRemaining >= cost;
-  };
+  // Desconhecido (configuração carregando ou com falha) conta como desligado.
+  const creditosAplicados = settings?.creditosAplicados === true;
+
+  const canPerformOperation = (operation: OperationType) =>
+    podeExecutar({
+      aplicados: creditosAplicados,
+      creditsRemaining: credits?.creditsRemaining,
+      cost: getDynamicCosts()[operation],
+    });
+
+  /** Enquanto os créditos carregam: só o modo interno libera. */
+  const podeCarregando = (operation: OperationType) =>
+    podeExecutar({ aplicados: creditosAplicados, creditsRemaining: null, cost: DEFAULT_UI_CREDIT_COSTS[operation] });
 
   const getCost = (operation: OperationType) => {
     const costs = getDynamicCosts();
@@ -165,7 +195,8 @@ export function useCredits(): {
       return {
         credits: null,
         isLoading: true,
-        canPerformOperation: () => false,
+        creditosAplicados,
+        canPerformOperation: podeCarregando,
         getCost: (operation) => DEFAULT_UI_CREDIT_COSTS[operation],
         refresh,
       };
@@ -174,6 +205,7 @@ export function useCredits(): {
     return {
       credits,
       isLoading: organizationCreditsQuery.isLoading,
+      creditosAplicados,
       canPerformOperation,
       getCost,
       refresh,
@@ -184,7 +216,8 @@ export function useCredits(): {
     return {
       credits: null,
       isLoading: true,
-      canPerformOperation: () => false,
+      creditosAplicados,
+      canPerformOperation: podeCarregando,
       getCost: (operation) => DEFAULT_UI_CREDIT_COSTS[operation],
       refresh,
     };
@@ -193,6 +226,7 @@ export function useCredits(): {
   return {
     credits,
     isLoading: loadingServer,
+    creditosAplicados,
     canPerformOperation,
     getCost,
     refresh,
