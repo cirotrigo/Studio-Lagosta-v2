@@ -3,6 +3,7 @@ import { getUserFromClerkId } from '@/lib/auth-utils'
 import { FeatureKey, toPrismaOperationType } from './feature-config'
 import { getFeatureCost, getPlanCredits } from '@/lib/credits/settings'
 import { InsufficientCreditsError } from './errors'
+import { creditosAplicados } from './aplicados'
 import type { Prisma } from '@prisma/client'
 
 type JsonValue = string | number | boolean | null | JsonObject | JsonArray
@@ -101,6 +102,7 @@ async function deductOrganizationCredits({
   noMesmoCommit,
 }: DeductParams) {
   const creditsToUse = await creditosADebitar(feature, quantity, creditsTotal)
+  const aplicados = creditosAplicados()
 
   return db.$transaction(async (tx) => {
     const organization = await tx.organization.findUnique({
@@ -113,23 +115,26 @@ async function deductOrganizationCredits({
     }
 
     let balance = organization.creditBalance
-    if (!balance) {
-      balance = await tx.organizationCreditBalance.create({
-        data: {
-          organizationId: organization.id,
-          credits: organization.creditsPerMonth,
-          refillAmount: organization.creditsPerMonth,
-        },
+    // Modo interno: o saldo não é criado nem debitado; o uso segue registrado abaixo.
+    if (aplicados) {
+      if (!balance) {
+        balance = await tx.organizationCreditBalance.create({
+          data: {
+            organizationId: organization.id,
+            credits: organization.creditsPerMonth,
+            refillAmount: organization.creditsPerMonth,
+          },
+        })
+      }
+
+      const updated = await tx.organizationCreditBalance.updateMany({
+        where: { id: balance.id, credits: { gte: creditsToUse } },
+        data: { credits: { decrement: creditsToUse } },
       })
-    }
 
-    const updated = await tx.organizationCreditBalance.updateMany({
-      where: { id: balance.id, credits: { gte: creditsToUse } },
-      data: { credits: { decrement: creditsToUse } },
-    })
-
-    if (updated.count === 0) {
-      throw new InsufficientCreditsError(creditsToUse, balance.credits)
+      if (updated.count === 0) {
+        throw new InsufficientCreditsError(creditsToUse, balance.credits)
+      }
     }
 
     await tx.organizationUsage.create({
@@ -144,6 +149,8 @@ async function deductOrganizationCredits({
     })
 
     if (noMesmoCommit) await noMesmoCommit(tx)
+
+    if (!aplicados) return { creditsRemaining: balance?.credits ?? 0 }
 
     const after = await tx.organizationCreditBalance.findUnique({
       where: { id: balance.id },
@@ -171,6 +178,7 @@ async function refundOrganizationCredits({
   projectId?: number
 }) {
   const refundAmount = (await getFeatureCost(feature)) * Math.max(1, quantity)
+  const aplicados = creditosAplicados()
 
   return db.$transaction(async (tx) => {
     const organization = await tx.organization.findUnique({
@@ -183,7 +191,7 @@ async function refundOrganizationCredits({
     }
 
     let balance = organization.creditBalance
-    if (!balance) {
+    if (!balance && aplicados) {
       balance = await tx.organizationCreditBalance.create({
         data: {
           organizationId: organization.id,
@@ -208,6 +216,9 @@ async function refundOrganizationCredits({
       },
     })
 
+    // Modo interno: o estorno fica só no registro; o saldo não é tocado.
+    if (!aplicados) return { creditsRemaining: balance?.credits ?? 0 }
+
     const updated = await tx.organizationCreditBalance.update({
       where: { id: balance.id },
       data: { credits: { increment: refundAmount } },
@@ -223,6 +234,9 @@ export async function validateCreditsForFeature(
   quantity: number = 1,
   options: CreditContextOptions = {}
 ) {
+  // Modo interno: o saldo nunca bloqueia. Sem banco e sem `getUserFromClerkId`
+  // (que CRIA o User — é assim que nascem os Users fantasma).
+  if (!creditosAplicados()) return { available: Number.MAX_SAFE_INTEGER, needed: 0 }
   try {
     if (options.organizationId) {
       const { balance } = await ensureOrganizationWithBalance(options.organizationId)
@@ -274,8 +288,12 @@ export async function deductCreditsForFeature({
       })
     }
 
-    const user = await getUserFromClerkId(clerkUserId)
-    console.log('[DEDUCT] User found:', user.id)
+    const aplicados = creditosAplicados()
+    // Modo interno: só lê o User, nunca o cria (sem User, não há registro de uso).
+    const user = aplicados
+      ? await getUserFromClerkId(clerkUserId)
+      : await db.user.findUnique({ where: { clerkId: clerkUserId } })
+    console.log('[DEDUCT] User found:', user?.id ?? null)
     const creditsToUse = await creditosADebitar(feature, quantity, creditsTotal)
     console.log('[DEDUCT] Credits to use:', creditsToUse)
     const op = toPrismaOperationType(feature)
@@ -283,6 +301,11 @@ export async function deductCreditsForFeature({
 
     const result = await db.$transaction(async (tx) => {
       try {
+        if (!user) {
+          if (noMesmoCommit) await noMesmoCommit(tx)
+          return { creditsRemaining: 0 }
+        }
+
         let creditBalance = await tx.creditBalance.findUnique({ where: { userId: user.id } })
         if (!creditBalance) {
           try {
@@ -314,20 +337,23 @@ export async function deductCreditsForFeature({
           throw error
         }
 
-        try {
-          const updated = await tx.creditBalance.updateMany({
-            where: { id: creditBalance.id, creditsRemaining: { gte: creditsToUse } },
-            data: {
-              creditsRemaining: { decrement: creditsToUse },
-              lastSyncedAt: new Date(),
-            },
-          })
-          if (updated.count === 0) {
-            throw new InsufficientCreditsError(creditsToUse, creditBalance.creditsRemaining)
+        // Modo interno: o saldo não é debitado nem bloqueia; o uso fica registrado acima.
+        if (aplicados) {
+          try {
+            const updated = await tx.creditBalance.updateMany({
+              where: { id: creditBalance.id, creditsRemaining: { gte: creditsToUse } },
+              data: {
+                creditsRemaining: { decrement: creditsToUse },
+                lastSyncedAt: new Date(),
+              },
+            })
+            if (updated.count === 0) {
+              throw new InsufficientCreditsError(creditsToUse, creditBalance.creditsRemaining)
+            }
+          } catch (error) {
+            console.error('Erro ao atualizar saldo de créditos:', error)
+            throw error
           }
-        } catch (error) {
-          console.error('Erro ao atualizar saldo de créditos:', error)
-          throw error
         }
 
         if (noMesmoCommit) await noMesmoCommit(tx)
@@ -377,12 +403,17 @@ export async function refundCreditsForFeature({
       })
     }
 
-    const user = await getUserFromClerkId(clerkUserId)
+    const aplicados = creditosAplicados()
+    const user = aplicados
+      ? await getUserFromClerkId(clerkUserId)
+      : await db.user.findUnique({ where: { clerkId: clerkUserId } })
     const refundAmount = (await getFeatureCost(feature)) * Math.max(1, quantity)
     const op = toPrismaOperationType(feature)
 
     const result = await db.$transaction(async (tx) => {
-      let creditBalance = await tx.creditBalance.findUnique({ where: { userId: user.id } })
+      let creditBalance = user ? await tx.creditBalance.findUnique({ where: { userId: user.id } }) : null
+      // Modo interno: sem User ou sem saldo não houve cobrança a estornar (e o registro precisa dos dois).
+      if (!aplicados && !creditBalance) return { creditsRemaining: 0 }
       if (!creditBalance) {
         creditBalance = await tx.creditBalance.create({
           data: {
@@ -402,6 +433,8 @@ export async function refundCreditsForFeature({
           details: { ...(details as JsonObject | null ?? {}), refund: true, reason },
         },
       })
+
+      if (!aplicados) return { creditsRemaining: creditBalance.creditsRemaining }
 
       const updated = await tx.creditBalance.update({
         where: { id: creditBalance.id },
