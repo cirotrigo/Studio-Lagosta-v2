@@ -666,21 +666,29 @@ export const toolsDeAgenda = [
   definirTool({
     nome: 'auditar-operacao',
     descricao:
-      'Audita a CARTEIRA INTEIRA numa chamada: para cada cliente ativo que você enxerga, diz se HOJE, AMANHÃ e DEPOIS DE AMANHÃ estão cobertos, quantos dias à frente estão prontos (diasAdiantados, contados a partir de amanhã; o alvo é 2), os buracos, as falhas e a ação recomendada. Só leitura: não registra sugestão nem sinal de aprendizado. Comece a rodada da operação por aqui.\n\nO esperado de cada dia vem da grade aprovada na base mais a cadência do que o cliente publicou (a mesma conta de sugerir-posts). Cada horário esperado fica COBERTO (agendado, publicando, publicado, ou rascunho com arte pronta e sem render em curso), PENDENTE (há post no horário, mas ele não resolve: rascunho sem arte ou com render pendente, render que falhou, campanha vencida, post que falhou; conserte o post existente, não crie outro por cima) ou VAZIO (nada no horário; é o único que pede produção nova). Falha é relatada, nunca substituída: a recuperação já tem rotina própria. Cliente sem grade e sem histórico vem como sem-rotina, nunca como coberto. acao.codigo é NENHUMA, COMPOR, CONSERTO_PENDENTE, RELATAR_FALHA, CONFLITO_DE_HORARIO, SEM_ROTINA ou SEM_ASSINATURA (sem página de assinatura não há produção automática). conflitosDeHorario lista os horários esperados com dois ou mais posts: relate, não crie outro nem remova. Os clientes vêm do mais urgente para o mais saudável. A auditoria envelhece: antes de escrever, confira de novo o horário com ver-agenda. A resposta traz `manual`, o contrato do agente operacional (versão em manual.versao): quem opera a carteira sozinho segue o manual.',
+      'Audita a CARTEIRA INTEIRA numa chamada: para cada cliente ativo que você enxerga, diz se HOJE, AMANHÃ e DEPOIS DE AMANHÃ estão cobertos, quantos dias à frente estão prontos (diasAdiantados, contados a partir de amanhã; o alvo é 2), os buracos, as falhas e a ação recomendada. Só leitura: não registra sugestão nem sinal de aprendizado. Comece a rodada da operação por aqui.\n\nO esperado de cada dia vem da grade aprovada na base mais a cadência do que o cliente publicou (a mesma conta de sugerir-posts). Cada horário esperado fica COBERTO (agendado, publicando, publicado, ou rascunho com arte pronta e sem render em curso), PENDENTE (há post no horário, mas ele não resolve: rascunho sem arte ou com render pendente, render que falhou, campanha vencida, post que falhou; conserte o post existente, não crie outro por cima) ou VAZIO (nada no horário; é o único que pede produção nova). Falha é relatada, nunca substituída: a recuperação já tem rotina própria. Cliente sem grade e sem histórico vem como sem-rotina, nunca como coberto. acao.codigo é NENHUMA, COMPOR, CONSERTO_PENDENTE, RELATAR_FALHA, CONFLITO_DE_HORARIO, SEM_ROTINA ou SEM_ASSINATURA (sem página de assinatura não há produção automática). conflitosDeHorario lista os horários esperados com dois ou mais posts: relate, não crie outro nem remova. Os clientes vêm do mais urgente para o mais saudável. A auditoria envelhece: antes de escrever, confira de novo o horário com ver-agenda. A resposta traz `manual`, o contrato do agente operacional (versão em manual.versao): quem opera a carteira sozinho segue o manual. `seguranca.perfilEfetivo` diz se o servidor está restringindo ESTA conexão a rascunho (draft-only) ou não (normal).',
     schema: z.object({}),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     acesso: { tipo: 'autenticado' },
     superficies: ['remoto', 'local'],
     handler: async (_args, principal) => {
-      const [{ projetosVisiveis, quemEstaConectado }, { auditarOperacao }, { MANUAL_DO_DOT }] = await Promise.all([
+      const [{ projetosVisiveis, quemEstaConectado }, { auditarOperacao }, { MANUAL_DO_DOT }, { perfilDoPrincipal }] = await Promise.all([
         import('../tools'),
         import('../../posts/auditar-operacao'),
         import('../operacao-dot'),
+        import('../registro/perfil'),
       ])
       // O escopo é o de listar-clientes: só o que o principal enxerga.
       const permitidos = await projetosVisiveis(principal)
       // O manual é a fonte canônica (operacao-dot.ts): vai inteiro, nunca reescrito aqui.
-      const auditoria = { ...(await auditarOperacao({ permitidos })), manual: MANUAL_DO_DOT }
+      // `manual.modo` é o CONTRATO do agente; `seguranca.perfilEfetivo` é a proteção MECÂNICA desta chamada,
+      // decidida pelo MESMO helper que a porta usa (perfilDoPrincipal). Se o cliente OAuth trocar de id e sair
+      // da env, o agente vê "normal" aqui e não escreve. Nada de clientId, userId, token ou env na resposta.
+      const auditoria = {
+        ...(await auditarOperacao({ permitidos })),
+        manual: MANUAL_DO_DOT,
+        seguranca: { perfilEfetivo: perfilDoPrincipal(principal) },
+      }
       if (permitidos && permitidos.length === 0) {
         const quem = await quemEstaConectado(principal)
         return {

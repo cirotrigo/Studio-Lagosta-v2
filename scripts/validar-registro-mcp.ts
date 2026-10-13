@@ -2528,8 +2528,8 @@ const PALAVRAS_PERMITIDAS = new Set<string>([
 console.log('\nE. Referências de tools no MANUAL do agente operacional')
 
 {
-  // A versão é a única palavra hifenizada do manual que não é tool.
-  const permitidas = new Set<string>([DOT_OPERACAO_VERSAO])
+  // Palavras hifenizadas do manual que não são tool: a versão e o valor do perfil efetivo.
+  const permitidas = new Set<string>([DOT_OPERACAO_VERSAO, 'draft-only'])
   const tokens = JSON.stringify(MANUAL_DO_DOT).match(/\b[a-z][a-z0-9]*(?:-[a-z0-9]+)+\b/g) ?? []
   const desconhecidos = Array.from(new Set(tokens)).filter((t) => !INDICE_DO_CATALOGO.has(t) && !permitidas.has(t))
   confere(

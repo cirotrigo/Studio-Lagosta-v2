@@ -1,4 +1,4 @@
-# Dot Lagosta: Constituição Operacional (`dot-operacao-v3`)
+# Dot Lagosta: Constituição Operacional (`dot-operacao-v4`)
 
 Criada em 13/10/2026 (H3 do Dot; o mapa e as decisões estão em
 `docs/PLANO-2026-10-13-DOT-OPERACAO-H1.md`).
@@ -251,6 +251,24 @@ identidade dele passar do rascunho.
   protege é a identidade do agente, que usa só o cliente dele.
 - **Ainda não configurado:** o cliente OAuth real do Dot e a env de produção
   (H6). Até lá, nenhum principal é `draft-only`.
+
+## Perfil efetivo: a trava ligada nesta conexão (`dot-operacao-v4`, 13/10/2026)
+
+O `manual.modo = DRAFT_ONLY` é o CONTRATO do agente e não prova que o servidor
+está restringindo a conexão. Se o ChatGPT registrar um `clientId` novo, a env
+deixa de casar e o perfil vira `normal` em silêncio. Por isso a
+`auditar-operacao` devolve `seguranca.perfilEfetivo` (`draft-only` ou `normal`),
+calculado pelo MESMO `perfilDoPrincipal` que a porta usa, sem expor `clientId`,
+usuário, token nem env.
+
+A regra do manual: antes de qualquer escrita, o agente exige
+`perfilEfetivo = draft-only`. Se não for, não escreve e relata
+PERFIL_DE_SEGURANCA_INATIVO.
+
+**Decisão do owner (13/10/2026):** o cliente OAuth do conector Studio Lagosta no
+ChatGPT (`cmude25d6001rjn04gon1rchw`) é COMPARTILHADO entre o Dot e as conversas
+normais, e entra inteiro no perfil restrito. Aprovar e publicar continuam pela
+interface web e pelo Claude.
 
 ## O que os testes provam e o que fica com o agente (H5, 13/10/2026)
 

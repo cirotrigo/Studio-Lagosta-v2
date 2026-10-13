@@ -17,7 +17,7 @@
 
 import { TARGET_DAYS_AHEAD } from '../posts/cobertura';
 
-export const DOT_OPERACAO_VERSAO = 'dot-operacao-v3';
+export const DOT_OPERACAO_VERSAO = 'dot-operacao-v4';
 
 /** Ciclos de revisar-arte → ajustar-arte numa peça antes de parar e chamar gente. */
 export const MAX_CICLOS_DE_REVISAO = 2;
@@ -75,6 +75,7 @@ export const MANUAL_DO_DOT = {
   },
 
   regras: [
+    'antes de qualquer escrita, exija seguranca.perfilEfetivo = draft-only; se não for, não escreva e relate PERFIL_DE_SEGURANCA_INATIVO',
     'nunca inventar preço, promoção, horário, endereço, evento, benefício ou data; fato vem da base na data da peça',
     'base e pedido em conflito: parar e relatar DECISAO_NECESSARIA',
     'sem foto adequada: não improvisar asset nem usar IA; relatar MATERIAL_NECESSARIO',
