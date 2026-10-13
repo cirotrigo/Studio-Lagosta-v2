@@ -18,6 +18,7 @@ import { Loader2, Sparkles, X, Upload, ImagePlus, FolderOpen, Wand2 } from 'luci
 import { toast } from 'sonner'
 import { GoogleDrivePickerModal } from './google-drive-picker-modal'
 import { useImprovePrompt } from '@/hooks/use-improve-prompt'
+import { useCobrancaLigada } from '@/hooks/use-credits'
 
 interface GenerateImageModalProps {
   open: boolean
@@ -44,6 +45,7 @@ export function GenerateImageModal({
   const [promptEn, setPromptEn] = useState<string | null>(null) // English version for generation
   const [referenceImages, setReferenceImages] = useState<string[]>([])
   const [isUploading, setIsUploading] = useState(false)
+  const cobrancaLigada = useCobrancaLigada()
   const [isDragging, setIsDragging] = useState(false)
   const [showDrivePicker, setShowDrivePicker] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -380,7 +382,8 @@ export function GenerateImageModal({
             </div>
 
             <div className="flex items-center justify-between text-sm text-muted-foreground">
-              <span>Custo: 15 creditos</span>
+              {/* O span fica (vazio) para o modelo seguir à direita. */}
+              <span>{cobrancaLigada && 'Custo: 15 creditos'}</span>
               <span>Modelo: Gemini 3 Pro</span>
             </div>
           </div>
