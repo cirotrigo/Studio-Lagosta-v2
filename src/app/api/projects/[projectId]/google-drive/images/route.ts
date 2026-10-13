@@ -6,7 +6,7 @@ import { assertRateLimit, RateLimitError } from '@/lib/rate-limit'
 import { fetchProjectWithShares, hasProjectReadAccess } from '@/lib/projects/access'
 import type { GoogleDriveItem } from '@/types/google-drive'
 import { idDoDriveValido } from '@/lib/google-drive/id'
-import { filtrarAtalhosDoEscopo, raizesNaRotaDoProjeto, type MemoDoDrive } from '@/lib/google-drive/escopo'
+import { filtrarAtalhosDoEscopo, raizesNaRotaDoProjeto } from '@/lib/google-drive/escopo'
 
 const querySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
@@ -22,30 +22,22 @@ interface ProjectDriveImagesPayload {
 }
 
 /**
- * A página guardada mantém os itens como vieram do Drive (com
- * `shortcutDetails`), para o atalho poder ser reconferido a cada resposta.
+ * O cache guarda a listagem INTEIRA como veio do Drive (com
+ * `shortcutDetails`): a conferência dos atalhos e a paginação são refeitas a
+ * cada resposta, para o offset sempre bater com o que foi devolvido.
  */
-interface PaginaGuardada {
-  itens: GoogleDriveItem[]
-  nextOffset?: number
-}
-
-const projectDriveImagesCache = new Map<string, { payload: PaginaGuardada; timestamp: number }>()
+const projectDriveImagesCache = new Map<string, { payload: GoogleDriveItem[]; timestamp: number }>()
 
 function getProjectDriveImagesCacheKey({
   userId,
   projectId,
   driveFolderId,
-  offset,
-  limit,
 }: {
   userId: string
   projectId: number
   driveFolderId: string
-  offset: number
-  limit: number
 }) {
-  return [userId, projectId, driveFolderId, offset, limit].join(':')
+  return [userId, projectId, driveFolderId].join(':')
 }
 
 function getCachedProjectDriveImages(cacheKey: string) {
@@ -67,20 +59,25 @@ export async function GET(
   { params }: { params: Promise<{ projectId: string }> }
 ) {
   let cacheKey: string | null = null
-  // O cache guarda a página, nunca a decisão: toda resposta (cache
-  // inclusive) reconfere os atalhos contra as pastas do projeto de AGORA.
-  const memo: MemoDoDrive = new Map()
+  // O cache guarda a listagem, nunca a decisão: toda resposta (cache
+  // inclusive) reconfere os atalhos contra as pastas do projeto de AGORA e
+  // só DEPOIS pagina (paginação manual: o Drive devolve a pasta inteira).
   let raizes: Set<string> | null = null
-  const responder = async ({ itens, nextOffset }: PaginaGuardada): Promise<ProjectDriveImagesPayload> => ({
-    images: (raizes ? await filtrarAtalhosDoEscopo(itens, raizes, { memo }) : itens).map((file) => ({
-      id: file.id,
-      name: file.name,
-      mimeType: file.mimeType,
-      thumbnailLink: file.thumbnailLink,
-      webContentLink: file.webContentLink,
-    })),
-    nextOffset,
-  })
+  let offset = 0
+  let limit = 20
+  const responder = async (itens: GoogleDriveItem[]): Promise<ProjectDriveImagesPayload> => {
+    const validos = raizes ? await filtrarAtalhosDoEscopo(itens, raizes) : itens
+    return {
+      images: validos.slice(offset, offset + limit).map((file) => ({
+        id: file.id,
+        name: file.name,
+        mimeType: file.mimeType,
+        thumbnailLink: file.thumbnailLink,
+        webContentLink: file.webContentLink,
+      })),
+      nextOffset: offset + limit < validos.length ? offset + limit : undefined,
+    }
+  }
   try {
     const { userId, orgId } = await auth()
     if (!userId) {
@@ -137,14 +134,15 @@ export async function GET(
       )
     }
 
-    const { offset, limit } = parseResult.data
+    offset = parseResult.data.offset
+    limit = parseResult.data.limit
 
     // A pasta é a do projeto, os filhos não são conferidos: atalho para fora
     // do projeto sai (admin: Drive inteiro).
     raizes = await raizesNaRotaDoProjeto(userId, projectId)
 
     // Listar imagens da pasta
-    cacheKey = getProjectDriveImagesCacheKey({ userId, projectId, driveFolderId, offset, limit })
+    cacheKey = getProjectDriveImagesCacheKey({ userId, projectId, driveFolderId })
     const cachedPayload = getCachedProjectDriveImages(cacheKey)
     if (cachedPayload) {
       return NextResponse.json(await responder(cachedPayload), {
@@ -169,22 +167,12 @@ export async function GET(
       })
     }
 
-    // Filtra antes de paginar, para a página contar só o que fica.
-    const items = raizes ? await filtrarAtalhosDoEscopo(result.items, raizes, { memo }) : result.items
-
-    // Aplicar paginação manual (já que o Google Drive retorna todos os arquivos)
-    const paginatedFiles = items.slice(offset, offset + limit)
-    const hasMore = offset + limit < items.length
-    const nextOffset = hasMore ? offset + limit : undefined
-
-    const payload: PaginaGuardada = { itens: paginatedFiles, nextOffset }
-
     projectDriveImagesCache.set(cacheKey, {
-      payload,
+      payload: result.items,
       timestamp: Date.now(),
     })
 
-    return NextResponse.json(await responder(payload))
+    return NextResponse.json(await responder(result.items))
   } catch (error) {
     if (error instanceof RateLimitError) {
       if (cacheKey) {
