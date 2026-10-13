@@ -16,7 +16,7 @@ import {
   type EscopoAprendizado,
   type OrigemDecisao,
 } from '@/lib/posts/learning-scope'
-import { copyDeCamadas, copyParaDecisao, diffDeCopy, type DiffDeCopy } from '@/lib/aprendizado/diff-copy'
+import { alinharChavesDaProposta, copyDeCamadas, copyParaDecisao, diffDeCopy, type DiffDeCopy } from '@/lib/aprendizado/diff-copy'
 import { lerProcedencia, AVISO_COPY_DE_ARTE_RE_RENDERIZADA } from '@/lib/creatives/procedencia-da-copy'
 import {
   fecharSugestaoDeSlot,
@@ -438,7 +438,9 @@ export async function resolverAgendamento(input: AgendarPostInput, opcoes: Opcoe
    * como "sem texto nenhum".
    */
   const copyDaPagina = copyDeCamadas(camadasDaPagina)
-  const copyPropostaTexto = apenasTextos(copyProposta)
+  // A proposta pode vir por layerId; a página é lida por nome. Traduz pela
+  // identidade da camada, senão o diff acusa edição onde o texto é o mesmo.
+  const copyPropostaTexto = alinharChavesDaProposta(apenasTextos(copyProposta), camadasDaPagina)
   // Sem página, a cópia do post é a copy VISUAL da Generation (o que o PNG mostra) — nunca a de aprendizado,
   // que conta como presente a camada que o revisor escondeu (REV-2CEB-01).
   const copyFinal = copyDaPagina ?? apenasTextos(copyVisual)

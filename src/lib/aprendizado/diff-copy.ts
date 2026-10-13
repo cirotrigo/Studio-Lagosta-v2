@@ -24,7 +24,7 @@
 
 import { normalizeForComparison } from '@/lib/ai/text-comparison'
 import { semColchetes } from '@/lib/compositor/destaques'
-import { lerCamadas, textosDaPagina } from '@/lib/posts/page-layers'
+import { lerCamadas, textosDaPagina, textosDaPaginaPorCamada } from '@/lib/posts/page-layers'
 import { camadasParaDecisao } from '@/lib/creatives/revisao/oculta-pelo-revisor'
 import type { Desfecho } from './vocabulario'
 
@@ -327,6 +327,40 @@ export function copyParaDecisao(layers: unknown): Record<string, string> | null 
   const { camadas, legivel } = lerCamadas(layers)
   if (!legivel) return null
   return textosDaPagina(camadasParaDecisao(camadas))
+}
+
+/**
+ * Traduz para a chave da PÁGINA (nome da camada, com o sufixo `#2`…) as
+ * chaves da proposta que são `layerId` de uma camada de texto dela.
+ *
+ * A proposta da via não-semântica guarda a copy pela chave do PEDIDO — e o
+ * pedido pode endereçar a camada pelo id — enquanto `copyParaDecisao` lê a
+ * página por nome. Sem isto o mesmo texto virava "removido + adicionado" e o
+ * agendamento gravava uma edição que ninguém fez (FALSE_LEARNING_DIFF,
+ * caracterizado no B1d; corrigido em 13/10/2026). A tradução é por IDENTIDADE
+ * da camada, nunca por conteúdo: troca de texto entre campos continua sendo
+ * edição. Chave que já é chave da página, ou que não é id de camada, fica
+ * como veio; página ilegível devolve a proposta intacta.
+ */
+export function alinharChavesDaProposta(
+  proposta: Record<string, string> | null,
+  layers: unknown,
+): Record<string, string> | null {
+  if (!proposta) return proposta
+  const { camadas, legivel } = lerCamadas(layers)
+  if (!legivel) return proposta
+  // Mesmas camadas que `copyParaDecisao` lê — as chaves têm de ser as dela.
+  const itens = textosDaPaginaPorCamada(camadasParaDecisao(camadas))
+  const chavesDaPagina = new Set(itens.map((t) => t.chave))
+  const chavePorId = new Map(itens.filter((t) => t.id).map((t) => [t.id as string, t.chave]))
+  const out: Record<string, string> = {}
+  for (const [chave, texto] of Object.entries(proposta)) {
+    const destino = !chavesDaPagina.has(chave) && chavePorId.get(chave)
+    // Se a proposta trouxe a mesma camada por nome E por id, vale a por nome.
+    if (destino && !(destino in proposta)) out[destino] = texto
+    else out[chave] = texto
+  }
+  return out
 }
 
 /**

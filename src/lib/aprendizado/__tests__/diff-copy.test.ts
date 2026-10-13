@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { copyDeCamadas, copyParaDecisao, desfechoPeloDiff, diffDeCopy, semelhanca } from '../diff-copy'
+import { alinharChavesDaProposta, copyDeCamadas, copyParaDecisao, desfechoPeloDiff, diffDeCopy, semelhanca } from '../diff-copy'
 
 const SUGERIDA = {
   titulo: 'HAPPY HOUR',
@@ -189,5 +189,58 @@ describe('semelhanca', () => {
   it('alta para edição pequena, baixa para texto trocado', () => {
     expect(semelhanca('Todas as quintas', 'Todas as quintas e sextas')).toBeGreaterThan(0.6)
     expect(semelhanca('Chopp em dobro', 'Sobremesa por nossa conta')).toBeLessThan(0.3)
+  })
+})
+
+/**
+ * FALSE_LEARNING_DIFF (caracterizado no B1d): a proposta guardada pelo layerId
+ * contra a página lida por nome. A tradução é pela IDENTIDADE da camada — o
+ * diff continua pareando por chave, então troca entre campos segue sendo
+ * edição (achado HIGH do Codex sobre a primeira tentativa, que pareava as
+ * sobras por conteúdo).
+ */
+describe('alinharChavesDaProposta — layerId da proposta × nome da página', () => {
+  const camadas = [
+    { id: 'l1', name: 'Título', type: 'text', content: 'Noite do vinho', visible: true },
+    { id: 'l2', name: 'Título', type: 'text', content: 'Toda quinta', visible: true },
+    { id: 'l3', name: 'CTA', type: 'text', content: 'Reserve', visible: true },
+  ]
+
+  it('mesmo texto pelo layerId: não mudou (inclusive no nome repetido, #2)', () => {
+    const proposta = alinharChavesDaProposta({ l1: 'Noite do vinho', l2: 'Toda quinta', l3: 'Reserve' }, camadas)
+    expect(proposta).toEqual({ Título: 'Noite do vinho', 'Título#2': 'Toda quinta', CTA: 'Reserve' })
+    expect(diffDeCopy(proposta, copyParaDecisao(camadas)).mudou).toBe(false)
+  })
+
+  it('texto editado pelo layerId: alterado no campo certo, editada', () => {
+    const d = diffDeCopy(alinharChavesDaProposta({ l3: 'Reserve já' }, camadas), { CTA: 'Reserve' })
+    expect(d.alterados.map((a) => a.campo)).toEqual(['CTA'])
+    expect(desfechoPeloDiff(d)).toBe('editada')
+  })
+
+  it('troca de texto entre campos continua sendo mudança', () => {
+    const trocada = [
+      { id: 'l1', name: 'Título', type: 'text', content: 'Reserve', visible: true },
+      { id: 'l3', name: 'CTA', type: 'text', content: 'Noite do vinho', visible: true },
+    ]
+    const d = diffDeCopy(alinharChavesDaProposta({ l1: 'Noite do vinho', l3: 'Reserve' }, trocada), copyParaDecisao(trocada))
+    expect(d.mudou).toBe(true)
+    expect(d.iguais).toEqual([])
+  })
+
+  it('camada apagada e outra criada com texto parecido segue trocada, não editada', () => {
+    const nova = [{ id: 'l9', name: 'Chamada', type: 'text', content: 'Hoje tem jantar executivo', visible: true }]
+    const d = diffDeCopy(alinharChavesDaProposta({ l1: 'Hoje tem almoço executivo' }, nova), copyParaDecisao(nova))
+    expect(desfechoPeloDiff(d)).toBe('trocada')
+  })
+
+  it('chave por nome, chave desconhecida e página ilegível ficam como vieram', () => {
+    expect(alinharChavesDaProposta({ Título: 'x', outra: 'y' }, camadas)).toEqual({ Título: 'x', outra: 'y' })
+    expect(alinharChavesDaProposta({ l1: 'x' }, 'lixo{')).toEqual({ l1: 'x' })
+    expect(alinharChavesDaProposta(null, camadas)).toBeNull()
+  })
+
+  it('mesma camada por nome e por id: vale a por nome', () => {
+    expect(alinharChavesDaProposta({ CTA: 'Reserve', l3: 'Outro' }, camadas)).toEqual({ CTA: 'Reserve', l3: 'Outro' })
   })
 })
