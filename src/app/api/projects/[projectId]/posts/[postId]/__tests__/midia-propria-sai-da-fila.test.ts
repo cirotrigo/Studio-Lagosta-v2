@@ -6,7 +6,7 @@
 import { NextRequest } from 'next/server'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const banco = vi.hoisted(() => ({ post: null as any, atualizado: null as any }))
+const banco = vi.hoisted(() => ({ post: null as any, travada: undefined as any, atualizado: null as any }))
 
 vi.mock('@clerk/nextjs/server', () => ({ auth: async () => ({ userId: 'clerk-1', orgId: null }) }))
 vi.mock('@/lib/projects/access', () => ({ hasProjectReadAccess: () => true, hasProjectWriteAccess: () => true, withProjectOwner: async (p: unknown) => p }))
@@ -25,7 +25,10 @@ vi.mock('@/lib/db', () => {
         return { ...banco.post, Generation: null, Project: { laterAccountId: null } }
       },
     },
-    $queryRaw: async () => [{ slotValues: banco.post.slotValues, mediaUrls: banco.post.mediaUrls }],
+    $queryRaw: async () => {
+      const linha = banco.travada ?? banco.post
+      return [{ slotValues: linha.slotValues, mediaUrls: linha.mediaUrls, laterPostId: linha.laterPostId }]
+    },
     $transaction: async (fazer: (tx: unknown) => Promise<unknown>) => fazer(db),
   }
   return { db }
@@ -41,6 +44,7 @@ const ERRO = 'O vídeo deste post foi removido — gere de novo no editor.'
 
 beforeEach(() => {
   banco.atualizado = null
+  banco.travada = undefined
   banco.post = {
     id: 'post-1', projectId: 8, laterPostId: null, caption: 'c', scheduledDatetime: null, postType: 'STORY', status: 'DRAFT',
     pageId: 'pg', mediaUrls: VIDEO, slotValues: { 't-h': 'legado' }, renderStatus: 'RENDER_FAILED', renderError: ERRO,
@@ -83,6 +87,22 @@ describe('PUT: mídia própria sai da fila de render só quando muda', () => {
     expect(r.status).toBe(200)
     expect(banco.atualizado).not.toHaveProperty('renderStatus')
     expect(banco.post.renderStatus).toBe('RENDER_FAILED')
+  })
+
+  it('4b. entregue no meio (laterPostId gravado entre a leitura e a trava): intocável (Codex)', async () => {
+    banco.post.mediaUrls = ['https://blob.test/antiga.png']
+    banco.travada = { ...banco.post, laterPostId: 'z1' }
+    const r = await put({ mediaUrls: ['https://blob.test/novo.mp4'] })
+    expect(r.status).toBe(200)
+    expect(banco.atualizado).not.toHaveProperty('renderStatus')
+  })
+
+  it('1b. a mídia lida era outra, mas a TRAVADA é igual à pedida: não é troca, nada muda no render', async () => {
+    banco.post.mediaUrls = ['https://blob.test/antiga.png']
+    banco.travada = { ...banco.post, mediaUrls: [...VIDEO] }
+    const r = await put({ caption: 'x', mediaUrls: [...VIDEO] })
+    expect(r.status).toBe(200)
+    expect(banco.atualizado).not.toHaveProperty('renderStatus')
   })
 
   it('5. contrato semântico: troca real continua recusada e nada é gravado (B1d)', async () => {
