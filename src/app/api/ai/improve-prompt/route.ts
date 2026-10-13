@@ -215,6 +215,18 @@ export async function POST(request: Request) {
     }
 
     const hasReferenceImages = referenceImages && referenceImages.length > 0
+
+    // Toda foto do Drive pedida precisa estar sob as pastas do projeto ANTES de
+    // cobrar: fora delas, a requisição para — igual a uma foto que não existe.
+    const idsDoDrive = (referenceImages ?? []).map(extractGoogleDriveFileId).filter((id): id is string => !!id)
+    if (idsDoDrive.length > 0) {
+      try {
+        for (const id of idsDoDrive) await assertDriveDoProjeto(projectId, id)
+      } catch {
+        return NextResponse.json({ error: 'Imagem de referência não encontrada' }, { status: 404 })
+      }
+    }
+
     console.log('[Improve Prompt] Starting for user:', userId, 'prompt length:', prompt.length, 'images:', referenceImages?.length || 0)
 
     // Validate credits (1 credit for text generation)

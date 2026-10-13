@@ -80,9 +80,18 @@ describe('POST /api/ai/improve-prompt', () => {
       }),
     )
 
-  it('lê só a foto do projeto; a de outro projeto é ignorada sem ler bytes', async () => {
-    expect((await pedir(1, ['fileA', 'fileB'])).status).toBe(200)
+  it('lê a foto do projeto', async () => {
+    expect((await pedir(1, ['fileA'])).status).toBe(200)
     expect(lidos()).toEqual(['fileA'])
+    expect(m.cobrado).toBe(1)
+  })
+  it('referência de outro projeto: 404 antes de cobrar ou ler qualquer foto', async () => {
+    const r = await pedir(1, ['fileA', 'fileB'])
+    expect(r.status).toBe(404)
+    expect(m.cobrado).toBe(0)
+    expect(lidos()).toEqual([])
+    // Mesma resposta de uma referência que não existe.
+    expect(await r.json()).toEqual(await (await pedir(1, ['naoExiste'])).json())
   })
   it('projeto sem acesso: 404 antes de cobrar ou ler', async () => {
     expect((await pedir(2, ['fileB'])).status).toBe(404)
