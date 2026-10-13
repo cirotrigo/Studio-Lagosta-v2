@@ -85,11 +85,12 @@ describe('escolher-modelo por projectHint respeita o principal', () => {
     expect(texto(await chamar({ projectHint: 'bacana' }, servico))).toContain('Bacana Bar')
   })
 
-  it('projectId numérico: passa pelo gate da porta e não consulta visibilidade', async () => {
-    const r = texto(await chamar({ projectId: 2 }))
+  it('projectId numérico: passa pelo gate da porta e, mesmo com gate permissivo, o escopo barra o id alheio', async () => {
+    const alheio = texto(await chamar({ projectId: 2 }))
     expect(gates.projeto).toHaveBeenCalledWith(2, usuario)
-    expect(m.visiveis).not.toHaveBeenCalled()
-    expect(r).toContain('Bacana Eventos')
+    expect(alheio).toContain('PROJECT_NOT_FOUND')
+    expect(alheio).not.toContain('Bacana Eventos')
+    expect(texto(await chamar({ projectId: 1 }))).toContain('NO_TEMPLATE_PAGES')
   })
 })
 

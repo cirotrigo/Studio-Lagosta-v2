@@ -259,7 +259,7 @@ async function main() {
       select: { id: true },
     })
     paginas.push(modeloDeProva.id)
-    const prep = await prepareCreative({ projectId: PROJETO, theme: 'prova-voz' })
+    const prep = await prepareCreative({ projectId: PROJETO, theme: 'prova-voz', projetosVisiveis: 'todos' })
     conferir('brand.dna.toneOfVoice é o texto da VOZ (não o toneOfVoice do DNA), contentRules null, brand.voz.fonte "voz", e o modelo de prova foi o escolhido', !!prep.brand.dna && prep.brand.dna.toneOfVoice === c8.texto && prep.brand.dna.contentRules === null && prep.brand.voz.fonte === 'voz' && prep.page.id === modeloDeProva.id, JSON.stringify({ fonte: prep.brand.voz.fonte, chars: prep.brand.dna?.toneOfVoice?.length, page: prep.page.id === modeloDeProva.id }))
     // PR7-E-01 (nota da revisão de b2d015a6): voz migrada SEM BrandDNA — o schema permite e `migrarParaVoz` aceita. O DNA
     // sai de cena só durante esta chamada e volta INTEIRO (a mesma linha) logo em seguida.
@@ -267,7 +267,7 @@ async function main() {
     if (dnaInteiro) {
       await db.brandDNA.delete({ where: { projectId: PROJETO } })
       try {
-        const prepSemDna = await prepareCreative({ projectId: PROJETO, theme: 'prova-voz' })
+        const prepSemDna = await prepareCreative({ projectId: PROJETO, theme: 'prova-voz', projetosVisiveis: 'todos' })
         conferir('cliente migrado SEM BrandDNA: brand.dna existe, toneOfVoice = texto da voz, e contentRules/composition/visualStyle/photoDirection nulos (PR7-01-R, caso da nota PR7-E-01)', !!prepSemDna.brand.dna && prepSemDna.brand.dna.toneOfVoice === prepSemDna.brand.voz.texto && prepSemDna.brand.voz.fonte === 'voz' && prepSemDna.brand.dna.contentRules === null && prepSemDna.brand.dna.composition === null && prepSemDna.brand.dna.visualStyle === null && prepSemDna.brand.dna.photoDirection === null, JSON.stringify({ fonte: prepSemDna.brand.voz.fonte, tone: prepSemDna.brand.dna?.toneOfVoice?.slice(0, 40), regras: prepSemDna.brand.dna?.contentRules }))
       } finally {
         await db.brandDNA.create({ data: dnaInteiro as never })
@@ -279,7 +279,7 @@ async function main() {
     }
     // o mesmo chamador com a migração desfeita volta ao DNA (o caminho de volta); depois remigra para os passos seguintes
     await desfazerMigracao({ projectId: PROJETO })
-    const prepLegado = await prepareCreative({ projectId: PROJETO, theme: 'prova-voz' })
+    const prepLegado = await prepareCreative({ projectId: PROJETO, theme: 'prova-voz', projetosVisiveis: 'todos' })
     conferir('com a migração desfeita, prepareCreative volta ao DNA (toneOfVoice e contentRules do DNA, voz.fonte "legado" com vozPendente)', !!prepLegado.brand.dna && prepLegado.brand.dna.toneOfVoice === (dnaAntes?.toneOfVoice ?? null) && prepLegado.brand.dna.contentRules === regrasDeProva && prepLegado.brand.voz.fonte === 'legado' && prepLegado.brand.voz.vozPendente === true, JSON.stringify({ fonte: prepLegado.brand.voz.fonte }))
     const remigrada = await migrarParaVoz({ projectId: PROJETO, versaoEsperada: 4 })
     conferir('remigrada para os passos seguintes (versão 4)', !remigrada.jaEstava && !!(await lerRegistroDaVoz(PROJETO))?.migradaEm)
