@@ -738,7 +738,10 @@ export async function efeitosDoAgendamento(
 
 export async function agendarPost(input: AgendarPostInput) {
   const r = await resolverAgendamento(input)
-  const post = await criarPostDoAgendamento(db, r)
+  // Sob a trava da agenda do projeto (H4): a criação por aqui (colocar-na-agenda, a agenda web) espera o
+  // agendar-leva do perfil draft-only que estiver rechecando o mesmo horário, e ele passa a ver este post.
+  const { comTravaPorChave, chaveDaAgenda } = await import('@/lib/trava-por-chave')
+  const post = await comTravaPorChave(chaveDaAgenda(input.projectId), (tx) => criarPostDoAgendamento(tx, r))
   await efeitosDoAgendamento(post, contextoDosEfeitos(r))
 
   const { project, vaiPublicar, avisos } = r

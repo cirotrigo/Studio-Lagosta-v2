@@ -17,6 +17,11 @@ const banco = vi.hoisted(() => {
 
 const MP4 = 'https://blob.test/video-exportado.mp4'
 
+// A trava da agenda do projeto (H4) roda a criação numa transação; aqui ela só repassa o banco falso.
+vi.mock('@/lib/trava-por-chave', async () => {
+  const { db } = await import('@/lib/db')
+  return { chaveDaAgenda: (id: number) => `agenda-slot:${id}`, comTravaPorChave: async (_chave: string, fazer: (tx: unknown) => unknown) => fazer(db) }
+})
 vi.mock('@/lib/db', () => ({
   db: {
     project: { findUnique: async () => ({ id: 8, name: 'Lagosta Criativa', userId: 'dono-interno', instagramAccountId: null }) },

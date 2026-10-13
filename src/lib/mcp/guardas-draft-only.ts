@@ -13,6 +13,7 @@
 
 import { db } from '@/lib/db';
 import { CreativeError } from '@/lib/creatives/errors';
+import { urlsAnterioresDe } from '@/lib/compositor/recompor';
 
 export const CODIGO_POST_APROVADO = 'POST_APROVADO_INTOCAVEL';
 
@@ -49,10 +50,11 @@ export async function assertPaginaSoEmRascunho(
 ): Promise<void> {
   const artes = await db.generation.findMany({
     where: { projectId, fieldValues: { path: ['pageId'], equals: pageId } },
-    select: { id: true, resultUrl: true },
+    select: { id: true, resultUrl: true, fieldValues: true },
   });
   const geracoes = artes.map((a) => a.id);
-  const urls = artes.map((a) => a.resultUrl).filter((u): u is string => !!u);
+  // As URLs que a página JÁ TEVE contam: um post aprovado pode seguir com uma delas (a recomposição guarda o rastro).
+  const urls = [...new Set(artes.flatMap((a) => [a.resultUrl, ...urlsAnterioresDe(a.fieldValues)]).filter((u): u is string => !!u))]
 
   const [porVinculo, doLote, doPlano] = await Promise.all([
     db.socialPost.findMany({
@@ -61,7 +63,7 @@ export async function assertPaginaSoEmRascunho(
         OR: [
           { pageId },
           ...(geracoes.length ? [{ generationId: { in: geracoes } }] : []),
-          ...(urls.length ? [{ mediaUrls: { hasSome: urls } }] : []),
+          ...(urls.length ? [{ mediaUrls: { hasSome: urls } }, { renderedImageUrl: { in: urls } }] : []),
         ],
       },
       select: { status: true, laterPostId: true },

@@ -65,11 +65,15 @@ const PESSOA = {
 const SERVICO = { kind: 'service' as const };
 const ENV = process.env.MCP_DRAFT_ONLY_CLIENT_IDS;
 
+const STDIO = process.env.STUDIO_SO_RASCUNHO
 beforeEach(() => {
-  process.env.MCP_DRAFT_ONLY_CLIENT_IDS = ' outro-id , cliente-dot-sintetico ';
+  process.env.MCP_DRAFT_ONLY_CLIENT_IDS = ' outro-id , cliente-dot-sintetico '
+  delete process.env.STUDIO_SO_RASCUNHO;
 });
 afterEach(() => {
-  process.env.MCP_DRAFT_ONLY_CLIENT_IDS = ENV;
+  process.env.MCP_DRAFT_ONLY_CLIENT_IDS = ENV
+  if (STDIO === undefined) delete process.env.STUDIO_SO_RASCUNHO
+  else process.env.STUDIO_SO_RASCUNHO = STDIO;
 });
 
 const texto = (r: { content: Array<{ text?: string }> }) =>
@@ -109,6 +113,15 @@ describe('perfil do principal', () => {
     expect(perfilDoPrincipal(PESSOA)).toBe('normal');
   });
 });
+
+describe('stdio em modo só-rascunho: o processo inteiro é draft-only (Codex, H4)', () => {
+  it('com STUDIO_SO_RASCUNHO=1, qualquer principal local é draft-only, e as guardas das mutações rodam', async () => {
+    process.env.STUDIO_SO_RASCUNHO = '1'
+    expect(perfilDoPrincipal(SERVICO as never)).toBe('draft-only')
+    expect(perfilDoPrincipal({ kind: 'user', userId: 'x', clientId: 'claude-code-local' })).toBe('draft-only')
+    expect(await executarToolRemota('postar-agora', {}, SERVICO as never)).toEqual(desconhecida('postar-agora'))
+  })
+})
 
 describe('tools/list', () => {
   it('A. o perfil normal (e o serviço) vê o catálogo de sempre', () => {

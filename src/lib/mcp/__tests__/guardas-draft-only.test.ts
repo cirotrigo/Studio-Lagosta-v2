@@ -175,11 +175,36 @@ describe('ajustar-arte no perfil draft-only', () => {
     expect(m.ajustarArte).not.toHaveBeenCalled();
   });
 
+  it('vínculo por URL ANTERIOR da arte ou por renderedImageUrl: recusado (Codex, H4)', async () => {
+    m.generations[0].fieldValues = { pageId: 'pg-1', recomposicao: { urlsAnteriores: ['https://blob.test/pg-1-v0.png'] } }
+    m.posts = [post({ mediaUrls: ['https://blob.test/pg-1-v0.png'], status: 'SCHEDULED' })]
+    await expect(ajustar(DOT)).rejects.toMatchObject({ code: 'POST_APROVADO_INTOCAVEL' })
+    m.posts = [post({ renderedImageUrl: 'https://blob.test/pg-1-v1.png', status: 'SCHEDULED' })]
+    await expect(ajustar(DOT)).rejects.toMatchObject({ code: 'POST_APROVADO_INTOCAVEL' })
+    expect(m.ajustarArte).not.toHaveBeenCalled()
+  })
+
+  it('rede debaixo da guarda: o ajuste do perfil pede ao serviço que só alcance rascunho', async () => {
+    await ajustar(DOT)
+    expect(m.ajustarArte).toHaveBeenLastCalledWith(expect.objectContaining({ apenasRascunho: true }))
+    await ajustar(PESSOA)
+    expect(m.ajustarArte).toHaveBeenLastCalledWith(expect.objectContaining({ apenasRascunho: false }))
+  })
+
   it('fail-closed: sem conseguir conferir, não ajusta', async () => {
     m.falharLeitura = true;
     await expect(ajustar(DOT)).rejects.toThrow(/conexão caiu/);
     expect(m.ajustarArte).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ['_imageUrl', { _imageUrl: 'https://qualquer.test/x.jpg' }],
+    ['fileUrl de camada', { fundo: { fileUrl: 'https://qualquer.test/x.jpg' } }],
+    ['fileUrl em _slots', { _slots: { foto: { fileUrl: 'https://qualquer.test/x.jpg' } } }],
+  ])('URL externa dentro de slotValues (%s) também é recusada', async (_n, slotValues) => {
+    await expect(ajustar(DOT, { slotValues })).rejects.toMatchObject({ code: 'URL_EXTERNA_RECUSADA' })
+    expect(m.ajustarArte).not.toHaveBeenCalled()
+  })
 
   it('foto por URL externa é recusada; pelo acervo passa', async () => {
     await expect(

@@ -72,6 +72,10 @@ export function perfilDoPrincipal(
   principal: McpPrincipal,
   valor?: string
 ): PerfilMcp {
+  // O stdio em modo só-rascunho: o PROCESSO inteiro é draft-only, qualquer que seja o principal local (o de
+  // serviço sem STUDIO_AUTOR, ou o usuário com clientId fixo). Sem isso as guardas das mutações permitidas não
+  // rodavam ali (revisão do Codex, H4). Na Vercel a flag não existe; se alguém a puser, o erro é para o lado seguro.
+  if (modoSoRascunhoLocal()) return 'draft-only';
   if (principal.kind !== 'user' || !principal.clientId) return 'normal';
   const ids =
     valor === undefined ? clientesDraftOnly() : clientesDraftOnly(valor);

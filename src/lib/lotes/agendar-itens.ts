@@ -53,6 +53,7 @@ import { classificarPecaDoItem, descreverArteAtualDoItem, type ArteAtualDoItem }
 import type { Superficie } from '@/lib/aprendizado/vocabulario'
 import { formatoDoTipo, ocupaOSlot } from '@/lib/posts/contexto-da-semana'
 import { TOLERANCIA_SLOT_MIN } from '@/lib/posts/cobertura'
+import { chaveDaAgenda } from '@/lib/trava-por-chave'
 import type { Prisma } from '../../../prisma/generated/client'
 import {
   decidirAgendamento,
@@ -505,9 +506,6 @@ function instanteDe(texto: string): number | null {
   }
 }
 
-/** A chave consultiva da agenda de um cliente: serializa a criação de post no mesmo projeto. */
-const CHAVE_DA_AGENDA = 'agenda-slot:'
-
 export const MOTIVO_HORARIO_OCUPADO = 'O horário já foi ocupado por outro post. Audite novamente antes de produzir.'
 
 /**
@@ -602,7 +600,7 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
   if (ctx.simular) {
     const avisos = [...avisosDoPedido, 'Simulação: nada foi gravado.']
     // Simulação só AVISA; quem garante é a transação, sob a trava do projeto.
-    if (antes.acao === 'criar') {
+    if (ctx.apenasRascunho && antes.acao === 'criar') {
       const ocupado = await horarioOcupado(ctx.leitor, projectId, pedidoValido.quando, pedidoValido.postType)
       if (ocupado) return falhou(itemId, ocupado, { generationId: antes.peca.id, pageId })
     }
@@ -646,7 +644,7 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
       // primeiro e a rechecagem dele vê o post novo. Não é global: só serializa
       // agendamentos do mesmo cliente. Ninguém mais pega esta chave antes das
       // travas de linha, então a ordem não forma ciclo.
-      await tx.$queryRaw`SELECT 1 AS ok FROM pg_advisory_xact_lock(hashtext(${CHAVE_DA_AGENDA + projectId}))`
+      await tx.$queryRaw`SELECT 1 AS ok FROM pg_advisory_xact_lock(hashtext(${chaveDaAgenda(projectId)}))`
       await tx.$queryRaw`SELECT id FROM "ItemDeLote" WHERE id = ${linha.id} FOR UPDATE`
       if (antes.peca.itemDePlanoId) {
         await tx.$queryRaw`SELECT id FROM "ItemDePlano" WHERE id = ${antes.peca.itemDePlanoId} AND "projectId" = ${projectId} FOR UPDATE`
@@ -691,7 +689,8 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
       } else {
         // Sob a trava do projeto: só agora a resposta "livre" vale. Adotar não
         // passa aqui, porque o post adotado já é o ocupante do próprio horário.
-        const ocupado = await horarioOcupado(tx, projectId, pedidoSob.pedido.quando, pedidoSob.pedido.postType)
+        // Só o perfil draft-only: a pessoa pode pôr dois stories no mesmo horário de propósito (sem regressão no normal).
+        const ocupado = ctx.apenasRascunho ? await horarioOcupado(tx, projectId, pedidoSob.pedido.quando, pedidoSob.pedido.postType) : null
         if (ocupado) return { tipo: 'recusado', resposta: falhou(itemId, ocupado, { generationId: sob.peca.id, pageId }) }
         resolucao = await resolverAgendamento(input, {
           leitor: tx,

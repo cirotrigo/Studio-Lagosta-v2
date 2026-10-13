@@ -15,9 +15,14 @@ const banco = vi.hoisted(() => {
     posts.push(post)
     return post
   }
-  return { posts, criar }
+  return { posts, criar, travas: [] as string[] }
 })
 
+// A trava da agenda do projeto (H4) roda a criação numa transação; aqui ela só repassa o banco falso.
+vi.mock('@/lib/trava-por-chave', async () => {
+  const { db } = await import('@/lib/db')
+  return { chaveDaAgenda: (id: number) => `agenda-slot:${id}`, comTravaPorChave: async (chave: string, fazer: (tx: unknown) => unknown) => (banco.travas.push(chave), fazer(db)) }
+})
 vi.mock('@/lib/db', () => ({
   db: {
     project: { findUnique: async () => ({ id: 8, name: 'Lagosta Criativa', userId: 'dono-interno', instagramAccountId: null }) },
@@ -44,6 +49,7 @@ const AVISO = /A observação só vai no lembrete/
 
 beforeEach(() => {
   banco.posts.length = 0
+  banco.travas.length = 0
 })
 
 describe('observação do lembrete no agendarPost dividido', () => {
@@ -72,5 +78,11 @@ describe('observação do lembrete no agendarPost dividido', () => {
     await criarPostDoAgendamento({ socialPost: { create: async ({ data }: { data: Record<string, unknown> }) => (escritos.push(data), { id: 'p-tx', ...data }) } } as never, r)
     expect(escritos[0]).toMatchObject({ reminderExtraInfo: 'para a enquete' })
     expect(banco.posts).toEqual([])
+  })
+
+  it('H4: o post nasce sob a trava da agenda do projeto (a mesma do agendar-leva do perfil draft-only)', async () => {
+    await agendarPost(base)
+    expect(banco.travas).toEqual(['agenda-slot:8'])
+    expect(banco.posts).toHaveLength(1)
   })
 })

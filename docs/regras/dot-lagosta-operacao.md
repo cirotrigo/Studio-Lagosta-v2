@@ -177,24 +177,44 @@ identidade dele passar do rascunho.
 - **As mutações permitidas recusam peça aprovada** (`POST_APROVADO_INTOCAVEL`,
   em `src/lib/mcp/guardas-draft-only.ts`). "Aprovada" é qualquer status que não
   seja DRAFT, ou `laterPostId` gravado. A guarda é fail-closed.
-  - `ajustar-arte` confere todos os posts ligados à página (por `pageId`, pela
-    Generation, pela mídia, pelo item de lote e pelo item de plano) e só aceita
-    foto do acervo.
+  - `ajustar-arte` confere todos os posts ligados à página: por `pageId`, pela
+    Generation, pela mídia atual e pelas URLs anteriores da arte, por
+    `renderedImageUrl`, pelo item de lote e pelo item de plano. Só aceita foto
+    do acervo: `imageUrl`, `_imageUrl` e `fileUrl` em `slotValues` são
+    recusados.
+  - **Rede debaixo da guarda:** no perfil, o próprio ajuste só invalida os
+    RASCUNHOS da página e não pede recomposição. Um post aprovado que a guarda
+    não viu, ou aprovado entre a conferência e a escrita, fica com a arte
+    aprovada.
   - `compor-leva` não devolve à produção um item já em post aprovado.
   - `agendar-leva` não adota post aprovado, não roda efeitos em volta dele e
     não recria rascunho apagado sem gente.
-- **`HORARIO_OCUPADO`** (`agendar-itens.ts`, para TODOS os perfis): sob a trava
-  consultiva do projeto (`pg_advisory_xact_lock`), qualquer post do mesmo
-  projeto e formato a ±45 min recusa a criação. Isso vale para todos os status,
-  inclusive FAILED, campanha vencida e pendente. A simulação só avisa.
+- **`HORARIO_OCUPADO`** (`agendar-itens.ts`, só no perfil draft-only): sob a
+  trava consultiva do projeto (`pg_advisory_xact_lock`, chave `chaveDaAgenda`),
+  qualquer post do mesmo projeto e formato a ±45 min recusa a criação. Isso vale
+  para todos os status, inclusive FAILED, campanha vencida e pendente. A
+  simulação só avisa.
+  - **No perfil normal não há regressão:** a pessoa pode pôr dois stories no
+    mesmo horário de propósito. A revisão do Codex apontou que aplicar a todos
+    mudava esse fluxo.
+  - **Quem também pega a trava:** o `agendar-leva` (todos os perfis) e o
+    `agendarPost`, que é a criação de `colocar-na-agenda` e da agenda web. Um
+    post criado por esses caminhos enquanto o agente rechecha é visto por ele.
   - **Por que não `SELECT Project FOR UPDATE`, como o plano previa:** a
     evidência do código mostrou que essa trava conflita com o `FOR KEY SHARE`
     que toda escrita filha do projeto pega, e enfileiraria o projeto inteiro.
     Também arriscaria deadlock com a trava da página.
-  - **O que a trava NÃO fecha:** a corrida com caminhos que não passam pelo
-    `agendar-leva` (`colocar-na-agenda`, o editor). Nenhum deles é do perfil.
-- **Stdio local:** `STUDIO_SO_RASCUNHO=1` registra só as inglesas de leitura e
-  as tools do catálogo da allowlist. Flag ausente: tudo como sempre.
+  - **O que a trava NÃO fecha:** a corrida, na janela de milissegundos do
+    commit, com caminhos que criam post sem passar por ela. São eles o
+    `plan-week` e o `create-post` do stdio, o job de vídeo e a sincronização do
+    Zernio. Nenhum deles é do perfil.
+- **Stdio local:** com `STUDIO_SO_RASCUNHO=1`, o PROCESSO inteiro é
+  draft-only, qualquer que seja o principal local. Ele registra só as inglesas
+  de leitura e as tools do catálogo da allowlist, e as guardas das mutações
+  rodam. Flag ausente: tudo como sempre.
+- **Risco aceito (decisão do owner):** o perfil é do CLIENTE OAuth, não do
+  usuário. A mesma pessoa conectada por outro cliente é `normal`. O que se
+  protege é a identidade do agente, que usa só o cliente dele.
 - **Ainda não configurado:** o cliente OAuth real do Dot e a env de produção
   (H6). Até lá, nenhum principal é `draft-only`.
 

@@ -33,7 +33,11 @@ export { normalizeLayersString } from './page-layers'
 
 type DbClient = PrismaClient | Prisma.TransactionClient
 
-export type InvalidateTarget = { templateId: number } | { pageIds: string[] } | { postIds: string[] }
+/**
+ * `apenasRascunho` (perfil draft-only, H4): a edição só devolve à fila os RASCUNHOS da página. O agendado fica com
+ * a arte que a pessoa aprovou, mesmo que ele tenha sido aprovado no meio da edição.
+ */
+export type InvalidateTarget = { templateId: number } | { pageIds: string[]; apenasRascunho?: boolean } | { postIds: string[] }
 
 /**
  * Invalida a arte renderizada dos posts que dependem da página/template
@@ -69,7 +73,7 @@ export async function invalidateScheduledRenders(
     'templateId' in target
       ? { templateId: target.templateId, pageId: { not: null } }
       : 'pageIds' in target
-        ? { pageId: { in: target.pageIds } }
+        ? { pageId: { in: target.pageIds }, ...(target.apenasRascunho ? { status: PostStatus.DRAFT } : {}) }
         : { id: { in: target.postIds }, pageId: { not: null } }
 
   const base = {

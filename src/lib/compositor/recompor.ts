@@ -84,7 +84,7 @@ const SITUACOES_ALCANCADAS = ['DRAFT', 'SCHEDULED'] as const
 const RASTRO_DE_URLS = 5
 
 /** As URLs que esta arte já teve, gravadas em `fieldValues.recomposicao`. */
-function urlsAnterioresDe(fieldValues: unknown): string[] {
+export function urlsAnterioresDe(fieldValues: unknown): string[] {
   const fv = fieldValues && typeof fieldValues === 'object' ? (fieldValues as Record<string, unknown>) : {}
   const r = fv.recomposicao && typeof fv.recomposicao === 'object' ? (fv.recomposicao as Record<string, unknown>) : {}
   return Array.isArray(r.urlsAnteriores) ? r.urlsAnteriores.filter((u): u is string => typeof u === 'string') : []

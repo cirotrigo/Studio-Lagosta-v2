@@ -1449,12 +1449,14 @@ describe('H4 — HORARIO_OCUPADO: um horário, um post', () => {
       id: 'alheio', projectId: PROJETO, pageId: 'page-alheia', postType: 'STORY', status: 'DRAFT', scheduledDatetime: em(QUANDO),
       mediaUrls: [], createdAt: 0, laterPostId: null, ...extra,
     })
+  /** A guarda é do perfil draft-only (o agente); a pessoa pode empilhar dois stories de propósito. */
+  const DOT = { apenasRascunho: true }
   const postsNovos = () => [...banco.posts.values()].filter((p) => p.id !== 'alheio')
 
   it.each(['DRAFT', 'SCHEDULED', 'POSTING', 'POSTED', 'FAILED'])('%s de outro post no horário bloqueia, sem nada gravado', async (status) => {
     criarPeca(1, { quando: QUANDO })
     postAlheio({ status, scheduledDatetime: em('2026-09-14 19:30') })
-    const r = await agendar([item(1)])
+    const r = await agendar([item(1)], DOT)
     expect(r.itens[0]).toMatchObject({ situacao: 'falhou', codigo: 'HORARIO_OCUPADO', motivo: 'O horário já foi ocupado por outro post. Audite novamente antes de produzir.' })
     // Nada do outro post vaza na resposta.
     expect(JSON.stringify(r.itens[0])).not.toContain('alheio')
@@ -1465,28 +1467,28 @@ describe('H4 — HORARIO_OCUPADO: um horário, um post', () => {
   it('campanha vencida ocupando o horário também bloqueia', async () => {
     criarPeca(1, { quando: QUANDO })
     postAlheio({ campaignId: 'campanha-velha' })
-    expect((await agendar([item(1)])).itens[0]).toMatchObject({ codigo: 'HORARIO_OCUPADO' })
+    expect((await agendar([item(1)], DOT)).itens[0]).toMatchObject({ codigo: 'HORARIO_OCUPADO' })
   })
 
   it('formato diferente não ocupa (feed no horário do story)', async () => {
     criarPeca(1, { quando: QUANDO })
     postAlheio({ postType: 'POST' })
-    expect((await agendar([item(1)])).itens[0]).toMatchObject({ situacao: 'concluido', desfecho: 'criado' })
+    expect((await agendar([item(1)], DOT)).itens[0]).toMatchObject({ situacao: 'concluido', desfecho: 'criado' })
   })
 
   it('a ±45 min ocupa (borda inclusiva); a 46 min não', async () => {
     criarPeca(2, { quando: '2026-09-15 19:00' })
     postAlheio({ scheduledDatetime: em('2026-09-15 18:14') })
-    expect((await agendar([item(2)])).itens[0]).toMatchObject({ situacao: 'concluido', desfecho: 'criado' })
+    expect((await agendar([item(2)], DOT)).itens[0]).toMatchObject({ situacao: 'concluido', desfecho: 'criado' })
     criarPeca(3, { quando: '2026-09-16 19:00' })
     banco.posts.set('alheio-2', { ...banco.posts.get('alheio')!, id: 'alheio-2', scheduledDatetime: em('2026-09-16 19:45') })
-    expect((await agendar([item(3)])).itens[0]).toMatchObject({ codigo: 'HORARIO_OCUPADO' })
+    expect((await agendar([item(3)], DOT)).itens[0]).toMatchObject({ codigo: 'HORARIO_OCUPADO' })
   })
 
   it('o retry do mesmo item é idempotente: o próprio post não ocupa o horário dele', async () => {
     criarPeca(1, { quando: QUANDO })
-    expect((await agendar([item(1)])).itens[0]).toMatchObject({ desfecho: 'criado' })
-    expect((await agendar([item(1)])).itens[0]).toMatchObject({ desfecho: 'reaproveitado' })
+    expect((await agendar([item(1)], DOT)).itens[0]).toMatchObject({ desfecho: 'criado' })
+    expect((await agendar([item(1)], DOT)).itens[0]).toMatchObject({ desfecho: 'reaproveitado' })
     expect(postsDaPagina(1)).toHaveLength(1)
   })
 
@@ -1494,7 +1496,7 @@ describe('H4 — HORARIO_OCUPADO: um horário, um post', () => {
     criarPeca(1, { quando: QUANDO })
     postAlheio()
     const antes = fotoDoBanco()
-    expect((await agendar([item(1)], { simular: true })).itens[0]).toMatchObject({ codigo: 'HORARIO_OCUPADO' })
+    expect((await agendar([item(1)], { simular: true, apenasRascunho: true })).itens[0]).toMatchObject({ codigo: 'HORARIO_OCUPADO' })
     expect(fotoDoBanco()).toEqual(antes)
   })
 
@@ -1502,13 +1504,19 @@ describe('H4 — HORARIO_OCUPADO: um horário, um post', () => {
     banco.concorrente = true
     criarPeca(1, { quando: QUANDO })
     criarPeca(2, { quando: QUANDO })
-    const [a, b] = await Promise.all([agendar([item(1)]), agendar([item(2)])])
+    const [a, b] = await Promise.all([agendar([item(1)], DOT), agendar([item(2)], DOT)])
     const desfechos = [a.itens[0], b.itens[0]].map((i) => i.desfecho ?? i.codigo).sort()
     expect(desfechos).toEqual(['HORARIO_OCUPADO', 'criado'])
     expect([...banco.posts.values()]).toHaveLength(1)
     // A segunda leu o horário DEPOIS da primeira soltar a trava do projeto: as duas pegaram a mesma chave.
     expect(banco.eventos.filter((e) => e === `trava:agenda-slot:${PROJETO}`)).toHaveLength(2)
     expect(banco.eventos.indexOf('horario:leu')).toBeGreaterThan(banco.eventos.indexOf(`trava:agenda-slot:${PROJETO}`))
+  })
+
+  it('perfil normal: sem regressão, a pessoa ainda pode pôr dois posts no mesmo horário', async () => {
+    criarPeca(1, { quando: QUANDO })
+    postAlheio()
+    expect((await agendar([item(1)])).itens[0]).toMatchObject({ situacao: 'concluido', desfecho: 'criado' })
   })
 })
 
