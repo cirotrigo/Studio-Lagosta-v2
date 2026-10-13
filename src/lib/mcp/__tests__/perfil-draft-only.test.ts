@@ -248,7 +248,7 @@ describe('manual × política', () => {
   it('o loop do manual cabe na allowlist, e o que o manual tira do loop está fora dela', () => {
     for (const nome of [
       ...MANUAL_DO_DOT.producao.antes,
-      ...MANUAL_DO_DOT.producao.caminho,
+      ...MANUAL_DO_DOT.producao.passos.map((p) => p.tool),
       'auditar-operacao',
     ]) {
       expect(TOOLS_DRAFT_ONLY.has(nome)).toBe(true);

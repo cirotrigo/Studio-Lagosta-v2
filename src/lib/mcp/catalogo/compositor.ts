@@ -513,8 +513,9 @@ export const toolsDoCompositor = [
       // Perfil draft-only (H4): item cuja identidade já virou post aprovado não volta à produção
       // (retomar ou recompor devolveria à fila um conteúdo aprovado). Conferido antes de enfileirar.
       const { perfilDoPrincipal } = await import('../registro/perfil')
+      const draftOnly = perfilDoPrincipal(principal) === 'draft-only'
       const aprovados =
-        perfilDoPrincipal(principal) === 'draft-only' && loteId !== undefined
+        draftOnly && loteId !== undefined
           ? await (await import('../guardas-draft-only')).itensDeLoteJaAprovados(
               projectId,
               loteId,
@@ -529,6 +530,20 @@ export const toolsDoCompositor = [
       // Em SÉRIE, como todo lote da casa: cada item valida e grava sozinho.
       for (const [indice, item] of itens.entries()) {
         const itemId = (item.itemId as string | undefined) ?? null
+        // Perfil draft-only (H5): a peça só nasce com foto do ACERVO. Sem foto adequada, o agente relata
+        // MATERIAL_NECESSARIO em vez de compor sobre o fundo liso só para ocupar o horário; foto por URL de fora não
+        // entra (mesma regra do ajustar-arte).
+        if (draftOnly) {
+          const candidatas = Array.isArray(item.fotosCandidatas) ? (item.fotosCandidatas as unknown[]) : []
+          if ((typeof item.fotoUrl === 'string' && item.fotoUrl.trim()) || candidatas.some((c) => typeof c === 'string' && /^https?:/i.test(c))) {
+            falhas.push({ indice, erro: 'URL_EXTERNA_RECUSADA — este perfil compõe só com foto do acervo (driveFileId de buscar-fotos). Nada foi enfileirado.', codigo: 'URL_EXTERNA_RECUSADA' })
+            continue
+          }
+          if (typeof item.fotoDriveId !== 'string' || !item.fotoDriveId.trim()) {
+            falhas.push({ indice, erro: 'MATERIAL_NECESSARIO — sem foto do acervo para esta peça. Não componha sobre o fundo liso só para ocupar o horário: relate que falta material. Nada foi enfileirado.', codigo: 'MATERIAL_NECESSARIO' })
+            continue
+          }
+        }
         if (itemId && aprovados.has(itemId)) {
           falhas.push({ indice, erro: 'POST_APROVADO_INTOCAVEL — esta peça já está num post aprovado; este perfil só trabalha em rascunho. Nada foi enfileirado.', codigo: 'POST_APROVADO_INTOCAVEL' })
           continue

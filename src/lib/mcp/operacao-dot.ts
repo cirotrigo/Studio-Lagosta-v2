@@ -17,7 +17,7 @@
 
 import { TARGET_DAYS_AHEAD } from '../posts/cobertura';
 
-export const DOT_OPERACAO_VERSAO = 'dot-operacao-v1';
+export const DOT_OPERACAO_VERSAO = 'dot-operacao-v2';
 
 /** Ciclos de revisar-arte → ajustar-arte numa peça antes de parar e chamar gente. */
 export const MAX_CICLOS_DE_REVISAO = 2;
@@ -57,12 +57,21 @@ export const MANUAL_DO_DOT = {
     hoje: 'hoje é urgência para relatar, não alvo de produção automática',
   },
   producao: {
-    antes: ['consultar-dna', 'consultar-voz', 'consultar-base', 'buscar-fotos'],
-    caminho: ['compor-leva', 'agendar-leva', 'revisar-arte', 'ajustar-arte'],
+    // Fontes antes de escrever (ver-agenda: o que já está na janela, para não repetir tema, frase nem foto).
+    antes: ['ver-agenda', 'consultar-dna', 'consultar-voz', 'consultar-base', 'buscar-fotos'],
+    // A ORDEM é parte da regra: o rascunho só nasce com a peça já revisada e aceita.
+    passos: [
+      { tool: 'compor-leva', quando: 'com loteId e itemId determinísticos' },
+      { tool: 'agendar-leva', quando: 'simular: true, até a peça sair de pendente; nada é gravado' },
+      { tool: 'revisar-arte', quando: 'na peça pronta (conferir-arte também vale)' },
+      { tool: 'ajustar-arte', quando: `se a revisão apontar problema; revisar de novo; no máximo ${MAX_CICLOS_DE_REVISAO} ciclos` },
+      { tool: 'agendar-leva', quando: 'simular: false, SÓ com a peça aceita: nasce o RASCUNHO, e a rodada PARA nesse item' },
+    ],
     loteId: 'dot-<projectId>-<AAAA>-S<semana ISO>',
     itemId: '<AAAA-MM-DD>T<HH:MM>-<story|feed>',
     maxCiclosDeRevisao: MAX_CICLOS_DE_REVISAO,
   },
+
   regras: [
     'nunca inventar preço, promoção, horário, endereço, evento, benefício ou data; fato vem da base na data da peça',
     'base e pedido em conflito: parar e relatar DECISAO_NECESSARIA',

@@ -452,6 +452,7 @@ vi.mock('@/lib/planos/plano-service', () => ({
 import { agendarItensDoLote } from '../agendar-itens'
 import { agendarPost } from '@/lib/creatives/agendar'
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
+import { auditarCarteira } from '@/lib/posts/cobertura'
 
 const PROJETO = 6
 const LOTE = 'semana-2026-09-14'
@@ -1554,3 +1555,142 @@ describe('H4 — perfil draft-only no agendar-leva: não adota nem mexe em post 
     expect(banco.itensDeLote.get('lote-1')!.efeitosDoAgendamentoEm).toBeNull()
   })
 })
+
+/**
+ * H5 do Dot — a rodada operacional como SISTEMA: a auditoria REAL (`auditarCarteira`) lê o MESMO banco falso em
+ * que o `agendarItensDoLote` REAL grava. O "agente" é a sequência de chamadas do manual (`operacao-dot.ts`):
+ * auditar → compor (aqui, a peça pronta que o compositor deixaria: `criarPeca`) → simular → [revisar] →
+ * agendar → auditar de novo. Nenhum cérebro novo: o servidor só dá estado, guardas e idempotência.
+ */
+describe('H5 — rodada operacional do Dot (auditoria real + agendamento real)', () => {
+  const AGORA = new Date('2026-09-13T12:00:00Z') // domingo 09:00 em Brasília: amanhã = 14/09, depois = 15/09
+  const SLOT = '2026-09-14 19:00'
+  const DOT = { apenasRascunho: true }
+  const em = (texto: string) => new Date(`${texto.replace(' ', 'T')}:00-03:00`)
+  const posts = () => [...banco.posts.values()]
+
+  /** A auditoria real da carteira de um cliente só, com a grade "um story às 19h todo dia". */
+  const auditar = () =>
+    auditarCarteira({
+      projetos: [{ id: PROJETO, name: 'Espeto Gaúcho' }],
+      historico: [],
+      posts: posts().map((p) => ({
+        id: p.id as string,
+        projectId: PROJETO,
+        scheduledDatetime: (p.scheduledDatetime as Date) ?? null,
+        postType: (p.postType as string) ?? 'STORY',
+        status: p.status as string,
+        mediaUrls: (p.mediaUrls as string[]) ?? [],
+        pageId: (p.pageId as string) ?? null,
+        renderStatus: (p.renderStatus as string) ?? null,
+        renderError: null,
+        errorMessage: (p.errorMessage as string) ?? null,
+        verificationStatus: null,
+        campaignId: (p.campaignId as string) ?? null,
+      })),
+      entradasDaGrade: [{ projectId: PROJETO, title: 'Padrões de Postagem — Espeto', content: 'SLOT 1 — 19h, todos os dias' }],
+      campanhas: [{ id: 'campanha-velha', projectId: PROJETO, expiresAt: new Date('2026-09-01T03:00:00Z') }],
+      comAssinatura: new Set([PROJETO]),
+      agora: AGORA,
+    }).clientes[0]
+
+  /** Um post que outra pessoa pôs na agenda: outra página, sem item de lote. */
+  const postAlheio = (extra: Record<string, unknown>) =>
+    banco.posts.set('alheio', {
+      id: 'alheio', projectId: PROJETO, pageId: 'page-alheia', postType: 'STORY', status: 'DRAFT', scheduledDatetime: em(SLOT),
+      mediaUrls: [`${BLOB}/alheia.png`], renderStatus: 'RENDERED', createdAt: 0, laterPostId: null, ...extra,
+    })
+
+  it('cenário 1 — cliente já coberto: NENHUMA, e a rodada não produz nada', async () => {
+    postAlheio({})
+    banco.posts.set('depois', { ...banco.posts.get('alheio')!, id: 'depois', scheduledDatetime: em('2026-09-15 19:00') })
+    const antes = fotoDoBanco()
+    const c = auditar()
+    expect(c).toMatchObject({ diasAdiantados: 2, acao: { codigo: 'NENHUMA' }, buracos: [] })
+    // A auditoria é observação pura: nenhum item de lote, nenhum post.
+    expect(fotoDoBanco()).toEqual(antes)
+  })
+
+  it('cenário 2 — gap amanhã + material: compor → simular → agendar → UM rascunho, nunca agendado; a rodada 2 não duplica (cenário 4)', async () => {
+    // Rodada 1.
+    const r1 = auditar()
+    expect(r1.acao.codigo).toBe('COMPOR')
+    expect(r1.buracos).toContainEqual({ data: '2026-09-14', hora: '19:00', formato: 'story', estado: 'vazio' })
+
+    criarPeca(1, { quando: SLOT }) // o que compor-leva deixa: Generation + página + ItemDeLote, peça pronta
+    const simulado = await agendar([item(1)], { ...DOT, simular: true })
+    expect(simulado.itens[0]).toMatchObject({ situacao: 'concluido', desfecho: 'criado', estadoDoPost: 'rascunho' })
+    expect(posts()).toEqual([]) // simular só informa
+    // (revisar-arte / ajustar-arte entram aqui; a peça foi aceita)
+    const real = await agendar([item(1)], DOT)
+    expect(real.itens[0]).toMatchObject({ situacao: 'concluido', desfecho: 'criado', estadoDoPost: 'rascunho' })
+    expect(posts()).toHaveLength(1)
+    expect(posts()[0]).toMatchObject({ status: 'DRAFT', pageId: 'page-1' })
+    expect(posts().some((p) => ['SCHEDULED', 'POSTING', 'POSTED'].includes(p.status as string))).toBe(false)
+    expect(auditar().amanha).toMatchObject({ estado: 'coberto', esperados: 1, cobertos: 1 })
+
+    // Rodada 2 — o agente perdeu a memória: audita de novo e repete as mesmas chamadas.
+    const r2 = auditar()
+    expect(r2.buracos.filter((b) => b.data === '2026-09-14')).toEqual([])
+    const repetida = await agendar([item(1)], DOT)
+    expect(repetida.itens[0]).toMatchObject({ desfecho: 'reaproveitado' })
+    expect(posts()).toHaveLength(1)
+    expect([...banco.itensDeLote.values()]).toHaveLength(1)
+  })
+
+  it('cenário 4 — rascunho já existe no horário (outra origem): coberto, e uma produção por cima é recusada', async () => {
+    postAlheio({})
+    expect(auditar().amanha.estado).toBe('coberto')
+    criarPeca(1, { quando: SLOT })
+    expect((await agendar([item(1)], DOT)).itens[0]).toMatchObject({ situacao: 'falhou', codigo: 'HORARIO_OCUPADO' })
+    expect(posts().map((p) => p.id)).toEqual(['alheio'])
+  })
+
+  it('cenário 5 — FAILED no horário: pendente + RELATAR_FALHA, e um substituto é recusado', async () => {
+    postAlheio({ status: 'FAILED', errorMessage: 'Later account not configured' })
+    const c = auditar()
+    expect(c.buracos).toContainEqual(expect.objectContaining({ data: '2026-09-14', estado: 'pendente', motivo: 'falhou' }))
+    expect(c.acao.codigo).toBe('RELATAR_FALHA')
+    expect(c.falhas[0]).toMatchObject({ tipo: 'publicacao', motivo: 'conta do Instagram não conectada' })
+    criarPeca(1, { quando: SLOT })
+    expect((await agendar([item(1)], DOT)).itens[0]).toMatchObject({ codigo: 'HORARIO_OCUPADO' })
+    expect(posts()).toHaveLength(1)
+    // A recuperação é do sistema; quando o horário ficar VAZIO de verdade, a auditoria volta a pedir COMPOR.
+    banco.posts.delete('alheio')
+    expect(auditar().acao.codigo).toBe('COMPOR')
+  })
+
+  it('cenário 6 — campanha vencida ocupando o horário: pendente, não cobre, e nada é criado por cima', async () => {
+    postAlheio({ status: 'SCHEDULED', campaignId: 'campanha-velha' })
+    const c = auditar()
+    expect(c.amanha.estado).toBe('pendente')
+    expect(c.buracos).toContainEqual(expect.objectContaining({ estado: 'pendente', motivo: 'campanha-vencida' }))
+    expect(c.acoes.map((a) => a.codigo)).toContain('CONSERTO_PENDENTE')
+    // O horário da campanha vencida NÃO é buraco vazio (o COMPOR que existe é o de 15/09, vazio de verdade).
+    expect(c.buracos.filter((b) => b.data === '2026-09-14')).toEqual([expect.objectContaining({ estado: 'pendente' })])
+    criarPeca(1, { quando: SLOT })
+    expect((await agendar([item(1)], DOT)).itens[0]).toMatchObject({ codigo: 'HORARIO_OCUPADO' })
+  })
+
+  it('cenário 8 — peça reprovada na revisão: sem agendar real não nasce rascunho "pronto"; o horário segue honesto (VAZIO) e a rodada seguinte reaproveita a mesma identidade', async () => {
+    criarPeca(1, { quando: SLOT })
+    // A revisão reprovou duas vezes: o agente para (REVISAO_HUMANA_NECESSARIA) e NÃO chama agendar-leva real.
+    await agendar([item(1)], { ...DOT, simular: true })
+    expect(posts()).toEqual([])
+    expect(auditar().buracos).toContainEqual(expect.objectContaining({ data: '2026-09-14', estado: 'vazio' }))
+    // Nenhuma peça nova nasce para o mesmo buraco: a identidade (loteId, itemId) é a mesma — ver o teste de reserva.
+    expect([...banco.itensDeLote.values()]).toHaveLength(1)
+  })
+
+  it('cenário 9 — slot preenchido DEPOIS da auditoria: o agendamento real revalida e recusa (HORARIO_OCUPADO), sem segundo post', async () => {
+    expect(auditar().acao.codigo).toBe('COMPOR') // a auditoria viu VAZIO
+    criarPeca(1, { quando: SLOT })
+    expect((await agendar([item(1)], { ...DOT, simular: true })).itens[0]).toMatchObject({ desfecho: 'criado' })
+    postAlheio({}) // outra pessoa ocupou o horário entre a auditoria e a escrita
+    const r = await agendar([item(1)], DOT)
+    expect(r.itens[0]).toMatchObject({ situacao: 'falhou', codigo: 'HORARIO_OCUPADO' })
+    expect(posts()).toHaveLength(1)
+    // A corrida simultânea (itens A e B ao mesmo tempo) está provada em 'H4 — HORARIO_OCUPADO', CORRIDA.
+  })
+})
+

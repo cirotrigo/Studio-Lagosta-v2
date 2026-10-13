@@ -236,8 +236,8 @@ describe('compor-leva no perfil draft-only', () => {
         projectId: 8,
         loteId: 'dot-8-2026-S42',
         itens: [
-          { itemId: 'aprovado', blocos: [] },
-          { itemId: 'novo', blocos: [] },
+          { itemId: 'aprovado', blocos: [], fotoDriveId: 'drive-1' },
+          { itemId: 'novo', blocos: [], fotoDriveId: 'drive-1' },
         ],
       },
       principal

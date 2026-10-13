@@ -1,4 +1,4 @@
-# Dot Lagosta: Constituição Operacional (`dot-operacao-v1`)
+# Dot Lagosta: Constituição Operacional (`dot-operacao-v2`)
 
 Criada em 13/10/2026 (H3 do Dot; o mapa e as decisões estão em
 `docs/PLANO-2026-10-13-DOT-OPERACAO-H1.md`).
@@ -104,9 +104,27 @@ compositor, sem crédito, previsível e idempotente pela leva.
 7. Deixar tudo em rascunho.
 8. Relatar o que precisa de humano.
 
-**Produção**: antes, `consultar-dna`, `consultar-voz` e `consultar-base` (os fatos
-na data da peça) e `buscar-fotos`. Depois, `compor-leva` e
-`agendar-leva` (simulando antes), que cria só rascunho.
+**Produção** (a ordem faz parte da regra; `v2`, H5):
+
+- **Antes de escrever:**
+  - `ver-agenda`, para ver o que já está na janela e não repetir tema, frase nem foto;
+  - `consultar-dna`, `consultar-voz` e `consultar-base` (os fatos na data da peça);
+  - `buscar-fotos`.
+- **Depois, em ordem:**
+  1. `compor-leva`, com identidade determinística.
+  2. `agendar-leva` com `simular: true`, até a peça sair de pendente. Nada é gravado.
+  3. `revisar-arte` (ou `conferir-arte`) na peça.
+  4. `ajustar-arte`, se a revisão apontar problema, e revisar de novo. No máximo 2 ciclos.
+  5. `agendar-leva` com `simular: false`, SÓ com a peça aceita. Nasce o rascunho e o item para ali.
+
+Peça que não passou na revisão não vira rascunho. Como a identidade é a
+mesma, a próxima rodada reaproveita a peça e não cria outra.
+
+**Repetição de tema é decisão do agente**, com a informação que o MCP entrega:
+- os textos completos das peças da janela, no `ver-agenda`;
+- o rodízio de fotos do `buscar-fotos`.
+
+Não há regra de similaridade no servidor (H5).
 
 **Sinais para gente:**
 - MATERIAL_NECESSARIO: sem foto adequada; nada de improvisar asset;
@@ -190,7 +208,10 @@ identidade dele passar do rascunho.
     página e não pede recomposição.
   - **Slide de carrossel não é do perfil** (`CARROSSEL_FORA_DO_PERFIL`): a
     mudança só chegaria ao post pela recomposição, que alcança agendados.
-  - `compor-leva` não devolve à produção um item já em post aprovado.
+  - `compor-leva` não devolve à produção um item já em post aprovado. Também
+    exige foto do ACERVO (`fotoDriveId`): sem ela, `MATERIAL_NECESSARIO`; com
+    `fotoUrl` ou candidatas por URL, `URL_EXTERNA_RECUSADA`. O agente não compõe
+    sobre o fundo liso só para ocupar o horário (H5).
   - `agendar-leva` não adota post aprovado, não roda efeitos em volta dele e
     não recria rascunho apagado sem gente.
 - **`HORARIO_OCUPADO`** (`agendar-itens.ts`, só no perfil draft-only): sob a
