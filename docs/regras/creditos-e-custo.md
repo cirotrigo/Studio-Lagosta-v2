@@ -113,7 +113,10 @@ lida a cada chamada. **Padrão: desligada** (qualquer valor que não seja `true`
     erro marcava FAILED um post já publicado, sem `laterPostId` — o retry o
     reenviaria. Falha da cobrança agora vira `PostLog` SENT com
     `{ cobrancaFalhou: true, laterPostId }`, nunca falha do post. Falha antes do
-    Zernio segue FAILED + `handlePublishFailure`.
+    Zernio segue FAILED + `handlePublishFailure`. Com a flag LIGADA, o saldo é
+    validado antes do `createPost`: insuficiente, o post não sai (FAILED +
+    `handlePublishFailure`, que não retenta crédito) — é o que mantém o "religar
+    a cobrança" honesto, já que a cobrança depois do Zernio nunca falha o post.
   - Se a gravação do `laterPostId` falhar DEPOIS do `createPost`, o envio é
     INCERTO, não FAILED: tenta uma gravação mínima só do `laterPostId`
     (`where laterPostId IS NULL`); se ela também falhar, a linha fica POSTING,
