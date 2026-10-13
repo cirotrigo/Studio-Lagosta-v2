@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { google } from 'googleapis'
 import { z } from 'zod'
+import { auth } from '@clerk/nextjs/server'
+import { isAdmin } from '@/lib/admin-utils'
 
 export const runtime = 'nodejs'
 
@@ -12,6 +14,15 @@ const querySchema = z.object({
 
 export async function GET(request: Request) {
   try {
+    // Devolve os tokens da conta do Drive de todos os projetos: só admin.
+    const { userId } = await auth()
+    if (!userId) {
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+    }
+    if (!(await isAdmin(userId))) {
+      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
+    }
+
     const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID
     const clientSecret = process.env.GOOGLE_DRIVE_CLIENT_SECRET
     const publicUrl = process.env.PUBLIC_URL ?? 'http://localhost:3000'
@@ -33,7 +44,7 @@ export async function GET(request: Request) {
     const cookieStore = await cookies()
     const storedState = cookieStore.get('drive_oauth_state')?.value
 
-    if (storedState && parseResult.data.state !== storedState) {
+    if (!storedState || parseResult.data.state !== storedState) {
       return NextResponse.json({ error: 'Estado inválido' }, { status: 400 })
     }
 
@@ -53,7 +64,7 @@ export async function GET(request: Request) {
       httpOnly: true,
       sameSite: 'lax',
       secure: publicUrl.startsWith('https://'),
-      path: '/google-drive-callback',
+      path: '/api/google-drive/callback',
       maxAge: 0,
     })
 
