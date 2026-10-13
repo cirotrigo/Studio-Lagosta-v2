@@ -627,7 +627,13 @@ describe('H6 — conflitos de horário: dois ou mais posts no mesmo horário esp
     const rodar = (posts: PostDaJanela[]) => coberturaDoProjeto({ expectativa, posts, campanhasExpiram: new Map(), agora: AGORA })
     const certos = [pronto('a', `${AMANHA} 10:00`), pronto('b', `${AMANHA} 10:30`)]
     expect(rodar(certos).conflitosDeHorario).toEqual([])
-    const comTerceiro = rodar([...certos, pronto('c', `${AMANHA} 10:15`)])
-    expect(comTerceiro.conflitosDeHorario).toEqual([expect.objectContaining({ data: AMANHA, quantidade: 3, postIds: ['a', 'b', 'c'] })])
+    // Um terceiro, empatado entre os dois, vai para o mais cedo: conflito às 10h.
+    expect(rodar([...certos, pronto('c', `${AMANHA} 10:15`)]).conflitosDeHorario).toEqual([
+      { data: AMANHA, hora: '10:00', formato: 'story', quantidade: 2, postIds: ['a', 'c'] },
+    ])
+    // Dois posts às 10h (duplicata) numa grade 10h + 10h30: conflito, mesmo com o 10h30 "ocupado" pela tolerância.
+    expect(rodar([pronto('a', `${AMANHA} 10:00`), pronto('d', `${AMANHA} 10:00`)]).conflitosDeHorario).toEqual([
+      { data: AMANHA, hora: '10:00', formato: 'story', quantidade: 2, postIds: ['a', 'd'] },
+    ])
   })
 })

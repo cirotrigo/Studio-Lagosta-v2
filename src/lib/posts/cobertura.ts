@@ -310,23 +310,25 @@ export interface ConflitoDeHorario {
 }
 
 /**
- * Conflito = MAIS posts no horário do que horários esperados do mesmo formato na vizinhança dele (±45 min, a
- * mesma tolerância da ocupação). Numa grade com 11h e 11h30, os dois posts certos (um em cada) caem nos dois
- * horários, e isso não é conflito; um terceiro é (revisão do Codex, H6).
+ * Os conflitos de um dia. Cada post que ocupa algum horário esperado (`ocupaOSlot`) é contado no horário
+ * esperado MAIS PRÓXIMO dentre os que ele ocupa (empate: o mais cedo). Conflito = dois ou mais posts no mesmo
+ * horário. Assim, numa grade com 11h e 11h30, um post em cada não é conflito, e dois posts às 11h são (revisão
+ * do Codex, H6: contar quantos posts ocupam o horário confundia os dois casos).
  */
-function conflitoNoSlot(slot: SlotEsperado, ocupantes: Ocupante[], slotsDoDia: SlotEsperado[]): ConflitoDeHorario | null {
-  const no = ocupantesDoSlot(slot, ocupantes);
-  const vizinhos = slotsDoDia.filter(
-    (v) => v.formato === slot.formato && Math.abs(v.quandoUTC - slot.quandoUTC) <= TOLERANCIA_SLOT_MIN * 60_000
-  ).length;
-  if (no.length < 2 || no.length <= vizinhos) return null;
-  return {
-    data: slot.data,
-    hora: slot.hora,
-    formato: slot.formato,
-    quantidade: no.length,
-    postIds: no.map((o) => o.post.id).sort(),
-  };
+function conflitosDoDia(slots: SlotEsperado[], ocupantes: Ocupante[]): ConflitoDeHorario[] {
+  const porSlot = new Map<SlotEsperado, Ocupante[]>()
+  for (const o of ocupantes) {
+    const ocupados = slots.filter((s) => ocupaOSlot(o, s.quandoUTC, s.formato, TOLERANCIA_SLOT_MIN))
+    if (ocupados.length === 0) continue
+    const [maisPerto] = [...ocupados].sort((a, b) => Math.abs(o.t - a.quandoUTC) - Math.abs(o.t - b.quandoUTC) || a.quandoUTC - b.quandoUTC)
+    porSlot.set(maisPerto, [...(porSlot.get(maisPerto) ?? []), o])
+  }
+  return slots
+    .filter((s) => (porSlot.get(s)?.length ?? 0) >= 2)
+    .map((s) => {
+      const no = porSlot.get(s)!
+      return { data: s.data, hora: s.hora, formato: s.formato, quantidade: no.length, postIds: no.map((o) => o.post.id).sort() }
+    })
 }
 
 function classificarSlot(
@@ -477,15 +479,12 @@ function avaliarDia(
       conflitos: [],
     };
   const buracos: Buraco[] = [];
-  const conflitos: ConflitoDeHorario[] = [];
+  const conflitos = conflitosDoDia(slots, ocupantes);
   let cobertos = 0;
   for (const slot of slots) {
     const r = classificarSlot(slot, ocupantes);
     if (r.estado === 'coberto') cobertos++;
     else buracos.push(r);
-    const conflito = conflitoNoSlot(slot, ocupantes, slots);
-    // O mesmo grupo de posts visto de dois horários vizinhos é UM conflito.
-    if (conflito && !conflitos.some((c) => c.postIds.join() === conflito.postIds.join())) conflitos.push(conflito);
   }
   const estado: EstadoDoDia = buracos.some((b) => b.estado === 'vazio')
     ? 'falta'
