@@ -6,7 +6,7 @@ import { assertRateLimit, RateLimitError } from '@/lib/rate-limit'
 import { fetchProjectWithShares, hasProjectReadAccess } from '@/lib/projects/access'
 import type { GoogleDriveItem } from '@/types/google-drive'
 import { idDoDriveValido } from '@/lib/google-drive/id'
-import { filtrarAtalhosDoEscopo, raizesNaRotaDoProjeto } from '@/lib/google-drive/escopo'
+import { DriveIndisponivelError, filtrarAtalhosDoEscopo, raizesNaRotaDoProjeto } from '@/lib/google-drive/escopo'
 
 const querySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
@@ -169,13 +169,18 @@ export async function GET(
       })
     }
 
+    // Responde antes de guardar: atalho sem conferência (503) não vai ao cache.
+    const resposta = await responder(result.items)
     projectDriveImagesCache.set(cacheKey, {
       payload: result.items,
       timestamp: Date.now(),
     })
 
-    return NextResponse.json(await responder(result.items))
+    return NextResponse.json(resposta)
   } catch (error) {
+    if (error instanceof DriveIndisponivelError) {
+      return NextResponse.json({ error: 'Google Drive indisponível, tente de novo' }, { status: 503 })
+    }
     if (error instanceof RateLimitError) {
       if (cacheKey) {
         const cachedPayload = getCachedProjectDriveImages(cacheKey)

@@ -3,7 +3,7 @@ import { auth } from '@clerk/nextjs/server'
 import { z } from 'zod'
 import { googleDriveService } from '@/server/google-drive-service'
 import { assertRateLimit, RateLimitError } from '@/lib/rate-limit'
-import { driveItemPermitido, escopoDoDriveWeb, filtrarAtalhosDoEscopo } from '@/lib/google-drive/escopo'
+import { DriveIndisponivelError, driveItemPermitido, escopoDoDriveWeb, filtrarAtalhosDoEscopo } from '@/lib/google-drive/escopo'
 import type { GoogleDriveListResponse } from '@/types/google-drive'
 
 const querySchema = z.object({
@@ -131,6 +131,9 @@ export async function GET(req: Request) {
 
     return NextResponse.json(result)
   } catch (error) {
+    if (error instanceof DriveIndisponivelError) {
+      return NextResponse.json({ error: 'Google Drive indisponível, tente de novo' }, { status: 503 })
+    }
     if (error instanceof RateLimitError) {
       if (cacheKey) {
         const cachedPayload = getCachedDriveFilesPayload(cacheKey)

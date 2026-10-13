@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { googleDriveService } from '@/server/google-drive-service'
 import { assertRateLimit, RateLimitError } from '@/lib/rate-limit'
 import { db } from '@/lib/db'
-import { filtrarAtalhosDoEscopo, idsDoDriveNaRotaDoProjeto, raizesNaRotaDoProjeto } from '@/lib/google-drive/escopo'
+import { DriveIndisponivelError, filtrarAtalhosDoEscopo, idsDoDriveNaRotaDoProjeto, raizesNaRotaDoProjeto } from '@/lib/google-drive/escopo'
 import { PermissionError, requireProjectAccess } from '@/lib/permissions'
 import type { DriveFolderType } from '@/types/drive'
 import type { GoogleDriveItem } from '@/types/google-drive'
@@ -234,6 +234,9 @@ export async function GET(req: Request) {
 
     return NextResponse.json(payload)
   } catch (error) {
+    if (error instanceof DriveIndisponivelError) {
+      return NextResponse.json({ error: 'Google Drive indisponível, tente de novo' }, { status: 503 })
+    }
     // Projeto inexistente, sem acesso e pasta fora do projeto: a mesma resposta.
     if (error instanceof PermissionError) {
       return naoEncontrado()

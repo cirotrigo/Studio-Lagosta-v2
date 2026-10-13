@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { z } from 'zod'
 import { googleDriveService } from '@/server/google-drive-service'
-import { filtrarAtalhosDoEscopo, idsDoDriveNaRotaDoProjeto, raizesNaRotaDoProjeto } from '@/lib/google-drive/escopo'
+import { DriveIndisponivelError, filtrarAtalhosDoEscopo, idsDoDriveNaRotaDoProjeto, raizesNaRotaDoProjeto } from '@/lib/google-drive/escopo'
 import { PermissionError, requireProjectAccess } from '@/lib/permissions'
 
 const naoEncontrado = () => NextResponse.json({ error: 'Não encontrado' }, { status: 404 })
@@ -85,6 +85,9 @@ export async function GET(req: Request) {
       files: mapped,
     })
   } catch (error) {
+    if (error instanceof DriveIndisponivelError) {
+      return NextResponse.json({ error: 'Google Drive indisponível, tente de novo' }, { status: 503 })
+    }
     // Projeto inexistente, sem acesso e pasta fora do projeto: a mesma resposta.
     if (error instanceof PermissionError) {
       return naoEncontrado()

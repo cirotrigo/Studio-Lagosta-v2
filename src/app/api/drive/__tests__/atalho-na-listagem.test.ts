@@ -198,3 +198,98 @@ describe('projects/[id]/google-drive/images: offset é posição na listagem gua
     expect(drive.listFiles).toHaveBeenCalledTimes(1)
   })
 })
+
+/**
+ * Drive limitando (429/500) na conferência dos atalhos: atalho que não deu
+ * para conferir não é "negado" — a listagem inteira responde 503, nada vai
+ * para o cache, e a seguinte (sem limitação) volta completa. As conferências
+ * rodam com no máximo 5 em voo.
+ *
+ * Fica por ÚLTIMO no arquivo: avança o relógio para vencer o cache das
+ * listagens dos testes anteriores.
+ */
+describe('Drive limitando na conferência dos atalhos', () => {
+  const N = 12
+  const atalhos = [
+    ...Array.from({ length: N }, (_, i) => `muitosA${i}`),
+    ...Array.from({ length: N }, (_, i) => `muitosImg${i}`),
+  ]
+  const f = vi.hoisted(() => ({ limitando: false, emVoo: 0, maximo: 0 }))
+  let relogio = Date.now() + 10 * 60_000
+
+  beforeEach(async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    relogio += 10 * 60_000
+    vi.setSystemTime(relogio)
+    for (let i = 0; i < N; i++) {
+      ARVORE[`muitosA${i}`] = { parents: ['childA'], mimeType: 'application/vnd.google-apps.shortcut', targetId: 'fileAimg' }
+      ARVORE[`muitosImg${i}`] = { parents: ['rootAimg'], mimeType: 'application/vnd.google-apps.shortcut', targetId: 'fileA' }
+    }
+    f.limitando = false
+    f.emVoo = 0
+    f.maximo = 0
+    const { metaFalsa } = await import('@/lib/google-drive/__tests__/arvore-falsa')
+    drive.getFileMetadata.mockImplementation(async (id: string, campos?: string) => {
+      f.emVoo++
+      f.maximo = Math.max(f.maximo, f.emVoo)
+      try {
+        await new Promise((r) => setTimeout(r, 1))
+        if (f.limitando && /^muitos/.test(id) && Number(id.replace(/\D/g, '')) % 3 === 1) {
+          throw Object.assign(new Error('Rate limit /segredo'), { code: 429, response: { status: 429 } })
+        }
+        return metaFalsa(id, campos)
+      } finally {
+        f.emVoo--
+      }
+    })
+    return () => {
+      for (const id of atalhos) delete ARVORE[id]
+      drive.getFileMetadata.mockImplementation(metaFalsa)
+      vi.useRealTimers()
+    }
+  })
+
+  // O download lê o nome da pasta ao lado da listagem: uma leitura a mais em
+  // voo, fora das conferências de atalho.
+  const teto = (nome: string) => (nome === 'drive/folders/download' ? 6 : 5)
+
+  const ROTAS_LIMITADAS: Array<[string, () => Promise<Response>, string, () => number]> = [
+    ['google-drive/files', () => listarWeb(new Request('http://t/x?folderId=childA&mode=images')), 'muitosA', () => drive.listFiles.mock.calls.length],
+    ['drive/list', () => listarDoProjeto(new Request('http://t/x?projectId=1&folderId=childA')), 'muitosA', () => drive.listFiles.mock.calls.length],
+    [
+      'drive/folders/download',
+      () => baixarPasta(new Request('http://t/x?projectId=1&folderId=childA')),
+      'muitosA',
+      () => drive.listFolderFiles.mock.calls.length,
+    ],
+    [
+      'projects/[id]/google-drive/images',
+      () => imagensDoProjeto(new Request('http://t/x?limit=100'), { params: Promise.resolve({ projectId: '1' }) }),
+      'muitosImg',
+      () => drive.listFiles.mock.calls.length,
+    ],
+  ]
+
+  it.each(ROTAS_LIMITADAS)('%s: 503 sem lista parcial e sem cache; depois, lista completa', async (nome, chamar, prefixo, listagens) => {
+    f.limitando = true
+    const falha = await corpo(await chamar())
+    expect(falha.status).toBe(503)
+    expect(falha.texto).not.toMatch(/segredo|429|muitos|Rate/)
+    expect(f.maximo).toBeLessThanOrEqual(teto(nome))
+
+    f.limitando = false
+    const ok = await corpo(await chamar())
+    expect(ok.status).toBe(200)
+    for (let i = 0; i < N; i++) expect(ok.texto).toContain(`"${prefixo}${i}"`)
+    // a falha não foi guardada: a segunda resposta veio de uma listagem nova
+    expect(listagens()).toBe(2)
+    expect(f.maximo).toBeLessThanOrEqual(teto(nome))
+    expect(f.maximo).toBeGreaterThan(1)
+  })
+
+  it('admin não confere atalho: a limitação não o afeta', async () => {
+    m.userId = 'user_admin'
+    f.limitando = true
+    expect((await listarWeb(new Request('http://t/x?folderId=childA&mode=images'))).status).toBe(200)
+  })
+})

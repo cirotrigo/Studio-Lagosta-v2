@@ -33,14 +33,21 @@ export interface MetaDoDrive {
   targetId: string | null
 }
 
+/**
+ * `null` = o Drive disse que não existe (404); `'erro'` = não deu para
+ * perguntar (limite, 5xx, rede). As duas recusam, mas só a segunda deixa a
+ * listagem pedir nova tentativa em vez de esconder o item.
+ */
+type MetaLida = MetaDoDrive | null | 'erro'
+
 /** Memória de UMA requisição. Nunca guarde decisões entre requisições. */
-export type MemoDoDrive = Map<string, Promise<MetaDoDrive | null>>
+export type MemoDoDrive = Map<string, Promise<MetaLida>>
 
 export type DecisaoDoDrive = { permitido: true; idEfetivo: string } | { permitido: false; motivo: string }
 
 export { idDoDriveValido }
 
-function lerMeta(id: string, memo?: MemoDoDrive): Promise<MetaDoDrive | null> {
+function lerMeta(id: string, memo?: MemoDoDrive): Promise<MetaLida> {
   const guardado = memo?.get(id)
   if (guardado) return guardado
   const lido = buscarMeta(id)
@@ -48,7 +55,7 @@ function lerMeta(id: string, memo?: MemoDoDrive): Promise<MetaDoDrive | null> {
   return lido
 }
 
-async function buscarMeta(id: string): Promise<MetaDoDrive | null> {
+async function buscarMeta(id: string): Promise<MetaLida> {
   try {
     const f = (await googleDriveService.getFileMetadata(id, CAMPOS)) as {
       id?: string | null
@@ -65,8 +72,9 @@ async function buscarMeta(id: string): Promise<MetaDoDrive | null> {
       mimeType: f.mimeType ?? null,
       targetId: f.shortcutDetails?.targetId ?? null,
     }
-  } catch {
-    return null
+  } catch (erro) {
+    const e = erro as { code?: unknown; response?: { status?: unknown } } | null
+    return (e?.response?.status ?? e?.code) === 404 ? null : 'erro'
   }
 }
 
@@ -88,6 +96,7 @@ async function posicaoPermitida(
   maxima: number,
 ): Promise<{ meta: MetaDoDrive } | { motivo: string }> {
   const item = await lerMeta(itemId, memo)
+  if (item === 'erro') return { motivo: 'erro-api' }
   if (!item) return { motivo: 'nao-encontrado' }
   if (item.trashed) return { motivo: 'lixeira' }
   if (validas.has(itemId)) return { meta: item }
@@ -103,6 +112,7 @@ async function posicaoPermitida(
     if (profundidade > maxima) return { motivo: 'profundidade' }
     vistos.add(pai)
     const meta = await lerMeta(pai, memo)
+    if (meta === 'erro') return { motivo: 'erro-api' }
     if (!meta) return { motivo: 'pai-nao-encontrado' }
     if (meta.trashed) return { motivo: 'lixeira' }
     if (validas.has(pai)) return { meta: item }
@@ -155,6 +165,17 @@ export async function todosPermitidos(
     : null
 }
 
+/** Um atalho da listagem não pôde ser conferido: a listagem pede nova tentativa (503). */
+export class DriveIndisponivelError extends Error {
+  constructor() {
+    super('Drive indisponível para conferir atalhos')
+    this.name = 'DriveIndisponivelError'
+  }
+}
+
+/** Quantas conferências de atalho rodam juntas (o Drive limita por segundo). */
+const CONFERENCIAS_EM_VOO = 5
+
 interface ItemListado {
   id: string
   mimeType?: string | null
@@ -166,6 +187,10 @@ interface ItemListado {
  * atalho só passa se `driveItemPermitido` aceitar (posição E destino sob as
  * raízes). A listagem troca o tipo do atalho pelo do destino, então
  * `shortcutDetails` também marca atalho. Admin não passa por aqui.
+ *
+ * Atalho que não deu para conferir (erro do Drive, não 404) não vira recusa
+ * silenciosa: lança `DriveIndisponivelError`, e a rota responde 503 sem
+ * guardar nada no cache.
  */
 export async function filtrarAtalhosDoEscopo<T extends ItemListado>(
   itens: readonly T[],
@@ -173,14 +198,19 @@ export async function filtrarAtalhosDoEscopo<T extends ItemListado>(
   opts: { memo?: MemoDoDrive } = {},
 ): Promise<T[]> {
   const memo = opts.memo ?? new Map()
-  // ponytail: Promise.all sem teto; atalho é raro e o memo divide os ancestrais.
-  const manter = await Promise.all(
-    itens.map(async (item) =>
-      item.mimeType !== ATALHO && item.shortcutDetails == null
-        ? true
-        : (await driveItemPermitido(item.id, raizes, { memo })).permitido,
-    ),
-  )
+  const ehAtalho = (item: T) => item.mimeType === ATALHO || item.shortcutDetails != null
+  const manter = itens.map((item) => !ehAtalho(item))
+  const fila = itens.flatMap((item, i) => (ehAtalho(item) ? [i] : []))
+  let indisponivel = false
+  const trabalhador = async () => {
+    for (let i = fila.shift(); i !== undefined && !indisponivel; i = fila.shift()) {
+      const decisao = await driveItemPermitido(itens[i].id, raizes, { memo })
+      if (decisao.permitido) manter[i] = true
+      else if ('motivo' in decisao && decisao.motivo.endsWith('erro-api')) indisponivel = true
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(CONFERENCIAS_EM_VOO, fila.length) }, trabalhador))
+  if (indisponivel) throw new DriveIndisponivelError()
   return itens.filter((_, i) => manter[i])
 }
 
