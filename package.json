@@ -20,6 +20,7 @@
     "test": "npm run test:e2e",
     "typecheck": "tsc --noEmit",
     "test:e2e": "playwright test",
+    "test:unit": "vitest run",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "db:docker": "node scripts/setup-postgres-docker.mjs",

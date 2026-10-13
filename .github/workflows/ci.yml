@@ -1,5 +1,6 @@
-# CI mínimo: typecheck + lint em todo push/PR na main.
-# Sem testes (não existem) e sem deploy (a Vercel cuida do build de produção).
+# CI: typecheck, lint, testes unitários (Vitest) e os validadores do MCP em todo push/PR na main.
+# Sem deploy (a Vercel cuida do build de produção). Os unitários são HERMÉTICOS: sem banco e sem rede
+# (vitest.setup.ts) — nenhum secret entra aqui. Playwright (e2e) não roda neste job.
 # O postinstall do npm ci já roda `prisma generate`, mas o passo explícito
 # fica como rede de segurança caso o postinstall mude.
 name: CI
@@ -31,6 +32,11 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      # Gate obrigatório: falha de teste derruba o job. Sem DATABASE_URL de propósito — o teste que alcançar o
+      # banco real quebra no import (ver vitest.setup.ts).
+      - name: Testes unitários (Vitest)
+        run: npm run test:unit
 
       # Roda SEM env de propósito: o catálogo tem de carregar sem DATABASE_URL
       # (handlers só alcançam db por import dinâmico) — ver o cabeçalho do script.
