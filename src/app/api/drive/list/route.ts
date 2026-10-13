@@ -89,6 +89,9 @@ function getCachedDriveListPayload(cacheKey: string) {
 
 export async function GET(req: Request) {
   let cacheKey: string | null = null
+  // O cache guarda a listagem, nunca a decisão: toda resposta (cache
+  // inclusive) reconfere os atalhos contra as pastas do projeto de AGORA.
+  let reconferir = async (p: DriveListRoutePayload) => p
   try {
     const { userId, orgId } = await auth()
     if (!userId) {
@@ -137,6 +140,10 @@ export async function GET(req: Request) {
       return naoEncontrado()
     }
     const effectiveFolderId = permitidos[0]
+    // A pasta foi conferida, os filhos não: atalho para fora do projeto sai
+    // (admin: Drive inteiro).
+    const raizes = await raizesNaRotaDoProjeto(userId, projectId)
+    if (raizes) reconferir = async (p) => ({ ...p, items: await filtrarAtalhosDoEscopo(p.items, raizes) })
 
     cacheKey = getDriveListCacheKey({
       userId,
@@ -149,7 +156,7 @@ export async function GET(req: Request) {
 
     const cachedPayload = getCachedDriveListPayload(cacheKey)
     if (cachedPayload) {
-      return NextResponse.json(cachedPayload, {
+      return NextResponse.json(await reconferir(cachedPayload), {
         headers: { 'X-Drive-Cache': 'HIT' },
       })
     }
@@ -165,9 +172,6 @@ export async function GET(req: Request) {
       pageToken,
       mode: resolvedFolderType === 'videos' ? 'videos' : 'images',
     })
-    // A pasta foi conferida, os filhos não: atalho para fora do projeto sai
-    // (admin: Drive inteiro).
-    const raizes = await raizesNaRotaDoProjeto(userId, projectId)
     const listResponse = raizes ? { ...listado, items: await filtrarAtalhosDoEscopo(listado.items, raizes) } : listado
 
     // Cache file metadata for faster future loads
@@ -239,7 +243,7 @@ export async function GET(req: Request) {
       if (cacheKey) {
         const cachedPayload = getCachedDriveListPayload(cacheKey)
         if (cachedPayload) {
-          return NextResponse.json(cachedPayload, {
+          return NextResponse.json(await reconferir(cachedPayload), {
             headers: {
               'Retry-After': String(error.retryAfter),
               'X-Drive-Cache': 'STALE',

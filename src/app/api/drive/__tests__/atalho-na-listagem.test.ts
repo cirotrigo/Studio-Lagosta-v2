@@ -5,7 +5,7 @@
  * do destino. Admin segue com o Drive inteiro, sem filtro.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { chamadasDeDados, drive, zerarArvore } from '@/lib/google-drive/__tests__/arvore-falsa'
+import { ARVORE, chamadasDeDados, drive, zerarArvore } from '@/lib/google-drive/__tests__/arvore-falsa'
 
 const m = vi.hoisted(() => ({ userId: 'userA' }))
 
@@ -121,5 +121,45 @@ describe('projects/[projectId]/google-drive/images', () => {
     m.userId = 'user_admin'
     const r = await corpo(await imagens(2))
     expect(ids(r.body.images)).toContain('shortB')
+  })
+})
+
+/**
+ * O cache guarda a listagem, nunca a decisão: o atalho é reconferido em toda
+ * resposta, inclusive na que sai do cache.
+ */
+describe('cache não dispensa a conferência do atalho', () => {
+  async function comDestinoMovido<T>(id: string, fn: () => Promise<T>) {
+    const original = ARVORE[id].parents
+    ARVORE[id].parents = ['rootB']
+    try {
+      return await fn()
+    } finally {
+      ARVORE[id].parents = original
+    }
+  }
+
+  it.each([
+    ['google-drive/files', 'shortOk', 'fileAimg', () => listarWeb(new Request('http://t/x?folderId=childA&mode=videos')), 'items'],
+    ['drive/list', 'shortOk', 'fileAimg', () => listarDoProjeto(new Request('http://t/x?projectId=1&folderId=childA&type=videos')), 'items'],
+    [
+      'projects/[id]/google-drive/images',
+      'shortImg',
+      'fileA',
+      () => imagensDoProjeto(new Request('http://t/x?limit=7'), { params: Promise.resolve({ projectId: '1' }) }),
+      'images',
+    ],
+  ] as const)('%s: destino que sai do escopo some mesmo com o cache quente', async (_nome, atalho, destino, chamar, campo) => {
+    const antes = await corpo(await chamar())
+    expect(ids(antes.body[campo])).toContain(atalho)
+
+    const depois = await comDestinoMovido(destino, async () => {
+      const r = await chamar()
+      expect(r.headers.get('X-Drive-Cache')).toBe('HIT')
+      return corpo(r)
+    })
+    expect(drive.listFiles).toHaveBeenCalledTimes(1)
+    expect(depois.texto).not.toContain(atalho)
+    expect(ids(depois.body[campo]).length).toBeGreaterThan(0)
   })
 })

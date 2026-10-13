@@ -50,6 +50,9 @@ function getCachedDriveFilesPayload(cacheKey: string) {
 
 export async function GET(req: Request) {
   let cacheKey: string | null = null
+  // O cache guarda a listagem, nunca a decisão: toda resposta (cache
+  // inclusive) reconfere os atalhos contra o escopo de AGORA.
+  let reconferir = async (p: GoogleDriveListResponse) => p
   try {
     const { userId } = await auth()
     if (!userId) {
@@ -95,6 +98,7 @@ export async function GET(req: Request) {
         return NextResponse.json({ error: 'Pasta não encontrada' }, { status: 404 })
       }
       payload.folderId = decisao.idEfetivo
+      reconferir = async (p) => ({ ...p, items: await filtrarAtalhosDoEscopo(p.items, escopo.raizes) })
     }
 
     cacheKey = getDriveFilesCacheKey({
@@ -107,7 +111,7 @@ export async function GET(req: Request) {
 
     const cachedPayload = getCachedDriveFilesPayload(cacheKey)
     if (cachedPayload) {
-      return NextResponse.json(cachedPayload, {
+      return NextResponse.json(await reconferir(cachedPayload), {
         headers: { 'X-Drive-Cache': 'HIT' },
       })
     }
@@ -118,9 +122,8 @@ export async function GET(req: Request) {
     })
 
     const listado = await googleDriveService.listFiles(payload)
-    // A pasta foi conferida, os filhos não: atalho para fora do escopo sai
-    // ANTES do cache.
-    const result = escopo.admin ? listado : { ...listado, items: await filtrarAtalhosDoEscopo(listado.items, escopo.raizes) }
+    // A pasta foi conferida, os filhos não: atalho para fora do escopo sai.
+    const result = await reconferir(listado)
     driveFilesResponseCache.set(cacheKey, {
       payload: result,
       timestamp: Date.now(),
@@ -132,7 +135,7 @@ export async function GET(req: Request) {
       if (cacheKey) {
         const cachedPayload = getCachedDriveFilesPayload(cacheKey)
         if (cachedPayload) {
-          return NextResponse.json(cachedPayload, {
+          return NextResponse.json(await reconferir(cachedPayload), {
             headers: {
               'Retry-After': String(error.retryAfter),
               'X-Drive-Cache': 'STALE',

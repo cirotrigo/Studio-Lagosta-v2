@@ -45,6 +45,8 @@ export const ARVORE: Record<string, NoFalso> = {
   shortB: { parents: ['rootB'], mimeType: ATALHO, targetId: 'fileA' },
   // atalho na A apontando para a pasta de imagens da A (destino também sob as raízes)
   shortOk: { parents: ['childA'], mimeType: ATALHO, targetId: 'fileAimg' },
+  // atalho na pasta de imagens da A apontando para a geral da A
+  shortImg: { parents: ['rootAimg'], mimeType: ATALHO, targetId: 'fileA' },
   // atalho para atalho: nunca vale
   shortChain: { parents: ['childA'], mimeType: ATALHO, targetId: 'shortOk' },
   // atalho para arquivo na lixeira
