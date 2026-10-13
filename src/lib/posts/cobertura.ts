@@ -238,10 +238,11 @@ export function temMidiaPronta(p: Pick<PostDaJanela, 'mediaUrls'>): boolean {
  * - RENDER_FAILED não cobre: a arte não vai sair.
  * - SCHEDULED e POSTING cobrem. A aprovação humana já aconteceu, e o render do
  *   agendado sai no cron antes do horário.
- * - DRAFT só cobre com PEÇA PRONTA (mídia). Rascunho com `pageId` e render ainda
- *   PENDING/RENDERING, sem mídia, é pendente. Rascunho com mídia e render
- *   PENDING (re-render depois de editar a página) cobre: a peça existe, só está
- *   sendo redesenhada.
+ * - DRAFT só cobre com PEÇA PRONTA: mídia http(s) e nenhum render em curso.
+ *   Render PENDING ou RENDERING é pendente MESMO com mídia: a mídia que está lá
+ *   é a versão anterior e não prova que a peça final está pronta para aprovar
+ *   (decisão do owner no fechamento do H2). Mídia com RENDERED, NOT_NEEDED
+ *   (upload, importada, mídia própria) ou sem status cobre.
  */
 export function avaliarOcupante(
   p: PostDaJanela,
@@ -261,13 +262,10 @@ export function avaliarOcupante(
   if (p.status === 'SCHEDULED' || p.status === 'POSTING')
     return { valido: true };
   if (p.status === 'DRAFT') {
-    if (temMidiaPronta(p)) return { valido: true };
-    if (
-      p.pageId &&
-      (p.renderStatus === 'PENDING' || p.renderStatus === 'RENDERING')
-    ) {
+    if (p.renderStatus === 'PENDING' || p.renderStatus === 'RENDERING') {
       return { valido: false, motivo: 'render-pendente' };
     }
+    if (temMidiaPronta(p)) return { valido: true };
     return { valido: false, motivo: 'rascunho-sem-arte' };
   }
   return { valido: false, motivo: 'situacao-desconhecida' };

@@ -213,15 +213,76 @@ describe('coberturaDoProjeto', () => {
     );
   });
 
-  it('rascunho com mídia sendo re-renderizado (a peça existe) cobre', () => {
-    expect(
-      cobrir([
-        pronto('p', `${AMANHA} 10:00`, 'DRAFT', {
-          pageId: 'pg',
-          renderStatus: 'PENDING',
-        }),
-      ]).amanha.estado
-    ).toBe('coberto');
+  describe('rascunho com mídia: só cobre sem render em curso (fechamento do H2)', () => {
+    const motivo = (extra: Partial<PostDaJanela>) =>
+      cobrir([pronto('p', `${AMANHA} 10:00`, 'DRAFT', extra)]).buracos[0];
+    it('A. mídia antiga + pageId + PENDING: PENDENTE', () => {
+      expect(motivo({ pageId: 'pg', renderStatus: 'PENDING' })).toMatchObject({
+        estado: 'pendente',
+        motivo: 'render-pendente',
+      });
+    });
+    it('B. mídia antiga + RENDERING: PENDENTE', () => {
+      expect(motivo({ pageId: 'pg', renderStatus: 'RENDERING' })).toMatchObject(
+        { estado: 'pendente', motivo: 'render-pendente' }
+      );
+    });
+    it('C. mídia + RENDERED: COBERTO', () => {
+      expect(
+        cobrir([
+          pronto('p', `${AMANHA} 10:00`, 'DRAFT', {
+            pageId: 'pg',
+            renderStatus: 'RENDERED',
+          }),
+        ]).amanha.estado
+      ).toBe('coberto');
+    });
+    it('D. mídia própria/importada + NOT_NEEDED: COBERTO', () => {
+      expect(
+        cobrir([
+          pronto('p', `${AMANHA} 10:00`, 'DRAFT', {
+            renderStatus: 'NOT_NEEDED',
+          }),
+        ]).amanha.estado
+      ).toBe('coberto');
+    });
+    it('legado sem status de render, com mídia: COBERTO', () => {
+      expect(
+        cobrir([
+          pronto('p', `${AMANHA} 10:00`, 'DRAFT', { renderStatus: null }),
+        ]).amanha.estado
+      ).toBe('coberto');
+    });
+    it('agendado com render PENDING continua coberto (o render sai no cron antes do horário)', () => {
+      expect(
+        cobrir([
+          pronto('p', `${AMANHA} 10:00`, 'SCHEDULED', {
+            pageId: 'pg',
+            renderStatus: 'PENDING',
+          }),
+        ]).amanha.estado
+      ).toBe('coberto');
+    });
+  });
+
+  it('dia sem horário esperado conta como satisfeito, com esperados = 0', () => {
+    const expectativa = expectativaDoProjeto({
+      historico: semanal('2026-10-16', '18:00'),
+      encerradas: new Set(),
+      entradasDaGrade: [],
+      agora: AGORA,
+    });
+    const c = coberturaDoProjeto({
+      expectativa,
+      posts: [],
+      campanhasExpiram: new Map(),
+      agora: AGORA,
+    });
+    expect(c.amanha).toMatchObject({ estado: 'coberto', esperados: 0 });
+    expect(c.depoisDeAmanha).toMatchObject({ estado: 'coberto', esperados: 0 });
+    expect(c.diasAdiantados).toBe(2);
+    expect(c.buracos).toEqual([]);
+    expect(acoesDoCliente(c, true)[0].codigo).toBe('NENHUMA');
   });
 
   it('I. rascunho só com pageId e render pendente: PENDENTE, não cobre', () => {
