@@ -261,3 +261,34 @@ export async function renderPostArt(post: RenderablePost): Promise<RenderPostArt
     return { ok: false, motivo: 'falhou', erro }
   }
 }
+
+/** Teto de uma reserva viva: a função do cron morre em 120s (`maxDuration`); folga para o executor e o relógio. */
+export const RENDER_INTERROMPIDO_MS = 10 * 60_000
+export const MOTIVO_RENDER_INTERROMPIDO = 'Render interrompido (a execução morreu com a reserva em RENDERING)'
+
+/**
+ * Devolve à fila a reserva que ficou órfã. O cron só seleciona PENDING, então um RENDERING cuja execução morreu
+ * (timeout, deploy) ficava preso até alguém editar a página — e o executor pula RENDERING por ser "de outra
+ * execução": o story agendado simplesmente não saía.
+ *
+ * Conta como tentativa: uma página que sempre estoura o tempo não roda para sempre — na 3ª vira RENDER_FAILED,
+ * igual ao erro comum. A execução morta, se acordar, não grava nada: trocar `nextRenderAt` invalida a ficha dela.
+ * Só rascunho/agendado sem `laterPostId` (post entregue é intocável).
+ */
+export async function recuperarRendersInterrompidos(agora = new Date()): Promise<{ devolvidos: number; falharam: number }> {
+  const orfao = {
+    renderStatus: RenderStatus.RENDERING,
+    updatedAt: { lt: new Date(agora.getTime() - RENDER_INTERROMPIDO_MS) },
+    laterPostId: null,
+    status: { in: [PostStatus.DRAFT, PostStatus.SCHEDULED] },
+  }
+  const falharam = await db.socialPost.updateMany({
+    where: { ...orfao, renderAttempts: { gte: 2 } },
+    data: { renderStatus: RenderStatus.RENDER_FAILED, renderAttempts: { increment: 1 }, renderError: MOTIVO_RENDER_INTERROMPIDO },
+  })
+  const devolvidos = await db.socialPost.updateMany({
+    where: { ...orfao, renderAttempts: { lt: 2 } },
+    data: { renderStatus: RenderStatus.PENDING, renderAttempts: { increment: 1 }, renderError: MOTIVO_RENDER_INTERROMPIDO, nextRenderAt: agora },
+  })
+  return { devolvidos: devolvidos.count, falharam: falharam.count }
+}
