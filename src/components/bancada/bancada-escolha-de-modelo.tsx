@@ -185,7 +185,7 @@ export function BancadaEscolhaDeModelo({
           {via === 'template' && (
             <>
               <p className="text-[11px] text-muted-foreground">
-                A arte é montada sobre o modelo, sem gastar crédito de imagem. Sem escolha, a
+                A arte é montada sobre o modelo{cobrancaLigada && ', sem gastar crédito de imagem'}. Sem escolha, a
                 rotação usa o menos usado do formato {ROTULO_DO_FORMATO[formato]} — a grade está
                 nessa ordem.
               </p>

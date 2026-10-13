@@ -72,7 +72,7 @@ export function LayerActionsToolbar({
           </span>
           {creditosAplicados === true && <span className="text-xs text-muted-foreground">3 creditos</span>}
         </Button>
-        {creditosAplicados !== false && credits && credits.creditsRemaining < 3 && !isBackgroundRemoved && (
+        {creditosAplicados === true && credits && credits.creditsRemaining < 3 && !isBackgroundRemoved && (
           <p className="text-xs text-destructive">Creditos insuficientes</p>
         )}
       </div>

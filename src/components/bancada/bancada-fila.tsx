@@ -1131,6 +1131,8 @@ function DialogoDaConta({
   confirmando: boolean
   onConfirmar: () => void
 }) {
+  // Modo interno: o saldo não decide nada, então o aviso de saldo não aparece.
+  const cobrancaLigada = useCobrancaLigada()
   if (!resultado) return null
 
   const c = resultado.conta
@@ -1188,7 +1190,7 @@ function DialogoDaConta({
             </ul>
           )}
 
-          {c.saldoSuficiente === false && (
+          {cobrancaLigada && c.saldoSuficiente === false && (
             <p className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-500">
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               O saldo de hoje pode não cobrir a leva inteira — parte das peças pode falhar. Dá para
