@@ -997,7 +997,28 @@ export class LaterPostScheduler {
         })
       } catch (updateError) {
         console.error(`[Later Scheduler] ❌❌❌ DATABASE UPDATE FAILED:`, updateError)
-        throw updateError
+        // O post JÁ ESTÁ no Zernio: isto é INCERTO, nunca FAILED. O catch abaixo
+        // marcaria FAILED sem `laterPostId` e o retry o reenviaria (publicação
+        // dupla). Tenta gravar só o `laterPostId`; se nem isso, a linha fica
+        // POSTING e a varredura de travados a reenvia em 30 min — o Zernio
+        // recusa o conteúdo repetido (409) e `tryAdoptExistingPost` adota o post.
+        const salvo = await db.socialPost
+          .updateMany({ where: { id: post.id, laterPostId: null }, data: { laterPostId: laterPost.id } })
+          .then((r) => r.count === 1)
+          .catch((casError) => {
+            console.error('[Later Scheduler] ❌ Gravação mínima do laterPostId também falhou:', casError)
+            return false
+          })
+        if (!salvo) {
+          console.error(
+            `[Later Scheduler] 🚨 Post ${post.id} criado no Zernio (${laterPost.id}) SEM laterPostId gravado — persistência incerta`
+          )
+          await this.createLog(post.id, PostLogEvent.SENT, 'Post criado no Zernio, mas o laterPostId não foi gravado', {
+            laterPostId: laterPost.id,
+            persistenciaIncerta: true,
+          }).catch((logError) => console.error('[Later Scheduler] Log da persistência incerta falhou:', logError))
+          return { success: false, incerto: true as const, laterPostId: laterPost.id }
+        }
       }
 
       // 7. Cobrança DEPOIS de gravar o `laterPostId`. O post já está no Zernio:

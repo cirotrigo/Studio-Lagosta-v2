@@ -24,6 +24,7 @@ vi.mock('@/lib/db', () => ({
   db: {
     socialPost: {
       update: vi.fn(async ({ data }: any) => ({ id: 'p1', ...data })),
+      updateMany: vi.fn(async () => ({ count: 1 })),
       findUnique: vi.fn(async () => post),
     },
     user: { findUnique: vi.fn(async () => ({ clerkId: 'user_1' })) },
@@ -88,5 +89,35 @@ describe('sendToLater: cobrança depois de gravar o laterPostId', () => {
     expect(atualizacoes()).toEqual([expect.objectContaining({ status: 'FAILED' })])
     expect(handlePublishFailure).toHaveBeenCalledTimes(1)
     expect(deductCreditsForFeature).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * O post já foi criado no Zernio e a gravação do `laterPostId` falha: é
+ * INCERTO, não FAILED. Marcar FAILED sem `laterPostId` mandaria o retry
+ * reenviar (publicação dupla).
+ */
+describe('sendToLater: gravação incerta depois do Zernio', () => {
+  it('update falha, a gravação mínima (CAS) salva o laterPostId: segue, sem FAILED', async () => {
+    vi.mocked(db.socialPost.update).mockRejectedValueOnce(new Error('conexão caiu'))
+    vi.mocked(deductCreditsForFeature).mockResolvedValueOnce({ creditsRemaining: 0 })
+    const r = await new LaterPostScheduler().sendToLater('p1')
+    expect(r).toEqual({ success: true, laterPostId: 'z1' })
+    expect(db.socialPost.updateMany).toHaveBeenCalledWith({ where: { id: 'p1', laterPostId: null }, data: { laterPostId: 'z1' } })
+    expect(atualizacoes().some((d) => d.status === 'FAILED')).toBe(false)
+    expect(handlePublishFailure).not.toHaveBeenCalled()
+  })
+
+  it('as duas gravações falham: resultado incerto, sem FAILED, sem aviso, sem reenviar', async () => {
+    vi.mocked(db.socialPost.update).mockRejectedValueOnce(new Error('conexão caiu'))
+    vi.mocked(db.socialPost.updateMany).mockRejectedValueOnce(new Error('conexão caiu de novo'))
+    const r = await new LaterPostScheduler().sendToLater('p1')
+    expect(r).toEqual({ success: false, incerto: true, laterPostId: 'z1' })
+    expect(atualizacoes().some((d) => d.status === 'FAILED')).toBe(false)
+    expect(handlePublishFailure).not.toHaveBeenCalled()
+    expect(zernio.createPost).toHaveBeenCalledTimes(1)
+    expect(db.postLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ postId: 'p1', metadata: { laterPostId: 'z1', persistenciaIncerta: true } }),
+    })
   })
 })
