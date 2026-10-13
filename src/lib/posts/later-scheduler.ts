@@ -916,29 +916,7 @@ export class LaterPostScheduler {
         idType: typeof laterPost.id,
       })
 
-      // 6. Deduct credits AFTER successful post creation
-      // Skipped on recovery flows where credits were already charged on the first attempt.
-      const organizationId =
-        post.Project.organizationProjects?.[0]?.organization?.clerkOrgId
-      if (skipCreditDeduction) {
-        console.log('[Later Scheduler] ⏭️  Skipping credit deduction (recovery flow)')
-      } else {
-        console.log('[Later Scheduler] Deducting credits...')
-        await deductCreditsForFeature({
-          clerkUserId: postAuthor.clerkId,
-          feature: 'social_media_post',
-          details: {
-            postId: post.id,
-            postType: post.postType,
-            projectId: post.projectId,
-            laterPostId: laterPost.id,
-          },
-          organizationId,
-          projectId: post.projectId,
-        })
-      }
-
-      // 7. Update post in database
+      // 6. Update post in database
       const newStatus =
         laterPost.status === 'published'
           ? PostStatus.POSTED
@@ -1020,6 +998,35 @@ export class LaterPostScheduler {
       } catch (updateError) {
         console.error(`[Later Scheduler] ❌❌❌ DATABASE UPDATE FAILED:`, updateError)
         throw updateError
+      }
+
+      // 7. Cobrança DEPOIS de gravar o `laterPostId`. O post já está no Zernio:
+      // falha aqui (saldo, banco) não pode cair no catch abaixo, que o marcaria
+      // FAILED sem `laterPostId` e o retry o reenviaria — publicação dupla.
+      // Vira log, nunca falha do post. Pulada na recuperação (já cobrado antes).
+      if (skipCreditDeduction) {
+        console.log('[Later Scheduler] ⏭️  Skipping credit deduction (recovery flow)')
+      } else {
+        try {
+          await deductCreditsForFeature({
+            clerkUserId: postAuthor.clerkId,
+            feature: 'social_media_post',
+            details: {
+              postId: post.id,
+              postType: post.postType,
+              projectId: post.projectId,
+              laterPostId: laterPost.id,
+            },
+            organizationId: post.Project.organizationProjects?.[0]?.organization?.clerkOrgId,
+            projectId: post.projectId,
+          })
+        } catch (cobrancaError) {
+          console.error(`[Later Scheduler] Cobrança do post ${post.id} falhou — o post segue:`, cobrancaError)
+          await this.createLog(post.id, PostLogEvent.SENT, 'Post enviado, mas a cobrança falhou', {
+            cobrancaFalhou: true,
+            laterPostId: laterPost.id,
+          }).catch((logError) => console.error('[Later Scheduler] Log da cobrança falhou:', logError))
+        }
       }
 
       // 8. Create log
