@@ -3,7 +3,7 @@ import { auth } from '@clerk/nextjs/server'
 import { put } from '@vercel/blob'
 import { generateThumbnail } from '@/lib/render-engine'
 import { db } from '@/lib/db'
-import { PermissionError, requireProjectAccess } from '@/lib/permissions'
+import { fetchProjectWithShares, hasProjectWriteAccess } from '@/lib/projects/access'
 import type { DesignData } from '@/types/template'
 
 export const runtime = 'nodejs'
@@ -47,13 +47,13 @@ export async function POST(req: Request) {
     }
 
     // Com template, o caminho é o da miniatura dele: sobrescrever exige
-    // escrita no projeto do template.
+    // escrita no projeto do template. Sem ela, responde como template inexistente.
     if (Number.isInteger(templateId)) {
       const template = await db.template.findUnique({ where: { id: templateId }, select: { projectId: true } })
-      if (!template) {
+      const project = template ? await fetchProjectWithShares(template.projectId) : null
+      if (!hasProjectWriteAccess(project, { userId, orgId })) {
         return NextResponse.json({ error: 'Template não encontrado' }, { status: 404 })
       }
-      await requireProjectAccess(template.projectId, { userId, orgId, write: true })
     }
 
     const buffer = await generateThumbnail(designData as DesignData, {}, { width, height })
@@ -71,9 +71,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ thumbnailUrl: blob.url })
   } catch (error) {
-    if (error instanceof PermissionError) {
-      return NextResponse.json({ error: error.message }, { status: error.status })
-    }
     console.error('Error generating thumbnail:', error)
     return NextResponse.json({ error: 'Erro ao gerar thumbnail' }, { status: 500 })
   }

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
-import { PermissionError, requireProjectAccess } from '@/lib/permissions'
+import { fetchProjectWithShares, hasProjectWriteAccess } from '@/lib/projects/access'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60 // Registro é rápido, não precisa de 300s
@@ -34,7 +34,7 @@ export async function POST(req: Request) {
       format,
     } = body
 
-    if (!videoUrl || !templateId || !projectId || !fileName) {
+    if (!videoUrl || !templateId || !Number.isInteger(projectId) || !fileName) {
       return NextResponse.json(
         { error: 'Parâmetros obrigatórios ausentes' },
         { status: 400 }
@@ -43,24 +43,20 @@ export async function POST(req: Request) {
 
     console.log('[VIDEO_SAVE] Registering video generation for user:', userId, 'template:', templateId)
 
-    // Buscar template e projeto
+    // Escrita no projeto primeiro; sem ela, template inexistente e template de
+    // outro projeto respondem o mesmo 404.
+    const naoEncontrado = () => NextResponse.json({ error: 'Template não encontrado' }, { status: 404 })
+    if (!hasProjectWriteAccess(await fetchProjectWithShares(projectId), { userId, orgId })) {
+      return naoEncontrado()
+    }
+
     const template = await db.template.findFirst({
-      where: { id: templateId },
+      where: { id: templateId, projectId },
       include: {
         Project: true,
       },
     })
-
-    if (!template) {
-      return NextResponse.json({ error: 'Template não encontrado' }, { status: 404 })
-    }
-
-    // Verificar se o projeto corresponde
-    if (template.Project.id !== projectId) {
-      return NextResponse.json({ error: 'Projeto não corresponde ao template' }, { status: 400 })
-    }
-
-    await requireProjectAccess(template.Project.id, { userId, orgId, write: true })
+    if (!template) return naoEncontrado()
 
     // Salvar geração no banco de dados
     const generation = await db.generation.create({
@@ -93,9 +89,6 @@ export async function POST(req: Request) {
       },
     })
   } catch (error) {
-    if (error instanceof PermissionError) {
-      return NextResponse.json({ error: error.message }, { status: error.status })
-    }
     console.error('[VIDEO_SAVE] Failed to save video:', error)
     return NextResponse.json(
       { error: 'Erro ao salvar vídeo' },

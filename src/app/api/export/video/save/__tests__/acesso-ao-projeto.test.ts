@@ -1,29 +1,28 @@
 /**
- * Registrar um vídeo cria arte no projeto: exige escrita nele.
+ * Registrar um vídeo cria arte no projeto: exige escrita nele. Projeto sem
+ * acesso, template inexistente e template de outro projeto respondem igual.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const m = vi.hoisted(() => ({ podeEscrever: true, acesso: [] as unknown[], criado: false }))
+const m = vi.hoisted(() => ({ podeEscrever: true, ordem: [] as string[], template: null as any, criado: false }))
 
 vi.mock('@clerk/nextjs/server', () => ({ auth: async () => ({ userId: 'user_1', orgId: 'org_1' }) }))
-vi.mock('@/lib/permissions', () => {
-  class PermissionError extends Error {
-    constructor(message: string, public status = 403) {
-      super(message)
-    }
-  }
-  return {
-    PermissionError,
-    requireProjectAccess: async (projectId: number, opts: unknown) => {
-      m.acesso.push([projectId, opts])
-      if (!m.podeEscrever) throw new PermissionError('Não autorizado', 403)
-      return { id: projectId }
-    },
-  }
-})
+vi.mock('@/lib/projects/access', () => ({
+  fetchProjectWithShares: async (id: number) => {
+    m.ordem.push(`acesso:${id}`)
+    return { id }
+  },
+  hasProjectWriteAccess: () => m.podeEscrever,
+}))
 vi.mock('@/lib/db', () => ({
   db: {
-    template: { findFirst: async () => ({ id: 5, name: 'T', Project: { id: 7, name: 'Cliente' } }) },
+    template: {
+      findFirst: async ({ where }: { where: { id: number; projectId?: number } }) => {
+        m.ordem.push('template')
+        const t = m.template
+        return t && t.id === where.id && t.projectId === where.projectId ? t : null
+      },
+    },
     generation: {
       create: async () => {
         m.criado = true
@@ -43,15 +42,25 @@ const post = () =>
 
 beforeEach(() => {
   m.podeEscrever = true
-  m.acesso = []
+  m.ordem = []
   m.criado = false
+  m.template = { id: 5, name: 'T', projectId: 7, Project: { id: 7, name: 'Cliente' } }
 })
 
 describe('POST /api/export/video/save', () => {
-  it('sem escrita no projeto → 403 e nada gravado', async () => {
+  it('sem escrita, template inexistente e de outro projeto → o mesmo 404, nada gravado', async () => {
     m.podeEscrever = false
-    expect((await post()).status).toBe(403)
-    expect(m.acesso).toEqual([[7, { userId: 'user_1', orgId: 'org_1', write: true }]])
+    const semAcesso = await post()
+    expect(m.ordem).toEqual(['acesso:7'])
+    m.podeEscrever = true
+    m.template = null
+    const inexistente = await post()
+    m.template = { id: 5, name: 'T', projectId: 3, Project: { id: 3, name: 'Outro' } }
+    const deOutro = await post()
+    const corpos = await Promise.all([semAcesso, inexistente, deOutro].map((r) => r.json()))
+    expect([semAcesso.status, inexistente.status, deOutro.status]).toEqual([404, 404, 404])
+    expect(corpos[1]).toEqual(corpos[0])
+    expect(corpos[2]).toEqual(corpos[0])
     expect(m.criado).toBe(false)
   })
   it('com escrita → grava', async () => {

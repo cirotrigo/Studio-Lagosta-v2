@@ -12,21 +12,13 @@ const m = vi.hoisted(() => ({
 }))
 
 vi.mock('@clerk/nextjs/server', () => ({ auth: async () => ({ userId: 'user_1', orgId: 'org_1' }) }))
-vi.mock('@/lib/permissions', () => {
-  class PermissionError extends Error {
-    constructor(message: string, public status = 403) {
-      super(message)
-    }
-  }
-  return {
-    PermissionError,
-    requireProjectAccess: async (projectId: number, opts: unknown) => {
-      m.acesso.push([projectId, opts])
-      if (!m.podeEscrever) throw new PermissionError('Não autorizado', 403)
-      return { id: projectId }
-    },
-  }
-})
+vi.mock('@/lib/projects/access', () => ({
+  fetchProjectWithShares: async (id: number) => ({ id }),
+  hasProjectWriteAccess: (p: { id: number }, opts: unknown) => {
+    m.acesso.push([p.id, opts])
+    return m.podeEscrever
+  },
+}))
 vi.mock('@vercel/blob', () => ({ put: async () => ({ url: 'https://blob.test/c.png', pathname: 'c.png' }) }))
 vi.mock('@/lib/aprendizado/uso-de-modelo', () => ({ registrarUsoDeModelo: async () => undefined }))
 vi.mock('@/lib/db', () => ({
@@ -83,17 +75,14 @@ beforeEach(() => {
 })
 
 describe('POST /api/gerar-criativo/finalize', () => {
-  it('sem escrita no projeto do template → 403 e nada gravado', async () => {
+  it('sem escrita no projeto e página de outro template → o mesmo 404, nada gravado', async () => {
     m.podeEscrever = false
-    const r = await post(corpo())
-    expect(r.status).toBe(403)
-    expect(m.acesso).toEqual([[7, { userId: 'user_1', orgId: 'org_1', write: true }]])
-    expect(m.criados).toEqual([])
-  })
-
-  it('página-modelo de outro template → 404 e nada gravado', async () => {
-    const r = await post(corpo(99))
-    expect(r.status).toBe(404)
+    const semAcesso = await post(corpo())
+    expect(m.acesso).toEqual([[7, { userId: 'user_1', orgId: 'org_1' }]])
+    m.podeEscrever = true
+    const deOutro = await post(corpo(99))
+    expect([semAcesso.status, deOutro.status]).toEqual([404, 404])
+    expect(await semAcesso.json()).toEqual(await deOutro.json())
     expect(m.criados).toEqual([])
   })
 

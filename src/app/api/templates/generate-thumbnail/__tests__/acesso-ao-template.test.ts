@@ -7,21 +7,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const m = vi.hoisted(() => ({ podeEscrever: true, acesso: [] as unknown[], caminhos: [] as string[], template: { projectId: 7 } as any }))
 
 vi.mock('@clerk/nextjs/server', () => ({ auth: async () => ({ userId: 'user_1', orgId: 'org_1' }) }))
-vi.mock('@/lib/permissions', () => {
-  class PermissionError extends Error {
-    constructor(message: string, public status = 403) {
-      super(message)
-    }
-  }
-  return {
-    PermissionError,
-    requireProjectAccess: async (projectId: number, opts: unknown) => {
-      m.acesso.push([projectId, opts])
-      if (!m.podeEscrever) throw new PermissionError('Não autorizado', 403)
-      return { id: projectId }
-    },
-  }
-})
+vi.mock('@/lib/projects/access', () => ({
+  fetchProjectWithShares: async (id: number) => ({ id }),
+  hasProjectWriteAccess: (p: { id: number } | null, opts: unknown) => {
+    if (!p) return false
+    m.acesso.push([p.id, opts])
+    return m.podeEscrever
+  },
+}))
 vi.mock('@/lib/render-engine', () => ({ generateThumbnail: async () => Buffer.from('png') }))
 vi.mock('@vercel/blob', () => ({
   put: async (caminho: string) => {
@@ -44,15 +37,14 @@ beforeEach(() => {
 })
 
 describe('POST /api/templates/generate-thumbnail', () => {
-  it('template de projeto sem escrita → 403 e nada sobrescrito', async () => {
+  it('template sem escrita e template inexistente → o mesmo 404, nada sobrescrito', async () => {
     m.podeEscrever = false
-    expect((await post({ templateId: 5 })).status).toBe(403)
-    expect(m.acesso).toEqual([[7, { userId: 'user_1', orgId: 'org_1', write: true }]])
-    expect(m.caminhos).toEqual([])
-  })
-  it('template inexistente → 404', async () => {
+    const semAcesso = await post({ templateId: 5 })
+    expect(m.acesso).toEqual([[7, { userId: 'user_1', orgId: 'org_1' }]])
     m.template = null
-    expect((await post({ templateId: 5 })).status).toBe(404)
+    const inexistente = await post({ templateId: 5 })
+    expect([semAcesso.status, inexistente.status]).toEqual([404, 404])
+    expect(await semAcesso.json()).toEqual(await inexistente.json())
     expect(m.caminhos).toEqual([])
   })
   it('com escrita → sobrescreve a do template', async () => {

@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { db } from '@/lib/db'
 import { put } from '@vercel/blob'
 import { registrarUsoDeModelo } from '@/lib/aprendizado/uso-de-modelo'
-import { PermissionError, requireProjectAccess } from '@/lib/permissions'
+import { fetchProjectWithShares, hasProjectWriteAccess } from '@/lib/projects/access'
 import type { Layer } from '@/types/template'
 
 export const runtime = 'nodejs'
@@ -62,12 +62,12 @@ export async function POST(request: Request) {
       },
     })
 
-    if (!templatePage) {
+    // Grava página e arte no projeto do template: exige escrita nele. Sem ela,
+    // responde como página inexistente.
+    const project = templatePage ? await fetchProjectWithShares(templatePage.Template.projectId) : null
+    if (!templatePage || !hasProjectWriteAccess(project, { userId, orgId })) {
       return NextResponse.json({ error: 'Template page not found' }, { status: 404 })
     }
-
-    // Grava página e arte no projeto do template: exige escrita nele.
-    await requireProjectAccess(templatePage.Template.projectId, { userId, orgId, write: true })
 
     // 2. Process layers for storage (apply overrides)
     const visibleLayers = layers.filter((l) => !hiddenLayerIds.includes(l.id))
@@ -215,10 +215,6 @@ export async function POST(request: Request) {
       resultUrl: blob.url,
     })
   } catch (error) {
-    if (error instanceof PermissionError) {
-      return NextResponse.json({ error: error.message }, { status: error.status })
-    }
-
     console.error('[Gerar Criativo Finalize] Error:', error)
 
     if (error instanceof z.ZodError) {
