@@ -731,6 +731,13 @@ toolEstrita(
       }
 
       const parsedSlotValues = slotValues ? JSON.parse(slotValues) : undefined
+      // B1d (checkpoint c): o MESMO portão do createPost para o contrato semântico novo (_slots/_papeis).
+      const { admitirPedidoSemantico } = await import('../src/lib/posts/admitir-pedido-semantico')
+      try {
+        await admitirPedidoSemantico(prisma, { projectId, postType, pageId, mediaUrls: mediaUrls ?? [], slotValues: parsedSlotValues })
+      } catch (erro) {
+        return { content: [{ type: 'text' as const, text: `Error: ${(erro as Error).message} Nada foi criado.` }], isError: true }
+      }
       const postStatus = status ?? 'DRAFT'
       const hasPage = !!pageId
 
@@ -843,11 +850,46 @@ toolEstrita(
         }
       }
 
-      const updated = await prisma.socialPost.update({
-        where: { id: postId },
-        data,
-        select: { id: true, status: true, renderStatus: true, scheduledDatetime: true, caption: true, laterPostId: true },
-      })
+      const selecao = { id: true, status: true, renderStatus: true, scheduledDatetime: true, caption: true, laterPostId: true } as const
+      let updated
+      if (slotValues !== undefined || pageId !== undefined || mediaUrls !== undefined) {
+        // B1d (checkpoint c): o contrato semântico novo passa pela mesma admissão do createPost, com a linha
+        // travada (SELECT … FOR UPDATE) na transação que grava. Legado: a mesma escrita de sempre.
+        const { prepararEdicaoSemantica } = await import('../src/lib/posts/edicao-semantica-do-post')
+        try {
+          updated = await prisma.$transaction(async (tx) => {
+            const edicao = await prepararEdicaoSemantica(tx as any, postId, {
+              pageId,
+              slotValues: data.slotValues,
+              mediaUrls,
+              // checkpoint f: os gates da recuperação olham o status e a data que ESTA escrita grava
+              status: data.status,
+              scheduledDatetime: data.scheduledDatetime,
+            })
+            return tx.socialPost.update({ where: { id: postId }, data: edicao.semantico ? { ...data, ...edicao.data } : data, select: selecao })
+          })
+        } catch (erro) {
+          const nome = (erro as Error).name
+          if (nome === 'ErroAdmissaoSemantica' || nome === 'ErroEdicaoSemantica') {
+            return { content: [{ type: 'text' as const, text: `Error: ${(erro as Error).message} Nada foi alterado.` }], isError: true }
+          }
+          throw erro
+        }
+      } else {
+        // B1d (checkpoint f): promover a SCHEDULED (com ou sem mídia, repondo o render ou não) não agenda um post com
+        // falha SEMÂNTICA de render — o executor o marcaria FAILED na hora, sem passar pela recuperação. Status e
+        // reposição numa ÚNICA escrita, condicional à linha corrente.
+        if (data.status === 'SCHEDULED') {
+          const { NAO_E_FALHA_SEMANTICA } = await import('../src/lib/posts/erro-render-semantico')
+          const agendado = await prisma.socialPost.updateMany({ where: { id: postId, ...NAO_E_FALHA_SEMANTICA }, data })
+          if (agendado.count === 0) {
+            return { content: [{ type: 'text' as const, text: 'Error: a arte deste post falhou no contrato semântico (_slots/_papeis não casam com a página). Corrija a página ou o pedido (update-post com slotValues) — a arte volta a ser gerada sozinha — e agende depois. Nada foi alterado.' }], isError: true }
+          }
+          updated = await prisma.socialPost.findUnique({ where: { id: postId }, select: selecao })
+        } else {
+          updated = await prisma.socialPost.update({ where: { id: postId }, data, select: selecao })
+        }
+      }
 
       // Remarcou? As páginas da arte seguem para a semana nova (pasta, nome e
       // ordem) — senão a pasta e o nome da página guardam a data velha, e é
@@ -1274,6 +1316,9 @@ toolEstrita(
     postId: z.string().describe('Post ID to render'),
   },
   async ({ postId }) => {
+    // Gravações do render só desta reserva (ver fichaDeReserva) — fora do try: o catch também a exige.
+    const { fichaDeReserva } = await import('../src/lib/posts/ficha-de-reserva')
+    const ficha = fichaDeReserva()
     try {
       // 1. Fetch post
       const post = await prisma.socialPost.findUnique({
@@ -1282,6 +1327,13 @@ toolEstrita(
       })
       if (!post) return { content: [{ type: 'text' as const, text: 'Error: Post not found' }], isError: true }
       if (!post.pageId) return { content: [{ type: 'text' as const, text: 'Error: Post has no pageId (not template-based)' }], isError: true }
+      // B1d (checkpoint d): este é um SEGUNDO renderer, com aplicador próprio (só o legado). Post com o contrato
+      // semântico novo (_slots/_papeis) não passa por ele — seria desenhado ignorando o contrato. Recusa antes
+      // de qualquer escrita; o caminho é o render canônico (cron render-stories / renderPostArt).
+      const { temContratoSemantico } = await import('../src/lib/posts/copy-segue-a-pagina')
+      if (temContratoSemantico(post.slotValues)) {
+        return { content: [{ type: 'text' as const, text: 'Error: este post usa o contrato semântico (_slots/_papeis) e só é renderizado pelo pipeline canônico (cron render-stories). Para renderizar de novo, volte o post para PENDING (update-post com o pedido) e deixe o cron renderizar. Nada foi alterado.' }], isError: true }
+      }
       // Post de vídeo nunca é redesenhado como imagem — nem com a mídia limpa.
       const { postDeVideo, MOTIVO_VIDEO_REMOVIDO } = await import('../src/lib/posts/post-de-video')
       if (postDeVideo(post)) {
@@ -1307,11 +1359,46 @@ toolEstrita(
       const recusaDaPagina = recusaPorCamadas(page.layers)
       if (recusaDaPagina) return { content: [{ type: 'text' as const, text: `Error: ${recusaDaPagina.mensagem} Nada foi alterado.` }], isError: true }
 
-      // 3. Lock the post
-      await prisma.socialPost.update({
-        where: { id: postId },
-        data: { renderStatus: 'RENDERING' },
-      })
+      // 3. Lock the post — atômico com a recusa do contrato semântico (Codex, B1d checkpoint d): um
+      // update-post que acrescente _slots/_papeis depois da leitura acima não é desenhado por este renderer
+      // legado. A edição semântica volta a linha a PENDING, e as gravações abaixo exigem RENDERING.
+      // Também não toma a reserva VIVA de outra execução (o cron): só a presa há mais de 10 min (o render do cron
+      // tem teto de 120 s), para forçar continuar destravando post preso.
+      // 10 min é lease de recuperação do renderer manual legado; execução antiga perde a ficha e não pode gravar.
+      // (OWNER_ACCEPTED_KNOWN_LIMITATION: dois forces manuais com o 1º > 10 min — trabalho duplicado, nunca arte errada.)
+      const agora = new Date()
+      const reservaPresaAntesDe = new Date(agora.getTime() - 10 * 60_000)
+      const travado = await prisma.$executeRaw`
+        UPDATE "SocialPost" SET "renderStatus" = 'RENDERING'::"RenderStatus", "nextRenderAt" = ${ficha}, "updatedAt" = ${agora}
+        WHERE "id" = ${postId}
+          AND ("renderStatus" <> 'RENDERING'::"RenderStatus" OR "updatedAt" < ${reservaPresaAntesDe})
+          AND (
+            jsonb_typeof("slotValues") IS DISTINCT FROM 'object'
+            OR (NOT jsonb_exists("slotValues", '_slots') AND NOT jsonb_exists("slotValues", '_papeis'))
+          )`
+      if (travado === 0) {
+        return { content: [{ type: 'text' as const, text: 'Error: o post não pôde ser travado para o render: outro render está em andamento, ou o post passou a usar o contrato semântico, ou sumiu. Nada foi alterado.' }], isError: true }
+      }
+      // O pedido E a página desenhados têm de ser os de DEPOIS da trava (Codex, B1d checkpoint d): editados (e
+      // invalidados) entre a leitura lá de cima e a trava, o PNG seria do antigo — e a trava teria passado por cima
+      // da invalidação. Devolve à fila — só a própria reserva — e o cron desenha o novo. Edição DEPOIS da trava
+      // invalida a linha, e a gravação final (ficha) não a alcança.
+      const reservado = await prisma.socialPost.findUnique({ where: { id: postId }, select: { pageId: true, slotValues: true } })
+      const assinaturaDaPagina = (p: { layers: unknown; background: unknown; width: unknown; height: unknown; audio: unknown; isTemplate: unknown } | null) =>
+        p && JSON.stringify([p.layers, p.background, p.width, p.height, p.audio, p.isTemplate])
+      const paginaReservada = await prisma.page.findUnique({ where: { id: post.pageId }, select: { layers: true, background: true, width: true, height: true, audio: true, isTemplate: true } })
+      if (
+        !reservado ||
+        reservado.pageId !== post.pageId ||
+        JSON.stringify(reservado.slotValues) !== JSON.stringify(post.slotValues) ||
+        assinaturaDaPagina(paginaReservada) !== assinaturaDaPagina(page)
+      ) {
+        await prisma.socialPost.updateMany({
+          where: { id: postId, renderStatus: 'RENDERING', nextRenderAt: ficha },
+          data: { renderStatus: 'PENDING', nextRenderAt: new Date() },
+        })
+        return { content: [{ type: 'text' as const, text: 'Error: o pedido do post (ou a página) mudou antes do render. Nada foi desenhado; o post voltou à fila do render (cron render-stories).' }], isError: true }
+      }
 
       // 4. Convert Page → DesignData
       const { convertPageToDesignData, applySlotValues } = await import('../src/lib/posts/page-to-design-data')
@@ -1398,7 +1485,7 @@ toolEstrita(
       // 9. Update post — só se a mídia ainda é a que a guarda leu: trocada no
       // meio do render (por um vídeo, por exemplo), o PNG não entra por cima.
       const gravado = await prisma.socialPost.updateMany({
-        where: { id: postId, mediaUrls: { equals: post.mediaUrls } },
+        where: { id: postId, renderStatus: 'RENDERING', nextRenderAt: ficha, mediaUrls: { equals: post.mediaUrls } },
         data: {
           renderStatus: 'RENDERED',
           renderedImageUrl: blob.url,
@@ -1408,11 +1495,13 @@ toolEstrita(
         },
       })
       if (gravado.count === 0) {
+        // Volta à fila, nunca ao status lido ANTES da trava (podia ser um RENDERING velho, e o post ficaria preso):
+        // estado anterior à ficha é histórico, não autoridade. O render canônico decide o próximo (ex.: NOT_NEEDED).
         await prisma.socialPost.updateMany({
-          where: { id: postId, renderStatus: 'RENDERING' },
-          data: { renderStatus: post.renderStatus },
+          where: { id: postId, renderStatus: 'RENDERING', nextRenderAt: ficha },
+          data: { renderStatus: 'PENDING', nextRenderAt: new Date() },
         })
-        return { content: [{ type: 'text' as const, text: 'Error: a mídia do post mudou durante o render. Nada foi alterado; confira o post e renderize de novo se ainda fizer sentido.' }], isError: true }
+        return { content: [{ type: 'text' as const, text: 'Error: o post mudou durante o render (mídia ou pedido). Nada foi alterado; confira o post e renderize de novo se ainda fizer sentido.' }], isError: true }
       }
 
       // Build a clickable admin URL for editing this specific post.
@@ -1437,10 +1526,10 @@ toolEstrita(
         }],
       }
     } catch (error: any) {
-      // Reset render status on failure
+      // Reset render status on failure — só a linha que ESTE render travou (uma edição no meio já a devolveu à fila)
       try {
-        await prisma.socialPost.update({
-          where: { id: postId },
+        await prisma.socialPost.updateMany({
+          where: { id: postId, renderStatus: 'RENDERING', nextRenderAt: ficha },
           data: { renderStatus: 'RENDER_FAILED', renderError: error.message },
         })
       } catch { /* ignore */ }

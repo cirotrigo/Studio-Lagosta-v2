@@ -38,6 +38,7 @@ import {
   copyIgual,
   ehCopiaDaPagina,
   slotValuesSeguindo,
+  temContratoSemantico,
   textosDoSlot,
 } from '@/lib/posts/copy-segue-a-pagina'
 import { invalidateScheduledRenders } from '@/lib/posts/invalidate-renders'
@@ -80,7 +81,8 @@ async function main() {
     orderBy: { scheduledDatetime: 'asc' },
   })
 
-  const semMarca = posts.filter((p) => textosDoSlot(p.slotValues) && !ehCopiaDaPagina(p.slotValues))
+  // B1d (checkpoint g): post com _slots/_papeis guarda o PEDIDO semântico, não a cópia da página — nunca é reescrito aqui.
+  const semMarca = posts.filter((p) => !temContratoSemantico(p.slotValues) && textosDoSlot(p.slotValues) && !ehCopiaDaPagina(p.slotValues))
   const jaMarcados = posts.filter((p) => ehCopiaDaPagina(p.slotValues)).length
   console.log(`${posts.length} post(s) vivos com página · ${jaMarcados} já marcados · ${semMarca.length} com copy sem marca`)
   if (semMarca.length === 0) return

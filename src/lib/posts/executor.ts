@@ -14,6 +14,7 @@ import { LaterNotFoundError } from '@/lib/later/errors'
 import { NOTIFY_AFTER_ATTEMPT, notifyPublishFailure } from './failure-handler'
 import { FREEZE_WINDOW_MS } from './freeze-window'
 import { renderPostArt } from './render-post-art'
+import { mensagensDaFalhaDeArte } from './erro-render-semantico'
 import { MOTIVO_VIDEO_REMOVIDO, falharPostDeVideoSemMidia, postDeVideo } from './post-de-video'
 
 export class PostExecutor {
@@ -286,6 +287,12 @@ export class PostExecutor {
                 // A mídia do post é vídeo (ou carrossel): não há o que
                 // renderizar, e ela segue para a entrega como está.
                 post.renderStatus = RenderStatus.NOT_NEEDED
+              } else if (render.motivo === 'falha-semantica') {
+                // B1d (checkpoint d): o contrato semântico não casa mais com a página — terminal, sem
+                // tentar de novo. Segue para o ramo RENDER_FAILED logo abaixo, que avisa que a arte precisa de
+                // correção (sem falar em "3 tentativas").
+                post.renderStatus = RenderStatus.RENDER_FAILED
+                post.renderError = render.erro ?? null
               } else if (render.motivo === 'falhou') {
                 // Vencido e sem arte é falha de publicação, não silêncio.
                 if (isOverdue) {
@@ -309,24 +316,37 @@ export class PostExecutor {
             }
           }
           if (post.renderStatus === RenderStatus.RENDER_FAILED) {
-            console.log(`❌ Post ${post.id} — render failed after 3 attempts, marking FAILED`)
-            await db.socialPost.update({
-              where: { id: post.id },
+            // A recusa semântica (B1d, checkpoint d) não é "3 tentativas": a arte precisa de correção.
+            const falha = mensagensDaFalhaDeArte(post.renderError)
+            console.log(`❌ Post ${post.id} — ${falha.erroDoPost}, marking FAILED`)
+            /**
+             * B1d (checkpoint f): CAS sobre a falha LIDA. A leitura do laço pode ter minutos; se a recuperação
+             * semântica reabriu o post (RENDER_FAILED → PENDING) ou ele foi entregue por outra via, marcar FAILED
+             * mataria a correção da pessoa e dispararia um aviso falso.
+             */
+            const marcado = await db.socialPost.updateMany({
+              where: {
+                id: post.id,
+                status: PostStatus.SCHEDULED,
+                laterPostId: null,
+                renderStatus: RenderStatus.RENDER_FAILED,
+                renderError: post.renderError ?? null,
+              },
               data: {
                 status: PostStatus.FAILED,
-                errorMessage: 'Story image rendering failed after 3 attempts',
+                errorMessage: falha.erroDoPost,
                 failedAt: new Date(),
               },
             })
+            if (marcado.count === 0) {
+              console.log(`↩ ${post.id} — a arte mudou desde a leitura (recuperada ou entregue); não marcado FAILED`)
+              continue
+            }
             // Sem retry: a arte já falhou nas 3 tentativas de render, reenviar
             // não muda nada. Avisa a equipe — pela mesma trava de 15 min, para
             // não emendar num aviso que o render de última hora acabou de
             // mandar sobre este mesmo post.
-            await this.registrarFalhaDeArte(
-              post.id,
-              'Story image rendering failed after 3 attempts',
-              'Não foi possível gerar a arte do story depois de 3 tentativas'
-            )
+            await this.registrarFalhaDeArte(post.id, falha.log, falha.aviso)
             failureCount++
             continue
           }
@@ -335,7 +355,12 @@ export class PostExecutor {
 
         try {
           console.log(`📤 Sending post ${post.id} to Later API...`)
-          await this.scheduler.sendToLater(post.id)
+          const envio = await this.scheduler.sendToLater(post.id)
+          // B1d (checkpoint c): contrato semântico sem prova do render não foi enviado — não é sucesso.
+          if (envio && 'bloqueado' in envio && envio.bloqueado) {
+            console.warn(`⛔ Post ${post.id} não enviado: ${envio.bloqueado}`)
+            continue
+          }
           successCount++
         } catch (error) {
           console.error(`❌ Erro ao enviar post ${post.id}:`, error)
@@ -415,7 +440,16 @@ export class PostExecutor {
 
           // Try to send again - route to appropriate scheduler
           console.log(`🔄 Retrying post ${retry.postId} via Late API...`)
-          await this.scheduler.sendToLater(retry.postId)
+          const envio = await this.scheduler.sendToLater(retry.postId)
+          // B1d (checkpoint c): bloqueio do contrato semântico não é sucesso nem falha de envio — a
+          // tentativa termina sem agendar outra (repetir só repetiria o bloqueio).
+          if (envio && 'bloqueado' in envio && envio.bloqueado) {
+            await db.postRetry.update({
+              where: { id: retry.id },
+              data: { status: RetryStatus.FAILED, errorMessage: envio.bloqueado },
+            })
+            continue
+          }
 
           // Mark retry as success
           await db.postRetry.update({

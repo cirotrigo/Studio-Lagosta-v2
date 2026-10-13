@@ -64,6 +64,7 @@ import { resolverValoresSemanticos, validarEntradaSemantica, type ErroDeValor, t
 import { aplicarAjustes, type AjusteAplicado, type AjusteRecusado } from '@/lib/creatives/revisao/aplicar-ajustes'
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
 import { MOTIVO_DO_AJUSTE_DO_REVISOR } from '@/lib/relatorios/qualidade-da-copy-contrato'
+import { temContratoSemantico } from '@/lib/posts/copy-segue-a-pagina'
 import { MENSAGEM_PAGINA_COM_VIDEO, videoNaPagina } from '@/lib/video/pagina-com-video'
 
 export { CreativeError, getPublicAppUrl }
@@ -623,6 +624,22 @@ export interface CreateArteRapidaResult {
 /** As chaves de `slotValues` que não endereçam camada: controles da foto e endereçamento semântico. */
 const CHAVES_RESERVADAS = new Set(['_driveImageId', '_imageUrl', '_slots', '_papeis'])
 
+/**
+ * Camadas de texto VISÍVEIS cuja chave visual (`name ?? id`, a de copyVisualDasCamadas/textosDaPagina) começa com `_`:
+ * com `_slots`/`_papeis` a copy registrada é a visual das camadas, e esse texto cairia onde os leitores descartam
+ * (Codex #208; B1d checkpoint g — vale nas duas vias, criação e ajuste, inclusive pedido só de imagem).
+ */
+export function camadasDeTextoComChaveReservada(camadas: Array<{ id?: unknown; name?: unknown; type?: unknown; visible?: unknown }>): string[] {
+  return camadas
+    .filter((c) => (c?.type === 'text' || c?.type === 'rich-text') && c.visible !== false && String(c.name ?? c.id).startsWith('_'))
+    .map((c) => String(c.id))
+}
+
+function recusarChaveVisualReservada(layerIds: string[]): void {
+  if (layerIds.length === 0) return
+  throw new CreativeError('CHAVE_VISUAL_RESERVADA', 'Com _slots/_papeis, a página não pode ter camada de texto visível com nome (ou id, sem nome) começado por "_": a copy registrada da arte perderia esse texto. Renomeie a camada no editor.', 422, { layerIds })
+}
+
 /** O alvo principal da foto recebeu `fileUrl` por _slots/_papeis: a foto genérica não escorre (opção C do #208). */
 const AVISO_FOTO_BLOQUEADA_PELO_SEMANTICO =
   'A foto não foi aplicada: o alvo principal da foto já recebeu um fileUrl por _slots/_papeis. Pelo contrato semântico, endereçe cada imagem explicitamente.'
@@ -683,14 +700,9 @@ function valoresDaArte(
   // Com texto semântico, a Generation registra a copy VISUAL das camadas finais (chave `name ?? id`). Texto visível
   // em chave `_…` sumiria dos leitores — inclusive o de OUTRA camada, preenchido pelo legado (Codex #208, CP5).
   const temTextoSemantico = [...r.valores.values()].some((v) => typeof v.valor === 'string' || v.valor.content !== undefined)
-  if (temTextoSemantico) {
-    const reservadas = camadas
-      .filter((c) => (c?.type === 'text' || c?.type === 'rich-text') && c.visible !== false && String(c.name ?? c.id).startsWith('_'))
-      .map((c) => String(c.id))
-    if (reservadas.length > 0) {
-      throw new CreativeError('CHAVE_VISUAL_RESERVADA', 'Com texto por _slots/_papeis, a página não pode ter camada de texto visível com nome (ou id, sem nome) começado por "_": a copy registrada da arte perderia esse texto. Renomeie a camada no editor.', 422, { layerIds: reservadas })
-    }
-  }
+  // Checkpoint g: com QUALQUER pedido semântico (inclusive só de imagem) a copy registrada também é a visual das camadas
+  // — a mesma guarda vale (Codex, checkpoint g).
+  if (temTextoSemantico || temContratoSemantico(efetivo)) recusarChaveVisualReservada(camadasDeTextoComChaveReservada(camadas))
   if (temCopy) {
     const fora = [...r.valores.keys()].filter((i) => (camadas[i].type === 'text' || camadas[i].type === 'rich-text') && !cobertos.has(String(camadas[i].id)))
     if (fora.length > 0) {
@@ -906,8 +918,12 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
       // Com TEXTO vindo de _slots/_papeis, a copy registrada é a VISUAL das camadas finais (o formato de ajustarArte e
       // da recomposição: chave de textosDaPagina) — os leitores ignoram chaves `_` e o diff de aprendizado compara por
       // chave. O mapa recebido, com bloco/papel e o endereçamento, fica em slotValuesRecebidos. Sem texto semântico, o
-      // registro de sempre (Codex #208, CP5, opção B).
-      ...(temTextoSemantico ? { slotValues: copyVisualDasCamadas(layers) ?? {}, slotValuesRecebidos: efetivo } : { slotValues: efetivo }),
+      // registro de sempre (Codex #208, CP5, opção B). Checkpoint g: com o contrato SEM texto (só imagem) também — a copy
+      // visual é a das camadas finais (o texto que o modelo mostra) e o pedido vai para slotValuesRecebidos: o campo de
+      // copy nunca guarda o pedido, nem fica sem o texto que a arte desenha.
+      ...(temTextoSemantico || temContratoSemantico(efetivo)
+        ? { slotValues: copyVisualDasCamadas(layers) ?? {}, slotValuesRecebidos: efetivo }
+        : { slotValues: efetivo }),
       ...(registroDaCopy ? { copyAutoral: registroDaCopy.registro } : {}),
       autocorrecao: fix.autocorrecao,
       halo: {
@@ -1153,6 +1169,8 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
   const sourceLayers = camadasParaBake(page.layers, page)
   const semanticos = resolverValoresSemanticos(sourceLayers, slotValues)
   if (semanticos.erros.length > 0) throw erroDeValores(semanticos.erros, 422)
+  // Checkpoint g (Codex): a mesma guarda da criação — a copy registrada do ajuste é a visual das camadas.
+  if (temContratoSemantico(slotValues)) recusarChaveVisualReservada(camadasDeTextoComChaveReservada(sourceLayers))
 
   const driveImageId =
     input.driveImageId ??

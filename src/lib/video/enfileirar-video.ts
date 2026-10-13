@@ -87,6 +87,7 @@ export async function prepararVideoDaPagina(p: {
         updatedAt: true,
         mediaUrls: true,
         videoDaPagina: true,
+        slotValues: true,
       },
     })
     const recusa = validarSubstituicaoNaFila(post, {
@@ -128,6 +129,7 @@ async function comOPostTravado(
       createdAt: true,
       mediaUrls: true,
       videoDaPagina: true,
+      slotValues: true,
     },
   })
   const recusa = validarSubstituicaoNaFila(post, {

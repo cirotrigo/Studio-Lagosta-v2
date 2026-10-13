@@ -38,7 +38,7 @@ export const toolsDeAgenda = [
     acesso: { tipo: 'projeto' },
     superficies: ['remoto', 'local'],
     handler: async (args, _principal) => {
-      const [{ db }, { avisosDeCampanhaVencida }, { formatarBRT }, { descreverJanela }, { escopoEmPortugues }, { textosDaPeca, arteEntregue, arteDosFieldValues }] =
+      const [{ db }, { avisosDeCampanhaVencida }, { formatarBRT }, { descreverJanela }, { escopoEmPortugues }, { textosDaPeca, arteEntregue, arteDosFieldValues }, { temContratoSemantico }] =
         await Promise.all([
           import('../../db'),
           import('../../posts/campanha-vigencia'),
@@ -46,6 +46,7 @@ export const toolsDeAgenda = [
           import('../../posts/freeze-window'),
           import('../../posts/learning-scope'),
           import('../../posts/textos-da-peca'),
+          import('../../posts/copy-segue-a-pagina'),
         ])
       const projectId = args.projectId as number
 
@@ -160,6 +161,18 @@ export const toolsDeAgenda = [
       // Página MODELO: é o que decide se o render aplica os slots do post por cima dela (#142). Em página de
       // CONTEÚDO a página é a peça e manda — ler com os slots aplicados mostraria texto que a arte não tem.
       const modeloPorPagina = new Map(paginas.map((p) => [p.id, p.isTemplate]))
+      /**
+       * B1d (checkpoint e): a PROVA do render da mídia do post semântico, casada por post + URL atual
+       * (`PostRenderProof`) — é ela, e não a Generation casada pela URL, que diz o texto de uma peça entregue.
+       */
+      const comContrato = posts.filter((p) => temContratoSemantico(p.slotValues) && (p.mediaUrls ?? []).length === 1)
+      const provas = comContrato.length
+        ? await db.postRenderProof.findMany({
+            where: { OR: comContrato.map((p) => ({ postId: p.id, mediaUrl: p.mediaUrls[0] })) },
+            select: { postId: true, mediaUrl: true, layersSnapshot: true },
+          })
+        : []
+      const provaDe = (post: (typeof posts)[number]) => provas.find((p) => p.postId === post.id && p.mediaUrl === post.mediaUrls?.[0]) ?? null
       const textosDe = (post: (typeof posts)[number]) =>
         textosDaPeca(
           { pageId: post.pageId, slotValues: post.slotValues, status: post.status, laterPostId: post.laterPostId, mediaUrls: post.mediaUrls ?? [], generationId: post.generationId, renderStatus: post.renderStatus },
@@ -167,6 +180,7 @@ export const toolsDeAgenda = [
             ...(post.pageId && camadasPorPagina.has(post.pageId)
               ? { camadas: camadasPorPagina.get(post.pageId), paginaEhModelo: modeloPorPagina.get(post.pageId) === true }
               : {}),
+            provaDaMidia: provaDe(post),
             slides: (post.mediaUrls ?? []).map((url) => {
               const arte = arteDoSlide(post, url)
               return {

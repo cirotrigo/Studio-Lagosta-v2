@@ -212,3 +212,10 @@ describe('rotuloDoDestino e motivoDaRecusa', () => {
     expect(motivoDaRecusa(recusado)).toBe('post entregue')
   })
 })
+
+describe('B1d (checkpoint g): post com o contrato semântico não recebe vídeo', () => {
+  it('_slots/_papeis em SocialPost.slotValues são o PEDIDO: a troca de vídeo o sobrescreveria com a cópia da página', () => {
+    const d = decidirSubstituicao(post({ updatedAt: t(0), slotValues: { _slots: { manchete: 'X' } } }), { revisao: t(0).toISOString(), pageId: 'pg1' }, [t(0).getTime()], true)
+    expect(d).toMatchObject({ aceitar: false, motivo: expect.stringMatching(/semântico/) })
+  })
+})

@@ -42,7 +42,7 @@ import {
   type RecusaDaTroca,
 } from './troca-de-arte'
 import { formatarBRT } from './agenda-acoes'
-import { comoCopiaDaPagina } from './copy-segue-a-pagina'
+import { copiaDaPagina, temContratoSemantico } from './copy-segue-a-pagina'
 import { PostLogEvent, Prisma } from '../../../prisma/generated/client'
 
 /** Versão da regra, para a chave de idempotência do sinal de aprendizado. */
@@ -91,6 +91,14 @@ function recusar(recusa: RecusaDaTroca): never {
   throw new CreativeError(recusa.codigo, recusa.mensagem, recusa.status)
 }
 
+function recusarContratoSemantico(): never {
+  throw new CreativeError(
+    'CONTRATO_SEMANTICO_SEM_TROCA_DE_ARTE',
+    'Este post usa o contrato semântico (_slots/_papeis): a arte dele vem só do render da página modelo, e não pode ser trocada por outra. Edite o pedido (update-post) e deixe o render refazer a arte.',
+    422,
+  )
+}
+
 export async function trocarArteDoPost(
   input: TrocarArteDoPostInput,
 ): Promise<TrocarArteDoPostResult> {
@@ -119,11 +127,13 @@ export async function trocarArteDoPost(
       pageId: true,
       generationId: true,
       campaignId: true,
+      slotValues: true,
     },
   })
   if (!post || post.projectId !== projectId) {
     throw new CreativeError('POST_NAO_ENCONTRADO', 'Post não encontrado neste projeto.', 404)
   }
+  if (temContratoSemantico(post.slotValues)) recusarContratoSemantico()
 
   const recusa = recusaDaTroca(post)
   if (recusa) recusar(recusa)
@@ -326,12 +336,21 @@ export async function trocarArteDoPost(
    */
   const trocaDePagina = decisao.vinculaPagina && pageId !== post.pageId
   const slotValuesNovo = novosTextos
-    ? { slotValues: (origem === 'pagina' ? comoCopiaDaPagina(novosTextos) : novosTextos) as Prisma.InputJsonValue }
+    ? { slotValues: (origem === 'pagina' ? copiaDaPagina(novosTextos) : novosTextos) as Prisma.InputJsonValue }
     : copyDaArteInvalidada || trocaDePagina || origem === 'galeria'
       ? { slotValues: Prisma.DbNull }
       : {}
 
-  const atualizado = await db.socialPost.updateMany({
+  /**
+   * B1d (checkpoint e): post com o contrato semântico (`_slots`/`_papeis`) não troca de arte — a mídia dele só vem
+   * do render canônico PROVADO, e a troca gravaria mídia pronta e retiraria o contrato (o gate de envio passaria a
+   * tratá-lo como legado, sem prova). Decidido com a linha TRAVADA, na mesma transação da escrita: o contrato pode
+   * ter chegado depois da leitura lá de cima.
+   */
+  const atualizado = await db.$transaction(async (tx) => {
+    const [linha] = await tx.$queryRaw<Array<{ slotValues: unknown }>>`SELECT "slotValues" FROM "SocialPost" WHERE "id" = ${post.id} FOR UPDATE`
+    if (temContratoSemantico(linha?.slotValues)) recusarContratoSemantico()
+    return tx.socialPost.updateMany({
     where: {
       id: post.id,
       projectId,
@@ -360,6 +379,7 @@ export async function trocarArteDoPost(
       ...(vinculaGeneration ? { generationId: novaGenerationId } : {}),
       ...slotValuesNovo,
     },
+    })
   })
 
   if (atualizado.count === 0) {

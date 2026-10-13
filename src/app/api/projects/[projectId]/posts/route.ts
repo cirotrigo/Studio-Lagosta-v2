@@ -7,6 +7,7 @@ import { PostScheduler } from '@/lib/posts/scheduler'
 import { convertPageToDesignData, findUnmatchedSlotKeys } from '@/lib/posts/page-to-design-data'
 import { PostType, ScheduleType, RecurrenceFrequency, PublishType } from '../../../../../../prisma/generated/client'
 import { hasProjectReadAccess, hasProjectWriteAccess, withProjectOwner } from '@/lib/projects/access'
+import { ErroAdmissaoSemantica } from '@/lib/posts/admitir-pedido-semantico'
 import { fecharPropostaDeRepost } from '@/lib/aprendizado/sinal-de-repost'
 
 // Dynamic validation schema based on post type
@@ -250,6 +251,11 @@ export async function POST(
         { error: 'Validation error', details: error.errors },
         { status: 400 }
       )
+    }
+
+    // B1d (checkpoint c): pedido semântico (_slots/_papeis) recusado na admissão — erro do pedido, não 500.
+    if (error instanceof ErroAdmissaoSemantica) {
+      return NextResponse.json({ error: error.codigo, message: error.message, erros: error.erros }, { status: 422 })
     }
 
     // Return detailed error message for debugging

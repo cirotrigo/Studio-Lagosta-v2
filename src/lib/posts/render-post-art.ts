@@ -18,7 +18,10 @@ import { ensurePostGeneration } from './ensure-post-generation'
 import { comoCopiaDaPagina, slotValuesSeguindo } from './copy-segue-a-pagina'
 import { renderDaPaginaCobreAMidia } from './render-da-pagina'
 import { MOTIVO_VIDEO_REMOVIDO, postDeVideo } from './post-de-video'
-import { RenderStatus, type Prisma } from '../../../prisma/generated/client'
+import { ErroRenderSemantico } from './erro-render-semantico'
+import { PostStatus, RenderStatus, type Prisma } from '../../../prisma/generated/client'
+import { fichaDeReserva } from './ficha-de-reserva'
+import { VERSAO_DA_PROVA } from './prova-do-render'
 
 /**
  * Shape único em vez de união discriminada: o tsconfig do projeto roda com
@@ -29,7 +32,7 @@ import { RenderStatus, type Prisma } from '../../../prisma/generated/client'
 export interface RenderPostArtResult {
   ok: boolean
   url?: string
-  motivo?: 'sem-pagina' | 'midia-propria' | 'video-removido' | 'ocupado' | 'invalidado' | 'falhou'
+  motivo?: 'sem-pagina' | 'midia-propria' | 'video-removido' | 'ocupado' | 'invalidado' | 'falhou' | 'falha-semantica'
   erro?: string
 }
 
@@ -97,9 +100,17 @@ export async function renderPostArt(post: RenderablePost): Promise<RenderPostArt
     return { ok: false, motivo: 'midia-propria' }
   }
 
+  /**
+   * Gate final do B1d (Codex R2): só se desenha a arte de um post que ainda NÃO saiu para o publicador — rascunho ou
+   * agendado, sem `laterPostId`. Uma aprovação atrasada pode repor PENDING num post já POSTING; sem isto o render
+   * trocaria a mídia (e criaria prova) de um post que o Zernio já está publicando com a anterior. Vale na reserva e
+   * na confirmação; as reversões continuam presas só à ficha, para nunca deixar a linha em RENDERING.
+   */
+  const aindaNaoEntregue = { laterPostId: null, status: { in: [PostStatus.DRAFT, PostStatus.SCHEDULED] } }
+  const ficha = fichaDeReserva()
   const reserva = await db.socialPost.updateMany({
-    where: { id: post.id, renderStatus: RenderStatus.PENDING },
-    data: { renderStatus: RenderStatus.RENDERING },
+    where: { id: post.id, renderStatus: RenderStatus.PENDING, ...aindaNaoEntregue },
+    data: { renderStatus: RenderStatus.RENDERING, nextRenderAt: ficha },
   })
 
   if (reserva.count === 0) {
@@ -108,17 +119,40 @@ export async function renderPostArt(post: RenderablePost): Promise<RenderPostArt
     return { ok: false, motivo: 'ocupado' }
   }
 
+  // Toda gravação daqui em diante é só desta reserva (ver `fichaDeReserva`).
+  const daReserva = { id: post.id, renderStatus: RenderStatus.RENDERING, nextRenderAt: ficha }
+  let pedido: { pageId: string | null; slotValues: unknown; renderAttempts: number } | null = null
+
   try {
+    /**
+     * O pedido desenhado — e a contagem de tentativas — são os da linha JÁ RESERVADA, não o que o chamador leu
+     * antes (Codex, B1d checkpoint d): uma edição entre aquela leitura e a reserva mandaria desenhar (ou, no
+     * contrato semântico, falhar em definitivo) o pedido antigo. Dentro do try: se a leitura falhar, a linha
+     * volta à fila pelo retry de sempre em vez de ficar presa em RENDERING.
+     */
+    pedido = await db.socialPost.findUnique({ where: { id: post.id }, select: { pageId: true, slotValues: true, renderAttempts: true } })
+    const pageId = pedido?.pageId ?? post.pageId
+    const slotValues = pedido ? pedido.slotValues : post.slotValues
+
     const result = await renderStoryImage(
-      post.pageId,
+      pageId,
       post.id,
-      post.slotValues as Record<string, unknown> | undefined,
+      slotValues as Record<string, unknown> | undefined,
     )
 
-    const confirmed = await db.socialPost.updateMany({
+    /**
+     * B1d (checkpoint e): a confirmação da mídia e a PROVA do render ("estas camadas produziram ESTA mídia") são
+     * UMA transação. O CAS vem primeiro: sem a reserva (ficha) ou com a mídia trocada, nada é confirmado e nenhuma
+     * prova nasce — o Blob vencido fica sem autoridade. Pegou a linha: a prova (post, URL confirmada, camadas
+     * entregues ao canvas) é inserida no mesmo commit; se o INSERT falhar, o RENDERED volta atrás (opção A) e o
+     * erro segue o retry comum. Vale para todo render canônico de página, legado também; só o envio do contrato
+     * semântico a EXIGE (later-scheduler). Append-only: só create.
+     */
+    const confirmed = await db.$transaction(async (tx) => {
+      const cas = await tx.socialPost.updateMany({
       // A mídia entra no predicado: trocada DURANTE o render (o PUT do post não
       // mexe em `renderStatus`), o PNG não pode entrar por cima dela.
-      where: { id: post.id, renderStatus: RenderStatus.RENDERING, mediaUrls: { equals: atual?.mediaUrls ?? [] } },
+      where: { ...daReserva, ...aindaNaoEntregue, mediaUrls: { equals: atual?.mediaUrls ?? [] } },
       data: {
         renderStatus: RenderStatus.RENDERED,
         renderedImageUrl: result.url,
@@ -138,14 +172,20 @@ export async function renderPostArt(post: RenderablePost): Promise<RenderPostArt
          * defeito aparecia. Sai daqui já MARCADA — o re-render cura a marca que
          * faltou, sem backfill.
          */
-        ...(!result.aplicouSlots && post.slotValues
+        ...(!result.aplicouSlots && slotValues
           ? {
               slotValues: comoCopiaDaPagina(
-                slotValuesSeguindo(post.slotValues, result.copyDaPagina),
+                slotValuesSeguindo(slotValues, result.copyDaPagina),
               ) as Prisma.InputJsonValue,
             }
           : {}),
       },
+      })
+      if (cas.count !== 1) return cas
+      await tx.postRenderProof.create({
+        data: { postId: post.id, mediaUrl: result.url, proofVersion: VERSAO_DA_PROVA, layersSnapshot: result.camadasEfetivas as Prisma.InputJsonValue },
+      })
+      return cas
     })
 
     if (confirmed.count === 0) {
@@ -154,7 +194,7 @@ export async function renderPostArt(post: RenderablePost): Promise<RenderPostArt
       // da fila; imagem é desenhada de novo). Invalidado de verdade já está
       // PENDING, e este update não o alcança.
       await db.socialPost.updateMany({
-        where: { id: post.id, renderStatus: RenderStatus.RENDERING },
+        where: daReserva,
         data: { renderStatus: RenderStatus.PENDING, nextRenderAt: new Date() },
       })
       return { ok: false, motivo: 'invalidado' }
@@ -170,16 +210,34 @@ export async function renderPostArt(post: RenderablePost): Promise<RenderPostArt
      * o post já tem `generationId`, então a arte melhorada continua sendo a
      * dona do vínculo.
      */
-    await ensurePostGeneration(post.id)
+    await ensurePostGeneration(post.id, { midiaEsperada: result.url })
 
     return { ok: true, url: result.url }
   } catch (error) {
+    const newAttempts = (pedido?.renderAttempts ?? post.renderAttempts) + 1
+
+    /**
+     * B1d (checkpoint d): o contrato semântico não casa com a página no momento do render. É DETERMINÍSTICO —
+     * repetir dá o mesmo resultado —, então é terminal já nesta tentativa: RENDER_FAILED, sem backoff, com o
+     * envelope seguro (código e erros estruturados, nunca o texto pedido) em renderError. Nada foi desenhado
+     * nem subido: a recusa acontece antes. Erros comuns seguem o retry de sempre, logo abaixo.
+     */
+    if (error instanceof ErroRenderSemantico) {
+      const envelope = error.paraRenderError()
+      const terminal = await db.socialPost.updateMany({
+        where: daReserva,
+        data: { renderStatus: RenderStatus.RENDER_FAILED, renderAttempts: newAttempts, renderError: envelope, nextRenderAt: null },
+      })
+      // A reserva deixou de ser desta execução (invalidada, ou já reservada por outra): o pedido novo vale.
+      if (terminal.count === 0) return { ok: false, motivo: 'invalidado' }
+      return { ok: false, motivo: 'falha-semantica', erro: envelope }
+    }
+
     const erro = error instanceof Error ? error.message : 'Unknown error'
-    const newAttempts = post.renderAttempts + 1
 
     if (newAttempts >= 3) {
       await db.socialPost.updateMany({
-        where: { id: post.id, renderStatus: RenderStatus.RENDERING },
+        where: daReserva,
         data: {
           renderStatus: RenderStatus.RENDER_FAILED,
           renderAttempts: newAttempts,
@@ -190,7 +248,7 @@ export async function renderPostArt(post: RenderablePost): Promise<RenderPostArt
       // Backoff exponencial: 2^tentativas * 2 minutos
       const backoffMs = Math.pow(2, newAttempts) * 2 * 60 * 1000
       await db.socialPost.updateMany({
-        where: { id: post.id, renderStatus: RenderStatus.RENDERING },
+        where: daReserva,
         data: {
           renderStatus: RenderStatus.PENDING,
           renderAttempts: newAttempts,

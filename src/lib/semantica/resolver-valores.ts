@@ -77,8 +77,9 @@ export type ErroDeValor =
   /**
    * Texto numa camada cuja chave visual (`name ?? id`, a de textosDaPagina/copyVisualDasCamadas) começa com `_`: a
    * copy registrada da arte cairia numa chave que os leitores descartam (Codex #208; a convenção é requisito do B1d).
+   * Sem `origem`: a camada não foi endereçada, mas o contrato está presente e a copy visual a perderia (B1d checkpoint g).
    */
-  | { codigo: 'CHAVE_VISUAL_RESERVADA'; layerId: string; origem: OrigemSemantica }
+  | { codigo: 'CHAVE_VISUAL_RESERVADA'; layerId: string; origem?: OrigemSemantica }
   /** O efeito pedido não é desenhado por este tipo de camada (seria gravado e ignorado pelo render). */
   | { codigo: 'VALOR_INCOMPATIVEL_COM_CAMADA'; layerId: string; type: string; origem: OrigemSemantica; efeito: EfeitoPedido }
 

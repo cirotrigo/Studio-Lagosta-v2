@@ -25,7 +25,7 @@ import {
 } from '@/lib/aprendizado/sinal-de-agendamento'
 import { registrarLegendaDoPost } from '@/lib/aprendizado/sinal-de-legenda'
 import { registrarArtesDoPost } from '@/lib/posts/artes-do-post'
-import { comoCopiaDaPagina } from '@/lib/posts/copy-segue-a-pagina'
+import { copiaDaPagina } from '@/lib/posts/copy-segue-a-pagina'
 import { recusaComoImagem } from '@/lib/video/pagina-com-video'
 import { vinculoDoVideo } from '@/lib/video/vinculo-do-video'
 import { ehExportDeVideo } from '@/lib/posts/post-de-video'
@@ -538,7 +538,7 @@ export async function criarPostDoAgendamento(client: EscritorDoAgendamento, r: A
       ...(copyFinal
         ? {
             slotValues: (copyDaPagina
-              ? comoCopiaDaPagina(copyDaPagina)
+              ? copiaDaPagina(copyDaPagina)
               : copyFinal) as Prisma.InputJsonValue,
           }
         : {}),

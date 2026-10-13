@@ -13,6 +13,8 @@ import { refilarPaginasDoPost } from '@/lib/compositor/pastas'
 import { comTemplateDaPagina } from '@/lib/posts/template-do-post'
 import { postDeVideo } from '@/lib/posts/post-de-video'
 import { estadoDoVideoDosPosts } from '@/lib/video/estado-do-video-do-post'
+import { ErroAdmissaoSemantica } from '@/lib/posts/admitir-pedido-semantico'
+import { temContratoSemantico } from '@/lib/posts/copy-segue-a-pagina'
 
 const areStringArraysEqual = (left?: string[] | null, right?: string[] | null) => {
   const leftValue = left ?? []
@@ -244,18 +246,35 @@ export async function PUT(
     }
 
     // Update post
-    const updatedPost = await db.socialPost.update({
-      where: { id: postId },
-      data: updateData,
-      include: {
-        Generation: true,
-        Project: {
-          select: {
-            laterAccountId: true,
+    const atualizar = (cliente: Pick<typeof db, 'socialPost'>) =>
+      cliente.socialPost.update({
+        where: { id: postId },
+        data: updateData,
+        include: {
+          Generation: true,
+          Project: {
+            select: {
+              laterAccountId: true,
+            },
           },
         },
-      },
-    })
+      })
+    /**
+     * B1d (checkpoint e): a mídia de um post com o contrato semântico é a que o render canônico produziu e PROVOU.
+     * Trocá-la por outra — inclusive depois da entrega, quando este PUT sincroniza a mídia nova com o Zernio —
+     * publicaria e faria a agenda ler uma mídia sem prova. A decisão vale para a linha que será gravada: travada
+     * com FOR UPDATE na mesma transação, e a mídia pedida é comparada com a da linha TRAVADA (não com a leitura lá
+     * de cima: o render pode ter confirmado a mídia provada no meio). Sem mídia no body: a escrita de sempre.
+     */
+    const updatedPost = Array.isArray(mediaUrls)
+      ? await db.$transaction(async (tx) => {
+          const [linha] = await tx.$queryRaw<Array<{ slotValues: unknown; mediaUrls: string[] }>>`SELECT "slotValues", "mediaUrls" FROM "SocialPost" WHERE "id" = ${postId} FOR UPDATE`
+          if (temContratoSemantico(linha?.slotValues) && !areStringArraysEqual(mediaUrls, linha?.mediaUrls)) {
+            throw new ErroAdmissaoSemantica('CONTRATO_COM_MIDIA_PRONTA')
+          }
+          return atualizar(tx)
+        })
+      : await atualizar(db)
 
     // Remarcou? As páginas da arte seguem para a semana nova — pasta, nome e
     // ordem. Sem isto a pasta da semana e o nome da página passam a mentir a
@@ -469,6 +488,9 @@ export async function PUT(
 
     return NextResponse.json(updatedPost)
   } catch (error) {
+    if (error instanceof ErroAdmissaoSemantica) {
+      return NextResponse.json({ error: error.codigo, message: error.message, erros: error.erros }, { status: 422 })
+    }
     console.error('Error updating post:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
