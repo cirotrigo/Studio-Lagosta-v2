@@ -216,9 +216,15 @@ export async function PUT(
      * `renderPostArt` faz quando o cron chega nele. Sem isto o post seguia PENDING (ou RENDERING) com mídia pronta,
      * e a cobertura da agenda o lia como pendente até o cron passar — ou para sempre, se o cron não passasse.
      * Render em voo não volta por cima: as gravações dele exigem RENDERING + a ficha da reserva. Post entregue ao
-     * publicador (`laterPostId`) é intocável.
+     * publicador (`laterPostId`) é intocável. Só quando a mídia MUDOU: a interface reenvia a mesma lista ao trocar a
+     * legenda, e isso não pode apagar um RENDER_FAILED (nem o `renderError` dele).
      */
-    if (Array.isArray(mediaUrls) && !existingPost.laterPostId && !renderDaPaginaCobreAMidia(mediaUrls)) {
+    if (
+      Array.isArray(mediaUrls) &&
+      !areStringArraysEqual(mediaUrls, existingPost.mediaUrls) &&
+      !existingPost.laterPostId &&
+      !renderDaPaginaCobreAMidia(mediaUrls)
+    ) {
       updateData.renderStatus = RenderStatus.NOT_NEEDED
       updateData.renderError = null
     }
