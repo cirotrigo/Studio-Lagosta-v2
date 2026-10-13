@@ -424,8 +424,10 @@ export function ajusteTemTexto(ajustes: unknown): boolean {
   const a = objeto(ajustes)
   if (!a) return false
   const ehTexto = (v: unknown) => typeof v === 'string' || (!!objeto(v) && (v as Record<string, unknown>).content !== undefined)
+  // Pedido semântico MISTO: a chave legada também é pedido — só conta se for texto. Sem contrato, o critério de sempre.
+  const semantico = '_slots' in a || '_papeis' in a
   return Object.entries(a).some(([k, v]) =>
-    k === '_slots' || k === '_papeis' ? Object.values(objeto(v) ?? {}).some(ehTexto) : !k.startsWith('_'),
+    k === '_slots' || k === '_papeis' ? Object.values(objeto(v) ?? {}).some(ehTexto) : !k.startsWith('_') && (!semantico || ehTexto(v)),
   )
 }
 

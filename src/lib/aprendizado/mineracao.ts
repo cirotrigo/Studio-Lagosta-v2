@@ -23,6 +23,7 @@ import { db } from '@/lib/db'
 import { contarUsosPorModelo, lerUsosDeModelo, type UsoDeModelo } from './historico-de-artes'
 import { PILAR_OUTRO, PILAR_SEM_TEXTO } from './pilares'
 import { DIAS_SEMANA_CADENCIA, emBRT } from '@/lib/posts/cadencia'
+import { temContratoSemantico } from '@/lib/posts/copy-segue-a-pagina'
 
 /** Abaixo disto o número existe, mas não sustenta conclusão nenhuma. */
 export const AMOSTRA_MINIMA = 3
@@ -307,8 +308,11 @@ export function camposDosAjustes(linhas: Array<{ ajustes: unknown }>): AjusteMin
   for (const linha of linhas) {
     const ajustes = linha.ajustes
     if (!ajustes || typeof ajustes !== 'object') continue
+    // Pedido semântico MISTO: as chaves legadas dele também são pedido — só a de TEXTO (string ou { content }) conta.
+    const semantico = temContratoSemantico(ajustes)
     for (const [campo, valor] of Object.entries(ajustes)) {
       if (campo.startsWith('_')) continue
+      if (semantico && !(typeof valor === 'string' || (!!valor && typeof valor === 'object' && (valor as { content?: unknown }).content !== undefined))) continue
       const atual = porCampo.get(campo) ?? { ocorrencias: 0, exemplos: [] }
       atual.ocorrencias += 1
       if (typeof valor === 'string' && atual.exemplos.length < 3) {

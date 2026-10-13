@@ -24,3 +24,13 @@ describe('camposDosAjustes', () => {
     expect(camposDosAjustes([{ ajustes: null }, { ajustes: 'x' }])).toEqual([])
   })
 })
+
+describe('pedido semântico MISTO (Codex, checkpoint g)', () => {
+  it('com _slots presente, a chave legada de IMAGEM não conta como campo de texto; a de texto conta', () => {
+    expect(camposDosAjustes([{ ajustes: { _slots: { foto1: { fileUrl: 'https://a' } }, Foto2: { fileUrl: 'https://b' }, Título: 'Noite' } }])).toEqual([{ campo: 'Título', ocorrencias: 1, exemplos: ['Noite'] }])
+  })
+
+  it('legado SEM contrato: como sempre (toda chave não-_ conta)', () => {
+    expect(camposDosAjustes([{ ajustes: { Foto2: { fileUrl: 'https://b' } } }]).map((c) => c.campo)).toEqual(['Foto2'])
+  })
+})

@@ -16,6 +16,9 @@ describe('ajusteTemTexto', () => {
     ['campo de texto legado', { Título: 'Noite' }, true],
     ['texto por _slots (string)', { _slots: { manchete: 'Noite' } }, true],
     ['texto por _papeis ({ content })', { _papeis: { headline: { content: 'Noite' } } }, true],
+    ['misto: _slots de imagem + chave legada de IMAGEM (Codex)', { _slots: { foto1: { fileUrl: 'https://a' } }, Foto2: { fileUrl: 'https://b' } }, false],
+    ['misto: _slots de imagem + chave legada de texto', { _slots: { foto1: { fileUrl: 'https://a' } }, Título: 'Noite' }, true],
+    ['legado sem contrato com chave de imagem: como sempre (conta)', { Foto2: { fileUrl: 'https://b' } }, true],
   ])('%s → %s', (_n, ajustes, esperado) => {
     expect(ajusteTemTexto(ajustes)).toBe(esperado)
   })
