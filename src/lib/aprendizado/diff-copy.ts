@@ -24,7 +24,7 @@
 
 import { normalizeForComparison } from '@/lib/ai/text-comparison'
 import { semColchetes } from '@/lib/compositor/destaques'
-import { lerCamadas, textosDaPagina, textosDaPaginaPorCamada } from '@/lib/posts/page-layers'
+import { lerCamadas, parsePageLayers, textosDaPagina, textosDaPaginaPorCamada } from '@/lib/posts/page-layers'
 import { camadasParaDecisao } from '@/lib/creatives/revisao/oculta-pelo-revisor'
 import type { Desfecho } from './vocabulario'
 
@@ -368,7 +368,11 @@ export function alinharChavesDaProposta(
   const { camadas, legivel } = lerCamadas(layers)
   if (!legivel) return proposta
 
-  const textos = (camadas as Array<Record<string, unknown>>).filter((c) => c?.type === 'text' || c?.type === 'rich-text')
+  // Mesmas camadas que `copyParaDecisao` lê — as chaves têm de ser as dela. A
+  // camada é identificada pela POSIÇÃO nesta lista: `id` é opcional no editor.
+  const decisao = parsePageLayers(camadasParaDecisao(camadas))
+  const ehTexto = (c: Record<string, unknown>) => c?.type === 'text' || c?.type === 'rich-text'
+  const textos = (decisao as Array<Record<string, unknown>>).filter(ehTexto)
   const ambigua = Object.keys(proposta).some((chave) =>
     textos.some((x) => x.id === chave && textos.some((y) => y !== x && y.name === chave)),
   )
@@ -386,16 +390,16 @@ export function alinharChavesDaProposta(
   }
 
   const out: Record<string, string> = {}
-  // Mesmas camadas que `copyParaDecisao` lê — as chaves têm de ser as dela.
-  const itens = textosDaPaginaPorCamada(camadasParaDecisao(camadas))
-  const naArte = new Set(itens.map((t) => t.id).filter(Boolean))
+  const itens = textosDaPaginaPorCamada(decisao)
+  const naArte = new Set(itens.map((t) => t.indice))
   for (const t of itens) {
     const texto = valorDa(t.id, t.chave, t.nome)
     if (texto != null) out[t.chave] = texto
   }
-  for (const c of textos) {
+  for (let i = 0; i < decisao.length; i++) {
+    const c = decisao[i] as Record<string, unknown>
+    if (!ehTexto(c) || naArte.has(i)) continue
     const id = typeof c.id === 'string' ? c.id : null
-    if (id && naArte.has(id)) continue
     const nome = typeof c.name === 'string' ? c.name : null
     const texto = valorDa(id, nome)
     if (texto == null) continue

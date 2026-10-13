@@ -113,10 +113,12 @@ export function textosDaPagina(layers: unknown): Record<string, string> {
  */
 export function textosDaPaginaPorCamada(
   layers: unknown,
-): Array<{ id: string | null; nome: string | null; chave: string; conteudo: string }> {
+): Array<{ indice: number; id: string | null; nome: string | null; chave: string; conteudo: string }> {
   const out: Record<string, string> = {}
-  const itens: Array<{ id: string | null; nome: string | null; chave: string; conteudo: string }> = []
-  for (const layer of parsePageLayers(layers)) {
+  const itens: Array<{ indice: number; id: string | null; nome: string | null; chave: string; conteudo: string }> = []
+  const camadas = parsePageLayers(layers)
+  for (let indice = 0; indice < camadas.length; indice++) {
+    const layer = camadas[indice]
     if (layer?.type !== 'text' && layer?.type !== 'rich-text') continue
     // Camada OCULTA não é copy da peça: desde 13/08/2026 o campo que a copy
     // não cobre sai invisível (placeholder do modelo), e contá-lo aqui poria
@@ -127,6 +129,7 @@ export function textosDaPaginaPorCamada(
     const chave = chaveUnicaDeTexto(out, layer)
     out[chave] = conteudo
     itens.push({
+      indice,
       id: typeof layer.id === 'string' ? layer.id : null,
       nome: typeof layer.name === 'string' ? layer.name : null,
       chave,

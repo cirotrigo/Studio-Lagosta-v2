@@ -261,6 +261,22 @@ describe('alinharChavesDaProposta — layerId da proposta × nome da página', (
     expect(diffDeCopy(alinharChavesDaProposta({ Título: 'Noite' }, repetido), copyParaDecisao(repetido)).mudou).toBe(false)
   })
 
+  it('camada de texto SEM id: proposta por nome é aceita, não contada duas vezes (Codex, rodada 5)', () => {
+    const semId = [{ name: 'headline', type: 'text', content: 'A', visible: true }]
+    const proposta = alinharChavesDaProposta({ headline: 'A' }, semId)
+    expect(proposta).toEqual({ headline: 'A' })
+    expect(desfechoPeloDiff(diffDeCopy(proposta, copyParaDecisao(semId)))).toBe('aceita-como-veio')
+  })
+
+  it('camada oculta pelo REVISOR conta como presente (não vira "fora da arte")', () => {
+    const revisada = [
+      { id: 'l1', name: 'Título', type: 'text', content: 'Noite', visible: false, metadata: { revisao: { ocultaPeloRevisor: { em: '2026-10-13', ajuste: 1 } } } },
+    ]
+    const proposta = alinharChavesDaProposta({ l1: 'Noite' }, revisada)
+    expect(proposta).toEqual({ Título: 'Noite' })
+    expect(diffDeCopy(proposta, copyParaDecisao(revisada)).mudou).toBe(false)
+  })
+
   it('proposta já no formato da página (com #2) segue pareada pela chave da página', () => {
     expect(alinharChavesDaProposta({ Título: 'Noite do vinho', 'Título#2': 'Toda quinta' }, camadas)).toEqual({
       Título: 'Noite do vinho',
