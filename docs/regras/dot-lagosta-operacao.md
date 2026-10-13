@@ -1,4 +1,4 @@
-# Dot Lagosta: Constituição Operacional (`dot-operacao-v2`)
+# Dot Lagosta: Constituição Operacional (`dot-operacao-v3`)
 
 Criada em 13/10/2026 (H3 do Dot; o mapa e as decisões estão em
 `docs/PLANO-2026-10-13-DOT-OPERACAO-H1.md`).
@@ -292,7 +292,9 @@ e Drive.
   vídeo, o sync do Zernio (até 10 min de atraso) e o `plan-week` ou o
   `create-post` do stdio sem a flag. A colisão aparece só como dois cards na
   grade da agenda. Classe B (rara), aceita.
-  - Mitigação barata para o H6: a auditoria passar a acusar dois ou mais posts
-    no mesmo slot e formato.
+  - **Fechado no H6 (`dot-operacao-v3`):** a auditoria devolve `conflitosDeHorario`
+    (data, hora, formato, quantidade e `postIds`), pela mesma regra de ocupação
+    (`ocupaOSlot`, mesmo formato, ±45 min). A ação é `CONFLITO_DE_HORARIO`:
+    relatar, não criar e não remover. Só informa, não bloqueia ninguém.
   - Regra operacional: não rodar `plan-week` do stdio, sem a flag, no mesmo
     cliente e semana em que o agente opera.

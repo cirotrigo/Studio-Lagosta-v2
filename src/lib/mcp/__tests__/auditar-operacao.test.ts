@@ -189,6 +189,7 @@ describe('auditar-operacao', () => {
         'assinatura',
         'avisosDeCampanha',
         'buracos',
+        'conflitosDeHorario',
         'depoisDeAmanha',
         'diasAdiantados',
         'falhas',
