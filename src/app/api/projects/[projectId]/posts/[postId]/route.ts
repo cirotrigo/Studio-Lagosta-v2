@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { desfazerUsoDeFotoDoPost } from '@/lib/creatives/uso-de-foto'
-import { PostType, ScheduleType, PostStatus, PublishType, Prisma } from '../../../../../../../prisma/generated/client'
+import { PostType, ScheduleType, PostStatus, PublishType, Prisma, RenderStatus } from '../../../../../../../prisma/generated/client'
 import { PostScheduler } from '@/lib/posts/scheduler'
 import { hasProjectReadAccess, hasProjectWriteAccess, withProjectOwner } from '@/lib/projects/access'
 import { getLaterClient } from '@/lib/later'
@@ -15,6 +15,7 @@ import { postDeVideo } from '@/lib/posts/post-de-video'
 import { estadoDoVideoDosPosts } from '@/lib/video/estado-do-video-do-post'
 import { ErroAdmissaoSemantica } from '@/lib/posts/admitir-pedido-semantico'
 import { temContratoSemantico } from '@/lib/posts/copy-segue-a-pagina'
+import { renderDaPaginaCobreAMidia } from '@/lib/posts/render-da-pagina'
 
 const areStringArraysEqual = (left?: string[] | null, right?: string[] | null) => {
   const leftValue = left ?? []
@@ -210,6 +211,7 @@ export async function PUT(
       ...(blobPathnames !== undefined && { blobPathnames }),
     }
 
+
     // If changing to IMMEDIATE, clear error fields (status will be set by sender)
     if (scheduleType === 'IMMEDIATE') {
       updateData.errorMessage = null
@@ -268,9 +270,21 @@ export async function PUT(
      */
     const updatedPost = Array.isArray(mediaUrls)
       ? await db.$transaction(async (tx) => {
-          const [linha] = await tx.$queryRaw<Array<{ slotValues: unknown; mediaUrls: string[] }>>`SELECT "slotValues", "mediaUrls" FROM "SocialPost" WHERE "id" = ${postId} FOR UPDATE`
+          const [linha] = await tx.$queryRaw<Array<{ slotValues: unknown; mediaUrls: string[]; laterPostId: string | null }>>`SELECT "slotValues", "mediaUrls", "laterPostId" FROM "SocialPost" WHERE "id" = ${postId} FOR UPDATE`
           if (temContratoSemantico(linha?.slotValues) && !areStringArraysEqual(mediaUrls, linha?.mediaUrls)) {
             throw new ErroAdmissaoSemantica('CONTRATO_COM_MIDIA_PRONTA')
+          }
+          /**
+           * #220: mídia própria que o render da página não cobre (vídeo, várias mídias) tira o post da fila de render
+           * AQUI, como `renderPostArt` faz quando o cron chega nele. Sem isto o post seguia PENDING (ou RENDERING) com
+           * mídia pronta, e a cobertura da agenda o lia como pendente. Decidido contra a linha TRAVADA (Codex): só
+           * quando a mídia MUDOU (a interface reenvia a mesma lista ao trocar a legenda, e isso não pode apagar um
+           * RENDER_FAILED) e nunca em post entregue ao publicador (`laterPostId` gravado no meio também conta).
+           * Render em voo não volta por cima: as gravações dele exigem RENDERING + a ficha da reserva.
+           */
+          if (linha && !areStringArraysEqual(mediaUrls, linha.mediaUrls) && !linha.laterPostId && !renderDaPaginaCobreAMidia(mediaUrls)) {
+            updateData.renderStatus = RenderStatus.NOT_NEEDED
+            updateData.renderError = null
           }
           return atualizar(tx)
         })

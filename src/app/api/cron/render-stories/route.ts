@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { renderPostArt } from '@/lib/posts/render-post-art'
+import { recuperarRendersInterrompidos, renderPostArt } from '@/lib/posts/render-post-art'
 import { PRIORIDADE_RENDER_MS } from '@/lib/posts/freeze-window'
 import { PostStatus, RenderStatus } from '../../../../../prisma/generated/client'
 
@@ -14,6 +14,12 @@ export async function GET(req: NextRequest) {
     }
 
     const now = new Date()
+
+    // Antes de montar a fila: a reserva órfã (execução morta em RENDERING) volta como PENDING e já entra nesta rodada.
+    const orfaos = await recuperarRendersInterrompidos(now)
+    if (orfaos.devolvidos + orfaos.falharam > 0) {
+      console.warn(`[render-stories] reservas órfãs: ${orfaos.devolvidos} devolvida(s) à fila, ${orfaos.falharam} esgotada(s)`)
+    }
 
     // Find posts that need rendering.
     //
