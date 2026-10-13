@@ -353,12 +353,27 @@ export function decidirMidiaEmOutroPost(posts: Array<{ id: string; mediaUrls: st
 
 const ADOTAVEIS = new Set(['DRAFT', 'SCHEDULED'])
 
-/** Os posts que já têm a página da peça: adota, cria ou recusa. */
+export const MOTIVO_POST_APROVADO_INTOCAVEL =
+  'A página desta peça já está num post aprovado (agendado, publicando, publicado ou entregue ao publicador). Este perfil só trabalha em rascunho: nada foi alterado.'
+
+/**
+ * Os posts que já têm a página da peça: adota, cria ou recusa.
+ *
+ * `apenasRascunho` (perfil draft-only, H4): post da página que NÃO é rascunho,
+ * ou que já foi entregue ao publicador, recusa o item inteiro. Adotar um
+ * agendado não muda o status, mas os efeitos depois do commit escrevem em
+ * volta dele: vínculo da arte, pasta e nome da página, item do plano.
+ */
 export function decidirPostsDaPagina(
-  posts: Array<{ id: string; status: string }>,
+  posts: Array<{ id: string; status: string; laterPostId?: string | null }>,
   ligadosAOutroItem: ReadonlySet<string>,
+  opcoes: { apenasRascunho?: boolean } = {},
 ): { acao: 'adotar'; postId: string } | { acao: 'criar' } | ({ acao: 'falhar'; postId: string } & FalhaDoItem) {
   if (posts.length === 0) return { acao: 'criar' }
+  if (opcoes.apenasRascunho) {
+    const aprovado = posts.find((p) => p.status !== 'DRAFT' || !!p.laterPostId)
+    if (aprovado) return { acao: 'falhar', postId: aprovado.id, codigo: 'POST_APROVADO_INTOCAVEL', motivo: MOTIVO_POST_APROVADO_INTOCAVEL }
+  }
   const livre = posts.find((p) => ADOTAVEIS.has(p.status) && !ligadosAOutroItem.has(p.id))
   if (livre) return { acao: 'adotar', postId: livre.id }
   const deOutro = posts.find((p) => ADOTAVEIS.has(p.status))

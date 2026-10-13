@@ -154,6 +154,50 @@ Coronel: sem rotina definida.
 
 Carteira saudável é uma linha só.
 
+## A trava no servidor (H4, 13/10/2026)
+
+O limite de rascunho deixou de depender do prompt. Mesmo que o agente ignore
+o manual, sofra injeção ou chame a tool direto, o servidor não deixa a
+identidade dele passar do rascunho.
+
+- **Perfil `draft-only`** (`src/lib/mcp/registro/perfil.ts`): um principal
+  OAuth de usuário cujo `clientId` está, exatamente, em
+  `MCP_DRAFT_ONLY_CLIENT_IDS` (lista separada por vírgula). O serviço nunca é.
+  Env vazia: ninguém é. A env é lida a cada chamada, não no cache de tokens.
+- **Allowlist, não denylist** (`TOOLS_DRAFT_ONLY`, pelo nome canônico):
+  - leituras puras;
+  - `compor-leva`, `agendar-leva` e `ajustar-arte`.
+
+  Tool nova nasce de fora. `sugerir-posts`, `ver-plano`, `escolher-modelo` e
+  `sugerir-repost` ficam de fora porque gravam sinal ou reconciliam estado.
+- **Lista e chamada usam o mesmo filtro.** No `tools/list` o perfil só vê a
+  allowlist. Na chamada, a porta responde a tool proibida (ou o apelido dela)
+  com o MESMO texto da ferramenta inexistente, antes de coerção, schema, gate e
+  handler.
+- **As mutações permitidas recusam peça aprovada** (`POST_APROVADO_INTOCAVEL`,
+  em `src/lib/mcp/guardas-draft-only.ts`). "Aprovada" é qualquer status que não
+  seja DRAFT, ou `laterPostId` gravado. A guarda é fail-closed.
+  - `ajustar-arte` confere todos os posts ligados à página (por `pageId`, pela
+    Generation, pela mídia, pelo item de lote e pelo item de plano) e só aceita
+    foto do acervo.
+  - `compor-leva` não devolve à produção um item já em post aprovado.
+  - `agendar-leva` não adota post aprovado, não roda efeitos em volta dele e
+    não recria rascunho apagado sem gente.
+- **`HORARIO_OCUPADO`** (`agendar-itens.ts`, para TODOS os perfis): sob a trava
+  consultiva do projeto (`pg_advisory_xact_lock`), qualquer post do mesmo
+  projeto e formato a ±45 min recusa a criação. Isso vale para todos os status,
+  inclusive FAILED, campanha vencida e pendente. A simulação só avisa.
+  - **Por que não `SELECT Project FOR UPDATE`, como o plano previa:** a
+    evidência do código mostrou que essa trava conflita com o `FOR KEY SHARE`
+    que toda escrita filha do projeto pega, e enfileiraria o projeto inteiro.
+    Também arriscaria deadlock com a trava da página.
+  - **O que a trava NÃO fecha:** a corrida com caminhos que não passam pelo
+    `agendar-leva` (`colocar-na-agenda`, o editor). Nenhum deles é do perfil.
+- **Stdio local:** `STUDIO_SO_RASCUNHO=1` registra só as inglesas de leitura e
+  as tools do catálogo da allowlist. Flag ausente: tudo como sempre.
+- **Ainda não configurado:** o cliente OAuth real do Dot e a env de produção
+  (H6). Até lá, nenhum principal é `draft-only`.
+
 ## Dívidas conhecidas que afetam a leitura
 
 Um rascunho cuja mídia foi trocada pela edição da agenda pode ficar preso em

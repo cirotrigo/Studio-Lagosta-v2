@@ -510,6 +510,17 @@ export const toolsDoCompositor = [
       const decididoPor = await quemDecidiu(projectId, principal)
       const pecas: Array<{ indice: number; itemId: string | null; generationId: string; nome: string | null; desfecho: 'criado' | 'reaproveitado' | 'retomado'; situacao: 'pendente' | 'pronta' | 'falhou' }> = []
       const falhas: Array<{ indice: number; erro: string; codigo?: string; motivo?: string }> = []
+      // Perfil draft-only (H4): item cuja identidade já virou post aprovado não volta à produção
+      // (retomar ou recompor devolveria à fila um conteúdo aprovado). Conferido antes de enfileirar.
+      const { perfilDoPrincipal } = await import('../registro/perfil')
+      const aprovados =
+        perfilDoPrincipal(principal) === 'draft-only' && loteId !== undefined
+          ? await (await import('../guardas-draft-only')).itensDeLoteJaAprovados(
+              projectId,
+              loteId,
+              itens.map((i) => i.itemId).filter((id): id is string => typeof id === 'string'),
+            )
+          : new Set<string>()
       const conflitos: Array<{ indice: number; itemId: string | null; diferencas: string[]; generationId: string | null }> = []
       // "Peça superada no plano" (decisão do Ciro, 13/09/2026): o item já tem
       // outra arte, mais recente que este pedido. Nada foi criado — nem vai para
@@ -518,6 +529,10 @@ export const toolsDoCompositor = [
       // Em SÉRIE, como todo lote da casa: cada item valida e grava sozinho.
       for (const [indice, item] of itens.entries()) {
         const itemId = (item.itemId as string | undefined) ?? null
+        if (itemId && aprovados.has(itemId)) {
+          falhas.push({ indice, erro: 'POST_APROVADO_INTOCAVEL — esta peça já está num post aprovado; este perfil só trabalha em rascunho. Nada foi enfileirado.', codigo: 'POST_APROVADO_INTOCAVEL' })
+          continue
+        }
         const itemRevisao = typeof item.itemRevisao === 'string' ? item.itemRevisao.trim() : ''
         const doPlano = loteId !== undefined && !!item.itemDePlanoId
         // A revisão lida no ver-plano é obrigatória para peça de item de plano
@@ -624,10 +639,22 @@ export const toolsDoCompositor = [
     acesso: { tipo: 'projeto' },
     superficies: ['remoto', 'local'],
     handler: async (args, principal) => {
-      const [{ agendarItensDoLote }, { quemDecidiu }] = await Promise.all([import('../../lotes/agendar-itens'), import('../tools')])
+      const [{ agendarItensDoLote }, { quemDecidiu }, { perfilDoPrincipal }, { CreativeError }] = await Promise.all([
+        import('../../lotes/agendar-itens'),
+        import('../tools'),
+        import('../registro/perfil'),
+        import('../../creatives/errors'),
+      ])
       const projectId = args.projectId as number
+      // Perfil draft-only (H4): recriar rascunho apagado exige a confirmação de uma pessoa (a equipe apagou de
+      // propósito), e o agendamento nunca adota nem mexe em volta de post aprovado.
+      const apenasRascunho = perfilDoPrincipal(principal) === 'draft-only'
+      if (apenasRascunho && (args.itens as Array<Record<string, unknown>>).some((i) => i.recriarRascunhoApagado === true)) {
+        throw new CreativeError('CONFIRMACAO_HUMANA_NECESSARIA', 'Recriar um rascunho que a equipe apagou exige a confirmação de uma pessoa. Nada foi agendado.', 403)
+      }
       const decididoPor = await quemDecidiu(projectId, principal)
       const r = await agendarItensDoLote({
+        apenasRascunho,
         projectId,
         loteId: args.loteId as string,
         itens: args.itens as unknown[],

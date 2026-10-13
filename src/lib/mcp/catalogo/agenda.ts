@@ -513,7 +513,7 @@ export const toolsDeAgenda = [
         .array(z.string())
         .describe('Ids dos posts a aprovar (de ver-agenda ou do retorno de colocar-na-agenda).'),
     }),
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     acesso: { tipo: 'projeto' },
     superficies: ['remoto', 'local'],
     handler: async (args, principal) => {

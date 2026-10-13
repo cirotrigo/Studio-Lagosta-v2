@@ -34,6 +34,9 @@ export async function GET(req: NextRequest) {
       renderAttempts: { lt: 3 },
       status: { in: [PostStatus.SCHEDULED, PostStatus.DRAFT] },
       pageId: { not: null },
+      // Post entregue ao publicador é intocável: `renderPostArt` recusa reservá-lo ("ocupado") e não conta
+      // tentativa, então PENDING com `laterPostId` ocuparia uma das 5 vagas de cada rodada para sempre (L1 do H4).
+      laterPostId: null,
     }
 
     /**
@@ -50,7 +53,6 @@ export async function GET(req: NextRequest) {
       where: {
         ...filaBase,
         status: PostStatus.SCHEDULED,
-        laterPostId: null,
         scheduledDatetime: {
           gt: now,
           lte: new Date(now.getTime() + PRIORIDADE_RENDER_MS),

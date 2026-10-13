@@ -192,11 +192,26 @@ export const toolsDeArteIA = [
     acesso: { tipo: 'projeto' },
     superficies: ['remoto', 'local'],
     handler: async (args, principal) => {
-      const [{ ajustarArte }, { quemDecidiu, canalDoPrincipal }] = await Promise.all([
+      const [{ ajustarArte }, { quemDecidiu, canalDoPrincipal }, { perfilDoPrincipal }] = await Promise.all([
         import('../../creatives/arte-rapida'),
         import('../tools'),
+        import('../registro/perfil'),
       ])
       const projectId = args.projectId as number
+      // Perfil draft-only (H4): só a peça que ninguém aprovou, e só com foto do acervo (sem URL de fora).
+      // A conferência vem ANTES de qualquer escrita, e erro de leitura recusa.
+      if (perfilDoPrincipal(principal) === 'draft-only') {
+        const [{ assertPaginaSoEmRascunho }, { CreativeError }] = await Promise.all([
+          import('../guardas-draft-only'),
+          import('../../creatives/errors'),
+        ])
+        if (typeof args.imageUrl === 'string') {
+          throw new CreativeError('URL_EXTERNA_RECUSADA', 'Este perfil troca a foto só pelo acervo (driveImageId de buscar-fotos), nunca por URL externa. Nada foi alterado.', 400)
+        }
+        await assertPaginaSoEmRascunho(args.pageId as string, projectId)
+        // ponytail: a conferência e a escrita não estão na mesma trava; um post aprovado nos segundos entre as duas
+        // re-renderiza com o ajuste. Fechar pedindo ao ajustarArte que só invalide DRAFT se isso acontecer de verdade.
+      }
       const r = await ajustarArte({
         projectId,
         pageId: args.pageId as string,

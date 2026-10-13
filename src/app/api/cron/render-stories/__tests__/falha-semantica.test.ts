@@ -10,7 +10,10 @@ vi.mock('@/lib/db', () => ({
   // a primeira consulta (urgentes) traz o post; a segunda (restantes), nada
   db: { socialPost: { findMany: vi.fn(async (args: any) => (args.where.scheduledDatetime ? [{ id: 'post-1', pageId: 'p1', slotValues: { _slots: {} }, renderAttempts: 0 }] : [])) } },
 }))
-vi.mock('@/lib/posts/render-post-art', () => ({ renderPostArt: vi.fn(async () => estado.resultado) }))
+vi.mock('@/lib/posts/render-post-art', () => ({
+  renderPostArt: vi.fn(async () => estado.resultado),
+  recuperarRendersInterrompidos: vi.fn(async () => ({ devolvidos: 0, falharam: 0 })),
+}))
 vi.mock('../../../../../../prisma/generated/client', () => ({
   PostStatus: { SCHEDULED: 'SCHEDULED', DRAFT: 'DRAFT' },
   RenderStatus: { PENDING: 'PENDING' },

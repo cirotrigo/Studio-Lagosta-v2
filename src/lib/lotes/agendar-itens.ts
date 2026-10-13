@@ -51,6 +51,8 @@ import { formatoDaPagina, refilarPaginasDoPost } from '@/lib/compositor/pastas'
 import { normalizarStatusDoItem, transicaoPermitida } from '@/lib/planos/vocabulario'
 import { classificarPecaDoItem, descreverArteAtualDoItem, type ArteAtualDoItem } from '@/lib/planos/decisao-do-item'
 import type { Superficie } from '@/lib/aprendizado/vocabulario'
+import { formatoDoTipo, ocupaOSlot } from '@/lib/posts/contexto-da-semana'
+import { TOLERANCIA_SLOT_MIN } from '@/lib/posts/cobertura'
 import type { Prisma } from '../../../prisma/generated/client'
 import {
   decidirAgendamento,
@@ -93,6 +95,12 @@ export interface EntradaDoAgendamentoDoLote {
   /** `User.id` INTERNO (cuid), NUNCA o clerkId. */
   decididoPor?: string | null
   superficie?: Superficie
+  /**
+   * Perfil draft-only (H4): não adota nem mexe em volta de post aprovado ou
+   * entregue ao publicador, e não roda efeitos pendentes num post que foi
+   * aprovado depois de ligado. Quem decide é a tool, pelo perfil do principal.
+   */
+  apenasRascunho?: boolean
 }
 
 export interface ItemAgendadoDoLote {
@@ -326,6 +334,7 @@ interface Contexto {
   leitor: Cliente
   decididoPor: string | null
   superficie: Superficie
+  apenasRascunho: boolean
 }
 
 type Escrita =
@@ -371,11 +380,11 @@ async function decidirEscrita(cliente: Cliente, ctx: Contexto, itemId: string, l
     if (midia) return { acao: 'recusar', resposta: falhou(itemId, midia, { postId: midia.postId, ...vinculos }) }
   }
 
-  const posts = (await cliente.socialPost.findMany({ where: { projectId, pageId }, select: { id: true, status: true }, orderBy: { createdAt: 'asc' } })) as Array<{ id: string; status: string }>
+  const posts = (await cliente.socialPost.findMany({ where: { projectId, pageId }, select: { id: true, status: true, laterPostId: true }, orderBy: { createdAt: 'asc' } })) as Array<{ id: string; status: string; laterPostId: string | null }>
   const ligados = posts.length
     ? ((await cliente.itemDeLote.findMany({ where: { postId: { in: posts.map((p) => p.id) }, NOT: { id: linha.id } }, select: { postId: true } })) as Array<{ postId: string | null }>)
     : []
-  const daPagina = decidirPostsDaPagina(posts, new Set(ligados.map((l) => l.postId).filter((p): p is string => !!p)))
+  const daPagina = decidirPostsDaPagina(posts, new Set(ligados.map((l) => l.postId).filter((p): p is string => !!p)), { apenasRascunho: ctx.apenasRascunho })
   if (daPagina.acao === 'falhar') return { acao: 'recusar', resposta: falhou(itemId, daPagina, { postId: daPagina.postId, ...vinculos }) }
 
   const itemDoPlano = await lerItemDoPlano(cliente, peca, projectId)
@@ -496,6 +505,31 @@ function instanteDe(texto: string): number | null {
   }
 }
 
+/** A chave consultiva da agenda de um cliente: serializa a criação de post no mesmo projeto. */
+const CHAVE_DA_AGENDA = 'agenda-slot:'
+
+export const MOTIVO_HORARIO_OCUPADO = 'O horário já foi ocupado por outro post. Audite novamente antes de produzir.'
+
+/**
+ * Outro post do projeto no mesmo formato a até 45 min do horário pedido. Vale
+ * QUALQUER situação: rascunho, agendado, publicando, publicado, falhou (a
+ * recuperação é do sistema) e campanha vencida. Pendente também ocupa. É a
+ * MESMA regra de ocupação da auditoria e da sugestão (`ocupaOSlot`,
+ * `formatoDoTipo`, `TOLERANCIA_SLOT_MIN`). Não devolve nada do outro post.
+ */
+async function horarioOcupado(cliente: Cliente, projectId: number, quando: string, postType: string): Promise<FalhaDoItem | null> {
+  const t = new Date(quando).getTime()
+  if (!Number.isFinite(t)) return null
+  const folga = TOLERANCIA_SLOT_MIN * 60_000
+  const vizinhos = (await cliente.socialPost.findMany({
+    where: { projectId, scheduledDatetime: { gte: new Date(t - folga), lte: new Date(t + folga) } },
+    select: { postType: true, scheduledDatetime: true },
+  })) as Array<{ postType: string; scheduledDatetime: Date | null }>
+  const formato = formatoDoTipo(postType)
+  const ocupa = vizinhos.some((p) => p.scheduledDatetime && ocupaOSlot({ t: p.scheduledDatetime.getTime(), formato: formatoDoTipo(p.postType) }, t, formato, TOLERANCIA_SLOT_MIN))
+  return ocupa ? { codigo: 'HORARIO_OCUPADO', motivo: MOTIVO_HORARIO_OCUPADO } : null
+}
+
 async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<ItemAgendadoDoLote> {
   const { projectId, loteId } = ctx
   const itemId = item.itemId
@@ -533,6 +567,10 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
       return falhou(itemId, { codigo: falha.codigo, motivo }, { postId: atual.postId!, ...(peca ? { generationId: peca.id } : {}), ...(peca?.pageId ? { pageId: peca.pageId } : {}), ...apagado })
     }
     const avisos = [...avisosDoPedido]
+    // Draft-only: o post ligado foi aprovado (ou entregue) depois. Devolve como está, sem escrever em volta dele.
+    if (ctx.apenasRascunho && post && (post.status !== 'DRAFT' || post.laterPostId)) {
+      return concluido(ctx, itemId, 'reaproveitado', post, peca, pagina, avisos)
+    }
     if (decisao.efeitosPendentes) {
       if (ctx.simular) avisos.push('O registro do agendamento deste item ficou incompleto; a chamada de verdade o completa.')
       else if (peca && pedido) avisos.push(...(await executarEfeitos(ctx, atual.id, post!, peca, entradaDoPost(projectId, peca, pedido, ctx), null)))
@@ -563,6 +601,11 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
 
   if (ctx.simular) {
     const avisos = [...avisosDoPedido, 'Simulação: nada foi gravado.']
+    // Simulação só AVISA; quem garante é a transação, sob a trava do projeto.
+    if (antes.acao === 'criar') {
+      const ocupado = await horarioOcupado(ctx.leitor, projectId, pedidoValido.quando, pedidoValido.postType)
+      if (ocupado) return falhou(itemId, ocupado, { generationId: antes.peca.id, pageId })
+    }
     if (antes.acao === 'adotar') {
       const existente = (await ctx.leitor.socialPost.findUnique({ where: { id: antes.postId }, select: SELECAO_DO_POST })) as Post | null
       if (existente) return concluido(ctx, itemId, 'adotado', existente, antes.peca, antes.pagina, avisos)
@@ -596,6 +639,14 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
   let escrita: Escrito
   try {
   escrita = await db.$transaction(async (tx): Promise<Escrito> => {
+      // HORARIO_OCUPADO (H4): a trava consultiva do PROJETO vem primeiro. As
+      // travas de linha abaixo são do item e da página, e dois itens diferentes
+      // no mesmo horário não se esperariam: em READ COMMITTED os dois liam
+      // "livre" e os dois criavam. Com esta, o segundo espera o commit do
+      // primeiro e a rechecagem dele vê o post novo. Não é global: só serializa
+      // agendamentos do mesmo cliente. Ninguém mais pega esta chave antes das
+      // travas de linha, então a ordem não forma ciclo.
+      await tx.$queryRaw`SELECT 1 AS ok FROM pg_advisory_xact_lock(hashtext(${CHAVE_DA_AGENDA + projectId}))`
       await tx.$queryRaw`SELECT id FROM "ItemDeLote" WHERE id = ${linha.id} FOR UPDATE`
       if (antes.peca.itemDePlanoId) {
         await tx.$queryRaw`SELECT id FROM "ItemDePlano" WHERE id = ${antes.peca.itemDePlanoId} AND "projectId" = ${projectId} FOR UPDATE`
@@ -638,6 +689,10 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
         postId = sob.postId
         desfecho = 'adotado'
       } else {
+        // Sob a trava do projeto: só agora a resposta "livre" vale. Adotar não
+        // passa aqui, porque o post adotado já é o ocupante do próprio horário.
+        const ocupado = await horarioOcupado(tx, projectId, pedidoSob.pedido.quando, pedidoSob.pedido.postType)
+        if (ocupado) return { tipo: 'recusado', resposta: falhou(itemId, ocupado, { generationId: sob.peca.id, pageId }) }
         resolucao = await resolverAgendamento(input, {
           leitor: tx,
           ingerir: false,
@@ -689,7 +744,7 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
         }
       }
       return { tipo: 'ligado', postId, desfecho, resolucao, peca: sob.peca, pagina: sob.pagina, pedido: pedidoSob.pedido, avisos: pedidoSob.avisos, input }
-  }, { maxWait: 10_000, timeout: 20_000 })
+  }, { isolationLevel: 'ReadCommitted', maxWait: 10_000, timeout: 20_000 })
   } catch (erro) {
     if (!(erro instanceof RecusaSobTrava)) throw erro
     escrita = { tipo: 'recusado', resposta: falhou(itemId, erro.falha, { generationId: antes.peca.id, pageId }) }
@@ -753,6 +808,7 @@ export async function agendarItensDoLote(entrada: EntradaDoAgendamentoDoLote): P
     leitor,
     decididoPor: entrada.decididoPor ?? null,
     superficie: entrada.superficie ?? 'chat',
+    apenasRascunho: entrada.apenasRascunho === true,
   }
   const itens: ItemAgendadoDoLote[] = []
   for (const { item, falha } of v.itens) {

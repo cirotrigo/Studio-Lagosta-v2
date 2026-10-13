@@ -29,6 +29,7 @@ import * as path from 'path'
 import * as https from 'https'
 import * as http from 'http'
 import { prepararCamadasParaGravar } from '../src/lib/creatives/layer-contract'
+import { modoSoRascunhoLocal, registrarNoStdio } from '../src/lib/mcp/registro/perfil'
 
 // ─── Clients ─────────────────────────────────────────────────────────
 
@@ -314,6 +315,8 @@ function toolEstrita<S extends z.ZodRawShape>(
   shape: S,
   handler: (args: z.infer<z.ZodObject<S>>, extra: unknown) => unknown,
 ) {
+  // STUDIO_SO_RASCUNHO=1 (H4): só as inglesas de LEITURA existem (allowlist em registro/perfil.ts).
+  if (!registrarNoStdio(name, 'inglesa')) return
   return server.registerTool(
     name,
     { description, inputSchema: z.object(shape).strict() as never },
@@ -2708,8 +2711,10 @@ toolEstrita(
 let AUTOR_LOCAL: AutorLocal | null = null
 
 {
+  if (modoSoRascunhoLocal()) console.error('[studio-lagosta-mcp] STUDIO_SO_RASCUNHO=1: só leitura e produção até rascunho (allowlist do perfil draft-only)')
   for (const tool of CATALOGO.values()) {
     if (!tool.superficies.includes('local')) continue
+    if (!registrarNoStdio(tool.nome, 'catalogo')) continue
     server.registerTool(
       tool.nome,
       // O SDK valida com o MESMO zod estrito e deriva o schema da listagem
