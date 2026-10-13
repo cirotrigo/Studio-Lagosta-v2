@@ -49,13 +49,6 @@ export function temContratoSemantico(slotValues: unknown): boolean {
   return CHAVES_DO_CONTRATO_SEMANTICO.some((chave) => Object.prototype.hasOwnProperty.call(slotValues, chave))
 }
 
-/**
- * B1d (checkpoint g): o mapa SEM as chaves do contrato semântico. É o que pode ir para um campo de COPY VISUAL
- * (`Generation.fieldValues.slotValues`): `_slots`/`_papeis` são o PEDIDO e moram em `slotValuesRecebidos`.
- */
-export function semChavesDoContrato(slotValues: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(slotValues).filter(([k]) => !(CHAVES_DO_CONTRATO_SEMANTICO as readonly string[]).includes(k)))
-}
 
 /**
  * A cópia dos textos da PÁGINA pronta para o post: marcada e sem as chaves do contrato semântico novo. A cópia

@@ -412,10 +412,14 @@ describe('Codex #208 — CP5 (opção B): com texto semântico, a Generation reg
     expect(post).toEqual({ Título: 'Noite do vinho' })
   })
 
-  it('semântico só de imagem (checkpoint g): o pedido vai para slotValuesRecebidos; slotValues (copy visual) fica sem _slots/_papeis', async () => {
+  it('semântico só de imagem (checkpoint g): slotValues é a COPY VISUAL das camadas finais (o texto que o modelo mostra); o pedido vai para slotValuesRecebidos', async () => {
     const entrada = { _slots: { 'foto-principal': { fileUrl: 'https://f' } }, _driveImageId: 'd1' }
     await createArteRapida({ projectId: 8, sourcePageId: 'p-a', slotValues: entrada })
-    expect(persistido().fieldValues.slotValues).toEqual({ _driveImageId: 'd1' })
+    const { copyVisualDasCamadas } = await import('@/lib/creatives/procedencia-da-copy')
+    const visual = copyVisualDasCamadas(persistido().layers)
+    expect(Object.keys(visual ?? {}).length).toBeGreaterThan(0) // a página mostra texto
+    expect(persistido().fieldValues.slotValues).toEqual(visual)
+    expect(Object.keys(persistido().fieldValues.slotValues).some((k) => k.startsWith('_'))).toBe(false)
     expect(persistido().fieldValues.slotValuesRecebidos).toBe(entrada)
   })
 

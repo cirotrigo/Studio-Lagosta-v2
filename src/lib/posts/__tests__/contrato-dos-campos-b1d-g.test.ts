@@ -67,6 +67,17 @@ describe('D/E/R. slotValuesRecebidos nunca é corpus, nem com texto diferente da
     expect(t.texto).not.toMatch(/SÓ NO PEDIDO|TAMBÉM NO PEDIDO/)
   })
 
+  it('post semântico MISTO: nem as chaves legadas do pedido viram corpus — o texto vem da copy visual da Generation', () => {
+    const t = textoDoPost({ slotValues: { _slots: { manchete: 'Festival de Massas' }, 't-sub': 'LEGADA DO PEDIDO' }, fieldValues: { slotValues: { Título: 'Festival de Massas', Sub: 'Sub visual' } } })
+    expect(t.texto).toContain('Sub visual')
+    expect(t.texto).not.toMatch(/LEGADA DO PEDIDO/)
+  })
+
+  it('script de backfill marcar-copia-da-pagina nunca reescreve um pedido semântico', () => {
+    const t = readFileSync(join(process.cwd(), 'scripts/marcar-copia-da-pagina.ts'), 'utf8')
+    expect(t).toMatch(/!temContratoSemantico\(p\.slotValues\)/)
+  })
+
   it('o PEDIDO de um SocialPost semântico não vira texto (as chaves do contrato e o que vai dentro)', () => {
     const t = textoDoPost({ slotValues: PEDIDO })
     expect(t.texto).not.toMatch(/Festival de Massas|headline/)

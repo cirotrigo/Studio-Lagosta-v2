@@ -64,7 +64,7 @@ import { resolverValoresSemanticos, validarEntradaSemantica, type ErroDeValor, t
 import { aplicarAjustes, type AjusteAplicado, type AjusteRecusado } from '@/lib/creatives/revisao/aplicar-ajustes'
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
 import { MOTIVO_DO_AJUSTE_DO_REVISOR } from '@/lib/relatorios/qualidade-da-copy-contrato'
-import { semChavesDoContrato, temContratoSemantico } from '@/lib/posts/copy-segue-a-pagina'
+import { temContratoSemantico } from '@/lib/posts/copy-segue-a-pagina'
 import { MENSAGEM_PAGINA_COM_VIDEO, videoNaPagina } from '@/lib/video/pagina-com-video'
 
 export { CreativeError, getPublicAppUrl }
@@ -907,13 +907,12 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
       // Com TEXTO vindo de _slots/_papeis, a copy registrada é a VISUAL das camadas finais (o formato de ajustarArte e
       // da recomposição: chave de textosDaPagina) — os leitores ignoram chaves `_` e o diff de aprendizado compara por
       // chave. O mapa recebido, com bloco/papel e o endereçamento, fica em slotValuesRecebidos. Sem texto semântico, o
-      // registro de sempre (Codex #208, CP5, opção B). Checkpoint g: com o contrato SEM texto (só imagem), o pedido também
-      // vai para slotValuesRecebidos e a copy visual fica sem _slots/_papeis — o campo de copy nunca guarda o pedido.
-      ...(temTextoSemantico
+      // registro de sempre (Codex #208, CP5, opção B). Checkpoint g: com o contrato SEM texto (só imagem) também — a copy
+      // visual é a das camadas finais (o texto que o modelo mostra) e o pedido vai para slotValuesRecebidos: o campo de
+      // copy nunca guarda o pedido, nem fica sem o texto que a arte desenha.
+      ...(temTextoSemantico || temContratoSemantico(efetivo)
         ? { slotValues: copyVisualDasCamadas(layers) ?? {}, slotValuesRecebidos: efetivo }
-        : temContratoSemantico(efetivo)
-          ? { slotValues: semChavesDoContrato(efetivo), slotValuesRecebidos: efetivo }
-          : { slotValues: efetivo }),
+        : { slotValues: efetivo }),
       ...(registroDaCopy ? { copyAutoral: registroDaCopy.registro } : {}),
       autocorrecao: fix.autocorrecao,
       halo: {
