@@ -38,8 +38,8 @@ export interface CreditData {
 
 /**
  * Pode rodar a operação? Com a cobrança desligada (`creditosAplicados: false`,
- * o modo interno), sempre — inclusive enquanto os créditos carregam. Com ela
- * ligada, ou enquanto a configuração não chegou, a comparação de antes.
+ * o modo interno) ou ainda desconhecida, sempre — inclusive enquanto os
+ * créditos carregam. Só com ela ligada explicitamente, a comparação de antes.
  */
 export function podeExecutar({
   aplicados,
@@ -50,7 +50,9 @@ export function podeExecutar({
   creditsRemaining: number | null | undefined;
   cost: number;
 }): boolean {
-  if (aplicados === false) return true;
+  // Só a cobrança ligada EXPLICITAMENTE trava: configuração que não chegou ou
+  // falhou não pode bloquear a tela — quem decide a cobrança é o servidor.
+  if (aplicados !== true) return true;
   if (creditsRemaining == null) return false;
   return creditsRemaining >= cost;
 }
@@ -160,7 +162,8 @@ export function useCredits(): {
     return base;
   };
 
-  const creditosAplicados = settings?.creditosAplicados;
+  // Desconhecido (configuração carregando ou com falha) conta como desligado.
+  const creditosAplicados = settings?.creditosAplicados === true;
 
   const canPerformOperation = (operation: OperationType) =>
     podeExecutar({
