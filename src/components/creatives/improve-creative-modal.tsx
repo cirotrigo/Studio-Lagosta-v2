@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/hooks/use-toast'
+import { useCobrancaLigada } from '@/hooks/use-credits'
 import { useImproveQueueStore } from '@/stores/improve-queue-store'
 import { useBlobUpload } from '@/hooks/use-blob-upload'
 import { api } from '@/lib/api-client'
@@ -126,6 +127,7 @@ export function ImproveCreativeModal({
   const addJob = useImproveQueueStore((s) => s.addJob)
 
   const [userRequest, setUserRequest] = React.useState('')
+  const cobrancaLigada = useCobrancaLigada()
   /**
    * O MODO da melhoria — o que a IA pode mudar (05/09/2026,
    * `docs/PLANO-2026-09-05-ARTES-COMO-O-CHATGPT.md`). Começa no padrão da
@@ -351,7 +353,7 @@ export function ImproveCreativeModal({
   const pedidoVazio = userRequest.trim().length === 0
   const isDisabled = isUploading || (pedidoObrigatorio && pedidoVazio)
 
-  const ctaLabel = (() => {
+  const ctaLabelComCusto = (() => {
     // O tempo muda com o tier; o preço em créditos, não (25 flat).
     if (instrucaoImagem.trim().length > 0) return 'Aprimorar com ajuste na foto (25 créditos)'
     if (backgroundUrl) return 'Aprimorar com novo fundo (25 créditos)'
@@ -363,6 +365,8 @@ export function ImproveCreativeModal({
     if (pedidoVazio) return 'Aprimorar (25 créditos)'
     return 'Adicionar à fila (25 créditos)'
   })()
+  // Modo interno: o botão não fala em créditos.
+  const ctaLabel = cobrancaLigada ? ctaLabelComCusto : ctaLabelComCusto.replace(' (25 créditos)', '')
 
   return (
     <Dialog open={open} onOpenChange={(next) => (next ? onOpenChange(true) : handleClose())}>
@@ -373,7 +377,7 @@ export function ImproveCreativeModal({
             Melhorar com IA
           </DialogTitle>
           <DialogDescription>
-            Escolha o que a IA pode mudar. Custa 25 créditos por melhoria.
+            Escolha o que a IA pode mudar.{cobrancaLigada && ' Custa 25 créditos por melhoria.'}
           </DialogDescription>
         </DialogHeader>
 
