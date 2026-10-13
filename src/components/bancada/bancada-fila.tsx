@@ -747,10 +747,10 @@ function Card({
           {doPlano && via && (
             <span
               className="rounded-full border border-border/60 px-2 py-0.5 text-[10px] text-muted-foreground"
-              title={via.custo}
+              title={cobrancaLigada ? via.custo : undefined}
             >
               {via.rotulo}
-              {via.valor === 'template' ? ' · sem custo de imagem' : ''}
+              {cobrancaLigada && via.valor === 'template' ? ' · sem custo de imagem' : ''}
             </span>
           )}
           <span className="text-[11px] text-muted-foreground">

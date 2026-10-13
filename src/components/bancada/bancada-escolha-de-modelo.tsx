@@ -128,7 +128,7 @@ export function BancadaEscolhaDeModelo({
 
   const resumo =
     via === 'template'
-      ? `modelo do editor — ${sourcePageId ? (modeloEscolhido?.name ?? 'modelo escolhido') : 'rotação automática'} · sem custo`
+      ? `modelo do editor — ${sourcePageId ? (modeloEscolhido?.name ?? 'modelo escolhido') : 'rotação automática'}${cobrancaLigada ? ' · sem custo' : ''}`
       : `IA com referência — ${refGenerationId ? 'arte escolhida' : 'rodízio automático'}${cobrancaLigada ? ' · 25 créditos' : ''}`
 
   return (
@@ -160,7 +160,7 @@ export function BancadaEscolhaDeModelo({
                   : 'border-border/60 text-muted-foreground hover:border-primary/50',
               )}
             >
-              Modelo do editor · sem custo
+              Modelo do editor{cobrancaLigada && ' · sem custo'}
             </button>
             <button
               type="button"
