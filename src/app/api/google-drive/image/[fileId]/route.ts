@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server'
 import { Readable } from 'stream'
 import { googleDriveService } from '@/server/google-drive-service'
 import { assertRateLimit, RateLimitError } from '@/lib/rate-limit'
+import { driveItemPermitido, escopoDoDriveWeb } from '@/lib/google-drive/escopo'
 
 export const runtime = 'nodejs'
 
@@ -20,9 +21,20 @@ export async function GET(
       return NextResponse.json({ error: 'Google Drive não configurado' }, { status: 503 })
     }
 
-    const { fileId } = await params
-    if (!fileId) {
+    const { fileId: idPedido } = await params
+    if (!idPedido) {
       return NextResponse.json({ error: 'ID do arquivo obrigatório' }, { status: 400 })
+    }
+
+    // Fora do admin, só arquivo sob as pastas dos projetos que a pessoa enxerga.
+    let fileId = idPedido
+    const escopo = await escopoDoDriveWeb(userId)
+    if (!escopo.admin) {
+      const decisao = await driveItemPermitido(idPedido, escopo.raizes)
+      if (!decisao.permitido) {
+        return NextResponse.json({ error: 'Arquivo não encontrado' }, { status: 404 })
+      }
+      fileId = decisao.idEfetivo
     }
 
     assertRateLimit({ key: `drive:image:${userId}` })
@@ -41,7 +53,7 @@ export async function GET(
     const headers: Record<string, string> = {
       'Content-Type': mimeType,
       'Content-Disposition': `inline; filename="${encodeURIComponent(name)}"`,
-      'Cache-Control': 'public, max-age=300',
+      'Cache-Control': 'private, max-age=300',
       'Accept-Ranges': 'bytes',
     }
 

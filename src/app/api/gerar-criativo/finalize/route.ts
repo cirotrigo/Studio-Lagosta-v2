@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { db } from '@/lib/db'
 import { put } from '@vercel/blob'
 import { registrarUsoDeModelo } from '@/lib/aprendizado/uso-de-modelo'
+import { fetchProjectWithShares, hasProjectWriteAccess } from '@/lib/projects/access'
 import type { Layer } from '@/types/template'
 
 export const runtime = 'nodejs'
@@ -35,7 +36,7 @@ const finalizeSchema = z.object({
 })
 
 export async function POST(request: Request) {
-  const { userId } = await auth()
+  const { userId, orgId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -48,9 +49,10 @@ export async function POST(request: Request) {
     console.log('[Gerar Criativo Finalize] Has dataUrl:', !!dataUrl)
     console.log('[Gerar Criativo Finalize] Input layers count:', layers.length)
 
-    // 1. Fetch model page and template with project
+    // 1. Fetch model page and template with project — a página tem de ser do
+    // template informado, que é onde a página nova vai ser criada.
     const templatePage = await db.page.findFirst({
-      where: { id: templatePageId, isTemplate: true },
+      where: { id: templatePageId, templateId, isTemplate: true },
       include: {
         Template: {
           include: {
@@ -60,7 +62,10 @@ export async function POST(request: Request) {
       },
     })
 
-    if (!templatePage) {
+    // Grava página e arte no projeto do template: exige escrita nele. Sem ela,
+    // responde como página inexistente.
+    const project = templatePage ? await fetchProjectWithShares(templatePage.Template.projectId) : null
+    if (!templatePage || !hasProjectWriteAccess(project, { userId, orgId })) {
       return NextResponse.json({ error: 'Template page not found' }, { status: 404 })
     }
 

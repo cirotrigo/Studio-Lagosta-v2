@@ -2,8 +2,11 @@ import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { z } from 'zod'
 import { googleDriveService } from '@/server/google-drive-service'
+import { idsDoDriveNaRotaDoProjeto } from '@/lib/google-drive/escopo'
 import { PermissionError, requireAdminUser, requireProjectAccess } from '@/lib/permissions'
 import { db } from '@/lib/db'
+
+const naoEncontrado = () => NextResponse.json({ error: 'Não encontrado' }, { status: 404 })
 
 const bodySchema = z.object({
   fileIds: z.array(z.string().trim().min(1)).min(1, 'Selecione ao menos um arquivo'),
@@ -32,6 +35,12 @@ export async function DELETE(req: Request) {
     const { fileIds, projectId } = parsed.data
     await requireProjectAccess(projectId, { userId, orgId, write: true })
 
+    // Todos sob as pastas deste projeto, ou nada. Apaga-se o item pedido
+    // (o atalho, nunca o destino dele).
+    if (!(await idsDoDriveNaRotaDoProjeto(userId, projectId, fileIds))) {
+      return naoEncontrado()
+    }
+
     await googleDriveService.deleteFiles(fileIds)
 
     try {
@@ -44,8 +53,9 @@ export async function DELETE(req: Request) {
 
     return NextResponse.json({ deleted: fileIds.length })
   } catch (error) {
+    // Projeto inexistente, sem acesso e pasta fora do projeto: a mesma resposta.
     if (error instanceof PermissionError) {
-      return NextResponse.json({ error: error.message }, { status: error.status })
+      return naoEncontrado()
     }
 
     console.error('[Drive API] Failed to delete files', error)

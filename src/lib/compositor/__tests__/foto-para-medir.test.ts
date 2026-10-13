@@ -1,9 +1,10 @@
 import { readFileSync } from 'node:fs'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({ fetch: vi.fn(), driveMeta: vi.fn(), enabled: vi.fn(() => true) }))
+const mocks = vi.hoisted(() => ({ fetch: vi.fn(), driveMeta: vi.fn(), enabled: vi.fn(() => true), assert: vi.fn() }))
 vi.mock('@/lib/posts/register-project-fonts', () => ({ fetchBuffer: mocks.fetch }))
 vi.mock('@/server/google-drive-service', () => ({ googleDriveService: { isEnabled: mocks.enabled, getFileMetadata: mocks.driveMeta } }))
+vi.mock('@/lib/google-drive/escopo', () => ({ assertDriveDoProjeto: mocks.assert }))
 
 import { carregarFotoParaMedir } from '../foto-para-medir'
 
@@ -16,6 +17,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.enabled.mockReturnValue(true)
   mocks.fetch.mockResolvedValue(png)
+  mocks.assert.mockImplementation(async (_projeto: number, id: string) => id)
 })
 
 describe('carregarFotoParaMedir — os bytes da foto sem publicar nada (R10)', () => {
@@ -26,11 +28,11 @@ describe('carregarFotoParaMedir — os bytes da foto sem publicar nada (R10)', (
     expect(fonte).not.toMatch(/resolveImageUrl\(|\bput\(/)
   })
   it('sem foto na spec: nada, sem aviso', async () => {
-    expect(await carregarFotoParaMedir({})).toEqual({ foto: null, aviso: null })
+    expect(await carregarFotoParaMedir({ projectId: 1 })).toEqual({ foto: null, aviso: null })
     expect(mocks.fetch).not.toHaveBeenCalled()
   })
   it('foto por URL: baixa a URL dada, mede largura e altura, mantém a URL; o Drive não é consultado', async () => {
-    const r = await carregarFotoParaMedir({ foto: { url: 'https://cdn.example/foto.jpg' } })
+    const r = await carregarFotoParaMedir({ projectId: 1, foto: { url: 'https://cdn.example/foto.jpg' } })
     expect(mocks.fetch).toHaveBeenCalledWith('https://cdn.example/foto.jpg')
     expect(mocks.driveMeta).not.toHaveBeenCalled()
     expect(r.aviso).toBeNull()
@@ -39,21 +41,38 @@ describe('carregarFotoParaMedir — os bytes da foto sem publicar nada (R10)', (
   })
   it('foto do Drive: pede só o thumbnailLink, baixa a miniatura em s1920 e NÃO devolve URL pública (nada foi publicado)', async () => {
     mocks.driveMeta.mockResolvedValue({ thumbnailLink: 'https://lh3.example/x=s220' })
-    const r = await carregarFotoParaMedir({ foto: { driveFileId: 'drive-1' } })
+    const r = await carregarFotoParaMedir({ projectId: 1, foto: { driveFileId: 'drive-1' } })
     expect(mocks.driveMeta).toHaveBeenCalledWith('drive-1', 'thumbnailLink')
     expect(mocks.fetch).toHaveBeenCalledWith('https://lh3.example/x=s1920')
     expect(r.foto).toMatchObject({ url: null, largura: 4, altura: 6 })
   })
   it('Drive desligado, arquivo sem thumbnailLink ou erro do Drive: sem foto, com o aviso — nunca lança', async () => {
     mocks.enabled.mockReturnValue(false)
-    expect((await carregarFotoParaMedir({ foto: { driveFileId: 'drive-1' } })).aviso).toMatch(/Google Drive não configurado/)
+    expect((await carregarFotoParaMedir({ projectId: 1, foto: { driveFileId: 'drive-1' } })).aviso).toMatch(/Google Drive não configurado/)
     mocks.enabled.mockReturnValue(true)
     mocks.driveMeta.mockResolvedValue({})
-    expect((await carregarFotoParaMedir({ foto: { driveFileId: 'drive-1' } })).aviso).toMatch(/não tem thumbnailLink/)
+    expect((await carregarFotoParaMedir({ projectId: 1, foto: { driveFileId: 'drive-1' } })).aviso).toMatch(/não tem thumbnailLink/)
     mocks.driveMeta.mockRejectedValue(new Error('403'))
-    const r = await carregarFotoParaMedir({ foto: { driveFileId: 'drive-1' } })
+    const r = await carregarFotoParaMedir({ projectId: 1, foto: { driveFileId: 'drive-1' } })
     expect(r.foto).toBeNull()
     expect(r.aviso).toMatch(/Falha ao resolver a imagem no Drive: 403/)
     expect(mocks.fetch).not.toHaveBeenCalled()
+  })
+  it('a foto do Drive precisa ser do projeto da peça: fora dele, 404 antes de qualquer leitura', async () => {
+    const { CreativeError } = await import('@/lib/creatives/errors')
+    mocks.assert.mockRejectedValue(new CreativeError('FOTO_NAO_ENCONTRADA', 'Foto não encontrada.', 404))
+    await expect(carregarFotoParaMedir({ projectId: 1, foto: { driveFileId: 'drive-de-outro' } })).rejects.toMatchObject({ status: 404 })
+    expect(mocks.assert).toHaveBeenCalledWith(1, 'drive-de-outro')
+    await expect(
+      carregarFotoParaMedir({ projectId: 1, foto: { url: 'https://lh3.googleusercontent.com/d/drive-de-outro=w100' } }),
+    ).rejects.toMatchObject({ status: 404 })
+    expect(mocks.driveMeta).not.toHaveBeenCalled()
+    expect(mocks.fetch).not.toHaveBeenCalled()
+  })
+  it('atalho na pasta do projeto: mede o destino', async () => {
+    mocks.assert.mockResolvedValue('destino')
+    mocks.driveMeta.mockResolvedValue({ thumbnailLink: 'https://lh3.example/d=s220' })
+    await carregarFotoParaMedir({ projectId: 1, foto: { driveFileId: 'atalho' } })
+    expect(mocks.driveMeta).toHaveBeenCalledWith('destino', 'thumbnailLink')
   })
 })

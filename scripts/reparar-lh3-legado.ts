@@ -254,7 +254,7 @@ async function main() {
   for (const r of REGRAS) {
     if (!r.pages.some(pendente)) continue
     if (r.acao.tipo === 'drive' && !urlPorFileId.has(r.acao.fileId)) {
-      const res = await resolveImageUrl(undefined, r.acao.fileId)
+      const res = await resolveImageUrl(undefined, r.acao.fileId, paginas.get(r.pages.find(pendente)!).Template.projectId)
       if (!res.url) throw new Error(`resolveImageUrl falhou para ${r.acao.fileId}: ${res.warning}`)
       urlPorFileId.set(r.acao.fileId, res.url)
       console.log(`drive ${r.acao.fileId} → ${res.url}`)

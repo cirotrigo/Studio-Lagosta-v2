@@ -80,7 +80,7 @@ export async function definirAncora(input: DefinirAncoraInput): Promise<AnchorIm
 
   let blobUrl = input.url?.trim() ?? null
   if (temDrive) {
-    const resolved = await resolveImageUrl(undefined, input.driveFileId!.trim())
+    const resolved = await resolveImageUrl(undefined, input.driveFileId!.trim(), input.projectId)
     if (!resolved.url) {
       throw new CreativeError(
         'FOTO_NAO_RESOLVIDA',

@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server'
 import { z } from 'zod'
 import { googleDriveService } from '@/server/google-drive-service'
 import { assertRateLimit, RateLimitError } from '@/lib/rate-limit'
+import { driveItemPermitido, escopoDoDriveWeb } from '@/lib/google-drive/escopo'
 import type { GoogleDriveListResponse } from '@/types/google-drive'
 
 const querySchema = z.object({
@@ -74,6 +75,26 @@ export async function GET(req: Request) {
     const payload = {
       ...parseResult.data,
       search: parseResult.data.search?.trim() || undefined,
+    }
+
+    // Fora do admin, só as pastas dos projetos que a pessoa enxerga. Sem
+    // pasta, a "raiz" são essas pastas (nomes do banco, sem ir ao Drive); a
+    // busca nunca varre o Drive inteiro.
+    const escopo = await escopoDoDriveWeb(userId)
+    if (!escopo.admin) {
+      if (!payload.folderId) {
+        const termo = payload.search?.toLowerCase()
+        return NextResponse.json({
+          items: escopo.raizesComNome
+            .filter((r) => !termo || r.name.toLowerCase().includes(termo))
+            .map((r) => ({ id: r.id, name: r.name, mimeType: 'application/vnd.google-apps.folder', kind: 'folder' })),
+        } satisfies GoogleDriveListResponse)
+      }
+      const decisao = await driveItemPermitido(payload.folderId, escopo.raizes)
+      if (!decisao.permitido) {
+        return NextResponse.json({ error: 'Pasta não encontrada' }, { status: 404 })
+      }
+      payload.folderId = decisao.idEfetivo
     }
 
     cacheKey = getDriveFilesCacheKey({

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { randomBytes } from 'crypto'
+import { isAdmin } from '@/lib/admin-utils'
 
 export const runtime = 'nodejs'
 
@@ -10,6 +11,10 @@ export async function POST() {
   const { userId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+  }
+  // A conta conectada aqui é a do Drive de todos os projetos: só admin.
+  if (!(await isAdmin(userId))) {
+    return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
   }
 
   const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID
@@ -29,7 +34,8 @@ export async function POST() {
     httpOnly: true,
     sameSite: 'lax',
     secure: publicUrl.startsWith('https://'),
-    path: '/google-drive-callback',
+    // O retorno é conferido pela rota de API (o fetch da página de retorno)
+    path: '/api/google-drive/callback',
     maxAge: 10 * 60,
   })
 

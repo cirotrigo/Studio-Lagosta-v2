@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { googleDriveService } from '@/server/google-drive-service'
+import { idsDoDriveNaRotaDoProjeto } from '@/lib/google-drive/escopo'
 import { PermissionError, requireAdminUser, requireProjectAccess } from '@/lib/permissions'
 import { db } from '@/lib/db'
+
+const naoEncontrado = () => NextResponse.json({ error: 'Não encontrado' }, { status: 404 })
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -39,6 +42,12 @@ export async function POST(req: Request) {
     }
 
     await requireProjectAccess(projectId, { userId, orgId, write: true })
+
+    // Destino sob as pastas deste projeto e pasta de verdade (não atalho).
+    const permitidos = await idsDoDriveNaRotaDoProjeto(userId, projectId, [folderId])
+    if (!permitidos || permitidos[0] !== folderId) {
+      return naoEncontrado()
+    }
 
     const uploads = await Promise.all(
       files.map(async (file) => {
@@ -87,8 +96,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ files: uploads })
   } catch (error) {
+    // Projeto inexistente, sem acesso e pasta fora do projeto: a mesma resposta.
     if (error instanceof PermissionError) {
-      return NextResponse.json({ error: error.message }, { status: error.status })
+      return naoEncontrado()
     }
 
     console.error('[Drive API] Failed to upload files', error)

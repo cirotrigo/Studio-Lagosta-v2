@@ -3,8 +3,19 @@ import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { updateProjectSettingsSchema } from '@/lib/validations/studio'
 import { fetchProjectWithShares, hasProjectWriteAccess } from '@/lib/projects/access'
+import { isAdmin } from '@/lib/admin-utils'
 
 export const runtime = 'nodejs'
+
+/** As pastas do Drive definem o que a equipe do projeto enxerga no Drive: só admin troca. */
+const CAMPOS_DO_DRIVE = [
+  'googleDriveFolderId',
+  'googleDriveFolderName',
+  'googleDriveImagesFolderId',
+  'googleDriveImagesFolderName',
+  'googleDriveVideosFolderId',
+  'googleDriveVideosFolderName',
+]
 
 export async function PATCH(
   request: Request,
@@ -31,6 +42,10 @@ export async function PATCH(
     const body = await request.json().catch(() => null)
     if (!body || typeof body !== 'object') {
       return NextResponse.json({ error: 'Payload inválido' }, { status: 400 })
+    }
+
+    if (CAMPOS_DO_DRIVE.some((campo) => Object.prototype.hasOwnProperty.call(body, campo)) && !(await isAdmin(userId))) {
+      return NextResponse.json({ error: 'Só administradores alteram as pastas do Google Drive' }, { status: 403 })
     }
 
     const parsed = updateProjectSettingsSchema.safeParse(body)

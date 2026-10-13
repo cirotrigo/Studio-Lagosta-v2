@@ -2,7 +2,7 @@
  * A foto da peça SÓ PARA MEDIR (R10 da revisão de 775f4377).
  *
  * `carregarFoto` do compositor resolve a foto do Drive por `resolveImageUrl`,
- * que PUBLICA uma cópia no Blob (`drive-cache/<id>-s1920.jpg`, público,
+ * que PUBLICA uma cópia no Blob (`drive-cache/<projeto>/…-s1920.jpg`, público,
  * sobrescrevendo) — certo para COMPOR, porque a página precisa de uma URL
  * permanente; errado para uma tool de LEITURA: `medir-copy` com
  * `fotoDriveId` criava ou sobrescrevia um arquivo remoto, e a escrita ficava
@@ -12,9 +12,14 @@
  *
  * Este módulo não importa `@vercel/blob` nem `persist.ts`, de propósito; há um
  * teste que confere isso no fonte.
+ *
+ * A foto do Drive (pelo id ou por URL do Drive) precisa estar sob as pastas
+ * do projeto da peça: fora delas é 404, antes de qualquer leitura.
  */
 import { fetchBuffer } from '@/lib/posts/register-project-fonts'
 import { googleDriveService } from '@/server/google-drive-service'
+import { assertDriveDoProjeto } from '@/lib/google-drive/escopo'
+import { extractDriveFileId } from '@/lib/ai/fetch-image-source'
 import type { SpecDePeca } from './spec'
 
 export interface FotoParaMedir {
@@ -25,17 +30,23 @@ export interface FotoParaMedir {
   altura: number
 }
 
-export async function carregarFotoParaMedir(spec: Pick<SpecDePeca, 'foto'>): Promise<{ foto: FotoParaMedir | null; aviso: string | null }> {
+export async function carregarFotoParaMedir(
+  spec: Pick<SpecDePeca, 'foto' | 'projectId'>,
+): Promise<{ foto: FotoParaMedir | null; aviso: string | null }> {
   const url = spec.foto?.url ?? null
   const driveFileId = spec.foto?.driveFileId ?? null
   if (!url && !driveFileId) return { foto: null, aviso: null }
   let origem = url
-  if (!origem) {
+  if (origem) {
+    const idNaUrl = extractDriveFileId(origem)
+    if (idNaUrl) await assertDriveDoProjeto(spec.projectId, idNaUrl)
+  } else {
     if (!googleDriveService.isEnabled()) {
       return { foto: null, aviso: 'Google Drive não configurado neste ambiente (GOOGLE_DRIVE_CLIENT_ID/SECRET/REFRESH_TOKEN)' }
     }
+    const idEfetivo = await assertDriveDoProjeto(spec.projectId, driveFileId)
     try {
-      const file = await googleDriveService.getFileMetadata(driveFileId!, 'thumbnailLink')
+      const file = await googleDriveService.getFileMetadata(idEfetivo, 'thumbnailLink')
       const thumbnailLink = (file as { thumbnailLink?: string }).thumbnailLink
       if (!thumbnailLink) return { foto: null, aviso: `Arquivo ${driveFileId} do Drive não tem thumbnailLink (não é imagem?)` }
       origem = thumbnailLink.replace(/=s\d+$/, '=s1920')

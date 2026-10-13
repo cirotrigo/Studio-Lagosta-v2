@@ -11,7 +11,9 @@ import {
 } from '@/lib/ai/image-models-config'
 import { fetchProjectWithAccess } from '@/lib/projects/access'
 import { googleDriveService } from '@/server/google-drive-service'
+import { assertDriveDoProjeto } from '@/lib/google-drive/escopo'
 import { generateImageWithGemini, isGeminiRetryableError } from '@/lib/ai/gemini-image-client'
+import { extractDriveFileId } from '@/lib/ai/fetch-image-source'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300 // 5 minutes for AI image generation (needed for 4K images)
@@ -135,7 +137,7 @@ export async function POST(request: Request) {
       preparedReferenceAssets = await Promise.all(
         body.referenceImages.map(async (url, index) => {
           try {
-            const { buffer: imageBuffer, contentType } = await fetchImageFromSource(url)
+            const { buffer: imageBuffer, contentType } = await fetchImageFromSource(url, body.projectId)
 
             // Validar tamanho da imagem de referência
             const sizeInMb = (imageBuffer.length / (1024 * 1024)).toFixed(2)
@@ -186,7 +188,7 @@ export async function POST(request: Request) {
       console.log('[AI Generate] Processing base image for edit mode:', body.baseImage)
 
       try {
-        const preparedBaseImage = await fetchImageFromSource(body.baseImage)
+        const preparedBaseImage = await fetchImageFromSource(body.baseImage, body.projectId)
         baseImageBuffer = preparedBaseImage.buffer
         baseImageBufferType = preparedBaseImage.contentType
 
@@ -922,10 +924,11 @@ async function fetchExternalImage(url: string): Promise<{ buffer: Buffer; conten
   }
 }
 
-async function fetchImageFromSource(url: string): Promise<{ buffer: Buffer; contentType: string }> {
+async function fetchImageFromSource(url: string, projectId: number): Promise<{ buffer: Buffer; contentType: string }> {
   const googleDriveFileId = extractGoogleDriveFileId(url)
   if (googleDriveFileId) {
-    return fetchGoogleDriveImage(googleDriveFileId)
+    // Foto do Drive só sob as pastas do projeto da geração.
+    return fetchGoogleDriveImage(await assertDriveDoProjeto(projectId, googleDriveFileId))
   }
 
   return fetchExternalImage(url)
@@ -1014,9 +1017,9 @@ function isRetryableError(errorMessage: string): boolean {
  * - /api/drive/thumbnail/{fileId}
  */
 function extractGoogleDriveFileId(url: string): string | null {
-  // Match /api/google-drive/image/{fileId} or /api/drive/thumbnail/{fileId}
-  const match = url.match(/\/api\/(?:google-drive\/image|drive\/thumbnail)\/([^/?]+)/)
-  return match?.[1] ?? null
+  // Todos os formatos de URL do Drive (proxy, lh3, uc): uma URL alternativa não
+  // pode escapar da conferência das pastas do projeto.
+  return extractDriveFileId(url)
 }
 
 /**

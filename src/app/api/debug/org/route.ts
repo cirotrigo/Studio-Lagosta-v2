@@ -5,6 +5,7 @@
 
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
+import { isAdmin } from '@/lib/admin-utils'
 
 export async function GET() {
   try {
@@ -12,6 +13,9 @@ export async function GET() {
 
     if (!userId) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+    }
+    if (!(await isAdmin(userId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     return NextResponse.json({

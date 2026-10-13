@@ -8,6 +8,7 @@
  */
 
 import type { CanalDaArte } from './canal'
+import { createHash } from 'node:crypto'
 import { del, put } from '@vercel/blob'
 import { db } from '@/lib/db'
 import { CreativeError } from '@/lib/creatives/errors'
@@ -21,6 +22,8 @@ import { ehMovimento } from '@/lib/video/movimento'
 import type { DesignData } from '@/types/template'
 import { MENSAGEM_PAGINA_COM_VIDEO, videoNaPagina } from '@/lib/video/pagina-com-video'
 import { googleDriveService } from '@/server/google-drive-service'
+import { assertDriveDoProjeto } from '@/lib/google-drive/escopo'
+import { extractDriveFileId } from '@/lib/ai/fetch-image-source'
 import type { TemplateType } from '@prisma/client'
 
 /**
@@ -90,16 +93,25 @@ export async function ensureArteTemplate(
  * assinado e EXPIRA em horas — servia enquanto o render era imediato, mas a
  * página fica com a URL morta (403) para o editor e para qualquer re-render
  * do cron (78 páginas antigas estão assim). O caminho é determinístico por
- * arquivo: repetir a mesma foto na semana reusa o mesmo blob.
+ * arquivo E projeto: repetir a mesma foto na semana reusa o mesmo blob, e a
+ * chave não sai do id do Drive.
+ *
+ * A foto do Drive (pelo id ou por URL do Drive) precisa estar sob as pastas
+ * do projeto da arte — fora delas é 404, para qualquer chamador.
  *
  * Falha no Drive não é fatal: a arte ainda renderiza. O motivo volta junto
  * para o chamador poder avisar, em vez de entregar a foto errada calado.
  */
 export async function resolveImageUrl(
-  imageUrl?: string,
-  driveImageId?: string | null,
+  imageUrl: string | undefined,
+  driveImageId: string | null | undefined,
+  projectId: number,
 ): Promise<{ url: string | null; warning?: string }> {
-  if (imageUrl) return { url: imageUrl }
+  if (imageUrl) {
+    const idNaUrl = extractDriveFileId(imageUrl)
+    if (idNaUrl) await assertDriveDoProjeto(projectId, idNaUrl)
+    return { url: imageUrl }
+  }
   if (!driveImageId) return { url: null }
 
   if (!googleDriveService.isEnabled()) {
@@ -109,8 +121,10 @@ export async function resolveImageUrl(
     }
   }
 
+  const idEfetivo = await assertDriveDoProjeto(projectId, driveImageId)
+
   try {
-    const file = await googleDriveService.getFileMetadata(driveImageId, 'thumbnailLink')
+    const file = await googleDriveService.getFileMetadata(idEfetivo, 'thumbnailLink')
     const thumbnailLink = (file as { thumbnailLink?: string }).thumbnailLink
     if (!thumbnailLink) {
       return { url: null, warning: `Arquivo ${driveImageId} do Drive não tem thumbnailLink (não é imagem?)` }
@@ -118,7 +132,8 @@ export async function resolveImageUrl(
 
     const { fetchBuffer } = await import('@/lib/posts/register-project-fonts')
     const buffer = await fetchBuffer(thumbnailLink.replace(/=s\d+$/, '=s1920'))
-    const blob = await put(`drive-cache/${driveImageId}-s1920.jpg`, buffer, {
+    const chave = createHash('sha256').update(`${projectId}:${idEfetivo}`).digest('hex')
+    const blob = await put(`drive-cache/${projectId}/${chave}-s1920.jpg`, buffer, {
       access: 'public',
       contentType: 'image/jpeg',
       addRandomSuffix: false,

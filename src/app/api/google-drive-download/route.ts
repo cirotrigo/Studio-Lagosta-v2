@@ -7,6 +7,7 @@ import { google } from 'googleapis'
 import { put } from '@vercel/blob'
 import { getImageInfo } from '@/lib/images/auto-crop'
 import { z } from 'zod'
+import { assertDriveDoProjeto } from '@/lib/google-drive/escopo'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -18,6 +19,9 @@ const requestSchema = z.object({
 })
 
 console.log('[GoogleDrive Download Route] Module loaded at /api/google-drive-download')
+
+// Projeto inexistente, sem acesso e foto fora das pastas do projeto: a mesma resposta.
+const naoEncontrado = () => NextResponse.json({ error: 'Not found' }, { status: 404 })
 
 export async function POST(req: NextRequest) {
   try {
@@ -53,12 +57,8 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    if (!project) {
-      return NextResponse.json({ error: 'Project not found' }, { status: 404 })
-    }
-
-    if (!hasProjectReadAccess(await withProjectOwner(project), { userId: clerkUserId, orgId })) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+    if (!project || !hasProjectReadAccess(await withProjectOwner(project), { userId: clerkUserId, orgId })) {
+      return naoEncontrado()
     }
 
     // Check if Google Drive credentials are configured
@@ -82,10 +82,18 @@ export async function POST(req: NextRequest) {
       oauth2Client.setCredentials({ refresh_token: refreshToken })
     }
 
+    // Todas as fotos sob as pastas deste projeto, ou nenhuma — antes de copiar.
+    const memo = new Map()
+    const efetivos = await Promise.all(fileIds.map((id) => assertDriveDoProjeto(projectId, id, { memo }).catch(() => null)))
+    if (efetivos.some((id) => id === null)) {
+      return naoEncontrado()
+    }
+
     const drive = google.drive({ version: 'v3', auth: oauth2Client })
     const uploadedFiles = []
 
-    for (const fileId of fileIds) {
+    for (const [indice, idPedido] of fileIds.entries()) {
+      const fileId = efetivos[indice]!
       try {
         // Get metadata
         const metadata = await drive.files.get({
@@ -138,7 +146,7 @@ export async function POST(req: NextRequest) {
         )
 
         uploadedFiles.push({
-          id: fileId,
+          id: idPedido,
           url: blob.url,
           pathname: blob.pathname,
           name: fileName,
@@ -166,9 +174,6 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    return NextResponse.json(
-      { error: 'Download failed', details: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Download failed' }, { status: 500 })
   }
 }

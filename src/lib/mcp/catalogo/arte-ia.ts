@@ -789,12 +789,17 @@ export const toolsDeArteIA = [
     acesso: { tipo: 'projeto' },
     superficies: ['remoto', 'local'],
     handler: async (args, principal) => {
-      const [{ startArtGeneration }, { enfileirarArte }, { resolverDono, canalDoPrincipal }] = await Promise.all([
+      const [{ startArtGeneration }, { enfileirarArte }, { resolverDono, canalDoPrincipal, assertProjetoPermitido }] = await Promise.all([
         import('../../ai/creative-generation-service'),
         import('../../ai/generation-queue'),
         import('../tools'),
       ])
       const projectId = args.projectId as number
+      const clienteCitadoId =
+        typeof args.clienteCitadoId === 'number' && args.clienteCitadoId > 0 ? args.clienteCitadoId : null
+      // O gate da porta confere só o projectId; o cliente citado também tem
+      // de estar no alcance de quem chama.
+      if (clienteCitadoId) await assertProjetoPermitido(clienteCitadoId, principal)
 
       const trilha = args.trilha === 'arte' ? ('arte' as const) : ('imagem' as const)
       const formato =
@@ -812,8 +817,7 @@ export const toolsDeArteIA = [
         formato,
         referencias: lerReferencias(args.referencias),
         instrucaoImagem: typeof args.instrucaoImagem === 'string' ? args.instrucaoImagem : null,
-        marcaDoClienteProjectId:
-          typeof args.clienteCitadoId === 'number' && args.clienteCitadoId > 0 ? args.clienteCitadoId : null,
+        marcaDoClienteProjectId: clienteCitadoId,
         modelo: typeof args.modelo === 'string' && args.modelo ? args.modelo : undefined,
         resolution: args.resolution === '2K' || args.resolution === '4K' ? args.resolution : undefined,
         finalPrompt: typeof args.promptPronto === 'string' && args.promptPronto ? args.promptPronto : null,
@@ -994,7 +998,7 @@ export const toolsDeArteIA = [
       }
 
       const marcada = args.marcada !== false
-      const r = await definirReferenciaDeEstilo(String(args.generationId), marcada)
+      const r = await definirReferenciaDeEstilo(String(args.generationId), marcada, projectId)
       return {
         ...r,
         mensagem: marcada

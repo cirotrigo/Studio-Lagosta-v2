@@ -304,7 +304,7 @@ interface FotoDaPeca {
 
 export async function carregarFoto(spec: SpecDePeca): Promise<{ foto: FotoDaPeca | null; aviso: string | null }> {
   if (!spec.foto?.url && !spec.foto?.driveFileId) return { foto: null, aviso: null }
-  const r = await resolveImageUrl(spec.foto.url, spec.foto.driveFileId)
+  const r = await resolveImageUrl(spec.foto.url, spec.foto.driveFileId, spec.projectId)
   if (!r.url) return { foto: null, aviso: r.warning ?? 'A foto não pôde ser resolvida.' }
   const bytes = await fetchBuffer(r.url)
   const sharp = (await import('sharp')).default

@@ -3,6 +3,8 @@ import { auth } from '@clerk/nextjs/server'
 import { googleDriveService } from '@/server/google-drive-service'
 import { getUserFromClerkId } from '@/lib/auth-utils'
 import { db } from '@/lib/db'
+import { VERCEL_BLOB_HOST_REGEX } from '@/lib/ai/creative-improvement-service'
+import { driveItemPermitido, escopoDoDriveWeb } from '@/lib/google-drive/escopo'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120
@@ -39,6 +41,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'folderId é obrigatório' }, { status: 400 })
     }
 
+    // A imagem só vem do nosso Blob (ou inline): o servidor não baixa URL de fora.
+    if (!imageUrl.startsWith('data:') && !VERCEL_BLOB_HOST_REGEX.test(imageUrl)) {
+      return NextResponse.json({ error: 'URL da imagem não permitida' }, { status: 400 })
+    }
+
+    // Fora do admin, o destino precisa ser uma pasta (não atalho) sob as
+    // pastas dos projetos que a pessoa enxerga — conferido antes de baixar.
+    const escopo = await escopoDoDriveWeb(userId)
+    if (!escopo.admin) {
+      const decisao = await driveItemPermitido(folderId, escopo.raizes)
+      if (!decisao.permitido || decisao.idEfetivo !== folderId) {
+        return NextResponse.json({ error: 'Pasta não encontrada' }, { status: 404 })
+      }
+    }
+
     // Download image from URL
     let imageBuffer: Buffer
     let mimeType = 'image/png'
@@ -57,6 +74,7 @@ export async function POST(req: Request) {
         headers: {
           'User-Agent': 'Studio-Lagosta/1.0',
         },
+        redirect: 'error',
       })
 
       if (!imageResponse.ok) {
@@ -134,7 +152,6 @@ export async function POST(req: Request) {
     })
   } catch (error) {
     console.error('[UploadImage] Failed to upload image to Drive', error)
-    const message = error instanceof Error ? error.message : 'Erro ao enviar imagem para o Drive'
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json({ error: 'Erro ao enviar imagem para o Drive' }, { status: 500 })
   }
 }

@@ -9,6 +9,7 @@ import type {
   GoogleDriveListResponse,
   GoogleDriveUploadResult,
 } from '@/types/google-drive'
+import { idDoDriveValido } from '@/lib/google-drive/id'
 
 const ARTES_FOLDER_NAME = 'ARTES LAGOSTA'
 const AI_IMAGES_FOLDER_NAME = 'IA_LAGOSTA'
@@ -135,6 +136,7 @@ export class GoogleDriveService {
 
   async listFiles({ folderId, search, pageToken, mode = 'folders' }: GoogleDriveListRequest): Promise<GoogleDriveListResponse> {
     this.ensureEnabled()
+    if (folderId !== undefined) this.exigirIds(folderId)
 
     const queryParts: string[] = []
     const targetFolder = folderId ? `'${escapeQueryValue(folderId)}' in parents` : "'root' in parents"
@@ -239,11 +241,13 @@ export class GoogleDriveService {
 
   async createFolder(name: string, parentId: string): Promise<string> {
     this.ensureEnabled()
+    this.exigirIds(parentId)
     return this.createFolderInternal(name, parentId)
   }
 
   async moveFiles(fileIds: string[], targetFolderId: string) {
     this.ensureEnabled()
+    this.exigirIds(...fileIds, targetFolderId)
     if (!fileIds.length) {
       return []
     }
@@ -288,6 +292,7 @@ export class GoogleDriveService {
 
   async deleteFiles(fileIds: string[]) {
     this.ensureEnabled()
+    this.exigirIds(...fileIds)
     if (!fileIds.length) {
       return []
     }
@@ -313,6 +318,7 @@ export class GoogleDriveService {
 
   async getFileMetadata(fileId: string, fields = 'id, name, mimeType, size, parents, modifiedTime') {
     this.ensureEnabled()
+    this.exigirIds(fileId)
 
     const response = await this.withRetry('getFileMetadata', async () =>
       this.drive.files.get(
@@ -331,6 +337,7 @@ export class GoogleDriveService {
   /** Acha um arquivo pelo nome exato dentro de uma pasta. */
   async findFileInFolder(folderId: string, name: string): Promise<string | null> {
     this.ensureEnabled()
+    this.exigirIds(folderId)
 
     const response = await this.withRetry('findFileInFolder', async () =>
       this.drive.files.list(
@@ -350,6 +357,7 @@ export class GoogleDriveService {
   /** Lê um arquivo do Drive já desserializado como JSON (catálogo de imagens). */
   async readFileAsJson<T>(fileId: string): Promise<T> {
     this.ensureEnabled()
+    this.exigirIds(fileId)
 
     const response = await this.withRetry('readFileAsJson', async () =>
       this.drive.files.get(
@@ -371,6 +379,7 @@ export class GoogleDriveService {
    */
   async writeFileAsJson(fileId: string, data: unknown): Promise<void> {
     this.ensureEnabled()
+    this.exigirIds(fileId)
 
     const conteudo = JSON.stringify(data, null, 2)
 
@@ -415,6 +424,7 @@ export class GoogleDriveService {
     }>
   > {
     this.ensureEnabled()
+    this.exigirIds(...parentIds)
     if (parentIds.length === 0) return []
 
     const resultados: Array<{
@@ -478,8 +488,10 @@ export class GoogleDriveService {
     return resultados
   }
 
-  async getFolderBreadcrumbs(folderId: string) {
+  /** `parada`: para ao chegar numa dessas pastas (nada acima dela é lido). */
+  async getFolderBreadcrumbs(folderId: string, parada?: ReadonlySet<string>) {
     this.ensureEnabled()
+    this.exigirIds(folderId)
 
     const breadcrumbs: Array<{ id: string; name: string }> = []
     let currentId: string | null = folderId
@@ -506,6 +518,9 @@ export class GoogleDriveService {
         id: metadata.data.id,
         name: metadata.data.name ?? 'Sem nome',
       })
+      if (parada?.has(metadata.data.id)) {
+        break
+      }
 
       const parentId = metadata.data.parents?.[0]
       if (!parentId || parentId === 'root') {
@@ -519,6 +534,7 @@ export class GoogleDriveService {
 
   async listFolderFiles(folderId: string) {
     this.ensureEnabled()
+    this.exigirIds(folderId)
 
     const response = await this.withRetry('listFolderFiles', async () =>
       this.drive.files.list(
@@ -564,6 +580,7 @@ export class GoogleDriveService {
 
   async uploadCreativeToArtesLagosta(buffer: Buffer, projectFolderId: string, projectName?: string | null): Promise<GoogleDriveUploadResult> {
     this.ensureEnabled()
+    this.exigirIds(projectFolderId)
 
     const artesFolderId = await this.ensureArtesLagostaFolder(projectFolderId)
     return this.uploadFileToFolder({
@@ -581,6 +598,7 @@ export class GoogleDriveService {
    */
   async findArtesLagostaFolder(projectFolderId: string): Promise<string | null> {
     this.ensureEnabled()
+    this.exigirIds(projectFolderId)
     return this.findFolderByName(ARTES_FOLDER_NAME, projectFolderId)
   }
 
@@ -600,6 +618,7 @@ export class GoogleDriveService {
     }>
   > {
     this.ensureEnabled()
+    this.exigirIds(folderId)
 
     const results: Array<{
       id: string
@@ -650,6 +669,7 @@ export class GoogleDriveService {
 
   async uploadAIGeneratedImage(buffer: Buffer, imagesFolderId: string, projectName?: string | null): Promise<GoogleDriveUploadResult> {
     this.ensureEnabled()
+    this.exigirIds(imagesFolderId)
 
     const aiFolderId = await this.ensureAIImagesFolder(imagesFolderId)
     return this.uploadFileToFolder({
@@ -675,6 +695,7 @@ export class GoogleDriveService {
     makePublic?: boolean
   }): Promise<GoogleDriveUploadResult> {
     this.ensureEnabled()
+    this.exigirIds(folderId)
 
     const extensionFromMime = mimeType.split('/')[1]?.toLowerCase() || 'bin'
     const sanitizedBaseName = fileName?.replace(/\.[^.]+$/, '') ?? undefined
@@ -718,6 +739,7 @@ export class GoogleDriveService {
 
   async getFileStream(fileId: string, rangeHeader?: string) {
     this.ensureEnabled()
+    this.exigirIds(fileId)
 
     const metadata = await this.withRetry('getFileMetadata', async () =>
       this.drive.files.get(
@@ -781,6 +803,7 @@ export class GoogleDriveService {
    */
   async getThumbnailStream(fileId: string, size = 400) {
     this.ensureEnabled()
+    this.exigirIds(fileId)
 
     const tamanho = Math.min(Math.max(Math.trunc(size) || 400, 64), 1600)
 
@@ -862,6 +885,7 @@ export class GoogleDriveService {
 
   async makeFilePublic(fileId: string) {
     this.ensureEnabled()
+    this.exigirIds(fileId)
 
     await this.withRetry('makeFilePublic', async () => {
       try {
@@ -978,6 +1002,16 @@ export class GoogleDriveService {
       throw new Error('Failed to create folder on Google Drive')
     }
     return folderId
+  }
+
+  /**
+   * Toda chamada leva id no formato do Drive: `root` e id malformado (até uma
+   * pasta mal configurada no projeto) param aqui, antes do Drive.
+   */
+  private exigirIds(...ids: unknown[]) {
+    for (const id of ids) {
+      if (!idDoDriveValido(id)) throw new Error('Id do Google Drive inválido')
+    }
   }
 
   private ensureEnabled() {
