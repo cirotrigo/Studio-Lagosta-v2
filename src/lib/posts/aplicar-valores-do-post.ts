@@ -74,6 +74,17 @@ export function aplicarValoresDoPost<T extends CamadaAplicavel>(
   const errosDeEntrada = [...chavesVazias, ...validarEntradaSemantica(slotValues)]
   if (errosDeEntrada.length > 0) return { camadas, semantico: true, erros: errosDeEntrada, avisos }
 
+  // Checkpoint g (Codex): com o contrato, a copy VISUAL da arte é registrada das camadas (copyVisualDasCamadas, chave
+  // `name ?? id`) — texto visível numa chave `_…` cairia onde os leitores descartam, mesmo num pedido só de imagem.
+  // Aqui (o helper que admissão, render, recuperação e leitura compartilham) a regra vale em todos os caminhos.
+  const reservadas: ErroDeValor[] = camadas
+    .filter((c) => {
+      const l = c as { type?: unknown; visible?: unknown; name?: unknown; id?: unknown }
+      return (l.type === 'text' || l.type === 'rich-text') && l.visible !== false && String(l.name ?? l.id).startsWith('_')
+    })
+    .map((c) => ({ codigo: 'CHAVE_VISUAL_RESERVADA' as const, layerId: String(c.id) }))
+  if (reservadas.length > 0) return { camadas, semantico: true, erros: reservadas, avisos }
+
   const r = resolverValoresSemanticos(camadas as unknown as Layer[], slotValues)
   if (r.erros.length > 0) return { camadas, semantico: true, erros: r.erros, avisos: [...avisos, ...r.avisos] }
 

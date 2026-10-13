@@ -104,3 +104,10 @@ describe('recusas antes de qualquer gravação', () => {
     expect(JSON.stringify({ m: e.message, c: e.codigo, e: e.erros })).not.toMatch(/segredo/)
   })
 })
+
+describe('checkpoint g (Codex): a admissão recusa página com texto visível em chave "_…", inclusive pedido só de imagem', () => {
+  it('STORY só de imagem numa página com "_aviso" → CONTRATO_INVALIDO (CHAVE_VISUAL_RESERVADA)', async () => {
+    const layers = [{ id: 'av', name: '_aviso', type: 'text', content: 'aviso', visible: true }, { id: 'i', name: 'Foto', type: 'image', fileUrl: 'x', visible: true, metadata: { slot: { id: 'f' } } }]
+    await expect(admitirPedidoSemantico(cliente(pagina({ layers })), pedido({ slotValues: { _slots: { f: { fileUrl: 'https://y' } } } }))).rejects.toMatchObject({ codigo: 'CONTRATO_INVALIDO', erros: [{ codigo: 'CHAVE_VISUAL_RESERVADA' }] })
+  })
+})

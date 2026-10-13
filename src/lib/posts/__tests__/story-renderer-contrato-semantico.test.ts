@@ -186,3 +186,10 @@ describe('checkpoint e: camadasEfetivas = exatamente o que o canvas recebeu (a m
     expect((r.camadasEfetivas[0] as any).content).toBe('X')
   })
 })
+
+describe('checkpoint g (Codex): o render também recusa texto visível em chave "_…" (a página pode ter mudado depois da admissão)', () => {
+  it('só imagem por _slots + "_aviso" visível → ErroRenderSemantico CHAVE_VISUAL_RESERVADA, antes de qualquer efeito', async () => {
+    estado.pagina = pagina(true, [texto('av', { name: '_aviso' }), { id: 'i', name: 'Foto', type: 'image', fileUrl: 'x', visible: true, order: 2, metadata: { slot: { id: 'f' } } }])
+    await recusa({ _slots: { f: { fileUrl: 'https://y' } } }, 'CONTRATO_INVALIDO', 'CHAVE_VISUAL_RESERVADA')
+  })
+})

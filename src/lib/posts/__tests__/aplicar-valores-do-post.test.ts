@@ -158,3 +158,21 @@ describe('checkpoint d (Codex): post MISTO — o texto legado em outra camada ta
     expect(r.changedTextIds).toEqual(['a', 'b', 'c'])
   })
 })
+
+describe('checkpoint g (Codex): com o contrato, texto visível em chave "_…" recusa — inclusive pedido só de imagem', () => {
+  const comAviso = [texto('av', { name: '_aviso' }), { id: 'i', name: 'Foto', type: 'image', fileUrl: 'x', visible: true, metadata: { slot: { id: 'f' } } }]
+
+  it('só imagem por _slots + camada de texto visível "_aviso" → CHAVE_VISUAL_RESERVADA (a copy visual perderia esse texto)', () => {
+    const r = aplicarValoresDoPost(comAviso, { _slots: { f: { fileUrl: 'y' } } })
+    expect(r.erros).toEqual([{ codigo: 'CHAVE_VISUAL_RESERVADA', layerId: 'av' }])
+    expect(r.camadas).toBe(comAviso)
+  })
+
+  it('camada "_aviso" OCULTA não conta (não é desenhada)', () => {
+    expect(aplicarValoresDoPost([{ ...comAviso[0], visible: false }, comAviso[1]], { _slots: { f: { fileUrl: 'y' } } }).erros).toEqual([])
+  })
+
+  it('legado (sem contrato) com camada "_aviso": como sempre', () => {
+    expect(aplicarValoresDoPost(comAviso, { i: { fileUrl: 'y' } }).erros).toEqual([])
+  })
+})
