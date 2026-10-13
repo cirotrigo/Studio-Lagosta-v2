@@ -57,6 +57,28 @@ export function podeExecutar({
   return creditsRemaining >= cost;
 }
 
+type CreditSettings = { featureCosts?: Record<string, number>; planCredits?: Record<string, number>; creditosAplicados?: boolean } | null;
+
+function useCreditSettings() {
+  return useQuery<CreditSettings>({
+    queryKey: ['credit-settings'],
+    queryFn: () => api.get('/api/credits/settings'),
+    staleTime: 60_000,
+    gcTime: 5 * 60_000,
+  });
+}
+
+/**
+ * A UI comercial (saldo, custo em créditos, Cobrança) só aparece com a
+ * cobrança ligada EXPLICITAMENTE; carregando ou com falha conta como modo
+ * interno. Mais leve que `useCredits`: lê só a configuração, sem consultar o
+ * saldo — serve para rótulos em listas (um card por arte).
+ */
+export function useCobrancaLigada(): boolean {
+  const { data } = useCreditSettings();
+  return data?.creditosAplicados === true;
+}
+
 export function useCredits(): {
   credits: CreditData | null;
   isLoading: boolean;
@@ -72,12 +94,7 @@ export function useCredits(): {
   const queryClient = useQueryClient();
 
   // Fetch dynamic settings
-  const { data: settings } = useQuery<{ featureCosts?: Record<string, number>; planCredits?: Record<string, number>; creditosAplicados?: boolean } | null>({
-    queryKey: ['credit-settings'],
-    queryFn: () => api.get('/api/credits/settings'),
-    staleTime: 60_000,
-    gcTime: 5 * 60_000,
-  });
+  const { data: settings } = useCreditSettings();
 
   const { data, isLoading: loadingServer } = useQuery<{ creditsRemaining: number } | null>({
     queryKey: ['credits', user?.id],
