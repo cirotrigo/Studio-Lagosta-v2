@@ -22,7 +22,8 @@ export async function fetchImageSource(url: string): Promise<{ buffer: Buffer; c
   return fetchExternal(url)
 }
 
-function extractDriveFileId(url: string): string | null {
+/** O id do Drive numa URL de foto do Drive (proxy interno, lh3 ou uc?id=), ou `null`. */
+export function extractDriveFileId(url: string): string | null {
   // Formato 1: /api/google-drive/image/{fileId} ou /api/drive/thumbnail/{fileId}
   const apiMatch = url.match(/\/api\/(?:google-drive\/image|drive\/thumbnail)\/([^/?]+)/)
   if (apiMatch?.[1]) return apiMatch[1]

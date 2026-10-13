@@ -794,7 +794,7 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
   const driveImageId = typeof slotValues._driveImageId === 'string' ? slotValues._driveImageId : null
   const directUrl =
     input.imageUrl ?? (typeof slotValues._imageUrl === 'string' ? slotValues._imageUrl : undefined)
-  const resolved = await resolveImageUrl(directUrl, driveImageId)
+  const resolved = await resolveImageUrl(directUrl, driveImageId, projectId)
 
   /**
    * A foto decide o layout (família "(3 layouts)"): entre os irmãos do
@@ -1190,7 +1190,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
     (typeof slotValues._driveImageId === 'string' ? slotValues._driveImageId : null)
   const directUrl =
     input.imageUrl ?? (typeof slotValues._imageUrl === 'string' ? slotValues._imageUrl : undefined)
-  const resolved = await resolveImageUrl(directUrl, driveImageId)
+  const resolved = await resolveImageUrl(directUrl, driveImageId, projectId)
 
   /**
    * A copy ANTES do ajuste, lida do jeito profundo (`page-layers.ts`). Num

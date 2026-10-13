@@ -65,6 +65,7 @@ export async function metaFalsa(id: string, _campos?: string) {
     trashed: no.trashed ?? false,
     mimeType: no.mimeType ?? null,
     shortcutDetails: no.targetId ? { targetId: no.targetId } : undefined,
+    thumbnailLink: `https://lh3.example/miniatura-${id}=s220`,
   }
 }
 
