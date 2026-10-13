@@ -240,7 +240,33 @@ describe('alinharChavesDaProposta — layerId da proposta × nome da página', (
     expect(alinharChavesDaProposta(null, camadas)).toBeNull()
   })
 
-  it('mesma camada por nome e por id: vale a por nome', () => {
-    expect(alinharChavesDaProposta({ CTA: 'Reserve', l3: 'Outro' }, camadas)).toEqual({ CTA: 'Reserve', l3: 'Outro' })
+  it('mesma camada por nome e por id: vale o id, como no bake', () => {
+    expect(alinharChavesDaProposta({ CTA: 'Reserve', l3: 'Outro' }, camadas)).toEqual({ CTA: 'Outro' })
+  })
+
+  it('id de uma camada igual ao NOME de outra: a chave é da camada do id (achado do Codex, rodada 2)', () => {
+    const colisao = [
+      { id: 'cta', name: 'headline', type: 'text', content: 'Texto A', visible: false },
+      { id: 'b', name: 'cta', type: 'text', content: 'Texto A', visible: true },
+    ]
+    // A (id "cta") foi ocultada pela pessoa; B (nome "cta") tem o mesmo texto. Não é "aceita como veio".
+    const proposta = alinharChavesDaProposta({ cta: 'Texto A' }, colisao)
+    expect(proposta).toEqual({ 'headline (fora da arte)': 'Texto A' })
+    expect(diffDeCopy(proposta, copyParaDecisao(colisao)).mudou).toBe(true)
+  })
+
+  it('camada vazia ou oculta pela pessoa: o texto proposto conta como removido', () => {
+    const oculta = [{ id: 'l1', name: 'Título', type: 'text', content: 'Noite do vinho', visible: false }]
+    const d = diffDeCopy(alinharChavesDaProposta({ l1: 'Noite do vinho' }, oculta), copyParaDecisao(oculta) ?? {})
+    expect(d.removidos.map((r) => r.texto)).toEqual(['Noite do vinho'])
+  })
+})
+
+describe('alinharChavesDaProposta — cada lado com as SUAS camadas', () => {
+  it('o vídeo alinha a proposta às camadas gravadas no MP4, não à página de agora (Codex, rodada 2)', async () => {
+    const { readFileSync } = await import('node:fs')
+    const fonte = readFileSync(`${process.cwd()}/src/lib/video/process-video-job.ts`, 'utf8')
+    expect(fonte).toMatch(/alinharChavesDaProposta\(r\.copyPropostaTexto, camadasGravadas\)/)
+    expect(fonte).toMatch(/copyParaDecisao\(designData\?\.layers \?\? null\), designData\?\.layers \?\? null/)
   })
 })

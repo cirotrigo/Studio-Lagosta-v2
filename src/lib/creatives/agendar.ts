@@ -438,9 +438,7 @@ export async function resolverAgendamento(input: AgendarPostInput, opcoes: Opcoe
    * como "sem texto nenhum".
    */
   const copyDaPagina = copyDeCamadas(camadasDaPagina)
-  // A proposta pode vir por layerId; a página é lida por nome. Traduz pela
-  // identidade da camada, senão o diff acusa edição onde o texto é o mesmo.
-  const copyPropostaTexto = alinharChavesDaProposta(apenasTextos(copyProposta), camadasDaPagina)
+  const copyPropostaTexto = apenasTextos(copyProposta)
   // Sem página, a cópia do post é a copy VISUAL da Generation (o que o PNG mostra) — nunca a de aprendizado,
   // que conta como presente a camada que o revisor escondeu (REV-2CEB-01).
   const copyFinal = copyDaPagina ?? apenasTextos(copyVisual)
@@ -461,7 +459,11 @@ export async function resolverAgendamento(input: AgendarPostInput, opcoes: Opcoe
    * sabe nada.
    */
   const diffDaCopy =
-    copyPropostaTexto && copyDaDecisao ? diffDeCopy(copyPropostaTexto, copyDaDecisao) : null
+    copyPropostaTexto && copyDaDecisao
+      ? // A proposta pode vir por layerId; a página é lida por nome. Traduz pela
+        // identidade da camada, senão o diff acusa edição onde o texto é o mesmo.
+        diffDeCopy(alinharChavesDaProposta(copyPropostaTexto, camadasDaPagina), copyDaDecisao)
+      : null
 
   const observacao = input.observacao?.trim() || null
   // Guardada mesmo assim (quem trocar para manual na agenda a encontra), mas o

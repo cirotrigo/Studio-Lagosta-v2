@@ -337,10 +337,19 @@ export function copyParaDecisao(layers: unknown): Record<string, string> | null 
  * pedido pode endereçar a camada pelo id — enquanto `copyParaDecisao` lê a
  * página por nome. Sem isto o mesmo texto virava "removido + adicionado" e o
  * agendamento gravava uma edição que ninguém fez (FALSE_LEARNING_DIFF,
- * caracterizado no B1d; corrigido em 13/10/2026). A tradução é por IDENTIDADE
- * da camada, nunca por conteúdo: troca de texto entre campos continua sendo
- * edição. Chave que já é chave da página, ou que não é id de camada, fica
- * como veio; página ilegível devolve a proposta intacta.
+ * caracterizado no B1d; corrigido em 13/10/2026).
+ *
+ * A tradução é por IDENTIDADE da camada, nunca por conteúdo — troca de texto
+ * entre campos continua sendo edição — e o id vence o nome, como no
+ * endereçamento do bake (`slotValues[layer.id] ?? … ?? slotValues[layer.name]`):
+ * uma chave que é id de uma camada E nome de outra é da primeira. Camada de
+ * texto que existe mas está fora da arte (oculta pela pessoa, vazia) recebe
+ * uma chave que não casa com nada da página, e o texto conta como removido.
+ * Chave que não é id de camada fica como veio; página ilegível devolve a
+ * proposta intacta.
+ *
+ * Use as MESMAS camadas que geraram o lado final do diff (no vídeo, as
+ * gravadas no MP4, não as da página de agora).
  */
 export function alinharChavesDaProposta(
   proposta: Record<string, string> | null,
@@ -351,14 +360,28 @@ export function alinharChavesDaProposta(
   if (!legivel) return proposta
   // Mesmas camadas que `copyParaDecisao` lê — as chaves têm de ser as dela.
   const itens = textosDaPaginaPorCamada(camadasParaDecisao(camadas))
-  const chavesDaPagina = new Set(itens.map((t) => t.chave))
   const chavePorId = new Map(itens.filter((t) => t.id).map((t) => [t.id as string, t.chave]))
+  const nomePorIdDeTexto = new Map<string, string>()
+  for (const c of camadas as Array<Record<string, unknown>>) {
+    if ((c?.type === 'text' || c?.type === 'rich-text') && typeof c.id === 'string') {
+      nomePorIdDeTexto.set(c.id, String(c.name ?? c.id))
+    }
+  }
+  const ocupadas = new Set(itens.map((t) => t.chave))
+
   const out: Record<string, string> = {}
   for (const [chave, texto] of Object.entries(proposta)) {
-    const destino = !chavesDaPagina.has(chave) && chavePorId.get(chave)
-    // Se a proposta trouxe a mesma camada por nome E por id, vale a por nome.
-    if (destino && !(destino in proposta)) out[destino] = texto
-    else out[chave] = texto
+    if (!nomePorIdDeTexto.has(chave)) out[chave] = texto
+  }
+  for (const [chave, texto] of Object.entries(proposta)) {
+    if (!nomePorIdDeTexto.has(chave)) continue
+    let destino = chavePorId.get(chave)
+    if (!destino) {
+      const base = `${nomePorIdDeTexto.get(chave)} (fora da arte)`
+      destino = base
+      for (let n = 2; ocupadas.has(destino) || destino in out; n++) destino = `${base}#${n}`
+    }
+    out[destino] = texto
   }
   return out
 }
