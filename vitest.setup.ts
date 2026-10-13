@@ -8,6 +8,11 @@
  *   teste que precisa de rede simula o cliente (vi.mock / vi.stubGlobal('fetch', …)); a chamada real falha com
  *   a origem no erro.
  *
+ * O alcance, dito com precisão (revisão do Codex, H5): bloqueia toda REDE que sai do processo Node — `fetch`,
+ * `http`/`https`, `tls` e `undici` passam por `net.Socket.connect` — e o Prisma não sobe sem DATABASE_URL.
+ * Subprocesso local NÃO é interceptado: os testes de vídeo rodam o `ffmpeg` sobre arquivos locais, e é só isso
+ * que eles fazem. Teste novo que suba processo com acesso à rede fica fora da suíte unitária.
+ *
  * Teste de integração de verdade (banco, rede) não mora na suíte unitária: é script em `scripts/validar-*`.
  */
 import net from 'node:net'

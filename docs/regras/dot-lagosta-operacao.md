@@ -252,10 +252,47 @@ identidade dele passar do rascunho.
 - **Ainda não configurado:** o cliente OAuth real do Dot e a env de produção
   (H6). Até lá, nenhum principal é `draft-only`.
 
+## O que os testes provam e o que fica com o agente (H5, 13/10/2026)
+
+**Provado com código real, num banco falso:**
+- auditoria;
+- porta e perfil;
+- agendamento;
+- identidade da leva;
+- `HORARIO_OCUPADO`.
+
+Os 10 cenários estão em:
+- `src/lib/mcp/__tests__/dot-operacao-comportamento.test.ts`;
+- `src/lib/lotes/__tests__/agendar-itens.test.ts` ("H5 — rodada operacional");
+- `src/lib/lotes/__tests__/reserva-concorrente.test.ts`.
+
+**Fica com o agente, por decisão de arquitetura** (o servidor não ganhou um cérebro):
+- **O teto de 2 revisões.** O servidor garante a parte mecânica: nenhum rascunho
+  nasce sem o `agendar-leva` real, e repetir a identidade não cria outra peça.
+- **Evitar tema repetido.** O servidor garante a informação: os textos da janela
+  no `ver-agenda` e o rodízio de fotos.
+
+**Compor e revisar entram simulados nos cenários:** a peça pronta é fixture,
+porque o compositor real renderiza e grava no Blob.
+
+**Os unitários são herméticos e rodam no CI** (`npm run test:unit`):
+- sem banco nem rede saindo do processo (`vitest.setup.ts`);
+- subprocesso local, como o `ffmpeg` dos testes de vídeo, não é interceptado.
+
+**O ensaio no banco de dev não foi feito:** a produção real de uma peça usa Blob
+e Drive.
+
 ## Dívidas conhecidas que afetam a leitura
 
-Um rascunho cuja mídia foi trocada pela edição da agenda pode ficar preso em
-render PENDING, e um RENDERING interrompido não volta à fila do cron. Nos dois
-casos o horário aparece PENDENTE quando a peça está pronta. O erro é para o lado
-seguro (o agente relata em vez de duplicar). Foi apontado pela revisão do Codex
-no fechamento do H2.
+- O rascunho preso em render PENDING depois de trocar a mídia, e o RENDERING
+  interrompido, estão corrigidos (#220, em produção).
+- **A auditoria não acusa slot com DOIS posts** (H5, Parte 9). Um criador sem a
+  trava da agenda pode pôr um segundo post num horário que o agente acabou de
+  fechar, fora da janela de milissegundos que a trava cobre. São eles o job de
+  vídeo, o sync do Zernio (até 10 min de atraso) e o `plan-week` ou o
+  `create-post` do stdio sem a flag. A colisão aparece só como dois cards na
+  grade da agenda. Classe B (rara), aceita.
+  - Mitigação barata para o H6: a auditoria passar a acusar dois ou mais posts
+    no mesmo slot e formato.
+  - Regra operacional: não rodar `plan-week` do stdio, sem a flag, no mesmo
+    cliente e semana em que o agente opera.
