@@ -121,3 +121,28 @@ describe('sendToLater: gravação incerta depois do Zernio', () => {
     })
   })
 })
+
+/** Gravado o `laterPostId`, nada depois (log, cobrança) muda o estado do post. */
+describe('sendToLater: depois do laterPostId gravado, falha nenhuma vira FAILED', () => {
+  it('o log final lança: sucesso, sem FAILED, sem handlePublishFailure', async () => {
+    vi.mocked(deductCreditsForFeature).mockResolvedValueOnce({ creditsRemaining: 0 })
+    vi.mocked(db.postLog.create).mockRejectedValueOnce(new Error('log caiu'))
+    const r = await new LaterPostScheduler().sendToLater('p1')
+    expect(r).toEqual({ success: true, laterPostId: 'z1' })
+    expect(atualizacoes()).toEqual([expect.objectContaining({ laterPostId: 'z1', status: 'SCHEDULED' })])
+    expect(handlePublishFailure).not.toHaveBeenCalled()
+  })
+
+  it('a cobrança e os logs lançam: sucesso, sem FAILED, sem handlePublishFailure', async () => {
+    vi.mocked(deductCreditsForFeature).mockRejectedValueOnce(new Error('banco caiu'))
+    vi.mocked(db.postLog.create).mockRejectedValue(new Error('log caiu'))
+    try {
+      const r = await new LaterPostScheduler().sendToLater('p1')
+      expect(r).toEqual({ success: true, laterPostId: 'z1' })
+      expect(atualizacoes().some((d) => d.status === 'FAILED')).toBe(false)
+      expect(handlePublishFailure).not.toHaveBeenCalled()
+    } finally {
+      vi.mocked(db.postLog.create).mockReset().mockResolvedValue({} as never)
+    }
+  })
+})

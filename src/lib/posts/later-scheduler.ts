@@ -652,6 +652,8 @@ export class LaterPostScheduler {
   ) {
     const skipCreditDeduction = options?.skipCreditDeduction ?? false
     const forceImmediate = options?.forceImmediate ?? false
+    /** Preenchido assim que o `laterPostId` está no banco: dali em diante o post é intocável. */
+    let laterPostIdGravado: string | null = null
     try {
       console.log(`[Later Scheduler] Starting sendToLater for post ${postId}`, {
         skipCreditDeduction,
@@ -990,6 +992,7 @@ export class LaterPostScheduler {
           },
         })
 
+        laterPostIdGravado = laterPost.id
         console.log(`[Later Scheduler] ✅ Database updated successfully`)
         console.log(`[Later Scheduler] 🔍 Verify save:`, {
           savedLaterPostId: updatedPost.laterPostId,
@@ -1019,6 +1022,7 @@ export class LaterPostScheduler {
           }).catch((logError) => console.error('[Later Scheduler] Log da persistência incerta falhou:', logError))
           return { success: false, incerto: true as const, laterPostId: laterPost.id }
         }
+        laterPostIdGravado = laterPost.id
       }
 
       // 7. Cobrança DEPOIS de gravar o `laterPostId`. O post já está no Zernio:
@@ -1053,16 +1057,24 @@ export class LaterPostScheduler {
       // 8. Create log
       const logMessage = 'Post enviado para Later - publicação imediata'
 
+      // Só log: com o `laterPostId` gravado, falha aqui não muda o estado do post.
       await this.createLog(post.id, PostLogEvent.SENT, logMessage, {
         laterPostId: laterPost.id,
         laterStatus: laterPost.status,
-      })
+      }).catch((logError) => console.error('[Later Scheduler] Log do envio falhou — o post segue:', logError))
 
       console.log(`[Later Scheduler] ✅ Post ${post.id} processed successfully`)
 
       return { success: true, laterPostId: laterPost.id }
     } catch (error) {
       console.error(`[Later Scheduler] ❌ Error sending post ${postId}:`, error)
+
+      // Guarda: o post já está no Zernio e o `laterPostId` no banco. Marcar FAILED
+      // mostraria falha falsa na agenda e dispararia aviso falso — só log.
+      if (laterPostIdGravado) {
+        console.error(`[Later Scheduler] Post ${postId} já entregue (${laterPostIdGravado}) — erro depois da gravação ignorado`)
+        return { success: true, laterPostId: laterPostIdGravado }
+      }
 
       // Handle rate limit errors
       if (isRateLimitError(error)) {
