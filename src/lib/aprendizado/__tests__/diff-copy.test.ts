@@ -235,8 +235,7 @@ describe('alinharChavesDaProposta — layerId da proposta × nome da página', (
   })
 
   it('chave por nome, chave desconhecida e página ilegível ficam como vieram', () => {
-    // Por nome, "Título" atinge as duas camadas de mesmo nome — como no bake.
-    expect(alinharChavesDaProposta({ Título: 'x', outra: 'y' }, camadas)).toEqual({ Título: 'x', 'Título#2': 'x', outra: 'y' })
+    expect(alinharChavesDaProposta({ Título: 'x', outra: 'y' }, camadas)).toEqual({ Título: 'x', outra: 'y' })
     expect(alinharChavesDaProposta({ l1: 'x' }, 'lixo{')).toEqual({ l1: 'x' })
     expect(alinharChavesDaProposta(null, camadas)).toBeNull()
   })
@@ -253,12 +252,15 @@ describe('alinharChavesDaProposta — layerId da proposta × nome da página', (
     expect(alinharChavesDaProposta({ cta: 'Reserve' }, dupla)).toBeNull()
   })
 
-  it('nome repetido: a chave por nome preencheu as duas camadas (Título e Título#2)', () => {
-    const repetido = [
+  it('proposta por NOME não muda em relação a antes, inclusive com camada duplicada depois (Codex, rodada 8)', () => {
+    const duplicada = [
       { id: 'x1', name: 'Título', type: 'text', content: 'Noite', visible: true },
       { id: 'x2', name: 'Título', type: 'text', content: 'Noite', visible: true },
     ]
-    expect(diffDeCopy(alinharChavesDaProposta({ Título: 'Noite' }, repetido), copyParaDecisao(repetido)).mudou).toBe(false)
+    const proposta = alinharChavesDaProposta({ Título: 'Noite' }, duplicada)
+    expect(proposta).toEqual({ Título: 'Noite' })
+    // A cópia nova continua aparecendo como texto acrescentado, como antes.
+    expect(diffDeCopy(proposta, copyParaDecisao(duplicada)).adicionados.map((a) => a.campo)).toEqual(['Título#2'])
   })
 
   it('camada de texto SEM id: proposta por nome é aceita, não contada duas vezes (Codex, rodada 5)', () => {
@@ -277,15 +279,13 @@ describe('alinharChavesDaProposta — layerId da proposta × nome da página', (
     expect(diffDeCopy(proposta, copyParaDecisao(revisada)).mudou).toBe(false)
   })
 
-  it('chave #2 da página que é o NOME de outra camada: ambígua, sem diff (Codex, rodada 6)', () => {
+  it('chave #2 que é nome literal de outra camada: proposta por nome fica como veio (Codex, rodada 6)', () => {
     const colisao = [
       { id: 'p', name: 'A', type: 'text', content: 'X', visible: true },
       { id: 'q', name: 'A', type: 'text', content: 'X', visible: true },
       { id: 'r', name: 'A#2', type: 'text', content: 'Z', visible: true },
     ]
-    expect(alinharChavesDaProposta({ A: 'X', 'A#2': 'Z' }, colisao)).toBeNull()
-    // Sem a chave colidente, segue normal: "A" preenche as duas camadas de nome A.
-    expect(diffDeCopy(alinharChavesDaProposta({ A: 'X' }, colisao.slice(0, 2)), copyParaDecisao(colisao.slice(0, 2))).mudou).toBe(false)
+    expect(alinharChavesDaProposta({ A: 'X', 'A#2': 'Z' }, colisao)).toEqual({ A: 'X', 'A#2': 'Z' })
   })
 
   it('nome repetido com uma camada já oculta no modelo: proposta por nome é aceita (Codex, rodada 7)', () => {

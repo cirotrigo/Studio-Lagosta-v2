@@ -330,36 +330,31 @@ export function copyParaDecisao(layers: unknown): Record<string, string> | null 
 }
 
 /**
- * Reescreve a proposta nas chaves da PÁGINA (nome da camada, com o sufixo
- * `#2`…), camada por camada, do jeito que o bake a aplicou.
+ * Traduz para a chave da PÁGINA (nome da camada, com o sufixo `#2`…) as
+ * chaves da proposta que são o `layerId` de uma camada de texto — e só elas.
  *
- * A proposta da via não-semântica guarda a copy pela chave do PEDIDO — e o
- * pedido pode endereçar a camada pelo id — enquanto `copyParaDecisao` lê a
- * página por nome. Sem isto o mesmo texto virava "removido + adicionado" e o
- * agendamento gravava uma edição que ninguém fez (FALSE_LEARNING_DIFF,
- * caracterizado no B1d; corrigido em 13/10/2026).
+ * A proposta da via não-semântica guarda a copy pela chave do PEDIDO, que pode
+ * ser o id da camada, enquanto `copyParaDecisao` lê a página por nome. Sem isto
+ * o mesmo texto virava "removido + adicionado" e o agendamento gravava uma
+ * edição que ninguém fez (FALSE_LEARNING_DIFF, caracterizado no B1d; corrigido
+ * em 13/10/2026).
  *
- * Para cada camada de texto vale a precedência do bake
- * (`slotValues[layer.id] ?? … ?? slotValues[layer.name]`), com a chave da
- * página entre as duas (proposta que já veio no formato de `textosDaPagina`,
- * com `#2`). Uma chave que atinge DUAS camadas (id de uma e nome de outra,
- * nome repetido) entra para as duas, porque o bake preencheu as duas. A
- * tradução é por IDENTIDADE, nunca por conteúdo: troca de texto entre campos
- * continua sendo edição. Camada de texto fora da arte (oculta pela pessoa,
- * vazia) que recebeu texto PELO ID ganha uma chave que não casa com a página —
- * conta como removido; por nome, ela fica fora como sempre ficou. Chave que não atingiu camada nenhuma fica como veio. Página
- * ilegível devolve a proposta intacta.
+ * Chave por NOME, ou que não é id de camada, fica exatamente como veio: o
+ * comportamento de antes. Tentar espalhar o nome pelas camadas repetidas
+ * adivinhava uma procedência que não existe e criava sinal falso novo (rodadas
+ * 3 a 8 do Codex). A tradução é por IDENTIDADE da camada, nunca por conteúdo,
+ * e o id vence o nome, como no bake (`slotValues[layer.id] ?? … ?? slotValues[layer.name]`).
+ * Camada endereçada pelo id que está fora da arte (oculta pela pessoa, vazia)
+ * recebe uma chave que não casa com a página — conta como removida. Camada
+ * oculta pelo REVISOR conta como presente, como em `copyParaDecisao`.
  *
- * 🔴 Devolve `null` — "não sei", sem diff e sem sinal — quando uma chave da
- * proposta é o id de uma camada de texto E o nome de OUTRA. A procedência não
- * diz se a proposta foi guardada pela chave do pedido (id primeiro) ou pela da
- * página (nome): `copyProposta` é `copyDeAprendizado ?? slotValues`, e cada via
- * grava num formato. Adivinhar registrava aceite onde houve edição, ou edição
- * onde não houve (rodada 4 do Codex). Vale também para a chave com `#2` da
- * página que é o nome literal de outra camada (nomes "A", "A" e "A#2").
+ * 🔴 Devolve `null` — "não sei", sem diff e sem sinal — quando uma chave é o id
+ * de uma camada de texto E o nome de OUTRA: a procedência não diz em que
+ * formato a proposta foi gravada (`copyDeAprendizado ?? slotValues`).
  *
  * Use as MESMAS camadas que geraram o lado final do diff (no vídeo, as
- * gravadas no MP4, não as da página de agora).
+ * gravadas no MP4, não as da página de agora). Página ilegível devolve a
+ * proposta intacta.
  */
 export function alinharChavesDaProposta(
   proposta: Record<string, string> | null,
@@ -375,50 +370,34 @@ export function alinharChavesDaProposta(
   const ehTexto = (c: Record<string, unknown>) => c?.type === 'text' || c?.type === 'rich-text'
   const textos = (decisao as Array<Record<string, unknown>>).filter(ehTexto)
   const itens = textosDaPaginaPorCamada(decisao)
-  // A chave sufixada da página ("A#2", nome repetido) também é ambígua quando
-  // é o nome ou o id literal de outra camada: o bake não conhece "#2" e a
-  // aplicou à camada que tem esse nome (rodada 6 do Codex).
-  const ambigua = Object.keys(proposta).some(
-    (chave) =>
-      textos.some((x) => x.id === chave && textos.some((y) => y !== x && y.name === chave)) ||
-      itens.some((t) => t.chave === chave && t.chave !== t.nome && textos.some((y) => y.name === chave || y.id === chave)),
+  const ambigua = Object.keys(proposta).some((chave) =>
+    textos.some((x) => x.id === chave && textos.some((y) => y !== x && y.name === chave)),
   )
   if (ambigua) return null
 
-  const usadas = new Set<string>()
-  const valorDa = (...chaves: Array<string | null | undefined>) => {
-    for (const chave of chaves) {
-      if (chave != null && proposta[chave] != null) {
-        usadas.add(chave)
-        return proposta[chave]
-      }
-    }
-    return undefined
+  // id de camada de texto → a chave dela na página; fora da arte (oculta pela
+  // pessoa, vazia), uma chave que não casa com a página.
+  const naArte = new Set(itens.map((t) => t.indice))
+  const chaveDoId = new Map<string, string>()
+  for (const t of itens) if (t.id) chaveDoId.set(t.id, t.chave)
+  const ocupadas = new Set(itens.map((t) => t.chave))
+  for (let i = 0; i < decisao.length; i++) {
+    const c = decisao[i] as Record<string, unknown>
+    if (!ehTexto(c) || naArte.has(i) || typeof c.id !== 'string' || chaveDoId.has(c.id)) continue
+    const base = `${typeof c.name === 'string' ? c.name : c.id} (fora da arte)`
+    let chave = base
+    for (let n = 2; ocupadas.has(chave); n++) chave = `${base}#${n}`
+    ocupadas.add(chave)
+    chaveDoId.set(c.id, chave)
   }
 
   const out: Record<string, string> = {}
-  const naArte = new Set(itens.map((t) => t.indice))
-  for (const t of itens) {
-    const texto = valorDa(t.id, t.chave, t.nome)
-    if (texto != null) out[t.chave] = texto
-  }
-  for (let i = 0; i < decisao.length; i++) {
-    const c = decisao[i] as Record<string, unknown>
-    if (!ehTexto(c) || naArte.has(i)) continue
-    const id = typeof c.id === 'string' ? c.id : null
-    const nome = typeof c.name === 'string' ? c.name : null
-    // Só a camada endereçada pelo ID: por nome, a camada que já nascia oculta no
-    // modelo não é copy da peça — é o comportamento de antes, e marcá-la como
-    // "fora da arte" acusava remoção sem edição (rodada 7 do Codex).
-    const texto = valorDa(id)
-    if (texto == null) continue
-    const base = `${nome ?? id ?? 'texto'} (fora da arte)`
-    let chave = base
-    for (let n = 2; chave in out; n++) chave = `${base}#${n}`
-    out[chave] = texto
-  }
+  // Por nome (e chave desconhecida): como veio — o comportamento de antes.
+  for (const [chave, texto] of Object.entries(proposta)) if (!chaveDoId.has(chave)) out[chave] = texto
+  // Por id: a chave da camada; o id vence o nome, como no bake.
   for (const [chave, texto] of Object.entries(proposta)) {
-    if (!usadas.has(chave) && !(chave in out)) out[chave] = texto
+    const destino = chaveDoId.get(chave)
+    if (destino) out[destino] = texto
   }
   return out
 }
