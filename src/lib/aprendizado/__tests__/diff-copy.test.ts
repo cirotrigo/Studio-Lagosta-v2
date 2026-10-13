@@ -277,6 +277,17 @@ describe('alinharChavesDaProposta — layerId da proposta × nome da página', (
     expect(diffDeCopy(proposta, copyParaDecisao(revisada)).mudou).toBe(false)
   })
 
+  it('chave #2 da página que é o NOME de outra camada: ambígua, sem diff (Codex, rodada 6)', () => {
+    const colisao = [
+      { id: 'p', name: 'A', type: 'text', content: 'X', visible: true },
+      { id: 'q', name: 'A', type: 'text', content: 'X', visible: true },
+      { id: 'r', name: 'A#2', type: 'text', content: 'Z', visible: true },
+    ]
+    expect(alinharChavesDaProposta({ A: 'X', 'A#2': 'Z' }, colisao)).toBeNull()
+    // Sem a chave colidente, segue normal: "A" preenche as duas camadas de nome A.
+    expect(diffDeCopy(alinharChavesDaProposta({ A: 'X' }, colisao.slice(0, 2)), copyParaDecisao(colisao.slice(0, 2))).mudou).toBe(false)
+  })
+
   it('proposta já no formato da página (com #2) segue pareada pela chave da página', () => {
     expect(alinharChavesDaProposta({ Título: 'Noite do vinho', 'Título#2': 'Toda quinta' }, camadas)).toEqual({
       Título: 'Noite do vinho',

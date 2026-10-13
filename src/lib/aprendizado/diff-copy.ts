@@ -355,7 +355,8 @@ export function copyParaDecisao(layers: unknown): Record<string, string> | null 
  * diz se a proposta foi guardada pela chave do pedido (id primeiro) ou pela da
  * página (nome): `copyProposta` é `copyDeAprendizado ?? slotValues`, e cada via
  * grava num formato. Adivinhar registrava aceite onde houve edição, ou edição
- * onde não houve (rodada 4 do Codex).
+ * onde não houve (rodada 4 do Codex). Vale também para a chave com `#2` da
+ * página que é o nome literal de outra camada (nomes "A", "A" e "A#2").
  *
  * Use as MESMAS camadas que geraram o lado final do diff (no vídeo, as
  * gravadas no MP4, não as da página de agora).
@@ -373,8 +374,14 @@ export function alinharChavesDaProposta(
   const decisao = parsePageLayers(camadasParaDecisao(camadas))
   const ehTexto = (c: Record<string, unknown>) => c?.type === 'text' || c?.type === 'rich-text'
   const textos = (decisao as Array<Record<string, unknown>>).filter(ehTexto)
-  const ambigua = Object.keys(proposta).some((chave) =>
-    textos.some((x) => x.id === chave && textos.some((y) => y !== x && y.name === chave)),
+  const itens = textosDaPaginaPorCamada(decisao)
+  // A chave sufixada da página ("A#2", nome repetido) também é ambígua quando
+  // é o nome ou o id literal de outra camada: o bake não conhece "#2" e a
+  // aplicou à camada que tem esse nome (rodada 6 do Codex).
+  const ambigua = Object.keys(proposta).some(
+    (chave) =>
+      textos.some((x) => x.id === chave && textos.some((y) => y !== x && y.name === chave)) ||
+      itens.some((t) => t.chave === chave && t.chave !== t.nome && textos.some((y) => y.name === chave || y.id === chave)),
   )
   if (ambigua) return null
 
@@ -390,7 +397,6 @@ export function alinharChavesDaProposta(
   }
 
   const out: Record<string, string> = {}
-  const itens = textosDaPaginaPorCamada(decisao)
   const naArte = new Set(itens.map((t) => t.indice))
   for (const t of itens) {
     const texto = valorDa(t.id, t.chave, t.nome)
