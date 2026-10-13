@@ -692,9 +692,8 @@ async function levarParaAgenda(
     }
     if (decisaoGravada) {
       r.copyDoCorpus = decisaoGravada
-      r.diffDaCopy = r.copyPropostaTexto
-        ? diffDeCopy(alinharChavesDaProposta(r.copyPropostaTexto, camadasGravadas), decisaoGravada)
-        : null
+      const propostaAlinhada = alinharChavesDaProposta(r.copyPropostaTexto, camadasGravadas)
+      r.diffDaCopy = propostaAlinhada ? diffDeCopy(propostaAlinhada, decisaoGravada) : null
     }
     const post = await criarPostDoAgendamento(tx, r)
     await mesclarFieldValuesDaArte(tx, generationId, {

@@ -245,15 +245,12 @@ describe('alinharChavesDaProposta — layerId da proposta × nome da página', (
     expect(alinharChavesDaProposta({ CTA: 'Reserve', l3: 'Outro' }, camadas)).toEqual({ CTA: 'Outro' })
   })
 
-  it('uma chave que o bake aplicou a DUAS camadas entra para as duas (Codex, rodada 3)', () => {
-    // {cta} é id da segunda e nome da primeira: o bake preencheu as duas, e a arte sem edição é aceita.
+  it('id de uma camada que é nome de outra não vira aceite nem edição falsa (Codex, rodada 3): fica sem diff', () => {
     const dupla = [
       { id: 'a', name: 'cta', type: 'text', content: 'Reserve', visible: true },
       { id: 'cta', name: 'headline', type: 'text', content: 'Reserve', visible: true },
     ]
-    const d = diffDeCopy(alinharChavesDaProposta({ cta: 'Reserve' }, dupla), copyParaDecisao(dupla))
-    expect(d.mudou).toBe(false)
-    expect(desfechoPeloDiff(d)).toBe('aceita-como-veio')
+    expect(alinharChavesDaProposta({ cta: 'Reserve' }, dupla)).toBeNull()
   })
 
   it('nome repetido: a chave por nome preencheu as duas camadas (Título e Título#2)', () => {
@@ -271,17 +268,17 @@ describe('alinharChavesDaProposta — layerId da proposta × nome da página', (
     })
   })
 
-  it('id de uma camada igual ao NOME de outra: a chave é da camada do id (achado do Codex, rodada 2)', () => {
+  it('chave que é id de uma camada E nome de outra: ambígua, sem diff (Codex, rodadas 2 e 4)', () => {
     const colisao = [
-      { id: 'cta', name: 'headline', type: 'text', content: 'Texto A', visible: false },
-      { id: 'b', name: 'cta', type: 'text', content: 'Texto A', visible: true },
+      { id: 'cta', name: 'headline', type: 'text', content: 'B', visible: true },
+      { id: 'b', name: 'cta', type: 'text', content: 'B', visible: true },
     ]
-    // O bake preencheu A (pelo id) e B (pelo nome); a pessoa ocultou A. Não é "aceita como veio".
-    const proposta = alinharChavesDaProposta({ cta: 'Texto A' }, colisao)
-    expect(proposta).toEqual({ cta: 'Texto A', 'headline (fora da arte)': 'Texto A' })
-    const d = diffDeCopy(proposta, copyParaDecisao(colisao))
-    expect(d.mudou).toBe(true)
-    expect(d.removidos.map((r) => r.campo)).toEqual(['headline (fora da arte)'])
+    // Proposta pela página {headline:'A', cta:'B'} com headline editado para B, ou pelo pedido com id:
+    // não dá para saber qual — nem aceite falso, nem edição falsa.
+    expect(alinharChavesDaProposta({ headline: 'A', cta: 'B' }, colisao)).toBeNull()
+    expect(alinharChavesDaProposta({ cta: 'B' }, colisao)).toBeNull()
+    // Sem a chave ambígua, segue normal.
+    expect(alinharChavesDaProposta({ headline: 'A' }, colisao)).toEqual({ headline: 'A' })
   })
 
   it('camada vazia ou oculta pela pessoa: o texto proposto conta como removido', () => {

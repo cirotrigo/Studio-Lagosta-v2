@@ -350,6 +350,13 @@ export function copyParaDecisao(layers: unknown): Record<string, string> | null 
  * como removido. Chave que não atingiu camada nenhuma fica como veio. Página
  * ilegível devolve a proposta intacta.
  *
+ * 🔴 Devolve `null` — "não sei", sem diff e sem sinal — quando uma chave da
+ * proposta é o id de uma camada de texto E o nome de OUTRA. A procedência não
+ * diz se a proposta foi guardada pela chave do pedido (id primeiro) ou pela da
+ * página (nome): `copyProposta` é `copyDeAprendizado ?? slotValues`, e cada via
+ * grava num formato. Adivinhar registrava aceite onde houve edição, ou edição
+ * onde não houve (rodada 4 do Codex).
+ *
  * Use as MESMAS camadas que geraram o lado final do diff (no vídeo, as
  * gravadas no MP4, não as da página de agora).
  */
@@ -360,6 +367,12 @@ export function alinharChavesDaProposta(
   if (!proposta) return proposta
   const { camadas, legivel } = lerCamadas(layers)
   if (!legivel) return proposta
+
+  const textos = (camadas as Array<Record<string, unknown>>).filter((c) => c?.type === 'text' || c?.type === 'rich-text')
+  const ambigua = Object.keys(proposta).some((chave) =>
+    textos.some((x) => x.id === chave && textos.some((y) => y !== x && y.name === chave)),
+  )
+  if (ambigua) return null
 
   const usadas = new Set<string>()
   const valorDa = (...chaves: Array<string | null | undefined>) => {
@@ -380,8 +393,7 @@ export function alinharChavesDaProposta(
     const texto = valorDa(t.id, t.chave, t.nome)
     if (texto != null) out[t.chave] = texto
   }
-  for (const c of camadas as Array<Record<string, unknown>>) {
-    if (c?.type !== 'text' && c?.type !== 'rich-text') continue
+  for (const c of textos) {
     const id = typeof c.id === 'string' ? c.id : null
     if (id && naArte.has(id)) continue
     const nome = typeof c.name === 'string' ? c.name : null
