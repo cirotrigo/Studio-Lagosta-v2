@@ -425,7 +425,12 @@ export async function processVideoJob(
         semSaldo = true
         // Marca DURÁVEL já agora (merge no banco): se cair antes de concluir, a
         // recuperação lê a marca e conclui o vídeo pronto em vez de falhá-lo.
-        await naArte({ cobrancaAviso: 'saldo-insuficiente' })
+        // Sem a marca, a decisão da cobrança fica em aberto: interrupção
+        // RECUPERÁVEL (como a cobrança incerta), nunca FAILED — a próxima
+        // tentativa refaz a cobrança e a marca.
+        await naArte({ cobrancaAviso: 'saldo-insuficiente' }).catch((falha) => {
+          throw new CobrancaIncerta(falha)
+        })
         return 'sem-saldo' as const
       })
       if (cobranca === 'arrendamento-perdido') throw new ArrendamentoPerdido()

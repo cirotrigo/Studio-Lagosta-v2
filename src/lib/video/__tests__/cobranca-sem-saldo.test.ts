@@ -15,6 +15,7 @@ const b = vi.hoisted(() => ({
   fieldValues: null as unknown,
   jobsConcluidos: [] as any[],
   falhas: [] as unknown[],
+  falharMarca: false,
 }))
 
 vi.mock('@/lib/db', () => {
@@ -60,6 +61,9 @@ vi.mock('@/lib/db', () => {
       generation: { findUnique: async ({ select }: any) => (select?.fieldValues && b.presos.length ? { fieldValues: b.fieldValues } : null) },
       // O patch da arte vai como JSON nos valores do SQL (o merge `||` no banco).
       $executeRaw: async (_partes: TemplateStringsArray, ...valores: unknown[]) => {
+        if (b.falharMarca && valores.some((v) => typeof v === 'string' && v.includes('cobrancaAviso'))) {
+          throw new Error('conexão caiu ao gravar a marca')
+        }
         b.naArte.push(...valores.filter((v): v is string => typeof v === 'string'))
         return 1
       },
@@ -95,6 +99,7 @@ beforeEach(() => {
   b.fieldValues = null
   b.jobsConcluidos = []
   b.falhas = []
+  b.falharMarca = false
   vi.spyOn(console, 'log').mockImplementation(() => undefined)
   vi.spyOn(console, 'warn').mockImplementation(() => undefined)
   vi.spyOn(console, 'error').mockImplementation(() => undefined)
@@ -111,6 +116,23 @@ describe('processVideoJob: cobrança recusada por saldo', () => {
     expect(b.patches).toEqual([expect.objectContaining({ cobrancaAviso: 'saldo-insuficiente' })])
     // A marca durável sai na hora da recusa, antes da conclusão: a recuperação depende dela.
     expect(b.naArte.some((v) => v.includes('"cobrancaAviso":"saldo-insuficiente"'))).toBe(true)
+  })
+
+  it('a marca sem saldo não grava: interrompido (recuperável), nunca FAILED; a próxima tentativa conclui', async () => {
+    b.falharMarca = true
+    vi.mocked(deductCreditsForFeature).mockRejectedValueOnce(new InsufficientCreditsError(10, 0))
+    const r = await processVideoJob('j1')
+    expect(r).toMatchObject({ outcome: 'interrompido', jobId: 'j1' })
+    expect(b.falhas).toHaveLength(0)
+    expect(b.generationUpdates).toHaveLength(0)
+    expect(b.jobUpdates.some((d) => d.status === 'FAILED' || d.status === 'COMPLETED')).toBe(false)
+
+    b.falharMarca = false
+    vi.mocked(deductCreditsForFeature).mockRejectedValueOnce(new InsufficientCreditsError(10, 0))
+    const de_novo = await processVideoJob('j1')
+    expect(de_novo).toMatchObject({ outcome: 'completed' })
+    expect(b.naArte.some((v) => v.includes('"cobrancaAviso":"saldo-insuficiente"'))).toBe(true)
+    expect(b.jobUpdates.at(-1)).toMatchObject({ status: 'COMPLETED', creditsDeducted: false })
   })
 
   it('cobrança que passa: creditsDeducted true e sem aviso', async () => {
