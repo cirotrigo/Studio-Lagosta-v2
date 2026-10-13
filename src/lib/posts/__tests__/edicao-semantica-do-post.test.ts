@@ -115,9 +115,9 @@ describe('G–H. o MCP local usa as MESMAS funções (sem lógica copiada no scr
     const b = bloco('update-post', 'recover-stuck-post')
     expect(b).toMatch(/prepararEdicaoSemantica\(tx as any, postId, \{[\s\S]*status: data\.status,[\s\S]*scheduledDatetime: data\.scheduledDatetime,/)
     // o reset do render no ramo só de status é uma escrita CONDICIONAL à linha corrente, não um campo do update cru
-    expect(b).toMatch(/where: \{ id: postId, \.\.\.NAO_E_FALHA_SEMANTICA \}/)
-    // não repôs (falha semântica) → não agenda: devolve o motivo, nada mais é gravado
-    expect(b).toMatch(/if \(reposto\.count === 0\) \{[\s\S]*Nada foi alterado/)
+    // TODA promoção a SCHEDULED (com ou sem mídia) é UMA escrita condicional à linha corrente: status e reposição juntos
+    expect(b).toMatch(/if \(data\.status === 'SCHEDULED'\) \{[\s\S]*prisma\.socialPost\.updateMany\(\{ where: \{ id: postId, \.\.\.NAO_E_FALHA_SEMANTICA \}, data \}\)/)
+    expect(b).toMatch(/if \(agendado\.count === 0\) \{[\s\S]*Nada foi alterado/)
   })
 
   it('H. update-post: mexeu em slotValues/pageId/mediaUrls → prepararEdicaoSemantica dentro de $transaction, gravando com o tx', () => {

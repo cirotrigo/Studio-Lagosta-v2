@@ -876,19 +876,19 @@ toolEstrita(
           throw erro
         }
       } else {
-        // B1d (checkpoint f): repor o render pelo status não reabre uma falha SEMÂNTICA (sem validar o pedido e
-        // apagando o envelope). A reposição é uma escrita condicional à linha corrente, antes do status.
-        if (data.renderStatus === 'PENDING') {
-          delete data.renderStatus
+        // B1d (checkpoint f): promover a SCHEDULED (com ou sem mídia, repondo o render ou não) não agenda um post com
+        // falha SEMÂNTICA de render — o executor o marcaria FAILED na hora, sem passar pela recuperação. Status e
+        // reposição numa ÚNICA escrita, condicional à linha corrente.
+        if (data.status === 'SCHEDULED') {
           const { NAO_E_FALHA_SEMANTICA } = await import('../src/lib/posts/erro-render-semantico')
-          const reposto = await prisma.socialPost.updateMany({ where: { id: postId, ...NAO_E_FALHA_SEMANTICA }, data: { renderStatus: 'PENDING' } })
-          // Não repôs: a arte falhou no contrato semântico. Agendado assim, o executor o marcaria FAILED e a recuperação
-          // não o alcançaria mais — recusa (nada foi gravado: a escrita condicional não pegou a linha).
-          if (reposto.count === 0) {
+          const agendado = await prisma.socialPost.updateMany({ where: { id: postId, ...NAO_E_FALHA_SEMANTICA }, data })
+          if (agendado.count === 0) {
             return { content: [{ type: 'text' as const, text: 'Error: a arte deste post falhou no contrato semântico (_slots/_papeis não casam com a página). Corrija a página ou o pedido (update-post com slotValues) — a arte volta a ser gerada sozinha — e agende depois. Nada foi alterado.' }], isError: true }
           }
+          updated = await prisma.socialPost.findUnique({ where: { id: postId }, select: selecao })
+        } else {
+          updated = await prisma.socialPost.update({ where: { id: postId }, data, select: selecao })
         }
-        updated = await prisma.socialPost.update({ where: { id: postId }, data, select: selecao })
       }
 
       // Remarcou? As páginas da arte seguem para a semana nova (pasta, nome e

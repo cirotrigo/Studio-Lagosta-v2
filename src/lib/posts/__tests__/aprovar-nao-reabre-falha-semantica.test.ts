@@ -69,6 +69,19 @@ describe('aprovar rascunho sem mídia', () => {
     expect(JSON.stringify(r.ignorados)).toMatch(/contrato semântico/)
   })
 
+  it('P. falha SEMÂNTICA com a mídia ANTIGA ainda no post: também não aprova (rodada 2)', async () => {
+    banco.posts = [rascunho({ mediaUrls: ['https://blob.test/antiga.png'] })]
+    const r = await aprovar()
+    expect(banco.posts[0]).toMatchObject({ status: 'DRAFT', renderStatus: 'RENDER_FAILED', mediaUrls: ['https://blob.test/antiga.png'] })
+    expect(JSON.stringify(r.ignorados)).toMatch(/contrato semântico/)
+  })
+
+  it('com mídia e sem falha: aprova sem tocar o render, como sempre', async () => {
+    banco.posts = [rascunho({ mediaUrls: ['https://blob.test/arte.png'], renderStatus: 'RENDERED', renderError: null })]
+    await aprovar()
+    expect(banco.posts[0]).toMatchObject({ status: 'SCHEDULED', renderStatus: 'RENDERED' })
+  })
+
   it('erro COMUM: repõe o render, como sempre', async () => {
     banco.posts = [rascunho({ renderError: 'Blob upload failed: 503', renderAttempts: 3, slotValues: { 't-h': 'X' } })]
     await aprovar()
