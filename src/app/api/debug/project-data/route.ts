@@ -1,9 +1,19 @@
 import { NextResponse } from 'next/server'
+import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
+import { isAdmin } from '@/lib/admin-utils'
 
 export const runtime = 'nodejs'
 
 export async function GET(request: Request) {
+  const { userId } = await auth()
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  if (!(await isAdmin(userId))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
   const { searchParams } = new URL(request.url)
   const projectName = searchParams.get('name') || 'wine'
 

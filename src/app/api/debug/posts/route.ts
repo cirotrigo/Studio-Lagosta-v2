@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { getUserFromClerkId } from '@/lib/auth-utils'
+import { isAdmin } from '@/lib/admin-utils'
 
 /**
  * DEBUG ENDPOINT - List all posts with their details
@@ -12,6 +13,9 @@ export async function GET(request: NextRequest) {
     const { userId } = await auth()
     if (!userId) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+    }
+    if (!(await isAdmin(userId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     const user = await getUserFromClerkId(userId)
