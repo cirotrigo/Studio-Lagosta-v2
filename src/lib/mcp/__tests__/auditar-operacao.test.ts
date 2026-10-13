@@ -229,4 +229,61 @@ describe('auditar-operacao', () => {
     expect(r.manual.versao).toBe(DOT_OPERACAO_VERSAO);
     expect(r.manual.alvoDias).toBe(r.alvoDias);
   });
+
+  describe('seguranca.perfilEfetivo — a proteção MECÂNICA desta chamada (dot-operacao-v4)', () => {
+    const ENV = process.env.MCP_DRAFT_ONLY_CLIENT_IDS;
+    const CLIENTE = 'cliente-chatgpt-sintetico';
+    const usuario = (clientId: string) => ({ kind: 'user', userId: 'clerk-sintetico-123', clientId });
+    afterEach(() => {
+      process.env.MCP_DRAFT_ONLY_CLIENT_IDS = ENV;
+    });
+
+    it('A/B/C/D. normal, draft-only, serviço e clientId parecido', async () => {
+      carteira(1);
+      m.visiveis.mockResolvedValue(null);
+      process.env.MCP_DRAFT_ONLY_CLIENT_IDS = CLIENTE;
+      expect((await auditar(usuario('outro-cliente'))).seguranca).toEqual({ perfilEfetivo: 'normal' });
+      expect((await auditar(usuario(CLIENTE))).seguranca).toEqual({ perfilEfetivo: 'draft-only' });
+      expect((await auditar({ kind: 'service' })).seguranca).toEqual({ perfilEfetivo: 'normal' });
+      expect((await auditar(usuario(`${CLIENTE}-extra`))).seguranca).toEqual({ perfilEfetivo: 'normal' });
+    });
+
+    it('E. mudar a env entre chamadas: a auditoria seguinte já reflete', async () => {
+      carteira(1);
+      m.visiveis.mockResolvedValue(null);
+      process.env.MCP_DRAFT_ONLY_CLIENT_IDS = '';
+      expect((await auditar(usuario(CLIENTE))).seguranca.perfilEfetivo).toBe('normal');
+      process.env.MCP_DRAFT_ONLY_CLIENT_IDS = `outro, ${CLIENTE}`;
+      expect((await auditar(usuario(CLIENTE))).seguranca.perfilEfetivo).toBe('draft-only');
+    });
+
+    it('F. o manual continua DRAFT_ONLY seja qual for o perfil efetivo, e a regra do perfil está nele', async () => {
+      carteira(1);
+      m.visiveis.mockResolvedValue(null);
+      process.env.MCP_DRAFT_ONLY_CLIENT_IDS = '';
+      const r = await auditar(usuario(CLIENTE));
+      expect(r.manual).toMatchObject({ modo: 'DRAFT_ONLY', versao: 'dot-operacao-v4' });
+      expect(r.manual.regras.join(' ')).toMatch(/seguranca\.perfilEfetivo = draft-only.*PERFIL_DE_SEGURANCA_INATIVO/);
+    });
+
+    it('G. nenhum clientId, userId, token ou env na resposta; H. e nada é gravado', async () => {
+      carteira(2);
+      m.visiveis.mockResolvedValue(null);
+      process.env.MCP_DRAFT_ONLY_CLIENT_IDS = CLIENTE;
+      const texto = JSON.stringify(await auditar(usuario(CLIENTE)));
+      for (const sensivel of [CLIENTE, 'clerk-sintetico-123', 'MCP_DRAFT_ONLY_CLIENT_IDS', 'clientId', 'userId', 'token']) {
+        expect(texto).not.toContain(sensivel);
+      }
+      expect(m.registrarSugestoes).not.toHaveBeenCalled();
+      // O dublê do banco só tem leituras (findMany/groupBy): qualquer escrita quebraria aqui.
+    });
+
+    it('G2. sem projeto visível, o aviso também não identifica a conta', async () => {
+      carteira(1);
+      m.visiveis.mockResolvedValue([]);
+      const r = await auditar(usuario(CLIENTE));
+      expect(r.aviso).toMatch(/Nenhum cliente visível/);
+      expect(JSON.stringify(r)).not.toMatch(/fulano@exemplo|clerk-sintetico-123|cliente-chatgpt-sintetico/);
+    });
+  });
 });
