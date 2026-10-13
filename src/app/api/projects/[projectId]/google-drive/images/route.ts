@@ -6,6 +6,7 @@ import { assertRateLimit, RateLimitError } from '@/lib/rate-limit'
 import { fetchProjectWithShares, hasProjectReadAccess } from '@/lib/projects/access'
 import type { GoogleDriveItem } from '@/types/google-drive'
 import { idDoDriveValido } from '@/lib/google-drive/id'
+import { filtrarAtalhosDoEscopo, raizesNaRotaDoProjeto } from '@/lib/google-drive/escopo'
 
 const querySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
@@ -141,9 +142,14 @@ export async function GET(
       })
     }
 
+    // A pasta é a do projeto, os filhos não são conferidos: atalho para fora
+    // do projeto sai antes de paginar e do cache (admin: Drive inteiro).
+    const raizes = await raizesNaRotaDoProjeto(userId, projectId)
+    const items = raizes ? await filtrarAtalhosDoEscopo(result.items, raizes) : result.items
+
     // Aplicar paginação manual (já que o Google Drive retorna todos os arquivos)
-    const paginatedFiles = result.items.slice(offset, offset + limit)
-    const hasMore = offset + limit < result.items.length
+    const paginatedFiles = items.slice(offset, offset + limit)
+    const hasMore = offset + limit < items.length
     const nextOffset = hasMore ? offset + limit : undefined
 
     // Mapear para o formato esperado

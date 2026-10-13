@@ -195,7 +195,9 @@ export class GoogleDriveService {
             : file.mimeType ?? 'application/octet-stream'
 
         if (isShortcut) {
-          if (!shortcutTargetMimeType) {
+          // Sem destino não há o que mostrar, e sem `shortcutDetails` o filtro
+          // de escopo não reconheceria o atalho (o tipo já foi trocado).
+          if (!shortcutTargetMimeType || !shortcutTargetId) {
             return null
           }
           const matchesMode =

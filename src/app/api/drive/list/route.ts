@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { googleDriveService } from '@/server/google-drive-service'
 import { assertRateLimit, RateLimitError } from '@/lib/rate-limit'
 import { db } from '@/lib/db'
-import { idsDoDriveNaRotaDoProjeto } from '@/lib/google-drive/escopo'
+import { filtrarAtalhosDoEscopo, idsDoDriveNaRotaDoProjeto, raizesNaRotaDoProjeto } from '@/lib/google-drive/escopo'
 import { PermissionError, requireProjectAccess } from '@/lib/permissions'
 import type { DriveFolderType } from '@/types/drive'
 import type { GoogleDriveItem } from '@/types/google-drive'
@@ -159,12 +159,16 @@ export async function GET(req: Request) {
       limit: DRIVE_LIST_RATE_LIMIT,
     })
 
-    const listResponse = await googleDriveService.listFiles({
+    const listado = await googleDriveService.listFiles({
       folderId: effectiveFolderId,
       search: normalizedSearch,
       pageToken,
       mode: resolvedFolderType === 'videos' ? 'videos' : 'images',
     })
+    // A pasta foi conferida, os filhos não: atalho para fora do projeto sai
+    // (admin: Drive inteiro).
+    const raizes = await raizesNaRotaDoProjeto(userId, projectId)
+    const listResponse = raizes ? { ...listado, items: await filtrarAtalhosDoEscopo(listado.items, raizes) } : listado
 
     // Cache file metadata for faster future loads
     try {

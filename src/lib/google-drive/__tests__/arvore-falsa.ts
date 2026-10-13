@@ -75,6 +75,27 @@ export async function metaFalsa(id: string, _campos?: string) {
   }
 }
 
+/**
+ * Os filhos de uma pasta como as listagens do serviço devolvem: o atalho
+ * chega com o tipo TROCADO pelo do destino e com `shortcutDetails`.
+ */
+function filhosFalsos(folderId: string) {
+  return Object.entries(ARVORE)
+    .filter(([, no]) => no.parents?.includes(folderId) && !no.trashed)
+    .map(([id, no]) => {
+      const destino = no.targetId ? ARVORE[no.targetId] : undefined
+      const mimeType = (no.mimeType === ATALHO ? destino?.mimeType : no.mimeType) ?? 'application/octet-stream'
+      return {
+        id,
+        name: no.name ?? id,
+        mimeType,
+        kind: no.mimeType === PASTA ? ('folder' as const) : ('file' as const),
+        webContentLink: null,
+        shortcutDetails: no.targetId ? { targetId: no.targetId, targetMimeType: destino?.mimeType ?? null } : undefined,
+      }
+    })
+}
+
 /** Tudo que lê ou escreve DADOS no Drive (não conta getFileMetadata). */
 export const drive = {
   isEnabled: vi.fn(() => true),
@@ -93,10 +114,11 @@ export const drive = {
     name: `${id}.jpg`,
   })),
   listFiles: vi.fn(async ({ folderId }: { folderId?: string }) => ({
-    items: [{ id: `dentro-de-${folderId ?? 'root'}`, name: 'x', mimeType: 'image/jpeg', kind: 'file' }],
+    items: [{ id: `dentro-de-${folderId ?? 'root'}`, name: 'x', mimeType: 'image/jpeg', kind: 'file' }, ...filhosFalsos(folderId ?? 'meu')],
   })),
   listFolderFiles: vi.fn(async (folderId: string) => [
     { id: `dentro-de-${folderId}`, name: 'x', mimeType: 'image/jpeg', webContentLink: null },
+    ...filhosFalsos(folderId).filter((f) => f.kind !== 'folder'),
   ]),
   getFolderBreadcrumbs: vi.fn(async (folderId: string) => {
     // Ignora a parada de propósito: a rota precisa cortar sozinha.

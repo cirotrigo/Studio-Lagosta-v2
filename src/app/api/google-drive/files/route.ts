@@ -3,7 +3,7 @@ import { auth } from '@clerk/nextjs/server'
 import { z } from 'zod'
 import { googleDriveService } from '@/server/google-drive-service'
 import { assertRateLimit, RateLimitError } from '@/lib/rate-limit'
-import { driveItemPermitido, escopoDoDriveWeb } from '@/lib/google-drive/escopo'
+import { driveItemPermitido, escopoDoDriveWeb, filtrarAtalhosDoEscopo } from '@/lib/google-drive/escopo'
 import type { GoogleDriveListResponse } from '@/types/google-drive'
 
 const querySchema = z.object({
@@ -117,7 +117,10 @@ export async function GET(req: Request) {
       limit: DRIVE_FILES_RATE_LIMIT,
     })
 
-    const result = await googleDriveService.listFiles(payload)
+    const listado = await googleDriveService.listFiles(payload)
+    // A pasta foi conferida, os filhos não: atalho para fora do escopo sai
+    // ANTES do cache.
+    const result = escopo.admin ? listado : { ...listado, items: await filtrarAtalhosDoEscopo(listado.items, escopo.raizes) }
     driveFilesResponseCache.set(cacheKey, {
       payload: result,
       timestamp: Date.now(),

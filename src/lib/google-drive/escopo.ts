@@ -155,6 +155,35 @@ export async function todosPermitidos(
     : null
 }
 
+interface ItemListado {
+  id: string
+  mimeType?: string | null
+  shortcutDetails?: { targetId?: string | null } | null
+}
+
+/**
+ * Filhos de uma pasta já conferida: o que não é atalho passa como está; o
+ * atalho só passa se `driveItemPermitido` aceitar (posição E destino sob as
+ * raízes). A listagem troca o tipo do atalho pelo do destino, então
+ * `shortcutDetails` também marca atalho. Admin não passa por aqui.
+ */
+export async function filtrarAtalhosDoEscopo<T extends ItemListado>(
+  itens: readonly T[],
+  raizes: ReadonlySet<string>,
+  opts: { memo?: MemoDoDrive } = {},
+): Promise<T[]> {
+  const memo = opts.memo ?? new Map()
+  // ponytail: Promise.all sem teto; atalho é raro e o memo divide os ancestrais.
+  const manter = await Promise.all(
+    itens.map(async (item) =>
+      item.mimeType !== ATALHO && item.shortcutDetails == null
+        ? true
+        : (await driveItemPermitido(item.id, raizes, { memo })).permitido,
+    ),
+  )
+  return itens.filter((_, i) => manter[i])
+}
+
 const CAMPOS_DAS_PASTAS = {
   name: true,
   googleDriveFolderId: true,
