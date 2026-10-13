@@ -194,13 +194,22 @@ export async function processarAprovacao(params: {
       /**
        * B1d (checkpoint f): a falha SEMÂNTICA de render não volta à fila pela aprovação — ela não valida o pedido, e
        * repor aqui apagaria o envelope. Só a recuperação (página corrigida / pedido corrigido) a reabre. A condição é
-       * da linha CORRENTE (escrita condicional), e vem antes do status: nunca um SCHEDULED sem a arte reposta.
+       * da linha CORRENTE (escrita condicional), e vem antes do status: nunca um SCHEDULED sem a arte reposta. Se ela
+       * não pegou a linha, o post NÃO é aprovado — agendado assim, o executor o marcaria FAILED na hora e a
+       * recuperação não o alcançaria mais (Codex, checkpoint f).
        */
       if (precisaRender) {
-        await db.socialPost.updateMany({
+        const reposto = await db.socialPost.updateMany({
           where: { id: post.id, ...NAO_E_FALHA_SEMANTICA },
           data: { renderStatus: 'PENDING', nextRenderAt: agora, renderAttempts: 0, renderError: null },
         })
+        if (reposto.count === 0) {
+          ignorados.push({
+            postId: post.id,
+            motivo: 'A arte deste rascunho falhou: o contrato semântico não casa com a página. Corrija a página ou o pedido (a arte volta a ser gerada sozinha) e aprove depois.',
+          })
+          continue
+        }
       }
       await db.socialPost.update({
         where: { id: post.id },

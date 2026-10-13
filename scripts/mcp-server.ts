@@ -881,7 +881,12 @@ toolEstrita(
         if (data.renderStatus === 'PENDING') {
           delete data.renderStatus
           const { NAO_E_FALHA_SEMANTICA } = await import('../src/lib/posts/erro-render-semantico')
-          await prisma.socialPost.updateMany({ where: { id: postId, ...NAO_E_FALHA_SEMANTICA }, data: { renderStatus: 'PENDING' } })
+          const reposto = await prisma.socialPost.updateMany({ where: { id: postId, ...NAO_E_FALHA_SEMANTICA }, data: { renderStatus: 'PENDING' } })
+          // Não repôs: a arte falhou no contrato semântico. Agendado assim, o executor o marcaria FAILED e a recuperação
+          // não o alcançaria mais — recusa (nada foi gravado: a escrita condicional não pegou a linha).
+          if (reposto.count === 0) {
+            return { content: [{ type: 'text' as const, text: 'Error: a arte deste post falhou no contrato semântico (_slots/_papeis não casam com a página). Corrija a página ou o pedido (update-post com slotValues) — a arte volta a ser gerada sozinha — e agende depois. Nada foi alterado.' }], isError: true }
+          }
         }
         updated = await prisma.socialPost.update({ where: { id: postId }, data, select: selecao })
       }

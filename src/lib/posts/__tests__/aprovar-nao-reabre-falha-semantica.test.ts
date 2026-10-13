@@ -61,10 +61,12 @@ beforeEach(() => {
 })
 
 describe('aprovar rascunho sem mídia', () => {
-  it('P. falha SEMÂNTICA: agenda, mas a arte continua RENDER_FAILED com o envelope', async () => {
+  it('P. falha SEMÂNTICA: NÃO aprova (ficaria SCHEDULED sem arte e o executor o mataria) — continua rascunho, com o motivo', async () => {
     banco.posts = [rascunho()]
-    await aprovar()
-    expect(banco.posts[0]).toMatchObject({ status: 'SCHEDULED', renderStatus: 'RENDER_FAILED', renderError: envelope, renderAttempts: 1 })
+    const r = await aprovar()
+    expect(banco.posts[0]).toMatchObject({ status: 'DRAFT', renderStatus: 'RENDER_FAILED', renderError: envelope, renderAttempts: 1 })
+    expect(r.processados ?? []).not.toContain('post-1')
+    expect(JSON.stringify(r.ignorados)).toMatch(/contrato semântico/)
   })
 
   it('erro COMUM: repõe o render, como sempre', async () => {
