@@ -396,9 +396,21 @@ export async function processVideoJob(
       })
     }
 
+    // Retomada de um job com MP4 e sem cobrança: a recusa por saldo pode já ter
+    // sido decidida (marca durável na arte). Relida, a cobrança está resolvida e
+    // não se repete; erro na leitura é interrupção recuperável, nunca FAILED.
+    if (!cobrado && job.mp4ResultUrl && generationId) {
+      const gen = await db.generation
+        .findUnique({ where: { id: generationId }, select: { fieldValues: true } })
+        .catch((falha) => {
+          throw new CobrancaIncerta(falha)
+        })
+      semSaldo = comoObjeto(gen?.fieldValues)?.cobrancaAviso === 'saldo-insuficiente'
+    }
+
     // (2) Cobrança — a marca sai no mesmo commit do débito, e o erro AMBÍGUO
     // (a confirmação que se perde com o débito já gravado) é decidido pela marca relida.
-    if (!cobrado) {
+    if (!cobrado && !semSaldo) {
       const debitar = () =>
         deductCreditsForFeature({
           clerkUserId: job.clerkUserId,

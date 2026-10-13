@@ -66,7 +66,7 @@ vi.mock('@/lib/db', () => {
       generation: {
         findUnique: async ({ select }: any) => {
           if (b.falharLeitura) throw new Error('conexão caiu ao ler a arte')
-          return select?.fieldValues && b.presos.length ? { fieldValues: b.fieldValues } : null
+          return select?.fieldValues && b.fieldValues != null ? { fieldValues: b.fieldValues } : null
         },
       },
       // O patch da arte vai como JSON nos valores do SQL (o merge `||` no banco).
@@ -112,6 +112,7 @@ beforeEach(() => {
   b.falharMarca = false
   b.falharLeitura = false
   b.falharArte = false
+  vi.mocked(deductCreditsForFeature).mockReset()
   vi.spyOn(console, 'log').mockImplementation(() => undefined)
   vi.spyOn(console, 'warn').mockImplementation(() => undefined)
   vi.spyOn(console, 'error').mockImplementation(() => undefined)
@@ -128,6 +129,23 @@ describe('processVideoJob: cobrança recusada por saldo', () => {
     expect(b.patches).toEqual([expect.objectContaining({ cobrancaAviso: 'saldo-insuficiente' })])
     // A marca durável sai na hora da recusa, antes da conclusão: a recuperação depende dela.
     expect(b.naArte.some((v) => v.includes('"cobrancaAviso":"saldo-insuficiente"'))).toBe(true)
+  })
+
+  it('retry de job com MP4 e marca sem saldo já gravada: não cobra de novo e conclui (Codex)', async () => {
+    b.fieldValues = { cobrancaAviso: 'saldo-insuficiente' }
+    const r = await processVideoJob('j1')
+    expect(r).toMatchObject({ outcome: 'completed', jobId: 'j1' })
+    expect(vi.mocked(deductCreditsForFeature)).not.toHaveBeenCalled()
+    expect(b.jobUpdates.at(-1)).toMatchObject({ status: 'COMPLETED', creditsDeducted: false })
+  })
+
+  it('retry com a marca já gravada e falha antes de concluir: interrompido, nunca FAILED (Codex)', async () => {
+    b.fieldValues = { cobrancaAviso: 'saldo-insuficiente' }
+    b.falharArte = true
+    const r = await processVideoJob('j1')
+    expect(r).toMatchObject({ outcome: 'interrompido', jobId: 'j1' })
+    expect(b.falhas).toHaveLength(0)
+    expect(b.jobUpdates.some((d) => d.status === 'FAILED')).toBe(false)
   })
 
   it('marca sem saldo gravada e falha depois (arte): interrompido, nunca FAILED — a recuperação conclui (Codex)', async () => {
