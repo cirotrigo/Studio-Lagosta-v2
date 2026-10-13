@@ -5,6 +5,7 @@ import { Readable } from 'stream'
 import { googleDriveService } from '@/server/google-drive-service'
 import { getUserFromClerkId } from '@/lib/auth-utils'
 import { db } from '@/lib/db'
+import { driveItemPermitido, escopoDoDriveWeb } from '@/lib/google-drive/escopo'
 
 export const runtime = 'nodejs'
 
@@ -40,10 +41,20 @@ export async function POST(req: Request) {
     }
 
     const body = (await req.json().catch(() => null)) as UploadFromDriveBody | null
-    const fileId = body?.fileId
+    let fileId = body?.fileId
 
     if (!fileId || typeof fileId !== 'string' || fileId.trim() === '') {
       return NextResponse.json({ error: 'ID do arquivo inválido' }, { status: 400 })
+    }
+
+    // Fora do admin, só arquivo sob as pastas dos projetos que a pessoa enxerga.
+    const escopo = await escopoDoDriveWeb(userId)
+    if (!escopo.admin) {
+      const decisao = await driveItemPermitido(fileId, escopo.raizes)
+      if (!decisao.permitido) {
+        return NextResponse.json({ error: 'Arquivo não encontrado' }, { status: 404 })
+      }
+      fileId = decisao.idEfetivo
     }
 
     const { stream, mimeType, name } = await googleDriveService.getFileStream(fileId)
@@ -108,10 +119,6 @@ export async function POST(req: Request) {
     })
   } catch (error) {
     console.error('[UploadFromDrive] Failed to import file from Drive:', error)
-    const message =
-      (error as { message?: string })?.message ||
-      (error as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message ||
-      'Falha ao importar arquivo do Google Drive'
-    return NextResponse.json({ error: message ?? 'Falha ao importar arquivo do Google Drive' }, { status: 500 })
+    return NextResponse.json({ error: 'Falha ao importar arquivo do Google Drive' }, { status: 500 })
   }
 }

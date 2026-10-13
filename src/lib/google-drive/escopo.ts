@@ -177,10 +177,18 @@ export interface EscopoDoDrive {
   raizesComNome: Array<{ id: string; name: string }>
 }
 
+// As tools do MCP puxam meio app; carregam sob demanda e uma vez só (é o
+// módulo que fica guardado, nunca uma decisão).
+let toolsDoMcp: Promise<typeof import('@/lib/mcp/tools')> | null = null
+
 /** Rotas web sem projeto: admin vê tudo; os demais, a união das pastas dos projetos visíveis. */
 export async function escopoDoDriveWeb(userId: string): Promise<EscopoDoDrive> {
   if (await isAdmin(userId)) return { admin: true, raizes: new Set(), raizesComNome: [] }
-  const { projetosVisiveis } = await import('@/lib/mcp/tools')
+  toolsDoMcp ??= import('@/lib/mcp/tools').catch((erro) => {
+    toolsDoMcp = null
+    throw erro
+  })
+  const { projetosVisiveis } = await toolsDoMcp
   const ids = (await projetosVisiveis({ kind: 'user', userId, clientId: 'web' })) ?? []
   if (ids.length === 0) return { admin: false, raizes: new Set(), raizesComNome: [] }
   const projetos = await db.project.findMany({ where: { id: { in: ids } }, select: CAMPOS_DAS_PASTAS })

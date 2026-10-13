@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server'
 import { Readable } from 'stream'
 import { googleDriveService } from '@/server/google-drive-service'
 import { assertRateLimit, RateLimitError } from '@/lib/rate-limit'
+import { driveItemPermitido, escopoDoDriveWeb } from '@/lib/google-drive/escopo'
 
 export const runtime = 'nodejs'
 
@@ -25,9 +26,20 @@ export async function GET(
       return NextResponse.json({ error: 'Google Drive não configurado' }, { status: 503 })
     }
 
-    const { fileId } = await params
-    if (!fileId) {
+    const { fileId: idPedido } = await params
+    if (!idPedido) {
       return NextResponse.json({ error: 'ID do arquivo obrigatório' }, { status: 400 })
+    }
+
+    // Fora do admin, só arquivo sob as pastas dos projetos que a pessoa enxerga.
+    let fileId = idPedido
+    const escopo = await escopoDoDriveWeb(userId)
+    if (!escopo.admin) {
+      const decisao = await driveItemPermitido(idPedido, escopo.raizes)
+      if (!decisao.permitido) {
+        return NextResponse.json({ error: 'Arquivo não encontrado' }, { status: 404 })
+      }
+      fileId = decisao.idEfetivo
     }
 
     /**
@@ -59,7 +71,7 @@ export async function GET(
       headers: {
         'Content-Type': mimeType,
         'Content-Disposition': `inline; filename="${encodeURIComponent(name)}"`,
-        'Cache-Control': 'public, max-age=3600, immutable', // Aggressive cache for images
+        'Cache-Control': 'private, max-age=3600, immutable', // Depende de quem pede: só o navegador guarda
         'X-Content-Type-Options': 'nosniff',
       },
     })
@@ -76,10 +88,6 @@ export async function GET(
       stack: error instanceof Error ? error.stack : undefined,
     })
 
-    const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido'
-    return NextResponse.json({
-      error: 'Erro ao buscar thumbnail do Google Drive',
-      details: errorMessage
-    }, { status: 502 })
+    return NextResponse.json({ error: 'Erro ao buscar thumbnail do Google Drive' }, { status: 502 })
   }
 }

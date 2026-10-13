@@ -174,9 +174,31 @@ export const dbFalso = {
       },
     ),
   },
+  driveFileCache: { upsert: vi.fn(async () => ({})), updateMany: vi.fn(async () => ({})), deleteMany: vi.fn(async () => ({})) },
+  storageObject: { create: vi.fn(async () => ({})) },
+}
+
+/** `put` do Blob: nada sai daqui sem ser contado. */
+export const blobPut = vi.fn(async (chave: string) => ({ url: `https://loja.public.blob.vercel-storage.com/${chave}`, pathname: chave }))
+
+/** `@/lib/permissions` de mentira: enxerga o projeto quem o tem em VISIVEIS (admin, todos). */
+export class PermissionError extends Error {
+  constructor(message: string, public status = 403) {
+    super(message)
+  }
+}
+export const permissoes = {
+  PermissionError,
+  requireAdminUser: vi.fn(async () => ({})),
+  requireProjectAccess: vi.fn(async (projectId: number, { userId }: { userId: string }) => {
+    if (!PROJETOS[projectId]) throw new PermissionError('Projeto não encontrado', 404)
+    if (!ADMINS.has(userId) && !(VISIVEIS[userId] ?? []).includes(projectId)) throw new PermissionError('Não autorizado', 403)
+    return { id: projectId, ...PROJETOS[projectId] }
+  }),
 }
 
 export function zerarArvore() {
   vi.clearAllMocks()
+  drive.isEnabled.mockReturnValue(true)
   embeddings.clear()
 }
