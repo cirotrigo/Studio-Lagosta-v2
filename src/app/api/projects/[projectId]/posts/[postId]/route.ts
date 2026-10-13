@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { desfazerUsoDeFotoDoPost } from '@/lib/creatives/uso-de-foto'
-import { PostType, ScheduleType, PostStatus, PublishType, Prisma } from '../../../../../../../prisma/generated/client'
+import { PostType, ScheduleType, PostStatus, PublishType, Prisma, RenderStatus } from '../../../../../../../prisma/generated/client'
 import { PostScheduler } from '@/lib/posts/scheduler'
 import { hasProjectReadAccess, hasProjectWriteAccess, withProjectOwner } from '@/lib/projects/access'
 import { getLaterClient } from '@/lib/later'
@@ -15,6 +15,7 @@ import { postDeVideo } from '@/lib/posts/post-de-video'
 import { estadoDoVideoDosPosts } from '@/lib/video/estado-do-video-do-post'
 import { ErroAdmissaoSemantica } from '@/lib/posts/admitir-pedido-semantico'
 import { temContratoSemantico } from '@/lib/posts/copy-segue-a-pagina'
+import { renderDaPaginaCobreAMidia } from '@/lib/posts/render-da-pagina'
 
 const areStringArraysEqual = (left?: string[] | null, right?: string[] | null) => {
   const leftValue = left ?? []
@@ -208,6 +209,18 @@ export async function PUT(
         generationId: generationIds && generationIds.length > 0 ? generationIds[0] : null
       }),
       ...(blobPathnames !== undefined && { blobPathnames }),
+    }
+
+    /**
+     * Mídia própria que o render da página não cobre (vídeo, carrossel) tira o post da fila de render AQUI, como
+     * `renderPostArt` faz quando o cron chega nele. Sem isto o post seguia PENDING (ou RENDERING) com mídia pronta,
+     * e a cobertura da agenda o lia como pendente até o cron passar — ou para sempre, se o cron não passasse.
+     * Render em voo não volta por cima: as gravações dele exigem RENDERING + a ficha da reserva. Post entregue ao
+     * publicador (`laterPostId`) é intocável.
+     */
+    if (Array.isArray(mediaUrls) && !existingPost.laterPostId && !renderDaPaginaCobreAMidia(mediaUrls)) {
+      updateData.renderStatus = RenderStatus.NOT_NEEDED
+      updateData.renderError = null
     }
 
     // If changing to IMMEDIATE, clear error fields (status will be set by sender)
