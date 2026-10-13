@@ -8,6 +8,7 @@
  */
 
 import { db } from '@/lib/db'
+import { idDoDriveValido } from '@/lib/google-drive/id'
 import { CreativeError } from '@/lib/creatives/errors'
 import { lerUsosDeFotoComEstado, mesclarUsos, type UsoDaFoto } from '@/lib/creatives/uso-de-foto'
 import {
@@ -110,7 +111,8 @@ async function pastaDeImagens(projectId: number): Promise<string> {
     throw new CreativeError('PROJECT_NOT_FOUND', `Projeto não encontrado: ${projectId}`, 404)
   }
   const folderId = project.googleDriveImagesFolderId ?? project.googleDriveFolderId
-  if (!folderId) {
+  // Pasta mal configurada (`root`, id malformado) conta como sem pasta.
+  if (!idDoDriveValido(folderId)) {
     throw new CreativeError('SEM_PASTA_DRIVE', 'Este projeto não tem pasta de imagens no Drive.', 400)
   }
   return folderId

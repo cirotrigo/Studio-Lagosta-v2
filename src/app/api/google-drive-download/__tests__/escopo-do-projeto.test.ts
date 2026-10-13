@@ -24,10 +24,12 @@ vi.mock('@/lib/projects/access', async () => {
   const f = await import('@/lib/google-drive/__tests__/arvore-falsa')
   return {
     withProjectOwner: async (p: unknown) => p,
+    fetchProjectWithShares: async (id: number) => (f.PROJETOS[id] ? { id, ...f.PROJETOS[id] } : null),
     hasProjectReadAccess: (p: { id: number }, { userId }: { userId: string }) =>
       f.ADMINS.has(userId) || (f.VISIVEIS[userId] ?? []).includes(p.id),
   }
 })
+vi.mock('@/lib/rate-limit', () => ({ assertRateLimit: () => undefined, RateLimitError: class extends Error {} }))
 vi.mock('googleapis', () => {
   const files = {
     get: async ({ fileId, alt }: { fileId: string; alt?: string }) => {
@@ -46,6 +48,8 @@ vi.mock('googleapis', () => {
 
 import { POST as baixarGlobal } from '../route'
 import { POST as baixarDoProjeto } from '../../projects/[projectId]/google-drive/download/route'
+import { GET as imagensDoProjeto } from '../../projects/[projectId]/google-drive/images/route'
+import { chamadasDeDados } from '@/lib/google-drive/__tests__/arvore-falsa'
 
 beforeEach(() => {
   zerarArvore()
@@ -101,5 +105,22 @@ describe.each(ROTAS)('%s', (_nome, baixar) => {
     m.userId = 'user_admin'
     expect((await baixar(1, ['fileB'])).status).toBe(404)
     expect((await baixar(2, ['fileB'])).status).toBe(200)
+  })
+})
+
+describe('GET /api/projects/[id]/google-drive/images', () => {
+  const listar = (projectId: number) =>
+    imagensDoProjeto(new Request('http://t/x'), { params: Promise.resolve({ projectId: String(projectId) }) })
+
+  it('pasta configurada válida: lista', async () => {
+    expect((await listar(1)).status).toBe(200)
+    expect(chamadasDeDados()).toBe(1)
+  })
+  it('pasta configurada malformada ou `root`: o mesmo 404 de projeto sem acesso, sem chamar o Drive', async () => {
+    const mal = await corpo(await listar(3))
+    const semAcesso = await corpo(await listar(2))
+    expect(mal.status).toBe(404)
+    expect(mal).toEqual(semAcesso)
+    expect(chamadasDeDados()).toBe(0)
   })
 })

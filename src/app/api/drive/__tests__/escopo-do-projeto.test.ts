@@ -139,3 +139,27 @@ describe('casos de cada rota', () => {
     expect(drive.listFolderFiles).toHaveBeenCalledWith('childA')
   })
 })
+
+describe('pasta configurada no projeto', () => {
+  it.each(['userA', 'user_admin'])('pasta padrão malformada ou `root` (%s): o 404 de sempre, sem chamar o Drive', async (userId) => {
+    m.userId = userId
+    const alheia = await corpo(await get(listar, 'projectId=1&folderId=rootB'))
+    for (const tipo of ['images', 'videos']) {
+      const r = await corpo(await get(listar, `projectId=3&type=${tipo}`))
+      if (userId === 'userA') expect(r).toEqual(alheia)
+      else expect(r.status).toBe(404)
+    }
+    expect((await json(criarPasta, { name: 'N', projectId: 3 })).status).toBe(404)
+    expect((await get(trilha, 'projectId=3&folderId=root')).status).toBe(404)
+    expect(chamadasDeDados()).toBe(0)
+  })
+  it('sem pasta configurada: segue o 400 de "não configurada"', async () => {
+    expect((await get(listar, 'projectId=4')).status).toBe(400)
+    expect((await json(criarPasta, { name: 'N', projectId: 4 })).status).toBe(400)
+  })
+  it('a pasta padrão válida do projeto continua listando (inclusive para admin)', async () => {
+    m.userId = 'user_admin'
+    expect((await get(listar, 'projectId=2')).status).toBe(200)
+    expect(drive.listFiles).toHaveBeenCalledWith(expect.objectContaining({ folderId: 'rootB' }))
+  })
+})

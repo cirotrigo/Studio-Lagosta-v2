@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { z } from 'zod'
 import { googleDriveService } from '@/server/google-drive-service'
-import { driveItemPermitido, raizesNaRotaDoProjeto } from '@/lib/google-drive/escopo'
+import { driveItemPermitido, idDoDriveValido, raizesNaRotaDoProjeto } from '@/lib/google-drive/escopo'
 import { PermissionError, requireProjectAccess } from '@/lib/permissions'
 
 const naoEncontrado = () => NextResponse.json({ error: 'Não encontrado' }, { status: 404 })
@@ -40,6 +40,9 @@ export async function GET(req: Request) {
     // trilha começa na pasta do projeto — nada acima dela aparece.
     const raizes = await raizesNaRotaDoProjeto(userId, projectId)
     if (!raizes) {
+      if (!idDoDriveValido(folderId)) {
+        return naoEncontrado()
+      }
       return NextResponse.json({ breadcrumbs: await googleDriveService.getFolderBreadcrumbs(folderId) })
     }
     const decisao = await driveItemPermitido(folderId, raizes)

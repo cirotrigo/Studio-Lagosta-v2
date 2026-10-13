@@ -51,12 +51,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Projeto não possui pasta configurada' }, { status: 400 })
     }
 
-    // Pasta-mãe pedida: sob as pastas deste projeto e pasta de verdade (não atalho).
-    if (parentId) {
-      const permitidos = await idsDoDriveNaRotaDoProjeto(userId, projectId, [parentId])
-      if (!permitidos || permitidos[0] !== parentId) {
-        return naoEncontrado()
-      }
+    // Pasta-mãe (pedida ou a padrão): sob as pastas deste projeto, no formato
+    // do Drive e pasta de verdade (não atalho).
+    const permitidos = await idsDoDriveNaRotaDoProjeto(userId, projectId, [targetParent])
+    if (!permitidos || permitidos[0] !== targetParent) {
+      return naoEncontrado()
     }
 
     const folderId = await googleDriveService.createFolder(name, targetParent)

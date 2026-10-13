@@ -5,6 +5,7 @@ import { googleDriveService } from '@/server/google-drive-service'
 import { assertRateLimit, RateLimitError } from '@/lib/rate-limit'
 import { fetchProjectWithShares, hasProjectReadAccess } from '@/lib/projects/access'
 import type { GoogleDriveItem } from '@/types/google-drive'
+import { idDoDriveValido } from '@/lib/google-drive/id'
 
 const querySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
@@ -91,6 +92,11 @@ export async function GET(
         images: [],
         nextOffset: undefined
       }, { status: 200 })
+    }
+
+    // Pasta mal configurada nunca vira chamada ao Drive.
+    if (!idDoDriveValido(driveFolderId)) {
+      return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
     }
 
     // Parse query params

@@ -148,12 +148,32 @@ export const PROJETOS: Record<number, Record<string, string | null> & { name: st
     googleDriveVideosFolderId: null,
     googleDriveVideosFolderName: null,
   },
+  // pastas mal configuradas: nunca podem virar chamada ao Drive
+  3: {
+    name: 'Projeto mal configurado',
+    googleDriveFolderId: 'root',
+    googleDriveFolderName: 'Meu Drive',
+    googleDriveImagesFolderId: "x' in parents or 'rootB",
+    googleDriveImagesFolderName: 'Imagens',
+    googleDriveVideosFolderId: 'root',
+    googleDriveVideosFolderName: null,
+  },
+  // sem pasta nenhuma
+  4: {
+    name: 'Projeto sem pasta',
+    googleDriveFolderId: null,
+    googleDriveFolderName: null,
+    googleDriveImagesFolderId: null,
+    googleDriveImagesFolderName: null,
+    googleDriveVideosFolderId: null,
+    googleDriveVideosFolderName: null,
+  },
 }
 
 /** Quem enxerga o quê (o que `projetosVisiveis` devolveria). */
 export const VISIVEIS: Record<string, number[]> = {
   user_admin: [],
-  userA: [1],
+  userA: [1, 3, 4],
   userB: [2],
   userAB: [1, 2],
   userNone: [],

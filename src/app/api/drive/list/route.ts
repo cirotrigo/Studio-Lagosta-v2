@@ -124,22 +124,19 @@ export async function GET(req: Request) {
         ? project.googleDriveVideosFolderId ?? project.googleDriveFolderId
         : project.googleDriveImagesFolderId ?? project.googleDriveFolderId
 
-    let effectiveFolderId = folderId ?? defaultFolderId
-
-    // Pasta pedida: só sob as pastas deste projeto (admin: Drive inteiro).
-    if (folderId) {
-      const permitidos = await idsDoDriveNaRotaDoProjeto(userId, projectId, [folderId])
-      if (!permitidos) {
-        return naoEncontrado()
-      }
-      effectiveFolderId = permitidos[0]
-    }
-
-    if (!effectiveFolderId) {
+    if (!folderId && !defaultFolderId) {
       return NextResponse.json({
         error: 'Projeto não possui pasta configurada para este tipo',
       }, { status: 400 })
     }
+
+    // Pasta pedida ou a padrão do projeto: só sob as pastas deste projeto
+    // (admin: Drive inteiro), e sempre no formato do Drive.
+    const permitidos = await idsDoDriveNaRotaDoProjeto(userId, projectId, [folderId ?? defaultFolderId])
+    if (!permitidos) {
+      return naoEncontrado()
+    }
+    const effectiveFolderId = permitidos[0]
 
     cacheKey = getDriveListCacheKey({
       userId,
