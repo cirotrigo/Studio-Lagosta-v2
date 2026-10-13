@@ -7,7 +7,7 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Menu } from "lucide-react";
-import { OrganizationSwitcher, SignedIn, SignedOut, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
+import { OrganizationSwitcher, SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/nextjs";
 import { CreditStatus } from "@/components/credits/credit-status";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetClose, SheetFooter } from "@/components/ui/sheet";
 import { useResolvedNavigationItems } from "@/components/app/sidebar";
@@ -115,12 +115,10 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
                     </SignedIn>
                     <SignedOut>
                       <div className="flex items-center gap-2">
+                        {/* Sem "Inscrever-se": o acesso é só por convite (o convite cai em /sign-up). */}
                         <SignInButton mode="modal">
                           <Button variant="ghost" size="sm">Entrar</Button>
                         </SignInButton>
-                        <SignUpButton mode="modal">
-                          <Button size="sm">Inscrever-se</Button>
-                        </SignUpButton>
                       </div>
                     </SignedOut>
                   </div>
@@ -190,11 +188,6 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
                 Entrar
               </Button>
             </SignInButton>
-            <SignUpButton mode="modal">
-              <Button size="sm">
-                Inscrever-se
-              </Button>
-            </SignUpButton>
           </SignedOut>
         </div>
       </div>
