@@ -46,12 +46,15 @@ export default function OrganizationDashboardPage() {
   const projectsCount = projectsData?.projects.length ?? 0
   const creditsCurrent = creditsData?.credits.current ?? 0
   const creditsTotal = creditsData?.limits.creditsPerMonth ?? 0
-  // Modo interno: sem botão "Créditos" nem cartão de saldo (o consumo fica).
+  // Modo interno: sem botão "Créditos", cartão de saldo, consumo em créditos nem
+  // Analytics (tela de consumo em créditos). As métricas seguem em "Gastos & Uso" (admin).
   const cobrancaLigada = useCobrancaLigada()
   useSetPageMetadata({
     title: organization?.name ?? "Organização",
     description: organization
-      ? "Visão geral da sua equipe, créditos e atividades compartilhadas."
+      ? cobrancaLigada
+        ? "Visão geral da sua equipe, créditos e atividades compartilhadas."
+        : "Visão geral da sua equipe e dos projetos compartilhados."
       : "Selecione uma organização ativa para visualizar o dashboard de equipe.",
     breadcrumbs: [
       { label: "Início", href: "/studio" },
@@ -104,7 +107,9 @@ export default function OrganizationDashboardPage() {
                 <h2 className="text-xl font-semibold">{organization.name}</h2>
                 <p className="text-sm text-muted-foreground">
                   {membership?.role === "org:admin"
-                    ? "Você é administrador desta equipe. Gerencie membros, créditos e limites."
+                    ? cobrancaLigada
+                      ? "Você é administrador desta equipe. Gerencie membros, créditos e limites."
+                      : "Você é administrador desta equipe. Gerencie membros e projetos."
                     : "Você está colaborando como membro desta equipe."}
                 </p>
               </div>
@@ -116,9 +121,11 @@ export default function OrganizationDashboardPage() {
               <Button variant="outline" asChild>
                 <Link href={`/organization/${organization.id}/members`}>Membros</Link>
               </Button>
-              <Button variant="outline" asChild>
-                <Link href={`/organization/${organization.id}/analytics`}>Analytics</Link>
-              </Button>
+              {cobrancaLigada && (
+                <Button variant="outline" asChild>
+                  <Link href={`/organization/${organization.id}/analytics`}>Analytics</Link>
+                </Button>
+              )}
               {cobrancaLigada && (
                 <Button variant="default" asChild>
                   <Link href={`/organization/${organization.id}/credits`}>Créditos</Link>
@@ -157,20 +164,22 @@ export default function OrganizationDashboardPage() {
           />
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-2">
-          <CreditUsageCard
-            spentThisWeek={spentThisWeek}
-            addedThisWeek={addedThisWeek}
-            dailySeries={dailySeries}
-            isLoading={usageLoading}
-            onRefresh={() => refetchUsage()}
-          />
+        {cobrancaLigada && (
+          <div className="grid gap-4 lg:grid-cols-2">
+            <CreditUsageCard
+              spentThisWeek={spentThisWeek}
+              addedThisWeek={addedThisWeek}
+              dailySeries={dailySeries}
+              isLoading={usageLoading}
+              onRefresh={() => refetchUsage()}
+            />
 
-          <CreditActivityFeed
-            entries={usageEntries}
-            isLoading={usageLoading}
-          />
-        </div>
+            <CreditActivityFeed
+              entries={usageEntries}
+              isLoading={usageLoading}
+            />
+          </div>
+        )}
 
         <Card className="border border-border/40 bg-card/60 p-6">
           <h3 className="text-lg font-semibold">O que fazer a seguir?</h3>
@@ -185,11 +194,13 @@ export default function OrganizationDashboardPage() {
               description="Gerencie convites, papéis e permissões diretamente pelo Clerk."
               href={`/organization/${organization.id}/members`}
             />
-            <NextStep
-              title="Analisar consumo"
-              description="Veja quais recursos e membros consomem mais créditos."
-              href={`/organization/${organization.id}/analytics`}
-            />
+            {cobrancaLigada && (
+              <NextStep
+                title="Analisar consumo"
+                description="Veja quais recursos e membros consomem mais créditos."
+                href={`/organization/${organization.id}/analytics`}
+              />
+            )}
           </div>
         </Card>
       </div>
