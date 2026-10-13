@@ -161,7 +161,7 @@ describe('modo interno (flag desligada, o padrão)', () => {
     ['quantity × custo', { quantity: 3 }, 30],
     ['creditsTotal', { creditsTotal: 30 }, 30],
   ])('deduct pessoal com saldo 0 (%s): resolve, registra o uso, não toca o saldo', async (_n, extra, esperado) => {
-    const gancho = vi.fn(async () => {})
+    const gancho = vi.fn(async (_tx: unknown) => {})
     await expect(
       deductCreditsForFeature({ clerkUserId: 'user_1', feature: 'video_export', noMesmoCommit: gancho, ...extra }),
     ).resolves.toEqual({ creditsRemaining: 0 })
