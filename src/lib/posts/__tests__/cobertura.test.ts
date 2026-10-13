@@ -619,4 +619,15 @@ describe('H6 — conflitos de horário: dois ou mais posts no mesmo horário esp
     cobrir(posts)
     expect(posts).toEqual(antes)
   })
+
+  it('grade com horários vizinhos (10h e 10h30): um post em cada NÃO é conflito; um terceiro é, e aparece uma vez', () => {
+    const grade = { title: 'Padrões de Postagem — Teste', content: 'SLOT 1 — 10h, todos os dias\nSLOT 2 — 10h30, todos os dias' }
+    const expectativa = expectativaDoProjeto({ historico: [], encerradas: new Set(), entradasDaGrade: [grade], agora: AGORA })
+    expect(slotsEsperadosNaData(expectativa, AMANHA).map((s) => s.hora)).toEqual(['10:00', '10:30'])
+    const rodar = (posts: PostDaJanela[]) => coberturaDoProjeto({ expectativa, posts, campanhasExpiram: new Map(), agora: AGORA })
+    const certos = [pronto('a', `${AMANHA} 10:00`), pronto('b', `${AMANHA} 10:30`)]
+    expect(rodar(certos).conflitosDeHorario).toEqual([])
+    const comTerceiro = rodar([...certos, pronto('c', `${AMANHA} 10:15`)])
+    expect(comTerceiro.conflitosDeHorario).toEqual([expect.objectContaining({ data: AMANHA, quantidade: 3, postIds: ['a', 'b', 'c'] })])
+  })
 })

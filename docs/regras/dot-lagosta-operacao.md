@@ -286,7 +286,7 @@ e Drive.
 
 - O rascunho preso em render PENDING depois de trocar a mídia, e o RENDERING
   interrompido, estão corrigidos (#220, em produção).
-- **A auditoria não acusa slot com DOIS posts** (H5, Parte 9). Um criador sem a
+- **Slot com dois posts** (H5, Parte 9; a auditoria acusa desde o H6). Um criador sem a
   trava da agenda pode pôr um segundo post num horário que o agente acabou de
   fechar, fora da janela de milissegundos que a trava cobre. São eles o job de
   vídeo, o sync do Zernio (até 10 min de atraso) e o `plan-week` ou o
@@ -294,7 +294,9 @@ e Drive.
   grade da agenda. Classe B (rara), aceita.
   - **Fechado no H6 (`dot-operacao-v3`):** a auditoria devolve `conflitosDeHorario`
     (data, hora, formato, quantidade e `postIds`), pela mesma regra de ocupação
-    (`ocupaOSlot`, mesmo formato, ±45 min). A ação é `CONFLITO_DE_HORARIO`:
+    (`ocupaOSlot`, mesmo formato, ±45 min). É conflito só quando há MAIS posts que
+    horários esperados do mesmo formato a ±45 min: numa grade com 11h e 11h30, um
+    post em cada não é conflito. A ação é `CONFLITO_DE_HORARIO`:
     relatar, não criar e não remover. Só informa, não bloqueia ninguém.
   - Regra operacional: não rodar `plan-week` do stdio, sem a flag, no mesmo
     cliente e semana em que o agente opera.

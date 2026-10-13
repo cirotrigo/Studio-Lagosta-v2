@@ -309,9 +309,17 @@ export interface ConflitoDeHorario {
   postIds: string[];
 }
 
-function conflitoNoSlot(slot: SlotEsperado, ocupantes: Ocupante[]): ConflitoDeHorario | null {
+/**
+ * Conflito = MAIS posts no horário do que horários esperados do mesmo formato na vizinhança dele (±45 min, a
+ * mesma tolerância da ocupação). Numa grade com 11h e 11h30, os dois posts certos (um em cada) caem nos dois
+ * horários, e isso não é conflito; um terceiro é (revisão do Codex, H6).
+ */
+function conflitoNoSlot(slot: SlotEsperado, ocupantes: Ocupante[], slotsDoDia: SlotEsperado[]): ConflitoDeHorario | null {
   const no = ocupantesDoSlot(slot, ocupantes);
-  if (no.length < 2) return null;
+  const vizinhos = slotsDoDia.filter(
+    (v) => v.formato === slot.formato && Math.abs(v.quandoUTC - slot.quandoUTC) <= TOLERANCIA_SLOT_MIN * 60_000
+  ).length;
+  if (no.length < 2 || no.length <= vizinhos) return null;
   return {
     data: slot.data,
     hora: slot.hora,
@@ -475,8 +483,9 @@ function avaliarDia(
     const r = classificarSlot(slot, ocupantes);
     if (r.estado === 'coberto') cobertos++;
     else buracos.push(r);
-    const conflito = conflitoNoSlot(slot, ocupantes);
-    if (conflito) conflitos.push(conflito);
+    const conflito = conflitoNoSlot(slot, ocupantes, slots);
+    // O mesmo grupo de posts visto de dois horários vizinhos é UM conflito.
+    if (conflito && !conflitos.some((c) => c.postIds.join() === conflito.postIds.join())) conflitos.push(conflito);
   }
   const estado: EstadoDoDia = buracos.some((b) => b.estado === 'vazio')
     ? 'falta'
