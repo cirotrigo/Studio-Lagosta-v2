@@ -37,7 +37,7 @@ import { googleDriveService } from '@/server/google-drive-service'
 import { CreativeError } from '@/lib/creatives/errors'
 import { mesclarFieldValuesDaArte } from '@/lib/creatives/mesclar-field-values'
 import type { ContextoDosEfeitos } from '@/lib/creatives/agendar'
-import { copyDeCamadas, copyParaDecisao, diffDeCopy } from '@/lib/aprendizado/diff-copy'
+import { alinharChavesDaProposta, copyDeCamadas, copyParaDecisao, diffDeCopy } from '@/lib/aprendizado/diff-copy'
 import { CobrancaIncerta, cobrarUmaVez, marcarCobrancaNoMesmoCommit } from '@/lib/video/cobranca-do-video'
 import { etapaDoMp4, finalizarFalhaDoVideo, gravarApontandoPara } from '@/lib/video/etapas-do-video'
 import {
@@ -630,7 +630,7 @@ async function levarAoDestino(
       await comArrendamento((tx) => substituirVideoDoPost(tx, { generationId, mp4Url, copyGravada }))
       return
     }
-    await levarParaAgenda(job, generationId, mp4Url, video, video.destino, copyGravada, copyParaDecisao(designData?.layers ?? null), comArrendamento, costuras)
+    await levarParaAgenda(job, generationId, mp4Url, video, video.destino, copyGravada, copyParaDecisao(designData?.layers ?? null), designData?.layers ?? null, comArrendamento, costuras)
   } catch (error) {
     if (!(error instanceof CreativeError)) throw error
     const resultado = { ok: false as const, motivo: error.message, em: new Date().toISOString() }
@@ -653,6 +653,8 @@ async function levarParaAgenda(
   destino: DestinoAgenda,
   copyGravada: Record<string, string> | null,
   decisaoGravada: Record<string, string> | null,
+  /** As camadas de onde saiu `decisaoGravada` — a proposta se alinha a ELAS, não à página de agora. */
+  camadasGravadas: unknown,
   comArrendamento: ComArrendamento,
   costuras: CosturasDoVideo,
 ): Promise<void> {
@@ -690,7 +692,8 @@ async function levarParaAgenda(
     }
     if (decisaoGravada) {
       r.copyDoCorpus = decisaoGravada
-      r.diffDaCopy = r.copyPropostaTexto ? diffDeCopy(r.copyPropostaTexto, decisaoGravada) : null
+      const propostaAlinhada = alinharChavesDaProposta(r.copyPropostaTexto, camadasGravadas)
+      r.diffDaCopy = propostaAlinhada ? diffDeCopy(propostaAlinhada, decisaoGravada) : null
     }
     const post = await criarPostDoAgendamento(tx, r)
     await mesclarFieldValuesDaArte(tx, generationId, {
