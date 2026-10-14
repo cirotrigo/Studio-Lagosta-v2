@@ -874,3 +874,44 @@ e zona em frações, e um validador puro.
 - O arquétipo não guarda fonte, cor nem cliente.
 
 Detalhe e próximos passos (T1a, T1b, CP2B) em `docs/design/arquetipos-minimalistas-v1.md`.
+
+## Arquétipo na spec e no compositor (T1a, 14/10/2026)
+
+`spec.arquetipo` liga o catálogo do T0 ao compositor, ao `medir-copy`, à fila, à recomposição e ao
+MCP (compor-arte, compor-leva, medir-copy; o ver-assinatura lista os arquétipos e a
+disponibilidade). É **opt-in**: sem `arquetipo`, nada muda, e o baseline em
+`direcao-de-arte/__tests__/t1a-baseline-sem-arquetipo.test.ts` (gerado na base, antes do T1a)
+falha se mudar.
+
+- 🔴 **A peça nunca depende de "a mais recente"**: o pedido `{ id }` vira `{ id, versao, impressao }`
+  na porta (compor, fila, medir-copy) e é isso que se grava. Spec com impressão é conferida
+  (`ARQUETIPO_IMPRESSAO_DIVERGENTE`); a recomposição exige a versão (`ARQUETIPO_VERSAO_AUSENTE`) e
+  confere antes de qualquer escrita. As recusas `ARQUETIPO_*` são determinísticas na fila e na
+  recomposição.
+- 🔴 **Uma fonte de geometria.** Com arquétipo, cada papel é uma unidade própria na REFERÊNCIA, e a
+  assinatura dá só estilo.
+  - Papéis que a página agrupa não se fundem.
+  - Cada unidade tem `groupId` próprio, que a régua e o autofix leem.
+  - Dentro da unidade, a ordem é a da copy, o vão é o ritmo da casa, e os ornamentos do arranjo não
+    deslocam o texto (só precisam caber na zona). Âncora/alinhamento/canto da spec diferentes dos do arquétipo são recusados
+  (`ARQUETIPO_PREFERENCIA_CONFLITANTE`), e a recomposição não injeta os legados
+  (`specComAPosicaoOriginal`).
+- 🔴 **A área segura com arquétipo é `assinatura.pisoDoProjeto`** (`NUMEROS_PADRAO` +
+  `Project.assinatura`), não `numeros.geometria`: esta é reescrita pelas margens dos textos da
+  PÁGINA (que chegam a 60 px do topo ou 200 px da lateral), e a página não pode competir com o
+  arquétipo.
+- **Sem busca e sem clamp** (é o CP2B). A caixa que não cabe na capacidade da referência é recusada
+  com `ARQUETIPO_TEXTO_NAO_CABE`, que traz o orçamento.
+  - A escada sancionada de 80% vale no bloco E na unidade do papel (manchete + segunda voz),
+    em `prepararNoArquetipo`.
+  - A caixa que não cabe na zona efetiva é recusada com `ARQUETIPO_FORA_DA_ZONA`, que traz
+    referência, zona e motivo.
+  - O corte da foto é o central.
+  - O autofix final não encolhe peça com arquétipo: o que ele teria a ajustar é
+    `ARQUETIPO_AJUSTE_FINAL`, a mesma conferência no medir-copy.
+- **O medir-copy mede a mesma conta**: a coluna é a do bloco (`BlocoPreparado.coluna`), nunca
+  recalculada; unidades e materialização são `arquetipos/no-compositor.ts`, as mesmas do compor.
+- **Fora do T1a, recusado**: modelo com elemento obrigatório (`minimal-fb-base-esquerda`, o L é do
+  T1b), formato quadrado, `cta`, camada extra / `herdaDe`, seleção experimental.
+
+Detalhe em `docs/design/arquetipos-minimalistas-v1.md`, seção "T1a".

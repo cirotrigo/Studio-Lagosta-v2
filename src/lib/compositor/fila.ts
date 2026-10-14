@@ -35,6 +35,7 @@ import { descreverArteAtualDoItem, type ArteAtualDoItem } from '@/lib/planos/dec
 import { comporPeca } from './compor'
 import { garantirPasta } from './pastas'
 import { validarSpec, type SpecDePeca } from './spec'
+import { conferirLinhas, prepararArquetipo } from './arquetipos/na-spec'
 
 export interface PecaEnfileirada {
   generationId: string
@@ -96,7 +97,12 @@ function dadosDaGeracao(spec: SpecDePeca, projeto: ProjetoDaPeca, coletor: Pasta
 export async function enfileirarPeca(entrada: unknown, opcoes: OpcoesDeEnfileirar = {}): Promise<PecaEnfileirada> {
   const v = validarSpec(entrada)
   if (!v.spec) throw new CreativeError('SPEC_INVALIDA', `Spec inválida — ${v.problemas.join('; ')}`, 400, { problemas: v.problemas })
-  const spec = v.spec
+  // T1a: o arquétipo entra na fila RESOLVIDO (id + versão + impressão): o payload, a Generation PROCESSING, o hash
+  // do lote e a composição no worker usam a mesma versão — publicar uma nova no meio não muda a peça pedida. As
+  // recusas que não dependem da medida saem aqui, na hora, e não no worker.
+  const arquetipo = prepararArquetipo(v.spec)
+  if (arquetipo) conferirLinhas(arquetipo.definicao, arquetipo.formato, v.spec)
+  const spec: SpecDePeca = arquetipo ? { ...v.spec, arquetipo: arquetipo.resolvido } : v.spec
 
   let identidade: IdentidadeDeLote | null = null
   if (opcoes.lote != null) {
@@ -262,7 +268,8 @@ export async function processarComposicaoEmBackground(args: ComposicaoJobArgs & 
     console.error(`[compositor] ${args.generationId} falhou (${code}): ${msg}`)
     // Erro determinístico (spec, assinatura, texto que não cabe) não melhora
     // tentando de novo; erro de infra (foto, fonte, render) ganha outra vez.
-    const deterministico = ['SPEC_INVALIDA', 'ASSINATURA_INCOMPLETA', 'TEXTO_NAO_CABE_NA_COLUNA', 'TEXTO_NAO_CABE', 'PROJECT_NOT_FOUND', 'PAPEIS_INCOMPATIVEIS', 'SEM_COMBINACAO'].includes(code)
+    // As recusas do arquétipo (T1a) são todas determinísticas: a mesma spec contra o mesmo catálogo recusa de novo.
+    const deterministico = ['SPEC_INVALIDA', 'ASSINATURA_INCOMPLETA', 'TEXTO_NAO_CABE_NA_COLUNA', 'TEXTO_NAO_CABE', 'PROJECT_NOT_FOUND', 'PAPEIS_INCOMPATIVEIS', 'SEM_COMBINACAO'].includes(code) || code.startsWith('ARQUETIPO_')
     if (!deterministico && (await pedirNovaTentativa(args.queueJobId, msg))) return
     const atual = await db.generation.findUnique({ where: { id: args.generationId }, select: { fieldValues: true } })
     const fv = (atual?.fieldValues && typeof atual.fieldValues === 'object' ? atual.fieldValues : {}) as Record<string, unknown>

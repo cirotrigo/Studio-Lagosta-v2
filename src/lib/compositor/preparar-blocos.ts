@@ -17,7 +17,7 @@ import type { Layer } from '@/types/template'
 import type { MeasureTextBox } from '@/lib/creatives/text-geometry'
 import { blocosDeServico } from '@/lib/ai/blocos-de-servico'
 import type { AssinaturaDaMarca, EstiloDePapel, NumerosDaAssinatura } from './assinatura'
-import { montarBloco, type BlocoMontado, type OrcamentoDeLinha } from './blocos'
+import { colunaDaCaixa, montarBloco, type BlocoMontado, type OrcamentoDeLinha, type RecusaDeBloco } from './blocos'
 import { arranjosDaPagina, distribuirLinhas, escolherArranjo, type ArranjoDeGrupo, type ElementoDoArranjo } from './combinacoes'
 import { destaqueDoPapel, type EstiloDeDestaque } from './destaques'
 import { dividirManchete } from './segunda-voz'
@@ -73,6 +73,10 @@ export interface BlocoPreparado extends BlocoMontado {
   funcao: string
   /** F3: presente quando o bloco é uma camada extra (o `papel` é só o de estilo). */
   extra?: IdentidadeDoExtra
+  /** A coluna de tinta com que o bloco foi MEDIDO (px) — o medir-copy lê daqui, nunca a recalcula. */
+  coluna: number
+  /** As posições, no bloco do AUTOR, das linhas que este texto desenha — a ordem de leitura da copy. */
+  indicesDoBloco: number[]
 }
 
 export interface RecusaPreparada {
@@ -87,6 +91,12 @@ export interface RecusaPreparada {
   /** O estilo de destaque com que a montagem mediu os [colchetes] (null = sem estilo na marca). */
   destaque: EstiloDeDestaque | null
   orcamento: OrcamentoDeLinha[]
+  /** A coluna de tinta com que o bloco foi MEDIDO (px). */
+  coluna: number
+  /** Com arquétipo: a altura que não coube na capacidade da referência (ver `RecusaDeBloco.altura`). */
+  altura?: RecusaDeBloco['altura']
+  /** Com arquétipo: as linhas que se desenham em mais de uma linha na coluna (ver `RecusaDeBloco.quebras`). */
+  quebras?: RecusaDeBloco['quebras']
 }
 
 export interface BlocosPreparados {
@@ -124,6 +134,14 @@ export function prepararBlocos(args: {
   familias: string[]
   /** As combinações salvas do projeto, já como arranjos (quem chama as carrega). */
   combinacoesSalvas: ArranjoDeGrupo[]
+  /**
+   * Com arquétipo (T1a): a caixa MÁXIMA de cada papel — a largura da referência
+   * vira a coluna do bloco e a altura, a capacidade. A segunda voz mede na caixa
+   * da manchete. Ausente = a coluna útil de sempre, nada muda.
+   */
+  caixaDoPapel?: (papel: Papel) => { largura: number; altura: number } | undefined
+  /** Com arquétipo: o fator (≤ 1) em que a escada de cada papel começa — a escada da unidade (`no-compositor.ts`). */
+  escalaMaximaDoPapel?: (papel: Papel) => number | undefined
 }): BlocosPreparados {
   const { spec, assinatura, colunaUtil, escalaDoFormato, mancha, medir, familias, combinacoesSalvas } = args
   const avisos: string[] = []
@@ -299,13 +317,22 @@ export function prepararBlocos(args: {
       const id = p.extra ? p.extra.id : n > 1 ? `${p.papel}-${n}` : p.papel
       const funcao = p.extra ? p.extra.funcao : p.papel
       const destaque = estiloDeDestaqueDoPapel(estilo, assinatura.numeros.destaque, familias)
+      // Com arquétipo a largura é a da REFERÊNCIA: a `larguraMaxima` da assinatura é geometria e sai da conta.
+      const caixa = args.caixaDoPapel?.(p.papel === 'headline2' ? 'headline' : p.papel)
+      const estiloMedido = caixa ? { ...estilo, larguraMaxima: undefined } : estilo
+      const colunaDoBloco = caixa ? colunaDaCaixa(caixa.largura) : colunaUtil
+      const coluna = Math.floor(colunaDoBloco * (estiloMedido.larguraMaxima ?? 1))
       const r = montarBloco({
         papel: p.papel,
         id,
         linhas: p.linhas,
-        estilo,
+        estilo: estiloMedido,
         escalaDoFormato,
-        colunaUtil,
+        colunaUtil: colunaDoBloco,
+        ...(caixa ? { alturaMaxima: caixa.altura } : {}),
+        ...(caixa && args.escalaMaximaDoPapel?.(p.papel === 'headline2' ? 'headline' : p.papel) !== undefined
+          ? { escalaMaxima: args.escalaMaximaDoPapel(p.papel === 'headline2' ? 'headline' : p.papel) }
+          : {}),
         textAlign: 'left',
         groupId: `grupo-${hashDe(chaveDoGrupoAtual) % 99991}`,
         corDaMancha: mancha,
@@ -324,7 +351,7 @@ export function prepararBlocos(args: {
       })
       avisos.push(...r.avisos)
       if (r.recusa) {
-        recusas.push({ papel: r.recusa.papel, funcao, ...(p.extra ? { extra: p.extra } : {}), id, linhasDaCopy: p.linhas, estilo, familiasMedidas: r.recusa.familiasMedidas, destaque, orcamento: r.recusa.orcamento })
+        recusas.push({ papel: r.recusa.papel, funcao, ...(p.extra ? { extra: p.extra } : {}), id, linhasDaCopy: p.linhas, estilo, familiasMedidas: r.recusa.familiasMedidas, destaque, orcamento: r.recusa.orcamento, coluna, ...(r.recusa.altura ? { altura: r.recusa.altura } : {}), ...(r.recusa.quebras ? { quebras: r.recusa.quebras } : {}) })
         continue
       }
       if (r.bloco.escala < 1) avisos.push(`${p.papel}: fonte reduzida a ${Math.round(r.bloco.escala * 100)}% para caber na coluna`)
@@ -349,6 +376,8 @@ export function prepararBlocos(args: {
         estilo,
         destaque,
         funcao,
+        coluna,
+        indicesDoBloco: p.indicesDoBloco,
         ...(p.extra ? { extra: p.extra } : {}),
         ...(vaoAntes !== null ? { vaoAntes } : {}),
         ...(p.texto?.recuo ? { recuo: Math.round(p.texto.recuo * escalaDoFormato) } : {}),

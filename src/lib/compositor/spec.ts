@@ -138,6 +138,24 @@ export type Preferencias = z.infer<typeof preferenciasSchema>
 /** Um arranjo fixado: `{ grupo, arranjo }` (o id do arranjo DAQUELE grupo — R15) ou, no legado, só o id, para qualquer grupo. */
 export type ArranjoFixado = z.infer<typeof arranjoFixadoSchema>
 
+/**
+ * O ARQUÉTIPO de layout pedido (T1a, 14/10/2026) — o catálogo imutável de
+ * `arquetipos/`. Pedido público: `{ id }` ou `{ id, versao }`; persistido: os
+ * três, com a `impressao` da definição. Aqui só a FORMA: a resolução no
+ * catálogo, a conferência da impressão e as recusas moram em
+ * `arquetipos/na-spec.ts`, chamadas por quem compõe, enfileira, mede e recompõe
+ * — nunca aqui, onde uma recusa viraria "a arte não guardou a spec".
+ * `strict`: chave a mais é recusada, não descartada.
+ */
+export const arquetipoDaSpecSchema = z
+  .object({
+    id: z.string().min(1).max(80).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+    versao: z.number().int().min(1).optional(),
+    impressao: z.string().regex(/^arq1-[0-9a-f]{14}$/).optional(),
+  })
+  .strict()
+export type ArquetipoDaSpecPedido = z.infer<typeof arquetipoDaSpecSchema>
+
 export const specSchema = z.object({
   projectId: z.number().int().positive(),
   formato: z.enum(FORMATOS),
@@ -171,6 +189,8 @@ export const specSchema = z.object({
    * blocos por `blocosParaOCompositor` na porta (nunca aqui, em silêncio).
    */
   copyAutoral: copyAutoralSchema.optional(),
+  /** O arquétipo de layout (T1a): opt-in. Sem ele, a composição é a de sempre. */
+  arquetipo: arquetipoDaSpecSchema.optional(),
 })
 export type SpecDePeca = z.infer<typeof specSchema>
 
@@ -299,6 +319,9 @@ export function validarSpec(entrada: unknown): { spec: SpecDePeca; problemas: []
     }
     const c = r.data.carrossel
     if (c?.de && c.slide > c.de) return { spec: null, problemas: [`carrossel: o slide ${c.slide} não cabe num carrossel de ${c.de}`] }
+    if (r.data.arquetipo?.impressao && r.data.arquetipo.versao === undefined) {
+      return { spec: null, problemas: ['arquetipo: a impressão só vale com a versão exata (id + versao + impressao)'] }
+    }
     return { spec: r.data, problemas: [] }
   }
   return {

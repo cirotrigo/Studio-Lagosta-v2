@@ -160,6 +160,13 @@ export interface AssinaturaDaMarca {
   camadasDaPagina?: Layer[]
   /** O tamanho dessa página — para ler se um gradiente dela é de leitura (CP2A). */
   dimensoesDaPagina?: { width: number; height: number }
+  /**
+   * O piso do PROJETO por formato: `NUMEROS_PADRAO` com `Project.assinatura`
+   * por cima, ANTES de as margens da página reescreverem `numeros.geometria` do
+   * formato dela. É a área segura efetiva com arquétipo (T1a): as margens da
+   * página são geometria da página, e com arquétipo a geometria tem uma fonte só.
+   */
+  pisoDoProjeto?: Record<Formato, GeometriaDoFormato>
 }
 
 /** Camada que carrega texto de um papel: texto simples ou rich text (o destaque). */
@@ -333,6 +340,8 @@ export function montarAssinatura(args: {
   logoDoProjeto?: { url: string; razao?: number } | null
 }): AssinaturaDaMarca {
   const numeros = mesclarNumeros(NUMEROS_PADRAO, args.numerosDoProjeto)
+  // As entradas de `numeros.geometria` são TROCADAS (nunca alteradas) pela derivação da página abaixo.
+  const pisoDoProjeto = { ...numeros.geometria }
   const papeis: AssinaturaDaMarca['papeis'] = {}
   let logo: LogoDaAssinatura | null = null
   let alinhamento: AssinaturaDaMarca['alinhamento'] = null
@@ -442,6 +451,7 @@ export function montarAssinatura(args: {
     alinhamento,
     gradienteDaPagina,
     origem: { pageId: args.pagina?.id ?? null, formatoDaPagina: args.formatoDaPagina, variante: args.pagina?.name ?? null, versao: 'assinatura-v3' },
+    pisoDoProjeto,
   }
 }
 
