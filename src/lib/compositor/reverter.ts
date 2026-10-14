@@ -31,7 +31,12 @@ export async function reverterCamadasDaArte(generationId: string, opts: { projec
   const fv = (gen.fieldValues && typeof gen.fieldValues === 'object' ? gen.fieldValues : {}) as Record<string, unknown>
   const pageId = typeof fv.pageId === 'string' ? fv.pageId : null
   if (!pageId) throw new CreativeError('SEM_PAGINA', 'Esta arte não tem página editável para reverter', 422)
-  const v = validarCamadas(fv.layersSnapshot)
+  // Ausente é "sem snapshot"; presente, passa INTEIRO pelo contrato: `v.camadas` são só as válidas, e
+  // gravar sem as recusadas seria reverter pela metade, em silêncio.
+  const v = validarCamadas(fv.layersSnapshot ?? [])
+  if (v.problemas.length > 0) {
+    throw new CreativeError('SNAPSHOT_COM_CAMADAS_INVALIDAS', `Snapshot com camadas fora do contrato; reverter gravaria a página sem elas, então nada foi alterado — ${v.problemas.join('; ')}`, 422, { problemas: v.problemas })
+  }
   if (v.camadas.length === 0) throw new CreativeError('SEM_SNAPSHOT', 'Esta arte não guardou o snapshot das camadas (só peças do compositor guardam)', 422)
 
   const page = await db.page.findUnique({ where: { id: pageId }, select: { id: true, isTemplate: true } })
