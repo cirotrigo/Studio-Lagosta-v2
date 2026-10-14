@@ -32,6 +32,7 @@ import { textosForaDaPiora, tratamentosQuePioraramALeitura, type ContrasteMedido
 import { papelDaCamada } from '@/lib/compositor/defasagem'
 import { alcanceDoGrupo, alturaDaFaixa, bordaDoGrupo, ehGradienteDeLeitura, forcaDaCamada, GRADIENTE_PADRAO, type Borda } from '@/lib/compositor/gradiente-de-leitura'
 import { luzDaCor, uniao, type Rect } from '@/lib/creatives/halo/halo'
+import { TETO_DE_COBERTURA_DO_ASSUNTO, TETO_DE_COBERTURA_DO_ASSUNTO_ESTIMADO } from '@/lib/compositor/mapa-de-calma'
 import { bordaDaLeitura } from './aplicar-ajustes'
 import {
   ajusteSchema,
@@ -197,9 +198,10 @@ export const LIMITES_DA_REVISAO = {
   pisoDeFonte1080: 24,
   pisoRelativo: 0.8,
   orfaFracao: 0.3,
-  coberturaDoAssunto: 0.25,
+  /** Os tetos moram no mapa de calma: o compositor e a busca espacial usam os MESMOS (uma fonte só). */
+  coberturaDoAssunto: TETO_DE_COBERTURA_DO_ASSUNTO,
   /** Assunto só ESTIMADO pela textura: 25% acusava 8 de 30 peças reais sem nada visível — o teto é outro. */
-  coberturaDoAssuntoEstimado: 0.4,
+  coberturaDoAssuntoEstimado: TETO_DE_COBERTURA_DO_ASSUNTO_ESTIMADO,
   /** px de tinta além da caixa antes de acusar (antialias). */
   folgaDeTinta: 1.5,
   /** Níveis de p98 abaixo do alvo que já contam como gradiente sobrando. */

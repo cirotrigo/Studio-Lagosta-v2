@@ -194,7 +194,7 @@ export function ajusteFinalNecessario(camadas: Layer[], canvas: { width: number;
   return checkTextGeometry(camadas, canvas, medir).issues.filter((i) => i.tipo === 'overflow' || i.tipo === 'colisao')
 }
 
-/** As unidades pousadas na referência (ou a recusa), com a área segura efetiva do projeto. */
+/** As unidades pousadas na referência — ou na posição candidata, com `deslocamentos` (CP2B) — ou a recusa, com a área segura efetiva do projeto. */
 export function materializarUnidades(args: {
   arquetipo: ArquetipoDeLayout
   formato: FormatoDoArquetipo
@@ -202,6 +202,8 @@ export function materializarUnidades(args: {
   geometria: GeometriaEfetiva
   unidades: UnidadeDoArquetipo[]
   logo: { razao: number } | null
+  deslocamentos?: Partial<Record<PapelDeTexto | 'logo', number>>
+  conferirZona?: boolean
 }): Materializacao {
   const medidas: Partial<Record<PapelDeTexto, { width: number; height: number }>> = {}
   const ornamentos: Partial<Record<PapelDeTexto, UnidadeDoArquetipo['ornamentos']>> = {}
@@ -209,7 +211,7 @@ export function materializarUnidades(args: {
     medidas[u.papel] = { width: u.pilha.width, height: u.pilha.height }
     ornamentos[u.papel] = u.ornamentos
   }
-  const m = materializarArquetipo({ arquetipo: args.arquetipo, formato: args.formato, canvas: args.canvas, geometria: args.geometria, medidas, ornamentos, logo: args.logo })
+  const m = materializarArquetipo({ arquetipo: args.arquetipo, formato: args.formato, canvas: args.canvas, geometria: args.geometria, medidas, ornamentos, logo: args.logo, deslocamentos: args.deslocamentos, ...(args.conferirZona === false ? { conferirZona: false } : {}) })
   if (!('problemas' in m)) return m
   // A recusa por capacidade leva o orçamento da unidade: a caixa, a escala em que a escada parou e cada bloco.
   const caixas = caixasMaximas(args.arquetipo, args.formato, args.canvas)

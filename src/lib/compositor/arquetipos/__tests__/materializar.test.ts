@@ -138,3 +138,67 @@ describe('T1a · materialização', () => {
     expect(problemas(m).map((p) => [p.codigo, p.papel])).toEqual([['ARQUETIPO_ZONA_EFETIVA_VAZIA', 'servico']])
   })
 })
+
+describe('CP2B · materialização deslocada (dy da busca espacial)', () => {
+  const base = {
+    arquetipo: TOPO,
+    formato: 'story' as const,
+    canvas: DIMENSOES.story,
+    geometria: geo('story'),
+    medidas: { pre: { width: 300, height: 50 }, headline: { width: 700, height: 200 }, servico: { width: 400, height: 60 } },
+    logo: { razao: 0.5 },
+  }
+
+  it('a posição parte da referência transladada; a referência, a zona e a capacidade não mudam', () => {
+    const naReferencia = materializarArquetipo(base)
+    const m = materializarArquetipo({ ...base, deslocamentos: { pre: -40, headline: -40, servico: -100, logo: -100 } })
+    expect(m.ok).toBe(true)
+    if (!m.ok || !naReferencia.ok) return
+    expect(m.papeis.pre!.posicao).toEqual({ x: 92, y: 190, width: 300, height: 50 })
+    expect(m.papeis.headline!.posicao).toEqual({ x: 92, y: 258, width: 700, height: 200 })
+    expect(m.papeis.servico!.posicao).toEqual({ x: 92, y: 1455, width: 400, height: 60 })
+    // A logo em contain na referência TRANSLADADA (1575 − 100), com a mesma caixa.
+    expect(m.papeis.logo!.posicao).toEqual({ x: 799, y: 1475, width: 189, height: 95 })
+    for (const p of ['pre', 'headline', 'servico', 'logo'] as const) {
+      expect(m.papeis[p]!.referencia).toEqual(naReferencia.papeis[p]!.referencia)
+      expect(m.papeis[p]!.zonaEfetiva).toEqual(naReferencia.papeis[p]!.zonaEfetiva)
+    }
+    // A capacidade é a da referência: a caixa maior que ela continua recusada, deslocada ou não.
+    const grande = materializarArquetipo({ ...base, medidas: { ...base.medidas, headline: { width: 700, height: 260 } }, deslocamentos: { headline: 100 } })
+    expect(problemas(grande).map((p) => [p.codigo, p.papel])).toEqual([['ARQUETIPO_TEXTO_NAO_CABE', 'headline']])
+  })
+
+  it('o deslocamento que passa da zona efetiva é FORA_DA_ZONA, dito na posição candidata', () => {
+    // O pré-título em y 230,4 − 60 = 170,4 sai da zona (topo em 188,16).
+    const m = materializarArquetipo({ ...base, deslocamentos: { pre: -60 } })
+    expect(problemas(m)).toHaveLength(1)
+    expect(problemas(m)[0]).toMatchObject({ codigo: 'ARQUETIPO_FORA_DA_ZONA', papel: 'pre', referencia: { x: 92, y: 230 }, zonaEfetiva: { y: 188 } })
+    expect(problemas(m)[0].motivo).toBe('na posição candidata (dy=-60px), a caixa real (92,170 300×50) sai da zona efetiva (92,188 610×157)')
+  })
+
+  it('o ornamento é conferido na posição deslocada', () => {
+    const ornamentos = { pre: { esquerda: 0, direita: 0, topo: 30, base: 0 } }
+    // Na referência: o ornamento começa em 200,4, dentro da zona.
+    expect(materializarArquetipo({ ...base, ornamentos }).ok).toBe(true)
+    // Com dy −20 o texto (210,4) ainda cabe, mas o ornamento (180,4) sai.
+    const m = materializarArquetipo({ ...base, ornamentos, deslocamentos: { pre: -20 } })
+    expect(problemas(m).map((p) => [p.codigo, p.papel])).toEqual([['ARQUETIPO_FORA_DA_ZONA', 'pre']])
+    expect(problemas(m)[0].motivo).toMatch(/^com o texto na posição candidata \(dy=-20px\), os ornamentos .* ocupam 92,180 /)
+  })
+
+  it('sem o parâmetro, com {} ou com dy 0: a saída é a de hoje, byte a byte (também nas recusas)', () => {
+    const zeros = { pre: 0, headline: 0, apoio: 0, servico: 0, logo: 0 }
+    const casos = [
+      base,
+      { ...base, geometria: { ...geo('story'), safeTopo: 250 } },
+      { ...base, ornamentos: { headline: { esquerda: 0, direita: 0, topo: 0, base: 400 } } },
+      { ...base, logo: { razao: 0 } },
+    ]
+    for (const args of casos) {
+      const hoje = JSON.stringify(materializarArquetipo(args))
+      expect(JSON.stringify(materializarArquetipo({ ...args, deslocamentos: {} }))).toBe(hoje)
+      expect(JSON.stringify(materializarArquetipo({ ...args, deslocamentos: zeros }))).toBe(hoje)
+    }
+    expect(problemas(materializarArquetipo({ ...casos[1], deslocamentos: zeros }))[0].motivo).toMatch(/^na referência, .* — a área segura do projeto corta a referência$/)
+  })
+})
