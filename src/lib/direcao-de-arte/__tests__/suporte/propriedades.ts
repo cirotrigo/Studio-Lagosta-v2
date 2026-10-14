@@ -317,12 +317,13 @@ export function foraDaInterface(layers: Layer[], canvas: Canvas, interface_: { t
  */
 export function ordemDeLeituraInvertida(layers: Layer[], blocos: Array<{ ordem?: number; papel: string }>) {
   const ordenados = [...blocos].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))
-  const y = (papel: string) => layers.find((l) => l.id === papel)?.position.y
+  const pos = (papel: string) => layers.find((l) => l.id === papel)?.position
   const inversoes: Array<{ antes: string; depois: string }> = []
   for (let i = 1; i < ordenados.length; i++) {
-    const a = y(ordenados[i - 1].papel)
-    const b = y(ordenados[i].papel)
-    if (a != null && b != null && b < a) inversoes.push({ antes: ordenados[i - 1].papel, depois: ordenados[i].papel })
+    const a = pos(ordenados[i - 1].papel)
+    const b = pos(ordenados[i].papel)
+    // Na mesma altura, lê-se da esquerda para a direita.
+    if (a && b && (b.y < a.y || (b.y === a.y && b.x < a.x))) inversoes.push({ antes: ordenados[i - 1].papel, depois: ordenados[i].papel })
   }
   return inversoes
 }

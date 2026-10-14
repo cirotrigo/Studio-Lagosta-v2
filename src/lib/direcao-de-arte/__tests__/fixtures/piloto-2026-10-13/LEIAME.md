@@ -76,4 +76,3 @@ O `revisarArte` real lê o assunto que o compositor gravou (`composicao.assunto`
 - **Safe interface ≠ geometria de composição.** O piso hard é 188/224. `Project.assinatura.geometria.story` (250/350) é geometria de composição e configuração legada: não vira gate e deve ser reconciliada, nunca vencer em silêncio.
 - **Portão, contrato alvo da V1.** Peça não apta **não cria rascunho**. Ela volta com `REVISAO_HUMANA_NECESSARIA`, o generationId, o pageId, o editUrl e os achados. Um ajuste que piora um rascunho existente é recusado antes de substituir a versão.
 - **Polaridade mista na mesma borda.** Sem solução aprovada, o código é `SEM_COMBINACAO` com `motivo: POLARIDADE_INCOMPATIVEL_NA_MESMA_BORDA`. Se houver solução fora de uma preferência rígida, o código é `PREFERENCIA_INVIAVEL`.
-

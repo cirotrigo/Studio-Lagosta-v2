@@ -129,17 +129,24 @@ async function escrever(versao: Versao): Promise<{ criados: unknown[]; item: Rec
 /** Qualquer menção ao código (para o controle positivo: a peça limpa não pode carregá-lo). */
 const sinalizada = (resposta: unknown) => JSON.stringify(resposta).includes(CODIGOS.revisaoHumana)
 
+/** Peça não apta: o item não conclui como rascunho criado. */
+const naoCriada = (item: Record<string, unknown> | null) => !item || (item.desfecho !== 'criado' && item.situacao !== 'concluido')
+
 /**
- * O contrato alvo de uma peça não apta: nada criado e o item com
- * REVISAO_HUMANA_NECESSARIA, generationId, pageId, editUrl e os achados estruturais.
+ * As referências para a intervenção, conferidas pelo VALOR: o código
+ * REVISAO_HUMANA_NECESSARIA, a Generation e a página da peça, o link do editor
+ * desta página e os achados estruturais (na v1, os do serviço sem leitura).
  */
-function naoAptaComReferencias(item: Record<string, unknown> | null): string[] {
+function referenciasQueFaltam(item: Record<string, unknown> | null, versao: Versao): string[] {
   if (!item) return ['o serviço não devolveu o item']
   const faltas: string[] = []
-  if (item.desfecho === 'criado' || item.situacao === 'concluido') faltas.push(`rascunho criado (${String(item.situacao)}/${String(item.desfecho)})`)
   if (item.codigo !== CODIGOS.revisaoHumana) faltas.push(`codigo ${String(item.codigo)} ≠ ${CODIGOS.revisaoHumana}`)
-  for (const campo of ['generationId', 'pageId', 'editUrl']) if (!item[campo]) faltas.push(`sem ${campo}`)
-  if (!Array.isArray(item.achados) || item.achados.length === 0) faltas.push('sem os achados estruturais')
+  if (item.generationId !== 'gen-v1') faltas.push(`generationId ${String(item.generationId)}`)
+  if (item.pageId !== 'pagina-piloto') faltas.push(`pageId ${String(item.pageId)}`)
+  if (typeof item.editUrl !== 'string' || !item.editUrl.includes('pagina-piloto')) faltas.push(`editUrl ${String(item.editUrl)}`)
+  const achados = Array.isArray(item.achados) ? item.achados : []
+  if (achados.length === 0) faltas.push('sem os achados estruturais')
+  else if (versao === 'v1' && !JSON.stringify(achados).includes('servico')) faltas.push('os achados não citam o serviço sem leitura')
   return faltas
 }
 
@@ -173,24 +180,30 @@ describe('controle positivo: a peça com a medida limpa continua apta', () => {
   })
 })
 
+// "Não criar" e "devolver as referências" são propriedades separadas: cada uma vira it() no checkpoint que a cumprir.
 describe('P11 — portão (contrato alvo: peça não apta não cria rascunho)', () => {
-  hojeViola('simulação: a v1, com violação estrutural medida, não seria criada e volta com REVISAO_HUMANA_NECESSARIA e as referências', async () => {
-    const faltas = naoAptaComReferencias(await simular('v1'))
-    expect(faltas, JSON.stringify(faltas)).toEqual([])
-  })
+  for (const versao of ['v1', 'v2'] as const) {
+    const qual = versao === 'v1' ? 'a v1, com violação estrutural medida,' : 'a v2, sem veredito para a versão atual da página,'
 
-  hojeViola('simulação: a v2, sem veredito para a versão atual da página, não seria criada e volta com REVISAO_HUMANA_NECESSARIA e as referências', async () => {
-    const faltas = naoAptaComReferencias(await simular('v2'))
-    expect(faltas, JSON.stringify(faltas)).toEqual([])
-  })
+    hojeViola(`simulação: ${qual} não seria criada como rascunho`, async () => {
+      const item = await simular(versao)
+      expect(naoCriada(item), JSON.stringify(item)).toBe(true)
+    })
 
-  hojeViola('escrita de verdade: a v1 não cria post nenhum e volta com REVISAO_HUMANA_NECESSARIA e as referências', async () => {
-    const { criados, item } = await escrever('v1')
-    expect({ criados: criados.length, faltas: naoAptaComReferencias(item) }).toEqual({ criados: 0, faltas: [] })
-  })
+    hojeViola(`simulação: ${qual} volta com REVISAO_HUMANA_NECESSARIA e as referências da peça`, async () => {
+      const faltas = referenciasQueFaltam(await simular(versao), versao)
+      expect(faltas, JSON.stringify(faltas)).toEqual([])
+    })
 
-  hojeViola('escrita de verdade: a v2 não cria post nenhum e volta com REVISAO_HUMANA_NECESSARIA e as referências', async () => {
-    const { criados, item } = await escrever('v2')
-    expect({ criados: criados.length, faltas: naoAptaComReferencias(item) }).toEqual({ criados: 0, faltas: [] })
-  })
+    hojeViola(`escrita de verdade: ${qual} não cria post nenhum`, async () => {
+      const { criados } = await escrever(versao)
+      expect(criados.length, `${criados.length} post(s) criado(s)`).toBe(0)
+    })
+
+    hojeViola(`escrita de verdade: ${qual} volta com REVISAO_HUMANA_NECESSARIA e as referências da peça`, async () => {
+      const { item } = await escrever(versao)
+      const faltas = referenciasQueFaltam(item, versao)
+      expect(faltas, JSON.stringify(faltas)).toEqual([])
+    })
+  }
 })

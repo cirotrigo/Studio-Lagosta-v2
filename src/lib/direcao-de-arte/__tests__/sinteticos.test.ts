@@ -120,20 +120,29 @@ describe('polaridade (P1, e o alvo onde há solução)', () => {
   const casoH: Caso = { pagina: { headline: { cor: ESCURO }, servico: { cor: CLARO } }, luz: uniforme(175), logo: ESCURO, blocos: [HEADLINE, SERVICO] }
   const metade = (r: ResultadoDaComposicao, id: string) => (r.layers.find((l) => l.id === id)!.position.y > CANVAS.height / 2 ? 'baixo' : 'cima')
 
-  it('A (guarda) — a headline e o serviço caem na MESMA borda (rodapé): é isso que distingue A de H', async () => {
-    const r = await montada('a-guarda', casoA)
-    expect({ headline: metade(r, 'headline'), servico: metade(r, 'servico') }).toEqual({ headline: 'baixo', servico: 'baixo' })
-  }, 60_000)
+  /**
+   * Guarda de ESTRUTURA do caso: se a peça sai montada, os textos estão onde o caso diz; se sai recusada,
+   * só vale a recusa prevista para o caso (a correção esperada não pode quebrar a guarda).
+   */
+  async function estrutura(id: string, c: Caso, esperado: Record<string, 'cima' | 'baixo'>, recusasAceitas: RecusaAceita[]) {
+    const { r, recusa } = await compor(id, c)
+    if (recusa) return expect(recusaCasa(recusa, recusasAceitas), `recusa ${recusa.code}`).toBe(true)
+    exigir(r, `o caso ${id} compõe ou recusa`)
+    expect(Object.fromEntries(Object.keys(esperado).map((k) => [k, metade(r, k)]))).toEqual(esperado)
+  }
+
+  it('A (guarda) — a headline e o serviço caem na MESMA borda (rodapé): é isso que distingue A de H', () =>
+    estrutura('a-guarda', casoA, { headline: 'baixo', servico: 'baixo' }, PREFERENCIA_INVIAVEL),
+  60_000)
 
   it('H (guarda) — headline no topo e serviço no rodapé', async () => {
     const r = await montada('h-guarda', casoH)
     expect({ headline: metade(r, 'headline'), servico: metade(r, 'servico') }).toEqual({ headline: 'cima', servico: 'baixo' })
   }, 60_000)
 
-  it("A' (guarda) — headline e apoio no MESMO grupo da assinatura, no topo, sem preferência", async () => {
-    const r = await montada('a-estrutural-guarda', casoAEstrutural)
-    expect({ headline: metade(r, 'headline'), apoio: metade(r, 'apoio') }).toEqual({ headline: 'cima', apoio: 'cima' })
-  }, 60_000)
+  it("A' (guarda) — headline e apoio no MESMO grupo da assinatura, no topo, sem preferência", () =>
+    estrutura('a-estrutural-guarda', casoAEstrutural, { headline: 'cima', apoio: 'cima' }, POLARIDADE_SEM_SOLUCAO),
+  60_000)
 
   // A âncora pedida junta as polaridades; sem ela a página separa (H): há solução fora da preferência.
   hojeViola('A — mesma borda por PREFERÊNCIA: nenhum texto piora e todos no alvo, ou PREFERENCIA_INVIAVEL', () =>
