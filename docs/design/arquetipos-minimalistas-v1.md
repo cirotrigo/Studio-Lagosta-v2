@@ -439,6 +439,45 @@ correspondente.
 - O modelo 2 espera o T1b.
 - A posição é a referência. Uma foto que pede outra posição dentro da zona é o CP2B.
 
+## CP2B — a posição pela foto (14/10/2026)
+
+A busca é PEQUENA e explicável: faixas × candidatos × cortes, sem grid denso, sem aleatoriedade.
+
+| Etapa | Onde | O que faz |
+|---|---|---|
+| Portão estrutural | `candidatos-espaciais.ts` → `partidaNoArquetipo` | capacidade, logo, zona vazia; o intervalo vertical de cada faixa; resgate da referência cortada pela área segura; recusa o que nenhum `dy` conserta (horizontal, intervalo vazio) |
+| Candidatos | `candidatosDasFaixas`, `combinacoesDasFaixas` | ≤ 5 por faixa (≥ 16 px entre si), produto ≤ 25 por corte, ordem fixa (índice 0 = tudo na partida) |
+| Foto | `compor.ts` | `cortesCandidatos` (1 ou 3); por corte, raster 540 px b-w, mapa de calma, região protegida (catálogo, ou estimada) |
+| Avaliação | `pontuacao-espacial.ts` → `avaliarCombinacao` | elimina pelos hard constraints; estima o tratamento com o planejador do CP2A; componentes da pontuação |
+| Escolha | `ordenarAvaliacoes` | filtro sequencial: custo do tratamento → pontuação → referência → corte central → ordem fixa |
+| Orquestração | `busca-espacial.ts` → `selecionarNoArquetipo` | busca, ou reprodução da escolha gravada; diagnóstico compacto |
+
+**Decisões.**
+
+- **Faixa, não papel solto.** Mover pre, headline e apoio separadamente quebraria o ritmo e a ordem
+  que a referência desenha (e o fio/spark do T1b, presos à manchete). A faixa sai das ZONAS, sem
+  campo novo no catálogo (versão publicada é imutável).
+- **Logo de referência fixa acompanha a faixa do serviço**: a linha de baixo do topo-esquerda é
+  serviço + logo. Ela não é avaliada (sem inteligência nova); o contraste dela é do CP3 — a busca
+  pode pousá-la sobre uma borda de tom (visto nas provas).
+- **Só a região anotada é hard.** A do catálogo elimina; a estimada pela energia entra só no
+  componente `assunto` (como recusa dura, a borda de uma faixa de luz zerava a foto).
+- **Resgate vertical.** A referência é preferência: com a área segura do projeto cortando a
+  referência, a faixa desce/sobe o mínimo para caber (aviso). Na horizontal não há resgate.
+- **Tratamento como custo dominante** (a ordem do owner: sem véu → véu mais leve → calma → assunto →
+  referência). Consequência medida: em foto clara e uniforme com texto claro no centro-óptico, o
+  conjunto central desce para perto do rodapé, onde o véu do rodapé fica mais leve — é a regra, não
+  ruído.
+
+**Exemplos de candidatos (story, piso padrão, as caixas das provas).** Topo-esquerda: {headline,
+apoio} `dy ∈ [−109, 144]` → 0, −109, −54, 72, 144; {servico, logo} `dy ∈ [−172, 23]` → 0, −172, −86,
+23 (20 combinações por corte). Centro-óptico: {headline, apoio} `dy ∈ [−47, 212]` → 0, −47, −23, 106,
+212; {servico} `dy ∈ [−153, 31]` → 0, −153, −76, 31. O intervalo depende da caixa REAL de cada peça.
+
+**Provas visuais**: `direcao-de-arte/__tests__/cp2b-provas.test.ts` (com `PROVAS_DIR`) renderiza, pelo
+renderizador do Studio, a referência, a vencedora, a rejeitada e a eliminada de 8 cenários, mais
+estabilidade e recomposição.
+
 ## Próximos checkpoints
 
 - **T1a — materialização.** Feito em 14/10/2026 (ver a seção T1a acima); o que segue é o plano original.
@@ -454,5 +493,4 @@ correspondente.
   - Materializar `fio-fino`, `moldura-aberta` (com o canto) e `spark-4`.
   - O SVG nasce ali, não aqui, com espessura e proporção próprias.
   - Fica para lá também como o elemento acompanha o papel a que está preso.
-- **CP2B — posição pela foto.** Escolher a posição final dentro da zona e separar as polaridades no
-  espaço. É a zona deste catálogo que limita a busca.
+- **CP2B — posição pela foto.** Feito em 14/10/2026 (ver a seção CP2B acima).

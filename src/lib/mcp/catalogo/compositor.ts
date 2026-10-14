@@ -81,7 +81,7 @@ const preferencias = z
 
 /** O schema da SPEC (T1a), com a descrição pública — o mesmo nas três portas que constroem a peça. */
 const arquetipo = arquetipoDaSpecSchema.describe(
-  'O ARQUÉTIPO de layout, opt-in: { id } ou { id, versao } — os disponíveis estão em ver-assinatura (campo arquetipos, com a disponibilidade de cada um). Com ele, a GEOMETRIA vem do arquétipo: cada papel pousa na posição de REFERÊNCIA dele (sem busca pela foto), e a assinatura dá só o estilo (fonte, corpo, cor, destaque, logo, gradiente). Sem versão, vale a mais recente — e a peça grava a versão exata e a impressão, que a recomposição mantém. Para reproduzir uma medição, mande a fixacao.arquetipo do medir-copy (id + versao + impressao). Recusado ANTES de compor, com o motivo: papel que o arquétipo não tem (cta, por exemplo), papel obrigatório ausente, camada extra ou herdaDe, formato quadrado, linhas acima do máximo, preferência de âncora/alinhamento/canto diferente da dele, ou caixa que não cabe na referência — nada some e nada é movido. Em leva com loteId, mande { id, versao } (ou a fixacao) para a retentativa continuar a mesma peça depois de uma versão nova publicada. Sem arquétipo, a composição é a de sempre.',
+  'O ARQUÉTIPO de layout, opt-in: { id } ou { id, versao } — os disponíveis estão em ver-assinatura (campo arquetipos, com a disponibilidade de cada um). Com ele, a GEOMETRIA vem do arquétipo: a foto escolhe, DENTRO das zonas dele, o enquadramento e a posição de cada faixa (partindo da referência, só na vertical, poucas alternativas; o tratamento de leitura conta como custo, nunca como atalho), e a assinatura dá só o estilo (fonte, corpo, cor, destaque, logo, gradiente). Sem versão, vale a mais recente — e a peça grava a versão exata, a impressão e a escolha espacial, que a recomposição mantém (copy editada não move a peça: se não couber na posição congelada, é recusada). Para reproduzir uma medição, mande a fixacao.arquetipo do medir-copy (id + versao + impressao). Recusado ANTES de compor, com o motivo: papel que o arquétipo não tem (cta, por exemplo), papel obrigatório ausente, camada extra ou herdaDe, formato quadrado, linhas acima do máximo, preferência de âncora/alinhamento/canto diferente da dele, ou caixa que não cabe na referência — nada some. Sem posição válida na foto (zona, região protegida, leitura), SEM_COMBINACAO; com o enquadramento fixo impedindo o corte que resolveria, PREFERENCIA_INVIAVEL. Em leva com loteId, mande { id, versao } (ou a fixacao) para a retentativa continuar a mesma peça depois de uma versão nova publicada. Sem arquétipo, a composição é a de sempre.',
 )
 
 const spec = {
@@ -360,7 +360,7 @@ export const toolsDoCompositor = [
         nota: m.naoMedido
           ? 'Há bloco NÃO MEDIDO: a fonte dele não está no servidor de render, e a peça sairia na fonte de fallback — avise a pessoa (a equipe cadastra a fonte em Configurações → Fontes) antes de compor.'
           : m.cabeTudo
-            ? 'Tudo cabe nesta variante. Nada foi gravado: compor-arte é o próximo passo.'
+            ? `Tudo cabe nesta variante. Nada foi gravado: compor-arte é o próximo passo.${m.arquetipo ? ' Com arquétipo, a medida confere o encaixe na REFERÊNCIA (avaliacaoEspacial: nao-executada): a posição final é escolhida pela foto no compor, e esta medição não garante que a foto tenha posição boa.' : ''}`
             : 'Algum bloco não cabe (ou falta papel na variante): reescreva com o orçamento devolvido ou escolha outra variante (outrasVariantes) — nunca insista com o mesmo texto.',
       }
     },
@@ -450,8 +450,28 @@ export const toolsDoCompositor = [
           : {}),
         destaques: d.blocos.filter((b) => b.destacado).map((b) => b.papel),
         contraste: d.contraste?.map((c) => ({ bloco: c.grupo, ok: c.ok, p98: c.p98ComHalo, alvo: Math.round(c.alvo) })) ?? null,
-        // T1a: a procedência da geometria — o arquétipo exato e, por papel, referência, zona efetiva e posição.
-        ...(d.arquetipo ? { arquetipo: d.arquetipo } : {}),
+        // T1a: a procedência da geometria — o arquétipo exato e, por papel, referência, zona efetiva e posição. A busca
+        // espacial (CP2B) vai COMPACTA: o corte, o deslocamento de cada faixa, por que venceu e as recusas — o resto
+        // (vencedor, alternativas, leituras) fica gravado na composição.
+        ...(d.arquetipo
+          ? {
+              arquetipo: (({ buscaEspacial, ...resto }) =>
+                buscaEspacial
+                  ? {
+                      ...resto,
+                      buscaEspacial: {
+                        corte: buscaEspacial.escolha.corte,
+                        deslocamentos: buscaEspacial.escolha.deslocamentos,
+                        motivo: buscaEspacial.motivo,
+                        combinacoesAvaliadas: buscaEspacial.combinacoesAvaliadas,
+                        recusas: buscaEspacial.recusas,
+                        ...(buscaEspacial.vencedor ? { tratamentoEstimado: buscaEspacial.vencedor.tratamento } : {}),
+                        ...(buscaEspacial.reproduzida ? { reproduzida: true } : {}),
+                      },
+                    }
+                  : resto)(d.arquetipo),
+            }
+          : {}),
         avisos: d.avisos,
       }
       if (r.prova) {

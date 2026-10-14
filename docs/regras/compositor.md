@@ -915,3 +915,57 @@ falha se mudar.
   T1b), formato quadrado, `cta`, camada extra / `herdaDe`, seleção experimental.
 
 Detalhe em `docs/design/arquetipos-minimalistas-v1.md`, seção "T1a".
+
+## Posição do arquétipo pela foto (CP2B, 14/10/2026)
+
+Com `spec.arquetipo`, a foto escolhe, DENTRO das zonas do arquétipo, o corte e a posição de cada
+**faixa**; o CP2A continua sendo o juiz do contraste. **Posição primeiro, tratamento de leitura
+depois.** Sem arquétipo nada muda: os baselines `t1a-baseline-sem-arquetipo` (fotos uniformes) e
+`cp2b-baseline-sem-arquetipo` (metades, faixa, região protegida, 3 cortes), gerados na base, falham
+se mudar.
+
+- 🔴 **A unidade de busca é a FAIXA**: os papéis cujas zonas se sobrepõem na vertical
+  (`faixasDoArquetipo`). Topo-esquerda: {pre, headline, apoio} e {servico, logo}; centro-óptico:
+  {headline, apoio} e {servico}. A faixa anda inteira com um `dy` só: ordem, ritmo e a relação
+  interna da referência ficam por construção, e o serviço/logo do rodapé andam juntos.
+- 🔴 **Só vertical.** O alinhamento ancora uma linha (margem esquerda, eixo central); `dx` moveria
+  essa linha. Caixa que passa da zona na horizontal é recusa estrutural.
+- 🔴 **A referência é preferência, não obrigação.** Até 5 candidatos por faixa (a referência, o mais
+  acima, o meio rumo à referência, o mais abaixo), ≥ 16 px entre si. Quando a área segura do projeto
+  corta a referência, a faixa é RESGATADA na vertical (a partida é a posição válida mais perto
+  dela, com aviso). `partidaNoArquetipo` é o portão estrutural, o MESMO no compor e no medir-copy.
+- 🔴 **Eliminar antes de pontuar** (`MOTIVOS_DE_ELIMINACAO`): fora da zona ou da área segura,
+  ornamento fora, corte que perde o assunto do catálogo, região protegida do CATÁLOGO acima do teto
+  (0,25), colisão, ordem de leitura, hierarquia, e o plano do CP2A `inviavel` (piora, sem cor
+  aprovada, polaridade incompatível).
+- 🔴 **A região ESTIMADA pela energia é custo, não recusa** (componente `assunto`, teto 0,40, o do
+  revisor). Como recusa dura, a borda de uma faixa de luz virava "assunto" e zerava fotos inteiras
+  (`SEM_COMBINACAO` onde a peça tinha solução) — é heurística, não anotação.
+- 🔴 **Tratamento é custo dominante.** Entre as válidas vence o menor custo de véu (tolerância
+  0,05); depois a pontuação (calma 0,4, contraste natural 0,2, assunto 0,15, referência 0,15,
+  corte central 0,1; tolerância 0,02); depois a mais perto da referência e o corte central. A
+  estimativa usa `planejarTratamentoDaBorda` com os percentis do raster de cada corte
+  (`percentisNoRect`); a borda de cada unidade é a da REFERÊNCIA (`bordaNaReferencia`), para o
+  plano não saltar quando a faixa anda.
+- **Cortes**: os de `cortesCandidatos` (1 ou 3), respeitando `enquadramento: 'fixo'`. Limite
+  explícito: 3 cortes × 25 combinações = 75 avaliações (`LIMITES_DA_BUSCA`).
+- **Sem solução**: `SEM_COMBINACAO` (com `motivo` do CP2A quando todas caem no mesmo, e a contagem
+  das recusas) só depois de esgotar cortes × posições × tratamentos; `PREFERENCIA_INVIAVEL` quando
+  é o `enquadramento: 'fixo'` que impede o corte que resolve.
+- 🔴 **A recomposição REPRODUZ, não busca.** A escolha (`composicao.arquetipo.buscaEspacial.escolha`:
+  corte, `dy` por membro, canto da logo automática, foto) é lida por `escolhaEspacialOriginal` e
+  passada em `opcoes.escolhaEspacial`. Copy que não cabe na posição congelada:
+  `ARQUETIPO_POSICAO_CONGELADA_NAO_CABE`, nada é movido. Foto trocada: busca nova, com aviso. A
+  identidade da foto é a URL que a peça desenha (a recomposição troca `driveFileId` pela URL da
+  página). Peça do T1a (`modo: 'referencia'`): reproduz a referência no corte central.
+- **Diagnóstico** em `composicao.arquetipo.buscaEspacial` (nunca no topo do diagnóstico): versão,
+  id, escolha, cortes e combinações avaliadas, faixas, vencedor e até 2 alternativas (componentes,
+  tratamento estimado, leituras), recusas por motivo, exemplos e o motivo em uma frase. O
+  `compor-arte` devolve a forma compacta.
+- **medir-copy não busca**: `avaliacaoEspacial: 'nao-executada'` — garante o encaixe estrutural, não
+  uma posição visual boa na foto.
+- **Fora do CP2B**: escolha automática de arquétipo, logo inteligente (a logo de referência fixa
+  acompanha a faixa do serviço; contraste da logo é do CP3), SVG/elementos (T1b), o modelo
+  base-esquerda.
+
+Detalhe em `docs/design/arquetipos-minimalistas-v1.md`, seção "CP2B".
