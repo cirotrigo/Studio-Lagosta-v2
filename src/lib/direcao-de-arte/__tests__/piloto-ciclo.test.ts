@@ -94,7 +94,7 @@ import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
 import { CreativeError } from '@/lib/creatives/errors'
 import { arquivosDaFixture, comArquivos, exigirMedidaFiel, fixture, fotoReconstruida } from './suporte/fixture'
 import { exigir, hojeViola } from './suporte/hoje-viola'
-import { CODIGOS, leituraDentroDoAlvo, leiturasDosTextos, textosQueInvademOAssunto, TOLERANCIA_DE_PIORA, type LeituraDoTexto } from './suporte/propriedades'
+import { CODIGOS, leituraDentroDoAlvo, leiturasDosTextos, textosQueInvadem, TOLERANCIA_DE_PIORA, type LeituraDoTexto } from './suporte/propriedades'
 
 const CANVAS = { width: 1080, height: 1920 }
 const PAGINA = 'pagina-piloto'
@@ -162,7 +162,7 @@ const RECUSAS_DE_SETUP = new Set(['AJUSTE_INVALIDO', 'PAGE_NOT_FOUND', 'PROJECT_
 /**
  * O que piorou de uma versão para a outra (BQ2): texto que estava no alvo e
  * saiu dele; texto já fora do alvo que piorou além do ruído; texto que passou a
- * invadir o assunto anotado. Texto no alvo que mexeu dentro dele não é piora.
+ * invadir a região protegida (a vitrine). Texto no alvo que mexeu dentro dele não é piora.
  */
 function pioras(antes: LeituraDoTexto[], depois: LeituraDoTexto[], invadeAntes: string[], invadeDepois: string[]) {
   const leitura = depois.filter((d) => {
@@ -192,8 +192,8 @@ describe('caracterização: o caminho real hoje', () => {
 })
 
 describe('P9 — recuperação', () => {
-  hojeViola('um ajuste persistido nunca deixa a peça pior (leitura de cada texto e invasão do assunto)', async () => {
-    const assunto = fixture.foto().assuntoAnotado.naPeca
+  hojeViola('um ajuste persistido nunca deixa a peça pior (leitura de cada texto e invasão da região protegida)', async () => {
+    const regiaoProtegida = fixture.foto().regiaoProtegida.naPeca
     const camadasAntes = banco.pagina.layers as Layer[]
     exigirMedidaFiel(camadasAntes)
     const antes = await leiturasDosTextos(camadasAntes, CANVAS)
@@ -207,8 +207,8 @@ describe('P9 — recuperação', () => {
     }
     exigirMedidaFiel(banco.pagina.layers)
     const depois = await leiturasDosTextos(banco.pagina.layers, CANVAS)
-    const invadeAntes = textosQueInvademOAssunto(camadasAntes, assunto).map((c) => c.camada)
-    const invadeDepois = textosQueInvademOAssunto(banco.pagina.layers, assunto).map((c) => c.camada)
+    const invadeAntes = textosQueInvadem(camadasAntes, regiaoProtegida).map((c) => c.camada)
+    const invadeDepois = textosQueInvadem(banco.pagina.layers, regiaoProtegida).map((c) => c.camada)
     const piorou = pioras(antes, depois, invadeAntes, invadeDepois)
     expect(piorou, JSON.stringify(piorou)).toEqual({ leitura: [], assunto: [] })
   }, 120_000)
@@ -255,9 +255,21 @@ describe('P11 — o re-render de rascunho pelo ajustar-arte no draft-only', () =
     expect(espioes.invalidar).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ pageIds: [PAGINA], apenasRascunho: true }))
   }, 120_000)
 
-  hojeViola('a versão nova, sem veredito favorável, não reabre o render do rascunho como apta (ou volta com REVISAO_HUMANA_NECESSARIA)', async () => {
-    const r = await ajustarArte({ projectId: projectId(), pageId: PAGINA, versaoEsperada: versaoDaPagina(banco.pagina)!, ajustes: structuredClone(fixture.peca().v2.revisao.ajustes) as unknown as Ajuste[], apenasRascunho: true })
-    const reabriu = espioes.invalidar.mock.calls.length > 0
-    expect(!reabriu || JSON.stringify(r).includes(CODIGOS.revisaoHumana), JSON.stringify({ reabriu, avisos: r.avisos ?? [] })).toBe(true)
+  // Contrato alvo da V1 (owner, 13/10/2026): no draft-only, ajuste que piora, deixa blocker aberto ou não tem
+  // veredito válido para a versão nova é recusado/revertido ANTES de substituir a versão do rascunho.
+  hojeViola('o ajuste que piora é recusado ANTES de substituir a versão do rascunho: página intacta, render não reaberto, REVISAO_HUMANA_NECESSARIA', async () => {
+    const antes = structuredClone(banco.pagina.layers)
+    let resposta: unknown
+    try {
+      resposta = await ajustarArte({ projectId: projectId(), pageId: PAGINA, versaoEsperada: versaoDaPagina(banco.pagina)!, ajustes: structuredClone(fixture.peca().v2.revisao.ajustes) as unknown as Ajuste[], apenasRascunho: true })
+    } catch (e) {
+      if (!(e instanceof CreativeError) || RECUSAS_DE_SETUP.has(e.code)) throw e
+      resposta = { code: e.code, details: e.details }
+    }
+    expect({
+      paginaIntacta: JSON.stringify(banco.pagina.layers) === JSON.stringify(antes),
+      renderReaberto: espioes.invalidar.mock.calls.length > 0,
+      revisaoHumana: JSON.stringify(resposta).includes(CODIGOS.revisaoHumana),
+    }).toEqual({ paginaIntacta: true, renderReaberto: false, revisaoHumana: true })
   }, 120_000)
 })

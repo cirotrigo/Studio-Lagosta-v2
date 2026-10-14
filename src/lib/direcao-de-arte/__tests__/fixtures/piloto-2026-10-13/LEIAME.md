@@ -15,7 +15,7 @@ Os testes **não dependem** de banco, Blob, Drive, rede nem do `projectId` real.
 
 | Arquivo | Conteúdo |
 |---|---|
-| `foto.json` | A foto **anonimizada**, já no enquadramento da peça (corte right-middle, 1080×1920). Também traz a caixa do assunto anotada à mão: a vitrine de gelato. |
+| `foto.json` | A foto **anonimizada**, já no enquadramento da peça (corte right-middle, 1080×1920). Também traz a `regiaoProtegida` anotada à mão: a vitrine de gelato. É região narrativamente relevante, o produto que o serviço não pode cobrir, e **não** "o assunto principal" da foto. Ela entra no compositor pela caixa `assunto` do catálogo, o único caminho que ele tem hoje para proteger uma região. |
 | `peca.json` | A spec que o agente mandou, as camadas da v1 e da v2, o registro do ajuste (`ajustes`, `aplicados`, `recusados`) e o diagnóstico gravado pelo compositor (`composicaoRegistrada`). A "v2" são as camadas da Page no momento do export, sem snapshot próprio; o replay dos ajustes da v2 sobre a v1 reproduz essas posições. |
 | `assinatura.json` | A página de assinatura de story (variante fixada por id), com os halos por grupo, e os números estruturados do projeto (`Project.assinatura`). |
 | `marca.json` | Os pares de leitura do DNA, as candidatas do véu da biblioteca atual e as duas logos cadastradas, **pixel a pixel** (RGBA) no tamanho desenhado. Logo é ativo público da marca, não dado pessoal; a média da tinta escondia as partes creme do monograma. Não há variante escura cadastrada. |
@@ -65,5 +65,15 @@ O `revisarArte` real lê o assunto que o compositor gravou (`composicao.assunto`
 
 ## O que a fixture NÃO caracteriza
 
-- **A escolha do corte** (os 3 cortes avaliados e o right-middle vencedor) e o **assunto estimado por energia** ({0, 768, 900, 1152}). Os dois dependem da textura fina que a anonimização remove. Por isso a foto entra já cortada, e P5 usa o assunto **anotado**.
+- **A escolha do corte** (os 3 cortes avaliados e o right-middle vencedor) e o **assunto estimado por energia** ({0, 768, 900, 1152}). Os dois dependem da textura fina que a anonimização remove. Por isso a foto entra já cortada, e P5 usa a **região protegida** anotada.
 - **A foto fora das janelas.** Ali só existe a grade, por isso a guarda acima.
+
+## Decisões do owner incorporadas (13/10/2026)
+
+- **Logo, critério regional.** O teste lê só os pixels opacos da logo (alfa ≥ 128) contra o fundo efetivo **no mesmo pixel** (foto, tratamentos e véus). Decide o **p10** de `|luz da logo − luz do fundo|` ≥ 45. Média e percentual de pixels no limiar ficam só como diagnóstico. Na peça, o monograma passaria pela média (46,3), mas o p10 é 21,3: as partes creme somem.
+- **Limiar 45.** Fica mantido no CP0 e no início do CP3. Pode ser recalibrado depois do benchmark REA sem mudar a semântica regional.
+- **Hierarquia.** Não há K como hard gate. `K_REFERENCIA_HIERARQUIA = 1,25` é só telemetria. A hierarquia dura testa ordem de leitura, papel e geometria.
+- **Safe interface ≠ geometria de composição.** O piso hard é 188/224. `Project.assinatura.geometria.story` (250/350) é geometria de composição e configuração legada: não vira gate e deve ser reconciliada, nunca vencer em silêncio.
+- **Portão, contrato alvo da V1.** Peça não apta **não cria rascunho**. Ela volta com `REVISAO_HUMANA_NECESSARIA`, o generationId, o pageId, o editUrl e os achados. Um ajuste que piora um rascunho existente é recusado antes de substituir a versão.
+- **Polaridade mista na mesma borda.** Sem solução aprovada, o código é `SEM_COMBINACAO` com `motivo: POLARIDADE_INCOMPATIVEL_NA_MESMA_BORDA`. Se houver solução fora de uma preferência rígida, o código é `PREFERENCIA_INVIAVEL`.
+

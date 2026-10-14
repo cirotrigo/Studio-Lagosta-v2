@@ -19,15 +19,25 @@ import { TETO_DE_COBERTURA_DO_ASSUNTO } from '@/lib/compositor/mapa-de-calma'
 // ─── Contratos (limiares e perfis) ──────────────────────────────────────────
 
 /**
- * SAFE INTERFACE do story no perfil autônomo: o piso que protege contra a UI
- * do Instagram (decisão do owner, 13/10/2026: topo 188, rodapé 224 — o padrão
- * da casa em `NUMEROS_PADRAO.geometria.story`). É o ÚNICO lugar destes testes
- * com esses números. Não é margem de composição: os 100/90 do registro do
- * owner (15/09) e os 250/350 do DNA textual ficam fora do gate.
+ * SAFE INTERFACE do story no perfil autônomo: o piso HARD que protege contra a
+ * UI do Instagram (decisão do owner, 13/10/2026: topo 188, rodapé 224 — o
+ * padrão da casa em `NUMEROS_PADRAO.geometria.story`). É o ÚNICO lugar destes
+ * testes com esses números.
+ *
+ * Safe interface NÃO é geometria de composição (decisão do owner, 13/10/2026):
+ * - a margem estética/compositiva continua vindo da assinatura/página, como hoje;
+ * - os 100/90 do registro do owner (15/09) são margem de composição;
+ * - `Project.assinatura.geometria.story` (250/350 na peça piloto) é GEOMETRIA DE
+ *   COMPOSIÇÃO / CONFIGURAÇÃO LEGADA: não é safe interface, não vira gate nesta
+ *   frente e deve ser reconciliada/migrada — nunca vencer em silêncio;
+ * - os 250/350 do DNA textual também ficam fora do gate.
  */
 export const PISO_DE_INTERFACE_DO_STORY = { topo: 188, rodape: 224 } as const
 
-/** A configuração estruturada do cliente pode ser MAIS restritiva, nunca menos. */
+/**
+ * Uma configuração estruturada de INTERFACE do cliente (futura) pode ser MAIS
+ * restritiva, nunca menos. A geometria de composição do projeto não entra aqui.
+ */
 export function interfaceDoStory(doCliente?: { topo?: number; rodape?: number }) {
   return {
     topo: Math.max(PISO_DE_INTERFACE_DO_STORY.topo, doCliente?.topo ?? 0),
@@ -38,18 +48,27 @@ export function interfaceDoStory(doCliente?: { topo?: number; rodape?: number })
 /**
  * Contraste mínimo logo × fundo (0–255): o `CONTRASTE_MINIMO` de
  * `src/lib/ai/logo-compositor.ts` (não exportado; um teste confere que o valor
- * de lá continua 45). Ressalva: lá ele compara a logo com a média do CANTO
- * (caixa + 50% de folga); aqui, com o fundo sob os pixels OPACOS da logo —
- * mais estrito. O critério por região (uma parte da logo some e a média
- * esconde) é decisão pendente do owner.
+ * de lá continua 45). Mantido em 45 no CP0/CP3 inicial (decisão do owner,
+ * 13/10/2026) — pode ser recalibrado depois do benchmark REA e do CP3, SEM
+ * mudar a semântica regional (`P10_DA_LOGO`).
  */
 export const LIMIAR_DE_CONTRASTE_DA_LOGO = 45
 
 /**
- * Razão de escala H1 / maior secundário (R80–R82). SEM DONO: decisão pendente
- * do owner. Enquanto for null, a razão não é testada (pending-owner-decision).
+ * Critério REGIONAL da logo (decisão do owner, 13/10/2026): o p10 da diferença
+ * |luz da logo − luz do fundo|, pixel a pixel, sob os pixels opacos — ou seja,
+ * ~90% da logo tem de atingir o limiar. A média sozinha não decide: ela deixa
+ * uma parte da logo sumir enquanto parece aceitável.
  */
-export const K_DA_HIERARQUIA: number | null = null
+export const P10_DA_LOGO = 0.1
+
+/**
+ * K de hierarquia (decisão do owner, 13/10/2026): NÃO existe K universal como
+ * hard gate. A Constituição admite hierarquia por escala, peso, contraste,
+ * posição, cor e espaçamento; uma razão fixa de tamanho nunca reprova uma
+ * peça. Este valor é só REFERÊNCIA de telemetria/aviso experimental.
+ */
+export const K_REFERENCIA_HIERARQUIA = 1.25
 
 /**
  * Ruído de render tolerado ao comparar duas medidas da MESMA caixa (com e sem
@@ -58,13 +77,22 @@ export const K_DA_HIERARQUIA: number | null = null
  */
 export const TOLERANCIA_DE_PIORA = 2
 
-/** Os códigos estruturados que os checkpoints vão produzir (decisões do owner, 13/10/2026). */
+/**
+ * Os códigos estruturados que os checkpoints vão produzir (decisões do owner, 13/10/2026).
+ * - SEM_COMBINACAO = não há solução viável entre as combinações permitidas
+ *   (já existe em produção, na seleção de combinações);
+ * - PREFERENCIA_INVIAVEL = há solução, mas a preferência pedida impede usá-la.
+ */
 export const CODIGOS = {
   logoSemVariante: 'LOGO_SEM_VARIANTE_LEGIVEL',
   preferenciaInviavel: 'PREFERENCIA_INVIAVEL',
   revisaoHumana: 'REVISAO_HUMANA_NECESSARIA',
-  /** Já existe em produção: a seleção de combinações recusa quando nenhuma é utilizável. */
   semCombinacao: 'SEM_COMBINACAO',
+} as const
+
+/** O detalhe estruturado de SEM_COMBINACAO quando a borda junta polaridades que nenhuma estratégia aprovada resolve. */
+export const MOTIVOS = {
+  polaridadeIncompativel: 'POLARIDADE_INCOMPATIVEL_NA_MESMA_BORDA',
 } as const
 
 // ─── Render e medida ────────────────────────────────────────────────────────
@@ -182,17 +210,25 @@ export function leituraDentroDoAlvo(l: LeituraDoTexto): boolean {
 const luz709 = (r: number, g: number, b: number) => 0.2126 * r + 0.7152 * g + 0.0722 * b
 
 export interface LeituraDaLogo {
+  /** Diagnóstico: luz média da logo e do fundo sob os pixels opacos. */
   luzDaLogo: number
   luzDoFundo: number
-  contraste: number
+  /** Diagnóstico: média da diferença pixel a pixel. NÃO decide. */
+  media: number
+  /** O critério: p10 da diferença pixel a pixel. */
+  p10: number
+  /** Diagnóstico: fração dos pixels opacos com diferença ≥ o limiar. */
+  fracaoNoLimiar: number
   pixelsOpacos: number
+  /** p10 ≥ limiar (o critério regional do owner). */
+  legivel: boolean
 }
 
 /**
- * P4 — contraste da logo contra o FUNDO EFETIVO (foto + véus, sem a logo e sem
- * a tinta dos textos), lido só sob os pixels OPACOS da logo (alfa ≥ 128, a
- * mesma regra da `luminanciaDaLogo` do logo-compositor). Supõe a logo
- * desenhada com `objectFit: contain` na caixa da camada.
+ * P4 — contraste REGIONAL da logo contra o FUNDO EFETIVO no mesmo pixel: foto
+ * + tratamentos + véus, sem a logo e sem a tinta dos textos. Só os pixels
+ * OPACOS da logo contam (alfa ≥ 128, a regra da `luminanciaDaLogo` do
+ * logo-compositor). Supõe a logo desenhada com `objectFit: contain` na caixa.
  */
 export async function leituraDaLogo(layers: Layer[], canvas: Canvas, background?: string): Promise<LeituraDaLogo | null> {
   const logo = layers.find((l) => l.type === 'logo' && l.visible !== false)
@@ -205,7 +241,7 @@ export async function leituraDaLogo(layers: Layer[], canvas: Canvas, background?
   const { data: lg, info: li } = await sharp(arquivo).ensureAlpha().resize(w, h, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).raw().toBuffer({ resolveWithObject: true })
   let somaLogo = 0
   let somaFundo = 0
-  let n = 0
+  const diferencas: number[] = []
   for (let y = 0; y < li.height; y++) {
     for (let x = 0; x < li.width; x++) {
       const p = (y * li.width + x) * li.channels
@@ -214,16 +250,30 @@ export async function leituraDaLogo(layers: Layer[], canvas: Canvas, background?
       const Y = Math.round(logo.position.y) + y
       if (X < 0 || Y < 0 || X >= bi.width || Y >= bi.height) continue
       const q = (Y * bi.width + X) * bi.channels
-      somaLogo += luz709(lg[p], lg[p + 1], lg[p + 2])
-      somaFundo += luz709(bg[q], bg[q + 1], bg[q + 2])
-      n++
+      const luzLogo = luz709(lg[p], lg[p + 1], lg[p + 2])
+      const luzFundo = luz709(bg[q], bg[q + 1], bg[q + 2])
+      somaLogo += luzLogo
+      somaFundo += luzFundo
+      diferencas.push(Math.abs(luzLogo - luzFundo))
     }
   }
+  const n = diferencas.length
   if (n === 0) return null
-  const luzDaLogo = somaLogo / n
-  const luzDoFundo = somaFundo / n
-  return { luzDaLogo, luzDoFundo, contraste: Math.abs(luzDaLogo - luzDoFundo), pixelsOpacos: n }
+  diferencas.sort((a, b) => a - b)
+  const p10 = diferencas[Math.max(0, Math.ceil(P10_DA_LOGO * n) - 1)]
+  return {
+    luzDaLogo: somaLogo / n,
+    luzDoFundo: somaFundo / n,
+    media: diferencas.reduce((s, d) => s + d, 0) / n,
+    p10,
+    fracaoNoLimiar: diferencas.filter((d) => d >= LIMIAR_DE_CONTRASTE_DA_LOGO).length / n,
+    pixelsOpacos: n,
+    legivel: p10 >= LIMIAR_DE_CONTRASTE_DA_LOGO,
+  }
 }
+
+/** Resumo para mensagens: o critério e o diagnóstico juntos. */
+export const resumoDaLogo = (l: LeituraDaLogo) => `p10 ${l.p10.toFixed(1)} (critério), média ${l.media.toFixed(1)}, ${(100 * l.fracaoNoLimiar).toFixed(0)}% dos pixels ≥ ${LIMIAR_DE_CONTRASTE_DA_LOGO}`
 
 // ─── Geometria ──────────────────────────────────────────────────────────────
 
@@ -234,18 +284,20 @@ function intersecao(a: Rect, b: Rect): number {
 }
 
 /**
- * P5 — quanto cada texto cobre o assunto, na conta do compositor
- * (`pontuarCandidatos`): vence a maior entre "fração do assunto coberta" e
- * "fração do bloco sobre o assunto"; acima de `TETO_DE_COBERTURA_DO_ASSUNTO` invade.
+ * P5 — quanto cada texto cobre uma REGIÃO PROTEGIDA (narrativamente relevante:
+ * o produto, um rosto…), na conta de cobertura do compositor
+ * (`pontuarCandidatos`): vence a maior entre "fração da região coberta" e
+ * "fração do bloco sobre a região"; acima de `TETO_DE_COBERTURA_DO_ASSUNTO`
+ * invade. Não presume que a região seja "o assunto principal" da foto.
  */
-export function textosQueInvademOAssunto(layers: Layer[], assunto: Rect) {
-  const areaAssunto = assunto.width * assunto.height
+export function textosQueInvadem(layers: Layer[], regiaoProtegida: Rect) {
+  const areaDaRegiao = regiaoProtegida.width * regiaoProtegida.height
   return layers
     .filter(ehTexto)
     .map((l) => {
       const r = rectDe(l)
-      const inter = intersecao(r, assunto)
-      return { camada: l.id, cobertura: Math.max(inter / areaAssunto, inter / (r.width * r.height)) }
+      const inter = intersecao(r, regiaoProtegida)
+      return { camada: l.id, cobertura: Math.max(inter / areaDaRegiao, inter / (r.width * r.height)) }
     })
     .filter((c) => c.cobertura > TETO_DE_COBERTURA_DO_ASSUNTO)
 }
@@ -276,19 +328,32 @@ export function ordemDeLeituraInvertida(layers: Layer[], blocos: Array<{ ordem?:
 }
 
 /**
- * P8 — o serviço é secundário: corpo menor que o do H1 e caixa inteira abaixo
- * do H1, sem tocar a caixa dele (o ponto de entrada é o H1). Sem razão
- * mínima — isso é o `K_DA_HIERARQUIA`, pendente.
+ * P7/P8 — hierarquia DURA, só estrutural e geométrica (decisão do owner,
+ * 13/10/2026): o serviço não assume a entrada do H1 (não fica acima nem
+ * dentro da faixa dele) e não se sobrepõe a ele. Tamanho NÃO entra aqui —
+ * escala é só telemetria (`telemetriaDeEscala`).
  */
 export function servicoDisputaEntrada(layers: Layer[]): string[] {
   const h1 = layers.find((l) => l.id === 'headline')
   const servico = layers.find((l) => l.id === 'servico')
   if (!h1 || !servico) return []
   const problemas: string[] = []
-  if (Number(servico.style?.fontSize) >= Number(h1.style?.fontSize)) problemas.push('serviço com corpo ≥ H1')
   if (servico.position.y < h1.position.y + h1.size.height) problemas.push('serviço acima ou dentro da faixa do H1')
   if (intersecao(rectDe(servico), rectDe(h1)) > 0) problemas.push('serviço sobre o H1')
   return problemas
+}
+
+/**
+ * Telemetria de escala: corpo do H1 / maior corpo entre os secundários, e se
+ * fica abaixo da `K_REFERENCIA_HIERARQUIA`. NUNCA reprova (o owner decidiu que
+ * não há K como hard gate): serve para aviso experimental e para calibrar.
+ */
+export function telemetriaDeEscala(layers: Layer[]): { razao: number; referencia: number; abaixoDaReferencia: boolean } | null {
+  const h1 = layers.find((l) => l.id === 'headline')
+  const secundarios = layers.filter((l) => ehTexto(l) && l.id !== 'headline')
+  if (!h1 || secundarios.length === 0) return null
+  const razao = Number(h1.style?.fontSize) / Math.max(...secundarios.map((l) => Number(l.style?.fontSize)))
+  return { razao, referencia: K_REFERENCIA_HIERARQUIA, abaixoDaReferencia: razao < K_REFERENCIA_HIERARQUIA }
 }
 
 export { luzDaCor }

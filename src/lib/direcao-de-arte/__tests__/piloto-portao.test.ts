@@ -10,6 +10,12 @@
  *   depois do commit.
  * A peça é a piloto: a v1 com a medida gravada (serviço ok:false) e a v2, que
  * nenhuma medida viu. O controle positivo é a mesma peça com a medida limpa.
+ *
+ * CONTRATO ALVO da V1 (decisão do owner, 13/10/2026): peça estruturalmente
+ * não apta NÃO cria rascunho — nem marcado. O item volta com
+ * REVISAO_HUMANA_NECESSARIA e as referências para a intervenção (generationId,
+ * pageId, editUrl e os achados estruturais). Rascunho ruim entraria na fila
+ * de aprovação, contaria como cobertura e poderia ser aprovado por engano.
  * Harness: `lotes/__tests__/agendar-leva-peca-superada.test.ts`.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -104,20 +110,38 @@ async function simular(versao: Versao) {
   return r.itens[0] as unknown as Record<string, unknown>
 }
 
-/** A escrita de verdade: devolve as criações de post que a transação tentou (o espião interrompe na primeira). */
-async function escrever(versao: Versao) {
+/**
+ * A escrita de verdade: devolve as criações de post que a transação tentou (o
+ * espião interrompe na primeira) e o item da resposta, quando o serviço volta.
+ */
+async function escrever(versao: Versao): Promise<{ criados: unknown[]; item: Record<string, unknown> | null }> {
   const { projectId, banco } = cenario(versao)
   estado.db = banco
   try {
-    await agendarItensDoLote({ projectId, loteId: LOTE, itens: [{ itemId: ITEM }], apenasRascunho: true })
+    const r = await agendarItensDoLote({ projectId, loteId: LOTE, itens: [{ itemId: ITEM }], apenasRascunho: true })
+    return { criados: estado.criados, item: r.itens[0] as unknown as Record<string, unknown> }
   } catch (e) {
     if (!(e instanceof Error) || e.message !== estado.PARADA) throw e
+    return { criados: estado.criados, item: null }
   }
-  return estado.criados
 }
 
-/** Não apta: a resposta carrega o código estruturado que o owner nomeou — recusa ou bandeira. */
+/** Qualquer menção ao código (para o controle positivo: a peça limpa não pode carregá-lo). */
 const sinalizada = (resposta: unknown) => JSON.stringify(resposta).includes(CODIGOS.revisaoHumana)
+
+/**
+ * O contrato alvo de uma peça não apta: nada criado e o item com
+ * REVISAO_HUMANA_NECESSARIA, generationId, pageId, editUrl e os achados estruturais.
+ */
+function naoAptaComReferencias(item: Record<string, unknown> | null): string[] {
+  if (!item) return ['o serviço não devolveu o item']
+  const faltas: string[] = []
+  if (item.desfecho === 'criado' || item.situacao === 'concluido') faltas.push(`rascunho criado (${String(item.situacao)}/${String(item.desfecho)})`)
+  if (item.codigo !== CODIGOS.revisaoHumana) faltas.push(`codigo ${String(item.codigo)} ≠ ${CODIGOS.revisaoHumana}`)
+  for (const campo of ['generationId', 'pageId', 'editUrl']) if (!item[campo]) faltas.push(`sem ${campo}`)
+  if (!Array.isArray(item.achados) || item.achados.length === 0) faltas.push('sem os achados estruturais')
+  return faltas
+}
 
 describe('caracterização: o agendar-leva hoje, no perfil draft-only', () => {
   it('simulação: a v1 — com o serviço medido sem leitura (ok:false) — vira rascunho RENDERED', async () => {
@@ -130,9 +154,9 @@ describe('caracterização: o agendar-leva hoje, no perfil draft-only', () => {
   })
 
   it('escrita de verdade: a transação chega a criar o post da v1 e da v2', async () => {
-    expect(await escrever('v1')).toHaveLength(1)
+    expect((await escrever('v1')).criados).toHaveLength(1)
     estado.criados = []
-    expect(await escrever('v2')).toHaveLength(1)
+    expect((await escrever('v2')).criados).toHaveLength(1)
   })
 })
 
@@ -145,28 +169,28 @@ describe('controle positivo: a peça com a medida limpa continua apta', () => {
   })
 
   it('escrita de verdade: o post é criado', async () => {
-    expect(await escrever('limpa')).toHaveLength(1)
+    expect((await escrever('limpa')).criados).toHaveLength(1)
   })
 })
 
-describe('P11 — portão', () => {
-  hojeViola('simulação: a v1, com violação estrutural medida, sai não apta (REVISAO_HUMANA_NECESSARIA)', async () => {
-    const item = await simular('v1')
-    expect(sinalizada(item), JSON.stringify(item)).toBe(true)
+describe('P11 — portão (contrato alvo: peça não apta não cria rascunho)', () => {
+  hojeViola('simulação: a v1, com violação estrutural medida, não seria criada e volta com REVISAO_HUMANA_NECESSARIA e as referências', async () => {
+    const faltas = naoAptaComReferencias(await simular('v1'))
+    expect(faltas, JSON.stringify(faltas)).toEqual([])
   })
 
-  hojeViola('simulação: a v2, sem veredito para a versão atual da página, sai não apta (REVISAO_HUMANA_NECESSARIA)', async () => {
-    const item = await simular('v2')
-    expect(sinalizada(item), JSON.stringify(item)).toBe(true)
+  hojeViola('simulação: a v2, sem veredito para a versão atual da página, não seria criada e volta com REVISAO_HUMANA_NECESSARIA e as referências', async () => {
+    const faltas = naoAptaComReferencias(await simular('v2'))
+    expect(faltas, JSON.stringify(faltas)).toEqual([])
   })
 
-  hojeViola('escrita de verdade: a v1 não vira rascunho apto — o post não é criado, ou nasce com REVISAO_HUMANA_NECESSARIA', async () => {
-    const criados = await escrever('v1')
-    expect(criados.length === 0 || sinalizada(criados), `${criados.length} post(s) criado(s)`).toBe(true)
+  hojeViola('escrita de verdade: a v1 não cria post nenhum e volta com REVISAO_HUMANA_NECESSARIA e as referências', async () => {
+    const { criados, item } = await escrever('v1')
+    expect({ criados: criados.length, faltas: naoAptaComReferencias(item) }).toEqual({ criados: 0, faltas: [] })
   })
 
-  hojeViola('escrita de verdade: a v2 não vira rascunho apto — o post não é criado, ou nasce com REVISAO_HUMANA_NECESSARIA', async () => {
-    const criados = await escrever('v2')
-    expect(criados.length === 0 || sinalizada(criados), `${criados.length} post(s) criado(s)`).toBe(true)
+  hojeViola('escrita de verdade: a v2 não cria post nenhum e volta com REVISAO_HUMANA_NECESSARIA e as referências', async () => {
+    const { criados, item } = await escrever('v2')
+    expect({ criados: criados.length, faltas: naoAptaComReferencias(item) }).toEqual({ criados: 0, faltas: [] })
   })
 })

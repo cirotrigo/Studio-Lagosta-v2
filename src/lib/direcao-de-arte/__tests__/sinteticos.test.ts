@@ -2,7 +2,8 @@
  * CP0 — casos SINTÉTICOS, para as propriedades não ficarem presas à peça da
  * Real: o mesmo compositor real, com foto, assinatura e logo geradas.
  *
- *   A  headline escura + serviço claro na MESMA borda (um véu só)
+ *   A  headline escura + serviço claro na MESMA borda por PREFERÊNCIA (âncora pedida) — há solução fora dela
+ *   A' headline escura + apoio claro na MESMA borda por ESTRUTURA (mesmo grupo da assinatura) — sem solução aprovada
  *   B  todos os textos claros
  *   C  todos os textos escuros
  *   D  logo clara sobre fundo claro
@@ -32,7 +33,7 @@ import { CreativeError } from '@/lib/creatives/errors'
 import { cenario } from './suporte/compositor'
 import { dataUrl } from './suporte/fixture'
 import { exigir, hojeViola } from './suporte/hoje-viola'
-import { CODIGOS, leituraDaLogo, leituraDentroDoAlvo, leiturasDosTextos, LIMIAR_DE_CONTRASTE_DA_LOGO, textosQueInvademOAssunto, tratamentosQuePioram } from './suporte/propriedades'
+import { CODIGOS, leituraDaLogo, leituraDentroDoAlvo, leiturasDosTextos, MOTIVOS, resumoDaLogo, textosQueInvadem, tratamentosQuePioram } from './suporte/propriedades'
 import { cenarioSintetico, fotoSintetica, logoSintetica, paginaSintetica, specSintetica, VEU_CLARO, VEU_ESCURO } from './suporte/sinteticos'
 
 const CANVAS = { width: 1080, height: 1920 }
@@ -40,6 +41,7 @@ const ESCURO = '#1E1E1E'
 const CLARO = '#F5F5F5'
 const HEADLINE = { papel: 'headline', linhas: ['Sintético'] }
 const SERVICO = { papel: 'servico', linhas: ['Seg a sex · 12h às 22h'] }
+const APOIO = { papel: 'apoio', linhas: ['Apoio claro'] }
 
 interface Caso {
   pagina: Parameters<typeof paginaSintetica>[0] extends infer P ? Omit<P & object, 'id' | 'logoUrl' | 'fundoUrl'> : never
@@ -74,37 +76,47 @@ async function montada(id: string, c: Caso): Promise<ResultadoDaComposicao> {
   return r
 }
 
+/** Uma recusa aceita: o código e, quando dado, o `motivo` do detalhe estruturado. */
+interface RecusaAceita {
+  codigo: string
+  motivo?: string
+}
+const recusaCasa = (recusa: CreativeError, aceitas: RecusaAceita[]) => aceitas.some((a) => a.codigo === recusa.code && (a.motivo === undefined || recusa.details?.motivo === a.motivo))
+
 /**
  * Polaridade numa peça composta: nenhum tratamento piora a leitura e, com
  * `noAlvo`, todo texto fica no alvo de 3:1 — ou a composição é recusada com
- * um dos códigos de inviabilidade aceitos (nunca qualquer erro).
+ * uma das recusas aceitas (código e motivo), nunca qualquer erro.
  */
-async function polaridade(id: string, c: Caso, opcoes: { noAlvo: boolean; recusasAceitas: string[] }) {
+async function polaridade(id: string, c: Caso, opcoes: { noAlvo: boolean; recusasAceitas: RecusaAceita[] }) {
   const { r, recusa } = await compor(id, c)
-  if (recusa) return expect(opcoes.recusasAceitas, `recusa ${recusa.code}`).toContain(recusa.code)
+  if (recusa) return expect(recusaCasa(recusa, opcoes.recusasAceitas), `recusa ${recusa.code} ${JSON.stringify(recusa.details ?? {})}`).toBe(true)
   const leituras = await leiturasDosTextos(r!.layers, CANVAS)
   const piores = tratamentosQuePioram(leituras)
   const foraDoAlvo = opcoes.noAlvo ? leituras.filter((l) => !leituraDentroDoAlvo(l)) : []
   expect({ piores, foraDoAlvo }, JSON.stringify({ piores, foraDoAlvo })).toEqual({ piores: [], foraDoAlvo: [] })
 }
 
-/** P4 numa peça composta: logo com contraste ≥ limiar, ou um dos códigos aceitos para o caso. */
+/** P4 numa peça composta: logo legível pelo critério regional (p10 ≥ 45), ou um dos códigos aceitos para o caso. */
 async function p4(id: string, c: Caso, codigosAceitos: string[]) {
   const { r, recusa } = await compor(id, c)
   if (recusa) return expect(codigosAceitos, `recusa ${recusa.code}`).toContain(recusa.code)
   const logo = await leituraDaLogo(r!.layers, CANVAS)
   exigir(logo, 'a peça tem logo medível')
-  expect(sinalizou(r, codigosAceitos) || logo.contraste >= LIMIAR_DE_CONTRASTE_DA_LOGO, `contraste ${logo.contraste.toFixed(1)}`).toBe(true)
+  expect(sinalizou(r, codigosAceitos) || logo.legivel, resumoDaLogo(logo)).toBe(true)
 }
 
-/** Sem solução de véu único: separar/reposicionar ou recusar com um destes. */
-const INVIAVEL = [CODIGOS.semCombinacao, CODIGOS.preferenciaInviavel]
+/** Há solução fora da preferência pedida: só PREFERENCIA_INVIAVEL. */
+const PREFERENCIA_INVIAVEL: RecusaAceita[] = [{ codigo: CODIGOS.preferenciaInviavel }]
+/** Nenhuma combinação permitida resolve a polaridade da borda: SEM_COMBINACAO com o motivo estruturado. */
+const POLARIDADE_SEM_SOLUCAO: RecusaAceita[] = [{ codigo: CODIGOS.semCombinacao, motivo: MOTIVOS.polaridadeIncompativel }]
 
 const uniforme = (v: number) => () => v
 
 describe('polaridade (P1, e o alvo onde há solução)', () => {
   // Foto a 175: o texto escuro lê sem ajuda, o claro NÃO (p98 > 142+12) — tirar o véu não resolve.
   const casoA: Caso = { pagina: { headline: { cor: ESCURO }, servico: { cor: CLARO } }, luz: uniforme(175), logo: ESCURO, blocos: [HEADLINE, SERVICO], preferencias: { ancora: 'rodape' } }
+  const casoAEstrutural: Caso = { pagina: { headline: { cor: ESCURO }, apoio: { cor: CLARO } }, luz: uniforme(175), logo: ESCURO, blocos: [HEADLINE, APOIO] }
   const casoH: Caso = { pagina: { headline: { cor: ESCURO }, servico: { cor: CLARO } }, luz: uniforme(175), logo: ESCURO, blocos: [HEADLINE, SERVICO] }
   const metade = (r: ResultadoDaComposicao, id: string) => (r.layers.find((l) => l.id === id)!.position.y > CANVAS.height / 2 ? 'baixo' : 'cima')
 
@@ -118,8 +130,18 @@ describe('polaridade (P1, e o alvo onde há solução)', () => {
     expect({ headline: metade(r, 'headline'), servico: metade(r, 'servico') }).toEqual({ headline: 'cima', servico: 'baixo' })
   }, 60_000)
 
-  hojeViola('A — headline escura + serviço claro na mesma borda: nenhum texto piora e todos no alvo, ou SEM_COMBINACAO / PREFERENCIA_INVIAVEL', () =>
-    polaridade('a', casoA, { noAlvo: true, recusasAceitas: INVIAVEL }),
+  it("A' (guarda) — headline e apoio no MESMO grupo da assinatura, no topo, sem preferência", async () => {
+    const r = await montada('a-estrutural-guarda', casoAEstrutural)
+    expect({ headline: metade(r, 'headline'), apoio: metade(r, 'apoio') }).toEqual({ headline: 'cima', apoio: 'cima' })
+  }, 60_000)
+
+  // A âncora pedida junta as polaridades; sem ela a página separa (H): há solução fora da preferência.
+  hojeViola('A — mesma borda por PREFERÊNCIA: nenhum texto piora e todos no alvo, ou PREFERENCIA_INVIAVEL', () =>
+    polaridade('a', casoA, { noAlvo: true, recusasAceitas: PREFERENCIA_INVIAVEL }),
+  60_000)
+
+  hojeViola("A' — mesma borda por ESTRUTURA: nenhum texto piora e todos no alvo, ou SEM_COMBINACAO com POLARIDADE_INCOMPATIVEL_NA_MESMA_BORDA", () =>
+    polaridade('a-estrutural', casoAEstrutural, { noAlvo: true, recusasAceitas: POLARIDADE_SEM_SOLUCAO }),
   60_000)
 
   it('B — todos os textos claros: o véu não piora nenhum (passa hoje)', async () => {
@@ -150,9 +172,11 @@ describe('logo (P4)', () => {
   // O canto superior direito é escuro; o resto da foto é claro. A logo é escura.
   const cantoEscuro = (x: number, y: number) => (x > 760 && y < 420 ? 30 : 210)
 
-  it('F (controle) — no canto claro, a mesma logo escura lê: a peça sai montada, sem código, com contraste ≥ 45 (há alternativa)', async () => {
+  it('F (controle) — no canto claro, a mesma logo escura lê: a peça sai montada, sem código, legível pelo critério regional (há alternativa)', async () => {
     const r = await montada('f-controle', { pagina: { headline: { cor: ESCURO } }, luz: cantoEscuro, logo: ESCURO, blocos: [HEADLINE], preferencias: { cantoDaMarca: 'superior-esquerdo', ancora: 'rodape' } })
-    expect((await leituraDaLogo(r.layers, CANVAS))!.contraste).toBeGreaterThanOrEqual(LIMIAR_DE_CONTRASTE_DA_LOGO)
+    const logo = await leituraDaLogo(r.layers, CANVAS)
+    exigir(logo, 'a peça tem logo medível')
+    expect(logo.legivel, resumoDaLogo(logo)).toBe(true)
   }, 60_000)
 
   // Há canto legível para a MESMA logo (o controle prova): LOGO_SEM_VARIANTE_LEGIVEL não vale aqui.
@@ -162,20 +186,20 @@ describe('logo (P4)', () => {
 })
 
 describe('preferência de alinhamento (P5)', () => {
-  // O assunto do catálogo ocupa a metade ESQUERDA do topo.
+  // A região protegida (pelo campo `assunto` do catálogo) ocupa a metade ESQUERDA do topo.
   const assunto = { x0: 0, y0: 0.05, x1: 0.5, y1: 0.45 }
   const naPeca = { x: 0, y: 0.05 * 1920, width: 540, height: 0.4 * 1920 }
   const caso = (alinha: string): Caso => ({ pagina: { headline: { cor: '#FFFFFF' } }, luz: uniforme(60), logo: CLARO, blocos: [HEADLINE], preferencias: { alinha, ancora: 'topo' }, assunto })
 
-  it('G (controle) — alinhado à direita, a peça sai montada, sem código, e o texto não toca o assunto (há alternativa)', async () => {
+  it('G (controle) — alinhado à direita, a peça sai montada, sem código, e o texto não toca a região protegida (há alternativa)', async () => {
     const r = await montada('g-controle', caso('direita'))
-    expect(textosQueInvademOAssunto(r.layers, naPeca)).toEqual([])
+    expect(textosQueInvadem(r.layers, naPeca)).toEqual([])
   }, 60_000)
 
-  hojeViola('G — alinhamento pedido inviável (esquerda, sobre o assunto): sem invasão, ou PREFERENCIA_INVIAVEL', async () => {
+  hojeViola('G — alinhamento pedido inviável (esquerda, sobre a região protegida): sem invasão, ou PREFERENCIA_INVIAVEL', async () => {
     const { r, recusa } = await compor('g', caso('esquerda'))
     if (recusa) return expect(recusa.code).toBe(CODIGOS.preferenciaInviavel)
-    const invasoes = textosQueInvademOAssunto(r!.layers, naPeca)
+    const invasoes = textosQueInvadem(r!.layers, naPeca)
     expect(sinalizou(r, [CODIGOS.preferenciaInviavel]) || invasoes.length === 0, JSON.stringify(invasoes)).toBe(true)
   }, 60_000)
 })

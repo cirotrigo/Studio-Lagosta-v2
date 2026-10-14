@@ -7,7 +7,13 @@ import { arquivosDaFixture, comArquivos, fixture, fotoReconstruida } from './fix
 import type { CenarioDoCompositor } from './compositor'
 import { medidor } from './medidor-do-piloto'
 
-export async function cenarioDoPiloto(opcoes: { assuntoNoCatalogo?: boolean } = {}): Promise<{ cenario: CenarioDoCompositor; spec: Record<string, unknown> }> {
+/**
+ * `regiaoProtegidaNoCatalogo`: a vitrine entra no compositor pelo único
+ * caminho que ele tem hoje para uma região a proteger — a caixa `assunto` do
+ * catálogo da foto (é o nome do campo em produção, não uma afirmação de que a
+ * vitrine é o assunto principal).
+ */
+export async function cenarioDoPiloto(opcoes: { regiaoProtegidaNoCatalogo?: boolean } = {}): Promise<{ cenario: CenarioDoCompositor; spec: Record<string, unknown> }> {
   const peca = fixture.peca()
   const assinatura = fixture.assinatura()
   const foto = fixture.foto()
@@ -21,7 +27,7 @@ export async function cenarioDoPiloto(opcoes: { assuntoNoCatalogo?: boolean } = 
       candidatasDoVeu: fixture.marca().candidatasDoVeuNaBibliotecaAtual,
       catalogo: {
         driveFileId: String((peca.spec.foto as { driveFileId: string }).driveFileId),
-        ...(opcoes.assuntoNoCatalogo ? { assunto: foto.assuntoAnotado.fracoesDaFoto } : {}),
+        ...(opcoes.regiaoProtegidaNoCatalogo ? { assunto: foto.regiaoProtegida.fracoesDaFoto } : {}),
       },
       medidor,
     },

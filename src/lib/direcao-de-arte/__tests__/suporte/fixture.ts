@@ -24,7 +24,8 @@ export interface FotoDaFixture {
   origem: { largura: number; altura: number }
   grade: Raster
   janelas: Array<Raster & { id: string; x: number; y: number; w: number; h: number; escala: number; motivo: string }>
-  assuntoAnotado: {
+  /** A vitrine: região protegida / narrativamente relevante — não "o assunto principal". */
+  regiaoProtegida: {
     descricao: string
     naPeca: { x: number; y: number; width: number; height: number }
     fracoesDaFoto: { x0: number; y0: number; x1: number; y1: number }

@@ -31,15 +31,17 @@ import {
   CODIGOS,
   foraDaInterface,
   interfaceDoStory,
-  K_DA_HIERARQUIA,
+  K_REFERENCIA_HIERARQUIA,
   leituraDaLogo,
   leituraDentroDoAlvo,
   leiturasDosTextos,
   LIMIAR_DE_CONTRASTE_DA_LOGO,
   ordemDeLeituraInvertida,
   PISO_DE_INTERFACE_DO_STORY,
+  resumoDaLogo,
   servicoDisputaEntrada,
-  textosQueInvademOAssunto,
+  telemetriaDeEscala,
+  textosQueInvadem,
   tratamentosQuePioram,
   type LeituraDaLogo,
   type LeituraDoTexto,
@@ -49,7 +51,7 @@ const CANVAS = { width: 1080, height: 1920 }
 const TOLERANCIA_DA_FIXTURE = 4
 
 let composta: ResultadoDaComposicao
-let comAssunto: ResultadoDaComposicao
+let comRegiao: ResultadoDaComposicao
 let leituras: LeituraDoTexto[]
 let logo: LeituraDaLogo | null
 
@@ -57,9 +59,9 @@ beforeAll(async () => {
   const comoNaProducao = await cenarioDoPiloto()
   cenario.atual = comoNaProducao.cenario
   composta = await comporPeca(comoNaProducao.spec, { somenteAvaliar: true })
-  const anotado = await cenarioDoPiloto({ assuntoNoCatalogo: true })
+  const anotado = await cenarioDoPiloto({ regiaoProtegidaNoCatalogo: true })
   cenario.atual = anotado.cenario
-  comAssunto = await comporPeca(anotado.spec, { somenteAvaliar: true })
+  comRegiao = await comporPeca(anotado.spec, { somenteAvaliar: true })
   exigirMedidaFiel(composta.layers)
   leituras = await leiturasDosTextos(composta.layers, CANVAS)
   logo = await leituraDaLogo(composta.layers, CANVAS)
@@ -123,30 +125,32 @@ describe('propriedades na peça composta (v1)', () => {
     expect(leituraDentroDoAlvo(leitura('servico')), JSON.stringify(leitura('servico'))).toBe(true)
   })
 
-  it('P4 (caracterização) — a logo tem hoje contraste abaixo do limiar contra o fundo efetivo', () => {
+  it('P4 (caracterização) — a logo não lê hoje pelo critério regional (p10 < 45)', () => {
     expect(logo!.pixelsOpacos).toBeGreaterThan(1000)
-    expect(logo!.contraste).toBeLessThan(LIMIAR_DE_CONTRASTE_DA_LOGO)
+    expect(logo!.legivel, resumoDaLogo(logo!)).toBe(false)
   })
 
-  it('P4 (caracterização) — no canto pedido, NENHUMA das duas variantes cadastradas lê na v1 (wordmark ≈17, monograma ≈38)', async () => {
+  it('P4 (caracterização) — no canto pedido, NENHUMA das duas variantes cadastradas lê na v1 pelo critério regional', async () => {
     const arquivos = await arquivosDaFixture()
     const v1 = comArquivos(fixture.peca().v1.layers, arquivos)
     const comMonograma = v1.map((l) => (l.type === 'logo' ? { ...l, fileUrl: arquivos['fixture:logo-monograma'] } : l))
     const [wordmark, monograma] = await Promise.all([leituraDaLogo(v1, CANVAS), leituraDaLogo(comMonograma, CANVAS)])
-    expect(wordmark!.contraste).toBeLessThan(LIMIAR_DE_CONTRASTE_DA_LOGO)
-    expect(monograma!.contraste).toBeLessThan(LIMIAR_DE_CONTRASTE_DA_LOGO)
+    expect(wordmark!.legivel, resumoDaLogo(wordmark!)).toBe(false)
+    expect(monograma!.legivel, resumoDaLogo(monograma!)).toBe(false)
+    // Por que a MÉDIA sozinha não decide: o monograma passaria na média (≈46), mas as partes creme
+    // somem no véu — o p10 fica em ≈21 e menos da metade dos pixels atinge o limiar.
+    expect(monograma!.media).toBeGreaterThanOrEqual(LIMIAR_DE_CONTRASTE_DA_LOGO)
+    expect(monograma!.fracaoNoLimiar).toBeLessThan(0.9)
   })
 
-  hojeViola('P4 logo — contraste ≥ 45 contra o fundo efetivo, ou LOGO_SEM_VARIANTE_LEGIVEL / PREFERENCIA_INVIAVEL (o canto veio do DNA)', () => {
+  hojeViola('P4 logo — critério regional (p10 da diferença pixel a pixel ≥ 45), ou LOGO_SEM_VARIANTE_LEGIVEL / PREFERENCIA_INVIAVEL (o canto veio do DNA)', () => {
     const sinalizada = [CODIGOS.logoSemVariante, CODIGOS.preferenciaInviavel].some((c) => JSON.stringify(composta.diagnostico).includes(c))
-    expect(sinalizada || logo!.contraste >= LIMIAR_DE_CONTRASTE_DA_LOGO, `contraste ${logo!.contraste.toFixed(1)}`).toBe(true)
+    expect(sinalizada || logo!.legivel, resumoDaLogo(logo!)).toBe(true)
   })
 
-  it.todo('P4 critério por REGIÃO da logo (uma parte some e a média esconde) — pending-owner-decision; hoje o limiar vale sobre a média dos pixels opacos')
-
-  it('P5 zona — com a vitrine anotada no catálogo, nenhum texto invade o assunto (passa hoje)', () => {
-    expect(comAssunto.diagnostico.assuntoOrigem).toBe('catalogo')
-    expect(textosQueInvademOAssunto(comAssunto.layers, fixture.foto().assuntoAnotado.naPeca)).toEqual([])
+  it('P5 região protegida — com a vitrine (produto) no catálogo, nenhum texto a invade (passa hoje)', () => {
+    expect(comRegiao.diagnostico.assuntoOrigem).toBe('catalogo')
+    expect(textosQueInvadem(comRegiao.layers, fixture.foto().regiaoProtegida.naPeca)).toEqual([])
   })
 
   hojeViola('P6 safe interface — texto e logo fora das faixas da UI do story (piso 188/224)', () => {
@@ -160,19 +164,48 @@ describe('propriedades na peça composta (v1)', () => {
     expect(sinalizado || inversoes.length === 0, JSON.stringify(inversoes)).toBe(true)
   })
 
-  it.todo(`P7 razão de escala H1 / maior secundário ≥ K — pending-owner-decision (K_DA_HIERARQUIA = ${K_DA_HIERARQUIA})`)
-
-  it('P8 serviço × H1 — serviço secundário: corpo menor e abaixo do H1 (passa hoje)', () => {
+  it('P7/P8 papel e geometria (duros) — o serviço não assume a entrada do H1 nem se sobrepõe a ele (passa hoje)', () => {
     expect(servicoDisputaEntrada(composta.layers)).toEqual([])
+  })
+
+  it(`telemetria de escala na piloto — razão H1/secundário registrada contra a referência ${K_REFERENCIA_HIERARQUIA} (nunca reprova)`, () => {
+    const t = telemetriaDeEscala(composta.layers)
+    expect(t).not.toBeNull()
+    expect(t!.razao).toBeCloseTo(84 / 40, 5)
+    expect(t!.abaixoDaReferencia).toBe(false)
   })
 })
 
-describe('contrato da safe interface (decisão do owner, 13/10/2026)', () => {
-  it('o piso é 188/224 e a configuração do cliente só pode apertar', () => {
-    expect(interfaceDoStory()).toEqual(PISO_DE_INTERFACE_DO_STORY)
-    expect(interfaceDoStory({ topo: 100, rodape: 90 })).toEqual({ topo: 188, rodape: 224 })
-    expect(interfaceDoStory({ topo: 250, rodape: 350 })).toEqual({ topo: 250, rodape: 350 })
+describe('K de hierarquia NÃO é gate (decisão do owner, 13/10/2026)', () => {
+  // H1 a 44 e serviço a 40 (razão 1,1 < 1,25), na ordem certa e sem sobreposição.
+  const texto = (id: string, y: number, fontSize: number): Layer => ({ id, name: id, type: 'text', visible: true, locked: false, order: 1, content: id, position: { x: 90, y }, size: { width: 800, height: fontSize + 12 }, style: { fontSize } })
+  const peca = [texto('headline', 400, 44), texto('servico', 1500, 40)]
+
+  it('uma peça abaixo da referência passa nas propriedades duras de hierarquia', () => {
+    expect(ordemDeLeituraInvertida(peca, [{ ordem: 0, papel: 'headline' }, { ordem: 1, papel: 'servico' }])).toEqual([])
+    expect(servicoDisputaEntrada(peca)).toEqual([])
   })
 
-  it.todo('pending-owner-decision: Project.assinatura.geometria.story (250/350) é safe interface ou margem de composição? Hoje a derivação pela página o sobrepõe (148/100)')
+  it('e só a telemetria registra que ficou abaixo da referência', () => {
+    expect(telemetriaDeEscala(peca)).toMatchObject({ referencia: K_REFERENCIA_HIERARQUIA, abaixoDaReferencia: true })
+  })
+})
+
+describe('safe interface ≠ geometria de composição (decisões do owner, 13/10/2026)', () => {
+  it('o piso HARD de interface é 188/224, e uma configuração de INTERFACE do cliente só pode apertar', () => {
+    expect(interfaceDoStory()).toEqual(PISO_DE_INTERFACE_DO_STORY)
+    expect(interfaceDoStory({ topo: 100, rodape: 90 })).toEqual({ topo: 188, rodape: 224 })
+    expect(interfaceDoStory({ topo: 200, rodape: 260 })).toEqual({ topo: 200, rodape: 260 })
+  })
+
+  it('Project.assinatura.geometria.story (250/350) é geometria de composição / configuração LEGADA: não entra na safe interface', () => {
+    const numeros = fixture.assinatura().numerosDoProjeto as { geometria: { story: { safeTopo: number; safeRodape: number } } }
+    expect(numeros.geometria.story).toMatchObject({ safeTopo: 250, safeRodape: 350 })
+    expect(interfaceDoStory()).toEqual({ topo: 188, rodape: 224 })
+  })
+
+  it('caracterização: hoje a geometria derivada da página (148) sobrepõe a do projeto (250) sem aviso — a reconciliar/migrar, nunca vencer em silêncio', () => {
+    expect(camada(composta.layers, 'headline').position.y).toBe(148)
+    expect(composta.diagnostico.avisos.some((a) => /250|geometria/i.test(a))).toBe(false)
+  })
 })

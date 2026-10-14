@@ -50,10 +50,12 @@ const JANELAS = [
   { id: 'servico-v2', x: 314, y: 1482, w: 454, h: 125, motivo: 'serviço na v2 (vitrine)' },
 ]
 /**
- * Assunto ANOTADO à mão na auditoria: a vitrine de gelato (o produto), em
- * coordenadas da peça (corte right-middle) — x 20..870, y 1220..1700.
+ * REGIÃO PROTEGIDA anotada à mão na auditoria (decisão do owner, 13/10/2026):
+ * a vitrine de gelato, em coordenadas da peça (corte right-middle) —
+ * x 20..870, y 1220..1700. É região narrativamente relevante (o produto que o
+ * serviço não pode cobrir), NÃO "o assunto principal" da foto.
  */
-const ASSUNTO_ANOTADO_NA_PECA = { x: 20, y: 1220, width: 850, height: 480 }
+const REGIAO_PROTEGIDA_NA_PECA = { x: 20, y: 1220, width: 850, height: 480 }
 
 const ler = (nome: string) => JSON.parse(fs.readFileSync(path.join(entrada, nome), 'utf8'))
 const b64 = (b: Buffer) => b.toString('base64')
@@ -116,15 +118,15 @@ async function main() {
     const recorte = await sharp(foto).extract({ left: j.x, top: j.y, width: j.w, height: j.h }).toBuffer()
     janelas.push({ ...j, escala: 0.5, ...(await cinzaRaw(recorte, Math.round(j.w / 2), Math.round(j.h / 2))) })
   }
-  const a = ASSUNTO_ANOTADO_NA_PECA
+  const a = REGIAO_PROTEGIDA_NA_PECA
   fs.writeFileSync(path.join(saida, 'foto.json'), JSON.stringify({
     descricao: 'Foto de ambiente da peça piloto, anonimizada: grade de luminância + janelas de medida (ver LEIAME.md).',
     origem: { largura: W, altura: H },
     corte: { daFotoOriginal: { largura: metaOriginal.width, altura: metaOriginal.height }, ...CORTE_DA_PECA, posicao: 'right-middle' },
     grade,
     janelas,
-    assuntoAnotado: {
-      descricao: 'vitrine de gelato (o produto), anotada à mão na auditoria',
+    regiaoProtegida: {
+      descricao: 'vitrine de gelato: região protegida / narrativamente relevante (o produto que o serviço não pode cobrir), anotada à mão na auditoria — não é "o assunto principal" da foto',
       naPeca: a,
       fracoesDaFoto: {
         x0: Number((a.x / W).toFixed(4)),
