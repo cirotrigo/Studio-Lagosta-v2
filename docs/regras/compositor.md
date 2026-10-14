@@ -857,3 +857,20 @@ código:**
 - assinatura e arquétipo NÃO podem virar duas fontes concorrentes.
 
 O CP2B (separar polaridades no espaço) deve nascer dessas zonas.
+
+## Catálogo de arquétipos minimalistas (T0, 14/10/2026)
+
+A decisão futura acima ganhou o contrato, ainda **sem ligação com o compositor**:
+`src/lib/compositor/arquetipos/` traz 3 modelos (`minimal-fb-topo-esquerda`,
+`minimal-fb-base-esquerda`, `minimal-fb-centro-optico`), cada um em story e feed, com referência
+e zona em frações, e um validador puro.
+
+- 🔴 **Versão publicada é imutável**: o teste fixa a impressão de cada `id@versao`. Qualquer mudança
+  é versão nova, publicada ao lado; a antiga nunca sai do catálogo.
+- A área segura é lida de `NUMEROS_PADRAO.geometria`, nunca copiada para o arquétipo: ela RECORTA
+  a zona, e o validador só confere que o recorte comporta a caixa.
+- As preferências do arquétipo (`ancora`, `alinha`, `cantoDaMarca`) têm de concordar com a
+  geometria (`PREFERENCIA_INCOERENTE`): nem dentro do arquétipo há duas fontes de posição.
+- O arquétipo não guarda fonte, cor nem cliente.
+
+Detalhe e próximos passos (T1a, T1b, CP2B) em `docs/design/arquetipos-minimalistas-v1.md`.
