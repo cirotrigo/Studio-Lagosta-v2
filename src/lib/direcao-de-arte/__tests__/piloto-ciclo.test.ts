@@ -10,6 +10,7 @@
  */
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
+const espioes = vi.hoisted(() => ({ invalidar: vi.fn(async () => ({ invalidados: 1, congelados: [] as string[] })) }))
 const banco = vi.hoisted(() => ({
   pagina: null as any,
   relogio: 1_000,
@@ -17,6 +18,10 @@ const banco = vi.hoisted(() => ({
   putSeq: 0,
   projeto: null as any,
   foto: null as Buffer | null,
+  /** A Generation do compositor (v1), como o revisor a lê: dela saem o assunto gravado e a assinatura de referência. */
+  geracaoDoCompositor: null as any,
+  /** A página de assinatura (o revisor compara corpo e entrelinha com ela). */
+  assinatura: null as any,
 }))
 
 vi.mock('@/lib/db', () => {
@@ -27,7 +32,8 @@ vi.mock('@/lib/db', () => {
   const db: Record<string, any> = {
     project: { findUnique: async () => banco.projeto },
     page: {
-      findUnique: async ({ where }: { where: { id: string } }) => (banco.pagina && where.id === banco.pagina.id ? comTemplate() : null),
+      findUnique: async ({ where }: { where: { id: string } }) =>
+        banco.pagina && where.id === banco.pagina.id ? comTemplate() : banco.assinatura && where.id === banco.assinatura.id ? banco.assinatura : null,
       update: async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
         if (!banco.pagina || where.id !== banco.pagina.id) throw new Error('page not found')
         tocar(data)
@@ -48,7 +54,8 @@ vi.mock('@/lib/db', () => {
         return { id }
       },
       findFirst: async () => banco.generations.at(-1) ?? null,
-      findMany: async () => [],
+      // Mais recentes primeiro, como no `orderBy: createdAt desc` do revisor.
+      findMany: async () => [...banco.generations].reverse().concat(banco.geracaoDoCompositor ? [banco.geracaoDoCompositor] : []),
     },
     knowledgeBaseEntry: { findFirst: async () => null },
     $queryRaw: async () => [],
@@ -74,7 +81,7 @@ vi.mock('@/lib/creatives/server-text-measurer', async () => {
 vi.mock('@/lib/creatives/text-autofix', () => ({
   aplicarAutofixOuFalhar: async (a: { layers: unknown[] }) => ({ layers: a.layers, autocorrecao: { necessaria: false, aplicada: false, iteracoes: 0, ajustes: [], pendencias: [] }, avisos: [] }),
 }))
-vi.mock('@/lib/posts/invalidate-renders', () => ({ invalidateScheduledRenders: async () => ({ invalidados: 0, congelados: [] }) }))
+vi.mock('@/lib/posts/invalidate-renders', () => ({ invalidateScheduledRenders: espioes.invalidar }))
 vi.mock('@/lib/compositor/recompor', () => ({ travarRecomposicaoDaArte: vi.fn(async () => undefined), pedirRecomposicaoDaArteCongelada: vi.fn(async () => null) }))
 vi.mock('@/lib/aprendizado/captura', () => ({ registrarDecisaoSemSugestao: vi.fn(async () => null) }))
 // O renderizador NÃO é mockado: a régua e o oráculo medem o render de verdade.
@@ -85,9 +92,9 @@ import { ajustarArte } from '@/lib/creatives/arte-rapida'
 import { revisarArte } from '@/lib/creatives/revisao/revisar-arte'
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
 import { CreativeError } from '@/lib/creatives/errors'
-import { arquivosDaFixture, comArquivos, fixture, fotoReconstruida } from './suporte/fixture'
-import { hojeViola } from './suporte/hoje-viola'
-import { CODIGOS, leiturasDosTextos, textosQueInvademOAssunto, TOLERANCIA_DE_PIORA, type LeituraDoTexto } from './suporte/propriedades'
+import { arquivosDaFixture, comArquivos, exigirMedidaFiel, fixture, fotoReconstruida } from './suporte/fixture'
+import { exigir, hojeViola } from './suporte/hoje-viola'
+import { CODIGOS, leituraDentroDoAlvo, leiturasDosTextos, textosQueInvademOAssunto, TOLERANCIA_DE_PIORA, type LeituraDoTexto } from './suporte/propriedades'
 
 const CANVAS = { width: 1080, height: 1920 }
 const PAGINA = 'pagina-piloto'
@@ -99,11 +106,23 @@ beforeAll(async () => {
 }, 60_000)
 
 beforeEach(() => {
+  espioes.invalidar.mockClear()
   const peca = fixture.peca()
   banco.relogio = 1_000
   banco.generations = []
   banco.putSeq = 0
   banco.projeto = { id: Number(peca.spec.projectId), name: 'Projeto da fixture', userId: 'dono-interno', instagramAccountId: null, assinatura: fixture.assinatura().numerosDoProjeto }
+  banco.assinatura = fixture.assinatura().pagina
+  banco.geracaoDoCompositor = {
+    id: 'gen-compositor',
+    sourcePageId: null,
+    fieldValues: {
+      pageId: PAGINA,
+      source: 'compositor',
+      imageUrl: arquivos['fixture:foto'],
+      composicao: { ...peca.composicaoRegistrada, formato: 'story' },
+    },
+  }
   banco.pagina = {
     id: PAGINA,
     name: 'Peça piloto (story)',
@@ -127,13 +146,23 @@ const camada = (ls: Layer[], id: string) => ls.find((l) => l.id === id)!
 /** Problemas abertos de verdade: `fonte-nao-carregada` é do ambiente de teste (as fontes da marca não estão aqui). */
 const problemasAbertos = (r: Awaited<ReturnType<typeof revisar>>) => r.relatorio.achados.filter((a) => a.severidade === 'problema' && a.regra !== 'fonte-nao-carregada')
 
-/** O que piorou de uma versão para a outra: leitura de cada texto e invasão do assunto anotado. */
+/** Regras do revisor que precisam ter MEDIDO para "apta" valer alguma coisa (as que viram gate). */
+const REGRAS_DURAS = ['texto-sem-leitura', 'fora-da-area-segura', 'colisao', 'texto-cortado', 'texto-sobre-assunto'] as const
+/** Recusas de ajustar-arte que são de SETUP (entrada, versão, página), não de qualidade. */
+const RECUSAS_DE_SETUP = new Set(['AJUSTE_INVALIDO', 'PAGE_NOT_FOUND', 'PROJECT_NOT_FOUND', 'SEM_AJUSTE', 'VERSAO_OBRIGATORIA', 'VERSAO_DESATUALIZADA'])
+
+/**
+ * O que piorou de uma versão para a outra (BQ2): texto que estava no alvo e
+ * saiu dele; texto já fora do alvo que piorou além do ruído; texto que passou a
+ * invadir o assunto anotado. Texto no alvo que mexeu dentro dele não é piora.
+ */
 function pioras(antes: LeituraDoTexto[], depois: LeituraDoTexto[], invadeAntes: string[], invadeDepois: string[]) {
   const leitura = depois.filter((d) => {
     const a = antes.find((x) => x.camada === d.camada)!
+    if (leituraDentroDoAlvo(a)) return !leituraDentroDoAlvo(d)
     return d.polaridade === 'clara' ? d.com > a.com + TOLERANCIA_DE_PIORA : d.com < a.com - TOLERANCIA_DE_PIORA
   })
-  return { leitura: leitura.map((d) => `${d.camada}: ${antes.find((x) => x.camada === d.camada)!.com}→${d.com}`), assunto: invadeDepois.filter((c) => !invadeAntes.includes(c)) }
+  return { leitura: leitura.map((d) => `${d.camada}: ${antes.find((x) => x.camada === d.camada)!.com}→${d.com} (alvo ${Math.round(d.alvo)})`), assunto: invadeDepois.filter((c) => !invadeAntes.includes(c)) }
 }
 
 describe('caracterização: o caminho real hoje', () => {
@@ -158,15 +187,17 @@ describe('P9 — recuperação', () => {
   hojeViola('um ajuste persistido nunca deixa a peça pior (leitura de cada texto e invasão do assunto)', async () => {
     const assunto = fixture.foto().assuntoAnotado.naPeca
     const camadasAntes = banco.pagina.layers as Layer[]
+    exigirMedidaFiel(camadasAntes)
     const antes = await leiturasDosTextos(camadasAntes, CANVAS)
     try {
       await ajustar(fixture.peca().v2.revisao.ajustes as unknown as Ajuste[])
     } catch (e) {
-      // Recusa estruturada é um desfecho válido: nada pode ter sido gravado.
-      if (!(e instanceof CreativeError)) throw e
+      // Recusa estruturada DE QUALIDADE é um desfecho válido: nada pode ter sido gravado.
+      if (!(e instanceof CreativeError) || RECUSAS_DE_SETUP.has(e.code)) throw e
       expect(banco.pagina.layers).toEqual(camadasAntes)
       return
     }
+    exigirMedidaFiel(banco.pagina.layers)
     const depois = await leiturasDosTextos(banco.pagina.layers, CANVAS)
     const invadeAntes = textosQueInvademOAssunto(camadasAntes, assunto).map((c) => c.camada)
     const invadeDepois = textosQueInvademOAssunto(banco.pagina.layers, assunto).map((c) => c.camada)
@@ -182,10 +213,38 @@ describe('P9 — recuperação', () => {
       revisao = await revisar()
       respostas.push(revisao)
     }
-    // Guarda contra o passe falso: a régua precisa ter medido (render quebrado vira "não avaliada").
-    expect(revisao.relatorio.cobertura['texto-sem-leitura']?.estado).toBe('avaliada')
+    // Guarda contra o passe falso: as regras duras precisam ter medido (render quebrado vira "não avaliada").
+    for (const regra of REGRAS_DURAS) exigir(revisao.relatorio.cobertura[regra]?.estado !== 'nao-avaliada', `a regra ${regra} mediu`)
     const apta = problemasAbertos(revisao).length === 0
     const escalada = JSON.stringify(respostas).includes(CODIGOS.revisaoHumana)
     expect(apta || escalada, JSON.stringify(problemasAbertos(revisao).map((a) => `${a.regra}:${a.camadas.join(',')}`))).toBe(true)
   }, 240_000)
+})
+
+describe('o revisor (só medida) sobre a v1', () => {
+  hojeViola('acusa a logo sem leitura como problema (a logo creme sob o véu creme no teto claro)', async () => {
+    const r = await revisar()
+    const daLogo = r.relatorio.achados.filter((a) => a.camadas.includes('logo') && a.regra !== 'logo-sobre-texto' && a.severidade === 'problema')
+    expect(daLogo.length, JSON.stringify(r.relatorio.achados.map((a) => `${a.regra}:${a.camadas.join(',')}`))).toBeGreaterThan(0)
+  }, 120_000)
+
+  hojeViola('no serviço sem leitura, não diz "teto da marca" com a força no piso e traz correção executável', async () => {
+    const r = await revisar()
+    const servico = r.relatorio.achados.find((a) => a.regra === 'texto-sem-leitura' && a.camadas.includes('servico'))
+    exigir(servico, 'o revisor acusa o serviço sem leitura')
+    expect({ teto: /teto da marca/.test(servico.observacao ?? ''), ajustes: servico.ajustes.length > 0 }).toEqual({ teto: false, ajustes: true })
+  }, 120_000)
+})
+
+describe('P11 — o re-render de rascunho pelo ajustar-arte no draft-only', () => {
+  it('caracterização: o ajuste no perfil draft-only reabre o render dos rascunhos da página', async () => {
+    await ajustarArte({ projectId: projectId(), pageId: PAGINA, versaoEsperada: versaoDaPagina(banco.pagina)!, ajustes: structuredClone(fixture.peca().v2.revisao.ajustes) as unknown as Ajuste[], apenasRascunho: true })
+    expect(espioes.invalidar).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ pageIds: [PAGINA], apenasRascunho: true }))
+  }, 120_000)
+
+  hojeViola('a versão nova, sem veredito favorável, não reabre o render do rascunho como apta (ou volta com REVISAO_HUMANA_NECESSARIA)', async () => {
+    const r = await ajustarArte({ projectId: projectId(), pageId: PAGINA, versaoEsperada: versaoDaPagina(banco.pagina)!, ajustes: structuredClone(fixture.peca().v2.revisao.ajustes) as unknown as Ajuste[], apenasRascunho: true })
+    const reabriu = espioes.invalidar.mock.calls.length > 0
+    expect(!reabriu || JSON.stringify(r).includes(CODIGOS.revisaoHumana), JSON.stringify({ reabriu, avisos: r.avisos ?? [] })).toBe(true)
+  }, 120_000)
 })

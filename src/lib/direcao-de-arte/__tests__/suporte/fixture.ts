@@ -37,6 +37,8 @@ export interface LogoDaFixture extends Raster {
   tintaMedia: string
   luminanciaDaTinta: number
   alfa: string
+  /** base64 dos pixels RGBA no tamanho gravado — a logo é reconstruída fiel, não pela média. */
+  rgba: string
 }
 
 export interface PecaDaFixture {
@@ -87,8 +89,8 @@ export const fixture = {
 const bytes = (r: Raster) => Buffer.from(r.valores, 'base64')
 
 /**
- * A foto da peça, reconstruída: a grade de 43×64 ampliada para o tamanho
- * original e as janelas de medida coladas por cima, nas coordenadas da foto.
+ * A foto da peça, reconstruída: a grade de 43×76 ampliada para o tamanho da
+ * peça e as janelas de medida coladas por cima, nas mesmas coordenadas.
  */
 export async function fotoReconstruida(): Promise<Buffer> {
   const f = fixture.foto()
@@ -107,18 +109,32 @@ export async function fotoReconstruida(): Promise<Buffer> {
   return sharp(base, { raw: { width: W, height: H, channels: 1 } }).composite(coladas).png().toBuffer()
 }
 
-/** A logo da fixture como PNG: a máscara de alfa gravada, pintada com a tinta média. */
+/** A logo da fixture como PNG, pixel a pixel (RGBA gravado). */
 export async function logoReconstruida(logo: LogoDaFixture): Promise<Buffer> {
-  const alfa = Buffer.from(logo.alfa, 'base64')
-  const [r, g, b] = [1, 3, 5].map((i) => parseInt(logo.tintaMedia.slice(i, i + 2), 16))
-  const rgba = Buffer.alloc(logo.largura * logo.altura * 4)
-  for (let i = 0; i < alfa.length; i++) {
-    rgba[i * 4] = r
-    rgba[i * 4 + 1] = g
-    rgba[i * 4 + 2] = b
-    rgba[i * 4 + 3] = alfa[i]
-  }
-  return sharp(rgba, { raw: { width: logo.largura, height: logo.altura, channels: 4 } }).png().toBuffer()
+  return sharp(Buffer.from(logo.rgba, 'base64'), { raw: { width: logo.largura, height: logo.altura, channels: 4 } }).png().toBuffer()
+}
+
+/**
+ * Fora das janelas a foto é só a grade, que amacia os brilhos (o p98 do
+ * serviço caía de 166 para 150): medir ali seria otimista. Toda caixa de texto
+ * e de logo medida sobre a fixture tem de caber numa janela — senão é falha de
+ * SETUP (estenda as janelas no gerador), nunca um resultado.
+ */
+export function caixasForaDasJanelas(layers: Layer[]): string[] {
+  const janelas = fixture.foto().janelas
+  return layers
+    .filter((l) => (l.type === 'text' || l.type === 'rich-text' || l.type === 'logo') && l.visible !== false)
+    .filter((l) => {
+      const { x, y } = l.position
+      const { width: w, height: h } = l.size
+      return !janelas.some((j) => x >= j.x && y >= j.y && x + w <= j.x + j.w && y + h <= j.y + j.h)
+    })
+    .map((l) => l.id)
+}
+
+export function exigirMedidaFiel(layers: Layer[]): void {
+  const fora = caixasForaDasJanelas(layers)
+  if (fora.length > 0) throw new Error(`Medida fora das janelas fiéis da fixture (${fora.join(', ')}): estenda as janelas no gerador antes de medir.`)
 }
 
 export const dataUrl = (png: Buffer) => `data:image/png;base64,${png.toString('base64')}`

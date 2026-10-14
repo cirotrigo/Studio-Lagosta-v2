@@ -16,9 +16,9 @@ Os testes **não dependem** de banco, Blob, Drive, rede nem do `projectId` real.
 | Arquivo | Conteúdo |
 |---|---|
 | `foto.json` | A foto **anonimizada**, já no enquadramento da peça (corte right-middle, 1080×1920). Também traz a caixa do assunto anotada à mão: a vitrine de gelato. |
-| `peca.json` | A spec que o agente mandou, as camadas da v1 e da v2, o registro do ajuste (`ajustes`, `aplicados`, `recusados`) e o diagnóstico gravado pelo compositor (`composicaoRegistrada`). |
+| `peca.json` | A spec que o agente mandou, as camadas da v1 e da v2, o registro do ajuste (`ajustes`, `aplicados`, `recusados`) e o diagnóstico gravado pelo compositor (`composicaoRegistrada`). A "v2" são as camadas da Page no momento do export, sem snapshot próprio; o replay dos ajustes da v2 sobre a v1 reproduz essas posições. |
 | `assinatura.json` | A página de assinatura de story (variante fixada por id), com os halos por grupo, e os números estruturados do projeto (`Project.assinatura`). |
-| `marca.json` | Os pares de leitura do DNA, as candidatas do véu da biblioteca atual e as duas logos cadastradas. Cada logo vem como máscara de alfa no tamanho desenhado mais a cor média da tinta. Não há variante escura cadastrada. |
+| `marca.json` | Os pares de leitura do DNA, as candidatas do véu da biblioteca atual e as duas logos cadastradas, **pixel a pixel** (RGBA) no tamanho desenhado. Logo é ativo público da marca, não dado pessoal; a média da tinta escondia as partes creme do monograma. Não há variante escura cadastrada. |
 
 Toda URL de arquivo foi trocada por um token `fixture:*`, e `suporte/fixture.ts` reconstrói os arquivos como data URL.
 
@@ -36,6 +36,8 @@ A foto original tem clientes reconhecíveis e **não entra** na fixture. No luga
   Elas foram conferidas a olho e mostram teto, mezanino, decoração, balcão, vitrine e uma mão. Nenhum rosto.
 
 Por que as janelas existem: a grade sozinha amacia os brilhos e baixava o p98 do serviço de 166 para 150. Com isso a peça "passaria sem véu", o que muda o sentido do caso.
+
+Por isso a medida só vale dentro das janelas. Toda medida de texto ou de logo sobre a fixture passa antes por `exigirMedidaFiel`. Se uma correção futura levar um texto para fora das janelas, o teste quebra como **setup**: amplie as janelas no gerador. Ele nunca devolve uma medida otimista.
 
 ## Fidelidade (tolerância de 4 níveis, de 0 a 255)
 
@@ -57,7 +59,11 @@ O compositor real, rodando sobre a fixture, também reproduz os outros fatos gra
 - a posição e o tamanho de cada bloco e da logo;
 - o aviso de contraste do serviço.
 
+## O revisor sobre a fixture
+
+O `revisarArte` real lê o assunto que o compositor gravou (`composicao.assunto`, mesma foto e mesmo corte), como em produção. Os testes entregam a ele a Generation da v1 com esse diagnóstico e a página de assinatura. A visão não roda (`visao: false`), e o achado `fonte-nao-carregada` vem do ambiente (as fontes da marca não estão no teste), então fica fora do "apta".
+
 ## O que a fixture NÃO caracteriza
 
 - **A escolha do corte** (os 3 cortes avaliados e o right-middle vencedor) e o **assunto estimado por energia** ({0, 768, 900, 1152}). Os dois dependem da textura fina que a anonimização remove. Por isso a foto entra já cortada, e P5 usa o assunto **anotado**.
-- **A tinta exata do monograma.** Ele é dourado e creme, e a fixture guarda só a cor média. O wordmark, que é a logo usada na peça, é de cor única e fica fiel.
+- **A foto fora das janelas.** Ali só existe a grade, por isso a guarda acima.

@@ -25,7 +25,7 @@ import type { Layer } from '@/types/template'
 import { comporPeca, type ResultadoDaComposicao } from '@/lib/compositor/compor'
 import { cenario } from './suporte/compositor'
 import { cenarioDoPiloto } from './suporte/cenario-do-piloto'
-import { fixture } from './suporte/fixture'
+import { arquivosDaFixture, comArquivos, exigirMedidaFiel, fixture } from './suporte/fixture'
 import { hojeViola } from './suporte/hoje-viola'
 import {
   CODIGOS,
@@ -60,6 +60,7 @@ beforeAll(async () => {
   const anotado = await cenarioDoPiloto({ assuntoNoCatalogo: true })
   cenario.atual = anotado.cenario
   comAssunto = await comporPeca(anotado.spec, { somenteAvaliar: true })
+  exigirMedidaFiel(composta.layers)
   leituras = await leiturasDosTextos(composta.layers, CANVAS)
   logo = await leituraDaLogo(composta.layers, CANVAS)
 }, 120_000)
@@ -68,10 +69,9 @@ const camada = (layers: Layer[], id: string) => layers.find((l) => l.id === id)!
 const leitura = (id: string) => leituras.find((l) => l.camada === id)!
 
 describe('caracterização: o que o compositor faz hoje com a peça piloto', () => {
-  it('pousa os blocos e a logo onde a produção pousou', () => {
+  it('pousa os blocos e a logo onde a produção pousou (posições; o tamanho é do medidor calibrado, não é prova)', () => {
     for (const id of ['headline', 'apoio', 'servico', 'logo']) {
-      const gravada = camada(fixture.peca().v1.layers, id)
-      expect({ id, position: camada(composta.layers, id).position, size: camada(composta.layers, id).size }).toEqual({ id, position: gravada.position, size: gravada.size })
+      expect({ id, position: camada(composta.layers, id).position }).toEqual({ id, position: camada(fixture.peca().v1.layers, id).position })
     }
   })
 
@@ -128,10 +128,21 @@ describe('propriedades na peça composta (v1)', () => {
     expect(logo!.contraste).toBeLessThan(LIMIAR_DE_CONTRASTE_DA_LOGO)
   })
 
-  hojeViola('P4 logo — contraste ≥ 45 contra o fundo efetivo, ou a peça sai com LOGO_SEM_VARIANTE_LEGIVEL', () => {
-    const sinalizada = JSON.stringify(composta.diagnostico).includes(CODIGOS.logoSemVariante)
+  it('P4 (caracterização) — no canto pedido, NENHUMA das duas variantes cadastradas lê na v1 (wordmark ≈17, monograma ≈38)', async () => {
+    const arquivos = await arquivosDaFixture()
+    const v1 = comArquivos(fixture.peca().v1.layers, arquivos)
+    const comMonograma = v1.map((l) => (l.type === 'logo' ? { ...l, fileUrl: arquivos['fixture:logo-monograma'] } : l))
+    const [wordmark, monograma] = await Promise.all([leituraDaLogo(v1, CANVAS), leituraDaLogo(comMonograma, CANVAS)])
+    expect(wordmark!.contraste).toBeLessThan(LIMIAR_DE_CONTRASTE_DA_LOGO)
+    expect(monograma!.contraste).toBeLessThan(LIMIAR_DE_CONTRASTE_DA_LOGO)
+  })
+
+  hojeViola('P4 logo — contraste ≥ 45 contra o fundo efetivo, ou LOGO_SEM_VARIANTE_LEGIVEL / PREFERENCIA_INVIAVEL (o canto veio do DNA)', () => {
+    const sinalizada = [CODIGOS.logoSemVariante, CODIGOS.preferenciaInviavel].some((c) => JSON.stringify(composta.diagnostico).includes(c))
     expect(sinalizada || logo!.contraste >= LIMIAR_DE_CONTRASTE_DA_LOGO, `contraste ${logo!.contraste.toFixed(1)}`).toBe(true)
   })
+
+  it.todo('P4 critério por REGIÃO da logo (uma parte some e a média esconde) — pending-owner-decision; hoje o limiar vale sobre a média dos pixels opacos')
 
   it('P5 zona — com a vitrine anotada no catálogo, nenhum texto invade o assunto (passa hoje)', () => {
     expect(comAssunto.diagnostico.assuntoOrigem).toBe('catalogo')
@@ -143,9 +154,10 @@ describe('propriedades na peça composta (v1)', () => {
     expect(fora, JSON.stringify(fora)).toEqual([])
   })
 
-  hojeViola('P7 ordem de leitura — o bloco de ordem 0 da spec (QUARTA-FEIRA) fica acima do H1', () => {
+  hojeViola('P7 ordem de leitura — o bloco de ordem 0 da spec (QUARTA-FEIRA) fica acima do H1, ou o conflito com a assinatura sai como PREFERENCIA_INVIAVEL', () => {
     const inversoes = ordemDeLeituraInvertida(composta.layers, fixture.peca().spec.blocos)
-    expect(inversoes, JSON.stringify(inversoes)).toEqual([])
+    const sinalizado = JSON.stringify(composta.diagnostico).includes(CODIGOS.preferenciaInviavel)
+    expect(sinalizado || inversoes.length === 0, JSON.stringify(inversoes)).toBe(true)
   })
 
   it.todo(`P7 razão de escala H1 / maior secundário ≥ K — pending-owner-decision (K_DA_HIERARQUIA = ${K_DA_HIERARQUIA})`)

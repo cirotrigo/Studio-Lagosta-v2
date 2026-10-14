@@ -18,6 +18,15 @@
  */
 import { it } from 'vitest'
 
+/**
+ * Pré-condição DENTRO de um `hojeViola`: lança um `Error` comum (não uma
+ * asserção), então, se falhar, o teste quebra como setup — e não passa por
+ * "o defeito ainda reproduz".
+ */
+export function exigir(condicao: unknown, motivo: string): asserts condicao {
+  if (!condicao) throw new Error(`Pré-condição: ${motivo}`)
+}
+
 export function hojeViola(nome: string, propriedade: () => unknown | Promise<unknown>, timeout?: number) {
   it(`[hoje viola] ${nome}`, async () => {
     let erro: unknown = null

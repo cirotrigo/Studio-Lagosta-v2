@@ -13,7 +13,7 @@
  * logo-ativo3.png.
  *
  * Anonimização da foto (tem clientes reconhecíveis): ela NÃO entra. Entra
- *  - uma GRADE de luminância de 43×64 (células de ~30 px — ninguém é
+ *  - uma GRADE de luminância de 43×76 (células de ~25 px — ninguém é
  *    reconhecível), que alimenta as heurísticas de foto inteira do compositor
  *    (luz média, mapa de calma, assunto estimado);
  *  - JANELAS de medida na resolução da régua (metade da peça), só sobre as
@@ -74,7 +74,12 @@ async function cinzaRaw(buf: Buffer, largura: number, altura: number) {
   return { largura: info.width, altura: info.height, valores: b64(data) }
 }
 
-/** A logo vira máscara de alfa no tamanho em que a peça a desenha + a cor média da tinta. */
+/**
+ * A logo entra PIXEL A PIXEL (RGBA) no tamanho em que a peça a desenha — logo
+ * é ativo público da marca, não dado pessoal, e a média da tinta escondia as
+ * partes creme do monograma (achado da revisão do CP0). A tinta média e a
+ * luminância ficam como resumo.
+ */
 async function estatisticasDaLogo(arquivo: string, caixa: { largura: number; altura: number }) {
   const buf = fs.readFileSync(path.join(entrada, arquivo))
   const meta = await sharp(buf).metadata()
@@ -95,6 +100,7 @@ async function estatisticasDaLogo(arquivo: string, caixa: { largura: number; alt
     tintaMedia: `#${hex(r)}${hex(g)}${hex(b)}`.toUpperCase(),
     luminanciaDaTinta: Number((luz / n).toFixed(1)),
     alfa: b64(alfa),
+    rgba: b64(data),
   }
 }
 
@@ -168,7 +174,7 @@ async function main() {
     candidatasDoVeuNaBibliotecaAtual: ['#283D36', '#F3EADC'],
     logos: {
       wordmark: { papel: 'logo da página de assinatura (usada na peça)', ...(await estatisticasDaLogo('logo-ativo2.png', { largura: 197, altura: 95 })) },
-      monograma: { papel: 'isProjectLogo', ...(await estatisticasDaLogo('logo-ativo3.png', { largura: 96, altura: 96 })) },
+      monograma: { papel: 'isProjectLogo', ...(await estatisticasDaLogo('logo-ativo3.png', { largura: 128, altura: 128 })) },
     },
   }))
   console.log('fixture gravada em', saida)

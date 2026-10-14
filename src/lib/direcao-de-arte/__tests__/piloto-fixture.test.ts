@@ -9,10 +9,11 @@
  */
 import fs from 'node:fs'
 import path from 'node:path'
+import sharp from 'sharp'
 import { beforeAll, describe, expect, it } from 'vitest'
 
 import { medirContrasteDaPeca, type ContrasteMedido } from '@/lib/compositor/regua'
-import { arquivosDaFixture, comArquivos, fixture } from './suporte/fixture'
+import { arquivosDaFixture, caixasForaDasJanelas, comArquivos, fixture, logoReconstruida } from './suporte/fixture'
 import { leiturasDosTextos, LIMIAR_DE_CONTRASTE_DA_LOGO } from './suporte/propriedades'
 
 /**
@@ -53,15 +54,39 @@ describe('a fixture é local e anonimizada', () => {
     expect(urls.every((u) => u.startsWith('fixture:'))).toBe(true)
   })
 
-  it('a foto não entra: só uma grade de ~30 px e janelas de medida pequenas', () => {
+  it('a foto não entra: só uma grade de ~25 px e janelas de medida pequenas, em meia resolução', () => {
     const f = fixture.foto()
     expect(f.grade.largura).toBeLessThanOrEqual(43)
+    expect(f.grade.altura).toBeLessThanOrEqual(76)
+    for (const j of f.janelas) {
+      expect(j.w * j.h, j.id).toBeLessThanOrEqual(700 * 350)
+      expect(j.escala, j.id).toBe(0.5)
+    }
     const areaDasJanelas = f.janelas.reduce((s, j) => s + j.w * j.h, 0)
-    expect(areaDasJanelas / (f.origem.largura * f.origem.altura)).toBeLessThan(0.2)
+    expect(areaDasJanelas / (f.origem.largura * f.origem.altura)).toBeLessThan(0.19)
   })
 
-  it('o projeto da spec não é o id real (a fixture não depende de projectId)', () => {
-    expect(fixture.peca().spec.projectId).not.toBe(1)
+  it('o projeto da spec é o fictício 9001 (a fixture não depende do projectId real)', () => {
+    expect(fixture.peca().spec.projectId).toBe(9001)
+  })
+
+  it('toda caixa de texto e de logo da v1 e da v2 cai dentro de uma janela fiel', () => {
+    expect(caixasForaDasJanelas(fixture.peca().v1.layers)).toEqual([])
+    expect(caixasForaDasJanelas(fixture.peca().v2.layers)).toEqual([])
+  })
+
+  it('as logos são reconstruídas pixel a pixel (a luminância da tinta bate com a gravada)', async () => {
+    for (const logo of Object.values(fixture.marca().logos)) {
+      const { data, info } = await sharp(await logoReconstruida(logo)).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+      let soma = 0
+      let n = 0
+      for (let p = 0; p < data.length; p += info.channels) {
+        if (data[p + 3] < 128) continue
+        soma += 0.2126 * data[p] + 0.7152 * data[p + 1] + 0.0722 * data[p + 2]
+        n++
+      }
+      expect(Math.abs(soma / n - logo.luminanciaDaTinta), logo.papel).toBeLessThan(0.5)
+    }
   })
 })
 

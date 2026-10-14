@@ -14,7 +14,6 @@ import sharp from 'sharp'
 import type { Layer } from '@/types/template'
 import { alvoPorContraste, luzDaCor, type Rect } from '@/lib/creatives/halo/halo'
 import { alvoClaroPorContraste, textoEscuro, TOLERANCIA_DO_ALVO } from '@/lib/compositor/regua'
-import { ehGradienteDeLeitura } from '@/lib/compositor/gradiente-de-leitura'
 import { TETO_DE_COBERTURA_DO_ASSUNTO } from '@/lib/compositor/mapa-de-calma'
 
 // ─── Contratos (limiares e perfis) ──────────────────────────────────────────
@@ -39,7 +38,10 @@ export function interfaceDoStory(doCliente?: { topo?: number; rodape?: number })
 /**
  * Contraste mínimo logo × fundo (0–255): o `CONTRASTE_MINIMO` de
  * `src/lib/ai/logo-compositor.ts` (não exportado; um teste confere que o valor
- * de lá continua 45).
+ * de lá continua 45). Ressalva: lá ele compara a logo com a média do CANTO
+ * (caixa + 50% de folga); aqui, com o fundo sob os pixels OPACOS da logo —
+ * mais estrito. O critério por região (uma parte da logo some e a média
+ * esconde) é decisão pendente do owner.
  */
 export const LIMIAR_DE_CONTRASTE_DA_LOGO = 45
 
@@ -49,7 +51,11 @@ export const LIMIAR_DE_CONTRASTE_DA_LOGO = 45
  */
 export const K_DA_HIERARQUIA: number | null = null
 
-/** Ruído de render tolerado ao comparar "com tratamento" e "sem tratamento" (níveis de 0–255). */
+/**
+ * Ruído de render tolerado ao comparar duas medidas da MESMA caixa (com e sem
+ * tratamento; antes e depois de um ajuste), em níveis de 0–255. Parâmetro de
+ * medição, não limiar de qualidade: o limiar de leitura é o alvo da régua.
+ */
 export const TOLERANCIA_DE_PIORA = 2
 
 /** Os códigos estruturados que os checkpoints vão produzir (decisões do owner, 13/10/2026). */
@@ -57,6 +63,8 @@ export const CODIGOS = {
   logoSemVariante: 'LOGO_SEM_VARIANTE_LEGIVEL',
   preferenciaInviavel: 'PREFERENCIA_INVIAVEL',
   revisaoHumana: 'REVISAO_HUMANA_NECESSARIA',
+  /** Já existe em produção: a seleção de combinações recusa quando nenhuma é utilizável. */
+  semCombinacao: 'SEM_COMBINACAO',
 } as const
 
 // ─── Render e medida ────────────────────────────────────────────────────────
@@ -91,10 +99,18 @@ function semTinta(layers: Layer[]): Layer[] {
   )
 }
 
-/** A peça sem nenhum tratamento de leitura: sem gradiente de leitura e sem halo de texto. */
-function semTratamento(layers: Layer[]): Layer[] {
+/** A foto de fundo: imagem que cobre o canvas inteiro. */
+const ehFotoDeFundo = (l: Layer, canvas: Canvas) => l.type === 'image' && l.position.x <= 0 && l.position.y <= 0 && l.size.width >= canvas.width && l.size.height >= canvas.height
+
+/**
+ * A peça SEM TRATAMENTO, por exclusão: só a foto de fundo e os textos (sem
+ * tinta e sem halo). Tudo o mais — gradiente de leitura, placa, forma, halo
+ * por grupo que volte como recurso — conta como tratamento: se piorar a
+ * leitura, P1 acusa.
+ */
+function semTratamento(layers: Layer[], canvas: Canvas): Layer[] {
   return semTinta(layers)
-    .filter((l) => !ehGradienteDeLeitura(l))
+    .filter((l) => ehTexto(l) || ehFotoDeFundo(l, canvas))
     .map((l) => (ehTexto(l) ? { ...l, effects: { ...(l.effects ?? {}), background: undefined } } : l))
 }
 
@@ -135,7 +151,7 @@ export interface LeituraDoTexto {
 export async function leiturasDosTextos(layers: Layer[], canvas: Canvas, background?: string): Promise<LeituraDoTexto[]> {
   const textos = layers.filter(ehTexto)
   const rects = textos.map(rectDe)
-  const [semPng, comPng] = await Promise.all([renderizar(semTratamento(layers), canvas, background), renderizar(semTinta(layers), canvas, background)])
+  const [semPng, comPng] = await Promise.all([renderizar(semTratamento(layers, canvas), canvas, background), renderizar(semTinta(layers), canvas, background)])
   const [sem, com] = await Promise.all([percentis(semPng, canvas, rects), percentis(comPng, canvas, rects)])
   return textos.map((t, i) => {
     const cor = String(t.style?.color ?? '#FFFFFF')
