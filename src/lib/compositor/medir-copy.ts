@@ -33,8 +33,9 @@ import { estiloDeDestaqueDoPapel, prepararBlocos, type PecaParaBlocos } from './
 import { DIMENSOES, type Formato, type Papel } from './spec'
 import { colunaDaCaixa } from './blocos'
 import { conferirLogo, excessosDeLinhas, type ArquetipoPreparado } from './arquetipos/na-spec'
-import { caixasMaximas, type PapelMaterializado, type ProblemaDeMaterializacao } from './arquetipos/materializar'
-import { ajusteFinalNecessario, camadasNaReferencia, materializarUnidades, papelGeometrico, prepararNoArquetipo } from './arquetipos/no-compositor'
+import { caixasMaximas, type Materializacao, type PapelMaterializado, type ProblemaDeMaterializacao } from './arquetipos/materializar'
+import { ajusteFinalNecessario, camadasNaReferencia, papelGeometrico, prepararNoArquetipo } from './arquetipos/no-compositor'
+import { partidaNoArquetipo } from './arquetipos/candidatos-espaciais'
 import type { TextGeometryIssue } from '@/lib/creatives/text-geometry'
 import type { PapelDeTexto } from './arquetipos/tipos'
 
@@ -198,8 +199,18 @@ export interface MedicaoDoArquetipo {
   formato: Formato
   /** Por papel: a coluna de tinta (px), a capacidade de altura (px), as linhas máximas (HARD) e a estimativa SOFT. */
   papeis: Partial<Record<PapelDeTexto, { largura: number; coluna: number; capacidade: number; linhasMax: number; caracteresPorLinha?: number }>>
-  /** Onde cada caixa pousaria na referência (quando tudo coube). */
+  /**
+   * Onde cada caixa pousaria na posição de PARTIDA (quando tudo coube): a referência, ou — se a área segura do projeto
+   * a corta — a posição válida mais perto dela. Não é a posição final: desde o CP2B o compor escolhe, pela foto, o
+   * corte e a posição de cada faixa dentro das zonas.
+   */
   posicoes?: Partial<Record<PapelDeTexto | 'logo', PapelMaterializado>>
+  /**
+   * A busca espacial pela foto NÃO roda aqui (CP2B): esta medida responde "a copy cabe estruturalmente no arquétipo?"
+   * (na referência, o portão que o compor também usa) e NÃO garante que a foto tenha uma posição visual boa — isso só
+   * o compor decide (e recusa com SEM_COMBINACAO quando não tem).
+   */
+  avaliacaoEspacial: 'nao-executada'
   problemas: ProblemaDeMaterializacao[]
   excessosDeLinhas: Array<{ papel: Papel; linhas: number; linhasMax: number }>
   /** O que o ajuste final (autofix) teria de encolher na referência — com arquétipo, recusa (a mesma conferência do compor). */
@@ -384,12 +395,13 @@ export function medirCopy(args: {
   const alturaDosBlocos = medidas.reduce((s, m) => s + (m.height ?? 0), 0)
   // Com arquétipo a altura útil da página não decide nada (a capacidade é a de cada referência, abaixo).
   if (!arq && alturaDosBlocos > area.alturaUtil) avisos.push(`os blocos somam ${alturaDosBlocos}px de altura, mais que a altura útil (${area.alturaUtil}px): a peça não tem onde pousar tudo sem reduzir`)
-  // T1a: a MESMA materialização do compor — unidades por papel, na referência, na área segura do projeto.
+  // T1a/CP2B: o MESMO portão estrutural do compor — unidades por papel, na área segura do projeto, cada faixa numa
+  // posição vertical que cabe na zona (a referência, ou o resgate mais perto dela). A busca pela foto NÃO roda aqui.
   let medicaoDoArquetipo: MedicaoDoArquetipo | undefined
   if (arq) {
     const piso = (args.assinatura.pisoDoProjeto ?? args.assinatura.numeros.geometria)[args.formato]
     const unidades = noArquetipo!.unidades
-    const m = materializarUnidades({
+    const partida = partidaNoArquetipo({
       arquetipo: arq.definicao,
       formato: arq.formato,
       canvas: DIMENSOES[args.formato],
@@ -397,6 +409,10 @@ export function medirCopy(args: {
       unidades,
       logo: args.assinatura.logo ? { razao: args.assinatura.logo.razao } : null,
     })
+    const m: Materializacao = 'problemas' in partida ? { ok: false, problemas: partida.problemas } : partida.materializacao
+    for (const membro of 'resgatados' in partida ? partida.resgatados : []) {
+      avisos.push(`arquétipo: a referência de ${membro} sai da zona efetiva (a área segura do projeto a corta); a medida vale na posição válida mais perto dela, de onde o compor parte`)
+    }
     const limites = arq.definicao.formatos[arq.formato].limitesDeTexto
     const papeis: MedicaoDoArquetipo['papeis'] = {}
     for (const [papel, caixa] of Object.entries(caixasArq ?? {}) as Array<[PapelDeTexto, { largura: number; altura: number }]>) {
@@ -440,6 +456,7 @@ export function medirCopy(args: {
       problemas,
       excessosDeLinhas: excessos,
       ajustesFinais,
+      avaliacaoEspacial: 'nao-executada',
     }
   }
   return {

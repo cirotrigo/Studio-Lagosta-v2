@@ -104,7 +104,10 @@ vi.mock('@/lib/compositor/arquetipos/catalogo', async (original) => {
   }
 })
 
-import { recomporPaginaDefasada } from '@/lib/compositor/recompor'
+import { mensagemDaRecusaNoHistorico, processarRecomposicaoEmBackground, recomporPaginaDefasada } from '@/lib/compositor/recompor'
+import { comporPeca } from '@/lib/compositor/compor'
+import { pedirNovaTentativa } from '@/lib/ai/generation-queue'
+import { db } from '@/lib/db'
 import { entradaDePersistencia } from '@/lib/compositor/persistencia'
 import { resolverArquetipo } from '@/lib/compositor/arquetipos/na-spec'
 import { verArquetipo } from '@/lib/compositor/arquetipos/catalogo'
@@ -144,8 +147,12 @@ const specGravada = (arquetipo?: Record<string, unknown>) =>
     ...(arquetipo ? { arquetipo } : {}),
   }) as unknown as SpecDePeca
 const camadas = (manchete: string) => [texto('headline', 'headline', 298, manchete), texto('servico', 'servico', 1555, 'Dom · 12h às 16h')]
-/** O diagnóstico gravado: a posição da composição original e a página de assinatura com que a peça nasceu. */
-const diagnostico = { posicao: { ancora: 'topo', alinha: 'esquerda', crop: 'center-middle' }, assinatura: { pageId: 'pagina-da-assinatura' } }
+/**
+ * O diagnóstico gravado: a posição da composição original e a página de assinatura com que a peça nasceu. E o do
+ * arquétipo, como o compositor do T1a o grava (`modo: 'referencia'`): desde o CP2B a recomposição o lê (a escolha
+ * espacial) e recusa a peça com arquétipo que não o tem. Sem arquétipo na spec, ele é ignorado.
+ */
+const diagnostico = { posicao: { ancora: 'topo', alinha: 'esquerda', crop: 'center-middle' }, assinatura: { pageId: 'pagina-da-assinatura' }, arquetipo: { ...V1, modo: 'referencia' } }
 
 const CAPA = 'https://blob.test/capa.png'
 const URL_ANTIGA = 'https://blob.test/arte-rapida/8/p9-antiga.png'
@@ -234,5 +241,99 @@ describe('T1a · recomposição de peça com arquétipo', () => {
     )
     expect((erro as CreativeError).code).toBe('ARQUETIPO_VERSAO_AUSENTE')
     expect(banco.specsRecebidas).toEqual([])
+  })
+})
+
+describe('CP2B · a recomposição reproduz a escolha espacial gravada', () => {
+  const escolha = { modo: 'busca-espacial-v1', foto: 'https://blob.test/foto.png', corte: 'center-top', deslocamentos: { pre: 0, headline: -48, apoio: -48, servico: 16, logo: 16 }, cantoDaLogo: null }
+  /** Troca o diagnóstico do arquétipo da arte gravada (cópia: o `diagnostico` do arquivo é compartilhado). */
+  function comArquetipoGravado(arquetipo: unknown) {
+    const arte = banco.generations[0]
+    arte.fieldValues = { ...arte.fieldValues, composicao: { ...arte.fieldValues.composicao, arquetipo } }
+  }
+  const segundoArgumento = () => vi.mocked(comporPeca).mock.calls.at(-1)?.[1] as Record<string, unknown> | undefined
+  const patches = () => banco.sql.map((v) => { try { return JSON.parse(String(v[0])) } catch { return null } }).filter(Boolean) as Array<Record<string, unknown>>
+
+  beforeEach(() => {
+    vi.mocked(comporPeca).mockClear()
+    vi.mocked(pedirNovaTentativa).mockClear()
+  })
+
+  it('peça da busca: o comporPeca recebe a escolha gravada (corte e deslocamentos), sem refazer a busca', async () => {
+    prepararPeca(specGravada(V1))
+    comArquetipoGravado({ ...V1, modo: 'busca-espacial-v1', buscaEspacial: { versao: 'busca-espacial-v1', id: 'esc-1', escolha, vencedor: null, recusas: {} } })
+    await recomporPaginaDefasada({ pageId: 'p9' })
+    expect(segundoArgumento()).toEqual({ provar: true, escolhaEspacial: escolha })
+    expect(banco.posts.get('post-carrossel')!.mediaUrls).toEqual([CAPA, 'https://blob.test/arte-rapida/8/p9-nova.png'])
+  })
+
+  it('peça do T1a: o comporPeca recebe { modo: referencia }', async () => {
+    prepararPeca(specGravada(V1))
+    await recomporPaginaDefasada({ pageId: 'p9' })
+    expect(segundoArgumento()).toEqual({ provar: true, escolhaEspacial: { modo: 'referencia' } })
+  })
+
+  it('sem arquétipo, nenhuma escolha espacial é passada', async () => {
+    prepararPeca(specGravada())
+    await recomporPaginaDefasada({ pageId: 'p9' })
+    expect(segundoArgumento()).toEqual({ provar: true })
+  })
+
+  it('escolha ilegível: recusa ANTES de compor — nenhuma spec recebida, nenhum PNG, post intacto', async () => {
+    prepararPeca(specGravada(V1))
+    comArquetipoGravado({ ...V1, modo: 'busca-espacial-v1', buscaEspacial: { escolha: { ...escolha, deslocamentos: { headline: 0.5 } } } })
+    const erro = await recomporPaginaDefasada({ pageId: 'p9' }).then(
+      () => null,
+      (e) => e,
+    )
+    expect((erro as CreativeError).code).toBe('ARQUETIPO_ESCOLHA_ILEGIVEL')
+    expect(banco.specsRecebidas).toEqual([])
+    expect(banco.puts).toBe(0)
+    expect(banco.sql).toEqual([])
+    expect(banco.posts.get('post-carrossel')!.mediaUrls).toEqual([CAPA, URL_ANTIGA])
+  })
+
+  it('diagnóstico de outra impressão também é ilegível (nunca reproduz a escolha de outra definição)', async () => {
+    prepararPeca(specGravada(V1))
+    comArquetipoGravado({ ...V1, impressao: 'arq1-00000000000000', modo: 'referencia' })
+    const erro = await recomporPaginaDefasada({ pageId: 'p9' }).then(
+      () => null,
+      (e) => e,
+    )
+    expect((erro as CreativeError).code).toBe('ARQUETIPO_ESCOLHA_ILEGIVEL')
+    expect(banco.specsRecebidas).toEqual([])
+  })
+
+  it('posição congelada que não cabe é DETERMINÍSTICA: grava a recusa, não a recomposição, não troca a mídia, e explica no histórico', async () => {
+    prepararPeca(specGravada(V1))
+    comArquetipoGravado({ ...V1, modo: 'busca-espacial-v1', buscaEspacial: { escolha } })
+    vi.mocked(comporPeca).mockRejectedValueOnce(new CreativeError('ARQUETIPO_POSICAO_CONGELADA_NAO_CABE', 'A manchete não cabe na posição congelada.', 422, { papel: 'headline' }))
+    const historico = vi.spyOn(db.postLog, 'create')
+    const erro = await processarRecomposicaoEmBackground({ generationId: 'gen-antiga', projectId: 8, recompor: { pageId: 'p9', origem: 'editor' }, queueJobId: 'job-1' }).then(
+      () => null,
+      (e) => e,
+    )
+    expect((erro as CreativeError).code).toBe('ARQUETIPO_POSICAO_CONGELADA_NAO_CABE')
+    expect(segundoArgumento()).toMatchObject({ escolhaEspacial: escolha })
+    // Determinístico: não volta à fila.
+    expect(pedirNovaTentativa).not.toHaveBeenCalled()
+    const gravados = patches()
+    expect(gravados.some((p) => (p.recusaDaRecomposicao as { errorCode?: string } | undefined)?.errorCode === 'ARQUETIPO_POSICAO_CONGELADA_NAO_CABE')).toBe(true)
+    expect(gravados.some((p) => 'recomposicao' in p)).toBe(false)
+    expect(banco.puts).toBe(0)
+    expect(banco.posts.get('post-carrossel')!.mediaUrls).toEqual([CAPA, URL_ANTIGA])
+    const mensagem = (historico.mock.calls.at(-1)?.[0] as unknown as { data: { message: string; metadata: { errorCode: string } } }).data
+    expect(mensagem.metadata.errorCode).toBe('ARQUETIPO_POSICAO_CONGELADA_NAO_CABE')
+    expect(mensagem.message).toBe(mensagemDaRecusaNoHistorico('x', false, 'ARQUETIPO_POSICAO_CONGELADA_NAO_CABE'))
+    expect(mensagem.message).toMatch(/escolhida pela foto e está congelada/)
+    expect(mensagem.message).toMatch(/Encurte o texto ou peça uma nova composição/)
+    expect(mensagem.message).toMatch(/salvar de novo do mesmo jeito não resolve/)
+    historico.mockRestore()
+  })
+
+  it('as mensagens próprias só valem sem imagem trocada; o resto segue a genérica', () => {
+    expect(mensagemDaRecusaNoHistorico('x.', false, 'ARQUETIPO_ESCOLHA_ILEGIVEL')).toMatch(/A imagem continua sendo a anterior. Peça uma nova composição/)
+    expect(mensagemDaRecusaNoHistorico('x.', true, 'ARQUETIPO_POSICAO_CONGELADA_NAO_CABE')).toMatch(/já foi trocada/)
+    expect(mensagemDaRecusaNoHistorico('x.', false, 'TEXTO_NAO_CABE_NA_COLUNA')).toBe(mensagemDaRecusaNoHistorico('x.', false))
   })
 })

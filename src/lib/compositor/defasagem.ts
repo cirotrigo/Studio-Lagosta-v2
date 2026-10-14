@@ -37,8 +37,13 @@ import { lerCamadas } from '@/lib/posts/page-layers'
 import { renderDaPaginaCobreAMidia } from '@/lib/posts/render-da-pagina'
 import { ehClipe } from '@/lib/video/camadas-de-video'
 
+import type { CropPosition } from '@/lib/image-crop-utils'
+import { CreativeError } from '@/lib/creatives/errors'
+
 import { linhasComColchetes } from './destaques'
-import { PAPEIS, type Papel, type SpecDePeca } from './spec'
+import { CANTOS, PAPEIS, type Canto, type Papel, type SpecDePeca } from './spec'
+import { PAPEIS_DO_ARQUETIPO } from './arquetipos/tipos'
+import { MODO_BUSCA_ESPACIAL, type EscolhaEspacial, type EscolhaParaReproduzir, type MembroDaFaixa } from './arquetipos/busca-espacial-tipos'
 
 /**
  * Como `copyDosPapeis`, mas a camada RICH TEXT volta com os [colchetes] nos
@@ -568,6 +573,70 @@ export function specComAPosicaoOriginal(spec: SpecDePeca, fieldValues: unknown):
   const pedeAlinha = pref.alinha && pref.alinha !== 'auto'
   if (pedeAncora || pedeAlinha) return comPref()
   return { ...spec, preferencias: { ...pref, ancora: posicao.ancora, alinha: posicao.alinha } }
+}
+
+/** Os cortes válidos — `Record` para o tipo exigir todos os de `CropPosition`. */
+const CORTES: Record<CropPosition, true> = {
+  'left-top': true,
+  'center-top': true,
+  'right-top': true,
+  'left-middle': true,
+  'center-middle': true,
+  'right-middle': true,
+  'left-bottom': true,
+  'center-bottom': true,
+  'right-bottom': true,
+}
+const ehObjeto = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
+
+/**
+ * A ESCOLHA ESPACIAL que a recomposição reproduz (CP2B): a política de posição original da peça COM arquétipo, o
+ * par de `specComAPosicaoOriginal` (que não injeta âncora nem alinhamento nela). A escolha mora no diagnóstico
+ * gravado (`fieldValues.composicao.arquetipo` — a procedência), não na spec pública: lá ela viraria uma segunda fonte
+ * de posição pelo MCP. Sem arquétipo, `null` (nada muda). Diagnóstico ausente, de outra definição (id, versão ou
+ * impressão diferentes da spec) ou com forma ilegível RECUSA (`ARQUETIPO_ESCOLHA_ILEGIVEL`): nunca cai numa busca
+ * nova em silêncio — a peça mudaria de lugar numa edição de texto.
+ */
+export function escolhaEspacialOriginal(fieldValues: unknown, spec: SpecDePeca): EscolhaParaReproduzir | null {
+  if (!spec.arquetipo) return null
+  const recusar = (problema: string): never => {
+    throw new CreativeError(
+      'ARQUETIPO_ESCOLHA_ILEGIVEL',
+      `A posição que a foto escolheu para esta arte não pôde ser lida (${problema}); a recomposição não refaz a escolha às cegas.`,
+      422,
+      { arquetipo: spec.arquetipo, problema },
+    )
+  }
+  const composicao = ehObjeto(fieldValues) && ehObjeto(fieldValues.composicao) ? fieldValues.composicao : null
+  const gravado = composicao && ehObjeto(composicao.arquetipo) ? composicao.arquetipo : null
+  if (!gravado) return recusar('a arte não guardou o diagnóstico do arquétipo')
+  if (typeof gravado.id !== 'string' || typeof gravado.versao !== 'number' || typeof gravado.impressao !== 'string') {
+    return recusar('o diagnóstico do arquétipo não tem id, versão e impressão')
+  }
+  const { id, versao, impressao } = spec.arquetipo
+  if (gravado.id !== id || gravado.versao !== versao || gravado.impressao !== impressao) {
+    return recusar(`o diagnóstico é de ${gravado.id}@${gravado.versao} (${gravado.impressao}), a spec é de ${id}@${versao} (${impressao})`)
+  }
+  if (gravado.modo === 'referencia') return { modo: 'referencia' }
+  if (gravado.modo !== MODO_BUSCA_ESPACIAL) return recusar(`modo desconhecido: ${String(gravado.modo)}`)
+
+  const escolha = ehObjeto(gravado.buscaEspacial) && ehObjeto(gravado.buscaEspacial.escolha) ? gravado.buscaEspacial.escolha : null
+  if (!escolha || escolha.modo !== MODO_BUSCA_ESPACIAL) return recusar('a busca não gravou a escolha')
+  if (escolha.foto !== null && typeof escolha.foto !== 'string') return recusar('a foto da escolha não é texto')
+  if (typeof escolha.corte !== 'string' || !Object.prototype.hasOwnProperty.call(CORTES, escolha.corte)) return recusar(`corte inválido: ${String(escolha.corte)}`)
+  if (!ehObjeto(escolha.deslocamentos)) return recusar('a escolha não tem os deslocamentos')
+  const deslocamentos: Partial<Record<MembroDaFaixa, number>> = {}
+  for (const [membro, dy] of Object.entries(escolha.deslocamentos)) {
+    if (!(PAPEIS_DO_ARQUETIPO as readonly string[]).includes(membro)) return recusar(`membro inválido: ${membro}`)
+    if (!Number.isInteger(dy)) return recusar(`deslocamento de ${membro} não é inteiro: ${String(dy)}`)
+    deslocamentos[membro as MembroDaFaixa] = dy as number
+  }
+  const canto = escolha.cantoDaLogo
+  if (canto !== undefined && canto !== null && !(CANTOS as readonly unknown[]).includes(canto)) return recusar(`canto da logo inválido: ${String(canto)}`)
+
+  const limpa: EscolhaEspacial = { modo: MODO_BUSCA_ESPACIAL, foto: escolha.foto as string | null, corte: escolha.corte as CropPosition, deslocamentos }
+  if (canto !== undefined) limpa.cantoDaLogo = canto as Canto | null
+  return limpa
 }
 
 export interface PostComArte {

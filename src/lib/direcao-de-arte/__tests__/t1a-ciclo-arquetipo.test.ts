@@ -80,7 +80,7 @@ describe('T1a · ciclo medir-copy → fixação → compor → persistência →
     // 3. PERSISTIDO: a spec gravada é a resolvida; a composição guarda a procedência.
     const fv = entrada.fieldValues
     expect(fv.spec.arquetipo).toEqual(v1)
-    expect(fv.composicao.arquetipo).toMatchObject({ ...v1, codigoTaxonomico: 'MIN-01', modo: 'referencia' })
+    expect(fv.composicao.arquetipo).toMatchObject({ ...v1, codigoTaxonomico: 'MIN-01', modo: 'busca-espacial-v1' })
 
     // 4. RECOMPOR por mudança de copy: a cadeia da recomposição sobre a página editada, e o compositor real.
     const editadas = (entrada.layers as Layer[]).map((l) => (l.id === 'headline' ? { ...l, content: 'Almoço\nde sábado' } : l))
