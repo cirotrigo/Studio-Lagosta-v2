@@ -224,6 +224,21 @@ describe('specComACopyDaPagina', () => {
     expect(r.spec.foto).toEqual({ url: outra.fileUrl })
   })
 
+  it('CP2B: com arquétipo, a página que mostra a MESMA foto desenhada mantém o driveFileId (o assunto do catálogo não se perde)', () => {
+    const doDrive = { ...spec, foto: { driveFileId: 'abc' }, arquetipo: { id: 'minimal-fb-topo-esquerda', versao: 1, impressao: 'arq1-1f4ab8c4a215f2' } } as SpecDePeca
+    const pagina = [foto, texto('headline', 'a'), texto('apoio', 'b')]
+    const mesma = specComACopyDaPagina(doDrive, pagina, { fotoDesenhada: foto.fileUrl as string })
+    expect(mesma.spec.foto).toEqual({ driveFileId: 'abc', url: foto.fileUrl })
+    expect(mesma.avisos.join(' ')).not.toContain('foto')
+    // Foto trocada: o vínculo cai, como sempre.
+    const outra = { ...foto, fileUrl: 'https://x.public.blob.vercel-storage.com/uploads/outra.jpg' }
+    expect(specComACopyDaPagina(doDrive, [outra, texto('headline', 'a')], { fotoDesenhada: foto.fileUrl as string }).spec.foto).toEqual({ url: outra.fileUrl })
+    // Sem arquétipo, o caminho legado é o de sempre (troca pela URL, com o aviso).
+    const legado = specComACopyDaPagina({ ...doDrive, arquetipo: undefined } as SpecDePeca, pagina, { fotoDesenhada: foto.fileUrl as string })
+    expect(legado.spec.foto).toEqual({ url: foto.fileUrl })
+    expect(legado.avisos.join(' ')).toContain('não tinha foto')
+  })
+
   it('papel apagado da página sai da spec, com aviso', () => {
     const r = specComACopyDaPagina(spec, [foto, texto('headline', 'só a manchete')])
     expect(r.spec.blocos.map((b) => b.papel)).toEqual(['headline'])

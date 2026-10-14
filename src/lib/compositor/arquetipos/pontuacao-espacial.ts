@@ -149,7 +149,7 @@ export function avaliarCombinacao(args: {
     }
   }
 
-  // f. O tratamento, pela função do CP2A, por borda (a da UNIDADE, fixada na referência).
+  // f. O tratamento, pela função do CP2A, por borda (a GEOMÉTRICA da unidade na posição candidata, a mesma da régua).
   const textosNaBorda = new Map<Borda, TextoNaBorda[]>()
   for (const u of unidades) {
     for (const t of u.textos) {

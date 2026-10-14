@@ -158,9 +158,10 @@ const CAPA = 'https://blob.test/capa.png'
 const URL_ANTIGA = 'https://blob.test/arte-rapida/8/p9-antiga.png'
 
 /** Persiste a peça (o contrato que a página grava), a equipe edita a manchete, e o slide fica pronto para recompor. */
-function prepararPeca(spec: SpecDePeca) {
-  const entrada = entradaDePersistencia({ spec, opcoes: {}, projeto: { id: 8, name: 'Lagosta', userId: 'dono-interno' }, pasta: { id: 77, name: 'Programação' }, nome: 'Domingo', ordem: 0, canvas: { width: 1080, height: 1920 }, layers: camadas('Almoço de domingo') as unknown as Layer[], fundo: '#000', diagnostico, fotoUrl: 'https://blob.test/foto.png' })
-  const editadas = camadas('Almoço de sábado')
+function prepararPeca(spec: SpecDePeca, comCamadaDeFoto = false) {
+  const foto = comCamadaDeFoto ? [{ id: 'bg-foto', type: 'image', fileUrl: 'https://blob.test/foto.png', visible: true, order: 0, position: { x: 0, y: 0 }, size: { width: 1080, height: 1920 } }] : []
+  const entrada = entradaDePersistencia({ spec, opcoes: {}, projeto: { id: 8, name: 'Lagosta', userId: 'dono-interno' }, pasta: { id: 77, name: 'Programação' }, nome: 'Domingo', ordem: 0, canvas: { width: 1080, height: 1920 }, layers: [...foto, ...camadas('Almoço de domingo')] as unknown as Layer[], fundo: '#000', diagnostico, fotoUrl: 'https://blob.test/foto.png' })
+  const editadas = [...foto, ...camadas('Almoço de sábado')]
   const revisao = revisaoDaPaginaComCamadas(lerCopyAutoral(entrada.copyAutoral).copy!, editadas, { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor' })
   banco.pagina = { id: 'p9', name: 'Domingo', width: 1080, height: 1920, background: null, isTemplate: false, templateId: 77, updatedAt: new Date(5_000), layers: editadas, copyAutoral: revisao.copy }
   banco.generations = [{ id: 'gen-antiga', projectId: 8, resultUrl: URL_ANTIGA, authorName: 'compositor', sourcePageId: null, fieldValues: { ...entrada.fieldValues, pageId: 'p9' } }]
@@ -271,6 +272,13 @@ describe('CP2B · a recomposição reproduz a escolha espacial gravada', () => {
     prepararPeca(specGravada(V1))
     await recomporPaginaDefasada({ pageId: 'p9' })
     expect(segundoArgumento()).toEqual({ provar: true, escolhaEspacial: { modo: 'referencia' } })
+  })
+
+  // A foto TROCADA não recompõe (re-renderiza a página); o descarte do driveFileId nela está em `defasagem.test.ts`.
+  it('a página com a MESMA foto desenhada mantém o driveFileId: a região protegida do catálogo segue valendo na recomposição', async () => {
+    prepararPeca({ ...specGravada(V1), foto: { driveFileId: 'drive-1' } } as SpecDePeca, true)
+    await recomporPaginaDefasada({ pageId: 'p9' })
+    expect((banco.specsRecebidas.at(-1) as SpecDePeca).foto).toEqual({ driveFileId: 'drive-1', url: 'https://blob.test/foto.png' })
   })
 
   it('sem arquétipo, nenhuma escolha espacial é passada', async () => {

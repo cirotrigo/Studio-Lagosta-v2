@@ -462,7 +462,8 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
   let leituraDoContrato: ReturnType<typeof tentarCopyEfetivaDasCamadas> | null = null
   // A spec reconstruída pela página (foto, posição original) sai ANTES da decisão: com o histórico cheio é ela que
   // precisa passar em `validarSpec` para a recomposição seguir (PR10-04). Os avisos dela só valem se recompuser.
-  const reconstruida = candidataARecompor ? specComACopyDaPagina(arte.spec!, page.layers) : null
+  const fotoDesenhada = (arte.fieldValues as { imageUrl?: unknown } | undefined)?.imageUrl
+  const reconstruida = candidataARecompor ? specComACopyDaPagina(arte.spec!, page.layers, { fotoDesenhada: typeof fotoDesenhada === 'string' ? fotoDesenhada : null }) : null
   const specPosicionada = reconstruida ? specComAPosicaoOriginal(reconstruida.spec, arte.fieldValues) : null
   if (candidataARecompor) {
     const contratoDaPagina = page.copyAutoral == null ? null : lerCopyAutoral(page.copyAutoral).copy

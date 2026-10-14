@@ -863,6 +863,33 @@ describe('CP2B · correções da revisão adversarial', () => {
     expect(tratamentosQuePioram(await leiturasDosTextos(r.layers, STORY))).toEqual([])
   }, 60_000)
 
+  it('pela cadeia real da recomposição (driveFileId → URL da página), o assunto do catálogo continua protegendo a posição congelada', async () => {
+    const produto: Cena = { id: 'cp2b-produto-ciclo', arquetipo: TOPO, luz: () => 60, cores: { headline: CLARO, servico: CLARO }, assunto: { x0: 0.36, y0: 0.8, x1: 0.5, y1: 0.86 }, dataUrl: true }
+    const { entrada } = await compor(produto)
+    const fv = entrada!.fieldValues
+    const gravada = validarSpec(fv.spec).spec as SpecDePeca
+    expect(gravada.foto).toEqual({ driveFileId: 'foto-sintetica' })
+    const longa = (entrada!.layers as Layer[]).map((l) => (l.id === 'servico' ? { ...l, content: 'Domingo · das 12h às 16h' } : l))
+    const reconstruida = specComACopyDaPagina(gravada, longa, { fotoDesenhada: fv.imageUrl })
+    expect(reconstruida.spec.foto?.driveFileId).toBe('foto-sintetica')
+    const spec2 = specDaRecomposicao(specComAPosicaoOriginal(reconstruida.spec, fv), null)
+    await montar(produto)
+    const erro = await comporPeca(spec2, { somenteAvaliar: true, escolhaEspacial: escolhaEspacialOriginal(fv, gravada)! }).catch((e) => e as CreativeError)
+    expect((erro as CreativeError).code).toBe('ARQUETIPO_POSICAO_CONGELADA_NAO_CABE')
+    expect((erro as CreativeError).message).toMatch(/região protegida do catálogo/)
+  }, 60_000)
+
+  it('enquadramento FIXO com o corte central perdendo o assunto do catálogo, e um lateral preservando: PREFERENCIA_INVIAVEL', async () => {
+    const lateral: Cena = { id: 'cp2b-fixo-lateral', arquetipo: TOPO, dimensoes: { width: 1920, height: 1920 }, luz: () => 60, cores: { headline: CLARO, servico: CLARO }, assunto: { x0: 0, y0: 0.4, x1: 0.3, y1: 0.5 } }
+    // Sem a preferência, a busca vai ao corte que preserva o assunto.
+    const { r } = await compor(lateral, { somenteAvaliar: true })
+    expect(r.diagnostico.posicao.crop).toBe('left-middle')
+    await montar(lateral)
+    const e = await comporPeca({ ...specDe(lateral), preferencias: { ...specDe(lateral).preferencias, enquadramento: 'fixo' } }, { somenteAvaliar: true }).catch((x) => x as CreativeError)
+    expect((e as CreativeError).code).toBe('PREFERENCIA_INVIAVEL')
+    expect((e as CreativeError).details).toMatchObject({ preferencia: 'enquadramento', alternativa: { crop: 'left-middle' } })
+  }, 60_000)
+
   it('o motivo explica a vitória quando as posições sem véu foram eliminadas (o caso da região protegida)', async () => {
     const { r } = await peca(CENAS.regiao)
     expect(busca(r).motivo).toMatch(/as posições que leriam sem véu caíam em INVADE_REGIAO_PROTEGIDA/)

@@ -1112,7 +1112,10 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   const cores = montados.map((b) => b.cor)
   // CP2B: a foto em cada corte, para a busca espacial do arquétipo (depois do laço).
   const fotoPorCorte = new Map<CropPosition, { raster: FotoCinza | null; mapa: MapaDeCalma | null; assunto: Rect | null }>()
-  let algumCortePreservaOAssunto = false
+  // Algum corte POSSÍVEL (mesmo com o enquadramento fixo pedido) preserva o assunto do catálogo? É geometria pura
+  // (o cover de cada corte); sem isto, o corte fixo que perde o assunto passaria — os laterais só seriam vistos depois.
+  const algumCortePreservaOAssunto =
+    !!arq && !!assuntoDoCatalogo && !!foto && cortesCandidatos(foto, canvas, false).some((crop) => fracaoVisivelDoAssunto(assuntoEmPixels(assuntoDoCatalogo, { width: foto.largura, height: foto.altura }, canvas, crop), canvas) >= 0.75)
   const leiturasDoCorte = (crop: CropPosition, raster: FotoCinza | null, mapa: MapaDeCalma | null, assunto: Rect | null): LeituraDoCorte | null =>
     raster && mapa
       ? {
@@ -1131,7 +1134,6 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     const assunto = assuntoDoCatalogo ? assuntoEmPixels(assuntoDoCatalogo, { width: foto!.largura, height: foto!.altura }, canvas, crop) : mapa ? estimarAssunto(mapa) : null
     if (arq && materializacao) {
       fotoPorCorte.set(crop, { raster, mapa, assunto })
-      if (assuntoDoCatalogo && assunto && fracaoVisivelDoAssunto(assunto, canvas) >= 0.75) algumCortePreservaOAssunto = true
       continue
     }
     const candidatos = candidatosDePosicao(g, spec, pilha, crop, {

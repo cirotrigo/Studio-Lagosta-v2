@@ -142,7 +142,7 @@ export interface UnidadeDaCombinacao {
   rectComOrnamentos: Rect
   /** A pilha na posição de REFERÊNCIA (dy = 0): a hierarquia estrutural é a ordem vertical destas. */
   rectNaReferencia: Rect
-  /** A borda do tratamento, fixada pela posição de REFERÊNCIA (não vira com o dy — o plano do CP2A não salta). */
+  /** A borda do tratamento: a GEOMÉTRICA da posição candidata (o lado de H/2 da unidade com ornamentos) — a mesma da régua. */
   borda: Borda
   textos: TextoDaCombinacao[]
 }

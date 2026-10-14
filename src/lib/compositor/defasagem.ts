@@ -447,7 +447,15 @@ export interface SpecRecomposta {
  * Só a copy e a foto mudam. Formato, preferências, variante e os vínculos com
  * o plano ficam como estavam: quem recompõe está refazendo A MESMA peça.
  */
-export function specComACopyDaPagina(spec: SpecDePeca, camadasDaPagina: unknown): SpecRecomposta {
+export function specComACopyDaPagina(
+  spec: SpecDePeca,
+  camadasDaPagina: unknown,
+  /**
+   * CP2B: a URL da foto que a arte DESENHOU (`fieldValues.imageUrl`). Com arquétipo, a página que mostra essa mesma foto
+   * não troca o `driveFileId` pela URL — senão o assunto do catálogo (a região protegida) se perderia na recomposição.
+   */
+  opcoes: { fotoDesenhada?: string | null } = {},
+): SpecRecomposta {
   const avisos: string[] = []
   // Com os [colchetes] de volta: o destaque da página sobrevive à recomposição.
   // Por IDENTIDADE (PR 10): a camada extra é lida pelo id que declara, nunca
@@ -513,7 +521,11 @@ export function specComACopyDaPagina(spec: SpecDePeca, camadasDaPagina: unknown)
 
   const url = fotoDaPagina(camadasDaPagina)
   let foto = spec.foto
-  if (url && url !== spec.foto?.url) {
+  // A MESMA foto (a que a arte desenhou), com arquétipo: o vínculo com o catálogo fica, e a URL vem junto (é ela que
+  // a peça desenha, e a identidade da escolha espacial). Sem arquétipo, nada muda (o caminho legado é intocado).
+  const mesmaFoto = !!spec.arquetipo && !!url && !!spec.foto?.driveFileId && !!opcoes.fotoDesenhada && url === opcoes.fotoDesenhada
+  if (mesmaFoto) foto = { ...spec.foto, url }
+  else if (url && url !== spec.foto?.url) {
     /**
      * A foto da PÁGINA vence a da spec: ou ela nunca existiu ali, ou alguém
      * trocou a imagem no editor. O `driveFileId` antigo sai junto — apontando

@@ -935,7 +935,8 @@ se mudar.
   corta a referência, a faixa é RESGATADA na vertical (a partida é a posição válida mais perto
   dela, com aviso). `partidaNoArquetipo` é o portão estrutural, o MESMO no compor e no medir-copy.
 - 🔴 **Eliminar antes de pontuar** (`MOTIVOS_DE_ELIMINACAO`): fora da zona ou da área segura,
-  ornamento fora, corte que perde o assunto do catálogo (só quando OUTRO corte o preserva), região
+  ornamento fora, corte que perde o assunto do catálogo (só quando OUTRO corte possível o preserva —
+  conferido em todos os cortes, também com o enquadramento fixo, que então vira PREFERENCIA_INVIAVEL), região
   protegida do CATÁLOGO acima do teto (0,25; textos, unidades e a logo fixa), colisão, ordem de
   leitura, hierarquia, e o plano do CP2A `inviavel` (piora, sem cor aprovada, polaridade
   incompatível).
@@ -964,9 +965,9 @@ se mudar.
   `ARQUETIPO_POSICAO_CONGELADA_NAO_CABE`, nada é movido (o tratamento é do CP2A: só aviso). A logo
   fixa que mudou de proporção vai ao dy válido dela (aviso); a logo automática congelada que
   encostaria no texto novo vai ao canto livre (aviso). Foto trocada: busca nova, com aviso. A
-  identidade da foto é a impressão da URL que a peça desenha (a recomposição troca `driveFileId`
-  pela URL da página — e, com isso, o assunto do catálogo some na recomposição: limitação
-  conhecida). Peça do T1a (`modo: 'referencia'`): reproduz a referência no corte central e o canto
+  identidade da foto é a impressão da URL que a peça desenha; com arquétipo, a página que mostra a
+  MESMA foto desenhada (`fieldValues.imageUrl`) mantém o `driveFileId` na recomposição
+  (`specComACopyDaPagina`), e o assunto do catálogo continua protegendo. Peça do T1a (`modo: 'referencia'`): reproduz a referência no corte central e o canto
   da logo automática que gravou; foto trocada nela também faz busca nova, com aviso.
 - **Diagnóstico** em `composicao.arquetipo.buscaEspacial` (nunca no topo do diagnóstico): versão,
   id, escolha, cortes e combinações avaliadas, faixas, vencedor e até 2 alternativas (componentes,
