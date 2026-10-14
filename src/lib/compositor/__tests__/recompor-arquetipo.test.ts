@@ -312,6 +312,17 @@ describe('CP2B · a recomposição reproduz a escolha espacial gravada', () => {
     expect(banco.specsRecebidas).toEqual([])
   })
 
+  it('catálogo indisponível é TRANSITÓRIO: a recomposição volta à fila (nunca vira recusa definitiva da peça)', async () => {
+    prepararPeca(specGravada(V1))
+    comArquetipoGravado({ ...V1, modo: 'busca-espacial-v1', buscaEspacial: { escolha } })
+    vi.mocked(comporPeca).mockRejectedValueOnce(new CreativeError('CATALOGO_INDISPONIVEL', 'Não deu para ler o catálogo de fotos do projeto agora.', 503))
+    vi.mocked(pedirNovaTentativa).mockResolvedValueOnce(true as never)
+    await processarRecomposicaoEmBackground({ generationId: 'gen-antiga', projectId: 8, recompor: { pageId: 'p9', origem: 'editor' }, queueJobId: 'job-1' })
+    expect(pedirNovaTentativa).toHaveBeenCalledTimes(1)
+    expect(patches().some((p) => 'recusaDaRecomposicao' in p)).toBe(false)
+    expect(banco.posts.get('post-carrossel')!.mediaUrls).toEqual([CAPA, URL_ANTIGA])
+  })
+
   it('posição congelada que não cabe é DETERMINÍSTICA: grava a recusa, não a recomposição, não troca a mídia, e explica no histórico', async () => {
     prepararPeca(specGravada(V1))
     comArquetipoGravado({ ...V1, modo: 'busca-espacial-v1', buscaEspacial: { escolha } })

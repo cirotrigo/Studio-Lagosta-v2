@@ -373,6 +373,19 @@ export function selecionarNoArquetipo(args: ArgsDaSelecao): SelecaoNoArquetipo {
     if (args.reproduzir) {
       const daCopy = avaliacao.eliminada.filter((e) => DEPENDEM_DA_COPY.has(e.motivo))
       if (daCopy.length > 0) throw recusa(daCopy, daCopy.map((e) => e.detalhe).join('; '))
+      // O corte congelado que agora perde o assunto do catálogo também é hard: recusa sem mover. Só chega aqui quando OUTRO
+      // corte o preservaria (é a condição da eliminação) — a busca nunca o teria escolhido, então a anotação da foto mudou
+      // depois da composição. Não é a copy: a saída é uma composição nova. A peça do T1a nasceu no corte central COM o
+      // aviso de assunto perdido: recusar a edição de texto dela agora seria regressão — segue com o aviso abaixo.
+      const doCorte = args.reproduzirReferencia ? [] : avaliacao.eliminada.filter((e) => e.motivo === 'CORTE_PERDE_O_ASSUNTO')
+      if (doCorte.length > 0) {
+        throw new CreativeError(
+          'ARQUETIPO_POSICAO_CONGELADA_NAO_CABE',
+          `${chaveDoArquetipo(args.arquetipo)}: ${origem} (corte ${gravada.corte}); esse corte agora perde o assunto que o catálogo marca na foto (${doCorte[0].detalhe}). Nada foi movido: peça uma nova composição da peça.`,
+          422,
+          { arquetipo: chaveDoArquetipo(args.arquetipo), formato: args.formato, escolha: gravada, problemas: doCorte },
+        )
+      }
       if (avaliacao.eliminada.length > 0) {
         avisos.push(`A posição congelada da peça agora pede outro tratamento (${[...new Set(avaliacao.eliminada.map((e) => e.motivo))].join(', ')}) — mantida assim: a recomposição não move a peça, e o CP2A julga a leitura.`)
       }

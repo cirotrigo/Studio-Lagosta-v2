@@ -340,4 +340,9 @@ export interface DiagnosticoDaBuscaEspacial {
   exemplosDeRecusa: Array<{ crop: CropPosition; escolhas: Combinacao['escolhas']; eliminada: Eliminacao[] }>
   /** Por que o vencedor venceu, em uma frase (o critério que decidiu). */
   motivo: string
+  /**
+   * De onde veio a região protegida: a caixa do CATÁLOGO (hard, teto 0,25) ou a ESTIMADA pela foto (patamar, nunca
+   * elimina) quando a foto não tem anotação. Catálogo indisponível não chega aqui: recusa antes (CATALOGO_INDISPONIVEL).
+   */
+  regiaoProtegida?: 'catalogo' | 'estimada'
 }

@@ -259,4 +259,3 @@ describe('CP2B · resgate da referência (a referência é preferência, não ob
     expect(f.semPosicao?.motivo).toMatch(/horizontal/)
   })
 })
-

@@ -462,7 +462,9 @@ A busca é PEQUENA e explicável: faixas × candidatos × cortes, sem grid denso
   pode pousá-la sobre uma borda de tom (visto nas provas).
 - **Só a região anotada é hard.** A do catálogo elimina; a estimada pela energia é um patamar antes
   do custo do véu (não cobrir vence cobrir; nunca elimina — como recusa dura, a borda de uma faixa de
-  luz zerava a foto; atrás do véu, o texto ia para cima do prato).
+  luz zerava a foto; atrás do véu, o texto ia para cima do prato). Catálogo indisponível (erro que
+  não é `SEM_CATALOGO`) recusa a peça com arquétipo (`CATALOGO_INDISPONIVEL`, transitório) em vez de
+  cair na estimada; o diagnóstico diz a origem (`regiaoProtegida`).
 - **A borda do véu é a geométrica da posição candidata** (a da régua). A primeira versão fixava a da
   referência e, no centro-óptico, a régua corrigia o véu da outra borda (revisão adversarial).
 - **Resgate vertical.** A referência é preferência: com a área segura do projeto cortando a

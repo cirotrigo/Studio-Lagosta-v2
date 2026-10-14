@@ -44,6 +44,7 @@ import type { Layer } from '@/types/template'
 import type { Rect } from '@/lib/creatives/halo/halo'
 import type { FotoCinza } from '@/lib/creatives/halo/halo-medicao'
 import { CreativeError } from '@/lib/creatives/errors'
+import * as acervo from '@/lib/creatives/acervo'
 import { comporPeca, type OpcoesDeComposicao, type ResultadoDaComposicao } from '@/lib/compositor/compor'
 import { montarAssinatura } from '@/lib/compositor/assinatura'
 import { medirCopy } from '@/lib/compositor/medir-copy'
@@ -888,6 +889,49 @@ describe('CP2B · correções da revisão adversarial', () => {
     const e = await comporPeca({ ...specDe(lateral), preferencias: { ...specDe(lateral).preferencias, enquadramento: 'fixo' } }, { somenteAvaliar: true }).catch((x) => x as CreativeError)
     expect((e as CreativeError).code).toBe('PREFERENCIA_INVIAVEL')
     expect((e as CreativeError).details).toMatchObject({ preferencia: 'enquadramento', alternativa: { crop: 'left-middle' } })
+  }, 60_000)
+
+  it('catálogo INDISPONÍVEL com arquétipo recusa (CATALOGO_INDISPONIVEL); sem catálogo, a região é a estimada, dito; sem arquétipo, nada muda', async () => {
+    const lerCatalogo = vi.spyOn(acervo, 'lerCatalogoDoProjeto')
+    try {
+      // Com a anotação lida, o diagnóstico diz que a região protegida é a do catálogo.
+      expect(busca((await peca(CENAS.regiao)).r).regiaoProtegida).toBe('catalogo')
+      lerCatalogo.mockRejectedValueOnce(new Error('Drive fora do ar'))
+      const e = await recusa(CENAS.regiao)
+      expect(e.code).toBe('CATALOGO_INDISPONIVEL')
+      expect(e.status).toBe(503)
+      // SEM_CATALOGO é "a foto não tem anotação": compõe pela região estimada, e o diagnóstico diz isso.
+      lerCatalogo.mockRejectedValueOnce(new CreativeError('SEM_CATALOGO', 'sem catálogo', 404))
+      const { r } = await compor(CENAS.regiao, { somenteAvaliar: true })
+      expect(busca(r).regiaoProtegida).toBe('estimada')
+      // Sem arquétipo, o erro do catálogo segue engolido como sempre (o caminho legado não muda).
+      lerCatalogo.mockRejectedValueOnce(new Error('Drive fora do ar'))
+      const chamadas = lerCatalogo.mock.calls.length
+      const { r: legado } = await compor({ ...CENAS.regiao, id: 'cp2b-catalogo-legado', arquetipo: undefined }, { somenteAvaliar: true })
+      expect(lerCatalogo.mock.calls.length).toBe(chamadas + 1)
+      expect(legado.diagnostico.arquetipo).toBeUndefined()
+    } finally {
+      lerCatalogo.mockRestore()
+    }
+  }, 60_000)
+
+  it('na reprodução, o corte congelado que passou a perder o assunto do catálogo recusa a peça do CP2B; a do T1a segue com aviso', async () => {
+    const lateral: Cena = { id: 'cp2b-anotacao-mudou', arquetipo: TOPO, dimensoes: { width: 1920, height: 1920 }, luz: () => 60, cores: { headline: CLARO, servico: CLARO }, assunto: { x0: 0, y0: 0.4, x1: 0.3, y1: 0.5 } }
+    // Composta quando a foto ainda não tinha anotação: o corte central.
+    const { assunto: _novo, ...semAnotacao } = lateral
+    const { r } = await compor(semAnotacao, { somenteAvaliar: true })
+    const escolha = busca(r).escolha
+    expect(escolha.corte).toBe('center-middle')
+    // A anotação nova põe o assunto à esquerda: o corte congelado o perde, o lateral o preservaria.
+    const e = await recusa(lateral, { escolhaEspacial: escolha })
+    expect(e.code).toBe('ARQUETIPO_POSICAO_CONGELADA_NAO_CABE')
+    expect(e.message).toMatch(/perde o assunto que o catálogo marca/)
+    expect(e.message).not.toMatch(/encurte o texto/)
+    // A peça do T1a nasceu no corte central com o aviso de assunto perdido: a edição de texto não é recusada por isso.
+    await montar(lateral)
+    const t1a = await comporPeca(specDe(lateral), { somenteAvaliar: true, escolhaEspacial: { modo: 'referencia' } })
+    expect(t1a.diagnostico.posicao.crop).toBe('center-middle')
+    expect(t1a.diagnostico.avisos.some((a) => /CORTE_PERDE_O_ASSUNTO/.test(a))).toBe(true)
   }, 60_000)
 
   it('o motivo explica a vitória quando as posições sem véu foram eliminadas (o caso da região protegida)', async () => {

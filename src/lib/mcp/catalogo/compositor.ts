@@ -465,6 +465,7 @@ export const toolsDoCompositor = [
                         motivo: buscaEspacial.motivo,
                         combinacoesAvaliadas: buscaEspacial.combinacoesAvaliadas,
                         recusas: buscaEspacial.recusas,
+                        ...(buscaEspacial.regiaoProtegida ? { regiaoProtegida: buscaEspacial.regiaoProtegida } : {}),
                         ...(buscaEspacial.vencedor ? { tratamentoEstimado: buscaEspacial.vencedor.tratamento } : {}),
                         ...(buscaEspacial.reproduzida ? { reproduzida: true } : {}),
                       },

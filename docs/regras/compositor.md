@@ -945,6 +945,12 @@ se mudar.
   aviso. Em produção o catálogo não tem caixa de assunto (o campo é texto): a estimada é a única
   proteção real — atrás do véu, a busca puxava o texto para cima do prato para fugir do véu (revisão
   adversarial). Como recusa dura, a borda de uma faixa de luz zerava fotos inteiras.
+- 🔴 **Catálogo INDISPONÍVEL não é "foto sem anotação"** (Codex R2): com arquétipo, só `SEM_CATALOGO`
+  (projeto sem catálogo, ou vazio) cai na região estimada; qualquer outro erro ao ler o catálogo
+  recusa a peça com `CATALOGO_INDISPONIVEL` (503, transitório: a fila e a recomposição tentam de
+  novo — o código não começa com `ARQUETIPO_` de propósito, senão a fila o trataria como definitivo).
+  Sem arquétipo o erro segue engolido, como sempre. O diagnóstico diz de onde veio a região:
+  `buscaEspacial.regiaoProtegida` = `catalogo` ou `estimada`.
 - 🔴 **Tratamento é custo dominante.** Entre as válidas vence o menor custo de véu (tolerância
   0,05); depois a pontuação (calma 0,4, contraste natural 0,2, assunto 0,15, referência 0,15,
   corte central 0,1; tolerância 0,02); depois a mais perto da referência e o corte central. A
@@ -962,7 +968,10 @@ se mudar.
   passada em `opcoes.escolhaEspacial`, com o resumo da busca original (que o diagnóstico leva
   adiante). Um `dy` por faixa (membros que discordam = `ARQUETIPO_ESCOLHA_ILEGIVEL`). Copy que não
   cabe na posição congelada, ou que nela invade a região do catálogo, colide ou inverte a ordem:
-  `ARQUETIPO_POSICAO_CONGELADA_NAO_CABE`, nada é movido (o tratamento é do CP2A: só aviso). A logo
+  `ARQUETIPO_POSICAO_CONGELADA_NAO_CABE`, nada é movido (o tratamento é do CP2A: só aviso). O corte
+  congelado que passou a perder o assunto do catálogo (a anotação mudou depois; outro corte o
+  preservaria) também recusa, com a saída "peça uma nova composição" — só na peça do CP2B: a do T1a
+  nasceu no corte central com esse aviso, e a edição de texto dela segue com o aviso. A logo
   fixa que mudou de proporção vai ao dy válido dela (aviso); a logo automática congelada que
   encostaria no texto novo vai ao canto livre (aviso). Foto trocada: busca nova, com aviso. A
   identidade da foto é a impressão da URL que a peça desenha; com arquétipo, a página que mostra a

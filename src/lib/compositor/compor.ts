@@ -1105,7 +1105,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   const assuntoDoCatalogo = foto && spec.foto?.driveFileId
     ? opcoes.assuntosDoCatalogo?.has(spec.foto.driveFileId)
       ? opcoes.assuntosDoCatalogo.get(spec.foto.driveFileId) ?? null
-      : await assuntoDoCatalogoDaFoto(spec.projectId, spec.foto.driveFileId)
+      : await assuntoDoCatalogoDaFoto(spec.projectId, spec.foto.driveFileId, !!arq)
     : null
 
   let melhor: { crop: CropPosition; raster: FotoCinza | null; mapa: MapaDeCalma | null; assunto: Rect | null; escolhido: PontuacaoDePosicao<RotuloDePosicao>; todos: PontuacaoDePosicao<RotuloDePosicao>[] } | null = null
@@ -1849,7 +1849,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
             codigoTaxonomico: arq.definicao.codigoTaxonomico,
             formato: spec.formato,
             modo: buscaDoArquetipo ? MODO_BUSCA_ESPACIAL : ('referencia' as const),
-            ...(buscaDoArquetipo ? { buscaEspacial: buscaDoArquetipo } : {}),
+            ...(buscaDoArquetipo ? { buscaEspacial: { ...buscaDoArquetipo, regiaoProtegida: assuntoDoCatalogo ? ('catalogo' as const) : ('estimada' as const) } } : {}),
             preferenciasCoincidentes: arq.preferenciasCoincidentes,
             papeis: (unidadesArq ?? []).map((u) => ({ papel: u.papel, ...materializacao!.papeis[u.papel]! })),
             logo: {
@@ -1955,14 +1955,25 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
 
 // ─── Assunto pelo catálogo ─────────────────────────────────────────────────
 
-/** A caixa do assunto gravada no catálogo (frações 0..1), quando a análise a deu. */
-async function assuntoDoCatalogoDaFoto(projectId: number, driveFileId: string): Promise<AssuntoNormalizado | null> {
+/**
+ * A caixa do assunto gravada no catálogo (frações 0..1), quando a análise a deu. `SEM_CATALOGO` (projeto sem catálogo,
+ * ou vazio) é "a foto não tem anotação": `null`. Qualquer outro erro é o catálogo INDISPONÍVEL: sem arquétipo, segue
+ * sem a caixa, como sempre; com arquétipo (`exigir`), a região protegida do catálogo é hard constraint e a posição não
+ * é escolhida — nem reproduzida — sem ela (CP2B, Codex R2): recusa transitória, a fila tenta de novo.
+ */
+async function assuntoDoCatalogoDaFoto(projectId: number, driveFileId: string, exigir = false): Promise<AssuntoNormalizado | null> {
   try {
     const { lerCatalogoDoProjeto } = await import('@/lib/creatives/acervo')
     const catalogo = await lerCatalogoDoProjeto(projectId)
     const entrada = catalogo?.todas?.find((i) => i.driveFileId === driveFileId) as unknown as (Record<string, unknown> | undefined)
     return lerCaixaDoAssunto(entrada?.assunto)
-  } catch {
-    return null
+  } catch (erro) {
+    if (!exigir || (erro instanceof CreativeError && erro.code === 'SEM_CATALOGO')) return null
+    throw new CreativeError(
+      'CATALOGO_INDISPONIVEL',
+      'Não deu para ler o catálogo de fotos do projeto agora. Com arquétipo, a região protegida da foto (o que o catálogo marcou) é obrigatória: a posição não é escolhida sem ela. Tente de novo em instantes.',
+      503,
+      { driveFileId, causa: erro instanceof Error ? erro.message : String(erro) },
+    )
   }
 }
