@@ -6,7 +6,7 @@ import type { SpecDePeca } from './spec'
 import type { ResultadoDaComposicao, OpcoesDeComposicao } from './compor'
 
 export interface DiagnosticoDaSelecao {
-  combinacoes: Array<{ foto: string; variante: string; impedimentos: string[]; pontos?: number; transitorio?: boolean; leitura?: LeituraComparavel; comparacao?: string[]; baseline?: boolean; detalhes?: Record<string, unknown> }>
+  combinacoes: Array<{ foto: string; variante: string; impedimentos: string[]; pendentesDePosicao?: string[]; pontos?: number; transitorio?: boolean; leitura?: LeituraComparavel; comparacao?: string[]; baseline?: boolean; detalhes?: Record<string, unknown> }>
   decisao?: 'baseline' | 'dominancia-tecnica'
   alternativas?: Array<{ foto: string; variante: string; motivos: string[] }>
   limite: number
@@ -22,8 +22,19 @@ export function avaliarCombinacao(r: ResultadoDaComposicao) {
   const d = r.diagnostico
   const impedimentos: string[] = []
   if (!d.contraste?.length) impedimentos.push('Contraste não medido; confira a foto e tente novamente.')
+  // CP2A (14/10/2026): o contraste que falha em texto cuja borda ficou SEM estratégia de tratamento (inviável
+  // ou recusada) não é impedimento terminal — só a posição (CP2B) pode resolver, e SEM_COMBINACAO só vem
+  // depois de posição e tratamento esgotados. Pesa na escolha entre as combinações.
+  const semEstrategia = new Set((d.tratamentoDeLeitura ?? []).filter((t) => t.estado === 'inviavel' || t.estado === 'recusado').flatMap((t) => t.textos.map((x) => x.camada)))
+  const pendentesDePosicao: string[] = []
   for (const c of d.contraste ?? []) {
-    if (!c.ok) impedimentos.push(`Contraste insuficiente em ${c.grupo}; escolha outra foto ou variante aprovada.`)
+    if (c.ok) continue
+    const semLeitura = (c.textos ?? []).filter((t) => !t.ok).map((t) => t.camada)
+    if (semLeitura.length > 0 && semLeitura.every((id) => semEstrategia.has(id))) {
+      pendentesDePosicao.push(`Contraste insuficiente em ${c.grupo}: nenhuma estratégia de tratamento serve na borda atual — a solução é de posição.`)
+    } else {
+      impedimentos.push(`Contraste insuficiente em ${c.grupo}; escolha outra foto ou variante aprovada.`)
+    }
   }
   // A caixa estimada por energia não é segmentação semântica. É um risco,
   // não prova de que texto ocultou um prato (especialmente em ambientes).
@@ -31,8 +42,9 @@ export function avaliarCombinacao(r: ResultadoDaComposicao) {
   if (cobertura && d.assuntoOrigem === 'catalogo') impedimentos.push('Todas as posições cobrem ou recortam excessivamente o assunto catalogado; escolha outro enquadramento/foto.')
   return {
     impedimentos,
+    ...(pendentesDePosicao.length > 0 ? { pendentesDePosicao } : {}),
     transitorio: !d.contraste?.length,
-    pontos: d.posicao.pontuacao - (cobertura ? 1 : 0) - d.blocos.reduce((s, b) => s + (1 - b.escala), 0),
+    pontos: d.posicao.pontuacao - (cobertura ? 1 : 0) - pendentesDePosicao.length - d.blocos.reduce((s, b) => s + (1 - b.escala), 0),
   }
 }
 

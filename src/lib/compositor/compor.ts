@@ -27,7 +27,7 @@ import { createServerTextBoxMeasurer } from '@/lib/creatives/server-text-measure
 import { aplicarAutofixOuFalhar } from '@/lib/creatives/text-autofix'
 import { normalizarCamadas } from '@/lib/creatives/layer-contract'
 import { lerFotoComoCover, luzNoRect, type FotoCinza } from '@/lib/creatives/halo/halo-medicao'
-import { calibrarHalo, uniao, type Rect } from '@/lib/creatives/halo/halo'
+import { alvoPorContraste, calibrarHalo, uniao, type Rect } from '@/lib/creatives/halo/halo'
 import { gradientesDoProjeto } from '@/lib/assets/gradients-library'
 import type { CropPosition } from '@/lib/image-crop-utils'
 import { registrarUsoDeFoto } from '@/lib/creatives/uso-de-foto'
@@ -74,27 +74,85 @@ import {
 } from './mapa-de-calma'
 import { destaqueDoPapel, semColchetes, type EstiloDeDestaque } from './destaques'
 import {
+  alcanceDoGrupo,
+  alturaDaFaixa,
   bordaDaCamadaDeGradiente,
   bordaDoGrupo,
+  camadaDeGradiente,
   configDaCamada,
   corQueContrasta,
+  ehGradienteDeLeituraDaPagina,
+  forcaDaCamada,
   type AjustesDoGradiente,
   inserirAcimaDaFoto,
   montarGradientes,
   type Borda,
   type ConfigDoGradiente,
+  type GradienteMontado,
   type GrupoParaGradiente,
 } from './gradiente-de-leitura'
 import { DIMENSOES, validarSpec, type Alinhamento, type Ancora, type Canto, type Formato, type Papel, type SpecDePeca } from './spec'
-import { alvoClaroPorContraste, medirContrasteDaPeca, type ContrasteMedido, type IntervencaoDeTexto, type PioraDeTratamento } from './regua'
+import {
+  alvoClaroPorContraste,
+  medirContrasteDaPeca,
+  luzMedida,
+  medirFundoDosTextos,
+  polaridadeDoTexto,
+  TOLERANCIA_DE_PIORA,
+  type ContrasteMedido,
+  type IntervencaoDeTexto,
+  type PioraDeTratamento,
+} from './regua'
+import { candidatasDistintas, gradientesARecusar, MOTIVOS_DO_TRATAMENTO, planejarTratamentoDaBorda, type PlanoDaBorda } from './tratamento-de-leitura'
 
 /**
- * De onde veio a cor do gradiente de leitura de uma borda, na ordem em que o
- * compositor a decide: a camada de gradiente da página NAQUELA borda → a
- * primeira camada de gradiente da página → `Project.assinatura.gradiente.cor`
- * → a cor da marca que mais contrasta com os textos da peça → a mancha.
+ * De onde veio a cor do gradiente de leitura de uma borda. Borda com camada de
+ * gradiente de leitura na página de assinatura: `pagina-na-borda` (o
+ * tratamento explícito do template). Nas outras, desde o CP2A (14/10/2026), a
+ * candidata que o tratamento POR BORDA escolheu: `pagina` (o gradiente da
+ * página), `numeros-da-assinatura`, `mancha` ou `biblioteca-legada`
+ * (`GRADIENTES_POR_PROJETO`). `contraste-com-os-textos` é a cor global de
+ * antes — hoje só no véu da LOGO (a borda só com logo, ou a borda de texto que
+ * ficou sem véu de texto), que é do CP3.
  */
-export type OrigemDaCorDoVeu = 'pagina-na-borda' | 'pagina' | 'numeros-da-assinatura' | 'contraste-com-os-textos' | 'mancha'
+export type OrigemDaCorDoVeu = 'pagina-na-borda' | 'pagina' | 'numeros-da-assinatura' | 'contraste-com-os-textos' | 'mancha' | 'biblioteca-legada'
+
+/** Uma leitura de texto no diagnóstico do tratamento por borda: o fundo antes e depois, contra o alvo. */
+export interface LeituraDoTratamento {
+  camada: string
+  polaridade: 'clara' | 'escura'
+  percentil: 'p98' | 'p02'
+  antes: number
+  alvo: number
+  depois: number | null
+  /** `melhorou`/`piorou` além da tolerância de 2 níveis; `neutro` dentro dela. */
+  efeito: 'melhorou' | 'piorou' | 'neutro' | null
+}
+
+/** O tratamento de leitura de uma borda com texto, no diagnóstico (CP2A, 14/10/2026). Compacto. */
+export interface TratamentoDaBorda {
+  borda: Borda
+  /**
+   * `sem-necessidade`: todo texto já lê, nenhum véu automático. `tratado`: véu desenhado.
+   * `inviavel`: nenhuma candidata serve (ver `motivo`) — a ESTRATÉGIA de tratamento, não a peça.
+   * `recusado`: a régua provou que o véu piorava a leitura e ele saiu. `explicito-do-template`: a
+   * página de assinatura desenha o gradiente dessa borda e ele é reproduzido como sempre.
+   * `nao-medido`: o fundo não pôde ser medido (ou a régua não rodou) — nenhum véu automático de texto.
+   */
+  estado: PlanoDaBorda['estado'] | 'recusado' | 'nao-medido' | 'explicito-do-template'
+  grupos: string[]
+  textos: LeituraDoTratamento[]
+  cor?: string
+  origemDaCor?: OrigemDaCorDoVeu
+  forca?: number
+  forcaPedida?: number | null
+  alcancaAlvo?: boolean
+  motivo?: string
+  recusadas?: PlanoDaBorda['recusadas']
+  foraDoPlano?: string[]
+  /** O véu desenhado nesta borda é o da LOGO (a borda de texto ficou sem véu de texto). */
+  veuDaLogo?: boolean
+}
 
 export { TAG_DA_PECA_COMPOSTA } from './persistencia'
 
@@ -130,6 +188,8 @@ export interface DiagnosticoDaComposicao {
    * continua saindo; a correção é de outro checkpoint.
    */
   tratamentoPiorou?: PioraDeTratamento[]
+  /** O tratamento de leitura de cada borda com texto (CP2A, 14/10/2026). Ausente em diagnósticos antigos. */
+  tratamentoDeLeitura?: TratamentoDaBorda[]
   /** `tinta` é legado (sempre 0): a logo não ganha mais halo. */
   logo: { canto: Canto; tinta: number } | null
   blocos: Array<{ /** O id da camada (`servico-2`, `headline2`…) — a identidade do bloco; ausente em diagnósticos antigos. */ id?: string; papel: Papel; escala: number; width: number; height: number; destacado?: boolean; naoMedido?: boolean }>
@@ -295,6 +355,7 @@ export async function carregarAssinatura(projectId: number, formato: Formato, op
   // As camadas da página escolhida: é delas que saem os arranjos de texto
   // (os grupos, com os elementos presos a cada texto) que a peça usa.
   assinatura.camadasDaPagina = escolhida ? (parsePageLayers(escolhida.layers) as unknown as Layer[]) : []
+  assinatura.dimensoesDaPagina = escolhida ? { width: escolhida.width, height: escolhida.height } : undefined
   // A página do formato é a verdade daquele formato: papel que a página de
   // feed não tem NÃO vem da story. Desde 11/09/2026 a regra é "copy primeiro,
   // campos depois" (os campos são opcionais e nenhum texto é descartado por
@@ -697,6 +758,13 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     ...(assinatura.gradienteDaPagina ?? {}),
     cor: assinatura.gradienteDaPagina?.cor ?? assinatura.numeros.gradiente.cor ?? corQueContrastaComOsTextos ?? mancha,
   }
+  // A cor que PONTUA as posições (e a necessidade de antes) segue a regra antiga — o primeiro gradiente da
+  // página, de qualquer forma —: o CP2A não pode mover grupo nenhum, nem quando a página tem gradiente
+  // decorativo (que deixou de mandar no tratamento). A posição por polaridade é do CP2B.
+  const primeiroGradienteDaPagina = (assinatura.camadasDaPagina ?? []).map(configDaCamada).find((c): c is AjustesDoGradiente => !!c)
+  const corDaPontuacao = assinatura.camadasDaPagina
+    ? (primeiroGradienteDaPagina?.cor ?? assinatura.numeros.gradiente.cor ?? corQueContrastaComOsTextos ?? mancha)
+    : cfgGradiente.cor
   // Só observabilidade (CP1): a mesma ordem da linha acima, dita por extenso.
   const origemDaCorGlobal: OrigemDaCorDoVeu =
     assinatura.gradienteDaPagina?.cor != null
@@ -847,7 +915,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       larguraPara: (al) => pilhaPara(principal, al).width,
     })
     const pontuados = mapa
-      ? pontuarCandidatos({ mapa, candidatos, coresDoTexto: cores, corDaMancha: cfgGradiente.cor, assunto })
+      ? pontuarCandidatos({ mapa, candidatos, coresDoTexto: cores, corDaMancha: corDaPontuacao, assunto })
       : candidatos.map((c) => ({ ...c, pontuacao: c.preferencia, calma: 1, tintaNecessaria: 0, cobreAssunto: 0, descartado: false, motivo: 'sem foto: vale a preferência' }))
     if (assuntoDoCatalogo && assunto && fracaoVisivelDoAssunto(assunto, canvas) < 0.75) {
       for (const candidato of pontuados) {
@@ -913,7 +981,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   const necessidadeSob = (rect: Rect, coresDoTexto: string[]): number => {
     const luz = melhor.raster ? luzNoRect(melhor.raster, rect) : null
     if (!luz) return 0
-    const c = calibrarHalo({ texto: rect, luz, coresDoTexto, corDaMancha: cfgGradiente.cor, raioBase: 0 })
+    const c = calibrarHalo({ texto: rect, luz, coresDoTexto, corDaMancha: corDaPontuacao, raioBase: 0 })
     return Number(Math.min(1, c.tinta / 0.95).toFixed(3))
   }
 
@@ -1064,28 +1132,29 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   //     foto não há o que escurecer: a peça sai sobre o fundo liso da marca.
   const caixaDe = (l: Layer): Rect => ({ x: l.position.x, y: l.position.y, width: l.size.width, height: l.size.height })
   const elementoDe = (l: Layer) => String((l.metadata as { compositor?: { elementoDe?: string } } | undefined)?.compositor?.elementoDe ?? '')
-  const paraGradiente: GrupoParaGradiente[] = rectsDeGrupo.map((grupo) => {
+  const gruposDeTexto = rectsDeGrupo.map((grupo) => {
     const ids = new Set(grupo.camadas.map((c) => c.id))
     // O gradiente cobre também os elementos presos aos textos do grupo
     const doGrupo = layers.filter((l) => l.visible !== false && (ids.has(l.id) || ids.has(elementoDe(l))))
     const rect = uniao(doGrupo.map(caixaDe)) ?? grupo.rect
-    return { rect, ancora: grupo.ancora, necessidade: necessidadeSob(rect, grupo.cores) }
+    return { grupo: grupo.grupo, ids, rect, ancora: grupo.ancora, necessidade: necessidadeSob(rect, grupo.cores) }
   })
+  const paraGradiente: GrupoParaGradiente[] = gruposDeTexto.map(({ rect, ancora, necessidade }) => ({ rect, ancora, necessidade }))
   const logoFinal = layers.find((l) => l.id === 'logo')
-  if (logoFinal && melhor.raster) {
+  const logoNaPeca = logoFinal && melhor.raster ? { rect: caixaDe(logoFinal), borda: bordaDoGrupo(caixaDe(logoFinal), null, canvas.height), necessidade: necessidadeSob(caixaDe(logoFinal), ['#FFFFFF']) } : null
+  if (logoNaPeca) {
     // A logo não tem mais halo: canto claro numa borda SEM texto ganha um
     // gradiente fraco (metade da necessidade), só o bastante para ela ler.
-    const rect = caixaDe(logoFinal)
-    const borda = bordaDoGrupo(rect, null, canvas.height)
-    const bordaTemTexto = paraGradiente.some((grupo) => bordaDoGrupo(grupo.rect, grupo.ancora, canvas.height) === borda)
-    const necessidade = necessidadeSob(rect, ['#FFFFFF'])
-    if (!bordaTemTexto && necessidade > 0.5) paraGradiente.push({ rect, ancora: borda, necessidade: necessidade * 0.5 })
+    const bordaTemTexto = paraGradiente.some((grupo) => bordaDoGrupo(grupo.rect, grupo.ancora, canvas.height) === logoNaPeca.borda)
+    if (!bordaTemTexto && logoNaPeca.necessidade > 0.5) paraGradiente.push({ rect: logoNaPeca.rect, ancora: logoNaPeca.borda, necessidade: logoNaPeca.necessidade * 0.5 })
   }
   // O gradiente de cada BORDA segue a camada que a página desenhou naquela
   // borda: nos modelos do Quintal (11/09/2026) o rodapé é mais forte que o
   // topo, e ler só a primeira camada prendia o rodapé à força do topo.
+  // Só o gradiente de LEITURA da página manda; o decorativo não vira tratamento (CP2A).
   const gradientesDaPagina = new Map<Borda, AjustesDoGradiente>()
   for (const camada of assinatura.camadasDaPagina ?? []) {
+    if (!ehGradienteDeLeituraDaPagina(camada, assinatura.dimensoesDaPagina ?? canvas)) continue
     const ajustes = configDaCamada(camada)
     const borda = ajustes ? bordaDaCamadaDeGradiente(camada) : null
     if (ajustes && borda && !gradientesDaPagina.has(borda)) gradientesDaPagina.set(borda, ajustes)
@@ -1094,15 +1163,88 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     const daBorda = gradientesDaPagina.get(borda)
     return daBorda ? { ...cfgGradiente, ...daBorda, cor: daBorda.cor ?? cfgGradiente.cor } : cfgGradiente
   }
-  const gradientes = foto
-    ? (['topo', 'rodape'] as const).flatMap((borda) =>
-        montarGradientes({
-          W: canvas.width,
-          H: canvas.height,
-          grupos: paraGradiente.filter((p) => bordaDoGrupo(p.rect, p.ancora, canvas.height) === borda),
-          cfg: cfgDaBorda(borda),
-        }),
-      )
+  // 7c. O TRATAMENTO DE LEITURA POR BORDA (CP2A, 14/10/2026). Na borda cujo
+  //     gradiente a página de assinatura desenha (o tratamento EXPLÍCITO do
+  //     template), nada muda. Nas outras, o fundo medido sob cada texto decide
+  //     — texto claro pede véu escuro, texto escuro pede véu claro; sem
+  //     necessidade, nenhum véu; claros e escuros sem leitura na mesma borda,
+  //     estratégia inviável (a posição é do CP2B) — entre as cores aprovadas da
+  //     marca, nunca uma que piore algum texto. Os grupos não se movem.
+  const H = canvas.height
+  const bordaDe = (p: { rect: Rect; ancora?: Ancora | null }) => bordaDoGrupo(p.rect, p.ancora, H)
+  const gruposNaBorda = (borda: Borda) => gruposDeTexto.filter((g) => bordaDe(g) === borda)
+  const alcanceDaBorda = (borda: Borda) => Math.max(...gruposNaBorda(borda).map((g) => alcanceDoGrupo(g.rect, borda, H)))
+  const bordasAutomaticas = (['topo', 'rodape'] as const).filter((b) => !gradientesDaPagina.has(b) && gruposNaBorda(b).length > 0)
+  // As cores aprovadas: as da assinatura primeiro; a biblioteca por projeto é LEGADO, o último recurso.
+  const candidatasDoVeu = candidatasDistintas([
+    { cor: assinatura.gradienteDaPagina?.cor, origem: 'pagina' },
+    { cor: assinatura.numeros.gradiente.cor, origem: 'numeros-da-assinatura' },
+    { cor: assinatura.numeros.mancha, origem: 'mancha' },
+    ...coresDaMarca.map((cor) => ({ cor, origem: 'biblioteca-legada' as const })),
+  ])
+  let planos: Array<Omit<PlanoDaBorda, 'estado'> & { estado: PlanoDaBorda['estado'] | 'recusado' | 'nao-medido' }> | null = null
+  if (foto && bordasAutomaticas.length > 0) {
+    try {
+      const fundos = new Map((await medirFundoDosTextos({ layers, canvas, background: assinatura.numeros.fundo })).map((f) => [f.camada, f]))
+      const textosDos = (grupos: typeof gruposDeTexto) => grupos.flatMap((g) => [...g.ids].flatMap((id) => (fundos.has(id) ? [{ ...fundos.get(id)!, grupo: g.grupo }] : [])))
+      planos = bordasAutomaticas.map((borda) => {
+        const cfg = cfgDaBorda(borda)
+        return planejarTratamentoDaBorda({
+          borda,
+          textos: textosDos(gruposNaBorda(borda)),
+          vizinhos: textosDos(gruposDeTexto.filter((g) => bordaDe(g) !== borda)),
+          candidatas: candidatasDoVeu,
+          curva: cfg.curva,
+          forcaMinima: cfg.forcaMinima,
+          forcaMaxima: cfg.forcaMaxima,
+          altura: alturaDaFaixa(alcanceDaBorda(borda), H, cfg),
+          H,
+        })
+      })
+    } catch (erro) {
+      // Sem a medida não há decisão: nenhum véu AUTOMÁTICO de texto (a regra antiga, de uma cor para a peça e
+      // piso de 0.45, voltaria a escolher às cegas — revisão do Codex). O explícito do template fica.
+      planos = bordasAutomaticas.map((borda) => ({ borda, estado: 'nao-medido' as const, grupos: gruposNaBorda(borda).map((g) => g.grupo), textos: [] }))
+      avisos.push(`O tratamento de leitura por borda não mediu o fundo (${(erro as Error).message}): nenhum véu automático de texto nesta peça.`)
+    }
+  }
+  const planoDa = (borda: Borda) => planos?.find((p) => p.borda === borda) ?? null
+  for (const p of planos ?? []) {
+    if (p.estado !== 'inviavel') continue
+    const nomeDaBorda = p.borda === 'topo' ? 'Topo' : 'Rodapé'
+    const semLeitura = p.textos.filter((t) => !t.ok)
+    const protegidos = [...new Set((p.recusadas ?? []).flatMap((r) => (r.camada ? [r.camada] : [])))]
+    avisos.push(
+      p.motivo !== MOTIVOS_DO_TRATAMENTO.polaridadeIncompativel
+        ? `${nomeDaBorda}: ${semLeitura.map((t) => t.camada).join(', ')} sem leitura e nenhuma cor aprovada da marca serve sem piorar outro texto (${p.motivo}); nenhum véu automático.`
+        : new Set(semLeitura.map((t) => t.polaridade)).size > 1
+          ? `${nomeDaBorda}: texto claro e texto escuro sem leitura na mesma borda — nenhum véu serve aos dois (POLARIDADE_INCOMPATIVEL_NA_MESMA_BORDA); nenhum véu automático. A solução é de posição.`
+          : `${nomeDaBorda}: o véu que ${semLeitura.map((t) => t.camada).join(', ')} pede pioraria a leitura de ${protegidos.join(', ')}, de polaridade oposta (POLARIDADE_INCOMPATIVEL_NA_MESMA_BORDA); nenhum véu automático. A solução é de posição.`,
+    )
+  }
+  /** Os véus da LOGO: o da borda só com logo e o da borda de texto que ficou sem véu de texto. */
+  const veusDaLogo = new Set<string>()
+  const gradientes: GradienteMontado[] = foto
+    ? (['topo', 'rodape'] as const).flatMap((borda) => {
+        const plano = planoDa(borda)
+        if (!plano) {
+          const veus = montarGradientes({ W: canvas.width, H, grupos: paraGradiente.filter((p) => bordaDe(p) === borda), cfg: cfgDaBorda(borda) })
+          // Sem plano e sem gradiente na página, a borda só tem a logo: o véu dela é automático e entra na regra 7.
+          if (!gradientesDaPagina.has(borda)) for (const v of veus) veusDaLogo.add(v.layer.id)
+          return veus
+        }
+        if (plano.estado !== 'tratado') {
+          // A logo desta borda ficava sob o véu do texto; sem ele, vale a regra da borda só com a logo (a logo é do
+          // CP3). O véu dela entra na regra 7: se piorar algum texto, sai.
+          if (logoNaPeca?.borda !== borda || logoNaPeca.necessidade <= 0.5) return []
+          const veus = montarGradientes({ W: canvas.width, H, grupos: [{ rect: logoNaPeca.rect, ancora: borda, necessidade: logoNaPeca.necessidade * 0.5 }], cfg: cfgDaBorda(borda) })
+          for (const v of veus) veusDaLogo.add(v.layer.id)
+          return veus
+        }
+        const altura = alturaDaFaixa(alcanceDaBorda(borda), H, cfgDaBorda(borda))
+        const layer = camadaDeGradiente({ borda, W: canvas.width, H, altura, cor: plano.cor!, curva: cfgDaBorda(borda).curva, forca: plano.forca! })
+        return [{ borda, forca: plano.forca!, altura, alcance: Math.round(alcanceDaBorda(borda)), layer }]
+      })
     : []
   if (gradientes.length > 0) layers = inserirAcimaDaFoto(layers, gradientes.map((gr) => gr.layer))
   // R10: a identidade de cada camada é única no conjunto FINAL. A validação da
@@ -1120,12 +1262,53 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   let contraste: ContrasteMedido[] | null = null
   let tratamentoPiorou: PioraDeTratamento[] | undefined
   let intervencaoDeTexto: IntervencaoDeTexto | undefined
+  // Os véus AUTOMÁTICOS (o do tratamento por borda e o da logo em borda de texto), com a luz da cor no espaço
+  // da medida — só eles a regra 7 pode tirar; o explícito do template e o decorativo, nunca.
+  const corDoVeu = (l: Layer) => (l.style as { gradientStops?: Array<{ color?: string }> } | undefined)?.gradientStops?.find((st) => typeof st.color === 'string')?.color ?? '#000000'
+  const automaticos = new Map(
+    gradientes.filter((g) => planoDa(g.borda)?.estado === 'tratado' || veusDaLogo.has(g.layer.id)).map((g) => [g.layer.id, luzMedida(corDoVeu(g.layer))] as const),
+  )
   try {
     const faixa: [number, number] = [
       Math.min(cfgDaBorda('topo').forcaMinima, cfgDaBorda('rodape').forcaMinima),
       Math.max(cfgDaBorda('topo').forcaMaxima, cfgDaBorda('rodape').forcaMaxima),
     ]
-    const regua = await medirContrasteDaPeca({ layers, canvas, background: assinatura.numeros.fundo, faixa, corrigir: true, medirIntervencao: opcoes.medirComparacao })
+    const medir = (camadas: Layer[], corrigir: boolean) =>
+      medirContrasteDaPeca({ layers: camadas, canvas, background: assinatura.numeros.fundo, faixa, corrigir, medirIntervencao: opcoes.medirComparacao })
+    let regua = await medir(layers, true)
+    // A correção de força da régua que fez PIORAR um texto (nova piora, ou piora mais funda): só os véus
+    // envolvidos voltam à força de antes da correção; a correção dos outros fica (CP2A).
+    const antesDaCorrecao = regua.pioras ?? []
+    const novas = (regua.piorasDepoisDaCorrecao ?? []).filter((p) => {
+      const q = antesDaCorrecao.find((x) => x.camada === p.camada)
+      return !q || (p.polaridade === 'clara' ? p.depois > q.depois : p.depois < q.depois)
+    })
+    if (novas.length > 0) {
+      const envolvidos = new Set(novas.flatMap((p) => p.gradientes ?? (p.gradiente ? [p.gradiente] : [])))
+      const deAntes = new Map(layers.map((l) => [l.id, l]))
+      regua = await medir(regua.layers.map((l) => (envolvidos.has(l.id) && deAntes.has(l.id) ? deAntes.get(l.id)! : l)), false)
+      avisos.push(`A correção de força da régua piorava a leitura de ${novas.map((p) => p.camada).join(', ')}: ${[...envolvidos].join(', ')} ficou na força de antes.`)
+    }
+    // Regra 7 (CP2A): o véu AUTOMÁTICO que a régua provou pior (com e sem ele) não fica na peça — e a peça sem
+    // ele é medida e conferida de novo, até nenhum automático restante piorar (no máximo um por véu).
+    const restantes = new Map(automaticos)
+    for (let rodada = 0; rodada < automaticos.size; rodada++) {
+      const recusados = gradientesARecusar(regua.piorasDepoisDaCorrecao ?? regua.pioras ?? [], restantes)
+      if (recusados.length === 0) break
+      for (const id of recusados) {
+        const recusado = regua.layers.find((l) => l.id === id)
+        const borda: Borda = id.endsWith('topo') ? 'topo' : 'rodape'
+        const p = planoDa(borda)
+        if (p?.estado === 'tratado' && !veusDaLogo.has(id)) {
+          p.estado = 'recusado'
+          p.motivo = MOTIVOS_DO_TRATAMENTO.piorou
+          p.recusadas = [...(p.recusadas ?? []), { cor: p.cor!, origem: p.origemDaCor!, motivo: MOTIVOS_DO_TRATAMENTO.piorou, ...(recusado ? { forca: forcaDaCamada(recusado) } : {}) }]
+        }
+        restantes.delete(id)
+        avisos.push(`${borda === 'topo' ? 'Topo' : 'Rodapé'}: o véu ${veusDaLogo.has(id) ? 'da logo ' : ''}${recusado ? corDoVeu(recusado) : ''} piorou a leitura medida (TRATAMENTO_PIOROU_LEITURA) e saiu da peça.`)
+      }
+      regua = await medir(regua.layers.filter((l) => !recusados.includes(l.id)), false)
+    }
     layers = regua.layers
     contraste = regua.medidas
     // A peça que sai é a corrigida: a piora que vale é a dela.
@@ -1133,7 +1316,58 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     intervencaoDeTexto = regua.intervencao
     avisos.push(...regua.avisos)
   } catch (erro) {
-    avisos.push(`A régua de contraste não rodou: ${(erro as Error).message}`)
+    // Sem a régua, nenhum véu AUTOMÁTICO fica sem a conferência da regra 7 (CP2A): sai da peça, dito.
+    const semConferencia = layers.filter((l) => automaticos.has(l.id)).map((l) => l.id)
+    if (semConferencia.length > 0) {
+      layers = layers.filter((l) => !automaticos.has(l.id))
+      for (const p of planos ?? []) if (p.estado === 'tratado') p.estado = 'nao-medido'
+    }
+    avisos.push(`A régua de contraste não rodou: ${(erro as Error).message}${semConferencia.length > 0 ? ` — os véus automáticos (${semConferencia.join(', ')}) saíram, sem conferência` : ''}`)
+  }
+
+  /** O tratamento de cada borda com texto, para o diagnóstico: o plano, e o fundo antes/depois que a régua mediu. */
+  const tratamentoPorBorda = (): TratamentoDaBorda[] => {
+    const medidaDe = new Map((contraste ?? []).flatMap((m) => (m.textos ?? []).map((t) => [t.camada, t] as const)))
+    return (['topo', 'rodape'] as const)
+      .filter((borda) => gruposNaBorda(borda).length > 0)
+      .map((borda): TratamentoDaBorda => {
+        const plano = planoDa(borda)
+        const camada = gradientes.map((g) => layers.find((l) => l.id === g.layer.id && g.borda === borda)).find(Boolean)
+        const textos = gruposNaBorda(borda).flatMap((g) =>
+          [...g.ids].flatMap((id): LeituraDoTratamento[] => {
+            const t = medidaDe.get(id)
+            const polaridade = t?.cor && t.percentis && !t.caixaDeFundo ? polaridadeDoTexto(t.cor, t.percentis.sem) : null
+            if (t?.cor && t.percentis && polaridade) {
+              const clara = polaridade.polaridade === 'clara'
+              const antes = clara ? t.percentis.sem.p98 : t.percentis.sem.p02
+              const depois = clara ? t.percentis.com.p98 : t.percentis.com.p02
+              const ganho = clara ? antes - depois : depois - antes
+              const alvo = Math.round(clara ? alvoPorContraste(t.cor, 3) : alvoClaroPorContraste(t.cor, 3))
+              return [{ camada: id, polaridade: polaridade.polaridade, percentil: clara ? 'p98' : 'p02', antes, alvo, depois, efeito: ganho > TOLERANCIA_DE_PIORA ? 'melhorou' : ganho < -TOLERANCIA_DE_PIORA ? 'piorou' : 'neutro' }]
+            }
+            const doPlano = plano?.textos.find((x) => x.camada === id)
+            return doPlano ? [{ camada: id, polaridade: doPlano.polaridade, percentil: doPlano.percentil, antes: doPlano.antes, alvo: doPlano.alvo, depois: null, efeito: null }] : []
+          }),
+        )
+        const corDesenhada = (camada?.style as { gradientStops?: Array<{ color?: string }> } | undefined)?.gradientStops?.find((st) => typeof st.color === 'string')?.color
+        const forcaDesenhada = camada?.metadata?.forca
+        const estado: TratamentoDaBorda['estado'] = plano ? plano.estado : 'explicito-do-template'
+        return {
+          borda,
+          estado,
+          grupos: gruposNaBorda(borda).map((g) => g.grupo),
+          textos,
+          ...(corDesenhada ? { cor: corDesenhada } : {}),
+          ...(camada ? { origemDaCor: gradientesDaPagina.has(borda) ? 'pagina-na-borda' : plano?.estado === 'tratado' ? plano.origemDaCor! : origemDaCorGlobal } : {}),
+          ...(camada && veusDaLogo.has(camada.id) ? { veuDaLogo: true } : {}),
+          ...(typeof forcaDesenhada === 'number' ? { forca: forcaDesenhada } : {}),
+          ...(plano?.forcaPedida !== undefined ? { forcaPedida: plano.forcaPedida } : {}),
+          ...(plano?.alcancaAlvo !== undefined ? { alcancaAlvo: plano.alcancaAlvo } : {}),
+          ...(plano?.motivo ? { motivo: plano.motivo } : {}),
+          ...(plano?.recusadas?.length ? { recusadas: plano.recusadas } : {}),
+          ...(plano?.foraDoPlano?.length ? { foraDoPlano: plano.foraDoPlano } : {}),
+        }
+      })
   }
 
   const diagnostico: DiagnosticoDaComposicao = {
@@ -1146,22 +1380,27 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     assunto: melhor.assunto,
     assuntoOrigem: assuntoDoCatalogo ? 'catalogo' : melhor.assunto ? 'estimado' : 'nenhum',
     halos: [],
-    gradientes: gradientes.map((gr) => {
-      const final = layers.find((l) => l.id === gr.layer.id)
-      const forcaFinal = final?.metadata?.forca
-      const daBorda = paraGradiente.filter((p) => bordaDoGrupo(p.rect, p.ancora, canvas.height) === gr.borda).map((p) => p.necessidade)
-      // A cor DESENHADA: a da camada que vai para a peça (a primeira parada), não a global.
-      const corDesenhada = (final?.style as { gradientStops?: Array<{ color?: string }> } | undefined)?.gradientStops?.find((st) => typeof st.color === 'string')?.color
-      return {
-        borda: gr.borda,
-        forca: typeof forcaFinal === 'number' ? forcaFinal : gr.forca,
-        altura: gr.altura,
-        cor: corDesenhada ?? cfgDaBorda(gr.borda).cor,
-        necessidade: daBorda.length > 0 ? Math.max(...daBorda) : 0,
-        origemDaCor: gradientesDaPagina.get(gr.borda)?.cor != null ? 'pagina-na-borda' : origemDaCorGlobal,
-      }
-    }),
+    gradientes: gradientes
+      .filter((gr) => layers.some((l) => l.id === gr.layer.id))
+      .map((gr) => {
+        const final = layers.find((l) => l.id === gr.layer.id)
+        const forcaFinal = final?.metadata?.forca
+        const plano = planoDa(gr.borda)
+        const daBorda = paraGradiente.filter((p) => bordaDe(p) === gr.borda).map((p) => p.necessidade)
+        // A cor DESENHADA: a da camada que vai para a peça (a primeira parada), não a global.
+        const corDesenhada = (final?.style as { gradientStops?: Array<{ color?: string }> } | undefined)?.gradientStops?.find((st) => typeof st.color === 'string')?.color
+        return {
+          borda: gr.borda,
+          forca: typeof forcaFinal === 'number' ? forcaFinal : gr.forca,
+          altura: gr.altura,
+          cor: corDesenhada ?? cfgDaBorda(gr.borda).cor,
+          // A conta de antes (0..1); a força que o fundo pede no tratamento por borda está em `tratamentoDeLeitura`.
+          necessidade: veusDaLogo.has(gr.layer.id) && logoNaPeca ? Number((logoNaPeca.necessidade * 0.5).toFixed(3)) : daBorda.length > 0 ? Math.max(...daBorda) : 0,
+          origemDaCor: gradientesDaPagina.get(gr.borda)?.cor != null ? 'pagina-na-borda' : plano?.estado === 'tratado' ? plano.origemDaCor! : origemDaCorGlobal,
+        }
+      }),
     ...(tratamentoPiorou ? { tratamentoPiorou } : {}),
+    ...(foto && gruposDeTexto.length > 0 ? { tratamentoDeLeitura: tratamentoPorBorda() } : {}),
     logo: logoDiag,
     blocos: montados.map((b) => ({ id: b.layer.id, papel: b.papel, escala: b.escala, width: b.width, height: b.height, destacado: b.destacado, ...(familiasDaCamada(b.layer as Layer).some((f) => fontesNaoCarregadas.has(f)) ? { naoMedido: true } : {}) })),
     // As medidas FINAIS, depois do autofix — é o que vale para quem for ler a

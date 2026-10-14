@@ -77,41 +77,46 @@ describe('caracterização: o que o compositor faz hoje com a peça piloto', () 
     }
   })
 
-  it('UMA cor de véu para a peça inteira: #F3EADC no topo e no rodapé, forças 0.9 e 0.45 (o defeito de polaridade)', () => {
+  it('CP2A: cada borda com o véu da polaridade dos SEUS textos — topo creme (texto escuro), rodapé verde da mancha (serviço claro); altura e posição as de antes', () => {
     const resumo = (gs: Array<{ borda: string; cor: string; forca: number; altura: number }>) => gs.map(({ borda, cor, forca, altura }) => ({ borda, cor, forca, altura }))
-    expect(resumo(composta.diagnostico.gradientes ?? [])).toEqual(resumo(fixture.peca().composicaoRegistrada.gradientes))
-    expect(composta.diagnostico.gradientes?.map((g) => g.cor)).toEqual(['#F3EADC', '#F3EADC'])
-    // A cor que de fato foi desenhada em cada borda.
-    for (const id of ['gradiente-leitura-topo', 'gradiente-leitura-rodape']) {
+    expect(resumo(composta.diagnostico.gradientes ?? [])).toEqual([
+      { borda: 'topo', cor: '#F3EADC', forca: 0.9, altura: 665 },
+      { borda: 'rodape', cor: '#283D36', forca: 0.45, altura: 576 },
+    ])
+    expect(resumo(composta.diagnostico.gradientes ?? []).map((g) => g.altura)).toEqual(fixture.peca().composicaoRegistrada.gradientes.map((g) => g.altura))
+    for (const [id, cor] of [['gradiente-leitura-topo', '#F3EADC'], ['gradiente-leitura-rodape', '#283D36']]) {
       const stops = (camada(composta.layers, id).style as { gradientStops: Array<{ color: string }> }).gradientStops
-      expect(new Set(stops.map((s) => s.color))).toEqual(new Set(['#F3EADC']))
+      expect(new Set(stops.map((s) => s.color))).toEqual(new Set([cor]))
     }
   })
 
-  it('CP1: o diagnóstico de cada borda traz a cor DESENHADA na camada, a força, a altura e a origem da cor', () => {
+  it('CP1/CP2A: o diagnóstico de cada borda traz a cor DESENHADA, a força, a altura e a origem — o creme da biblioteca legada, o verde da mancha da assinatura', () => {
     for (const g of composta.diagnostico.gradientes ?? []) {
       const desenhada = camada(composta.layers, `gradiente-leitura-${g.borda}`)
       const stops = (desenhada.style as { gradientStops: Array<{ color: string }> }).gradientStops
       expect({ borda: g.borda, cor: g.cor, forca: g.forca, altura: g.altura }).toEqual({ borda: g.borda, cor: stops[0].color, forca: desenhada.metadata?.forca, altura: desenhada.size.height })
-      expect(g.origemDaCor).toBe('contraste-com-os-textos')
     }
+    expect(composta.diagnostico.gradientes?.map((g) => [g.borda, g.origemDaCor])).toEqual([['topo', 'biblioteca-legada'], ['rodape', 'mancha']])
   })
 
-  it('CP1: o diagnóstico acusa TRATAMENTO_PIOROU_LEITURA no serviço (texto claro, o véu creme sobe o p98 ≈166→194) — só acusa, não corrige', () => {
-    const servico = composta.diagnostico.tratamentoPiorou?.find((p) => p.camada === 'servico')
-    expect(servico).toMatchObject({ codigo: 'TRATAMENTO_PIOROU_LEITURA', polaridade: 'clara', percentil: 'p98', gradiente: 'gradiente-leitura-rodape' })
-    expect(Math.abs(servico!.antes - 166)).toBeLessThanOrEqual(TOLERANCIA_DA_FIXTURE)
-    expect(Math.abs(servico!.depois - 194)).toBeLessThanOrEqual(TOLERANCIA_DA_FIXTURE)
+  it('CP2A: o diagnóstico do tratamento por borda — fundo antes, alvo, cor, força, fundo depois, efeito e a candidata recusada', () => {
+    const porBorda = Object.fromEntries((composta.diagnostico.tratamentoDeLeitura ?? []).map((t) => [t.borda, t]))
+    expect(porBorda.topo).toMatchObject({ estado: 'tratado', cor: '#F3EADC', origemDaCor: 'biblioteca-legada', forca: 0.9, recusadas: [{ cor: '#283D36', origem: 'mancha', motivo: 'SENTIDO_ERRADO' }] })
+    expect(porBorda.topo.textos.map(({ camada, polaridade, efeito }) => ({ camada, polaridade, efeito }))).toEqual([
+      { camada: 'headline', polaridade: 'escura', efeito: 'melhorou' },
+      { camada: 'apoio', polaridade: 'escura', efeito: 'melhorou' },
+    ])
+    expect(porBorda.rodape).toMatchObject({ estado: 'tratado', cor: '#283D36', origemDaCor: 'mancha', forca: 0.45, alcancaAlvo: true })
+    expect(porBorda.rodape.textos).toEqual([expect.objectContaining({ camada: 'servico', polaridade: 'clara', percentil: 'p98', alvo: 139, efeito: 'melhorou' })])
   })
 
-  it('o serviço sai com p98 ≈166→194 contra alvo 139 (ok:false) — e a peça é montada mesmo assim, só com aviso', () => {
+  it('CP2A: nenhum tratamento piora (TRATAMENTO_PIOROU_LEITURA vazio) e o serviço sai no alvo, p98 ≈165→120 contra 139, sem aviso', () => {
+    expect(composta.diagnostico.tratamentoPiorou).toEqual([])
     const servico = composta.diagnostico.contraste?.flatMap((m) => m.textos ?? []).find((t) => t.camada === 'servico')
-    expect(servico).toBeDefined()
     expect(Math.abs(servico!.p98SemHalo - 166)).toBeLessThanOrEqual(TOLERANCIA_DA_FIXTURE)
-    expect(Math.abs(servico!.p98ComHalo - 194)).toBeLessThanOrEqual(TOLERANCIA_DA_FIXTURE)
-    expect(servico!.ok).toBe(false)
-    expect(composta.diagnostico.avisos.some((a) => /p98 \d+ contra alvo 139/.test(a))).toBe(true)
-    expect(composta.layers.length).toBeGreaterThan(0)
+    expect(Math.abs(servico!.p98ComHalo - 120)).toBeLessThanOrEqual(TOLERANCIA_DA_FIXTURE)
+    expect(servico!.ok).toBe(true)
+    expect(composta.diagnostico.avisos.some((a) => /contra alvo 139/.test(a))).toBe(false)
   })
 
   it('os halos que a assinatura desenhou por grupo somem, sem substituto medido', () => {
@@ -128,7 +133,7 @@ describe('caracterização: o que o compositor faz hoje com a peça piloto', () 
 })
 
 describe('propriedades na peça composta (v1)', () => {
-  hojeViola('P1 polaridade — nenhum tratamento de leitura piora a leitura de um texto', () => {
+  it('P1 polaridade — nenhum tratamento de leitura piora a leitura de um texto (CP2A)', () => {
     expect(tratamentosQuePioram(leituras), JSON.stringify(tratamentosQuePioram(leituras))).toEqual([])
   })
 
@@ -137,7 +142,7 @@ describe('propriedades na peça composta (v1)', () => {
     expect(leituraDentroDoAlvo(leitura('apoio'))).toBe(true)
   })
 
-  hojeViola('P3 serviço — leitura dentro do alvo de 3:1', () => {
+  it('P3 serviço — leitura dentro do alvo de 3:1 (CP2A: véu escuro no rodapé, na posição de hoje)', () => {
     expect(leituraDentroDoAlvo(leitura('servico')), JSON.stringify(leitura('servico'))).toBe(true)
   })
 

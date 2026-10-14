@@ -15,7 +15,7 @@
 import type { Layer } from '@/types/template'
 import { grupoDaCamada, membrosDoBloco, papelNoBloco } from '@/lib/creatives/halo/bloco-de-fundo'
 import { destaqueDaCamada, type EstiloDeDestaque } from './destaques'
-import { configDaCamada, GRADIENTE_PADRAO, type AjustesDoGradiente, type ConfigDoGradiente, type CurvaDoGradiente } from './gradiente-de-leitura'
+import { configDaCamada, ehGradienteDeLeituraDaPagina, GRADIENTE_PADRAO, type AjustesDoGradiente, type ConfigDoGradiente, type CurvaDoGradiente } from './gradiente-de-leitura'
 import { papelDoNome } from './papel-do-nome'
 import type { Formato, Papel } from './spec'
 
@@ -149,12 +149,17 @@ export interface AssinaturaDaMarca {
   numeros: NumerosDaAssinatura
   /** O alinhamento da headline na página — vira preferência do rodízio (a foto ainda manda). */
   alinhamento: 'esquerda' | 'centro' | 'direita' | null
-  /** A camada de gradiente que a equipe desenhou na página: manda na cor e na curva do gradiente de leitura. */
+  /**
+   * A camada de gradiente de LEITURA que a equipe desenhou na página: manda na cor e na curva do gradiente de
+   * leitura. Gradiente decorativo da página não conta (CP2A — `ehGradienteDeLeituraDaPagina`).
+   */
   gradienteDaPagina: AjustesDoGradiente | null
   /** De onde veio — para o registro atômico da geração. */
   origem: { pageId: string | null; formatoDaPagina: Formato | null; variante: string | null; motivoDaVariante?: string; versao: string }
   /** As camadas da página escolhida, para os arranjos de texto — preenchido por quem carrega a página. */
   camadasDaPagina?: Layer[]
+  /** O tamanho dessa página — para ler se um gradiente dela é de leitura (CP2A). */
+  dimensoesDaPagina?: { width: number; height: number }
 }
 
 /** Camada que carrega texto de um papel: texto simples ou rich text (o destaque). */
@@ -348,7 +353,7 @@ export function montarAssinatura(args: {
         continue
       }
       if (camada.type === 'gradient' || camada.type === 'gradient2') {
-        gradienteDaPagina = gradienteDaPagina ?? configDaCamada(camada)
+        if (ehGradienteDeLeituraDaPagina(camada, args.pagina)) gradienteDaPagina = gradienteDaPagina ?? configDaCamada(camada)
         continue
       }
       if ((camada.type === 'logo' || camada.type === 'image') && /logo|marca/i.test(`${camada.name} ${camada.id}`)) {

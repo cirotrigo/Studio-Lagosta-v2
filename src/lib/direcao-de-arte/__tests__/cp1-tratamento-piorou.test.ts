@@ -71,6 +71,13 @@ describe('pioraDaLeitura — pura, nas duas polaridades', () => {
     expect(pioraDaLeitura({ cor: CLARO, sem: fundo, com: { p02: 120, p98: 190 } })).toMatchObject({ polaridadePor: 'fundo' })
   })
 
+  it('CP2A: o lado tem de LER — escuro demais para ler como claro é escuro mesmo sobre fundo mais escuro, e o espelho', () => {
+    // Antes: #1E1E1E acima do p98 era "claro" e a queda do p02 não era piora; agora é escura e é.
+    expect(pioraDaLeitura({ cor: ESCURO, sem: { p02: 5, p98: 20 }, com: { p02: 2, p98: 12 } })).toMatchObject({ polaridade: 'escura', percentil: 'p02', antes: 5, depois: 2 })
+    // Antes: #F5F5F5 abaixo do p02 era "escuro"; claro demais para ler como escuro, é clara — e o p98 subir é piora.
+    expect(pioraDaLeitura({ cor: CLARO, sem: { p02: 248, p98: 250 }, com: { p02: 252, p98: 254 } })).toMatchObject({ polaridade: 'clara', percentil: 'p98', antes: 250, depois: 254 })
+  })
+
   it('cor que não é #hex (rgba, nome) não é julgada — daria luz falsa', () => {
     expect(pioraDaLeitura({ cor: 'rgba(255,255,255,1)', sem: { p02: 60, p98: 200 }, com: { p02: 30, p98: 110 } })).toBeNull()
   })

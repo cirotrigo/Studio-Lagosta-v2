@@ -144,12 +144,19 @@ describe('polaridade (P1, e o alvo onde há solução)', () => {
     estrutura('a-estrutural-guarda', casoAEstrutural, { headline: 'cima', apoio: 'cima' }, POLARIDADE_SEM_SOLUCAO),
   60_000)
 
+  // CP2A (14/10/2026): a metade "nenhum texto piora" de A e A' passou — a borda de polaridades
+  // incompatíveis fica SEM véu (a estratégia de tratamento é inviável). O que segue violado é "todos no
+  // alvo, ou a recusa estruturada": o texto claro fica sem leitura, e só a POSIÇÃO resolve (CP2B).
+  it('A — mesma borda por PREFERÊNCIA: nenhum texto piora (CP2A)', () => polaridade('a-sem-piora', casoA, { noAlvo: false, recusasAceitas: PREFERENCIA_INVIAVEL }), 60_000)
+
+  it("A' — mesma borda por ESTRUTURA: nenhum texto piora (CP2A)", () => polaridade('a-estrutural-sem-piora', casoAEstrutural, { noAlvo: false, recusasAceitas: POLARIDADE_SEM_SOLUCAO }), 60_000)
+
   // A âncora pedida junta as polaridades; sem ela a página separa (H): há solução fora da preferência.
-  hojeViola('A — mesma borda por PREFERÊNCIA: nenhum texto piora e todos no alvo, ou PREFERENCIA_INVIAVEL', () =>
+  hojeViola('A — mesma borda por PREFERÊNCIA: nenhum texto piora e todos no alvo, ou PREFERENCIA_INVIAVEL (falta a posição: CP2B)', () =>
     polaridade('a', casoA, { noAlvo: true, recusasAceitas: PREFERENCIA_INVIAVEL }),
   60_000)
 
-  hojeViola("A' — mesma borda por ESTRUTURA: nenhum texto piora e todos no alvo, ou SEM_COMBINACAO com POLARIDADE_INCOMPATIVEL_NA_MESMA_BORDA", () =>
+  hojeViola("A' — mesma borda por ESTRUTURA: nenhum texto piora e todos no alvo, ou SEM_COMBINACAO com POLARIDADE_INCOMPATIVEL_NA_MESMA_BORDA (falta a posição: CP2B)", () =>
     polaridade('a-estrutural', casoAEstrutural, { noAlvo: true, recusasAceitas: POLARIDADE_SEM_SOLUCAO }),
   60_000)
 
@@ -163,7 +170,7 @@ describe('polaridade (P1, e o alvo onde há solução)', () => {
     await polaridade('c', { pagina: { headline: { cor: ESCURO }, servico: { cor: '#222222' } }, luz: uniforme(55), logo: CLARO, blocos: [HEADLINE, SERVICO] }, { noAlvo: false, recusasAceitas: [] })
   }, 60_000)
 
-  hojeViola('H — headline escura no topo + serviço claro no rodapé: cada borda com o véu da sua polaridade, todos no alvo', () =>
+  it('H — headline escura no topo + serviço claro no rodapé: cada borda com o tratamento da sua polaridade (ou nenhum), todos no alvo (CP2A)', () =>
     polaridade('h', casoH, { noAlvo: true, recusasAceitas: [] }),
   60_000)
 })

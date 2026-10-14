@@ -47,8 +47,8 @@ const gradienteDaPagina = (id: string, cor: string, angulo: number, y: number): 
     },
   }) as Layer
 
-async function compor(gradientes: Layer[]) {
-  const foto = await fotoSintetica(() => 120)
+async function compor(gradientes: Layer[], luz: (x: number, y: number) => number = () => 120) {
+  const foto = await fotoSintetica(luz)
   const pagina = paginaSintetica({
     id: `cp1-cor-por-borda-${gradientes.length}`,
     headline: { cor: '#F5F5F5' },
@@ -62,11 +62,19 @@ async function compor(gradientes: Layer[]) {
 }
 
 describe('o diagnóstico diz a cor DESENHADA em cada borda e de onde ela veio', () => {
-  it('página com gradiente só no topo: o rodapé herda a cor dele, com origem "pagina"', async () => {
-    const r = await compor([gradienteDaPagina('grad-topo', DO_TOPO, 180, 0)])
+  it('página com gradiente só no topo e rodapé CLARO sob o serviço claro: o rodapé ganha a cor da página (escura), com origem "pagina"', async () => {
+    const r = await compor([gradienteDaPagina('grad-topo', DO_TOPO, 180, 0)], (_x, y) => (y > 960 ? 205 : 120))
     const diag = Object.fromEntries((r.diagnostico.gradientes ?? []).map((g) => [g.borda, g]))
     expect(diag.topo).toMatchObject({ cor: DO_TOPO, origemDaCor: 'pagina-na-borda' })
     expect(diag.rodape).toMatchObject({ cor: DO_TOPO, origemDaCor: 'pagina' })
+  }, 60_000)
+
+  it('CP2A: sem necessidade no rodapé, nenhum véu automático ali — e o gradiente EXPLÍCITO do topo, da página, fica', async () => {
+    const r = await compor([gradienteDaPagina('grad-topo', DO_TOPO, 180, 0)])
+    expect(r.layers.some((l) => l.id === 'gradiente-leitura-rodape')).toBe(false)
+    expect((r.diagnostico.gradientes ?? []).map((g) => [g.borda, g.origemDaCor])).toEqual([['topo', 'pagina-na-borda']])
+    const porBorda = Object.fromEntries((r.diagnostico.tratamentoDeLeitura ?? []).map((t) => [t.borda, t.estado]))
+    expect(porBorda).toEqual({ topo: 'explicito-do-template', rodape: 'sem-necessidade' })
   }, 60_000)
 
   it('página com um gradiente de cor diferente por borda: cada borda reporta a sua cor, com origem "pagina-na-borda"', async () => {

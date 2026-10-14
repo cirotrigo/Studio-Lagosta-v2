@@ -91,6 +91,13 @@ describe('a fixture é local e anonimizada', () => {
 })
 
 describe('a régua de produção reproduz a peça sobre a fixture', () => {
+  it('o registro de produção tem UMA cor de véu para a peça inteira, #F3EADC no topo (0.9) e no rodapé (0.45) — o defeito de polaridade que o CP2A corrige', () => {
+    expect(fixture.peca().composicaoRegistrada.gradientes.map(({ borda, cor, forca }) => ({ borda, cor, forca }))).toEqual([
+      { borda: 'topo', cor: '#F3EADC', forca: 0.9 },
+      { borda: 'rodape', cor: '#F3EADC', forca: 0.45 },
+    ])
+  })
+
   it('v1 (compositor): serviço ≈166→194, apoio ≈33→121, headline ≈71→182 — os números gravados na Generation', async () => {
     const r = await medirContrasteDaPeca({ layers: comArquivos(fixture.peca().v1.layers, arquivos), canvas: CANVAS, background: '#FFFFFF', faixa: [0.45, 0.9], corrigir: false })
     const medido = porTexto(r.medidas)

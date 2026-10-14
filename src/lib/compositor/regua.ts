@@ -158,24 +158,63 @@ export interface PioraDeTratamento {
 export const ehCorHex = (cor: unknown): cor is string => typeof cor === 'string' && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(cor)
 
 /**
- * Pura: o tratamento piorou a leitura deste texto? A polaridade NÃO sai da cor
- * do véu (é a escolha do véu que está sob suspeita) nem do sentido da régua
- * (que deriva do véu). Sai do FUNDO SEM TRATAMENTO quando ele não deixa
- * dúvida — o texto é mais claro que o p98 (clara) ou mais escuro que o p02
- * (escura); quando o fundo atravessa a luz do texto, da classe WCAG da cor
- * (contrasta mais com o preto → clara). Assim o vermelho saturado sobre
- * foto listrada é texto claro, e o véu escuro sob ele não é piora. Cor que
- * não é #hex: `null` (não avaliada — `ehCorHex`).
+ * Pura (CP2A): de que lado(s) a cor PODE ler a 3:1. Como texto claro, precisa
+ * de fundo de luz até `alvoPorContraste` — impossível quando ele dá 0 (cor
+ * escura demais); como texto escuro, de fundo a partir de
+ * `alvoClaroPorContraste` — impossível quando ele dá 255. Cor de luz média
+ * (vermelho, laranja, cinza médio) lê dos dois lados.
+ */
+export function ladosDeLeitura(cor: string): { clara: boolean; escura: boolean } {
+  return { clara: alvoPorContraste(cor, 3) > 0, escura: alvoClaroPorContraste(cor, 3) < 255 }
+}
+
+/**
+ * A luz de uma cor no ESPAÇO DA MEDIDA (0–255): a luminância relativa WCAG
+ * codificada em sRGB — o mesmo espaço do `b-w` do sharp com que a régua lê o
+ * fundo, e o de `alvoPorContraste`. `luzDaCor` (luma Rec.601) diverge nas
+ * cores saturadas: #FF0000 dá 76 lá e ≈124 no fundo medido (CP2A, revisão A).
+ */
+export function luzMedida(cor: string): number {
+  const y = luminanciaRelativa(cor)
+  return 255 * (y <= 0.0031308 ? 12.92 * y : 1.055 * Math.pow(y, 1 / 2.4) - 0.055)
+}
+
+/**
+ * Pura: a polaridade de um texto sobre o fundo SEM tratamento — a mesma regra
+ * para quem DETECTA a piora (CP1) e para quem ESCOLHE o tratamento (CP2A), para
+ * que um nunca contradiga o outro. NÃO sai da cor do véu (é a escolha do véu
+ * que está sob suspeita) nem do sentido da régua (que deriva do véu). Sai do
+ * FUNDO quando ele não deixa dúvida — o texto é mais claro que o p98 (clara)
+ * ou mais escuro que o p02 (escura) — e o lado lê (`ladosDeLeitura`): texto
+ * escuro demais para ler como claro é escuro mesmo sobre fundo ainda mais
+ * escuro. Quando o fundo atravessa a luz do texto, vale a classe WCAG da cor
+ * (contrasta mais com o preto → clara). Cor que não é #hex: `null`.
+ */
+export function polaridadeDoTexto(cor: string, sem: PercentisDoFundo): { polaridade: 'clara' | 'escura'; por: 'fundo' | 'cor-do-texto' } | null {
+  if (!ehCorHex(cor)) return null
+  const luz = luzMedida(cor)
+  const lados = ladosDeLeitura(cor)
+  const peloFundo = luz >= sem.p98 && lados.clara ? true : luz <= sem.p02 && lados.escura ? false : null
+  if (peloFundo !== null) return { polaridade: peloFundo ? 'clara' : 'escura', por: 'fundo' }
+  const l = luminanciaRelativa(cor)
+  return { polaridade: (l + 0.05) / 0.05 >= 1.05 / (l + 0.05) ? 'clara' : 'escura', por: 'cor-do-texto' }
+}
+
+/**
+ * Pura: o tratamento piorou a leitura deste texto? A polaridade é a de
+ * `polaridadeDoTexto` — assim o vermelho saturado sobre foto listrada é texto
+ * claro, e o véu escuro sob ele não é piora. Cor que não é #hex: `null` (não
+ * avaliada — `ehCorHex`).
  */
 export function pioraDaLeitura(
   leitura: { cor: string; sem: PercentisDoFundo; com: PercentisDoFundo },
   tolerancia = TOLERANCIA_DE_PIORA,
 ): Pick<PioraDeTratamento, 'polaridade' | 'polaridadePor' | 'percentil' | 'antes' | 'depois' | 'tolerancia' | 'luzDoTexto'> | null {
-  if (!ehCorHex(leitura.cor)) return null
+  const polaridade = polaridadeDoTexto(leitura.cor, leitura.sem)
+  if (!polaridade) return null
   const luzDoTexto = luzDaCor(leitura.cor)
-  const peloFundo = luzDoTexto >= leitura.sem.p98 ? true : luzDoTexto <= leitura.sem.p02 ? false : null
-  const l = luminanciaRelativa(leitura.cor)
-  const clara = peloFundo ?? (l + 0.05) / 0.05 >= 1.05 / (l + 0.05)
+  const clara = polaridade.polaridade === 'clara'
+  const peloFundo = polaridade.por === 'fundo' ? clara : null
   const antes = clara ? leitura.sem.p98 : leitura.sem.p02
   const depois = clara ? leitura.com.p98 : leitura.com.p02
   const piorou = clara ? depois > antes + tolerancia : depois < antes - tolerancia
@@ -322,6 +361,37 @@ function semTratamento(layers: Layer[]): Layer[] {
     .map((l) => (ehTexto(l) ? { ...l, effects: { ...(l.effects ?? {}), background: undefined } } : l))
 }
 
+/** O fundo sob um texto da peça ainda SEM tratamento de leitura (CP2A). */
+export interface FundoDoTexto {
+  camada: string
+  cor: string
+  rect: Rect
+  /** Texto com caixa de fundo própria: lê contra ela, não pede tratamento. */
+  caixaDeFundo: boolean
+  percentis: PercentisDoFundo
+}
+
+/**
+ * O p02 e o p98 sob cada texto visível, no MESMO render e na MESMA leitura da
+ * régua (sem a tinta, sem gradiente de leitura; a caixa de fundo do texto
+ * fica). É o que o compositor usa para DECIDIR o tratamento por borda antes
+ * de desenhá-lo (CP2A) — e a régua confere depois, com e sem ele.
+ */
+export async function medirFundoDosTextos(args: { layers: Layer[]; canvas: Canvas; background: string }): Promise<FundoDoTexto[]> {
+  const textos = args.layers.filter((l) => ehTexto(l) && l.visible !== false)
+  if (textos.length === 0) return []
+  const rects = textos.map(rectDe)
+  const png = await renderizar(semTinta(args.layers.filter((l) => !ehGradienteDeLeitura(l))), args.canvas, args.background)
+  const [claros, escuros] = await Promise.all([percentilSob(png, args.canvas, rects, 0.98), percentilSob(png, args.canvas, rects, 0.02)])
+  return textos.map((t, i) => ({
+    camada: t.id,
+    cor: String(t.style?.color ?? '#FFFFFF'),
+    rect: rects[i],
+    caixaDeFundo: !!t.effects?.background?.enabled,
+    percentis: { p02: escuros[i], p98: claros[i] },
+  }))
+}
+
 function bordaDaCamada(l: Layer, H: number): Borda {
   const b = l.metadata?.borda
   if (b === 'topo' || b === 'rodape') return b
@@ -375,10 +445,12 @@ export async function medirContrasteDaPeca(args: {
     const corteDoEscuro = Math.max(128, luzDaMancha - 48)
     const leituras = camadas.map((c) => {
       const cor = String(c.style?.color ?? '#FFFFFF')
+      // A regra pela mancha só sobra para o texto com caixa de fundo própria e a cor que não é #hex: o resto
+      // ganha a polaridade de `polaridadeDoTexto` logo depois do render sem tratamento (CP2A).
       const escuro = luzDaMancha >= 128 && (textoEscuro(cor) || luzDaCor(cor) < corteDoEscuro)
       const rect = rectDe(c)
       const gradientesSob = gradientes.filter((g) => sobrepoe(rectDe(g), rect)).map((g) => g.id)
-      return { rect, cor, escuro, alvo: escuro ? alvoClaroPorContraste(cor, 3) : alvoPorContraste(cor, 3), caixaDeFundo: !!c.effects?.background?.enabled, gradientesSob }
+      return { rect, cor, escuro, alvo: 0, caixaDeFundo: !!c.effects?.background?.enabled, gradientesSob }
     })
     return { grupo, camadas, leituras, gradiente, tinta: gradiente ? forcaDaCamada(gradiente) : 0, mancha }
   })
@@ -404,6 +476,14 @@ export async function medirContrasteDaPeca(args: {
   /** O percentil do SENTIDO da régua (p02 para texto escuro, p98 para claro). */
   const doSentido = (todos: PercentisDoFundo[]) => leituras.map((l, i) => (l.escuro ? todos[i].p02 : todos[i].p98))
   const [semTodos, comTodos] = await Promise.all([percentisDe(pngSem), percentisDe(pngCom)])
+  // UMA polaridade para quem escolhe o tratamento, quem detecta a piora e quem mede (CP2A, 14/10/2026):
+  // a do texto sobre o fundo SEM tratamento. Antes ela saía da cor do véu — sob véu escuro todo texto era
+  // "claro", e o escuro ganhava alvo 0 e a correção escurecia o véu sob ele.
+  leituras.forEach((l, i) => {
+    const polaridade = l.caixaDeFundo ? null : polaridadeDoTexto(l.cor, semTodos[i])
+    if (polaridade) l.escuro = polaridade.polaridade === 'escura'
+    l.alvo = l.escuro ? alvoClaroPorContraste(l.cor, 3) : alvoPorContraste(l.cor, 3)
+  })
   const semP98 = doSentido(semTodos)
   const comP98 = doSentido(comTodos)
   /** Quanto a leitura sobra do alvo, já com a tolerância: ≥ 0 é ok. */
