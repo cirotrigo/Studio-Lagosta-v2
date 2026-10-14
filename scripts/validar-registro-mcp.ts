@@ -1705,6 +1705,30 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
         "additionalProperties": {},
         "description": "O CONTRATO da copy autoral (F1): a copy inteira como você a escreveu — {versao: \"copy-autoral-v1\", origem: {autor: \"claude\", superficie: \"chat\"}, blocos: [{id, funcao (pre|headline|apoio|cta|servico|livre), grupoDeLeitura?, ordem, linhas (EXATAS: caixa, acento e [colchetes] como escritos), fatos?: [{entradaId, trecho}], estilo?: {herdaDe?, grupoVisual?, linhasNaVoz2?: [índices]}}], revisoes: []}. Com ele, `blocos` e `camadasExtras` são dispensáveis (saem do contrato, sem transformar texto). CAMADA EXTRA no contrato: bloco com estilo.herdaDe (o papel de que veste o estilo) e estilo.grupoVisual (principal|topo|rodape) — um bloco com função que a variante não tem (funcao \"servico\", herdaDe \"apoio\") ou um texto sem papel (funcao \"livre\", que EXIGE herdaDe). É o que deixa a copy inteira ser comparada com a arte depois (ver-geracao). O contrato é gravado ANTES de qualquer adaptação (página, arte e item)."
       },
+      "arquetipo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          },
+          "versao": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "impressao": {
+            "type": "string",
+            "pattern": "^arq1-[0-9a-f]{14}$"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false,
+        "description": "O ARQUÉTIPO de layout, opt-in: { id } ou { id, versao } — os disponíveis estão em ver-assinatura (campo arquetipos, com a disponibilidade de cada um). Com ele, a GEOMETRIA vem do arquétipo: cada papel pousa na posição de REFERÊNCIA dele (sem busca pela foto), e a assinatura dá só o estilo (fonte, corpo, cor, destaque, logo, gradiente). Sem versão, vale a mais recente — e a peça grava a versão exata e a impressão, que a recomposição mantém. Para reproduzir uma medição, mande a fixacao.arquetipo do medir-copy (id + versao + impressao). Recusado ANTES de compor, com o motivo: papel que o arquétipo não tem (cta, por exemplo), papel obrigatório ausente, camada extra ou herdaDe, formato quadrado, linhas acima do máximo, preferência de âncora/alinhamento/canto diferente da dele, ou caixa que não cabe na referência — nada some e nada é movido. Em leva com loteId, mande { id, versao } (ou a fixacao) para a retentativa continuar a mesma peça depois de uma versão nova publicada. Sem arquétipo, a composição é a de sempre."
+      },
       "preferencias": {
         "type": "object",
         "properties": {
@@ -2052,6 +2076,30 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
               "type": "object",
               "additionalProperties": {},
               "description": "O CONTRATO da copy autoral (F1): a copy inteira como você a escreveu — {versao: \"copy-autoral-v1\", origem: {autor: \"claude\", superficie: \"chat\"}, blocos: [{id, funcao (pre|headline|apoio|cta|servico|livre), grupoDeLeitura?, ordem, linhas (EXATAS: caixa, acento e [colchetes] como escritos), fatos?: [{entradaId, trecho}], estilo?: {herdaDe?, grupoVisual?, linhasNaVoz2?: [índices]}}], revisoes: []}. Com ele, `blocos` e `camadasExtras` são dispensáveis (saem do contrato, sem transformar texto). CAMADA EXTRA no contrato: bloco com estilo.herdaDe (o papel de que veste o estilo) e estilo.grupoVisual (principal|topo|rodape) — um bloco com função que a variante não tem (funcao \"servico\", herdaDe \"apoio\") ou um texto sem papel (funcao \"livre\", que EXIGE herdaDe). É o que deixa a copy inteira ser comparada com a arte depois (ver-geracao). O contrato é gravado ANTES de qualquer adaptação (página, arte e item)."
+            },
+            "arquetipo": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80,
+                  "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+                },
+                "versao": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "impressao": {
+                  "type": "string",
+                  "pattern": "^arq1-[0-9a-f]{14}$"
+                }
+              },
+              "required": [
+                "id"
+              ],
+              "additionalProperties": false,
+              "description": "O ARQUÉTIPO de layout, opt-in: { id } ou { id, versao } — os disponíveis estão em ver-assinatura (campo arquetipos, com a disponibilidade de cada um). Com ele, a GEOMETRIA vem do arquétipo: cada papel pousa na posição de REFERÊNCIA dele (sem busca pela foto), e a assinatura dá só o estilo (fonte, corpo, cor, destaque, logo, gradiente). Sem versão, vale a mais recente — e a peça grava a versão exata e a impressão, que a recomposição mantém. Para reproduzir uma medição, mande a fixacao.arquetipo do medir-copy (id + versao + impressao). Recusado ANTES de compor, com o motivo: papel que o arquétipo não tem (cta, por exemplo), papel obrigatório ausente, camada extra ou herdaDe, formato quadrado, linhas acima do máximo, preferência de âncora/alinhamento/canto diferente da dele, ou caixa que não cabe na referência — nada some e nada é movido. Em leva com loteId, mande { id, versao } (ou a fixacao) para a retentativa continuar a mesma peça depois de uma versão nova publicada. Sem arquétipo, a composição é a de sempre."
             },
             "preferencias": {
               "type": "object",

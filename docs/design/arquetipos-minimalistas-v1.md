@@ -332,9 +332,116 @@ O contrato é **fechado**: em cada nível, só as chaves dele. Uma chave a mais 
 | `CAMPO_DESCONHECIDO` | chave fora do contrato, em qualquer nível |
 | `CAMPO_INVALIDO` | código taxonômico, preferência, cor ou canto do elemento, limite (ou a falta dele) ou foto ideal mal formados |
 
+## T1a — o arquétipo na spec e no compositor (14/10/2026)
+
+O T1a liga o catálogo ao compositor sem busca dentro da zona: a posição é a **referência**. A peça
+continua Page normal + `Layer[]` normal + Generation normal.
+
+**O pedido e a forma resolvida.** A spec pública traz `arquetipo: { id }` ou `{ id, versao }`.
+Antes de compor (e já na fila e no medir-copy) ela vira `{ id, versao, impressao }`
+(`arquetipos/na-spec.ts`), e é essa forma que se grava em `fieldValues.spec`. Uma spec que já traz
+a impressão é conferida: divergente, recusa. A recomposição exige a versão e nunca resolve a mais
+recente, nem quando o catálogo publica uma versão nova.
+
+**As recusas antes da medida** (`CreativeError`, 422, detalhes estruturados):
+
+| Código | Quando |
+|---|---|
+| `ARQUETIPO_DESCONHECIDO` / `ARQUETIPO_VERSAO_INEXISTENTE` | id ou versão fora do catálogo |
+| `ARQUETIPO_VERSAO_AUSENTE` | peça persistida sem versão (a impressão sem versão já é recusada na forma, `SPEC_INVALIDA`, pelo `validarSpec`) |
+| `ARQUETIPO_IMPRESSAO_AUSENTE` | peça persistida sem impressão (a equivalência nunca é presumida) |
+| `ARQUETIPO_IMPRESSAO_DIVERGENTE` | a impressão gravada não é a da definição |
+| `ARQUETIPO_INDISPONIVEL` | modelo com elemento obrigatório (o L do base-esquerda aguarda o T1b) |
+| `ARQUETIPO_FORMATO_NAO_SUPORTADO` | `quadrado` (não se aproxima por story/feed) |
+| `ARQUETIPO_SELECAO_NAO_SUPORTADA` | com `selecaoExperimental` |
+| `ARQUETIPO_PREFERENCIA_CONFLITANTE` | âncora, alinhamento ou canto da spec ≠ os do arquétipo (`auto` não conta; igual é aceito e dito) |
+| `ARQUETIPO_PAPEIS_INCOMPATIVEIS` | papel sem lugar (o `cta`), papel obrigatório ausente, camada extra / `herdaDe`, marca sem logo |
+| `ARQUETIPO_LINHAS_EXCEDIDAS` | linhas com texto acima de `linhasMax` (o compositor recusa; o medir-copy declara) |
+| `ARQUETIPO_TEXTO_NAO_CABE` / `ARQUETIPO_FORA_DA_ZONA` / `ARQUETIPO_ZONA_EFETIVA_VAZIA` | a caixa (ou seus ornamentos) não cabe na referência ou na zona efetiva — ver a materialização |
+| `ARQUETIPO_AJUSTE_FINAL` | na referência, o ajuste final teria de encolher ou mover texto |
+| `ARQUETIPO_LOGO_SEM_PROPORCAO` | a logo de referência fixa não tem proporção legível |
+
+**A materialização** (`arquetipos/materializar.ts` e `no-compositor.ts`, as mesmas no compor e no
+medir-copy):
+
+- **Unidades.** Cada papel é uma unidade posicional; papéis que a página agrupa não se fundem. A
+  segunda voz vai na unidade da manchete. Cada unidade ganha `groupId` próprio
+  (`grupo-arq-<papel>`), que a régua e o autofix leem. Dentro da unidade, a página não decide geometria:
+  - a ordem é a da copy (a segunda voz depois da manchete; o serviço repartido na ordem das linhas
+    do autor), nunca a vertical da página;
+  - o vão é o ritmo da casa (`vaoEntre`), nunca o que a página desenhou (`vaoAntes`/encaixe);
+  - a pilha que pousa na referência é a dos TEXTOS: os ornamentos do arranjo (ícone, filete, selo)
+    são desenhados presos à tinta, sem deslocar a âncora (a extensão conferida é a união dos
+    ornamentos de TODO texto da unidade, também o do meio);
+  - se, com o texto na referência, os ornamentos saem da zona efetiva, a recusa é
+    `ARQUETIPO_FORA_DA_ZONA`, igual no compor e no medir-copy.
+- **Coluna.** É a largura da referência menos o padding de desenho, para a caixa caber nela. A
+  `larguraMaxima` da assinatura (geometria) sai da conta.
+- **Capacidade.** É a altura (e a largura) da referência.
+  - A escada de corpo sancionada (até 80%) vale para a altura também, bloco a bloco.
+  - Vale também na UNIDADE (`prepararNoArquetipo`): quando a pilha de um papel (manchete + segunda
+    voz, texto + elementos presos) passa da referência, a escada daquele papel recomeça um degrau
+    abaixo, com o mesmo passo e o mesmo piso.
+  - Se nem no piso cabe, `ARQUETIPO_TEXTO_NAO_CABE` traz a referência, a medida e o orçamento da
+    unidade: a caixa, a escala e cada bloco. A recusa do bloco por largura traz coluna, altura e
+    orçamento por linha.
+  - O medir-copy roda a mesma escada e marca como `nao-cabe` os blocos da unidade recusada.
+  - **O ajuste final não encolhe peça com arquétipo.** Antes do autofix, as camadas na referência
+    passam pela mesma conferência que ele faria (transbordo e colisão, `ajusteFinalNecessario`);
+    havendo o que ajustar, a recusa é `ARQUETIPO_AJUSTE_FINAL`, e o medir-copy declara o mesmo
+    (`ajustesFinais`). Se o autofix ainda assim mexer num texto, a recusa é a mesma: abaixo da
+    escada, a peça sairia menor que o piso de 80% e diferente do que foi medido.
+  - A logo de referência fixa sem proporção legível é recusada (`ARQUETIPO_LOGO_SEM_PROPORCAO`).
+- **Posição.** A caixa pousa no topo da referência, alinhada como o arquétipo manda. A zona
+  efetiva é a do arquétipo ∩ `assinatura.pisoDoProjeto`: a área segura do projeto, antes das
+  margens da página, que são geometria da página. Fora dela, `ARQUETIPO_FORA_DA_ZONA`, sem mover
+  nada. A zona é conferida de novo depois do autofix e dos elementos presos.
+- **Logo.**
+  - Na referência fixa, entra em contain: a maior caixa com a proporção do arquivo, rente ao lado
+    do canto e centrada na altura.
+  - Na automática (centro-óptico), entra no canto mais calmo de sempre (`escolherCanto`), no piso
+    do projeto.
+  - A logo presa a um arranjo da assinatura sai dele, com aviso: a marca fica uma vez, onde o
+    arquétipo manda.
+- **Elementos.** Os elementos do arquétipo (fio, spark) não são desenhados no T1a; o diagnóstico
+  traz `elementosDeclarados` e `elementosMaterializados: []`. Os elementos dos arranjos da
+  assinatura (ícone, filete) continuam, presos aos textos.
+- **Corte.** É o central: o T1a não pontua alternativas.
+- **CP2A.** O tratamento de leitura por borda, a régua e `TRATAMENTO_PIOROU_LEITURA` rodam como
+  sempre sobre as caixas finais.
+
+**A procedência.**
+
+- `fieldValues.spec.arquetipo` guarda `{ id, versao, impressao }`; é a fonte da recomposição.
+- `fieldValues.composicao.arquetipo` guarda a procedência:
+  - o código taxonômico, o formato e `modo: 'referencia'`;
+  - as preferências coincidentes;
+  - por papel, a referência, a zona efetiva e a posição;
+  - a logo e os elementos.
+- `posicao` do diagnóstico traz a âncora e o alinhamento do arquétipo, `candidatos: []`.
+
+**Recomposição.**
+
+- `specComAPosicaoOriginal` não injeta âncora/alinhamento em peça com arquétipo (seriam uma segunda
+  fonte); a variante, que é estilo, continua fixada.
+- A página editada à mão segue a política de sempre (re-render como está). O arquétipo é
+  procedência da peça original: não se "aprende" o arquétipo da edição.
+
+**MCP.** `arquetipo` nas três portas que constroem a peça (compor-arte, compor-leva, medir-copy), com
+o schema da spec. `medir-copy` devolve `fixacao.arquetipo` (a versão exata) e a medida contra a
+referência. `ver-assinatura` lista os arquétipos com `disponibilidade` (`disponivel` /
+`aguarda-t1b`). Nenhuma tool nova.
+
+**Limites conhecidos do piloto.** Nenhum desses casos é escondido; cada um é recusado com o código
+correspondente.
+
+- A copy com `cta` ou com camada extra não compõe com arquétipo.
+- O modelo 2 espera o T1b.
+- A posição é a referência. Uma foto que pede outra posição dentro da zona é o CP2B.
+
 ## Próximos checkpoints
 
-- **T1a — materialização.**
+- **T1a — materialização.** Feito em 14/10/2026 (ver a seção T1a acima); o que segue é o plano original.
   - Arquétipo + parâmetros + foto + assinatura viram `Layer[]` de uma Page normal.
   - A peça registra o arquétipo, a versão e a impressão.
   - Ficam para lá:

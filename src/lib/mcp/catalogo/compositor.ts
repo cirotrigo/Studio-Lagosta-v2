@@ -8,8 +8,9 @@
 import { z } from 'zod'
 import { definirTool } from '../registro/definir'
 // Módulos PUROS (zod + tipos): o catálogo continua carregando sem env.
-import { GRUPOS_VISUAIS, PAPEIS, blocoSchema } from '../../compositor/spec'
+import { GRUPOS_VISUAIS, PAPEIS, arquetipoDaSpecSchema, blocoSchema } from '../../compositor/spec'
 import { MAX_LINHAS } from '../../copy-autoral/contrato'
+import { vitrineDeArquetipos } from '../../compositor/arquetipos/na-spec'
 
 /**
  * 🔴 Os limites do bloco vêm do schema da SPEC, nunca redeclarados aqui (R02 da
@@ -78,6 +79,11 @@ const preferencias = z
   })
   .optional()
 
+/** O schema da SPEC (T1a), com a descrição pública — o mesmo nas três portas que constroem a peça. */
+const arquetipo = arquetipoDaSpecSchema.describe(
+  'O ARQUÉTIPO de layout, opt-in: { id } ou { id, versao } — os disponíveis estão em ver-assinatura (campo arquetipos, com a disponibilidade de cada um). Com ele, a GEOMETRIA vem do arquétipo: cada papel pousa na posição de REFERÊNCIA dele (sem busca pela foto), e a assinatura dá só o estilo (fonte, corpo, cor, destaque, logo, gradiente). Sem versão, vale a mais recente — e a peça grava a versão exata e a impressão, que a recomposição mantém. Para reproduzir uma medição, mande a fixacao.arquetipo do medir-copy (id + versao + impressao). Recusado ANTES de compor, com o motivo: papel que o arquétipo não tem (cta, por exemplo), papel obrigatório ausente, camada extra ou herdaDe, formato quadrado, linhas acima do máximo, preferência de âncora/alinhamento/canto diferente da dele, ou caixa que não cabe na referência — nada some e nada é movido. Em leva com loteId, mande { id, versao } (ou a fixacao) para a retentativa continuar a mesma peça depois de uma versão nova publicada. Sem arquétipo, a composição é a de sempre.',
+)
+
 const spec = {
   projectId: z.number().describe('ID do cliente.'),
   formato: z.enum(['story', 'feed', 'quadrado']).describe('story (1080x1920), feed (1080x1350) ou quadrado (1080x1080).'),
@@ -97,6 +103,7 @@ const spec = {
     .describe('Texto SEM papel (uma nota, "vale só no almoço", um aviso) que veste o estilo de um papel da assinatura: {id, linhas, herdaDe, grupoVisual?, grupoDeLeitura?, ordem?}. Vira camada editável na página, com o id dado. Com copyAutoral não mande aqui: declare o bloco com funcao "livre" e estilo.herdaDe no contrato (as camadas extras saem dele).'),
   copyAutoral: z.record(z.string(), z.unknown()).optional().describe('O CONTRATO da copy autoral (F1): a copy inteira como você a escreveu — {versao: "copy-autoral-v1", origem: {autor: "claude", superficie: "chat"}, blocos: [{id, funcao (pre|headline|apoio|cta|servico|livre), grupoDeLeitura?, ordem, linhas (EXATAS: caixa, acento e [colchetes] como escritos), fatos?: [{entradaId, trecho}], estilo?: {herdaDe?, grupoVisual?, linhasNaVoz2?: [índices]}}], revisoes: []}. Com ele, `blocos` e `camadasExtras` são dispensáveis (saem do contrato, sem transformar texto). CAMADA EXTRA no contrato: bloco com estilo.herdaDe (o papel de que veste o estilo) e estilo.grupoVisual (principal|topo|rodape) — um bloco com função que a variante não tem (funcao "servico", herdaDe "apoio") ou um texto sem papel (funcao "livre", que EXIGE herdaDe). É o que deixa a copy inteira ser comparada com a arte depois (ver-geracao). O contrato é gravado ANTES de qualquer adaptação (página, arte e item).'),
   preferencias,
+  arquetipo: arquetipo.optional(),
   nome: z.string().optional().describe('Nome da peça na galeria (opcional).'),
   tema: z.string().optional().describe('Tema/assunto, para o registro e o rodízio de layout.'),
   itemDePlanoId: z.string().optional().describe('Quando a peça é de um item de plano: o id do item (ver-plano).'),
@@ -125,6 +132,7 @@ function specDe(args: Record<string, unknown>) {
     ...(Array.isArray(args.camadasExtras) ? { camadasExtras: args.camadasExtras } : {}),
     ...(args.copyAutoral && typeof args.copyAutoral === 'object' ? { copyAutoral: args.copyAutoral } : {}),
     ...(args.preferencias ? { preferencias: args.preferencias } : {}),
+    ...(args.arquetipo ? { arquetipo: args.arquetipo } : {}),
     ...(args.nome ? { nome: args.nome } : {}),
     ...(args.tema ? { tema: args.tema } : {}),
     ...(args.itemDePlanoId ? { itemDePlanoId: args.itemDePlanoId } : {}),
@@ -261,6 +269,8 @@ export const toolsDoCompositor = [
         gradiente: { ...a.numeros.gradiente, ...(a.gradienteDaPagina ? { daPagina: a.gradienteDaPagina } : {}) },
         logo: a.logo ? { largura: a.logo.largura } : null,
         numeros: a.numeros,
+        // T1a: os arquétipos de layout (só leitura) — o agente pede pelo id, sem decorar; a disponibilidade diz o que já compõe.
+        arquetipos: vitrineDeArquetipos(),
         editorUrl: template ? `${getPublicAppUrl()}/templates/${template.id}/editor` : null,
         dica: a.origem.pageId
           ? 'A equipe ajusta fonte, tamanho, cor e destaque de cada papel abrindo a página de assinatura no editor; uma camada de gradiente na página manda na cor e na curva do gradiente de leitura. O próximo lote sai com a mudança. Cada variante traz o orçamento por papel (caracteres por linha, aproximado) e a fonte disponível: papel com fonteDisponivel false sai na fonte de fallback e a medida não vale. Antes de compor, medir-copy mede a copy escrita contra a variante.'
@@ -279,11 +289,12 @@ export const toolsDoCompositor = [
       blocos: spec.blocos,
       camadasExtras: spec.camadasExtras,
       copyAutoral: spec.copyAutoral,
-      variante: z.string().optional().describe('A variante a medir (id da página, nome ou tag, como em compor-arte). Sem ela, a que a composição escolheria para esta copy — mande também nome, tema e a foto (a luz da foto e a chave da peça entram nessa escolha); sem a LUZ da foto (foto ausente, ou que não carregou) a escolha é PROVISÓRIA (escolhaProvisoria: true, com os motivos) — o rodízio de arranjos também usa a chave da peça, que inclui a foto, então fixar só a variante não basta: repita a medição com a foto definitiva antes de confiar nas medidas, ou fixe ao compor a `fixacao` inteira (preferencias.variante E preferencias.arranjos).'),
+      variante: z.string().optional().describe('A variante a medir (id da página, nome ou tag, como em compor-arte). Sem ela, a que a composição escolheria para esta copy — mande também nome, tema e a foto (a luz da foto e a chave da peça entram nessa escolha); sem a LUZ da foto (foto ausente, ou que não carregou) a escolha é PROVISÓRIA (escolhaProvisoria: true, com os motivos) — o rodízio de arranjos também usa a chave da peça, que inclui a foto, então fixar só a variante não basta: repita a medição com a foto definitiva antes de confiar nas medidas, ou fixe ao compor a `fixacao` inteira (preferencias.variante E preferencias.arranjos, e o arquetipo quando houver).'),
       tema: spec.tema,
       nome: spec.nome,
       fotoDriveId: spec.fotoDriveId,
       fotoUrl: spec.fotoUrl,
+      arquetipo: spec.arquetipo,
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     acesso: { tipo: 'projeto' },
@@ -301,6 +312,7 @@ export const toolsDoCompositor = [
         nome: typeof args.nome === 'string' ? args.nome : null,
         fotoDriveId: typeof args.fotoDriveId === 'string' ? args.fotoDriveId : null,
         fotoUrl: typeof args.fotoUrl === 'string' ? args.fotoUrl : null,
+        ...(args.arquetipo && typeof args.arquetipo === 'object' ? { arquetipo: args.arquetipo as { id: string; versao?: number; impressao?: string } } : {}),
       })
       const m = r.medicao
       return {
@@ -312,7 +324,7 @@ export const toolsDoCompositor = [
           ? {
               escolhaProvisoria: true,
               motivos: r.motivosDaProvisoriedade,
-              comoFixar: `repita a medição com a foto definitiva antes de confiar nas medidas; para reutilizar ESTA medição ao compor, mande preferencias.variante = ${JSON.stringify(r.fixacao.variante)} E preferencias.arranjos = ${JSON.stringify(r.fixacao.arranjos)} — sem os dois a composição pode escolher outra variante (luz clara/escura e rodízio) e outro arranjo (o rodízio de arranjos usa a chave da peça, que inclui a foto).`,
+              comoFixar: `repita a medição com a foto definitiva antes de confiar nas medidas; para reutilizar ESTA medição ao compor, mande preferencias.variante = ${JSON.stringify(r.fixacao.variante)} E preferencias.arranjos = ${JSON.stringify(r.fixacao.arranjos)}${r.fixacao.arquetipo ? ` E arquetipo = ${JSON.stringify(r.fixacao.arquetipo)}` : ''} — sem a fixação inteira a composição pode escolher outra variante (luz clara/escura e rodízio) e outro arranjo (o rodízio de arranjos usa a chave da peça, que inclui a foto).`,
             }
           : {}),
         formato: args.formato,
@@ -341,6 +353,8 @@ export const toolsDoCompositor = [
         })),
         alturaDosBlocos: m.alturaDosBlocos,
         segundaVoz: m.segundaVoz,
+        // T1a: a medida contra o arquétipo — a coluna e a capacidade de cada papel, onde pousaria e o que não cabe.
+        ...(m.arquetipo ? { arquetipo: m.arquetipo } : {}),
         outrasVariantes: r.outrasVariantes,
         ...(m.avisos.length ? { avisos: m.avisos } : {}),
         nota: m.naoMedido
@@ -436,6 +450,8 @@ export const toolsDoCompositor = [
           : {}),
         destaques: d.blocos.filter((b) => b.destacado).map((b) => b.papel),
         contraste: d.contraste?.map((c) => ({ bloco: c.grupo, ok: c.ok, p98: c.p98ComHalo, alvo: Math.round(c.alvo) })) ?? null,
+        // T1a: a procedência da geometria — o arquétipo exato e, por papel, referência, zona efetiva e posição.
+        ...(d.arquetipo ? { arquetipo: d.arquetipo } : {}),
         avisos: d.avisos,
       }
       if (r.prova) {
@@ -477,6 +493,7 @@ export const toolsDoCompositor = [
             camadasExtras: spec.camadasExtras,
             copyAutoral: spec.copyAutoral,
             preferencias,
+            arquetipo: spec.arquetipo,
             nome: spec.nome,
             tema: spec.tema,
             itemDePlanoId: spec.itemDePlanoId,
