@@ -128,6 +128,11 @@ describe('P12 — nada em silêncio', () => {
     expect(tool.schema.safeParse({ projectId: 1, pageId: 'p', versaoEsperada: 'v', ajustes: [{ tipo: 'mover', camadas: ['servico'], dy: 10 }] }).success).toBe(true)
   })
 
+  it('a lista de campos do oráculo cobre todos os campos instrucionais do ajusteSchema (e só eles)', () => {
+    const doSchema = Object.keys(ajusteSchema.shape).filter((k) => !ENDERECO.has(k)).sort()
+    expect(Object.keys(VALOR).sort()).toEqual(doSchema)
+  })
+
   hojeViola('nenhum campo aceito pelo schema é ignorado em silêncio — todos os pares tipo × campo', () => {
     const pares = Object.values(BASE).flatMap((base) =>
       Object.keys(VALOR)

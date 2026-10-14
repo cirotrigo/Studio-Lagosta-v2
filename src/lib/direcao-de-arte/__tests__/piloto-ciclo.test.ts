@@ -143,6 +143,14 @@ const projectId = () => Number(fixture.peca().spec.projectId)
 const ajustar = (ajustes: Ajuste[]) => ajustarArte({ projectId: projectId(), pageId: PAGINA, versaoEsperada: versaoDaPagina(banco.pagina)!, ajustes: structuredClone(ajustes) })
 const revisar = () => revisarArte({ projectId: projectId(), pageId: PAGINA, visao: false, previa: false })
 const camada = (ls: Layer[], id: string) => ls.find((l) => l.id === id)!
+/**
+ * A regra MEDIU: está na cobertura e foi avaliada — ou só parcial porque a
+ * fonte da marca não existe no ambiente de teste (o único "parcial" aceito).
+ */
+function regraMediu(r: Awaited<ReturnType<typeof revisar>>, regra: string): boolean {
+  const c = r.relatorio.cobertura[regra as keyof typeof r.relatorio.cobertura]
+  return !!c && (c.estado === 'avaliada' || (c.estado === 'parcial' && /fonte não cadastrada/.test(c.motivo ?? '')))
+}
 /** Problemas abertos de verdade: `fonte-nao-carregada` é do ambiente de teste (as fontes da marca não estão aqui). */
 const problemasAbertos = (r: Awaited<ReturnType<typeof revisar>>) => r.relatorio.achados.filter((a) => a.severidade === 'problema' && a.regra !== 'fonte-nao-carregada')
 
@@ -206,25 +214,30 @@ describe('P9 — recuperação', () => {
   }, 120_000)
 
   hojeViola('em até 2 ciclos com os ajustes do próprio revisor, a peça termina apta ou com REVISAO_HUMANA_NECESSARIA', async () => {
+    exigirMedidaFiel(banco.pagina.layers)
     let revisao = await revisar()
-    const respostas: unknown[] = [revisao]
+    let ultimoAjuste: unknown = null
     for (let ciclo = 0; ciclo < 2 && problemasAbertos(revisao).length > 0 && revisao.relatorio.ajustes.length > 0; ciclo++) {
-      respostas.push(await ajustarArte({ projectId: projectId(), pageId: PAGINA, versaoEsperada: revisao.versao, ajustes: revisao.relatorio.ajustes }))
+      ultimoAjuste = await ajustarArte({ projectId: projectId(), pageId: PAGINA, versaoEsperada: revisao.versao, ajustes: revisao.relatorio.ajustes })
+      exigirMedidaFiel(banco.pagina.layers)
       revisao = await revisar()
-      respostas.push(revisao)
     }
     // Guarda contra o passe falso: as regras duras precisam ter medido (render quebrado vira "não avaliada").
-    for (const regra of REGRAS_DURAS) exigir(revisao.relatorio.cobertura[regra]?.estado !== 'nao-avaliada', `a regra ${regra} mediu`)
+    for (const regra of REGRAS_DURAS) exigir(regraMediu(revisao, regra), `a regra ${regra} mediu (${JSON.stringify(revisao.relatorio.cobertura[regra])})`)
     const apta = problemasAbertos(revisao).length === 0
-    const escalada = JSON.stringify(respostas).includes(CODIGOS.revisaoHumana)
+    // A escalada vale para a VERSÃO FINAL: a última revisão ou o ajuste que a produziu.
+    const escalada = JSON.stringify([revisao, ultimoAjuste]).includes(CODIGOS.revisaoHumana)
     expect(apta || escalada, JSON.stringify(problemasAbertos(revisao).map((a) => `${a.regra}:${a.camadas.join(',')}`))).toBe(true)
   }, 240_000)
 })
 
 describe('o revisor (só medida) sobre a v1', () => {
   hojeViola('acusa a logo sem leitura como problema (a logo creme sob o véu creme no teto claro)', async () => {
+    exigirMedidaFiel(banco.pagina.layers)
     const r = await revisar()
-    const daLogo = r.relatorio.achados.filter((a) => a.camadas.includes('logo') && a.regra !== 'logo-sobre-texto' && a.severidade === 'problema')
+    // Regras de GEOMETRIA não contam: a propriedade é leitura da logo, não posição.
+    const geometricas = new Set(['logo-sobre-texto', 'fora-da-area-segura', 'colisao', 'tinta-fora-da-caixa', 'texto-cortado'])
+    const daLogo = r.relatorio.achados.filter((a) => a.camadas.includes('logo') && !geometricas.has(a.regra) && a.severidade === 'problema')
     expect(daLogo.length, JSON.stringify(r.relatorio.achados.map((a) => `${a.regra}:${a.camadas.join(',')}`))).toBeGreaterThan(0)
   }, 120_000)
 
