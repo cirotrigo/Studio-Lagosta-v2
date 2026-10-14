@@ -143,10 +143,12 @@ function referenciasQueFaltam(item: Record<string, unknown> | null, versao: Vers
   if (item.codigo !== CODIGOS.revisaoHumana) faltas.push(`codigo ${String(item.codigo)} ≠ ${CODIGOS.revisaoHumana}`)
   if (item.generationId !== 'gen-v1') faltas.push(`generationId ${String(item.generationId)}`)
   if (item.pageId !== 'pagina-piloto') faltas.push(`pageId ${String(item.pageId)}`)
-  if (typeof item.editUrl !== 'string' || !item.editUrl.includes('pagina-piloto')) faltas.push(`editUrl ${String(item.editUrl)}`)
-  const achados = Array.isArray(item.achados) ? item.achados : []
-  if (achados.length === 0) faltas.push('sem os achados estruturais')
-  else if (versao === 'v1' && !JSON.stringify(achados).includes('servico')) faltas.push('os achados não citam o serviço sem leitura')
+  if (typeof item.editUrl !== 'string' || !item.editUrl.includes('pageId=pagina-piloto')) faltas.push(`editUrl ${String(item.editUrl)}`)
+  // Achado estrutural no formato do revisor (`AchadoDaRevisao`): a regra e as camadas envolvidas.
+  const achados = (Array.isArray(item.achados) ? item.achados : []) as Array<{ regra?: unknown; camadas?: unknown }>
+  const bemFormados = achados.filter((a) => typeof a?.regra === 'string' && Array.isArray(a?.camadas))
+  if (bemFormados.length === 0) faltas.push('sem achados estruturais (regra + camadas)')
+  else if (versao === 'v1' && !bemFormados.some((a) => (a.camadas as unknown[]).includes('servico'))) faltas.push('nenhum achado sobre a camada do serviço sem leitura')
   return faltas
 }
 

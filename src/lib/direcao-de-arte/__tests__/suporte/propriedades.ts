@@ -312,8 +312,9 @@ export function foraDaInterface(layers: Layer[], canvas: Canvas, interface_: { t
 
 /**
  * P7 — ordem de leitura: o bloco que a copy manda ler antes fica ACIMA (o topo
- * da caixa) do bloco seguinte. Blocos pela `ordem` da spec; a camada do
- * compositor tem o id do papel.
+ * da caixa) do bloco seguinte — ou, na MESMA altura, à esquerda dele (arranjo
+ * lado a lado lê-se da esquerda para a direita). Blocos pela `ordem` da spec;
+ * a camada do compositor tem o id do papel.
  */
 export function ordemDeLeituraInvertida(layers: Layer[], blocos: Array<{ ordem?: number; papel: string }>) {
   const ordenados = [...blocos].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))
