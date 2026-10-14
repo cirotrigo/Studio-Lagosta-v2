@@ -54,7 +54,7 @@ import {
 import { ehTemplateDeTresLayouts, type LayoutPelaFoto } from '@/lib/creatives/halo/layout-pela-foto'
 import { registerProjectFonts } from '@/lib/posts/register-project-fonts'
 import type { Layer } from '@/types/template'
-import { problemaDoAjuste, type Ajuste } from '@/lib/creatives/revisao/contrato'
+import { problemaEstruturadoDoAjuste, type Ajuste } from '@/lib/creatives/revisao/contrato'
 import { copyAutoralDaPagina, recusaDaRevisao, revisaoDaPaginaComCamadas } from '@/lib/copy-autoral/revisar-pagina'
 import { lerCopyAutoral, tentarCopyEfetivaDasCamadas } from '@/lib/copy-autoral'
 import { bakeLayers } from '@/lib/creatives/bake-layers'
@@ -1065,6 +1065,11 @@ export interface AjustarArteResult {
   versao?: string | null
   ajustesAplicados?: AjusteAplicado[]
   ajustesRecusados?: AjusteRecusado[]
+  /**
+   * Com `ajustes`: `parcial` = parte foi recusada (está em `ajustesRecusados`) e o resto foi gravado —
+   * `ajustada: true` sozinho não distingue (CP1, 13/10/2026).
+   */
+  resultadoDosAjustes?: 'completo' | 'parcial'
   generationId: string
   pageId: string
   templateId: number
@@ -1132,14 +1137,27 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
       400,
     )
   }
-  const ajustesIncompletos = ajustes
-    .map((a, i) => {
-      const problema = problemaDoAjuste(a)
-      return problema ? `ajuste ${i}: ${problema}` : null
-    })
-    .filter((p): p is string => !!p)
-  if (ajustesIncompletos.length > 0) {
-    throw new CreativeError('AJUSTE_INVALIDO', `Ajustes incompletos — ${ajustesIncompletos.join('; ')}.`, 400)
+  // Nada em silêncio (CP1): a recusa da chamada leva, por ajuste, o código e os campos — não só o texto.
+  /** O rótulo `achado` do pedido segue em cada registro (rastreabilidade por índice). */
+  const comAchado = (a: Ajuste) => (typeof a.achado === 'string' ? { achado: a.achado } : {})
+  const ajustesInvalidos = ajustes.flatMap((a, indice) => {
+    const problema = problemaEstruturadoDoAjuste(a)
+    return problema ? [{ indice, tipo: String(a.tipo), ...problema, ...comAchado(a) }] : []
+  })
+  if (ajustesInvalidos.length > 0) {
+    // Todo índice sai com resultado: os inválidos com o próprio código, os válidos como não executados.
+    const invalidos = new Set(ajustesInvalidos.map((p) => p.indice))
+    const naoExecutados = ajustes.flatMap((a, indice) =>
+      invalidos.has(indice)
+        ? []
+        : [{ indice, tipo: String(a.tipo), codigo: 'CHAMADA_RECUSADA' as const, motivo: 'ajuste válido, não executado: a chamada foi recusada inteira por outro ajuste inválido', ...comAchado(a) }],
+    )
+    throw new CreativeError(
+      'AJUSTE_INVALIDO',
+      `Ajustes incompletos ou inválidos — nenhum ajuste desta chamada foi aplicado: ${ajustesInvalidos.map((p) => `ajuste ${p.indice}: ${p.motivo}`).join('; ')}.`,
+      400,
+      { recusados: [...ajustesInvalidos, ...naoExecutados].sort((x, y) => x.indice - y.indice) },
+    )
   }
   // Ajuste CALCULADO (pelo revisor) só se aplica sobre a versão em que foi
   // calculado: sem `versaoEsperada` os deltas iriam para o lugar errado se a
@@ -1604,7 +1622,9 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
     ajustada: true,
     ...persisted,
     versao: versaoGravada,
-    ...(revisao ? { ajustesAplicados: revisao.aplicados, ajustesRecusados: revisao.recusados } : {}),
+    ...(revisao
+      ? { ajustesAplicados: revisao.aplicados, ajustesRecusados: revisao.recusados, resultadoDosAjustes: revisao.recusados.length > 0 ? ('parcial' as const) : ('completo' as const) }
+      : {}),
     imageApplied,
     ...(imageWarning ? { imageWarning } : {}),
     camposAlterados,

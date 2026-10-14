@@ -86,7 +86,15 @@ import {
   type GrupoParaGradiente,
 } from './gradiente-de-leitura'
 import { DIMENSOES, validarSpec, type Alinhamento, type Ancora, type Canto, type Formato, type Papel, type SpecDePeca } from './spec'
-import { alvoClaroPorContraste, medirContrasteDaPeca, type ContrasteMedido, type IntervencaoDeTexto } from './regua'
+import { alvoClaroPorContraste, medirContrasteDaPeca, type ContrasteMedido, type IntervencaoDeTexto, type PioraDeTratamento } from './regua'
+
+/**
+ * De onde veio a cor do gradiente de leitura de uma borda, na ordem em que o
+ * compositor a decide: a camada de gradiente da página NAQUELA borda → a
+ * primeira camada de gradiente da página → `Project.assinatura.gradiente.cor`
+ * → a cor da marca que mais contrasta com os textos da peça → a mancha.
+ */
+export type OrigemDaCorDoVeu = 'pagina-na-borda' | 'pagina' | 'numeros-da-assinatura' | 'contraste-com-os-textos' | 'mancha'
 
 export { TAG_DA_PECA_COMPOSTA } from './persistencia'
 
@@ -108,8 +116,20 @@ export interface DiagnosticoDaComposicao {
   assuntoOrigem: 'catalogo' | 'estimado' | 'nenhum'
   /** LEGADO — sempre vazio desde 11/09/2026: o compositor não desenha mais halo. */
   halos: Array<{ grupo: string; tinta: number; raio: number; luz: number; alvo: number; necessidade: number }>
-  /** Um gradiente de leitura por borda com texto, com a força FINAL (depois da régua). Ausente em diagnósticos antigos. */
-  gradientes?: Array<{ borda: Borda; forca: number; altura: number; cor: string; necessidade: number }>
+  /**
+   * Um gradiente de leitura por borda com texto, com a força FINAL (depois da
+   * régua). Ausente em diagnósticos antigos. Desde o CP1 (13/10/2026), `cor` é
+   * a cor DESENHADA naquela borda (lida da camada) e `origemDaCor` diz de onde
+   * ela veio — antes, `cor` repetia a cor global mesmo quando a borda usava a
+   * da camada da página.
+   */
+  gradientes?: Array<{ borda: Borda; forca: number; altura: number; cor: string; necessidade: number; origemDaCor?: OrigemDaCorDoVeu }>
+  /**
+   * TRATAMENTO_PIOROU_LEITURA na peça FINAL (CP1, 13/10/2026): o texto cuja
+   * leitura o gradiente piorou, medido com e sem ele. Diagnóstico — a peça
+   * continua saindo; a correção é de outro checkpoint.
+   */
+  tratamentoPiorou?: PioraDeTratamento[]
   /** `tinta` é legado (sempre 0): a logo não ganha mais halo. */
   logo: { canto: Canto; tinta: number } | null
   blocos: Array<{ /** O id da camada (`servico-2`, `headline2`…) — a identidade do bloco; ausente em diagnósticos antigos. */ id?: string; papel: Papel; escala: number; width: number; height: number; destacado?: boolean; naoMedido?: boolean }>
@@ -671,15 +691,21 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
         .filter((c): c is string => typeof c === 'string'),
     ),
   ]
+  const corQueContrastaComOsTextos = corQueContrasta(coresDaMarca, montados.map((b) => b.cor))
   const cfgGradiente: ConfigDoGradiente = {
     ...assinatura.numeros.gradiente,
     ...(assinatura.gradienteDaPagina ?? {}),
-    cor:
-      assinatura.gradienteDaPagina?.cor ??
-      assinatura.numeros.gradiente.cor ??
-      corQueContrasta(coresDaMarca, montados.map((b) => b.cor)) ??
-      mancha,
+    cor: assinatura.gradienteDaPagina?.cor ?? assinatura.numeros.gradiente.cor ?? corQueContrastaComOsTextos ?? mancha,
   }
+  // Só observabilidade (CP1): a mesma ordem da linha acima, dita por extenso.
+  const origemDaCorGlobal: OrigemDaCorDoVeu =
+    assinatura.gradienteDaPagina?.cor != null
+      ? 'pagina'
+      : assinatura.numeros.gradiente.cor != null
+        ? 'numeros-da-assinatura'
+        : corQueContrastaComOsTextos != null
+          ? 'contraste-com-os-textos'
+          : 'mancha'
 
   interface BlocoComposto {
     chave: string
@@ -1092,6 +1118,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   //    FORÇA do gradiente uma vez dentro da faixa e AVISA quando a foto não
   //    carrega o texto.
   let contraste: ContrasteMedido[] | null = null
+  let tratamentoPiorou: PioraDeTratamento[] | undefined
   let intervencaoDeTexto: IntervencaoDeTexto | undefined
   try {
     const faixa: [number, number] = [
@@ -1101,6 +1128,8 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     const regua = await medirContrasteDaPeca({ layers, canvas, background: assinatura.numeros.fundo, faixa, corrigir: true, medirIntervencao: opcoes.medirComparacao })
     layers = regua.layers
     contraste = regua.medidas
+    // A peça que sai é a corrigida: a piora que vale é a dela.
+    tratamentoPiorou = regua.piorasDepoisDaCorrecao ?? regua.pioras
     intervencaoDeTexto = regua.intervencao
     avisos.push(...regua.avisos)
   } catch (erro) {
@@ -1118,16 +1147,21 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     assuntoOrigem: assuntoDoCatalogo ? 'catalogo' : melhor.assunto ? 'estimado' : 'nenhum',
     halos: [],
     gradientes: gradientes.map((gr) => {
-      const forcaFinal = layers.find((l) => l.id === gr.layer.id)?.metadata?.forca
+      const final = layers.find((l) => l.id === gr.layer.id)
+      const forcaFinal = final?.metadata?.forca
       const daBorda = paraGradiente.filter((p) => bordaDoGrupo(p.rect, p.ancora, canvas.height) === gr.borda).map((p) => p.necessidade)
+      // A cor DESENHADA: a da camada que vai para a peça (a primeira parada), não a global.
+      const corDesenhada = (final?.style as { gradientStops?: Array<{ color?: string }> } | undefined)?.gradientStops?.find((st) => typeof st.color === 'string')?.color
       return {
         borda: gr.borda,
         forca: typeof forcaFinal === 'number' ? forcaFinal : gr.forca,
         altura: gr.altura,
-        cor: cfgGradiente.cor,
+        cor: corDesenhada ?? cfgDaBorda(gr.borda).cor,
         necessidade: daBorda.length > 0 ? Math.max(...daBorda) : 0,
+        origemDaCor: gradientesDaPagina.get(gr.borda)?.cor != null ? 'pagina-na-borda' : origemDaCorGlobal,
       }
     }),
+    ...(tratamentoPiorou ? { tratamentoPiorou } : {}),
     logo: logoDiag,
     blocos: montados.map((b) => ({ id: b.layer.id, papel: b.papel, escala: b.escala, width: b.width, height: b.height, destacado: b.destacado, ...(familiasDaCamada(b.layer as Layer).some((f) => fontesNaoCarregadas.has(f)) ? { naoMedido: true } : {}) })),
     // As medidas FINAIS, depois do autofix — é o que vale para quem for ler a

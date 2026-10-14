@@ -28,10 +28,10 @@
 import type { Layer } from '@/types/template'
 import { TEXT_DRAW_PADDING, type TextGeometryIssue, type TextLayerMetrics } from '@/lib/creatives/text-geometry'
 import { CANVAS_MARGIN } from '@/lib/canvas-margin'
-import type { ContrasteMedido } from '@/lib/compositor/regua'
+import { textosForaDaPiora, tratamentosQuePioraramALeitura, type ContrasteMedido, type PioraDeTratamento } from '@/lib/compositor/regua'
 import { papelDaCamada } from '@/lib/compositor/defasagem'
 import { alcanceDoGrupo, alturaDaFaixa, bordaDoGrupo, ehGradienteDeLeitura, forcaDaCamada, GRADIENTE_PADRAO, type Borda } from '@/lib/compositor/gradiente-de-leitura'
-import { uniao, type Rect } from '@/lib/creatives/halo/halo'
+import { luzDaCor, uniao, type Rect } from '@/lib/creatives/halo/halo'
 import { bordaDaLeitura } from './aplicar-ajustes'
 import {
   ajusteSchema,
@@ -70,6 +70,54 @@ export function leituraDecisiva(m: ContrasteMedido): { p98: number; ok: boolean;
     : { p98: m.p98ComHalo, ok: m.ok, tinta: m.tinta, alvo: m.alvo, sentido: m.sentido }
 }
 
+/** Onde a força de um gradiente está na faixa da marca, e quanto ela ainda pode mudar. */
+export interface DiagnosticoDaForca {
+  posicao: 'abaixo-do-piso' | 'piso' | 'entre' | 'teto' | 'acima-do-teto'
+  forca: number
+  minima: number
+  maxima: number
+  margemParaAumentar: number
+  margemParaDiminuir: number
+}
+
+/**
+ * Pura (CP1, 13/10/2026): a posição REAL da força na faixa. O revisor dizia
+ * "já está no teto" para força 0.45 — que era o PISO (peça piloto). Faixa
+ * degenerada (mínimo = máximo) conta como teto: não há margem. Compara na
+ * precisão em que a força é gravada (3 casas): a posição e a margem saem da
+ * MESMA diferença real — 0.746 sob teto 0.75 está entre, com margem 0.004.
+ */
+export function diagnosticoDaForca(forca: number, [minima, maxima]: [number, number]): DiagnosticoDaForca {
+  const f = arred(forca, 3)
+  const min = arred(minima, 3)
+  const max = arred(maxima, 3)
+  const posicao: DiagnosticoDaForca['posicao'] = f > max ? 'acima-do-teto' : f === max ? 'teto' : f < min ? 'abaixo-do-piso' : f === min ? 'piso' : 'entre'
+  return {
+    posicao,
+    forca,
+    minima,
+    maxima,
+    margemParaAumentar: Math.max(0, arred(max - f, 3)),
+    margemParaDiminuir: Math.max(0, arred(f - min, 3)),
+  }
+}
+
+/** A frase da posição da força, para o achado de leitura (`proposta`: a força é a que o revisor propõe). */
+function fraseDaForca(d: DiagnosticoDaForca, borda: Borda, proposta = false): string {
+  const qual = borda === 'topo' ? 'do topo' : 'do rodapé'
+  const faixa = `força ${d.forca}; faixa da marca ${d.minima}–${d.maxima}`
+  const aumentar = d.margemParaAumentar > 0 ? `há margem para aumentar até ${d.maxima}` : 'não há margem para aumentar'
+  const diminuir = d.margemParaDiminuir > 0 ? `há margem para diminuir até ${d.minima}` : 'não há margem para diminuir'
+  const onde = {
+    'acima-do-teto': 'está ACIMA do teto da faixa da marca',
+    teto: 'está no TETO da faixa da marca',
+    entre: 'está entre o piso e o teto da faixa da marca',
+    piso: 'está no PISO da faixa da marca',
+    'abaixo-do-piso': 'está ABAIXO do piso da faixa da marca',
+  }[d.posicao]
+  return proposta ? `Com a proposta, o gradiente ${qual} ${onde.replace(/^está/, 'fica')} (${faixa}): ${aumentar}; ${diminuir}.` : `O gradiente ${qual} ${onde} (${faixa}): ${aumentar}; ${diminuir}.`
+}
+
 export interface ReferenciaDeCamada {
   /** Corpo do modelo, normalizado para 1080 de largura. */
   fontSize1080: number
@@ -86,6 +134,13 @@ export interface EntradaDaRevisao {
   geometria: TextGeometryIssue[]
   /** A régua rodada COM correção, em memória: `tintaCorrigida` é a força proposta. `null` = não medida. */
   contraste: ContrasteMedido[] | null
+  /**
+   * As pioras de tratamento na peça COMO ESTÁ (`ReguaResultado.pioras`, antes
+   * da correção em memória). `null` = a régua não rodou. Ausente: derivadas de
+   * `contraste` — o estado que a medida descreve, que nos grupos corrigidos é
+   * o DEPOIS da correção (CP1, 13/10/2026).
+   */
+  pioras?: PioraDeTratamento[] | null
   faixaDoGradiente: [number, number]
   /** Corpo e entrelinha de referência por id de camada da página revisada. */
   referencias: Record<string, ReferenciaDeCamada>
@@ -704,6 +759,11 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
     )
   }
 
+  // As pioras de tratamento (CP1): calculadas aqui porque a seção 6 avisa quando propõe reforçar o
+  // gradiente que piorou a leitura. Sem `pioras` na entrada, derivam da medida — o estado que ELA
+  // descreve (a régua com correção grava nos grupos corrigidos o depois). `null` = régua não rodou.
+  const pioras = e.pioras !== undefined ? e.pioras : e.contraste ? tratamentosQuePioraramALeitura(e.contraste) : null
+
   // ── 6. Leitura sobre a foto (a régua) e gradiente sobrando ─────────────
   if (!e.contraste) {
     cobertura['texto-sem-leitura'] = { estado: 'nao-avaliada', motivo: 'a régua de contraste não rodou' }
@@ -737,7 +797,9 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
           observacao = 'Texto escuro sobre fundo escuro: a régua não corrige esse caso — mova o bloco para uma área clara da foto ou mude a cor do texto.'
         } else if (gradiente && m.tintaCorrigida != null) {
           propostas.push({ tipo: 'gradiente', borda, camadas: [gradiente.id], forca: m.tintaCorrigida })
-          if (!m.ok) observacao = `Mesmo com a força em ${m.tintaCorrigida} (teto da marca: ${forcaMaxima}) a leitura não fecha (p98 ${m.p98ComHalo} contra alvo ${m.alvo}): mova o bloco para uma área mais escura da foto ou troque a foto.`
+          // CP1: dizia "(teto da marca: X)" mesmo com a força proposta abaixo do teto — a posição e a margem são as reais.
+          if (!m.ok)
+            observacao = `Mesmo com a força proposta (${m.tintaCorrigida}) a leitura não fecha (p98 ${m.p98ComHalo} contra alvo ${m.alvo}). ${fraseDaForca(diagnosticoDaForca(m.tintaCorrigida, [forcaMinima, forcaMaxima]), borda, true)} Mova o bloco para uma área mais escura da foto ou troque a foto.`
         } else if (!gradiente) {
           const necessaria = m.p98SemHalo > 0 ? (m.p98SemHalo - (alvo - 10)) / m.p98SemHalo / 0.7 : forcaMinima
           const forca = arred(Math.min(forcaMaxima, Math.max(forcaMinima, necessaria)), 3)
@@ -752,7 +814,27 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
             propostas.push({ tipo: 'gradiente', borda, forca, altura, cor: corDeOutroGradiente })
           }
         } else {
-          observacao = `O gradiente ${borda === 'topo' ? 'do topo' : 'do rodapé'} já está no teto da marca (${tinta}): mova o bloco para uma área mais escura da foto ou troque a foto.`
+          // A régua não achou força que feche a leitura. Dizer ONDE a força está de verdade (CP1: dizia "teto"
+          // no piso) e, havendo margem, por que mais força deste véu não resolve.
+          const forca = diagnosticoDaForca(tinta, [forcaMinima, forcaMaxima])
+          const stops = (gradiente.style as { gradientStops?: Array<{ color?: string }> } | undefined)?.gradientStops ?? []
+          const corDoVeu = stops.find((x) => typeof x.color === 'string')?.color
+          const veuClareia = typeof corDoVeu === 'string' && /^#[0-9a-fA-F]{6}$/.test(corDoVeu) && luzDaCor(corDoVeu) >= m.p98SemHalo
+          const porQue =
+            forca.margemParaAumentar <= 0
+              ? ''
+              : tinta <= 0
+                ? ' A régua não corrige um gradiente de força 0 (ele não está agindo sobre o texto).'
+                : veuClareia
+                ? ` Mais força não resolve: o véu (${corDoVeu}, luz ${Math.round(luzDaCor(corDoVeu!))}) é mais claro que o fundo sob o texto (p98 sem véu ${m.p98SemHalo}) — mais força clareia o fundo e piora a leitura.`
+                : ' Mesmo assim a régua não acha força deste véu que feche a leitura.'
+          observacao = `${fraseDaForca(forca, borda)}${porQue} Mova o bloco para uma área mais escura da foto ou troque a foto.`
+        }
+        // A proposta reforça um gradiente que, medido com e sem ele, PIOROU a leitura deste grupo: dizer,
+        // não esconder (a correção da polaridade é de outro checkpoint).
+        const gradientesReforcados = new Set(propostas.flatMap((p) => p.camadas ?? []))
+        if (pioras?.some((p) => (p.gradientes ?? (p.gradiente ? [p.gradiente] : [])).some((g) => gradientesReforcados.has(g)) && ids.includes(p.camada))) {
+          observacao = [observacao, 'Atenção: este gradiente PIOROU a leitura deste texto (TRATAMENTO_PIOROU_LEITURA, medido) — reforçá-lo tende a piorar mais; confira antes de aplicar.'].filter(Boolean).join(' ')
         }
         const doGrupo = ids.map((id) => porId.get(id)!)
         const sombra = doGrupo.some(temSombraNoGlifo)
@@ -781,6 +863,9 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
               p98,
               alvo,
               forcaAtual: tinta,
+              forcaMinima,
+              forcaMaxima,
+              posicaoDaForca: gradiente ? diagnosticoDaForca(tinta, [forcaMinima, forcaMaxima]).posicao : null,
               forcaProposta: m.tintaCorrigida ?? (propostas[0]?.forca ?? null),
               fechaComAProposta: gradiente ? m.ok : null,
             },
@@ -831,6 +916,52 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
         },
         [{ tipo: 'gradiente', borda, camadas: [gradienteId], forca }],
       )
+    }
+  }
+
+  // ── 6b. O tratamento PIOROU a leitura (CP1, 13/10/2026) ─────────────────
+  // Derivado só da régua (com e sem o tratamento, texto a texto, nos dois
+  // sentidos). É `problema` medido e a visão NÃO o rebaixa — o benchmark REA viu
+  // ferramenta madura "melhorar o contraste" na polaridade errada e dizer que
+  // melhorou. Diagnóstico: não propõe cor nem layout.
+  if (!pioras) {
+    cobertura['tratamento-piorou-leitura'] = { estado: 'nao-avaliada', motivo: 'a régua de contraste não rodou' }
+  } else {
+    // O que a regra NÃO julgou fica dito na cobertura, nunca lido como "sem piora".
+    const foraDaPiora = textosForaDaPiora(e.contraste ?? [])
+    const lacunas = [
+      foraDaPiora.length > 0 ? `sem a medida com e sem o tratamento (ou cor que não é #hex): ${foraDaPiora.join(', ')}` : null,
+      e.camadas.some((l) => (l.type === 'gradient' || l.type === 'gradient2') && l.visible !== false && !ehGradienteDeLeitura(l))
+        ? 'gradiente desenhado à mão: só o gradiente de leitura do compositor é medido com e sem'
+        : null,
+      e.medidasAproximadas.length > 0 ? 'rich text: a polaridade sai da cor base do texto' : null,
+    ].filter(Boolean)
+    if (lacunas.length > 0) marcarParcial('tratamento-piorou-leitura', lacunas.join('; '))
+    for (const p of pioras) {
+      const camada = porId.get(p.camada)
+      if (!camada || textoSemConteudo(camada)) continue
+      const sobe = p.polaridade === 'clara'
+      adicionar({
+        regra: 'tratamento-piorou-leitura',
+        severidade: 'problema',
+        certeza: 'medida',
+        camadas: [p.camada],
+        mensagem: `${(p.gradientes?.length ?? 0) > 1 ? `Os tratamentos de leitura (${p.gradientes.join(', ')}) PIORARAM` : 'O tratamento de leitura PIOROU'} "${nomeDaCamada(camada)}": com ele, o ${p.percentil} do fundo sob o texto ${sobe ? 'claro SUBIU' : 'escuro DESCEU'} de ${p.antes} para ${p.depois} (tolerância ${p.tolerancia}).`,
+        evidencia: {
+          codigo: p.codigo,
+          grupo: p.grupo,
+          polaridade: p.polaridade,
+          percentil: p.percentil,
+          antes: p.antes,
+          depois: p.depois,
+          tolerancia: p.tolerancia,
+          luzDoTexto: p.luzDoTexto,
+          gradiente: p.gradiente,
+          gradientes: (p.gradientes ?? []).join(', '),
+          polaridadePor: p.polaridadePor,
+        },
+        observacao: 'Medido com e sem o tratamento: a visão não rebaixa este achado.',
+      })
     }
   }
 
@@ -1315,7 +1446,7 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
     // Sem métricas só valem as regras que não medem texto: fonte ausente (do
     // registro), a régua (do render) e a visão.
     for (const regra of REGRAS_DA_REVISAO) {
-      if (regra === 'fonte-nao-carregada' || regra === 'texto-sem-leitura' || regra === 'gradiente-forte-demais' || regra === 'visao') continue
+      if (regra === 'fonte-nao-carregada' || regra === 'texto-sem-leitura' || regra === 'gradiente-forte-demais' || regra === 'tratamento-piorou-leitura' || regra === 'visao') continue
       cobertura[regra] = { estado: 'nao-avaliada', motivo: e.motivoSemMedida }
     }
   }
@@ -1333,7 +1464,7 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
     const rotulo = (id: string) => { const l = porId.get(id); const nome = l ? nomeDaCamada(l) : null; return nome && nome !== id ? `${id} ("${nome}")` : id }
     const motivo = `texto(s) sem métrica — curvo, fitty ou auto-resize, que o medidor não mede: ${e.textosSemMetrica.map(rotulo).join(', ')}; as regras de geometria não os examinaram e a visão não recebeu marca deles`
     for (const regra of REGRAS_DA_REVISAO) {
-      if (regra === 'fonte-nao-carregada' || regra === 'texto-sem-leitura' || regra === 'gradiente-forte-demais') continue
+      if (regra === 'fonte-nao-carregada' || regra === 'texto-sem-leitura' || regra === 'gradiente-forte-demais' || regra === 'tratamento-piorou-leitura') continue
       const atual = cobertura[regra]
       if (atual?.estado === 'avaliada') cobertura[regra] = { estado: 'parcial', motivo }
       else if (atual?.estado === 'parcial') cobertura[regra] = { estado: 'parcial', motivo: [atual.motivo, motivo].filter(Boolean).join('; ') }

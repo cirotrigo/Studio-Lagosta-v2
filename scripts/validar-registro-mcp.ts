@@ -894,7 +894,7 @@ const LITERAIS_ARTE_IA: Record<string, unknown> = {
             borda: { type: 'string', enum: ['topo', 'rodape'], description: 'gradiente: a borda do gradiente de leitura.' },
             forca: { type: 'number', minimum: 0, maximum: 1, description: 'gradiente: força nova (opacidade na borda, 0 a 1).' },
             altura: { type: 'number', minimum: 40, maximum: 4000, description: 'gradiente: altura nova da faixa em px.' },
-            cor: { type: 'string', pattern: '^#[0-9a-fA-F]{6}$', description: 'gradiente: cor (#RRGGBB), só usada quando a borda ainda não tem gradiente.' },
+            cor: { type: 'string', pattern: '^#[0-9a-fA-F]{6}$', description: 'gradiente: cor (#RRGGBB) do gradiente CRIADO numa borda sem gradiente. Sobre um gradiente que já existe, cor diferente da dele é RECUSADA (trocar a cor não é suportado por este ajuste).' },
             visivel: { type: 'boolean', description: 'visibilidade: true mostra, false esconde.' },
             largura: { type: 'number', minimum: 20, maximum: 4000, description: 'caixa: largura nova da caixa de texto em px (o alinhamento do texto é preservado).' },
             alturaAutomatica: { type: 'boolean', description: 'caixa: true liga a altura automática (a caixa cresce até caber o texto).' },

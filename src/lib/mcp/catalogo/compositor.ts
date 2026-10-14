@@ -429,7 +429,11 @@ export const toolsDoCompositor = [
         logo: d.logo?.canto ?? 'sem logo',
         selecao: d.selecao,
         tratamentoDeTexto: d.tratamentoDeTexto ?? 'gradiente-de-leitura',
-        gradientes: (d.gradientes ?? []).map((g) => ({ borda: g.borda, forca: g.forca })),
+        // A cor DESENHADA em cada borda, de onde ela veio, e a piora medida do tratamento (CP1): quem opera vê, não só o banco.
+        gradientes: (d.gradientes ?? []).map((g) => ({ borda: g.borda, forca: g.forca, cor: g.cor, ...(g.origemDaCor ? { origemDaCor: g.origemDaCor } : {}) })),
+        ...(d.tratamentoPiorou?.length
+          ? { tratamentoPiorou: d.tratamentoPiorou.map((p) => ({ codigo: p.codigo, camada: p.camada, polaridade: p.polaridade, percentil: p.percentil, antes: p.antes, depois: p.depois })) }
+          : {}),
         destaques: d.blocos.filter((b) => b.destacado).map((b) => b.papel),
         contraste: d.contraste?.map((c) => ({ bloco: c.grupo, ok: c.ok, p98: c.p98ComHalo, alvo: Math.round(c.alvo) })) ?? null,
         avisos: d.avisos,

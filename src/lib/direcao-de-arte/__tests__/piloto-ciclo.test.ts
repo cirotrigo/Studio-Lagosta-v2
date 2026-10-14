@@ -174,20 +174,24 @@ function pioras(antes: LeituraDoTexto[], depois: LeituraDoTexto[], invadeAntes: 
 }
 
 describe('caracterização: o caminho real hoje', () => {
-  it('a revisão (só medida) acusa o serviço sem leitura — sem ajuste e com o diagnóstico de "teto" no piso 0.45', async () => {
+  it('a revisão (só medida) acusa o serviço sem leitura — ainda sem ajuste (a correção é do CP2)', async () => {
     const r = await revisar()
     expect(r.relatorio.cobertura['texto-sem-leitura']?.estado).toBe('avaliada')
     const servico = r.relatorio.achados.find((a) => a.regra === 'texto-sem-leitura' && a.camadas.includes('servico'))
     expect(servico).toMatchObject({ severidade: 'problema', ajustes: [] })
-    expect(servico?.observacao).toMatch(/teto da marca \(0\.45\)/)
   }, 120_000)
 
-  it('ajustar-arte com os 3 ajustes do agente grava a v2 da produção, sem recusar nada', async () => {
+  it('ajustar-arte com os 3 ajustes do agente grava os dois `mover` e RECUSA o gradiente com cor (nada em silêncio, CP1)', async () => {
     const r = await ajustar(fixture.peca().v2.revisao.ajustes as unknown as Ajuste[])
-    expect(r.ajustesRecusados).toEqual([])
+    expect(r.ajustesRecusados).toEqual([expect.objectContaining({ indice: 1, codigo: 'COR_DE_GRADIENTE_EXISTENTE', campos: ['cor'] })])
     const persistidas = banco.pagina.layers as Layer[]
-    for (const id of ['headline', 'apoio', 'servico', 'gradiente-leitura-rodape']) expect(camada(persistidas, id).position).toEqual(camada(fixture.peca().v2.layers, id).position)
-    expect(banco.generations.at(-1)?.fieldValues?.revisao?.aplicados).toEqual(fixture.peca().v2.revisao.aplicados)
+    for (const id of ['headline', 'apoio', 'servico']) expect(camada(persistidas, id).position).toEqual(camada(fixture.peca().v2.layers, id).position)
+    expect(camada(persistidas, 'gradiente-leitura-rodape').position).toEqual(camada(fixture.peca().v1.layers, 'gradiente-leitura-rodape').position)
+    const producao = fixture.peca().v2.revisao.aplicados
+    const gravados = (banco.generations.at(-1)?.fieldValues?.revisao?.aplicados ?? []) as Array<Record<string, unknown>>
+    expect(gravados.map(({ achado: _achado, ...registro }) => registro)).toEqual([producao[0], producao[2]])
+    expect(r.resultadoDosAjustes).toBe('parcial')
+    expect(banco.generations.at(-1)?.fieldValues?.revisao?.recusados).toEqual([expect.objectContaining({ indice: 1, codigo: 'COR_DE_GRADIENTE_EXISTENTE' })])
   }, 120_000)
 })
 
@@ -241,11 +245,22 @@ describe('o revisor (só medida) sobre a v1', () => {
     expect(daLogo.length, JSON.stringify(r.relatorio.achados.map((a) => `${a.regra}:${a.camadas.join(',')}`))).toBeGreaterThan(0)
   }, 120_000)
 
-  hojeViola('no serviço sem leitura, não diz "teto da marca" com a força no piso e traz correção executável', async () => {
+  // Era um hojeViola só ("não diz teto" E "traz correção"): o CP1 corrigiu o diagnóstico; a correção executável é do CP2.
+  it('no serviço sem leitura, não diz "teto" com a força no piso: diz PISO, a faixa, a margem e por que mais força deste véu não resolve', async () => {
     const r = await revisar()
     const servico = r.relatorio.achados.find((a) => a.regra === 'texto-sem-leitura' && a.camadas.includes('servico'))
     exigir(servico, 'o revisor acusa o serviço sem leitura')
-    expect({ teto: /teto da marca/.test(servico.observacao ?? ''), ajustes: servico.ajustes.length > 0 }).toEqual({ teto: false, ajustes: true })
+    expect(servico.observacao).not.toMatch(/teto/i)
+    expect(servico.observacao).toMatch(/PISO da faixa da marca \(força 0\.45; faixa da marca 0\.45–0\.9\): há margem para aumentar até 0\.9/)
+    expect(servico.observacao).toMatch(/o véu \(#F3EADC, luz 235\) é mais claro que o fundo sob o texto/)
+    expect(servico.evidencia).toMatchObject({ forcaAtual: 0.45, forcaMinima: 0.45, forcaMaxima: 0.9, posicaoDaForca: 'piso' })
+  }, 120_000)
+
+  hojeViola('no serviço sem leitura, traz correção executável (CP2)', async () => {
+    const r = await revisar()
+    const servico = r.relatorio.achados.find((a) => a.regra === 'texto-sem-leitura' && a.camadas.includes('servico'))
+    exigir(servico, 'o revisor acusa o serviço sem leitura')
+    expect(servico.ajustes.length, JSON.stringify(servico.observacao)).toBeGreaterThan(0)
   }, 120_000)
 })
 
