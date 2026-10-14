@@ -31,7 +31,7 @@ import { convertPageToDesignData } from '@/lib/posts/page-to-design-data'
 import { fetchBuffer, registerProjectFonts } from '@/lib/posts/register-project-fonts'
 import { createServerTextBoxMeasurer } from '@/lib/creatives/server-text-measurer'
 import { checkTextGeometry } from '@/lib/creatives/text-geometry'
-import { medirContrasteDaPeca, type ContrasteMedido } from '@/lib/compositor/regua'
+import { medirContrasteDaPeca, type ContrasteMedido, type PioraDeTratamento } from '@/lib/compositor/regua'
 import { GRADIENTE_PADRAO } from '@/lib/compositor/gradiente-de-leitura'
 import { formatoDaPagina } from '@/lib/compositor/assinatura'
 import { papelDoNome } from '@/lib/compositor/papel-do-nome'
@@ -415,8 +415,12 @@ export async function revisarArte(input: RevisarArteInput): Promise<RevisaoDaArt
   ]
 
   let contraste: ContrasteMedido[] | null = null
+  let pioras: PioraDeTratamento[] | null = null
   try {
-    contraste = (await medirContrasteDaPeca({ layers: camadas, canvas, background, faixa, corrigir: true })).medidas
+    const regua = await medirContrasteDaPeca({ layers: camadas, canvas, background, faixa, corrigir: true })
+    contraste = regua.medidas
+    // A piora vale para a peça COMO ESTÁ — a correção da régua aqui é só em memória (CP1).
+    pioras = regua.pioras
   } catch (erro) {
     console.warn('[revisar-arte] a régua de contraste falhou:', erro instanceof Error ? erro.message : erro)
   }
@@ -503,6 +507,7 @@ export async function revisarArte(input: RevisarArteInput): Promise<RevisaoDaArt
     metricas,
     geometria: issues,
     contraste,
+    pioras,
     faixaDoGradiente: faixa,
     referencias,
     assunto,

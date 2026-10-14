@@ -206,7 +206,8 @@ describe('a leitura sobre a foto (a régua)', () => {
     )
     const achado = r.achados.find((a) => a.regra === 'texto-sem-leitura')!
     expect(achado.ajustes).toEqual([])
-    expect(achado.observacao).toContain('teto')
+    expect(achado.observacao).toMatch(/teto/i)
+    expect(achado.observacao).toMatch(/não há margem para aumentar/)
   })
 
   it('gradiente sobrando em TODOS os blocos da borda: sugere devolver luz à foto', () => {

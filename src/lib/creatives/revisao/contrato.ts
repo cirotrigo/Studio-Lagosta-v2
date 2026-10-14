@@ -40,6 +40,7 @@ export const REGRAS_DA_REVISAO = [
   'texto-pequeno',
   'palavra-orfa',
   'texto-sobre-assunto',
+  'tratamento-piorou-leitura',
   'visao',
 ] as const
 export type RegraDaRevisao = (typeof REGRAS_DA_REVISAO)[number]
@@ -110,7 +111,7 @@ export const ajusteSchema = z
       .string()
       .regex(/^#[0-9a-fA-F]{6}$/)
       .optional()
-      .describe('gradiente: cor (#RRGGBB), só usada quando a borda ainda não tem gradiente.'),
+      .describe('gradiente: cor (#RRGGBB) do gradiente CRIADO numa borda sem gradiente. Sobre um gradiente que já existe, cor diferente da dele é RECUSADA (trocar a cor não é suportado por este ajuste).'),
     visivel: z.boolean().optional().describe('visibilidade: true mostra, false esconde.'),
     largura: z.number().min(20).max(4000).optional().describe('caixa: largura nova da caixa de texto em px (o alinhamento do texto é preservado).'),
     alturaAutomatica: z.boolean().optional().describe('caixa: true liga a altura automática (a caixa cresce até caber o texto).'),
@@ -120,34 +121,95 @@ export const ajusteSchema = z
 
 export type Ajuste = z.infer<typeof ajusteSchema>
 
-/** O que falta num ajuste para ele poder ser aplicado — `null` quando está completo. */
-export function problemaDoAjuste(a: Ajuste): string | null {
+/**
+ * Os campos que cada tipo de ajuste USA, além de `tipo` e do rótulo `achado`
+ * (CP1, 13/10/2026: nada em silêncio). O schema é um objeto plano, então um
+ * `forca` num `mover` passava pela validação e era ignorado calado — agora todo
+ * campo fora desta lista RECUSA o ajuste com o campo nomeado.
+ */
+export const CAMPOS_DO_AJUSTE: Record<TipoDeAjuste, ReadonlyArray<keyof Ajuste>> = {
+  fonte: ['camadas', 'fontSize', 'escala', 'entrelinha'],
+  mover: ['camadas', 'dx', 'dy'],
+  gradiente: ['camadas', 'borda', 'forca', 'altura', 'cor'],
+  visibilidade: ['camadas', 'visivel'],
+  caixa: ['camadas', 'largura', 'alturaAutomatica'],
+}
+
+/** Por que um ajuste não pode ser aplicado — o código é estável, o motivo é para gente. */
+export type CodigoDaRecusa =
+  | 'TIPO_DESCONHECIDO'
+  | 'AJUSTE_INCOMPLETO'
+  | 'CAMPO_FORA_DO_TIPO'
+  | 'VALOR_FORA_DA_FAIXA'
+  | 'CAMADA_INEXISTENTE'
+  | 'CAMADA_DE_OUTRO_TIPO'
+  | 'COR_DE_GRADIENTE_EXISTENTE'
+  | 'SEM_EFEITO'
+  /** Ajuste válido NÃO executado porque a chamada inteira foi recusada por outro (pré-checagem do ajustar-arte). */
+  | 'CHAMADA_RECUSADA'
+
+export interface ProblemaDoAjuste {
+  codigo: CodigoDaRecusa
+  motivo: string
+  /** Os campos do ajuste que causaram a recusa, quando a causa é um campo. */
+  campos?: string[]
+}
+
+/** Os campos que o ajuste mandou e que o tipo dele não usa. */
+export function camposForaDoTipo(a: Ajuste): string[] {
+  const usados = CAMPOS_DO_AJUSTE[a.tipo] as ReadonlyArray<string> | undefined
+  if (!usados) return []
+  return Object.keys(a).filter((k) => k !== 'tipo' && k !== 'achado' && (a as Record<string, unknown>)[k] !== undefined && !usados.includes(k))
+}
+
+/** O que impede um ajuste de ser aplicado, sem olhar a página — `null` quando ele está completo e coerente. */
+export function problemaEstruturadoDoAjuste(a: Ajuste): ProblemaDoAjuste | null {
+  if (!(TIPOS_DE_AJUSTE as readonly string[]).includes(a.tipo)) {
+    return { codigo: 'TIPO_DESCONHECIDO', motivo: `tipo de ajuste desconhecido: ${String((a as { tipo?: unknown }).tipo)}` }
+  }
+  const fora = camposForaDoTipo(a)
+  if (fora.length > 0) {
+    return {
+      codigo: 'CAMPO_FORA_DO_TIPO',
+      motivo: `${a.tipo} não usa ${fora.map((c) => `"${c}"`).join(', ')}: o ajuste foi recusado inteiro em vez de aplicado sem ${fora.length === 1 ? 'esse campo' : 'esses campos'}`,
+      campos: fora,
+    }
+  }
+  const incompleto = (motivo: string, campos?: string[]): ProblemaDoAjuste => ({ codigo: 'AJUSTE_INCOMPLETO', motivo, ...(campos ? { campos } : {}) })
   switch (a.tipo) {
     case 'fonte':
-      if (!a.camadas?.length) return 'fonte precisa de "camadas"'
-      if (a.fontSize != null && a.escala != null) return 'fonte aceita "fontSize" OU "escala", não os dois'
-      if (a.fontSize == null && a.escala == null && a.entrelinha == null) return 'fonte precisa de "fontSize", "escala" ou "entrelinha"'
+      if (!a.camadas?.length) return incompleto('fonte precisa de "camadas"', ['camadas'])
+      if (a.fontSize != null && a.escala != null) return incompleto('fonte aceita "fontSize" OU "escala", não os dois', ['fontSize', 'escala'])
+      if (a.fontSize == null && a.escala == null && a.entrelinha == null) return incompleto('fonte precisa de "fontSize", "escala" ou "entrelinha"')
       return null
     case 'mover':
-      if (!a.camadas?.length) return 'mover precisa de "camadas"'
-      if (!a.dx && !a.dy) return 'mover precisa de "dx" e/ou "dy" diferentes de zero'
+      if (!a.camadas?.length) return incompleto('mover precisa de "camadas"', ['camadas'])
+      if (!a.dx && !a.dy) return incompleto('mover precisa de "dx" e/ou "dy" diferentes de zero', ['dx', 'dy'])
       return null
     case 'gradiente':
-      if (a.borda !== 'topo' && a.borda !== 'rodape') return 'gradiente precisa de "borda" (topo ou rodape)'
-      if (a.forca == null) return 'gradiente precisa de "forca" (0 a 1)'
-      if ((a.camadas?.length ?? 0) > 1) return 'gradiente aceita no máximo UM id em "camadas" (o gradiente a alterar)'
+      if (a.borda !== 'topo' && a.borda !== 'rodape') return incompleto('gradiente precisa de "borda" (topo ou rodape)', ['borda'])
+      if (a.forca == null) return incompleto('gradiente precisa de "forca" (0 a 1)', ['forca'])
+      if (a.forca < 0 || a.forca > 1) return { codigo: 'VALOR_FORA_DA_FAIXA', motivo: `"forca" vai de 0 a 1 (veio ${a.forca})`, campos: ['forca'] }
+      if ((a.camadas?.length ?? 0) > 1) return incompleto('gradiente aceita no máximo UM id em "camadas" (o gradiente a alterar)', ['camadas'])
       return null
     case 'visibilidade':
-      if (!a.camadas?.length) return 'visibilidade precisa de "camadas"'
-      if (typeof a.visivel !== 'boolean') return 'visibilidade precisa de "visivel" (true ou false)'
+      if (!a.camadas?.length) return incompleto('visibilidade precisa de "camadas"', ['camadas'])
+      if (typeof a.visivel !== 'boolean') return incompleto('visibilidade precisa de "visivel" (true ou false)', ['visivel'])
       return null
     case 'caixa':
-      if (a.camadas?.length !== 1) return 'caixa age em UMA camada: "camadas" com um id só'
-      if (a.largura == null && a.alturaAutomatica !== true) return 'caixa precisa de "largura" e/ou "alturaAutomatica": true'
+      if (a.camadas?.length !== 1) return incompleto('caixa age em UMA camada: "camadas" com um id só', ['camadas'])
+      if (a.largura == null && a.alturaAutomatica !== true) return incompleto('caixa precisa de "largura" e/ou "alturaAutomatica": true', ['largura', 'alturaAutomatica'])
+      if (a.alturaAutomatica === false) {
+        return { codigo: 'SEM_EFEITO', motivo: '"alturaAutomatica": false não desliga nada — este ajuste só liga a altura automática', campos: ['alturaAutomatica'] }
+      }
       return null
-    default:
-      return `tipo de ajuste desconhecido: ${String((a as { tipo?: unknown }).tipo)}`
   }
+  return null
+}
+
+/** O que falta num ajuste para ele poder ser aplicado — `null` quando está completo. */
+export function problemaDoAjuste(a: Ajuste): string | null {
+  return problemaEstruturadoDoAjuste(a)?.motivo ?? null
 }
 
 export interface RelatorioDaRevisao {

@@ -18,7 +18,7 @@ import { aplicarAjustes, type ResultadoDosAjustes } from '@/lib/creatives/revisa
 import { ajusteSchema, TIPOS_DE_AJUSTE, type Ajuste } from '@/lib/creatives/revisao/contrato'
 import { toolsDeArteIA } from '@/lib/mcp/catalogo/arte-ia'
 import { fixture } from './suporte/fixture'
-import { exigir, hojeViola } from './suporte/hoje-viola'
+import { exigir } from './suporte/hoje-viola'
 
 const canvas = { width: 1080, height: 1920 }
 /** Altura pela entrelinha (o executor só mede em `fonte` e `caixa`). */
@@ -73,37 +73,47 @@ function camposForaDoRegistro(ajustes: Ajuste[], r: ResultadoDosAjustes): string
   })
 }
 
-describe('caracterização: o replay da v2 reproduz o registro de produção', () => {
-  it('3 aplicados, 0 recusados, com os mesmos detalhes que a Generation da v2 gravou', () => {
-    const r = aplicar(v1(), ajustesDaV2())
-    expect(r.recusados).toEqual([])
-    expect(r.aplicados).toEqual(fixture.peca().v2.revisao.aplicados)
+describe('o replay da v2 depois do CP1 (nada em silêncio)', () => {
+  it('registro histórico: em produção o executor gravou 3 aplicados e 0 recusados (a cor sumiu calada)', () => {
+    expect(fixture.peca().v2.revisao.aplicados).toHaveLength(3)
+    expect(fixture.peca().v2.revisao.recusados).toEqual([])
+    expect(fixture.peca().v2.revisao.aplicados[1].detalhe).toBe('força 0.45→0.85, altura 730px')
   })
 
-  it('a cor pedida some enquanto a força muda: o rodapé fica #F3EADC a 0.85, 730 px', () => {
+  it('hoje: os dois `mover` aplicam como na produção e o gradiente com cor sobre véu existente é RECUSADO com código e campo', () => {
     const r = aplicar(v1(), ajustesDaV2())
-    expect(ajustesDaV2()[1]).toMatchObject({ tipo: 'gradiente', borda: 'rodape', cor: '#283D36', forca: 0.85, altura: 730 })
+    const producao = fixture.peca().v2.revisao.aplicados
+    // Desde o CP1 cada registro carrega o `achado` do próprio ajuste; o resto é o que a produção gravou.
+    expect(r.aplicados.map(({ achado: _achado, ...registro }) => registro)).toEqual([producao[0], producao[2]])
+    expect(r.aplicados.map((x) => x.achado)).toEqual(['visao-posicao-estranha:T2', undefined])
+    expect(r.recusados).toEqual([expect.objectContaining({ indice: 1, tipo: 'gradiente', codigo: 'COR_DE_GRADIENTE_EXISTENTE', campos: ['cor'], achado: 'texto-sem-leitura:servico' })])
+    expect(r.recusados[0].motivo).toMatch(/#283D36 não foi aplicada/)
+  })
+
+  it('nada do ajuste recusado é aplicado: o rodapé segue #F3EADC a 0.45, 576 px', () => {
+    const r = aplicar(v1(), ajustesDaV2())
     const rodape = camada(r, 'gradiente-leitura-rodape')
     expect(new Set(coresDe(rodape))).toEqual(new Set(['#F3EADC']))
-    expect(rodape.metadata).toMatchObject({ forca: 0.85 })
-    expect(rodape.size.height).toBe(730)
+    expect(rodape.metadata).toMatchObject({ forca: 0.45 })
+    expect(rodape.size.height).toBe(576)
   })
 
-  it('as camadas resultantes são as da página v2 (posições e altura dos gradientes)', () => {
+  it('as camadas resultantes são as da página v2 (posições e altura dos gradientes), menos o gradiente do rodapé, que fica o da v1', () => {
     const r = aplicar(v1(), ajustesDaV2())
-    for (const gravada of fixture.peca().v2.layers.filter((l) => l.type !== 'image')) {
-      const nova = camada(r, gravada.id)
-      expect({ id: gravada.id, position: nova.position, height: gravada.type === 'gradient' ? nova.size.height : undefined }).toEqual({
-        id: gravada.id,
-        position: gravada.position,
-        height: gravada.type === 'gradient' ? gravada.size.height : undefined,
+    for (const daV2 of fixture.peca().v2.layers.filter((l) => l.type !== 'image')) {
+      const esperada = daV2.id === 'gradiente-leitura-rodape' ? fixture.peca().v1.layers.find((l) => l.id === daV2.id)! : daV2
+      const nova = camada(r, daV2.id)
+      expect({ id: daV2.id, position: nova.position, height: daV2.type === 'gradient' ? nova.size.height : undefined }).toEqual({
+        id: daV2.id,
+        position: esperada.position,
+        height: daV2.type === 'gradient' ? esperada.size.height : undefined,
       })
     }
   })
 })
 
 describe('P10 — replay da v2', () => {
-  hojeViola('a cor pedida (#283D36) é aplicada no gradiente do rodapé, ou o ajuste é recusado com motivo — nunca descartada', () => {
+  it('a cor pedida (#283D36) é aplicada no gradiente do rodapé, ou o ajuste é recusado com motivo — nunca descartada', () => {
     const r = aplicar(v1(), ajustesDaV2())
     const cores = coresDe(camada(r, 'gradiente-leitura-rodape'))
     exigir(cores.length > 0, 'o gradiente do rodapé tem paradas de cor')
@@ -133,7 +143,7 @@ describe('P12 — nada em silêncio', () => {
     expect(Object.keys(VALOR).sort()).toEqual(doSchema)
   })
 
-  hojeViola('nenhum campo aceito pelo schema é ignorado em silêncio — todos os pares tipo × campo', () => {
+  it('nenhum campo aceito pelo schema é ignorado em silêncio — todos os pares tipo × campo', () => {
     const pares = Object.values(BASE).flatMap((base) =>
       Object.keys(VALOR)
         .filter((campo) => !(campo in base))
@@ -145,7 +155,7 @@ describe('P12 — nada em silêncio', () => {
     expect(ignorados, JSON.stringify(ignorados)).toEqual([])
   })
 
-  hojeViola('todo campo do replay da v2 aparece no registro do seu índice (valor no detalhe do aplicado, ou recusa)', () => {
+  it('todo campo do replay da v2 aparece no registro do seu índice (valor no detalhe do aplicado, ou recusa)', () => {
     const ajustes = ajustesDaV2()
     const fora = camposForaDoRegistro(ajustes, aplicar(v1(), ajustes))
     expect(fora, JSON.stringify(fora)).toEqual([])

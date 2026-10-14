@@ -13,7 +13,7 @@ import sharp from 'sharp'
 
 import type { Layer } from '@/types/template'
 import { alvoPorContraste, luzDaCor, type Rect } from '@/lib/creatives/halo/halo'
-import { alvoClaroPorContraste, textoEscuro, TOLERANCIA_DO_ALVO } from '@/lib/compositor/regua'
+import { alvoClaroPorContraste, textoEscuro, TOLERANCIA_DE_PIORA, TOLERANCIA_DO_ALVO } from '@/lib/compositor/regua'
 import { TETO_DE_COBERTURA_DO_ASSUNTO } from '@/lib/compositor/mapa-de-calma'
 
 // ─── Contratos (limiares e perfis) ──────────────────────────────────────────
@@ -73,9 +73,10 @@ export const K_REFERENCIA_HIERARQUIA = 1.25
 /**
  * Ruído de render tolerado ao comparar duas medidas da MESMA caixa (com e sem
  * tratamento; antes e depois de um ajuste), em níveis de 0–255. Parâmetro de
- * medição, não limiar de qualidade: o limiar de leitura é o alvo da régua.
+ * medição, não limiar de qualidade. Desde o CP1 mora na régua de produção
+ * (fonte única): o detector TRATAMENTO_PIOROU_LEITURA usa o mesmo número.
  */
-export const TOLERANCIA_DE_PIORA = 2
+export { TOLERANCIA_DE_PIORA }
 
 /**
  * Os códigos estruturados que os checkpoints vão produzir (decisões do owner, 13/10/2026).

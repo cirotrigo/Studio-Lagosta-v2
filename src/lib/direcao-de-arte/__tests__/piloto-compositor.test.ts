@@ -81,11 +81,27 @@ describe('caracterização: o que o compositor faz hoje com a peça piloto', () 
     const resumo = (gs: Array<{ borda: string; cor: string; forca: number; altura: number }>) => gs.map(({ borda, cor, forca, altura }) => ({ borda, cor, forca, altura }))
     expect(resumo(composta.diagnostico.gradientes ?? [])).toEqual(resumo(fixture.peca().composicaoRegistrada.gradientes))
     expect(composta.diagnostico.gradientes?.map((g) => g.cor)).toEqual(['#F3EADC', '#F3EADC'])
-    // A cor que de fato foi desenhada em cada borda (o diagnóstico só registra a global).
+    // A cor que de fato foi desenhada em cada borda.
     for (const id of ['gradiente-leitura-topo', 'gradiente-leitura-rodape']) {
       const stops = (camada(composta.layers, id).style as { gradientStops: Array<{ color: string }> }).gradientStops
       expect(new Set(stops.map((s) => s.color))).toEqual(new Set(['#F3EADC']))
     }
+  })
+
+  it('CP1: o diagnóstico de cada borda traz a cor DESENHADA na camada, a força, a altura e a origem da cor', () => {
+    for (const g of composta.diagnostico.gradientes ?? []) {
+      const desenhada = camada(composta.layers, `gradiente-leitura-${g.borda}`)
+      const stops = (desenhada.style as { gradientStops: Array<{ color: string }> }).gradientStops
+      expect({ borda: g.borda, cor: g.cor, forca: g.forca, altura: g.altura }).toEqual({ borda: g.borda, cor: stops[0].color, forca: desenhada.metadata?.forca, altura: desenhada.size.height })
+      expect(g.origemDaCor).toBe('contraste-com-os-textos')
+    }
+  })
+
+  it('CP1: o diagnóstico acusa TRATAMENTO_PIOROU_LEITURA no serviço (texto claro, o véu creme sobe o p98 ≈166→194) — só acusa, não corrige', () => {
+    const servico = composta.diagnostico.tratamentoPiorou?.find((p) => p.camada === 'servico')
+    expect(servico).toMatchObject({ codigo: 'TRATAMENTO_PIOROU_LEITURA', polaridade: 'clara', percentil: 'p98', gradiente: 'gradiente-leitura-rodape' })
+    expect(Math.abs(servico!.antes - 166)).toBeLessThanOrEqual(TOLERANCIA_DA_FIXTURE)
+    expect(Math.abs(servico!.depois - 194)).toBeLessThanOrEqual(TOLERANCIA_DA_FIXTURE)
   })
 
   it('o serviço sai com p98 ≈166→194 contra alvo 139 (ok:false) — e a peça é montada mesmo assim, só com aviso', () => {
