@@ -73,6 +73,18 @@ export interface RecusaDeBloco {
   papel: Papel
   orcamento: OrcamentoDeLinha[]
   /**
+   * Só com `alturaMaxima` (arquétipo, T1a): a altura da caixa NO PISO da escada
+   * (a menor escala em que a largura coube) contra a capacidade da referência,
+   * quando foi a altura que não coube.
+   */
+  altura?: { medida: number; capacidade: number }
+  /**
+   * Só com arquétipo: as linhas da copy que se DESENHAM em mais de uma linha na
+   * coluna (uma quebra dentro do item) — não cabem sem ter linha mais larga que
+   * a coluna, então o orçamento por largura não as diz.
+   */
+  quebras?: Array<{ linha: string; linhas: number }>
+  /**
    * As famílias que ENTRARAM na medição deste bloco — a do estilo sempre, a do
    * destaque só quando a copy tem trecho entre [colchetes] E a marca tem estilo
    * de destaque. Quem decide se o orçamento vale lê daqui, nunca reinterpreta
@@ -85,6 +97,16 @@ export interface RecusaDeBloco {
 export type ResultadoDoBloco =
   | { bloco: BlocoMontado; recusa: null; avisos: string[] }
   | { bloco: null; recusa: RecusaDeBloco; avisos: string[] }
+
+/**
+ * A coluna de TINTA para uma caixa de `largura` px: a caixa que `montarBloco`
+ * grava é a tinta + o padding de desenho dos dois lados + 2. Com arquétipo
+ * (T1a), a largura da referência é a da caixa — a mesma conta no compor e no
+ * medir-copy.
+ */
+export function colunaDaCaixa(largura: number): number {
+  return Math.floor(largura) - PADDING_DE_DESENHO * 2 - 2
+}
 
 /** O prefixo da assinatura (o "→ " do CTA) na primeira linha, salvo quando o autor já o escreveu. Exportada para o `medir-copy` medir a linha EFETIVA. */
 export function aplicarPrefixo(linhas: string[], prefixo: string | undefined): string[] {
@@ -283,6 +305,18 @@ export function montarBloco(args: {
   destaque?: EstiloDeDestaque | null
   /** O vínculo com a copy do autor (ver `VinculoComACopy`) — vai para `metadata.compositor` das camadas. */
   origem?: VinculoComACopy | null
+  /**
+   * A altura MÁXIMA da caixa (px) — só com arquétipo (T1a): a capacidade da
+   * referência. A escada de corpo é a mesma (até o piso de 80%); se nem no piso
+   * a altura cabe, o bloco é recusado com a medida. Ausente = como sempre.
+   */
+  alturaMaxima?: number
+  /**
+   * Só com arquétipo (T1a): a escada da UNIDADE (manchete + segunda voz, texto +
+   * elementos) começa abaixo do tamanho de assinatura — este fator (≤ 1) sobre
+   * `escalaDoFormato`. O piso continua o mesmo (80% da assinatura).
+   */
+  escalaMaxima?: number
   /** F3: a camada extra que este bloco é (vai à camada, não muda a medida). */
   extra?: { id: string; funcao: string; herdaDe: string; grupoVisual: string; grupoDeLeitura?: string; ordem?: number } | null
 }): ResultadoDoBloco {
@@ -310,8 +344,19 @@ export function montarBloco(args: {
   const coluna = Math.floor(args.colunaUtil * (args.estilo.larguraMaxima ?? 1))
   const linhas = aplicarPrefixo(linhasLimpas, args.estilo.prefixo)
   const semDestaque = { ...args, linhas: linhasLimpas, destaque: null }
+  // A altura da caixa na MENOR escala em que a largura coube (o piso) — a medida da recusa por altura.
+  let alturaQueNaoCoube: number | null = null
 
-  for (let escala = args.escalaDoFormato; escala >= args.escalaDoFormato * PISO_DE_ESCALA - 1e-9; escala -= PASSO_DE_ESCALA) {
+  // Os degraus da escada: os de sempre (passo de 0,04 a partir da escala de início). Com arquétipo (T1a,
+  // `alturaMaxima`), o PISO exato entra como último degrau: com `escalaDoFormato` ≠ 1 (feed a partir de página de
+  // story, 0,875) os passos absolutos paravam em 81,7% e a recusa dizia "mesmo a 80%" sem ter medido 80%. Sem
+  // arquétipo, a sequência é exatamente a de antes.
+  const piso = args.escalaDoFormato * PISO_DE_ESCALA
+  const degraus: number[] = []
+  for (let escala = args.escalaDoFormato * Math.min(1, args.escalaMaxima ?? 1); escala >= piso - 1e-9; escala -= PASSO_DE_ESCALA) degraus.push(escala)
+  if (args.alturaMaxima !== undefined && (degraus.length === 0 || degraus[degraus.length - 1] > piso + 1e-9)) degraus.push(piso)
+
+  for (const escala of degraus) {
     const base = camadaDoPapel({ ...semDestaque, escala, width: coluna + PADDING_DE_DESENHO * 2 })
     let larguraMaxima = 0
     let cabe = true
@@ -333,6 +378,10 @@ export function montarBloco(args: {
     // A caixa gravada é a altura MEDIDA (ceil, nunca round — o Konva descarta
     // a linha inteira que não cabe por fração de pixel).
     const height = medida ? Math.ceil(medida.height) : simples.size.height * linhas.length
+    if (args.alturaMaxima !== undefined && height > args.alturaMaxima) {
+      alturaQueNaoCoube = height
+      continue
+    }
     const layer = destaque ? camadaDoPapel({ ...args, linhas: linhasLimpas, escala, width, destaque }) : simples
     return {
       bloco: {
@@ -352,6 +401,15 @@ export function montarBloco(args: {
 
   // Nada coube nem a 80%: devolve o orçamento medido no tamanho de assinatura.
   const base = camadaDoPapel({ ...semDestaque, escala: args.escalaDoFormato, width: coluna + PADDING_DE_DESENHO * 2 })
+  // Com arquétipo, também as linhas que quebram por dentro (no piso, onde a escada parou).
+  const noPiso = camadaDoPapel({ ...semDestaque, escala: args.escalaDoFormato * PISO_DE_ESCALA, width: coluna + PADDING_DE_DESENHO * 2 })
+  const quebras =
+    args.alturaMaxima !== undefined
+      ? linhas.flatMap((linha) => {
+          const m = medirLinha(args.medir, noPiso, linha, coluna)
+          return m && m.linhas > 1 && m.largura <= coluna ? [{ linha, linhas: m.linhas }] : []
+        })
+      : []
   const orcamento: OrcamentoDeLinha[] = linhas
     .map((linha, i) => {
       const m = medirLinha(args.medir, base, linha, coluna)
@@ -376,6 +434,8 @@ export function montarBloco(args: {
       papel: args.papel,
       orcamento,
       familiasMedidas,
+      ...(alturaQueNaoCoube !== null && args.alturaMaxima !== undefined ? { altura: { medida: alturaQueNaoCoube, capacidade: args.alturaMaxima } } : {}),
+      ...(quebras.length > 0 ? { quebras } : {}),
     },
     avisos,
   }

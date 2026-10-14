@@ -31,6 +31,12 @@ import type { ArranjoDeGrupo } from './combinacoes'
 import { lerDestaques, type EstiloDeDestaque } from './destaques'
 import { estiloDeDestaqueDoPapel, prepararBlocos, type PecaParaBlocos } from './preparar-blocos'
 import { DIMENSOES, type Formato, type Papel } from './spec'
+import { colunaDaCaixa } from './blocos'
+import { conferirLogo, excessosDeLinhas, type ArquetipoPreparado } from './arquetipos/na-spec'
+import { caixasMaximas, type PapelMaterializado, type ProblemaDeMaterializacao } from './arquetipos/materializar'
+import { ajusteFinalNecessario, camadasNaReferencia, materializarUnidades, papelGeometrico, prepararNoArquetipo } from './arquetipos/no-compositor'
+import type { TextGeometryIssue } from '@/lib/creatives/text-geometry'
+import type { PapelDeTexto } from './arquetipos/tipos'
 
 /** Amostra em português para o orçamento por caracteres (a largura média de uma letra da marca). */
 export const AMOSTRA_DO_ORCAMENTO = 'Sexta é dia de churrasco com a família no salão'
@@ -120,7 +126,10 @@ export function orcamentoDaVariante(args: {
 
 export interface MedidaDeLinha {
   linha: string
-  /** Largura da tinta no tamanho da assinatura (antes de qualquer redução), px. */
+  /**
+   * Largura da tinta no tamanho da assinatura (antes de qualquer redução), px. Com arquétipo (T1a), a do bloco
+   * montado é medida na escala FINAL dele — a mesma da caixa e do corpo devolvidos.
+   */
   largura: number | null
   coluna: number
   cabe: boolean | null
@@ -172,7 +181,29 @@ export interface MedicaoDaCopy {
   segundaVoz: 'contrato' | 'legado' | 'nenhuma'
   /** O arranjo escolhido para cada grupo (o da página ou uma combinação salva). */
   arranjos: Array<{ grupo: string; id: string; nome: string; origem: ArranjoDeGrupo['origem']; motivo: string }>
+  /**
+   * Com arquétipo (T1a): a definição exata e a medida contra ELA — a coluna e a
+   * capacidade de cada papel (as mesmas do compor), onde cada caixa pousaria, e
+   * o que não cabe (linhas acima de `linhasMax`, caixa fora da referência ou da
+   * zona efetiva). Ausente sem arquétipo.
+   */
+  arquetipo?: MedicaoDoArquetipo
   avisos: string[]
+}
+
+export interface MedicaoDoArquetipo {
+  id: string
+  versao: number
+  impressao: string
+  formato: Formato
+  /** Por papel: a coluna de tinta (px), a capacidade de altura (px), as linhas máximas (HARD) e a estimativa SOFT. */
+  papeis: Partial<Record<PapelDeTexto, { largura: number; coluna: number; capacidade: number; linhasMax: number; caracteresPorLinha?: number }>>
+  /** Onde cada caixa pousaria na referência (quando tudo coube). */
+  posicoes?: Partial<Record<PapelDeTexto | 'logo', PapelMaterializado>>
+  problemas: ProblemaDeMaterializacao[]
+  excessosDeLinhas: Array<{ papel: Papel; linhas: number; linhasMax: number }>
+  /** O que o ajuste final (autofix) teria de encolher na referência — com arquétipo, recusa (a mesma conferência do compor). */
+  ajustesFinais: TextGeometryIssue[]
 }
 
 /**
@@ -197,18 +228,30 @@ export function medirCopy(args: {
   fonteCarregada: (familia: string) => boolean
   /** As combinações salvas do projeto, já como arranjos (a composição também as considera). */
   combinacoesSalvas?: ArranjoDeGrupo[]
+  /** T1a: o arquétipo já resolvido (`prepararArquetipo`) — a medida é contra a referência dele, como no compor. */
+  arquetipo?: ArquetipoPreparado | null
 }): MedicaoDaCopy {
   const area = areaUtilDe(args.assinatura, args.formato)
-  const preparados = prepararBlocos({
-    spec: args.spec,
-    assinatura: args.assinatura,
-    colunaUtil: area.colunaUtil,
-    escalaDoFormato: area.escalaDoFormato,
-    mancha: args.assinatura.numeros.mancha,
-    medir: args.medir,
-    familias: args.familias,
-    combinacoesSalvas: args.combinacoesSalvas ?? [],
-  })
+  const arq = args.arquetipo ?? null
+  if (arq) conferirLogo(arq.definicao, Boolean(args.assinatura.logo))
+  const caixasArq = arq ? caixasMaximas(arq.definicao, arq.formato, DIMENSOES[args.formato]) : null
+  const preparar = (escalaMaximaDoPapel?: (p: Papel) => number | undefined) =>
+    prepararBlocos({
+      spec: args.spec,
+      assinatura: args.assinatura,
+      colunaUtil: area.colunaUtil,
+      escalaDoFormato: area.escalaDoFormato,
+      mancha: args.assinatura.numeros.mancha,
+      medir: args.medir,
+      familias: args.familias,
+      combinacoesSalvas: args.combinacoesSalvas ?? [],
+      ...(caixasArq ? { caixaDoPapel: (p: Papel) => caixasArq[papelGeometrico(p)], ...(escalaMaximaDoPapel ? { escalaMaximaDoPapel } : {}) } : {}),
+    })
+  // Com arquétipo, a MESMA escada da unidade do compor (`prepararNoArquetipo`).
+  const noArquetipo = arq
+    ? prepararNoArquetipo({ arquetipo: arq.definicao, formato: arq.formato, canvas: DIMENSOES[args.formato], gap: args.assinatura.numeros.geometria[args.formato].gapEntreBlocos, preparar })
+    : null
+  const preparados = noArquetipo ? noArquetipo.preparados : preparar()
   const avisos = [...preparados.avisos]
   // Os avisos que a montagem deu por PAPEL ("headline: a copy marcou destaque, mas a marca não tem estilo…") viajam
   // também no bloco: quem lê o bloco tem de ver por que ele saiu sem destaque ou sem o que pediu.
@@ -245,14 +288,17 @@ export function medirCopy(args: {
     medidas.push({ papel: f.herdaDe, id: f.id, situacao: 'papel-ausente', fonte: null, escala: null, fontSize: null, width: null, height: null, linhas: f.linhas, naoMedido: false, aproximado: false, linhasMedidas: [], extra: { funcao: f.funcao, herdaDe: f.herdaDe, grupoVisual: f.grupoVisual }, avisos: [`a variante não tem o papel "${f.herdaDe}", de que "${f.id}" herdaria o estilo`] })
   }
 
-  const medirLinhas = (papel: Papel, estilo: EstiloDePapel, linhasDaCopy: string[], naoMedido: boolean, destaque: EstiloDeDestaque | null): MedidaDeLinha[] => {
-    const coluna = Math.floor(area.colunaUtil * (estilo.larguraMaxima ?? 1))
+  // 🔴 A coluna é a que a MONTAGEM usou (`b.coluna`/`r.coluna`), nunca recalculada aqui: com arquétipo ela é a da
+  // referência de cada papel (T1a), e uma conta paralela pela coluna útil diria "cabe" onde a composição recusa.
+  // Com arquétipo, a linha do bloco montado é medida na ESCALA FINAL dele (a da caixa e do corpo devolvidos); sem
+  // arquétipo, no tamanho de assinatura, como sempre.
+  const medirLinhas = (papel: Papel, estilo: EstiloDePapel, linhasDaCopy: string[], naoMedido: boolean, destaque: EstiloDeDestaque | null, coluna: number, escala = area.escalaDoFormato): MedidaDeLinha[] => {
     // O texto EFETIVO da linha é o que `montarBloco` mede: `lerDestaques` tira
     // os colchetes — inclusive o colchete sem par, que a montagem remove com
     // aviso (R07). `linha` continua sendo a string do autor.
     const lidas = linhasDaCopy.map(lerDestaques)
     const limpas = lidas.map((l) => l.texto)
-    const base = camadaDoPapel({ papel, linhas: limpas, estilo, escala: area.escalaDoFormato, width: coluna, textAlign: 'left', groupId: 'medicao', corDaMancha: args.assinatura.numeros.mancha })
+    const base = camadaDoPapel({ papel, linhas: limpas, estilo, escala, width: coluna, textAlign: 'left', groupId: 'medicao', corDaMancha: args.assinatura.numeros.mancha })
     // A linha EFETIVA leva o prefixo da assinatura (o "→ " do CTA) como a
     // montagem a mede; `linha` continua sendo a string do autor (R06).
     const efetivas = aplicarPrefixo(limpas, estilo.prefixo)
@@ -299,7 +345,7 @@ export function medirCopy(args: {
       linhas: b.linhasDaCopy.length,
       naoMedido,
       aproximado: Boolean(b.destacado),
-      linhasMedidas: medirLinhas(b.papel, b.estilo, b.linhasDaCopy, naoMedido, b.destaque),
+      linhasMedidas: medirLinhas(b.papel, b.estilo, b.linhasDaCopy, naoMedido, b.destaque, b.coluna, arq ? area.escalaDoFormato * b.escala : area.escalaDoFormato),
       ...(b.extra ? { extra: { funcao: b.extra.funcao, herdaDe: b.extra.herdaDe, grupoVisual: b.extra.grupoVisual } } : {}),
       avisos: [...avisosDoPapel(b.papel), ...(b.escala < 1 ? [`fonte reduzida a ${Math.round(b.escala * 100)}% para caber na coluna (piso ${Math.round(PISO_DE_ESCALA * 100)}%)`] : [])],
     })
@@ -307,7 +353,7 @@ export function medirCopy(args: {
   for (const r of preparados.recusas) {
     if (faltamNaAssinatura.has(r.papel) && !r.extra) continue
     const naoMedido = naoCarregou(r.familiasMedidas)
-    const coluna = Math.floor(area.colunaUtil * (r.estilo.larguraMaxima ?? 1))
+    const coluna = r.coluna
     medidas.push({
       papel: r.papel,
       id: r.id,
@@ -320,23 +366,90 @@ export function medirCopy(args: {
       linhas: r.linhasDaCopy.length,
       naoMedido,
       aproximado: r.linhasDaCopy.some((l) => lerDestaques(l).trechos.length > 0),
-      linhasMedidas: medirLinhas(r.papel, r.estilo, r.linhasDaCopy, naoMedido, r.destaque),
+      linhasMedidas: medirLinhas(r.papel, r.estilo, r.linhasDaCopy, naoMedido, r.destaque, r.coluna),
       orcamento: r.orcamento,
       avisos: [
         ...avisosDoPapel(r.papel),
         naoMedido
           ? `a fonte de "${r.papel}" (${r.familiasMedidas.filter((f) => !args.fonteCarregada(f)).join(', ')}) não está no servidor: a recusa foi medida na fonte de fallback e NÃO vale — cadastre a fonte antes de reescrever`
-          : `linha maior que a coluna (${coluna}px) mesmo a ${Math.round(PISO_DE_ESCALA * 100)}% da fonte: reescreva com o orçamento`,
+          : r.altura
+            ? `a caixa tem ${r.altura.medida}px de altura e a referência do arquétipo comporta ${r.altura.capacidade}px mesmo a ${Math.round(PISO_DE_ESCALA * 100)}% da fonte: tire linhas ou encurte`
+            : r.orcamento.length === 0 && r.quebras?.length
+              ? `${r.quebras.map((q) => `"${q.linha}"`).join(', ')} se desenha em mais de uma linha na coluna (${coluna}px) — há quebra dentro do item: cada linha da copy é um item`
+              : `linha maior que a coluna (${coluna}px) mesmo a ${Math.round(PISO_DE_ESCALA * 100)}% da fonte: reescreva com o orçamento`,
       ],
     })
   }
 
   const alturaDosBlocos = medidas.reduce((s, m) => s + (m.height ?? 0), 0)
-  if (alturaDosBlocos > area.alturaUtil) avisos.push(`os blocos somam ${alturaDosBlocos}px de altura, mais que a altura útil (${area.alturaUtil}px): a peça não tem onde pousar tudo sem reduzir`)
+  // Com arquétipo a altura útil da página não decide nada (a capacidade é a de cada referência, abaixo).
+  if (!arq && alturaDosBlocos > area.alturaUtil) avisos.push(`os blocos somam ${alturaDosBlocos}px de altura, mais que a altura útil (${area.alturaUtil}px): a peça não tem onde pousar tudo sem reduzir`)
+  // T1a: a MESMA materialização do compor — unidades por papel, na referência, na área segura do projeto.
+  let medicaoDoArquetipo: MedicaoDoArquetipo | undefined
+  if (arq) {
+    const piso = (args.assinatura.pisoDoProjeto ?? args.assinatura.numeros.geometria)[args.formato]
+    const unidades = noArquetipo!.unidades
+    const m = materializarUnidades({
+      arquetipo: arq.definicao,
+      formato: arq.formato,
+      canvas: DIMENSOES[args.formato],
+      geometria: piso,
+      unidades,
+      logo: args.assinatura.logo ? { razao: args.assinatura.logo.razao } : null,
+    })
+    const limites = arq.definicao.formatos[arq.formato].limitesDeTexto
+    const papeis: MedicaoDoArquetipo['papeis'] = {}
+    for (const [papel, caixa] of Object.entries(caixasArq ?? {}) as Array<[PapelDeTexto, { largura: number; altura: number }]>) {
+      const limite = limites[papel]
+      papeis[papel] = { largura: caixa.largura, coluna: colunaDaCaixa(caixa.largura), capacidade: caixa.altura, linhasMax: limite?.linhasMax ?? 0, ...(limite?.caracteresPorLinha ? { caracteresPorLinha: limite.caracteresPorLinha } : {}) }
+    }
+    const problemas = 'problemas' in m ? m.problemas : []
+    const excessos = excessosDeLinhas(arq.definicao, arq.formato, args.spec)
+    for (const p of problemas) avisos.push(`arquétipo: ${p.papel} — ${p.motivo}`)
+    // O bloco da unidade que a referência recusou NÃO cabe — os blocos não podem contradizer `cabeTudo`.
+    for (const p of problemas) {
+      const ids = new Set(unidades.find((u) => u.papel === p.papel)?.blocos.map((b) => b.layer.id) ?? [])
+      for (const b of medidas) {
+        if (!ids.has(b.id) || b.situacao === 'nao-cabe') continue
+        b.situacao = 'nao-cabe'
+        b.avisos.push(`a unidade "${p.papel}" do arquétipo não cabe na referência: ${p.motivo}`)
+      }
+    }
+    for (const e of excessos) avisos.push(`arquétipo: ${e.papel} tem ${e.linhas} linhas e o máximo é ${e.linhasMax} (limite estrutural)`)
+    // A geometria FINAL, como o compor a confere antes do autofix: as mesmas camadas, na mesma posição.
+    const naReferencia = 'papeis' in m ? camadasNaReferencia(unidades, m.papeis, arq.definicao.preferencias.alinha).flatMap((x) => x.camadas) : []
+    const ajustesFinais = naReferencia.length > 0 ? ajusteFinalNecessario(naReferencia, DIMENSOES[args.formato], args.medir) : []
+    // A conferência nomeia as camadas pelo nome; o bloco medido, pelo id.
+    const idDoNome = new Map(naReferencia.map((c) => [c.name ?? c.id, c.id]))
+    for (const a of ajustesFinais) {
+      avisos.push(`arquétipo: ${a.detalhe} — o ajuste final encolheria abaixo da escada (o compositor recusa)`)
+      const ids = new Set(a.camadas.map((n) => idDoNome.get(n) ?? n))
+      for (const b of medidas) {
+        if (!ids.has(b.id) || b.situacao === 'nao-cabe') continue
+        b.situacao = 'nao-cabe'
+        b.avisos.push(`na referência do arquétipo: ${a.detalhe}`)
+      }
+    }
+    medicaoDoArquetipo = {
+      id: arq.resolvido.id,
+      versao: arq.resolvido.versao,
+      impressao: arq.resolvido.impressao,
+      formato: args.formato,
+      papeis,
+      ...('papeis' in m ? { posicoes: m.papeis } : {}),
+      problemas,
+      excessosDeLinhas: excessos,
+      ajustesFinais,
+    }
+  }
   return {
     areaUtil: area,
     blocos: medidas,
-    cabeTudo: papeisAusentes.length === 0 && preparados.falhas.length === 0 && medidas.every((m) => m.situacao === 'cabe' || m.situacao === 'cabe-reduzido'),
+    cabeTudo:
+      papeisAusentes.length === 0 &&
+      preparados.falhas.length === 0 &&
+      medidas.every((m) => m.situacao === 'cabe' || m.situacao === 'cabe-reduzido') &&
+      (!medicaoDoArquetipo || (medicaoDoArquetipo.problemas.length === 0 && medicaoDoArquetipo.excessosDeLinhas.length === 0 && medicaoDoArquetipo.ajustesFinais.length === 0)),
     papeisAusentes,
     naoMedido: medidas.some((m) => m.naoMedido),
     aproximado: medidas.some((m) => m.aproximado),
@@ -344,6 +457,7 @@ export function medirCopy(args: {
     alturaDosBlocos,
     segundaVoz: preparados.segundaVoz,
     arranjos: preparados.arranjos,
+    ...(medicaoDoArquetipo ? { arquetipo: medicaoDoArquetipo } : {}),
     avisos,
   }
 }

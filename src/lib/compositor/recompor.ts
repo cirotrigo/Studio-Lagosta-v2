@@ -76,6 +76,7 @@ import {
 } from './defasagem'
 import { validarSpec, type SpecDePeca } from './spec'
 import { contratoLidoParaRecompor, specDaRecomposicao } from './spec-da-recomposicao'
+import { resolverArquetipo, type ArquetipoDaSpec } from './arquetipos/na-spec'
 
 /** As situações de post que a recomposição alcança — as mesmas da invalidação. */
 const SITUACOES_ALCANCADAS = ['DRAFT', 'SCHEDULED'] as const
@@ -402,6 +403,10 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
   // de texto posterior desfaria o ajuste do mesmo jeito (REV-04, 12/09/2026).
   const travada = !!(arte.fieldValues as Record<string, unknown> | undefined)?.somenteReRender
   const candidataARecompor = !forcar && !renderComoEsta && !travada && !!arte.spec && !defasagem.ilegivel && defasagem.soTexto
+  // T1a: a spec gravada com ARQUÉTIPO recompõe na MESMA definição — id + versão + impressão conferidos contra o
+  // catálogo, nunca "a mais recente" (versão ausente é recusada). Impressão divergente recusa ANTES de qualquer
+  // escrita: a peça não finge que a definição com que nasceu ainda é a mesma.
+  if (candidataARecompor && arte.spec!.arquetipo) resolverArquetipo(arte.spec!.arquetipo as ArquetipoDaSpec, { persistida: true })
   /**
    * F1: a spec da recomposição leva o CONTRATO da página como ele está —
    * lido das camadas atuais sobre o contrato gravado (o que já foi revisado
@@ -1128,7 +1133,7 @@ export async function processarRecomposicaoEmBackground(args: {
       'PAGINA_E_MODELO',
       'PAGE_NOT_FOUND',
       'PROJECT_NOT_FOUND',
-    ].includes(code)
+    ].includes(code) || code.startsWith('ARQUETIPO_')
     if (!deterministico && (await pedirNovaTentativa(args.queueJobId, msg))) return
 
     const levantamento = await levantarPagina(pageId).catch(() => null)

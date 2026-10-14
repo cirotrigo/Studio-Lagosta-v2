@@ -104,6 +104,19 @@ import {
   type PioraDeTratamento,
 } from './regua'
 import { candidatasDistintas, gradientesARecusar, MOTIVOS_DO_TRATAMENTO, planejarTratamentoDaBorda, type PlanoDaBorda } from './tratamento-de-leitura'
+import { conferirLinhas, conferirLogo, prepararArquetipo, type ArquetipoPreparado } from './arquetipos/na-spec'
+import { caixasMaximas, referenciaDoPapel, type Materializacao, type RetanguloPx } from './arquetipos/materializar'
+import {
+  ajusteFinalNecessario,
+  camadasNaReferencia,
+  grupoDaUnidade,
+  materializarUnidades,
+  papelGeometrico,
+  prepararNoArquetipo,
+  type PreparoNoArquetipo,
+  type UnidadeDoArquetipo,
+} from './arquetipos/no-compositor'
+import { chaveDoArquetipo } from './arquetipos/tipos'
 
 /**
  * De onde veio a cor do gradiente de leitura de uma borda. Borda com camada de
@@ -207,7 +220,33 @@ export interface DiagnosticoDaComposicao {
   arranjos?: Array<{ grupo: string; id: string; nome: string; origem: ArranjoDeGrupo['origem']; motivo: string }>
   contraste: ContrasteMedido[] | null
   assinatura: AssinaturaDaMarca['origem']
+  /**
+   * O ARQUÉTIPO materializado (T1a, 14/10/2026) — a procedência da geometria: a
+   * definição exata (id, versão, impressão) e, por papel, a referência, a zona
+   * efetiva e onde a caixa pousou. Ausente sem arquétipo. A recomposição não lê
+   * daqui: a fonte é `fieldValues.spec.arquetipo`.
+   */
+  arquetipo?: DiagnosticoDoArquetipo
   avisos: string[]
+}
+
+export interface DiagnosticoDoArquetipo {
+  id: string
+  versao: number
+  impressao: string
+  codigoTaxonomico: string
+  formato: Formato
+  /** Sempre `referencia` no T1a: a posição é a de referência, sem busca dentro da zona (CP2B). */
+  modo: 'referencia'
+  /** As preferências da spec que coincidiam com as do arquétipo (aceitas — a geometria veio do arquétipo). */
+  preferenciasCoincidentes: string[]
+  papeis: Array<{ papel: string; referencia: RetanguloPx; zonaEfetiva: RetanguloPx; posicao: RetanguloPx }>
+  logo: { modo: 'referencia' | 'automatica'; canto: Canto | null; referencia?: RetanguloPx; zonaEfetiva?: RetanguloPx; posicao?: RetanguloPx }
+  /** Os elementos que o arquétipo declara e os desenhados — nenhum no T1a (é o T1b). */
+  elementosDeclarados: Array<{ id: string; tipo: string; opcional: boolean }>
+  elementosMaterializados: string[]
+  /** Textos cujo arranjo trazia a logo: ela saiu do arranjo e ficou só onde o arquétipo manda. */
+  logoDoArranjoRetirada?: string[]
 }
 
 export interface OpcoesDeComposicao {
@@ -617,12 +656,17 @@ export async function arranjosDasCombinacoes(projectId: number, medir: MeasureTe
 export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = {}): Promise<ResultadoDaComposicao> {
   const v = validarSpec(entrada)
   if (!v.spec) throw new CreativeError('SPEC_INVALIDA', `Spec inválida — ${v.problemas.join('; ')}`, 400, { problemas: v.problemas })
+  // T1a: o arquétipo é RESOLVIDO antes de tudo (id + versão + impressão exatas, impressão gravada conferida) e
+  // as recusas que não dependem da medida saem aqui. Sem `arquetipo`, `null` — e nada abaixo muda.
+  const arq: ArquetipoPreparado | null = prepararArquetipo(v.spec)
   if (v.spec.selecaoExperimental === true && !opcoes.somenteAvaliar) {
     const { selecionarCombinacao } = await import('./selecionar-combinacao')
     const selecao = await selecionarCombinacao(v.spec)
     return comporPeca(selecao.spec, { ...opcoes, selecao: selecao.diagnostico, avisosDaSelecao: selecao.avisos, cacheDeFotos: selecao.cacheDeFotos, assuntosDoCatalogo: selecao.assuntosDoCatalogo })
   }
-  const spec = v.spec
+  // A peça nunca depende de "a mais recente": a spec que se compõe e se grava traz a versão exata.
+  const spec: SpecDePeca = arq ? { ...v.spec, arquetipo: arq.resolvido } : v.spec
+  if (arq) conferirLinhas(arq.definicao, arq.formato, spec)
   const avisos: string[] = [...(opcoes.avisosDaSelecao ?? [])]
 
   const projeto = await db.project.findUnique({ where: { id: spec.projectId }, select: { id: true, name: true, userId: true } })
@@ -669,8 +713,15 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       422, { faltam, variante: assinatura.origem.variante })
   }
 
+  if (arq) conferirLogo(arq.definicao, Boolean(assinatura.logo))
+
   const geo = assinatura.numeros.geometria[spec.formato]
   const g: GeometriaDaPeca = { W: canvas.width, H: canvas.height, margemH: geo.margemH, safeTopo: geo.safeTopo, safeRodape: geo.safeRodape, gap: geo.gapEntreBlocos }
+  // Com arquétipo, a área segura é o piso do PROJETO (antes das margens da página, que são geometria da página);
+  // ver `AssinaturaDaMarca.pisoDoProjeto`.
+  const pisoArq = arq ? (assinatura.pisoDoProjeto ?? assinatura.numeros.geometria)[spec.formato] : null
+  const gArq: GeometriaDaPeca | null = pisoArq ? { ...g, margemH: pisoArq.margemH, safeTopo: pisoArq.safeTopo, safeRodape: pisoArq.safeRodape } : null
+  const caixasArq = arq ? caixasMaximas(arq.definicao, arq.formato, canvas) : null
   const escalaDoFormato = assinatura.origem.formatoDaPagina === spec.formato ? 1 : geo.escalaDeFonte
   const mancha = assinatura.numeros.mancha
 
@@ -696,9 +747,33 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   // compor nunca podem divergir.
   const combinacoesSalvas = await arranjosDasCombinacoes(spec.projectId, medir)
   const familias = await familiasDoProjeto(spec.projectId)
-  const preparados = prepararBlocos({ spec, assinatura, colunaUtil, escalaDoFormato, mancha, medir, familias, combinacoesSalvas })
+  const preparar = (escalaMaximaDoPapel?: (p: Papel) => number | undefined) =>
+    prepararBlocos({
+      spec,
+      assinatura,
+      colunaUtil,
+      escalaDoFormato,
+      mancha,
+      medir,
+      familias,
+      combinacoesSalvas,
+      ...(caixasArq ? { caixaDoPapel: (p: Papel) => caixasArq[papelGeometrico(p)], ...(escalaMaximaDoPapel ? { escalaMaximaDoPapel } : {}) } : {}),
+    })
+  // Com arquétipo, a preparação passa pela escada da UNIDADE (a mesma do medir-copy) — e a logo dos arranjos sai
+  // deles: com arquétipo a logo é do arquétipo (senão a marca sairia duas vezes).
+  const noArquetipo: PreparoNoArquetipo | null = arq ? prepararNoArquetipo({ arquetipo: arq.definicao, formato: arq.formato, canvas, gap: g.gap, preparar }) : null
+  const preparados = noArquetipo ? noArquetipo.preparados : preparar()
   avisos.push(...preparados.avisos)
-  const { montados, arranjos, arranjoPorGrupo, elementosPorTexto, segundaVoz, gruposExtras } = preparados
+  const { arranjos, arranjoPorGrupo, elementosPorTexto, segundaVoz, gruposExtras } = preparados
+  const montados = noArquetipo ? noArquetipo.montados : preparados.montados
+  for (const id of noArquetipo?.retiradas ?? []) {
+    const presos = elementosPorTexto.get(id)
+    if (!presos) continue
+    const elementos = presos.elementos.filter((e) => !e.logo)
+    if (elementos.length > 0) elementosPorTexto.set(id, { ...presos, elementos })
+    else elementosPorTexto.delete(id)
+    avisos.push(`${id}: a logo presa ao arranjo saiu dele — com arquétipo a logo fica só onde o arquétipo manda.`)
+  }
   // 🔴 As fontes são conferidas ANTES das decisões de encaixe. Família que não
   // carregou no servidor faz o medidor cair no FALLBACK — e é dessa medida que
   // saem a escada de encolhimento e o ORÇAMENTO de caracteres. Recusar a peça
@@ -720,6 +795,50 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     const faltando = [...new Set(r.familiasMedidas.filter((f) => semFonte.has(f)))]
     return faltando.length > 0 ? { papel: r.papel, naoMedido: true, fontesNaoCarregadas: faltando } : { papel: r.papel, orcamento: r.orcamento }
   })
+  if (recusas.length > 0 && arq) {
+    // Com arquétipo a caixa é a REFERÊNCIA do papel: a recusa diz a coluna e a capacidade dela, com o orçamento.
+    const fontes = [...new Set(recusas.flatMap((r) => r.fontesNaoCarregadas ?? []))]
+    // O MESMO diagnóstico da recusa da materialização: papel, referência, zona efetiva, medida e motivo — mais a
+    // coluna, a altura e o orçamento por linha da escada do bloco.
+    const detalhe = preparados.recusas.map((r) => {
+      const maisLarga = Math.max(0, ...r.orcamento.map((o) => o.largura))
+      return {
+        codigo: 'ARQUETIPO_TEXTO_NAO_CABE' as const,
+        papel: r.papel,
+        ...(referenciaDoPapel(arq.definicao, arq.formato, canvas, pisoArq!, papelGeometrico(r.papel)) ?? {}),
+        coluna: r.coluna,
+        ...(r.altura
+          ? { altura: r.altura, medida: { height: r.altura.medida } }
+          : maisLarga > 0
+            ? { medida: { width: maisLarga } }
+            : r.quebras?.length
+              ? { quebras: r.quebras, medida: { linhas: Math.max(...r.quebras.map((q) => q.linhas)) } }
+              : { medida: {} }),
+        motivo: r.altura
+          ? `a caixa tem ${r.altura.medida}px de altura no piso da escada e a referência comporta ${r.altura.capacidade}px`
+          : maisLarga > 0
+            ? `linha de ${maisLarga}px maior que a coluna da referência (${r.coluna}px) mesmo no piso da escada`
+            : r.quebras?.length
+              ? `${r.quebras.map((q) => `"${q.linha}"`).join(', ')} se desenha em mais de uma linha na coluna da referência (${r.coluna}px) — há quebra dentro do item; cada linha da copy é uma linha`
+              : `o bloco não coube na coluna da referência (${r.coluna}px) nem no piso da escada`,
+        ...(recusas.find((x) => x.papel === r.papel)?.naoMedido ? { naoMedido: true } : { orcamento: r.orcamento }),
+      }
+    })
+    throw new CreativeError(
+      'ARQUETIPO_TEXTO_NAO_CABE',
+      `${chaveDoArquetipo(arq.definicao)}: ${preparados.recusas
+        .map((r) =>
+          r.altura
+            ? `${r.papel} tem ${r.altura.medida}px de altura e a referência comporta ${r.altura.capacidade}px mesmo a ${Math.round(0.8 * 100)}% da fonte`
+            : r.orcamento.length === 0 && r.quebras?.length
+              ? `${r.papel} tem linha que se desenha em mais de uma na coluna da referência (${r.coluna}px) — há quebra dentro do item`
+              : `${r.papel} tem linha maior que a coluna da referência (${r.coluna}px) mesmo a ${Math.round(0.8 * 100)}% da fonte`,
+        )
+        .join('; ')}. Reescreva com o orçamento devolvido${fontes.length > 0 ? ` (a fonte ${fontes.map((f) => `"${f}"`).join(', ')} não carregou: sem orçamento para esses papéis)` : ''}.`,
+      422,
+      { arquetipo: chaveDoArquetipo(arq.definicao), formato: arq.formato, problemas: detalhe, orcamento: detalhe, ...(fontes.length > 0 ? { fontesNaoCarregadas: fontes } : {}) },
+    )
+  }
   if (recusas.length > 0) {
     // 🔴 A recusa de quem não pôde ser MEDIDO não vira "reescreva com o
     // orçamento": o número seria o da fonte de fallback (PR4-FINAL-02).
@@ -892,8 +1011,33 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   const reservaNoRodape = secundarios.filter((c) => c.ancora === 'rodape').reduce((acc, c) => acc + c.pilha.height + vaoRumoAoPrincipal.get(c)!, 0)
   const reservaNoTopo = secundarios.filter((c) => c.ancora === 'topo').reduce((acc, c) => acc + c.pilha.height + vaoRumoAoPrincipal.get(c)!, 0)
 
+  // T1a: com arquétipo, cada papel é uma unidade (papéis que a página agrupa NÃO se fundem) pousada na REFERÊNCIA,
+  // na área segura efetiva do projeto. O que não cabe é recusado com papel, referência, zona e medida — nada é movido.
+  const unidadesArq: UnidadeDoArquetipo[] | null = noArquetipo ? noArquetipo.unidades : null
+  let materializacao: Extract<Materializacao, { ok: true }> | null = null
+  if (arq && unidadesArq && pisoArq) {
+    const m = materializarUnidades({
+      arquetipo: arq.definicao,
+      formato: arq.formato,
+      canvas,
+      geometria: pisoArq,
+      unidades: unidadesArq,
+      logo: assinatura.logo ? { razao: assinatura.logo.razao } : null,
+    })
+    if ('problemas' in m) {
+      throw new CreativeError(
+        m.problemas[0].codigo,
+        `${chaveDoArquetipo(arq.definicao)} na posição de referência: ${m.problemas.map((p) => `${p.papel} — ${p.motivo}`).join('; ')}. O T1a não move a caixa (a busca dentro da zona é do CP2B).`,
+        422,
+        { arquetipo: chaveDoArquetipo(arq.definicao), formato: arq.formato, problemas: m.problemas },
+      )
+    }
+    materializacao = m
+  }
+
   // 2. O mapa e o assunto — por corte candidato.
-  const cortes = cortesCandidatos(foto, canvas, spec.preferencias?.enquadramento === 'fixo')
+  // Com arquétipo não há alternativa a pontuar (T1a): o corte é o central, e a posição é a referência.
+  const cortes: CropPosition[] = arq ? ['center-middle'] : cortesCandidatos(foto, canvas, spec.preferencias?.enquadramento === 'fixo')
   const assuntoDoCatalogo = foto && spec.foto?.driveFileId
     ? opcoes.assuntosDoCatalogo?.has(spec.foto.driveFileId)
       ? opcoes.assuntosDoCatalogo.get(spec.foto.driveFileId) ?? null
@@ -906,6 +1050,29 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     const raster = foto ? await lerFotoComoCover(foto.bytes, canvas, { cropPosition: crop }) : null
     const mapa = raster ? mapaDeCalma(raster) : null
     const assunto = assuntoDoCatalogo ? assuntoEmPixels(assuntoDoCatalogo, { width: foto!.largura, height: foto!.altura }, canvas, crop) : mapa ? estimarAssunto(mapa) : null
+    if (arq && materializacao) {
+      const doPrincipal = materializacao.papeis.headline?.posicao ?? { x: 0, y: 0, width: 0, height: 0 }
+      if (assuntoDoCatalogo && assunto && fracaoVisivelDoAssunto(assunto, canvas) < 0.75) avisos.push('O corte central preserva menos de 75% da caixa do assunto catalogado (com arquétipo o corte não é escolhido pela foto).')
+      melhor = {
+        crop,
+        raster,
+        mapa,
+        assunto,
+        escolhido: {
+          rect: doPrincipal,
+          preferencia: 1,
+          rotulo: { ancora: arq.definicao.preferencias.ancora, alinha: arq.definicao.preferencias.alinha, crop },
+          pontuacao: 1,
+          calma: 1,
+          tintaNecessaria: 0,
+          cobreAssunto: 0,
+          descartado: false,
+          motivo: `arquétipo ${chaveDoArquetipo(arq.definicao)} na posição de referência (sem busca na zona)`,
+        },
+        todos: [],
+      }
+      continue
+    }
     const candidatos = candidatosDePosicao(g, spec, pilha, crop, {
       reservaNoRodape,
       reservaNoTopo,
@@ -957,20 +1124,42 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     })
     rectsDeGrupo.push({ grupo: c.chave, rect, cores: c.blocos.map((b) => b.cor), camadas, ancora: ancoraDoBloco })
   }
-  posicionar(principal, rectPrincipal, alinha, ancora)
-  let ocupadoNoRodape = 0
-  let ocupadoNoTopo = 0
-  for (const c of secundarios) {
-    const al = c.alinha ?? alinha
-    let rect = retanguloDoBloco(g, c.ancora, al, pilhaPara(c, al).width, c.pilha.height, margemDoGrupo(c, al))
-    if (c.ancora === 'rodape') {
-      rect = { ...rect, y: g.H - g.safeRodape - c.pilha.height - ocupadoNoRodape }
-      ocupadoNoRodape += c.pilha.height + (vaoRumoAoPrincipal.get(c) ?? Math.round(g.gap * 1.6))
-    } else if (c.ancora === 'topo') {
-      rect = { ...rect, y: g.safeTopo + ocupadoNoTopo }
-      ocupadoNoTopo += c.pilha.height + (vaoRumoAoPrincipal.get(c) ?? Math.round(g.gap * 1.6))
+  if (arq && unidadesArq && materializacao) {
+    // T1a: cada unidade na posição que a materialização deu (a referência, alinhada como o arquétipo manda) — pela
+    // MESMA conta que o medir-copy usa para conferir a geometria final (`camadasNaReferencia`).
+    for (const { unidade: u, rect, camadas } of camadasNaReferencia(unidadesArq, materializacao.papeis, arq.definicao.preferencias.alinha)) {
+      const centro = (rect.y + rect.height / 2) / canvas.height
+      const ancoraDaUnidade: Ancora = centro > 0.55 ? 'rodape' : centro < 0.45 ? 'topo' : 'meio'
+      camadasDeTexto.push(...camadas)
+      rectsDeGrupo.push({ grupo: grupoDaUnidade(u.papel), rect, cores: u.blocos.map((b) => b.cor), camadas, ancora: ancoraDaUnidade })
     }
-    posicionar(c, rect, al, c.ancora)
+    // O que o autofix resolveria encolhendo (transbordo, colisão) é recusa: abaixo da escada a peça sairia menor que o
+    // piso e diferente do que o medir-copy mediu — que confere esta mesma lista.
+    const ajustes = ajusteFinalNecessario(camadasDeTexto, canvas, medir)
+    if (ajustes.length > 0) {
+      throw new CreativeError(
+        'ARQUETIPO_AJUSTE_FINAL',
+        `${chaveDoArquetipo(arq.definicao)}: na referência, ${ajustes.map((a) => a.detalhe).join('; ')}. O T1a não encolhe abaixo da escada nem move a caixa.`,
+        422,
+        { arquetipo: chaveDoArquetipo(arq.definicao), formato: arq.formato, problemas: ajustes },
+      )
+    }
+  } else {
+    posicionar(principal, rectPrincipal, alinha, ancora)
+    let ocupadoNoRodape = 0
+    let ocupadoNoTopo = 0
+    for (const c of secundarios) {
+      const al = c.alinha ?? alinha
+      let rect = retanguloDoBloco(g, c.ancora, al, pilhaPara(c, al).width, c.pilha.height, margemDoGrupo(c, al))
+      if (c.ancora === 'rodape') {
+        rect = { ...rect, y: g.H - g.safeRodape - c.pilha.height - ocupadoNoRodape }
+        ocupadoNoRodape += c.pilha.height + (vaoRumoAoPrincipal.get(c) ?? Math.round(g.gap * 1.6))
+      } else if (c.ancora === 'topo') {
+        rect = { ...rect, y: g.safeTopo + ocupadoNoTopo }
+        ocupadoNoTopo += c.pilha.height + (vaoRumoAoPrincipal.get(c) ?? Math.round(g.gap * 1.6))
+      }
+      posicionar(c, rect, al, c.ancora)
+    }
   }
 
   // 4. SEM HALO (Ciro, 11/09/2026: "prefiro que deixe de usar o halo"). O fundo
@@ -994,7 +1183,34 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   // A logo que mora DENTRO de um arranjo (ao lado do serviço, como no Quintal)
   // entra com os elementos do texto; a peça não ganha outra no canto.
   const logoNoArranjo = montados.some((b) => b.elementos?.some((e) => e.logo))
-  if (assinatura.logo && spec.preferencias?.cantoDaMarca !== 'nenhum' && !logoNoArranjo) {
+  if (arq && assinatura.logo && materializacao) {
+    // T1a: a logo é do arquétipo. Na referência fixa, em contain (a proporção do arquivo, nunca deformada); na
+    // automática, a escolha de canto de sempre (o mais calmo), no piso do projeto. Contraste da logo é do CP3.
+    const fixa = materializacao.papeis.logo?.posicao
+    const largura = Math.round(assinatura.logo.largura * (spec.formato === 'story' ? 1 : escalaDoFormato))
+    const canto = fixa
+      ? { canto: arq.definicao.preferencias.cantoDaMarca as Canto, rect: { x: fixa.x, y: fixa.y, width: fixa.width, height: fixa.height } }
+      : materializacao.logoAutomatica
+        ? escolherCanto({ g: gArq!, mapa: melhor.mapa, blocos: rectsDeGrupo.map((r) => r.rect), logo: { w: largura, h: Math.round(largura * assinatura.logo.razao) }, pedido: undefined, formato: spec.formato })
+        : null
+    if (canto) {
+      camadasDaLogo.push({
+        id: 'logo',
+        name: 'Logo',
+        type: 'logo',
+        visible: true,
+        locked: false,
+        order: 0,
+        position: { x: canto.rect.x, y: canto.rect.y },
+        size: { width: canto.rect.width, height: canto.rect.height },
+        rotation: 0,
+        fileUrl: assinatura.logo.url,
+        style: { objectFit: 'contain' },
+        metadata: { compositor: { canto: canto.canto } },
+      })
+      logoDiag = { canto: canto.canto, tinta: 0 }
+    }
+  } else if (assinatura.logo && spec.preferencias?.cantoDaMarca !== 'nenhum' && !logoNoArranjo) {
     const largura = Math.round(assinatura.logo.largura * (spec.formato === 'story' ? 1 : escalaDoFormato))
     const altura = Math.round(largura * assinatura.logo.razao)
     // A logo onde a PÁGINA a pôs — no alto e ao centro no "Almoço TERO", no
@@ -1102,6 +1318,20 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   })
   avisos.push(...fix.avisos)
   let layers = fix.layers as Layer[]
+  if (arq) {
+    // Defesa: a conferência acima garante que o autofix não tem o que fazer; se ele mexeu num texto, a peça não é a medida.
+    const lh = (l: Layer) => l.textboxConfig?.autoWrap?.lineHeight ?? l.style?.lineHeight
+    const mexidos = camadasDeTexto.filter((c) => {
+      const f = layers.find((l) => l.id === c.id)
+      return !f || f.style?.fontSize !== c.style?.fontSize || lh(f) !== lh(c) || f.position.x !== c.position.x || f.position.y !== c.position.y
+    })
+    if (mexidos.length > 0) {
+      throw new CreativeError('ARQUETIPO_AJUSTE_FINAL', `${chaveDoArquetipo(arq!.definicao)}: o ajuste final mexeria em ${mexidos.map((c) => c.id).join(', ')} — com arquétipo a peça sai como medida, ou não sai.`, 422, {
+        arquetipo: chaveDoArquetipo(arq!.definicao),
+        camadas: mexidos.map((c) => c.id),
+      })
+    }
+  }
 
   // 7a. Os ELEMENTOS presos aos textos (ícone, filete, selo, a logo do
   //     arranjo), na tinta FINAL — o autofix pode ter encolhido a fonte. Entram
@@ -1132,6 +1362,38 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   //     foto não há o que escurecer: a peça sai sobre o fundo liso da marca.
   const caixaDe = (l: Layer): Rect => ({ x: l.position.x, y: l.position.y, width: l.size.width, height: l.size.height })
   const elementoDe = (l: Layer) => String((l.metadata as { compositor?: { elementoDe?: string } } | undefined)?.compositor?.elementoDe ?? '')
+  // T1a: o autofix pode encolher a fonte e legalizar a altura da caixa, e os elementos presos entram agora — a
+  // unidade FINAL (textos + elementos) tem de continuar na zona efetiva. Fora dela, recusa (nada é movido).
+  if (arq && unidadesArq && materializacao) {
+    const fora: Array<{ codigo: 'ARQUETIPO_FORA_DA_ZONA'; papel: string; referencia: RetanguloPx; zonaEfetiva: RetanguloPx; medida: { width: number; height: number }; motivo: string }> = []
+    const foraDaZona = (r: Rect, z: RetanguloPx) => r.x < z.x - 1 || r.y < z.y - 1 || r.x + r.width > z.x + z.width + 1 || r.y + r.height > z.y + z.height + 1
+    const conferir = (papel: string, caixa: Rect | null, m: { referencia: RetanguloPx; zonaEfetiva: RetanguloPx } | undefined) => {
+      if (!caixa || !m || !foraDaZona(caixa, m.zonaEfetiva)) return
+      const z = m.zonaEfetiva
+      fora.push({
+        codigo: 'ARQUETIPO_FORA_DA_ZONA',
+        papel,
+        referencia: m.referencia,
+        zonaEfetiva: z,
+        medida: { width: Math.round(caixa.width), height: Math.round(caixa.height) },
+        motivo: `depois do ajuste final (autofix e elementos presos), a caixa (${Math.round(caixa.x)},${Math.round(caixa.y)} ${Math.round(caixa.width)}×${Math.round(caixa.height)}) sai da zona efetiva (${z.x},${z.y} ${z.width}×${z.height})`,
+      })
+    }
+    for (const u of unidadesArq) {
+      const ids = new Set(u.blocos.map((b) => b.layer.id))
+      conferir(u.papel, uniao(layers.filter((l) => l.visible !== false && (ids.has(l.id) || ids.has(elementoDe(l)))).map(caixaDe)), materializacao.papeis[u.papel])
+    }
+    const logoFinalArq = layers.find((l) => l.id === 'logo')
+    if (logoFinalArq) conferir('logo', caixaDe(logoFinalArq), materializacao.papeis.logo)
+    if (fora.length > 0) {
+      throw new CreativeError(
+        'ARQUETIPO_FORA_DA_ZONA',
+        `${chaveDoArquetipo(arq.definicao)}: ${fora.map((f) => `${f.papel} — ${f.motivo}`).join('; ')}. O T1a não move a caixa.`,
+        422,
+        { arquetipo: chaveDoArquetipo(arq.definicao), formato: arq.formato, problemas: fora },
+      )
+    }
+  }
   const gruposDeTexto = rectsDeGrupo.map((grupo) => {
     const ids = new Set(grupo.camadas.map((c) => c.id))
     // O gradiente cobre também os elementos presos aos textos do grupo
@@ -1411,6 +1673,28 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     arranjos,
     contraste,
     assinatura: assinatura.origem,
+    ...(arq && materializacao
+      ? {
+          arquetipo: {
+            id: arq.resolvido.id,
+            versao: arq.resolvido.versao,
+            impressao: arq.resolvido.impressao,
+            codigoTaxonomico: arq.definicao.codigoTaxonomico,
+            formato: spec.formato,
+            modo: 'referencia' as const,
+            preferenciasCoincidentes: arq.preferenciasCoincidentes,
+            papeis: (unidadesArq ?? []).map((u) => ({ papel: u.papel, ...materializacao!.papeis[u.papel]! })),
+            logo: {
+              modo: materializacao.logoAutomatica ? ('automatica' as const) : ('referencia' as const),
+              canto: logoDiag?.canto ?? null,
+              ...(materializacao.papeis.logo ? { referencia: materializacao.papeis.logo.referencia, zonaEfetiva: materializacao.papeis.logo.zonaEfetiva, posicao: materializacao.papeis.logo.posicao } : {}),
+            },
+            elementosDeclarados: (arq.definicao.elementos ?? []).map((e) => ({ id: e.id, tipo: e.tipo, opcional: e.opcional })),
+            elementosMaterializados: [],
+            ...(noArquetipo?.retiradas.length ? { logoDoArranjoRetirada: noArquetipo.retiradas } : {}),
+          },
+        }
+      : {}),
     avisos,
   }
 

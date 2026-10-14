@@ -36,3 +36,19 @@ describe('posição da peça na recomposição', () => {
     expect(r.preferencias).toMatchObject({ ancora: 'rodape', alinha: 'centro' })
   })
 })
+
+describe('posição da peça COM arquétipo na recomposição (T1a)', () => {
+  const arquetipo = { id: 'minimal-fb-topo-esquerda', versao: 1, impressao: 'arq1-1f4ab8c4a215f2' }
+  const comArquetipo = (preferencias?: SpecDePeca['preferencias']) => ({ ...spec(preferencias), arquetipo }) as SpecDePeca
+
+  it('23. não injeta âncora nem alinhamento: o arquétipo já congela a geometria (a variante, estilo, continua fixada)', () => {
+    const r = specComAPosicaoOriginal(comArquetipo(), { composicao: { posicao: { ancora: 'topo', alinha: 'esquerda', crop: 'center-middle' }, assinatura: { pageId: 'pag-1' } } })
+    expect(r.preferencias).toEqual({ varianteOriginal: 'pag-1' })
+    expect(r.arquetipo).toEqual(arquetipo)
+  })
+
+  it('sem variante para fixar, devolve a MESMA spec (nada muda)', () => {
+    const s = comArquetipo()
+    expect(specComAPosicaoOriginal(s, composicao('rodape', 'centro'))).toBe(s)
+  })
+})

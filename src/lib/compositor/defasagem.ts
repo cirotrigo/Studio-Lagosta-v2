@@ -560,6 +560,9 @@ export function specComAPosicaoOriginal(spec: SpecDePeca, fieldValues: unknown):
     mudou = true
   }
   const comPref = () => (mudou ? { ...spec, preferencias: pref } : spec)
+  // T1a: a peça com ARQUÉTIPO já congela a geometria (id + versão + impressão). Âncora e alinhamento da composição
+  // original seriam uma SEGUNDA fonte de posição — só a variante (estilo) é fixada.
+  if (spec.arquetipo) return comPref()
   if (!posicao || !ehAncora(posicao.ancora) || !ehAlinhamento(posicao.alinha)) return comPref()
   const pedeAncora = pref.ancora && pref.ancora !== 'auto'
   const pedeAlinha = pref.alinha && pref.alinha !== 'auto'

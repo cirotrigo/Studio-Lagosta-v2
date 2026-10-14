@@ -17,6 +17,7 @@ import { carregarFotoParaMedir } from './foto-para-medir'
 import { chaveDaPeca } from './preparar-blocos'
 import { areaUtilDe, familiasUsadasNaVariante, medirCopy, orcamentoDaVariante, type AreaUtil, type MedicaoDaCopy, type OrcamentoDoPapel } from './medir-copy'
 import { DIMENSOES, validarSpec, type Formato, type GrupoVisual, type Papel, type SpecDePeca } from './spec'
+import { prepararArquetipo, type ArquetipoResolvido } from './arquetipos/na-spec'
 
 export interface PedidoDeMedicao {
   projectId: number
@@ -33,6 +34,8 @@ export interface PedidoDeMedicao {
   fotoDriveId?: string | null
   fotoUrl?: string | null
   preferencias?: { arranjos?: Array<string | { grupo?: string; arranjo?: string }> } | null
+  /** T1a: o arquétipo — o MESMO pedido do compor (`{ id }`, `{ id, versao }` ou a fixação de uma medição anterior). */
+  arquetipo?: { id: string; versao?: number; impressao?: string } | null
 }
 
 export interface VarianteMedida {
@@ -43,6 +46,8 @@ export interface VarianteMedida {
   papeisAusentes: Papel[]
   naoMedido: boolean
   blocosReduzidos: Papel[]
+  /** Com arquétipo: por que a variante não compõe com ele (a variante sem logo, por exemplo). */
+  motivo?: { codigo: string; mensagem: string }
 }
 
 export interface ResultadoDaMedicao {
@@ -58,8 +63,11 @@ export interface ResultadoDaMedicao {
   escolhaProvisoria: boolean
   /** Por que é provisória (vazio quando não é). */
   motivosDaProvisoriedade: string[]
-  /** O que fixar ao compor para reproduzir ESTA medição: `preferencias.variante` e `preferencias.arranjos`. */
-  fixacao: { variante: string | null; arranjos: Array<{ grupo: string; arranjo: string }> }
+  /**
+   * O que fixar ao compor para reproduzir ESTA medição: `preferencias.variante`, `preferencias.arranjos` e, com
+   * arquétipo, `arquetipo` RESOLVIDO (id + versão + impressão) — medir só com o id devolve a versão exata.
+   */
+  fixacao: { variante: string | null; arranjos: Array<{ grupo: string; arranjo: string }>; arquetipo?: ArquetipoResolvido }
   medicao: MedicaoDaCopy
   /** As outras variantes do formato, medidas com a mesma copy — para escolher pela capacidade, não só pelo nome. */
   outrasVariantes: VarianteMedida[]
@@ -80,9 +88,12 @@ export async function medirCopyDoProjeto(pedido: PedidoDeMedicao): Promise<Resul
     ...(pedido.nome ? { nome: pedido.nome } : {}),
     ...(pedido.tema ? { tema: pedido.tema } : {}),
     ...(pedido.variante || pedido.preferencias?.arranjos ? { preferencias: { ...(pedido.variante ? { variante: pedido.variante } : {}), ...(pedido.preferencias?.arranjos ? { arranjos: pedido.preferencias.arranjos } : {}) } } : {}),
+    ...(pedido.arquetipo ? { arquetipo: pedido.arquetipo } : {}),
   })
   if (!v.spec) throw new CreativeError('SPEC_INVALIDA', v.problemas.join('; '), 400, { problemas: v.problemas })
-  const spec: SpecDePeca = v.spec
+  // T1a: a MESMA resolução e as mesmas recusas do compor (id + versão + impressão; formato, papéis, preferências).
+  const arquetipo = prepararArquetipo(v.spec)
+  const spec: SpecDePeca = arquetipo ? { ...v.spec, arquetipo: arquetipo.resolvido } : v.spec
   const blocos = spec.blocos as Array<{ papel: Papel; linhas: string[] }>
   const papeis = blocos.map((b) => b.papel)
 
@@ -114,7 +125,8 @@ export async function medirCopyDoProjeto(pedido: PedidoDeMedicao): Promise<Resul
   // por predicado, para valer também na fonte própria do segundo serviço e na
   // da combinação salva (R04). Sem o módulo nativo, nada está carregado.
   const fonteCarregada = await predicadoDeFonteCarregada()
-  const medirContra = async (a: AssinaturaDaMarca): Promise<MedicaoDaCopy> => medirCopy({ spec, assinatura: a, formato: pedido.formato, medir, familias, fonteCarregada, combinacoesSalvas })
+  const medirContra = async (a: AssinaturaDaMarca): Promise<MedicaoDaCopy> =>
+    medirCopy({ spec, assinatura: a, formato: pedido.formato, medir, familias, fonteCarregada, combinacoesSalvas, ...(arquetipo ? { arquetipo } : {}) })
   const medicao = await medirContra(assinatura)
   medicao.avisos.unshift(...avisosDaFoto)
 
@@ -128,7 +140,15 @@ export async function medirCopyDoProjeto(pedido: PedidoDeMedicao): Promise<Resul
     if (formatoDaPagina(p) !== (assinatura.origem.formatoDaPagina ?? pedido.formato)) continue
     const a = await carregarAssinatura(pedido.projectId, pedido.formato, { variante: p.id, papeis })
     if (!a.origem.pageId) continue
-    const m = await medirContra(a)
+    let m: MedicaoDaCopy
+    try {
+      m = await medirContra(a)
+    } catch (erro) {
+      // Com arquétipo, a variante que não compõe com ele (sem logo, por exemplo) não cabe — sem derrubar a medição da escolhida.
+      if (!(arquetipo && erro instanceof CreativeError && erro.code.startsWith('ARQUETIPO_'))) throw erro
+      outrasVariantes.push({ id: a.origem.pageId, nome: a.origem.variante, formatoDaPagina: a.origem.formatoDaPagina, cabeTudo: false, papeisAusentes: [], naoMedido: false, blocosReduzidos: [], motivo: { codigo: erro.code, mensagem: erro.message } })
+      continue
+    }
     outrasVariantes.push({
       id: a.origem.pageId,
       nome: a.origem.variante,
@@ -151,7 +171,7 @@ export async function medirCopyDoProjeto(pedido: PedidoDeMedicao): Promise<Resul
     variante: { id: assinatura.origem.pageId, nome: assinatura.origem.variante, formatoDaPagina: assinatura.origem.formatoDaPagina, motivo: assinatura.origem.motivoDaVariante ?? null },
     escolhaProvisoria: motivosDaProvisoriedade.length > 0,
     motivosDaProvisoriedade,
-    fixacao: { variante: assinatura.origem.pageId, arranjos: medicao.arranjos.map((a) => ({ grupo: a.grupo, arranjo: a.id })) },
+    fixacao: { variante: assinatura.origem.pageId, arranjos: medicao.arranjos.map((a) => ({ grupo: a.grupo, arranjo: a.id })), ...(arquetipo ? { arquetipo: arquetipo.resolvido } : {}) },
     medicao,
     outrasVariantes,
   }
