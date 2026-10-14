@@ -4,12 +4,8 @@
  * qualquer linha do T1a) e entra no PR como o primeiro commit; os commits do T1a
  * não podem mudá-lo. Diferença no `.snap` = regressão do caminho sem arquétipo.
  *
- * Projeção estável entre plataformas: posições, tamanhos, estilos, ids, a escolha
- * de posição, a logo, os blocos, as medidas finais, os gradientes (borda, altura,
- * cor), o tratamento por borda (estado, cor) e a spec/ fieldValues gravados. Fica
- * de fora o que vem do raster no último bit (pontuações, forças, percentis).
+ * A projeção estável (`suporte/projecao.ts`) é a mesma do baseline do CP2B.
  */
-import { createHash } from 'node:crypto'
 import { describe, expect, it, vi } from 'vitest'
 
 const cap = vi.hoisted(() => ({ entradas: [] as Array<Record<string, any>> }))
@@ -34,51 +30,14 @@ vi.mock('@/lib/assets/gradients-library', async (original) => ({
   gradientesDoProjeto: (await import('./suporte/compositor')).gradientesDoCenario,
 }))
 
-import type { Layer } from '@/types/template'
-import { comporPeca, type ResultadoDaComposicao } from '@/lib/compositor/compor'
-import { specComAPosicaoOriginal } from '@/lib/compositor/defasagem'
+import { comporPeca } from '@/lib/compositor/compor'
 import { validarSpec } from '@/lib/compositor/spec'
 import { hashDoPayload, payloadParaHash } from '@/lib/lotes/identidade'
 import { cenario } from './suporte/compositor'
 import { cenarioDoPiloto } from './suporte/cenario-do-piloto'
 import { dataUrl } from './suporte/fixture'
+import { projecao } from './suporte/projecao'
 import { cenarioSintetico, fotoSintetica, logoSintetica, paginaSintetica, specSintetica, VEU_CLARO, VEU_ESCURO } from './suporte/sinteticos'
-
-const token = (u: unknown) => (typeof u === 'string' && u.startsWith('data:') ? `data:${createHash('sha1').update(u).digest('hex').slice(0, 12)}` : u)
-const ehGradiente = (l: Layer) => l.type === 'gradient' || l.type === 'gradient2'
-const semNumeros = (s: string) => s.replace(/\d+(?:[.,]\d+)?/g, '#')
-
-function projecao(r: ResultadoDaComposicao, entrada: Record<string, any> | undefined) {
-  const d = r.diagnostico
-  return {
-    layers: r.layers.map((l) =>
-      ehGradiente(l)
-        ? { id: l.id, type: l.type, order: l.order, position: l.position, size: l.size, borda: (l.metadata as Record<string, unknown> | undefined)?.borda, cor: (l.style as { gradientStops?: Array<{ color?: string }> })?.gradientStops?.[0]?.color }
-        : { ...l, fileUrl: token(l.fileUrl) },
-    ),
-    chavesDoDiagnostico: Object.keys(d).sort(),
-    posicao: { ancora: d.posicao.ancora, alinha: d.posicao.alinha, crop: d.posicao.crop },
-    candidatos: d.candidatos.map((c) => [c.ancora, c.alinha, c.crop, c.descartado]),
-    assuntoOrigem: d.assuntoOrigem,
-    logo: d.logo,
-    blocos: d.blocos,
-    medidasFinais: d.medidasFinais,
-    arranjos: d.arranjos,
-    segundaVoz: d.segundaVoz,
-    assinatura: d.assinatura,
-    gradientes: d.gradientes?.map(({ borda, altura, cor, origemDaCor }) => ({ borda, altura, cor, origemDaCor })),
-    tratamento: d.tratamentoDeLeitura?.map(({ borda, estado, cor, origemDaCor, textos }) => ({ borda, estado, cor, origemDaCor, textos: textos.map(({ camada, polaridade }) => ({ camada, polaridade })) })),
-    avisos: d.avisos.map(semNumeros),
-    persist: entrada
-      ? {
-          chaves: Object.keys(entrada.fieldValues).sort(),
-          spec: entrada.fieldValues.spec,
-          // A recomposição congela a posição a partir do diagnóstico gravado — o caminho sem arquétipo, intacto.
-          specDaRecomposicao: specComAPosicaoOriginal(entrada.fieldValues.spec, entrada.fieldValues),
-        }
-      : null,
-  }
-}
 
 const ASSINATURA = { mancha: VEU_ESCURO, gradiente: { cor: VEU_CLARO } }
 
