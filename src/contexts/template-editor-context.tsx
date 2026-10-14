@@ -10,7 +10,7 @@ import { createId } from '@/lib/id'
 import { camadaDuplicadaNoEditor, camadasColadasNoEditor, paginaTemContrato } from '@/lib/copy-autoral/camada-copiada'
 import { useMultiPageOpcional } from '@/contexts/multi-page-context'
 import { relogioDaPagina } from '@/lib/video/relogio-da-pagina'
-import { mesmaEntradaDeDesfazer } from '@/lib/historico-do-editor'
+import { desfazerNaPilha, registrarEdicao } from '@/lib/historico-do-editor'
 import { duracoesDosVideosMontados, videosProntosEmZero } from '@/lib/video/videos-montados'
 import { aplicarQuadro } from '@/lib/video/aplicar-quadro'
 import { ehClipe } from '@/lib/video/camadas-de-video'
@@ -105,6 +105,7 @@ export interface TemplateEditorContextValue {
    * esta é a fonte da verdade.
    */
   getStageInstance: () => Konva.Stage | null
+  /** Carga de NAVEGAÇÃO (PageSync ao trocar de página): pula o desfazer. Edição é `replacePageContent`. */
   loadTemplate: (payload: {
     designData: DesignData
     dynamicFields?: DynamicField[] | null
@@ -112,6 +113,11 @@ export interface TemplateEditorContextValue {
     markDirty?: boolean
     historyKey?: string
   }) => void
+  /**
+   * Troca o conteúdo da página aberta (canvas + camadas) como EDIÇÃO: entra no
+   * desfazer da página, e Cmd+Z volta ao que estava. É o "Aplicar esta página".
+   */
+  replacePageContent: (designData: DesignData) => void
   forceUpdate?: () => void
   // Alignment & Organization
   alignSelectedLeft: () => void
@@ -310,15 +316,13 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
         if (!options?.skipHistory) {
           // Mesma coalesceKey dentro da janela = mesmo gesto: o snapshot
           // pré-gesto já está na pilha, não empilhar de novo
-          const now = Date.now()
-          const sameGesture = mesmaEntradaDeDesfazer(lastCoalesceRef.current, options, now)
-
-          if (!sameGesture) {
-            const snapshot = cloneDesign(prev)
-            historyRef.current.past = [...historyRef.current.past.slice(-49), snapshot]
-          }
-          lastCoalesceRef.current = { key: options?.coalesceKey ?? null, time: now }
-          historyRef.current.future = []
+          lastCoalesceRef.current = registrarEdicao(
+            historyRef.current,
+            () => cloneDesign(prev),
+            lastCoalesceRef.current,
+            options,
+            Date.now(),
+          )
         }
         updateHistoryMeta()
         return next
@@ -601,11 +605,8 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
   const undo = React.useCallback(() => {
     lastCoalesceRef.current = { key: null, time: 0 }
     setDesign((prev) => {
-      const past = historyRef.current.past
-      if (!past.length) return prev
-      const previous = past[past.length - 1]
-      historyRef.current.past = past.slice(0, -1)
-      historyRef.current.future = [cloneDesign(prev), ...historyRef.current.future].slice(0, 50)
+      const previous = desfazerNaPilha(historyRef.current, () => cloneDesign(prev))
+      if (!previous) return prev
       setDirty(true)
       updateHistoryMeta()
       const nextDesign = cloneDesign(previous)
@@ -1118,6 +1119,19 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
     [applyDesign, updateHistoryMeta],
   )
 
+  // Aplicar página de outro template é edição desfazível. Pelo loadTemplate (sem
+  // historyKey) a troca pulava o desfazer e zerava a pilha da página, e o
+  // autosave gravava em seguida: um clique errado perdia o trabalho sem volta.
+  const replacePageContent = React.useCallback(
+    (designData: DesignData) => {
+      const next = cloneDesign(designData)
+      next.layers = normalizeLayerOrder(next.layers ?? [])
+      applyDesign(() => next)
+      setSelectedLayerIds([])
+    },
+    [applyDesign],
+  )
+
   const markSaved = React.useCallback((nextTemplate?: Partial<TemplateResource>) => {
     // Não repor nextTemplate.designData no design: é o snapshot enviado no clique de salvar.
     // Se o usuário trocou de página (ou continuou editando) durante o round-trip, repor aqui
@@ -1410,6 +1424,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
       copySelectedLayers,
       pasteLayers,
       loadTemplate,
+      replacePageContent,
       undo,
       redo,
       canUndo: historyMeta.canUndo,
@@ -1482,6 +1497,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
       copySelectedLayers,
       pasteLayers,
       loadTemplate,
+      replacePageContent,
       undo,
       redo,
       historyMeta.canUndo,

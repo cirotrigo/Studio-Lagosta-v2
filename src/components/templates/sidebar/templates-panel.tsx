@@ -17,7 +17,7 @@ import { api } from '@/lib/api-client'
 import type { TemplateDto } from '@/hooks/use-template'
 import { useToast } from '@/hooks/use-toast'
 import { TemplatePageSelectorDialog } from './template-page-selector-dialog'
-import type { DesignData, Layer, DynamicField } from '@/types/template'
+import type { DesignData, Layer } from '@/types/template'
 
 const categories = [
   { id: 'all', label: 'Todos' },
@@ -37,7 +37,7 @@ export function TemplatesPanel() {
   const {
     projectId,
     templateId,
-    loadTemplate,
+    replacePageContent,
   } = useTemplateEditor()
 
   const [category, setCategory] = React.useState<string>('all')
@@ -47,7 +47,6 @@ export function TemplatesPanel() {
   const [selectedTemplate, setSelectedTemplate] = React.useState<{
     id: number
     name: string
-    dynamicFields?: unknown[] | null
   } | null>(null)
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
 
@@ -68,7 +67,6 @@ export function TemplatesPanel() {
         setSelectedTemplate({
           id: template.id,
           name: template.name,
-          dynamicFields: template.dynamicFields,
         })
         setIsDialogOpen(true)
       } catch (_error) {
@@ -101,12 +99,9 @@ export function TemplatesPanel() {
           layers: page.layers,
         }
 
-        loadTemplate({
-          designData,
-          dynamicFields: Array.isArray(selectedTemplate.dynamicFields)
-            ? (selectedTemplate.dynamicFields as unknown as DynamicField[])
-            : null,
-        })
+        // Edição desfazível (Cmd+Z volta), nunca loadTemplate: esse pula o
+        // histórico e o autosave gravaria a troca sem volta
+        replacePageContent(designData)
 
         toast({
           title: 'Página aplicada',
@@ -125,7 +120,7 @@ export function TemplatesPanel() {
         })
       }
     },
-    [selectedTemplate, loadTemplate, toast],
+    [selectedTemplate, replacePageContent, toast],
   )
 
   const isFetching = isLoading || isRefetching
