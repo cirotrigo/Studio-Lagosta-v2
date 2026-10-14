@@ -771,12 +771,18 @@ Agora (`tratamento-de-leitura.ts`, chamado no passo 7c do `comporPeca`):
   virava "escuro" e ganhava véu claro.
   - ⚠️ A cor de luz média (vermelho, laranja) segue essa regra: sobre foto
     clara, o vermelho escuro (By Rock `#dc0909`) não pede véu e lê como escuro.
-  - ⚠️ **Decisão do owner pendente:** o oráculo congelado do CP0
-    (`leiturasDosTextos`, polaridade por `textoEscuro`, luz < 128) diverge do
-    contrato nessas cores. Sobre foto escura, o vermelho é claro para o
-    contrato (véu escuro melhora) e escuro para o oráculo (acusa a queda do
-    p02). Há um teste que registra a divergência; alinhar o oráculo é uma
-    emenda do CP0.
+  - **Emenda do CP0 (decisão do owner, 14/10/2026):** o oráculo das
+    propriedades (`polaridadeDoOraculo`, em `suporte/propriedades.ts`) também
+    é contextual. Antes ele usava a cor isolada (`textoEscuro`, luma < 128),
+    premissa errada para cor de luz intermediária. A regra é reescrita por fora,
+    só com luminância e razão de contraste, sem importar `polaridadeDoTexto`
+    (seria circular); um teste confere essa independência. A mesma cor
+    (#dc0909) lê pelo lado claro sobre foto escura e pelo escuro sobre foto
+    clara.
+- **Decisões do owner (14/10/2026):**
+  - o tratamento explícito da assinatura é preservado, mas não fica isento:
+    a piora é diagnosticada, e o gate autônomo poderá julgar a peça não apta;
+  - `BrandColor` fica fora do véu automático até haver papéis explícitos.
 - **Sem necessidade, nenhum véu automático.** O piso 0.45 só vale quando há
   necessidade.
 - **Textos claro e escuro sem leitura na mesma borda tornam a ESTRATÉGIA

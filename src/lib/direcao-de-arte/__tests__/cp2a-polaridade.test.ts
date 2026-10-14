@@ -256,15 +256,19 @@ describe('o que a revisão adversarial do CP2A pediu', () => {
     expect(r.diagnostico.tratamentoPiorou ?? []).toEqual([])
   }, 60_000)
 
-  it('registro (decisão do owner pendente): para cor de luz média sobre foto escura, o oráculo do CP0 (luz < 128) diverge do contrato — o CP2A segue o contrato', async () => {
-    const r = await compor('cp2a-oraculo', { headline: '#DC0909', servico: '#DC0909', luz: uniforme(60), blocos: [HEADLINE, SERVICO] })
-    // O contrato (planejador + régua + CP1): texto CLARO ali, o véu escuro melhora, nada piora.
-    expect([veu(r, 'topo'), veu(r, 'rodape')]).toEqual([VEU_ESCURO, VEU_ESCURO])
-    expect(r.diagnostico.tratamentoPiorou ?? []).toEqual([])
-    // O oráculo congelado do CP0 lê a mesma cor como ESCURA e acusa a queda do p02.
-    const leituras = await leiturasDosTextos(r.layers, CANVAS)
-    expect(leituras.map((l) => l.polaridade)).toEqual(['escura', 'escura'])
-    expect(tratamentosQuePioram(leituras).length).toBeGreaterThan(0)
+  it('a MESMA cor de luz intermediária (#dc0909) lê pelo lado claro sobre foto escura (véu escuro, nada piora) e pelo escuro sobre foto clara (nenhum véu, no alvo) — no compositor e no oráculo do CP0', async () => {
+    const sobreEscura = await compor('cp2a-luz-media-escura', { headline: '#DC0909', servico: '#DC0909', luz: uniforme(60), blocos: [HEADLINE, SERVICO] })
+    expect([veu(sobreEscura, 'topo'), veu(sobreEscura, 'rodape')]).toEqual([VEU_ESCURO, VEU_ESCURO])
+    expect(sobreEscura.diagnostico.tratamentoPiorou ?? []).toEqual([])
+    const leiturasSobreEscura = await leiturasDosTextos(sobreEscura.layers, CANVAS)
+    expect(leiturasSobreEscura.map((l) => l.polaridade)).toEqual(['clara', 'clara'])
+    expect(tratamentosQuePioram(leiturasSobreEscura)).toEqual([])
+
+    const sobreClara = await compor('cp2a-luz-media-clara', { headline: '#DC0909', servico: '#DC0909', luz: uniforme(212), blocos: [HEADLINE, SERVICO] })
+    expect(sobreClara.diagnostico.tratamentoDeLeitura?.filter((t) => t.cor && !t.veuDaLogo)).toEqual([])
+    const leiturasSobreClara = await leiturasDosTextos(sobreClara.layers, CANVAS)
+    expect(leiturasSobreClara.map((l) => l.polaridade)).toEqual(['escura', 'escura'])
+    expect(leiturasSobreClara.every(leituraDentroDoAlvo), JSON.stringify(leiturasSobreClara)).toBe(true)
   }, 60_000)
 })
 
