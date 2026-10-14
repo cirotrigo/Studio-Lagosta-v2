@@ -741,3 +741,119 @@ Lagosta +20 pela margem do grupo); as 3 recusas antigas do Wine Vix nos dois
 lados; nenhum aviso novo e 12 a menos (invasão de margem e "foto clara demais"
 falsos). ⚠️ Sobra um aviso real: o dourado da segunda voz do Dia dos Pais sobre o
 creme fica abaixo de 3:1 onde a foto escurece — é o desenho do modelo.
+
+## Tratamento de leitura por borda (CP2A, 14/10/2026)
+
+Antes, UMA cor de véu servia à peça inteira: a que mais distava da luz de todos
+os textos (`corQueContrasta`), sem olhar o fundo. Toda borda com texto ganhava
+véu, com força mínima 0.45 mesmo sem necessidade. Na peça piloto da Real, o
+véu creme que servia ao texto escuro do topo clareava o fundo do serviço claro
+do rodapé (p98 166 → 194).
+
+Agora (`tratamento-de-leitura.ts`, chamado no passo 7c do `comporPeca`):
+
+- **O tratamento é decidido por borda, com os grupos onde o layout os pôs.** O
+  CP2A não move nada: a pontuação de posição continua usando a cor global de
+  antes.
+- **O fundo é medido sob cada texto, sem tratamento** (`medirFundoDosTextos`,
+  o mesmo render e a mesma leitura da régua):
+  - texto claro precisa de p98 ≤ `alvoPorContraste`;
+  - texto escuro precisa de p02 ≥ `alvoClaroPorContraste`.
+- **A polaridade é `polaridadeDoTexto`.** É a MESMA regra para quem escolhe o
+  tratamento, quem detecta a piora (CP1) e quem mede (o `sentido` da régua),
+  para que nunca se contradigam:
+  - pelo fundo quando ele não deixa dúvida (e o lado lê — `ladosDeLeitura`);
+  - pela classe WCAG da cor quando o fundo atravessa a luz do texto.
+
+  A luz do texto e a do véu são lidas no **espaço da medida** (`luzMedida`, a
+  luminância WCAG codificada em sRGB, a do `b-w` do sharp), não na luma Rec.601
+  de `luzDaCor`: #FF0000 dá 76 numa e ≈124 na outra, e o vermelho saturado
+  virava "escuro" e ganhava véu claro.
+  - ⚠️ A cor de luz média (vermelho, laranja) segue essa regra: sobre foto
+    clara, o vermelho escuro (By Rock `#dc0909`) não pede véu e lê como escuro.
+  - **Emenda do CP0 (decisão do owner, 14/10/2026):** o oráculo das
+    propriedades (`polaridadeDoOraculo`, em `suporte/propriedades.ts`) também
+    é contextual. Antes ele usava a cor isolada (`textoEscuro`, luma < 128),
+    premissa errada para cor de luz intermediária. A regra é reescrita por fora,
+    só com luminância e razão de contraste, sem importar `polaridadeDoTexto`
+    (seria circular); um teste confere essa independência. A mesma cor
+    (#dc0909) lê pelo lado claro sobre foto escura e pelo escuro sobre foto
+    clara.
+- **Decisões do owner (14/10/2026):**
+  - o tratamento explícito da assinatura é preservado, mas não fica isento:
+    a piora é diagnosticada, e o gate autônomo poderá julgar a peça não apta;
+  - `BrandColor` fica fora do véu automático até haver papéis explícitos.
+- **Sem necessidade, nenhum véu automático.** O piso 0.45 só vale quando há
+  necessidade.
+- **Textos claro e escuro sem leitura na mesma borda tornam a ESTRATÉGIA
+  inviável**, não a peça: o motivo é `POLARIDADE_INCOMPATIVEL_NA_MESMA_BORDA`,
+  vai para o diagnóstico e gera aviso. O CP2A **nunca** emite `SEM_COMBINACAO`;
+  isso só depois de posição e tratamento esgotados.
+- **A cor da candidata tem de ficar do lado legível do ALVO** de quem pede
+  leitura (≤ alvo do texto claro, ≥ alvo do escuro). Assim nenhum pixel do
+  fundo passa de legível a ilegível.
+- **Uma candidata que, no pior caso previsto, piora algum texto que o véu
+  alcança não vence** (o contrato do CP1, `pioraDaLeitura`), inclusive texto
+  da outra borda na cauda da faixa.
+  - O que a régua provar pior, medido com e sem o véu, sai da peça
+    (`gradientesARecusar`). Com vários véus sob o texto, sai o automático que
+    empurra o fundo contra ele. Se o explícito do template também estiver ali,
+    o automático que ajuda fica.
+  - A correção de força da régua que cria piora volta só nos véus envolvidos.
+- **A logo de uma borda de texto que ficou sem véu** mantém a regra da borda só
+  com logo (a logo inteligente é do CP3). O véu dela entra na regra 7.
+- **Na seleção**, o contraste que falha num texto cuja borda ficou sem
+  estratégia (inviável ou recusada) é `pendentesDePosicao`, não impedimento:
+  não vira `SEM_COMBINACAO`.
+- **Sem a medida do fundo, nenhum véu automático de texto** (`nao-medido`, com
+  aviso): a regra antiga de uma cor só não volta.
+- **A pontuação de posição usa a cor global de antes** (o primeiro gradiente da
+  página, de qualquer forma): o CP2A não move grupo nenhum, nem quando a
+  página tem gradiente decorativo.
+- **As cores candidatas vêm das fontes estruturadas da assinatura:**
+  - o gradiente de leitura da página;
+  - `gradiente.cor`;
+  - a mancha.
+
+  `GRADIENTES_POR_PROJETO` é **LEGADO**: não expandir, e só entra como último
+  recurso. O escuro de cada linha é a própria mancha, então na prática só o
+  claro ainda sai dali.
+  - `BrandColor` não entra: em 14/10/2026 as paletas eram cores de acento sem
+    papel (vermelho, laranja, amarelo, verde), e um véu amarelo seria decisão
+    estética.
+  - Quando houver pares de leitura estruturados, eles entram antes do legado.
+
+**Gradiente de leitura ≠ decorativo.** Um gradiente da página de assinatura só
+vira tratamento quando tem a forma de um (`ehGradienteDeLeituraDaPagina`):
+- marcado como tratamento;
+- ou com tudo isto:
+  - linear, de eixo quase vertical (até 30°) e sem rotação;
+  - cobrindo a largura da página;
+  - preso à sua borda FORTE (folga de 2%), com opacidade ABSOLUTA de pelo
+    menos 0.3 ali e perto da máxima da camada (a mais fraca de produção é 0.55,
+    TERO);
+  - transparente (≤ 0.05) na ponta oposta.
+
+Radial, lateral, diagonal, faixa parcial, tinta uniforme e faixa solta no meio
+são decorativos: não mandam na cor e não são removidos (nunca foram copiados
+para a peça).
+
+`bordaDaCamadaDeGradiente` segue o render: sem ângulo, 0° (começa embaixo), e o
+segmento só vale com os quatro números.
+
+Medido em 14/10/2026: os 21 gradientes das páginas de assinatura em produção
+(Quintal, TERO, Wine Vix e mais um) têm a forma de leitura. Os 7 com segmento
+explícito têm o eixo vertical. A borda cuja camada
+de gradiente a página desenha é o **tratamento explícito do template**: é
+reproduzida como sempre (cor e força), sem a regra de necessidade zero e sem
+troca de cor. A piora dela só é acusada (CP1).
+
+**Decisão arquitetural FUTURA (pesquisa Canva/editor, 14/10/2026). Não está em
+código:**
+- os arquétipos serão definidos em código;
+- o compositor materializa uma Page normal;
+- as posições respeitam as zonas do arquétipo;
+- a foto decide a posição final dentro da zona;
+- assinatura e arquétipo NÃO podem virar duas fontes concorrentes.
+
+O CP2B (separar polaridades no espaço) deve nascer dessas zonas.

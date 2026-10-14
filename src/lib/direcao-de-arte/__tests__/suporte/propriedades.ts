@@ -12,7 +12,7 @@
 import sharp from 'sharp'
 
 import type { Layer } from '@/types/template'
-import { alvoPorContraste, luzDaCor, type Rect } from '@/lib/creatives/halo/halo'
+import { alvoPorContraste, luminanciaRelativa, luzDaCor, type Rect } from '@/lib/creatives/halo/halo'
 import { alvoClaroPorContraste, textoEscuro, TOLERANCIA_DE_PIORA, TOLERANCIA_DO_ALVO } from '@/lib/compositor/regua'
 import { TETO_DE_COBERTURA_DO_ASSUNTO } from '@/lib/compositor/mapa-de-calma'
 
@@ -162,6 +162,44 @@ async function percentis(png: Buffer, canvas: Canvas, rects: Rect[]) {
   })
 }
 
+/** A razão de contraste WCAG entre duas luminâncias relativas. */
+const razaoDeContraste = (y1: number, y2: number) => (Math.max(y1, y2) + 0.05) / (Math.min(y1, y2) + 0.05)
+
+/** A luz da cor no espaço em que os percentis são lidos: a luminância relativa codificada em sRGB, 0–255 (o `b-w`). */
+function luzNoEspacoDaMedida(cor: string): number {
+  const y = luminanciaRelativa(cor)
+  return 255 * (y <= 0.0031308 ? 12.92 * y : 1.055 * Math.pow(y, 1 / 2.4) - 0.055)
+}
+
+/**
+ * A POLARIDADE DE LEITURA de um texto sobre o fundo SEM tratamento — o lado em
+ * que ele lê. Emenda do CP0 (14/10/2026, decisão do owner, depois do CP2A): o
+ * oráculo original tirava a polaridade só da COR ISOLADA (`textoEscuro`, luma
+ * < 128), premissa matematicamente errada para cor de luz intermediária, que lê
+ * dos DOIS lados (como texto escuro sobre fundo claro e como texto claro sobre
+ * fundo escuro) quando o contraste deixa. Escrita AQUI, por fora, só com
+ * primitivas estáveis (luminância relativa WCAG e razão de contraste): nada da
+ * decisão de produção (`polaridadeDoTexto`) é usado, para o teste não ser circular.
+ *
+ * 1. Capacidade: lê como CLARA se contra o preto chega a 3:1; como ESCURA se
+ *    contra o branco chega a 3:1.
+ * 2–4. O fundo decide quando está todo de um lado: cor acima do p98 (e lê
+ *    como clara) → clara; abaixo do p02 (e lê como escura) → escura.
+ * 5. O fundo atravessa a luz da cor (ou o lado do fundo não lê): o lado de
+ *    MAIOR contraste disponível — contra o preto ou contra o branco.
+ * Cor que não é #hex: a regra antiga pela cor isolada.
+ */
+export function polaridadeDoOraculo(cor: string, sem: { p02: number; p98: number }): 'clara' | 'escura' {
+  if (!/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(cor)) return textoEscuro(cor) ? 'escura' : 'clara'
+  const y = luminanciaRelativa(cor)
+  const contraOPreto = razaoDeContraste(y, 0)
+  const contraOBranco = razaoDeContraste(y, 1)
+  const luz = luzNoEspacoDaMedida(cor)
+  if (luz >= sem.p98 && contraOPreto >= 3) return 'clara'
+  if (luz <= sem.p02 && contraOBranco >= 3) return 'escura'
+  return contraOPreto >= contraOBranco ? 'clara' : 'escura'
+}
+
 export interface LeituraDoTexto {
   camada: string
   cor: string
@@ -174,8 +212,9 @@ export interface LeituraDoTexto {
 }
 
 /**
- * A leitura de CADA texto, com e sem o tratamento de leitura. A polaridade sai
- * da COR DO TEXTO (o que está sob teste é justamente a escolha do véu).
+ * A leitura de CADA texto, com e sem o tratamento de leitura. A polaridade é a
+ * do texto sobre o fundo SEM tratamento (`polaridadeDoOraculo`) — nunca da cor
+ * do véu, que é o que está sob teste. p98 para a leitura clara, p02 para a escura.
  */
 export async function leiturasDosTextos(layers: Layer[], canvas: Canvas, background?: string): Promise<LeituraDoTexto[]> {
   const textos = layers.filter(ehTexto)
@@ -184,7 +223,7 @@ export async function leiturasDosTextos(layers: Layer[], canvas: Canvas, backgro
   const [sem, com] = await Promise.all([percentis(semPng, canvas, rects), percentis(comPng, canvas, rects)])
   return textos.map((t, i) => {
     const cor = String(t.style?.color ?? '#FFFFFF')
-    const escura = textoEscuro(cor)
+    const escura = polaridadeDoOraculo(cor, sem[i]) === 'escura'
     return {
       camada: t.id,
       cor,
