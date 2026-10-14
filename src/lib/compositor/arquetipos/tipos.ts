@@ -29,12 +29,13 @@ export type PapelDoArquetipo = (typeof PAPEIS_DO_ARQUETIPO)[number]
 export type PapelDeTexto = Exclude<PapelDoArquetipo, 'logo'>
 
 /**
- * O código do arquétipo na taxonomia da pesquisa (TAXONOMIA.md: MIN-01,
- * MIN-02…). A "família" A–E de lá (o que o compositor já materializa) não é
- * registrada: o T1a acrescenta se precisar.
+ * O CÓDIGO TAXONÔMICO da pesquisa (TAXONOMIA.md: MIN-01, MIN-02…): o
+ * agrupamento conceitual a que a entrada concreta do catálogo pertence. NÃO é
+ * a família macro A–E da pesquisa, que o T0 não modela — se o T1a ou um
+ * ranking precisar dela, ela entra depois, com nome próprio.
  */
-export const FAMILIAS_DO_ARQUETIPO = ['MIN-01', 'MIN-02'] as const
-export type FamiliaDoArquetipo = (typeof FAMILIAS_DO_ARQUETIPO)[number]
+export const CODIGOS_TAXONOMICOS = ['MIN-01', 'MIN-02'] as const
+export type CodigoTaxonomico = (typeof CODIGOS_TAXONOMICOS)[number]
 
 /**
  * Os elementos que um arquétipo pode DECLARAR. Só a referência semântica: o
@@ -142,7 +143,8 @@ export interface ArquetipoDeLayout {
   readonly id: string
   /** Inteiro ≥ 1. Qualquer mudança é VERSÃO nova; a publicada nunca muda. */
   readonly versao: number
-  readonly familia: FamiliaDoArquetipo
+  /** O agrupamento conceitual MIN-XX — não a família macro A–E. */
+  readonly codigoTaxonomico: CodigoTaxonomico
   readonly nome: string
   readonly papeis: ReadonlyArray<PapelNoArquetipo>
   readonly elementos?: ReadonlyArray<ElementoNoArquetipo>

@@ -14,8 +14,8 @@ import { NUMEROS_PADRAO } from '../assinatura'
 import { ALINHAMENTOS, ANCORAS, CANTOS, DIMENSOES } from '../spec'
 import {
   chaveDoArquetipo,
+  CODIGOS_TAXONOMICOS,
   ELEMENTOS_DO_ARQUETIPO,
-  FAMILIAS_DO_ARQUETIPO,
   FORMATOS_DO_ARQUETIPO,
   PAPEIS_DE_COR,
   PAPEIS_DO_ARQUETIPO,
@@ -110,7 +110,7 @@ const VALOR_DE_COR = /#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?)\(/i
  * desenho entrariam com outro nome.
  */
 const CHAVES = {
-  raiz: ['id', 'versao', 'familia', 'nome', 'papeis', 'elementos', 'preferencias', 'fotoIdeal', 'formatos'],
+  raiz: ['id', 'versao', 'codigoTaxonomico', 'nome', 'papeis', 'elementos', 'preferencias', 'fotoIdeal', 'formatos'],
   papel: ['papel', 'obrigatorio', 'ordemDeLeitura'],
   elemento: ['id', 'tipo', 'opcional', 'corPorPapel', 'presoA', 'canto'],
   preferencias: ['ancora', 'alinha', 'cantoDaMarca'],
@@ -138,7 +138,7 @@ export function validarArquetipo(arquetipo: ArquetipoDeLayout, opcoes: OpcoesDaV
 
   if (typeof a.id !== 'string' || !ID_VALIDO.test(a.id)) recusar('ID_INVALIDO', 'id', 'o id é kebab-case (a-z, 0-9 e hífen)')
   if (!Number.isInteger(a.versao) || a.versao < 1) recusar('VERSAO_INVALIDA', 'versao', 'a versão é um inteiro ≥ 1')
-  if (!contem(FAMILIAS_DO_ARQUETIPO, a.familia)) recusar('CAMPO_INVALIDO', 'familia', `família fora de ${FAMILIAS_DO_ARQUETIPO.join(', ')}`)
+  if (!contem(CODIGOS_TAXONOMICOS, a.codigoTaxonomico)) recusar('CAMPO_INVALIDO', 'codigoTaxonomico', `código taxonômico fora de ${CODIGOS_TAXONOMICOS.join(', ')}`)
   if (typeof a.nome !== 'string' || !a.nome.trim()) recusar('CAMPO_INVALIDO', 'nome', 'o arquétipo tem nome')
   procurarCamposProibidos(a, '', recusar)
   const fechado = (valor: unknown, permitidas: readonly string[], campo: string) => chavesFechadas(valor, permitidas, campo, recusar)

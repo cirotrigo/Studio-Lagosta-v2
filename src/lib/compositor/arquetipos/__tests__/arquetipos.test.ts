@@ -16,9 +16,9 @@ const CENTRO = 'minimal-fb-centro-optico'
 
 /** A impressão de cada versão publicada. Mudou? Publique `id@versao+1`, não edite a antiga. */
 const IMPRESSOES_PUBLICADAS: Record<string, string> = {
-  'minimal-fb-base-esquerda@1': 'arq1-129c5462055140',
-  'minimal-fb-centro-optico@1': 'arq1-199f18e363fe7a',
-  'minimal-fb-topo-esquerda@1': 'arq1-0fae76f0968633',
+  'minimal-fb-base-esquerda@1': 'arq1-0c6796f14d6787',
+  'minimal-fb-centro-optico@1': 'arq1-05eebd2c041304',
+  'minimal-fb-topo-esquerda@1': 'arq1-1f4ab8c4a215f2',
 }
 
 const ver = (id: string) => verArquetipo(id) as ArquetipoDeLayout
@@ -267,6 +267,26 @@ describe('T0 · contrato e catálogo', () => {
     expect(codigos(caixaComExtra)).toEqual(['CAMPO_DESCONHECIDO'])
   })
 
+  it('código taxonômico: MIN-XX é o agrupamento conceitual, não a família macro (que o T0 não modela)', () => {
+    const codigos_ = Object.fromEntries(listarArquetipos().map((a) => [a.id, a.codigoTaxonomico]))
+    expect(codigos_).toEqual({ [TOPO]: 'MIN-01', [BASE]: 'MIN-01', [CENTRO]: 'MIN-02' })
+    // Enquanto a família macro A–E não fizer parte do contrato, nenhuma definição publicada tem a chave `familia`.
+    const temChave = (valor: unknown, chave: string): boolean =>
+      !!valor && typeof valor === 'object' && Object.entries(valor).some(([k, v]) => k === chave || temChave(v, chave))
+    for (const a of listarArquetipos()) expect(temChave(a, 'familia'), chaveDoArquetipo(a)).toBe(false)
+    // E o validador recusa: a chave antiga é desconhecida, e o código fora da taxonomia é inválido.
+    const comFamilia = rascunho()
+    comFamilia.familia = 'A'
+    expect(codigos(comFamilia)).toEqual(['CAMPO_DESCONHECIDO'])
+    const familiaNoLugar = rascunho()
+    familiaNoLugar.familia = familiaNoLugar.codigoTaxonomico
+    delete familiaNoLugar.codigoTaxonomico
+    expect(codigos(familiaNoLugar).sort()).toEqual(['CAMPO_DESCONHECIDO', 'CAMPO_INVALIDO'])
+    const foraDaTaxonomia = rascunho()
+    foraDaTaxonomia.codigoTaxonomico = 'A'
+    expect(codigos(foraDaTaxonomia)).toEqual(['CAMPO_INVALIDO'])
+  })
+
   it('limites de texto: linhas máximas (HARD) em todo papel de texto; caracteres só como estimativa', () => {
     for (const a of listarArquetipos()) {
       for (const f of FORMATOS_DO_ARQUETIPO) {
@@ -426,7 +446,7 @@ describe('T0 · contrato e catálogo', () => {
 describe('T0 · os três modelos', () => {
   it('topo-esquerda (MIN-01): headline no terço superior, à esquerda; serviço e logo na faixa de baixo', () => {
     const a = ver(TOPO)
-    expect(a.familia).toBe('MIN-01')
+    expect(a.codigoTaxonomico).toBe('MIN-01')
     expect(a.preferencias).toEqual({ ancora: 'topo', alinha: 'esquerda', cantoDaMarca: 'inferior-direito' })
     expect(a.papeis.filter((p) => !p.obrigatorio).map((p) => p.papel).sort()).toEqual(['apoio', 'pre'])
     expect(a.elementos).toEqual([{ id: 'fio', tipo: 'fio-fino', opcional: true, corPorPapel: 'texto', presoA: 'headline' }])
@@ -472,7 +492,7 @@ describe('T0 · os três modelos', () => {
 
   it('centro-óptico (MIN-02): zona central, serviço embaixo, logo automática, spark só declarado', () => {
     const a = ver(CENTRO)
-    expect(a.familia).toBe('MIN-02')
+    expect(a.codigoTaxonomico).toBe('MIN-02')
     expect(a.preferencias).toEqual({ ancora: 'meio', alinha: 'centro', cantoDaMarca: 'auto' })
     expect(a.elementos).toEqual([{ id: 'spark', tipo: 'spark-4', opcional: true, corPorPapel: 'destaque', presoA: 'headline' }])
     for (const f of FORMATOS_DO_ARQUETIPO) {

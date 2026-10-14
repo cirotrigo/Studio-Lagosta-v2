@@ -33,8 +33,18 @@ A tipografia entra só como relação:
 - as **linhas máximas**;
 - o **alinhamento preferido**.
 
-`familia` guarda o código do arquétipo na taxonomia da pesquisa (MIN-01, MIN-02). A "família" A–E
-de lá não é registrada; o T1a acrescenta se precisar dela como portão.
+**Hierarquia** (a pesquisa distingue três níveis, e o T0 só modela os dois primeiros):
+
+| Nível | O que é | No T0 |
+|---|---|---|
+| entrada do catálogo | o arquétipo concreto e versionado (`id@versao`, p.ex. `minimal-fb-topo-esquerda@1`) | é o que o catálogo publica |
+| `codigoTaxonomico` | o agrupamento conceitual da taxonomia da pesquisa: `MIN-01`, `MIN-02`… | campo obrigatório de cada entrada |
+| família macro | a família A–E da pesquisa | **não modelada** |
+
+`codigoTaxonomico` **não** é a família macro A–E. Nenhuma definição publicada tem a chave
+`familia` (o teste guarda isso, e o contrato fechado a recusa como `CAMPO_DESCONHECIDO`). Se o
+T1a ou um ranking futuro precisar da família macro, ela entra depois, conscientemente, com nome
+próprio.
 
 ## Assinatura × arquétipo
 
@@ -160,7 +170,7 @@ com a fonte real.
 
 Números em frações: `x y w h` para a referência e `[xMin, xMax] × [yMin, yMax]` para a zona.
 
-### `minimal-fb-topo-esquerda@1` — MIN-01
+### `minimal-fb-topo-esquerda@1` — `codigoTaxonomico: MIN-01`
 
 O título fica no topo à esquerda; serviço e logo, na faixa de baixo.
 
@@ -202,7 +212,7 @@ A zona da headline não passa do terço superior.
 **Desvio da pesquisa:** o fio vai no respiro entre a headline e o apoio. O "27 / idem" da pesquisa
 cai dentro da caixa da headline nos dois formatos.
 
-### `minimal-fb-base-esquerda@1` — MIN-01 com fio em L
+### `minimal-fb-base-esquerda@1` — `codigoTaxonomico: MIN-01`, com fio em L
 
 O título fica na base à esquerda e a logo no topo à direita. O L (┌, `canto:
 'superior-esquerdo'`) é a identidade do modelo.
@@ -249,7 +259,7 @@ Duas zonas protegem o L:
 **Desvio da pesquisa:** no feed o L tem h .50. A pesquisa dá .46, que termina 8 unidades acima da
 headline e quebra a própria regra do acento.
 
-### `minimal-fb-centro-optico@1` — MIN-02
+### `minimal-fb-centro-optico@1` — `codigoTaxonomico: MIN-02`
 
 O título curto fica centralizado no meio e o serviço embaixo.
 
@@ -320,7 +330,7 @@ O contrato é **fechado**: em cada nível, só as chaves dele. Uma chave a mais 
 | `PREFERENCIA_INCOERENTE` | âncora, alinhamento ou canto da marca discordam da geometria |
 | `CAMPO_PROIBIDO` | fonte, cor literal ou cliente |
 | `CAMPO_DESCONHECIDO` | chave fora do contrato, em qualquer nível |
-| `CAMPO_INVALIDO` | família, preferência, cor ou canto do elemento, limite (ou a falta dele) ou foto ideal mal formados |
+| `CAMPO_INVALIDO` | código taxonômico, preferência, cor ou canto do elemento, limite (ou a falta dele) ou foto ideal mal formados |
 
 ## Próximos checkpoints
 

@@ -33,7 +33,7 @@ const copiar = <T>(valor: T): T => JSON.parse(JSON.stringify(valor))
 const TOPO_ESQUERDA: ArquetipoDeLayout = {
   id: 'minimal-fb-topo-esquerda',
   versao: 1,
-  familia: 'MIN-01',
+  codigoTaxonomico: 'MIN-01',
   nome: 'Foto inteira, título no topo à esquerda',
   papeis: [
     { papel: 'pre', obrigatorio: false, ordemDeLeitura: 0 },
@@ -99,7 +99,7 @@ const TOPO_ESQUERDA: ArquetipoDeLayout = {
 const BASE_ESQUERDA: ArquetipoDeLayout = {
   id: 'minimal-fb-base-esquerda',
   versao: 1,
-  familia: 'MIN-01',
+  codigoTaxonomico: 'MIN-01',
   nome: 'Foto inteira, título na base à esquerda, fio em L',
   papeis: [
     { papel: 'headline', obrigatorio: true, ordemDeLeitura: 0 },
@@ -157,7 +157,7 @@ const BASE_ESQUERDA: ArquetipoDeLayout = {
 const CENTRO_OPTICO: ArquetipoDeLayout = {
   id: 'minimal-fb-centro-optico',
   versao: 1,
-  familia: 'MIN-02',
+  codigoTaxonomico: 'MIN-02',
   nome: 'Foto inteira, título curto no centro óptico',
   papeis: [
     { papel: 'headline', obrigatorio: true, ordemDeLeitura: 0 },
