@@ -935,18 +935,22 @@ se mudar.
   corta a referência, a faixa é RESGATADA na vertical (a partida é a posição válida mais perto
   dela, com aviso). `partidaNoArquetipo` é o portão estrutural, o MESMO no compor e no medir-copy.
 - 🔴 **Eliminar antes de pontuar** (`MOTIVOS_DE_ELIMINACAO`): fora da zona ou da área segura,
-  ornamento fora, corte que perde o assunto do catálogo, região protegida do CATÁLOGO acima do teto
-  (0,25), colisão, ordem de leitura, hierarquia, e o plano do CP2A `inviavel` (piora, sem cor
-  aprovada, polaridade incompatível).
-- 🔴 **A região ESTIMADA pela energia é custo, não recusa** (componente `assunto`, teto 0,40, o do
-  revisor). Como recusa dura, a borda de uma faixa de luz virava "assunto" e zerava fotos inteiras
-  (`SEM_COMBINACAO` onde a peça tinha solução) — é heurística, não anotação.
+  ornamento fora, corte que perde o assunto do catálogo (só quando OUTRO corte o preserva), região
+  protegida do CATÁLOGO acima do teto (0,25; textos, unidades e a logo fixa), colisão, ordem de
+  leitura, hierarquia, e o plano do CP2A `inviavel` (piora, sem cor aprovada, polaridade
+  incompatível).
+- 🔴 **A região ESTIMADA pela energia é um PATAMAR, não recusa**: quem não a cobre (teto 0,40, o do
+  revisor) vence quem cobre ANTES do custo do véu; se todas cobrem, fica a de menor cobertura, com
+  aviso. Em produção o catálogo não tem caixa de assunto (o campo é texto): a estimada é a única
+  proteção real — atrás do véu, a busca puxava o texto para cima do prato para fugir do véu (revisão
+  adversarial). Como recusa dura, a borda de uma faixa de luz zerava fotos inteiras.
 - 🔴 **Tratamento é custo dominante.** Entre as válidas vence o menor custo de véu (tolerância
   0,05); depois a pontuação (calma 0,4, contraste natural 0,2, assunto 0,15, referência 0,15,
   corte central 0,1; tolerância 0,02); depois a mais perto da referência e o corte central. A
   estimativa usa `planejarTratamentoDaBorda` com os percentis do raster de cada corte
-  (`percentisNoRect`); a borda de cada unidade é a da REFERÊNCIA (`bordaNaReferencia`), para o
-  plano não saltar quando a faixa anda.
+  (`percentisNoRect`); a borda de cada unidade é a GEOMÉTRICA da posição candidata
+  (`bordaDaUnidade`, o lado de H/2), a mesma da régua e do revisor — fixar a da referência fazia a
+  régua corrigir o véu errado no centro-óptico (a zona da manchete atravessa H/2).
 - **Cortes**: os de `cortesCandidatos` (1 ou 3), respeitando `enquadramento: 'fixo'`. Limite
   explícito: 3 cortes × 25 combinações = 75 avaliações (`LIMITES_DA_BUSCA`).
 - **Sem solução**: `SEM_COMBINACAO` (com `motivo` do CP2A quando todas caem no mesmo, e a contagem
@@ -954,10 +958,16 @@ se mudar.
   é o `enquadramento: 'fixo'` que impede o corte que resolve.
 - 🔴 **A recomposição REPRODUZ, não busca.** A escolha (`composicao.arquetipo.buscaEspacial.escolha`:
   corte, `dy` por membro, canto da logo automática, foto) é lida por `escolhaEspacialOriginal` e
-  passada em `opcoes.escolhaEspacial`. Copy que não cabe na posição congelada:
-  `ARQUETIPO_POSICAO_CONGELADA_NAO_CABE`, nada é movido. Foto trocada: busca nova, com aviso. A
-  identidade da foto é a URL que a peça desenha (a recomposição troca `driveFileId` pela URL da
-  página). Peça do T1a (`modo: 'referencia'`): reproduz a referência no corte central.
+  passada em `opcoes.escolhaEspacial`, com o resumo da busca original (que o diagnóstico leva
+  adiante). Um `dy` por faixa (membros que discordam = `ARQUETIPO_ESCOLHA_ILEGIVEL`). Copy que não
+  cabe na posição congelada, ou que nela invade a região do catálogo, colide ou inverte a ordem:
+  `ARQUETIPO_POSICAO_CONGELADA_NAO_CABE`, nada é movido (o tratamento é do CP2A: só aviso). A logo
+  fixa que mudou de proporção vai ao dy válido dela (aviso); a logo automática congelada que
+  encostaria no texto novo vai ao canto livre (aviso). Foto trocada: busca nova, com aviso. A
+  identidade da foto é a impressão da URL que a peça desenha (a recomposição troca `driveFileId`
+  pela URL da página — e, com isso, o assunto do catálogo some na recomposição: limitação
+  conhecida). Peça do T1a (`modo: 'referencia'`): reproduz a referência no corte central e o canto
+  da logo automática que gravou; foto trocada nela também faz busca nova, com aviso.
 - **Diagnóstico** em `composicao.arquetipo.buscaEspacial` (nunca no topo do diagnóstico): versão,
   id, escolha, cortes e combinações avaliadas, faixas, vencedor e até 2 alternativas (componentes,
   tratamento estimado, leituras), recusas por motivo, exemplos e o motivo em uma frase. O

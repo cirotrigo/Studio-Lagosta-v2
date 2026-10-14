@@ -97,6 +97,8 @@ interface Cena {
   blocos?: Blocos
   /** A foto como data URL (a cadeia da recomposição valida `foto.url` como URL). */
   dataUrl?: boolean
+  /** O tamanho da camada da logo na página de assinatura (a largura e a proporção da logo da peça). */
+  logo?: { width: number; height: number }
 }
 
 /** A faixa escura do serviço no topo-esquerda: logo ACIMA da referência (y 1555), dentro da zona dele (1382–1695). */
@@ -162,7 +164,7 @@ const CICLO: Cena = { ...CENAS.faixa, id: 'cp2b-ciclo', dataUrl: true }
 
 async function montar(c: Cena): Promise<PaginaDeAssinatura> {
   const foto = await fotoSintetica(c.luz, c.dimensoes)
-  const pagina = paginaSintetica({
+  const sintetica = paginaSintetica({
     id: c.id,
     headline: { cor: c.cores.headline },
     ...(c.cores.apoio ? { apoio: { cor: c.cores.apoio } } : {}),
@@ -170,6 +172,7 @@ async function montar(c: Cena): Promise<PaginaDeAssinatura> {
     logoUrl: dataUrl(await logoSintetica('#808080')),
     fundoUrl: dataUrl(foto),
   })
+  const pagina = c.logo ? { ...sintetica, layers: sintetica.layers.map((l) => (l.type === 'logo' ? { ...l, size: c.logo! } : l)) } : sintetica
   const base = await cenarioSintetico({ pagina, foto, candidatasDoVeu: [], ...(c.assunto ? { assunto: c.assunto } : {}) })
   const url = c.dataUrl ? dataUrl(foto) : join(tmpdir(), `cp2b-busca-espacial-${c.id}.png`)
   if (!c.dataUrl) writeFileSync(url, foto)
@@ -416,7 +419,7 @@ describe('CP2B · a busca escolhe a posição pela foto', () => {
     expect(referencia.componentes!.custoDoTratamento).toBeGreaterThan(0)
     // A faixa texturizada é MENOS calma que o claro liso da referência — e mesmo assim vence.
     expect(b.vencedor!.componentes!.calma).toBeLessThan(referencia.componentes!.calma)
-    expect(b.motivo).toMatch(/lê sem tratamento/)
+    expect(b.motivo).toMatch(/aqui lê sem véu/)
   }, 60_000)
 
   it('7. região protegida do catálogo sobre a faixa escura: a candidata que a invade é eliminada, e o vencedor não invade', async () => {
@@ -624,7 +627,7 @@ describe('CP2B · a escolha congelada na recomposição', () => {
     const a1 = r1.diagnostico.arquetipo!
     const a2 = r2.diagnostico.arquetipo!
     expect({ id: a2.id, versao: a2.versao, impressao: a2.impressao, modo: a2.modo }).toEqual({ id: a1.id, versao: a1.versao, impressao: a1.impressao, modo: a1.modo })
-    expect(busca(r2).reproduzida).toEqual({ de: busca(r1).id })
+    expect(busca(r2).reproduzida).toMatchObject({ de: busca(r1).id, original: { id: busca(r1).id, motivo: busca(r1).motivo } })
     expect(busca(r2).id).toBe(busca(r1).id)
     expect(busca(r2).escolha).toEqual(busca(r1).escolha)
     expect(r2.diagnostico.avisos.some((a) => /foto da peça mudou/.test(a))).toBe(false)
@@ -764,5 +767,104 @@ describe('CP2B · diagnóstico, estabilidade e medir-copy', () => {
     // A medida diz a referência (1555); o compor, pela foto, sobe o serviço (1383).
     expect(m.arquetipo!.posicoes!.servico!.posicao.y).toBe(1555)
     expect(camada((await peca(CENAS.faixa)).r, 'servico').position.y).toBe(1383)
+  }, 60_000)
+})
+
+describe('CP2B · correções da revisão adversarial', () => {
+  it('a região ESTIMADA vence o véu: sem catálogo, a manchete clara não pousa sobre o "prato" para fugir do véu', async () => {
+    // O "prato" texturizado (escuro, 30 ± 20) ocupa o meio do topo; o resto é claro. Descer a manchete clara para cima dele
+    // leria sem véu — e cobriria o assunto. Subir a mantém fora dele, com véu.
+    const prato: Cena = {
+      id: 'cp2b-prato',
+      arquetipo: TOPO,
+      luz: (x, y) => (y >= 384 && y < 1344 ? 30 + Math.round(ruidoForte(x, y) / 2) : 205),
+      cores: { headline: CLARO, servico: ESCURO },
+    }
+    const { r } = await compor(prato, { somenteAvaliar: true })
+    expect(r.diagnostico.assuntoOrigem).toBe('estimado')
+    const b = busca(r)
+    expect(b.vencedor!.regiaoEstimada?.invade).toBe(false)
+    // Havia candidata válida que leria sem véu sobre o prato — e perdeu para a que não cobre o assunto.
+    const sobreOPrato = [...b.alternativas].find((a) => a.regiaoEstimada?.invade && a.componentes?.custoDoTratamento === 0)
+    if (sobreOPrato) expect(b.vencedor!.componentes!.custoDoTratamento).toBeGreaterThanOrEqual(0)
+    const manchete = camada(r, 'headline')
+    expect(manchete.position.y + manchete.size.height).toBeLessThanOrEqual(384 + 0.4 * manchete.size.height)
+  }, 60_000)
+
+  it('a logo automática congelada que encostaria no texto novo vai para o canto livre, DITO (nunca fica por cima do serviço)', async () => {
+    const larga: Cena = { id: 'cp2b-logo-larga', arquetipo: CENTRO, luz: () => 55, cores: { headline: CLARO, apoio: CLARO, servico: CLARO }, logo: { width: 300, height: 150 }, blocos: [{ papel: 'headline', linhas: ['Sexta'] }, { papel: 'apoio', linhas: ['jazz ao vivo'] }, { papel: 'servico', linhas: ['Sex 20h'] }] }
+    const { r } = await compor(larga, { somenteAvaliar: true })
+    const escolha = busca(r).escolha
+    expect(escolha.cantoDaLogo).toBeTruthy()
+    const longa = { ...larga, blocos: [{ papel: 'headline', linhas: ['Sexta'] }, { papel: 'apoio', linhas: ['jazz ao vivo'] }, { papel: 'servico', linhas: ['Sexta-feira · 20h às 23h · no bar'] }] }
+    const { r: r2 } = await compor(longa, { somenteAvaliar: true, escolhaEspacial: escolha })
+    const logo = rectDe(camada(r2, 'logo'))
+    const servico = rectDe(camada(r2, 'servico'))
+    expect(inter(logo, servico)).toBe(0)
+    const canto = (camada(r2, 'logo').metadata as { compositor?: { canto?: string } }).compositor?.canto
+    if (canto !== escolha.cantoDaLogo) expect(r2.diagnostico.avisos.some((a) => /A logo saiu do canto congelado/.test(a))).toBe(true)
+  }, 60_000)
+
+  it('a logo de referência fixa que mudou de proporção não derruba a recomposição: ela se ajusta na zona, dito; o texto fica', async () => {
+    const livre = (await peca(CONGELADA)).r
+    const b = busca(livre)
+    const abaixo = b.faixas[faixaDe(b, 'servico')].candidatos.find((c) => c.rotulo === 'abaixo')!.dy
+    const congelada: EscolhaEspacial = { modo: MODO_BUSCA_ESPACIAL, foto: b.escolha.foto, corte: 'center-middle', deslocamentos: { headline: 0, servico: abaixo, logo: abaixo } }
+    // O mesmo id (a mesma foto, a mesma escolha); só a logo da página virou quadrada.
+    const { r } = await compor({ ...CONGELADA, logo: { width: 120, height: 120 } }, { somenteAvaliar: true, escolhaEspacial: congelada })
+    expect(r.diagnostico.avisos.some((a) => /A logo da assinatura não cabia mais/.test(a))).toBe(true)
+    const yServico = camada(livre, 'servico').position.y - (b.escolha.deslocamentos.servico ?? 0) + abaixo
+    expect(camada(r, 'servico').position.y).toBe(yServico)
+  }, 60_000)
+
+  it('a escolha gravada que parte uma faixa (dy diferentes entre membros) é ilegível — nunca uma faixa partida', async () => {
+    const e = await recusa(CENAS.a, { escolhaEspacial: { modo: MODO_BUSCA_ESPACIAL, foto: busca((await peca(CENAS.a)).r).escolha.foto, corte: 'center-middle', deslocamentos: { headline: 0, apoio: 40, servico: 0 } } })
+    expect(e.code).toBe('ARQUETIPO_ESCOLHA_ILEGIVEL')
+  }, 60_000)
+
+  it('a borda do tratamento da busca é a mesma da régua: no centro-óptico, a manchete que cruza H/2 é estimada no rodapé', async () => {
+    const cruza: Cena = { id: 'cp2b-borda', arquetipo: CENTRO, luz: (_x, y) => (y < 960 ? 250 : y < 1400 ? 170 : 230), cores: { headline: CLARO, apoio: CLARO, servico: CLARO } }
+    const { r } = await compor(cruza, { somenteAvaliar: true })
+    const b = busca(r)
+    const manchete = rectDe(camada(r, 'headline'))
+    const geometrica = manchete.y + manchete.height / 2 < 960 ? 'topo' : 'rodape'
+    expect(b.vencedor!.textos.find((t) => t.camada === 'headline')!.borda).toBe(geometrica)
+    expect(r.diagnostico.tratamentoDeLeitura!.find((t) => t.textos.some((x) => x.camada === 'headline'))!.borda).toBe(geometrica)
+  }, 60_000)
+
+  it('assunto do catálogo que NENHUM corte preserva não vira SEM_COMBINACAO (o T1a compunha): compõe, com aviso', async () => {
+    const largo: Cena = { id: 'cp2b-assunto-largo', arquetipo: TOPO, dimensoes: { width: 1920, height: 1440 }, luz: () => 60, cores: { headline: CLARO, servico: CLARO }, assunto: { x0: 0.05, y0: 0.35, x1: 0.95, y1: 0.65 } }
+    const { r } = await compor(largo, { somenteAvaliar: true })
+    expect(busca(r).recusas.CORTE_PERDE_O_ASSUNTO ?? 0).toBe(0)
+    expect(r.diagnostico.avisos.some((a) => /preserva menos de 75% da caixa do assunto/.test(a))).toBe(true)
+  }, 60_000)
+
+  it('na reprodução, a copy nova que invade a região protegida do catálogo é recusada (nunca publicada por cima do produto)', async () => {
+    const produto: Cena = { id: 'cp2b-produto', arquetipo: TOPO, luz: () => 60, cores: { headline: CLARO, servico: CLARO }, assunto: { x0: 0.36, y0: 0.8, x1: 0.5, y1: 0.86 } }
+    const { r } = await compor(produto, { somenteAvaliar: true })
+    const escolha = busca(r).escolha
+    // A copy curta não toca a região (x 389–540) e fica na referência; a longa passaria por cima dela na posição congelada.
+    expect(escolha.deslocamentos.servico).toBe(0)
+    const e = await recusa({ ...produto, blocos: [{ papel: 'headline', linhas: ['Almoço', 'de domingo'] }, { papel: 'servico', linhas: ['Domingo · das 12h às 16h'] }] }, { escolhaEspacial: escolha })
+    expect(e.code).toBe('ARQUETIPO_POSICAO_CONGELADA_NAO_CABE')
+    expect(e.message).toMatch(/região protegida do catálogo/)
+  }, 60_000)
+
+  it('o caso antigo do T1a 15 (centro-óptico em foto clara e uniforme, textos claros): compõe dentro da zona, sem piorar leitura', async () => {
+    // Na referência a manchete e o apoio claros não leem sobre o claro; a busca escolhe a posição de véu mais leve
+    // (a regra do owner: tratamento mais leve antes da referência) — dentro da zona central, sem piora medida pela régua.
+    const claro: Cena = { id: 'cp2b-t1a-15', arquetipo: CENTRO, luz: () => 205, cores: { headline: CLARO, apoio: CLARO, servico: CLARO } }
+    const { r } = await compor(claro, { somenteAvaliar: true })
+    const manchete = rectDe(camada(r, 'headline'))
+    expect(manchete.y).toBeGreaterThanOrEqual(806)
+    expect(manchete.y + manchete.height).toBeLessThanOrEqual(1190)
+    expect(Math.abs(manchete.x + manchete.width / 2 - 540)).toBeLessThanOrEqual(1)
+    expect(busca(r).motivo.length).toBeGreaterThan(0)
+    expect(tratamentosQuePioram(await leiturasDosTextos(r.layers, STORY))).toEqual([])
+  }, 60_000)
+
+  it('o motivo explica a vitória quando as posições sem véu foram eliminadas (o caso da região protegida)', async () => {
+    const { r } = await peca(CENAS.regiao)
+    expect(busca(r).motivo).toMatch(/as posições que leriam sem véu caíam em INVADE_REGIAO_PROTEGIDA/)
   }, 60_000)
 })

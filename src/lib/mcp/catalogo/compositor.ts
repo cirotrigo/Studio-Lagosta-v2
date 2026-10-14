@@ -360,7 +360,7 @@ export const toolsDoCompositor = [
         nota: m.naoMedido
           ? 'Há bloco NÃO MEDIDO: a fonte dele não está no servidor de render, e a peça sairia na fonte de fallback — avise a pessoa (a equipe cadastra a fonte em Configurações → Fontes) antes de compor.'
           : m.cabeTudo
-            ? `Tudo cabe nesta variante. Nada foi gravado: compor-arte é o próximo passo.${m.arquetipo ? ' Com arquétipo, a medida confere o encaixe na REFERÊNCIA (avaliacaoEspacial: nao-executada): a posição final é escolhida pela foto no compor, e esta medição não garante que a foto tenha posição boa.' : ''}`
+            ? `Tudo cabe nesta variante. Nada foi gravado: compor-arte é o próximo passo.${m.arquetipo ? ' Com arquétipo, a medida confere o encaixe na posição de PARTIDA (a referência, ou o resgate dela) — avaliacaoEspacial: nao-executada: a posição final é escolhida pela foto no compor, e esta medição não garante que a foto tenha posição boa.' : ''}`
             : 'Algum bloco não cabe (ou falta papel na variante): reescreva com o orçamento devolvido ou escolha outra variante (outrasVariantes) — nunca insista com o mesmo texto.',
       }
     },

@@ -36,7 +36,8 @@ export const MODO_BUSCA_ESPACIAL = 'busca-espacial-v1' as const
  */
 export const LIMITES_DA_BUSCA = {
   cortes: 3,
-  faixas: 3,
+  /** 2 × 5 candidatos = 25 por corte: os limites fecham entre si (3 faixas passariam das 25 combinações). */
+  faixas: 2,
   candidatosPorFaixa: 5,
   combinacoesPorCorte: 25,
   avaliacoes: 75,
@@ -53,7 +54,8 @@ export type MembroDaFaixa = PapelDeTexto | 'logo'
  * caminho para cima, o meio do caminho para baixo e o mais abaixo que a zona efetiva permite.
  */
 export const ROTULOS_DO_DESLOCAMENTO = ['referencia', 'acima', 'meio-acima', 'meio-abaixo', 'abaixo'] as const
-export type RotuloDoDeslocamento = (typeof ROTULOS_DO_DESLOCAMENTO)[number]
+/** `congelado`: o dy de uma escolha gravada que a recomposição reproduz (não é um candidato da busca de agora). */
+export type RotuloDoDeslocamento = (typeof ROTULOS_DO_DESLOCAMENTO)[number] | 'congelado'
 
 export interface CandidatoDaFaixa {
   rotulo: RotuloDoDeslocamento
@@ -147,8 +149,8 @@ export interface UnidadeDaCombinacao {
 
 /** A combinação materializada (geometria independente do corte) — ou eliminada pela zona/ornamento/área segura. */
 export type CombinacaoMaterializada =
-  | { combinacao: Combinacao; unidades: UnidadeDaCombinacao[]; eliminada?: undefined }
-  | { combinacao: Combinacao; unidades?: undefined; eliminada: Eliminacao[] }
+  | { combinacao: Combinacao; unidades: UnidadeDaCombinacao[]; eliminada?: undefined; /** A logo de referência fixa, deslocada com a faixa do serviço. */ logo?: Rect }
+  | { combinacao: Combinacao; unidades?: undefined; eliminada: Eliminacao[]; logo?: undefined }
 
 // ─── O tratamento estimado ───────────────────────────────────────────────────
 
@@ -265,6 +267,8 @@ export interface AvaliacaoDaCombinacao {
   pontuacao?: number
   tratamento?: TratamentoEstimado[]
   textos?: LeituraDoTexto[]
+  /** A maior cobertura dos textos sobre a região ESTIMADA como assunto (sem catálogo): um patamar da ordenação, nunca eliminação. */
+  regiaoEstimada?: { cobertura: number; teto: number; invade: boolean }
 }
 
 // ─── A escolha congelada e o diagnóstico ─────────────────────────────────────
@@ -287,8 +291,20 @@ export interface EscolhaEspacial {
   cantoDaLogo?: Canto | null
 }
 
-/** O que a recomposição pede ao compositor: reproduzir a escolha gravada, ou a referência (peças do T1a). */
-export type EscolhaParaReproduzir = EscolhaEspacial | { modo: 'referencia' }
+/** O resumo da busca que ESCOLHEU a posição — a recomposição o carrega adiante, para a explicação não se perder. */
+export interface ResumoDaBuscaOriginal {
+  id: string
+  motivo: string
+  recusas: Partial<Record<MotivoDeEliminacao, number>>
+  combinacoesAvaliadas: number
+  cortesAvaliados: CropPosition[]
+}
+
+/**
+ * O que a recomposição pede ao compositor: reproduzir a escolha gravada (com o resumo da busca original), ou a
+ * referência no corte central (peças do T1a, com o canto da logo automática que elas gravaram).
+ */
+export type EscolhaParaReproduzir = (EscolhaEspacial & { buscaOriginal?: ResumoDaBuscaOriginal }) | { modo: 'referencia'; cantoDaLogo?: Canto | null }
 
 /** Uma avaliação no diagnóstico: compacta (sem as camadas). */
 export interface ResumoDaAvaliacao {
@@ -299,6 +315,7 @@ export interface ResumoDaAvaliacao {
   tratamento: TratamentoEstimado[]
   textos: LeituraDoTexto[]
   eliminada: Eliminacao[]
+  regiaoEstimada?: AvaliacaoDaCombinacao['regiaoEstimada']
 }
 
 /**
@@ -310,8 +327,8 @@ export interface DiagnosticoDaBuscaEspacial {
   /** A impressão da escolha (foto, corte, deslocamentos): a MESMA quando a recomposição a reproduz. */
   id: string
   escolha: EscolhaEspacial
-  /** Presente quando a posição veio da escolha gravada (recomposição), não de uma busca nova. */
-  reproduzida?: { de: string }
+  /** Presente quando a posição veio da escolha gravada (recomposição), não de uma busca nova — com o resumo da busca original. */
+  reproduzida?: { de: string; original?: ResumoDaBuscaOriginal }
   cortesAvaliados: CropPosition[]
   combinacoesAvaliadas: number
   limite: number

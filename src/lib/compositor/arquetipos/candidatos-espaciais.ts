@@ -17,6 +17,7 @@ import {
   type FaixaDeBusca,
   type MembroDaFaixa,
 } from './busca-espacial-tipos'
+import { CreativeError } from '@/lib/creatives/errors'
 import { materializarUnidades, type UnidadeDoArquetipo } from './no-compositor'
 import type { GeometriaEfetiva, Materializacao, PapelMaterializado, ProblemaDeMaterializacao } from './materializar'
 import type { ArquetipoDeLayout, FormatoDoArquetipo, PapelDeTexto, Zona } from './tipos'
@@ -77,7 +78,7 @@ export function candidatosDasFaixas(args: {
   const presentes = faixasDoArquetipo(args.arquetipo, args.formato)
     .map((f) => f.filter((m) => args.papeis[m]))
     .filter((f) => f.length > 0)
-  if (presentes.length > LIMITES_DA_BUSCA.faixas) throw new Error(`busca espacial: ${presentes.length} faixas passam do limite de ${LIMITES_DA_BUSCA.faixas}`)
+  if (presentes.length > LIMITES_DA_BUSCA.faixas) throw limiteDaBusca(`${presentes.length} faixas passam do limite de ${LIMITES_DA_BUSCA.faixas}`)
 
   return presentes.map((membros, indice) => {
     let maxLo = -Infinity
@@ -126,9 +127,13 @@ export function candidatosDasFaixas(args: {
       if (dy === null || candidatos.some((c) => Math.abs(c.dy - dy) < PASSO_MINIMO_PX)) continue
       candidatos.push({ rotulo, dy })
     }
+    if (candidatos.length > LIMITES_DA_BUSCA.candidatosPorFaixa) throw limiteDaBusca(`${candidatos.length} candidatos na faixa ${indice} passam do limite de ${LIMITES_DA_BUSCA.candidatosPorFaixa}`)
     return { indice, membros, intervalo, referenciaValida, candidatos }
   })
 }
+
+/** Passar de um limite da busca é DEFEITO do catálogo ou do código, não da foto: recusa determinística (a fila não repete). */
+export const limiteDaBusca = (motivo: string) => new CreativeError('ARQUETIPO_LIMITE_DA_BUSCA', `busca espacial: ${motivo}`, 422, { motivo })
 
 /**
  * O produto cartesiano dos candidatos, em ordem lexicográfica (a faixa 0 varia mais devagar): o índice 0 é a peça
@@ -136,7 +141,7 @@ export function candidatosDasFaixas(args: {
  */
 export function combinacoesDasFaixas(faixas: FaixaDeBusca[]): Combinacao[] {
   const total = faixas.reduce((n, f) => n * f.candidatos.length, 1)
-  if (total > LIMITES_DA_BUSCA.combinacoesPorCorte) throw new Error(`busca espacial: ${total} combinações passam do limite de ${LIMITES_DA_BUSCA.combinacoesPorCorte} por corte`)
+  if (total > LIMITES_DA_BUSCA.combinacoesPorCorte) throw limiteDaBusca(`${total} combinações passam do limite de ${LIMITES_DA_BUSCA.combinacoesPorCorte} por corte`)
   let todas: Array<Combinacao['escolhas']> = [[]]
   for (const f of faixas) todas = todas.flatMap((e) => f.candidatos.map((c) => [...e, { faixa: f.indice, rotulo: c.rotulo, dy: c.dy }]))
   return todas.map((escolhas, indice) => ({
@@ -157,8 +162,8 @@ export type PartidaNoArquetipo =
       deslocamentos: Combinacao['deslocamentos']
       /** A materialização CONFERIDA na partida. */
       materializacao: Extract<Materializacao, { ok: true }>
-      /** Os membros cuja referência saiu da zona efetiva e foram resgatados na vertical. */
-      resgatados: MembroDaFaixa[]
+      /** Os membros cuja referência saiu da zona efetiva e foram resgatados na vertical — e por quê. */
+      resgatados: Array<{ membro: MembroDaFaixa; causa: 'area-segura' | 'ornamento'; dy: number }>
     }
   | { ok: false; problemas: ProblemaDeMaterializacao[] }
 
@@ -201,5 +206,11 @@ export function partidaNoArquetipo(args: {
   const deslocamentos: Combinacao['deslocamentos'] = Object.fromEntries(faixas.flatMap((f) => f.membros.map((m) => [m, f.candidatos[0].dy])))
   const materializacao = materializarUnidades({ ...base, deslocamentos })
   if ('problemas' in materializacao) return { ok: false, problemas: materializacao.problemas }
-  return { ok: true, naReferencia, faixas, deslocamentos, materializacao, resgatados: [...foraDaZona] }
+  const resgatados = [...foraDaZona].map((membro) => ({
+    membro,
+    // O ornamento fora da zona (o ícone alto acima do pré-título) não é a área segura: a causa vem do problema de origem.
+    causa: problemasDeZona.some((p) => p.papel === membro && /ornamento/.test(p.motivo)) ? ('ornamento' as const) : ('area-segura' as const),
+    dy: deslocamentos[membro] ?? 0,
+  }))
+  return { ok: true, naReferencia, faixas, deslocamentos, materializacao, resgatados }
 }

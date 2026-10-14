@@ -460,8 +460,11 @@ A busca é PEQUENA e explicável: faixas × candidatos × cortes, sem grid denso
 - **Logo de referência fixa acompanha a faixa do serviço**: a linha de baixo do topo-esquerda é
   serviço + logo. Ela não é avaliada (sem inteligência nova); o contraste dela é do CP3 — a busca
   pode pousá-la sobre uma borda de tom (visto nas provas).
-- **Só a região anotada é hard.** A do catálogo elimina; a estimada pela energia entra só no
-  componente `assunto` (como recusa dura, a borda de uma faixa de luz zerava a foto).
+- **Só a região anotada é hard.** A do catálogo elimina; a estimada pela energia é um patamar antes
+  do custo do véu (não cobrir vence cobrir; nunca elimina — como recusa dura, a borda de uma faixa de
+  luz zerava a foto; atrás do véu, o texto ia para cima do prato).
+- **A borda do véu é a geométrica da posição candidata** (a da régua). A primeira versão fixava a da
+  referência e, no centro-óptico, a régua corrigia o véu da outra borda (revisão adversarial).
 - **Resgate vertical.** A referência é preferência: com a área segura do projeto cortando a
   referência, a faixa desce/sobe o mínimo para caber (aviso). Na horizontal não há resgate.
 - **Tratamento como custo dominante** (a ordem do owner: sem véu → véu mais leve → calma → assunto →

@@ -186,7 +186,8 @@ export const TETO_DE_COBERTURA_DO_ASSUNTO_ESTIMADO = 0.4
 export function coberturaDaRegiao(rect: Rect, regiao: Rect): number {
   const areaRegiao = regiao.width * regiao.height
   const areaBloco = rect.width * rect.height
-  if (areaRegiao <= 0 || areaBloco <= 0) return 0
+  // `!(x > 0)` e não `x <= 0`: área NaN (foto sem dimensões) também é zero, como na conta antiga.
+  if (!(areaRegiao > 0) || !(areaBloco > 0)) return 0
   const inter = intersecao(rect, regiao)
   return Math.max(inter / areaRegiao, inter / areaBloco)
 }

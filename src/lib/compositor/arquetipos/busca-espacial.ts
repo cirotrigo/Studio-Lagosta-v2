@@ -13,17 +13,17 @@ import type { Rect } from '@/lib/creatives/halo/halo'
 import { CreativeError } from '@/lib/creatives/errors'
 import type { CropPosition } from '@/lib/image-crop-utils'
 import { bordaDoGrupo, type Borda } from '../gradiente-de-leitura'
-import type { Ancora } from '../spec'
-import { combinacoesDasFaixas, type PartidaNoArquetipo } from './candidatos-espaciais'
+import { combinacoesDasFaixas, limiteDaBusca, type PartidaNoArquetipo } from './candidatos-espaciais'
 import { jsonCanonico } from './impressao'
 import type { GeometriaEfetiva, Materializacao, ProblemaDeMaterializacao } from './materializar'
 import { camadasNaReferencia, grupoDaUnidade, materializarUnidades, type UnidadeDoArquetipo } from './no-compositor'
-import { avaliarCombinacao, motivoDaVitoria, ordenarAvaliacoes, resumirAvaliacao } from './pontuacao-espacial'
+import { avaliarCombinacao, descreverTratamento, invadeAEstimada, motivoDaVitoria, ordenarAvaliacoes, resumirAvaliacao } from './pontuacao-espacial'
 import { chaveDoArquetipo, type ArquetipoDeLayout, type FormatoDoArquetipo } from './tipos'
 import {
   LIMITES_DA_BUSCA,
   MODO_BUSCA_ESPACIAL,
   ROTULOS_DO_DESLOCAMENTO,
+  TOLERANCIA_DO_CUSTO,
   type AvaliacaoDaCombinacao,
   type Combinacao,
   type CombinacaoMaterializada,
@@ -34,21 +34,19 @@ import {
   type LeituraDoCorte,
   type MotivoDeEliminacao,
   type PlanejamentoDoTratamento,
+  type ResumoDaBuscaOriginal,
   type UnidadeDaCombinacao,
 } from './busca-espacial-tipos'
 
 type MaterializacaoOk = Extract<Materializacao, { ok: true }>
 
 /**
- * A borda do tratamento de uma unidade, pela posição de REFERÊNCIA: a mesma conta do T1a (o centro da pilha decide a
- * âncora; no meio, o lado de H/2) — mas fixada na referência, para o `dy` da busca não virar a borda (no centro-óptico
- * a zona da manchete atravessa H/2: virar a borda saltaria o plano do CP2A). Com `dy = 0` é a borda do T1a.
+ * A borda do tratamento de uma unidade na posição CANDIDATA: a geométrica (o lado de H/2 do centro da unidade com os
+ * ornamentos) — a MESMA que a régua (`bordaDoGrupo(rect, null, H)`) e o revisor usam na peça final. Se a busca fixasse a
+ * borda da referência, no centro-óptico (a zona da manchete atravessa H/2) a estimativa e a régua falariam de véus
+ * diferentes, e a régua corrigiria o véu errado (revisão adversarial, lente C).
  */
-export function bordaNaReferencia(rectNaReferencia: Rect, H: number): Borda {
-  const centro = (rectNaReferencia.y + rectNaReferencia.height / 2) / H
-  const ancora: Ancora = centro > 0.55 ? 'rodape' : centro < 0.45 ? 'topo' : 'meio'
-  return bordaDoGrupo(rectNaReferencia, ancora, H)
-}
+export const bordaDaUnidade = (rectComOrnamentos: Rect, H: number): Borda => bordaDoGrupo(rectComOrnamentos, null, H)
 
 /** O problema da materialização deslocada como eliminação da busca. */
 function eliminacaoDoProblema(p: ProblemaDeMaterializacao): Eliminacao {
@@ -76,15 +74,15 @@ export function unidadesDaCombinacao(args: {
   return camadasNaReferencia(args.unidades, args.materializacao.papeis, args.arquetipo.preferencias.alinha).map(({ unidade: u, rect, camadas }) => {
     const dy = args.deslocamentos[u.papel] ?? 0
     const o = u.ornamentos
-    const rectNaReferencia = { ...rect, y: rect.y - dy }
+    const rectComOrnamentos = { x: rect.x - o.esquerda, y: rect.y - o.topo, width: rect.width + o.esquerda + o.direita, height: rect.height + o.topo + o.base }
     return {
       papel: u.papel,
       ordemDeLeitura: ordem.get(u.papel) ?? 99,
       faixa: args.faixas.find((f) => f.membros.includes(u.papel))?.indice ?? -1,
       rect,
-      rectComOrnamentos: { x: rect.x - o.esquerda, y: rect.y - o.topo, width: rect.width + o.esquerda + o.direita, height: rect.height + o.topo + o.base },
-      rectNaReferencia,
-      borda: bordaNaReferencia(rectNaReferencia, args.H),
+      rectComOrnamentos,
+      rectNaReferencia: { ...rect, y: rect.y - dy },
+      borda: bordaDaUnidade(rectComOrnamentos, args.H),
       // O compositor tira a caixa de fundo (o halo) dos textos antes de desenhar: nenhum texto lê contra caixa própria.
       textos: camadas.map((c) => ({ camada: c.id, grupo: grupoDaUnidade(u.papel), cor: String(c.style?.color ?? '#FFFFFF'), rect: { x: c.position.x, y: c.position.y, width: c.size.width, height: c.size.height }, caixaDeFundo: false })),
     }
@@ -107,9 +105,9 @@ export function buscarNaFoto(args: {
   planejamento: PlanejamentoDoTratamento
   canvas: { width: number; height: number }
 }): ResultadoDaBusca {
-  if (args.cortes.length > LIMITES_DA_BUSCA.cortes) throw new Error(`busca espacial: ${args.cortes.length} cortes passam do limite (${LIMITES_DA_BUSCA.cortes})`)
+  if (args.cortes.length > LIMITES_DA_BUSCA.cortes) throw limiteDaBusca(`${args.cortes.length} cortes passam do limite (${LIMITES_DA_BUSCA.cortes})`)
   const total = args.cortes.length * args.materializadas.length
-  if (total > LIMITES_DA_BUSCA.avaliacoes) throw new Error(`busca espacial: ${total} avaliações passam do limite (${LIMITES_DA_BUSCA.avaliacoes})`)
+  if (total > LIMITES_DA_BUSCA.avaliacoes) throw limiteDaBusca(`${total} avaliações passam do limite (${LIMITES_DA_BUSCA.avaliacoes})`)
   const avaliacoes: AvaliacaoDaCombinacao[] = []
   for (const corte of args.cortes) {
     for (const m of args.materializadas) {
@@ -156,14 +154,14 @@ export function motivoDaFalta(avaliacoes: AvaliacaoDaCombinacao[]): string | nul
   return contagem[0]?.[0] ?? null
 }
 
-/** Até 6 exemplos de recusa: um por motivo primeiro, na ordem em que aparecem. */
-function exemplosDeRecusa(avaliacoes: AvaliacaoDaCombinacao[]): DiagnosticoDaBuscaEspacial['exemplosDeRecusa'] {
+/** Até 6 exemplos de recusa: um por motivo primeiro (qualquer motivo da avaliação, não só o primeiro), na ordem em que aparecem. */
+export function exemplosDeRecusa(avaliacoes: AvaliacaoDaCombinacao[]): DiagnosticoDaBuscaEspacial['exemplosDeRecusa'] {
   const eliminadas = avaliacoes.filter((a) => a.eliminada.length > 0)
   const vistos = new Set<string>()
   const primeiros = eliminadas.filter((a) => {
-    const m = a.eliminada[0].motivo
-    if (vistos.has(m)) return false
-    vistos.add(m)
+    const novos = a.eliminada.map((e) => e.motivo).filter((m) => !vistos.has(m))
+    if (novos.length === 0) return false
+    for (const m of novos) vistos.add(m)
     return true
   })
   const resto = eliminadas.filter((a) => !primeiros.includes(a))
@@ -185,23 +183,35 @@ function alternativas(ordenadas: AvaliacaoDaCombinacao[], vencedora: AvaliacaoDa
 }
 
 const num = (v: number) => v.toFixed(2).replace('.', ',')
+const pct = (v: number) => Math.round(v * 100)
+const ehValida = (a: AvaliacaoDaCombinacao) => a.eliminada.length === 0 && !!a.componentes
 
 /**
- * Por que a peça SAIU da referência (no corte central), quando saiu: eliminada (e por quê), mais tratamento, ou
- * perdendo na pontuação. `null` quando a vencedora é a própria referência.
+ * Por que a peça SAIU da referência (a partida, no corte central), quando saiu — na MESMA ordem do filtro sequencial:
+ * eliminada (e por quê); cobria a região estimada; pedia mais véu que o mínimo entre as válidas; ou perdia na pontuação.
+ * `null` quando a vencedora é a própria partida.
  */
-export function motivoContraAReferencia(ordenadas: AvaliacaoDaCombinacao[], vencedora: AvaliacaoDaCombinacao): string | null {
+export function motivoContraAReferencia(ordenadas: AvaliacaoDaCombinacao[], vencedora: AvaliacaoDaCombinacao, faixas: FaixaDeBusca[] = []): string | null {
   const referencia = ordenadas.find((a) => a.combinacao.indice === 0 && a.crop === 'center-middle') ?? ordenadas.find((a) => a.combinacao.indice === 0)
   if (!referencia || referencia === vencedora) return null
-  const onde = referencia.crop === vencedora.crop ? 'a referência' : `a referência no corte ${referencia.crop}`
+  const partida = faixas.some((f) => !f.referenciaValida) ? 'a posição de partida (o resgate da referência)' : 'a referência'
+  const onde = referencia.crop === vencedora.crop ? partida : `${partida} no corte ${referencia.crop}`
   if (referencia.eliminada.length > 0) return `${onde} caía em ${[...new Set(referencia.eliminada.map((e) => e.motivo))].join(', ')}`
-  const r = referencia.componentes!
-  const v = vencedora.componentes!
-  if (r.custoDoTratamento > v.custoDoTratamento + 0.05) {
-    const veus = (referencia.tratamento ?? []).filter((t) => t.estado === 'tratado').map((t) => `${t.borda} ${num(t.forca ?? 0)}`)
-    return `${onde} precisava de véu (${veus.join(', ')})${v.custoDoTratamento === 0 ? '; aqui lê sem tratamento' : ''}`
-  }
+  if (invadeAEstimada(referencia) && !invadeAEstimada(vencedora)) return `${onde} cobria ${pct(referencia.regiaoEstimada!.cobertura)}% da região estimada como assunto`
+  const validas = ordenadas.filter(ehValida)
+  const doPatamar = validas.some((a) => !invadeAEstimada(a)) ? validas.filter((a) => !invadeAEstimada(a)) : validas
+  const menorCusto = Math.min(...doPatamar.map((a) => a.componentes!.custoDoTratamento))
+  if (referencia.componentes!.custoDoTratamento > menorCusto + TOLERANCIA_DO_CUSTO) return `${onde} pedia ${descreverTratamento(referencia)}; aqui ${descreverTratamento(vencedora)}`
   return `${onde} perdia na pontuação (${num(referencia.pontuacao ?? 0)} contra ${num(vencedora.pontuacao ?? 0)})`
+}
+
+/** Quando a vencedora tem véu: as posições que leriam SEM véu e foram eliminadas — e por quê (o critério que decidiu). */
+function semVeuEliminadas(ordenadas: AvaliacaoDaCombinacao[], vencedora: AvaliacaoDaCombinacao): string | null {
+  if ((vencedora.componentes?.custoDoTratamento ?? 0) === 0) return null
+  const leriam = ordenadas.filter((a) => a.eliminada.length > 0 && (a.tratamento ?? []).length > 0 && a.tratamento!.every((t) => t.estado === 'sem-necessidade'))
+  if (leriam.length === 0) return null
+  const contagem = Object.entries(contarRecusas(leriam)).map(([m, n]) => `${m} ×${n}`)
+  return `as posições que leriam sem véu caíam em ${contagem.join(', ')}`
 }
 
 /** O diagnóstico compacto da busca (vai em `fieldValues.composicao.arquetipo.buscaEspacial`). */
@@ -210,11 +220,17 @@ export function diagnosticoDaBusca(args: {
   resultado: ResultadoDaBusca
   faixas: FaixaDeBusca[]
   cortesAvaliados: LeituraDoCorte['crop'][]
-  reproduzida?: { de: string }
+  reproduzida?: DiagnosticoDaBuscaEspacial['reproduzida']
 }): DiagnosticoDaBuscaEspacial {
   const { ordenadas, vencedora } = args.resultado
   const alts = alternativas(ordenadas, vencedora)
   const segunda = ordenadas.find((a) => a !== vencedora && a.eliminada.length === 0)
+  const motivoDaBusca = (v: AvaliacaoDaCombinacao) => {
+    const contra = motivoContraAReferencia(ordenadas, v, args.faixas)
+    const semVeu = semVeuEliminadas(ordenadas, v)
+    const daVitoria = motivoDaVitoria(v, segunda)
+    return [contra, semVeu, contra || semVeu ? daVitoria.replace(/^a foto não distingue: /, 'entre as válidas, ') : daVitoria].filter(Boolean).join('; ')
+  }
   return {
     versao: MODO_BUSCA_ESPACIAL,
     id: idDaEscolha(args.escolha),
@@ -229,11 +245,9 @@ export function diagnosticoDaBusca(args: {
     recusas: contarRecusas(ordenadas),
     exemplosDeRecusa: exemplosDeRecusa(ordenadas),
     motivo: args.reproduzida
-      ? 'posição reproduzida da escolha gravada (recomposição): a busca não roda de novo'
+      ? `posição reproduzida da escolha gravada (recomposição): a busca não roda de novo${args.reproduzida.original ? ` — a escolha original: ${args.reproduzida.original.motivo}` : ''} (os componentes são medidos só no corte reproduzido)`
       : vencedora
-        ? ((contra) => (contra ? `${contra}; ${motivoDaVitoria(vencedora, segunda).replace(/^a foto não distingue: /, 'entre as equivalentes, ')}` : motivoDaVitoria(vencedora, segunda)))(
-            motivoContraAReferencia(ordenadas, vencedora),
-          )
+        ? motivoDaBusca(vencedora)
         : 'nenhuma combinação válida',
   }
 }
@@ -252,10 +266,12 @@ export interface ArgsDaSelecao {
   /** A foto em cada corte candidato (vazio sem foto). */
   cortes: LeituraDoCorte[]
   planejamento: PlanejamentoDoTratamento
-  /** A foto da peça: a URL que ela desenha (ver `EscolhaEspacial.foto`). */
+  /** A foto da peça: a impressão da URL que ela desenha (ver `EscolhaEspacial.foto`). */
   foto: string | null
   /** A escolha gravada a REPRODUZIR (recomposição) — a busca não roda. */
-  reproduzir?: EscolhaEspacial | null
+  reproduzir?: (EscolhaEspacial & { buscaOriginal?: ResumoDaBuscaOriginal }) | null
+  /** A reprodução é de uma peça do T1a (a posição é a referência, não uma escolha pela foto) — muda só as mensagens. */
+  reproduzirReferencia?: boolean
 }
 
 export type SelecaoNoArquetipo =
@@ -265,58 +281,110 @@ export type SelecaoNoArquetipo =
 const materializarCom = (args: ArgsDaSelecao, deslocamentos: Combinacao['deslocamentos']): Materializacao =>
   materializarUnidades({ arquetipo: args.arquetipo, formato: args.formato, canvas: args.canvas, geometria: args.geometria, unidades: args.unidades, logo: args.logo, deslocamentos })
 
-/** A combinação que reproduz deslocamentos dados (a escolha gravada, ou a referência). */
+/** A combinação que reproduz deslocamentos dados (a escolha gravada, ou a referência): rótulo `congelado` fora do 0. */
 function combinacaoDosDeslocamentos(faixas: FaixaDeBusca[], deslocamentos: Combinacao['deslocamentos']): Combinacao {
   return {
     indice: 0,
     escolhas: faixas.map((f) => {
       const dy = deslocamentos[f.membros[0]] ?? 0
-      const rotulo = f.candidatos.find((c) => c.dy === dy)?.rotulo ?? (dy === 0 ? ROTULOS_DO_DESLOCAMENTO[0] : dy < 0 ? 'acima' : 'abaixo')
-      return { faixa: f.indice, rotulo, dy }
+      return { faixa: f.indice, rotulo: dy === 0 ? ROTULOS_DO_DESLOCAMENTO[0] : ('congelado' as const), dy }
     }),
     deslocamentos,
   }
 }
 
 /**
+ * O `dy` gravado, um por FAIXA, aplicado a todos os membros presentes. Membros de uma faixa que discordam (escolha
+ * adulterada, ou de outro arquétipo) não são uma posição: `ARQUETIPO_ESCOLHA_ILEGIVEL`, nunca uma faixa partida.
+ */
+function deslocamentosPorFaixa(args: ArgsDaSelecao, gravados: Combinacao['deslocamentos']): Combinacao['deslocamentos'] {
+  const saida: Combinacao['deslocamentos'] = {}
+  for (const f of args.partida.faixas) {
+    const dys = [...new Set(f.membros.filter((m) => m !== 'logo' && gravados[m] !== undefined).map((m) => gravados[m]!))]
+    const daLogo = gravados.logo
+    const dy = dys.length > 0 ? dys : daLogo !== undefined && f.membros.includes('logo') ? [daLogo] : [0]
+    if (dy.length > 1) {
+      throw new CreativeError('ARQUETIPO_ESCOLHA_ILEGIVEL', `${chaveDoArquetipo(args.arquetipo)}: a escolha gravada move a faixa (${f.membros.join(', ')}) com deslocamentos diferentes (${dy.join(', ')} px) — não é uma posição do arquétipo.`, 422, {
+        arquetipo: chaveDoArquetipo(args.arquetipo),
+        faixa: f.membros,
+        deslocamentos: gravados,
+      })
+    }
+    for (const m of f.membros) saida[m] = dy[0]
+  }
+  return saida
+}
+
+/** O intervalo de `dy` em que SÓ a logo de referência fixa cabe na zona dela (a logo não é escolha da foto). */
+function intervaloDaLogo(args: ArgsDaSelecao): { min: number; max: number } | null {
+  const l = args.partida.naReferencia.papeis.logo
+  if (!l) return null
+  return { min: Math.ceil(l.zonaEfetiva.y - l.posicao.y + 0.5), max: Math.floor(l.zonaEfetiva.y + l.zonaEfetiva.height - (l.posicao.y + l.posicao.height) - 1.5) }
+}
+
+/** Os hard constraints que a COPY nova pode violar na posição congelada (a foto é a mesma): na reprodução, recusa. */
+const DEPENDEM_DA_COPY = new Set<MotivoDeEliminacao>(['INVADE_REGIAO_PROTEGIDA', 'COLISAO_ENTRE_GRUPOS', 'ORDEM_DE_LEITURA', 'HIERARQUIA_ESTRUTURAL'])
+
+/**
  * A POSIÇÃO do arquétipo pela foto (CP2B): a busca pequena (faixas × candidatos × cortes) — ou, na recomposição, a
  * escolha gravada reproduzida sem buscar (a copy nova que não cabe nela é RECUSADA, nunca movida). Sem foto, a
- * referência no corte central. Sem nenhuma combinação válida, `ok: false` — quem chama decide entre
+ * posição de partida no corte central. Sem nenhuma combinação válida, `ok: false` — quem chama decide entre
  * SEM_COMBINACAO e PREFERENCIA_INVIAVEL.
  */
 export function selecionarNoArquetipo(args: ArgsDaSelecao): SelecaoNoArquetipo {
   const faixas = args.partida.faixas
   const H = args.canvas.height
 
-  // Reprodução (ou sem foto): uma combinação só, avaliada para o diagnóstico — a foto não elimina, só avisa.
-  // Cópia: o compositor completa o canto da logo automática na escolha que grava.
-  const fixa: EscolhaEspacial | null = args.reproduzir
-    ? { ...args.reproduzir, deslocamentos: { ...args.reproduzir.deslocamentos } }
-    : args.cortes.length === 0
-      ? { modo: MODO_BUSCA_ESPACIAL, foto: args.foto, corte: 'center-middle', deslocamentos: { ...args.partida.deslocamentos } }
-      : null
-  if (fixa) {
-    const combinacao = combinacaoDosDeslocamentos(faixas, fixa.deslocamentos)
-    const m = materializarCom(args, fixa.deslocamentos)
-    if ('problemas' in m) {
-      throw new CreativeError(
+  // Reprodução (ou sem foto): uma combinação só. A geometria e o que a copy nova viola recusam; o tratamento avisa.
+  if (args.reproduzir || args.cortes.length === 0) {
+    const { buscaOriginal, ...gravada } = args.reproduzir ?? { modo: MODO_BUSCA_ESPACIAL, foto: args.foto, corte: 'center-middle' as CropPosition, deslocamentos: args.partida.deslocamentos }
+    const avisos: string[] = []
+    const origem = args.reproduzirReferencia ? 'a posição de referência do arquétipo (peça do T1a)' : 'a posição desta peça foi escolhida pela foto e está congelada'
+    const recusa = (problemas: unknown[], descricao: string) =>
+      new CreativeError(
         'ARQUETIPO_POSICAO_CONGELADA_NAO_CABE',
-        `${chaveDoArquetipo(args.arquetipo)}: a posição desta peça foi escolhida pela foto e está congelada (corte ${fixa.corte}); na posição congelada, ${m.problemas.map((p) => `${p.papel} — ${p.motivo}`).join('; ')}. Nada foi movido: encurte o texto ou peça uma nova composição da peça.`,
+        `${chaveDoArquetipo(args.arquetipo)}: ${origem} (corte ${gravada.corte}); nela, ${descricao}. Nada foi movido: encurte o texto (menos linhas ou linhas mais curtas) ou peça uma nova composição da peça.`,
         422,
-        { arquetipo: chaveDoArquetipo(args.arquetipo), formato: args.formato, escolha: fixa, problemas: m.problemas },
+        { arquetipo: chaveDoArquetipo(args.arquetipo), formato: args.formato, escolha: gravada, problemas },
       )
+    let deslocamentos = args.reproduzir ? deslocamentosPorFaixa(args, gravada.deslocamentos) : { ...gravada.deslocamentos }
+    let m = materializarCom(args, deslocamentos)
+    // A logo de referência fixa não é escolha da foto: se a da assinatura mudou de proporção e não cabe mais no dy da
+    // faixa, ela vai para o dy válido mais perto (o texto fica onde estava) — dito no aviso, nunca recusa por isso.
+    const faixaDaLogo = faixas.find((f) => f.membros.includes('logo'))
+    if ('problemas' in m && m.problemas.every((p) => p.papel === 'logo') && faixaDaLogo) {
+      const iv = intervaloDaLogo(args)
+      if (iv && iv.min <= iv.max) {
+        const antes = deslocamentos.logo ?? 0
+        const depois = Math.max(iv.min, Math.min(iv.max, antes))
+        deslocamentos = { ...deslocamentos, logo: depois }
+        m = materializarCom(args, deslocamentos)
+        avisos.push(`A logo da assinatura não cabia mais na posição congelada (mudou de proporção?): ela foi ${depois < antes ? 'subida' : 'descida'} ${Math.abs(depois - antes)} px; o texto ficou onde estava.`)
+      }
     }
+    if ('problemas' in m) throw recusa(m.problemas, m.problemas.map((p) => `${p.papel} — ${p.motivo}`).join('; '))
+    const fixa: EscolhaEspacial = { ...gravada, deslocamentos }
+    const combinacao = combinacaoDosDeslocamentos(faixas, deslocamentos)
     const corte = args.cortes.find((c) => c.crop === fixa.corte)
-    const unidades = unidadesDaCombinacao({ unidades: args.unidades, materializacao: m, arquetipo: args.arquetipo, deslocamentos: fixa.deslocamentos, faixas, H })
+    const unidades = unidadesDaCombinacao({ unidades: args.unidades, materializacao: m, arquetipo: args.arquetipo, deslocamentos, faixas, H })
     const avaliacao: AvaliacaoDaCombinacao = corte
-      ? avaliarCombinacao({ corte, energiaDeReferencia: Math.max(1, corte.mapa.energiaMaxima), materializada: { combinacao, unidades }, faixas, planejamento: args.planejamento, canvas: args.canvas })
+      ? avaliarCombinacao({ corte, energiaDeReferencia: Math.max(1, corte.mapa.energiaMaxima), materializada: { combinacao, unidades, logo: m.papeis.logo?.posicao }, faixas, planejamento: args.planejamento, canvas: args.canvas })
       : { crop: fixa.corte, combinacao, eliminada: [] }
+    if (args.reproduzir) {
+      const daCopy = avaliacao.eliminada.filter((e) => DEPENDEM_DA_COPY.has(e.motivo))
+      if (daCopy.length > 0) throw recusa(daCopy, daCopy.map((e) => e.detalhe).join('; '))
+      if (avaliacao.eliminada.length > 0) {
+        avisos.push(`A posição congelada da peça agora pede outro tratamento (${[...new Set(avaliacao.eliminada.map((e) => e.motivo))].join(', ')}) — mantida assim: a recomposição não move a peça, e o CP2A julga a leitura.`)
+      }
+    }
     const resultado: ResultadoDaBusca = { ordenadas: [avaliacao], vencedora: avaliacao, avaliadas: corte ? 1 : 0 }
-    const avisos =
-      args.reproduzir && avaliacao.eliminada.length > 0
-        ? [`A posição congelada da peça (escolhida pela foto) agora cai em: ${[...new Set(avaliacao.eliminada.map((e) => e.motivo))].join(', ')} — mantida assim (a recomposição não move a peça).`]
-        : []
-    const diagnostico = diagnosticoDaBusca({ escolha: fixa, resultado, faixas, cortesAvaliados: corte ? [corte.crop] : [], ...(args.reproduzir ? { reproduzida: { de: idDaEscolha(fixa) } } : {}) })
+    const diagnostico = diagnosticoDaBusca({
+      escolha: fixa,
+      resultado,
+      faixas,
+      cortesAvaliados: corte ? [corte.crop] : [],
+      ...(args.reproduzir ? { reproduzida: { de: idDaEscolha(gravada), ...(buscaOriginal ? { original: buscaOriginal } : {}) } } : {}),
+    })
     if (!args.reproduzir) diagnostico.motivo = 'sem foto para ler: ficou a posição de partida (a referência, ou o resgate mais perto dela) no corte central'
     return { ok: true, materializacao: m, crop: fixa.corte, escolha: fixa, diagnostico, avisos }
   }
@@ -327,7 +395,11 @@ export function selecionarNoArquetipo(args: ArgsDaSelecao): SelecaoNoArquetipo {
     const m = materializarCom(args, combinacao.deslocamentos)
     if ('problemas' in m) return { combinacao, eliminada: m.problemas.map(eliminacaoDoProblema) }
     porIndice.set(combinacao.indice, m)
-    return { combinacao, unidades: unidadesDaCombinacao({ unidades: args.unidades, materializacao: m, arquetipo: args.arquetipo, deslocamentos: combinacao.deslocamentos, faixas, H }) }
+    return {
+      combinacao,
+      unidades: unidadesDaCombinacao({ unidades: args.unidades, materializacao: m, arquetipo: args.arquetipo, deslocamentos: combinacao.deslocamentos, faixas, H }),
+      ...(m.papeis.logo ? { logo: m.papeis.logo.posicao } : {}),
+    }
   })
   const energiaDeReferencia = Math.max(1, ...args.cortes.map((c) => c.mapa.energiaMaxima))
   const resultado = buscarNaFoto({ materializadas, cortes: args.cortes, faixas, energiaDeReferencia, planejamento: args.planejamento, canvas: args.canvas })
@@ -335,5 +407,8 @@ export function selecionarNoArquetipo(args: ArgsDaSelecao): SelecaoNoArquetipo {
   const v = resultado.vencedora
   const escolha: EscolhaEspacial = { modo: MODO_BUSCA_ESPACIAL, foto: args.foto, corte: v.crop, deslocamentos: v.combinacao.deslocamentos }
   const diagnostico = diagnosticoDaBusca({ escolha, resultado, faixas, cortesAvaliados: args.cortes.map((c) => c.crop) })
-  return { ok: true, materializacao: porIndice.get(v.combinacao.indice)!, crop: v.crop, escolha, diagnostico, avisos: [] }
+  const avisos = invadeAEstimada(v)
+    ? [`Toda posição válida cobria a região estimada como assunto da foto: ficou a que cobre menos (${pct(v.regiaoEstimada!.cobertura)}%, teto ${pct(v.regiaoEstimada!.teto)}%). Sem caixa de assunto no catálogo, a região é estimada pela textura.`]
+    : []
+  return { ok: true, materializacao: porIndice.get(v.combinacao.indice)!, crop: v.crop, escolha, diagnostico, avisos }
 }

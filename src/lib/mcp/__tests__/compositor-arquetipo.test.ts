@@ -80,7 +80,7 @@ describe('T1a · arquetipo nas portas MCP', () => {
     const buscaEspacial = {
       versao: 'busca-espacial-v1',
       id: 'be1-abc',
-      escolha: { modo: 'busca-espacial-v1', foto: 'https://blob.test/f.jpg', corte: 'center-middle', deslocamentos: { servico: -86, logo: -86 } },
+      escolha: { modo: 'busca-espacial-v1', foto: 'foto-0123456789abcdef', corte: 'center-middle', deslocamentos: { servico: -86, logo: -86 } },
       cortesAvaliados: ['center-middle'],
       combinacoesAvaliadas: 20,
       limite: 75,

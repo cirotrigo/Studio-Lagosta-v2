@@ -410,8 +410,10 @@ export function medirCopy(args: {
       logo: args.assinatura.logo ? { razao: args.assinatura.logo.razao } : null,
     })
     const m: Materializacao = 'problemas' in partida ? { ok: false, problemas: partida.problemas } : partida.materializacao
-    for (const membro of 'resgatados' in partida ? partida.resgatados : []) {
-      avisos.push(`arquétipo: a referência de ${membro} sai da zona efetiva (a área segura do projeto a corta); a medida vale na posição válida mais perto dela, de onde o compor parte`)
+    for (const r of 'resgatados' in partida ? partida.resgatados : []) {
+      avisos.push(
+        `arquétipo: ${r.causa === 'ornamento' ? `com ${r.membro} na referência, os ornamentos do arranjo saem da zona efetiva` : `a referência de ${r.membro} sai da zona efetiva (a área segura do projeto a corta)`}; a medida vale na posição válida mais perto dela (${r.dy} px), de onde o compor parte`,
+      )
     }
     const limites = arq.definicao.formatos[arq.formato].limitesDeTexto
     const papeis: MedicaoDoArquetipo['papeis'] = {}

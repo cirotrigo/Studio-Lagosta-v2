@@ -47,11 +47,11 @@ describe('CP2B · orquestrador', () => {
     expect(motivoContraAReferencia([ref, vencedora], ref)).toBeNull()
     expect(motivoContraAReferencia([vencedora, { ...ref, eliminada: [{ motivo: 'INVADE_REGIAO_PROTEGIDA', detalhe: '' }] }], vencedora)).toBe('a referência caía em INVADE_REGIAO_PROTEGIDA')
     expect(motivoContraAReferencia([vencedora, { ...ref, componentes: componentes({ custoDoTratamento: 0.76 }), tratamento: [{ borda: 'rodape', estado: 'tratado', forca: 0.76 }] }], vencedora)).toBe(
-      'a referência precisava de véu (rodape 0,76); aqui lê sem tratamento',
+      'a referência pedia véu no rodapé 0,76; aqui lê sem véu',
     )
     expect(motivoContraAReferencia([vencedora, { ...ref, pontuacao: 0.5 }], vencedora)).toBe('a referência perdia na pontuação (0,50 contra 0,80)')
     expect(motivoContraAReferencia([{ ...vencedora, crop: 'left-middle' }, { ...ref, componentes: componentes({ custoDoTratamento: 0.5 }), tratamento: [{ borda: 'rodape', estado: 'tratado', forca: 0.5 }] }], { ...vencedora, crop: 'left-middle' })).toMatch(
-      /^a referência no corte center-middle precisava de véu/,
+      /^a referência no corte center-middle pedia véu no rodapé 0,50/,
     )
   })
 })

@@ -192,7 +192,11 @@ describe.runIf(DIR)('CP2B · provas visuais e bateria funcional', () => {
       const eliminada = busca?.exemplosDeRecusa[0]
       if (eliminada) {
         const escolha: EscolhaEspacial = { modo: 'busca-espacial-v1', foto: busca!.escolha.foto, corte: eliminada.crop, deslocamentos: Object.fromEntries(eliminada.escolhas.flatMap((e) => busca!.faixas[e.faixa].membros.map((m) => [m, e.dy]))) }
+        // A reprodução RECUSA a posição que invade a região do catálogo (como deve): para ver a eliminada, ela é desenhada
+        // sem a caixa do catálogo — a mesma foto, a mesma posição.
+        if (c.assunto) await montar({ ...c, assunto: undefined })
         await provar(`${c.id}-4-eliminada`, spec, { escolhaEspacial: escolha })
+        if (c.assunto) await montar(c)
       }
       const leituras = vencedora ? await leiturasDosTextos(vencedora.layers, CANVAS) : null
       const regiaoPx = c.assunto ? { x: c.assunto.x0 * 1080, y: c.assunto.y0 * 1920, width: (c.assunto.x1 - c.assunto.x0) * 1080, height: (c.assunto.y1 - c.assunto.y0) * 1920 } : null

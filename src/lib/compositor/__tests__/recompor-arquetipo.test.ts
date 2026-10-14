@@ -325,8 +325,8 @@ describe('CP2B · a recomposição reproduz a escolha espacial gravada', () => {
     const mensagem = (historico.mock.calls.at(-1)?.[0] as unknown as { data: { message: string; metadata: { errorCode: string } } }).data
     expect(mensagem.metadata.errorCode).toBe('ARQUETIPO_POSICAO_CONGELADA_NAO_CABE')
     expect(mensagem.message).toBe(mensagemDaRecusaNoHistorico('x', false, 'ARQUETIPO_POSICAO_CONGELADA_NAO_CABE'))
-    expect(mensagem.message).toMatch(/escolhida pela foto e está congelada/)
-    expect(mensagem.message).toMatch(/Encurte o texto ou peça uma nova composição/)
+    expect(mensagem.message).toMatch(/está congelada/)
+    expect(mensagem.message).toMatch(/Encurte o texto \(menos linhas ou linhas mais curtas\) ou peça uma nova composição/)
     expect(mensagem.message).toMatch(/salvar de novo do mesmo jeito não resolve/)
     historico.mockRestore()
   })

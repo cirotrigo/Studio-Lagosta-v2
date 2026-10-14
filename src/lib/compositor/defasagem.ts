@@ -43,7 +43,7 @@ import { CreativeError } from '@/lib/creatives/errors'
 import { linhasComColchetes } from './destaques'
 import { CANTOS, PAPEIS, type Canto, type Papel, type SpecDePeca } from './spec'
 import { PAPEIS_DO_ARQUETIPO } from './arquetipos/tipos'
-import { MODO_BUSCA_ESPACIAL, type EscolhaEspacial, type EscolhaParaReproduzir, type MembroDaFaixa } from './arquetipos/busca-espacial-tipos'
+import { MODO_BUSCA_ESPACIAL, type EscolhaEspacial, type EscolhaParaReproduzir, type MembroDaFaixa, type ResumoDaBuscaOriginal } from './arquetipos/busca-espacial-tipos'
 
 /**
  * Como `copyDosPapeis`, mas a camada RICH TEXT volta com os [colchetes] nos
@@ -602,7 +602,7 @@ export function escolhaEspacialOriginal(fieldValues: unknown, spec: SpecDePeca):
   const recusar = (problema: string): never => {
     throw new CreativeError(
       'ARQUETIPO_ESCOLHA_ILEGIVEL',
-      `A posição que a foto escolheu para esta arte não pôde ser lida (${problema}); a recomposição não refaz a escolha às cegas.`,
+      `A posição gravada desta arte não pôde ser lida (${problema}); a recomposição não refaz a escolha às cegas — peça uma nova composição da peça.`,
       422,
       { arquetipo: spec.arquetipo, problema },
     )
@@ -617,7 +617,12 @@ export function escolhaEspacialOriginal(fieldValues: unknown, spec: SpecDePeca):
   if (gravado.id !== id || gravado.versao !== versao || gravado.impressao !== impressao) {
     return recusar(`o diagnóstico é de ${gravado.id}@${gravado.versao} (${gravado.impressao}), a spec é de ${id}@${versao} (${impressao})`)
   }
-  if (gravado.modo === 'referencia') return { modo: 'referencia' }
+  // A peça do T1a: a referência no corte central, com o canto da logo AUTOMÁTICA que ela gravou (a copy nova não o troca).
+  if (gravado.modo === 'referencia') {
+    const logo = ehObjeto(gravado.logo) ? gravado.logo : null
+    const cantoDoT1a = logo && logo.modo === 'automatica' && (CANTOS as readonly unknown[]).includes(logo.canto) ? (logo.canto as Canto) : null
+    return cantoDoT1a ? { modo: 'referencia', cantoDaLogo: cantoDoT1a } : { modo: 'referencia' }
+  }
   if (gravado.modo !== MODO_BUSCA_ESPACIAL) return recusar(`modo desconhecido: ${String(gravado.modo)}`)
 
   const escolha = ehObjeto(gravado.buscaEspacial) && ehObjeto(gravado.buscaEspacial.escolha) ? gravado.buscaEspacial.escolha : null
@@ -634,9 +639,22 @@ export function escolhaEspacialOriginal(fieldValues: unknown, spec: SpecDePeca):
   const canto = escolha.cantoDaLogo
   if (canto !== undefined && canto !== null && !(CANTOS as readonly unknown[]).includes(canto)) return recusar(`canto da logo inválido: ${String(canto)}`)
 
-  const limpa: EscolhaEspacial = { modo: MODO_BUSCA_ESPACIAL, foto: escolha.foto as string | null, corte: escolha.corte as CropPosition, deslocamentos }
+  const limpa: EscolhaEspacial & { buscaOriginal?: ResumoDaBuscaOriginal } = { modo: MODO_BUSCA_ESPACIAL, foto: escolha.foto as string | null, corte: escolha.corte as CropPosition, deslocamentos }
   if (canto !== undefined) limpa.cantoDaLogo = canto as Canto | null
+  // O resumo da busca que ESCOLHEU (o da primeira, levado adiante pelas recomposições): só informativo — forma estranha não recusa.
+  const original = resumoDaBuscaOriginal(gravado.buscaEspacial)
+  if (original) limpa.buscaOriginal = original
   return limpa
+}
+
+function resumoDaBuscaOriginal(busca: unknown): ResumoDaBuscaOriginal | null {
+  if (!ehObjeto(busca)) return null
+  const reproduzida = ehObjeto(busca.reproduzida) && ehObjeto(busca.reproduzida.original) ? busca.reproduzida.original : null
+  const fonte = reproduzida ?? busca
+  if (typeof fonte.id !== 'string' || typeof fonte.motivo !== 'string' || typeof fonte.combinacoesAvaliadas !== 'number') return null
+  const recusas = ehObjeto(fonte.recusas) ? Object.fromEntries(Object.entries(fonte.recusas).filter(([, n]) => Number.isInteger(n))) : {}
+  const cortes = Array.isArray(fonte.cortesAvaliados) ? fonte.cortesAvaliados.filter((c): c is CropPosition => typeof c === 'string' && Object.prototype.hasOwnProperty.call(CORTES, c)) : []
+  return { id: fonte.id, motivo: fonte.motivo, recusas, combinacoesAvaliadas: fonte.combinacoesAvaliadas, cortesAvaliados: cortes }
 }
 
 export interface PostComArte {

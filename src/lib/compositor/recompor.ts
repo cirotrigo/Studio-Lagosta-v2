@@ -410,7 +410,11 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
   if (candidataARecompor && arte.spec!.arquetipo) resolverArquetipo(arte.spec!.arquetipo as ArquetipoDaSpec, { persistida: true })
   // CP2B: a ESCOLHA ESPACIAL gravada (corte e deslocamentos) é reproduzida, nunca refeita — a busca pela foto não roda
   // de novo numa edição de texto. Ilegível recusa AQUI, antes de qualquer escrita (ver `escolhaEspacialOriginal`).
-  const escolhaEspacial = candidataARecompor && arte.spec!.arquetipo ? escolhaEspacialOriginal(arte.fieldValues, arte.spec!) : null
+  const lida = candidataARecompor && arte.spec!.arquetipo ? escolhaEspacialOriginal(arte.fieldValues, arte.spec!) : null
+  // Foto trocada numa peça do T1a (na referência, sem escolha pela foto): a busca roda pela foto nova, DITO. (A peça do
+  // CP2B traz a foto na escolha: o compositor percebe a troca e avisa sozinho.)
+  const escolhaEspacial = lida?.modo === 'referencia' && defasagem.fotoTrocada ? null : lida
+  if (lida?.modo === 'referencia' && defasagem.fotoTrocada) avisos.push('A foto da peça mudou: a posição foi escolhida de novo pela foto nova (a peça estava na referência do arquétipo).')
   /**
    * F1: a spec da recomposição leva o CONTRATO da página como ele está —
    * lido das camadas atuais sobre o contrato gravado (o que já foi revisado
@@ -1176,10 +1180,16 @@ export function mensagemDaRecusaNoHistorico(mensagem: string, imagemTrocada: boo
   if (imagemTrocada) return `A imagem deste post já foi trocada pela arte refeita nesta rodada, mas a atualização terminou com erro: ${mensagem} Confira a página e salve de novo.`
   // CP2B: as recusas da posição congelada não se resolvem salvando de novo — o conselho genérico mandaria repetir o erro.
   if (code === 'ARQUETIPO_POSICAO_CONGELADA_NAO_CABE') {
-    return 'A arte NÃO foi atualizada: a posição do texto desta arte foi escolhida pela foto e está congelada, e o texto novo não cabe nela. A imagem continua sendo a anterior. Encurte o texto ou peça uma nova composição da peça — salvar de novo do mesmo jeito não resolve.'
+    return 'A arte NÃO foi atualizada: a posição do texto desta arte está congelada (a que a foto escolheu, ou a referência do arquétipo), e o texto novo não cabe nela. A imagem continua sendo a anterior. Encurte o texto (menos linhas ou linhas mais curtas) ou peça uma nova composição da peça — salvar de novo do mesmo jeito não resolve.'
   }
   if (code === 'ARQUETIPO_ESCOLHA_ILEGIVEL') {
-    return 'A arte NÃO foi atualizada: o registro da posição que a foto escolheu para esta arte está ilegível ou é de outro modelo, e a posição não é refeita às cegas. A imagem continua sendo a anterior. Peça uma nova composição da peça — salvar de novo não resolve.'
+    return 'A arte NÃO foi atualizada: o registro da posição desta arte está ilegível ou é de outro modelo, e a posição não é refeita às cegas. A imagem continua sendo a anterior. Peça uma nova composição da peça — salvar de novo não resolve.'
+  }
+  if (code === 'SEM_COMBINACAO') {
+    return 'A arte NÃO foi atualizada: com a foto nova, nenhuma posição dentro das zonas do arquétipo serve a este texto (a leitura ou a região protegida não fecham). A imagem continua sendo a anterior. Troque a foto, ou peça uma nova composição com outra variante ou outro arquétipo — salvar de novo não resolve.'
+  }
+  if (code === 'PREFERENCIA_INVIAVEL') {
+    return 'A arte NÃO foi atualizada: o enquadramento fixo pedido impede o corte da foto que resolveria a posição. A imagem continua sendo a anterior. Peça uma nova composição sem o enquadramento fixo — salvar de novo não resolve.'
   }
   return `A arte NÃO foi atualizada: ${mensagem} A imagem continua sendo a anterior — confira a página e salve de novo.`
 }

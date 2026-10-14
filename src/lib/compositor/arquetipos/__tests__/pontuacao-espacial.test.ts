@@ -134,7 +134,7 @@ describe('avaliarCombinacao — tratamento e componentes', () => {
 
     const [vencedora, segunda] = ordenarAvaliacoes([naReferencia, abaixo])
     expect(vencedora).toBe(abaixo)
-    expect(motivoDaVitoria(vencedora, segunda)).toBe(`lê sem tratamento; a segunda precisava de véu ${naReferencia.componentes!.custoDoTratamento.toFixed(2).replace('.', ',')}`)
+    expect(motivoDaVitoria(vencedora, segunda)).toMatch(/^lê sem véu; a segunda pedia véu no (topo|rodapé) \d,\d\d/)
   })
 
   it('empate de custo: a mais calma vence, mesmo longe da referência', () => {
@@ -176,7 +176,7 @@ describe('avaliarCombinacao — eliminação (todos os motivos, na ordem)', () =
     const c = leituraDoCorte(foto(() => 30), { regioes: regioesProtegidas({ catalogo: { x: 100, y: 150, width: 500, height: 300 }, estimado: null }) })
     const a = avaliar(c, [unidade('headline', { y: 200, h: 150 })])
     expect(motivos(a)).toContain(MOTIVOS_DE_ELIMINACAO.invadeRegiaoProtegida)
-    expect(a.eliminada[0]).toMatchObject({ papel: 'headline', detalhe: 'headline cobre 63% da região protegida do catálogo (teto 25%)' })
+    expect(a.eliminada[0]).toMatchObject({ papel: 'headline', detalhe: 'headline (com ornamentos) cobre 63% da região protegida do catálogo (teto 25%)' })
     expect(a.componentes).toBeUndefined()
     expect(a.tratamento).toEqual([{ borda: 'topo', estado: 'sem-necessidade' }])
   })
@@ -304,8 +304,8 @@ describe('ordenarAvaliacoes — filtro sequencial', () => {
     const fora = aval(3, {}, 'center-middle', [{ motivo: MOTIVOS_DE_ELIMINACAO.colisao, detalhe: 'x' }])
     expect(ordenarAvaliacoes([fora, longe, zero, meio])).toEqual([meio, zero, longe, fora])
     expect(motivoDaVitoria(meio, zero)).toBe('mesmo custo de tratamento e mais calma (0,60 contra 0,20)')
-    expect(motivoDaVitoria(zero, longe)).toBe('lê sem tratamento; a segunda precisava de véu 0,08')
-    expect(motivoDaVitoria(aval(4, { custoDoTratamento: 0.45 }), aval(5, { custoDoTratamento: 0.9 }))).toBe('tratamento mais leve (véu 0,45 contra 0,90)')
+    expect(motivoDaVitoria(zero, longe)).toBe('lê sem véu; a segunda pedia véu (custo 0,08)')
+    expect(motivoDaVitoria(aval(4, { custoDoTratamento: 0.45 }), aval(5, { custoDoTratamento: 0.9 }))).toBe('tratamento mais leve (véu (custo 0,45), contra véu (custo 0,90))')
   })
 
   it('sem válidas: só as eliminadas, na ordem de entrada; sem segunda: única válida', () => {

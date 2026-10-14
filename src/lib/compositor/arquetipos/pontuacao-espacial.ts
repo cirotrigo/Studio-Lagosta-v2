@@ -92,19 +92,27 @@ export function avaliarCombinacao(args: {
     eliminada.push({ motivo: MOTIVOS_DE_ELIMINACAO.corteSemOAssunto, detalhe: `o corte ${corte.crop} mostra ${pct(corte.assuntoVisivel)}% do assunto do catálogo (mínimo ${pct(ASSUNTO_VISIVEL_MINIMO)}%)` })
   }
 
-  // b. A região protegida: a unidade inteira (com os ornamentos) e cada texto dela. Só a ANOTADA (catálogo) elimina: a
-  // estimada pela energia é heurística (a borda de uma faixa de luz vira "assunto"), e como recusa dura ela zerava
-  // fotos inteiras — entra só como custo no componente `assunto` (o mesmo "medida × estimada" do revisor).
+  // b. A região protegida: a unidade inteira (com os ornamentos), cada texto dela e a logo de referência fixa (que anda
+  // com a faixa do serviço). Só a ANOTADA (catálogo) elimina; a ESTIMADA pela energia é heurística (a borda de uma
+  // faixa de luz vira "assunto") e, como recusa dura, zerava fotos inteiras — ela vira um PATAMAR da ordenação
+  // (`regiaoEstimada`: quem não a cobre vence quem cobre, antes do custo do véu), nunca eliminação.
+  const alvosDaRegiao = [
+    ...unidades.flatMap((u) => [{ papel: u.papel, nome: `${u.papel} (com ornamentos)`, rect: u.rectComOrnamentos, texto: false }, ...u.textos.map((t) => ({ papel: u.papel, nome: t.camada, rect: t.rect, texto: true }))]),
+    ...(materializada.logo ? [{ papel: 'logo' as const, nome: 'logo', rect: materializada.logo, texto: false }] : []),
+  ]
+  let regiaoEstimada: AvaliacaoDaCombinacao['regiaoEstimada']
   for (const regiao of corte.regioes) {
-    if (regiao.origem !== 'catalogo') continue
-    const origem = 'do catálogo'
-    for (const u of unidades) {
-      for (const alvo of [{ nome: u.papel, rect: u.rectComOrnamentos }, ...u.textos.map((t) => ({ nome: t.camada, rect: t.rect }))]) {
+    if (regiao.origem === 'catalogo') {
+      for (const alvo of alvosDaRegiao) {
         const cobertura = coberturaDaRegiao(alvo.rect, regiao.rect)
         if (cobertura <= regiao.teto) continue
-        eliminada.push({ motivo: MOTIVOS_DE_ELIMINACAO.invadeRegiaoProtegida, papel: u.papel, detalhe: `${alvo.nome} cobre ${pct(cobertura)}% da região protegida ${origem} (teto ${pct(regiao.teto)}%)` })
+        eliminada.push({ motivo: MOTIVOS_DE_ELIMINACAO.invadeRegiaoProtegida, papel: alvo.papel, detalhe: `${alvo.nome} cobre ${pct(cobertura)}% da região protegida do catálogo (teto ${pct(regiao.teto)}%)` })
       }
+      continue
     }
+    // A estimada: só os TEXTOS contam (o pedido do owner é que texto não cubra a região); a pior cobertura decide.
+    const cobertura = Math.max(0, ...alvosDaRegiao.filter((a) => a.texto || a.nome.endsWith('(com ornamentos)')).map((a) => coberturaDaRegiao(a.rect, regiao.rect)))
+    if (!regiaoEstimada || cobertura > regiaoEstimada.cobertura) regiaoEstimada = { cobertura: arred(cobertura), teto: regiao.teto, invade: cobertura > regiao.teto }
   }
 
   // c. A colisão entre unidades de faixas diferentes (encostar não conta).
@@ -200,7 +208,7 @@ export function avaliarCombinacao(args: {
     }
   }
 
-  const base = { crop: corte.crop, combinacao, eliminada, tratamento, textos }
+  const base = { crop: corte.crop, combinacao, eliminada, tratamento, textos, ...(regiaoEstimada ? { regiaoEstimada } : {}) }
   if (eliminada.length > 0) return base
 
   // g. Os componentes (definições no contrato).
@@ -250,31 +258,41 @@ function estreitar(lista: AvaliacaoDaCombinacao[], chave: (a: AvaliacaoDaCombina
   return lista.filter((a) => chave(a) >= melhor - folga)
 }
 
+/** Cobrir a região ESTIMADA além do teto. */
+export const invadeAEstimada = (a: AvaliacaoDaCombinacao) => a.regiaoEstimada?.invade === true
+
 /**
- * TODAS as avaliações: a vencedora primeiro (filtro sequencial), depois as outras válidas por (custo, pontuação,
- * referência, corte, índice) e por último as eliminadas, na ordem de entrada.
+ * O FILTRO SEQUENCIAL que escolhe a melhor de uma lista de válidas:
+ * 0. a região estimada como assunto: quem não a cobre (além do teto) vence quem cobre; se todas cobrem, a de menor
+ *    cobertura (é heurística — nunca elimina, mas também nunca fica atrás do véu);
+ * 1. o menor custo de tratamento (tolerância `TOLERANCIA_DO_CUSTO`);
+ * 2. a maior pontuação (tolerância `TOLERANCIA_DA_PONTUACAO`);
+ * 3. a mais perto da referência; 4. o corte central; 5. o menor índice; 6. a primeira na entrada.
  */
-export function ordenarAvaliacoes(avaliacoes: AvaliacaoDaCombinacao[]): AvaliacaoDaCombinacao[] {
-  const validas = avaliacoes.filter(ehValida)
-  const eliminadas = avaliacoes.filter((a) => !ehValida(a))
-  if (validas.length === 0) return eliminadas
-  let restam = estreitar(validas, (a) => -custoDe(a), TOLERANCIA_DO_CUSTO)
+export function melhorEntre(validas: AvaliacaoDaCombinacao[]): AvaliacaoDaCombinacao {
+  let restam = validas.some((a) => !invadeAEstimada(a)) ? validas.filter((a) => !invadeAEstimada(a)) : estreitar(validas, (a) => -(a.regiaoEstimada?.cobertura ?? 0), 0.05)
+  restam = estreitar(restam, (a) => -custoDe(a), TOLERANCIA_DO_CUSTO)
   restam = estreitar(restam, pontuacaoDe, TOLERANCIA_DA_PONTUACAO)
   restam = estreitar(restam, (a) => a.componentes!.referencia)
   restam = estreitar(restam, (a) => a.componentes!.corte)
   restam = estreitar(restam, (a) => -a.combinacao.indice)
-  const vencedora = restam[0]
-  const outras = validas
-    .filter((a) => a !== vencedora)
-    .sort(
-      (a, b) =>
-        custoDe(a) - custoDe(b) ||
-        pontuacaoDe(b) - pontuacaoDe(a) ||
-        b.componentes!.referencia - a.componentes!.referencia ||
-        b.componentes!.corte - a.componentes!.corte ||
-        a.combinacao.indice - b.combinacao.indice,
-    )
-  return [vencedora, ...outras, ...eliminadas]
+  return restam[0]
+}
+
+/**
+ * TODAS as avaliações: as válidas na ordem do MESMO filtro sequencial (a vencedora, depois a melhor do que sobra, e
+ * assim por diante — no máximo 75), e por último as eliminadas, na ordem de entrada.
+ */
+export function ordenarAvaliacoes(avaliacoes: AvaliacaoDaCombinacao[]): AvaliacaoDaCombinacao[] {
+  const eliminadas = avaliacoes.filter((a) => !ehValida(a))
+  const restam = avaliacoes.filter(ehValida)
+  const ordenadas: AvaliacaoDaCombinacao[] = []
+  while (restam.length > 0) {
+    const melhor = melhorEntre(restam)
+    ordenadas.push(melhor)
+    restam.splice(restam.indexOf(melhor), 1)
+  }
+  return [...ordenadas, ...eliminadas]
 }
 
 /** A avaliação compacta do diagnóstico (sem as camadas). */
@@ -287,7 +305,20 @@ export function resumirAvaliacao(a: AvaliacaoDaCombinacao): ResumoDaAvaliacao {
     tratamento: a.tratamento ?? [],
     textos: a.textos ?? [],
     eliminada: a.eliminada,
+    ...(a.regiaoEstimada ? { regiaoEstimada: a.regiaoEstimada } : {}),
   }
+}
+
+/** O tratamento de uma avaliação em palavras: "lê sem véu", "véu no rodapé 0,76", "véu no topo 0,90 e nem assim lê". */
+export function descreverTratamento(a: AvaliacaoDaCombinacao): string {
+  const tratadas = (a.tratamento ?? []).filter((t) => t.estado === 'tratado')
+  const explicitas = (a.tratamento ?? []).filter((t) => t.estado === 'explicito')
+  if (tratadas.length === 0) {
+    const custo = a.componentes?.custoDoTratamento ?? 0
+    if (custo > 0) return `véu (custo ${num(custo)})`
+    return explicitas.length > 0 ? `sem véu automático (o véu da página no ${explicitas.map((t) => nomeDaBorda(t.borda)).join(' e ')} fica)` : 'lê sem véu'
+  }
+  return tratadas.map((t) => `véu no ${nomeDaBorda(t.borda)} ${num(t.forca ?? 0)}${t.alcancaAlvo === false ? ' e nem assim lê' : ''}`).join(', ')
 }
 
 const COMPONENTE_QUE_DECIDIU: Record<keyof typeof PESOS_DA_PONTUACAO, string> = {
@@ -306,10 +337,13 @@ export function motivoDaVitoria(vencedora: AvaliacaoDaCombinacao, segunda?: Aval
   if (!segunda || !ehValida(segunda) || !ehValida(vencedora)) return 'única combinação válida'
   const a = vencedora.componentes!
   const b = segunda.componentes!
+  if (invadeAEstimada(segunda) && !invadeAEstimada(vencedora)) {
+    return `não cobre a região estimada como assunto; a segunda cobria ${pct(segunda.regiaoEstimada!.cobertura)}% dela`
+  }
   if (b.custoDoTratamento > a.custoDoTratamento + TOLERANCIA_DO_CUSTO) {
     return a.custoDoTratamento === 0
-      ? `lê sem tratamento; a segunda precisava de véu ${num(b.custoDoTratamento)}`
-      : `tratamento mais leve (véu ${num(a.custoDoTratamento)} contra ${num(b.custoDoTratamento)})`
+      ? `${descreverTratamento(vencedora)}; a segunda pedia ${descreverTratamento(segunda)}`
+      : `tratamento mais leve (${descreverTratamento(vencedora)}, contra ${descreverTratamento(segunda)})`
   }
   if (pontuacaoDe(segunda) < pontuacaoDe(vencedora) - TOLERANCIA_DA_PONTUACAO) {
     const ganho = (k: keyof typeof PESOS_DA_PONTUACAO) => PESOS_DA_PONTUACAO[k] * (a[k] - b[k])

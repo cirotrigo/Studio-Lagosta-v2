@@ -107,7 +107,7 @@ import { candidatasDistintas, gradientesARecusar, MOTIVOS_DO_TRATAMENTO, planeja
 import { conferirLinhas, conferirLogo, prepararArquetipo, type ArquetipoPreparado } from './arquetipos/na-spec'
 import { caixasMaximas, referenciaDoPapel, type Materializacao, type RetanguloPx } from './arquetipos/materializar'
 import { MODO_BUSCA_ESPACIAL, type DiagnosticoDaBuscaEspacial, type EscolhaParaReproduzir, type LeituraDoCorte, type PlanejamentoDoTratamento } from './arquetipos/busca-espacial-tipos'
-import { bordaNaReferencia, chaveDaFoto as impressaoDaFoto, selecionarNoArquetipo, type SelecaoNoArquetipo } from './arquetipos/busca-espacial'
+import { chaveDaFoto as impressaoDaFoto, contarRecusas, exemplosDeRecusa, selecionarNoArquetipo, type SelecaoNoArquetipo } from './arquetipos/busca-espacial'
 import { partidaNoArquetipo, type PartidaNoArquetipo } from './arquetipos/candidatos-espaciais'
 import { regioesProtegidas } from './arquetipos/pontuacao-espacial'
 import {
@@ -1071,17 +1071,13 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       const m = p
       throw new CreativeError(
         m.problemas[0].codigo,
-        `${chaveDoArquetipo(arq.definicao)} na posição de referência: ${m.problemas.map((p) => `${p.papel} — ${p.motivo}`).join('; ')}. A referência é o portão estrutural (o mesmo do medir-copy): a busca pela foto parte dela e não resgata uma referência que não cabe.`,
+        `${chaveDoArquetipo(arq.definicao)}: ${m.problemas.map((p) => `${p.papel} — ${p.motivo}`).join('; ')}. Nenhuma posição da busca dentro da zona conserta isto (o portão estrutural, o mesmo do medir-copy): encurte o texto (menos linhas ou linhas mais curtas).`,
         422,
         { arquetipo: chaveDoArquetipo(arq.definicao), formato: arq.formato, problemas: m.problemas },
       )
     }
     partidaArq = p
     materializacao = p.materializacao
-    for (const membro of p.resgatados) {
-      const f = p.faixas.find((x) => x.membros.includes(membro))
-      avisos.push(`${membro}: a referência do arquétipo sai da zona efetiva (a área segura do projeto a corta); a faixa partiu da posição válida mais perto dela (${f?.candidatos[0]?.dy ?? 0}px).`)
-    }
   }
 
   // 2. O mapa e o assunto — por corte candidato.
@@ -1094,6 +1090,16 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   const pedidoDeReproducao = arq ? opcoes.escolhaEspacial ?? null : null
   const reproducao = pedidoDeReproducao && pedidoDeReproducao.modo === MODO_BUSCA_ESPACIAL && pedidoDeReproducao.foto !== chaveDaFotoDaPeca ? null : pedidoDeReproducao
   if (pedidoDeReproducao && !reproducao) avisos.push('A foto da peça mudou: a posição foi escolhida de novo pela foto nova (a escolha gravada era de outra foto).')
+  // O resgate da partida só é notícia quando a busca roda (na reprodução vale a posição congelada).
+  if (partidaArq && !reproducao) {
+    for (const r of partidaArq.resgatados) {
+      avisos.push(
+        r.causa === 'ornamento'
+          ? `${r.membro}: com o texto na referência, os ornamentos do arranjo (ícone, filete, selo) saíam da zona efetiva; a faixa partiu da posição válida mais perto dela (${r.dy} px).`
+          : `${r.membro}: a referência do arquétipo sai da zona efetiva (a área segura do projeto a corta); a faixa partiu da posição válida mais perto dela (${r.dy} px).`,
+      )
+    }
+  }
   const cortes: CropPosition[] =
     arq && reproducao ? [reproducao.modo === 'referencia' ? 'center-middle' : reproducao.corte] : cortesCandidatos(foto, canvas, spec.preferencias?.enquadramento === 'fixo')
   const assuntoDoCatalogo = foto && spec.foto?.driveFileId
@@ -1106,6 +1112,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   const cores = montados.map((b) => b.cor)
   // CP2B: a foto em cada corte, para a busca espacial do arquétipo (depois do laço).
   const fotoPorCorte = new Map<CropPosition, { raster: FotoCinza | null; mapa: MapaDeCalma | null; assunto: Rect | null }>()
+  let algumCortePreservaOAssunto = false
   const leiturasDoCorte = (crop: CropPosition, raster: FotoCinza | null, mapa: MapaDeCalma | null, assunto: Rect | null): LeituraDoCorte | null =>
     raster && mapa
       ? {
@@ -1113,7 +1120,9 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
           raster,
           mapa,
           regioes: regioesProtegidas({ catalogo: assuntoDoCatalogo ? assunto : null, estimado: assuntoDoCatalogo ? null : assunto }),
-          assuntoVisivel: assuntoDoCatalogo && assunto ? fracaoVisivelDoAssunto(assunto, canvas) : null,
+          // Perder o assunto do catálogo só elimina o corte quando OUTRO corte o preserva: se nenhum preserva (foto
+          // larga, assunto largo), nenhum corte é eliminado por isso — fica o aviso, como no T1a e sem arquétipo.
+          assuntoVisivel: assuntoDoCatalogo && assunto && algumCortePreservaOAssunto ? fracaoVisivelDoAssunto(assunto, canvas) : null,
         }
       : null
   for (const crop of cortes) {
@@ -1122,6 +1131,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     const assunto = assuntoDoCatalogo ? assuntoEmPixels(assuntoDoCatalogo, { width: foto!.largura, height: foto!.altura }, canvas, crop) : mapa ? estimarAssunto(mapa) : null
     if (arq && materializacao) {
       fotoPorCorte.set(crop, { raster, mapa, assunto })
+      if (assuntoDoCatalogo && assunto && fracaoVisivelDoAssunto(assunto, canvas) >= 0.75) algumCortePreservaOAssunto = true
       continue
     }
     const candidatos = candidatosDePosicao(g, spec, pilha, crop, {
@@ -1173,6 +1183,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
         foto: chaveDaFotoDaPeca,
         // A peça do T1a (`referencia`) reproduz a referência no corte central; se ela não cabe mais, é recusa.
         reproduzir: reproducao && reproducao.modo === MODO_BUSCA_ESPACIAL ? reproducao : reproducao ? { modo: MODO_BUSCA_ESPACIAL, foto: chaveDaFotoDaPeca, corte: 'center-middle', deslocamentos: {} } : null,
+        reproduzirReferencia: reproducao?.modo === 'referencia',
       })
     const leituras = cortes.flatMap((crop) => {
       const f = fotoPorCorte.get(crop)
@@ -1196,20 +1207,35 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
         if (alternativa && 'escolha' in alternativa) {
           throw new CreativeError(
             'PREFERENCIA_INVIAVEL',
-            `${chaveDoArquetipo(arq.definicao)}: com o enquadramento fixo (corte central) nenhuma posição permitida resolve a foto, e o corte ${alternativa.crop} resolve. Peça sem enquadramento fixo, ou troque a foto.`,
+            `${chaveDoArquetipo(arq.definicao)}: com o enquadramento fixo (corte central) nenhuma posição permitida resolve a foto (${Object.entries(contarRecusas(sel.resultado.ordenadas)).map(([m, n]) => `${m} ×${n}`).join(', ')}), e o corte ${alternativa.crop} resolve. Peça sem enquadramento fixo, ou troque a foto.`,
             422,
-            { preferencia: 'enquadramento', pedido: 'fixo', arquetipo: chaveDoArquetipo(arq.definicao), formato: arq.formato, alternativa: { crop: alternativa.crop, deslocamentos: alternativa.escolha.deslocamentos }, recusas: alternativa.diagnostico.recusas },
+            {
+              preferencia: 'enquadramento',
+              pedido: 'fixo',
+              motivo: sel.motivo,
+              arquetipo: chaveDoArquetipo(arq.definicao),
+              formato: arq.formato,
+              recusasNoCorteFixo: contarRecusas(sel.resultado.ordenadas),
+              alternativa: { crop: alternativa.crop, deslocamentos: alternativa.escolha.deslocamentos, recusas: alternativa.diagnostico.recusas },
+            },
           )
         }
+        if (alternativa && 'resultado' in alternativa) {
+          sel.resultado.ordenadas.push(...alternativa.resultado.ordenadas)
+          sel.resultado.avaliadas += alternativa.resultado.avaliadas
+          cortes.push(...extras.map((l) => l.crop))
+        }
       }
-      const exemplos = sel.resultado.ordenadas.filter((a) => a.eliminada.length > 0).slice(0, 6).map((a) => ({ crop: a.crop, escolhas: a.combinacao.escolhas, eliminada: a.eliminada }))
-      const contagem: Record<string, number> = {}
-      for (const a of sel.resultado.ordenadas) for (const m of new Set(a.eliminada.map((e) => e.motivo))) contagem[m] = (contagem[m] ?? 0) + 1
+      const contagem = contarRecusas(sel.resultado.ordenadas)
+      const saida =
+        sel.motivo === MOTIVOS_DO_TRATAMENTO.polaridadeIncompativel || sel.motivo === MOTIVOS_DO_TRATAMENTO.piorou
+          ? 'Troque a foto, ou a variante (as cores dos textos que dividem a borda), ou o arquétipo.'
+          : 'Troque a foto, ou o arquétipo.'
       throw new CreativeError(
         'SEM_COMBINACAO',
-        `${chaveDoArquetipo(arq.definicao)}: nenhuma combinação de corte e posição dentro das zonas serve a esta foto e a esta copy (${sel.resultado.avaliadas} avaliadas; ${Object.entries(contagem).map(([m, n]) => `${m} ×${n}`).join(', ')}). Troque a foto, ou o arquétipo.`,
+        `${chaveDoArquetipo(arq.definicao)}: nenhuma combinação de corte e posição dentro das zonas serve a esta foto e a esta copy (${sel.resultado.avaliadas} avaliadas; ${Object.entries(contagem).map(([m, n]) => `${m} ×${n}`).join(', ')}). ${saida}`,
         422,
-        { motivo: sel.motivo, arquetipo: chaveDoArquetipo(arq.definicao), formato: arq.formato, cortesAvaliados: cortes, combinacoesAvaliadas: sel.resultado.avaliadas, recusas: contagem, exemplos },
+        { motivo: sel.motivo, arquetipo: chaveDoArquetipo(arq.definicao), formato: arq.formato, cortesAvaliados: cortes, combinacoesAvaliadas: sel.resultado.avaliadas, recusas: contagem, exemplos: exemplosDeRecusa(sel.resultado.ordenadas) },
       )
     }
     materializacao = sel.materializacao
@@ -1230,7 +1256,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
         pontuacao: 1,
         calma: 1,
         tintaNecessaria: 0,
-        cobreAssunto: 0,
+        cobreAssunto: sel.diagnostico.vencedor?.regiaoEstimada?.cobertura ?? 0,
         descartado: false,
         motivo: reproducao?.modo === 'referencia' ? `arquétipo ${chaveDoArquetipo(arq.definicao)} na posição de referência (peça do T1a reproduzida)` : `arquétipo ${chaveDoArquetipo(arq.definicao)}: ${sel.diagnostico.motivo}`,
       },
@@ -1270,10 +1296,9 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     // T1a: cada unidade na posição que a materialização deu (a referência, alinhada como o arquétipo manda) — pela
     // MESMA conta que o medir-copy usa para conferir a geometria final (`camadasNaReferencia`).
     for (const { unidade: u, rect, camadas } of camadasNaReferencia(unidadesArq, materializacao.papeis, arq.definicao.preferencias.alinha)) {
-      // A borda do tratamento é a da posição de REFERÊNCIA (CP2B): o deslocamento da busca não vira a borda — a mesma
-      // conta que a busca usou para estimar o tratamento. Com dy 0, a borda do T1a.
-      const dy = escolhaDoArquetipo?.deslocamentos[u.papel] ?? 0
-      const ancoraDaUnidade: Ancora = bordaNaReferencia({ ...rect, y: rect.y - dy }, canvas.height)
+      // A borda do tratamento é a GEOMÉTRICA da posição final (`meio` → o lado de H/2 da caixa do grupo, com os
+      // elementos): a mesma da régua e do revisor, e a mesma que a busca usou para estimar o tratamento (CP2B).
+      const ancoraDaUnidade: Ancora = 'meio'
       camadasDeTexto.push(...camadas)
       rectsDeGrupo.push({ grupo: grupoDaUnidade(u.papel), rect, cores: u.blocos.map((b) => b.cor), camadas, ancora: ancoraDaUnidade })
     }
@@ -1332,7 +1357,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     // automática, a escolha de canto de sempre (o mais calmo), no piso do projeto. Contraste da logo é do CP3.
     const fixa = materializacao.papeis.logo?.posicao
     const largura = Math.round(assinatura.logo.largura * (spec.formato === 'story' ? 1 : escalaDoFormato))
-    const canto = fixa
+    let canto: { canto: Canto; rect: Rect } | null = fixa
       ? { canto: arq.definicao.preferencias.cantoDaMarca as Canto, rect: { x: fixa.x, y: fixa.y, width: fixa.width, height: fixa.height } }
       : materializacao.logoAutomatica
         ? escolherCanto({
@@ -1341,10 +1366,19 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
             blocos: rectsDeGrupo.map((r) => r.rect),
             logo: { w: largura, h: Math.round(largura * assinatura.logo.razao) },
             // Na recomposição, o canto CONGELADO com a posição (CP2B): a copy nova não troca a logo de canto.
-            pedido: reproducao?.modo === MODO_BUSCA_ESPACIAL ? reproducao.cantoDaLogo ?? undefined : undefined,
+            pedido: reproducao?.cantoDaLogo ?? undefined,
             formato: spec.formato,
           })
         : null
+    // O canto congelado que agora encosta no texto novo não fica por cima dele: o canto livre de sempre, DITO.
+    const congelado = !fixa && materializacao.logoAutomatica ? reproducao?.cantoDaLogo ?? null : null
+    if (canto && congelado && rectsDeGrupo.some((r) => intersecta(r.rect, canto.rect))) {
+      const livre = escolherCanto({ g: gArq!, mapa: melhor.mapa, blocos: rectsDeGrupo.map((r) => r.rect), logo: { w: largura, h: Math.round(largura * assinatura.logo.razao) }, pedido: undefined, formato: spec.formato })
+      if (livre) {
+        avisos.push(`A logo saiu do canto congelado (${congelado}) para o ${livre.canto}: lá ela encostava no texto novo.`)
+        canto = livre
+      }
+    }
     if (canto) {
       camadasDaLogo.push({
         id: 'logo',
