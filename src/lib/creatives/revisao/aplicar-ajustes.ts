@@ -59,6 +59,22 @@ export interface AjusteAplicado {
   detalhe: string
   /** O rótulo `achado` do ajuste, quando veio (rastreabilidade por índice, CP1). */
   achado?: string
+  /** CP4: a comparação antes/depois que aceitou (as melhoras medidas e o estado do achado alvo). */
+  comparacao?: ComparacaoDoAjuste
+  /** CP4: o que o autofix geométrico mudou na cópia aceita (fonte, entrelinha, caixa) — dito, nunca em silêncio. */
+  autocorrecao?: Array<{ layerId: string; propriedade: string; de: number; para: number; motivo: string }>
+}
+
+/** O que a não-piora (CP4) mediu de um ajuste: as pioras (antes → depois), o que não pôde medir e o achado alvo. */
+export interface ComparacaoDoAjuste {
+  pioras: Array<{ propriedade: string; camadas: string[]; antes: number | string | null; depois: number | string | null; motivo: string }>
+  naoMedidas: Array<{ propriedade: string; lado: 'antes' | 'depois' | 'ambos'; motivo: string }>
+  melhoras: Array<{ propriedade: string; camadas: string[]; antes: number | string | null; depois: number | string | null }>
+  achadoAlvo?: { id: string; regra: string; estado: string; antes: number | null; depois: number | null }
+  /** Regras `nao-avaliada` dos dois lados por não se aplicarem à peça (sem foto → sem assunto): ditas, não recusam. */
+  naoAplicaveis?: Array<{ propriedade: string; motivo: string }>
+  /** CP4: a candidata também é comparada com o estado de ENTRADA da chamada (contra a catraca de tolerâncias). */
+  contraEntrada?: { pioras: ComparacaoDoAjuste['pioras'] }
 }
 
 export interface AjusteRecusado {
@@ -71,6 +87,8 @@ export interface AjusteRecusado {
   campos?: string[]
   /** O rótulo `achado` do ajuste, quando veio. */
   achado?: string
+  /** CP4: a comparação antes/depois que recusou (pioras, não medidas, achado alvo). */
+  comparacao?: ComparacaoDoAjuste
 }
 
 export interface ResultadoDosAjustes {
@@ -291,19 +309,32 @@ function inserirAcimaDoFundo(camadas: Layer[], nova: Layer, canvas: Canvas): Lay
 export function aplicarAjustes(
   entrada: Layer[],
   ajustes: Ajuste[],
-  ctx: { canvas: Canvas; medir: MeasureLayerHeight },
+  ctx: {
+    canvas: Canvas
+    medir: MeasureLayerHeight
+    indiceBase?: number
+    /**
+     * O conteúdo de cada texto como a PÁGINA o tinha antes desta chamada (id → content). Esvaziar o texto pelo
+     * `slotValues` e escondê-lo por `visibilidade` na MESMA chamada é apagar copy em dois passos: a recusa olha os dois.
+     */
+    conteudoAnterior?: ReadonlyMap<string, string>
+  },
 ): ResultadoDosAjustes {
   let camadas = entrada
   const aplicados: AjusteAplicado[] = []
   const recusados: AjusteRecusado[] = []
   const alteradas = new Set<string>()
   const W = ctx.canvas.width
+  // O índice é o do LOTE: o executor do CP4 chama um ajuste por vez e o registro (inclusive a marca
+  // `ocultaPeloRevisor.ajuste`) tem de apontar o índice que a pessoa mandou, não 0.
+  const indiceBase = ctx.indiceBase ?? 0
   const H = ctx.canvas.height
   // O medidor do servidor só mede `text`; o rich text é medido como texto
   // simples do mesmo corpo e entrelinha — a mesma aproximação do compositor.
   const medirTexto = (l: Layer) => ctx.medir(l.type === 'rich-text' ? ({ ...l, type: 'text' } as Layer) : l)
 
-  ajustes.forEach((a, indice) => {
+  ajustes.forEach((a, i) => {
+    const indice = indiceBase + i
     const recusar = (codigo: CodigoDaRecusa, motivo: string, campos?: string[]) =>
       recusados.push({ indice, tipo: String(a.tipo), motivo, codigo, ...(campos?.length ? { campos } : {}) })
     const problema = problemaEstruturadoDoAjuste(a)
@@ -500,6 +531,23 @@ export function aplicarAjustes(
 
       case 'visibilidade': {
         const alvo = new Set(ids)
+        // 🔴 Decisão do owner (15/10/2026): AJUSTAR-ARTE NÃO PODE APAGAR COPY. Esconder texto com conteúdo é perda de
+        // conteúdo, não correção de design — recusado aqui, na pré-checagem estrutural (antes de qualquer medida), com
+        // ou sem `achado`, mesmo que esconder "resolvesse" colisão ou contraste; se UMA das camadas é texto com
+        // conteúdo, o ajuste INTEIRO é recusado. Texto vazio e camada decorativa seguem o contrato de sempre.
+        if (a.visivel === false) {
+          const conteudoDe = (id: string) => {
+            const l = porId.get(id)
+            if (!l || (l.type !== 'text' && l.type !== 'rich-text')) return ''
+            const agora = String(l.content ?? '').trim()
+            return agora || String(ctx.conteudoAnterior?.get(id) ?? '').trim()
+          }
+          const comConteudo = ids.filter((id) => conteudoDe(id).length > 0)
+          if (comConteudo.length > 0) {
+            recusar('CONTEUDO_NAO_PODE_SER_OCULTADO', `esconder texto com conteúdo é apagar copy, não corrigir a arte: ${comConteudo.map((id) => `${id} ("${conteudoDe(id).slice(0, 40)}")`).join(', ')}. Deixe o achado aberto para revisão humana ou outra composição; nada deste ajuste foi aplicado.`, ['visivel', 'camadas'])
+            return
+          }
+        }
         // A camada escondida pelo revisor leva a MARCA (metadata.revisao.ocultaPeloRevisor): é o que faz o
         // aprendizado não ler o esconder mecânico como a pessoa apagando o texto ao agendar (REV-9E-01).
         const marca = { em: new Date().toISOString(), ajuste: indice }
@@ -562,7 +610,8 @@ export function aplicarAjustes(
 
   // Cada registro carrega o `achado` do próprio ajuste: o rótulo não fica só no pedido.
   const comAchado = <T extends { indice: number }>(r: T): T => {
-    const achado = (ajustes[r.indice] as { achado?: unknown } | undefined)?.achado
+    // `indice` é o do LOTE (`indiceBase`); a lista desta chamada começa em `indiceBase` (Codex R1 do CP4).
+    const achado = (ajustes[r.indice - indiceBase] as { achado?: unknown } | undefined)?.achado
     return typeof achado === 'string' ? { ...r, achado } : r
   }
   return { camadas, aplicados: aplicados.map(comAchado), recusados: recusados.map(comAchado), alteradas: [...alteradas] }

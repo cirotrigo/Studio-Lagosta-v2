@@ -40,7 +40,7 @@ import { lerFotoComoCover } from '@/lib/creatives/halo/halo-medicao'
 import { estimarAssunto, mapaDeCalma } from '@/lib/compositor/mapa-de-calma'
 import type { Rect } from '@/lib/creatives/halo/halo'
 import type { RelatorioDaRevisao } from './contrato'
-import { avaliarPeca, ehTextoVisivel, entrelinhaDaCamada, logosDaPeca, type ReferenciaDeCamada } from './regras'
+import { avaliarPeca, ehTextoVisivel, entrelinhaDaCamada, fotoDeFundo, logosDaPeca, type EntradaDaRevisao, type ReferenciaDeCamada } from './regras'
 import { medirLogosDaPeca } from '@/lib/compositor/legibilidade-da-logo'
 import {
   MODELO_DA_VISAO,
@@ -232,11 +232,7 @@ async function assuntoDaPeca(
   formato: RevisaoDaArte['formato'],
   fieldValues: Record<string, any> | null,
 ): Promise<{ rect: Rect; origem: 'catalogo' | 'estimado' } | null> {
-  const fundo =
-    camadas.find((l) => l.id === 'bg-foto' && l.visible !== false) ??
-    camadas.find(
-      (l) => l.type === 'image' && l.visible !== false && (l.size?.width ?? 0) >= canvas.width * 0.9 && (l.size?.height ?? 0) >= canvas.height * 0.9,
-    )
+  const fundo = fotoDeFundo(camadas, canvas)
   if (!fundo?.fileUrl) return null
   const composicao = fieldValues?.composicao
   const corte = fundo.style?.cropPosition ?? null
@@ -322,6 +318,173 @@ async function recortesDosBlocos(
   return saida
 }
 
+
+/** O que a medida de uma peça precisa da PÁGINA e do banco — calculado uma vez; vale para todos os estados das camadas. */
+export interface ContextoDaMedicao {
+  projectId: number
+  canvas: { width: number; height: number }
+  formato: RevisaoDaArte['formato']
+  /** O fundo do render de publicação (o mesmo conversor). */
+  background: string
+  faixa: [number, number]
+  referencias: Record<string, ReferenciaDeCamada>
+  referencia: string | null
+  assunto: { rect: Rect; origem: 'catalogo' | 'estimado' } | null
+  /** A origem gravada da variante da logo desenhada (CP3), url → origem. */
+  origensDaLogo: ReadonlyMap<string, 'pagina' | 'projeto'>
+  /** Bytes da logo por URL, um download por chamada (o executor do CP4 mede N vezes com este mesmo contexto). */
+  cacheDeLogos: Map<string, Promise<Buffer>>
+  /** As fontes do projeto já foram registradas neste contexto (uma vez por chamada, não por medida). */
+  fontesRegistradas?: boolean
+}
+
+/**
+ * Lê do banco o que a medição precisa (a faixa do gradiente do projeto, as gerações da página, as referências de
+ * corpo/entrelinha, o assunto da foto) a partir das camadas ATUAIS da página. O assunto depende só da foto de
+ * fundo (ajustes não a trocam); as referências, do papel das camadas.
+ */
+export async function contextoDaMedicao(args: {
+  projectId: number
+  page: { id: string; name: string; width: number; height: number; tags: string[]; background: string | null; layers: unknown }
+  camadas: Layer[]
+}): Promise<ContextoDaMedicao> {
+  const { projectId, page, camadas } = args
+  const canvas = { width: page.width, height: page.height }
+  const formato = formatoDaPagina({ name: page.name, tags: page.tags, width: page.width, height: page.height })
+  const designData = convertPageToDesignData({ id: page.id, name: page.name, width: page.width, height: page.height, layers: page.layers, background: page.background })
+  const background = designData.canvas.backgroundColor
+  const [projeto, geracoes] = await Promise.all([
+    db.project.findUnique({ where: { id: projectId }, select: { assinatura: true } }),
+    db.generation.findMany({
+      // Sem filtrar pelo template: a página MUDA de pasta quando é agendada
+      // (`moverPaginaParaSemana`), e a arte do compositor fica no template antigo.
+      where: { projectId, fieldValues: { path: ['pageId'], equals: page.id } },
+      orderBy: { createdAt: 'desc' },
+      take: 15,
+      select: { id: true, fieldValues: true, sourcePageId: true },
+    }),
+  ])
+  const gradienteDoProjeto = ((projeto?.assinatura as Record<string, any> | null)?.gradiente ?? {}) as Record<string, unknown>
+  const faixa: [number, number] = [
+    numero(gradienteDoProjeto.forcaMinima, GRADIENTE_PADRAO.forcaMinima),
+    numero(gradienteDoProjeto.forcaMaxima, GRADIENTE_PADRAO.forcaMaxima),
+  ]
+  const doCompositor = geracoes.find((g) => (g.fieldValues as Record<string, unknown> | null)?.source === 'compositor')
+  const fieldValues = (doCompositor?.fieldValues ?? null) as Record<string, any> | null
+  const varianteGravada = fieldValues?.composicao?.logo?.legibilidade?.variante as { url?: unknown; origem?: unknown } | undefined
+  const origensDaLogo = new Map<string, 'pagina' | 'projeto'>()
+  if (typeof varianteGravada?.url === 'string' && (varianteGravada.origem === 'pagina' || varianteGravada.origem === 'projeto')) origensDaLogo.set(varianteGravada.url, varianteGravada.origem)
+  const { referencias, origem: referencia } = await referenciasDaPagina(camadas, fieldValues?.composicao ?? null, geracoes)
+  const assunto = await assuntoDaPeca(camadas, canvas, formato, fieldValues)
+  return { projectId, canvas, formato, background, faixa, referencias, referencia, assunto, origensDaLogo, cacheDeLogos: new Map() }
+}
+
+/** A entrada do revisor medida das CAMADAS dadas (sem a visão): fontes, geometria, régua e logo. Nunca lança. */
+export type MedidaDaPeca = Omit<EntradaDaRevisao, 'vistos' | 'motivoSemVisao' | 'marcas'>
+
+/**
+ * Mede as camadas em memória — a MESMA medição para o revisor (`revisarArte`) e para a não-piora do executor de
+ * ajustes (CP4): toda etapa é opcional e a falha vira cobertura "não avaliada" nas regras que dependem dela
+ * (métrica ausente nunca é avaliação positiva, R4).
+ */
+export async function medirCamadasDaPeca(
+  camadas: Layer[],
+  ctx: ContextoDaMedicao,
+  /**
+   * `corrigir` (padrão `true`, o revisor): a régua aplica em memória a força de gradiente que PROPORIA e devolve as
+   * leituras pós-correção (`tintaCorrigida`, para o ajuste `gradiente`). O executor do CP4 mede com `false`: a
+   * não-piora compara a peça COMO VAI SER GRAVADA, não uma hipótese (revisores A e B, 15/10/2026).
+   */
+  opcoes: { corrigir?: boolean } = {},
+): Promise<MedidaDaPeca> {
+  const { projectId, canvas, formato, background, faixa } = ctx
+  const medidasAproximadas: string[] = []
+  let issues: ReturnType<typeof checkTextGeometry>['issues'] = []
+  let metricas: ReturnType<typeof checkTextGeometry>['metricas'] = []
+  let motivoSemMedida: string | undefined
+  let textosSemMetrica: string[] = []
+  try {
+    if (!ctx.fontesRegistradas) {
+      await registerProjectFonts(projectId)
+      ctx.fontesRegistradas = true
+    }
+    const medir = await createServerTextBoxMeasurer()
+    const paraMedir = camadas.map((l) => {
+      if (l.type !== 'rich-text' || l.visible === false) return l
+      medidasAproximadas.push(l.id)
+      return { ...l, type: 'text', richTextStyles: undefined } as Layer
+    })
+    ;({ issues, metricas } = checkTextGeometry(paraMedir, canvas, medir))
+    // Texto visível com conteúdo que a geometria OMITIU (curvo, fitty,
+    // auto-resize — o medidor devolve null sem exceção): não foi examinado, e
+    // a cobertura tem de dizer (REV-127-03).
+    const medidos = new Set(metricas.map((mm) => mm.layerId))
+    textosSemMetrica = camadas
+      .filter((l) => (l.type === 'text' || l.type === 'rich-text') && l.visible !== false && String(l.content ?? '').trim() && !medidos.has(l.id))
+      .map((l) => l.id)
+  } catch (erro) {
+    motivoSemMedida = `a medição dos textos falhou: ${(erro instanceof Error ? erro.message : String(erro)).slice(0, 160)}`
+    console.warn('[revisar-arte]', motivoSemMedida)
+  }
+
+  // "Nunca lança": a conferência das fontes (importa o canvas) também é cercada — sem ela, nenhuma fonte é dita ausente
+  // e a geometria fica como medida; o aviso vai ao log (revisor D).
+  let fontesAusentes: MedidaDaPeca['fontesAusentes'] = []
+  let motivoSemFontes: string | undefined
+  try {
+    fontesAusentes = await fontesQueFaltam(camadas)
+  } catch (erro) {
+    motivoSemFontes = `a conferência das fontes falhou: ${(erro instanceof Error ? erro.message : String(erro)).slice(0, 160)}`
+    console.warn('[revisar-arte]', motivoSemFontes)
+  }
+
+  let contraste: ContrasteMedido[] | null = null
+  let pioras: PioraDeTratamento[] | null = null
+  try {
+    const regua = await medirContrasteDaPeca({ layers: camadas, canvas, background, faixa, corrigir: opcoes.corrigir !== false })
+    contraste = regua.medidas
+    // A piora vale para a peça COMO ESTÁ — a correção da régua aqui é só em memória (CP1).
+    pioras = regua.pioras
+  } catch (erro) {
+    console.warn('[revisar-arte] a régua de contraste falhou:', erro instanceof Error ? erro.message : erro)
+  }
+
+  // A leitura da logo (CP3): cada logo solta medida contra o fundo efetivo sem ela. Falha do render = regra não
+  // avaliada, com o motivo; arquivo que não carregou é dito por logo (cobertura parcial), nunca "sem contraste".
+  let leituraDaLogo: Awaited<ReturnType<typeof medirLogosDaPeca>> | null = null
+  let motivoSemLeituraDaLogo: string | undefined
+  const logosSoltas = logosDaPeca(camadas)
+  if (logosSoltas.length === 0) leituraDaLogo = []
+  else {
+    try {
+      leituraDaLogo = await medirLogosDaPeca({ layers: camadas, canvas, background, logos: logosSoltas, origens: ctx.origensDaLogo, cache: ctx.cacheDeLogos })
+    } catch (erro) {
+      motivoSemLeituraDaLogo = `a leitura da logo não foi medida: ${(erro instanceof Error ? erro.message : String(erro)).slice(0, 160)}`
+      console.warn('[revisar-arte]', motivoSemLeituraDaLogo)
+    }
+  }
+
+  return {
+    canvas,
+    formato,
+    camadas,
+    metricas,
+    geometria: issues,
+    contraste,
+    pioras,
+    faixaDoGradiente: faixa,
+    referencias: ctx.referencias,
+    assunto: ctx.assunto,
+    leituraDaLogo,
+    ...(motivoSemLeituraDaLogo ? { motivoSemLeituraDaLogo } : {}),
+    fontesAusentes,
+    ...(motivoSemFontes ? { motivoSemFontes } : {}),
+    medidasAproximadas,
+    motivoSemMedida,
+    textosSemMetrica,
+  }
+}
+
 export async function revisarArte(input: RevisarArteInput): Promise<RevisaoDaArte> {
   const inicio = Date.now()
   const { projectId } = input
@@ -359,95 +522,15 @@ export async function revisarArte(input: RevisarArteInput): Promise<RevisaoDaArt
     throw new CreativeError('PAGE_LAYERS_ILEGIVEIS', 'As camadas desta página são ilegíveis: abra no editor e salve de novo.', 422, { pageId })
   }
   const camadas = lidas.camadas as unknown as Layer[]
-  const canvas = { width: page.width, height: page.height }
-  const formato = formatoDaPagina({ name: page.name, tags: page.tags, width: page.width, height: page.height })
   // O MESMO fundo que o render de publicação usa (`renderPageAndRegister` passa
   // pelo mesmo conversor): revisar sobre outro fundo julgaria outra peça (R3).
   const designData = convertPageToDesignData({ id: page.id, name: page.name, width: page.width, height: page.height, layers: page.layers, background: page.background })
-  const background = designData.canvas.backgroundColor
-
-  // Toda etapa de MEDIDA é opcional: falhar em registrar fonte, criar o
-  // medidor ou medir a geometria vira cobertura "não avaliada" nas regras que
-  // dependem dela — nunca derruba a revisão (R4). Métrica ausente não é
-  // avaliação positiva: `motivoSemMedida` é o que `avaliarPeca` lê.
-  const medidasAproximadas: string[] = []
-  let issues: ReturnType<typeof checkTextGeometry>['issues'] = []
-  let metricas: ReturnType<typeof checkTextGeometry>['metricas'] = []
-  let motivoSemMedida: string | undefined
-  let textosSemMetrica: string[] = []
-  try {
-    await registerProjectFonts(projectId)
-    const medir = await createServerTextBoxMeasurer()
-    const paraMedir = camadas.map((l) => {
-      if (l.type !== 'rich-text' || l.visible === false) return l
-      medidasAproximadas.push(l.id)
-      return { ...l, type: 'text', richTextStyles: undefined } as Layer
-    })
-    ;({ issues, metricas } = checkTextGeometry(paraMedir, canvas, medir))
-    // Texto visível com conteúdo que a geometria OMITIU (curvo, fitty,
-    // auto-resize — o medidor devolve null sem exceção): não foi examinado, e
-    // a cobertura tem de dizer (REV-127-03).
-    const medidos = new Set(metricas.map((mm) => mm.layerId))
-    textosSemMetrica = camadas
-      .filter((l) => (l.type === 'text' || l.type === 'rich-text') && l.visible !== false && String(l.content ?? '').trim() && !medidos.has(l.id))
-      .map((l) => l.id)
-  } catch (erro) {
-    motivoSemMedida = `a medição dos textos falhou: ${(erro instanceof Error ? erro.message : String(erro)).slice(0, 160)}`
-    console.warn('[revisar-arte]', motivoSemMedida)
-  }
-
-  const [fontesAusentes, projeto, geracoes] = await Promise.all([
-    fontesQueFaltam(camadas),
-    db.project.findUnique({ where: { id: projectId }, select: { assinatura: true } }),
-    db.generation.findMany({
-      // Sem filtrar pelo template: a página MUDA de pasta quando é agendada
-      // (`moverPaginaParaSemana`), e a arte do compositor fica no template antigo.
-      where: { projectId, fieldValues: { path: ['pageId'], equals: page.id } },
-      orderBy: { createdAt: 'desc' },
-      take: 15,
-      select: { id: true, fieldValues: true, sourcePageId: true },
-    }),
-  ])
-
-  const gradienteDoProjeto = ((projeto?.assinatura as Record<string, any> | null)?.gradiente ?? {}) as Record<string, unknown>
-  const faixa: [number, number] = [
-    numero(gradienteDoProjeto.forcaMinima, GRADIENTE_PADRAO.forcaMinima),
-    numero(gradienteDoProjeto.forcaMaxima, GRADIENTE_PADRAO.forcaMaxima),
-  ]
-
-  let contraste: ContrasteMedido[] | null = null
-  let pioras: PioraDeTratamento[] | null = null
-  try {
-    const regua = await medirContrasteDaPeca({ layers: camadas, canvas, background, faixa, corrigir: true })
-    contraste = regua.medidas
-    // A piora vale para a peça COMO ESTÁ — a correção da régua aqui é só em memória (CP1).
-    pioras = regua.pioras
-  } catch (erro) {
-    console.warn('[revisar-arte] a régua de contraste falhou:', erro instanceof Error ? erro.message : erro)
-  }
-
-  const doCompositor = geracoes.find((g) => (g.fieldValues as Record<string, unknown> | null)?.source === 'compositor')
-  const fieldValues = (doCompositor?.fieldValues ?? null) as Record<string, any> | null
-
-  // A leitura da logo (CP3): cada logo solta medida contra o fundo efetivo sem ela. Falha do render = regra não
-  // avaliada, com o motivo; arquivo que não carregou é dito por logo (cobertura parcial), nunca "sem contraste".
-  let leituraDaLogo: Awaited<ReturnType<typeof medirLogosDaPeca>> | null = null
-  let motivoSemLeituraDaLogo: string | undefined
-  const logosSoltas = logosDaPeca(camadas)
-  if (logosSoltas.length === 0) leituraDaLogo = []
-  else {
-    try {
-      const varianteGravada = fieldValues?.composicao?.logo?.legibilidade?.variante as { url?: unknown; origem?: unknown } | undefined
-      const origens = new Map<string, 'pagina' | 'projeto'>()
-      if (typeof varianteGravada?.url === 'string' && (varianteGravada.origem === 'pagina' || varianteGravada.origem === 'projeto')) origens.set(varianteGravada.url, varianteGravada.origem)
-      leituraDaLogo = await medirLogosDaPeca({ layers: camadas, canvas, background, logos: logosSoltas, origens })
-    } catch (erro) {
-      motivoSemLeituraDaLogo = `a leitura da logo não foi medida: ${(erro instanceof Error ? erro.message : String(erro)).slice(0, 160)}`
-      console.warn('[revisar-arte]', motivoSemLeituraDaLogo)
-    }
-  }
-  const { referencias, origem: referencia } = await referenciasDaPagina(camadas, fieldValues?.composicao ?? null, geracoes)
-  const assunto = await assuntoDaPeca(camadas, canvas, formato, fieldValues)
+  // CP4: o contexto da página (banco) e a medida das camadas em memória são as mesmas funções que o executor de ajustes
+  // usa para medir cada ajuste ANTES e DEPOIS — uma medição só, para o revisor e para a não-piora.
+  const contexto = await contextoDaMedicao({ projectId, page: { id: page.id, name: page.name, width: page.width, height: page.height, tags: page.tags, background: page.background, layers: page.layers }, camadas })
+  const { canvas, formato, background, referencia } = contexto
+  const medida = await medirCamadasDaPeca(camadas, contexto)
+  const { metricas } = medida
 
   const querVisao = input.visao !== false && process.env.ARTE_REVISAO_VISAO !== 'off'
   const querPrevia = input.previa !== false
@@ -491,7 +574,7 @@ export async function revisarArte(input: RevisarArteInput): Promise<RevisaoDaArt
               marcas,
               camadas,
               metricas,
-              contraste,
+              contraste: medida.contraste,
               recortes: recortes.map((r) => r.marca),
             }),
           },
@@ -520,22 +603,7 @@ export async function revisarArte(input: RevisarArteInput): Promise<RevisaoDaArt
   }
 
   const relatorio = avaliarPeca({
-    canvas,
-    formato,
-    camadas,
-    metricas,
-    geometria: issues,
-    contraste,
-    pioras,
-    faixaDoGradiente: faixa,
-    referencias,
-    assunto,
-    leituraDaLogo,
-    ...(motivoSemLeituraDaLogo ? { motivoSemLeituraDaLogo } : {}),
-    fontesAusentes,
-    medidasAproximadas,
-    motivoSemMedida,
-    textosSemMetrica,
+    ...medida,
     vistos,
     ...insumosDaVisao(visao, marcas),
   })

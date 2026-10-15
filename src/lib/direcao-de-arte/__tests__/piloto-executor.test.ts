@@ -41,7 +41,8 @@ const BASE: Record<(typeof TIPOS_DE_AJUSTE)[number], Ajuste> = {
   fonte: { tipo: 'fonte', camadas: ['headline'], fontSize: 80 },
   mover: { tipo: 'mover', camadas: ['servico'], dy: 10 },
   gradiente: { tipo: 'gradiente', borda: 'rodape', forca: 0.6 },
-  visibilidade: { tipo: 'visibilidade', camadas: ['apoio'], visivel: false },
+  // Decorativa: esconder texto com conteúdo é recusa estrutural (15/10/2026) e deixaria o oráculo vazio.
+  visibilidade: { tipo: 'visibilidade', camadas: ['gradiente-leitura-rodape'], visivel: false },
   caixa: { tipo: 'caixa', camadas: ['headline'], largura: 600 },
 }
 /** Um valor que MUDA o estado da peça para cada campo instrucional do schema. */

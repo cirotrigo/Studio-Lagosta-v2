@@ -261,8 +261,31 @@ describe('aplicarAjustes — gradiente, posição, visibilidade e caixa', () => 
     expect(r.aplicados.map((a) => a.tipo)).toEqual(['mover', 'visibilidade', 'caixa'])
   })
 
-  it('esconder por visibilidade grava a MARCA do revisor na camada (metadata.revisao.ocultaPeloRevisor, com o índice do ajuste); mostrar tira a marca e preserva o resto do metadata (REV-9E-01)', () => {
-    const cta = { ...texto('cta', 400, 40), metadata: { compositor: { papel: 'cta' } } } as Layer
+  it('esconder texto COM conteúdo é recusado estruturalmente (CONTEUDO_NAO_PODE_SER_OCULTADO), com ou sem achado, o ajuste inteiro; texto vazio e camada decorativa seguem escondíveis (decisão do owner, 15/10/2026)', () => {
+    const cta = { ...texto('cta', 400, 40), content: 'Vem pra cá' } as Layer
+    const veu = { id: 'veu', name: 'Véu', type: 'gradient', visible: true, locked: false, order: 0, position: { x: 0, y: 0 }, size: { width: 1080, height: 600 }, style: {} } as Layer
+    const vazio = { ...texto('badge', 100, 30), content: '  ' } as Layer
+    const r = aplicarAjustes([cta, veu, vazio], [
+      { tipo: 'visibilidade', camadas: ['cta'], visivel: false },
+      { tipo: 'visibilidade', camadas: ['cta'], visivel: false, achado: 'texto-cortado:cta' },
+      { tipo: 'visibilidade', camadas: ['veu', 'cta'], visivel: false },
+      { tipo: 'visibilidade', camadas: ['veu'], visivel: false },
+      { tipo: 'visibilidade', camadas: ['badge'], visivel: false },
+    ], { canvas, medir })
+    expect(r.recusados.map((x) => [x.indice, x.codigo, x.campos, x.achado])).toEqual([
+      [0, 'CONTEUDO_NAO_PODE_SER_OCULTADO', ['visivel', 'camadas'], undefined],
+      [1, 'CONTEUDO_NAO_PODE_SER_OCULTADO', ['visivel', 'camadas'], 'texto-cortado:cta'],
+      [2, 'CONTEUDO_NAO_PODE_SER_OCULTADO', ['visivel', 'camadas'], undefined],
+    ])
+    expect(r.recusados[0].motivo).toMatch(/cta \("Vem pra cá"\)/)
+    expect(r.aplicados.map((x) => x.indice)).toEqual([3, 4])
+    expect(r.camadas.map((l) => [l.id, l.visible])).toEqual([['cta', true], ['veu', false], ['badge', false]])
+    // Mostrar continua possível.
+    expect(aplicarAjustes(r.camadas, [{ tipo: 'visibilidade', camadas: ['veu', 'badge'], visivel: true }], { canvas, medir }).aplicados).toHaveLength(1)
+  })
+
+  it('esconder por visibilidade grava a MARCA do revisor na camada (metadata.revisao.ocultaPeloRevisor, com o índice do ajuste); mostrar tira a marca e preserva o resto do metadata (REV-9E-01) — num texto VAZIO (o com conteúdo não pode ser escondido)', () => {
+    const cta = { ...texto('cta', 400, 40), content: '', metadata: { compositor: { papel: 'cta' } } } as Layer
     const r = aplicarAjustes([cta], [{ tipo: 'mover', camadas: ['cta'], dy: -8 }, { tipo: 'visibilidade', camadas: ['cta'], visivel: false }], { canvas, medir })
     const escondida = r.camadas[0]
     expect(escondida.visible).toBe(false)

@@ -323,6 +323,8 @@ export async function medirLogosDaPeca(args: {
   logos: Layer[]
   /** A origem da variante desenhada, quando a composição a gravou (url → origem). */
   origens?: ReadonlyMap<string, OrigemDaVariante>
+  /** Bytes por URL, compartilhado entre medidas da mesma chamada (CP4 mede N vezes): um download, e a falha é determinística no lote. */
+  cache?: Map<string, Promise<Buffer>>
 }): Promise<Array<{ camada: string; variante: { url: string; origem?: OrigemDaVariante }; posicao: Rect; medida: MedidaDaLogo | null; estado: 'medida' | 'indisponivel' | 'sem-pixels' | 'fora-do-contrato'; motivo?: string }>> {
   const saida: Awaited<ReturnType<typeof medirLogosDaPeca>> = []
   for (const logo of args.logos) {
@@ -343,7 +345,12 @@ export async function medirLogosDaPeca(args: {
     }
     const fundo = await fundoSemALogo({ layers: args.layers, canvas: args.canvas, background: args.background, semAsCamadas: new Set([logo.id]) })
     try {
-      const bytes = await bytesDaLogo(url)
+      let carregando = args.cache?.get(url)
+      if (!carregando) {
+        carregando = bytesDaLogo(url)
+        args.cache?.set(url, carregando)
+      }
+      const bytes = await carregando
       const medida = await medirLogoNoFundo({ bytes, rect: posicao, fundo, url })
       saida.push(medida ? { camada: logo.id, variante, posicao, medida, estado: 'medida' } : { camada: logo.id, variante, posicao, medida: null, estado: 'sem-pixels', motivo: 'nenhum pixel visível da logo sobre o fundo' })
     } catch (erro) {

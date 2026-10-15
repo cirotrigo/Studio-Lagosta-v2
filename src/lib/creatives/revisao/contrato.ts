@@ -148,6 +148,19 @@ export type CodigoDaRecusa =
   | 'SEM_EFEITO'
   /** Ajuste válido NÃO executado porque a chamada inteira foi recusada por outro (pré-checagem do ajustar-arte). */
   | 'CHAMADA_RECUSADA'
+  /** CP4: o ajuste, medido ANTES e DEPOIS em memória, piora alguma propriedade da peça. */
+  | 'AJUSTE_PIOROU_ARTE'
+  /** CP4: alguma propriedade não foi medida antes ou depois — não há como provar que não piorou. */
+  | 'AJUSTE_NAO_MEDIDO'
+  /** CP4: o ajuste declarou corrigir um achado mensurável e não o resolveu nem o melhorou. */
+  | 'AJUSTE_NAO_MELHOROU_O_ACHADO'
+  /** CP4: o ajuste deixou texto que o autofix geométrico não consegue encaixar. */
+  | 'TEXTO_NAO_CABE'
+  /**
+   * Decisão do owner (15/10/2026): `visibilidade: false` em texto/rich-text COM conteúdo é apagar copy — recusado
+   * estruturalmente, antes de qualquer medida, com ou sem `achado`, o ajuste inteiro. Nenhum texto some em silêncio.
+   */
+  | 'CONTEUDO_NAO_PODE_SER_OCULTADO'
 
 export interface ProblemaDoAjuste {
   codigo: CodigoDaRecusa
