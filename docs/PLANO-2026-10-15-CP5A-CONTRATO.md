@@ -1,6 +1,12 @@
 # CP5a — contrato técnico do VEREDITO PURO (proposta para revisão, 15/10/2026, noite)
 
-**Estado: PROPOSTA PARA REVISÃO. Nada implementado.** Base: `main` `01f3c3be` (merge do CP4.2, PR #235).
+**Estado: APROVADO PARA IMPLEMENTAÇÃO pelo owner no HEAD 08a44af5 (16/10/2026).** Decisões adotadas: oclusão (B)
+conservadora; copy sem contrato exige humano (9.4); ausência de logo solta gera aviso (9.5); `texto-pequeno` é
+crítica (9.6); a tolerância texto × texto reutiliza EXATAMENTE a política existente de `colisao`, sem ampliar
+valores (9.7); a política do assunto continua parâmetro OBRIGATÓRIO (9.1 — `estimado: 'humano'`, foto lida sem
+assunto → não se aplica, como proposta nomeada, sem padrão silencioso); versionamento fica para o CP5b (9.3).
+A implementação do CP5a vai em branch/PR próprios (`feat/design-cp5a-gate`); este PR continua documental.
+Base: `main` `01f3c3be` (merge do CP4.2, PR #235).
 Revisão do OWNER sobre o HEAD c3304811 (texto protegido girado ACEITO; resta a exceção logo × texto) aplicada no
 HEAD seguinte: a exceção exige ausência de folhas expansoras efetivas também em `t` — `logo-sobre-texto` usa
 `tintaDoTexto` sem contorno, sombra ou desfoque, e `limitesDoTexto` suportar esses efeitos não prova que a regra
