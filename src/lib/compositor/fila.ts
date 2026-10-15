@@ -269,7 +269,7 @@ export async function processarComposicaoEmBackground(args: ComposicaoJobArgs & 
     // Erro determinístico (spec, assinatura, texto que não cabe) não melhora
     // tentando de novo; erro de infra (foto, fonte, render) ganha outra vez.
     // As recusas do arquétipo (T1a) são todas determinísticas: a mesma spec contra o mesmo catálogo recusa de novo.
-    const deterministico = ['SPEC_INVALIDA', 'ASSINATURA_INCOMPLETA', 'TEXTO_NAO_CABE_NA_COLUNA', 'TEXTO_NAO_CABE', 'PROJECT_NOT_FOUND', 'PAPEIS_INCOMPATIVEIS', 'SEM_COMBINACAO', 'PREFERENCIA_INVIAVEL'].includes(code) || code.startsWith('ARQUETIPO_')
+    const deterministico = ['SPEC_INVALIDA', 'ASSINATURA_INCOMPLETA', 'TEXTO_NAO_CABE_NA_COLUNA', 'TEXTO_NAO_CABE', 'PROJECT_NOT_FOUND', 'PAPEIS_INCOMPATIVEIS', 'SEM_COMBINACAO', 'PREFERENCIA_INVIAVEL', 'LOGO_SEM_VARIANTE_LEGIVEL'].includes(code) || code.startsWith('ARQUETIPO_')
     if (!deterministico && (await pedirNovaTentativa(args.queueJobId, msg))) return
     const atual = await db.generation.findUnique({ where: { id: args.generationId }, select: { fieldValues: true } })
     const fv = (atual?.fieldValues && typeof atual.fieldValues === 'object' ? atual.fieldValues : {}) as Record<string, unknown>

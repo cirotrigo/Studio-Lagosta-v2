@@ -122,6 +122,8 @@ import {
   type UnidadeDoArquetipo,
 } from './arquetipos/no-compositor'
 import { chaveDoArquetipo } from './arquetipos/tipos'
+import { conferirLogoDaPeca, type CacheDeLogos, type LegibilidadeDaLogo } from './logo-da-peca'
+import type { VarianteDaLogo } from './legibilidade-da-logo'
 
 /**
  * De onde veio a cor do gradiente de leitura de uma borda. Borda com camada de
@@ -208,8 +210,12 @@ export interface DiagnosticoDaComposicao {
   tratamentoPiorou?: PioraDeTratamento[]
   /** O tratamento de leitura de cada borda com texto (CP2A, 14/10/2026). Ausente em diagnósticos antigos. */
   tratamentoDeLeitura?: TratamentoDaBorda[]
-  /** `tinta` é legado (sempre 0): a logo não ganha mais halo. */
-  logo: { canto: Canto; tinta: number } | null
+  /**
+   * `tinta` é legado (sempre 0): a logo não ganha mais halo. `legibilidade` (CP3, 15/10/2026): a leitura da logo
+   * medida pixel a pixel contra o fundo efetivo, a variante desenhada e o que a conferência fez. Ausente em
+   * diagnósticos anteriores e quando a peça não tem logo de canto.
+   */
+  logo: { canto: Canto; tinta: number; legibilidade?: LegibilidadeDaLogo } | null
   blocos: Array<{ /** O id da camada (`servico-2`, `headline2`…) — a identidade do bloco; ausente em diagnósticos antigos. */ id?: string; papel: Papel; escala: number; width: number; height: number; destacado?: boolean; naoMedido?: boolean }>
   /**
    * As medidas FINAIS de cada texto, depois do autofix (corpo, entrelinha,
@@ -251,7 +257,15 @@ export interface DiagnosticoDoArquetipo {
   /** As preferências da spec que coincidiam com as do arquétipo (aceitas — a geometria veio do arquétipo). */
   preferenciasCoincidentes: string[]
   papeis: Array<{ papel: string; referencia: RetanguloPx; zonaEfetiva: RetanguloPx; posicao: RetanguloPx }>
-  logo: { modo: 'referencia' | 'automatica'; canto: Canto | null; referencia?: RetanguloPx; zonaEfetiva?: RetanguloPx; posicao?: RetanguloPx }
+  logo: {
+    modo: 'referencia' | 'automatica'
+    canto: Canto | null
+    referencia?: RetanguloPx
+    zonaEfetiva?: RetanguloPx
+    posicao?: RetanguloPx
+    /** A variante DESENHADA (CP3) — o que a recomposição reproduz na peça do T1a (`modo: 'referencia'`). */
+    variante?: VarianteDaLogo
+  }
   /** Os elementos que o arquétipo declara e os desenhados — nenhum no T1a (é o T1b). */
   elementosDeclarados: Array<{ id: string; tipo: string; opcional: boolean }>
   elementosMaterializados: string[]
@@ -268,6 +282,8 @@ export interface OpcoesDeComposicao {
   /** Cache local à seleção: evita baixar/decodificar a mesma foto por variante. */
   assuntosDoCatalogo?: Map<string, AssuntoNormalizado | null>
   cacheDeFotos?: Map<string, Awaited<ReturnType<typeof carregarFoto>>>
+  /** Cache local à seleção (CP3): os arquivos das variantes da logo, baixados uma vez por seleção. */
+  cacheDeLogos?: CacheDeLogos
   /** Só renderiza e devolve o PNG — nada é gravado. */
   provar?: boolean
   /** `User.id` INTERNO (cuid), nunca o clerkId. */
@@ -351,7 +367,8 @@ export async function carregarAssinatura(projectId: number, formato: Formato, op
       where: { id: projectId },
       select: {
         assinatura: true,
-        Logo: { where: { isProjectLogo: true }, take: 1, select: { fileUrl: true } },
+        // CP3: TODAS as principais, em ordem de id — as variantes autorizadas da logo (a primeira é o fallback de sempre).
+        Logo: { where: { isProjectLogo: true }, orderBy: { id: 'asc' }, select: { fileUrl: true } },
       },
     }),
     db.template.findFirst({
@@ -404,6 +421,7 @@ export async function carregarAssinatura(projectId: number, formato: Formato, op
       formatoDaPagina: f,
       numerosDoProjeto: projeto.assinatura,
       logoDoProjeto: projeto.Logo[0] ? { url: projeto.Logo[0].fileUrl } : null,
+      logosDoProjeto: projeto.Logo,
     })
   const assinatura = montar(escolhida, fmt)
   assinatura.origem.motivoDaVariante = motivo
@@ -585,15 +603,27 @@ function intersecta(a: Rect, b: Rect, folga = 24): boolean {
   return !(a.x + a.width + folga <= b.x || b.x + b.width + folga <= a.x || a.y + a.height + folga <= b.y || b.y + b.height + folga <= a.y)
 }
 
-function escolherCanto(args: {
+interface ArgsDoCanto {
   g: GeometriaDaPeca
   mapa: MapaDeCalma | null
   blocos: Rect[]
   logo: { w: number; h: number }
   pedido: Canto | 'auto' | 'nenhum' | undefined
   formato: Formato
-}): { canto: Canto; rect: Rect; luz: number } | null {
+}
+
+function escolherCanto(args: ArgsDoCanto): { canto: Canto; rect: Rect; luz: number } | null {
   if (args.pedido === 'nenhum') return null
+  return cantosOrdenados(args)[0] ?? null
+}
+
+/**
+ * Os cantos da logo em ordem de preferência (o mesmo critério de sempre: calma e luminância da foto, o rodapé no
+ * story), com a marca de quem está LIVRE de texto. O CP3 lê esta lista para os cantos alternativos da logo
+ * automática — só os livres — e `escolherCanto` fica com o primeiro.
+ */
+function cantosOrdenados(args: ArgsDoCanto): Array<{ canto: Canto; rect: Rect; luz: number; custo: number; livre: boolean }> {
+  if (args.pedido === 'nenhum') return []
   // Em STORY a logo mora no rodapé (o topo tem avatar e barra do Instagram, e
   // é onde o bloco de texto costuma pousar): os cantos de cima só entram
   // quando o texto está no rodapé. Medido em 03/09 no TERO — a penalidade de
@@ -620,10 +650,10 @@ function escolherCanto(args: {
     // No story a logo prefere o RODAPÉ (o topo tem avatar e barra do Instagram).
     const penalidadeTopo = args.formato === 'story' && c.canto.startsWith('superior') ? 0.25 : 0
     const custo = 0.5 * (leitura.p98 / 255) + 0.5 * (leitura.energia / emax) + penalidadeTopo
-    return { ...c, custo, luz: 0.5 * leitura.media + 0.5 * leitura.p98 }
+    return { ...c, custo, luz: 0.5 * leitura.media + 0.5 * leitura.p98, livre: !args.blocos.some((b) => intersecta(b, c.rect)) }
   })
   pontuados.sort((a, b) => a.custo - b.custo)
-  return pontuados[0] ?? null
+  return pontuados
 }
 
 // ─── Destaque ──────────────────────────────────────────────────────────────
@@ -678,7 +708,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   if (v.spec.selecaoExperimental === true && !opcoes.somenteAvaliar) {
     const { selecionarCombinacao } = await import('./selecionar-combinacao')
     const selecao = await selecionarCombinacao(v.spec)
-    return comporPeca(selecao.spec, { ...opcoes, selecao: selecao.diagnostico, avisosDaSelecao: selecao.avisos, cacheDeFotos: selecao.cacheDeFotos, assuntosDoCatalogo: selecao.assuntosDoCatalogo })
+    return comporPeca(selecao.spec, { ...opcoes, selecao: selecao.diagnostico, avisosDaSelecao: selecao.avisos, cacheDeFotos: selecao.cacheDeFotos, cacheDeLogos: selecao.cacheDeLogos, assuntosDoCatalogo: selecao.assuntosDoCatalogo })
   }
   // A peça nunca depende de "a mais recente": a spec que se compõe e se grava traz a versão exata.
   const spec: SpecDePeca = arq ? { ...v.spec, arquetipo: arq.resolvido } : v.spec
@@ -1367,6 +1397,8 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   //    recebe um gradiente fraco no passo 7b.
   const camadasDaLogo: Layer[] = []
   let logoDiag: DiagnosticoDaComposicao['logo'] = null
+  // CP3 (legado): a preferência que segurou a logo no canto — o pedido da spec ou a posição da página.
+  let preferenciaDaLogo: 'pedido' | 'pagina' | null = null
   // A logo que mora DENTRO de um arranjo (ao lado do serviço, como no Quintal)
   // entra com os elementos do texto; a peça não ganha outra no canto.
   const logoNoArranjo = montados.some((b) => b.elementos?.some((e) => e.logo))
@@ -1443,6 +1475,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
         ? { x: Math.round(assinatura.logo.posicao.x), y: Math.round(assinatura.logo.posicao.y), width: largura, height: altura }
         : null
     const livreNaPagina = naPagina && !encostaNumTexto(naPagina) ? naPagina : null
+    preferenciaDaLogo = pedidoQueVale ? 'pedido' : livreNaPagina ? 'pagina' : null
     const canto = livreNaPagina
       ? {
           canto: `${livreNaPagina.y + altura / 2 < g.H / 2 ? 'superior' : 'inferior'}-${livreNaPagina.x + largura / 2 < g.W / 2 ? 'esquerdo' : 'direito'}` as Canto,
@@ -1815,6 +1848,45 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       })
   }
 
+  // 8b. A LEGIBILIDADE DA LOGO (CP3, 15/10/2026): com as camadas FINAIS — foto no corte, véus e tratamentos como a
+  //     régua os deixou —, a logo de canto é medida pixel a pixel contra o fundo renderizado sem ela
+  //     (`logo-da-peca.ts`). Com arquétipo, a que não lê é trocada por outra variante AUTORIZADA (a fixa do
+  //     topo-esquerda não muda de lugar; a automática do centro-óptico pode ir a outro canto livre) ou a peça recusa
+  //     (`LOGO_SEM_VARIANTE_LEGIVEL`; asset que não carregou é `LOGO_INDISPONIVEL`). Sem arquétipo a peça não muda:
+  //     a medida vai ao diagnóstico e aos avisos.
+  const logoDeCanto = camadasDaLogo.length > 0 && assinatura.logo ? layers.find((l) => l.id === 'logo') ?? null : null
+  if (logoDeCanto && logoDiag) {
+    const desenhada: VarianteDaLogo = { origem: assinatura.logo!.origem ?? 'pagina', url: assinatura.logo!.url }
+    const logoFixa = !!(arq && materializacao && materializacao.papeis.logo?.posicao)
+    const conferida = await conferirLogoDaPeca({
+      layers,
+      canvas,
+      background: assinatura.numeros.fundo,
+      logo: logoDeCanto,
+      desenhada,
+      variantes: assinatura.variantesDaLogo,
+      gravada: reproducao?.logo ?? null,
+      cantoAtual: logoDiag.canto,
+      posicoesAlternativas: (tamanho) =>
+        logoFixa
+          ? []
+          : cantosOrdenados({ g: arq ? gArq! : g, mapa: melhor.mapa, blocos: rectsDeGrupo.map((r) => r.rect), logo: { w: tamanho.width, h: tamanho.height }, pedido: undefined, formato: spec.formato })
+              .filter((c) => c.livre)
+              .map(({ canto, rect }) => ({ canto, rect })),
+      veusDaLogo,
+      modo: arq ? 'arquetipo' : 'legado',
+      preferencia: preferenciaDaLogo,
+      cache: opcoes.cacheDeLogos,
+    })
+    layers = conferida.layers
+    avisos.push(...conferida.avisos)
+    logoDiag = { ...logoDiag, canto: conferida.canto, legibilidade: conferida.legibilidade }
+    if (escolhaDoArquetipo) {
+      escolhaDoArquetipo.logo = conferida.variante
+      if (materializacao?.logoAutomatica) escolhaDoArquetipo.cantoDaLogo = conferida.canto
+    }
+  }
+
   const diagnostico: DiagnosticoDaComposicao = {
     ...(opcoes.selecao ? { selecao: opcoes.selecao } : {}),
     ...(intervencaoDeTexto ? { intervencaoDeTexto } : {}),
@@ -1876,6 +1948,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
               modo: materializacao.logoAutomatica ? ('automatica' as const) : ('referencia' as const),
               canto: logoDiag?.canto ?? null,
               ...(materializacao.papeis.logo ? { referencia: materializacao.papeis.logo.referencia, zonaEfetiva: materializacao.papeis.logo.zonaEfetiva, posicao: materializacao.papeis.logo.posicao } : {}),
+              ...(logoDiag?.legibilidade ? { variante: logoDiag.legibilidade.variante } : {}),
             },
             elementosDeclarados: (arq.definicao.elementos ?? []).map((e) => ({ id: e.id, tipo: e.tipo, opcional: e.opcional })),
             elementosMaterializados: [],

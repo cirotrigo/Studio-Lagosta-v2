@@ -177,11 +177,12 @@ describe('polaridade (P1, e o alvo onde há solução)', () => {
 
 describe('logo (P4)', () => {
   // Uma variante só cadastrada e a foto inteira do mesmo tom: não há canto que salve — LOGO_SEM_VARIANTE_LEGIVEL é o desfecho certo.
-  hojeViola('D — logo clara sobre fundo claro: legível, ou LOGO_SEM_VARIANTE_LEGIVEL', () =>
+  // CP3 (15/10/2026): sem arquétipo a peça sai como está e o código vai ao DIAGNÓSTICO (a recusa é só com arquétipo).
+  it('D — logo clara sobre fundo claro: legível, ou LOGO_SEM_VARIANTE_LEGIVEL', () =>
     p4('d', { pagina: { headline: { cor: ESCURO } }, luz: uniforme(215), logo: '#F0F0F0', blocos: [HEADLINE] }, [CODIGOS.logoSemVariante]),
   60_000)
 
-  hojeViola('E — logo escura sobre fundo escuro: legível, ou LOGO_SEM_VARIANTE_LEGIVEL', () =>
+  it('E — logo escura sobre fundo escuro: legível, ou LOGO_SEM_VARIANTE_LEGIVEL', () =>
     p4('e', { pagina: { headline: { cor: '#FFFFFF' } }, luz: uniforme(45), logo: ESCURO, blocos: [HEADLINE] }, [CODIGOS.logoSemVariante]),
   60_000)
 
@@ -196,7 +197,7 @@ describe('logo (P4)', () => {
   }, 60_000)
 
   // Há canto legível para a MESMA logo (o controle prova): LOGO_SEM_VARIANTE_LEGIVEL não vale aqui.
-  hojeViola('F — canto pedido inviável (logo escura no canto escuro): legível, ou PREFERENCIA_INVIAVEL', () =>
+  it('F — canto pedido inviável (logo escura no canto escuro): legível, ou PREFERENCIA_INVIAVEL', () =>
     p4('f', { pagina: { headline: { cor: ESCURO } }, luz: cantoEscuro, logo: ESCURO, blocos: [HEADLINE], preferencias: { cantoDaMarca: 'superior-direito', ancora: 'rodape' } }, [CODIGOS.preferenciaInviavel]),
   60_000)
 })

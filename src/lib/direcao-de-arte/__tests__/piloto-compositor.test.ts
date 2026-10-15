@@ -125,10 +125,17 @@ describe('caracterização: o que o compositor faz hoje com a peça piloto', () 
     expect(composta.layers.filter((l) => l.type === 'text').every((l) => !l.effects?.background)).toBe(true)
   })
 
-  it('a logo é o wordmark claro da assinatura, no canto pedido, sem medida ("tinta" 0)', () => {
-    expect(composta.diagnostico.logo).toEqual({ canto: 'superior-direito', tinta: 0 })
+  it('a logo é o wordmark claro da assinatura, no canto pedido; desde o CP3 ela vem MEDIDA (sem arquétipo: só diagnóstico, a peça não muda)', () => {
+    expect(composta.diagnostico.logo).toMatchObject({ canto: 'superior-direito', tinta: 0 })
     expect(logo).not.toBeNull()
     expect(logo!.luzDaLogo).toBeGreaterThan(200)
+    const leitura = composta.diagnostico.logo!.legibilidade!
+    expect(leitura.estado).toBe('medida')
+    expect(leitura.legivel).toBe(false)
+    expect(leitura.escolha).toBe('sem-mudanca')
+    // A medida de produção e o oráculo do CP0 concordam no critério (o mesmo pixel, a mesma luz 709, o mesmo alfa).
+    expect(leitura.medida!.contrasteP10).toBeCloseTo(logo!.p10, 0)
+    expect(leitura.medida!.pixelsAvaliados).toBe(logo!.pixelsOpacos)
   })
 })
 
@@ -164,8 +171,8 @@ describe('propriedades na peça composta (v1)', () => {
     expect(monograma!.fracaoNoLimiar).toBeLessThan(0.9)
   })
 
-  hojeViola('P4 logo — critério regional (p10 da diferença pixel a pixel ≥ 45), ou LOGO_SEM_VARIANTE_LEGIVEL / PREFERENCIA_INVIAVEL (o canto veio do DNA)', () => {
-    const sinalizada = [CODIGOS.logoSemVariante, CODIGOS.preferenciaInviavel].some((c) => JSON.stringify(composta.diagnostico).includes(c))
+  it('P4 logo — critério regional (p10 da diferença pixel a pixel ≥ 45), ou LOGO_SEM_VARIANTE_LEGIVEL / PREFERENCIA_INVIAVEL (o canto veio do DNA) — CP3 sinaliza', () => {
+    const sinalizada = [CODIGOS.logoSemVariante, CODIGOS.preferenciaInviavel].some((c) => JSON.stringify(composta.diagnostico.logo).includes(c))
     expect(sinalizada || logo!.legivel, resumoDaLogo(logo!)).toBe(true)
   })
 
@@ -181,7 +188,8 @@ describe('propriedades na peça composta (v1)', () => {
 
   hojeViola('P7 ordem de leitura — o bloco de ordem 0 da spec (QUARTA-FEIRA) fica acima do H1, ou o conflito com a assinatura sai como PREFERENCIA_INVIAVEL', () => {
     const inversoes = ordemDeLeituraInvertida(composta.layers, fixture.peca().spec.blocos)
-    const sinalizado = JSON.stringify(composta.diagnostico).includes(CODIGOS.preferenciaInviavel)
+    // O sinal tem de ser da ORDEM, não da logo: desde o CP3 o diagnóstico da logo sinaliza o próprio PREFERENCIA_INVIAVEL.
+    const sinalizado = JSON.stringify({ ...composta.diagnostico, logo: null }).includes(CODIGOS.preferenciaInviavel)
     expect(sinalizado || inversoes.length === 0, JSON.stringify(inversoes)).toBe(true)
   })
 

@@ -1145,6 +1145,9 @@ export async function processarRecomposicaoEmBackground(args: {
       // CP2B: a busca só roda na recomposição quando a foto mudou, e estas recusas são da foto, não de infra.
       'SEM_COMBINACAO',
       'PREFERENCIA_INVIAVEL',
+      // CP3: nenhuma variante autorizada lê — a mesma peça contra as mesmas logos recusa de novo. `LOGO_INDISPONIVEL`
+      // (download/decodificação) fica fora de propósito: é infra, e ganha outra tentativa.
+      'LOGO_SEM_VARIANTE_LEGIVEL',
     ].includes(code) || code.startsWith('ARQUETIPO_')
     if (!deterministico && (await pedirNovaTentativa(args.queueJobId, msg))) return
 

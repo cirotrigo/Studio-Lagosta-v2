@@ -32,6 +32,7 @@ import { textosForaDaPiora, tratamentosQuePioraramALeitura, type ContrasteMedido
 import { papelDaCamada } from '@/lib/compositor/defasagem'
 import { alcanceDoGrupo, alturaDaFaixa, bordaDoGrupo, ehGradienteDeLeitura, forcaDaCamada, GRADIENTE_PADRAO, type Borda } from '@/lib/compositor/gradiente-de-leitura'
 import { luzDaCor, uniao, type Rect } from '@/lib/creatives/halo/halo'
+import { ALFA_VISIVEL_DA_LOGO, LIMIAR_DE_CONTRASTE_DA_LOGO, PERCENTIL_DA_LOGO, type MedidaDaLogo } from '@/lib/compositor/legibilidade-da-logo'
 import { TETO_DE_COBERTURA_DO_ASSUNTO, TETO_DE_COBERTURA_DO_ASSUNTO_ESTIMADO } from '@/lib/compositor/mapa-de-calma'
 import { bordaDaLeitura } from './aplicar-ajustes'
 import {
@@ -126,6 +127,17 @@ export interface ReferenciaDeCamada {
   origem: string
 }
 
+export interface LeituraDaLogoNaRevisao {
+  camada: string
+  /** O arquivo desenhado e, quando a composição a gravou, a origem (página de assinatura ou logo do projeto). */
+  variante: { url: string; origem?: 'pagina' | 'projeto' }
+  posicao: Rect
+  medida: MedidaDaLogo | null
+  /** `indisponivel`: o arquivo não baixou ou não decodificou; `sem-pixels`: nenhum pixel visível sobre o fundo. */
+  estado: 'medida' | 'indisponivel' | 'sem-pixels'
+  motivo?: string
+}
+
 export interface EntradaDaRevisao {
   canvas: { width: number; height: number }
   formato: 'story' | 'feed' | 'quadrado' | null
@@ -146,6 +158,13 @@ export interface EntradaDaRevisao {
   /** Corpo e entrelinha de referência por id de camada da página revisada. */
   referencias: Record<string, ReferenciaDeCamada>
   assunto: { rect: Rect; origem: 'catalogo' | 'estimado' } | null
+  /**
+   * A leitura de cada logo solta (CP3, 15/10/2026): a medida pixel a pixel contra o fundo efetivo sem ela
+   * (`legibilidade-da-logo.ts`), ou o motivo de o ARQUIVO não ter carregado (`indisponivel`) — que é cobertura
+   * parcial, nunca "sem contraste". `null`/ausente = a medição não rodou (`motivoSemLeituraDaLogo`).
+   */
+  leituraDaLogo?: LeituraDaLogoNaRevisao[] | null
+  motivoSemLeituraDaLogo?: string
   fontesAusentes: Array<{ familia: string; peso: number | null; camadas: string[] }>
   /** Camadas medidas por aproximação (rich text). */
   medidasAproximadas: string[]
@@ -759,6 +778,50 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
       },
       destino ? [{ tipo: 'mover', camadas: [logo.id], dx: destino.dx, dy: destino.dy }] : [],
     )
+  }
+
+  // 5b. A LEITURA DA LOGO (CP3, 15/10/2026): a medida regional — p10 da diferença de luz pixel a pixel entre os
+  //     pixels visíveis (alfa ≥ 128) da logo e o fundo efetivo sem ela, ≥ 45. A média é só diagnóstico: não salva
+  //     uma logo cujo p10 falha. Sem ajuste mecânico: a correção (outra variante autorizada, outro canto) é do
+  //     compositor com arquétipo; aqui o fluxo humano só avisa (o gate é do CP5). Arquivo que não carregou é
+  //     cobertura PARCIAL, dita — nunca vira "sem contraste".
+  if (e.leituraDaLogo === null || e.leituraDaLogo === undefined) {
+    cobertura['logo-sem-leitura'] = { estado: 'nao-avaliada', motivo: e.motivoSemLeituraDaLogo ?? 'a leitura da logo não foi medida' }
+  } else {
+    const naoMedidas = e.leituraDaLogo.filter((l) => l.estado !== 'medida' || !l.medida)
+    for (const l of e.leituraDaLogo) {
+      if (l.estado !== 'medida' || !l.medida || l.medida.legivel) continue
+      const m = l.medida
+      adicionar({
+        regra: 'logo-sem-leitura',
+        severidade: 'problema',
+        certeza: 'medida',
+        camadas: [l.camada],
+        mensagem: `A logo não lê contra o fundo: ${Math.round(100 * (1 - m.proporcaoAcima45))}% dos pixels dela têm contraste abaixo de ${LIMIAR_DE_CONTRASTE_DA_LOGO} (p10 ${m.contrasteP10}; a média ${m.contrasteMedio} não decide).`,
+        evidencia: {
+          codigo: 'LOGO_SEM_LEITURA',
+          p10: m.contrasteP10,
+          media: m.contrasteMedio,
+          proporcaoNoLimiar: m.proporcaoAcima45,
+          pixelsAvaliados: m.pixelsAvaliados,
+          luzDaLogo: m.luzDaLogo,
+          luzDoFundo: m.luzDoFundo,
+          limiar: LIMIAR_DE_CONTRASTE_DA_LOGO,
+          alfaMinimo: ALFA_VISIVEL_DA_LOGO,
+          percentil: PERCENTIL_DA_LOGO,
+          variante: l.variante.url,
+          origem: l.variante.origem ?? null,
+          x: Math.round(l.posicao.x),
+          y: Math.round(l.posicao.y),
+          largura: Math.round(l.posicao.width),
+          altura: Math.round(l.posicao.height),
+        },
+        observacao: 'Critério regional (CP3): o p10 da diferença |luz da logo − luz do fundo| no mesmo pixel, só nos pixels visíveis. Nenhuma variante é fabricada: troque por uma variante cadastrada que leia, mude a foto ou a posição.',
+      })
+    }
+    if (naoMedidas.length > 0) {
+      cobertura['logo-sem-leitura'] = { estado: e.leituraDaLogo.length === naoMedidas.length ? 'nao-avaliada' : 'parcial', motivo: naoMedidas.map((l) => `${l.camada}: ${l.estado === 'indisponivel' ? `o arquivo da logo não carregou (${l.motivo ?? 'sem motivo'})` : l.motivo ?? 'sem pixel visível'}`).join('; ') }
+    }
   }
 
   // As pioras de tratamento (CP1): calculadas aqui porque a seção 6 avisa quando propõe reforçar o
@@ -1448,7 +1511,7 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
     // Sem métricas só valem as regras que não medem texto: fonte ausente (do
     // registro), a régua (do render) e a visão.
     for (const regra of REGRAS_DA_REVISAO) {
-      if (regra === 'fonte-nao-carregada' || regra === 'texto-sem-leitura' || regra === 'gradiente-forte-demais' || regra === 'tratamento-piorou-leitura' || regra === 'visao') continue
+      if (regra === 'fonte-nao-carregada' || regra === 'texto-sem-leitura' || regra === 'gradiente-forte-demais' || regra === 'tratamento-piorou-leitura' || regra === 'logo-sem-leitura' || regra === 'visao') continue
       cobertura[regra] = { estado: 'nao-avaliada', motivo: e.motivoSemMedida }
     }
   }
@@ -1466,7 +1529,7 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
     const rotulo = (id: string) => { const l = porId.get(id); const nome = l ? nomeDaCamada(l) : null; return nome && nome !== id ? `${id} ("${nome}")` : id }
     const motivo = `texto(s) sem métrica — curvo, fitty ou auto-resize, que o medidor não mede: ${e.textosSemMetrica.map(rotulo).join(', ')}; as regras de geometria não os examinaram e a visão não recebeu marca deles`
     for (const regra of REGRAS_DA_REVISAO) {
-      if (regra === 'fonte-nao-carregada' || regra === 'texto-sem-leitura' || regra === 'gradiente-forte-demais' || regra === 'tratamento-piorou-leitura') continue
+      if (regra === 'fonte-nao-carregada' || regra === 'texto-sem-leitura' || regra === 'gradiente-forte-demais' || regra === 'tratamento-piorou-leitura' || regra === 'logo-sem-leitura') continue
       const atual = cobertura[regra]
       if (atual?.estado === 'avaliada') cobertura[regra] = { estado: 'parcial', motivo }
       else if (atual?.estado === 'parcial') cobertura[regra] = { estado: 'parcial', motivo: [atual.motivo, motivo].filter(Boolean).join('; ') }

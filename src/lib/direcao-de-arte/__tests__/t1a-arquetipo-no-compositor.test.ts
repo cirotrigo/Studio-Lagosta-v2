@@ -39,7 +39,7 @@ import { CreativeError } from '@/lib/creatives/errors'
 import { cenario, medidorCalibrado, type PaginaDeAssinatura } from './suporte/compositor'
 import { dataUrl } from './suporte/fixture'
 import { leiturasDosTextos, tratamentosQuePioram } from './suporte/propriedades'
-import { cenarioSintetico, fotoSintetica, logoSintetica, paginaSintetica, specSintetica, VEU_CLARO, VEU_ESCURO } from './suporte/sinteticos'
+import { cenarioSintetico, fotoSintetica, logoSintetica, paginaSintetica, specSintetica, variantesClaraEEscura, VEU_CLARO, VEU_ESCURO } from './suporte/sinteticos'
 
 const TOPO = 'minimal-fb-topo-esquerda'
 const CENTRO = 'minimal-fb-centro-optico'
@@ -73,7 +73,7 @@ async function montar(m: Montagem) {
     fundoUrl: dataUrl(foto),
   })
   if (m.pre) pagina = comPre(pagina)
-  const base = await cenarioSintetico({ pagina, foto, candidatasDoVeu: [] })
+  const base = await cenarioSintetico({ pagina, foto, candidatasDoVeu: [], logosDoProjeto: await variantesClaraEEscura() })
   cenario.atual = { ...base, projeto: { ...base.projeto, assinatura: m.assinatura ?? ASSINATURA } }
   return pagina
 }

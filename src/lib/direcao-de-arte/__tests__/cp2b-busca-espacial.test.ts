@@ -74,7 +74,7 @@ import type { PapelDeTexto } from '@/lib/compositor/arquetipos/tipos'
 import { cenario, medidorCalibrado, type PaginaDeAssinatura } from './suporte/compositor'
 import { dataUrl } from './suporte/fixture'
 import { leituraDentroDoAlvo, leiturasDosTextos, ordemDeLeituraInvertida, servicoDisputaEntrada, textosQueInvadem, tratamentosQuePioram } from './suporte/propriedades'
-import { cenarioSintetico, fotoSintetica, logoSintetica, paginaSintetica, specSintetica, VEU_CLARO, VEU_ESCURO } from './suporte/sinteticos'
+import { cenarioSintetico, fotoSintetica, logoSintetica, paginaSintetica, specSintetica, variantesClaraEEscura, VEU_CLARO, VEU_ESCURO } from './suporte/sinteticos'
 
 const TOPO = 'minimal-fb-topo-esquerda'
 const CENTRO = 'minimal-fb-centro-optico'
@@ -175,7 +175,7 @@ async function montar(c: Cena): Promise<PaginaDeAssinatura> {
     fundoUrl: dataUrl(foto),
   })
   const pagina = c.logo ? { ...sintetica, layers: sintetica.layers.map((l) => (l.type === 'logo' ? { ...l, size: c.logo! } : l)) } : sintetica
-  const base = await cenarioSintetico({ pagina, foto, candidatasDoVeu: [], ...(c.assunto ? { assunto: c.assunto } : {}) })
+  const base = await cenarioSintetico({ pagina, foto, candidatasDoVeu: [], logosDoProjeto: await variantesClaraEEscura(), ...(c.assunto ? { assunto: c.assunto } : {}) })
   const url = c.dataUrl ? dataUrl(foto) : join(tmpdir(), `cp2b-busca-espacial-${c.id}.png`)
   if (!c.dataUrl) writeFileSync(url, foto)
   cenario.atual = { ...base, foto: { url, bytes: foto }, projeto: { ...base.projeto, assinatura: ASSINATURA } }

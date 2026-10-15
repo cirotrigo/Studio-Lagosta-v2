@@ -40,7 +40,8 @@ import { lerFotoComoCover } from '@/lib/creatives/halo/halo-medicao'
 import { estimarAssunto, mapaDeCalma } from '@/lib/compositor/mapa-de-calma'
 import type { Rect } from '@/lib/creatives/halo/halo'
 import type { RelatorioDaRevisao } from './contrato'
-import { avaliarPeca, ehTextoVisivel, entrelinhaDaCamada, type ReferenciaDeCamada } from './regras'
+import { avaliarPeca, ehTextoVisivel, entrelinhaDaCamada, logosDaPeca, type ReferenciaDeCamada } from './regras'
+import { medirLogosDaPeca } from '@/lib/compositor/legibilidade-da-logo'
 import {
   MODELO_DA_VISAO,
   marcasDaPeca,
@@ -427,6 +428,24 @@ export async function revisarArte(input: RevisarArteInput): Promise<RevisaoDaArt
 
   const doCompositor = geracoes.find((g) => (g.fieldValues as Record<string, unknown> | null)?.source === 'compositor')
   const fieldValues = (doCompositor?.fieldValues ?? null) as Record<string, any> | null
+
+  // A leitura da logo (CP3): cada logo solta medida contra o fundo efetivo sem ela. Falha do render = regra não
+  // avaliada, com o motivo; arquivo que não carregou é dito por logo (cobertura parcial), nunca "sem contraste".
+  let leituraDaLogo: Awaited<ReturnType<typeof medirLogosDaPeca>> | null = null
+  let motivoSemLeituraDaLogo: string | undefined
+  const logosSoltas = logosDaPeca(camadas)
+  if (logosSoltas.length === 0) leituraDaLogo = []
+  else {
+    try {
+      const varianteGravada = fieldValues?.composicao?.logo?.legibilidade?.variante as { url?: unknown; origem?: unknown } | undefined
+      const origens = new Map<string, 'pagina' | 'projeto'>()
+      if (typeof varianteGravada?.url === 'string' && (varianteGravada.origem === 'pagina' || varianteGravada.origem === 'projeto')) origens.set(varianteGravada.url, varianteGravada.origem)
+      leituraDaLogo = await medirLogosDaPeca({ layers: camadas, canvas, background, logos: logosSoltas, origens })
+    } catch (erro) {
+      motivoSemLeituraDaLogo = `a leitura da logo não foi medida: ${(erro instanceof Error ? erro.message : String(erro)).slice(0, 160)}`
+      console.warn('[revisar-arte]', motivoSemLeituraDaLogo)
+    }
+  }
   const { referencias, origem: referencia } = await referenciasDaPagina(camadas, fieldValues?.composicao ?? null, geracoes)
   const assunto = await assuntoDaPeca(camadas, canvas, formato, fieldValues)
 
@@ -511,6 +530,8 @@ export async function revisarArte(input: RevisarArteInput): Promise<RevisaoDaArt
     faixaDoGradiente: faixa,
     referencias,
     assunto,
+    leituraDaLogo,
+    ...(motivoSemLeituraDaLogo ? { motivoSemLeituraDaLogo } : {}),
     fontesAusentes,
     medidasAproximadas,
     motivoSemMedida,

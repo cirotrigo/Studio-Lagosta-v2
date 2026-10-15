@@ -1006,3 +1006,62 @@ se mudar.
   base-esquerda.
 
 Detalhe em `docs/design/arquetipos-minimalistas-v1.md`, seção "CP2B".
+
+## Legibilidade da logo (CP3, 15/10/2026)
+
+As provas do CP2B mostraram a fragilidade seguinte: texto e foto certos, e a logo sem leitura — cinza
+sobre cinza. A escolha de canto conferia calma, luminância da foto, colisão e preferência; nada disso
+prova que a logo lê. O CP3 prova mecanicamente, contra o fundo REAL.
+
+- 🔴 **O critério é REGIONAL, pixel a pixel** (`legibilidade-da-logo.ts`): para os pixels VISÍVEIS da
+  logo (alfa ≥ `ALFA_VISIVEL_DA_LOGO` = 128), |luz da logo − luz do fundo| no MESMO pixel, em luz 709;
+  o **p10 ≥ `LIMIAR_DE_CONTRASTE_DA_LOGO` = 45** decide. Média, proporção de pixels no limiar e pixels
+  avaliados são diagnóstico: **a média não salva uma logo cujo p10 falha** (a logo de dois tons da
+  prova 3: média 144, p10 6 — a barra some). O 45 e o 128 moram neste módulo; `logo-compositor.ts`
+  os importa (antes eram literais em dois lugares).
+- 🔴 **O fundo medido é o EFETIVO**: a peça renderizada pelo renderer de produção, com as camadas
+  FINAIS (foto no corte, fundo, gradientes e tratamentos como a régua os deixou), sem a própria
+  logo e sem a tinta dos textos (`fundoSemALogo`). Nunca a média da foto, a média do canto, um
+  pixel ou uma cor teórica. A logo é lida como o render a desenha: esticada na caixa
+  (`objectFit: contain` não faz letterbox — `image-fit.ts`); o oráculo do CP0 foi corrigido para o
+  mesmo (lia em letterbox e as contagens divergiam).
+- 🔴 **Nenhuma variante é fabricada.** Proibido inverter, tingir, recolorir, sintetizar negativa,
+  IA, BrandColor. Entram só as **variantes autorizadas** (`variantesAutorizadasDaLogo`): a logo que
+  a página de assinatura desenha (a explícita, primeiro) e as linhas `Logo` com `isProjectLogo`
+  (em ordem de id), sem repetir arquivo. Linhas sem a marca NÃO entram: a tabela mistura parceiro,
+  campanha, co-branding e asset antigo, e nada no banco diz o contrário (auditoria de 15/10). Hoje
+  há uma principal por projeto na prática (sem unique no banco); a seleção já aceita várias.
+- 🔴 **A conferência roda no FIM do `comporPeca` (passo 8b, `logo-da-peca.ts`)**, depois da régua.
+  Com arquétipo: a logo desenhada que não lê é trocada por outra variante autorizada; a FIXA do
+  topo-esquerda nunca muda de lugar (a caixa da variante é o contain da caixa materializada); a
+  AUTOMÁTICA do centro-óptico pode ir a outro canto já autorizado (`cantosOrdenados`, só os livres
+  de texto). Ordem: primeiro ELIMINA (não carregou, sem pixel, p10 < 45); só depois a preferência —
+  variantes na ordem autorizada (a gravada na recomposição vai primeiro), e dentro da variante os
+  cantos (o atual/congelado, depois os mais calmos). **A explícita que passa é mantida mesmo com
+  outra de p10 maior.** O canto calmo porém ilegível não vence.
+- 🔴 **Sem véu novo para a logo.** O véu automático da logo (7b) que não a salvou SAI quando a
+  conferência troca algo; nenhum tratamento nasce para salvar a logo. Se a logo não lê: outra
+  variante autorizada, ou **`LOGO_SEM_VARIANTE_LEGIVEL`** (422, determinístico na fila e na
+  recomposição, com a grade medida e o critério nos `details`). Asset que não baixou ou não
+  decodificou é **`LOGO_INDISPONIVEL`** (503, transitório) — nunca "sem contraste"; e quando uma
+  alternativa não carregou e nenhuma das outras lê, também é `LOGO_INDISPONIVEL` (não dá para
+  afirmar "nenhuma lê").
+- 🔴 **Sem arquétipo NADA muda** — nem as camadas, nem os avisos: os baselines `t1a-`/`cp2b-baseline`
+  são idênticos (a projeção deles lê `logo` sem `legibilidade`). A medida e a mesma grade vão a
+  `diagnostico.logo.legibilidade` (`codigo` `LOGO_SEM_VARIANTE_LEGIVEL` quando nenhuma variante lê
+  em canto nenhum; `PREFERENCIA_INVIAVEL` quando o canto pedido ou a posição da página impede a
+  solução que existe; `alternativa` e `mensagem`). Asset quebrado no legado é `estado: 'nao-medida'`.
+- 🔴 **Recomposição preserva a variante**: `buscaEspacial.escolha.logo = { origem, url }` (e
+  `arquetipo.logo.variante` na peça do T1a); `escolhaEspacialOriginal` a lê (malformada =
+  `ARQUETIPO_ESCOLHA_ILEGIVEL`). A gravada é medida de novo primeiro: se continua a ler, fica
+  (`escolha: 'reproduzida'`), não trocamos por "ficou melhor"; se já não é autorizada ou não lê, a
+  troca é DITA no aviso. `compor-arte` devolve `leituraDaLogo` compacta.
+- **Revisor**: regra `logo-sem-leitura` (problema, `certeza: 'medida'`), com p10, média, proporção,
+  pixels, limiar, alfa, variante/origem e posição na evidência. Sem ajuste mecânico (a correção é do
+  compositor); o fluxo humano segue só avisando — o gate é do CP5. Arquivo que não carregou é
+  cobertura parcial, dita.
+- Provas: `legibilidade-da-logo.test.ts` (1–6, 10, 16, 18 puros), `cp3-logo.test.ts` (7–16 e 18 no
+  compositor real, recomposição, legado), `cp3-provas.test.ts` (PNG com `PROVAS_DIR`). Os `hojeViola`
+  D, E, F, P4 do piloto e "acusa a logo sem leitura" viraram `it()`.
+- Fora do CP3: gate autônomo (CP5), logo do arranjo (elementos), mais de uma logo por peça no
+  compositor, recalibração do 45 (REA).
