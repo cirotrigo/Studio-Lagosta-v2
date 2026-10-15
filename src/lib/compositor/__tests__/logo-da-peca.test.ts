@@ -50,7 +50,7 @@ function args(parcial: Partial<ArgsDaConferencia> & Pick<ArgsDaConferencia, 'lay
     cantoAtual: 'inferior-direito',
     posicoesAlternativas: (t) => [{ canto: 'superior-esquerdo', rect: { x: 92, y: 200, width: t.width, height: t.height } }],
     caixaNoCantoAtual: (t) => ({ x: CANTO.x + CANTO.width - t.width, y: CANTO.y + CANTO.height - t.height, width: t.width, height: t.height }),
-    livreNoCantoAtual: true,
+    livre: () => true,
     veusDaLogo: new Set(),
     modo: 'arquetipo',
     ...parcial,
@@ -94,11 +94,27 @@ describe('eliminar antes de preferir', () => {
   it('a posição atual que COLIDE com texto é eliminada mesmo legível: a logo vai ao canto livre', async () => {
     const url = await logoCheia(240)
     const layers = [fundo(await foto(() => 20)), texto('servico', { x: 700, y: 1590, width: 300, height: 60 }), camadaDaLogo(url, CANTO)]
-    const r = await conferirLogoDaPeca(args({ layers, logo: layers[2], desenhada: pagina(url), variantes: [pagina(url)], livreNoCantoAtual: false }))
+    const r = await conferirLogoDaPeca(args({ layers, logo: layers[2], desenhada: pagina(url), variantes: [pagina(url)], livre: (caixa) => caixa.y < 1500 }))
     expect(r.legibilidade.avaliacoes[0]).toMatchObject({ canto: 'inferior-direito', estado: 'fora-da-area' })
     expect(r.legibilidade.escolha).toBe('canto-trocado')
     expect(r.canto).toBe('superior-esquerdo')
     expect(r.layers.find((l) => l.id === 'logo')!.position).toEqual({ x: 92, y: 200 })
+  })
+
+  it('outra variante MAIS ALTA no canto atual que passa a encostar no texto é eliminada ali (a conferência é por caixa), e vai ao canto livre', async () => {
+    // A desenhada (cinza-escura, 160×80 em y 1600..1680) não lê sobre o fundo escuro; a variante clara é QUADRADA e no
+    // canto ocuparia 160×160 (y 1520..1680), encostando no serviço que termina em y 1560 — a caixa desenhada está livre,
+    // a da variante não.
+    const cinza = await logoCheia(20)
+    const quadrada = await logoCheia(240, 100, 100)
+    const servico = { x: 700, y: 1500, width: 300, height: 60 }
+    const camadas = [fundo(await foto(() => 20)), texto('servico', servico), camadaDaLogo(cinza, CANTO)]
+    const livre = (caixa: Rect) => !(caixa.x < servico.x + servico.width && caixa.x + caixa.width > servico.x && caixa.y < servico.y + servico.height && caixa.y + caixa.height > servico.y)
+    expect(livre(CANTO)).toBe(true)
+    const r = await conferirLogoDaPeca(args({ layers: camadas, logo: camadas[2], desenhada: pagina(cinza), variantes: [pagina(cinza), projeto(quadrada, 3)], livre }))
+    const noCantoAtual = r.legibilidade.avaliacoes.find((a) => a.variante.logoId === 3 && a.canto === 'inferior-direito')!
+    expect(noCantoAtual.estado).toBe('fora-da-area')
+    expect(r.canto).toBe('superior-esquerdo')
   })
 
   it('o véu automático da logo que não a salvou SAI, e a mesma logo no mesmo canto passa a ler: escolha "veu-removido", régua avisa', async () => {

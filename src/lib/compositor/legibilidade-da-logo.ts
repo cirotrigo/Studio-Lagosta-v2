@@ -154,7 +154,8 @@ export function medirLegibilidadeDaLogo(args: { logo: RasterRGBA; posicao: { x: 
     pixelsAvaliados: n,
     contrasteP10,
     contrasteMedio: arred(diferencas.reduce((s, d) => s + d, 0) / n),
-    proporcaoAcima45: arred(diferencas.filter((d) => d >= LIMIAR_DE_CONTRASTE_DA_LOGO).length / n),
+    // A mesma régua do p10: a diferença arredondada a 2 casas (44,9974 conta como 45, como na decisão).
+    proporcaoAcima45: arred(diferencas.filter((d) => arred(d) >= LIMIAR_DE_CONTRASTE_DA_LOGO).length / n),
     luzDaLogo: arred(somaLogo / n),
     luzDoFundo: arred(somaFundo / n),
     legivel: contrasteP10 >= LIMIAR_DE_CONTRASTE_DA_LOGO,

@@ -114,8 +114,11 @@ export interface ArgsDaConferencia {
    * caixa EXATA em que foi desenhada (`logo.position`/`size`), nunca numa caixa recalculada.
    */
   caixaNoCantoAtual: (tamanho: { width: number; height: number }) => Rect
-  /** O canto atual está livre de texto e dentro da área (o mesmo critério das alternativas). Colisão ELIMINA. */
-  livreNoCantoAtual: boolean
+  /**
+   * A caixa está livre de texto e dentro da área (o mesmo critério das alternativas) — conferida por CAIXA, porque
+   * outra variante no canto atual pode ser mais alta que a desenhada. Colisão ELIMINA, mesmo legível.
+   */
+  livre: (caixa: Rect) => boolean
   /** Os véus automáticos da logo na peça (ids das camadas): saem quando a logo desenhada não lê (arquétipo). */
   veusDaLogo: ReadonlySet<string>
   modo: 'arquetipo' | 'legado'
@@ -233,7 +236,8 @@ export async function conferirLogoDaPeca(args: ArgsDaConferencia): Promise<Resul
     if (!medida) return { variante: c.variante, canto, posicao, medida: null, estado: 'sem-pixels', motivo: 'nenhum pixel visível da logo sobre o fundo' }
     return { variante: c.variante, canto, posicao, medida, estado: medida.legivel ? 'legivel' : 'ilegivel' }
   }
-  const atual = await avaliar(daPrimeira, args.cantoAtual, caixaDe(daPrimeira, args.cantoAtual), fundo, args.livreNoCantoAtual)
+  const caixaDaPrimeira = caixaDe(daPrimeira, args.cantoAtual)
+  const atual = await avaliar(daPrimeira, args.cantoAtual, caixaDaPrimeira, fundo, args.livre(caixaDaPrimeira))
   const compacta = (a: AvaliacaoDaLogo): LegibilidadeDaLogo['avaliacoes'][number] => ({ variante: a.variante, canto: a.canto, posicao: a.posicao, estado: a.estado, medida: a.medida, ...(a.motivo ? { motivo: a.motivo } : {}) })
   const desenhar = (a: AvaliacaoDaLogo): Layer[] =>
     args.layers.map((l) =>
@@ -260,13 +264,14 @@ export async function conferirLogoDaPeca(args: ArgsDaConferencia): Promise<Resul
   const fundoDaGrade = veusRemovidos.length > 0 ? await fundoSemALogo({ layers: camadasBase, canvas: args.canvas, background: args.background, semAsCamadas: new Set([args.logo.id]) }) : fundo
   const avaliacoes: AvaliacaoDaLogo[] = []
   for (const c of carregadas) {
-    const noCantoAtual = c === daPrimeira && veusRemovidos.length === 0 ? atual : await avaliar(c, args.cantoAtual, caixaDe(c, args.cantoAtual), fundoDaGrade, args.livreNoCantoAtual)
+    const caixaNoAtual = caixaDe(c, args.cantoAtual)
+    const noCantoAtual = c === daPrimeira && veusRemovidos.length === 0 ? atual : await avaliar(c, args.cantoAtual, caixaNoAtual, fundoDaGrade, args.livre(caixaNoAtual))
     avaliacoes.push(noCantoAtual)
     if (c.razao === null) continue
     const largura = caixaAtual.width
     for (const p of args.posicoesAlternativas({ width: largura, height: Math.round(largura * c.razao) })) {
       if (p.canto === args.cantoAtual) continue
-      avaliacoes.push(await avaliar(c, p.canto, p.rect, fundoDaGrade))
+      avaliacoes.push(await avaliar(c, p.canto, p.rect, fundoDaGrade, args.livre(p.rect)))
     }
   }
   const { escolha, indisponiveis } = escolherLogoLegivel(avaliacoes)

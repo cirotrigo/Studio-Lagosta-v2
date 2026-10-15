@@ -1872,9 +1872,9 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       // gravada ainda vai primeiro (e, se não ler na foto nova, cai pela grade, dito).
       gravada: pedidoDeReproducao?.logo ?? null,
       cantoAtual: logoDiag.canto,
-      // O canto atual livre de texto e na área: o mesmo critério das alternativas (colisão ELIMINA, mesmo quando lê).
-      // A logo fixa do arquétipo já foi conferida na zona; a posição da página também (`encostaNumTexto`).
-      livreNoCantoAtual: logoFixa || !rectsDeGrupo.some((r) => intersecta(r.rect, caixaAtual)),
+      // Livre de texto, conferido por CAIXA (outra variante pode ser mais alta que a desenhada): colisão ELIMINA,
+      // mesmo quando lê. Vale para a logo fixa também — a variante contida na referência pode passar da posição.
+      livre: (caixa) => !rectsDeGrupo.some((r) => intersecta(r.rect, caixa)),
       // Outra variante no canto atual ocupa a caixa pela largura, no canto (a mesma das alternativas); na logo fixa,
       // o contain da caixa materializada; na posição da página (legado), o contain da caixa desenhada.
       caixaNoCantoAtual: (tamanho) => {
