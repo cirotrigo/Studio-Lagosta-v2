@@ -696,7 +696,7 @@ Decisão do owner: **o agente autônomo não pode apagar copy para "corrigir" de
 - **Provas do passo 9 de `scripts/validar-revisor-da-arte.ts`** redesenhadas sem esconder texto com conteúdo
   (ver o cabeçalho do passo 9 no script): 9a/9b/9c provam a recusa PRÉ-escrita (página, miniatura, marca,
   Generation e job intactos; dica aceita-como-veio; post RENDERED); 9e usa a força do gradiente (copies iguais
-  à página); 9g planta e restaura uma divergência de Generation legada; 9h/9i/9j usam `mover` permitido e
+  à página); 9g lê a divergência do 9e E planta/restaura uma segunda direto na Generation (valor só da `copyDeAprendizado`); 9h/9i/9j usam `mover` permitido e
   conferem `copyVisualRegravada`; 9f (controle humano) fortalecida — marca antiga sai, `copyRemovida`, sinal do
   ajuste, `removidos` exatos; 9d (remoção humana sem marca → `editada`) não mudou.
 - **Foto sem assunto localizável não trava mais o ajuste** (achado da prova de integração, passo 6): a peça
