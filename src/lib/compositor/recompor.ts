@@ -65,6 +65,7 @@ import { comporPeca } from './compor'
 import { specTemExtra } from './camadas-extras'
 import {
   edicaoDuranteOJob,
+  escolhaEspacialOriginal,
   medirDefasagem,
   paginaMudouDesde,
   precisaRefazer,
@@ -407,6 +408,13 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
   // catálogo, nunca "a mais recente" (versão ausente é recusada). Impressão divergente recusa ANTES de qualquer
   // escrita: a peça não finge que a definição com que nasceu ainda é a mesma.
   if (candidataARecompor && arte.spec!.arquetipo) resolverArquetipo(arte.spec!.arquetipo as ArquetipoDaSpec, { persistida: true })
+  // CP2B: a ESCOLHA ESPACIAL gravada (corte e deslocamentos) é reproduzida, nunca refeita — a busca pela foto não roda
+  // de novo numa edição de texto. Ilegível recusa AQUI, antes de qualquer escrita (ver `escolhaEspacialOriginal`).
+  const lida = candidataARecompor && arte.spec!.arquetipo ? escolhaEspacialOriginal(arte.fieldValues, arte.spec!) : null
+  // Foto trocada numa peça do T1a (na referência, sem escolha pela foto): a busca roda pela foto nova, DITO. (A peça do
+  // CP2B traz a foto na escolha: o compositor percebe a troca e avisa sozinho.)
+  const escolhaEspacial = lida?.modo === 'referencia' && defasagem.fotoTrocada ? null : lida
+  if (lida?.modo === 'referencia' && defasagem.fotoTrocada) avisos.push('A foto da peça mudou: a posição foi escolhida de novo pela foto nova (a peça estava na referência do arquétipo).')
   /**
    * F1: a spec da recomposição leva o CONTRATO da página como ele está —
    * lido das camadas atuais sobre o contrato gravado (o que já foi revisado
@@ -454,7 +462,8 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
   let leituraDoContrato: ReturnType<typeof tentarCopyEfetivaDasCamadas> | null = null
   // A spec reconstruída pela página (foto, posição original) sai ANTES da decisão: com o histórico cheio é ela que
   // precisa passar em `validarSpec` para a recomposição seguir (PR10-04). Os avisos dela só valem se recompuser.
-  const reconstruida = candidataARecompor ? specComACopyDaPagina(arte.spec!, page.layers) : null
+  const fotoDesenhada = (arte.fieldValues as { imageUrl?: unknown } | undefined)?.imageUrl
+  const reconstruida = candidataARecompor ? specComACopyDaPagina(arte.spec!, page.layers, { fotoDesenhada: typeof fotoDesenhada === 'string' ? fotoDesenhada : null }) : null
   const specPosicionada = reconstruida ? specComAPosicaoOriginal(reconstruida.spec, arte.fieldValues) : null
   if (candidataARecompor) {
     const contratoDaPagina = page.copyAutoral == null ? null : lerCopyAutoral(page.copyAutoral).copy
@@ -513,7 +522,7 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
      * semana, ordem na pasta, `registrarUsoDeFoto` e a transição do item do
      * plano. Recompor é refazer A MESMA peça, não criar outra.
      */
-    const composicao = await comporPeca(spec, { provar: true })
+    const composicao = await comporPeca(spec, { provar: true, ...(escolhaEspacial ? { escolhaEspacial } : {}) })
     avisos.push(...composicao.diagnostico.avisos)
     if (!composicao.prova) throw new CreativeError('RENDER_VAZIO', 'A composição não devolveu imagem.', 500)
 
@@ -1133,6 +1142,9 @@ export async function processarRecomposicaoEmBackground(args: {
       'PAGINA_E_MODELO',
       'PAGE_NOT_FOUND',
       'PROJECT_NOT_FOUND',
+      // CP2B: a busca só roda na recomposição quando a foto mudou, e estas recusas são da foto, não de infra.
+      'SEM_COMBINACAO',
+      'PREFERENCIA_INVIAVEL',
     ].includes(code) || code.startsWith('ARQUETIPO_')
     if (!deterministico && (await pedirNovaTentativa(args.queueJobId, msg))) return
 
@@ -1165,10 +1177,28 @@ async function camadasDaPagina(pageId: string): Promise<unknown | null> {
  * imagem continua sendo a anterior" é mentira. E o conselho é neutro — a
  * mudança pode ter sido a foto, não o texto (quem chama passa o próprio motivo).
  */
-export function mensagemDaRecusaNoHistorico(mensagem: string, imagemTrocada: boolean): string {
-  return imagemTrocada
-    ? `A imagem deste post já foi trocada pela arte refeita nesta rodada, mas a atualização terminou com erro: ${mensagem} Confira a página e salve de novo.`
-    : `A arte NÃO foi atualizada: ${mensagem} A imagem continua sendo a anterior — confira a página e salve de novo.`
+export function mensagemDaRecusaNoHistorico(mensagem: string, imagemTrocada: boolean, code?: string): string {
+  if (imagemTrocada) return `A imagem deste post já foi trocada pela arte refeita nesta rodada, mas a atualização terminou com erro: ${mensagem} Confira a página e salve de novo.`
+  // CP2B: as recusas da posição congelada não se resolvem salvando de novo — o conselho genérico mandaria repetir o erro.
+  if (code === 'ARQUETIPO_POSICAO_CONGELADA_NAO_CABE') {
+    return 'A arte NÃO foi atualizada: a posição do texto desta arte está congelada (a que a foto escolheu, ou a referência do arquétipo), e o texto novo não cabe nela. A imagem continua sendo a anterior. Encurte o texto (menos linhas ou linhas mais curtas) ou peça uma nova composição da peça — salvar de novo do mesmo jeito não resolve.'
+  }
+  if (code === 'ARQUETIPO_CORTE_CONGELADO_PERDE_O_ASSUNTO') {
+    return 'A arte NÃO foi atualizada: o corte da foto desta arte está congelado e agora deixa de fora o assunto que o catálogo marca na foto (a marcação mudou depois que a arte foi feita). A imagem continua sendo a anterior. Peça uma nova composição da peça — mudar o texto ou salvar de novo não resolve.'
+  }
+  if (code === 'ARQUETIPO_FOTO_AMBIGUA') {
+    return 'A arte NÃO foi atualizada: a peça traz a foto por duas fontes (arquivo do acervo e endereço), e com arquétipo a posição precisa saber qual foto protege. A imagem continua sendo a anterior. Peça uma nova composição com uma foto só — salvar de novo não resolve.'
+  }
+  if (code === 'ARQUETIPO_ESCOLHA_ILEGIVEL') {
+    return 'A arte NÃO foi atualizada: o registro da posição desta arte está ilegível ou é de outro modelo, e a posição não é refeita às cegas. A imagem continua sendo a anterior. Peça uma nova composição da peça — salvar de novo não resolve.'
+  }
+  if (code === 'SEM_COMBINACAO') {
+    return 'A arte NÃO foi atualizada: com a foto nova, nenhuma posição dentro das zonas do arquétipo serve a este texto (a leitura ou a região protegida não fecham). A imagem continua sendo a anterior. Troque a foto, ou peça uma nova composição com outra variante ou outro arquétipo — salvar de novo não resolve.'
+  }
+  if (code === 'PREFERENCIA_INVIAVEL') {
+    return 'A arte NÃO foi atualizada: o enquadramento fixo pedido impede o corte da foto que resolveria a posição. A imagem continua sendo a anterior. Peça uma nova composição sem o enquadramento fixo — salvar de novo não resolve.'
+  }
+  return `A arte NÃO foi atualizada: ${mensagem} A imagem continua sendo a anterior — confira a página e salve de novo.`
 }
 
 /**
@@ -1224,7 +1254,7 @@ export async function registrarRecusa(args: {
   const comArteNova = new Set(args.postsComArteNova ?? [])
   for (const postId of args.postIds) {
     await registrarNoHistorico(postId, {
-      message: mensagemDaRecusaNoHistorico(mensagem, comArteNova.has(postId)),
+      message: mensagemDaRecusaNoHistorico(mensagem, comArteNova.has(postId), code),
       metadata: { pageId: args.pageId, errorCode: code, detalhes: detalhes ?? null },
     })
   }

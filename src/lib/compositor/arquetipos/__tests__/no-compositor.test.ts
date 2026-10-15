@@ -65,3 +65,19 @@ describe('T1a · a unidade do arquétipo', () => {
     expect(ajusteFinalNecessario(camadas, DIMENSOES.story, transborda).map((i) => i.tipo)).toContain('overflow')
   })
 })
+
+describe('CP2B · as unidades deslocadas', () => {
+  it('materializarUnidades repassa os deslocamentos: as camadas pousam na posição candidata', () => {
+    const unidades = unidadesDoArquetipo(TOPO, [bloco('headline', 0), bloco('headline2', 1)], 14)
+    const m = materializarUnidades({ arquetipo: TOPO, formato: 'story', canvas: DIMENSOES.story, geometria: piso(), unidades, logo: null, deslocamentos: { headline: 40 } })
+    expect('papeis' in m).toBe(true)
+    const [{ camadas }] = camadasNaReferencia(unidades, 'papeis' in m ? m.papeis : {}, 'esquerda')
+    expect(camadas.map((c) => [c.id, c.position])).toEqual([
+      ['headline', { x: 92, y: 338 }],
+      ['headline2', { x: 92, y: 442 }],
+    ])
+    // Além da zona (a pilha de 208 px em 297,6 + 200 passa de 639,36): recusa, dita na posição candidata.
+    const fora = materializarUnidades({ arquetipo: TOPO, formato: 'story', canvas: DIMENSOES.story, geometria: piso(), unidades, logo: null, deslocamentos: { headline: 200 } })
+    expect('problemas' in fora ? fora.problemas.map((p) => [p.codigo, p.papel, p.motivo.startsWith('na posição candidata (dy=200px)')]) : []).toEqual([['ARQUETIPO_FORA_DA_ZONA', 'headline', true]])
+  })
+})

@@ -119,7 +119,7 @@ describe('T1a · minimal-fb-topo-esquerda no compositor real', () => {
     expect(camada(r, 'headline').style).toMatchObject({ fontFamily: 'Sintetica Display', color: CLARO })
     // A procedência fica no diagnóstico e a spec gravada traz a versão exata — nunca "a mais recente".
     const d = r.diagnostico.arquetipo!
-    expect(d).toMatchObject({ id: TOPO, versao: 1, impressao: impressaoDe(TOPO), codigoTaxonomico: 'MIN-01', formato: 'story', modo: 'referencia', elementosMaterializados: [] })
+    expect(d).toMatchObject({ id: TOPO, versao: 1, impressao: impressaoDe(TOPO), codigoTaxonomico: 'MIN-01', formato: 'story', modo: 'busca-espacial-v1', elementosMaterializados: [] })
     expect(d.elementosDeclarados).toEqual([{ id: 'fio', tipo: 'fio-fino', opcional: true }])
     expect(d.papeis.map((p) => [p.papel, p.posicao.x, p.posicao.y])).toEqual([
       ['headline', 92, 298],
@@ -159,11 +159,26 @@ describe('T1a · minimal-fb-topo-esquerda no compositor real', () => {
     expect(camada(r, 'pre').position).toEqual({ x: 92, y: 230 })
   }, 60_000)
 
-  it('16. referência fora da área segura EFETIVA do projeto: recusa com papel, referência e zona — nada é movido', async () => {
-    await montar({ id: 't1a-16', pre: true, assinatura: { ...ASSINATURA, geometria: { story: { safeTopo: 250 } } } })
-    const e = await recusa(spec('t1a-16', [{ papel: 'pre', linhas: ['hoje'] }, HEADLINE, SERVICO], { arquetipo: { id: TOPO } }))
-    expect(e.code).toBe('ARQUETIPO_FORA_DA_ZONA')
-    expect(e.details).toMatchObject({ arquetipo: `${TOPO}@1`, problemas: [expect.objectContaining({ papel: 'pre', referencia: { x: 92, y: 230, width: 540, height: 58 }, zonaEfetiva: expect.objectContaining({ y: 250 }) })] })
+  it('16. referência fora da área segura EFETIVA do projeto: desde o CP2B a faixa é RESGATADA na vertical (a referência é preferência), dito no aviso — e o medir-copy parte do mesmo lugar', async () => {
+    const pagina = await montar({ id: 't1a-16', pre: true, luz: 60, assinatura: { ...ASSINATURA, geometria: { story: { safeTopo: 250 } } } })
+    const blocos = [{ papel: 'pre', linhas: ['hoje'] }, HEADLINE, SERVICO]
+    const { r } = await compor(spec('t1a-16', blocos, { arquetipo: { id: TOPO } }))
+    const d = r.diagnostico.arquetipo!
+    const pre = d.papeis.find((p) => p.papel === 'pre')!
+    // A referência (y 230) fica acima do piso de 250: a faixa {pre, headline} desce o mínimo para caber.
+    expect(pre.referencia).toEqual({ x: 92, y: 230, width: 540, height: 58 })
+    expect(pre.zonaEfetiva.y).toBe(250)
+    expect(pre.posicao.y).toBeGreaterThanOrEqual(250)
+    const dy = pre.posicao.y - 230
+    expect(d.papeis.find((p) => p.papel === 'headline')!.posicao.y).toBe(298 + dy)
+    expect(r.diagnostico.avisos.some((a) => /pre: a referência do arquétipo sai da zona efetiva/.test(a))).toBe(true)
+    // O medir-copy mede na MESMA partida (o resgate), e diz que cabe.
+    const assinatura = montarAssinatura({ pagina, formatoDaPagina: 'story', numerosDoProjeto: { ...ASSINATURA, geometria: { story: { safeTopo: 250 } } }, logoDoProjeto: null })
+    const v = validarSpec(spec('t1a-16', blocos, { arquetipo: { id: TOPO } }))
+    const m = medirCopy({ spec: v.spec!, assinatura, formato: 'story', medir: medidorCalibrado(), familias: [], fonteCarregada: () => true, combinacoesSalvas: [], arquetipo: prepararArquetipo(v.spec!) })
+    expect(m.cabeTudo).toBe(true)
+    expect(m.arquetipo!.posicoes!.pre!.posicao.y).toBe(pre.posicao.y)
+    expect(m.arquetipo!.avaliacaoEspacial).toBe('nao-executada')
   }, 60_000)
 
   it('18. linhasMax é HARD: três linhas de manchete são recusadas antes de medir', async () => {
@@ -185,7 +200,9 @@ describe('T1a · minimal-fb-topo-esquerda no compositor real', () => {
 
 describe('T1a · minimal-fb-centro-optico no compositor real', () => {
   it('15. headline centrada no centro óptico, serviço embaixo, logo no canto automático de sempre', async () => {
-    await montar({ id: 't1a-15', apoio: true })
+    // Foto escura: o texto claro lê sem tratamento em qualquer posição, e a busca (CP2B) fica na referência. Na foto
+    // clara e uniforme, o véu mais leve (rumo à borda) venceria a referência — é a regra do CP2B, provada nos testes dele.
+    await montar({ id: 't1a-15', apoio: true, luz: 60 })
     const { r } = await compor(spec('t1a-15', [{ papel: 'headline', linhas: ['Sexta'] }, { papel: 'apoio', linhas: ['jazz ao vivo'] }, SERVICO], { arquetipo: { id: CENTRO } }))
     const h = camada(r, 'headline')
     expect(h.style?.textAlign).toBe('center')

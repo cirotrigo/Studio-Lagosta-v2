@@ -76,6 +76,38 @@ describe('T1a · arquetipo nas portas MCP', () => {
     expect(r.arquetipo).toMatchObject(RESOLVIDO)
   })
 
+  it('CP2B: o resumo do compor-arte leva a busca espacial COMPACTA (corte, deslocamentos, motivo, recusas) — o detalhe fica gravado', async () => {
+    const buscaEspacial = {
+      versao: 'busca-espacial-v1',
+      id: 'be1-abc',
+      escolha: { modo: 'busca-espacial-v1', foto: 'foto-0123456789abcdef', corte: 'center-middle', deslocamentos: { servico: -86, logo: -86 } },
+      cortesAvaliados: ['center-middle'],
+      combinacoesAvaliadas: 20,
+      limite: 75,
+      faixas: [],
+      vencedor: { crop: 'center-middle', escolhas: [], pontuacao: 0.9, componentes: null, tratamento: [{ borda: 'rodape', estado: 'sem-necessidade' }], textos: [{ camada: 'servico' }], eliminada: [] },
+      alternativas: [{ crop: 'center-middle', escolhas: [], pontuacao: 0.8, componentes: null, tratamento: [], textos: [{ camada: 'x' }], eliminada: [] }],
+      recusas: { INVADE_REGIAO_PROTEGIDA: 2 },
+      exemplosDeRecusa: [],
+      motivo: 'a referência precisava de véu (rodape 0,76); aqui lê sem tratamento',
+    }
+    mocks.comporPeca.mockResolvedValueOnce({
+      prova: null,
+      persistido: { generationId: 'g', pageId: 'p', url: 'u', editUrl: 'e', galleryUrl: 'gl' },
+      diagnostico: { posicao: { ancora: 'topo', alinha: 'esquerda', crop: 'center-middle' }, logo: null, blocos: [], avisos: [], arquetipo: { ...RESOLVIDO, modo: 'busca-espacial-v1', buscaEspacial } },
+    })
+    const r = (await tool('compor-arte').handler({ projectId: 8, formato: 'story', blocos, arquetipo: ARQ }, { kind: 'user' } as never)) as { arquetipo: Record<string, unknown> }
+    expect(r.arquetipo).toMatchObject({ ...RESOLVIDO, modo: 'busca-espacial-v1' })
+    expect(r.arquetipo.buscaEspacial).toEqual({
+      corte: 'center-middle',
+      deslocamentos: { servico: -86, logo: -86 },
+      motivo: buscaEspacial.motivo,
+      combinacoesAvaliadas: 20,
+      recusas: { INVADE_REGIAO_PROTEGIDA: 2 },
+      tratamentoEstimado: [{ borda: 'rodape', estado: 'sem-necessidade' }],
+    })
+  })
+
   it('compor-arte sem arquetipo: a spec não ganha a chave', async () => {
     await tool('compor-arte').handler({ projectId: 8, formato: 'story', blocos }, { kind: 'user' } as never)
     expect('arquetipo' in mocks.comporPeca.mock.calls[0][0]).toBe(false)

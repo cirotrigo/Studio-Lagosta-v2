@@ -37,8 +37,13 @@ import { lerCamadas } from '@/lib/posts/page-layers'
 import { renderDaPaginaCobreAMidia } from '@/lib/posts/render-da-pagina'
 import { ehClipe } from '@/lib/video/camadas-de-video'
 
+import type { CropPosition } from '@/lib/image-crop-utils'
+import { CreativeError } from '@/lib/creatives/errors'
+
 import { linhasComColchetes } from './destaques'
-import { PAPEIS, type Papel, type SpecDePeca } from './spec'
+import { CANTOS, PAPEIS, type Canto, type Papel, type SpecDePeca } from './spec'
+import { PAPEIS_DO_ARQUETIPO } from './arquetipos/tipos'
+import { MODO_BUSCA_ESPACIAL, type EscolhaEspacial, type EscolhaParaReproduzir, type MembroDaFaixa, type ResumoDaBuscaOriginal } from './arquetipos/busca-espacial-tipos'
 
 /**
  * Como `copyDosPapeis`, mas a camada RICH TEXT volta com os [colchetes] nos
@@ -442,7 +447,15 @@ export interface SpecRecomposta {
  * Só a copy e a foto mudam. Formato, preferências, variante e os vínculos com
  * o plano ficam como estavam: quem recompõe está refazendo A MESMA peça.
  */
-export function specComACopyDaPagina(spec: SpecDePeca, camadasDaPagina: unknown): SpecRecomposta {
+export function specComACopyDaPagina(
+  spec: SpecDePeca,
+  camadasDaPagina: unknown,
+  /**
+   * CP2B: a URL da foto que a arte DESENHOU (`fieldValues.imageUrl`). Com arquétipo, a página que mostra essa mesma foto
+   * não troca o `driveFileId` pela URL — senão o assunto do catálogo (a região protegida) se perderia na recomposição.
+   */
+  opcoes: { fotoDesenhada?: string | null } = {},
+): SpecRecomposta {
   const avisos: string[] = []
   // Com os [colchetes] de volta: o destaque da página sobrevive à recomposição.
   // Por IDENTIDADE (PR 10): a camada extra é lida pelo id que declara, nunca
@@ -508,7 +521,13 @@ export function specComACopyDaPagina(spec: SpecDePeca, camadasDaPagina: unknown)
 
   const url = fotoDaPagina(camadasDaPagina)
   let foto = spec.foto
-  if (url && url !== spec.foto?.url) {
+  // A MESMA foto (a que a arte desenhou), com arquétipo: a foto da spec fica como estava — o `driveFileId`, que o
+  // compositor resolve na MESMA URL (o cache do Blob é determinístico por projeto e arquivo) e cujo catálogo protege a
+  // região. A URL não vem junto: com arquétipo, foto por duas fontes é recusada (`ARQUETIPO_FOTO_AMBIGUA`). Sem
+  // arquétipo, nada muda (o caminho legado é intocado).
+  const mesmaFoto = !!spec.arquetipo && !!url && !!spec.foto?.driveFileId && !!opcoes.fotoDesenhada && url === opcoes.fotoDesenhada
+  if (mesmaFoto) foto = spec.foto
+  else if (url && url !== spec.foto?.url) {
     /**
      * A foto da PÁGINA vence a da spec: ou ela nunca existiu ali, ou alguém
      * trocou a imagem no editor. O `driveFileId` antigo sai junto — apontando
@@ -568,6 +587,88 @@ export function specComAPosicaoOriginal(spec: SpecDePeca, fieldValues: unknown):
   const pedeAlinha = pref.alinha && pref.alinha !== 'auto'
   if (pedeAncora || pedeAlinha) return comPref()
   return { ...spec, preferencias: { ...pref, ancora: posicao.ancora, alinha: posicao.alinha } }
+}
+
+/** Os cortes válidos — `Record` para o tipo exigir todos os de `CropPosition`. */
+const CORTES: Record<CropPosition, true> = {
+  'left-top': true,
+  'center-top': true,
+  'right-top': true,
+  'left-middle': true,
+  'center-middle': true,
+  'right-middle': true,
+  'left-bottom': true,
+  'center-bottom': true,
+  'right-bottom': true,
+}
+const ehObjeto = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
+
+/**
+ * A ESCOLHA ESPACIAL que a recomposição reproduz (CP2B): a política de posição original da peça COM arquétipo, o
+ * par de `specComAPosicaoOriginal` (que não injeta âncora nem alinhamento nela). A escolha mora no diagnóstico
+ * gravado (`fieldValues.composicao.arquetipo` — a procedência), não na spec pública: lá ela viraria uma segunda fonte
+ * de posição pelo MCP. Sem arquétipo, `null` (nada muda). Diagnóstico ausente, de outra definição (id, versão ou
+ * impressão diferentes da spec) ou com forma ilegível RECUSA (`ARQUETIPO_ESCOLHA_ILEGIVEL`): nunca cai numa busca
+ * nova em silêncio — a peça mudaria de lugar numa edição de texto.
+ */
+export function escolhaEspacialOriginal(fieldValues: unknown, spec: SpecDePeca): EscolhaParaReproduzir | null {
+  if (!spec.arquetipo) return null
+  const recusar = (problema: string): never => {
+    throw new CreativeError(
+      'ARQUETIPO_ESCOLHA_ILEGIVEL',
+      `A posição gravada desta arte não pôde ser lida (${problema}); a recomposição não refaz a escolha às cegas — peça uma nova composição da peça.`,
+      422,
+      { arquetipo: spec.arquetipo, problema },
+    )
+  }
+  const composicao = ehObjeto(fieldValues) && ehObjeto(fieldValues.composicao) ? fieldValues.composicao : null
+  const gravado = composicao && ehObjeto(composicao.arquetipo) ? composicao.arquetipo : null
+  if (!gravado) return recusar('a arte não guardou o diagnóstico do arquétipo')
+  if (typeof gravado.id !== 'string' || typeof gravado.versao !== 'number' || typeof gravado.impressao !== 'string') {
+    return recusar('o diagnóstico do arquétipo não tem id, versão e impressão')
+  }
+  const { id, versao, impressao } = spec.arquetipo
+  if (gravado.id !== id || gravado.versao !== versao || gravado.impressao !== impressao) {
+    return recusar(`o diagnóstico é de ${gravado.id}@${gravado.versao} (${gravado.impressao}), a spec é de ${id}@${versao} (${impressao})`)
+  }
+  // A peça do T1a: a referência no corte central, com o canto da logo AUTOMÁTICA que ela gravou (a copy nova não o troca).
+  if (gravado.modo === 'referencia') {
+    const logo = ehObjeto(gravado.logo) ? gravado.logo : null
+    const cantoDoT1a = logo && logo.modo === 'automatica' && (CANTOS as readonly unknown[]).includes(logo.canto) ? (logo.canto as Canto) : null
+    return cantoDoT1a ? { modo: 'referencia', cantoDaLogo: cantoDoT1a } : { modo: 'referencia' }
+  }
+  if (gravado.modo !== MODO_BUSCA_ESPACIAL) return recusar(`modo desconhecido: ${String(gravado.modo)}`)
+
+  const escolha = ehObjeto(gravado.buscaEspacial) && ehObjeto(gravado.buscaEspacial.escolha) ? gravado.buscaEspacial.escolha : null
+  if (!escolha || escolha.modo !== MODO_BUSCA_ESPACIAL) return recusar('a busca não gravou a escolha')
+  if (escolha.foto !== null && typeof escolha.foto !== 'string') return recusar('a foto da escolha não é texto')
+  if (typeof escolha.corte !== 'string' || !Object.prototype.hasOwnProperty.call(CORTES, escolha.corte)) return recusar(`corte inválido: ${String(escolha.corte)}`)
+  if (!ehObjeto(escolha.deslocamentos)) return recusar('a escolha não tem os deslocamentos')
+  const deslocamentos: Partial<Record<MembroDaFaixa, number>> = {}
+  for (const [membro, dy] of Object.entries(escolha.deslocamentos)) {
+    if (!(PAPEIS_DO_ARQUETIPO as readonly string[]).includes(membro)) return recusar(`membro inválido: ${membro}`)
+    if (!Number.isInteger(dy)) return recusar(`deslocamento de ${membro} não é inteiro: ${String(dy)}`)
+    deslocamentos[membro as MembroDaFaixa] = dy as number
+  }
+  const canto = escolha.cantoDaLogo
+  if (canto !== undefined && canto !== null && !(CANTOS as readonly unknown[]).includes(canto)) return recusar(`canto da logo inválido: ${String(canto)}`)
+
+  const limpa: EscolhaEspacial & { buscaOriginal?: ResumoDaBuscaOriginal } = { modo: MODO_BUSCA_ESPACIAL, foto: escolha.foto as string | null, corte: escolha.corte as CropPosition, deslocamentos }
+  if (canto !== undefined) limpa.cantoDaLogo = canto as Canto | null
+  // O resumo da busca que ESCOLHEU (o da primeira, levado adiante pelas recomposições): só informativo — forma estranha não recusa.
+  const original = resumoDaBuscaOriginal(gravado.buscaEspacial)
+  if (original) limpa.buscaOriginal = original
+  return limpa
+}
+
+function resumoDaBuscaOriginal(busca: unknown): ResumoDaBuscaOriginal | null {
+  if (!ehObjeto(busca)) return null
+  const reproduzida = ehObjeto(busca.reproduzida) && ehObjeto(busca.reproduzida.original) ? busca.reproduzida.original : null
+  const fonte = reproduzida ?? busca
+  if (typeof fonte.id !== 'string' || typeof fonte.motivo !== 'string' || typeof fonte.combinacoesAvaliadas !== 'number') return null
+  const recusas = ehObjeto(fonte.recusas) ? Object.fromEntries(Object.entries(fonte.recusas).filter(([, n]) => Number.isInteger(n))) : {}
+  const cortes = Array.isArray(fonte.cortesAvaliados) ? fonte.cortesAvaliados.filter((c): c is CropPosition => typeof c === 'string' && Object.prototype.hasOwnProperty.call(CORTES, c)) : []
+  return { id: fonte.id, motivo: fonte.motivo, recusas, combinacoesAvaliadas: fonte.combinacoesAvaliadas, cortesAvaliados: cortes }
 }
 
 export interface PostComArte {

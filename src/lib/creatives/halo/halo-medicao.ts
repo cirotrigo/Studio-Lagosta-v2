@@ -125,6 +125,12 @@ export function luzNoRect(foto: FotoCinza, rect: Rect): LuzMedida | null {
   return { media: soma / total, p75: percentil(hist, 0.75) }
 }
 
+/** p02 e p98 da luz num retângulo da peça — o fundo SEM tratamento sob um texto, no raster do corte (CP2B). */
+export function percentisNoRect(foto: FotoCinza, rect: Rect): { p02: number; p98: number } | null {
+  const hist = histogramaNoRect(foto, rect)
+  return hist ? { p02: percentil(hist, 0.02), p98: percentil(hist, 0.98) } : null
+}
+
 export interface MedirLuzOptions {
   canvas: CanvasSize
   rects: Rect[]

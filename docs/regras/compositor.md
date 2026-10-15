@@ -915,3 +915,94 @@ falha se mudar.
   T1b), formato quadrado, `cta`, camada extra / `herdaDe`, seleção experimental.
 
 Detalhe em `docs/design/arquetipos-minimalistas-v1.md`, seção "T1a".
+
+## Posição do arquétipo pela foto (CP2B, 14/10/2026)
+
+Com `spec.arquetipo`, a foto escolhe, DENTRO das zonas do arquétipo, o corte e a posição de cada
+**faixa**; o CP2A continua sendo o juiz do contraste. **Posição primeiro, tratamento de leitura
+depois.** Sem arquétipo nada muda: os baselines `t1a-baseline-sem-arquetipo` (fotos uniformes) e
+`cp2b-baseline-sem-arquetipo` (metades, faixa, região protegida, 3 cortes), gerados na base, falham
+se mudar.
+
+- 🔴 **A unidade de busca é a FAIXA**: os papéis cujas zonas se sobrepõem na vertical
+  (`faixasDoArquetipo`). Topo-esquerda: {pre, headline, apoio} e {servico, logo}; centro-óptico:
+  {headline, apoio} e {servico}. A faixa anda inteira com um `dy` só: ordem, ritmo e a relação
+  interna da referência ficam por construção, e o serviço/logo do rodapé andam juntos.
+- 🔴 **Só vertical.** O alinhamento ancora uma linha (margem esquerda, eixo central); `dx` moveria
+  essa linha. Caixa que passa da zona na horizontal é recusa estrutural.
+- 🔴 **A referência é preferência, não obrigação.** Até 5 candidatos por faixa (a referência, o mais
+  acima, o meio rumo à referência, o mais abaixo), ≥ 16 px entre si. Quando a área segura do projeto
+  corta a referência, a faixa é RESGATADA na vertical (a partida é a posição válida mais perto
+  dela, com aviso). `partidaNoArquetipo` é o portão estrutural, o MESMO no compor e no medir-copy.
+- 🔴 **Eliminar antes de pontuar** (`MOTIVOS_DE_ELIMINACAO`): fora da zona ou da área segura,
+  ornamento fora, corte que mostra menos de 75% do assunto do CATÁLOGO (SEMPRE, haja ou não outro corte
+  melhor — o catálogo é dado curado; com o enquadramento fixo, o lateral que resolve vira
+  PREFERENCIA_INVIAVEL; se NENHUM corte preserva, a peça nova recusa com `SEM_COMBINACAO`, motivo
+  `CORTE_PERDE_O_ASSUNTO`, e nada é persistido: a foto não serve a este formato), região
+  protegida do CATÁLOGO acima do teto (0,25; textos, unidades e a logo fixa), colisão, ordem de
+  leitura, hierarquia, e o plano do CP2A `inviavel` (piora, sem cor aprovada, polaridade
+  incompatível).
+- 🔴 **A região ESTIMADA pela energia é um PATAMAR, não recusa**: quem não a cobre (teto 0,40, o do
+  revisor) vence quem cobre ANTES do custo do véu; se todas cobrem, fica a de menor cobertura, com
+  aviso. Em produção o catálogo não tem caixa de assunto (o campo é texto): a estimada é a única
+  proteção real — atrás do véu, a busca puxava o texto para cima do prato para fugir do véu (revisão
+  adversarial). Como recusa dura, a borda de uma faixa de luz zerava fotos inteiras.
+- 🔴 **Catálogo INDISPONÍVEL não é "foto sem anotação"** (Codex R2): com arquétipo, só `SEM_CATALOGO`
+  (projeto sem catálogo, ou vazio) cai na região estimada; qualquer outro erro ao ler o catálogo
+  recusa a peça com `CATALOGO_INDISPONIVEL` (503, transitório: a fila e a recomposição tentam de
+  novo — o código não começa com `ARQUETIPO_` de propósito, senão a fila o trataria como definitivo).
+  Sem arquétipo o erro segue engolido, como sempre. O diagnóstico diz de onde veio a região:
+  `buscaEspacial.regiaoProtegida` = `catalogo` ou `estimada` — FATO, o mesmo de `assuntoOrigem` (o corte
+  escolhido): `estimada` só quando a textura de fato deu uma região; sem foto, ou foto sem região
+  estimável, o campo some (ajuste final, 14/10/2026).
+- 🔴 **A foto pedida é obrigatória, e vem por UMA fonte** (Codex R3). Foto que não carregou (o
+  resolvedor devolve sem URL quando o Drive falha) recusa a peça com arquétipo: `FOTO_INDISPONIVEL`
+  (503, transitório) — antes ela saía sem foto, na partida, sem região nenhuma. `url` e `driveFileId`
+  juntos são recusados no portão (`prepararArquetipo`, o mesmo do medir-copy):
+  `ARQUETIPO_FOTO_AMBIGUA` — o resolvedor desenha a URL e o catálogo protege o ID, e fotos diferentes
+  deixariam a desenhada sem a proteção dela. Foto por URL do Drive (fonte única): o id da URL é o do
+  catálogo (`extractDriveFileId`, o mesmo que o resolvedor reconhece). `foto: {}` não pede foto e
+  compõe pela partida. Sem arquétipo, nada disso muda.
+- 🔴 **Tratamento é custo dominante.** Entre as válidas vence o menor custo de véu (tolerância
+  0,05); depois a pontuação (calma 0,4, contraste natural 0,2, assunto 0,15, referência 0,15,
+  corte central 0,1; tolerância 0,02); depois a mais perto da referência e o corte central. A
+  estimativa usa `planejarTratamentoDaBorda` com os percentis do raster de cada corte
+  (`percentisNoRect`); a borda de cada unidade é a GEOMÉTRICA da posição candidata
+  (`bordaDaUnidade`, o lado de H/2), a mesma da régua e do revisor — fixar a da referência fazia a
+  régua corrigir o véu errado no centro-óptico (a zona da manchete atravessa H/2).
+- **Cortes**: os de `cortesCandidatos` (1 ou 3), respeitando `enquadramento: 'fixo'`. Limite
+  explícito: 3 cortes × 25 combinações = 75 avaliações (`LIMITES_DA_BUSCA`).
+- **Sem solução**: `SEM_COMBINACAO` (com `motivo` do CP2A quando todas caem no mesmo, e a contagem
+  das recusas) só depois de esgotar cortes × posições × tratamentos; `PREFERENCIA_INVIAVEL` quando
+  é o `enquadramento: 'fixo'` que impede o corte que resolve.
+- 🔴 **A recomposição REPRODUZ, não busca.** A escolha (`composicao.arquetipo.buscaEspacial.escolha`:
+  corte, `dy` por membro, canto da logo automática, foto) é lida por `escolhaEspacialOriginal` e
+  passada em `opcoes.escolhaEspacial`, com o resumo da busca original (que o diagnóstico leva
+  adiante). Um `dy` por faixa (membros que discordam, ou faixa sem nenhum `dy` gravado — a busca grava todos, zero
+  inclusive —, = `ARQUETIPO_ESCOLHA_ILEGIVEL`; só a peça do T1a não grava, ela é a referência). Copy que não
+  cabe na posição congelada, ou que nela invade a região do catálogo, colide ou inverte a ordem:
+  `ARQUETIPO_POSICAO_CONGELADA_NAO_CABE`, nada é movido (o tratamento é do CP2A: só aviso). O corte
+  congelado que passou a perder o assunto do catálogo (a anotação mudou depois) recusa com código
+  próprio, `ARQUETIPO_CORTE_CONGELADO_PERDE_O_ASSUNTO`, e a saída
+  "peça uma nova composição" (o histórico não manda encurtar o texto) — só na peça do CP2B: a do T1a
+  nasceu no corte central com esse aviso, e a edição de texto dela segue com o aviso. A logo
+  fixa que mudou de proporção vai ao dy válido dela (aviso); a logo automática congelada que
+  encostaria no texto novo vai ao canto livre (aviso). Foto trocada: busca nova, com aviso. A
+  identidade da foto é a impressão da URL que a peça desenha; com arquétipo, a página que mostra a
+  MESMA foto desenhada (`fieldValues.imageUrl`) mantém a foto da spec — só o `driveFileId` — na
+  recomposição (`specComACopyDaPagina`): o compositor o resolve na mesma URL (o cache do Blob é
+  determinístico por projeto e arquivo), e o assunto do catálogo continua protegendo. Custo: a
+  recomposição com arquétipo volta ao Drive; Drive fora do ar é `FOTO_INDISPONIVEL`, e a fila tenta
+  de novo. Peça do T1a (`modo: 'referencia'`): reproduz a referência no corte central e o canto
+  da logo automática que gravou; foto trocada nela também faz busca nova, com aviso.
+- **Diagnóstico** em `composicao.arquetipo.buscaEspacial` (nunca no topo do diagnóstico): versão,
+  id, escolha, cortes e combinações avaliadas, faixas, vencedor e até 2 alternativas (componentes,
+  tratamento estimado, leituras), recusas por motivo, exemplos e o motivo em uma frase. O
+  `compor-arte` devolve a forma compacta.
+- **medir-copy não busca**: `avaliacaoEspacial: 'nao-executada'` — garante o encaixe estrutural, não
+  uma posição visual boa na foto.
+- **Fora do CP2B**: escolha automática de arquétipo, logo inteligente (a logo de referência fixa
+  acompanha a faixa do serviço; contraste da logo é do CP3), SVG/elementos (T1b), o modelo
+  base-esquerda.
+
+Detalhe em `docs/design/arquetipos-minimalistas-v1.md`, seção "CP2B".

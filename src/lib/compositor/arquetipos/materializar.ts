@@ -101,7 +101,7 @@ export interface PapelMaterializado {
   referencia: RetanguloPx
   /** A zona do arquétipo ∩ a área segura efetiva, em px. */
   zonaEfetiva: RetanguloPx
-  /** Onde a caixa real pousou: na referência, alinhada como o arquétipo manda. */
+  /** Onde a caixa real pousou: na referência (ou na posição candidata da busca), alinhada como o arquétipo manda. */
   posicao: RetanguloPx
 }
 
@@ -115,6 +115,12 @@ export type Materializacao =
  * altura/largura do arquivo da logo (ou `null` sem logo). A logo de posição
  * fixa entra em `contain` na referência: a maior caixa com a proporção do
  * arquivo, rente ao lado do canto da marca e centrada na altura.
+ *
+ * `deslocamentos` (CP2B) é o `dy` de cada papel escolhido pela busca espacial:
+ * a posição parte da referência TRANSLADADA na vertical; a capacidade continua
+ * sendo a referência (não muda com o dy), e a zona efetiva e os ornamentos são
+ * conferidos onde a caixa pousou, com a mesma tolerância. Sem ele (ou com dy 0)
+ * a saída é a de sempre, byte a byte.
  */
 export function materializarArquetipo(args: {
   arquetipo: ArquetipoDeLayout
@@ -125,6 +131,13 @@ export function materializarArquetipo(args: {
   /** Quanto os ornamentos presos aos textos passam da caixa de cada papel (não deslocam a âncora; também têm de caber na zona). */
   ornamentos?: Partial<Record<PapelDeTexto, { esquerda: number; direita: number; topo: number; base: number }>>
   logo: { razao: number } | null
+  /** O `dy` (px, só vertical) de cada papel na busca espacial; ausente = 0, a referência. */
+  deslocamentos?: Partial<Record<PapelDeTexto | 'logo', number>>
+  /**
+   * `false` só para MEDIR onde cada caixa pousaria (a busca calcula daí o intervalo em que a faixa cabe): a
+   * capacidade, a logo e a zona vazia continuam conferidas; a caixa e os ornamentos fora da zona, não.
+   */
+  conferirZona?: boolean
 }): Materializacao {
   const { arquetipo, formato, canvas, geometria } = args
   const problemas: ProblemaDeMaterializacao[] = []
@@ -139,6 +152,10 @@ export function materializarArquetipo(args: {
     }
     const referencia = emPx(pos.referencia, canvas)
     const zona = zonaEfetiva(pos.zona, canvas, geometria)
+    const dy = args.deslocamentos?.[papel] ?? 0
+    // Onde a caixa pousa: a referência transladada. As medidas (capacidade, contain) seguem as da referência.
+    const y0 = referencia.y + dy
+    const onde = dy ? `na posição candidata (dy=${dy}px)` : 'na referência'
 
     let medida: { width: number; height: number } | null
     let posicao: RetanguloPx | null = null
@@ -152,7 +169,7 @@ export function materializarArquetipo(args: {
           referencia: arredondado(referencia),
           zonaEfetiva: zona ? arredondado(zona) : null,
           medida: { width: 0, height: 0 },
-          motivo: 'a logo da marca não tem proporção legível (altura/largura) para entrar em contain na referência',
+          motivo: `a logo da marca não tem proporção legível (altura/largura) para entrar em contain ${onde}`,
         })
         continue
       }
@@ -161,12 +178,12 @@ export function materializarArquetipo(args: {
       const height = width * args.logo.razao
       const direita = arquetipo.preferencias.cantoDaMarca !== 'auto' && arquetipo.preferencias.cantoDaMarca.endsWith('direito')
       medida = { width, height }
-      posicao = { x: direita ? referencia.x + referencia.width - width : referencia.x, y: referencia.y + (referencia.height - height) / 2, width, height }
+      posicao = { x: direita ? referencia.x + referencia.width - width : referencia.x, y: y0 + (referencia.height - height) / 2, width, height }
     } else {
       medida = args.medidas[papel] ?? null
       if (!medida) continue
       const x = alinha === 'esquerda' ? referencia.x : alinha === 'direita' ? referencia.x + referencia.width - medida.width : referencia.x + (referencia.width - medida.width) / 2
-      posicao = { x, y: referencia.y, width: medida.width, height: medida.height }
+      posicao = { x, y: y0, width: medida.width, height: medida.height }
       // A capacidade é a referência inteira: a altura (com a segunda voz e os elementos presos) e a largura
       // (o texto já foi medido na coluna dela; o que passar daqui são os elementos do arranjo).
       const estouros = [
@@ -197,7 +214,7 @@ export function materializarArquetipo(args: {
       continue
     }
     const orn = papel !== 'logo' ? args.ornamentos?.[papel] : undefined
-    if (orn && (orn.esquerda > 0 || orn.direita > 0 || orn.topo > 0 || orn.base > 0)) {
+    if (args.conferirZona !== false && orn && (orn.esquerda > 0 || orn.direita > 0 || orn.topo > 0 || orn.base > 0)) {
       const comOrnamentos = { x: posicao.x - orn.esquerda, y: posicao.y - orn.topo, width: posicao.width + orn.esquerda + orn.direita, height: posicao.height + orn.topo + orn.base }
       if (!dentro(comOrnamentos, zona)) {
         problemas.push({
@@ -206,19 +223,20 @@ export function materializarArquetipo(args: {
           referencia: arredondado(referencia),
           zonaEfetiva: arredondado(zona),
           medida: { width: Math.round(comOrnamentos.width), height: Math.round(comOrnamentos.height) },
-          motivo: `com o texto na referência, os ornamentos do arranjo da assinatura (ícone, filete, selo) ocupam ${Math.round(comOrnamentos.x)},${Math.round(comOrnamentos.y)} ${Math.round(comOrnamentos.width)}×${Math.round(comOrnamentos.height)} e saem da zona efetiva (${Math.round(zona.x)},${Math.round(zona.y)} ${Math.round(zona.width)}×${Math.round(zona.height)}) — o texto não é deslocado por eles`,
+          motivo: `com o texto ${onde}, os ornamentos do arranjo da assinatura (ícone, filete, selo) ocupam ${Math.round(comOrnamentos.x)},${Math.round(comOrnamentos.y)} ${Math.round(comOrnamentos.width)}×${Math.round(comOrnamentos.height)} e saem da zona efetiva (${Math.round(zona.x)},${Math.round(zona.y)} ${Math.round(zona.width)}×${Math.round(zona.height)}) — o texto não é deslocado por eles`,
         })
         continue
       }
     }
-    if (!dentro(posicao, zona)) {
+    if (args.conferirZona !== false && !dentro(posicao, zona)) {
       problemas.push({
         codigo: 'ARQUETIPO_FORA_DA_ZONA',
         papel,
         referencia: arredondado(referencia),
         zonaEfetiva: arredondado(zona),
         medida: { width: Math.round(medida.width), height: Math.round(medida.height) },
-        motivo: `na referência, a caixa real (${Math.round(posicao.x)},${Math.round(posicao.y)} ${Math.round(posicao.width)}×${Math.round(posicao.height)}) sai da zona efetiva (${Math.round(zona.x)},${Math.round(zona.y)} ${Math.round(zona.width)}×${Math.round(zona.height)}) — a área segura do projeto corta a referência`,
+        // Deslocada, quem corta é a zona (do arquétipo ∩ piso): a frase da área segura só vale na referência.
+        motivo: `${onde}, a caixa real (${Math.round(posicao.x)},${Math.round(posicao.y)} ${Math.round(posicao.width)}×${Math.round(posicao.height)}) sai da zona efetiva (${Math.round(zona.x)},${Math.round(zona.y)} ${Math.round(zona.width)}×${Math.round(zona.height)})${dy ? '' : ' — a área segura do projeto corta a referência'}`,
       })
       continue
     }
