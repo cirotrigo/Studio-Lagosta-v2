@@ -19,7 +19,7 @@ import { copyVisualDasCamadas } from '@/lib/creatives/procedencia-da-copy'
 import type { CanalDaArte } from './canal'
 import { db } from '@/lib/db'
 import { KnowledgeCategory } from '@prisma/client'
-import { CreativeError } from '@/lib/creatives/errors'
+import { CreativeError, erroDeValores } from '@/lib/creatives/errors'
 import {
   ARTE_TEMPLATE_NAMES,
   ensureArteTemplate,
@@ -58,7 +58,7 @@ import { lerCopyAutoral, tentarCopyEfetivaDasCamadas } from '@/lib/copy-autoral'
 import { bakeLayers, copyRemovidaDoBake, type CopyRemovida } from '@/lib/creatives/bake-layers'
 import { camposDeTextoDasCamadas, mapearContratoParaCampos, mapearCopyParaSlots } from '@/lib/planos/execucao'
 import { semColchetes } from '@/lib/compositor/destaques'
-import { resolverValoresSemanticos, validarEntradaSemantica, type ErroDeValor, type ValorResolvido, validarFormatoDosSlotValues, validarEnderecosDosSlotValues } from '@/lib/semantica/resolver-valores'
+import { resolverValoresSemanticos, validarEntradaSemantica, type ValorResolvido, validarFormatoDosSlotValues, validarEnderecosDosSlotValues } from '@/lib/semantica/resolver-valores'
 import { type AjusteAplicado, type AjusteRecusado } from '@/lib/creatives/revisao/aplicar-ajustes'
 import { aplicarAjustesSemPiorar } from '@/lib/creatives/revisao/ajustar-sem-piorar'
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
@@ -657,10 +657,6 @@ const AVISO_FOTO_BLOQUEADA_PELO_SEMANTICO =
   'A foto não foi aplicada: o alvo principal da foto já recebeu um fileUrl por _slots/_papeis. Pelo contrato semântico, endereçe cada imagem explicitamente.'
 
 /** Erros do resolvedor semântico viram UM CreativeError: o código do primeiro, todos em `details.erros` (sem conteúdo). */
-export function erroDeValores(erros: ErroDeValor[], status: number): CreativeError {
-  return new CreativeError(erros[0].codigo, `Os valores semânticos não puderam ser aplicados (${erros.map((e) => e.codigo).join(', ')}).`, status, { erros })
-}
-
 /**
  * B1c: o mapa EFETIVO de valores da arte sobre as camadas do modelo efetivo — a copy (contrato ou
  * posicional) casada aqui, os campos que ela não cobriu ocultos, e `_slots`/`_papeis` resolvidos

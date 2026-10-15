@@ -86,7 +86,7 @@ export const toolsDeModelos = [
       {
         const [{ validarEntradaSemantica, validarFormatoDosSlotValues }, { erroDeValores }] = await Promise.all([
           import('../../semantica/resolver-valores'),
-          import('../../creatives/arte-rapida'),
+          import('../../creatives/errors'),
         ])
         const erros = [...validarEntradaSemantica(slotValues), ...validarFormatoDosSlotValues(slotValues)]
         if (erros.length > 0) throw erroDeValores(erros, 400)

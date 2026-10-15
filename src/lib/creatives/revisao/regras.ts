@@ -1151,7 +1151,9 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
     let referencia: number | null = null
     for (const m of ms) {
       const ref = e.referencias[m.layerId]
-      if (!ref) continue
+      // CP4.2a (Codex): a referência INFERIDA (fallback 16 de camada do modelo sem corpo) é ausente também aqui —
+      // senão um título de 84 sairia "5,25× maior que o modelo" e a sugestão seria recusada pelo executor.
+      if (!ref || ref.inferida) continue
       const r = m.fontSize / s / ref.fontSize1080
       if (r > razao) {
         razao = r

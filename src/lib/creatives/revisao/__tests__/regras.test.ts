@@ -244,6 +244,15 @@ describe('CP4.2a — o piso da MANCHETE: um achado por componente (modelo 0,8 ×
     expect(escala).toBeGreaterThanOrEqual(0.5)
     expect(140 * escala!).toBeGreaterThanOrEqual(67.2 - 0.5)
   })
+
+  it('regra 7 (Codex): a referência INFERIDA não serve de modelo — um título de 84 com fallback 16 não é "5,25× maior que o modelo"', () => {
+    const inferida = { headline: { fontSize1080: 16, entrelinha: null, origem: 'modelo', inferida: true } } as never
+    const r = avalia([headline(84), apoio(40), servico(32)], inferida)
+    expect(r.achados.find((a) => a.regra === 'titulo-grande')).toBeUndefined()
+    // Com a mesma referência VÁLIDA (não inferida) a regra 7 acusa.
+    const valida = { headline: { fontSize1080: 16, entrelinha: null, origem: 'modelo' } } as never
+    expect(avalia([headline(84), apoio(40), servico(32)], valida).achados.find((a) => a.regra === 'titulo-grande')).toBeTruthy()
+  })
 })
 
 describe('a leitura sobre a foto (a régua)', () => {

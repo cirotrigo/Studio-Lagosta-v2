@@ -228,7 +228,7 @@ export const toolsDeArteIA = [
       {
         const [{ validarEntradaSemantica, validarFormatoDosSlotValues }, { erroDeValores }] = await Promise.all([
           import('../../semantica/resolver-valores'),
-          import('../../creatives/arte-rapida'),
+          import('../../creatives/errors'),
         ])
         const slotValues = (args.slotValues ?? {}) as Record<string, unknown>
         const erros = [...validarEntradaSemantica(slotValues), ...validarFormatoDosSlotValues(slotValues)]

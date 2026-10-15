@@ -11,8 +11,6 @@ vi.mock('@/lib/creatives/arte-rapida', async () => {
   const { CreativeError } = await import('@/lib/creatives/errors')
   return {
     createArteRapida: vi.fn(async () => ({ generationId: 'g1', avisos: ['da arte'] })),
-    // CP4.2b: o handler lança por `erroDeValores` (código + lista) — a porta serializa CreativeError.
-    erroDeValores: (erros: Array<{ codigo: string }>, status: number) => new CreativeError(erros[0].codigo, `Os valores semânticos não puderam ser aplicados (${erros.map((e) => e.codigo).join(', ')}).`, status, { erros }),
   }
 })
 
