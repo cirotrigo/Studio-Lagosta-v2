@@ -5,6 +5,13 @@ de uma auditoria somente leitura da `main` (`53eda0c9`, o merge do CP2B), com se
 (arte rápida, caminhos de DRAFT, lotes e fila, perfil DRAFT_ONLY do MCP, Generation/Page/versão,
 recomposição e última versão boa). Os números de linha são desse commit.
 
+**Pré-requisitos NÃO presentes neste checkout** (a `main` em 53eda0c9 não os tem; são PRs abertos ou
+por abrir na mesma noite): o **CP3** (regra `logo-sem-leitura` e a medida da logo — PR #231,
+`feat/design-cp3-logo`) e o **CP4** (recusa `AJUSTE_PIOROU_ARTE` ANTES da escrita em `ajustarArte`,
+`feat/design-cp4-nao-piorar`). Tudo o que abaixo cita o CP3 ou o CP4 é condição a verificar na `main`
+antes do CP5c/CP5d — não é garantia atual. Hoje, nesta `main`, `ajustarArte` grava a página e reabre o
+render mesmo quando piora (`arte-rapida.ts:1390`, `:1474`; `piloto-ciclo.test.ts:273` é `hojeViola`).
+
 Decisões do owner que o plano obedece:
 
 - fluxo humano: **WARN-ONLY** (o revisor avisa, nunca trava a agenda);
@@ -30,9 +37,10 @@ Hoje **nenhum caminho que cria DRAFT chama `revisarArte`** e **não existe vered
 `REVISAO_HUMANA_NECESSARIA` existe só como texto do manual (`operacao-dot.ts:84`) e nos testes do CP0
 (`direcao-de-arte/__tests__/suporte/propriedades.ts:90`); nenhuma tool o devolve.
 
-O que o CP3 e o CP4 entregam para o CP5: regras mecânicas com `certeza: 'medida'` e cobertura dita por
-regra (CP0–CP3); e, no CP4, a recusa `AJUSTE_PIOROU_ARTE` ANTES da escrita (o ajuste que piora nunca
-substitui a página). O CP5 não mede nada novo: **consome o relatório que já existe e decide**.
+O que o CP3 e o CP4 vão entregar para o CP5 (pré-requisitos, ver o alto do documento): regras mecânicas
+com `certeza: 'medida'` e cobertura dita por regra (CP0–CP3); e, no CP4, a recusa `AJUSTE_PIOROU_ARTE`
+ANTES da escrita (o ajuste que piora nunca substitui a página). O CP5 não mede nada novo: **consome o
+relatório que já existe e decide**.
 
 ## 2. Caminhos que criam DRAFT (mapa completo)
 
@@ -56,9 +64,13 @@ pela miniatura atual da página; `NOT_NEEDED` com mídia pronta), `pageId`, `gen
 | Transições para DRAFT (`voltar-para-rascunho`, `recover-stuck-post`, `update-post`) | não criam | — | não (fora da allowlist) | — |
 | `criar-arte`, `criar-arte-de-modelo`, `criar-carrossel`, `compor-leva`, `executar-plano`, `prepare-creative` | **nenhum** `socialPost.create` | — | — | só criam Generation/Page |
 
-Conclusão: **no perfil draft-only há UM caminho de criação de DRAFT: `agendar-leva` → `agendarItensDoLote`
-→ `criarPostDoAgendamento`.** É o funil onde o gate mora. Os outros caminhos são humanos (warn-only) ou
-inalcançáveis pelo perfil.
+Conclusão: **para uma chamada com perfil efetivo `draft-only`, há UM caminho de criação de DRAFT:
+`agendar-leva` → `agendarItensDoLote` → `criarPostDoAgendamento`.** É o funil onde o gate mora. A
+fronteira do CP5 é **o perfil da chamada**, não a identidade "Dot" nem a origem do DRAFT: os outros
+caminhos são de chamadas com perfil `normal` (humanos, serviço, cliente OAuth novo) ou superfícies fora
+da porta MCP (`/api/external/posts` e seu PATCH, crons, UI) — todos warn-only por decisão do owner, e
+fora do gate. O mapa acima é dos caminhos que CRIAM DRAFT; não é uma garantia global sobre quem pode
+alterar um post existente.
 
 Dois caminhos **mudam** um DRAFT do Dot depois de criado, sem criar outro: `ajustar-arte` (draft-only:
 `apenasRascunho`, com `FOR UPDATE` nos posts e `POST_APROVADO_INTOCAVEL`; grava a página e reabre o
@@ -66,7 +78,7 @@ render dos rascunhos — hoje mesmo quando piora) e o cron de render (redesenha 
 revisão). O CP4 fecha o primeiro (recusa antes da escrita); o segundo só acontece depois de alguma
 escrita na página — que, no fluxo autônomo, é só o `ajustar-arte`.
 
-## 3. Detecção de autonomia
+## 3. Detecção de autonomia (a fronteira é o perfil efetivo da chamada)
 
 `perfilDoPrincipal(principal)` (`src/lib/mcp/registro/perfil.ts:71-83`): `'draft-only'` quando
 `STUDIO_SO_RASCUNHO=1` no stdio, ou quando o `clientId` do token OAuth está em
@@ -94,7 +106,11 @@ Onde há Json: `Generation.fieldValues` (merge raso por chave, `mesclar-field-va
 
 Proposta: **`Generation.fieldValues.veredito`**, na Generation que é a arte da página
 (`arteDaPagina`, `compositor/arte-da-pagina.ts:35-45`), gravado por `mesclarFieldValuesDaArte` com a
-chave só dele.
+chave só dele. **É um registro de auditoria (cache descartável), nunca autoridade**: o gate SEMPRE mede
+(seção 7); ninguém decide por um veredito gravado sem medir de novo. A chave pode ser apagada ou
+recalculada a qualquer momento sem efeito operacional. Por isso o problema "insumos fora do hash da
+página" (`copyAutoral`, fontes, assinatura, catálogo) não existe para a decisão — só para a leitura
+histórica, que diz `pageVersion` e `medidoEm`.
 
 - Sobrevive à recomposição (ela regrava `spec, composicao, layersSnapshot, thumbnailUrl,
   versaoRenderizada, copyAutoral, recomposicao, recusaDaRecomposicao` — `recompor.ts:589-626` —, não
@@ -111,29 +127,28 @@ Leitores: `ver-geracao` e `auditar-operacao` passam a expor `veredito` (campo no
 ## 5. Contrato proposto
 
 ```ts
-/** `Generation.fieldValues.veredito` — o veredito mecânico da arte da página, por versão. */
+/** `Generation.fieldValues.veredito` — registro de auditoria da última decisão do gate (cache descartável). */
 interface VereditoDaArte {
   versao: 'veredito-v1'
-  /** `versaoDaPagina(page)` no momento da medida (hash v1:… do conteúdo; nunca `updatedAt`). */
+  /** `versaoDaPagina(page)` SEM o áudio (a mesma chamada do revisor), no momento da medida. */
   pageVersion: string
-  /** `VERSAO_DAS_REGRAS` do revisor ('revisao-v1'); mudou → stale. */
+  /** `VERSAO_DAS_REGRAS` do revisor ('revisao-v1'). */
   rulesVersion: string
   resultado: 'APTO' | 'REVISAO_HUMANA_NECESSARIA'
-  /** Só as regras CRÍTICAS (seção 9): estado da cobertura de cada uma, do relatório. */
-  cobertura: Record<RegraCritica, 'avaliada' | 'parcial' | 'nao-avaliada'>
-  /** Os achados que decidiram (regra, camadas, severidade, certeza, evidência resumida). */
-  achados: Array<{ regra: string; camadas: string[]; severidade: string; certeza: string; mensagem: string }>
-  /** Motivos legíveis: por que não é APTO (regra não medida, achado crítico, versão divergente…). */
-  motivos: string[]
+  /** Só o que decidiu: as regras críticas que NÃO comprovaram medida, e os achados críticos (regra + camadas + id). */
+  naoMedidas: Array<{ regra: string; motivo: string }>
+  achados: Array<{ regra: string; camadas: string[]; id: string }>
   medidoEm: string
-  /** Quem mediu: 'agendar-leva' | 'ajustar-arte' | 'revisar-arte'. */
+  /** Quem mediu: 'agendar-leva' | 'ajustar-arte'. */
   origem: string
 }
 ```
 
 O veredito é derivado por uma função PURA `vereditoDoRelatorio(relatorio, { pageVersion })`
 (em `src/lib/creatives/revisao/veredito.ts`), testável sem banco: entra `RelatorioDaRevisao`, sai
-`VereditoDaArte`. Não duplica o relatório: guarda só cobertura das críticas e os achados decisivos.
+`VereditoDaArte`. Não duplica o relatório (que já tem `versaoDasRegras`, achados, cobertura e resumo):
+guarda só a decisão, a identidade da medida e a evidência decisiva mínima; motivos extensos e a resposta
+ao Dot são derivados do relatório da medida no momento da chamada.
 
 ## 6. Invalidação
 
@@ -145,23 +160,35 @@ e `veredito.rulesVersion === VERSAO_DAS_REGRAS`; qualquer divergência = sem ver
 de `versaoRenderizada` + `thumbnailEhAtual` (`lotes/agendamento.ts:501-513`).
 
 Atenção: `versaoDaPagina` tem um segundo argumento (`quadro.audio`) usado em `versaoRenderizada`
-(`persist.ts:370`) e não em `revisarArte` (`:531`). O veredito deve usar a MESMA chamada do revisor
-(sem áudio), e o gate também — senão página com movimento e música nunca bate.
+(`persist.ts:370`) e não em `revisarArte` (`:531`). O veredito usa a MESMA chamada do revisor (sem
+áudio), distinta da versão da miniatura (`thumbnailEhAtual`, `agendamento.ts:501`), e o documento diz
+as duas. Como o gate sempre mede (seção 7), o hash serve só para comparar "a página que medi" com "a
+página que vou agendar" dentro da mesma chamada — `copyAutoral`, fontes e assinatura são insumos da
+MEDIDA, não do hash, e nunca são reaproveitados de uma chamada anterior.
 
-## 7. O gate (só autônomo)
+## 7. O gate (só com perfil efetivo `draft-only`)
 
-Lugar: **`decidirEscrita` → `decidirAgendamento`** (`lotes/agendar-itens.ts:354`, `agendamento.ts:286`),
-que já roda duas vezes (sem trava e sob trava) e já lê Generation, página, item do plano e posts. Com
-`apenasRascunho === true`, antes de `criarPostDoAgendamento`:
+Onde cada parte mora, com precisão:
 
-1. obter o veredito válido para a página atual: `fieldValues.veredito` da arte da página com
-   `pageVersion` e `rulesVersion` iguais; **se não houver, medir ali** (`revisarArte` com
-   `visao: false, previa: false` — ~2–4 s sem visão; a visão NÃO é gate) e gravar o veredito (merge raso);
-2. `resultado !== 'APTO'` → o item volta em `falhas` com código **`REVISAO_HUMANA_NECESSARIA`**, refs
-   (`generationId`, `pageId`, `editUrl`), `achados` e `motivos`; **nenhum DRAFT é criado** (o `desfecho`
-   do item fica `falha`, como `PECA_FALHOU` hoje — sem status novo);
-3. com DRAFT já existente para a página (adoção, `agendar-itens.ts:569`): o gate não o apaga nem o
-   reaponta — devolve o item como está, com o veredito (a última versão boa permanece).
+- **Decisão pura** em `lotes/agendamento.ts` (`decidirAgendamento`, `:286`): ganha uma entrada
+  `veredito: VereditoDaArte | null` e devolve `falha REVISAO_HUMANA_NECESSARIA` quando
+  `apenasRascunho` e (`veredito` ausente ou `resultado !== 'APTO'` ou `veredito.pageVersion` ≠ a versão
+  da página lida). Testável sem banco.
+- **Medida** em `lotes/agendar-itens.ts`, FORA da transação (a transação tem `timeout: 20_000`,
+  `:746`; a medida leva segundos): entre a 1ª `decidirEscrita` (sem trava, `:354`) e a transação, para
+  cada item com `apenasRascunho`, `revisarArte({ visao: false, previa: false })` → `vereditoDoRelatorio`
+  com o `pageVersion` da página lida. Sob trava (`:647-665`, a 2ª `decidirEscrita`), o gate só COMPARA:
+  `versaoDaPagina(página sob trava) === veredito.pageVersion`; divergiu → `REVISAO_HUMANA_NECESSARIA`
+  com motivo "a página mudou durante o agendamento" (nunca re-medir dentro da trava; nunca confiar num
+  veredito de outra versão).
+- **Três respostas distintas**, também na simulação (`decidirEscrita` 1ª passada):
+  `criar` (passa pelo gate), `adotar` (DRAFT existente na página, `:569`: NÃO é apagado nem reapontado —
+  o item volta como está, com o veredito da página atual só como informação) e `reaproveitar`
+  (`responderLigado`, `:555`, o post já ligado ao item: resposta sem escrita, sem gate — nada é criado).
+- **Persistência**: depois da decisão, `fieldValues.veredito` na arte da página (auditoria), fora da trava.
+- **Nenhum DRAFT é criado** quando o veredito não é APTO: o item fica `falha` com código
+  `REVISAO_HUMANA_NECESSARIA`, refs (`generationId`, `pageId`, `editUrl`), `achados` e `motivos` (dos
+  relatórios da medida) — sem status novo (o mesmo mecanismo de `PECA_FALHOU`).
 
 O `piloto-portao.test.ts:188-215` (`hojeViola`) já descreve esse contrato alvo: "não criar rascunho e
 devolver REVISAO_HUMANA_NECESSARIA com generationId, pageId, editUrl e achados". Vira `it()` no CP5.
@@ -187,25 +214,52 @@ que ficou). O manual ganha uma linha: "a tool pode devolver REVISAO_HUMANA_NECES
 insista, relate" — sem mudar o `validar-registro-mcp` (o manual é validado só para nomes de tools
 hifenizados; `REVISAO_HUMANA_NECESSARIA` é maiúsculo com sublinhado, fora da regex).
 
-## 10. Última versão boa
+## 10. Última versão boa — o que o CP5 garante e o que NÃO garante
 
-- DRAFT existente: o CP4 recusa o ajuste que piora ANTES de gravar a página (nada muda: página,
-  render, veredito); a recomposição que recusa já deixa a arte antiga e grava `recusaDaRecomposicao`
-  (`recompor.ts:1137-1167`). O CP5 só soma: com `apenasRascunho`, um ajuste recusado por piora
-  **não reabre o render** (`invalidateScheduledRenders` só roda depois de gravar; sem gravação, não roda).
-- Não existe hoje "última versão boa" como conceito: `reverter-arte` volta ao `layersSnapshot` de
-  nascimento (sobrescrito pela recomposição); as Generations de ajuste não guardam camadas. O CP5 **não**
-  cria histórico de versões: a garantia é "não piorar o que está" (CP4) + "não criar DRAFT ruim" (gate).
-  Um histórico por versão fica para depois, com decisão do owner.
+**Garantia delimitada ao fluxo autônomo**: "DRAFT existente + tentativa ruim DO AGENTE → a última versão
+boa permanece". No perfil draft-only, a única escrita de página que o agente alcança é `ajustar-arte`
+(seção 2); com o CP4, o ajuste que piora é recusado ANTES de gravar (nada muda: página, render, veredito)
+e, sem gravação, `invalidateScheduledRenders` não roda — o DRAFT não é reaberto. A recomposição que
+recusa já deixa a arte antiga (`recompor.ts:1137-1167`).
 
-## 11. Fail-closed
+**O que fica fora (e é dito ao owner)**: o cron de render redesenha a página CORRENTE do post sem
+consultar veredito (`render-post-art.ts:133`); o editor humano muda `Page.layers` e invalida os renders
+(`templates/[id]/pages/[pageId]/route.ts:303`); a recomposição por edição de texto substitui camadas
+(`recompor.ts:570`, `:741`). Nada disso é o agente; é o fluxo humano, warn-only por decisão. O CP5 **não**
+reserva a mídia boa de um DRAFT contra escritas humanas posteriores, nem cria histórico de versões
+(`reverter-arte` volta ao `layersSnapshot` de nascimento, sobrescrito pela recomposição; as Generations
+de ajuste não guardam camadas). Se o owner quiser "última versão boa" também contra o humano, é outro
+checkpoint com decisão própria: uma reserva da mídia do DRAFT (`PostRenderProof` já guarda `layersSnapshot`
+por mídia, append-only) e um gate antes da substituição pelo render/recomposição — fora do CP5.
 
-No autônomo, `resultado = 'APTO'` só quando, para TODAS as regras críticas, a cobertura é `avaliada` e
-não há achado de severidade `problema`/`aviso` com `certeza: 'medida'` ou `'estimada'`. Qualquer regra
-crítica `nao-avaliada` ou `parcial` → `REVISAO_HUMANA_NECESSARIA` com o motivo da cobertura
-(ex.: "logo-sem-leitura: o arquivo da logo não carregou"). A visão (`regra: 'visao'`) **não entra** no
-veredito (nem aprova nem reprova). Render que falha, régua que falha, fonte não carregada, foto
-indisponível: tudo cai no "não medido" → humano.
+## 11. Fail-closed — o que COMPROVA medida, por regra crítica
+
+`resultado = 'APTO'` só quando TODAS as regras críticas comprovam medida (tabela da seção 12, coluna
+"comprova") e não há achado crítico. Qualquer uma sem comprovação → `REVISAO_HUMANA_NECESSARIA` com o
+motivo. Regras do veredito:
+
+- cobertura `nao-avaliada` ou `parcial` em regra crítica → não comprovada (o motivo da cobertura é o
+  motivo do veredito);
+- `texto-sobre-assunto`: comprova só com assunto do CATÁLOGO (`assunto.origem === 'catalogo'`);
+  sem assunto (cobertura `nao-avaliada`) ou só ESTIMADO (achado `sugestao`/`estimada` ou nenhum achado) →
+  não comprovada — a peça sem catálogo vai ao humano;
+- `logo-sem-leitura`: comprova só com toda logo solta em estado `medida` (CP3); `indisponivel`,
+  `fora-do-contrato`, `sem-pixels` → não comprovada; peça SEM logo nenhuma é comprovada "sem logo"
+  (o relatório diz `avaliada` com zero logos) — e a ausência de logo numa peça de marca é um achado
+  humano, não mecânico: dito no retorno como aviso, nunca aprovado em silêncio;
+- `texto-sem-leitura`, `tratamento-piorou-leitura`: comprovam só com `contraste !== null` (a régua
+  renderizou — é ESSA a prova de render do gate: `revisarArte` com `visao: false, previa: false` não
+  renderiza a prévia, mas a régua renderiza duas vezes em `medirContrasteDaPeca`; régua que falha →
+  `contraste = null` → `nao-avaliada`);
+- `fonte-nao-carregada`: no ambiente de produção, fonte que falta é achado `problema` → não APTO (no
+  teste é artefato do ambiente, e o harness o exclui — o gate de produção não exclui);
+- `copy completa`: comprova com `Page.copyAutoral` presente e `lacunas` vazias; sem contrato de copy
+  (página sem `copyAutoral`) → não comprovada;
+- piso de interface do story (188/224): não é regra do revisor (lacuna da seção 12); até virar regra, o
+  gate o confere diretamente sobre as caixas (`foraDaInterface` do oráculo vira função de produção) —
+  sem isso a safe area não está comprovada.
+
+A visão (`regra: 'visao'`) **não entra** no veredito (nem aprova nem reprova).
 
 ## 12. Regras críticas (mapa para o que existe)
 
@@ -214,10 +268,10 @@ indisponível: tudo cai no "não medido" → humano.
 | fonte carregada | `fonte-nao-carregada` (`regras.ts`) | `fontesQueFaltam` e `familiasNaoCarregadas` divergem (frente CP4-E); o gate usa a do revisor |
 | texto não cortado | `texto-cortado` (linhas e largura) | rich text é `estimada`/`parcial` → humano |
 | colisão | `colisao` | tolerância por corpo + `encaixe` |
-| safe area | `fora-da-area-segura` (`CANVAS_MARGIN` 120/70/100/70) | o piso de interface do story (188/224) existe só no compositor (`assinatura.ts:140`) e no oráculo do CP0; **lacuna**: o revisor não o mede — ou entra como regra, ou o gate o confere com `foraDaInterface` |
+| safe area | `fora-da-area-segura` (`CANVAS_MARGIN` 120/70/100/70) | o piso de interface do story (188/224) existe só no compositor (`assinatura.ts:140`) e no oráculo do CP0; **lacuna**: o revisor não o mede — o gate o confere com `foraDaInterface` (função de produção a criar no CP5c) até virar regra |
 | texto legível | `texto-sem-leitura` | p98/p02 contra o alvo 3:1 |
 | tratamento não piorou | `tratamento-piorou-leitura` (CP1/CP2A) | |
-| região protegida | `texto-sobre-assunto` (catálogo hard 0,25; estimado soft 0,40) | sem catálogo é `estimada` → não decide sozinha |
+| região protegida | `texto-sobre-assunto` (catálogo hard 0,25; estimado soft 0,40) | **comprova só com catálogo**; sem assunto ou estimado → humano (seção 11) |
 | logo legível | `logo-sem-leitura` (CP3) | `fora-do-contrato`/`indisponivel` → humano |
 | logo sem colisão | `logo-sobre-texto` | |
 | ajuste não piorou | CP4 (`AJUSTE_PIOROU_ARTE`, recusa antes da escrita) | não é regra do relatório; é garantia do executor |
@@ -280,10 +334,15 @@ Campos novos no RETORNO não mudam o snapshot do `validar-registro-mcp`.
 - **CP5b — medir sem banco**: extrair de `revisarArte` a função que mede `Layer[]` em memória
   (fontes, geometria, régua, logo, assunto, referências), mantendo `revisarArte` igual. Testes de
   equivalência (o mesmo relatório pelos dois caminhos).
-- **CP5c — gate no `agendar-leva` (draft-only)**: veredito obtido/medido sob trava; `falhas` com
-  `REVISAO_HUMANA_NECESSARIA`; persistência em `fieldValues.veredito`; `piloto-portao` vira `it()`.
-- **CP5d — `ajustar-arte` draft-only**: com o CP4, recusa por piora não reabre render e devolve o
-  veredito da versão que ficou; `piloto-ciclo` P11 vira `it()`.
+- **CP5c1 — contrato e retorno**: `decidirAgendamento` com `veredito` de entrada (puro) e o retorno
+  `falhas[].codigo = REVISAO_HUMANA_NECESSARIA` com refs/achados/motivos, sem medir ainda (o veredito
+  chega por injeção nos testes). `piloto-portao` vira `it()` na decisão pura.
+- **CP5c2 — gate transacional**: a medida FORA da transação, a comparação de `pageVersion` SOB trava,
+  as três respostas (criar/adotar/reaproveitar), a persistência de auditoria; **prova de concorrência**
+  (página editada entre a medida e a trava) e **prova de duração** (a transação não ultrapassa o
+  timeout com a medida fora dela). Pré-requisito: CP3 na `main`.
+- **CP5d — `ajustar-arte` draft-only**: pré-requisito CP4 na `main`; recusa por piora não reabre render
+  e devolve o veredito da versão que ficou; `piloto-ciclo` P11 vira `it()`.
 - **CP5e — exposição e manual**: `ver-geracao`, `auditar-operacao`, manual do Dot, docs.
 
 ## 18. Riscos
@@ -296,11 +355,15 @@ Campos novos no RETORNO não mudam o snapshot do `validar-registro-mcp`.
   apertar ou afrouxar — nunca afrouxar o fail-closed por conveniência.
 - **Custo**: ~2–4 s por peça sem visão no `agendar-leva`; aceitável para levas de até 60.
 - **Veredito na Generation errada**: `arteDaPagina` pode escolher uma Generation `post-schedule`
-  (`ensure-post-generation.ts:164-187`); o veredito deve ser gravado e lido na MESMA regra de
-  `arteDaPagina`, com teste.
+  (`ensure-post-generation.ts:164-187`); como o veredito é só auditoria, o risco é de leitura histórica,
+  não de decisão — gravar e ler pela MESMA regra de `arteDaPagina`, com teste.
+- **Superfícies fora da porta MCP**: `/api/external/posts` (PATCH altera posts existentes), crons e UI
+  operam com perfil nenhum; o gate não os alcança por desenho (fluxo humano/serviço). Identidade OAuth
+  estável (um `clientId` fixo para o Dot) é condição operacional, não de código.
 - **Piso de interface (188/224) e copy completa** não são regras do revisor hoje (lacunas da seção 12).
-- **Concorrência**: a medida é cara e roda fora da trava na 1ª passada; a 2ª passada (sob trava) tem
-  de re-conferir `pageVersion` — nunca confiar no veredito medido antes da trava sem comparar.
+- **Concorrência e duração**: a medida é cara e roda fora da trava; a 2ª passada (sob trava) só compara
+  `pageVersion` — nunca confiar no veredito medido antes da trava sem comparar; a transação (timeout
+  20 s) não pode conter a medida.
 
 ## 19. Rollback
 
