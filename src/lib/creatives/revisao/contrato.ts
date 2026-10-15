@@ -33,6 +33,7 @@ export const REGRAS_DA_REVISAO = [
   'colisao',
   'fora-da-area-segura',
   'logo-sobre-texto',
+  'logo-sem-leitura',
   'texto-sem-leitura',
   'gradiente-forte-demais',
   'titulo-grande',

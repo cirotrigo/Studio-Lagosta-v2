@@ -268,7 +268,10 @@ export interface LeituraDaLogo {
  * P4 — contraste REGIONAL da logo contra o FUNDO EFETIVO no mesmo pixel: foto
  * + tratamentos + véus, sem a logo e sem a tinta dos textos. Só os pixels
  * OPACOS da logo contam (alfa ≥ 128, a regra da `luminanciaDaLogo` do
- * logo-compositor). Supõe a logo desenhada com `objectFit: contain` na caixa.
+ * logo-compositor). A logo é lida COMO O RENDER A DESENHA: esticada na caixa
+ * (`objectFit: contain` não faz letterbox no editor nem no render —
+ * `image-fit.ts`); até o CP3 o oráculo supunha letterbox, e as contagens de
+ * pixel divergiam da produção quando a caixa não tinha a proporção exata.
  */
 export async function leituraDaLogo(layers: Layer[], canvas: Canvas, background?: string): Promise<LeituraDaLogo | null> {
   const logo = layers.find((l) => l.type === 'logo' && l.visible !== false)
@@ -278,7 +281,7 @@ export async function leituraDaLogo(layers: Layer[], canvas: Canvas, background?
   const arquivo = Buffer.from(logo.fileUrl.replace(/^data:image\/\w+;base64,/, ''), 'base64')
   const w = Math.round(logo.size.width)
   const h = Math.round(logo.size.height)
-  const { data: lg, info: li } = await sharp(arquivo).ensureAlpha().resize(w, h, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).raw().toBuffer({ resolveWithObject: true })
+  const { data: lg, info: li } = await sharp(arquivo).ensureAlpha().resize(w, h, { fit: 'fill' }).raw().toBuffer({ resolveWithObject: true })
   let somaLogo = 0
   let somaFundo = 0
   const diferencas: number[] = []

@@ -39,6 +39,7 @@ import { ehClipe } from '@/lib/video/camadas-de-video'
 
 import type { CropPosition } from '@/lib/image-crop-utils'
 import { CreativeError } from '@/lib/creatives/errors'
+import type { VarianteDaLogo } from './legibilidade-da-logo'
 
 import { linhasComColchetes } from './destaques'
 import { CANTOS, PAPEIS, type Canto, type Papel, type SpecDePeca } from './spec'
@@ -635,7 +636,8 @@ export function escolhaEspacialOriginal(fieldValues: unknown, spec: SpecDePeca):
   if (gravado.modo === 'referencia') {
     const logo = ehObjeto(gravado.logo) ? gravado.logo : null
     const cantoDoT1a = logo && logo.modo === 'automatica' && (CANTOS as readonly unknown[]).includes(logo.canto) ? (logo.canto as Canto) : null
-    return cantoDoT1a ? { modo: 'referencia', cantoDaLogo: cantoDoT1a } : { modo: 'referencia' }
+    const variante = varianteGravada(logo?.variante, recusar)
+    return { modo: 'referencia', ...(cantoDoT1a ? { cantoDaLogo: cantoDoT1a } : {}), ...(variante ? { logo: variante } : {}) }
   }
   if (gravado.modo !== MODO_BUSCA_ESPACIAL) return recusar(`modo desconhecido: ${String(gravado.modo)}`)
 
@@ -655,10 +657,22 @@ export function escolhaEspacialOriginal(fieldValues: unknown, spec: SpecDePeca):
 
   const limpa: EscolhaEspacial & { buscaOriginal?: ResumoDaBuscaOriginal } = { modo: MODO_BUSCA_ESPACIAL, foto: escolha.foto as string | null, corte: escolha.corte as CropPosition, deslocamentos }
   if (canto !== undefined) limpa.cantoDaLogo = canto as Canto | null
+  // CP3: a variante da logo desenhada. Ausente nas peças de antes; presente e malformada é escolha ilegível.
+  const varianteDaLogo = varianteGravada(escolha.logo, recusar)
+  if (varianteDaLogo) limpa.logo = varianteDaLogo
   // O resumo da busca que ESCOLHEU (o da primeira, levado adiante pelas recomposições): só informativo — forma estranha não recusa.
   const original = resumoDaBuscaOriginal(gravado.buscaEspacial)
   if (original) limpa.buscaOriginal = original
   return limpa
+}
+
+/** A variante da logo gravada (CP3): `undefined` = peça de antes do CP3; forma estranha = ilegível. */
+function varianteGravada(v: unknown, recusar: (problema: string) => never): VarianteDaLogo | null {
+  if (v === undefined || v === null) return null
+  if (!ehObjeto(v) || typeof v.url !== 'string' || !v.url || (v.origem !== 'pagina' && v.origem !== 'projeto')) return recusar('a variante da logo gravada não tem origem e url')
+  if (v.logoId !== undefined && !Number.isInteger(v.logoId)) return recusar('o logoId da variante gravada não é inteiro')
+  if (v.camada !== undefined && typeof v.camada !== 'string') return recusar('a camada da variante gravada não é texto')
+  return { origem: v.origem, url: v.url, ...(Number.isInteger(v.logoId) ? { logoId: v.logoId as number } : {}), ...(typeof v.camada === 'string' ? { camada: v.camada } : {}) }
 }
 
 function resumoDaBuscaOriginal(busca: unknown): ResumoDaBuscaOriginal | null {

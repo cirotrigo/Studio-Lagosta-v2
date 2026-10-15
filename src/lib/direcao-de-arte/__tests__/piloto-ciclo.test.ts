@@ -236,7 +236,7 @@ describe('P9 — recuperação', () => {
 })
 
 describe('o revisor (só medida) sobre a v1', () => {
-  hojeViola('acusa a logo sem leitura como problema (a logo creme sob o véu creme no teto claro)', async () => {
+  it('acusa a logo sem leitura como problema (a logo creme sob o véu creme no teto claro) — CP3: logo-sem-leitura, medida', async () => {
     exigirMedidaFiel(banco.pagina.layers)
     const r = await revisar()
     // Regras de GEOMETRIA não contam: a propriedade é leitura da logo, não posição.

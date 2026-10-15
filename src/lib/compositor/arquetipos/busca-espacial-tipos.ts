@@ -19,6 +19,7 @@
  * no centro-óptico); deslocar na horizontal moveria essa linha — a busca não reinventa o modelo.
  */
 import type { CropPosition } from '@/lib/image-crop-utils'
+import type { VarianteDaLogo } from '../legibilidade-da-logo'
 import type { Rect } from '@/lib/creatives/halo/halo'
 import type { FotoCinza } from '@/lib/creatives/halo/halo-medicao'
 import type { MapaDeCalma } from '../mapa-de-calma'
@@ -291,6 +292,11 @@ export interface EscolhaEspacial {
   deslocamentos: Partial<Record<MembroDaFaixa, number>>
   /** O canto da logo AUTOMÁTICA (centro-óptico), congelado com a posição. */
   cantoDaLogo?: Canto | null
+  /**
+   * A VARIANTE da logo desenhada (CP3): origem e arquivo. A recomposição a reproduz — mede de novo e a mantém se
+   * ela continua a ler; trocar é dito, nunca silencioso. Ausente nas peças anteriores ao CP3 (a explícita vale).
+   */
+  logo?: VarianteDaLogo
 }
 
 /** O resumo da busca que ESCOLHEU a posição — a recomposição o carrega adiante, para a explicação não se perder. */
@@ -306,7 +312,7 @@ export interface ResumoDaBuscaOriginal {
  * O que a recomposição pede ao compositor: reproduzir a escolha gravada (com o resumo da busca original), ou a
  * referência no corte central (peças do T1a, com o canto da logo automática que elas gravaram).
  */
-export type EscolhaParaReproduzir = (EscolhaEspacial & { buscaOriginal?: ResumoDaBuscaOriginal }) | { modo: 'referencia'; cantoDaLogo?: Canto | null }
+export type EscolhaParaReproduzir = (EscolhaEspacial & { buscaOriginal?: ResumoDaBuscaOriginal }) | { modo: 'referencia'; cantoDaLogo?: Canto | null; logo?: VarianteDaLogo }
 
 /** Uma avaliação no diagnóstico: compacta (sem as camadas). */
 export interface ResumoDaAvaliacao {

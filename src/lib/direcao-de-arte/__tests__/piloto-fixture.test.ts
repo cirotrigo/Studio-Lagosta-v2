@@ -132,8 +132,12 @@ describe('a régua de produção reproduz a peça sobre a fixture', () => {
 
 describe('limiares reaproveitados continuam com o dono', () => {
   it('o limiar de contraste da logo é o CONTRASTE_MINIMO do logo-compositor', () => {
-    // A constante de lá não é exportada (o CP0 não muda código de produção): a guarda lê a fonte.
+    // Desde o CP3 o número mora em `legibilidade-da-logo.ts` (fonte única); o logo-compositor o importa de lá, e a
+    // guarda lê a fonte para garantir que ele não voltou a ser um literal.
     const fonte = fs.readFileSync(path.join(process.cwd(), 'src/lib/ai/logo-compositor.ts'), 'utf8')
-    expect(fonte).toMatch(new RegExp(`const CONTRASTE_MINIMO = ${LIMIAR_DE_CONTRASTE_DA_LOGO}\\b`))
+    expect(fonte).toMatch(/const CONTRASTE_MINIMO = LIMIAR_DE_CONTRASTE_DA_LOGO\b/)
+    // O alfa que decide pixel visível também veio de lá: nenhum `data[p + 3] < 128` literal sobrou.
+    expect(fonte).not.toMatch(/data\[p(?: \+ 3)?\] [<>]=? 128\b/)
+    expect(LIMIAR_DE_CONTRASTE_DA_LOGO).toBe(45)
   })
 })

@@ -53,6 +53,7 @@ export async function selecionarCombinacao(spec: SpecDePeca) {
   const { lerCatalogoDoProjeto } = await import('@/lib/creatives/acervo')
   const inicio = Date.now()
   const cacheDeFotos: NonNullable<OpcoesDeComposicao['cacheDeFotos']> = new Map()
+  const cacheDeLogos: NonNullable<OpcoesDeComposicao['cacheDeLogos']> = new Map()
   const { paginas } = await paginasDeAssinatura(spec.projectId)
   const variantes = paginas.filter((p) => p.formato === spec.formato && spec.blocos.every((b) => p.papeis.includes(b.papel)))
   const fotos: NonNullable<SpecDePeca['foto']>[] = spec.foto?.driveFileId || spec.foto?.url ? [spec.foto] :
@@ -83,7 +84,7 @@ export async function selecionarCombinacao(spec: SpecDePeca) {
     if (registro.impedimentos.length) { bloqueadas.add(idFoto(foto)); return null }
     const candidata: SpecDePeca = { ...spec, selecaoExperimental: undefined, fotosCandidatas: undefined, foto, preferencias: { ...spec.preferencias, variante } }
     try {
-      const r = await comporPeca(candidata, { somenteAvaliar: true, medirComparacao: true, cacheDeFotos, assuntosDoCatalogo })
+      const r = await comporPeca(candidata, { somenteAvaliar: true, medirComparacao: true, cacheDeFotos, cacheDeLogos, assuntosDoCatalogo })
       Object.assign(registro, avaliarCombinacao(r))
       registro.variante = r.diagnostico.assinatura.pageId ?? registro.variante
       const leitura = leituraComparavel(r)
@@ -130,5 +131,5 @@ export async function selecionarCombinacao(spec: SpecDePeca) {
   if (!escolhida) throw new CreativeError(!diagnosticos.length || diagnosticos.some((d) => d.transitorio) ? 'SELECAO_INDISPONIVEL' : 'SEM_COMBINACAO', 'Nenhuma escolha sustentada pela comparação. Confira os impedimentos e alternativas, sem remover condições obrigatórias.', 422, { diagnosticos, alternativas, limite: LIMITE_COMBINACOES, janelaMs: JANELA_DE_SELECAO_MS })
   diagnostico.decisao = escolhida === baseline ? 'baseline' : 'dominancia-tecnica'
   avisos.push(`Seleção experimental: ${diagnostico.decisao === 'baseline' ? 'baseline preservado; melhoria não demonstrada' : 'dominância técnica relativa, sem aprovação estética'}. Logo, nitidez, peso tipográfico, conteúdo e gosto exigem revisão visual.`)
-  return { spec: escolhida.spec, avisos, diagnostico, cacheDeFotos, assuntosDoCatalogo }
+  return { spec: escolhida.spec, avisos, diagnostico, cacheDeFotos, cacheDeLogos, assuntosDoCatalogo }
 }

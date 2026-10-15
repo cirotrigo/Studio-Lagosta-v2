@@ -27,7 +27,8 @@ export function projecao(r: ResultadoDaComposicao, entrada: Record<string, any> 
     posicao: { ancora: d.posicao.ancora, alinha: d.posicao.alinha, crop: d.posicao.crop },
     candidatos: d.candidatos.map((c) => [c.ancora, c.alinha, c.crop, c.descartado]),
     assuntoOrigem: d.assuntoOrigem,
-    logo: d.logo,
+    // CP3 acrescentou `legibilidade` (só leitura) ao diagnóstico da logo; o baseline projeta a logo como antes.
+    logo: d.logo ? { canto: d.logo.canto, tinta: d.logo.tinta } : d.logo,
     blocos: d.blocos,
     medidasFinais: d.medidasFinais,
     arranjos: d.arranjos,

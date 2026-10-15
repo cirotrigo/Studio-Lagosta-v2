@@ -30,6 +30,18 @@ export async function fotoSintetica(luz: (x: number, y: number) => number, dimen
   return sharp(px, { raw: { width: W, height: H, channels: 1 } }).png().toBuffer()
 }
 
+/**
+ * CP3: as duas variantes AUTORIZADAS do projeto (clara e escura), para os testes de GEOMETRIA (T1a, CP2B): a página
+ * sintética desenha a logo cinza de propósito, e a conferência da logo pode trocá-la por uma que leia sem mudar a caixa
+ * (a mesma proporção 160×80).
+ */
+export async function variantesClaraEEscura(): Promise<Array<{ fileUrl: string; isProjectLogo: true }>> {
+  return [
+    { fileUrl: dataUrl(await logoSintetica('#F5F5F5')), isProjectLogo: true },
+    { fileUrl: dataUrl(await logoSintetica('#1E1E1E')), isProjectLogo: true },
+  ]
+}
+
 /** Logo 160×80: um anel e uma barra opacos na tinta pedida, o resto transparente. */
 export async function logoSintetica(tinta: string): Promise<Buffer> {
   const W = 160
@@ -86,9 +98,11 @@ export async function cenarioSintetico(args: {
   foto: Buffer
   candidatasDoVeu: string[]
   assunto?: { x0: number; y0: number; x1: number; y1: number }
+  /** CP3: as linhas `Logo` do projeto (data URLs). `isProjectLogo` padrão true = variante autorizada. */
+  logosDoProjeto?: Array<{ fileUrl: string; isProjectLogo?: boolean }>
 }): Promise<CenarioDoCompositor> {
   return {
-    projeto: { id: 9002, assinatura: {}, logoDoProjeto: null },
+    projeto: { id: 9002, assinatura: {}, logoDoProjeto: null, ...(args.logosDoProjeto ? { logosDoProjeto: args.logosDoProjeto.map((l) => ({ fileUrl: l.fileUrl, isProjectLogo: l.isProjectLogo ?? true })) } : {}) },
     paginasDeAssinatura: [args.pagina],
     foto: { url: dataUrl(args.foto), bytes: args.foto },
     candidatasDoVeu: args.candidatasDoVeu,

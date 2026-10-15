@@ -369,7 +369,7 @@ export const toolsDoCompositor = [
   definirTool({
     nome: 'revisar-arte',
     descricao:
-      'Revisa uma arte feita no EDITOR — peça do compositor, arte de modelo ou página editada — ANTES de ela ir para a agenda, e devolve o que está errado COM A MEDIDA e os AJUSTES prontos para aplicar. Não grava nada.\n\nDuas camadas. O código mede: texto cortado, fonte não cadastrada, colisão, texto fora da margem de segurança, logo sobre texto, texto sem leitura sobre a foto (a régua de contraste — o "horário não deu leitura"), gradiente mais forte do que o texto precisa, título grande demais para a peça ou maior que o modelo, entrelinha grande, texto pequeno, palavra sozinha na última linha e texto sobre o assunto da foto. A visão olha a peça renderizada, com cada bloco marcado (T1, T2… e L1 para a logo), e aponta o que a medida não vê — bloco mal colocado, gradiente pesando na foto, respiro desequilibrado. A resposta traz a miniatura com as marcas para você conferir.\n\nCada achado tem severidade (problema, aviso, sugestão), a evidência e os índices dos ajustes que o corrigem; o número de todo ajuste é calculado pelas medidas. Para corrigir: ajustar-arte com o pageId, versaoEsperada = a `versao` desta revisão e os ajustes que decidir aplicar — todos, ou só os que concordar (sugestão é gosto; achado de confiança média, confira na miniatura) — e revise de novo. No máximo DUAS rodadas por peça; o que sobrar vira observação para a pessoa. A revisão nunca bloqueia: peça com pendência vai para a agenda como rascunho do mesmo jeito, com a pendência dita. Achado sem ajuste é decisão de gente (trocar a foto, reescrever, mudar o bloco de borda) — proponha em vez de insistir.\n\nNa leva (compor-leva), revise pelo generationId assim que a peça aparecer pronta em ver-geracao. Com a visão leva ~20 a 40 segundos por peça; visao: false devolve só as medidas em poucos segundos.',
+      'Revisa uma arte feita no EDITOR — peça do compositor, arte de modelo ou página editada — ANTES de ela ir para a agenda, e devolve o que está errado COM A MEDIDA e os AJUSTES prontos para aplicar. Não grava nada.\n\nDuas camadas. O código mede: texto cortado, fonte não cadastrada, colisão, texto fora da margem de segurança, logo sobre texto, logo sem leitura (o contraste da logo medido pixel a pixel contra o fundo real — CP3), texto sem leitura sobre a foto (a régua de contraste — o "horário não deu leitura"), gradiente mais forte do que o texto precisa, título grande demais para a peça ou maior que o modelo, entrelinha grande, texto pequeno, palavra sozinha na última linha e texto sobre o assunto da foto. A visão olha a peça renderizada, com cada bloco marcado (T1, T2… e L1 para a logo), e aponta o que a medida não vê — bloco mal colocado, gradiente pesando na foto, respiro desequilibrado. A resposta traz a miniatura com as marcas para você conferir.\n\nCada achado tem severidade (problema, aviso, sugestão), a evidência e os índices dos ajustes que o corrigem; o número de todo ajuste é calculado pelas medidas. Para corrigir: ajustar-arte com o pageId, versaoEsperada = a `versao` desta revisão e os ajustes que decidir aplicar — todos, ou só os que concordar (sugestão é gosto; achado de confiança média, confira na miniatura) — e revise de novo. No máximo DUAS rodadas por peça; o que sobrar vira observação para a pessoa. A revisão nunca bloqueia: peça com pendência vai para a agenda como rascunho do mesmo jeito, com a pendência dita. Achado sem ajuste é decisão de gente (trocar a foto, reescrever, mudar o bloco de borda) — proponha em vez de insistir.\n\nNa leva (compor-leva), revise pelo generationId assim que a peça aparecer pronta em ver-geracao. Com a visão leva ~20 a 40 segundos por peça; visao: false devolve só as medidas em poucos segundos.',
     schema: z.object({
       projectId: z.number().describe('ID do cliente.'),
       pageId: z.string().optional().describe('A peça (pageId de compor-arte, criar-arte, ajustar-arte ou do post).'),
@@ -441,6 +441,25 @@ export const toolsDoCompositor = [
         posicao: `${d.posicao.ancora}/${d.posicao.alinha}`,
         enquadramento: d.posicao.crop,
         logo: d.logo?.canto ?? 'sem logo',
+        // CP3: a leitura da logo medida contra o fundo real — o que foi feito e os números que decidiram.
+        ...(d.logo?.legibilidade
+          ? {
+              leituraDaLogo: (({ estado, legivel, escolha, variante, canto, posicao, medida, codigo, alternativa, mensagem, veusRemovidos, motivo }) => ({
+                estado,
+                legivel,
+                escolha,
+                variante: { origem: variante.origem, url: variante.url, ...(variante.logoId !== undefined ? { logoId: variante.logoId } : {}) },
+                canto,
+                posicao,
+                ...(medida ? { p10: medida.contrasteP10, media: medida.contrasteMedio, proporcaoNoLimiar: medida.proporcaoAcima45, pixels: medida.pixelsAvaliados } : {}),
+                ...(codigo ? { codigo } : {}),
+                ...(alternativa ? { alternativa: { origem: alternativa.variante.origem, url: alternativa.variante.url, canto: alternativa.canto, p10: alternativa.medida.contrasteP10 } } : {}),
+                ...(mensagem ? { mensagem } : {}),
+                ...(veusRemovidos?.length ? { veusRemovidos } : {}),
+                ...(motivo ? { motivo } : {}),
+              }))(d.logo.legibilidade),
+            }
+          : {}),
         selecao: d.selecao,
         tratamentoDeTexto: d.tratamentoDeTexto ?? 'gradiente-de-leitura',
         // A cor DESENHADA em cada borda, de onde ela veio, e a piora medida do tratamento (CP1): quem opera vê, não só o banco.

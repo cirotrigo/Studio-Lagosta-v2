@@ -528,3 +528,17 @@ Codex antes de ser escrito.
   `limpeza-de-blobs-da-prova.test.ts` (mensagens e consultas não rodadas) e
   `copy-visual-regravada-marcador.test.ts` (histórico por post e
   `arteTrocada`). A 6n da prova foi só tipada, não rodada aqui.
+
+### A regra `logo-sem-leitura` (CP3, 15/10/2026)
+
+- O revisor mede cada logo SOLTA (`logosDaPeca`) contra o fundo efetivo sem ela, pelo mesmo módulo do
+  compositor (`medirLogosDaPeca` em `legibilidade-da-logo.ts`): p10 da diferença de luz pixel a pixel
+  ≥ 45, só nos pixels com alfa ≥ 128. O achado é `problema`, `certeza: 'medida'`, com p10, média,
+  proporção no limiar, pixels, limiar, alfa, a variante (url e, quando a composição gravou, a origem) e
+  a posição em `evidencia`. **Sem ajuste mecânico**: trocar a variante ou o canto é do compositor com
+  arquétipo; o humano só é avisado (o gate autônomo é do CP5).
+- Arquivo que não baixou ou não decodificou NÃO é "sem contraste": a logo entra como `indisponivel` e a
+  regra fica `parcial` (ou `nao-avaliada`, se nenhuma mediu), com o motivo. O render que falha deixa a
+  regra `nao-avaliada` (`motivoSemLeituraDaLogo`).
+- A regra não depende das métricas de texto: as listas de exceção de `motivoSemMedida` e
+  `textosSemMetrica` a mantêm avaliada.

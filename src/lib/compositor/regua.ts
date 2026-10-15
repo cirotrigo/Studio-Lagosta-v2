@@ -339,7 +339,7 @@ const TRANSPARENTE = 'rgba(0,0,0,0)'
  * cor mora também em cada trecho — sem apagá-los, o destaque continuava
  * desenhado e contava como fundo.
  */
-function semTinta(layers: Layer[]): Layer[] {
+export function semTinta(layers: Layer[]): Layer[] {
   return layers.map((l) => {
     if (!ehTexto(l)) return l
     const apagada: Layer = {

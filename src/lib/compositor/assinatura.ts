@@ -13,6 +13,7 @@
  */
 
 import type { Layer } from '@/types/template'
+import { variantesAutorizadasDaLogo, type VarianteDaLogo } from './legibilidade-da-logo'
 import { grupoDaCamada, membrosDoBloco, papelNoBloco } from '@/lib/creatives/halo/bloco-de-fundo'
 import { destaqueDaCamada, type EstiloDeDestaque } from './destaques'
 import { configDaCamada, ehGradienteDeLeituraDaPagina, GRADIENTE_PADRAO, type AjustesDoGradiente, type ConfigDoGradiente, type CurvaDoGradiente } from './gradiente-de-leitura'
@@ -76,6 +77,10 @@ export interface FundoDePapel {
 
 export interface LogoDaAssinatura {
   url: string
+  /** De onde a logo DESENHADA veio: a camada da página de assinatura (a explícita) ou a `Logo` principal do projeto (CP3). */
+  origem?: 'pagina' | 'projeto'
+  /** O id da camada na página (explícita) — o identificador estável da variante além da URL (CP3). */
+  camada?: string
   /** Largura em px no canvas de 1080. */
   largura: number
   /** altura / largura. */
@@ -146,6 +151,12 @@ export const NUMEROS_PADRAO: NumerosDaAssinatura = {
 export interface AssinaturaDaMarca {
   papeis: Partial<Record<Papel, EstiloDePapel>>
   logo: LogoDaAssinatura | null
+  /**
+   * As variantes AUTORIZADAS da logo, em ordem (CP3, 15/10/2026): a explícita da página primeiro, depois as linhas
+   * `Logo` com `isProjectLogo`, sem repetir arquivo. Nunca fabricadas; linhas sem a marca não entram. Vazio quando
+   * quem montou a assinatura não passou as logos do projeto (medir-copy) e a página não desenha logo.
+   */
+  variantesDaLogo: VarianteDaLogo[]
   numeros: NumerosDaAssinatura
   /** O alinhamento da headline na página — vira preferência do rodízio (a foto ainda manda). */
   alinhamento: 'esquerda' | 'centro' | 'direita' | null
@@ -338,6 +349,8 @@ export function montarAssinatura(args: {
   formatoDaPagina: Formato | null
   numerosDoProjeto: unknown
   logoDoProjeto?: { url: string; razao?: number } | null
+  /** As `Logo` do projeto com o flag (`isProjectLogo`), em ordem de id — só as marcadas viram variantes autorizadas (CP3). */
+  logosDoProjeto?: ReadonlyArray<{ id?: number; fileUrl: string; isProjectLogo: boolean }>
 }): AssinaturaDaMarca {
   const numeros = mesclarNumeros(NUMEROS_PADRAO, args.numerosDoProjeto)
   // As entradas de `numeros.geometria` são TROCADAS (nunca alteradas) pela derivação da página abaixo.
@@ -370,6 +383,8 @@ export function montarAssinatura(args: {
         if (url && !logo) {
           logo = {
             url,
+            origem: 'pagina',
+            camada: camada.id,
             largura: Math.round(camada.size.width),
             razao: camada.size.height / camada.size.width,
             posicao: { x: camada.position.x, y: camada.position.y },
@@ -441,12 +456,18 @@ export function montarAssinatura(args: {
   }
 
   if (!logo && args.logoDoProjeto?.url) {
-    logo = { url: args.logoDoProjeto.url, largura: numeros.logo.largura, razao: args.logoDoProjeto.razao ?? 0.41 }
+    logo = { url: args.logoDoProjeto.url, origem: 'projeto', largura: numeros.logo.largura, razao: args.logoDoProjeto.razao ?? 0.41 }
   }
+  const variantesDaLogo = variantesAutorizadasDaLogo({
+    explicita: logo?.origem === 'pagina' ? { origem: 'pagina', url: logo.url, ...(logo.camada ? { camada: logo.camada } : {}) } : null,
+    // Sem a lista, só a principal que quem chamou já filtrou por `isProjectLogo: true` (o fallback de sempre).
+    doProjeto: args.logosDoProjeto ?? (args.logoDoProjeto?.url ? [{ fileUrl: args.logoDoProjeto.url, isProjectLogo: true }] : []),
+  })
 
   return {
     papeis,
     logo,
+    variantesDaLogo,
     numeros,
     alinhamento,
     gradienteDaPagina,

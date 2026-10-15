@@ -489,6 +489,16 @@ apoio} `dy ∈ [−109, 144]` → 0, −109, −54, 72, 144; {servico, logo} `dy
 renderizador do Studio, a referência, a vencedora, a rejeitada e a eliminada de 8 cenários, mais
 estabilidade e recomposição.
 
+## CP3 — a legibilidade da logo (15/10/2026)
+
+A logo é medida pixel a pixel contra o fundo efetivo (`legibilidade-da-logo.ts`, p10 ≥ 45 sob alfa ≥ 128)
+depois da régua, com as camadas finais. No **topo-esquerda** a logo é FIXA: só a variante muda (entre as
+autorizadas: a da página de assinatura e as `Logo` principais do projeto), na mesma caixa (contain da caixa
+materializada). No **centro-óptico** a logo automática pode ir a outro canto livre quando o mais calmo não
+lê. Nenhuma variante é fabricada e nenhum véu nasce para a logo; sem solução, `LOGO_SEM_VARIANTE_LEGIVEL`;
+arquivo que não carrega, `LOGO_INDISPONIVEL`. A escolha grava `escolha.logo` e a recomposição a reproduz.
+Detalhe em `docs/regras/compositor.md`, seção "Legibilidade da logo (CP3)".
+
 ## Próximos checkpoints
 
 - **T1a — materialização.** Feito em 14/10/2026 (ver a seção T1a acima); o que segue é o plano original.

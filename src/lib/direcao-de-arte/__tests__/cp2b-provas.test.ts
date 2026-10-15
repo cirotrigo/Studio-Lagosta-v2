@@ -47,7 +47,7 @@ import { PADDING_DE_DESENHO } from '@/lib/creatives/halo/fundo-de-texto'
 import { cenario, medidorCalibrado } from './suporte/compositor'
 import { dataUrl } from './suporte/fixture'
 import { leiturasDosTextos, textosQueInvadem, tratamentosQuePioram } from './suporte/propriedades'
-import { cenarioSintetico, fotoSintetica, logoSintetica, paginaSintetica, specSintetica, VEU_CLARO, VEU_ESCURO } from './suporte/sinteticos'
+import { cenarioSintetico, fotoSintetica, logoSintetica, paginaSintetica, specSintetica, variantesClaraEEscura, VEU_CLARO, VEU_ESCURO } from './suporte/sinteticos'
 
 const DIR = process.env.PROVAS_DIR ?? ''
 const TOPO = 'minimal-fb-topo-esquerda'
@@ -203,7 +203,7 @@ async function montar(c: Cenario) {
     fundoUrl: dataUrl(foto),
   })
   const comArial = { ...pagina, layers: pagina.layers.map(emArial) }
-  const base = await cenarioSintetico({ pagina: comArial, foto, candidatasDoVeu: [], ...(c.assunto ? { assunto: c.assunto } : {}) })
+  const base = await cenarioSintetico({ pagina: comArial, foto, candidatasDoVeu: [], logosDoProjeto: await variantesClaraEEscura(), ...(c.assunto ? { assunto: c.assunto } : {}) })
   cenario.atual = { ...base, medidor: ARIAL, projeto: { ...base.projeto, assinatura: { mancha: VEU_ESCURO, gradiente: { cor: VEU_CLARO } } } }
   return { ...specSintetica({ pagina: c.id, blocos: c.blocos }), arquetipo: { id: c.arquetipo } }
 }

@@ -27,7 +27,7 @@ import { comporPeca } from '@/lib/compositor/compor'
 import { CreativeError } from '@/lib/creatives/errors'
 import { cenario } from './suporte/compositor'
 import { dataUrl } from './suporte/fixture'
-import { cenarioSintetico, fotoSintetica, logoSintetica, paginaSintetica, specSintetica, VEU_CLARO, VEU_ESCURO } from './suporte/sinteticos'
+import { cenarioSintetico, fotoSintetica, logoSintetica, paginaSintetica, specSintetica, variantesClaraEEscura, VEU_CLARO, VEU_ESCURO } from './suporte/sinteticos'
 
 const BLOCOS = [
   { papel: 'headline', linhas: ['Almoço', 'de domingo'] },
@@ -38,7 +38,7 @@ describe('T1a · o ajuste final', () => {
   it('com arquétipo, o autofix que mexeria num texto é recusa; sem arquétipo, ele age como sempre', async () => {
     const foto = await fotoSintetica(() => 200)
     const pagina = paginaSintetica({ id: 't1a-ajuste', headline: { cor: '#F5F5F5' }, servico: { cor: '#F5F5F5' }, logoUrl: dataUrl(await logoSintetica('#808080')), fundoUrl: dataUrl(foto) })
-    const base = await cenarioSintetico({ pagina, foto, candidatasDoVeu: [] })
+    const base = await cenarioSintetico({ pagina, foto, candidatasDoVeu: [], logosDoProjeto: await variantesClaraEEscura() })
     cenario.atual = { ...base, projeto: { ...base.projeto, assinatura: { mancha: VEU_ESCURO, gradiente: { cor: VEU_CLARO } } } }
 
     const erro = await comporPeca({ ...specSintetica({ pagina: 't1a-ajuste', blocos: BLOCOS }), arquetipo: { id: 'minimal-fb-topo-esquerda' } }, { somenteAvaliar: true }).then(

@@ -26,7 +26,13 @@ export interface PaginaDeAssinatura {
 }
 
 export interface CenarioDoCompositor {
-  projeto: { id: number; assinatura: unknown; logoDoProjeto: string | null }
+  projeto: {
+    id: number
+    assinatura: unknown
+    logoDoProjeto: string | null
+    /** CP3: as linhas `Logo` do projeto (url + marca de principal). Sem isto, só `logoDoProjeto` (principal). */
+    logosDoProjeto?: Array<{ fileUrl: string; isProjectLogo: boolean }>
+  }
   paginasDeAssinatura: PaginaDeAssinatura[]
   foto: { url: string; bytes: Buffer } | null
   /** As candidatas de cor do véu que a biblioteca de gradientes da marca devolveria. */
@@ -47,13 +53,14 @@ export function mockDoBanco() {
   return {
     db: {
       project: {
-        findUnique: async () => ({
-          id: atual().projeto.id,
-          name: 'Projeto da fixture',
-          userId: 'usuario-da-fixture',
-          assinatura: atual().projeto.assinatura,
-          Logo: atual().projeto.logoDoProjeto ? [{ fileUrl: atual().projeto.logoDoProjeto }] : [],
-        }),
+        findUnique: async (args?: { select?: { Logo?: { where?: { isProjectLogo?: boolean } } } }) => {
+          const p = atual().projeto
+          const linhas = p.logosDoProjeto ?? (p.logoDoProjeto ? [{ fileUrl: p.logoDoProjeto, isProjectLogo: true }] : [])
+          // Como o Prisma: `where: { isProjectLogo: true }` filtra; a ordem é a de id (a de entrada).
+          const filtro = args?.select?.Logo?.where?.isProjectLogo
+          const Logo = (filtro === undefined ? linhas : linhas.filter((l) => l.isProjectLogo === filtro)).map((l) => ({ fileUrl: l.fileUrl, isProjectLogo: l.isProjectLogo }))
+          return { id: p.id, name: 'Projeto da fixture', userId: 'usuario-da-fixture', assinatura: p.assinatura, Logo }
+        },
       },
       template: { findFirst: async () => ({ id: 1 }) },
       page: {
