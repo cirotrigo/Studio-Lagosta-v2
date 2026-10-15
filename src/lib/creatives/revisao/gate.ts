@@ -245,7 +245,7 @@ export const CHAVES_CLASSIFICADAS: Record<string, ChaveClassificada> = {
   // style — gradiente (preenche a caixa)
   'style.gradientType': inerte('radial'),
   'style.gradientAngle': inerte(45),
-  'style.gradientStops.*': inerte([]),
+  'style.gradientStops.*': inerte([{ id: 'a', color: '#000000', position: 0, opacity: 1 }, { id: 'b', color: '#ff0000', position: 1, opacity: 1 }]),
   'style.gradientStartX': inerte(0),
   'style.gradientStartY': inerte(0),
   'style.gradientEndX': inerte(1),
@@ -341,7 +341,10 @@ function caminhoNaoSuportado(camada: Layer, papel: 'acima' | 'protegido'): strin
           if (dentro) return dentro
           continue
         }
-        return valorEfetivo(v) ? caminho : null
+        // Chave fora da árvore COM valor efetivo: não suportada. Sem valor (0, '', null, {}): inerte por construção —
+        // e a varredura CONTINUA (Codex R1: parar aqui deixava passar `{ escala: 0, filter: 'blur(20px)' }`).
+        if (valorEfetivo(v)) return caminho
+        continue
       }
       if (classe.classe === 'nao-suportada' && valorEfetivo(v)) return caminho
     }
@@ -550,6 +553,73 @@ export function cenariosNaoMedidos(
 
 const ehCritica = (r: string): r is RegraCritica => (REGRAS_CRITICAS as readonly string[]).includes(r)
 
+export interface DecisaoDaCritica {
+  cobertura: CoberturaDoGate
+  /** Os achados que reprovaram (só quando `cobertura.estado === 'reprovada'`). */
+  reprovam: AchadoDaRevisao[]
+  naoMedidos: GateDaArte['naoMedidos']
+  avisos: string[]
+  /** Camadas citadas no motivo de uma não comprovação. */
+  camadas: string[]
+}
+
+/**
+ * A decisão de UMA regra crítica, lida da MEDIDA e da cobertura do relatório (4.2 e 5 do contrato). Exportada para o
+ * teste forjar coberturas que o revisor de hoje não produz (G18: `naoSeAplica` fora de `texto-sobre-assunto`).
+ */
+export function decidirCritica(args: {
+  regra: RegraCritica
+  medida: MedidaDaPeca
+  cob: RelatorioDaRevisao['cobertura'][RegraCritica] | undefined
+  achados: AchadoDaRevisao[]
+  politica: PoliticaDoAssunto
+}): DecisaoDaCritica {
+  const { regra, medida, cob, politica } = args
+  const daRegra = args.achados.filter((a) => a.regra === regra)
+  const criticos = daRegra.filter((a) => achadoCritico(a, politica))
+  const estimados = daRegra.filter((a) => a.certeza === 'estimada' && !achadoCritico(a, politica))
+  const textosVisiveis = medida.camadas.filter(ehTextoVisivel)
+  const nc = (motivo: string, camadas: string[] = []): DecisaoDaCritica => ({ cobertura: { estado: 'nao-comprovada', motivo }, reprovam: [], naoMedidos: [], avisos: [], camadas })
+  const ok = (avisos: string[] = []): DecisaoDaCritica => ({ cobertura: { estado: 'comprovada' }, reprovam: [], naoMedidos: [], avisos, camadas: [] })
+  const nsa = (motivo: string, avisos: string[] = []): DecisaoDaCritica => ({ cobertura: { estado: 'nao-se-aplica', motivo }, reprovam: [], naoMedidos: [], avisos, camadas: [] })
+  const rep = (lista: AchadoDaRevisao[]): DecisaoDaCritica => ({ cobertura: { estado: 'reprovada', achados: lista.map((a) => a.id) }, reprovam: lista, naoMedidos: [], avisos: [], camadas: [] })
+  const soEstimado = () => nc(`achado só estimado: ${estimados.map((a) => a.id).join(', ')}`, estimados.flatMap((a) => a.camadas))
+
+  if (regra === 'texto-sobre-assunto') return decidirAssunto({ medida, cob, criticos, estimados, politica, nc, ok, nsa, rep })
+  if (criticos.length > 0) return rep(criticos)
+  if (regra === 'fonte-nao-carregada') {
+    if (medida.motivoSemFontes) return nc(medida.motivoSemFontes)
+    if (cob?.estado !== 'avaliada') return nc(cob?.motivo ?? 'regra sem cobertura')
+    if (estimados.length > 0) return soEstimado()
+    return ok()
+  }
+  if (regra === 'logo-sem-leitura') {
+    const leitura = medida.leituraDaLogo
+    if (leitura === null || leitura === undefined) return nc(medida.motivoSemLeituraDaLogo ?? 'a leitura da logo não rodou')
+    const ruins = leitura.filter((x) => x.estado !== 'medida')
+    if (ruins.length > 0) {
+      const d = nc(`logo não medida: ${ruins.map((x) => `${x.camada} (${x.estado})`).join(', ')}`, ruins.map((x) => x.camada))
+      d.naoMedidos = ruins.map((x) => ({ regra, motivo: `logo ${x.camada}: ${x.estado}${x.motivo ? ` (${x.motivo})` : ''}`, camadas: [x.camada] }))
+      return d
+    }
+    if (cob?.estado !== 'avaliada') return nc(cob?.motivo ?? 'regra sem cobertura')
+    if (estimados.length > 0) return soEstimado()
+    return ok(leitura.length === 0 ? ['peça sem logo solta: a ausência de logo é decisão de composição, não defeito medido'] : [])
+  }
+  // Regras de texto
+  if (textosVisiveis.length === 0) return nsa('a peça não tem texto visível')
+  if (medida.motivoSemMedida) return nc(medida.motivoSemMedida)
+  if (medida.textosSemMetrica && medida.textosSemMetrica.length > 0) return nc(`texto sem métrica: ${medida.textosSemMetrica.join(', ')}`, medida.textosSemMetrica)
+  if (regra === 'texto-sem-leitura' || regra === 'tratamento-piorou-leitura') {
+    if (medida.contraste === null) return nc('a régua de contraste não mediu')
+    if (regra === 'tratamento-piorou-leitura' && medida.pioras === null) return nc('as pioras de tratamento não foram medidas')
+  }
+  // `naoSeAplica` só é honrada em texto-sobre-assunto (acima): numa crítica fora do mapa é "não medimos".
+  if (cob?.estado !== 'avaliada') return nc(cob?.motivo ?? 'regra sem cobertura')
+  if (estimados.length > 0) return soEstimado()
+  return ok()
+}
+
 /** Achado crítico — predicado executável (4.1), com a ÚNICA exceção declarada (assunto estimado com `estimado: 'comprova'`). */
 export function achadoCritico(a: AchadoDaRevisao, politica: PoliticaDoAssunto): boolean {
   if (!ehCritica(a.regra)) return false
@@ -566,88 +636,23 @@ export function gateDaMedida(entrada: EntradaDoGate): { gate: GateDaArte; relato
   const naoMedidos: GateDaArte['naoMedidos'] = []
   const avisos: string[] = []
   const camadas = medida.camadas
-  const textosVisiveis = camadas.filter(ehTextoVisivel)
 
   const naoComprovada = (regra: RegraCritica | ConferenciaDoGate, motivo: string, ids: string[] = []) => {
     cobertura[regra] = { estado: 'nao-comprovada', motivo }
     motivos.push({ regra, codigo: 'NAO_COMPROVADA', motivo, camadas: ids })
   }
-  const reprovada = (regra: RegraCritica, lista: AchadoDaRevisao[]) => {
-    cobertura[regra] = { estado: 'reprovada', achados: lista.map((a) => a.id) }
-    for (const a of lista) {
-      achados.push({ regra, camadas: a.camadas, id: a.id, severidade: a.severidade, certeza: a.certeza === 'estimada' ? 'estimada' : 'medida' })
-      motivos.push({ regra, codigo: 'ACHADO_CRITICO', motivo: a.mensagem, camadas: a.camadas })
-    }
-  }
 
   for (const regra of REGRAS_CRITICAS) {
-    const cob = relatorio.cobertura[regra]
-    const daRegra = relatorio.achados.filter((a) => a.regra === regra)
-    const criticos = daRegra.filter((a) => achadoCritico(a, politica))
-    const estimados = daRegra.filter((a) => a.certeza === 'estimada' && !achadoCritico(a, politica))
-
-    if (regra === 'texto-sobre-assunto') {
-      decidirAssunto({ medida, cob, criticos, estimados, politica, reprovada, naoComprovada, avisos, cobertura })
-      continue
-    }
-    if (criticos.length > 0) {
-      reprovada(regra, criticos)
-      continue
-    }
-    if (regra === 'fonte-nao-carregada') {
-      if (medida.motivoSemFontes) naoComprovada(regra, medida.motivoSemFontes)
-      else if (cob?.estado !== 'avaliada') naoComprovada(regra, cob?.motivo ?? 'regra sem cobertura')
-      else if (estimados.length > 0) naoComprovada(regra, `achado só estimado: ${estimados.map((a) => a.id).join(', ')}`, estimados.flatMap((a) => a.camadas))
-      else cobertura[regra] = { estado: 'comprovada' }
-      continue
-    }
-    if (regra === 'logo-sem-leitura') {
-      const leitura = medida.leituraDaLogo
-      if (leitura === null || leitura === undefined) naoComprovada(regra, medida.motivoSemLeituraDaLogo ?? 'a leitura da logo não rodou')
-      else if (leitura.some((x) => x.estado !== 'medida')) {
-        const ruins = leitura.filter((x) => x.estado !== 'medida')
-        for (const x of ruins) naoMedidos.push({ regra, motivo: `logo ${x.camada}: ${x.estado}${x.motivo ? ` (${x.motivo})` : ''}`, camadas: [x.camada] })
-        naoComprovada(regra, `logo não medida: ${ruins.map((x) => `${x.camada} (${x.estado})`).join(', ')}`, ruins.map((x) => x.camada))
-      } else if (cob?.estado !== 'avaliada') naoComprovada(regra, cob?.motivo ?? 'regra sem cobertura')
-      else if (estimados.length > 0) naoComprovada(regra, `achado só estimado: ${estimados.map((a) => a.id).join(', ')}`)
-      else {
-        cobertura[regra] = { estado: 'comprovada' }
-        if (leitura.length === 0) avisos.push('peça sem logo solta: a ausência de logo é decisão de composição, não defeito medido')
+    const d = decidirCritica({ regra, medida, cob: relatorio.cobertura[regra], achados: relatorio.achados, politica })
+    cobertura[regra] = d.cobertura
+    naoMedidos.push(...d.naoMedidos)
+    avisos.push(...d.avisos)
+    if (d.cobertura.estado === 'reprovada') {
+      for (const a of d.reprovam) {
+        achados.push({ regra, camadas: a.camadas, id: a.id, severidade: a.severidade, certeza: a.certeza === 'estimada' ? 'estimada' : 'medida' })
+        motivos.push({ regra, codigo: 'ACHADO_CRITICO', motivo: a.mensagem, camadas: a.camadas })
       }
-      continue
-    }
-    // Regras de texto
-    if (textosVisiveis.length === 0) {
-      cobertura[regra] = { estado: 'nao-se-aplica', motivo: 'a peça não tem texto visível' }
-      continue
-    }
-    if (medida.motivoSemMedida) {
-      naoComprovada(regra, medida.motivoSemMedida)
-      continue
-    }
-    if (medida.textosSemMetrica && medida.textosSemMetrica.length > 0) {
-      naoComprovada(regra, `texto sem métrica: ${medida.textosSemMetrica.join(', ')}`, medida.textosSemMetrica)
-      continue
-    }
-    if (regra === 'texto-sem-leitura' || regra === 'tratamento-piorou-leitura') {
-      if (medida.contraste === null) {
-        naoComprovada(regra, 'a régua de contraste não mediu')
-        continue
-      }
-      if (regra === 'tratamento-piorou-leitura' && medida.pioras === null) {
-        naoComprovada(regra, 'as pioras de tratamento não foram medidas')
-        continue
-      }
-    }
-    if (cob?.estado !== 'avaliada') {
-      naoComprovada(regra, cob?.motivo ?? 'regra sem cobertura')
-      continue
-    }
-    if (estimados.length > 0) {
-      naoComprovada(regra, `achado só estimado: ${estimados.map((a) => a.id).join(', ')}`, estimados.flatMap((a) => a.camadas))
-      continue
-    }
-    cobertura[regra] = { estado: 'comprovada' }
+    } else if (d.cobertura.estado === 'nao-comprovada') motivos.push({ regra, codigo: 'NAO_COMPROVADA', motivo: d.cobertura.motivo, camadas: d.camadas })
   }
   // Geometria não medida também vai para `naoMedidos` (uma vez), para o leitor.
   if (medida.textosSemMetrica && medida.textosSemMetrica.length > 0) naoMedidos.push({ regra: 'geometria', motivo: 'textos visíveis que o medidor não mediu', camadas: medida.textosSemMetrica })
@@ -716,50 +721,37 @@ function decidirAssunto(args: {
   criticos: AchadoDaRevisao[]
   estimados: AchadoDaRevisao[]
   politica: PoliticaDoAssunto
-  reprovada: (regra: RegraCritica, lista: AchadoDaRevisao[]) => void
-  naoComprovada: (regra: RegraCritica, motivo: string, ids?: string[]) => void
-  avisos: string[]
-  cobertura: Record<RegraCritica | ConferenciaDoGate, CoberturaDoGate>
-}): void {
-  const regra = 'texto-sobre-assunto'
-  const { medida, cob, criticos, estimados, politica, reprovada, naoComprovada, avisos, cobertura } = args
+  nc: (motivo: string, camadas?: string[]) => DecisaoDaCritica
+  ok: (avisos?: string[]) => DecisaoDaCritica
+  nsa: (motivo: string, avisos?: string[]) => DecisaoDaCritica
+  rep: (lista: AchadoDaRevisao[]) => DecisaoDaCritica
+}): DecisaoDaCritica {
+  const { medida, cob, criticos, estimados, politica, nc, ok, nsa, rep } = args
   const fundo = fotoDeFundo(medida.camadas, medida.canvas)
   // E — sem foto de fundo: não se aplica, sempre.
-  if (!fundo) {
-    cobertura[regra] = { estado: 'nao-se-aplica', motivo: 'a peça não tem foto de fundo' }
-    return
-  }
+  if (!fundo) return nsa('a peça não tem foto de fundo')
   // C' — camada de foto visível SEM arquivo: nada foi lido (fail-closed, sempre).
-  if (typeof fundo.fileUrl !== 'string' || fundo.fileUrl.trim() === '') {
-    naoComprovada(regra, 'foto de fundo sem arquivo: nada foi lido', [fundo.id])
-    return
-  }
+  if (typeof fundo.fileUrl !== 'string' || fundo.fileUrl.trim() === '') return nc('foto de fundo sem arquivo: nada foi lido', [fundo.id])
   if (medida.assunto) {
     if (medida.assunto.origem === 'catalogo') {
-      if (criticos.length > 0) reprovada(regra, criticos)
-      else if (cob?.estado !== 'avaliada') naoComprovada(regra, cob?.motivo ?? 'regra sem cobertura')
-      else cobertura[regra] = { estado: 'comprovada' }
-      return
+      if (criticos.length > 0) return rep(criticos)
+      if (cob?.estado !== 'avaliada') return nc(cob?.motivo ?? 'regra sem cobertura')
+      return ok()
     }
     // B — estimado
     if (politica.estimado === 'humano') {
       const alvo = estimados.length > 0 ? ` (achado estimado: ${estimados.map((a) => a.id).join(', ')})` : ''
-      naoComprovada(regra, `assunto só estimado pela textura da foto${alvo}`, estimados.flatMap((a) => a.camadas))
-      return
+      return nc(`assunto só estimado pela textura da foto${alvo}`, estimados.flatMap((a) => a.camadas))
     }
-    if (criticos.length > 0) reprovada(regra, criticos)
-    else if (cob?.estado !== 'avaliada') naoComprovada(regra, cob?.motivo ?? 'regra sem cobertura')
-    else cobertura[regra] = { estado: 'comprovada' }
-    return
+    if (criticos.length > 0) return rep(criticos)
+    if (cob?.estado !== 'avaliada') return nc(cob?.motivo ?? 'regra sem cobertura')
+    return ok()
   }
   // C — foto LIDA sem assunto localizável
   if (medida.assuntoNaoSeAplica) {
-    if (politica.semAssuntoLocalizavel === 'nao-se-aplica') {
-      cobertura[regra] = { estado: 'nao-se-aplica', motivo: medida.motivoSemAssunto ?? 'foto lida sem assunto localizável' }
-      avisos.push('foto sem assunto localizável: a regra texto-sobre-assunto não se aplica (política do assunto)')
-    } else naoComprovada(regra, medida.motivoSemAssunto ?? 'foto lida sem assunto localizável (política: humano)')
-    return
+    if (politica.semAssuntoLocalizavel === 'nao-se-aplica') return nsa(medida.motivoSemAssunto ?? 'foto lida sem assunto localizável', ['foto sem assunto localizável: a regra texto-sobre-assunto não se aplica (política do assunto)'])
+    return nc(medida.motivoSemAssunto ?? 'foto lida sem assunto localizável (política: humano)')
   }
   // D — falha ao analisar a foto: fail-closed, sempre.
-  naoComprovada(regra, medida.motivoSemAssunto ?? 'o assunto da foto não foi estimado')
+  return nc(medida.motivoSemAssunto ?? 'o assunto da foto não foi estimado')
 }

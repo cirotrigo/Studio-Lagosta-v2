@@ -23,7 +23,9 @@ import {
   PISO_DE_INTERFACE_DO_STORY,
   POLITICA_DO_ASSUNTO_RECOMENDADA,
   REGRAS_CRITICAS,
+  achadoCritico,
   cenariosNaoMedidos,
+  decidirCritica,
   foraDaInterface,
   gateDaMedida,
   interfaceDoStory,
@@ -196,13 +198,16 @@ describe('G3–G10 — achado crítico, não crítico, visão, cobertura', () =>
     expect(g.resultado, JSON.stringify(g.motivos)).toBe('APTO')
   })
 
-  it('G5: achado de VISÃO em regra crítica é ignorado', () => {
-    const e = entrada()
-    const { gate: g } = gateDaMedida(e)
-    expect(g.resultado).toBe('APTO')
-    // A visão não entra na MEDIDA (MedidaDaPeca omite `vistos`); um achado só de visão nunca chega ao gate.
-    const comVisao = avaliarPeca({ ...(e.medida as EntradaDaRevisao), vistos: [{ marca: { tipo: 'texto', camadas: ['servico'], rect: { x: 100, y: 1500, width: 600, height: 60 } }, problema: 'texto-sem-leitura', evidencia: 'parece', confianca: 'alta', correcao: null, intensidade: null } as never] })
-    expect(comVisao.achados.filter((a) => a.certeza === 'visao').length).toBeGreaterThanOrEqual(0)
+  it('G5: achado de VISÃO em regra crítica é ignorado — pelo predicado e pela entrada (a medida não tem visão)', () => {
+    const visao: AchadoDaRevisao = { id: 'texto-sem-leitura:servico', regra: 'texto-sem-leitura', severidade: 'problema', certeza: 'visao', camadas: ['servico'], mensagem: 'a visão achou', evidencia: {}, ajustes: [] }
+    for (const politica of POLITICAS) expect(achadoCritico(visao, politica)).toBe(false)
+    const d = decidirCritica({ regra: 'texto-sem-leitura', medida: medida(), cob: { estado: 'avaliada' }, achados: [visao], politica: POLITICA })
+    expect(d.cobertura).toEqual({ estado: 'comprovada' })
+    // E o mesmo achado com certeza MEDIDA reprova: a diferença é só a certeza.
+    expect(decidirCritica({ regra: 'texto-sem-leitura', medida: medida(), cob: { estado: 'avaliada' }, achados: [{ ...visao, certeza: 'medida' }], politica: POLITICA }).cobertura.estado).toBe('reprovada')
+    // A medida que o gate recebe não carrega `vistos`: o gate recalcula o relatório sem visão.
+    expect('vistos' in entrada().medida).toBe(false)
+    expect(gateDaMedida(entrada()).gate.resultado).toBe('APTO')
   })
 
   it('G6: cobertura nao-avaliada em crítica (motivoSemMedida) → NAO_COMPROVADA com o motivo', () => {
@@ -344,13 +349,14 @@ describe('G13–G18 — política do assunto', () => {
     }
   })
 
-  it('G18: naoSeAplica forjado numa crítica fora do mapa (colisao) → não comprovada', () => {
-    const e = entrada()
-    // Não há entrada legítima que marque `colisao` como naoSeAplica: simulamos pela cobertura calculada DEPOIS — o gate
-    // só honra a marca em texto-sobre-assunto. Como `gateDaMedida` recalcula o relatório, provamos pela regra de
-    // decisão: uma cobertura `nao-avaliada` em colisao (motivoSemMedida) nunca vira comprovada.
-    const g = gateDaMedida({ ...e, medida: { ...e.medida, metricas: [], motivoSemMedida: 'forjado' } }).gate
-    expect(g.cobertura.colisao.estado).toBe('nao-comprovada')
+  it('G18: naoSeAplica FORJADO numa crítica fora do mapa (colisao, logo-sem-leitura, fonte) → não comprovada; em texto-sobre-assunto (foto lida) → não se aplica', () => {
+    const forjada = { estado: 'nao-avaliada' as const, motivo: 'forjado', naoSeAplica: true as const }
+    for (const regra of ['colisao', 'texto-cortado', 'fora-da-area-segura', 'fonte-nao-carregada', 'logo-sem-leitura'] as const) {
+      const d = decidirCritica({ regra, medida: medida(), cob: forjada, achados: [], politica: POLITICA })
+      expect(d.cobertura, regra).toEqual({ estado: 'nao-comprovada', motivo: 'forjado' })
+    }
+    const assunto = decidirCritica({ regra: 'texto-sobre-assunto', medida: medida({ assunto: null, assuntoNaoSeAplica: true, motivoSemAssunto: 'foto lida sem assunto' }), cob: forjada, achados: [], politica: POLITICA })
+    expect(assunto.cobertura.estado).toBe('nao-se-aplica')
   })
 })
 
@@ -580,6 +586,7 @@ describe("G21b/G21b' — rotação, formas centradas e transformações", () => 
       ['video', { ...forma('x', longe, { order: 9 }), type: 'video' } as Layer],
       ['mancha', texto('x', longe, 20, { order: 9, effects: { background: { enabled: true, backgroundColor: '#fff', padding: 40 } } })],
       ['chave fora da árvore', forma('x', longe, { order: 9, style: { shapeType: 'rectangle', escala: 2 } as never })],
+      ['chave inefetiva + filter (Codex R1)', { ...fundo({ id: 'x' }), position: { x: 100, y: 100 }, size: { width: 50, height: 50 }, order: 9, style: { escala: 0, filter: 'blur(20px)' } } as Layer],
       ['rotation string', forma('x', longe, { order: 9, rotation: '90' as never })],
     ]
     for (const [nome, c] of casos) {
@@ -826,12 +833,13 @@ describe('G21c/G21e — paridade com o render real (gerada de CHAVES_CLASSIFICAD
     return x1 < 0 ? null : { x0, y0, x1: x1 + 1, y1: y1 + 1 }
   }
 
+  // Variante SEM pixel pintado não prova nada (Codex R1): `null` reprova.
   const dentro = (pintada: { x0: number; y0: number; x1: number; y1: number } | null, r: { x: number; y: number; width: number; height: number }) =>
-    pintada === null || (pintada.x0 >= r.x && pintada.y0 >= r.y && pintada.x1 <= r.x + r.width && pintada.y1 <= r.y + r.height)
+    pintada !== null && pintada.x0 >= r.x && pintada.y0 >= r.y && pintada.x1 <= r.x + r.width && pintada.y1 <= r.y + r.height
 
   type Base = { nome: string; camada: Layer; chaves: (c: string) => boolean }
+  const geral = (c: string) => !/^style\.(font|text|letter|line|gradient|objectFit|cropPosition|crop\.|iconId|path|shapeType|fill|stroke|border\.radius|blur|exposure|contrast|highlights|shadows|whites|blacks|saturation|vignette|brightness|grayscale|sepia|invert)/.test(c) && !/^(textboxConfig|content|richTextStyles|videoMetadata|clipe|movimento|logoId|elementId|fileUrl|parentId|metadata|id|name|type|visible|locked|order|isDynamic)/.test(c) && !/^effects\.background/.test(c)
   const bases = (): Base[] => {
-    const geral = (c: string) => !/^style\.(font|text|letter|line|gradient|objectFit|cropPosition|crop\.|iconId|path|shapeType|fill|stroke|border\.radius|blur|exposure|contrast|highlights|shadows|whites|blacks|saturation|vignette|brightness|grayscale|sepia|invert)/.test(c) && !/^(textboxConfig|content|richTextStyles|videoMetadata|clipe|movimento|logoId|elementId|fileUrl|parentId|metadata|id|name|type|visible|locked|order|isDynamic)/.test(c) && !/^effects\.background/.test(c)
     const formaBase = (shapeType: string, w: number, h: number): Layer => forma(shapeType, { x: 400, y: 500, width: w, height: h }, { style: { shapeType: shapeType as never, fill: '#ff0000' } })
     const img = (type: 'image' | 'logo' | 'element'): Layer => ({ id: type, name: type, type, visible: true, locked: false, order: 5, position: { x: 400, y: 500 }, size: { width: 100, height: 100 }, fileUrl: imagemPng, style: { objectFit: 'cover' } }) as Layer
     const grad = (type: 'gradient' | 'gradient2'): Layer => ({ id: type, name: type, type, visible: true, locked: false, order: 5, position: { x: 400, y: 500 }, size: { width: 600, height: 40 }, style: { gradientType: 'linear', gradientAngle: 90, gradientStops: [{ id: 'a', color: '#000000', position: 0, opacity: 1 }, { id: 'b', color: '#ffffff', position: 1, opacity: 1 }] } }) as Layer
@@ -885,13 +893,22 @@ describe('G21c/G21e — paridade com o render real (gerada de CHAVES_CLASSIFICAD
       ['style.shadow', { style: { shadow: { offsetX: 30, offsetY: 30, blur: 10, color: '#000' } } as never }],
       ['border 12', { style: { border: { width: 12, color: '#000', radius: 0 } } as never }],
     ]
+    // O TEXTO simples como OCLUIDORA também é base (Codex R1): métrica real do medidor por variante (o layout muda com a folha).
+    const { createServerTextBoxMeasurer } = await import('@/lib/creatives/server-text-measurer')
+    const medir = await createServerTextBoxMeasurer()
+    const textoBase: Base = {
+      nome: 'text 300×100 (ocluidora)',
+      camada: texto('tx', { x: 400, y: 500, width: 300, height: 100 }, 40, { content: 'Sua pausa\ncom sabores', style: { fontSize: 40, fontFamily: 'sans-serif', lineHeight: 1.2, textAlign: 'left', color: '#000000' }, textboxConfig: { autoWrap: { lineHeight: 1.2, breakMode: 'word', autoExpand: true } } }),
+      chaves: (c) => (geral(c) && !/^style\.(shadow|border)\.|^effects\.blur/.test(c) ? true : /^style\.(font|text|letter|line)|^textboxConfig|^effects\.(stroke|blur|shadow)|^style\.(shadow|border)\./.test(c)),
+    }
     let casos = 0
-    for (const base of bases()) {
+    for (const base of [...bases(), textoBase]) {
       const variantes: Array<[string, Layer]> = [['base', base.camada]]
       for (const [caminho, c] of folhas) if (base.chaves(caminho)) variantes.push([caminho, aplicar(base.camada, caminho, c.valorDeProva)])
       for (const [nome, extra] of fixos) variantes.push([nome, { ...base.camada, ...extra, style: { ...(base.camada.style ?? {}), ...((extra as { style?: object }).style ?? {}) } } as Layer])
       for (const [nome, camada] of variantes) {
-        const lim = limitesDe(camada)
+        const metricaDaVariante = camada.type === 'text' ? measureTextLayers([camada], medir)[0] : undefined
+        const lim = limitesDe(camada, metricaDaVariante)
         expect(lim.contido, `${base.nome} / ${nome}: ${lim.contido === false ? lim.motivo : ''}`).toBe(true)
         if (!lim.contido) continue
         const pintada = await caixaPintada([camada])
@@ -899,7 +916,7 @@ describe('G21c/G21e — paridade com o render real (gerada de CHAVES_CLASSIFICAD
         casos++
       }
     }
-    expect(casos).toBeGreaterThan(100)
+    expect(casos).toBeGreaterThan(120)
     // Valores fixos: retângulo a 90° e círculo sem rotação.
     const r90 = limitesDe(forma('r', { x: 400, y: 500, width: 600, height: 40 }, { rotation: 90 }))
     expect(r90.contido && [r90.rect.x + FOLGA_DE_ANTIALIAS, r90.rect.y + FOLGA_DE_ANTIALIAS, r90.rect.x + r90.rect.width - FOLGA_DE_ANTIALIAS, r90.rect.y + r90.rect.height - FOLGA_DE_ANTIALIAS].map(Math.round)).toEqual([360, 500, 400, 1100])
