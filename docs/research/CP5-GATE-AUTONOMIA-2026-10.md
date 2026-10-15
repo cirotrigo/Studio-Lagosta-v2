@@ -23,6 +23,13 @@
 > Também conferido na main: `agendar-leva` com `lembrete: true` no draft-only NÃO manda WhatsApp (o cron de
 > lembretes exige `status: SCHEDULED`); nenhum webhook de saída existe; `efeitosPendentes` do item ligado
 > continua sendo escrita sem gate (coberto pelo § 7).
+>
+> **Duas correções ao contrato executável, que valem sobre o texto abaixo:** (a) onde os §§ 4, 5, 13 e 17
+> escrevem `fieldValues.veredito` / `VereditoDaArte` / `vereditoDaMedida`, leia um nome DISTINTO de
+> `veredito` (a fixar no CP5b; o plano-mestre usa `gate` como exemplo) — o contrato executável é o da seção
+> 4.4 do plano-mestre, não o do § 5 abaixo; (b) o § 17 diz que `piloto-portao` "vira `it()` na decisão
+> pura" (CP5a/CP5c1) — errado: esses testes chamam a simulação e a escrita de `agendar-leva` e só passam com
+> o gate integrado (CP5c2). O CP5a tem só testes puros novos.
 
 **Estado: SOMENTE AUDITADO. Nada implementado.** Este documento é o plano para o CP5, escrito a partir
 de uma auditoria somente leitura da `main` (`53eda0c9`, o merge do CP2B), com seis frentes em paralelo
@@ -149,6 +156,8 @@ Leitores: `ver-geracao` e `auditar-operacao` passam a expor `veredito` (campo no
 `validar-registro-mcp` não fixa — só o schema de entrada).
 
 ## 5. Contrato proposto
+
+> ⚠️ Contrato SUPERADO no nome do campo e no tipo (`veredito` colide com o feedback humano): ver a nota do topo e a seção 4.4 do plano-mestre. O restante (campos da identidade, invalidação) continua válido.
 
 ```ts
 /** `Generation.fieldValues.veredito` — registro de auditoria da última decisão do gate (cache descartável). */
@@ -368,6 +377,8 @@ Regra não medida: nunca "aprovado" (seção 11).
 
 ## 13. Retorno de `REVISAO_HUMANA_NECESSARIA`
 
+> ⚠️ Onde diz `veredito` no retorno, leia o nome a fixar no CP5b (nota do topo).
+
 Em `agendar-leva`: o item em `itens[]` com `{ itemId, situacao: 'falhou', codigo:
 'REVISAO_HUMANA_NECESSARIA', motivo, generationId, pageId, editUrl, veredito: { pageVersion,
 copyVersion, motivos, achados, cobertura } }` (o formato de `ItemAgendadoDoLote`, `agendar-itens.ts:107`;
@@ -445,6 +456,8 @@ Campos novos no RETORNO não mudam o snapshot do `validar-registro-mcp`.
 - docs: `docs/regras/dot-lagosta-operacao.md`, `docs/regras/revisor-da-arte.md`, `lotes.md`.
 
 ## 17. Checkpoints de implementação (pequenos, cada um com PR)
+
+> ⚠️ Superado em dois pontos (nota do topo): `piloto-portao` só vira `it()` no CP5c2 (gate integrado), não no CP5a/CP5c1; e a chave persistida não se chama `veredito`. A sequência CP5a–e do plano-mestre (seção 4) é a vigente.
 
 - **CP5a — veredito puro**: `veredito.ts` + testes; nada de produção o chama. (sem risco)
 - **CP5b — medir sem banco**: já entregue pelo CP4 (`contextoDaMedicao` + `medirCamadasDaPeca` em

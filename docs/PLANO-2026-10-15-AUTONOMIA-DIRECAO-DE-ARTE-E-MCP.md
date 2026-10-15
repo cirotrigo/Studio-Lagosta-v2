@@ -79,13 +79,15 @@ isso como comportamento atual). **Nenhum caminho que cria DRAFT chama `revisarAr
 
 ### 1.2 Dívidas da linha de base que os próximos checkpoints herdam
 
-- `hojeViola` ativos (12): sintéticos **A/A'** (polaridades incompatíveis na mesma borda, sem arquétipo),
+- `hojeViola` ativos — 12 pontos de chamada, 16 casos (os 4 de `piloto-portao` rodam em duas versões): sintéticos **A/A'** (polaridades incompatíveis na mesma borda, sem arquétipo),
   **G** (alinhamento à esquerda sobre a região protegida sem `PREFERENCIA_INVIAVEL`); piloto-compositor
   **P6** (texto/logo dentro do piso de interface do story 188/224 — a composição legada usa
   `assinatura.geometria.story` 250/350, "a reconciliar"), **P7** (ordem de leitura); piloto-ciclo
   `:554` (apta ou escalada em 2 ciclos), `:599` (correção executável), `:615` (P11 draft-only);
-  piloto-portao `:190-205` (4 × P11 "não cria rascunho / devolve referências"). **CP5 fecha os de P11;
-  P6/P7/A/G ficam para a trilha de design (seção 7) ou para a regra de piso de interface do CP5a.**
+  piloto-portao `:190-205` (4 × P11 "não cria rascunho / devolve referências", em duas versões). **Os de P11
+  só podem virar `it()` quando o gate estiver integrado em `agendar-leva` (CP5c) — eles chamam a simulação e
+  a escrita do lote, não a decisão pura; P6/P7/A/G ficam para a trilha de design (seção 7) ou para a regra
+  de piso de interface do CP5a.**
 - `VERSAO_DAS_REGRAS = 'revisao-v1'` (`revisao/contrato.ts:27`) **nunca foi bumpada** após CP3 e CP4.1:
   como chave de invalidação é fraca por hábito, não por desenho (política no CP5b).
 - `copyVersion` não existe em produção (só nos testes do piloto); `foraDaInterface` (piso 188/224)
@@ -198,8 +200,9 @@ main 69706ea2" com a tabela abaixo (frente B). O que continua válido não foi r
 
 Função pura que recebe a MEDIDA completa (`MedidaDaPeca` + `RelatorioDaRevisao` + identidade), não só o
 relatório, e produz `APTO` ou `REVISAO_HUMANA_NECESSARIA` com cobertura, achados e motivos. Sem banco, sem
-DRAFT, sem gate ainda. Nada de produção a chama; só testes (os 4 `hojeViola` de P11 em `piloto-portao`
-viram `it()` na decisão pura).
+DRAFT, sem gate ainda. Nada de produção a chama; só testes PUROS novos (fixtures de medida → veredito). Os
+`hojeViola` de P11 em `piloto-portao` NÃO viram `it()` aqui: eles exercitam `agendar-leva` de ponta a ponta
+e só passam com o gate integrado (CP5c).
 
 Regras críticas mínimas (mapa para o que existe): fontes (`fonte-nao-carregada`); texto cortado
 (`texto-cortado`); geometria (`tinta-fora-da-caixa`); colisão (`colisao`); safe area
@@ -263,7 +266,8 @@ que já existem, `agendar-itens.ts:647-669`) → reler identidade sob trava → 
 `criarPostDoAgendamento`. Falha → o item volta `situacao: 'falhou'` + `codigo: 'REVISAO_HUMANA_NECESSARIA'`
 (o formato real de `ItemAgendadoDoLote`, via `falhou()`), com `generationId`, `pageId`, `editUrl`,
 `achados`, `motivos`. Nenhum status novo. As três respostas (`criar` / `adotar` / `reaproveitar` com
-`efeitosPendentes`) passam pelo gate como o doc CP5 § 7 descreve; a simulação mede e não grava.
+`efeitosPendentes`) passam pelo gate como o doc CP5 § 7 descreve; a simulação mede e não grava. **É aqui
+que os 4 `hojeViola` de P11 em `piloto-portao.test.ts` (duas versões) viram `it()`.**
 
 **Reforços do relatório do Dot — entram como TESTES do CP5c** (estado real conferido pela frente F e B):
 
@@ -517,7 +521,7 @@ e é gravado por merge (`mesclarFieldValuesDaArte`).
 | DEPOIS | **piloto sintético de autonomia** | CP5e na main |
 | DEPOIS | **MCP-M0** inventário → **M1** Base → **M2** Marca → **M3** modelos → **M4** DRAFT → **M5** auditoria/recuperação | piloto sintético satisfatório; decisões 4 e 5 |
 | DEPOIS | **piloto factual TERO**, somente com autorização explícita | MCP-M1 na main; seção 6 |
-| EM TRILHA SEPARADA | commitar a pesquisa do editor → CP-X0/X1/X2 → CP-V0 → V1 → V2 → V3 → T1b → T2 → T3… | documentos do editor (seção 7); nunca bloqueia nem é bloqueada pelo CP5; coordena com ele só em CP-X2, CP-V0 e T1b |
+| EM TRILHA SEPARADA | commitar a pesquisa do editor → CP-X0/X1/X2 → CP-V0 → V1 → V2 → V3 → T2 → T3…; **T1b entra antes ou depois do CP-V2 conforme a decisão 6** (tecnicamente depende só de T1a) | documentos do editor (seção 7); nunca bloqueia nem é bloqueada pelo CP5; coordena com ele só em CP-X2, CP-V0 e T1b |
 
 ---
 
