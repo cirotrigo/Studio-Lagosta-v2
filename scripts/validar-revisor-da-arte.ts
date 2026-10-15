@@ -1253,7 +1253,8 @@ async function main() {
     posts.push(post9b.postId)
     const dica9b = await lerDica9()
     conferir('ao agendar com o CTA escondido pela marca LEGADA do revisor, a dica fechou como aceita-como-veio e o diff não tem remoção (esconder mecânico não é a pessoa apagando)', dica9b?.desfecho === 'aceita-como-veio' && removidosDe(dica9b?.diff).length === 0, JSON.stringify({ desfecho: dica9b?.desfecho, removidos: removidosDe(dica9b?.diff) }))
-    const postDo9b = await db.socialPost.findUnique({ where: { id: post9b.postId }, select: { slotValues: true } })
+    const postDo9b = await db.socialPost.findUnique({ where: { id: post9b.postId }, select: { slotValues: true, renderStatus: true } })
+    conferir('o post do 9b nasceu RENDERED pela página (a recusa do 9a não deixou render pendente)', postDo9b?.renderStatus === 'RENDERED', String(postDo9b?.renderStatus))
     const valores9b = Object.entries((postDo9b?.slotValues ?? {}) as Record<string, unknown>).filter(([k]) => !k.startsWith('_')).map(([, v]) => v)
     conferir('a cópia que o post carrega segue a ARTE: sem o CTA escondido, com o apoio (a marca não muda o que a peça mostra)', !valores9b.includes(String(ctaDo9.content).trim()) && valores9b.includes(String(apoioDo9.content).trim()), JSON.stringify(valores9b).slice(0, 160))
     // 9c. a mesma recusa com o render FALHANDO: a recusa é PRÉ-escrita e não depende do render — nada é gravado nem enfileirado
@@ -1271,6 +1272,8 @@ async function main() {
     posts.push(post9c.postId)
     const dica9c = await lerDica9()
     conferir('agendar de novo mantém aceita-como-veio, sem remoção', dica9c?.desfecho === 'aceita-como-veio' && removidosDe(dica9c?.diff).length === 0, JSON.stringify({ desfecho: dica9c?.desfecho, removidos: removidosDe(dica9c?.diff) }))
+    const postDo9c = await db.socialPost.findUnique({ where: { id: post9c.postId }, select: { renderStatus: true } })
+    conferir('o post do 9c nasceu RENDERED (a recusa pré-escrita com o render falhando não deixou nada pendente)', postDo9c?.renderStatus === 'RENDERED', String(postDo9c?.renderStatus))
     // 9d. CONTROLE: a PESSOA esconde o apoio (escrita sem a marca, como o editor faz) e agenda: remoção dela, `editada`
     await db.page.update({ where: { id: pageId }, data: { layers: (await camadasDaPagina9()).map((c) => (c.id === apoioDo9.id ? { ...c, visible: false } : c)) as never } })
     const post9d = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: `${daqui7.toISOString().slice(0, 10)} 16:00`, pageId, situacao: 'rascunho', lembrete: true, caption: `${MARCA} rev-9e-01 d` })
