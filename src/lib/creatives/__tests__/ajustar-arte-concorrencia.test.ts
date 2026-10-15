@@ -92,6 +92,20 @@ vi.mock('@/lib/creatives/server-text-measurer', () => ({
 vi.mock('@/lib/creatives/text-autofix', () => ({
   aplicarAutofixOuFalhar: async (args: { layers: unknown[] }) => ({ layers: args.layers, autocorrecao: { aplicada: false }, avisos: [] }),
 }))
+// CP4: a não-piora (medir antes → aplicar em memória → medir depois) é provada em
+// `direcao-de-arte/__tests__/piloto-ciclo.test.ts` com o renderer REAL. Aqui o renderer é FALSO — a medida não
+// teria o que medir e recusaria tudo por `AJUSTE_NAO_MEDIDO` —, e o que este arquivo prova é a CORRIDA e a
+// escrita de `ajustarArte`: o executor vira o puro (`aplicarAjustes`), aceitando o que for estrutural.
+vi.mock('@/lib/creatives/revisao/ajustar-sem-piorar', async () => {
+  const { aplicarAjustes } = await import('@/lib/creatives/revisao/aplicar-ajustes')
+  const vazio = { achados: 0, problemas: 0, naoAvaliadas: [] as string[] }
+  return {
+    aplicarAjustesSemPiorar: async (a: { page: { width: number; height: number }; camadas: unknown[]; ajustes: unknown[]; medir: unknown }) => ({
+      ...aplicarAjustes(a.camadas as never, a.ajustes as never, { canvas: { width: a.page.width, height: a.page.height }, medir: a.medir as never }),
+      medidas: { antes: vazio, depois: vazio },
+    }),
+  }
+})
 vi.mock('@/lib/posts/invalidate-renders', () => ({ invalidateScheduledRenders: async () => ({ invalidados: 0, congelados: [] }) }))
 vi.mock('@/lib/compositor/recompor', () => ({
   travarRecomposicaoDaArte: vi.fn(async () => undefined),

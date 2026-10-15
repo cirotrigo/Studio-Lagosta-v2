@@ -542,3 +542,55 @@ Codex antes de ser escrito.
   regra `nao-avaliada` (`motivoSemLeituraDaLogo`).
 - A regra não depende das métricas de texto: as listas de exceção de `motivoSemMedida` e
   `textosSemMetrica` a mantêm avaliada.
+
+### Ajustar sem piorar (CP4, 15/10/2026)
+
+Pedido do owner (operação noturna de 14→15/10): "TODO ajuste mecânico → medir antes → aplicar em memória
+→ medir depois → aceitar ou recusar; UMA escrita no fim; nunca escrever → medir → desfazer; sem pontuação
+global". Módulos em `src/lib/creatives/revisao/`:
+
+- **`revisar-arte.ts`** ganhou `contextoDaMedicao` (o que vem do banco: assinatura, gerações, faixa,
+  referências, assunto, origens da logo) e `medirCamadasDaPeca(camadas, ctx)` (fontes, geometria,
+  régua com `corrigir: true`, logo) — a MESMA medição de `revisarArte`, que agora é só
+  `contextoDaMedicao` → `medirCamadasDaPeca` → `avaliarPeca` + visão. `MedidaDaPeca` é a
+  `EntradaDaRevisao` sem visão.
+- **`nao-piora.ts`** (puro, sem banco): `compararNaoPiora(antes, depois, { achadoAlvo })` compara
+  propriedade a propriedade — os achados mecânicos das regras comparadas (`texto-cortado`,
+  `tinta-fora-da-caixa`, `colisao`, `fora-da-area-segura`, `tratamento-piorou-leitura`,
+  `texto-sobre-assunto`, `logo-sobre-texto`, `logo-sem-leitura`, `fonte-nao-carregada`) pela
+  **gravidade por regra** (`gravidadeDoAchado`: linhas cortadas, px, cobertura, o que falta ao p10 da
+  logo), achado a achado pela chave estável (regra + camadas ordenadas); o **contraste de cada texto**
+  pela régua (texto no alvo que sai dele; fora do alvo que se afasta além de `TOLERANCIA_DE_PIORA` —
+  a regra do oráculo P9 do CP0); a **geometria** (caixa degenerada ou inteira fora do canvas). O
+  veredito é `aceito` só sem piora, sem propriedade não medida (cobertura `nao-avaliada` ou régua
+  `null` de um lado → `AJUSTE_NAO_MEDIDO`, fail-closed) e com o achado alvo resolvido ou melhorado.
+  Nenhuma melhora compensa uma piora. A visão (`certeza: 'visao'`) não entra: um achado de visão que
+  aparece depois não é piora, e o ajuste que declara corrigir um achado de visão não precisa de prova
+  — mas passa pela não-piora como qualquer outro.
+- **Achado alvo**: `ajuste.achado` é o id do achado (`regra:camadas`). Mensurável e não resolvido nem
+  melhorado → `AJUSTE_NAO_MELHOROU_O_ACHADO`, mesmo sem piorar nada. `texto-sem-leitura` é medido pela
+  **régua** (a distância ao alvo do texto), não pela evidência do achado. Id que não existe no antes →
+  `nao-encontrado` (aceito pela não-piora, dito na comparação).
+- **`ajustar-sem-piorar.ts`**: `aplicarAjustesSemPiorar` aplica cada ajuste SOZINHO numa cópia
+  (`aplicarAjustes`, puro — as recusas estruturais continuam as dele), passa a cópia pelo autofix
+  geométrico (`TEXTO_NAO_CABE` recusa só aquele ajuste), mede e compara com o estado atual; aceito → a
+  cópia vira o estado (o próximo ajuste é medido sobre ela); recusado → descartado. Lote parcial: 1
+  bom, 2 ruim, 3 bom → 1 e 3 entram, `resultadoDosAjustes = 'parcial'`.
+- **`ajustarArte`** chama o executor ANTES de qualquer escrita; a proteção de versão
+  (`VERSAO_DIVERGENTE`) continua antes de medir. Todos recusados pela qualidade e nada mais a gravar →
+  `AJUSTE_PIOROU_ARTE` (422, `details.recusados` com `comparacao` antes/depois, `ajusteGravado: false`):
+  **nenhuma escrita, nenhuma Generation, nenhum render reaberto** — a última versão boa fica. Cada
+  `ajustesAplicados`/`ajustesRecusados` traz `indice`, `tipo`, `achado`, `codigo`, `motivo` e
+  `comparacao`; a Generation grava o mesmo.
+- **Regressão do piloto** (`piloto-ciclo.test.ts`, fixture `piloto-2026-10-13`): os 3 ajustes que o
+  agente mandou em produção — `mover servico −230` (o texto claro afasta-se do alvo: p98 194 → 233),
+  `gradiente` com cor (estrutural, CP1) e `mover headline+apoio +110` (a manchete escura sai do alvo:
+  185 → 114) — são TODOS recusados e a página fica na v1. O P9 do CP0 ("um ajuste persistido nunca
+  deixa a peça pior") virou `it()`. Provas em PNG: `PROVAS_DIR=/tmp/provas-cp4 npx vitest run
+  src/lib/direcao-de-arte/__tests__/piloto-ciclo.test.ts -t provas` (antes, recusado, aceito, agente-v2).
+- 🔴 **Fora do CP4**: o gate autônomo (`REVISAO_HUMANA_NECESSARIA`, draft-only) é do CP5 — o
+  `hojeViola` P11 "recusado ANTES de substituir a versão do rascunho" só vira `it()` lá. O CP4 não
+  muda o fluxo humano além de recusar o ajuste que piora (warn + recusa estruturada, nunca em silêncio).
+- Limites medidos: o executor roda a régua (dois renders) por ajuste — um lote de 30 ajustes custa
+  ~30× a medida; o conector limita a 30. Achados de visão nunca entram na comparação; a geometria só
+  pega caixa degenerada/fora do canvas (o resto é das regras).

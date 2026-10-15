@@ -59,6 +59,16 @@ export interface AjusteAplicado {
   detalhe: string
   /** O rótulo `achado` do ajuste, quando veio (rastreabilidade por índice, CP1). */
   achado?: string
+  /** CP4: a comparação antes/depois que aceitou (as melhoras medidas e o estado do achado alvo). */
+  comparacao?: ComparacaoDoAjuste
+}
+
+/** O que a não-piora (CP4) mediu de um ajuste: as pioras (antes → depois), o que não pôde medir e o achado alvo. */
+export interface ComparacaoDoAjuste {
+  pioras: Array<{ propriedade: string; camadas: string[]; antes: number | string | null; depois: number | string | null; motivo: string }>
+  naoMedidas: Array<{ propriedade: string; lado: 'antes' | 'depois' | 'ambos'; motivo: string }>
+  melhoras: Array<{ propriedade: string; camadas: string[]; antes: number | string | null; depois: number | string | null }>
+  achadoAlvo?: { id: string; regra: string; estado: string; antes: number | null; depois: number | null }
 }
 
 export interface AjusteRecusado {
@@ -71,6 +81,8 @@ export interface AjusteRecusado {
   campos?: string[]
   /** O rótulo `achado` do ajuste, quando veio. */
   achado?: string
+  /** CP4: a comparação antes/depois que recusou (pioras, não medidas, achado alvo). */
+  comparacao?: ComparacaoDoAjuste
 }
 
 export interface ResultadoDosAjustes {

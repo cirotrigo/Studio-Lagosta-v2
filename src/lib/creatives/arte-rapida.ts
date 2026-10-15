@@ -61,7 +61,8 @@ import { bakeLayers } from '@/lib/creatives/bake-layers'
 import { camposDeTextoDasCamadas, mapearContratoParaCampos, mapearCopyParaSlots } from '@/lib/planos/execucao'
 import { semColchetes } from '@/lib/compositor/destaques'
 import { resolverValoresSemanticos, validarEntradaSemantica, type ErroDeValor, type ValorResolvido } from '@/lib/semantica/resolver-valores'
-import { aplicarAjustes, type AjusteAplicado, type AjusteRecusado } from '@/lib/creatives/revisao/aplicar-ajustes'
+import { type AjusteAplicado, type AjusteRecusado } from '@/lib/creatives/revisao/aplicar-ajustes'
+import { aplicarAjustesSemPiorar } from '@/lib/creatives/revisao/ajustar-sem-piorar'
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
 import { MOTIVO_DO_AJUSTE_DO_REVISOR } from '@/lib/relatorios/qualidade-da-copy-contrato'
 import { temContratoSemantico } from '@/lib/posts/copy-segue-a-pagina'
@@ -1255,16 +1256,30 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
       ? reflowLayersAfterFill(bakedLayers as Layer[], changedTextIds, measure)
       : (bakedLayers as Layer[])
 
+  /**
+   * CP4 (15/10/2026): TODO ajuste mecânico é medido ANTES, aplicado numa cópia, medido DEPOIS e aceito ou recusado
+   * — propriedade a propriedade, sem pontuação global (`ajustar-sem-piorar.ts`). Nada é gravado até aqui: no fim
+   * há UM estado, e a página é escrita uma vez. O ajuste que piora volta como `AJUSTE_PIOROU_ARTE`, com antes/depois.
+   */
   const revisao =
     ajustes.length > 0
-      ? aplicarAjustes(reflowed, ajustes, { canvas: { width: page.width, height: page.height }, medir: measure })
+      ? await aplicarAjustesSemPiorar({
+          projectId,
+          page: { id: page.id, name: page.name, width: page.width, height: page.height, tags: page.tags, background: page.background, layers: page.layers },
+          camadas: reflowed as Layer[],
+          ajustes,
+          medir: measure,
+        })
       : null
   if (revisao && revisao.aplicados.length === 0 && Object.keys(slotValues).length === 0 && !resolved.url && !input.name) {
+    // Todos recusados → NENHUMA escrita. Quando algum caiu pela não-piora, o código é o dela (a chamada não foi
+    // "sem efeito": foi recusada por qualidade, com antes/depois em `recusados`).
+    const porQualidade = revisao.recusados.some((r) => r.codigo === 'AJUSTE_PIOROU_ARTE' || r.codigo === 'AJUSTE_NAO_MEDIDO' || r.codigo === 'AJUSTE_NAO_MELHOROU_O_ACHADO')
     throw new CreativeError(
-      'AJUSTE_SEM_EFEITO',
-      `Nenhum ajuste pôde ser aplicado — ${revisao.recusados.map((r) => `ajuste ${r.indice}: ${r.motivo}`).join('; ')}.`,
+      porQualidade ? 'AJUSTE_PIOROU_ARTE' : 'AJUSTE_SEM_EFEITO',
+      `${porQualidade ? 'Nenhum ajuste foi gravado: a peça ficaria pior (ou a piora não pôde ser descartada)' : 'Nenhum ajuste pôde ser aplicado'} — ${revisao.recusados.map((r) => `ajuste ${r.indice}: ${r.motivo}`).join('; ')}.`,
       422,
-      { recusados: revisao.recusados },
+      { recusados: revisao.recusados, ajusteGravado: false },
     )
   }
 
