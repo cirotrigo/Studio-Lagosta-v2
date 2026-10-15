@@ -464,7 +464,10 @@ A busca é PEQUENA e explicável: faixas × candidatos × cortes, sem grid denso
   do custo do véu (não cobrir vence cobrir; nunca elimina — como recusa dura, a borda de uma faixa de
   luz zerava a foto; atrás do véu, o texto ia para cima do prato). Catálogo indisponível (erro que
   não é `SEM_CATALOGO`) recusa a peça com arquétipo (`CATALOGO_INDISPONIVEL`, transitório) em vez de
-  cair na estimada; o diagnóstico diz a origem (`regiaoProtegida`). A foto pedida é obrigatória e vem
+  cair na estimada; o diagnóstico diz a origem (`regiaoProtegida`, só quando ela existiu: sem foto, ou
+  sem região estimável, o campo some). O CORTE que mostra menos de 75% do assunto do catálogo é inválido
+  sempre: se nenhum preserva, a peça nova recusa (`SEM_COMBINACAO`, motivo `CORTE_PERDE_O_ASSUNTO`); só a
+  peça do T1a reproduzida segue com aviso. A foto pedida é obrigatória e vem
   por uma fonte: a que não carregou é `FOTO_INDISPONIVEL` (transitório), `url` + `driveFileId` é
   `ARQUETIPO_FOTO_AMBIGUA` (o resolvedor desenharia uma e o catálogo protegeria a outra); a URL do Drive
   usa o catálogo do id que carrega.

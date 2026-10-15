@@ -10,6 +10,7 @@
  * bater com a caixa medida.
  */
 import { mkdirSync, writeFileSync } from 'node:fs'
+import sharp from 'sharp'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
@@ -36,6 +37,7 @@ vi.mock('@/lib/assets/gradients-library', async (original) => ({
 }))
 
 import type { Layer } from '@/types/template'
+import { assuntoEmPixels, fracaoVisivelDoAssunto } from '@/lib/compositor/assunto-da-foto'
 import { comporPeca, type OpcoesDeComposicao, type ResultadoDaComposicao } from '@/lib/compositor/compor'
 import { escolhaEspacialOriginal, specComACopyDaPagina, specComAPosicaoOriginal } from '@/lib/compositor/defasagem'
 import { specDaRecomposicao } from '@/lib/compositor/spec-da-recomposicao'
@@ -72,6 +74,14 @@ const HEADLINE = { papel: 'headline', linhas: ['Almoço', 'de domingo'] }
 const APOIO = { papel: 'apoio', linhas: ['com a família toda'] }
 const SERVICO = { papel: 'servico', linhas: ['Dom · 12h às 16h'] }
 const faixa = (y0: number, y1: number, dentro: number, fora: number): Luz => (_x, y) => (y >= y0 && y < y1 ? dentro : fora)
+/**
+ * Um "produto" visível na caixa do catálogo (frações da FOTO): listras verticais claras e escuras de 40 px sobre o
+ * fundo — no PNG dá para ver onde o corte o corta.
+ */
+const comProduto = (fundo: number, cx: { x0: number; y0: number; x1: number; y1: number }, W: number, H: number): Luz => (x, y) =>
+  x >= cx.x0 * W && x < cx.x1 * W && y >= cx.y0 * H && y < cx.y1 * H ? (Math.floor(x / 40) % 2 === 0 ? 220 : 110) : fundo
+const PRODUTO_LATERAL = { x0: 0, y0: 0.4, x1: 0.3, y1: 0.5 }
+const PRODUTO_LARGO = { x0: 0.05, y0: 0.35, x1: 0.95, y1: 0.65 }
 /** Textura forte e determinística (±30) sobre uma base escura. */
 const texturaEscura = (x: number, y: number) => 50 + ((Math.imul(x, 7) + Math.imul(y, 13) + ((x >> 3) ^ (y >> 3)) * 17) % 61) - 30
 
@@ -121,7 +131,64 @@ const CENARIOS: Cenario[] = [
     cores: { headline: CLARO, apoio: CLARO, servico: ESCURO },
     blocos: [{ papel: 'headline', linhas: ['Sexta'] }, { papel: 'apoio', linhas: ['jazz ao vivo'] }, { papel: 'servico', linhas: ['Sex · 20h'] }],
   },
+  // Ajuste final (o owner): o Caso A do pedido original (teste 11) e o assunto do CATÁLOGO como restrição dura.
+  {
+    id: 'i-caso-a',
+    titulo: 'I. Caso A (centro-óptico: o apoio escuro não lê na referência e o véu pioraria; a faixa {headline, apoio} desce até o claro)',
+    arquetipo: CENTRO,
+    luz: (_x, y) => (y < 1150 ? 55 : y < 1450 ? 205 : 55),
+    cores: { headline: CLARO, apoio: ESCURO, servico: CLARO },
+    blocos: [{ papel: 'headline', linhas: ['Sexta'] }, { papel: 'apoio', linhas: ['jazz ao vivo'] }, SERVICO],
+    assunto: { x0: 0, y0: 0, x1: 0.15, y1: 0.08 },
+  },
+  {
+    id: 'j-corte-preserva-o-produto',
+    titulo: 'J. Produto do catálogo à esquerda: o corte central o perde, o da esquerda preserva e vence',
+    arquetipo: TOPO,
+    luz: comProduto(60, PRODUTO_LATERAL, 1920, 1920),
+    dimensoes: { width: 1920, height: 1920 },
+    cores: { headline: CLARO, servico: CLARO },
+    blocos: [HEADLINE, SERVICO],
+    assunto: PRODUTO_LATERAL,
+  },
+  {
+    id: 'k-nenhum-corte-preserva',
+    titulo: 'K. Produto do catálogo largo numa foto 4:3: nenhum corte do story preserva 75% — recusa, nenhuma peça',
+    arquetipo: TOPO,
+    luz: comProduto(60, PRODUTO_LARGO, 1920, 1440),
+    dimensoes: { width: 1920, height: 1440 },
+    cores: { headline: CLARO, servico: CLARO },
+    blocos: [HEADLINE, SERVICO],
+    assunto: PRODUTO_LARGO,
+  },
 ]
+
+/**
+ * Os 3 cortes da foto lado a lado, com a caixa do catálogo em vermelho (na geometria do compositor, `assuntoEmPixels`)
+ * e a fração visível — para VER que o corte corta o produto. A caixa tem de cair sobre as listras: é a conferência
+ * de que a geometria do compositor e o recorte do PNG concordam.
+ */
+async function provarCortes(c: Cenario) {
+  const foto = await fotoSintetica(c.luz, c.dimensoes)
+  const dimensoes = c.dimensoes ?? CANVAS
+  const quadros: Buffer[] = []
+  const medidas: Array<{ crop: string; visivel: number }> = []
+  for (const [crop, posicao] of [['left-middle', 'left'], ['center-middle', 'centre'], ['right-middle', 'right']] as const) {
+    const r = assuntoEmPixels(c.assunto!, dimensoes, CANVAS, crop)
+    const visivel = Math.round(fracaoVisivelDoAssunto(r, CANVAS) * 100)
+    medidas.push({ crop, visivel })
+    const svg = `<svg width="${CANVAS.width}" height="${CANVAS.height}" xmlns="http://www.w3.org/2000/svg"><rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" fill="none" stroke="#ff2d2d" stroke-width="12"/><text x="40" y="130" font-size="80" font-family="Arial" fill="#ff2d2d">${crop}: ${visivel}%</text></svg>`
+    const recorte = await sharp(foto).resize(CANVAS.width, CANVAS.height, { fit: 'cover', position: posicao }).toColourspace('srgb').png().toBuffer()
+    const marcado = await sharp(recorte).composite([{ input: Buffer.from(svg) }]).png().toBuffer()
+    quadros.push(await sharp(marcado).resize(360, 640).png().toBuffer())
+  }
+  const tira = await sharp({ create: { width: 3 * 360 + 2 * 20, height: 640, channels: 3, background: '#ffffff' } })
+    .composite(quadros.map((q, i) => ({ input: q, left: i * 380, top: 0 })))
+    .png()
+    .toBuffer()
+  writeFileSync(join(DIR, `${c.id}-0-cortes.png`), tira)
+  return medidas
+}
 
 const emArial = (l: Layer): Layer => (l.type === 'text' && l.style ? { ...l, style: { ...l.style, fontFamily: 'Arial' } } : l)
 
@@ -198,6 +265,7 @@ describe.runIf(DIR)('CP2B · provas visuais e bateria funcional', () => {
         await provar(`${c.id}-4-eliminada`, spec, { escolhaEspacial: escolha })
         if (c.assunto) await montar(c)
       }
+      const cortesDoProduto = c.assunto && c.dimensoes ? await provarCortes(c) : null
       const leituras = vencedora ? await leiturasDosTextos(vencedora.layers, CANVAS) : null
       const regiaoPx = c.assunto ? { x: c.assunto.x0 * 1080, y: c.assunto.y0 * 1920, width: (c.assunto.x1 - c.assunto.x0) * 1080, height: (c.assunto.y1 - c.assunto.y0) * 1920 } : null
       indice.push({
@@ -225,6 +293,7 @@ describe.runIf(DIR)('CP2B · provas visuais e bateria funcional', () => {
         eliminada: eliminada ? { crop: eliminada.crop, escolhas: eliminada.escolhas, motivos: eliminada.eliminada.map((e) => `${e.motivo}: ${e.detalhe}`) } : null,
         rejeitada: rejeitada ? { crop: rejeitada.crop, escolhas: rejeitada.escolhas, eliminada: rejeitada.eliminada.map((e) => e.motivo), componentes: rejeitada.componentes, tratamento: rejeitada.tratamento.map((t) => `${t.borda}:${t.estado}${t.forca ? `@${t.forca}` : ''}`) } : null,
         tempoDaComposicaoMs: ms,
+        ...(cortesDoProduto ? { assuntoVisivelPorCorte: cortesDoProduto } : {}),
       })
       expect(vencedora || recusa).toBeTruthy()
     }, 120_000)

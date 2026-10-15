@@ -935,8 +935,10 @@ se mudar.
   corta a referência, a faixa é RESGATADA na vertical (a partida é a posição válida mais perto
   dela, com aviso). `partidaNoArquetipo` é o portão estrutural, o MESMO no compor e no medir-copy.
 - 🔴 **Eliminar antes de pontuar** (`MOTIVOS_DE_ELIMINACAO`): fora da zona ou da área segura,
-  ornamento fora, corte que perde o assunto do catálogo (só quando OUTRO corte possível o preserva —
-  conferido em todos os cortes, também com o enquadramento fixo, que então vira PREFERENCIA_INVIAVEL), região
+  ornamento fora, corte que mostra menos de 75% do assunto do CATÁLOGO (SEMPRE, haja ou não outro corte
+  melhor — o catálogo é dado curado; com o enquadramento fixo, o lateral que resolve vira
+  PREFERENCIA_INVIAVEL; se NENHUM corte preserva, a peça nova recusa com `SEM_COMBINACAO`, motivo
+  `CORTE_PERDE_O_ASSUNTO`, e nada é persistido: a foto não serve a este formato), região
   protegida do CATÁLOGO acima do teto (0,25; textos, unidades e a logo fixa), colisão, ordem de
   leitura, hierarquia, e o plano do CP2A `inviavel` (piora, sem cor aprovada, polaridade
   incompatível).
@@ -950,7 +952,9 @@ se mudar.
   recusa a peça com `CATALOGO_INDISPONIVEL` (503, transitório: a fila e a recomposição tentam de
   novo — o código não começa com `ARQUETIPO_` de propósito, senão a fila o trataria como definitivo).
   Sem arquétipo o erro segue engolido, como sempre. O diagnóstico diz de onde veio a região:
-  `buscaEspacial.regiaoProtegida` = `catalogo` ou `estimada`.
+  `buscaEspacial.regiaoProtegida` = `catalogo` ou `estimada` — FATO, o mesmo de `assuntoOrigem` (o corte
+  escolhido): `estimada` só quando a textura de fato deu uma região; sem foto, ou foto sem região
+  estimável, o campo some (ajuste final, 14/10/2026).
 - 🔴 **A foto pedida é obrigatória, e vem por UMA fonte** (Codex R3). Foto que não carregou (o
   resolvedor devolve sem URL quando o Drive falha) recusa a peça com arquétipo: `FOTO_INDISPONIVEL`
   (503, transitório) — antes ela saía sem foto, na partida, sem região nenhuma. `url` e `driveFileId`
@@ -978,8 +982,8 @@ se mudar.
   inclusive —, = `ARQUETIPO_ESCOLHA_ILEGIVEL`; só a peça do T1a não grava, ela é a referência). Copy que não
   cabe na posição congelada, ou que nela invade a região do catálogo, colide ou inverte a ordem:
   `ARQUETIPO_POSICAO_CONGELADA_NAO_CABE`, nada é movido (o tratamento é do CP2A: só aviso). O corte
-  congelado que passou a perder o assunto do catálogo (a anotação mudou depois; outro corte o
-  preservaria) recusa com código próprio, `ARQUETIPO_CORTE_CONGELADO_PERDE_O_ASSUNTO`, e a saída
+  congelado que passou a perder o assunto do catálogo (a anotação mudou depois) recusa com código
+  próprio, `ARQUETIPO_CORTE_CONGELADO_PERDE_O_ASSUNTO`, e a saída
   "peça uma nova composição" (o histórico não manda encurtar o texto) — só na peça do CP2B: a do T1a
   nasceu no corte central com esse aviso, e a edição de texto dela segue com o aviso. A logo
   fixa que mudou de proporção vai ao dy válido dela (aviso); a logo automática congelada que

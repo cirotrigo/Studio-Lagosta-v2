@@ -107,8 +107,8 @@ import {
 import { candidatasDistintas, gradientesARecusar, MOTIVOS_DO_TRATAMENTO, planejarTratamentoDaBorda, type PlanoDaBorda } from './tratamento-de-leitura'
 import { conferirLinhas, conferirLogo, prepararArquetipo, type ArquetipoPreparado } from './arquetipos/na-spec'
 import { caixasMaximas, referenciaDoPapel, type Materializacao, type RetanguloPx } from './arquetipos/materializar'
-import { MODO_BUSCA_ESPACIAL, type DiagnosticoDaBuscaEspacial, type EscolhaParaReproduzir, type LeituraDoCorte, type PlanejamentoDoTratamento } from './arquetipos/busca-espacial-tipos'
-import { chaveDaFoto as impressaoDaFoto, contarRecusas, exemplosDeRecusa, selecionarNoArquetipo, type SelecaoNoArquetipo } from './arquetipos/busca-espacial'
+import { MODO_BUSCA_ESPACIAL, MOTIVOS_DE_ELIMINACAO, type DiagnosticoDaBuscaEspacial, type EscolhaParaReproduzir, type LeituraDoCorte, type PlanejamentoDoTratamento } from './arquetipos/busca-espacial-tipos'
+import { chaveDaFoto as impressaoDaFoto, contarRecusas, exemplosDeRecusa, motivoDaFalta, selecionarNoArquetipo, type SelecaoNoArquetipo } from './arquetipos/busca-espacial'
 import { partidaNoArquetipo, type PartidaNoArquetipo } from './arquetipos/candidatos-espaciais'
 import { regioesProtegidas } from './arquetipos/pontuacao-espacial'
 import {
@@ -1127,10 +1127,6 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   const cores = montados.map((b) => b.cor)
   // CP2B: a foto em cada corte, para a busca espacial do arquétipo (depois do laço).
   const fotoPorCorte = new Map<CropPosition, { raster: FotoCinza | null; mapa: MapaDeCalma | null; assunto: Rect | null }>()
-  // Algum corte POSSÍVEL (mesmo com o enquadramento fixo pedido) preserva o assunto do catálogo? É geometria pura
-  // (o cover de cada corte); sem isto, o corte fixo que perde o assunto passaria — os laterais só seriam vistos depois.
-  const algumCortePreservaOAssunto =
-    !!arq && !!assuntoDoCatalogo && !!foto && cortesCandidatos(foto, canvas, false).some((crop) => fracaoVisivelDoAssunto(assuntoEmPixels(assuntoDoCatalogo, { width: foto.largura, height: foto.altura }, canvas, crop), canvas) >= 0.75)
   const leiturasDoCorte = (crop: CropPosition, raster: FotoCinza | null, mapa: MapaDeCalma | null, assunto: Rect | null): LeituraDoCorte | null =>
     raster && mapa
       ? {
@@ -1138,9 +1134,10 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
           raster,
           mapa,
           regioes: regioesProtegidas({ catalogo: assuntoDoCatalogo ? assunto : null, estimado: assuntoDoCatalogo ? null : assunto }),
-          // Perder o assunto do catálogo só elimina o corte quando OUTRO corte o preserva: se nenhum preserva (foto
-          // larga, assunto largo), nenhum corte é eliminado por isso — fica o aviso, como no T1a e sem arquétipo.
-          assuntoVisivel: assuntoDoCatalogo && assunto && algumCortePreservaOAssunto ? fracaoVisivelDoAssunto(assunto, canvas) : null,
+          // A fração REAL do assunto do catálogo que o corte mostra: abaixo de 75% o corte é inválido SEMPRE (o catálogo é
+          // dado curado), haja ou não outro corte melhor — se nenhum preserva, a peça nova recusa (SEM_COMBINACAO, motivo
+          // CORTE_PERDE_O_ASSUNTO): a foto não serve a este formato. Só a peça do T1a reproduzida segue com aviso.
+          assuntoVisivel: assuntoDoCatalogo && assunto ? fracaoVisivelDoAssunto(assunto, canvas) : null,
         }
       : null
   for (const crop of cortes) {
@@ -1244,15 +1241,19 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
         }
       }
       const contagem = contarRecusas(sel.resultado.ordenadas)
+      // O motivo de TODOS os cortes avaliados (os do enquadramento fixo juntados acima entram na conta).
+      const motivo = motivoDaFalta(sel.resultado.ordenadas)
       const saida =
-        sel.motivo === MOTIVOS_DO_TRATAMENTO.polaridadeIncompativel || sel.motivo === MOTIVOS_DO_TRATAMENTO.piorou
-          ? 'Troque a foto, ou a variante (as cores dos textos que dividem a borda), ou o arquétipo.'
-          : 'Troque a foto, ou o arquétipo.'
+        motivo === MOTIVOS_DE_ELIMINACAO.corteSemOAssunto
+          ? 'Nenhum corte da foto neste formato mostra 75% do assunto que o catálogo marca: troque a foto, ou peça outro formato.'
+          : motivo === MOTIVOS_DO_TRATAMENTO.polaridadeIncompativel || motivo === MOTIVOS_DO_TRATAMENTO.piorou
+            ? 'Troque a foto, ou a variante (as cores dos textos que dividem a borda), ou o arquétipo.'
+            : 'Troque a foto, ou o arquétipo.'
       throw new CreativeError(
         'SEM_COMBINACAO',
         `${chaveDoArquetipo(arq.definicao)}: nenhuma combinação de corte e posição dentro das zonas serve a esta foto e a esta copy (${sel.resultado.avaliadas} avaliadas; ${Object.entries(contagem).map(([m, n]) => `${m} ×${n}`).join(', ')}). ${saida}`,
         422,
-        { motivo: sel.motivo, arquetipo: chaveDoArquetipo(arq.definicao), formato: arq.formato, cortesAvaliados: cortes, combinacoesAvaliadas: sel.resultado.avaliadas, recusas: contagem, exemplos: exemplosDeRecusa(sel.resultado.ordenadas) },
+        { motivo, arquetipo: chaveDoArquetipo(arq.definicao), formato: arq.formato, cortesAvaliados: cortes, combinacoesAvaliadas: sel.resultado.avaliadas, recusas: contagem, exemplos: exemplosDeRecusa(sel.resultado.ordenadas) },
       )
     }
     materializacao = sel.materializacao
@@ -1864,7 +1865,11 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
             codigoTaxonomico: arq.definicao.codigoTaxonomico,
             formato: spec.formato,
             modo: buscaDoArquetipo ? MODO_BUSCA_ESPACIAL : ('referencia' as const),
-            ...(buscaDoArquetipo ? { buscaEspacial: { ...buscaDoArquetipo, regiaoProtegida: assuntoDoCatalogo ? ('catalogo' as const) : ('estimada' as const) } } : {}),
+            // A origem da região protegida é FATO, a mesma de `assuntoOrigem` (o corte escolhido): a caixa do catálogo; a
+            // região de fato estimada pela textura; ou nenhuma — sem foto, ou foto sem região estimável: o campo some.
+            ...(buscaDoArquetipo
+              ? { buscaEspacial: { ...buscaDoArquetipo, ...(assuntoDoCatalogo ? { regiaoProtegida: 'catalogo' as const } : melhor.assunto ? { regiaoProtegida: 'estimada' as const } : {}) } }
+              : {}),
             preferenciasCoincidentes: arq.preferenciasCoincidentes,
             papeis: (unidadesArq ?? []).map((u) => ({ papel: u.papel, ...materializacao!.papeis[u.papel]! })),
             logo: {

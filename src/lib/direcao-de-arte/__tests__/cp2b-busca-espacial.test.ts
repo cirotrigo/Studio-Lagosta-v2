@@ -609,6 +609,8 @@ describe('CP2B · a região ESTIMADA pela energia é custo, não recusa', () => 
     const { r } = await compor({ ...semCatalogo, id: 'cp2b-a-sem-catalogo' }, { somenteAvaliar: true })
     const b = busca(r)
     expect(r.diagnostico.assuntoOrigem).toBe('estimado')
+    // DIAGNÓSTICO 2: sem catálogo, com região DE FATO estimada → "estimada".
+    expect(b.regiaoProtegida).toBe('estimada')
     expect(b.recusas.INVADE_REGIAO_PROTEGIDA ?? 0).toBe(0)
     expect(escolhaDa(b, 'apoio').dy).toBeGreaterThan(0)
     // A estimada entra no componente assunto (o vencedor carrega o custo, se cobre a caixa estimada).
@@ -834,11 +836,39 @@ describe('CP2B · correções da revisão adversarial', () => {
     expect(r.diagnostico.tratamentoDeLeitura!.find((t) => t.textos.some((x) => x.camada === 'headline'))!.borda).toBe(geometrica)
   }, 60_000)
 
-  it('assunto do catálogo que NENHUM corte preserva não vira SEM_COMBINACAO (o T1a compunha): compõe, com aviso', async () => {
-    const largo: Cena = { id: 'cp2b-assunto-largo', arquetipo: TOPO, dimensoes: { width: 1920, height: 1440 }, luz: () => 60, cores: { headline: CLARO, servico: CLARO }, assunto: { x0: 0.05, y0: 0.35, x1: 0.95, y1: 0.65 } }
-    const { r } = await compor(largo, { somenteAvaliar: true })
-    expect(busca(r).recusas.CORTE_PERDE_O_ASSUNTO ?? 0).toBe(0)
-    expect(r.diagnostico.avisos.some((a) => /preserva menos de 75% da caixa do assunto/.test(a))).toBe(true)
+  /** Foto 4:3 num story: cada corte mostra 42% da largura — o assunto largo do catálogo (90%) não cabe em nenhum. */
+  const LARGO: Cena = { id: 'cp2b-assunto-largo', arquetipo: TOPO, dimensoes: { width: 1920, height: 1440 }, luz: () => 60, cores: { headline: CLARO, servico: CLARO }, assunto: { x0: 0.05, y0: 0.35, x1: 0.95, y1: 0.65 } }
+
+  it('CROP B. assunto do catálogo que NENHUM corte preserva (< 75% em todos): SEM_COMBINACAO com motivo CORTE_PERDE_O_ASSUNTO, e nada é persistido', async () => {
+    await montar(LARGO)
+    const antes = cap.entradas.length
+    const e = await comporPeca(specDe(LARGO), { autor: 'u-fixture' }).catch((x) => x as CreativeError)
+    expect((e as CreativeError).code).toBe('SEM_COMBINACAO')
+    const d = (e as CreativeError).details as { motivo: string; cortesAvaliados: string[]; combinacoesAvaliadas: number; recusas: Record<string, number> }
+    expect(d.motivo).toBe('CORTE_PERDE_O_ASSUNTO')
+    expect([...d.cortesAvaliados].sort()).toEqual(['center-middle', 'left-middle', 'right-middle'])
+    // Todas as combinações de todos os cortes caem nele: a foto não serve a este formato.
+    expect(d.recusas.CORTE_PERDE_O_ASSUNTO).toBe(d.combinacoesAvaliadas)
+    expect((e as CreativeError).message).toMatch(/Nenhum corte da foto neste formato mostra 75% do assunto que o catálogo marca: troque a foto, ou peça outro formato/)
+    expect(cap.entradas.length).toBe(antes)
+  }, 60_000)
+
+  it('CROP C. o mesmo cenário SEM arquétipo: o caminho legado continua igual (compõe no corte da esquerda, com o aviso de sempre)', async () => {
+    const { r, entrada } = await compor({ ...LARGO, id: 'cp2b-assunto-largo-legado', arquetipo: undefined })
+    expect(entrada).toBeDefined()
+    expect(r.diagnostico.arquetipo).toBeUndefined()
+    expect(r.diagnostico.posicao).toMatchObject({ ancora: 'topo', alinha: 'esquerda', crop: 'left-middle', motivo: 'O corte preserva menos de 75% da caixa do assunto catalogado.' })
+    expect(r.diagnostico.avisos).toContain('Toda posição cobre o assunto da foto; ficou a melhor delas (O corte preserva menos de 75% da caixa do assunto catalogado.).')
+    expect(r.diagnostico.assuntoOrigem).toBe('catalogo')
+  }, 60_000)
+
+  it('CROP D. a peça ANTIGA do T1a reproduzida nesse cenário continua na referência, com o aviso — sem regressão retroativa', async () => {
+    const { r } = await compor(LARGO, { somenteAvaliar: true, escolhaEspacial: { modo: 'referencia' } })
+    expect(r.diagnostico.arquetipo!.modo).toBe('referencia')
+    expect(r.diagnostico.posicao.crop).toBe('center-middle')
+    expect(r.diagnostico.avisos).toContain('O corte center-middle preserva menos de 75% da caixa do assunto catalogado.')
+    // O corte não é chamado de "tratamento" no aviso da posição congelada.
+    expect(r.diagnostico.avisos.some((a) => /pede outro tratamento \(CORTE_PERDE_O_ASSUNTO/.test(a))).toBe(false)
   }, 60_000)
 
   it('na reprodução, a copy nova que invade a região protegida do catálogo é recusada (nunca publicada por cima do produto)', async () => {
@@ -881,6 +911,17 @@ describe('CP2B · correções da revisão adversarial', () => {
     expect((erro as CreativeError).message).toMatch(/região protegida do catálogo/)
   }, 60_000)
 
+  it('CROP A. assunto do catálogo que o corte central perde e o lateral preserva: o lateral vence (o central é eliminado)', async () => {
+    const lateral: Cena = { id: 'cp2b-crop-a', arquetipo: TOPO, dimensoes: { width: 1920, height: 1920 }, luz: () => 60, cores: { headline: CLARO, servico: CLARO }, assunto: { x0: 0, y0: 0.4, x1: 0.3, y1: 0.5 } }
+    const { r } = await compor(lateral, { somenteAvaliar: true })
+    const b = busca(r)
+    expect(r.diagnostico.posicao.crop).toBe('left-middle')
+    expect(b.regiaoProtegida).toBe('catalogo')
+    expect(b.recusas.CORTE_PERDE_O_ASSUNTO ?? 0).toBeGreaterThan(0)
+    expect(b.vencedor!.eliminada).toEqual([])
+    expect(r.diagnostico.avisos.some((a) => /preserva menos de 75%/.test(a))).toBe(false)
+  }, 60_000)
+
   it('enquadramento FIXO com o corte central perdendo o assunto do catálogo, e um lateral preservando: PREFERENCIA_INVIAVEL', async () => {
     const lateral: Cena = { id: 'cp2b-fixo-lateral', arquetipo: TOPO, dimensoes: { width: 1920, height: 1920 }, luz: () => 60, cores: { headline: CLARO, servico: CLARO }, assunto: { x0: 0, y0: 0.4, x1: 0.3, y1: 0.5 } }
     // Sem a preferência, a busca vai ao corte que preserva o assunto.
@@ -901,10 +942,12 @@ describe('CP2B · correções da revisão adversarial', () => {
       const e = await recusa(CENAS.regiao)
       expect(e.code).toBe('CATALOGO_INDISPONIVEL')
       expect(e.status).toBe(503)
-      // SEM_CATALOGO é "a foto não tem anotação": compõe pela região estimada, e o diagnóstico diz isso.
+      // SEM_CATALOGO é "a foto não tem anotação": compõe sem a caixa. Nesta foto a textura não dá região estimada
+      // nenhuma (DIAGNÓSTICO 4: foto sem região estimável) — o campo some, como `assuntoOrigem: 'nenhum'`.
       lerCatalogo.mockRejectedValueOnce(new CreativeError('SEM_CATALOGO', 'sem catálogo', 404))
       const { r } = await compor(CENAS.regiao, { somenteAvaliar: true })
-      expect(busca(r).regiaoProtegida).toBe('estimada')
+      expect(r.diagnostico.assuntoOrigem).toBe('nenhum')
+      expect(busca(r)).not.toHaveProperty('regiaoProtegida')
       // Sem arquétipo, o erro do catálogo segue engolido como sempre (o caminho legado não muda).
       lerCatalogo.mockRejectedValueOnce(new Error('Drive fora do ar'))
       const chamadas = lerCatalogo.mock.calls.length
@@ -932,7 +975,17 @@ describe('CP2B · correções da revisão adversarial', () => {
     await montar(lateral)
     const t1a = await comporPeca(specDe(lateral), { somenteAvaliar: true, escolhaEspacial: { modo: 'referencia' } })
     expect(t1a.diagnostico.posicao.crop).toBe('center-middle')
-    expect(t1a.diagnostico.avisos.some((a) => /CORTE_PERDE_O_ASSUNTO/.test(a))).toBe(true)
+    expect(t1a.diagnostico.avisos).toContain('O corte center-middle preserva menos de 75% da caixa do assunto catalogado.')
+  }, 60_000)
+
+  it('CROP E. peça do CP2B congelada cuja anotação mudou e que NENHUM corte preservaria: ARQUETIPO_CORTE_CONGELADO_PERDE_O_ASSUNTO, nada se move', async () => {
+    // Composta quando a foto não tinha anotação (corte central); a anotação nova é larga demais para qualquer corte.
+    const { assunto: _novo, ...semAnotacao } = LARGO
+    const { r } = await compor({ ...semAnotacao, id: 'cp2b-crop-e' }, { somenteAvaliar: true })
+    const escolha = busca(r).escolha
+    const e = await recusa({ ...LARGO, id: 'cp2b-crop-e' }, { escolhaEspacial: escolha })
+    expect(e.code).toBe('ARQUETIPO_CORTE_CONGELADO_PERDE_O_ASSUNTO')
+    expect(e.message).toMatch(new RegExp(`corte ${escolha.corte}.*perde o assunto que o catálogo marca`))
   }, 60_000)
 
   it('foto pedida que NÃO carregou: com arquétipo recusa (FOTO_INDISPONIVEL, transitório); sem arquétipo compõe com aviso, como sempre', async () => {
@@ -977,6 +1030,9 @@ describe('CP2B · correções da revisão adversarial', () => {
     await montar(CENAS.regiao)
     const r = await comporPeca({ ...specDe(CENAS.regiao), foto: {} }, { autor: 'u-fixture' })
     expect(busca(r).motivo).toMatch(/sem foto para ler/)
+    // DIAGNÓSTICO 3: sem foto, nenhuma região — o campo some.
+    expect(r.diagnostico.assuntoOrigem).toBe('nenhum')
+    expect(busca(r)).not.toHaveProperty('regiaoProtegida')
   }, 60_000)
 
   it('escolha gravada SEM o deslocamento de uma faixa inteira é ilegível (nunca volta à referência em silêncio); a peça do T1a, sem deslocamentos, segue na referência', async () => {
@@ -987,6 +1043,12 @@ describe('CP2B · correções da revisão adversarial', () => {
     expect(e.message).toMatch(/não traz o deslocamento da faixa \(servico, logo\)/)
     const { r } = await compor(CONGELADA, { somenteAvaliar: true, escolhaEspacial: { modo: 'referencia' } })
     expect(r.diagnostico.posicao.crop).toBe('center-middle')
+  }, 60_000)
+
+  it('DIAGNÓSTICO 4. foto uniforme, sem catálogo: nenhuma região estimável — regiaoProtegida ausente (nunca "estimada" sem estimativa)', async () => {
+    const { r } = await compor({ id: 'cp2b-uniforme', arquetipo: TOPO, luz: () => 60, cores: { headline: CLARO, servico: CLARO } }, { somenteAvaliar: true })
+    expect(r.diagnostico.assuntoOrigem).toBe('nenhum')
+    expect(busca(r)).not.toHaveProperty('regiaoProtegida')
   }, 60_000)
 
   it('o motivo explica a vitória quando as posições sem véu foram eliminadas (o caso da região protegida)', async () => {

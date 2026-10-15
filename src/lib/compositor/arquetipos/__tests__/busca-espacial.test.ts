@@ -40,6 +40,13 @@ describe('CP2B · orquestrador', () => {
     const zona = av(2, { eliminada: [{ motivo: 'FORA_DA_ZONA', detalhe: '' }] })
     expect(motivoDaFalta([doCp2a('POLARIDADE_INCOMPATIVEL_NA_MESMA_BORDA'), zona, { ...zona }])).toBe('FORA_DA_ZONA')
     expect(motivoDaFalta([])).toBeNull()
+    // Todo corte perde o assunto do catálogo: a FOTO é a causa, mesmo que o CP2A também recuse todas (o véu não salva
+    // um produto cortado) — vence o motivo do CP2A uniforme.
+    const cortadaETambemPolar = (i: number) =>
+      av(i, { eliminada: [{ motivo: 'CORTE_PERDE_O_ASSUNTO', detalhe: '' }, { motivo: 'POLARIDADE_INCOMPATIVEL', detalhe: '', motivoDoTratamento: 'POLARIDADE_INCOMPATIVEL_NA_MESMA_BORDA' as never }] })
+    expect(motivoDaFalta([cortadaETambemPolar(1), cortadaETambemPolar(2)])).toBe('CORTE_PERDE_O_ASSUNTO')
+    // Se UMA avaliação não perde o assunto, a regra de sempre (o CP2A uniforme) vale.
+    expect(motivoDaFalta([cortadaETambemPolar(1), doCp2a('POLARIDADE_INCOMPATIVEL_NA_MESMA_BORDA')])).toBe('POLARIDADE_INCOMPATIVEL_NA_MESMA_BORDA')
   })
 
   it('por que saiu da referência: eliminada, véu, ou pontuação; nada quando a vencedora É a referência', () => {
