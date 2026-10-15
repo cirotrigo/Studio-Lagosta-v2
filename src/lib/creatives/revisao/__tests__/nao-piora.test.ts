@@ -226,6 +226,17 @@ describe('não piorar — propriedade a propriedade, sem pontuação global', ()
     expect(comFoto.veredito).toBe(AJUSTE_NAO_MEDIDO)
   })
 
+  it('CP4.1 — foto de fundo LIDA e sem assunto localizável (cobertura `naoSeAplica` dos dois lados) é inaplicável, não "não medida": o ajuste entra; a marca de um lado só, ou a estimativa que falhou, segue não medida', () => {
+    const foto = { id: 'bg-foto', name: 'Foto', type: 'image', visible: true, locked: false, order: 0, position: { x: 0, y: 0 }, size: CANVAS, fileUrl: 'https://x/foto.jpg' } as Layer
+    const semAssunto = { 'texto-sobre-assunto': { estado: 'nao-avaliada' as const, motivo: 'a foto foi lida e não tem assunto localizável (mapa de calma sem região forte): nada a proteger', naoSeAplica: true as const } }
+    const falhou = { 'texto-sobre-assunto': { estado: 'nao-avaliada' as const, motivo: 'o assunto da foto não foi estimado: HTTP 403' } }
+    const lado = (cob: Parameters<typeof relatorio>[1]) => medida({ relatorio: relatorio([], cob), camadas: [foto, texto('headline')] })
+    const r = compararNaoPiora(lado(semAssunto), lado(semAssunto))
+    expect(r).toMatchObject({ veredito: 'aceito', naoMedidas: [], naoAplicaveis: [{ propriedade: 'texto-sobre-assunto', lado: 'ambos', motivo: expect.stringContaining('não tem assunto localizável') }] })
+    expect(compararNaoPiora(lado(semAssunto), lado(falhou))).toMatchObject({ veredito: AJUSTE_NAO_MEDIDO, naoMedidas: [expect.objectContaining({ propriedade: 'texto-sobre-assunto' })] })
+    expect(compararNaoPiora(lado(falhou), lado(falhou))).toMatchObject({ veredito: AJUSTE_NAO_MEDIDO })
+  })
+
   it('revisor B — `tratamento-piorou-leitura` que APARECE com a leitura do texto igual não é piora (quem decide é o contraste); o achado dessa regra só está "resolvido" se a leitura não piorou', () => {
     const trat = achado('tratamento-piorou-leitura', ['servico'], { antes: 165, depois: 180 })
     const leitura = contraste([{ camada: 'servico', com: 194 }])
@@ -234,6 +245,27 @@ describe('não piorar — propriedade a propriedade, sem pontuação global', ()
     const sumiuPiorando = compararNaoPiora(medida({ relatorio: relatorio([trat]), contraste: leitura }), medida({ contraste: contraste([{ camada: 'servico', com: 233 }]) }), { achadoAlvo: 'tratamento-piorou-leitura:servico' })
     expect(sumiuPiorando.achadoAlvo).toMatchObject({ estado: 'nao-melhorou' })
     expect(sumiuPiorando.veredito).toBe(AJUSTE_PIOROU_ARTE)
+  })
+
+  it('CP4.1 — `texto-pequeno` é propriedade comparada pela gravidade da própria regra (quanto abaixo do piso1080): aparecer, descer mais e subir', () => {
+    const pequeno = (corpo1080: number, piso1080 = 26) => achado('texto-pequeno', ['servico'], { corpo1080, piso1080, referencia1080: 32 })
+    // Saudável → 8 px: o achado aparece = piora.
+    expect(compararNaoPiora(medida(), medida({ relatorio: relatorio([pequeno(8)]) }))).toMatchObject({ veredito: AJUSTE_PIOROU_ARTE, pioras: [expect.objectContaining({ propriedade: 'texto-pequeno', camadas: ['servico'], antes: null, depois: 18 })] })
+    // Já pequeno (20, piso 26) → 18: piorou (gravidade 6 → 8).
+    expect(compararNaoPiora(medida({ relatorio: relatorio([pequeno(20)]) }), medida({ relatorio: relatorio([pequeno(18)]) }))).toMatchObject({ veredito: AJUSTE_PIOROU_ARTE, pioras: [expect.objectContaining({ propriedade: 'texto-pequeno', antes: 6, depois: 8 })] })
+    // Já pequeno (20) → 24: melhorou (6 → 2), ainda abaixo do piso.
+    expect(compararNaoPiora(medida({ relatorio: relatorio([pequeno(20)]) }), medida({ relatorio: relatorio([pequeno(24)]) }))).toMatchObject({ veredito: 'aceito', melhoras: [expect.objectContaining({ propriedade: 'texto-pequeno', antes: 6, depois: 2 })] })
+    // Resolve a colisão diminuindo a fonte, mas cria texto-pequeno: recusa (sem pontuação global).
+    const colisao = achado('colisao', ['headline', 'servico'], { px: 12 })
+    expect(compararNaoPiora(medida({ relatorio: relatorio([colisao]) }), medida({ relatorio: relatorio([pequeno(18)]) })).veredito).toBe(AJUSTE_PIOROU_ARTE)
+    // Modelo que nasceu miúdo: o piso é o relativo da própria regra (20, não 26); 19 → 17 é piora pela mesma gravidade.
+    expect(compararNaoPiora(medida({ relatorio: relatorio([pequeno(19, 20)]) }), medida({ relatorio: relatorio([pequeno(17, 20)]) })).pioras).toEqual([expect.objectContaining({ propriedade: 'texto-pequeno', antes: 1, depois: 3 })])
+    // 1 px de ruído não conta.
+    expect(compararNaoPiora(medida({ relatorio: relatorio([pequeno(20)]) }), medida({ relatorio: relatorio([pequeno(19)]) })).pioras).toEqual([])
+    // Declarado como alvo e não melhorado: recusa.
+    expect(compararNaoPiora(medida({ relatorio: relatorio([pequeno(20)]) }), medida({ relatorio: relatorio([pequeno(20)]) }), { achadoAlvo: 'texto-pequeno:servico' }).veredito).toBe(AJUSTE_NAO_MELHOROU_O_ACHADO)
+    // Camada não medida (cobertura não avaliada): fail-closed, nunca aprovação.
+    expect(compararNaoPiora(medida(), medida({ relatorio: relatorio([], { 'texto-pequeno': { estado: 'nao-avaliada', motivo: 'a medição dos textos falhou' } }) })).veredito).toBe(AJUSTE_NAO_MEDIDO)
   })
 
   it('13. achado só de VISÃO como alvo não exige prova de melhora, mas a não-piora vale do mesmo jeito', () => {

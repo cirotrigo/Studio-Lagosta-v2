@@ -462,3 +462,140 @@ describe('opção C (#208) no AJUSTE: fileUrl semântico no primeiro alvo não d
     expect(r.imageApplied).toBe(true)
   })
 })
+
+describe('CP4.1 — o agente autônomo (draft-only) não apaga copy pelo slotValues; o humano pode, e fica auditado', () => {
+  const cta = () => (banco.pagina!.layers as Array<Record<string, any>>).find((l) => l.id === 'cta')!
+  const comSlot = () => {
+    banco.pagina = {
+      ...banco.pagina,
+      layers: (banco.pagina.layers as Array<Record<string, any>>).map((l) => (l.id === 'headline' ? { ...l, metadata: { ...l.metadata, slot: { id: 'manchete' } } } : l)),
+    }
+  }
+  const intacto = async (chamada: Promise<unknown>, operacao: 'escondido' | 'esvaziado' | 'sem-conteudo', endereco: { tipo: string; chave: string }, layerId = 'cta', chave = layerId) => {
+    const antes = banco.pagina.updatedAt.getTime()
+    const erro = (await erroDe(chamada)) as CreativeError
+    expect(erro).toBeInstanceOf(CreativeError)
+    expect(erro.code).toBe('CONTEUDO_NAO_PODE_SER_REMOVIDO')
+    expect(erro.status).toBe(422)
+    expect(erro.details).toMatchObject({ ajusteGravado: false, copyRemovida: [{ layerId, chave, operacao, tinhaConteudo: true, endereco }] })
+    // Sem o texto integral nos details; a mensagem diz o nome da camada e a operação.
+    expect(JSON.stringify(erro.details)).not.toContain('Reserve pelo direct')
+    expect(erro.message).toMatch(new RegExp(`"${chave}" seria ${operacao === 'sem-conteudo' ? 'reduzido a pontuação sem conteúdo' : operacao}`))
+    // 11/12: nenhuma escrita, nenhuma Generation, nenhum render/Blob.
+    expect(banco.pagina.updatedAt.getTime()).toBe(antes)
+    expect(cta().visible).not.toBe(false)
+    expect(cta().content).toBe('Reserve pelo direct')
+    expect(banco.generations).toHaveLength(0)
+    expect(banco.putSeq).toBe(0)
+  }
+
+  it('1. draft-only: `{ cta: { hidden: true } }` sobre texto com conteúdo → recusado, nada gravado', async () => {
+    await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { cta: { hidden: true } } }), 'escondido', { tipo: 'layerId', chave: 'cta' })
+  })
+  it('2. draft-only: `{ cta: "" }` → recusado (esvaziado)', async () => {
+    await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { cta: '' } }), 'esvaziado', { tipo: 'layerId', chave: 'cta' })
+  })
+  it('3. draft-only: `{ cta: { content: "   " } }` (só espaço) → recusado (esvaziado)', async () => {
+    await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { cta: { content: '   ' } } }), 'esvaziado', { tipo: 'layerId', chave: 'cta' })
+  })
+  it('4. draft-only: `_slots` que resolve para vazio → recusado, com o endereço do slot', async () => {
+    comSlot()
+    await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { _slots: { manchete: '' } } }), 'esvaziado', { tipo: 'slotId', chave: 'manchete' }, 'headline')
+  })
+  it('5. draft-only: `_papeis` equivalente → recusado, com o endereço do papel', async () => {
+    await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { _papeis: { headline: ' ' } } }), 'esvaziado', { tipo: 'semanticRole', chave: 'headline' }, 'headline')
+  })
+  it('4b. draft-only: pela chave de NOME (atinge toda camada com esse nome) → recusado, endereço `name`', async () => {
+    banco.pagina = { ...banco.pagina, layers: (banco.pagina.layers as Array<Record<string, any>>).map((l) => (l.id === 'cta' ? { ...l, name: 'Chamada' } : l)) }
+    await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { Chamada: { hidden: true } } }), 'escondido', { tipo: 'name', chave: 'Chamada' }, 'cta', 'Chamada')
+  })
+  it('6. draft-only: trocar "Texto A" por "Texto B" → permitido, sujeito aos gates normais; sem `copyRemovida`', async () => {
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { cta: 'Reserve pelo WhatsApp' } })
+    expect(cta().content).toBe('Reserve pelo WhatsApp')
+    expect(r.camposAlterados).toEqual(['cta'])
+    expect(r.copyRemovida).toBeUndefined()
+    expect((banco.generations.at(-1)!.fieldValues as Record<string, unknown>).copyRemovida).toBeUndefined()
+  })
+  it('7. draft-only: esconder um slot de texto que JÁ estava vazio → segue o contrato de sempre (entra)', async () => {
+    banco.pagina = { ...banco.pagina, layers: [...(banco.pagina.layers as Array<Record<string, any>>), texto('badge', 200, '   ')] }
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { badge: { hidden: true } } })
+    expect(r.ajustada).toBe(true)
+    expect((banco.pagina.layers as Array<Record<string, any>>).find((l) => l.id === 'badge')!.visible).toBe(false)
+    expect(r.copyRemovida).toBeUndefined()
+  })
+  it('8/10. humano: `hidden: true` em texto com conteúdo continua permitido — e a procedência registra "escondido" (retorno e Generation)', async () => {
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { cta: { hidden: true } } })
+    expect(cta().visible).toBe(false)
+    const registro = { layerId: 'cta', chave: 'cta', operacao: 'escondido', endereco: { tipo: 'layerId', chave: 'cta' }, tinhaConteudo: true }
+    expect(r.copyRemovida).toEqual([registro])
+    expect((banco.generations.at(-1)!.fieldValues as Record<string, any>).copyRemovida).toEqual([registro])
+    // "conteúdo alterado" é outra coisa: a camada escondida não é texto alterado.
+    expect(r.camposAlterados).toEqual([])
+  })
+  it('9/10. humano: conteúdo → "" continua permitido — e a procedência distingue "esvaziado" de "alterado"', async () => {
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { cta: '', headline: 'Jantar executivo' } })
+    expect(cta().content).toBe('')
+    expect(r.copyRemovida).toEqual([{ layerId: 'cta', chave: 'cta', operacao: 'esvaziado', endereco: { tipo: 'layerId', chave: 'cta' }, tinhaConteudo: true }])
+    // "alterado" é texto trocado por OUTRO texto: o esvaziado não entra em camposAlterados.
+    expect(r.camposAlterados).toEqual(['headline'])
+  })
+  // Ajuste final do owner (15/10): trocar a copy por PONTUAÇÃO é apagar com outra sintaxe.
+  it('S1–S3. draft-only: "Texto real" → "." / "..." / "—" (e "___", "!!!", "()", "/", "•••") → recusado como sem-conteudo, nada gravado', async () => {
+    for (const pontuacao of ['.', '...', '—', '___', '!!!', '()', '/', '•••', ' - ', '…']) {
+      await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { cta: pontuacao } }), 'sem-conteudo', { tipo: 'layerId', chave: 'cta' })
+    }
+    await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { cta: { content: '.' } } }), 'sem-conteudo', { tipo: 'layerId', chave: 'cta' })
+  })
+  it('S5. draft-only: via `_slots` → "." → recusado, endereço do slot', async () => {
+    comSlot()
+    await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { _slots: { manchete: '.' } } }), 'sem-conteudo', { tipo: 'slotId', chave: 'manchete' }, 'headline')
+  })
+  it('S6. draft-only: via `_papeis` → "-" → recusado, endereço do papel', async () => {
+    await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { _papeis: { headline: '-' } } }), 'sem-conteudo', { tipo: 'semanticRole', chave: 'headline' }, 'headline')
+  })
+  it('S7–S9. draft-only: "Texto real" → "11h30" / "🍷" / "Novo texto!" / "R$ 79" / "50% OFF" → permitido (conteúdo substantivo), sem copyRemovida', async () => {
+    for (const novo of ['11h30', '🍷', 'Novo texto!', 'R$ 79', '50% OFF', '🇧🇷']) {
+      const r = await ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { cta: novo } })
+      expect(cta().content).toBe(novo)
+      expect(r.copyRemovida).toBeUndefined()
+      expect(r.camposAlterados).toEqual(['cta'])
+      banco.pagina = { ...banco.pagina, layers: (banco.pagina.layers as Array<Record<string, any>>).map((l) => (l.id === 'cta' ? { ...l, content: 'Reserve pelo direct' } : l)) }
+    }
+  })
+  it('S10. origem que JÁ era só pontuação ("-", placeholder decorativo) não vira copy protegida: esconder, esvaziar ou trocar por "." entra', async () => {
+    banco.pagina = { ...banco.pagina, layers: [...(banco.pagina.layers as Array<Record<string, any>>), texto('traco', 200, '-')] }
+    for (const valor of [{ hidden: true }, '', '.']) {
+      const r = await ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { traco: valor } })
+      expect(r.ajustada).toBe(true)
+      expect(r.copyRemovida).toBeUndefined()
+    }
+  })
+  it('S11. humano: "Texto real" → "." continua permitido — e `copyRemovida` registra "sem-conteudo" (retorno e Generation); não é "alterado"', async () => {
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { cta: '.', headline: 'Jantar executivo' } })
+    expect(cta().content).toBe('.')
+    const registro = { layerId: 'cta', chave: 'cta', operacao: 'sem-conteudo', endereco: { tipo: 'layerId', chave: 'cta' }, tinhaConteudo: true }
+    expect(r.copyRemovida).toEqual([registro])
+    expect((banco.generations.at(-1)!.fieldValues as Record<string, any>).copyRemovida).toEqual([registro])
+    expect(r.camposAlterados).toEqual(['headline'])
+  })
+  it('A1. draft-only: texto só de caracteres INVISÍVEIS (zero-width, soft hyphen, braille em branco) é esvaziar com outra sintaxe → recusado', async () => {
+    for (const invisivel of ['\u200b', '\u200c\u200d', '\u2060', '\u00ad', '\u2800', ' \u200b ']) {
+      await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { cta: invisivel } }), 'esvaziado', { tipo: 'layerId', chave: 'cta' })
+    }
+  })
+  it('A2/A3. draft-only: camada escondida pelo REVISOR (com marca) recebendo `hidden: true` conta como esconder; camada escondida pela PESSOA com conteúdo não pode ser esvaziada', async () => {
+    banco.pagina = {
+      ...banco.pagina,
+      layers: [
+        ...(banco.pagina.layers as Array<Record<string, any>>),
+        { ...texto('pelo-revisor', 1800, 'Texto que o revisor escondeu'), visible: false, metadata: { revisao: { ocultaPeloRevisor: { em: '2026-10-01T00:00:00.000Z', ajuste: 0 } } } },
+        { ...texto('pela-pessoa', 1850, 'Texto que a pessoa escondeu'), visible: false },
+      ],
+    }
+    await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { 'pelo-revisor': { hidden: true } } }), 'escondido', { tipo: 'layerId', chave: 'pelo-revisor' }, 'pelo-revisor')
+    await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { 'pela-pessoa': '' } }), 'esvaziado', { tipo: 'layerId', chave: 'pela-pessoa' }, 'pela-pessoa')
+    // Esconder de novo o que a pessoa já escondeu não é remoção (já estava escondido, nada muda).
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { 'pela-pessoa': { hidden: true } } })
+    expect(r.copyRemovida).toBeUndefined()
+  })
+})

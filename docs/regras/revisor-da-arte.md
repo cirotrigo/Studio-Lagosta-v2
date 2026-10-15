@@ -624,11 +624,12 @@ global". Módulos em `src/lib/creatives/revisao/`:
     só há essa recusa, o código da CHAMADA é `CONTEUDO_NAO_PODE_SER_OCULTADO`. **Fora desta decisão (pendente
     do owner)**: `slotValues` com `''` ou `hidden: true` esvazia/esconde texto pelo caminho HUMANO do chat (gesto
     documentado, REV-8AD-02) e `hidden` não aparece em `camposAlterados`; `fonte` até 8 px (`escala 0.5`) passa o
-    gate porque `texto-pequeno` não é propriedade comparada.
+    gate porque `texto-pequeno` não é propriedade comparada. **→ Fechados no CP4.1 (abaixo).**
   - **Camada sem métrica** (fonte não cadastrada, curvo/fitty/auto-resize, rich text, logo não medida):
     mexer nela é `AJUSTE_NAO_MEDIDO`; mexer noutra continua medido pelo que a cobertura `parcial` cobriu.
   - **Regra inaplicável não bloqueia**: `texto-sobre-assunto` `nao-avaliada` dos dois lados numa peça
-    SEM foto de fundo vai a `comparacao.naoAplicaveis`; foto que existe e não baixou segue não medida.
+    SEM foto de fundo — ou, desde o CP4.1, com a foto LIDA e sem assunto localizável (cobertura
+    `naoSeAplica`) — vai a `comparacao.naoAplicaveis`; foto que existe e não baixou segue não medida.
     Logo num arranjo ou fora do contrato (rotação, opacidade, cover, recorte): o conserto é no editor.
   - **Id de achado desconhecido** (não `visao-…`) é `AJUSTE_NAO_MELHOROU_O_ACHADO`, não passe livre; o
     `visao-…` é `nao-mensuravel` (nunca está na medida sem visão).
@@ -655,10 +656,92 @@ global". Módulos em `src/lib/creatives/revisao/`:
     o do lote (`indiceBase`).
 - Limites medidos: o executor roda a régua (dois renders) por ajuste — um lote de 30 ajustes custa
   ~30× a medida (+1 render da logo por medida); o conector limita a 30. Achados de visão nunca entram
-  na comparação. Não são propriedades comparadas: `texto-pequeno`, `titulo-grande`,
-  `entrelinha-grande`, `palavra-orfa`, `gradiente-forte-demais` (o encolhimento pelo autofix cai aqui —
-  dito em `autocorrecao`, não recusado); a geometria só pega caixa degenerada/fora do canvas, logo
+  na comparação. Não são propriedades comparadas: `titulo-grande`, `entrelinha-grande`, `palavra-orfa`,
+  `gradiente-forte-demais`; `texto-pequeno` É comparada desde o CP4.1 (abaixo); a geometria só pega caixa degenerada/fora do canvas, logo
   parcialmente fora e desaparecimento; gradiente/imagem/forma fora do canvas só indiretamente. O limiar
   do `ok` da régua (`TOLERANCIA_DO_ALVO`) é a linha dura: texto com folga zero que sai do alvo por 1
   unidade é piora (a regra P9). A baseline é `reflowed` (com os textos da chamada), não a página gravada:
   com `slotValues` + `ajustes`, os textos entram mesmo que todos os ajustes caiam.
+
+### CP4.1 — fecha a remoção de copy e completa o não-piorar (15/10/2026)
+
+Decisão do owner: **o agente autônomo não pode apagar copy para "corrigir" design** — nem pelo `slotValues`.
+
+- **`copyRemovidaDoBake(sourceLayers, bakedLayers, slotValues, valores)`** (`src/lib/creatives/bake-layers.ts`,
+  puro): o que o bake fez com a copy EXISTENTE — texto (`text`/`rich-text`) com conteúdo não vazio, visível
+  (ou escondido pelo revisor, que o aprendizado conta como presente) que saiu `escondido` (`hidden: true`)
+  ou `esvaziado` (`''`, só espaço, `{ content: '' }`, inclusive por `_slots`/`_papeis`). Protege o RESULTADO,
+  não a sintaxe; compara por índice (o bake preserva a posição); o `endereco` é a mesma precedência do
+  bake (`layerId` > `slotId`/`semanticRole` > `name`). A chave de NOME atinge toda camada com esse nome:
+  uma entrada, N remoções, por camada.
+- **Draft-only** (`input.apenasRascunho`): `ajustarArte` lê o bake SEM a foto logo depois da resolução
+  semântica e, se houver remoção, recusa `CONTEUDO_NAO_PODE_SER_REMOVIDO` (422) ANTES de qualquer
+  escrita — inclusive do cache do Blob em `resolveImageUrl`. `details.copyRemovida[]` traz `layerId`,
+  `operacao`, `tinhaConteudo`, `endereco` (sem o texto integral); a mensagem diz o nome da camada e a
+  operação. Trocar "Texto A" por "Texto B" continua permitido (gates normais); esconder slot JÁ vazio
+  segue o contrato. A criação de arte (`createArteRapida`, placeholders não usados escondidos) não passa
+  por aqui: a guarda vive em `ajustarArte` sob `apenasRascunho`.
+- **Fluxo humano**: continua podendo esconder/esvaziar texto pelo chat, mas fica AUDITÁVEL: `copyRemovida`
+  no retorno de `ajustarArte` (ao lado de `camposAlterados`, que é "conteúdo alterado") e em
+  `Generation.fieldValues.copyRemovida` — distingue conteúdo alterado / esvaziado / visibilidade alterada.
+  Sem migration.
+- **`texto-pequeno` na não-piora**: propriedade comparada com a gravidade da própria regra
+  (`max(0, piso1080 − corpo1080)` da evidência; o piso já é relativo ao modelo — modelo que nasceu miúdo
+  tem piso menor; tolerância 1 px pelo arredondamento da evidência). Saudável → 8 px aparece (piora);
+  já pequeno → menor piora; → maior melhora; reduzir a fonte para resolver colisão e cruzar o piso é
+  recusa (sem pontuação global); o encolhimento pelo autofix que cruza o piso também é recusa (a
+  candidata medida é a pós-autofix). Camada não medida: fail-closed do CP4. **Fora, por desenho da regra
+  9 (decisão pendente do owner)**: títulos (`headline`/`headline2`) não entram em `texto-pequeno` — a
+  manchete 84 → 8 px não é detectada por esta regra; cobrir exigiria mudar a regra do revisor.
+- **Provas do passo 9 de `scripts/validar-revisor-da-arte.ts`** redesenhadas sem esconder texto com conteúdo
+  (ver o cabeçalho do passo 9 no script): 9a/9b/9c provam a recusa PRÉ-escrita (página, miniatura, marca,
+  Generation e job intactos; dica aceita-como-veio; post RENDERED); 9e usa a força do gradiente (copies iguais
+  à página); 9g lê a divergência do 9e E planta/restaura uma segunda direto na Generation (valor só da `copyDeAprendizado`); 9h/9i/9j usam `mover` permitido e
+  conferem `copyVisualRegravada`; 9f (controle humano) fortalecida — marca antiga sai, `copyRemovida`, sinal do
+  ajuste, `removidos` exatos; 9d (remoção humana sem marca → `editada`) não mudou.
+- **Ajuste final do owner (15/10, tarde) — remoção por PONTUAÇÃO fecha**: "ALMOÇO EXECUTIVO" → "." (ou "...",
+  "—", "___", "!!!", "()", "/", "•••") passava como "texto por texto" porque ainda havia caractere visual; é remoção
+  com outra sintaxe. `temTextoSubstantivo` (`texto-visivel.ts`, puro) diz se há CONTEÚDO — uma letra (`\p{L}`), um
+  número (`\p{N}`) ou um pictograma/emoji (`\p{Extended_Pictographic}`, mais as bandeiras) — por propriedade Unicode,
+  sem lista ASCII; `temTextoVisivel` NÃO mudou (continua "há algo desenhável?" para a geometria e o revisor). O guard
+  (`copyRemovidaDoBake`) só protege origem SUBSTANTIVA (placeholder "-" ou "." não vira copy protegida) e registra
+  a terceira operação `sem-conteudo` quando o resultado do bake é só pontuação/símbolo; draft-only recusa com o
+  mesmo `CONTEUDO_NAO_PODE_SER_REMOVIDO` (zero escrita, zero Generation, zero render); o humano pode, e
+  `copyRemovida` registra `sem-conteudo` (não entra em `camposAlterados`). "Almoço" → "Jantar" / "11h" / "🍷" /
+  "50% OFF" / "R$ 79" continuam permitidos: a qualidade editorial é da copy/gate, não deste guard. Provado por
+  id, nome, `_slots` e `_papeis`. **Caça-bypass do predicado (1 subagente, medido em Node 22)**: os fillers Hangul
+  U+115F/U+1160 são `\p{L}` e passavam (BLOCKER) → `INVISIVEIS` usa `\p{Default_Ignorable_Code_Point}`; `‼ ⁉ 〰 ↔`
+  e `© ® ™` são `Extended_Pictographic` e passavam → excluídos os que também são `\p{P}`/`\p{Sm}` e as marcas;
+  letras modificadoras (`\p{Lm}`: ʼ ʹ ˆ ː) passavam → excluídas. Os keycaps `#️⃣`/`*️⃣` entram como sequência (Codex: origem protegida e destino permitido).
+  **Residuais documentados, não mexidos**: falsos positivos raros (texto em braille com pontos, moeda sozinha `€`, ícone de fonte PUA; `✓`/`→`
+  bloqueados × `✔`/`➡` aceitos, por classificação do Unicode); pictograma não atribuído passa; valor de TIPO errado
+  em `slotValues` (número, array, `{ hidden: 'true' }`, `{ visible: false }`) é ignorado pelo bake e a chamada
+  responde sucesso regravando a página igual — não vaza copy, custa um render e engana o agente (candidato a
+  `VALOR_INVALIDO` no legado, fora deste ajuste).
+- **Foto sem assunto localizável não trava mais o ajuste** (achado da prova de integração, passo 6): a peça
+  cuja foto o mapa de calma lê sem achar região forte (o compositor grava `assuntoOrigem: 'nenhum'`) vinha com
+  `texto-sobre-assunto` "não avaliada" e o CP4 recusava TODO ajuste nela como `AJUSTE_NAO_MEDIDO` — não era
+  falha de medição, era "não há assunto". `assuntoDaPeca` passou a dizer o motivo e a marcar a cobertura com
+  `naoSeAplica: true` (sem foto; `assuntoOrigem: 'nenhum'` gravado para a mesma foto/corte/formato; ou o mapa
+  de calma sem região forte); o comparador trata a marca dos DOIS lados como regra inaplicável. A estimativa
+  que FALHOU (foto não baixou, sharp não leu) continua sem a marca e não medida (fail-closed).
+- **Pendências registradas no fechamento do CP4.1 (roadmap, NÃO implementadas neste PR)**:
+  - **CP4.2 — título pequeno**: `texto-pequeno` exclui `headline`/`headline2` por desenho da regra 9; um ajuste
+    autônomo ainda pode transformar a manchete em corpo absurdamente pequeno. Cobrir reutilizando a referência do
+    modelo (corpo/entrelinha de referência da página), sem inventar um limiar isolado.
+  - **CP5 — oclusão**: forma/imagem desenhada ACIMA do texto (z-order) não é propriedade determinística medida. Antes
+    de um `APTO` autônomo, o CP5 precisa medir/provar a oclusão OU marcar a situação como não comprovada e mandar
+    para `REVISAO_HUMANA_NECESSARIA`.
+  - **MCP-M5 — auditoria durável**: no fluxo humano, `copyRemovida` gravada na Generation depende de o render
+    concluir; página alterada + render falho pode ficar sem o registro durável (a página já perdeu a copy na
+    transação). Entra na trilha de recuperação/auditoria, não aqui.
+- **Rodada dos 4 revisores (15/10)**: "tem conteúdo" é texto VISÍVEL (`texto-visivel.ts`: `trim` mais os
+  caracteres de formato U+200B/C/D, U+2060, U+00AD, U+FEFF, U+034F, U+3164/FFA0, U+2800) — no bake, no
+  ajuste `visibilidade`, no comparador e em `textoSemConteudo`; esvaziar destrói conteúdo seja a camada
+  visível, escondida pela pessoa ou pelo revisor; `hidden: true` numa camada escondida PELO REVISOR conta
+  como esconder (o bake lava a marca); `{ content: '', hidden: true }` registra as duas operações; o mesmo
+  registro `CopyRemovida` vai aos `details`, ao retorno e à Generation; `camposAlterados` passa a ser só
+  "texto trocado por outro texto" (o esvaziado sai dele); as mensagens das duas recusas dizem a camada,
+  nunca o texto. **Residuais conhecidos**: `camposAlterados` é cego a rich-text (pré-existente; `copyRemovida` o vê); a auditoria durável
+  (Generation e sinal) só nasce se o render do ajuste terminar — a página já perdeu a copy na transação
+  (limite pré-existente); oclusão de texto por forma/imagem acima dele (z-order) não é propriedade medida.

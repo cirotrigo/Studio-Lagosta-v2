@@ -5,7 +5,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const autofix = vi.hoisted(() => ({ modo: 'identidade' as 'identidade' | 'encolhe' | 'nao-cabe' }))
+const autofix = vi.hoisted(() => ({ modo: 'identidade' as 'identidade' | 'encolhe' | 'encolhe-servico' | 'nao-cabe' }))
 vi.mock('@/lib/db', () => ({
   db: {
     project: { findUnique: async () => ({ assinatura: null, textAutofixEnabled: true }) },
@@ -18,6 +18,14 @@ vi.mock('@/lib/creatives/text-autofix', () => ({
     if (autofix.modo === 'nao-cabe') {
       const { CreativeError } = await import('@/lib/creatives/errors')
       throw new CreativeError('TEXTO_NAO_CABE', 'a manchete não cabe', 422)
+    }
+    if (autofix.modo === 'encolhe-servico') {
+      // A escada do autofix leva o serviço de 32 para 20 px (abaixo do piso 26 da regra 9).
+      return {
+        layers: a.layers.map((l) => (l.id === 'servico' ? { ...l, style: { ...l.style, fontSize: 20 } } : l)),
+        autocorrecao: { necessaria: true, aplicada: true, iteracoes: 3, ajustes: [{ camada: 'servico', layerId: 'servico', propriedade: 'fontSize', de: 32, para: 20, motivo: 'colisão' }], pendencias: [] },
+        avisos: [],
+      }
     }
     if (autofix.modo === 'encolhe') {
       return {
@@ -129,6 +137,22 @@ describe('o executor (medida injetada)', () => {
     const so = await aplicarAjustesSemPiorar({ projectId: 1, page, camadas, ajustes: [{ tipo: 'visibilidade', camadas: ['headline', 'veu'], visivel: false } as Ajuste], medir: () => null, _medir: medir })
     expect(so.recusados.map((a) => a.codigo)).toEqual(['CONTEUDO_NAO_PODE_SER_OCULTADO'])
     expect(medicoes).toEqual([])
+  })
+
+  it('CP4.1 (revisor C) — o encolhimento pelo AUTOFIX que cruza o piso de `texto-pequeno` é recusado, e a recusa diz que foi o autofix (`autocorrecao`)', async () => {
+    autofix.modo = 'encolhe-servico'
+    // A medida injetada emite `texto-pequeno` quando o serviço fica abaixo de 26 px (a regra 9 com referência 32).
+    const comPequeno = async (camadas: Layer[]): Promise<MedidaComparavel> => {
+      const m = await medidaSintetica(camadas)
+      const corpo = Number(camadas.find((l) => l.id === 'servico')!.style?.fontSize ?? 32)
+      const achados = corpo < 26 ? [{ id: 'texto-pequeno:servico', regra: 'texto-pequeno' as const, severidade: 'aviso' as const, certeza: 'medida' as const, camadas: ['servico'], mensagem: 'pequeno', evidencia: { corpo1080: corpo, piso1080: 26, referencia1080: 32 }, ajustes: [] }] : []
+      return { ...m, relatorio: { ...relatorio, achados } }
+    }
+    const r = await aplicarAjustesSemPiorar({ projectId: 1, page, camadas: base(), ajustes: [sobe(2)], medir: () => null, _medir: comPequeno })
+    expect(r.aplicados).toEqual([])
+    expect(r.recusados[0]).toMatchObject({ indice: 0, codigo: 'AJUSTE_PIOROU_ARTE', autocorrecao: [expect.objectContaining({ layerId: 'servico', propriedade: 'fontSize', de: 32, para: 20 })] })
+    expect(r.recusados[0].comparacao?.pioras).toEqual([expect.objectContaining({ propriedade: 'texto-pequeno', camadas: ['servico'], antes: null, depois: 6 })])
+    expect(r.recusados[0].motivo).toMatch(/autofix geométrico mexeu na candidata: servico fontSize 32→20/)
   })
 
   it('texto que não cabe depois do ajuste recusa SÓ aquele ajuste (TEXTO_NAO_CABE por ajuste), com o índice do lote', async () => {

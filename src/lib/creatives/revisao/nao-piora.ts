@@ -33,6 +33,7 @@ import type { Layer } from '@/types/template'
 import { TOLERANCIA_DE_PIORA, type ContrasteMedido } from '@/lib/compositor/regua'
 import type { AchadoDaRevisao, RegraDaRevisao, RelatorioDaRevisao } from './contrato'
 import { fotoDeFundo } from './regras'
+import { temTextoVisivel } from './texto-visivel'
 
 /** O ajuste deixou a peça pior em alguma propriedade medida. */
 export const AJUSTE_PIOROU_ARTE = 'AJUSTE_PIOROU_ARTE'
@@ -53,6 +54,7 @@ export const PROPRIEDADES = [
   'logo-sobre-texto',
   'logo-sem-leitura',
   'fonte-nao-carregada',
+  'texto-pequeno',
   'geometria',
 ] as const
 export type Propriedade = (typeof PROPRIEDADES)[number]
@@ -68,10 +70,13 @@ const REGRAS_COMPARADAS: ReadonlyArray<Extract<Propriedade, RegraDaRevisao>> = [
   'logo-sobre-texto',
   'logo-sem-leitura',
   'fonte-nao-carregada',
+  // CP4.1: a regra do revisor (corpo em 1080, piso relativo ao modelo) entra na não-piora — sem limiar novo.
+  'texto-pequeno',
 ]
 
 /** Uma medida de peça: o relatório e o que o gerou (contraste por texto, camadas). */
 export interface MedidaComparavel {
+  /** O relatório do revisor sobre a medida (os achados mecânicos comparados vêm dele; `texto-pequeno` inclusive). */
   relatorio: RelatorioDaRevisao
   /** As leituras da régua SEM a correção hipotética (`corrigir: false`): o que a peça gravada mostra, não o que a régua proporia. */
   contraste: ContrasteMedido[] | null
@@ -164,6 +169,13 @@ export function gravidadeDoAchado(a: AchadoDaRevisao): { valor: number; toleranc
       const depois = num(e.depois)
       return { valor: antes !== null && depois !== null ? Math.abs(depois - antes) : 1, tolerancia: TOLERANCIA_DE_PIORA }
     }
+    case 'texto-pequeno': {
+      // Quanto abaixo do piso de leitura (ambos em px de 1080, da própria regra: o piso já é relativo ao modelo —
+      // um modelo que nasceu miúdo tem piso menor). Sem limiar novo: a evidência da regra decide (CP4.1).
+      const corpo = num(e.corpo1080)
+      const piso = num(e.piso1080)
+      return { valor: corpo !== null && piso !== null ? Math.max(0, piso - corpo) : 1, tolerancia: TOLERANCIA_PX }
+    }
     case 'logo-sobre-texto':
       // `camadas` = [logo, ...textos tocados]: a gravidade é quantos textos a logo encosta.
       return { valor: Math.max(0, a.camadas.length - 1), tolerancia: 0 }
@@ -254,7 +266,7 @@ function compararContraste(antes: ContrasteMedido[], depois: ContrasteMedido[], 
 
 /** O mesmo predicado de `logosDaPeca` (sem a condição de visibilidade): a logo pode ser `logo`, `id: 'logo'` ou imagem chamada logo. */
 const ehLogo = (l: Layer) => l.type === 'logo' || l.id === 'logo' || (l.type === 'image' && /\blogo\b/i.test(l.name ?? ''))
-const ehTextoComConteudo = (l: Layer) => (l.type === 'text' || l.type === 'rich-text') && String(l.content ?? '').trim().length > 0
+const ehTextoComConteudo = (l: Layer) => (l.type === 'text' || l.type === 'rich-text') && temTextoVisivel(l.content)
 const caixaDe = (l: Layer) => `${Math.round(l.position.x)},${Math.round(l.position.y)} ${Math.round(l.size.width)}×${Math.round(l.size.height)}`
 
 /**
@@ -301,8 +313,8 @@ function compararGeometria(antes: MedidaComparavel, depois: MedidaComparavel, pe
 /**
  * As propriedades cujo lado não foi medido (cobertura `nao-avaliada`, régua sem medida, camada tocada sem métrica).
  * `naoAplicaveis`: a regra que não se aplica à peça de nenhum dos lados — hoje só `texto-sobre-assunto` numa peça
- * SEM foto de fundo (não há assunto a proteger; "não há" não é "não medimos"). Foto que existe e não baixou continua
- * "não medida" (fail-closed). Logo num arranjo ou fora do contrato também: o conserto é no editor (revisor D).
+ * SEM foto de fundo ou cuja foto foi lida e não tem assunto localizável (cobertura `naoSeAplica`, CP4.1): não há
+ * assunto a proteger, e "não há" não é "não medimos". Foto que existe e não baixou continua "não medida" (fail-closed). Logo num arranjo ou fora do contrato também: o conserto é no editor (revisor D).
  */
 function naoMedidas(antes: MedidaComparavel, depois: MedidaComparavel, alteradas: Set<string>): { naoMedidas: NaoMedida[]; naoAplicaveis: NaoMedida[] } {
   const saida: NaoMedida[] = []
@@ -314,8 +326,11 @@ function naoMedidas(antes: MedidaComparavel, depois: MedidaComparavel, alteradas
     const faltaD = !cd || cd.estado === 'nao-avaliada'
     if (!faltaA && !faltaD) continue
     const item: NaoMedida = { propriedade: regra, lado: faltaA && faltaD ? 'ambos' : faltaA ? 'antes' : 'depois', motivo: (faltaD ? cd?.motivo : ca?.motivo) ?? 'regra não avaliada' }
-    if (regra === 'texto-sobre-assunto' && faltaA && faltaD && !fotoDeFundo(antes.camadas, antes.canvas) && !fotoDeFundo(depois.camadas, depois.canvas)) {
-      naoAplicaveis.push({ ...item, motivo: 'a peça não tem foto de fundo: não há assunto a proteger' })
+    // Inaplicável dos DOIS lados: sem foto de fundo, ou a cobertura diz que a foto foi lida e não tem assunto
+    // (`naoSeAplica`, CP4.1). Foto que existe e cuja estimativa falhou não traz a marca: segue não medida.
+    const inaplicavel = (c: typeof ca, m: MedidaComparavel) => c?.naoSeAplica === true || !fotoDeFundo(m.camadas, m.canvas)
+    if (regra === 'texto-sobre-assunto' && faltaA && faltaD && inaplicavel(ca, antes) && inaplicavel(cd, depois)) {
+      naoAplicaveis.push({ ...item, motivo: cd?.naoSeAplica ? (cd.motivo ?? 'a regra não se aplica à peça') : 'a peça não tem foto de fundo: não há assunto a proteger' })
       continue
     }
     saida.push(item)

@@ -141,6 +141,23 @@ describe('o título grande demais', () => {
   })
 })
 
+describe('texto pequeno (regra 9) — emissão determinística: corpo em 1080 contra o piso relativo ao modelo (CP4.1)', () => {
+  const servicoCom = (fontSize: number) => camada('servico', { x: 100, y: 1700, width: 880, height: 48 }, fontSize)
+  const pequeno = (fontSize: number, referencias: EntradaDaRevisao['referencias'] = {}) => {
+    const s = servicoCom(fontSize)
+    return avaliarPeca(entrada({ camadas: [s], metricas: [metrica(s)], referencias })).achados.find((a) => a.regra === 'texto-pequeno')
+  }
+  it('com referência 32 o piso é 26 (0,8 × 32): 25 emite (corpo1080 25, piso1080 26), 26 não; sem referência o piso é 24; modelo miúdo (ref 20) tem piso 16, relativo', () => {
+    const ref = (fontSize1080: number) => ({ servico: { fontSize1080 } as never })
+    expect(pequeno(25, ref(32))).toMatchObject({ severidade: 'aviso', certeza: 'medida', camadas: ['servico'], evidencia: { corpo1080: 25, piso1080: 26, referencia1080: 32 } })
+    expect(pequeno(26, ref(32))).toBeUndefined()
+    expect(pequeno(23)).toMatchObject({ evidencia: { corpo1080: 23, piso1080: 24, referencia1080: null } })
+    expect(pequeno(24)).toBeUndefined()
+    expect(pequeno(15, ref(20))).toMatchObject({ evidencia: { corpo1080: 15, piso1080: 16, referencia1080: 20 } })
+    expect(pequeno(16, ref(20))).toBeUndefined()
+  })
+})
+
 describe('a leitura sobre a foto (a régua)', () => {
   const servico = camada('servico', { x: 100, y: 1700, width: 880, height: 48 }, 30)
 
@@ -308,6 +325,18 @@ describe('geometria', () => {
     expect(achado.severidade).toBe('aviso')
     expect(achado.ajustes).toEqual([])
     expect(achado.observacao).toContain('compor-arte')
+  })
+
+  it('CP4.1 — sem assunto, a cobertura diz o motivo e se a regra é INAPLICÁVEL (foto lida sem assunto) ou só não medida (a estimativa falhou)', () => {
+    const titulo = camada('headline', { x: 300, y: 800, width: 500, height: 200 }, 90)
+    const base = { camadas: [titulo], metricas: [metrica(titulo, { maxLineWidth: 480 })], assunto: null }
+    const inaplicavel = avaliarPeca(entrada({ ...base, motivoSemAssunto: 'a foto foi lida e não tem assunto localizável (mapa de calma sem região forte): nada a proteger', assuntoNaoSeAplica: true }))
+    expect(inaplicavel.cobertura['texto-sobre-assunto']).toEqual({ estado: 'nao-avaliada', motivo: expect.stringContaining('não tem assunto localizável'), naoSeAplica: true })
+    const falhou = avaliarPeca(entrada({ ...base, motivoSemAssunto: 'o assunto da foto não foi estimado: HTTP 403 ao baixar https://x/foto.jpg' }))
+    expect(falhou.cobertura['texto-sobre-assunto']).toEqual({ estado: 'nao-avaliada', motivo: expect.stringContaining('HTTP 403') })
+    expect(falhou.cobertura['texto-sobre-assunto']).not.toHaveProperty('naoSeAplica')
+    // Sem motivo (medida antiga): o texto de sempre, sem a marca.
+    expect(avaliarPeca(entrada(base)).cobertura['texto-sobre-assunto']).toEqual({ estado: 'nao-avaliada', motivo: 'sem foto ou sem assunto localizado' })
   })
 })
 

@@ -5,7 +5,8 @@
  * já recusou fontes divergentes) e não muda nada sem eles.
  */
 import { describe, expect, it } from 'vitest'
-import { bakeLayers } from '../bake-layers'
+import { bakeLayers, copyRemovidaDoBake } from '../bake-layers'
+import { resolverValoresSemanticos } from '@/lib/semantica/resolver-valores'
 
 const texto = (id: string, name: string, content = 'Modelo') => ({ id, name, type: 'text', content, visible: true })
 const valor = (indice: number, v: unknown) => [indice, { indice, valor: v, origem: { tipo: 'slotId', chave: 's' } }] as const
@@ -74,5 +75,58 @@ describe('opção C (#208): fileUrl SEMÂNTICO no primeiro alvo da foto é estri
     const r = bakeLayers([dyn('bg'), dyn('segunda')], {}, 'https://generica', papel)
     expect(r.layers.map((l) => l.fileUrl)).toEqual(['https://papel', undefined])
     expect(r.imageBloqueadaPeloSemantico).toBe(true)
+  })
+})
+
+describe('CP4.1 — copyRemovidaDoBake: o que o bake fez com a copy existente (resultado, não sintaxe)', () => {
+  const t = (id: string, content: string, extra: Record<string, unknown> = {}) => ({ id, name: id, type: 'text', content, visible: true, ...extra })
+  const camadas = () => [t('headline', 'Almoço', { metadata: { compositor: { papel: 'headline' } } }), t('cta', 'Reserve'), t('vazio', '  '), { id: 'foto', name: 'Foto', type: 'image', visible: true, fileUrl: 'x' }, t('rico', 'Rico', { type: 'rich-text' })]
+  const remocoes = (slotValues: Record<string, unknown>) => {
+    const src = camadas()
+    const valores = resolverValoresSemanticos(src as never, slotValues).valores
+    return copyRemovidaDoBake(src, bakeLayers(src, slotValues, null, valores).layers, slotValues, valores)
+  }
+  it('esconder, esvaziar (string, espaço, {content}), por id, por nome, por _slots/_papeis; texto vazio e imagem não contam; rich-text conta', () => {
+    expect(remocoes({ cta: { hidden: true } })).toEqual([expect.objectContaining({ layerId: 'cta', operacao: 'escondido', endereco: { tipo: 'layerId', chave: 'cta' } })])
+    expect(remocoes({ cta: '' })).toEqual([expect.objectContaining({ layerId: 'cta', operacao: 'esvaziado' })])
+    expect(remocoes({ cta: '   ' })).toEqual([expect.objectContaining({ layerId: 'cta', operacao: 'esvaziado' })])
+    expect(remocoes({ cta: { content: '' } })).toEqual([expect.objectContaining({ layerId: 'cta', operacao: 'esvaziado' })])
+    expect(remocoes({ rico: { hidden: true } })).toEqual([expect.objectContaining({ layerId: 'rico', operacao: 'escondido' })])
+    expect(remocoes({ vazio: { hidden: true }, foto: { hidden: true } })).toEqual([])
+    expect(remocoes({ cta: 'Outro texto' })).toEqual([])
+    expect(remocoes({ _papeis: { headline: '' } })).toEqual([expect.objectContaining({ layerId: 'headline', endereco: { tipo: 'semanticRole', chave: 'headline' } })])
+  })
+  it('a chave de NOME atinge TODAS as camadas com esse nome: uma entrada, duas remoções, por camada', () => {
+    const src = [t('a', 'Um', { name: 'Texto' }), t('b', 'Dois', { name: 'Texto' })]
+    const slotValues = { Texto: '' }
+    expect(copyRemovidaDoBake(src, bakeLayers(src, slotValues, null).layers, slotValues).map((c) => [c.layerId, c.endereco])).toEqual([
+      ['a', { tipo: 'name', chave: 'Texto' }],
+      ['b', { tipo: 'name', chave: 'Texto' }],
+    ])
+  })
+  it('camada já escondida pela PESSOA fica de fora; escondida pelo REVISOR (marca) conta como presente e esvaziá-la é remoção', () => {
+    const src = [t('x', 'Oculto pela pessoa', { visible: false }), t('y', 'Oculto pelo revisor', { visible: false, metadata: { revisao: { ocultaPeloRevisor: { em: '2026-10-15T00:00:00.000Z', ajuste: 0 } } } })]
+    const slotValues = { x: '', y: '' }
+    // Esvaziar destrói conteúdo nas duas (a visibilidade não protege o texto); esconder a do revisor conta como esconder.
+    expect(copyRemovidaDoBake(src, bakeLayers(src, slotValues, null).layers, slotValues).map((c) => [c.layerId, c.operacao])).toEqual([['x', 'esvaziado'], ['y', 'esvaziado']])
+    const esconder = { y: { hidden: true }, x: { hidden: true } }
+    expect(copyRemovidaDoBake(src, bakeLayers(src, esconder, null).layers, esconder).map((c) => [c.layerId, c.operacao])).toEqual([['y', 'escondido']])
+  })
+  it('ajuste final do owner — só pontuação/símbolo é `sem-conteudo`; letra, número ou emoji é conteúdo; origem só de pontuação não é protegida', () => {
+    for (const p of ['.', '...', '—', '___', '!!!', '()', '/', '•••', '…', '- -', '‼', 'ʼ', '©', '™']) expect(remocoes({ cta: p }).map((c) => c.operacao)).toEqual(['sem-conteudo'])
+    for (const filler of ['\u115f', '\u1160', '\ufe0f']) expect(remocoes({ cta: filler }).map((c) => c.operacao)).toEqual(['esvaziado'])
+    // Keycap é conteúdo nos dois sentidos: origem `#️⃣` é protegida; destino `#️⃣` é troca legítima (Codex).
+    expect(remocoes({ cta: '#\ufe0f\u20e3' })).toEqual([])
+    const srcKeycap = [t('tecla', '#\ufe0f\u20e3')]
+    for (const sv of [{ tecla: '.' }, { tecla: '' }]) expect(copyRemovidaDoBake(srcKeycap, bakeLayers(srcKeycap, sv, null).layers, sv).map((c) => c.operacao)).toEqual([sv.tecla === '.' ? 'sem-conteudo' : 'esvaziado'])
+    for (const ok of ['Jantar', '11h', '🍷', '50% OFF', 'R$ 79', 'Vem!', '½', 'الغداء', '午餐']) expect(remocoes({ cta: ok })).toEqual([])
+    expect(remocoes({ _slots: { manchete: '.' }, _papeis: { headline: '-' } }).length).toBeGreaterThanOrEqual(0) // sem slot cadastrado: resolvido abaixo pelo papel
+    expect(remocoes({ _papeis: { headline: '-' } })).toEqual([expect.objectContaining({ layerId: 'headline', operacao: 'sem-conteudo', endereco: { tipo: 'semanticRole', chave: 'headline' } })])
+    const src = [t('traco', '-'), t('ponto', '.')]
+    for (const sv of [{ traco: '', ponto: '' }, { traco: { hidden: true }, ponto: '.' }]) expect(copyRemovidaDoBake(src, bakeLayers(src, sv, null).layers, sv)).toEqual([])
+  })
+  it('CP4.1 (revisores A/B) — invisíveis são vazio; `{ content: "", hidden: true }` registra as DUAS operações', () => {
+    for (const invisivel of ['\u200b', '\u200d', '\u2060', '\u00ad', '\u034f', '\u3164', '\u2800', '\ufeff']) expect(remocoes({ cta: invisivel }).map((c) => c.operacao)).toEqual(['esvaziado'])
+    expect(remocoes({ cta: { content: '', hidden: true } }).map((c) => c.operacao)).toEqual(['esvaziado', 'escondido'])
   })
 })

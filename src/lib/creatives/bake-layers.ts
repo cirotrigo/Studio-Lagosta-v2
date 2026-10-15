@@ -7,8 +7,62 @@
  * e o que ela declara sobre si depois de receber conteúdo novo.
  */
 import { semPrefixoHerdado } from '@/lib/copy-autoral'
-import { semMarcaDoRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
-import type { ValorResolvido } from '@/lib/semantica/resolver-valores'
+import { ocultaPeloRevisor, semMarcaDoRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
+import { temTextoSubstantivo, temTextoVisivel } from '@/lib/creatives/revisao/texto-visivel'
+import type { OrigemDoValor, ValorResolvido } from '@/lib/semantica/resolver-valores'
+
+/**
+ * Um texto com conteúdo SUBSTANTIVO (letra, número ou pictograma) que o bake ESCONDEU, ESVAZIOU ou reduziu a
+ * pontuação/símbolos SEM conteúdo (`sem-conteudo`: "Almoço" → "." ou "—") — por qual endereço (id, nome, slot, papel)
+ * o pedido chegou.
+ */
+export interface CopyRemovida {
+  layerId: string
+  /** O nome da camada (ou o id), para a pessoa saber qual texto. */
+  chave: string
+  operacao: 'escondido' | 'esvaziado' | 'sem-conteudo'
+  /** Por onde o pedido chegou: a MESMA precedência do bake (id > _slots/_papeis > nome). */
+  endereco: OrigemDoValor
+  /** O texto existia antes (sempre true aqui — a lista só tem textos com conteúdo). */
+  tinhaConteudo: true
+}
+
+/**
+ * CP4.1 (15/10/2026): o que o bake fez com a copy EXISTENTE da peça — texto (`text`/`rich-text`) com conteúdo
+ * SUBSTANTIVO (letra, número ou pictograma: `temTextoSubstantivo`), visível (ou escondido pelo revisor, que o
+ * aprendizado conta como presente) que saiu ESCONDIDO (`hidden: true`), ESVAZIADO (`''`, só espaço/invisíveis,
+ * `{ content: '' }`) ou SEM CONTEÚDO (só pontuação/símbolos: "." / "..." / "—" / "___"), inclusive por `_slots`/`_papeis`.
+ * Protege o RESULTADO, não a sintaxe. A origem que JÁ era só pontuação ("-", placeholder decorativo) não vira copy
+ * protegida. Puro; compara por índice (o bake preserva a posição). No perfil draft-only isso é recusa (ajustar-arte não
+ * apaga copy); no perfil humano é auditoria (`copyRemovida` no retorno e na Generation).
+ */
+export function copyRemovidaDoBake(
+  sourceLayers: any[],
+  bakedLayers: any[],
+  slotValues: Record<string, unknown>,
+  valores?: ReadonlyMap<number, ValorResolvido>,
+): CopyRemovida[] {
+  const saida: CopyRemovida[] = []
+  sourceLayers.forEach((src: any, i: number) => {
+    if (!src || (src.type !== 'text' && src.type !== 'rich-text')) return
+    // "Tem conteúdo" é texto SUBSTANTIVO: copy feita de zero-width ou só de pontuação não é copy a proteger.
+    if (!temTextoSubstantivo(src.content)) return
+    const dst = bakedLayers[i]
+    if (!dst) return
+    const endereco: OrigemDoValor =
+      slotValues[src.id] != null ? { tipo: 'layerId', chave: String(src.id) } : (valores?.get(i)?.origem ?? { tipo: 'name', chave: String(src.name ?? src.id) })
+    const base = { layerId: String(src.id), chave: String(src.name ?? src.id), endereco, tinhaConteudo: true as const }
+    // ESVAZIAR destrói conteúdo seja a camada visível, escondida pela pessoa ou pelo revisor (revisor A3); reduzir a
+    // pontuação ("." / "—" / "___") é a mesma remoção com outra sintaxe (ajuste final do owner, 15/10).
+    if (!temTextoVisivel(dst.content)) saida.push({ ...base, operacao: 'esvaziado' })
+    else if (!temTextoSubstantivo(dst.content)) saida.push({ ...base, operacao: 'sem-conteudo' })
+    // ESCONDER: a camada visível que some — ou a escondida pelo REVISOR que `hidden: true` assume como escondida pela
+    // pessoa (o bake lava a marca; no draft-only não há pessoa: conta como esconder — revisor A2). As duas operações
+    // na mesma chamada (`{ content: '', hidden: true }`) são DUAS entradas (revisor B).
+    if (dst.visible === false && (src.visible !== false || (ocultaPeloRevisor(src) && !ocultaPeloRevisor(dst)))) saida.push({ ...base, operacao: 'escondido' })
+  })
+  return saida
+}
 
 /**
  * Bake slot values and the background image into a copy of the source layers.

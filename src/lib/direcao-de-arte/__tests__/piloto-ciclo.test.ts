@@ -341,7 +341,7 @@ describe('CP4 — medir antes, aplicar em memória, medir depois; UMA escrita no
   it('ESCONDER o serviço (texto com conteúdo), SEM achado → CONTEUDO_NAO_PODE_SER_OCULTADO, estrutural, nenhuma medida, nada gravado', async () => {
     await expect(ajustar([{ tipo: 'visibilidade', camadas: ['servico'], visivel: false }] as unknown as Ajuste[])).rejects.toMatchObject({
       code: 'CONTEUDO_NAO_PODE_SER_OCULTADO',
-      details: { ajusteGravado: false, recusados: [expect.objectContaining({ indice: 0, codigo: 'CONTEUDO_NAO_PODE_SER_OCULTADO', motivo: expect.stringMatching(/servico .*Praia do Canto/) })] },
+      details: { ajusteGravado: false, recusados: [expect.objectContaining({ indice: 0, codigo: 'CONTEUDO_NAO_PODE_SER_OCULTADO', motivo: expect.stringMatching(/"servico" \(servico\)/) })] },
     })
     expect(medidas.chamadas).toEqual([])
     expect({ escritas: banco.escritas, invalidar: espioes.invalidar.mock.calls.length }).toEqual({ escritas: 0, invalidar: 0 })
@@ -370,7 +370,7 @@ describe('CP4 — medir antes, aplicar em memória, medir depois; UMA escrita no
   it('BYPASS em dois passos fechado: esvaziar o serviço pelo `slotValues` E escondê-lo por `visibilidade` na MESMA chamada é recusado pelo conteúdo que a página tinha', async () => {
     await expect(
       ajustarArte({ projectId: projectId(), pageId: PAGINA, versaoEsperada: versaoDaPagina(banco.pagina)!, slotValues: { servico: '' }, ajustes: [{ tipo: 'visibilidade', camadas: ['servico'], visivel: false }] as unknown as Ajuste[] }),
-    ).resolves.toMatchObject({ resultadoDosAjustes: 'parcial', ajustesAplicados: [], ajustesRecusados: [expect.objectContaining({ codigo: 'CONTEUDO_NAO_PODE_SER_OCULTADO', motivo: expect.stringMatching(/Praia do Canto/) })] })
+    ).resolves.toMatchObject({ resultadoDosAjustes: 'parcial', ajustesAplicados: [], ajustesRecusados: [expect.objectContaining({ codigo: 'CONTEUDO_NAO_PODE_SER_OCULTADO', motivo: expect.stringMatching(/"servico" \(servico\)/) })], copyRemovida: [expect.objectContaining({ layerId: 'servico', operacao: 'esvaziado' })] })
     // O texto vazio pelo slot ENTROU (gesto humano pelo chat, fora da decisão do ajuste); escondido, não.
     expect(camada(banco.pagina.layers as Layer[], 'servico').visible).not.toBe(false)
   }, 180_000)
@@ -432,6 +432,64 @@ describe('CP4 — medir antes, aplicar em memória, medir depois; UMA escrita no
     expect(erro?.code, JSON.stringify(aceito)).toBe('AJUSTE_PIOROU_ARTE')
     expect(erro?.details).toMatchObject({ recusados: [expect.objectContaining({ comparacao: expect.objectContaining({ pioras: [expect.objectContaining({ propriedade: 'contraste', camadas: ['servico'] })] }) })] })
   }, 180_000)
+})
+
+describe('CP4.1 — `texto-pequeno` entra na não-piora (a regra do revisor: corpo em 1080 contra o piso relativo ao modelo)', () => {
+  const comCorpo = (id: string, fontSize: number) => {
+    banco.pagina = { ...banco.pagina, layers: (banco.pagina.layers as Layer[]).map((l) => (l.id === id ? { ...l, style: { ...(l.style ?? {}), fontSize } } : l)) }
+  }
+  const recusa = async (ajustes: unknown[]) => {
+    let erro: CreativeError | null = null
+    try {
+      await ajustar(ajustes as Ajuste[])
+    } catch (e) {
+      erro = e as CreativeError
+    }
+    return erro
+  }
+  const pioraDe = (erro: CreativeError | null) => ((erro?.details as { recusados: Array<{ comparacao?: { pioras: Array<Record<string, unknown>> } }> })?.recusados?.[0]?.comparacao?.pioras ?? []).filter((p) => p.propriedade === 'texto-pequeno')
+
+  it('1. tamanho saudável (serviço 32, piso 26) → 8 px: AJUSTE_PIOROU_ARTE, texto-pequeno apareceu (gravidade 18), nada gravado', async () => {
+    const erro = await recusa([{ tipo: 'fonte', camadas: ['servico'], fontSize: 8 }])
+    expect(erro?.code).toBe('AJUSTE_PIOROU_ARTE')
+    expect(pioraDe(erro)).toEqual([expect.objectContaining({ camadas: ['servico'], antes: null, depois: 18 })])
+    expect(banco.escritas).toBe(0)
+  }, 120_000)
+
+  it('2. acima do piso → abaixo do piso: 32 → 25 é recusado (null → 1); 32 → 26 fica no piso e entra', async () => {
+    const erro = await recusa([{ tipo: 'fonte', camadas: ['servico'], fontSize: 25 }])
+    expect(pioraDe(erro)).toEqual([expect.objectContaining({ antes: null, depois: 1 })])
+    const r = await ajustar([{ tipo: 'fonte', camadas: ['servico'], fontSize: 26 }] as unknown as Ajuste[])
+    expect(r.ajustesAplicados?.map((a) => a.indice)).toEqual([0])
+  }, 180_000)
+
+  it('3/4. já pequeno (20, piso 26): → 18 piora (6 → 8); → 24 melhora (6 → 2) e entra; declarado como alvo e sem melhorar, recusa', async () => {
+    comCorpo('servico', 20)
+    const erro = await recusa([{ tipo: 'fonte', camadas: ['servico'], fontSize: 18 }])
+    expect(pioraDe(erro)).toEqual([expect.objectContaining({ antes: 6, depois: 8 })])
+    const r = await ajustar([{ tipo: 'fonte', camadas: ['servico'], fontSize: 24, achado: 'texto-pequeno:servico' }] as unknown as Ajuste[])
+    expect(r.ajustesAplicados?.[0]?.comparacao).toMatchObject({ melhoras: [expect.objectContaining({ propriedade: 'texto-pequeno', antes: 6, depois: 2 })], achadoAlvo: { estado: 'melhorou' } })
+    comCorpo('servico', 20)
+    const semMelhora = await recusa([{ tipo: 'fonte', camadas: ['servico'], entrelinha: 1.3, achado: 'texto-pequeno:servico' }])
+    expect(semMelhora?.code).toBe('AJUSTE_NAO_MELHOROU_O_ACHADO')
+  }, 240_000)
+
+  it('5. diminuir a fonte para resolver a colisão, criando texto-pequeno: recusado (o alvo até resolve, mas sem pontuação global); escala 0,85 resolve sem cruzar o piso e entra', async () => {
+    // O apoio sobe para colidir com a manchete (29 px).
+    banco.pagina = { ...banco.pagina, layers: (banco.pagina.layers as Layer[]).map((l) => (l.id === 'apoio' ? { ...l, position: { ...l.position, y: 270 } } : l)) }
+    const r = await revisar()
+    const colisao = r.relatorio.achados.find((a) => a.regra === 'colisao' && a.camadas.includes('apoio'))!
+    expect(colisao).toBeTruthy()
+    const erro = await recusa([{ tipo: 'fonte', camadas: ['apoio'], escala: 0.5, achado: colisao.id }])
+    expect(erro?.code).toBe('AJUSTE_PIOROU_ARTE')
+    expect(pioraDe(erro)).toEqual([expect.objectContaining({ camadas: ['apoio'], antes: null, depois: 12 })])
+    expect((erro?.details as { recusados: Array<{ comparacao?: { achadoAlvo?: { estado: string } } }> }).recusados[0].comparacao?.achadoAlvo?.estado).toBe('resolvido')
+    // Escala 0,85 (40 → 34) não cruza o piso (32) e não piora nada: entra — mas não resolve a colisão (29 → 29), então
+    // declarada como alvo seria AJUSTE_NAO_MELHOROU_O_ACHADO; sem o rótulo, é um ajuste comum aceito.
+    const ok = await ajustar([{ tipo: 'fonte', camadas: ['apoio'], escala: 0.85 }] as unknown as Ajuste[])
+    expect(ok.ajustesAplicados?.map((a) => a.indice)).toEqual([0])
+    expect(ok.ajustesAplicados?.[0]?.comparacao?.pioras).toEqual([])
+  }, 240_000)
 })
 
 /**
