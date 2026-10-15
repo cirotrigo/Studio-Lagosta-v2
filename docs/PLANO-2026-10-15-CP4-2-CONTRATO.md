@@ -21,9 +21,9 @@ com o ajuste aplicado e o autofix geométrico, isto é, o que seria gravado.
 | O que | Onde | Como é hoje |
 |---|---|---|
 | Títulos identificados | `src/lib/creatives/revisao/regras.ts:1059-1071` (`idsDeTitulo`) | por PAPEL (`papelDaCamada` = `metadata.compositor.papel`, id ou nome ∈ `PAPEIS_DA_PECA`: `headline`/`headline2`); sem papel, por TAMANHO: com ≥ 2 textos medidos, o maior é título se `fontSize ≥ 1,5 × segundo` |
-| Regra 9 `texto-pequeno` | `regras.ts:1155-1176` | `if (idsDeTitulo.includes(m.layerId) …) continue` — títulos **pulados**. Para os demais: `piso = ref ? (ref ≥ 24 ? max(24, 0,8·ref) : 0,8·ref) : 24`; achado se `corpo1080 < piso − 0,5`; evidência `{ corpo1080, piso1080, referencia1080 }`; severidade `aviso` para `servico`, `sugestao` para o resto; sugere `fonte` com `fontSize = ceil(piso·s)` |
+| Regra 9 `texto-pequeno` | `regras.ts:1155-1176` | `if (idsDeTitulo.includes(m.layerId) …) continue` — títulos **pulados**. Para os demais: `piso = ref ? (ref ≥ 24 ? max(24, 0,8·ref) : 0,8·ref) : 24`; achado se `corpo1080 < piso − 0,5`; evidência `{ corpo1080, piso1080, referencia1080 }` **arredondada** (`Math.round`, `regras.ts:1169-1170`) — por isso a não-piora tolera 1 px; severidade `aviso` para `servico`, `sugestao` para o resto; sugere `fonte` com `fontSize = ceil(piso·s)` |
 | Constantes | `regras.ts:220-227` (`LIMITES_DA_REVISAO`) | `pisoDeFonte1080 = 24`, `pisoRelativo = 0,8`, `tituloRelativo = 1,15`, `tituloAlturaSugestao = 0,2`, `tituloAlturaAviso = 0,27` |
-| Regra 7 `titulo-grande` | `regras.ts:1072-1125` | `razao = max(corpo1080 / ref)` entre os títulos; acusa se `razao > 1,15` ou fração da altura útil > 0,2; a escala sugerida tem piso `max(razao>1,15 ? 0,5 : 0,8, 24 / corpoMinimo)` — ou seja, **a regra 7 já sabe reduzir um título até 50 % da referência quando ele está grande demais** |
+| Regra 7 `titulo-grande` | `regras.ts:1072-1125` | `razao = max(corpo1080 / ref)` entre os títulos; acusa se `razao > 1,15` ou fração da altura útil > 0,2; sugere `fonte` com uma ESCALA sobre o corpo ATUAL, limitada por baixo a `max(razao>1,15 ? 0,5 : 0,8, 24 / corpoMinimo)` — é uma escala mínima do corpo atual (um título em 140 pode receber escala 0,5 → 70), **não** "50 % da referência" |
 | Referência por camada | `src/lib/creatives/revisao/revisar-arte.ts:166-225` (`referenciasDaPagina`) | variante da assinatura casada por PAPEL (papel repetido casa pela ordem vertical; contagens diferentes não casam), senão página-modelo casada por ID; peça com arranjo de combinação **fica sem referência** (de propósito) |
 | Escada do compositor | `src/lib/compositor/blocos.ts:308-320` | a unidade manchete + segunda voz desce em degraus até o piso de **80 % da assinatura**; com arquétipo, `escalaMaxima ≤ 1` sobre `escalaDoFormato`; o piso continua 80 % |
 | Hierarquia | `src/lib/compositor/arquetipos/pontuacao-espacial.ts:141-149`; `direcao-de-arte/__tests__/suporte/propriedades.ts:381-401` | só ESTRUTURAL (quem estava acima continua acima); a escala (`K_REFERENCIA_HIERARQUIA = 1,25`, H1 / maior secundário) é **telemetria — "NUNCA reprova (o owner decidiu que não há K como hard gate)"** |
@@ -63,15 +63,26 @@ pisoDoTitulo1080(id) = max(
   só o recuo de 80 % conta") — e a hierarquia (2) continua valendo.
 
 Sem referência (peça com arranjo de combinação, página feita à mão sem modelo, assinatura sem a camada
-do papel): (1) não existe; valem (2) e (3). **No fluxo de ajuste, a BASE vira a referência**: o executor
-(`ajustar-sem-piorar.ts`) preenche `referencias[id] = { fontSize1080: corpoDaBase, origem: 'página como
-está' }` para todo título sem referência antes de medir base e candidata — assim "headline → 50 % da
-referência" é recusa mesmo sem modelo, e a regra continua honesta no `revisar-arte` solto (onde só (2) e
-(3) se aplicam, com a cobertura dizendo `parcial: título sem referência de modelo`).
+do papel): (1) não existe; valem (2) e (3). **No fluxo de ajuste, a BASE vira a referência, fixada no
+CONTEXTO antes do lote**: o executor (`ajustar-sem-piorar.ts`) lê a entrada UMA vez e grava em
+`ContextoDaMedicao` (a) `referencias[id] = { fontSize1080: corpoDaEntrada, origem: 'página como está' }`
+para todo título sem referência e (b) `titulosFixados` (A.3); as duas coisas valem para TODAS as medidas
+do lote (entrada, cada candidata, catraca contra a entrada) e não são recalculadas por estado — assim dois
+ajustes de 15 % no mesmo lote somam 28 % contra a MESMA referência e o segundo é recusado, e "headline →
+50 % da referência" é recusa mesmo sem modelo. No `revisar-arte` solto só (2) e (3) se aplicam, com a
+cobertura dizendo `parcial: título sem referência de modelo`.
 
-Referência inválida (`fontSize1080` não numérico, ≤ 0 ou `NaN` — hoje possível se a camada do modelo
-tiver `fontSize` corrompido): tratada como ausente (cobertura `parcial`, motivo "referência do título
-ilegível"); nunca como "piso zero".
+**Tolerância:** a não-piora compara a gravidade (`piso1080 − corpo1080`, inteiros pelo arredondamento da
+evidência) com tolerância de 1 px (`TOLERANCIA_PX`, `nao-piora.ts`). Isso vale igual para o título: um
+título JÁ abaixo do piso pode perder até 1 px por arredondamento sem ser "piora" — o mesmo que apoio e
+serviço hoje; qualquer redução além disso é piora. Sem exceção nova no comparador.
+
+Referência inválida: hoje `referenciasDaPagina` NÃO produz `NaN` — a camada do modelo sem `fontSize`
+numérico recebe o fallback `16` (`revisar-arte.ts:173`, `doTexto`), que viraria uma referência "legítima"
+de 16 px e um piso de 12,8 px para a manchete. Contrato: `referenciasDaPagina` passa a marcar
+`inferida: true` quando usou o fallback, e o piso do título trata referência inferida como AUSENTE
+(componente (1) fora, cobertura `parcial`, motivo "referência do título sem corpo no modelo"); nunca
+como piso de 12,8. Os não-títulos continuam como hoje (fora do escopo).
 
 **Onde mora:** a regra 9 ganha um ramo para `idsDeTitulo` em vez do `continue` — mesma regra
 `texto-pequeno`, mesma evidência (`corpo1080`, `piso1080`, `referencia1080`) mais `componente:
@@ -95,6 +106,10 @@ reduzido abaixo de 1,5× do segundo deixa de ser título na candidata — e seri
   estáveis (o papel não muda com o corpo); a fixação protege os inferidos.
 - Um título inferido que, na candidata, deixa de satisfazer 1,5× do segundo NÃO perde a proteção; e,
   se cair abaixo do maior secundário, o componente (2) acusa — a inversão de hierarquia É a piora.
+- Caso inverso: um secundário que o ajuste AUMENTA não vira título na candidata (a lista é a da base); se
+  ele passar do corpo do título fixado, o componente (2) do título acusa — a inversão de hierarquia é
+  piora do título, não "promoção" do secundário. Se a base NÃO tinha título identificável, a lista fixa é
+  vazia e a candidata não ganha título inferido: coerente com "classificar na base".
 - `revisar-arte` solto (sem base) continua inferindo como hoje.
 
 ### A.4 Redução direta e autofix
@@ -108,11 +123,14 @@ a base, porque a comparação é sempre base × candidata.
 
 ### A.5 Exemplos numéricos (story 1080 × 1920, `s = 1`)
 
+A evidência de `texto-pequeno` é ARREDONDADA (`Math.round`), como hoje: o piso 67,2 chega ao comparador como
+67 e as gravidades são inteiras. A tabela mostra o piso exato e, entre parênteses, o arredondado.
+
 | Caso | Referência | Base | Secundário maior | Candidata | Piso (componente) | Resultado |
 |---|---|---|---|---|---|---|
-| headline saudável → 8 px | 84 | 84 | apoio 36 | 8 | max(67,2 ; 36 ; 24) = **67,2** (modelo) | **recusa** — gravidade 59,2 |
-| headline → 50 % da referência | 84 | 84 | 36 | 42 | 67,2 | **recusa** — gravidade 25,2 |
-| redução pequena, ainda hierárquica | 84 | 84 | 36 | 72 (−14 %) | 67,2 | entra (sem achado) |
+| headline saudável → 8 px | 84 | 84 | apoio 36 | 8 | max(67,2 ; 36 ; 24) = **67,2** (67) (modelo) | **recusa** — gravidade 59 |
+| headline → 50 % da referência | 84 | 84 | 36 | 42 | 67,2 (67) | **recusa** — gravidade 25 |
+| redução pequena, ainda hierárquica | 84 | 84 | 36 | 72 (−14,3 %) | 67,2 (67) | entra (sem achado) |
 | redução no limite | 84 | 84 | 36 | 67 | 67,2 | entra (67 ≥ 67,2 − 0,5) |
 | `escala 0,5` + autofix a 80 % | 84 | 84 | 36 | 42 → 33,6 | 67,2 | **recusa** (33,6 < piso e < secundário) |
 | hierarquia invertida | 60 | 60 | serviço 52 | 50 | max(48 ; 52 ; 24) = **52** (hierarquia) | **recusa** — gravidade 2 |
@@ -123,24 +141,26 @@ a base, porque a comparação é sempre base × candidata.
 | sem referência, `revisar-arte` solto | — | 84 | 36 | (medida única) | max(36 ; 24) = 36; cobertura `parcial` | só acusa abaixo de 36 |
 | título inferido (sem papel) 60 vs segundo 36, reduzido a 50 | — (base: 60) | 60 | 36 | 50 (deixaria de ser 1,5×) | classificação fixada na base; piso max(48 ; 36 ; 24) = 48 | entra (50 ≥ 48) |
 | idem, reduzido a 30 | — (base: 60) | 60 | 36 | 30 | 48 (hierarquia também: 30 < 36) | **recusa** |
-| título GRANDE corrigido pela regra 7 | 84 | 140 (1,67× ref) | 36 | 84 (escala 0,6) | 67,2 | entra — a regra 7 continua podendo descer até 0,5 × ref? **Não com este piso: 0,5·ref = 42 < 67,2.** Ver decisão 2 |
+| título GRANDE corrigido pela regra 7 | 84 | 140 (1,67× ref) | 36 | 84 (escala 0,6) | 67,2 (67) | entra (84 ≥ 67). A escala mínima que a regra 7 pode sugerir para este título passa a ser `67,2 / 140 = 0,48` (A.9, decisão 2) — e 0,5 × 140 = 70 ≥ 67,2 também entraria |
 
 ### A.6 Arquivos e funções
 
 | Arquivo | Mudança |
 |---|---|
-| `src/lib/creatives/revisao/regras.ts` | regra 9: ramo para títulos (piso com 3 componentes, evidência `componente`, `maiorSecundario1080`, severidade `aviso`); `idsDeTitulo` lê `e.titulosFixados` quando presente; cobertura `parcial` para título sem referência / referência ilegível; função pura exportada `pisoDoTitulo1080(ref, maiorSecundario, limites)` para teste e reuso |
+| `src/lib/creatives/revisao/regras.ts` | regra 9: ramo para títulos (piso com 3 componentes, evidência `componente`, `maiorSecundario1080`, severidade `aviso`); `idsDeTitulo` lê `e.titulosFixados` quando presente; cobertura `parcial` para título sem referência / referência inferida; função pura exportada `pisoDoTitulo1080(ref, maiorSecundario, limites)` para teste e reuso; regra 7: a escala mínima da sugestão passa a ser `max(pisoDoTitulo1080(id) / corpoAtual1080(id))` entre os títulos atingidos (decisão 2) |
 | `src/lib/creatives/revisao/contrato.ts` | `EntradaDaRevisao.titulosFixados?: string[]`; evidência tipada de `texto-pequeno` ganha `componente?` |
 | `src/lib/creatives/revisao/ajustar-sem-piorar.ts` | calcula `idsDeTitulo` na base uma vez e passa `titulosFixados` às duas medidas; injeta referência da base para título sem referência (`origem: 'página como está'`); motivo da recusa cita o componente |
-| `src/lib/creatives/revisao/revisar-arte.ts` | `medirCamadasDaPeca` aceita `titulosFixados` e referências extras (sem mudar `revisarArte` solto) |
+| `src/lib/creatives/revisao/revisar-arte.ts` | `referenciasDaPagina` marca `inferida: true` no fallback 16; `ContextoDaMedicao` ganha `titulosFixados` e aceita referências extras; `medirCamadasDaPeca` as usa (sem mudar `revisarArte` solto) |
 | `src/lib/creatives/revisao/nao-piora.ts` | **sem mudança** de lógica; só a mensagem de `motivoDaComparacao` para `texto-pequeno` diz o componente |
 | `src/lib/mcp/catalogo/arte-ia.ts`, `docs/regras/revisor-da-arte.md` | descrição e doc: "títulos entram em `texto-pequeno` (modelo, hierarquia, celular)" |
 | Testes | `regras.test.ts` (regra 9 para títulos), `nao-piora.test.ts` (gravidade por componente), `ajustar-sem-piorar.test.ts` (fixação da classificação; referência da base; autofix), `direcao-de-arte/__tests__/piloto-ciclo.test.ts` (casos da matriz com o renderer real) |
 
 ### A.7 Critérios de aceite
 
-1. Nenhum ajuste (direto ou via autofix) deixa `headline`/`headline2` abaixo de `pisoDoTitulo1080` sem
-   recusa `AJUSTE_PIOROU_ARTE` com `texto-pequeno` e o componente no motivo.
+1. Nenhum ajuste (direto ou via autofix) leva `headline`/`headline2` a criar o achado `texto-pequeno`
+   ou a piorá-lo em mais de 1 px (a tolerância de arredondamento de sempre) sem recusa
+   `AJUSTE_PIOROU_ARTE` com o componente no motivo; referência e classificação são as do contexto,
+   fixadas antes do lote.
 2. Título inferido por tamanho não perde a proteção por ter sido reduzido (classificação fixada na base).
 3. Modelo deliberadamente discreto (ref < 24) não recebe o mínimo de 24.
 4. `K_REFERENCIA_HIERARQUIA` continua telemetria; nenhum teste a usa como limiar.
@@ -172,16 +192,20 @@ a base, porque a comparação é sempre base × candidata.
 
 1. **Fator do componente modelo**: 0,8 (o mesmo `pisoRelativo` da escada e dos não-títulos — recomendado)
    ou algo mais estrito só para título (ex.: 0,9). Recomendo 0,8: uma constante só, já calibrada.
-2. **Conflito com a regra 7**: hoje `titulo-grande` pode sugerir escala até 0,5 × ref quando o título está
-   acima de 1,15 × ref; com o piso de 0,8 × ref, essa sugestão passa a ser recusada abaixo de 0,8. Opções:
-   (a) alinhar a regra 7 ao piso (`max(0,8, 24/corpo)` em vez de 0,5 — recomendado, uma fonte só); (b)
-   manter 0,5 na sugestão e aceitar que o não-piorar a recuse; (c) título acima de 1,15 × ref ganha piso
-   especial. Recomendo (a).
+2. **Conflito com a regra 7**: a sugestão de `titulo-grande` é uma ESCALA sobre o corpo atual, limitada
+   por baixo a 0,5 (quando acima de 1,15 × ref) ou 0,8; com o piso absoluto do título, uma escala pode
+   produzir um corpo abaixo de `pisoDoTitulo1080` (ex.: título em 100 com ref 84: escala 0,5 → 50 < 67,2) e
+   a sugestão seria recusada pelo não-piorar. Opções: (a) a escala mínima da regra 7 passa a ser
+   `max(pisoDoTitulo1080(id) / corpoAtual1080(id))` entre os títulos atingidos, mais `24 / corpoMinimo`
+   (recomendado: uma fonte só, preserva 140 → 84 e `headline2`); (b) manter 0,5/0,8 e aceitar a recusa;
+   (c) piso especial acima de 1,15 × ref. Recomendo (a).
 3. **Fator da hierarquia**: 1,0 (não inverter — recomendado) ou um mínimo acima de 1,0 (o que seria um K
    disfarçado, contra a decisão anterior).
 4. **Severidade** do achado em título: `aviso` (recomendado) ou `sugestao` como os demais não-serviço.
 5. **"Base vira referência" só no executor** (recomendado) ou também no `revisar-arte` solto (não há base
    nesse caso; seria a própria peça contra si mesma — sem sentido).
+6. **Referência inferida (fallback 16 do modelo)**: tratar como ausente só para títulos (recomendado,
+   escopo mínimo) ou também para apoio/serviço (muda comportamento atual; fora do CP4.2).
 
 ---
 
@@ -192,7 +216,7 @@ a base, porque a comparação é sempre base × candidata.
 | O que | Onde | Como é hoje |
 |---|---|---|
 | Schema da tool | `src/lib/mcp/catalogo/arte-ia.ts:185-188` | `slotValues: z.record(z.any())` — qualquer valor entra |
-| Validação semântica (`_slots`/`_papeis`) | `src/lib/semantica/resolver-valores.ts:100-110` (`valorSemanticoValido`), `:131-146` (`estruturaDoCampo`), `:156` (`validarEntradaSemantica`) | string, ou objeto simples não vazio só com `content: string` e/ou `fileUrl: string` não vazia; o resto → `VALOR_INVALIDO` (por origem) ou `ENTRADA_INVALIDA` (campo não é objeto). Chamada em `ajustarArte` (`arte-rapida.ts:1176-1177`, antes do banco, 400) e na resolução (`:1211`, 422); a criação idem (`:713`). **Qualquer erro recusa o pedido inteiro** |
+| Validação semântica (`_slots`/`_papeis`) | `src/lib/semantica/resolver-valores.ts:100-110` (`valorSemanticoValido`), `:131-146` (`estruturaDoCampo`), `:156` (`validarEntradaSemantica`) | string, ou objeto simples não vazio só com `content: string` e/ou `fileUrl: string` não vazia; o resto → `VALOR_INVALIDO` (por origem) ou `ENTRADA_INVALIDA` (campo fornecido que não é objeto). **`_slots: null`/`undefined` conta como NÃO fornecido** (`fornecido()`, `resolver-valores.ts:96`) e é ignorado em silêncio. Chamada em `ajustarArte` (`arte-rapida.ts:1176-1177`, antes do banco, 400) e na resolução (`:1211`, 422); a criação idem (`:713`). **Qualquer erro recusa o pedido inteiro** |
 | Legado (chave = id ou nome) | `src/lib/creatives/bake-layers.ts:90-135` | só string e objeto com `content: string` / `fileUrl: string` / `hidden === true` / `papel`/`bloco: string` têm efeito; **tipo errado é ignorado em silêncio** (número, array, boolean, `null`, `{ hidden: 'true' }`, `{ visible: false }`, `{ content: 123 }`, objeto vazio) |
 | Chaves reservadas | `arte-rapida.ts:639` (`CHAVES_RESERVADAS`: `_driveImageId`, `_imageUrl`, `_slots`, `_papeis`) | tratadas à parte; `_imageUrl`/`_driveImageId` lidos só se string (`:1238-1240`) |
 | Chave que não endereça camada | `bakeLayers` | ignorada em silêncio (nenhuma camada com esse id ou nome) |
@@ -227,22 +251,44 @@ export function validarEntradaLegada(
 //  `_imageUrl`/`_driveImageId` não-string → 'VALOR_INVALIDO'.
 ```
 
-**O mesmo validador nas três portas, antes de qualquer escrita ou render:**
+**Despacho único, em duas fases:**
 
-1. **`ajustarArte`** (`arte-rapida.ts`): logo depois de `validarEntradaSemantica` (que já roda antes do
-   banco) roda `validarEntradaLegada` — a parte de FORMATO não precisa da página (400, como a semântica);
-   a parte de ENDEREÇO (`CHAVE_DESCONHECIDA`) precisa das camadas: roda logo depois de `camadasParaBake`
-   e ANTES de `resolverValoresSemanticos` e do guard de copy (422, como `VALOR_INVALIDO` semântico).
-   Ordem resultante: formato semântico → formato legado → projeto/página → endereço legado → semântico
-   resolvido → chave visual reservada → guard de copy (CP4.1) → … → escrita. Nada é escrito, nenhum
+```ts
+export function validarSlotValues(slotValues, camadas?): ErroDeValor[]
+//  FASE 1 — FORMATO (sem página): para cada chave de slotValues:
+//    chave começa com `_`  → controle: `_slots`/`_papeis` → validarEntradaSemantica (como hoje; null/undefined = não fornecido);
+//                            `_imageUrl`/`_driveImageId` → string não vazia, senão VALOR_INVALIDO;
+//                            qualquer outro `_…` → CHAVE_DESCONHECIDA
+//    chave não começa com `_` → legado: valorLegadoValido(valor), senão VALOR_INVALIDO { tipo: 'layerId'|'name', chave }
+//  FASE 2 — ENDEREÇO (com as camadas do modelo EFETIVO): chave legada que não casa com id nem com nome de
+//    camada → CHAVE_DESCONHECIDA. Camada cujo id/nome começa com `_` não é endereçável pelo legado (chave
+//    com `_` é sempre controle) — hoje essa camada já é recusada como "chave visual reservada".
+```
+
+**O mesmo despacho nas três portas, antes de qualquer escrita ou render:**
+
+1. **`ajustarArte`** (`arte-rapida.ts`): FASE 1 logo depois de `validarEntradaSemantica` (`:1176`, antes do
+   banco; 400); FASE 2 logo depois de `camadasParaBake` (`:1209`) e ANTES de `resolverValoresSemanticos`
+   (`:1210`), da chave visual reservada e do guard de copy (`:1224`); `resolveImageUrl` só vem em `:1236`.
+   Ordem resultante: formato (semântico + legado) → projeto/página → endereço legado → semântico resolvido
+   → chave visual reservada → guard de copy (CP4.1) → foto → … → escrita. Nada é escrito, nenhum
    `resolveImageUrl`, nenhuma Generation, nenhum render.
-2. **`createArteRapida`** (`arte-rapida.ts:~700-740`, `valoresDaArte`): o mesmo `valorLegadoValido` sobre
-   a ENTRADA do chamador. Os valores que a criação monta por dentro (`{ hidden: true }` dos placeholders,
-   `efetivo`) são válidos pelo formato; a criação não muda de comportamento.
-3. **Schema da tool** (`arte-ia.ts:185`): `z.record(z.unknown()).superRefine(...)` que chama
-   `valorLegadoValido`/`validarEntradaSemantica` — a MESMA função, para a recusa chegar ao modelo com a
-   chave errada nomeada já na porta (e `validar-registro-mcp` continuar descrevendo o schema). Não
-   duplicar a lista de chaves no zod: o zod delega.
+2. **`createArteRapida`** (`arte-rapida.ts:740-930`) e seus chamadores (`criar-arte-de-modelo`, execução de
+   plano `src/lib/planos/execucao.ts`, `POST /api/external/creatives`): a ordem de hoje é
+   `resolveImageUrl` (lê a foto; `:795-800`) → escolha da página pela foto (`escolherPaginaPelaFoto`,
+   `:808-819`) → `camadasDoModelo` (`:830`) → `valoresDaArte` → `ensureArteTemplate` → bake → Generation →
+   render. Contrato: **FASE 1 (formato) roda na entrada, antes de `resolveImageUrl`**; **FASE 2 (endereço)
+   roda contra o MODELO EFETIVO (a página escolhida pela foto), logo após `camadasDoModelo` e antes de
+   `ensureArteTemplate`, Generation e render**. Consequência dita: na criação, um erro de ENDEREÇO é
+   detectado depois da leitura da foto e da escolha de layout (sem escrita, sem Generation, sem render),
+   porque o endereço depende do modelo que a foto escolhe; um erro de FORMATO é detectado antes de tudo.
+   Os valores que a criação monta por dentro (`{ hidden: true }` dos placeholders, `efetivo` com
+   `content`/`papel`/`bloco` do casamento da copy, `{ fileUrl }` em imagem) são válidos pelo formato; a
+   criação não muda de comportamento.
+3. **Schema da tool** (`arte-ia.ts:185` e as tools de criação que expõem `slotValues`):
+   `z.record(z.unknown()).superRefine(...)` que chama a FASE 1 — a MESMA função, para a recusa chegar ao
+   modelo com a chave errada nomeada já na porta (`validar-registro-mcp` continua descrevendo o schema). A
+   FASE 2 não cabe no schema (precisa da página). Não duplicar a lista de chaves no zod: o zod delega.
 
 **Contrato de erro:** `VALOR_INVALIDO` (código que já existe para `_slots`/`_papeis`; `erroDeValores`
 agrupa todos os erros em `details.erros[]`, cada um com `codigo` e `origem { tipo, chave }`), status 422
@@ -250,10 +296,12 @@ agrupa todos os erros em `details.erros[]`, cada um com `codigo` e `origem { tip
 português nomeando a chave e o formato aceito ("`cta`: valor `123` não é texto nem `{ content }`; aceito:
 string, ou objeto com content/fileUrl/hidden:true/papel/bloco").
 
-**Entradas mistas (válidas + inválidas): o pedido INTEIRO é recusado.** Motivo: é o contrato que
-`_slots`/`_papeis` já têm (`erros.length > 0 → throw`), é o que o agente consegue corrigir numa só
-rodada (todos os erros vêm na lista), e evita o estado "metade aplicado" que o CP4 proíbe para ajustes
-estruturais. Nada é gravado, nada é renderizado.
+**Entradas mistas (válidas + inválidas): o pedido INTEIRO é recusado.** Motivo: `slotValues` é um MAPA de
+conteúdo aplicado em conjunto num só bake, sem resultado por entrada nem rollback parcial — diferente do
+lote de `ajustes` do CP4, em que cada ajuste é tentado isoladamente sobre o estado aceito e volta por
+índice como aplicado/recusado. É o contrato que `_slots`/`_papeis` já têm (`erros.length > 0 → throw`) e
+o que o agente consegue corrigir numa só rodada (todos os erros vêm na lista). Nada é gravado, nada é
+renderizado.
 
 **Preserva o CP4.1:** a validação é de FORMATO e ENDEREÇO, não de conteúdo. `""`, `"   "`, `"."`,
 `{ content: "" }`, `{ hidden: true }` continuam FORMATOS VÁLIDOS e seguem para `copyRemovidaDoBake`, que
@@ -262,9 +310,10 @@ copy (CP4.1). Um valor inválido numa camada e uma remoção noutra: a chamada c
 com os dois problemas listados quando for possível listar (a remoção é calculada só se o formato passar —
 o agente recebe a remoção na rodada seguinte).
 
-**`temAjuste` deixa de ser "tem chave":** passa a ser "tem valor que o bake aplicaria" (string, ou objeto
-com efeito). Com a validação na frente isso vira redundante, mas fecha o caso da chave reservada sozinha
-(`{ _imageUrl: 123 }`) e do objeto só com `papel` (metadata sem efeito visual — ver decisão 3).
+**`temAjuste` não muda neste checkpoint.** Com a validação na frente, toda chave que sobrevive tem formato
+válido; o objeto só com `papel`/`bloco` (metadata sem efeito visual) continua sendo escrita de metadata
+como hoje (`bake-layers.ts:130`) — mudar isso é a decisão 3, separada, e não é necessária para fechar a
+dívida.
 
 ### B.3 Exemplos
 
@@ -281,14 +330,14 @@ com efeito). Com a validação na frente isso vira redundante, mas fecha o caso 
 | `{ _qualquer: 'x' }` | ignora | 422 `CHAVE_DESCONHECIDA` |
 | `{ _imageUrl: 123 }` | ignora (só string é lida) | 422 `VALOR_INVALIDO` |
 | `{ _slots: { manchete: 123 } }` | 400 `VALOR_INVALIDO` (já hoje) | igual (mesma função de erro) |
-| `{ cta: { papel: 'cta' } }` (só metadata) | regrava com metadata, renderiza | válido pelo formato; `temAjuste` com efeito só de metadata — decisão 3 |
+| `{ cta: { papel: 'cta' } }` (só metadata) | regrava com metadata, renderiza | válido pelo formato; comportamento inalterado neste CP (decisão 3, separada) |
 
 ### B.4 Arquivos e funções
 
 | Arquivo | Mudança |
 |---|---|
 | `src/lib/semantica/resolver-valores.ts` (ou `valores-de-slot.ts` irmão) | `valorLegadoValido`, `validarEntradaLegada`, código `CHAVE_DESCONHECIDA` em `ErroDeValor` |
-| `src/lib/creatives/arte-rapida.ts` | chamadas em `ajustarArte` (formato antes do banco; endereço depois de `camadasParaBake`) e em `createArteRapida`/`valoresDaArte`; `temAjuste` por efeito; mensagens em PT |
+| `src/lib/creatives/arte-rapida.ts` | `ajustarArte`: FASE 1 antes do banco, FASE 2 depois de `camadasParaBake`; `createArteRapida`: FASE 1 na entrada (antes de `resolveImageUrl`), FASE 2 após `camadasDoModelo` do modelo efetivo e antes de `ensureArteTemplate`; mensagens em PT |
 | `src/lib/mcp/catalogo/arte-ia.ts` (e `criar-arte-de-modelo`, `criar-arte` se expõem `slotValues`) | schema `z.record(z.unknown()).superRefine(validador)`; descrição com os formatos aceitos |
 | `src/lib/creatives/bake-layers.ts` | **sem mudança** de lógica (continua tolerante; a validação mora antes) — ou, opcionalmente, `assert` de desenvolvimento |
 | `docs/regras/revisor-da-arte.md`, `docs/regras/mcp.md` | contrato e códigos |
@@ -296,14 +345,17 @@ com efeito). Com a validação na frente isso vira redundante, mas fecha o caso 
 
 ### B.5 Critérios de aceite
 
-1. Todo valor fora do formato, por id, nome, `_slots` ou `_papeis`, é recusado com `VALOR_INVALIDO`
-   (ou `CHAVE_DESCONHECIDA`) ANTES de ler a foto, escrever a página, criar Generation ou renderizar.
+1. Todo valor fora do FORMATO, por id, nome, `_slots` ou `_papeis`, é recusado com `VALOR_INVALIDO`
+   ANTES de ler a foto, escrever a página, criar Generation ou renderizar — em `ajustarArte` e na
+   criação (todas as portas: tool, execução de plano, API externa). Erro de ENDEREÇO (`CHAVE_DESCONHECIDA`)
+   é recusado antes de qualquer escrita/Generation/render; em `ajustarArte` também antes da foto; na
+   criação, depois da escolha do modelo pela foto (que é quem define o endereço).
 2. Pedido misto (válido + inválido) é recusado inteiro, com todos os erros de formato listados.
 3. `""`, espaço, `"."`, `{ content: "" }`, `{ hidden: true }` continuam chegando ao guard do CP4.1 com o
    mesmo comportamento de hoje (testes S1–S11/A1 intactos).
 4. A criação de arte (`createArteRapida`, placeholders escondidos) não muda de comportamento.
 5. Uma só função decide o formato; o schema da tool delega a ela (`validar-registro-mcp` verde).
-6. `temAjuste` só é verdadeiro com efeito real.
+6. `temAjuste` e a escrita de metadata (`papel`/`bloco`) não mudam neste checkpoint.
 
 ### B.6 Matriz de testes (ajuste, banco falso; `intacto` = zero escrita, zero Generation, zero `put`)
 
@@ -331,9 +383,9 @@ com efeito). Com a validação na frente isso vira redundante, mas fecha o caso 
    é o mesmo erro silencioso que o owner mandou fechar) ou aceitar com `aviso`. Risco da recusa: skills
    antigas que mandam chaves a mais passam a falhar (visível, corrigível).
 2. **Status**: 400 para formato (antes do banco, como a semântica) e 422 para endereço — ou 422 para tudo.
-3. **Objeto só com `papel`/`bloco`** (metadata sem efeito visual): tratar como "sem efeito"
-   (`AJUSTE_SEM_EFEITO`, nada gravado) ou continuar aceitando como escrita de metadata. Recomendo "sem
-   efeito" no ajuste — a metadata do papel é da criação.
+3. **(Separada, fora da dívida) Objeto só com `papel`/`bloco`** (metadata sem efeito visual) e
+   `temAjuste` por efeito: hoje grava metadata e re-renderiza; mudar é decisão adicional, não necessária
+   para o CP4.2b. Recomendo deixar para depois.
 4. **Aplicar também à criação** (`criar-arte-de-modelo`, `criar-arte`): recomendado sim, mesma função,
    sem mudar os valores internos.
 
