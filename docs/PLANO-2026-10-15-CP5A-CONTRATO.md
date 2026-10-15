@@ -1,7 +1,8 @@
 # CP5a — contrato técnico do VEREDITO PURO (proposta para revisão, 15/10/2026, noite)
 
 **Estado: PROPOSTA PARA REVISÃO. Nada implementado.** Base: `main` `01f3c3be` (merge do CP4.2, PR #235).
-Rodada 10 do Codex (BLOCKER: `colisao` tem tolerância — `max(4, 0,18 × corpo) + encaixe` na vertical, 4 px na
+Rodada 11 do Codex: **APTO** (MENOR aplicado: a tolerância de `colisao` é privada em `text-geometry.ts` e o CP5a
+a exporta; `encaixe` só no mesmo grupo). Rodada 10 do Codex (BLOCKER: `colisao` tem tolerância — `max(4, 0,18 × corpo) + encaixe` na vertical, 4 px na
 horizontal — e a exceção texto × texto deixava essa interseção sem achado) aplicada no HEAD seguinte: a tolerância
 vira POLÍTICA declarada e testada da exceção (decisão 9.7), importada da fonte única. Rodada 9 do Codex (BLOCKER: a
 exceção logo × texto não excluía borda/sombra da logo; MENOR: texto sem métrica)
@@ -406,8 +407,11 @@ Toda camada `c` visível, `c.id !== t.id`, com **`c.order >= t.order`** (empate 
   `COLLISION_TOLERANCE_PX` (4 px) — `text-geometry.ts:177-189`. Uma interseção DENTRO dessa tolerância entre dois
   textos limpos e medidos não é achado de `colisao` nem de oclusão: é a tolerância da casa para linhas
   empilhadas (os descendentes de uma linha entram no line-box da seguinte), adotada aqui como **política de
-  aprovação da exceção**, com a MESMA constante e a mesma fórmula importadas de `text-geometry.ts` (fonte
-  única; `encaixe` lido de `metadata.compositor.encaixe` como `colisao` o lê) e testada em G21 (dentro → nada;
+  aprovação da exceção**, com a MESMA constante e a mesma fórmula de `text-geometry.ts` (fonte única — hoje
+  `COLLISION_TOLERANCE_PX` e o cálculo são PRIVADOS do módulo, `:72`, `:169-189`; o CP5a os extrai para uma função
+  exportada `toleranciaDeColisao(a, b, mesmoGrupo)` que `colisao` passa a usar também, sem mudar o número;
+  `encaixe` só conta no MESMO `groupId`, o maior valor positivo e finito das duas camadas, como `colisao` o lê)
+  e testada em G21 (dentro → nada;
   acima → `colisao` acusa e reprova). É a decisão 9.7 do owner: sem ela, a exceção cai e todo par de textos
   empilhados com glifos que se tocam vai ao humano. Qualquer condição faltando → oclusão;
 - **logo sobre texto é `logo-sobre-texto`**: `c` está em `logosDaPeca(camadas)` (solta, visível, fora de
@@ -516,6 +520,8 @@ Nenhum `hojeViola` muda. Gates do PR: suíte completa, typecheck, lint, `git dif
 - novo `src/lib/creatives/revisao/gate.ts` (puro): `REGRAS_CRITICAS`, `gateDaMedida`, `cenariosNaoMedidos`, `limitesDe` (reusa `folgaDoBlur` de `halo/fundo-de-texto.ts`), `CHAVES_CLASSIFICADAS`,
   `foraDaInterface`, `PISO_DE_INTERFACE_DO_STORY`, `interfaceDoStory`, `POLITICA_DO_ASSUNTO_RECOMENDADA`;
 - `src/lib/creatives/revisao/versao.ts`: `copyVersionDe` (puro);
+- `src/lib/creatives/text-geometry.ts`: extrai e exporta `toleranciaDeColisao(a, b, mesmoGrupo)` (a constante 4 e a
+  fórmula de hoje, sem mudar o número; `colisao` passa a chamá-la — teste de regressão fixa o comportamento);
 - `src/lib/direcao-de-arte/__tests__/suporte/propriedades.ts`: passa a importar `foraDaInterface` e o piso de
   `gate.ts` (um só lugar com 188/224);
 - novo `src/lib/creatives/revisao/__tests__/gate.test.ts`;
