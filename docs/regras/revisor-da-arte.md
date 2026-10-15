@@ -795,7 +795,8 @@ está implementado:
   escolher o layout; FASE 2 contra a irmã escolhida ANTES do `put`, do template, da persistência e do render; a foto
   lida recebe a URL final antes do halo. Efeito residual declarado: a miniatura do Drive é LIDA antes da validação
   de endereço (o endereço depende do modelo que a foto escolhe). Handlers `ajustar-arte` e `criar-arte-de-modelo`
-  rodam a FASE 1 no handler por `erroDeValores` (exportado de `arte-rapida.ts`), para a porta devolver `code`,
+  rodam a FASE 1 no handler por `erroDeValores` (em `src/lib/creatives/errors.ts`, e não em `arte-rapida.ts`: os
+  testes das guardas mockam o serviço inteiro; a mensagem nomeia a chave e o formato aceito), para a porta devolver `code`,
   `details.erros[]` e a chave — o `safeParse` do schema só devolveria texto; o serviço repete a conferência (API
   externa e execução de plano não passam pela porta).
 - **Provas:** `regras.test.ts` (componentes, discreto, sem referência/inferida, `titulosFixados`, `titulosDaPagina`,

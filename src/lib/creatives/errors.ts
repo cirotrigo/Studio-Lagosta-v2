@@ -25,7 +25,7 @@ export class CreativeError extends Error {
  * a lista inteira em `details.erros`. Mora aqui, e não em arte-rapida.ts, para os handlers
  * do MCP a usarem sem importar o serviço (que os testes das guardas mockam por inteiro).
  */
-export function erroDeValores(erros: Array<{ codigo: string }>, status: number): CreativeError {
+export function erroDeValores(erros: Array<{ codigo: string; [k: string]: unknown }>, status: number): CreativeError {
   const chaveDe = (e: Record<string, unknown>): string | undefined => {
     const origem = e.origem as { chave?: string } | undefined
     return origem?.chave ?? (e.chave as string | undefined) ?? (e.campo as string | undefined) ?? (e.layerId as string | undefined)
@@ -36,7 +36,9 @@ export function erroDeValores(erros: Array<{ codigo: string }>, status: number):
   }
   const partes = erros.map((e) => {
     const chave = chaveDe(e as Record<string, unknown>)
-    const dica = DICA[e.codigo]
+    const tipo = ((e as Record<string, unknown>).origem as { tipo?: string } | undefined)?.tipo
+    // Pelos controles `_slots`/`_papeis` o valor semântico aceita só texto ou { content, fileUrl } (Codex R2).
+    const dica = e.codigo === 'VALOR_INVALIDO' && (tipo === 'slotId' || tipo === 'semanticRole') ? 'aceito por _slots/_papeis: texto (string) ou objeto só com content, fileUrl' : DICA[e.codigo]
     return `${e.codigo}${chave ? ` em "${chave}"` : ''}${dica ? ` (${dica})` : ''}`
   })
   return new CreativeError(erros[0].codigo, `Os valores de slotValues não puderam ser aplicados: ${partes.join('; ')}.`, status, { erros: erros as unknown as Record<string, unknown>[] })

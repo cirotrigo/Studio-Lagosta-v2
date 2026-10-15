@@ -52,3 +52,19 @@ describe('CP4.2b — V17: a FASE 1 (formato) roda no HANDLER e chega à porta co
     expect(createArteRapida).not.toHaveBeenCalled()
   })
 })
+
+describe('erroDeValores (CP4.2b, Codex R2)', () => {
+  it('a mensagem nomeia a chave e a dica certa por origem: legado aceita hidden/papel/bloco; _slots/_papeis só content/fileUrl', async () => {
+    const { erroDeValores } = await import('@/lib/creatives/errors')
+    const legado = erroDeValores([{ codigo: 'VALOR_INVALIDO', origem: { tipo: 'chave', chave: 'cta' } }], 400)
+    expect(legado.code).toBe('VALOR_INVALIDO')
+    expect(legado.status).toBe(400)
+    expect(legado.message).toContain('"cta"')
+    expect(legado.message).toContain('hidden: true')
+    const semantico = erroDeValores([{ codigo: 'VALOR_INVALIDO', origem: { tipo: 'slotId', chave: 'manchete' } }], 400)
+    expect(semantico.message).toContain('"manchete"')
+    expect(semantico.message).toContain('_slots/_papeis')
+    expect(semantico.message).not.toContain('hidden')
+    expect((semantico.details as { erros: unknown[] }).erros).toHaveLength(1)
+  })
+})
