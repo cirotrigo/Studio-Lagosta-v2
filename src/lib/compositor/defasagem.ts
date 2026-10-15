@@ -670,7 +670,9 @@ export function escolhaEspacialOriginal(fieldValues: unknown, spec: SpecDePeca):
 function varianteGravada(v: unknown, recusar: (problema: string) => never): VarianteDaLogo | null {
   if (v === undefined || v === null) return null
   if (!ehObjeto(v) || typeof v.url !== 'string' || !v.url || (v.origem !== 'pagina' && v.origem !== 'projeto')) return recusar('a variante da logo gravada não tem origem e url')
-  return { origem: v.origem, url: v.url }
+  if (v.logoId !== undefined && !Number.isInteger(v.logoId)) return recusar('o logoId da variante gravada não é inteiro')
+  if (v.camada !== undefined && typeof v.camada !== 'string') return recusar('a camada da variante gravada não é texto')
+  return { origem: v.origem, url: v.url, ...(Number.isInteger(v.logoId) ? { logoId: v.logoId as number } : {}), ...(typeof v.camada === 'string' ? { camada: v.camada } : {}) }
 }
 
 function resumoDaBuscaOriginal(busca: unknown): ResumoDaBuscaOriginal | null {

@@ -79,6 +79,8 @@ export interface LogoDaAssinatura {
   url: string
   /** De onde a logo DESENHADA veio: a camada da página de assinatura (a explícita) ou a `Logo` principal do projeto (CP3). */
   origem?: 'pagina' | 'projeto'
+  /** O id da camada na página (explícita) — o identificador estável da variante além da URL (CP3). */
+  camada?: string
   /** Largura em px no canvas de 1080. */
   largura: number
   /** altura / largura. */
@@ -347,8 +349,8 @@ export function montarAssinatura(args: {
   formatoDaPagina: Formato | null
   numerosDoProjeto: unknown
   logoDoProjeto?: { url: string; razao?: number } | null
-  /** Todas as `Logo` principais do projeto (`isProjectLogo`), em ordem de id — as variantes autorizadas do CP3. */
-  logosDoProjeto?: ReadonlyArray<{ fileUrl: string }>
+  /** As `Logo` do projeto com o flag (`isProjectLogo`), em ordem de id — só as marcadas viram variantes autorizadas (CP3). */
+  logosDoProjeto?: ReadonlyArray<{ id?: number; fileUrl: string; isProjectLogo: boolean }>
 }): AssinaturaDaMarca {
   const numeros = mesclarNumeros(NUMEROS_PADRAO, args.numerosDoProjeto)
   // As entradas de `numeros.geometria` são TROCADAS (nunca alteradas) pela derivação da página abaixo.
@@ -382,6 +384,7 @@ export function montarAssinatura(args: {
           logo = {
             url,
             origem: 'pagina',
+            camada: camada.id,
             largura: Math.round(camada.size.width),
             razao: camada.size.height / camada.size.width,
             posicao: { x: camada.position.x, y: camada.position.y },
@@ -456,8 +459,9 @@ export function montarAssinatura(args: {
     logo = { url: args.logoDoProjeto.url, origem: 'projeto', largura: numeros.logo.largura, razao: args.logoDoProjeto.razao ?? 0.41 }
   }
   const variantesDaLogo = variantesAutorizadasDaLogo({
-    explicita: logo?.origem === 'pagina' ? { origem: 'pagina', url: logo.url } : null,
-    doProjeto: args.logosDoProjeto ?? (args.logoDoProjeto?.url ? [{ fileUrl: args.logoDoProjeto.url }] : []),
+    explicita: logo?.origem === 'pagina' ? { origem: 'pagina', url: logo.url, ...(logo.camada ? { camada: logo.camada } : {}) } : null,
+    // Sem a lista, só a principal que quem chamou já filtrou por `isProjectLogo: true` (o fallback de sempre).
+    doProjeto: args.logosDoProjeto ?? (args.logoDoProjeto?.url ? [{ fileUrl: args.logoDoProjeto.url, isProjectLogo: true }] : []),
   })
 
   return {

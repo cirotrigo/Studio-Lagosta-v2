@@ -58,7 +58,7 @@ export function mockDoBanco() {
           const linhas = p.logosDoProjeto ?? (p.logoDoProjeto ? [{ fileUrl: p.logoDoProjeto, isProjectLogo: true }] : [])
           // Como o Prisma: `where: { isProjectLogo: true }` filtra; a ordem é a de id (a de entrada).
           const filtro = args?.select?.Logo?.where?.isProjectLogo
-          const Logo = (filtro === undefined ? linhas : linhas.filter((l) => l.isProjectLogo === filtro)).map((l) => ({ fileUrl: l.fileUrl }))
+          const Logo = (filtro === undefined ? linhas : linhas.filter((l) => l.isProjectLogo === filtro)).map((l) => ({ fileUrl: l.fileUrl, isProjectLogo: l.isProjectLogo }))
           return { id: p.id, name: 'Projeto da fixture', userId: 'usuario-da-fixture', assinatura: p.assinatura, Logo }
         },
       },

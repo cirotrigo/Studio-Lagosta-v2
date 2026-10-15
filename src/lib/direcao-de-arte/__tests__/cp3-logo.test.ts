@@ -137,7 +137,7 @@ describe('topo-esquerda: a logo é FIXA na geometria; só a variante muda', () =
     expect(l).toMatchObject({ estado: 'medida', legivel: true, escolha: 'mantida', canto: 'inferior-direito', variante: { origem: 'pagina' }, limiar: 45, alfaMinimo: 128, percentil: 0.1 })
     expect(l.medida!.contrasteP10).toBeGreaterThanOrEqual(45)
     expect(l.avaliacoes).toHaveLength(1)
-    expect(r.diagnostico.arquetipo!.logo.variante).toEqual({ origem: 'pagina', url: paginaUrl })
+    expect(r.diagnostico.arquetipo!.logo.variante).toEqual({ origem: 'pagina', url: paginaUrl, camada: 'logo-pagina' })
     expect(r.diagnostico.avisos.filter((a) => /logo/i.test(a))).toEqual([])
     await conferePeloOraculo(r)
   }, 60_000)

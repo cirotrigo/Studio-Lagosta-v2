@@ -444,14 +444,17 @@ export const toolsDoCompositor = [
         // CP3: a leitura da logo medida contra o fundo real — o que foi feito e os números que decidiram.
         ...(d.logo?.legibilidade
           ? {
-              leituraDaLogo: (({ estado, legivel, escolha, variante, canto, medida, codigo, veusRemovidos, motivo }) => ({
+              leituraDaLogo: (({ estado, legivel, escolha, variante, canto, posicao, medida, codigo, alternativa, mensagem, veusRemovidos, motivo }) => ({
                 estado,
                 legivel,
                 escolha,
-                variante: variante.origem,
+                variante: { origem: variante.origem, url: variante.url, ...(variante.logoId !== undefined ? { logoId: variante.logoId } : {}) },
                 canto,
+                posicao,
                 ...(medida ? { p10: medida.contrasteP10, media: medida.contrasteMedio, proporcaoNoLimiar: medida.proporcaoAcima45, pixels: medida.pixelsAvaliados } : {}),
                 ...(codigo ? { codigo } : {}),
+                ...(alternativa ? { alternativa: { origem: alternativa.variante.origem, url: alternativa.variante.url, canto: alternativa.canto, p10: alternativa.medida.contrasteP10 } } : {}),
+                ...(mensagem ? { mensagem } : {}),
                 ...(veusRemovidos?.length ? { veusRemovidos } : {}),
                 ...(motivo ? { motivo } : {}),
               }))(d.logo.legibilidade),

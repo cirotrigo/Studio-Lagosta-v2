@@ -133,8 +133,11 @@ export interface LeituraDaLogoNaRevisao {
   variante: { url: string; origem?: 'pagina' | 'projeto' }
   posicao: Rect
   medida: MedidaDaLogo | null
-  /** `indisponivel`: o arquivo não baixou ou não decodificou; `sem-pixels`: nenhum pixel visível sobre o fundo. */
-  estado: 'medida' | 'indisponivel' | 'sem-pixels'
+  /**
+   * `indisponivel`: o arquivo não baixou ou não decodificou; `sem-pixels`: nenhum pixel visível sobre o fundo;
+   * `fora-do-contrato`: a camada é desenhada com rotação, opacidade, recorte ou `cover` — a caixa não representa o desenho.
+   */
+  estado: 'medida' | 'indisponivel' | 'sem-pixels' | 'fora-do-contrato'
   motivo?: string
 }
 
@@ -787,14 +790,20 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
   //     cobertura PARCIAL, dita — nunca vira "sem contraste".
   if (e.leituraDaLogo === null || e.leituraDaLogo === undefined) {
     cobertura['logo-sem-leitura'] = { estado: 'nao-avaliada', motivo: e.motivoSemLeituraDaLogo ?? 'a leitura da logo não foi medida' }
+  } else if (e.leituraDaLogo.length === 0 && e.camadas.some((l) => l.visible !== false && grupoDaCamada(l) && (l.type === 'logo' || l.id === 'logo'))) {
+    // A logo mora num arranjo (grupo com o texto): fora do contrato do CP3 — "avaliada" com zero pixels mentiria.
+    cobertura['logo-sem-leitura'] = { estado: 'nao-avaliada', motivo: 'a logo da peça está num arranjo (grupo com o texto) e não é medida como logo solta' }
   } else {
     const naoMedidas = e.leituraDaLogo.filter((l) => l.estado !== 'medida' || !l.medida)
     for (const l of e.leituraDaLogo) {
       if (l.estado !== 'medida' || !l.medida || l.medida.legivel) continue
       const m = l.medida
+      // Camada `image` com "logo" no nome pode ser logo de parceiro ou selo: sem variante cadastrada para trocar, é aviso.
+      const camadaDaLogo = porId.get(l.camada)
+      const ehLogoDaMarca = !camadaDaLogo || camadaDaLogo.type === 'logo' || camadaDaLogo.id === 'logo'
       adicionar({
         regra: 'logo-sem-leitura',
-        severidade: 'problema',
+        severidade: ehLogoDaMarca ? 'problema' : 'aviso',
         certeza: 'medida',
         camadas: [l.camada],
         mensagem: `A logo não lê contra o fundo: ${Math.round(100 * (1 - m.proporcaoAcima45))}% dos pixels dela têm contraste abaixo de ${LIMIAR_DE_CONTRASTE_DA_LOGO} (p10 ${m.contrasteP10}; a média ${m.contrasteMedio} não decide).`,
@@ -809,18 +818,20 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
           limiar: LIMIAR_DE_CONTRASTE_DA_LOGO,
           alfaMinimo: ALFA_VISIVEL_DA_LOGO,
           percentil: PERCENTIL_DA_LOGO,
-          variante: l.variante.url,
+          variante: l.variante.url.startsWith('data:') ? `${l.variante.url.slice(0, 48)}…` : l.variante.url,
           origem: l.variante.origem ?? null,
           x: Math.round(l.posicao.x),
           y: Math.round(l.posicao.y),
           largura: Math.round(l.posicao.width),
           altura: Math.round(l.posicao.height),
         },
-        observacao: 'Critério regional (CP3): o p10 da diferença |luz da logo − luz do fundo| no mesmo pixel, só nos pixels visíveis. Nenhuma variante é fabricada: troque por uma variante cadastrada que leia, mude a foto ou a posição.',
+        observacao: ehLogoDaMarca
+          ? 'Critério regional (CP3): o p10 da diferença |luz da logo − luz do fundo| no mesmo pixel, só nos pixels visíveis. Nenhuma variante é fabricada: troque por uma variante cadastrada que leia, mude a foto ou a posição.'
+          : 'Critério regional (CP3) numa imagem com "logo" no nome (parceiro, selo?): mude a foto ou a posição; se for a logo da marca, cadastre-a como logo.',
       })
     }
     if (naoMedidas.length > 0) {
-      cobertura['logo-sem-leitura'] = { estado: e.leituraDaLogo.length === naoMedidas.length ? 'nao-avaliada' : 'parcial', motivo: naoMedidas.map((l) => `${l.camada}: ${l.estado === 'indisponivel' ? `o arquivo da logo não carregou (${l.motivo ?? 'sem motivo'})` : l.motivo ?? 'sem pixel visível'}`).join('; ') }
+      cobertura['logo-sem-leitura'] = { estado: e.leituraDaLogo.length === naoMedidas.length ? 'nao-avaliada' : 'parcial', motivo: naoMedidas.map((l) => `${l.camada}: ${l.estado === 'indisponivel' ? `o arquivo da logo não carregou (${l.motivo ?? 'sem motivo'})` : l.motivo ?? (l.estado === 'fora-do-contrato' ? 'camada fora do contrato do desenho' : 'sem pixel visível')}`).join('; ') }
     }
   }
 

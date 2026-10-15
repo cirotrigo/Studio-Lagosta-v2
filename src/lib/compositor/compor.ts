@@ -122,7 +122,7 @@ import {
   type UnidadeDoArquetipo,
 } from './arquetipos/no-compositor'
 import { chaveDoArquetipo } from './arquetipos/tipos'
-import { conferirLogoDaPeca, type CacheDeLogos, type LegibilidadeDaLogo } from './logo-da-peca'
+import { caixaDaVariante, conferirLogoDaPeca, type CacheDeLogos, type LegibilidadeDaLogo } from './logo-da-peca'
 import type { VarianteDaLogo } from './legibilidade-da-logo'
 
 /**
@@ -368,7 +368,7 @@ export async function carregarAssinatura(projectId: number, formato: Formato, op
       select: {
         assinatura: true,
         // CP3: TODAS as principais, em ordem de id — as variantes autorizadas da logo (a primeira é o fallback de sempre).
-        Logo: { where: { isProjectLogo: true }, orderBy: { id: 'asc' }, select: { fileUrl: true } },
+        Logo: { where: { isProjectLogo: true }, orderBy: { id: 'asc' }, select: { id: true, fileUrl: true, isProjectLogo: true } },
       },
     }),
     db.template.findFirst({
@@ -1746,11 +1746,12 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   const automaticos = new Map(
     gradientes.filter((g) => planoDa(g.borda)?.estado === 'tratado' || veusDaLogo.has(g.layer.id)).map((g) => [g.layer.id, luzMedida(corDoVeu(g.layer))] as const),
   )
+  const faixaDaRegua: [number, number] = [
+    Math.min(cfgDaBorda('topo').forcaMinima, cfgDaBorda('rodape').forcaMinima),
+    Math.max(cfgDaBorda('topo').forcaMaxima, cfgDaBorda('rodape').forcaMaxima),
+  ]
   try {
-    const faixa: [number, number] = [
-      Math.min(cfgDaBorda('topo').forcaMinima, cfgDaBorda('rodape').forcaMinima),
-      Math.max(cfgDaBorda('topo').forcaMaxima, cfgDaBorda('rodape').forcaMaxima),
-    ]
+    const faixa = faixaDaRegua
     const medir = (camadas: Layer[], corrigir: boolean) =>
       medirContrasteDaPeca({ layers: camadas, canvas, background: assinatura.numeros.fundo, faixa, corrigir, medirIntervencao: opcoes.medirComparacao })
     let regua = await medir(layers, true)
@@ -1856,8 +1857,10 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   //     a medida vai ao diagnóstico e aos avisos.
   const logoDeCanto = camadasDaLogo.length > 0 && assinatura.logo ? layers.find((l) => l.id === 'logo') ?? null : null
   if (logoDeCanto && logoDiag) {
-    const desenhada: VarianteDaLogo = { origem: assinatura.logo!.origem ?? 'pagina', url: assinatura.logo!.url }
+    const desenhada: VarianteDaLogo = assinatura.variantesDaLogo.find((v) => v.url === assinatura.logo!.url) ?? { origem: assinatura.logo!.origem ?? 'pagina', url: assinatura.logo!.url }
     const logoFixa = !!(arq && materializacao && materializacao.papeis.logo?.posicao)
+    const caixaAtual: Rect = { x: logoDeCanto.position.x, y: logoDeCanto.position.y, width: logoDeCanto.size.width, height: logoDeCanto.size.height }
+    const gUsado = arq ? gArq! : g
     const conferida = await conferirLogoDaPeca({
       layers,
       canvas,
@@ -1865,12 +1868,32 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       logo: logoDeCanto,
       desenhada,
       variantes: assinatura.variantesDaLogo,
-      gravada: reproducao?.logo ?? null,
+      // A variante gravada é PREFERÊNCIA, não depende da foto: com a foto trocada a busca roda de novo, mas a logo
+      // gravada ainda vai primeiro (e, se não ler na foto nova, cai pela grade, dito).
+      gravada: pedidoDeReproducao?.logo ?? null,
       cantoAtual: logoDiag.canto,
+      // O canto atual livre de texto e na área: o mesmo critério das alternativas (colisão ELIMINA, mesmo quando lê).
+      // A logo fixa do arquétipo já foi conferida na zona; a posição da página também (`encostaNumTexto`).
+      livreNoCantoAtual: logoFixa || !rectsDeGrupo.some((r) => intersecta(r.rect, caixaAtual)),
+      // Outra variante no canto atual ocupa a caixa pela largura, no canto (a mesma das alternativas); na logo fixa,
+      // o contain da caixa materializada; na posição da página (legado), o contain da caixa desenhada.
+      caixaNoCantoAtual: (tamanho) => {
+        const razao = tamanho.width > 0 ? tamanho.height / tamanho.width : 0
+        if (!logoFixa) return preferenciaDaLogo === 'pagina' ? caixaDaVariante(caixaAtual, razao, logoDiag!.canto) : retanguloDoCanto(gUsado, logoDiag!.canto, tamanho.width, tamanho.height)
+        // Logo fixa: a variante cabe por contain na REFERÊNCIA do arquétipo (deslocada como a posição, pelo `dy` da
+        // faixa), não na posição já contida pela proporção da explícita — senão uma variante quadrada sairia com
+        // metade da largura. Fora da zona efetiva (a área segura do projeto cortou a referência), vale a posição.
+        const m = materializacao!.papeis.logo!
+        const dy = m.posicao.y + m.posicao.height / 2 - (m.referencia.y + m.referencia.height / 2)
+        const naReferencia = caixaDaVariante({ x: m.referencia.x, y: m.referencia.y + dy, width: m.referencia.width, height: m.referencia.height }, razao, logoDiag!.canto)
+        const z = m.zonaEfetiva
+        const dentro = naReferencia.x >= z.x - 1 && naReferencia.y >= z.y - 1 && naReferencia.x + naReferencia.width <= z.x + z.width + 1 && naReferencia.y + naReferencia.height <= z.y + z.height + 1
+        return dentro ? naReferencia : caixaDaVariante(caixaAtual, razao, logoDiag!.canto)
+      },
       posicoesAlternativas: (tamanho) =>
         logoFixa
           ? []
-          : cantosOrdenados({ g: arq ? gArq! : g, mapa: melhor.mapa, blocos: rectsDeGrupo.map((r) => r.rect), logo: { w: tamanho.width, h: tamanho.height }, pedido: undefined, formato: spec.formato })
+          : cantosOrdenados({ g: gUsado, mapa: melhor.mapa, blocos: rectsDeGrupo.map((r) => r.rect), logo: { w: tamanho.width, h: tamanho.height }, pedido: undefined, formato: spec.formato })
               .filter((c) => c.livre)
               .map(({ canto, rect }) => ({ canto, rect })),
       veusDaLogo,
@@ -1880,6 +1903,18 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     })
     layers = conferida.layers
     avisos.push(...conferida.avisos)
+    // O véu da logo que saiu muda o fundo medido pela régua: a leitura dos textos é remedida (sem corrigir força) para
+    // o diagnóstico (`contraste`, `tratamentoPiorou`) descrever a peça que sai, não a de antes.
+    if (conferida.veusRemovidos.length > 0 && faixaDaRegua) {
+      try {
+        const remedida = await medirContrasteDaPeca({ layers, canvas, background: assinatura.numeros.fundo, faixa: faixaDaRegua, corrigir: false, medirIntervencao: opcoes.medirComparacao })
+        contraste = remedida.medidas
+        tratamentoPiorou = remedida.piorasDepoisDaCorrecao ?? remedida.pioras
+        intervencaoDeTexto = remedida.intervencao
+      } catch (erro) {
+        avisos.push(`A leitura dos textos não foi remedida depois de o véu da logo sair (${(erro as Error).message}): o diagnóstico de contraste é o de antes.`)
+      }
+    }
     logoDiag = { ...logoDiag, canto: conferida.canto, legibilidade: conferida.legibilidade }
     if (escolhaDoArquetipo) {
       escolhaDoArquetipo.logo = conferida.variante

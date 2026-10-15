@@ -13,6 +13,8 @@ import {
   PERCENTIL_DA_LOGO,
   bytesDaLogo,
   escolherLogoLegivel,
+  foraDoContratoDoDesenho,
+  fundoSemALogo,
   luz709,
   medirLegibilidadeDaLogo,
   medirLogoNoFundo,
@@ -180,7 +182,9 @@ describe('variantesAutorizadasDaLogo (10)', () => {
 
   it('sem página e sem principal, nenhuma variante — uma linha sem a marca nunca entra', () => {
     expect(variantesAutorizadasDaLogo({ explicita: null, doProjeto: [{ fileUrl: 'https://blob/x.png', isProjectLogo: false }] })).toEqual([])
-    expect(variantesAutorizadasDaLogo({ explicita: null, doProjeto: [{ fileUrl: 'https://blob/x.png' }] })).toEqual([{ origem: 'projeto', url: 'https://blob/x.png' }])
+    // O flag tem de ser POSITIVO: ausente (undefined) também fica de fora.
+    expect(variantesAutorizadasDaLogo({ explicita: null, doProjeto: [{ fileUrl: 'https://blob/x.png' } as unknown as { fileUrl: string; isProjectLogo: boolean }] })).toEqual([])
+    expect(variantesAutorizadasDaLogo({ explicita: null, doProjeto: [{ fileUrl: 'https://blob/x.png', isProjectLogo: true }] })).toEqual([{ origem: 'projeto', url: 'https://blob/x.png' }])
   })
 })
 
@@ -247,6 +251,32 @@ describe('E/S', () => {
     const erro = await bytesDaLogo('http://127.0.0.1:9/logo.png').catch((e) => e)
     expect(erro).toBeInstanceOf(CreativeError)
     expect(erro.code).toBe(LOGO_INDISPONIVEL)
+  })
+
+  it('o p10 que decide é o exibido: 44,9974 sai 45.00 e LEGÍVEL (nunca "45.00, ilegível")', () => {
+    // luz709(0, 40, 227) = 44.9974 sobre fundo preto.
+    const l = logo(160, 80, (x, y) => (anelEBarra(x, y) ? [0, 40, 227, 255] : null))
+    const m = medirLegibilidadeDaLogo({ logo: l, posicao: { x: 10, y: 10 }, fundo: fundo(400, 300, () => cinza(0)) })!
+    expect(m.contrasteP10).toBe(45)
+    expect(m.legivel).toBe(true)
+  })
+
+  it('fundo transparente (ou que não é cor sólida) não é medido: a função recusa em vez de medir contra preto', async () => {
+    await expect(fundoSemALogo({ layers: [], canvas: { width: 10, height: 10 }, background: 'transparent' })).rejects.toThrow(/não é uma cor sólida/)
+    await expect(fundoSemALogo({ layers: [], canvas: { width: 10, height: 10 }, background: 'rgba(0,0,0,0.5)' })).rejects.toThrow(/não é uma cor sólida/)
+    const ok = await fundoSemALogo({ layers: [], canvas: { width: 10, height: 10 }, background: '#FFFFFF' })
+    expect([ok.width, ok.height, ok.channels, ok.data[0]]).toEqual([10, 10, 3, 255])
+  })
+
+  it('camada desenhada com rotação, opacidade, recorte ou cover está fora do contrato da medida (dito)', () => {
+    const base = { id: 'logo', type: 'logo', position: { x: 0, y: 0 }, size: { width: 10, height: 10 }, fileUrl: 'x' } as unknown as Parameters<typeof foraDoContratoDoDesenho>[0]
+    expect(foraDoContratoDoDesenho(base)).toBeNull()
+    expect(foraDoContratoDoDesenho({ ...base, rotation: 0 })).toBeNull()
+    expect(foraDoContratoDoDesenho({ ...base, rotation: 90 })).toMatch(/rotação 90°/)
+    expect(foraDoContratoDoDesenho({ ...base, style: { opacity: 0.35 } })).toMatch(/opacidade 0.35/)
+    expect(foraDoContratoDoDesenho({ ...base, style: { objectFit: 'cover' } })).toMatch(/cover/)
+    expect(foraDoContratoDoDesenho({ ...base, style: { crop: { x: 0, y: 0, width: 0.5, height: 0.5 } } })).toMatch(/recorte manual/)
+    expect(foraDoContratoDoDesenho({ ...base, style: { flipX: true } })).toMatch(/espelhada/)
   })
 
   it('bytesDaLogo decodifica data URL em base64 sem rede', async () => {

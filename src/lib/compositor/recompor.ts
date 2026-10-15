@@ -413,7 +413,8 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
   const lida = candidataARecompor && arte.spec!.arquetipo ? escolhaEspacialOriginal(arte.fieldValues, arte.spec!) : null
   // Foto trocada numa peça do T1a (na referência, sem escolha pela foto): a busca roda pela foto nova, DITO. (A peça do
   // CP2B traz a foto na escolha: o compositor percebe a troca e avisa sozinho.)
-  const escolhaEspacial = lida?.modo === 'referencia' && defasagem.fotoTrocada ? null : lida
+  // CP3: a variante da logo gravada é preferência e não depende da foto — segue na busca nova (a conferência mede).
+  const escolhaEspacial = lida?.modo === 'referencia' && defasagem.fotoTrocada ? (lida.logo ? { modo: 'referencia' as const, logo: lida.logo } : null) : lida
   if (lida?.modo === 'referencia' && defasagem.fotoTrocada) avisos.push('A foto da peça mudou: a posição foi escolhida de novo pela foto nova (a peça estava na referência do arquétipo).')
   /**
    * F1: a spec da recomposição leva o CONTRATO da página como ele está —
@@ -1197,6 +1198,12 @@ export function mensagemDaRecusaNoHistorico(mensagem: string, imagemTrocada: boo
   }
   if (code === 'SEM_COMBINACAO') {
     return 'A arte NÃO foi atualizada: com a foto nova, nenhuma posição dentro das zonas do arquétipo serve a este texto (a leitura ou a região protegida não fecham). A imagem continua sendo a anterior. Troque a foto, ou peça uma nova composição com outra variante ou outro arquétipo — salvar de novo não resolve.'
+  }
+  if (code === 'LOGO_SEM_VARIANTE_LEGIVEL') {
+    return 'A arte NÃO foi atualizada: nenhuma variante cadastrada da logo (a da página de assinatura ou a principal do projeto) lê contra o fundo desta peça, e nenhuma variante é fabricada. A imagem continua sendo a anterior. Cadastre uma variante da logo que leia (clara ou escura), troque a foto ou peça uma nova composição — salvar de novo não resolve.'
+  }
+  if (code === 'LOGO_INDISPONIVEL') {
+    return `A arte NÃO foi atualizada: o arquivo da logo não pôde ser baixado ou lido (${mensagem}) e a leitura dela não foi medida. A imagem continua sendo a anterior. Se o endereço da logo morreu, cadastre a logo de novo no projeto; se foi instabilidade, a fila tenta de novo sozinha.`
   }
   if (code === 'PREFERENCIA_INVIAVEL') {
     return 'A arte NÃO foi atualizada: o enquadramento fixo pedido impede o corte da foto que resolveria a posição. A imagem continua sendo a anterior. Peça uma nova composição sem o enquadramento fixo — salvar de novo não resolve.'

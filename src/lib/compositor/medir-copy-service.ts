@@ -226,7 +226,7 @@ export interface VarianteDescrita {
  */
 export async function descreverVariantes(projectId: number, formato: Formato): Promise<{ templateId: number | null; variantes: VarianteDescrita[] }> {
   const [projeto, template] = await Promise.all([
-    db.project.findUnique({ where: { id: projectId }, select: { assinatura: true, Logo: { where: { isProjectLogo: true }, take: 1, select: { fileUrl: true } } } }),
+    db.project.findUnique({ where: { id: projectId }, select: { assinatura: true, Logo: { where: { isProjectLogo: true }, orderBy: { id: 'asc' }, select: { fileUrl: true, isProjectLogo: true } } } }),
     db.template.findFirst({ where: { projectId, name: NOME_DO_TEMPLATE_DE_ASSINATURA }, select: { id: true } }),
   ])
   if (!projeto) throw new CreativeError('PROJECT_NOT_FOUND', `Projeto ${projectId} não encontrado`, 404)
@@ -249,6 +249,7 @@ export async function descreverVariantes(projectId: number, formato: Formato): P
       formatoDaPagina: fmt,
       numerosDoProjeto: projeto.assinatura,
       logoDoProjeto: projeto.Logo[0] ? { url: projeto.Logo[0].fileUrl } : null,
+      logosDoProjeto: projeto.Logo,
     })
     // As famílias de TODOS os textos reconhecidos da variante (o segundo serviço
     // com fonte própria incluído), não só o primeiro estilo de cada papel (R09).

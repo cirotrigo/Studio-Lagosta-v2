@@ -16,7 +16,10 @@
  *   `LOGO_SEM_VARIANTE_LEGIVEL`; alguma não carregou e nenhuma das outras lê →
  *   `LOGO_INDISPONIVEL` (não dá para afirmar que "nenhuma lê"). A logo FIXA do
  *   arquétipo nunca muda de lugar: só a variante. Nenhum véu novo é desenhado
- *   para salvar a logo; o véu automático da logo que não a salvou SAI.
+ *   para salvar a logo; o véu automático da logo que não a salvou SAI — e as
+ *   outras variantes são medidas SEM ele (decisão: o véu da logo existe só para
+ *   a logo; mantê-lo para salvar outra variante seria o "véu para a logo" que o
+ *   owner proibiu — a confirmar com ele).
  *
  * - **Sem arquétipo** (o legado): nada muda na peça — o baseline da base é
  *   idêntico. A medida e a mesma grade entram no DIAGNÓSTICO e nos avisos:
@@ -43,6 +46,7 @@ import {
   razaoDoArquivo,
   resumoDaMedida,
   type AvaliacaoDaLogo,
+  mesmaVariante,
   type MedidaDaLogo,
   type PosicaoDaLogo,
   type RasterRGB,
@@ -51,7 +55,8 @@ import {
 } from './legibilidade-da-logo'
 import type { Canto } from './spec'
 
-export type CacheDeLogos = Map<string, Promise<VarianteCarregada>>
+/** Por URL: os bytes e a proporção (ou o motivo de não ter carregado). A variante (origem, ids) é de quem pede. */
+export type CacheDeLogos = Map<string, Promise<Omit<VarianteCarregada, 'variante'>>>
 
 /** O diagnóstico da logo (CP3) em `DiagnosticoDaComposicao.logo.legibilidade`. */
 export interface LegibilidadeDaLogo {
@@ -72,7 +77,7 @@ export interface LegibilidadeDaLogo {
    * desenhada), `variante-trocada`, `canto-trocado`, `variante-e-canto-trocados` (só com arquétipo), ou
    * `sem-mudanca` (legado: a peça não muda, o diagnóstico diz).
    */
-  escolha: 'mantida' | 'reproduzida' | 'variante-trocada' | 'canto-trocado' | 'variante-e-canto-trocados' | 'sem-mudanca'
+  escolha: 'mantida' | 'reproduzida' | 'variante-trocada' | 'canto-trocado' | 'variante-e-canto-trocados' | 'veu-removido' | 'sem-mudanca'
   /** Legado: o código que a conferência SINALIZA (a peça sai mesmo assim; o gate é do CP5). */
   codigo?: typeof LOGO_SEM_VARIANTE_LEGIVEL | 'PREFERENCIA_INVIAVEL'
   /** Legado: a primeira variante × canto que leria. */
@@ -103,6 +108,14 @@ export interface ArgsDaConferencia {
    * preferência; `[]` para a logo fixa do arquétipo. Recebe a largura e devolve as caixas para a altura dada.
    */
   posicoesAlternativas: (tamanho: { width: number; height: number }) => PosicaoDaLogo[]
+  /**
+   * A caixa que uma variante de OUTRO tamanho ocuparia no canto atual — a mesma regra dos cantos alternativos
+   * (pela largura, no canto), ou o contain da caixa materializada na logo fixa. A variante desenhada é medida na
+   * caixa EXATA em que foi desenhada (`logo.position`/`size`), nunca numa caixa recalculada.
+   */
+  caixaNoCantoAtual: (tamanho: { width: number; height: number }) => Rect
+  /** O canto atual está livre de texto e dentro da área (o mesmo critério das alternativas). Colisão ELIMINA. */
+  livreNoCantoAtual: boolean
   /** Os véus automáticos da logo na peça (ids das camadas): saem quando a logo desenhada não lê (arquétipo). */
   veusDaLogo: ReadonlySet<string>
   modo: 'arquetipo' | 'legado'
@@ -137,38 +150,33 @@ export function caixaDaVariante(caixa: Rect, razao: number, canto: Canto): Rect 
 
 async function carregar(v: VarianteDaLogo, cache?: CacheDeLogos): Promise<VarianteCarregada> {
   const existente = cache?.get(v.url)
-  if (existente) return existente
-  const p = (async (): Promise<VarianteCarregada> => {
+  if (existente) return { variante: v, ...(await existente) }
+  const p = (async (): Promise<Omit<VarianteCarregada, 'variante'>> => {
     try {
       const bytes = await bytesDaLogo(v.url)
       const razao = await razaoDoArquivo(bytes, v.url)
-      return { variante: v, bytes, razao }
+      return { bytes, razao }
     } catch (erro) {
       const motivo = erro instanceof Error ? erro.message : String(erro)
-      return { variante: v, bytes: null, razao: null, indisponivel: motivo }
+      return { bytes: null, razao: null, indisponivel: motivo }
     }
   })()
   cache?.set(v.url, p)
-  return p
+  return { variante: v, ...(await p) }
 }
 
-const rotulo = (v: VarianteDaLogo) => (v.origem === 'pagina' ? 'a logo da página de assinatura' : 'a logo principal do projeto')
+/** O nome do arquivo na URL (sem query), para o operador saber QUAL logo; data URL vira "(embutida)". */
+const nomeDoArquivo = (url: string): string => {
+  if (url.startsWith('data:')) return '(embutida)'
+  const caminho = url.split('?')[0].split('#')[0]
+  return decodeURIComponent(caminho.slice(caminho.lastIndexOf('/') + 1)) || url
+}
+const rotulo = (v: VarianteDaLogo) => `${v.origem === 'pagina' ? 'a logo da página de assinatura' : 'a logo principal do projeto'} (${nomeDoArquivo(v.url)})`
 
 export async function conferirLogoDaPeca(args: ArgsDaConferencia): Promise<ResultadoDaConferencia> {
   const contrato = { limiar: LIMIAR_DE_CONTRASTE_DA_LOGO, alfaMinimo: ALFA_VISIVEL_DA_LOGO, percentil: PERCENTIL_DA_LOGO }
   const caixaAtual = arred({ x: args.logo.position.x, y: args.logo.position.y, width: args.logo.size.width, height: args.logo.size.height })
   const avisos: string[] = []
-
-  // A ordem das variantes: a gravada (recomposição) primeiro, se ainda é autorizada; depois a lista autorizada.
-  const autorizada = (v: VarianteDaLogo | null | undefined) => !!v && args.variantes.some((a) => a.url === v.url)
-  const ordem: VarianteDaLogo[] = []
-  if (args.gravada) {
-    if (autorizada(args.gravada)) ordem.push(args.variantes.find((a) => a.url === args.gravada!.url)!)
-    else avisos.push(`A variante da logo gravada nesta arte (${rotulo(args.gravada)}) já não é autorizada: a conferência partiu da logo da assinatura.`)
-  }
-  for (const v of args.variantes) if (!ordem.some((o) => o.url === v.url)) ordem.push(v)
-  if (ordem.length === 0) ordem.push(args.desenhada)
-  const primeira = ordem[0]
 
   const naoMedida = (motivo: string): ResultadoDaConferencia => ({
     layers: args.layers,
@@ -178,6 +186,21 @@ export async function conferirLogoDaPeca(args: ArgsDaConferencia): Promise<Resul
     canto: args.cantoAtual,
     veusRemovidos: [],
   })
+
+  // A ordem das variantes: a gravada (recomposição) primeiro, se ainda é autorizada; depois a lista autorizada.
+  const autorizada = (v: VarianteDaLogo | null | undefined) => !!v && args.variantes.some((a) => mesmaVariante(a, v))
+  const ordem: VarianteDaLogo[] = []
+  if (args.gravada) {
+    if (autorizada(args.gravada)) ordem.push(args.variantes.find((a) => mesmaVariante(a, args.gravada!))!)
+    else avisos.push(`A variante da logo gravada nesta arte (${rotulo(args.gravada)}) já não é autorizada: a conferência partiu da logo da assinatura.`)
+  }
+  for (const v of args.variantes) if (!ordem.some((o) => o.url === v.url)) ordem.push(v)
+  // Nenhuma variante autorizada (a desenhada não entra "por definição"): sem o que medir, dito.
+  if (ordem.length === 0) {
+    if (args.modo === 'arquetipo') throw new CreativeError(LOGO_SEM_VARIANTE_LEGIVEL, 'Nenhuma variante autorizada da logo está cadastrada (a logo desenhada não é a da página de assinatura nem uma Logo principal do projeto): não há o que medir, e nenhuma variante é fabricada.', 422, { variantes: [], desenhada: args.desenhada })
+    return naoMedida('nenhuma variante autorizada cadastrada')
+  }
+  const primeira = ordem[0]
 
   // 1. As variantes carregadas (todas: a grade é medida inteira) e o fundo como está.
   const carregadas = await Promise.all(ordem.map((v) => carregar(v, args.cache)))
@@ -195,15 +218,22 @@ export async function conferirLogoDaPeca(args: ArgsDaConferencia): Promise<Resul
     return naoMedida(motivo)
   }
 
-  // 2. A desenhada (ou a gravada) onde está.
-  const avaliar = async (c: VarianteCarregada, canto: Canto, caixa: Rect, f: RasterRGB): Promise<AvaliacaoDaLogo> => {
-    if (!c.bytes || c.razao === null) return { variante: c.variante, canto, posicao: caixa, medida: null, estado: 'indisponivel', motivo: c.indisponivel }
-    const posicao = caixaDaVariante(caixa, c.razao, canto)
+  // 2. A desenhada (ou a gravada) onde está. A caixa de cada variante: a DESENHADA é medida na caixa exata em que o
+  //    render a desenha; outra variante no canto atual ocupa a caixa que a regra do canto lhe dá (`caixaNoCantoAtual`,
+  //    pela largura — ou o contain da caixa materializada na logo fixa), a mesma que teria num canto alternativo.
+  const caixaDe = (c: VarianteCarregada, canto: Canto): Rect => {
+    if (c.variante.url === args.desenhada.url && canto === args.cantoAtual) return caixaAtual
+    const largura = caixaAtual.width
+    return canto === args.cantoAtual ? args.caixaNoCantoAtual({ width: largura, height: Math.round(largura * (c.razao ?? 0)) }) : caixaAtual
+  }
+  const avaliar = async (c: VarianteCarregada, canto: Canto, posicao: Rect, f: RasterRGB, livre = true): Promise<AvaliacaoDaLogo> => {
+    if (!c.bytes || c.razao === null) return { variante: c.variante, canto, posicao, medida: null, estado: 'indisponivel', motivo: c.indisponivel }
+    if (!livre) return { variante: c.variante, canto, posicao, medida: null, estado: 'fora-da-area', motivo: 'o canto encosta num texto ou sai da área válida' }
     const medida = await medirLogoNoFundo({ bytes: c.bytes, rect: posicao, fundo: f, url: c.variante.url })
     if (!medida) return { variante: c.variante, canto, posicao, medida: null, estado: 'sem-pixels', motivo: 'nenhum pixel visível da logo sobre o fundo' }
     return { variante: c.variante, canto, posicao, medida, estado: medida.legivel ? 'legivel' : 'ilegivel' }
   }
-  const atual = await avaliar(daPrimeira, args.cantoAtual, caixaAtual, fundo)
+  const atual = await avaliar(daPrimeira, args.cantoAtual, caixaDe(daPrimeira, args.cantoAtual), fundo, args.livreNoCantoAtual)
   const compacta = (a: AvaliacaoDaLogo): LegibilidadeDaLogo['avaliacoes'][number] => ({ variante: a.variante, canto: a.canto, posicao: a.posicao, estado: a.estado, medida: a.medida, ...(a.motivo ? { motivo: a.motivo } : {}) })
   const desenhar = (a: AvaliacaoDaLogo): Layer[] =>
     args.layers.map((l) =>
@@ -230,7 +260,7 @@ export async function conferirLogoDaPeca(args: ArgsDaConferencia): Promise<Resul
   const fundoDaGrade = veusRemovidos.length > 0 ? await fundoSemALogo({ layers: camadasBase, canvas: args.canvas, background: args.background, semAsCamadas: new Set([args.logo.id]) }) : fundo
   const avaliacoes: AvaliacaoDaLogo[] = []
   for (const c of carregadas) {
-    const noCantoAtual = c === daPrimeira && veusRemovidos.length === 0 ? atual : await avaliar(c, args.cantoAtual, caixaAtual, fundoDaGrade)
+    const noCantoAtual = c === daPrimeira && veusRemovidos.length === 0 ? atual : await avaliar(c, args.cantoAtual, caixaDe(c, args.cantoAtual), fundoDaGrade, args.livreNoCantoAtual)
     avaliacoes.push(noCantoAtual)
     if (c.razao === null) continue
     const largura = caixaAtual.width
@@ -277,13 +307,13 @@ export async function conferirLogoDaPeca(args: ArgsDaConferencia): Promise<Resul
   }
 
   if (!escolha) {
-    const detalhes = { limiar: LIMIAR_DE_CONTRASTE_DA_LOGO, alfaMinimo: ALFA_VISIVEL_DA_LOGO, percentil: PERCENTIL_DA_LOGO, canto: args.cantoAtual, avaliacoes: avaliacoes.map(compacta) }
+    const detalhes = { limiar: LIMIAR_DE_CONTRASTE_DA_LOGO, alfaMinimo: ALFA_VISIVEL_DA_LOGO, percentil: PERCENTIL_DA_LOGO, canto: args.cantoAtual, avaliacoes: avaliacoes.map(compacta), ...(avisos.length > 0 ? { avisos } : {}), ...(args.gravada ? { gravada: args.gravada, gravadaAutorizada: autorizada(args.gravada) } : {}) }
     if (indisponiveis.length > 0) {
       throw new CreativeError(LOGO_INDISPONIVEL, `Nenhuma variante da logo que carregou lê (${resumoDaGrade}), e ${indisponiveis.map(rotulo).join(', ')} não carregou: a conferência não pôde concluir.`, 503, { ...detalhes, indisponiveis })
     }
     throw new CreativeError(
       LOGO_SEM_VARIANTE_LEGIVEL,
-      `Nenhuma variante autorizada da logo lê contra o fundo real (critério: p10 da diferença de luz pixel a pixel ≥ ${LIMIAR_DE_CONTRASTE_DA_LOGO}, alfa ≥ ${ALFA_VISIVEL_DA_LOGO}). ${resumoDaGrade}. Nenhuma variante é fabricada e nenhum véu novo é desenhado para a logo: cadastre uma variante legível ou troque a foto.`,
+      `Nenhuma variante autorizada da logo lê contra o fundo real (critério: p10 da diferença de luz pixel a pixel ≥ ${LIMIAR_DE_CONTRASTE_DA_LOGO}, alfa ≥ ${ALFA_VISIVEL_DA_LOGO}). ${resumoDaGrade}.${avisos.length > 0 ? ` ${avisos.join(' ')}` : ''} Nenhuma variante é fabricada e nenhum véu novo é desenhado para a logo: cadastre uma variante legível ou troque a foto.`,
       422,
       detalhes,
     )
@@ -291,9 +321,14 @@ export async function conferirLogoDaPeca(args: ArgsDaConferencia): Promise<Resul
   const trocouVariante = escolha.variante.url !== primeira.url
   const trocouCanto = escolha.canto !== args.cantoAtual
   avisos.push(
-    `A logo (${rotulo(primeira)}) não lia no ${args.cantoAtual} (${resumoDaMedida(atual.medida)}): ficou ${rotulo(escolha.variante)} no ${escolha.canto} (${resumoDaMedida(escolha.medida)}).` +
+    (trocouVariante || trocouCanto
+      ? `A logo (${rotulo(primeira)}) não lia no ${args.cantoAtual} (${resumoDaMedida(atual.medida)}): ficou ${rotulo(escolha.variante)} no ${escolha.canto} (${resumoDaMedida(escolha.medida)}).`
+      : `A logo (${rotulo(primeira)}) não lia no ${args.cantoAtual} sob o véu automático dela (${resumoDaMedida(atual.medida)}); sem o véu ela lê (${resumoDaMedida(escolha.medida)}).`) +
       (veusRemovidos.length > 0 ? ` O véu automático da logo (${veusRemovidos.join(', ')}) não a salvava e saiu.` : ''),
   )
+  // A variante que entrou bem menor que a desenhada (proporção diferente contida na caixa): dito — o piso de tamanho da
+  // marca não é medido aqui.
+  if (trocouVariante && escolha.posicao.width < 0.6 * caixaAtual.width) avisos.push(`A variante que entrou (${rotulo(escolha.variante)}) ficou com ${Math.round(escolha.posicao.width)} px de largura, menos de 60% da logo desenhada (${caixaAtual.width} px): confira o tamanho da marca.`)
   return {
     layers: desenhar(escolha).filter((l) => !veusRemovidos.includes(l.id)),
     legibilidade: {
@@ -304,7 +339,7 @@ export async function conferirLogoDaPeca(args: ArgsDaConferencia): Promise<Resul
       posicao: escolha.posicao,
       medida: escolha.medida,
       legivel: true,
-      escolha: trocouVariante && trocouCanto ? 'variante-e-canto-trocados' : trocouVariante ? 'variante-trocada' : 'canto-trocado',
+      escolha: trocouVariante && trocouCanto ? 'variante-e-canto-trocados' : trocouVariante ? 'variante-trocada' : trocouCanto ? 'canto-trocado' : 'veu-removido',
       avaliacoes: avaliacoes.map(compacta),
       ...(veusRemovidos.length > 0 ? { veusRemovidos } : {}),
     },

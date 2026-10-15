@@ -1063,5 +1063,49 @@ prova que a logo lê. O CP3 prova mecanicamente, contra o fundo REAL.
 - Provas: `legibilidade-da-logo.test.ts` (1–6, 10, 16, 18 puros), `cp3-logo.test.ts` (7–16 e 18 no
   compositor real, recomposição, legado), `cp3-provas.test.ts` (PNG com `PROVAS_DIR`). Os `hojeViola`
   D, E, F, P4 do piloto e "acusa a logo sem leitura" viraram `it()`.
+- **Rodada 1 da revisão adversarial + Codex (15/10/2026)** — o que mudou:
+  - 🔴 **A logo DESENHADA é medida na caixa EXATA em que o render a desenha** (`logo.position/size`,
+    esticada), nunca numa caixa recalculada: a logo do projeto no fallback tem `razao` 0,41 fixa e a
+    caixa da página pode não ter a proporção do arquivo — medir o contain do arquivo deixava metade da
+    caixa desenhada sem medida (p10 205 contain vs 16 desenhada, provado pelo revisor A). Outra variante
+    no canto atual ocupa a caixa pela LARGURA no canto (a mesma das alternativas — `caixaNoCantoAtual`);
+    na logo fixa, o contain da REFERÊNCIA do arquétipo deslocada como a posição (não da posição já
+    contida pela proporção da explícita, que encolhia uma variante quadrada a 41%); fora da zona, vale a
+    posição. A variante que entra com menos de 60% da largura da desenhada é avisada.
+  - 🔴 **Colisão ELIMINA, mesmo legível**: o canto atual passa pelo mesmo critério das alternativas
+    (`livreNoCantoAtual`); a logo fixa e a posição da página já vêm conferidas.
+  - 🔴 **Identificador estável**: `VarianteDaLogo` leva `logoId` (linha `Logo`) ou `camada` (id da camada
+    da página) além da `url` — o Blob já trocou de host uma vez; a recomposição casa primeiro pelo id
+    (`mesmaVariante`). `isProjectLogo` tem de ser `true` (ausente não é autorizado); sem variante
+    autorizada nenhuma, a desenhada NÃO entra por definição (recusa com arquétipo; "não medida" no legado).
+  - 🔴 **A variante gravada é preferência e não depende da foto**: com a foto trocada a busca roda de
+    novo, mas a logo gravada ainda vai primeiro (`pedidoDeReproducao.logo`; na peça do T1a, `lida.logo`).
+    A gravada não autorizada é dita no aviso E nos `details`/mensagem da recusa (`gravada`,
+    `gravadaAutorizada`, `avisos`). O rótulo cita o nome do arquivo.
+  - 🔴 **Quando o véu automático da logo sai, a régua é REMEDIDA** (`corrigir: false`) para `contraste`,
+    `tratamentoPiorou` e o tratamento por borda descreverem a peça que sai (o véu podia estar sob um texto
+    de borda sem plano tratado). `escolha: 'veu-removido'` quando a mesma logo no mesmo canto passa a ler
+    sem o véu. Decisão a confirmar com o owner: as outras variantes são medidas SEM o véu da logo (ele
+    existe só para a logo; mantê-lo para salvar outra variante seria "véu para a logo").
+  - **O p10 que decide é o exibido** (2 casas): 44,9974 sai `45.00` e legível.
+  - **Fundo que não é cor sólida** (`transparent`, rgba) não é medido: `fundoSemALogo` recusa em vez de
+    medir contra preto (no revisor vira "não avaliada"; com arquétipo, `LOGO_INDISPONIVEL`).
+  - **Revisor**: camada desenhada com rotação, opacidade, recorte ou `cover` está `fora-do-contrato`
+    (cobertura parcial, dita — a caixa não representa o desenho); logo só em ARRANJO (grupo) deixa a regra
+    `nao-avaliada` com motivo, nunca "avaliada" com zero pixels; `image` com "logo" no nome (parceiro,
+    selo) ilegível é AVISO com observação própria; data URL vai truncada à evidência. Regra com teste
+    próprio (`cp3-logo-sem-leitura.test.ts`).
+  - **Histórico da recomposição** ganhou ramos para `LOGO_SEM_VARIANTE_LEGIVEL` (salvar de novo não
+    resolve) e `LOGO_INDISPONIVEL` (cadastre a logo de novo se o endereço morreu).
+  - `compor-arte` compacta devolve variante com url/id, posição, `alternativa` e `mensagem` (legado).
+  - **Mudança de comportamento documentada**: peça CP2B/T1a anterior ao CP3 cuja explícita não lê passa,
+    numa edição de texto, a trocar variante/canto (com aviso) ou a recusar `LOGO_SEM_VARIANTE_LEGIVEL`; a
+    arte antiga permanece, `recusaDaRecomposicao` é gravada e o job não tenta de novo.
+  - **Limitações conhecidas (não corrigidas aqui)**: a explícita da página é detectada por `/logo|marca/i`
+    em camada `logo` ou `image` (pré-existente: uma "marca d'água" ou um parceiro na página vira a
+    explícita); pixels com alfa 128–254 contam com contraste cheio (o contrato do owner — infla o p10 de
+    logos finas reduzidas); matiz não conta (vermelho sobre azul = 36, ilegível); a luz da logo (709 sobre
+    sRGB) não é a escala da régua (b-w); o p10 é global (até 10% da logo pode sumir). Candidatas a
+    recalibração do 45 (REA).
 - Fora do CP3: gate autônomo (CP5), logo do arranjo (elementos), mais de uma logo por peça no
-  compositor, recalibração do 45 (REA).
+  compositor, piso de tamanho da marca, recalibração do 45 (REA).

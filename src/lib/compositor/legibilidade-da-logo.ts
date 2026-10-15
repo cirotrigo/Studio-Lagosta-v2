@@ -59,10 +59,25 @@ export const LOGO_INDISPONIVEL = 'LOGO_INDISPONIVEL'
 
 export type OrigemDaVariante = 'pagina' | 'projeto'
 
-/** Uma logo que PODE ser desenhada: de onde veio e o arquivo. */
+/**
+ * Uma logo que PODE ser desenhada: de onde veio e o arquivo. A URL do Blob não é identidade estável (o store já
+ * mudou uma vez e um re-upload muda a URL): a linha `Logo` leva o `logoId`, a camada da página leva `camada` (o id
+ * da camada na página de assinatura). A recomposição casa primeiro pelo identificador, depois pela URL.
+ */
 export interface VarianteDaLogo {
   origem: OrigemDaVariante
   url: string
+  /** `Logo.id`, quando a variante é uma linha do projeto. */
+  logoId?: number
+  /** O id da camada na página de assinatura, quando a variante é a explícita. */
+  camada?: string
+}
+
+/** A mesma variante: pelo identificador estável quando os dois têm, senão pela URL. */
+export function mesmaVariante(a: VarianteDaLogo, b: VarianteDaLogo): boolean {
+  if (a.logoId !== undefined && b.logoId !== undefined) return a.logoId === b.logoId
+  if (a.camada !== undefined && b.camada !== undefined && a.origem === 'pagina' && b.origem === 'pagina') return a.camada === b.camada || a.url === b.url
+  return a.url === b.url
 }
 
 /** Raster RGBA em resolução da peça (a logo já no tamanho em que é desenhada). */
@@ -133,14 +148,16 @@ export function medirLegibilidadeDaLogo(args: { logo: RasterRGBA; posicao: { x: 
   diferencas.sort((a, b) => a - b)
   const p10 = diferencas[Math.max(0, Math.ceil(PERCENTIL_DA_LOGO * n) - 1)]
   const arred = (v: number) => Number(v.toFixed(2))
+  // O p10 que DECIDE é o que se exibe (2 casas): 44,9974 não pode sair "45.00, ilegível".
+  const contrasteP10 = arred(p10)
   return {
     pixelsAvaliados: n,
-    contrasteP10: arred(p10),
+    contrasteP10,
     contrasteMedio: arred(diferencas.reduce((s, d) => s + d, 0) / n),
     proporcaoAcima45: arred(diferencas.filter((d) => d >= LIMIAR_DE_CONTRASTE_DA_LOGO).length / n),
     luzDaLogo: arred(somaLogo / n),
     luzDoFundo: arred(somaFundo / n),
-    legivel: p10 >= LIMIAR_DE_CONTRASTE_DA_LOGO,
+    legivel: contrasteP10 >= LIMIAR_DE_CONTRASTE_DA_LOGO,
   }
 }
 
@@ -154,7 +171,7 @@ export function medirLegibilidadeDaLogo(args: { logo: RasterRGBA; posicao: { x: 
  * marca NÃO são variantes: podem ser parceiro, campanha, co-branding, asset
  * antigo — e nenhuma semântica no banco diz o contrário.
  */
-export function variantesAutorizadasDaLogo(args: { explicita: VarianteDaLogo | null; doProjeto: ReadonlyArray<{ fileUrl: string; isProjectLogo?: boolean }> }): VarianteDaLogo[] {
+export function variantesAutorizadasDaLogo(args: { explicita: VarianteDaLogo | null; doProjeto: ReadonlyArray<{ id?: number; fileUrl: string; isProjectLogo: boolean }> }): VarianteDaLogo[] {
   const lista: VarianteDaLogo[] = []
   const vistas = new Set<string>()
   const entra = (v: VarianteDaLogo) => {
@@ -163,7 +180,8 @@ export function variantesAutorizadasDaLogo(args: { explicita: VarianteDaLogo | n
     lista.push(v)
   }
   if (args.explicita) entra(args.explicita)
-  for (const l of args.doProjeto) if (l.isProjectLogo !== false) entra({ origem: 'projeto', url: l.fileUrl })
+  // A marca tem de ser POSITIVA: linha sem ela (ou sem o campo) nunca é variante — quem monta a lista passa o flag.
+  for (const l of args.doProjeto) if (l.isProjectLogo === true) entra({ origem: 'projeto', url: l.fileUrl, ...(l.id !== undefined ? { logoId: l.id } : {}) })
   return lista
 }
 
@@ -272,6 +290,9 @@ export async function rasterDaLogo(bytes: Buffer, tamanho: { width: number; heig
  * medida", nunca "sem contraste").
  */
 export async function fundoSemALogo(args: { layers: Layer[]; canvas: { width: number; height: number }; background: string; semAsCamadas?: ReadonlySet<string> }): Promise<RasterRGB> {
+  // Fundo transparente (ou com alfa) não é um fundo: o render não pinta o canvas e `removeAlpha` daria PRETO — a
+  // medida mentiria. A peça publicada é achatada por quem a exibe; não há como medir honestamente.
+  if (!/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(args.background.trim())) throw new Error(`fundo da peça não é uma cor sólida (${args.background}): a leitura da logo não pode ser medida`)
   const { semTinta } = await import('./regua')
   const { CanvasRenderer } = await import('@/lib/canvas-renderer')
   const fora = args.semAsCamadas
@@ -301,7 +322,7 @@ export async function medirLogosDaPeca(args: {
   logos: Layer[]
   /** A origem da variante desenhada, quando a composição a gravou (url → origem). */
   origens?: ReadonlyMap<string, OrigemDaVariante>
-}): Promise<Array<{ camada: string; variante: { url: string; origem?: OrigemDaVariante }; posicao: Rect; medida: MedidaDaLogo | null; estado: 'medida' | 'indisponivel' | 'sem-pixels'; motivo?: string }>> {
+}): Promise<Array<{ camada: string; variante: { url: string; origem?: OrigemDaVariante }; posicao: Rect; medida: MedidaDaLogo | null; estado: 'medida' | 'indisponivel' | 'sem-pixels' | 'fora-do-contrato'; motivo?: string }>> {
   const saida: Awaited<ReturnType<typeof medirLogosDaPeca>> = []
   for (const logo of args.logos) {
     const url = typeof logo.fileUrl === 'string' ? logo.fileUrl : ''
@@ -310,6 +331,13 @@ export async function medirLogosDaPeca(args: {
     const variante = { url, ...(origem ? { origem } : {}) }
     if (!url) {
       saida.push({ camada: logo.id, variante, posicao, medida: null, estado: 'indisponivel', motivo: 'a camada não tem arquivo' })
+      continue
+    }
+    // A medida supõe a logo desenhada inteira, opaca e esticada na caixa (o que o compositor produz). Camada editada à
+    // mão com rotação, opacidade, recorte ou `cover` é desenhada de outro jeito: medir a caixa mentiria — dito.
+    const foraDoContrato = foraDoContratoDoDesenho(logo)
+    if (foraDoContrato) {
+      saida.push({ camada: logo.id, variante, posicao, medida: null, estado: 'fora-do-contrato', motivo: foraDoContrato })
       continue
     }
     const fundo = await fundoSemALogo({ layers: args.layers, canvas: args.canvas, background: args.background, semAsCamadas: new Set([logo.id]) })
@@ -322,6 +350,18 @@ export async function medirLogosDaPeca(args: {
     }
   }
   return saida
+}
+
+/** O motivo de a caixa da camada não representar o desenho (rotação, opacidade, recorte, `cover`, espelho), ou `null`. */
+export function foraDoContratoDoDesenho(logo: Layer): string | null {
+  const estilo = (logo.style ?? {}) as { opacity?: unknown; objectFit?: unknown; crop?: unknown; flipX?: unknown; flipY?: unknown }
+  const motivos: string[] = []
+  if (typeof logo.rotation === 'number' && logo.rotation % 360 !== 0) motivos.push(`rotação ${logo.rotation}°`)
+  if (typeof estilo.opacity === 'number' && estilo.opacity < 1) motivos.push(`opacidade ${estilo.opacity}`)
+  if (estilo.objectFit === 'cover') motivos.push('objectFit cover (recorte)')
+  if (estilo.crop && typeof estilo.crop === 'object') motivos.push('recorte manual')
+  if (estilo.flipX === true || estilo.flipY === true) motivos.push('espelhada')
+  return motivos.length > 0 ? `a camada é desenhada com ${motivos.join(', ')}: a medida da caixa não representa o desenho` : null
 }
 
 /** Resumo para avisos e mensagens de erro. */
