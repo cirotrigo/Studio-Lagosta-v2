@@ -952,13 +952,22 @@ async function main() {
         // A recomposição acabou de reescrever as camadas: o gradiente é o da
         // página COMO ESTÁ agora (o id de antes pode ter mudado).
         const grad = c.find((l) => (l.type === 'gradient' || l.type === 'gradient2') && l.metadata?.tratamentoDeTexto)
-        const forca = Math.min(0.9, Math.round((Number(grad?.metadata?.forca ?? 0.5) + 0.06) * 1000) / 1000)
+        // A força tem de MUDAR de verdade: a recomposição pela spec traz de volta o ajuste
+        // gravado (6g deixou a página em 0.9, o teto da faixa), e "+0.06 limitado a 0.9" era
+        // um ajuste sem efeito — a página saía com a MESMA versão visual e o runner, certo,
+        // não a via como editada (achado da prova de 15/10/2026, rodada 5). Sobe quando cabe; senão desce.
+        const forcaAtual6q = Number(grad?.metadata?.forca ?? 0.5)
+        const forca = Math.round((forcaAtual6q + 0.06 <= 0.9 ? forcaAtual6q + 0.06 : forcaAtual6q - 0.06) * 1000) / 1000
         const ajuste = { tipo: 'gradiente' as const, borda: (grad?.metadata?.borda === 'topo' ? 'topo' : 'rodape') as 'topo' | 'rodape', forca, ...(grad ? { camadas: [String(grad.id)] } : {}) }
         const rv = await revisarArte({ projectId: PROJETO, pageId: pageId2, visao: false, previa: false })
+        console.log(`  [6q] costura: página em ${rv.versao}; força ${forcaAtual6q} → ajuste do revisor ${JSON.stringify(ajuste)}`)
         process.env.BLOB_READ_WRITE_TOKEN = 'vercel_blob_rw_INVALIDO_prova'
         erroDoAjuste6q = await erroDe(ajustarArte({ projectId: PROJETO, pageId: pageId2, versaoEsperada: rv.versao, ajustes: [ajuste], canal: 'claude-code' }))
         process.env.BLOB_READ_WRITE_TOKEN = tokenDoBlob
         travaDurante6q = travaDe((await gensDaPagina2())[0]?.fieldValues)
+        const depois = await db.page.findUnique({ where: { id: pageId2 } })
+        const gradDepois = (await camadasDaPagina(pageId2)).find((l) => (l.type === 'gradient' || l.type === 'gradient2') && l.metadata?.tratamentoDeTexto)
+        console.log(`  [6q] depois do ajuste: página em ${depois ? versaoDaPagina(depois) : 'ilegível'}; força ${gradDepois?.metadata?.forca}; erro ${(erroDoAjuste6q as { code?: string } | null)?.code ?? '-'} ${JSON.stringify((erroDoAjuste6q as { details?: unknown } | null)?.details ?? null)?.slice(0, 600)}`)
       }
       await processarRecomposicaoEmBackground({
         generationId: persistido2.generationId,
@@ -979,7 +988,8 @@ async function main() {
       conferir('a costura da RECOMPOSIÇÃO rodou UMA vez e o revisor gravou página + trava ali (o render dele falhou, como no passo 6)', correu6q === 1 && !!eAj6q && eAj6q.code !== 'VERSAO_DIVERGENTE' && !!travaDurante6q && /ajuste do revisor/.test(String((travaDurante6q as Record<string, unknown> | null)?.motivo ?? '')), `${correu6q}x; ${eAj6q?.code} ${String(eAj6q?.message ?? '').slice(0, 60)}; trava durante: ${JSON.stringify(travaDurante6q).slice(0, 120)}`)
       conferir('a arte foi RECOMPOSTA (URL nova e `recomposicao.estado === "feita"`), não re-renderizada', gen6q?.resultUrl !== genBase6q?.resultUrl && fv6q?.recomposicao?.estado === 'feita', JSON.stringify({ estado: fv6q?.recomposicao?.estado, mudouUrl: gen6q?.resultUrl !== genBase6q?.resultUrl }))
       conferir('a trava que sobreviveu é EXATAMENTE a do revisor (`desde` e motivo iguais aos capturados logo após o ajuste): o worker não a apagou nem a recriou', !!fv6q?.somenteReRender && JSON.stringify(fv6q.somenteReRender) === JSON.stringify(travaDurante6q), JSON.stringify({ final: fv6q?.somenteReRender, durante: travaDurante6q }).slice(0, 240))
-      conferir('a página mudou durante (o ajuste do revisor): o runner devolveu o job à fila em vez de fechar DONE', job6q?.status === 'PENDING' && /editada de novo/.test(String(job6q?.lastError)), `${job6q?.status}: ${String(job6q?.lastError).slice(0, 60)}`)
+      const paginaDepois6q = await db.page.findUnique({ where: { id: pageId2 } })
+      conferir('a página mudou durante (o ajuste do revisor): o runner devolveu o job à fila em vez de fechar DONE', job6q?.status === 'PENDING' && /editada de novo/.test(String(job6q?.lastError)), `${job6q?.status}: ${String(job6q?.lastError).slice(0, 60)}; renderizada ${fv6q?.recomposicao?.versaoRenderizada} × página ${paginaDepois6q ? versaoDaPagina(paginaDepois6q) : 'ilegível'}`)
       const d6q = await fecharJob(jobId6q, persistido2.generationId)
       conferir('o fechamento devolve REENFILEIRADO (6q)', d6q === 'REENFILEIRADO', d6q)
       // O que faltava provar já foi provado; o job fecha à mão para não gastar outro render.
