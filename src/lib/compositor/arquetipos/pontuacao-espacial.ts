@@ -332,14 +332,19 @@ const COMPONENTE_QUE_DECIDIU: Record<keyof typeof PESOS_DA_PONTUACAO, string> = 
 
 /**
  * Por que a vencedora venceu, em UMA frase com números: o critério do filtro que a separou da segunda (a conta é a
- * do par, como se só as duas existissem).
+ * do par, como se só as duas existissem — exceto o patamar da cobertura quando TODAS as válidas cobrem a região
+ * estimada: aí ele se mede, como em `melhorEntre`, contra a `menorCobertura` entre as válidas).
  */
-export function motivoDaVitoria(vencedora: AvaliacaoDaCombinacao, segunda?: AvaliacaoDaCombinacao): string {
+export function motivoDaVitoria(vencedora: AvaliacaoDaCombinacao, segunda?: AvaliacaoDaCombinacao, menorCobertura = vencedora.regiaoEstimada?.cobertura ?? 0): string {
   if (!segunda || !ehValida(segunda) || !ehValida(vencedora)) return 'única combinação válida'
   const a = vencedora.componentes!
   const b = segunda.componentes!
   if (invadeAEstimada(segunda) && !invadeAEstimada(vencedora)) {
     return `não cobre a região estimada como assunto; a segunda cobria ${pct(segunda.regiaoEstimada!.cobertura)}% dela`
+  }
+  // A vencedora cobre ⇒ TODAS as válidas cobrem: o patamar da menor cobertura (com tolerância) decide antes do véu.
+  if (invadeAEstimada(vencedora) && (segunda.regiaoEstimada?.cobertura ?? 0) > menorCobertura + TOLERANCIA_DA_COBERTURA) {
+    return `toda posição válida cobre a região estimada como assunto, e esta cobre menos (${pct(vencedora.regiaoEstimada!.cobertura)}% contra ${pct(segunda.regiaoEstimada!.cobertura)}% da segunda)`
   }
   if (b.custoDoTratamento > a.custoDoTratamento + TOLERANCIA_DO_CUSTO) {
     return a.custoDoTratamento === 0

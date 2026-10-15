@@ -200,7 +200,14 @@ export function motivoContraAReferencia(ordenadas: AvaliacaoDaCombinacao[], venc
   if (referencia.eliminada.length > 0) return `${onde} caía em ${[...new Set(referencia.eliminada.map((e) => e.motivo))].join(', ')}`
   if (invadeAEstimada(referencia) && !invadeAEstimada(vencedora)) return `${onde} cobria ${pct(referencia.regiaoEstimada!.cobertura)}% da região estimada como assunto`
   const validas = ordenadas.filter(ehValida)
-  const doPatamar = validas.some((a) => !invadeAEstimada(a)) ? validas.filter((a) => !invadeAEstimada(a)) : validas
+  // O MESMO patamar de `melhorEntre`: sem quem escape da região estimada, ficam as de menor cobertura (com tolerância).
+  const cobertura = (a: AvaliacaoDaCombinacao) => a.regiaoEstimada?.cobertura ?? 0
+  const menorCobertura = Math.min(...validas.map(cobertura))
+  const todasCobrem = !validas.some((a) => !invadeAEstimada(a))
+  if (todasCobrem && cobertura(referencia) > menorCobertura + TOLERANCIA_DA_COBERTURA) {
+    return `${onde} cobria ${pct(cobertura(referencia))}% da região estimada como assunto; toda posição válida a cobre, e ficaram as de menor cobertura (a mínima ${pct(menorCobertura)}%, tolerância ${pct(TOLERANCIA_DA_COBERTURA)} pontos)`
+  }
+  const doPatamar = todasCobrem ? validas.filter((a) => cobertura(a) <= menorCobertura + TOLERANCIA_DA_COBERTURA) : validas.filter((a) => !invadeAEstimada(a))
   const menorCusto = Math.min(...doPatamar.map((a) => a.componentes!.custoDoTratamento))
   if (referencia.componentes!.custoDoTratamento > menorCusto + TOLERANCIA_DO_CUSTO) return `${onde} pedia ${descreverTratamento(referencia)}; aqui ${descreverTratamento(vencedora)}`
   return `${onde} perdia na pontuação (${num(referencia.pontuacao ?? 0)} contra ${num(vencedora.pontuacao ?? 0)})`
@@ -229,7 +236,7 @@ export function diagnosticoDaBusca(args: {
   const motivoDaBusca = (v: AvaliacaoDaCombinacao) => {
     const contra = motivoContraAReferencia(ordenadas, v, args.faixas)
     const semVeu = semVeuEliminadas(ordenadas, v)
-    const daVitoria = motivoDaVitoria(v, segunda)
+    const daVitoria = motivoDaVitoria(v, segunda, Math.min(...ordenadas.filter(ehValida).map((a) => a.regiaoEstimada?.cobertura ?? 0)))
     return [contra, semVeu, contra || semVeu ? daVitoria.replace(/^a foto não distingue: /, 'entre as válidas, ') : daVitoria].filter(Boolean).join('; ')
   }
   return {

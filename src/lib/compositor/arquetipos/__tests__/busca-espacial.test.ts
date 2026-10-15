@@ -5,7 +5,8 @@
 import { describe, expect, it } from 'vitest'
 
 import type { AvaliacaoDaCombinacao, ComponentesDaPontuacao, EscolhaEspacial } from '../busca-espacial-tipos'
-import { contarRecusas, idDaEscolha, motivoContraAReferencia, motivoDaFalta } from '../busca-espacial'
+import { contarRecusas, diagnosticoDaBusca, idDaEscolha, motivoContraAReferencia, motivoDaFalta } from '../busca-espacial'
+import { motivoDaVitoria, ordenarAvaliacoes } from '../pontuacao-espacial'
 
 const componentes = (c: Partial<ComponentesDaPontuacao> = {}): ComponentesDaPontuacao => ({ custoDoTratamento: 0, calma: 0.5, contrasteNatural: 1, assunto: 1, referencia: 1, corte: 1, ...c })
 const av = (indice: number, extra: Partial<AvaliacaoDaCombinacao> = {}): AvaliacaoDaCombinacao => ({
@@ -53,5 +54,20 @@ describe('CP2B · orquestrador', () => {
     expect(motivoContraAReferencia([{ ...vencedora, crop: 'left-middle' }, { ...ref, componentes: componentes({ custoDoTratamento: 0.5 }), tratamento: [{ borda: 'rodape', estado: 'tratado', forca: 0.5 }] }], { ...vencedora, crop: 'left-middle' })).toMatch(
       /^a referência no corte center-middle pedia véu no rodapé 0,50/,
     )
+  })
+
+  it('toda válida cobre a região estimada: a cobertura decide ANTES do véu, e as duas frases dizem isso (o mesmo patamar de melhorEntre)', () => {
+    const cobre = (cobertura: number) => ({ cobertura, teto: 0.4, invade: true })
+    const ref = av(0, { regiaoEstimada: cobre(0.7), pontuacao: 0.9 })
+    const menos = av(1, { regiaoEstimada: cobre(0.45), componentes: componentes({ custoDoTratamento: 0.5 }), pontuacao: 0.5, tratamento: [{ borda: 'rodape', estado: 'tratado', forca: 0.5 }] })
+    const ordenadas = ordenarAvaliacoes([ref, menos])
+    expect(ordenadas[0]).toBe(menos)
+    expect(motivoContraAReferencia(ordenadas, menos)).toBe('a referência cobria 70% da região estimada como assunto; toda posição válida a cobre, e ficaram as de menor cobertura (a mínima 45%, tolerância 5 pontos)')
+    expect(motivoDaVitoria(menos, ref, 0.45)).toBe('toda posição válida cobre a região estimada como assunto, e esta cobre menos (45% contra 70% da segunda)')
+    const d = diagnosticoDaBusca({ escolha: { modo: 'busca-espacial-v1', foto: 'f', corte: 'center-middle', deslocamentos: { headline: -40 } }, resultado: { ordenadas, vencedora: menos, avaliadas: 2 }, faixas: [], cortesAvaliados: ['center-middle'] })
+    expect(d.motivo).toMatch(/cobria 70% da região estimada.*esta cobre menos \(45% contra 70%/)
+    // Dentro da tolerância a cobertura NÃO decide: volta o critério seguinte (o véu).
+    const quase = av(2, { regiaoEstimada: cobre(0.48), pontuacao: 0.9 })
+    expect(motivoDaVitoria(quase, menos, 0.45)).toMatch(/^lê sem véu; a segunda pedia véu no rodapé 0,50/)
   })
 })
