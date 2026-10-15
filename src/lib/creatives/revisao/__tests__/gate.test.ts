@@ -892,7 +892,7 @@ describe('G21c/G21e — paridade com o render real (gerada de CHAVES_CLASSIFICAD
       for (const [nome, extra] of fixos) variantes.push([nome, { ...base.camada, ...extra, style: { ...(base.camada.style ?? {}), ...((extra as { style?: object }).style ?? {}) } } as Layer])
       for (const [nome, camada] of variantes) {
         const lim = limitesDe(camada)
-        expect(lim.contido, `${base.nome} / ${nome}: ${lim.contido ? '' : lim.motivo}`).toBe(true)
+        expect(lim.contido, `${base.nome} / ${nome}: ${lim.contido === false ? lim.motivo : ''}`).toBe(true)
         if (!lim.contido) continue
         const pintada = await caixaPintada([camada])
         expect(dentro(pintada, lim.rect), `${base.nome} / ${nome}: pintado ${JSON.stringify(pintada)} fora de ${JSON.stringify(lim.rect)}`).toBe(true)
@@ -935,7 +935,7 @@ describe('G21c/G21e — paridade com o render real (gerada de CHAVES_CLASSIFICAD
       const [m] = measureTextLayers([camada], medir)
       expect(m, `${nome}: sem métrica`).toBeTruthy()
       const lim = limitesDoTexto(camada, m, 'protegido')
-      expect(lim.contido, `${nome}: ${lim.contido ? '' : lim.motivo}`).toBe(true)
+      expect(lim.contido, `${nome}: ${lim.contido === false ? lim.motivo : ''}`).toBe(true)
       if (!lim.contido) continue
       // A mancha não entra nos limites: renderiza SEM ela (a decisão é sobre os glifos).
       const semMancha = { ...camada, effects: { ...(camada.effects ?? {}), background: undefined } } as Layer
