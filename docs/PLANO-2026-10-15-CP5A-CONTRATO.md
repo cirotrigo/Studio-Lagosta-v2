@@ -1,7 +1,8 @@
 # CP5a — contrato técnico do VEREDITO PURO (proposta para revisão, 15/10/2026, noite)
 
 **Estado: PROPOSTA PARA REVISÃO. Nada implementado.** Base: `main` `01f3c3be` (merge do CP4.2, PR #235).
-Revisão do OWNER sobre o HEAD 5949eb33 (NÃO APTO) aplicada: sem exceção de gradiente na oclusão (metadata não
+Rodada 4 do Codex (BLOCKER: o render gira em torno da ORIGEM, não do centro; IMPORTANTE: piso de interface sem
+rotação; MENOR: descrições) aplicada no HEAD seguinte. Revisão do OWNER sobre o HEAD 5949eb33 (NÃO APTO) aplicada: sem exceção de gradiente na oclusão (metadata não
 prova ausência de oclusão); rotação/transformação fechada por limites conservadores ou `NAO_MEDIDO`; invariantes
 com copy completa, identidade e piso; `cenariosNaoMedidos` recebe as evidências da medida e a exceção de logo exige
 prova positiva; 9.4 (copy sem contrato) já afeta o CP5a. Rodada 2 do Codex (2 IMPORTANTE, 1 MENOR) aplicada: exceção de gradiente só para `gradient`/`gradient2` COM a
@@ -30,7 +31,7 @@ do owner, com recomendação e sem assumir aprovação.
 | Nome da função | `vereditoDaMedida(medida, relatorio, identidade)` em `veredito.ts` | nome livre; chave persistida NÃO pode ser `veredito` | `REVISAO_HUMANA_NECESSARIA` existe só como texto (`operacao-dot.ts`, manual) e no oráculo dos testes | função `gateDaMedida` em `src/lib/creatives/revisao/gate.ts`; tipo `GateDaArte`. "gate" é o vocabulário do plano-mestre e não colide com `VereditoDeArte` (feedback humano) nem com o crivo |
 | Entrada | medida inteira + relatório + identidade | idem | `MedidaDaPeca` (`revisar-arte.ts`, `Omit<EntradaDaRevisao, 'vistos'\|'motivoSemVisao'\|'marcas'>`) já traz `camadas`, `canvas` e `formato`; `avaliarPeca(medida)` (`regras.ts`, pura e síncrona) → `RelatorioDaRevisao`; identidade = `versaoDaPagina` (sem áudio) + hash do `copyAutoral` (só em testes) | seção 2: **a medida é a fonte única** — o gate chama `avaliarPeca(medida)` ele mesmo e devolve o relatório junto (Codex R1: relatório e camadas recebidos à parte permitiam provar uma peça com o relatório de outra). **O relatório não basta**: só a medida traz `assunto.origem`, `contraste`, `pioras`, `leituraDaLogo`, `motivoSemMedida`, `textosSemMetrica` |
 | `texto-sobre-assunto` | comprova SÓ com catálogo; sem assunto → humano | o doc não conhecia `naoSeAplica` (CP4.1); política por caso A–E é a decisão 1 | `CoberturaDaRegra.naoSeAplica` existe (`contrato.ts:87`); `assunto.origem: 'catalogo' \| 'estimado'`; tetos 0,25 (catálogo) e 0,40 (estimado) em `mapa-de-calma.ts:175-177`; **o assunto sai das camadas efetivas** (CP4.2, revisão do owner) | seção 5: política por caso, parametrizada (`politicaDoAssunto`), com a recomendação; o CP5a implementa os cinco casos e testa cada um |
-| Oclusão | não tratada | lacuna crítica; (B) detecção do cenário no CP5a, (A) medição no CP5b; decisão 2 | `regras.ts` não lê `Layer.order`; mede só `text`/`rich-text` visíveis, a foto de fundo (`fotoDeFundo`) e as logos soltas (`logosDaPeca`); `shape`/`icon`/`element`/`video`/`gradient2`/imagem que não é fundo são invisíveis; a régua (`regua.ts:342`, `semTinta`) renderiza as camadas ACIMA do texto como fundo | seção 6: (B) como função pura `cenariosNaoMedidos(camadas, canvas)` no CP5a — toda camada não-texto visível com `order` maior OU IGUAL ao de um texto visível cujos limites (conservadores, com a rotação) intersectam os dele → `REVISAO_HUMANA_NECESSARIA`; sem exceção para gradiente (metadata não prova ausência de oclusão); a única exceção é o par logo solta × texto que `logo-sobre-texto` comprovadamente examinou; transformação não suportada → `NAO_MEDIDO` (seção 6) |
+| Oclusão | não tratada | lacuna crítica; (B) detecção do cenário no CP5a, (A) medição no CP5b; decisão 2 | `regras.ts` não lê `Layer.order`; mede só `text`/`rich-text` visíveis, a foto de fundo (`fotoDeFundo`) e as logos soltas (`logosDaPeca`); `shape`/`icon`/`element`/`video`/`gradient2`/imagem que não é fundo são invisíveis; a régua (`regua.ts:342`, `semTinta`) renderiza as camadas ACIMA do texto como fundo | seção 6: (B) como função pura `cenariosNaoMedidos(medida, cobertura)` no CP5a — toda camada visível (de qualquer tipo, inclusive texto girado ou sem métrica) com `order` maior OU IGUAL ao de um texto visível cujos limites (conservadores, com a rotação em torno da origem, como o render) intersectam os dele → `REVISAO_HUMANA_NECESSARIA`; sem exceção para gradiente (metadata não prova ausência de oclusão); as únicas exceções são texto × texto ambos medidos e sem rotação (é `colisao`) e o par logo solta × texto que `logo-sobre-texto` comprovadamente examinou; transformação não suportada → `NAO_MEDIDO` (seção 6) |
 | Piso de interface 188/224 | lacuna; `foraDaInterface` do oráculo vira produção no CP5c2 | "no CP5a `foraDaInterface` vira função de produção ou regra do revisor" | só em `direcao-de-arte/__tests__/suporte/propriedades.ts:35,349` (`PISO_DE_INTERFACE_DO_STORY`, `foraDaInterface`) | seção 4.3: vira função de produção em `gate.ts` (`foraDaInterface`), conferida pelo gate sobre as CAIXAS (texto e logo visíveis), só para `formato === 'story'`; o oráculo dos testes passa a importar a de produção (um só lugar com os números) |
 | Copy completa | reconciliação pura `revisaoDaPaginaComCamadas` em `sem-mudanca` + `lacunas` vazias | idem + `copyRemovida` como evidência | `revisaoDaPaginaComCamadas(gravado, camadas, quem)` (`copy-autoral/revisar-pagina.ts:83`): estados `sem-contrato`, `ilegivel`, `historico-cheio`, `copy-invalida`, `sem-mudanca`, `registrada` | seção 4.4: entra no CP5a como entrada OPCIONAL (`copy`), já calculada por quem chama; o gate não lê banco. `copyRemovida` NÃO entra no CP5a (mora na Generation; é evidência do CP5b/CP5c) |
 | Achado crítico | regra crítica com `certeza: 'medida'`, qualquer severidade; `estimada` = não comprovado; `visao` não entra | idem | `Certeza = 'medida' \| 'estimada' \| 'visao'`; `colisao`, `fora-da-area-segura`, `logo-sobre-texto`, `texto-sobre-assunto`, `texto-cortado` saem `aviso` | seção 4.1, sem mudança: predicado executável |
@@ -180,8 +181,9 @@ Fora (não decidem, nem aprovam nem reprovam): `gradiente-forte-demais`, `titulo
 `REGRAS_CRITICAS ∪ NAO_CRITICAS === REGRAS_DA_REVISAO` — regra nova em `contrato.ts` sem classificação
 quebra o teste (nunca "não contada").
 
-Mais três conferências que NÃO são regra do revisor e por isso têm entrada própria (seção 4.3–4.5):
-**piso de interface** (story), **copy completa** e **oclusão**.
+Mais QUATRO conferências que NÃO são regra do revisor e por isso têm entrada própria na cobertura
+(`ConferenciaDoGate`): **piso de interface** (story, 4.3), **copy completa** (4.4), **oclusão** (4.5/6) e
+**identidade** (2.2, `pageVersion` legível). As quatro são condição de APTO (invariante 1).
 
 `texto-pequeno` entra como crítica porque o CP4.2 fez a manchete medida por componente
 (`texto-pequeno:<camada>:modelo|hierarquia|celular`, severidade `aviso`, `certeza: 'medida'`): achado
@@ -228,10 +230,13 @@ uma regra crítica que apareça `nao-avaliada` com `naoSeAplica` fora desse mapa
 
 `foraDaInterface(camadas, canvas, interface)` sai do oráculo dos testes para `gate.ts` (produção), com
 `PISO_DE_INTERFACE_DO_STORY = { topo: 188, rodape: 224 }` e `interfaceDoStory(doCliente?)` (mais restritivo,
-nunca menos). O gate aplica só com `formato === 'story'`: texto visível ou logo solta com
-`position.y < topo` ou `y + height > canvas.height − rodape` → motivo `piso-de-interface` / `ACHADO_CRITICO`
+nunca menos). O gate aplica só com `formato === 'story'`: texto visível ou logo solta cujos **limites
+conservadores `limitesDe(l)` (seção 6: a caixa envolvente da geometria girada em torno da origem, como o render)**
+têm `topo < interface.topo` ou `base > canvas.height − rodape` → motivo `piso-de-interface` / `ACHADO_CRITICO`
 com as camadas e `cobertura['piso-de-interface'] = reprovada`; satisfeito → `comprovada`; fora do story →
-`nao-se-aplica`. É condição de APTO (invariante 1). A geometria de composição do projeto (`assinatura.geometria.story`, 250/350 na peça
+`nao-se-aplica`. É condição de APTO (invariante 1). Camada girada cuja caixa original está na faixa livre mas
+cujos limites girados invadem topo ou rodapé REPROVA (Codex R4); camada com transformação não suportada deixa o
+piso **não comprovado** (`naoMedidos`), nunca comprovado pela caixa original. A geometria de composição do projeto (`assinatura.geometria.story`, 250/350 na peça
 piloto) NÃO entra (decisão do owner de 13/10, mantida). O `hojeViola` P6 de `piloto-compositor` NÃO muda
 aqui (ele é sobre o compositor, não sobre o gate).
 
@@ -315,15 +320,26 @@ export function cenariosNaoMedidos(
 >
 ```
 
-**Limites de cada camada**: `limitesDe(l)` devolve a caixa alinhada aos eixos que CONTÉM a geometria desenhada —
-para `rotation` ∈ {0, undefined} é `position`/`size`; para qualquer outra rotação é a caixa envolvente do
-retângulo girado em torno do seu centro (limites conservadores: podem sobrar, nunca faltar). Transformações
-que a caixa não representa — `style.mask`, flip/escala negativa, `skew`, `objectFit: 'cover'` com recorte
-num `image`/`logo` acima de texto, ou qualquer campo de transformação que o gate não conheça — classificam a
-camada como **`transformacao-nao-suportada` → `NAO_MEDIDO`** ANTES de qualquer teste de intersecção (nunca
-"descartar pela caixa original"). O cenário fixado em teste: uma forma 600×40 em (400, 500) girada 90°
-tem caixa original y 500–540, que NÃO toca um texto em y 600–700, mas o render dela cobre x 680–720 ×
-y 220–820 — os limites conservadores intersectam e a peça vai ao humano.
+**Limites de cada camada**: `limitesDe(l)` devolve a caixa alinhada aos eixos que CONTÉM a geometria desenhada,
+com o MESMO pivô do render: o servidor gira o node em torno da ORIGEM `(position.x, position.y)`, sem offset
+(`render-engine.ts:199-205`, "Konva rotaciona o node em torno da própria origem") — **não em torno do
+centro** (Codex R4). Para `rotation` ∈ {0, undefined} é `position`/`size`; para qualquer outra rotação são os
+quatro cantos `(0,0) (w,0) (0,h) (w,h)` girados por `rotation` graus em torno da origem, somados a
+`position`, e a caixa envolvente deles (limites conservadores: podem sobrar, nunca faltar). Transformações
+que a caixa CONTÉM e por isso são suportadas: `style.flipH`/`flipV` (o render espelha DENTRO da caixa,
+`render-engine.ts:1692-1693`) e `style.mask` (o `clip` só RETIRA desenho, `render-engine.ts:1664-1668` —
+a caixa continua contendo o que sobra; uma forma mascarada acima de um texto que intersecta CONTA, porque o
+gate não sabe o que o recorte deixou). Qualquer outro campo de geometria que o tipo venha a ter (escala,
+`skew`, `offset`…) classifica a camada como **`transformacao-nao-suportada` → `NAO_MEDIDO`** ANTES de qualquer
+teste de intersecção (nunca "descartar pela caixa original"); um teste (G23b) fixa por snapshot as chaves de
+`Layer`/`LayerStyle` que o gate conhece — chave nova no tipo faz o teste falhar e exige classificação.
+
+O cenário fixado em teste (com a geometria REAL do render): uma forma 600×40 em (400, 500) girada 90°
+tem caixa original y 500–540, que NÃO toca um texto em x 370–390 × y 600–700, mas o render dela ocupa
+x 360–400 × y 500–1100 (girou em torno da origem, para baixo e para a esquerda) — os limites conservadores
+intersectam o texto e a peça vai ao humano. A paridade com o render é provada por teste (G21c): para
+rotações 0/30/90/180/270, os pixels pintados de uma forma opaca no render REAL ficam todos dentro de
+`limitesDe(l)`.
 
 **Regra**: para cada texto VISÍVEL `t` (`ehTextoVisivel`), toda camada `c` visível, `c.id !== t.id`, com
 **`c.order >= t.order`** (o empate conta como ACIMA — fail-closed), cujos `limitesDe(c)` intersectam
@@ -393,12 +409,14 @@ real para o relatório — o gate é testado sobre o relatório que o revisor de
 | G16 | assunto D (`motivoSemAssunto` sem a marca) | não comprovada, independente da política (as 4 combinações) |
 | G17 | assunto E (sem foto de fundo) | não se aplica, independente da política |
 | G18 | `naoSeAplica` numa crítica fora do mapa (ex.: forjado em `colisao`) | não comprovada |
-| G19 | piso de interface: texto em `y = 100` no story / logo invadindo o rodapé / a mesma peça em `feed` | reprova / reprova / não se aplica |
+| G19 | piso de interface: texto em `y = 100` no story / logo invadindo o rodapé / a mesma peça em `feed` / texto com caixa original na faixa livre mas girado 90° em torno da origem invadindo o topo / logo com transformação não suportada | reprova / reprova / não se aplica / reprova (limites girados) / não comprovada |
 | G20 | copy: cada estado da tabela 4.4 + `copy` ausente | conforme |
 | G21 | oclusão (sem rotação): `shape` com `order` maior intersectando um texto → `naoMedidos.oclusao`; `order` igual → idem; `shape` abaixo → nada; `shape` acima sem intersecção → nada; `gradient` E `gradient2` acima, COM e SEM `metadata.tratamentoDeTexto` → oclusão (sem exceção); gradiente de leitura abaixo (ordem normal) → nada; imagem que não é o fundo acima → oclusão; foto de fundo com `order >=` ao de um texto → oclusão; texto sobre texto, ambos com métrica e sem rotação → nada (é `colisao`); logo SOLTA acima de texto COM métrica, `logo-sobre-texto` `avaliada` → nada (par comprovado); logo em GRUPO acima de texto → oclusão; logo solta acima de texto em `textosSemMetrica` → oclusão; logo solta com `logo-sobre-texto` `parcial`/`nao-avaliada` → oclusão; `motivoSemMedida` presente → a exceção de texto e a de logo não valem; texto oculto (`visible: false`) sob uma forma → nada; `cobertura.oclusao` = `comprovada` só com a lista vazia | conforme |
-| G21b | rotação e transformação: forma 600×40 em (400, 500) girada 90° (caixa original y 500–540) sobre texto em y 600–700 → oclusão pelos limites conservadores (a caixa original não intersecta); a mesma forma girada ABAIXO do texto → nada; texto girado 15° acima de outro texto → oclusão (a exceção de texto não vale); logo solta girada acima de texto com métrica → oclusão (a exceção de logo não vale); `shape` com `style.mask` acima de texto, caixa original sem intersecção → `transformacao-nao-suportada`/`NAO_MEDIDO` (classificada ANTES do teste de caixa); flip (escala negativa) idem | conforme |
+| G21b | rotação e transformação: forma 600×40 em (400, 500) girada 90° (caixa original y 500–540) sobre texto em x 370–390 × y 600–700 → oclusão pelos limites conservadores (render ocupa x 360–400 × y 500–1100; a caixa original não intersecta); a mesma forma girada com `order` ABAIXO do texto → nada; texto girado 15° acima de outro texto → oclusão (a exceção de texto não vale); logo solta girada acima de texto com métrica → oclusão (a exceção de logo não vale); `shape` com `style.mask` acima de texto cuja caixa intersecta → oclusão (o recorte não é prova); `shape` com `flipH` → limites iguais à caixa; camada com chave de geometria fora da lista conhecida → `transformacao-nao-suportada`/`NAO_MEDIDO` ANTES do teste de caixa | conforme |
+| G21c | paridade com o render REAL: forma opaca 600×40 em (400, 500) com rotação 0/30/90/180/270 renderizada pelo renderizador do servidor; todo pixel pintado está dentro de `limitesDe(l)` (limites conservadores contêm o desenho); e para 90° os limites são exatamente x 360–400 × y 500–1100 | conforme |
 | G22 | `pageVersion: null` com as 11 regras comprovadas e o resto limpo | `IDENTIDADE_ILEGIVEL`, `cobertura.identidade = nao-comprovada`, `REVISAO_HUMANA_NECESSARIA` (ver G28) |
 | G23 | `REGRAS_CRITICAS ∪ NAO_CRITICAS === REGRAS_DA_REVISAO` (sem sobra nem falta) | fixa a classificação |
+| G23b | snapshot das chaves de `Layer` e `LayerStyle` que o gate classifica (suportadas: `rotation`, `flipH`, `flipV`, `mask`; o resto não é geometria); chave de geometria nova no tipo → o teste falha e exige classificação | fixa a lista |
 | G24 | o relatório REAL da fixture do piloto (`piloto-2026-10-13`, medida sintética a partir de `composicaoRegistrada.contraste`, serviço `ok: false`) | `REVISAO_HUMANA_NECESSARIA` com `texto-sem-leitura:servico` — o mesmo contrato alvo que `piloto-portao` descreve, sem tocar nos `hojeViola` |
 | G25 | `copyVersionDe`: `null` → `'sem-contrato'`; mesma copy com chaves em outra ordem → mesmo hash; copy diferente → hash diferente | puro |
 | G26 | `foraDaInterface` de produção, casos independentes: texto com `y = 187` reprova e `y = 188` passa; logo com base em `canvas.height − 223` reprova e `− 224` passa; cliente MENOS restritivo (`topo: 100`) não afrouxa (continua 188); cliente MAIS restritivo (`topo: 300`) aperta; camada oculta não conta. O oráculo dos testes passa a importar a de produção e os testes do CP0 seguem verdes | conforme |
