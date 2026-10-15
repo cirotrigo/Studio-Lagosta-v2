@@ -131,7 +131,11 @@ e a reduziria sem proteção. Contrato:
   a inferência por TAMANHO (maior `style.fontSize` ≥ 1,5× o segundo) só roda quando não há papel gravado e
   só sobre os textos anteriores visíveis e com conteúdo (os mensuráveis). Na medida, `idsDeTitulo` =
   `titulosFixados ∩ camadas medidas` (um título fixado que continua vazio/oculto na candidata simplesmente
-  não é medido); (b) `referencias` por
+  não é medido — e preencher `content` pelo `slotValues` NÃO muda `visible`, `bake-layers.ts:109-129`: a
+  camada oculta só passa a ser medida se o pedido também a revelar). Para os títulos FIXADOS, o casamento
+  por papel em `referenciasDaPagina` inclui a camada anterior mesmo oculta (hoje `ehTextoVisivel` a exclui,
+  `revisar-arte.ts:193-205`): a referência é do MODELO, não da camada, e tem de existir no instante em que
+  o título aparece; (b) `referencias` por
   `referenciasDaPagina(camadasDaPagina, …)` — o casamento por papel usa o papel GRAVADO, então o `papel`
   enviado no pedido não troca a referência; (c) para título sem referência ou com referência inferida,
   `corpoDaEntrada` = o `fontSize1080` da camada ANTERIOR à chamada (não o pós-autofix).
@@ -193,7 +197,7 @@ A evidência de `texto-pequeno` é ARREDONDADA (`Math.round`), como hoje: o piso
 | `src/lib/creatives/revisao/contrato.ts` | `EntradaDaRevisao.titulosFixados?: string[]`; evidência tipada de `texto-pequeno` ganha `componente?`; os ids `texto-pequeno:<layerId>:<componente>` documentados |
 | `src/lib/creatives/revisao/ajustar-sem-piorar.ts` | recebe `camadasDaPagina` (anteriores à chamada); deriva `titulosFixados` (`titulosDaPagina`, pura) e as referências dali, uma vez, antes do lote; injeta `corpoDaEntrada` (da camada anterior) para título sem referência ou inferida; passa `titulosFixados` às duas medidas; motivo da recusa cita o componente |
 | `src/lib/creatives/arte-rapida.ts` | passa `camadasDaPagina: sourceLayers` ao executor (ao lado de `conteudoAnterior`, `:1312`) |
-| `src/lib/creatives/revisao/revisar-arte.ts` | `referenciasDaPagina` marca `inferida: true` no fallback 16; `ContextoDaMedicao` ganha `titulosFixados` e aceita referências extras; `medirCamadasDaPeca` as usa (sem mudar `revisarArte` solto) |
+| `src/lib/creatives/revisao/revisar-arte.ts` | `referenciasDaPagina` marca `inferida: true` no fallback 16 e, para os títulos fixados, casa por papel mesmo a camada anterior oculta; `ContextoDaMedicao` ganha `titulosFixados` e aceita referências extras; `medirCamadasDaPeca` as usa (sem mudar `revisarArte` solto) |
 | `src/lib/creatives/revisao/nao-piora.ts` | sem mudança na COMPARAÇÃO; `Piora`/`Melhora` ganham `id` do achado (hoje só propriedade, camadas, valores e motivo — `:89`), para a recusa dizer qual componente apareceu/piorou; `motivoDaComparacao` cita o componente |
 | `src/lib/mcp/catalogo/arte-ia.ts`, `docs/regras/revisor-da-arte.md` | descrição e doc: "títulos entram em `texto-pequeno` (modelo, hierarquia, celular)" |
 | Testes | `regras.test.ts` (regra 9 para títulos), `nao-piora.test.ts` (gravidade por componente), `ajustar-sem-piorar.test.ts` (fixação da classificação; referência da base; autofix), `direcao-de-arte/__tests__/piloto-ciclo.test.ts` (casos da matriz com o renderer real) |
@@ -239,7 +243,9 @@ A evidência de `texto-pequeno` é ARREDONDADA (`Math.round`), como hoje: o piso
 | T17 | **compensação**: base título 84 (ref 84) / apoio 160; `fonte escala 0,5` em `[headline, apoio]` | ajuste | recusa `AJUSTE_PIOROU_ARTE`: nos relatórios medidos, `texto-pequeno:headline:hierarquia` vai de 76 → 38 (melhora) e `texto-pequeno:headline:modelo` aparece (0 → 25); na resposta, `comparacao.pioras[0].id === 'texto-pequeno:headline:modelo'` e a melhora listada à parte |
 | T18 | **reclassificação no pedido**: headline (84, ref 84) + headline2 + apoio (36); `slotValues: { headline: { papel: 'apoio', content: 'Novo' } }` + `ajustes: [fonte escala 0,5 em headline]` na MESMA chamada | ajuste | recusa; `titulosFixados` contém `headline`; a referência usada é 84 (da página anterior), não a do apoio; `headline2` segue protegida |
 | T19 | mesma chamada de T18 sem o ajuste (só o `papel`) | slotValues | entra (rebaixar papel continua permitido; fora do CP4.2) |
-| T20 | **título preenchido na chamada**: `headline` (papel gravado) VAZIA/oculta na página anterior; `slotValues: { headline: 'Nova manchete' }` + `ajustes: [fonte escala 0,5 em headline]` | ajuste | `titulosFixados` contém `headline` (papel gravado, sem métrica anterior); referência por papel (assinatura); recusa a 50 % |
+| T20a | **título VAZIO e visível preenchido na chamada**: `headline` (papel gravado) com `content: ''` e `visible: true` na página anterior; `slotValues: { headline: 'Nova manchete' }` + `ajustes: [fonte escala 0,5 em headline]` | ajuste | `titulosFixados` contém `headline` (papel gravado, sem métrica anterior); referência por papel (assinatura); medida na candidata; recusa pelo componente `modelo` |
+| T20b | **título OCULTO na página anterior** (`visible: false`): `slotValues: { headline: 'Nova manchete' }` + `fonte escala 0,5` | ajuste | continua oculto (o `slotValues` não muda `visible`): sem métrica, sem achado de corpo, sem recusa por `texto-pequeno`; `titulosFixados` o contém mesmo assim |
+| T20c | **título oculto REVELADO na chamada**: `slotValues: { headline: 'Nova manchete' }` + `ajustes: [visibilidade true em headline, fonte escala 0,5 em headline]` | ajuste | ao aparecer, é medido como título fixado com a referência por papel (casada mesmo com a camada anterior oculta): recusa a 50 % |
 | T21 | página SEM papel gravado: inferência por tamanho só entre os textos anteriores visíveis com conteúdo; texto oculto grande não vira título | ajuste | lista fixada coerente com a página anterior |
 
 ### A.9 Decisões que precisam do owner (CP4.2a)
