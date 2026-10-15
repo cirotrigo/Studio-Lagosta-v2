@@ -82,6 +82,15 @@ export const toolsDeModelos = [
       // B1c: contrato e slotValues vão CRUS — `createArteRapida` casa a copy contra a página
       // EFETIVA (a foto pode trocar de irmã) e devolve os avisos do casamento na arte.
       const slotValues = (args.slotValues ?? {}) as Record<string, unknown>
+      // CP4.2b — FASE 1 no HANDLER (formato), antes do serviço: código, chave e lista de erros chegam à porta.
+      {
+        const [{ validarEntradaSemantica, validarFormatoDosSlotValues }, { erroDeValores }] = await Promise.all([
+          import('../../semantica/resolver-valores'),
+          import('../../creatives/arte-rapida'),
+        ])
+        const erros = [...validarEntradaSemantica(slotValues), ...validarFormatoDosSlotValues(slotValues)]
+        if (erros.length > 0) throw erroDeValores(erros, 400)
+      }
       return createArteRapida({
         projectId,
         sourcePageId: args.sourcePageId as string,

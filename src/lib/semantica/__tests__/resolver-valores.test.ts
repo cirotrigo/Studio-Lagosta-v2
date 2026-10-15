@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Layer } from '@/types/template'
-import { resolverValoresSemanticos, validarEntradaSemantica } from '../resolver-valores'
+import { resolverValoresSemanticos, validarEntradaSemantica, valorLegadoValido, validarFormatoDosSlotValues, validarEnderecosDosSlotValues } from '../resolver-valores'
 import { camada } from './fixtures'
 
 const papel = (p: string, slot?: string) => ({ compositor: { papel: p }, ...(slot ? { slot: { id: slot } } : {}) })
@@ -337,5 +337,38 @@ describe('Codex #208 — CP5 (fail-closed): texto semântico em camada com chave
   it('imagem com nome "_n" e {fileUrl}: aceito (não é copy)', () => {
     const camadas = [{ id: 'i', name: '_n', type: 'image', visible: true, metadata: { slot: { id: 's' } } }] as never
     expect(resolverValoresSemanticos(camadas, { _slots: { s: { fileUrl: 'https://f' } } }).erros).toEqual([])
+  })
+})
+
+describe('CP4.2b — validação do legado de slotValues (uma fonte só, em duas fases)', () => {
+  it('valorLegadoValido: string (qualquer), ou objeto não vazio só com content/fileUrl/hidden:true/papel/bloco; o resto é inválido', () => {
+    for (const ok of ['x', '', '   ', '.', { content: '' }, { content: 'x' }, { fileUrl: 'https://f' }, { hidden: true }, { papel: 'cta' }, { bloco: 'b' }, { content: 'x', hidden: true }, { content: 'x', papel: 'cta', bloco: 'b' }]) expect(valorLegadoValido(ok)).toBe(true)
+    for (const ruim of [123, 0, true, false, null, undefined, [], ['x'], {}, { hidden: 'true' }, { hidden: 1 }, { visible: false }, { text: 'x' }, { content: 123 }, { fileUrl: '' }, { papel: '' }, { content: 'x', visible: false }]) expect(valorLegadoValido(ruim)).toBe(false)
+  })
+  it('FASE 1 (sem página): legado inválido → VALOR_INVALIDO com origem { tipo: "chave" }; controles de foto só string não vazia (ausente/null = não fornecido); outro `_…` → CHAVE_DESCONHECIDA; _slots/_papeis ficam com a semântica', () => {
+    expect(validarFormatoDosSlotValues({ cta: 'x', Chamada: { content: 'y' }, headline: { hidden: true } })).toEqual([])
+    expect(validarFormatoDosSlotValues({ cta: 123, headline: ['x'], apoio: { visible: false } })).toEqual([
+      { codigo: 'VALOR_INVALIDO', origem: { tipo: 'chave', chave: 'cta' } },
+      { codigo: 'VALOR_INVALIDO', origem: { tipo: 'chave', chave: 'headline' } },
+      { codigo: 'VALOR_INVALIDO', origem: { tipo: 'chave', chave: 'apoio' } },
+    ])
+    expect(validarFormatoDosSlotValues({ cta: null })).toEqual([{ codigo: 'VALOR_INVALIDO', origem: { tipo: 'chave', chave: 'cta' } }])
+    expect(validarFormatoDosSlotValues({ _imageUrl: 'https://f', _driveImageId: 'd1', _slots: { x: 123 }, _papeis: null })).toEqual([])
+    expect(validarFormatoDosSlotValues({ _imageUrl: 123, _driveImageId: '' })).toEqual([
+      { codigo: 'VALOR_INVALIDO', origem: { tipo: 'chave', chave: '_imageUrl' } },
+      { codigo: 'VALOR_INVALIDO', origem: { tipo: 'chave', chave: '_driveImageId' } },
+    ])
+    expect(validarFormatoDosSlotValues({ _qualquer: 'x' })).toEqual([{ codigo: 'CHAVE_DESCONHECIDA', origem: { tipo: 'chave', chave: '_qualquer' } }])
+    // Misto: todos os erros vêm na lista (o pedido inteiro é recusado por quem chama).
+    expect(validarFormatoDosSlotValues({ cta: 'Novo', headline: 123, _x: 1 }).map((e) => e.codigo)).toEqual(['VALOR_INVALIDO', 'CHAVE_DESCONHECIDA'])
+  })
+  it('FASE 2 (com as camadas): chave que não é id nem nome de camada → CHAVE_DESCONHECIDA; V18: id de uma camada e nome de outra, por CAMADA, sem prioridade global', () => {
+    const camadas = [
+      { id: 'cta', name: 'Chamada' },
+      { id: 'b', name: 'cta' },
+      { id: 'c', name: 'Rodape' },
+    ]
+    expect(validarEnderecosDosSlotValues({ cta: 'x', Rodape: 'y', Chamada: { hidden: true } }, camadas)).toEqual([])
+    expect(validarEnderecosDosSlotValues({ naoExiste: 'x', cta: 'y', _slots: { a: 1 }, _imageUrl: 'u' }, camadas)).toEqual([{ codigo: 'CHAVE_DESCONHECIDA', origem: { tipo: 'chave', chave: 'naoExiste' } }])
   })
 })

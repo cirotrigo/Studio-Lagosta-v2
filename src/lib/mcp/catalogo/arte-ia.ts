@@ -223,6 +223,17 @@ export const toolsDeArteIA = [
         // ponytail: a conferência e a escrita não estão na mesma trava; um post aprovado nos segundos entre as duas
         // re-renderiza com o ajuste. Fechar pedindo ao ajustarArte que só invalide DRAFT se isso acontecer de verdade.
       }
+      // CP4.2b — FASE 1 no HANDLER: o formato de `slotValues` é recusado aqui, por `erroDeValores`, para a porta devolver
+      // código, chave e a lista de erros (o schema `safeParse` só devolveria texto). O serviço repete a conferência.
+      {
+        const [{ validarEntradaSemantica, validarFormatoDosSlotValues }, { erroDeValores }] = await Promise.all([
+          import('../../semantica/resolver-valores'),
+          import('../../creatives/arte-rapida'),
+        ])
+        const slotValues = (args.slotValues ?? {}) as Record<string, unknown>
+        const erros = [...validarEntradaSemantica(slotValues), ...validarFormatoDosSlotValues(slotValues)]
+        if (erros.length > 0) throw erroDeValores(erros, 400)
+      }
       const r = await ajustarArte({
         projectId,
         pageId: args.pageId as string,

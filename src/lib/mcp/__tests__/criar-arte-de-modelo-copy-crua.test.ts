@@ -7,9 +7,14 @@ import { describe, expect, it, vi } from 'vitest'
 vi.mock('@/lib/db', () => ({ db: { page: { findUnique: vi.fn() } } }))
 vi.mock('@prisma/client', () => ({ KnowledgeCategory: {}, Prisma: {} }))
 vi.mock('@/lib/mcp/tools', () => ({ quemDecidiu: vi.fn(async () => 'u1'), canalDoPrincipal: vi.fn(() => null), projetosVisiveis: vi.fn(async () => null) }))
-vi.mock('@/lib/creatives/arte-rapida', () => ({
-  createArteRapida: vi.fn(async () => ({ generationId: 'g1', avisos: ['da arte'] })),
-}))
+vi.mock('@/lib/creatives/arte-rapida', async () => {
+  const { CreativeError } = await import('@/lib/creatives/errors')
+  return {
+    createArteRapida: vi.fn(async () => ({ generationId: 'g1', avisos: ['da arte'] })),
+    // CP4.2b: o handler lança por `erroDeValores` (código + lista) — a porta serializa CreativeError.
+    erroDeValores: (erros: Array<{ codigo: string }>, status: number) => new CreativeError(erros[0].codigo, `Os valores semânticos não puderam ser aplicados (${erros.map((e) => e.codigo).join(', ')}).`, status, { erros }),
+  }
+})
 
 import { toolsDeModelos } from '../catalogo/modelos'
 import { createArteRapida } from '@/lib/creatives/arte-rapida'
@@ -32,5 +37,20 @@ describe('criar-arte-de-modelo repassa a copy crua', () => {
     expect(arg.copyAutoral).toBe(contrato)
     expect(db.page.findUnique).not.toHaveBeenCalled()
     expect(r).toEqual({ generationId: 'g1', avisos: ['da arte'] })
+  })
+})
+
+describe('CP4.2b — V17: a FASE 1 (formato) roda no HANDLER e chega à porta com código, chave e lista', () => {
+  it('{ x: 123 } → CreativeError VALOR_INVALIDO 400 com details.erros; o serviço não é chamado', async () => {
+    const tool = toolsDeModelos.find((t) => t.nome === 'criar-arte-de-modelo')!
+    const { CreativeError } = await import('@/lib/creatives/errors')
+    ;(createArteRapida as any).mockClear()
+    await expect((tool as any).handler({ projectId: 8, sourcePageId: 'p-a', slotValues: { x: 123, _slots: { a: 'ok' } } }, { kind: 'service' })).rejects.toMatchObject({
+      code: 'VALOR_INVALIDO',
+      status: 400,
+      details: { erros: [{ codigo: 'VALOR_INVALIDO', origem: { tipo: 'chave', chave: 'x' } }] },
+    })
+    await expect((tool as any).handler({ projectId: 8, sourcePageId: 'p-a', slotValues: { x: 123 } }, { kind: 'service' })).rejects.toBeInstanceOf(CreativeError)
+    expect(createArteRapida).not.toHaveBeenCalled()
   })
 })
