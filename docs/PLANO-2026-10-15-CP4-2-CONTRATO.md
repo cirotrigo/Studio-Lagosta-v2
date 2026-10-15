@@ -24,7 +24,7 @@ com o ajuste aplicado e o autofix geométrico, isto é, o que seria gravado.
 | Regra 9 `texto-pequeno` | `regras.ts:1155-1176` | `if (idsDeTitulo.includes(m.layerId) …) continue` — títulos **pulados**. Para os demais: `piso = ref ? (ref ≥ 24 ? max(24, 0,8·ref) : 0,8·ref) : 24`; achado se `corpo1080 < piso − 0,5`; evidência `{ corpo1080, piso1080, referencia1080 }` **arredondada** (`Math.round`, `regras.ts:1169-1170`) — por isso a não-piora tolera 1 px; severidade `aviso` para `servico`, `sugestao` para o resto; sugere `fonte` com `fontSize = ceil(piso·s)` |
 | Constantes | `regras.ts:220-227` (`LIMITES_DA_REVISAO`) | `pisoDeFonte1080 = 24`, `pisoRelativo = 0,8`, `tituloRelativo = 1,15`, `tituloAlturaSugestao = 0,2`, `tituloAlturaAviso = 0,27` |
 | Regra 7 `titulo-grande` | `regras.ts:1072-1125` | `razao = max(corpo1080 / ref)` entre os títulos; acusa se `razao > 1,15` ou fração da altura útil > 0,2; sugere `fonte` com uma ESCALA sobre o corpo ATUAL, limitada por baixo a `max(razao>1,15 ? 0,5 : 0,8, 24 / corpoMinimo)` — é uma escala mínima do corpo atual (um título em 140 pode receber escala 0,5 → 70), **não** "50 % da referência" |
-| Referência por camada | `src/lib/creatives/revisao/revisar-arte.ts:166-225` (`referenciasDaPagina`) | variante da assinatura casada por PAPEL (papel repetido casa pela ordem vertical; contagens diferentes não casam), senão página-modelo casada por ID; peça com arranjo de combinação **fica sem referência** (de propósito) |
+| Referência por camada | `src/lib/creatives/revisao/revisar-arte.ts:166-225` (`referenciasDaPagina`) | variante da assinatura casada por PAPEL (papel repetido casa pela ordem vertical; contagens diferentes não casam), senão página-modelo casada por ID; peça com arranjo de combinação **não usa a referência da assinatura** (de propósito) — pode ainda usar a página-modelo quando houver `sourcePageId` (`revisar-arte.ts:212`) |
 | Escada do compositor | `src/lib/compositor/blocos.ts:308-320` | a unidade manchete + segunda voz desce em degraus até o piso de **80 % da assinatura**; com arquétipo, `escalaMaxima ≤ 1` sobre `escalaDoFormato`; o piso continua 80 % |
 | Hierarquia | `src/lib/compositor/arquetipos/pontuacao-espacial.ts:141-149`; `direcao-de-arte/__tests__/suporte/propriedades.ts:381-401` | só ESTRUTURAL (quem estava acima continua acima); a escala (`K_REFERENCIA_HIERARQUIA = 1,25`, H1 / maior secundário) é **telemetria — "NUNCA reprova (o owner decidiu que não há K como hard gate)"** |
 | Não-piora | `src/lib/creatives/revisao/nao-piora.ts:57, 74, 172-178` | `texto-pequeno` ∈ `PROPRIEDADES` e `REGRAS_COMPARADAS`; gravidade `max(0, piso1080 − corpo1080)`, tolerância 1 px; chave do achado = `a.id` (um por camada) |
@@ -142,7 +142,7 @@ A evidência de `texto-pequeno` é ARREDONDADA (`Math.round`), como hoje: o piso
 | sem referência, `revisar-arte` solto | — | 84 | 36 | (medida única) | max(36 ; 24) = 36; cobertura `parcial` | só acusa abaixo de 36 |
 | título inferido (sem papel) 60 vs segundo 36, reduzido a 50 | — (base: 60) | 60 | 36 | 50 (deixaria de ser 1,5×) | classificação fixada na base; piso max(48 ; 36 ; 24) = 48 | entra (50 ≥ 48) |
 | idem, reduzido a 30 | — (base: 60) | 60 | 36 | 30 | 48 (hierarquia também: 30 < 36) | **recusa** |
-| título GRANDE corrigido pela regra 7 | 84 | 140 (1,67× ref) | 36 | 84 (escala 0,6) | 67,2 (67) | entra (84 ≥ 67). A escala mínima que a regra 7 pode sugerir para este título passa a ser `67,2 / 140 = 0,48` (A.9, decisão 2) — e 0,5 × 140 = 70 ≥ 67,2 também entraria |
+| título GRANDE corrigido pela regra 7 | 84 | 140 (1,67× ref) | 36 | 84 (escala 0,6) | 67,2 (67) | entra (84 ≥ 67). O quociente do piso é `67,2 / 140 ≈ 0,48`; o schema eleva a escala mínima sugerida a 0,5 (A.9, decisão 2) — e 0,5 × 140 = 70 ≥ 67,2 também entraria |
 
 ### A.6 Arquivos e funções
 
@@ -298,7 +298,8 @@ export function validarSlotValues(slotValues, camadas?): ErroDeValor[]
    FASE 2 não cabe no schema (precisa da página). Não duplicar a lista de chaves no zod: o zod delega.
 
 **Contrato de erro:** `VALOR_INVALIDO` (código que já existe para `_slots`/`_papeis`; `erroDeValores`
-agrupa todos os erros em `details.erros[]`, cada um com `codigo` e `origem { tipo, chave }`), status 422
+agrupa todos os erros em `details.erros[]` — os erros de VALOR trazem `origem { tipo, chave }`; o erro
+estrutural de CAMPO, `ENTRADA_INVALIDA`, traz `campo` (`_slots`/`_papeis`), como hoje), status 422
 (400 quando a recusa é de puro formato antes do banco — como hoje para a semântica). Mensagem em
 português nomeando a chave e o formato aceito ("`cta`: valor `123` não é texto nem `{ content }`; aceito:
 string, ou objeto com content/fileUrl/hidden:true/papel/bloco").
