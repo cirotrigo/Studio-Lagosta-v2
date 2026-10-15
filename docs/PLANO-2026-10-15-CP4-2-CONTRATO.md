@@ -1,6 +1,9 @@
 # CP4.2 — contrato técnico: piso da manchete e `slotValues` inválidos (15/10/2026)
 
-**Estado: APROVADO pelo owner no HEAD 9b85ec29 e IMPLEMENTADO no branch `feat/design-cp4-2`** (ver
+**Estado: APROVADO pelo owner no HEAD 9b85ec29 e IMPLEMENTADO no branch `feat/design-cp4-2`** — a revisão do owner sobre
+o HEAD b21a178a (NÃO APTO) trouxe duas correções: o ASSUNTO da foto sai das camadas efetivas pós-bake (só classificação e
+referências vêm da página anterior; provas (a)/(b)/(c) de troca de foto + ajuste) e `_imageUrl`/`_driveImageId: null` é
+`VALOR_INVALIDO` 400 (`_slots`/`_papeis: null` seguem compatíveis) (ver
 `docs/regras/revisor-da-arte.md` § "CP4.2" para o que ficou em código). Base: `main` `b86cf5a8` (merge do PR #234; contém
 CP0→CP4.1 e o plano-mestre). Este documento fecha o contrato das duas dívidas que o plano-mestre
 (`docs/PLANO-2026-10-15-AUTONOMIA-DIRECAO-DE-ARTE-E-MCP.md`, seção 3) reservou ao CP4.2 — e só delas. Os
@@ -325,7 +328,7 @@ export function validarEntradaLegada(
 export function validarSlotValues(slotValues, camadas?): ErroDeValor[]
 //  FASE 1 — FORMATO (sem página): para cada chave de slotValues:
 //    chave começa com `_`  → controle: `_slots`/`_papeis` → validarEntradaSemantica (como hoje; null/undefined = não fornecido);
-//                            `_imageUrl`/`_driveImageId` → string não vazia, senão VALOR_INVALIDO;
+//                            `_imageUrl`/`_driveImageId` → string não vazia, senão VALOR_INVALIDO (inclusive `null`; só AUSENTE é não fornecido — revisão do owner, 15/10);
 //                            qualquer outro `_…` → CHAVE_DESCONHECIDA
 //    chave não começa com `_` → legado: valorLegadoValido(valor), senão VALOR_INVALIDO { origem: { tipo: 'chave', chave } }
 //    (na FASE 1 não há página: a origem é só a chave; `layerId`/`name` só na FASE 2)

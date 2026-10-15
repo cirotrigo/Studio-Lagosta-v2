@@ -773,12 +773,18 @@ está implementado:
   está'`). Rebaixar o papel pelo `slotValues` continua permitido: na chamada SEGUINTE a camada é julgada pelo papel
   que a página passou a ter. A regra 7 (`titulo-grande`) sugere escala que respeita o piso compartilhado e o 0,5
   do `ajusteSchema`. `revisar-arte` solto continua inferindo os títulos como sempre (cobertura `parcial` quando o
-  título não tem referência de modelo).
+  título não tem referência de modelo). **Só a classificação e as referências vêm da página anterior**: o ASSUNTO da
+  foto sai das camadas EFETIVAS depois do bake (`args.camadas` em `contextoDaMedicao`) — trocar a foto e ajustar na
+  mesma chamada mede o ajuste contra o assunto da foto NOVA, e foto nova ilegível fica "não medida"
+  (`AJUSTE_NAO_MEDIDO`), nunca herda o "não se aplica" da anterior (revisão do owner, 15/10; provas (a)/(b)/(c) e o
+  controle sem troca em `piloto-ciclo.test.ts`).
 - **CP4.2b — `slotValues` inválido é recusado antes de qualquer escrita, por uma fonte só.** Em
   `src/lib/semantica/resolver-valores.ts`: `valorLegadoValido` (string, ou objeto NÃO vazio só com
   `content: string` / `fileUrl` não vazia / `hidden: true` exato / `papel`,`bloco` não vazios);
   `validarFormatoDosSlotValues` (FASE 1, sem página: legado inválido → `VALOR_INVALIDO` com origem
-  `{ tipo: 'chave' }`; `_imageUrl`/`_driveImageId` só string não vazia, ausente/`null` = não fornecido; outro `_…`
+  `{ tipo: 'chave' }`; `_imageUrl`/`_driveImageId` só string não vazia — só AUSENTE é "não fornecido", `null` é
+  `VALOR_INVALIDO` (revisão do owner, 15/10: `_imageUrl: null` respondia sucesso, regravava a página, criava Generation e
+  fazia `put`); `_slots`/`_papeis: null` continuam "não fornecido" (compatibilidade aprovada); outro `_…`
   → `CHAVE_DESCONHECIDA`; `_slots`/`_papeis` continuam com `validarEntradaSemantica`);
   `validarEnderecosDosSlotValues` (FASE 2, contra as camadas do modelo EFETIVO: chave que não é id nem nome de
   camada → `CHAVE_DESCONHECIDA`; a precedência é a do bake, id > semântico > nome POR CAMADA — uma chave que é id de
