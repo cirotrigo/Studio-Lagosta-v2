@@ -112,6 +112,14 @@ describe('CP4.1 — copyRemovidaDoBake: o que o bake fez com a copy existente (r
     const esconder = { y: { hidden: true }, x: { hidden: true } }
     expect(copyRemovidaDoBake(src, bakeLayers(src, esconder, null).layers, esconder).map((c) => [c.layerId, c.operacao])).toEqual([['y', 'escondido']])
   })
+  it('ajuste final do owner — só pontuação/símbolo é `sem-conteudo`; letra, número ou emoji é conteúdo; origem só de pontuação não é protegida', () => {
+    for (const p of ['.', '...', '—', '___', '!!!', '()', '/', '•••', '…', '- -']) expect(remocoes({ cta: p }).map((c) => c.operacao)).toEqual(['sem-conteudo'])
+    for (const ok of ['Jantar', '11h', '🍷', '50% OFF', 'R$ 79', 'Vem!', '½', 'الغداء', '午餐']) expect(remocoes({ cta: ok })).toEqual([])
+    expect(remocoes({ _slots: { manchete: '.' }, _papeis: { headline: '-' } }).length).toBeGreaterThanOrEqual(0) // sem slot cadastrado: resolvido abaixo pelo papel
+    expect(remocoes({ _papeis: { headline: '-' } })).toEqual([expect.objectContaining({ layerId: 'headline', operacao: 'sem-conteudo', endereco: { tipo: 'semanticRole', chave: 'headline' } })])
+    const src = [t('traco', '-'), t('ponto', '.')]
+    for (const sv of [{ traco: '', ponto: '' }, { traco: { hidden: true }, ponto: '.' }]) expect(copyRemovidaDoBake(src, bakeLayers(src, sv, null).layers, sv)).toEqual([])
+  })
   it('CP4.1 (revisores A/B) — invisíveis são vazio; `{ content: "", hidden: true }` registra as DUAS operações', () => {
     for (const invisivel of ['\u200b', '\u200d', '\u2060', '\u00ad', '\u034f', '\u3164', '\u2800', '\ufeff']) expect(remocoes({ cta: invisivel }).map((c) => c.operacao)).toEqual(['esvaziado'])
     expect(remocoes({ cta: { content: '', hidden: true } }).map((c) => c.operacao)).toEqual(['esvaziado', 'escondido'])

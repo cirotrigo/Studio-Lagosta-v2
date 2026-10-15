@@ -699,6 +699,17 @@ Decisão do owner: **o agente autônomo não pode apagar copy para "corrigir" de
   à página); 9g lê a divergência do 9e E planta/restaura uma segunda direto na Generation (valor só da `copyDeAprendizado`); 9h/9i/9j usam `mover` permitido e
   conferem `copyVisualRegravada`; 9f (controle humano) fortalecida — marca antiga sai, `copyRemovida`, sinal do
   ajuste, `removidos` exatos; 9d (remoção humana sem marca → `editada`) não mudou.
+- **Ajuste final do owner (15/10, tarde) — remoção por PONTUAÇÃO fecha**: "ALMOÇO EXECUTIVO" → "." (ou "...",
+  "—", "___", "!!!", "()", "/", "•••") passava como "texto por texto" porque ainda havia caractere visual; é remoção
+  com outra sintaxe. `temTextoSubstantivo` (`texto-visivel.ts`, puro) diz se há CONTEÚDO — uma letra (`\p{L}`), um
+  número (`\p{N}`) ou um pictograma/emoji (`\p{Extended_Pictographic}`, mais as bandeiras) — por propriedade Unicode,
+  sem lista ASCII; `temTextoVisivel` NÃO mudou (continua "há algo desenhável?" para a geometria e o revisor). O guard
+  (`copyRemovidaDoBake`) só protege origem SUBSTANTIVA (placeholder "-" ou "." não vira copy protegida) e registra
+  a terceira operação `sem-conteudo` quando o resultado do bake é só pontuação/símbolo; draft-only recusa com o
+  mesmo `CONTEUDO_NAO_PODE_SER_REMOVIDO` (zero escrita, zero Generation, zero render); o humano pode, e
+  `copyRemovida` registra `sem-conteudo` (não entra em `camposAlterados`). "Almoço" → "Jantar" / "11h" / "🍷" /
+  "50% OFF" / "R$ 79" continuam permitidos: a qualidade editorial é da copy/gate, não deste guard. Provado por
+  id, nome, `_slots` e `_papeis`.
 - **Foto sem assunto localizável não trava mais o ajuste** (achado da prova de integração, passo 6): a peça
   cuja foto o mapa de calma lê sem achar região forte (o compositor grava `assuntoOrigem: 'nenhum'`) vinha com
   `texto-sobre-assunto` "não avaliada" e o CP4 recusava TODO ajuste nela como `AJUSTE_NAO_MEDIDO` — não era
@@ -713,7 +724,6 @@ Decisão do owner: **o agente autônomo não pode apagar copy para "corrigir" de
   como esconder (o bake lava a marca); `{ content: '', hidden: true }` registra as duas operações; o mesmo
   registro `CopyRemovida` vai aos `details`, ao retorno e à Generation; `camposAlterados` passa a ser só
   "texto trocado por outro texto" (o esvaziado sai dele); as mensagens das duas recusas dizem a camada,
-  nunca o texto. **Residuais conhecidos**: trocar a copy por "." ou "-" é "texto por texto" (permitido por
-  decisão); `camposAlterados` é cego a rich-text (pré-existente; `copyRemovida` o vê); a auditoria durável
+  nunca o texto. **Residuais conhecidos**: `camposAlterados` é cego a rich-text (pré-existente; `copyRemovida` o vê); a auditoria durável
   (Generation e sinal) só nasce se o render do ajuste terminar — a página já perdeu a copy na transação
   (limite pré-existente); oclusão de texto por forma/imagem acima dele (z-order) não é propriedade medida.

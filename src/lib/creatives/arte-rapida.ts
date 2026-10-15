@@ -1214,7 +1214,8 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
 
   /**
    * CP4.1 (15/10/2026): O AGENTE AUTÔNOMO NÃO PODE APAGAR COPY — nem pelo `slotValues`. O que o bake faria com os
-   * textos existentes (esconder por `hidden`, esvaziar por `''`/espaço/`{ content: '' }`, também por `_slots`/`_papeis`)
+   * textos existentes (esconder por `hidden`, esvaziar por `''`/espaço/`{ content: '' }`, reduzir a pontuação sem
+   * conteúdo por `"."`/`"—"`, também por `_slots`/`_papeis`)
    * é lido de um bake SEM a foto (o efeito em texto não depende dela), ANTES de qualquer escrita — inclusive do cache
    * do Blob em `resolveImageUrl`. No perfil draft-only é recusa (`CONTEUDO_NAO_PODE_SER_REMOVIDO`); no perfil humano
    * a pessoa pode remover conteúdo, e a remoção fica AUDITÁVEL (`copyRemovida` no retorno e na Generation).
@@ -1225,7 +1226,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
     const porOnde: Record<string, string> = { layerId: 'pela camada', name: 'pelo nome', slotId: 'pelo slot', semanticRole: 'pelo papel' }
     throw new CreativeError(
       'CONTEUDO_NAO_PODE_SER_REMOVIDO',
-      `Ajustar-arte não apaga copy: ${copyRemovida.map((c) => `"${c.chave}" seria ${c.operacao === 'escondido' ? 'escondido' : 'esvaziado'} (pedido ${porOnde[c.endereco.tipo] ?? 'por'} "${c.endereco.chave}")`).join('; ')}. Troque o texto por outro texto, ou deixe a peça para revisão humana.`,
+      `Ajustar-arte não apaga copy: ${copyRemovida.map((c) => `"${c.chave}" seria ${c.operacao === 'escondido' ? 'escondido' : c.operacao === 'esvaziado' ? 'esvaziado' : 'reduzido a pontuação sem conteúdo'} (pedido ${porOnde[c.endereco.tipo] ?? 'por'} "${c.endereco.chave}")`).join('; ')}. Troque o texto por outro texto com conteúdo (letra, número ou emoji), ou deixe a peça para revisão humana.`,
       422,
       // O MESMO registro nos details, no retorno e na Generation (sem o texto; só camada, operação e endereço).
       { copyRemovida, ajusteGravado: false },
@@ -1675,8 +1676,8 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
     }
   }
 
-  // "Conteúdo alterado" = texto trocado por OUTRO texto; o esvaziado e o escondido vão em `copyRemovida` (CP4.1).
-  const esvaziadas = new Set(copyRemovida.filter((c) => c.operacao === 'esvaziado').map((c) => c.layerId))
+  // "Conteúdo alterado" = texto trocado por OUTRO texto; o esvaziado, o reduzido a pontuação e o escondido vão em `copyRemovida` (CP4.1).
+  const esvaziadas = new Set(copyRemovida.filter((c) => c.operacao === 'esvaziado' || c.operacao === 'sem-conteudo').map((c) => c.layerId))
   const camposAlterados = (layers as any[])
     .filter((l) => changedTextIds.includes(l.id) && !esvaziadas.has(l.id))
     .map((l) => l.name ?? l.id)

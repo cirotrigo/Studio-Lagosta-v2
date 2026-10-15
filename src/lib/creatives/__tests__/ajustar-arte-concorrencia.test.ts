@@ -471,7 +471,7 @@ describe('CP4.1 — o agente autônomo (draft-only) não apaga copy pelo slotVal
       layers: (banco.pagina.layers as Array<Record<string, any>>).map((l) => (l.id === 'headline' ? { ...l, metadata: { ...l.metadata, slot: { id: 'manchete' } } } : l)),
     }
   }
-  const intacto = async (chamada: Promise<unknown>, operacao: 'escondido' | 'esvaziado', endereco: { tipo: string; chave: string }, layerId = 'cta', chave = layerId) => {
+  const intacto = async (chamada: Promise<unknown>, operacao: 'escondido' | 'esvaziado' | 'sem-conteudo', endereco: { tipo: string; chave: string }, layerId = 'cta', chave = layerId) => {
     const antes = banco.pagina.updatedAt.getTime()
     const erro = (await erroDe(chamada)) as CreativeError
     expect(erro).toBeInstanceOf(CreativeError)
@@ -480,7 +480,7 @@ describe('CP4.1 — o agente autônomo (draft-only) não apaga copy pelo slotVal
     expect(erro.details).toMatchObject({ ajusteGravado: false, copyRemovida: [{ layerId, chave, operacao, tinhaConteudo: true, endereco }] })
     // Sem o texto integral nos details; a mensagem diz o nome da camada e a operação.
     expect(JSON.stringify(erro.details)).not.toContain('Reserve pelo direct')
-    expect(erro.message).toMatch(new RegExp(`"${chave}" seria ${operacao}`))
+    expect(erro.message).toMatch(new RegExp(`"${chave}" seria ${operacao === 'sem-conteudo' ? 'reduzido a pontuação sem conteúdo' : operacao}`))
     // 11/12: nenhuma escrita, nenhuma Generation, nenhum render/Blob.
     expect(banco.pagina.updatedAt.getTime()).toBe(antes)
     expect(cta().visible).not.toBe(false)
@@ -537,6 +537,45 @@ describe('CP4.1 — o agente autônomo (draft-only) não apaga copy pelo slotVal
     expect(cta().content).toBe('')
     expect(r.copyRemovida).toEqual([{ layerId: 'cta', chave: 'cta', operacao: 'esvaziado', endereco: { tipo: 'layerId', chave: 'cta' }, tinhaConteudo: true }])
     // "alterado" é texto trocado por OUTRO texto: o esvaziado não entra em camposAlterados.
+    expect(r.camposAlterados).toEqual(['headline'])
+  })
+  // Ajuste final do owner (15/10): trocar a copy por PONTUAÇÃO é apagar com outra sintaxe.
+  it('S1–S3. draft-only: "Texto real" → "." / "..." / "—" (e "___", "!!!", "()", "/", "•••") → recusado como sem-conteudo, nada gravado', async () => {
+    for (const pontuacao of ['.', '...', '—', '___', '!!!', '()', '/', '•••', ' - ', '…']) {
+      await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { cta: pontuacao } }), 'sem-conteudo', { tipo: 'layerId', chave: 'cta' })
+    }
+    await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { cta: { content: '.' } } }), 'sem-conteudo', { tipo: 'layerId', chave: 'cta' })
+  })
+  it('S5. draft-only: via `_slots` → "." → recusado, endereço do slot', async () => {
+    comSlot()
+    await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { _slots: { manchete: '.' } } }), 'sem-conteudo', { tipo: 'slotId', chave: 'manchete' }, 'headline')
+  })
+  it('S6. draft-only: via `_papeis` → "-" → recusado, endereço do papel', async () => {
+    await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { _papeis: { headline: '-' } } }), 'sem-conteudo', { tipo: 'semanticRole', chave: 'headline' }, 'headline')
+  })
+  it('S7–S9. draft-only: "Texto real" → "11h30" / "🍷" / "Novo texto!" / "R$ 79" / "50% OFF" → permitido (conteúdo substantivo), sem copyRemovida', async () => {
+    for (const novo of ['11h30', '🍷', 'Novo texto!', 'R$ 79', '50% OFF', '🇧🇷']) {
+      const r = await ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { cta: novo } })
+      expect(cta().content).toBe(novo)
+      expect(r.copyRemovida).toBeUndefined()
+      expect(r.camposAlterados).toEqual(['cta'])
+      banco.pagina = { ...banco.pagina, layers: (banco.pagina.layers as Array<Record<string, any>>).map((l) => (l.id === 'cta' ? { ...l, content: 'Reserve pelo direct' } : l)) }
+    }
+  })
+  it('S10. origem que JÁ era só pontuação ("-", placeholder decorativo) não vira copy protegida: esconder, esvaziar ou trocar por "." entra', async () => {
+    banco.pagina = { ...banco.pagina, layers: [...(banco.pagina.layers as Array<Record<string, any>>), texto('traco', 200, '-')] }
+    for (const valor of [{ hidden: true }, '', '.']) {
+      const r = await ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { traco: valor } })
+      expect(r.ajustada).toBe(true)
+      expect(r.copyRemovida).toBeUndefined()
+    }
+  })
+  it('S11. humano: "Texto real" → "." continua permitido — e `copyRemovida` registra "sem-conteudo" (retorno e Generation); não é "alterado"', async () => {
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { cta: '.', headline: 'Jantar executivo' } })
+    expect(cta().content).toBe('.')
+    const registro = { layerId: 'cta', chave: 'cta', operacao: 'sem-conteudo', endereco: { tipo: 'layerId', chave: 'cta' }, tinhaConteudo: true }
+    expect(r.copyRemovida).toEqual([registro])
+    expect((banco.generations.at(-1)!.fieldValues as Record<string, any>).copyRemovida).toEqual([registro])
     expect(r.camposAlterados).toEqual(['headline'])
   })
   it('A1. draft-only: texto só de caracteres INVISÍVEIS (zero-width, soft hyphen, braille em branco) é esvaziar com outra sintaxe → recusado', async () => {

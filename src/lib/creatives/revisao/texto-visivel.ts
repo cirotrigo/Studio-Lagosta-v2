@@ -16,3 +16,22 @@ export function textoVisivel(s: unknown): string {
 export function temTextoVisivel(s: unknown): boolean {
   return textoVisivel(s).length > 0
 }
+
+/**
+ * O que faz um texto ser CONTEÚDO, não só tinta: uma letra, um número ou um pictograma/emoji (propriedades Unicode,
+ * sem lista ASCII). `\p{L}` cobre letras de qualquer escrita; `\p{N}` números (11h30, 50%, R$ 79, ½, ²);
+ * `\p{Extended_Pictographic}` os emoji e pictogramas (🍷, ☕, ❤) — o Regional Indicator (bandeiras 🇧🇷) entra por
+ * `\p{So}` nessa faixa; `\p{Mn}` fica de fora de propósito (combinador sozinho não é conteúdo).
+ */
+const SUBSTANTIVO = /[\p{L}\p{N}\p{Extended_Pictographic}]|[\u{1F1E6}-\u{1F1FF}]/u
+
+/**
+ * "Tem texto SUBSTANTIVO?" — o predicado do guard de remoção de copy (CP4.1, ajuste final do owner): `"."`, `"..."`,
+ * `"—"`, `"___"`, `"!!!"`, `"()"`, `"/"`, `"•••"` desenham algo mas não DIZEM nada — trocar "ALMOÇO EXECUTIVO" por "." é
+ * apagar a copy com outra sintaxe. `temTextoVisivel` continua respondendo "há algo desenhável?" para a geometria e o
+ * revisor; este responde "há conteúdo?" para a proteção da copy. Invisíveis continuam não contando (passa por
+ * `textoVisivel`); a qualidade editorial de "Almoço" → "11h" é problema da copy/gate, não deste guard.
+ */
+export function temTextoSubstantivo(s: unknown): boolean {
+  return SUBSTANTIVO.test(textoVisivel(s))
+}
