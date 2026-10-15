@@ -88,6 +88,8 @@ export interface MedidaComparavel {
 
 export interface Piora {
   propriedade: Propriedade
+  /** O id do achado comparado (CP4.2a: `texto-pequeno:<camada>:<componente>` diz qual componente apareceu/piorou). */
+  id?: string
   /** As camadas envolvidas (o achado, ou o texto). */
   camadas: string[]
   /** O número que piorou, antes e depois (ou o achado que apareceu). */
@@ -104,6 +106,7 @@ export interface NaoMedida {
 
 export interface Melhora {
   propriedade: Propriedade
+  id?: string
   camadas: string[]
   antes: number | string | null
   depois: number | string | null
@@ -213,14 +216,14 @@ function compararAchados(antes: RelatorioDaRevisao, depois: RelatorioDaRevisao):
     const a = deAntes.get(chave)
     const gd = gravidadeDoAchado(d)
     if (!a) {
-      pioras.push({ propriedade: d.regra as Propriedade, camadas: d.camadas, antes: null, depois: gd.valor, motivo: `apareceu: ${d.mensagem}` })
+      pioras.push({ propriedade: d.regra as Propriedade, id: d.id, camadas: d.camadas, antes: null, depois: gd.valor, motivo: `apareceu: ${d.mensagem}` })
       continue
     }
     const ga = gravidadeDoAchado(a)
-    if (gd.valor > ga.valor + gd.tolerancia) pioras.push({ propriedade: d.regra as Propriedade, camadas: d.camadas, antes: ga.valor, depois: gd.valor, motivo: `piorou: ${d.mensagem}` })
-    else if (gd.valor < ga.valor - gd.tolerancia) melhoras.push({ propriedade: d.regra as Propriedade, camadas: d.camadas, antes: ga.valor, depois: gd.valor })
+    if (gd.valor > ga.valor + gd.tolerancia) pioras.push({ propriedade: d.regra as Propriedade, id: d.id, camadas: d.camadas, antes: ga.valor, depois: gd.valor, motivo: `piorou: ${d.mensagem}` })
+    else if (gd.valor < ga.valor - gd.tolerancia) melhoras.push({ propriedade: d.regra as Propriedade, id: d.id, camadas: d.camadas, antes: ga.valor, depois: gd.valor })
   }
-  for (const [chave, a] of deAntes) if (!deDepois.has(chave)) melhoras.push({ propriedade: a.regra as Propriedade, camadas: a.camadas, antes: gravidadeDoAchado(a).valor, depois: null })
+  for (const [chave, a] of deAntes) if (!deDepois.has(chave)) melhoras.push({ propriedade: a.regra as Propriedade, id: a.id, camadas: a.camadas, antes: gravidadeDoAchado(a).valor, depois: null })
   return { pioras, melhoras }
 }
 

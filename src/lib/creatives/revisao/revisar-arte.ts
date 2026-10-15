@@ -167,11 +167,16 @@ async function referenciasDaPagina(
   camadas: Layer[],
   composicao: Record<string, any> | null,
   geracoes: GeracaoDaPagina[],
+  /** CP4.2a: os títulos fixados pelo executor — casam por papel mesmo OCULTOS na página anterior (a referência é do modelo). */
+  titulosFixados: ReadonlySet<string> = new Set(),
 ): Promise<{ referencias: Record<string, ReferenciaDeCamada>; origem: string | null }> {
   const referencias: Record<string, ReferenciaDeCamada> = {}
-  const doTexto = (c: Layer, largura: number) => ({
+  // CP4.2a: o fallback 16 de uma camada do modelo sem `fontSize` numérico é dito (`inferida`): para títulos vale como
+  // referência ausente, nunca como piso.
+  const doTexto = (c: Layer, largura: number): Omit<ReferenciaDeCamada, 'origem'> => ({
     fontSize1080: (typeof c.style?.fontSize === 'number' ? c.style.fontSize : 16) / (largura / 1080),
     entrelinha: entrelinhaDaCamada(c),
+    ...(typeof c.style?.fontSize === 'number' ? {} : { inferida: true as const }),
   })
 
   const assinaturaId = composicao?.assinatura?.pageId
@@ -182,7 +187,7 @@ async function referenciasDaPagina(
       // Papel repetido (endereço e horário, os dois `servico`) casa pela ORDEM de
       // cima para baixo; contagens diferentes não casam. Usar o maior corpo para
       // todos "aumentava" o endereço composto certo em 24px.
-      const daAssinatura = new Map<string, Array<{ y: number; fontSize1080: number; entrelinha: number }>>()
+      const daAssinatura = new Map<string, Array<{ y: number; fontSize1080: number; entrelinha: number | null; inferida?: true }>>()
       for (const c of lerCamadas(pagina.layers).camadas as unknown as Layer[]) {
         if (!ehTextoVisivel(c)) continue
         const papel = papelDaCamada(c) ?? papelDoNome(c.name) ?? papelDoNome(c.id)
@@ -191,7 +196,7 @@ async function referenciasDaPagina(
       }
       const daPeca = new Map<string, Layer[]>()
       for (const c of camadas) {
-        const papel = ehTextoVisivel(c) ? papelDaCamada(c) : null
+        const papel = ehTextoVisivel(c) || (titulosFixados.has(c.id) && (c.type === 'text' || c.type === 'rich-text')) ? papelDaCamada(c) : null
         if (papel) daPeca.set(papel, [...(daPeca.get(papel) ?? []), c])
       }
       const origem = `assinatura "${pagina.name}"`
@@ -202,7 +207,7 @@ async function referenciasDaPagina(
         if (modelo.length !== 1 && modelo.length !== ordenados.length) continue
         ordenados.forEach((c, i) => {
           const ref = modelo.length === 1 ? modelo[0] : modelo[i]
-          referencias[c.id] = { fontSize1080: ref.fontSize1080, entrelinha: ref.entrelinha, origem }
+          referencias[c.id] = { fontSize1080: ref.fontSize1080, entrelinha: ref.entrelinha, origem, ...(ref.inferida ? { inferida: true as const } : {}) }
         })
       }
       return { referencias, origem }
@@ -217,7 +222,7 @@ async function referenciasDaPagina(
       const origem = `modelo "${modelo.name}"`
       for (const c of camadas) {
         const doModelo = porId.get(c.id)
-        if (doModelo && ehTextoVisivel(c) && ehTextoVisivel(doModelo)) referencias[c.id] = { ...doTexto(doModelo, modelo.width), origem }
+        if (doModelo && (ehTextoVisivel(c) || titulosFixados.has(c.id)) && ehTextoVisivel(doModelo)) referencias[c.id] = { ...doTexto(doModelo, modelo.width), origem }
       }
       return { referencias, origem }
     }
@@ -345,6 +350,8 @@ export interface ContextoDaMedicao {
   faixa: [number, number]
   referencias: Record<string, ReferenciaDeCamada>
   referencia: string | null
+  /** CP4.2a: os títulos fixados pelo executor (da página anterior à chamada); ausente no revisar-arte solto. */
+  titulosFixados?: string[]
   assunto: { rect: Rect; origem: 'catalogo' | 'estimado' } | null
   /** Por que não há assunto, e se isso é "regra inaplicável" (foto lida sem assunto) ou "não medido" (a estimativa falhou). */
   motivoSemAssunto?: string
@@ -366,8 +373,16 @@ export async function contextoDaMedicao(args: {
   projectId: number
   page: { id: string; name: string; width: number; height: number; tags: string[]; background: string | null; layers: unknown }
   camadas: Layer[]
+  /**
+   * CP4.2a (executor): as camadas da página ANTERIOR à chamada — é delas que saem as referências e a classificação dos
+   * títulos, para o `papel` enviado no pedido não trocar a referência nem rebaixar a manchete. Ausente = `camadas`.
+   */
+  camadasDaPagina?: Layer[]
+  titulosFixados?: string[]
 }): Promise<ContextoDaMedicao> {
-  const { projectId, page, camadas } = args
+  const { projectId, page } = args
+  const camadas = args.camadasDaPagina ?? args.camadas
+  const titulosFixados = args.titulosFixados
   const canvas = { width: page.width, height: page.height }
   const formato = formatoDaPagina({ name: page.name, tags: page.tags, width: page.width, height: page.height })
   const designData = convertPageToDesignData({ id: page.id, name: page.name, width: page.width, height: page.height, layers: page.layers, background: page.background })
@@ -393,10 +408,11 @@ export async function contextoDaMedicao(args: {
   const varianteGravada = fieldValues?.composicao?.logo?.legibilidade?.variante as { url?: unknown; origem?: unknown } | undefined
   const origensDaLogo = new Map<string, 'pagina' | 'projeto'>()
   if (typeof varianteGravada?.url === 'string' && (varianteGravada.origem === 'pagina' || varianteGravada.origem === 'projeto')) origensDaLogo.set(varianteGravada.url, varianteGravada.origem)
-  const { referencias, origem: referencia } = await referenciasDaPagina(camadas, fieldValues?.composicao ?? null, geracoes)
+  const { referencias, origem: referencia } = await referenciasDaPagina(camadas, fieldValues?.composicao ?? null, geracoes, new Set(titulosFixados ?? []))
   const { assunto, motivoSemAssunto, assuntoNaoSeAplica } = await assuntoDaPeca(camadas, canvas, formato, fieldValues)
   return {
     projectId, canvas, formato, background, faixa, referencias, referencia, assunto,
+    ...(titulosFixados ? { titulosFixados } : {}),
     ...(motivoSemAssunto ? { motivoSemAssunto } : {}),
     ...(assuntoNaoSeAplica ? { assuntoNaoSeAplica } : {}),
     origensDaLogo, cacheDeLogos: new Map(),
@@ -498,6 +514,7 @@ export async function medirCamadasDaPeca(
     pioras,
     faixaDoGradiente: faixa,
     referencias: ctx.referencias,
+    ...(ctx.titulosFixados ? { titulosFixados: ctx.titulosFixados } : {}),
     assunto: ctx.assunto,
     ...(ctx.motivoSemAssunto ? { motivoSemAssunto: ctx.motivoSemAssunto } : {}),
     ...(ctx.assuntoNaoSeAplica ? { assuntoNaoSeAplica: ctx.assuntoNaoSeAplica } : {}),

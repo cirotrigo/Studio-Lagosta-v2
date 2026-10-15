@@ -126,6 +126,11 @@ export interface ReferenciaDeCamada {
   fontSize1080: number
   entrelinha: number | null
   origem: string
+  /**
+   * CP4.2a: a camada do modelo não tinha `fontSize` numérico e o corpo veio do fallback (16). Para TÍTULOS essa
+   * referência vale como AUSENTE (nunca vira um piso de 12,8 px); os demais seguem como sempre.
+   */
+  inferida?: true
 }
 
 export interface LeituraDaLogoNaRevisao {
@@ -161,6 +166,12 @@ export interface EntradaDaRevisao {
   faixaDoGradiente: [number, number]
   /** Corpo e entrelinha de referência por id de camada da página revisada. */
   referencias: Record<string, ReferenciaDeCamada>
+  /**
+   * CP4.2a: os títulos FIXADOS pelo executor a partir da página ANTERIOR à chamada (`titulosDaPagina`). Presente, a
+   * classificação não é inferida de novo em cada medida — reduzir a manchete (ou reclassificá-la pelo `papel` do
+   * pedido) não a tira da proteção. Ausente (revisar-arte solto), a inferência de sempre.
+   */
+  titulosFixados?: string[]
   assunto: { rect: Rect; origem: 'catalogo' | 'estimado' } | null
   /** Sem assunto: o motivo, e se a regra `texto-sobre-assunto` é inaplicável (foto lida sem assunto) em vez de não medida. */
   motivoSemAssunto?: string
@@ -281,6 +292,52 @@ export function textoSemConteudo(l: Layer): boolean {
 
 export function ehTextoVisivel(l: Layer): boolean {
   return (l.type === 'text' || l.type === 'rich-text') && l.visible !== false
+}
+
+/**
+ * CP4.2a — os títulos de uma página, pela MESMA regra de `idsDeTitulo`, mas lidos das camadas gravadas (a página
+ * ANTERIOR à chamada), para o executor fixar a classificação antes do lote: todo texto com papel GRAVADO
+ * `headline`/`headline2` (metadata/id/nome) entra, mesmo vazio ou oculto (uma manchete vazia que o pedido preenche
+ * continua manchete); sem papel gravado, a inferência por TAMANHO só entre os textos visíveis e com conteúdo (os
+ * mensuráveis): o maior é título se tem corpo ≥ 1,5× o segundo. Puro.
+ */
+export function titulosDaPagina(camadas: Layer[]): string[] {
+  const textos = camadas.filter((l) => l.type === 'text' || l.type === 'rich-text')
+  const porPapel = textos.filter((l) => {
+    const p = papelDaCamada(l)
+    return p === 'headline' || p === 'headline2'
+  })
+  if (porPapel.length > 0) return porPapel.map((l) => l.id)
+  const mensuraveis = textos.filter((l) => l.visible !== false && temTextoVisivel(l.content) && typeof l.style?.fontSize === 'number')
+  if (mensuraveis.length < 2) return []
+  const ordenadas = [...mensuraveis].sort((a, b) => Number(b.style!.fontSize) - Number(a.style!.fontSize))
+  return Number(ordenadas[0].style!.fontSize) >= Number(ordenadas[1].style!.fontSize) * 1.5 ? [ordenadas[0].id] : []
+}
+
+export type ComponenteDoPisoDoTitulo = 'modelo' | 'hierarquia' | 'celular'
+
+/**
+ * CP4.2a — os pisos de corpo (em px de 1080) de um TÍTULO, um por componente, SEM `max` entre eles: cada um vira um
+ * achado próprio e é comparado sozinho (uma melhora na hierarquia não compensa cruzar o piso do modelo).
+ *   modelo     — 0,8 × referência (`pisoRelativo`, a mesma escada do compositor e dos não-títulos); só com referência
+ *                válida (a inferida do fallback 16 conta como ausente);
+ *   hierarquia — o maior corpo1080 entre os textos visíveis que NÃO são título (fator 1,0: não inverter; K segue
+ *                telemetria); só quando há secundário medido;
+ *   celular    — `pisoDeFonte1080` (24), salvo modelo deliberadamente discreto (referência válida < 24: só o recuo
+ *                de 80 % conta, como na regra dos não-títulos).
+ */
+export function pisosDoTitulo(args: {
+  referencia: ReferenciaDeCamada | undefined
+  maiorSecundario1080: number | null
+  limites?: Pick<typeof LIMITES_DA_REVISAO, 'pisoRelativo' | 'pisoDeFonte1080'>
+}): Array<{ componente: ComponenteDoPisoDoTitulo; piso1080: number }> {
+  const L = args.limites ?? LIMITES_DA_REVISAO
+  const ref = args.referencia && !args.referencia.inferida && Number.isFinite(args.referencia.fontSize1080) && args.referencia.fontSize1080 > 0 ? args.referencia.fontSize1080 : null
+  const pisos: Array<{ componente: ComponenteDoPisoDoTitulo; piso1080: number }> = []
+  if (ref !== null) pisos.push({ componente: 'modelo', piso1080: L.pisoRelativo * ref })
+  if (args.maiorSecundario1080 !== null && args.maiorSecundario1080 > 0) pisos.push({ componente: 'hierarquia', piso1080: args.maiorSecundario1080 })
+  if (ref === null || ref >= L.pisoDeFonte1080) pisos.push({ componente: 'celular', piso1080: L.pisoDeFonte1080 })
+  return pisos
 }
 
 export function grupoDaCamada(l: Layer | undefined): string | null {
@@ -1058,6 +1115,11 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
 
   // ── 7. Título grande ───────────────────────────────────────────────────
   const idsDeTitulo = (() => {
+    // CP4.2a: fixados pelo executor a partir da página anterior à chamada — sem inferência nova (A.3 do contrato).
+    if (e.titulosFixados) {
+      const fixados = new Set(e.titulosFixados)
+      return e.metricas.filter((m) => fixados.has(m.layerId)).map((m) => m.layerId)
+    }
     const porPapel = e.metricas
       .filter((m) => {
         const p = papelDaCamada(porId.get(m.layerId)!)
@@ -1069,6 +1131,11 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
     const ordenadas = [...e.metricas].sort((a, b) => b.fontSize - a.fontSize)
     return ordenadas[0].fontSize >= ordenadas[1].fontSize * 1.5 ? [ordenadas[0].layerId] : []
   })()
+  /** CP4.2a: o maior corpo1080 entre os textos medidos que não são título (o componente `hierarquia` do piso). */
+  const maiorSecundario1080De = (_titulo: string): number | null => {
+    const secundarios = e.metricas.filter((m) => !idsDeTitulo.includes(m.layerId) && !textoSemConteudo(porId.get(m.layerId)!))
+    return secundarios.length > 0 ? Math.max(...secundarios.map((m) => m.fontSize / s)) : null
+  }
   if (idsDeTitulo.length === 0) {
     cobertura['titulo-grande'] = { estado: 'nao-avaliada', motivo: 'a peça não tem título identificável' }
   } else if (idsDeTitulo.some((id) => fonteIncerta.has(id))) {
@@ -1099,7 +1166,14 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
       if (grande) candidatas.push((L.tituloAlturaSugestao * 0.92) / fracao)
       let escala = Math.min(...candidatas)
       const corpoMinimo = Math.min(...ms.map((m) => m.fontSize / s))
-      const piso = Math.max(maiorQueOModelo ? 0.5 : L.pisoRelativo, L.pisoDeFonte1080 / corpoMinimo)
+      // CP4.2a: a escala sugerida respeita o piso COMPARTILHADO do título (modelo × hierarquia × celular, por título
+      // atingido) e os limites do `ajusteSchema` (escala ≥ 0,5): a sugestão da regra 7 nunca produz um corpo que a
+      // regra 9 acusaria e a não-piora recusaria.
+      const razaoDoPisoCompartilhado = Math.max(
+        0,
+        ...ms.map((m) => Math.max(0, ...pisosDoTitulo({ referencia: e.referencias[m.layerId], maiorSecundario1080: maiorSecundario1080De(m.layerId), limites: L }).map((p) => p.piso1080)) / (m.fontSize / s)),
+      )
+      const piso = Math.max(maiorQueOModelo ? 0.5 : L.pisoRelativo, L.pisoDeFonte1080 / corpoMinimo, razaoDoPisoCompartilhado)
       escala = arred(Math.max(escala, Math.min(1, piso)), 3)
       const corpoMaior = Math.round(Math.max(...ms.map((m) => m.fontSize / s)))
       adicionar(
@@ -1151,6 +1225,46 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
   }
 
   // ── 9. Texto pequeno ───────────────────────────────────────────────────
+  // CP4.2a — os TÍTULOS: um achado por componente do piso (modelo, hierarquia, celular), cada um com id estável
+  // `texto-pequeno:<camada>:<componente>` e gravidade própria — comparados um a um pela não-piora, sem compensação.
+  for (const m of e.metricas) {
+    if (!idsDeTitulo.includes(m.layerId) || fonteIncerta.has(m.layerId)) continue
+    const camada = porId.get(m.layerId)!
+    const corpo1080 = m.fontSize / s
+    const ref = e.referencias[m.layerId]
+    if (!ref || ref.inferida) marcarParcial('texto-pequeno', `título "${nomeDaCamada(camada)}" sem referência de corpo no modelo (só a hierarquia e o piso do celular valem)`)
+    const maiorSecundario1080 = maiorSecundario1080De(m.layerId)
+    const pisos = pisosDoTitulo({ referencia: ref, maiorSecundario1080, limites: L })
+    const abaixo = pisos.filter((p) => corpo1080 < p.piso1080 - 0.5)
+    const pisoMaior = Math.max(...abaixo.map((p) => p.piso1080), 0)
+    abaixo.forEach((p, i) => {
+      const porque =
+        p.componente === 'modelo'
+          ? `o modelo usa ${Math.round(ref!.fontSize1080)}px e o piso é ${Math.round(p.piso1080)}px`
+          : p.componente === 'hierarquia'
+            ? `o maior texto secundário tem ${Math.round(maiorSecundario1080!)}px e o título não pode ficar menor`
+            : `abaixo do piso de leitura no celular (${Math.round(p.piso1080)}px)`
+      adicionar(
+        {
+          regra: 'texto-pequeno',
+          severidade: 'aviso',
+          certeza: certezaDe([m.layerId]),
+          camadas: [m.layerId],
+          mensagem: `O título "${nomeDaCamada(camada)}" está com ${Math.round(corpo1080)}px: ${porque}.`,
+          evidencia: {
+            corpo1080: Math.round(corpo1080),
+            piso1080: Math.round(p.piso1080),
+            componente: p.componente,
+            referencia1080: ref && !ref.inferida ? Math.round(ref.fontSize1080) : null,
+            maiorSecundario1080: maiorSecundario1080 !== null ? Math.round(maiorSecundario1080) : null,
+          },
+        },
+        // Uma correção só, no primeiro achado do título: subir ao maior dos pisos cruzados.
+        i === 0 ? [{ tipo: 'fonte', camadas: [m.layerId], fontSize: Math.ceil(pisoMaior * s) }] : [],
+        `texto-pequeno:${m.layerId}:${p.componente}`,
+      )
+    })
+  }
   for (const m of e.metricas) {
     if (idsDeTitulo.includes(m.layerId) || fonteIncerta.has(m.layerId)) continue
     const camada = porId.get(m.layerId)!

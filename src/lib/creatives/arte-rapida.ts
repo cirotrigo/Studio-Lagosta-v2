@@ -1311,6 +1311,8 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
           medir: measure,
           // O conteúdo como a PÁGINA o tinha: esvaziar pelo slot e esconder por ajuste na mesma chamada é apagar copy.
           conteudoAnterior: new Map((sourceLayers as Layer[]).filter((l) => l.type === 'text' || l.type === 'rich-text').map((l) => [l.id, String(l.content ?? '')])),
+          // CP4.2a: a classificação e as referências dos títulos vêm da página ANTERIOR à chamada.
+          camadasDaPagina: sourceLayers as Layer[],
         })
       : null
   if (revisao && revisao.aplicados.length === 0 && Object.keys(slotValues).length === 0 && !resolved.url && !input.name) {

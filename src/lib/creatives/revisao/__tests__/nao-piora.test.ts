@@ -226,6 +226,20 @@ describe('não piorar — propriedade a propriedade, sem pontuação global', ()
     expect(comFoto.veredito).toBe(AJUSTE_NAO_MEDIDO)
   })
 
+  it('CP4.2a — um achado POR COMPONENTE do título: a hierarquia que melhora (76 → 38) não compensa o modelo que APARECE (0 → 25) — recusa, com os ids', () => {
+    const antes = medida({ relatorio: relatorio([{ ...achado('texto-pequeno', ['headline'], { corpo1080: 84, piso1080: 160, componente: 'hierarquia' }), id: 'texto-pequeno:headline:hierarquia' }]) })
+    const depois = medida({
+      relatorio: relatorio([
+        { ...achado('texto-pequeno', ['headline'], { corpo1080: 42, piso1080: 80, componente: 'hierarquia' }), id: 'texto-pequeno:headline:hierarquia' },
+        { ...achado('texto-pequeno', ['headline'], { corpo1080: 42, piso1080: 67, componente: 'modelo' }), id: 'texto-pequeno:headline:modelo' },
+      ]),
+    })
+    const c = compararNaoPiora(antes, depois)
+    expect(c.veredito).toBe(AJUSTE_PIOROU_ARTE)
+    expect(c.pioras).toEqual([expect.objectContaining({ propriedade: 'texto-pequeno', id: 'texto-pequeno:headline:modelo', antes: null, depois: 25 })])
+    expect(c.melhoras).toEqual([expect.objectContaining({ id: 'texto-pequeno:headline:hierarquia', antes: 76, depois: 38 })])
+  })
+
   it('CP4.1 — foto de fundo LIDA e sem assunto localizável (cobertura `naoSeAplica` dos dois lados) é inaplicável, não "não medida": o ajuste entra; a marca de um lado só, ou a estimativa que falhou, segue não medida', () => {
     const foto = { id: 'bg-foto', name: 'Foto', type: 'image', visible: true, locked: false, order: 0, position: { x: 0, y: 0 }, size: CANVAS, fileUrl: 'https://x/foto.jpg' } as Layer
     const semAssunto = { 'texto-sobre-assunto': { estado: 'nao-avaliada' as const, motivo: 'a foto foi lida e não tem assunto localizável (mapa de calma sem região forte): nada a proteger', naoSeAplica: true as const } }
@@ -282,7 +296,8 @@ describe('não piorar — propriedade a propriedade, sem pontuação global', ()
 
   it('14. o retorno traz antes e depois de cada piora, com a propriedade e as camadas', () => {
     const c = compararNaoPiora(medida({ relatorio: relatorio([achado('tinta-fora-da-caixa', ['apoio'], { pxAcima: 0, pxAbaixo: 2 })]) }), medida({ relatorio: relatorio([achado('tinta-fora-da-caixa', ['apoio'], { pxAcima: 0, pxAbaixo: 9 })]) }))
-    expect(c.pioras).toEqual([{ propriedade: 'tinta-fora-da-caixa', camadas: ['apoio'], antes: 2, depois: 9, motivo: expect.stringContaining('piorou') }])
+    // CP4.2a: a piora também diz o `id` do achado comparado (para o componente do título).
+    expect(c.pioras).toEqual([{ propriedade: 'tinta-fora-da-caixa', id: expect.any(String), camadas: ['apoio'], antes: 2, depois: 9, motivo: expect.stringContaining('piorou') }])
   })
 
   it('não medido NÃO é "não piorou": régua sem medida ou regra não avaliada → AJUSTE_NAO_MEDIDO (fail-closed)', () => {
