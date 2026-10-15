@@ -355,7 +355,7 @@ export async function conferirLogoDaPeca(args: ArgsDaConferencia): Promise<Resul
   const trocouCanto = escolha.canto !== args.cantoAtual
   avisos.push(
     (trocouVariante || trocouCanto
-      ? `A logo (${rotulo(primeira)}) não lia no ${args.cantoAtual} (${resumoDaMedida(atual.medida)}): ficou ${rotulo(escolha.variante)} no ${escolha.canto} (${resumoDaMedida(escolha.medida)}).`
+      ? `A logo (${rotulo(primeira)}) ${atual.estado === 'fora-da-area' ? `não foi medida no ${args.cantoAtual} (${atual.motivo})` : `não lia no ${args.cantoAtual} (${descricao(atual)})`}: ficou ${rotulo(escolha.variante)} no ${escolha.canto} (${resumoDaMedida(escolha.medida)}).`
       : `A logo (${rotulo(primeira)}) não lia no ${args.cantoAtual} sob o véu automático dela (${resumoDaMedida(atual.medida)}); sem o véu ela lê (${resumoDaMedida(escolha.medida)}).`) +
       (veusRemovidos.length > 0 ? ` O véu automático da logo (${veusRemovidos.join(', ')}) não a salvava e saiu.` : ''),
   )

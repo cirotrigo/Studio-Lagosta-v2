@@ -99,6 +99,9 @@ describe('eliminar antes de preferir', () => {
     expect(r.legibilidade.escolha).toBe('canto-trocado')
     expect(r.canto).toBe('superior-esquerdo')
     expect(r.layers.find((l) => l.id === 'logo')!.position).toEqual({ x: 92, y: 200 })
+    // O aviso diz que o canto COLIDIU, nunca "sem pixel visível" (Codex final do CP3).
+    expect(r.avisos.join(' ')).toMatch(/não foi medida no inferior-direito \(o canto encosta num texto/)
+    expect(r.avisos.join(' ')).not.toMatch(/sem pixel visível/)
   })
 
   it('outra variante MAIS ALTA no canto atual que passa a encostar no texto é eliminada ali (a conferência é por caixa), e vai ao canto livre', async () => {
