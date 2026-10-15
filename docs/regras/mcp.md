@@ -259,3 +259,11 @@ estão cobertos, os buracos, as falhas e a ação recomendada.
   "falha sem diagnóstico disponível".
 - `horariosTipicosDoProjeto` ainda funde sem `formatoDe` (é a cópia sem formato
   da expectativa). Não foi trocada no H2 porque mudaria o resultado dela.
+
+### `slotValues` de `ajustar-arte` e `criar-arte-de-modelo` tem formato validado (CP4.2b, 15/10/2026)
+
+Valor de tipo errado (número, array, `null`, objeto vazio, `{ hidden: "true" }`, `{ visible: false }`, `{ content: 123 }`)
+era ignorado pelo bake e a chamada respondia sucesso re-renderizando a página igual. Agora: FASE 1 (formato) no
+handler e no serviço → `VALOR_INVALIDO` 400; FASE 2 (endereço) contra as camadas do modelo efetivo →
+`CHAVE_DESCONHECIDA` 422; pedido misto recusado inteiro; `details.erros[]` com a chave. Detalhe e provas em
+`docs/regras/revisor-da-arte.md` § "CP4.2".

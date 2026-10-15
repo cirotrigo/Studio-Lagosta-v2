@@ -41,6 +41,21 @@ function ehUrlHttp(url: unknown): url is string {
  * Baixa e decodifica a foto como cover no canvas. `null` (com log) em
  * qualquer falha — quem chama segue sem medição.
  */
+/**
+ * CP4.2b — a foto já BAIXADA (os bytes do Drive antes do `put` do cache): decodifica sem buscar de novo. A `url` é a
+ * que a foto vai ter DEPOIS de persistida; quem chama a preenche antes de passar ao halo (que confere `url` contra o
+ * `fileUrl` da camada).
+ */
+export async function lerFotoDeBytes(bytes: Buffer, canvas: CanvasSize, url = ''): Promise<FotoParaMedicao | null> {
+  try {
+    const raster = await lerFotoComoCover(bytes, canvas)
+    return { url, raster }
+  } catch (error) {
+    console.warn('[halo] Não deu para ler a foto (bytes) para medição:', (error as Error).message)
+    return null
+  }
+}
+
 export async function lerFotoParaMedicao(
   url: string | null | undefined,
   canvas: CanvasSize,

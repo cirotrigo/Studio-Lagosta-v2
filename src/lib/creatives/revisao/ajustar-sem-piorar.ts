@@ -30,7 +30,7 @@ import { aplicarAutofixOuFalhar } from '@/lib/creatives/text-autofix'
 import { aplicarAjustes, type AjusteAplicado, type AjusteRecusado, type ComparacaoDoAjuste, type ResultadoDosAjustes } from './aplicar-ajustes'
 import type { Ajuste } from './contrato'
 import { AJUSTE_PIOROU_ARTE, compararNaoPiora, motivoDaComparacao, type ComparacaoDeNaoPiora, type MedidaComparavel } from './nao-piora'
-import { avaliarPeca } from './regras'
+import { avaliarPeca, titulosDaPagina } from './regras'
 import { contextoDaMedicao, medirCamadasDaPeca, type ContextoDaMedicao } from './revisar-arte'
 
 export interface ArgsDoAjusteSemPiorar {
@@ -42,6 +42,13 @@ export interface ArgsDoAjusteSemPiorar {
   medir: MeasureLayerHeight
   /** O conteúdo dos textos como a página os tinha ANTES desta chamada (id → content): ver `aplicarAjustes`. */
   conteudoAnterior?: ReadonlyMap<string, string>
+  /**
+   * CP4.2a: as camadas da página ANTERIOR à chamada (antes do bake dos `slotValues` e do autofix). Delas saem, UMA vez
+   * e antes do lote, a classificação dos títulos (`titulosDaPagina`) e as referências — o `papel` enviado no pedido
+   * não rebaixa a manchete nem troca a referência; título sem referência (ou com a inferida do modelo) recebe o corpo
+   * ANTERIOR como referência. Ausente = `camadas` (testes/legado).
+   */
+  camadasDaPagina?: Layer[]
   /** Injeção para testes: a medição de um estado. */
   _medir?: (camadas: Layer[], ctx: ContextoDaMedicao) => Promise<MedidaComparavel>
 }
@@ -99,7 +106,19 @@ export async function aplicarAjustesSemPiorar(args: ArgsDoAjusteSemPiorar): Prom
   }
   if (estruturais.size === args.ajustes.length) return { camadas: estado, aplicados, recusados: [...estruturais.values()], alteradas: [] }
 
-  const ctx = await contextoDaMedicao({ projectId: args.projectId, page: args.page, camadas: args.camadas })
+  const camadasDaPagina = args.camadasDaPagina ?? args.camadas
+  const titulosFixados = titulosDaPagina(camadasDaPagina)
+  const ctx = await contextoDaMedicao({ projectId: args.projectId, page: args.page, camadas: args.camadas, camadasDaPagina, titulosFixados })
+  // CP4.2a: título sem referência válida → o corpo ANTERIOR à chamada é a referência (fixa para todo o lote).
+  const escala1080 = canvas.width / 1080
+  for (const id of titulosFixados) {
+    const atual = ctx.referencias[id]
+    if (atual && !atual.inferida && Number.isFinite(atual.fontSize1080) && atual.fontSize1080 > 0) continue
+    const anterior = camadasDaPagina.find((l) => l.id === id)
+    const corpo = typeof anterior?.style?.fontSize === 'number' ? anterior.style.fontSize : null
+    if (corpo === null || corpo <= 0) continue
+    ctx.referencias[id] = { fontSize1080: corpo / escala1080, entrelinha: atual?.entrelinha ?? null, origem: 'página como está' }
+  }
   const medidaInicial = await medir(estado, ctx)
   let medidaAtual = medidaInicial
 

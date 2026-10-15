@@ -155,6 +155,28 @@ describe('o executor (medida injetada)', () => {
     expect(r.recusados[0].motivo).toMatch(/autofix geométrico mexeu na candidata: servico fontSize 32→20/)
   })
 
+  it('CP4.2a — a classificação e a referência dos títulos vêm da PÁGINA ANTERIOR (camadasDaPagina): o `papel` do pedido não rebaixa nem troca a referência; título sem referência recebe o corpo anterior', async () => {
+    const contextos: Array<{ titulosFixados?: string[]; referencias: Record<string, { fontSize1080: number; origem: string }> }> = []
+    const medirComContexto = async (camadas: Layer[], ctx: { titulosFixados?: string[]; referencias: Record<string, { fontSize1080: number; origem: string }> }) => {
+      contextos.push({ titulosFixados: ctx.titulosFixados, referencias: ctx.referencias })
+      return medidaSintetica(camadas)
+    }
+    // A página ANTERIOR: a headline com papel gravado e corpo 84; o pedido rebaixou o papel para "apoio" e o autofix já passou (a base).
+    const anterior = [{ ...texto('headline', 200), style: { fontSize: 84 }, metadata: { compositor: { papel: 'headline' } } } as Layer, texto('servico', 1700)]
+    const base = [{ ...anterior[0], metadata: { compositor: { papel: 'apoio' } } } as Layer, anterior[1]]
+    await aplicarAjustesSemPiorar({ projectId: 8, page, camadas: base, camadasDaPagina: anterior, ajustes: [sobe(10)], medir: medir as never, _medir: medirComContexto as never })
+    expect(contextos.length).toBeGreaterThan(0)
+    for (const c of contextos) {
+      expect(c.titulosFixados).toEqual(['headline'])
+      // Sem página-modelo nem assinatura no banco falso: a referência do título é o corpo ANTERIOR (84), não o do pedido.
+      expect(c.referencias.headline).toMatchObject({ fontSize1080: 84, origem: 'página como está' })
+    }
+    // Sem `camadasDaPagina`, a base é a página (legado/testes): o papel rebaixado vale e não há título fixado.
+    contextos.length = 0
+    await aplicarAjustesSemPiorar({ projectId: 8, page, camadas: base, ajustes: [sobe(10)], medir: medir as never, _medir: medirComContexto as never })
+    expect(contextos[0].titulosFixados).toEqual([])
+  })
+
   it('texto que não cabe depois do ajuste recusa SÓ aquele ajuste (TEXTO_NAO_CABE por ajuste), com o índice do lote', async () => {
     autofix.modo = 'nao-cabe'
     const r = await aplicarAjustesSemPiorar({ projectId: 1, page, camadas: base(), ajustes: [{ tipo: 'mover', camadas: ['nao-existe'], dy: -10 } as Ajuste, sobe(10)], medir: () => null, _medir: medir })

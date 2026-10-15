@@ -54,6 +54,11 @@ export type ValorSemantico = string | { content?: string; fileUrl?: string }
 
 export type OrigemSemantica = { tipo: 'slotId' | 'semanticRole'; chave: string }
 export type OrigemDoValor = OrigemSemantica | { tipo: 'layerId' | 'name'; chave: string }
+/**
+ * CP4.2b: a origem de um erro do LEGADO (chave = id ou nome de camada, ou um controle `_…`). Na FASE 1 (sem página) só
+ * se sabe a chave (`tipo: 'chave'`); a distinção id × nome só existe com as camadas (FASE 2).
+ */
+export type OrigemDaChave = { tipo: 'chave' | 'layerId' | 'name'; chave: string }
 
 export interface ValorResolvido {
   indice: number
@@ -67,7 +72,9 @@ type CampoReservado = '_slots' | '_papeis'
 export type ErroDeValor =
   | { codigo: 'ENTRADA_INVALIDA'; campo: CampoReservado }
   | { codigo: 'CHAVE_RESERVADA_COLIDE_COM_LAYER'; chave: CampoReservado; indice: number; layerId: string }
-  | { codigo: 'VALOR_INVALIDO'; origem: OrigemSemantica }
+  | { codigo: 'VALOR_INVALIDO'; origem: OrigemSemantica | OrigemDaChave }
+  /** CP4.2b: a chave de `slotValues` não endereça camada nenhuma (nem id nem nome), ou é um controle `_…` que não existe. */
+  | { codigo: 'CHAVE_DESCONHECIDA'; origem: OrigemDaChave }
   | { codigo: 'ALVO_NAO_RESOLVIDO'; origem: OrigemSemantica; erro: ErroDoAlvo }
   | { codigo: 'VALOR_CONFLITANTE'; indice: number; layerId: string; origens: OrigemDoValor[] }
   /** `_papeis` achou a camada por papel INFERIDO (id, nome, tipo, id reservado): não é endereço de escrita estável. */
@@ -144,6 +151,82 @@ function estruturaDoCampo(campo: CampoReservado, tipo: OrigemSemantica['tipo'], 
     else erros.push({ codigo: 'VALOR_INVALIDO', origem })
   }
   return { erros, validas }
+}
+
+/**
+ * CP4.2b — o contrato do LEGADO (chave = id ou nome de camada): string (qualquer, inclusive `""` — se isso é remoção de
+ * copy, quem decide é `copyRemovidaDoBake`; aqui é só FORMATO), ou objeto simples NÃO vazio só com `content: string`,
+ * `fileUrl: string` não vazia, `hidden: true` (exatamente), `papel`/`bloco: string` não vazia. Tudo o mais — número,
+ * boolean, `null`, array, objeto vazio, chave desconhecida (`visible`, `hidden: "true"`, `text`…), `content: 123` —
+ * é inválido: até aqui o bake IGNORAVA em silêncio e a chamada respondia sucesso regravando a página igual.
+ */
+export type ValorLegado = string | { content?: string; fileUrl?: string; hidden?: true; papel?: string; bloco?: string }
+
+export function valorLegadoValido(v: unknown): v is ValorLegado {
+  if (typeof v === 'string') return true
+  if (!objetoSimples(v)) return false
+  const chaves = Object.keys(v)
+  if (chaves.length === 0) return false
+  return chaves.every((k) => {
+    if (k === 'content') return typeof v.content === 'string'
+    if (k === 'fileUrl') return typeof v.fileUrl === 'string' && v.fileUrl !== ''
+    if (k === 'hidden') return v.hidden === true
+    if (k === 'papel' || k === 'bloco') return typeof v[k] === 'string' && (v[k] as string) !== ''
+    return false
+  })
+}
+
+/** Os controles `_…` que o legado conhece (`CHAVES_RESERVADAS` de arte-rapida): os de foto e os semânticos. */
+const CONTROLES_DE_FOTO = new Set(['_imageUrl', '_driveImageId'])
+const CONTROLES_SEMANTICOS = new Set<string>(ENTRADAS_RESERVADAS())
+function ENTRADAS_RESERVADAS(): string[] {
+  return ['_slots', '_papeis']
+}
+
+/**
+ * CP4.2b — FASE 1, o FORMATO de `slotValues`, SEM página (roda no handler MCP, no serviço e na API externa, antes de
+ * qualquer leitura de foto ou escrita): cada chave legada passa por `valorLegadoValido`; `_imageUrl`/`_driveImageId`
+ * precisam ser string não vazia (só AUSENTE = não fornecido; `null` é `VALOR_INVALIDO` — revisão do owner, 15/10:
+ * `_imageUrl: null` respondia sucesso, regravava a página, criava Generation e fazia put); qualquer outro `_…` é
+ * `CHAVE_DESCONHECIDA`. `_slots`/`_papeis: null` continuam "não fornecido" (compatibilidade aprovada).
+ * `_slots`/`_papeis` NÃO entram aqui — `validarEntradaSemantica` já os cobre; quem chama junta as duas listas.
+ * A origem é só a chave (`tipo: 'chave'`): sem a página não há como dizer se é id ou nome.
+ */
+export function validarFormatoDosSlotValues(slotValues: Record<string, unknown>): ErroDeValor[] {
+  const erros: ErroDeValor[] = []
+  for (const [chave, valor] of Object.entries(slotValues)) {
+    if (chave.startsWith('_')) {
+      if (CONTROLES_SEMANTICOS.has(chave)) continue
+      if (CONTROLES_DE_FOTO.has(chave)) {
+        if (valor === undefined) continue
+        if (typeof valor !== 'string' || valor === '') erros.push({ codigo: 'VALOR_INVALIDO', origem: { tipo: 'chave', chave } })
+        continue
+      }
+      erros.push({ codigo: 'CHAVE_DESCONHECIDA', origem: { tipo: 'chave', chave } })
+      continue
+    }
+    if (valor === undefined) continue
+    if (!valorLegadoValido(valor)) erros.push({ codigo: 'VALOR_INVALIDO', origem: { tipo: 'chave', chave } })
+  }
+  return erros
+}
+
+/**
+ * CP4.2b — FASE 2, o ENDEREÇO de cada chave legada contra as camadas do modelo EFETIVO (a página lida em `ajustarArte`;
+ * a irmã escolhida pela foto na criação): a chave que não casa com id NEM com nome de camada é `CHAVE_DESCONHECIDA`.
+ * O casamento reproduz o bake (`bakeLayers`): por CAMADA, id e depois nome — uma chave pode ser id de uma camada e nome
+ * de outra, e as duas a recebem; aqui basta que ALGUMA camada a reconheça.
+ */
+export function validarEnderecosDosSlotValues(slotValues: Record<string, unknown>, camadas: ReadonlyArray<{ id?: unknown; name?: unknown }>): ErroDeValor[] {
+  const ids = new Set(camadas.map((c) => String(c.id)))
+  const nomes = new Set(camadas.map((c) => (typeof c.name === 'string' ? c.name : null)).filter((n): n is string => n !== null))
+  const erros: ErroDeValor[] = []
+  for (const [chave, valor] of Object.entries(slotValues)) {
+    if (chave.startsWith('_') || valor === undefined) continue
+    if (ids.has(chave) || nomes.has(chave)) continue
+    erros.push({ codigo: 'CHAVE_DESCONHECIDA', origem: { tipo: 'chave', chave } })
+  }
+  return erros
 }
 
 /**

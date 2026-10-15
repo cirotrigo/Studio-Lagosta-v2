@@ -153,8 +153,9 @@ const LITERAL_CRIAR_ARTE_DE_MODELO = {
     sourcePageId: { type: 'string', description: 'ID da página de template (prepare-creative.page.id).' },
     slotValues: {
       type: 'object',
+      // CP4.2b (15/10/2026): formato do slotValues validado — mudança DELIBERADA da descrição.
       description:
-        'Valores por slot, com as chaves do template (layerId ou nome da camada). String define texto; objeto aceita {content, fileUrl}. Chaves reservadas: _driveImageId, _imageUrl, _slots ({slotId: valor}) e _papeis ({papel declarado: valor}) — use só o que escolher-modelo marcou em addressableBy; texto (string ou {content}) só em camada de texto, {fileUrl} só em imagem. Com copyAutoral, só chaves reservadas, e o texto vem da copy: na prática só os endereços de IMAGEM servem (camada oculta não é endereço).',
+        'Valores por slot, com as chaves do template (layerId ou nome da camada). String define texto; objeto aceita só {content, fileUrl, hidden: true, papel, bloco} — outro formato é VALOR_INVALIDO (400) e chave sem camada no modelo efetivo é CHAVE_DESCONHECIDA (422), antes de criar qualquer coisa. Chaves reservadas: _driveImageId, _imageUrl, _slots ({slotId: valor}) e _papeis ({papel declarado: valor}) — use só o que escolher-modelo marcou em addressableBy; texto (string ou {content}) só em camada de texto, {fileUrl} só em imagem. Com copyAutoral, só chaves reservadas, e o texto vem da copy: na prática só os endereços de IMAGEM servem (camada oculta não é endereço).',
       additionalProperties: true,
     },
     name: { type: 'string', description: 'Nome da página gerada (opcional).' },
@@ -863,7 +864,7 @@ const LITERAIS_ARTE_IA: Record<string, unknown> = {
       pageId: { type: 'string', description: 'A arte a ajustar (pageId devolvido por criar-arte ou criar-arte-de-modelo).' },
       slotValues: {
         type: 'object',
-        description: 'Só o que muda: chave = id ou nome da camada, valor = novo texto (string) ou {content, fileUrl}. Também _slots ({slotId: valor}) e _papeis ({papel declarado: valor}), resolvidos nesta página; texto só em camada de texto, {fileUrl} só em imagem.',
+        description: 'Só o que muda: chave = id ou nome da camada, valor = novo texto (string) ou objeto só com {content, fileUrl, hidden: true, papel, bloco} — qualquer outro formato é VALOR_INVALIDO e chave sem camada é CHAVE_DESCONHECIDA (nada é gravado). Também _slots ({slotId: valor}) e _papeis ({papel declarado: valor}), resolvidos nesta página; texto só em camada de texto, {fileUrl} só em imagem.',
         additionalProperties: true,
       },
       imageUrl: { type: 'string', description: 'Nova foto de fundo (URL pública).' },

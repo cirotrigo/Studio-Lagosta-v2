@@ -221,6 +221,20 @@ describe('ajustar-arte no perfil draft-only', () => {
     ).resolves.toBeTruthy();
   });
 
+  it('revisão do owner (CP4.2b): `_imageUrl: null` / `_driveImageId: null` no slotValues → VALOR_INVALIDO 400 no HANDLER, com a chave, sem chamar o serviço — também no pedido misto e nos dois perfis', async () => {
+    for (const principal of [PESSOA, DOT]) {
+      for (const slotValues of [{ headline: 'novo', _imageUrl: null }, { _driveImageId: null }, { headline: 'novo', _driveImageId: null, _slots: null }]) {
+        const chave = Object.keys(slotValues).find((k) => k === '_imageUrl' || k === '_driveImageId')!
+        await expect(ajustar(principal, { slotValues })).rejects.toMatchObject({
+          code: 'VALOR_INVALIDO',
+          status: 400,
+          details: { erros: [{ codigo: 'VALOR_INVALIDO', origem: { tipo: 'chave', chave } }] },
+        })
+      }
+    }
+    expect(m.ajustarArte).not.toHaveBeenCalled()
+  })
+
   it('o perfil normal ajusta como sempre (sem a guarda)', async () => {
     m.posts = [post({ pageId: 'pg-1', status: 'SCHEDULED' })];
     await expect(

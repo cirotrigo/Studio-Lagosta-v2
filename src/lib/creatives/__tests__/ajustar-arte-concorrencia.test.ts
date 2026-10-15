@@ -599,3 +599,77 @@ describe('CP4.1 — o agente autônomo (draft-only) não apaga copy pelo slotVal
     expect(r.copyRemovida).toBeUndefined()
   })
 })
+
+describe('CP4.2b — slotValues inválido é recusado ANTES de qualquer escrita (formato 400 / endereço 422), pedido misto inteiro; o CP4.1 continua decidindo o conteúdo', () => {
+  const cta = () => (banco.pagina!.layers as Array<Record<string, any>>).find((l) => l.id === 'cta')!
+  const recusado = async (slotValues: Record<string, unknown>, codigo: string, status: number, chaves: string[], apenasRascunho = false) => {
+    const antes = banco.pagina.updatedAt.getTime()
+    const erro = (await erroDe(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho, slotValues }))) as CreativeError
+    expect(erro).toBeInstanceOf(CreativeError)
+    expect(erro.code).toBe(codigo)
+    expect(erro.status).toBe(status)
+    expect(((erro.details as { erros: Array<{ codigo: string; origem?: { chave: string } }> }).erros ?? []).map((e) => [e.codigo, e.origem?.chave])).toEqual(chaves.map((c) => [codigo, c]))
+    // Zero escrita, zero Generation, zero render/Blob.
+    expect(banco.pagina.updatedAt.getTime()).toBe(antes)
+    expect(cta().content).toBe('Reserve pelo direct')
+    expect(banco.generations).toHaveLength(0)
+    expect(banco.putSeq).toBe(0)
+  }
+  it('V1/V2: número, array, boolean, null, objeto vazio → 400 VALOR_INVALIDO (origem chave), intacto', async () => {
+    for (const v of [123, ['x'], true, null, {}]) await recusado({ cta: v }, 'VALOR_INVALIDO', 400, ['cta'])
+  })
+  it('V3/V4/V5: { hidden: "true" }, { visible: false }, { content: 123 } → 400, intacto', async () => {
+    for (const v of [{ hidden: 'true' }, { visible: false }, { content: 123 }]) await recusado({ cta: v }, 'VALOR_INVALIDO', 400, ['cta'])
+  })
+  it('V6: pela chave de NOME com valor inválido → 400, origem é a chave (a FASE 1 não sabe que é nome)', async () => {
+    banco.pagina = { ...banco.pagina, layers: (banco.pagina.layers as Array<Record<string, any>>).map((l) => (l.id === 'cta' ? { ...l, name: 'Chamada' } : l)) }
+    await recusado({ Chamada: 7 }, 'VALOR_INVALIDO', 400, ['Chamada'])
+  })
+  it('V7/V8: _slots/_papeis malformados continuam 400 VALOR_INVALIDO (regressão da semântica)', async () => {
+    await recusado({ _slots: { manchete: 123 } }, 'VALOR_INVALIDO', 400, ['manchete'])
+    await recusado({ _papeis: { headline: [] } }, 'VALOR_INVALIDO', 400, ['headline'])
+  })
+  it('V9: pedido MISTO (cta válido + headline inválido) → 400 e NADA gravado, nem o cta', async () => {
+    await recusado({ cta: 'Novo', headline: 123 }, 'VALOR_INVALIDO', 400, ['headline'])
+  })
+  it('V10: chave que não endereça camada → 422 CHAVE_DESCONHECIDA, intacto; V14: _imageUrl não-string → 400; _qualquer → 400 CHAVE_DESCONHECIDA', async () => {
+    await recusado({ naoExiste: 'x' }, 'CHAVE_DESCONHECIDA', 422, ['naoExiste'])
+    await recusado({ _imageUrl: 123 }, 'VALOR_INVALIDO', 400, ['_imageUrl'])
+    await recusado({ _qualquer: 'x' }, 'CHAVE_DESCONHECIDA', 400, ['_qualquer'])
+  })
+  it('V14b (revisão do owner): _imageUrl: null e _driveImageId: null → 400 VALOR_INVALIDO com a chave; pedido MISTO (texto válido + controle null) recusado inteiro; _slots/_papeis null seguem aceitos', async () => {
+    await recusado({ _imageUrl: null }, 'VALOR_INVALIDO', 400, ['_imageUrl'])
+    await recusado({ _driveImageId: null }, 'VALOR_INVALIDO', 400, ['_driveImageId'])
+    await recusado({ cta: 'Novo', _driveImageId: null }, 'VALOR_INVALIDO', 400, ['_driveImageId'])
+    await recusado({ _imageUrl: null, _driveImageId: null }, 'VALOR_INVALIDO', 400, ['_imageUrl', '_driveImageId'])
+    const erro = (await erroDe(ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { _imageUrl: null } }))) as CreativeError
+    expect(erro.message).toContain('"_imageUrl"')
+    // Controle: `_slots: null` continua "não fornecido" — a chamada segue e grava o texto.
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { cta: 'Novo', _slots: null, _papeis: null } })
+    expect(r).toBeTruthy()
+    expect(cta().content).toBe('Novo')
+  })
+  it('V11: "" e "." no draft-only continuam chegando ao guard do CP4.1 (CONTEUDO_NAO_PODE_SER_REMOVIDO), não à validação', async () => {
+    for (const v of ['', '.']) {
+      const erro = (await erroDe(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { cta: v } }))) as CreativeError
+      expect(erro.code).toBe('CONTEUDO_NAO_PODE_SER_REMOVIDO')
+    }
+  })
+  it('V12/V15: "Texto B" entra (controle); objeto só com papel grava a metadata como hoje (comportamento inalterado)', async () => {
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { cta: 'Texto B' } })
+    expect(r.ajustada).toBe(true)
+    expect(cta().content).toBe('Texto B')
+    const so = await ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { cta: { papel: 'cta' } } })
+    expect(so.ajustada).toBe(true)
+    expect((cta().metadata as { compositor?: { papel?: string } })?.compositor?.papel).toBe('cta')
+  })
+  it('V18: a chave é id de uma camada e nome de outra — as duas recebem (precedência id > semântico > nome POR CAMADA, como o bake), sem erro', async () => {
+    banco.pagina = { ...banco.pagina, layers: [...(banco.pagina.layers as Array<Record<string, any>>), texto('rodape', 1800, 'Rodapé antigo'), { ...texto('outra', 1850, 'Outra antiga'), name: 'cta' }] }
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { cta: 'Pelo id e pelo nome', rodape: 'Rodapé novo' } })
+    expect(r.ajustada).toBe(true)
+    const porId = new Map((banco.pagina.layers as Array<Record<string, any>>).map((l) => [l.id, l.content]))
+    expect(porId.get('cta')).toBe('Pelo id e pelo nome')
+    expect(porId.get('outra')).toBe('Pelo id e pelo nome')
+    expect(porId.get('rodape')).toBe('Rodapé novo')
+  })
+})

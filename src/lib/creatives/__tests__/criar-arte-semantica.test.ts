@@ -27,10 +27,14 @@ vi.mock('@/lib/creatives/persist', () => ({
   renderPageAndRegister: vi.fn(),
   ensureArteTemplate: vi.fn(async () => ({ id: 500, name: 'Arte Rápida' })),
   resolveImageUrl: vi.fn(async (url?: string, drive?: string | null) => ({ url: url ?? (drive ? `https://drive.test/${drive}` : null) })),
+  // CP4.2b: ler × persistir separados — o Drive devolve bytes sem `put`; o `put` só acontece em `persistirCacheDoDrive`.
+  lerImagemDeEntrada: vi.fn(async (url?: string, drive?: string | null, projectId?: number) => (url ? { url } : drive ? { url: null, drive: { bytes: Buffer.from('jpg'), chave: `chave-${drive}`, projectId } } : { url: null })),
+  persistirCacheDoDrive: vi.fn(async (lida: { url: string | null; drive?: { chave: string } }) => ({ url: lida.drive ? `https://drive.test/${lida.drive.chave.replace('chave-', '')}` : lida.url })),
   persistAndRenderCreative: vi.fn(async () => ({ generationId: 'g1', pageId: 'nova', templateId: 500, url: 'u', editUrl: 'e', galleryUrl: 'g', width: 1080, height: 1920, sizeKB: 1 })),
 }))
 vi.mock('@/lib/creatives/halo/integracao-arte-rapida', () => ({
   lerFotoParaMedicao: vi.fn(async () => null),
+  lerFotoDeBytes: vi.fn(async (_bytes: Buffer, _canvas: unknown, url = '') => ({ url, raster: { largura: 10, altura: 10 } })),
   escolherPaginaPelaFoto: vi.fn(async () => (estado.irma ? { pagina: { id: estado.irma }, layout: 'topo', motivo: 'teste' } : null)),
   aplicarHaloNaArte: vi.fn(async ({ layers }: { layers: unknown[] }) => ({ layers, aplicado: false, blocos: 0, avisos: [], halos: [], corDaMancha: null })),
 }))
@@ -46,7 +50,8 @@ vi.mock('@/lib/aprendizado/sinal-de-foto', () => ({ fecharSugestaoDeFoto: vi.fn(
 vi.mock('@/lib/creatives/uso-de-foto', () => ({ registrarUsoDeFoto: vi.fn(async () => undefined) }))
 
 import { createArteRapida } from '../arte-rapida'
-import { ensureArteTemplate, persistAndRenderCreative } from '@/lib/creatives/persist'
+import { ensureArteTemplate, persistAndRenderCreative, lerImagemDeEntrada, persistirCacheDoDrive } from '@/lib/creatives/persist'
+import { aplicarHaloNaArte, escolherPaginaPelaFoto, lerFotoDeBytes } from '@/lib/creatives/halo/integracao-arte-rapida'
 
 const texto = (id: string, name: string, extra: Record<string, unknown> = {}) => ({ id, name, type: 'text', content: `modelo ${id}`, visible: true, ...extra })
 const declarada = (papel: string, slot: string) => ({ metadata: { compositor: { papel }, slot: { id: slot } } })
@@ -513,5 +518,58 @@ describe('quarentena do rich-text (#209) na CRIAÇÃO', () => {
     estado.paginas.set('p-rl', pagina('p-rl', [{ id: 'rt', name: 'Rico', type: 'rich-text', content: 'rico', visible: true }]))
     await createArteRapida({ projectId: 8, sourcePageId: 'p-rl', slotValues: { rt: 'Novo' } })
     expect(conteudo('rt').content).toBe('Novo')
+  })
+})
+
+describe('CP4.2b — na criação: formato antes da foto (400); endereço contra o modelo EFETIVO antes do put do cache do Drive, do template, da persistência e do render (422)', () => {
+  it('V16: foto do Drive + chave sem camada → 422 CHAVE_DESCONHECIDA; a miniatura foi LIDA (residual), mas o put NÃO rodou e nada foi criado', async () => {
+    estado.irma = 'p-b'
+    // Sem contrato de copy (com contrato, chave legada já é COPY_COM_CHAVES_LEGADAS antes): o caminho legado puro.
+    const e = await falha(createArteRapida({ projectId: 8, sourcePageId: 'p-a', slotValues: { _driveImageId: 'd1', naoExiste: 'x' } }))
+    expect(e.code).toBe('CHAVE_DESCONHECIDA')
+    expect(e.status).toBe(422)
+    expect(e.details?.erros).toEqual([{ codigo: 'CHAVE_DESCONHECIDA', origem: { tipo: 'chave', chave: 'naoExiste' } }])
+    expect(lerImagemDeEntrada).toHaveBeenCalledTimes(1)
+    expect(escolherPaginaPelaFoto).toHaveBeenCalledTimes(1)
+    expect(persistirCacheDoDrive).not.toHaveBeenCalled()
+    semEfeito()
+  })
+  it('formato inválido → 400 VALOR_INVALIDO ANTES de ler a foto (nem o Drive é consultado)', async () => {
+    const e = await falha(createArteRapida({ projectId: 8, sourcePageId: 'p-a', slotValues: { _driveImageId: 'd1', 'a-h': 123 } }))
+    expect(e.code).toBe('VALOR_INVALIDO')
+    expect(e.status).toBe(400)
+    expect(lerImagemDeEntrada).not.toHaveBeenCalled()
+    semEfeito()
+  })
+  it('revisão do owner: _driveImageId: null / _imageUrl: null → 400 VALOR_INVALIDO com a chave, ANTES de ler a foto; misto (texto válido + null) recusado inteiro; nada criado', async () => {
+    for (const slotValues of [{ _driveImageId: null }, { _imageUrl: null }, { 'a-h': 'Texto válido', _imageUrl: null }]) {
+      const e = await falha(createArteRapida({ projectId: 8, sourcePageId: 'p-a', slotValues }))
+      expect(e.code).toBe('VALOR_INVALIDO')
+      expect(e.status).toBe(400)
+      expect(e.message).toContain(Object.keys(slotValues).find((k) => k.startsWith('_'))!)
+      expect(lerImagemDeEntrada).not.toHaveBeenCalled()
+      semEfeito()
+    }
+  })
+
+  it('caminho válido com foto do Drive: a foto lida por bytes escolhe o layout (a irmã), o put roda UMA vez depois do endereço, e o halo recebe a foto com a URL FINAL', async () => {
+    estado.irma = 'p-b'
+    await createArteRapida({ projectId: 8, sourcePageId: 'p-a', slotValues: { _driveImageId: 'd1' }, copyAutoral: SO_MANCHETE })
+    expect(lerFotoDeBytes).toHaveBeenCalledTimes(1)
+    expect((escolherPaginaPelaFoto as any).mock.calls[0][0].foto).toMatchObject({ raster: { largura: 10 } })
+    expect(persistirCacheDoDrive).toHaveBeenCalledTimes(1)
+    const urlFinal = 'https://drive.test/d1'
+    expect((aplicarHaloNaArte as any).mock.calls[0][0].fotoLida).toMatchObject({ url: urlFinal })
+    // A arte persistida aponta para a irmã (o layout da foto) e para a URL final do cache.
+    expect(persistido().fieldValues.imageUrl).toBe(urlFinal)
+    expect(conteudo('b-h').content).toBe('Noite do vinho')
+  })
+  it('URL direta: sem Drive, sem put; o endereço é validado contra a irmã escolhida pela foto', async () => {
+    estado.irma = 'p-b'
+    const e = await falha(createArteRapida({ projectId: 8, sourcePageId: 'p-a', slotValues: { _imageUrl: 'https://f', 'a-h': 'Texto pelo id da PEDIDA' } }))
+    // `a-h` é id da página PEDIDA; o modelo efetivo é a irmã (ids b-*): chave desconhecida no modelo efetivo.
+    expect(e.code).toBe('CHAVE_DESCONHECIDA')
+    expect(persistirCacheDoDrive).not.toHaveBeenCalled()
+    semEfeito()
   })
 })

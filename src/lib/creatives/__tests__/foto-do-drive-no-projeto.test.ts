@@ -22,7 +22,7 @@ vi.mock('@/lib/posts/register-project-fonts', () => ({
   registerProjectFonts: vi.fn(),
 }))
 
-import { resolveImageUrl } from '../persist'
+import { resolveImageUrl, lerImagemDeEntrada, persistirCacheDoDrive } from '../persist'
 import { carregarFotoParaMedir } from '@/lib/compositor/foto-para-medir'
 
 beforeEach(() => {
@@ -86,4 +86,26 @@ describe('carregarFotoParaMedir (medir-copy)', () => {
       expect(m.baixado).toEqual([])
     },
   )
+})
+
+describe('CP4.2b — ler × persistir separados', () => {
+  it('lerImagemDeEntrada baixa a miniatura e NÃO faz put; persistirCacheDoDrive faz o put na mesma chave determinística; a composição é o resolveImageUrl de sempre', async () => {
+    const lida = await lerImagemDeEntrada(undefined, 'fileA', 1)
+    expect(lida.url).toBeNull()
+    expect(lida.drive).toMatchObject({ projectId: 1, chave: expect.stringMatching(/^[0-9a-f]{64}$/) })
+    expect(m.baixado).toHaveLength(1)
+    expect(blobPut).not.toHaveBeenCalled()
+    const r = await persistirCacheDoDrive(lida)
+    expect(blobPut).toHaveBeenCalledTimes(1)
+    expect(blobPut.mock.calls[0][0]).toBe(`drive-cache/1/${lida.drive!.chave}-s1920.jpg`)
+    expect(r.url).toBeTruthy()
+    const direto = await lerImagemDeEntrada('https://cdn.example/foto.jpg', undefined, 1)
+    expect(direto).toEqual({ url: 'https://cdn.example/foto.jpg' })
+    expect(await persistirCacheDoDrive(direto)).toEqual({ url: 'https://cdn.example/foto.jpg' })
+  })
+  it('a autorização por projeto continua na leitura: foto fora das pastas do projeto é 404 antes de baixar qualquer coisa', async () => {
+    await expect(lerImagemDeEntrada(undefined, 'fileA', 2)).rejects.toMatchObject({ status: 404 })
+    expect(m.baixado).toHaveLength(0)
+    expect(blobPut).not.toHaveBeenCalled()
+  })
 })

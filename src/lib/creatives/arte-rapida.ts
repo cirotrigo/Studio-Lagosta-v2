@@ -19,15 +19,14 @@ import { copyVisualDasCamadas } from '@/lib/creatives/procedencia-da-copy'
 import type { CanalDaArte } from './canal'
 import { db } from '@/lib/db'
 import { KnowledgeCategory } from '@prisma/client'
-import { CreativeError } from '@/lib/creatives/errors'
+import { CreativeError, erroDeValores } from '@/lib/creatives/errors'
 import {
   ARTE_TEMPLATE_NAMES,
   ensureArteTemplate,
   getPublicAppUrl,
   persistAndRenderCreative,
   renderPageAndRegister,
-  resolveImageUrl,
-} from '@/lib/creatives/persist'
+  resolveImageUrl, lerImagemDeEntrada, persistirCacheDoDrive } from '@/lib/creatives/persist'
 import { invalidateScheduledRenders } from '@/lib/posts/invalidate-renders'
 import { registrarDecisaoSemSugestao } from '@/lib/aprendizado/captura'
 import { copyParaDecisao, diffDeCopy } from '@/lib/aprendizado/diff-copy'
@@ -49,8 +48,7 @@ import { aplicarAutofixOuFalhar, type AutofixReport } from '@/lib/creatives/text
 import {
   aplicarHaloNaArte,
   escolherPaginaPelaFoto,
-  lerFotoParaMedicao,
-} from '@/lib/creatives/halo/integracao-arte-rapida'
+  lerFotoParaMedicao, lerFotoDeBytes } from '@/lib/creatives/halo/integracao-arte-rapida'
 import { ehTemplateDeTresLayouts, type LayoutPelaFoto } from '@/lib/creatives/halo/layout-pela-foto'
 import { registerProjectFonts } from '@/lib/posts/register-project-fonts'
 import type { Layer } from '@/types/template'
@@ -60,7 +58,7 @@ import { lerCopyAutoral, tentarCopyEfetivaDasCamadas } from '@/lib/copy-autoral'
 import { bakeLayers, copyRemovidaDoBake, type CopyRemovida } from '@/lib/creatives/bake-layers'
 import { camposDeTextoDasCamadas, mapearContratoParaCampos, mapearCopyParaSlots } from '@/lib/planos/execucao'
 import { semColchetes } from '@/lib/compositor/destaques'
-import { resolverValoresSemanticos, validarEntradaSemantica, type ErroDeValor, type ValorResolvido } from '@/lib/semantica/resolver-valores'
+import { resolverValoresSemanticos, validarEntradaSemantica, type ValorResolvido, validarFormatoDosSlotValues, validarEnderecosDosSlotValues } from '@/lib/semantica/resolver-valores'
 import { type AjusteAplicado, type AjusteRecusado } from '@/lib/creatives/revisao/aplicar-ajustes'
 import { aplicarAjustesSemPiorar } from '@/lib/creatives/revisao/ajustar-sem-piorar'
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
@@ -659,10 +657,6 @@ const AVISO_FOTO_BLOQUEADA_PELO_SEMANTICO =
   'A foto não foi aplicada: o alvo principal da foto já recebeu um fileUrl por _slots/_papeis. Pelo contrato semântico, endereçe cada imagem explicitamente.'
 
 /** Erros do resolvedor semântico viram UM CreativeError: o código do primeiro, todos em `details.erros` (sem conteúdo). */
-function erroDeValores(erros: ErroDeValor[], status: number): CreativeError {
-  return new CreativeError(erros[0].codigo, `Os valores semânticos não puderam ser aplicados (${erros.map((e) => e.codigo).join(', ')}).`, status, { erros })
-}
-
 /**
  * B1c: o mapa EFETIVO de valores da arte sobre as camadas do modelo efetivo — a copy (contrato ou
  * posicional) casada aqui, os campos que ela não cobriu ocultos, e `_slots`/`_papeis` resolvidos
@@ -766,7 +760,10 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
       { chaves: chavesLegadas },
     )
   }
-  const errosDeEntrada = validarEntradaSemantica(slotValues)
+  // CP4.2b — FASE 1, o FORMATO de todo `slotValues` (semântico e legado), ANTES do banco e de qualquer leitura de
+  // foto: valor de tipo errado era ignorado pelo bake e a chamada respondia sucesso regravando a página igual.
+  // Pedido misto (válido + inválido) é recusado inteiro, com todos os erros na lista.
+  const errosDeEntrada = [...validarEntradaSemantica(slotValues), ...validarFormatoDosSlotValues(slotValues)]
   if (errosDeEntrada.length > 0) throw erroDeValores(errosDeEntrada, 400)
 
   const project = await db.project.findUnique({
@@ -795,7 +792,13 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
   const driveImageId = typeof slotValues._driveImageId === 'string' ? slotValues._driveImageId : null
   const directUrl =
     input.imageUrl ?? (typeof slotValues._imageUrl === 'string' ? slotValues._imageUrl : undefined)
-  const resolved = await resolveImageUrl(directUrl, driveImageId, projectId)
+
+  /**
+   * CP4.2b: a foto é LIDA aqui (download, sem `put`), porque o layout — e com ele o modelo efetivo onde os endereços
+   * de `slotValues` são validados — depende dela; o cache do Drive só é PERSISTIDO depois dessa validação
+   * (`persistirCacheDoDrive`, abaixo). Erro de formato (FASE 1, acima) não lê a foto; erro de endereço não grava nada.
+   */
+  const lida = await lerImagemDeEntrada(directUrl, driveImageId, projectId)
 
   /**
    * A foto decide o layout (família "(3 layouts)"): entre os irmãos do
@@ -804,7 +807,7 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
    * com `layoutFixo`, a página pedida é a usada — e nada disto lança.
    */
   const canvasDaPeca = { width: sourcePage.width, height: sourcePage.height }
-  const fotoLida = await lerFotoParaMedicao(resolved.url, canvasDaPeca)
+  const fotoLida = lida.drive ? await lerFotoDeBytes(lida.drive.bytes, canvasDaPeca) : await lerFotoParaMedicao(lida.url, canvasDaPeca)
   const escolha = input.layoutFixo
     ? null
     : await escolherPaginaPelaFoto({
@@ -828,7 +831,15 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
    * que recusa recusa antes de criar o template, persistir ou renderizar.
    */
   const camadasDoModelo = camadasParaBake(modelo.layers, modelo)
+  // CP4.2b — FASE 2, o ENDEREÇO contra o modelo EFETIVO (a irmã que a foto escolheu): antes do casamento da copy, do
+  // template, da persistência, do render — e do `put` do cache do Drive.
+  const errosDeEndereco = validarEnderecosDosSlotValues(slotValues, camadasDoModelo)
+  if (errosDeEndereco.length > 0) throw erroDeValores(errosDeEndereco, 422)
   const { efetivo, valores, avisosDoCasamento, temTextoSemantico } = valoresDaArte(camadasDoModelo, slotValues, contratoRecebido, copyPosicional, modelo.id)
+
+  // Só agora o cache do Drive é gravado; a foto lida por bytes recebe a URL final (o halo a confere contra o `fileUrl`).
+  const resolved = await persistirCacheDoDrive(lida)
+  if (fotoLida && lida.drive && resolved.url) fotoLida.url = resolved.url
 
   const arteTemplate = await ensureArteTemplate(
     projectId,
@@ -1173,7 +1184,10 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
       400,
     )
   }
-  const errosDeEntrada = validarEntradaSemantica(slotValues)
+  // CP4.2b — FASE 1, o FORMATO de todo `slotValues` (semântico e legado), ANTES do banco e de qualquer leitura de
+  // foto: valor de tipo errado era ignorado pelo bake e a chamada respondia sucesso regravando a página igual.
+  // Pedido misto (válido + inválido) é recusado inteiro, com todos os erros na lista.
+  const errosDeEntrada = [...validarEntradaSemantica(slotValues), ...validarFormatoDosSlotValues(slotValues)]
   if (errosDeEntrada.length > 0) throw erroDeValores(errosDeEntrada, 400)
 
   const project = await db.project.findUnique({
@@ -1207,6 +1221,10 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
 
   // B1c: _slots/_papeis resolvem sobre as camadas DESTA página, antes de qualquer efeito (foto inclusive).
   const sourceLayers = camadasParaBake(page.layers, page)
+  // CP4.2b — FASE 2, o ENDEREÇO de cada chave legada contra as camadas da página: chave que não é id nem nome de
+  // camada nenhuma era ignorada em silêncio. Antes do semântico, do guard de copy, da foto e de qualquer escrita.
+  const errosDeEndereco = validarEnderecosDosSlotValues(slotValues, sourceLayers)
+  if (errosDeEndereco.length > 0) throw erroDeValores(errosDeEndereco, 422)
   const semanticos = resolverValoresSemanticos(sourceLayers, slotValues)
   if (semanticos.erros.length > 0) throw erroDeValores(semanticos.erros, 422)
   // Checkpoint g (Codex): a mesma guarda da criação — a copy registrada do ajuste é a visual das camadas.
@@ -1311,6 +1329,8 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
           medir: measure,
           // O conteúdo como a PÁGINA o tinha: esvaziar pelo slot e esconder por ajuste na mesma chamada é apagar copy.
           conteudoAnterior: new Map((sourceLayers as Layer[]).filter((l) => l.type === 'text' || l.type === 'rich-text').map((l) => [l.id, String(l.content ?? '')])),
+          // CP4.2a: a classificação e as referências dos títulos vêm da página ANTERIOR à chamada.
+          camadasDaPagina: sourceLayers as Layer[],
         })
       : null
   if (revisao && revisao.aplicados.length === 0 && Object.keys(slotValues).length === 0 && !resolved.url && !input.name) {
