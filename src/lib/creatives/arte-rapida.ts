@@ -57,7 +57,7 @@ import type { Layer } from '@/types/template'
 import { problemaEstruturadoDoAjuste, type Ajuste } from '@/lib/creatives/revisao/contrato'
 import { copyAutoralDaPagina, recusaDaRevisao, revisaoDaPaginaComCamadas } from '@/lib/copy-autoral/revisar-pagina'
 import { lerCopyAutoral, tentarCopyEfetivaDasCamadas } from '@/lib/copy-autoral'
-import { bakeLayers, copyRemovidaDoBake } from '@/lib/creatives/bake-layers'
+import { bakeLayers, copyRemovidaDoBake, type CopyRemovida } from '@/lib/creatives/bake-layers'
 import { camposDeTextoDasCamadas, mapearContratoParaCampos, mapearCopyParaSlots } from '@/lib/planos/execucao'
 import { semColchetes } from '@/lib/compositor/destaques'
 import { resolverValoresSemanticos, validarEntradaSemantica, type ErroDeValor, type ValorResolvido } from '@/lib/semantica/resolver-valores'
@@ -1083,10 +1083,10 @@ export interface AjustarArteResult {
   sizeKB: number
   imageApplied: boolean
   imageWarning?: string
-  /** Nomes das camadas de texto que mudaram (conteúdo alterado). */
+  /** Nomes das camadas de texto (simples) cujo conteúdo foi TROCADO por outro texto — o esvaziado não entra aqui (vai em `copyRemovida`). */
   camposAlterados: string[]
-  /** CP4.1: textos com conteúdo que esta chamada ESCONDEU ou ESVAZIOU pelo `slotValues` (gesto humano; no draft-only é recusa). */
-  copyRemovida?: Array<{ layerId: string; chave: string; operacao: 'escondido' | 'esvaziado'; endereco: { tipo: string; chave: string } }>
+  /** CP4.1: textos com conteúdo que esta chamada ESCONDEU ou ESVAZIOU pelo `slotValues` (gesto humano; no draft-only é recusa). O mesmo registro vai à Generation. */
+  copyRemovida?: CopyRemovida[]
   /** Posts da agenda que voltaram à fila de render por usarem esta página. */
   postsInvalidados: number
   /**
@@ -1222,11 +1222,13 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
    */
   const copyRemovida = copyRemovidaDoBake(sourceLayers, bakeLayers(sourceLayers, slotValues, null, semanticos.valores).layers, slotValues, semanticos.valores)
   if (input.apenasRascunho && copyRemovida.length > 0) {
+    const porOnde: Record<string, string> = { layerId: 'pela camada', name: 'pelo nome', slotId: 'pelo slot', semanticRole: 'pelo papel' }
     throw new CreativeError(
       'CONTEUDO_NAO_PODE_SER_REMOVIDO',
-      `Ajustar-arte não apaga copy: ${copyRemovida.map((c) => `"${c.chave}" seria ${c.operacao === 'escondido' ? 'escondido' : 'esvaziado'} (pedido por ${c.endereco.tipo} "${c.endereco.chave}")`).join('; ')}. Troque o texto por outro texto, ou deixe a peça para revisão humana.`,
+      `Ajustar-arte não apaga copy: ${copyRemovida.map((c) => `"${c.chave}" seria ${c.operacao === 'escondido' ? 'escondido' : 'esvaziado'} (pedido ${porOnde[c.endereco.tipo] ?? 'por'} "${c.endereco.chave}")`).join('; ')}. Troque o texto por outro texto, ou deixe a peça para revisão humana.`,
       422,
-      { copyRemovida: copyRemovida.map((c) => ({ layerId: c.layerId, operacao: c.operacao, tinhaConteudo: c.tinhaConteudo, endereco: c.endereco })), ajusteGravado: false },
+      // O MESMO registro nos details, no retorno e na Generation (sem o texto; só camada, operação e endereço).
+      { copyRemovida, ajusteGravado: false },
     )
   }
 
@@ -1583,7 +1585,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
         source: 'ajuste-arte',
         sourcePageId: page.id,
         ajustes: slotValues,
-        ...(copyRemovida.length > 0 ? { copyRemovida: copyRemovida.map((c) => ({ layerId: c.layerId, chave: c.chave, operacao: c.operacao, endereco: c.endereco })) } : {}),
+        ...(copyRemovida.length > 0 ? { copyRemovida } : {}),
         ...(revisao
           ? { revisao: { versaoAntes, ajustes, aplicados: revisao.aplicados, recusados: revisao.recusados } }
           : {}),
@@ -1673,8 +1675,10 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
     }
   }
 
+  // "Conteúdo alterado" = texto trocado por OUTRO texto; o esvaziado e o escondido vão em `copyRemovida` (CP4.1).
+  const esvaziadas = new Set(copyRemovida.filter((c) => c.operacao === 'esvaziado').map((c) => c.layerId))
   const camposAlterados = (layers as any[])
-    .filter((l) => changedTextIds.includes(l.id))
+    .filter((l) => changedTextIds.includes(l.id) && !esvaziadas.has(l.id))
     .map((l) => l.name ?? l.id)
 
   return {
@@ -1687,7 +1691,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
     imageApplied,
     ...(imageWarning ? { imageWarning } : {}),
     camposAlterados,
-    ...(copyRemovida.length > 0 ? { copyRemovida: copyRemovida.map((c) => ({ layerId: c.layerId, chave: c.chave, operacao: c.operacao, endereco: c.endereco })) } : {}),
+    ...(copyRemovida.length > 0 ? { copyRemovida } : {}),
     postsInvalidados,
     ...(invalidacao.congelados.length > 0
       ? { postsCongelados: invalidacao.congelados.length }

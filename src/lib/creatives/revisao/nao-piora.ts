@@ -33,6 +33,7 @@ import type { Layer } from '@/types/template'
 import { TOLERANCIA_DE_PIORA, type ContrasteMedido } from '@/lib/compositor/regua'
 import type { AchadoDaRevisao, RegraDaRevisao, RelatorioDaRevisao } from './contrato'
 import { fotoDeFundo } from './regras'
+import { temTextoVisivel } from './texto-visivel'
 
 /** O ajuste deixou a peça pior em alguma propriedade medida. */
 export const AJUSTE_PIOROU_ARTE = 'AJUSTE_PIOROU_ARTE'
@@ -265,7 +266,7 @@ function compararContraste(antes: ContrasteMedido[], depois: ContrasteMedido[], 
 
 /** O mesmo predicado de `logosDaPeca` (sem a condição de visibilidade): a logo pode ser `logo`, `id: 'logo'` ou imagem chamada logo. */
 const ehLogo = (l: Layer) => l.type === 'logo' || l.id === 'logo' || (l.type === 'image' && /\blogo\b/i.test(l.name ?? ''))
-const ehTextoComConteudo = (l: Layer) => (l.type === 'text' || l.type === 'rich-text') && String(l.content ?? '').trim().length > 0
+const ehTextoComConteudo = (l: Layer) => (l.type === 'text' || l.type === 'rich-text') && temTextoVisivel(l.content)
 const caixaDe = (l: Layer) => `${Math.round(l.position.x)},${Math.round(l.position.y)} ${Math.round(l.size.width)}×${Math.round(l.size.height)}`
 
 /**

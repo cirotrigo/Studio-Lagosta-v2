@@ -51,6 +51,7 @@ import {
   type CurvaDoGradiente,
 } from '@/lib/compositor/gradiente-de-leitura'
 import { problemaEstruturadoDoAjuste, type Ajuste, type CodigoDaRecusa } from './contrato'
+import { textoVisivel } from './texto-visivel'
 
 export interface AjusteAplicado {
   indice: number
@@ -87,6 +88,8 @@ export interface AjusteRecusado {
   campos?: string[]
   /** O rótulo `achado` do ajuste, quando veio. */
   achado?: string
+  /** CP4.1: o que o autofix geométrico mexeu na candidata recusada — a piora pode ter vindo da escada dele, não do ajuste pedido. */
+  autocorrecao?: Array<{ layerId: string; propriedade: string; de: number; para: number; motivo: string }>
   /** CP4: a comparação antes/depois que recusou (pioras, não medidas, achado alvo). */
   comparacao?: ComparacaoDoAjuste
 }
@@ -539,12 +542,13 @@ export function aplicarAjustes(
           const conteudoDe = (id: string) => {
             const l = porId.get(id)
             if (!l || (l.type !== 'text' && l.type !== 'rich-text')) return ''
-            const agora = String(l.content ?? '').trim()
-            return agora || String(ctx.conteudoAnterior?.get(id) ?? '').trim()
+            const agora = textoVisivel(l.content)
+            return agora || textoVisivel(ctx.conteudoAnterior?.get(id))
           }
           const comConteudo = ids.filter((id) => conteudoDe(id).length > 0)
           if (comConteudo.length > 0) {
-            recusar('CONTEUDO_NAO_PODE_SER_OCULTADO', `esconder texto com conteúdo é apagar copy, não corrigir a arte: ${comConteudo.map((id) => `${id} ("${conteudoDe(id).slice(0, 40)}")`).join(', ')}. Deixe o achado aberto para revisão humana ou outra composição; nada deste ajuste foi aplicado.`, ['visivel', 'camadas'])
+            // A mensagem diz QUAL camada (nome/id), nunca o texto (a mesma política do CP4.1 para o slotValues).
+            recusar('CONTEUDO_NAO_PODE_SER_OCULTADO', `esconder texto com conteúdo é apagar copy, não corrigir a arte: ${comConteudo.map((id) => `"${porId.get(id)!.name ?? id}" (${id})`).join(', ')}. Deixe o achado aberto para revisão humana ou outra composição; nada deste ajuste foi aplicado.`, ['visivel', 'camadas'])
             return
           }
         }

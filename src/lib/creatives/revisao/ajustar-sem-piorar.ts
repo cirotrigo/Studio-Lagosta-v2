@@ -140,7 +140,7 @@ export async function aplicarAjustesSemPiorar(args: ArgsDoAjusteSemPiorar): Prom
     const opcoes = { achadoAlvo: ajuste.achado ?? null, alteradas: tocadas, permiteOcultar: ajuste.tipo === 'visibilidade' }
     const comparacao = compararNaoPiora(medidaAtual, medidaDepois, opcoes)
     if (comparacao.veredito !== 'aceito') {
-      recusados.push({ indice, tipo: String(ajuste.tipo), codigo: comparacao.veredito, motivo: motivoDaComparacao(comparacao), ...comAchado, comparacao: compacta(comparacao) })
+      recusados.push({ indice, tipo: String(ajuste.tipo), codigo: comparacao.veredito, motivo: motivoDaComparacao(comparacao) + (autocorrecao ? ` (o autofix geométrico mexeu na candidata: ${autocorrecao.map((a) => `${a.layerId} ${a.propriedade} ${a.de}→${a.para}`).join(', ')})` : ''), ...comAchado, comparacao: compacta(comparacao), ...(autocorrecao ? { autocorrecao } : {}) })
       continue
     }
     const contraEntrada = aplicados.length > 0 ? compararNaoPiora(medidaInicial, medidaDepois, { alteradas: tocadas, permiteOcultar: opcoes.permiteOcultar }) : null

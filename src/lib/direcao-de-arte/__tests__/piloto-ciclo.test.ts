@@ -341,7 +341,7 @@ describe('CP4 — medir antes, aplicar em memória, medir depois; UMA escrita no
   it('ESCONDER o serviço (texto com conteúdo), SEM achado → CONTEUDO_NAO_PODE_SER_OCULTADO, estrutural, nenhuma medida, nada gravado', async () => {
     await expect(ajustar([{ tipo: 'visibilidade', camadas: ['servico'], visivel: false }] as unknown as Ajuste[])).rejects.toMatchObject({
       code: 'CONTEUDO_NAO_PODE_SER_OCULTADO',
-      details: { ajusteGravado: false, recusados: [expect.objectContaining({ indice: 0, codigo: 'CONTEUDO_NAO_PODE_SER_OCULTADO', motivo: expect.stringMatching(/servico .*Praia do Canto/) })] },
+      details: { ajusteGravado: false, recusados: [expect.objectContaining({ indice: 0, codigo: 'CONTEUDO_NAO_PODE_SER_OCULTADO', motivo: expect.stringMatching(/"servico" \(servico\)/) })] },
     })
     expect(medidas.chamadas).toEqual([])
     expect({ escritas: banco.escritas, invalidar: espioes.invalidar.mock.calls.length }).toEqual({ escritas: 0, invalidar: 0 })
@@ -370,7 +370,7 @@ describe('CP4 — medir antes, aplicar em memória, medir depois; UMA escrita no
   it('BYPASS em dois passos fechado: esvaziar o serviço pelo `slotValues` E escondê-lo por `visibilidade` na MESMA chamada é recusado pelo conteúdo que a página tinha', async () => {
     await expect(
       ajustarArte({ projectId: projectId(), pageId: PAGINA, versaoEsperada: versaoDaPagina(banco.pagina)!, slotValues: { servico: '' }, ajustes: [{ tipo: 'visibilidade', camadas: ['servico'], visivel: false }] as unknown as Ajuste[] }),
-    ).resolves.toMatchObject({ resultadoDosAjustes: 'parcial', ajustesAplicados: [], ajustesRecusados: [expect.objectContaining({ codigo: 'CONTEUDO_NAO_PODE_SER_OCULTADO', motivo: expect.stringMatching(/Praia do Canto/) })] })
+    ).resolves.toMatchObject({ resultadoDosAjustes: 'parcial', ajustesAplicados: [], ajustesRecusados: [expect.objectContaining({ codigo: 'CONTEUDO_NAO_PODE_SER_OCULTADO', motivo: expect.stringMatching(/"servico" \(servico\)/) })], copyRemovida: [expect.objectContaining({ layerId: 'servico', operacao: 'esvaziado' })] })
     // O texto vazio pelo slot ENTROU (gesto humano pelo chat, fora da decisão do ajuste); escondido, não.
     expect(camada(banco.pagina.layers as Layer[], 'servico').visible).not.toBe(false)
   }, 180_000)
@@ -482,7 +482,7 @@ describe('CP4.1 — `texto-pequeno` entra na não-piora (a regra do revisor: cor
     expect(colisao).toBeTruthy()
     const erro = await recusa([{ tipo: 'fonte', camadas: ['apoio'], escala: 0.5, achado: colisao.id }])
     expect(erro?.code).toBe('AJUSTE_PIOROU_ARTE')
-    expect(pioraDe(erro)).toEqual([expect.objectContaining({ camadas: ['apoio'], antes: null })])
+    expect(pioraDe(erro)).toEqual([expect.objectContaining({ camadas: ['apoio'], antes: null, depois: 12 })])
     expect((erro?.details as { recusados: Array<{ comparacao?: { achadoAlvo?: { estado: string } } }> }).recusados[0].comparacao?.achadoAlvo?.estado).toBe('resolvido')
     // Escala 0,85 (40 → 34) não cruza o piso (32) e não piora nada: entra — mas não resolve a colisão (29 → 29), então
     // declarada como alvo seria AJUSTE_NAO_MELHOROU_O_ACHADO; sem o rótulo, é um ajuste comum aceito.

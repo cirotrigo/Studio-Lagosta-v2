@@ -107,6 +107,13 @@ describe('CP4.1 — copyRemovidaDoBake: o que o bake fez com a copy existente (r
   it('camada já escondida pela PESSOA fica de fora; escondida pelo REVISOR (marca) conta como presente e esvaziá-la é remoção', () => {
     const src = [t('x', 'Oculto pela pessoa', { visible: false }), t('y', 'Oculto pelo revisor', { visible: false, metadata: { revisao: { ocultaPeloRevisor: { em: '2026-10-15T00:00:00.000Z', ajuste: 0 } } } })]
     const slotValues = { x: '', y: '' }
-    expect(copyRemovidaDoBake(src, bakeLayers(src, slotValues, null).layers, slotValues).map((c) => c.layerId)).toEqual(['y'])
+    // Esvaziar destrói conteúdo nas duas (a visibilidade não protege o texto); esconder a do revisor conta como esconder.
+    expect(copyRemovidaDoBake(src, bakeLayers(src, slotValues, null).layers, slotValues).map((c) => [c.layerId, c.operacao])).toEqual([['x', 'esvaziado'], ['y', 'esvaziado']])
+    const esconder = { y: { hidden: true }, x: { hidden: true } }
+    expect(copyRemovidaDoBake(src, bakeLayers(src, esconder, null).layers, esconder).map((c) => [c.layerId, c.operacao])).toEqual([['y', 'escondido']])
+  })
+  it('CP4.1 (revisores A/B) — invisíveis são vazio; `{ content: "", hidden: true }` registra as DUAS operações', () => {
+    for (const invisivel of ['\u200b', '\u200d', '\u2060', '\u00ad', '\u034f', '\u3164', '\u2800', '\ufeff']) expect(remocoes({ cta: invisivel }).map((c) => c.operacao)).toEqual(['esvaziado'])
+    expect(remocoes({ cta: { content: '', hidden: true } }).map((c) => c.operacao)).toEqual(['esvaziado', 'escondido'])
   })
 })

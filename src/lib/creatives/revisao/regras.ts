@@ -26,6 +26,7 @@
  */
 
 import type { Layer } from '@/types/template'
+import { temTextoVisivel } from './texto-visivel'
 import { TEXT_DRAW_PADDING, type TextGeometryIssue, type TextLayerMetrics } from '@/lib/creatives/text-geometry'
 import { CANVAS_MARGIN } from '@/lib/canvas-margin'
 import { textosForaDaPiora, tratamentosQuePioraramALeitura, type ContrasteMedido, type PioraDeTratamento } from '@/lib/compositor/regua'
@@ -272,7 +273,7 @@ const pct = (v: number) => `${Math.round(v * 100)}%`
 
 /** Texto sem conteúdo (`content` vazio ou só espaço): o mesmo critério de `textosSemMetrica` em `revisar-arte`. */
 export function textoSemConteudo(l: Layer): boolean {
-  return (l.type === 'text' || l.type === 'rich-text') && String(l.content ?? '').trim() === ''
+  return (l.type === 'text' || l.type === 'rich-text') && !temTextoVisivel(l.content)
 }
 
 export function ehTextoVisivel(l: Layer): boolean {

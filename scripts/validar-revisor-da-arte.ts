@@ -1181,7 +1181,9 @@ async function main() {
     // provas foram redesenhadas para o contrato novo: a recusa não muda a página, não cria marca, Generation nem
     // job, e ao agendar não existe falsa remoção (9a–9c); o CONTROLE humano continua: a camada escondida pela
     // PESSOA (sem a marca) vira remoção, com `editada` (9d); e o `hidden: true` pelo chat segue permitido e
-    // auditado (9f). A peça vem de uma leva com DICA de copy (os textos exatos da página).
+    // auditado (9f). A peça vem de uma leva com DICA de copy (os textos exatos da página). Para as propriedades que
+    // dependiam da camada escondida COM a marca `ocultaPeloRevisor` (REV-9E-01, REV-8AD-01, REV-2CEB-01, REV-8AD-02),
+    // a marca é plantada PELO BANCO como dado LEGADO (páginas assim existem, de antes de 15/10) — nunca mais pelo revisor.
     console.log('9) CP4.1: esconder texto com conteúdo pelo revisor é recusado antes de qualquer escrita e não vira remoção ao agendar; escondida pela pessoa, vira')
     const { registrarDicasDeCopy, ancoraDaDica } = await import('../src/lib/aprendizado/sinal-de-copy-do-plano')
     const { marcaDoRevisor, ocultaPeloRevisor } = await import('../src/lib/creatives/revisao/oculta-pelo-revisor')
@@ -1211,11 +1213,17 @@ async function main() {
     // 9a. o revisor TENTA esconder o CTA (texto com conteúdo) por ajuste mecânico: recusa ESTRUTURAL, nada muda
     const { versaoDaPagina: versaoDaPagina9 } = await import('../src/lib/creatives/revisao/versao')
     const estadoDaPagina9 = async () => {
-      const pg = (await db.page.findUnique({ where: { id: pageId }, select: { updatedAt: true, thumbnail: true, layers: true } }))!
-      return { updatedAt: pg.updatedAt.getTime(), thumbnail: pg.thumbnail, versao: versaoDaPagina9(pg as never) }
+      // O hash da versão inclui largura, altura e fundo (`versao.ts`): o select tem de trazê-los, senão o hash difere do do revisor.
+      const pg = (await db.page.findUnique({ where: { id: pageId }, select: { updatedAt: true, thumbnail: true, layers: true, width: true, height: true, background: true } }))!
+      return { updatedAt: pg.updatedAt.getTime(), thumbnail: pg.thumbnail, versao: versaoDaPagina9(pg) }
     }
     const geracoesDaPagina9 = () => db.generation.count({ where: { projectId: PROJETO, fieldValues: { path: ['pageId'], equals: pageId } } })
-    const jobsForcados9 = async () => (await db.generationJob.findMany({ where: { kind: 'COMPOR', status: { in: ['PENDING', 'RUNNING'] } }, select: { payload: true } })).filter((j) => (j.payload as Record<string, any>)?.recompor?.forcar === true).length
+    // Só os jobs forçados das artes DESTA página (o branch de dev é compartilhado).
+    const jobsForcados9 = async () => {
+      const idsDaPagina9 = (await db.generation.findMany({ where: { projectId: PROJETO, fieldValues: { path: ['pageId'], equals: pageId } }, select: { id: true } })).map((g) => g.id)
+      const jobs = await db.generationJob.findMany({ where: { kind: 'COMPOR', status: { in: ['PENDING', 'RUNNING'] }, generationId: { in: idsDaPagina9 } }, select: { payload: true } })
+      return jobs.filter((j) => (j.payload as Record<string, any>)?.recompor?.forcar === true).length
+    }
     const r9a = await revisarArte({ projectId: PROJETO, pageId, visao: false, previa: false })
     const antes9a = await estadoDaPagina9()
     const gensAntes9a = await geracoesDaPagina9()
@@ -1226,14 +1234,18 @@ async function main() {
     conferir('esconder o CTA (texto com conteúdo) pelo revisor é recusado: CONTEUDO_NAO_PODE_SER_OCULTADO, 422, ajuste não gravado', e9a?.code === 'CONTEUDO_NAO_PODE_SER_OCULTADO' && e9a.status === 422 && e9a.details?.ajusteGravado === false && (e9a.details?.recusados as Array<{ codigo?: string }> | undefined)?.[0]?.codigo === 'CONTEUDO_NAO_PODE_SER_OCULTADO', `${e9a?.code ?? 'sem erro'}: ${e9a?.message.slice(0, 120)}`)
     conferir('a página NÃO mudou (versão, updatedAt e miniatura iguais), o CTA segue visível e SEM marca `ocultaPeloRevisor`', depois9a.versao === antes9a.versao && depois9a.versao === r9a.versao && depois9a.updatedAt === antes9a.updatedAt && depois9a.thumbnail === antes9a.thumbnail && !!depois9a.thumbnail && ctaDepois9a?.visible !== false && marcaDoRevisor(ctaDepois9a) === null, JSON.stringify({ versaoIgual: depois9a.versao === antes9a.versao, thumb: depois9a.thumbnail === antes9a.thumbnail, visivel: ctaDepois9a?.visible, marca: marcaDoRevisor(ctaDepois9a) }))
     conferir('nenhuma Generation nem job de recomposição forçada nasceu da recusa', (await geracoesDaPagina9()) === gensAntes9a && (await jobsForcados9()) === jobsAntes9a)
-    // 9b. agendar pela página: a dica fecha como aceita, sem remoção; a cópia do post carrega a copy INTEIRA (nada foi escondido)
+    // 9b. REV-9E-01 para dados LEGADOS: até 15/10 o revisor escondia texto com a marca `ocultaPeloRevisor`; páginas assim
+    //     existem. A marca é plantada PELO BANCO (nunca mais pelo revisor) e, ao agendar, a dica fecha aceita-como-veio sem
+    //     remoção (a camada marcada conta como presente no aprendizado) e a cópia do post segue a ARTE (sem o CTA).
+    const marcaLegada9 = { em: '2026-10-01T00:00:00.000Z', ajuste: 0 }
+    await db.page.update({ where: { id: pageId }, data: { layers: (await camadasDaPagina9()).map((c) => (c.id === ctaDo9.id ? { ...c, visible: false, metadata: { ...(c.metadata ?? {}), revisao: { ocultaPeloRevisor: marcaLegada9 } } } : c)) as never } })
     const post9b = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: `${daqui7.toISOString().slice(0, 10)} 15:00`, pageId, situacao: 'rascunho', lembrete: true, caption: `${MARCA} rev-9e-01 b` })
     posts.push(post9b.postId)
     const dica9b = await lerDica9()
-    conferir('ao agendar, a dica fechou como aceita-como-veio e o diff não tem remoção (a recusa não inventa remoção)', dica9b?.desfecho === 'aceita-como-veio' && removidosDe(dica9b?.diff).length === 0, JSON.stringify({ desfecho: dica9b?.desfecho, removidos: removidosDe(dica9b?.diff) }))
-    const postDo9b = await db.socialPost.findUnique({ where: { id: post9b.postId }, select: { slotValues: true, renderStatus: true, mediaUrls: true } })
+    conferir('ao agendar com o CTA escondido pela marca LEGADA do revisor, a dica fechou como aceita-como-veio e o diff não tem remoção (esconder mecânico não é a pessoa apagando)', dica9b?.desfecho === 'aceita-como-veio' && removidosDe(dica9b?.diff).length === 0, JSON.stringify({ desfecho: dica9b?.desfecho, removidos: removidosDe(dica9b?.diff) }))
+    const postDo9b = await db.socialPost.findUnique({ where: { id: post9b.postId }, select: { slotValues: true } })
     const valores9b = Object.entries((postDo9b?.slotValues ?? {}) as Record<string, unknown>).filter(([k]) => !k.startsWith('_')).map(([, v]) => v)
-    conferir('a cópia que o post carrega tem o CTA e o apoio (a copy continua presente) e o post nasce RENDERED com a miniatura da página (a recusa não invalidou nada)', valores9b.includes(String(ctaDo9.content).trim()) && valores9b.includes(String(apoioDo9.content).trim()) && postDo9b?.renderStatus === 'RENDERED' && postDo9b.mediaUrls[0] === antes9a.thumbnail, JSON.stringify({ valores: valores9b, renderStatus: postDo9b?.renderStatus }).slice(0, 200))
+    conferir('a cópia que o post carrega segue a ARTE: sem o CTA escondido, com o apoio (a marca não muda o que a peça mostra)', !valores9b.includes(String(ctaDo9.content).trim()) && valores9b.includes(String(apoioDo9.content).trim()), JSON.stringify(valores9b).slice(0, 160))
     // 9c. a mesma recusa com o render FALHANDO: a recusa é PRÉ-escrita e não depende do render — nada é gravado nem enfileirado
     const r9c = await revisarArte({ projectId: PROJETO, pageId, visao: false, previa: false })
     const antes9c = await estadoDaPagina9()
@@ -1244,7 +1256,6 @@ async function main() {
     const depois9c = await estadoDaPagina9()
     const preDepois9c = (await camadasDaPagina9()).find((c) => c.id === preDo9.id)
     conferir('com o render falhando, a recusa é a mesma (CONTEUDO_NAO_PODE_SER_OCULTADO) e nada foi gravado: página, miniatura e versão iguais, pré visível e sem marca, nenhum job forçado', e9c?.code === 'CONTEUDO_NAO_PODE_SER_OCULTADO' && depois9c.updatedAt === antes9c.updatedAt && depois9c.thumbnail === antes9c.thumbnail && preDepois9c?.visible !== false && marcaDoRevisor(preDepois9c) === null && (await jobsForcados9()) === jobsAntes9c, `${e9c?.code ?? 'sem erro'}; thumb ${String(depois9c.thumbnail).slice(0, 40)}`)
-    conferir('o post do 9b continua RENDERED (a recusa não reabriu o render)', (await db.socialPost.findUnique({ where: { id: post9b.postId }, select: { renderStatus: true } }))?.renderStatus === 'RENDERED')
     const post9c = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: `${daqui7.toISOString().slice(0, 10)} 15:30`, pageId, situacao: 'rascunho', lembrete: true, caption: `${MARCA} rev-9e-01 c` })
     posts.push(post9c.postId)
     const dica9c = await lerDica9()
@@ -1260,27 +1271,26 @@ async function main() {
     // Sem plano, a proposta do diff é a copy da Generation do ajuste (`copyDeAprendizado`, lida por `lerProcedencia`;
     // os `slotValues` são a copy VISÍVEL). Depois de um ajuste que não altera copy, as duas têm de ser iguais à página,
     // e o sinal do agendamento não pode inventar adição nem remoção.
-    console.log('9e) REV-8AD-01: na 2ª peça, SEM leva nem dica — ajuste permitido (força do gradiente) e agendar: copy de aprendizado = copy visual = página; nenhuma adição nem remoção')
+    console.log('9e) REV-8AD-01: na 2ª peça, SEM leva nem dica — camada escondida pela marca LEGADA do revisor (plantada pelo banco), ajuste permitido (força do gradiente) e agendar: nenhuma adição nem remoção no sinal de copy')
     const { lerProcedencia } = await import('../src/lib/creatives/procedencia-da-copy')
     const camadas9e = await camadasDaPagina(pageId2)
     const visiveis9e = camadas9e.filter((c) => (c.type === 'text' || c.type === 'rich-text') && c.visible !== false && typeof c.content === 'string' && c.content.trim())
     const alvo9e = visiveis9e.find((c) => /cta|apoio/i.test(String(c.name ?? c.id))) ?? visiveis9e[visiveis9e.length - 1]
     if (!alvo9e) throw new Error('a 2ª peça não tem texto visível para o 9e')
-    const texto9e = String(alvo9e.content).trim() // o texto-testemunha: tem de estar em TODAS as copies depois do ajuste
-    const forcaAntes9e = forcaDe(camadas9e)
-    const forca9e = Math.min(0.9, Math.round((forcaAntes9e + 0.1) * 1000) / 1000)
-    if (!(forca9e > forcaAntes9e)) throw new Error(`o gradiente da 2ª peça já está no teto (${forcaAntes9e}): o 9e precisa de uma força nova`)
+    const texto9e = String(alvo9e.content).trim()
+    // Dado LEGADO: a camada escondida pelo revisor com a marca (plantada pelo banco; o revisor já não faz isso). O ajuste
+    // que o revisor roda é PERMITIDO (força do gradiente, para cima se houver folga, senão para baixo — nunca lança).
+    await db.page.update({ where: { id: pageId2 }, data: { layers: camadas9e.map((c) => (c.id === alvo9e.id ? { ...c, visible: false, metadata: { ...(c.metadata ?? {}), revisao: { ocultaPeloRevisor: marcaLegada9 } } } : c)) as never } })
+    const forcaAntes9e = forcaDe(await camadasDaPagina(pageId2))
+    const forca9e = Math.round((forcaAntes9e + 0.1 <= 0.9 ? forcaAntes9e + 0.1 : forcaAntes9e - 0.1) * 1000) / 1000
     const r9e = await revisarArte({ projectId: PROJETO, pageId: pageId2, visao: false, previa: false })
     const a9e = await ajustarArte({ projectId: PROJETO, pageId: pageId2, versaoEsperada: r9e.versao, ajustes: [{ ...ajuste2, forca: forca9e }], canal: 'claude-code' })
     if (a9e.url) blobs.add(a9e.url)
-    conferir('o ajuste permitido (força do gradiente) entrou e ficou gravado na página', (a9e.ajustesAplicados ?? []).length === 1 && Math.abs(forcaDe(await camadasDaPagina(pageId2)) - forca9e) < 0.001, JSON.stringify({ aplicados: a9e.ajustesAplicados?.length, recusados: a9e.ajustesRecusados, forca: forcaDe(await camadasDaPagina(pageId2)) }).slice(0, 200))
+    conferir(`o ajuste permitido (força do gradiente ${forcaAntes9e} → ${forca9e}) entrou e ficou gravado na página`, (a9e.ajustesAplicados ?? []).length === 1 && Math.abs(forcaDe(await camadasDaPagina(pageId2)) - forca9e) < 0.001, JSON.stringify({ aplicados: a9e.ajustesAplicados?.length, recusados: a9e.ajustesRecusados, forca: forcaDe(await camadasDaPagina(pageId2)) }).slice(0, 300))
     const gen9e = await db.generation.findUnique({ where: { id: a9e.generationId }, select: { fieldValues: true, sourcePageId: true } })
     const fv9e = (gen9e?.fieldValues ?? {}) as Record<string, any>
     const proposta9e = lerProcedencia(gen9e?.fieldValues, gen9e?.sourcePageId ?? null).copyProposta ?? {}
-    const { copyVisualDasCamadas: copyVisualDasCamadas9e } = await import('../src/lib/creatives/procedencia-da-copy')
-    const apenasTextos9e = (o: Record<string, unknown>) => JSON.stringify(Object.fromEntries(Object.entries(o).filter(([k, v]) => !k.startsWith('_') && typeof v === 'string').sort()))
-    const visualDaPagina9e = apenasTextos9e(copyVisualDasCamadas9e(await camadasDaPagina(pageId2)) as Record<string, unknown>)
-    conferir('a Generation do ajuste grava `copyDeAprendizado` E `slotValues` com o texto-testemunha, iguais entre si e iguais à copy visual da página; a procedência lê a de aprendizado', Object.values(fv9e.copyDeAprendizado ?? {}).includes(texto9e) && Object.values(fv9e.slotValues ?? {}).includes(texto9e) && Object.values(proposta9e).includes(texto9e) && apenasTextos9e(fv9e.copyDeAprendizado ?? {}) === apenasTextos9e(fv9e.slotValues ?? {}) && apenasTextos9e(fv9e.slotValues ?? {}) === visualDaPagina9e, JSON.stringify({ aprendizado: Object.keys(fv9e.copyDeAprendizado ?? {}), slot: Object.keys(fv9e.slotValues ?? {}) }))
+    conferir('a Generation do ajuste grava `copyDeAprendizado` COM o texto escondido pela marca legada e `slotValues` SEM ele; a procedência lê a de aprendizado', Object.values(fv9e.copyDeAprendizado ?? {}).includes(texto9e) && !Object.values(fv9e.slotValues ?? {}).includes(texto9e) && Object.values(proposta9e).includes(texto9e), JSON.stringify({ aprendizado: Object.keys(fv9e.copyDeAprendizado ?? {}), slot: Object.keys(fv9e.slotValues ?? {}) }))
     const post9e = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: `${daqui7.toISOString().slice(0, 10)} 16:30`, pageId: pageId2, generationId: a9e.generationId, situacao: 'rascunho', lembrete: true, caption: `${MARCA} rev-8ad-01` })
     posts.push(post9e.postId)
     const sinal9e = await db.learningSignal.findFirst({ where: { projectId: PROJETO, chave: `copy:post:${post9e.postId}` }, select: { desfecho: true, diff: true, escolhido: true } })
@@ -1288,42 +1298,35 @@ async function main() {
     const versus9e = (sinal9e?.escolhido as Record<string, any> | null)?.versusProposta
     conferir('o sinal de copy do post (escolha própria, sem plano) não acusa ADIÇÃO nem remoção, e versusProposta é aceita-como-veio', !!sinal9e && (diff9e.adicionados ?? []).length === 0 && (diff9e.removidos ?? []).length === 0 && versus9e === 'aceita-como-veio', JSON.stringify({ adicionados: diff9e.adicionados, removidos: diff9e.removidos, versus: versus9e }))
     const postDo9e = await db.socialPost.findUnique({ where: { id: post9e.postId }, select: { slotValues: true } })
-    conferir('a cópia visual que o post carrega tem o texto-testemunha (nada foi escondido)', Object.entries((postDo9e?.slotValues ?? {}) as Record<string, unknown>).some(([k, v]) => !k.startsWith('_') && v === texto9e))
+    conferir('a cópia visual que o post carrega segue SEM o texto escondido', !Object.entries((postDo9e?.slotValues ?? {}) as Record<string, unknown>).some(([k, v]) => !k.startsWith('_') && v === texto9e))
 
     // ── 9g. REV-2CEB-01: agendar SÓ pela Generation (sem página) — a cópia do post é a copy VISUAL, não a de aprendizado ──
-    // O revisor já não produz divergência entre as duas copies; ela existe em Generations LEGADAS (anteriores a 15/10),
-    // e a regra de leitura (visual para o post, aprendizado para o diff) continua tendo de valer para elas. A
-    // divergência é PLANTADA na Generation do 9e (um "fantasma" só na copy de aprendizado) e RESTAURADA ao fim do 9g.
-    console.log('9g) REV-2CEB-01: agendar só por generationId (e por mediaUrls casada pela URL): a cópia textual do post é a copy VISUAL — não afirma um texto que só a copy de aprendizado tem')
-    const fantasma9g = 'Texto que o PNG não mostra (fantasma do 9g)'
-    const aprendizadoOriginal9e = fv9e.copyDeAprendizado ?? null
-    await db.generation.update({ where: { id: a9e.generationId }, data: { fieldValues: { ...fv9e, copyDeAprendizado: { ...(fv9e.slotValues ?? {}), fantasma9g: fantasma9g } } as never } })
+    // A divergência entre as duas copies vem do dado LEGADO do 9e (camada escondida com a marca do revisor): a regra de
+    // leitura (visual para o post, aprendizado para o diff) continua tendo de valer para ele.
+    console.log('9g) REV-2CEB-01: agendar só por generationId (e por mediaUrls casada pela URL): a cópia textual do post NÃO afirma o texto que só a copy de aprendizado tem')
     const post9g = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: `${daqui7.toISOString().slice(0, 10)} 18:00`, generationId: a9e.generationId, situacao: 'rascunho', lembrete: true, caption: `${MARCA} rev-2ceb-01 só generation` })
     posts.push(post9g.postId)
     const postDo9g = await db.socialPost.findUnique({ where: { id: post9g.postId }, select: { slotValues: true, pageId: true, mediaUrls: true } })
     const valores9g = Object.entries((postDo9g?.slotValues ?? {}) as Record<string, unknown>).filter(([k]) => !k.startsWith('_')).map(([, v]) => v)
-    conferir('só generationId: o post nasce sem página, com a mídia da Generation, e a cópia textual é a copy VISUAL (tem o texto-testemunha e NÃO o fantasma da copy de aprendizado)', postDo9g?.pageId === null && postDo9g.mediaUrls[0] === a9e.url && valores9g.includes(texto9e) && !valores9g.includes(fantasma9g), JSON.stringify({ pageId: postDo9g?.pageId, valores: valores9g }).slice(0, 200))
+    conferir('só generationId: o post nasce sem página, com a mídia da Generation, e a cópia textual NÃO carrega o texto escondido pela marca (só a copy visual)', postDo9g?.pageId === null && postDo9g.mediaUrls[0] === a9e.url && valores9g.length > 0 && !valores9g.includes(texto9e), JSON.stringify({ pageId: postDo9g?.pageId, valores: valores9g }).slice(0, 200))
     const sinal9g = await db.learningSignal.findFirst({ where: { projectId: PROJETO, chave: `copy:post:${post9g.postId}` }, select: { desfecho: true, diff: true, escolhido: true } })
-    conferir('e o APRENDIZADO segue lendo a copy de aprendizado como proposta: sem página não há diff (lado final desconhecido), e o sinal não acusa adição', !!sinal9g && (((sinal9g.diff ?? {}) as Record<string, any>).adicionados ?? []).length === 0, JSON.stringify(sinal9g?.diff).slice(0, 160))
+    conferir('e o APRENDIZADO segue lendo a copy de aprendizado como proposta: sem página não há diff (lado final desconhecido), e o sinal não acusa adição nem remoção', !!sinal9g && (((sinal9g.diff ?? {}) as Record<string, any>).adicionados ?? []).length === 0 && (((sinal9g.diff ?? {}) as Record<string, any>).removidos ?? []).length === 0, JSON.stringify(sinal9g?.diff).slice(0, 160))
     if (a9e.url) {
       const post9gB = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: `${daqui7.toISOString().slice(0, 10)} 18:30`, mediaUrls: [a9e.url], situacao: 'rascunho', lembrete: true, caption: `${MARCA} rev-2ceb-01 por mediaUrls` })
       posts.push(post9gB.postId)
       const postDo9gB = await db.socialPost.findUnique({ where: { id: post9gB.postId }, select: { slotValues: true, generationId: true } })
       const valores9gB = Object.entries((postDo9gB?.slotValues ?? {}) as Record<string, unknown>).filter(([k]) => !k.startsWith('_')).map(([, v]) => v)
-      conferir('por mediaUrls casada pela URL: a Generation é vinculada e a cópia textual também é a copy visual (com o texto-testemunha, sem o fantasma)', postDo9gB?.generationId === a9e.generationId && valores9gB.includes(texto9e) && !valores9gB.includes(fantasma9g), JSON.stringify({ gen: postDo9gB?.generationId === a9e.generationId, valores: valores9gB }).slice(0, 200))
+      conferir('por mediaUrls casada pela URL: a Generation é vinculada e a cópia textual também é a copy visual, sem o texto escondido', postDo9gB?.generationId === a9e.generationId && valores9gB.length > 0 && !valores9gB.includes(texto9e), JSON.stringify({ gen: postDo9gB?.generationId === a9e.generationId, valores: valores9gB }).slice(0, 200))
     }
-    // a divergência plantada sai: o 9f precisa da copy de aprendizado verdadeira
-    await db.generation.update({ where: { id: a9e.generationId }, data: { fieldValues: { ...fv9e, ...(aprendizadoOriginal9e ? { copyDeAprendizado: aprendizadoOriginal9e } : {}) } as never } })
 
     // ── 9f. REV-8AD-02 + CP4.1: a PESSOA pode esconder (hidden: true pelo chat) — a marca antiga não encobre, e a remoção é dela, auditada ──
     console.log('9f) REV-8AD-02: a marca antiga do revisor sai quando a pessoa mostra pelo editor; esconder pelo chat (hidden: true) continua permitido, aparece em copyRemovida e vira remoção humana no aprendizado')
     const { reconciliarMarcasDoRevisor, marcaDoRevisor: marcaDe } = await import('../src/lib/creatives/revisao/oculta-pelo-revisor')
     const antesDo9f = await camadasDaPagina(pageId2)
-    // uma marca ANTIGA do revisor numa camada que a pessoa traz visível pelo PATCH do editor: a reconciliação a tira
-    const comMarcaAntiga9f = antesDo9f.map((c) => (c.id === alvo9e.id ? { ...c, metadata: { ...((c as Record<string, any>).metadata ?? {}), revisao: { ocultaPeloRevisor: { em: '2026-09-01T00:00:00.000Z', ajuste: 0 } } } } : c))
-    const mostradas9f = reconciliarMarcasDoRevisor(comMarcaAntiga9f as Array<{ id: string; visible?: unknown }>, comMarcaAntiga9f.map((c) => (c.id === alvo9e.id ? { ...c, visible: true } : c)) as Array<{ id: string; [k: string]: unknown }>)
+    // a camada escondida com a marca legada chega visível pelo PATCH do editor: a reconciliação tira a marca
+    const mostradas9f = reconciliarMarcasDoRevisor(antesDo9f as Array<{ id: string; visible?: unknown }>, antesDo9f.map((c) => (c.id === alvo9e.id ? { ...c, visible: true } : c)) as Array<{ id: string; [k: string]: unknown }>)
     const mostrada9f = mostradas9f.find((c) => c.id === alvo9e.id) as Record<string, any>
-    conferir('mostrada pela pessoa pelo editor: a camada fica visível e a marca antiga do revisor SAI', mostrada9f?.visible === true && marcaDe(mostrada9f) === null && marcaDe(comMarcaAntiga9f.find((c) => c.id === alvo9e.id) as never) !== null, JSON.stringify(mostrada9f?.metadata?.revisao))
+    conferir('mostrada pela pessoa pelo editor: a camada (escondida com a marca legada) volta visível e SEM a marca do revisor', marcaDe(antesDo9f.find((c) => c.id === alvo9e.id) as never) !== null && mostrada9f?.visible === true && marcaDe(mostrada9f) === null, JSON.stringify(mostrada9f?.metadata?.revisao))
     await db.page.update({ where: { id: pageId2 }, data: { layers: mostradas9f as never } })
     // caminho do chat: ajustar-arte com `hidden: true` (sem ajustes de revisão) — e com uma marca ANTIGA plantada para provar que ela não encobre
     await db.page.update({ where: { id: pageId2 }, data: { layers: mostradas9f.map((c) => (c.id === alvo9e.id ? { ...c, metadata: { ...((c as Record<string, any>).metadata ?? {}), revisao: { ocultaPeloRevisor: { em: '2026-09-01T00:00:00.000Z', ajuste: 0 } } } } : c)) as never } })
@@ -1386,7 +1389,7 @@ async function main() {
     process.env.BLOB_READ_WRITE_TOKEN = tokenDoBlob
     const pagina9h = await db.page.findUnique({ where: { id: pageId9h }, select: { thumbnail: true } })
     const camadasDepois9h = await camadasDaPagina(pageId9h)
-    conferir('o ajuste permitido gravou a página (CTA 8 px acima, copy intacta) e o render falhou', !!e9h && !['VERSAO_DIVERGENTE', 'AJUSTE_PIOROU_ARTE', 'AJUSTE_NAO_MEDIDO', 'AJUSTE_SEM_EFEITO'].includes(e9h.code ?? '') && Number(camadasDepois9h.find((c) => c.id === cta9h.id)?.position?.y) === yCta9h - 8 && camadasDepois9h.find((c) => c.id === cta9h.id)?.visible !== false, `${e9h?.code}: ${e9h?.message.slice(0, 60)}`)
+    conferir('o ajuste permitido gravou a página (CTA 8 px acima, copy intacta) e o render falhou', !!e9h && !['VERSAO_DIVERGENTE', 'VERSAO_OBRIGATORIA', 'AJUSTE_INVALIDO', 'AJUSTE_PIOROU_ARTE', 'AJUSTE_NAO_MEDIDO', 'AJUSTE_NAO_MELHOROU_O_ACHADO', 'AJUSTE_SEM_EFEITO', 'CONTEUDO_NAO_PODE_SER_OCULTADO'].includes(e9h.code ?? '') && Number(camadasDepois9h.find((c) => c.id === cta9h.id)?.position?.y) === yCta9h - 8 && camadasDepois9h.find((c) => c.id === cta9h.id)?.visible !== false, `${e9h?.code}: ${e9h?.message.slice(0, 60)}`)
     conferir('a miniatura antiga foi INVALIDADA junto da gravação das camadas (thumbnail null)', pagina9h?.thumbnail === null, String(pagina9h?.thumbnail).slice(0, 60))
     const post9h = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: quando9h, pageId: pageId9h, situacao: 'rascunho', lembrete: true, caption: `${MARCA} rev-127-f01` })
     posts.push(post9h.postId)
@@ -1412,7 +1415,7 @@ async function main() {
     process.env.BLOB_READ_WRITE_TOKEN = 'vercel_blob_rw_INVALIDO_prova'
     const e9i = await erroDe(ajustarArte({ projectId: PROJETO, pageId: pageId9h, versaoEsperada: r9iB.versao, ajustes: [{ tipo: 'mover', camadas: [String(pre9i.id)], dy: -6 }], canal: 'claude-code' }))
     process.env.BLOB_READ_WRITE_TOKEN = tokenDoBlob
-    conferir('o segundo ajuste permitido gravou a página (pré-título 6 px acima, visível) e o render falhou', !!e9i && !['VERSAO_DIVERGENTE', 'AJUSTE_PIOROU_ARTE', 'AJUSTE_NAO_MEDIDO', 'AJUSTE_SEM_EFEITO'].includes(e9i.code ?? '') && Number((await camadasDaPagina(pageId9h)).find((c) => c.id === pre9i.id)?.position?.y) === yPre9i - 6, `${e9i?.code}: ${e9i?.message.slice(0, 60)}`)
+    conferir('o segundo ajuste permitido gravou a página (pré-título 6 px acima, visível) e o render falhou', !!e9i && !['VERSAO_DIVERGENTE', 'VERSAO_OBRIGATORIA', 'AJUSTE_INVALIDO', 'AJUSTE_PIOROU_ARTE', 'AJUSTE_NAO_MEDIDO', 'AJUSTE_NAO_MELHOROU_O_ACHADO', 'AJUSTE_SEM_EFEITO', 'CONTEUDO_NAO_PODE_SER_OCULTADO'].includes(e9i.code ?? '') && Number((await camadasDaPagina(pageId9h)).find((c) => c.id === pre9i.id)?.position?.y) === yPre9i - 6, `${e9i?.code}: ${e9i?.message.slice(0, 60)}`)
     const job9i = await db.generationJob.findFirst({ where: { generationId: g1.generationId, kind: 'COMPOR' }, orderBy: { createdAt: 'desc' }, select: { id: true, status: true, payload: true } })
     conferir('a recuperação FORÇADA foi enfileirada para G1 (a arte congelada do post sem página)', !!job9i && (job9i.payload as Record<string, any>).recompor?.forcar === true, JSON.stringify(job9i?.payload).slice(0, 140))
     if (job9i) {
@@ -1498,7 +1501,7 @@ async function main() {
       const e9j = await erroDe(ajustarArte({ projectId: PROJETO, pageId: pageId9j, versaoEsperada: r9jB.versao, ajustes: [{ tipo: 'mover', camadas: [String(apoio9j.id)], dy: -8 }], canal: 'claude-code' }))
       process.env.BLOB_READ_WRITE_TOKEN = tokenDoBlob
       const camadasOcultas9j = await camadasDaPagina(pageId9j)
-      conferir(`[${formato}] o ajuste permitido gravou a página (apoio 8 px acima, copy intacta) e o render falhou`, !!e9j && !['VERSAO_DIVERGENTE', 'AJUSTE_PIOROU_ARTE', 'AJUSTE_NAO_MEDIDO', 'AJUSTE_SEM_EFEITO'].includes(e9j.code ?? '') && Number(camadasOcultas9j.find((c) => c.id === apoio9j.id)?.position?.y) === yApoio9j - 8 && camadasOcultas9j.find((c) => c.id === pre9j.id)?.visible !== false, `${e9j?.code}: ${e9j?.message.slice(0, 60)}`)
+      conferir(`[${formato}] o ajuste permitido gravou a página (apoio 8 px acima, copy intacta) e o render falhou`, !!e9j && !['VERSAO_DIVERGENTE', 'VERSAO_OBRIGATORIA', 'AJUSTE_INVALIDO', 'AJUSTE_PIOROU_ARTE', 'AJUSTE_NAO_MEDIDO', 'AJUSTE_NAO_MELHOROU_O_ACHADO', 'AJUSTE_SEM_EFEITO', 'CONTEUDO_NAO_PODE_SER_OCULTADO'].includes(e9j.code ?? '') && Number(camadasOcultas9j.find((c) => c.id === apoio9j.id)?.position?.y) === yApoio9j - 8 && camadasOcultas9j.find((c) => c.id === pre9j.id)?.visible !== false, `${e9j?.code}: ${e9j?.message.slice(0, 60)}`)
       // (c) a página é regravada COMO A ROTA DE CAMADA grava: string JSON (e, no 2º formato, duplamente codificada)
       const serializadas = formato === 'json' ? JSON.stringify(camadasOcultas9j) : JSON.stringify(JSON.stringify(camadasOcultas9j))
       await db.page.update({ where: { id: pageId9j }, data: { layers: serializadas } })

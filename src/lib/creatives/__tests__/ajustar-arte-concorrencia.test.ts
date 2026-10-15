@@ -477,7 +477,7 @@ describe('CP4.1 — o agente autônomo (draft-only) não apaga copy pelo slotVal
     expect(erro).toBeInstanceOf(CreativeError)
     expect(erro.code).toBe('CONTEUDO_NAO_PODE_SER_REMOVIDO')
     expect(erro.status).toBe(422)
-    expect(erro.details).toMatchObject({ ajusteGravado: false, copyRemovida: [{ layerId, operacao, tinhaConteudo: true, endereco }] })
+    expect(erro.details).toMatchObject({ ajusteGravado: false, copyRemovida: [{ layerId, chave, operacao, tinhaConteudo: true, endereco }] })
     // Sem o texto integral nos details; a mensagem diz o nome da camada e a operação.
     expect(JSON.stringify(erro.details)).not.toContain('Reserve pelo direct')
     expect(erro.message).toMatch(new RegExp(`"${chave}" seria ${operacao}`))
@@ -526,15 +526,37 @@ describe('CP4.1 — o agente autônomo (draft-only) não apaga copy pelo slotVal
   it('8/10. humano: `hidden: true` em texto com conteúdo continua permitido — e a procedência registra "escondido" (retorno e Generation)', async () => {
     const r = await ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { cta: { hidden: true } } })
     expect(cta().visible).toBe(false)
-    expect(r.copyRemovida).toEqual([{ layerId: 'cta', chave: 'cta', operacao: 'escondido', endereco: { tipo: 'layerId', chave: 'cta' } }])
-    expect((banco.generations.at(-1)!.fieldValues as Record<string, any>).copyRemovida).toEqual([{ layerId: 'cta', chave: 'cta', operacao: 'escondido', endereco: { tipo: 'layerId', chave: 'cta' } }])
+    const registro = { layerId: 'cta', chave: 'cta', operacao: 'escondido', endereco: { tipo: 'layerId', chave: 'cta' }, tinhaConteudo: true }
+    expect(r.copyRemovida).toEqual([registro])
+    expect((banco.generations.at(-1)!.fieldValues as Record<string, any>).copyRemovida).toEqual([registro])
     // "conteúdo alterado" é outra coisa: a camada escondida não é texto alterado.
     expect(r.camposAlterados).toEqual([])
   })
   it('9/10. humano: conteúdo → "" continua permitido — e a procedência distingue "esvaziado" de "alterado"', async () => {
     const r = await ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { cta: '', headline: 'Jantar executivo' } })
     expect(cta().content).toBe('')
-    expect(r.copyRemovida).toEqual([{ layerId: 'cta', chave: 'cta', operacao: 'esvaziado', endereco: { tipo: 'layerId', chave: 'cta' } }])
-    expect(r.camposAlterados).toEqual(['headline', 'cta'])
+    expect(r.copyRemovida).toEqual([{ layerId: 'cta', chave: 'cta', operacao: 'esvaziado', endereco: { tipo: 'layerId', chave: 'cta' }, tinhaConteudo: true }])
+    // "alterado" é texto trocado por OUTRO texto: o esvaziado não entra em camposAlterados.
+    expect(r.camposAlterados).toEqual(['headline'])
+  })
+  it('A1. draft-only: texto só de caracteres INVISÍVEIS (zero-width, soft hyphen, braille em branco) é esvaziar com outra sintaxe → recusado', async () => {
+    for (const invisivel of ['\u200b', '\u200c\u200d', '\u2060', '\u00ad', '\u2800', ' \u200b ']) {
+      await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { cta: invisivel } }), 'esvaziado', { tipo: 'layerId', chave: 'cta' })
+    }
+  })
+  it('A2/A3. draft-only: camada escondida pelo REVISOR (com marca) recebendo `hidden: true` conta como esconder; camada escondida pela PESSOA com conteúdo não pode ser esvaziada', async () => {
+    banco.pagina = {
+      ...banco.pagina,
+      layers: [
+        ...(banco.pagina.layers as Array<Record<string, any>>),
+        { ...texto('pelo-revisor', 1800, 'Texto que o revisor escondeu'), visible: false, metadata: { revisao: { ocultaPeloRevisor: { em: '2026-10-01T00:00:00.000Z', ajuste: 0 } } } },
+        { ...texto('pela-pessoa', 1850, 'Texto que a pessoa escondeu'), visible: false },
+      ],
+    }
+    await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { 'pelo-revisor': { hidden: true } } }), 'escondido', { tipo: 'layerId', chave: 'pelo-revisor' }, 'pelo-revisor')
+    await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { 'pela-pessoa': '' } }), 'esvaziado', { tipo: 'layerId', chave: 'pela-pessoa' }, 'pela-pessoa')
+    // Esconder de novo o que a pessoa já escondeu não é remoção (já estava escondido, nada muda).
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { 'pela-pessoa': { hidden: true } } })
+    expect(r.copyRemovida).toBeUndefined()
   })
 })

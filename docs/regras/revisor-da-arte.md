@@ -692,5 +692,20 @@ Decisão do owner: **o agente autônomo não pode apagar copy para "corrigir" de
   candidata medida é a pós-autofix). Camada não medida: fail-closed do CP4. **Fora, por desenho da regra
   9 (decisão pendente do owner)**: títulos (`headline`/`headline2`) não entram em `texto-pequeno` — a
   manchete 84 → 8 px não é detectada por esta regra; cobrir exigiria mudar a regra do revisor.
-- **Provas 9a/9e/9h/9i/9j do `scripts/validar-revisor-da-arte.ts`** redesenhadas sem esconder texto com
-  conteúdo (ver o cabeçalho do passo 9 no script); 9d/9f (controle humano) mantidas e fortalecidas.
+- **Provas do passo 9 de `scripts/validar-revisor-da-arte.ts`** redesenhadas sem esconder texto com conteúdo
+  (ver o cabeçalho do passo 9 no script): 9a/9b/9c provam a recusa PRÉ-escrita (página, miniatura, marca,
+  Generation e job intactos; dica aceita-como-veio; post RENDERED); 9e usa a força do gradiente (copies iguais
+  à página); 9g planta e restaura uma divergência de Generation legada; 9h/9i/9j usam `mover` permitido e
+  conferem `copyVisualRegravada`; 9f (controle humano) fortalecida — marca antiga sai, `copyRemovida`, sinal do
+  ajuste, `removidos` exatos; 9d (remoção humana sem marca → `editada`) não mudou.
+- **Rodada dos 4 revisores (15/10)**: "tem conteúdo" é texto VISÍVEL (`texto-visivel.ts`: `trim` mais os
+  caracteres de formato U+200B/C/D, U+2060, U+00AD, U+FEFF, U+034F, U+3164/FFA0, U+2800) — no bake, no
+  ajuste `visibilidade`, no comparador e em `textoSemConteudo`; esvaziar destrói conteúdo seja a camada
+  visível, escondida pela pessoa ou pelo revisor; `hidden: true` numa camada escondida PELO REVISOR conta
+  como esconder (o bake lava a marca); `{ content: '', hidden: true }` registra as duas operações; o mesmo
+  registro `CopyRemovida` vai aos `details`, ao retorno e à Generation; `camposAlterados` passa a ser só
+  "texto trocado por outro texto" (o esvaziado sai dele); as mensagens das duas recusas dizem a camada,
+  nunca o texto. **Residuais conhecidos**: trocar a copy por "." ou "-" é "texto por texto" (permitido por
+  decisão); `camposAlterados` é cego a rich-text (pré-existente; `copyRemovida` o vê); a auditoria durável
+  (Generation e sinal) só nasce se o render do ajuste terminar — a página já perdeu a copy na transação
+  (limite pré-existente); oclusão de texto por forma/imagem acima dele (z-order) não é propriedade medida.

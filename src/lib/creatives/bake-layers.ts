@@ -8,6 +8,7 @@
  */
 import { semPrefixoHerdado } from '@/lib/copy-autoral'
 import { ocultaPeloRevisor, semMarcaDoRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
+import { temTextoVisivel } from '@/lib/creatives/revisao/texto-visivel'
 import type { OrigemDoValor, ValorResolvido } from '@/lib/semantica/resolver-valores'
 
 /** Um texto com conteúdo que o bake ESCONDEU ou ESVAZIOU — por qual endereço (id, nome, slot, papel) o pedido chegou. */
@@ -38,15 +39,19 @@ export function copyRemovidaDoBake(
   const saida: CopyRemovida[] = []
   sourceLayers.forEach((src: any, i: number) => {
     if (!src || (src.type !== 'text' && src.type !== 'rich-text')) return
-    if (String(src.content ?? '').trim() === '') return
-    if (src.visible === false && !ocultaPeloRevisor(src)) return
+    // "Tem conteúdo" é texto VISÍVEL (não só `trim`): copy feita de zero-width é copy apagada (revisor A).
+    if (!temTextoVisivel(src.content)) return
     const dst = bakedLayers[i]
     if (!dst) return
     const endereco: OrigemDoValor =
       slotValues[src.id] != null ? { tipo: 'layerId', chave: String(src.id) } : (valores?.get(i)?.origem ?? { tipo: 'name', chave: String(src.name ?? src.id) })
     const base = { layerId: String(src.id), chave: String(src.name ?? src.id), endereco, tinhaConteudo: true as const }
-    if (dst.visible === false && src.visible !== false) saida.push({ ...base, operacao: 'escondido' })
-    else if (String(dst.content ?? '').trim() === '') saida.push({ ...base, operacao: 'esvaziado' })
+    // ESVAZIAR destrói conteúdo seja a camada visível, escondida pela pessoa ou pelo revisor (revisor A3).
+    if (!temTextoVisivel(dst.content)) saida.push({ ...base, operacao: 'esvaziado' })
+    // ESCONDER: a camada visível que some — ou a escondida pelo REVISOR que `hidden: true` assume como escondida pela
+    // pessoa (o bake lava a marca; no draft-only não há pessoa: conta como esconder — revisor A2). As duas operações
+    // na mesma chamada (`{ content: '', hidden: true }`) são DUAS entradas (revisor B).
+    if (dst.visible === false && (src.visible !== false || (ocultaPeloRevisor(src) && !ocultaPeloRevisor(dst)))) saida.push({ ...base, operacao: 'escondido' })
   })
   return saida
 }

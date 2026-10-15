@@ -277,7 +277,9 @@ describe('aplicarAjustes — gradiente, posição, visibilidade e caixa', () => 
       [1, 'CONTEUDO_NAO_PODE_SER_OCULTADO', ['visivel', 'camadas'], 'texto-cortado:cta'],
       [2, 'CONTEUDO_NAO_PODE_SER_OCULTADO', ['visivel', 'camadas'], undefined],
     ])
-    expect(r.recusados[0].motivo).toMatch(/cta \("Vem pra cá"\)/)
+    // A mensagem diz a camada, nunca o texto.
+    expect(r.recusados[0].motivo).toMatch(/"cta" \(cta\)/)
+    expect(r.recusados[0].motivo).not.toContain('Vem pra cá')
     expect(r.aplicados.map((x) => x.indice)).toEqual([3, 4])
     expect(r.camadas.map((l) => [l.id, l.visible])).toEqual([['cta', true], ['veu', false], ['badge', false]])
     // Mostrar continua possível.
