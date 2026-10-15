@@ -25,8 +25,8 @@
 > continua sendo escrita sem gate (coberto pelo § 7).
 >
 > **Duas correções ao contrato executável, que valem sobre o texto abaixo:** (a) onde os §§ 4, 5, 13 e 17
-> escrevem `fieldValues.veredito` / `VereditoDaArte` / `vereditoDaMedida`, leia um nome DISTINTO de
-> `veredito` (a fixar no CP5b; o plano-mestre usa `gate` como exemplo) — o contrato executável é o da seção
+> escrevem a CHAVE persistida `fieldValues.veredito` e o TIPO `VereditoDaArte`, leia um nome DISTINTO de
+> `veredito` (a fixar no CP5b; o plano-mestre usa `gate` como exemplo; o nome da função pura é livre) — o contrato executável é o da seção
 > 4.4 do plano-mestre, não o do § 5 abaixo; (b) o § 17 diz que `piloto-portao` "vira `it()` na decisão
 > pura" (CP5a/CP5c1) — errado: esses testes chamam a simulação e a escrita de `agendar-leva` e só passam com
 > o gate integrado (CP5c2). O CP5a tem só testes puros novos.
