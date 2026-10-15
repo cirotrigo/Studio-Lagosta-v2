@@ -522,6 +522,20 @@ export function aplicarAjustes(
 
       case 'visibilidade': {
         const alvo = new Set(ids)
+        // 🔴 Decisão do owner (15/10/2026): AJUSTAR-ARTE NÃO PODE APAGAR COPY. Esconder texto com conteúdo é perda de
+        // conteúdo, não correção de design — recusado aqui, na pré-checagem estrutural (antes de qualquer medida), com
+        // ou sem `achado`, mesmo que esconder "resolvesse" colisão ou contraste; se UMA das camadas é texto com
+        // conteúdo, o ajuste INTEIRO é recusado. Texto vazio e camada decorativa seguem o contrato de sempre.
+        if (a.visivel === false) {
+          const comConteudo = ids.filter((id) => {
+            const l = porId.get(id)
+            return !!l && (l.type === 'text' || l.type === 'rich-text') && String(l.content ?? '').trim().length > 0
+          })
+          if (comConteudo.length > 0) {
+            recusar('CONTEUDO_NAO_PODE_SER_OCULTADO', `esconder texto com conteúdo é apagar copy, não corrigir a arte: ${comConteudo.map((id) => `${id} ("${String(porId.get(id)!.content).trim().slice(0, 40)}")`).join(', ')}. Deixe o achado aberto para revisão humana ou outra composição; nada deste ajuste foi aplicado.`, ['visivel', 'camadas'])
+            return
+          }
+        }
         // A camada escondida pelo revisor leva a MARCA (metadata.revisao.ocultaPeloRevisor): é o que faz o
         // aprendizado não ler o esconder mecânico como a pessoa apagando o texto ao agendar (REV-9E-01).
         const marca = { em: new Date().toISOString(), ajuste: indice }

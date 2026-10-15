@@ -608,8 +608,13 @@ global". Módulos em `src/lib/creatives/revisao/`:
   - **Desaparecer não é melhorar**: texto com conteúdo que some é piora de geometria (salvo pelo próprio
     ajuste `visibilidade`); a logo escondida ou empurrada para fora do canvas é piora sempre; o achado cuja
     camada sumiu fica `nao-melhorou` ("só escondeu"). Texto que APARECE sem leitura é piora. Texto VAZIO
-    não entra no contraste. **Decisão pendente do owner**: `visibilidade: false` num texto com conteúdo,
-    sem achado declarado, hoje ENTRA (é o que o ajuste faz) — recusar estruturalmente é um switch.
+    não entra no contraste. 🔴 **Decisão do owner (15/10/2026): AJUSTAR-ARTE NÃO PODE APAGAR COPY.**
+    `visibilidade: false` em texto/rich-text com conteúdo (após trim) é recusado ESTRUTURALMENTE
+    (`CONTEUDO_NAO_PODE_SER_OCULTADO`, na pré-checagem, antes de qualquer medida), com ou sem `achado`,
+    mesmo que esconder resolvesse colisão/contraste; se UMA camada do ajuste é texto com conteúdo, o ajuste
+    INTEIRO é recusado (nada parcial). A mensagem diz quais camadas têm conteúdo. `visibilidade: true`,
+    texto vazio e camada decorativa seguem o contrato de sempre (gate de não-piora); a logo escondida
+    continua piora. Um `achado` sem solução mecânica fica ABERTO (revisão humana / outra composição).
   - **Camada sem métrica** (fonte não cadastrada, curvo/fitty/auto-resize, rich text, logo não medida):
     mexer nela é `AJUSTE_NAO_MEDIDO`; mexer noutra continua medido pelo que a cobertura `parcial` cobriu.
   - **Regra inaplicável não bloqueia**: `texto-sobre-assunto` `nao-avaliada` dos dois lados numa peça

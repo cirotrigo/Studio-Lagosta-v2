@@ -156,6 +156,11 @@ export type CodigoDaRecusa =
   | 'AJUSTE_NAO_MELHOROU_O_ACHADO'
   /** CP4: o ajuste deixou texto que o autofix geométrico não consegue encaixar. */
   | 'TEXTO_NAO_CABE'
+  /**
+   * Decisão do owner (15/10/2026): `visibilidade: false` em texto/rich-text COM conteúdo é apagar copy — recusado
+   * estruturalmente, antes de qualquer medida, com ou sem `achado`, o ajuste inteiro. Nenhum texto some em silêncio.
+   */
+  | 'CONTEUDO_NAO_PODE_SER_OCULTADO'
 
 export interface ProblemaDoAjuste {
   codigo: CodigoDaRecusa

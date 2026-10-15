@@ -107,6 +107,30 @@ describe('o executor (medida injetada)', () => {
     expect(e.recusados.map((a) => [a.indice, a.codigo, a.achado])).toEqual([[1, 'CAMADA_INEXISTENTE', 'texto-cortado:x']])
   })
 
+  it('decisão do owner — esconder texto com conteúdo é recusa ESTRUTURAL: nenhuma medida; o lote segue com os válidos; o decorativo pode ser escondido', async () => {
+    const gradiente = { id: 'veu', name: 'Véu', type: 'gradient', visible: true, locked: false, order: 0, position: { x: 0, y: 0 }, size: { width: 1080, height: 600 }, style: {} } as Layer
+    const camadas = [gradiente, ...base()]
+    const r = await aplicarAjustesSemPiorar({
+      projectId: 1,
+      page,
+      camadas,
+      ajustes: [{ tipo: 'visibilidade', camadas: ['headline'], visivel: false, achado: 'texto-cortado:headline' } as Ajuste, sobe(10), { tipo: 'visibilidade', camadas: ['veu'], visivel: false } as Ajuste],
+      medir: () => null,
+      _medir: medir,
+    })
+    expect(r.recusados.map((a) => [a.indice, a.codigo, a.achado])).toEqual([[0, 'CONTEUDO_NAO_PODE_SER_OCULTADO', 'texto-cortado:headline']])
+    expect(r.aplicados.map((a) => a.indice)).toEqual([1, 2])
+    expect(r.camadas.find((l) => l.id === 'headline')!.visible).not.toBe(false)
+    expect(r.camadas.find((l) => l.id === 'veu')!.visible).toBe(false)
+    // A recusa estrutural não custou medida: a entrada + uma por candidata medida (2).
+    expect(medicoes).toHaveLength(3)
+    // Só estruturais → nada medido.
+    medicoes.length = 0
+    const so = await aplicarAjustesSemPiorar({ projectId: 1, page, camadas, ajustes: [{ tipo: 'visibilidade', camadas: ['headline', 'veu'], visivel: false } as Ajuste], medir: () => null, _medir: medir })
+    expect(so.recusados.map((a) => a.codigo)).toEqual(['CONTEUDO_NAO_PODE_SER_OCULTADO'])
+    expect(medicoes).toEqual([])
+  })
+
   it('texto que não cabe depois do ajuste recusa SÓ aquele ajuste (TEXTO_NAO_CABE por ajuste), com o índice do lote', async () => {
     autofix.modo = 'nao-cabe'
     const r = await aplicarAjustesSemPiorar({ projectId: 1, page, camadas: base(), ajustes: [{ tipo: 'mover', camadas: ['nao-existe'], dy: -10 } as Ajuste, sobe(10)], medir: () => null, _medir: medir })

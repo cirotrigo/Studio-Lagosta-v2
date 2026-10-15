@@ -336,15 +336,46 @@ describe('CP4 — medir antes, aplicar em memória, medir depois; UMA escrita no
     expect(banco.escritas).toBe(0)
   }, 120_000)
 
-  it('ESCONDER o serviço declarando corrigir `texto-sem-leitura:servico` não resolve nada: sumir não é resolver (revisores A, B, C)', async () => {
+  // Decisão do owner (15/10/2026): AJUSTAR-ARTE NÃO PODE APAGAR COPY — esconder texto com conteúdo é recusa
+  // ESTRUTURAL (antes de qualquer medida), com ou sem `achado`, o ajuste inteiro.
+  it('ESCONDER o serviço (texto com conteúdo), SEM achado → CONTEUDO_NAO_PODE_SER_OCULTADO, estrutural, nenhuma medida, nada gravado', async () => {
+    await expect(ajustar([{ tipo: 'visibilidade', camadas: ['servico'], visivel: false }] as unknown as Ajuste[])).rejects.toMatchObject({
+      code: 'AJUSTE_SEM_EFEITO',
+      details: { ajusteGravado: false, recusados: [expect.objectContaining({ indice: 0, codigo: 'CONTEUDO_NAO_PODE_SER_OCULTADO', motivo: expect.stringMatching(/servico .*Praia do Canto/) })] },
+    })
+    expect(medidas.chamadas).toEqual([])
+    expect({ escritas: banco.escritas, invalidar: espioes.invalidar.mock.calls.length }).toEqual({ escritas: 0, invalidar: 0 })
+  }, 120_000)
+
+  it('ESCONDER o serviço declarando corrigir `texto-sem-leitura:servico` → o `achado` não autoriza apagar copy: a mesma recusa estrutural', async () => {
     const r = await revisar()
     const alvo = r.relatorio.achados.find((a) => a.regra === 'texto-sem-leitura' && a.camadas.includes('servico'))!
     await expect(ajustar([{ tipo: 'visibilidade', camadas: ['servico'], visivel: false, achado: alvo.id }] as unknown as Ajuste[])).rejects.toMatchObject({
-      code: 'AJUSTE_NAO_MELHOROU_O_ACHADO',
-      details: { recusados: [expect.objectContaining({ indice: 0, motivo: expect.stringMatching(/só escondeu/) })] },
+      details: { recusados: [expect.objectContaining({ indice: 0, codigo: 'CONTEUDO_NAO_PODE_SER_OCULTADO', achado: alvo.id })] },
     })
     expect(banco.escritas).toBe(0)
   }, 120_000)
+
+  it('ajuste MISTO (serviço com conteúdo + gradiente decorativo) → o ajuste INTEIRO é recusado, nada aplicado parcialmente; o ajuste válido seguinte do lote entra', async () => {
+    const r = await ajustar([{ tipo: 'visibilidade', camadas: ['gradiente-leitura-rodape', 'servico'], visivel: false }, ACEITO_APOIO] as unknown as Ajuste[])
+    expect(r.resultadoDosAjustes).toBe('parcial')
+    expect(r.ajustesRecusados?.map((a) => [a.indice, a.codigo])).toEqual([[0, 'CONTEUDO_NAO_PODE_SER_OCULTADO']])
+    expect(r.ajustesAplicados?.map((a) => a.indice)).toEqual([1])
+    const persistidas = banco.pagina.layers as Layer[]
+    expect(camada(persistidas, 'gradiente-leitura-rodape').visible).not.toBe(false)
+    expect(camada(persistidas, 'servico').visible).not.toBe(false)
+    expect(banco.escritas).toBe(1)
+  }, 180_000)
+
+  it('MOSTRAR texto (`visivel: true`) continua possível, sujeito à não-piora; esconder um texto VAZIO segue o contrato de sempre', async () => {
+    // Um texto vazio escondido e um texto escondido com conteúdo na página de partida.
+    const vazio = { ...camada(banco.pagina.layers as Layer[], 'apoio'), id: 'badge', name: 'badge', content: '   ', visible: false, position: { x: 70, y: 400 } } as Layer
+    banco.pagina = { ...banco.pagina, layers: [...(banco.pagina.layers as Layer[]), vazio] }
+    const mostrar = await ajustar([{ tipo: 'visibilidade', camadas: ['badge'], visivel: true }] as unknown as Ajuste[])
+    expect(mostrar.ajustesAplicados?.map((a) => a.indice)).toEqual([0])
+    const esconderVazio = await ajustar([{ tipo: 'visibilidade', camadas: ['badge'], visivel: false }] as unknown as Ajuste[])
+    expect(esconderVazio.ajustesAplicados?.map((a) => a.indice)).toEqual([0])
+  }, 180_000)
 
   it('ESCONDER a logo é piora de `logo-sem-leitura` (uma logo escondida não é legível), mesmo que os achados dela sumam (revisor D)', async () => {
     await expect(ajustar([{ tipo: 'visibilidade', camadas: ['logo'], visivel: false }] as unknown as Ajuste[])).rejects.toMatchObject({
