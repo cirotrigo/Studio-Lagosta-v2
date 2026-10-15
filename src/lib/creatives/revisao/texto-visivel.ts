@@ -26,9 +26,11 @@ export function temTextoVisivel(s: unknown): boolean {
  * pessoa lê como apóstrofo ou acento solto; caça-bypass, 15/10); `\p{N}` números (11h30, 50%, R$ 79, ½, ²);
  * `\p{Extended_Pictographic}` os emoji e pictogramas (🍷, ☕, ❤, ✔) — menos os que o Unicode também classifica como
  * pontuação/símbolo matemático (‼ ⁉ 〰 ↔, o "!!!" do owner num só caractere) e as marcas © ® ™; o Regional Indicator
- * (bandeiras 🇧🇷) entra pela faixa; `\p{Mn}` fica de fora de propósito (combinador sozinho não é conteúdo).
+ * (bandeiras 🇧🇷) entra pela faixa; os keycaps `#️⃣`/`*️⃣` entram como sequência (o seletor de variação some em
+ * `textoVisivel`, sobra `#` + U+20E3 — `#` e `*` sozinhos continuam símbolo; Codex, 15/10); `\p{Mn}` fica de fora
+ * de propósito (combinador sozinho não é conteúdo).
  */
-const SUBSTANTIVO = /(?!\p{Lm})\p{L}|\p{N}|(?![\p{P}\p{Sm}©®™])\p{Extended_Pictographic}|[\u{1F1E6}-\u{1F1FF}]/u
+const SUBSTANTIVO = /(?!\p{Lm})\p{L}|\p{N}|(?![\p{P}\p{Sm}©®™])\p{Extended_Pictographic}|[\u{1F1E6}-\u{1F1FF}]|[#*]\u20E3/u
 
 /**
  * "Tem texto SUBSTANTIVO?" — o predicado do guard de remoção de copy (CP4.1, ajuste final do owner): `"."`, `"..."`,

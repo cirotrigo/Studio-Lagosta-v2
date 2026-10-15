@@ -115,6 +115,10 @@ describe('CP4.1 — copyRemovidaDoBake: o que o bake fez com a copy existente (r
   it('ajuste final do owner — só pontuação/símbolo é `sem-conteudo`; letra, número ou emoji é conteúdo; origem só de pontuação não é protegida', () => {
     for (const p of ['.', '...', '—', '___', '!!!', '()', '/', '•••', '…', '- -', '‼', 'ʼ', '©', '™']) expect(remocoes({ cta: p }).map((c) => c.operacao)).toEqual(['sem-conteudo'])
     for (const filler of ['\u115f', '\u1160', '\ufe0f']) expect(remocoes({ cta: filler }).map((c) => c.operacao)).toEqual(['esvaziado'])
+    // Keycap é conteúdo nos dois sentidos: origem `#️⃣` é protegida; destino `#️⃣` é troca legítima (Codex).
+    expect(remocoes({ cta: '#\ufe0f\u20e3' })).toEqual([])
+    const srcKeycap = [t('tecla', '#\ufe0f\u20e3')]
+    for (const sv of [{ tecla: '.' }, { tecla: '' }]) expect(copyRemovidaDoBake(srcKeycap, bakeLayers(srcKeycap, sv, null).layers, sv).map((c) => c.operacao)).toEqual([sv.tecla === '.' ? 'sem-conteudo' : 'esvaziado'])
     for (const ok of ['Jantar', '11h', '🍷', '50% OFF', 'R$ 79', 'Vem!', '½', 'الغداء', '午餐']) expect(remocoes({ cta: ok })).toEqual([])
     expect(remocoes({ _slots: { manchete: '.' }, _papeis: { headline: '-' } }).length).toBeGreaterThanOrEqual(0) // sem slot cadastrado: resolvido abaixo pelo papel
     expect(remocoes({ _papeis: { headline: '-' } })).toEqual([expect.objectContaining({ layerId: 'headline', operacao: 'sem-conteudo', endereco: { tipo: 'semanticRole', chave: 'headline' } })])

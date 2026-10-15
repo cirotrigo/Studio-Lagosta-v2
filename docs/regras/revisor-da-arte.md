@@ -712,8 +712,8 @@ Decisão do owner: **o agente autônomo não pode apagar copy para "corrigir" de
   id, nome, `_slots` e `_papeis`. **Caça-bypass do predicado (1 subagente, medido em Node 22)**: os fillers Hangul
   U+115F/U+1160 são `\p{L}` e passavam (BLOCKER) → `INVISIVEIS` usa `\p{Default_Ignorable_Code_Point}`; `‼ ⁉ 〰 ↔`
   e `© ® ™` são `Extended_Pictographic` e passavam → excluídos os que também são `\p{P}`/`\p{Sm}` e as marcas;
-  letras modificadoras (`\p{Lm}`: ʼ ʹ ˆ ː) passavam → excluídas. **Residuais documentados, não mexidos**: falsos
-  positivos raros (texto em braille com pontos, keycaps `#️⃣`, moeda sozinha `€`, ícone de fonte PUA; `✓`/`→`
+  letras modificadoras (`\p{Lm}`: ʼ ʹ ˆ ː) passavam → excluídas. Os keycaps `#️⃣`/`*️⃣` entram como sequência (Codex: origem protegida e destino permitido).
+  **Residuais documentados, não mexidos**: falsos positivos raros (texto em braille com pontos, moeda sozinha `€`, ícone de fonte PUA; `✓`/`→`
   bloqueados × `✔`/`➡` aceitos, por classificação do Unicode); pictograma não atribuído passa; valor de TIPO errado
   em `slotValues` (número, array, `{ hidden: 'true' }`, `{ visible: false }`) é ignorado pelo bake e a chamada
   responde sucesso regravando a página igual — não vaza copy, custa um render e engana o agente (candidato a

@@ -15,6 +15,8 @@ describe('texto visível × texto substantivo (CP4.1)', () => {
   })
   it('substantivo: letra, número ou pictograma em qualquer escrita É conteúdo (lista do owner)', () => {
     for (const s of ['Almoço', '11h30', 'R$ 79', '50%', 'Vem!', '🍷', '☕', '❤', '🇧🇷', '½', '²', 'الغداء', '午餐', 'Обед', 'ñ', 'a.', '.1', '(x)', ' \u200b7 ']) expect(temTextoSubstantivo(s)).toBe(true)
+    for (const s of ['#\ufe0f\u20e3', '*\ufe0f\u20e3', '#\u20e3']) expect(temTextoSubstantivo(s)).toBe(true) // keycaps são sequência (Codex)
+    for (const s of ['#', '*', '#*', '\u20e3']) expect(temTextoSubstantivo(s)).toBe(false)
     for (const s of ['❤️', '✔', '➡', '👨‍👩‍👧', '1️⃣', 'ラーメン', "it\u02bcs", '🏴\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}']) expect(temTextoSubstantivo(s)).toBe(true)
   })
   it('um combinador sozinho não é conteúdo; preso a uma letra, a letra é', () => {
