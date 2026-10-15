@@ -160,6 +160,19 @@ describe('a gravada e a recusa', () => {
     expect(legado.legibilidade).toMatchObject({ estado: 'nao-medida', motivo: 'nenhuma variante autorizada cadastrada' })
   })
 
+  it('URL com escape inválido (`logo%.png`) não derruba a peça: o rótulo cai para o nome bruto, no legado e na recusa com arquétipo (Codex final)', async () => {
+    const escura = await logoCheia(20)
+    const layers = [fundo(await foto(() => 20)), camadaDaLogo(escura, CANTO)]
+    const quebrada: VarianteDaLogo = { origem: 'projeto', url: 'https://blob.test/logos/logo%.png', logoId: 7 }
+    const legado = await conferirLogoDaPeca(args({ layers, logo: layers[1], desenhada: pagina(escura), variantes: [pagina(escura), quebrada], modo: 'legado' }))
+    const celula = legado.legibilidade.avaliacoes.find((a) => a.variante.url === quebrada.url)!
+    expect(celula.estado).toBe('indisponivel')
+    expect(legado.legibilidade.mensagem).toMatch(/1 não carregou/)
+    // O rótulo com o nome bruto não lança (é ele que montaria o aviso/erro com `nomeDoArquivo`).
+    expect(legado.layers).toBe(layers)
+    await expect(conferirLogoDaPeca(args({ layers, logo: layers[1], desenhada: pagina(escura), variantes: [pagina(escura), quebrada] }))).rejects.toMatchObject({ code: 'LOGO_INDISPONIVEL' })
+  })
+
   it('variante do projeto TRUNCADA (a cabeça decodifica, o corpo não): "indisponivel" na grade — o legado sai, o arquétipo recusa como transitório, nunca uma exceção solta (revisor F)', async () => {
     const legivel = await logoCheia(240)
     const inteira = Buffer.from((await logoCheia(20)).slice('data:image/png;base64,'.length), 'base64')

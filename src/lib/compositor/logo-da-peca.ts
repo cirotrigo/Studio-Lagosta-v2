@@ -172,7 +172,13 @@ async function carregar(v: VarianteDaLogo, cache?: CacheDeLogos): Promise<Varian
 const nomeDoArquivo = (url: string): string => {
   if (url.startsWith('data:')) return '(embutida)'
   const caminho = url.split('?')[0].split('#')[0]
-  return decodeURIComponent(caminho.slice(caminho.lastIndexOf('/') + 1)) || url
+  const bruto = caminho.slice(caminho.lastIndexOf('/') + 1)
+  // Escape inválido (`logo%.png`) lança URIError — o rótulo nunca pode derrubar a peça (Codex final do CP3).
+  try {
+    return decodeURIComponent(bruto) || url
+  } catch {
+    return bruto || url
+  }
 }
 const rotulo = (v: VarianteDaLogo) => `${v.origem === 'pagina' ? 'a logo da página de assinatura' : 'a logo principal do projeto'} (${nomeDoArquivo(v.url)})`
 
@@ -268,7 +274,17 @@ export async function conferirLogoDaPeca(args: ArgsDaConferencia): Promise<Resul
   //    e nenhum véu novo nasce para a logo); no legado a peça é a que está.
   const veusRemovidos = args.modo === 'arquetipo' ? args.layers.filter((l) => args.veusDaLogo.has(l.id)).map((l) => l.id) : []
   const camadasBase = veusRemovidos.length > 0 ? args.layers.filter((l) => !args.veusDaLogo.has(l.id)) : args.layers
-  const fundoDaGrade = veusRemovidos.length > 0 ? await fundoSemALogo({ layers: camadasBase, canvas: args.canvas, background: args.background, semAsCamadas: new Set([args.logo.id]) }) : fundo
+  let fundoDaGrade = fundo
+  if (veusRemovidos.length > 0) {
+    // O segundo render (sem os véus da logo) tem a MESMA classificação do primeiro: falha de render é transitória
+    // (`LOGO_INDISPONIVEL`, 503), nunca "sem variante" nem exceção solta (Codex final do CP3). Só há véu a remover
+    // com arquétipo, então aqui o modo é sempre 'arquetipo'.
+    try {
+      fundoDaGrade = await fundoSemALogo({ layers: camadasBase, canvas: args.canvas, background: args.background, semAsCamadas: new Set([args.logo.id]) })
+    } catch (erro) {
+      throw new CreativeError(LOGO_INDISPONIVEL, `A leitura da logo não foi medida: o fundo da peça sem os véus da logo não renderizou (${erro instanceof Error ? erro.message : String(erro)}).`, 503, { etapa: 'render' })
+    }
+  }
   const avaliacoes: AvaliacaoDaLogo[] = []
   for (const c of carregadas) {
     const caixaNoAtual = caixaDe(c, args.cantoAtual)
