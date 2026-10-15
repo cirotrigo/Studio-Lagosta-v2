@@ -49,6 +49,16 @@ describe('CP4.2b — V17: a FASE 1 (formato) roda no HANDLER e chega à porta co
       details: { erros: [{ codigo: 'VALOR_INVALIDO', origem: { tipo: 'chave', chave: 'x' } }] },
     })
     await expect((tool as any).handler({ projectId: 8, sourcePageId: 'p-a', slotValues: { x: 123 } }, { kind: 'service' })).rejects.toBeInstanceOf(CreativeError)
+    // Revisão do owner: controle de foto `null` é VALOR_INVALIDO no handler, também no pedido misto (texto válido junto).
+    await expect((tool as any).handler({ projectId: 8, sourcePageId: 'p-a', slotValues: { _driveImageId: null } }, { kind: 'service' })).rejects.toMatchObject({
+      code: 'VALOR_INVALIDO',
+      status: 400,
+      details: { erros: [{ codigo: 'VALOR_INVALIDO', origem: { tipo: 'chave', chave: '_driveImageId' } }] },
+    })
+    await expect((tool as any).handler({ projectId: 8, sourcePageId: 'p-a', slotValues: { headline: 'Texto', _imageUrl: null, _slots: null } }, { kind: 'service' })).rejects.toMatchObject({
+      code: 'VALOR_INVALIDO',
+      details: { erros: [{ origem: { chave: '_imageUrl' } }] },
+    })
     expect(createArteRapida).not.toHaveBeenCalled()
   })
 })

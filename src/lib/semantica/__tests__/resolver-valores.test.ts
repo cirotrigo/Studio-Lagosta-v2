@@ -345,7 +345,7 @@ describe('CP4.2b — validação do legado de slotValues (uma fonte só, em duas
     for (const ok of ['x', '', '   ', '.', { content: '' }, { content: 'x' }, { fileUrl: 'https://f' }, { hidden: true }, { papel: 'cta' }, { bloco: 'b' }, { content: 'x', hidden: true }, { content: 'x', papel: 'cta', bloco: 'b' }]) expect(valorLegadoValido(ok)).toBe(true)
     for (const ruim of [123, 0, true, false, null, undefined, [], ['x'], {}, { hidden: 'true' }, { hidden: 1 }, { visible: false }, { text: 'x' }, { content: 123 }, { fileUrl: '' }, { papel: '' }, { content: 'x', visible: false }]) expect(valorLegadoValido(ruim)).toBe(false)
   })
-  it('FASE 1 (sem página): legado inválido → VALOR_INVALIDO com origem { tipo: "chave" }; controles de foto só string não vazia (ausente/null = não fornecido); outro `_…` → CHAVE_DESCONHECIDA; _slots/_papeis ficam com a semântica', () => {
+  it('FASE 1 (sem página): legado inválido → VALOR_INVALIDO com origem { tipo: "chave" }; controles de foto só string não vazia (só AUSENTE = não fornecido; null → VALOR_INVALIDO, revisão do owner); outro `_…` → CHAVE_DESCONHECIDA; _slots/_papeis ficam com a semântica', () => {
     expect(validarFormatoDosSlotValues({ cta: 'x', Chamada: { content: 'y' }, headline: { hidden: true } })).toEqual([])
     expect(validarFormatoDosSlotValues({ cta: 123, headline: ['x'], apoio: { visible: false } })).toEqual([
       { codigo: 'VALOR_INVALIDO', origem: { tipo: 'chave', chave: 'cta' } },
@@ -359,6 +359,10 @@ describe('CP4.2b — validação do legado de slotValues (uma fonte só, em duas
       { codigo: 'VALOR_INVALIDO', origem: { tipo: 'chave', chave: '_driveImageId' } },
     ])
     expect(validarFormatoDosSlotValues({ _qualquer: 'x' })).toEqual([{ codigo: 'CHAVE_DESCONHECIDA', origem: { tipo: 'chave', chave: '_qualquer' } }])
+    // Revisão do owner (15/10): `null` nos controles de FOTO é inválido; `_slots`/`_papeis: null` seguem "não fornecido".
+    expect(validarFormatoDosSlotValues({ _imageUrl: null })).toEqual([{ codigo: 'VALOR_INVALIDO', origem: { tipo: 'chave', chave: '_imageUrl' } }])
+    expect(validarFormatoDosSlotValues({ _driveImageId: null, _slots: null, _papeis: null })).toEqual([{ codigo: 'VALOR_INVALIDO', origem: { tipo: 'chave', chave: '_driveImageId' } }])
+    expect(validarFormatoDosSlotValues({ _imageUrl: undefined, _driveImageId: undefined })).toEqual([])
     // Misto: todos os erros vêm na lista (o pedido inteiro é recusado por quem chama).
     expect(validarFormatoDosSlotValues({ cta: 'Novo', headline: 123, _x: 1 }).map((e) => e.codigo)).toEqual(['VALOR_INVALIDO', 'CHAVE_DESCONHECIDA'])
   })

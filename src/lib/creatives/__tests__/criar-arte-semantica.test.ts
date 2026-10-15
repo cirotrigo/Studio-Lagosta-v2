@@ -541,6 +541,17 @@ describe('CP4.2b — na criação: formato antes da foto (400); endereço contra
     expect(lerImagemDeEntrada).not.toHaveBeenCalled()
     semEfeito()
   })
+  it('revisão do owner: _driveImageId: null / _imageUrl: null → 400 VALOR_INVALIDO com a chave, ANTES de ler a foto; misto (texto válido + null) recusado inteiro; nada criado', async () => {
+    for (const slotValues of [{ _driveImageId: null }, { _imageUrl: null }, { 'a-h': 'Texto válido', _imageUrl: null }]) {
+      const e = await falha(createArteRapida({ projectId: 8, sourcePageId: 'p-a', slotValues }))
+      expect(e.code).toBe('VALOR_INVALIDO')
+      expect(e.status).toBe(400)
+      expect(e.message).toContain(Object.keys(slotValues).find((k) => k.startsWith('_'))!)
+      expect(lerImagemDeEntrada).not.toHaveBeenCalled()
+      semEfeito()
+    }
+  })
+
   it('caminho válido com foto do Drive: a foto lida por bytes escolhe o layout (a irmã), o put roda UMA vez depois do endereço, e o halo recebe a foto com a URL FINAL', async () => {
     estado.irma = 'p-b'
     await createArteRapida({ projectId: 8, sourcePageId: 'p-a', slotValues: { _driveImageId: 'd1' }, copyAutoral: SO_MANCHETE })

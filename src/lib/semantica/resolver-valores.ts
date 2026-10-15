@@ -186,7 +186,9 @@ function ENTRADAS_RESERVADAS(): string[] {
 /**
  * CP4.2b — FASE 1, o FORMATO de `slotValues`, SEM página (roda no handler MCP, no serviço e na API externa, antes de
  * qualquer leitura de foto ou escrita): cada chave legada passa por `valorLegadoValido`; `_imageUrl`/`_driveImageId`
- * precisam ser string não vazia (ausente/`null` = não fornecido); qualquer outro `_…` é `CHAVE_DESCONHECIDA`.
+ * precisam ser string não vazia (só AUSENTE = não fornecido; `null` é `VALOR_INVALIDO` — revisão do owner, 15/10:
+ * `_imageUrl: null` respondia sucesso, regravava a página, criava Generation e fazia put); qualquer outro `_…` é
+ * `CHAVE_DESCONHECIDA`. `_slots`/`_papeis: null` continuam "não fornecido" (compatibilidade aprovada).
  * `_slots`/`_papeis` NÃO entram aqui — `validarEntradaSemantica` já os cobre; quem chama junta as duas listas.
  * A origem é só a chave (`tipo: 'chave'`): sem a página não há como dizer se é id ou nome.
  */
@@ -196,7 +198,7 @@ export function validarFormatoDosSlotValues(slotValues: Record<string, unknown>)
     if (chave.startsWith('_')) {
       if (CONTROLES_SEMANTICOS.has(chave)) continue
       if (CONTROLES_DE_FOTO.has(chave)) {
-        if (valor === undefined || valor === null) continue
+        if (valor === undefined) continue
         if (typeof valor !== 'string' || valor === '') erros.push({ codigo: 'VALOR_INVALIDO', origem: { tipo: 'chave', chave } })
         continue
       }

@@ -637,6 +637,18 @@ describe('CP4.2b — slotValues inválido é recusado ANTES de qualquer escrita 
     await recusado({ _imageUrl: 123 }, 'VALOR_INVALIDO', 400, ['_imageUrl'])
     await recusado({ _qualquer: 'x' }, 'CHAVE_DESCONHECIDA', 400, ['_qualquer'])
   })
+  it('V14b (revisão do owner): _imageUrl: null e _driveImageId: null → 400 VALOR_INVALIDO com a chave; pedido MISTO (texto válido + controle null) recusado inteiro; _slots/_papeis null seguem aceitos', async () => {
+    await recusado({ _imageUrl: null }, 'VALOR_INVALIDO', 400, ['_imageUrl'])
+    await recusado({ _driveImageId: null }, 'VALOR_INVALIDO', 400, ['_driveImageId'])
+    await recusado({ cta: 'Novo', _driveImageId: null }, 'VALOR_INVALIDO', 400, ['_driveImageId'])
+    await recusado({ _imageUrl: null, _driveImageId: null }, 'VALOR_INVALIDO', 400, ['_imageUrl', '_driveImageId'])
+    const erro = (await erroDe(ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { _imageUrl: null } }))) as CreativeError
+    expect(erro.message).toContain('"_imageUrl"')
+    // Controle: `_slots: null` continua "não fornecido" — a chamada segue e grava o texto.
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { cta: 'Novo', _slots: null, _papeis: null } })
+    expect(r).toBeTruthy()
+    expect(cta().content).toBe('Novo')
+  })
   it('V11: "" e "." no draft-only continuam chegando ao guard do CP4.1 (CONTEUDO_NAO_PODE_SER_REMOVIDO), não à validação', async () => {
     for (const v of ['', '.']) {
       const erro = (await erroDe(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { cta: v } }))) as CreativeError
