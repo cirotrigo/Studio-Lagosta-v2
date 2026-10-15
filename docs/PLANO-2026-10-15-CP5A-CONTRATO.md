@@ -1,6 +1,10 @@
 # CP5a — contrato técnico do VEREDITO PURO (proposta para revisão, 15/10/2026, noite)
 
 **Estado: PROPOSTA PARA REVISÃO. Nada implementado.** Base: `main` `01f3c3be` (merge do CP4.2, PR #235).
+Rodada 7 do Codex (BLOCKER: `svg-path` não é recortado ao viewBox; `style.filter` vai para `ctx.filter`;
+`effects.background` pinta além da caixa do texto; IMPORTANTE: G23b omitia `TextboxConfig` e os objetos inline)
+aplicada no HEAD seguinte — a seção 6 foi reescrita em torno de um princípio único: **só mede pela caixa o que
+um teste de paridade com o render real prova contido; todo o resto acima de um texto é `NAO_MEDIDO`**.
 Rodada 6 do Codex (BLOCKER: `icon` desenha o path em coordenadas cruas; `style.border.width` e `style.shadow`
 faltavam na expansão; IMPORTANTE: G23b por scan do fonte não fecha aliases) aplicada no HEAD seguinte. Rodada 5 do
 Codex (BLOCKER: círculo/triângulo/estrela são desenhados CENTRADOS na posição; desfoque, traço e
@@ -35,7 +39,7 @@ do owner, com recomendação e sem assumir aprovação.
 | Nome da função | `vereditoDaMedida(medida, relatorio, identidade)` em `veredito.ts` | nome livre; chave persistida NÃO pode ser `veredito` | `REVISAO_HUMANA_NECESSARIA` existe só como texto (`operacao-dot.ts`, manual) e no oráculo dos testes | função `gateDaMedida` em `src/lib/creatives/revisao/gate.ts`; tipo `GateDaArte`. "gate" é o vocabulário do plano-mestre e não colide com `VereditoDeArte` (feedback humano) nem com o crivo |
 | Entrada | medida inteira + relatório + identidade | idem | `MedidaDaPeca` (`revisar-arte.ts`, `Omit<EntradaDaRevisao, 'vistos'\|'motivoSemVisao'\|'marcas'>`) já traz `camadas`, `canvas` e `formato`; `avaliarPeca(medida)` (`regras.ts`, pura e síncrona) → `RelatorioDaRevisao`; identidade = `versaoDaPagina` (sem áudio) + hash do `copyAutoral` (só em testes) | seção 2: **a medida é a fonte única** — o gate chama `avaliarPeca(medida)` ele mesmo e devolve o relatório junto (Codex R1: relatório e camadas recebidos à parte permitiam provar uma peça com o relatório de outra). **O relatório não basta**: só a medida traz `assunto.origem`, `contraste`, `pioras`, `leituraDaLogo`, `motivoSemMedida`, `textosSemMetrica` |
 | `texto-sobre-assunto` | comprova SÓ com catálogo; sem assunto → humano | o doc não conhecia `naoSeAplica` (CP4.1); política por caso A–E é a decisão 1 | `CoberturaDaRegra.naoSeAplica` existe (`contrato.ts:87`); `assunto.origem: 'catalogo' \| 'estimado'`; tetos 0,25 (catálogo) e 0,40 (estimado) em `mapa-de-calma.ts:175-177`; **o assunto sai das camadas efetivas** (CP4.2, revisão do owner) | seção 5: política por caso, parametrizada (`politicaDoAssunto`), com a recomendação; o CP5a implementa os cinco casos e testa cada um |
-| Oclusão | não tratada | lacuna crítica; (B) detecção do cenário no CP5a, (A) medição no CP5b; decisão 2 | `regras.ts` não lê `Layer.order`; mede só `text`/`rich-text` visíveis, a foto de fundo (`fotoDeFundo`) e as logos soltas (`logosDaPeca`); `shape`/`icon`/`element`/`video`/`gradient2`/imagem que não é fundo são invisíveis; a régua (`regua.ts:342`, `semTinta`) renderiza as camadas ACIMA do texto como fundo | seção 6: (B) como função pura `cenariosNaoMedidos(medida, cobertura)` no CP5a — toda camada visível (de qualquer tipo, inclusive texto girado ou sem métrica) com `order` maior OU IGUAL ao de um texto visível cujos limites (conservadores, com a rotação em torno da origem, como o render) intersectam os dele → `REVISAO_HUMANA_NECESSARIA`; sem exceção para gradiente (metadata não prova ausência de oclusão); as únicas exceções são texto × texto ambos medidos e sem rotação (é `colisao`) e o par logo solta × texto que `logo-sobre-texto` comprovadamente examinou; transformação não suportada → `NAO_MEDIDO` (seção 6) |
+| Oclusão | não tratada | lacuna crítica; (B) detecção do cenário no CP5a, (A) medição no CP5b; decisão 2 | `regras.ts` não lê `Layer.order`; mede só `text`/`rich-text` visíveis, a foto de fundo (`fotoDeFundo`) e as logos soltas (`logosDaPeca`); `shape`/`icon`/`element`/`video`/`gradient2`/imagem que não é fundo são invisíveis; a régua (`regua.ts:342`, `semTinta`) renderiza as camadas ACIMA do texto como fundo | seção 6: (B) como função pura `cenariosNaoMedidos(medida, cobertura)` no CP5a — só mede pela caixa o conjunto fechado que a paridade com o render prova contido (6.1: retângulos, formas centradas, imagens, gradientes, texto simples, com expansões por traço/desfoque/sombra/borda e rotação em torno da origem); `svg-path`, `icon`, `line`/`arrow`, `filter`, `rich-text`, mancha de fundo e chave não classificada acima de texto → `NAO_MEDIDO` (6.2); camada contida com `order >=` ao de um texto cujos glifos intersecta → oclusão; sem exceção para gradiente; duas exceções com prova positiva (texto × texto limpo medido por `colisao`; logo solta × texto medido por `logo-sobre-texto`) |
 | Piso de interface 188/224 | lacuna; `foraDaInterface` do oráculo vira produção no CP5c2 | "no CP5a `foraDaInterface` vira função de produção ou regra do revisor" | só em `direcao-de-arte/__tests__/suporte/propriedades.ts:35,349` (`PISO_DE_INTERFACE_DO_STORY`, `foraDaInterface`) | seção 4.3: vira função de produção em `gate.ts` (`foraDaInterface`), conferida pelo gate sobre as CAIXAS (texto e logo visíveis), só para `formato === 'story'`; o oráculo dos testes passa a importar a de produção (um só lugar com os números) |
 | Copy completa | reconciliação pura `revisaoDaPaginaComCamadas` em `sem-mudanca` + `lacunas` vazias | idem + `copyRemovida` como evidência | `revisaoDaPaginaComCamadas(gravado, camadas, quem)` (`copy-autoral/revisar-pagina.ts:83`): estados `sem-contrato`, `ilegivel`, `historico-cheio`, `copy-invalida`, `sem-mudanca`, `registrada` | seção 4.4: entra no CP5a como entrada OPCIONAL (`copy`), já calculada por quem chama; o gate não lê banco. `copyRemovida` NÃO entra no CP5a (mora na Generation; é evidência do CP5b/CP5c) |
 | Achado crítico | regra crítica com `certeza: 'medida'`, qualquer severidade; `estimada` = não comprovado; `visao` não entra | idem | `Certeza = 'medida' \| 'estimada' \| 'visao'`; `colisao`, `fora-da-area-segura`, `logo-sobre-texto`, `texto-sobre-assunto`, `texto-cortado` saem `aviso` | seção 4.1, sem mudança: predicado executável |
@@ -311,8 +315,15 @@ camada sem arquivo é C' (humano), com arquivo é C; e que D e C' nunca viram C 
 
 ## 6. Estratégia de oclusão — (B) detecção do cenário não comprovável, no CP5a
 
-Função pura em `gate.ts`, alimentada pela MEDIDA (não só por `Layer[]`): a exceção de logo precisa de prova
-positiva de que o par foi examinado, e isso mora nas métricas e na cobertura.
+**Princípio (Codex R4–R7)**: o render tem muitos caminhos que pintam fora de `position`/`size` (rotação em torno
+da origem, formas centradas, traço, desfoque, sombra, borda, `filter`, path sem recorte, mancha de fundo do
+texto, ícone em coordenadas cruas…). O gate NÃO tenta modelar o render inteiro. Ele mede pela caixa **somente
+o conjunto fechado de configurações cuja contenção um teste de paridade com o render REAL prova (G21c)**;
+qualquer outra camada visível acima de (ou empatada com) um texto é `transformacao-nao-suportada` →
+`NAO_MEDIDO` → `REVISAO_HUMANA_NECESSARIA`. Ampliar o conjunto medido é sempre um PR com a prova de paridade
+nova — nunca "parece contido".
+
+Função pura em `gate.ts`, alimentada pela MEDIDA:
 
 ```ts
 export function cenariosNaoMedidos(
@@ -322,110 +333,106 @@ export function cenariosNaoMedidos(
   | { tipo: 'oclusao'; texto: string; acima: string[] }
   | { tipo: 'transformacao-nao-suportada'; camadas: string[]; motivo: string }
 >
+export function limitesDe(l: Layer, metrica?: TextLayerMetrics): { contido: true; rect: Rect } | { contido: false; motivo: string }
 ```
 
-**Limites de cada camada**: `limitesDe(l)` devolve a caixa alinhada aos eixos que CONTÉM a geometria desenhada,
-com o MESMO pivô do render: o servidor gira o node em torno da ORIGEM `(position.x, position.y)`, sem offset
-(`render-engine.ts:199-205`, "Konva rotaciona o node em torno da própria origem") — **não em torno do
-centro** (Codex R4). Para `rotation` ∈ {0, undefined} é `position`/`size`; para qualquer outra rotação são os
-quatro cantos `(0,0) (w,0) (0,h) (w,h)` girados por `rotation` graus em torno da origem, somados a
-`position`, e a caixa envolvente deles (limites conservadores: podem sobrar, nunca faltar). Transformações
-que a caixa CONTÉM e por isso são suportadas: `style.flipH`/`flipV` (o render espelha DENTRO da caixa,
-`render-engine.ts:1692-1693`) e `style.mask` (o `clip` só RETIRA desenho, `render-engine.ts:1664-1668` —
-a caixa continua contendo o que sobra; uma forma mascarada acima de um texto que intersecta CONTA, porque o
-gate não sabe o que o recorte deixou).
+### 6.1 O que `limitesDe` mede pela caixa (conjunto fechado, cada item com paridade em G21c)
 
-**Geometria por tipo de forma** (Codex R5/R6): a caixa `position`/`size` só descreve o desenho para `rectangle`,
-`rounded-rectangle`, `svg-path` (desenhado na caixa), `image`, `logo`, `element` (os três passam por `renderImage`,
-`drawImage(0, 0, width, height)`, `render-engine.ts:148-150`, `:1705-1708`), `video`, `gradient`/`gradient2` e
-texto. **`icon`** desenha o `Konva.Path` com as coordenadas CRUAS do path da biblioteca, sem escalar por
-`width`/`height` (`render-engine.ts:2053-2063`, `assets/icon-library.ts`): a caixa NÃO contém o desenho → `icon`
-acima de (ou empatado com) um texto é **`transformacao-nao-suportada` → `NAO_MEDIDO`** (Codex R6), sem teste
-de caixa. **`circle`, `triangle` e `star` são desenhados CENTRADOS em `position`** (o render segue o
-Konva: `render-engine.ts:1912-1935`, raio `min(w, h) / 2` em torno de `(0, 0)` depois do `translate`) — para
-eles a caixa base é `(x − r, y − r, 2r, 2r)` ANTES de girar (a rotação em torno da origem continua valendo, e
-a envolvente é tomada sobre essa caixa centrada). **`line` e `arrow`** desenham traço com ponteiro
-(`pointer = max(10, 3 × lineWidth)`, `render-engine.ts:1870-1908`) numa geometria que a caixa não descreve →
-`transformacao-nao-suportada` → `NAO_MEDIDO` (raros no compositor; fail-closed). `shapeType` desconhecido →
-idem.
+| Camada `c` (acima do texto) | Caixa base | Expansão (sempre soma, nunca reduz) |
+|---|---|---|
+| `shape` `rectangle` / `rounded-rectangle` | `position`/`size` | `+ (style.strokeWidth ?? style.border?.width ?? 0)` em cada lado (`render-engine.ts:1822-1826`) |
+| `shape` `circle` / `triangle` / `star` | **centrada**: `(x − r, y − r, 2r, 2r)`, `r = min(w, h) / 2` (`render-engine.ts:1912-1935`) | idem |
+| `image` / `logo` / `element` / `video` | `position`/`size` (`drawImage(0, 0, width, height)`, `:148-150`, `:1705-1708`) | `+ style.border?.width ?? 0` (`strokeImageBorder`, `:1711`) |
+| `gradient` / `gradient2` | `position`/`size` | — |
+| `text` simples (como ocluidora, girada ou sem métrica) | `position`/`size` ∪ caixa dos glifos da métrica, quando houver | `+ effects.stroke.strokeWidth` se habilitado (`:456-576`) |
+| qualquer uma acima com `effects.blur` habilitado | — | `+ folgaDoBlur(blurRadius) = 3 × raio` em cada lado (`:1978-1994`, `halo/fundo-de-texto.ts:247`) |
+| qualquer uma acima com `effects.shadow` habilitada OU `style.shadow` | — | `+ \|offsetX\|`, `+ \|offsetY\|`, `+ 3 × blur` em cada lado (`applyShadow`, `:341-369`) |
 
-**Efeitos que pintam ALÉM da caixa** (Codex R5/R6): os limites são EXPANDIDOS, nunca reduzidos, por: traço —
-`max(style.strokeWidth ?? style.border?.width ?? 0, effects.stroke habilitado ? strokeWidth : 0)` em cada lado
-(a forma usa `strokeWidth ?? border.width`, `render-engine.ts:1822-1826`; a imagem/logo/elemento traça
-`style.border` em `strokeImageBorder`, `:1711`; `effects.stroke` é o traço do texto, `:456-576`; o traço é
-centrado no caminho — `+ largura` inteira sobra); desfoque (`effects.blur` habilitado): `+ folgaDoBlur(blurRadius)`
-= `3 × raio` em cada lado (a folga que o render usa para a mancha desmanchar para fora do retângulo,
-`render-engine.ts:1978-1994`, `halo/fundo-de-texto.ts:247`); sombra — `effects.shadow` habilitada OU
-`style.shadow` presente (o render aceita as duas, `applyShadow`, `render-engine.ts:341-369`; `effects` vence):
-`+ |offsetX|`, `+ |offsetY|` e `+ 3 × blur` em cada lado, lidos do que o render lê. A expansão vale para a camada
-ACIMA (`c`); para o texto `t` os limites são os da caixa (o que importa é o que cobre o texto).
+Rotação (`rotation` fora de {0, undefined}): os quatro cantos da caixa base (já expandida) girados em torno da
+ORIGEM `(position.x, position.y)` — o pivô do render (`render-engine.ts:199-205`), não o centro — e a
+envolvente deles. `style.flipH`/`flipV` (espelho DENTRO da caixa, `:1692-1693`) e `style.mask` (`clip`, só
+retira, `:1664-1668`) não mudam a caixa: contidos.
 
-Chaves que o gate não conhece — duas defesas, nenhuma por tipo (Codex R5/R6: `Layer` e `LayerStyle` têm índice
-`[key: string]: unknown`, `template.ts:139`, `:220`; e um scan do fonte do render não fecha aliases como
-`const efeito = layer.effects?.shadow`):
+### 6.2 O que é `transformacao-nao-suportada` → `NAO_MEDIDO` (antes de qualquer teste de caixa)
 
-1. **Em tempo de execução, fail-closed sobre os DADOS**: `limitesDe` mantém `CHAVES_CLASSIFICADAS` — TODAS as
-   chaves declaradas de `Layer`, `LayerStyle`, `effects` e `textboxConfig`, cada uma marcada `inerte` (não muda
-   geometria: cor, fonte, `objectFit`, `opacity`…), `suportada` (`position`, `size`, `rotation`, `shapeType`,
-   `flipH`, `flipV`, `mask`, `border.radius`), `expansora` (`strokeWidth`, `border.width`, `effects.stroke`,
-   `effects.blur`, `effects.shadow`, `style.shadow`) ou `nao-suportada` (`iconId`, `lineStartCap`, `lineEndCap`,
-   `lineWidth`, `lineStyle`). Uma camada ACIMA de um texto que traga, em `Object.keys(layer)` ou
-   `Object.keys(layer.style)`/`effects`, qualquer chave FORA de `CHAVES_CLASSIFICADAS` → `transformacao-nao-suportada`
-   → `NAO_MEDIDO`. Chave nova no banco vai ao humano até ser classificada — visível nas métricas do piloto.
-2. **No PR que declara a chave**: o teste G23b lê o FONTE de `src/types/template.ts` (os blocos `export interface
-   Layer {`, `export interface LayerStyle {`, o objeto `effects?: {` e `BorderStyle`/`ShadowStyle`, uma propriedade por
-   linha, regex `^\s+(\w+)\??:`) e exige que cada nome declarado esteja em `CHAVES_CLASSIFICADAS` — chave
-   declarada e não classificada falha o teste. É executável, não depende do índice `[key: string]` nem de
-   aliases do render. O que o render lê sem declarar no tipo não existe por construção (o render lê `Layer`).
+- `shape` **`svg-path`**: o render escala `pathData` pelo `pathViewBox` mas NÃO recorta (`render-engine.ts:1843-1850`);
+  um path com coordenadas fora do viewBox pinta fora da caixa (Codex R7). Calcular limites do path é trabalho
+  do CP5b, se o piloto mostrar necessidade; hoje, acima de texto, vai ao humano. O acento do T1b (svg-path)
+  fica ABAIXO dos textos por construção e não é alcançado;
+- **`icon`**: path em coordenadas cruas, sem escala pela caixa (`:2053-2063`, `assets/icon-library.ts`);
+- `shape` **`line` / `arrow`**: traço com ponteiro `max(10, 3 × lineWidth)` (`:1870-1908`); `shapeType` desconhecido;
+- qualquer camada com **`style.filter`** não vazio: vai para `ctx.filter` (`:1530-1532`), um `blur(20px)` pinta
+  fora da caixa;
+- **`rich-text`** como ocluidora: sombra e traço por segmento (`:767`);
+- `text` com **`effects.background`** habilitado como ocluidora: a mancha tem `padding`, `offset` e `blur` e, em
+  grupo, cobre a união dos irmãos (`:1086-1116`);
+- camada com qualquer chave FORA de `CHAVES_CLASSIFICADAS` (6.4) ou com valor de tipo inesperado numa chave
+  classificada (ex.: `rotation` não numérico).
 
-O cenário fixado em teste (com a geometria REAL do render): uma forma 600×40 em (400, 500) girada 90°
-tem caixa original y 500–540, que NÃO toca um texto em x 370–390 × y 600–700, mas o render dela ocupa
-x 360–400 × y 500–1100 (girou em torno da origem, para baixo e para a esquerda) — os limites conservadores
-intersectam o texto e a peça vai ao humano. A paridade com o render é provada por teste (G21c): para
-rotações 0/30/90/180/270, os pixels pintados de uma forma opaca no render REAL ficam todos dentro de
-`limitesDe(l)`.
+### 6.3 A regra e as duas exceções
 
-**Regra**: para cada texto VISÍVEL `t` (`ehTextoVisivel`), toda camada `c` visível, `c.id !== t.id`, com
-**`c.order >= t.order`** (o empate conta como ACIMA — fail-closed), cujos `limitesDe(c)` intersectam
-`limitesDe(t)` em área > 0, entra em `naoMedidos` com `regra: 'oclusao'` (motivo `NAO_MEDIDO` →
-`REVISAO_HUMANA_NECESSARIA`), **salvo exatamente estas duas exceções**:
+Para cada texto VISÍVEL `t` (`ehTextoVisivel`), os limites de `t` são a UNIÃO da caixa da camada com a caixa
+dos glifos da métrica (`metricas[t]`: `box` ∪ `[box.x, glyphTop, maxLineWidth, glyphBottom − glyphTop]`),
+quando houver métrica; sem métrica, a caixa da camada. **O que a oclusão protege são os GLIFOS**: a mancha de
+`effects.background` de `t` e o tratamento em volta dele NÃO entram nos limites de `t` — uma camada que cobre
+só a mancha não esconde texto, e o seu efeito na leitura já está medido pela régua, que renderiza TODAS as
+camadas não-texto (inclusive as acima) como fundo (`regua.ts:342`) (Codex R7, achado 3).
 
-- outro texto (`text`/`rich-text`) **sem rotação nos dois** e **ambos com métrica** (`metricas` tem os dois
-  `layerId`, nenhum em `textosSemMetrica`, `motivoSemMedida` ausente): texto sobre texto é `colisao`, que a
-  geometria mediu. Texto girado, ou texto sem métrica, acima de outro texto CONTA como oclusão — `colisao`
-  trabalha com caixas sem rotação e só com o que mediu;
-- a logo, SÓ para o par (logo, texto) que `logo-sobre-texto` comprovadamente examinou — prova positiva, todas
-  as condições: a logo está em `logosDaPeca(camadas)` (solta, visível, fora de grupo); o texto tem métrica
-  (`metricas` contém o `layerId`, fora de `textosSemMetrica`); nenhum dos dois tem rotação nem transformação
-  não suportada; e `cobertura['logo-sobre-texto'].estado === 'avaliada'` (sem `parcial`, sem `nao-avaliada`).
-  Faltando qualquer uma, CONTA como oclusão (Codex R1: logo agrupada; owner: exceção sem prova).
+Toda camada `c` visível, `c.id !== t.id`, com **`c.order >= t.order`** (empate = acima, fail-closed):
 
-**Sem exceção para gradiente** (revisão do owner): um `gradient`/`gradient2` — marcado como tratamento de
-leitura ou não — com `order >=` ao de um texto que intersecta é oclusão. `metadata.tratamentoDeTexto` é
-intenção, não prova: a régua mede a leitura COM o gradiente, mas não prova que ele não cobre o texto.
-O gradiente de leitura do compositor fica ABAIXO dos textos por construção (na fixture do piloto: gradientes
-`order` 1–2, textos 3–5) e sai pela ordenação normal, sem exceção. A foto de fundo idem: abaixo por
-construção; com `order >=` ao de um texto, É oclusão.
+1. se `limitesDe(c)` devolve `contido: false` → `transformacao-nao-suportada` (6.2), sem teste de caixa;
+2. senão, se `limitesDe(c).rect` intersecta os limites de `t` em área > 0 → `oclusao`,
 
-Tipos alcançados: `shape`, `icon`, `element`, `image` (inclusive o fundo fora de ordem), `video`,
-`gradient`/`gradient2`, `logo` fora do par comprovado, `text`/`rich-text` girado ou sem métrica.
+**salvo exatamente duas exceções**, cada uma com prova positiva:
 
-`cobertura['oclusao']`: `comprovada` quando a função devolve vazio; `nao-comprovada` (com os pares) caso
-contrário — e `naoMedidos` leva cada item. Nunca `nao-se-aplica`: uma peça sem camada acima de texto é
-comprovada, não inaplicável.
+- **texto sobre texto é `colisao`**: `c` é `text` simples (não `rich-text`), AMBOS sem rotação, AMBOS com métrica
+  (`metricas` tem os dois ids, nenhum em `textosSemMetrica`, `motivoSemMedida` ausente), AMBOS sem `effects.*`
+  habilitado e sem `style.shadow`, e `cobertura['colisao'].estado === 'avaliada'` — só então a geometria de
+  `colisao` (intersecção das caixas de glifos) cobre o par. Qualquer condição faltando → oclusão;
+- **logo sobre texto é `logo-sobre-texto`**: `c` está em `logosDaPeca(camadas)` (solta, visível, fora de
+  grupo), SEM rotação, sem `style.filter`, sem `effects.*`; `t` com métrica; e
+  `cobertura['logo-sobre-texto'].estado === 'avaliada'`. Faltando qualquer uma → oclusão (Codex R1: logo
+  agrupada; owner: exceção sem prova).
+
+**Sem exceção para gradiente** (revisão do owner): `gradient`/`gradient2` — marcado como tratamento ou não —
+acima de ou empatado com um texto que intersecta é oclusão; `metadata.tratamentoDeTexto` é intenção, não
+prova. O gradiente de leitura do compositor fica ABAIXO dos textos por construção (fixture do piloto:
+gradientes `order` 1–2, textos 3–5) e sai pela ordenação normal. A foto de fundo idem.
+
+→ cada item entra em `naoMedidos` (`regra: 'oclusao'`, com o par ou a camada e o motivo) e vira motivo
+`NAO_MEDIDO`. `cobertura['oclusao']`: `comprovada` só com a lista vazia; `nao-comprovada` caso contrário;
+nunca `nao-se-aplica`.
+
+### 6.4 `CHAVES_CLASSIFICADAS` e o teste G23b
+
+`Layer` e `LayerStyle` têm índice `[key: string]: unknown` (`template.ts:139`, `:220`): mapeamento exaustivo por
+tipo é impossível, e um scan do fonte do render não fecha aliases (Codex R5–R7). Duas defesas:
+
+1. **Execução, fail-closed sobre os DADOS**: `CHAVES_CLASSIFICADAS` é uma ÁRVORE de caminhos
+   (`position.x`, `style.strokeWidth`, `effects.blur.blurRadius`, `textboxConfig.autoWrap.breakMode`…), cada folha
+   marcada `inerte` (cor, fonte, `objectFit`, `opacity`, `textAlign`…), `suportada` (6.1), `expansora` (6.1) ou
+   `nao-suportada` (6.2). Para toda camada `c` acima de um texto o gate PERCORRE o objeto (recursivo, inclusive
+   `effects.*.*` e `textboxConfig.*`): caminho fora da árvore, ou folha `nao-suportada` presente com valor
+   efetivo (string não vazia, número ≠ 0, `enabled: true`) → `transformacao-nao-suportada`. Chave nova no banco
+   vai ao humano até ser classificada. `inerte` exige, no código, o comentário com a linha do render que a
+   lê — `filter` é `nao-suportada`, não inerte (Codex R7).
+2. **No PR que declara a chave**: G23b lê o FONTE de `src/types/template.ts` e extrai, com chaves balanceadas
+   (não linha a linha — `effects.blur`/`stroke`/`shadow` declaram os campos internos na MESMA linha,
+   `template.ts:75-78`), todo identificador `(\w+)\??:` dos corpos de `Layer`, `LayerStyle`, `TextboxConfig`,
+   `BorderStyle`, `ShadowStyle` e dos objetos inline aninhados (`metadata`, `effects` e seus filhos,
+   `videoMetadata`, `clipe`, `background`), montando os caminhos; cada caminho declarado tem de existir na árvore
+   — declarado e não classificado falha o teste. Executável, independente do índice e de aliases.
 
 Por que (B) e não (A) agora: é uma função pura sobre a medida, sem render, sem custo, e nunca aprova em
-silêncio. O que ela NÃO faz (dito): não mede opacidade (`style.opacity`) nem `fill` transparente — uma
-forma transparente acima do texto bloqueia a peça; máscara e flip são contidos na caixa (contam como a
-forma inteira); `line`/`arrow`, `shapeType` desconhecido e qualquer transformação não classificada bloqueiam
-como `NAO_MEDIDO`. Se o piloto sintético mostrar falsos
-bloqueios demais (meta na seção 9.2), o CP5b implementa (A): render do texto sem as camadas acima × com
-elas, pela própria régua.
+silêncio — o preço é bloquear mais (svg-path, ícone, filtro, mancha e rich-text acima de texto vão ao humano).
+O que ela NÃO faz (dito): não mede opacidade nem `fill` transparente — uma forma transparente acima do texto
+bloqueia a peça. Se o piloto sintético mostrar falsos bloqueios demais (meta na seção 9.2), o CP5b implementa
+(A): render do texto sem as camadas acima × com elas, pela própria régua, e aí o conjunto 6.1 deixa de
+importar.
 
 Ligação com o compositor (plano-mestre 4.3): o acento do T1b precisa entrar com `order` abaixo dos
 textos e `metadata.compositor` identificável, senão cai em (B). **Não existe opção para desligar a
-detecção** (Codex R1): uma opção pública seria um caminho configurável de "não medido → APTO"; os testes
-isolam as outras regras com fixtures sem camada acima de texto.
+detecção** (Codex R1): os testes isolam as outras regras com fixtures sem camada acima de texto.
 
 ---
 
@@ -456,13 +463,13 @@ real para o relatório — o gate é testado sobre o relatório que o revisor de
 | G18 | `naoSeAplica` numa crítica fora do mapa (ex.: forjado em `colisao`) | não comprovada |
 | G19 | piso de interface: texto em `y = 100` no story / logo invadindo o rodapé / a mesma peça em `feed` / texto com caixa original na faixa livre mas girado 90° em torno da origem invadindo o topo / logo com transformação não suportada | reprova / reprova / não se aplica / reprova (limites girados) / não comprovada |
 | G20 | copy: cada estado da tabela 4.4 + `copy` ausente | conforme |
-| G21 | oclusão (sem rotação): `shape` com `order` maior intersectando um texto → `naoMedidos.oclusao`; `order` igual → idem; `shape` abaixo → nada; `shape` acima sem intersecção → nada; `gradient` E `gradient2` acima, COM e SEM `metadata.tratamentoDeTexto` → oclusão (sem exceção); gradiente de leitura abaixo (ordem normal) → nada; imagem que não é o fundo acima → oclusão; foto de fundo com `order >=` ao de um texto → oclusão; texto sobre texto, ambos com métrica e sem rotação → nada (é `colisao`); logo SOLTA acima de texto COM métrica, `logo-sobre-texto` `avaliada` → nada (par comprovado); logo em GRUPO acima de texto → oclusão; logo solta acima de texto em `textosSemMetrica` → oclusão; logo solta com `logo-sobre-texto` `parcial`/`nao-avaliada` → oclusão; `motivoSemMedida` presente → a exceção de texto e a de logo não valem; texto oculto (`visible: false`) sob uma forma → nada; `cobertura.oclusao` = `comprovada` só com a lista vazia | conforme |
-| G21b | rotação, forma e transformação: forma 600×40 em (400, 500) girada 90° (caixa original y 500–540) sobre texto em x 370–390 × y 600–700 → oclusão pelos limites conservadores (render ocupa x 360–400 × y 500–1100; a caixa original não intersecta); a mesma forma girada com `order` ABAIXO do texto → nada; **círculo 100×100 em (400, 500)** (desenhado centrado: x 350–450 × y 450–550) acima de texto em x 355–395 × y 480–490 → oclusão (a caixa `position`/`size` começa em 400/500 e NÃO toca; a caixa centrada toca); triângulo e estrela idem; círculo centrado girado 45° → limites da caixa centrada girada em torno da origem; texto girado 15° acima de outro texto → oclusão (a exceção de texto não vale); logo solta girada acima de texto com métrica → oclusão (a exceção de logo não vale); `shape` com `style.mask` acima de texto cuja caixa intersecta → oclusão; `shape` com `flipH` → limites iguais à caixa; `line`/`arrow` acima de texto, caixa sem intersecção → `transformacao-nao-suportada`/`NAO_MEDIDO` ANTES do teste de caixa; `shapeType` desconhecido → idem; **`icon` 8×8 em (400, 500) cujo path chega a x = 21 (coordenadas cruas) acima de texto em x 410–420** → `NAO_MEDIDO` (não é descartado pela caixa); camada acima com chave fora de `CHAVES_CLASSIFICADAS` (ex.: `style.escala: 2`) → `NAO_MEDIDO` | conforme |
-| G21d | efeitos que expandem: retângulo 100×100 em (500, 500) com `effects.blur` raio 20 (folga 60) acima de texto em x 420–440 (fora da caixa, dentro da folga) → oclusão; o mesmo com `style.strokeWidth` 12 e texto em x 490–498 → oclusão; com `style.border.width` 12 (forma) e com `style.border.width` 12 numa `image` (borda da imagem) → oclusão; `effects.shadow` offset (30, 30) + blur 10 e texto em x 605–640 → oclusão; `style.shadow` `{ offsetX: 30, offsetY: 30, blur: 10 }` sem `effects.shadow` → oclusão (o render aceita os dois); sem efeito, os mesmos textos → nada | conforme |
-| G21c | paridade com o render REAL: formas opacas `rectangle`, `circle`, `triangle`, `star` e `svg-path` 600×40 / 100×100 em (400, 500) com rotação 0/30/90/180/270, e com `effects.blur` raio 20, `style.strokeWidth` 12, `style.border.width` 12 (forma e imagem), `effects.shadow` e `style.shadow` (30, 30, blur 10), renderizadas pelo renderizador do servidor; todo pixel pintado (alfa > 0) está dentro de `limitesDe(l)` (limites conservadores contêm o desenho); para o retângulo a 90° os limites são exatamente x 360–400 × y 500–1100; para o círculo sem rotação, x 350–450 × y 450–550 | conforme |
+| G21 | oclusão (sem rotação): `shape` com `order` maior intersectando um texto → `naoMedidos.oclusao`; `order` igual → idem; `shape` abaixo → nada; `shape` acima sem intersecção → nada; `gradient` E `gradient2` acima, COM e SEM `metadata.tratamentoDeTexto` → oclusão (sem exceção); gradiente de leitura abaixo (ordem normal) → nada; imagem que não é o fundo acima → oclusão; foto de fundo com `order >=` ao de um texto → oclusão; texto sobre texto, ambos simples, com métrica, sem rotação, sem efeitos e com `colisao` `avaliada` → nada (é `colisao`); o mesmo par com `effects.shadow` num deles, ou `colisao` `parcial` → oclusão; logo SOLTA sem rotação/filtro/efeitos acima de texto COM métrica, `logo-sobre-texto` `avaliada` → nada (par comprovado); a mesma logo com `style.filter` → oclusão; logo em GRUPO acima de texto → oclusão; logo solta acima de texto em `textosSemMetrica` → oclusão; logo solta com `logo-sobre-texto` `parcial`/`nao-avaliada` → oclusão; `motivoSemMedida` presente → a exceção de texto e a de logo não valem; texto oculto (`visible: false`) sob uma forma → nada; `cobertura.oclusao` = `comprovada` só com a lista vazia | conforme |
+| G21b | rotação, forma e transformação: forma 600×40 em (400, 500) girada 90° (caixa original y 500–540) sobre texto em x 370–390 × y 600–700 → oclusão pelos limites conservadores (render ocupa x 360–400 × y 500–1100; a caixa original não intersecta); a mesma forma girada com `order` ABAIXO do texto → nada; **círculo 100×100 em (400, 500)** (centrado: x 350–450 × y 450–550) acima de texto em x 355–395 × y 480–490 → oclusão (a caixa `position`/`size` não toca; a centrada toca); triângulo e estrela idem; círculo girado 45° → envolvente da caixa centrada girada em torno da origem; texto girado 15° acima de outro texto → oclusão; logo solta girada acima de texto com métrica → oclusão; `shape` com `style.mask` acima de texto que intersecta → oclusão; `shape` com `flipH` → limites iguais à caixa; `svg-path` acima de texto, caixa SEM intersecção, `pathData` que sai do viewBox → `NAO_MEDIDO` (não descartado pela caixa); `icon` 8×8 em (400, 500) com path até x = 21 acima de texto em x 410–420 → `NAO_MEDIDO`; `line`/`arrow`, `shapeType` desconhecido → `NAO_MEDIDO`; `image` com `style.filter: 'blur(20px)'` acima de texto fora da caixa → `NAO_MEDIDO`; `rich-text` acima de texto → `NAO_MEDIDO`; `text` com `effects.background` habilitado acima de outro texto → `NAO_MEDIDO`; camada acima com chave fora da árvore (`style.escala: 2`) ou `effects.desconhecido.enabled: true` → `NAO_MEDIDO`; `rotation: '90'` (string) → `NAO_MEDIDO` | conforme |
+| G21d | efeitos que expandem: retângulo 100×100 em (500, 500) com `effects.blur` raio 20 (folga 60) acima de texto em x 420–440 (fora da caixa, dentro da folga) → oclusão; com `style.strokeWidth` 12 e texto em x 490–498 → oclusão; com `style.border.width` 12 (forma) e numa `image` (borda) → oclusão; `effects.shadow` offset (30, 30) + blur 10 e texto em x 605–640 → oclusão; `style.shadow` `{ offsetX: 30, offsetY: 30, blur: 10 }` sem `effects.shadow` → oclusão; sem efeito, os mesmos textos → nada. Limites de `t`: texto `autoExpand` cujos glifos (`glyphBottom`) passam da caixa da camada, com `shape` acima tocando só os glifos abaixo da caixa → oclusão (a união com a métrica); `shape` acima cobrindo só a MANCHA (`effects.background`, padding 40) de `t`, sem tocar os glifos → nada (é leitura, medida pela régua) | conforme |
+| G21c | paridade com o render REAL para TODO o conjunto 6.1: `rectangle`, `rounded-rectangle`, `circle`, `triangle`, `star` (600×40 e 100×100 em (400, 500)), `image`/`logo`/`element` (com e sem `style.border.width` 12), `gradient`/`gradient2`, `text` simples com `effects.stroke` 12; cada uma com rotação 0/30/90/180/270, `flipH`, `mask`, `effects.blur` raio 20, `effects.shadow` e `style.shadow` (30, 30, blur 10); renderizadas pelo renderizador do servidor sobre fundo transparente: todo pixel com alfa > 0 está dentro de `limitesDe(l).rect`; para o retângulo a 90° os limites são exatamente x 360–400 × y 500–1100; para o círculo sem rotação, x 350–450 × y 450–550. **Configuração fora deste conjunto não tem paridade e por isso é `contido: false`** — o teste também fixa que `limitesDe` devolve `contido: false` para svg-path, icon, line, arrow, filter, rich-text e background | conforme |
 | G22 | `pageVersion: null` com as 11 regras comprovadas e o resto limpo | `IDENTIDADE_ILEGIVEL`, `cobertura.identidade = nao-comprovada`, `REVISAO_HUMANA_NECESSARIA` (ver G28) |
 | G23 | `REGRAS_CRITICAS ∪ NAO_CRITICAS === REGRAS_DA_REVISAO` (sem sobra nem falta) | fixa a classificação |
-| G23b | chaves declaradas × classificadas: o teste lê `src/types/template.ts` (blocos `Layer`, `LayerStyle`, `effects`, `BorderStyle`, `ShadowStyle`, uma propriedade por linha) e exige que cada nome esteja em `CHAVES_CLASSIFICADAS` (inerte / suportada / expansora / não suportada); e, nos dados, uma camada acima de texto com chave fora da lista → `NAO_MEDIDO` (G21b) | fixa a lista pelo tipo DECLARADO (lido do fonte, porque o índice `[key: string]` impede o mapeamento exaustivo) e fecha o resto em execução |
+| G23b | chaves declaradas × classificadas: o teste lê `src/types/template.ts`, extrai com chaves balanceadas todo `(\w+)\??:` dos corpos de `Layer`, `LayerStyle`, `TextboxConfig`, `BorderStyle`, `ShadowStyle` e dos objetos inline aninhados (inclusive os declarados na mesma linha, como `effects.blur`), monta os caminhos e exige que cada um exista na árvore `CHAVES_CLASSIFICADAS` (inerte / suportada / expansora / não suportada); `filter` tem de estar `nao-suportada`; e, nos dados, camada acima de texto com caminho fora da árvore → `NAO_MEDIDO` (G21b) | fixa a lista pelo tipo DECLARADO (lido do fonte) e fecha o resto em execução |
 | G24 | o relatório REAL da fixture do piloto (`piloto-2026-10-13`, medida sintética a partir de `composicaoRegistrada.contraste`, serviço `ok: false`) | `REVISAO_HUMANA_NECESSARIA` com `texto-sem-leitura:servico` — o mesmo contrato alvo que `piloto-portao` descreve, sem tocar nos `hojeViola` |
 | G25 | `copyVersionDe`: `null` → `'sem-contrato'`; mesma copy com chaves em outra ordem → mesmo hash; copy diferente → hash diferente | puro |
 | G26 | `foraDaInterface` de produção, casos independentes: texto com `y = 187` reprova e `y = 188` passa; logo com base em `canvas.height − 223` reprova e `− 224` passa; cliente MENOS restritivo (`topo: 100`) não afrouxa (continua 188); cliente MAIS restritivo (`topo: 300`) aperta; camada oculta não conta. O oráculo dos testes passa a importar a de produção e os testes do CP0 seguem verdes | conforme |
@@ -477,7 +484,7 @@ Nenhum `hojeViola` muda. Gates do PR: suíte completa, typecheck, lint, `git dif
 
 ## 8. Arquivos (o que o CP5a toca)
 
-- novo `src/lib/creatives/revisao/gate.ts` (puro): `REGRAS_CRITICAS`, `gateDaMedida`, `cenariosNaoMedidos`, `limitesDe` (reusa `folgaDoBlur` de `halo/fundo-de-texto.ts`),
+- novo `src/lib/creatives/revisao/gate.ts` (puro): `REGRAS_CRITICAS`, `gateDaMedida`, `cenariosNaoMedidos`, `limitesDe` (reusa `folgaDoBlur` de `halo/fundo-de-texto.ts`), `CHAVES_CLASSIFICADAS`,
   `foraDaInterface`, `PISO_DE_INTERFACE_DO_STORY`, `interfaceDoStory`, `POLITICA_DO_ASSUNTO_RECOMENDADA`;
 - `src/lib/creatives/revisao/versao.ts`: `copyVersionDe` (puro);
 - `src/lib/direcao-de-arte/__tests__/suporte/propriedades.ts`: passa a importar `foraDaInterface` e o piso de
