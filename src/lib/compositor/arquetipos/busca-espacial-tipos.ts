@@ -227,6 +227,8 @@ export const PESOS_DA_PONTUACAO = {
 
 /** Custos de tratamento que diferem menos que isto empatam (a força do véu anda em passos maiores). */
 export const TOLERANCIA_DO_CUSTO = 0.05
+/** Quando TODA válida cobre a região estimada: ficam as de cobertura até 0,05 acima da mínima (depois decidem o tratamento e a pontuação). */
+export const TOLERANCIA_DA_COBERTURA = 0.05
 /** Pontuações secundárias que diferem menos que isto empatam — aí vale a mais perto da referência, depois o corte central. */
 export const TOLERANCIA_DA_PONTUACAO = 0.02
 

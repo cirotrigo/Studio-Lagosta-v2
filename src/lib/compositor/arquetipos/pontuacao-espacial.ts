@@ -20,6 +20,7 @@ import { MOTIVOS_DO_TRATAMENTO, type LeituraNaBorda, type MotivoDoTratamento, ty
 import {
   MOTIVOS_DE_ELIMINACAO,
   PESOS_DA_PONTUACAO,
+  TOLERANCIA_DA_COBERTURA,
   TOLERANCIA_DA_PONTUACAO,
   TOLERANCIA_DO_CUSTO,
   type AvaliacaoDaCombinacao,
@@ -264,13 +265,13 @@ export const invadeAEstimada = (a: AvaliacaoDaCombinacao) => a.regiaoEstimada?.i
 /**
  * O FILTRO SEQUENCIAL que escolhe a melhor de uma lista de válidas:
  * 0. a região estimada como assunto: quem não a cobre (além do teto) vence quem cobre; se todas cobrem, a de menor
- *    cobertura (é heurística — nunca elimina, mas também nunca fica atrás do véu);
+ *    cobertura (tolerância `TOLERANCIA_DA_COBERTURA`; é heurística — nunca elimina, mas também nunca fica atrás do véu);
  * 1. o menor custo de tratamento (tolerância `TOLERANCIA_DO_CUSTO`);
  * 2. a maior pontuação (tolerância `TOLERANCIA_DA_PONTUACAO`);
  * 3. a mais perto da referência; 4. o corte central; 5. o menor índice; 6. a primeira na entrada.
  */
 export function melhorEntre(validas: AvaliacaoDaCombinacao[]): AvaliacaoDaCombinacao {
-  let restam = validas.some((a) => !invadeAEstimada(a)) ? validas.filter((a) => !invadeAEstimada(a)) : estreitar(validas, (a) => -(a.regiaoEstimada?.cobertura ?? 0), 0.05)
+  let restam = validas.some((a) => !invadeAEstimada(a)) ? validas.filter((a) => !invadeAEstimada(a)) : estreitar(validas, (a) => -(a.regiaoEstimada?.cobertura ?? 0), TOLERANCIA_DA_COBERTURA)
   restam = estreitar(restam, (a) => -custoDe(a), TOLERANCIA_DO_CUSTO)
   restam = estreitar(restam, pontuacaoDe, TOLERANCIA_DA_PONTUACAO)
   restam = estreitar(restam, (a) => a.componentes!.referencia)

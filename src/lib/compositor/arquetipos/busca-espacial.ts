@@ -23,6 +23,7 @@ import {
   LIMITES_DA_BUSCA,
   MODO_BUSCA_ESPACIAL,
   ROTULOS_DO_DESLOCAMENTO,
+  TOLERANCIA_DA_COBERTURA,
   TOLERANCIA_DO_CUSTO,
   type AvaliacaoDaCombinacao,
   type Combinacao,
@@ -295,14 +296,23 @@ function combinacaoDosDeslocamentos(faixas: FaixaDeBusca[], deslocamentos: Combi
 
 /**
  * O `dy` gravado, um por FAIXA, aplicado a todos os membros presentes. Membros de uma faixa que discordam (escolha
- * adulterada, ou de outro arquétipo) não são uma posição: `ARQUETIPO_ESCOLHA_ILEGIVEL`, nunca uma faixa partida.
+ * adulterada, ou de outro arquétipo) não são uma posição: `ARQUETIPO_ESCOLHA_ILEGIVEL`, nunca uma faixa partida. A
+ * faixa SEM nenhum deslocamento gravado também é ilegível (a busca grava todos, zero inclusive): assumir 0 a levaria de
+ * volta à referência em silêncio (Codex R5). Só a peça do T1a não grava deslocamentos — ela É a referência.
  */
 function deslocamentosPorFaixa(args: ArgsDaSelecao, gravados: Combinacao['deslocamentos']): Combinacao['deslocamentos'] {
   const saida: Combinacao['deslocamentos'] = {}
   for (const f of args.partida.faixas) {
     const dys = [...new Set(f.membros.filter((m) => m !== 'logo' && gravados[m] !== undefined).map((m) => gravados[m]!))]
     const daLogo = gravados.logo
-    const dy = dys.length > 0 ? dys : daLogo !== undefined && f.membros.includes('logo') ? [daLogo] : [0]
+    const dy = dys.length > 0 ? dys : daLogo !== undefined && f.membros.includes('logo') ? [daLogo] : args.reproduzirReferencia ? [0] : []
+    if (dy.length === 0) {
+      throw new CreativeError('ARQUETIPO_ESCOLHA_ILEGIVEL', `${chaveDoArquetipo(args.arquetipo)}: a escolha gravada não traz o deslocamento da faixa (${f.membros.join(', ')}) — a posição não é refeita às cegas. Peça uma nova composição da peça.`, 422, {
+        arquetipo: chaveDoArquetipo(args.arquetipo),
+        faixa: f.membros,
+        deslocamentos: gravados,
+      })
+    }
     if (dy.length > 1) {
       throw new CreativeError('ARQUETIPO_ESCOLHA_ILEGIVEL', `${chaveDoArquetipo(args.arquetipo)}: a escolha gravada move a faixa (${f.membros.join(', ')}) com deslocamentos diferentes (${dy.join(', ')} px) — não é uma posição do arquétipo.`, 422, {
         arquetipo: chaveDoArquetipo(args.arquetipo),
@@ -420,8 +430,11 @@ export function selecionarNoArquetipo(args: ArgsDaSelecao): SelecaoNoArquetipo {
   const v = resultado.vencedora
   const escolha: EscolhaEspacial = { modo: MODO_BUSCA_ESPACIAL, foto: args.foto, corte: v.crop, deslocamentos: v.combinacao.deslocamentos }
   const diagnostico = diagnosticoDaBusca({ escolha, resultado, faixas, cortesAvaliados: args.cortes.map((c) => c.crop) })
+  const menorCobertura = Math.min(...resultado.ordenadas.filter((a) => a.eliminada.length === 0).map((a) => a.regiaoEstimada?.cobertura ?? 0))
   const avisos = invadeAEstimada(v)
-    ? [`Toda posição válida cobria a região estimada como assunto da foto: ficou a que cobre menos (${pct(v.regiaoEstimada!.cobertura)}%, teto ${pct(v.regiaoEstimada!.teto)}%). Sem caixa de assunto no catálogo, a região é estimada pela textura.`]
+    ? [
+        `Toda posição válida cobria a região estimada como assunto da foto (teto ${pct(v.regiaoEstimada!.teto)}%): ficaram as de menor cobertura — a mínima ${pct(menorCobertura)}%, com tolerância de ${pct(TOLERANCIA_DA_COBERTURA)} pontos — e entre elas decidiram o tratamento e a pontuação; esta cobre ${pct(v.regiaoEstimada!.cobertura)}%. Sem caixa de assunto no catálogo, a região é estimada pela textura.`,
+      ]
     : []
   return { ok: true, materializacao: porIndice.get(v.combinacao.indice)!, crop: v.crop, escolha, diagnostico, avisos }
 }

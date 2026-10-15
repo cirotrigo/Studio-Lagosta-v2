@@ -979,6 +979,16 @@ describe('CP2B · correções da revisão adversarial', () => {
     expect(busca(r).motivo).toMatch(/sem foto para ler/)
   }, 60_000)
 
+  it('escolha gravada SEM o deslocamento de uma faixa inteira é ilegível (nunca volta à referência em silêncio); a peça do T1a, sem deslocamentos, segue na referência', async () => {
+    const b = busca((await peca(CONGELADA)).r)
+    const { servico: _s, logo: _l, ...semAFaixaDoServico } = b.escolha.deslocamentos
+    const e = await recusa(CONGELADA, { escolhaEspacial: { ...b.escolha, deslocamentos: semAFaixaDoServico } })
+    expect(e.code).toBe('ARQUETIPO_ESCOLHA_ILEGIVEL')
+    expect(e.message).toMatch(/não traz o deslocamento da faixa \(servico, logo\)/)
+    const { r } = await compor(CONGELADA, { somenteAvaliar: true, escolhaEspacial: { modo: 'referencia' } })
+    expect(r.diagnostico.posicao.crop).toBe('center-middle')
+  }, 60_000)
+
   it('o motivo explica a vitória quando as posições sem véu foram eliminadas (o caso da região protegida)', async () => {
     const { r } = await peca(CENAS.regiao)
     expect(busca(r).motivo).toMatch(/as posições que leriam sem véu caíam em INVADE_REGIAO_PROTEGIDA/)

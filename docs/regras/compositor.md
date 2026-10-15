@@ -974,7 +974,8 @@ se mudar.
 - 🔴 **A recomposição REPRODUZ, não busca.** A escolha (`composicao.arquetipo.buscaEspacial.escolha`:
   corte, `dy` por membro, canto da logo automática, foto) é lida por `escolhaEspacialOriginal` e
   passada em `opcoes.escolhaEspacial`, com o resumo da busca original (que o diagnóstico leva
-  adiante). Um `dy` por faixa (membros que discordam = `ARQUETIPO_ESCOLHA_ILEGIVEL`). Copy que não
+  adiante). Um `dy` por faixa (membros que discordam, ou faixa sem nenhum `dy` gravado — a busca grava todos, zero
+  inclusive —, = `ARQUETIPO_ESCOLHA_ILEGIVEL`; só a peça do T1a não grava, ela é a referência). Copy que não
   cabe na posição congelada, ou que nela invade a região do catálogo, colide ou inverte a ordem:
   `ARQUETIPO_POSICAO_CONGELADA_NAO_CABE`, nada é movido (o tratamento é do CP2A: só aviso). O corte
   congelado que passou a perder o assunto do catálogo (a anotação mudou depois; outro corte o
