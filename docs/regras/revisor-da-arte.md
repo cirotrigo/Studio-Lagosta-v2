@@ -709,7 +709,15 @@ Decisão do owner: **o agente autônomo não pode apagar copy para "corrigir" de
   mesmo `CONTEUDO_NAO_PODE_SER_REMOVIDO` (zero escrita, zero Generation, zero render); o humano pode, e
   `copyRemovida` registra `sem-conteudo` (não entra em `camposAlterados`). "Almoço" → "Jantar" / "11h" / "🍷" /
   "50% OFF" / "R$ 79" continuam permitidos: a qualidade editorial é da copy/gate, não deste guard. Provado por
-  id, nome, `_slots` e `_papeis`.
+  id, nome, `_slots` e `_papeis`. **Caça-bypass do predicado (1 subagente, medido em Node 22)**: os fillers Hangul
+  U+115F/U+1160 são `\p{L}` e passavam (BLOCKER) → `INVISIVEIS` usa `\p{Default_Ignorable_Code_Point}`; `‼ ⁉ 〰 ↔`
+  e `© ® ™` são `Extended_Pictographic` e passavam → excluídos os que também são `\p{P}`/`\p{Sm}` e as marcas;
+  letras modificadoras (`\p{Lm}`: ʼ ʹ ˆ ː) passavam → excluídas. **Residuais documentados, não mexidos**: falsos
+  positivos raros (texto em braille com pontos, keycaps `#️⃣`, moeda sozinha `€`, ícone de fonte PUA; `✓`/`→`
+  bloqueados × `✔`/`➡` aceitos, por classificação do Unicode); pictograma não atribuído passa; valor de TIPO errado
+  em `slotValues` (número, array, `{ hidden: 'true' }`, `{ visible: false }`) é ignorado pelo bake e a chamada
+  responde sucesso regravando a página igual — não vaza copy, custa um render e engana o agente (candidato a
+  `VALOR_INVALIDO` no legado, fora deste ajuste).
 - **Foto sem assunto localizável não trava mais o ajuste** (achado da prova de integração, passo 6): a peça
   cuja foto o mapa de calma lê sem achar região forte (o compositor grava `assuntoOrigem: 'nenhum'`) vinha com
   `texto-sobre-assunto` "não avaliada" e o CP4 recusava TODO ajuste nela como `AJUSTE_NAO_MEDIDO` — não era

@@ -2,10 +2,13 @@
  * "Tem texto visível?" — o predicado ÚNICO de conteúdo de um texto (CP4.1, revisor A).
  *
  * `trim()` não remove os caracteres de formato (U+200B zero-width space, U+200C/U+200D joiners, U+2060 word joiner,
- * U+00AD soft hyphen, U+FEFF), o combinador vazio U+034F, os fillers Hangul U+3164/U+FFA0 nem o braille em branco
- * U+2800 — todos desenham nada. Um texto feito só deles é copy APAGADA com outra sintaxe. Módulo puro, sem imports.
+ * U+00AD soft hyphen, U+FEFF), o combinador vazio U+034F, os fillers Hangul (U+115F/U+1160, que são LETRAS para o
+ * Unicode, U+3164/U+FFA0), os seletores de variação nem o braille em branco U+2800 — todos desenham nada. Um texto
+ * feito só deles é copy APAGADA com outra sintaxe. `Default_Ignorable_Code_Point` é a propriedade Unicode que reúne
+ * esses "ignoráveis" (caça-bypass do ajuste final, 15/10: os fillers U+115F/U+1160 faltavam na lista manual).
+ * Módulo puro, sem imports.
  */
-const INVISIVEIS = /[\p{Cf}͏ㅤﾠ⠀]/gu
+const INVISIVEIS = /[\p{Cf}\p{Default_Ignorable_Code_Point}⠀]/gu
 
 /** O texto sem os caracteres que não desenham nada, aparado. */
 export function textoVisivel(s: unknown): string {
@@ -19,11 +22,13 @@ export function temTextoVisivel(s: unknown): boolean {
 
 /**
  * O que faz um texto ser CONTEÚDO, não só tinta: uma letra, um número ou um pictograma/emoji (propriedades Unicode,
- * sem lista ASCII). `\p{L}` cobre letras de qualquer escrita; `\p{N}` números (11h30, 50%, R$ 79, ½, ²);
- * `\p{Extended_Pictographic}` os emoji e pictogramas (🍷, ☕, ❤) — o Regional Indicator (bandeiras 🇧🇷) entra por
- * `\p{So}` nessa faixa; `\p{Mn}` fica de fora de propósito (combinador sozinho não é conteúdo).
+ * sem lista ASCII). `\p{L}` cobre letras de qualquer escrita — menos as MODIFICADORAS (`\p{Lm}`: ʼ ʹ ˆ ː, que a
+ * pessoa lê como apóstrofo ou acento solto; caça-bypass, 15/10); `\p{N}` números (11h30, 50%, R$ 79, ½, ²);
+ * `\p{Extended_Pictographic}` os emoji e pictogramas (🍷, ☕, ❤, ✔) — menos os que o Unicode também classifica como
+ * pontuação/símbolo matemático (‼ ⁉ 〰 ↔, o "!!!" do owner num só caractere) e as marcas © ® ™; o Regional Indicator
+ * (bandeiras 🇧🇷) entra pela faixa; `\p{Mn}` fica de fora de propósito (combinador sozinho não é conteúdo).
  */
-const SUBSTANTIVO = /[\p{L}\p{N}\p{Extended_Pictographic}]|[\u{1F1E6}-\u{1F1FF}]/u
+const SUBSTANTIVO = /(?!\p{Lm})\p{L}|\p{N}|(?![\p{P}\p{Sm}©®™])\p{Extended_Pictographic}|[\u{1F1E6}-\u{1F1FF}]/u
 
 /**
  * "Tem texto SUBSTANTIVO?" — o predicado do guard de remoção de copy (CP4.1, ajuste final do owner): `"."`, `"..."`,
