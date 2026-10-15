@@ -210,12 +210,27 @@ Onde cada parte mora, com precisão:
     trava, como em `criar`) e a comparação da identidade vêm ANTES de `executarEfeitos`; reprovado →
     os efeitos ficam PENDENTES (a linha continua `efeitosDoAgendamentoEm: null`, idempotente — a
     repetição os completa quando a peça estiver apta) e o item volta `falha REVISAO_HUMANA_NECESSARIA`
-    com `postId` e o veredito. Sem efeitos pendentes (o caso comum), reaproveitar é resposta sem escrita
+    com `postId` e o veredito. **A corrida entre a aprovação e os efeitos** (os efeitos rodam fora da
+    transação, em etapas, `:458-495`): o que `executarEfeitos` escreve é SOBRE o post e o item —
+    catálogo e sinais (`efeitosDoAgendamento`), a pasta/remarcação da página, o status do item do plano
+    — e nada disso altera `Page.layers` nem `copyAutoral` (a arte medida). A proteção é uma
+    **rechecagem barata imediatamente antes da escrita dos efeitos**: `executarEfeitos`, no perfil
+    draft-only, relê a identidade (`pageVersion` + `copyVersion`) e só roda se for a mesma que o gate
+    aprovou; divergiu → não roda, a linha segue pendente, o item volta `REVISAO_HUMANA_NECESSARIA`
+    ("a página mudou durante o agendamento"). Entre essa releitura e cada escrita ainda há uma janela,
+    mas ela não cria nem muda DRAFT e não altera a arte — é a mesma janela que `criar` tem hoje entre o
+    commit e os efeitos pós-commit (`:755`), e o cron de render redesenha a página como ela ESTIVER (o
+    render não é gate: seção 10). Teste 7e cobre a corrida. Sem efeitos pendentes (o caso comum), reaproveitar é resposta sem escrita
     e sem gate — nada é criado nem alterado. Post ligado que já não é DRAFT ou tem `laterPostId` (`:568`)
     é devolvido como está, antes de tudo, sem medir.
 - **Persistência**: depois da decisão, `fieldValues.veredito` na arte da página (auditoria), fora da trava.
-- **Nenhum DRAFT é criado** quando o veredito não é APTO: o item fica `falha` com código
-  `REVISAO_HUMANA_NECESSARIA`, refs (`generationId`, `pageId`, `editUrl`), `achados` e `motivos` (dos
+  Com `simular: true` (`agendar-itens.ts:87`, "sem escrever nada") o gate MEDE e devolve a decisão
+  (o item reprovado aparece na simulação como `falhou` + `REVISAO_HUMANA_NECESSARIA`), mas NÃO grava
+  `fieldValues.veredito` nem nada — a simulação continua só leitura (teste 11).
+- **Nenhum DRAFT é criado** quando o veredito não é APTO: o item volta em `itens[]` com
+  `situacao: 'falhou'` e `codigo: 'REVISAO_HUMANA_NECESSARIA'` (o formato real: `ItemAgendadoDoLote`,
+  `agendar-itens.ts:107-130`, via `falhou(itemId, { codigo, motivo }, extra)`, `:275`; não existe uma
+  coleção `falhas[]`), com refs (`generationId`, `pageId`, `editUrl`), `achados` e `motivos` (dos
   relatórios da medida) — sem status novo (o mesmo mecanismo de `PECA_FALHOU`).
 
 O `piloto-portao.test.ts:188-215` (`hojeViola`) já descreve esse contrato alvo: "não criar rascunho e
@@ -237,7 +252,7 @@ banco; lê o perfil da chamada. Um humano que use o mesmo `clientId` do ChatGPT 
 
 O manual (`operacao-dot.ts`) já manda revisar antes de agendar e já define `REVISAO_HUMANA_NECESSARIA`
 como código que o agente relata. Com o CP5, o código passa a devolvê-lo no `agendar-leva`
-(`falhas[].codigo`) e no `ajustar-arte` draft-only (CP4: `AJUSTE_PIOROU_ARTE` + veredito da versão
+(`itens[]` com `situacao: 'falhou'` e `codigo`) e no `ajustar-arte` draft-only (CP4: `AJUSTE_PIOROU_ARTE` + veredito da versão
 que ficou). O manual ganha uma linha: "a tool pode devolver REVISAO_HUMANA_NECESSARIA com achados: não
 insista, relate" — sem mudar o `validar-registro-mcp` (o manual é validado só para nomes de tools
 hifenizados; `REVISAO_HUMANA_NECESSARIA` é maiúsculo com sublinhado, fora da regex).
@@ -327,8 +342,10 @@ Regra não medida: nunca "aprovado" (seção 11).
 
 ## 13. Retorno de `REVISAO_HUMANA_NECESSARIA`
 
-Em `agendar-leva`: item em `falhas` com `{ itemId, codigo: 'REVISAO_HUMANA_NECESSARIA', generationId,
-pageId, editUrl, veredito: { pageVersion, motivos, achados, cobertura } }`. Em `ajustar-arte`
+Em `agendar-leva`: o item em `itens[]` com `{ itemId, situacao: 'falhou', codigo:
+'REVISAO_HUMANA_NECESSARIA', motivo, generationId, pageId, editUrl, veredito: { pageVersion,
+copyVersion, motivos, achados, cobertura } }` (o formato de `ItemAgendadoDoLote`, `agendar-itens.ts:107`;
+a tool `agendar-leva` em `mcp/catalogo/compositor.ts:750` repassa `itens` como estão). Em `ajustar-arte`
 draft-only: o retorno do CP4 (recusa `AJUSTE_PIOROU_ARTE`) mais `veredito` da versão que permaneceu.
 Campos novos no RETORNO não mudam o snapshot do `validar-registro-mcp`.
 
@@ -359,8 +376,8 @@ Campos novos no RETORNO não mudam o snapshot do `validar-registro-mcp`.
 1b. `copy completa` pelo predicado da seção 11: contrato que casa com as camadas (`sem-mudanca`, sem
    lacunas) comprova; contrato defasado (`registrada`), `copy-invalida`, `historico-cheio`,
    `sem-contrato` e `ilegivel` → humano com o estado como motivo.
-2. `agendar-leva` draft-only com peça reprovada → `falhas[].codigo = REVISAO_HUMANA_NECESSARIA` com
-   refs e achados; nenhum `socialPost.create` (o harness de `piloto-portao.test.ts` já tem o espião).
+2. `agendar-leva` draft-only com peça reprovada → `itens[]` com `situacao: 'falhou'` e
+   `codigo: 'REVISAO_HUMANA_NECESSARIA'`, refs e achados; nenhum `socialPost.create` (o harness de `piloto-portao.test.ts` já tem o espião).
 3. O mesmo item fora do perfil → DRAFT criado, sem gate (warn-only).
 4. O gate SEMPRE mede: um `fieldValues.veredito` APTO gravado antes nunca dispensa a medida; a
    identidade (`pageVersion` + `copyVersion`) só serve para a comparação sob trava.
@@ -380,9 +397,15 @@ Campos novos no RETORNO não mudam o snapshot do `validar-registro-mcp`.
    (nenhuma refila, item do plano intocado, `efeitosDoAgendamentoEm` segue `null`), resposta
    `REVISAO_HUMANA_NECESSARIA` com `postId`; com peça APTA, os efeitos rodam como hoje; fora do perfil,
    como hoje.
+7e. Corrida dos efeitos pendentes: peça APTA na medida, página (camadas OU `copyAutoral`) editada
+   entre a aprovação e `executarEfeitos` → a rechecagem recusa, nenhum efeito roda, a linha segue
+   pendente, `REVISAO_HUMANA_NECESSARIA` ("a página mudou durante o agendamento").
 8. Regra crítica com render falhando → humano (fail-closed), nunca APTO.
 9. `piloto-portao.test.ts:188-215` vira `it()`.
 10. `validar-registro-mcp` inalterado (retorno novo não entra no snapshot); manual do Dot atualizado.
+11. `simular: true` no draft-only: mede, devolve o item reprovado como `falhou` +
+   `REVISAO_HUMANA_NECESSARIA`, e NENHUMA escrita (nem `fieldValues.veredito`) — o espião de escrita
+   do harness de simulação fica em zero.
 
 ## 16. Arquivos futuros
 
@@ -401,7 +424,7 @@ Campos novos no RETORNO não mudam o snapshot do `validar-registro-mcp`.
 - **CP5b — medir sem banco**: já entregue pelo CP4 (`contextoDaMedicao` + `medirCamadasDaPeca` em
   `revisar-arte.ts`, com `revisarArte` igual); o CP5 só acrescenta `copyVersion` e `foraDaInterface`.
 - **CP5c1 — contrato e retorno**: `decidirAgendamento` com `veredito` de entrada (puro) e o retorno
-  `falhas[].codigo = REVISAO_HUMANA_NECESSARIA` com refs/achados/motivos, sem medir ainda (o veredito
+  `itens[]` com `situacao: 'falhou'` + `codigo: 'REVISAO_HUMANA_NECESSARIA'` com refs/achados/motivos, sem medir ainda (o veredito
   chega por injeção nos testes). `piloto-portao` vira `it()` na decisão pura.
 - **CP5c2 — gate transacional**: a medida FORA da transação, a comparação de `pageVersion` E
   `copyVersion` SOB trava, as três respostas (criar/adotar/reaproveitar — este com o gate antes dos
@@ -430,8 +453,9 @@ Campos novos no RETORNO não mudam o snapshot do `validar-registro-mcp`.
   estável (um `clientId` fixo para o Dot) é condição operacional, não de código.
 - **Piso de interface (188/224) e copy completa** não são regras do revisor hoje (lacunas da seção 12).
 - **Concorrência e duração**: a medida é cara e roda fora da trava; a 2ª passada (sob trava) só compara
-  `pageVersion` — nunca confiar no veredito medido antes da trava sem comparar; a transação (timeout
-  20 s) não pode conter a medida.
+  a identidade (`pageVersion` E `copyVersion`) — nunca confiar no veredito medido antes da trava sem
+  comparar; a transação (timeout 20 s) não pode conter a medida; os efeitos pós-commit recheca(m) a
+  identidade antes de escrever (seção 7).
 
 ## 19. Rollback
 
