@@ -717,6 +717,16 @@ Decisão do owner: **o agente autônomo não pode apagar copy para "corrigir" de
   `naoSeAplica: true` (sem foto; `assuntoOrigem: 'nenhum'` gravado para a mesma foto/corte/formato; ou o mapa
   de calma sem região forte); o comparador trata a marca dos DOIS lados como regra inaplicável. A estimativa
   que FALHOU (foto não baixou, sharp não leu) continua sem a marca e não medida (fail-closed).
+- **Pendências registradas no fechamento do CP4.1 (roadmap, NÃO implementadas neste PR)**:
+  - **CP4.2 — título pequeno**: `texto-pequeno` exclui `headline`/`headline2` por desenho da regra 9; um ajuste
+    autônomo ainda pode transformar a manchete em corpo absurdamente pequeno. Cobrir reutilizando a referência do
+    modelo (corpo/entrelinha de referência da página), sem inventar um limiar isolado.
+  - **CP5 — oclusão**: forma/imagem desenhada ACIMA do texto (z-order) não é propriedade determinística medida. Antes
+    de um `APTO` autônomo, o CP5 precisa medir/provar a oclusão OU marcar a situação como não comprovada e mandar
+    para `REVISAO_HUMANA_NECESSARIA`.
+  - **MCP-M5 — auditoria durável**: no fluxo humano, `copyRemovida` gravada na Generation depende de o render
+    concluir; página alterada + render falho pode ficar sem o registro durável (a página já perdeu a copy na
+    transação). Entra na trilha de recuperação/auditoria, não aqui.
 - **Rodada dos 4 revisores (15/10)**: "tem conteúdo" é texto VISÍVEL (`texto-visivel.ts`: `trim` mais os
   caracteres de formato U+200B/C/D, U+2060, U+00AD, U+FEFF, U+034F, U+3164/FFA0, U+2800) — no bake, no
   ajuste `visibilidade`, no comparador e em `textoSemConteudo`; esvaziar destrói conteúdo seja a camada
