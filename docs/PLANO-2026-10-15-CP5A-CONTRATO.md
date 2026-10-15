@@ -1,7 +1,9 @@
 # CP5a — contrato técnico do VEREDITO PURO (proposta para revisão, 15/10/2026, noite)
 
 **Estado: PROPOSTA PARA REVISÃO. Nada implementado.** Base: `main` `01f3c3be` (merge do CP4.2, PR #235).
-Rodada 5 do Codex (BLOCKER: círculo/triângulo/estrela são desenhados CENTRADOS na posição; desfoque, traço e
+Rodada 6 do Codex (BLOCKER: `icon` desenha o path em coordenadas cruas; `style.border.width` e `style.shadow`
+faltavam na expansão; IMPORTANTE: G23b por scan do fonte não fecha aliases) aplicada no HEAD seguinte. Rodada 5 do
+Codex (BLOCKER: círculo/triângulo/estrela são desenhados CENTRADOS na posição; desfoque, traço e
 sombra pintam além da caixa; IMPORTANTE: `Layer` e `LayerStyle` têm índice `[key: string]`, snapshot de tipo não
 detecta chave nova; MENOR: máscara) aplicada no HEAD seguinte. Rodada 4 do Codex (BLOCKER: o render gira em torno da ORIGEM, não do centro; IMPORTANTE: piso de interface sem
 rotação; MENOR: descrições) aplicada no HEAD seguinte. Revisão do OWNER sobre o HEAD 5949eb33 (NÃO APTO) aplicada: sem exceção de gradiente na oclusão (metadata não
@@ -333,9 +335,13 @@ que a caixa CONTÉM e por isso são suportadas: `style.flipH`/`flipV` (o render 
 a caixa continua contendo o que sobra; uma forma mascarada acima de um texto que intersecta CONTA, porque o
 gate não sabe o que o recorte deixou).
 
-**Geometria por tipo de forma** (Codex R5): a caixa `position`/`size` só descreve o desenho para `rectangle`,
-`rounded-rectangle`, `svg-path` (desenhado na caixa), `image`, `logo`, `video`, `gradient`/`gradient2`, `icon`,
-`element` e texto. **`circle`, `triangle` e `star` são desenhados CENTRADOS em `position`** (o render segue o
+**Geometria por tipo de forma** (Codex R5/R6): a caixa `position`/`size` só descreve o desenho para `rectangle`,
+`rounded-rectangle`, `svg-path` (desenhado na caixa), `image`, `logo`, `element` (os três passam por `renderImage`,
+`drawImage(0, 0, width, height)`, `render-engine.ts:148-150`, `:1705-1708`), `video`, `gradient`/`gradient2` e
+texto. **`icon`** desenha o `Konva.Path` com as coordenadas CRUAS do path da biblioteca, sem escalar por
+`width`/`height` (`render-engine.ts:2053-2063`, `assets/icon-library.ts`): a caixa NÃO contém o desenho → `icon`
+acima de (ou empatado com) um texto é **`transformacao-nao-suportada` → `NAO_MEDIDO`** (Codex R6), sem teste
+de caixa. **`circle`, `triangle` e `star` são desenhados CENTRADOS em `position`** (o render segue o
 Konva: `render-engine.ts:1912-1935`, raio `min(w, h) / 2` em torno de `(0, 0)` depois do `translate`) — para
 eles a caixa base é `(x − r, y − r, 2r, 2r)` ANTES de girar (a rotação em torno da origem continua valendo, e
 a envolvente é tomada sobre essa caixa centrada). **`line` e `arrow`** desenham traço com ponteiro
@@ -343,21 +349,34 @@ a envolvente é tomada sobre essa caixa centrada). **`line` e `arrow`** desenham
 `transformacao-nao-suportada` → `NAO_MEDIDO` (raros no compositor; fail-closed). `shapeType` desconhecido →
 idem.
 
-**Efeitos que pintam ALÉM da caixa** (Codex R5): os limites são EXPANDIDOS, nunca reduzidos, por: traço
-(`style.stroke`/`strokeWidth` da forma ou `effects.stroke` habilitado): `+ strokeWidth` em cada lado (o traço é
-centrado no caminho; sobra); desfoque (`effects.blur` habilitado): `+ folgaDoBlur(blurRadius)` = `3 × raio`
-em cada lado (a mesma folga que o render usa para a mancha desmanchar para fora do retângulo,
-`render-engine.ts:1978-1994`, `halo/fundo-de-texto.ts:247`); sombra (`effects.shadow` habilitada):
-`+ |shadowOffsetX|`, `+ |shadowOffsetY|` e `+ 3 × shadowBlur` em cada lado. A expansão vale para a camada
+**Efeitos que pintam ALÉM da caixa** (Codex R5/R6): os limites são EXPANDIDOS, nunca reduzidos, por: traço —
+`max(style.strokeWidth ?? style.border?.width ?? 0, effects.stroke habilitado ? strokeWidth : 0)` em cada lado
+(a forma usa `strokeWidth ?? border.width`, `render-engine.ts:1822-1826`; a imagem/logo/elemento traça
+`style.border` em `strokeImageBorder`, `:1711`; `effects.stroke` é o traço do texto, `:456-576`; o traço é
+centrado no caminho — `+ largura` inteira sobra); desfoque (`effects.blur` habilitado): `+ folgaDoBlur(blurRadius)`
+= `3 × raio` em cada lado (a folga que o render usa para a mancha desmanchar para fora do retângulo,
+`render-engine.ts:1978-1994`, `halo/fundo-de-texto.ts:247`); sombra — `effects.shadow` habilitada OU
+`style.shadow` presente (o render aceita as duas, `applyShadow`, `render-engine.ts:341-369`; `effects` vence):
+`+ |offsetX|`, `+ |offsetY|` e `+ 3 × blur` em cada lado, lidos do que o render lê. A expansão vale para a camada
 ACIMA (`c`); para o texto `t` os limites são os da caixa (o que importa é o que cobre o texto).
 
-Chaves de geometria que o gate não conhece: `Layer` e `LayerStyle` têm índice `[key: string]: unknown`
-(`template.ts:139`, `:220`), então nem snapshot de tipo nem mapeamento exaustivo detectam uma chave nova.
-A regra é outra: **uma chave que o RENDER não lê não desenha nada** — o que importa é o que
-`render-engine.ts` lê. O teste G23b fixa por snapshot o conjunto de propriedades `layer.X`, `style.X` e
-`effects.X` que o fonte de `render-engine.ts` lê nos caminhos de transformação e desenho (`applyTransforms`,
-`renderShape*`, efeitos): propriedade nova lida pelo render faz o teste falhar e exige classificação em
-`limitesDe` (suportada, contida, expansora ou não suportada).
+Chaves que o gate não conhece — duas defesas, nenhuma por tipo (Codex R5/R6: `Layer` e `LayerStyle` têm índice
+`[key: string]: unknown`, `template.ts:139`, `:220`; e um scan do fonte do render não fecha aliases como
+`const efeito = layer.effects?.shadow`):
+
+1. **Em tempo de execução, fail-closed sobre os DADOS**: `limitesDe` mantém `CHAVES_CLASSIFICADAS` — TODAS as
+   chaves declaradas de `Layer`, `LayerStyle`, `effects` e `textboxConfig`, cada uma marcada `inerte` (não muda
+   geometria: cor, fonte, `objectFit`, `opacity`…), `suportada` (`position`, `size`, `rotation`, `shapeType`,
+   `flipH`, `flipV`, `mask`, `border.radius`), `expansora` (`strokeWidth`, `border.width`, `effects.stroke`,
+   `effects.blur`, `effects.shadow`, `style.shadow`) ou `nao-suportada` (`iconId`, `lineStartCap`, `lineEndCap`,
+   `lineWidth`, `lineStyle`). Uma camada ACIMA de um texto que traga, em `Object.keys(layer)` ou
+   `Object.keys(layer.style)`/`effects`, qualquer chave FORA de `CHAVES_CLASSIFICADAS` → `transformacao-nao-suportada`
+   → `NAO_MEDIDO`. Chave nova no banco vai ao humano até ser classificada — visível nas métricas do piloto.
+2. **No PR que declara a chave**: o teste G23b lê o FONTE de `src/types/template.ts` (os blocos `export interface
+   Layer {`, `export interface LayerStyle {`, o objeto `effects?: {` e `BorderStyle`/`ShadowStyle`, uma propriedade por
+   linha, regex `^\s+(\w+)\??:`) e exige que cada nome declarado esteja em `CHAVES_CLASSIFICADAS` — chave
+   declarada e não classificada falha o teste. É executável, não depende do índice `[key: string]` nem de
+   aliases do render. O que o render lê sem declarar no tipo não existe por construção (o render lê `Layer`).
 
 O cenário fixado em teste (com a geometria REAL do render): uma forma 600×40 em (400, 500) girada 90°
 tem caixa original y 500–540, que NÃO toca um texto em x 370–390 × y 600–700, mas o render dela ocupa
@@ -438,12 +457,12 @@ real para o relatório — o gate é testado sobre o relatório que o revisor de
 | G19 | piso de interface: texto em `y = 100` no story / logo invadindo o rodapé / a mesma peça em `feed` / texto com caixa original na faixa livre mas girado 90° em torno da origem invadindo o topo / logo com transformação não suportada | reprova / reprova / não se aplica / reprova (limites girados) / não comprovada |
 | G20 | copy: cada estado da tabela 4.4 + `copy` ausente | conforme |
 | G21 | oclusão (sem rotação): `shape` com `order` maior intersectando um texto → `naoMedidos.oclusao`; `order` igual → idem; `shape` abaixo → nada; `shape` acima sem intersecção → nada; `gradient` E `gradient2` acima, COM e SEM `metadata.tratamentoDeTexto` → oclusão (sem exceção); gradiente de leitura abaixo (ordem normal) → nada; imagem que não é o fundo acima → oclusão; foto de fundo com `order >=` ao de um texto → oclusão; texto sobre texto, ambos com métrica e sem rotação → nada (é `colisao`); logo SOLTA acima de texto COM métrica, `logo-sobre-texto` `avaliada` → nada (par comprovado); logo em GRUPO acima de texto → oclusão; logo solta acima de texto em `textosSemMetrica` → oclusão; logo solta com `logo-sobre-texto` `parcial`/`nao-avaliada` → oclusão; `motivoSemMedida` presente → a exceção de texto e a de logo não valem; texto oculto (`visible: false`) sob uma forma → nada; `cobertura.oclusao` = `comprovada` só com a lista vazia | conforme |
-| G21b | rotação, forma e transformação: forma 600×40 em (400, 500) girada 90° (caixa original y 500–540) sobre texto em x 370–390 × y 600–700 → oclusão pelos limites conservadores (render ocupa x 360–400 × y 500–1100; a caixa original não intersecta); a mesma forma girada com `order` ABAIXO do texto → nada; **círculo 100×100 em (400, 500)** (desenhado centrado: x 350–450 × y 450–550) acima de texto em x 355–395 × y 480–490 → oclusão (a caixa `position`/`size` começa em 400/500 e NÃO toca; a caixa centrada toca); triângulo e estrela idem; círculo centrado girado 45° → limites da caixa centrada girada em torno da origem; texto girado 15° acima de outro texto → oclusão (a exceção de texto não vale); logo solta girada acima de texto com métrica → oclusão (a exceção de logo não vale); `shape` com `style.mask` acima de texto cuja caixa intersecta → oclusão; `shape` com `flipH` → limites iguais à caixa; `line`/`arrow` acima de texto, caixa sem intersecção → `transformacao-nao-suportada`/`NAO_MEDIDO` ANTES do teste de caixa; `shapeType` desconhecido → idem | conforme |
-| G21d | efeitos que expandem: retângulo 100×100 em (500, 500) com `effects.blur` raio 20 (folga 60) acima de texto em x 420–440 (fora da caixa, dentro da folga) → oclusão; o mesmo com `effects.stroke` largura 12 e texto em x 490–498 → oclusão; `effects.shadow` offset (30, 30) + blur 10 e texto em x 605–640 → oclusão; sem efeito, os mesmos textos → nada | conforme |
-| G21c | paridade com o render REAL: formas opacas `rectangle`, `circle`, `triangle`, `star` e `svg-path` 600×40 / 100×100 em (400, 500) com rotação 0/30/90/180/270, e com `effects.blur` raio 20, `stroke` 12 e `shadow` (30, 30, blur 10), renderizadas pelo renderizador do servidor; todo pixel pintado (alfa > 0) está dentro de `limitesDe(l)` (limites conservadores contêm o desenho); para o retângulo a 90° os limites são exatamente x 360–400 × y 500–1100; para o círculo sem rotação, x 350–450 × y 450–550 | conforme |
+| G21b | rotação, forma e transformação: forma 600×40 em (400, 500) girada 90° (caixa original y 500–540) sobre texto em x 370–390 × y 600–700 → oclusão pelos limites conservadores (render ocupa x 360–400 × y 500–1100; a caixa original não intersecta); a mesma forma girada com `order` ABAIXO do texto → nada; **círculo 100×100 em (400, 500)** (desenhado centrado: x 350–450 × y 450–550) acima de texto em x 355–395 × y 480–490 → oclusão (a caixa `position`/`size` começa em 400/500 e NÃO toca; a caixa centrada toca); triângulo e estrela idem; círculo centrado girado 45° → limites da caixa centrada girada em torno da origem; texto girado 15° acima de outro texto → oclusão (a exceção de texto não vale); logo solta girada acima de texto com métrica → oclusão (a exceção de logo não vale); `shape` com `style.mask` acima de texto cuja caixa intersecta → oclusão; `shape` com `flipH` → limites iguais à caixa; `line`/`arrow` acima de texto, caixa sem intersecção → `transformacao-nao-suportada`/`NAO_MEDIDO` ANTES do teste de caixa; `shapeType` desconhecido → idem; **`icon` 8×8 em (400, 500) cujo path chega a x = 21 (coordenadas cruas) acima de texto em x 410–420** → `NAO_MEDIDO` (não é descartado pela caixa); camada acima com chave fora de `CHAVES_CLASSIFICADAS` (ex.: `style.escala: 2`) → `NAO_MEDIDO` | conforme |
+| G21d | efeitos que expandem: retângulo 100×100 em (500, 500) com `effects.blur` raio 20 (folga 60) acima de texto em x 420–440 (fora da caixa, dentro da folga) → oclusão; o mesmo com `style.strokeWidth` 12 e texto em x 490–498 → oclusão; com `style.border.width` 12 (forma) e com `style.border.width` 12 numa `image` (borda da imagem) → oclusão; `effects.shadow` offset (30, 30) + blur 10 e texto em x 605–640 → oclusão; `style.shadow` `{ offsetX: 30, offsetY: 30, blur: 10 }` sem `effects.shadow` → oclusão (o render aceita os dois); sem efeito, os mesmos textos → nada | conforme |
+| G21c | paridade com o render REAL: formas opacas `rectangle`, `circle`, `triangle`, `star` e `svg-path` 600×40 / 100×100 em (400, 500) com rotação 0/30/90/180/270, e com `effects.blur` raio 20, `style.strokeWidth` 12, `style.border.width` 12 (forma e imagem), `effects.shadow` e `style.shadow` (30, 30, blur 10), renderizadas pelo renderizador do servidor; todo pixel pintado (alfa > 0) está dentro de `limitesDe(l)` (limites conservadores contêm o desenho); para o retângulo a 90° os limites são exatamente x 360–400 × y 500–1100; para o círculo sem rotação, x 350–450 × y 450–550 | conforme |
 | G22 | `pageVersion: null` com as 11 regras comprovadas e o resto limpo | `IDENTIDADE_ILEGIVEL`, `cobertura.identidade = nao-comprovada`, `REVISAO_HUMANA_NECESSARIA` (ver G28) |
 | G23 | `REGRAS_CRITICAS ∪ NAO_CRITICAS === REGRAS_DA_REVISAO` (sem sobra nem falta) | fixa a classificação |
-| G23b | snapshot do que o RENDER lê: o conjunto de propriedades `layer.X`, `style.X`/`style?.X` e `effects.X` lidas no fonte de `src/lib/render-engine.ts` nos caminhos de transformação e desenho, comparado com a lista que `limitesDe` classifica (suportada: `position`, `size`, `rotation`, `shapeType`, `flipH`, `flipV`, `mask`; expansora: `stroke`, `strokeWidth`, `effects.stroke`, `effects.blur`, `effects.shadow`; não suportada: `lineStartCap`, `lineEndCap`, `lineWidth`, `lineStyle` de `line`/`arrow`). Propriedade nova lida pelo render → o teste falha e exige classificação | fixa a lista pelo render, não pelo tipo (o tipo tem índice `[key: string]`) |
+| G23b | chaves declaradas × classificadas: o teste lê `src/types/template.ts` (blocos `Layer`, `LayerStyle`, `effects`, `BorderStyle`, `ShadowStyle`, uma propriedade por linha) e exige que cada nome esteja em `CHAVES_CLASSIFICADAS` (inerte / suportada / expansora / não suportada); e, nos dados, uma camada acima de texto com chave fora da lista → `NAO_MEDIDO` (G21b) | fixa a lista pelo tipo DECLARADO (lido do fonte, porque o índice `[key: string]` impede o mapeamento exaustivo) e fecha o resto em execução |
 | G24 | o relatório REAL da fixture do piloto (`piloto-2026-10-13`, medida sintética a partir de `composicaoRegistrada.contraste`, serviço `ok: false`) | `REVISAO_HUMANA_NECESSARIA` com `texto-sem-leitura:servico` — o mesmo contrato alvo que `piloto-portao` descreve, sem tocar nos `hojeViola` |
 | G25 | `copyVersionDe`: `null` → `'sem-contrato'`; mesma copy com chaves em outra ordem → mesmo hash; copy diferente → hash diferente | puro |
 | G26 | `foraDaInterface` de produção, casos independentes: texto com `y = 187` reprova e `y = 188` passa; logo com base em `canvas.height − 223` reprova e `− 224` passa; cliente MENOS restritivo (`topo: 100`) não afrouxa (continua 188); cliente MAIS restritivo (`topo: 300`) aperta; camada oculta não conta. O oráculo dos testes passa a importar a de produção e os testes do CP0 seguem verdes | conforme |
