@@ -369,6 +369,15 @@ export function blocosDeTexto(camadas: Layer[], metricas: TextLayerMetrics[]): B
   return [...blocos.values()].sort((a, b) => a.tinta.y - b.tinta.y || a.tinta.x - b.tinta.x)
 }
 
+/** A foto de fundo da peça (`bg-foto` ou a imagem que cobre ≥ 90% do canvas): sem ela não há assunto a proteger. */
+export function fotoDeFundo(camadas: Layer[], canvas: { width: number; height: number }): Layer | null {
+  return (
+    camadas.find((l) => l.id === 'bg-foto' && l.visible !== false) ??
+    camadas.find((l) => l.type === 'image' && l.visible !== false && (l.size?.width ?? 0) >= canvas.width * 0.9 && (l.size?.height ?? 0) >= canvas.height * 0.9) ??
+    null
+  )
+}
+
 /** As logos soltas da peça (a logo que mora num arranjo de texto é desenho, não conta). */
 export function logosDaPeca(camadas: Layer[]): Layer[] {
   return camadas.filter(

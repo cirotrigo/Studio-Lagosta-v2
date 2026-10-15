@@ -61,6 +61,8 @@ export interface AjusteAplicado {
   achado?: string
   /** CP4: a comparação antes/depois que aceitou (as melhoras medidas e o estado do achado alvo). */
   comparacao?: ComparacaoDoAjuste
+  /** CP4: o que o autofix geométrico mudou na cópia aceita (fonte, entrelinha, caixa) — dito, nunca em silêncio. */
+  autocorrecao?: Array<{ layerId: string; propriedade: string; de: number; para: number; motivo: string }>
 }
 
 /** O que a não-piora (CP4) mediu de um ajuste: as pioras (antes → depois), o que não pôde medir e o achado alvo. */
@@ -69,6 +71,10 @@ export interface ComparacaoDoAjuste {
   naoMedidas: Array<{ propriedade: string; lado: 'antes' | 'depois' | 'ambos'; motivo: string }>
   melhoras: Array<{ propriedade: string; camadas: string[]; antes: number | string | null; depois: number | string | null }>
   achadoAlvo?: { id: string; regra: string; estado: string; antes: number | null; depois: number | null }
+  /** Regras `nao-avaliada` dos dois lados por não se aplicarem à peça (sem foto → sem assunto): ditas, não recusam. */
+  naoAplicaveis?: Array<{ propriedade: string; motivo: string }>
+  /** CP4: a candidata também é comparada com o estado de ENTRADA da chamada (contra a catraca de tolerâncias). */
+  contraEntrada?: { pioras: ComparacaoDoAjuste['pioras'] }
 }
 
 export interface AjusteRecusado {
@@ -303,19 +309,23 @@ function inserirAcimaDoFundo(camadas: Layer[], nova: Layer, canvas: Canvas): Lay
 export function aplicarAjustes(
   entrada: Layer[],
   ajustes: Ajuste[],
-  ctx: { canvas: Canvas; medir: MeasureLayerHeight },
+  ctx: { canvas: Canvas; medir: MeasureLayerHeight; indiceBase?: number },
 ): ResultadoDosAjustes {
   let camadas = entrada
   const aplicados: AjusteAplicado[] = []
   const recusados: AjusteRecusado[] = []
   const alteradas = new Set<string>()
   const W = ctx.canvas.width
+  // O índice é o do LOTE: o executor do CP4 chama um ajuste por vez e o registro (inclusive a marca
+  // `ocultaPeloRevisor.ajuste`) tem de apontar o índice que a pessoa mandou, não 0.
+  const indiceBase = ctx.indiceBase ?? 0
   const H = ctx.canvas.height
   // O medidor do servidor só mede `text`; o rich text é medido como texto
   // simples do mesmo corpo e entrelinha — a mesma aproximação do compositor.
   const medirTexto = (l: Layer) => ctx.medir(l.type === 'rich-text' ? ({ ...l, type: 'text' } as Layer) : l)
 
-  ajustes.forEach((a, indice) => {
+  ajustes.forEach((a, i) => {
+    const indice = indiceBase + i
     const recusar = (codigo: CodigoDaRecusa, motivo: string, campos?: string[]) =>
       recusados.push({ indice, tipo: String(a.tipo), motivo, codigo, ...(campos?.length ? { campos } : {}) })
     const problema = problemaEstruturadoDoAjuste(a)

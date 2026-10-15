@@ -40,7 +40,7 @@ import { lerFotoComoCover } from '@/lib/creatives/halo/halo-medicao'
 import { estimarAssunto, mapaDeCalma } from '@/lib/compositor/mapa-de-calma'
 import type { Rect } from '@/lib/creatives/halo/halo'
 import type { RelatorioDaRevisao } from './contrato'
-import { avaliarPeca, ehTextoVisivel, entrelinhaDaCamada, logosDaPeca, type EntradaDaRevisao, type ReferenciaDeCamada } from './regras'
+import { avaliarPeca, ehTextoVisivel, entrelinhaDaCamada, fotoDeFundo, logosDaPeca, type EntradaDaRevisao, type ReferenciaDeCamada } from './regras'
 import { medirLogosDaPeca } from '@/lib/compositor/legibilidade-da-logo'
 import {
   MODELO_DA_VISAO,
@@ -232,11 +232,7 @@ async function assuntoDaPeca(
   formato: RevisaoDaArte['formato'],
   fieldValues: Record<string, any> | null,
 ): Promise<{ rect: Rect; origem: 'catalogo' | 'estimado' } | null> {
-  const fundo =
-    camadas.find((l) => l.id === 'bg-foto' && l.visible !== false) ??
-    camadas.find(
-      (l) => l.type === 'image' && l.visible !== false && (l.size?.width ?? 0) >= canvas.width * 0.9 && (l.size?.height ?? 0) >= canvas.height * 0.9,
-    )
+  const fundo = fotoDeFundo(camadas, canvas)
   if (!fundo?.fileUrl) return null
   const composicao = fieldValues?.composicao
   const corte = fundo.style?.cropPosition ?? null
@@ -336,6 +332,10 @@ export interface ContextoDaMedicao {
   assunto: { rect: Rect; origem: 'catalogo' | 'estimado' } | null
   /** A origem gravada da variante da logo desenhada (CP3), url → origem. */
   origensDaLogo: ReadonlyMap<string, 'pagina' | 'projeto'>
+  /** Bytes da logo por URL, um download por chamada (o executor do CP4 mede N vezes com este mesmo contexto). */
+  cacheDeLogos: Map<string, Promise<Buffer>>
+  /** As fontes do projeto já foram registradas neste contexto (uma vez por chamada, não por medida). */
+  fontesRegistradas?: boolean
 }
 
 /**
@@ -376,7 +376,7 @@ export async function contextoDaMedicao(args: {
   if (typeof varianteGravada?.url === 'string' && (varianteGravada.origem === 'pagina' || varianteGravada.origem === 'projeto')) origensDaLogo.set(varianteGravada.url, varianteGravada.origem)
   const { referencias, origem: referencia } = await referenciasDaPagina(camadas, fieldValues?.composicao ?? null, geracoes)
   const assunto = await assuntoDaPeca(camadas, canvas, formato, fieldValues)
-  return { projectId, canvas, formato, background, faixa, referencias, referencia, assunto, origensDaLogo }
+  return { projectId, canvas, formato, background, faixa, referencias, referencia, assunto, origensDaLogo, cacheDeLogos: new Map() }
 }
 
 /** A entrada do revisor medida das CAMADAS dadas (sem a visão): fontes, geometria, régua e logo. Nunca lança. */
@@ -387,7 +387,16 @@ export type MedidaDaPeca = Omit<EntradaDaRevisao, 'vistos' | 'motivoSemVisao' | 
  * ajustes (CP4): toda etapa é opcional e a falha vira cobertura "não avaliada" nas regras que dependem dela
  * (métrica ausente nunca é avaliação positiva, R4).
  */
-export async function medirCamadasDaPeca(camadas: Layer[], ctx: ContextoDaMedicao): Promise<MedidaDaPeca> {
+export async function medirCamadasDaPeca(
+  camadas: Layer[],
+  ctx: ContextoDaMedicao,
+  /**
+   * `corrigir` (padrão `true`, o revisor): a régua aplica em memória a força de gradiente que PROPORIA e devolve as
+   * leituras pós-correção (`tintaCorrigida`, para o ajuste `gradiente`). O executor do CP4 mede com `false`: a
+   * não-piora compara a peça COMO VAI SER GRAVADA, não uma hipótese (revisores A e B, 15/10/2026).
+   */
+  opcoes: { corrigir?: boolean } = {},
+): Promise<MedidaDaPeca> {
   const { projectId, canvas, formato, background, faixa } = ctx
   const medidasAproximadas: string[] = []
   let issues: ReturnType<typeof checkTextGeometry>['issues'] = []
@@ -395,7 +404,10 @@ export async function medirCamadasDaPeca(camadas: Layer[], ctx: ContextoDaMedica
   let motivoSemMedida: string | undefined
   let textosSemMetrica: string[] = []
   try {
-    await registerProjectFonts(projectId)
+    if (!ctx.fontesRegistradas) {
+      await registerProjectFonts(projectId)
+      ctx.fontesRegistradas = true
+    }
     const medir = await createServerTextBoxMeasurer()
     const paraMedir = camadas.map((l) => {
       if (l.type !== 'rich-text' || l.visible === false) return l
@@ -415,12 +427,19 @@ export async function medirCamadasDaPeca(camadas: Layer[], ctx: ContextoDaMedica
     console.warn('[revisar-arte]', motivoSemMedida)
   }
 
-  const fontesAusentes = await fontesQueFaltam(camadas)
+  // "Nunca lança": a conferência das fontes (importa o canvas) também é cercada — sem ela, nenhuma fonte é dita ausente
+  // e a geometria fica como medida; o aviso vai ao log (revisor D).
+  let fontesAusentes: MedidaDaPeca['fontesAusentes'] = []
+  try {
+    fontesAusentes = await fontesQueFaltam(camadas)
+  } catch (erro) {
+    console.warn('[revisar-arte] a conferência das fontes falhou:', erro instanceof Error ? erro.message : erro)
+  }
 
   let contraste: ContrasteMedido[] | null = null
   let pioras: PioraDeTratamento[] | null = null
   try {
-    const regua = await medirContrasteDaPeca({ layers: camadas, canvas, background, faixa, corrigir: true })
+    const regua = await medirContrasteDaPeca({ layers: camadas, canvas, background, faixa, corrigir: opcoes.corrigir !== false })
     contraste = regua.medidas
     // A piora vale para a peça COMO ESTÁ — a correção da régua aqui é só em memória (CP1).
     pioras = regua.pioras
@@ -436,7 +455,7 @@ export async function medirCamadasDaPeca(camadas: Layer[], ctx: ContextoDaMedica
   if (logosSoltas.length === 0) leituraDaLogo = []
   else {
     try {
-      leituraDaLogo = await medirLogosDaPeca({ layers: camadas, canvas, background, logos: logosSoltas, origens: ctx.origensDaLogo })
+      leituraDaLogo = await medirLogosDaPeca({ layers: camadas, canvas, background, logos: logosSoltas, origens: ctx.origensDaLogo, cache: ctx.cacheDeLogos })
     } catch (erro) {
       motivoSemLeituraDaLogo = `a leitura da logo não foi medida: ${(erro instanceof Error ? erro.message : String(erro)).slice(0, 160)}`
       console.warn('[revisar-arte]', motivoSemLeituraDaLogo)

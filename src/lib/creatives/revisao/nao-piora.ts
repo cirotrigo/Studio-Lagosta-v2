@@ -32,6 +32,7 @@
 import type { Layer } from '@/types/template'
 import { TOLERANCIA_DE_PIORA, type ContrasteMedido } from '@/lib/compositor/regua'
 import type { AchadoDaRevisao, RegraDaRevisao, RelatorioDaRevisao } from './contrato'
+import { fotoDeFundo } from './regras'
 
 /** O ajuste deixou a peça pior em alguma propriedade medida. */
 export const AJUSTE_PIOROU_ARTE = 'AJUSTE_PIOROU_ARTE'
@@ -72,9 +73,12 @@ const REGRAS_COMPARADAS: ReadonlyArray<Extract<Propriedade, RegraDaRevisao>> = [
 /** Uma medida de peça: o relatório e o que o gerou (contraste por texto, camadas). */
 export interface MedidaComparavel {
   relatorio: RelatorioDaRevisao
+  /** As leituras da régua SEM a correção hipotética (`corrigir: false`): o que a peça gravada mostra, não o que a régua proporia. */
   contraste: ContrasteMedido[] | null
   camadas: Layer[]
   canvas: { width: number; height: number }
+  /** Camadas que a geometria NÃO mediu (fonte não cadastrada, texto sem métrica, rich text aproximado): mexer nelas é "não medido". */
+  semMetrica?: string[]
 }
 
 export interface Piora {
@@ -106,8 +110,19 @@ export interface ComparacaoDeNaoPiora {
   melhoras: Melhora[]
   /** O achado alvo (quando declarado): resolvido, melhorado, inalterado/piorado, ou não mensurável (visão). */
   achadoAlvo?: { id: string; regra: string; estado: 'resolvido' | 'melhorou' | 'nao-melhorou' | 'nao-mensuravel' | 'nao-encontrado'; antes: number | null; depois: number | null }
+  /** Regras `nao-avaliada` dos DOIS lados por não se aplicarem à peça (sem foto de fundo não há assunto): ditas, não recusam. */
+  naoAplicaveis: NaoMedida[]
   /** O veredito: aceito só sem piora, sem propriedade não medida e com o achado alvo resolvido/melhorado. */
   veredito: 'aceito' | typeof AJUSTE_PIOROU_ARTE | typeof AJUSTE_NAO_MEDIDO | typeof AJUSTE_NAO_MELHOROU_O_ACHADO
+}
+
+export interface OpcoesDaComparacao {
+  /** O id do achado (do relatório de ANTES) que o ajuste declarou corrigir. */
+  achadoAlvo?: string | null
+  /** As camadas que o ajuste tocou: mexer numa camada sem métrica de geometria é "não medido". */
+  alteradas?: Iterable<string>
+  /** O ajuste É `visibilidade` (esconder é o que ele faz): texto escondido não é piora de geometria — mas nunca "resolve" um achado. */
+  permiteOcultar?: boolean
 }
 
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
@@ -149,14 +164,31 @@ export function gravidadeDoAchado(a: AchadoDaRevisao): { valor: number; toleranc
       const depois = num(e.depois)
       return { valor: antes !== null && depois !== null ? Math.abs(depois - antes) : 1, tolerancia: TOLERANCIA_DE_PIORA }
     }
+    case 'logo-sobre-texto':
+      // `camadas` = [logo, ...textos tocados]: a gravidade é quantos textos a logo encosta.
+      return { valor: Math.max(0, a.camadas.length - 1), tolerancia: 0 }
+    case 'fonte-nao-carregada':
+      // Uma fonte, N camadas com ela: a gravidade é quantas camadas saem com a fonte de reserva.
+      return { valor: a.camadas.length, tolerancia: 0 }
     default:
       // logo-sobre-texto, fonte-nao-carregada e o resto: existir já é a gravidade.
       return { valor: 1, tolerancia: 0 }
   }
 }
 
-/** A chave estável de um achado: a regra e as camadas em ordem (a colisão troca a ordem quando um texto passa o outro). */
-export const chaveDoAchado = (a: AchadoDaRevisao): string => `${a.regra}:${[...a.camadas].sort().join('+')}`
+/**
+ * A chave estável de um achado, para casar o mesmo achado nos dois lados. É o `id` que `adicionar` já deduplica
+ * (`texto-cortado:ID` e `texto-largo:ID` são achados DIFERENTES da mesma regra; os de bloco têm id por bloco) —
+ * exceto onde o id carrega a lista de camadas e a lista muda sem o achado mudar: a colisão (a ordem troca quando um
+ * texto passa o outro), a logo sobre texto (a chave é a logo; os textos tocados são a gravidade) e a fonte ausente
+ * (a chave é a família; as camadas são a gravidade). Revisores C e D, 15/10/2026.
+ */
+export const chaveDoAchado = (a: AchadoDaRevisao): string => {
+  if (a.regra === 'colisao') return `colisao:${[...a.camadas].sort().join('+')}`
+  if (a.regra === 'logo-sobre-texto') return `logo-sobre-texto:${a.camadas[0] ?? ''}`
+  if (a.regra === 'fonte-nao-carregada') return `fonte-nao-carregada:${String(a.evidencia?.familia ?? '')}:${String(a.evidencia?.peso ?? '')}`
+  return a.id
+}
 
 const mecanico = (a: AchadoDaRevisao) => a.certeza !== 'visao' && (REGRAS_COMPARADAS as readonly string[]).includes(a.regra)
 
@@ -185,17 +217,33 @@ function compararAchados(antes: RelatorioDaRevisao, depois: RelatorioDaRevisao):
  * dele piorou; texto já fora do alvo piorou quando a leitura afastou-se do alvo além do ruído de render
  * (`TOLERANCIA_DE_PIORA`). Texto no alvo que mexeu dentro dele não é piora (a regra do oráculo P9 do CP0).
  */
-function compararContraste(antes: ContrasteMedido[], depois: ContrasteMedido[]): { pioras: Piora[]; melhoras: Melhora[] } {
-  const porTexto = (m: ContrasteMedido[]) => new Map(m.flatMap((g) => (g.textos ?? []).map((t) => [t.camada, t] as const)))
+type LeituraDeTexto = NonNullable<ContrasteMedido['textos']>[number]
+/** A leitura "com tratamento", no sentido do texto: p98 para texto claro (menor é melhor), p02 para escuro (maior é melhor). */
+const distancia = (t: LeituraDeTexto) => (t.sentido === 'claro' ? t.p98ComHalo - t.alvo : t.alvo - t.p98ComHalo)
+/** Um texto pode aparecer em dois grupos da régua (topo e rodapé): fica a PIOR leitura. */
+function porTexto(m: ContrasteMedido[]): Map<string, LeituraDeTexto> {
+  const saida = new Map<string, LeituraDeTexto>()
+  for (const t of m.flatMap((g) => g.textos ?? [])) {
+    const atual = saida.get(t.camada)
+    if (!atual || (atual.ok && !t.ok) || (atual.ok === t.ok && distancia(t) > distancia(atual))) saida.set(t.camada, t)
+  }
+  return saida
+}
+
+function compararContraste(antes: ContrasteMedido[], depois: ContrasteMedido[], ignorar: Set<string>): { pioras: Piora[]; melhoras: Melhora[] } {
   const a = porTexto(antes)
   const d = porTexto(depois)
   const pioras: Piora[] = []
   const melhoras: Melhora[] = []
   for (const [camada, td] of d) {
+    // Texto VAZIO (slot opcional): a régua o mede, a regra o ignora (`textoSemConteudo`) — aqui também (revisor B).
+    if (ignorar.has(camada)) continue
     const ta = a.get(camada)
-    if (!ta) continue
-    // A leitura "com tratamento", no sentido do texto: p98 para texto claro (menor é melhor), p02 para escuro (maior é melhor).
-    const distancia = (t: typeof td) => (t.sentido === 'claro' ? t.p98ComHalo - t.alvo : t.alvo - t.p98ComHalo)
+    if (!ta) {
+      // Texto que só existe DEPOIS (revelado por `visibilidade`, por exemplo) e não lê: é piora, não "sem antes".
+      if (!td.ok) pioras.push({ propriedade: 'contraste', camadas: [camada], antes: null, depois: td.p98ComHalo, motivo: `apareceu fora do alvo (${td.sentido}: ${td.p98ComHalo}, alvo ${Math.round(td.alvo)})` })
+      continue
+    }
     const piorou = ta.ok ? !td.ok : distancia(td) > distancia(ta) + TOLERANCIA_DE_PIORA
     const melhorou = !ta.ok && (td.ok || distancia(td) < distancia(ta) - TOLERANCIA_DE_PIORA)
     if (piorou) pioras.push({ propriedade: 'contraste', camadas: [camada], antes: ta.p98ComHalo, depois: td.p98ComHalo, motivo: ta.ok ? `saiu do alvo (${td.sentido}: ${ta.p98ComHalo} → ${td.p98ComHalo}, alvo ${Math.round(td.alvo)})` : `afastou-se do alvo (${td.sentido}: ${ta.p98ComHalo} → ${td.p98ComHalo}, alvo ${Math.round(td.alvo)})` })
@@ -204,51 +252,115 @@ function compararContraste(antes: ContrasteMedido[], depois: ContrasteMedido[]):
   return { pioras, melhoras }
 }
 
-/** Geometria das caixas: texto ou logo que passou a ter caixa degenerada ou a sair inteira do canvas. */
-function compararGeometria(antes: MedidaComparavel, depois: MedidaComparavel): Piora[] {
+/** O mesmo predicado de `logosDaPeca` (sem a condição de visibilidade): a logo pode ser `logo`, `id: 'logo'` ou imagem chamada logo. */
+const ehLogo = (l: Layer) => l.type === 'logo' || l.id === 'logo' || (l.type === 'image' && /\blogo\b/i.test(l.name ?? ''))
+const ehTextoComConteudo = (l: Layer) => (l.type === 'text' || l.type === 'rich-text') && String(l.content ?? '').trim().length > 0
+const caixaDe = (l: Layer) => `${Math.round(l.position.x)},${Math.round(l.position.y)} ${Math.round(l.size.width)}×${Math.round(l.size.height)}`
+
+/**
+ * Geometria das caixas: texto ou logo que passou a ter caixa degenerada ou a sair inteira do canvas; logo que passou a
+ * sair PARCIALMENTE do canvas (a leitura mede só os pixels que sobraram — empurrar a marca para fora não é "legível");
+ * e o DESAPARECIMENTO: texto com conteúdo ou logo visível antes e invisível/ausente depois (esconder o horário não
+ * "resolve" a leitura do horário). Com `permiteOcultar` (o ajuste É `visibilidade`), o texto escondido não é piora —
+ * a logo escondida é, sempre (revisores A, C e D, 15/10/2026).
+ */
+function compararGeometria(antes: MedidaComparavel, depois: MedidaComparavel, permiteOcultar: boolean): { pioras: Piora[]; desaparecidas: string[] } {
   const foraDoCanvas = (l: Layer, canvas: { width: number; height: number }) =>
     l.size.width <= 0 || l.size.height <= 0 || l.position.x + l.size.width <= 0 || l.position.y + l.size.height <= 0 || l.position.x >= canvas.width || l.position.y >= canvas.height
-  const conta = (l: Layer) => l.visible !== false && (l.type === 'text' || l.type === 'rich-text' || l.type === 'logo')
+  const parcialmenteFora = (l: Layer, canvas: { width: number; height: number }) =>
+    l.position.x < 0 || l.position.y < 0 || l.position.x + l.size.width > canvas.width || l.position.y + l.size.height > canvas.height
+  const conta = (l: Layer) => l.visible !== false && (l.type === 'text' || l.type === 'rich-text' || ehLogo(l))
   const ruinsAntes = new Set(antes.camadas.filter((l) => conta(l) && foraDoCanvas(l, antes.canvas)).map((l) => l.id))
-  return depois.camadas
-    .filter((l) => conta(l) && foraDoCanvas(l, depois.canvas) && !ruinsAntes.has(l.id))
-    .map((l) => ({ propriedade: 'geometria' as const, camadas: [l.id], antes: null, depois: `${Math.round(l.position.x)},${Math.round(l.position.y)} ${Math.round(l.size.width)}×${Math.round(l.size.height)}`, motivo: 'a caixa ficou degenerada ou inteira fora do canvas' }))
+  const logoForaAntes = new Set(antes.camadas.filter((l) => conta(l) && ehLogo(l) && parcialmenteFora(l, antes.canvas)).map((l) => l.id))
+  const pioras: Piora[] = []
+  for (const l of depois.camadas) {
+    if (!conta(l)) continue
+    if (foraDoCanvas(l, depois.canvas) && !ruinsAntes.has(l.id)) pioras.push({ propriedade: 'geometria', camadas: [l.id], antes: null, depois: caixaDe(l), motivo: 'a caixa ficou degenerada ou inteira fora do canvas' })
+    else if (ehLogo(l) && parcialmenteFora(l, depois.canvas) && !logoForaAntes.has(l.id)) pioras.push({ propriedade: 'geometria', camadas: [l.id], antes: null, depois: caixaDe(l), motivo: 'a logo passou a sair do canvas (a leitura só mede o que sobrou dentro)' })
+  }
+  const visiveisDepois = new Map(depois.camadas.filter((l) => l.visible !== false).map((l) => [l.id, l]))
+  const desaparecidas: string[] = []
+  for (const l of antes.camadas) {
+    if (l.visible === false || !(ehTextoComConteudo(l) || ehLogo(l))) continue
+    if (visiveisDepois.has(l.id)) continue
+    desaparecidas.push(l.id)
+    if (ehLogo(l)) pioras.push({ propriedade: 'logo-sem-leitura', camadas: [l.id], antes: 'visível', depois: 'escondida', motivo: 'a logo foi escondida ou removida — não é uma logo legível' })
+    else if (!permiteOcultar) pioras.push({ propriedade: 'geometria', camadas: [l.id], antes: 'visível', depois: 'escondido', motivo: 'o texto sumiu da peça (escondido ou removido) por um ajuste que não é de visibilidade' })
+  }
+  return { pioras, desaparecidas }
 }
 
-/** As propriedades cujo lado não foi medido (cobertura `nao-avaliada`, régua sem medida). */
-function naoMedidas(antes: MedidaComparavel, depois: MedidaComparavel): NaoMedida[] {
+/**
+ * As propriedades cujo lado não foi medido (cobertura `nao-avaliada`, régua sem medida, camada tocada sem métrica).
+ * `naoAplicaveis`: a regra que não se aplica à peça de nenhum dos lados — hoje só `texto-sobre-assunto` numa peça
+ * SEM foto de fundo (não há assunto a proteger; "não há" não é "não medimos"). Foto que existe e não baixou continua
+ * "não medida" (fail-closed). Logo num arranjo ou fora do contrato também: o conserto é no editor (revisor D).
+ */
+function naoMedidas(antes: MedidaComparavel, depois: MedidaComparavel, alteradas: Set<string>): { naoMedidas: NaoMedida[]; naoAplicaveis: NaoMedida[] } {
   const saida: NaoMedida[] = []
+  const naoAplicaveis: NaoMedida[] = []
   for (const regra of REGRAS_COMPARADAS) {
     const ca = antes.relatorio.cobertura[regra]
     const cd = depois.relatorio.cobertura[regra]
     const faltaA = !ca || ca.estado === 'nao-avaliada'
     const faltaD = !cd || cd.estado === 'nao-avaliada'
-    if (faltaA || faltaD) saida.push({ propriedade: regra, lado: faltaA && faltaD ? 'ambos' : faltaA ? 'antes' : 'depois', motivo: (faltaD ? cd?.motivo : ca?.motivo) ?? 'regra não avaliada' })
+    if (!faltaA && !faltaD) continue
+    const item: NaoMedida = { propriedade: regra, lado: faltaA && faltaD ? 'ambos' : faltaA ? 'antes' : 'depois', motivo: (faltaD ? cd?.motivo : ca?.motivo) ?? 'regra não avaliada' }
+    if (regra === 'texto-sobre-assunto' && faltaA && faltaD && !fotoDeFundo(antes.camadas, antes.canvas) && !fotoDeFundo(depois.camadas, depois.canvas)) {
+      naoAplicaveis.push({ ...item, motivo: 'a peça não tem foto de fundo: não há assunto a proteger' })
+      continue
+    }
+    saida.push(item)
   }
   if (antes.contraste === null || depois.contraste === null) saida.push({ propriedade: 'contraste', lado: antes.contraste === null && depois.contraste === null ? 'ambos' : antes.contraste === null ? 'antes' : 'depois', motivo: 'a régua de contraste não mediu' })
-  return saida
+  const semMetrica = new Set([...(antes.semMetrica ?? []), ...(depois.semMetrica ?? [])])
+  const tocadasSemMetrica = [...alteradas].filter((id) => semMetrica.has(id))
+  if (tocadasSemMetrica.length > 0) saida.push({ propriedade: 'geometria', lado: 'ambos', motivo: `o ajuste mexe em camada que a geometria não mede (fonte não cadastrada, texto curvo/fitty/auto-resize ou rich text): ${tocadasSemMetrica.join(', ')}` })
+  return { naoMedidas: saida, naoAplicaveis }
 }
 
 /**
  * Compara ANTES e DEPOIS de um ajuste e decide. `achadoAlvo` é o id do achado
  * que o ajuste declarou corrigir (no relatório de ANTES).
  */
-export function compararNaoPiora(antes: MedidaComparavel, depois: MedidaComparavel, opcoes: { achadoAlvo?: string | null } = {}): ComparacaoDeNaoPiora {
+export function compararNaoPiora(antes: MedidaComparavel, depois: MedidaComparavel, opcoes: OpcoesDaComparacao = {}): ComparacaoDeNaoPiora {
   const achados = compararAchados(antes.relatorio, depois.relatorio)
-  const contraste = antes.contraste && depois.contraste ? compararContraste(antes.contraste, depois.contraste) : { pioras: [], melhoras: [] }
-  const pioras = [...achados.pioras, ...contraste.pioras, ...compararGeometria(antes, depois)]
+  const vazios = new Set([...antes.camadas, ...depois.camadas].filter((l) => (l.type === 'text' || l.type === 'rich-text') && !ehTextoComConteudo(l)).map((l) => l.id))
+  const contraste = antes.contraste && depois.contraste ? compararContraste(antes.contraste, depois.contraste, vazios) : { pioras: [], melhoras: [] }
+  const geometria = compararGeometria(antes, depois, opcoes.permiteOcultar === true)
+  // A leitura efetiva de um texto (a pior das suas entradas na régua), para julgar o achado `tratamento-piorou-leitura`.
+  const leituraDe = (m: ContrasteMedido[] | null, camada: string) => (m ? (porTexto(m).get(camada) ?? null) : null)
+  const leituraNaoPiorou = (camadas: string[]) =>
+    camadas.every((c) => {
+      const ta = leituraDe(antes.contraste, c)
+      const td = leituraDe(depois.contraste, c)
+      return !!ta && !!td && (td.ok || distancia(td) <= distancia(ta) + TOLERANCIA_DE_PIORA)
+    })
+  // O achado `tratamento-piorou-leitura` que APARECE sem a leitura do texto ter piorado (o véu ficou igual, a foto sob
+  // ele mudou): não é piora — quem decide a leitura é o contraste por texto (revisor B).
+  const piorasDosAchados = achados.pioras.filter((p) => !(p.propriedade === 'tratamento-piorou-leitura' && p.antes === null && leituraNaoPiorou(p.camadas)))
+  const pioras = [...piorasDosAchados, ...contraste.pioras, ...geometria.pioras]
   const melhoras = [...achados.melhoras, ...contraste.melhoras]
-  const semMedida = naoMedidas(antes, depois)
+  const { naoMedidas: semMedida, naoAplicaveis } = naoMedidas(antes, depois, new Set(opcoes.alteradas ?? []))
+  const sumiu = new Set(geometria.desaparecidas)
 
   let achadoAlvo: ComparacaoDeNaoPiora['achadoAlvo']
   if (opcoes.achadoAlvo) {
     const alvo = antes.relatorio.achados.find((a) => a.id === opcoes.achadoAlvo)
-    if (!alvo) achadoAlvo = { id: opcoes.achadoAlvo, regra: '?', estado: 'nao-encontrado', antes: null, depois: null }
-    else if (alvo.regra === 'texto-sem-leitura' && alvo.certeza !== 'visao') {
+    if (!alvo) {
+      // O id que não está no ANTES: achado de visão (`visao-…`) nunca está na medida sem visão — não exige prova;
+      // qualquer outro é um id desconhecido (digitado errado, ou já resolvido antes deste ajuste): não é prova de nada.
+      achadoAlvo = opcoes.achadoAlvo.startsWith('visao')
+        ? { id: opcoes.achadoAlvo, regra: 'visao', estado: 'nao-mensuravel', antes: null, depois: null }
+        : { id: opcoes.achadoAlvo, regra: '?', estado: 'nao-encontrado', antes: null, depois: null }
+    } else if (alvo.camadas.length > 0 && alvo.camadas.every((c) => sumiu.has(c))) {
+      // Esconder a camada do achado não o resolve: some o achado, não o problema.
+      achadoAlvo = { id: alvo.id, regra: alvo.regra, estado: 'nao-melhorou', antes: mecanico(alvo) ? gravidadeDoAchado(alvo).valor : null, depois: null }
+    } else if (alvo.regra === 'texto-sem-leitura' && alvo.certeza !== 'visao') {
       // A leitura do texto é medida pela régua, não pelo achado: a gravidade é a distância ao alvo (pior das camadas).
       const distanciaDe = (m: ContrasteMedido[] | null): number | null => {
         if (!m) return null
-        const textos = m.flatMap((g) => (g.textos ?? [])).filter((t) => alvo.camadas.includes(t.camada))
+        const textos = m.flatMap((g) => (g.textos ?? [])).filter((t) => alvo.camadas.includes(t.camada) && !vazios.has(t.camada))
         if (textos.length === 0) return null
         return Math.max(...textos.map((t) => (t.ok ? 0 : Math.max(0, t.sentido === 'claro' ? t.p98ComHalo - t.alvo : t.alvo - t.p98ComHalo))))
       }
@@ -264,10 +376,12 @@ export function compararNaoPiora(antes: MedidaComparavel, depois: MedidaComparav
       const chave = chaveDoAchado(alvo)
       const ainda = depois.relatorio.achados.find((a) => mecanico(a) && chaveDoAchado(a) === chave)
       const gd = ainda ? gravidadeDoAchado(ainda) : null
+      // O achado de tratamento que SOME porque o texto saiu de sob o gradiente não está resolvido se a leitura piorou.
+      const sumiuDeVerdade = !ainda && (alvo.regra !== 'tratamento-piorou-leitura' || leituraNaoPiorou(alvo.camadas))
       achadoAlvo = {
         id: alvo.id,
         regra: alvo.regra,
-        estado: !ainda ? 'resolvido' : gd!.valor < ga.valor - gd!.tolerancia ? 'melhorou' : 'nao-melhorou',
+        estado: !ainda ? (sumiuDeVerdade ? 'resolvido' : 'nao-melhorou') : gd!.valor < ga.valor - gd!.tolerancia ? 'melhorou' : 'nao-melhorou',
         antes: ga.valor,
         depois: gd?.valor ?? null,
       }
@@ -275,14 +389,24 @@ export function compararNaoPiora(antes: MedidaComparavel, depois: MedidaComparav
   }
 
   const veredito: ComparacaoDeNaoPiora['veredito'] =
-    pioras.length > 0 ? AJUSTE_PIOROU_ARTE : semMedida.length > 0 ? AJUSTE_NAO_MEDIDO : achadoAlvo?.estado === 'nao-melhorou' ? AJUSTE_NAO_MELHOROU_O_ACHADO : 'aceito'
-  return { pioras, naoMedidas: semMedida, melhoras, ...(achadoAlvo ? { achadoAlvo } : {}), veredito }
+    pioras.length > 0
+      ? AJUSTE_PIOROU_ARTE
+      : semMedida.length > 0
+        ? AJUSTE_NAO_MEDIDO
+        : achadoAlvo?.estado === 'nao-melhorou' || achadoAlvo?.estado === 'nao-encontrado'
+          ? AJUSTE_NAO_MELHOROU_O_ACHADO
+          : 'aceito'
+  return { pioras, naoMedidas: semMedida, melhoras, ...(achadoAlvo ? { achadoAlvo } : {}), naoAplicaveis, veredito }
 }
 
 /** Uma frase para o registro da recusa. */
 export function motivoDaComparacao(c: ComparacaoDeNaoPiora): string {
   if (c.veredito === AJUSTE_PIOROU_ARTE) return `o ajuste piora a peça: ${c.pioras.map((p) => `${p.propriedade} em ${p.camadas.join(', ')} (${p.motivo})`).join('; ')}`
   if (c.veredito === AJUSTE_NAO_MEDIDO) return `não foi possível provar que o ajuste não piora: ${c.naoMedidas.map((n) => `${n.propriedade} não medida ${n.lado === 'ambos' ? 'antes nem depois' : n.lado} (${n.motivo})`).join('; ')}`
-  if (c.veredito === AJUSTE_NAO_MELHOROU_O_ACHADO) return `o ajuste declarou corrigir ${c.achadoAlvo!.id} (${c.achadoAlvo!.regra}) e não o resolveu nem o melhorou (${c.achadoAlvo!.antes} → ${c.achadoAlvo!.depois})`
+  if (c.veredito === AJUSTE_NAO_MELHOROU_O_ACHADO) {
+    if (c.achadoAlvo!.estado === 'nao-encontrado') return `o ajuste declarou corrigir ${c.achadoAlvo!.id}, que não é um achado da revisão desta versão (id desconhecido, ou já resolvido antes deste ajuste): sem achado, não há prova de melhora — tire o rótulo ou revise de novo`
+    if (c.achadoAlvo!.depois === null) return `o ajuste declarou corrigir ${c.achadoAlvo!.id} (${c.achadoAlvo!.regra}) e só escondeu a camada do achado: sumir não é resolver`
+    return `o ajuste declarou corrigir ${c.achadoAlvo!.id} (${c.achadoAlvo!.regra}) e não o resolveu nem o melhorou (${c.achadoAlvo!.antes} → ${c.achadoAlvo!.depois})`
+  }
   return 'aceito: nenhuma propriedade medida piorou'
 }

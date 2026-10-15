@@ -88,6 +88,18 @@ vi.mock('@/lib/creatives/text-autofix', () => ({
 vi.mock('@/lib/posts/invalidate-renders', () => ({ invalidateScheduledRenders: espioes.invalidar }))
 vi.mock('@/lib/compositor/recompor', () => ({ travarRecomposicaoDaArte: vi.fn(async () => undefined), pedirRecomposicaoDaArteCongelada: vi.fn(async () => null) }))
 vi.mock('@/lib/aprendizado/captura', () => ({ registrarDecisaoSemSugestao: vi.fn(async () => null) }))
+// O espião da MEDIDA: cada chamada de `medirCamadasDaPeca` grava as camadas que mediu (prova da ordem do lote, CP4).
+const medidas = vi.hoisted(() => ({ chamadas: [] as Array<{ camadas: unknown[]; corrigir: boolean | undefined }> }))
+vi.mock('@/lib/creatives/revisao/revisar-arte', async (original) => {
+  const mod = await original<typeof import('@/lib/creatives/revisao/revisar-arte')>()
+  return {
+    ...mod,
+    medirCamadasDaPeca: async (camadas: any[], ctx: any, opcoes?: { corrigir?: boolean }) => {
+      medidas.chamadas.push({ camadas, corrigir: opcoes?.corrigir })
+      return mod.medirCamadasDaPeca(camadas, ctx, opcoes)
+    },
+  }
+})
 // O renderizador NÃO é mockado: a régua e o oráculo medem o render de verdade.
 
 import type { Layer } from '@/types/template'
@@ -119,6 +131,7 @@ beforeEach(() => {
   banco.generations = []
   banco.putSeq = 0
   banco.escritas = 0
+  medidas.chamadas.length = 0
   banco.projeto = { id: Number(peca.spec.projectId), name: 'Projeto da fixture', userId: 'dono-interno', instagramAccountId: null, assinatura: fixture.assinatura().numerosDoProjeto }
   banco.assinatura = fixture.assinatura().pagina
   banco.geracaoDoCompositor = {
@@ -283,19 +296,86 @@ describe('CP4 — medir antes, aplicar em memória, medir depois; UMA escrita no
     } catch (e) {
       erro = e as CreativeError
     }
-    expect(erro?.code).toBe('AJUSTE_PIOROU_ARTE')
+    // O código da CHAMADA é o da recusa que houve (não "piorou" quando nada piorou — revisores D e E).
+    expect(erro?.code).toBe('AJUSTE_NAO_MELHOROU_O_ACHADO')
     const recusado = (erro?.details as { recusados: Array<Record<string, any>> }).recusados[0]
     expect(recusado).toMatchObject({ indice: 0, codigo: 'AJUSTE_NAO_MELHOROU_O_ACHADO', achado: alvo.id })
     expect(recusado.comparacao).toMatchObject({ pioras: [], achadoAlvo: { id: alvo.id, regra: 'texto-sem-leitura', estado: 'nao-melhorou' } })
     expect(banco.escritas).toBe(0)
   }, 180_000)
 
-  it('o achado só de VISÃO não exige prova mecânica — o ajuste passa pela não-piora como qualquer outro e, sem piorar, entra', async () => {
+  it('o achado só de VISÃO (`visao-…`, nunca está na medida sem visão) não exige prova mecânica — o ajuste passa pela não-piora como qualquer outro e, sem piorar, entra', async () => {
     const r = await ajustar([{ ...ACEITO_TOPO, achado: 'visao-posicao-estranha:T2' }] as unknown as Ajuste[])
     expect(r.resultadoDosAjustes).toBe('completo')
-    expect(r.ajustesAplicados?.[0]).toMatchObject({ indice: 0, achado: 'visao-posicao-estranha:T2', comparacao: { pioras: [], achadoAlvo: { id: 'visao-posicao-estranha:T2', estado: 'nao-encontrado' } } })
+    expect(r.ajustesAplicados?.[0]).toMatchObject({ indice: 0, achado: 'visao-posicao-estranha:T2', comparacao: { pioras: [], achadoAlvo: { id: 'visao-posicao-estranha:T2', estado: 'nao-mensuravel' } } })
     expect(banco.escritas).toBe(1)
   }, 120_000)
+
+  it('um id de achado MENSURÁVEL que não existe na revisão (digitado errado) não é passe livre: AJUSTE_NAO_MELHOROU_O_ACHADO, nada gravado (revisor F)', async () => {
+    await expect(ajustar([{ ...ACEITO_TOPO, achado: 'texto-cortado:headline' }] as unknown as Ajuste[])).rejects.toMatchObject({
+      code: 'AJUSTE_NAO_MELHOROU_O_ACHADO',
+      details: { recusados: [expect.objectContaining({ indice: 0, codigo: 'AJUSTE_NAO_MELHOROU_O_ACHADO', comparacao: expect.objectContaining({ achadoAlvo: expect.objectContaining({ estado: 'nao-encontrado' }) }) })] },
+    })
+    expect(banco.escritas).toBe(0)
+  }, 120_000)
+
+  it('ESCONDER o serviço declarando corrigir `texto-sem-leitura:servico` não resolve nada: sumir não é resolver (revisores A, B, C)', async () => {
+    const r = await revisar()
+    const alvo = r.relatorio.achados.find((a) => a.regra === 'texto-sem-leitura' && a.camadas.includes('servico'))!
+    await expect(ajustar([{ tipo: 'visibilidade', camadas: ['servico'], visivel: false, achado: alvo.id }] as unknown as Ajuste[])).rejects.toMatchObject({
+      code: 'AJUSTE_NAO_MELHOROU_O_ACHADO',
+      details: { recusados: [expect.objectContaining({ indice: 0, motivo: expect.stringMatching(/só escondeu/) })] },
+    })
+    expect(banco.escritas).toBe(0)
+  }, 120_000)
+
+  it('ESCONDER a logo é piora de `logo-sem-leitura` (uma logo escondida não é legível), mesmo que os achados dela sumam (revisor D)', async () => {
+    await expect(ajustar([{ tipo: 'visibilidade', camadas: ['logo'], visivel: false }] as unknown as Ajuste[])).rejects.toMatchObject({
+      code: 'AJUSTE_PIOROU_ARTE',
+      details: { recusados: [expect.objectContaining({ comparacao: expect.objectContaining({ pioras: [expect.objectContaining({ propriedade: 'logo-sem-leitura', camadas: ['logo'] })] }) })] },
+    })
+    expect(banco.escritas).toBe(0)
+  }, 120_000)
+
+  it('a ORDEM do lote é provada pela medida: cada candidata é medida sobre o estado com os aceitos anteriores, e a recusa não vaza (revisor F)', async () => {
+    await ajustar([ACEITO_APOIO, PIORA_SERVICO, ACEITO_TOPO] as unknown as Ajuste[])
+    const v1 = fixture.peca().v1.layers
+    const y = (chamada: number, id: string) => camada(medidas.chamadas[chamada].camadas as Layer[], id).position.y
+    // 0: a entrada; 1: candidata com apoio −6; 2: a candidata do serviço (sobre o estado COM o 1º); 3: a do 3º, SEM o serviço movido.
+    expect(medidas.chamadas.map((c) => c.corrigir)).toEqual([false, false, false, false])
+    expect([y(0, 'apoio'), y(0, 'servico')]).toEqual([camada(v1, 'apoio').position.y, camada(v1, 'servico').position.y])
+    expect([y(1, 'apoio'), y(1, 'servico')]).toEqual([camada(v1, 'apoio').position.y - 6, camada(v1, 'servico').position.y])
+    expect([y(2, 'apoio'), y(2, 'servico')]).toEqual([camada(v1, 'apoio').position.y - 6, camada(v1, 'servico').position.y - 230])
+    expect([y(3, 'apoio'), y(3, 'headline'), y(3, 'servico')]).toEqual([camada(v1, 'apoio').position.y - 66, camada(v1, 'headline').position.y - 60, camada(v1, 'servico').position.y])
+  }, 180_000)
+
+  it('a régua do executor NÃO aplica a correção hipotética: com véu escuro e folga de força, mover o serviço para a área clara é piora REAL, não "ok" corrigido (revisores A e B)', async () => {
+    // O véu do rodapé passa a ser escuro com folga (0.45 na faixa 0.45–0.9): a régua CORRIGIRIA em memória (e o revisor
+    // humano propõe isso), mas o executor julga a peça como ela vai ser gravada.
+    banco.projeto = { ...banco.projeto, assinatura: { ...(banco.projeto.assinatura ?? {}), gradiente: { ...((banco.projeto.assinatura as any)?.gradiente ?? {}), forcaMinima: 0.45, forcaMaxima: 0.9 } } }
+    banco.pagina = {
+      ...banco.pagina,
+      layers: (banco.pagina.layers as Layer[]).map((l) =>
+        l.id === 'gradiente-leitura-rodape'
+          ? { ...l, style: { ...(l.style ?? {}), gradientStops: ((l.style as any).gradientStops as Array<Record<string, unknown>>).map((st) => ({ ...st, color: '#283D36' })) } }
+          : // O serviço já 130 px acima (o cenário P2f do revisor B): a leitura real sai de 161 para 177 com mais 10 px.
+            l.id === 'servico'
+            ? { ...l, position: { ...l.position, y: l.position.y - 130 } }
+            : l,
+      ),
+    }
+    let erro: CreativeError | null = null
+    let aceito: unknown = null
+    try {
+      aceito = await ajustar([{ tipo: 'mover', dy: -10, camadas: ['servico'] }] as unknown as Ajuste[])
+    } catch (e) {
+      erro = e as CreativeError
+    }
+    expect(medidas.chamadas.every((c) => c.corrigir === false)).toBe(true)
+    // A piora real (161 → 177 na medição do revisor B) é recusada; com a correção hipotética os dois lados sairiam "ok".
+    expect(erro?.code, JSON.stringify(aceito)).toBe('AJUSTE_PIOROU_ARTE')
+    expect(erro?.details).toMatchObject({ recusados: [expect.objectContaining({ comparacao: expect.objectContaining({ pioras: [expect.objectContaining({ propriedade: 'contraste', camadas: ['servico'] })] }) })] })
+  }, 180_000)
 })
 
 /**
@@ -337,25 +417,38 @@ describe('P9 — recuperação', () => {
     try {
       await ajustar(fixture.peca().v2.revisao.ajustes as unknown as Ajuste[])
     } catch (e) {
-      // Recusa estruturada DE QUALIDADE é um desfecho válido: nada pode ter sido gravado.
+      // Recusa estruturada POR PIORA MEDIDA é um desfecho válido (não "não medido": fail-closed protege a peça, mas não
+      // prova a propriedade — revisor F): nada pode ter sido gravado.
       if (!(e instanceof CreativeError) || RECUSAS_DE_SETUP.has(e.code)) throw e
+      expect(e.code).toBe('AJUSTE_PIOROU_ARTE')
+      const recusados = (e.details as { recusados: Array<{ codigo: string; comparacao?: { pioras: unknown[] } }> }).recusados
+      expect(recusados.some((r) => r.codigo === 'AJUSTE_NAO_MEDIDO')).toBe(false)
+      expect(recusados.filter((r) => r.codigo === 'AJUSTE_PIOROU_ARTE').every((r) => (r.comparacao?.pioras.length ?? 0) > 0)).toBe(true)
       expect(banco.pagina.layers).toEqual(camadasAntes)
-      return
     }
+    // E no caminho que GRAVA (lote misto: um aceito, um que piora): o oráculo do CP0 mede o persistido.
+    const r = await ajustar([ACEITO_APOIO, PIORA_SERVICO] as unknown as Ajuste[])
+    expect(r.resultadoDosAjustes).toBe('parcial')
     exigirMedidaFiel(banco.pagina.layers)
     const depois = await leiturasDosTextos(banco.pagina.layers, CANVAS)
     const invadeAntes = textosQueInvadem(camadasAntes, regiaoProtegida).map((c) => c.camada)
     const invadeDepois = textosQueInvadem(banco.pagina.layers, regiaoProtegida).map((c) => c.camada)
     const piorou = pioras(antes, depois, invadeAntes, invadeDepois)
     expect(piorou, JSON.stringify(piorou)).toEqual({ leitura: [], assunto: [] })
-  }, 120_000)
+  }, 240_000)
 
   hojeViola('em até 2 ciclos com os ajustes do próprio revisor, a peça termina apta ou com REVISAO_HUMANA_NECESSARIA', async () => {
     exigirMedidaFiel(banco.pagina.layers)
     let revisao = await revisar()
     let ultimoAjuste: unknown = null
     for (let ciclo = 0; ciclo < 2 && problemasAbertos(revisao).length > 0 && revisao.relatorio.ajustes.length > 0; ciclo++) {
-      ultimoAjuste = await ajustarArte({ projectId: projectId(), pageId: PAGINA, versaoEsperada: revisao.versao, ajustes: revisao.relatorio.ajustes })
+      try {
+        ultimoAjuste = await ajustarArte({ projectId: projectId(), pageId: PAGINA, versaoEsperada: revisao.versao, ajustes: revisao.relatorio.ajustes })
+      } catch (e) {
+        // A recusa de qualidade do CP4 é um desfecho do ciclo (a peça fica como estava), não erro de setup.
+        if (!(e instanceof CreativeError) || RECUSAS_DE_SETUP.has(e.code)) throw e
+        ultimoAjuste = { code: e.code, details: e.details }
+      }
       exigirMedidaFiel(banco.pagina.layers)
       revisao = await revisar()
     }

@@ -154,6 +154,78 @@ describe('não piorar — propriedade a propriedade, sem pontuação global', ()
     expect(compararNaoPiora(antes, medida({ relatorio: relatorio([semLeitura]), contraste: null }), alvo)).toMatchObject({ veredito: AJUSTE_NAO_MEDIDO, achadoAlvo: { estado: 'nao-mensuravel' } })
   })
 
+  it('revisores C/D — a CHAVE do achado é o id: `texto-largo` e `texto-cortado` da mesma camada são achados diferentes; a logo sobre texto casa pela logo (os tocados são a gravidade); a fonte pela família', () => {
+    const largo = achado('texto-cortado', ['headline'], { larguraDaLinha: 700, larguraUtil: 670 }, { id: 'texto-largo:headline' })
+    const cortado = achado('texto-cortado', ['headline'], { linhas: 3, linhasVisiveis: 2 })
+    // Antes só largo (30 px); depois só UMA linha cortada: não é "melhora de 30 para 1" — é o largo resolvido E um cortado que apareceu.
+    const r = compararNaoPiora(medida({ relatorio: relatorio([largo]) }), medida({ relatorio: relatorio([cortado]) }))
+    expect(r.veredito).toBe(AJUSTE_PIOROU_ARTE)
+    expect(r.pioras).toEqual([expect.objectContaining({ propriedade: 'texto-cortado', antes: null, depois: 1 })])
+    expect(r.melhoras).toEqual([expect.objectContaining({ propriedade: 'texto-cortado', antes: 30, depois: null })])
+    // Logo que encostava em 3 textos e passa a encostar em 1: melhora, não "apareceu".
+    const tres = achado('logo-sobre-texto', ['logo', 'a', 'b', 'c'])
+    const um = achado('logo-sobre-texto', ['logo', 'a'])
+    expect(compararNaoPiora(medida({ relatorio: relatorio([tres]) }), medida({ relatorio: relatorio([um]) }))).toMatchObject({ veredito: 'aceito', melhoras: [expect.objectContaining({ propriedade: 'logo-sobre-texto', antes: 3, depois: 1 })] })
+    expect(chaveDoAchado(tres)).toBe(chaveDoAchado(um))
+    // Fonte ausente em 3 camadas; esconder uma delas não é "apareceu outra fonte".
+    const f3 = achado('fonte-nao-carregada', ['x', 'y', 'z'], { familia: 'Branley', peso: 700 })
+    const f2 = achado('fonte-nao-carregada', ['x', 'y'], { familia: 'Branley', peso: 700 })
+    expect(compararNaoPiora(medida({ relatorio: relatorio([f3]) }), medida({ relatorio: relatorio([f2]) })).pioras).toEqual([])
+  })
+
+  it('revisores B/F — texto que APARECE sem leitura é piora; texto VAZIO não entra no contraste', () => {
+    const revelado = compararNaoPiora(medida(), medida({ contraste: contraste([{ camada: 'headline', com: 100 }, { camada: 'servico', com: 200 }]) }))
+    expect(revelado).toMatchObject({ veredito: AJUSTE_PIOROU_ARTE, pioras: [expect.objectContaining({ propriedade: 'contraste', camadas: ['servico'], antes: null, motivo: expect.stringMatching(/apareceu fora do alvo/) })] })
+    const vazio = { ...texto('badge', 1100), content: '' } as Layer
+    const r = compararNaoPiora(
+      medida({ camadas: [texto('headline'), vazio], contraste: contraste([{ camada: 'headline', com: 100 }, { camada: 'badge', com: 135 }]) }),
+      medida({ camadas: [texto('headline'), { ...vazio, position: { x: 92, y: 400 } } as Layer], contraste: contraste([{ camada: 'headline', com: 100 }, { camada: 'badge', com: 213 }]) }),
+    )
+    expect(r.veredito).toBe('aceito')
+  })
+
+  it('revisores A/C/D — DESAPARECER: texto com conteúdo que some é piora de geometria (salvo quando o ajuste é `visibilidade`); logo escondida é piora sempre; o achado da camada escondida nunca fica "resolvido"', () => {
+    const logo = { id: 'logo', name: 'Logo', type: 'logo', visible: true, locked: false, order: 9, position: { x: 800, y: 1600 }, size: { width: 160, height: 80 } } as Layer
+    const antes = medida({ relatorio: relatorio([achado('texto-sem-leitura', ['servico'], { p98: 194 })]), camadas: [texto('headline'), texto('servico', 1700), logo], contraste: contraste([{ camada: 'headline', com: 100 }, { camada: 'servico', com: 194 }]) })
+    const semServico = medida({ camadas: [texto('headline'), { ...texto('servico', 1700), visible: false } as Layer, logo], contraste: contraste([{ camada: 'headline', com: 100 }]) })
+    expect(compararNaoPiora(antes, semServico).pioras).toEqual([expect.objectContaining({ propriedade: 'geometria', camadas: ['servico'], depois: 'escondido' })])
+    const comPermissao = compararNaoPiora(antes, semServico, { permiteOcultar: true, achadoAlvo: 'texto-sem-leitura:servico' })
+    expect(comPermissao.pioras).toEqual([])
+    expect(comPermissao).toMatchObject({ veredito: AJUSTE_NAO_MELHOROU_O_ACHADO, achadoAlvo: { estado: 'nao-melhorou', depois: null } })
+    expect(motivoDaComparacao(comPermissao)).toMatch(/só escondeu/)
+    const semLogo = medida({ camadas: [texto('headline'), texto('servico', 1700)], contraste: antes.contraste })
+    expect(compararNaoPiora(antes, semLogo, { permiteOcultar: true }).pioras).toEqual([expect.objectContaining({ propriedade: 'logo-sem-leitura', camadas: ['logo'] })])
+    // A logo empurrada para fora do canvas (parcialmente) é piora: a leitura só mede o que sobrou.
+    const logoFora = medida({ camadas: [texto('headline'), texto('servico', 1700), { ...logo, position: { x: 1000, y: 1600 } } as Layer], contraste: antes.contraste })
+    expect(compararNaoPiora(antes, logoFora).pioras).toEqual([expect.objectContaining({ propriedade: 'geometria', camadas: ['logo'], motivo: expect.stringMatching(/sair do canvas/) })])
+  })
+
+  it('revisores C/D — mexer em camada que a geometria NÃO mediu (fonte ausente, texto sem métrica, rich text) é NÃO MEDIDO; mexer noutra, não', () => {
+    const antes = medida({ semMetrica: ['servico'] })
+    const depois = medida({ semMetrica: ['servico'] })
+    expect(compararNaoPiora(antes, depois, { alteradas: ['servico'] })).toMatchObject({ veredito: AJUSTE_NAO_MEDIDO, naoMedidas: [expect.objectContaining({ propriedade: 'geometria', motivo: expect.stringMatching(/servico/) })] })
+    expect(compararNaoPiora(antes, depois, { alteradas: ['headline'] }).veredito).toBe('aceito')
+  })
+
+  it('revisores C/E — regra INAPLICÁVEL não bloqueia: `texto-sobre-assunto` não avaliada dos dois lados numa peça SEM foto de fundo é dita em `naoAplicaveis`; com foto que não baixou, segue não medida', () => {
+    const semAssunto = { 'texto-sobre-assunto': { estado: 'nao-avaliada' as const, motivo: 'sem foto ou sem assunto localizado' } }
+    const r = compararNaoPiora(medida({ relatorio: relatorio([], semAssunto) }), medida({ relatorio: relatorio([], semAssunto) }))
+    expect(r).toMatchObject({ veredito: 'aceito', naoMedidas: [], naoAplicaveis: [expect.objectContaining({ propriedade: 'texto-sobre-assunto' })] })
+    const foto = { id: 'bg-foto', name: 'Foto', type: 'image', visible: true, locked: false, order: 0, position: { x: 0, y: 0 }, size: CANVAS, fileUrl: 'https://x/foto.jpg' } as Layer
+    const comFoto = compararNaoPiora(medida({ relatorio: relatorio([], semAssunto), camadas: [foto, texto('headline')] }), medida({ relatorio: relatorio([], semAssunto), camadas: [foto, texto('headline')] }))
+    expect(comFoto.veredito).toBe(AJUSTE_NAO_MEDIDO)
+  })
+
+  it('revisor B — `tratamento-piorou-leitura` que APARECE com a leitura do texto igual não é piora (quem decide é o contraste); o achado dessa regra só está "resolvido" se a leitura não piorou', () => {
+    const trat = achado('tratamento-piorou-leitura', ['servico'], { antes: 165, depois: 180 })
+    const leitura = contraste([{ camada: 'servico', com: 194 }])
+    expect(compararNaoPiora(medida({ contraste: leitura }), medida({ relatorio: relatorio([trat]), contraste: leitura })).veredito).toBe('aceito')
+    // O achado some porque o texto saiu de sob o gradiente — mas a leitura piorou (194 → 233): não está resolvido.
+    const sumiuPiorando = compararNaoPiora(medida({ relatorio: relatorio([trat]), contraste: leitura }), medida({ contraste: contraste([{ camada: 'servico', com: 233 }]) }), { achadoAlvo: 'tratamento-piorou-leitura:servico' })
+    expect(sumiuPiorando.achadoAlvo).toMatchObject({ estado: 'nao-melhorou' })
+    expect(sumiuPiorando.veredito).toBe(AJUSTE_PIOROU_ARTE)
+  })
+
   it('13. achado só de VISÃO como alvo não exige prova de melhora, mas a não-piora vale do mesmo jeito', () => {
     const visto = achado('visao', ['headline'], { problema: 'bloco-mal-colocado' }, { certeza: 'visao', id: 'visao-bloco-mal-colocado:T1' })
     const antes = medida({ relatorio: relatorio([visto]) })

@@ -68,7 +68,9 @@ Codex antes de ser escrito.
   12/09/2026 na revisão do Codex): ajuste calculado sobre uma versão só se
   aplica a ela. Chamada sem `ajustes` (texto, foto, nome) continua sem exigir
   versão. Ajuste recusado volta com o motivo; nenhum aplicável e nada mais a
-  mudar é `AJUSTE_SEM_EFEITO`.
+  mudar é `AJUSTE_SEM_EFEITO` — e, desde o CP4, `AJUSTE_PIOROU_ARTE`,
+  `AJUSTE_NAO_MELHOROU_O_ACHADO`, `AJUSTE_NAO_MEDIDO` e `TEXTO_NAO_CABE` por
+  ajuste (ver "Ajustar sem piorar (CP4)" no fim deste arquivo).
 - **As regras da casa continuam valendo no ajuste**: a escrita é a de
   `ajustarArte` (recusa página-modelo, `invalidateScheduledRenders` +
   `pedirRecomposicaoDaArteCongelada`, Generation nova com `fieldValues.revisao`).
@@ -550,10 +552,11 @@ Pedido do owner (operação noturna de 14→15/10): "TODO ajuste mecânico → m
 global". Módulos em `src/lib/creatives/revisao/`:
 
 - **`revisar-arte.ts`** ganhou `contextoDaMedicao` (o que vem do banco: assinatura, gerações, faixa,
-  referências, assunto, origens da logo) e `medirCamadasDaPeca(camadas, ctx)` (fontes, geometria,
-  régua com `corrigir: true`, logo) — a MESMA medição de `revisarArte`, que agora é só
-  `contextoDaMedicao` → `medirCamadasDaPeca` → `avaliarPeca` + visão. `MedidaDaPeca` é a
-  `EntradaDaRevisao` sem visão.
+  referências, assunto, origens da logo, cache da logo) e `medirCamadasDaPeca(camadas, ctx, { corrigir })`
+  (fontes, geometria, régua, logo) — a MESMA medição de `revisarArte`, que agora é só
+  `contextoDaMedicao` → `medirCamadasDaPeca` → `avaliarPeca` + visão. O revisor mede com `corrigir: true`
+  (precisa de `tintaCorrigida` para propor força); o executor do CP4 com `corrigir: false` (julga a peça
+  como vai ser gravada — ver a rodada de revisão abaixo). `MedidaDaPeca` é a `EntradaDaRevisao` sem visão.
 - **`nao-piora.ts`** (puro, sem banco): `compararNaoPiora(antes, depois, { achadoAlvo })` compara
   propriedade a propriedade — os achados mecânicos das regras comparadas (`texto-cortado`,
   `tinta-fora-da-caixa`, `colisao`, `fora-da-area-segura`, `tratamento-piorou-leitura`,
@@ -591,6 +594,46 @@ global". Módulos em `src/lib/creatives/revisao/`:
 - 🔴 **Fora do CP4**: o gate autônomo (`REVISAO_HUMANA_NECESSARIA`, draft-only) é do CP5 — o
   `hojeViola` P11 "recusado ANTES de substituir a versão do rascunho" só vira `it()` lá. O CP4 não
   muda o fluxo humano além de recusar o ajuste que piora (warn + recusa estruturada, nunca em silêncio).
+- **Rodada de revisão adversarial (6 revisores, 15/10/2026)** — o que mudou depois do primeiro commit:
+  - 🔴 **O executor mede com `corrigir: false`.** Com `corrigir: true` a régua aplica em memória a força de
+    gradiente que PROPORIA e sobrescreve `textos[].p98ComHalo/ok` com a leitura pós-correção — o revisor
+    humano se protege com `antesDaCorrecao`, o comparador não: o CP4 julgava uma peça hipotética (piora
+    real 161→177 aceita; ajuste inócuo "resolvia" `texto-sem-leitura`). Provado pelo revisor B na régua
+    real com véu escuro; coberto no piloto ("a régua do executor NÃO aplica a correção hipotética").
+  - **Catraca fechada**: cada candidata é comparada com o estado atual E com o de ENTRADA da chamada
+    (`comparacao.contraEntrada`): N passos "dentro da tolerância" não somam 30 px.
+  - **Chave do achado = `id`** (não regra+camadas): `texto-largo` ≠ `texto-cortado`; `logo-sobre-texto`
+    casa pela logo (textos tocados = gravidade); `fonte-nao-carregada` pela família (camadas = gravidade);
+    `colisao` pelas camadas ordenadas.
+  - **Desaparecer não é melhorar**: texto com conteúdo que some é piora de geometria (salvo pelo próprio
+    ajuste `visibilidade`); a logo escondida ou empurrada para fora do canvas é piora sempre; o achado cuja
+    camada sumiu fica `nao-melhorou` ("só escondeu"). Texto que APARECE sem leitura é piora. Texto VAZIO
+    não entra no contraste. **Decisão pendente do owner**: `visibilidade: false` num texto com conteúdo,
+    sem achado declarado, hoje ENTRA (é o que o ajuste faz) — recusar estruturalmente é um switch.
+  - **Camada sem métrica** (fonte não cadastrada, curvo/fitty/auto-resize, rich text, logo não medida):
+    mexer nela é `AJUSTE_NAO_MEDIDO`; mexer noutra continua medido pelo que a cobertura `parcial` cobriu.
+  - **Regra inaplicável não bloqueia**: `texto-sobre-assunto` `nao-avaliada` dos dois lados numa peça
+    SEM foto de fundo vai a `comparacao.naoAplicaveis`; foto que existe e não baixou segue não medida.
+    Logo num arranjo ou fora do contrato (rotação, opacidade, cover, recorte): o conserto é no editor.
+  - **Id de achado desconhecido** (não `visao-…`) é `AJUSTE_NAO_MELHOROU_O_ACHADO`, não passe livre; o
+    `visao-…` é `nao-mensuravel` (nunca está na medida sem visão).
+  - **Autofix**: o "antes" já passou pelo autofix dos textos/foto da chamada (slot que não cabe é
+    `TEXTO_NAO_CABE` da CHAMADA, antes de medir); o que o autofix mexe na candidata aceita é DITO em
+    `ajustesAplicados[].autocorrecao`; não há segunda passada depois da medida — o medido é o gravado.
+  - **Código da chamada** quando tudo é recusado: o mais grave que houve (PIOROU > NÃO MELHOROU >
+    NÃO MEDIDO > SEM EFEITO); "não medido" nunca sai como "a peça ficaria pior".
+  - `tratamento-piorou-leitura` que aparece sem a leitura do texto piorar não é piora (o contraste
+    decide); o achado dessa regra só está resolvido se a leitura não piorou.
+  - Lote só de recusas estruturais não mede nada; `PAGINA_COM_VIDEO` antes de medir; fontes do projeto
+    registradas uma vez por chamada; bytes da logo em cache por chamada (um download, falha
+    determinística no lote); `fontesQueFaltam` cercada; o índice da marca `ocultaPeloRevisor.ajuste` é
+    o do lote (`indiceBase`).
 - Limites medidos: o executor roda a régua (dois renders) por ajuste — um lote de 30 ajustes custa
-  ~30× a medida; o conector limita a 30. Achados de visão nunca entram na comparação; a geometria só
-  pega caixa degenerada/fora do canvas (o resto é das regras).
+  ~30× a medida (+1 render da logo por medida); o conector limita a 30. Achados de visão nunca entram
+  na comparação. Não são propriedades comparadas: `texto-pequeno`, `titulo-grande`,
+  `entrelinha-grande`, `palavra-orfa`, `gradiente-forte-demais` (o encolhimento pelo autofix cai aqui —
+  dito em `autocorrecao`, não recusado); a geometria só pega caixa degenerada/fora do canvas, logo
+  parcialmente fora e desaparecimento; gradiente/imagem/forma fora do canvas só indiretamente. O limiar
+  do `ok` da régua (`TOLERANCIA_DO_ALVO`) é a linha dura: texto com folga zero que sai do alvo por 1
+  unidade é piora (a regra P9). A baseline é `reflowed` (com os textos da chamada), não a página gravada:
+  com `slotValues` + `ajustes`, os textos entram mesmo que todos os ajustes caiam.

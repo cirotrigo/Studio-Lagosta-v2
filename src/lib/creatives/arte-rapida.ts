@@ -1256,39 +1256,61 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
       ? reflowLayersAfterFill(bakedLayers as Layer[], changedTextIds, measure)
       : (bakedLayers as Layer[])
 
+  // ANTES de medir qualquer coisa: o render de servidor é imagem e recusa página com vídeo — medir 30 ajustes para
+  // recusar no fim seria custo à toa (revisor E).
+  if (videoNaPagina(reflowed as Layer[]) === 'tem-video') {
+    throw new CreativeError('PAGINA_COM_VIDEO', MENSAGEM_PAGINA_COM_VIDEO, 422, { pageId: page.id, ajusteGravado: false })
+  }
+
   /**
    * CP4 (15/10/2026): TODO ajuste mecânico é medido ANTES, aplicado numa cópia, medido DEPOIS e aceito ou recusado
    * — propriedade a propriedade, sem pontuação global (`ajustar-sem-piorar.ts`). Nada é gravado até aqui: no fim
    * há UM estado, e a página é escrita uma vez. O ajuste que piora volta como `AJUSTE_PIOROU_ARTE`, com antes/depois.
+   *
+   * O "antes" é o estado que SERIA gravado sem ajustes: os textos/foto desta chamada já passaram pelo autofix deles
+   * (`changedTextIds`) — texto de slot que não cabe é `TEXTO_NAO_CABE` da CHAMADA, não de cada ajuste; e o autofix
+   * não é creditado ao ajuste como "melhora". Com ajustes, o estado aceito pelo executor é o estado gravado: não há
+   * segunda passada de autofix depois da medida (revisores A, C, E e F).
    */
+  const fixDaBase = await aplicarAutofixOuFalhar({
+    projectId,
+    layers: reflowed,
+    canvas: { width: page.width, height: page.height },
+    changedLayerIds: changedTextIds,
+  })
   const revisao =
     ajustes.length > 0
       ? await aplicarAjustesSemPiorar({
           projectId,
           page: { id: page.id, name: page.name, width: page.width, height: page.height, tags: page.tags, background: page.background, layers: page.layers },
-          camadas: reflowed as Layer[],
+          camadas: fixDaBase.layers as Layer[],
           ajustes,
           medir: measure,
         })
       : null
   if (revisao && revisao.aplicados.length === 0 && Object.keys(slotValues).length === 0 && !resolved.url && !input.name) {
-    // Todos recusados → NENHUMA escrita. Quando algum caiu pela não-piora, o código é o dela (a chamada não foi
-    // "sem efeito": foi recusada por qualidade, com antes/depois em `recusados`).
-    const porQualidade = revisao.recusados.some((r) => r.codigo === 'AJUSTE_PIOROU_ARTE' || r.codigo === 'AJUSTE_NAO_MEDIDO' || r.codigo === 'AJUSTE_NAO_MELHOROU_O_ACHADO')
-    throw new CreativeError(
-      porQualidade ? 'AJUSTE_PIOROU_ARTE' : 'AJUSTE_SEM_EFEITO',
-      `${porQualidade ? 'Nenhum ajuste foi gravado: a peça ficaria pior (ou a piora não pôde ser descartada)' : 'Nenhum ajuste pôde ser aplicado'} — ${revisao.recusados.map((r) => `ajuste ${r.indice}: ${r.motivo}`).join('; ')}.`,
-      422,
-      { recusados: revisao.recusados, ajusteGravado: false },
-    )
+    // Todos recusados → NENHUMA escrita. O código da chamada é o da recusa mais grave que houve: piorou > não melhorou
+    // o achado > não medido (uma falha de medição NÃO é "a peça ficaria pior" — revisores D e E) > estrutural.
+    const codigos = new Set(revisao.recusados.map((r) => r.codigo))
+    const codigo = codigos.has('AJUSTE_PIOROU_ARTE')
+      ? 'AJUSTE_PIOROU_ARTE'
+      : codigos.has('AJUSTE_NAO_MELHOROU_O_ACHADO')
+        ? 'AJUSTE_NAO_MELHOROU_O_ACHADO'
+        : codigos.has('AJUSTE_NAO_MEDIDO')
+          ? 'AJUSTE_NAO_MEDIDO'
+          : 'AJUSTE_SEM_EFEITO'
+    const resumo =
+      codigo === 'AJUSTE_PIOROU_ARTE'
+        ? 'Nenhum ajuste foi gravado: a peça ficaria pior'
+        : codigo === 'AJUSTE_NAO_MELHOROU_O_ACHADO'
+          ? 'Nenhum ajuste foi gravado: nenhum resolveu o achado que declarou corrigir'
+          : codigo === 'AJUSTE_NAO_MEDIDO'
+            ? 'Nenhum ajuste foi gravado: não foi possível medir que a peça não ficaria pior (falha de medição, não da peça — veja o motivo e repita depois, ou peça revisão humana)'
+            : 'Nenhum ajuste pôde ser aplicado'
+    throw new CreativeError(codigo, `${resumo} — ${revisao.recusados.map((r) => `ajuste ${r.indice}: ${r.motivo}`).join('; ')}.`, 422, { recusados: revisao.recusados, ajusteGravado: false })
   }
 
-  const fix = await aplicarAutofixOuFalhar({
-    projectId,
-    layers: revisao?.camadas ?? reflowed,
-    canvas: { width: page.width, height: page.height },
-    changedLayerIds: [...changedTextIds, ...(revisao?.alteradas ?? [])],
-  })
+  const fix = revisao ? { ...fixDaBase, layers: revisao.camadas } : fixDaBase
   const layers = fix.layers
 
   const imageWarning =
@@ -1371,12 +1393,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
    * cima (REV-D01 da revisão do Codex, 12/09/2026). Se a trava falhar, a
    * página não é gravada: ajuste sem proteção é ajuste que a fila desfaz.
    */
-  // ANTES da primeira escrita: o render de servidor é imagem e recusa página
-  // com vídeo. Recusar só lá deixava as camadas já gravadas, a miniatura
-  // apagada e a agenda invalidada numa operação que respondeu "recusada".
-  if (videoNaPagina(layers) === 'tem-video') {
-    throw new CreativeError('PAGINA_COM_VIDEO', MENSAGEM_PAGINA_COM_VIDEO, 422, { pageId: page.id, ajusteGravado: false })
-  }
+  // (A recusa de página com vídeo mora antes do executor do CP4 — ver acima.)
 
   const travar = !!revisao && revisao.aplicados.length > 0
   const { travarRecomposicaoDaArte } = travar ? await import('@/lib/compositor/recompor') : { travarRecomposicaoDaArte: null }
