@@ -53,6 +53,7 @@ export const PROPRIEDADES = [
   'logo-sobre-texto',
   'logo-sem-leitura',
   'fonte-nao-carregada',
+  'texto-pequeno',
   'geometria',
 ] as const
 export type Propriedade = (typeof PROPRIEDADES)[number]
@@ -68,10 +69,13 @@ const REGRAS_COMPARADAS: ReadonlyArray<Extract<Propriedade, RegraDaRevisao>> = [
   'logo-sobre-texto',
   'logo-sem-leitura',
   'fonte-nao-carregada',
+  // CP4.1: a regra do revisor (corpo em 1080, piso relativo ao modelo) entra na não-piora — sem limiar novo.
+  'texto-pequeno',
 ]
 
 /** Uma medida de peça: o relatório e o que o gerou (contraste por texto, camadas). */
 export interface MedidaComparavel {
+  /** O relatório do revisor sobre a medida (os achados mecânicos comparados vêm dele; `texto-pequeno` inclusive). */
   relatorio: RelatorioDaRevisao
   /** As leituras da régua SEM a correção hipotética (`corrigir: false`): o que a peça gravada mostra, não o que a régua proporia. */
   contraste: ContrasteMedido[] | null
@@ -163,6 +167,13 @@ export function gravidadeDoAchado(a: AchadoDaRevisao): { valor: number; toleranc
       const antes = num(e.antes)
       const depois = num(e.depois)
       return { valor: antes !== null && depois !== null ? Math.abs(depois - antes) : 1, tolerancia: TOLERANCIA_DE_PIORA }
+    }
+    case 'texto-pequeno': {
+      // Quanto abaixo do piso de leitura (ambos em px de 1080, da própria regra: o piso já é relativo ao modelo —
+      // um modelo que nasceu miúdo tem piso menor). Sem limiar novo: a evidência da regra decide (CP4.1).
+      const corpo = num(e.corpo1080)
+      const piso = num(e.piso1080)
+      return { valor: corpo !== null && piso !== null ? Math.max(0, piso - corpo) : 1, tolerancia: TOLERANCIA_PX }
     }
     case 'logo-sobre-texto':
       // `camadas` = [logo, ...textos tocados]: a gravidade é quantos textos a logo encosta.

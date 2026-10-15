@@ -624,7 +624,7 @@ global". Módulos em `src/lib/creatives/revisao/`:
     só há essa recusa, o código da CHAMADA é `CONTEUDO_NAO_PODE_SER_OCULTADO`. **Fora desta decisão (pendente
     do owner)**: `slotValues` com `''` ou `hidden: true` esvazia/esconde texto pelo caminho HUMANO do chat (gesto
     documentado, REV-8AD-02) e `hidden` não aparece em `camposAlterados`; `fonte` até 8 px (`escala 0.5`) passa o
-    gate porque `texto-pequeno` não é propriedade comparada.
+    gate porque `texto-pequeno` não é propriedade comparada. **→ Fechados no CP4.1 (abaixo).**
   - **Camada sem métrica** (fonte não cadastrada, curvo/fitty/auto-resize, rich text, logo não medida):
     mexer nela é `AJUSTE_NAO_MEDIDO`; mexer noutra continua medido pelo que a cobertura `parcial` cobriu.
   - **Regra inaplicável não bloqueia**: `texto-sobre-assunto` `nao-avaliada` dos dois lados numa peça
@@ -655,10 +655,42 @@ global". Módulos em `src/lib/creatives/revisao/`:
     o do lote (`indiceBase`).
 - Limites medidos: o executor roda a régua (dois renders) por ajuste — um lote de 30 ajustes custa
   ~30× a medida (+1 render da logo por medida); o conector limita a 30. Achados de visão nunca entram
-  na comparação. Não são propriedades comparadas: `texto-pequeno`, `titulo-grande`,
-  `entrelinha-grande`, `palavra-orfa`, `gradiente-forte-demais` (o encolhimento pelo autofix cai aqui —
-  dito em `autocorrecao`, não recusado); a geometria só pega caixa degenerada/fora do canvas, logo
+  na comparação. Não são propriedades comparadas: `titulo-grande`, `entrelinha-grande`, `palavra-orfa`,
+  `gradiente-forte-demais`; `texto-pequeno` É comparada desde o CP4.1 (abaixo); a geometria só pega caixa degenerada/fora do canvas, logo
   parcialmente fora e desaparecimento; gradiente/imagem/forma fora do canvas só indiretamente. O limiar
   do `ok` da régua (`TOLERANCIA_DO_ALVO`) é a linha dura: texto com folga zero que sai do alvo por 1
   unidade é piora (a regra P9). A baseline é `reflowed` (com os textos da chamada), não a página gravada:
   com `slotValues` + `ajustes`, os textos entram mesmo que todos os ajustes caiam.
+
+### CP4.1 — fecha a remoção de copy e completa o não-piorar (15/10/2026)
+
+Decisão do owner: **o agente autônomo não pode apagar copy para "corrigir" design** — nem pelo `slotValues`.
+
+- **`copyRemovidaDoBake(sourceLayers, bakedLayers, slotValues, valores)`** (`src/lib/creatives/bake-layers.ts`,
+  puro): o que o bake fez com a copy EXISTENTE — texto (`text`/`rich-text`) com conteúdo não vazio, visível
+  (ou escondido pelo revisor, que o aprendizado conta como presente) que saiu `escondido` (`hidden: true`)
+  ou `esvaziado` (`''`, só espaço, `{ content: '' }`, inclusive por `_slots`/`_papeis`). Protege o RESULTADO,
+  não a sintaxe; compara por índice (o bake preserva a posição); o `endereco` é a mesma precedência do
+  bake (`layerId` > `slotId`/`semanticRole` > `name`). A chave de NOME atinge toda camada com esse nome:
+  uma entrada, N remoções, por camada.
+- **Draft-only** (`input.apenasRascunho`): `ajustarArte` lê o bake SEM a foto logo depois da resolução
+  semântica e, se houver remoção, recusa `CONTEUDO_NAO_PODE_SER_REMOVIDO` (422) ANTES de qualquer
+  escrita — inclusive do cache do Blob em `resolveImageUrl`. `details.copyRemovida[]` traz `layerId`,
+  `operacao`, `tinhaConteudo`, `endereco` (sem o texto integral); a mensagem diz o nome da camada e a
+  operação. Trocar "Texto A" por "Texto B" continua permitido (gates normais); esconder slot JÁ vazio
+  segue o contrato. A criação de arte (`createArteRapida`, placeholders não usados escondidos) não passa
+  por aqui: a guarda vive em `ajustarArte` sob `apenasRascunho`.
+- **Fluxo humano**: continua podendo esconder/esvaziar texto pelo chat, mas fica AUDITÁVEL: `copyRemovida`
+  no retorno de `ajustarArte` (ao lado de `camposAlterados`, que é "conteúdo alterado") e em
+  `Generation.fieldValues.copyRemovida` — distingue conteúdo alterado / esvaziado / visibilidade alterada.
+  Sem migration.
+- **`texto-pequeno` na não-piora**: propriedade comparada com a gravidade da própria regra
+  (`max(0, piso1080 − corpo1080)` da evidência; o piso já é relativo ao modelo — modelo que nasceu miúdo
+  tem piso menor; tolerância 1 px pelo arredondamento da evidência). Saudável → 8 px aparece (piora);
+  já pequeno → menor piora; → maior melhora; reduzir a fonte para resolver colisão e cruzar o piso é
+  recusa (sem pontuação global); o encolhimento pelo autofix que cruza o piso também é recusa (a
+  candidata medida é a pós-autofix). Camada não medida: fail-closed do CP4. **Fora, por desenho da regra
+  9 (decisão pendente do owner)**: títulos (`headline`/`headline2`) não entram em `texto-pequeno` — a
+  manchete 84 → 8 px não é detectada por esta regra; cobrir exigiria mudar a regra do revisor.
+- **Provas 9a/9e/9h/9i/9j do `scripts/validar-revisor-da-arte.ts`** redesenhadas sem esconder texto com
+  conteúdo (ver o cabeçalho do passo 9 no script); 9d/9f (controle humano) mantidas e fortalecidas.

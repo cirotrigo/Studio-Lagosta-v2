@@ -462,3 +462,79 @@ describe('opção C (#208) no AJUSTE: fileUrl semântico no primeiro alvo não d
     expect(r.imageApplied).toBe(true)
   })
 })
+
+describe('CP4.1 — o agente autônomo (draft-only) não apaga copy pelo slotValues; o humano pode, e fica auditado', () => {
+  const cta = () => (banco.pagina!.layers as Array<Record<string, any>>).find((l) => l.id === 'cta')!
+  const comSlot = () => {
+    banco.pagina = {
+      ...banco.pagina,
+      layers: (banco.pagina.layers as Array<Record<string, any>>).map((l) => (l.id === 'headline' ? { ...l, metadata: { ...l.metadata, slot: { id: 'manchete' } } } : l)),
+    }
+  }
+  const intacto = async (chamada: Promise<unknown>, operacao: 'escondido' | 'esvaziado', endereco: { tipo: string; chave: string }, layerId = 'cta', chave = layerId) => {
+    const antes = banco.pagina.updatedAt.getTime()
+    const erro = (await erroDe(chamada)) as CreativeError
+    expect(erro).toBeInstanceOf(CreativeError)
+    expect(erro.code).toBe('CONTEUDO_NAO_PODE_SER_REMOVIDO')
+    expect(erro.status).toBe(422)
+    expect(erro.details).toMatchObject({ ajusteGravado: false, copyRemovida: [{ layerId, operacao, tinhaConteudo: true, endereco }] })
+    // Sem o texto integral nos details; a mensagem diz o nome da camada e a operação.
+    expect(JSON.stringify(erro.details)).not.toContain('Reserve pelo direct')
+    expect(erro.message).toMatch(new RegExp(`"${chave}" seria ${operacao}`))
+    // 11/12: nenhuma escrita, nenhuma Generation, nenhum render/Blob.
+    expect(banco.pagina.updatedAt.getTime()).toBe(antes)
+    expect(cta().visible).not.toBe(false)
+    expect(cta().content).toBe('Reserve pelo direct')
+    expect(banco.generations).toHaveLength(0)
+    expect(banco.putSeq).toBe(0)
+  }
+
+  it('1. draft-only: `{ cta: { hidden: true } }` sobre texto com conteúdo → recusado, nada gravado', async () => {
+    await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { cta: { hidden: true } } }), 'escondido', { tipo: 'layerId', chave: 'cta' })
+  })
+  it('2. draft-only: `{ cta: "" }` → recusado (esvaziado)', async () => {
+    await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { cta: '' } }), 'esvaziado', { tipo: 'layerId', chave: 'cta' })
+  })
+  it('3. draft-only: `{ cta: { content: "   " } }` (só espaço) → recusado (esvaziado)', async () => {
+    await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { cta: { content: '   ' } } }), 'esvaziado', { tipo: 'layerId', chave: 'cta' })
+  })
+  it('4. draft-only: `_slots` que resolve para vazio → recusado, com o endereço do slot', async () => {
+    comSlot()
+    await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { _slots: { manchete: '' } } }), 'esvaziado', { tipo: 'slotId', chave: 'manchete' }, 'headline')
+  })
+  it('5. draft-only: `_papeis` equivalente → recusado, com o endereço do papel', async () => {
+    await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { _papeis: { headline: ' ' } } }), 'esvaziado', { tipo: 'semanticRole', chave: 'headline' }, 'headline')
+  })
+  it('4b. draft-only: pela chave de NOME (atinge toda camada com esse nome) → recusado, endereço `name`', async () => {
+    banco.pagina = { ...banco.pagina, layers: (banco.pagina.layers as Array<Record<string, any>>).map((l) => (l.id === 'cta' ? { ...l, name: 'Chamada' } : l)) }
+    await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { Chamada: { hidden: true } } }), 'escondido', { tipo: 'name', chave: 'Chamada' }, 'cta', 'Chamada')
+  })
+  it('6. draft-only: trocar "Texto A" por "Texto B" → permitido, sujeito aos gates normais; sem `copyRemovida`', async () => {
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { cta: 'Reserve pelo WhatsApp' } })
+    expect(cta().content).toBe('Reserve pelo WhatsApp')
+    expect(r.camposAlterados).toEqual(['cta'])
+    expect(r.copyRemovida).toBeUndefined()
+    expect((banco.generations.at(-1)!.fieldValues as Record<string, unknown>).copyRemovida).toBeUndefined()
+  })
+  it('7. draft-only: esconder um slot de texto que JÁ estava vazio → segue o contrato de sempre (entra)', async () => {
+    banco.pagina = { ...banco.pagina, layers: [...(banco.pagina.layers as Array<Record<string, any>>), texto('badge', 200, '   ')] }
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { badge: { hidden: true } } })
+    expect(r.ajustada).toBe(true)
+    expect((banco.pagina.layers as Array<Record<string, any>>).find((l) => l.id === 'badge')!.visible).toBe(false)
+    expect(r.copyRemovida).toBeUndefined()
+  })
+  it('8/10. humano: `hidden: true` em texto com conteúdo continua permitido — e a procedência registra "escondido" (retorno e Generation)', async () => {
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { cta: { hidden: true } } })
+    expect(cta().visible).toBe(false)
+    expect(r.copyRemovida).toEqual([{ layerId: 'cta', chave: 'cta', operacao: 'escondido', endereco: { tipo: 'layerId', chave: 'cta' } }])
+    expect((banco.generations.at(-1)!.fieldValues as Record<string, any>).copyRemovida).toEqual([{ layerId: 'cta', chave: 'cta', operacao: 'escondido', endereco: { tipo: 'layerId', chave: 'cta' } }])
+    // "conteúdo alterado" é outra coisa: a camada escondida não é texto alterado.
+    expect(r.camposAlterados).toEqual([])
+  })
+  it('9/10. humano: conteúdo → "" continua permitido — e a procedência distingue "esvaziado" de "alterado"', async () => {
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { cta: '', headline: 'Jantar executivo' } })
+    expect(cta().content).toBe('')
+    expect(r.copyRemovida).toEqual([{ layerId: 'cta', chave: 'cta', operacao: 'esvaziado', endereco: { tipo: 'layerId', chave: 'cta' } }])
+    expect(r.camposAlterados).toEqual(['headline', 'cta'])
+  })
+})

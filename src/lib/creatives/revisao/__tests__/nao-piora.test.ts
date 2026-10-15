@@ -236,6 +236,27 @@ describe('não piorar — propriedade a propriedade, sem pontuação global', ()
     expect(sumiuPiorando.veredito).toBe(AJUSTE_PIOROU_ARTE)
   })
 
+  it('CP4.1 — `texto-pequeno` é propriedade comparada pela gravidade da própria regra (quanto abaixo do piso1080): aparecer, descer mais e subir', () => {
+    const pequeno = (corpo1080: number, piso1080 = 26) => achado('texto-pequeno', ['servico'], { corpo1080, piso1080, referencia1080: 32 })
+    // Saudável → 8 px: o achado aparece = piora.
+    expect(compararNaoPiora(medida(), medida({ relatorio: relatorio([pequeno(8)]) }))).toMatchObject({ veredito: AJUSTE_PIOROU_ARTE, pioras: [expect.objectContaining({ propriedade: 'texto-pequeno', camadas: ['servico'], antes: null, depois: 18 })] })
+    // Já pequeno (20, piso 26) → 18: piorou (gravidade 6 → 8).
+    expect(compararNaoPiora(medida({ relatorio: relatorio([pequeno(20)]) }), medida({ relatorio: relatorio([pequeno(18)]) }))).toMatchObject({ veredito: AJUSTE_PIOROU_ARTE, pioras: [expect.objectContaining({ propriedade: 'texto-pequeno', antes: 6, depois: 8 })] })
+    // Já pequeno (20) → 24: melhorou (6 → 2), ainda abaixo do piso.
+    expect(compararNaoPiora(medida({ relatorio: relatorio([pequeno(20)]) }), medida({ relatorio: relatorio([pequeno(24)]) }))).toMatchObject({ veredito: 'aceito', melhoras: [expect.objectContaining({ propriedade: 'texto-pequeno', antes: 6, depois: 2 })] })
+    // Resolve a colisão diminuindo a fonte, mas cria texto-pequeno: recusa (sem pontuação global).
+    const colisao = achado('colisao', ['headline', 'servico'], { px: 12 })
+    expect(compararNaoPiora(medida({ relatorio: relatorio([colisao]) }), medida({ relatorio: relatorio([pequeno(18)]) })).veredito).toBe(AJUSTE_PIOROU_ARTE)
+    // Modelo que nasceu miúdo: o piso é o relativo da própria regra (20, não 26); 19 → 17 é piora pela mesma gravidade.
+    expect(compararNaoPiora(medida({ relatorio: relatorio([pequeno(19, 20)]) }), medida({ relatorio: relatorio([pequeno(17, 20)]) })).pioras).toEqual([expect.objectContaining({ propriedade: 'texto-pequeno', antes: 1, depois: 3 })])
+    // 1 px de ruído não conta.
+    expect(compararNaoPiora(medida({ relatorio: relatorio([pequeno(20)]) }), medida({ relatorio: relatorio([pequeno(19)]) })).pioras).toEqual([])
+    // Declarado como alvo e não melhorado: recusa.
+    expect(compararNaoPiora(medida({ relatorio: relatorio([pequeno(20)]) }), medida({ relatorio: relatorio([pequeno(20)]) }), { achadoAlvo: 'texto-pequeno:servico' }).veredito).toBe(AJUSTE_NAO_MELHOROU_O_ACHADO)
+    // Camada não medida (cobertura não avaliada): fail-closed, nunca aprovação.
+    expect(compararNaoPiora(medida(), medida({ relatorio: relatorio([], { 'texto-pequeno': { estado: 'nao-avaliada', motivo: 'a medição dos textos falhou' } }) })).veredito).toBe(AJUSTE_NAO_MEDIDO)
+  })
+
   it('13. achado só de VISÃO como alvo não exige prova de melhora, mas a não-piora vale do mesmo jeito', () => {
     const visto = achado('visao', ['headline'], { problema: 'bloco-mal-colocado' }, { certeza: 'visao', id: 'visao-bloco-mal-colocado:T1' })
     const antes = medida({ relatorio: relatorio([visto]) })

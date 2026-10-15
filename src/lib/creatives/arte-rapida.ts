@@ -57,7 +57,7 @@ import type { Layer } from '@/types/template'
 import { problemaEstruturadoDoAjuste, type Ajuste } from '@/lib/creatives/revisao/contrato'
 import { copyAutoralDaPagina, recusaDaRevisao, revisaoDaPaginaComCamadas } from '@/lib/copy-autoral/revisar-pagina'
 import { lerCopyAutoral, tentarCopyEfetivaDasCamadas } from '@/lib/copy-autoral'
-import { bakeLayers } from '@/lib/creatives/bake-layers'
+import { bakeLayers, copyRemovidaDoBake } from '@/lib/creatives/bake-layers'
 import { camposDeTextoDasCamadas, mapearContratoParaCampos, mapearCopyParaSlots } from '@/lib/planos/execucao'
 import { semColchetes } from '@/lib/compositor/destaques'
 import { resolverValoresSemanticos, validarEntradaSemantica, type ErroDeValor, type ValorResolvido } from '@/lib/semantica/resolver-valores'
@@ -1083,8 +1083,10 @@ export interface AjustarArteResult {
   sizeKB: number
   imageApplied: boolean
   imageWarning?: string
-  /** Nomes das camadas de texto que mudaram. */
+  /** Nomes das camadas de texto que mudaram (conteúdo alterado). */
   camposAlterados: string[]
+  /** CP4.1: textos com conteúdo que esta chamada ESCONDEU ou ESVAZIOU pelo `slotValues` (gesto humano; no draft-only é recusa). */
+  copyRemovida?: Array<{ layerId: string; chave: string; operacao: 'escondido' | 'esvaziado'; endereco: { tipo: string; chave: string } }>
   /** Posts da agenda que voltaram à fila de render por usarem esta página. */
   postsInvalidados: number
   /**
@@ -1209,6 +1211,24 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
   if (semanticos.erros.length > 0) throw erroDeValores(semanticos.erros, 422)
   // Checkpoint g (Codex): a mesma guarda da criação — a copy registrada do ajuste é a visual das camadas.
   if (temContratoSemantico(slotValues)) recusarChaveVisualReservada(camadasDeTextoComChaveReservada(sourceLayers))
+
+  /**
+   * CP4.1 (15/10/2026): O AGENTE AUTÔNOMO NÃO PODE APAGAR COPY — nem pelo `slotValues`. O que o bake faria com os
+   * textos existentes (esconder por `hidden`, esvaziar por `''`/espaço/`{ content: '' }`, também por `_slots`/`_papeis`)
+   * é lido de um bake SEM a foto (o efeito em texto não depende dela), ANTES de qualquer escrita — inclusive do cache
+   * do Blob em `resolveImageUrl`. No perfil draft-only é recusa (`CONTEUDO_NAO_PODE_SER_REMOVIDO`); no perfil humano
+   * a pessoa pode remover conteúdo, e a remoção fica AUDITÁVEL (`copyRemovida` no retorno e na Generation).
+   * A criação de arte (`createArteRapida`, placeholders não usados escondidos) não passa por aqui.
+   */
+  const copyRemovida = copyRemovidaDoBake(sourceLayers, bakeLayers(sourceLayers, slotValues, null, semanticos.valores).layers, slotValues, semanticos.valores)
+  if (input.apenasRascunho && copyRemovida.length > 0) {
+    throw new CreativeError(
+      'CONTEUDO_NAO_PODE_SER_REMOVIDO',
+      `Ajustar-arte não apaga copy: ${copyRemovida.map((c) => `"${c.chave}" seria ${c.operacao === 'escondido' ? 'escondido' : 'esvaziado'} (pedido por ${c.endereco.tipo} "${c.endereco.chave}")`).join('; ')}. Troque o texto por outro texto, ou deixe a peça para revisão humana.`,
+      422,
+      { copyRemovida: copyRemovida.map((c) => ({ layerId: c.layerId, operacao: c.operacao, tinhaConteudo: c.tinhaConteudo, endereco: c.endereco })), ajusteGravado: false },
+    )
+  }
 
   const driveImageId =
     input.driveImageId ??
@@ -1563,6 +1583,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
         source: 'ajuste-arte',
         sourcePageId: page.id,
         ajustes: slotValues,
+        ...(copyRemovida.length > 0 ? { copyRemovida: copyRemovida.map((c) => ({ layerId: c.layerId, chave: c.chave, operacao: c.operacao, endereco: c.endereco })) } : {}),
         ...(revisao
           ? { revisao: { versaoAntes, ajustes, aplicados: revisao.aplicados, recusados: revisao.recusados } }
           : {}),
@@ -1666,6 +1687,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
     imageApplied,
     ...(imageWarning ? { imageWarning } : {}),
     camposAlterados,
+    ...(copyRemovida.length > 0 ? { copyRemovida: copyRemovida.map((c) => ({ layerId: c.layerId, chave: c.chave, operacao: c.operacao, endereco: c.endereco })) } : {}),
     postsInvalidados,
     ...(invalidacao.congelados.length > 0
       ? { postsCongelados: invalidacao.congelados.length }

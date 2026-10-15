@@ -7,8 +7,49 @@
  * e o que ela declara sobre si depois de receber conteúdo novo.
  */
 import { semPrefixoHerdado } from '@/lib/copy-autoral'
-import { semMarcaDoRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
-import type { ValorResolvido } from '@/lib/semantica/resolver-valores'
+import { ocultaPeloRevisor, semMarcaDoRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
+import type { OrigemDoValor, ValorResolvido } from '@/lib/semantica/resolver-valores'
+
+/** Um texto com conteúdo que o bake ESCONDEU ou ESVAZIOU — por qual endereço (id, nome, slot, papel) o pedido chegou. */
+export interface CopyRemovida {
+  layerId: string
+  /** O nome da camada (ou o id), para a pessoa saber qual texto. */
+  chave: string
+  operacao: 'escondido' | 'esvaziado'
+  /** Por onde o pedido chegou: a MESMA precedência do bake (id > _slots/_papeis > nome). */
+  endereco: OrigemDoValor
+  /** O texto existia antes (sempre true aqui — a lista só tem textos com conteúdo). */
+  tinhaConteudo: true
+}
+
+/**
+ * CP4.1 (15/10/2026): o que o bake fez com a copy EXISTENTE da peça — texto (`text`/`rich-text`) com conteúdo não
+ * vazio, visível (ou escondido pelo revisor, que o aprendizado conta como presente) que saiu ESCONDIDO
+ * (`hidden: true`) ou ESVAZIADO (`''`, só espaço, `{ content: '' }`, inclusive por `_slots`/`_papeis`). Protege o
+ * RESULTADO, não a sintaxe. Puro; compara por índice (o bake preserva a posição). No perfil draft-only isso é recusa
+ * (ajustar-arte não apaga copy); no perfil humano é auditoria (`copyRemovida` no retorno e na Generation).
+ */
+export function copyRemovidaDoBake(
+  sourceLayers: any[],
+  bakedLayers: any[],
+  slotValues: Record<string, unknown>,
+  valores?: ReadonlyMap<number, ValorResolvido>,
+): CopyRemovida[] {
+  const saida: CopyRemovida[] = []
+  sourceLayers.forEach((src: any, i: number) => {
+    if (!src || (src.type !== 'text' && src.type !== 'rich-text')) return
+    if (String(src.content ?? '').trim() === '') return
+    if (src.visible === false && !ocultaPeloRevisor(src)) return
+    const dst = bakedLayers[i]
+    if (!dst) return
+    const endereco: OrigemDoValor =
+      slotValues[src.id] != null ? { tipo: 'layerId', chave: String(src.id) } : (valores?.get(i)?.origem ?? { tipo: 'name', chave: String(src.name ?? src.id) })
+    const base = { layerId: String(src.id), chave: String(src.name ?? src.id), endereco, tinhaConteudo: true as const }
+    if (dst.visible === false && src.visible !== false) saida.push({ ...base, operacao: 'escondido' })
+    else if (String(dst.content ?? '').trim() === '') saida.push({ ...base, operacao: 'esvaziado' })
+  })
+  return saida
+}
 
 /**
  * Bake slot values and the background image into a copy of the source layers.
