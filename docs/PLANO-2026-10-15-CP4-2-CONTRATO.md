@@ -66,7 +66,8 @@ Sem referência (peça com arranjo de combinação, página feita à mão sem mo
 do papel): (1) não existe; valem (2) e (3). **No fluxo de ajuste, a BASE vira a referência, fixada no
 CONTEXTO antes do lote**: o executor (`ajustar-sem-piorar.ts`) lê a entrada UMA vez e grava em
 `ContextoDaMedicao` (a) `referencias[id] = { fontSize1080: corpoDaEntrada, origem: 'página como está' }`
-para todo título sem referência e (b) `titulosFixados` (A.3); as duas coisas valem para TODAS as medidas
+para todo título **sem referência OU com referência `inferida: true`** (o fallback 16 do modelo nunca vira
+piso: é substituído pela base no executor) e (b) `titulosFixados` (A.3); as duas coisas valem para TODAS as medidas
 do lote (entrada, cada candidata, catraca contra a entrada) e não são recalculadas por estado — assim dois
 ajustes de 15 % no mesmo lote somam 28 % contra a MESMA referência e o segundo é recusado, e "headline →
 50 % da referência" é recusa mesmo sem modelo. No `revisar-arte` solto só (2) e (3) se aplicam, com a
@@ -147,7 +148,7 @@ A evidência de `texto-pequeno` é ARREDONDADA (`Math.round`), como hoje: o piso
 
 | Arquivo | Mudança |
 |---|---|
-| `src/lib/creatives/revisao/regras.ts` | regra 9: ramo para títulos (piso com 3 componentes, evidência `componente`, `maiorSecundario1080`, severidade `aviso`); `idsDeTitulo` lê `e.titulosFixados` quando presente; cobertura `parcial` para título sem referência / referência inferida; função pura exportada `pisoDoTitulo1080(ref, maiorSecundario, limites)` para teste e reuso; regra 7: a escala mínima da sugestão passa a ser `max(pisoDoTitulo1080(id) / corpoAtual1080(id))` entre os títulos atingidos (decisão 2) |
+| `src/lib/creatives/revisao/regras.ts` | regra 9: ramo para títulos (piso com 3 componentes, evidência `componente`, `maiorSecundario1080`, severidade `aviso`); `idsDeTitulo` lê `e.titulosFixados` quando presente; cobertura `parcial` para título sem referência / referência inferida; função pura exportada `pisoDoTitulo1080(ref, maiorSecundario, limites)` para teste e reuso; regra 7: a escala mínima da sugestão passa a ser `min(1, max(0,5, max(pisoDoTitulo1080(id) / corpoAtual1080(id)), 24 / corpoMinimo))` entre os títulos atingidos (decisão 2) |
 | `src/lib/creatives/revisao/contrato.ts` | `EntradaDaRevisao.titulosFixados?: string[]`; evidência tipada de `texto-pequeno` ganha `componente?` |
 | `src/lib/creatives/revisao/ajustar-sem-piorar.ts` | calcula `idsDeTitulo` na base uma vez e passa `titulosFixados` às duas medidas; injeta referência da base para título sem referência (`origem: 'página como está'`); motivo da recusa cita o componente |
 | `src/lib/creatives/revisao/revisar-arte.ts` | `referenciasDaPagina` marca `inferida: true` no fallback 16; `ContextoDaMedicao` ganha `titulosFixados` e aceita referências extras; `medirCamadasDaPeca` as usa (sem mudar `revisarArte` solto) |
@@ -172,7 +173,7 @@ A evidência de `texto-pequeno` é ARREDONDADA (`Math.round`), como hoje: o piso
 
 | # | Cenário | Via | Esperado |
 |---|---|---|---|
-| T1 | headline 84 (ref 84) → 8 | `fonte.fontSize` | recusa, componente `modelo`, gravidade 59,2 |
+| T1 | headline 84 (ref 84) → 8 | `fonte.fontSize` | recusa, componente `modelo`, gravidade 59 (evidência arredondada: 67 − 8) |
 | T2 | headline → 42 (50 %) | `fonte.escala 0,5` | recusa |
 | T3 | headline → 72 (−14 %) | `fonte.fontSize` | entra |
 | T4 | headline 60, serviço 52 → headline 50 | `fonte` | recusa, componente `hierarquia` |
@@ -185,6 +186,8 @@ A evidência de `texto-pequeno` é ARREDONDADA (`Math.round`), como hoje: o piso
 | T11 | `caixa` estreita + autofix no título | `caixa` | idem |
 | T12 | referência ilegível (`fontSize` não numérico no modelo) | medida | tratada como ausente; `parcial` |
 | T13 | peça com arranjo de combinação (sem referência por desenho) | ajuste | base vira referência; recusa a 50 % |
+| T13b | referência INFERIDA (modelo sem `fontSize` numérico → fallback 16), base 84 → 42 | `fonte` | base vira referência (não o 16); recusa |
+| T16 | título em 200 (ref 84) corrigido pela regra 7 | sugestão | escala sugerida 0,5 (não 0,42); aplicada, 100 ≥ 67,2 entra; a regra 7 acusa de novo |
 | T14 | título grande (140, ref 84) corrigido para 84 | regra 7 → `fonte` | entra (84 ≥ 67,2) |
 | T15 | piloto real (fixture) 84 → 8 e → 25 | renderer real | recusa nos dois |
 
@@ -198,7 +201,11 @@ A evidência de `texto-pequeno` é ARREDONDADA (`Math.round`), como hoje: o piso
    a sugestão seria recusada pelo não-piorar. Opções: (a) a escala mínima da regra 7 passa a ser
    `max(pisoDoTitulo1080(id) / corpoAtual1080(id))` entre os títulos atingidos, mais `24 / corpoMinimo`
    (recomendado: uma fonte só, preserva 140 → 84 e `headline2`); (b) manter 0,5/0,8 e aceitar a recusa;
-   (c) piso especial acima de 1,15 × ref. Recomendo (a).
+   (c) piso especial acima de 1,15 × ref. Recomendo (a), com a escala mínima final =
+   `min(1, max(0,5, max(pisoDoTitulo1080(id) / corpoAtual1080(id)) dos títulos atingidos, 24 / corpoMinimo))`
+   — o `0,5` continua porque `ajusteSchema` recusa `escala < 0,5` (`contrato.ts:110`): corpo atual 200 com
+   ref 84 pede 0,42 para voltar à referência, mas a sugestão fica em 0,5 (→ 100, ainda grande, e a regra 7
+   acusa de novo na rodada seguinte); teste obrigatório (T16).
 3. **Fator da hierarquia**: 1,0 (não inverter — recomendado) ou um mínimo acima de 1,0 (o que seria um K
    disfarçado, contra a decisão anterior).
 4. **Severidade** do achado em título: `aviso` (recomendado) ou `sugestao` como os demais não-serviço.
@@ -346,7 +353,8 @@ dívida.
 ### B.5 Critérios de aceite
 
 1. Todo valor fora do FORMATO, por id, nome, `_slots` ou `_papeis`, é recusado com `VALOR_INVALIDO`
-   ANTES de ler a foto, escrever a página, criar Generation ou renderizar — em `ajustarArte` e na
+   (valor malformado) — ou `ENTRADA_INVALIDA` quando o CAMPO `_slots`/`_papeis` fornecido não é um objeto,
+   como hoje (`resolver-valores.ts:140`) — ANTES de ler a foto, escrever a página, criar Generation ou renderizar — em `ajustarArte` e na
    criação (todas as portas: tool, execução de plano, API externa). Erro de ENDEREÇO (`CHAVE_DESCONHECIDA`)
    é recusado antes de qualquer escrita/Generation/render; em `ajustarArte` também antes da foto; na
    criação, depois da escolha do modelo pela foto (que é quem define o endereço).
