@@ -1,7 +1,9 @@
 # CP5a — contrato técnico do VEREDITO PURO (proposta para revisão, 15/10/2026, noite)
 
 **Estado: PROPOSTA PARA REVISÃO. Nada implementado.** Base: `main` `01f3c3be` (merge do CP4.2, PR #235).
-Rodada 1 do Codex (NÃO APTO: 5 IMPORTANTE, 1 MENOR) aplicada: fonte única das camadas (o gate calcula o
+Rodada 2 do Codex (2 IMPORTANTE, 1 MENOR) aplicada: exceção de gradiente só para `gradient`/`gradient2` COM a
+marca; empate de `order` escrito como `>=`; `achados` da saída inclui a exceção do estimado. Rodada 1 do Codex
+(NÃO APTO: 5 IMPORTANTE, 1 MENOR) aplicada: fonte única das camadas (o gate calcula o
 relatório), exceção de logo só para o par examinado, foto sem arquivo não é "sem assunto", exceção do
 achado estimado declarada no predicado, sem opção de ignorar oclusão, exceção de gradiente pelo predicado
 existente, política do assunto como parâmetro OBRIGATÓRIO (a recomendação não vira padrão sem decisão).
@@ -104,8 +106,12 @@ export interface GateDaArte {
   cobertura: Record<RegraCritica, CoberturaDoGate>
   /** Só o que DECIDIU contra a peça (vazio quando APTO). */
   motivos: MotivoDoGate[]
-  /** Achados críticos MEDIDOS (regra, camadas, id) — os que reprovam. Vazio quando APTO. */
-  achados: Array<{ regra: RegraCritica; camadas: string[]; id: string; severidade: Severidade }>
+  /**
+   * Os achados que REPROVARAM (regra, camadas, id): os críticos `certeza: 'medida'` e, só com
+   * `politicaDoAssunto.estimado === 'comprova'`, o achado `estimada` de `texto-sobre-assunto` (exceção 4.1) —
+   * `certeza` vem junto para o leitor distinguir. Vazio quando APTO.
+   */
+  achados: Array<{ regra: RegraCritica; camadas: string[]; id: string; severidade: Severidade; certeza: 'medida' | 'estimada' }>
   /** O que o gate NÃO vê e diz (seção 6 e 4.2): camadas não-texto acima de texto, textos sem métrica, logo sem contrato… */
   naoMedidos: Array<{ regra: RegraCritica | 'oclusao' | 'geometria'; motivo: string; camadas: string[] }>
   /** Nunca bloqueiam, nunca somem: "peça sem logo solta", "assunto estimado sem sobreposição (política …)". */
@@ -285,17 +291,18 @@ Função pura em `gate.ts`:
 export function cenariosNaoMedidos(camadas: Layer[], canvas): Array<{ texto: string; acima: string[]; tipo: LayerType }>
 ```
 
-Regra: para cada texto VISÍVEL `t` (`ehTextoVisivel`), toda camada `c` visível, `c !== t`, com
-`c.order > t.order` (empate de `order` conta como ACIMA — fail-closed), cuja caixa (`position`/`size`,
-sem rotação) intersecta a de `t` em área > 0, e que NÃO seja:
+Regra: para cada texto VISÍVEL `t` (`ehTextoVisivel`), toda camada `c` visível, `c.id !== t.id`, com
+**`c.order >= t.order`** (o empate conta como ACIMA — fail-closed; a comparação é `>=` entre camadas
+distintas, Codex R2), cuja caixa (`position`/`size`, sem rotação) intersecta a de `t` em área > 0, e que
+NÃO seja:
 
 - a foto de fundo (`fotoDeFundo(camadas, canvas)`) — ela está abaixo por construção e, se tiver `order`
   maior que um texto, É oclusão (não é exceção: só a instância devolvida por `fotoDeFundo` com `order`
   menor que o do texto fica de fora — na prática a regra geral já cobre);
-- um gradiente de leitura pelo predicado que JÁ existe, `ehGradienteDeLeitura(l)`
-  (`compositor/gradiente-de-leitura.ts:217`: `metadata.tratamentoDeTexto` ∈ `TRATAMENTOS_DE_GRADIENTE`, sem
-  olhar o `type` — um `gradient2` marcado é tratamento e fica de fora; qualquer `gradient`/`gradient2` SEM a
-  marca acima de texto CONTA);
+- um gradiente de leitura: **`(c.type === 'gradient' || c.type === 'gradient2') && ehGradienteDeLeitura(c)`**
+  (`compositor/gradiente-de-leitura.ts:217` olha só `metadata.tratamentoDeTexto`; a restrição de tipo é do gate —
+  uma `shape` ou imagem com a marca no metadata NÃO é exceção, Codex R2). `gradient`/`gradient2` SEM a marca
+  acima de texto CONTAM;
 - outro texto (`text`/`rich-text`): texto sobre texto é `colisao`, já medida;
 - a logo, SÓ para o par (logo, texto) que `logo-sobre-texto` de fato examinou: logo SOLTA (`logosDaPeca`, que
   exclui logo em grupo) × texto COM métrica (fora de `textosSemMetrica`). Logo agrupada acima de um texto, ou
@@ -339,14 +346,14 @@ real para o relatório — o gate é testado sobre o relatório que o revisor de
 | G11 | logo: `leituraDaLogo: []` | comprovada + aviso "peça sem logo solta" |
 | G12 | logo `indisponivel` / `fora-do-contrato` / `sem-pixels`; `leituraDaLogo: null` | não comprovada, `naoMedidos` com a camada |
 | G13 | assunto A (catálogo) sem achado / com achado | comprovada / reprovada |
-| G14 | assunto B (estimado) sem achado: `estimado: 'humano'` → não comprovada; `'comprova'` → comprovada; com achado estimado (`certeza: 'estimada'`) e `'comprova'` → reprovada pela exceção 4.1; o MESMO achado com `'humano'` → não comprovada (a regra geral); um achado `estimada` de OUTRA regra crítica (rich text em `texto-cortado`) nunca reprova, com qualquer política | conforme |
+| G14 | assunto B (estimado) sem achado: `estimado: 'humano'` → não comprovada; `'comprova'` → comprovada; com achado estimado (`certeza: 'estimada'`) e `'comprova'` → reprovada pela exceção 4.1, e o achado aparece em `achados` com `certeza: 'estimada'`; o MESMO achado com `'humano'` → não comprovada (a regra geral); um achado `estimada` de OUTRA regra crítica (rich text em `texto-cortado`) nunca reprova, com qualquer política | conforme |
 | G15 | assunto C (`naoSeAplica`, foto COM `fileUrl`): `'nao-se-aplica'` → não se aplica + aviso; `'humano'` → não comprovada. **C'** (`naoSeAplica`, camada de foto visível SEM `fileUrl`) → não comprovada com as 4 combinações de política | conforme |
 | G16 | assunto D (`motivoSemAssunto` sem a marca) | não comprovada, independente da política (as 4 combinações) |
 | G17 | assunto E (sem foto de fundo) | não se aplica, independente da política |
 | G18 | `naoSeAplica` numa crítica fora do mapa (ex.: forjado em `colisao`) | não comprovada |
 | G19 | piso de interface: texto em `y = 100` no story / logo invadindo o rodapé / a mesma peça em `feed` | reprova / reprova / não se aplica |
 | G20 | copy: cada estado da tabela 4.4 + `copy` ausente | conforme |
-| G21 | oclusão: `shape` com `order` maior intersectando um texto → `naoMedidos.oclusao`; `order` igual → idem; `shape` abaixo → nada; `shape` acima sem intersecção → nada; `gradient` E `gradient2` com `metadata.tratamentoDeTexto` de leitura acima → nada; `gradient` E `gradient2` sem a marca acima → oclusão; imagem que não é o fundo acima → oclusão; texto sobre texto → nada (é `colisao`); logo SOLTA acima de texto COM métrica → nada (par examinado por `logo-sobre-texto`); logo em GRUPO acima de texto → oclusão; logo solta acima de texto em `textosSemMetrica` → oclusão; texto oculto (`visible: false`) sob uma forma → nada | conforme |
+| G21 | oclusão: `shape` com `order` maior intersectando um texto → `naoMedidos.oclusao`; `order` igual → idem; `shape` abaixo → nada; `shape` acima sem intersecção → nada; `gradient` E `gradient2` com `metadata.tratamentoDeTexto` de leitura acima → nada; `gradient` E `gradient2` sem a marca acima → oclusão; `shape` e `image` COM a marca de tratamento acima → oclusão (a marca não é exceção fora de gradiente); imagem que não é o fundo acima → oclusão; texto sobre texto → nada (é `colisao`); logo SOLTA acima de texto COM métrica → nada (par examinado por `logo-sobre-texto`); logo em GRUPO acima de texto → oclusão; logo solta acima de texto em `textosSemMetrica` → oclusão; texto oculto (`visible: false`) sob uma forma → nada | conforme |
 | G22 | `pageVersion: null` | `IDENTIDADE_ILEGIVEL` |
 | G23 | `REGRAS_CRITICAS ∪ NAO_CRITICAS === REGRAS_DA_REVISAO` (sem sobra nem falta) | fixa a classificação |
 | G24 | o relatório REAL da fixture do piloto (`piloto-2026-10-13`, medida sintética a partir de `composicaoRegistrada.contraste`, serviço `ok: false`) | `REVISAO_HUMANA_NECESSARIA` com `texto-sem-leitura:servico` — o mesmo contrato alvo que `piloto-portao` descreve, sem tocar nos `hojeViola` |
