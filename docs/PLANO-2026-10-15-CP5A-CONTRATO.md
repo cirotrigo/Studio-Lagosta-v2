@@ -1,7 +1,10 @@
 # CP5a — contrato técnico do VEREDITO PURO (proposta para revisão, 15/10/2026, noite)
 
 **Estado: PROPOSTA PARA REVISÃO. Nada implementado.** Base: `main` `01f3c3be` (merge do CP4.2, PR #235).
-Rodada 11 do Codex: **APTO** (MENOR aplicado: a tolerância de `colisao` é privada em `text-geometry.ts` e o CP5a
+Revisão do OWNER sobre o HEAD 934359e4 (NÃO APTO, BLOCKER no texto PROTEGIDO) aplicada no HEAD seguinte: os
+limites de `t` (caixa ∪ glifos) também são girados pelo pivô real `position`; `t` com transformação não comprovável
+→ `NAO_MEDIDO` antes de descartar o par; a exceção logo × texto exige `t` SEM rotação (a regra não gira o
+texto); G21b/G21c cobrem os dois lados do par. Rodada 11 do Codex: **APTO** (MENOR aplicado: a tolerância de `colisao` é privada em `text-geometry.ts` e o CP5a
 a exporta; `encaixe` só no mesmo grupo). Rodada 10 do Codex (BLOCKER: `colisao` tem tolerância — `max(4, 0,18 × corpo) + encaixe` na vertical, 4 px na
 horizontal — e a exceção texto × texto deixava essa interseção sem achado) aplicada no HEAD seguinte: a tolerância
 vira POLÍTICA declarada e testada da exceção (decisão 9.7), importada da fonte única. Rodada 9 do Codex (BLOCKER: a
@@ -385,9 +388,30 @@ retira, `:1664-1668`) não mudam a caixa: contidos.
 
 ### 6.3 A regra e as duas exceções
 
-Para cada texto VISÍVEL `t` (`ehTextoVisivel`), os limites de `t` são a UNIÃO da caixa da camada com a caixa
-dos glifos da métrica (`metricas[t]`: `box` ∪ `[box.x, glyphTop, maxLineWidth, glyphBottom − glyphTop]`),
-quando houver métrica; sem métrica, a caixa da camada. **O que a oclusão protege são os GLIFOS**: a mancha de
+Para cada texto VISÍVEL `t` (`ehTextoVisivel`), os limites de `t` saem de **`limitesDoTexto(t, metrica)`**,
+que aplica a `t` a MESMA transformação que `limitesDe` aplica a `c` (revisão do owner, 15/10: as métricas de
+`text-geometry` são medidas no referencial LOCAL, sem rotação — `glyphTop`/`glyphBottom`/`maxLineWidth` não
+incorporam `rotation`):
+
+1. a caixa LOCAL é a UNIÃO da caixa da camada com a caixa dos glifos da métrica
+   (`metricas[t]`: `box` ∪ `[box.x, glyphTop, max(box.width, maxLineWidth), glyphBottom − glyphTop]`), em
+   coordenadas relativas a `position`; sem métrica, só a caixa da camada (e `t` sem métrica já deixa as
+   críticas não comprovadas, 4.2);
+2. com `rotation` fora de {0, undefined}, os quatro cantos dessa caixa local são girados em torno da ORIGEM
+   `(position.x, position.y)` — o pivô real do render (`render-engine.ts:199-205`) — e a envolvente deles é o
+   limite de `t`. **Nunca a caixa original**: um texto girado ocupa outra região da peça;
+3. se a transformação de `t` NÃO puder ser comprovada — `rotation` de tipo inesperado, `style.filter`, qualquer
+   chave de `t` fora de `CHAVES_CLASSIFICADAS` ou folha `nao-suportada` com valor efetivo (6.4) — o par
+   (`t`, toda `c` com `order >= t.order`) entra em `naoMedidos` como `transformacao-nao-suportada` ANTES de
+   qualquer teste de caixa (nunca "descartar pela caixa original").
+
+**Cenário reproduzido pelo owner** (fixado em G21b): texto em (600, 600), 300×100, `rotation: 90`; `shape`
+acima em (500, 600), 100×300, sem rotação. A caixa ORIGINAL do texto (x 600–900 × y 600–700) não toca a forma
+(x 500–600 × y 600–900): interseção zero. O render gira o texto em torno de (600, 600) e ele passa a ocupar
+x 500–600 × y 600–900 — exatamente a forma: a manchete inteira some, a régua mede o contraste da forma como
+"fundo" e aprova, e o revisor não acusa. Com os limites girados a interseção é total → oclusão → humano.
+
+**O que a oclusão protege são os GLIFOS**: a mancha de
 `effects.background` de `t` e o tratamento em volta dele NÃO entram nos limites de `t` — uma camada que cobre
 só a mancha não esconde texto, e o seu efeito na leitura já está medido pela régua, que renderiza TODAS as
 camadas não-texto (inclusive as acima) como fundo (`regua.ts:342`) (Codex R7, achado 3).
@@ -419,9 +443,12 @@ Toda camada `c` visível, `c.id !== t.id`, com **`c.order >= t.order`** (empate 
   habilitado, `style.shadow`, `style.border.width > 0`, `style.strokeWidth > 0`) — isto é,
   `limitesDe(c).rect` é exatamente a caixa `position`/`size`, porque a regra do revisor compara só a caixa da
   logo com folga de 4 px (`regras.ts:839`) e não vê contorno nem sombra (Codex R9); `t` com métrica; e
-  `cobertura['logo-sobre-texto'].estado === 'avaliada'`. Faltando qualquer uma → oclusão (Codex R1: logo
-  agrupada; owner: exceção sem prova). A mesma condição "sem folha expansora" vale para `c` na exceção
-  texto × texto (acima).
+  `cobertura['logo-sobre-texto'].estado === 'avaliada'`; **e `t` SEM rotação e sem transformação não
+  comprovável** (revisão do owner): `logo-sobre-texto` compara a caixa da logo com a caixa do texto SEM girar
+  nenhuma das duas (`regras.ts:837-855`) — um `t` girado não é coberto pela regra só por ter métrica, e a
+  exceção cai (a geometria de AMBOS tem de ser a que a regra examinou). Faltando qualquer uma → oclusão
+  (Codex R1: logo agrupada; owner: exceção sem prova; owner R2: `t` girado). A mesma condição "sem folha
+  expansora" vale para `c` na exceção texto × texto (acima), onde AMBOS já têm de estar sem rotação.
 
 **Sem exceção para gradiente** (revisão do owner): `gradient`/`gradient2` — marcado como tratamento ou não —
 acima de ou empatado com um texto que intersecta é oclusão; `metadata.tratamentoDeTexto` é intenção, não
@@ -498,6 +525,7 @@ real para o relatório — o gate é testado sobre o relatório que o revisor de
 | G20 | copy: cada estado da tabela 4.4 + `copy` ausente | conforme |
 | G21 | oclusão (sem rotação): `shape` com `order` maior intersectando um texto → `naoMedidos.oclusao`; `order` igual → idem; `shape` abaixo → nada; `shape` acima sem intersecção → nada; `gradient` E `gradient2` acima, COM e SEM `metadata.tratamentoDeTexto` → oclusão (sem exceção); gradiente de leitura abaixo (ordem normal) → nada; imagem que não é o fundo acima → oclusão; foto de fundo com `order >=` ao de um texto → oclusão; texto sobre texto, ambos simples, com métrica, sem rotação, sem efeitos e com `colisao` `avaliada` → nada (é `colisao`); o mesmo par com `effects.shadow` num deles, ou `colisao` `parcial` → oclusão; dois textos limpos medidos de corpo 40 com glifos sobrepostos em 10 px na vertical (tolerância `max(4, 7,2) + 0 = 7,2` → 10 > 7,2: `colisao` acusa → reprovada por achado; a oclusão não precisa acusar) e em 6 px (dentro da tolerância → nada, pela política 9.7); a tolerância do teste é importada de `text-geometry.ts`, não copiada; logo SOLTA sem rotação/filtro/efeitos acima de texto COM métrica, `logo-sobre-texto` `avaliada` → nada (par comprovado); a mesma logo com `style.filter` → oclusão; logo solta a 10 px do texto com `style.border.width` 20 (o contorno alcança o texto; `logo-sobre-texto` com folga de 4 px não acusa) → oclusão pela expansão, a exceção não vale; idem com `style.shadow` offset 30 e com `effects.shadow`; logo em GRUPO acima de texto → oclusão; logo solta acima de texto em `textosSemMetrica` → oclusão; logo solta com `logo-sobre-texto` `parcial`/`nao-avaliada` → oclusão; `motivoSemMedida` presente → a exceção de texto e a de logo não valem; texto oculto (`visible: false`) sob uma forma → nada; `cobertura.oclusao` = `comprovada` só com a lista vazia | conforme |
 | G21b | rotação, forma e transformação: forma 600×40 em (400, 500) girada 90° (caixa original y 500–540) sobre texto em x 370–390 × y 600–700 → oclusão pelos limites conservadores (render ocupa x 360–400 × y 500–1100; a caixa original não intersecta); a mesma forma girada com `order` ABAIXO do texto → nada; **círculo 100×100 em (400, 500)** (centrado: x 350–450 × y 450–550) acima de texto em x 355–395 × y 480–490 → oclusão (a caixa `position`/`size` não toca; a centrada toca); triângulo e estrela idem; círculo girado 45° → envolvente da caixa centrada girada em torno da origem; texto girado 15° acima de outro texto → oclusão; logo solta girada acima de texto com métrica → oclusão; `shape` com `style.mask` acima de texto que intersecta → oclusão; `shape` com `flipH` → limites iguais à caixa; `svg-path` acima de texto, caixa SEM intersecção, `pathData` que sai do viewBox → `NAO_MEDIDO` (não descartado pela caixa); `icon` 8×8 em (400, 500) com path até x = 21 acima de texto em x 410–420 → `NAO_MEDIDO`; `line`/`arrow`, `shapeType` desconhecido → `NAO_MEDIDO`; `image` com `style.filter: 'blur(20px)'` acima de texto fora da caixa → `NAO_MEDIDO`; `rich-text` acima de texto → `NAO_MEDIDO`; `video` acima de texto → `NAO_MEDIDO`; `text` sem métrica acima de texto (com ou sem `autoExpand`) → `NAO_MEDIDO`; `text` com `style.border.width` 12 e sem `effects.stroke` acima de outro texto, glifos sem intersecção mas contorno alcançando → oclusão (expansão pelo fallback) e a exceção texto×texto não vale; `text` com `effects.background` habilitado acima de outro texto → `NAO_MEDIDO`; camada acima com chave fora da árvore (`style.escala: 2`) ou `effects.desconhecido.enabled: true` → `NAO_MEDIDO`; `rotation: '90'` (string) → `NAO_MEDIDO` | conforme |
+| G21b' | o TEXTO PROTEGIDO transformado (revisão do owner): (i) texto em (600, 600) 300×100 `rotation: 90` sob `shape` em (500, 600) 100×300 sem rotação → oclusão (caixa original sem interseção; limites girados x 500–600 × y 600–900 = a forma); (ii) o mesmo texto girado sob logo SOLTA sem rotação, com métrica e `logo-sobre-texto` `avaliada` → oclusão (a exceção não vale: `t` girado); (iii) AMBOS girados (texto 90°, forma 45° sobre a região girada do texto) → oclusão pelos dois limites girados; (iv) texto protegido com transformação não suportada (`style.filter`, `rotation: '90'`, chave fora da árvore) sob qualquer camada com `order >=` → `NAO_MEDIDO` antes do teste de caixa, mesmo sem interseção pela caixa original; (v) controles: o mesmo texto a 90° com a forma em (700, 600) (sem interseção DEPOIS da transformação) → nada; a forma em (500, 600) com `order` ABAIXO do texto → nada; texto a 90° cuja métrica (glifos) é mais curta que a caixa e forma tocando só a parte da caixa sem glifos → nada (a união caixa ∪ glifos é girada inteira — dito: a caixa da camada entra na união, então este controle fica como oclusão se a forma tocar a caixa girada; o caso "só glifos" é G21d) | conforme |
 | G21d | efeitos que expandem: retângulo 100×100 em (500, 500) com `effects.blur` raio 20 (folga 60) acima de texto em x 420–440 (fora da caixa, dentro da folga) → oclusão; com `style.strokeWidth` 12 e texto em x 490–498 → oclusão; com `style.border.width` 12 (forma) e numa `image` (borda) → oclusão; `effects.shadow` offset (30, 30) + blur 10 e texto em x 605–640 → oclusão; `style.shadow` `{ offsetX: 30, offsetY: 30, blur: 10 }` sem `effects.shadow` → oclusão; sem efeito, os mesmos textos → nada. Limites de `t`: texto `autoExpand` cujos glifos (`glyphBottom`) passam da caixa da camada, com `shape` acima tocando só os glifos abaixo da caixa → oclusão (a união com a métrica); `shape` acima cobrindo só a MANCHA (`effects.background`, padding 40) de `t`, sem tocar os glifos → nada (é leitura, medida pela régua) | conforme |
 | G21c | paridade com o render REAL, GERADA da árvore: para cada tipo de camada de 6.1 (`rectangle`, `rounded-rectangle`, `circle`, `triangle`, `star`, `image`, `logo`, `element`, `gradient`, `gradient2`, `text` simples com métrica) e para cada folha `inerte`/`suportada`/`expansora` aplicável de `CHAVES_CLASSIFICADAS`, o teste monta a camada base (600×40 e 100×100 em (400, 500)) com a folha no seu `valorDeProva`, e também com rotação 0/30/90/180/270, `flipH`, `mask`, `effects.blur` 20, `effects.shadow`/`style.shadow` (30, 30, blur 10), `effects.stroke` 12, `style.border.width` 12 (texto, forma e imagem), renderiza pelo renderizador do servidor sobre fundo transparente e exige todo pixel com alfa > 0 dentro de `limitesDe(l).rect`; folha aceita sem `valorDeProva` → falha. Valores fixos conferidos: retângulo a 90° → x 360–400 × y 500–1100; círculo sem rotação → x 350–450 × y 450–550. E `limitesDe` devolve `contido: false` para svg-path, icon, line, arrow, video, filter, rich-text, background e texto sem métrica. **Limite dito**: a paridade é por folha isolada sobre a base e pelas combinações enumeradas, não pelo produto de todas as combinações (seção 10) | conforme |
 | G22 | `pageVersion: null` com as 11 regras comprovadas e o resto limpo | `IDENTIDADE_ILEGIVEL`, `cobertura.identidade = nao-comprovada`, `REVISAO_HUMANA_NECESSARIA` (ver G28) |
@@ -517,7 +545,7 @@ Nenhum `hojeViola` muda. Gates do PR: suíte completa, typecheck, lint, `git dif
 
 ## 8. Arquivos (o que o CP5a toca)
 
-- novo `src/lib/creatives/revisao/gate.ts` (puro): `REGRAS_CRITICAS`, `gateDaMedida`, `cenariosNaoMedidos`, `limitesDe` (reusa `folgaDoBlur` de `halo/fundo-de-texto.ts`), `CHAVES_CLASSIFICADAS`,
+- novo `src/lib/creatives/revisao/gate.ts` (puro): `REGRAS_CRITICAS`, `gateDaMedida`, `cenariosNaoMedidos`, `limitesDe`, `limitesDoTexto` (reusam `folgaDoBlur` de `halo/fundo-de-texto.ts`), `CHAVES_CLASSIFICADAS`,
   `foraDaInterface`, `PISO_DE_INTERFACE_DO_STORY`, `interfaceDoStory`, `POLITICA_DO_ASSUNTO_RECOMENDADA`;
 - `src/lib/creatives/revisao/versao.ts`: `copyVersionDe` (puro);
 - `src/lib/creatives/text-geometry.ts`: extrai e exporta `toleranciaDeColisao(a, b, mesmoGrupo)` (a constante 4 e a
@@ -542,7 +570,7 @@ revisor), `contrato.ts` (nenhuma regra em `REGRAS_DA_REVISAO`), MCP, Generation,
 | 9.4 | **Copy completa em página sem `copyAutoral`** (`sem-contrato`): humano (fail-closed, doc antigo) ou "não se aplica" para páginas que nunca tiveram contrato. **Afeta o CP5a** (a regra `copy-completa` é do gate e condição de APTO, invariante 1), não só o CP5b | humano, como o doc antigo; a maior parte das artes do Dot nasce com contrato (`compor-leva` grava `copyAutoral`) | "não se aplica" abre a porta para o agente agendar artes legadas sem a reconciliação; mudaria o CP5a (a tabela 4.4 e G20/G27); se o owner quiser, que seja por decisão expressa antes da implementação, com aviso na saída |
 | 9.5 | **Sem logo solta** = comprovada com aviso (doc antigo) ou humano | comprovada com aviso: a ausência de logo é decisão de composição, não defeito medido | humano bloquearia toda peça que o compositor fez sem logo por desenho |
 | 9.6 | **`texto-pequeno` crítica** (nova em relação ao doc antigo, que não a listava): sim | sim: o CP4.2 tornou o piso medido e a manchete protegida; achado `aviso` medido reprova | fora das críticas, uma headline de 25 px em 1080 seria `APTO` |
-| 9.7 | **Tolerância da exceção texto × texto na oclusão** (6.3): adotar a tolerância de `colisao` (`max(4, 0,18 × corpo) + encaixe` vertical, 4 px horizontal, `text-geometry.ts:177-189`) como política de aprovação — interseção de glifos dentro dela entre dois textos limpos e medidos não bloqueia | adotar: é a tolerância da casa para linhas empilhadas e já decide `colisao`; sem ela, todo bloco com glifos que se tocam iria ao humano | recusar = remover a exceção: qualquer interseção > 0 entre textos com `order >=` vira oclusão → mais bloqueios em peças normais do compositor; alternativa intermediária (tolerância própria, menor) exige número do owner |
+| 9.7 | **Tolerância da exceção texto × texto na oclusão** (6.3): adotar a tolerância JÁ EXISTENTE de `colisao` (`max(4, 0,18 × corpo) + encaixe` vertical, 4 px horizontal, `text-geometry.ts:177-189`) como política de aprovação — interseção de glifos dentro dela entre dois textos limpos, medidos e SEM rotação não bloqueia. É política explícita sobre um número que já existe, não prova de ausência de oclusão, e não amplia valor nenhum | adotar: é a tolerância da casa para linhas empilhadas e já decide `colisao`; sem ela, todo bloco com glifos que se tocam iria ao humano | recusar = remover a exceção: qualquer interseção > 0 entre textos com `order >=` vira oclusão → mais bloqueios em peças normais do compositor; alternativa intermediária (tolerância própria, menor) exige número do owner |
 
 Nada disto está decidido aqui. **O CP5a não fixa padrão para 9.1**: a política é parâmetro obrigatório de
 `gateDaMedida`, a constante recomendada é uma proposta nomeada, e os testes cobrem os dois ramos; quem for
