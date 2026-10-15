@@ -56,7 +56,7 @@ export const toolsDeModelos = [
         .record(z.any())
         .optional()
         .describe(
-          'Valores por slot, com as chaves do template (layerId ou nome da camada). String define texto; objeto aceita {content, fileUrl}. Chaves reservadas: _driveImageId, _imageUrl, _slots ({slotId: valor}) e _papeis ({papel declarado: valor}) — use só o que escolher-modelo marcou em addressableBy; texto (string ou {content}) só em camada de texto, {fileUrl} só em imagem. Com copyAutoral, só chaves reservadas, e o texto vem da copy: na prática só os endereços de IMAGEM servem (camada oculta não é endereço).',
+          'Valores por slot, com as chaves do template (layerId ou nome da camada). String define texto; objeto aceita só {content, fileUrl, hidden: true, papel, bloco} — outro formato é VALOR_INVALIDO (400) e chave sem camada no modelo efetivo é CHAVE_DESCONHECIDA (422), antes de criar qualquer coisa. Chaves reservadas: _driveImageId, _imageUrl, _slots ({slotId: valor}) e _papeis ({papel declarado: valor}) — use só o que escolher-modelo marcou em addressableBy; texto (string ou {content}) só em camada de texto, {fileUrl} só em imagem. Com copyAutoral, só chaves reservadas, e o texto vem da copy: na prática só os endereços de IMAGEM servem (camada oculta não é endereço).',
         ),
       name: z.string().optional().describe('Nome da página gerada (opcional).'),
       imageUrl: z

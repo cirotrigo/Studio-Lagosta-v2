@@ -745,3 +745,64 @@ Decisão do owner: **o agente autônomo não pode apagar copy para "corrigir" de
   nunca o texto. **Residuais conhecidos**: `camposAlterados` é cego a rich-text (pré-existente; `copyRemovida` o vê); a auditoria durável
   (Generation e sinal) só nasce se o render do ajuste terminar — a página já perdeu a copy na transação
   (limite pré-existente); oclusão de texto por forma/imagem acima dele (z-order) não é propriedade medida.
+
+### CP4.2 — piso da manchete e `slotValues` inválidos (15/10/2026, noite)
+
+Contrato aprovado pelo owner: `docs/PLANO-2026-10-15-CP4-2-CONTRATO.md` (HEAD 9b85ec29 + duas precisões). O que
+está implementado:
+
+- **CP4.2a — a manchete entra em `texto-pequeno`, um achado por componente.** A regra 9 deixou de pular
+  `headline`/`headline2`. Para cada título ela avalia três pisos SEPARADOS (`pisosDoTitulo`, puro, `regras.ts`) e
+  emite até três achados com id estável `texto-pequeno:<camada>:<componente>` e gravidade própria
+  (`piso − corpo`, inteiros pelo arredondamento de sempre): **modelo** = `pisoRelativo` (0,8) × a referência do
+  título (`referenciasDaPagina`: variante da assinatura por papel ou página-modelo por id; a referência INFERIDA do
+  fallback 16 — camada do modelo sem `fontSize` numérico — é dita (`inferida: true`) e conta como ausente para
+  títulos); **hierarquia** = o maior corpo1080 dos textos secundários medidos (fator 1,0 — o título não fica menor
+  que apoio/serviço; `K_REFERENCIA_HIERARQUIA` continua só telemetria); **celular** = `pisoDeFonte1080` (24), salvo
+  modelo deliberadamente discreto (referência válida < 24: só o recuo de 80 % conta). Severidade `aviso`; uma
+  sugestão de `fonte` por título (sobe ao maior piso cruzado). Como `texto-pequeno` já é propriedade comparada e a
+  chave do achado é o id, a não-piora compara cada componente sozinho: **uma melhora na hierarquia não compensa o
+  modelo que aparece** (o contraexemplo do owner — título 84/apoio 160 com `escala 0,5` nos dois — é recusa, com
+  `comparacao.pioras[].id = texto-pequeno:headline:modelo`). `Piora`/`Melhora` passaram a trazer `id`.
+- **A classificação e a referência dos títulos vêm da página ANTERIOR à chamada.** `ajustarArte` passa ao executor
+  `camadasDaPagina` (= `sourceLayers`, antes do bake e do autofix); o executor fixa `titulosFixados` por
+  `titulosDaPagina` (papel GRAVADO `headline`/`headline2` entra mesmo vazio ou oculto; sem papel, inferência por
+  tamanho só entre os anteriores visíveis com conteúdo) e monta o contexto com essas camadas — o `papel` enviado no
+  próprio pedido não rebaixa a manchete nem troca a referência (que casa pelo papel gravado, inclusive com a camada
+  anterior oculta). Título sem referência válida recebe o corpo ANTERIOR como referência (`origem: 'página como
+  está'`). Rebaixar o papel pelo `slotValues` continua permitido: na chamada SEGUINTE a camada é julgada pelo papel
+  que a página passou a ter. A regra 7 (`titulo-grande`) sugere escala que respeita o piso compartilhado e o 0,5
+  do `ajusteSchema`. `revisar-arte` solto continua inferindo os títulos como sempre (cobertura `parcial` quando o
+  título não tem referência de modelo).
+- **CP4.2b — `slotValues` inválido é recusado antes de qualquer escrita, por uma fonte só.** Em
+  `src/lib/semantica/resolver-valores.ts`: `valorLegadoValido` (string, ou objeto NÃO vazio só com
+  `content: string` / `fileUrl` não vazia / `hidden: true` exato / `papel`,`bloco` não vazios);
+  `validarFormatoDosSlotValues` (FASE 1, sem página: legado inválido → `VALOR_INVALIDO` com origem
+  `{ tipo: 'chave' }`; `_imageUrl`/`_driveImageId` só string não vazia, ausente/`null` = não fornecido; outro `_…`
+  → `CHAVE_DESCONHECIDA`; `_slots`/`_papeis` continuam com `validarEntradaSemantica`);
+  `validarEnderecosDosSlotValues` (FASE 2, contra as camadas do modelo EFETIVO: chave que não é id nem nome de
+  camada → `CHAVE_DESCONHECIDA`; a precedência é a do bake, id > semântico > nome POR CAMADA — uma chave que é id de
+  uma camada e nome de outra preenche as duas). **400 para formato, 422 para endereço/resolução.** Pedido misto
+  (válido + inválido) é recusado inteiro: `slotValues` é um mapa aplicado num só bake (diferente do lote de
+  `ajustes`, julgado por índice). `""`, espaço, `"."`, `{ content: "" }`, `{ hidden: true }` continuam FORMATOS
+  válidos e chegam ao guard do CP4.1, que decide o conteúdo. O objeto só com `papel`/`bloco` e `temAjuste` não
+  mudaram.
+- **Onde roda:** `ajustarArte` — FASE 1 antes do banco, FASE 2 logo depois de `camadasParaBake` (antes do
+  semântico, do guard de copy, da foto e de qualquer escrita). `createArteRapida` — FASE 1 antes de ler a foto;
+  **`resolveImageUrl` foi separada em `lerImagemDeEntrada`** (autorização por projeto + download da miniatura do
+  Drive, SEM `put`) **e `persistirCacheDoDrive`** (o `put`, mesma chave determinística; `resolveImageUrl` continua
+  como a composição das duas para os outros chamadores); a foto do Drive é lida por bytes (`lerFotoDeBytes`) para
+  escolher o layout; FASE 2 contra a irmã escolhida ANTES do `put`, do template, da persistência e do render; a foto
+  lida recebe a URL final antes do halo. Efeito residual declarado: a miniatura do Drive é LIDA antes da validação
+  de endereço (o endereço depende do modelo que a foto escolhe). Handlers `ajustar-arte` e `criar-arte-de-modelo`
+  rodam a FASE 1 no handler por `erroDeValores` (exportado de `arte-rapida.ts`), para a porta devolver `code`,
+  `details.erros[]` e a chave — o `safeParse` do schema só devolveria texto; o serviço repete a conferência (API
+  externa e execução de plano não passam pela porta).
+- **Provas:** `regras.test.ts` (componentes, discreto, sem referência/inferida, `titulosFixados`, `titulosDaPagina`,
+  regra 7), `nao-piora.test.ts` (sem compensação, ids), `ajustar-sem-piorar.test.ts` (contexto da página anterior),
+  `piloto-ciclo.test.ts` com o renderer real sobre a fixture (T1/T2, T3/T14, T4, T17, T18/T19, T20a/b/c);
+  `resolver-valores.test.ts` (tabela de formatos, controles, misto, V18), `ajustar-arte-concorrencia.test.ts`
+  (V1–V12, V14, V15, V18 — zero escrita/Generation/`put`), `criar-arte-semantica.test.ts` (V16 Drive + endereço
+  inválido sem `put`; formato antes da foto; caminho válido com a mesma escolha de layout, `put` único e URL final no
+  halo; URL direta), `foto-do-drive-no-projeto.test.ts` (ler × persistir, autorização),
+  `criar-arte-de-modelo-copy-crua.test.ts` (V17, porta preserva o erro).

@@ -1,6 +1,7 @@
 # CP4.2 — contrato técnico: piso da manchete e `slotValues` inválidos (15/10/2026)
 
-**Estado: PROPOSTA PARA REVISÃO. Nada implementado.** Base: `main` `b86cf5a8` (merge do PR #234; contém
+**Estado: APROVADO pelo owner no HEAD 9b85ec29 e IMPLEMENTADO no branch `feat/design-cp4-2`** (ver
+`docs/regras/revisor-da-arte.md` § "CP4.2" para o que ficou em código). Base: `main` `b86cf5a8` (merge do PR #234; contém
 CP0→CP4.1 e o plano-mestre). Este documento fecha o contrato das duas dívidas que o plano-mestre
 (`docs/PLANO-2026-10-15-AUTONOMIA-DIRECAO-DE-ARTE-E-MCP.md`, seção 3) reservou ao CP4.2 — e só delas. Os
 números de linha são do commit `b86cf5a8`.
