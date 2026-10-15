@@ -956,7 +956,9 @@ se mudar.
   (503, transitório) — antes ela saía sem foto, na partida, sem região nenhuma. `url` e `driveFileId`
   juntos são recusados no portão (`prepararArquetipo`, o mesmo do medir-copy):
   `ARQUETIPO_FOTO_AMBIGUA` — o resolvedor desenha a URL e o catálogo protege o ID, e fotos diferentes
-  deixariam a desenhada sem a proteção dela. Sem arquétipo, nada disso muda.
+  deixariam a desenhada sem a proteção dela. Foto por URL do Drive (fonte única): o id da URL é o do
+  catálogo (`extractDriveFileId`, o mesmo que o resolvedor reconhece). `foto: {}` não pede foto e
+  compõe pela partida. Sem arquétipo, nada disso muda.
 - 🔴 **Tratamento é custo dominante.** Entre as válidas vence o menor custo de véu (tolerância
   0,05); depois a pontuação (calma 0,4, contraste natural 0,2, assunto 0,15, referência 0,15,
   corte central 0,1; tolerância 0,02); depois a mais perto da referência e o corte central. A

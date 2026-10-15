@@ -19,6 +19,7 @@ import type { CanalDaArte } from '@/lib/creatives/canal'
 import { db } from '@/lib/db'
 import type { Layer } from '@/types/template'
 import { CreativeError } from '@/lib/creatives/errors'
+import { extractDriveFileId } from '@/lib/ai/fetch-image-source'
 import { persistAndRenderCreative, resolveImageUrl, type PersistCreativeResult } from '@/lib/creatives/persist'
 import { registerProjectFonts, fetchBuffer, familiasNaoCarregadas } from '@/lib/posts/register-project-fonts'
 import { dividirManchete } from './segunda-voz'
@@ -695,7 +696,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   const { foto, aviso: avisoDaFoto } = fotoCarregada
   // CP2B: com arquétipo a posição é escolhida PELA foto e a região protegida dela é obrigatória — a peça não sai sem
   // a foto pedida (Codex R3). Transitório (o Drive fora do ar): a fila tenta de novo.
-  if (!foto && spec.foto && arq) {
+  if (!foto && (spec.foto?.url || spec.foto?.driveFileId) && arq) {
     throw new CreativeError(
       'FOTO_INDISPONIVEL',
       `${avisoDaFoto ?? 'A foto não pôde ser carregada.'} Com arquétipo, a posição é escolhida pela foto e a região protegida dela é obrigatória: a peça não sai sem a foto. Tente de novo em instantes.`,
@@ -1112,10 +1113,14 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   }
   const cortes: CropPosition[] =
     arq && reproducao ? [reproducao.modo === 'referencia' ? 'center-middle' : reproducao.corte] : cortesCandidatos(foto, canvas, spec.preferencias?.enquadramento === 'fixo')
-  const assuntoDoCatalogo = foto && spec.foto?.driveFileId
-    ? opcoes.assuntosDoCatalogo?.has(spec.foto.driveFileId)
-      ? opcoes.assuntosDoCatalogo.get(spec.foto.driveFileId) ?? null
-      : await assuntoDoCatalogoDaFoto(spec.projectId, spec.foto.driveFileId, !!arq)
+  // O arquivo do catálogo da foto desenhada: o `driveFileId` — ou, com arquétipo, o id que uma URL do Drive carrega (o
+  // resolvedor a desenha reconhecendo esse mesmo id; sem isto a região anotada ficava de fora, Codex R4). Sem
+  // arquétipo, só o `driveFileId`, como sempre.
+  const idDoCatalogo = spec.foto?.driveFileId ?? (arq && spec.foto?.url ? extractDriveFileId(spec.foto.url) : null)
+  const assuntoDoCatalogo = foto && idDoCatalogo
+    ? opcoes.assuntosDoCatalogo?.has(idDoCatalogo)
+      ? opcoes.assuntosDoCatalogo.get(idDoCatalogo) ?? null
+      : await assuntoDoCatalogoDaFoto(spec.projectId, idDoCatalogo, !!arq)
     : null
 
   let melhor: { crop: CropPosition; raster: FotoCinza | null; mapa: MapaDeCalma | null; assunto: Rect | null; escolhido: PontuacaoDePosicao<RotuloDePosicao>; todos: PontuacaoDePosicao<RotuloDePosicao>[] } | null = null

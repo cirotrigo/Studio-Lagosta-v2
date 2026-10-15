@@ -963,6 +963,22 @@ describe('CP2B · correções da revisão adversarial', () => {
     expect(prepararArquetipo(validarSpec(semArquetipo).spec!)).toBeNull()
   }, 60_000)
 
+  it('foto por URL do DRIVE (fonte única) com arquétipo: o catálogo do id da URL protege, como pelo driveFileId', async () => {
+    const porId = busca((await peca(CENAS.regiao)).r)
+    expect(porId.recusas.INVADE_REGIAO_PROTEGIDA ?? 0).toBeGreaterThan(0)
+    await montar(CENAS.regiao)
+    const r = await comporPeca({ ...specDe(CENAS.regiao), foto: { url: 'https://drive.google.com/file/d/foto-sintetica/view' } }, { somenteAvaliar: true })
+    expect(busca(r).regiaoProtegida).toBe('catalogo')
+    expect(busca(r).recusas).toEqual(porId.recusas)
+    expect(busca(r).escolha.deslocamentos).toEqual(porId.escolha.deslocamentos)
+  }, 60_000)
+
+  it('foto: {} (nenhuma foto pedida) com arquétipo compõe pela partida — não é FOTO_INDISPONIVEL', async () => {
+    await montar(CENAS.regiao)
+    const r = await comporPeca({ ...specDe(CENAS.regiao), foto: {} }, { autor: 'u-fixture' })
+    expect(busca(r).motivo).toMatch(/sem foto para ler/)
+  }, 60_000)
+
   it('o motivo explica a vitória quando as posições sem véu foram eliminadas (o caso da região protegida)', async () => {
     const { r } = await peca(CENAS.regiao)
     expect(busca(r).motivo).toMatch(/as posições que leriam sem véu caíam em INVADE_REGIAO_PROTEGIDA/)
