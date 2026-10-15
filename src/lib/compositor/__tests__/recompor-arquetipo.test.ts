@@ -278,7 +278,7 @@ describe('CP2B · a recomposição reproduz a escolha espacial gravada', () => {
   it('a página com a MESMA foto desenhada mantém o driveFileId: a região protegida do catálogo segue valendo na recomposição', async () => {
     prepararPeca({ ...specGravada(V1), foto: { driveFileId: 'drive-1' } } as SpecDePeca, true)
     await recomporPaginaDefasada({ pageId: 'p9' })
-    expect((banco.specsRecebidas.at(-1) as SpecDePeca).foto).toEqual({ driveFileId: 'drive-1', url: 'https://blob.test/foto.png' })
+    expect((banco.specsRecebidas.at(-1) as SpecDePeca).foto).toEqual({ driveFileId: 'drive-1' })
   })
 
   it('sem arquétipo, nenhuma escolha espacial é passada', async () => {
@@ -353,6 +353,11 @@ describe('CP2B · a recomposição reproduz a escolha espacial gravada', () => {
   it('as mensagens próprias só valem sem imagem trocada; o resto segue a genérica', () => {
     expect(mensagemDaRecusaNoHistorico('x.', false, 'ARQUETIPO_ESCOLHA_ILEGIVEL')).toMatch(/A imagem continua sendo a anterior. Peça uma nova composição/)
     expect(mensagemDaRecusaNoHistorico('x.', true, 'ARQUETIPO_POSICAO_CONGELADA_NAO_CABE')).toMatch(/já foi trocada/)
+    // O corte congelado que perde o assunto não se resolve encurtando o texto: só nova composição.
+    const doCorte = mensagemDaRecusaNoHistorico('x.', false, 'ARQUETIPO_CORTE_CONGELADO_PERDE_O_ASSUNTO')
+    expect(doCorte).toMatch(/Peça uma nova composição/)
+    expect(doCorte).not.toMatch(/Encurte/)
+    expect(mensagemDaRecusaNoHistorico('x.', false, 'ARQUETIPO_FOTO_AMBIGUA')).toMatch(/duas fontes.*nova composição com uma foto só/)
     expect(mensagemDaRecusaNoHistorico('x.', false, 'TEXTO_NAO_CABE_NA_COLUNA')).toBe(mensagemDaRecusaNoHistorico('x.', false))
   })
 })

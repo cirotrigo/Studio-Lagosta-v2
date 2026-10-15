@@ -1183,6 +1183,12 @@ export function mensagemDaRecusaNoHistorico(mensagem: string, imagemTrocada: boo
   if (code === 'ARQUETIPO_POSICAO_CONGELADA_NAO_CABE') {
     return 'A arte NÃO foi atualizada: a posição do texto desta arte está congelada (a que a foto escolheu, ou a referência do arquétipo), e o texto novo não cabe nela. A imagem continua sendo a anterior. Encurte o texto (menos linhas ou linhas mais curtas) ou peça uma nova composição da peça — salvar de novo do mesmo jeito não resolve.'
   }
+  if (code === 'ARQUETIPO_CORTE_CONGELADO_PERDE_O_ASSUNTO') {
+    return 'A arte NÃO foi atualizada: o corte da foto desta arte está congelado e agora deixa de fora o assunto que o catálogo marca na foto (a marcação mudou depois que a arte foi feita). A imagem continua sendo a anterior. Peça uma nova composição da peça — mudar o texto ou salvar de novo não resolve.'
+  }
+  if (code === 'ARQUETIPO_FOTO_AMBIGUA') {
+    return 'A arte NÃO foi atualizada: a peça traz a foto por duas fontes (arquivo do acervo e endereço), e com arquétipo a posição precisa saber qual foto protege. A imagem continua sendo a anterior. Peça uma nova composição com uma foto só — salvar de novo não resolve.'
+  }
   if (code === 'ARQUETIPO_ESCOLHA_ILEGIVEL') {
     return 'A arte NÃO foi atualizada: o registro da posição desta arte está ilegível ou é de outro modelo, e a posição não é refeita às cegas. A imagem continua sendo a anterior. Peça uma nova composição da peça — salvar de novo não resolve.'
   }

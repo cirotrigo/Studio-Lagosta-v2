@@ -240,6 +240,7 @@ export interface SpecComArquetipo extends CopyParaOArquetipo {
   arquetipo?: Partial<ArquetipoDaSpec> | null
   preferencias?: PreferenciasPosicionais | null
   selecaoExperimental?: boolean
+  foto?: { url?: string | null; driveFileId?: string | null } | null
 }
 
 export interface ArquetipoPreparado {
@@ -279,6 +280,17 @@ export function prepararArquetipo(spec: SpecComArquetipo, opcoes: { persistida?:
     throw new CreativeError('ARQUETIPO_SELECAO_NAO_SUPORTADA', 'A seleção experimental de combinação não compõe com arquétipo no T1a: peça um ou outro.', 422, {
       arquetipo: chaveDoArquetipo(definicao),
     })
+  }
+  // CP2B: a foto vem por UMA fonte. Com `url` e `driveFileId` juntos o resolvedor desenha a URL e o catálogo protege a
+  // região do ID — fotos diferentes deixariam a desenhada sem a proteção dela (Codex R3). A recomposição da mesma foto
+  // manda só o `driveFileId` (`specComACopyDaPagina`).
+  if (spec.foto?.url && spec.foto?.driveFileId) {
+    throw new CreativeError(
+      'ARQUETIPO_FOTO_AMBIGUA',
+      `${chaveDoArquetipo(definicao)}: a foto veio pelo driveFileId E pela url. Com arquétipo a posição é escolhida pela foto e a região protegida vem do catálogo do arquivo: mande só uma das duas (o driveFileId do acervo, de preferência).`,
+      422,
+      { arquetipo: chaveDoArquetipo(definicao), foto: { url: spec.foto.url, driveFileId: spec.foto.driveFileId } },
+    )
   }
   const formato = spec.formato as FormatoDoArquetipo
   const { coincidentes } = conferirPreferencias(definicao, spec.preferencias)

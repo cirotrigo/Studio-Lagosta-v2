@@ -224,11 +224,12 @@ describe('specComACopyDaPagina', () => {
     expect(r.spec.foto).toEqual({ url: outra.fileUrl })
   })
 
-  it('CP2B: com arquétipo, a página que mostra a MESMA foto desenhada mantém o driveFileId (o assunto do catálogo não se perde)', () => {
+  it('CP2B: com arquétipo, a página que mostra a MESMA foto desenhada mantém a foto da spec (só o driveFileId: o assunto do catálogo não se perde)', () => {
     const doDrive = { ...spec, foto: { driveFileId: 'abc' }, arquetipo: { id: 'minimal-fb-topo-esquerda', versao: 1, impressao: 'arq1-1f4ab8c4a215f2' } } as SpecDePeca
     const pagina = [foto, texto('headline', 'a'), texto('apoio', 'b')]
     const mesma = specComACopyDaPagina(doDrive, pagina, { fotoDesenhada: foto.fileUrl as string })
-    expect(mesma.spec.foto).toEqual({ driveFileId: 'abc', url: foto.fileUrl })
+    // Só o driveFileId: o compositor o resolve na MESMA URL, e foto por duas fontes é recusada com arquétipo.
+    expect(mesma.spec.foto).toEqual({ driveFileId: 'abc' })
     expect(mesma.avisos.join(' ')).not.toContain('foto')
     // Foto trocada: o vínculo cai, como sempre.
     const outra = { ...foto, fileUrl: 'https://x.public.blob.vercel-storage.com/uploads/outra.jpg' }

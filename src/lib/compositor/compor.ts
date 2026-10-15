@@ -693,6 +693,16 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   const fotoCarregada = opcoes.cacheDeFotos?.get(chaveDaFoto) ?? await carregarFoto(spec)
   opcoes.cacheDeFotos?.set(chaveDaFoto, fotoCarregada)
   const { foto, aviso: avisoDaFoto } = fotoCarregada
+  // CP2B: com arquétipo a posição é escolhida PELA foto e a região protegida dela é obrigatória — a peça não sai sem
+  // a foto pedida (Codex R3). Transitório (o Drive fora do ar): a fila tenta de novo.
+  if (!foto && spec.foto && arq) {
+    throw new CreativeError(
+      'FOTO_INDISPONIVEL',
+      `${avisoDaFoto ?? 'A foto não pôde ser carregada.'} Com arquétipo, a posição é escolhida pela foto e a região protegida dela é obrigatória: a peça não sai sem a foto. Tente de novo em instantes.`,
+      503,
+      { arquetipo: chaveDoArquetipo(arq.definicao) },
+    )
+  }
   if (!foto && spec.foto && (opcoes.somenteAvaliar || opcoes.selecao)) {
     throw new CreativeError('FOTO_INDISPONIVEL', avisoDaFoto ?? 'A foto candidata não pôde ser carregada. Escolha um arquivo acessível.', 422)
   }

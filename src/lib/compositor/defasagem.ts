@@ -521,10 +521,12 @@ export function specComACopyDaPagina(
 
   const url = fotoDaPagina(camadasDaPagina)
   let foto = spec.foto
-  // A MESMA foto (a que a arte desenhou), com arquétipo: o vínculo com o catálogo fica, e a URL vem junto (é ela que
-  // a peça desenha, e a identidade da escolha espacial). Sem arquétipo, nada muda (o caminho legado é intocado).
+  // A MESMA foto (a que a arte desenhou), com arquétipo: a foto da spec fica como estava — o `driveFileId`, que o
+  // compositor resolve na MESMA URL (o cache do Blob é determinístico por projeto e arquivo) e cujo catálogo protege a
+  // região. A URL não vem junto: com arquétipo, foto por duas fontes é recusada (`ARQUETIPO_FOTO_AMBIGUA`). Sem
+  // arquétipo, nada muda (o caminho legado é intocado).
   const mesmaFoto = !!spec.arquetipo && !!url && !!spec.foto?.driveFileId && !!opcoes.fotoDesenhada && url === opcoes.fotoDesenhada
-  if (mesmaFoto) foto = { ...spec.foto, url }
+  if (mesmaFoto) foto = spec.foto
   else if (url && url !== spec.foto?.url) {
     /**
      * A foto da PÁGINA vence a da spec: ou ela nunca existiu ali, ou alguém

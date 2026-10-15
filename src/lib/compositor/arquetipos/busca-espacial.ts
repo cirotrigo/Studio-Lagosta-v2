@@ -380,7 +380,7 @@ export function selecionarNoArquetipo(args: ArgsDaSelecao): SelecaoNoArquetipo {
       const doCorte = args.reproduzirReferencia ? [] : avaliacao.eliminada.filter((e) => e.motivo === 'CORTE_PERDE_O_ASSUNTO')
       if (doCorte.length > 0) {
         throw new CreativeError(
-          'ARQUETIPO_POSICAO_CONGELADA_NAO_CABE',
+          'ARQUETIPO_CORTE_CONGELADO_PERDE_O_ASSUNTO',
           `${chaveDoArquetipo(args.arquetipo)}: ${origem} (corte ${gravada.corte}); esse corte agora perde o assunto que o catálogo marca na foto (${doCorte[0].detalhe}). Nada foi movido: peça uma nova composição da peça.`,
           422,
           { arquetipo: chaveDoArquetipo(args.arquetipo), formato: args.formato, escolha: gravada, problemas: doCorte },

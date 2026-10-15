@@ -951,6 +951,12 @@ se mudar.
   novo — o código não começa com `ARQUETIPO_` de propósito, senão a fila o trataria como definitivo).
   Sem arquétipo o erro segue engolido, como sempre. O diagnóstico diz de onde veio a região:
   `buscaEspacial.regiaoProtegida` = `catalogo` ou `estimada`.
+- 🔴 **A foto pedida é obrigatória, e vem por UMA fonte** (Codex R3). Foto que não carregou (o
+  resolvedor devolve sem URL quando o Drive falha) recusa a peça com arquétipo: `FOTO_INDISPONIVEL`
+  (503, transitório) — antes ela saía sem foto, na partida, sem região nenhuma. `url` e `driveFileId`
+  juntos são recusados no portão (`prepararArquetipo`, o mesmo do medir-copy):
+  `ARQUETIPO_FOTO_AMBIGUA` — o resolvedor desenha a URL e o catálogo protege o ID, e fotos diferentes
+  deixariam a desenhada sem a proteção dela. Sem arquétipo, nada disso muda.
 - 🔴 **Tratamento é custo dominante.** Entre as válidas vence o menor custo de véu (tolerância
   0,05); depois a pontuação (calma 0,4, contraste natural 0,2, assunto 0,15, referência 0,15,
   corte central 0,1; tolerância 0,02); depois a mais perto da referência e o corte central. A
@@ -970,13 +976,17 @@ se mudar.
   cabe na posição congelada, ou que nela invade a região do catálogo, colide ou inverte a ordem:
   `ARQUETIPO_POSICAO_CONGELADA_NAO_CABE`, nada é movido (o tratamento é do CP2A: só aviso). O corte
   congelado que passou a perder o assunto do catálogo (a anotação mudou depois; outro corte o
-  preservaria) também recusa, com a saída "peça uma nova composição" — só na peça do CP2B: a do T1a
+  preservaria) recusa com código próprio, `ARQUETIPO_CORTE_CONGELADO_PERDE_O_ASSUNTO`, e a saída
+  "peça uma nova composição" (o histórico não manda encurtar o texto) — só na peça do CP2B: a do T1a
   nasceu no corte central com esse aviso, e a edição de texto dela segue com o aviso. A logo
   fixa que mudou de proporção vai ao dy válido dela (aviso); a logo automática congelada que
   encostaria no texto novo vai ao canto livre (aviso). Foto trocada: busca nova, com aviso. A
   identidade da foto é a impressão da URL que a peça desenha; com arquétipo, a página que mostra a
-  MESMA foto desenhada (`fieldValues.imageUrl`) mantém o `driveFileId` na recomposição
-  (`specComACopyDaPagina`), e o assunto do catálogo continua protegendo. Peça do T1a (`modo: 'referencia'`): reproduz a referência no corte central e o canto
+  MESMA foto desenhada (`fieldValues.imageUrl`) mantém a foto da spec — só o `driveFileId` — na
+  recomposição (`specComACopyDaPagina`): o compositor o resolve na mesma URL (o cache do Blob é
+  determinístico por projeto e arquivo), e o assunto do catálogo continua protegendo. Custo: a
+  recomposição com arquétipo volta ao Drive; Drive fora do ar é `FOTO_INDISPONIVEL`, e a fila tenta
+  de novo. Peça do T1a (`modo: 'referencia'`): reproduz a referência no corte central e o canto
   da logo automática que gravou; foto trocada nela também faz busca nova, com aviso.
 - **Diagnóstico** em `composicao.arquetipo.buscaEspacial` (nunca no topo do diagnóstico): versão,
   id, escolha, cortes e combinações avaliadas, faixas, vencedor e até 2 alternativas (componentes,

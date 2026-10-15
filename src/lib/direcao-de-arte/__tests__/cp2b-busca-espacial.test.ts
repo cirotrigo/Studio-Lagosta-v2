@@ -45,6 +45,7 @@ import type { Rect } from '@/lib/creatives/halo/halo'
 import type { FotoCinza } from '@/lib/creatives/halo/halo-medicao'
 import { CreativeError } from '@/lib/creatives/errors'
 import * as acervo from '@/lib/creatives/acervo'
+import * as persist from '@/lib/creatives/persist'
 import { comporPeca, type OpcoesDeComposicao, type ResultadoDaComposicao } from '@/lib/compositor/compor'
 import { montarAssinatura } from '@/lib/compositor/assinatura'
 import { medirCopy } from '@/lib/compositor/medir-copy'
@@ -924,7 +925,7 @@ describe('CP2B · correções da revisão adversarial', () => {
     expect(escolha.corte).toBe('center-middle')
     // A anotação nova põe o assunto à esquerda: o corte congelado o perde, o lateral o preservaria.
     const e = await recusa(lateral, { escolhaEspacial: escolha })
-    expect(e.code).toBe('ARQUETIPO_POSICAO_CONGELADA_NAO_CABE')
+    expect(e.code).toBe('ARQUETIPO_CORTE_CONGELADO_PERDE_O_ASSUNTO')
     expect(e.message).toMatch(/perde o assunto que o catálogo marca/)
     expect(e.message).not.toMatch(/encurte o texto/)
     // A peça do T1a nasceu no corte central com o aviso de assunto perdido: a edição de texto não é recusada por isso.
@@ -932,6 +933,34 @@ describe('CP2B · correções da revisão adversarial', () => {
     const t1a = await comporPeca(specDe(lateral), { somenteAvaliar: true, escolhaEspacial: { modo: 'referencia' } })
     expect(t1a.diagnostico.posicao.crop).toBe('center-middle')
     expect(t1a.diagnostico.avisos.some((a) => /CORTE_PERDE_O_ASSUNTO/.test(a))).toBe(true)
+  }, 60_000)
+
+  it('foto pedida que NÃO carregou: com arquétipo recusa (FOTO_INDISPONIVEL, transitório); sem arquétipo compõe com aviso, como sempre', async () => {
+    const resolver = vi.spyOn(persist, 'resolveImageUrl')
+    try {
+      resolver.mockResolvedValueOnce({ url: null, warning: 'Drive fora do ar' })
+      const e = await recusa(CENAS.regiao)
+      expect(e.code).toBe('FOTO_INDISPONIVEL')
+      expect(e.status).toBe(503)
+      expect(e.message).toMatch(/^Drive fora do ar.*a peça não sai sem a foto/)
+      resolver.mockResolvedValueOnce({ url: null, warning: 'Drive fora do ar' })
+      const { r: legado } = await compor({ ...CENAS.regiao, id: 'cp2b-foto-legado', arquetipo: undefined })
+      expect(legado.diagnostico.avisos).toContain('Drive fora do ar')
+    } finally {
+      resolver.mockRestore()
+    }
+  }, 60_000)
+
+  it('foto por DUAS fontes (url e driveFileId) com arquétipo: ARQUETIPO_FOTO_AMBIGUA no portão — o mesmo do compor e do medir-copy', async () => {
+    const ambigua = { ...specDe(CENAS.regiao), foto: { driveFileId: 'foto-sintetica', url: 'https://blob.test/outra.png' } }
+    expect(() => prepararArquetipo(validarSpec(ambigua).spec!)).toThrow(expect.objectContaining({ code: 'ARQUETIPO_FOTO_AMBIGUA' }))
+    await montar(CENAS.regiao)
+    const e = await comporPeca(ambigua, { somenteAvaliar: true }).catch((x) => x as CreativeError)
+    expect((e as CreativeError).code).toBe('ARQUETIPO_FOTO_AMBIGUA')
+    // Uma fonte só passa; sem arquétipo, as duas seguem aceitas (o legado não muda).
+    expect(prepararArquetipo(validarSpec({ ...ambigua, foto: { driveFileId: 'foto-sintetica' } }).spec!)).not.toBeNull()
+    const { arquetipo: _a, ...semArquetipo } = ambigua
+    expect(prepararArquetipo(validarSpec(semArquetipo).spec!)).toBeNull()
   }, 60_000)
 
   it('o motivo explica a vitória quando as posições sem véu foram eliminadas (o caso da região protegida)', async () => {
