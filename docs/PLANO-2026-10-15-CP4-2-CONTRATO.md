@@ -326,7 +326,8 @@ export function validarSlotValues(slotValues, camadas?): ErroDeValor[]
 //    chave começa com `_`  → controle: `_slots`/`_papeis` → validarEntradaSemantica (como hoje; null/undefined = não fornecido);
 //                            `_imageUrl`/`_driveImageId` → string não vazia, senão VALOR_INVALIDO;
 //                            qualquer outro `_…` → CHAVE_DESCONHECIDA
-//    chave não começa com `_` → legado: valorLegadoValido(valor), senão VALOR_INVALIDO { tipo: 'layerId'|'name', chave }
+//    chave não começa com `_` → legado: valorLegadoValido(valor), senão VALOR_INVALIDO { origem: { tipo: 'chave', chave } }
+//    (na FASE 1 não há página: a origem é só a chave; `layerId`/`name` só na FASE 2)
 //  FASE 2 — ENDEREÇO (com as camadas do modelo EFETIVO): chave legada que não casa com id nem com nome de
 //    camada → CHAVE_DESCONHECIDA. Camada cujo id/nome começa com `_` não é endereçável pelo legado (chave
 //    com `_` é sempre controle) — hoje essa camada já é recusada como "chave visual reservada".
@@ -487,7 +488,7 @@ dívida.
 | V15 | `{ cta: { papel: 'cta' } }` | comportamento inalterado (decisão 3, separada) |
 | V16 | **criação com foto do Drive e endereço inválido**: `criar-arte-de-modelo` com `_driveImageId` válido e `{ naoExiste: 'x' }` | 422 `CHAVE_DESCONHECIDA`; espião de `put` NÃO chamado, nenhum `drive-cache/…`; zero Page, Template, Generation, render; a miniatura do Drive foi lida (residual declarado) |
 | V17 | **porta MCP preserva o erro**: `ajustar-arte` pelo handler com `{ cta: 123 }` | a resposta da porta traz `code: VALOR_INVALIDO`, `details.erros[]` com a chave, e a mensagem em PT — não o texto genérico do `safeParse` |
-| V18 | `{ cta: 'x' }` numa página onde `cta` é id de uma camada e nome de outra | FASE 2 resolve pela precedência do bake (id); sem erro |
+| V18 | `{ cta: 'x', Rodape: 'y' }` numa página onde `cta` é id da camada A e nome da camada B, e `Rodape` é nome da camada C | a FASE 2 reproduz o bake real — precedência id > semântico > nome **POR CAMADA** (`bakeLayers`, `bake-layers.ts:91-92`): A recebe `x` pelo id, B recebe `x` pelo nome (a chave casa a camada B pelo nome, porque B não tem valor pelo id), C recebe `y` pelo nome; nenhuma prioridade global que deixe uma camada endereçada pelo nome sem preencher; sem erro |
 
 ### B.7 Decisões que precisam do owner (CP4.2b)
 
