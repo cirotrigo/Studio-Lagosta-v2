@@ -366,8 +366,10 @@ export interface ContextoDaMedicao {
 
 /**
  * Lê do banco o que a medição precisa (a faixa do gradiente do projeto, as gerações da página, as referências de
- * corpo/entrelinha, o assunto da foto) a partir das camadas ATUAIS da página. O assunto depende só da foto de
- * fundo (ajustes não a trocam); as referências, do papel das camadas.
+ * corpo/entrelinha, o assunto da foto). As REFERÊNCIAS e a classificação dos títulos saem de `camadasDaPagina`
+ * (a página ANTERIOR à chamada, CP4.2a); o ASSUNTO sai de `camadas` — as camadas EFETIVAS, depois do bake: trocar
+ * a foto e ajustar na mesma chamada mede o ajuste contra o assunto da foto NOVA, e uma foto nova que não pôde ser
+ * lida fica "não medida" (fail-closed), nunca herda o "não se aplica" da foto anterior (revisão do owner, 15/10).
  */
 export async function contextoDaMedicao(args: {
   projectId: number
@@ -409,7 +411,7 @@ export async function contextoDaMedicao(args: {
   const origensDaLogo = new Map<string, 'pagina' | 'projeto'>()
   if (typeof varianteGravada?.url === 'string' && (varianteGravada.origem === 'pagina' || varianteGravada.origem === 'projeto')) origensDaLogo.set(varianteGravada.url, varianteGravada.origem)
   const { referencias, origem: referencia } = await referenciasDaPagina(camadas, fieldValues?.composicao ?? null, geracoes, new Set(titulosFixados ?? []))
-  const { assunto, motivoSemAssunto, assuntoNaoSeAplica } = await assuntoDaPeca(camadas, canvas, formato, fieldValues)
+  const { assunto, motivoSemAssunto, assuntoNaoSeAplica } = await assuntoDaPeca(args.camadas, canvas, formato, fieldValues)
   return {
     projectId, canvas, formato, background, faixa, referencias, referencia, assunto,
     ...(titulosFixados ? { titulosFixados } : {}),

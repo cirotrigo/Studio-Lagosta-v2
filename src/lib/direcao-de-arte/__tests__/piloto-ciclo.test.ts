@@ -20,6 +20,10 @@ const banco = vi.hoisted(() => ({
   escritas: 0,
   projeto: null as any,
   foto: null as Buffer | null,
+  /** URL cuja leitura devolve bytes que NÃO são imagem (a foto nova que não pôde ser lida, revisão do owner). */
+  fotoIlegivel: null as string | null,
+  /** Os bytes da foto NOVA (sintética) — `fetchBuffer` devolve-os para a URL dela. */
+  fotoNova: null as Buffer | null,
   /** A Generation do compositor (v1), como o revisor a lê: dela saem o assunto gravado e a assinatura de referência. */
   geracaoDoCompositor: null as any,
   /** A página de assinatura (o revisor compara corpo e entrelinha com ela). */
@@ -72,7 +76,9 @@ vi.mock('@prisma/client', async () => await import('../../../../prisma/generated
 vi.mock('@vercel/blob', () => ({ put: vi.fn(async (c: string) => ({ url: `https://blob.test/${c}?n=${++banco.putSeq}` })), del: vi.fn() }))
 vi.mock('@/lib/posts/register-project-fonts', () => ({
   registerProjectFonts: async () => undefined,
-  fetchBuffer: async () => {
+  fetchBuffer: async (url: string) => {
+    if (banco.fotoIlegivel && url === banco.fotoIlegivel) return Buffer.from('isto não é uma imagem')
+    if (banco.fotoNova && url.startsWith('data:image/png;base64,') && url.length === 22 + banco.fotoNova.toString('base64').length && url.endsWith(banco.fotoNova.toString('base64').slice(-32))) return banco.fotoNova
     if (!banco.foto) throw new Error('sem foto')
     return banco.foto
   },
@@ -126,6 +132,9 @@ import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
 import { CreativeError } from '@/lib/creatives/errors'
 import { arquivosDaFixture, comArquivos, exigirMedidaFiel, fixture, fotoReconstruida } from './suporte/fixture'
 import { aplicarAjustes } from '@/lib/creatives/revisao/aplicar-ajustes'
+import { lerFotoComoCover } from '@/lib/creatives/halo/halo-medicao'
+import { estimarAssunto, mapaDeCalma } from '@/lib/compositor/mapa-de-calma'
+import sharp from 'sharp'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { exigir, hojeViola } from './suporte/hoje-viola'
@@ -147,6 +156,7 @@ beforeEach(() => {
   banco.generations = []
   banco.putSeq = 0
   banco.escritas = 0
+  banco.fotoIlegivel = null
   medidas.chamadas.length = 0
   banco.projeto = { id: Number(peca.spec.projectId), name: 'Projeto da fixture', userId: 'dono-interno', instagramAccountId: null, assinatura: fixture.assinatura().numerosDoProjeto }
   banco.assinatura = fixture.assinatura().pagina
@@ -611,6 +621,93 @@ describe.skipIf(!process.env.PROVAS_DIR)('CP4 — provas visuais', () => {
     writeFileSync(join(DIR, 'comparacao.json'), JSON.stringify({ recusa, aceito: { aplicados: aceito.ajustesAplicados, recusados: aceito.ajustesRecusados, resultado: aceito.resultadoDosAjustes } }, null, 2))
     expect(recusa).not.toBeNull()
   }, 300_000)
+})
+
+describe('CP4.2a (revisão do owner) — trocar a foto e ajustar na MESMA chamada: o assunto é o da foto NOVA (camadas efetivas), não o da página anterior', () => {
+  type Piora = { propriedade: string; camadas: string[]; antes: unknown; depois: unknown }
+  let fotoNova: string
+  let sobreOAssuntoNovo: Ajuste
+  beforeAll(async () => {
+    // A foto NOVA é sintética (a reconstruída da fixture não tem região forte para o mapa de calma): cinza chapado com um
+    // bloco de listras ESCURAS alinhado às células do mapa (cols 1–4 × linhas 5–7) — o assunto estimado é esse bloco, e
+    // só ele. Escuro de propósito: o serviço (texto claro) movido para lá NÃO piora a leitura, só o assunto.
+    const W = 1080, H = 1920
+    const raw = Buffer.alloc(W * H * 3, 128)
+    let semente = 7
+    for (let y = 960; y < 1536; y++) {
+      for (let x = 180; x < 900; x++) {
+        semente = (semente * 1103515245 + 12345) & 0x7fffffff
+        const v = semente & 1 ? 60 : 0
+        const i = (y * W + x) * 3
+        raw[i] = raw[i + 1] = raw[i + 2] = v
+      }
+    }
+    const png = await sharp(raw, { raw: { width: W, height: H, channels: 3 } }).png().toBuffer()
+    fotoNova = 'data:image/png;base64,' + png.toString('base64')
+    banco.fotoNova = png
+    const foto = await lerFotoComoCover(png, CANVAS, { cropPosition: 'right-middle' })
+    const assunto = estimarAssunto(mapaDeCalma(foto))!
+    // A faixa das linhas 5–7 (as bordas do bloco energizam as células vizinhas na horizontal): não passa de 60 % da peça.
+    expect(assunto).toMatchObject({ y: 960, height: 576 })
+    expect(assunto.width).toBeGreaterThanOrEqual(720)
+    // O serviço (330,1728 — fora do assunto; grupo próprio) vai para o CENTRO do assunto estimado da foto nova.
+    sobreOAssuntoNovo = { tipo: 'mover', camadas: ['servico'], dx: Math.round(assunto.x + assunto.width / 2 - 330 - 210), dy: Math.round(assunto.y + assunto.height / 2 - 1728 - 46) } as Ajuste
+  }, 60_000)
+  const composicao = () => banco.geracaoDoCompositor.fieldValues.composicao as Record<string, unknown>
+  const chamar = () => ajustarArte({ projectId: projectId(), pageId: PAGINA, versaoEsperada: versaoDaPagina(banco.pagina)!, slotValues: { _imageUrl: fotoNova }, ajustes: [structuredClone(sobreOAssuntoNovo)] })
+  const pioraDeAssunto = (r: Awaited<ReturnType<typeof chamar>>) => ((r.ajustesRecusados?.[0]?.comparacao?.pioras ?? []) as Piora[]).filter((p) => p.propriedade === 'texto-sobre-assunto' && p.camadas.includes('servico'))
+  const fotoEntrouServicoNao = () => {
+    // Lote parcial: a foto nova ENTRA (slotValues), o ajuste não; a referência e a classificação continuam da página anterior.
+    expect(camada(banco.pagina.layers as Layer[], 'bg-foto').fileUrl).toBe(fotoNova)
+    expect(camada(banco.pagina.layers as Layer[], 'servico').position).toEqual({ x: 330, y: 1728 })
+  }
+
+  it('(a) foto anterior SEM assunto (assuntoOrigem "nenhum") + foto nova com assunto: mover texto sobre o assunto NOVO é recusado (antes herdava "não se aplica" e aceitava)', async () => {
+    composicao().assuntoOrigem = 'nenhum'
+    delete composicao().assunto
+    const r = await chamar()
+    expect(r.resultadoDosAjustes).toBe('parcial')
+    expect(r.ajustesRecusados?.map((x) => [x.indice, x.codigo])).toEqual([[0, 'AJUSTE_PIOROU_ARTE']])
+    expect(pioraDeAssunto(r)).toHaveLength(1)
+    fotoEntrouServicoNao()
+  }, 240_000)
+
+  it('(b) foto anterior com assunto em OUTRA região (canto superior esquerdo): o ajuste é medido contra o assunto da foto nova e recusado', async () => {
+    composicao().assunto = { x: 0, y: 0, width: 300, height: 100 }
+    composicao().assuntoOrigem = 'catalogo'
+    const r = await chamar()
+    expect(r.resultadoDosAjustes).toBe('parcial')
+    expect(r.ajustesRecusados?.map((x) => [x.indice, x.codigo])).toEqual([[0, 'AJUSTE_PIOROU_ARTE']])
+    expect(pioraDeAssunto(r)).toHaveLength(1)
+    fotoEntrouServicoNao()
+  }, 240_000)
+
+  it('(c) a foto nova NÃO pôde ser lida: o ajuste fica NÃO MEDIDO (fail-closed) — não herda o "não se aplica" da foto anterior', async () => {
+    composicao().assuntoOrigem = 'nenhum'
+    delete composicao().assunto
+    banco.fotoIlegivel = fotoNova
+    const r = await chamar()
+    expect(r.resultadoDosAjustes).toBe('parcial')
+    expect(r.ajustesRecusados?.map((x) => [x.indice, x.codigo])).toEqual([[0, 'AJUSTE_NAO_MEDIDO']])
+    expect(r.ajustesRecusados?.[0]?.motivo).toMatch(/assunto/)
+    fotoEntrouServicoNao()
+  }, 240_000)
+
+  it('controle: SEM trocar a foto, o mesmo movimento é recusado pelo assunto GRAVADO da composição (o caminho sem troca não mudou)', async () => {
+    // O assunto gravado da composição é a mesma faixa (o serviço, em 1728, está fora dela; movido, cai dentro).
+    composicao().assunto = { x: 0, y: 960, width: 1080, height: 576 }
+    composicao().assuntoOrigem = 'catalogo'
+    let erro: CreativeError | null = null
+    try {
+      await ajustar([structuredClone(sobreOAssuntoNovo)])
+    } catch (e) {
+      erro = e as CreativeError
+    }
+    expect(erro?.code).toBe('AJUSTE_PIOROU_ARTE')
+    const pioras = ((erro?.details as { recusados: Array<{ comparacao?: { pioras: Piora[] } }> }).recusados[0]?.comparacao?.pioras ?? []).filter((p) => p.propriedade === 'texto-sobre-assunto' && p.camadas.includes('servico'))
+    expect(pioras).toHaveLength(1)
+    expect(banco.escritas).toBe(0)
+  }, 240_000)
 })
 
 describe('P9 — recuperação', () => {
