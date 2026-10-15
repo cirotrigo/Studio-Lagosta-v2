@@ -628,7 +628,8 @@ global". Módulos em `src/lib/creatives/revisao/`:
   - **Camada sem métrica** (fonte não cadastrada, curvo/fitty/auto-resize, rich text, logo não medida):
     mexer nela é `AJUSTE_NAO_MEDIDO`; mexer noutra continua medido pelo que a cobertura `parcial` cobriu.
   - **Regra inaplicável não bloqueia**: `texto-sobre-assunto` `nao-avaliada` dos dois lados numa peça
-    SEM foto de fundo vai a `comparacao.naoAplicaveis`; foto que existe e não baixou segue não medida.
+    SEM foto de fundo — ou, desde o CP4.1, com a foto LIDA e sem assunto localizável (cobertura
+    `naoSeAplica`) — vai a `comparacao.naoAplicaveis`; foto que existe e não baixou segue não medida.
     Logo num arranjo ou fora do contrato (rotação, opacidade, cover, recorte): o conserto é no editor.
   - **Id de achado desconhecido** (não `visao-…`) é `AJUSTE_NAO_MELHOROU_O_ACHADO`, não passe livre; o
     `visao-…` é `nao-mensuravel` (nunca está na medida sem visão).
@@ -698,6 +699,13 @@ Decisão do owner: **o agente autônomo não pode apagar copy para "corrigir" de
   à página); 9g planta e restaura uma divergência de Generation legada; 9h/9i/9j usam `mover` permitido e
   conferem `copyVisualRegravada`; 9f (controle humano) fortalecida — marca antiga sai, `copyRemovida`, sinal do
   ajuste, `removidos` exatos; 9d (remoção humana sem marca → `editada`) não mudou.
+- **Foto sem assunto localizável não trava mais o ajuste** (achado da prova de integração, passo 6): a peça
+  cuja foto o mapa de calma lê sem achar região forte (o compositor grava `assuntoOrigem: 'nenhum'`) vinha com
+  `texto-sobre-assunto` "não avaliada" e o CP4 recusava TODO ajuste nela como `AJUSTE_NAO_MEDIDO` — não era
+  falha de medição, era "não há assunto". `assuntoDaPeca` passou a dizer o motivo e a marcar a cobertura com
+  `naoSeAplica: true` (sem foto; `assuntoOrigem: 'nenhum'` gravado para a mesma foto/corte/formato; ou o mapa
+  de calma sem região forte); o comparador trata a marca dos DOIS lados como regra inaplicável. A estimativa
+  que FALHOU (foto não baixou, sharp não leu) continua sem a marca e não medida (fail-closed).
 - **Rodada dos 4 revisores (15/10)**: "tem conteúdo" é texto VISÍVEL (`texto-visivel.ts`: `trim` mais os
   caracteres de formato U+200B/C/D, U+2060, U+00AD, U+FEFF, U+034F, U+3164/FFA0, U+2800) — no bake, no
   ajuste `visibilidade`, no comparador e em `textoSemConteudo`; esvaziar destrói conteúdo seja a camada

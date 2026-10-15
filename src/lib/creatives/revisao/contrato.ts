@@ -79,6 +79,12 @@ export interface AchadoDaRevisao {
 export interface CoberturaDaRegra {
   estado: EstadoDaCobertura
   motivo?: string
+  /**
+   * A regra foi EXAMINADA e não tem objeto nesta peça (hoje: `texto-sobre-assunto` sem foto de fundo, ou com a foto
+   * lida e sem assunto localizável). "Não há" não é "não medimos": o não-piorar (CP4) não recusa por ela
+   * (`comparacao.naoAplicaveis`). Foto que existe e não carregou NÃO leva a marca — segue não medida (fail-closed).
+   */
+  naoSeAplica?: true
 }
 
 export const TIPOS_DE_AJUSTE = ['fonte', 'mover', 'gradiente', 'visibilidade', 'caixa'] as const

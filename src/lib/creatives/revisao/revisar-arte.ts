@@ -225,36 +225,52 @@ async function referenciasDaPagina(
   return { referencias, origem: null }
 }
 
-/** O assunto da foto: o gravado pelo compositor (mesma foto, mesmo corte) ou o estimado pela textura. */
+/** O assunto da foto e, quando não há, POR QUÊ — "não há assunto" (fato medido) é diferente de "não deu para medir". */
+interface AssuntoDaPeca {
+  assunto: { rect: Rect; origem: 'catalogo' | 'estimado' } | null
+  /** Por que não há assunto (sem foto, foto lida sem região forte, ou a estimativa falhou). */
+  motivoSemAssunto?: string
+  /** A foto foi examinada (ou não existe) e não há assunto a proteger: a regra não se aplica, e o não-piorar (CP4) não recusa por ela. */
+  assuntoNaoSeAplica?: true
+}
+
+/**
+ * O assunto da foto: o gravado pelo compositor (mesma foto, mesmo corte) ou o estimado pela textura.
+ * CP4.1: a peça cuja foto NÃO tem assunto localizável (o compositor gravou `assuntoOrigem: 'nenhum'`, ou o mapa de
+ * calma não achou região forte) voltava "não medida" e NENHUM ajuste entrava nela (`AJUSTE_NAO_MEDIDO` em toda chamada,
+ * provado pela prova de integração no passo 6). Agora isso é dito como regra inaplicável; só a estimativa que FALHOU
+ * (foto não baixou, sharp não leu) continua não medida.
+ */
 async function assuntoDaPeca(
   camadas: Layer[],
   canvas: { width: number; height: number },
   formato: RevisaoDaArte['formato'],
   fieldValues: Record<string, any> | null,
-): Promise<{ rect: Rect; origem: 'catalogo' | 'estimado' } | null> {
+): Promise<AssuntoDaPeca> {
   const fundo = fotoDeFundo(camadas, canvas)
-  if (!fundo?.fileUrl) return null
+  if (!fundo?.fileUrl) return { assunto: null, motivoSemAssunto: 'a peça não tem foto de fundo: não há assunto a proteger', assuntoNaoSeAplica: true }
   const composicao = fieldValues?.composicao
   const corte = fundo.style?.cropPosition ?? null
-  if (
-    composicao?.assunto &&
+  const mesmaComposicao =
     // O retângulo gravado é da peça COMPOSTA: outro formato é outro cover.
-    composicao.formato === formato &&
-    composicao.assuntoOrigem &&
-    composicao.assuntoOrigem !== 'nenhum' &&
-    fieldValues?.imageUrl === fundo.fileUrl &&
-    (composicao.posicao?.crop ?? null) === corte
-  ) {
-    return { rect: composicao.assunto as Rect, origem: composicao.assuntoOrigem === 'catalogo' ? 'catalogo' : 'estimado' }
+    composicao?.formato === formato && fieldValues?.imageUrl === fundo.fileUrl && (composicao.posicao?.crop ?? null) === corte
+  if (mesmaComposicao && composicao.assunto && composicao.assuntoOrigem && composicao.assuntoOrigem !== 'nenhum') {
+    return { assunto: { rect: composicao.assunto as Rect, origem: composicao.assuntoOrigem === 'catalogo' ? 'catalogo' : 'estimado' } }
+  }
+  if (mesmaComposicao && composicao.assuntoOrigem === 'nenhum') {
+    return { assunto: null, motivoSemAssunto: 'a foto não tem assunto localizável (o compositor leu esta foto neste corte e não achou região forte): nada a proteger', assuntoNaoSeAplica: true }
   }
   try {
     const bytes = await fetchBuffer(fundo.fileUrl)
     const foto = await lerFotoComoCover(bytes, canvas, corte ? { cropPosition: corte } : {})
     const rect = estimarAssunto(mapaDeCalma(foto))
-    return rect ? { rect, origem: 'estimado' } : null
+    return rect
+      ? { assunto: { rect, origem: 'estimado' } }
+      : { assunto: null, motivoSemAssunto: 'a foto foi lida e não tem assunto localizável (mapa de calma sem região forte): nada a proteger', assuntoNaoSeAplica: true }
   } catch (erro) {
-    console.warn('[revisar-arte] assunto da foto não estimado:', erro instanceof Error ? erro.message : erro)
-    return null
+    const motivo = `o assunto da foto não foi estimado: ${(erro instanceof Error ? erro.message : String(erro)).slice(0, 160)}`
+    console.warn('[revisar-arte]', motivo)
+    return { assunto: null, motivoSemAssunto: motivo }
   }
 }
 
@@ -330,6 +346,9 @@ export interface ContextoDaMedicao {
   referencias: Record<string, ReferenciaDeCamada>
   referencia: string | null
   assunto: { rect: Rect; origem: 'catalogo' | 'estimado' } | null
+  /** Por que não há assunto, e se isso é "regra inaplicável" (foto lida sem assunto) ou "não medido" (a estimativa falhou). */
+  motivoSemAssunto?: string
+  assuntoNaoSeAplica?: true
   /** A origem gravada da variante da logo desenhada (CP3), url → origem. */
   origensDaLogo: ReadonlyMap<string, 'pagina' | 'projeto'>
   /** Bytes da logo por URL, um download por chamada (o executor do CP4 mede N vezes com este mesmo contexto). */
@@ -375,8 +394,13 @@ export async function contextoDaMedicao(args: {
   const origensDaLogo = new Map<string, 'pagina' | 'projeto'>()
   if (typeof varianteGravada?.url === 'string' && (varianteGravada.origem === 'pagina' || varianteGravada.origem === 'projeto')) origensDaLogo.set(varianteGravada.url, varianteGravada.origem)
   const { referencias, origem: referencia } = await referenciasDaPagina(camadas, fieldValues?.composicao ?? null, geracoes)
-  const assunto = await assuntoDaPeca(camadas, canvas, formato, fieldValues)
-  return { projectId, canvas, formato, background, faixa, referencias, referencia, assunto, origensDaLogo, cacheDeLogos: new Map() }
+  const { assunto, motivoSemAssunto, assuntoNaoSeAplica } = await assuntoDaPeca(camadas, canvas, formato, fieldValues)
+  return {
+    projectId, canvas, formato, background, faixa, referencias, referencia, assunto,
+    ...(motivoSemAssunto ? { motivoSemAssunto } : {}),
+    ...(assuntoNaoSeAplica ? { assuntoNaoSeAplica } : {}),
+    origensDaLogo, cacheDeLogos: new Map(),
+  }
 }
 
 /** A entrada do revisor medida das CAMADAS dadas (sem a visão): fontes, geometria, régua e logo. Nunca lança. */
@@ -475,6 +499,8 @@ export async function medirCamadasDaPeca(
     faixaDoGradiente: faixa,
     referencias: ctx.referencias,
     assunto: ctx.assunto,
+    ...(ctx.motivoSemAssunto ? { motivoSemAssunto: ctx.motivoSemAssunto } : {}),
+    ...(ctx.assuntoNaoSeAplica ? { assuntoNaoSeAplica: ctx.assuntoNaoSeAplica } : {}),
     leituraDaLogo,
     ...(motivoSemLeituraDaLogo ? { motivoSemLeituraDaLogo } : {}),
     fontesAusentes,

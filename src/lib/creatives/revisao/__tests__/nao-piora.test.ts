@@ -226,6 +226,17 @@ describe('não piorar — propriedade a propriedade, sem pontuação global', ()
     expect(comFoto.veredito).toBe(AJUSTE_NAO_MEDIDO)
   })
 
+  it('CP4.1 — foto de fundo LIDA e sem assunto localizável (cobertura `naoSeAplica` dos dois lados) é inaplicável, não "não medida": o ajuste entra; a marca de um lado só, ou a estimativa que falhou, segue não medida', () => {
+    const foto = { id: 'bg-foto', name: 'Foto', type: 'image', visible: true, locked: false, order: 0, position: { x: 0, y: 0 }, size: CANVAS, fileUrl: 'https://x/foto.jpg' } as Layer
+    const semAssunto = { 'texto-sobre-assunto': { estado: 'nao-avaliada' as const, motivo: 'a foto foi lida e não tem assunto localizável (mapa de calma sem região forte): nada a proteger', naoSeAplica: true as const } }
+    const falhou = { 'texto-sobre-assunto': { estado: 'nao-avaliada' as const, motivo: 'o assunto da foto não foi estimado: HTTP 403' } }
+    const lado = (cob: Parameters<typeof relatorio>[1]) => medida({ relatorio: relatorio([], cob), camadas: [foto, texto('headline')] })
+    const r = compararNaoPiora(lado(semAssunto), lado(semAssunto))
+    expect(r).toMatchObject({ veredito: 'aceito', naoMedidas: [], naoAplicaveis: [{ propriedade: 'texto-sobre-assunto', lado: 'ambos', motivo: expect.stringContaining('não tem assunto localizável') }] })
+    expect(compararNaoPiora(lado(semAssunto), lado(falhou))).toMatchObject({ veredito: AJUSTE_NAO_MEDIDO, naoMedidas: [expect.objectContaining({ propriedade: 'texto-sobre-assunto' })] })
+    expect(compararNaoPiora(lado(falhou), lado(falhou))).toMatchObject({ veredito: AJUSTE_NAO_MEDIDO })
+  })
+
   it('revisor B — `tratamento-piorou-leitura` que APARECE com a leitura do texto igual não é piora (quem decide é o contraste); o achado dessa regra só está "resolvido" se a leitura não piorou', () => {
     const trat = achado('tratamento-piorou-leitura', ['servico'], { antes: 165, depois: 180 })
     const leitura = contraste([{ camada: 'servico', com: 194 }])

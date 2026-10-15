@@ -326,6 +326,18 @@ describe('geometria', () => {
     expect(achado.ajustes).toEqual([])
     expect(achado.observacao).toContain('compor-arte')
   })
+
+  it('CP4.1 — sem assunto, a cobertura diz o motivo e se a regra é INAPLICÁVEL (foto lida sem assunto) ou só não medida (a estimativa falhou)', () => {
+    const titulo = camada('headline', { x: 300, y: 800, width: 500, height: 200 }, 90)
+    const base = { camadas: [titulo], metricas: [metrica(titulo, { maxLineWidth: 480 })], assunto: null }
+    const inaplicavel = avaliarPeca(entrada({ ...base, motivoSemAssunto: 'a foto foi lida e não tem assunto localizável (mapa de calma sem região forte): nada a proteger', assuntoNaoSeAplica: true }))
+    expect(inaplicavel.cobertura['texto-sobre-assunto']).toEqual({ estado: 'nao-avaliada', motivo: expect.stringContaining('não tem assunto localizável'), naoSeAplica: true })
+    const falhou = avaliarPeca(entrada({ ...base, motivoSemAssunto: 'o assunto da foto não foi estimado: HTTP 403 ao baixar https://x/foto.jpg' }))
+    expect(falhou.cobertura['texto-sobre-assunto']).toEqual({ estado: 'nao-avaliada', motivo: expect.stringContaining('HTTP 403') })
+    expect(falhou.cobertura['texto-sobre-assunto']).not.toHaveProperty('naoSeAplica')
+    // Sem motivo (medida antiga): o texto de sempre, sem a marca.
+    expect(avaliarPeca(entrada(base)).cobertura['texto-sobre-assunto']).toEqual({ estado: 'nao-avaliada', motivo: 'sem foto ou sem assunto localizado' })
+  })
 })
 
 describe('calibração contra peças reais (11/09/2026)', () => {

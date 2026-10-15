@@ -162,6 +162,9 @@ export interface EntradaDaRevisao {
   /** Corpo e entrelinha de referência por id de camada da página revisada. */
   referencias: Record<string, ReferenciaDeCamada>
   assunto: { rect: Rect; origem: 'catalogo' | 'estimado' } | null
+  /** Sem assunto: o motivo, e se a regra `texto-sobre-assunto` é inaplicável (foto lida sem assunto) em vez de não medida. */
+  motivoSemAssunto?: string
+  assuntoNaoSeAplica?: true
   /**
    * A leitura de cada logo solta (CP3, 15/10/2026): a medida pixel a pixel contra o fundo efetivo sem ela
    * (`legibilidade-da-logo.ts`), ou o motivo de o ARQUIVO não ter carregado (`indisponivel`) — que é cobertura
@@ -1201,7 +1204,7 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
 
   // ── 11. Texto sobre o assunto ──────────────────────────────────────────
   if (!e.assunto) {
-    cobertura['texto-sobre-assunto'] = { estado: 'nao-avaliada', motivo: 'sem foto ou sem assunto localizado' }
+    cobertura['texto-sobre-assunto'] = { estado: 'nao-avaliada', motivo: e.motivoSemAssunto ?? 'sem foto ou sem assunto localizado', ...(e.assuntoNaoSeAplica ? { naoSeAplica: true as const } : {}) }
   } else {
     const assunto = e.assunto
     for (const b of blocos) {

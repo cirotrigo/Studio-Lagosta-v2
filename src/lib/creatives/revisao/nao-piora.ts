@@ -313,8 +313,8 @@ function compararGeometria(antes: MedidaComparavel, depois: MedidaComparavel, pe
 /**
  * As propriedades cujo lado não foi medido (cobertura `nao-avaliada`, régua sem medida, camada tocada sem métrica).
  * `naoAplicaveis`: a regra que não se aplica à peça de nenhum dos lados — hoje só `texto-sobre-assunto` numa peça
- * SEM foto de fundo (não há assunto a proteger; "não há" não é "não medimos"). Foto que existe e não baixou continua
- * "não medida" (fail-closed). Logo num arranjo ou fora do contrato também: o conserto é no editor (revisor D).
+ * SEM foto de fundo ou cuja foto foi lida e não tem assunto localizável (cobertura `naoSeAplica`, CP4.1): não há
+ * assunto a proteger, e "não há" não é "não medimos". Foto que existe e não baixou continua "não medida" (fail-closed). Logo num arranjo ou fora do contrato também: o conserto é no editor (revisor D).
  */
 function naoMedidas(antes: MedidaComparavel, depois: MedidaComparavel, alteradas: Set<string>): { naoMedidas: NaoMedida[]; naoAplicaveis: NaoMedida[] } {
   const saida: NaoMedida[] = []
@@ -326,8 +326,11 @@ function naoMedidas(antes: MedidaComparavel, depois: MedidaComparavel, alteradas
     const faltaD = !cd || cd.estado === 'nao-avaliada'
     if (!faltaA && !faltaD) continue
     const item: NaoMedida = { propriedade: regra, lado: faltaA && faltaD ? 'ambos' : faltaA ? 'antes' : 'depois', motivo: (faltaD ? cd?.motivo : ca?.motivo) ?? 'regra não avaliada' }
-    if (regra === 'texto-sobre-assunto' && faltaA && faltaD && !fotoDeFundo(antes.camadas, antes.canvas) && !fotoDeFundo(depois.camadas, depois.canvas)) {
-      naoAplicaveis.push({ ...item, motivo: 'a peça não tem foto de fundo: não há assunto a proteger' })
+    // Inaplicável dos DOIS lados: sem foto de fundo, ou a cobertura diz que a foto foi lida e não tem assunto
+    // (`naoSeAplica`, CP4.1). Foto que existe e cuja estimativa falhou não traz a marca: segue não medida.
+    const inaplicavel = (c: typeof ca, m: MedidaComparavel) => c?.naoSeAplica === true || !fotoDeFundo(m.camadas, m.canvas)
+    if (regra === 'texto-sobre-assunto' && faltaA && faltaD && inaplicavel(ca, antes) && inaplicavel(cd, depois)) {
+      naoAplicaveis.push({ ...item, motivo: cd?.naoSeAplica ? (cd.motivo ?? 'a regra não se aplica à peça') : 'a peça não tem foto de fundo: não há assunto a proteger' })
       continue
     }
     saida.push(item)
