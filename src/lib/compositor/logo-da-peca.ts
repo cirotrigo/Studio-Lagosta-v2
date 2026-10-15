@@ -232,7 +232,14 @@ export async function conferirLogoDaPeca(args: ArgsDaConferencia): Promise<Resul
   const avaliar = async (c: VarianteCarregada, canto: Canto, posicao: Rect, f: RasterRGB, livre = true): Promise<AvaliacaoDaLogo> => {
     if (!c.bytes || c.razao === null) return { variante: c.variante, canto, posicao, medida: null, estado: 'indisponivel', motivo: c.indisponivel }
     if (!livre) return { variante: c.variante, canto, posicao, medida: null, estado: 'fora-da-area', motivo: 'o canto encosta num texto ou sai da área válida' }
-    const medida = await medirLogoNoFundo({ bytes: c.bytes, rect: posicao, fundo: f, url: c.variante.url })
+    // Arquivo cuja cabeça decodifica e o corpo não (PNG/JPEG truncado) falha só aqui, no resize da grade: é
+    // `indisponivel` (transitório), nunca uma exceção que derrube a peça legada (revisor F, 15/10/2026).
+    let medida: MedidaDaLogo | null
+    try {
+      medida = await medirLogoNoFundo({ bytes: c.bytes, rect: posicao, fundo: f, url: c.variante.url })
+    } catch (erro) {
+      return { variante: c.variante, canto, posicao, medida: null, estado: 'indisponivel', motivo: `não decodificou (${erro instanceof Error ? erro.message : String(erro)})` }
+    }
     if (!medida) return { variante: c.variante, canto, posicao, medida: null, estado: 'sem-pixels', motivo: 'nenhum pixel visível da logo sobre o fundo' }
     return { variante: c.variante, canto, posicao, medida, estado: medida.legivel ? 'legivel' : 'ilegivel' }
   }
@@ -275,13 +282,18 @@ export async function conferirLogoDaPeca(args: ArgsDaConferencia): Promise<Resul
     }
   }
   const { escolha, indisponiveis } = escolherLogoLegivel(avaliacoes)
-  const resumoDaGrade = avaliacoes.map((a) => `${rotulo(a.variante)} no ${a.canto}: ${a.estado === 'indisponivel' ? `não carregou (${a.motivo})` : resumoDaMedida(a.medida)}`).join('; ')
+  // O que cada célula da grade diz: a medida — ou POR QUE não mediu (não carregou; o canto colide). Uma logo que
+  // leria mas encosta num texto nunca é rotulada "sem pixel visível" (revisor F, 15/10/2026).
+  const descricao = (a: AvaliacaoDaLogo) => (a.estado === 'indisponivel' ? `não carregou (${a.motivo})` : a.estado === 'fora-da-area' ? `não medida: ${a.motivo}` : resumoDaMedida(a.medida))
+  const resumoDaGrade = avaliacoes.map((a) => `${rotulo(a.variante)} no ${a.canto}: ${descricao(a)}`).join('; ')
 
   if (args.modo === 'legado') {
     const codigo: LegibilidadeDaLogo['codigo'] | undefined = escolha ? (escolha.canto !== args.cantoAtual && args.preferencia ? 'PREFERENCIA_INVIAVEL' : undefined) : indisponiveis.length === 0 ? LOGO_SEM_VARIANTE_LEGIVEL : undefined
     // Sem arquétipo NADA muda — nem os avisos (o baseline da base é idêntico): a explicação fica no diagnóstico.
     const mensagem =
-      `A logo (${rotulo(primeira)}) não lê no ${args.cantoAtual} pelo critério regional (${resumoDaMedida(atual.medida)}). ` +
+      (atual.estado === 'fora-da-area'
+        ? `A logo (${rotulo(primeira)}) não foi medida no ${args.cantoAtual}: ${atual.motivo}. `
+        : `A logo (${rotulo(primeira)}) não lê no ${args.cantoAtual} pelo critério regional (${descricao(atual)}). `) +
         (escolha
           ? `Leria ${rotulo(escolha.variante)} no ${escolha.canto} (${resumoDaMedida(escolha.medida)})${codigo === 'PREFERENCIA_INVIAVEL' ? ` — a preferência (${args.preferencia === 'pedido' ? 'canto pedido' : 'posição da página'}) impede: PREFERENCIA_INVIAVEL` : ''}.`
           : indisponiveis.length > 0

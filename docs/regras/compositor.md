@@ -1107,5 +1107,19 @@ prova que a logo lê. O CP3 prova mecanicamente, contra o fundo REAL.
     logos finas reduzidas); matiz não conta (vermelho sobre azul = 36, ilegível); a luz da logo (709 sobre
     sRGB) não é a escala da régua (b-w); o p10 é global (até 10% da logo pode sumir). Candidatas a
     recalibração do 45 (REA).
+  - **O que o legado ganhou de custo e de ruído (revisor F, 15/10/2026)** — sem mudar camada nem aviso
+    (os baselines cobrem camadas, avisos e chaves do diagnóstico; só `logo.legibilidade` fica fora da
+    projeção): (1) **um render completo extra por peça** (`fundoSemALogo`: 120–360 ms nos sintéticos,
+    estimado 0,5–1,5 s com foto real) — em `selecionar-combinacao.ts` é um por candidata (o
+    `cacheDeLogos` poupa o download, não o render); (2) **download de TODAS as variantes autorizadas**
+    por composição, pelo `fetchBuffer` SEM timeout — um Blob que pendura segura a composição até o teto
+    do cron (candidato a timeout); (3) a grade inteira (`avaliacoes`, até 9 células, mais `mensagem`)
+    persistida em `fieldValues.composicao.logo.legibilidade` de toda peça legada; (4) `compor-arte` e
+    `ver-geracao` mostram `codigo: LOGO_SEM_VARIANTE_LEGIVEL` numa peça legada que SAIU normalmente — é
+    SINALIZAÇÃO, não recusa (os testes D/E/F dos sintéticos dizem "sinaliza"). Medir uma leva real antes
+    de ligar o arquétipo em todos os clientes. Nos testes T1a/CP2B com `variantesClaraEEscura()`, a logo
+    cinza da página sintética não lê sobre a foto escura e é TROCADA pela clara do projeto em ~20 testes
+    (`escolha: 'variante-trocada'`): a geometria da logo ali passa pelo `caixaDaVariante` (bate porque as
+    duas logos têm a mesma razão 0,5); a reprodução da variante gravada só está provada em `cp3-logo` 14/14b.
 - Fora do CP3: gate autônomo (CP5), logo do arranjo (elementos), mais de uma logo por peça no
   compositor, piso de tamanho da marca, recalibração do 45 (REA).

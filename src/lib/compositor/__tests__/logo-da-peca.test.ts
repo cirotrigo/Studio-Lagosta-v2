@@ -159,4 +159,23 @@ describe('a gravada e a recusa', () => {
     const legado = await conferirLogoDaPeca(args({ layers, logo: layers[1], desenhada: pagina(url), variantes: [], modo: 'legado' }))
     expect(legado.legibilidade).toMatchObject({ estado: 'nao-medida', motivo: 'nenhuma variante autorizada cadastrada' })
   })
+
+  it('variante do projeto TRUNCADA (a cabeça decodifica, o corpo não): "indisponivel" na grade — o legado sai, o arquétipo recusa como transitório, nunca uma exceção solta (revisor F)', async () => {
+    const legivel = await logoCheia(240)
+    const inteira = Buffer.from((await logoCheia(20)).slice('data:image/png;base64,'.length), 'base64')
+    const truncada = dataUrl(inteira.subarray(0, Math.floor(inteira.length * 0.4)))
+    const layers = [fundo(await foto(() => 20)), camadaDaLogo(legivel, CANTO)]
+    const comum = { layers, logo: layers[1], desenhada: pagina(legivel), variantes: [pagina(legivel), projeto(truncada, 9)] }
+    const legado = await conferirLogoDaPeca(args({ ...comum, modo: 'legado' }))
+    // A desenhada lê: a truncada só aparece na grade como "não decodificou", sem derrubar a peça.
+    expect(legado.legibilidade.legivel).toBe(true)
+    // A desenhada que não lê e a única alternativa truncada: a grade diz "não decodificou" e o legado SAI (sem conclusão);
+    // o arquétipo recusa como INDISPONÍVEL (transitório), não como "sem variante".
+    const escura = await logoCheia(20)
+    const layersEscura = [fundo(await foto(() => 20)), camadaDaLogo(escura, CANTO)]
+    const semConclusao = await conferirLogoDaPeca(args({ layers: layersEscura, logo: layersEscura[1], desenhada: pagina(escura), variantes: [pagina(escura), projeto(truncada, 9)], modo: 'legado' }))
+    expect(semConclusao.legibilidade.avaliacoes.filter((a) => a.variante.url === truncada).map((a) => [a.estado, a.motivo?.startsWith('não decodificou')])).toContainEqual(['indisponivel', true])
+    expect(semConclusao.legibilidade.codigo).toBeUndefined()
+    await expect(conferirLogoDaPeca(args({ layers: layersEscura, logo: layersEscura[1], desenhada: pagina(escura), variantes: [pagina(escura), projeto(truncada, 9)] }))).rejects.toMatchObject({ code: 'LOGO_INDISPONIVEL' })
+  })
 })
