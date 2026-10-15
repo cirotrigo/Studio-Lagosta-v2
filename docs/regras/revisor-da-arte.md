@@ -813,3 +813,60 @@ está implementado:
   inválido sem `put`; formato antes da foto; caminho válido com a mesma escolha de layout, `put` único e URL final no
   halo; URL direta), `foto-do-drive-no-projeto.test.ts` (ler × persistir, autorização),
   `criar-arte-de-modelo-copy-crua.test.ts` (V17, porta preserva o erro).
+
+### CP5a — o veredito puro (`gate.ts`), 16/10/2026
+
+Contrato aprovado pelo owner: `docs/PLANO-2026-10-15-CP5A-CONTRATO.md` (PR #236, HEAD 08a44af5). Nada de produção chama o
+gate: `agendar-leva` continua criando DRAFT sem veredito (CP5c), `ajustar-arte` continua só com a não-piora (CP5d),
+nada é persistido (CP5b). O que existe:
+
+- **`src/lib/creatives/revisao/gate.ts`** (puro, sem banco nem render): `gateDaMedida({ medida, identidade, copy?,
+  politicaDoAssunto })` → `{ gate: GateDaArte, relatorio }`. A medida (`MedidaDaPeca`, o que `medirCamadasDaPeca` devolve)
+  é a FONTE ÚNICA — camadas, canvas e formato saem dela, e o relatório é calculado dentro por `avaliarPeca`. Saída
+  `APTO | REVISAO_HUMANA_NECESSARIA` com `cobertura` por regra crítica E por conferência (`copy-completa`,
+  `piso-de-interface`, `oclusao`, `identidade`), `motivos` em ordem determinística, `achados` (com `certeza`),
+  `naoMedidos` e `avisos`. **APTO ⇔ zero motivos**: as 11 críticas (`REGRAS_CRITICAS`, conjunto fechado por teste
+  contra `REGRAS_DA_REVISAO`) comprovadas ou inaplicáveis, copy `sem-mudanca` sem lacunas, `pageVersion` legível,
+  piso de interface satisfeito (só story) e nenhum cenário de oclusão.
+- **Decisões adotadas pelo owner (16/10)**: oclusão (B) conservadora; copy sem contrato exige humano; ausência de
+  logo solta gera aviso (comprovada); `texto-pequeno` é crítica; a tolerância texto × texto reutiliza EXATAMENTE a
+  de `colisao` (`toleranciaDeColisao`, extraída de `text-geometry.ts` sem mudar o número; `colisao` passa a chamá-la);
+  a política do assunto é parâmetro OBRIGATÓRIO (`POLITICA_DO_ASSUNTO_RECOMENDADA` = `estimado: 'humano'`, foto lida
+  sem assunto → `nao-se-aplica`, é proposta nomeada, sem padrão silencioso); versionamento fica no CP5b (o gate copia
+  `relatorio.versaoDasRegras`).
+- **Assunto da foto** (casos A–E + C'): catálogo comprova/reprova; estimado → humano (ou, com `'comprova'`, o achado
+  ESTIMADO reprova — a única exceção ao predicado `certeza === 'medida'`, declarada); foto LIDA sem assunto com
+  arquivo → não se aplica + aviso; camada de foto SEM `fileUrl` → não comprovada; falha ao analisar → não comprovada
+  sempre; sem foto → não se aplica sempre.
+- **Oclusão por detecção do cenário** (`cenariosNaoMedidos(medida, cobertura)`): toda camada visível com `order >=`
+  ao de um texto visível cujos limites intersectam os dele. **Só mede pela caixa o que a paridade com o render REAL
+  prova contido** (`gate.test.ts` G21c/G21e, GERADA de `CHAVES_CLASSIFICADAS`: toda folha aceita tem `valorDeProva`):
+  retângulos, formas centradas (`circle`/`triangle`/`star` em torno de `position`, como o Konva), imagem/logo/elemento,
+  gradientes e texto simples COM métrica; expansões por traço (`strokeWidth`/`border.width`; no texto `effects.stroke`
+  com fallback `style.border`), desfoque (`folgaDoBlur`), sombra (`effects.shadow` ou `style.shadow`); rotação pelos
+  quatro cantos em torno da ORIGEM `position` (o pivô do render, `render-engine.ts:199-205`) — nos dois lados do par
+  (`limitesDe` para a camada de cima, `limitesDoTexto` para o texto protegido: caixa ∪ glifos da métrica, que é medida
+  sem rotação). Tudo o mais acima de um texto é `transformacao-nao-suportada` → `NAO_MEDIDO`: `svg-path`, `icon`,
+  `line`/`arrow`, `video`, `style.filter`, `rich-text`, texto com `effects.background` ou `effects.curved`, texto sem
+  métrica, chave fora da árvore (fail-closed em execução; G23b lê as chaves declaradas em `template.ts` com chaves
+  balanceadas e exige classificação). Duas exceções com prova positiva: texto × texto (ambos simples, sem rotação,
+  com métrica, sem folha expansora, `colisao` avaliada, interseção de glifos DENTRO da tolerância de `colisao` —
+  política 9.7, não medição) e logo solta × texto (ambos sem rotação, sem filtro, sem folha expansora, texto com
+  métrica, `logo-sobre-texto` avaliada — a regra usa `tintaDoTexto` sem contorno/sombra/desfoque, por isso o texto
+  com efeito perde a exceção). A mancha de `effects.background` do texto PROTEGIDO fica fora dos limites (é mancha,
+  não glifo; a leitura já é medida pela régua com todas as camadas).
+- **Desvios do contrato, ditos** (ver também o relatório): (1) `FOLGA_DE_ANTIALIAS = 1` px somada a todo limite — o
+  render suaviza bordas 1 px além da geometria; sem a folga a paridade falha por 1 px (o contrato não a previa). (2)
+  Triângulo e estrela com traço: a junção em MITRA estende o traço até `miterLimit × lineWidth / 2` além do vértice
+  (padrão do canvas 10) — a expansão usa `5 × strokeWidth` para essas formas (G21c pegou a estrela: a ponta saía
+  19 px com traço 12; o contrato dizia `+ strokeWidth`). (3) `effects.curved` (texto curvo) classificado como não
+  suportado — o contrato não o listava (G23b o achou no tipo). (4) `foraDaInterface` (a função que o oráculo dos
+  testes do CP0 importa) usa a própria caixa como métrica sintética para texto sem métrica — SÓ para o oráculo; o
+  gate (`pisoDeInterface` dentro de `gateDaMedida`) exige a métrica real e deixa a camada não comprovada. (5) Um
+  texto com mancha ACIMA (por `order`) de outro texto é ocluidora não suportada mesmo sem interseção, porque a
+  classificação vem antes do teste de caixa (6.2 do contrato) — dito aqui porque bloqueia peças do compositor em que
+  o serviço com mancha fica acima da headline na ordem das camadas.
+- **Provas** (`gate.test.ts`, 45 testes): G1–G29 e subcasos; G21c (paridade do lado de cima, >100 renders reais) e
+  G21e (lado protegido, métrica real do medidor); oclusão EFETIVA comprovada pelo renderer (texto a 90° sob forma sem
+  rotação: os pixels do texto somem no render e o gate acusa; controle com a forma abaixo → comprovada); logo limpa
+  sobre a expansão do texto por contorno/sombra/desfoque/borda → oclusão, e o controle sem efeitos preserva a exceção.
