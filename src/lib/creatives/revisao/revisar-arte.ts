@@ -430,10 +430,12 @@ export async function medirCamadasDaPeca(
   // "Nunca lança": a conferência das fontes (importa o canvas) também é cercada — sem ela, nenhuma fonte é dita ausente
   // e a geometria fica como medida; o aviso vai ao log (revisor D).
   let fontesAusentes: MedidaDaPeca['fontesAusentes'] = []
+  let motivoSemFontes: string | undefined
   try {
     fontesAusentes = await fontesQueFaltam(camadas)
   } catch (erro) {
-    console.warn('[revisar-arte] a conferência das fontes falhou:', erro instanceof Error ? erro.message : erro)
+    motivoSemFontes = `a conferência das fontes falhou: ${(erro instanceof Error ? erro.message : String(erro)).slice(0, 160)}`
+    console.warn('[revisar-arte]', motivoSemFontes)
   }
 
   let contraste: ContrasteMedido[] | null = null
@@ -476,6 +478,7 @@ export async function medirCamadasDaPeca(
     leituraDaLogo,
     ...(motivoSemLeituraDaLogo ? { motivoSemLeituraDaLogo } : {}),
     fontesAusentes,
+    ...(motivoSemFontes ? { motivoSemFontes } : {}),
     medidasAproximadas,
     motivoSemMedida,
     textosSemMetrica,

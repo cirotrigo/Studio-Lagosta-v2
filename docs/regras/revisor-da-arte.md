@@ -632,6 +632,8 @@ global". Módulos em `src/lib/creatives/revisao/`:
     piloto as famílias da fixture são declaradas presentes para `fontesQueFaltam` (artefato do ambiente;
     o render segue com a fonte de reserva) — e com a geometria contando, o `mover headline+apoio −60`
     passou a ser recusado por invadir a margem do topo em 26 px: o "aceito" dos testes é −20.
+  - **Codex R2**: a conferência das fontes que falha (`fontesQueFaltam` lança) não vira "nenhuma fonte
+    falta": `motivoSemFontes` deixa `fonte-nao-carregada` não avaliada e o executor recusa como não medido.
   - Lote só de recusas estruturais não mede nada; `PAGINA_COM_VIDEO` antes de medir; fontes do projeto
     registradas uma vez por chamada; bytes da logo em cache por chamada (um download, falha
     determinística no lote); `fontesQueFaltam` cercada; o índice da marca `ocultaPeloRevisor.ajuste` é

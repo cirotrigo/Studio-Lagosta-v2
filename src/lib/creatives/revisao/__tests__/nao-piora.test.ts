@@ -212,6 +212,11 @@ describe('não piorar — propriedade a propriedade, sem pontuação global', ()
     expect(compararNaoPiora(antes, depois, { alteradas: ['headline'] }).veredito).toBe('aceito')
   })
 
+  it('Codex R2 — a conferência das fontes que falhou chega como `fonte-nao-carregada` não avaliada e recusa como NÃO MEDIDO', () => {
+    const semFontes = { 'fonte-nao-carregada': { estado: 'nao-avaliada' as const, motivo: 'a conferência das fontes falhou: canvas' } }
+    expect(compararNaoPiora(medida(), medida({ relatorio: relatorio([], semFontes) }))).toMatchObject({ veredito: AJUSTE_NAO_MEDIDO, naoMedidas: [expect.objectContaining({ propriedade: 'fonte-nao-carregada', lado: 'depois' })] })
+  })
+
   it('revisores C/E — regra INAPLICÁVEL não bloqueia: `texto-sobre-assunto` não avaliada dos dois lados numa peça SEM foto de fundo é dita em `naoAplicaveis`; com foto que não baixou, segue não medida', () => {
     const semAssunto = { 'texto-sobre-assunto': { estado: 'nao-avaliada' as const, motivo: 'sem foto ou sem assunto localizado' } }
     const r = compararNaoPiora(medida({ relatorio: relatorio([], semAssunto) }), medida({ relatorio: relatorio([], semAssunto) }))

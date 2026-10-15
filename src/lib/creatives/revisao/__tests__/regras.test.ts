@@ -547,6 +547,11 @@ describe('o que a visão viu', () => {
     expect(r.resumo).not.toMatch(/nada a corrigir/i)
   })
 
+  it('a conferência das fontes que NÃO rodou é cobertura "não avaliada" em `fonte-nao-carregada`, nunca "nenhuma fonte falta" (Codex R2 do CP4)', () => {
+    const r = avaliarPeca(entrada({ camadas: [titulo], motivoSemFontes: 'a conferência das fontes falhou: canvas' }))
+    expect(r.cobertura['fonte-nao-carregada']).toEqual({ estado: 'nao-avaliada', motivo: 'a conferência das fontes falhou: canvas' })
+  })
+
   it('sem visão, a cobertura diz que ela não rodou', () => {
     const r = avaliarPeca(entrada({ camadas: [titulo], metricas: [metrica(titulo)], motivoSemVisao: 'visão desligada' }))
     expect(r.cobertura.visao).toEqual({ estado: 'nao-avaliada', motivo: 'visão desligada' })

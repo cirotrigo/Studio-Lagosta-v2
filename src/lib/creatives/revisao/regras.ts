@@ -169,6 +169,8 @@ export interface EntradaDaRevisao {
   leituraDaLogo?: LeituraDaLogoNaRevisao[] | null
   motivoSemLeituraDaLogo?: string
   fontesAusentes: Array<{ familia: string; peso: number | null; camadas: string[] }>
+  /** A conferência das fontes NÃO rodou (o registro de fontes falhou): `fonte-nao-carregada` sai "não avaliada", nunca "nenhuma falta". */
+  motivoSemFontes?: string
   /** Camadas medidas por aproximação (rich text). */
   medidasAproximadas: string[]
   /**
@@ -1527,6 +1529,9 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
   }
 
   for (const regra of REGRAS_DA_REVISAO) if (!cobertura[regra]) cobertura[regra] = { estado: 'avaliada' }
+  // A conferência das fontes que falhou não é "nenhuma fonte falta" (Codex R2 do CP4): a regra fica não avaliada, com
+  // o motivo — e o executor da não-piora recusa como NÃO MEDIDO.
+  if (e.motivoSemFontes) cobertura['fonte-nao-carregada'] = { estado: 'nao-avaliada', motivo: e.motivoSemFontes }
   if (e.motivoSemMedida) {
     // Sem métricas só valem as regras que não medem texto: fonte ausente (do
     // registro), a régua (do render) e a visão.
