@@ -40,6 +40,8 @@ export interface ArgsDoAjusteSemPiorar {
   camadas: Layer[]
   ajustes: Ajuste[]
   medir: MeasureLayerHeight
+  /** O conteúdo dos textos como a página os tinha ANTES desta chamada (id → content): ver `aplicarAjustes`. */
+  conteudoAnterior?: ReadonlyMap<string, string>
   /** Injeção para testes: a medição de um estado. */
   _medir?: (camadas: Layer[], ctx: ContextoDaMedicao) => Promise<MedidaComparavel>
 }
@@ -92,7 +94,7 @@ export async function aplicarAjustesSemPiorar(args: ArgsDoAjusteSemPiorar): Prom
   //    medida — e um lote só de recusas estruturais não mede nada (revisor A).
   const estruturais = new Map<number, AjusteRecusado>()
   for (const [indice, ajuste] of args.ajustes.entries()) {
-    const um = aplicarAjustes(estado, [ajuste], { canvas, medir: args.medir, indiceBase: indice })
+    const um = aplicarAjustes(estado, [ajuste], { canvas, medir: args.medir, indiceBase: indice, conteudoAnterior: args.conteudoAnterior })
     if (um.recusados.length > 0) estruturais.set(indice, um.recusados[0])
   }
   if (estruturais.size === args.ajustes.length) return { camadas: estado, aplicados, recusados: [...estruturais.values()], alteradas: [] }
@@ -110,7 +112,7 @@ export async function aplicarAjustesSemPiorar(args: ArgsDoAjusteSemPiorar): Prom
     }
     // 1. O ajuste SOZINHO, numa CÓPIA do estado (nenhuma camada compartilhada por referência — o contrato do owner;
     //    o puro pode recusar aqui o que só é inválido agora).
-    const um = aplicarAjustes(structuredClone(estado), [ajuste], { canvas, medir: args.medir, indiceBase: indice })
+    const um = aplicarAjustes(structuredClone(estado), [ajuste], { canvas, medir: args.medir, indiceBase: indice, conteudoAnterior: args.conteudoAnterior })
     if (um.recusados.length > 0) {
       recusados.push(um.recusados[0])
       continue

@@ -340,7 +340,7 @@ describe('CP4 — medir antes, aplicar em memória, medir depois; UMA escrita no
   // ESTRUTURAL (antes de qualquer medida), com ou sem `achado`, o ajuste inteiro.
   it('ESCONDER o serviço (texto com conteúdo), SEM achado → CONTEUDO_NAO_PODE_SER_OCULTADO, estrutural, nenhuma medida, nada gravado', async () => {
     await expect(ajustar([{ tipo: 'visibilidade', camadas: ['servico'], visivel: false }] as unknown as Ajuste[])).rejects.toMatchObject({
-      code: 'AJUSTE_SEM_EFEITO',
+      code: 'CONTEUDO_NAO_PODE_SER_OCULTADO',
       details: { ajusteGravado: false, recusados: [expect.objectContaining({ indice: 0, codigo: 'CONTEUDO_NAO_PODE_SER_OCULTADO', motivo: expect.stringMatching(/servico .*Praia do Canto/) })] },
     })
     expect(medidas.chamadas).toEqual([])
@@ -365,6 +365,14 @@ describe('CP4 — medir antes, aplicar em memória, medir depois; UMA escrita no
     expect(camada(persistidas, 'gradiente-leitura-rodape').visible).not.toBe(false)
     expect(camada(persistidas, 'servico').visible).not.toBe(false)
     expect(banco.escritas).toBe(1)
+  }, 180_000)
+
+  it('BYPASS em dois passos fechado: esvaziar o serviço pelo `slotValues` E escondê-lo por `visibilidade` na MESMA chamada é recusado pelo conteúdo que a página tinha', async () => {
+    await expect(
+      ajustarArte({ projectId: projectId(), pageId: PAGINA, versaoEsperada: versaoDaPagina(banco.pagina)!, slotValues: { servico: '' }, ajustes: [{ tipo: 'visibilidade', camadas: ['servico'], visivel: false }] as unknown as Ajuste[] }),
+    ).resolves.toMatchObject({ resultadoDosAjustes: 'parcial', ajustesAplicados: [], ajustesRecusados: [expect.objectContaining({ codigo: 'CONTEUDO_NAO_PODE_SER_OCULTADO', motivo: expect.stringMatching(/Praia do Canto/) })] })
+    // O texto vazio pelo slot ENTROU (gesto humano pelo chat, fora da decisão do ajuste); escondido, não.
+    expect(camada(banco.pagina.layers as Layer[], 'servico').visible).not.toBe(false)
   }, 180_000)
 
   it('MOSTRAR texto (`visivel: true`) continua possível, sujeito à não-piora; esconder um texto VAZIO segue o contrato de sempre', async () => {

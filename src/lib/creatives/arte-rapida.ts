@@ -1286,6 +1286,8 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
           camadas: fixDaBase.layers as Layer[],
           ajustes,
           medir: measure,
+          // O conteúdo como a PÁGINA o tinha: esvaziar pelo slot e esconder por ajuste na mesma chamada é apagar copy.
+          conteudoAnterior: new Map((sourceLayers as Layer[]).filter((l) => l.type === 'text' || l.type === 'rich-text').map((l) => [l.id, String(l.content ?? '')])),
         })
       : null
   if (revisao && revisao.aplicados.length === 0 && Object.keys(slotValues).length === 0 && !resolved.url && !input.name) {
@@ -1298,7 +1300,9 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
         ? 'AJUSTE_NAO_MELHOROU_O_ACHADO'
         : codigos.has('AJUSTE_NAO_MEDIDO')
           ? 'AJUSTE_NAO_MEDIDO'
-          : 'AJUSTE_SEM_EFEITO'
+          : codigos.has('CONTEUDO_NAO_PODE_SER_OCULTADO')
+            ? 'CONTEUDO_NAO_PODE_SER_OCULTADO'
+            : 'AJUSTE_SEM_EFEITO'
     const resumo =
       codigo === 'AJUSTE_PIOROU_ARTE'
         ? 'Nenhum ajuste foi gravado: a peça ficaria pior'
@@ -1306,7 +1310,9 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
           ? 'Nenhum ajuste foi gravado: nenhum resolveu o achado que declarou corrigir'
           : codigo === 'AJUSTE_NAO_MEDIDO'
             ? 'Nenhum ajuste foi gravado: não foi possível medir que a peça não ficaria pior (falha de medição, não da peça — veja o motivo e repita depois, ou peça revisão humana)'
-            : 'Nenhum ajuste pôde ser aplicado'
+            : codigo === 'CONTEUDO_NAO_PODE_SER_OCULTADO'
+              ? 'Nenhum ajuste foi gravado: esconder texto com conteúdo é apagar copy, e ajustar-arte não apaga copy (deixe o achado aberto para revisão humana ou proponha outra composição)'
+              : 'Nenhum ajuste pôde ser aplicado'
     throw new CreativeError(codigo, `${resumo} — ${revisao.recusados.map((r) => `ajuste ${r.indice}: ${r.motivo}`).join('; ')}.`, 422, { recusados: revisao.recusados, ajusteGravado: false })
   }
 

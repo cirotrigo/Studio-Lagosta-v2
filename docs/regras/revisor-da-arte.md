@@ -211,6 +211,10 @@ Codex antes de ser escrito.
   ocorrência não explicada; a chain passou a NÃO disparar a revisão quando a
   prova tem falha.
 
+- 🔴 **Desde 15/10/2026 o revisor NÃO esconde texto com conteúdo** (decisão do owner no CP4,
+  `CONTEUDO_NAO_PODE_SER_OCULTADO`): os itens abaixo sobre "esconder pelo revisor" valem só para texto VAZIO e
+  camadas decorativas; as provas 9a/9e/9i(a) de `scripts/validar-revisor-da-arte.ts` escondem texto com
+  conteúdo e precisam ser redesenhadas. `hidden: true` pelo `slotValues` continua sendo gesto HUMANO pelo chat.
 - 🔴 **Esconder por ajuste do revisor NÃO é a pessoa apagando o texto** (REV-9E-01
   da revisão FINAL do Codex, 12/09/2026). O ajuste `visibilidade` grava na
   camada `metadata.revisao.ocultaPeloRevisor` (com a página, no mesmo write —
@@ -615,6 +619,12 @@ global". Módulos em `src/lib/creatives/revisao/`:
     INTEIRO é recusado (nada parcial). A mensagem diz quais camadas têm conteúdo. `visibilidade: true`,
     texto vazio e camada decorativa seguem o contrato de sempre (gate de não-piora); a logo escondida
     continua piora. Um `achado` sem solução mecânica fica ABERTO (revisão humana / outra composição).
+    A recusa olha também o conteúdo que a PÁGINA tinha antes da chamada (`conteudoAnterior`): esvaziar pelo
+    `slotValues` e esconder por `visibilidade` na mesma chamada é apagar copy em dois passos — recusado. Quando
+    só há essa recusa, o código da CHAMADA é `CONTEUDO_NAO_PODE_SER_OCULTADO`. **Fora desta decisão (pendente
+    do owner)**: `slotValues` com `''` ou `hidden: true` esvazia/esconde texto pelo caminho HUMANO do chat (gesto
+    documentado, REV-8AD-02) e `hidden` não aparece em `camposAlterados`; `fonte` até 8 px (`escala 0.5`) passa o
+    gate porque `texto-pequeno` não é propriedade comparada.
   - **Camada sem métrica** (fonte não cadastrada, curvo/fitty/auto-resize, rich text, logo não medida):
     mexer nela é `AJUSTE_NAO_MEDIDO`; mexer noutra continua medido pelo que a cobertura `parcial` cobriu.
   - **Regra inaplicável não bloqueia**: `texto-sobre-assunto` `nao-avaliada` dos dois lados numa peça

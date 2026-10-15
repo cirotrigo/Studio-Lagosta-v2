@@ -1207,6 +1207,10 @@ async function main() {
     const removidosDe = (diff: unknown) => (Array.isArray((diff as Record<string, any> | null)?.removidos) ? ((diff as Record<string, any>).removidos as Array<{ texto?: string }>).map((r) => r.texto ?? '') : [])
     conferir('a leva e a dica existem, com os textos EXATOS da página, ainda pendente', (await lerDica9())?.desfecho == null, `sinal ${sinal9}`)
 
+    // 🔴 DESDE 15/10/2026 (decisão do owner, CP4): `visibilidade:false` em texto COM conteúdo é recusado
+    // (`CONTEUDO_NAO_PODE_SER_OCULTADO`) — as provas 9a, 9e e 9i(a) escondem texto com conteúdo pelo revisor e passam a
+    // LANÇAR. Elas precisam ser redesenhadas (esconder só texto vazio/decorativo, ou provar a recusa). Registrado em
+    // docs/regras/revisor-da-arte.md § "Ajustar sem piorar (CP4)".
     // 9a. o revisor esconde o CTA por ajuste mecânico (render OK)
     const r9a = await revisarArte({ projectId: PROJETO, pageId, visao: false, previa: false })
     const a9a = await ajustarArte({ projectId: PROJETO, pageId, versaoEsperada: r9a.versao, ajustes: [{ tipo: 'visibilidade', camadas: [String(ctaDo9.id)], visivel: false }], canal: 'claude-code' })

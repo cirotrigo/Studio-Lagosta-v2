@@ -309,7 +309,16 @@ function inserirAcimaDoFundo(camadas: Layer[], nova: Layer, canvas: Canvas): Lay
 export function aplicarAjustes(
   entrada: Layer[],
   ajustes: Ajuste[],
-  ctx: { canvas: Canvas; medir: MeasureLayerHeight; indiceBase?: number },
+  ctx: {
+    canvas: Canvas
+    medir: MeasureLayerHeight
+    indiceBase?: number
+    /**
+     * O conteúdo de cada texto como a PÁGINA o tinha antes desta chamada (id → content). Esvaziar o texto pelo
+     * `slotValues` e escondê-lo por `visibilidade` na MESMA chamada é apagar copy em dois passos: a recusa olha os dois.
+     */
+    conteudoAnterior?: ReadonlyMap<string, string>
+  },
 ): ResultadoDosAjustes {
   let camadas = entrada
   const aplicados: AjusteAplicado[] = []
@@ -527,12 +536,15 @@ export function aplicarAjustes(
         // ou sem `achado`, mesmo que esconder "resolvesse" colisão ou contraste; se UMA das camadas é texto com
         // conteúdo, o ajuste INTEIRO é recusado. Texto vazio e camada decorativa seguem o contrato de sempre.
         if (a.visivel === false) {
-          const comConteudo = ids.filter((id) => {
+          const conteudoDe = (id: string) => {
             const l = porId.get(id)
-            return !!l && (l.type === 'text' || l.type === 'rich-text') && String(l.content ?? '').trim().length > 0
-          })
+            if (!l || (l.type !== 'text' && l.type !== 'rich-text')) return ''
+            const agora = String(l.content ?? '').trim()
+            return agora || String(ctx.conteudoAnterior?.get(id) ?? '').trim()
+          }
+          const comConteudo = ids.filter((id) => conteudoDe(id).length > 0)
           if (comConteudo.length > 0) {
-            recusar('CONTEUDO_NAO_PODE_SER_OCULTADO', `esconder texto com conteúdo é apagar copy, não corrigir a arte: ${comConteudo.map((id) => `${id} ("${String(porId.get(id)!.content).trim().slice(0, 40)}")`).join(', ')}. Deixe o achado aberto para revisão humana ou outra composição; nada deste ajuste foi aplicado.`, ['visivel', 'camadas'])
+            recusar('CONTEUDO_NAO_PODE_SER_OCULTADO', `esconder texto com conteúdo é apagar copy, não corrigir a arte: ${comConteudo.map((id) => `${id} ("${conteudoDe(id).slice(0, 40)}")`).join(', ')}. Deixe o achado aberto para revisão humana ou outra composição; nada deste ajuste foi aplicado.`, ['visivel', 'camadas'])
             return
           }
         }
