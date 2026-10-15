@@ -1,6 +1,10 @@
 # CP5a — contrato técnico do VEREDITO PURO (proposta para revisão, 15/10/2026, noite)
 
 **Estado: PROPOSTA PARA REVISÃO. Nada implementado.** Base: `main` `01f3c3be` (merge do CP4.2, PR #235).
+Rodada 1 do Codex (NÃO APTO: 5 IMPORTANTE, 1 MENOR) aplicada: fonte única das camadas (o gate calcula o
+relatório), exceção de logo só para o par examinado, foto sem arquivo não é "sem assunto", exceção do
+achado estimado declarada no predicado, sem opção de ignorar oclusão, exceção de gradiente pelo predicado
+existente, política do assunto como parâmetro OBRIGATÓRIO (a recomendação não vira padrão sem decisão).
 Este documento reconcilia três fontes — o plano-mestre
 (`docs/PLANO-2026-10-15-AUTONOMIA-DIRECAO-DE-ARTE-E-MCP.md`, § 2 e § 4.1–4.3), o documento antigo do
 CP5 (`docs/research/CP5-GATE-AUTONOMIA-2026-10.md`, §§ 5, 11, 12, 15) e o código da `main` de hoje — e
@@ -19,7 +23,7 @@ do owner, com recomendação e sem assumir aprovação.
 | Tema | Doc antigo do CP5 (53eda0c9) | Plano-mestre (b86cf5a8) | Código da main 01f3c3be | O que VALE neste contrato |
 |---|---|---|---|---|
 | Nome da função | `vereditoDaMedida(medida, relatorio, identidade)` em `veredito.ts` | nome livre; chave persistida NÃO pode ser `veredito` | `REVISAO_HUMANA_NECESSARIA` existe só como texto (`operacao-dot.ts`, manual) e no oráculo dos testes | função `gateDaMedida` em `src/lib/creatives/revisao/gate.ts`; tipo `GateDaArte`. "gate" é o vocabulário do plano-mestre e não colide com `VereditoDeArte` (feedback humano) nem com o crivo |
-| Entrada | medida inteira + relatório + identidade | idem | `MedidaDaPeca` (`revisar-arte.ts`, `Omit<EntradaDaRevisao, 'vistos'\|'motivoSemVisao'\|'marcas'>`), `avaliarPeca(medida)` → `RelatorioDaRevisao`; identidade = `versaoDaPagina` (sem áudio) + hash do `copyAutoral` (só em testes) | seção 2: medida + relatório + camadas + identidade + opções. **O relatório não basta**: só a medida traz `assunto.origem`, `contraste`, `pioras`, `leituraDaLogo`, `motivoSemMedida`, `textosSemMetrica` |
+| Entrada | medida inteira + relatório + identidade | idem | `MedidaDaPeca` (`revisar-arte.ts`, `Omit<EntradaDaRevisao, 'vistos'\|'motivoSemVisao'\|'marcas'>`) já traz `camadas`, `canvas` e `formato`; `avaliarPeca(medida)` (`regras.ts`, pura e síncrona) → `RelatorioDaRevisao`; identidade = `versaoDaPagina` (sem áudio) + hash do `copyAutoral` (só em testes) | seção 2: **a medida é a fonte única** — o gate chama `avaliarPeca(medida)` ele mesmo e devolve o relatório junto (Codex R1: relatório e camadas recebidos à parte permitiam provar uma peça com o relatório de outra). **O relatório não basta**: só a medida traz `assunto.origem`, `contraste`, `pioras`, `leituraDaLogo`, `motivoSemMedida`, `textosSemMetrica` |
 | `texto-sobre-assunto` | comprova SÓ com catálogo; sem assunto → humano | o doc não conhecia `naoSeAplica` (CP4.1); política por caso A–E é a decisão 1 | `CoberturaDaRegra.naoSeAplica` existe (`contrato.ts:87`); `assunto.origem: 'catalogo' \| 'estimado'`; tetos 0,25 (catálogo) e 0,40 (estimado) em `mapa-de-calma.ts:175-177`; **o assunto sai das camadas efetivas** (CP4.2, revisão do owner) | seção 5: política por caso, parametrizada (`politicaDoAssunto`), com a recomendação; o CP5a implementa os cinco casos e testa cada um |
 | Oclusão | não tratada | lacuna crítica; (B) detecção do cenário no CP5a, (A) medição no CP5b; decisão 2 | `regras.ts` não lê `Layer.order`; mede só `text`/`rich-text` visíveis, a foto de fundo (`fotoDeFundo`) e as logos soltas (`logosDaPeca`); `shape`/`icon`/`element`/`video`/`gradient2`/imagem que não é fundo são invisíveis; a régua (`regua.ts:342`, `semTinta`) renderiza as camadas ACIMA do texto como fundo | seção 6: (B) como função pura `cenariosNaoMedidos(camadas, canvas)` no CP5a — toda camada não-texto visível com `order` maior que o de um texto visível cuja caixa intersecta a dele → `REVISAO_HUMANA_NECESSARIA`; gradientes de leitura e a foto de fundo são exceções enumeradas |
 | Piso de interface 188/224 | lacuna; `foraDaInterface` do oráculo vira produção no CP5c2 | "no CP5a `foraDaInterface` vira função de produção ou regra do revisor" | só em `direcao-de-arte/__tests__/suporte/propriedades.ts:35,349` (`PISO_DE_INTERFACE_DO_STORY`, `foraDaInterface`) | seção 4.3: vira função de produção em `gate.ts` (`foraDaInterface`), conferida pelo gate sobre as CAIXAS (texto e logo visíveis), só para `formato === 'story'`; o oráculo dos testes passa a importar a de produção (um só lugar com os números) |
@@ -48,14 +52,12 @@ Importa só tipos e funções puras já existentes (`contrato.ts`, `regras.ts` p
 
 ```ts
 export interface EntradaDoGate {
-  /** A medida completa (o que `medirCamadasDaPeca` devolve): SEM visão. */
+  /**
+   * A medida completa (o que `medirCamadasDaPeca` devolve): SEM visão. É a FONTE ÚNICA: as camadas, o canvas e o
+   * formato saem dela (`medida.camadas`, `medida.canvas`, `medida.formato`), e o relatório é calculado DENTRO do gate
+   * por `avaliarPeca(medida)` (pura) — não há como provar uma peça com o relatório de outra (Codex R1).
+   */
   medida: MedidaDaPeca
-  /** `avaliarPeca(medida)` — calculado por quem chama (o gate não recalcula, para a prova citar o mesmo relatório). */
-  relatorio: RelatorioDaRevisao
-  /** As camadas MEDIDAS (as mesmas de `medida.camadas`), para a oclusão (seção 6) e o piso de interface (4.3). */
-  camadas: Layer[]
-  canvas: { width: number; height: number }
-  formato: 'story' | 'feed' | 'quadrado' | null
   /** Identidade da página medida — copiada para a saída; o gate não a valida (CP5c compara sob trava). */
   identidade: { pageVersion: string | null; copyVersion: string }
   /**
@@ -64,12 +66,16 @@ export interface EntradaDoGate {
    * `undefined` = quem chama não conferiu → a regra `copy-completa` sai NÃO COMPROVADA (fail-closed), nunca omitida.
    */
   copy?: { estado: RevisaoDaPagina['estado']; lacunas: string[] }
-  /** Política do assunto (seção 5) e da oclusão (seção 6). Sem opções = a política RECOMENDADA. */
-  opcoes?: {
-    politicaDoAssunto?: PoliticaDoAssunto
-    oclusao?: 'detectar' | 'ignorar'
-  }
+  /**
+   * Política do assunto (seção 5) — OBRIGATÓRIA, sem padrão: a recomendação deste contrato é uma proposta
+   * (`POLITICA_DO_ASSUNTO_RECOMENDADA` exportada com esse nome), e quem chama (CP5c) passa a política DECIDIDA pelo
+   * owner. Não existe opção para ignorar a oclusão (seção 6): os testes isolam regras com fixtures sem camada acima.
+   */
+  politicaDoAssunto: PoliticaDoAssunto
 }
+
+/** O gate devolve o relatório que ele mesmo calculou, para o CP5c anexá-lo à resposta sem recalcular. */
+export function gateDaMedida(entrada: EntradaDoGate): { gate: GateDaArte; relatorio: RelatorioDaRevisao }
 ```
 
 Notas:
@@ -126,8 +132,8 @@ Invariantes da saída (todas com teste):
    `naoMedidos` vazio, `achados` vazio.
 2. A ordem de `motivos` é determinística (pela ordem de `REGRAS_CRITICAS`, depois oclusão, copy, piso,
    identidade) — mesma entrada, mesma saída, byte a byte (`JSON.stringify` igual).
-3. A saída não contém o relatório nem a medida (sem duplicar o que já existe; o CP5c anexa o relatório
-   na resposta ao agente, como o doc antigo § 13 descreve).
+3. `GateDaArte` não contém o relatório nem a medida (sem duplicar o que já existe); o relatório vem AO LADO,
+   no retorno de `gateDaMedida`, e é o único que o CP5c anexa à resposta ao agente (doc antigo § 13).
 4. `avisos` nunca muda `resultado`.
 
 ---
@@ -169,11 +175,17 @@ medido reprova (predicado 4.1). Apoio/serviço abaixo do piso já eram achados `
 ### 4.1 Achado crítico — predicado executável
 
 ```
-achadoCritico(a) = REGRAS_CRITICAS.includes(a.regra) && a.certeza === 'medida'
+achadoCritico(a, politica) =
+  REGRAS_CRITICAS.includes(a.regra) &&
+  (a.certeza === 'medida' ||
+    // A ÚNICA exceção, declarada aqui e na tabela da seção 5: o achado ESTIMADO de `texto-sobre-assunto` reprova
+    // quando (e só quando) o owner decidiu `estimado: 'comprova'` — se o estimado serve para aprovar, serve
+    // para reprovar. Com `estimado: 'humano'` (recomendado) a exceção está dormente.
+    (a.regra === 'texto-sobre-assunto' && a.certeza === 'estimada' && politica.estimado === 'comprova'))
 ```
 
-Qualquer severidade. `certeza: 'estimada'` em regra crítica NÃO reprova por si: torna a regra
-**não comprovada** (motivo "achado só estimado em <regra>: <id>") — o humano decide. `certeza: 'visao'`
+Qualquer severidade. Fora dessa exceção, `certeza: 'estimada'` em regra crítica NÃO reprova por si: torna a
+regra **não comprovada** (motivo "achado só estimado em <regra>: <id>") — o humano decide. `certeza: 'visao'`
 é ignorado. (Hoje só `texto-sobre-assunto` com assunto estimado e rich text produzem `estimada`.)
 
 ### 4.2 Por regra crítica, lido da MEDIDA (não só do relatório)
@@ -246,20 +258,22 @@ export type PoliticaDoAssunto = {
   /** Caso C: foto lida sem assunto localizável (`naoSeAplica`) não bloqueia, ou manda ao humano. */
   semAssuntoLocalizavel: 'nao-se-aplica' | 'humano'
 }
+/** PROPOSTA (seção 9.1): não é padrão de nada — `gateDaMedida` exige a política explicitamente. */
 export const POLITICA_DO_ASSUNTO_RECOMENDADA: PoliticaDoAssunto = { estimado: 'humano', semAssuntoLocalizavel: 'nao-se-aplica' }
 ```
 
 | Caso | Medida | Veredito da regra | Observação |
 |---|---|---|---|
 | A. catálogo | `assunto.origem === 'catalogo'` | sem achado → **comprovada**; achado (`certeza: 'medida'`, cobertura > 0,25) → **reprovada** | o caso mais seguro; raro até o acervo ter caixas de assunto |
-| B. estimado | `assunto.origem === 'estimado'` | `estimado: 'humano'` (recomendado): **não comprovada** sempre — motivo "assunto só estimado pela textura"; com achado estimado o motivo cita o achado. `estimado: 'comprova'`: sem achado → comprovada; achado (> 0,40) → reprovada | a promoção para `'comprova'` depende do piloto sintético (concordância estimado × catálogo); decisão 9.1 |
-| C. foto lida, sem assunto | `assunto === null` e `assuntoNaoSeAplica === true` e `fotoDeFundo(camadas)` existe | `semAssuntoLocalizavel: 'nao-se-aplica'` (recomendado): **não se aplica** (não bloqueia; aviso "foto sem assunto localizável"). `'humano'`: não comprovada | ganho de autonomia em fundos lisos; risco: assunto real de baixo contraste |
+| B. estimado | `assunto.origem === 'estimado'` | `estimado: 'humano'` (recomendado): **não comprovada** sempre — motivo "assunto só estimado pela textura"; com achado estimado o motivo cita o achado. `estimado: 'comprova'`: sem achado → comprovada; achado estimado (> 0,40) → **reprovada**, pela exceção declarada no predicado 4.1 (`cobertura.texto-sobre-assunto = reprovada` com o id do achado) | a promoção para `'comprova'` depende do piloto sintético (concordância estimado × catálogo); decisão 9.1 |
+| C. foto LIDA, sem assunto | `assunto === null`, `assuntoNaoSeAplica === true` e `fotoDeFundo(medida.camadas, canvas)` existe **com `fileUrl` não vazio** | `semAssuntoLocalizavel: 'nao-se-aplica'` (recomendado): **não se aplica** (não bloqueia; aviso "foto sem assunto localizável"). `'humano'`: não comprovada | ganho de autonomia em fundos lisos; risco: assunto real de baixo contraste |
+| C'. foto de fundo SEM arquivo | `fotoDeFundo` devolve uma camada visível sem `fileUrl` (ela não exige arquivo, `regras.ts:436-441`) e `assuntoDaPeca` marca `naoSeAplica` com o motivo "não tem foto de fundo" (`revisar-arte.ts:255-256`) | **não comprovada** (fail-closed): nada foi lido; motivo "foto de fundo sem arquivo" | Codex R1: pela tabela anterior caía em C. O gate decide pelo `fileUrl` da camada, não pelo texto do motivo; o motivo do código continua enganoso e NÃO é alterado no CP5a (fica anotado para o CP5b) |
 | D. falha ao analisar | `assunto === null`, `motivoSemAssunto` presente, SEM `assuntoNaoSeAplica` | **não comprovada** (fail-closed), motivo = `motivoSemAssunto` | nunca configurável |
 | E. sem foto de fundo | `fotoDeFundo(camadas, canvas) === null` (a cobertura vem `naoSeAplica` com "a peça não tem foto de fundo") | **não se aplica** | sempre, independe da política |
 
 O gate NÃO recalcula sobreposição: confia no achado do revisor (que já aplica os tetos) e na origem da
-medida. Um teste fixa que o caso C exige `fotoDeFundo` presente — `naoSeAplica` sem foto é E, com foto é C;
-e que D nunca vira C por nenhuma opção.
+medida. Testes fixam que o caso C exige foto de fundo COM arquivo — `naoSeAplica` sem camada de foto é E, com
+camada sem arquivo é C' (humano), com arquivo é C; e que D e C' nunca viram C ou E por nenhuma política.
 
 ---
 
@@ -278,15 +292,19 @@ sem rotação) intersecta a de `t` em área > 0, e que NÃO seja:
 - a foto de fundo (`fotoDeFundo(camadas, canvas)`) — ela está abaixo por construção e, se tiver `order`
   maior que um texto, É oclusão (não é exceção: só a instância devolvida por `fotoDeFundo` com `order`
   menor que o do texto fica de fora — na prática a regra geral já cobre);
-- um gradiente de leitura (`type === 'gradient'` com `metadata.tratamentoDeTexto === 'gradiente-de-leitura'`,
-  o mesmo predicado da régua); outros `gradient`/`gradient2` acima de texto CONTAM;
+- um gradiente de leitura pelo predicado que JÁ existe, `ehGradienteDeLeitura(l)`
+  (`compositor/gradiente-de-leitura.ts:217`: `metadata.tratamentoDeTexto` ∈ `TRATAMENTOS_DE_GRADIENTE`, sem
+  olhar o `type` — um `gradient2` marcado é tratamento e fica de fora; qualquer `gradient`/`gradient2` SEM a
+  marca acima de texto CONTA);
 - outro texto (`text`/`rich-text`): texto sobre texto é `colisao`, já medida;
+- a logo, SÓ para o par (logo, texto) que `logo-sobre-texto` de fato examinou: logo SOLTA (`logosDaPeca`, que
+  exclui logo em grupo) × texto COM métrica (fora de `textosSemMetrica`). Logo agrupada acima de um texto, ou
+  logo solta acima de um texto sem métrica, CONTA como oclusão — a regra não as viu (Codex R1: excluir a
+  camada inteira pelo estado da regra deixava a logo agrupada passar com cobertura `avaliada`);
 
 → entra em `naoMedidos` com `regra: 'oclusao'` e vira motivo `NAO_MEDIDO` → `REVISAO_HUMANA_NECESSARIA`.
-Tipos alcançados: `shape`, `icon`, `element`, `image` (que não é o fundo), `video`, `logo` (uma logo
-acima de um texto que intersecta já é `logo-sobre-texto` — o gate deixa a regra decidir e NÃO duplica:
-logo é exceção quando `logo-sobre-texto` está comprovada ou reprovada; vira oclusão só quando aquela regra
-não comprovou).
+Tipos alcançados: `shape`, `icon`, `element`, `image` (que não é o fundo), `video`, `gradient`/`gradient2`
+sem a marca de tratamento, `logo` fora do par examinado.
 
 Por que (B) e não (A) agora: é uma função sobre `Layer[]`, sem render, sem custo, e nunca aprova em
 silêncio. O que ela NÃO faz (dito): não mede opacidade (`style.opacity`), nem `fill` transparente, nem
@@ -295,8 +313,9 @@ bloqueios demais (meta na seção 9.2), o CP5b implementa (A): render do texto s
 elas, pela própria régua.
 
 Ligação com o compositor (plano-mestre 4.3): o acento do T1b precisa entrar com `order` abaixo dos
-textos e `metadata.compositor` identificável, senão cai em (B). `opcoes.oclusao: 'ignorar'` existe só para
-os testes isolarem as outras regras; nunca é o padrão.
+textos e `metadata.compositor` identificável, senão cai em (B). **Não existe opção para desligar a
+detecção** (Codex R1): uma opção pública seria um caminho configurável de "não medido → APTO"; os testes
+isolam as outras regras com fixtures sem camada acima de texto.
 
 ---
 
@@ -307,7 +326,7 @@ real para o relatório — o gate é testado sobre o relatório que o revisor de
 
 | # | Caso | Esperado |
 |---|---|---|
-| G1 | peça limpa: 3 textos, foto de fundo com assunto de catálogo sem sobreposição, logo solta `medida`, régua presente, copy `sem-mudanca`, story dentro do piso | `APTO`; `cobertura` toda `comprovada`/`nao-se-aplica`; `motivos`, `achados`, `naoMedidos` vazios |
+| G1 | peça limpa: 3 textos, foto de fundo (com `fileUrl`) com assunto de catálogo sem sobreposição, logo solta `medida`, régua presente, copy `sem-mudanca`, story dentro do piso, nenhuma camada acima de texto | `APTO`; `cobertura` toda `comprovada`/`nao-se-aplica`; `motivos`, `achados`, `naoMedidos` vazios; o `relatorio` devolvido é `avaliarPeca(medida)` (igualdade estrutural) |
 | G2 | invariantes: G1 serializado duas vezes é idêntico; `avisos` não muda o resultado | igual byte a byte |
 | G3 | achado crítico medido de severidade `aviso` (`colisao`) | `REVISAO_HUMANA_NECESSARIA`, `achados` com o id, `cobertura.colisao = reprovada` |
 | G4 | achado em regra NÃO crítica (`palavra-orfa`, `titulo-grande`) | `APTO` |
@@ -320,19 +339,19 @@ real para o relatório — o gate é testado sobre o relatório que o revisor de
 | G11 | logo: `leituraDaLogo: []` | comprovada + aviso "peça sem logo solta" |
 | G12 | logo `indisponivel` / `fora-do-contrato` / `sem-pixels`; `leituraDaLogo: null` | não comprovada, `naoMedidos` com a camada |
 | G13 | assunto A (catálogo) sem achado / com achado | comprovada / reprovada |
-| G14 | assunto B (estimado) sem achado: política recomendada → não comprovada; `estimado: 'comprova'` → comprovada; com achado estimado e `'comprova'` → reprovada | conforme |
-| G15 | assunto C (`naoSeAplica`, foto presente): recomendada → não se aplica + aviso; `'humano'` → não comprovada | conforme |
+| G14 | assunto B (estimado) sem achado: `estimado: 'humano'` → não comprovada; `'comprova'` → comprovada; com achado estimado (`certeza: 'estimada'`) e `'comprova'` → reprovada pela exceção 4.1; o MESMO achado com `'humano'` → não comprovada (a regra geral); um achado `estimada` de OUTRA regra crítica (rich text em `texto-cortado`) nunca reprova, com qualquer política | conforme |
+| G15 | assunto C (`naoSeAplica`, foto COM `fileUrl`): `'nao-se-aplica'` → não se aplica + aviso; `'humano'` → não comprovada. **C'** (`naoSeAplica`, camada de foto visível SEM `fileUrl`) → não comprovada com as 4 combinações de política | conforme |
 | G16 | assunto D (`motivoSemAssunto` sem a marca) | não comprovada, independente da política (as 4 combinações) |
 | G17 | assunto E (sem foto de fundo) | não se aplica, independente da política |
 | G18 | `naoSeAplica` numa crítica fora do mapa (ex.: forjado em `colisao`) | não comprovada |
 | G19 | piso de interface: texto em `y = 100` no story / logo invadindo o rodapé / a mesma peça em `feed` | reprova / reprova / não se aplica |
 | G20 | copy: cada estado da tabela 4.4 + `copy` ausente | conforme |
-| G21 | oclusão: `shape` com `order` maior intersectando um texto → `naoMedidos.oclusao`; `order` igual → idem; `shape` abaixo → nada; `shape` acima sem intersecção → nada; gradiente de leitura acima → nada; `gradient` comum acima → oclusão; imagem que não é o fundo acima → oclusão; texto sobre texto → nada (é `colisao`); logo acima com `logo-sobre-texto` comprovada → nada; `opcoes.oclusao: 'ignorar'` → nada | conforme |
+| G21 | oclusão: `shape` com `order` maior intersectando um texto → `naoMedidos.oclusao`; `order` igual → idem; `shape` abaixo → nada; `shape` acima sem intersecção → nada; `gradient` E `gradient2` com `metadata.tratamentoDeTexto` de leitura acima → nada; `gradient` E `gradient2` sem a marca acima → oclusão; imagem que não é o fundo acima → oclusão; texto sobre texto → nada (é `colisao`); logo SOLTA acima de texto COM métrica → nada (par examinado por `logo-sobre-texto`); logo em GRUPO acima de texto → oclusão; logo solta acima de texto em `textosSemMetrica` → oclusão; texto oculto (`visible: false`) sob uma forma → nada | conforme |
 | G22 | `pageVersion: null` | `IDENTIDADE_ILEGIVEL` |
 | G23 | `REGRAS_CRITICAS ∪ NAO_CRITICAS === REGRAS_DA_REVISAO` (sem sobra nem falta) | fixa a classificação |
 | G24 | o relatório REAL da fixture do piloto (`piloto-2026-10-13`, medida sintética a partir de `composicaoRegistrada.contraste`, serviço `ok: false`) | `REVISAO_HUMANA_NECESSARIA` com `texto-sem-leitura:servico` — o mesmo contrato alvo que `piloto-portao` descreve, sem tocar nos `hojeViola` |
 | G25 | `copyVersionDe`: `null` → `'sem-contrato'`; mesma copy com chaves em outra ordem → mesmo hash; copy diferente → hash diferente | puro |
-| G26 | `foraDaInterface` de produção ≡ a do oráculo (o oráculo passa a importar a de produção; um teste do CP0 continua verde) | paridade |
+| G26 | `foraDaInterface` de produção, casos independentes: texto com `y = 187` reprova e `y = 188` passa; logo com base em `canvas.height − 223` reprova e `− 224` passa; cliente MENOS restritivo (`topo: 100`) não afrouxa (continua 188); cliente MAIS restritivo (`topo: 300`) aperta; camada oculta não conta. O oráculo dos testes passa a importar a de produção e os testes do CP0 seguem verdes | conforme |
 
 Nenhum `hojeViola` muda. Gates do PR: suíte completa, typecheck, lint, `git diff --check`,
 `validar-registro-mcp` (nenhum schema de tool muda), `validar-oauth-mcp`.
@@ -365,8 +384,11 @@ revisor), `contrato.ts` (nenhuma regra em `REGRAS_DA_REVISAO`), MCP, Generation,
 | 9.5 | **Sem logo solta** = comprovada com aviso (doc antigo) ou humano | comprovada com aviso: a ausência de logo é decisão de composição, não defeito medido | humano bloquearia toda peça que o compositor fez sem logo por desenho |
 | 9.6 | **`texto-pequeno` crítica** (nova em relação ao doc antigo, que não a listava): sim | sim: o CP4.2 tornou o piso medido e a manchete protegida; achado `aviso` medido reprova | fora das críticas, uma headline de 25 px em 1080 seria `APTO` |
 
-Nada disto está decidido aqui. Sem resposta, o CP5a implementa a recomendação de cada linha e a
-registra como "política recomendada, a confirmar".
+Nada disto está decidido aqui. **O CP5a não fixa padrão para 9.1**: a política é parâmetro obrigatório de
+`gateDaMedida`, a constante recomendada é uma proposta nomeada, e os testes cobrem os dois ramos; quem for
+chamar (CP5c) passa a política que o owner decidir — a decisão fica registrada no contrato do CP5c, não
+presumida aqui (Codex R1). Para 9.2, 9.5 e 9.6 o CP5a implementa a recomendação porque ela é o lado
+fail-closed ou a única opção sem nova medição; 9.3 e 9.4 só mudam o CP5b.
 
 ---
 
