@@ -96,6 +96,17 @@ describe('o executor (medida injetada)', () => {
     expect(r.camadas.find((l) => l.id === 'headline')!.style?.fontSize).toBe(60)
   })
 
+  it('Codex R1 — `mover` numa camada SEM métrica é NÃO MEDIDO (as tocadas vêm da diferença real, não do que o ajuste declara); o `achado` sobrevive ao índice > 0', async () => {
+    const semMetrica = async (camadas: Layer[]) => ({ ...(await medidaSintetica(camadas)), semMetrica: ['servico'] })
+    const r = await aplicarAjustesSemPiorar({ projectId: 1, page, camadas: base(), ajustes: [{ ...sobe(0), camadas: ['headline'], dy: -5, achado: 'visao-x:T1' } as Ajuste, { ...sobe(10), achado: 'visao-y:T2' } as Ajuste], medir: () => null, _medir: semMetrica })
+    expect(r.aplicados.map((a) => [a.indice, a.achado])).toEqual([[0, 'visao-x:T1']])
+    expect(r.recusados.map((a) => [a.indice, a.codigo, a.achado])).toEqual([[1, 'AJUSTE_NAO_MEDIDO', 'visao-y:T2']])
+    expect(r.recusados[0].comparacao?.naoMedidas).toEqual([expect.objectContaining({ propriedade: 'geometria', motivo: expect.stringMatching(/servico/) })])
+    // Recusa estrutural em índice > 0 também guarda o `achado`.
+    const e = await aplicarAjustesSemPiorar({ projectId: 1, page, camadas: base(), ajustes: [sobe(10), { tipo: 'mover', camadas: ['nao-existe'], dy: -10, achado: 'texto-cortado:x' } as Ajuste], medir: () => null, _medir: medir })
+    expect(e.recusados.map((a) => [a.indice, a.codigo, a.achado])).toEqual([[1, 'CAMADA_INEXISTENTE', 'texto-cortado:x']])
+  })
+
   it('texto que não cabe depois do ajuste recusa SÓ aquele ajuste (TEXTO_NAO_CABE por ajuste), com o índice do lote', async () => {
     autofix.modo = 'nao-cabe'
     const r = await aplicarAjustesSemPiorar({ projectId: 1, page, camadas: base(), ajustes: [{ tipo: 'mover', camadas: ['nao-existe'], dy: -10 } as Ajuste, sobe(10)], medir: () => null, _medir: medir })

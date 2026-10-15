@@ -584,7 +584,8 @@ export function aplicarAjustes(
 
   // Cada registro carrega o `achado` do próprio ajuste: o rótulo não fica só no pedido.
   const comAchado = <T extends { indice: number }>(r: T): T => {
-    const achado = (ajustes[r.indice] as { achado?: unknown } | undefined)?.achado
+    // `indice` é o do LOTE (`indiceBase`); a lista desta chamada começa em `indiceBase` (Codex R1 do CP4).
+    const achado = (ajustes[r.indice - indiceBase] as { achado?: unknown } | undefined)?.achado
     return typeof achado === 'string' ? { ...r, achado } : r
   }
   return { camadas, aplicados: aplicados.map(comAchado), recusados: recusados.map(comAchado), alteradas: [...alteradas] }

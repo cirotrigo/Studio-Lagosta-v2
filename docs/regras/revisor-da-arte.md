@@ -624,6 +624,14 @@ global". Módulos em `src/lib/creatives/revisao/`:
     NÃO MEDIDO > SEM EFEITO); "não medido" nunca sai como "a peça ficaria pior".
   - `tratamento-piorou-leitura` que aparece sem a leitura do texto piorar não é piora (o contraste
     decide); o achado dessa regra só está resolvido se a leitura não piorou.
+  - **Rodada do Codex (R1, 15/10/2026)**: as camadas TOCADAS vêm da diferença real entre o estado e a
+    candidata (`camadasQueMudaram`), não do que o ajuste declara — `mover`/`visibilidade` não entram em
+    `alteradas` do executor puro, e sem isso um `mover` em texto sem fonte passava; a candidata nasce de
+    `structuredClone` (nenhuma camada compartilhada); logo já parcialmente fora e empurrada MAIS para fora
+    é piora (px fora antes → depois); o `achado` sobrevive a índice > 0 (`indiceBase`). No harness do
+    piloto as famílias da fixture são declaradas presentes para `fontesQueFaltam` (artefato do ambiente;
+    o render segue com a fonte de reserva) — e com a geometria contando, o `mover headline+apoio −60`
+    passou a ser recusado por invadir a margem do topo em 26 px: o "aceito" dos testes é −20.
   - Lote só de recusas estruturais não mede nada; `PAGINA_COM_VIDEO` antes de medir; fontes do projeto
     registradas uma vez por chamada; bytes da logo em cache por chamada (um download, falha
     determinística no lote); `fontesQueFaltam` cercada; o índice da marca `ocultaPeloRevisor.ajuste` é

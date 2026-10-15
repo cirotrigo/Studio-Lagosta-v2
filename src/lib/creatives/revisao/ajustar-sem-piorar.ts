@@ -68,6 +68,18 @@ export async function medidaDe(camadas: Layer[], ctx: ContextoDaMedicao): Promis
   return { relatorio: avaliarPeca(medida), contraste: medida.contraste, camadas, canvas: ctx.canvas, semMetrica }
 }
 
+/** Os ids das camadas que diferem entre dois estados (acrescentadas, removidas ou mudadas em qualquer campo). */
+export function camadasQueMudaram(antes: Layer[], depois: Layer[]): string[] {
+  const porId = new Map(antes.map((l) => [l.id, JSON.stringify(l)]))
+  const mudaram = new Set<string>()
+  for (const l of depois) {
+    if (porId.get(l.id) !== JSON.stringify(l)) mudaram.add(l.id)
+    porId.delete(l.id)
+  }
+  for (const id of porId.keys()) mudaram.add(id)
+  return [...mudaram]
+}
+
 export async function aplicarAjustesSemPiorar(args: ArgsDoAjusteSemPiorar): Promise<ResultadoSemPiorar> {
   const canvas = { width: args.page.width, height: args.page.height }
   const medir = args._medir ?? medidaDe
@@ -96,8 +108,9 @@ export async function aplicarAjustesSemPiorar(args: ArgsDoAjusteSemPiorar): Prom
       recusados.push(estrutural)
       continue
     }
-    // 1. O ajuste SOZINHO, numa cópia, sobre o estado ATUAL (o puro pode recusar aqui o que só é inválido agora).
-    const um = aplicarAjustes(estado, [ajuste], { canvas, medir: args.medir, indiceBase: indice })
+    // 1. O ajuste SOZINHO, numa CÓPIA do estado (nenhuma camada compartilhada por referência — o contrato do owner;
+    //    o puro pode recusar aqui o que só é inválido agora).
+    const um = aplicarAjustes(structuredClone(estado), [ajuste], { canvas, medir: args.medir, indiceBase: indice })
     if (um.recusados.length > 0) {
       recusados.push(um.recusados[0])
       continue
@@ -117,15 +130,18 @@ export async function aplicarAjustesSemPiorar(args: ArgsDoAjusteSemPiorar): Prom
       }
       throw erro
     }
-    // 3–4. Medir a cópia e comparar com o estado atual E com o de entrada (a catraca).
+    // 3–4. Medir a cópia e comparar com o estado atual E com o de entrada (a catraca). As camadas TOCADAS vêm da
+    //    diferença real entre o estado e a candidata (ajuste + autofix + reflow), não do que o ajuste declarou:
+    //    `mover`/`visibilidade` não entram em `alteradas` do puro, e a camada sem métrica tocada é "não medida" (Codex R1).
     const medidaDepois = await medir(candidata, ctx)
-    const opcoes = { achadoAlvo: ajuste.achado ?? null, alteradas: um.alteradas, permiteOcultar: ajuste.tipo === 'visibilidade' }
+    const tocadas = camadasQueMudaram(estado, candidata)
+    const opcoes = { achadoAlvo: ajuste.achado ?? null, alteradas: tocadas, permiteOcultar: ajuste.tipo === 'visibilidade' }
     const comparacao = compararNaoPiora(medidaAtual, medidaDepois, opcoes)
     if (comparacao.veredito !== 'aceito') {
       recusados.push({ indice, tipo: String(ajuste.tipo), codigo: comparacao.veredito, motivo: motivoDaComparacao(comparacao), ...comAchado, comparacao: compacta(comparacao) })
       continue
     }
-    const contraEntrada = aplicados.length > 0 ? compararNaoPiora(medidaInicial, medidaDepois, { alteradas: um.alteradas, permiteOcultar: opcoes.permiteOcultar }) : null
+    const contraEntrada = aplicados.length > 0 ? compararNaoPiora(medidaInicial, medidaDepois, { alteradas: tocadas, permiteOcultar: opcoes.permiteOcultar }) : null
     if (contraEntrada && contraEntrada.pioras.length > 0) {
       recusados.push({
         indice,

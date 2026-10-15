@@ -267,16 +267,24 @@ const caixaDe = (l: Layer) => `${Math.round(l.position.x)},${Math.round(l.positi
 function compararGeometria(antes: MedidaComparavel, depois: MedidaComparavel, permiteOcultar: boolean): { pioras: Piora[]; desaparecidas: string[] } {
   const foraDoCanvas = (l: Layer, canvas: { width: number; height: number }) =>
     l.size.width <= 0 || l.size.height <= 0 || l.position.x + l.size.width <= 0 || l.position.y + l.size.height <= 0 || l.position.x >= canvas.width || l.position.y >= canvas.height
-  const parcialmenteFora = (l: Layer, canvas: { width: number; height: number }) =>
-    l.position.x < 0 || l.position.y < 0 || l.position.x + l.size.width > canvas.width || l.position.y + l.size.height > canvas.height
+  /** Quantos px da caixa ficam FORA do canvas (o maior dos quatro lados): cresce quando a logo é empurrada para fora. */
+  const pxFora = (l: Layer, canvas: { width: number; height: number }) =>
+    Math.max(0, -l.position.x, -l.position.y, l.position.x + l.size.width - canvas.width, l.position.y + l.size.height - canvas.height)
   const conta = (l: Layer) => l.visible !== false && (l.type === 'text' || l.type === 'rich-text' || ehLogo(l))
   const ruinsAntes = new Set(antes.camadas.filter((l) => conta(l) && foraDoCanvas(l, antes.canvas)).map((l) => l.id))
-  const logoForaAntes = new Set(antes.camadas.filter((l) => conta(l) && ehLogo(l) && parcialmenteFora(l, antes.canvas)).map((l) => l.id))
+  const logoForaAntes = new Map(antes.camadas.filter((l) => conta(l) && ehLogo(l)).map((l) => [l.id, pxFora(l, antes.canvas)]))
   const pioras: Piora[] = []
   for (const l of depois.camadas) {
     if (!conta(l)) continue
-    if (foraDoCanvas(l, depois.canvas) && !ruinsAntes.has(l.id)) pioras.push({ propriedade: 'geometria', camadas: [l.id], antes: null, depois: caixaDe(l), motivo: 'a caixa ficou degenerada ou inteira fora do canvas' })
-    else if (ehLogo(l) && parcialmenteFora(l, depois.canvas) && !logoForaAntes.has(l.id)) pioras.push({ propriedade: 'geometria', camadas: [l.id], antes: null, depois: caixaDe(l), motivo: 'a logo passou a sair do canvas (a leitura só mede o que sobrou dentro)' })
+    if (foraDoCanvas(l, depois.canvas) && !ruinsAntes.has(l.id)) {
+      pioras.push({ propriedade: 'geometria', camadas: [l.id], antes: null, depois: caixaDe(l), motivo: 'a caixa ficou degenerada ou inteira fora do canvas' })
+      continue
+    }
+    if (!ehLogo(l)) continue
+    // A logo que sai (ou sai MAIS) do canvas: a leitura só mede o que sobrou dentro (Codex R1: já fora e empurrada mais também é piora).
+    const foraAntes = logoForaAntes.get(l.id) ?? 0
+    const foraDepois = pxFora(l, depois.canvas)
+    if (foraDepois > foraAntes + TOLERANCIA_PX) pioras.push({ propriedade: 'geometria', camadas: [l.id], antes: Math.round(foraAntes), depois: Math.round(foraDepois), motivo: `a logo ${foraAntes > 0 ? 'sai mais' : 'passou a sair'} do canvas (${Math.round(foraAntes)} → ${Math.round(foraDepois)} px fora; a leitura só mede o que sobrou dentro)` })
   }
   const visiveisDepois = new Map(depois.camadas.filter((l) => l.visible !== false).map((l) => [l.id, l]))
   const desaparecidas: string[] = []

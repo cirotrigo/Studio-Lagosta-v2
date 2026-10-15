@@ -198,6 +198,11 @@ describe('não piorar — propriedade a propriedade, sem pontuação global', ()
     // A logo empurrada para fora do canvas (parcialmente) é piora: a leitura só mede o que sobrou.
     const logoFora = medida({ camadas: [texto('headline'), texto('servico', 1700), { ...logo, position: { x: 1000, y: 1600 } } as Layer], contraste: antes.contraste })
     expect(compararNaoPiora(antes, logoFora).pioras).toEqual([expect.objectContaining({ propriedade: 'geometria', camadas: ['logo'], motivo: expect.stringMatching(/sair do canvas/) })])
+    // Já parcialmente fora e empurrada MAIS para fora: piora também (Codex R1); 1 px de ruído não conta.
+    const jaFora = medida({ camadas: [texto('headline'), { ...logo, position: { x: 1000, y: 1600 } } as Layer], contraste: contraste([{ camada: 'headline', com: 100 }]) })
+    const maisFora = medida({ camadas: [texto('headline'), { ...logo, position: { x: 1040, y: 1600 } } as Layer], contraste: contraste([{ camada: 'headline', com: 100 }]) })
+    expect(compararNaoPiora(jaFora, maisFora).pioras).toEqual([expect.objectContaining({ propriedade: 'geometria', camadas: ['logo'], antes: 80, depois: 120 })])
+    expect(compararNaoPiora(jaFora, medida({ camadas: [texto('headline'), { ...logo, position: { x: 1001, y: 1600 } } as Layer], contraste: jaFora.contraste })).pioras).toEqual([])
   })
 
   it('revisores C/D — mexer em camada que a geometria NÃO mediu (fonte ausente, texto sem métrica, rich text) é NÃO MEDIDO; mexer noutra, não', () => {
