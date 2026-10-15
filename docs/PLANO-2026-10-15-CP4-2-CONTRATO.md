@@ -124,9 +124,14 @@ e a reduziria sem proteção. Contrato:
 - **A classificação e a referência dos títulos vêm da PÁGINA ANTERIOR À CHAMADA**, não da base. O
   executor recebe `camadasDaPagina` (= `sourceLayers`, as camadas lidas do banco antes do bake — o mesmo
   material que já alimenta `conteudoAnterior`, `arte-rapida.ts:1312-1313`) e deriva dali, uma vez, antes
-  do lote: (a) `titulosFixados` por uma função pura `titulosDaPagina(camadas)` com a MESMA regra de
-  `idsDeTitulo` (papel por `metadata.compositor.papel` / id / nome do que está gravado; senão o maior
-  `style.fontSize` ≥ 1,5× o segundo) sobre as camadas anteriores; (b) `referencias` por
+  do lote: (a) `titulosFixados` por uma função pura `titulosDaPagina(camadas)`: **todo texto com papel
+  GRAVADO `headline`/`headline2` (metadata/id/nome das camadas anteriores) entra, mesmo que estivesse
+  VAZIO ou OCULTO antes da chamada** — a regra atual só olha `metricas` de textos visíveis medidos
+  (`regras.ts:1060`), e uma `headline` vazia que o `slotValues` preenche na mesma chamada ficaria de fora;
+  a inferência por TAMANHO (maior `style.fontSize` ≥ 1,5× o segundo) só roda quando não há papel gravado e
+  só sobre os textos anteriores visíveis e com conteúdo (os mensuráveis). Na medida, `idsDeTitulo` =
+  `titulosFixados ∩ camadas medidas` (um título fixado que continua vazio/oculto na candidata simplesmente
+  não é medido); (b) `referencias` por
   `referenciasDaPagina(camadasDaPagina, …)` — o casamento por papel usa o papel GRAVADO, então o `papel`
   enviado no pedido não troca a referência; (c) para título sem referência ou com referência inferida,
   `corpoDaEntrada` = o `fontSize1080` da camada ANTERIOR à chamada (não o pós-autofix).
@@ -189,7 +194,7 @@ A evidência de `texto-pequeno` é ARREDONDADA (`Math.round`), como hoje: o piso
 | `src/lib/creatives/revisao/ajustar-sem-piorar.ts` | recebe `camadasDaPagina` (anteriores à chamada); deriva `titulosFixados` (`titulosDaPagina`, pura) e as referências dali, uma vez, antes do lote; injeta `corpoDaEntrada` (da camada anterior) para título sem referência ou inferida; passa `titulosFixados` às duas medidas; motivo da recusa cita o componente |
 | `src/lib/creatives/arte-rapida.ts` | passa `camadasDaPagina: sourceLayers` ao executor (ao lado de `conteudoAnterior`, `:1312`) |
 | `src/lib/creatives/revisao/revisar-arte.ts` | `referenciasDaPagina` marca `inferida: true` no fallback 16; `ContextoDaMedicao` ganha `titulosFixados` e aceita referências extras; `medirCamadasDaPeca` as usa (sem mudar `revisarArte` solto) |
-| `src/lib/creatives/revisao/nao-piora.ts` | **sem mudança** de lógica; só a mensagem de `motivoDaComparacao` para `texto-pequeno` diz o componente |
+| `src/lib/creatives/revisao/nao-piora.ts` | sem mudança na COMPARAÇÃO; `Piora`/`Melhora` ganham `id` do achado (hoje só propriedade, camadas, valores e motivo — `:89`), para a recusa dizer qual componente apareceu/piorou; `motivoDaComparacao` cita o componente |
 | `src/lib/mcp/catalogo/arte-ia.ts`, `docs/regras/revisor-da-arte.md` | descrição e doc: "títulos entram em `texto-pequeno` (modelo, hierarquia, celular)" |
 | Testes | `regras.test.ts` (regra 9 para títulos), `nao-piora.test.ts` (gravidade por componente), `ajustar-sem-piorar.test.ts` (fixação da classificação; referência da base; autofix), `direcao-de-arte/__tests__/piloto-ciclo.test.ts` (casos da matriz com o renderer real) |
 
@@ -231,9 +236,11 @@ A evidência de `texto-pequeno` é ARREDONDADA (`Math.round`), como hoje: o piso
 | T16 | título em 200 (ref 84) corrigido pela regra 7 | sugestão | escala sugerida 0,5 (não 0,42); aplicada, 100 ≥ 67,2 entra; a regra 7 acusa de novo |
 | T14 | título grande (140, ref 84) corrigido para 84 | regra 7 → `fonte` | entra (84 ≥ 67,2) |
 | T15 | piloto real (fixture) 84 → 8 e → 25 | renderer real | recusa nos dois |
-| T17 | **compensação**: base título 84 (ref 84) / apoio 160; `fonte escala 0,5` em `[headline, apoio]` | ajuste | recusa: `modelo` aparece (0 → 25) embora `hierarquia` melhore (76 → 38); a resposta lista os dois achados por id |
+| T17 | **compensação**: base título 84 (ref 84) / apoio 160; `fonte escala 0,5` em `[headline, apoio]` | ajuste | recusa `AJUSTE_PIOROU_ARTE`: nos relatórios medidos, `texto-pequeno:headline:hierarquia` vai de 76 → 38 (melhora) e `texto-pequeno:headline:modelo` aparece (0 → 25); na resposta, `comparacao.pioras[0].id === 'texto-pequeno:headline:modelo'` e a melhora listada à parte |
 | T18 | **reclassificação no pedido**: headline (84, ref 84) + headline2 + apoio (36); `slotValues: { headline: { papel: 'apoio', content: 'Novo' } }` + `ajustes: [fonte escala 0,5 em headline]` na MESMA chamada | ajuste | recusa; `titulosFixados` contém `headline`; a referência usada é 84 (da página anterior), não a do apoio; `headline2` segue protegida |
 | T19 | mesma chamada de T18 sem o ajuste (só o `papel`) | slotValues | entra (rebaixar papel continua permitido; fora do CP4.2) |
+| T20 | **título preenchido na chamada**: `headline` (papel gravado) VAZIA/oculta na página anterior; `slotValues: { headline: 'Nova manchete' }` + `ajustes: [fonte escala 0,5 em headline]` | ajuste | `titulosFixados` contém `headline` (papel gravado, sem métrica anterior); referência por papel (assinatura); recusa a 50 % |
+| T21 | página SEM papel gravado: inferência por tamanho só entre os textos anteriores visíveis com conteúdo; texto oculto grande não vira título | ajuste | lista fixada coerente com a página anterior |
 
 ### A.9 Decisões que precisam do owner (CP4.2a)
 
@@ -346,7 +353,9 @@ export function validarSlotValues(slotValues, camadas?): ErroDeValor[]
      → `{ url }`. `resolveImageUrl` continua existindo como a composição das duas (os outros chamadores
      não mudam).
    - `lerFotoParaMedicao` ganha a variante por bytes (`lerFotoDeBytes(bytes, canvas)` — a função já faz
-     `fetchBuffer` → `lerFotoComoCover`, `integracao-arte-rapida.ts:44-57`; a variante pula o fetch).
+     `fetchBuffer` → `lerFotoComoCover`, `integracao-arte-rapida.ts:44-57`; a variante pula o fetch). Como
+     o halo confere `fotoLida.url` contra o `fileUrl` da camada, a `FotoParaMedicao` lida por bytes recebe
+     a URL final DEPOIS de `persistirCacheDoDrive` (`{ ...fotoLida, url: blob.url }`) antes de ir ao halo.
    - Ordem nova da criação: FASE 1 → `lerImagemDeEntrada` → `lerFotoParaMedicao`/`lerFotoDeBytes` →
      `escolherPaginaPelaFoto` → `camadasDoModelo` → **FASE 2** → `valoresDaArte` → `persistirCacheDoDrive`
      (só agora o `put`) → `ensureArteTemplate` → bake → Generation → render. O halo, que reaproveita a
@@ -428,7 +437,7 @@ dívida.
 |---|---|
 | `src/lib/semantica/resolver-valores.ts` (ou `valores-de-slot.ts` irmão) | `valorLegadoValido`, `validarEntradaLegada`, código `CHAVE_DESCONHECIDA` em `ErroDeValor` |
 | `src/lib/creatives/arte-rapida.ts` | `ajustarArte`: FASE 1 antes do banco, FASE 2 depois de `camadasParaBake`; `createArteRapida`: FASE 1 na entrada (antes de `resolveImageUrl`), FASE 2 após `camadasDoModelo` do modelo efetivo e antes de `ensureArteTemplate`; mensagens em PT |
-| `src/lib/mcp/catalogo/arte-ia.ts` (e `criar-arte-de-modelo`, `criar-arte` se expõem `slotValues`) | schema `z.record(z.unknown()).superRefine(validador)`; descrição com os formatos aceitos |
+| `src/lib/mcp/catalogo/arte-ia.ts` (`ajustar-arte`) e `src/lib/mcp/catalogo/modelos.ts` (`criar-arte-de-modelo`; `criar-arte` se expõe `slotValues`) | schema continua `z.record(z.unknown())` (descrição atualizada com os formatos aceitos); **FASE 1 no handler**, antes do serviço, lançando por `erroDeValores` — e o serviço a repete (API externa e execução de plano não passam pela porta) |
 | `src/lib/creatives/bake-layers.ts` | **sem mudança** de lógica (continua tolerante; a validação mora antes) — ou, opcionalmente, `assert` de desenvolvimento |
 | `docs/regras/revisor-da-arte.md`, `docs/regras/mcp.md` | contrato e códigos |
 | Testes | `resolver-valores.test.ts` (validador puro, tabela B.3), `ajustar-arte-concorrencia.test.ts` (12 casos abaixo com o banco falso: zero escrita/Generation/`put`), `arte-rapida` criação (placeholders continuam), `validar-registro-mcp` (schema) |
