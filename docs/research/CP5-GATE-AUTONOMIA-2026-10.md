@@ -158,8 +158,10 @@ PERSISTIDO (`VereditoDaArte`, acima, mínimo) e a RESPOSTA ao agente (`RespostaD
 
 ## 6. Invalidação
 
-Por construção, sem limpeza: o consumidor compara `veredito.pageVersion === versaoDaPagina(página atual)`
-e `veredito.rulesVersion === VERSAO_DAS_REGRAS`; qualquer divergência = sem veredito. Toda escrita em
+Por construção, sem limpeza: o consumidor (`ver-geracao`, `auditar-operacao`) compara
+`veredito.pageVersion === versaoDaPagina(página atual)`, `veredito.copyVersion === hash(copyAutoral
+atual)` e `veredito.rulesVersion === VERSAO_DAS_REGRAS`; qualquer divergência = registro histórico,
+não "veredito atual" (Codex R5: `copyAutoral` muda sem mudar as camadas). Toda escrita em
 `Page.layers` (editor, PATCH de camada, ajustar-arte, recompor, reverter) muda o hash
 (`versao.ts:45-58`; auditoria da frente E: nenhum escritor de `layers` escapa). A recomposição regrava
 `composicao` inteira mas não toca `veredito`, que fica stale pelo `pageVersion` — exatamente o padrão
