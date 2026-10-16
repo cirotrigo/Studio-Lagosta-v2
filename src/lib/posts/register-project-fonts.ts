@@ -11,7 +11,7 @@
  * story do By Rock em 01/08). Por isso este módulo é paranóico:
  * - resposta não-2xx REJEITA (antes gravava o corpo do erro como .otf no
  *   cache, envenenando a instância quente para sempre);
- * - o retorno booleano de registerFromPath é conferido (não lança!) e um
+ * - o retorno de registerFromPath é conferido (não lança! `false` na 0.1.x, `null` na 1.0.x) e um
  *   arquivo que não registra é apagado do cache e baixado de novo uma vez;
  * - falha vira log ALTO com o nome da família, nunca silêncio.
  */
@@ -21,6 +21,7 @@ import * as path from 'path'
 import * as https from 'https'
 import * as http from 'http'
 import { db } from '@/lib/db'
+import { garantirFontesPadrao } from '@/lib/canvas-renderer'
 
 export function fetchBuffer(url: string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -58,6 +59,8 @@ function pareceFonte(buf: Buffer): boolean {
 }
 
 export async function registerProjectFonts(projectId: number): Promise<void> {
+  // Antes das fontes do projeto: a Montserrat e o alias de `sans-serif`, para quem desenha com createCanvas direto.
+  garantirFontesPadrao()
   const fonts = await db.customFont.findMany({ where: { projectId } })
   if (fonts.length === 0) return
 
@@ -94,11 +97,11 @@ export async function registerProjectFonts(projectId: number): Promise<void> {
       continue
     }
 
-    // registerFromPath devolve false em arquivo corrompido — NÃO lança. Cache
+    // registerFromPath devolve false (0.1.x) ou null (1.0.x) em arquivo corrompido — NÃO lança. Cache
     // envenenado (download antigo que gravou lixo) é descartado e refeito.
     let ok = false
     try {
-      ok = GlobalFonts.registerFromPath(filePath, font.fontFamily) !== false
+      ok = Boolean(GlobalFonts.registerFromPath(filePath, font.fontFamily))
     } catch {
       ok = false
     }
@@ -106,7 +109,7 @@ export async function registerProjectFonts(projectId: number): Promise<void> {
       fs.rmSync(filePath, { force: true })
       if (await baixar()) {
         try {
-          ok = GlobalFonts.registerFromPath(filePath, font.fontFamily) !== false
+          ok = Boolean(GlobalFonts.registerFromPath(filePath, font.fontFamily))
         } catch {
           ok = false
         }
