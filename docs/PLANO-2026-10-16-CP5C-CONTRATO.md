@@ -1,6 +1,6 @@
 # CP5c — contrato técnico do GATE em `agendar-leva` (perfil draft-only) — proposta para revisão, 16/10/2026
 
-**Estado: PROPOSTA (rodada 5 do Codex: prazo imposto POR FORA da medição (race) porque o render e a logo não aceitam sinal; sem a trava das 15 Generations — só a peça e as referências que ela usa; inventário de travas cobre `src/app`. Rodada 4: a medição no draft-only lê a `composicao` SÓ da Generation da peça, travada — nunca "a mais recente" entre 15; a refilagem no lote preserva o formato do revisor; 8.7 segue decisão do owner. Rodada 3: coerência página × Generation por `versaoRenderizada` — cache do compositor só quando a arte É da página; inserção de fontes serializada com o gate por trava consultiva própria; guarda de `generationId` antes dos efeitos; prazo dos downloads dentro da transação. Rodada 2: a MEDIÇÃO passa a acontecer DENTRO da transação, sob as travas — a janela entre
+**Estado: PROPOSTA (rodada 6 do Codex: o prazo cobre a cadeia inteira de `medirEDecidir` (contexto + medida + decisão); a refilagem no lote escreve a página numa transação própria sob `SocialPost → Page FOR UPDATE`, só com o post ainda DRAFT e a página na versão lida. Rodada 5: prazo imposto POR FORA da medição (race) porque o render e a logo não aceitam sinal; sem a trava das 15 Generations — só a peça e as referências que ela usa; inventário de travas cobre `src/app`. Rodada 4: a medição no draft-only lê a `composicao` SÓ da Generation da peça, travada — nunca "a mais recente" entre 15; a refilagem no lote preserva o formato do revisor; 8.7 segue decisão do owner. Rodada 3: coerência página × Generation por `versaoRenderizada` — cache do compositor só quando a arte É da página; inserção de fontes serializada com o gate por trava consultiva própria; guarda de `generationId` antes dos efeitos; prazo dos downloads dentro da transação. Rodada 2: a MEDIÇÃO passa a acontecer DENTRO da transação, sob as travas — a janela entre
 medir e escrever deixa de existir; os posts da página são travados antes da página; o que a medição lê é travado
 `FOR SHARE`; o registro — APTO ou reprovado — é gravado na mesma transação; os efeitos pós-commit ficam FORA do perímetro
 do gate, com a prova de que não dependem dele; retorno em união para recusa medida / sem vínculo / não medida).** Nada
@@ -86,14 +86,16 @@ async function medirEDecidir(cliente: Cliente, ctx, args: { peca; page: PaginaCo
 - **Custo e PRAZO** (Codex R3/R5): a medição tem rede em três lugares — fontes do projeto (`registerProjectFonts` →
   `fetchBuffer`), bytes da logo (`bytesDaLogo`, `cacheDeLogos`) e as IMAGENS que o render da régua carrega
   (`CanvasRenderer.loadImage`, sem `AbortSignal`) —, e nem todos aceitam cancelamento. Por isso o prazo é imposto POR
-  FORA: `medirEDecidir` corre `medirCamadasDaPeca` numa `Promise.race` com `PRAZO_DA_MEDICAO = 8_000 ms` (decisão 8.9);
+  FORA: a cadeia INTEIRA de `medirEDecidir` — `recusaComoImagem`, `lerCamadas`, `contextoDaMedicao` (que baixa a foto do
+  assunto quando não há cache coerente), `medirCamadasDaPeca` e `decidirEMontarRegistro` — corre numa `Promise.race` com
+  `PRAZO_DA_MEDICAO = 8_000 ms` (decisão 8.9), iniciado ANTES de `contextoDaMedicao` (Codex R6);
   venceu o prazo → `nao-medida` ("a medição não coube no prazo; repita"), nenhum post, a transação volta atrás e as
   travas são liberadas; o download órfão termina sozinho e o seu resultado é descartado (a transação já acabou — nada
   é gravado com ele). Onde há sinal (`fetchBuffer(url, { signal })`, opção nova com `req.destroy()` no abort e
   `socket.setTimeout`, seguindo redirecionamentos com o mesmo sinal), `ContextoDaMedicao.sinal` é passado e o download
   é abortado de verdade; `loadImage` e `bytesDaLogo` ficam como estão (fora da lista de arquivos; o race cobre). C21
-  testa cada caminho preso — fonte, logo, foto da régua (mock de `loadImage` que nunca resolve) e redirecionamento em
-  laço — e prova: `nao-medida`, nenhum post, travas liberadas (a chamada seguinte não espera). `medirCamadasDaPeca`
+  testa cada caminho preso — fonte, logo, foto do ASSUNTO em `contextoDaMedicao`, foto no render da régua (mock de
+  `loadImage` que nunca resolve) e redirecionamento em laço — e prova: `nao-medida`, nenhum post, travas liberadas (a chamada seguinte não espera). `medirCamadasDaPeca`
   registra fontes uma vez por contexto, mede texto, roda a régua (render em memória) e lê a logo; estimativa 1–4 s por
   item sem rede lenta, DENTRO da transação de 20 s (que hoje já faz `resolverAgendamento`). C18 mede o tempo por item no
   banco falso e no benchmark sintético do CP3, INCLUINDO a espera por travas de um escritor concorrente. Rede dentro de
@@ -188,13 +190,17 @@ POSIÇÃO (decisão 8.7) de que **nenhum efeito depende do veredito**, e prova:
 
 - Catálogo/sinais/legenda: escrevem `ImageCatalog`/`LearningSignal`/registro da copy — nunca `SocialPost.status`,
   `laterPostId`, `mediaUrls`, `Page.layers`/`copyAutoral`/`tags`/`width`/`height`; leem o post como está.
-- Refilagem: escreve só `Page.templateId`, `Page.name`, `Page.order` (pasta e nome); não toca camadas, copy, tags nem
-  tamanho. `pageVersion`, `copyVersion` e `formatoDoCompositor` não mudam. O `formato` do REVISOR lê o nome (Codex R4):
-  no lote, `refilarPaginasDoPost(postId, quando, userId, { preservarFormato: true })` só renomeia se
-  `formatoDaPagina({ name: nomeNovo, tags, width, height })` (o classificador do revisor, `assinatura.ts`) for IGUAL ao do
-  nome atual; senão move a página de pasta mas mantém o nome e devolve o aviso "o nome da pasta trocaria o formato da
-  peça; nome mantido". Com isso a identidade do registro não muda por efeito nenhum — e C6 passa a provar exatamente
-  isso. Fluxo humano: `refilarPaginasDoPost` sem a opção, como hoje.
+- Refilagem: o ÚNICO efeito que escreve `Page` (`templateId`, `name`, `order`) e o único que lê o post para decidir. No
+  lote draft-only ela passa a rodar com `refilarPaginasDoPost(postId, quando, userId, { protegida: true })`: `garantirPasta`
+  (criar a pasta da semana, idempotente, com a sua própria trava por chave) roda ANTES; depois UMA transação curta própria
+  (`db.$transaction`, READ COMMITTED) que trava **`SocialPost FOR UPDATE` → `Page FOR UPDATE`** (a ordem comum), relê os
+  dois e só escreve se `post.status === 'DRAFT'`, `post.laterPostId === null`, `post.pageId === page.id` e
+  `page.updatedAt` é o mesmo da leitura que calculou o nome; senão não escreve e devolve o aviso ("post aprovado" ou
+  "página mudou"; a repetição refaz). Com `preservarFormato` (Codex R4) o nome só muda se `formatoDaPagina` do revisor
+  continuar igual — e a comparação e o `UPDATE` estão na MESMA transação sob a trava da página (Codex R6), então nenhuma
+  edição de nome/tags cabe entre elas. Não toca camadas, copy, tags nem tamanho: `pageVersion`, `copyVersion`,
+  `formatoDoCompositor` e `formato` não mudam — a identidade de `ver-geracao` continua `coincidente` depois dos efeitos.
+  Fluxo humano: `refilarPaginasDoPost` sem a opção, como hoje.
 - Item do plano → `agendado`: CAS por `status`/`generationId`/`updatedAt` (existente).
 - A guarda que JÁ existe no draft-only continua e ganha um campo: post relido não-`DRAFT`, com `laterPostId`, ou com
   **`generationId !== peca.id`** (Codex R3, achado 3: `registrarArtesDoPost` → `ensurePostGeneration` CRIA uma Generation e
@@ -205,8 +211,11 @@ POSIÇÃO (decisão 8.7) de que **nenhum efeito depende do veredito**, e prova:
 - Teste C6: inventário por regex/AST dos módulos de efeito (`agendar.ts` → `artes-do-post.ts`, `ensure-post-generation.ts`,
   sinais, legenda; `pastas.ts`; `levarItemDoPlanoParaAgendado`) — a ÚNICA escrita em `SocialPost` é a de
   `ensurePostGeneration` em `generationId`, barrada pela guarda acima; nenhuma em `status`, `laterPostId`, `mediaUrls`,
-  `postType`; em `Page`, só `templateId`/`name`/`order` (refilagem), e com `preservarFormato` o `name` novo nunca muda
-  `formatoDaPagina` do revisor: a identidade (4 campos) de `ver-geracao` continua `coincidente` depois dos efeitos. Mais o teste comportamental com banco falso: depois do
+  `postType`; em `Page`, só `templateId`/`name`/`order`, e SÓ pela refilagem protegida. Comportamental, com banco falso
+  que serializa travas: (a) post aprovado DEPOIS da guarda e ANTES da refilagem → a refilagem relê sob trava e não
+  escreve; (b) página editada (nome/tags) depois da comparação de `preservarFormato` → o CAS em `updatedAt` falha e nada
+  é escrito; (c) post sem Generation → efeitos pulados; (d) sequência normal catálogo → refilagem → item do plano →
+  identidade de `ver-geracao` `coincidente`. Mais o teste comportamental com banco falso: depois do
   commit, post aprovado / página editada / post sem Generation → os efeitos não desfazem, não agravam e não ligam nada.
 - `reaproveitar` (linha já ligada): o rascunho já existe; nenhum DRAFT nasce ou é ligado → o gate não se aplica. O
   plano-mestre § 4.5 ("as três respostas passam pelo gate") e o § 12.1 do CP5b ("decisão fresca em toda via") pedem
@@ -303,7 +312,7 @@ revisao?:
 - `src/lib/lotes/agendar-itens.ts`: `medirEDecidir`, `lerPaginaCompleta`, travas (posts da página, Generation, FOR SHARE),
   `gravarGateDaArte`, mapeamento das exceções do gate, `achados`/`motivos`/`revisao` no item;
 - `src/lib/lotes/agendamento.ts` (ou vizinho puro): `POLITICA_DO_ASSUNTO_DO_AGENDAR_LEVA`, tipos do retorno;
-- `src/lib/compositor/pastas.ts` (`refilarPaginasDoPost`: opção `preservarFormato`);
+- `src/lib/compositor/pastas.ts` (`refilarPaginasDoPost`: opção `protegida` — transação própria `SocialPost → Page FOR UPDATE`, releitura, CAS em `updatedAt`, `preservarFormato`);
 - `src/lib/creatives/revisao/revisar-arte.ts` (`contextoDaMedicao`: parâmetros `cliente`, `sinal`, `composicaoReaproveitavel`, `generationDaPeca`;
   `ContextoDaMedicao.sinal` repassado a `cacheDeLogos`/`assuntoDaPeca`), `src/lib/posts/register-project-fonts.ts`
   (`cliente`; `fetchBuffer(url, { signal })`) — opcionais com padrão de hoje; o revisor e o CP4 não mudam;
