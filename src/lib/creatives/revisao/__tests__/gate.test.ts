@@ -404,8 +404,6 @@ describe('G13–G18 — política do assunto', () => {
       ['deslocada', { position: { x: 0, y: 200 } }],
       ['menor', { size: { width: W * 0.95, height: H * 0.95 } }],
       ['posição não numérica', { position: { x: '0', y: 0 } as unknown as Layer['position'] }],
-      ['movimento aproximar', { movimento: 'aproximar' } as unknown as Partial<Layer>],
-      ['movimento afastar', { movimento: 'afastar' } as unknown as Partial<Layer>],
       ['rotação em string', { rotation: '5' } as unknown as Partial<Layer>],
     ]
     for (const [nome, extra] of casos) {
@@ -429,6 +427,26 @@ describe('G13–G18 — política do assunto', () => {
     const logoImagem = fundo({ id: 'logo-2', name: 'Logo secundária', type: 'image', order: 8, position: { x: 100, y: 1600 }, size: { width: 120, height: 60 }, fileUrl: 'https://blob.test/logo2.png' })
     const comLogo = gate({ medida: { camadas: [...pecaLimpa().camadas, logoImagem], leituraDaLogo: [leitura('logo', medidaDaLogo()), leitura('logo-2', medidaDaLogo())] } })
     expect(comLogo.cobertura['texto-sobre-assunto']).toEqual({ estado: 'comprovada' })
+  })
+
+  it('G31 (Codex R8/R9): QUALQUER camada visível em movimento — fundo, logo-imagem ou imagem solta sob a logo sem foto de fundo — derruba as 4 regras que leem pixels do quadro parado; invisível não conta', () => {
+    const regras = ['texto-sem-leitura', 'tratamento-piorou-leitura', 'logo-sem-leitura', 'texto-sobre-assunto'] as const
+    const casos: Array<[string, Layer[]]> = [
+      ['fundo aproximar', pecaLimpa().camadas.map((l) => (l.id === 'bg-foto' ? ({ ...l, movimento: 'aproximar' } as Layer) : l))],
+      ['fundo afastar', pecaLimpa().camadas.map((l) => (l.id === 'bg-foto' ? ({ ...l, movimento: 'afastar' } as Layer) : l))],
+      ['logo-imagem em movimento', pecaLimpa().camadas.map((l) => (l.id === 'logo' ? ({ ...l, type: 'image', name: 'Logo', movimento: 'afastar' } as Layer) : l))],
+      ['imagem < 90% sob a logo, sem foto de fundo', [...pecaLimpa().camadas.filter((l) => l.id !== 'bg-foto'), { ...fundo({ id: 'img-1', name: 'Detalhe', order: 1, position: { x: 700, y: 1400 }, size: { width: 380, height: 300 } }), movimento: 'afastar' } as Layer]],
+    ]
+    for (const [nome, camadas] of casos) {
+      const g = gate({ medida: { camadas, ...(nome.includes('sem foto') ? { assunto: null, assuntoNaoSeAplica: true, motivoSemAssunto: 'a peça não tem foto de fundo' } : {}) } as Partial<MedidaDaPeca> })
+      expect(g.resultado, nome).toBe('REVISAO_HUMANA_NECESSARIA')
+      for (const r of regras) {
+        expect(g.cobertura[r].estado, `${nome} / ${r}`).toBe('nao-comprovada')
+        expect(motivosDe(g, r)[0]?.camadas.length, `${nome} / ${r}`).toBeGreaterThan(0)
+      }
+    }
+    // Camada em movimento mas INVISÍVEL não conta; e a peça limpa segue APTO.
+    expect(gate({ medida: { camadas: [...pecaLimpa().camadas, { ...fundo({ id: 'img-2', visible: false }), movimento: 'afastar' } as Layer] } }).resultado).toBe('APTO')
   })
 
   it('G30 (Codex R6): invariante 2.3 — `naoMedidos` não vazio nunca sai APTO, mesmo sem outro motivo (id residual em textosSemMetrica numa peça sem texto visível)', () => {
@@ -504,6 +522,12 @@ describe('G19/G26 — piso de interface do story', () => {
     expect(sem([logoEm(H - 223 - 95)])).toEqual(['logo'])
     expect(sem([logoEm(H - 224 - 95 - FOLGA_DE_ANTIALIAS)])).toEqual([])
     expect(interfaceDoStory({ topo: 100 })).toEqual({ topo: 188, rodape: 224 })
+    // Codex R9: configuração não finita nunca afrouxa (`Math.max(NaN, 188)` era NaN e o piso deixava de pegar invasão).
+    for (const cfg of [{ topo: Number.NaN, rodape: Number.NaN }, { topo: Infinity, rodape: -Infinity }, { topo: '300', rodape: null }] as unknown as Array<{ topo?: number; rodape?: number }>) {
+      const i = interfaceDoStory(cfg)
+      expect(Number.isFinite(i.topo) && i.topo >= 188 && Number.isFinite(i.rodape) && i.rodape >= 224, JSON.stringify(cfg)).toBe(true)
+      expect(sem([t(187)], i), JSON.stringify(cfg)).toEqual(['t'])
+    }
     expect(sem([t(250)], interfaceDoStory({ topo: 300 }))).toEqual(['t'])
     expect(sem([t(100, { visible: false })])).toEqual([])
     expect(PISO_DE_INTERFACE_DO_STORY).toEqual({ topo: 188, rodape: 224 })

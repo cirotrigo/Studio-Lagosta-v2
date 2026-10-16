@@ -922,10 +922,16 @@ nada é persistido (CP5b). O que existe:
   → não comprovada (humano) até o owner decidir a política (excluir páginas com foto em movimento do gate autônomo ou
   medir o quadro publicado). Pendência de ratificação do owner apontada pelo Codex: G26 do contrato diz que y=188
   passa; o teste exige 188 + 1 (folga de antialias, desvio 1 já declarado). Regressões em G12, G13b, G13c.
+  Rodada 9 (esforço máximo): (22) a guarda de movimento sai da foto de fundo e vira UMA regra em `decidirCritica`:
+  QUALQUER camada visível com `movimento` efetivo (fundo, logo-imagem, imagem solta sob a logo sem foto de fundo
+  escolhida — `camadasNoInstante` anima qualquer `image`) derruba as 4 regras que leem PIXELS do quadro parado
+  (`texto-sem-leitura`, `tratamento-piorou-leitura`, `logo-sem-leitura`, `texto-sobre-assunto`); invisível não conta;
+  (23) `interfaceDoStory` com configuração não finita (`NaN`, `Infinity`, string) nunca afrouxa: só número finito acima
+  do piso aperta. Regressões: G31 e G26.
   Regressões em G9, G12, G21 e no bloco G21f (valores não numéricos, chave no topo, tipo novo, `effects.curved`,
   `textboxConfig` desconhecido, opacidade 0/parcial, `filter` vazio, `visible` 0/"false", efeitos combinados com
   paridade no render real — forma e imagem com máscara + flip + recorte + sombra + desfoque).
-- **Provas** (`gate.test.ts`, 53 testes): G1–G29 e subcasos; G21c (paridade do lado de cima, >100 renders reais) e
+- **Provas** (`gate.test.ts`, 54 testes): G1–G29 e subcasos; G21c (paridade do lado de cima, >100 renders reais) e
   G21e (lado protegido, métrica real do medidor); oclusão EFETIVA comprovada pelo renderer (texto a 90° sob forma sem
   rotação: os pixels do texto somem no render e o gate acusa; controle com a forma abaixo → comprovada); logo limpa
   sobre a expansão do texto por contorno/sombra/desfoque/borda → oclusão, e o controle sem efeitos preserva a exceção.

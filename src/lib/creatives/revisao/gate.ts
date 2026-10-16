@@ -115,8 +115,9 @@ export const PISO_DE_INTERFACE_DO_STORY = { topo: 188, rodape: 224 } as const
 /** Uma configuração do cliente pode ser MAIS restritiva, nunca menos. */
 export function interfaceDoStory(doCliente?: { topo?: number; rodape?: number }): { topo: number; rodape: number } {
   return {
-    topo: Math.max(PISO_DE_INTERFACE_DO_STORY.topo, doCliente?.topo ?? 0),
-    rodape: Math.max(PISO_DE_INTERFACE_DO_STORY.rodape, doCliente?.rodape ?? 0),
+    // Configuração do cliente NUNCA afrouxa: só número finito acima do piso aperta (`NaN` em `Math.max` dava `NaN` — Codex R9).
+    topo: Number.isFinite(doCliente?.topo) ? Math.max(PISO_DE_INTERFACE_DO_STORY.topo, doCliente!.topo!) : PISO_DE_INTERFACE_DO_STORY.topo,
+    rodape: Number.isFinite(doCliente?.rodape) ? Math.max(PISO_DE_INTERFACE_DO_STORY.rodape, doCliente!.rodape!) : PISO_DE_INTERFACE_DO_STORY.rodape,
   }
 }
 
@@ -664,9 +665,6 @@ function assuntoRepresentaORender(fundo: Layer, canvas: { width: number; height:
   // nove valores que os dois leem igual passam (Codex R8).
   const corte = style.cropPosition
   if (corte !== undefined && corte !== null && !/^(left|center|right)-(top|middle|bottom)$/.test(String(corte))) ruins.push(`cropPosition ${JSON.stringify(corte)}`)
-  // Foto em MOVIMENTO: o revisor lê um cover parado, mas a página com áudio sai no quadro do movimento (persist.ts; `afastar`
-  // começa em 1,15×) — o assunto se desloca dentro da caixa (Codex R8). Política do owner pendente; até lá, humano.
-  if (valorEfetivo((fundo as { movimento?: unknown }).movimento)) ruins.push('movimento')
   const logos = new Set(logosDaPeca(camadas).map((l) => l.id))
   // `element` é desenhado pelo MESMO `renderImage` que `image` (render-engine.ts, `case 'logo': case 'element':`); só o
   // tipo `logo` fica de fora — é logo por definição, e a solta já passa por `logo-sobre-texto` (Codex R7).
@@ -689,6 +687,9 @@ export interface DecisaoDaCritica {
  * A decisão de UMA regra crítica, lida da MEDIDA e da cobertura do relatório (4.2 e 5 do contrato). Exportada para o
  * teste forjar coberturas que o revisor de hoje não produz (G18: `naoSeAplica` fora de `texto-sobre-assunto`).
  */
+/** Regras cuja medida lê PIXELS do render parado (régua, pioras, leitura da logo, assunto): não valem com camada em movimento. */
+const REGRAS_QUE_LEEM_O_QUADRO: ReadonlySet<RegraCritica> = new Set<RegraCritica>(['texto-sem-leitura', 'tratamento-piorou-leitura', 'logo-sem-leitura', 'texto-sobre-assunto'])
+
 export function decidirCritica(args: {
   regra: RegraCritica
   medida: MedidaDaPeca
@@ -702,6 +703,12 @@ export function decidirCritica(args: {
   const estimados = daRegra.filter((a) => a.certeza === 'estimada' && !achadoCritico(a, politica))
   const textosVisiveis = medida.camadas.filter(ehTextoVisivel)
   const nc = (motivo: string, camadas: string[] = []): DecisaoDaCritica => ({ cobertura: { estado: 'nao-comprovada', motivo }, reprovam: [], naoMedidos: [], avisos: [], camadas })
+  // Qualquer camada em MOVIMENTO (Codex R8/R9): a página com áudio publica o quadro do movimento (`camadasNoInstante` anima
+  // qualquer `image`; `afastar` começa em 1,15×), e TODA medida que lê pixels — régua dos textos, pioras, leitura da logo
+  // (medida contra um render parado), assunto — é do quadro parado. Fail-closed nessas regras até o owner decidir a
+  // política (excluir páginas com movimento do gate autônomo, ou medir o quadro publicado).
+  const emMovimento = medida.camadas.filter((l) => l.visible !== false && valorEfetivo((l as { movimento?: unknown }).movimento)).map((l) => l.id)
+  if (emMovimento.length > 0 && REGRAS_QUE_LEEM_O_QUADRO.has(regra)) return nc(`camada em movimento (${emMovimento.join(', ')}): a medida é do quadro parado e a página com áudio publica o quadro do movimento`, emMovimento)
   const ok = (avisos: string[] = []): DecisaoDaCritica => ({ cobertura: { estado: 'comprovada' }, reprovam: [], naoMedidos: [], avisos, camadas: [] })
   const nsa = (motivo: string, avisos: string[] = []): DecisaoDaCritica => ({ cobertura: { estado: 'nao-se-aplica', motivo }, reprovam: [], naoMedidos: [], avisos, camadas: [] })
   const rep = (lista: AchadoDaRevisao[]): DecisaoDaCritica => ({ cobertura: { estado: 'reprovada', achados: lista.map((a) => a.id) }, reprovam: lista, naoMedidos: [], avisos: [], camadas: [] })
