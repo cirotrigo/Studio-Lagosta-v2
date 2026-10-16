@@ -1,271 +1,275 @@
 # CP5c — contrato técnico do GATE em `agendar-leva` (perfil draft-only) — proposta para revisão, 16/10/2026
 
-**Estado: PROPOSTA (rodada 1 do Codex: ordem comum das travas — SocialPost antes de Page, Generation depois; efeitos dentro de UMA fronteira protegida com funções de efeito que aceitam `cliente`; `achados`/`motivos` no topo do item como P11 exige; registro reprovado gravado sob a trava da página; entradas mutáveis da medição registradas e reconferidas; C9 comportamental). Nada aqui está implementado; este PR é documental.** Base: `main` `6e468abc` (CP5b
-mergeado: contrato #239 → `c7c461b8`, implementação #240 → `6e468abc`). Fontes: plano-mestre
-`docs/PLANO-2026-10-15-AUTONOMIA-DIRECAO-DE-ARTE-E-MCP.md` § 4.5 (e a tabela de reforços do Dot), contrato do CP5b
-`docs/PLANO-2026-10-16-CP5B-CONTRATO.md` § 12 (o handoff, itens 1–9), contrato do CP5a (`gate.ts`), e o código de
-`src/lib/lotes/agendar-itens.ts` como está na main (linhas citadas por função, não por número — o arquivo muda).
+**Estado: PROPOSTA (rodada 2 do Codex: a MEDIÇÃO passa a acontecer DENTRO da transação, sob as travas — a janela entre
+medir e escrever deixa de existir; os posts da página são travados antes da página; o que a medição lê é travado
+`FOR SHARE`; o registro — APTO ou reprovado — é gravado na mesma transação; os efeitos pós-commit ficam FORA do perímetro
+do gate, com a prova de que não dependem dele; retorno em união para recusa medida / sem vínculo / não medida).** Nada
+aqui está implementado; este PR é documental. Base: `main` `6e468abc` (CP5b mergeado: contrato #239 → `c7c461b8`,
+implementação #240 → `6e468abc`). Fontes: plano-mestre `docs/PLANO-2026-10-15-AUTONOMIA-DIRECAO-DE-ARTE-E-MCP.md` § 4.5
+(e a tabela de reforços do Dot), contrato do CP5b `docs/PLANO-2026-10-16-CP5B-CONTRATO.md` § 12 (o handoff, itens 1–9),
+contrato do CP5a (`gate.ts`), e o código de `src/lib/lotes/agendar-itens.ts` como está na main (citado por função).
 
 ## 0. O que o CP5c entrega, em uma frase
 
-No perfil efetivo **draft-only**, `agendar-leva` só cria, adota ou completa um RASCUNHO depois de **medir a página
-relida e decidir de novo** com `decidirEMontarRegistro` (CP5b) — `decisao: 'ok'` E `gate.resultado === 'APTO'` —, grava
-o registro do veredito **dentro da transação, antes do efeito**, e devolve `REVISAO_HUMANA_NECESSARIA` com as
-referências da peça em todo outro caso. O fluxo humano continua WARN-ONLY. **O registro gravado nunca entra na decisão.**
-`simular: true` mede e decide igual e não grava nada.
+No perfil efetivo **draft-only**, `agendar-leva` só cria ou adota um RASCUNHO depois de **medir a página SOB AS TRAVAS da
+transação que escreve** e decidir com `decidirEMontarRegistro` (CP5b) — `decisao: 'ok'` E `gate.resultado === 'APTO'` —,
+gravando o registro do veredito (APTO ou não) na mesma transação, antes de qualquer post nascer ou ser ligado; todo
+outro caso volta `REVISAO_HUMANA_NECESSARIA` com as referências da peça. O fluxo humano continua WARN-ONLY. **O registro
+gravado nunca entra na decisão.** `simular: true` mede e decide igual (pelo leitor, sem travas) e não grava nada.
 
 ## 1. O que a main tem hoje (o que o contrato muda e o que preserva)
 
 | Ponto | Hoje (`agendar-itens.ts`) | CP5c |
 |---|---|---|
 | Quem decide o perfil | `compositor.ts` (`agendar-leva`): `apenasRascunho = perfilDoPrincipal(principal) === 'draft-only'` | igual; o gate liga SÓ com `apenasRascunho` |
-| Decisão sem trava | `decidirEscrita(ctx.leitor, …)` → `criar` / `adotar` / `recusar` | igual; **depois** dela, no draft-only, a MEDIÇÃO + `decidirEMontarRegistro` (§ 3) |
-| Simulação | mede horário ocupado, `recusaComoImagem`, thumbnail; devolve `concluido` sem gravar | igual + o gate: não APTO → `falhou` `REVISAO_HUMANA_NECESSARIA`; nada gravado (nem o registro) |
-| Transação (20 s) | `pg_advisory_xact_lock(projeto)` → `FOR UPDATE` do item, do item do plano, da página → `decidirEscrita(tx)` de novo → `pedidoDoAgendamento` → `resolverAgendamento` + `criarPostDoAgendamento` (criar) ou adota → CAS da linha → item do plano | igual + (§ 4): `SELECT … FOR UPDATE` da Generation; releitura da página com os campos da identidade; **identidade relida ≡ medida**; releitura do post (adotar); `gravarGateDaArte(tx, registro)` ANTES de criar/ligar; `sem-vinculo`/exceção → `RecusaSobTrava` com `REVISAO_HUMANA_NECESSARIA` |
-| Efeitos pós-commit | `executarEfeitos` (catálogo, refilagem da pasta, item do plano → `agendado`) nas três vias | igual + (§ 5): no draft-only, revalidação PROTEGIDA antes de cada efeito |
-| Linha já ligada com efeitos pendentes (`reaproveitar`) | roda os efeitos direto | (§ 5) decisão fresca + revalidação antes dos efeitos |
-| `ItemAgendadoDoLote` | `situacao`, `codigo`, `motivo`, `generationId`, `pageId`, `editUrl`, … | + `revisao?` (§ 6): o veredito resumido, nunca autoridade |
-| Testes | `piloto-portao.test.ts` P11: 8 `hojeViola` (v1 e v2 × simulação/escrita × não-criar/referências) | viram `it()` neste PR (regra do CP0) |
+| Decisão sem trava | `decidirEscrita(ctx.leitor, …)` → `criar` / `adotar` / `recusar` | igual (é a conta barata que evita abrir transação à toa); no draft-only ela NÃO autoriza nada — só a decisão sob trava autoriza |
+| Simulação | horário ocupado, `recusaComoImagem`, thumbnail; `concluido` sem gravar | igual + mede e decide pelo `leitor` (§ 3), sem travas: não APTO → `falhou` `REVISAO_HUMANA_NECESSARIA`; nada gravado, nem o registro |
+| Transação (20 s) | `pg_advisory_xact_lock(projeto)` → `FOR UPDATE` do item, do item do plano, da página → `decidirEscrita(tx)` → `pedidoDoAgendamento` → `resolverAgendamento` + `criarPostDoAgendamento` (criar) ou adota → CAS da linha → item do plano | igual + (§ 4): trava dos POSTS DA PÁGINA antes da página; `FOR UPDATE` da Generation; `FOR SHARE` do que a medição lê; **a medição e a decisão acontecem aqui**; `gravarGateDaArte(tx, registro)`; não APTO → commit só com o registro, item `falhou`; APTO → segue para criar/ligar |
+| Efeitos pós-commit | `executarEfeitos` (catálogo, refilagem, item do plano) | iguais, FORA do perímetro do gate (§ 5): só bookkeeping; prova de que não mudam post nem conteúdo da página |
+| Linha já ligada (`reaproveitar`) | roda os efeitos pendentes; no draft-only, post aprovado → devolve sem efeitos | igual: o rascunho já existe; nenhum DRAFT nasce nem é ligado aqui, então o gate não se aplica (§ 5, decisão 8.7) |
+| `ItemAgendadoDoLote` | `situacao`, `codigo`, `motivo`, `generationId`, `pageId`, `editUrl`, … | + `achados`, `motivos`, `revisao` (§ 6) |
+| Testes | `piloto-portao.test.ts` P11: 8 `hojeViola` | viram `it()` neste PR (regra do CP0) |
 
 **Nada muda para o perfil normal** (humano): `apenasRascunho === false` → nenhuma medição, nenhum registro, nenhuma
-recusa nova. É a mesma regra do H4: o gate fail-closed só vale onde o perfil é draft-only (plano-mestre § 4.5,
-"limite a dizer ao owner": o `clientId` do ChatGPT é compartilhado com humanos; um cliente OAuth novo nasce `normal`).
+trava nova, nenhuma recusa nova. É a regra do H4: o gate fail-closed só vale onde o perfil é draft-only (plano-mestre
+§ 4.5, "limite a dizer ao owner": o `clientId` do ChatGPT é compartilhado com humanos; um cliente OAuth novo nasce `normal`).
 
 ## 2. Escopo e não-escopo
 
-**Entra**: (a) medição + decisão fresca em `agendarItem` para `criar`, `adotar` e `reaproveitar com efeitos pendentes`,
-só no draft-only; (b) gravação do registro sob trava antes do efeito (`gravarGateDaArte`), com os códigos de recusa;
-(c) releitura da página (campos de `identidadeDaPagina`), da Generation e do post sob trava, e a comparação com a
-medida; (d) revalidação protegida antes de cada efeito pós-commit; (e) `revisao` no retorno do item; (f) a política
-EFETIVA do assunto (decisão 9.12 do CP5b, § 8.1); (g) `agendar-itens.ts` entra na lista de produtores da regra de
-lint e do inventário H12; (h) P11 vira `it()`; (i) o inventário "toda tool da allowlist draft-only que cria DRAFT passa
-pelo gate"; (j) docs (`revisor-da-arte.md` § CP5c, `mcp.md`, manual do Dot).
+**Entra**: (a) medição + decisão SOB TRAVA em `agendarItem` para `criar` e `adotar`, só no draft-only; (b) gravação do
+registro na mesma transação (APTO e reprovado); (c) travas novas e a ordem comum (§ 4); (d) retorno em união (§ 6);
+(e) a política EFETIVA do assunto (decisão 9.12 do CP5b, § 8.1); (f) `agendar-itens.ts` entra na lista de produtores
+da regra de lint e do inventário H12; (g) P11 vira `it()`; (h) o inventário comportamental "só `agendar-leva` cria DRAFT
+no draft-only, e só depois do registro"; (i) `contextoDaMedicao` e `registerProjectFonts` com parâmetro `cliente`
+(leitor/transação), sem mudar o comportamento de hoje; (j) docs (`revisor-da-arte.md` § CP5c, `mcp.md`, manual do Dot).
 
-**Não entra** (dito para não parecer garantia): `ajustar-arte` autônomo e a fronteira da não-piora (CP5d); provas
-ponta a ponta sintéticas e o piloto (CP5e, § 4.7/4.8 do plano-mestre); bloco `gate` em `auditar-operacao` (§ 8.4:
-fica para o CP5e, com os números do piloto); oclusão por pixels; qualquer mudança no fluxo humano; `colocar-na-agenda`,
-`postar-agora`, `aprovar-rascunhos` (fora da allowlist draft-only — continuam fora); migration; mexer em `gate.ts`,
-`gate-registro.ts` ou `gate-persistido.ts` (consumidos como estão; se um deles precisar mudar, é PR próprio com bump).
+**Não entra** (dito para não parecer garantia): gate nos EFEITOS pós-commit (§ 5: eles não dependem do veredito);
+`ajustar-arte` autônomo e a fronteira da não-piora (CP5d); provas ponta a ponta e o piloto (CP5e); bloco `gate` em
+`auditar-operacao` (§ 8.4); oclusão por pixels; qualquer mudança no fluxo humano; `colocar-na-agenda`, `postar-agora`,
+`aprovar-rascunhos` (fora da allowlist — continuam fora); migration; mexer em `gate.ts`, `gate-registro.ts`,
+`gate-persistido.ts`, `agendar.ts`, `pastas.ts` (consumidos como estão).
 
-## 3. A decisão fresca (fora da transação, depois de `decidirEscrita`)
-
-Só com `ctx.apenasRascunho`, e só quando a decisão sem trava foi `criar` ou `adotar` (uma `recusa` já é resposta).
+## 3. A medição e a decisão (uma função, dois lugares)
 
 ```ts
-// agendar-itens.ts (novo trecho; a lógica de medição é a já existente em revisar-arte.ts)
-async function medirEDecidir(ctx, antes: { peca; pagina }, pedido, principal): Promise<DecisaoFresca>
-  // 1. Página INTEIRA, pelo leitor (db ou leitor da simulação): id, name, tags, width, height, background, layers,
-  //    copyAutoral, audio, isTemplate, Template.projectId — a mesma leitura alimenta identidade, medição e vínculo.
-  // 2. `recusaComoImagem(page.layers, page.audio)` → recusa → REVISAO_HUMANA_NECESSARIA (vídeo/música: o CP5a manda ao humano).
-  // 3. `lerCamadas(page.layers)` ilegível → REVISAO_HUMANA_NECESSARIA (`decidirEMontarRegistro` daria IDENTIDADE_ILEGIVEL; aqui nem mede).
-  // 4. `contextoDaMedicao({ projectId, page, camadas })` + `medirCamadasDaPeca(camadas, ctx, { corrigir: false })`
-  //    — a MESMA medição do revisor e do executor do CP4; `corrigir: false` porque mede a peça COMO VAI SER GRAVADA.
-  //    TODA leitura da decisão passa pelo `ctx.leitor` (R12-04: na simulação é a transação READ ONLY da prova):
-  //    `contextoDaMedicao` e `registerProjectFonts` ganham o parâmetro `cliente` (padrão `db`; o revisor e o CP4 não mudam).
-  //    Qualquer exceção aqui (banco, fontes) → REVISAO_HUMANA_NECESSARIA com o motivo (fail-closed; nunca `ERRO`).
-  // 4b. ENTRADAS MUTÁVEIS da medição que a identidade não cobre (Codex R1): `contextoDaMedicao` passa a devolver também
-  //    `fontes = { projectUpdatedAt: Project.updatedAt, composicaoDoCompositor: sha256(estavel(fieldValues.composicao da
-  //    Generation do compositor usada nas referências)) | null, generationsLidas: ids }`. Sob a trava (§ 4) elas são relidas
-  //    e comparadas; divergência → REVISAO_HUMANA_NECESSARIA. O que NÃO é reconferido fica dito em § 8.6 (bytes de
-  //    assets e fontes por URL — limite herdado do CP5b § 4.2, sem "vigente").
-  // 5. identidade = identidadeDaPagina(page)
-  // 6. decidirEMontarRegistro({
-  //      entrada: { medida, identidade: { pageVersion, copyVersion }, politicaDoAssunto: POLITICA_DO_ASSUNTO_DO_AGENDAR_LEVA },
-  //      page, vinculo: { projectId, generationId: antes.peca.id, postType: pedido.postType }, origem: 'agendar-leva',
-  //      principal: { tipo: principal.kind, id: clientId/userId }, agora: () => new Date() })
-  // 7. `sem-vinculo` → REVISAO_HUMANA_NECESSARIA (motivo do vínculo); `ok` com resultado ≠ APTO → REVISAO_HUMANA_NECESSARIA
-  //    com `revisao` (§ 6); `ok` APTO → segue com { registro, identidade }.
+// agendar-itens.ts (novo): medirEDecidir — PURA quanto a travas: lê pelo `cliente` que recebe e devolve a decisão.
+async function medirEDecidir(cliente: Cliente, ctx, args: { peca; page: PaginaCompleta; postType: 'STORY' | 'POST'; principal }):
+  Promise<
+    | { tipo: 'nao-medida'; motivo: string }                                   // recusa ANTES de medir (sem GateDaArte)
+    | { tipo: 'sem-vinculo'; motivo: string }                                  // decidirEMontarRegistro recusou o vínculo
+    | { tipo: 'medida'; registro: RegistroSelado; gate: GateDaArte; identidade: IdentidadeDaPagina }
+  >
+  // 1. `recusaComoImagem(page.layers, page.audio)` → 'nao-medida' (vídeo/música: o CP5a manda ao humano).
+  // 2. `lerCamadas(page.layers)` ilegível → 'nao-medida' ('camadas ilegíveis').
+  // 3. `contextoDaMedicao({ projectId, page, camadas, cliente })` + `medirCamadasDaPeca(camadas, ctx, { corrigir: false })`
+  //    — a MESMA medição do revisor e do executor do CP4 (`corrigir: false`: a peça COMO VAI SER GRAVADA). Toda leitura de
+  //    banco passa pelo `cliente` (`contextoDaMedicao` e `registerProjectFonts` ganham o parâmetro, padrão `db`).
+  //    Exceção (banco, fontes, download) → 'nao-medida' com o motivo (fail-closed; nunca `ERRO`).
+  // 4. decidirEMontarRegistro({ entrada: { medida, identidade: identidadeDaPagina(page) (as 2 versões), politicaDoAssunto:
+  //    POLITICA_DO_ASSUNTO_DO_AGENDAR_LEVA }, page, vinculo: { projectId, generationId: peca.id, postType }, origem: 'agendar-leva',
+  //    principal: { tipo: principal.kind, id }, agora: () => new Date() }) → 'sem-vinculo' | 'medida'.
 ```
 
-- **A medida nasce da MESMA leitura da página** cujas camadas, canvas, formato e `copyAutoral` entram no vínculo
-  (§ 12.5 do CP5b): `camadas` = `lerCamadas(page.layers)`, e `contextoDaMedicao` recebe a mesma `page`. Métricas,
-  contraste e leitura da logo saem de `medirCamadasDaPeca` sobre essas camadas — e é isso que o teste C5 prova (a
-  medida passada a `decidirEMontarRegistro` é a dessas camadas; uma medida de outra página é `sem-vinculo`).
-- `vinculo.postType` é o tipo do post que VAI nascer (`criar`: `pedido.postType`) ou do post relido (`adotar`,
-  `reaproveitar`: `post.postType`) — § 12.6 do CP5b. Divergência com `TIPO_DO_POST_POR_FORMATO[formato]` é `sem-vinculo`
-  dentro de `decidirEMontarRegistro` (já implementado no CP5b).
-- O registro NÃO é consultado: `lerGateDaArte` não é importado por `agendar-itens.ts` (a regra de lint do CP5b o
-  barra; `agendar-itens.ts` entra só na lista de quem pode `decidirEMontarRegistro`). Um registro `APTO`/`coincidente`
-  já gravado na Generation não muda nada (teste C3).
-- **Custo**: `medirCamadasDaPeca` registra fontes uma vez por contexto, mede texto, roda a régua (render) e lê a logo
-  (download). Estimativa pela medição do CP3/CP4: 1–4 s por item, FORA da transação de 20 s. Um lote de 21 itens leva
-  ~1 min a mais; dito na descrição da tool ("a simulação e a chamada de verdade medem cada peça").
+- **Onde roda**: na chamada de verdade, DENTRO da transação de § 4 com `cliente = tx`, depois das travas — a página, a
+  Generation, os posts da página e o que a medição lê não mudam até o commit (travas de linha), e por isso NÃO existe
+  "identidade medida × identidade relida": é a mesma leitura. Na simulação, com `cliente = ctx.leitor`, sem travas — é
+  a conta, e o contrato diz que a conta pode diferir da chamada de verdade se a página mudar no meio (como já diz hoje).
+- **A medida nasce da MESMA leitura da página** (§ 12.5 do CP5b): `camadas` = `lerCamadas(page.layers)`,
+  `contextoDaMedicao` recebe a mesma `page`, `identidadeDaPagina(page)` idem. Uma medida de outra página é
+  `sem-vinculo` por construção (teste C5).
+- `vinculo.postType`: `criar` → `pedidoSob.postType` (o pedido montado DA MESMA Generation travada, § 4.5); `adotar` → o
+  `postType` do post travado. Como medição, pedido e vínculo saem da mesma transação, "tipo autorizado ≠ tipo criado"
+  (Codex R2, achado 4) não tem janela: é a mesma leitura (teste C17 prova que `pedidoSob` e `vinculo.postType` são
+  derivados do mesmo `sob.peca`).
+- O registro NÃO é consultado: `lerGateDaArte` não é importado por `agendar-itens.ts` (lint do CP5b); um registro
+  `APTO`/`coincidente` já gravado não muda nada (C3).
+- **Custo**: `medirCamadasDaPeca` registra fontes uma vez por contexto, mede texto, roda a régua (render em memória) e lê a
+  logo (download, `cacheDeLogos`); estimativa 1–4 s por item, DENTRO da transação de 20 s (que hoje já faz
+  `resolverAgendamento`). O orçamento é dito e medido no PR (C18: tempo por item no banco falso e no benchmark sintético
+  do CP3). Rede dentro de transação é o custo deliberado de não ter janela; se um item estourar o `timeout`, a transação
+  volta atrás e o item volta `falhou` `REVISAO_HUMANA_NECESSARIA` com motivo "a medição não coube no tempo; repita" (a
+  exceção de timeout é mapeada como as outras do gate — § 4.7), nunca com post criado pela metade.
 
-## 4. Sob a trava: reler, comparar, gravar, só então criar/ligar
+## 4. A transação do draft-only (criar e adotar)
 
-**Ordem COMUM das travas** (Codex R1: `ajustar-arte` trava os `SocialPost` da página e depois escreve a `Page`,
-`arte-rapida.ts`; `persist.ts` trava a `Page` e depois escreve a `Generation`; `enfileirar-video`,
-`substituir-video-do-post`, `trocar-arte-do-post` e `edicao-semantica` travam só o `SocialPost`; `reserva.ts` só o
-`ItemDeLote`; `voz-service` só o `Project`). O CP5c adota, em TODA transação sua:
+**Ordem COMUM das travas** (Codex R1/R2): `pg_advisory_xact_lock(projeto)` → `ItemDeLote` → `ItemDePlano` →
+**`SocialPost` (TODOS os posts da página, `WHERE "pageId" = $1 FOR UPDATE`, como `ajustar-arte` faz)** → **`Page`** →
+**`Generation` (a peça)** → **`FOR SHARE`: `Project`, as Generations da página que a medição lê, a página de assinatura e
+a página-modelo das referências, as linhas de `CustomFont` do projeto**. Caminhos existentes conferidos: `ajustar-arte`
+(`SocialPost` da página → escreve `Page`), `persist.ts` (`Page` → escreve `Generation`), `enfileirar-video`,
+`substituir-video-do-post`, `trocar-arte-do-post`, `edicao-semantica` (só `SocialPost`), `reserva.ts` (só `ItemDeLote`),
+`voz-service` (só `Project`), `agendarPost` humano e `later-scheduler` (trava consultiva do projeto em volta de
+`criarPostDoAgendamento`). Nenhum trava `Page` antes de `SocialPost` nem `Generation` antes de `Page`; o inventário C13 lista
+cada `FOR UPDATE`/`FOR SHARE` de `src/lib` com a sua ordem e falha se um novo violar a sequência.
 
-`pg_advisory_xact_lock(projeto)` → `ItemDeLote` → `ItemDePlano` → **`SocialPost`** (o post a adotar/reaproveitar, quando
-existe) → **`Page`** → **`Generation`**.
+Passos, depois das travas de hoje (projeto, item, item do plano):
 
-Nenhum caminho da main trava `Page` antes de `SocialPost` nem `Generation` antes de `Page`, então a ordem não forma
-ciclo com os existentes; o PR de implementação lista cada `FOR UPDATE` da `src/lib` com a sua ordem (teste de inventário
-C13: toda transação que trava duas destas tabelas respeita a sequência). Dentro da transação existente, depois das travas
-de hoje e do `decidirEscrita(tx, …)` que já relê a peça:
+1. **Posts da página**: `SELECT id, status, "laterPostId", "postType", "generationId", "projectId" FROM "SocialPost" WHERE
+   "pageId" = $1 FOR UPDATE` (o `pageId` da decisão sem trava). Depois `Page FOR UPDATE` (como hoje) e `Generation FOR UPDATE`.
+2. `decidirEscrita(tx, …)` relê e decide de novo (como hoje). **Se a ação ou o post mudou em relação à decisão sem trava**
+   (`criar` → `adotar`, ou outro `postId`) → `recusado` `LOTE_AGENDAMENTO_CONCORRENTE` ("o item mudou durante o
+   agendamento; repita") — Codex R2, achado 1: o post a adotar tem de ser um dos travados no passo 1; um que apareceu
+   depois (phantom) não foi travado, e repetir a chamada o trava. Com a trava consultiva do projeto, que `agendarPost`
+   humano e o publicador também tomam, isso só acontece com escrita que não passe por elas — dito como limite.
+3. **Página COMPLETA relida pelo `tx`** (`lerPaginaCompleta`: os campos de hoje + `name`, `background`, `layers`,
+   `copyAutoral`, `audio`, `updatedAt`, `Template.projectId`) e `FOR SHARE` do que a medição vai ler: `Project`
+   (`assinatura`), as Generations da página (`fieldValues.pageId = page.id`, as 15 mais recentes — o mesmo filtro de
+   `contextoDaMedicao`), a página de assinatura (`composicao.assinatura.pageId` da Generation do compositor) e a
+   página-modelo (`sourcePageId`), e `CustomFont WHERE "projectId" = $1`. Com as linhas travadas, nenhuma delas muda até
+   o commit — é isso que substitui a "reconferência de entradas mutáveis" (Codex R2, achado 3): não se compara, trava-se.
+   **Phantoms ditos** (linhas NOVAS que `FOR SHARE` não impede): Generation nova da página — `persist.ts` trava a `Page`
+   antes de gravá-la, então espera o nosso commit; `CustomFont` nova — a rota de upload não toma trava: no fim da
+   medição `contextoDaMedicao` relê a lista de ids de `CustomFont` e, se mudou, `nao-medida` ("as fontes do projeto mudaram
+   durante a medição"); página de assinatura/modelo nova apontada por uma Generation nova — coberto pela trava da `Page`.
+   O que NÃO é protegido fica em § 8.6 (bytes servidos por URL — CP5b § 4.2).
+4. **`medirEDecidir(tx, …)`** (§ 3), com `postType` = o do post travado (adotar) ou o de `pedidoSob` (criar, passo 5 —
+   o pedido é montado ANTES da medição, da Generation travada; `hashDoAgendamento(pedidoSob)` é o que vai na linha).
+5. `pedidoSob = pedidoDoAgendamento(item, { quandoDaSpec: sob.peca.quandoDaSpec, formato: sob.peca.formato ?? sob.pagina.formato })`
+   (como hoje, da peça RELIDA sob trava). Em `criar`, `vinculo.postType = pedidoSob.postType`; `decidirEMontarRegistro` já
+   recusa `TIPO_DO_POST_POR_FORMATO[formato] !== postType`.
+6. **Via `adotar`** (§ 12.3/4a/4b do CP5b): o post escolhido (um dos travados) tem de ter `status === 'DRAFT'`,
+   `laterPostId === null`, `projectId === projectId`, `pageId === page.id`, `postType === TIPO_DO_POST_POR_FORMATO[formato]` e
+   `generationId === peca.id`. `generationId` nulo ou outro → `REVISAO_HUMANA_NECESSARIA` ("o rascunho desta página aponta
+   outra arte; confira na agenda" — decisão 8.5). Nada é escrito no post adotado.
+7. **Resultado da medição**:
+   - `nao-medida` / `sem-vinculo` / `medida` com `gate.resultado !== 'APTO'` → **grava o registro** (quando há: `medida` e
+     `sem-vinculo` não têm registro — só `medida`) com `gravarGateDaArte(tx, registro)` e devolve `recusado`
+     `REVISAO_HUMANA_NECESSARIA` SEM lançar: a transação COMMITA só com o registro (auditoria do veredito reprovado,
+     serializada pela trava da página e da Generation — Codex R2, achado 5: duas medições da MESMA página são
+     sequenciais, e a última a commitar é a última medida; não há "reprovação antiga" sobrescrevendo um APTO novo, porque
+     quem mediu depois escreve depois). `gravarGateDaArte` devolve `sem-vinculo` → ainda assim `recusado`, com aviso.
+   - `medida` APTO → `gravarGateDaArte(tx, registro)` ANTES de `resolverAgendamento`/`criarPostDoAgendamento` (criar) e
+     antes do CAS da linha (adotar). `'sem-vinculo'`/`'sem-proveniencia'` → `RecusaSobTrava` `REVISAO_HUMANA_NECESSARIA`;
+     **exceção do banco PROPAGA** → rollback, item `falhou` `REVISAO_HUMANA_NECESSARIA` (o `try/catch` em volta de
+     `$transaction` mapeia qualquer exceção nascida em `medirEDecidir`/`gravarGateDaArte`/timeout para esse código, não
+     para o `codigo: 'ERRO'` do `catch` externo — C10).
+8. Só então o que já existe: `horarioOcupado`, `resolverAgendamento`, `criarPostDoAgendamento`, CAS da linha, item do plano.
 
-1. `adotar`/`reaproveitar`: `SELECT id FROM "SocialPost" WHERE id = ${postId} FOR UPDATE` ANTES da trava da página (a
-   trava da página de hoje passa a vir depois dela). `criar`: não há post.
-2. `SELECT id FROM "Generation" WHERE id = ${peca.id} AND "projectId" = ${projectId} FOR UPDATE` depois da página (a
-   Generation é o dono do registro — § 12.2 do CP5b).
-3. **Página relida sob trava** com os campos de `identidadeDaPagina` (hoje `lerPagina` lê só `templateId`, `isTemplate`,
-   tamanho e tags): `identidadeDaPagina(relida)` ≡ medida em `pageVersion`, `copyVersion`, `formato` e
-   `formatoDoCompositor`; `recusaComoImagem(relida.layers, relida.audio)` nulo; e as ENTRADAS MUTÁVEIS de § 3.4b relidas
-   e iguais (`Project.updatedAt`; `composicao` da Generation do compositor). Divergência →
-   `RecusaSobTrava({ codigo: 'REVISAO_HUMANA_NECESSARIA', motivo: 'A página (ou o que a medição leu) mudou entre a medição e
-   a escrita; nada foi agendado. Repita a chamada para medir de novo.' })` (plano-mestre § 4.5, reforço 4; decisão 8.2).
-4. **Via `adotar`** (§ 12.3/4a/4b do CP5b): o post relido sob trava (`SELECAO_DO_POST` + `projectId`) tem de ter
-   `status === 'DRAFT'`, `laterPostId === null`, `projectId === projectId`, `pageId === page.id`,
-   `postType === TIPO_DO_POST_POR_FORMATO[formato relido]` e `generationId === peca.id`. Hoje a seleção para adoção
-   (`decidirPostsDaPagina`) não confere tipo nem Generation; `generationId` nulo ou outro → `REVISAO_HUMANA_NECESSARIA`
-   ("o rascunho desta página aponta outra arte; confira na agenda" — decisão 8.5). Nada é escrito no post adotado.
-5. **`gravarGateDaArte(tx, registro)`** ANTES de `resolverAgendamento`/`criarPostDoAgendamento` (criar) e antes do CAS da
-   linha (adotar). `'sem-vinculo'` (0 linhas) → `RecusaSobTrava` `REVISAO_HUMANA_NECESSARIA`; `'sem-proveniencia'` idem
-   (guarda); **exceção do banco PROPAGA** e a transação volta atrás — o item volta `falhou` com
-   `REVISAO_HUMANA_NECESSARIA` (não o `codigo: 'ERRO'` do `catch` externo): o `try/catch` em volta de `$transaction` mapeia
-   a exceção da gravação para esse código (C10).
-6. Só então o que já existe: `horarioOcupado`, `resolverAgendamento`, `criarPostDoAgendamento`, CAS da linha, item do plano.
+**Simulação** (`simular: true`): sem transação, pelo `leitor`: `medirEDecidir(ctx.leitor, …)` com `postType` = o de
+`pedido` (criar) ou do post que `antes` adotaria; não APTO → `falhou` `REVISAO_HUMANA_NECESSARIA` com os mesmos campos;
+APTO → o `concluido` de hoje + `revisao`. Nada gravado (nem registro).
 
-**Registro quando NÃO é APTO** (Codex R1, achado 4 — ordem dos vereditos): gravado pelo `db` (não pelo `leitor`) numa
-transação curta própria que trava **`Page` → `Generation`** na mesma ordem, relê a página e SÓ grava se
-`identidadeDaPagina(relida)` ≡ a identidade medida; divergiu → não grava (`console.warn`): uma chamada que mediu a versão
-velha e reprovou nunca sobrescreve o APTO que outra chamada gravou sobre a versão nova — a trava da página serializa as
-duas, e a condição de identidade decide quem é o último veredito honesto (teste C14). Falha nessa gravação: `console.warn`
-+ o item segue `falhou` (a decisão já foi tomada e nada foi criado). Em `simular`, nada é gravado nunca.
+## 5. Efeitos pós-commit: fora do perímetro do gate, com prova
 
-## 5. Efeitos pós-commit, nas três vias (§ 12.4/4a do CP5b) — UMA fronteira protegida
+`executarEfeitos` (catálogo das artes e sinais de aprendizado, legenda, refilagem da página para a pasta da semana,
+item do plano → `agendado`) continua como hoje, nas três vias, sem fronteira protegida nem revalidação (Codex R2,
+achado 2: as rotinas internas usam o `db` global e abrem transações próprias — propagar um `tx` até elas é refatorar
+`agendar.ts`, `pastas.ts`, `artes-do-post.ts` e os sinais, com risco alto e sem ganho de segurança). O contrato toma a
+POSIÇÃO (decisão 8.7) de que **nenhum efeito depende do veredito**, e prova:
 
-Hoje `executarEfeitos` roda catálogo (`efeitosDoAgendamento`), refilagem da pasta (`refilarPaginasDoPost`) e item do plano
-em chamadas próprias, cada uma com o `db`, sem trava comum. No draft-only (Codex R1, achado 1: conferir antes e escrever
-depois libera a trava no meio), os efeitos passam a rodar DENTRO de uma transação curta que:
-
-1. trava **`SocialPost` → `Page` → `Generation`** (a ordem comum de § 4);
-2. relê e exige: `identidadeDaPagina(relida)` ≡ a identidade AUTORIZADA (a medida, ou a atualizada pela refilagem — item 4)
-   em `pageVersion`, `copyVersion`, `formato`, `formatoDoCompositor`; `post.status === 'DRAFT'`, `laterPostId === null`,
-   `postType === TIPO_DO_POST_POR_FORMATO[formato relido]`, `post.pageId === page.id`, `post.generationId === peca.id`,
-   `post.projectId === projectId`; `Page.Template.projectId === projectId`; `Generation.projectId === projectId` e
-   `Generation.fieldValues.pageId === page.id`; `recusaComoImagem(layers, audio)` nulo;
-3. executa os efeitos com o MESMO `tx`: `efeitosDoAgendamento(post, contexto, { …, cliente: tx })`,
-   `refilarPaginasDoPost(postId, quando, userId, { cliente: tx })` e `levarItemDoPlanoParaAgendado(…, tx)` — as três funções
-   ganham o parâmetro OPCIONAL `cliente` (padrão `db`; o fluxo humano não muda). `garantirPasta` (que cria a pasta da
-   semana com `comTravaPorChave`, transação própria) roda ANTES, fora da fronteira: criar pasta é idempotente e não toca
-   post nem página; dentro da fronteira só a ESCRITA da página (`templateId`, `name`, `order`), por CAS em
-   `Page.updatedAt` relido na mesma transação;
-4. **a refilagem muda `Page.name`** (Codex R1, achado 6) e o classificador do revisor lê o nome: depois da escrita, na
-   MESMA transação, a identidade é recalculada com o nome novo — `pageVersion`, `copyVersion` e `formatoDoCompositor` não
-   mudam por construção (a refilagem não toca camadas, copy, tags nem tamanho); se o `formato` do revisor mudar com o
-   nome novo, a transação volta atrás (refilagem recusada, aviso "o nome da pasta mudaria o formato da peça") — senão a
-   identidade AUTORIZADA passa a ser a com o nome novo, e é ela que o efeito seguinte reconfere. Só essa mutação
-   controlada atualiza a identidade; edição externa nunca;
-5. qualquer divergência → rollback da fronteira; o item volta `concluido` com aviso ("o rascunho existe; o registro do
-   agendamento não terminou porque a página/post mudou; repita a chamada") e `efeitosDoAgendamentoEm` fica nulo (a
-   repetição mede de novo). Exceção do banco → o mesmo aviso (o `try/catch` de hoje).
-
-- Tempo: catálogo + refilagem + plano são escritas locais (sem rede): cabe no `timeout` de 20 s; se o catálogo precisar
-  de rede (Drive), ele sai da fronteira e vira efeito "sem condição de segurança" — dito no PR se acontecer.
-- `reaproveitar com efeitos pendentes` (linha já ligada): no draft-only passa pela decisão fresca (§ 3) com
-  `vinculo.postType = post.postType`, grava o registro sob trava (§ 4, travando o post ANTES da página) e só então entra na
-  fronteira dos efeitos; não APTO → efeitos não rodam, item `falhou` `REVISAO_HUMANA_NECESSARIA` com o aviso de que o
-  rascunho existe e continua como está.
-- Fluxo humano: `executarEfeitos` como hoje (sem fronteira, sem revalidação).
+- Catálogo/sinais/legenda: escrevem `ImageCatalog`/`LearningSignal`/registro da copy — nunca `SocialPost.status`,
+  `laterPostId`, `mediaUrls`, `Page.layers`/`copyAutoral`/`tags`/`width`/`height`; leem o post como está.
+- Refilagem: escreve só `Page.templateId`, `Page.name`, `Page.order` (pasta e nome); não toca camadas, copy, tags nem
+  tamanho. `pageVersion`, `copyVersion` e `formatoDoCompositor` da identidade não mudam; o `formato` do REVISOR lê o nome e
+  PODE mudar — o registro passa a `historico` por `formato` em `ver-geracao`: auditoria honesta ("medido com este nome"),
+  não defeito, e o DRAFT já nasceu com o formato medido.
+- Item do plano → `agendado`: CAS por `status`/`generationId`/`updatedAt` (existente).
+- A guarda que JÁ existe no draft-only continua: post relido não-`DRAFT` ou com `laterPostId` → sem efeitos (`responderLigado`
+  devolve como está). Em `criar`/`adotar` a mesma releitura é feita antes de `executarEfeitos` (sem trava: é uma guarda,
+  não o gate — dito).
+- Teste C6: inventário por regex/AST dos módulos de efeito — nenhuma escrita em `SocialPost.{status,laterPostId,mediaUrls,
+  postType}` nem em `Page.{layers,copyAutoral,tags,width,height}`; mais o teste comportamental com banco falso: depois
+  do commit, qualquer mudança concorrente (post aprovado, página editada) não é desfeita nem agravada pelos efeitos.
+- `reaproveitar` (linha já ligada): o rascunho já existe; nenhum DRAFT nasce ou é ligado → o gate não se aplica. O
+  plano-mestre § 4.5 ("as três respostas passam pelo gate") é cumprido onde há decisão de criar/ligar; o § 12.1 do CP5b
+  ("decisão fresca em toda via") fica respondido assim, com a prova de C6 de que a via `reaproveitar` não produz efeito
+  que o veredito mudaria. Se o owner discordar (8.7), a via passa pela medição sob trava (custo: 1–4 s por item já
+  ligado) sem outra mudança de desenho.
 
 ## 6. O retorno do item
 
-`ItemAgendadoDoLote` ganha, no draft-only (Codex R1, achado 3: `piloto-portao.test.ts` lê `item.achados` no TOPO):
-
 ```ts
-achados?: Array<{ regra: string; camadas: string[]; id: string; severidade: string; certeza: string }>   // os do gate; vazio em APTO
-motivos?: Array<{ regra: string; codigo: string; motivo: string; camadas: string[] }>
-revisao?: { resultado: 'APTO' | 'REVISAO_HUMANA_NECESSARIA' | 'SEM_VINCULO'; rulesVersion: string; versaoDoGate: string; medidoEm: string; naoMedidos: Array<{ regra: string; motivo: string; camadas: string[] }> }
+// ItemAgendadoDoLote, só no draft-only
+achados?: Array<{ regra: string; camadas: string[]; id: string; severidade: string; certeza: string }>  // os do gate ([] fora de 'medida')
+motivos?: Array<{ regra: string; codigo: string; motivo: string; camadas: string[] }>                 // idem
+revisao?:
+  | { tipo: 'medida'; resultado: 'APTO' | 'REVISAO_HUMANA_NECESSARIA'; rulesVersion: string; versaoDoGate: string; medidoEm: string; naoMedidos: Array<{ regra: string; motivo: string; camadas: string[] }> }
+  | { tipo: 'sem-vinculo'; motivo: string }
+  | { tipo: 'nao-medida'; motivo: string }
 ```
 
-- Item `falhou` por `REVISAO_HUMANA_NECESSARIA` traz SEMPRE `generationId`, `pageId`, `editUrl` (template atual),
-  `achados`, `motivos` e `revisao` — é o que `referenciasQueFaltam` exige: código, Generation, página, link do editor e
-  achados estruturais (regra + camadas; na v1, um sobre `servico`). `sem-vinculo` traz `revisao.resultado = 'SEM_VINCULO'`
-  com o motivo e `achados: []`.
-- Item `concluido` no draft-only traz `revisao` com `resultado: 'APTO'` e `achados: []`, `motivos: []` (o veredito que
-  autorizou); o aviso fixo do CP5b continua em `ver-geracao`.
+- `falhou` por `REVISAO_HUMANA_NECESSARIA` traz SEMPRE `generationId`, `pageId`, `editUrl` (template atual) e `revisao`;
+  `achados`/`motivos` só no tipo `medida` (nunca fabricados — Codex R2, achado 6). `referenciasQueFaltam` de P11 exige
+  achados estruturais: na v1 e na v2 do piloto a medição acontece (tipo `medida`), então os achados existem.
+- `concluido` no draft-only: `revisao` tipo `medida` com `resultado: 'APTO'`, `achados: []`, `motivos: []`.
 - Fluxo humano: sem os três campos.
-- Nenhum parâmetro novo na tool (`validar-registro-mcp` continua igual); a descrição de `agendar-leva` ganha o
-  parágrafo do gate (snapshot do validador atualizado, deliberado).
-- **Harness de P11**: o banco falso de `piloto-portao.test.ts` ganha `$executeRaw` (a gravação), a página com `name`,
-  `copyAutoral`, `updatedAt` e `Template.projectId`, `project.findUnique` com `updatedAt`, e o mock de
-  `@/lib/creatives/agendar` passa a expor `recusaComoImagem` real; a medição roda de verdade sobre a fixture (fontes do
-  sistema, régua em memória) — é isso que faz os achados da v1 serem os do serviço, não do teste.
+- Nenhum parâmetro novo na tool; a descrição de `agendar-leva` ganha o parágrafo do gate (snapshot do validador).
+- **Harness de P11**: o banco falso ganha `$executeRaw` (a gravação), `$queryRaw` que aceita os `FOR UPDATE`/`FOR SHARE`,
+  a página com `name`, `copyAutoral`, `updatedAt` e `Template.projectId`, `project.findUnique` com `assinatura`,
+  `customFont.findMany`; o mock de `@/lib/creatives/agendar` passa a expor `recusaComoImagem` real; a medição roda de
+  verdade sobre a fixture (fontes do sistema, régua em memória, logo da fixture) — é isso que faz os achados da v1 serem
+  os do serviço.
 
 ## 7. Invariantes (os testes provam)
 
-1. Draft-only: nenhum DRAFT nasce, é adotado ou ganha efeitos sem `decidirEMontarRegistro` → `ok` + `APTO` na MESMA
-   chamada; o registro gravado nunca é lido (`lerGateDaArte` não importado; teste C3 com registro APTO antigo + medida
-   reprovada → nada criado).
-2. Registro APTO gravado DENTRO da transação, ANTES do efeito; falha na gravação → nenhum post (C1, C10).
-3. Identidade relida sob trava ≡ medida (4 campos) e página ainda imagem; senão nada escrito (C4).
-4. `adotar`: tipo, Generation, projeto, `DRAFT` sem `laterPostId` conferidos sob trava (C5b).
-5. Efeitos só depois da revalidação protegida (C6).
-6. `simular` nunca grava (nem registro); mede e devolve a mesma decisão (C8).
-7. Fluxo humano byte a byte igual ao de hoje (C7: os testes de `agendar-itens` atuais passam sem mudar).
-8. Toda transação do CP5c trava na ordem comum `SocialPost → Page → Generation` (C13, inventário dos `FOR UPDATE`).
-9. O registro reprovado só é gravado se a identidade ainda for a medida (C14: entrelaçamento com um APTO concorrente).
-10. Entradas mutáveis da medição (assinatura do projeto, `composicao` do compositor) relidas sob trava (C15).
-11. Reforços do Dot (plano-mestre § 4.5): `lembrete: true` em draft-only nunca chama `sendPublishReminder`/WAHA (C11);
-   `sendToLater`/Zernio nunca chamados (C11); post aprovado intocável (C12); tool nova fora da allowlist nasce proibida
-   (já existe) + toda tool da allowlist que cria DRAFT passa pelo gate (C9, inventário).
+1. Draft-only: nenhum DRAFT nasce ou é adotado sem `decidirEMontarRegistro` → `ok` + `APTO` na MESMA transação que o
+   cria/liga; o registro gravado nunca é lido (C3).
+2. Registro gravado DENTRO da transação, ANTES do efeito que cria/liga; APTO com falha na gravação → nenhum post (C1, C10);
+   reprovado → commit só com o registro (C2).
+3. Página, Generation, posts da página e o que a medição lê estão travados da medição ao commit (C13: ordem; C4: edição
+   concorrente espera e a chamada seguinte mede a versão nova — nunca "medida velha, escrita nova").
+4. `adotar`: post entre os travados, tipo, Generation, projeto, `DRAFT` sem `laterPostId` (C5b); escolha mudou → concorrente (C19).
+5. `simular` nunca grava (C8); fluxo humano byte a byte igual (C7).
+6. Efeitos não escrevem nada que o veredito proteja (C6).
+7. Reforços do Dot (plano-mestre § 4.5): `lembrete: true` em draft-only nunca chama `sendPublishReminder`/WAHA (C11);
+   `sendToLater`/Zernio nunca chamados (C11); post aprovado intocável (C12); toda tool da allowlist que cria DRAFT passa
+   pelo gate (C9).
 
 ## 8. Decisões pendentes do owner
 
 | # | Decisão | Recomendação | Se decidir o contrário |
 |---|---|---|---|
-| 8.1 | **Política EFETIVA do assunto** (9.12 do CP5b) | `POLITICA_DO_ASSUNTO_DO_AGENDAR_LEVA = POLITICA_DO_ASSUNTO_RECOMENDADA` (`estimado: 'humano'`, `semAssuntoLocalizavel: 'nao-se-aplica'`) — constante nomeada em `agendar-itens.ts`, e `ver-geracao` passa a comparar com ela | `estimado: 'comprova'` deixa o assunto estimado reprovar sozinho; `semAssuntoLocalizavel: 'humano'` manda toda foto sem região forte ao humano |
-| 8.2 | Código da divergência entre medição e trava | `REVISAO_HUMANA_NECESSARIA` (plano-mestre § 4.5) | código próprio `PECA_MUDOU_APOS_MEDICAO`: mais preciso, mais um código no vocabulário |
-| 8.3 | Registro do veredito reprovado | gravar fora da transação (auditoria) | não gravar: `ver-geracao` nunca mostra por que a peça não entrou |
-| 8.4 | Bloco `gate` em `auditar-operacao` (9.9 do CP5b) | CP5e, com os números do piloto (seleção de peças definida junto) | agora: `posts/auditar-operacao.ts` passa a selecionar `generationId` e ler o registro — PR maior |
-| 8.6 | Limite da revalidação: bytes de assets e fontes por URL, referências que a medição baixa | NÃO reconferidos (CP5b § 4.2: cobrir exige contrato de reprodutibilidade); dito no manual e no retorno (`revisao.naoConferido` herdado do CP5b não entra aqui — fica no `ver-geracao`) | hash dos bytes a cada medição e releitura sob trava: + downloads por item, checkpoint próprio |
-| 8.5 | `adotar` com `post.generationId` nulo (DRAFT criado pelo humano sem arte ligada) | `REVISAO_HUMANA_NECESSARIA` (não adota) | adotar e ligar: o agente "assume" um rascunho humano |
+| 8.1 | **Política EFETIVA do assunto** (9.12 do CP5b) | `POLITICA_DO_ASSUNTO_DO_AGENDAR_LEVA = POLITICA_DO_ASSUNTO_RECOMENDADA` (`estimado: 'humano'`, `semAssuntoLocalizavel: 'nao-se-aplica'`) — constante nomeada; `ver-geracao` compara com ela | `estimado: 'comprova'` deixa o assunto estimado reprovar sozinho; `semAssuntoLocalizavel: 'humano'` manda toda foto sem região forte ao humano |
+| 8.2 | Código da recusa por concorrência (ação/post mudou entre as duas decisões) | `LOTE_AGENDAMENTO_CONCORRENTE` (já existe; "repita") | `REVISAO_HUMANA_NECESSARIA`: o chat chamaria gente por uma corrida |
+| 8.3 | Registro do veredito reprovado | gravar na mesma transação (commit só com ele) | não gravar: `ver-geracao` nunca mostra por que a peça não entrou |
+| 8.4 | Bloco `gate` em `auditar-operacao` (9.9 do CP5b) | CP5e, com os números do piloto | agora: PR maior em `posts/auditar-operacao.ts` |
+| 8.5 | `adotar` com `post.generationId` nulo (DRAFT humano sem arte ligada) | `REVISAO_HUMANA_NECESSARIA` (não adota) | adotar e ligar: o agente "assume" um rascunho humano |
+| 8.6 | Limite da proteção: bytes de assets e fontes servidos por URL | não protegidos (CP5b § 4.2); dito no manual | hash dos bytes a cada medição: + downloads, checkpoint próprio |
+| 8.7 | Efeitos pós-commit fora do perímetro do gate (§ 5) | sim, com a prova de C6 | passar `reaproveitar` pela medição sob trava e/ou propagar `tx` até os efeitos (refatoração de 4 módulos) |
+| 8.8 | Medir DENTRO da transação (rede sob trava) | sim: é o que fecha a janela; orçamento medido em C18 | medir fora e reconferir: volta a janela e a lista de entradas a comparar |
 
-## 9. Matriz de testes (unitários com banco falso; o fluxo humano pelos testes existentes)
+## 9. Matriz de testes (unitários com banco falso que registra a ORDEM das operações; o fluxo humano pelos testes existentes)
 
 | Caso | Entrada | Esperado |
 |---|---|---|
-| C1 | draft-only, `criar`, peça APTO | ordem no cliente falso: travas → `UPDATE Generation … gateDaArte` → `INSERT` do post → CAS da linha; `revisao.resultado = 'APTO'` |
-| C2 | draft-only, `criar`, peça reprovada (v1 do piloto: `texto-sem-leitura:servico`) | nenhum post; `falhou` `REVISAO_HUMANA_NECESSARIA` com `generationId`, `pageId`, `editUrl`, `revisao.achados` com `servico`; registro reprovado gravado pelo `db` fora da transação |
-| C3 | Generation JÁ com `gateDaArte` APTO coincidente; medida nova reprovada | igual a C2: o registro antigo não é lido; o novo (reprovado) o substitui |
-| C4 | página editada entre a medição e a trava (hash muda) / só o nome / só as tags / só a copy | nada escrito; `REVISAO_HUMANA_NECESSARIA`; repetir a chamada mede de novo e cria |
-| C5 | medida de OUTRA página passada ao vínculo (teste de unidade do `medirEDecidir`) | `sem-vinculo` → `REVISAO_HUMANA_NECESSARIA` |
-| C5b | `adotar`: DRAFT `STORY` numa página `feed`; DRAFT com `generationId` nulo/outro; DRAFT que virou `SCHEDULED`; página que ganhou música | `REVISAO_HUMANA_NECESSARIA` sem tocar no post (os de hoje `POST_APROVADO_INTOCAVEL` continuam) |
-| C6 | `reaproveitar` com efeitos pendentes + edição concorrente (camadas / copy / nome / tags / post aprovado / `laterPostId`) antes de um efeito | a fronteira volta atrás; nenhum efeito escreve; aviso; `efeitosDoAgendamentoEm` nulo |
-| C7 | perfil normal, mesmas peças | igual a hoje: v1 vira rascunho RENDERED; sem `revisao`; nenhum `UPDATE … gateDaArte` |
-| C8 | `simular: true`, draft-only, v1 e limpa | mede e decide; nenhuma escrita (nem registro); `falhou`/`concluido` iguais aos da chamada de verdade |
-| C9 | inventário COMPORTAMENTAL (Codex R1, achado 7): o único `socialPost.create` fora do publicador é `criarPostDoAgendamento` (`creatives/agendar.ts`); para cada tool MUTANTE de `TOOLS_DRAFT_ONLY` (`compor-leva`, `agendar-leva`, `ajustar-arte`, `revisar-arte`, `conferir-arte`, `medir-copy`…), o handler roda com um banco falso que registra `socialPost.create` e `UPDATE … gateDaArte` | só `agendar-leva` cria, e só DEPOIS do `gateDaArte`; uma tool nova acrescentada à allowlist no teste (dublê que chama `criarPostDoAgendamento` direto) FALHA o inventário; `agendar-itens.ts` está nas listas da regra de lint e do H12 |
-| C13 | inventário dos `FOR UPDATE` de `src/lib` | toda transação que trava duas de `SocialPost`/`Page`/`Generation` respeita a ordem comum; as do CP5c idem |
-| C14 | entrelaçamento: chamada A mede a versão velha (reprovada); chamada B mede a versão nova, grava APTO e cria o DRAFT; A tenta gravar o reprovado | o registro final é o APTO de B (A não grava: identidade divergiu sob a trava da página) |
-| C15 | `Project.assinatura` (ou a `composicao` do compositor) muda entre a medição e a trava | `REVISAO_HUMANA_NECESSARIA`; repetir mede de novo |
-| C16 | sequência normal dos efeitos: catálogo → refilagem (renomeia) → item do plano | a identidade autorizada é atualizada com o nome novo; o efeito seguinte passa; `efeitosDoAgendamentoEm` gravado; nome novo que mudaria o `formato` → refilagem recusada com aviso |
-| C10 | `gravarGateDaArte` lança dentro da transação | rollback; item `falhou` `REVISAO_HUMANA_NECESSARIA` (não `ERRO`); nenhum post |
+| C1 | draft-only, `criar`, peça APTO | ordem: travas (projeto, item, plano, posts da página, página, Generation, FOR SHARE) → leituras da medição pelo `tx` → `UPDATE Generation … gateDaArte` → `INSERT` do post → CAS da linha; `revisao.resultado = 'APTO'` |
+| C2 | draft-only, `criar`, peça reprovada (v1 do piloto) | nenhum post; commit só com `UPDATE … gateDaArte`; `falhou` `REVISAO_HUMANA_NECESSARIA` com `generationId`, `pageId`, `editUrl`, `achados` com `servico` |
+| C3 | Generation JÁ com `gateDaArte` APTO coincidente; medida nova reprovada | igual a C2; o registro novo substitui o antigo; nenhuma leitura de `gateDaArte` |
+| C4 | edição concorrente da página (camadas / copy / nome / tags) | a edição espera a trava (banco falso: a escrita concorrente é enfileirada e só aplica depois do commit) e a chamada SEGUINTE mede a versão nova; nunca post criado com medida da versão velha |
+| C5 | medida de OUTRA página passada ao vínculo (unidade de `medirEDecidir`) | `sem-vinculo` → `REVISAO_HUMANA_NECESSARIA`, `revisao.tipo = 'sem-vinculo'`, sem achados |
+| C5b | `adotar`: DRAFT `STORY` numa página `feed`; `generationId` nulo/outro; DRAFT que virou `SCHEDULED`; página com música | `REVISAO_HUMANA_NECESSARIA` (ou `POST_APROVADO_INTOCAVEL` como hoje) sem tocar no post |
+| C6 | efeitos pós-commit | inventário: nenhum módulo de efeito escreve `SocialPost.{status,laterPostId,mediaUrls,postType}` nem `Page.{layers,copyAutoral,tags,width,height}`; comportamental: post aprovado/página editada após o commit → efeitos não desfazem nem agravam |
+| C7 | perfil normal, mesmas peças | igual a hoje: v1 vira rascunho RENDERED; sem `revisao`; nenhum `UPDATE … gateDaArte`; nenhuma trava nova |
+| C8 | `simular: true`, draft-only, v1 e limpa | mede e decide pelo leitor; nenhuma escrita; `falhou`/`concluido` iguais aos da chamada de verdade |
+| C9 | inventário COMPORTAMENTAL: para cada tool MUTANTE de `TOOLS_DRAFT_ONLY` (`compor-leva`, `agendar-leva`, `ajustar-arte`, `revisar-arte`, `conferir-arte`, `medir-copy`, …) o handler roda com um banco falso que registra `socialPost.create` e `UPDATE … gateDaArte` | só `agendar-leva` cria, e só DEPOIS do `gateDaArte`; uma tool nova de controle na allowlist que chame `criarPostDoAgendamento` direto FALHA; `agendar-itens.ts` está nas listas da regra de lint e do H12 |
+| C10 | `gravarGateDaArte` lança / timeout da medição dentro da transação | rollback; `falhou` `REVISAO_HUMANA_NECESSARIA` (não `ERRO`); nenhum post |
 | C11 | draft-only, `lembrete: true` | DRAFT `REMINDER`; `sendPublishReminder`/WAHA/`sendToLater` nunca chamados |
-| C12 | página com post aprovado / `laterPostId` | `POST_APROVADO_INTOCAVEL`, como hoje; o gate nem roda |
-| P11 | `piloto-portao.test.ts` | os 8 `hojeViola` viram `it()`: v1 e v2 não criam rascunho (simulação e escrita) e voltam `REVISAO_HUMANA_NECESSARIA` com as referências; o controle positivo (peça limpa) continua criando |
+| C12 | página com post aprovado / `laterPostId` | `POST_APROVADO_INTOCAVEL`, como hoje; o gate nem mede |
+| C13 | inventário dos `FOR UPDATE`/`FOR SHARE` de `src/lib` | ordem comum respeitada; as do CP5c idem |
+| C14 | duas chamadas sobre a MESMA página (banco falso serializa pela trava): A mede e reprova, B mede e aprova | a ordem de commit define o último registro; nenhuma gravação fora de transação; o DRAFT só nasce na que aprovou |
+| C15 | `Project.assinatura`, `CustomFont` ou a Generation do compositor mudam durante a medição | escrita concorrente espera a trava (FOR SHARE); `CustomFont` nova → `nao-medida`; a chamada seguinte mede com o novo |
+| C17 | `pedidoSob.postType` e `vinculo.postType` | derivados do mesmo `sob.peca`/post travado; `TIPO_DO_POST_POR_FORMATO` divergente → `sem-vinculo` |
+| C18 | orçamento: tempo da medição por item (banco falso e benchmark sintético do CP3) | dito no PR; abaixo de 10 s por item no benchmark |
+| C19 | a decisão sob trava muda em relação à decisão sem trava (`criar` → `adotar`, outro post) | `LOTE_AGENDAMENTO_CONCORRENTE`, nada escrito |
+| P11 | `piloto-portao.test.ts` | os 8 `hojeViola` viram `it()`: v1 e v2 não criam rascunho (simulação e escrita) e voltam `REVISAO_HUMANA_NECESSARIA` com as referências; a peça limpa continua criando |
 
 ## 10. Arquivos (os principais)
 
-- `src/lib/lotes/agendar-itens.ts`: `medirEDecidir`, trava da Generation, releituras, `gravarGateDaArte`, revalidação dos
-  efeitos, `revisao` no item, código `REVISAO_HUMANA_NECESSARIA`;
-- `src/lib/lotes/agendamento.ts` (ou vizinho): `POLITICA_DO_ASSUNTO_DO_AGENDAR_LEVA`, tipo `revisao`;
-- `src/lib/mcp/catalogo/compositor.ts` (`agendar-leva`): descrição + `principal` passado ao serviço (já passa
-  `apenasRascunho`); `scripts/validar-registro-mcp.ts` (snapshot da descrição);
+- `src/lib/lotes/agendar-itens.ts`: `medirEDecidir`, `lerPaginaCompleta`, travas (posts da página, Generation, FOR SHARE),
+  `gravarGateDaArte`, mapeamento das exceções do gate, `achados`/`motivos`/`revisao` no item;
+- `src/lib/lotes/agendamento.ts` (ou vizinho puro): `POLITICA_DO_ASSUNTO_DO_AGENDAR_LEVA`, tipos do retorno;
+- `src/lib/creatives/revisao/revisar-arte.ts` (`contextoDaMedicao`: parâmetro `cliente` + releitura dos ids de `CustomFont`),
+  `src/lib/posts/register-project-fonts.ts` (`cliente`) — parâmetros opcionais com padrão `db`; o revisor e o CP4 não mudam;
+- `src/lib/mcp/catalogo/compositor.ts` (`agendar-leva`): descrição + `principal` ao serviço; `scripts/validar-registro-mcp.ts`
+  (snapshot da descrição);
 - `src/lib/mcp/catalogo/ver-geracao-retorno.ts`: a política comparada passa a ser `POLITICA_DO_ASSUNTO_DO_AGENDAR_LEVA`;
-- `src/lib/creatives/revisao/revisar-arte.ts` (`contextoDaMedicao`: parâmetro `cliente` + `fontes` mutáveis),
-  `src/lib/posts/register-project-fonts.ts` (`cliente`), `src/lib/creatives/agendar.ts` (`efeitosDoAgendamento`:
-  `cliente`), `src/lib/compositor/pastas.ts` (`refilarPaginasDoPost`: `cliente`, escrita da página por CAS) — só
-  parâmetros opcionais com padrão `db`; comportamento de hoje intocado sem eles;
-- `eslint.config.mjs` (lista de produtores) e `inventario-gate-da-arte.test.ts` (listas fechadas + C9);
-- testes: `src/lib/lotes/__tests__/agendar-itens-gate.test.ts` (C1–C12), `piloto-portao.test.ts` (P11 → `it()`);
+- `eslint.config.mjs` (lista de produtores) e `inventario-gate-da-arte.test.ts` (listas + C9/C13);
+- testes: `src/lib/lotes/__tests__/agendar-itens-gate.test.ts` (C1–C19), `piloto-portao.test.ts` (P11 → `it()`);
 - docs: `docs/regras/revisor-da-arte.md` § CP5c, `docs/regras/mcp.md`, `docs/regras/dot-lagosta-operacao.md` +
   `operacao-dot.ts` (bump: "agendar-leva no draft-only só cria rascunho com veredito APTO medido na hora").
 
-Fora: `gate.ts`, `gate-registro.ts`, `gate-persistido.ts` (consumidos como estão), `arte-rapida.ts`, `persist.ts`,
-schema do Prisma, fluxo humano.
+Fora: `gate.ts`, `gate-registro.ts`, `gate-persistido.ts`, `agendar.ts`, `pastas.ts`, `artes-do-post.ts`, `arte-rapida.ts`,
+`persist.ts`, schema do Prisma, fluxo humano.
 
 ## 11. Gates do PR de implementação
 
