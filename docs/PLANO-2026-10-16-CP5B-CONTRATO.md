@@ -1,6 +1,6 @@
 # CP5b — contrato técnico de PERSISTÊNCIA, IDENTIDADE e `rulesVersion` (proposta para revisão, 16/10/2026)
 
-**Estado: PROPOSTA (rodada 3: NÃO EXISTE "vigente" no CP5b — o registro é auditoria; só a re-medição prova; vínculo projeto/Generation/página; formato na identidade; impressão digital travada por validador no CI).** Nada aqui está implementado; este PR é documental. Base: `main` `5e96d5a1` (merge do CP5a,
+**Estado: PROPOSTA (rodada 4: NÃO EXISTE "vigente" no CP5b; duas impressões digitais, uma por versão — o registro é auditoria; só a re-medição prova; vínculo projeto/Generation/página; formato na identidade; impressão digital travada por validador no CI).** Nada aqui está implementado; este PR é documental. Base: `main` `5e96d5a1` (merge do CP5a,
 PR #237; contrato do CP5a mergeado pelo PR #236). Ordem do owner (16/10): depois do fechamento do CP5a, preparar
 SOMENTE o contrato do CP5b, centrado em persistência, identidade e `rulesVersion`; oclusão por pixels exige
 justificativa e escopo explícitos (seção 10); a integração com a não-piora continua no CP5d, conforme o
@@ -72,6 +72,11 @@ export interface RegistroDoGate {
   Generation errada passaria nas comparações de versão (Codex R1). `formato` entra porque `pageVersion` não vê
   `Page.name`/`tags`, e é deles que `formatoDaPagina` (`assinatura.ts:487`) tira o formato — renomear "feed" para
   "story" muda o piso e o canvas canônico sem mudar o hash (Codex R2).
+- `formato` tem de ser o MESMO que a medida usou: `GateDaArte` não guarda `medida.formato`, então
+  `montarRegistroDoGate(gate, medida, politica, identidade, origem, principal?)` recebe a `medida` e RECUSA
+  (`null` + `console.warn`) quando `medida.formato !== identidade.formato` ou `medida.canvas` ≠ `{ width, height }` da
+  página — um gate calculado como `feed` para uma página `story` (piso dispensado) nunca vira registro `coincidente`
+  (Codex R3). Teste H3b.
 - `politica` entra porque `resultado` depende dela (caso B/C do assunto): dois registros com a mesma peça e políticas
   diferentes são vereditos diferentes. Sem `politica` gravada, nenhum registro é `coincidente`.
 - Tamanho: `GateDaArte` tem 15 entradas de cobertura, motivos, achados, `naoMedidos` e avisos — centenas de bytes a
@@ -90,16 +95,18 @@ Generation e o seu registro.
 // src/lib/creatives/revisao/gate-persistido.ts — importa mesclar-field-values (que importa @/lib/db): NÃO é testável
 // sem banco; a lógica fica toda em gate-registro.ts e este módulo só compõe o patch e chama o merge.
 export async function gravarGateDaArte(client: ClienteDoBanco, registro: RegistroDoGate): Promise<'gravado' | 'sem-vinculo'>
-  // UPDATE "Generation" SET "fieldValues" = (… ELSE '{}'::jsonb END) || {"gateDaArte": registro}::jsonb
-  //  WHERE "id" = registro.identidade.generationId AND "projectId" = registro.identidade.projectId
-  //    AND "fieldValues"->>'pageId' = registro.identidade.pageId
+  // = mesclarFieldValuesDaArte(client, generationId, { gateDaArte: registro }, { somenteSe: { projectId, pageId } })
+  //   → UPDATE "Generation" SET "fieldValues" = (… ELSE '{}'::jsonb END) || {"gateDaArte": …}::jsonb
+  //      WHERE "id" = $1 AND "projectId" = $2 AND "fieldValues"->>'pageId' = $3
   // 0 linhas → 'sem-vinculo' (nada gravado, console.warn): a Generation não é desta página/projeto.
 ```
 
 - O `WHERE` é o mesmo vínculo que `contextoDaMedicao` usa para achar as Generations da página
-  (`fieldValues.pageId`); `sourcePageId` é a página-MODELO de origem e não serve de vínculo. O SQL mora em
-  `gate-persistido.ts` (não em `mesclar-field-values.ts`, cujo contrato é "merge sem condição"); a forma do patch é a
-  mesma (`jsonb ||`, `CASE WHEN jsonb_typeof … ELSE '{}'`).
+  (`fieldValues.pageId`); `sourcePageId` é a página-MODELO de origem e não serve de vínculo. Em vez de duplicar o SQL
+  (Codex R3), `mesclarFieldValuesDaArte` ganha o parâmetro OPCIONAL `somenteSe?: { projectId: number; pageId: string }`
+  (em `colunas`, ao lado de `resultUrl`) e passa a devolver o número de linhas afetadas; sem o parâmetro o SQL é
+  byte a byte o de hoje (teste de regressão com cliente falso para as três formas: sem nada, com `resultUrl`, com
+  `somenteSe`). Os chamadores atuais não mudam.
 
 - `|| { gateDaArte: registro }` substitui a chave INTEIRA (nunca um merge parcial dentro de `gateDaArte`: um
   registro é atômico — gate de uma medição com identidade de outra é exatamente o que 3.1 proíbe).
@@ -122,7 +129,7 @@ export function lerGateDaArte(fieldValues: unknown): RegistroDoGate | null   // 
 Lê com schema **estrito e completo** (`gateDaArteSchema` em `gate-registro.ts`, espelho de `GateDaArte`: `versao`
 literal `'gate-v1'`, `resultado`, as versões, `cobertura` com EXATAMENTE as 11 regras críticas + 4 conferências e os
 estados válidos, `motivos`/`achados`/`naoMedidos`/`avisos` com a forma do CP5a; `politica`; `identidade` com o
-vínculo e `assets`) e confere a **invariante 2.3 do CP5a, inteira**: `resultado === 'APTO'` ⇔ `motivos` vazio ∧ `naoMedidos` vazio
+vínculo e o formato) e confere a **invariante 2.3 do CP5a, inteira**: `resultado === 'APTO'` ⇔ `motivos` vazio ∧ `naoMedidos` vazio
 ∧ `achados` vazio ∧ nenhuma cobertura `reprovada`/`nao-comprovada` ∧ `copy-completa`, `identidade` e `oclusao`
 `comprovada` ∧ `piso-de-interface` `comprovada` ou `nao-se-aplica` ∧ as 11 críticas `comprovada` ou `nao-se-aplica`
 (Codex R2: `nao-se-aplica` em `copy-completa`/`identidade`/`oclusao` nunca sai do CP5a; `gate.ts` só as marca
@@ -217,16 +224,27 @@ ressalva). Regra fora do corpus também escapa: por isso o corpus é enumerado (
 `gate.ts` responde "o corpus cobre?" na descrição.
 
 - `VERSAO_DAS_REGRAS` continua constante em `revisao/contrato.ts`; `GateDaArte.versao` ('gate-v1') continua em
-  `gate.ts`. São DUAS versões: regras do revisor e decisão do gate; `rulesVersion` persistido = `VERSAO_DAS_REGRAS`;
-  `versaoDoGate` = `gate.versao`.
+  `gate.ts`. São DUAS versões, cada uma com a SUA impressão e o SEU bump obrigatório (Codex R3: com um arquivo só,
+  mudar `avaliarPeca` e subir só `gate.versao` passava):
+  - **impressão do revisor** = sha256 do JSON `estavel` de { `REGRAS_DA_REVISAO`, `avaliarPeca(medida)` para cada
+    peça do corpus } → arquivo `__tests__/impressao-digital/revisao-<VERSAO_DAS_REGRAS>.json`; mudou → o teste exige
+    bump de `VERSAO_DAS_REGRAS`;
+  - **impressão do gate** = sha256 do JSON `estavel` de { `REGRAS_CRITICAS`, `CONFERENCIAS_DO_GATE`,
+    `CHAVES_CLASSIFICADAS`, `gateDaMedida(entrada).gate` para cada peça do corpus, com as 4 políticas } → arquivo
+    `__tests__/impressao-digital/gate-<GateDaArte['versao']>.json`; mudou → o teste exige bump de `gate.versao`.
+    Como `gateDaMedida` chama `avaliarPeca`, uma mudança do revisor muda as duas impressões e exige os DOIS bumps —
+    é o custo de "a medida é a fonte única" (CP5a) e é deliberado: o registro persistido diz em que versão de CADA
+    camada o veredito saiu.
 - Teste `src/lib/creatives/revisao/__tests__/impressao-digital-das-regras.test.ts`: calcula a impressão digital =
   sha256 do JSON `estavel` de { `REGRAS_DA_REVISAO` (os ids; as severidades nascem nos achados de `regras.ts`, não
   numa tabela), `REGRAS_CRITICAS`, `CONFERENCIAS_DO_GATE`, `CHAVES_CLASSIFICADAS` (caminhos e classes),
-  `avaliarPeca(medida)` e `gateDaMedida(entrada)` para um CORPUS fixo } e compara com
-  `__tests__/impressao-digital/<VERSAO_DAS_REGRAS>+<versao do gate>.json` commitado.
-  - Mudou a impressão e a versão não mudou → o teste FALHA com a mensagem "a regra mudou: suba `VERSAO_DAS_REGRAS`
-    (ou `gate.versao`) e gere a impressão da versão nova com `IMPRESSAO_DIGITAL=gravar npx vitest run …`".
-  - Subiu a versão sem arquivo novo → falha ("gere a impressão da versão nova").
+  `avaliarPeca(medida)` e `gateDaMedida(entrada)` para um CORPUS fixo } — nas DUAS impressões acima, cada uma
+  comparada com o seu arquivo commitado.
+  - Mudou a impressão do revisor e `VERSAO_DAS_REGRAS` não mudou → FALHA ("a regra do revisor mudou: suba
+    `VERSAO_DAS_REGRAS` e gere `revisao-<nova>.json` com `IMPRESSAO_DIGITAL=gravar npx vitest run …`"); o mesmo,
+    separadamente, para a impressão do gate e `gate.versao`. Subir a versão ERRADA não resolve: cada impressão só
+    aceita o arquivo da sua própria versão.
+  - Subiu uma versão sem o arquivo dela → falha ("gere a impressão da versão nova").
   - **O arquivo de uma versão que já existe na `main` é IMUTÁVEL, imposto por validador no CI** (Codex R1: sem isso
     bastava regenerar o JSON e o teste voltava a passar com a versão velha):
     `scripts/validar-impressao-digital.ts`, no job `check` ao lado de `validar-registro-mcp.ts`, compara cada
@@ -234,7 +252,8 @@ ressalva). Regra fora do corpus também escapa: por isso o corpus é enumerado (
     `git fetch --no-tags --depth=1 origin main` DENTRO do validador (o `actions/checkout@v4` do `ci.yml:17` é raso e
     não garante a referência — Codex R2); base indisponível → o validador FALHA explicitamente ("sem origin/main para
     comparar"), nunca passa em silêncio. Arquivo que existe na base e mudou no PR → falha; arquivo novo só é aceito se o
-    nome bate com `VERSAO_DAS_REGRAS` + `gate.versao` do próprio PR. Rodando o validador também localmente (como os
+    nome bate com a versão correspondente do próprio PR (`revisao-<VERSAO_DAS_REGRAS>.json` ou
+    `gate-<gate.versao>.json`). Rodando o validador também localmente (como os
     outros dois). Limite dito: quem tem força para editar a `main`
     diretamente contorna qualquer validador — é o mesmo limite de todo gate do CI deste repositório.
   - Arquivo da versão antiga permanece commitado (auditoria de quando cada regra mudou).
@@ -252,9 +271,11 @@ ressalva). Regra fora do corpus também escapa: por isso o corpus é enumerado (
   medidoEm, origem, politica, validade: 'coincidente' | 'historico' | 'ilegivel', naoConferido?, divergencias?,
   motivos: [{ regra, codigo, motivo, camadas }], aviso: 'último veredito gravado; não é o veredito atual da arte' }`.
   **Leitura real (Codex R2)**: o handler hoje passa a `montarRetornoDaPagina` só `{ id, name, template, isTemplate }`
-  da página (`arte-ia.ts:663`); o CP5b amplia o `select` da Generation para `{ id, projectId, fieldValues }` e lê a
-  página por `fieldValues.pageId` com `{ id, name, tags, width, height, background, layers, copyAutoral }` — é o que
-  `identidadeDaPagina` precisa; `atual` leva `VERSAO_DAS_REGRAS`, `'gate-v1'` e a política RECOMENDADA, nomeada
+  da página (`arte-ia.ts:663`); o CP5b acrescenta (ADITIVO, sem tirar `status`, `resultUrl`, `templateId`, `isTemplate` nem os demais
+  campos que `montarRetornoDaPagina` já usa para o link do editor e `comoAgendar`, `ver-geracao-retorno.ts:113`)
+  `projectId` ao `select` da Generation e `tags`, `width`, `height`, `background`, `layers`, `copyAutoral` ao da
+  página, mantendo o filtro `where: { id: paginaId, Template: { projectId } }` de hoje (`arte-ia.ts:639`) — página de
+  outro projeto continua indisponível; `atual` leva `VERSAO_DAS_REGRAS`, `'gate-v1'` e a política RECOMENDADA, nomeada
   (9.7) — a gravada é exibida ao lado, e política diferente sai como `historico` com `'politica'`. Sem registro:
   `gate: null` (não "APTO", não "pendente"). O manual canônico (`operacao-dot.ts`) ganha a linha "o bloco `gate` de
   ver-geracao é auditoria; nunca agende por ele".
@@ -285,18 +306,19 @@ ressalva). Regra fora do corpus também escapa: por isso o corpus é enumerado (
 
 | Caso | Entrada | Esperado |
 |---|---|---|
-| H1 | `identidadeDaPagina` da fixture do piloto (v1) | `pageVersion` = `versaoDaPagina(page)`; `copyVersion` = `copyVersionDe(page.copyAutoral)`; `copyAutoral` ausente → `'sem-contrato'`; `formato` = `formatoDaPagina(...)` ('story' para a fixture; `null` para 500×500 sem nome) |
+| H1 | `identidadeDaPagina` da fixture do piloto (v1) | `pageVersion` = `versaoDaPagina(page)`; `copyVersion` = `copyVersionDe(page.copyAutoral)`; `copyAutoral` ausente → `'sem-contrato'`; `formato` = `formatoDaPagina(...)` ('story' para a fixture; 'quadrado' para 500×500 sem nome; `null` para 400×300 sem nome) |
 | H2 | a mesma página com `audio` | `pageVersion` igual (sem áudio) |
 | H3 | `layers` como string JSON dupla / ilegível | `pageVersion` `v1:…` igual ao da forma de array / `null` |
+| H3b | `montarRegistroDoGate` com `medida.formato` ≠ `identidade.formato` (gate de feed para página story) ou `medida.canvas` ≠ página | `null` + aviso; com os dois iguais → registro |
 | H4 | `validadeDoGate` com vínculo, formato, 4 versões e política iguais | `coincidente` com `naoConferido` = a lista fixa de 4.2 (não vazia) |
 | H5 | cada item divergente, um por vez (projectId, generationId, pageId, formato, page, copy, rulesVersion, versaoDoGate, política.estimado, política.semAssuntoLocalizavel) | `historico` com a divergência nomeada; duas ao mesmo tempo → as duas; página idêntica em OUTRA Generation (mesmos hashes) → `historico` com `'vinculo'`; página renomeada de "feed" para "story" (mesmo hash) → `historico` com `'formato'` |
 | H6 | `pageVersion` null no registro / no atual; registro `null`; `identidade.pageVersion ≠ gate.pageVersion` | `ilegivel` com motivo |
 | H7 | `lerGateDaArte` com `fieldValues` null, string, objeto sem `gateDaArte`, `gateDaArte` com `versao: 'gate-v2'`, `politica` faltando, `cobertura` sem uma das 15 entradas, `resultado: 'APTO'` com `motivos` não vazio, com `achados` não vazio, com cobertura `nao-comprovada`, ou com `copy-completa`/`identidade`/`oclusao` em `nao-se-aplica` | `null` em todos; com registro válido → igualdade estrutural; TODA saída de `gateDaMedida` dos G-casos de `gate.test.ts` passa pelo schema |
 | H8 | `gravarGateDaArte` com cliente falso (`vi.mock('@/lib/db')` antes do import) | um `$executeRaw` com `jsonb ||`, patch `{ gateDaArte: registro }` e `WHERE` com id, projectId e `fieldValues->>'pageId'`; `resultUrl` nunca tocado; 0 linhas → `'sem-vinculo'` sem lançar; gravar duas vezes = mesmo SQL |
-| H9 | impressão digital: corpus em vigor | bate com o arquivo `revisao-v1+gate-v1.json` |
-| H10 | impressão digital: `REGRAS_DA_REVISAO` com uma severidade trocada (mock) | impressão diferente; a mensagem pede o bump |
+| H9 | impressão digital: corpus em vigor | a do revisor bate com `revisao-revisao-v1.json` e a do gate com `gate-gate-v1.json` |
+| H10 | `impressaoDigitalDasRegras(entradas, corpus)` com `criticas` sem `colisao` / com um `gate` que devolve outro resultado para uma peça / com um `avaliar` que devolve um achado a mais | a impressão do gate muda nos dois primeiros e a do revisor no terceiro (e a do gate também, por transitividade); a mensagem pede o bump da versão certa |
 | H11 | `montarRetornoDaPagina` com registro coincidente / histórico / ilegível / ausente | bloco `gate` com `validade` certa, `naoConferido` e o `aviso` fixo / `gate: null`; nunca inventa `APTO` |
-| H11b | a projeção do banco de `ver-geracao` (cliente falso) | lê Generation `{ id, projectId, fieldValues }` e a página por `fieldValues.pageId` com os 8 campos de `identidadeDaPagina`; página sumida → `gate` com `validade: 'ilegivel'` |
+| H11b | a projeção do banco de `ver-geracao` (cliente falso) | o `select` da Generation inclui os campos de hoje + `projectId`; o da página inclui os de hoje + os de `identidadeDaPagina`, com `Template: { projectId }` no `where`; página de OUTRO projeto ou sumida → `gate` com `validade: 'ilegivel'`, e o resto do retorno igual ao de hoje |
 | H12 | inventário: `gateDaArte` não aparece fora dos módulos permitidos | lista vazia |
 
 ## 9. Decisões pendentes do owner
@@ -309,10 +331,11 @@ ressalva). Regra fora do corpus também escapa: por isso o corpus é enumerado (
 | 9.4 | Histórico de vereditos | só o último por Generation; `fieldValues` não é log | `historico[]` com teto (ex.: 5) na mesma chave; mais bytes, mais merge |
 | 9.5 | Primeiro produtor do registro | **nenhum no CP5b**; o primeiro é o CP5c (`agendar-leva` draft-only), que tem a medida (`MedidaDaPeca`), a política e os bytes. `revisar-arte` NÃO serve: `revisarArte` devolve o relatório, não a `MedidaDaPeca` que `gateDaMedida` exige, e a tool se declara só leitura ("Não grava nada") | fazer `revisar-arte` gravar = refatorar `revisarArte` para expor a medida, trocar a anotação da tool e escolher uma política para uma tool humana — três decisões que o CP5c não precisa |
 | 9.6 | Corpus da impressão digital | piloto v1+v2 + G1 + as fixtures de G13–G21 (5.) | só o piloto: regra que ele não toca muda em silêncio |
-| 9.7 | Política que `ver-geracao` passa ao leitor | a RECOMENDADA, nomeada (`POLITICA_DO_ASSUNTO_RECOMENDADA`), exibindo a gravada ao lado; diferença → `historico` com `'politica'` | parâmetro `politica` na tool: mais fiel ao chamador, mais atrito; como nada autoriza, o ganho é só de rótulo |
+| 9.7 | Política que `ver-geracao` passa ao leitor | a RECOMENDADA, nomeada (`POLITICA_DO_ASSUNTO_RECOMENDADA`), exibindo a gravada ao lado; diferença → `historico` com `'politica'`. **Depende de 9.12**: quando o CP5c fixar a política efetiva, `ver-geracao` passa a mesma constante | parâmetro `politica` na tool: mais fiel ao chamador, mais atrito; como nada autoriza, o ganho é só de rótulo |
 | 9.8 | Conjunto FECHADO de `origem` (`agendar-leva`, `ajustar-arte`, `revisar-arte`, `piloto`) | fechado; tool nova = PR com decisão | string livre: auditoria perde o filtro |
 | 9.9 | Bloco `gate` em `auditar-operacao` | fica para o CP5c (seleção das peças e `generationId` definidos junto com o gate integrado) | fazer agora = mexer em `posts/auditar-operacao.ts` e nos tipos de cobertura sem produtor nenhum |
 | 9.10 | **Política de `rulesVersion`** (decisão 7 do plano-mestre): bump manual por PR imposto por teste + validador no CI (seção 5) × hash de fonte × hash do comportamento sem versão nomeada | bump manual + impressão digital + validador: a versão continua legível por humanos no registro e a mudança de regra vira ato explícito no PR | hash automático: a versão deixa de dizer nada a quem lê a auditoria, e mudança cosmética invalida vereditos |
+| 9.12 | Política EFETIVA do assunto no primeiro produtor (CP5c) — a decisão 9.1 do CP5a que o owner deixou para o chamador | fechar ANTES do produtor, no contrato do CP5c; até lá, `historico` por `'politica'` só compara com a recomendada | sem ela, `historico`/`coincidente` por política não têm significado estável (Codex R3) |
 | 9.11 | Existe "vigente"? | **não no CP5b**: a identidade não cobre bytes de assets/fontes, assinatura e gradiente (4.2); o leitor rotula só `coincidente`/`historico`/`ilegivel` e lista o não conferido; "ainda vale" = medir de novo | criar "vigente" exige o contrato de reprodutibilidade da medição (hash de cada entrada) — checkpoint próprio, se o owner quiser |
 
 ## 10. Oclusão por pixels (estratégia A) — fora do CP5b, e o que a justificaria
@@ -326,10 +349,12 @@ par, e um contrato próprio. Nada disso entra aqui.
 
 ## 11. Arquivos (o que o CP5b toca)
 
-- `src/lib/creatives/revisao/versao.ts`: `identidadeDaPagina` (puro; importa `formatoDaPagina` de `compositor/assinatura.ts`, que é puro);
+- `src/lib/creatives/revisao/versao.ts`: `identidadeDaPagina` (puro; importa `formatoDaPagina` de `src/lib/compositor/assinatura.ts`, que é puro);
 - `src/lib/creatives/revisao/gate-registro.ts` (novo, puro): `RegistroDoGate`, `registroDoGateSchema`, `lerGateDaArte`,
   `validadeDoGate`, `montarRegistroDoGate(gate, politica, identidade, origem, principal?)`;
 - `src/lib/creatives/revisao/gate-persistido.ts` (novo, com banco): `gravarGateDaArte`;
+- `src/lib/creatives/mesclar-field-values.ts`: parâmetro opcional `somenteSe` + número de linhas (3.3), sem mudar o SQL
+  dos chamadores atuais;
 - `src/lib/creatives/revisao/__tests__/impressao-digital-das-regras.test.ts` + `__tests__/impressao-digital/*.json` +
   `__tests__/suporte/corpus-do-gate.ts`; `scripts/validar-impressao-digital.ts` + a linha no job `check` de
   `.github/workflows/ci.yml`;
@@ -340,7 +365,7 @@ par, e um contrato próprio. Nada disso entra aqui.
   (frase de 9.1) — corrigidos neste PR documental.
 
 Fora: `agendar-itens.ts`, `arte-rapida.ts`, `persist.ts`, `nao-piora.ts`, `ajustar-sem-piorar.ts`, `compositor.ts`
-(`revisar-arte`), `agenda.ts`/`posts/auditar-operacao.ts`, `mesclar-field-values.ts`, schema do Prisma.
+(`revisar-arte`), `agenda.ts`/`posts/auditar-operacao.ts`, schema do Prisma.
 
 ## 12. Gates do PR de implementação (quando vier)
 
