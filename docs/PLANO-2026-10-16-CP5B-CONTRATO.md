@@ -1,6 +1,6 @@
 # CP5b — contrato técnico de PERSISTÊNCIA, IDENTIDADE e `rulesVersion` (proposta para revisão, 16/10/2026)
 
-**Estado: PROPOSTA (rodada 10: NÃO EXISTE "vigente" no CP5b; o registro NUNCA é consultado para decidir (nem como sinal negativo); duas impressões, com as entradas do corpus dentro; o registro nasce da MESMA chamada que decide, a copy é reconciliada DENTRO dela, e sem vínculo (página OU Generation) NÃO HÁ decisão; tudo o que é VIA do agendar-leva virou handoff para o contrato do CP5c (seção 12) — o registro é auditoria; só a re-medição prova; vínculo projeto/Generation/página; formato na identidade; impressão digital travada por validador no CI).** Nada aqui está implementado; este PR é documental. Base: `main` `5e96d5a1` (merge do CP5a,
+**Estado: PROPOSTA (rodada 11: NÃO EXISTE "vigente" no CP5b; o registro NUNCA é consultado para decidir (nem como sinal negativo); duas impressões, com as entradas do corpus dentro; o registro nasce da MESMA chamada que decide, a copy é reconciliada DENTRO dela, e sem vínculo (página OU Generation) NÃO HÁ decisão; tudo o que é VIA do agendar-leva virou handoff para o contrato do CP5c (seção 12) — o registro é auditoria; só a re-medição prova; vínculo projeto/Generation/página; formato na identidade; impressão digital travada por validador no CI).** Nada aqui está implementado; este PR é documental. Base: `main` `5e96d5a1` (merge do CP5a,
 PR #237; contrato do CP5a mergeado pelo PR #236). Ordem do owner (16/10): depois do fechamento do CP5a, preparar
 SOMENTE o contrato do CP5b, centrado em persistência, identidade e `rulesVersion`; oclusão por pixels exige
 justificativa e escopo explícitos (seção 10); a integração com a não-piora continua no CP5d, conforme o
@@ -117,8 +117,10 @@ export interface RegistroDoGate {
   **Barreira verificável** (Codex R6–R9): a barreira é por IMPORT, não por string — regra `no-restricted-imports`
   em `eslint.config.mjs` (o `lint` roda no CI) com `importNames`, declarada DUAS vezes para cobrir alias e caminho
   relativo: em `paths` (`@/lib/creatives/revisao/gate`, `@/lib/creatives/revisao/gate-registro`) e em `patterns`
-  (`group: ['**/revisao/gate', '**/revisao/gate.ts', '**/gate-registro', '**/gate-registro.ts']`, com os mesmos
-  `importNames` — o ESLint vê a FONTE do import, então `../revisao/gate-registro` e `import { x as y }` não escapam).
+  (`group: ['**/revisao/gate', '**/revisao/gate.ts', '**/gate-registro', '**/gate-registro.ts', './gate',
+  './gate.ts', './gate-registro', './gate-registro.ts']`, com os mesmos `importNames` — o ESLint vê a FONTE do
+  import, então `../revisao/gate-registro`, `./gate` de dentro do próprio diretório `revisao` (Codex R10) e
+  `import { x as y }` não escapam).
   `gateDaMedida` só pode ser importada por `src/lib/creatives/revisao/gate-registro.ts` e por testes;
   `lerGateDaArte`, `validadeDoGate` e `decidirEMontarRegistro` só por `gate-persistido.ts`,
   `src/lib/mcp/catalogo/ver-geracao-retorno.ts`, `src/lib/mcp/catalogo/arte-ia.ts`, o produtor que o CP5c nomear e
@@ -180,7 +182,7 @@ export async function gravarGateDaArte(client: ClienteDoBanco, registro: Registr
 ```ts
 export type LeituraDoRegistro =
   | { estado: 'ausente' }                                            // sem a chave `gateDaArte`
-  | { estado: 'invalido'; motivo: string; versaoGravada?: string }   // chave presente, forma/invariante inválida ou versão de gate desconhecida
+  | { estado: 'invalido'; motivo: string; versaoGravada?: string; rulesVersionGravada?: string }   // chave presente, forma/invariante inválida ou versão de gate desconhecida; as duas versões lidas como strings soltas, se existirem
   | { estado: 'ok'; registro: RegistroDoGate }
 export function lerGateDaArte(fieldValues: unknown): LeituraDoRegistro   // zod; nunca lança; nunca expõe campos de um JSON rejeitado
 ```
@@ -297,11 +299,19 @@ ressalva). Regra fora do corpus também escapa: por isso o corpus é enumerado (
     bump de `VERSAO_DAS_REGRAS`;
   - **impressão do gate** = sha256 do JSON `estavel` de { `REGRAS_CRITICAS`, `CONFERENCIAS_DO_GATE`,
     `CHAVES_CLASSIFICADAS`, e, para cada peça do corpus e cada uma das 4 políticas, a ENTRADA e a saída
-    `gateDaMedida(entrada).gate` } → arquivo
+    `gateDaMedida(entrada).gate` SEM os metadados copiados (`rulesVersion`, `pageVersion`, `copyVersion` — o gate só
+    os copia, `gate.ts:883`; Codex R10: com eles dentro, subir `VERSAO_DAS_REGRAS` sozinho já mudava a impressão do
+    gate) } → arquivo
     `__tests__/impressao-digital/gate-<GateDaArte['versao']>.json`; mudou → o teste exige bump de `gate.versao`.
-    Como `gateDaMedida` chama `avaliarPeca` (`gate.ts:797`), uma mudança do revisor muda as duas impressões e exige
-    os DOIS bumps — é o custo de "a medida é a fonte única" (CP5a) e é deliberado: o registro persistido diz em que
-    versão de CADA camada o veredito saiu. (Isso vale pelo código real; H10 não o prova por injeção — ver a matriz.)
+    Como `gateDaMedida` chama `avaliarPeca` (`gate.ts:797`), uma mudança do revisor que altere a saída do gate no
+    corpus muda as duas impressões e exige os DOIS bumps — é o custo de "a medida é a fonte única" (CP5a) e é
+    deliberado: o registro persistido diz em que versão de CADA camada o veredito saiu. (Isso vale pelo código real;
+    H10 não o prova por injeção — ver a matriz.) **Consequência assumida expressamente (Codex R10, 9.13)**: depois
+    de um bump de `gate.versao`, os registros anteriores são `invalido` para o leitor novo — o rótulo `historico` por
+    `rulesVersion` só aparece quando o revisor subiu de versão SEM mudar a saída do gate no corpus (bump só do
+    revisor), e a exibição de um registro `invalido` mostra `versaoGravada` E a `rulesVersion` gravada (lidas como
+    strings soltas do JSON, sem validar o resto), para a auditoria continuar dizendo "este veredito saiu com
+    revisao-vN / gate-vM".
 - Teste `src/lib/creatives/revisao/__tests__/impressao-digital-das-regras.test.ts`: calcula as DUAS impressões
   exatamente como definidas acima (tabelas + ENTRADAS do corpus + saídas; `REGRAS_DA_REVISAO` são ids — as
   severidades nascem nos achados de `regras.ts`, não numa tabela) e compara cada uma com o seu arquivo commitado.
@@ -394,7 +404,7 @@ ressalva). Regra fora do corpus também escapa: por isso o corpus é enumerado (
 | H10 | `impressaoDigitalDasRegras(entradas, corpus)` com `criticas` sem `colisao` / com um `gate` que devolve outro resultado para uma peça → a impressão do GATE muda; com um `avaliar` que devolve um achado a mais → a impressão do REVISOR muda; a mensagem pede o bump da versão certa | (a dependência real gate → `avaliarPeca` é por código, `gate.ts:797`, e não é provada por injeção: a impressão do gate usa o `gateDaMedida` REAL sobre o corpus, então uma mudança real de `avaliarPeca` a altera na prática — dito, não testado por H10) |
 | H11 | `montarRetornoDaPagina` com registro coincidente / histórico / inválido / ausente | bloco `gate` com `validade` certa, `naoConferido` e o `aviso` fixo; inválido → `validade: 'ilegivel'` com o motivo (e a versão gravada, se houver); ausente → `gate: null`; nunca inventa `APTO` |
 | H11b | a projeção do banco de `ver-geracao` (cliente falso) | o `select` da Generation inclui os campos de hoje + `projectId`; o da página inclui os de hoje + os de `identidadeDaPagina`, com `Template: { projectId }` no `where`; página de OUTRO projeto ou sumida → `gate` com `validade: 'ilegivel'`, e o resto do retorno igual ao de hoje |
-| H12 | (a) `npm run lint` com a regra `no-restricted-imports` (3.1) — arquivos de controle temporários que importam `gateDaMedida` por alias E por caminho relativo (`../revisao/gate`) fora da lista FALHAM o lint; (b) inventário por regex sobre `src/`: `gateDaArte`, `import('…/gate')`, `import('…/gate-registro')`, `require(` e `export … from` desses módulos fora das listas fechadas | lint falha nos dois casos de controle; as listas do regex vazias; o teste imprime arquivo e linha de cada violação |
+| H12 | (a) `npm run lint` com a regra `no-restricted-imports` (3.1) — arquivos de controle temporários que importam `gateDaMedida` por alias, por caminho relativo de fora (`../revisao/gate`) E por caminho relativo do mesmo diretório (`./gate`, um `src/lib/creatives/revisao/controle.tmp.ts`) fora da lista FALHAM o lint; (b) inventário por regex sobre `src/`: `gateDaArte`, `import('…/gate')`, `import('…/gate-registro')`, `require(` e `export … from` desses módulos fora das listas fechadas | lint falha nos três casos de controle; as listas do regex vazias; o teste imprime arquivo e linha de cada violação |
 
 ## 9. Decisões pendentes do owner
 
@@ -448,9 +458,10 @@ Fora: `agendar-itens.ts`, `arte-rapida.ts`, `persist.ts`, `nao-piora.ts`, `ajust
 Cada item virou achado do Codex nas rodadas 6–9 e pertence ao fluxo do `agendar-leva`, não à persistência. O
 contrato do CP5c tem de responder a cada um com texto e teste:
 
-1. **Decisão fresca em TODA via** (`criar`, `adotar`, `reaproveitar` com efeitos pendentes): medir a página relida
-   e chamar `decidirEMontarRegistro`; só agir com `decisao: 'ok'` e `gate.resultado === 'APTO'`. O registro gravado
-   nunca entra na decisão. Teste: Generation JÁ com `gateDaArte` `APTO`/`coincidente` e medição nova reprovada →
+1. **Decisão fresca em TODA via** (`criar`, `adotar`, `reaproveitar` com efeitos pendentes), **só no perfil efetivo
+   draft-only** (o fluxo humano segue warn-only, plano-mestre § 4.5): medir a página relida e chamar
+   `decidirEMontarRegistro`; só agir com `decisao: 'ok'` e `gate.resultado === 'APTO'`. O registro gravado nunca
+   entra na decisão. `simular: true` mede e responde sem gravar o registro. Teste: Generation JÁ com `gateDaArte` `APTO`/`coincidente` e medição nova reprovada →
    nada criado, ligado nem executado; o registro novo (reprovado) substitui o antigo.
 2. **Gravação condicional dentro da transação, antes do efeito**: depois das travas de hoje (`agendar-itens.ts:647-669`)
    mais `SELECT id FROM "Generation" … FOR UPDATE`; `'sem-vinculo'` → item `falhou` com `REVISAO_HUMANA_NECESSARIA` +
@@ -459,9 +470,17 @@ contrato do CP5c tem de responder a cada um com texto e teste:
    `TIPO_DO_POST_POR_FORMATO[formato da página relida]` (hoje a seleção para adoção não confere o tipo, `:384`) e a
    página relida passa por `recusaComoImagem` (música — `creatives/agendar.ts:261`; a adoção não passa por
    `resolverAgendamento`). Teste: página `feed` com DRAFT `STORY` existente; página que ganhou música.
-4. **`reaproveitar` com efeitos pendentes** (`:572-575`): revalidação PROTEGIDA antes de CADA efeito — a
-   `versaoDaPagina` relida sob trava (ou CAS no efeito) tem de ser a da medida fresca; edição concorrente entre a
-   medição e o efeito → efeito não roda. Teste com edição concorrente.
+4. **Efeitos depois do commit, nas TRÊS vias** (`criar` e `adotar` também executam efeitos depois,
+   `agendar-itens.ts:755`; `reaproveitar` em `:572-575`): revalidação PROTEGIDA antes de CADA efeito — a
+   `identidadeDaPagina` relida sob trava (ou CAS no efeito) tem de ser a da medida fresca em `pageVersion` E
+   `copyVersion` (`versaoDaPagina` não vê `Page.copyAutoral`; Codex R10); edição concorrente entre a medição e o
+   efeito → efeito não roda. Teste com edição concorrente de camadas e, separadamente, só da copy.
+4b. **A Generation dona do registro é a do POST** (`post.generationId`), nas vias com post existente (`adotar`,
+   `reaproveitar`): o post relido sob trava tem de apontar a Generation medida (`post.generationId ===
+   vinculo.generationId`); `null` ou outra Generation → `sem-vinculo`/humano (hoje a adoção escolhe o post pela
+   página e situação sem conferir `generationId`, `agendar-itens.ts:384`, `agendamento.ts:298`). Em `criar`, a
+   Generation é a que `criarPostDoAgendamento` vai ligar. Casos de teste para post existente sem Generation e com
+   outra Generation.
 5. **A medida nasce da MESMA leitura da página** cujas camadas, canvas, formato e `copyAutoral` entram no vínculo
    (métricas, contraste e leitura da logo chegam prontos a `decidirEMontarRegistro`). Teste.
 6. **A leitura da página sob trava** (`lerPagina`, `:357/543`, e a `paginaCrua` de `:611`) passa a trazer os campos
