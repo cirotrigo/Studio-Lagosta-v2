@@ -869,7 +869,7 @@ nada é persistido (CP5b). O que existe:
   4 regras que leem pixels (texto-sem-leitura, tratamento-piorou-leitura, logo-sem-leitura, texto-sobre-assunto) — o
   contrato (§6) só previa vídeo ACIMA do texto como não medido; abaixo, o render parado não o desenha e a publicação
   (MP4) sim (Codex, rodada 10). (7) Camada com `movimento` idem — a página com áudio publica o quadro do movimento;
-  política do owner pendente (excluir páginas com movimento/vídeo do gate autônomo, ou medir o quadro publicado).
+  ratificado pelo owner em 16/10 (revisão humana para movimento/vídeo na cobertura atual do CP5a).
 - **Revisão final adversarial (owner + Codex, 16/10)** — quatro falsos APTO fechados, todos fail-closed: (1) `order`,
   `position`, `size` e os valores dos efeitos (traço, sombra, desfoque, borda) têm de ser NÚMEROS finitos — `order: 'z'`,
   `position.x: 'abc'`, `shadowOffsetX: 'muito'` viravam NaN, a interseção falhava e a camada passava como se estivesse
@@ -924,8 +924,9 @@ nada é persistido (CP5b). O que existe:
   medidor omite `''` (centro) e o render passa `''` ao recorte (esquerda/topo); (21) foto de fundo com `movimento`: o
   revisor lê um cover parado e a página com áudio sai no quadro do movimento (`persist.ts`; `afastar` começa em 1,15×)
   → não comprovada (humano) até o owner decidir a política (excluir páginas com foto em movimento do gate autônomo ou
-  medir o quadro publicado). Pendência de ratificação do owner apontada pelo Codex: G26 do contrato diz que y=188
-  passa; o teste exige 188 + 1 (folga de antialias, desvio 1 já declarado). Regressões em G12, G13b, G13c.
+  medir o quadro publicado — ratificado 16/10: humano). A folga de antialias de 1 px (desvio 1) foi RATIFICADA pelo
+  owner em 16/10, preservando os pisos 188/224: no topo y=188 reprova e 189 passa; no rodapé base em H−224 reprova e
+  H−225 passa (G26 testa os dois lados, texto e logo; o contrato #236 diz o mesmo). Regressões em G12, G13b, G13c.
   Rodada 9 (esforço máximo): (22) a guarda de movimento sai da foto de fundo e vira UMA regra em `decidirCritica`:
   QUALQUER camada visível com `movimento` efetivo (fundo, logo-imagem, imagem solta sob a logo sem foto de fundo
   escolhida — `camadasNoInstante` anima qualquer `image`) derruba as 4 regras que leem PIXELS do quadro parado
@@ -947,8 +948,10 @@ nada é persistido (CP5b). O que existe:
   2160×3840 com texto em y=250 passaria e, exibido em 1080, cai em y=125 — fora do canônico, `piso-de-interface` não
   comprovada; (29) foto visível que `fotoDeFundo` NÃO reconhece (`element` de tela inteira, `image` < 90%) sem
   `bg-foto` → `texto-sobre-assunto` não comprovada em vez de "não se aplica" (o assunto dela ninguém mediu).
-  Regressões: G13d (estimado/nenhum/piso no canvas grande) e G13e. Nota: o Codex passou a tratar a ratificação de
-  188 + 1 como dada; ela continua PENDENTE do owner (ninguém a deu nesta sessão).
+  Regressões: G13d (estimado/nenhum/piso no canvas grande) e G13e. Fechamento 16/10 (owner): ratificados a folga de
+  1 px, a revisão humana para movimento/vídeo, foto sem fundo reconhecido e assunto não comprovado pelo cover
+  canônico; a política do assunto segue parâmetro obrigatório sem padrão (9.1), e o comentário de `gate.ts` que
+  dizia "adotada pelo owner" foi corrigido. A correção do crash nativo do @napi-rs/canvas fica FORA deste PR.
   Regressões em G9, G12, G21 e no bloco G21f (valores não numéricos, chave no topo, tipo novo, `effects.curved`,
   `textboxConfig` desconhecido, opacidade 0/parcial, `filter` vazio, `visible` 0/"false", efeitos combinados com
   paridade no render real — forma e imagem com máscara + flip + recorte + sombra + desfoque).

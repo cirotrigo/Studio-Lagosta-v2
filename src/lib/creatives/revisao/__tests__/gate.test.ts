@@ -563,14 +563,23 @@ describe('G19/G26 — piso de interface do story', () => {
     expect(logoFiltro.naoMedidos.some((n) => n.regra === 'piso-de-interface' && n.camadas.includes('logo'))).toBe(true)
   })
 
-  it('G26: limites independentes — 187 reprova, 188 passa; rodapé 223/224; cliente menos restritivo não afrouxa; mais restritivo aperta; oculta não conta', () => {
+  it('G26 (ratificado pelo owner em 16/10: folga de antialias de 1 px, pisos 188/224): TOPO — texto ou logo em y=188 reprova, y=189 passa; RODAPÉ — base em H−224 reprova, H−225 passa; cliente menos restritivo não afrouxa; mais restritivo aperta; oculta não conta', () => {
     const t = (y: number, extra: Partial<Layer> = {}) => texto('t', { x: 100, y, width: 300, height: 50 }, 30, extra)
     const sem = (ls: Layer[], iface = interfaceDoStory()) => foraDaInterface(ls, CANVAS, iface).map((f) => f.camada)
-    expect(sem([t(187)])).toEqual(['t'])
-    expect(sem([t(188 + FOLGA_DE_ANTIALIAS)])).toEqual([])
     const logoEm = (y: number) => logo({ position: { x: 799, y } })
+    expect(FOLGA_DE_ANTIALIAS).toBe(1)
+    // Topo: os dois lados da fronteira, texto e logo.
+    expect(sem([t(187)])).toEqual(['t'])
+    expect(sem([t(188)])).toEqual(['t'])
+    expect(sem([t(189)])).toEqual([])
+    expect(sem([logoEm(188)])).toEqual(['logo'])
+    expect(sem([logoEm(189)])).toEqual([])
+    // Rodapé: os dois lados da fronteira, logo (95 de altura) e texto (50 de altura).
     expect(sem([logoEm(H - 223 - 95)])).toEqual(['logo'])
-    expect(sem([logoEm(H - 224 - 95 - FOLGA_DE_ANTIALIAS)])).toEqual([])
+    expect(sem([logoEm(H - 224 - 95)])).toEqual(['logo'])
+    expect(sem([logoEm(H - 225 - 95)])).toEqual([])
+    expect(sem([t(H - 224 - 50)])).toEqual(['t'])
+    expect(sem([t(H - 225 - 50)])).toEqual([])
     expect(interfaceDoStory({ topo: 100 })).toEqual({ topo: 188, rodape: 224 })
     // Codex R9: configuração não finita nunca afrouxa (`Math.max(NaN, 188)` era NaN e o piso deixava de pegar invasão).
     for (const cfg of [{ topo: Number.NaN, rodape: Number.NaN }, { topo: Infinity, rodape: -Infinity }, { topo: '300', rodape: null }] as unknown as Array<{ topo?: number; rodape?: number }>) {
