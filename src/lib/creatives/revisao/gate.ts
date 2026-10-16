@@ -65,8 +65,11 @@ export interface MotivoDoGate {
   camadas: string[]
 }
 
+/** A versão da DECISÃO do gate (CP5b § 5): bump obrigatório cobrado pela impressão digital `gate-<versao>.json`. */
+export const VERSAO_DO_GATE = 'gate-v1' as const
+
 export interface GateDaArte {
-  versao: 'gate-v1'
+  versao: typeof VERSAO_DO_GATE
   resultado: ResultadoDoGate
   /** `relatorio.versaoDasRegras` copiado; a política de bump é do CP5b. */
   rulesVersion: string
@@ -881,7 +884,7 @@ export function gateDaMedida(entrada: EntradaDoGate): { gate: GateDaArte; relato
   motivos.sort((a, b) => ordem.indexOf(a.regra) - ordem.indexOf(b.regra))
 
   const gate: GateDaArte = {
-    versao: 'gate-v1',
+    versao: VERSAO_DO_GATE,
     resultado: motivos.length === 0 && naoMedidos.length === 0 ? 'APTO' : 'REVISAO_HUMANA_NECESSARIA',
     rulesVersion: relatorio.versaoDasRegras,
     pageVersion: identidade.pageVersion,
