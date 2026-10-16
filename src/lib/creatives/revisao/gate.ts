@@ -591,8 +591,10 @@ export function cenariosNaoMedidos(
         if (!(overlapV > tol.vertical && overlapH > tol.horizontal)) continue
         // Acima da tolerância: `colisao` acusa (reprova por achado); aqui também é oclusão — fail-closed, nunca aprova.
       }
-      // Exceção 2 — logo solta sobre texto é `logo-sobre-texto` (AMBOS limpos, texto com métrica, regra avaliada).
-      if (logosSoltas.has(c.id) && limpo(c) && limpo(t) && comMetrica(t) && cobertura['logo-sobre-texto']?.estado === 'avaliada') continue
+      // Exceção 2 — logo solta sobre texto é `logo-sobre-texto` (AMBOS limpos, texto com métrica, regra avaliada). Só para
+      // `logo`/`image`: a regra compara a caixa de CANTO (`rectDaCamada`), e uma `shape` com id "logo" (círculo, centrado
+      // em `position`) entra em `logosDaPeca` sem que a caixa da regra represente o desenho (Codex, revisão final R4).
+      if (logosSoltas.has(c.id) && (c.type === 'logo' || c.type === 'image') && limpo(c) && limpo(t) && comMetrica(t) && cobertura['logo-sobre-texto']?.estado === 'avaliada') continue
       ocluidoras.push(c.id)
     }
     if (ocluidoras.length > 0) saida.push({ tipo: 'oclusao', texto: t.id, acima: ocluidoras })
@@ -605,6 +607,23 @@ export function cenariosNaoMedidos(
 // ─────────────────────────────────────────────────────────────────────────
 
 const ehCritica = (r: string): r is RegraCritica => (REGRAS_CRITICAS as readonly string[]).includes(r)
+
+/**
+ * Chaves que mudam os PIXELS ou o recorte da logo no render e que a medição do CP3 (`medirLogosDaPeca`, que lê o
+ * ARQUIVO) não reproduz — o guard do CP3 só vê rotação, opacidade, `crop`, `cover` e `flipX/flipY`. Logo solta com
+ * qualquer uma delas efetiva: a leitura medida não representa o que será publicado → não comprovada (Codex, revisão
+ * final R4: `invert`, `flipH`, `mask`).
+ */
+const CHAVES_QUE_A_LEITURA_DA_LOGO_NAO_VE = ['flipH', 'flipV', 'mask', 'filter', 'blur', 'exposure', 'brightness', 'contrast', 'highlights', 'shadows', 'whites', 'blacks', 'saturation', 'vignette', 'grayscale', 'sepia', 'invert'] as const
+
+/** A logo cuja leitura (CP3) pode representar o render: tipo `logo`/`image` com arquivo e sem chave que a medição não vê. */
+function leituraDaLogoRepresentaORender(l: Layer): string | null {
+  if (l.type !== 'logo' && l.type !== 'image') return `camada ${l.id} é ${String(l.type)}, não logo/imagem`
+  if (typeof l.fileUrl !== 'string' || l.fileUrl.trim() === '') return `camada ${l.id} sem arquivo`
+  const style = (l.style ?? {}) as Record<string, unknown>
+  const ruins = CHAVES_QUE_A_LEITURA_DA_LOGO_NAO_VE.filter((k) => valorEfetivo(style[k]))
+  return ruins.length > 0 ? `logo ${l.id} desenhada com ${ruins.join(', ')}: a leitura medida no arquivo não representa o render` : null
+}
 
 export interface DecisaoDaCritica {
   cobertura: CoberturaDoGate
@@ -650,7 +669,14 @@ export function decidirCritica(args: {
     const leitura = medida.leituraDaLogo
     if (leitura === null || leitura === undefined) return nc(medida.motivoSemLeituraDaLogo ?? 'a leitura da logo não rodou')
     // Codex (revisão final): a lista tem de cobrir TODA logo solta da peça — logo sem entrada não foi medida.
-    const soltas = logosDaPeca(medida.camadas).map((l) => l.id)
+    const camadasSoltas = logosDaPeca(medida.camadas)
+    const soltas = camadasSoltas.map((l) => l.id)
+    const naoRepresentam = camadasSoltas.map(leituraDaLogoRepresentaORender).filter((m): m is string => m !== null)
+    if (naoRepresentam.length > 0) {
+      const d = nc(naoRepresentam.join('; '), camadasSoltas.filter((l) => leituraDaLogoRepresentaORender(l)).map((l) => l.id))
+      d.naoMedidos = naoRepresentam.map((m) => ({ regra, motivo: m, camadas: [] }))
+      return d
+    }
     const lidas = new Set(leitura.map((x) => x.camada))
     const semLeitura = soltas.filter((id) => !lidas.has(id))
     if (semLeitura.length > 0) {

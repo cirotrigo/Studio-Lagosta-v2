@@ -286,6 +286,17 @@ describe('G11/G12 — logo-sem-leitura', () => {
     expect(semEntrada.naoMedidos.some((n) => n.regra === 'logo-sem-leitura' && n.camadas.includes('logo'))).toBe(true)
     const duasUmaOmitida = gate({ medida: { camadas: [...pecaLimpa().camadas, logo({ id: 'logo-2', position: { x: 100, y: 1750 } })], leituraDaLogo: [leitura('logo', medidaDaLogo())] } })
     expect(duasUmaOmitida.cobertura['logo-sem-leitura'].estado).toBe('nao-comprovada')
+    // Codex (revisão final R4): a leitura do CP3 lê o ARQUIVO; chave que muda os pixels/recorte no render (invert, flipH,
+    // mask, grayscale, filter…) deixa a leitura não comprovada mesmo com estado 'medida'. E uma shape com id "logo" não é logo.
+    for (const style of [{ objectFit: 'contain', invert: true }, { objectFit: 'contain', flipH: true }, { objectFit: 'contain', mask: { shapeId: 'c', path: 'M0 0H100V100H0Z' } }, { objectFit: 'contain', grayscale: true }, { objectFit: 'contain', filter: 'blur(2px)' }, { objectFit: 'contain', exposure: 0.5 }] as const) {
+      const g = gate({ medida: { camadas: pecaLimpa().camadas.map((l) => (l.id === 'logo' ? { ...l, style } : l)) } })
+      expect(g.cobertura['logo-sem-leitura'].estado, JSON.stringify(style)).toBe('nao-comprovada')
+      expect(g.resultado, JSON.stringify(style)).toBe('REVISAO_HUMANA_NECESSARIA')
+    }
+    const shapeLogo = gate({ medida: { camadas: pecaLimpa().camadas.map((l) => (l.id === 'logo' ? { ...l, type: 'shape', fileUrl: 'https://blob.test/logo.png', style: { shapeType: 'circle', fill: '#fff' } } : l)) } })
+    expect(shapeLogo.cobertura['logo-sem-leitura'].estado).toBe('nao-comprovada')
+    // Controle: `objectFit: 'contain'` e `border.radius` (inertes para a leitura) seguem comprovados.
+    expect(gate({ medida: { camadas: pecaLimpa().camadas.map((l) => (l.id === 'logo' ? { ...l, style: { objectFit: 'contain', border: { width: 0, color: '#000', radius: 8 } } } : l)) } }).cobertura['logo-sem-leitura']).toEqual({ estado: 'comprovada' })
     const ilegivel = gate({ medida: { leituraDaLogo: [leitura('logo', medidaDaLogo(12))] } })
     expect(ilegivel.cobertura['logo-sem-leitura'].estado).toBe('reprovada')
   })
@@ -513,6 +524,10 @@ describe('G21 — oclusão sem rotação', () => {
     expect(duplicada.naoMedidos.some((n) => n.regra === 'oclusao')).toBe(true)
     const outraCaixa = medir(logoSobre(), { metricas: b.metricas.map((m) => (m.layerId === 'servico' ? { ...m, box: { ...m.box, x: 900 } } : m)) })
     expect(outraCaixa.naoMedidos.some((n) => n.regra === 'oclusao')).toBe(true)
+    // Codex (revisão final R4): `shape` circular com id "logo" (centrada em position, fora da caixa de canto que a regra usa)
+    // cobrindo os glifos → a exceção NÃO vale → oclusão.
+    const circuloLogo = medir({ ...logoSobre({ position: { x: 530, y: 1530 }, size: { width: 100, height: 100 } }), type: 'shape', style: { shapeType: 'circle', fill: '#ffffff' } } as Layer)
+    expect(oclusaoDe(circuloLogo)).toHaveLength(1)
     const comFiltro = medir(logoSobre({ style: { objectFit: 'contain', filter: 'blur(2px)' } }))
     expect(comFiltro.naoMedidos.some((n) => n.regra === 'oclusao' && /filter/.test(n.motivo))).toBe(true)
   })

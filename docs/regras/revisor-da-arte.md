@@ -878,7 +878,13 @@ nada é persistido (CP5b). O que existe:
   é ÚNICA por id e descreve a MESMA caixa da camada (métrica duplicada ou de outra caixa → sem métrica → oclusão).
   Rodada 2: (5) o retângulo CALCULADO tem de ser finito (`rotation: 1e308` → radianos Infinity → sin/cos NaN →
   `contido: false`); (6) a leitura da régua é por TEXTO: só `textos[].camada` conta — `camadas` do grupo sem `textos`
-  (medida antiga, leitura de um representante) não prova a leitura de cada texto.
+  (medida antiga, leitura de um representante) não prova a leitura de cada texto. Rodada 4 (esforço máximo): (7) a
+  leitura da logo do CP3 lê o ARQUIVO — logo solta com `invert`, `flipH`/`flipV`, `mask`, `filter`, `grayscale`,
+  `sepia`, `exposure`/`brightness`, `contrast`, `highlights`, `shadows`, `whites`, `blacks`, `saturation`, `vignette`
+  ou `blur` de estilo é desenhada diferente do que foi medido → `logo-sem-leitura` não comprovada mesmo com estado
+  `medida`; logo solta que não é `logo`/`image` (uma `shape` com id "logo") idem; (8) a exceção logo × texto só vale
+  para `logo`/`image` — a regra `logo-sobre-texto` compara a caixa de CANTO, e uma `shape` circular com id "logo" é
+  desenhada centrada em `position`, fora dessa caixa.
   Regressões em G9, G12, G21 e no bloco G21f (valores não numéricos, chave no topo, tipo novo, `effects.curved`,
   `textboxConfig` desconhecido, opacidade 0/parcial, `filter` vazio, `visible` 0/"false", efeitos combinados com
   paridade no render real — forma e imagem com máscara + flip + recorte + sombra + desfoque).
