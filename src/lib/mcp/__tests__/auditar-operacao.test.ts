@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { DOT_OPERACAO_VERSAO } from '../operacao-dot';
 
 /**
  * Tool `auditar-operacao` (H2 do Dot, 13/10/2026): escopo do principal,
@@ -262,7 +263,7 @@ describe('auditar-operacao', () => {
       m.visiveis.mockResolvedValue(null);
       process.env.MCP_DRAFT_ONLY_CLIENT_IDS = '';
       const r = await auditar(usuario(CLIENTE));
-      expect(r.manual).toMatchObject({ modo: 'DRAFT_ONLY', versao: 'dot-operacao-v5' });
+      expect(r.manual).toMatchObject({ modo: 'DRAFT_ONLY', versao: DOT_OPERACAO_VERSAO });
       expect(r.manual.regras.join(' ')).toMatch(/seguranca\.perfilEfetivo = draft-only.*PERFIL_DE_SEGURANCA_INATIVO/);
     });
 
