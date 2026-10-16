@@ -19,8 +19,12 @@
 import { createHash } from 'node:crypto'
 import { lerCamadas } from '@/lib/posts/page-layers'
 import { quadroZeroEmVideo } from '@/lib/video/movimento'
+import { formatoDaPagina } from '@/lib/compositor/assinatura'
+import { formatoDaPaginaGravada } from '@/lib/compositor/formato'
+import type { Formato } from '@/lib/compositor/spec'
 
-function estavel(valor: unknown): unknown {
+/** O JSON com chaves ordenadas e sem `undefined` — a forma de todo hash daqui. Exportado (CP5b § 3.1) para não nascer uma segunda normalização. */
+export function estavel(valor: unknown): unknown {
   if (Array.isArray(valor)) return valor.map(estavel)
   if (valor && typeof valor === 'object') {
     const objeto = valor as Record<string, unknown>
@@ -64,4 +68,39 @@ export function versaoDaPagina(
 export function copyVersionDe(copyAutoral: unknown): string {
   if (copyAutoral === null || copyAutoral === undefined) return 'sem-contrato'
   return `c1:${createHash('sha256').update(JSON.stringify(estavel(copyAutoral))).digest('hex').slice(0, 20)}`
+}
+
+export interface IdentidadeDaPagina {
+  pageId: string
+  /** O classificador do REVISOR (`assinatura.ts`: nome + tags + tamanho) — o que decidiu piso e canvas canônico na medida. */
+  formato: Formato | null
+  /** O classificador do COMPOSITOR (`compositor/formato.ts`: tags + tamanho) — trocar SÓ as tags muda este sem mudar o outro nem os hashes. */
+  formatoDoCompositor: Formato
+  pageVersion: string | null
+  copyVersion: string
+}
+
+/**
+ * CP5b § 4.1 — a identidade da peça que o registro do gate guarda: a MESMA `versaoDaPagina(page)` do revisor
+ * (`revisar-arte.ts`, sem quadro de áudio — o gate mede o render de imagem; a versão com áudio é a do PNG
+ * renderizado para publicação, outra pergunta), `copyVersionDe(Page.copyAutoral)` (o contrato da peça, não a
+ * reconciliação da Generation — decisão 9.2) e os DOIS formatos. Puro.
+ */
+export function identidadeDaPagina(page: {
+  id: string
+  name: string
+  tags: string[]
+  width: number
+  height: number
+  background?: string | null
+  layers: unknown
+  copyAutoral?: unknown
+}): IdentidadeDaPagina {
+  return {
+    pageId: page.id,
+    formato: formatoDaPagina({ name: page.name, tags: page.tags, width: page.width, height: page.height }),
+    formatoDoCompositor: formatoDaPaginaGravada({ tags: page.tags, width: page.width, height: page.height }),
+    pageVersion: versaoDaPagina(page),
+    copyVersion: copyVersionDe(page.copyAutoral),
+  }
 }

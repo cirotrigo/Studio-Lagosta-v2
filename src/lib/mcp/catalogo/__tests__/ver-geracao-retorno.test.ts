@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { avisosDoCompositor, copyDaArte, falhaDaGeracao, montarRetornoDaPagina } from '../ver-geracao-retorno'
+import { AVISO_DO_GATE, avisosDoCompositor, copyDaArte, falhaDaGeracao, montarRetornoDaPagina, type PaginaDaGeracao } from '../ver-geracao-retorno'
+import { POLITICA_DO_ASSUNTO_RECOMENDADA } from '@/lib/creatives/revisao/gate'
+import { NAO_CONFERIDO_PELA_IDENTIDADE } from '@/lib/creatives/revisao/gate-registro'
+import { AGORA, PAGINA_LIMPA, VINCULO, camadasDaPaginaLimpa, decidirOk, entradaDa } from '@/lib/creatives/revisao/__tests__/suporte/pagina-limpa'
+import { decidirEMontarRegistro } from '@/lib/creatives/revisao/gate-registro'
+import { medida } from '@/lib/creatives/revisao/__tests__/suporte/corpus-do-gate'
 
 const pagina = { id: 'pg1', name: 'Qua 09/09 · 10:00 · gestão', templateId: 412, isTemplate: false }
 const app = 'https://studio.exemplo'
@@ -83,5 +88,68 @@ describe('a copy da arte de IA (sem camadas) — escrita × enviada × lida (F1,
     expect(c?.comparadoPor).toBe('camadas')
     expect(c?.comparavel).toBe(true)
     expect(c?.enviada).toBeUndefined()
+  })
+})
+
+describe('CP5b — H11: o bloco `gate` de ver-geracao é auditoria rotulada, nunca um veredito inventado', () => {
+  const PROJETO = 8
+  const paginaCompleta: PaginaDaGeracao = { ...pagina, id: PAGINA_LIMPA.id, name: PAGINA_LIMPA.name, tags: PAGINA_LIMPA.tags, width: PAGINA_LIMPA.width, height: PAGINA_LIMPA.height, background: PAGINA_LIMPA.background, layers: PAGINA_LIMPA.layers, copyAutoral: PAGINA_LIMPA.copyAutoral }
+  const registro = () => JSON.parse(JSON.stringify(decidirOk().registro)) as Record<string, unknown>
+  const retorno = (fv: Record<string, unknown>, p: PaginaDaGeracao | null, generationId = 'gen-1') => montarRetornoDaPagina({ fieldValues: { pageId: 'pg-1', ...fv }, pagina: p, appUrl: app, projectId: PROJETO, concluida: true, generationId })
+
+  it('sem generationId (chamadores antigos): nenhum bloco; com generationId e sem registro: gate: null', () => {
+    expect(montarRetornoDaPagina({ fieldValues: { pageId: 'pg-1' }, pagina, appUrl: app, projectId: PROJETO, concluida: true })).not.toHaveProperty('gate')
+    const r = retorno({}, paginaCompleta)
+    expect(r.gate).toBeNull()
+    expect(JSON.stringify(r)).not.toMatch(/APTO|pendente/)
+  })
+
+  it('registro coincidente: resultado, versões, política gravada e comparada, naoConferido e o aviso fixo; o resto do retorno é o de sempre', () => {
+    const r = retorno({ gateDaArte: registro() }, paginaCompleta)
+    expect(r.gate).toMatchObject({ validade: 'coincidente', resultado: 'APTO', rulesVersion: 'revisao-v1', versaoDoGate: 'gate-v1', medidoEm: '2026-10-16T03:00:00.000Z', origem: 'piloto', politica: POLITICA_DO_ASSUNTO_RECOMENDADA, politicaComparada: POLITICA_DO_ASSUNTO_RECOMENDADA, naoConferido: NAO_CONFERIDO_PELA_IDENTIDADE, motivos: [], aviso: AVISO_DO_GATE })
+    expect(r.gate && 'divergencias' in r.gate).toBe(false)
+    expect(AVISO_DO_GATE).toMatch(/não é o veredito atual/)
+    expect(r.pageId).toBe('pg-1')
+    expect(r.editUrl).toContain('/templates/412/editor?pageId=pg-1')
+    expect(r.comoAgendar).toContain('pageId "pg-1"')
+  })
+
+  it('histórico: página mudou (hash), renomeada para "feed" (formato do revisor), só as tags (formato do compositor) ou OUTRA Generation (vínculo) — o resultado antigo só com o rótulo', () => {
+    const mudada = { ...paginaCompleta, layers: (PAGINA_LIMPA.layers as Array<Record<string, unknown>>).map((l) => (l.id === 'headline' ? { ...l, content: 'Outro' } : l)) }
+    expect(retorno({ gateDaArte: registro() }, mudada).gate).toMatchObject({ validade: 'historico', divergencias: ['pageVersion'], resultado: 'APTO' })
+    expect(retorno({ gateDaArte: registro() }, { ...paginaCompleta, name: 'feed especial', tags: [] }).gate).toMatchObject({ validade: 'historico', divergencias: ['formato'] })
+    // Só as tags: página 1080×1350 "feed de quarta" tags [feed] → registro; tags [story] → o revisor segue 'feed' pelo nome, o compositor vira 'story'.
+    const feedLayers = camadasDaPaginaLimpa().map((l) => (l.id === 'bg-foto' ? { ...l, size: { width: 1080, height: 1350 } } : l.id === 'servico' ? { ...l, position: { x: 100, y: 1150 } } : l))
+    const feed = { ...PAGINA_LIMPA, name: 'feed de quarta', tags: ['feed'], height: 1350, layers: feedLayers as unknown }
+    const rf = decidirEMontarRegistro({ entrada: entradaDa(feed, { formato: 'feed', canvas: { width: 1080, height: 1350 }, metricas: medida().metricas.map((m) => (m.layerId === 'servico' ? { ...m, box: { ...m.box, y: 1150 }, glyphTop: 1150, glyphBottom: 1210 } : m)) }), page: feed, vinculo: { ...VINCULO, postType: 'POST' }, origem: 'piloto', agora: AGORA })
+    expect(rf.decisao).toBe('ok')
+    const registroFeed = rf.decisao === 'ok' ? JSON.parse(JSON.stringify(rf.registro)) : null
+    expect(retorno({ gateDaArte: registroFeed }, { ...paginaCompleta, ...feed, tags: ['story'] }).gate).toMatchObject({ validade: 'historico', divergencias: ['formatoDoCompositor'] })
+    expect(retorno({ gateDaArte: registro() }, paginaCompleta, 'gen-OUTRA').gate).toMatchObject({ validade: 'historico', divergencias: ['vinculo'] })
+  })
+
+  it('ilegível: registro malformado (com as versões gravadas só quando válidas), APTO forjado, página sumida, sem os campos da identidade, camadas ilegíveis → sem resultado nenhum', () => {
+    const v2 = registro()
+    ;(v2.gate as Record<string, unknown>).versao = 'gate-v2'
+    const longa = registro()
+    ;(longa.gate as Record<string, unknown>).versao = 'x'.repeat(200)
+    const casos: Array<[string, Record<string, unknown>, PaginaDaGeracao | null]> = [
+      ['registro malformado', { gateDaArte: { resultado: 'APTO' } }, paginaCompleta],
+      ['APTO forjado com cobertura vazia', { gateDaArte: { ...registro(), gate: { ...(registro().gate as object), cobertura: {} } } }, paginaCompleta],
+      ['versão anterior do gate', { gateDaArte: v2 }, paginaCompleta],
+      ['versão malformada', { gateDaArte: longa }, paginaCompleta],
+      ['página sumida', { gateDaArte: registro() }, null],
+      ['página sem os campos da identidade', { gateDaArte: registro() }, pagina],
+      ['camadas ilegíveis hoje', { gateDaArte: registro() }, { ...paginaCompleta, layers: '{nao é json' }],
+    ]
+    for (const [nome, fv, p] of casos) {
+      const r = retorno(fv, p)
+      expect(r.gate?.validade, nome).toBe('ilegivel')
+      expect(r.gate && 'resultado' in r.gate, nome).toBe(false)
+      expect(r.gate && 'motivo' in r.gate && r.gate.motivo.length > 0, nome).toBe(true)
+      expect(r.gate?.aviso, nome).toBe(AVISO_DO_GATE)
+    }
+    expect(retorno({ gateDaArte: v2 }, paginaCompleta).gate).toMatchObject({ validade: 'ilegivel', versaoGravada: 'gate-v2', rulesVersionGravada: 'revisao-v1' })
+    expect(retorno({ gateDaArte: longa }, paginaCompleta).gate).not.toHaveProperty('versaoGravada')
   })
 })

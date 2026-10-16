@@ -24,17 +24,31 @@ import type { Prisma } from '../../../prisma/generated/client'
 export type ClienteDoBanco = Prisma.TransactionClient | typeof db
 
 /**
- * Devolve a promessa do Prisma (serve tanto para `await` quanto para entrar
- * num `db.$transaction([...])` em lote). Com `client` de transação
- * interativa, roda dentro dela.
+ * Devolve a promessa do Prisma com o NÚMERO DE LINHAS afetadas (serve tanto
+ * para `await` quanto para entrar num `db.$transaction([...])` em lote). Com
+ * `client` de transação interativa, roda dentro dela.
+ *
+ * `somenteSe` (CP5b § 3.3): o merge só acontece se a Generation for do projeto
+ * E da página indicados (`"fieldValues"->>'pageId'`, o vínculo que
+ * `contextoDaMedicao` usa) E a página for do projeto (`EXISTS` por
+ * `Template.projectId`, a mesma relação que `ver-geracao` usa — `fieldValues.pageId`
+ * é JSON e não prova isso sozinho). 0 linhas = sem vínculo, nada gravado. Sem o
+ * parâmetro o SQL é byte a byte o de sempre — os chamadores atuais não mudam.
  */
 export function mesclarFieldValuesDaArte(
   client: ClienteDoBanco,
   generationId: string,
   patch: Record<string, unknown>,
-  colunas: { resultUrl?: string } = {},
+  colunas: { resultUrl?: string; somenteSe?: { projectId: number; pageId: string } } = {},
 ) {
   const json = JSON.stringify(patch)
+  const v = colunas.somenteSe
+  if (v !== undefined && colunas.resultUrl !== undefined) {
+    return client.$executeRaw`UPDATE "Generation" SET "fieldValues" = (CASE WHEN jsonb_typeof("fieldValues") = 'object' THEN "fieldValues" ELSE '{}'::jsonb END) || ${json}::jsonb, "resultUrl" = ${colunas.resultUrl} WHERE "id" = ${generationId} AND "projectId" = ${v.projectId} AND "fieldValues"->>'pageId' = ${v.pageId} AND EXISTS (SELECT 1 FROM "Page" p JOIN "Template" t ON t."id" = p."templateId" WHERE p."id" = ${v.pageId} AND t."projectId" = ${v.projectId})`
+  }
+  if (v !== undefined) {
+    return client.$executeRaw`UPDATE "Generation" SET "fieldValues" = (CASE WHEN jsonb_typeof("fieldValues") = 'object' THEN "fieldValues" ELSE '{}'::jsonb END) || ${json}::jsonb WHERE "id" = ${generationId} AND "projectId" = ${v.projectId} AND "fieldValues"->>'pageId' = ${v.pageId} AND EXISTS (SELECT 1 FROM "Page" p JOIN "Template" t ON t."id" = p."templateId" WHERE p."id" = ${v.pageId} AND t."projectId" = ${v.projectId})`
+  }
   if (colunas.resultUrl !== undefined) {
     return client.$executeRaw`UPDATE "Generation" SET "fieldValues" = (CASE WHEN jsonb_typeof("fieldValues") = 'object' THEN "fieldValues" ELSE '{}'::jsonb END) || ${json}::jsonb, "resultUrl" = ${colunas.resultUrl} WHERE "id" = ${generationId}`
   }

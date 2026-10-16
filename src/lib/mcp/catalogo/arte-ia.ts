@@ -640,6 +640,7 @@ export const toolsDeArteIA = [
         where: { id: geracaoId, projectId },
         select: {
           id: true,
+          projectId: true,
           status: true,
           resultUrl: true,
           fieldValues: true,
@@ -661,13 +662,14 @@ export const toolsDeArteIA = [
       // muda de pasta ao ser agendada, e o gravado na arte envelhece.
       const { montarRetornoDaPagina } = await import('./ver-geracao-retorno')
       const paginaId = typeof fv.pageId === 'string' && fv.pageId.trim() ? fv.pageId.trim() : null
+      // CP5b: além dos campos do link, os de `identidadeDaPagina` (bloco `gate`, só leitura); o filtro por projeto fica.
       const pagina = paginaId
         ? await db.page.findFirst({
             where: { id: paginaId, Template: { projectId } },
-            select: { id: true, name: true, templateId: true, isTemplate: true },
+            select: { id: true, name: true, templateId: true, isTemplate: true, tags: true, width: true, height: true, background: true, layers: true, copyAutoral: true },
           })
         : null
-      const daPagina = montarRetornoDaPagina({ fieldValues: fv, pagina, appUrl: getPublicAppUrl(), projectId, concluida: gen.status === 'COMPLETED' })
+      const daPagina = montarRetornoDaPagina({ fieldValues: fv, pagina, appUrl: getPublicAppUrl(), projectId, concluida: gen.status === 'COMPLETED', generationId: gen.id })
 
       // VÍDEO exportado da página: a página de origem e o destino moram em
       // `videoDaPagina` (nunca em `fieldValues.pageId`, que é "arte da página").

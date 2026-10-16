@@ -267,3 +267,12 @@ era ignorado pelo bake e a chamada respondia sucesso re-renderizando a página i
 handler e no serviço → `VALOR_INVALIDO` 400; FASE 2 (endereço) contra as camadas do modelo efetivo →
 `CHAVE_DESCONHECIDA` 422; pedido misto recusado inteiro; `details.erros[]` com a chave. Detalhe e provas em
 `docs/regras/revisor-da-arte.md` § "CP4.2".
+
+### `ver-geracao` traz o bloco `gate` — auditoria, nunca autoridade (CP5b, 16/10/2026)
+
+Quando a arte tem registro do gate de autonomia (`Generation.fieldValues.gateDaArte`, gravado só pelo CP5c), a
+resposta de `ver-geracao` ganha `gate: { validade, resultado, rulesVersion, versaoDoGate, medidoEm, origem, politica,
+politicaComparada, naoConferido | divergencias, motivos, aviso }`; sem registro, `gate: null` (não "APTO", não
+"pendente"); registro ilegível → `validade: 'ilegivel'` com o motivo e as versões gravadas, SEM resultado. O
+`select` da página ganhou `tags`, `width`, `height`, `background`, `layers`, `copyAutoral` (o que `identidadeDaPagina`
+lê), mantendo o filtro por projeto. Nenhuma tool ganhou parâmetro. Detalhe em `docs/regras/revisor-da-arte.md` § CP5b.

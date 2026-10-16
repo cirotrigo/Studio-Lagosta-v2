@@ -193,6 +193,16 @@ describe('"Editar Template" segue a página quando ela muda de pasta', () => {
     expect(href).toBe(`/templates/${semana.id}/editor?pageId=pg-costela&from=agenda`)
   })
 
+  it('CP5b H3a: a refilagem classifica pela TAG do compositor (formatoDaPaginaGravada): peça 1080×1920 com tag feed vai para a pasta de feed', async () => {
+    banco.pages.set('pg-feed', { ...banco.pages.get('pg-costela')!, id: 'pg-feed', name: 'Peça feed por tag', tags: ['compositor', 'feed'] })
+    const { postId } = await agendarPost({ projectId: 8, pageId: 'pg-feed', postType: 'POST', scheduledDatetime: '2026-09-24 19:00', situacao: 'rascunho' })
+    await refilarPaginasDoPost(postId, new Date('2026-10-01T12:00:00-03:00'), 'dono-interno')
+    const pasta = banco.templates.get(banco.pages.get('pg-feed')!.templateId)!
+    expect(JSON.stringify(pasta.tags)).toContain(':feed')
+    expect(JSON.stringify(pasta.tags)).not.toContain(':story')
+    expect(pasta.name).not.toMatch(/^Stories/)
+  })
+
   it('post sem página continua com o templateId da coluna', async () => {
     banco.posts.set('post-sem-pagina', { id: 'post-sem-pagina', projectId: 8, pageId: null, templateId: AVULSAS, postType: 'STORY', scheduleType: 'SCHEDULED' })
     expect((await lerPost('post-sem-pagina')).templateId).toBe(AVULSAS)
