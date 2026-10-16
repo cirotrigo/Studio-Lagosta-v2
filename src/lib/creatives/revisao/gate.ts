@@ -359,6 +359,11 @@ function caminhoNaoSuportado(camada: Layer, papel: 'acima' | 'protegido'): strin
 
 export type Limites = { contido: true; rect: Rect } | { contido: false; motivo: string }
 
+/** O retângulo CALCULADO tem de ser finito (Codex, revisão final R2: `rotation: 1e308` → radianos Infinity → sin/cos NaN). */
+function limitesFinitos(rect: Rect): Limites {
+  return [rect.x, rect.y, rect.width, rect.height].every((v) => Number.isFinite(v)) ? { contido: true, rect } : { contido: false, motivo: 'limites não finitos (rotação ou geometria fora de escala)' }
+}
+
 /** Folga de 1 px para o antialias do render: os limites CONTÊM o desenho, nunca faltam. */
 export const FOLGA_DE_ANTIALIAS = 1
 
@@ -479,7 +484,7 @@ export function limitesDe(l: Layer, metrica?: TextLayerMetrics): Limites {
     return { contido: false, motivo: `tipo de camada ${String(l.type)} sem paridade com o render` }
   }
   const expandida = expandir(local, expansao + FOLGA_DE_ANTIALIAS)
-  return { contido: true, rect: graus === 0 ? { x: l.position.x + expandida.x, y: l.position.y + expandida.y, width: expandida.width, height: expandida.height } : envolventeGirada(l, expandida, graus) }
+  return limitesFinitos(graus === 0 ? { x: l.position.x + expandida.x, y: l.position.y + expandida.y, width: expandida.width, height: expandida.height } : envolventeGirada(l, expandida, graus))
 }
 
 /**
@@ -510,7 +515,7 @@ export function limitesDoTexto(l: Layer, metrica: TextLayerMetrics | undefined, 
   const x1 = Math.max(w, metrica.maxLineWidth)
   const y1 = Math.max(h, gBottom)
   const expandida = expandir({ x: x0, y: y0, width: x1 - x0, height: y1 - y0 }, expansao + FOLGA_DE_ANTIALIAS)
-  return { contido: true, rect: graus === 0 ? { x: l.position.x + expandida.x, y: l.position.y + expandida.y, width: expandida.width, height: expandida.height } : envolventeGirada(l, expandida, graus) }
+  return limitesFinitos(graus === 0 ? { x: l.position.x + expandida.x, y: l.position.y + expandida.y, width: expandida.width, height: expandida.height } : envolventeGirada(l, expandida, graus))
 }
 
 function intersecao(a: Rect, b: Rect): number {
@@ -671,7 +676,9 @@ export function decidirCritica(args: {
     if (medida.contraste === null) return nc('a régua de contraste não mediu')
     // Codex (revisão final): `contraste: []` com textos visíveis NÃO é régua que mediu — cada texto medido precisa da sua
     // leitura (`textos[].camada` ou `camadas` do grupo), senão a leitura é não comprovada.
-    const lidos = new Set(medida.contraste.flatMap((m) => [...(m.camadas ?? []), ...(m.textos ?? []).map((t) => t.camada)]))
+    // Só `textos[].camada` conta: a medida antiga sem `textos` é a leitura de UM representante do grupo (`regras.ts`),
+    // e `camadas` do grupo não prova a leitura de cada texto (Codex, revisão final R2).
+    const lidos = new Set(medida.contraste.flatMap((m) => (m.textos ?? []).map((t) => t.camada)))
     const semLeitura = textosVisiveis.filter((l) => !lidos.has(l.id)).map((l) => l.id)
     if (semLeitura.length > 0) return nc(`texto sem leitura da régua: ${semLeitura.join(', ')}`, semLeitura)
     if (regra === 'tratamento-piorou-leitura' && medida.pioras === null) return nc('as pioras de tratamento não foram medidas')

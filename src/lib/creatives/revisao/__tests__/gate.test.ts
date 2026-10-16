@@ -237,6 +237,17 @@ describe('G3–G10 — achado crítico, não crítico, visão, cobertura', () =>
     const semRegua = gate({ medida: { contraste: null, pioras: null } })
     expect(semRegua.cobertura['texto-sem-leitura']).toEqual({ estado: 'nao-comprovada', motivo: 'a régua de contraste não mediu' })
     expect(semRegua.cobertura['tratamento-piorou-leitura'].estado).toBe('nao-comprovada')
+    // Codex (revisão final): `contraste: []` com textos visíveis NÃO comprova a leitura; a leitura é por TEXTO (`textos[].camada`),
+    // e o grupo (`camadas`) sem `textos` não substitui a leitura individual.
+    const vazio = gate({ medida: { contraste: [] } })
+    expect(vazio.cobertura['texto-sem-leitura']).toEqual({ estado: 'nao-comprovada', motivo: 'texto sem leitura da régua: headline, apoio, servico' })
+    expect(vazio.resultado).toBe('REVISAO_HUMANA_NECESSARIA')
+    const faltaUm = gate({ medida: { contraste: pecaLimpa().metricas.filter((m) => m.layerId !== 'servico').map((m) => contraste([m.layerId])) } })
+    expect(faltaUm.cobertura['tratamento-piorou-leitura']).toEqual({ estado: 'nao-comprovada', motivo: 'texto sem leitura da régua: servico' })
+    const grupoSemTextos = gate({ medida: { contraste: [{ ...contraste(['headline', 'apoio']), textos: [{ camada: 'headline', sentido: 'escuro', alvo: 130, p98SemHalo: 60, p98ComHalo: 200, ok: true }] }, contraste(['servico'])] } })
+    expect(grupoSemTextos.cobertura['texto-sem-leitura']).toEqual({ estado: 'nao-comprovada', motivo: 'texto sem leitura da régua: apoio' })
+    const grupoSoCamadas = gate({ medida: { contraste: [{ ...contraste(['headline', 'apoio']), textos: undefined }, contraste(['servico'])] } })
+    expect(grupoSoCamadas.cobertura['texto-sem-leitura'].estado).toBe('nao-comprovada')
     const semPioras = gate({ medida: { pioras: null } })
     expect(semPioras.cobertura['texto-sem-leitura']).toEqual({ estado: 'comprovada' })
     expect(semPioras.cobertura['tratamento-piorou-leitura']).toEqual({ estado: 'nao-comprovada', motivo: 'as pioras de tratamento não foram medidas' })
@@ -268,6 +279,13 @@ describe('G11/G12 — logo-sem-leitura', () => {
     }
     const semLeitura = gate({ medida: { leituraDaLogo: null, motivoSemLeituraDaLogo: 'a medição da logo não rodou' } })
     expect(semLeitura.cobertura['logo-sem-leitura']).toEqual({ estado: 'nao-comprovada', motivo: 'a medição da logo não rodou' })
+    // Codex (revisão final): logo SOLTA na peça sem entrada em leituraDaLogo → não comprovada (e sem o aviso de "sem logo").
+    const semEntrada = gate({ medida: { leituraDaLogo: [] } })
+    expect(semEntrada.cobertura['logo-sem-leitura']).toEqual({ estado: 'nao-comprovada', motivo: 'logo solta sem leitura: logo' })
+    expect(semEntrada.avisos.some((a) => /sem logo solta/.test(a))).toBe(false)
+    expect(semEntrada.naoMedidos.some((n) => n.regra === 'logo-sem-leitura' && n.camadas.includes('logo'))).toBe(true)
+    const duasUmaOmitida = gate({ medida: { camadas: [...pecaLimpa().camadas, logo({ id: 'logo-2', position: { x: 100, y: 1750 } })], leituraDaLogo: [leitura('logo', medidaDaLogo())] } })
+    expect(duasUmaOmitida.cobertura['logo-sem-leitura'].estado).toBe('nao-comprovada')
     const ilegivel = gate({ medida: { leituraDaLogo: [leitura('logo', medidaDaLogo(12))] } })
     expect(ilegivel.cobertura['logo-sem-leitura'].estado).toBe('reprovada')
   })
@@ -490,6 +508,11 @@ describe('G21 — oclusão sem rotação', () => {
     expect(limpa.cobertura['logo-sobre-texto'].estado).toBe('reprovada')
     expect(oclusaoDe(medir(logoSobre({ metadata: { groupId: 'g1' } })))).toHaveLength(1)
     expect(medir(logoSobre(), { textosSemMetrica: ['servico'], metricas: b.metricas.filter((m) => m.layerId !== 'servico') }).naoMedidos.some((n) => n.regra === 'oclusao')).toBe(true)
+    // Codex (revisão final): métrica DUPLICADA ou de OUTRA caixa para o texto → não prova o par → a exceção não vale.
+    const duplicada = medir(logoSobre(), { metricas: [...b.metricas, metrica(b.camadas.find((l) => l.id === 'servico')!)] })
+    expect(duplicada.naoMedidos.some((n) => n.regra === 'oclusao')).toBe(true)
+    const outraCaixa = medir(logoSobre(), { metricas: b.metricas.map((m) => (m.layerId === 'servico' ? { ...m, box: { ...m.box, x: 900 } } : m)) })
+    expect(outraCaixa.naoMedidos.some((n) => n.regra === 'oclusao')).toBe(true)
     const comFiltro = medir(logoSobre({ style: { objectFit: 'contain', filter: 'blur(2px)' } }))
     expect(comFiltro.naoMedidos.some((n) => n.regra === 'oclusao' && /filter/.test(n.motivo))).toBe(true)
   })
@@ -660,6 +683,11 @@ describe('G21f — adversarial: valores não numéricos, chaves no topo, tipos n
       expect(limitesDoTexto(tt(extra), metrica(tt())).contido, `texto ${nome}`).toBe(false)
     }
     expect(limitesDoTexto(tt(), { ...metrica(tt()), glyphTop: NaN }).contido).toBe(false)
+    // Rotação finita mas fora de escala (1e308 graus → radianos Infinity → sin/cos NaN): limites não finitos → contido: false.
+    expect(limitesDe(ff({ rotation: 1e308 })).contido).toBe(false)
+    expect(limitesDoTexto(tt({ rotation: 1e308 }), metrica(tt())).contido).toBe(false)
+    expect(naoSuportada(cen(ff({ rotation: 1e308 })), 'f')).toBe(true)
+    expect(naoSuportada(cen(ff(), tt({ rotation: 1e308 })), 't')).toBe(true)
   })
 
   it('efeito com valor não numérico (shadowOffsetX, strokeWidth, blurRadius, style.shadow.blur, border.width) → contido: false, mesmo com a caixa longe do texto', () => {

@@ -876,6 +876,9 @@ nada é persistido (CP5b). O que existe:
   é mais estrita); (3) toda logo SOLTA (`logosDaPeca`) precisa de entrada em `leituraDaLogo` — `[]` com logo na peça é
   não comprovada, e o aviso "sem logo solta" só sai quando não há logo; (4) a métrica só prova o par das exceções quando
   é ÚNICA por id e descreve a MESMA caixa da camada (métrica duplicada ou de outra caixa → sem métrica → oclusão).
+  Rodada 2: (5) o retângulo CALCULADO tem de ser finito (`rotation: 1e308` → radianos Infinity → sin/cos NaN →
+  `contido: false`); (6) a leitura da régua é por TEXTO: só `textos[].camada` conta — `camadas` do grupo sem `textos`
+  (medida antiga, leitura de um representante) não prova a leitura de cada texto.
   Regressões em G9, G12, G21 e no bloco G21f (valores não numéricos, chave no topo, tipo novo, `effects.curved`,
   `textboxConfig` desconhecido, opacidade 0/parcial, `filter` vazio, `visible` 0/"false", efeitos combinados com
   paridade no render real — forma e imagem com máscara + flip + recorte + sombra + desfoque).
