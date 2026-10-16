@@ -84,7 +84,7 @@ export const MANUAL_DO_DOT = {
     `depois de ${MAX_CICLOS_DE_REVISAO} ciclos de revisar-arte e ajustar-arte com problema: parar e relatar REVISAO_HUMANA_NECESSARIA`,
     'sem estado próprio: o estado é a agenda e o banco; revalidar o horário imediatamente antes de qualquer escrita',
     'retry usa a MESMA identidade (loteId e itemId); nunca uma nova',
-    'o bloco gate de ver-geracao é auditoria do último veredito gravado, nunca o veredito atual da arte: nunca agende por ele; a peça aceita é a que agendar-leva mede na hora',
+    'o bloco gate de ver-geracao é auditoria do último veredito gravado, não o atual: nunca agende por ele',
   ],
   foraDoLoop: [
     'postar-agora',
