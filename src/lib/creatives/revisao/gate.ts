@@ -16,6 +16,7 @@ import { folgaDoBlur } from '@/lib/creatives/halo/fundo-de-texto'
 import type { RevisaoDaPagina } from '@/lib/copy-autoral/revisar-pagina'
 import { REGRAS_DA_REVISAO, type AchadoDaRevisao, type RegraDaRevisao, type RelatorioDaRevisao, type Severidade } from './contrato'
 import { avaliarPeca, ehTextoVisivel, fotoDeFundo, logosDaPeca, type EntradaDaRevisao } from './regras'
+import { DIMENSOES } from '@/lib/compositor/spec'
 
 /** A medida que `medirCamadasDaPeca` devolve (a entrada do revisor sem a visão). Tipo repetido aqui para o gate não importar `revisar-arte` (que importa o banco). */
 export type MedidaDaPeca = Omit<EntradaDaRevisao, 'vistos' | 'motivoSemVisao' | 'marcas'>
@@ -616,9 +617,11 @@ const ehCritica = (r: string): r is RegraCritica => (REGRAS_CRITICAS as readonly
 const CHAVES_QUE_A_LEITURA_DA_LOGO_NAO_VE = ['flipH', 'flipV', 'mask', 'filter', 'blur', 'exposure', 'brightness', 'contrast', 'highlights', 'shadows', 'whites', 'blacks', 'saturation', 'vignette', 'grayscale', 'sepia', 'invert'] as const
 
 /** A logo cuja leitura (CP3) pode representar o render: tipo `logo`/`image` com arquivo e sem chave que a medição não vê. */
-function leituraDaLogoRepresentaORender(l: Layer): string | null {
-  if (l.type !== 'logo' && l.type !== 'image') return `camada ${l.id} é ${String(l.type)}, não logo/imagem`
-  if (typeof l.fileUrl !== 'string' || l.fileUrl.trim() === '') return `camada ${l.id} sem arquivo`
+/**
+ * O que o render faz com a IMAGEM de uma camada e que nenhuma leitura de ARQUIVO reproduz — vale para a logo (CP3) e
+ * para a foto de fundo (assunto): estilo de pixel/recorte, borda, sombra, efeitos ligados, opacidade e rotação.
+ */
+function chavesQueALeituraDoArquivoNaoVe(l: Layer): string[] {
   const style = (l.style ?? {}) as Record<string, unknown>
   const ruins: string[] = CHAVES_QUE_A_LEITURA_DA_LOGO_NAO_VE.filter((k) => valorEfetivo(style[k]))
   // Codex R5: `border.radius` RECORTA os cantos da imagem no render (:1681-1683); `border.width` pinta tinta sobre ela;
@@ -637,6 +640,13 @@ function leituraDaLogoRepresentaORender(l: Layer): string | null {
   if (opacidade !== undefined && (typeof opacidade !== 'number' || !Number.isFinite(opacidade) || opacidade < 1)) ruins.push('opacity')
   // Rotação: o render coage (`rotation: '90'` gira) e o CP3 só recusa NÚMERO; abaixo dos textos, nem a oclusão olha a logo (Codex R8).
   if (valorEfetivo((l as { rotation?: unknown }).rotation)) ruins.push('rotation')
+  return ruins
+}
+
+function leituraDaLogoRepresentaORender(l: Layer): string | null {
+  if (l.type !== 'logo' && l.type !== 'image') return `camada ${l.id} é ${String(l.type)}, não logo/imagem`
+  if (typeof l.fileUrl !== 'string' || l.fileUrl.trim() === '') return `camada ${l.id} sem arquivo`
+  const ruins = chavesQueALeituraDoArquivoNaoVe(l)
   return ruins.length > 0 ? `logo ${l.id} desenhada com ${ruins.join(', ')}: a leitura medida no arquivo não representa o render` : null
 }
 
@@ -646,7 +656,7 @@ function leituraDaLogoRepresentaORender(l: Layer): string | null {
  * o recorte manual (`style.crop`, que o render prioriza), espelho, máscara, filtro e desfoque deslocam ou alteram o
  * assunto sem a medida saber (Codex R5). Fail-closed: `texto-sobre-assunto` não comprovada.
  */
-const CHAVES_DO_FUNDO_QUE_O_ASSUNTO_NAO_VE = [...CHAVES_QUE_A_LEITURA_DA_LOGO_NAO_VE, 'crop', 'flipX', 'flipY'] as const
+const CHAVES_DO_FUNDO_QUE_O_ASSUNTO_NAO_VE = ['crop', 'flipX', 'flipY'] as const
 /**
  * Codex R6: o assunto é medido como se a foto fosse UM cover do canvas inteiro (`lerFotoComoCover(bytes, canvas, …)`,
  * e o retângulo gravado é da peça composta). Qualquer outra composição desloca o que aparece sem a medida saber:
@@ -655,12 +665,13 @@ const CHAVES_DO_FUNDO_QUE_O_ASSUNTO_NAO_VE = [...CHAVES_QUE_A_LEITURA_DA_LOGO_NA
  */
 function assuntoRepresentaORender(fundo: Layer, canvas: { width: number; height: number }, camadas: Layer[]): { motivo: string; camadas: string[] } | null {
   const style = (fundo.style ?? {}) as Record<string, unknown>
-  const ruins: string[] = CHAVES_DO_FUNDO_QUE_O_ASSUNTO_NAO_VE.filter((k) => valorEfetivo(style[k]))
+  // Codex R10: sombra, borda, opacidade e efeitos do FUNDO também mudam a composição (um PNG com sujeito e sombra deslocada
+  // publica uma segunda silhueta) — a mesma lista da logo, mais o recorte manual e o espelho do contrato do CP3.
+  const ruins: string[] = [...chavesQueALeituraDoArquivoNaoVe(fundo), ...CHAVES_DO_FUNDO_QUE_O_ASSUNTO_NAO_VE.filter((k) => valorEfetivo(style[k]))]
   if (style.objectFit !== 'cover') ruins.push(`objectFit ${JSON.stringify(style.objectFit ?? null)} (a medida lê a foto como cover)`)
   const { x, y } = fundo.position ?? ({} as { x?: unknown; y?: unknown })
   const { width, height } = fundo.size ?? ({} as { width?: unknown; height?: unknown })
   if (x !== 0 || y !== 0 || width !== canvas.width || height !== canvas.height) ruins.push('caixa diferente do canvas (a medida lê a foto cobrindo o canvas inteiro)')
-  if (valorEfetivo((fundo as { rotation?: unknown }).rotation)) ruins.push('rotation')
   // `cropPosition`: o medidor omite `''` (cai no centro) e o render passa `''` ao recorte (cai em esquerda/topo) — só os
   // nove valores que os dois leem igual passam (Codex R8).
   const corte = style.cropPosition
@@ -707,8 +718,11 @@ export function decidirCritica(args: {
   // qualquer `image`; `afastar` começa em 1,15×), e TODA medida que lê pixels — régua dos textos, pioras, leitura da logo
   // (medida contra um render parado), assunto — é do quadro parado. Fail-closed nessas regras até o owner decidir a
   // política (excluir páginas com movimento do gate autônomo, ou medir o quadro publicado).
-  const emMovimento = medida.camadas.filter((l) => l.visible !== false && valorEfetivo((l as { movimento?: unknown }).movimento)).map((l) => l.id)
-  if (emMovimento.length > 0 && REGRAS_QUE_LEEM_O_QUADRO.has(regra)) return nc(`camada em movimento (${emMovimento.join(', ')}): a medida é do quadro parado e a página com áudio publica o quadro do movimento`, emMovimento)
+  // Vídeo idem (Codex R10): o render parado NÃO desenha `video` (render-engine.ts, `default`), mas a página com vídeo é
+  // publicada como MP4 com ele — abaixo do texto a oclusão não o examina, e a régua foi medida sem ele. O contrato só
+  // previa vídeo ACIMA do texto como não medido; este é um desvio conservador, declarado para o owner.
+  const emMovimento = medida.camadas.filter((l) => l.visible !== false && (l.type === 'video' || valorEfetivo((l as { movimento?: unknown }).movimento))).map((l) => l.id)
+  if (emMovimento.length > 0 && REGRAS_QUE_LEEM_O_QUADRO.has(regra)) return nc(`camada em movimento ou vídeo (${emMovimento.join(', ')}): a medida é do quadro parado e a página com áudio/vídeo publica outro quadro`, emMovimento)
   const ok = (avisos: string[] = []): DecisaoDaCritica => ({ cobertura: { estado: 'comprovada' }, reprovam: [], naoMedidos: [], avisos, camadas: [] })
   const nsa = (motivo: string, avisos: string[] = []): DecisaoDaCritica => ({ cobertura: { estado: 'nao-se-aplica', motivo }, reprovam: [], naoMedidos: [], avisos, camadas: [] })
   const rep = (lista: AchadoDaRevisao[]): DecisaoDaCritica => ({ cobertura: { estado: 'reprovada', achados: lista.map((a) => a.id) }, reprovam: lista, naoMedidos: [], avisos: [], camadas: [] })
@@ -899,6 +913,10 @@ function decidirAssunto(args: {
   if (naoRepresenta) return nc(naoRepresenta.motivo, naoRepresenta.camadas)
   if (medida.assunto) {
     if (medida.assunto.origem === 'catalogo') {
+      // Codex R10: o retângulo gravado é da peça COMPOSTA, no canvas canônico do formato (`DIMENSOES`); `mesmaComposicao`
+      // (revisar-arte.ts) não compara largura/altura, e a página pode ser redimensionada — fora do canônico, o retângulo não vale.
+      const dim = medida.formato ? DIMENSOES[medida.formato] : null
+      if (!dim || medida.canvas.width !== dim.width || medida.canvas.height !== dim.height) return nc(`assunto gravado pelo compositor para o canvas do formato ${medida.formato ?? 'desconhecido'}${dim ? ` (${dim.width}×${dim.height})` : ''}; esta página tem ${medida.canvas.width}×${medida.canvas.height}: o retângulo gravado não vale aqui`, [fundo.id])
       if (criticos.length > 0) return rep(criticos)
       if (cob?.estado !== 'avaliada') return nc(cob?.motivo ?? 'regra sem cobertura')
       return ok()

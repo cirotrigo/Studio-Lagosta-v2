@@ -381,7 +381,7 @@ describe('G13–G18 — política do assunto', () => {
   })
 
   it("G13b (Codex R5): foto de fundo com recorte manual (`style.crop`), espelho, máscara, filtro, desfoque ou rotação → o assunto medido não representa o render → não comprovada com as 4 políticas; sem isso, comprovada", () => {
-    for (const style of [{ objectFit: 'cover', crop: { x: 0.3, y: 0.3, width: 0.5, height: 0.5 } }, { objectFit: 'cover', flipH: true }, { objectFit: 'cover', mask: { shapeId: 'c', path: 'M0 0H100V100H0Z' } }, { objectFit: 'cover', filter: 'blur(4px)' }, { objectFit: 'cover', blur: 3 }, { objectFit: 'cover', flipH: ' ' }, { objectFit: 'cover', flipH: [] }, { objectFit: 'cover', mask: {} }, { objectFit: 'cover', cropPosition: '' }, { objectFit: 'cover', cropPosition: 'center' }, { objectFit: 'cover', cropPosition: 'centro-meio' }] as unknown as Array<Layer['style']>) {
+    for (const style of [{ objectFit: 'cover', crop: { x: 0.3, y: 0.3, width: 0.5, height: 0.5 } }, { objectFit: 'cover', flipH: true }, { objectFit: 'cover', mask: { shapeId: 'c', path: 'M0 0H100V100H0Z' } }, { objectFit: 'cover', filter: 'blur(4px)' }, { objectFit: 'cover', blur: 3 }, { objectFit: 'cover', flipH: ' ' }, { objectFit: 'cover', flipH: [] }, { objectFit: 'cover', mask: {} }, { objectFit: 'cover', cropPosition: '' }, { objectFit: 'cover', cropPosition: 'center' }, { objectFit: 'cover', cropPosition: 'centro-meio' }, { objectFit: 'cover', shadow: { offsetX: 0, offsetY: 40, blur: 8, color: '#000' } }, { objectFit: 'cover', opacity: 0.5 }, { objectFit: 'cover', border: { width: 4, radius: 0, color: '#000' } }] as unknown as Array<Layer['style']>) {
       for (const politica of POLITICAS) {
         const g = gate({ politicaDoAssunto: politica, medida: { camadas: pecaLimpa().camadas.map((l) => (l.id === 'bg-foto' ? { ...l, style } : l)) } })
         expect(g.cobertura['texto-sobre-assunto'].estado, JSON.stringify(style)).toBe('nao-comprovada')
@@ -405,6 +405,7 @@ describe('G13–G18 — política do assunto', () => {
       ['menor', { size: { width: W * 0.95, height: H * 0.95 } }],
       ['posição não numérica', { position: { x: '0', y: 0 } as unknown as Layer['position'] }],
       ['rotação em string', { rotation: '5' } as unknown as Partial<Layer>],
+      ['effects.shadow ligado', { effects: { shadow: { enabled: true, shadowColor: '#000', shadowBlur: 8, shadowOffsetX: 0, shadowOffsetY: 40, shadowOpacity: 1 } } } as unknown as Partial<Layer>],
     ]
     for (const [nome, extra] of casos) {
       for (const politica of POLITICAS) {
@@ -429,6 +430,24 @@ describe('G13–G18 — política do assunto', () => {
     expect(comLogo.cobertura['texto-sobre-assunto']).toEqual({ estado: 'comprovada' })
   })
 
+  it('G13d (Codex R10): assunto de CATÁLOGO só vale no canvas canônico do formato (o retângulo gravado é da peça composta) — página redimensionada ou sem formato → não comprovada; estimado no mesmo canvas não é afetado', () => {
+    const grande = { width: 2160, height: 3840 }
+    const camadas = pecaLimpa().camadas.map((l) => (l.id === 'bg-foto' ? { ...l, size: grande } : l))
+    for (const politica of POLITICAS) {
+      const g = gate({ politicaDoAssunto: politica, medida: { canvas: grande, camadas } })
+      expect(g.cobertura['texto-sobre-assunto'].estado).toBe('nao-comprovada')
+      expect(motivosDe(g, 'texto-sobre-assunto')[0]?.motivo).toContain('canvas do formato')
+      expect(motivosDe(g, 'texto-sobre-assunto')[0]?.camadas).toEqual(['bg-foto'])
+    }
+    expect(motivosDe(gate({ medida: { formato: null } }), 'texto-sobre-assunto')[0]?.motivo).toContain('canvas do formato')
+    // Estimado no canvas grande (a estimativa é feita para o canvas atual): a guarda não dispara.
+    const estimado = gate({ politicaDoAssunto: { estimado: 'comprova', semAssuntoLocalizavel: 'nao-se-aplica' }, medida: { canvas: grande, camadas, assunto: { rect: { x: 0, y: 2000, width: 2160, height: 900 }, origem: 'estimado' } } })
+    expect(motivosDe(estimado, 'texto-sobre-assunto').map((m) => m.motivo).join(' ')).not.toContain('canvas do formato')
+    // Feed canônico (1080×1350) com catálogo segue comprovado.
+    const feed = { width: 1080, height: 1350 }
+    expect(gate({ medida: { canvas: feed, formato: 'feed', camadas: pecaLimpa().camadas.map((l) => (l.id === 'bg-foto' ? { ...l, size: feed } : l.id === 'servico' ? { ...l, position: { x: 100, y: 1150 } } : l)), metricas: pecaLimpa().metricas.map((m) => (m.layerId === 'servico' ? { ...m, box: { ...m.box, y: 1150 }, glyphTop: 1150, glyphBottom: 1210 } : m)), assunto: { rect: { x: 0, y: 700, width: 1080, height: 400 }, origem: 'catalogo' } } }).cobertura['texto-sobre-assunto']).toEqual({ estado: 'comprovada' })
+  })
+
   it('G31 (Codex R8/R9): QUALQUER camada visível em movimento — fundo, logo-imagem ou imagem solta sob a logo sem foto de fundo — derruba as 4 regras que leem pixels do quadro parado; invisível não conta', () => {
     const regras = ['texto-sem-leitura', 'tratamento-piorou-leitura', 'logo-sem-leitura', 'texto-sobre-assunto'] as const
     const casos: Array<[string, Layer[]]> = [
@@ -436,6 +455,8 @@ describe('G13–G18 — política do assunto', () => {
       ['fundo afastar', pecaLimpa().camadas.map((l) => (l.id === 'bg-foto' ? ({ ...l, movimento: 'afastar' } as Layer) : l))],
       ['logo-imagem em movimento', pecaLimpa().camadas.map((l) => (l.id === 'logo' ? ({ ...l, type: 'image', name: 'Logo', movimento: 'afastar' } as Layer) : l))],
       ['imagem < 90% sob a logo, sem foto de fundo', [...pecaLimpa().camadas.filter((l) => l.id !== 'bg-foto'), { ...fundo({ id: 'img-1', name: 'Detalhe', order: 1, position: { x: 700, y: 1400 }, size: { width: 380, height: 300 } }), movimento: 'afastar' } as Layer]],
+      // Codex R10: vídeo ABAIXO dos textos — o render parado não o desenha, a publicação (MP4) sim; desvio conservador do contrato (que só previa vídeo acima).
+      ['vídeo abaixo dos textos', [...pecaLimpa().camadas, { id: 'vid', name: 'Vídeo', type: 'video', visible: true, locked: false, order: 1, position: { x: 0, y: 0 }, size: { width: W, height: H }, fileUrl: 'https://blob.test/v.mp4' } as Layer]],
     ]
     for (const [nome, camadas] of casos) {
       const g = gate({ medida: { camadas, ...(nome.includes('sem foto') ? { assunto: null, assuntoNaoSeAplica: true, motivoSemAssunto: 'a peça não tem foto de fundo' } : {}) } as Partial<MedidaDaPeca> })
@@ -930,7 +951,12 @@ describe('G22/G27–G29 — APTO exige copy completa, identidade válida e piso 
     const metricas = b.metricas.map((m) => (m.layerId === 'apoio' ? { ...m, box: { ...m.box, y: 150 }, glyphTop: 156, glyphBottom: 204 } : m))
     const story = gate({ medida: { camadas, metricas } })
     expect(story.motivos.map((m) => m.regra)).toEqual(['piso-de-interface'])
-    expect(gate({ medida: { camadas, metricas, formato: 'feed' } }).resultado).toBe('APTO')
+    // Em feed a peça é a MESMA no canvas canônico do feed (1080×1350): o fundo cobre o canvas e o `servico` sobe para caber.
+    const feed = { width: 1080, height: 1350 }
+    const emFeed = camadas.map((l) => (l.id === 'bg-foto' ? { ...l, size: feed } : l.id === 'servico' ? { ...l, position: { x: 100, y: 1150 } } : l))
+    const metricasFeed = metricas.map((m) => (m.layerId === 'servico' ? { ...m, box: { ...m.box, y: 1150 }, glyphTop: 1150, glyphBottom: 1210 } : m))
+    const gf = gate({ medida: { camadas: emFeed, metricas: metricasFeed, formato: 'feed', canvas: feed, assunto: { rect: { x: 0, y: 700, width: 1080, height: 400 }, origem: 'catalogo' } } })
+    expect(gf.resultado).toBe('APTO')
   })
 })
 

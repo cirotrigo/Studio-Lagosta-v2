@@ -865,7 +865,11 @@ nada é persistido (CP5b). O que existe:
   gate (`pisoDeInterface` dentro de `gateDaMedida`) exige a métrica real e deixa a camada não comprovada. (5) Um
   texto com mancha ACIMA (por `order`) de outro texto é ocluidora não suportada mesmo sem interseção, porque a
   classificação vem antes do teste de caixa (6.2 do contrato) — dito aqui porque bloqueia peças do compositor em que
-  o serviço com mancha fica acima da headline na ordem das camadas.
+  o serviço com mancha fica acima da headline na ordem das camadas. (6) `video` VISÍVEL em qualquer ordem derruba as
+  4 regras que leem pixels (texto-sem-leitura, tratamento-piorou-leitura, logo-sem-leitura, texto-sobre-assunto) — o
+  contrato (§6) só previa vídeo ACIMA do texto como não medido; abaixo, o render parado não o desenha e a publicação
+  (MP4) sim (Codex, rodada 10). (7) Camada com `movimento` idem — a página com áudio publica o quadro do movimento;
+  política do owner pendente (excluir páginas com movimento/vídeo do gate autônomo, ou medir o quadro publicado).
 - **Revisão final adversarial (owner + Codex, 16/10)** — quatro falsos APTO fechados, todos fail-closed: (1) `order`,
   `position`, `size` e os valores dos efeitos (traço, sombra, desfoque, borda) têm de ser NÚMEROS finitos — `order: 'z'`,
   `position.x: 'abc'`, `shadowOffsetX: 'muito'` viravam NaN, a interseção falhava e a camada passava como se estivesse
@@ -928,10 +932,19 @@ nada é persistido (CP5b). O que existe:
   (`texto-sem-leitura`, `tratamento-piorou-leitura`, `logo-sem-leitura`, `texto-sobre-assunto`); invisível não conta;
   (23) `interfaceDoStory` com configuração não finita (`NaN`, `Infinity`, string) nunca afrouxa: só número finito acima
   do piso aperta. Regressões: G31 e G26.
+  Rodada 10 (esforço máximo): (24) o assunto de CATÁLOGO é o retângulo da peça COMPOSTA, no canvas canônico do formato
+  (`DIMENSOES` de `compositor/spec.ts`), e `mesmaComposicao` não compara largura/altura — fora do canônico (página
+  redimensionada, ou sem formato) o retângulo não vale → não comprovada; o estimado é feito para o canvas atual e não é
+  afetado; (25) `video` conta como movimento: o render parado NÃO desenha `video` (cai no `default`), mas a página com
+  vídeo é publicada como MP4 com ele — abaixo do texto a oclusão não o examina e a régua foi medida sem ele; DESVIO
+  conservador do contrato (§6 só previa vídeo ACIMA do texto como não medido), declarado para o owner; (26) a guarda
+  da foto de fundo passa a usar a MESMA lista da logo (`chavesQueALeituraDoArquivoNaoVe`: filtros de pixel, borda,
+  `style.shadow`, `effects.*` ligados, opacidade ≠ 1, rotação) — um PNG com sujeito e sombra deslocada publica uma
+  segunda silhueta que o assunto não conhece. Regressões: G13b, G13c, G13d, G31; G29 ganhou o canvas canônico do feed.
   Regressões em G9, G12, G21 e no bloco G21f (valores não numéricos, chave no topo, tipo novo, `effects.curved`,
   `textboxConfig` desconhecido, opacidade 0/parcial, `filter` vazio, `visible` 0/"false", efeitos combinados com
   paridade no render real — forma e imagem com máscara + flip + recorte + sombra + desfoque).
-- **Provas** (`gate.test.ts`, 54 testes): G1–G29 e subcasos; G21c (paridade do lado de cima, >100 renders reais) e
+- **Provas** (`gate.test.ts`, 55 testes): G1–G29 e subcasos; G21c (paridade do lado de cima, >100 renders reais) e
   G21e (lado protegido, métrica real do medidor); oclusão EFETIVA comprovada pelo renderer (texto a 90° sob forma sem
   rotação: os pixels do texto somem no render e o gate acusa; controle com a forma abaixo → comprovada); logo limpa
   sobre a expansão do texto por contorno/sombra/desfoque/borda → oclusão, e o controle sem efeitos preserva a exceção.
