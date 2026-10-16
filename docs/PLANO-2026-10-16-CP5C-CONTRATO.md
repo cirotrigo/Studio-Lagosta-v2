@@ -1,6 +1,6 @@
 # CP5c — contrato técnico do GATE em `agendar-leva` (perfil draft-only) — proposta para revisão, 16/10/2026
 
-**Estado: PROPOSTA (rodada 6 do Codex: o prazo cobre a cadeia inteira de `medirEDecidir` (contexto + medida + decisão); a refilagem no lote escreve a página numa transação própria sob `SocialPost → Page FOR UPDATE`, só com o post ainda DRAFT e a página na versão lida. Rodada 5: prazo imposto POR FORA da medição (race) porque o render e a logo não aceitam sinal; sem a trava das 15 Generations — só a peça e as referências que ela usa; inventário de travas cobre `src/app`. Rodada 4: a medição no draft-only lê a `composicao` SÓ da Generation da peça, travada — nunca "a mais recente" entre 15; a refilagem no lote preserva o formato do revisor; 8.7 segue decisão do owner. Rodada 3: coerência página × Generation por `versaoRenderizada` — cache do compositor só quando a arte É da página; inserção de fontes serializada com o gate por trava consultiva própria; guarda de `generationId` antes dos efeitos; prazo dos downloads dentro da transação. Rodada 2: a MEDIÇÃO passa a acontecer DENTRO da transação, sob as travas — a janela entre
+**Estado: PROPOSTA (rodada 7 do Codex: no draft-only os efeitos pós-commit NÃO rodam — ficam pendentes para o fluxo humano; nenhuma promessa de proteção sobre eles; a pasta da semana já é dada por compor-leva. Rodada 6: o prazo cobre a cadeia inteira de `medirEDecidir` (contexto + medida + decisão); a refilagem no lote escreve a página numa transação própria sob `SocialPost → Page FOR UPDATE`, só com o post ainda DRAFT e a página na versão lida. Rodada 5: prazo imposto POR FORA da medição (race) porque o render e a logo não aceitam sinal; sem a trava das 15 Generations — só a peça e as referências que ela usa; inventário de travas cobre `src/app`. Rodada 4: a medição no draft-only lê a `composicao` SÓ da Generation da peça, travada — nunca "a mais recente" entre 15; a refilagem no lote preserva o formato do revisor; 8.7 segue decisão do owner. Rodada 3: coerência página × Generation por `versaoRenderizada` — cache do compositor só quando a arte É da página; inserção de fontes serializada com o gate por trava consultiva própria; guarda de `generationId` antes dos efeitos; prazo dos downloads dentro da transação. Rodada 2: a MEDIÇÃO passa a acontecer DENTRO da transação, sob as travas — a janela entre
 medir e escrever deixa de existir; os posts da página são travados antes da página; o que a medição lê é travado
 `FOR SHARE`; o registro — APTO ou reprovado — é gravado na mesma transação; os efeitos pós-commit ficam FORA do perímetro
 do gate, com a prova de que não dependem dele; retorno em união para recusa medida / sem vínculo / não medida).** Nada
@@ -25,8 +25,8 @@ gravado nunca entra na decisão.** `simular: true` mede e decide igual (pelo lei
 | Decisão sem trava | `decidirEscrita(ctx.leitor, …)` → `criar` / `adotar` / `recusar` | igual (é a conta barata que evita abrir transação à toa); no draft-only ela NÃO autoriza nada — só a decisão sob trava autoriza |
 | Simulação | horário ocupado, `recusaComoImagem`, thumbnail; `concluido` sem gravar | igual + mede e decide pelo `leitor` (§ 3), sem travas: não APTO → `falhou` `REVISAO_HUMANA_NECESSARIA`; nada gravado, nem o registro |
 | Transação (20 s) | `pg_advisory_xact_lock(projeto)` → `FOR UPDATE` do item, do item do plano, da página → `decidirEscrita(tx)` → `pedidoDoAgendamento` → `resolverAgendamento` + `criarPostDoAgendamento` (criar) ou adota → CAS da linha → item do plano | igual + (§ 4): trava dos POSTS DA PÁGINA antes da página; `FOR UPDATE` da Generation; `FOR SHARE` do que a medição lê; **a medição e a decisão acontecem aqui**; `gravarGateDaArte(tx, registro)`; não APTO → commit só com o registro, item `falhou`; APTO → segue para criar/ligar |
-| Efeitos pós-commit | `executarEfeitos` (catálogo, refilagem, item do plano) | iguais, FORA do perímetro do gate (§ 5): só bookkeeping; prova de que não mudam post nem conteúdo da página |
-| Linha já ligada (`reaproveitar`) | roda os efeitos pendentes; no draft-only, post aprovado → devolve sem efeitos | igual: o rascunho já existe; nenhum DRAFT nasce nem é ligado aqui, então o gate não se aplica (§ 5, decisão 8.7) |
+| Efeitos pós-commit | `executarEfeitos` (catálogo, pasta da semana/refilagem, item do plano) | no draft-only NÃO rodam (§ 5): `efeitosDoAgendamentoEm` fica nulo e o item avisa; o fluxo humano os completa. Nenhuma promessa de proteção sobre eles |
+| Linha já ligada (`reaproveitar`) | roda os efeitos pendentes; no draft-only, post aprovado → devolve sem efeitos | no draft-only devolve o rascunho como está, SEM rodar efeitos (§ 5): nenhum DRAFT nasce nem é ligado, e nada é escrito |
 | `ItemAgendadoDoLote` | `situacao`, `codigo`, `motivo`, `generationId`, `pageId`, `editUrl`, … | + `achados`, `motivos`, `revisao` (§ 6) |
 | Testes | `piloto-portao.test.ts` P11: 8 `hojeViola` | viram `it()` neste PR (regra do CP0) |
 
@@ -43,7 +43,7 @@ da regra de lint e do inventário H12; (g) P11 vira `it()`; (h) o inventário co
 no draft-only, e só depois do registro"; (i) `contextoDaMedicao` e `registerProjectFonts` com parâmetro `cliente`
 (leitor/transação), sem mudar o comportamento de hoje; (j) docs (`revisor-da-arte.md` § CP5c, `mcp.md`, manual do Dot).
 
-**Não entra** (dito para não parecer garantia): gate nos EFEITOS pós-commit (§ 5: eles não dependem do veredito);
+**Não entra** (dito para não parecer garantia): os EFEITOS pós-commit no draft-only (§ 5: não rodam; o fluxo humano os completa);
 `ajustar-arte` autônomo e a fronteira da não-piora (CP5d); provas ponta a ponta e o piloto (CP5e); bloco `gate` em
 `auditar-operacao` (§ 8.4); oclusão por pixels; qualquer mudança no fluxo humano; `colocar-na-agenda`, `postar-agora`,
 `aprovar-rascunhos` (fora da allowlist — continuam fora); migration; mexer em `gate.ts`, `gate-registro.ts`,
@@ -180,49 +180,37 @@ Passos, depois das travas de hoje (projeto, item, item do plano):
 `pedido` (criar) ou do post que `antes` adotaria; não APTO → `falhou` `REVISAO_HUMANA_NECESSARIA` com os mesmos campos;
 APTO → o `concluido` de hoje + `revisao`. Nada gravado (nem registro).
 
-## 5. Efeitos pós-commit: fora do perímetro do gate, com prova
+## 5. Efeitos pós-commit: no draft-only, NÃO rodam
 
-`executarEfeitos` (catálogo das artes e sinais de aprendizado, legenda, refilagem da página para a pasta da semana,
-item do plano → `agendado`) continua como hoje, nas três vias, sem fronteira protegida nem revalidação (Codex R2,
-achado 2: as rotinas internas usam o `db` global e abrem transações próprias — propagar um `tx` até elas é refatorar
-`agendar.ts`, `pastas.ts`, `artes-do-post.ts` e os sinais, com risco alto e sem ganho de segurança). O contrato toma a
-POSIÇÃO (decisão 8.7) de que **nenhum efeito depende do veredito**, e prova:
+`executarEfeitos` (catálogo das artes e sinais de aprendizado, legenda, `moverPaginaParaSemana`/refilagem da página,
+item do plano → `agendado`) é um conjunto de rotinas que leem o post e escrevem `Page` (`templateId`/`name`/`order`),
+`SocialPost.generationId` (via `ensurePostGeneration`), `ImageCatalog`, `LearningSignal` e o `ItemDePlano`, cada uma com o
+`db` global e transações próprias. As rodadas 2–7 do Codex mostraram que QUALQUER promessa de proteção sobre essas
+escritas tem uma janela que uma releitura ou uma trava de topo não fecha (aprovação entre a guarda e `moverPaginaParaSemana`;
+mídia trocada entre a guarda e `ensurePostGeneration`; edição entre a comparação de nome e o `UPDATE`). Em vez de prometer
+o que não se prova, o contrato PROPÕE (decisão 8.7, recomendação) que **no perfil draft-only os efeitos pós-commit não
+rodem**:
 
-- Catálogo/sinais/legenda: escrevem `ImageCatalog`/`LearningSignal`/registro da copy — nunca `SocialPost.status`,
-  `laterPostId`, `mediaUrls`, `Page.layers`/`copyAutoral`/`tags`/`width`/`height`; leem o post como está.
-- Refilagem: o ÚNICO efeito que escreve `Page` (`templateId`, `name`, `order`) e o único que lê o post para decidir. No
-  lote draft-only ela passa a rodar com `refilarPaginasDoPost(postId, quando, userId, { protegida: true })`: `garantirPasta`
-  (criar a pasta da semana, idempotente, com a sua própria trava por chave) roda ANTES; depois UMA transação curta própria
-  (`db.$transaction`, READ COMMITTED) que trava **`SocialPost FOR UPDATE` → `Page FOR UPDATE`** (a ordem comum), relê os
-  dois e só escreve se `post.status === 'DRAFT'`, `post.laterPostId === null`, `post.pageId === page.id` e
-  `page.updatedAt` é o mesmo da leitura que calculou o nome; senão não escreve e devolve o aviso ("post aprovado" ou
-  "página mudou"; a repetição refaz). Com `preservarFormato` (Codex R4) o nome só muda se `formatoDaPagina` do revisor
-  continuar igual — e a comparação e o `UPDATE` estão na MESMA transação sob a trava da página (Codex R6), então nenhuma
-  edição de nome/tags cabe entre elas. Não toca camadas, copy, tags nem tamanho: `pageVersion`, `copyVersion`,
-  `formatoDoCompositor` e `formato` não mudam — a identidade de `ver-geracao` continua `coincidente` depois dos efeitos.
-  Fluxo humano: `refilarPaginasDoPost` sem a opção, como hoje.
-- Item do plano → `agendado`: CAS por `status`/`generationId`/`updatedAt` (existente).
-- A guarda que JÁ existe no draft-only continua e ganha um campo: post relido não-`DRAFT`, com `laterPostId`, ou com
-  **`generationId !== peca.id`** (Codex R3, achado 3: `registrarArtesDoPost` → `ensurePostGeneration` CRIA uma Generation e
-  grava `SocialPost.generationId` num post sem vínculo — com a guarda, o catálogo só roda em post que já aponta a peça,
-  e `ensurePostGeneration` é no-op por construção) → sem efeitos, com aviso (`responderLigado` devolve como está). Em
-  `criar`/`adotar` a mesma releitura é feita antes de `executarEfeitos` (sem trava: é uma guarda, não o gate — dito).
-  C6 inclui `SocialPost.generationId` nos campos protegidos e o caso "post sem Generation → efeitos pulados".
-- Teste C6: inventário por regex/AST dos módulos de efeito (`agendar.ts` → `artes-do-post.ts`, `ensure-post-generation.ts`,
-  sinais, legenda; `pastas.ts`; `levarItemDoPlanoParaAgendado`) — a ÚNICA escrita em `SocialPost` é a de
-  `ensurePostGeneration` em `generationId`, barrada pela guarda acima; nenhuma em `status`, `laterPostId`, `mediaUrls`,
-  `postType`; em `Page`, só `templateId`/`name`/`order`, e SÓ pela refilagem protegida. Comportamental, com banco falso
-  que serializa travas: (a) post aprovado DEPOIS da guarda e ANTES da refilagem → a refilagem relê sob trava e não
-  escreve; (b) página editada (nome/tags) depois da comparação de `preservarFormato` → o CAS em `updatedAt` falha e nada
-  é escrito; (c) post sem Generation → efeitos pulados; (d) sequência normal catálogo → refilagem → item do plano →
-  identidade de `ver-geracao` `coincidente`. Mais o teste comportamental com banco falso: depois do
-  commit, post aprovado / página editada / post sem Generation → os efeitos não desfazem, não agravam e não ligam nada.
-- `reaproveitar` (linha já ligada): o rascunho já existe; nenhum DRAFT nasce ou é ligado → o gate não se aplica. O
-  plano-mestre § 4.5 ("as três respostas passam pelo gate") e o § 12.1 do CP5b ("decisão fresca em toda via") pedem
-  literalmente a medição aqui também: **isto é a decisão 8.7, do owner, aberta** — o contrato recomenda a exceção
-  (com a guarda de `generationId`/`DRAFT`/`laterPostId` e a prova C6 de que os efeitos não mudam a identidade nem o
-  post), e, se o owner recusar, a via passa pela medição sob trava (custo: 1–4 s por item já ligado) sem outra mudança
-  de desenho. C6 cobre os efeitos pendentes com a página alterada DEPOIS do vínculo (só pasta/nome mudam; nada ligado).
+- Depois do commit que cria/liga o DRAFT, `agendarItem` NÃO chama `executarEfeitos` quando `ctx.apenasRascunho`;
+  `efeitosDoAgendamentoEm` fica nulo e o item volta `concluido` com o aviso fixo "rascunho na agenda; pasta e catálogo
+  serão completados na primeira chamada humana (ou na aprovação)". A via `reaproveitar` com efeitos pendentes, no
+  draft-only, devolve o rascunho como está, sem rodar nada (hoje ela só faz isso quando o post foi aprovado).
+- O que isso DEIXA de fazer, e por que é aceitável: (1) a pasta da semana — `compor-leva` já cria a página na pasta do
+  `quando` composto (`compor.ts`/`fila.ts` → `garantirPasta`), então `moverPaginaParaSemana`/refilagem só mudariam algo
+  quando o horário agendado difere do composto, raro no laço do Dot (que agenda no horário que a composição previu);
+  (2) o catálogo das artes e os sinais de aprendizado do rascunho — adiados até o fluxo humano (a chamada humana de
+  `agendar-leva` sobre o mesmo lote, perfil normal, encontra `efeitosPendentes` e os executa como hoje; a aprovação não
+  os executa — dito) ou até a publicação; (3) o item do plano → `agendado` NÃO é afetado: a transição já acontece
+  DENTRO do commit que cria/liga (CP5b § 12.2; `agendar-itens.ts` desde o C12-1x2), nas duas vias.
+- O que isso GARANTE por construção: no draft-only, depois do commit, nenhuma escrita acontece em `Page`,
+  `SocialPost`, `Generation`, `ImageCatalog` ou `LearningSignal` por conta de `agendar-leva` — C6 vira um teste
+  comportamental simples (banco falso que registra toda escrita: depois do `INSERT` do post e do CAS da linha, zero
+  escritas) e o inventário "nenhuma chamada a `executarEfeitos` sob `apenasRascunho`".
+- Fluxo humano: `executarEfeitos` como hoje, nas três vias.
+- **Alternativas para o owner (8.7)**: (A) rodar os efeitos no draft-only como no fluxo humano, com os riscos residuais
+  ditos (aprovação concorrente move a página de um post aprovado — sem efeito na publicação; mídia trocada → o
+  catálogo religa a arte, como hoje); (C) proteger os efeitos de verdade — propagar `tx` e condições até
+  `agendar.ts`, `pastas.ts`, `artes-do-post.ts`, `ensure-post-generation.ts` (refatoração de 4 módulos, checkpoint próprio).
 
 ## 6. O retorno do item
 
@@ -258,7 +246,7 @@ revisao?:
    concorrente espera e a chamada seguinte mede a versão nova — nunca "medida velha, escrita nova").
 4. `adotar`: post entre os travados, tipo, Generation, projeto, `DRAFT` sem `laterPostId` (C5b); escolha mudou → concorrente (C19).
 5. `simular` nunca grava (C8); fluxo humano byte a byte igual (C7).
-6. Efeitos não escrevem nada que mude a identidade da peça nem o post (C6; a refilagem preserva o formato).
+6. No draft-only, depois do commit, `agendar-leva` não escreve mais nada (C6: zero escritas após o CAS da linha; nenhuma chamada a `executarEfeitos` sob `apenasRascunho`).
 7. Reforços do Dot (plano-mestre § 4.5): `lembrete: true` em draft-only nunca chama `sendPublishReminder`/WAHA (C11);
    `sendToLater`/Zernio nunca chamados (C11); post aprovado intocável (C12); toda tool da allowlist que cria DRAFT passa
    pelo gate (C9).
@@ -273,7 +261,7 @@ revisao?:
 | 8.4 | Bloco `gate` em `auditar-operacao` (9.9 do CP5b) | CP5e, com os números do piloto | agora: PR maior em `posts/auditar-operacao.ts` |
 | 8.5 | `adotar` com `post.generationId` nulo (DRAFT humano sem arte ligada) | `REVISAO_HUMANA_NECESSARIA` (não adota) | adotar e ligar: o agente "assume" um rascunho humano |
 | 8.6 | Limite da proteção: bytes de assets e fontes servidos por URL | não protegidos (CP5b § 4.2); dito no manual | hash dos bytes a cada medição: + downloads, checkpoint próprio |
-| 8.7 | Efeitos pós-commit fora do perímetro do gate (§ 5) | sim, com a prova de C6 | passar `reaproveitar` pela medição sob trava e/ou propagar `tx` até os efeitos (refatoração de 4 módulos) |
+| 8.7 | Efeitos pós-commit no draft-only (§ 5) | (B) NÃO rodar: ficam pendentes para o fluxo humano; a pasta da semana já vem de `compor-leva`; o item do plano já muda no commit | (A) rodar como no fluxo humano, com os riscos residuais ditos; (C) proteger de verdade (refatoração de 4 módulos, checkpoint próprio) |
 | 8.9 | Prazos da rede na medição | `PRAZO_DA_MEDICAO` 8 s total, `PRAZO_POR_DOWNLOAD` 4 s (dentro dos 20 s da transação, com folga para o resto) | valores maiores: mais itens medidos com origem lenta, travas presas por mais tempo |
 | 8.8 | Medir DENTRO da transação (rede sob trava) | sim: é o que fecha a janela; orçamento medido em C18 | medir fora e reconferir: volta a janela e a lista de entradas a comparar |
 
@@ -287,7 +275,7 @@ revisao?:
 | C4 | edição concorrente da página (camadas / copy / nome / tags) | a edição espera a trava (banco falso: a escrita concorrente é enfileirada e só aplica depois do commit) e a chamada SEGUINTE mede a versão nova; nunca post criado com medida da versão velha |
 | C5 | medida de OUTRA página passada ao vínculo (unidade de `medirEDecidir`) | `sem-vinculo` → `REVISAO_HUMANA_NECESSARIA`, `revisao.tipo = 'sem-vinculo'`, sem achados |
 | C5b | `adotar`: DRAFT `STORY` numa página `feed`; `generationId` nulo/outro; DRAFT que virou `SCHEDULED`; página com música | `REVISAO_HUMANA_NECESSARIA` (ou `POST_APROVADO_INTOCAVEL` como hoje) sem tocar no post |
-| C6 | efeitos pós-commit | inventário: a única escrita em `SocialPost` é `generationId` por `ensurePostGeneration`, barrada pela guarda; nenhuma em `status`/`laterPostId`/`mediaUrls`/`postType`; em `Page` só `templateId`/`name`/`order`; comportamental: post aprovado / página editada / post sem Generation após o commit → efeitos não rodam ou não ligam nada |
+| C6 | draft-only, depois do commit (criar, adotar e reaproveitar com efeitos pendentes) | zero escritas após o CAS da linha (banco falso registra tudo); `executarEfeitos` nunca chamado sob `apenasRascunho`; `efeitosDoAgendamentoEm` nulo; aviso fixo no item; perfil normal roda os efeitos como hoje |
 | C7 | perfil normal, mesmas peças | igual a hoje: v1 vira rascunho RENDERED; sem `revisao`; nenhum `UPDATE … gateDaArte`; nenhuma trava nova |
 | C8 | `simular: true`, draft-only, v1 e limpa | mede e decide pelo leitor; nenhuma escrita; `falhou`/`concluido` iguais aos da chamada de verdade |
 | C9 | inventário COMPORTAMENTAL: para cada tool MUTANTE de `TOOLS_DRAFT_ONLY` (`compor-leva`, `agendar-leva`, `ajustar-arte`, `revisar-arte`, `conferir-arte`, `medir-copy`, …) o handler roda com um banco falso que registra `socialPost.create` e `UPDATE … gateDaArte` | só `agendar-leva` cria, e só DEPOIS do `gateDaArte`; uma tool nova de controle na allowlist que chame `criarPostDoAgendamento` direto FALHA; `agendar-itens.ts` está nas listas da regra de lint e do H12 |
@@ -301,7 +289,6 @@ revisao?:
 | C20 | intercalação de `recompor`: `Page.layers` novo, `fieldValues.composicao`/`versaoRenderizada` antigos | `composicaoReaproveitavel: false`: assunto estimado de novo, referências sem o cache; a v2 do piloto é MEDIDA (achados presentes) e volta `REVISAO_HUMANA_NECESSARIA` |
 | C21 | rede presa em cada caminho: fonte (`fetchBuffer`), logo (`bytesDaLogo`), foto no render da régua (`loadImage` que nunca resolve), redirecionamento em laço | `nao-medida` no prazo (race); nenhum post; travas liberadas (a próxima chamada não espera); o download órfão não grava nada |
 | C22 | Generation nova da página inserida DURANTE a transação do gate (o ramo sem `versaoEsperada` de `persist.ts`) | a medição não a lê: `contextoDaMedicao` só lê a Generation da peça (travada); o resultado é o mesmo com ou sem a inserção |
-| C23 | refilagem no lote com `preservarFormato`: tema que põe "feed" no nome de uma página story | pasta muda, nome mantido, aviso; identidade de `ver-geracao` continua `coincidente` |
 | C17 | `pedidoSob.postType` e `vinculo.postType` | derivados do mesmo `sob.peca`/post travado; `TIPO_DO_POST_POR_FORMATO` divergente → `sem-vinculo` |
 | C18 | orçamento: tempo da medição por item (banco falso e benchmark sintético do CP3) | dito no PR; abaixo de 10 s por item no benchmark |
 | C19 | a decisão sob trava muda em relação à decisão sem trava (`criar` → `adotar`, outro post) | `LOTE_AGENDAMENTO_CONCORRENTE`, nada escrito |
@@ -312,7 +299,6 @@ revisao?:
 - `src/lib/lotes/agendar-itens.ts`: `medirEDecidir`, `lerPaginaCompleta`, travas (posts da página, Generation, FOR SHARE),
   `gravarGateDaArte`, mapeamento das exceções do gate, `achados`/`motivos`/`revisao` no item;
 - `src/lib/lotes/agendamento.ts` (ou vizinho puro): `POLITICA_DO_ASSUNTO_DO_AGENDAR_LEVA`, tipos do retorno;
-- `src/lib/compositor/pastas.ts` (`refilarPaginasDoPost`: opção `protegida` — transação própria `SocialPost → Page FOR UPDATE`, releitura, CAS em `updatedAt`, `preservarFormato`);
 - `src/lib/creatives/revisao/revisar-arte.ts` (`contextoDaMedicao`: parâmetros `cliente`, `sinal`, `composicaoReaproveitavel`, `generationDaPeca`;
   `ContextoDaMedicao.sinal` repassado a `cacheDeLogos`/`assuntoDaPeca`), `src/lib/posts/register-project-fonts.ts`
   (`cliente`; `fetchBuffer(url, { signal })`) — opcionais com padrão de hoje; o revisor e o CP4 não mudam;
@@ -326,8 +312,8 @@ revisao?:
 - docs: `docs/regras/revisor-da-arte.md` § CP5c, `docs/regras/mcp.md`, `docs/regras/dot-lagosta-operacao.md` +
   `operacao-dot.ts` (bump: "agendar-leva no draft-only só cria rascunho com veredito APTO medido na hora").
 
-Fora: `gate.ts`, `gate-registro.ts`, `gate-persistido.ts`, `agendar.ts`, `artes-do-post.ts`, `ensure-post-generation.ts`,
-`arte-rapida.ts`, `persist.ts`, `recompor.ts`, `trocar-arte-do-post.ts`, schema do Prisma, fluxo humano.
+Fora: `gate.ts`, `gate-registro.ts`, `gate-persistido.ts`, `agendar.ts`, `pastas.ts`, `artes-do-post.ts`,
+`ensure-post-generation.ts`, `arte-rapida.ts`, `persist.ts`, `recompor.ts`, `trocar-arte-do-post.ts`, schema do Prisma, fluxo humano.
 
 ## 11. Gates do PR de implementação
 
