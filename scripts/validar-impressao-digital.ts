@@ -50,10 +50,12 @@ function git(args: string[]): string | null {
 
 console.log('Impressão digital das regras (CP5b)')
 
-git(['fetch', '--no-tags', '--depth=1', 'origin', 'main'])
-const baseSha = git(['rev-parse', '--verify', `${BASE}^{commit}`])?.trim()
-if (!baseSha) falha(`sem ${BASE} para comparar (o fetch falhou?)`, 'o validador não passa em silêncio sem a base')
-else ok(`base ${BASE} = ${baseSha.slice(0, 10)}`)
+// O fetch tem de ACONTECER agora (Codex R1 do PR #240: uma `origin/main` local velha passaria no rev-parse e um
+// arquivo acrescentado à main depois dela seria tratado como novo); a base é o commit efetivamente obtido (FETCH_HEAD).
+const fetched = git(['fetch', '--no-tags', '--depth=1', 'origin', 'main'])
+const baseSha = fetched !== null ? git(['rev-parse', '--verify', 'FETCH_HEAD^{commit}'])?.trim() : undefined
+if (!baseSha) falha(`sem ${BASE} para comparar: o fetch de origin main falhou`, 'o validador não passa em silêncio sem a base')
+else ok(`base ${BASE} (FETCH_HEAD) = ${baseSha.slice(0, 10)}`)
 
 const esperados = new Map<string, { camada: 'revisor' | 'gate'; versao: string }>([
   [nomeDoArquivoDaImpressao('revisor', VERSAO_DAS_REGRAS), { camada: 'revisor', versao: VERSAO_DAS_REGRAS }],
@@ -61,7 +63,7 @@ const esperados = new Map<string, { camada: 'revisor' | 'gate'; versao: string }
 ])
 
 const arquivos = existsSync(PASTA) ? readdirSync(PASTA).filter((f) => f.endsWith('.json')).sort() : []
-const naBase = baseSha ? (git(['ls-tree', '--name-only', BASE, `${PASTA}/`]) ?? '').split('\n').filter((c) => c.endsWith('.json')).map((c) => c.slice(PASTA.length + 1)) : []
+const naBase = baseSha ? (git(['ls-tree', '--name-only', baseSha, `${PASTA}/`]) ?? '').split('\n').filter((c) => c.endsWith('.json')).map((c) => c.slice(PASTA.length + 1)) : []
 
 // A — o que a base tem é imutável e não some.
 for (const nome of naBase) {
@@ -70,7 +72,7 @@ for (const nome of naBase) {
     falha(`${nome}: existe em ${BASE} e SUMIU no PR`, 'o arquivo de uma versão já publicada fica commitado (auditoria de quando cada regra mudou)')
     continue
   }
-  const conteudoBase = git(['show', `${BASE}:${caminho}`])
+  const conteudoBase = git(['show', `${baseSha}:${caminho}`])
   const atual = readFileSync(join(process.cwd(), caminho), 'utf8')
   if (conteudoBase === atual) ok(`${nome}: igual ao de ${BASE} (imutável)`)
   else falha(`${nome}: existe em ${BASE} e foi ALTERADO`, 'o arquivo de uma versão já publicada é imutável; mudou a regra? suba a versão e gere um arquivo NOVO')

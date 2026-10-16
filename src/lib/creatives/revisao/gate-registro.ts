@@ -230,21 +230,38 @@ export const registroDoGateSchema = z
   .strict()
 
 /**
- * Invariante 2.3 do contrato CP5a, inteira: `APTO` ⇔ `motivos` vazio ∧ `naoMedidos` vazio ∧ `achados` vazio ∧
- * nenhuma cobertura `reprovada`/`nao-comprovada` ∧ copy/identidade/oclusão `comprovada` ∧ piso `comprovada` ou
- * `nao-se-aplica` ∧ as 11 críticas `comprovada` ou `nao-se-aplica`. Devolve o que viola, ou `null`.
+ * Invariante 2.3 do contrato CP5a, inteira: `APTO` ⇔ `motivos` vazio ∧ `naoMedidos` vazio; e APTO exige `achados`
+ * vazio, nenhuma cobertura `reprovada`/`nao-comprovada`, copy/identidade/oclusão `comprovada`, piso `comprovada` ou
+ * `nao-se-aplica`, as 11 críticas `comprovada` ou `nao-se-aplica` e `pageVersion` NÃO nulo (camadas ilegíveis geram
+ * `IDENTIDADE_ILEGIVEL`, `gate.ts`). Devolve o que viola em texto FIXO (sem valores do JSON — o motivo chega a
+ * `ver-geracao`), ou `null`.
  */
 export function violacaoDaInvarianteDoGate(gate: GateDaArte): string | null {
   const vazio = gate.motivos.length === 0 && gate.naoMedidos.length === 0
-  if ((gate.resultado === 'APTO') !== vazio) return `resultado ${gate.resultado} com ${gate.motivos.length} motivo(s) e ${gate.naoMedidos.length} não medido(s)`
+  if ((gate.resultado === 'APTO') !== vazio) return 'resultado incoerente com motivos e não medidos'
   if (gate.resultado !== 'APTO') return null
   if (gate.achados.length > 0) return 'APTO com achados'
+  if (gate.pageVersion === null) return 'APTO com camadas ilegíveis (pageVersion nulo)'
   for (const regra of [...REGRAS_CRITICAS, ...CONFERENCIAS_DO_GATE]) {
     const c = gate.cobertura[regra]
     if (!c) return `APTO sem cobertura de ${regra}`
-    if (c.estado === 'reprovada' || c.estado === 'nao-comprovada') return `APTO com ${regra} ${c.estado}`
+    if (c.estado === 'reprovada' || c.estado === 'nao-comprovada') return `APTO com ${regra} não comprovada ou reprovada`
     if (c.estado === 'nao-se-aplica' && (regra === 'copy-completa' || regra === 'identidade' || regra === 'oclusao')) return `APTO com ${regra} nao-se-aplica`
   }
+  return null
+}
+
+/**
+ * O que o CP5a só poderia produzir para ESTA página (Codex R1 do PR #240): o piso de interface é `nao-se-aplica` se e
+ * somente se o formato NÃO é story (`gate.ts`: `medida.formato !== 'story'` → nao-se-aplica; story → comprovada,
+ * reprovada ou não comprovada). Um `APTO` de story com o piso dispensado não é saída do gate. Texto fixo.
+ */
+export function violacaoDaInvarianteDoRegistro(registro: RegistroDoGate): string | null {
+  const doGate = violacaoDaInvarianteDoGate(registro.gate)
+  if (doGate) return doGate
+  const piso = registro.gate.cobertura['piso-de-interface']?.estado
+  if (registro.identidade.formato === 'story' && piso === 'nao-se-aplica') return 'piso de interface dispensado numa página story'
+  if (registro.identidade.formato !== 'story' && piso !== 'nao-se-aplica') return 'piso de interface medido numa página que não é story'
   return null
 }
 
@@ -288,7 +305,7 @@ export function lerGateDaArte(fieldValues: unknown): LeituraDoRegistro {
     return { estado: 'invalido', motivo, ...versoes }
   }
   const registro = lido.data as RegistroDoGate
-  const violacao = violacaoDaInvarianteDoGate(registro.gate)
+  const violacao = violacaoDaInvarianteDoRegistro(registro)
   if (violacao) return { estado: 'invalido', motivo: `invariante do gate violada: ${violacao}`, ...versoes }
   return { estado: 'ok', registro }
 }

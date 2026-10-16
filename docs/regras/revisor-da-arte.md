@@ -984,16 +984,18 @@ decidir, nem como sinal positivo nem negativo**: toda decisão autônoma é fres
   registro sem proveniência (clone, objeto à mão) → `'sem-proveniencia'` sem SQL; 0 linhas → `'sem-vinculo'`;
   exceção PROPAGA (o CP5c decide o rollback). `mesclarFieldValuesDaArte` ganhou a opção sem mudar o SQL dos
   chamadores atuais (quatro formas testadas).
-- **Leitura** (`lerGateDaArte`): `ausente` / `invalido` / `ok`. Schema estrito + invariante 2.3 do CP5a; um JSON
-  rejeitado não expõe nada além do caminho do campo e das versões gravadas (só quando casam com
-  `/^[a-z0-9][a-z0-9.-]{0,31}$/`). Bump de `VERSAO_DO_GATE` torna os registros anteriores `invalido` (decisão 9.13).
+- **Leitura** (`lerGateDaArte`): `ausente` / `invalido` / `ok`. Schema estrito + invariante 2.3 do CP5a + o que o CP5a
+  só produz para ESTA página (APTO exige `pageVersion` não nulo; piso de interface `nao-se-aplica` ⇔ formato ≠ story —
+  Codex R1 do PR #240); um JSON rejeitado não expõe nada além do caminho do campo, de um texto FIXO da invariante e
+  das versões gravadas (só quando casam com `/^[a-z0-9][a-z0-9.-]{0,31}$/`). Bump de `VERSAO_DO_GATE` torna os registros anteriores `invalido` (decisão 9.13).
 - **Validade** (`validadeDoGate`): `coincidente` (vínculo, os dois formatos, 4 versões e política iguais) /
   `historico` (com a lista) / `ilegivel`. Nunca devolve `resultado`.
 - **`rulesVersion`**: bump manual cobrado por DUAS impressões digitais (`impressao-digital.ts`): a do revisor
   (`REGRAS_DA_REVISAO` + medida e `avaliarPeca` de cada peça do corpus) e a do gate (tabelas + medida e saída de
   `gateDaMedida` sem as três cópias, com as 4 políticas), serializadas com `serializarParaImpressao` (preserva
   `NaN`/`Infinity`/`-0`). Arquivos em `__tests__/impressao-digital/`; `scripts/validar-impressao-digital.ts` (CI) torna
-  imutável o de uma versão já na `main`. Corpus (`__tests__/suporte/corpus-do-gate.ts`): 52 peças, AMOSTRAL —
+  imutável o de uma versão já na `main`. Corpus (`__tests__/suporte/corpus-do-gate.ts`): 166 peças (as fixtures de `gate.test.ts` com as suas variantes +
+  piloto v1/v2), ainda AMOSTRAL —
   regra que nenhuma peça toca muda em silêncio (decisão 9.6); PR em `regras.ts`/`gate.ts` responde "o corpus cobre?".
 - **Barreira**: `no-restricted-imports` em `eslint.config.mjs` — `gateDaMedida` só em `gate-registro.ts` e testes;
   `lerGateDaArte`/`validadeDoGate`/`decidirEMontarRegistro` só em `gate-persistido.ts`, `ver-geracao-retorno.ts`,

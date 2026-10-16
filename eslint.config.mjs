@@ -19,7 +19,9 @@ const NOMES_DO_GATE = ["gateDaMedida"];
 const NOMES_DO_REGISTRO = ["lerGateDaArte", "validadeDoGate", "decidirEMontarRegistro"];
 const MSG_GATE = "CP5b: gateDaMedida só pode ser chamada por src/lib/creatives/revisao/gate-registro.ts (decidirEMontarRegistro) e por testes — a decisão autônoma nasce da mesma chamada que grava o registro.";
 const MSG_REGISTRO = "CP5b: lerGateDaArte/validadeDoGate/decidirEMontarRegistro só podem ser importadas por gate-persistido.ts, ver-geracao-retorno.ts, arte-ia.ts, o produtor nomeado pelo CP5c e testes.";
-const PADROES_DO_GATE = ["**/revisao/gate", "**/revisao/gate.ts", "./gate", "./gate.ts"];
+// `**/gate` cobre `../gate`, `../../gate` e `x/revisao/gate` (gitignore: `..` é um segmento); `./gate` é o mesmo diretório.
+// Outro módulo chamado `gate` em outra pasta só é barrado se exportar os mesmos nomes — aceitável.
+const PADROES_DO_GATE = ["**/gate", "**/gate.ts", "./gate", "./gate.ts"];
 const PADROES_DO_REGISTRO = ["**/gate-registro", "**/gate-registro.ts", "./gate-registro", "./gate-registro.ts"];
 const restricao = (gate, registro) => ({
   paths: [

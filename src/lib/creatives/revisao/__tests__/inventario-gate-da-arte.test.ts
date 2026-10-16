@@ -65,6 +65,11 @@ describe('H12 (a) — a barreira por import no lint', () => {
       ["import { gateDaMedida } from './gate'\nexport const x = gateDaMedida\n", 'src/lib/creatives/revisao/controle.tmp.ts'],
       ["import { lerGateDaArte } from '@/lib/creatives/revisao/gate-registro'\nexport const x = lerGateDaArte\n", 'src/lib/lotes/controle.tmp.ts'],
       ["import { decidirEMontarRegistro } from './gate-registro'\nexport const x = decidirEMontarRegistro\n", 'src/lib/creatives/revisao/controle.tmp.ts'],
+      // Codex R1 do PR #240: de uma SUBPASTA de revisao/, `../gate` escapava de `**/revisao/gate`.
+      ["import { gateDaMedida } from '../gate'\nexport const x = gateDaMedida\n", 'src/lib/creatives/revisao/subdir/controle.tmp.ts'],
+      ["import { gateDaMedida as g } from '../../gate'\nexport const x = g\n", 'src/lib/creatives/revisao/a/b/controle.tmp.ts'],
+      ["import { lerGateDaArte } from '../gate-registro'\nexport const x = lerGateDaArte\n", 'src/lib/creatives/revisao/subdir/controle.tmp.ts'],
+      ["import { gateDaMedida } from '../../creatives/revisao/gate.ts'\nexport const x = gateDaMedida\n", 'src/lib/mcp/catalogo/controle.tmp.ts'],
     ]
     for (const [codigo, caminho] of casos) {
       const erros = await errosDe(codigo, caminho)

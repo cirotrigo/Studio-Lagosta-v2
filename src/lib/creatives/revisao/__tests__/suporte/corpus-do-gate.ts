@@ -184,7 +184,7 @@ const apoioMovido = (y: number) => ({ camadas: pecaLimpa().camadas.map((l) => (l
  * o piloto (v1 e v2). Acrescentar ou editar uma peça MUDA as duas impressões e exige os dois bumps — deliberado: o
  * corpus faz parte da definição da versão.
  */
-export const CORPUS_DO_GATE: readonly PecaDoCorpus[] = [
+const CORPUS_BASE: readonly PecaDoCorpus[] = [
   { nome: 'piloto-2026-10-13 v1', medida: medidaDoPiloto('v1'), identidade: IDENTIDADE, copy: COPY_OK },
   { nome: 'piloto-2026-10-13 v2', medida: medidaDoPiloto('v2'), identidade: IDENTIDADE, copy: COPY_OK },
   peca('G1 peça limpa'),
@@ -236,3 +236,151 @@ export const CORPUS_DO_GATE: readonly PecaDoCorpus[] = [
   peca('G31 fundo em movimento', { medida: { camadas: pecaLimpa().camadas.map((l) => (l.id === 'bg-foto' ? ({ ...l, movimento: 'aproximar' } as Layer) : l)) } }),
   peca('G31 vídeo abaixo dos textos', { medida: { camadas: [...pecaLimpa().camadas, { id: 'vid', name: 'Vídeo', type: 'video', visible: true, locked: false, order: 1, position: { x: 0, y: 0 }, size: { width: W, height: H }, fileUrl: 'https://blob.test/v.mp4' } as Layer] } }),
 ]
+
+// ─── As VARIANTES de gate.test.ts (Codex R1 do PR #240: o contrato pede TODAS as fixtures, não um exemplar por grupo) ──
+
+const semPapel = (l: Layer) => l
+const trocar = (id: string, mudar: (l: Layer) => Layer) => pecaLimpa().camadas.map((l) => (l.id === id ? mudar(l) : semPapel(l)))
+const comStyleDoFundo = (nome: string, style: unknown) => peca(`G13b fundo ${nome}`, { medida: { camadas: trocar('bg-foto', (l) => ({ ...l, style } as Layer)) } })
+const comExtraDoFundo = (nome: string, extra: Partial<Layer>) => peca(`G13c fundo ${nome}`, { medida: { camadas: trocar('bg-foto', (l) => ({ ...l, ...extra } as Layer)) } })
+const comExtraDaLogo = (nome: string, extra: Partial<Layer>) => peca(`G12 logo ${nome}`, { medida: { camadas: trocar('logo', (l) => ({ ...l, ...extra } as Layer)) } })
+const textoEm = (y: number) => texto('t', { x: 100, y, width: 300, height: 50 }, 30)
+const pisoCom = (nome: string, camadas: Layer[]) => peca(`G26 ${nome}`, { medida: { camadas: [fundo(), ...camadas], metricas: camadas.filter((l) => l.type === 'text').map((l) => metrica(l)), contraste: camadas.filter((l) => l.type === 'text').map((l) => contraste([l.id])), leituraDaLogo: camadas.some((l) => l.id === 'logo') ? [leitura('logo', medidaDaLogo())] : [] } })
+const apoioSobre = (y: number, extra: Partial<Layer> = {}, medidaExtra: Partial<MedidaDaPeca> = {}) => {
+  const apoio = apoioEm(y, { order: 9, ...extra })
+  return { camadas: pecaLimpa().camadas.map((l) => (l.id === 'apoio' ? apoio : l)), metricas: [metrica(pecaLimpa().camadas[1]), metrica(apoio), pecaLimpa().metricas[2]], ...medidaExtra }
+}
+const servicoCom = (extra: Partial<Layer>) => ({ ...pecaLimpa().camadas.find((l) => l.id === 'servico')!, ...extra }) as Layer
+const logoPerto = (x: number) => logo({ position: { x, y: 1500 } })
+
+const VARIANTES: readonly PecaDoCorpus[] = [
+  // G13b — estilos do fundo que o assunto medido não representa (e o controle que passa).
+  ...([
+    ['flipH', { objectFit: 'cover', flipH: true }],
+    ['mask', { objectFit: 'cover', mask: { shapeId: 'c', path: 'M0 0H100V100H0Z' } }],
+    ['filter', { objectFit: 'cover', filter: 'blur(4px)' }],
+    ['blur', { objectFit: 'cover', blur: 3 }],
+    ['flipH espaço', { objectFit: 'cover', flipH: ' ' }],
+    ['flipH array', { objectFit: 'cover', flipH: [] }],
+    ['mask vazia', { objectFit: 'cover', mask: {} }],
+    ['cropPosition vazio', { objectFit: 'cover', cropPosition: '' }],
+    ['cropPosition center', { objectFit: 'cover', cropPosition: 'center' }],
+    ['cropPosition inválido', { objectFit: 'cover', cropPosition: 'centro-meio' }],
+    ['shadow', { objectFit: 'cover', shadow: { offsetX: 0, offsetY: 40, blur: 8, color: '#000' } }],
+    ['opacity 0.5', { objectFit: 'cover', opacity: 0.5 }],
+    ['border width', { objectFit: 'cover', border: { width: 4, radius: 0, color: '#000' } }],
+    ['cropPosition right-middle (controle)', { objectFit: 'cover', cropPosition: 'right-middle' }],
+  ] as Array<[string, unknown]>).map(([n, st]) => comStyleDoFundo(n, st)),
+  peca('G13b fundo girado 5°', { medida: { camadas: trocar('bg-foto', (l) => ({ ...l, rotation: 5 } as Layer)) } }),
+  // G13c — a medida lê a foto como UM cover do canvas inteiro.
+  ...([
+    ['contain', { style: { objectFit: 'contain' } }],
+    ['fill', { style: { objectFit: 'fill' } }],
+    ['sem objectFit', { style: {} }],
+    ['exposure', { style: { objectFit: 'cover', exposure: 20 } }],
+    ['contrast', { style: { objectFit: 'cover', contrast: 15 } }],
+    ['saturation', { style: { objectFit: 'cover', saturation: -30 } }],
+    ['deslocada', { position: { x: 0, y: 200 } }],
+    ['menor', { size: { width: W * 0.95, height: H * 0.95 } }],
+    ['posição não numérica', { position: { x: '0', y: 0 } }],
+    ['rotação em string', { rotation: '5' }],
+    ['effects.shadow ligado', { effects: { shadow: { enabled: true, shadowColor: '#000', shadowBlur: 8, shadowOffsetX: 0, shadowOffsetY: 40, shadowOpacity: 1 } } }],
+  ] as Array<[string, Partial<Layer>]>).map(([n, extra]) => comExtraDoFundo(n, extra)),
+  peca('G13c element de tela inteira', { medida: { camadas: [...pecaLimpa().camadas, { ...fundo({ id: 'el-1', name: 'Outra foto', order: 1, fileUrl: 'https://blob.test/outra.jpg' }), type: 'element' } as Layer] } }),
+  peca('G13c logo-imagem extra (controle)', { medida: { camadas: [...pecaLimpa().camadas, fundo({ id: 'logo-2', name: 'Logo secundária', type: 'image', order: 8, position: { x: 100, y: 1600 }, size: { width: 120, height: 60 }, fileUrl: 'https://blob.test/logo2.png' })], leituraDaLogo: [leitura('logo', medidaDaLogo()), leitura('logo-2', medidaDaLogo())] } }),
+  peca('G13e element de tela inteira sem bg-foto', { medida: { camadas: [...pecaLimpa().camadas.filter((l) => l.id !== 'bg-foto'), fundo({ id: 'el-foto', name: 'Foto', type: 'element', order: 1, fileUrl: 'https://blob.test/el.jpg' })], ...SEM_FUNDO } }),
+  peca('G13e image < 90% sem bg-foto', { medida: { camadas: [...pecaLimpa().camadas.filter((l) => l.id !== 'bg-foto'), fundo({ id: 'img-peq', name: 'Detalhe', order: 1, size: { width: 500, height: 500 }, position: { x: 100, y: 300 } })], ...SEM_FUNDO } }),
+  peca('G13d assunto estimado fora do canônico', { medida: { canvas: { width: 2160, height: 3840 }, camadas: trocar('bg-foto', (l) => ({ ...l, size: { width: 2160, height: 3840 } } as Layer)), assunto: { rect: { x: 0, y: 2000, width: 2160, height: 900 }, origem: 'estimado' } } }),
+  peca('G13d formato null', { medida: { formato: null } }),
+  // G12 — chaves da logo que a leitura do arquivo não vê (e os controles que passam).
+  ...([
+    ['flipH', { style: { objectFit: 'contain', flipH: true } }],
+    ['mask', { style: { objectFit: 'contain', mask: { shapeId: 'c', path: 'M0 0H100V100H0Z' } } }],
+    ['grayscale', { style: { objectFit: 'contain', grayscale: true } }],
+    ['filter', { style: { objectFit: 'contain', filter: 'blur(2px)' } }],
+    ['exposure', { style: { objectFit: 'contain', exposure: 0.5 } }],
+    ['border radius', { style: { objectFit: 'contain', border: { width: 0, color: '#000', radius: 8 } } }],
+    ['border width', { style: { objectFit: 'contain', border: { width: 6, color: '#000', radius: 0 } } }],
+    ['style.shadow', { style: { objectFit: 'contain', shadow: { offsetX: 4, offsetY: 4, blur: 2, color: '#000' } } }],
+    ['effects.shadow', { effects: { shadow: { enabled: true, shadowColor: '#000', shadowBlur: 4, shadowOffsetX: 2, shadowOffsetY: 2, shadowOpacity: 1 } } }],
+    ['effects.blur', { effects: { blur: { enabled: true, blurRadius: 3 } } }],
+    ['enabled 1', { effects: { shadow: { enabled: 1, shadowColor: '#000', shadowBlur: 4 } } }],
+    ['enabled "true"', { effects: { shadow: { enabled: 'true' } } }],
+    ['opacity "0.5"', { style: { objectFit: 'contain', opacity: '0.5' } }],
+    ['opacity 0.5', { style: { objectFit: 'contain', opacity: 0.5 } }],
+    ['opacity NaN', { style: { objectFit: 'contain', opacity: Number.NaN } }],
+    ['opacity null', { style: { objectFit: 'contain', opacity: null } }],
+    ['invert {}', { style: { objectFit: 'contain', invert: {} } }],
+    ['rotation "90"', { rotation: '90' }],
+    ['rotation "0"', { rotation: '0' }],
+    ['opacity 1 e effects desligados (controle)', { style: { objectFit: 'contain', opacity: 1 }, effects: { shadow: { enabled: 0 }, blur: { enabled: false } } }],
+    ['border 0/0 (controle)', { style: { objectFit: 'contain', border: { width: 0, color: '#000', radius: 0 } } }],
+  ] as Array<[string, Partial<Layer>]>).map(([n, extra]) => comExtraDaLogo(n, extra as Partial<Layer>)),
+  peca('G12 shape com id logo', { medida: { camadas: trocar('logo', (l) => ({ ...l, type: 'shape', fileUrl: 'https://blob.test/logo.png', style: { shapeType: 'circle', fill: '#fff' } } as Layer)) } }),
+  peca('G12 logo fora-do-contrato', { medida: { leituraDaLogo: [leitura('logo', null, 'fora-do-contrato', 'HTTP 404')] } }),
+  peca('G12 logo sem-pixels', { medida: { leituraDaLogo: [leitura('logo', null, 'sem-pixels', 'HTTP 404')] } }),
+  peca('G12 leitura da logo não rodou', { medida: { leituraDaLogo: null, motivoSemLeituraDaLogo: 'a medição da logo não rodou' } }),
+  peca('G12 duas logos, uma sem leitura', { medida: { camadas: [...pecaLimpa().camadas, logo({ id: 'logo-2', position: { x: 100, y: 1750 } })], leituraDaLogo: [leitura('logo', medidaDaLogo())] } }),
+  peca('G12 logo ilegível p10=12', { medida: { leituraDaLogo: [leitura('logo', medidaDaLogo(12))] } }),
+  // G14/G15/G18 — assunto.
+  peca('G14 rich text em texto-cortado (estimado de outra regra)', { medida: { camadas: trocar('servico', (l) => ({ ...l, type: 'rich-text' } as Layer)), medidasAproximadas: ['servico'], geometria: [{ tipo: 'overflow', camadas: ['servico'], layerIds: ['servico'], px: 30, detalhe: 'corta' } as never] } }),
+  // G19/G26 — piso: os dois lados das fronteiras, logo e texto, oculto.
+  peca('G19 logo invadindo o rodapé', { medida: { camadas: trocar('logo', (l) => ({ ...l, position: { x: 799, y: 1750 } } as Layer)) } }),
+  peca('G19 texto girado −90° invadindo o topo', { medida: { camadas: trocar('apoio', (l) => ({ ...l, position: { x: 400, y: 450 }, size: { width: 300, height: 100 }, rotation: -90 } as Layer)), metricas: pecaLimpa().metricas.map((m) => (m.layerId === 'apoio' ? metrica(texto('apoio', { x: 400, y: 450, width: 300, height: 100 }, 40, { rotation: -90 })) : m)) } }),
+  ...[187, 188, 189].map((y) => pisoCom(`texto em y=${y}`, [textoEm(y)])),
+  ...[188, 189].map((y) => pisoCom(`logo em y=${y}`, [logo({ position: { x: 799, y } })])),
+  ...[H - 223 - 95, H - 224 - 95, H - 225 - 95].map((y) => pisoCom(`logo com base em H−${H - y - 95}`, [logo({ position: { x: 799, y } })])),
+  ...[H - 224 - 50, H - 225 - 50].map((y) => pisoCom(`texto com base em H−${H - y - 50}`, [textoEm(y)])),
+  pisoCom('texto oculto em y=100', [textoEm(100)].map((l) => ({ ...l, visible: false }) as Layer)),
+  // G20 — cada estado da copy.
+  ...(['registrada', 'ilegivel', 'copy-invalida', 'historico-cheio'] as const).map((estado) => peca(`G20 copy ${estado}`, { copy: { estado, lacunas: [] } })),
+  // G21 — oclusão: ordens, gradientes, imagem, texto × texto, logo × texto, expansões.
+  peca('G21 forma com order igual ao texto', { medida: { camadas: [...pecaLimpa().camadas, forma('f', { x: 100, y: 440, width: 200, height: 60 }, { order: 3 })] } }),
+  peca('G21 forma abaixo (order 1)', { medida: { camadas: [...pecaLimpa().camadas, forma('f', { x: 100, y: 440, width: 200, height: 60 }, { order: 1 })] } }),
+  peca('G21 forma acima sem interseção', { medida: { camadas: [...pecaLimpa().camadas, forma('f', { x: 100, y: 800, width: 200, height: 60 }, { order: 9 })] } }),
+  peca('G21 gradiente acima sem a marca', { medida: { camadas: [...pecaLimpa().camadas, { ...GRADIENTE_ACIMA, metadata: {} } as Layer] } }),
+  peca('G21 gradiente de leitura abaixo', { medida: { camadas: [...pecaLimpa().camadas, { ...GRADIENTE_ACIMA, order: 1 } as Layer] } }),
+  peca('G21 gradient2 acima', { medida: { camadas: [...pecaLimpa().camadas, { ...GRADIENTE_ACIMA, type: 'gradient2' } as Layer] } }),
+  peca('G21 imagem que não é o fundo acima', { medida: { camadas: [...pecaLimpa().camadas, { ...fundo({ id: 'img2' }), position: { x: 100, y: 440 }, size: { width: 200, height: 60 }, order: 9 } as Layer] } }),
+  peca('G21 fundo com order 9', { medida: { camadas: trocar('bg-foto', (l) => ({ ...l, order: 9 } as Layer)) } }),
+  peca('G21 texto sobre texto 20 px acima da tolerância (colisão)', { medida: apoioSobre(388, {}, { geometria: [{ tipo: 'colisao', camadas: ['headline', 'apoio'], layerIds: ['headline', 'apoio'], px: 20, detalhe: 'x' } as never] }) }),
+  peca('G21 texto sobre texto com sombra', { medida: apoioSobre(402, { effects: { shadow: { enabled: true, shadowColor: '#000', shadowBlur: 10, shadowOffsetX: 30, shadowOffsetY: 30, shadowOpacity: 1 } } } as Partial<Layer>) }),
+  peca('G21 texto sobre texto sem métrica do de cima', { medida: { ...apoioSobre(402), textosSemMetrica: ['apoio'], metricas: [metrica(pecaLimpa().camadas[1]), pecaLimpa().metricas[2]] } }),
+  peca('G21 logo agrupada sobre o serviço', { medida: { camadas: trocar('logo', () => logo({ position: { x: 100, y: 1500 }, metadata: { groupId: 'g1' } })) } }),
+  peca('G21 logo sobre serviço sem métrica', { medida: { camadas: trocar('logo', () => logo({ position: { x: 100, y: 1500 } })), textosSemMetrica: ['servico'], metricas: pecaLimpa().metricas.filter((m) => m.layerId !== 'servico') } }),
+  peca('G21 logo sobre serviço com métrica duplicada', { medida: { camadas: trocar('logo', () => logo({ position: { x: 100, y: 1500 } })), metricas: [...pecaLimpa().metricas, metrica(pecaLimpa().camadas.find((l) => l.id === 'servico')!)] } }),
+  peca('G21 logo sobre serviço com métrica de outra caixa', { medida: { camadas: trocar('logo', () => logo({ position: { x: 100, y: 1500 } })), metricas: pecaLimpa().metricas.map((m) => (m.layerId === 'servico' ? { ...m, box: { ...m.box, x: 900 } } : m)) } }),
+  peca('G21 shape circular com id logo sobre os glifos', { medida: { camadas: trocar('logo', () => ({ ...logo({ position: { x: 530, y: 1530 }, size: { width: 100, height: 100 } }), type: 'shape', style: { shapeType: 'circle', fill: '#ffffff' } } as Layer)) } }),
+  peca('G21 logo com filtro sobre o serviço', { medida: { camadas: trocar('logo', () => logo({ position: { x: 100, y: 1500 }, style: { objectFit: 'contain', filter: 'blur(2px)' } })) } }),
+  ...([
+    ['contorno', { effects: { stroke: { enabled: true, strokeColor: '#000', strokeWidth: 12 } } }, 514],
+    ['sombra', { effects: { shadow: { enabled: true, shadowColor: '#000', shadowBlur: 10, shadowOffsetX: 30, shadowOffsetY: 30, shadowOpacity: 1 } } }, 526],
+    ['desfoque', { effects: { blur: { enabled: true, blurRadius: 20 } } }, 546],
+    ['borda', { style: { fontSize: 32, lineHeight: 1.2, textAlign: 'left', color: '#111', border: { width: 12, color: '#000', radius: 0 } } }, 514],
+  ] as Array<[string, Partial<Layer>, number]>).map(([n, extra, x]) => peca(`G21 logo limpa sobre a expansão do serviço (${n})`, { medida: { camadas: pecaLimpa().camadas.map((l) => (l.id === 'servico' ? servicoCom(extra) : l.id === 'logo' ? logoPerto(x) : l)) } })),
+  peca('G21 logo a 8 px da tinta (controle)', { medida: { camadas: pecaLimpa().camadas.map((l) => (l.id === 'logo' ? logoPerto(514) : l)) } }),
+  peca('G21 logo sobre a mancha do serviço', { medida: { camadas: pecaLimpa().camadas.map((l) => (l.id === 'servico' ? servicoCom({ order: 2, effects: { background: { enabled: true, backgroundColor: '#fff', padding: 40 } } } as Partial<Layer>) : l.id === 'logo' ? logoPerto(514) : l)) } }),
+  peca('G21 texto oculto sob uma forma', { medida: { camadas: [...trocar('apoio', (l) => ({ ...l, visible: false } as Layer)), forma('f', { x: 100, y: 440, width: 200, height: 60 }, { order: 9 })], metricas: pecaLimpa().metricas.filter((m) => m.layerId !== 'apoio') } }),
+  // G21d — expansões por efeito.
+  ...([
+    ['strokeWidth', { style: { shapeType: 'rectangle', strokeWidth: 12, strokeColor: '#000' } }],
+    ['border forma', { style: { shapeType: 'rectangle', border: { width: 12, color: '#000', radius: 0 } } }],
+    ['effects.shadow', { effects: { shadow: { enabled: true, shadowColor: '#000', shadowBlur: 10, shadowOffsetX: 30, shadowOffsetY: 30, shadowOpacity: 1 } } }],
+    ['style.shadow', { style: { shapeType: 'rectangle', shadow: { offsetX: 30, offsetY: 30, blur: 10, color: '#000' } } }],
+  ] as Array<[string, Partial<Layer>]>).map(([n, extra]) => peca(`G21d forma com ${n} perto do texto`, { medida: { camadas: [...pecaLimpa().camadas, forma('q', { x: 500, y: 500, width: 100, height: 100 }, { order: 9, ...extra })] } })),
+  // G21f — valores não numéricos.
+  peca('G21f position.y null', { medida: { camadas: [...pecaLimpa().camadas, forma('f', { x: 100, y: 440, width: 200, height: 60 }, { order: 9, position: { x: 100, y: null as never } })] } }),
+  peca('G21f size.width NaN', { medida: { camadas: [...pecaLimpa().camadas, forma('f', { x: 100, y: 440, width: NaN, height: 60 }, { order: 9 })] } }),
+  peca('G21f size.height negativa', { medida: { camadas: [...pecaLimpa().camadas, forma('f', { x: 100, y: 440, width: 200, height: -60 }, { order: 9 })] } }),
+  peca('G21f rotation 1e308', { medida: { camadas: [...pecaLimpa().camadas, forma('f', { x: 100, y: 440, width: 200, height: 60 }, { order: 9, rotation: 1e308 })] } }),
+  peca('G21f order string no texto protegido', { medida: { camadas: trocar('apoio', (l) => ({ ...l, order: 'a' as never } as Layer)) } }),
+  // G31 — movimento.
+  peca('G31 fundo afastar', { medida: { camadas: trocar('bg-foto', (l) => ({ ...l, movimento: 'afastar' } as Layer)) } }),
+  peca('G31 logo-imagem em movimento', { medida: { camadas: trocar('logo', (l) => ({ ...l, type: 'image', name: 'Logo', movimento: 'afastar' } as Layer)) } }),
+  peca('G31 imagem < 90% sob a logo sem foto de fundo, em movimento', { medida: { camadas: [...pecaLimpa().camadas.filter((l) => l.id !== 'bg-foto'), { ...fundo({ id: 'img-1', name: 'Detalhe', order: 1, position: { x: 700, y: 1400 }, size: { width: 380, height: 300 } }), movimento: 'afastar' } as Layer], ...SEM_FUNDO } }),
+  peca('G31 camada em movimento invisível (controle)', { medida: { camadas: [...pecaLimpa().camadas, { ...fundo({ id: 'img-2', visible: false }), movimento: 'afastar' } as Layer] } }),
+  peca('G30 só logo com id residual', { medida: { camadas: [logo()], metricas: [], contraste: [], ...SEM_FUNDO, textosSemMetrica: ['fantasma'] } }),
+  peca('G2 sem logo solta (aviso)', { medida: { camadas: pecaLimpa().camadas.filter((l) => l.id !== 'logo'), leituraDaLogo: [] } }),
+]
+
+export const CORPUS_DO_GATE: readonly PecaDoCorpus[] = [...CORPUS_BASE, ...VARIANTES]

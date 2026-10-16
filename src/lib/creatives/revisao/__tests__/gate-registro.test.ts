@@ -251,6 +251,10 @@ describe('H7 — lerGateDaArte em três estados, estrito, nunca lança, nunca ex
       ['APTO com identidade nao-se-aplica', (r) => (r.gate.cobertura.identidade = { estado: 'nao-se-aplica', motivo: 'x' })],
       ['APTO com oclusao nao-se-aplica', (r) => (r.gate.cobertura.oclusao = { estado: 'nao-se-aplica', motivo: 'x' })],
       ['RHN sem motivo', (r) => (r.gate.resultado = 'REVISAO_HUMANA_NECESSARIA')],
+      // Codex R1 do PR #240: o CP5a nunca produz estes.
+      ['APTO de story com o piso dispensado', (r) => (r.gate.cobertura['piso-de-interface'] = { estado: 'nao-se-aplica', motivo: 'forjado' })],
+      ['APTO com pageVersion nulo nos dois lados', (r) => ((r.gate.pageVersion = null), (r.identidade.pageVersion = null))],
+      ['feed com o piso medido (comprovada)', (r) => ((r.identidade.formato = 'feed'), (r.identidade.formatoDoCompositor = 'feed'))],
     ]
     for (const [nome, mexer] of casos) {
       const r = valido()
@@ -258,9 +262,19 @@ describe('H7 — lerGateDaArte em três estados, estrito, nunca lança, nunca ex
       const lido = lerGateDaArte({ gateDaArte: r })
       expect(lido.estado, nome).toBe('invalido')
       expect(lido.estado === 'invalido' && lido.motivo, nome).toMatch(/invariante|forma inválida/)
+      // O motivo é texto FIXO: nunca o resultado nem contagens do JSON rejeitado.
+      expect(lido.estado === 'invalido' && lido.motivo, nome).not.toMatch(/APTO com \d|REVISAO_HUMANA_NECESSARIA|\d motivo/)
     }
+    // Controle: RHN de story com motivo e piso dispensado continua inválido (piso × formato vale para todo resultado).
+    const rhn = valido()
+    rhn.gate.resultado = 'REVISAO_HUMANA_NECESSARIA'
+    rhn.gate.motivos = [{ regra: 'colisao', codigo: 'ACHADO_CRITICO', motivo: 'x', camadas: ['a'] }]
+    rhn.gate.cobertura.colisao = { estado: 'reprovada', achados: ['colisao:a'] }
+    rhn.gate.cobertura['piso-de-interface'] = { estado: 'nao-se-aplica', motivo: 'forjado' }
+    expect(lerGateDaArte({ gateDaArte: rhn })).toMatchObject({ estado: 'invalido', motivo: expect.stringMatching(/piso de interface dispensado/) })
     const g = decidirOk().gate
     expect(violacaoDaInvarianteDoGate(g)).toBeNull()
+    expect(violacaoDaInvarianteDoGate({ ...g, pageVersion: null })).toMatch(/pageVersion nulo/)
     expect(violacaoDaInvarianteDoGate({ ...g, achados: [{ regra: 'colisao', camadas: [], id: 'x', severidade: 'problema', certeza: 'medida' }] })).toMatch(/achados/)
   })
 
