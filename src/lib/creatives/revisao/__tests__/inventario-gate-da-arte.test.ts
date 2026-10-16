@@ -25,33 +25,42 @@ function arquivos(dir: string): string[] {
   })
 }
 
-/** import() dinâmico, require e reexportação dos dois módulos, por alias ou caminho relativo, com ou sem `.ts`. */
-const ACESSO_DINAMICO = /(?:import\(|require\(|export\s+(?:\*|\{[^}]*\})\s+from)\s*['"][^'"]*(?:^|\/)(?:gate|gate-registro)(?:\.ts)?['"]/
+/**
+ * import() dinâmico, require e reexportação dos dois módulos, por alias ou caminho relativo, com ou sem `.ts`, com
+ * espaço ou quebra de linha entre `import`/`require` e `(` (Codex R3 do PR #240). Roda sobre o ARQUIVO inteiro, não
+ * linha a linha. Limite dito: caminho montado em variável ou template literal não é detectável por regex.
+ */
+const ACESSO_DINAMICO = /(?:\b(?:import|require)\s*\(|\bexport\s+(?:\*|\{[^}]*\})\s+from)\s*['"][^'"]*(?:^|\/)(?:gate|gate-registro)(?:\.ts)?['"]/g
 
 const raiz = process.cwd()
 const fontes = () => arquivos(join(raiz, 'src')).map((c) => relative(raiz, c)).filter((c) => !/__tests__|\.test\.tsx?$/.test(c))
 
+/** Varre o arquivo INTEIRO (um `import` pode quebrar linha antes do `(`) e devolve arquivo:linha de cada ocorrência. */
 function ocorrencias(regex: RegExp, permitidos: Set<string>): string[] {
   const fora: string[] = []
   for (const c of fontes()) {
     if (permitidos.has(c)) continue
-    readFileSync(join(raiz, c), 'utf8').split('\n').forEach((linha, i) => {
-      if (regex.test(linha)) fora.push(`${c}:${i + 1}: ${linha.trim()}`)
-    })
+    const texto = readFileSync(join(raiz, c), 'utf8')
+    for (const m of texto.matchAll(new RegExp(regex.source, 'g'))) {
+      const linha = texto.slice(0, m.index).split('\n').length
+      fora.push(`${c}:${linha}: ${m[0].replace(/\s+/g, ' ').trim()}`)
+    }
   }
   return fora
 }
+const pega = (regex: RegExp, texto: string) => new RegExp(regex.source).test(texto)
 
 describe('H12 (b) — inventário por regex', () => {
   it('a string `gateDaArte` só nos módulos permitidos', () => {
-    expect(ocorrencias(/gateDaArte/, PERMITIDOS_GATE_DA_ARTE)).toEqual([])
+    expect(ocorrencias(/gateDaArte/g, PERMITIDOS_GATE_DA_ARTE)).toEqual([])
   })
   it('import() dinâmico, require e reexportação de gate / gate-registro: nenhum fora da lista', () => {
     expect(ocorrencias(ACESSO_DINAMICO, PERMITIDOS_DINAMICO)).toEqual([])
   })
 
   it('o detector pega import(), require e export … from, com e sem .ts, por alias e relativo (Codex R2 do PR #240)', () => {
-    const pega = [
+    const pega_ = (l: string) => pega(ACESSO_DINAMICO, l)
+    const casosQuePega = [
       "const g = await import('../revisao/gate')",
       "const g = await import('../revisao/gate.ts')",
       "const g = await import('@/lib/creatives/revisao/gate-registro')",
@@ -61,9 +70,10 @@ describe('H12 (b) — inventário por regex', () => {
       "export * from '../revisao/gate'",
       "export { gateDaMedida as g } from '@/lib/creatives/revisao/gate.ts'",
     ]
-    const naoPega = ["import { x } from './gateway'", "const g = await import('../revisao/gate-fixtures')", "export * from './registro'", "// fala do gate em prosa"]
-    for (const l of pega) expect(ACESSO_DINAMICO.test(l), l).toBe(true)
-    for (const l of naoPega) expect(ACESSO_DINAMICO.test(l), l).toBe(false)
+    const pegaTambem = ["const g = await import ('../gate')", "const g = await import\n  ('../revisao/gate')", "const r = require (\n  './gate-registro'\n)", "export {\n  lerGateDaArte,\n} from '../gate-registro'"]
+    const naoPega = ["import { x } from './gateway'", "const g = await import('../revisao/gate-fixtures')", "export * from './registro'", "// fala do gate em prosa", "const importante = ('gate')"]
+    for (const l of [...casosQuePega, ...pegaTambem]) expect(pega_(l), l).toBe(true)
+    for (const l of naoPega) expect(pega_(l), l).toBe(false)
   })
 })
 
