@@ -941,10 +941,18 @@ nada é persistido (CP5b). O que existe:
   da foto de fundo passa a usar a MESMA lista da logo (`chavesQueALeituraDoArquivoNaoVe`: filtros de pixel, borda,
   `style.shadow`, `effects.*` ligados, opacidade ≠ 1, rotação) — um PNG com sujeito e sombra deslocada publica uma
   segunda silhueta que o assunto não conhece. Regressões: G13b, G13c, G13d, G31; G29 ganhou o canvas canônico do feed.
+  Rodada 11 (esforço máximo): (27) o canvas canônico vale para TODA origem do assunto — `assuntoDaPeca` reaproveita o
+  cache da composição (catálogo, ESTIMADO e "nenhum") por arquivo + formato + `cropPosition`, sem largura/altura — e a
+  guarda subiu para antes do `if (medida.assunto)`; (28) o piso do story (188/224) é em px do canônico: story
+  2160×3840 com texto em y=250 passaria e, exibido em 1080, cai em y=125 — fora do canônico, `piso-de-interface` não
+  comprovada; (29) foto visível que `fotoDeFundo` NÃO reconhece (`element` de tela inteira, `image` < 90%) sem
+  `bg-foto` → `texto-sobre-assunto` não comprovada em vez de "não se aplica" (o assunto dela ninguém mediu).
+  Regressões: G13d (estimado/nenhum/piso no canvas grande) e G13e. Nota: o Codex passou a tratar a ratificação de
+  188 + 1 como dada; ela continua PENDENTE do owner (ninguém a deu nesta sessão).
   Regressões em G9, G12, G21 e no bloco G21f (valores não numéricos, chave no topo, tipo novo, `effects.curved`,
   `textboxConfig` desconhecido, opacidade 0/parcial, `filter` vazio, `visible` 0/"false", efeitos combinados com
   paridade no render real — forma e imagem com máscara + flip + recorte + sombra + desfoque).
-- **Provas** (`gate.test.ts`, 55 testes): G1–G29 e subcasos; G21c (paridade do lado de cima, >100 renders reais) e
+- **Provas** (`gate.test.ts`, 56 testes): G1–G29 e subcasos; G21c (paridade do lado de cima, >100 renders reais) e
   G21e (lado protegido, métrica real do medidor); oclusão EFETIVA comprovada pelo renderer (texto a 90° sob forma sem
   rotação: os pixels do texto somem no render e o gate acusa; controle com a forma abaixo → comprovada); logo limpa
   sobre a expansão do texto por contorno/sombra/desfoque/borda → oclusão, e o controle sem efeitos preserva a exceção.

@@ -430,22 +430,51 @@ describe('G13–G18 — política do assunto', () => {
     expect(comLogo.cobertura['texto-sobre-assunto']).toEqual({ estado: 'comprovada' })
   })
 
-  it('G13d (Codex R10): assunto de CATÁLOGO só vale no canvas canônico do formato (o retângulo gravado é da peça composta) — página redimensionada ou sem formato → não comprovada; estimado no mesmo canvas não é afetado', () => {
+  it('G13d (Codex R10/R11): o assunto só vale no canvas canônico do formato — catálogo, estimado e "nenhum" são cache da composição sem largura/altura; página redimensionada ou sem formato → não comprovada; e o piso do story fora do canônico não está provado', () => {
     const grande = { width: 2160, height: 3840 }
     const camadas = pecaLimpa().camadas.map((l) => (l.id === 'bg-foto' ? { ...l, size: grande } : l))
     for (const politica of POLITICAS) {
       const g = gate({ politicaDoAssunto: politica, medida: { canvas: grande, camadas } })
       expect(g.cobertura['texto-sobre-assunto'].estado).toBe('nao-comprovada')
-      expect(motivosDe(g, 'texto-sobre-assunto')[0]?.motivo).toContain('canvas do formato')
+      expect(motivosDe(g, 'texto-sobre-assunto')[0]?.motivo).toContain('fora do canônico')
       expect(motivosDe(g, 'texto-sobre-assunto')[0]?.camadas).toEqual(['bg-foto'])
+      // O piso do story em px do canônico também não está provado no canvas grande.
+      expect(g.cobertura['piso-de-interface'].estado).toBe('nao-comprovada')
+      expect(motivosDe(g, 'piso-de-interface')[0]?.motivo).toContain('fora do canônico')
     }
-    expect(motivosDe(gate({ medida: { formato: null } }), 'texto-sobre-assunto')[0]?.motivo).toContain('canvas do formato')
-    // Estimado no canvas grande (a estimativa é feita para o canvas atual): a guarda não dispara.
+    expect(motivosDe(gate({ medida: { formato: null } }), 'texto-sobre-assunto')[0]?.motivo).toContain('fora do canônico')
+    // Codex R11: ESTIMADO e "nenhum" também são reaproveitados do cache da composição (sem largura/altura) → recusam igual.
     const estimado = gate({ politicaDoAssunto: { estimado: 'comprova', semAssuntoLocalizavel: 'nao-se-aplica' }, medida: { canvas: grande, camadas, assunto: { rect: { x: 0, y: 2000, width: 2160, height: 900 }, origem: 'estimado' } } })
-    expect(motivosDe(estimado, 'texto-sobre-assunto').map((m) => m.motivo).join(' ')).not.toContain('canvas do formato')
+    expect(estimado.cobertura['texto-sobre-assunto'].estado).toBe('nao-comprovada')
+    expect(motivosDe(estimado, 'texto-sobre-assunto')[0]?.motivo).toContain('fora do canônico')
+    const nenhum = gate({ medida: { canvas: grande, camadas, assunto: null, assuntoNaoSeAplica: true, motivoSemAssunto: 'a foto não tem assunto localizável (o compositor leu esta foto neste corte e não achou região forte): nada a proteger' } })
+    expect(nenhum.cobertura['texto-sobre-assunto'].estado).toBe('nao-comprovada')
+    // Story 2160×3840 com texto em y=250 (passaria pelos 188 px absolutos; exibido em 1080 cai em y=125): piso não comprovado, nunca APTO.
+    const y250 = pecaLimpa().camadas.map((l) => (l.id === 'bg-foto' ? { ...l, size: grande } : l.id === 'apoio' ? { ...l, position: { x: 100, y: 250 } } : l))
+    const m250 = pecaLimpa().metricas.map((m) => (m.layerId === 'apoio' ? { ...m, box: { ...m.box, y: 250 }, glyphTop: 256, glyphBottom: 304 } : m))
+    const g250 = gate({ medida: { canvas: grande, camadas: y250, metricas: m250 } })
+    expect(g250.resultado).toBe('REVISAO_HUMANA_NECESSARIA')
+    expect(g250.cobertura['piso-de-interface'].estado).toBe('nao-comprovada')
     // Feed canônico (1080×1350) com catálogo segue comprovado.
     const feed = { width: 1080, height: 1350 }
     expect(gate({ medida: { canvas: feed, formato: 'feed', camadas: pecaLimpa().camadas.map((l) => (l.id === 'bg-foto' ? { ...l, size: feed } : l.id === 'servico' ? { ...l, position: { x: 100, y: 1150 } } : l)), metricas: pecaLimpa().metricas.map((m) => (m.layerId === 'servico' ? { ...m, box: { ...m.box, y: 1150 }, glyphTop: 1150, glyphBottom: 1210 } : m)), assunto: { rect: { x: 0, y: 700, width: 1080, height: 400 }, origem: 'catalogo' } } }).cobertura['texto-sobre-assunto']).toEqual({ estado: 'comprovada' })
+  })
+
+  it('G13e (Codex R11): foto visível que `fotoDeFundo` não reconhece (element de tela inteira, image < 90%) sem bg-foto → o assunto não foi medido → não comprovada; sem foto nenhuma → não se aplica', () => {
+    const semFundo = pecaLimpa().camadas.filter((l) => l.id !== 'bg-foto')
+    const semAssunto = { assunto: null, assuntoNaoSeAplica: true as const, motivoSemAssunto: 'a peça não tem foto de fundo: não há assunto a proteger' }
+    const elemento = fundo({ id: 'el-foto', name: 'Foto', type: 'element', order: 1, fileUrl: 'https://blob.test/el.jpg' })
+    const pequena = fundo({ id: 'img-peq', name: 'Detalhe', order: 1, size: { width: 500, height: 500 }, position: { x: 100, y: 300 } })
+    for (const [nome, extra] of [['element tela inteira', elemento], ['image < 90%', pequena]] as const) {
+      for (const politica of POLITICAS) {
+        const g = gate({ politicaDoAssunto: politica, medida: { camadas: [...semFundo, extra], ...semAssunto } })
+        expect(g.cobertura['texto-sobre-assunto'].estado, nome).toBe('nao-comprovada')
+        expect(motivosDe(g, 'texto-sobre-assunto')[0]?.camadas, nome).toEqual([extra.id])
+      }
+    }
+    expect(gate({ medida: { camadas: semFundo, ...semAssunto } }).cobertura['texto-sobre-assunto'].estado).toBe('nao-se-aplica')
+    // A imagem solta que é LOGO (nome com "logo") não é foto.
+    expect(gate({ medida: { camadas: [...semFundo, fundo({ id: 'logo-2', name: 'Logo 2', order: 8, size: { width: 120, height: 60 }, position: { x: 100, y: 1600 } })], ...semAssunto, leituraDaLogo: [leitura('logo', medidaDaLogo()), leitura('logo-2', medidaDaLogo())] } }).cobertura['texto-sobre-assunto'].estado).toBe('nao-se-aplica')
   })
 
   it('G31 (Codex R8/R9): QUALQUER camada visível em movimento — fundo, logo-imagem ou imagem solta sob a logo sem foto de fundo — derruba as 4 regras que leem pixels do quadro parado; invisível não conta', () => {

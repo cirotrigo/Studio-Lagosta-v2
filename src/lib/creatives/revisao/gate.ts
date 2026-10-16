@@ -847,6 +847,9 @@ export function gateDaMedida(entrada: EntradaDoGate): { gate: GateDaArte; relato
 
   // Piso de interface (4.3)
   if (medida.formato !== 'story') cobertura['piso-de-interface'] = { estado: 'nao-se-aplica', motivo: 'piso de interface só no story' }
+  // Codex R11: 188/224 são px do canvas canônico (1080×1920); um story 2160×3840 passa com texto em y=250 que, exibido
+  // em 1080, cai em y=125 — dentro da interface. Fora do canônico, o piso não está provado.
+  else if (medida.canvas.width !== DIMENSOES.story.width || medida.canvas.height !== DIMENSOES.story.height) naoComprovada('piso-de-interface', `canvas ${medida.canvas.width}×${medida.canvas.height} fora do canônico do story (${DIMENSOES.story.width}×${DIMENSOES.story.height}): o piso é em px do canônico`)
   else {
     const piso = pisoDeInterface(camadas, medida.canvas, interfaceDoStory(), medida.metricas)
     for (const n of piso.naoMedidos) naoMedidos.push({ regra: 'piso-de-interface', motivo: n.motivo, camadas: [n.camada] })
@@ -906,17 +909,25 @@ function decidirAssunto(args: {
   const { medida, cob, criticos, estimados, politica, nc, ok, nsa, rep } = args
   const fundo = fotoDeFundo(medida.camadas, medida.canvas)
   // E — sem foto de fundo: não se aplica, sempre.
-  if (!fundo) return nsa('a peça não tem foto de fundo')
+  if (!fundo) {
+    // Codex R11: `fotoDeFundo` só reconhece `bg-foto` ou `image` ≥ 90% do canvas; uma foto em `element`, ou `image`
+    // menor, abaixo dos textos é desenhada pelo mesmo renderImage e tem assunto que ninguém mediu → não comprovada.
+    const logos = new Set(logosDaPeca(medida.camadas).map((l) => l.id))
+    const fotos = medida.camadas.filter((l) => l.visible !== false && (l.type === 'image' || l.type === 'element') && !logos.has(l.id)).map((l) => l.id)
+    if (fotos.length > 0) return nc(`foto visível sem foto de fundo reconhecida (${fotos.join(', ')}): o revisor só mede o assunto de bg-foto ou de imagem ≥ 90% do canvas`, fotos)
+    return nsa('a peça não tem foto de fundo')
+  }
   // C' — camada de foto visível SEM arquivo: nada foi lido (fail-closed, sempre).
   if (typeof fundo.fileUrl !== 'string' || fundo.fileUrl.trim() === '') return nc('foto de fundo sem arquivo: nada foi lido', [fundo.id])
   const naoRepresenta = assuntoRepresentaORender(fundo, medida.canvas, medida.camadas)
   if (naoRepresenta) return nc(naoRepresenta.motivo, naoRepresenta.camadas)
+  // Codex R10/R11: o assunto do revisor (`assuntoDaPeca`) reaproveita o cache da composição — catálogo, ESTIMADO e
+  // "nenhum" — por arquivo + formato + `cropPosition`, sem comparar largura/altura; e a página pode ser redimensionada.
+  // Fora do canvas canônico do formato (`DIMENSOES`), nenhuma dessas saídas vale.
+  const dim = medida.formato ? DIMENSOES[medida.formato] : null
+  if (!dim || medida.canvas.width !== dim.width || medida.canvas.height !== dim.height) return nc(`canvas ${medida.canvas.width}×${medida.canvas.height} fora do canônico do formato ${medida.formato ?? 'desconhecido'}${dim ? ` (${dim.width}×${dim.height})` : ''}: o assunto (gravado, estimado ou "nenhum") pode ser de outro tamanho`, [fundo.id])
   if (medida.assunto) {
     if (medida.assunto.origem === 'catalogo') {
-      // Codex R10: o retângulo gravado é da peça COMPOSTA, no canvas canônico do formato (`DIMENSOES`); `mesmaComposicao`
-      // (revisar-arte.ts) não compara largura/altura, e a página pode ser redimensionada — fora do canônico, o retângulo não vale.
-      const dim = medida.formato ? DIMENSOES[medida.formato] : null
-      if (!dim || medida.canvas.width !== dim.width || medida.canvas.height !== dim.height) return nc(`assunto gravado pelo compositor para o canvas do formato ${medida.formato ?? 'desconhecido'}${dim ? ` (${dim.width}×${dim.height})` : ''}; esta página tem ${medida.canvas.width}×${medida.canvas.height}: o retângulo gravado não vale aqui`, [fundo.id])
       if (criticos.length > 0) return rep(criticos)
       if (cob?.estado !== 'avaliada') return nc(cob?.motivo ?? 'regra sem cobertura')
       return ok()
