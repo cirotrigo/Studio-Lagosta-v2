@@ -6,6 +6,16 @@ crítica (9.6); a tolerância texto × texto reutiliza EXATAMENTE a política ex
 valores (9.7); a política do assunto continua parâmetro OBRIGATÓRIO (9.1 — `estimado: 'humano'`, foto lida sem
 assunto → não se aplica, como proposta nomeada, sem padrão silencioso); versionamento fica para o CP5b (9.3).
 A implementação do CP5a vai em branch/PR próprios (`feat/design-cp5a-gate`); este PR continua documental.
+**Fechamento (16/10/2026, revisão final do owner sobre o PR #237 no HEAD ea30f1a0)** — ratificações que esta
+versão do contrato incorpora: (i) a folga conservadora de antialias de **1 px** somada a todo limite calculado
+(`FOLGA_DE_ANTIALIAS`), preservando os pisos 188/224 — no topo, texto ou logo com `y = 188` REPROVA e `y = 189`
+passa; no rodapé, base em `canvas.height − 224` REPROVA e `− 225` passa (4.3, G26); (ii) para a cobertura atual do
+CP5a vai a **revisão humana**: toda camada visível com `movimento` ou `type: 'video'` (as quatro regras que leem
+pixels do quadro parado ficam não comprovadas — 6.2), foto visível que `fotoDeFundo` não reconhece como fundo (caso
+E passa a não comprovada nesse caso — seção 5), e composição cujo assunto não esteja comprovado por UM fundo
+`cover` no canvas canônico do formato, na posição original, sem recorte/espelho/filtro/sombra/borda/opacidade/
+rotação (seção 5); (iii) a política do assunto continua parâmetro OBRIGATÓRIO de `gateDaMedida`, sem padrão
+silencioso — o owner NÃO fixou a política no CP5a; quem chamar (CP5c) passa a que ele decidir (9.1).
 Base: `main` `01f3c3be` (merge do CP4.2, PR #235).
 Revisão do OWNER sobre o HEAD c3304811 (texto protegido girado ACEITO; resta a exceção logo × texto) aplicada no
 HEAD seguinte: a exceção exige ausência de folhas expansoras efetivas também em `t` — `logo-sobre-texto` usa
@@ -266,7 +276,8 @@ uma regra crítica que apareça `nao-avaliada` com `naoSeAplica` fora desse mapa
 `PISO_DE_INTERFACE_DO_STORY = { topo: 188, rodape: 224 }` e `interfaceDoStory(doCliente?)` (mais restritivo,
 nunca menos). O gate aplica só com `formato === 'story'`: texto visível ou logo solta cujos **limites
 conservadores `limitesDe(l)` (seção 6: a caixa envolvente da geometria girada em torno da origem, como o render)**
-(para texto, `limitesDoTexto(t, metrica)` — 6.3) têm `topo < interface.topo` ou `base > canvas.height − rodape` → motivo `piso-de-interface` / `ACHADO_CRITICO`
+(para texto, `limitesDoTexto(t, metrica)` — 6.3; todo limite calculado leva `FOLGA_DE_ANTIALIAS = 1` px, ratificada
+pelo owner em 16/10: o render suaviza 1 px além da geometria) têm `topo < interface.topo` ou `base > canvas.height − rodape` → motivo `piso-de-interface` / `ACHADO_CRITICO`
 com as camadas e `cobertura['piso-de-interface'] = reprovada`; satisfeito → `comprovada`; fora do story →
 `nao-se-aplica`. É condição de APTO (invariante 1). Camada girada cuja caixa original está na faixa livre mas
 cujos limites girados invadem topo ou rodapé REPROVA (Codex R4); camada com transformação não suportada deixa o
@@ -331,7 +342,14 @@ export const POLITICA_DO_ASSUNTO_RECOMENDADA: PoliticaDoAssunto = { estimado: 'h
 | C. foto LIDA, sem assunto | `assunto === null`, `assuntoNaoSeAplica === true` e `fotoDeFundo(medida.camadas, canvas)` existe **com `fileUrl` não vazio** | `semAssuntoLocalizavel: 'nao-se-aplica'` (recomendado): **não se aplica** (não bloqueia; aviso "foto sem assunto localizável"). `'humano'`: não comprovada | ganho de autonomia em fundos lisos; risco: assunto real de baixo contraste |
 | C'. foto de fundo SEM arquivo | `fotoDeFundo` devolve uma camada visível sem `fileUrl` (ela não exige arquivo, `regras.ts:436-441`) e `assuntoDaPeca` marca `naoSeAplica` com o motivo "não tem foto de fundo" (`revisar-arte.ts:255-256`) | **não comprovada** (fail-closed): nada foi lido; motivo "foto de fundo sem arquivo" | Codex R1: pela tabela anterior caía em C. O gate decide pelo `fileUrl` da camada, não pelo texto do motivo; o motivo do código continua enganoso e NÃO é alterado no CP5a (fica anotado para o CP5b) |
 | D. falha ao analisar | `assunto === null`, `motivoSemAssunto` presente, SEM `assuntoNaoSeAplica` | **não comprovada** (fail-closed), motivo = `motivoSemAssunto` | nunca configurável |
-| E. sem foto de fundo | `fotoDeFundo(camadas, canvas) === null` (a cobertura vem `naoSeAplica` com "a peça não tem foto de fundo") | **não se aplica** | sempre, independe da política |
+| E. sem foto de fundo | `fotoDeFundo(camadas, canvas) === null` (a cobertura vem `naoSeAplica` com "a peça não tem foto de fundo") | **não se aplica** SÓ quando não há `image`/`element` visível que não seja logo solta | **não comprovada** (ratificado 16/10) quando há foto visível que `fotoDeFundo` não reconhece (`element` de tela inteira, `image` < 90 % do canvas): o assunto dela ninguém mediu; independe da política |
+
+Prova do assunto (ratificado 16/10, rodadas 5–12 da revisão final): o assunto do revisor é lido como UM `cover` do
+canvas canônico do formato (`DIMENSOES`) e reaproveitado do cache da composição por arquivo + formato +
+`cropPosition`, sem largura/altura. Só comprova com fundo `objectFit: 'cover'`, caixa `(0, 0, canvas)`, canvas
+canônico, `cropPosition` ausente ou entre os nove valores `(left|center|right)-(top|middle|bottom)`, sem
+`crop`/espelho/máscara/filtro de pixel/sombra/borda/opacidade ≠ 1/rotação/movimento, e sem segunda foto visível
+(`image`/`element` que não é logo solta). Fora disso, `texto-sobre-assunto` é não comprovada com as quatro políticas.
 
 O gate NÃO recalcula sobreposição: confia no achado do revisor (que já aplica os tetos) e na origem da
 medida. Testes fixam que o caso C exige foto de fundo COM arquivo — `naoSeAplica` sem camada de foto é E, com
@@ -389,7 +407,10 @@ retira, `:1664-1668`) não mudam a caixa: contidos.
 - `shape` **`line` / `arrow`**: traço com ponteiro `max(10, 3 × lineWidth)` (`:1870-1908`); `shapeType` desconhecido;
 - **`video`**: o render de imagem NÃO o desenha (cai no `default`, `render-engine.ts:151-156`; o story-renderer barra
   antes) — a medida do gate é sobre o render de imagem, e `ajustarArte` já recusa página com vídeo
-  (`PAGINA_COM_VIDEO`); acima de texto é `contido: false`;
+  (`PAGINA_COM_VIDEO`); acima de texto é `contido: false`; **ratificado 16/10**: `video` VISÍVEL em QUALQUER
+  ordem, e qualquer camada visível com `movimento`, deixam não comprovadas as quatro regras que leem pixels do
+  quadro parado (`texto-sem-leitura`, `tratamento-piorou-leitura`, `logo-sem-leitura`, `texto-sobre-assunto`) — a
+  página com áudio/vídeo publica outro quadro;
 - `text` simples SEM métrica (em `textosSemMetrica`, ou `motivoSemMedida` presente): pode desenhar além da caixa e o
   gate não sabe quanto — `contido: false` sempre, com ou sem `autoExpand` (Codex R9);
 - qualquer camada com **`style.filter`** não vazio: vai para `ctx.filter` (`:1530-1532`), um `blur(20px)` pinta
@@ -560,7 +581,7 @@ real para o relatório — o gate é testado sobre o relatório que o revisor de
 | G23b | chaves declaradas × classificadas: o teste lê `src/types/template.ts`, extrai com chaves balanceadas todo `(\w+)\??:` dos corpos de `Layer`, `LayerStyle`, `TextboxConfig`, `BorderStyle`, `ShadowStyle` e dos objetos inline aninhados (inclusive os declarados na mesma linha, como `effects.blur`), monta os caminhos e exige que cada um exista na árvore `CHAVES_CLASSIFICADAS` (inerte / suportada / expansora / não suportada); `filter` tem de estar `nao-suportada`; e, nos dados, camada acima de texto com caminho fora da árvore → `NAO_MEDIDO` (G21b) | fixa a lista pelo tipo DECLARADO (lido do fonte) e fecha o resto em execução |
 | G24 | o relatório REAL da fixture do piloto (`piloto-2026-10-13`, medida sintética a partir de `composicaoRegistrada.contraste`, serviço `ok: false`) | `REVISAO_HUMANA_NECESSARIA` com `texto-sem-leitura:servico` — o mesmo contrato alvo que `piloto-portao` descreve, sem tocar nos `hojeViola` |
 | G25 | `copyVersionDe`: `null` → `'sem-contrato'`; mesma copy com chaves em outra ordem → mesmo hash; copy diferente → hash diferente | puro |
-| G26 | `foraDaInterface` de produção, casos independentes: texto com `y = 187` reprova e `y = 188` passa; logo com base em `canvas.height − 223` reprova e `− 224` passa; cliente MENOS restritivo (`topo: 100`) não afrouxa (continua 188); cliente MAIS restritivo (`topo: 300`) aperta; camada oculta não conta. O oráculo dos testes passa a importar a de produção e os testes do CP0 seguem verdes | conforme |
+| G26 | `foraDaInterface` de produção, casos independentes, com a folga de antialias de 1 px (ratificada 16/10): no TOPO, texto ou logo com `y = 188` reprova e `y = 189` passa; no RODAPÉ, texto ou logo com base em `canvas.height − 224` reprova e `− 225` passa; cliente MENOS restritivo (`topo: 100`) não afrouxa (continua 188); cliente MAIS restritivo (`topo: 300`) aperta; camada oculta não conta. O oráculo dos testes passa a importar a de produção e os testes do CP0 seguem verdes | conforme |
 | G27 | ISOLADO: as 11 regras críticas comprovadas, oclusão limpa, piso satisfeito, identidade válida, e `copy` AUSENTE (depois: `sem-contrato`) | `REVISAO_HUMANA_NECESSARIA` só por `copy-completa` (`motivos` com um item) |
 | G28 | ISOLADO: as 11 comprovadas, copy `sem-mudanca`, piso ok, e `pageVersion: null` | `REVISAO_HUMANA_NECESSARIA` só por `identidade` |
 | G29 | ISOLADO: as 11 comprovadas, copy ok, identidade ok, story com um texto em `y = 100` | `REVISAO_HUMANA_NECESSARIA` só por `piso-de-interface`; a mesma peça em `feed` → `APTO` |
@@ -607,6 +628,10 @@ copy sem contrato → humano; sem logo solta → aviso; `texto-pequeno` crítica
 tolerância de `colisao`) porque ela é o lado fail-closed ou a única opção sem nova medição — **9.4 e 9.7 já são
 decisões do CP5a**, porque mudam o gate; só 9.3 (versionamento) fica para o CP5b. Recomendações mantidas na proposta: estimado → humano; foto lida sem assunto → não se
 aplica; política do assunto explícita, sem padrão silencioso.
+
+**Fechamento 16/10 (owner)**: ratificados a folga de antialias de 1 px (pisos 188/224 preservados), a revisão
+humana para movimento/vídeo, para foto visível sem fundo reconhecido e para assunto não comprovado pelo fundo
+`cover` canônico. 9.1 segue como está: parâmetro obrigatório, sem padrão, sem política fixada pelo owner no CP5a.
 
 ---
 
