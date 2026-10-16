@@ -25,6 +25,9 @@ function arquivos(dir: string): string[] {
   })
 }
 
+/** import() dinâmico, require e reexportação dos dois módulos, por alias ou caminho relativo, com ou sem `.ts`. */
+const ACESSO_DINAMICO = /(?:import\(|require\(|export\s+(?:\*|\{[^}]*\})\s+from)\s*['"][^'"]*(?:^|\/)(?:gate|gate-registro)(?:\.ts)?['"]/
+
 const raiz = process.cwd()
 const fontes = () => arquivos(join(raiz, 'src')).map((c) => relative(raiz, c)).filter((c) => !/__tests__|\.test\.tsx?$/.test(c))
 
@@ -44,10 +47,23 @@ describe('H12 (b) — inventário por regex', () => {
     expect(ocorrencias(/gateDaArte/, PERMITIDOS_GATE_DA_ARTE)).toEqual([])
   })
   it('import() dinâmico, require e reexportação de gate / gate-registro: nenhum fora da lista', () => {
-    const modulos = /(?:\/|^|'|")(?:revisao\/)?(?:gate|gate-registro)(?:\.ts)?['"]/
-    const dinamico = new RegExp(`(?:import\\(|require\\(|export\\s+(?:\\*|\\{[^}]*\\})\\s+from)\\s*['"][^'"]*${modulos.source.slice(0, -5)}['"]`)
-    expect(ocorrencias(dinamico, PERMITIDOS_DINAMICO)).toEqual([])
-    expect(ocorrencias(/export\s+(?:\*|\{[^}]*\})\s+from\s+['"][^'"]*(?:revisao\/gate|gate-registro)(?:\.ts)?['"]/, PERMITIDOS_DINAMICO)).toEqual([])
+    expect(ocorrencias(ACESSO_DINAMICO, PERMITIDOS_DINAMICO)).toEqual([])
+  })
+
+  it('o detector pega import(), require e export … from, com e sem .ts, por alias e relativo (Codex R2 do PR #240)', () => {
+    const pega = [
+      "const g = await import('../revisao/gate')",
+      "const g = await import('../revisao/gate.ts')",
+      "const g = await import('@/lib/creatives/revisao/gate-registro')",
+      "const g = await import(\"./gate\")",
+      "const r = require('../gate-registro')",
+      "export { lerGateDaArte } from './gate-registro'",
+      "export * from '../revisao/gate'",
+      "export { gateDaMedida as g } from '@/lib/creatives/revisao/gate.ts'",
+    ]
+    const naoPega = ["import { x } from './gateway'", "const g = await import('../revisao/gate-fixtures')", "export * from './registro'", "// fala do gate em prosa"]
+    for (const l of pega) expect(ACESSO_DINAMICO.test(l), l).toBe(true)
+    for (const l of naoPega) expect(ACESSO_DINAMICO.test(l), l).toBe(false)
   })
 })
 

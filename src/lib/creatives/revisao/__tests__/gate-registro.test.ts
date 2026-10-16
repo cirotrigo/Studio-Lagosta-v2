@@ -265,17 +265,34 @@ describe('H7 — lerGateDaArte em três estados, estrito, nunca lança, nunca ex
       // O motivo é texto FIXO: nunca o resultado nem contagens do JSON rejeitado.
       expect(lido.estado === 'invalido' && lido.motivo, nome).not.toMatch(/APTO com \d|REVISAO_HUMANA_NECESSARIA|\d motivo/)
     }
+    // Codex R2: RHN com um motivo acrescentado e TODAS as coberturas comprovadas → incoerente → inválido.
+    const contraditorio = valido()
+    contraditorio.gate.resultado = 'REVISAO_HUMANA_NECESSARIA'
+    contraditorio.gate.motivos = [{ regra: 'colisao', codigo: 'ACHADO_CRITICO', motivo: 'x', camadas: ['a'] }]
+    expect(lerGateDaArte({ gateDaArte: contraditorio })).toMatchObject({ estado: 'invalido', motivo: expect.stringMatching(/motivos incoerentes/) })
+    // Cobertura reprovada sem achado, e achado numa crítica comprovada → inválidos.
+    const semAchado = valido()
+    semAchado.gate.resultado = 'REVISAO_HUMANA_NECESSARIA'
+    semAchado.gate.motivos = [{ regra: 'colisao', codigo: 'ACHADO_CRITICO', motivo: 'x', camadas: ['a'] }]
+    semAchado.gate.cobertura.colisao = { estado: 'reprovada', achados: ['colisao:a'] }
+    expect(lerGateDaArte({ gateDaArte: semAchado })).toMatchObject({ estado: 'invalido', motivo: expect.stringMatching(/reprovada sem achado/) })
+    semAchado.gate.achados = [{ regra: 'texto-cortado', camadas: ['a'], id: 'x', severidade: 'problema', certeza: 'medida' }]
+    expect(lerGateDaArte({ gateDaArte: semAchado })).toMatchObject({ estado: 'invalido' })
+    // E o RHN COERENTE (motivo + cobertura reprovada + achado) é ok.
+    semAchado.gate.achados = [{ regra: 'colisao', camadas: ['a'], id: 'colisao:a', severidade: 'problema', certeza: 'medida' }]
+    expect(lerGateDaArte({ gateDaArte: semAchado }).estado).toBe('ok')
     // Controle: RHN de story com motivo e piso dispensado continua inválido (piso × formato vale para todo resultado).
     const rhn = valido()
     rhn.gate.resultado = 'REVISAO_HUMANA_NECESSARIA'
     rhn.gate.motivos = [{ regra: 'colisao', codigo: 'ACHADO_CRITICO', motivo: 'x', camadas: ['a'] }]
     rhn.gate.cobertura.colisao = { estado: 'reprovada', achados: ['colisao:a'] }
+    rhn.gate.achados = [{ regra: 'colisao', camadas: ['a'], id: 'colisao:a', severidade: 'problema', certeza: 'medida' }]
     rhn.gate.cobertura['piso-de-interface'] = { estado: 'nao-se-aplica', motivo: 'forjado' }
     expect(lerGateDaArte({ gateDaArte: rhn })).toMatchObject({ estado: 'invalido', motivo: expect.stringMatching(/piso de interface dispensado/) })
     const g = decidirOk().gate
     expect(violacaoDaInvarianteDoGate(g)).toBeNull()
     expect(violacaoDaInvarianteDoGate({ ...g, pageVersion: null })).toMatch(/pageVersion nulo/)
-    expect(violacaoDaInvarianteDoGate({ ...g, achados: [{ regra: 'colisao', camadas: [], id: 'x', severidade: 'problema', certeza: 'medida' }] })).toMatch(/achados/)
+    expect(violacaoDaInvarianteDoGate({ ...g, achados: [{ regra: 'colisao', camadas: [], id: 'x', severidade: 'problema', certeza: 'medida' }] })).toMatch(/achado/)
   })
 
   it('TODA saída de gateDaMedida sobre o corpus (com as 4 políticas) passa pelo schema e pela invariante — inclusive G19 com naoMedidos piso-de-interface', () => {

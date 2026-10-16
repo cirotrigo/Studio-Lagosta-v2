@@ -239,6 +239,13 @@ export const registroDoGateSchema = z
 export function violacaoDaInvarianteDoGate(gate: GateDaArte): string | null {
   const vazio = gate.motivos.length === 0 && gate.naoMedidos.length === 0
   if ((gate.resultado === 'APTO') !== vazio) return 'resultado incoerente com motivos e não medidos'
+  // Motivos ⇔ coberturas não comprovadas (Codex R2 do PR #240): `gate.ts` só emite motivo quando marca a cobertura da
+  // regra `reprovada`/`nao-comprovada`, e toda cobertura assim tem o seu motivo; crítica reprovada tem achado.
+  const regrasComMotivo = new Set(gate.motivos.map((m) => m.regra))
+  const regrasNaoOk = new Set([...REGRAS_CRITICAS, ...CONFERENCIAS_DO_GATE].filter((r) => gate.cobertura[r]?.estado === 'reprovada' || gate.cobertura[r]?.estado === 'nao-comprovada'))
+  if (regrasComMotivo.size !== regrasNaoOk.size || [...regrasComMotivo].some((r) => !regrasNaoOk.has(r))) return 'motivos incoerentes com a cobertura'
+  for (const r of REGRAS_CRITICAS) if (gate.cobertura[r]?.estado === 'reprovada' && !gate.achados.some((a) => a.regra === r)) return 'crítica reprovada sem achado'
+  if (gate.achados.some((a) => gate.cobertura[a.regra]?.estado !== 'reprovada')) return 'achado numa crítica não reprovada'
   if (gate.resultado !== 'APTO') return null
   if (gate.achados.length > 0) return 'APTO com achados'
   if (gate.pageVersion === null) return 'APTO com camadas ilegíveis (pageVersion nulo)'
