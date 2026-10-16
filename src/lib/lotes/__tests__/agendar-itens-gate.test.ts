@@ -232,7 +232,10 @@ vi.mock('@/lib/db', () => {
       evento('commit')
       return r
     } catch (erro) {
-      for (const [t, id, antes] of [...tx.escritas].reverse()) antes === undefined ? banco[t].delete(id) : banco[t].set(id, antes)
+      for (const [t, id, antes] of [...tx.escritas].reverse()) {
+        if (antes === undefined) banco[t].delete(id)
+        else banco[t].set(id, antes)
+      }
       evento('rollback')
       throw erro
     } finally {
@@ -416,7 +419,7 @@ function peca(id: string, pageId: string, opcoes: { formato?: 'story' | 'feed'; 
   const linha = {
     id, projectId: PROJETO, status: 'COMPLETED', resultUrl: URL_DA_ARTE(id), slideOrder: null, sourcePageId: null, createdAt: ++banco.seq,
     fieldValues: {
-      source: 'compositor', pageId, versaoRenderizada: versaoDaPagina(renderizada, { audio: renderizada.audio ?? null }),
+      source: 'compositor', pageId, versaoRenderizada: versaoDaPagina(renderizada as { width: number; height: number; background?: string | null; layers: unknown }, { audio: renderizada.audio ?? null }),
       composicao: opcoes.composicao ?? { assinatura: { pageId: ASSINATURA } },
       spec: { projectId: PROJETO, formato: opcoes.formato ?? 'story', quando: opcoes.quando ?? QUANDO, tema: 'tema', blocos: [{ papel: 'headline', linhas: ['Texto headline'] }] },
     },
@@ -848,15 +851,15 @@ describe('C15/C15b/C22 — o que a medição lê está travado; o que não entra
     const i1 = cenarioLimpo()
     let insercao: Promise<unknown> | null = null
     medicao.durante = () => {
-      insercao = comTravaPorChave(chaveDasFontes(PROJETO), (tx) => tx.customFont.create({ data: { id: 'f2', projectId: PROJETO, fontFamily: 'Nova', fileUrl: 'https://blob.test/f2.otf' } }))
+      insercao = comTravaPorChave(chaveDasFontes(PROJETO), (tx) => tx.customFont.create({ data: { id: 2, projectId: PROJETO, fontFamily: 'Nova', fileUrl: 'https://blob.test/f2.otf', name: 'Nova', uploadedBy: 'u' } }))
     }
     const r = await agendar([i1])
     await insercao!
     expect(r.itens[0]).toMatchObject({ desfecho: 'criado' })
     const ev = eventos()
     expect(ev.indexOf(`trava:adv:fontes:${PROJETO}`)).toBeLessThan(ev.indexOf('medicao'))
-    expect(ev.indexOf('escrita:customFonts:f2')).toBeGreaterThan(ev.indexOf('commit'))
-    expect(banco.customFonts.has('f2')).toBe(true)
+    expect(ev.indexOf('escrita:customFonts:2')).toBeGreaterThan(ev.indexOf('commit'))
+    expect(banco.customFonts.has('2')).toBe(true)
   })
 
   it('C22: uma Generation NOVA da página inserida durante a transação não entra: a medição lê só a Generation da peça, e o resultado é o mesmo', async () => {
