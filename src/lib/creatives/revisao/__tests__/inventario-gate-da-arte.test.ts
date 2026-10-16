@@ -25,12 +25,15 @@ function arquivos(dir: string): string[] {
   })
 }
 
+/** Espaço SINTÁTICO: espaços, quebras de linha e comentários (`/* … *\/`, `// …`) — Codex R3/R4 do PR #240. */
+const ESP = String.raw`(?:\s|\/\*[\s\S]*?\*\/|\/\/[^\n]*\n)*`
 /**
  * import() dinâmico, require e reexportação dos dois módulos, por alias ou caminho relativo, com ou sem `.ts`, com
- * espaço ou quebra de linha entre `import`/`require` e `(` (Codex R3 do PR #240). Roda sobre o ARQUIVO inteiro, não
- * linha a linha. Limite dito: caminho montado em variável ou template literal não é detectável por regex.
+ * qualquer espaço sintático (inclusive comentários) entre os tokens. Roda sobre o ARQUIVO inteiro, não linha a linha.
+ * Limite dito: caminho montado em variável, template literal ou concatenação não é detectável por regex — a defesa de
+ * fluxo é o contrato (o registro nunca decide) e o teste de fluxo do CP5c.
  */
-const ACESSO_DINAMICO = /(?:\b(?:import|require)\s*\(|\bexport\s+(?:\*|\{[^}]*\})\s+from)\s*['"][^'"]*(?:^|\/)(?:gate|gate-registro)(?:\.ts)?['"]/g
+const ACESSO_DINAMICO = new RegExp(String.raw`(?:\b(?:import|require)${ESP}\(|\bexport${ESP}(?:\*|\{[^}]*\})${ESP}from)${ESP}['"][^'"]*(?:^|\/)(?:gate|gate-registro)(?:\.ts)?['"]`, 'g')
 
 const raiz = process.cwd()
 const fontes = () => arquivos(join(raiz, 'src')).map((c) => relative(raiz, c)).filter((c) => !/__tests__|\.test\.tsx?$/.test(c))
@@ -70,7 +73,18 @@ describe('H12 (b) — inventário por regex', () => {
       "export * from '../revisao/gate'",
       "export { gateDaMedida as g } from '@/lib/creatives/revisao/gate.ts'",
     ]
-    const pegaTambem = ["const g = await import ('../gate')", "const g = await import\n  ('../revisao/gate')", "const r = require (\n  './gate-registro'\n)", "export {\n  lerGateDaArte,\n} from '../gate-registro'"]
+    const pegaTambem = [
+      "const g = await import ('../gate')",
+      "const g = await import\n  ('../revisao/gate')",
+      "const r = require (\n  './gate-registro'\n)",
+      "export {\n  lerGateDaArte,\n} from '../gate-registro'",
+      // Codex R4: comentários nos intervalos sintáticos.
+      "const g = await import(/* auditoria */ '../gate')",
+      "const g = await import( // só leitura\n  '../revisao/gate')",
+      "const g = await import /* x */ ( /* y */ './gate-registro.ts')",
+      "export { lerGateDaArte } /* c */ from /* d */ '../gate-registro'",
+      "export * // tudo\n from '@/lib/creatives/revisao/gate'",
+    ]
     const naoPega = ["import { x } from './gateway'", "const g = await import('../revisao/gate-fixtures')", "export * from './registro'", "// fala do gate em prosa", "const importante = ('gate')"]
     for (const l of [...casosQuePega, ...pegaTambem]) expect(pega_(l), l).toBe(true)
     for (const l of naoPega) expect(pega_(l), l).toBe(false)
