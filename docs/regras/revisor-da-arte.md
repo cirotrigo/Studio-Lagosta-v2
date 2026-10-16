@@ -866,7 +866,20 @@ nada é persistido (CP5b). O que existe:
   texto com mancha ACIMA (por `order`) de outro texto é ocluidora não suportada mesmo sem interseção, porque a
   classificação vem antes do teste de caixa (6.2 do contrato) — dito aqui porque bloqueia peças do compositor em que
   o serviço com mancha fica acima da headline na ordem das camadas.
-- **Provas** (`gate.test.ts`, 45 testes): G1–G29 e subcasos; G21c (paridade do lado de cima, >100 renders reais) e
+- **Revisão final adversarial (owner + Codex, 16/10)** — quatro falsos APTO fechados, todos fail-closed: (1) `order`,
+  `position`, `size` e os valores dos efeitos (traço, sombra, desfoque, borda) têm de ser NÚMEROS finitos — `order: 'z'`,
+  `position.x: 'abc'`, `shadowOffsetX: 'muito'` viravam NaN, a interseção falhava e a camada passava como se estivesse
+  abaixo; agora `order` não numérica é "acima de todo texto" e geometria/efeito não numérico é `contido: false`
+  (`order` ausente/`null` continua 0, como `a.order ?? 0` no render); (2) `contraste: []` com textos visíveis não
+  comprova a leitura — cada texto medido precisa da sua leitura na régua (`textos[].camada`/`camadas`), senão
+  `texto-sem-leitura` e `tratamento-piorou-leitura` ficam não comprovadas (o contrato dizia só `!== null`; a regra
+  é mais estrita); (3) toda logo SOLTA (`logosDaPeca`) precisa de entrada em `leituraDaLogo` — `[]` com logo na peça é
+  não comprovada, e o aviso "sem logo solta" só sai quando não há logo; (4) a métrica só prova o par das exceções quando
+  é ÚNICA por id e descreve a MESMA caixa da camada (métrica duplicada ou de outra caixa → sem métrica → oclusão).
+  Regressões em G9, G12, G21 e no bloco G21f (valores não numéricos, chave no topo, tipo novo, `effects.curved`,
+  `textboxConfig` desconhecido, opacidade 0/parcial, `filter` vazio, `visible` 0/"false", efeitos combinados com
+  paridade no render real — forma e imagem com máscara + flip + recorte + sombra + desfoque).
+- **Provas** (`gate.test.ts`, 50 testes): G1–G29 e subcasos; G21c (paridade do lado de cima, >100 renders reais) e
   G21e (lado protegido, métrica real do medidor); oclusão EFETIVA comprovada pelo renderer (texto a 90° sob forma sem
   rotação: os pixels do texto somem no render e o gate acusa; controle com a forma abaixo → comprovada); logo limpa
   sobre a expansão do texto por contorno/sombra/desfoque/borda → oclusão, e o controle sem efeitos preserva a exceção.

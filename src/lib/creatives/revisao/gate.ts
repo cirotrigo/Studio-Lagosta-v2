@@ -366,6 +366,27 @@ const FORMAS_NA_CAIXA = new Set(['rectangle', 'rounded-rectangle'])
 const FORMAS_CENTRADAS = new Set(['circle', 'triangle', 'star'])
 const FORMAS_AGUDAS = new Set(['triangle', 'star'])
 
+const finito = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+
+/**
+ * A geometria básica tem de ser NÚMERO finito (revisão final do owner: `position.x: 'abc'`, `size.width: NaN` ou
+ * `shadowOffsetX: 'muito'` viravam NaN, a interseção falhava e a camada passava como se estivesse abaixo — falso APTO).
+ */
+function geometriaInvalida(l: Layer): string | null {
+  const p = l.position as { x?: unknown; y?: unknown } | undefined
+  const sz = l.size as { width?: unknown; height?: unknown } | undefined
+  if (!p || !finito(p.x) || !finito(p.y)) return 'position não numérica'
+  if (!sz || !finito(sz.width) || !finito(sz.height) || sz.width < 0 || sz.height < 0) return 'size não numérica ou negativa'
+  return null
+}
+
+/** `order` ausente/`null` é 0 (como o render, `a.order ?? 0`); qualquer outro valor não finito é inválido. */
+function ordemDe(l: Layer): number | 'invalida' {
+  const o = (l as { order?: unknown }).order
+  if (o === undefined || o === null) return 0
+  return finito(o) ? o : 'invalida'
+}
+
 function rotacaoDe(l: Layer): number | 'invalida' {
   const r = (l as { rotation?: unknown }).rotation
   if (r === undefined || r === null) return 0
@@ -392,7 +413,9 @@ function expansaoDe(l: Layer): number {
   let sombra = 0
   if (fx.shadow?.enabled) sombra = Math.abs(Number(fx.shadow.shadowOffsetX ?? 0)) + Math.abs(Number(fx.shadow.shadowOffsetY ?? 0)) + 3 * Number(fx.shadow.shadowBlur ?? 0)
   else if (style.shadow) sombra = Math.abs(Number(style.shadow.offsetX ?? 0)) + Math.abs(Number(style.shadow.offsetY ?? 0)) + 3 * Number(style.shadow.blur ?? 0)
-  return Math.max(0, traco) + Math.max(0, desfoque) + Math.max(0, sombra)
+  const total = Math.max(0, traco) + Math.max(0, desfoque) + Math.max(0, sombra)
+  // Valor não numérico num efeito (ex.: `shadowOffsetX: 'muito'`) → NaN: não é "sem expansão", é expansão desconhecida.
+  return Number.isFinite(total) ? total : Number.POSITIVE_INFINITY
 }
 
 /** Tem alguma folha EXPANSORA com valor efetivo (contorno, sombra, desfoque)? As exceções exigem que não. */
@@ -434,10 +457,14 @@ export function limitesDe(l: Layer, metrica?: TextLayerMetrics): Limites {
   if (l.type === 'video') return { contido: false, motivo: 'video não é desenhado pelo render de imagem' }
   const nao = caminhoNaoSuportado(l, 'acima')
   if (nao) return { contido: false, motivo: `campo não suportado ou desconhecido: ${nao}` }
+  const geo = geometriaInvalida(l)
+  if (geo) return { contido: false, motivo: geo }
   const graus = rotacaoDe(l)
   if (graus === 'invalida') return { contido: false, motivo: 'rotation de tipo inesperado' }
-  const w = Number(l.size?.width ?? 0)
-  const h = Number(l.size?.height ?? 0)
+  const expansao = expansaoDe(l)
+  if (!Number.isFinite(expansao)) return { contido: false, motivo: 'efeito com valor não numérico' }
+  const w = l.size.width
+  const h = l.size.height
   let local: Rect
   if (l.type === 'shape') {
     const forma = String(l.style?.shapeType ?? 'rectangle')
@@ -451,7 +478,7 @@ export function limitesDe(l: Layer, metrica?: TextLayerMetrics): Limites {
   } else {
     return { contido: false, motivo: `tipo de camada ${String(l.type)} sem paridade com o render` }
   }
-  const expandida = expandir(local, expansaoDe(l) + FOLGA_DE_ANTIALIAS)
+  const expandida = expandir(local, expansao + FOLGA_DE_ANTIALIAS)
   return { contido: true, rect: graus === 0 ? { x: l.position.x + expandida.x, y: l.position.y + expandida.y, width: expandida.width, height: expandida.height } : envolventeGirada(l, expandida, graus) }
 }
 
@@ -466,10 +493,15 @@ export function limitesDoTexto(l: Layer, metrica: TextLayerMetrics | undefined, 
   const nao = caminhoNaoSuportado(l, papel)
   if (nao) return { contido: false, motivo: `campo não suportado ou desconhecido: ${nao}` }
   if (!metrica) return { contido: false, motivo: 'texto sem métrica: pode desenhar além da caixa' }
+  const geo = geometriaInvalida(l)
+  if (geo) return { contido: false, motivo: geo }
   const graus = rotacaoDe(l)
   if (graus === 'invalida') return { contido: false, motivo: 'rotation de tipo inesperado' }
-  const w = Number(l.size?.width ?? 0)
-  const h = Number(l.size?.height ?? 0)
+  const expansao = expansaoDe(l)
+  if (!Number.isFinite(expansao)) return { contido: false, motivo: 'efeito com valor não numérico' }
+  if (![metrica.glyphTop, metrica.glyphBottom, metrica.maxLineWidth].every(finito)) return { contido: false, motivo: 'métrica não numérica' }
+  const w = l.size.width
+  const h = l.size.height
   // União da caixa com os glifos, em coordenadas LOCAIS (a métrica é medida no referencial sem rotação).
   const gTop = metrica.glyphTop - l.position.y
   const gBottom = metrica.glyphBottom - l.position.y
@@ -477,7 +509,7 @@ export function limitesDoTexto(l: Layer, metrica: TextLayerMetrics | undefined, 
   const y0 = Math.min(0, gTop)
   const x1 = Math.max(w, metrica.maxLineWidth)
   const y1 = Math.max(h, gBottom)
-  const expandida = expandir({ x: x0, y: y0, width: x1 - x0, height: y1 - y0 }, expansaoDe(l) + FOLGA_DE_ANTIALIAS)
+  const expandida = expandir({ x: x0, y: y0, width: x1 - x0, height: y1 - y0 }, expansao + FOLGA_DE_ANTIALIAS)
   return { contido: true, rect: graus === 0 ? { x: l.position.x + expandida.x, y: l.position.y + expandida.y, width: expandida.width, height: expandida.height } : envolventeGirada(l, expandida, graus) }
 }
 
@@ -501,7 +533,16 @@ export function cenariosNaoMedidos(
   cobertura: RelatorioDaRevisao['cobertura'],
 ): CenarioNaoMedido[] {
   const saida: CenarioNaoMedido[] = []
-  const porId = new Map(medida.metricas.map((m) => [m.layerId, m]))
+  // A métrica só vale para a camada quando é ÚNICA por id e descreve a MESMA caixa (Codex, revisão final: métrica
+  // duplicada ou de outra caixa não prova que a regra examinou este par).
+  const contagem = new Map<string, number>()
+  for (const m of medida.metricas) contagem.set(m.layerId, (contagem.get(m.layerId) ?? 0) + 1)
+  const porId = new Map<string, TextLayerMetrics>()
+  for (const m of medida.metricas) {
+    const l = medida.camadas.find((c) => c.id === m.layerId)
+    const coerente = !!l && contagem.get(m.layerId) === 1 && m.box.x === l.position?.x && m.box.y === l.position?.y && m.box.width === l.size?.width && m.box.height === l.size?.height
+    if (coerente) porId.set(m.layerId, m)
+  }
   const semMetrica = new Set(medida.textosSemMetrica ?? [])
   const comMetrica = (l: Layer) => !medida.motivoSemMedida && porId.has(l.id) && !semMetrica.has(l.id)
   const logosSoltas = new Set(logosDaPeca(medida.camadas).map((l) => l.id))
@@ -511,14 +552,21 @@ export function cenariosNaoMedidos(
 
   for (const t of visiveis.filter(ehTextoVisivel)) {
     const lt = limitesDoTexto(t, porId.get(t.id), 'protegido')
-    const acima = visiveis.filter((c) => c.id !== t.id && Number(c.order ?? 0) >= Number(t.order ?? 0))
+    const ordemT = ordemDe(t)
+    if (ordemT === 'invalida') {
+      // Sem ordem numérica não há como saber o que está acima: tudo o que é visível pode estar (fail-closed).
+      saida.push({ tipo: 'transformacao-nao-suportada', camadas: [t.id, ...visiveis.filter((c) => c.id !== t.id).map((c) => c.id)], motivo: `texto ${t.id}: order não numérica` })
+      continue
+    }
+    // Camada com `order` não numérica: o render não sabe ordená-la — conta como ACIMA de todo texto (fail-closed).
+    const acima = visiveis.filter((c) => c.id !== t.id && (ordemDe(c) === 'invalida' || (ordemDe(c) as number) >= ordemT))
     if (lt.contido === false) {
       saida.push({ tipo: 'transformacao-nao-suportada', camadas: [t.id, ...acima.map((c) => c.id)], motivo: `texto ${t.id}: ${lt.motivo}` })
       continue
     }
     const ocluidoras: string[] = []
     for (const c of acima) {
-      const lc = limitesDe(c, porId.get(c.id))
+      const lc = ordemDe(c) === 'invalida' ? ({ contido: false, motivo: 'order não numérica' } as const) : limitesDe(c, porId.get(c.id))
       if (lc.contido === false) {
         if (!naoSuportadas.has(c.id)) {
           naoSuportadas.add(c.id)
@@ -596,6 +644,15 @@ export function decidirCritica(args: {
   if (regra === 'logo-sem-leitura') {
     const leitura = medida.leituraDaLogo
     if (leitura === null || leitura === undefined) return nc(medida.motivoSemLeituraDaLogo ?? 'a leitura da logo não rodou')
+    // Codex (revisão final): a lista tem de cobrir TODA logo solta da peça — logo sem entrada não foi medida.
+    const soltas = logosDaPeca(medida.camadas).map((l) => l.id)
+    const lidas = new Set(leitura.map((x) => x.camada))
+    const semLeitura = soltas.filter((id) => !lidas.has(id))
+    if (semLeitura.length > 0) {
+      const d = nc(`logo solta sem leitura: ${semLeitura.join(', ')}`, semLeitura)
+      d.naoMedidos = semLeitura.map((id) => ({ regra, motivo: `logo ${id}: sem entrada em leituraDaLogo`, camadas: [id] }))
+      return d
+    }
     const ruins = leitura.filter((x) => x.estado !== 'medida')
     if (ruins.length > 0) {
       const d = nc(`logo não medida: ${ruins.map((x) => `${x.camada} (${x.estado})`).join(', ')}`, ruins.map((x) => x.camada))
@@ -604,7 +661,7 @@ export function decidirCritica(args: {
     }
     if (cob?.estado !== 'avaliada') return nc(cob?.motivo ?? 'regra sem cobertura')
     if (estimados.length > 0) return soEstimado()
-    return ok(leitura.length === 0 ? ['peça sem logo solta: a ausência de logo é decisão de composição, não defeito medido'] : [])
+    return ok(soltas.length === 0 ? ['peça sem logo solta: a ausência de logo é decisão de composição, não defeito medido'] : [])
   }
   // Regras de texto
   if (textosVisiveis.length === 0) return nsa('a peça não tem texto visível')
@@ -612,6 +669,11 @@ export function decidirCritica(args: {
   if (medida.textosSemMetrica && medida.textosSemMetrica.length > 0) return nc(`texto sem métrica: ${medida.textosSemMetrica.join(', ')}`, medida.textosSemMetrica)
   if (regra === 'texto-sem-leitura' || regra === 'tratamento-piorou-leitura') {
     if (medida.contraste === null) return nc('a régua de contraste não mediu')
+    // Codex (revisão final): `contraste: []` com textos visíveis NÃO é régua que mediu — cada texto medido precisa da sua
+    // leitura (`textos[].camada` ou `camadas` do grupo), senão a leitura é não comprovada.
+    const lidos = new Set(medida.contraste.flatMap((m) => [...(m.camadas ?? []), ...(m.textos ?? []).map((t) => t.camada)]))
+    const semLeitura = textosVisiveis.filter((l) => !lidos.has(l.id)).map((l) => l.id)
+    if (semLeitura.length > 0) return nc(`texto sem leitura da régua: ${semLeitura.join(', ')}`, semLeitura)
     if (regra === 'tratamento-piorou-leitura' && medida.pioras === null) return nc('as pioras de tratamento não foram medidas')
   }
   // `naoSeAplica` só é honrada em texto-sobre-assunto (acima): numa crítica fora do mapa é "não medimos".

@@ -629,6 +629,98 @@ describe("G21b/G21b' — rotação, formas centradas e transformações", () => 
 
 // ─── G21d — efeitos que expandem; limites de t pelos glifos ──────────────
 
+describe('G21f — adversarial: valores não numéricos, chaves no topo, tipos novos, opacidade, invisível, efeitos combinados', () => {
+  const tt = (extra: Partial<Layer> = {}): Layer => texto('t', { x: 100, y: 600, width: 600, height: 100 }, 40, extra)
+  const ff = (extra: Partial<Layer> = {}): Layer => forma('f', { x: 100, y: 600, width: 200, height: 60 }, { order: 9, ...extra })
+  const cen = (c: Layer, t: Layer = tt(), metricas: TextLayerMetrics[] = [metrica(t)]) => cenariosNaoMedidos({ camadas: [t, c], canvas: CANVAS, metricas, textosSemMetrica: [], motivoSemMedida: undefined }, { colisao: { estado: 'avaliada' }, 'logo-sobre-texto': { estado: 'avaliada' } })
+  const naoSuportada = (r: ReturnType<typeof cen>, id: string) => r.some((x) => x.tipo === 'transformacao-nao-suportada' && x.camadas.includes(id))
+
+  it('order não numérica (string, NaN, Infinity, string numérica) na ocluidora → NAO_MEDIDO (nunca "abaixo"); ausente/null é 0 como no render; no texto protegido → NAO_MEDIDO com todas as visíveis', () => {
+    for (const order of ['z', NaN, Infinity, '9'] as never[]) expect(naoSuportada(cen(ff({ order })), 'f'), String(order)).toBe(true)
+    expect(cen(ff({ order: undefined as never }))).toEqual([])
+    expect(cen(ff({ order: null as never }))).toEqual([])
+    const r = cen(ff({ order: 1 }), tt({ order: 'a' as never }))
+    expect(r[0]?.tipo).toBe('transformacao-nao-suportada')
+    expect(r[0]?.tipo === 'transformacao-nao-suportada' && r[0].camadas).toEqual(['t', 'f'])
+  })
+
+  it('position/size não numéricas ou negativas na ocluidora ou no texto → contido: false → NAO_MEDIDO (antes viravam NaN e passavam)', () => {
+    const casos: Array<[string, Partial<Layer>]> = [
+      ['position.x string', { position: { x: 'abc' as never, y: 600 } }],
+      ['position.x string numérica', { position: { x: '100' as never, y: 600 } }],
+      ['position.y null', { position: { x: 100, y: null as never } }],
+      ['size.width NaN', { size: { width: NaN, height: 60 } }],
+      ['size.width Infinity', { size: { width: Infinity, height: 60 } }],
+      ['size.height negativa', { size: { width: 200, height: -60 } }],
+      ['size ausente', { size: undefined as never }],
+    ]
+    for (const [nome, extra] of casos) {
+      expect(limitesDe(ff(extra)).contido, `ocluidora ${nome}`).toBe(false)
+      expect(naoSuportada(cen(ff(extra)), 'f'), `ocluidora ${nome}`).toBe(true)
+      expect(limitesDoTexto(tt(extra), metrica(tt())).contido, `texto ${nome}`).toBe(false)
+    }
+    expect(limitesDoTexto(tt(), { ...metrica(tt()), glyphTop: NaN }).contido).toBe(false)
+  })
+
+  it('efeito com valor não numérico (shadowOffsetX, strokeWidth, blurRadius, style.shadow.blur, border.width) → contido: false, mesmo com a caixa longe do texto', () => {
+    const casos: Array<[string, Partial<Layer>]> = [
+      ['shadowOffsetX', { effects: { shadow: { enabled: true, shadowColor: '#000', shadowBlur: 10, shadowOffsetX: 'muito' as never, shadowOffsetY: 90, shadowOpacity: 1 } } }],
+      ['strokeWidth', { style: { shapeType: 'rectangle', strokeWidth: 'grosso' as never } }],
+      ['blurRadius', { effects: { blur: { enabled: true, blurRadius: NaN } } }],
+      ['style.shadow.blur', { style: { shapeType: 'rectangle', shadow: { offsetX: 1, offsetY: 1, blur: 'x' as never, color: '#000' } } }],
+      ['border.width', { style: { shapeType: 'rectangle', border: { width: 'fina' as never, color: '#000', radius: 0 } } }],
+    ]
+    for (const [nome, extra] of casos) {
+      const c = { ...ff({ position: { x: 100, y: 400 } }), ...extra } as Layer
+      expect(limitesDe(c).contido, nome).toBe(false)
+      expect(naoSuportada(cen(c), 'f'), nome).toBe(true)
+    }
+  })
+
+  it('chave desconhecida no TOPO, tipo fora de LayerType, effects.curved e textboxConfig desconhecido → NAO_MEDIDO; opacity 0/parcial e filter vazio continuam oclusão (conservador); visible false não conta, visible 0/"false" conta como visível (como o render)', () => {
+    expect(naoSuportada(cen(ff({ zIndexExtra: 5 } as never)), 'f')).toBe(true)
+    expect(naoSuportada(cen(ff({ type: 'sticker' as never })), 'f')).toBe(true)
+    expect(naoSuportada(cen(tt({ id: 'c', order: 9, effects: { curved: { enabled: true, curvature: 50 } } }), tt(), [metrica(tt()), metrica(tt({ id: 'c' }))]), 'c')).toBe(true)
+    expect(naoSuportada(cen(tt({ id: 'c', order: 9, textboxConfig: { modoNovo: 'x' } as never }), tt(), [metrica(tt()), metrica(tt({ id: 'c' }))]), 'c')).toBe(true)
+    expect(cen(ff({ style: { shapeType: 'rectangle', opacity: 0 } }))).toEqual([{ tipo: 'oclusao', texto: 't', acima: ['f'] }])
+    expect(cen(ff({ style: { shapeType: 'rectangle', opacity: 0.3 } }))).toEqual([{ tipo: 'oclusao', texto: 't', acima: ['f'] }])
+    expect(cen(ff({ style: { shapeType: 'rectangle', filter: '' } }))).toEqual([{ tipo: 'oclusao', texto: 't', acima: ['f'] }])
+    expect(cen(ff({ visible: false }))).toEqual([])
+    expect(cen(ff({ visible: 0 as never }))).toEqual([{ tipo: 'oclusao', texto: 't', acima: ['f'] }])
+    expect(cen(ff({ visible: 'false' as never }))).toEqual([{ tipo: 'oclusao', texto: 't', acima: ['f'] }])
+  })
+
+  it('efeitos COMBINADOS (blur + shadow + border; máscara + flip + crop + sombra + blur na imagem) somam na expansão e a paridade com o render real cobre a combinação', async () => {
+    const { CanvasRenderer } = await import('@/lib/canvas-renderer')
+    const pintada = async (l: Layer) => {
+      const png = await new CanvasRenderer(1300, 1300).renderDesign({ canvas: { width: 1300, height: 1300, backgroundColor: 'transparent' }, layers: [l] } as never, {})
+      const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+      let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1
+      for (let y = 0; y < info.height; y++) for (let x = 0; x < info.width; x++) if (data[(y * info.width + x) * 4 + 3] > 0) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y) }
+      return { x0, y0, x1: x1 + 1, y1: y1 + 1 }
+    }
+    const combinada = forma('q', { x: 500, y: 500, width: 100, height: 100 }, { order: 9, style: { shapeType: 'rectangle', fill: '#ff0000', border: { width: 12, color: '#000000', radius: 0 } }, effects: { blur: { enabled: true, blurRadius: 20 }, shadow: { enabled: true, shadowColor: '#000000', shadowBlur: 10, shadowOffsetX: 30, shadowOffsetY: 30, shadowOpacity: 1 } } })
+    const lim = limitesDe(combinada)
+    expect(lim.contido).toBe(true)
+    if (!lim.contido) return
+    expect(lim.rect.x).toBe(500 - 162 - FOLGA_DE_ANTIALIAS) // 12 + 60 + 30 + 30 + 30
+    const p = await pintada(combinada)
+    expect(p.x1).toBeGreaterThan(0)
+    expect(p.x0 >= lim.rect.x && p.y0 >= lim.rect.y && p.x1 <= lim.rect.x + lim.rect.width && p.y1 <= lim.rect.y + lim.rect.height, JSON.stringify({ p, rect: lim.rect })).toBe(true)
+    const t = texto('t', { x: 345, y: 500, width: 8, height: 100 }, 30)
+    expect(cenariosNaoMedidos({ camadas: [t, combinada], canvas: CANVAS, metricas: [metrica(t)], textosSemMetrica: [], motivoSemMedida: undefined }, { colisao: { estado: 'avaliada' } })).toEqual([{ tipo: 'oclusao', texto: 't', acima: ['q'] }])
+    // Imagem com máscara + flip + crop + sombra + blur: tudo contido/expandido, provado no render.
+    const png = await sharp({ create: { width: 200, height: 200, channels: 4, background: { r: 200, g: 30, b: 30, alpha: 1 } } }).png().toBuffer()
+    const img = { id: 'i', name: 'i', type: 'image', visible: true, locked: false, order: 9, position: { x: 500, y: 500 }, size: { width: 100, height: 100 }, fileUrl: `data:image/png;base64,${png.toString('base64')}`, rotation: 30, style: { objectFit: 'cover', crop: { x: 0.2, y: 0.2, width: 0.6, height: 0.6 }, flipH: true, mask: { shapeId: 'circle', path: 'M50 0 A50 50 0 1 1 50 100 A50 50 0 1 1 50 0 Z' }, border: { width: 12, color: '#000000', radius: 0 } }, effects: { blur: { enabled: true, blurRadius: 20 }, shadow: { enabled: true, shadowColor: '#000000', shadowBlur: 10, shadowOffsetX: 30, shadowOffsetY: 30, shadowOpacity: 1 } } } as Layer
+    const li = limitesDe(img)
+    expect(li.contido).toBe(true)
+    if (!li.contido) return
+    const pi = await pintada(img)
+    expect(pi.x1).toBeGreaterThan(0)
+    expect(pi.x0 >= li.rect.x && pi.y0 >= li.rect.y && pi.x1 <= li.rect.x + li.rect.width && pi.y1 <= li.rect.y + li.rect.height, JSON.stringify({ pi, rect: li.rect })).toBe(true)
+  }, 60_000)
+})
+
 describe('G21d — expansão por efeitos e os limites do texto protegido', () => {
   const cenario = (camadas: Layer[], metricas: TextLayerMetrics[]) => cenariosNaoMedidos({ camadas, canvas: CANVAS, metricas, textosSemMetrica: [], motivoSemMedida: undefined }, { colisao: { estado: 'avaliada' }, 'logo-sobre-texto': { estado: 'avaliada' } })
   const t = (x: number, w = 20) => texto('t', { x, y: 500, width: w, height: 100 }, 30)
