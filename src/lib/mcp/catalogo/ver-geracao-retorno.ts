@@ -14,7 +14,8 @@
 
 import { diferencasDeBlocos, lerCopyAutoral, type ConferenciaDaCopy, type CopyAutoral } from '../../copy-autoral'
 import { VERSAO_DAS_REGRAS } from '../../creatives/revisao/contrato'
-import { POLITICA_DO_ASSUNTO_RECOMENDADA, VERSAO_DO_GATE, type GateDaArte, type PoliticaDoAssunto } from '../../creatives/revisao/gate'
+import { VERSAO_DO_GATE, type GateDaArte, type PoliticaDoAssunto } from '../../creatives/revisao/gate'
+import { POLITICA_DO_ASSUNTO_DO_AGENDAR_LEVA } from '../../lotes/agendamento'
 import { lerGateDaArte, validadeDoGate, type DivergenciaDoGate, type OrigemDoGate } from '../../creatives/revisao/gate-registro'
 import { identidadeDaPagina } from '../../creatives/revisao/versao'
 
@@ -102,7 +103,7 @@ export type BlocoDoGate =
       versaoDoGate: string
       medidoEm: string
       origem: OrigemDoGate
-      /** A política com que o veredito foi calculado (gravada) e a que o leitor comparou (a RECOMENDADA, nomeada — 9.7/9.12). */
+      /** A política com que o veredito foi calculado (gravada) e a que o leitor comparou (a EFETIVA do agendar-leva, `POLITICA_DO_ASSUNTO_DO_AGENDAR_LEVA` — CP5c § 8.1). */
       politica: PoliticaDoAssunto
       politicaComparada: PoliticaDoAssunto
       naoConferido?: readonly string[]
@@ -139,7 +140,7 @@ export function blocoDoGate(args: { fieldValues: Record<string, unknown> | null 
     copyVersion: id.copyVersion,
     rulesVersion: VERSAO_DAS_REGRAS,
     versaoDoGate: VERSAO_DO_GATE,
-    politica: POLITICA_DO_ASSUNTO_RECOMENDADA,
+    politica: POLITICA_DO_ASSUNTO_DO_AGENDAR_LEVA,
   })
   if (validade.estado === 'ilegivel') return { validade: 'ilegivel', motivo: validade.motivo, aviso: AVISO_DO_GATE }
   return {
@@ -150,7 +151,7 @@ export function blocoDoGate(args: { fieldValues: Record<string, unknown> | null 
     medidoEm: registro.medidoEm,
     origem: registro.origem,
     politica: registro.politica,
-    politicaComparada: POLITICA_DO_ASSUNTO_RECOMENDADA,
+    politicaComparada: POLITICA_DO_ASSUNTO_DO_AGENDAR_LEVA,
     ...(validade.estado === 'coincidente' ? { naoConferido: validade.naoConferido } : { divergencias: validade.divergencias }),
     motivos: registro.gate.motivos,
     aviso: AVISO_DO_GATE,

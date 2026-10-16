@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server'
 import { put } from '@vercel/blob'
 import { db } from '@/lib/db'
 import { fetchProjectWithShares, hasProjectReadAccess, hasProjectWriteAccess } from '@/lib/projects/access'
+import { chaveDasFontes, comTravaPorChave } from '@/lib/trava-por-chave'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60 // Maximum execution time in seconds
@@ -73,7 +74,8 @@ export async function POST(
 
     const name = body?.name?.trim() || fontFamily
 
-    const font = await db.customFont.create({
+    // CP5c § 4: a inserção é serializada com a medição do gate pela trava consultiva das fontes do projeto.
+    const font = await comTravaPorChave(chaveDasFontes(projectIdNum), (tx) => tx.customFont.create({
       data: {
         name,
         fontFamily,
@@ -81,7 +83,7 @@ export async function POST(
         projectId: projectIdNum,
         uploadedBy: userId,
       },
-    })
+    }))
 
     return NextResponse.json(font, { status: 201 })
   }
@@ -126,7 +128,8 @@ export async function POST(
     contentType: file.type,
   })
 
-  const font = await db.customFont.create({
+  // CP5c § 4: a inserção é serializada com a medição do gate pela trava consultiva das fontes do projeto.
+  const font = await comTravaPorChave(chaveDasFontes(projectIdNum), (tx) => tx.customFont.create({
     data: {
       name: name || fontFamily,
       fontFamily,
@@ -134,7 +137,7 @@ export async function POST(
       projectId: projectIdNum,
       uploadedBy: userId,
     },
-  })
+  }))
 
   return NextResponse.json(font, { status: 201 })
 }

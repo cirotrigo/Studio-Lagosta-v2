@@ -1455,7 +1455,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
        * cobre os outros vínculos, que não re-renderizam da página.
        */
       if (input.apenasRascunho) {
-        const ligados = await tx.$queryRaw<Array<{ status: string; laterPostId: string | null }>>`SELECT "status"::text AS status, "laterPostId" FROM "SocialPost" WHERE "pageId" = ${page.id} FOR UPDATE`
+        const ligados = await tx.$queryRaw<Array<{ status: string; laterPostId: string | null }>>`SELECT "status"::text AS status, "laterPostId" FROM "SocialPost" WHERE "pageId" = ${page.id} ORDER BY "id" FOR UPDATE`
         if (ligados.some((p) => p.status !== 'DRAFT' || !!p.laterPostId)) {
           throw new CreativeError(
             'POST_APROVADO_INTOCAVEL',

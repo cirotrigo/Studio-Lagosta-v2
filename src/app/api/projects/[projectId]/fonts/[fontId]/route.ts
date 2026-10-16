@@ -6,6 +6,7 @@ import {
   fetchProjectWithShares,
   hasProjectWriteAccess,
 } from '@/lib/projects/access'
+import { chaveDasFontes, comTravaPorChave } from '@/lib/trava-por-chave'
 
 export const runtime = 'nodejs'
 
@@ -49,7 +50,8 @@ export async function DELETE(
     }
   }
 
-  await db.customFont.delete({ where: { id: fontIdNum } })
+  // CP5c § 4: apagar fonte espera a medição do gate que estiver com a trava das fontes do projeto (e vice-versa).
+  await comTravaPorChave(chaveDasFontes(projectIdNum), (tx) => tx.customFont.delete({ where: { id: fontIdNum } }))
 
   return NextResponse.json({ success: true })
 }

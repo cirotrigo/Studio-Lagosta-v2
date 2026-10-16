@@ -1,5 +1,5 @@
 /**
- * CP0 — P11: o portão antes do rascunho no perfil draft-only.
+ * CP0 — P11: o portão antes do rascunho no perfil draft-only. **CP5c (16/10/2026): os 8 `hojeViola` viraram `it()`.**
  *
  * Pelo serviço público do agendar-leva (`agendarItensDoLote`), no perfil
  * autônomo (`apenasRascunho: true`), por dois caminhos:
@@ -8,21 +8,29 @@
  *   `criarPostDoAgendamento`, que aqui é um espião que REGISTRA a criação e
  *   interrompe — prova que o rascunho seria criado, sem depender dos efeitos
  *   depois do commit.
- * A peça é a piloto: a v1 com a medida gravada (serviço ok:false) e a v2, que
- * nenhuma medida viu. O controle positivo é a mesma peça com a medida limpa.
+ * A MEDIÇÃO É A DE VERDADE (`contextoDaMedicao` + `medirCamadasDaPeca` sobre a
+ * fixture: fontes da marca declaradas presentes, régua em memória sobre a foto
+ * reconstruída, logo da fixture), como no `piloto-ciclo.test.ts`: é isso que
+ * faz os achados da v1 serem os do serviço, não um mock.
+ * A peça é a piloto: a v1 (o compositor; o serviço sem leitura) e a v2 (a
+ * página depois do ajuste, com a Generation para trás — a composição gravada
+ * não é cache, § 4.3 do CP5c). O controle positivo é uma peça LIMPA de verdade
+ * (fundo liso, três textos com contraste, sem foto e sem logo): a mesma medição
+ * a aprova.
  *
- * CONTRATO ALVO da V1 (decisão do owner, 13/10/2026): peça estruturalmente
- * não apta NÃO cria rascunho — nem marcado. O item volta com
- * REVISAO_HUMANA_NECESSARIA e as referências para a intervenção (generationId,
- * pageId, editUrl e os achados estruturais). Rascunho ruim entraria na fila
- * de aprovação, contaria como cobertura e poderia ser aprovado por engano.
- * Harness: `lotes/__tests__/agendar-leva-peca-superada.test.ts`.
+ * CONTRATO da V1 (decisão do owner, 13/10/2026): peça estruturalmente não apta
+ * NÃO cria rascunho — nem marcado. O item volta com REVISAO_HUMANA_NECESSARIA
+ * e as referências para a intervenção (generationId, pageId, editUrl e os
+ * achados estruturais).
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const estado = vi.hoisted(() => ({
   db: null as Record<string, any> | null,
   criados: [] as unknown[],
+  /** Os `UPDATE "Generation"` do registro do gate (CP5b): [patch, generationId, projectId, pageId, …]. */
+  gravacoes: [] as unknown[][],
+  foto: null as Buffer | null,
   PARADA: 'parada do teste: o post seria criado aqui',
 }))
 // O `db` do serviço é o banco em memória do cenário (o mesmo leitor da simulação, com transação).
@@ -43,44 +51,113 @@ vi.mock('@/lib/creatives/agendar', () => ({
   },
 }))
 vi.mock('@/lib/creatives/persist', () => ({ getPublicAppUrl: () => 'https://studio.test' }))
+// A foto da peça vem da fixture (data URL nas camadas; o `fetchBuffer` do assunto devolve os bytes reconstruídos).
+vi.mock('@/lib/posts/register-project-fonts', () => ({
+  registerProjectFonts: async () => undefined,
+  fetchBuffer: async (url: string) => {
+    if (url.startsWith('data:image/png;base64,') && estado.foto) return estado.foto
+    throw new Error(`sem arquivo para ${url.slice(0, 40)}`)
+  },
+  familiasNaoCarregadas: async () => new Set<string>(),
+}))
+vi.mock('@/lib/creatives/server-text-measurer', async () => {
+  const { medidor } = await import('./suporte/medidor-do-piloto')
+  return { createServerTextBoxMeasurer: async () => medidor, createServerTextMeasurer: async () => (l: any) => medidor(l)?.height ?? null }
+})
+// As fontes da marca não existem neste ambiente — artefato do teste, não da peça (ver `piloto-ciclo.test.ts`).
+vi.mock('@napi-rs/canvas', async (original) => {
+  const m = await original<typeof import('@napi-rs/canvas')>()
+  const daFixture = ['Branley GC', 'StageGrotesk Thin', 'StageGrotesk Regular'].map((family) => ({ family, styles: [400, 700].map((weight) => ({ weight, width: 'normal', style: 'normal' })) }))
+  const GlobalFonts = new Proxy(m.GlobalFonts, {
+    get(alvo, prop, receptor) {
+      if (prop === 'families') return [...(alvo as any).families, ...daFixture]
+      const v = Reflect.get(alvo, prop, receptor)
+      return typeof v === 'function' ? v.bind(alvo) : v
+    },
+  })
+  return { ...m, GlobalFonts }
+})
 
 import type { Layer } from '@/types/template'
 import { agendarItensDoLote } from '@/lib/lotes/agendar-itens'
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
-import { fixture } from './suporte/fixture'
-import { hojeViola } from './suporte/hoje-viola'
+import { arquivosDaFixture, comArquivos, fixture, fotoReconstruida } from './suporte/fixture'
 import { CODIGOS } from './suporte/propriedades'
 
 /** Endereço falso, nunca buscado: a cobertura só exige que a mídia "pareça" pronta. */
 const PNG_DA_V1 = 'https://blob.test/piloto-v1.png'
 const LOTE = 'dot-piloto-2026-S42'
 const ITEM = '2026-10-14T10:00-story'
+const PAGINA = 'pagina-piloto'
+const NOME = 'Qua 14/10 · 10:00 · story'
 
 type Versao = 'v1' | 'v2' | 'limpa'
+let arquivos: Record<string, string>
 
-/** O banco em memória da peça: a v1 (medida gravada), a v2 (página mudou, sem medida) ou a v1 com a medida LIMPA (controle). */
+/** O contrato da copy da peça piloto, pelos blocos da spec (o que o compositor grava em `Page.copyAutoral`). */
+const copyDaFixture = () => ({
+  versao: 'copy-autoral-v1',
+  origem: { autor: 'claude', superficie: 'chat' },
+  revisoes: [],
+  blocos: fixture.peca().spec.blocos.map((b, i) => ({ id: b.papel, funcao: b.papel, ordem: b.ordem ?? i, linhas: b.linhas })),
+})
+
+/** O controle positivo: fundo liso escuro, três textos claros, sem foto e sem logo — uma peça que a medição REAL aprova. */
+const texto = (id: string, papel: string, y: number, fontSize: number, content: string): Layer =>
+  ({
+    id, name: id, type: 'text', visible: true, locked: false, order: 3, content,
+    position: { x: 100, y }, size: { width: 880, height: Math.round(fontSize * 1.5) },
+    style: { fontSize, lineHeight: 1.2, textAlign: 'left', color: '#FFFFFF' },
+    metadata: { compositor: { papel } },
+  }) as Layer
+const PECA_LIMPA = {
+  layers: [texto('headline', 'headline', 400, 84, 'Texto headline'), texto('apoio', 'apoio', 560, 40, 'Texto apoio'), texto('servico', 'servico', 1500, 32, 'Texto servico')],
+  background: '#000000',
+  copy: {
+    versao: 'copy-autoral-v1',
+    origem: { autor: 'claude', superficie: 'chat' },
+    revisoes: [],
+    blocos: [
+      { id: 'headline', funcao: 'headline', ordem: 0, linhas: ['Texto headline'] },
+      { id: 'apoio', funcao: 'apoio', ordem: 1, linhas: ['Texto apoio'] },
+      { id: 'servico', funcao: 'servico', ordem: 2, linhas: ['Texto servico'] },
+    ],
+  },
+}
+
+/** O banco em memória da peça: a v1 (a arte é desta versão), a v2 (página mudou, Generation para trás) ou a peça limpa (controle). */
 function cenario(versao: Versao) {
   const peca = fixture.peca()
+  const assinatura = fixture.assinatura()
   const projectId = Number(peca.spec.projectId)
-  const layers: Layer[] = versao === 'v2' ? peca.v2.layers : peca.v1.layers
-  const pagina = { width: 1080, height: 1920, background: null, layers, audio: null }
-  const v1 = { width: 1080, height: 1920, background: null, layers: peca.v1.layers, audio: null }
-  const contraste = versao === 'limpa' ? peca.composicaoRegistrada.contraste.map((m) => ({ ...m, ok: true, textos: m.textos?.map((t) => ({ ...t, ok: true })) })) : peca.composicaoRegistrada.contraste
-  // A Generation do item é a do compositor (v1). Na v2 a página mudou e a arte do item ficou para trás.
+  const layers: Layer[] = versao === 'limpa' ? PECA_LIMPA.layers : comArquivos(versao === 'v2' ? peca.v2.layers : peca.v1.layers, arquivos)
+  const background = versao === 'limpa' ? PECA_LIMPA.background : null
+  const pagina = { width: 1080, height: 1920, background, layers, audio: null }
+  // A Generation do item: na v1 e na limpa a arte É desta versão da página; na v2 a página mudou e a arte ficou para trás.
+  const renderizada = versao === 'v2' ? { ...pagina, layers: comArquivos(peca.v1.layers, arquivos) } : pagina
   const generation = {
     id: 'gen-v1',
+    projectId,
     status: 'COMPLETED',
     resultUrl: PNG_DA_V1,
     slideOrder: null,
+    sourcePageId: null,
     fieldValues: {
-      pageId: 'pagina-piloto',
-      versaoRenderizada: versaoDaPagina(v1),
-      composicao: { contraste },
+      source: 'compositor',
+      pageId: PAGINA,
+      versaoRenderizada: versaoDaPagina(renderizada),
+      // A assinatura com que a peça foi composta: é dela que sai a referência de corpo do título (`texto-pequeno:modelo`).
+      composicao: { contraste: peca.composicaoRegistrada.contraste, assinatura: { pageId: assinatura.pagina.id } },
       spec: { formato: 'story', quando: String(peca.spec.quando), tema: String(peca.spec.tema), blocos: peca.spec.blocos },
     },
   }
+  const paginaCompleta = {
+    id: PAGINA, templateId: 42, isTemplate: false, name: NOME, tags: ['compositor', 'story'], thumbnail: PNG_DA_V1,
+    copyAutoral: versao === 'limpa' ? PECA_LIMPA.copy : copyDaFixture(), updatedAt: new Date('2026-10-14T12:00:00Z'), Template: { projectId }, ...pagina,
+  }
   const banco: Record<string, any> = {
-    project: { findUnique: async () => ({ id: projectId }) },
+    project: { findUnique: async () => ({ id: projectId, assinatura: fixture.assinatura().numerosDoProjeto }) },
+    customFont: { findMany: async () => [] },
     itemDeLote: {
       findUnique: async () => ({ id: 'item-1', generationId: 'gen-v1', postId: null, hashDoAgendamento: null, efeitosDoAgendamentoEm: null }),
       findMany: async () => [],
@@ -89,19 +166,30 @@ function cenario(versao: Versao) {
     generation: { findFirst: async () => generation },
     generationJob: { findUnique: async () => null },
     page: {
-      findUnique: async () => ({ id: 'pagina-piloto', templateId: 42, isTemplate: false, tags: ['compositor', 'story'], thumbnail: PNG_DA_V1, Template: { projectId }, ...pagina }),
+      findUnique: async ({ where }: { where: { id: string } }) =>
+        where.id === assinatura.pagina.id ? { ...assinatura.pagina, layers: comArquivos(assinatura.pagina.layers, arquivos) } : paginaCompleta,
     },
     socialPost: { findMany: async () => [], findUnique: async () => null },
     itemDePlano: { findFirst: async () => null },
     $queryRaw: async () => [],
+    $executeRaw: async (_partes: TemplateStringsArray, ...valores: unknown[]) => {
+      estado.gravacoes.push(valores)
+      return 1
+    },
   }
   banco.$transaction = async (fn: (tx: unknown) => unknown) => fn(banco)
   return { projectId, banco }
 }
 
+beforeAll(async () => {
+  arquivos = await arquivosDaFixture()
+  estado.foto = await fotoReconstruida()
+}, 60_000)
+
 beforeEach(() => {
   estado.db = {}
   estado.criados = []
+  estado.gravacoes = []
 })
 
 async function simular(versao: Versao) {
@@ -142,8 +230,8 @@ function referenciasQueFaltam(item: Record<string, unknown> | null, versao: Vers
   const faltas: string[] = []
   if (item.codigo !== CODIGOS.revisaoHumana) faltas.push(`codigo ${String(item.codigo)} ≠ ${CODIGOS.revisaoHumana}`)
   if (item.generationId !== 'gen-v1') faltas.push(`generationId ${String(item.generationId)}`)
-  if (item.pageId !== 'pagina-piloto') faltas.push(`pageId ${String(item.pageId)}`)
-  if (typeof item.editUrl !== 'string' || !item.editUrl.includes('pageId=pagina-piloto')) faltas.push(`editUrl ${String(item.editUrl)}`)
+  if (item.pageId !== PAGINA) faltas.push(`pageId ${String(item.pageId)}`)
+  if (typeof item.editUrl !== 'string' || !item.editUrl.includes(`pageId=${PAGINA}`)) faltas.push(`editUrl ${String(item.editUrl)}`)
   // Achado estrutural no formato do revisor (`AchadoDaRevisao`): a regra e as camadas envolvidas.
   const achados = (Array.isArray(item.achados) ? item.achados : []) as Array<{ regra?: unknown; camadas?: unknown }>
   const bemFormados = achados.filter((a) => typeof a?.regra === 'string' && Array.isArray(a?.camadas))
@@ -152,60 +240,51 @@ function referenciasQueFaltam(item: Record<string, unknown> | null, versao: Vers
   return faltas
 }
 
-describe('caracterização: o agendar-leva hoje, no perfil draft-only', () => {
-  it('simulação: a v1 — com o serviço medido sem leitura (ok:false) — vira rascunho RENDERED', async () => {
-    expect(fixture.peca().composicaoRegistrada.contraste.some((m) => !m.ok)).toBe(true)
-    expect(await simular('v1')).toMatchObject({ situacao: 'concluido', desfecho: 'criado', renderStatus: 'RENDERED', estadoDoPost: 'rascunho' })
-  })
-
-  it('simulação: a v2 — que nenhuma medida viu depois do ajuste — também vira rascunho (o render sai da página)', async () => {
-    expect(await simular('v2')).toMatchObject({ situacao: 'concluido', desfecho: 'criado', estadoDoPost: 'rascunho' })
-  })
-
-  it('escrita de verdade: a transação chega a criar o post da v1 e da v2', async () => {
-    expect((await escrever('v1')).criados).toHaveLength(1)
-    estado.criados = []
-    expect((await escrever('v2')).criados).toHaveLength(1)
-  })
-})
-
-describe('controle positivo: a peça com a medida limpa continua apta', () => {
-  // Quando o portão existir (CP5), este controle passa a montar o veredito favorável da versão atual.
-  it('simulação: vira rascunho sem bandeira de revisão humana', async () => {
+describe('controle positivo: a peça limpa continua apta (medição real)', () => {
+  it('simulação: vira rascunho sem bandeira de revisão humana, com a revisao medida APTO e nada gravado', async () => {
     const item = await simular('limpa')
-    expect(item).toMatchObject({ situacao: 'concluido', desfecho: 'criado', estadoDoPost: 'rascunho' })
+    expect(item, JSON.stringify(item)).toMatchObject({ situacao: 'concluido', desfecho: 'criado', estadoDoPost: 'rascunho', revisao: { tipo: 'medida', resultado: 'APTO' }, achados: [], motivos: [] })
     expect(sinalizada(item)).toBe(false)
-  })
+    expect(estado.gravacoes).toEqual([])
+  }, 60_000)
 
-  it('escrita de verdade: o post é criado', async () => {
+  it('escrita de verdade: o registro APTO é gravado na Generation ANTES do post, e o post é criado', async () => {
     expect((await escrever('limpa')).criados).toHaveLength(1)
-  })
+    expect(estado.gravacoes).toHaveLength(1)
+    const [patch, generationId, projectId, pageId] = estado.gravacoes[0]
+    expect([generationId, projectId, pageId]).toEqual(['gen-v1', Number(fixture.peca().spec.projectId), PAGINA])
+    expect(JSON.parse(patch as string).gateDaArte).toMatchObject({ gate: { resultado: 'APTO' }, origem: 'agendar-leva', identidade: { generationId: 'gen-v1', pageId: PAGINA } })
+  }, 60_000)
 })
 
-// "Não criar" e "devolver as referências" são propriedades separadas: cada uma vira it() no checkpoint que a cumprir.
-describe('P11 — portão (contrato alvo: peça não apta não cria rascunho)', () => {
+describe('P11 — portão: peça não apta não cria rascunho (CP5c)', () => {
   for (const versao of ['v1', 'v2'] as const) {
-    const qual = versao === 'v1' ? 'a v1, com violação estrutural medida,' : 'a v2, sem veredito para a versão atual da página,'
+    const qual = versao === 'v1' ? 'a v1, com violação estrutural medida,' : 'a v2, com a página mudada e a Generation para trás (medida de novo, sem o cache da composição),'
 
-    hojeViola(`simulação: ${qual} não seria criada como rascunho`, async () => {
+    it(`simulação: ${qual} não é criada como rascunho`, async () => {
       const item = await simular(versao)
       expect(naoCriada(item), JSON.stringify(item)).toBe(true)
-    })
+      expect(estado.gravacoes, 'a simulação não grava nem o registro').toEqual([])
+    }, 60_000)
 
-    hojeViola(`simulação: ${qual} volta com REVISAO_HUMANA_NECESSARIA e as referências da peça`, async () => {
-      const faltas = referenciasQueFaltam(await simular(versao), versao)
-      expect(faltas, JSON.stringify(faltas)).toEqual([])
-    })
+    it(`simulação: ${qual} volta com REVISAO_HUMANA_NECESSARIA e as referências da peça`, async () => {
+      const item = await simular(versao)
+      const faltas = referenciasQueFaltam(item, versao)
+      expect(faltas, JSON.stringify({ faltas, item })).toEqual([])
+      expect(item.revisao).toMatchObject({ tipo: 'medida', resultado: CODIGOS.revisaoHumana })
+    }, 60_000)
 
-    hojeViola(`escrita de verdade: ${qual} não cria post nenhum`, async () => {
+    it(`escrita de verdade: ${qual} não cria post nenhum — e o veredito reprovado fica registrado`, async () => {
       const { criados } = await escrever(versao)
       expect(criados.length, `${criados.length} post(s) criado(s)`).toBe(0)
-    })
+      expect(estado.gravacoes).toHaveLength(1)
+      expect(JSON.parse(estado.gravacoes[0][0] as string).gateDaArte.gate.resultado).toBe(CODIGOS.revisaoHumana)
+    }, 60_000)
 
-    hojeViola(`escrita de verdade: ${qual} volta com REVISAO_HUMANA_NECESSARIA e as referências da peça`, async () => {
+    it(`escrita de verdade: ${qual} volta com REVISAO_HUMANA_NECESSARIA e as referências da peça`, async () => {
       const { item } = await escrever(versao)
       const faltas = referenciasQueFaltam(item, versao)
-      expect(faltas, JSON.stringify(faltas)).toEqual([])
-    })
+      expect(faltas, JSON.stringify({ faltas, item })).toEqual([])
+    }, 60_000)
   }
 })
