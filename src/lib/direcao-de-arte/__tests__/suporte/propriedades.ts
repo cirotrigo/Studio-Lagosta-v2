@@ -32,18 +32,8 @@ import { TETO_DE_COBERTURA_DO_ASSUNTO } from '@/lib/compositor/mapa-de-calma'
  *   frente e deve ser reconciliada/migrada — nunca vencer em silêncio;
  * - os 250/350 do DNA textual também ficam fora do gate.
  */
-export const PISO_DE_INTERFACE_DO_STORY = { topo: 188, rodape: 224 } as const
+export { PISO_DE_INTERFACE_DO_STORY, interfaceDoStory, foraDaInterface } from '@/lib/creatives/revisao/gate'
 
-/**
- * Uma configuração estruturada de INTERFACE do cliente (futura) pode ser MAIS
- * restritiva, nunca menos. A geometria de composição do projeto não entra aqui.
- */
-export function interfaceDoStory(doCliente?: { topo?: number; rodape?: number }) {
-  return {
-    topo: Math.max(PISO_DE_INTERFACE_DO_STORY.topo, doCliente?.topo ?? 0),
-    rodape: Math.max(PISO_DE_INTERFACE_DO_STORY.rodape, doCliente?.rodape ?? 0),
-  }
-}
 
 /**
  * Contraste mínimo logo × fundo (0–255): o `CONTRASTE_MINIMO` de
@@ -345,13 +335,7 @@ export function textosQueInvadem(layers: Layer[], regiaoProtegida: Rect) {
     .filter((c) => c.cobertura > TETO_DE_COBERTURA_DO_ASSUNTO)
 }
 
-/** P6 — texto e logo dentro da faixa livre da interface (topo e rodapé). */
-export function foraDaInterface(layers: Layer[], canvas: Canvas, interface_: { topo: number; rodape: number }) {
-  return layers
-    .filter((l) => (ehTexto(l) || l.type === 'logo') && l.visible !== false)
-    .filter((l) => l.position.y < interface_.topo || l.position.y + l.size.height > canvas.height - interface_.rodape)
-    .map((l) => ({ camada: l.id, topo: l.position.y, base: l.position.y + l.size.height }))
-}
+// P6 (`foraDaInterface`) agora vem de produção (`revisao/gate.ts`, CP5a): um só lugar com 188/224.
 
 /**
  * P7 — ordem de leitura: o bloco que a copy manda ler antes fica ACIMA (o topo

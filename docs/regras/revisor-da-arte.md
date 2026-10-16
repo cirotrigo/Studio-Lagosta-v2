@@ -813,3 +813,149 @@ está implementado:
   inválido sem `put`; formato antes da foto; caminho válido com a mesma escolha de layout, `put` único e URL final no
   halo; URL direta), `foto-do-drive-no-projeto.test.ts` (ler × persistir, autorização),
   `criar-arte-de-modelo-copy-crua.test.ts` (V17, porta preserva o erro).
+
+### CP5a — o veredito puro (`gate.ts`), 16/10/2026
+
+Contrato aprovado pelo owner: `docs/PLANO-2026-10-15-CP5A-CONTRATO.md` (PR #236, HEAD 08a44af5). Nada de produção chama o
+gate: `agendar-leva` continua criando DRAFT sem veredito (CP5c), `ajustar-arte` continua só com a não-piora (CP5d),
+nada é persistido (CP5b). O que existe:
+
+- **`src/lib/creatives/revisao/gate.ts`** (puro, sem banco nem render): `gateDaMedida({ medida, identidade, copy?,
+  politicaDoAssunto })` → `{ gate: GateDaArte, relatorio }`. A medida (`MedidaDaPeca`, o que `medirCamadasDaPeca` devolve)
+  é a FONTE ÚNICA — camadas, canvas e formato saem dela, e o relatório é calculado dentro por `avaliarPeca`. Saída
+  `APTO | REVISAO_HUMANA_NECESSARIA` com `cobertura` por regra crítica E por conferência (`copy-completa`,
+  `piso-de-interface`, `oclusao`, `identidade`), `motivos` em ordem determinística, `achados` (com `certeza`),
+  `naoMedidos` e `avisos`. **APTO ⇔ zero motivos**: as 11 críticas (`REGRAS_CRITICAS`, conjunto fechado por teste
+  contra `REGRAS_DA_REVISAO`) comprovadas ou inaplicáveis, copy `sem-mudanca` sem lacunas, `pageVersion` legível,
+  piso de interface satisfeito (só story) e nenhum cenário de oclusão.
+- **Decisões adotadas pelo owner (16/10)**: oclusão (B) conservadora; copy sem contrato exige humano; ausência de
+  logo solta gera aviso (comprovada); `texto-pequeno` é crítica; a tolerância texto × texto reutiliza EXATAMENTE a
+  de `colisao` (`toleranciaDeColisao`, extraída de `text-geometry.ts` sem mudar o número; `colisao` passa a chamá-la);
+  a política do assunto é parâmetro OBRIGATÓRIO (`POLITICA_DO_ASSUNTO_RECOMENDADA` = `estimado: 'humano'`, foto lida
+  sem assunto → `nao-se-aplica`, é proposta nomeada, sem padrão silencioso); versionamento fica no CP5b (o gate copia
+  `relatorio.versaoDasRegras`).
+- **Assunto da foto** (casos A–E + C'): catálogo comprova/reprova; estimado → humano (ou, com `'comprova'`, o achado
+  ESTIMADO reprova — a única exceção ao predicado `certeza === 'medida'`, declarada); foto LIDA sem assunto com
+  arquivo → não se aplica + aviso; camada de foto SEM `fileUrl` → não comprovada; falha ao analisar → não comprovada
+  sempre; sem foto → não se aplica sempre.
+- **Oclusão por detecção do cenário** (`cenariosNaoMedidos(medida, cobertura)`): toda camada visível com `order >=`
+  ao de um texto visível cujos limites intersectam os dele. **Só mede pela caixa o que a paridade com o render REAL
+  prova contido** (`gate.test.ts` G21c/G21e, GERADA de `CHAVES_CLASSIFICADAS`: toda folha aceita tem `valorDeProva`):
+  retângulos, formas centradas (`circle`/`triangle`/`star` em torno de `position`, como o Konva), imagem/logo/elemento,
+  gradientes e texto simples COM métrica; expansões por traço (`strokeWidth`/`border.width`; no texto `effects.stroke`
+  com fallback `style.border`), desfoque (`folgaDoBlur`), sombra (`effects.shadow` ou `style.shadow`); rotação pelos
+  quatro cantos em torno da ORIGEM `position` (o pivô do render, `render-engine.ts:199-205`) — nos dois lados do par
+  (`limitesDe` para a camada de cima, `limitesDoTexto` para o texto protegido: caixa ∪ glifos da métrica, que é medida
+  sem rotação). Tudo o mais acima de um texto é `transformacao-nao-suportada` → `NAO_MEDIDO`: `svg-path`, `icon`,
+  `line`/`arrow`, `video`, `style.filter`, `rich-text`, texto com `effects.background` ou `effects.curved`, texto sem
+  métrica, chave fora da árvore (fail-closed em execução; G23b lê as chaves declaradas em `template.ts` com chaves
+  balanceadas e exige classificação). Duas exceções com prova positiva: texto × texto (ambos simples, sem rotação,
+  com métrica, sem folha expansora, `colisao` avaliada, interseção de glifos DENTRO da tolerância de `colisao` —
+  política 9.7, não medição) e logo solta × texto (ambos sem rotação, sem filtro, sem folha expansora, texto com
+  métrica, `logo-sobre-texto` avaliada — a regra usa `tintaDoTexto` sem contorno/sombra/desfoque, por isso o texto
+  com efeito perde a exceção). A mancha de `effects.background` do texto PROTEGIDO fica fora dos limites (é mancha,
+  não glifo; a leitura já é medida pela régua com todas as camadas).
+- **Desvios do contrato, ditos** (ver também o relatório): (1) `FOLGA_DE_ANTIALIAS = 1` px somada a todo limite — o
+  render suaviza bordas 1 px além da geometria; sem a folga a paridade falha por 1 px (o contrato não a previa). (2)
+  Triângulo e estrela com traço: a junção em MITRA estende o traço até `miterLimit × lineWidth / 2` além do vértice
+  (padrão do canvas 10) — a expansão usa `5 × strokeWidth` para essas formas (G21c pegou a estrela: a ponta saía
+  19 px com traço 12; o contrato dizia `+ strokeWidth`). (3) `effects.curved` (texto curvo) classificado como não
+  suportado — o contrato não o listava (G23b o achou no tipo). (4) `foraDaInterface` (a função que o oráculo dos
+  testes do CP0 importa) usa a própria caixa como métrica sintética para texto sem métrica — SÓ para o oráculo; o
+  gate (`pisoDeInterface` dentro de `gateDaMedida`) exige a métrica real e deixa a camada não comprovada. (5) Um
+  texto com mancha ACIMA (por `order`) de outro texto é ocluidora não suportada mesmo sem interseção, porque a
+  classificação vem antes do teste de caixa (6.2 do contrato) — dito aqui porque bloqueia peças do compositor em que
+  o serviço com mancha fica acima da headline na ordem das camadas. (6) `video` VISÍVEL em qualquer ordem derruba as
+  4 regras que leem pixels (texto-sem-leitura, tratamento-piorou-leitura, logo-sem-leitura, texto-sobre-assunto) — o
+  contrato (§6) só previa vídeo ACIMA do texto como não medido; abaixo, o render parado não o desenha e a publicação
+  (MP4) sim (Codex, rodada 10). (7) Camada com `movimento` idem — a página com áudio publica o quadro do movimento;
+  ratificado pelo owner em 16/10 (revisão humana para movimento/vídeo na cobertura atual do CP5a).
+- **Revisão final adversarial (owner + Codex, 16/10)** — quatro falsos APTO fechados, todos fail-closed: (1) `order`,
+  `position`, `size` e os valores dos efeitos (traço, sombra, desfoque, borda) têm de ser NÚMEROS finitos — `order: 'z'`,
+  `position.x: 'abc'`, `shadowOffsetX: 'muito'` viravam NaN, a interseção falhava e a camada passava como se estivesse
+  abaixo; agora `order` não numérica é "acima de todo texto" e geometria/efeito não numérico é `contido: false`
+  (`order` ausente/`null` continua 0, como `a.order ?? 0` no render); (2) `contraste: []` com textos visíveis não
+  comprova a leitura — cada texto medido precisa da sua leitura na régua (`textos[].camada`/`camadas`), senão
+  `texto-sem-leitura` e `tratamento-piorou-leitura` ficam não comprovadas (o contrato dizia só `!== null`; a regra
+  é mais estrita); (3) toda logo SOLTA (`logosDaPeca`) precisa de entrada em `leituraDaLogo` — `[]` com logo na peça é
+  não comprovada, e o aviso "sem logo solta" só sai quando não há logo; (4) a métrica só prova o par das exceções quando
+  é ÚNICA por id e descreve a MESMA caixa da camada (métrica duplicada ou de outra caixa → sem métrica → oclusão).
+  Rodada 2: (5) o retângulo CALCULADO tem de ser finito (`rotation: 1e308` → radianos Infinity → sin/cos NaN →
+  `contido: false`); (6) a leitura da régua é por TEXTO: só `textos[].camada` conta — `camadas` do grupo sem `textos`
+  (medida antiga, leitura de um representante) não prova a leitura de cada texto. Rodada 4 (esforço máximo): (7) a
+  leitura da logo do CP3 lê o ARQUIVO — logo solta com `invert`, `flipH`/`flipV`, `mask`, `filter`, `grayscale`,
+  `sepia`, `exposure`/`brightness`, `contrast`, `highlights`, `shadows`, `whites`, `blacks`, `saturation`, `vignette`
+  ou `blur` de estilo é desenhada diferente do que foi medido → `logo-sem-leitura` não comprovada mesmo com estado
+  `medida`; logo solta que não é `logo`/`image` (uma `shape` com id "logo") idem; (8) a exceção logo × texto só vale
+  para `logo`/`image` — a regra `logo-sobre-texto` compara a caixa de CANTO, e uma `shape` circular com id "logo" é
+  desenhada centrada em `position`, fora dessa caixa. Rodada 5 (esforço máximo): (9) `border.radius` RECORTA os cantos
+  da imagem no render (`render-engine.ts` :1681-1683), `border.width` pinta tinta sobre ela e sombra/desfoque/traço
+  (`style.shadow`, qualquer `effects.*` ligado) mudam a composição — logo solta com qualquer um deles → `logo-sem-leitura`
+  não comprovada (o controle anterior que dizia "radius é inerte" estava ERRADO e foi invertido); os `naoMedidos` dessa
+  recusa levam o id da logo; (10) `texto-sobre-assunto`: `assuntoDaPeca` (revisar-arte.ts) reaproveita o assunto
+  gravado por arquivo + formato + `cropPosition`, e a estimativa lê só `cropPosition`, enquanto o render prioriza
+  `style.crop` (`image-fit.ts`) — um recorte manual deslocado deixava o retângulo velho com estado `medida` e o gate
+  aceitava. Fail-closed no gate: foto de fundo com `style.crop`, `flipH`/`flipV`/`flipX`/`flipY`, `mask`, `filter`,
+  `blur` ou `rotation` efetivos → assunto não comprovada com as 4 políticas (o conserto de `mesmaComposicao` fica para
+  o revisor, fora do CP5a). Regressões: G12 (5 estilos de logo) e G13b. Rodada 6 (esforço máximo): (11) a medida do
+  assunto lê a foto como UM cover do canvas inteiro (`lerFotoComoCover(bytes, canvas, …)`; o retângulo gravado é da
+  peça composta) e `mesmaComposicao` não compara `objectFit`, `position` nem `size` — fundo com `objectFit` ≠ `cover`
+  (o render ESTICA a imagem inteira, `image-fit.ts`), caixa diferente de (0,0,canvas), filtro de pixel
+  (`exposure`/`contrast`/… de `konva/filters/apply.ts`) ou uma SEGUNDA foto visível que não é logo solta (o revisor só
+  olha `bg-foto`, `fotoDeFundo` em regras.ts) → `texto-sobre-assunto` não comprovada com as 4 políticas, e os ids vão em
+  `camadas`; (12) valores JSON fora do tipo: o render liga efeito por verdade JS (`enabled: 1`, `'true'`) e coage
+  `opacity: '0.5'`, e o CP3 só recusa NÚMERO abaixo de 1 — na logo, `enabled` efetivo (não `=== true`) e `opacity`
+  que não seja número finito igual a 1 → não comprovada; (13) invariante 2.3 do contrato imposto na estrutura: o que
+  entra em `naoMedidos` sem motivo vira NAO_MEDIDO e `resultado` exige motivos E naoMedidos vazios — o helper `gate()`
+  dos testes confere `APTO ⇔ motivos vazio ∧ naoMedidos vazio` em TODA chamada. Regressões: G12 (`enabled: 1`/`'true'`,
+  `opacity` string/0,5/NaN, controle `opacity: 1` + `enabled: 0`/`false`), G13c, G30. Decisão que sobe ao owner
+  (Codex R6): a prova de `texto-sobre-assunto` no CP5a exige UM fundo `cover` cobrindo o canvas na posição original e
+  recusa o resto (fail-closed); medir o assunto a partir da composição renderizada é trabalho do revisor (CP5b+).
+  Rodada 7 (esforço máximo): (14) `opacity: null` na logo — o render aplica opacidade sempre que a chave EXISTE
+  (`!== undefined`) e `Math.min(1, null)` é 0: a logo some; a guarda aceita só número finito igual a 1 (null recusa);
+  (15) "valor efetivo" é a VERDADE JS do render: `' '` (string só de espaços) liga `flipH`/`enabled` no render e
+  `valorEfetivo` passou a devolver `v !== ''` em vez de `trim()`; (16) `element` é desenhado pelo mesmo `renderImage`
+  que `image` — conta como segunda foto; (17) G30 passou a alcançar o ramo residual (peça só com logo, sem fundo e sem
+  texto visível + id residual em `textosSemMetrica` → único motivo NAO_MEDIDO; sem o id → APTO).
+  Rodada 8 (esforço máximo): (18) `valorEfetivo` É a verdade JS do render (`Boolean(v)`, número `!== 0`, NaN conta como
+  efetivo): `[]` e `{}` ligam `flipH`/`enabled`/`invert` no render e eram inertes; (19) `rotation` em string na logo
+  (`'90'` gira por coerção; o CP3 só recusa número; abaixo dos textos nem a oclusão olha a logo) → recusa qualquer
+  `rotation` efetiva; (20) `cropPosition` do fundo só com os nove valores `(left|center|right)-(top|middle|bottom)` — o
+  medidor omite `''` (centro) e o render passa `''` ao recorte (esquerda/topo); (21) foto de fundo com `movimento`: o
+  revisor lê um cover parado e a página com áudio sai no quadro do movimento (`persist.ts`; `afastar` começa em 1,15×)
+  → não comprovada (humano) até o owner decidir a política (excluir páginas com foto em movimento do gate autônomo ou
+  medir o quadro publicado — ratificado 16/10: humano). A folga de antialias de 1 px (desvio 1) foi RATIFICADA pelo
+  owner em 16/10, preservando os pisos 188/224: no topo y=188 reprova e 189 passa; no rodapé base em H−224 reprova e
+  H−225 passa (G26 testa os dois lados, texto e logo; o contrato #236 diz o mesmo). Regressões em G12, G13b, G13c.
+  Rodada 9 (esforço máximo): (22) a guarda de movimento sai da foto de fundo e vira UMA regra em `decidirCritica`:
+  QUALQUER camada visível com `movimento` efetivo (fundo, logo-imagem, imagem solta sob a logo sem foto de fundo
+  escolhida — `camadasNoInstante` anima qualquer `image`) derruba as 4 regras que leem PIXELS do quadro parado
+  (`texto-sem-leitura`, `tratamento-piorou-leitura`, `logo-sem-leitura`, `texto-sobre-assunto`); invisível não conta;
+  (23) `interfaceDoStory` com configuração não finita (`NaN`, `Infinity`, string) nunca afrouxa: só número finito acima
+  do piso aperta. Regressões: G31 e G26.
+  Rodada 10 (esforço máximo): (24) o assunto de CATÁLOGO é o retângulo da peça COMPOSTA, no canvas canônico do formato
+  (`DIMENSOES` de `compositor/spec.ts`), e `mesmaComposicao` não compara largura/altura — fora do canônico (página
+  redimensionada, ou sem formato) o retângulo não vale → não comprovada; o estimado é feito para o canvas atual e não é
+  afetado; (25) `video` conta como movimento: o render parado NÃO desenha `video` (cai no `default`), mas a página com
+  vídeo é publicada como MP4 com ele — abaixo do texto a oclusão não o examina e a régua foi medida sem ele; DESVIO
+  conservador do contrato (§6 só previa vídeo ACIMA do texto como não medido), declarado para o owner; (26) a guarda
+  da foto de fundo passa a usar a MESMA lista da logo (`chavesQueALeituraDoArquivoNaoVe`: filtros de pixel, borda,
+  `style.shadow`, `effects.*` ligados, opacidade ≠ 1, rotação) — um PNG com sujeito e sombra deslocada publica uma
+  segunda silhueta que o assunto não conhece. Regressões: G13b, G13c, G13d, G31; G29 ganhou o canvas canônico do feed.
+  Rodada 11 (esforço máximo): (27) o canvas canônico vale para TODA origem do assunto — `assuntoDaPeca` reaproveita o
+  cache da composição (catálogo, ESTIMADO e "nenhum") por arquivo + formato + `cropPosition`, sem largura/altura — e a
+  guarda subiu para antes do `if (medida.assunto)`; (28) o piso do story (188/224) é em px do canônico: story
+  2160×3840 com texto em y=250 passaria e, exibido em 1080, cai em y=125 — fora do canônico, `piso-de-interface` não
+  comprovada; (29) foto visível que `fotoDeFundo` NÃO reconhece (`element` de tela inteira, `image` < 90%) sem
+  `bg-foto` → `texto-sobre-assunto` não comprovada em vez de "não se aplica" (o assunto dela ninguém mediu).
+  Regressões: G13d (estimado/nenhum/piso no canvas grande) e G13e. Fechamento 16/10 (owner): ratificados a folga de
+  1 px, a revisão humana para movimento/vídeo, foto sem fundo reconhecido e assunto não comprovado pelo cover
+  canônico; a política do assunto segue parâmetro obrigatório sem padrão (9.1), e o comentário de `gate.ts` que
+  dizia "adotada pelo owner" foi corrigido. A correção do crash nativo do @napi-rs/canvas fica FORA deste PR.
+  Regressões em G9, G12, G21 e no bloco G21f (valores não numéricos, chave no topo, tipo novo, `effects.curved`,
+  `textboxConfig` desconhecido, opacidade 0/parcial, `filter` vazio, `visible` 0/"false", efeitos combinados com
+  paridade no render real — forma e imagem com máscara + flip + recorte + sombra + desfoque).
+- **Provas** (`gate.test.ts`, 56 testes): G1–G29 e subcasos; G21c (paridade do lado de cima, >100 renders reais) e
+  G21e (lado protegido, métrica real do medidor); oclusão EFETIVA comprovada pelo renderer (texto a 90° sob forma sem
+  rotação: os pixels do texto somem no render e o gate acusa; controle com a forma abaixo → comprovada); logo limpa
+  sobre a expansão do texto por contorno/sombra/desfoque/borda → oclusão, e o controle sem efeitos preserva a exceção.

@@ -56,3 +56,12 @@ export function versaoDaPagina(
   )
   return `v1:${createHash('sha256').update(texto).digest('hex').slice(0, 20)}`
 }
+
+/**
+ * CP5a — a segunda parte da identidade da peça: o hash do contrato de copy (`Page.copyAutoral`), que muda sem tocar em
+ * `layers`. `null`/`undefined` → `'sem-contrato'`. Mesmo `estavel` + sha256 da versão da página. Puro.
+ */
+export function copyVersionDe(copyAutoral: unknown): string {
+  if (copyAutoral === null || copyAutoral === undefined) return 'sem-contrato'
+  return `c1:${createHash('sha256').update(JSON.stringify(estavel(copyAutoral))).digest('hex').slice(0, 20)}`
+}

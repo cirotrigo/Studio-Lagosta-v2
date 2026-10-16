@@ -76,6 +76,35 @@ function isMeasurableText(layer: Layer): boolean {
   return layer.type === 'text' && layer.visible !== false
 }
 
+/**
+ * A tolerância de COLISÃO entre dois textos (CP5a, fonte única): vertical `max(4, 0,18 × maior corpo) + encaixe`,
+ * horizontal 4 px. Extraída de `checkTextGeometry` sem mudar o número; o gate de oclusão (`revisao/gate.ts`) a reutiliza
+ * como política declarada da exceção texto × texto (decisão 9.7 do contrato do CP5a).
+ */
+export function toleranciaDeColisao(a: { fontSize: number }, b: { fontSize: number }, encaixe: number): { vertical: number; horizontal: number } {
+  return {
+    vertical: Math.max(COLLISION_TOLERANCE_PX, 0.18 * Math.max(a.fontSize, b.fontSize)) + Math.max(0, encaixe),
+    horizontal: COLLISION_TOLERANCE_PX,
+  }
+}
+
+/**
+ * O ENCAIXE que vale entre duas camadas: só no MESMO `groupId`, o maior valor positivo e finito de
+ * `metadata.compositor.encaixe` das duas (a voz 2 entrando na linha de cima); entre grupos diferentes, 0.
+ */
+export function encaixeEntre(la: Layer | undefined, lb: Layer | undefined): number {
+  const encaixeDaCamada = (l: Layer | undefined): number => {
+    const v = (l?.metadata as { compositor?: { encaixe?: unknown } } | undefined)?.compositor?.encaixe
+    return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0
+  }
+  const grupoDe = (l: Layer | undefined): string | null => {
+    const g = (l?.metadata as { groupId?: unknown } | undefined)?.groupId
+    return typeof g === 'string' && g ? g : null
+  }
+  const mesmoGrupo = grupoDe(la) !== null && grupoDe(la) === grupoDe(lb)
+  return mesmoGrupo ? Math.max(encaixeDaCamada(la), encaixeDaCamada(lb)) : 0
+}
+
 export function measureTextLayers(layers: Layer[], measure: MeasureTextBox): TextLayerMetrics[] {
   const metrics: TextLayerMetrics[] = []
   for (const layer of layers) {
@@ -166,14 +195,6 @@ export function checkTextGeometry(
   //    não é colisão — sem isso o autofix encolhia a manchete até desfazer o
   //    encaixe (88 → 77 px, 11/09/2026). Entre grupos diferentes não vale nada.
   const porId = new Map(layers.map((l) => [l.id, l]))
-  const encaixeDaCamada = (l: Layer | undefined): number => {
-    const v = (l?.metadata as { compositor?: { encaixe?: unknown } } | undefined)?.compositor?.encaixe
-    return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0
-  }
-  const grupoDe = (l: Layer | undefined): string | null => {
-    const g = (l?.metadata as { groupId?: unknown } | undefined)?.groupId
-    return typeof g === 'string' && g ? g : null
-  }
   for (let i = 0; i < metricas.length; i++) {
     for (let j = i + 1; j < metricas.length; j++) {
       const a = metricas[i]
@@ -182,12 +203,9 @@ export function checkTextGeometry(
         Math.min(a.glyphBottom, b.glyphBottom) - Math.max(a.glyphTop, b.glyphTop)
       const overlapH =
         Math.min(a.box.x + a.box.width, b.box.x + b.box.width) - Math.max(a.box.x, b.box.x)
-      const la = porId.get(a.layerId)
-      const lb = porId.get(b.layerId)
-      const mesmoGrupo = grupoDe(la) !== null && grupoDe(la) === grupoDe(lb)
-      const encaixe = mesmoGrupo ? Math.max(encaixeDaCamada(la), encaixeDaCamada(lb)) : 0
-      const toleranciaV = Math.max(COLLISION_TOLERANCE_PX, 0.18 * Math.max(a.fontSize, b.fontSize)) + encaixe
-      if (overlapV > toleranciaV && overlapH > COLLISION_TOLERANCE_PX) {
+      // CP5a: a tolerância é FONTE ÚNICA (`toleranciaDeColisao`) — o gate de oclusão a reutiliza como política.
+      const tolerancia = toleranciaDeColisao(a, b, encaixeEntre(porId.get(a.layerId), porId.get(b.layerId)))
+      if (overlapV > tolerancia.vertical && overlapH > tolerancia.horizontal) {
         colisoes.push({
           tipo: 'colisao',
           camadas: [a.name, b.name],
