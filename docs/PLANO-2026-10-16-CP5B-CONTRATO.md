@@ -1,6 +1,6 @@
 # CP5b — contrato técnico de PERSISTÊNCIA, IDENTIDADE e `rulesVersion` (proposta para revisão, 16/10/2026)
 
-**Estado: PROPOSTA (rodada 9: NÃO EXISTE "vigente" no CP5b; duas impressões, com as entradas do corpus dentro; o registro nasce da MESMA chamada que decide, a copy é reconciliada DENTRO dela, e sem vínculo (página OU Generation) NÃO HÁ decisão nem DRAFT — o registro é auditoria; só a re-medição prova; vínculo projeto/Generation/página; formato na identidade; impressão digital travada por validador no CI).** Nada aqui está implementado; este PR é documental. Base: `main` `5e96d5a1` (merge do CP5a,
+**Estado: PROPOSTA (rodada 10: NÃO EXISTE "vigente" no CP5b; o registro NUNCA é consultado para decidir (nem como sinal negativo); duas impressões, com as entradas do corpus dentro; o registro nasce da MESMA chamada que decide, a copy é reconciliada DENTRO dela, e sem vínculo (página OU Generation) NÃO HÁ decisão; tudo o que é VIA do agendar-leva virou handoff para o contrato do CP5c (seção 12) — o registro é auditoria; só a re-medição prova; vínculo projeto/Generation/página; formato na identidade; impressão digital travada por validador no CI).** Nada aqui está implementado; este PR é documental. Base: `main` `5e96d5a1` (merge do CP5a,
 PR #237; contrato do CP5a mergeado pelo PR #236). Ordem do owner (16/10): depois do fechamento do CP5a, preparar
 SOMENTE o contrato do CP5b, centrado em persistência, identidade e `rulesVersion`; oclusão por pixels exige
 justificativa e escopo explícitos (seção 10); a integração com a não-piora continua no CP5d, conforme o
@@ -114,19 +114,21 @@ export interface RegistroDoGate {
   args.entrada.politicaDoAssunto, copy: calculada }`), nunca por spread: uma `copy` extra em runtime (o `Omit` é só
   tipo) é ignorada (Codex R7; H3c injeta `copy: { estado: 'sem-mudanca', lacunas: [] }` indevida e prova que ela não
   entra). `EntradaDoGate.copy` continua existindo para `gateDaMedida` (testes e quem não grava).
-  **Barreira verificável** (Codex R6/R7/R8): a barreira é por IMPORT, não por string — regra `no-restricted-imports`
-  em `eslint.config.mjs` (o `lint` roda no CI) com `importNames`: `gateDaMedida` de `@/lib/creatives/revisao/gate`
-  só pode ser importada por `src/lib/creatives/revisao/gate-registro.ts` e por testes; `lerGateDaArte`,
-  `validadeDoGate` e `decidirEMontarRegistro` de `gate-registro.ts` só por `gate-persistido.ts`,
+  **Barreira verificável** (Codex R6–R9): a barreira é por IMPORT, não por string — regra `no-restricted-imports`
+  em `eslint.config.mjs` (o `lint` roda no CI) com `importNames`, declarada DUAS vezes para cobrir alias e caminho
+  relativo: em `paths` (`@/lib/creatives/revisao/gate`, `@/lib/creatives/revisao/gate-registro`) e em `patterns`
+  (`group: ['**/revisao/gate', '**/revisao/gate.ts', '**/gate-registro', '**/gate-registro.ts']`, com os mesmos
+  `importNames` — o ESLint vê a FONTE do import, então `../revisao/gate-registro` e `import { x as y }` não escapam).
+  `gateDaMedida` só pode ser importada por `src/lib/creatives/revisao/gate-registro.ts` e por testes;
+  `lerGateDaArte`, `validadeDoGate` e `decidirEMontarRegistro` só por `gate-persistido.ts`,
   `src/lib/mcp/catalogo/ver-geracao-retorno.ts`, `src/lib/mcp/catalogo/arte-ia.ts`, o produtor que o CP5c nomear e
-  testes (o ESLint vê a FONTE do import, então `import { gateDaMedida as x }` não escapa). O que o lint não vê —
-  `import()` dinâmico e `require(` desses dois módulos — é o inventário por regex de H12, que também cobre a string
-  `gateDaArte` nas listas fechadas de arquivos. Arquivo novo entra na lista por PR que diga por quê. **Limite dito**:
-  nenhuma barreira estática impede alguém de reescrever um leitor; o que impede o cache de virar autoridade é a
-  regra de fluxo — **toda decisão autônoma é uma decisão FRESCA** (`decidirEMontarRegistro` sobre medida nova; o
-  registro gravado é só sinal NEGATIVO, 4.3) — e o teste de fluxo do CP5c: Generation JÁ com `gateDaArte`
-  `APTO`/`coincidente` → o `agendar-leva` draft-only mede mesmo assim e, se a medição nova reprova, nada é criado,
-  ligado nem executado. `gateDaMedida` fica exportada só por causa dos testes.
+  testes (overrides por arquivo na própria regra). O que o lint não vê — `import()` dinâmico, `require(` e
+  REEXPORTAÇÃO (`export … from '…gate-registro'`, `export * from`) desses dois módulos — é o inventário por regex de
+  H12, que também cobre a string `gateDaArte` nas listas fechadas de arquivos. Arquivo novo entra na lista por PR que
+  diga por quê. **Limite dito**: nenhuma barreira estática impede alguém de reescrever um leitor; o que impede o
+  cache de virar autoridade é a regra de fluxo deste contrato — **o registro NUNCA é consultado para decidir, nem como
+  sinal positivo nem como negativo; toda decisão autônoma é FRESCA** (`decidirEMontarRegistro` sobre medida nova) — e
+  o teste de fluxo que o CP5c herda (seção 12). `gateDaMedida` fica exportada só por causa dos testes.
 - `politica` entra porque `resultado` depende dela (caso B/C do assunto): dois registros com a mesma peça e políticas
   diferentes são vereditos diferentes. Sem `politica` gravada, nenhum registro é `coincidente`.
 - Tamanho: `GateDaArte` tem 15 entradas de cobertura, motivos, achados, `naoMedidos` e avisos — centenas de bytes a
@@ -164,29 +166,12 @@ export async function gravarGateDaArte(client: ClienteDoBanco, registro: Registr
   registro é atômico — gate de uma medição com identidade de outra é exatamente o que 3.1 proíbe).
 - Nunca `update({ fieldValues: { ...lido } })` (regra 🔴 do `AGENTS.md`: apaga `somenteReRender`, `videoDaPagina`
   e o que outro worker gravou no intervalo).
-- **Onde e quando (condição obrigatória do CP5c, Codex R6/R7)**: a gravação é o ÚNICO lugar que confere o vínculo da
-  Generation com a página e o projeto, então ela acontece DENTRO da transação do agendamento, DEPOIS das travas de hoje
-  (`agendar-itens.ts:647-669`: advisory lock do projeto, `ItemDeLote`, `ItemDePlano`, `Page` com `FOR UPDATE`) mais
-  `SELECT id FROM "Generation" WHERE id = $gen FOR UPDATE`, e ANTES do efeito de CADA uma das três vias que o
-  plano-mestre (§ 4.5) manda passar pelo gate: **`criar`** → antes de `criarPostDoAgendamento`; **`adotar`** → antes
-  de ligar o DRAFT existente ao item (`agendar-itens.ts:686-688`, `sob.acao === 'adotar'`; a adoção não chama
-  `criarPostDoAgendamento`);
-  **`reaproveitar` com `efeitosPendentes`** → os efeitos rodam FORA desta transação (`agendar-itens.ts:572-575`),
-  então antes de `executarEfeitos` o CP5c DECIDE DE NOVO (mede a página relida, com os campos de `identidadeDaPagina`,
-  e chama `decidirEMontarRegistro`) e só executa com `decisao: 'ok'` e `gate.resultado === 'APTO'`; o registro
-  anterior serve só como sinal NEGATIVO (não `coincidente` → nem mede, item a humano), nunca como sinal positivo
-  (Codex R8: a identidade não cobre bytes de assets e fontes, então `coincidente` com medição nova reprovada é
-  possível e tem de recusar). Em todas: `'sem-
-  vinculo'` (0 linhas) → a transação recusa o item (`REVISAO_HUMANA_NECESSARIA`, nada criado nem ligado); exceção na
-  gravação → a transação aborta e, DEPOIS do rollback, o CP5c converte em `falhou(itemId, { codigo:
-  'REVISAO_HUMANA_NECESSARIA', motivo })` com `generationId`/`pageId` — não no `codigo: 'ERRO'` genérico de hoje
-  (`agendar-itens.ts:813`; plano-mestre § 4.5). A leitura da PÁGINA sob trava (hoje `lerPagina(cliente, peca.pageId, projectId)`,
-  `agendar-itens.ts:357/543`, e a `paginaCrua` de `:611`; `SELECAO_DA_LINHA` é do `ItemDeLote`) passa a trazer os campos
-  de `identidadeDaPagina`. A medição continua FORA da transação (plano-mestre); só o `UPDATE` condicional,
-  barato, entra. Idempotência: gravar o mesmo registro duas vezes é o mesmo estado. Fora do CP5c (origem `piloto`,
-  scripts), a gravação é auditoria e um `'sem-vinculo'` é só `console.warn` — porque ali nenhum DRAFT nasce. Os
-  testes das três vias (`criar`/`adotar`/`reaproveitar`) são do CP5c (H13 abaixo os enumera para o contrato do CP5c
-  copiar).
+- **Onde e quando**: o CP5b entrega o escritor condicional e a garantia de que `'sem-vinculo'` (0 linhas) significa
+  "esta Generation não é desta página/projeto". QUANDO e ONDE chamá-lo em cada via do `agendar-leva` (`criar`, `adotar`,
+  `reaproveitar` com efeitos pendentes), sob quais travas, e como recusar o item são do contrato do CP5c — a seção 12
+  lista o que ele herda daqui, sem que este contrato prometa nada sobre esse fluxo. Fora de um produtor que crie
+  efeito (origem `piloto`, scripts), a gravação é auditoria e um `'sem-vinculo'` é só `console.warn`, porque ali
+  nenhum DRAFT nasce. Idempotência: gravar o mesmo registro duas vezes é o mesmo estado.
 - A gravação não dispara `invalidateScheduledRenders` nem `pedirRecomposicaoDaArteCongelada`: `fieldValues` não é
   `Page.layers` (a regra 🔴 é sobre quem grava camadas).
 
@@ -287,8 +272,9 @@ Invariantes (fail-closed):
    gradiente do projeto, o que a medição lê fora da página): é o leitor quem diz o que não provou, não o consumidor.
 5. `validadeDoGate` NÃO devolve `resultado`: quem quiser o resultado lê `registro.gate.resultado` DEPOIS de ver o
    estado. Não existe estado que signifique "o veredito ainda vale".
-6. **Nenhum caminho de produção usa `coincidente` para pular a medição** (9.3): o CP5c mede sempre. O registro é
-   exibição e auditoria — e é por isso que a identidade PODE ser incompleta sem risco: ela só rotula.
+6. **Nenhum caminho de produção consulta o registro para decidir — nem para pular a medição, nem como sinal
+   negativo** (9.3): o CP5c mede e decide sempre; `historico` não tem efeito de fluxo nenhum. O registro é exibição
+   e auditoria — e é por isso que a identidade PODE ser incompleta sem risco: ela só rotula.
 
 ## 5. `rulesVersion` — a política (decisão 7 do plano-mestre, 9.3 do contrato CP5a)
 
@@ -347,8 +333,8 @@ ressalva). Regra fora do corpus também escapa: por isso o corpus é enumerado (
 - As ENTRADAS do corpus entram na impressão (Codex R5): mudar regra e fixture ao mesmo tempo, preservando as
   saídas, muda a impressão do mesmo jeito e cobra o bump — editar o corpus é, por definição, mudar o que a versão
   prova. O custo (bump por mudança de fixture) é deliberado.
-- Efeito no persistido: `rulesVersion` diferente do atual → `historico` (4.3). O CP5c re-mede sempre (9.3), então o
-  custo de um bump é zero em produção; o ganho é a auditoria honesta ("este APTO foi com as regras v1").
+- Efeito no persistido: `rulesVersion` diferente do atual → `historico` (4.3), sem efeito de fluxo (o registro não é
+  consultado para decidir, 4.3-6); o ganho de um bump é a auditoria honesta ("este APTO foi com as regras v1").
 
 ## 6. Consumidores (só leitura)
 
@@ -397,7 +383,7 @@ ressalva). Regra fora do corpus também escapa: por isso o corpus é enumerado (
 | H1 | `identidadeDaPagina` da fixture do piloto (v1) | `pageVersion` = `versaoDaPagina(page)`; `copyVersion` = `copyVersionDe(page.copyAutoral)`; `copyAutoral` ausente → `'sem-contrato'`; `formato` = `formatoDaPagina(...)` ('story' para a fixture; 'quadrado' para 500×500 sem nome; `null` para 400×300 sem nome) |
 | H2 | a mesma página com `audio` | `pageVersion` igual (sem áudio) |
 | H3 | `layers` como string JSON dupla / ilegível | `pageVersion` `v1:…` igual ao da forma de array / `null` |
-| H3b | `decidirEMontarRegistro` com `medida.formato` ≠ formato da página (gate de feed para página story), `medida.canvas` ≠ página (1080×1920 × 2160×3840), `entrada.identidade` ≠ `identidadeDaPagina(page)`, **a medida LIMPA de OUTRA peça do mesmo formato e canvas** (camadas ≠ `page.layers`), `postType: 'STORY'` para formato `feed`, ou página em que os dois classificadores de formato discordam (nome "story", tags `['feed']`, 1080×1350) | `{ decisao: 'sem-vinculo', motivo }` — sem gate, sem registro, nunca um `APTO`; com tudo igual → `ok`, e `gate` ≡ `gateDaMedida({ ...entrada, copy })` (igualdade estrutural) |
+| H3b | `decidirEMontarRegistro` com `medida.formato` ≠ formato da página (gate de feed para página story), `medida.canvas` ≠ página (1080×1920 × 2160×3840), `entrada.identidade` ≠ `identidadeDaPagina(page)`, **a medida LIMPA de OUTRA peça do mesmo formato e canvas** (camadas ≠ `page.layers`), `postType: 'STORY'` para formato `feed`, ou página em que os dois classificadores de formato discordam (nome "feed", tags `['story']`, 1080×1350: `assinatura.ts` → feed pelo nome; `pastas.ts` → story pela tag) | `{ decisao: 'sem-vinculo', motivo }` — sem gate, sem registro, nunca um `APTO`; com tudo igual → `ok`, e `gate` ≡ `gateDaMedida({ ...entrada, copy })` (igualdade estrutural) |
 | H3c | página cujo `copyAutoral` e camadas exigem revisão (bloco apagado nas camadas: `revisaoDaPaginaComCamadas` → `registrada`/lacunas), com o chamador injetando em runtime `copy: { estado: 'sem-mudanca', lacunas: [] }` nos args | `copy-completa` não comprovada no gate devolvido; a `copy` usada é a calculada da página (igual a `revisaoDaPaginaComCamadas(page.copyAutoral, page.layers, …)`); `sem-contrato` → não comprovada (9.4 do CP5a) |
 | H4 | `validadeDoGate` com vínculo, formato, 4 versões e política iguais | `coincidente` com `naoConferido` = a lista fixa de 4.2 (não vazia) |
 | H5 | cada item divergente, um por vez (projectId, generationId, pageId, formato, page, copy, rulesVersion, versaoDoGate, política.estimado, política.semAssuntoLocalizavel) | `historico` com a divergência nomeada; duas ao mesmo tempo → as duas; página idêntica em OUTRA Generation (mesmos hashes) → `historico` com `'vinculo'`; página renomeada de "feed" para "story" (mesmo hash) → `historico` com `'formato'` |
@@ -408,8 +394,7 @@ ressalva). Regra fora do corpus também escapa: por isso o corpus é enumerado (
 | H10 | `impressaoDigitalDasRegras(entradas, corpus)` com `criticas` sem `colisao` / com um `gate` que devolve outro resultado para uma peça → a impressão do GATE muda; com um `avaliar` que devolve um achado a mais → a impressão do REVISOR muda; a mensagem pede o bump da versão certa | (a dependência real gate → `avaliarPeca` é por código, `gate.ts:797`, e não é provada por injeção: a impressão do gate usa o `gateDaMedida` REAL sobre o corpus, então uma mudança real de `avaliarPeca` a altera na prática — dito, não testado por H10) |
 | H11 | `montarRetornoDaPagina` com registro coincidente / histórico / inválido / ausente | bloco `gate` com `validade` certa, `naoConferido` e o `aviso` fixo; inválido → `validade: 'ilegivel'` com o motivo (e a versão gravada, se houver); ausente → `gate: null`; nunca inventa `APTO` |
 | H11b | a projeção do banco de `ver-geracao` (cliente falso) | o `select` da Generation inclui os campos de hoje + `projectId`; o da página inclui os de hoje + os de `identidadeDaPagina`, com `Template: { projectId }` no `where`; página de OUTRO projeto ou sumida → `gate` com `validade: 'ilegivel'`, e o resto do retorno igual ao de hoje |
-| H13 (CP5c) | as três vias com `sem-vinculo`: `criar` (0 linhas antes de `criarPostDoAgendamento`), `adotar` (0 linhas antes de ligar o DRAFT), `reaproveitar` (identidade relida ≠ registro antes de `executarEfeitos`); exceção do escritor; e **registro `APTO` `coincidente` com medição NOVA reprovada**, nas três vias | nada criado/ligado/executado; item `falhou` com `REVISAO_HUMANA_NECESSARIA` + `generationId`/`pageId`; exceção → rollback + o mesmo código, não `ERRO`; no último caso, o medidor foi chamado e o registro novo (reprovado) substitui o antigo |
-| H12 | (a) `npm run lint` com a regra `no-restricted-imports` (3.1) — um arquivo de teste temporário que importa `gateDaMedida` fora da lista FALHA o lint (teste do próprio lint, como `validar-registro-mcp` testa o registro); (b) inventário por regex sobre `src/`: `gateDaArte`, `import('…/gate')`, `import('…/gate-registro')` e `require(` desses módulos fora das listas fechadas | lint falha no caso de controle; as listas do regex vazias; o teste imprime arquivo e linha de cada violação |
+| H12 | (a) `npm run lint` com a regra `no-restricted-imports` (3.1) — arquivos de controle temporários que importam `gateDaMedida` por alias E por caminho relativo (`../revisao/gate`) fora da lista FALHAM o lint; (b) inventário por regex sobre `src/`: `gateDaArte`, `import('…/gate')`, `import('…/gate-registro')`, `require(` e `export … from` desses módulos fora das listas fechadas | lint falha nos dois casos de controle; as listas do regex vazias; o teste imprime arquivo e linha de cada violação |
 
 ## 9. Decisões pendentes do owner
 
@@ -458,7 +443,34 @@ par, e um contrato próprio. Nada disso entra aqui.
 Fora: `agendar-itens.ts`, `arte-rapida.ts`, `persist.ts`, `nao-piora.ts`, `ajustar-sem-piorar.ts`, `compositor.ts`
 (`revisar-arte`), `agenda.ts`/`posts/auditar-operacao.ts`, schema do Prisma.
 
-## 12. Gates do PR de implementação (quando vier)
+## 12. Handoff para o contrato do CP5c (o que ele herda daqui — nada disto é garantido pelo CP5b)
+
+Cada item virou achado do Codex nas rodadas 6–9 e pertence ao fluxo do `agendar-leva`, não à persistência. O
+contrato do CP5c tem de responder a cada um com texto e teste:
+
+1. **Decisão fresca em TODA via** (`criar`, `adotar`, `reaproveitar` com efeitos pendentes): medir a página relida
+   e chamar `decidirEMontarRegistro`; só agir com `decisao: 'ok'` e `gate.resultado === 'APTO'`. O registro gravado
+   nunca entra na decisão. Teste: Generation JÁ com `gateDaArte` `APTO`/`coincidente` e medição nova reprovada →
+   nada criado, ligado nem executado; o registro novo (reprovado) substitui o antigo.
+2. **Gravação condicional dentro da transação, antes do efeito**: depois das travas de hoje (`agendar-itens.ts:647-669`)
+   mais `SELECT id FROM "Generation" … FOR UPDATE`; `'sem-vinculo'` → item `falhou` com `REVISAO_HUMANA_NECESSARIA` +
+   `generationId`/`pageId`; exceção → rollback e o MESMO código (não o `codigo: 'ERRO'` de `:813`).
+3. **`adotar`** (`:686-688`): o DRAFT adotado é relido sob a trava; `post.postType` tem de ser
+   `TIPO_DO_POST_POR_FORMATO[formato da página relida]` (hoje a seleção para adoção não confere o tipo, `:384`) e a
+   página relida passa por `recusaComoImagem` (música — `creatives/agendar.ts:261`; a adoção não passa por
+   `resolverAgendamento`). Teste: página `feed` com DRAFT `STORY` existente; página que ganhou música.
+4. **`reaproveitar` com efeitos pendentes** (`:572-575`): revalidação PROTEGIDA antes de CADA efeito — a
+   `versaoDaPagina` relida sob trava (ou CAS no efeito) tem de ser a da medida fresca; edição concorrente entre a
+   medição e o efeito → efeito não roda. Teste com edição concorrente.
+5. **A medida nasce da MESMA leitura da página** cujas camadas, canvas, formato e `copyAutoral` entram no vínculo
+   (métricas, contraste e leitura da logo chegam prontos a `decidirEMontarRegistro`). Teste.
+6. **A leitura da página sob trava** (`lerPagina`, `:357/543`, e a `paginaCrua` de `:611`) passa a trazer os campos
+   de `identidadeDaPagina`; `vinculo.postType` é o tipo do post que vai nascer (`criar`) ou do post relido
+   (`adotar`/`reaproveitar`).
+7. **Política efetiva do assunto** (9.12) fechada antes do produtor.
+8. O produtor nomeado entra na lista de arquivos da regra de lint (3.1) por PR que diga por quê.
+
+## 13. Gates do PR de implementação (quando vier)
 
 Suíte completa com `MOSTRAR_VIOLACOES=1` (nenhum `hojeViola` muda), `typecheck`, `lint`, `git diff --check`,
 `validar-registro-mcp` (as tools não ganham parâmetro novo), `validar-oauth-mcp`, `validar-impressao-digital`; Codex no HEAD exato;
