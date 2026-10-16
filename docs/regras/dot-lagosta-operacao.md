@@ -1,4 +1,4 @@
-# Dot Lagosta: Constituição Operacional (`dot-operacao-v5`)
+# Dot Lagosta: Constituição Operacional (`dot-operacao-v6`)
 
 Criada em 13/10/2026 (H3 do Dot; o mapa e as decisões estão em
 `docs/PLANO-2026-10-13-DOT-OPERACAO-H1.md`).
@@ -328,3 +328,16 @@ identidade da peça medida, a política e as versões. `ver-geracao` o expõe no
 vínculo) ou `ilegivel`, sempre com o aviso fixo "último veredito gravado; não é o veredito atual da arte". Regra
 nova do manual: **o agente operacional nunca agenda por esse bloco** — a peça aceita é a que `agendar-leva` mede na
 hora (CP5c). O registro não é consultado para decidir, nem como sinal positivo nem negativo.
+
+## `agendar-leva` só cria rascunho com veredito APTO medido na hora (`dot-operacao-v6`, CP5c, 16/10/2026)
+
+No perfil draft-only, `agendar-leva` (`src/lib/lotes/agendar-itens.ts`) passou a MEDIR a página dentro da transação
+que grava — sob as travas do projeto, das fontes, do item, dos posts da página, da página e da Generation — e a
+decidir com o gate de autonomia (CP5a/CP5b) antes de qualquer rascunho nascer ou ser adotado. O veredito, APTO ou
+não, fica registrado na arte (`ver-geracao` → bloco `gate`, auditoria). Peça não apta volta `falhou` com
+`REVISAO_HUMANA_NECESSARIA`, `generationId`, `pageId`, `editUrl` e `revisao` (`medida` com `achados` e `motivos`;
+`sem-vinculo`; `nao-medida` — vídeo/música, prazo de 8 s, erro). Regra do manual (`src/lib/mcp/operacao-dot.ts`):
+ajustar com `ajustar-arte` ou relatar — repetir a mesma chamada não muda o veredito. Nesse perfil os efeitos
+pós-commit (pasta da semana, catálogo) NÃO rodam: uma pessoa os completa repetindo o mesmo pedido; a aprovação não os
+executa. `simular: true` mede e decide igual, sem gravar nada. Contrato e decisões pendentes do owner (política do
+assunto, efeitos, prazos): `docs/PLANO-2026-10-16-CP5C-CONTRATO.md` § 8.
