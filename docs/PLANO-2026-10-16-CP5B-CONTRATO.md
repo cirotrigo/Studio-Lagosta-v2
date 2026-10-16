@@ -1,6 +1,6 @@
 # CP5b — contrato técnico de PERSISTÊNCIA, IDENTIDADE e `rulesVersion` (proposta para revisão, 16/10/2026)
 
-**Estado: PROPOSTA (rodada 13: NÃO EXISTE "vigente" no CP5b; o registro NUNCA é consultado para decidir (nem como sinal negativo); duas impressões, com as entradas do corpus dentro; o registro nasce da MESMA chamada que decide, a copy é reconciliada DENTRO dela, e sem vínculo (página OU Generation) NÃO HÁ decisão; tudo o que é VIA do agendar-leva virou handoff para o contrato do CP5c (seção 12) — o registro é auditoria; só a re-medição prova; vínculo projeto/Generation/página; formato na identidade; impressão digital travada por validador no CI).** Nada aqui está implementado; este PR é documental. Base: `main` `5e96d5a1` (merge do CP5a,
+**Estado: PROPOSTA (rodada 15: NÃO EXISTE "vigente" no CP5b; o registro NUNCA é consultado para decidir (nem como sinal negativo); duas impressões, com as entradas do corpus dentro; o registro nasce da MESMA chamada que decide, a copy é reconciliada DENTRO dela, e sem vínculo (página OU Generation) NÃO HÁ decisão; tudo o que é VIA do agendar-leva virou handoff para o contrato do CP5c (seção 12) — o registro é auditoria; só a re-medição prova; vínculo projeto/Generation/página; formato na identidade; impressão digital travada por validador no CI).** Nada aqui está implementado; este PR é documental. Base: `main` `5e96d5a1` (merge do CP5a,
 PR #237; contrato do CP5a mergeado pelo PR #236). Ordem do owner (16/10): depois do fechamento do CP5a, preparar
 SOMENTE o contrato do CP5b, centrado em persistência, identidade e `rulesVersion`; oclusão por pixels exige
 justificativa e escopo explícitos (seção 10); a integração com a não-piora continua no CP5d, conforme o
@@ -84,8 +84,13 @@ export interface RegistroDoGate {
     vinculo: { projectId: number; generationId: string; postType: 'STORY' | 'POST' }   // o tipo do post que VAI nascer
     origem: RegistroDoGate['origem']; principal?: RegistroDoGate['principal']; agora: () => Date
   }):
-    | { decisao: 'ok'; gate: GateDaArte; relatorio: RelatorioDaRevisao; registro: RegistroDoGate }
+    | { decisao: 'ok'; gate: GateDaArte; relatorio: RelatorioDaRevisao; registro: RegistroSelado }
     | { decisao: 'sem-vinculo'; motivo: string }   // NÃO há gate: sem vínculo com a página não existe decisão
+  // RegistroSelado = Readonly<RegistroDoGate> & { readonly [SELO]: true } — SELO é um `unique symbol` NÃO exportado:
+  // só esta função produz o tipo (TS recusa um objeto montado à mão). Em runtime o registro é CONGELADO em
+  // profundidade (`Object.freeze` recursivo, inclusive `gate` e `identidade`: alterar depois lança em strict mode) e
+  // entra num WeakSet privado do módulo — a PROVENIÊNCIA conferível (Codex R13/R14: WeakSet sem congelar deixava
+  // trocar `gate`/`identidade` depois de selado).
   ```
 
   Ela confere o VÍNCULO da entrada com a página ANTES de decidir, e só então chama `gateDaMedida(entrada)` e monta
@@ -104,9 +109,9 @@ export interface RegistroDoGate {
   medida), e a divergência entre os dois para a mesma página é mais um caso de `sem-vinculo` (H3b). `pastas.ts`
   importa `@/lib/db` no carregamento (`pastas.ts:11`), então o módulo puro NÃO o importa (Codex R11): a função
   `formatoDaPagina` de `pastas.ts` é EXTRAÍDA, sem mudar uma linha da lógica, para `src/lib/compositor/formato.ts`
-  (puro) como `formatoDaPaginaGravada`, `pastas.ts` passa a importá-la (`import { formatoDaPaginaGravada } from './formato'`, para as chamadas internas de
-  `pastas.ts:161` e `:264` continuarem resolvendo — Codex R12) E a reexportá-la com o nome antigo (`export {
-  formatoDaPaginaGravada as formatoDaPagina }`, chamadores externos intocados); `gate-registro.ts` importa de
+  (puro) como `formatoDaPaginaGravada`, `pastas.ts` passa a importá-la COM o apelido local antigo (`import { formatoDaPaginaGravada as formatoDaPagina }
+  from './formato'`, para as chamadas internas de `pastas.ts:161` e `:264` continuarem resolvendo pelo mesmo
+  identificador — Codex R12/R13/R14) E a reexportá-la (`export { formatoDaPagina }`, chamadores externos intocados); `gate-registro.ts` importa de
   `formato.ts` — uma regra só, nunca cópia.
   Falhou → `{ decisao: 'sem-vinculo', motivo }`: **nenhum gate é devolvido**, logo nenhum `APTO` existe para o
   produtor usar (Codex R5: "a decisão não depende da auditoria" valia para a GRAVAÇÃO, nunca para o vínculo — falha ao
@@ -156,7 +161,10 @@ página pode ter várias (`contextoDaMedicao` lê até 15 por `fieldValues.pageI
 ```ts
 // src/lib/creatives/revisao/gate-persistido.ts — importa mesclar-field-values (que importa @/lib/db): NÃO é testável
 // sem banco; a lógica fica toda em gate-registro.ts e este módulo só compõe o patch e chama o merge.
-export async function gravarGateDaArte(client: ClienteDoBanco, registro: RegistroDoGate): Promise<'gravado' | 'sem-vinculo'>
+export async function gravarGateDaArte(client: ClienteDoBanco, registro: RegistroSelado): Promise<'gravado' | 'sem-vinculo' | 'sem-proveniencia'>
+  // 1º: `foiSeladoPorDecidir(registro)` (gate-registro.ts: o WeakSet) E `Object.isFrozen` em profundidade — falso →
+  //     'sem-proveniencia', nada gravado, console.warn: um objeto coerente na forma mas que não saiu congelado de
+  //     decidirEMontarRegistro NUNCA entra no banco (Codex R13/R14).
   // = mesclarFieldValuesDaArte(client, generationId, { gateDaArte: registro }, { somenteSe: { projectId, pageId } })
   //   → UPDATE "Generation" SET "fieldValues" = (… ELSE '{}'::jsonb END) || {"gateDaArte": …}::jsonb
   //      WHERE "id" = $1 AND "projectId" = $2 AND "fieldValues"->>'pageId' = $3
@@ -383,6 +391,10 @@ ressalva). Regra fora do corpus também escapa: por isso o corpus é enumerado (
 
 1. Registro gravado só por `gravarGateDaArte` → só `jsonb ||` com a chave `gateDaArte` inteira e `WHERE` do vínculo
    (teste com cliente falso que captura o SQL/patch; `@/lib/db` mockado antes do import).
+1b. Só um registro produzido por `decidirEMontarRegistro` chega ao banco: o tipo selado barra na compilação; o
+   congelamento profundo impede alterar o conteúdo depois; o `WeakSet` barra em runtime um objeto de fora
+   (`'sem-proveniencia'`). Limite dito: a proveniência vale dentro do processo que decidiu — é o que a auditoria "da
+   mesma chamada" promete; um registro já no banco é só forma + invariantes para o leitor.
 2. `lerGateDaArte` nunca lança; forma inválida, invariante 2.3 violada ou `gate.versao` desconhecida → `invalido`
    (com `versaoGravada` quando dá para ler), sem expor campo nenhum do JSON rejeitado; chave ausente → `ausente`.
 3. `validadeDoGate` é fail-closed: qualquer divergência → `historico`; `pageVersion` nulo ou identidade ≠ gate →
@@ -406,14 +418,14 @@ ressalva). Regra fora do corpus também escapa: por isso o corpus é enumerado (
 | H1 | `identidadeDaPagina` da fixture do piloto (v1) | `pageVersion` = `versaoDaPagina(page)`; `copyVersion` = `copyVersionDe(page.copyAutoral)`; `copyAutoral` ausente → `'sem-contrato'`; `formato` = `formatoDaPagina(...)` ('story' para a fixture; 'quadrado' para 500×500 sem nome; `null` para 400×300 sem nome); `formatoDoCompositor` = `formatoDaPaginaGravada(...)` ('story' para a fixture; 'feed' para 400×300) |
 | H2 | a mesma página com `audio` | `pageVersion` igual (sem áudio) |
 | H3 | `layers` como string JSON dupla / ilegível | `pageVersion` `v1:…` igual ao da forma de array / `null` |
-| H3a | `formatoDaPaginaGravada` (`compositor/formato.ts`, puro) para tags `story`/`feed`/`quadrado`, quadrado por tamanho, 1080×1920 (story), 1080×1350 (feed), sem tags; e, com `vi.mock('@/lib/db')` antes do import de `pastas.ts`, a reexportação é a mesma referência | resultados iguais aos da função antiga (tabela fixa no teste); `pastas.formatoDaPagina === formatoDaPaginaGravada` |
+| H3a | `formatoDaPaginaGravada` (`compositor/formato.ts`, puro) para tags `story`/`feed`/`quadrado`, quadrado por tamanho, 1080×1920 (story), 1080×1350 (feed), sem tags; e, com `vi.mock('@/lib/db')` antes do import de `pastas.ts`, a reexportação é a mesma referência e uma chamada interna de `pastas.ts` (a refilagem de `:264`) continua classificando | resultados iguais aos da função antiga (tabela fixa no teste); `pastas.formatoDaPagina === formatoDaPaginaGravada`; a função interna devolve o formato esperado para uma página de teste |
 | H3b | `decidirEMontarRegistro` com `medida.formato` ≠ formato da página (gate de feed para página story), `medida.canvas` ≠ página (1080×1920 × 2160×3840), `entrada.identidade` ≠ `identidadeDaPagina(page)`, **a medida LIMPA de OUTRA peça do mesmo formato e canvas** (camadas ≠ `page.layers`), `postType: 'STORY'` para formato `feed`, ou página em que os dois classificadores de formato discordam (nome "feed", tags `['story']`, 1080×1350: `assinatura.ts` → feed pelo nome; `pastas.ts` → story pela tag) | `{ decisao: 'sem-vinculo', motivo }` — sem gate, sem registro, nunca um `APTO`; com tudo igual → `ok`, e `gate` ≡ `gateDaMedida({ ...entrada, copy })` (igualdade estrutural) |
 | H3c | página cujo `copyAutoral` e camadas exigem revisão (bloco apagado nas camadas: `revisaoDaPaginaComCamadas` → `registrada`/lacunas), com o chamador injetando em runtime `copy: { estado: 'sem-mudanca', lacunas: [] }` nos args | `copy-completa` não comprovada no gate devolvido; a `copy` usada é a calculada da página (igual a `revisaoDaPaginaComCamadas(page.copyAutoral, page.layers, …)`); `sem-contrato` → não comprovada (9.4 do CP5a) |
 | H4 | `validadeDoGate` com vínculo, formato, 4 versões e política iguais | `coincidente` com `naoConferido` = a lista fixa de 4.2 (não vazia) |
 | H5 | cada item divergente, um por vez (projectId, generationId, pageId, formato, formatoDoCompositor — página 1080×1350 nome "feed" tags `['feed']` que vira tags `['story']`: hashes e formato do revisor iguais, só o do compositor muda —, page, copy, rulesVersion, versaoDoGate, política.estimado, política.semAssuntoLocalizavel) | `historico` com a divergência nomeada; duas ao mesmo tempo → as duas; página idêntica em OUTRA Generation (mesmos hashes) → `historico` com `'vinculo'`; página renomeada de "feed" para "story" (mesmo hash) → `historico` com `'formato'` |
 | H6 | `pageVersion` null no registro / no atual; `identidade.pageVersion ≠ gate.pageVersion` | `ilegivel` com motivo |
 | H7 | `lerGateDaArte`: `fieldValues` null/string/objeto sem `gateDaArte` → `ausente`; `gateDaArte` com `gateDaArte` com `versao: 'gate-v2'`, `politica` faltando, `cobertura` sem uma das 15 entradas, `resultado: 'APTO'` com `motivos` não vazio, com `achados` não vazio, com cobertura `nao-comprovada`, ou com `copy-completa`/`identidade`/`oclusao` em `nao-se-aplica` | `invalido` com motivo (e `versaoGravada` para `gate-v2`; `versao: 'x'.repeat(200)` ou `versao: '<script>'` → sem `versaoGravada`) em todos; com registro válido → `ok` e igualdade estrutural; TODA saída de `gateDaMedida` dos G-casos de `gate.test.ts` passa pelo schema |
-| H8 | `gravarGateDaArte` com cliente falso (`vi.mock('@/lib/db')` antes do import) | um `$executeRaw` com `jsonb ||`, patch `{ gateDaArte: registro }` e `WHERE` com id, projectId e `fieldValues->>'pageId'`; `resultUrl` nunca tocado; 0 linhas → `'sem-vinculo'` sem lançar; gravar duas vezes = mesmo SQL |
+| H8 | `gravarGateDaArte` com cliente falso (`vi.mock('@/lib/db')` antes do import) | um `$executeRaw` com `jsonb ||`, patch `{ gateDaArte: registro }` e `WHERE` com id, projectId e `fieldValues->>'pageId'`; `resultUrl` nunca tocado; 0 linhas → `'sem-vinculo'` sem lançar; gravar duas vezes = mesmo SQL; um clone estrutural do registro selado (`structuredClone(registro) as RegistroSelado`) → `'sem-proveniencia'`, nenhum SQL; tentar mudar `registro.gate.resultado` depois de selado lança (`TypeError`, objeto congelado) |
 | H9 | impressão digital: corpus em vigor | a do revisor bate com `revisao-revisao-v1.json` e a do gate com `gate-gate-v1.json` |
 | H10 | `impressaoDigitalDasRegras(entradas, corpus)` com `criticas` sem `colisao` / com um `gate` que devolve outro resultado para uma peça → a impressão do GATE muda; com um `avaliar` que devolve um achado a mais → a impressão do REVISOR muda; a mensagem pede o bump da versão certa | (a dependência real gate → `avaliarPeca` é por código, `gate.ts:797`, e não é provada por injeção: a impressão do gate usa o `gateDaMedida` REAL sobre o corpus, então uma mudança real de `avaliarPeca` a altera na prática — dito, não testado por H10) |
 | H11 | `montarRetornoDaPagina` com registro coincidente / histórico / inválido / ausente | bloco `gate` com `validade` certa, `naoConferido` e o `aviso` fixo; inválido → `validade: 'ilegivel'` com o motivo (e as versões gravadas só quando válidas pelo regex; malformadas ou longas → omitidas); ausente → `gate: null`; nunca inventa `APTO` |
@@ -487,14 +499,16 @@ contrato do CP5c tem de responder a cada um com texto e teste:
    `resolverAgendamento`). Teste: página `feed` com DRAFT `STORY` existente; página que ganhou música.
 4. **Efeitos depois do commit, nas TRÊS vias** (`criar` e `adotar` também executam efeitos depois,
    `agendar-itens.ts:755`; `reaproveitar` em `:572-575`): revalidação PROTEGIDA antes de CADA efeito — a
-   `identidadeDaPagina` relida sob trava (ou CAS no efeito) tem de ser a da medida fresca em `pageVersion` E
-   `copyVersion` E `formato` (`versaoDaPagina` não vê `Page.copyAutoral` nem nome/tags — mudar só o nome troca feed por
-   story sem mudar hash; Codex R10/R11); edição concorrente entre a medição e o efeito → efeito não roda. Teste
-   com edição concorrente de camadas, só da copy e só do nome/tags.
+   `identidadeDaPagina` relida sob trava (ou CAS no efeito) tem de ser a da medida fresca em `pageVersion`,
+   `copyVersion`, `formato` E `formatoDoCompositor` (`versaoDaPagina` não vê `Page.copyAutoral` nem nome/tags — mudar
+   só o nome ou só as tags troca feed por story sem mudar hash, e a refilagem de `pastas.ts:264` usa o classificador
+   do compositor; Codex R10–R14); edição concorrente entre a medição e o efeito → efeito não roda. Teste com edição
+   concorrente de camadas, só da copy, só do nome e só das tags.
 4a. **O POST relido antes dos efeitos pós-commit**: `SocialPost.status === 'DRAFT'`, `laterPostId` nulo, `postType`
    = `TIPO_DO_POST_POR_FORMATO[formato relido]` e o vínculo com página/Generation, relidos sob trava antes de CADA
    efeito (hoje a leitura do post de `agendar-itens.ts:569` pode ser usada mais tarde, `:755`); divergiu → efeito não
-   roda (`laterPostId` presente = intocável, regra 🔴 do `AGENTS.md`).
+   roda (`laterPostId` presente = intocável, regra 🔴 do `AGENTS.md`). O vínculo do post inclui `SocialPost.projectId`
+   (`schema.prisma:1549`), hoje fora de `SELECAO_DO_POST` (`agendar-itens.ts:142`).
 4b. **A Generation dona do registro é a do POST** (`post.generationId`), nas vias com post existente (`adotar`,
    `reaproveitar`): o post relido sob trava tem de apontar a Generation medida (`post.generationId ===
    vinculo.generationId`); `null` ou outra Generation → `sem-vinculo`/humano (hoje a adoção escolhe o post pela
