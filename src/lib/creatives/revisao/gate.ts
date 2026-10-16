@@ -629,7 +629,11 @@ function leituraDaLogoRepresentaORender(l: Layer): string | null {
   if (valorEfetivo(border?.width)) ruins.push('border.width')
   if (valorEfetivo(style.shadow)) ruins.push('style.shadow')
   const fx = (l.effects ?? {}) as Record<string, { enabled?: unknown } | undefined>
-  for (const k of ['shadow', 'blur', 'stroke', 'background', 'curved'] as const) if (fx[k]?.enabled === true) ruins.push(`effects.${k}`)
+  // O render liga o efeito por VERDADE JS (`if (efeito?.enabled)`), não por `=== true` (Codex R6: `enabled: 1`).
+  for (const k of ['shadow', 'blur', 'stroke', 'background', 'curved'] as const) if (valorEfetivo(fx[k]?.enabled)) ruins.push(`effects.${k}`)
+  // Opacidade: o render coage ("0.5" → 0,5) e o CP3 só recusa NÚMERO abaixo de 1 — aqui só passa número finito igual a 1.
+  const opacidade = style.opacity
+  if (opacidade !== undefined && opacidade !== null && (typeof opacidade !== 'number' || !Number.isFinite(opacidade) || opacidade < 1)) ruins.push('opacity')
   return ruins.length > 0 ? `logo ${l.id} desenhada com ${ruins.join(', ')}: a leitura medida no arquivo não representa o render` : null
 }
 
@@ -639,12 +643,25 @@ function leituraDaLogoRepresentaORender(l: Layer): string | null {
  * o recorte manual (`style.crop`, que o render prioriza), espelho, máscara, filtro e desfoque deslocam ou alteram o
  * assunto sem a medida saber (Codex R5). Fail-closed: `texto-sobre-assunto` não comprovada.
  */
-const CHAVES_DO_FUNDO_QUE_O_ASSUNTO_NAO_VE = ['crop', 'flipH', 'flipV', 'flipX', 'flipY', 'mask', 'filter', 'blur'] as const
-function assuntoRepresentaORender(fundo: Layer): string | null {
+const CHAVES_DO_FUNDO_QUE_O_ASSUNTO_NAO_VE = [...CHAVES_QUE_A_LEITURA_DA_LOGO_NAO_VE, 'crop', 'flipX', 'flipY'] as const
+/**
+ * Codex R6: o assunto é medido como se a foto fosse UM cover do canvas inteiro (`lerFotoComoCover(bytes, canvas, …)`,
+ * e o retângulo gravado é da peça composta). Qualquer outra composição desloca o que aparece sem a medida saber:
+ * `objectFit` que não seja `cover` (o render estica a imagem inteira, image-fit.ts), caixa fora de (0,0,canvas),
+ * rotação, filtros de pixel, e uma SEGUNDA foto visível (o revisor só olha `bg-foto`, regras.ts `fotoDeFundo`).
+ */
+function assuntoRepresentaORender(fundo: Layer, canvas: { width: number; height: number }, camadas: Layer[]): { motivo: string; camadas: string[] } | null {
   const style = (fundo.style ?? {}) as Record<string, unknown>
   const ruins: string[] = CHAVES_DO_FUNDO_QUE_O_ASSUNTO_NAO_VE.filter((k) => valorEfetivo(style[k]))
+  if (style.objectFit !== 'cover') ruins.push(`objectFit ${JSON.stringify(style.objectFit ?? null)} (a medida lê a foto como cover)`)
+  const { x, y } = fundo.position ?? ({} as { x?: unknown; y?: unknown })
+  const { width, height } = fundo.size ?? ({} as { width?: unknown; height?: unknown })
+  if (x !== 0 || y !== 0 || width !== canvas.width || height !== canvas.height) ruins.push('caixa diferente do canvas (a medida lê a foto cobrindo o canvas inteiro)')
   if (valorEfetivo((fundo as { rotation?: unknown }).rotation)) ruins.push('rotation')
-  return ruins.length > 0 ? `foto de fundo desenhada com ${ruins.join(', ')}: o assunto medido não representa o render` : null
+  const logos = new Set(logosDaPeca(camadas).map((l) => l.id))
+  const outrasFotos = camadas.filter((l) => l !== fundo && l.visible !== false && l.type === 'image' && !logos.has(l.id))
+  if (outrasFotos.length > 0) ruins.push(`segunda foto visível (${outrasFotos.map((l) => l.id).join(', ')}): o revisor só mede o assunto de ${fundo.id}`)
+  return ruins.length > 0 ? { motivo: `foto de fundo desenhada com ${ruins.join('; ')}: o assunto medido não representa o render`, camadas: [fundo.id, ...outrasFotos.map((l) => l.id)] } : null
 }
 
 export interface DecisaoDaCritica {
@@ -814,13 +831,23 @@ export function gateDaMedida(entrada: EntradaDoGate): { gate: GateDaArte; relato
     motivos.push({ regra: 'identidade', codigo: 'IDENTIDADE_ILEGIVEL', motivo: 'identidade: camadas ilegíveis', camadas: [] })
   } else cobertura.identidade = { estado: 'comprovada' }
 
+  // Invariante 2.3 do contrato: APTO só com `naoMedidos` vazio. O que entrou em `naoMedidos` sem gerar motivo (ex.:
+  // `textosSemMetrica` com id residual numa peça sem texto visível — Codex R6) vira NAO_MEDIDO aqui.
+  if (motivos.length === 0 && naoMedidos.length > 0) {
+    for (const n of naoMedidos) {
+      const regra = n.regra === 'geometria' ? 'oclusao' : n.regra
+      cobertura[regra] = { estado: 'nao-comprovada', motivo: n.motivo }
+      motivos.push({ regra, codigo: 'NAO_MEDIDO', motivo: `não medido: ${n.motivo}`, camadas: n.camadas })
+    }
+  }
+
   // Ordem determinística dos motivos: críticas na ordem de REGRAS_CRITICAS, depois as conferências.
   const ordem = [...REGRAS_CRITICAS, ...CONFERENCIAS_DO_GATE] as string[]
   motivos.sort((a, b) => ordem.indexOf(a.regra) - ordem.indexOf(b.regra))
 
   const gate: GateDaArte = {
     versao: 'gate-v1',
-    resultado: motivos.length === 0 ? 'APTO' : 'REVISAO_HUMANA_NECESSARIA',
+    resultado: motivos.length === 0 && naoMedidos.length === 0 ? 'APTO' : 'REVISAO_HUMANA_NECESSARIA',
     rulesVersion: relatorio.versaoDasRegras,
     pageVersion: identidade.pageVersion,
     copyVersion: identidade.copyVersion,
@@ -850,8 +877,8 @@ function decidirAssunto(args: {
   if (!fundo) return nsa('a peça não tem foto de fundo')
   // C' — camada de foto visível SEM arquivo: nada foi lido (fail-closed, sempre).
   if (typeof fundo.fileUrl !== 'string' || fundo.fileUrl.trim() === '') return nc('foto de fundo sem arquivo: nada foi lido', [fundo.id])
-  const naoRepresenta = assuntoRepresentaORender(fundo)
-  if (naoRepresenta) return nc(naoRepresenta, [fundo.id])
+  const naoRepresenta = assuntoRepresentaORender(fundo, medida.canvas, medida.camadas)
+  if (naoRepresenta) return nc(naoRepresenta.motivo, naoRepresenta.camadas)
   if (medida.assunto) {
     if (medida.assunto.origem === 'catalogo') {
       if (criticos.length > 0) return rep(criticos)

@@ -893,11 +893,24 @@ nada é persistido (CP5b). O que existe:
   `style.crop` (`image-fit.ts`) — um recorte manual deslocado deixava o retângulo velho com estado `medida` e o gate
   aceitava. Fail-closed no gate: foto de fundo com `style.crop`, `flipH`/`flipV`/`flipX`/`flipY`, `mask`, `filter`,
   `blur` ou `rotation` efetivos → assunto não comprovada com as 4 políticas (o conserto de `mesmaComposicao` fica para
-  o revisor, fora do CP5a). Regressões: G12 (5 estilos de logo) e G13b.
+  o revisor, fora do CP5a). Regressões: G12 (5 estilos de logo) e G13b. Rodada 6 (esforço máximo): (11) a medida do
+  assunto lê a foto como UM cover do canvas inteiro (`lerFotoComoCover(bytes, canvas, …)`; o retângulo gravado é da
+  peça composta) e `mesmaComposicao` não compara `objectFit`, `position` nem `size` — fundo com `objectFit` ≠ `cover`
+  (o render ESTICA a imagem inteira, `image-fit.ts`), caixa diferente de (0,0,canvas), filtro de pixel
+  (`exposure`/`contrast`/… de `konva/filters/apply.ts`) ou uma SEGUNDA foto visível que não é logo solta (o revisor só
+  olha `bg-foto`, `fotoDeFundo` em regras.ts) → `texto-sobre-assunto` não comprovada com as 4 políticas, e os ids vão em
+  `camadas`; (12) valores JSON fora do tipo: o render liga efeito por verdade JS (`enabled: 1`, `'true'`) e coage
+  `opacity: '0.5'`, e o CP3 só recusa NÚMERO abaixo de 1 — na logo, `enabled` efetivo (não `=== true`) e `opacity`
+  que não seja número finito igual a 1 → não comprovada; (13) invariante 2.3 do contrato imposto na estrutura: o que
+  entra em `naoMedidos` sem motivo vira NAO_MEDIDO e `resultado` exige motivos E naoMedidos vazios — o helper `gate()`
+  dos testes confere `APTO ⇔ motivos vazio ∧ naoMedidos vazio` em TODA chamada. Regressões: G12 (`enabled: 1`/`'true'`,
+  `opacity` string/0,5/NaN, controle `opacity: 1` + `enabled: 0`/`false`), G13c, G30. Decisão que sobe ao owner
+  (Codex R6): a prova de `texto-sobre-assunto` no CP5a exige UM fundo `cover` cobrindo o canvas na posição original e
+  recusa o resto (fail-closed); medir o assunto a partir da composição renderizada é trabalho do revisor (CP5b+).
   Regressões em G9, G12, G21 e no bloco G21f (valores não numéricos, chave no topo, tipo novo, `effects.curved`,
   `textboxConfig` desconhecido, opacidade 0/parcial, `filter` vazio, `visible` 0/"false", efeitos combinados com
   paridade no render real — forma e imagem com máscara + flip + recorte + sombra + desfoque).
-- **Provas** (`gate.test.ts`, 51 testes): G1–G29 e subcasos; G21c (paridade do lado de cima, >100 renders reais) e
+- **Provas** (`gate.test.ts`, 53 testes): G1–G29 e subcasos; G21c (paridade do lado de cima, >100 renders reais) e
   G21e (lado protegido, métrica real do medidor); oclusão EFETIVA comprovada pelo renderer (texto a 90° sob forma sem
   rotação: os pixels do texto somem no render e o gate acusa; controle com a forma abaixo → comprovada); logo limpa
   sobre a expansão do texto por contorno/sombra/desfoque/borda → oclusão, e o controle sem efeitos preserva a exceção.

@@ -135,7 +135,12 @@ function entrada(parcial: Omit<Partial<EntradaDoGate>, 'medida'> & { medida?: Pa
   return { medida: medida(m), identidade: IDENTIDADE, copy: COPY_OK, politicaDoAssunto: POLITICA, ...resto }
 }
 
-const gate = (parcial: Parameters<typeof entrada>[0] = {}) => gateDaMedida(entrada(parcial)).gate
+const gate = (parcial: Parameters<typeof entrada>[0] = {}) => {
+  const g = gateDaMedida(entrada(parcial)).gate
+  // Invariante 2.3 do contrato, conferido em TODA chamada dos testes: APTO ⇔ motivos vazio ∧ naoMedidos vazio.
+  expect(g.resultado === 'APTO', `resultado ${g.resultado} com motivos=${g.motivos.length} naoMedidos=${g.naoMedidos.length}`).toBe(g.motivos.length === 0 && g.naoMedidos.length === 0)
+  return g
+}
 const motivosDe = (g: ReturnType<typeof gate>, regra: string) => g.motivos.filter((m) => m.regra === regra)
 
 // ─── G1/G2 — peça limpa e invariantes ─────────────────────────────────────
@@ -296,11 +301,16 @@ describe('G11/G12 — logo-sem-leitura', () => {
     const shapeLogo = gate({ medida: { camadas: pecaLimpa().camadas.map((l) => (l.id === 'logo' ? { ...l, type: 'shape', fileUrl: 'https://blob.test/logo.png', style: { shapeType: 'circle', fill: '#fff' } } : l)) } })
     expect(shapeLogo.cobertura['logo-sem-leitura'].estado).toBe('nao-comprovada')
     // Codex R5: `border.radius` recorta os cantos, `border.width` pinta sobre a logo, sombra/desfoque/traço mudam a composição.
-    for (const extra of [{ style: { objectFit: 'contain', border: { width: 0, color: '#000', radius: 8 } } }, { style: { objectFit: 'contain', border: { width: 6, color: '#000', radius: 0 } } }, { style: { objectFit: 'contain', shadow: { offsetX: 4, offsetY: 4, blur: 2, color: '#000' } } }, { effects: { shadow: { enabled: true, shadowColor: '#000', shadowBlur: 4, shadowOffsetX: 2, shadowOffsetY: 2, shadowOpacity: 1 } } }, { effects: { blur: { enabled: true, blurRadius: 3 } } }] as Array<Partial<Layer>>) {
+    // Codex R6: o render liga efeito por verdade JS (`enabled: 1`, `'true'`) e coage `opacity: '0.5'`; o CP3 só recusa número < 1.
+    for (const extra of [{ style: { objectFit: 'contain', border: { width: 0, color: '#000', radius: 8 } } }, { style: { objectFit: 'contain', border: { width: 6, color: '#000', radius: 0 } } }, { style: { objectFit: 'contain', shadow: { offsetX: 4, offsetY: 4, blur: 2, color: '#000' } } }, { effects: { shadow: { enabled: true, shadowColor: '#000', shadowBlur: 4, shadowOffsetX: 2, shadowOffsetY: 2, shadowOpacity: 1 } } }, { effects: { blur: { enabled: true, blurRadius: 3 } } }, { effects: { shadow: { enabled: 1, shadowColor: '#000', shadowBlur: 4 } } }, { effects: { shadow: { enabled: 'true' } } }, { style: { objectFit: 'contain', opacity: '0.5' } }, { style: { objectFit: 'contain', opacity: 0.5 } }, { style: { objectFit: 'contain', opacity: Number.NaN } }] as Array<Partial<Layer>>) {
       const g = gate({ medida: { camadas: pecaLimpa().camadas.map((l) => (l.id === 'logo' ? { ...l, ...extra } : l)) } })
       expect(g.cobertura['logo-sem-leitura'].estado, JSON.stringify(extra)).toBe('nao-comprovada')
-      expect(g.naoMedidos.filter((n) => n.regra === 'logo-sem-leitura').every((n) => n.camadas.includes('logo')), JSON.stringify(extra)).toBe(true)
+      const nm = g.naoMedidos.filter((n) => n.regra === 'logo-sem-leitura')
+      expect(nm.length, JSON.stringify(extra)).toBeGreaterThan(0)
+      expect(nm.every((n) => n.camadas.includes('logo')), JSON.stringify(extra)).toBe(true)
     }
+    // `opacity: 1` numérica e `enabled: false`/`0` seguem comprovados (o render também não liga).
+    expect(gate({ medida: { camadas: pecaLimpa().camadas.map((l) => (l.id === 'logo' ? ({ ...l, style: { objectFit: 'contain', opacity: 1 }, effects: { shadow: { enabled: 0 }, blur: { enabled: false } } } as unknown as Layer) : l)) } }).cobertura['logo-sem-leitura']).toEqual({ estado: 'comprovada' })
     // Controle: `objectFit: 'contain'` liso (e borda com width 0 e radius 0) segue comprovado.
     expect(gate({ medida: { camadas: pecaLimpa().camadas.map((l) => (l.id === 'logo' ? { ...l, style: { objectFit: 'contain', border: { width: 0, color: '#000', radius: 0 } } } : l)) } }).cobertura['logo-sem-leitura']).toEqual({ estado: 'comprovada' })
     const ilegivel = gate({ medida: { leituraDaLogo: [leitura('logo', medidaDaLogo(12))] } })
@@ -381,6 +391,49 @@ describe('G13–G18 — política do assunto', () => {
     const girada = gate({ medida: { camadas: pecaLimpa().camadas.map((l) => (l.id === 'bg-foto' ? { ...l, rotation: 5 } : l)) } })
     expect(girada.cobertura['texto-sobre-assunto'].estado).toBe('nao-comprovada')
     expect(gate({ medida: { camadas: pecaLimpa().camadas.map((l) => (l.id === 'bg-foto' ? { ...l, style: { objectFit: 'cover', cropPosition: 'right-middle' } } : l)) } }).cobertura['texto-sobre-assunto']).toEqual({ estado: 'comprovada' })
+  })
+
+  it('G13c (Codex R6): a medida lê a foto como UM cover do canvas inteiro — objectFit ≠ cover, caixa fora de (0,0,canvas), filtro de pixel ou segunda foto visível → não comprovada com as 4 políticas', () => {
+    const casos: Array<[string, Partial<Layer>]> = [
+      ['contain', { style: { objectFit: 'contain' } }],
+      ['fill', { style: { objectFit: 'fill' } }],
+      ['sem objectFit', { style: {} }],
+      ['exposure', { style: { objectFit: 'cover', exposure: 20 } }],
+      ['contrast', { style: { objectFit: 'cover', contrast: 15 } }],
+      ['saturation', { style: { objectFit: 'cover', saturation: -30 } }],
+      ['deslocada', { position: { x: 0, y: 200 } }],
+      ['menor', { size: { width: W * 0.95, height: H * 0.95 } }],
+      ['posição não numérica', { position: { x: '0', y: 0 } as unknown as Layer['position'] }],
+    ]
+    for (const [nome, extra] of casos) {
+      for (const politica of POLITICAS) {
+        const g = gate({ politicaDoAssunto: politica, medida: { camadas: pecaLimpa().camadas.map((l) => (l.id === 'bg-foto' ? { ...l, ...extra } : l)) } })
+        expect(g.cobertura['texto-sobre-assunto'].estado, nome).toBe('nao-comprovada')
+        expect(motivosDe(g, 'texto-sobre-assunto')[0]?.camadas, nome).toEqual(['bg-foto'])
+      }
+    }
+    // Segunda foto de tela inteira ABAIXO dos textos (não oclui nada): o revisor mede o assunto de `bg-foto`, o visível é o da outra.
+    const segunda = fundo({ id: 'foto-2', name: 'Outra foto', order: 1, fileUrl: 'https://blob.test/outra.jpg' })
+    for (const politica of POLITICAS) {
+      const g = gate({ politicaDoAssunto: politica, medida: { camadas: [...pecaLimpa().camadas, segunda] } })
+      expect(g.cobertura['texto-sobre-assunto'].estado).toBe('nao-comprovada')
+      expect(motivosDe(g, 'texto-sobre-assunto')[0]?.camadas).toEqual(['bg-foto', 'foto-2'])
+    }
+    // Controle: a imagem extra que é LOGO solta (type image com "logo" no nome) não é segunda foto.
+    const logoImagem = fundo({ id: 'logo-2', name: 'Logo secundária', type: 'image', order: 8, position: { x: 100, y: 1600 }, size: { width: 120, height: 60 }, fileUrl: 'https://blob.test/logo2.png' })
+    const comLogo = gate({ medida: { camadas: [...pecaLimpa().camadas, logoImagem], leituraDaLogo: [leitura('logo', medidaDaLogo()), leitura('logo-2', medidaDaLogo())] } })
+    expect(comLogo.cobertura['texto-sobre-assunto']).toEqual({ estado: 'comprovada' })
+  })
+
+  it('G30 (Codex R6): invariante 2.3 — `naoMedidos` não vazio nunca sai APTO, mesmo sem outro motivo (id residual em textosSemMetrica numa peça sem texto visível)', () => {
+    const semTextos = { camadas: [fundo(), logo()], metricas: [], contraste: [], textosSemMetrica: ['fantasma'] }
+    const g = gate({ medida: semTextos })
+    expect(g.resultado).toBe('REVISAO_HUMANA_NECESSARIA')
+    expect(g.naoMedidos.some((n) => n.regra === 'geometria' && n.camadas.includes('fantasma'))).toBe(true)
+    // (hoje o revisor já derruba `texto-sobre-assunto` por texto sem métrica; o invariante estrutural é conferido em
+    // TODA chamada de `gate()` destes testes: APTO ⇔ motivos vazio ∧ naoMedidos vazio.)
+    expect(g.motivos.length).toBeGreaterThan(0)
+    expect(gate({ medida: { ...semTextos, textosSemMetrica: [] } }).naoMedidos).toEqual([])
   })
 
   it('G16: D (falha ao analisar, sem a marca) → não comprovada, independente da política', () => {
