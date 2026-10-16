@@ -1,6 +1,6 @@
 # CP5b — contrato técnico de PERSISTÊNCIA, IDENTIDADE e `rulesVersion` (proposta para revisão, 16/10/2026)
 
-**Estado: PROPOSTA (rodada 12: NÃO EXISTE "vigente" no CP5b; o registro NUNCA é consultado para decidir (nem como sinal negativo); duas impressões, com as entradas do corpus dentro; o registro nasce da MESMA chamada que decide, a copy é reconciliada DENTRO dela, e sem vínculo (página OU Generation) NÃO HÁ decisão; tudo o que é VIA do agendar-leva virou handoff para o contrato do CP5c (seção 12) — o registro é auditoria; só a re-medição prova; vínculo projeto/Generation/página; formato na identidade; impressão digital travada por validador no CI).** Nada aqui está implementado; este PR é documental. Base: `main` `5e96d5a1` (merge do CP5a,
+**Estado: PROPOSTA (rodada 13: NÃO EXISTE "vigente" no CP5b; o registro NUNCA é consultado para decidir (nem como sinal negativo); duas impressões, com as entradas do corpus dentro; o registro nasce da MESMA chamada que decide, a copy é reconciliada DENTRO dela, e sem vínculo (página OU Generation) NÃO HÁ decisão; tudo o que é VIA do agendar-leva virou handoff para o contrato do CP5c (seção 12) — o registro é auditoria; só a re-medição prova; vínculo projeto/Generation/página; formato na identidade; impressão digital travada por validador no CI).** Nada aqui está implementado; este PR é documental. Base: `main` `5e96d5a1` (merge do CP5a,
 PR #237; contrato do CP5a mergeado pelo PR #236). Ordem do owner (16/10): depois do fechamento do CP5a, preparar
 SOMENTE o contrato do CP5b, centrado em persistência, identidade e `rulesVersion`; oclusão por pixels exige
 justificativa e escopo explícitos (seção 10); a integração com a não-piora continua no CP5d, conforme o
@@ -55,7 +55,8 @@ export interface RegistroDoGate {
   politica: PoliticaDoAssunto            // a política com que o veredito foi calculado (sem ela o veredito não se lê)
   identidade: {
     projectId: number; generationId: string; pageId: string   // o VÍNCULO: a Generation desta página, deste projeto
-    formato: 'story' | 'feed' | 'quadrado' | null              // formatoDaPagina(name, tags, w, h): decide piso e canvas canônico
+    formato: 'story' | 'feed' | 'quadrado' | null              // formatoDaPagina(name, tags, w, h) do REVISOR: decide piso e canvas canônico
+    formatoDoCompositor: 'story' | 'feed' | 'quadrado'         // formatoDaPaginaGravada(tags, w, h) do compositor — os dois entram (Codex R12)
     pageVersion: string | null; copyVersion: string
   }
   medidoEm: string                       // ISO-8601, relógio do servidor que mediu
@@ -103,8 +104,10 @@ export interface RegistroDoGate {
   medida), e a divergência entre os dois para a mesma página é mais um caso de `sem-vinculo` (H3b). `pastas.ts`
   importa `@/lib/db` no carregamento (`pastas.ts:11`), então o módulo puro NÃO o importa (Codex R11): a função
   `formatoDaPagina` de `pastas.ts` é EXTRAÍDA, sem mudar uma linha da lógica, para `src/lib/compositor/formato.ts`
-  (puro) como `formatoDaPaginaGravada`, `pastas.ts` passa a reexportá-la (`export { formatoDaPaginaGravada as
-  formatoDaPagina }`, chamadores intocados) e `gate-registro.ts` importa de `formato.ts` — uma regra só, nunca cópia.
+  (puro) como `formatoDaPaginaGravada`, `pastas.ts` passa a importá-la (`import { formatoDaPaginaGravada } from './formato'`, para as chamadas internas de
+  `pastas.ts:161` e `:264` continuarem resolvendo — Codex R12) E a reexportá-la com o nome antigo (`export {
+  formatoDaPaginaGravada as formatoDaPagina }`, chamadores externos intocados); `gate-registro.ts` importa de
+  `formato.ts` — uma regra só, nunca cópia.
   Falhou → `{ decisao: 'sem-vinculo', motivo }`: **nenhum gate é devolvido**, logo nenhum `APTO` existe para o
   produtor usar (Codex R5: "a decisão não depende da auditoria" valia para a GRAVAÇÃO, nunca para o vínculo — falha ao
   vincular a decisão à peça recusa a decisão autônoma). O CP5c, único produtor, chama `decidirEMontarRegistro` e
@@ -216,10 +219,12 @@ pelo `gateDaArteSchema` (o campo `gate` de `registroDoGateSchema`; o schema não
 ```ts
 export function identidadeDaPagina(page: {
   id: string; name: string; tags: string[]; width: number; height: number; background?: string | null; layers: unknown; copyAutoral?: unknown
-}): { pageId: string; formato: Formato | null; pageVersion: string | null; copyVersion: string }
-  // pageVersion = versaoDaPagina(page) — SEM quadro de áudio (a mesma chamada do revisor, revisar-arte.ts:673)
-  // copyVersion = copyVersionDe(page.copyAutoral)
-  // formato     = formatoDaPagina({ name, tags, width, height }) — o mesmo de contextoDaMedicao (revisar-arte.ts:389)
+}): { pageId: string; formato: Formato | null; formatoDoCompositor: Formato; pageVersion: string | null; copyVersion: string }
+  // pageVersion         = versaoDaPagina(page) — SEM quadro de áudio (a mesma chamada do revisor, revisar-arte.ts:673)
+  // copyVersion         = copyVersionDe(page.copyAutoral)
+  // formato             = formatoDaPagina({ name, tags, width, height }) — o do revisor, o mesmo de contextoDaMedicao (revisar-arte.ts:389)
+  // formatoDoCompositor = formatoDaPaginaGravada({ tags, width, height }) — o do compositor (compositor/formato.ts); trocar SÓ as tags
+  //                       muda este sem mudar o do revisor nem os hashes (Codex R12), e a validade compara os dois
 ```
 
 - **Sem áudio, de propósito**: o gate mede o render de imagem (CP5a; vídeo e movimento vão ao humano), e a versão com
@@ -250,13 +255,13 @@ alterados): nenhum deles produz um rótulo que autorize algo, porque nenhum rót
 ```ts
 export type ValidadeDoGate =
   | { estado: 'coincidente'; naoConferido: readonly string[] }   // metadados iguais; a lista fixa do que a identidade não cobre (4.2)
-  | { estado: 'historico'; divergencias: Array<'vinculo' | 'formato' | 'pageVersion' | 'copyVersion' | 'rulesVersion' | 'versaoDoGate' | 'politica'> }
+  | { estado: 'historico'; divergencias: Array<'vinculo' | 'formato' | 'formatoDoCompositor' | 'pageVersion' | 'copyVersion' | 'rulesVersion' | 'versaoDoGate' | 'politica'> }
   | { estado: 'ilegivel'; motivo: string }      // pageVersion null de um lado, ou identidade ≠ gate nas versões
 
 export function validadeDoGate(
   registro: RegistroDoGate,                            // só de uma leitura `ok` (3.4); ausente/inválido nunca chegam aqui
   atual: {
-    projectId: number; generationId: string; pageId: string; formato: Formato | null
+    projectId: number; generationId: string; pageId: string; formato: Formato | null; formatoDoCompositor: Formato
     pageVersion: string | null; copyVersion: string
     rulesVersion: string; versaoDoGate: string          // VERSAO_DAS_REGRAS e GateDaArte['versao'] de QUEM LÊ
     politica: PoliticaDoAssunto                          // obrigatória: sem ela não há comparação (ver-geracao exibe a gravada e passa a RECOMENDADA, nomeada — 9.7)
@@ -266,7 +271,8 @@ export function validadeDoGate(
 
 Invariantes (fail-closed):
 
-1. `coincidente` ⇔ registro legível (3.4) ∧ vínculo igual (`projectId`, `generationId`, `pageId`) ∧ `formato` igual ∧
+1. `coincidente` ⇔ registro legível (3.4) ∧ vínculo igual (`projectId`, `generationId`, `pageId`) ∧ `formato` E
+   `formatoDoCompositor` iguais ∧
    `pageVersion` não nulo e igual ∧ `copyVersion` igual ∧ `rulesVersion` igual ∧ `versaoDoGate` igual ao `gate.versao`
    gravado (a quarta versão É comparada; na prática, depois de um bump do gate o registro antigo já cai em `ilegivel`
    no leitor — 3.4/9.13 — e a comparação é a rede de segurança para quem monta `atual` com outra constante) ∧
@@ -303,9 +309,11 @@ ressalva). Regra fora do corpus também escapa: por isso o corpus é enumerado (
     bump de `VERSAO_DAS_REGRAS`;
   - **impressão do gate** = sha256 do JSON `estavel` de { `REGRAS_CRITICAS`, `CONFERENCIAS_DO_GATE`,
     `CHAVES_CLASSIFICADAS`, e, para cada peça do corpus e cada uma das 4 políticas, a ENTRADA e a saída
-    `gateDaMedida(entrada).gate` SEM os metadados copiados (`rulesVersion`, `pageVersion`, `copyVersion` — o gate só
-    os copia, `gate.ts:883`; Codex R10: com eles dentro, subir `VERSAO_DAS_REGRAS` sozinho já mudava a impressão do
-    gate) } → arquivo
+    `gateDaMedida(entrada).gate` SEM os campos `rulesVersion`, `pageVersion` e `copyVersion` da SAÍDA (o gate os copia da
+    entrada, `gate.ts:883`; `pageVersion: null` muda cobertura, motivos e resultado — `gate.ts:866` — e esse efeito
+    continua dentro da impressão porque a ENTRADA do corpus, com o seu `pageVersion`, e a cobertura/motivos da saída
+    ficam; só a cópia do valor sai. Codex R10: com as cópias dentro, subir `VERSAO_DAS_REGRAS` sozinho já mudava a
+    impressão do gate) } → arquivo
     `__tests__/impressao-digital/gate-<GateDaArte['versao']>.json`; mudou → o teste exige bump de `gate.versao`.
     Como `gateDaMedida` chama `avaliarPeca` (`gate.ts:797`), uma mudança do revisor que altere a saída do gate no
     corpus muda as duas impressões e exige os DOIS bumps — é o custo de "a medida é a fonte única" (CP5a) e é
@@ -395,14 +403,14 @@ ressalva). Regra fora do corpus também escapa: por isso o corpus é enumerado (
 
 | Caso | Entrada | Esperado |
 |---|---|---|
-| H1 | `identidadeDaPagina` da fixture do piloto (v1) | `pageVersion` = `versaoDaPagina(page)`; `copyVersion` = `copyVersionDe(page.copyAutoral)`; `copyAutoral` ausente → `'sem-contrato'`; `formato` = `formatoDaPagina(...)` ('story' para a fixture; 'quadrado' para 500×500 sem nome; `null` para 400×300 sem nome) |
+| H1 | `identidadeDaPagina` da fixture do piloto (v1) | `pageVersion` = `versaoDaPagina(page)`; `copyVersion` = `copyVersionDe(page.copyAutoral)`; `copyAutoral` ausente → `'sem-contrato'`; `formato` = `formatoDaPagina(...)` ('story' para a fixture; 'quadrado' para 500×500 sem nome; `null` para 400×300 sem nome); `formatoDoCompositor` = `formatoDaPaginaGravada(...)` ('story' para a fixture; 'feed' para 400×300) |
 | H2 | a mesma página com `audio` | `pageVersion` igual (sem áudio) |
 | H3 | `layers` como string JSON dupla / ilegível | `pageVersion` `v1:…` igual ao da forma de array / `null` |
-| H3a | `formatoDaPaginaGravada` (`compositor/formato.ts`) ≡ a função antiga de `pastas.ts` para tags `story`/`feed`/`quadrado`, quadrado por tamanho, 1080×1920 (story), 1080×1350 (feed), sem tags; e `pastas.ts` reexporta a mesma referência | iguais; `pastas.formatoDaPagina === formatoDaPaginaGravada` |
+| H3a | `formatoDaPaginaGravada` (`compositor/formato.ts`, puro) para tags `story`/`feed`/`quadrado`, quadrado por tamanho, 1080×1920 (story), 1080×1350 (feed), sem tags; e, com `vi.mock('@/lib/db')` antes do import de `pastas.ts`, a reexportação é a mesma referência | resultados iguais aos da função antiga (tabela fixa no teste); `pastas.formatoDaPagina === formatoDaPaginaGravada` |
 | H3b | `decidirEMontarRegistro` com `medida.formato` ≠ formato da página (gate de feed para página story), `medida.canvas` ≠ página (1080×1920 × 2160×3840), `entrada.identidade` ≠ `identidadeDaPagina(page)`, **a medida LIMPA de OUTRA peça do mesmo formato e canvas** (camadas ≠ `page.layers`), `postType: 'STORY'` para formato `feed`, ou página em que os dois classificadores de formato discordam (nome "feed", tags `['story']`, 1080×1350: `assinatura.ts` → feed pelo nome; `pastas.ts` → story pela tag) | `{ decisao: 'sem-vinculo', motivo }` — sem gate, sem registro, nunca um `APTO`; com tudo igual → `ok`, e `gate` ≡ `gateDaMedida({ ...entrada, copy })` (igualdade estrutural) |
 | H3c | página cujo `copyAutoral` e camadas exigem revisão (bloco apagado nas camadas: `revisaoDaPaginaComCamadas` → `registrada`/lacunas), com o chamador injetando em runtime `copy: { estado: 'sem-mudanca', lacunas: [] }` nos args | `copy-completa` não comprovada no gate devolvido; a `copy` usada é a calculada da página (igual a `revisaoDaPaginaComCamadas(page.copyAutoral, page.layers, …)`); `sem-contrato` → não comprovada (9.4 do CP5a) |
 | H4 | `validadeDoGate` com vínculo, formato, 4 versões e política iguais | `coincidente` com `naoConferido` = a lista fixa de 4.2 (não vazia) |
-| H5 | cada item divergente, um por vez (projectId, generationId, pageId, formato, page, copy, rulesVersion, versaoDoGate, política.estimado, política.semAssuntoLocalizavel) | `historico` com a divergência nomeada; duas ao mesmo tempo → as duas; página idêntica em OUTRA Generation (mesmos hashes) → `historico` com `'vinculo'`; página renomeada de "feed" para "story" (mesmo hash) → `historico` com `'formato'` |
+| H5 | cada item divergente, um por vez (projectId, generationId, pageId, formato, formatoDoCompositor — página 1080×1350 nome "feed" tags `['feed']` que vira tags `['story']`: hashes e formato do revisor iguais, só o do compositor muda —, page, copy, rulesVersion, versaoDoGate, política.estimado, política.semAssuntoLocalizavel) | `historico` com a divergência nomeada; duas ao mesmo tempo → as duas; página idêntica em OUTRA Generation (mesmos hashes) → `historico` com `'vinculo'`; página renomeada de "feed" para "story" (mesmo hash) → `historico` com `'formato'` |
 | H6 | `pageVersion` null no registro / no atual; `identidade.pageVersion ≠ gate.pageVersion` | `ilegivel` com motivo |
 | H7 | `lerGateDaArte`: `fieldValues` null/string/objeto sem `gateDaArte` → `ausente`; `gateDaArte` com `gateDaArte` com `versao: 'gate-v2'`, `politica` faltando, `cobertura` sem uma das 15 entradas, `resultado: 'APTO'` com `motivos` não vazio, com `achados` não vazio, com cobertura `nao-comprovada`, ou com `copy-completa`/`identidade`/`oclusao` em `nao-se-aplica` | `invalido` com motivo (e `versaoGravada` para `gate-v2`; `versao: 'x'.repeat(200)` ou `versao: '<script>'` → sem `versaoGravada`) em todos; com registro válido → `ok` e igualdade estrutural; TODA saída de `gateDaMedida` dos G-casos de `gate.test.ts` passa pelo schema |
 | H8 | `gravarGateDaArte` com cliente falso (`vi.mock('@/lib/db')` antes do import) | um `$executeRaw` com `jsonb ||`, patch `{ gateDaArte: registro }` e `WHERE` com id, projectId e `fieldValues->>'pageId'`; `resultUrl` nunca tocado; 0 linhas → `'sem-vinculo'` sem lançar; gravar duas vezes = mesmo SQL |
@@ -483,6 +491,10 @@ contrato do CP5c tem de responder a cada um com texto e teste:
    `copyVersion` E `formato` (`versaoDaPagina` não vê `Page.copyAutoral` nem nome/tags — mudar só o nome troca feed por
    story sem mudar hash; Codex R10/R11); edição concorrente entre a medição e o efeito → efeito não roda. Teste
    com edição concorrente de camadas, só da copy e só do nome/tags.
+4a. **O POST relido antes dos efeitos pós-commit**: `SocialPost.status === 'DRAFT'`, `laterPostId` nulo, `postType`
+   = `TIPO_DO_POST_POR_FORMATO[formato relido]` e o vínculo com página/Generation, relidos sob trava antes de CADA
+   efeito (hoje a leitura do post de `agendar-itens.ts:569` pode ser usada mais tarde, `:755`); divergiu → efeito não
+   roda (`laterPostId` presente = intocável, regra 🔴 do `AGENTS.md`).
 4b. **A Generation dona do registro é a do POST** (`post.generationId`), nas vias com post existente (`adotar`,
    `reaproveitar`): o post relido sob trava tem de apontar a Generation medida (`post.generationId ===
    vinculo.generationId`); `null` ou outra Generation → `sem-vinculo`/humano (hoje a adoção escolhe o post pela
