@@ -316,12 +316,10 @@ function classeDe(caminho: string): ChaveClassificada | null {
 const ehObjeto = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 
 function valorEfetivo(v: unknown): boolean {
-  if (v === undefined || v === null || v === false) return false
+  // A VERDADE JS do render (`if (style.flipH)`, `if (efeito?.enabled)`): `' '`, `[]` e `{}` LIGAM o desenho (Codex R7/R8).
+  // Só NaN diverge, para o lado conservador: é falso em JS, mas aqui conta como efetivo.
   if (typeof v === 'number') return v !== 0
-  if (typeof v === 'string') return v !== '' // verdade JS, como o render (`' '` É efetivo — Codex R7)
-  if (Array.isArray(v)) return v.length > 0
-  if (ehObjeto(v)) return Object.keys(v).length > 0
-  return true
+  return Boolean(v)
 }
 
 /** Percorre a camada e devolve o primeiro caminho que o gate não sabe medir (fora da árvore, ou `nao-suportada` com valor efetivo). */
@@ -636,6 +634,8 @@ function leituraDaLogoRepresentaORender(l: Layer): string | null {
   // a logo some da arte (Codex R7).
   const opacidade = style.opacity
   if (opacidade !== undefined && (typeof opacidade !== 'number' || !Number.isFinite(opacidade) || opacidade < 1)) ruins.push('opacity')
+  // Rotação: o render coage (`rotation: '90'` gira) e o CP3 só recusa NÚMERO; abaixo dos textos, nem a oclusão olha a logo (Codex R8).
+  if (valorEfetivo((l as { rotation?: unknown }).rotation)) ruins.push('rotation')
   return ruins.length > 0 ? `logo ${l.id} desenhada com ${ruins.join(', ')}: a leitura medida no arquivo não representa o render` : null
 }
 
@@ -660,6 +660,13 @@ function assuntoRepresentaORender(fundo: Layer, canvas: { width: number; height:
   const { width, height } = fundo.size ?? ({} as { width?: unknown; height?: unknown })
   if (x !== 0 || y !== 0 || width !== canvas.width || height !== canvas.height) ruins.push('caixa diferente do canvas (a medida lê a foto cobrindo o canvas inteiro)')
   if (valorEfetivo((fundo as { rotation?: unknown }).rotation)) ruins.push('rotation')
+  // `cropPosition`: o medidor omite `''` (cai no centro) e o render passa `''` ao recorte (cai em esquerda/topo) — só os
+  // nove valores que os dois leem igual passam (Codex R8).
+  const corte = style.cropPosition
+  if (corte !== undefined && corte !== null && !/^(left|center|right)-(top|middle|bottom)$/.test(String(corte))) ruins.push(`cropPosition ${JSON.stringify(corte)}`)
+  // Foto em MOVIMENTO: o revisor lê um cover parado, mas a página com áudio sai no quadro do movimento (persist.ts; `afastar`
+  // começa em 1,15×) — o assunto se desloca dentro da caixa (Codex R8). Política do owner pendente; até lá, humano.
+  if (valorEfetivo((fundo as { movimento?: unknown }).movimento)) ruins.push('movimento')
   const logos = new Set(logosDaPeca(camadas).map((l) => l.id))
   // `element` é desenhado pelo MESMO `renderImage` que `image` (render-engine.ts, `case 'logo': case 'element':`); só o
   // tipo `logo` fica de fora — é logo por definição, e a solta já passa por `logo-sobre-texto` (Codex R7).

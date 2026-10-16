@@ -913,6 +913,15 @@ nada é persistido (CP5b). O que existe:
   `valorEfetivo` passou a devolver `v !== ''` em vez de `trim()`; (16) `element` é desenhado pelo mesmo `renderImage`
   que `image` — conta como segunda foto; (17) G30 passou a alcançar o ramo residual (peça só com logo, sem fundo e sem
   texto visível + id residual em `textosSemMetrica` → único motivo NAO_MEDIDO; sem o id → APTO).
+  Rodada 8 (esforço máximo): (18) `valorEfetivo` É a verdade JS do render (`Boolean(v)`, número `!== 0`, NaN conta como
+  efetivo): `[]` e `{}` ligam `flipH`/`enabled`/`invert` no render e eram inertes; (19) `rotation` em string na logo
+  (`'90'` gira por coerção; o CP3 só recusa número; abaixo dos textos nem a oclusão olha a logo) → recusa qualquer
+  `rotation` efetiva; (20) `cropPosition` do fundo só com os nove valores `(left|center|right)-(top|middle|bottom)` — o
+  medidor omite `''` (centro) e o render passa `''` ao recorte (esquerda/topo); (21) foto de fundo com `movimento`: o
+  revisor lê um cover parado e a página com áudio sai no quadro do movimento (`persist.ts`; `afastar` começa em 1,15×)
+  → não comprovada (humano) até o owner decidir a política (excluir páginas com foto em movimento do gate autônomo ou
+  medir o quadro publicado). Pendência de ratificação do owner apontada pelo Codex: G26 do contrato diz que y=188
+  passa; o teste exige 188 + 1 (folga de antialias, desvio 1 já declarado). Regressões em G12, G13b, G13c.
   Regressões em G9, G12, G21 e no bloco G21f (valores não numéricos, chave no topo, tipo novo, `effects.curved`,
   `textboxConfig` desconhecido, opacidade 0/parcial, `filter` vazio, `visible` 0/"false", efeitos combinados com
   paridade no render real — forma e imagem com máscara + flip + recorte + sombra + desfoque).

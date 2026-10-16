@@ -302,7 +302,7 @@ describe('G11/G12 — logo-sem-leitura', () => {
     expect(shapeLogo.cobertura['logo-sem-leitura'].estado).toBe('nao-comprovada')
     // Codex R5: `border.radius` recorta os cantos, `border.width` pinta sobre a logo, sombra/desfoque/traço mudam a composição.
     // Codex R6: o render liga efeito por verdade JS (`enabled: 1`, `'true'`) e coage `opacity: '0.5'`; o CP3 só recusa número < 1.
-    for (const extra of [{ style: { objectFit: 'contain', border: { width: 0, color: '#000', radius: 8 } } }, { style: { objectFit: 'contain', border: { width: 6, color: '#000', radius: 0 } } }, { style: { objectFit: 'contain', shadow: { offsetX: 4, offsetY: 4, blur: 2, color: '#000' } } }, { effects: { shadow: { enabled: true, shadowColor: '#000', shadowBlur: 4, shadowOffsetX: 2, shadowOffsetY: 2, shadowOpacity: 1 } } }, { effects: { blur: { enabled: true, blurRadius: 3 } } }, { effects: { shadow: { enabled: 1, shadowColor: '#000', shadowBlur: 4 } } }, { effects: { shadow: { enabled: 'true' } } }, { style: { objectFit: 'contain', opacity: '0.5' } }, { style: { objectFit: 'contain', opacity: 0.5 } }, { style: { objectFit: 'contain', opacity: Number.NaN } }, { style: { objectFit: 'contain', opacity: null } }, { effects: { shadow: { enabled: ' ' } } }] as unknown as Array<Partial<Layer>>) {
+    for (const extra of [{ style: { objectFit: 'contain', border: { width: 0, color: '#000', radius: 8 } } }, { style: { objectFit: 'contain', border: { width: 6, color: '#000', radius: 0 } } }, { style: { objectFit: 'contain', shadow: { offsetX: 4, offsetY: 4, blur: 2, color: '#000' } } }, { effects: { shadow: { enabled: true, shadowColor: '#000', shadowBlur: 4, shadowOffsetX: 2, shadowOffsetY: 2, shadowOpacity: 1 } } }, { effects: { blur: { enabled: true, blurRadius: 3 } } }, { effects: { shadow: { enabled: 1, shadowColor: '#000', shadowBlur: 4 } } }, { effects: { shadow: { enabled: 'true' } } }, { style: { objectFit: 'contain', opacity: '0.5' } }, { style: { objectFit: 'contain', opacity: 0.5 } }, { style: { objectFit: 'contain', opacity: Number.NaN } }, { style: { objectFit: 'contain', opacity: null } }, { effects: { shadow: { enabled: ' ' } } }, { effects: { shadow: { enabled: [] } } }, { style: { objectFit: 'contain', invert: {} } }, { rotation: '90' }, { rotation: '0' }, { rotation: [] }] as unknown as Array<Partial<Layer>>) {
       const g = gate({ medida: { camadas: pecaLimpa().camadas.map((l) => (l.id === 'logo' ? { ...l, ...extra } : l)) } })
       expect(g.cobertura['logo-sem-leitura'].estado, JSON.stringify(extra)).toBe('nao-comprovada')
       const nm = g.naoMedidos.filter((n) => n.regra === 'logo-sem-leitura')
@@ -381,7 +381,7 @@ describe('G13–G18 — política do assunto', () => {
   })
 
   it("G13b (Codex R5): foto de fundo com recorte manual (`style.crop`), espelho, máscara, filtro, desfoque ou rotação → o assunto medido não representa o render → não comprovada com as 4 políticas; sem isso, comprovada", () => {
-    for (const style of [{ objectFit: 'cover', crop: { x: 0.3, y: 0.3, width: 0.5, height: 0.5 } }, { objectFit: 'cover', flipH: true }, { objectFit: 'cover', mask: { shapeId: 'c', path: 'M0 0H100V100H0Z' } }, { objectFit: 'cover', filter: 'blur(4px)' }, { objectFit: 'cover', blur: 3 }, { objectFit: 'cover', flipH: ' ' }] as unknown as Array<Layer['style']>) {
+    for (const style of [{ objectFit: 'cover', crop: { x: 0.3, y: 0.3, width: 0.5, height: 0.5 } }, { objectFit: 'cover', flipH: true }, { objectFit: 'cover', mask: { shapeId: 'c', path: 'M0 0H100V100H0Z' } }, { objectFit: 'cover', filter: 'blur(4px)' }, { objectFit: 'cover', blur: 3 }, { objectFit: 'cover', flipH: ' ' }, { objectFit: 'cover', flipH: [] }, { objectFit: 'cover', mask: {} }, { objectFit: 'cover', cropPosition: '' }, { objectFit: 'cover', cropPosition: 'center' }, { objectFit: 'cover', cropPosition: 'centro-meio' }] as unknown as Array<Layer['style']>) {
       for (const politica of POLITICAS) {
         const g = gate({ politicaDoAssunto: politica, medida: { camadas: pecaLimpa().camadas.map((l) => (l.id === 'bg-foto' ? { ...l, style } : l)) } })
         expect(g.cobertura['texto-sobre-assunto'].estado, JSON.stringify(style)).toBe('nao-comprovada')
@@ -404,6 +404,9 @@ describe('G13–G18 — política do assunto', () => {
       ['deslocada', { position: { x: 0, y: 200 } }],
       ['menor', { size: { width: W * 0.95, height: H * 0.95 } }],
       ['posição não numérica', { position: { x: '0', y: 0 } as unknown as Layer['position'] }],
+      ['movimento aproximar', { movimento: 'aproximar' } as unknown as Partial<Layer>],
+      ['movimento afastar', { movimento: 'afastar' } as unknown as Partial<Layer>],
+      ['rotação em string', { rotation: '5' } as unknown as Partial<Layer>],
     ]
     for (const [nome, extra] of casos) {
       for (const politica of POLITICAS) {
