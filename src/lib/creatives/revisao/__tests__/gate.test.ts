@@ -302,7 +302,7 @@ describe('G11/G12 — logo-sem-leitura', () => {
     expect(shapeLogo.cobertura['logo-sem-leitura'].estado).toBe('nao-comprovada')
     // Codex R5: `border.radius` recorta os cantos, `border.width` pinta sobre a logo, sombra/desfoque/traço mudam a composição.
     // Codex R6: o render liga efeito por verdade JS (`enabled: 1`, `'true'`) e coage `opacity: '0.5'`; o CP3 só recusa número < 1.
-    for (const extra of [{ style: { objectFit: 'contain', border: { width: 0, color: '#000', radius: 8 } } }, { style: { objectFit: 'contain', border: { width: 6, color: '#000', radius: 0 } } }, { style: { objectFit: 'contain', shadow: { offsetX: 4, offsetY: 4, blur: 2, color: '#000' } } }, { effects: { shadow: { enabled: true, shadowColor: '#000', shadowBlur: 4, shadowOffsetX: 2, shadowOffsetY: 2, shadowOpacity: 1 } } }, { effects: { blur: { enabled: true, blurRadius: 3 } } }, { effects: { shadow: { enabled: 1, shadowColor: '#000', shadowBlur: 4 } } }, { effects: { shadow: { enabled: 'true' } } }, { style: { objectFit: 'contain', opacity: '0.5' } }, { style: { objectFit: 'contain', opacity: 0.5 } }, { style: { objectFit: 'contain', opacity: Number.NaN } }] as Array<Partial<Layer>>) {
+    for (const extra of [{ style: { objectFit: 'contain', border: { width: 0, color: '#000', radius: 8 } } }, { style: { objectFit: 'contain', border: { width: 6, color: '#000', radius: 0 } } }, { style: { objectFit: 'contain', shadow: { offsetX: 4, offsetY: 4, blur: 2, color: '#000' } } }, { effects: { shadow: { enabled: true, shadowColor: '#000', shadowBlur: 4, shadowOffsetX: 2, shadowOffsetY: 2, shadowOpacity: 1 } } }, { effects: { blur: { enabled: true, blurRadius: 3 } } }, { effects: { shadow: { enabled: 1, shadowColor: '#000', shadowBlur: 4 } } }, { effects: { shadow: { enabled: 'true' } } }, { style: { objectFit: 'contain', opacity: '0.5' } }, { style: { objectFit: 'contain', opacity: 0.5 } }, { style: { objectFit: 'contain', opacity: Number.NaN } }, { style: { objectFit: 'contain', opacity: null } }, { effects: { shadow: { enabled: ' ' } } }] as unknown as Array<Partial<Layer>>) {
       const g = gate({ medida: { camadas: pecaLimpa().camadas.map((l) => (l.id === 'logo' ? { ...l, ...extra } : l)) } })
       expect(g.cobertura['logo-sem-leitura'].estado, JSON.stringify(extra)).toBe('nao-comprovada')
       const nm = g.naoMedidos.filter((n) => n.regra === 'logo-sem-leitura')
@@ -381,7 +381,7 @@ describe('G13–G18 — política do assunto', () => {
   })
 
   it("G13b (Codex R5): foto de fundo com recorte manual (`style.crop`), espelho, máscara, filtro, desfoque ou rotação → o assunto medido não representa o render → não comprovada com as 4 políticas; sem isso, comprovada", () => {
-    for (const style of [{ objectFit: 'cover', crop: { x: 0.3, y: 0.3, width: 0.5, height: 0.5 } }, { objectFit: 'cover', flipH: true }, { objectFit: 'cover', mask: { shapeId: 'c', path: 'M0 0H100V100H0Z' } }, { objectFit: 'cover', filter: 'blur(4px)' }, { objectFit: 'cover', blur: 3 }] as const) {
+    for (const style of [{ objectFit: 'cover', crop: { x: 0.3, y: 0.3, width: 0.5, height: 0.5 } }, { objectFit: 'cover', flipH: true }, { objectFit: 'cover', mask: { shapeId: 'c', path: 'M0 0H100V100H0Z' } }, { objectFit: 'cover', filter: 'blur(4px)' }, { objectFit: 'cover', blur: 3 }, { objectFit: 'cover', flipH: ' ' }] as unknown as Array<Layer['style']>) {
       for (const politica of POLITICAS) {
         const g = gate({ politicaDoAssunto: politica, medida: { camadas: pecaLimpa().camadas.map((l) => (l.id === 'bg-foto' ? { ...l, style } : l)) } })
         expect(g.cobertura['texto-sobre-assunto'].estado, JSON.stringify(style)).toBe('nao-comprovada')
@@ -419,6 +419,9 @@ describe('G13–G18 — política do assunto', () => {
       expect(g.cobertura['texto-sobre-assunto'].estado).toBe('nao-comprovada')
       expect(motivosDe(g, 'texto-sobre-assunto')[0]?.camadas).toEqual(['bg-foto', 'foto-2'])
     }
+    // `element` é desenhado pelo mesmo renderImage (Codex R7).
+    const elemento = { ...segunda, id: 'el-1', type: 'element' } as Layer
+    expect(motivosDe(gate({ medida: { camadas: [...pecaLimpa().camadas, elemento] } }), 'texto-sobre-assunto')[0]?.camadas).toEqual(['bg-foto', 'el-1'])
     // Controle: a imagem extra que é LOGO solta (type image com "logo" no nome) não é segunda foto.
     const logoImagem = fundo({ id: 'logo-2', name: 'Logo secundária', type: 'image', order: 8, position: { x: 100, y: 1600 }, size: { width: 120, height: 60 }, fileUrl: 'https://blob.test/logo2.png' })
     const comLogo = gate({ medida: { camadas: [...pecaLimpa().camadas, logoImagem], leituraDaLogo: [leitura('logo', medidaDaLogo()), leitura('logo-2', medidaDaLogo())] } })
@@ -430,10 +433,16 @@ describe('G13–G18 — política do assunto', () => {
     const g = gate({ medida: semTextos })
     expect(g.resultado).toBe('REVISAO_HUMANA_NECESSARIA')
     expect(g.naoMedidos.some((n) => n.regra === 'geometria' && n.camadas.includes('fantasma'))).toBe(true)
-    // (hoje o revisor já derruba `texto-sobre-assunto` por texto sem métrica; o invariante estrutural é conferido em
-    // TODA chamada de `gate()` destes testes: APTO ⇔ motivos vazio ∧ naoMedidos vazio.)
     expect(g.motivos.length).toBeGreaterThan(0)
     expect(gate({ medida: { ...semTextos, textosSemMetrica: [] } }).naoMedidos).toEqual([])
+    // O ramo residual (naoMedidos SEM nenhum outro motivo): sem foto de fundo, sem texto visível — só o id residual sobra.
+    const soLogo = { camadas: [logo()], metricas: [], contraste: [], assunto: null, assuntoNaoSeAplica: true, motivoSemAssunto: 'a peça não tem foto de fundo', textosSemMetrica: ['fantasma'] } as Partial<MedidaDaPeca>
+    const r = gate({ medida: soLogo })
+    expect(r.resultado).toBe('REVISAO_HUMANA_NECESSARIA')
+    expect(r.motivos.map((m) => m.codigo)).toEqual(['NAO_MEDIDO'])
+    expect(r.motivos[0].camadas).toEqual(['fantasma'])
+    expect(r.cobertura.oclusao.estado).toBe('nao-comprovada')
+    expect(gate({ medida: { ...soLogo, textosSemMetrica: [] } }).resultado).toBe('APTO')
   })
 
   it('G16: D (falha ao analisar, sem a marca) → não comprovada, independente da política', () => {

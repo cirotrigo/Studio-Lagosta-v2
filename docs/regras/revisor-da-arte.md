@@ -907,6 +907,12 @@ nada é persistido (CP5b). O que existe:
   `opacity` string/0,5/NaN, controle `opacity: 1` + `enabled: 0`/`false`), G13c, G30. Decisão que sobe ao owner
   (Codex R6): a prova de `texto-sobre-assunto` no CP5a exige UM fundo `cover` cobrindo o canvas na posição original e
   recusa o resto (fail-closed); medir o assunto a partir da composição renderizada é trabalho do revisor (CP5b+).
+  Rodada 7 (esforço máximo): (14) `opacity: null` na logo — o render aplica opacidade sempre que a chave EXISTE
+  (`!== undefined`) e `Math.min(1, null)` é 0: a logo some; a guarda aceita só número finito igual a 1 (null recusa);
+  (15) "valor efetivo" é a VERDADE JS do render: `' '` (string só de espaços) liga `flipH`/`enabled` no render e
+  `valorEfetivo` passou a devolver `v !== ''` em vez de `trim()`; (16) `element` é desenhado pelo mesmo `renderImage`
+  que `image` — conta como segunda foto; (17) G30 passou a alcançar o ramo residual (peça só com logo, sem fundo e sem
+  texto visível + id residual em `textosSemMetrica` → único motivo NAO_MEDIDO; sem o id → APTO).
   Regressões em G9, G12, G21 e no bloco G21f (valores não numéricos, chave no topo, tipo novo, `effects.curved`,
   `textboxConfig` desconhecido, opacidade 0/parcial, `filter` vazio, `visible` 0/"false", efeitos combinados com
   paridade no render real — forma e imagem com máscara + flip + recorte + sombra + desfoque).

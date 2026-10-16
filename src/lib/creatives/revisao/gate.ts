@@ -318,7 +318,7 @@ const ehObjeto = (v: unknown): v is Record<string, unknown> => typeof v === 'obj
 function valorEfetivo(v: unknown): boolean {
   if (v === undefined || v === null || v === false) return false
   if (typeof v === 'number') return v !== 0
-  if (typeof v === 'string') return v.trim() !== ''
+  if (typeof v === 'string') return v !== '' // verdade JS, como o render (`' '` É efetivo — Codex R7)
   if (Array.isArray(v)) return v.length > 0
   if (ehObjeto(v)) return Object.keys(v).length > 0
   return true
@@ -632,8 +632,10 @@ function leituraDaLogoRepresentaORender(l: Layer): string | null {
   // O render liga o efeito por VERDADE JS (`if (efeito?.enabled)`), não por `=== true` (Codex R6: `enabled: 1`).
   for (const k of ['shadow', 'blur', 'stroke', 'background', 'curved'] as const) if (valorEfetivo(fx[k]?.enabled)) ruins.push(`effects.${k}`)
   // Opacidade: o render coage ("0.5" → 0,5) e o CP3 só recusa NÚMERO abaixo de 1 — aqui só passa número finito igual a 1.
+  // `null` conta: o render aplica a opacidade sempre que a chave EXISTE (`!== undefined`), e `Math.min(1, null)` é 0 —
+  // a logo some da arte (Codex R7).
   const opacidade = style.opacity
-  if (opacidade !== undefined && opacidade !== null && (typeof opacidade !== 'number' || !Number.isFinite(opacidade) || opacidade < 1)) ruins.push('opacity')
+  if (opacidade !== undefined && (typeof opacidade !== 'number' || !Number.isFinite(opacidade) || opacidade < 1)) ruins.push('opacity')
   return ruins.length > 0 ? `logo ${l.id} desenhada com ${ruins.join(', ')}: a leitura medida no arquivo não representa o render` : null
 }
 
@@ -659,7 +661,9 @@ function assuntoRepresentaORender(fundo: Layer, canvas: { width: number; height:
   if (x !== 0 || y !== 0 || width !== canvas.width || height !== canvas.height) ruins.push('caixa diferente do canvas (a medida lê a foto cobrindo o canvas inteiro)')
   if (valorEfetivo((fundo as { rotation?: unknown }).rotation)) ruins.push('rotation')
   const logos = new Set(logosDaPeca(camadas).map((l) => l.id))
-  const outrasFotos = camadas.filter((l) => l !== fundo && l.visible !== false && l.type === 'image' && !logos.has(l.id))
+  // `element` é desenhado pelo MESMO `renderImage` que `image` (render-engine.ts, `case 'logo': case 'element':`); só o
+  // tipo `logo` fica de fora — é logo por definição, e a solta já passa por `logo-sobre-texto` (Codex R7).
+  const outrasFotos = camadas.filter((l) => l !== fundo && l.visible !== false && (l.type === 'image' || l.type === 'element') && !logos.has(l.id))
   if (outrasFotos.length > 0) ruins.push(`segunda foto visível (${outrasFotos.map((l) => l.id).join(', ')}): o revisor só mede o assunto de ${fundo.id}`)
   return ruins.length > 0 ? { motivo: `foto de fundo desenhada com ${ruins.join('; ')}: o assunto medido não representa o render`, camadas: [fundo.id, ...outrasFotos.map((l) => l.id)] } : null
 }
