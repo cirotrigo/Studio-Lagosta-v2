@@ -884,11 +884,20 @@ nada é persistido (CP5b). O que existe:
   ou `blur` de estilo é desenhada diferente do que foi medido → `logo-sem-leitura` não comprovada mesmo com estado
   `medida`; logo solta que não é `logo`/`image` (uma `shape` com id "logo") idem; (8) a exceção logo × texto só vale
   para `logo`/`image` — a regra `logo-sobre-texto` compara a caixa de CANTO, e uma `shape` circular com id "logo" é
-  desenhada centrada em `position`, fora dessa caixa.
+  desenhada centrada em `position`, fora dessa caixa. Rodada 5 (esforço máximo): (9) `border.radius` RECORTA os cantos
+  da imagem no render (`render-engine.ts` :1681-1683), `border.width` pinta tinta sobre ela e sombra/desfoque/traço
+  (`style.shadow`, qualquer `effects.*` ligado) mudam a composição — logo solta com qualquer um deles → `logo-sem-leitura`
+  não comprovada (o controle anterior que dizia "radius é inerte" estava ERRADO e foi invertido); os `naoMedidos` dessa
+  recusa levam o id da logo; (10) `texto-sobre-assunto`: `assuntoDaPeca` (revisar-arte.ts) reaproveita o assunto
+  gravado por arquivo + formato + `cropPosition`, e a estimativa lê só `cropPosition`, enquanto o render prioriza
+  `style.crop` (`image-fit.ts`) — um recorte manual deslocado deixava o retângulo velho com estado `medida` e o gate
+  aceitava. Fail-closed no gate: foto de fundo com `style.crop`, `flipH`/`flipV`/`flipX`/`flipY`, `mask`, `filter`,
+  `blur` ou `rotation` efetivos → assunto não comprovada com as 4 políticas (o conserto de `mesmaComposicao` fica para
+  o revisor, fora do CP5a). Regressões: G12 (5 estilos de logo) e G13b.
   Regressões em G9, G12, G21 e no bloco G21f (valores não numéricos, chave no topo, tipo novo, `effects.curved`,
   `textboxConfig` desconhecido, opacidade 0/parcial, `filter` vazio, `visible` 0/"false", efeitos combinados com
   paridade no render real — forma e imagem com máscara + flip + recorte + sombra + desfoque).
-- **Provas** (`gate.test.ts`, 50 testes): G1–G29 e subcasos; G21c (paridade do lado de cima, >100 renders reais) e
+- **Provas** (`gate.test.ts`, 51 testes): G1–G29 e subcasos; G21c (paridade do lado de cima, >100 renders reais) e
   G21e (lado protegido, métrica real do medidor); oclusão EFETIVA comprovada pelo renderer (texto a 90° sob forma sem
   rotação: os pixels do texto somem no render e o gate acusa; controle com a forma abaixo → comprovada); logo limpa
   sobre a expansão do texto por contorno/sombra/desfoque/borda → oclusão, e o controle sem efeitos preserva a exceção.

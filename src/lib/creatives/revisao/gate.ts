@@ -621,8 +621,30 @@ function leituraDaLogoRepresentaORender(l: Layer): string | null {
   if (l.type !== 'logo' && l.type !== 'image') return `camada ${l.id} é ${String(l.type)}, não logo/imagem`
   if (typeof l.fileUrl !== 'string' || l.fileUrl.trim() === '') return `camada ${l.id} sem arquivo`
   const style = (l.style ?? {}) as Record<string, unknown>
-  const ruins = CHAVES_QUE_A_LEITURA_DA_LOGO_NAO_VE.filter((k) => valorEfetivo(style[k]))
+  const ruins: string[] = CHAVES_QUE_A_LEITURA_DA_LOGO_NAO_VE.filter((k) => valorEfetivo(style[k]))
+  // Codex R5: `border.radius` RECORTA os cantos da imagem no render (:1681-1683); `border.width` pinta tinta sobre ela;
+  // sombra, desfoque e traço (qualquer folha expansora) mudam a composição — nada disso entra na leitura do arquivo.
+  const border = style.border as { radius?: unknown; width?: unknown } | undefined
+  if (valorEfetivo(border?.radius)) ruins.push('border.radius')
+  if (valorEfetivo(border?.width)) ruins.push('border.width')
+  if (valorEfetivo(style.shadow)) ruins.push('style.shadow')
+  const fx = (l.effects ?? {}) as Record<string, { enabled?: unknown } | undefined>
+  for (const k of ['shadow', 'blur', 'stroke', 'background', 'curved'] as const) if (fx[k]?.enabled === true) ruins.push(`effects.${k}`)
   return ruins.length > 0 ? `logo ${l.id} desenhada com ${ruins.join(', ')}: a leitura medida no arquivo não representa o render` : null
+}
+
+/**
+ * Chaves da FOTO DE FUNDO que mudam o que o render mostra e que `assuntoDaPeca` (revisar-arte.ts) não considera: o
+ * assunto gravado é reaproveitado por arquivo + formato + `cropPosition`, e a estimativa também lê só `cropPosition` —
+ * o recorte manual (`style.crop`, que o render prioriza), espelho, máscara, filtro e desfoque deslocam ou alteram o
+ * assunto sem a medida saber (Codex R5). Fail-closed: `texto-sobre-assunto` não comprovada.
+ */
+const CHAVES_DO_FUNDO_QUE_O_ASSUNTO_NAO_VE = ['crop', 'flipH', 'flipV', 'flipX', 'flipY', 'mask', 'filter', 'blur'] as const
+function assuntoRepresentaORender(fundo: Layer): string | null {
+  const style = (fundo.style ?? {}) as Record<string, unknown>
+  const ruins: string[] = CHAVES_DO_FUNDO_QUE_O_ASSUNTO_NAO_VE.filter((k) => valorEfetivo(style[k]))
+  if (valorEfetivo((fundo as { rotation?: unknown }).rotation)) ruins.push('rotation')
+  return ruins.length > 0 ? `foto de fundo desenhada com ${ruins.join(', ')}: o assunto medido não representa o render` : null
 }
 
 export interface DecisaoDaCritica {
@@ -673,8 +695,9 @@ export function decidirCritica(args: {
     const soltas = camadasSoltas.map((l) => l.id)
     const naoRepresentam = camadasSoltas.map(leituraDaLogoRepresentaORender).filter((m): m is string => m !== null)
     if (naoRepresentam.length > 0) {
-      const d = nc(naoRepresentam.join('; '), camadasSoltas.filter((l) => leituraDaLogoRepresentaORender(l)).map((l) => l.id))
-      d.naoMedidos = naoRepresentam.map((m) => ({ regra, motivo: m, camadas: [] }))
+      const ruins = camadasSoltas.filter((l) => leituraDaLogoRepresentaORender(l) !== null)
+      const d = nc(naoRepresentam.join('; '), ruins.map((l) => l.id))
+      d.naoMedidos = ruins.map((l) => ({ regra, motivo: leituraDaLogoRepresentaORender(l)!, camadas: [l.id] }))
       return d
     }
     const lidas = new Set(leitura.map((x) => x.camada))
@@ -827,6 +850,8 @@ function decidirAssunto(args: {
   if (!fundo) return nsa('a peça não tem foto de fundo')
   // C' — camada de foto visível SEM arquivo: nada foi lido (fail-closed, sempre).
   if (typeof fundo.fileUrl !== 'string' || fundo.fileUrl.trim() === '') return nc('foto de fundo sem arquivo: nada foi lido', [fundo.id])
+  const naoRepresenta = assuntoRepresentaORender(fundo)
+  if (naoRepresenta) return nc(naoRepresenta, [fundo.id])
   if (medida.assunto) {
     if (medida.assunto.origem === 'catalogo') {
       if (criticos.length > 0) return rep(criticos)

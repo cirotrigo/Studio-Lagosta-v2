@@ -295,8 +295,14 @@ describe('G11/G12 — logo-sem-leitura', () => {
     }
     const shapeLogo = gate({ medida: { camadas: pecaLimpa().camadas.map((l) => (l.id === 'logo' ? { ...l, type: 'shape', fileUrl: 'https://blob.test/logo.png', style: { shapeType: 'circle', fill: '#fff' } } : l)) } })
     expect(shapeLogo.cobertura['logo-sem-leitura'].estado).toBe('nao-comprovada')
-    // Controle: `objectFit: 'contain'` e `border.radius` (inertes para a leitura) seguem comprovados.
-    expect(gate({ medida: { camadas: pecaLimpa().camadas.map((l) => (l.id === 'logo' ? { ...l, style: { objectFit: 'contain', border: { width: 0, color: '#000', radius: 8 } } } : l)) } }).cobertura['logo-sem-leitura']).toEqual({ estado: 'comprovada' })
+    // Codex R5: `border.radius` recorta os cantos, `border.width` pinta sobre a logo, sombra/desfoque/traço mudam a composição.
+    for (const extra of [{ style: { objectFit: 'contain', border: { width: 0, color: '#000', radius: 8 } } }, { style: { objectFit: 'contain', border: { width: 6, color: '#000', radius: 0 } } }, { style: { objectFit: 'contain', shadow: { offsetX: 4, offsetY: 4, blur: 2, color: '#000' } } }, { effects: { shadow: { enabled: true, shadowColor: '#000', shadowBlur: 4, shadowOffsetX: 2, shadowOffsetY: 2, shadowOpacity: 1 } } }, { effects: { blur: { enabled: true, blurRadius: 3 } } }] as Array<Partial<Layer>>) {
+      const g = gate({ medida: { camadas: pecaLimpa().camadas.map((l) => (l.id === 'logo' ? { ...l, ...extra } : l)) } })
+      expect(g.cobertura['logo-sem-leitura'].estado, JSON.stringify(extra)).toBe('nao-comprovada')
+      expect(g.naoMedidos.filter((n) => n.regra === 'logo-sem-leitura').every((n) => n.camadas.includes('logo')), JSON.stringify(extra)).toBe(true)
+    }
+    // Controle: `objectFit: 'contain'` liso (e borda com width 0 e radius 0) segue comprovado.
+    expect(gate({ medida: { camadas: pecaLimpa().camadas.map((l) => (l.id === 'logo' ? { ...l, style: { objectFit: 'contain', border: { width: 0, color: '#000', radius: 0 } } } : l)) } }).cobertura['logo-sem-leitura']).toEqual({ estado: 'comprovada' })
     const ilegivel = gate({ medida: { leituraDaLogo: [leitura('logo', medidaDaLogo(12))] } })
     expect(ilegivel.cobertura['logo-sem-leitura'].estado).toBe('reprovada')
   })
@@ -362,6 +368,19 @@ describe('G13–G18 — política do assunto', () => {
       const g = gate({ politicaDoAssunto: politica, medida: { camadas, assunto: null, assuntoNaoSeAplica: true, motivoSemAssunto: 'a peça não tem foto de fundo: não há assunto a proteger' } })
       expect(g.cobertura['texto-sobre-assunto'], JSON.stringify(politica)).toEqual({ estado: 'nao-comprovada', motivo: 'foto de fundo sem arquivo: nada foi lido' })
     }
+  })
+
+  it("G13b (Codex R5): foto de fundo com recorte manual (`style.crop`), espelho, máscara, filtro, desfoque ou rotação → o assunto medido não representa o render → não comprovada com as 4 políticas; sem isso, comprovada", () => {
+    for (const style of [{ objectFit: 'cover', crop: { x: 0.3, y: 0.3, width: 0.5, height: 0.5 } }, { objectFit: 'cover', flipH: true }, { objectFit: 'cover', mask: { shapeId: 'c', path: 'M0 0H100V100H0Z' } }, { objectFit: 'cover', filter: 'blur(4px)' }, { objectFit: 'cover', blur: 3 }] as const) {
+      for (const politica of POLITICAS) {
+        const g = gate({ politicaDoAssunto: politica, medida: { camadas: pecaLimpa().camadas.map((l) => (l.id === 'bg-foto' ? { ...l, style } : l)) } })
+        expect(g.cobertura['texto-sobre-assunto'].estado, JSON.stringify(style)).toBe('nao-comprovada')
+        expect(motivosDe(g, 'texto-sobre-assunto')[0]?.camadas, JSON.stringify(style)).toEqual(['bg-foto'])
+      }
+    }
+    const girada = gate({ medida: { camadas: pecaLimpa().camadas.map((l) => (l.id === 'bg-foto' ? { ...l, rotation: 5 } : l)) } })
+    expect(girada.cobertura['texto-sobre-assunto'].estado).toBe('nao-comprovada')
+    expect(gate({ medida: { camadas: pecaLimpa().camadas.map((l) => (l.id === 'bg-foto' ? { ...l, style: { objectFit: 'cover', cropPosition: 'right-middle' } } : l)) } }).cobertura['texto-sobre-assunto']).toEqual({ estado: 'comprovada' })
   })
 
   it('G16: D (falha ao analisar, sem a marca) → não comprovada, independente da política', () => {
