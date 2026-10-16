@@ -262,7 +262,7 @@ describe('auditar-operacao', () => {
       m.visiveis.mockResolvedValue(null);
       process.env.MCP_DRAFT_ONLY_CLIENT_IDS = '';
       const r = await auditar(usuario(CLIENTE));
-      expect(r.manual).toMatchObject({ modo: 'DRAFT_ONLY', versao: 'dot-operacao-v4' });
+      expect(r.manual).toMatchObject({ modo: 'DRAFT_ONLY', versao: 'dot-operacao-v5' });
       expect(r.manual.regras.join(' ')).toMatch(/seguranca\.perfilEfetivo = draft-only.*PERFIL_DE_SEGURANCA_INATIVO/);
     });
 

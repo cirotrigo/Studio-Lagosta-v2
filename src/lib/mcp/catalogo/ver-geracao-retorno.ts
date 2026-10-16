@@ -13,6 +13,10 @@
  */
 
 import { diferencasDeBlocos, lerCopyAutoral, type ConferenciaDaCopy, type CopyAutoral } from '../../copy-autoral'
+import { VERSAO_DAS_REGRAS } from '../../creatives/revisao/contrato'
+import { POLITICA_DO_ASSUNTO_RECOMENDADA, VERSAO_DO_GATE, type GateDaArte, type PoliticaDoAssunto } from '../../creatives/revisao/gate'
+import { lerGateDaArte, validadeDoGate, type DivergenciaDoGate, type OrigemDoGate } from '../../creatives/revisao/gate-registro'
+import { identidadeDaPagina } from '../../creatives/revisao/versao'
 
 /** A copy da arte, comparável INTEIRA com o que o autor escreveu (F1). */
 export interface CopyDaArte {
@@ -76,6 +80,81 @@ export interface PaginaDaGeracao {
   name: string
   templateId: number
   isTemplate: boolean
+  /** CP5b: os campos de `identidadeDaPagina`, quando o handler os leu (bloco `gate`); sem eles a validade é `ilegivel`. */
+  tags?: string[]
+  width?: number
+  height?: number
+  background?: string | null
+  layers?: unknown
+  copyAutoral?: unknown
+}
+
+/** Frase fixa de todo bloco `gate` (CP5b § 6): o registro é auditoria, nunca o veredito de agora. */
+export const AVISO_DO_GATE = 'último veredito gravado; não é o veredito atual da arte — quem precisa do veredito atual mede de novo; nunca agende por ele'
+
+export type BlocoDoGate =
+  /** Há um valor na chave mas ele não se lê (ou a página não dá para comparar): NENHUM resultado é exibido; só as versões gravadas, quando legíveis. */
+  | { validade: 'ilegivel'; motivo: string; versaoGravada?: string; rulesVersionGravada?: string; aviso: string }
+  | {
+      validade: 'coincidente' | 'historico'
+      resultado: GateDaArte['resultado']
+      rulesVersion: string
+      versaoDoGate: string
+      medidoEm: string
+      origem: OrigemDoGate
+      /** A política com que o veredito foi calculado (gravada) e a que o leitor comparou (a RECOMENDADA, nomeada — 9.7/9.12). */
+      politica: PoliticaDoAssunto
+      politicaComparada: PoliticaDoAssunto
+      naoConferido?: readonly string[]
+      divergencias?: DivergenciaDoGate[]
+      motivos: GateDaArte['motivos']
+      aviso: string
+    }
+
+/**
+ * CP5b § 6 — o bloco `gate` de `ver-geracao`, só leitura. `null` = sem registro (não "APTO", não "pendente"). A
+ * identidade de hoje sai da página lida pelo handler (`identidadeDaPagina`); `atual` leva `VERSAO_DAS_REGRAS`,
+ * `VERSAO_DO_GATE` e a política recomendada. Nada aqui decide coisa alguma.
+ */
+export function blocoDoGate(args: { fieldValues: Record<string, unknown> | null | undefined; generationId: string; projectId: number; pagina: PaginaDaGeracao | null }): BlocoDoGate | null {
+  const leitura = lerGateDaArte(args.fieldValues ?? {})
+  if (leitura.estado === 'ausente') return null
+  if (leitura.estado === 'invalido') {
+    const { motivo, versaoGravada, rulesVersionGravada } = leitura
+    return { validade: 'ilegivel', motivo, ...(versaoGravada ? { versaoGravada } : {}), ...(rulesVersionGravada ? { rulesVersionGravada } : {}), aviso: AVISO_DO_GATE }
+  }
+  const { registro } = leitura
+  const p = args.pagina
+  if (!p || typeof p.width !== 'number' || typeof p.height !== 'number' || !Array.isArray(p.tags) || p.layers === undefined) {
+    return { validade: 'ilegivel', motivo: 'página indisponível para comparar a identidade', aviso: AVISO_DO_GATE }
+  }
+  const id = identidadeDaPagina({ id: p.id, name: p.name, tags: p.tags, width: p.width, height: p.height, background: p.background ?? null, layers: p.layers, copyAutoral: p.copyAutoral })
+  const validade = validadeDoGate(registro, {
+    projectId: args.projectId,
+    generationId: args.generationId,
+    pageId: id.pageId,
+    formato: id.formato,
+    formatoDoCompositor: id.formatoDoCompositor,
+    pageVersion: id.pageVersion,
+    copyVersion: id.copyVersion,
+    rulesVersion: VERSAO_DAS_REGRAS,
+    versaoDoGate: VERSAO_DO_GATE,
+    politica: POLITICA_DO_ASSUNTO_RECOMENDADA,
+  })
+  if (validade.estado === 'ilegivel') return { validade: 'ilegivel', motivo: validade.motivo, aviso: AVISO_DO_GATE }
+  return {
+    validade: validade.estado,
+    resultado: registro.gate.resultado,
+    rulesVersion: registro.gate.rulesVersion,
+    versaoDoGate: registro.gate.versao,
+    medidoEm: registro.medidoEm,
+    origem: registro.origem,
+    politica: registro.politica,
+    politicaComparada: POLITICA_DO_ASSUNTO_RECOMENDADA,
+    ...(validade.estado === 'coincidente' ? { naoConferido: validade.naoConferido } : { divergencias: validade.divergencias }),
+    motivos: registro.gate.motivos,
+    aviso: AVISO_DO_GATE,
+  }
 }
 
 export interface RetornoDaPagina {
@@ -89,6 +168,8 @@ export interface RetornoDaPagina {
   /** A copy escrita × a desenhada, quando a arte carrega o contrato (F1). */
   copy?: CopyDaArte
   comoAgendar?: string
+  /** CP5b: o último veredito GRAVADO do gate, rotulado (só quando o handler passa `generationId`); `null` = sem registro. */
+  gate?: BlocoDoGate | null
 }
 
 /** Lê os avisos do compositor sem confiar na forma: só strings não vazias. */
@@ -104,6 +185,8 @@ export function montarRetornoDaPagina(args: {
   appUrl: string
   projectId: number
   concluida: boolean
+  /** CP5b: com ele, o retorno traz o bloco `gate` (auditoria, só leitura). */
+  generationId?: string
 }): RetornoDaPagina {
   const fv = args.fieldValues ?? {}
   const pageId = typeof fv.pageId === 'string' && fv.pageId.trim() ? fv.pageId.trim() : null
@@ -124,6 +207,7 @@ export function montarRetornoDaPagina(args: {
   if (avisos.length > 0) saida.avisosDoCompositor = avisos
   const copy = copyDaArte(fv)
   if (copy) saida.copy = copy
+  if (args.generationId !== undefined) saida.gate = blocoDoGate({ fieldValues: fv, generationId: args.generationId, projectId: args.projectId, pagina: args.pagina })
   return saida
 }
 

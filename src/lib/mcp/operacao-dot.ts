@@ -17,7 +17,7 @@
 
 import { TARGET_DAYS_AHEAD } from '../posts/cobertura';
 
-export const DOT_OPERACAO_VERSAO = 'dot-operacao-v4';
+export const DOT_OPERACAO_VERSAO = 'dot-operacao-v5';
 
 /** Ciclos de revisar-arte → ajustar-arte numa peça antes de parar e chamar gente. */
 export const MAX_CICLOS_DE_REVISAO = 2;
@@ -84,6 +84,7 @@ export const MANUAL_DO_DOT = {
     `depois de ${MAX_CICLOS_DE_REVISAO} ciclos de revisar-arte e ajustar-arte com problema: parar e relatar REVISAO_HUMANA_NECESSARIA`,
     'sem estado próprio: o estado é a agenda e o banco; revalidar o horário imediatamente antes de qualquer escrita',
     'retry usa a MESMA identidade (loteId e itemId); nunca uma nova',
+    'o bloco gate de ver-geracao é auditoria do último veredito gravado, nunca o veredito atual da arte: nunca agende por ele; a peça aceita é a que agendar-leva mede na hora',
   ],
   foraDoLoop: [
     'postar-agora',

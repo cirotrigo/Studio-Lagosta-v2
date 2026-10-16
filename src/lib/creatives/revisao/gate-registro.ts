@@ -283,7 +283,8 @@ export function lerGateDaArte(fieldValues: unknown): LeituraDoRegistro {
     const gate = bruto && typeof bruto === 'object' ? (bruto as Record<string, unknown>).gate : null
     const versaoDesconhecida = gate && typeof gate === 'object' && (gate as Record<string, unknown>).versao !== VERSAO_DO_GATE
     const primeira = lido.error.issues[0]
-    const motivo = versaoDesconhecida ? `registro de versão anterior ou desconhecida do gate${versoes.versaoGravada ? `: ${versoes.versaoGravada}` : ''}` : `forma inválida${primeira ? ` em ${primeira.path.join('.') || '(raiz)'}: ${primeira.message}` : ''}`
+    // Só o CAMINHO do campo e o código do zod: a mensagem do zod pode citar o valor recebido (`invalid_enum_value`).
+    const motivo = versaoDesconhecida ? `registro de versão anterior ou desconhecida do gate${versoes.versaoGravada ? `: ${versoes.versaoGravada}` : ''}` : `forma inválida${primeira ? ` em ${primeira.path.join('.') || '(raiz)'} (${primeira.code})` : ''}`
     return { estado: 'invalido', motivo, ...versoes }
   }
   const registro = lido.data as RegistroDoGate

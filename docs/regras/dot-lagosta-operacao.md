@@ -1,4 +1,4 @@
-# Dot Lagosta: Constituição Operacional (`dot-operacao-v4`)
+# Dot Lagosta: Constituição Operacional (`dot-operacao-v5`)
 
 Criada em 13/10/2026 (H3 do Dot; o mapa e as decisões estão em
 `docs/PLANO-2026-10-13-DOT-OPERACAO-H1.md`).
@@ -319,3 +319,12 @@ e Drive.
     relatar, não criar e não remover. Só informa, não bloqueia ninguém.
   - Regra operacional: não rodar `plan-week` do stdio, sem a flag, no mesmo
     cliente e semana em que o agente opera.
+
+## O bloco `gate` de `ver-geracao` é auditoria, nunca autoridade (`dot-operacao-v5`, 16/10/2026)
+
+O CP5b passou a gravar em `Generation.fieldValues.gateDaArte` o último veredito do gate de autonomia (CP5a), com a
+identidade da peça medida, a política e as versões. `ver-geracao` o expõe no bloco `gate`, rotulado `coincidente`
+(os metadados batem com a peça de hoje), `historico` (algo mudou: página, copy, formato, regras, política,
+vínculo) ou `ilegivel`, sempre com o aviso fixo "último veredito gravado; não é o veredito atual da arte". Regra
+nova do manual: **o agente operacional nunca agenda por esse bloco** — a peça aceita é a que `agendar-leva` mede na
+hora (CP5c). O registro não é consultado para decidir, nem como sinal positivo nem negativo.

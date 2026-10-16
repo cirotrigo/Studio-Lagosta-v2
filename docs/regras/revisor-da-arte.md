@@ -959,3 +959,47 @@ nada é persistido (CP5b). O que existe:
   G21e (lado protegido, métrica real do medidor); oclusão EFETIVA comprovada pelo renderer (texto a 90° sob forma sem
   rotação: os pixels do texto somem no render e o gate acusa; controle com a forma abaixo → comprovada); logo limpa
   sobre a expansão do texto por contorno/sombra/desfoque/borda → oclusão, e o controle sem efeitos preserva a exceção.
+
+### CP5b — o registro do gate: persistência, identidade e `rulesVersion` (16/10/2026)
+
+Contrato: `docs/PLANO-2026-10-16-CP5B-CONTRATO.md` (PR #239, 17 rodadas do Codex). O veredito do CP5a passa a ser
+GRAVADO como auditoria em `Generation.fieldValues.gateDaArte` — e **nenhum caminho de produção o consulta para
+decidir, nem como sinal positivo nem negativo**: toda decisão autônoma é fresca (CP5c mede e decide sempre).
+
+- **`decidirEMontarRegistro`** (`revisao/gate-registro.ts`, puro): o registro nasce da MESMA chamada que decide.
+  Antes de chamar `gateDaMedida`, confere o VÍNCULO da entrada com a página: `estavel(medida.camadas)` ≡ camadas da
+  página; identidade da entrada ≡ `identidadeDaPagina(page)`; formato e canvas da medida = os da página;
+  `TIPO_DO_POST_POR_FORMATO[formato] === vinculo.postType`; e os DOIS classificadores de formato concordam
+  (`assinatura.ts` por nome/tags/tamanho, o do revisor; `compositor/formato.ts` `formatoDaPaginaGravada`, extraída de
+  `pastas.ts`, por tags/tamanho — trocar só as tags muda este sem mudar o hash). Falhou → `{ decisao: 'sem-vinculo' }`
+  SEM gate: nenhum APTO existe para o produtor usar. A copy é reconciliada DENTRO (`revisaoDaPaginaComCamadas` da
+  mesma `page.copyAutoral`/`page.layers`); `copy` nos args é ignorada. O registro sai SELADO (tipo com `unique symbol`
+  não exportado), congelado em profundidade e num `WeakSet` privado.
+- **Identidade** (`versao.ts` `identidadeDaPagina`): `pageVersion` = `versaoDaPagina(page)` SEM áudio (a chamada do
+  revisor), `copyVersion` = `copyVersionDe(Page.copyAutoral)`, `formato` e `formatoDoCompositor`. O que ela NÃO
+  cobre (bytes de assets e fontes, assinatura, gradiente, o que a medição lê fora da página) é dito em
+  `NAO_CONFERIDO_PELA_IDENTIDADE` e sai em todo `coincidente` — por isso **não existe "vigente"**.
+- **Escrita** (`gate-persistido.ts` `gravarGateDaArte`): só por `mesclarFieldValuesDaArte` com `somenteSe`
+  (`WHERE id AND projectId AND fieldValues->>'pageId' AND EXISTS (Page → Template.projectId)`), a chave inteira;
+  registro sem proveniência (clone, objeto à mão) → `'sem-proveniencia'` sem SQL; 0 linhas → `'sem-vinculo'`;
+  exceção PROPAGA (o CP5c decide o rollback). `mesclarFieldValuesDaArte` ganhou a opção sem mudar o SQL dos
+  chamadores atuais (quatro formas testadas).
+- **Leitura** (`lerGateDaArte`): `ausente` / `invalido` / `ok`. Schema estrito + invariante 2.3 do CP5a; um JSON
+  rejeitado não expõe nada além do caminho do campo e das versões gravadas (só quando casam com
+  `/^[a-z0-9][a-z0-9.-]{0,31}$/`). Bump de `VERSAO_DO_GATE` torna os registros anteriores `invalido` (decisão 9.13).
+- **Validade** (`validadeDoGate`): `coincidente` (vínculo, os dois formatos, 4 versões e política iguais) /
+  `historico` (com a lista) / `ilegivel`. Nunca devolve `resultado`.
+- **`rulesVersion`**: bump manual cobrado por DUAS impressões digitais (`impressao-digital.ts`): a do revisor
+  (`REGRAS_DA_REVISAO` + medida e `avaliarPeca` de cada peça do corpus) e a do gate (tabelas + medida e saída de
+  `gateDaMedida` sem as três cópias, com as 4 políticas), serializadas com `serializarParaImpressao` (preserva
+  `NaN`/`Infinity`/`-0`). Arquivos em `__tests__/impressao-digital/`; `scripts/validar-impressao-digital.ts` (CI) torna
+  imutável o de uma versão já na `main`. Corpus (`__tests__/suporte/corpus-do-gate.ts`): 52 peças, AMOSTRAL —
+  regra que nenhuma peça toca muda em silêncio (decisão 9.6); PR em `regras.ts`/`gate.ts` responde "o corpus cobre?".
+- **Barreira**: `no-restricted-imports` em `eslint.config.mjs` — `gateDaMedida` só em `gate-registro.ts` e testes;
+  `lerGateDaArte`/`validadeDoGate`/`decidirEMontarRegistro` só em `gate-persistido.ts`, `ver-geracao-retorno.ts`,
+  `arte-ia.ts`, o produtor do CP5c e testes. O que o lint não vê (import dinâmico, require, reexportação, a string
+  `gateDaArte`) é o inventário `inventario-gate-da-arte.test.ts`.
+- **Consumidor**: `ver-geracao` traz o bloco `gate` (só leitura; `null` sem registro; nunca inventa APTO). Manual do
+  Dot `dot-operacao-v5`: "nunca agende por ele". `auditar-operacao` fica para o CP5c.
+- **Fora**: nenhum produtor em produção (o primeiro é o CP5c — seção 12 do contrato lista o que ele herda);
+  oclusão por pixels; histórico de vereditos; migration.

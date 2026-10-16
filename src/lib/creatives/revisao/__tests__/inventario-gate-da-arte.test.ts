@@ -1,0 +1,86 @@
+/**
+ * CP5b § 7.6 — H12: nenhum caminho de produção lê `gateDaArte` nem chama `gateDaMedida` para decidir.
+ *  (a) a barreira por IMPORT (`no-restricted-imports` em `eslint.config.mjs`): arquivos de controle que importam
+ *      `gateDaMedida` por alias, por caminho relativo de fora (`../revisao/gate`) e do mesmo diretório (`./gate`) FALHAM
+ *      o lint; os consumidores nomeados passam;
+ *  (b) o inventário por REGEX sobre `src/` — o que o lint não vê: a string `gateDaArte`, `import()` dinâmico,
+ *      `require(` e reexportação (`export … from`) dos dois módulos fora das listas fechadas. Imprime arquivo e linha.
+ * Quem quiser gravar ou ler o registro noutro lugar acrescenta o arquivo aqui E na regra do lint — e o PR diz por quê
+ * (o primeiro produtor é o CP5c).
+ */
+import { describe, expect, it } from 'vitest'
+import { ESLint } from 'eslint'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { join, relative } from 'node:path'
+
+const PERMITIDOS_GATE_DA_ARTE = new Set(['src/lib/creatives/revisao/gate-registro.ts', 'src/lib/creatives/revisao/gate-persistido.ts', 'src/lib/mcp/catalogo/ver-geracao-retorno.ts'])
+/** Quem pode tocar `gate-registro`/`gate` por import() dinâmico, require ou reexportação (ninguém, hoje). */
+const PERMITIDOS_DINAMICO = new Set<string>([])
+
+function arquivos(dir: string): string[] {
+  return readdirSync(dir).flatMap((nome) => {
+    const caminho = join(dir, nome)
+    if (statSync(caminho).isDirectory()) return nome === 'node_modules' || nome === '.next' ? [] : arquivos(caminho)
+    return /\.(ts|tsx)$/.test(nome) ? [caminho] : []
+  })
+}
+
+const raiz = process.cwd()
+const fontes = () => arquivos(join(raiz, 'src')).map((c) => relative(raiz, c)).filter((c) => !/__tests__|\.test\.tsx?$/.test(c))
+
+function ocorrencias(regex: RegExp, permitidos: Set<string>): string[] {
+  const fora: string[] = []
+  for (const c of fontes()) {
+    if (permitidos.has(c)) continue
+    readFileSync(join(raiz, c), 'utf8').split('\n').forEach((linha, i) => {
+      if (regex.test(linha)) fora.push(`${c}:${i + 1}: ${linha.trim()}`)
+    })
+  }
+  return fora
+}
+
+describe('H12 (b) — inventário por regex', () => {
+  it('a string `gateDaArte` só nos módulos permitidos', () => {
+    expect(ocorrencias(/gateDaArte/, PERMITIDOS_GATE_DA_ARTE)).toEqual([])
+  })
+  it('import() dinâmico, require e reexportação de gate / gate-registro: nenhum fora da lista', () => {
+    const modulos = /(?:\/|^|'|")(?:revisao\/)?(?:gate|gate-registro)(?:\.ts)?['"]/
+    const dinamico = new RegExp(`(?:import\\(|require\\(|export\\s+(?:\\*|\\{[^}]*\\})\\s+from)\\s*['"][^'"]*${modulos.source.slice(0, -5)}['"]`)
+    expect(ocorrencias(dinamico, PERMITIDOS_DINAMICO)).toEqual([])
+    expect(ocorrencias(/export\s+(?:\*|\{[^}]*\})\s+from\s+['"][^'"]*(?:revisao\/gate|gate-registro)(?:\.ts)?['"]/, PERMITIDOS_DINAMICO)).toEqual([])
+  })
+})
+
+describe('H12 (a) — a barreira por import no lint', () => {
+  const eslint = new ESLint({ cwd: raiz })
+  const errosDe = async (codigo: string, filePath: string) => {
+    const [r] = await eslint.lintText(codigo, { filePath: join(raiz, filePath) })
+    return r.messages.filter((m) => m.ruleId === 'no-restricted-imports').map((m) => m.message)
+  }
+
+  it('gateDaMedida por alias, por caminho relativo de fora e do mesmo diretório → o lint falha (também com `as`)', async () => {
+    const casos: Array<[string, string]> = [
+      ["import { gateDaMedida } from '@/lib/creatives/revisao/gate'\nexport const x = gateDaMedida\n", 'src/lib/creatives/controle.tmp.ts'],
+      ["import { gateDaMedida as g } from '../revisao/gate'\nexport const x = g\n", 'src/lib/creatives/agendar/controle.tmp.ts'],
+      ["import { gateDaMedida } from './gate'\nexport const x = gateDaMedida\n", 'src/lib/creatives/revisao/controle.tmp.ts'],
+      ["import { lerGateDaArte } from '@/lib/creatives/revisao/gate-registro'\nexport const x = lerGateDaArte\n", 'src/lib/lotes/controle.tmp.ts'],
+      ["import { decidirEMontarRegistro } from './gate-registro'\nexport const x = decidirEMontarRegistro\n", 'src/lib/creatives/revisao/controle.tmp.ts'],
+    ]
+    for (const [codigo, caminho] of casos) {
+      const erros = await errosDe(codigo, caminho)
+      expect(erros.length, `${caminho}: ${codigo}`).toBeGreaterThan(0)
+      expect(erros[0]).toMatch(/CP5b/)
+    }
+  }, 60_000)
+
+  it('os consumidores nomeados passam (e o próprio código deles também); gate-persistido não pode chamar gateDaMedida', async () => {
+    expect(await errosDe("import { lerGateDaArte, validadeDoGate } from '../../creatives/revisao/gate-registro'\nexport const x = [lerGateDaArte, validadeDoGate]\n", 'src/lib/mcp/catalogo/ver-geracao-retorno.ts')).toEqual([])
+    expect(await errosDe("import { gateDaMedida } from './gate'\nexport const x = gateDaMedida\n", 'src/lib/creatives/revisao/gate-registro.ts')).toEqual([])
+    expect((await errosDe("import { gateDaMedida } from './gate'\nexport const x = gateDaMedida\n", 'src/lib/creatives/revisao/gate-persistido.ts')).length).toBeGreaterThan(0)
+    // Um teste pode tudo.
+    expect(await errosDe("import { gateDaMedida } from '../gate'\nexport const x = gateDaMedida\n", 'src/lib/creatives/revisao/__tests__/qualquer.test.ts')).toEqual([])
+    for (const real of ['src/lib/creatives/revisao/gate-persistido.ts', 'src/lib/mcp/catalogo/ver-geracao-retorno.ts', 'src/lib/mcp/catalogo/arte-ia.ts', 'src/lib/creatives/revisao/gate-registro.ts']) {
+      expect(await errosDe(readFileSync(join(raiz, real), 'utf8'), real), real).toEqual([])
+    }
+  }, 60_000)
+})
