@@ -1,6 +1,6 @@
 # CP5b — contrato técnico de PERSISTÊNCIA, IDENTIDADE e `rulesVersion` (proposta para revisão, 16/10/2026)
 
-**Estado: PROPOSTA (rodada 17: NÃO EXISTE "vigente" no CP5b; o registro NUNCA é consultado para decidir (nem como sinal negativo); duas impressões, com as entradas do corpus dentro; o registro nasce da MESMA chamada que decide, a copy é reconciliada DENTRO dela, e sem vínculo (página OU Generation) NÃO HÁ decisão; tudo o que é VIA do agendar-leva virou handoff para o contrato do CP5c (seção 12) — o registro é auditoria; só a re-medição prova; vínculo projeto/Generation/página; formato na identidade; impressão digital travada por validador no CI).** Nada aqui está implementado; este PR é documental. Base: `main` `5e96d5a1` (merge do CP5a,
+**Estado: APTO (Codex, rodada 18, com a implementação em #240 lida junto) — era PROPOSTA (rodada 17: NÃO EXISTE "vigente" no CP5b; o registro NUNCA é consultado para decidir (nem como sinal negativo); duas impressões, com as entradas do corpus dentro; o registro nasce da MESMA chamada que decide, a copy é reconciliada DENTRO dela, e sem vínculo (página OU Generation) NÃO HÁ decisão; tudo o que é VIA do agendar-leva virou handoff para o contrato do CP5c (seção 12) — o registro é auditoria; só a re-medição prova; vínculo projeto/Generation/página; formato na identidade; impressão digital travada por validador no CI).** Nada aqui está implementado; este PR é documental. Base: `main` `5e96d5a1` (merge do CP5a,
 PR #237; contrato do CP5a mergeado pelo PR #236). Ordem do owner (16/10): depois do fechamento do CP5a, preparar
 SOMENTE o contrato do CP5b, centrado em persistência, identidade e `rulesVersion`; oclusão por pixels exige
 justificativa e escopo explícitos (seção 10); a integração com a não-piora continua no CP5d, conforme o
@@ -474,13 +474,15 @@ plano-mestre (9.2 do contrato CP5a): **> 10 % das peças do piloto sintético bl
 duplo (com e sem a camada acima) e comparação de pixels dos glifos do texto protegido — custo de um render extra por
 par, e um contrato próprio. Nada disso entra aqui.
 
-## 11. Arquivos (o que o CP5b toca)
+## 11. Arquivos (os principais que o CP5b toca — a lista completa é o diff do PR #240)
 
 - `src/lib/creatives/revisao/versao.ts`: `identidadeDaPagina` e `estavel` exportado (puro; importa `formatoDaPagina` de `src/lib/compositor/assinatura.ts`, que é puro);
 - `src/lib/compositor/formato.ts` (novo, puro): `formatoDaPaginaGravada`, extraída de `pastas.ts:126` sem mudar a lógica; `pastas.ts` reexporta;
 - `src/lib/creatives/revisao/gate-registro.ts` (novo, puro): `RegistroDoGate`, `registroDoGateSchema`, `lerGateDaArte`,
   `validadeDoGate`, `decidirEMontarRegistro({ entrada, page, vinculo, origem, principal?, agora })` (3.1);
 - `src/lib/creatives/revisao/gate-persistido.ts` (novo, com banco): `gravarGateDaArte`;
+- `src/lib/creatives/revisao/gate.ts`: só a constante `VERSAO_DO_GATE` (a decisão não muda);
+- `src/lib/creatives/revisao/impressao-digital.ts` (novo, puro): as duas impressões; `__tests__/inventario-gate-da-arte.test.ts` (H12);
 - `src/lib/creatives/mesclar-field-values.ts`: parâmetro opcional `somenteSe` + número de linhas (3.3), sem mudar o SQL
   dos chamadores atuais;
 - `src/lib/creatives/revisao/__tests__/impressao-digital-das-regras.test.ts` + `__tests__/impressao-digital/*.json` +
