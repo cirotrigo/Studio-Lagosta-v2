@@ -856,7 +856,7 @@ nada é persistido (CP5b). O que existe:
   com efeito perde a exceção). A mancha de `effects.background` do texto PROTEGIDO fica fora dos limites (é mancha,
   não glifo; a leitura já é medida pela régua com todas as camadas).
 - **Desvios do contrato, ditos** (ver também o relatório): (1) `FOLGA_DE_ANTIALIAS = 1` px somada a todo limite — o
-  render suaviza bordas 1 px além da geometria; sem a folga a paridade falha por 1 px (o contrato não a previa). (2)
+  render suaviza bordas 1 px além da geometria; sem a folga a paridade falha por 1 px (o contrato não a previa; RATIFICADA pelo owner em 16/10 e incorporada ao contrato em adffff17). (2)
   Triângulo e estrela com traço: a junção em MITRA estende o traço até `miterLimit × lineWidth / 2` além do vértice
   (padrão do canvas 10) — a expansão usa `5 × strokeWidth` para essas formas (G21c pegou a estrela: a ponta saía
   19 px com traço 12; o contrato dizia `+ strokeWidth`). (3) `effects.curved` (texto curvo) classificado como não
@@ -867,8 +867,8 @@ nada é persistido (CP5b). O que existe:
   classificação vem antes do teste de caixa (6.2 do contrato) — dito aqui porque bloqueia peças do compositor em que
   o serviço com mancha fica acima da headline na ordem das camadas. (6) `video` VISÍVEL em qualquer ordem derruba as
   4 regras que leem pixels (texto-sem-leitura, tratamento-piorou-leitura, logo-sem-leitura, texto-sobre-assunto) — o
-  contrato (§6) só previa vídeo ACIMA do texto como não medido; abaixo, o render parado não o desenha e a publicação
-  (MP4) sim (Codex, rodada 10). (7) Camada com `movimento` idem — a página com áudio publica o quadro do movimento;
+  contrato original (§6) só previa vídeo ACIMA do texto como não medido; abaixo, o render parado não o desenha e a
+  publicação (MP4) sim (Codex, rodada 10). Incorporado ao contrato em adffff17 (16/10). (7) Camada com `movimento` idem — a página com áudio publica o quadro do movimento;
   ratificado pelo owner em 16/10 (revisão humana para movimento/vídeo na cobertura atual do CP5a).
 - **Revisão final adversarial (owner + Codex, 16/10)** — quatro falsos APTO fechados, todos fail-closed: (1) `order`,
   `position`, `size` e os valores dos efeitos (traço, sombra, desfoque, borda) têm de ser NÚMEROS finitos — `order: 'z'`,
@@ -937,8 +937,8 @@ nada é persistido (CP5b). O que existe:
   (`DIMENSOES` de `compositor/spec.ts`), e `mesmaComposicao` não compara largura/altura — fora do canônico (página
   redimensionada, ou sem formato) o retângulo não vale → não comprovada; o estimado é feito para o canvas atual e não é
   afetado; (25) `video` conta como movimento: o render parado NÃO desenha `video` (cai no `default`), mas a página com
-  vídeo é publicada como MP4 com ele — abaixo do texto a oclusão não o examina e a régua foi medida sem ele; DESVIO
-  conservador do contrato (§6 só previa vídeo ACIMA do texto como não medido), declarado para o owner; (26) a guarda
+  vídeo é publicada como MP4 com ele — abaixo do texto a oclusão não o examina e a régua foi medida sem ele; desvio
+  conservador do contrato original (§6 só previa vídeo ACIMA), hoje incorporado ao contrato (adffff17); (26) a guarda
   da foto de fundo passa a usar a MESMA lista da logo (`chavesQueALeituraDoArquivoNaoVe`: filtros de pixel, borda,
   `style.shadow`, `effects.*` ligados, opacidade ≠ 1, rotação) — um PNG com sujeito e sombra deslocada publica uma
   segunda silhueta que o assunto não conhece. Regressões: G13b, G13c, G13d, G31; G29 ganhou o canvas canônico do feed.
