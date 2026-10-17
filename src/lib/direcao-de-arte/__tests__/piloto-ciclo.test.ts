@@ -28,6 +28,9 @@ const banco = vi.hoisted(() => ({
   geracaoDoCompositor: null as any,
   /** A página de assinatura (o revisor compara corpo e entrelinha com ela). */
   assinatura: null as any,
+  /** CP5d: travas da transação em curso e a fila por chave (§ 9). */
+  travas: new Map<string, () => void>(),
+  filas: new Map<string, Promise<void>>(),
 }))
 
 vi.mock('@/lib/db', () => {
@@ -61,12 +64,37 @@ vi.mock('@/lib/db', () => {
         banco.generations.push({ id, createdAt: new Date(++banco.relogio), ...data })
         return { id }
       },
-      findFirst: async () => banco.generations.at(-1) ?? null,
+      // CP5d: a busca da Generation de ORIGEM (`source: compositor` da página) acha a do compositor; as demais buscas, a última.
+      findFirst: async ({ where }: { where?: Record<string, any> } = {}) =>
+        JSON.stringify(where ?? {}).includes('"compositor"') ? (banco.geracaoDoCompositor ?? null) : (banco.generations.at(-1) ?? null),
+      findUnique: async ({ where }: { where: { id: string } }) =>
+        banco.generations.find((g) => g.id === where.id) ?? (banco.geracaoDoCompositor?.id === where.id ? banco.geracaoDoCompositor : null),
+      update: async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+        const g = banco.generations.find((x) => x.id === where.id)
+        if (!g) throw new Error(`generation ${where.id} não existe`)
+        Object.assign(g, data)
+        return g
+      },
       // Mais recentes primeiro, como no `orderBy: createdAt desc` do revisor.
       findMany: async () => [...banco.generations].reverse().concat(banco.geracaoDoCompositor ? [banco.geracaoDoCompositor] : []),
     },
     knowledgeBaseEntry: { findFirst: async () => null },
-    $queryRaw: async () => [],
+    // CP5d (contrato § 9, P11): as travas de linha/consultivas têm FILA por chave — quem pede a mesma chave espera quem a
+    // segura soltar (no fim da transação). Sem concorrência no P11 isto é estrutural, mas é o que o § 9 pede do harness.
+    $queryRaw: async (partes: TemplateStringsArray, ...valores: unknown[]) => {
+      const sql = partes.join('?')
+      const chave = sql.includes('pg_advisory_xact_lock') ? `adv:${String(valores[0])}` : `${/FROM "(\w+)"/.exec(sql)?.[1] ?? '?'}:${String(valores[0])}`
+      if (!banco.travas.has(chave)) {
+        const anterior = banco.filas.get(chave) ?? Promise.resolve()
+        let soltar!: () => void
+        const minha = new Promise<void>((r) => (soltar = r))
+        banco.filas.set(chave, anterior.then(() => minha))
+        await anterior
+        banco.travas.set(chave, soltar)
+      }
+      // A página não tem post nem fonte própria neste harness: as travas de SocialPost/CustomFont não devolvem linhas.
+      return /FROM "(SocialPost|CustomFont)"/.test(sql) ? [] : [{ id: String(valores[0]) }]
+    },
     $executeRaw: async () => 1,
     // CP5d: a transação que LANÇA volta atrás — a página e as Generations ficam como estavam (P11 "página intacta" só
     // significa alguma coisa se o rollback for de verdade, não um acidente do mock).
@@ -78,6 +106,9 @@ vi.mock('@/lib/db', () => {
       } catch (erro) {
         Object.assign(banco, foto)
         throw erro
+      } finally {
+        for (const soltar of banco.travas.values()) soltar()
+        banco.travas.clear()
       }
     },
   }
@@ -149,6 +180,7 @@ import sharp from 'sharp'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { exigir, hojeViola } from './suporte/hoje-viola'
+import { PECA_LIMPA } from './suporte/peca-limpa'
 import { CODIGOS, leituraDentroDoAlvo, leiturasDosTextos, textosQueInvadem, TOLERANCIA_DE_PIORA, type LeituraDoTexto } from './suporte/propriedades'
 
 const CANVAS = { width: 1080, height: 1920 }
@@ -168,6 +200,8 @@ beforeEach(() => {
   banco.putSeq = 0
   banco.escritas = 0
   banco.fotoIlegivel = null
+  banco.travas.clear()
+  banco.filas.clear()
   medidas.chamadas.length = 0
   banco.projeto = { id: Number(peca.spec.projectId), name: 'Projeto da fixture', userId: 'dono-interno', instagramAccountId: null, assinatura: fixture.assinatura().numerosDoProjeto }
   banco.assinatura = fixture.assinatura().pagina
@@ -804,6 +838,19 @@ describe('o revisor (só medida) sobre a v1', () => {
 })
 
 describe('P11 — o re-render de rascunho pelo ajustar-arte no draft-only (CP5d)', () => {
+  // Codex R1 (IMPORTANTE): o caminho POSITIVO com medição real — a peça limpa (o controle do piloto do agendar-leva),
+  // composta com a assinatura da fixture como referência do título, ajustada no draft-only: o gate aprova e grava.
+  it('CP5d (controle positivo, medição real): um ajuste aceito pelo CP4 numa peça que o gate aprova é GRAVADO, o render fecha a Generation desta versão e a resposta traz revisao APTO', async () => {
+    banco.pagina = { ...banco.pagina, layers: structuredClone(PECA_LIMPA.layers), background: PECA_LIMPA.background, copyAutoral: PECA_LIMPA.copy }
+    banco.geracaoDoCompositor = { ...banco.geracaoDoCompositor, fieldValues: { pageId: PAGINA, source: 'compositor', composicao: { assinatura: { pageId: banco.assinatura.id } } } }
+    const r = await ajustarArte({ projectId: projectId(), pageId: PAGINA, versaoEsperada: versaoDaPagina(banco.pagina)!, ajustes: [{ tipo: 'mover', dy: -20, camadas: ['apoio'] }] as unknown as Ajuste[], apenasRascunho: true, principal: { tipo: 'user', id: 'piloto' } })
+    expect(r.ajustada).toBe(true)
+    expect(r.revisao).toMatchObject({ tipo: 'medida', resultado: 'APTO', generationId: r.generationId })
+    expect(camada(banco.pagina.layers as Layer[], 'apoio').position.y).toBe(540)
+    expect(banco.generations.find((g) => g.id === r.generationId)).toMatchObject({ status: 'COMPLETED', fieldValues: { source: 'ajuste-arte' } })
+    expect(banco.escritas).toBe(1)
+  }, 120_000)
+
   it('CP5d: o ajuste ACEITO pelo CP4 numa versão que o gate NÃO aprova (o serviço sem leitura continua) não grava, não reabre o render e volta REVISAO_HUMANA_NECESSARIA com os achados medidos', async () => {
     const antes = structuredClone(banco.pagina.layers)
     const erro = await ajustarArte({ projectId: projectId(), pageId: PAGINA, versaoEsperada: versaoDaPagina(banco.pagina)!, ajustes: [ACEITO_TOPO] as unknown as Ajuste[], apenasRascunho: true }).then(

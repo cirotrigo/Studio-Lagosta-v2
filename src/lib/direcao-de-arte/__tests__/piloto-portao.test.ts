@@ -102,28 +102,7 @@ const copyDaFixture = () => ({
   blocos: fixture.peca().spec.blocos.map((b, i) => ({ id: b.papel, funcao: b.papel, ordem: b.ordem ?? i, linhas: b.linhas })),
 })
 
-/** O controle positivo: fundo liso escuro, três textos claros, sem foto e sem logo — uma peça que a medição REAL aprova. */
-const texto = (id: string, papel: string, y: number, fontSize: number, content: string): Layer =>
-  ({
-    id, name: id, type: 'text', visible: true, locked: false, order: 3, content,
-    position: { x: 100, y }, size: { width: 880, height: Math.round(fontSize * 1.5) },
-    style: { fontSize, lineHeight: 1.2, textAlign: 'left', color: '#FFFFFF' },
-    metadata: { compositor: { papel } },
-  }) as Layer
-const PECA_LIMPA = {
-  layers: [texto('headline', 'headline', 400, 84, 'Texto headline'), texto('apoio', 'apoio', 560, 40, 'Texto apoio'), texto('servico', 'servico', 1500, 32, 'Texto servico')],
-  background: '#000000',
-  copy: {
-    versao: 'copy-autoral-v1',
-    origem: { autor: 'claude', superficie: 'chat' },
-    revisoes: [],
-    blocos: [
-      { id: 'headline', funcao: 'headline', ordem: 0, linhas: ['Texto headline'] },
-      { id: 'apoio', funcao: 'apoio', ordem: 1, linhas: ['Texto apoio'] },
-      { id: 'servico', funcao: 'servico', ordem: 2, linhas: ['Texto servico'] },
-    ],
-  },
-}
+import { PECA_LIMPA } from './suporte/peca-limpa'
 
 /** O banco em memória da peça: a v1 (a arte é desta versão), a v2 (página mudou, Generation para trás) ou a peça limpa (controle). */
 function cenario(versao: Versao) {

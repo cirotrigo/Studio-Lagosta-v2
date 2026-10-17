@@ -1110,3 +1110,14 @@ Contrato: `docs/PLANO-2026-10-17-CP5D-CONTRATO.md` (PR #243, 6 rodadas do Codex;
   `piloto-ciclo.test.ts` (P11 draft-only vira `it()`, com rollback real no harness; o ajuste ACEITO pelo CP4 numa
   página não apta agora é recusado — a caracterização antiga foi invertida), `ajustar-arte-concorrencia.test.ts` (mede
   limpo: a corrida e a escrita são o objeto), inventários do CP5c estendidos a `arte-rapida.ts`.
+
+**Revisão do Codex da implementação (R1, 17/10/2026) — dois bloqueadores fechados**: (1) a Generation de ORIGEM era
+lida ANTES do `FOR UPDATE` e esse objeto alimentava referências e medida; agora a busca só ESCOLHE a linha, e o que a
+medição lê (composição, páginas de referência em `FOR SHARE`) é a RELEITURA pela `tx` depois da trava — se a linha
+travada já não é a arte do compositor desta página, `AJUSTE_CONCORRENTE` ("repita"), nada gravado; (2) `versaoDaPagina`
+não cobre nome nem TAGS, e as tags decidem o formato que o gate mede (`formatoDaPaginaGravada`): a conferência sob trava
+passou a comparar `name` e `tags` com a leitura inicial (mudou → `VERSAO_DIVERGENTE`/`PAGINA_MUDOU_DURANTE_O_AJUSTE`,
+sem medir) e `paginaFutura` nasce das tags lidas sob trava. Harness: `FOR UPDATE` falso devolve a linha DEPOIS da trava
+(o publicador que segurava o DRAFT e o entregou ao Zernio é visto); a matriz ganhou as intercalações A13 (worker segurando
+a origem, ordem inversa com `agendar-leva`, rota de fontes, `later-scheduler`) e as demais causas de A7; o harness de
+P11 tem fila por trava e um controle POSITIVO com medição real (a peça limpa, `suporte/peca-limpa.ts`).

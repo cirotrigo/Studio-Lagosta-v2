@@ -1600,27 +1600,42 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
         // § 4.2 — a conferência SOB TRAVA: versão visual, contrato e ÁUDIO (a música decide `recusaComoImagem` e
         // `versaoDaPagina` não a cobre). Mudou → a recusa de sempre, sem medir. Com a página travada e igual, a
         // candidata é a versão seguinte dela: não há janela entre "o que medi" e "o que gravo".
-        const atual = await tx.page.findUnique({ where: { id: page.id }, select: { width: true, height: true, background: true, layers: true, copyAutoral: true, audio: true, isTemplate: true } })
+        const atual = await tx.page.findUnique({ where: { id: page.id }, select: { name: true, tags: true, width: true, height: true, background: true, layers: true, copyAutoral: true, audio: true, isTemplate: true } })
         if (!atual) throw new CreativeError('PAGE_NOT_FOUND', `Página não encontrada neste projeto: ${pageId}`, 404)
         if (atual.isTemplate) throw erroDePaginaModelo()
         const mesmaVersao = versaoAntes !== null && versaoDaPagina(atual) === versaoAntes
         const mesmoContrato = JSON.stringify(atual.copyAutoral ?? null) === JSON.stringify(page.copyAutoral ?? null)
         const mesmoAudio = JSON.stringify(atual.audio ?? null) === JSON.stringify(page.audio ?? null)
-        if (!mesmaVersao || !mesmoContrato || !mesmoAudio) {
+        // Codex R1 (BLOQUEADOR 2): `versaoDaPagina` não cobre nome e tags, e as TAGS decidem o formato que o gate mede
+        // (`formatoDaPaginaGravada`) — uma troca story → feed sem mexer nas camadas passaria pela versão.
+        const mesmaIdentidade = atual.name === page.name && JSON.stringify(atual.tags) === JSON.stringify(page.tags)
+        if (!mesmaVersao || !mesmoContrato || !mesmoAudio || !mesmaIdentidade) {
           if (input.versaoEsperada) throw new CreativeError('VERSAO_DIVERGENTE', 'A página mudou enquanto o ajuste era aplicado. Rode revisar-arte de novo.', 409, { versaoEsperada: input.versaoEsperada, ajusteGravado: false })
           throw new CreativeError('PAGINA_MUDOU_DURANTE_O_AJUSTE', 'A arte foi editada enquanto o ajuste era aplicado (no editor ou por outro ajuste) e NADA foi gravado. Veja a arte como ela está agora (conferir-arte) e confirme o que ainda precisa ajustar.', 409, { ajusteGravado: false })
         }
         // § 4.2b — as Generations que esta transação LÊ (origem: a do compositor) ou ESCREVE (o alvo real de
         // `travarRecomposicaoDaArte`), travadas FOR UPDATE em ordem de id, numa instrução.
-        const origem = (await tx.generation.findFirst({
+        const origemAntes = (await tx.generation.findFirst({
           where: { projectId, AND: [{ fieldValues: { path: ['pageId'], equals: page.id } }, { fieldValues: { path: ['source'], equals: 'compositor' } }] },
           orderBy: { createdAt: 'desc' },
-          select: { id: true, fieldValues: true, sourcePageId: true },
-        })) as GeracaoDeOrigem | null
+          select: { id: true },
+        })) as { id: string } | null
         const alvo = await recompor!.alvoDaRecomposicao(tx, page.id, { projectId })
-        const ids = [...new Set([origem?.id, alvo?.id].filter((x): x is string => !!x))].sort()
+        const ids = [...new Set([origemAntes?.id, alvo?.id].filter((x): x is string => !!x))].sort()
         if (ids.length > 0) await tx.$queryRaw`SELECT "id" FROM "Generation" WHERE "id" IN (${Prisma.join(ids)}) ORDER BY "id" FOR UPDATE`
         alvoDaTrava = alvo?.id
+        // Codex R1 (BLOQUEADOR 1): a busca acima só ESCOLHE a linha; o que a medição lê (composição, referências) é a
+        // RELEITURA pela tx depois do FOR UPDATE — o worker da fila pode ter regravado a composição enquanto esperávamos.
+        // Se a linha travada já não é a arte do compositor desta página, a escolha envelheceu: "repita", nada gravado.
+        const origem = origemAntes
+          ? ((await tx.generation.findUnique({ where: { id: origemAntes.id }, select: { id: true, fieldValues: true, sourcePageId: true } })) as GeracaoDeOrigem | null)
+          : null
+        if (origemAntes) {
+          const fv = origem?.fieldValues as { pageId?: unknown; source?: unknown } | null
+          if (!fv || fv.pageId !== page.id || fv.source !== 'compositor') {
+            throw new CreativeError('AJUSTE_CONCORRENTE', 'A arte do compositor desta página mudou enquanto o ajuste esperava a trava. Nada foi gravado: repita o ajuste.', 409, { pageId: page.id, ajusteGravado: false })
+          }
+        }
         await tx.$queryRaw`SELECT "id" FROM "Project" WHERE "id" = ${projectId} FOR SHARE`
         for (const referencia of paginasDeReferencia(origem)) await tx.$queryRaw`SELECT "id" FROM "Page" WHERE "id" = ${referencia} FOR SHARE`
         await tx.$queryRaw`SELECT "id" FROM "CustomFont" WHERE "projectId" = ${projectId} FOR SHARE`
@@ -1646,7 +1661,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
         const copyFutura = 'copyAutoral' in dadosDaPagina ? dadosDaPagina.copyAutoral : page.copyAutoral
         gate = await medirEDecidirAjuste(tx, {
           projectId,
-          paginaFutura: { id: page.id, name: pageName, tags: page.tags, width: page.width, height: page.height, background: page.background, layers: layers as Layer[], copyAutoral: copyFutura },
+          paginaFutura: { id: page.id, name: pageName, tags: atual.tags, width: page.width, height: page.height, background: page.background, layers: layers as Layer[], copyAutoral: copyFutura },
           audio: atual.audio,
           origem,
           generationId: nova.id,

@@ -32,10 +32,10 @@ const banco = vi.hoisted(() => ({
 }))
 const medicao = vi.hoisted(() => ({
   modo: 'limpa' as 'limpa' | 'reprovada' | 'lenta',
-  chamadas: [] as Array<{ naTransacao: boolean; camadas: unknown[]; composicaoReaproveitavel: boolean | undefined; generationDaPeca: string | null | undefined; nomeDaPagina: string }>,
+  chamadas: [] as Array<{ naTransacao: boolean; camadas: unknown[]; composicaoReaproveitavel: boolean | undefined; generationDaPeca: string | null | undefined; assinaturaDaOrigem: string | null; nomeDaPagina: string; formato: string }>,
   durante: null as null | (() => void | Promise<void>),
 }))
-const cp4 = vi.hoisted(() => ({ modo: 'aceita' as 'aceita' | 'recusa-tudo' }))
+const cp4 = vi.hoisted(() => ({ modo: 'aceita' as 'aceita' | 'recusa-tudo' | 'nao-medido' | 'ocultado' }))
 const render = vi.hoisted(() => ({ modo: 'ok' as 'ok' | 'falha' | 'pagina-mudou', chamadas: [] as Array<{ generationId?: string; versaoEsperada?: string }> }))
 const espioes = vi.hoisted(() => ({ invalidar: vi.fn(async () => ({ invalidados: 0, congelados: [] as string[] })) }))
 
@@ -167,9 +167,11 @@ vi.mock('@/lib/db', () => {
     }
     const modo = sql.includes('FOR SHARE') ? 'share' : 'update'
     if (nomeDaTabela === 'SocialPost') {
-      const posts = [...banco.posts.values()].filter((p) => p.pageId === valores[0]).sort((a, b) => String(a.id).localeCompare(String(b.id)))
-      for (const p of posts) await travar(`posts:${p.id}`, tx, modo)
-      evento(`travou-posts-da-pagina:${posts.map((p) => p.id).join(',')}`)
+      const escolhidos = [...banco.posts.values()].filter((p) => p.pageId === valores[0]).sort((a, b) => String(a.id).localeCompare(String(b.id)))
+      for (const p of escolhidos) await travar(`posts:${p.id}`, tx, modo)
+      evento(`travou-posts-da-pagina:${escolhidos.map((p) => p.id).join(',')}`)
+      // Como no Postgres: `FOR UPDATE` devolve a versão da linha DEPOIS de obter a trava (quem segurava pode ter escrito).
+      const posts = escolhidos.map((p) => banco.posts.get(p.id)!)
       return posts.map((p) => ({ id: p.id, status: p.status, laterPostId: p.laterPostId ?? null, postType: p.postType, generationId: p.generationId ?? null, projectId: p.projectId, pageId: p.pageId }))
     }
     if (nomeDaTabela === 'CustomFont') {
@@ -255,15 +257,25 @@ vi.mock('@/lib/db', () => {
     gravar(t, id, mutar(banco[t].get(id)!), null)
     for (const soltar of tx.travas.values()) soltar()
   }
-  const segurarFora = async (t: Tabela, id: string, ms: number) => {
+  const segurarFora = async (t: Tabela, id: string, ms: number, mutar?: (l: Linha) => Linha) => {
     const tx: Tx = { travas: new Map(), escritas: [], espera: 0, fechada: false }
     await travar(`${t}:${id}`, tx, 'update')
     evento(`fora:segura:${t}:${id}`)
     await new Promise((r) => setTimeout(r, ms))
+    if (mutar) gravar(t, id, mutar(banco[t].get(id)!), null)
     evento(`fora:solta:${t}:${id}`)
     for (const soltar of tx.travas.values()) soltar()
   }
-  return { db: { ...delegados(null), $transaction, $executeRaw: executeRaw(null), $queryRaw: async () => [] }, escreverFora, segurarFora }
+  /** Outra conexão segurando uma trava CONSULTIVA (a rota de fontes, o agendar-leva) por `ms`. */
+  const segurarChave = async (chave: string, ms: number) => {
+    const tx: Tx = { travas: new Map(), escritas: [], espera: 0, fechada: false }
+    await travar(`adv:${chave}`, tx, 'update')
+    evento(`fora:segura:adv:${chave}`)
+    await new Promise((r) => setTimeout(r, ms))
+    evento(`fora:solta:adv:${chave}`)
+    for (const soltar of tx.travas.values()) soltar()
+  }
+  return { db: { ...delegados(null), $transaction, $executeRaw: executeRaw(null), $queryRaw: async () => [] }, escreverFora, segurarFora, segurarChave }
 })
 
 vi.mock('@prisma/client', async () => await import('../../../../prisma/generated/client'))
@@ -281,7 +293,10 @@ vi.mock('@/lib/creatives/revisao/ajustar-sem-piorar', async () => {
   const vazio = { achados: 0, problemas: 0, naoAvaliadas: [] as string[] }
   return {
     aplicarAjustesSemPiorar: async (a: { page: { width: number; height: number }; camadas: unknown[]; ajustes: Array<{ tipo: string; achado?: string }>; medir: unknown }) => {
-      if (cp4.modo === 'recusa-tudo') return { camadas: a.camadas, aplicados: [], recusados: a.ajustes.map((aj, indice) => ({ indice, tipo: aj.tipo, codigo: 'AJUSTE_PIOROU_ARTE', motivo: 'o texto sai do alvo de leitura (p98 194 → 233)' })), alteradas: [] }
+      if (cp4.modo !== 'aceita') {
+        const codigo = cp4.modo === 'recusa-tudo' ? 'AJUSTE_PIOROU_ARTE' : cp4.modo === 'nao-medido' ? 'AJUSTE_NAO_MEDIDO' : 'CONTEUDO_NAO_PODE_SER_OCULTADO'
+        return { camadas: a.camadas, aplicados: [], recusados: a.ajustes.map((aj, indice) => ({ indice, tipo: aj.tipo, codigo, motivo: `recusa do CP4 (${codigo})` })), alteradas: [] }
+      }
       return { ...aplicarAjustes(a.camadas as never, a.ajustes as never, { canvas: { width: a.page.width, height: a.page.height }, medir: a.medir as never }), medidas: { antes: vazio, depois: vazio } }
     },
   }
@@ -330,7 +345,9 @@ vi.mock('@/lib/creatives/revisao/revisar-arte', async (importOriginal) => {
         camadas: args.camadas,
         composicaoReaproveitavel: args.composicaoReaproveitavel,
         generationDaPeca: args.generationDaPeca === undefined ? undefined : (args.generationDaPeca?.id ?? null),
+        assinaturaDaOrigem: ((args.generationDaPeca?.fieldValues as Linha | undefined)?.composicao?.assinatura?.pageId as string | undefined) ?? null,
         nomeDaPagina: args.page.name,
+        formato: formatoDaPaginaGravada(args.page),
       })
       // Sem Generation de origem não há referência nenhuma (A18) — como no código real.
       const referencias = args.generationDaPeca ? { headline: { fontSize1080: 84, entrelinha: null, origem: 'assinatura' } } : {}
@@ -378,9 +395,10 @@ import { fecharGenerationComoFalha } from '../mesclar-field-values'
 import { alvoDaRecomposicao, travarRecomposicaoDaArte } from '@/lib/compositor/recompor'
 import { agendarItensDoLote } from '@/lib/lotes/agendar-itens'
 
-const { escreverFora, segurarFora } = (await import('@/lib/db')) as unknown as {
+const { escreverFora, segurarFora, segurarChave } = (await import('@/lib/db')) as unknown as {
   escreverFora: (t: Tabela, id: string, mutar: (l: Linha) => Linha) => Promise<void>
-  segurarFora: (t: Tabela, id: string, ms: number) => Promise<void>
+  segurarFora: (t: Tabela, id: string, ms: number, mutar?: (l: Linha) => Linha) => Promise<void>
+  segurarChave: (chave: string, ms: number) => Promise<void>
 }
 
 const PROJETO = 8
@@ -521,6 +539,19 @@ describe('A6/A7/A8 — fluxo humano e as recusas do CP4', () => {
     expect((humano.details as Linha).causa).toBeUndefined()
   })
 
+  it('A7 (demais causas do contrato): AJUSTE_NAO_MEDIDO e CONTEUDO_NAO_PODE_SER_OCULTADO também viram REVISAO_HUMANA_NECESSARIA com `details.causa`; o perfil normal mantém o código', async () => {
+    for (const [modo, causa] of [['nao-medido', 'AJUSTE_NAO_MEDIDO'], ['ocultado', 'CONTEUDO_NAO_PODE_SER_OCULTADO']] as const) {
+      cp4.modo = modo
+      const erro = (await erroDe(ajustar())) as CreativeError
+      expect(erro.code, modo).toBe('REVISAO_HUMANA_NECESSARIA')
+      expect(erro.details, modo).toMatchObject({ causa, ajusteGravado: false, revisao: { tipo: 'nao-medida', motivo: MOTIVO_SEM_VERSAO_NOVA } })
+      const humano = (await erroDe(ajustar({ apenasRascunho: false }))) as CreativeError
+      expect(humano.code, modo).toBe(causa)
+    }
+    expect(medicao.chamadas).toEqual([])
+    expect(eventos()).not.toContain('tx:inicio')
+  })
+
   it('A8: slotValues que esvaziam texto no draft-only → CONTEUDO_NAO_PODE_SER_REMOVIDO antes de qualquer medida ou transação', async () => {
     const erro = (await erroDe(ajustarArte({ projectId: PROJETO, pageId: 'p1', apenasRascunho: true, slotValues: { apoio: '' } }))) as CreativeError
     expect(erro.code).toBe('CONTEUDO_NAO_PODE_SER_REMOVIDO')
@@ -569,6 +600,27 @@ describe('A5/A14/A17 — o que a medição lê está travado; a conferência sob
     }
   })
 
+  it('A14b (Codex R1, BLOQUEADOR 2): tags trocadas de story para feed entre a leitura e a transação, SEM mexer nas camadas (a versão não muda) → a conferência sob trava recusa, nada medido', async () => {
+    banco.aoTravarAgenda = () => void banco.pages.set('p1', { ...banco.pages.get('p1')!, tags: ['compositor', 'feed'] })
+    const erro = (await erroDe(ajustar())) as CreativeError
+    expect(erro.code).toBe('VERSAO_DIVERGENTE')
+    expect(medicao.chamadas).toEqual([])
+    expect(novas()).toEqual([])
+    // Controle: a mesma troca ANTES da chamada é lida e medida como feed (o formato que o gate registra é o gravado).
+    banco.eventos = []
+    const feed = (await erroDe(ajustar({ versaoEsperada: versaoDe('p1') }))) as CreativeError | null
+    expect(medicao.chamadas).toHaveLength(1)
+    expect(medicao.chamadas[0].formato).toBe('feed')
+    expect(feed === null || feed.code === 'REVISAO_HUMANA_NECESSARIA').toBe(true)
+  })
+
+  it('A14c (Codex R1, BLOQUEADOR 2): o nome da página trocado por fora entre a leitura e a transação → a conferência sob trava recusa', async () => {
+    banco.aoTravarAgenda = () => void banco.pages.set('p1', { ...banco.pages.get('p1')!, name: 'renomeada no editor' })
+    const erro = (await erroDe(ajustar())) as CreativeError
+    expect(erro.code).toBe('VERSAO_DIVERGENTE')
+    expect(medicao.chamadas).toEqual([])
+  })
+
   it('A14: música adicionada à página entre a leitura inicial e a transação → a conferência sob trava recusa, nada medido, nada gravado', async () => {
     banco.aoTravarAgenda = () => void banco.pages.set('p1', { ...banco.pages.get('p1')!, audio: { source: 'library', musicId: 'm1', startTime: 0, endTime: 15 } })
     const erro = (await erroDe(ajustar())) as CreativeError
@@ -576,6 +628,60 @@ describe('A5/A14/A17 — o que a medição lê está travado; a conferência sob
     expect(medicao.chamadas).toEqual([])
     expect(novas()).toEqual([])
     expect(eventos()).toContain('rollback')
+  })
+
+  it('A13 (Codex R1, BLOQUEADOR 1): o worker da fila SEGURA a Generation de origem e regrava a composição antes de soltar → o ajuste espera a trava (espera medida à parte) e mede com a composição RELIDA: a referência nova é a travada em FOR SHARE', async () => {
+    banco.pages.set('assinatura-v2', { ...banco.pages.get(ASSINATURA)!, id: 'assinatura-v2', name: 'Assinatura v2' })
+    const worker = segurarFora('generations', 'g-comp', 80, (g) => ({ ...g, fieldValues: { ...g.fieldValues, composicao: { assinatura: { pageId: 'assinatura-v2' } } } }))
+    await new Promise((r) => setImmediate(r))
+    const r = await ajustar()
+    await worker
+    expect(r.ajustada).toBe(true)
+    const ev = eventos()
+    // (`lastIndexOf`: quem segura por fora também emite a aquisição; a do ajuste é a última.)
+    expect(ev.indexOf('fora:solta:generations:g-comp')).toBeLessThan(ev.lastIndexOf('trava:generations:g-comp'))
+    expect(ev.lastIndexOf('trava:generations:g-comp')).toBeLessThan(ev.indexOf('medicao'))
+    expect(ev).toContain('trava-share:pages:assinatura-v2')
+    expect(ev).not.toContain(`trava-share:pages:${ASSINATURA}`)
+    expect(medicao.chamadas[0]).toMatchObject({ generationDaPeca: 'g-comp', assinaturaDaOrigem: 'assinatura-v2' })
+    const espera = Number(ev.find((e) => e.startsWith('espera:'))!.slice(7))
+    expect(espera).toBeGreaterThanOrEqual(50)
+  })
+
+  it('A13b (Codex R1, BLOQUEADOR 1): a linha escolhida como origem deixa de ser a arte do compositor DESTA página enquanto o ajuste espera → AJUSTE_CONCORRENTE ("repita"), nada gravado', async () => {
+    const worker = segurarFora('generations', 'g-comp', 40, (g) => ({ ...g, fieldValues: { ...g.fieldValues, pageId: 'outra-pagina' } }))
+    await new Promise((r) => setImmediate(r))
+    const erro = (await erroDe(ajustar())) as CreativeError
+    await worker
+    expect(erro.code).toBe('AJUSTE_CONCORRENTE')
+    expect(erro.details).toMatchObject({ ajusteGravado: false })
+    expect(medicao.chamadas).toEqual([])
+    expect(novas()).toEqual([])
+    expect(eventos()).toContain('rollback')
+  })
+
+  it('A13c: a rota de fontes segurando a trava consultiva das fontes → o ajuste espera e segue (ordem agenda → fontes mantida)', async () => {
+    const rota = segurarChave(`fontes:${PROJETO}`, 60)
+    await new Promise((r) => setImmediate(r))
+    const r = await ajustar()
+    await rota
+    expect(r.ajustada).toBe(true)
+    const ev = eventos()
+    expect(ev.indexOf(`fora:solta:adv:fontes:${PROJETO}`)).toBeLessThan(ev.lastIndexOf(`trava:adv:fontes:${PROJETO}`))
+    expect(ev.indexOf(`trava:adv:agenda-slot:${PROJETO}`)).toBeLessThan(ev.lastIndexOf(`trava:adv:fontes:${PROJETO}`))
+  })
+
+  it('A13d: o publicador (later-scheduler) segurando o DRAFT da página e entregando-o ao Zernio antes de soltar → o ajuste espera e a conferência sob trava recusa POST_APROVADO_INTOCAVEL, nada medido', async () => {
+    banco.posts.set('post-1', { id: 'post-1', projectId: PROJETO, pageId: 'p1', generationId: 'g-comp', postType: 'STORY', status: 'DRAFT', laterPostId: null })
+    const publicador = segurarFora('posts', 'post-1', 60, (p) => ({ ...p, status: 'SCHEDULED', laterPostId: 'zernio-1' }))
+    await new Promise((r) => setImmediate(r))
+    const erro = (await erroDe(ajustar())) as CreativeError
+    await publicador
+    expect(erro.code).toBe('POST_APROVADO_INTOCAVEL')
+    const ev = eventos()
+    expect(ev.indexOf('fora:solta:posts:post-1')).toBeLessThan(ev.indexOf('travou-posts-da-pagina:post-1'))
+    expect(medicao.chamadas).toEqual([])
+    expect(novas()).toEqual([])
   })
 
   it('A17: SEGUNDO ajuste na mesma página — a Generation de origem (compositor) e o alvo da recomposição (a do primeiro ajuste) são travadas em ordem de id ANTES dos shares, e a trava de recomposição cai na linha travada', async () => {
@@ -739,6 +845,24 @@ describe('A9/A13 — com o agendar-leva (CP5c) na mesma página', () => {
     const pageVersion = versaoDe('p1')
     expect(registroDe(doAjuste)).toMatchObject({ origem: 'ajustar-arte', identidade: { generationId: doAjuste, pageVersion } })
     expect(registroDe('g-comp')).toMatchObject({ origem: 'agendar-leva', identidade: { generationId: 'g-comp', pageVersion } })
+  })
+
+  it('A13 (ordem inversa): o agendar-leva entra enquanto o ajustar-arte mede a mesma página: espera o commit do ajuste e mede a página JÁ ajustada; os dois commitam', async () => {
+    let lote: Promise<Awaited<ReturnType<typeof agendar>>> | null = null
+    medicao.durante = () => {
+      if (!lote) lote = agendar()
+    }
+    const r = await ajustar()
+    const l = await lote!
+    expect(r.ajustada).toBe(true)
+    expect(l.itens[0]).toMatchObject({ desfecho: 'criado' })
+    const ev = eventos()
+    const commits = ev.map((e, i) => (e === 'commit' ? i : -1)).filter((i) => i >= 0)
+    expect(commits).toHaveLength(2)
+    expect(ev).not.toContain('rollback')
+    // O lote travou a agenda DEPOIS do commit do ajuste e mediu as camadas ajustadas (apoio em 540).
+    expect(ev.lastIndexOf(`trava:adv:agenda-slot:${PROJETO}`)).toBeGreaterThan(commits[0])
+    expect((medicao.chamadas[1].camadas as Layer[]).find((c) => c.id === 'apoio')!.position.y).toBe(540)
   })
 
   it('A13: ajustar-arte entra enquanto o agendar-leva mede a mesma página (trava da agenda): espera o commit do lote e só então mede e grava; os dois commitam, nenhum rollback', async () => {
