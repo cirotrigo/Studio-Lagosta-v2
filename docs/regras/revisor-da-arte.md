@@ -1005,3 +1005,61 @@ decidir, nem como sinal positivo nem negativo**: toda decisão autônoma é fres
   Dot `dot-operacao-v5`: "nunca agende por ele". `auditar-operacao` fica para o CP5c.
 - **Fora**: nenhum produtor em produção (o primeiro é o CP5c — seção 12 do contrato lista o que ele herda);
   oclusão por pixels; histórico de vereditos; migration.
+
+### CP5c — o gate em `agendar-leva` (perfil draft-only): medir e decidir SOB AS TRAVAS (16/10/2026)
+
+Contrato: `docs/PLANO-2026-10-16-CP5C-CONTRATO.md` (PR #241, 9 rodadas do Codex; APTO na rodada 9). O primeiro
+PRODUTOR do registro do CP5b. Só vale com `apenasRascunho` (o perfil é decidido pela tool, por `perfilDoPrincipal`);
+o fluxo humano é byte a byte o de antes (C7).
+
+- **Onde a medição acontece**: DENTRO da transação de `agendarItem`, depois das travas e antes de qualquer escrita de
+  post — por isso não existe "identidade medida × identidade relida": é a mesma leitura. Ordem comum das travas
+  (`inventario-gate-agendar-leva.test.ts`, C13): `pg_advisory_xact_lock(agenda)` → `pg_advisory_xact_lock(fontes)`
+  (chave nova `chaveDasFontes`, também tomada pelas rotas que criam/apagam `CustomFont` — `FOR SHARE` não impede a
+  linha nova) → `ItemDeLote` → `ItemDePlano` → posts da página (`ORDER BY "id" FOR UPDATE`; `ajustar-arte` ganhou o
+  mesmo `ORDER BY`) → `Page` → `Generation` da peça → `FOR SHARE` em `Project`, página de assinatura e página-modelo
+  apontadas pela Generation da peça, e `CustomFont` do projeto.
+- **`medirEDecidir(cliente, …)`** (`agendar-itens.ts`): `recusaComoImagem` → `lerCamadas` → `contextoDaMedicao` +
+  `medirCamadasDaPeca(…, { corrigir: false })` (a MESMA medição do revisor e do CP4; `contextoDaMedicao` ganhou
+  `cliente`, `sinal`, `prazoPorDownloadMs`, `composicaoReaproveitavel`, `generationDaPeca` — sem mudar o revisor) →
+  `decidirEMontarRegistro` (origem `agendar-leva`, `principal` do MCP). A cadeia inteira corre numa `Promise.race`
+  com `PRAZO_DA_MEDICAO_MS` (8 s); `fetchBuffer` aceita `{ signal, timeoutMs }` (`PRAZO_POR_DOWNLOAD_MS` 4 s): fonte e
+  foto do assunto são abortadas de verdade, render da régua e logo são cobertos pelo race (C21: fonte, assunto, logo,
+  régua presos → `nao-medida`, nenhum post, travas liberadas; `fetch-buffer-sinal.test.ts`: laço de redirecionamento).
+  Toda exceção vira `nao-medida` (fail-closed, nunca `ERRO`).
+- **Coerência página × Generation** (§ 4.3): a `composicao` gravada só é cache quando
+  `fieldValues.versaoRenderizada === versaoDaPagina(page, { audio })`; senão o assunto é estimado de novo e a
+  variante da logo vem da página — a assinatura e a página-modelo continuam sendo a referência (C20; a v2 do piloto é
+  MEDIDA, não recusada sem medir). A medição lê SÓ a Generation da peça (travada), nunca "a mais recente" (C22).
+- **Resultado**: `medida` APTO → `gravarGateDaArte(tx)` ANTES de `criarPostDoAgendamento`/adoção (`sem-vinculo`/
+  `sem-proveniencia` → rollback, `REVISAO_HUMANA_NECESSARIA`); não APTO → o registro reprovado é gravado e a transação
+  COMMITA só com ele (decisão 8.3, proposta), item `falhou` `REVISAO_HUMANA_NECESSARIA` com `generationId`, `pageId`,
+  `editUrl` (template atual) e `revisao` (`medida` com `achados`/`motivos`; `sem-vinculo`; `nao-medida`); exceção na
+  gravação ou timeout da transação → rollback e o mesmo código (C10/C18); deadlock (`40P01`/`P2034`) →
+  `LOTE_AGENDAMENTO_CONCORRENTE` (C13). Adoção (§ 4.6): o post tem de estar entre os travados, `DRAFT` sem
+  `laterPostId`, da página e do projeto, com `generationId === peca.id` (decisão 8.5, proposta: outro ou nulo →
+  revisão humana); ação ou post que mudou entre as duas decisões → `LOTE_AGENDAMENTO_CONCORRENTE` (C19).
+- **Efeitos pós-commit NÃO rodam no draft-only** (decisão 8.7, proposta B): depois do commit nenhuma escrita acontece
+  por conta de `agendar-leva` (C6); o item traz `AVISO_EFEITOS_NAO_RODAM_NO_DRAFT_ONLY`; a repetição HUMANA do mesmo
+  pedido completa; `reaproveitar` devolve `revisao` `nao-medida` (`MOTIVO_RASCUNHO_JA_EXISTENTE`), nunca um APTO que a
+  chamada não mediu. `simular: true` mede e decide pelo leitor, sem gravar nada (C8).
+- **Decisões do owner implementadas como PROPOSTA nomeada** (trocáveis numa linha, nenhuma "aprovada"): 8.1
+  `POLITICA_DO_ASSUNTO_DO_AGENDAR_LEVA = POLITICA_DO_ASSUNTO_RECOMENDADA` (`lotes/agendamento.ts`; `ver-geracao`
+  compara com ela); 8.2 concorrência = `LOTE_AGENDAMENTO_CONCORRENTE`; 8.3 gravar o reprovado; 8.5 não adotar sem a
+  arte; 8.7 B; 8.8 medir dentro da transação; 8.9 8 s / 4 s. 8.4 (`auditar-operacao`) e 8.6 (bytes por URL) ficam
+  fora, como o contrato diz.
+- **Testes**: `lotes/__tests__/agendar-itens-gate.test.ts` (C1–C22, banco falso com travas de linha e eventos
+  ordenados; C18 sintético mede a medição REAL em ~0,4 s por página sintética, no ambiente de teste),
+  `inventario-gate-agendar-leva.test.ts` (C9, C11, C13 por código-fonte), `fetch-buffer-sinal.test.ts`,
+  `piloto-portao.test.ts` (P11: os 8 `hojeViola` viraram `it()`, com a medição REAL sobre a fixture — v1 e v2
+  recusadas com os achados do serviço, controle limpo aprovado), harness de `agendar-itens.test.ts` (mede limpo; o
+  resto do serviço igual), `c9-allowlist-comportamental.test.ts` (cada tool MUTANTE da allowlist executada com banco
+  falso que registra criação de post e gravação do veredito + o fecho de imports de cada handler). Limites ditos (Codex
+  R1 do PR #242): bytes de assets/fontes por URL não protegidos (CP5b § 4.2); `scripts/` que gravem `CustomFont` fora
+  das rotas ficam fora da garantia da trava das fontes; `Template.projectId` é lido para conferir a posse sem trava
+  própria — a garantia supõe que um Template não muda de projeto (nenhuma rota faz isso hoje); páginas de referência
+  (assinatura/modelo) de projetos diferentes podem formar ciclo entre travas de `Page` — o deadlock é mapeado para
+  `LOTE_AGENDAMENTO_CONCORRENTE` ("repita"); o "benchmark sintético do CP3" do contrato não existe como harness no
+  repositório — C18 usa as páginas sintéticas de `sinteticos.ts` (CP0/CP2); C7 prova um cenário do fluxo humano, não
+  igualdade byte a byte (o diff do fluxo humano é só o `ORDER BY "id"` em `ajustar-arte`); o inventário por regex não
+  vê SQL montado em variável.

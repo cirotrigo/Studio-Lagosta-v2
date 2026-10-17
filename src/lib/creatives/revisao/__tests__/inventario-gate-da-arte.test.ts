@@ -13,7 +13,8 @@ import { ESLint } from 'eslint'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 
-const PERMITIDOS_GATE_DA_ARTE = new Set(['src/lib/creatives/revisao/gate-registro.ts', 'src/lib/creatives/revisao/gate-persistido.ts', 'src/lib/mcp/catalogo/ver-geracao-retorno.ts'])
+/** CP5c: `src/lib/lotes/agendar-itens.ts` é o PRODUTOR (decide e grava pela mesma chamada); ele não escreve a string da chave — grava por `gravarGateDaArte`. */
+const PERMITIDOS_GATE_DA_ARTE = new Set(['src/lib/creatives/revisao/gate-registro.ts', 'src/lib/creatives/revisao/gate-persistido.ts', 'src/lib/mcp/catalogo/ver-geracao-retorno.ts', 'src/lib/lotes/agendar-itens.ts'])
 /** Quem pode tocar `gate-registro`/`gate` por import() dinâmico, require ou reexportação (ninguém, hoje). */
 const PERMITIDOS_DINAMICO = new Set<string>([])
 
@@ -104,6 +105,8 @@ describe('H12 (a) — a barreira por import no lint', () => {
       ["import { gateDaMedida as g } from '../revisao/gate'\nexport const x = g\n", 'src/lib/creatives/agendar/controle.tmp.ts'],
       ["import { gateDaMedida } from './gate'\nexport const x = gateDaMedida\n", 'src/lib/creatives/revisao/controle.tmp.ts'],
       ["import { lerGateDaArte } from '@/lib/creatives/revisao/gate-registro'\nexport const x = lerGateDaArte\n", 'src/lib/lotes/controle.tmp.ts'],
+      // CP5c: o produtor pode decidir, mas NUNCA chamar gateDaMedida direto (a decisão e o registro nascem juntos).
+      ["import { gateDaMedida } from '@/lib/creatives/revisao/gate'\nexport const x = gateDaMedida\n", 'src/lib/lotes/agendar-itens.ts'],
       ["import { decidirEMontarRegistro } from './gate-registro'\nexport const x = decidirEMontarRegistro\n", 'src/lib/creatives/revisao/controle.tmp.ts'],
       // Codex R1 do PR #240: de uma SUBPASTA de revisao/, `../gate` escapava de `**/revisao/gate`.
       ["import { gateDaMedida } from '../gate'\nexport const x = gateDaMedida\n", 'src/lib/creatives/revisao/subdir/controle.tmp.ts'],
@@ -124,7 +127,7 @@ describe('H12 (a) — a barreira por import no lint', () => {
     expect((await errosDe("import { gateDaMedida } from './gate'\nexport const x = gateDaMedida\n", 'src/lib/creatives/revisao/gate-persistido.ts')).length).toBeGreaterThan(0)
     // Um teste pode tudo.
     expect(await errosDe("import { gateDaMedida } from '../gate'\nexport const x = gateDaMedida\n", 'src/lib/creatives/revisao/__tests__/qualquer.test.ts')).toEqual([])
-    for (const real of ['src/lib/creatives/revisao/gate-persistido.ts', 'src/lib/mcp/catalogo/ver-geracao-retorno.ts', 'src/lib/mcp/catalogo/arte-ia.ts', 'src/lib/creatives/revisao/gate-registro.ts']) {
+    for (const real of ['src/lib/creatives/revisao/gate-persistido.ts', 'src/lib/mcp/catalogo/ver-geracao-retorno.ts', 'src/lib/mcp/catalogo/arte-ia.ts', 'src/lib/creatives/revisao/gate-registro.ts', 'src/lib/lotes/agendar-itens.ts']) {
       expect(await errosDe(readFileSync(join(raiz, real), 'utf8'), real), real).toEqual([])
     }
   }, 60_000)

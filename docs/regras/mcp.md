@@ -276,3 +276,14 @@ politicaComparada, naoConferido | divergencias, motivos, aviso }`; sem registro,
 "pendente"); registro ilegível → `validade: 'ilegivel'` com o motivo e as versões gravadas, SEM resultado. O
 `select` da página ganhou `tags`, `width`, `height`, `background`, `layers`, `copyAutoral` (o que `identidadeDaPagina`
 lê), mantendo o filtro por projeto. Nenhuma tool ganhou parâmetro. Detalhe em `docs/regras/revisor-da-arte.md` § CP5b.
+
+### `agendar-leva` no perfil draft-only passa pelo gate de autonomia (CP5c, 16/10/2026)
+
+Só no perfil draft-only (`apenasRascunho`): o rascunho nasce ou é adotado depois de a página ser medida DENTRO da
+transação que grava, sob as travas, e aceita pelo gate (`decidirEMontarRegistro`, CP5b); o registro do veredito é
+gravado na mesma transação (APTO antes do post; reprovado, só ele). O item ganha `revisao` (`medida` / `sem-vinculo`
+/ `nao-medida`), `achados` e `motivos`; a recusa é sempre `REVISAO_HUMANA_NECESSARIA` com `generationId`, `pageId` e
+`editUrl`. Efeitos pós-commit não rodam nesse perfil (aviso fixo no item). O fluxo humano (perfil normal) não mudou
+em nada: nenhuma medição, trava nova ou campo novo. A descrição da tool ganhou o parágrafo "GATE DE AUTONOMIA"; nenhum
+parâmetro novo. `ver-geracao` compara a política gravada com `POLITICA_DO_ASSUNTO_DO_AGENDAR_LEVA` (proposta nomeada,
+decisão 8.1 do contrato). Detalhe em `docs/regras/revisor-da-arte.md` § CP5c.

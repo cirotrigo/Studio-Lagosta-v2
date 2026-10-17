@@ -324,7 +324,7 @@ describe('ajustarArte: a conferência que fecha a corrida mora na transação da
     const transacao = fonte.indexOf('await db.$transaction(\n    async (tx) => {', fonte.indexOf('export async function ajustarArte'))
     expect(transacao).toBeGreaterThan(0)
     const conferencia = fonte.indexOf('if (input.apenasRascunho) {', transacao)
-    const travaDosPosts = fonte.indexOf('FROM "SocialPost" WHERE "pageId" = ${page.id} FOR UPDATE', transacao)
+    const travaDosPosts = fonte.indexOf('FROM "SocialPost" WHERE "pageId" = ${page.id} ORDER BY "id" FOR UPDATE', transacao)
     const primeiraEscrita = fonte.indexOf('tx.page.updateMany', transacao)
     expect(conferencia).toBeGreaterThan(transacao)
     expect(travaDosPosts).toBeGreaterThan(conferencia)

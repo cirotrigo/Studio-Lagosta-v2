@@ -28,6 +28,7 @@
 
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
+import { POLITICA_DO_ASSUNTO_RECOMENDADA, type PoliticaDoAssunto } from '@/lib/creatives/revisao/gate'
 import { canonico } from '@/lib/copy-autoral/revisao'
 import { formatarBRT, parseBRT } from '@/lib/creatives/data-brt'
 import { ESCOPO_PADRAO, normalizarEscopo, type EscopoAprendizado } from '@/lib/posts/learning-scope'
@@ -39,6 +40,13 @@ import { validarIdentidadeDeLote } from './identidade'
 
 /** Mudou a normalização do pedido? Suba a versão — e trate o hash antigo como o PR 11 trata o dele. */
 export const VERSAO_DO_AGENDAMENTO = 'agendamento-v1'
+
+/**
+ * CP5c § 8.1 — a política EFETIVA do assunto no gate do `agendar-leva` (draft-only). PROPOSTA (decisão 9.12 do
+ * CP5b, ainda do owner): a RECOMENDADA do CP5a (`estimado: 'humano'`, `semAssuntoLocalizavel: 'nao-se-aplica'`),
+ * nomeada aqui para ser trocada numa linha. `ver-geracao` compara o registro gravado com ESTA constante.
+ */
+export const POLITICA_DO_ASSUNTO_DO_AGENDAR_LEVA: PoliticaDoAssunto = POLITICA_DO_ASSUNTO_RECOMENDADA
 export const MAX_ITENS_DO_AGENDAMENTO = 60
 
 export type FormatoDaPeca = 'story' | 'feed' | 'quadrado'
