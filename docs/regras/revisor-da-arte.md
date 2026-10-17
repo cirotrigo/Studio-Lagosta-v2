@@ -1181,9 +1181,10 @@ pseudonimiza por PROJEÇÃO DE ESQUEMA (`pseudonimizar.ts`, testado): só sobrev
 booleanos, cores, enums sob chaves de enum, nomes de fonte; `content` vira copy sintética pelo papel, `name`/`id` viram o papel
 ou `camada-N`, `groupId` vira `grupo-N`, `fileUrl` vira token SÓ no topo da camada e EXIGE os bytes (aninhado é descartado); `tags` só
 das conhecidas (assinatura, story, feed, quadrado, clara, escura, modelo, conteudo); toda string sob chave fora do esquema
-é DESCARTADA e listada (`descartados`), e a CHAVE também é dado (`{ "Acme Corp": 12 }` cai com o valor; chave fora da
-forma de identificador idem) — nenhum FRAGMENTO do nome do cliente (palavra com 3+ letras, sem acento) sobrevive em string
-nem em chave; a conferência final recusa URL, fragmento do nome, identificador externo, texto sob chave não prevista, chave
+é DESCARTADA e listada (`descartados`), número e booleano só sob chave numérica PREVISTA (`telefone: 55119…` cai), e a
+CHAVE também é dado (`{ "Acme Corp": 12 }` cai com o valor; chave fora da forma de identificador idem) — nenhum FRAGMENTO
+do nome do cliente (o nome inteiro normalizado, mesmo curto como "Zé", e cada palavra com 3+ letras) sobrevive em string
+nem em chave; só a entrada de `layers[]` é camada (um objeto aninhado com `type`+`position` não ganha token); a conferência final recusa URL, fragmento do nome, identificador externo, texto sob chave não prevista, chave
 que identifica e PNG com metadado. Cada `cliente-NN` entra no piloto com os PRÓPRIOS ativos
 (`suporte/fixtures-de-clientes.ts`, testado), não com os da fixture de 13/10.
 

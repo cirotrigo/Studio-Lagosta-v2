@@ -31,6 +31,8 @@ const COR = /^(#[0-9a-f]{3,8}|rgba?\([\d.,\s%]+\)|hsla?\([\d.,\s%]+\)|transparen
 const CHAVES_DE_ENUM = new Set(['type', 'fontWeight', 'fontStyle', 'textAlign', 'verticalAlign', 'objectFit', 'textTransform', 'textDecoration', 'anchor', 'breakMode', 'textMode', 'fit', 'gradientType', 'shapeType', 'blendMode', 'papel', 'role', 'mode', 'unit', 'align', 'position', 'direction', 'repeat', 'lineCap', 'lineJoin'])
 const ENUM = /^([a-z][a-z0-9-]{0,31}|\d{3})$/i // `\d{3}`: `fontWeight: '400'`
 const CHAVES_DE_TEXTO = new Set(['content', 'text'])
+/** Chaves cujo valor numérico/booleano o esquema prevê (geometria, tipografia, efeitos, números da assinatura). Número sob OUTRA chave é descartado: `telefone: 5511999999999` não é geometria. */
+const CHAVES_NUMERICAS = new Set(['x', 'y', 'width', 'height', 'rotation', 'order', 'ordem', 'opacity', 'visible', 'locked', 'fontSize', 'lineHeight', 'letterSpacing', 'minFontSize', 'maxFontSize', 'maxLines', 'padding', 'paddingX', 'paddingY', 'borderRadius', 'radius', 'blur', 'offsetX', 'offsetY', 'shadowBlur', 'shadowOffsetX', 'shadowOffsetY', 'shadowOpacity', 'strokeWidth', 'strokeOpacity', 'fillOpacity', 'spacing', 'brightness', 'contrast', 'saturation', 'exposure', 'highlights', 'shadows', 'whites', 'blacks', 'grayscale', 'sepia', 'invert', 'vignette', 'tone', 'overlay', 'enabled', 'autoExpand', 'isDynamic', 'required', 'wordBreak', 'flipH', 'flipV', 'gradientAngle', 'gradientCenterX', 'gradientCenterY', 'gradientStartX', 'gradientStartY', 'gradientEndX', 'gradientEndY', 'gradientRadiusScale', 'position', 'escalaDeFonte', 'gapEntreBlocos', 'margemH', 'safeTopo', 'safeRodape', 'largura', 'larguraMaxima', 'altura', 'raioMarca', 'raioTexto', 'faixaMarca', 'faixaTexto', 'pesado', 'razao', 'pontos', 'luzDaFoto', 'min', 'max', 'isProjectLogo'])
 /** Tags estruturais que a fixture pode levar; qualquer outra é descartada (uma tag pode ser o apelido do cliente). */
 const TAGS_CONHECIDAS = new Set(['assinatura', 'story', 'feed', 'quadrado', 'clara', 'escura', 'modelo', 'conteudo'])
 /** Forma de uma CHAVE de objeto que pode sobreviver: identificador curto; chave com espaço, acento ou longa demais é descartada com o valor. */
@@ -38,7 +40,10 @@ const CHAVE = /^[A-Za-z_$][A-Za-z0-9_-]{0,40}$/
 const semAcento = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 /** Fragmentos do nome do cliente (palavras com 3+ letras, sem acento): nenhum pode aparecer em string NEM em chave. */
 export function fragmentosDoNome(nome: string): string[] {
-  return [...new Set(semAcento(nome).split(/[^a-z0-9]+/).filter((w) => w.length >= 3))]
+  const palavras = semAcento(nome).split(/[^a-z0-9]+/).filter(Boolean)
+  // O nome INTEIRO normalizado entra sempre (um nome curto como "Zé" não tem palavra com 3 letras); as palavras com 3+ letras também.
+  const inteiro = palavras.join('')
+  return [...new Set([...(inteiro ? [inteiro] : []), ...palavras.filter((w) => w.length >= 3)])]
 }
 const temFragmento = (texto: string, fragmentos: string[]) => {
   const t = semAcento(texto)
@@ -97,8 +102,6 @@ export function pseudonimizar(exp: ExportDoCliente, clienteId: string, arquivos:
     }
     return tokens.get(url)!
   }
-  const profundidadeDaCamada = new Map<Record<string, unknown>, number>()
-  const caminhoDaCamada = (camada: Record<string, unknown>) => profundidadeDaCamada.get(camada) ?? -1
   const papelDa = (camada: Record<string, unknown>): string | null => {
     if (camada.type === 'logo') return 'logo'
     for (const c of [camada.name, camada.id, (camada.metadata as Record<string, unknown> | undefined)?.papel]) {
@@ -106,12 +109,17 @@ export function pseudonimizar(exp: ExportDoCliente, clienteId: string, arquivos:
     }
     return null
   }
-  const projetar = (v: unknown, chave: string, caminho: string, camada?: Record<string, unknown>): unknown => {
-    if (typeof v === 'number' || typeof v === 'boolean' || v === null || v === undefined) return v
+  const projetar = (v: unknown, chave: string, caminho: string, camada?: Record<string, unknown>, ehCamada = false): unknown => {
+    if (v === null || v === undefined) return v
+    if (typeof v === 'number' || typeof v === 'boolean') {
+      if (CHAVES_NUMERICAS.has(chave)) return v
+      descartados.push(`${caminho}: ${typeof v} sob chave fora do esquema`)
+      return undefined
+    }
     if (typeof v === 'string') {
       if (COR.test(v)) return v
       // `fileUrl` só no TOPO da camada (é dela que o compositor lê a imagem); aninhado em style/metadata é descartado, não vira token.
-      if (chave === 'fileUrl') return camada && caminho.endsWith('.fileUrl') && caminho.split('.').length === caminhoDaCamada(camada) ? token(v, caminho) : (descartados.push(`${caminho}: fileUrl fora do topo da camada`), undefined)
+      if (chave === 'fileUrl') return ehCamada ? token(v, caminho) : (descartados.push(`${caminho}: fileUrl fora do topo da camada`), undefined)
       if (CHAVES_DE_TEXTO.has(chave)) return camada ? copySintetica(papelDa(camada) ?? '') : (descartados.push(`${caminho}: texto fora de camada`), undefined)
       if (chave === 'fontFamily') return v
       if (chave === 'groupId') return grupos.get(v) ?? (grupos.set(v, `grupo-${grupos.size + 1}`), grupos.get(v)!)
@@ -119,32 +127,35 @@ export function pseudonimizar(exp: ExportDoCliente, clienteId: string, arquivos:
       descartados.push(`${caminho}: string sob chave fora do esquema`)
       return undefined
     }
-    if (Array.isArray(v)) return v.map((x, i) => projetar(x, chave, `${caminho}[${i}]`, camada)).filter((x) => x !== undefined)
+    // Só a ENTRADA de `layers[]` é camada; um objeto aninhado com `type`+`position` em style/metadata não é.
+    if (Array.isArray(v)) return v.map((x, i) => (chave === 'layers' && x && typeof x === 'object' && !Array.isArray(x) ? projetarCamada(x as Record<string, unknown>, `${caminho}[${i}]`) : projetar(x, chave, `${caminho}[${i}]`, camada))).filter((x) => x !== undefined)
     if (typeof v === 'object') {
       const o = v as Record<string, unknown>
-      const ehCamada = typeof o.type === 'string' && 'position' in o
       const saida: Record<string, unknown> = {}
-      if (ehCamada) profundidadeDaCamada.set(o, caminho.split('.').length + 1)
       for (const [k, x] of Object.entries(o)) {
-        if (ehCamada && (k === 'id' || k === 'name')) continue // tratados abaixo
+        if (ehCamada && (k === 'id' || k === 'name' || k === 'fileUrl')) continue // tratados em projetarCamada
         // A CHAVE também é dado: `{ "Acme Corp": 12 }` levaria o nome; chave fora da forma ou com fragmento do nome cai com o valor.
         if (!CHAVE.test(k) || identifica(k)) {
           descartados.push(`${caminho}.${k}: chave fora do esquema`)
           continue
         }
-        const r = projetar(x, k, `${caminho}.${k}`, ehCamada ? o : camada)
+        // `fileUrl` só vira token no TOPO da camada (chave direta da entrada de layers[]).
+        const r = projetar(x, k, `${caminho}.${k}`, camada, false) 
         if (r !== undefined) saida[k] = r
-      }
-      if (ehCamada) {
-        const papel = papelDa(o)
-        const n = ++nCamada
-        saida.id = papel ?? `camada-${n}`
-        saida.name = papel ?? `${String(o.type)}-${n}`
       }
       return saida
     }
     descartados.push(`${caminho}: tipo não previsto`)
     return undefined
+  }
+  const projetarCamada = (o: Record<string, unknown>, caminho: string): Record<string, unknown> => {
+    const saida = projetar(o, 'layers', caminho, o, true) as Record<string, unknown>
+    if (typeof o.fileUrl === 'string') saida.fileUrl = token(o.fileUrl, `${caminho}.fileUrl`) // o único fileUrl que vira token
+    const papel = papelDa(o)
+    const n = ++nCamada
+    saida.id = papel ?? `camada-${n}`
+    saida.name = papel ?? `${String(o.type)}-${n}`
+    return saida
   }
   const paginas = exp.paginas.map((p, i) => {
     const so: Record<string, unknown> = {}
