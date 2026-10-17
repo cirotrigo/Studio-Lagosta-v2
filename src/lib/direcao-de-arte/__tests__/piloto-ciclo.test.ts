@@ -830,11 +830,11 @@ describe('P9 — recuperação', () => {
     exigir(revisao.gate.tipo === 'medida', `o gate da última revisão é medido (${JSON.stringify(revisao.gate)})`)
     const gate = revisao.gate as Extract<typeof revisao.gate, { tipo: 'medida' }>
     const apta = gate.resultado === 'APTO' && problemasAbertos(revisao).length === 0
-    const escalada =
-      (gate.resultado === CODIGOS.revisaoHumana && gate.motivos.length > 0) ||
-      // Só o draft-only devolve REVISAO_HUMANA_NECESSARIA em `ajustar-arte` (CP5d); o `revisao` tipado é a prova de que foi o gate.
-      (ultimoAjuste?.code === CODIGOS.revisaoHumana && TIPOS_DE_REVISAO.has(String((ultimoAjuste.details as { revisao?: { tipo?: string } } | undefined)?.revisao?.tipo)))
-    return { revisao, gate, apta, escalada, ultimoAjuste }
+    const escaladaPelaRevisao = gate.resultado === CODIGOS.revisaoHumana && gate.motivos.length > 0
+    // Só o draft-only devolve REVISAO_HUMANA_NECESSARIA em `ajustar-arte` (CP5d); o `revisao` tipado é a prova de que foi o gate.
+    const escaladaPeloAjuste = ultimoAjuste?.code === CODIGOS.revisaoHumana && TIPOS_DE_REVISAO.has(String((ultimoAjuste.details as { revisao?: { tipo?: string } } | undefined)?.revisao?.tipo))
+    const escalada = escaladaPelaRevisao || escaladaPeloAjuste
+    return { revisao, gate, apta, escalada, escaladaPelaRevisao, escaladaPeloAjuste, ultimoAjuste }
   }
 
   it('em até 2 ciclos com os ajustes do próprio revisor, a peça termina apta ou com REVISAO_HUMANA_NECESSARIA — a fixture do piloto: escalada tipada (o serviço sem leitura não tem correção executável)', async () => {
@@ -852,6 +852,8 @@ describe('P9 — recuperação', () => {
     exigirMedidaFiel(banco.pagina.layers)
     const antes = JSON.stringify(banco.pagina.layers)
     const r = await ciclos({ apenasRascunho: true, ajustesDoCiclo: () => [ACEITO_TOPO] as unknown as Ajuste[] })
+    // O lado do ÚLTIMO AJUSTE é verdadeiro por si (a escalada não depende da revisão seguinte): é ele que este caso prova.
+    expect(r.escaladaPeloAjuste).toBe(true)
     expect(r.escalada).toBe(true)
     expect(r.ultimoAjuste).toMatchObject({ code: CODIGOS.revisaoHumana, details: { ajusteGravado: false, revisao: { tipo: expect.stringMatching(/^(medida|nao-medida|sem-vinculo)$/) } } })
     expect(JSON.stringify(banco.pagina.layers)).toBe(antes)

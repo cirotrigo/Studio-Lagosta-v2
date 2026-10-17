@@ -249,6 +249,22 @@ const gateMedido = (r: Awaited<ReturnType<typeof revisar>>) => {
     expect(criticas.has(m.regra) || conferencias.has(m.regra), m.regra).toBe(true)
     if (m.codigo === 'ACHADO_CRITICO' && criticas.has(m.regra)) expect(r.relatorio.achados.some((a) => a.regra === m.regra), `${m.regra}: achado no relatório`).toBe(true)
   }
+  // I2 — o CÓDIGO de cada motivo é o permitido pela cobertura e pela política efetivas: ACHADO_CRITICO só com achado `problema`
+  // medido na regra; NAO_COMPROVADA só em conferência própria do gate, em regra cuja cobertura não é `avaliada`, ou no assunto sob
+  // a política (estimado → humano); NAO_MEDIDO só com a regra em `naoMedidos`/cobertura parcial; IDENTIDADE_ILEGIVEL só em identidade.
+  // As regras da RÉGUA são as que a medida corrigida do revisor pode deixar limpas enquanto a fiel reprova (é o que E-div prova).
+  const daRegua = new Set(['texto-sem-leitura', 'tratamento-piorou-leitura'])
+  for (const m of gate.motivos) {
+    const cob = (r.relatorio.cobertura as Record<string, { estado?: string } | undefined>)[m.regra]
+    if (m.codigo === 'ACHADO_CRITICO') {
+      // O gate avalia a medida FIEL: um crítico numa conferência própria (piso) não tem contraparte no relatório; nas regras
+      // da régua o relatório (corrigido) pode estar limpo; nas demais o relatório tem ao menos um achado na regra.
+      if (!conferencias.has(m.regra) && !daRegua.has(m.regra)) expect(r.relatorio.achados.some((a) => a.regra === m.regra), `${m.regra}: ACHADO_CRITICO com achado no relatório`).toBe(true)
+    } else if (m.codigo === 'NAO_COMPROVADA') expect(conferencias.has(m.regra) || !cob || cob.estado !== 'avaliada' || m.regra === 'texto-sobre-assunto', `${m.regra}: NAO_COMPROVADA (cobertura ${cob?.estado})`).toBe(true)
+    else if (m.codigo === 'NAO_MEDIDO') expect(gate.naoMedidos.some((n) => n.regra === m.regra) || cob?.estado === 'parcial', `${m.regra}: NAO_MEDIDO`).toBe(true)
+    else if (m.codigo === 'IDENTIDADE_ILEGIVEL') expect(m.regra).toBe('identidade')
+    else expect.unreachable(`código desconhecido ${String(m.codigo)}`)
+  }
   // A direção essencial: todo `problema` do relatório numa regra crítica do gate (o relatório vem da medida CORRIGIDA; o que
   // está mal mesmo com a correção está mal na fiel) ⇒ o gate recusa com um motivo NESSA regra.
   for (const a of r.relatorio.achados) {
@@ -346,12 +362,15 @@ describe('E1/E2/E3 — APTO → DRAFT; não APTO → nenhum DRAFT; corrigir e ag
     expect(banco.eventos.filter((e) => e.e.startsWith('escrita:')).length).toBe(escritas)
   }, 240_000)
 
-  it('E2: o apoio sobre o piso de interface → revisar-arte informa REVISAO_HUMANA_NECESSARIA (piso-de-interface) → agendar-leva não cria post; nada para a auditoria contar nesta página', async () => {
-    const { pageId, generationId, itemId } = await pecaComposta({ editar: (ls) => ls.map((l) => (l.id === 'apoio' ? { ...l, position: { ...l.position, y: 1750 } } : l)) })
+  const APOIO_NA_MARGEM = (ls: Layer[]) => ls.map((l) => (l.id === 'apoio' ? { ...l, position: { ...l.position, x: 820 }, size: { ...l.size, width: 300 } } : l))
+
+  it('E2: o apoio invadindo a margem de segurança → revisar-arte informa REVISAO_HUMANA_NECESSARIA (fora-da-area-segura) e propõe o mover → agendar-leva não cria post; o veredito reprovado fica registrado; nada para a auditoria contar nesta página', async () => {
+    const { pageId, generationId, itemId } = await pecaComposta({ editar: APOIO_NA_MARGEM })
     const rev = await revisar(pageId)
     const gate = gateMedido(rev)
     expect(gate.resultado).toBe(CODIGOS.revisaoHumana)
-    expect(gate.motivos.map((m) => m.regra)).toContain('piso-de-interface')
+    expect(gate.motivos.map((m) => m.regra)).toContain('fora-da-area-segura')
+    expect(rev.relatorio.ajustes.some((a) => a.tipo === 'mover')).toBe(true)
     const lote = await agendar(itemId)
     expect(lote.itens[0]).toMatchObject({ situacao: 'falhou', codigo: CODIGOS.revisaoHumana })
     expect(posts()).toEqual([])
@@ -359,13 +378,30 @@ describe('E1/E2/E3 — APTO → DRAFT; não APTO → nenhum DRAFT; corrigir e ag
     expect(lerGateDaArte(banco.generations.get(generationId)!.fieldValues)).toMatchObject({ estado: 'ok', registro: { gate: { resultado: CODIGOS.revisaoHumana }, origem: 'agendar-leva' } })
     expect(blocoDe(generationId)).toMatchObject({ validade: 'coincidente', resultado: CODIGOS.revisaoHumana })
     expect(resumo().total.posts).toBe(0)
+    // E9 pelo serviço REAL: sem post, nada a contar (o registro reprovado está na Generation, não em post algum).
+    expect((await auditoria()).gate).toMatchObject({ posts: 0, semRegistro: 0, coincidente: { APTO: 0, REVISAO_HUMANA_NECESSARIA: 0 } })
   }, 240_000)
 
-  it('E3: E2 corrigido pelo próprio revisor (ajustar-arte draft-only com o mover proposto) → APTO → agendar-leva cria o DRAFT; dois registros (ajuste e lote) com a MESMA pageVersion', async () => {
-    const { pageId, generationId, itemId } = await pecaComposta({ editar: (ls) => ls.map((l) => (l.id === 'apoio' ? { ...l, position: { ...l.position, x: 820 }, size: { ...l.size, width: 300 } } : l)) })
+  it('E2b: o apoio sobre o piso de interface (conferência SÓ do gate: o revisor não tem regra nem ajuste para isso) → gate REVISAO_HUMANA_NECESSARIA (piso-de-interface) sem ajuste a propor → agendar-leva não cria post', async () => {
+    const { pageId, itemId } = await pecaComposta({ editar: (ls) => ls.map((l) => (l.id === 'apoio' ? { ...l, position: { ...l.position, y: 1750 } } : l)) })
+    const rev = await revisar(pageId)
+    const gate = gateMedido(rev)
+    expect(gate.resultado).toBe(CODIGOS.revisaoHumana)
+    expect(gate.motivos.map((m) => m.regra)).toContain('piso-de-interface')
+    // O revisor não vê o piso: nenhum achado, nenhum ajuste — é o caso em que a tool diz "leve à pessoa".
+    expect(rev.relatorio.ajustes).toEqual([])
+    const lote = await agendar(itemId)
+    expect(lote.itens[0]).toMatchObject({ situacao: 'falhou', codigo: CODIGOS.revisaoHumana })
+    expect(posts()).toEqual([])
+  }, 240_000)
+
+  it('E3: o caso E2 (apoio na margem) corrigido pelo próprio revisor — o `mover` que ele propõe, por ajustar-arte draft-only → APTO → agendar-leva cria o DRAFT; dois registros (ajuste e lote) com a MESMA pageVersion', async () => {
+    const { pageId, generationId, itemId } = await pecaComposta({ editar: APOIO_NA_MARGEM })
     const antes = await revisar(pageId)
-    expect(gateMedido(antes).resultado).toBe(CODIGOS.revisaoHumana)
-    const mover = antes.relatorio.ajustes.filter((a) => a.tipo === 'mover')
+    const gateAntes = gateMedido(antes)
+    expect(gateAntes.resultado).toBe(CODIGOS.revisaoHumana)
+    expect(gateAntes.motivos.map((m) => m.regra)).toContain('fora-da-area-segura')
+    const mover = antes.relatorio.ajustes.filter((a) => a.tipo === 'mover' && (a as { camadas?: string[] }).camadas?.includes('apoio'))
     expect(mover.length).toBeGreaterThan(0)
     const r = await ajustar(pageId, mover as unknown as Ajuste[], antes.versao!)
     expect(r).toMatchObject({ ajustada: true, revisao: { tipo: 'medida', resultado: 'APTO' } })
@@ -379,6 +415,8 @@ describe('E1/E2/E3 — APTO → DRAFT; não APTO → nenhum DRAFT; corrigir e ag
     expect(doAjuste).toMatchObject({ estado: 'ok', registro: { origem: 'ajustar-arte', identidade: { pageVersion } } })
     expect(doLote).toMatchObject({ estado: 'ok', registro: { origem: 'agendar-leva', identidade: { pageVersion } } })
     expect(espioes.invalidar).toHaveBeenCalled()
+    // E9 pelo serviço REAL: o DRAFT aponta a Generation do compositor, cujo registro (do lote) é desta versão → coincidente APTO.
+    expect((await auditoria()).gate).toMatchObject({ posts: 1, coincidente: { APTO: 1 }, historico: 0 })
   }, 240_000)
 })
 
@@ -487,6 +525,8 @@ describe('E7/E7b — regra não medida → humano; fonte ausente → humano', ()
     const lote = await agendar(itemId)
     expect(lote.itens[0]).toMatchObject({ situacao: 'falhou', codigo: CODIGOS.revisaoHumana })
     expect(posts()).toEqual([])
+    // E9 pelo serviço REAL ao fim de E7: nenhum post, nada a contar.
+    expect((await auditoria()).gate).toMatchObject({ posts: 0 })
   }, 240_000)
 
   it('E7b: um texto com fonte da marca NÃO cadastrada → achado fonte-nao-carregada crítico → gate recusa (ACHADO_CRITICO); agendar-leva recusa; nenhum DRAFT', async () => {
