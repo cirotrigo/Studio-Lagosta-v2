@@ -147,18 +147,32 @@ vi.mock('@/lib/creatives/agendar', () => ({
   },
   efeitosDoAgendamento: async () => ({ falhas: [] }),
   contextoDosEfeitos: () => ({}),
-  agendarPost: async () => {
+  // O caminho HUMANO de criação: se uma tool da allowlist o alcançasse, o post nasceria SEM o gate — e o detector pega.
+  agendarPost: async (input: Linha) => {
     banco.eventos.push('agendarPost')
-    throw new Error('agendarPost não deveria ser alcançado por uma tool da allowlist')
+    const { db } = await import('@/lib/db')
+    const post = await db.socialPost.create({ data: { projectId: input.projectId, pageId: input.pageId, generationId: input.generationId ?? null, postType: input.postType ?? 'STORY', status: 'DRAFT', scheduledDatetime: new Date(input.scheduledDatetime), mediaUrls: [], renderStatus: 'PENDING', laterPostId: null } })
+    return { post, mensagem: 'rascunho criado' }
   },
 }))
+// buscar-fotos fala com o Drive e com os embeddings: aqui o Drive está vazio e a busca semântica desligada (sem rede).
+vi.mock('@/server/google-drive-service', () => ({
+  googleDriveService: new Proxy(
+    {
+      findFileInFolder: async () => 'catalogo-1',
+      readFileAsJson: async () => ({ images: [{ driveFileId: 'drive-123', fileName: 'ambiente.jpg', folder: 'ambiente', tags: ['ambiente'], bestFor: ['ambiente'], quality: 'alta', description: 'salão' }] }),
+    } as Record<string, unknown>,
+    { get: (alvo, chave: string) => (chave in alvo ? alvo[chave] : async () => []) },
+  ),
+}))
+vi.mock('@/lib/creatives/embeddings-de-foto', async (original) => ({ ...(await original<typeof import('@/lib/creatives/embeddings-de-foto')>()), embedarConsulta: async () => null, buscarSemelhantes: async () => [] }))
 vi.mock('@/lib/canvas-renderer', () => ({ CanvasRenderer: class { async renderDesign() { return Buffer.from('png-falso') } } }))
 vi.mock('@/lib/posts/register-project-fonts', () => ({ registerProjectFonts: async () => undefined, fetchBuffer: async () => { throw new Error('sem rede') }, familiasNaoCarregadas: async () => new Set() }))
 vi.mock('@/lib/creatives/server-text-measurer', () => ({ createServerTextMeasurer: async () => () => 100, createServerTextBoxMeasurer: async () => () => ({ width: 100, height: 100, maxLineWidth: 100, lineCount: 1 }) }))
 vi.mock('@/lib/creatives/text-autofix', () => ({ aplicarAutofixOuFalhar: async (a: { layers: unknown[] }) => ({ layers: a.layers, autocorrecao: { aplicada: false }, avisos: [] }) }))
 vi.mock('@/lib/posts/invalidate-renders', () => ({ invalidateScheduledRenders: async () => ({ invalidados: 0, congelados: [] }) }))
 vi.mock('@/lib/compositor/recompor', async (original) => ({ ...(await original<typeof import('@/lib/compositor/recompor')>()), travarRecomposicaoDaArte: vi.fn(async () => undefined), pedirRecomposicaoDaArteCongelada: vi.fn(async () => null) }))
-vi.mock('@/lib/aprendizado/captura', () => ({ registrarDecisaoSemSugestao: vi.fn(async () => null) }))
+vi.mock('@/lib/aprendizado/captura', () => ({ registrarDecisaoSemSugestao: vi.fn(async () => null), registrarSugestao: vi.fn(async () => null) }))
 // A medição do gate mede LIMPO (a medição é objeto de P11): o que importa aqui é QUEM cria post e QUANDO.
 vi.mock('@/lib/creatives/revisao/revisar-arte', async (importOriginal) => {
   const real = await importOriginal<typeof import('@/lib/creatives/revisao/revisar-arte')>()
@@ -196,7 +210,7 @@ function semear() {
   banco.tabelas.clear()
   const pagina = { id: 'p1', templateId: 42, isTemplate: false, name: 'Página p1', tags: ['compositor', 'story'], width: 1080, height: 1920, background: '#000000', layers: camadas(), copyAutoral: copy(), audio: null, thumbnail: null, updatedAt: new Date('2026-10-14T00:00:00Z'), Template: { id: 42, projectId: PROJETO } }
   const set = (nome: string, l: Linha) => { if (!banco.tabelas.has(nome)) banco.tabelas.set(nome, new Map()); banco.tabelas.get(nome)!.set(String(l.id), l) }
-  set('project', { id: PROJETO, name: 'Cliente', userId: 'dono', instagramAccountId: null, assinatura: {}, logoUrl: null })
+  set('project', { id: PROJETO, name: 'Cliente', userId: 'dono', instagramAccountId: null, assinatura: {}, logoUrl: null, googleDriveImagesFolderId: '1AbCdEfGhIjKlMnOpQrStUvWxYz0123456', googleDriveFolderId: null })
   set('page', pagina)
   set('page', { id: 'assinatura', templateId: 7, isTemplate: true, name: 'Assinatura — story', tags: [], width: 1080, height: 1920, background: '#FFF', layers: camadas(), copyAutoral: null, audio: null, Template: { id: 7, projectId: PROJETO } })
   set('generation', { id: 'g1', projectId: PROJETO, status: 'COMPLETED', resultUrl: 'https://blob.test/g1.png', slideOrder: null, sourcePageId: null, createdAt: new Date(), fieldValues: { source: 'compositor', pageId: 'p1', versaoRenderizada: versaoDaPagina(pagina), composicao: { assinatura: { pageId: 'assinatura' } }, spec: { projectId: PROJETO, formato: 'story', quando: '2026-10-14 10:00', tema: 'tema', blocos: [{ papel: 'headline', linhas: ['Texto headline'] }] } } })
@@ -236,6 +250,7 @@ describe('C9 — as tools MUTANTES da allowlist, executadas com banco falso', ()
     const marcos = banco.eventos.filter((e) => ['MEDICAO', 'VEREDITO GRAVADO', 'criarPostDoAgendamento', 'POST CRIADO'].includes(e))
     expect(marcos).toEqual(['MEDICAO', 'VEREDITO GRAVADO', 'criarPostDoAgendamento', 'POST CRIADO'])
     expect(banco.postsCriados).toBe(1)
+    expect(banco.eventos).not.toContain('agendarPost')
   })
 
   it('compor-leva: enfileira a peça (Generation + job + linha do lote) e NÃO cria post nem grava veredito', async () => {
@@ -247,6 +262,7 @@ describe('C9 — as tools MUTANTES da allowlist, executadas com banco falso', ()
     expect(banco.postsCriados).toBe(0)
     expect(banco.eventos).not.toContain('VEREDITO GRAVADO')
     expect(banco.eventos).not.toContain('criarPostDoAgendamento')
+    expect(banco.eventos).not.toContain('agendarPost')
     expect(medicao.chamadas).toBe(0)
   })
 
@@ -258,13 +274,17 @@ describe('C9 — as tools MUTANTES da allowlist, executadas com banco falso', ()
     expect(banco.postsCriados).toBe(0)
     expect(banco.eventos).not.toContain('VEREDITO GRAVADO')
     expect(banco.eventos).not.toContain('criarPostDoAgendamento')
+    expect(banco.eventos).not.toContain('agendarPost')
   })
 
-  it('buscar-fotos: só leitura e sinal de aprendizado; NÃO cria post nem grava veredito', async () => {
-    await executar('buscar-fotos', { projectId: PROJETO, theme: 'ambiente' })
+  it('buscar-fotos: TERMINA sem erro (Drive vazio, busca semântica desligada), responde a busca e NÃO cria post nem grava veredito', async () => {
+    const { resultado, erro } = await executar('buscar-fotos', { projectId: PROJETO, theme: 'ambiente' })
+    expect(erro, String(erro)).toBeUndefined()
+    expect(resultado).toBeTypeOf('object')
     expect(banco.postsCriados).toBe(0)
     expect(banco.eventos).not.toContain('VEREDITO GRAVADO')
     expect(banco.eventos).not.toContain('criarPostDoAgendamento')
+    expect(banco.eventos).not.toContain('agendarPost')
   })
 
   it('CONTROLE: uma tool que criasse o DRAFT direto, sem o gate, é pega pelo mesmo detector', async () => {
@@ -277,6 +297,14 @@ describe('C9 — as tools MUTANTES da allowlist, executadas com banco falso', ()
     await handlerDeControle()
     expect(banco.postsCriados).toBe(1)
     expect(banco.eventos.filter((e) => ['VEREDITO GRAVADO', 'POST CRIADO'].includes(e))).toEqual(['POST CRIADO'])
+  })
+
+  it('CONTROLE 2: uma tool que usasse o caminho HUMANO (agendarPost) também é pega — post sem veredito, e o marco agendarPost no rastro', async () => {
+    const { agendarPost } = await import('@/lib/creatives/agendar')
+    await agendarPost({ projectId: PROJETO, pageId: 'p1', generationId: 'g1', scheduledDatetime: '2026-10-14T13:00:00.000Z', situacao: 'rascunho', postType: 'STORY' } as never)
+    expect(banco.eventos).toContain('agendarPost')
+    expect(banco.postsCriados).toBe(1)
+    expect(banco.eventos).not.toContain('VEREDITO GRAVADO')
   })
 })
 

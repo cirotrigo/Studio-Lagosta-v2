@@ -45,7 +45,7 @@ const medicao = vi.hoisted(() => ({
   modo: 'limpa' as 'limpa' | 'reprovada' | 'real' | 'outra-pagina' | 'lenta',
   /** Modos consumidos em ordem, uma chamada cada (vazia = `modo`). */
   fila: [] as Array<'limpa' | 'reprovada'>,
-  chamadas: [] as Array<{ naTransacao: boolean; camadas: unknown[]; composicaoReaproveitavel: boolean | undefined; generationDaPeca: string | null | undefined }>,
+  chamadas: [] as Array<{ naTransacao: boolean; camadas: unknown[]; composicaoReaproveitavel: boolean | undefined; generationDaPeca: string | null | undefined; nomeDaPagina: string }>,
   /** Roda DURANTE a medição, com as travas seguras: o lugar das escritas concorrentes. */
   durante: null as null | (() => void | Promise<void>),
 }))
@@ -349,6 +349,7 @@ vi.mock('@/lib/creatives/revisao/revisar-arte', async (importOriginal) => {
         camadas: args.camadas,
         composicaoReaproveitavel: args.composicaoReaproveitavel,
         generationDaPeca: args.generationDaPeca === undefined ? undefined : (args.generationDaPeca?.id ?? null),
+        nomeDaPagina: args.page.name,
       })
       if (medicao.modo === 'real') return real.contextoDaMedicao(args)
       return {
@@ -520,7 +521,7 @@ describe('C1 — draft-only, criar, peça APTO: a ordem da transação', () => {
       'commit',
     ])
     // A medição leu pela TRANSAÇÃO (não pelo db), as camadas reais da página, com a composição reaproveitável e a Generation da peça.
-    expect(medicao.chamadas).toEqual([{ naTransacao: true, camadas: banco.pages.get('p1')!.layers, composicaoReaproveitavel: true, generationDaPeca: 'g1' }])
+    expect(medicao.chamadas).toEqual([{ naTransacao: true, camadas: banco.pages.get('p1')!.layers, composicaoReaproveitavel: true, generationDaPeca: 'g1', nomeDaPagina: 'Página p1' }])
     expect(registroDe('g1')).toMatchObject({ gate: { resultado: 'APTO' }, origem: 'agendar-leva', principal: { tipo: 'user', id: 'dot' }, identidade: { projectId: PROJETO, generationId: 'g1', pageId: 'p1' } })
     expect(posts()).toHaveLength(1)
   })
@@ -736,6 +737,17 @@ describe('C10/C18 — exceções do gate e o prazo da transação', () => {
     expect(registroDe('g1')).toBeUndefined()
   })
 
+  it('C10/§ 6: a página muda de PASTA (templateId) depois da leitura sem trava; o timeout recusa com o editUrl do template ATUAL', async () => {
+    const i1 = cenarioLimpo()
+    banco.timeoutDaTransacao = 40
+    medicao.modo = 'lenta'
+    // Entre a decisão sem trava e as travas, a refilagem move a página para a pasta 99.
+    banco.aoTravarAgenda = () => void banco.pages.set('p1', { ...banco.pages.get('p1')!, templateId: 99 })
+    const r = await agendar([i1])
+    expect(r.itens[0]).toMatchObject({ codigo: 'REVISAO_HUMANA_NECESSARIA', editUrl: 'https://studio.test/templates/99/editor?pageId=p1' })
+    await new Promise((resolve) => setTimeout(resolve, 200))
+  })
+
   it('C10: o registro APTO não grava (0 linhas: sem vínculo) → RecusaSobTrava, rollback, REVISAO_HUMANA_NECESSARIA com editUrl e revisao; nenhum post', async () => {
     const i1 = cenarioLimpo()
     banco.gravacaoSemVinculo = true
@@ -833,6 +845,11 @@ describe('C13 — deadlock e a intercalação com ajustar-arte', () => {
   })
 })
 
+/**
+ * C13 — intercalação. LIMITE DITO: a prova é da SEQUÊNCIA SQL de `ajustarArte` reproduzida no banco falso (as duas
+ * instruções do arquivo, na ordem do arquivo — o inventário `inventario-gate-agendar-leva.test.ts` confere o texto delas),
+ * não da chamada real de `ajustarArte` (render, Blob e fontes são outro harness: `ajustar-arte-concorrencia.test.ts`).
+ */
 describe('C13 — intercalação: ajustar-arte toma os posts ANTES de o gate chegar a eles', () => {
   const ajusteComoArteRapida = () =>
     db.$transaction(async (tx) => {
@@ -863,7 +880,8 @@ describe('C13 — intercalação: ajustar-arte toma os posts ANTES de o gate che
     expect(ev.lastIndexOf('travou-posts-da-pagina:d1,d2')).toBeGreaterThan(commitDoAjuste)
     expect(ev.filter((e) => e === 'commit')).toHaveLength(2)
     expect(ev).not.toContain('rollback')
-    // A medição leu a página JÁ ajustada (nome novo): é a leitura sob a trava que vale.
+    // A MEDIÇÃO leu a página JÁ ajustada (o nome novo chegou ao contexto da medição): é a leitura sob a trava que vale.
+    expect(medicao.chamadas.at(-1)!.nomeDaPagina).toBe('ajustada')
     expect(banco.pages.get('p1')!.name).toBe('ajustada')
   })
 })
@@ -1028,7 +1046,7 @@ describe('C21 — rede presa em cada caminho: o prazo da medição cobre a cadei
    * três delas, com foto e textos, medidas de VERDADE dentro da transação falsa — medição, resto e total por página.
    */
   it('C18 (sintético): a medição REAL de três páginas sintéticas, dentro da transação, cabe no orçamento — medição, resto e total', async () => {
-    const tempos: Array<{ medicao: number; resto: number; total: number }> = []
+    const tempos: Array<{ espera: number; medicao: number; resto: number; total: number }> = []
     for (const [n, luz] of [[1, (_x: number, y: number) => (y < 960 ? 40 : 230)], [2, () => 60], [3, (x: number) => (x < 540 ? 30 : 220)]] as const) {
       banco.eventos = []
       banco.pages.delete(`p${n}`)
@@ -1037,12 +1055,18 @@ describe('C21 — rede presa em cada caminho: o prazo da medição cobre a cadei
       pagina(`p${n}`, { layers })
       peca(`g${n}`, `p${n}`)
       medicao.modo = 'real'
+      // Na primeira página, um worker SEGURA a Generation da peça por 150 ms: a espera entra no orçamento da MESMA execução.
+      const segurando = n === 1 ? segurarFora('generations', 'g1', 150) : null
+      if (segurando) while (!eventos().includes('fora:segura:generations:g1')) await new Promise((r) => setImmediate(r))
       const r = await agendar([item(`i${n}`, `g${n}`)])
+      if (segurando) await segurando
       expect(r.itens[0].revisao?.tipo, JSON.stringify(r.itens[0])).toBe('medida')
       const t = (e: string) => banco.eventos.find((x) => x.e === e)!.t
-      tempos.push({ medicao: t('gate:gravado') - t('medicao'), resto: t('commit') - t('gate:gravado'), total: t('commit') - t('tx:inicio') })
+      const espera = Number(eventos().find((e) => e.startsWith('espera:'))!.slice(7))
+      tempos.push({ espera, medicao: t('gate:gravado') - t('medicao'), resto: t('commit') - t('gate:gravado'), total: t('commit') - t('tx:inicio') })
     }
-    console.info(`[C18 sintético] por página: ${tempos.map((t) => `medição ${t.medicao} ms · resto ${t.resto} ms · total ${t.total} ms`).join(' | ')}`)
+    expect(tempos[0].espera).toBeGreaterThanOrEqual(100)
+    console.info(`[C18 sintético] por página: ${tempos.map((t) => `espera ${t.espera} ms · medição ${t.medicao} ms · resto ${t.resto} ms · total ${t.total} ms`).join(' | ')}`)
     for (const t of tempos) {
       expect(t.medicao).toBeLessThan(10_000)
       expect(t.total).toBeLessThan(20_000)
