@@ -155,7 +155,8 @@ export function agregar(registros: RegistroDaPeca[], elegiveis: number): Resumo 
   const bloqueiosPorCaso: Resumo['decisao1']['bloqueiosPorCaso'] = {}
   for (const r of medidas) {
     // A peça principal fica no SEU caso (A/B/C/E); o modo G é um cenário à parte, agregado abaixo pelo gate PÓS-falha.
-    const caso = r.spec.foto === 'sem-foto' ? 'E-sem-foto' : r.assunto?.origemNaPeca === 'catalogo' ? 'A-catalogo' : r.assunto?.origemNaPeca === 'estimado' ? 'B-estimado' : 'C-nao-se-aplica'
+    // Caso C = foto lida SEM assunto localizável (o nome não carrega a política: com 'nao-se-aplica' passava, com 'humano' — decisão do owner de 17/10/2026 — bloqueia).
+    const caso = r.spec.foto === 'sem-foto' ? 'E-sem-foto' : r.assunto?.origemNaPeca === 'catalogo' ? 'A-catalogo' : r.assunto?.origemNaPeca === 'estimado' ? 'B-estimado' : 'C-sem-assunto-localizavel'
     const b = (bloqueiosPorCaso[caso] ??= { pecas: 0, bloqueadas: 0, bloqueadasQueAVerdadeAprovaria: 0, aptasQueAVerdadeReprovaria: 0 })
     b.pecas++
     const bloqueada = (r.gateFinal?.motivos ?? []).some((m) => m.regra === 'texto-sobre-assunto')
