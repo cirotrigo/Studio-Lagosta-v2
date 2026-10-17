@@ -53,7 +53,38 @@ import {
   type AchadoVisto,
   type MarcaDaPeca,
 } from './visao'
-import { versaoDaPagina } from './versao'
+import { identidadeDaPagina, versaoDaPagina } from './versao'
+import type { GateDaArte, PoliticaDoAssunto } from './gate'
+import { decidirEMontarRegistro } from './gate-registro'
+import { formatoDaPaginaGravada } from '@/lib/compositor/formato'
+import { alvoDaRecomposicao } from '@/lib/compositor/recompor'
+import { POLITICA_DO_ASSUNTO_DO_GATE, TIPO_DO_POST_POR_FORMATO } from '@/lib/lotes/agendamento'
+
+/**
+ * CP5e § 1 — a frase fixa de todo bloco `gate` do `revisar-arte`: é INFORMAÇÃO sobre a página como estava na leitura,
+ * nunca autorização nem registro (o `ver-geracao` mostra REGISTRO, o passado; aqui é medida de agora, sem gravar).
+ */
+export const INFORMACAO_DO_GATE_DO_REVISOR =
+  'informação do gate sobre a página como estava nesta leitura (pageVersion): não autoriza, não grava e não vale para a agenda — o veredito que vale é o medido na hora, sob trava, por agendar-leva/ajustar-arte; esta leitura pode envelhecer'
+
+/** CP5e § 1.2 — o bloco `gate` de `revisar-arte`. */
+export type GateInformativo =
+  | {
+      tipo: 'medida'
+      resultado: GateDaArte['resultado']
+      rulesVersion: string
+      versaoDoGate: GateDaArte['versao']
+      medidoEm: string
+      motivos: GateDaArte['motivos']
+      naoMedidos: GateDaArte['naoMedidos']
+      pageVersion: string | null
+      copyVersion: string
+      politicaDoAssunto: PoliticaDoAssunto
+      vinculo: { generationId: string; postType: 'STORY' | 'POST' }
+      informacao: string
+    }
+  | { tipo: 'sem-vinculo'; motivo: string; informacao: string }
+  | { tipo: 'nao-medida'; motivo: string; informacao: string }
 
 export interface RevisarArteInput {
   projectId: number
@@ -91,6 +122,8 @@ export interface RevisaoDaArte {
   relatorio: RelatorioDaRevisao
   visao: EstadoDaVisao
   previa: Buffer | null
+  /** CP5e § 1: o veredito que o gate daria à página como está — informação, nunca autorização nem registro. */
+  gate: GateInformativo
   ms: number
 }
 
@@ -569,15 +602,96 @@ export async function medirCamadasDaPeca(
   }
 }
 
+const SELECT_DA_GERACAO = { id: true, fieldValues: true, sourcePageId: true } as const
+
+/**
+ * CP5e § 1.2 item 2 — UMA seleção da Generation da peça, relida com `sourcePageId` (o contexto precisa dele para a
+ * referência de modelo): (i) a pedida pelo chamador, se for desta página; (ii) a de ORIGEM (a do compositor, a mesma
+ * seleção do CP5d); (iii) a última arte da página (`alvoDaRecomposicao`); (iv) nenhuma.
+ */
+async function geracaoDaPecaParaRevisao(args: { projectId: number; pageId: string; pedida: GeracaoDaPagina | null }): Promise<GeracaoDaPagina | null> {
+  const { projectId, pageId } = args
+  if (args.pedida) {
+    const pid = (args.pedida.fieldValues as Record<string, unknown> | null)?.pageId
+    if (pid !== pageId) {
+      throw new CreativeError('GERACAO_DE_OUTRA_PAGINA', `A arte ${args.pedida.id} não é desta página: revise pelo pageId dela ou sem generationId.`, 422, { pageId, generationId: args.pedida.id })
+    }
+    return args.pedida
+  }
+  const compositor = (await db.generation.findFirst({
+    where: { projectId, AND: [{ fieldValues: { path: ['pageId'], equals: pageId } }, { fieldValues: { path: ['source'], equals: 'compositor' } }] },
+    orderBy: { createdAt: 'desc' },
+    select: SELECT_DA_GERACAO,
+  })) as GeracaoDaPagina | null
+  if (compositor) return compositor
+  const alvo = await alvoDaRecomposicao(db, pageId, { projectId })
+  if (!alvo) return null
+  return (await db.generation.findUnique({ where: { id: alvo.id }, select: SELECT_DA_GERACAO })) as GeracaoDaPagina | null
+}
+
+/**
+ * CP5e § 1.2 item 1 — o gate como INFORMAÇÃO: uma SEGUNDA medida com `corrigir: false` (a do revisor é corrigida em
+ * memória pela régua — `ok` da força PROPOSTA, não da gravada — e o gate não pode tomar essa leitura por medida) sobre o
+ * MESMO contexto, decidida por `decidirEMontarRegistro` com origem `revisar-arte`, SEM gravar. Toda exceção vira
+ * `nao-medida` (fail-closed): a revisão humana sai do mesmo jeito.
+ */
+async function gateInformativo(args: {
+  projectId: number
+  page: { id: string; name: string; tags: string[]; width: number; height: number; background: string | null; layers: unknown; copyAutoral: unknown; isTemplate: boolean }
+  camadas: Layer[]
+  contexto: ContextoDaMedicao
+  geracao: GeracaoDaPagina | null
+}): Promise<GateInformativo> {
+  const informacao = INFORMACAO_DO_GATE_DO_REVISOR
+  const { page } = args
+  // Decisão 5.2 (proposta): página-modelo não vai para a agenda — nada a decidir.
+  if (page.isTemplate) return { tipo: 'sem-vinculo', motivo: 'página-modelo não vai para a agenda: o gate só decide sobre arte', informacao }
+  if (!args.geracao) return { tipo: 'sem-vinculo', motivo: 'a página não tem arte (nenhuma Generation): o gate só decide sobre arte', informacao }
+  const formato = formatoDaPaginaGravada(page)
+  if (!formato) return { tipo: 'sem-vinculo', motivo: 'o formato da página não é story, feed nem quadrado', informacao }
+  try {
+    const medidaFiel = await medirCamadasDaPeca(args.camadas, args.contexto, { corrigir: false })
+    const identidade = identidadeDaPagina(page)
+    const decisao = decidirEMontarRegistro({
+      entrada: { medida: medidaFiel, identidade: { pageVersion: identidade.pageVersion, copyVersion: identidade.copyVersion }, politicaDoAssunto: POLITICA_DO_ASSUNTO_DO_GATE },
+      page,
+      vinculo: { projectId: args.projectId, generationId: args.geracao.id, postType: TIPO_DO_POST_POR_FORMATO[formato] },
+      origem: 'revisar-arte',
+      agora: () => new Date(),
+    })
+    if (decisao.decisao === 'sem-vinculo') return { tipo: 'sem-vinculo', motivo: decisao.motivo, informacao }
+    const { gate, registro } = decisao
+    return {
+      tipo: 'medida',
+      resultado: gate.resultado,
+      rulesVersion: gate.rulesVersion,
+      versaoDoGate: gate.versao,
+      medidoEm: registro.medidoEm,
+      motivos: gate.motivos,
+      naoMedidos: gate.naoMedidos,
+      pageVersion: gate.pageVersion,
+      copyVersion: gate.copyVersion,
+      politicaDoAssunto: POLITICA_DO_ASSUNTO_DO_GATE,
+      vinculo: { generationId: args.geracao.id, postType: TIPO_DO_POST_POR_FORMATO[formato] },
+      informacao,
+    }
+  } catch (erro) {
+    return { tipo: 'nao-medida', motivo: `a decisão do gate falhou: ${(erro instanceof Error ? erro.message : String(erro)).slice(0, 200)}`, informacao }
+  }
+}
+
 export async function revisarArte(input: RevisarArteInput): Promise<RevisaoDaArte> {
   const inicio = Date.now()
   const { projectId } = input
 
   let pageId = input.pageId ?? null
-  if (!pageId && input.generationId) {
+  // A Generation PEDIDA pelo chamador (relida com o select do contexto): acha a página quando não há `pageId` e, com
+  // `pageId`, é validada como arte DESTA página (CP5e § 1.2 — antes o `generationId` era ignorado quando vinha `pageId`).
+  let pedida: GeracaoDaPagina | null = null
+  if (input.generationId) {
     const geracao = await db.generation.findFirst({
       where: { id: input.generationId, projectId },
-      select: { fieldValues: true, status: true },
+      select: { ...SELECT_DA_GERACAO, status: true },
     })
     if (!geracao) throw new CreativeError('GERACAO_NAO_ENCONTRADA', `Arte não encontrada neste projeto: ${input.generationId}`, 404)
     const pid = (geracao.fieldValues as Record<string, unknown> | null)?.pageId
@@ -590,7 +704,8 @@ export async function revisarArte(input: RevisarArteInput): Promise<RevisaoDaArt
         422,
       )
     }
-    pageId = pid
+    pedida = { id: geracao.id, fieldValues: geracao.fieldValues, sourcePageId: geracao.sourcePageId }
+    if (!pageId) pageId = pid
   }
   if (!pageId) throw new CreativeError('SEM_PAGINA', 'Informe pageId ou generationId da peça.', 400)
 
@@ -611,9 +726,22 @@ export async function revisarArte(input: RevisarArteInput): Promise<RevisaoDaArt
   const designData = convertPageToDesignData({ id: page.id, name: page.name, width: page.width, height: page.height, layers: page.layers, background: page.background })
   // CP4: o contexto da página (banco) e a medida das camadas em memória são as mesmas funções que o executor de ajustes
   // usa para medir cada ajuste ANTES e DEPOIS — uma medição só, para o revisor e para a não-piora.
-  const contexto = await contextoDaMedicao({ projectId, page: { id: page.id, name: page.name, width: page.width, height: page.height, tags: page.tags, background: page.background, layers: page.layers }, camadas })
+  // CP5e § 1.2 item 2: UMA seleção da Generation da peça (relida), passada ao contexto — a composição só é reaproveitada
+  // (assunto gravado, variante da logo) quando a arte é DESTA versão da página (a regra do CP5c).
+  const geracao = await geracaoDaPecaParaRevisao({ projectId, pageId: page.id, pedida })
+  const versaoAtual = versaoDaPagina(page)
+  const composicaoReaproveitavel = !!geracao && versaoAtual !== null && (geracao.fieldValues as Record<string, unknown> | null)?.versaoRenderizada === versaoAtual
+  const contexto = await contextoDaMedicao({
+    projectId,
+    page: { id: page.id, name: page.name, width: page.width, height: page.height, tags: page.tags, background: page.background, layers: page.layers },
+    camadas,
+    generationDaPeca: geracao,
+    composicaoReaproveitavel,
+  })
   const { canvas, formato, background, referencia } = contexto
   const medida = await medirCamadasDaPeca(camadas, contexto)
+  // CP5e § 1: o gate como informação — segunda medida fiel sobre o mesmo contexto, decidida sem gravar.
+  const gate = await gateInformativo({ projectId, page, camadas, contexto, geracao })
   const { metricas } = medida
 
   const querVisao = input.visao !== false && process.env.ARTE_REVISAO_VISAO !== 'off'
@@ -718,6 +846,7 @@ export async function revisarArte(input: RevisarArteInput): Promise<RevisaoDaArt
     relatorio,
     visao,
     previa,
+    gate,
     ms: Date.now() - inicio,
   }
 }

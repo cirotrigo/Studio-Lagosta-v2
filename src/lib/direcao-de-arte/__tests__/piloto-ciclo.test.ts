@@ -240,6 +240,9 @@ beforeEach(() => {
     updatedAt: new Date(banco.relogio),
     layers: comArquivos(peca.v1.layers, arquivos),
   }
+  // CP5e: como na produção, a arte do compositor É desta versão da página (`versaoRenderizada`) — é o que deixa o revisor
+  // reaproveitar a composição gravada (assunto, variante da logo); depois de um ajuste a versão muda e o cache cai (CP5c).
+  banco.geracaoDoCompositor.fieldValues.versaoRenderizada = versaoDaPagina(banco.pagina)
 })
 
 const projectId = () => Number(fixture.peca().spec.projectId)
@@ -252,7 +255,10 @@ const camada = (ls: Layer[], id: string) => ls.find((l) => l.id === id)!
  */
 function regraMediu(r: Awaited<ReturnType<typeof revisar>>, regra: string): boolean {
   const c = r.relatorio.cobertura[regra as keyof typeof r.relatorio.cobertura]
-  return !!c && (c.estado === 'avaliada' || (c.estado === 'parcial' && /fonte não cadastrada/.test(c.motivo ?? '')))
+  // "Não há" não é "não medimos" (plano-mestre § 2): a foto LIDA sem assunto localizável, ou a peça sem foto, é uma medida
+  // que terminou — só a falha de leitura (sem a marca `naoSeAplica`) conta como não medida.
+  const naoSeAplica = c?.estado === 'nao-avaliada' && (c as { naoSeAplica?: boolean }).naoSeAplica === true
+  return !!c && (c.estado === 'avaliada' || naoSeAplica || (c.estado === 'parcial' && /fonte não cadastrada/.test(c.motivo ?? '')))
 }
 /** Problemas abertos de verdade: `fonte-nao-carregada` é do ambiente de teste (as fontes da marca não estão aqui). */
 const problemasAbertos = (r: Awaited<ReturnType<typeof revisar>>) => r.relatorio.achados.filter((a) => a.severidade === 'problema' && a.regra !== 'fonte-nao-carregada')
@@ -795,27 +801,63 @@ describe('P9 — recuperação', () => {
     expect(piorou, JSON.stringify(piorou)).toEqual({ leitura: [], assunto: [] })
   }, 240_000)
 
-  hojeViola('em até 2 ciclos com os ajustes do próprio revisor, a peça termina apta ou com REVISAO_HUMANA_NECESSARIA', async () => {
-    exigirMedidaFiel(banco.pagina.layers)
+  /**
+   * CP5e § 1.4 — era `hojeViola`. As duas saídas são TIPADAS (nada de procurar texto em JSON): apta ⇔ a última revisão
+   * traz `gate.tipo = 'medida'` APTO, as regras duras mediram e não há problema aberto (fora `fonte-nao-carregada`, artefato
+   * do ambiente); escalada ⇔ a última revisão traz o gate REVISAO_HUMANA_NECESSARIA com motivos, ou o último ajuste humano
+   * lançou REVISAO_HUMANA_NECESSARIA com `details.revisao` tipado. `sem-vinculo`/`nao-medida` na última revisão = FALHA.
+   * O que isto prova: o fluxo HUMANO termina numa das duas saídas em ≤ 2 ciclos — não que o chat escalou (decisão 5.4).
+   */
+  const ciclos = async (opcoes: { medidorCalibrado?: boolean } = {}) => {
     let revisao = await revisar()
-    let ultimoAjuste: unknown = null
-    for (let ciclo = 0; ciclo < 2 && problemasAbertos(revisao).length > 0 && revisao.relatorio.ajustes.length > 0; ciclo++) {
+    let ultimoAjuste: { code: string; details: unknown } | null = null
+    for (let ciclo = 0; ciclo < 2 && !(revisao.gate.tipo === 'medida' && revisao.gate.resultado === 'APTO') && revisao.relatorio.ajustes.length > 0; ciclo++) {
       try {
-        ultimoAjuste = await ajustarArte({ projectId: projectId(), pageId: PAGINA, versaoEsperada: revisao.versao, ajustes: revisao.relatorio.ajustes })
+        await ajustarArte({ projectId: projectId(), pageId: PAGINA, versaoEsperada: revisao.versao!, ajustes: revisao.relatorio.ajustes })
+        ultimoAjuste = null
       } catch (e) {
         // A recusa de qualidade do CP4 é um desfecho do ciclo (a peça fica como estava), não erro de setup.
         if (!(e instanceof CreativeError) || RECUSAS_DE_SETUP.has(e.code)) throw e
         ultimoAjuste = { code: e.code, details: e.details }
       }
-      exigirMedidaFiel(banco.pagina.layers)
+      // O medidor calibrado é da FIXTURE; a peça limpa usa o medidor real (como o controle positivo do CP5d).
+      if (opcoes.medidorCalibrado !== false) exigirMedidaFiel(banco.pagina.layers)
       revisao = await revisar()
     }
-    // Guarda contra o passe falso: as regras duras precisam ter medido (render quebrado vira "não avaliada").
     for (const regra of REGRAS_DURAS) exigir(regraMediu(revisao, regra), `a regra ${regra} mediu (${JSON.stringify(revisao.relatorio.cobertura[regra])})`)
-    const apta = problemasAbertos(revisao).length === 0
-    // A escalada vale para a VERSÃO FINAL: a última revisão ou o ajuste que a produziu.
-    const escalada = JSON.stringify([revisao, ultimoAjuste]).includes(CODIGOS.revisaoHumana)
-    expect(apta || escalada, JSON.stringify(problemasAbertos(revisao).map((a) => `${a.regra}:${a.camadas.join(',')}`))).toBe(true)
+    exigir(revisao.gate.tipo === 'medida', `o gate da última revisão é medido (${JSON.stringify(revisao.gate)})`)
+    const gate = revisao.gate as Extract<typeof revisao.gate, { tipo: 'medida' }>
+    const apta = gate.resultado === 'APTO' && problemasAbertos(revisao).length === 0
+    const escalada =
+      (gate.resultado === CODIGOS.revisaoHumana && gate.motivos.length > 0) ||
+      (ultimoAjuste?.code === CODIGOS.revisaoHumana && typeof (ultimoAjuste.details as { revisao?: { tipo?: string } } | undefined)?.revisao?.tipo === 'string')
+    return { revisao, gate, apta, escalada }
+  }
+
+  it('em até 2 ciclos com os ajustes do próprio revisor, a peça termina apta ou com REVISAO_HUMANA_NECESSARIA — a fixture do piloto: escalada tipada (o serviço sem leitura não tem correção executável)', async () => {
+    exigirMedidaFiel(banco.pagina.layers)
+    const r = await ciclos()
+    expect(r.apta || r.escalada, JSON.stringify({ gate: r.gate.resultado, motivos: r.gate.motivos.map((m) => `${m.regra}:${m.codigo}`) })).toBe(true)
+    // Hoje a fixture ESCALA (CP2 fica): o motivo está no gate, tipado, e a informação é dita.
+    expect(r.escalada).toBe(true)
+    expect(r.gate.informacao).toMatch(/não autoriza, não grava/)
+  }, 240_000)
+
+  it('…e termina APTA em ≤ 2 ciclos quando o defeito é corrigível pelo revisor: a peça limpa com o apoio invadindo a margem de segurança (fora-da-area-segura → mover → APTO)', async () => {
+    banco.pagina = {
+      ...banco.pagina,
+      background: PECA_LIMPA.background,
+      copyAutoral: PECA_LIMPA.copy,
+      layers: structuredClone(PECA_LIMPA.layers).map((l) => (l.id === 'apoio' ? { ...l, position: { ...l.position, x: 820 }, size: { ...l.size, width: 300 } } : l)),
+    }
+    banco.geracaoDoCompositor = { ...banco.geracaoDoCompositor, fieldValues: { pageId: PAGINA, source: 'compositor', composicao: { assinatura: { pageId: banco.assinatura.id } } } }
+    const antes = await revisar()
+    expect(antes.gate).toMatchObject({ tipo: 'medida', resultado: CODIGOS.revisaoHumana })
+    expect((antes.gate as Extract<typeof antes.gate, { tipo: 'medida' }>).motivos.map((m) => m.regra)).toContain('fora-da-area-segura')
+    expect(antes.relatorio.ajustes.some((a) => a.tipo === 'mover')).toBe(true)
+    const r = await ciclos({ medidorCalibrado: false })
+    expect(r.apta, JSON.stringify({ gate: r.gate.resultado, motivos: r.gate.motivos })).toBe(true)
+    expect(camada(banco.pagina.layers as Layer[], 'apoio').position.x).toBeLessThan(820)
   }, 240_000)
 })
 
