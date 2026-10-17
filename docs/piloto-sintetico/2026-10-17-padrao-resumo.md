@@ -1,24 +1,25 @@
 # Piloto sintético de autonomia — resumo da rodada padrao (2026-10-17)
 
-HEAD `e0384186` · lote `piloto-sintetico-3b5a315d803d` · ambiente darwin arm64 node v22.23.3 · relatório integral: `human-output/relatorios/piloto-sintetico/2026-10-17-padrao/relatorio.json` (SHA-256 `d4d9841a1b9e253fac16b12a191ff449bd984c52195dd5b8735fcdb3c5718f1c`).
+HEAD `367c3f67` · lote `piloto-sintetico-40afb08600fe` · ambiente darwin arm64 node v22.23.3 · relatório integral: `human-output/relatorios/piloto-sintetico/2026-10-17-padrao/relatorio.json` (SHA-256 `55c9236ffe3c0f89c8c43049d34bb86ac048465e225dbd236f43f616a956d44c`).
 
 **O que este piloto NÃO mede** (ao lado do veredito, sempre): fontes da marca não instaladas (declaradas presentes; render com fonte de reserva); a visão (gpt-5.2) não roda; fotos SINTÉTICAS + a real anonimizada de 13/10 — lote CONTROLADO, não representativo das fotos dos clientes (decisão 5.1); banco falso com travas: travas/SQL reais e Blob não provados; custo medido nesta máquina, não na Vercel; clientes: cliente-00, cliente-fixture (fixtures reais pseudonimizadas aguardam a lista do owner — decisão 5.2).
 
 ## Denominadores
-elegíveis 126 → peças da rodada 42 → compostas 25 (recusas estruturais 17, erros 0) → chegaram ao gate 25 → APTAS na v1 18 → APTAS ao fim 18 → DRAFTs 18. Peças NÃO MEDIDAS (fora das janelas fiéis): 2.
+elegíveis 126 → peças da rodada 42 → compostas 25 (recusas estruturais 17, erros 0) → chegaram ao gate e foram MEDIDAS 23 → APTAS na v1 16 → APTAS ao fim 16 → DRAFTs 16.
+Desfechos BRUTOS do fluxo (incluem as 2 peças NÃO MEDIDAS, fora das janelas fiéis — § 3b): chegaram ao gate 25 · APTAS ao fim 18 · DRAFTs 18. Toda taxa e tabela abaixo é sobre as peças MEDIDAS.
 Exclusões do lote por motivo (não são peças): arquetipo-indisponivel 78 · arquetipo-exige-assunto 108 · arquetipo-sem-formato 0.
 
-## 1. Taxa APTO por eixo (v1 composta · ao fim dos ciclos · DRAFT)
+## 1. Taxa APTO por eixo, peças MEDIDAS (v1 composta · ao fim dos ciclos · DRAFT)
 ### cliente
 | valor | peças | APTO v1 | APTO final | DRAFT |
 |---|---|---|---|---|
-| cliente-00 | 23 | 78.3 % (18/23) | 78.3 % (18/23) | 78.3 % (18/23) |
+| cliente-00 | 21 | 76.2 % (16/21) | 76.2 % (16/21) | 76.2 % (16/21) |
 | cliente-fixture | 2 | 0.0 % (0/2) | 0.0 % (0/2) | 0.0 % (0/2) |
 ### formato
 | valor | peças | APTO v1 | APTO final | DRAFT |
 |---|---|---|---|---|
 | feed | 17 | 70.6 % (12/17) | 70.6 % (12/17) | 70.6 % (12/17) |
-| story | 8 | 75.0 % (6/8) | 75.0 % (6/8) | 75.0 % (6/8) |
+| story | 6 | 66.7 % (4/6) | 66.7 % (4/6) | 66.7 % (4/6) |
 ### foto
 | valor | peças | APTO v1 | APTO final | DRAFT |
 |---|---|---|---|---|
@@ -29,18 +30,17 @@ Exclusões do lote por motivo (não são peças): arquetipo-indisponivel 78 · a
 | D | 3 | 100.0 % (3/3) | 100.0 % (3/3) | 100.0 % (3/3) |
 | E | 3 | 66.7 % (2/3) | 66.7 % (2/3) | 66.7 % (2/3) |
 | F | 3 | 100.0 % (3/3) | 100.0 % (3/3) | 100.0 % (3/3) |
-| real | 2 | 100.0 % (2/2) | 100.0 % (2/2) | 100.0 % (2/2) |
 | sem-foto | 3 | 100.0 % (3/3) | 100.0 % (3/3) | 100.0 % (3/3) |
 ### copy
 | valor | peças | APTO v1 | APTO final | DRAFT |
 |---|---|---|---|---|
-| curta | 16 | 75.0 % (12/16) | 75.0 % (12/16) | 75.0 % (12/16) |
-| longa | 9 | 66.7 % (6/9) | 66.7 % (6/9) | 66.7 % (6/9) |
+| curta | 15 | 73.3 % (11/15) | 73.3 % (11/15) | 73.3 % (11/15) |
+| longa | 8 | 62.5 % (5/8) | 62.5 % (5/8) | 62.5 % (5/8) |
 ### arquetipo
 | valor | peças | APTO v1 | APTO final | DRAFT |
 |---|---|---|---|---|
 | minimal-fb-centro-optico | 1 | 100.0 % (1/1) | 100.0 % (1/1) | 100.0 % (1/1) |
-| sem | 24 | 70.8 % (17/24) | 70.8 % (17/24) | 70.8 % (17/24) |
+| sem | 22 | 68.2 % (15/22) | 68.2 % (15/22) | 68.2 % (15/22) |
 
 ## 2. Motivos de revisão humana (gate final) por regra × código
 | regra | ACHADO_CRITICO | NAO_COMPROVADA | NAO_MEDIDO | IDENTIDADE_ILEGIVEL |
@@ -72,16 +72,16 @@ Exclusões do lote por motivo (não são peças): arquetipo-indisponivel 78 · a
 ## 5. Custo por etapa (renders mediana/p95 · ms mediana/p95) — a peça principal (compor…png), a leitura pareada, a repetição e a injeção em linhas próprias
 | etapa | renders med | renders p95 | ms med | ms p95 |
 |---|---|---|---|---|
-| compor | 3 | 3 | 533 | 1134 |
-| revisar | 4 | 4 | 624 | 1460 |
+| compor | 3 | 3 | 531 | 1137 |
+| revisar | 4 | 4 | 630 | 1466 |
 | ajustar | 0 | 0 | 0 | 0 |
-| agendar | 2 | 2 | 322 | 751 |
-| juizes | 2 | 2 | 293 | 707 |
-| png | 1 | 1 | 105 | 311 |
-| pareada | 0 | 9 | 23 | 2296 |
-| repeticao | 10 | 10 | 575 | 3173 |
-| injecao | 4 | 4 | 321 | 1490 |
-| modoG | 6 | 6 | 1506 | 1531 |
+| agendar | 2 | 2 | 326 | 752 |
+| juizes | 2 | 2 | 289 | 705 |
+| png | 1 | 1 | 105 | 309 |
+| pareada | 0 | 9 | 24 | 2317 |
+| repeticao | 10 | 10 | 574 | 3168 |
+| injecao | 4 | 4 | 322 | 1492 |
+| modoG | 6 | 6 | 1503 | 1506 |
 Renders somados por etapa: 643 · observados pelo contador do renderer na rodada: 643.
 
 ## 6. Estabilidade: exceções 0 · nao-medida 0 · sem-vinculo 0 · timeouts 0
@@ -89,10 +89,11 @@ Renders somados por etapa: 643 · observados pelo contador do renderer na rodada
 ## 7. Repetibilidade: 100.0 % (42/42) iguais (compostas: veredito, motivos, camadas normalizadas e hash do PNG; recusas estruturais: o mesmo código)
 
 ## 8. Decisão 1 — assunto estimado × catálogo × verdade (24 peças com verdade): IoU est×cat 0.29 · est×verdade 0.29 · cat×verdade 1.00 · o estimado acertou a invasão em 0 e errou em 4
+A linha D é o gate DEPOIS da falha de leitura injetada (as mesmas peças também aparecem no seu caso de origem).
 | caso (§ 4.2) | peças | bloqueadas por texto-sobre-assunto | das quais a verdade aprovaria | APTAS que a verdade reprovaria |
 |---|---|---|---|---|
 | A-catalogo | 1 | 0 | 0 | 0 |
-| B-estimado | 2 | 2 | 2 | 0 |
+| B-estimado | 4 | 4 | 4 | 0 |
 | C-nao-se-aplica | 15 | 0 | 0 | 0 |
 | D-falha-de-leitura | 2 | 2 | 2 | 0 |
 | E-sem-foto | 3 | 0 | 0 | 0 |
