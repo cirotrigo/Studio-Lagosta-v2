@@ -1,6 +1,8 @@
 # CP5e — provas de autonomia: o gate como INFORMAÇÃO no `revisar-arte`, o bloco `gate` em `auditar-operacao` e a prova ponta a ponta sintética (contrato)
 
-**Estado: PROPOSTA, em revisão do Codex (rodada 3). Rodada 2: NÃO APTO — 2 BLOQUEADOR, 4 IMPORTANTE, 2 MENOR, endereçados abaixo
+**Estado: PROPOSTA, em revisão do Codex (rodada 4). Rodada 3: NÃO APTO — 1 IMPORTANTE (o gate § 6 nomeava só E1–E9 e deixava E10,
+E0, E-div e E7b fora do aceite — agora nomeia todos), 2 MENOR (5.5 dizia "+1 render"; "APTO hipotético" virou "`ok` hipotético
+no serviço", a fixture tem logo sem leitura). Rodada 2: NÃO APTO — 2 BLOQUEADOR, 4 IMPORTANTE, 2 MENOR, endereçados abaixo
 (E-div sobre o cenário do véu ESCURO com folga, em que a régua corrige de verdade; E10 "post existente vira `historico`" exposto
 pelos dois leitores; releitura da Generation escolhida com `sourcePageId`; `pageId` + `generationId` juntos como mudança
 deliberada; I2 em termos de `resultado`; `Template.projectId` no select e `permitidos === null`; barreira de lint por NOME com
@@ -60,7 +62,8 @@ veredito do gate aparece**: o chat humano só vê achados; a única escalada que
    corrigida traz `tintaCorrigida` e `p98ComHalo`/`ok` por texto diferentes da fiel; o relatório propõe `gradiente`; o gate
    informativo decide sobre a fiel e diz `REVISAO_HUMANA_NECESSARIA` por `texto-sem-leitura` no serviço; e `JSON(contraste)` da
    medida do gate é igual ao da medida de `agendar-leva` sobre a mesma página (os dois `corrigir: false`). Controle: o mesmo
-   cenário medido com `corrigir: true` dá `ok` no serviço — o APTO hipotético que o gate informativo NÃO pode emitir. Alternativa (decisão 5.5): a régua passar a guardar `antesDaCorrecao` POR TEXTO e o
+   cenário medido com `corrigir: true` dá `ok` no SERVIÇO — a leitura hipotética que o gate informativo NÃO pode tomar por
+   medida (a peça inteira segue reprovada de todo modo: a fixture tem a logo sem leitura, `piloto-ciclo.test.ts:823`). Alternativa (decisão 5.5): a régua passar a guardar `antesDaCorrecao` POR TEXTO e o
    gate ler uma transformação pura da medida única — muda `regua.ts` (compositor), por isso não é a proposta deste CP.
    O bloco vai em `RevisaoDaArte.gate`:
    - `{ tipo: 'medida', resultado, rulesVersion, versaoDoGate, medidoEm, motivos, naoMedidos, pageVersion, copyVersion,
@@ -226,7 +229,7 @@ nos testes de `perfil`/C9); o comportamento do chat (se ele leva à pessoa); cus
 | E0 compor | `comporPeca` real sobre a spec da peça limpa, gravando no banco falso | Page + Generation do compositor (`source: 'compositor'`, `versaoRenderizada` = `versaoDaPagina`) nascem do fluxo real; `revisar-arte` sobre ela: `gate.tipo = 'medida'` e `vinculo.generationId` = a Generation composta |
 | E1 APTO → DRAFT | peça de E0; `revisar-arte` (gate APTO, informação, `vinculo.generationId` = a de E0) → `agendar-leva` draft-only | DRAFT criado; registro APTO; `ver-geracao` rotula `coincidente`; `auditar-operacao` conta 1 em `coincidente.APTO` |
 | E2 não APTO → nenhum DRAFT | peça de E0 com o apoio sobre o piso de interface (y 1750) | `revisar-arte` informa `REVISAO_HUMANA_NECESSARIA` (piso-de-interface); `agendar-leva` não cria post, registro reprovado gravado na Generation da peça (CP5c); `auditar-operacao` não conta nada para esta página (não há post) — e `ver-geracao` da Generation mostra o registro reprovado |
-| E-div medida fiel | fixture do piloto v1 com véu ESCURO com folga e o serviço 130 px acima (`piloto-ciclo.test.ts:474-497`): a régua CORRIGE em memória | a medida corrigida tem `tintaCorrigida` e `ok` no serviço (controle: o APTO hipotético); o relatório propõe `gradiente`; o `gate` informativo decide sobre a fiel: `REVISAO_HUMANA_NECESSARIA` por `texto-sem-leitura` no serviço; `JSON(contraste)` da medida do gate = o de `agendar-leva` sobre a mesma página (os dois `corrigir: false`) |
+| E-div medida fiel | fixture do piloto v1 com véu ESCURO com folga e o serviço 130 px acima (`piloto-ciclo.test.ts:474-497`): a régua CORRIGE em memória | a medida corrigida tem `tintaCorrigida` e `ok` no serviço (controle: a leitura hipotética do serviço, não um APTO da peça); o relatório propõe `gradiente`; o `gate` informativo decide sobre a fiel: `REVISAO_HUMANA_NECESSARIA` por `texto-sem-leitura` no serviço; `JSON(contraste)` da medida do gate = o de `agendar-leva` sobre a mesma página (os dois `corrigir: false`) |
 | E3 corrigir e agendar | E2 + `ajustar-arte` draft-only com o `mover` que o revisor propõe → `revisar-arte` APTO → `agendar-leva` | 2 ciclos; a versão gravada é a APTA; DRAFT criado sobre ela; dois registros (ajuste e lote) com a mesma `pageVersion` (A9 do CP5d, ponta a ponta) |
 | E4 edição concorrente | o editor grava a página entre o `revisar-arte` e o `ajustar-arte` (versão do revisor envelhece) | `VERSAO_DIVERGENTE`, nada gravado; o `revisar-arte` seguinte traz o `gate` da versão nova |
 | E5 DRAFT anterior bom preservado | E1 feito; `ajustar-arte` draft-only que o gate recusa (piora que o CP4 aceita: apoio para o piso) | página intacta, DRAFT e sua Generation intactos, nenhuma Generation nova, `invalidateScheduledRenders` não chamado |
@@ -259,11 +262,12 @@ testes: `revisar-arte-gate.test.ts` (novo), `gate-resumo.test.ts` (novo), `audit
 | 5.2 | O bloco `gate` do `revisar-arte` aparece para página-modelo (`aplicavel: false`)? | `sem-vinculo` com motivo "página-modelo não vai para a agenda" | medir e informar mesmo assim |
 | 5.3 | `auditar-operacao` conta quais situações de post? | todos os posts da janela (DRAFT, SCHEDULED, POSTED, FAILED), por situação | só DRAFT |
 | 5.4 | A escalada "em até 2 ciclos" por INFORMAÇÃO tipada do gate na revisão satisfaz o contrato alvo da V1 (owner, 13/10)? | sim — o plano-mestre § 4.7 descreve o veredito como informação no fluxo humano; o chat é instruído a levar à pessoa | exigir que o `ajustar-arte` humano também devolva `revisao` (amplia o CP5d ao fluxo humano, warn-only) |
-| 5.5 | Medida fiel do gate informativo: segunda passada da régua (`corrigir: false`, +1 render do fundo por `revisar-arte`) ou `antesDaCorrecao` POR TEXTO na régua (muda `regua.ts`, do compositor)? | segunda passada agora (sem tocar a régua) | mudar a régua num PR próprio e o gate ler uma transformação pura da medida única |
+| 5.5 | Medida fiel do gate informativo: segunda passada da régua (`corrigir: false`: dois renders do fundo a mais por `revisar-arte`, § 1.2) ou `antesDaCorrecao` POR TEXTO na régua (muda `regua.ts`, do compositor)? | segunda passada agora (sem tocar a régua) | mudar a régua num PR próprio e o gate ler uma transformação pura da medida única |
 
 ## 6. Gates do PR de implementação
 
-Matriz E1–E9 + unitários + inventário verdes; `hojeViola` restantes só CP2, P6/P7, A/A'/G (ditos); suíte completa sozinha
+Matriz COMPLETA verde — E0, E1, E2, E-div, E3, E4, E5, E6, E7, E7b, E8, E9 e E10 — mais os unitários (I1–I8, seleção única,
+`resumoDoGateDosPosts`, barreira por nome) e o inventário; `hojeViola` restantes só CP2, P6/P7, A/A'/G (ditos); suíte completa sozinha
 (`--maxWorkers=4`); typecheck; lint; `git diff --check <base>`; 3 validadores do CI; Codex APTO no HEAD final; CI e Vercel verdes;
 merge por merge commit com `--match-head-commit` (SHA completo). Depois do merge: o checkpoint § 4.8 (piloto sintético) tem contrato
 próprio e consome as provas daqui; MCP-M0 só depois dele.
