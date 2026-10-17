@@ -10,6 +10,7 @@
  * publicador tem, nem que a foto ficou visível (oclusão por camada acima). Os rótulos do manifesto dizem isso.
  */
 import { createHash } from 'node:crypto'
+import { crc32 } from 'node:zlib'
 import path from 'node:path'
 import sharp from 'sharp'
 import { VERSAO_DA_PROVA } from '../../src/lib/posts/prova-do-render'
@@ -175,7 +176,9 @@ export function recusaDoHost(url: string): string | null {
   }
   if (u.protocol !== 'https:') return 'protocolo-nao-https'
   if (u.username || u.password) return 'credencial-na-url'
-  if (u.port) return 'porta-explicita'
+  // `URL.port` normaliza `:443` (e `:`) para vazio: a porta explícita se lê na AUTORIDADE original.
+  const autoridade = /^https:\/\/([^/?#]*)/i.exec(url.trim())?.[1] ?? ''
+  if (u.port || autoridade.includes(':')) return 'porta-explicita'
   return STORES_DO_STUDIO.includes(u.hostname.toLowerCase()) ? null : 'host-fora-da-lista'
 }
 
@@ -363,13 +366,16 @@ export interface OpcoesDaAvaliacao {
   ate: Date
   populacao: Populacao
   imutabilidadeComprovada: boolean
-  /** E9: `fileUrl` sem query já selecionados NESTE cliente (a função acrescenta o do elegível). */
-  vistos: Set<string>
 }
 
-const semQuery = (url: string) => url.split(/[?#]/)[0]
+/** Chave de E9: o `fileUrl` sem query nem fragmento. */
+export const chaveDoArquivo = (url: string) => url.split(/[?#]/)[0]
 
-/** E1–E9, em ordem; o primeiro motivo vence. O canvas de E6b (rede) fica para `conferirCanvas`, na exportação. */
+/**
+ * E1–E8b, em ordem; o primeiro motivo vence. Ficam com quem chama: o canvas de E6b (rede, `conferirCanvas`) e E9
+ * (`arquivo-repetido`), que só se decide depois dele — na contagem sobre os elegíveis-teto, na exportação sobre os
+ * arquivos EXPORTADOS (a peça cujo fundo falhou não tira a vez da seguinte com o mesmo fundo).
+ */
 export function avaliarPost(p: PostLido, o: OpcoesDaAvaliacao): Avaliacao {
   const statusDaPopulacao = o.populacao === 'publicados' ? 'POSTED' : 'SCHEDULED'
   if (p.postType !== 'STORY' || p.status !== statusDaPopulacao) return { exclusao: `status-fora:${p.status}` }
@@ -396,9 +402,6 @@ export function avaliarPost(p: PostLido, o: OpcoesDaAvaliacao): Avaliacao {
   if (classe === 'render') return { exclusao: 'fundo-e-render', classe }
   if (escritorQueSobrescreve(fileUrl)) return { exclusao: 'origem-sobrescrevivel', classe }
   if (!o.imutabilidadeComprovada) return { exclusao: 'imutabilidade-nao-comprovada', classe }
-  const chave = semQuery(fileUrl)
-  if (o.vistos.has(chave)) return { exclusao: 'arquivo-repetido', classe }
-  o.vistos.add(chave)
   const crop = ehObjeto(f.fundo.style) ? f.fundo.style.cropPosition : undefined
   return {
     elegivel: {
@@ -430,6 +433,8 @@ export interface ContagemDoCliente {
   exclusoes: Record<string, number>
   /** Classe das peças que chegaram às regras de origem (E8 em diante) — mesmo que excluídas depois. */
   classesQueChegaramAOrigem: Record<string, number>
+  /** Classe só dos elegíveis-teto (depois de E9). */
+  elegiveisPorClasse: Record<string, number>
   cropPosition: { ausente: number; presente: number }
   midiaRegistradaEmNormalized: number
 }
@@ -438,7 +443,7 @@ const somar = (m: Record<string, number>, k: string) => {
   m[k] = (m[k] ?? 0) + 1
 }
 
-export function contarCliente(cliente: number, posts: readonly PostLido[], o: Omit<OpcoesDaAvaliacao, 'vistos'>): ContagemDoCliente {
+export function contarCliente(cliente: number, posts: readonly PostLido[], o: OpcoesDaAvaliacao): ContagemDoCliente {
   const r: ContagemDoCliente = {
     cliente,
     lidos: posts.length,
@@ -446,19 +451,27 @@ export function contarCliente(cliente: number, posts: readonly PostLido[], o: Om
     rotuloDosElegiveis: 'canvas não comprovado: teto',
     exclusoes: {},
     classesQueChegaramAOrigem: {},
+    elegiveisPorClasse: {},
     cropPosition: { ausente: 0, presente: 0 },
     midiaRegistradaEmNormalized: 0,
   }
   const vistos = new Set<string>()
   for (const p of ordenarPosts(posts, o.populacao)) {
-    const a = avaliarPost(p, { ...o, vistos })
+    const a = avaliarPost(p, o)
     if ('exclusao' in a) {
       somar(r.exclusoes, a.exclusao)
       if (a.classe) somar(r.classesQueChegaramAOrigem, a.classe)
       continue
     }
-    r.elegiveisTeto++
     somar(r.classesQueChegaramAOrigem, a.elegivel.classe)
+    const chave = chaveDoArquivo(a.elegivel.fileUrl)
+    if (vistos.has(chave)) {
+      somar(r.exclusoes, 'arquivo-repetido')
+      continue
+    }
+    vistos.add(chave)
+    r.elegiveisTeto++
+    somar(r.elegiveisPorClasse, a.elegivel.classe)
     r.cropPosition[a.elegivel.cropPosition === 'ausente' ? 'ausente' : 'presente']++
     if (caminhoDoObjeto(a.elegivel.mediaUrl)?.includes('/normalized/')) r.midiaRegistradaEmNormalized++
   }
@@ -545,13 +558,24 @@ export function assinaturaDaImagem(b: Uint8Array): 'png' | 'jpg' | 'webp' | null
   return null
 }
 
-/** Largura × altura do IHDR de um PNG (bytes 16–23), ou `null`. */
+const PROFUNDIDADES_POR_COR: Record<number, number[]> = { 0: [1, 2, 4, 8, 16], 2: [8, 16], 3: [1, 2, 4, 8], 4: [8, 16], 6: [8, 16] }
+
+/**
+ * Largura × altura do IHDR de um PNG, ou `null`. Valida o chunk INTEIRO (a 1ª coisa depois da assinatura): comprimento 13,
+ * tipo `IHDR`, dimensões 1..2³¹−1, profundidade × tipo de cor da especificação, compressão/filtro 0, entrelaçamento 0/1 e o
+ * CRC32 de tipo+dados — bytes fabricados com "1080 × 1920" e o resto errado não comprovam canvas.
+ */
 export function lerIhdr(b: Uint8Array): { largura: number; altura: number } | null {
-  if (assinaturaDaImagem(b) !== 'png' || b.length < 24) return null
-  if (String.fromCharCode(...b.subarray(12, 16)) !== 'IHDR') return null
+  if (assinaturaDaImagem(b) !== 'png' || b.length < 33) return null
   const v = new DataView(b.buffer, b.byteOffset, b.byteLength)
+  if (v.getUint32(8) !== 13 || String.fromCharCode(...b.subarray(12, 16)) !== 'IHDR') return null
   const largura = v.getUint32(16), altura = v.getUint32(20)
-  return largura > 0 && altura > 0 ? { largura, altura } : null
+  const maximo = 2 ** 31 - 1
+  if (largura < 1 || altura < 1 || largura > maximo || altura > maximo) return null
+  const [profundidade, cor, compressao, filtro, entrelacamento] = [b[24], b[25], b[26], b[27], b[28]]
+  if (!PROFUNDIDADES_POR_COR[cor]?.includes(profundidade) || compressao !== 0 || filtro !== 0 || entrelacamento > 1) return null
+  if (crc32(b.subarray(12, 29)) !== v.getUint32(29)) return null
+  return { largura, altura }
 }
 
 /** Canvas de E6b: o IHDR da MÍDIA da prova (nunca a `Page` atual). `null` = comprovado story; senão o subcódigo. */
@@ -572,8 +596,8 @@ export interface FotoExportada extends FotoElegivel {
   bytes: number
   contentTypeDeclarado: string
   formatoLido: string
-  larguraLida: number | null
-  alturaLida: number | null
+  larguraLida: number
+  alturaLida: number
   original: 'indisponivel'
 }
 export interface ResultadoDoCliente {
@@ -590,14 +614,14 @@ export interface ResultadoDoCliente {
 export async function exportarCliente(
   cliente: number,
   posts: readonly PostLido[],
-  o: Omit<OpcoesDaAvaliacao, 'vistos'> & { candidatos: number },
+  o: OpcoesDaAvaliacao & { candidatos: number },
   deps: { buscar: Buscar; gravar: (nome: string, bytes: Buffer) => void },
 ): Promise<ResultadoDoCliente> {
   const exclusoes: Record<string, number> = {}
-  const vistos = new Set<string>()
+  const exportadosPorArquivo = new Set<string>()
   const elegiveis: FotoElegivel[] = []
   for (const p of ordenarPosts(posts, o.populacao)) {
-    const a = avaliarPost(p, { ...o, vistos })
+    const a = avaliarPost(p, o)
     if ('exclusao' in a) somar(exclusoes, a.exclusao)
     else elegiveis.push(a.elegivel)
   }
@@ -612,6 +636,11 @@ export async function exportarCliente(
       somar(exclusoes, `fundo-nao-avaliavel:${canvas}`)
       continue
     }
+    // E9 depois do canvas e só contra o que já foi EXPORTADO.
+    if (exportadosPorArquivo.has(chaveDoArquivo(e.fileUrl))) {
+      somar(exclusoes, 'arquivo-repetido')
+      continue
+    }
     const r = await baixarComGuarda(e.fileUrl, deps.buscar)
     if ('falha' in r) {
       somar(exclusoes, `download-falhou:${r.falha}`)
@@ -623,6 +652,11 @@ export async function exportarCliente(
       continue
     }
     const meta = await sharp(r.bytes).metadata().catch(() => null)
+    if (!meta || !(Number(meta.width) > 0) || !(Number(meta.height) > 0)) {
+      somar(exclusoes, 'download-falhou:metadados-ilegiveis')
+      continue
+    }
+    exportadosPorArquivo.add(chaveDoArquivo(e.fileUrl))
     const arquivo = `cliente-${cliente}-${exportados.length + 1}.${ext}`
     deps.gravar(arquivo, r.bytes)
     exportados.push({
@@ -632,8 +666,8 @@ export async function exportarCliente(
       bytes: r.bytes.length,
       contentTypeDeclarado: r.contentType,
       formatoLido: ext,
-      larguraLida: meta?.width ?? null,
-      alturaLida: meta?.height ?? null,
+      larguraLida: meta.width,
+      alturaLida: meta.height,
       original: 'indisponivel',
     })
   }
