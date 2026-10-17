@@ -192,7 +192,7 @@ export function paraMarkdown(resumo: Resumo, meta: { data: string; head: string;
   const L: string[] = []
   L.push(`# Piloto sintético de autonomia — resumo da rodada ${meta.rodada} (${meta.data})`)
   L.push('')
-  L.push(`HEAD \`${meta.head}\` · lote \`${meta.loteId}\` · ambiente ${meta.ambiente} · relatório integral: \`human-output/relatorios/piloto-sintetico/${meta.data}/relatorio.json\` (SHA-256 \`${meta.hashRelatorio}\`).`)
+  L.push(`HEAD \`${meta.head}\` · lote \`${meta.loteId}\` · ambiente ${meta.ambiente} · relatório integral: \`human-output/relatorios/piloto-sintetico/${meta.data}-${meta.rodada}/relatorio.json\` (SHA-256 \`${meta.hashRelatorio}\`).`)
   L.push('')
   L.push('**O que este piloto NÃO mede** (ao lado do veredito, sempre): ' + meta.limites.join('; ') + '.')
   L.push('')
