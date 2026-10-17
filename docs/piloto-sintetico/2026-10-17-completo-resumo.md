@@ -1,6 +1,6 @@
 # Piloto sintético de autonomia — resumo da rodada completo (2026-10-17)
 
-HEAD `439f7fad` · lote `piloto-sintetico-cdce41047cff` · ambiente darwin arm64 node v22.23.3 · relatório integral: `human-output/relatorios/piloto-sintetico/2026-10-17-completo/relatorio.json` (SHA-256 `2d1c7d37d7f1f5074d405d91bb3c00892d8cd38c9144ee80f2ce82accf7346b8`).
+HEAD `dbcd97f4` · lote `piloto-sintetico-cdce41047cff` · ambiente darwin arm64 node v22.23.3 · relatório integral: `human-output/relatorios/piloto-sintetico/2026-10-17-completo/relatorio.json` (SHA-256 `22557f573e1bb51a1399649ece5f7ccd59f15a04df05b930ff6491f181f5a6c6`).
 
 **O que este piloto NÃO mede** (ao lado do veredito, sempre): fontes da marca não instaladas (declaradas presentes; render com fonte de reserva); a visão (gpt-5.2) não roda; fotos SINTÉTICAS + a real anonimizada de 13/10 — lote CONTROLADO, não representativo das fotos dos clientes (decisão 5.1); banco falso com travas: travas/SQL reais e Blob não provados; custo medido nesta máquina, não na Vercel; clientes: cliente-00, cliente-fixture (fixtures reais pseudonimizadas aguardam a lista do owner — decisão 5.2).
 
@@ -78,17 +78,17 @@ Exclusões do lote por motivo (não são peças): arquetipo-indisponivel 78 · a
 ## 5. Custo por etapa (renders mediana/p95 · ms mediana/p95) — a peça principal (compor…png), a leitura pareada, a repetição e a injeção em linhas próprias
 | etapa | renders med | renders p95 | ms med | ms p95 |
 |---|---|---|---|---|
-| compor | 3 | 3 | 604 | 1394 |
-| revisar | 4 | 4 | 761 | 1853 |
+| compor | 3 | 3 | 605 | 1385 |
+| revisar | 4 | 4 | 760 | 1843 |
 | ajustar | 0 | 0 | 0 | 0 |
-| agendar | 2 | 2 | 376 | 973 |
-| juizes | 2 | 2 | 364 | 882 |
-| png | 1 | 1 | 132 | 375 |
-| pareada | 0 | 9 | 29 | 3477 |
-| repeticao | 0 | 10 | 33 | 3842 |
-| injecao | 4 | 4 | 375 | 1509 |
-| modoG | 6 | 6 | 2197 | 2392 |
-Renders somados por etapa: 1406 · observados pelo contador do renderer na rodada: 1406.
+| agendar | 2 | 2 | 382 | 973 |
+| juizes | 2 | 2 | 360 | 876 |
+| png | 1 | 1 | 134 | 376 |
+| pareada | 0 | 9 | 29 | 3485 |
+| repeticao | 0 | 10 | 32 | 3843 |
+| injecao | 4 | 4 | 381 | 1571 |
+| modoG | 6 | 6 | 2208 | 2458 |
+Renders somados por etapa: 1442 · observados pelo contador do renderer na rodada: 1442.
 
 ## 6. Estabilidade: exceções 0 · nao-medida 0 · sem-vinculo 0 · timeouts 0
 
@@ -101,12 +101,12 @@ A linha D é o gate DEPOIS da falha de leitura injetada (as mesmas peças també
 | A-catalogo | 2 | 0 | 0 | 0 |
 | B-estimado | 12 | 12 | 12 | 0 |
 | C-nao-se-aplica | 30 | 0 | 0 | 0 |
-| D-falha-de-leitura | 6 | 6 | 6 | 0 |
+| D-falha-de-leitura | 12 | 12 | 6 | 0 |
 | E-sem-foto | 6 | 0 | 0 | 0 |
 
 ## 9. Decisão 2 — peças com camada não-texto acima de texto (produzidas): 0; `oclusao` não comprovada no gate: 0
 Cenário INJETADO (shape acima da headline em peça APTA): 8 injeções, 8 recusadas pelo gate — motivos: oclusao:NAO_MEDIDO 8.
-Modo G (falha de leitura injetada): 6 leituras, 6 válidas (6 recusadas pelo gate), 0 inválidas (cache usado).
+Modo G (falha de leitura injetada): 12 leituras, 12 válidas (12 recusadas pelo REVISOR e pelo PRODUTOR — item desligado, sem DRAFT na página, resposta REVISAO_HUMANA_NECESSARIA por texto-sobre-assunto e nenhum post criado), 0 inválidas (cache usado).
 
 ## 10. O que NÃO está coberto por juiz (inspeção humana nos PNGs amostrados)
 - colisao — mesma-medida: só checkTextGeometry mede — repetir não é juiz
