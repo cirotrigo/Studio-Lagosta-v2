@@ -14,17 +14,20 @@
 import { spawnSync } from 'node:child_process'
 
 const args = process.argv.slice(2)
-const flag = (nome: string) => {
+/** Valor da opção: o argumento seguinte quando existe e não é outra opção; `true` quando a opção veio sozinha; `null` quando não veio. */
+const flag = (nome: string): string | true | null => {
   const i = args.indexOf(nome)
-  return i >= 0 ? (args[i + 1] ?? '1') : null
+  if (i < 0) return null
+  const v = args[i + 1]
+  return v !== undefined && !v.startsWith('--') ? v : true
 }
 const env: NodeJS.ProcessEnv = { ...process.env, PILOTO_SINTETICO: args.includes('--completo') ? 'completo' : '1' }
 const calibracao = flag('--calibracao')
-if (calibracao && calibracao !== '1') env.PILOTO_CALIBRACAO = calibracao
+if (typeof calibracao === 'string') env.PILOTO_CALIBRACAO = calibracao
 const cliente = flag('--cliente')
-if (cliente && cliente !== '1') env.PILOTO_CLIENTE = cliente
+if (typeof cliente === 'string') env.PILOTO_CLIENTE = cliente
 if (args.includes('--sem-repeticao')) env.PILOTO_SEM_REPETICAO = '1'
 const so = flag('--so')
-if (so && so !== '1') env.PILOTO_SO = so
+if (typeof so === 'string') env.PILOTO_SO = so // `--so 1` é um trecho válido, não sentinela
 const r = spawnSync('npx', ['vitest', 'run', 'src/lib/direcao-de-arte/__tests__/piloto-sintetico.test.ts', '--maxWorkers=1'], { stdio: 'inherit', env })
 process.exit(r.status ?? 1)
