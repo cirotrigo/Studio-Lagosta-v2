@@ -18,7 +18,7 @@
 |---|---|---|
 | CP0–CP4.1 | linha de base do plano (main `69706ea2`) | inalterado |
 | CP4.2a/b | `docs/regras/revisor-da-arte.md` § CP4.2; contrato `PLANO-2026-10-15-CP4-2-CONTRATO.md` "aprovado pelo owner" | a decisão 3 do plano-mestre (piso da manchete) foi tomada no contrato |
-| CP5a veredito puro | § CP5a; contrato CP5A | decisões 9.1–9.7 implementadas como PROPOSTA nomeada (ver 1.3) |
+| CP5a veredito puro | § CP5a; contrato CP5A | aprovado para implementação pelo owner (16/10): 9.2 e 9.4–9.7 adotadas; 9.1 (caso B) segue proposta (ver 1.3) |
 | CP5b registro/identidade/`rulesVersion` | § CP5b | decisão 7 do plano (`rulesVersion`) implementada como PROPOSTA (9.10 do CP5b) |
 | CP5c gate em `agendar-leva` (draft-only) | § CP5c; PR #242 | desenho mudou: medição DENTRO da transação, sob travas (nota no § 4.5 do plano) |
 | CP5d gate em `ajustar-arte` (draft-only) | § CP5d | P1 (só grava versão APTA) como PROPOSTA |
