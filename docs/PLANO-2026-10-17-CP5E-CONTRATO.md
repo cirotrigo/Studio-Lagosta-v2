@@ -1,6 +1,6 @@
 # CP5e — provas de autonomia: o gate como INFORMAÇÃO no `revisar-arte`, o bloco `gate` em `auditar-operacao` e a prova ponta a ponta sintética (contrato)
 
-**Estado: PROPOSTA, em revisão do Codex (rodada 5). Rodada 4: NÃO APTO — só 1 MENOR (§ 1.2 ainda dizia que o gate sobre a medida corrigida "diria APTO"; agora diz que tomaria por medida uma leitura hipotética dos textos). Rodada 3: NÃO APTO — 1 IMPORTANTE (o gate § 6 nomeava só E1–E9 e deixava E10,
+**Estado: APTO PARA MERGE como documento (Codex, rodada 5, HEAD fbe824a1). As decisões da seção 5 continuam do OWNER; a implementação usa as recomendações como proposta nomeada. Histórico — rodada 4: NÃO APTO — só 1 MENOR (§ 1.2 ainda dizia que o gate sobre a medida corrigida "diria APTO"; agora diz que tomaria por medida uma leitura hipotética dos textos). Rodada 3: NÃO APTO — 1 IMPORTANTE (o gate § 6 nomeava só E1–E9 e deixava E10,
 E0, E-div e E7b fora do aceite — agora nomeia todos), 2 MENOR (5.5 dizia "+1 render"; "APTO hipotético" virou "`ok` hipotético
 no serviço", a fixture tem logo sem leitura). Rodada 2: NÃO APTO — 2 BLOQUEADOR, 4 IMPORTANTE, 2 MENOR, endereçados abaixo
 (E-div sobre o cenário do véu ESCURO com folga, em que a régua corrige de verdade; E10 "post existente vira `historico`" exposto
