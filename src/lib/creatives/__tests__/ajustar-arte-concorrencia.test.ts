@@ -66,7 +66,18 @@ vi.mock('@/lib/db', () => {
     knowledgeBaseEntry: { findFirst: async () => null },
     $queryRaw: async () => [],
     $executeRaw: async () => 1,
-    $transaction: async (arg: unknown) => (typeof arg === 'function' ? (arg as (tx: unknown) => unknown)(db) : Promise.all(arg as unknown[])),
+    // CP5d: a transação que lança desfaz o que escreveu (a Generation PROCESSING do gate inclusive), como no Postgres.
+    $transaction: async (arg: unknown) => {
+      if (typeof arg !== 'function') return Promise.all(arg as unknown[])
+      const antes = { pagina: banco.pagina, generations: [...banco.generations] }
+      try {
+        return await (arg as (tx: unknown) => unknown)(db)
+      } catch (erro) {
+        banco.pagina = antes.pagina
+        banco.generations = antes.generations
+        throw erro
+      }
+    },
   }
   return { db }
 })
@@ -546,12 +557,21 @@ describe('CP4.1 — o agente autônomo (draft-only) não apaga copy pelo slotVal
     expect(r.copyRemovida).toBeUndefined()
     expect((banco.generations.at(-1)!.fieldValues as Record<string, unknown>).copyRemovida).toBeUndefined()
   })
-  it('7. draft-only: esconder um slot de texto que JÁ estava vazio → segue o contrato de sempre (entra)', async () => {
+  // CP5d: no draft-only o CP4.1 continua deixando passar (não é copy com conteúdo), mas a versão final passa pelo GATE,
+  // e esconder um texto fora do contrato deixa no contrato reconciliado um bloco que "não foi desenhado": copy-completa
+  // não comprovada → REVISAO_HUMANA_NECESSARIA, nada gravado. Antes do CP5d esta chamada gravava.
+  it('7. draft-only: esconder um slot de texto que JÁ estava vazio → o CP4.1 deixa passar (sem copyRemovida); o gate do CP5d recusa por copy-completa e nada é gravado', async () => {
     banco.pagina = { ...banco.pagina, layers: [...(banco.pagina.layers as Array<Record<string, any>>), texto('badge', 200, '   ')] }
-    const r = await ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { badge: { hidden: true } } })
-    expect(r.ajustada).toBe(true)
-    expect((banco.pagina.layers as Array<Record<string, any>>).find((l) => l.id === 'badge')!.visible).toBe(false)
-    expect(r.copyRemovida).toBeUndefined()
+    const antes = banco.pagina.updatedAt.getTime()
+    const erro = (await erroDe(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { badge: { hidden: true } } }))) as CreativeError
+    expect(erro).toBeInstanceOf(CreativeError)
+    expect(erro.code).toBe('REVISAO_HUMANA_NECESSARIA')
+    expect(erro.details).toMatchObject({ ajusteGravado: false, revisao: { tipo: 'medida', resultado: 'REVISAO_HUMANA_NECESSARIA' } })
+    expect((erro.details as { motivos: Array<{ regra: string }> }).motivos.map((m) => m.regra)).toContain('copy-completa')
+    expect((erro.details as Record<string, unknown>).copyRemovida).toBeUndefined()
+    expect(banco.pagina.updatedAt.getTime()).toBe(antes)
+    expect((banco.pagina.layers as Array<Record<string, any>>).find((l) => l.id === 'badge')!.visible).not.toBe(false)
+    expect(banco.generations).toHaveLength(0)
   })
   it('8/10. humano: `hidden: true` em texto com conteúdo continua permitido — e a procedência registra "escondido" (retorno e Generation)', async () => {
     const r = await ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { cta: { hidden: true } } })
@@ -592,9 +612,13 @@ describe('CP4.1 — o agente autônomo (draft-only) não apaga copy pelo slotVal
       banco.pagina = { ...banco.pagina, layers: (banco.pagina.layers as Array<Record<string, any>>).map((l) => (l.id === 'cta' ? { ...l, content: 'Reserve pelo direct' } : l)) }
     }
   })
-  it('S10. origem que JÁ era só pontuação ("-", placeholder decorativo) não vira copy protegida: esconder, esvaziar ou trocar por "." entra', async () => {
+  it('S10. origem que JÁ era só pontuação ("-", placeholder decorativo) não vira copy protegida: esvaziar ou trocar por "." entra; esconder cai no gate do CP5d (copy-completa), não no CP4.1', async () => {
     banco.pagina = { ...banco.pagina, layers: [...(banco.pagina.layers as Array<Record<string, any>>), texto('traco', 200, '-')] }
-    for (const valor of [{ hidden: true }, '', '.']) {
+    const escondido = (await erroDe(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { traco: { hidden: true } } }))) as CreativeError
+    expect(escondido.code).toBe('REVISAO_HUMANA_NECESSARIA')
+    expect((escondido.details as { motivos: Array<{ regra: string }> }).motivos.map((m) => m.regra)).toContain('copy-completa')
+    expect((escondido.details as Record<string, unknown>).copyRemovida).toBeUndefined()
+    for (const valor of ['', '.']) {
       const r = await ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { traco: valor } })
       expect(r.ajustada).toBe(true)
       expect(r.copyRemovida).toBeUndefined()
