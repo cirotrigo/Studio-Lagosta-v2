@@ -1,6 +1,6 @@
 # CP5e — provas de autonomia: o gate como INFORMAÇÃO no `revisar-arte`, o bloco `gate` em `auditar-operacao` e a prova ponta a ponta sintética (contrato)
 
-**Estado: PROPOSTA, em revisão do Codex (rodada 4). Rodada 3: NÃO APTO — 1 IMPORTANTE (o gate § 6 nomeava só E1–E9 e deixava E10,
+**Estado: PROPOSTA, em revisão do Codex (rodada 5). Rodada 4: NÃO APTO — só 1 MENOR (§ 1.2 ainda dizia que o gate sobre a medida corrigida "diria APTO"; agora diz que tomaria por medida uma leitura hipotética dos textos). Rodada 3: NÃO APTO — 1 IMPORTANTE (o gate § 6 nomeava só E1–E9 e deixava E10,
 E0, E-div e E7b fora do aceite — agora nomeia todos), 2 MENOR (5.5 dizia "+1 render"; "APTO hipotético" virou "`ok` hipotético
 no serviço", a fixture tem logo sem leitura). Rodada 2: NÃO APTO — 2 BLOQUEADOR, 4 IMPORTANTE, 2 MENOR, endereçados abaixo
 (E-div sobre o cenário do véu ESCURO com folga, em que a régua corrige de verdade; E10 "post existente vira `historico`" exposto
@@ -50,7 +50,8 @@ veredito do gate aparece**: o chat humano só vê achados; a única escalada que
    aplica EM MEMÓRIA a força de gradiente que proporia e devolve `p98ComHalo`/`ok` pós-correção (`regua.ts:509-517`; o estado
    anterior fica só no resumo do GRUPO, `antesDaCorrecao`, não por texto — e o gate lê `textos[]`, `gate.ts:777-782`). Os
    produtores medem com `corrigir: false` (`agendar-itens.ts:611`, `arte-rapida.ts:1220`). Um gate sobre a medida corrigida
-   diria APTO para uma hipótese. Então: `revisarArte` chama `medirCamadasDaPeca(camadas, ctx, { corrigir: false })` uma SEGUNDA
+   tomaria por medida uma leitura HIPOTÉTICA dos textos (o `ok` da força proposta, não da gravada) — e, numa peça sem outro
+   defeito, aprovaria o que não existe. Então: `revisarArte` chama `medirCamadasDaPeca(camadas, ctx, { corrigir: false })` uma SEGUNDA
    vez, com o MESMO `ctx` (contexto, downloads, assunto e referências reaproveitados) — **custo dito: +1 passada da régua por chamada de `revisar-arte` — DOIS renders do fundo (sem tratamento e sem
    tinta, `regua.ts:466-469`) mais a leitura dos textos e as demais etapas de `medirCamadasDaPeca` (geometria, fontes, logo,
    assunto já em cache); nenhum download a mais** — e passa ESSA medida a
