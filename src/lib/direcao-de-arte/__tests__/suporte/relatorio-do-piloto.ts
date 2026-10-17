@@ -110,9 +110,10 @@ export function situacaoDaAnotacao(a: NonNullable<RegistroDaPeca['anotacao']>): 
   if (a.revisor.cobertura.estado !== 'avaliada' || a.revisor.motivos.length > 0) return 'revisor-nao-avaliou'
   if (!a.produtor) return 'produtor-nao-mediu'
   if (a.produtor.assunto?.origem !== 'catalogo' || a.produtor.motivos.length > 0) return 'produtor-sem-catalogo'
+  // A MESMA caixa, sem arredondar: compositor e produtor leem o mesmo cache da composição — qualquer diferença é outra caixa.
   const r1 = a.compositor.rect
   const r2 = a.produtor.assunto.rect
-  if (Math.round(r1.x) !== Math.round(r2.x) || Math.round(r1.y) !== Math.round(r2.y) || Math.round(r1.width) !== Math.round(r2.width) || Math.round(r1.height) !== Math.round(r2.height)) return 'produtor-outra-caixa'
+  if (r1.x !== r2.x || r1.y !== r2.y || r1.width !== r2.width || r1.height !== r2.height) return 'produtor-outra-caixa'
   return 'preservada'
 }
 

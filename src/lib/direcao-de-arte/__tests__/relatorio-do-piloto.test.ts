@@ -135,6 +135,8 @@ describe('adendo § 1 — anotação do assunto e cenário H', () => {
     expect(situacaoDaAnotacao({ ...ok, produtor: null })).toBe('produtor-nao-mediu')
     expect(situacaoDaAnotacao({ ...ok, produtor: { assunto: { rect, origem: 'estimado' }, naoSeAplica: false, motivos: ['NAO_COMPROVADA'] } })).toBe('produtor-sem-catalogo')
     expect(situacaoDaAnotacao({ ...ok, produtor: { assunto: { rect: { ...rect, y: 901 }, origem: 'catalogo' }, naoSeAplica: false, motivos: [] } })).toBe('produtor-outra-caixa')
+    // Sem arredondamento: 0,4 px de diferença já é outra caixa.
+    expect(situacaoDaAnotacao({ ...ok, produtor: { assunto: { rect: { ...rect, x: 0.4 }, origem: 'catalogo' }, naoSeAplica: false, motivos: [] } })).toBe('produtor-outra-caixa')
   })
   it('cenário H que NÃO vai ao humano e par com corte divergente derrubam a rodada', () => {
     const base = (): RegistroDaPeca => ({ spec: { chave: 'c|story|A1|curta|minimal-fb-centro-optico', cliente: 'c', formato: 'story', foto: 'A1', copy: 'curta', arquetipo: 'minimal-fb-centro-optico' }, compor: { desfecho: 'composta', ms: 1 }, ciclos: 0, draft: 'criado', juizes: [], oclusaoProduzida: [], renders: {}, ms: {}, estabilidade: { excecoes: [], naoMedida: false, semVinculo: false, timeout: false }, gateV1: { tipo: 'medida', resultado: 'APTO', motivos: [], naoMedidos: [] }, gateFinal: { tipo: 'medida', resultado: 'APTO', motivos: [], naoMedidos: [] }, repeticao: { igual: true, diferencas: [] } })
