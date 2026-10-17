@@ -125,8 +125,9 @@ export function pseudonimizar(exp: ExportDoCliente, clienteId: string, arquivos:
   }
   const paginas = exp.paginas.map((p, i) => {
     const so: Record<string, unknown> = {}
-    for (const c of CAMPOS_DA_PAGINA) if (c in p) so[c] = c === 'layers' && typeof p.layers === 'string' ? JSON.parse(p.layers) : p[c]
-    const tags = Array.isArray(so.tags) ? (so.tags as unknown[]).filter((t): t is string => typeof t === 'string' && /^[a-z-]+$/.test(t) && !(nomeRe && nomeRe.test(t))) : []
+    for (const c of CAMPOS_DA_PAGINA) if (c in p && c !== 'tags') so[c] = c === 'layers' && typeof p.layers === 'string' ? JSON.parse(p.layers) : p[c]
+    // Tags à parte (não passam pela projeção): só palavras minúsculas sem o nome do cliente.
+    const tags = Array.isArray(p.tags) ? (p.tags as unknown[]).filter((t): t is string => typeof t === 'string' && /^[a-z-]+$/.test(t) && !(nomeRe && nomeRe.test(t))) : []
     const saida = projetar(so, '', `paginas[${i}]`) as Record<string, unknown>
     saida.tags = tags
     saida.name = `Assinatura — ${clienteId} — ${tags.find((t) => t === 'feed' || t === 'story' || t === 'quadrado') ?? `${so.width}x${so.height}`}`

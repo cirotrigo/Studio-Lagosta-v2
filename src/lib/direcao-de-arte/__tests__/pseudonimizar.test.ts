@@ -51,11 +51,11 @@ describe('pseudonimizar (projeção por esquema)', () => {
     expect(f.logos).toEqual([{ fileUrl: 'fixture:logo-0', isProjectLogo: true }])
     expect(f.candidatasDoVeu).toEqual(['#112233', '#EA5328'])
     expect(descartados).toEqual([
-      'numerosDoProjeto.referencia: string sob chave fora do esquema',
       'paginas[0].layers[0].metadata.driveFileId: string sob chave fora do esquema',
       'paginas[0].layers[0].metadata.externalId: string sob chave fora do esquema',
       'paginas[0].layers[1].metadata.nota: string sob chave fora do esquema',
       'paginas[0].layers[2].style.backgroundImage: string sob chave fora do esquema',
+      'numerosDoProjeto.referencia: string sob chave fora do esquema',
     ])
     expect(conferirPseudonimo(f, 'Bistrô Maré')).toEqual([])
     expect(JSON.stringify(f)).not.toMatch(/Bistr|Delivery|Zé|99999|blob\.test|acme/)
