@@ -514,6 +514,8 @@ export async function baixarComGuarda(
         if (saltos >= MAXIMO_DE_REDIRECIONAMENTOS) return { ok: false, falha: 'redirecionamentos-demais' }
         const destino = res.headers.get('location')
         if (!destino) return { ok: false, falha: 'redirecionamento-sem-destino' }
+        // A forma TEXTUAL do `Location` é validada antes de resolver: `new URL` some com `:443` (e `\\` vira `//`).
+        if (recusaDoLocation(destino)) return { ok: false, falha: 'redirecionamento-nao-autorizado' }
         let proximo: string
         try {
           proximo = new URL(destino, atual).href
@@ -553,6 +555,16 @@ export async function baixarComGuarda(
   } finally {
     clearTimeout(relogio)
   }
+}
+
+/**
+ * `Location` com esquema ou autoridade (`//…`, `\\…`, mistos) passa por `recusaDoHost` no TEXTO; caminho relativo não troca
+ * a autoridade e é aceito aqui (a URL resolvida é validada de novo por quem chama).
+ */
+export function recusaDoLocation(destino: string): string | null {
+  if (/^[a-z][a-z0-9+.-]*:/i.test(destino)) return recusaDoHost(destino)
+  if (/^[\\/]{2}/.test(destino)) return recusaDoHost(`https:${destino}`)
+  return null
 }
 
 /** Assinatura nos BYTES (não no nome nem no MIME). */
