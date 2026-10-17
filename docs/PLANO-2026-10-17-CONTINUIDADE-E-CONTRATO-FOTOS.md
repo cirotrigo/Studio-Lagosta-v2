@@ -227,6 +227,9 @@ não roda a rodada, não executa contra o branch de dev (os testes usam linhas f
 - Posts de STORY anteriores ao compositor (sem `bg-foto`) são excluídos por E6, enviesando a amostra para peças do
   compositor; o relatório tem de dizer a proporção.
 - As datas do post são gravadas em UTC sem fuso: os limites `--desde`/`--ate` são UTC e assim rotulados.
+- E8b pode excluir a MAIOR parte da amostra: `drive-cache/` (a cópia que o compositor publica das fotos do Drive, `persist.ts`) e
+  `chat-uploads/` são sobrescrevíveis. Se P2 mostrar isso, a saída honesta é uma decisão (aceitar origem sobrescrevível
+  ROTULADA "bytes de hoje, não necessariamente os do render", ou uma prova futura com hash dos bytes) — não afrouxar o critério.
 - E7 restringe a P1 aos stores listados em `STORES_DO_STUDIO`: fundos servidos pelo Drive ou pelo Supabase saem como `host-nao-autorizado` (contados);
   incluí-los é decisão, com regra de host própria.
 - O snapshot de dev envelhece; recriar é decisão do owner (P2).
