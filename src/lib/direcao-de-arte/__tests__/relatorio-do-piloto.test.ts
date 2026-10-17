@@ -1,6 +1,6 @@
 /** Piloto sintético — o resumo agrega um lote falso de 20 peças: falso APTO, regra não coberta, divergência de repetibilidade, decisão 1 e 2, modo G. */
 import { describe, expect, it } from 'vitest'
-import { agregar, iou, paraMarkdown, violacoesDoPiloto, type RegistroDaPeca } from './suporte/relatorio-do-piloto'
+import { agregar, impressaoDoGate, iou, paraMarkdown, violacoesDoPiloto, type RegistroDaPeca } from './suporte/relatorio-do-piloto'
 import { REGRAS_JULGADAS, MATRIZ } from './suporte/oraculos-do-piloto'
 
 const juizes = (viola: Partial<Record<string, boolean | null>> = {}) => REGRAS_JULGADAS.map((regra) => ({ regra, estado: MATRIZ[regra].estado, viola: viola[regra] ?? (MATRIZ[regra].estado === 'coberta' || MATRIZ[regra].estado === 'coberta-parcial' ? false : null), camadas: viola[regra] ? ['apoio'] : [], detalhe: '' }))
@@ -108,5 +108,18 @@ describe('violacoesDoPiloto — cada invariante violado derruba a rodada', () =>
     expect(violacoesDoPiloto(agregar([naoRecusado], 1), [naoRecusado], { oficial: false }).some((x) => /válida\(s\) que o gate NÃO recusou/.test(x))).toBe(true)
     const oclusao: RegistroDaPeca = { ...base(), oclusaoInjetada: { gateRecusou: false, motivos: [] } }
     expect(violacoesDoPiloto(agregar([oclusao], 1), [oclusao], { oficial: false }).some((x) => /oclusão injetada: 1/.test(x))).toBe(true)
+  })
+})
+
+describe('impressaoDoGate — a repetibilidade compara o gate INTEIRO, menos o relógio', () => {
+  const g = { tipo: 'medida', resultado: 'APTO', rulesVersion: 'r1', versaoDoGate: 'g1', medidoEm: '2026-10-17T01:00:00Z', motivos: [], naoMedidos: [], pageVersion: 'p1', copyVersion: 'c1', politicaDoAssunto: { estimado: 'humano', semAssuntoLocalizavel: 'nao-se-aplica' }, vinculo: { generationId: 'g', postType: 'STORY' } }
+  it('só `medidoEm` diferente → mesma impressão', () => {
+    expect(impressaoDoGate(g)).toBe(impressaoDoGate({ ...g, medidoEm: '2026-10-17T02:00:00Z' }))
+  })
+  it('rulesVersion, pageVersion, copyVersion ou política diferentes → impressões diferentes (o recorte tipo/resultado/motivos deixaria passar)', () => {
+    expect(impressaoDoGate({ ...g, rulesVersion: 'r2' })).not.toBe(impressaoDoGate(g))
+    expect(impressaoDoGate({ ...g, pageVersion: 'p2' })).not.toBe(impressaoDoGate(g))
+    expect(impressaoDoGate({ ...g, copyVersion: 'c2' })).not.toBe(impressaoDoGate(g))
+    expect(impressaoDoGate({ ...g, politicaDoAssunto: { estimado: 'comprova', semAssuntoLocalizavel: 'nao-se-aplica' } })).not.toBe(impressaoDoGate(g))
   })
 })

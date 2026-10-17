@@ -3,6 +3,7 @@
  * limiares são do owner (5.3). "Falso APTO" só nas regras cobertas da matriz; o que não é coberto sai dito ao lado do veredito.
  */
 import { createHash } from 'node:crypto'
+import { serializarParaImpressao } from '@/lib/creatives/revisao/gate-registro'
 import type { Rect } from '@/lib/creatives/halo/halo'
 import type { SpecDoLote } from './lote-do-piloto'
 import { MATRIZ, REGRAS_JULGADAS, regrasCobertas, type VereditoDoJuiz } from './oraculos-do-piloto'
@@ -224,6 +225,18 @@ export function agregar(registros: RegistroDaPeca[], elegiveis: number): Resumo 
 }
 
 export const sha256 = (texto: string | Buffer) => createHash('sha256').update(texto).digest('hex')
+
+/**
+ * A IMPRESSÃO do gate para a repetibilidade (contrato § 4.6): o gate INTEIRO (resultado, motivos, não medidos, rulesVersion,
+ * versão do gate, pageVersion, copyVersion, política, vínculo…) serializado por `serializarParaImpressao`, menos `medidoEm`
+ * (o relógio). Duas execuções da mesma spec têm de dar a mesma impressão — um recorte (tipo/resultado/motivos) deixaria passar
+ * diferença de versão ou de política.
+ */
+export function impressaoDoGate(gate: unknown): string {
+  if (!gate || typeof gate !== 'object') return serializarParaImpressao(gate)
+  const { medidoEm: _medidoEm, ...resto } = gate as Record<string, unknown>
+  return serializarParaImpressao(resto)
+}
 
 /**
  * O que o PILOTO exige de si (contrato § 5.3 e § 4): a rodada que viola um destes NÃO passa — o teste cai, em vez de o número

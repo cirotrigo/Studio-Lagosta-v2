@@ -20,6 +20,7 @@ const camadas = [
   { id: 'headline', name: 'headline', type: 'text', content: 'Bistrô Maré: feijoada de sábado', position: { x: 0, y: 0 }, size: { width: 1, height: 1 }, style: { fontFamily: 'Branley GC', textAlign: 'left', color: '#283D36', fontWeight: '400' }, effects: { shadow: { shadowColor: '#283D36', blur: 4 }, background: { fit: 'texto', baseColor: '#111111' }, blur: { enabled: true, blurRadius: 6 }, curved: { enabled: false, curvature: 12 } }, textboxConfig: { anchor: 'top', autoWrap: { breakMode: 'word' }, textMode: 'auto-wrap-fixed' }, metadata: { groupId: 'grupo-292f', nota: 'ligar pro Zé 99999-1234', layers: [{ type: 'image', position: { x: 0, y: 0 }, fileUrl: LOGO }] } },
   { id: 'b6b72c00', name: 'Imagem - Delivery-cmt05362.jpg', type: 'image', fileUrl: EXEMPLO, position: { x: 0, y: 0 }, size: { width: 1, height: 1 }, style: { objectFit: 'cover', cropPosition: 'center-bottom', backgroundImage: 'https://blob.test/bg.jpg', fileUrl: LOGO, preview: { type: 'image', position: { x: 0, y: 0 }, fileUrl: LOGO } }, 'Bistrô Maré': 7, 'chave com espaço': 1, telefone: 5511999999999 },
   { id: 'veu', name: 'veu', type: 'shape', position: { x: 0, y: 0 }, size: { width: 1080, height: 400 }, style: { shapeType: 'svg-path', pathData: 'M0 0 L1080 0 L1080 400 Z', pathViewBox: [0, 0, 1080, 400], fill: '#000000' } },
+  { id: 'foto', name: 'foto', type: 'image', fileUrl: EXEMPLO, position: { x: 0, y: 0 }, size: { width: 500, height: 500 }, style: { objectFit: 'cover', mask: { shapeId: 'circle', path: 'M50 0 A50 50 0 1 1 49.99 0 Z' } } },
 ]
 const exp = {
   projeto: { id: 42, name: 'Bistrô Maré', assinatura: { fundo: '#112233', referencia: 'https://blob.test/ref.png', geometria: { story: { margemH: 96 } }, destaque: { fill: '#EA5328', pesado: true }, 'Bistrô Maré': 12, mare: { x: 1 } } },
@@ -52,6 +53,8 @@ describe('pseudonimizar (projeção por esquema)', () => {
     const veu = (p.layers as Array<Record<string, unknown>>)[3]
     expect(veu.style).toEqual({ shapeType: 'svg-path', pathData: 'M0 0 L1080 0 L1080 400 Z', pathViewBox: [0, 0, 1080, 400], fill: '#000000' }) // o vetor da assinatura sobrevive inteiro
     expect(veu.id).toBe('veu')
+    const mascarada = (p.layers as Array<Record<string, unknown>>)[4]
+    expect(mascarada.style).toEqual({ objectFit: 'cover', mask: { shapeId: 'circle', path: 'M50 0 A50 50 0 1 1 49.99 0 Z' } }) // a máscara (recorte da imagem) sobrevive
     expect(Object.keys(img)).not.toContain('telefone')
     expect(Object.keys(img)).not.toContain('Bistrô Maré')
     expect(f.arquivos).toEqual({ 'fixture:logo-0': PNG_LIMPO, 'fixture:arquivo-1': PNG_LIMPO })
@@ -99,6 +102,8 @@ describe('pseudonimizar (projeção por esquema)', () => {
     expect(() => pseudonimizar(cropRuim, 'cliente-01', arquivos)).toThrow(/campo visual TIPADO descartado.*style\.cropPosition/)
     const pathRuim = { ...exp, paginas: [{ ...exp.paginas[0], layers: JSON.stringify([{ id: 'x', type: 'shape', position: { x: 0, y: 0 }, size: { width: 1, height: 1 }, style: { pathData: 'M0 0 bistro' } }]) }] }
     expect(() => pseudonimizar(pathRuim, 'cliente-01', arquivos)).toThrow(/pathData fora da gramática SVG/)
+    const maskRuim = { ...exp, paginas: [{ ...exp.paginas[0], layers: JSON.stringify([{ id: 'x', type: 'image', fileUrl: EXEMPLO, position: { x: 0, y: 0 }, size: { width: 1, height: 1 }, style: { mask: { shapeId: 'bistro maré', path: 'M0 0' } } }]) }] }
+    expect(() => pseudonimizar(maskRuim, 'cliente-01', arquivos)).toThrow(/campo visual TIPADO descartado.*mask\.shapeId/)
   })
   it('fileUrl sem bytes no export é ERRO (a fixture nunca sai incompleta)', () => {
     expect(() => pseudonimizar(exp, 'cliente-01', { [LOGO]: PNG_LIMPO })).toThrow(/layers\[2\]\.fileUrl: a camada aponta para um arquivo que o export não trouxe/)

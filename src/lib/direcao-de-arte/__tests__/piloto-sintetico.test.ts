@@ -145,7 +145,7 @@ import { fotoSintetica, type CasoDaFoto, type FormatoDaFoto } from './suporte/fo
 import { COPIES, ENTRADAS_DE_FOTO, specsDoLote, type ClienteDoLote, type SpecDoLote } from './suporte/lote-do-piloto'
 import { camadasNaoTextoAcimaDeTexto, julgar, type VereditoDoJuiz } from './suporte/oraculos-do-piloto'
 import { pngDaPeca } from './suporte/png-do-piloto'
-import { agregar, paraMarkdown, sha256, violacoesDoPiloto, type GateRegistrado, type RegistroDaPeca } from './suporte/relatorio-do-piloto'
+import { agregar, impressaoDoGate, paraMarkdown, sha256, violacoesDoPiloto, type GateRegistrado, type RegistroDaPeca } from './suporte/relatorio-do-piloto'
 
 const LIGADO = !!process.env.PILOTO_SINTETICO
 const PROJETO = 8
@@ -226,6 +226,8 @@ const fracoes = (r: Rect, w: number, h: number) => ({ x0: r.x / w, y0: r.y / h, 
 interface Execucao {
   gateV1?: GateRegistrado
   gateFinal?: GateRegistrado
+  /** O gate final INTEIRO (menos `medidoEm`) serializado por `serializarParaImpressao`: é o que a repetição compara. */
+  impressaoDoGateFinal: string
   ciclos: number
   draft: RegistroDaPeca['draft']
   draftCodigo?: string
@@ -284,6 +286,7 @@ async function executar(spec: SpecDoLote, cliente: ClienteSemeado, foto: { id: s
   const revisar = () => medir('revisar', () => revisarArte({ projectId: PROJETO, pageId, visao: false, previa: false }))
   let rev = await revisar()
   const gateV1 = gateRegistrado(rev.gate)
+  let impressaoDoGateFinal = impressaoDoGate(rev.gate)
   let ciclos = 0
   let gate = gateV1
   while (ciclos < 2 && !(gate.tipo === 'medida' && gate.resultado === 'APTO') && rev.relatorio.ajustes.length > 0) {
@@ -295,6 +298,7 @@ async function executar(spec: SpecDoLote, cliente: ClienteSemeado, foto: { id: s
     }
     rev = await revisar()
     gate = gateRegistrado(rev.gate)
+    impressaoDoGateFinal = impressaoDoGate(rev.gate)
   }
   let draft: RegistroDaPeca['draft'] = 'nao-tentado'
   let draftCodigo: string | undefined
@@ -309,7 +313,7 @@ async function executar(spec: SpecDoLote, cliente: ClienteSemeado, foto: { id: s
     draftCodigo = e instanceof CreativeError ? e.code : 'erro'
   }
   const page = banco.pages.get(pageId)!
-  return { gateV1, gateFinal: gate, ciclos, draft, draftCodigo, layers: page.layers as Layer[], layersV1, background: String(page.background ?? '#FFFFFF'), pageId, generationId, assuntoNaPeca: { assunto: composta.diagnostico.assunto, origem: composta.diagnostico.assuntoOrigem }, excecoes, renders, ms }
+  return { gateV1, gateFinal: gate, impressaoDoGateFinal, ciclos, draft, draftCodigo, layers: page.layers as Layer[], layersV1, background: String(page.background ?? '#FFFFFF'), pageId, generationId, assuntoNaPeca: { assunto: composta.diagnostico.assunto, origem: composta.diagnostico.assuntoOrigem }, excecoes, renders, ms }
 }
 
 async function rodarPeca(spec: SpecDoLote, cliente: ClienteSemeado, opcoes: { repetir: boolean; modoG: boolean }): Promise<RegistroDaPeca> {
@@ -393,7 +397,8 @@ async function rodarPeca(spec: SpecDoLote, cliente: ClienteSemeado, opcoes: { re
     const diferencas: string[] = []
     if ('recusa' in outra) diferencas.push(`compor: ${outra.recusa.codigo} na repetição`)
     else {
-      if (JSON.stringify(outra.gateFinal) !== JSON.stringify(principal.gateFinal)) diferencas.push('gate final difere')
+      // O gate INTEIRO (contrato § 4.6): rulesVersion, versão do gate, pageVersion, copyVersion, política, vínculo… — não só tipo/resultado/motivos.
+      if (outra.impressaoDoGateFinal !== principal.impressaoDoGateFinal) diferencas.push('gate final difere (impressão completa, sem medidoEm)')
       if (normalizarCamadas(outra.layers) !== normalizarCamadas(principal.layers)) diferencas.push('camadas finais diferem')
       const png2 = await contar('repeticao', () => pngDaPeca(outra.layers, canvas, outra.background))
       if (png2.sha256 !== png.sha256) diferencas.push('png: hash difere')

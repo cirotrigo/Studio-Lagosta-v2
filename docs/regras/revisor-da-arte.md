@@ -1186,8 +1186,8 @@ CHAVE também é dado (`{ "Acme Corp": 12 }` cai com o valor; chave fora da form
 do nome do cliente (o nome inteiro normalizado, mesmo curto como "Zé", e cada palavra com 3+ letras) sobrevive em string
 nem em chave; só a entrada de `layers[]` é camada (um objeto aninhado com `type`+`position` não ganha token); a conferência final recusa URL, fragmento do nome, identificador externo, texto sob chave não prevista, chave
 que identifica e PNG com metadado. Descartar um campo TIPADO do `Layer` fora do descarte previsto (nome, arquivo, ids de
-linha, datas, metadata) RECUSA a geração: a assinatura mudaria em silêncio (`cropPosition`, `pathViewBox`, `pathData` na
-gramática SVG, `blurRadius`… sobrevivem; referências `groupId`/`layerId`/`parentId` são renumeradas). Cada `cliente-NN` entra no piloto com os PRÓPRIOS ativos
+linha, datas, metadata) RECUSA a geração: a assinatura mudaria em silêncio (`cropPosition`, `pathViewBox`, `pathData` e `mask.path` na
+gramática SVG, `mask.shapeId`, `blurRadius`… sobrevivem — as chaves do tipo incluem as dos tipos inline; referências `groupId`/`layerId`/`parentId` são renumeradas). Cada `cliente-NN` entra no piloto com os PRÓPRIOS ativos
 (`suporte/fixtures-de-clientes.ts`, testado), não com os da fixture de 13/10.
 
 **Como o piloto julga**: matriz regra → juiz (`suporte/oraculos-do-piloto.ts`). `texto-sobre-assunto` é a única regra
@@ -1201,7 +1201,9 @@ bloqueio** (gate recusa ∧ nenhum juiz coberto acusa) é lista para inspeção 
 hashes): 126 elegíveis → 54 compostas (72 recusas estruturais, 0 erros) → 50 MEDIDAS (4 da foto real ficaram fora das
 janelas fiéis) → 24 APTAS → 24 DRAFTs; os desfechos BRUTOS do fluxo (com as não medidas) são 54 → 26 → 26 e saem numa
 linha própria. Toda taxa e tabela do resumo é sobre peças MEDIDAS; a linha D da decisão 1 é o gate DEPOIS da falha injetada. Repetibilidade 100 %
-(126/126: nas compostas veredito, motivos, camadas normalizadas e hash do PNG iguais; nas recusas estruturais o mesmo código); estabilidade 0 exceções / 0 não-medidas / 0
+(126/126: nas compostas a IMPRESSÃO COMPLETA do gate final — `serializarParaImpressao` sem `medidoEm`: resultado, motivos, não
+medidos, rulesVersion, versão do gate, pageVersion, copyVersion, política, vínculo —, camadas normalizadas e hash do PNG iguais;
+nas recusas estruturais o mesmo código); estabilidade 0 exceções / 0 não-medidas / 0
 sem-vínculo. Custo mediano por peça: compor 3 renders, revisar 4, agendar 2 (os juízes e o PNG do piloto, 3). O que ele
 achou:
 
