@@ -11,13 +11,21 @@
  *
  *   npx tsx scripts/fixtures/exportar-piloto-sintetico.ts --cliente <projectId> [--cliente <id>…] <pasta-dos-exports>
  *   npx tsx scripts/fixtures/exportar-piloto-sintetico.ts --listar                      # só lista os clientes ativos com assinatura
+ *   npx tsx scripts/fixtures/exportar-piloto-sintetico.ts --fotos --contar --cliente <id>… --desde <ISO> --ate <ISO>
+ *   npx tsx scripts/fixtures/exportar-piloto-sintetico.ts --fotos --cliente <id>… --desde <ISO> --ate <ISO> --candidatos <n> <pasta>
+ *
+ * `--fotos` (P1 de `docs/PLANO-2026-10-17-CONTINUIDADE-E-CONTRATO-FOTOS.md`): seleção em `selecao-de-fotos.ts`, SQL em
+ * `fotos-do-banco.ts`. ESCRITO E NÃO EXECUTADO: rodar a contagem (P2) ou a exportação (P4) exige autorização própria do owner.
  *
  * A lista de clientes a exportar é a decisão 5.2 do owner: este script não escolhe por ninguém. ESCRITO E NÃO EXECUTADO.
  */
 import fs from 'node:fs'
 import path from 'node:path'
 import { PrismaClient } from '@prisma/client'
+import { execFileSync } from 'node:child_process'
 import { lerEnv, recusaDoExportador } from './guarda-do-exportador'
+import { lerDoBranch } from './fotos-do-banco'
+import { executarFotos, type Buscar } from './selecao-de-fotos'
 
 const ler = (arquivo: string) => (fs.existsSync(arquivo) ? fs.readFileSync(arquivo, 'utf8') : null)
 
@@ -31,8 +39,33 @@ function urlDoBranchDeDev(): string {
 
 type Pagina = { id: number; name: string; tags: string[]; width: number; height: number; background: string | null; layers: unknown; order: number }
 
+async function principalDasFotos(argv: string[]) {
+  const raiz = path.resolve(__dirname, '../..')
+  const r = await executarFotos(argv, {
+    raizDoRepo: raiz,
+    realpath: fs.realpathSync,
+    pastaNaoVazia: (p) => fs.existsSync(p) && fs.readdirSync(p).length > 0,
+    criarPasta: (p) => fs.mkdirSync(p, { recursive: true }),
+    lerBranch: async (clientes, ate) => {
+      const db = new PrismaClient({ datasources: { db: { url: urlDoBranchDeDev() } } })
+      try {
+        // Só a LEITURA fica na transação READ ONLY; nenhum download acontece com ela aberta.
+        return await db.$transaction((tx) => lerDoBranch(tx, clientes, ate), { timeout: 60_000 })
+      } finally {
+        await db.$disconnect()
+      }
+    },
+    buscar: fetch as unknown as Buscar,
+    gravar: (pasta, nome, bytes) => fs.writeFileSync(path.join(pasta, nome), bytes, { flag: 'wx' }),
+    head: () => execFileSync('git', ['rev-parse', 'HEAD'], { cwd: raiz, encoding: 'utf8' }).trim(),
+  })
+  if (r.modo === 'contar') console.log(r.saida)
+  for (const linha of r.resumo) console.log(linha)
+}
+
 async function main() {
   const args = process.argv.slice(2)
+  if (args.includes('--fotos')) return principalDasFotos(args)
   const clientes = args.flatMap((a, i) => (a === '--cliente' ? [Number(args[i + 1])] : [])).filter((n) => Number.isFinite(n))
   const listar = args.includes('--listar')
   const saida = args.filter((a, i) => !a.startsWith('--') && args[i - 1] !== '--cliente').at(-1)
