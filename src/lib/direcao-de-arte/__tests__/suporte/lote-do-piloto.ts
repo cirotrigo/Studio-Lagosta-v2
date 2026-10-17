@@ -8,7 +8,7 @@
 import { createHash } from 'node:crypto'
 import { listarArquetipos } from '@/lib/compositor/arquetipos/catalogo'
 import { disponibilidadeNoT1a } from '@/lib/compositor/arquetipos/na-spec'
-import type { CasoDaFoto, FormatoDaFoto } from './fotos-sinteticas'
+import { VERSAO_DAS_FOTOS_SINTETICAS, type CasoDaFoto, type FormatoDaFoto } from './fotos-sinteticas'
 
 export type CopyDoLote = 'curta' | 'media' | 'longa'
 export const COPIES: Record<CopyDoLote, Array<{ papel: 'pre' | 'headline' | 'apoio' | 'servico'; linhas: string[] }>> = {
@@ -91,7 +91,8 @@ export function arquetiposDoLote(): Array<{ id: string; formatos: FormatoDaFoto[
   })
 }
 
-export function specsDoLote(entrada: { clientes: ClienteDoLote[]; amostra: number | 'completo'; coberturaMinima?: number }): {
+/** `insumosVisuais`: hash do que o lote não enxerga (bytes da foto real, semente) — entra no `loteId`. */
+export function specsDoLote(entrada: { clientes: ClienteDoLote[]; amostra: number | 'completo'; coberturaMinima?: number; insumosVisuais?: string }): {
   loteId: string
   elegiveis: SpecDoLote[]
   excluidos: Exclusao[]
@@ -120,7 +121,7 @@ export function specsDoLote(entrada: { clientes: ClienteDoLote[]; amostra: numbe
   }
   elegiveis.sort((x, y) => x.chave.localeCompare(y.chave))
   // O id do lote identifica os INSUMOS, não só as chaves: copies, entradas de foto, arquétipos e a versão de cada cliente.
-  const insumos = JSON.stringify({ copies: COPIES, fotos: ENTRADAS_DE_FOTO, arquetipos: arquetipos.map((a) => `${a.id}:${a.disponivel}:${a.formatos.join('/')}`), clientes: entrada.clientes.map((c) => [c.id, c.versao ?? null]) })
+  const insumos = JSON.stringify({ copies: COPIES, fotos: ENTRADAS_DE_FOTO, versaoDasFotosSinteticas: VERSAO_DAS_FOTOS_SINTETICAS, insumosVisuais: entrada.insumosVisuais ?? null, arquetipos: arquetipos.map((a) => `${a.id}:${a.disponivel}:${a.formatos.join('/')}`), clientes: entrada.clientes.map((c) => [c.id, c.versao ?? null]) })
   const loteId = `piloto-sintetico-${createHash('sha256').update(insumos).update('\n').update(elegiveis.map((e) => e.chave).join('\n')).digest('hex').slice(0, 12)}`
   let amostra: SpecDoLote[]
   if (entrada.amostra === 'completo') amostra = [...elegiveis]

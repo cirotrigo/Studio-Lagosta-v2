@@ -29,8 +29,9 @@ export function carregarClientesDasFixtures(pasta: string): ClienteDaFixture[] {
       layers.map((l) => {
         if (typeof l.fileUrl !== 'string' || !l.fileUrl.startsWith('fixture:')) return l
         const url = dataUrls[l.fileUrl]
-        // Token de arquivo que a fixture não carrega (foto de exemplo da assinatura): uma imagem local qualquer serve.
-        return { ...l, fileUrl: url ?? dataUrls[Object.keys(dataUrls)[0]] ?? l.fileUrl }
+        // Fixture INCOMPLETA é recusada: trocar por outro arquivo mudaria a assinatura do cliente e a medida sairia sobre outra imagem.
+        if (!url) throw new Error(`fixture ${nome} incompleta: a camada ${l.id} aponta para ${l.fileUrl} e a fixture não traz esse arquivo — exporte-o (o exportador baixa toda imagem das camadas) ou tire a camada.`)
+        return { ...l, fileUrl: url }
       })
     const paginas = j.paginas.map((p, i) => ({ ...p, id: `${nome}-pagina-${i}`, tags: (p.tags as string[]) ?? [], layers: trocar((typeof p.layers === 'string' ? JSON.parse(p.layers) : p.layers) as Layer[]) }))
     const formatos = [...new Set(paginas.map((p) => (p.tags.includes('feed') ? 'feed' : 'story')))] as ClienteDaFixture['formatos']

@@ -6,7 +6,8 @@
  *  - o `.env` é lido SÓ para a identidade da produção: sem ele, sem URL parseável nele, ou com o MESMO compute no dev
  *    (direto, pooled ou em maiúsculas), aborta — sem a prova de que o dev não é a produção, não exporta;
  *  - toda leitura dentro de UMA transação `READ ONLY` (o Postgres recusa qualquer escrita nela).
- * As logos são baixadas AQUI (pelas URLs públicas do Blob) para a pasta do export: o gerador fica offline.
+ * As logos e TODA imagem das camadas da assinatura são baixadas AQUI (URLs públicas do Blob) para a pasta do export: o gerador
+ * fica offline e o piloto recusa fixture com camada sem arquivo.
  *
  *   npx tsx scripts/fixtures/exportar-piloto-sintetico.ts --cliente <projectId> [--cliente <id>…] <pasta-dos-exports>
  *   npx tsx scripts/fixtures/exportar-piloto-sintetico.ts --listar                      # só lista os clientes ativos com assinatura
@@ -60,15 +61,25 @@ async function main() {
             id,
           )
           const logos = await tx.logo.findMany({ where: { projectId: id }, select: { id: true, fileUrl: true, isProjectLogo: true }, orderBy: { id: 'asc' } })
-          const comArquivo = []
-          for (const [k, l] of logos.entries()) {
-            const r = await fetch(l.fileUrl)
-            if (!r.ok) throw new Error(`logo ${l.id}: HTTP ${r.status}`)
-            const arquivo = `projeto-${id}-logo-${k}.png`
+          const baixar = async (url: string, arquivo: string) => {
+            const r = await fetch(url)
+            if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`)
             fs.writeFileSync(path.join(saida!, arquivo), Buffer.from(await r.arrayBuffer()))
-            comArquivo.push({ ...l, arquivo })
+            return arquivo
           }
-          fs.writeFileSync(path.join(saida!, `projeto-${id}.json`), JSON.stringify({ projeto, paginas, logos: comArquivo }, null, 1))
+          const comArquivo = []
+          for (const [k, l] of logos.entries()) comArquivo.push({ ...l, arquivo: await baixar(l.fileUrl, `projeto-${id}-logo-${k}.png`) })
+          // TODA imagem referenciada por `fileUrl` nas camadas da assinatura é baixada: o piloto RECUSA fixture com camada sem arquivo.
+          const arquivos: Record<string, string> = {}
+          let n = 0
+          for (const pg of paginas) {
+            const layers = (typeof pg.layers === 'string' ? JSON.parse(pg.layers) : pg.layers) as Array<{ fileUrl?: unknown }>
+            for (const l of layers) {
+              if (typeof l.fileUrl !== 'string' || !/^https?:\/\//.test(l.fileUrl) || logos.some((g) => g.fileUrl === l.fileUrl) || arquivos[l.fileUrl]) continue
+              arquivos[l.fileUrl] = await baixar(l.fileUrl, `projeto-${id}-arquivo-${++n}.png`)
+            }
+          }
+          fs.writeFileSync(path.join(saida!, `projeto-${id}.json`), JSON.stringify({ projeto, paginas, logos: comArquivo, arquivos }, null, 1))
           console.log(`projeto ${id} (${projeto.name}): ${paginas.length} página(s) de assinatura, ${logos.length} logo(s) → ${saida}/projeto-${id}.json`)
         }
       },

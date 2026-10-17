@@ -58,7 +58,10 @@ const pct = (n: number, d: number) => (d ? `${((100 * n) / d).toFixed(1)} % (${n
 
 export interface Resumo {
   pecas: number
+  /** Denominadores VALIDADOS: só peças medidas (caixas dentro das janelas fiéis) contam de `chegaramAoGate` em diante. */
   denominadores: { elegiveis: number; compostas: number; recusasEstruturais: number; erros: number; chegaramAoGate: number; aptasV1: number; aptasFinal: number; drafts: number }
+  /** Desfechos operacionais BRUTOS (incluem as peças não medidas): o que o fluxo fez, não o que o piloto valida. */
+  brutos: { chegaramAoGate: number; aptasFinal: number; drafts: number; naoMedidas: number }
   taxaApto: Record<'cliente' | 'formato' | 'foto' | 'copy' | 'arquetipo', Record<string, { pecas: number; aptasV1: number; aptasFinal: number; drafts: number }>>
   motivos: Record<string, Record<string, number>>
   motivosPorCliente: Record<string, Record<string, number>>
@@ -82,10 +85,13 @@ export function agregar(registros: RegistroDaPeca[], elegiveis: number): Resumo 
   const aptoV1 = (r: RegistroDaPeca) => r.gateV1?.tipo === 'medida' && r.gateV1.resultado === 'APTO'
   const aptoFinal = (r: RegistroDaPeca) => r.gateFinal?.tipo === 'medida' && r.gateFinal.resultado === 'APTO'
   const cobertas = new Set<string>(regrasCobertas())
+  // Só a peça MEDIDA conta (contrato § 1.2): com caixa fora das janelas fiéis da fixture, o gate leu pixels que não são os da foto.
+  const naoMedida = (r: RegistroDaPeca) => (r.fidelidade?.fora.length ?? 0) > 0
+  const medidas = chegaram.filter((r) => !naoMedida(r))
   const taxaApto = {} as Resumo['taxaApto']
   for (const eixo of ['cliente', 'formato', 'foto', 'copy', 'arquetipo'] as const) {
     taxaApto[eixo] = {}
-    for (const r of chegaram) {
+    for (const r of medidas) {
       const v = r.spec[eixo]
       const t = (taxaApto[eixo][v] ??= { pecas: 0, aptasV1: 0, aptasFinal: 0, drafts: 0 })
       t.pecas++
@@ -96,15 +102,12 @@ export function agregar(registros: RegistroDaPeca[], elegiveis: number): Resumo 
   }
   const motivos: Resumo['motivos'] = {}
   const motivosPorCliente: Resumo['motivosPorCliente'] = {}
-  for (const r of chegaram) {
+  for (const r of medidas) {
     for (const m of r.gateFinal?.motivos ?? []) {
       ;(motivos[m.regra] ??= {})[m.codigo] = (motivos[m.regra][m.codigo] ?? 0) + 1
       ;(motivosPorCliente[r.spec.cliente] ??= {})[m.regra] = (motivosPorCliente[r.spec.cliente][m.regra] ?? 0) + 1
     }
   }
-  // Só a peça MEDIDA conta (contrato § 1.2): com caixa fora das janelas fiéis da fixture, o gate leu pixels que não são os da foto.
-  const naoMedida = (r: RegistroDaPeca) => (r.fidelidade?.fora.length ?? 0) > 0
-  const medidas = chegaram.filter((r) => !naoMedida(r))
   const falsoApto: Resumo['falsoApto'] = []
   const candidatosFalsoBloqueio: Resumo['candidatosFalsoBloqueio'] = []
   for (const r of medidas) {
@@ -150,7 +153,8 @@ export function agregar(registros: RegistroDaPeca[], elegiveis: number): Resumo 
   }
   const bloqueiosPorCaso: Resumo['decisao1']['bloqueiosPorCaso'] = {}
   for (const r of medidas) {
-    const caso = r.modoG ? 'D-falha-de-leitura' : r.spec.foto === 'sem-foto' ? 'E-sem-foto' : r.assunto?.origemNaPeca === 'catalogo' ? 'A-catalogo' : r.assunto?.origemNaPeca === 'estimado' ? 'B-estimado' : 'C-nao-se-aplica'
+    // A peça principal fica no SEU caso (A/B/C/E); o modo G é um cenário à parte, agregado abaixo pelo gate PÓS-falha.
+    const caso = r.spec.foto === 'sem-foto' ? 'E-sem-foto' : r.assunto?.origemNaPeca === 'catalogo' ? 'A-catalogo' : r.assunto?.origemNaPeca === 'estimado' ? 'B-estimado' : 'C-nao-se-aplica'
     const b = (bloqueiosPorCaso[caso] ??= { pecas: 0, bloqueadas: 0, bloqueadasQueAVerdadeAprovaria: 0, aptasQueAVerdadeReprovaria: 0 })
     b.pecas++
     const bloqueada = (r.gateFinal?.motivos ?? []).some((m) => m.regra === 'texto-sobre-assunto')
@@ -158,6 +162,15 @@ export function agregar(registros: RegistroDaPeca[], elegiveis: number): Resumo 
       b.bloqueadas++
       if (invasaoPelaVerdade(r) === false) b.bloqueadasQueAVerdadeAprovaria++
     } else if (aptoFinal(r) && invasaoPelaVerdade(r) === true) b.aptasQueAVerdadeReprovaria++ // o falso APTO da decisão 1, por caso
+  }
+  // Caso D (falha de leitura depois da composição): o que o gate disse DEPOIS da falha — `gateRecusou` por texto-sobre-assunto não comprovada.
+  for (const r of medidas.filter((r) => r.modoG)) {
+    const d = (bloqueiosPorCaso['D-falha-de-leitura'] ??= { pecas: 0, bloqueadas: 0, bloqueadasQueAVerdadeAprovaria: 0, aptasQueAVerdadeReprovaria: 0 })
+    d.pecas++
+    if (r.modoG!.gateRecusou) {
+      d.bloqueadas++
+      if (invasaoPelaVerdade(r) === false) d.bloqueadasQueAVerdadeAprovaria++
+    } else if (invasaoPelaVerdade(r) === true) d.aptasQueAVerdadeReprovaria++
   }
   const modoG = registros.filter((r) => r.modoG)
   return {
@@ -167,11 +180,12 @@ export function agregar(registros: RegistroDaPeca[], elegiveis: number): Resumo 
       compostas: compostas.length,
       recusasEstruturais: registros.filter((r) => r.compor.desfecho === 'recusa-estrutural').length,
       erros: registros.filter((r) => r.compor.desfecho === 'erro').length,
-      chegaramAoGate: chegaram.length,
-      aptasV1: chegaram.filter(aptoV1).length,
-      aptasFinal: chegaram.filter(aptoFinal).length,
-      drafts: chegaram.filter((r) => r.draft === 'criado').length,
+      chegaramAoGate: medidas.length,
+      aptasV1: medidas.filter(aptoV1).length,
+      aptasFinal: medidas.filter(aptoFinal).length,
+      drafts: medidas.filter((r) => r.draft === 'criado').length,
     },
+    brutos: { chegaramAoGate: chegaram.length, aptasFinal: chegaram.filter(aptoFinal).length, drafts: chegaram.filter((r) => r.draft === 'criado').length, naoMedidas: chegaram.length - medidas.length },
     taxaApto,
     motivos,
     motivosPorCliente,
@@ -222,10 +236,11 @@ export function paraMarkdown(resumo: Resumo, meta: { data: string; head: string;
   L.push('')
   const d = resumo.denominadores
   L.push('## Denominadores')
-  L.push(`elegíveis ${d.elegiveis} → peças da rodada ${resumo.pecas} → compostas ${d.compostas} (recusas estruturais ${d.recusasEstruturais}, erros ${d.erros}) → chegaram ao gate ${d.chegaramAoGate} → APTAS na v1 ${d.aptasV1} → APTAS ao fim ${d.aptasFinal} → DRAFTs ${d.drafts}. Peças NÃO MEDIDAS (fora das janelas fiéis): ${resumo.naoMedidas.length}.`)
+  L.push(`elegíveis ${d.elegiveis} → peças da rodada ${resumo.pecas} → compostas ${d.compostas} (recusas estruturais ${d.recusasEstruturais}, erros ${d.erros}) → chegaram ao gate e foram MEDIDAS ${d.chegaramAoGate} → APTAS na v1 ${d.aptasV1} → APTAS ao fim ${d.aptasFinal} → DRAFTs ${d.drafts}.`)
+  L.push(`Desfechos BRUTOS do fluxo (incluem as ${resumo.brutos.naoMedidas} peças NÃO MEDIDAS, fora das janelas fiéis — § 3b): chegaram ao gate ${resumo.brutos.chegaramAoGate} · APTAS ao fim ${resumo.brutos.aptasFinal} · DRAFTs ${resumo.brutos.drafts}. Toda taxa e tabela abaixo é sobre as peças MEDIDAS.`)
   if (meta.excluidosPorMotivo) L.push(`Exclusões do lote por motivo (não são peças): ${Object.entries(meta.excluidosPorMotivo).map(([m, n]) => `${m} ${n}`).join(' · ') || 'nenhuma'}.`)
   L.push('')
-  L.push('## 1. Taxa APTO por eixo (v1 composta · ao fim dos ciclos · DRAFT)')
+  L.push('## 1. Taxa APTO por eixo, peças MEDIDAS (v1 composta · ao fim dos ciclos · DRAFT)')
   for (const eixo of ['cliente', 'formato', 'foto', 'copy', 'arquetipo'] as const) {
     L.push(`### ${eixo}`)
     L.push('| valor | peças | APTO v1 | APTO final | DRAFT |')
@@ -273,6 +288,7 @@ export function paraMarkdown(resumo: Resumo, meta: { data: string; head: string;
   const d1 = resumo.decisao1
   const f = (x: number | null) => (x === null ? '—' : x.toFixed(2))
   L.push(`## 8. Decisão 1 — assunto estimado × catálogo × verdade (${d1.fotos} peças com verdade): IoU est×cat ${f(d1.iouEstimadoCatalogo)} · est×verdade ${f(d1.iouEstimadoVerdade)} · cat×verdade ${f(d1.iouCatalogoVerdade)} · o estimado acertou a invasão em ${d1.estimadoAcertouInvasao} e errou em ${d1.estimadoErrouInvasao}`)
+  L.push('A linha D é o gate DEPOIS da falha de leitura injetada (as mesmas peças também aparecem no seu caso de origem).')
   L.push('| caso (§ 4.2) | peças | bloqueadas por texto-sobre-assunto | das quais a verdade aprovaria | APTAS que a verdade reprovaria |')
   L.push('|---|---|---|---|---|')
   for (const [caso, b] of Object.entries(d1.bloqueiosPorCaso).sort()) L.push(`| ${caso} | ${b.pecas} | ${b.bloqueadas} | ${b.bloqueadasQueAVerdadeAprovaria} | ${b.aptasQueAVerdadeReprovaria} |`)

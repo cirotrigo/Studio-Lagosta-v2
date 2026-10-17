@@ -14,6 +14,8 @@ import type { Rect } from '@/lib/creatives/halo/halo'
 
 export type CasoDaFoto = 'A1' | 'A2' | 'B' | 'C' | 'D' | 'E' | 'F'
 export const CASOS_DA_FOTO: readonly CasoDaFoto[] = ['A1', 'A2', 'B', 'C', 'D', 'E', 'F']
+/** Versão da GERAÇÃO das fotos sintéticas: entra no `loteId`; suba quando a função mudar os pixels. */
+export const VERSAO_DAS_FOTOS_SINTETICAS = 1
 export type FormatoDaFoto = 'story' | 'feed'
 export const DIMENSOES_DA_FOTO: Record<FormatoDaFoto, { width: number; height: number }> = { story: { width: 1080, height: 1920 }, feed: { width: 1080, height: 1350 } }
 

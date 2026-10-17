@@ -1188,8 +1188,10 @@ COBERTA (juiz = a verdade da foto); piso, logo, contraste e tratamento são cobe
 não cobertas. **Falso APTO** (gate APTO ∧ juiz coberto acusa) só se conta nas regras cobertas; **candidato a falso
 bloqueio** (gate recusa ∧ nenhum juiz coberto acusa) é lista para inspeção humana, não veredito.
 
-**Resultados da rodada `--completo` de 17/10** (126 peças, com repetição, 311 s nesta máquina; o resumo versionado traz os
-hashes): 126 elegíveis → 54 compostas (72 recusas estruturais, 0 erros) → 26 APTAS → 26 DRAFTs. Repetibilidade 100 %
+**Resultados da rodada `--completo` de 17/10** (126 peças, com repetição, ~5 min nesta máquina; o resumo versionado traz os
+hashes): 126 elegíveis → 54 compostas (72 recusas estruturais, 0 erros) → 50 MEDIDAS (4 da foto real ficaram fora das
+janelas fiéis) → 24 APTAS → 24 DRAFTs; os desfechos BRUTOS do fluxo (com as não medidas) são 54 → 26 → 26 e saem numa
+linha própria. Toda taxa e tabela do resumo é sobre peças MEDIDAS; a linha D da decisão 1 é o gate DEPOIS da falha injetada. Repetibilidade 100 %
 (126/126: nas compostas veredito, motivos, camadas normalizadas e hash do PNG iguais; nas recusas estruturais o mesmo código); estabilidade 0 exceções / 0 não-medidas / 0
 sem-vínculo. Custo mediano por peça: compor 3 renders, revisar 4, agendar 2 (os juízes e o PNG do piloto, 3). O que ele
 achou:
@@ -1203,7 +1205,7 @@ achou:
   medida", nunca contada) — a imagem ali é a grade anonimizada, não os pixels da foto, e o estimador leu essa grade. Por isso
   o resumo as lista em § 3b como INDÍCIO, não como falso APTO, e o juiz mede CAIXAS (100 % da caixa, não da tinta). O que o
   indício diz: **"não se aplica" por estimativa é um APTO silencioso quando a foto não está no catálogo** — com
-  `semAssuntoLocalizavel: 'humano'` as duas iriam ao humano (e com elas as 34 peças do caso C, as sintéticas difusas); a
+  `semAssuntoLocalizavel: 'humano'` as duas iriam ao humano (e com elas as 30 peças do caso C da rodada completa, as sintéticas difusas); a
   alternativa é fechar a porta do catálogo (foto com região protegida no catálogo nunca chega ao gate sem ela). Para virar
   medida, as janelas da fixture têm de cobrir as caixas que o compositor produz nessa assinatura — e isso é regenerar a fixture
   a partir da foto original (`scripts/fixtures/gerar-fixture-piloto-direcao-de-arte.ts`), revelando mais pixels do cliente:

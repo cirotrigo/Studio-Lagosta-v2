@@ -228,6 +228,8 @@ interface Execucao {
   draft: RegistroDaPeca['draft']
   draftCodigo?: string
   layers: Layer[]
+  /** As camadas da v1 composta (antes dos ajustes): a fidelidade da foto real se confere em TODA medida, não só na final. */
+  layersV1: Layer[]
   background: string
   pageId: string
   generationId: string
@@ -274,6 +276,7 @@ async function executar(spec: SpecDoLote, cliente: ClienteSemeado, foto: { id: s
     return { recusa: { desfecho: e instanceof CreativeError ? 'recusa-estrutural' : 'erro', codigo }, ms: ms.compor ?? 0 }
   }
   const pageId = composta.persistido!.pageId
+  const layersV1 = structuredClone(banco.pages.get(pageId)!.layers as Layer[])
   const generationId = [...banco.generations.values()].find((g) => g.fieldValues?.source === 'compositor' && g.fieldValues?.pageId === pageId)!.id
   banco.itensDeLote.set(`lote-${pageId}`, { id: `lote-${pageId}`, projectId: PROJETO, loteId: LOTE, itemId: `item-${pageId}`, generationId, postId: null, hashDoAgendamento: null, efeitosDoAgendamentoEm: null, payload: null })
   const revisar = () => medir('revisar', () => revisarArte({ projectId: PROJETO, pageId, visao: false, previa: false }))
@@ -304,7 +307,7 @@ async function executar(spec: SpecDoLote, cliente: ClienteSemeado, foto: { id: s
     draftCodigo = e instanceof CreativeError ? e.code : 'erro'
   }
   const page = banco.pages.get(pageId)!
-  return { gateV1, gateFinal: gate, ciclos, draft, draftCodigo, layers: page.layers as Layer[], background: String(page.background ?? '#FFFFFF'), pageId, generationId, assuntoNaPeca: { assunto: composta.diagnostico.assunto, origem: composta.diagnostico.assuntoOrigem }, excecoes, renders, ms }
+  return { gateV1, gateFinal: gate, ciclos, draft, draftCodigo, layers: page.layers as Layer[], layersV1, background: String(page.background ?? '#FFFFFF'), pageId, generationId, assuntoNaPeca: { assunto: composta.diagnostico.assunto, origem: composta.diagnostico.assuntoOrigem }, excecoes, renders, ms }
 }
 
 async function rodarPeca(spec: SpecDoLote, cliente: ClienteSemeado, opcoes: { repetir: boolean; modoG: boolean }): Promise<RegistroDaPeca> {
@@ -380,7 +383,7 @@ async function rodarPeca(spec: SpecDoLote, cliente: ClienteSemeado, opcoes: { re
     png: { caminho: path.relative(RAIZ, path.join(SAIDA, 'png', `${spec.chave.replace(/[|/]/g, '_')}.png`)), sha256: png.sha256 },
     ...(assunto ? { assunto } : {}),
     // Foto REAL da fixture: a medida só vale DENTRO das janelas fiéis (contrato § 1.2) — conferido na peça FINAL, depois dos ajustes.
-    ...(entrada.caso === 'real' ? { fidelidade: { fora: caixasForaDasJanelas(principal.layers) } } : {}),
+    ...(entrada.caso === 'real' ? { fidelidade: { fora: [...new Set([...caixasForaDasJanelas(principal.layersV1), ...caixasForaDasJanelas(principal.layers)])] } } : {}),
   }
   // Repetição: a MESMA spec num banco novo — veredito, motivos, camadas normalizadas e hash do PNG iguais.
   if (opcoes.repetir) {
@@ -452,7 +455,8 @@ describe.skipIf(!LIGADO)('piloto sintético de autonomia', () => {
     LOGO_SINTETICA = await logoSintetica()
     CLIENTES.push(...clientesDoLote())
     const clientes: ClienteDoLote[] = CLIENTES.map((c) => ({ id: c.id, formatos: c.formatos, versao: sha256(JSON.stringify({ numeros: c.numeros, paginas: c.paginas, logos: c.logos, veu: c.candidatasDoVeu })).slice(0, 12) }))
-    const lote = specsDoLote({ clientes, amostra: process.env.PILOTO_SINTETICO === 'completo' ? 'completo' : 1 / 6 })
+    // Os insumos visuais que o lote não enxerga: os bytes da foto real da fixture (as sintéticas entram pela versão da geração).
+    const lote = specsDoLote({ clientes, amostra: process.env.PILOTO_SINTETICO === 'completo' ? 'completo' : 1 / 6, insumosVisuais: sha256(arquivos['fixture:foto']).slice(0, 16) })
     const n = process.env.PILOTO_CALIBRACAO ? Number(process.env.PILOTO_CALIBRACAO) : lote.amostra.length
     const specs = lote.amostra.slice(0, n)
     const repetir = !process.env.PILOTO_SEM_REPETICAO
@@ -490,5 +494,11 @@ describe.skipIf(!LIGADO)('piloto sintético de autonomia', () => {
     // O que o PILOTO exige de si (o resto é do owner): nenhum efeito pós-commit; o resumo existe.
     expect(espioes.efeitos).not.toHaveBeenCalled()
     expect(registros.length).toBe(specs.length)
+    // A rodada não pode passar em silêncio: erro de execução, exceção ou timeout derrubam o teste (recusa estrutural é desfecho
+    // registrado, não erro); e tem de haver cobertura — pelo menos uma peça MEDIDA chegou ao gate.
+    expect(registros.filter((r) => r.compor.desfecho === 'erro').map((r) => `${r.spec.chave}: ${r.compor.codigo}`)).toEqual([])
+    expect(resumo.estabilidade.excecoes, 'exceções durante a rodada').toBe(0)
+    expect(resumo.estabilidade.timeouts).toBe(0)
+    expect(resumo.denominadores.chegaramAoGate, 'nenhuma peça MEDIDA chegou ao gate').toBeGreaterThan(0)
   }, 8 * 3600_000)
 })
