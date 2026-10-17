@@ -31,6 +31,19 @@ const COR = /^(#[0-9a-f]{3,8}|rgba?\([\d.,\s%]+\)|hsla?\([\d.,\s%]+\)|transparen
 const CHAVES_DE_ENUM = new Set(['type', 'fontWeight', 'fontStyle', 'textAlign', 'verticalAlign', 'objectFit', 'textTransform', 'textDecoration', 'anchor', 'breakMode', 'textMode', 'fit', 'gradientType', 'shapeType', 'blendMode', 'papel', 'role', 'mode', 'unit', 'align', 'position', 'direction', 'repeat', 'lineCap', 'lineJoin'])
 const ENUM = /^([a-z][a-z0-9-]{0,31}|\d{3})$/i // `\d{3}`: `fontWeight: '400'`
 const CHAVES_DE_TEXTO = new Set(['content', 'text'])
+/** Tags estruturais que a fixture pode levar; qualquer outra é descartada (uma tag pode ser o apelido do cliente). */
+const TAGS_CONHECIDAS = new Set(['assinatura', 'story', 'feed', 'quadrado', 'clara', 'escura', 'modelo', 'conteudo'])
+/** Forma de uma CHAVE de objeto que pode sobreviver: identificador curto; chave com espaço, acento ou longa demais é descartada com o valor. */
+const CHAVE = /^[A-Za-z_$][A-Za-z0-9_-]{0,40}$/
+const semAcento = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+/** Fragmentos do nome do cliente (palavras com 3+ letras, sem acento): nenhum pode aparecer em string NEM em chave. */
+export function fragmentosDoNome(nome: string): string[] {
+  return [...new Set(semAcento(nome).split(/[^a-z0-9]+/).filter((w) => w.length >= 3))]
+}
+const temFragmento = (texto: string, fragmentos: string[]) => {
+  const t = semAcento(texto)
+  return fragmentos.some((f) => t.includes(f))
+}
 const CHAVES_EXTERNAS = /drive|fileid|blob|imageurl|_imageurl|thumbnail|src$|externalid|url$/i
 const URL = /(https?:\/\/|data:|blob:|gs:\/\/|s3:\/\/)/i
 
@@ -67,7 +80,8 @@ export function chunksDeMetadadoDoPng(png: Buffer): string[] {
  */
 export function pseudonimizar(exp: ExportDoCliente, clienteId: string, arquivos: Record<string, string>): { fixture: FixtureDoCliente; descartados: string[] } {
   const nome = exp.projeto.name
-  const nomeRe = nome ? new RegExp(nome.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') : null
+  const fragmentos = fragmentosDoNome(nome)
+  const identifica = (t: string) => temFragmento(t, fragmentos)
   const descartados: string[] = []
   const tokens = new Map<string, string>(exp.logos.map((l, k) => [l.fileUrl, `fixture:logo-${k}`] as const))
   const arquivosDaFixture: Record<string, string> = Object.fromEntries(exp.logos.map((l, k) => [`fixture:logo-${k}`, arquivos[l.fileUrl] ?? '']))
@@ -83,6 +97,8 @@ export function pseudonimizar(exp: ExportDoCliente, clienteId: string, arquivos:
     }
     return tokens.get(url)!
   }
+  const profundidadeDaCamada = new Map<Record<string, unknown>, number>()
+  const caminhoDaCamada = (camada: Record<string, unknown>) => profundidadeDaCamada.get(camada) ?? -1
   const papelDa = (camada: Record<string, unknown>): string | null => {
     if (camada.type === 'logo') return 'logo'
     for (const c of [camada.name, camada.id, (camada.metadata as Record<string, unknown> | undefined)?.papel]) {
@@ -94,11 +110,12 @@ export function pseudonimizar(exp: ExportDoCliente, clienteId: string, arquivos:
     if (typeof v === 'number' || typeof v === 'boolean' || v === null || v === undefined) return v
     if (typeof v === 'string') {
       if (COR.test(v)) return v
-      if (chave === 'fileUrl') return token(v, caminho)
+      // `fileUrl` só no TOPO da camada (é dela que o compositor lê a imagem); aninhado em style/metadata é descartado, não vira token.
+      if (chave === 'fileUrl') return camada && caminho.endsWith('.fileUrl') && caminho.split('.').length === caminhoDaCamada(camada) ? token(v, caminho) : (descartados.push(`${caminho}: fileUrl fora do topo da camada`), undefined)
       if (CHAVES_DE_TEXTO.has(chave)) return camada ? copySintetica(papelDa(camada) ?? '') : (descartados.push(`${caminho}: texto fora de camada`), undefined)
       if (chave === 'fontFamily') return v
       if (chave === 'groupId') return grupos.get(v) ?? (grupos.set(v, `grupo-${grupos.size + 1}`), grupos.get(v)!)
-      if (CHAVES_DE_ENUM.has(chave) && ENUM.test(v) && !(nomeRe && nomeRe.test(v))) return v
+      if (CHAVES_DE_ENUM.has(chave) && ENUM.test(v) && !identifica(v)) return v
       descartados.push(`${caminho}: string sob chave fora do esquema`)
       return undefined
     }
@@ -107,8 +124,14 @@ export function pseudonimizar(exp: ExportDoCliente, clienteId: string, arquivos:
       const o = v as Record<string, unknown>
       const ehCamada = typeof o.type === 'string' && 'position' in o
       const saida: Record<string, unknown> = {}
+      if (ehCamada) profundidadeDaCamada.set(o, caminho.split('.').length + 1)
       for (const [k, x] of Object.entries(o)) {
         if (ehCamada && (k === 'id' || k === 'name')) continue // tratados abaixo
+        // A CHAVE também é dado: `{ "Acme Corp": 12 }` levaria o nome; chave fora da forma ou com fragmento do nome cai com o valor.
+        if (!CHAVE.test(k) || identifica(k)) {
+          descartados.push(`${caminho}.${k}: chave fora do esquema`)
+          continue
+        }
         const r = projetar(x, k, `${caminho}.${k}`, ehCamada ? o : camada)
         if (r !== undefined) saida[k] = r
       }
@@ -127,7 +150,8 @@ export function pseudonimizar(exp: ExportDoCliente, clienteId: string, arquivos:
     const so: Record<string, unknown> = {}
     for (const c of CAMPOS_DA_PAGINA) if (c in p && c !== 'tags') so[c] = c === 'layers' && typeof p.layers === 'string' ? JSON.parse(p.layers) : p[c]
     // Tags à parte (não passam pela projeção): só palavras minúsculas sem o nome do cliente.
-    const tags = Array.isArray(p.tags) ? (p.tags as unknown[]).filter((t): t is string => typeof t === 'string' && /^[a-z-]+$/.test(t) && !(nomeRe && nomeRe.test(t))) : []
+    const tags = Array.isArray(p.tags) ? (p.tags as unknown[]).filter((t): t is string => typeof t === 'string' && TAGS_CONHECIDAS.has(t)) : []
+    for (const t of Array.isArray(p.tags) ? (p.tags as unknown[]) : []) if (!(typeof t === 'string' && TAGS_CONHECIDAS.has(t))) descartados.push(`paginas[${i}].tags: tag fora das conhecidas`)
     const saida = projetar(so, '', `paginas[${i}]`) as Record<string, unknown>
     saida.tags = tags
     saida.name = `Assinatura — ${clienteId} — ${tags.find((t) => t === 'feed' || t === 'story' || t === 'quadrado') ?? `${so.width}x${so.height}`}`
@@ -149,7 +173,7 @@ export function pseudonimizar(exp: ExportDoCliente, clienteId: string, arquivos:
 /** A segunda rede: o que ainda identifica o cliente ou aponta para fora, em QUALQUER profundidade. */
 export function conferirPseudonimo(valor: unknown, nome: string): string[] {
   const sobras: string[] = []
-  const nomeRe = nome ? new RegExp(nome.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') : null
+  const fragmentos = fragmentosDoNome(nome)
   const andar = (v: unknown, caminho: string, chave: string) => {
     if (typeof v === 'string') {
       if (/\.arquivos\./.test(caminho)) {
@@ -158,14 +182,19 @@ export function conferirPseudonimo(valor: unknown, nome: string): string[] {
         return
       }
       if (URL.test(v)) sobras.push(`${caminho}: URL`)
-      if (nomeRe && nomeRe.test(v)) sobras.push(`${caminho}: nome do cliente`)
+      if (temFragmento(v, fragmentos)) sobras.push(`${caminho}: nome do cliente`)
       if (CHAVES_EXTERNAS.test(chave) && !v.startsWith('fixture:')) sobras.push(`${caminho}: identificador externo`)
       const conhecida = COR.test(v) || v.startsWith('fixture:') || CHAVES_DE_TEXTO.has(chave) || chave === 'fontFamily' || chave === 'name' || chave === 'id' || chave === 'groupId' || chave === 'clienteId' || chave === 'tags' || (CHAVES_DE_ENUM.has(chave) && ENUM.test(v))
       if (!conhecida) sobras.push(`${caminho}: texto sob chave não prevista`)
       return
     }
     if (Array.isArray(v)) v.forEach((x, i) => andar(x, `${caminho}[${i}]`, chave))
-    else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v as Record<string, unknown>)) andar(x, `${caminho}.${k}`, k)
+    else if (v && typeof v === 'object')
+      for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
+        // Chave com fragmento do nome ou fora da forma (exceto os tokens em `arquivos`).
+        if (!/\.arquivos$/.test(caminho) && (!CHAVE.test(k) || temFragmento(k, fragmentos))) sobras.push(`${caminho}.${k}: chave identifica ou fora da forma`)
+        andar(x, `${caminho}.${k}`, k)
+      }
   }
   andar(valor, 'fixture', '')
   return sobras

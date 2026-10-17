@@ -230,8 +230,18 @@ export const sha256 = (texto: string | Buffer) => createHash('sha256').update(te
  * ir quieto para o resumo. Recusa estrutural é desfecho registrado, não violação; o resto do veredito (taxas, caso C, piso) é
  * do owner, lendo o resumo.
  */
-export function violacoesDoPiloto(resumo: Resumo, registros: RegistroDaPeca[]): string[] {
+/**
+ * @param oficial rodada padrão ou `--completo` sem filtros (`PILOTO_CALIBRACAO`, `PILOTO_CLIENTE`, `PILOTO_SEM_REPETICAO` a
+ * tornam EXPLORATÓRIA): na oficial a cobertura dos cenários é obrigatória — toda spec repetida, modo G e oclusão injetada com
+ * contagem > 0 — porque 0/0 passaria pelas comparações abaixo sem medir nada.
+ */
+export function violacoesDoPiloto(resumo: Resumo, registros: RegistroDaPeca[], opcoes: { oficial: boolean } = { oficial: true }): string[] {
   const v: string[] = []
+  if (opcoes.oficial) {
+    if (resumo.repetibilidade.comparadas !== registros.length) v.push(`rodada oficial sem repetir todas as specs (${resumo.repetibilidade.comparadas}/${registros.length})`)
+    if (resumo.modoG.leituras === 0) v.push('rodada oficial sem nenhuma leitura em modo G')
+    if (resumo.decisao2.injecoes === 0) v.push('rodada oficial sem nenhuma oclusão injetada')
+  }
   const erros = registros.filter((r) => r.compor.desfecho === 'erro')
   if (erros.length) v.push(`erro de execução em ${erros.length} peça(s): ${erros.map((r) => `${r.spec.chave}: ${r.compor.codigo}`).join('; ')}`)
   if (resumo.estabilidade.excecoes) v.push(`${resumo.estabilidade.excecoes} exceção(ões) durante a rodada`)

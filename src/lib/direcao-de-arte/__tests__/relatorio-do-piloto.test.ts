@@ -72,9 +72,14 @@ describe('resumo do piloto', () => {
 
 describe('violacoesDoPiloto — cada invariante violado derruba a rodada', () => {
   const base = (): RegistroDaPeca => ({ spec: { chave: 'c|story|B|curta|sem', cliente: 'c', formato: 'story', foto: 'B', copy: 'curta', arquetipo: 'sem' }, compor: { desfecho: 'composta', ms: 1 }, ciclos: 0, draft: 'criado', juizes: [], oclusaoProduzida: [], renders: {}, ms: {}, estabilidade: { excecoes: [], naoMedida: false, semVinculo: false, timeout: false }, gateV1: { tipo: 'medida', resultado: 'APTO', motivos: [], naoMedidos: [] }, gateFinal: { tipo: 'medida', resultado: 'APTO', motivos: [], naoMedidos: [] }, repeticao: { igual: true, diferencas: [] } })
-  it('rodada limpa: nenhuma violação', () => {
+  it('rodada limpa EXPLORATÓRIA: nenhuma violação; a OFICIAL exige cobertura dos cenários (repetição de tudo, modo G, oclusão injetada)', () => {
     const registros = [base()]
-    expect(violacoesDoPiloto(agregar(registros, 1), registros)).toEqual([])
+    expect(violacoesDoPiloto(agregar(registros, 1), registros, { oficial: false })).toEqual([])
+    expect(violacoesDoPiloto(agregar(registros, 1), registros)).toEqual(['rodada oficial sem nenhuma leitura em modo G', 'rodada oficial sem nenhuma oclusão injetada'])
+    const semRepeticao = [{ ...base(), repeticao: undefined }]
+    expect(violacoesDoPiloto(agregar(semRepeticao, 1), semRepeticao)[0]).toMatch(/sem repetir todas as specs \(0\/1\)/)
+    const completa = [{ ...base(), modoG: { fetchFalhou: true, motivoSemAssunto: true, gateRecusou: true, valido: true }, oclusaoInjetada: { gateRecusou: true, motivos: ['oclusao:NAO_MEDIDO'] } }]
+    expect(violacoesDoPiloto(agregar(completa, 1), completa)).toEqual([])
   })
   it('erro de execução, exceção, timeout e cobertura vazia caem', () => {
     const erro: RegistroDaPeca = { ...base(), compor: { desfecho: 'erro', codigo: 'TypeError', ms: 0 }, gateV1: undefined, gateFinal: undefined, estabilidade: { excecoes: ['TypeError'], naoMedida: false, semVinculo: false, timeout: true } }
@@ -87,21 +92,21 @@ describe('violacoesDoPiloto — cada invariante violado derruba a rodada', () =>
   it('falso APTO em peça MEDIDA cai; em peça NÃO MEDIDA vira indício (não cai)', () => {
     const juiz = { regra: 'texto-sobre-assunto' as const, estado: 'coberta' as const, viola: true, camadas: ['servico'], detalhe: '' }
     const medida: RegistroDaPeca = { ...base(), juizes: [juiz] }
-    expect(violacoesDoPiloto(agregar([medida], 1), [medida]).some((x) => /falso APTO em 1 peça/.test(x))).toBe(true)
+    expect(violacoesDoPiloto(agregar([medida], 1), [medida], { oficial: false }).some((x) => /falso APTO em 1 peça/.test(x))).toBe(true)
     const naoMedida: RegistroDaPeca = { ...base(), juizes: [juiz], fidelidade: { fora: ['servico'] } }
     const r2 = [naoMedida, base()]
-    expect(violacoesDoPiloto(agregar(r2, 2), r2)).toEqual([])
+    expect(violacoesDoPiloto(agregar(r2, 2), r2, { oficial: false })).toEqual([])
   })
   it('repetibilidade abaixo de 100 % cai', () => {
     const r: RegistroDaPeca = { ...base(), repeticao: { igual: false, diferencas: ['png: hash difere'] } }
-    expect(violacoesDoPiloto(agregar([r], 1), [r]).some((x) => /repetibilidade 0\/1/.test(x))).toBe(true)
+    expect(violacoesDoPiloto(agregar([r], 1), [r], { oficial: false }).some((x) => /repetibilidade 0\/1/.test(x))).toBe(true)
   })
   it('modo G inválido, modo G não recusado e oclusão injetada não recusada caem', () => {
     const invalido: RegistroDaPeca = { ...base(), modoG: { fetchFalhou: false, motivoSemAssunto: false, gateRecusou: false, valido: false } }
-    expect(violacoesDoPiloto(agregar([invalido], 1), [invalido]).some((x) => /modo G: 1 leitura\(s\) inválida/.test(x))).toBe(true)
+    expect(violacoesDoPiloto(agregar([invalido], 1), [invalido], { oficial: false }).some((x) => /modo G: 1 leitura\(s\) inválida/.test(x))).toBe(true)
     const naoRecusado: RegistroDaPeca = { ...base(), modoG: { fetchFalhou: true, motivoSemAssunto: true, gateRecusou: false, valido: true } }
-    expect(violacoesDoPiloto(agregar([naoRecusado], 1), [naoRecusado]).some((x) => /válida\(s\) que o gate NÃO recusou/.test(x))).toBe(true)
+    expect(violacoesDoPiloto(agregar([naoRecusado], 1), [naoRecusado], { oficial: false }).some((x) => /válida\(s\) que o gate NÃO recusou/.test(x))).toBe(true)
     const oclusao: RegistroDaPeca = { ...base(), oclusaoInjetada: { gateRecusou: false, motivos: [] } }
-    expect(violacoesDoPiloto(agregar([oclusao], 1), [oclusao]).some((x) => /oclusão injetada: 1/.test(x))).toBe(true)
+    expect(violacoesDoPiloto(agregar([oclusao], 1), [oclusao], { oficial: false }).some((x) => /oclusão injetada: 1/.test(x))).toBe(true)
   })
 })
