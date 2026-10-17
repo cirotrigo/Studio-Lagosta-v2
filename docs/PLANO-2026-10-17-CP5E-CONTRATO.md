@@ -205,10 +205,14 @@ prova — o arquivo do CP5d passa a importá-lo) e a MEDIÇÃO REAL (renderer de
 
 **Ponto de partida**: E0 COMPÕE de verdade (`comporPeca` real, gravando — não `somenteAvaliar`, que é o que
 `piloto-compositor.test.ts:58` usa e não produz a peça persistida) a spec da peça limpa sobre o banco falso: Page + Generation do
-compositor nascem do fluxo real; os demais casos partem da peça composta por E0 (e, onde dito, da fixture do piloto v1). **Limite
-dito**: E0 roda UMA vez por arquivo (custo 3–4 renders); repetir o compor em cada caso é o que o § 4.8 vai medir, não isto. A
-decisão 5.1 pergunta ao owner se E0 fica (proposta: fica); se sair, a prova integral do § 4.7 FICA PENDENTE e o contrato o diz —
-não se marca o § 4.7 como concluído sem o compor.
+compositor nascem do fluxo real, e `revisar-arte` vê o gate com o vínculo na Generation composta. **Medido na implementação
+(17/10/2026)**: a composição LEGADA (assinatura da fixture, geometria 250/350) pousa o título em y 148 e o serviço/logo em
+1725–1768 — dentro do piso de interface 188/224 — e o título escuro sai sobre o fundo escuro: o gate diz
+REVISAO_HUMANA_NECESSARIA (`piso-de-interface`, `texto-sem-leitura`). É o P6 do `piloto-compositor` (trilha de design), não um
+defeito do gate. Por isso **E1–E10 partem da peça LIMPA montada à mão** (o controle positivo dos pilotos, `suporte/peca-limpa.ts`)
+e, onde dito, da fixture v1; o "compor APTO → DRAFT" de ponta a ponta fica dito como PENDENTE do compositor respeitar o piso.
+**Limite dito**: E0 roda UMA vez por arquivo (custo 3–4 renders); repetir o compor em cada caso é o que o § 4.8 vai medir, não
+isto. A decisão 5.1 pergunta ao owner se E0 fica (proposta: fica).
 
 ### 3.1 O banco falso extraído (contrato de isolamento)
 
@@ -227,23 +231,27 @@ nos testes de `perfil`/C9); o comportamento do chat (se ele leva à pessoa); cus
 
 | Caso | Entrada | Esperado |
 |---|---|---|
-| E0 compor | `comporPeca` real sobre a spec da peça limpa, gravando no banco falso | Page + Generation do compositor (`source: 'compositor'`, `versaoRenderizada` = `versaoDaPagina`) nascem do fluxo real; `revisar-arte` sobre ela: `gate.tipo = 'medida'` e `vinculo.generationId` = a Generation composta |
-| E1 APTO → DRAFT | peça de E0; `revisar-arte` (gate APTO, informação, `vinculo.generationId` = a de E0) → `agendar-leva` draft-only | DRAFT criado; registro APTO; `ver-geracao` rotula `coincidente`; `auditar-operacao` conta 1 em `coincidente.APTO` |
-| E2 não APTO → nenhum DRAFT | peça de E0 com o apoio sobre o piso de interface (y 1750) | `revisar-arte` informa `REVISAO_HUMANA_NECESSARIA` (piso-de-interface); `agendar-leva` não cria post, registro reprovado gravado na Generation da peça (CP5c); `auditar-operacao` não conta nada para esta página (não há post) — e `ver-geracao` da Generation mostra o registro reprovado |
+| E0 compor | `comporPeca` real sobre a spec da peça limpa, gravando no banco falso | Page + Generation do compositor (`source: 'compositor'`, `versaoRenderizada` = `versaoDaPagina`) nascem do fluxo real; `revisar-arte` sobre ela: `gate.tipo = 'medida'` e `vinculo.generationId` = a Generation composta; medido: REVISAO_HUMANA_NECESSARIA por `piso-de-interface` (composição legada — limite dito acima) |
+| E1 APTO → DRAFT | peça limpa (montada à mão); `revisar-arte` (gate APTO, informação, `vinculo.generationId` = a de E0) → `agendar-leva` draft-only | DRAFT criado; registro APTO; `ver-geracao` rotula `coincidente`; `auditar-operacao` conta 1 em `coincidente.APTO` |
+| E2 não APTO → nenhum DRAFT | peça limpa com o apoio sobre o piso de interface (y 1750) | `revisar-arte` informa `REVISAO_HUMANA_NECESSARIA` (piso-de-interface); `agendar-leva` não cria post, registro reprovado gravado na Generation da peça (CP5c); `auditar-operacao` não conta nada para esta página (não há post) — e `ver-geracao` da Generation mostra o registro reprovado |
 | E-div medida fiel | fixture do piloto v1 com véu ESCURO com folga e o serviço 130 px acima (`piloto-ciclo.test.ts:474-497`): a régua CORRIGE em memória | a medida corrigida tem `tintaCorrigida` e `ok` no serviço (controle: a leitura hipotética do serviço, não um APTO da peça); o relatório propõe `gradiente`; o `gate` informativo decide sobre a fiel: `REVISAO_HUMANA_NECESSARIA` por `texto-sem-leitura` no serviço; `JSON(contraste)` da medida do gate = o de `agendar-leva` sobre a mesma página (os dois `corrigir: false`) |
 | E3 corrigir e agendar | E2 + `ajustar-arte` draft-only com o `mover` que o revisor propõe → `revisar-arte` APTO → `agendar-leva` | 2 ciclos; a versão gravada é a APTA; DRAFT criado sobre ela; dois registros (ajuste e lote) com a mesma `pageVersion` (A9 do CP5d, ponta a ponta) |
 | E4 edição concorrente | o editor grava a página entre o `revisar-arte` e o `ajustar-arte` (versão do revisor envelhece) | `VERSAO_DIVERGENTE`, nada gravado; o `revisar-arte` seguinte traz o `gate` da versão nova |
 | E5 DRAFT anterior bom preservado | E1 feito; `ajustar-arte` draft-only que o gate recusa (piora que o CP4 aceita: apoio para o piso) | página intacta, DRAFT e sua Generation intactos, nenhuma Generation nova, `invalidateScheduledRenders` não chamado |
 | E6 post aprovado intocável | E1 + o DRAFT vira SCHEDULED com `laterPostId` | `ajustar-arte` draft-only → `POST_APROVADO_INTOCAVEL` sob trava, nada medido; `agendar-leva` do mesmo item → `reaproveitar`/recusa de sempre (CP5c), nunca um segundo post |
-| E7 regra não medida → humano | peça de E0 com a conferência de fontes FALHANDO (`motivoSemFontes`: `familiasNaoCarregadas` lança) | `revisar-arte` informa `gate.tipo = 'medida'`, `REVISAO_HUMANA_NECESSARIA` com motivo `NAO_COMPROVADA`/`NAO_MEDIDO` em `fonte-nao-carregada` (`gate.ts:736-739`); `agendar-leva` recusa; nenhum DRAFT. (`nao-medida` fica reservado para a DECISÃO lançar — I3.) |
-| E7b fonte ausente → humano | peça de E0 com uma fonte da marca não cadastrada | achado `fonte-nao-carregada` crítico (`regras.ts:675`) ⇒ `ACHADO_CRITICO`; `agendar-leva` recusa; nenhum DRAFT |
+| E7 regra não medida → humano | peça limpa com a conferência de fontes FALHANDO (`motivoSemFontes`: `GlobalFonts.families` lança em `fontesQueFaltam`) | `revisar-arte` informa `gate.tipo = 'medida'`, `REVISAO_HUMANA_NECESSARIA` com motivo `NAO_COMPROVADA`/`NAO_MEDIDO` em `fonte-nao-carregada` (`gate.ts:736-739`); `agendar-leva` recusa; nenhum DRAFT. (`nao-medida` fica reservado para a DECISÃO lançar — I3.) |
+| E7b fonte ausente → humano | peça limpa com uma fonte da marca não cadastrada | achado `fonte-nao-carregada` crítico (`regras.ts:675`) ⇒ `ACHADO_CRITICO`; `agendar-leva` recusa; nenhum DRAFT |
 | E8 sem efeitos externos | todos os casos | nenhum `fetch` para fora (a suíte é hermética), nenhum lembrete, webhook, publicação, Zernio: espiões de `efeitosDoAgendamento`/notificações não chamados |
 | E9 `auditar-operacao` lê o que E1–E7 deixaram | banco ao fim de cada caso | contagens batem com o estado (`coincidente`/`historico`/`semRegistro`/`registroInvalido`), nada medido, nada escrito |
 | E10 post existente vira `historico` | E1 feito; a página é editada no editor (camadas e contrato mudam, o DRAFT e a Generation ficam) | `ver-geracao` da Generation do DRAFT rotula `historico` com `divergencias` (pageVersion/copyVersion); `auditar-operacao` conta o post em `historico` (não em `coincidente`); nenhuma medição nem escrita pelos dois leitores; o `revisar-arte` da página nova traz `gate` da versão nova com `vinculo` ainda na Generation do compositor |
 
-Mais os unitários: `revisar-arte` (I1–I5, com `decidirEMontarRegistro` real sobre medida do corpus e o caso de exceção; a
-seleção única nos quatro ramos, inclusive `pageId` + `generationId` de outra página), o helper `resumoDoGateDosPosts` (I6–I8,
-`permitidos` nulo e não nulo, teto e `parcial`), o `hojeViola` → `it()` (§ 1.4), a barreira por nome e o inventário.
+Mais os unitários: o helper `resumoDoGateDosPosts` (I6–I8, `permitidos` nulo e não nulo, teto e `parcial`), o `hojeViola` →
+`it()` (§ 1.4), a barreira por nome e o inventário. **Implementado (17/10)**: I1–I5 do `revisar-arte` vivem no próprio
+`piloto-ponta-a-ponta.test.ts` com medição REAL (I1 nenhuma escrita; I2/I4/I5 conferidas em TODA revisão medida pelo helper
+`gateMedido`; I3 com a decisão derrubada de propósito, revisão igual à de uma chamada sã) em vez de um `revisar-arte-gate.test.ts`
+com medida do corpus — o corpus mockado não acrescentaria prova ao que a medição real já cobre. A seleção única (quatro ramos,
+`pageId` + `generationId` de outra página) é exercitada por E0 (compositor), E1–E10 (compositor da peça limpa) e pelo caso
+`GERACAO_DE_OUTRA_PAGINA` do piloto.
 
 ## 4. Arquivos
 
@@ -252,7 +260,7 @@ seleção única nos quatro ramos, inclusive `pageId` + `generationId` de outra 
 (+`generationId`, duas consultas, bloco `gate`); `src/lib/mcp/catalogo/agenda.ts` (descrição da tool); `eslint.config.mjs` e
 `inventario-gate-da-arte.test.ts` (revisar-arte.ts consumidor); `src/lib/mcp/operacao-dot.ts` (v8: "revisar-arte devolve o gate como
 informação; não é autorização; o que vale é o da hora"); docs `revisor-da-arte.md § CP5e`, `mcp.md`, `dot-lagosta-operacao.md`;
-testes: `revisar-arte-gate.test.ts` (novo), `gate-resumo.test.ts` (novo), `auditar-operacao.test.ts` (+bloco), `piloto-ciclo.test.ts`
+testes: `gate-resumo.test.ts` (novo), `piloto-ponta-a-ponta.test.ts` (I1–I5 do revisar-arte, E0–E10, E-div), `auditar-operacao.test.ts` (+bloco), `piloto-ciclo.test.ts`
 (§ 1.4), `piloto-ponta-a-ponta.test.ts` (novo), `suporte/banco-com-travas.ts` (extraído, § 3.1), `suporte/peca-limpa.ts` (+variantes com defeito e a spec para o compor de E0).
 
 ## 5. Decisões pendentes do OWNER (a implementação usa a recomendação como PROPOSTA nomeada, trocável numa linha)

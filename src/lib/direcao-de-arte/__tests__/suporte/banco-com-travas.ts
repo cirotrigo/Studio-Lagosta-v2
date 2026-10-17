@@ -10,7 +10,7 @@
  * locks, `P2028`), a persistência e o render no Blob, a autorização MCP e o comportamento do chat.
  */
 export type Linha = Record<string, any>
-export type Tabela = 'pages' | 'generations' | 'posts' | 'projects' | 'customFonts' | 'itensDeLote' | 'itensDePlano'
+export type Tabela = 'pages' | 'generations' | 'posts' | 'projects' | 'customFonts' | 'itensDeLote' | 'itensDePlano' | 'templates'
 
 export function criarBancoComTravas() {
 const banco = {
@@ -21,6 +21,8 @@ const banco = {
   customFonts: new Map<string, Linha>(),
   itensDeLote: new Map<string, Linha>(),
   itensDePlano: new Map<string, Linha>(),
+  /** CP5e (E0): as pastas/templates que o compositor real lê e grava (assinatura, pasta da semana). */
+  templates: new Map<string, Linha>(),
   filas: new Map<string, Promise<void>>(),
   eventos: [] as Array<{ e: string; t: number }>,
   seq: 0,
@@ -123,10 +125,18 @@ const banco = {
         }
         return { count }
       },
+      // CP5e (E0): `garantirPasta`/`ordemNaPasta`/`paginasDeAssinatura` do compositor real.
+      count: async ({ where }: { where?: Linha } = {}) => vivos().filter((l) => casa(l, where)).length,
+      aggregate: async ({ where }: { where?: Linha; _max?: Linha }) => {
+        const ordens = vivos().filter((l) => casa(l, where)).map((l) => Number(l.order ?? 0))
+        return { _max: { order: ordens.length ? Math.max(...ordens) : null } }
+      },
     }
   }
   const delegados = (tx: Tx | null) => ({
     project: tabela('projects', tx),
+    template: tabela('templates', tx),
+    fontCombination: { findMany: async () => [] as Linha[] },
     customFont: tabela('customFonts', tx),
     page: tabela('pages', tx),
     generation: tabela('generations', tx),
@@ -280,7 +290,7 @@ const banco = {
     for (const soltar of tx.travas.values()) soltar()
   }
   const reset = () => {
-    for (const t of ['pages', 'generations', 'posts', 'projects', 'customFonts', 'itensDeLote', 'itensDePlano'] as const) banco[t].clear()
+    for (const t of ['pages', 'generations', 'posts', 'projects', 'customFonts', 'itensDeLote', 'itensDePlano', 'templates'] as const) banco[t].clear()
     banco.filas.clear()
     banco.eventos = []
     banco.seq = 0
