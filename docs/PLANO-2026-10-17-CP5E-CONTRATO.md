@@ -1,6 +1,10 @@
 # CP5e — provas de autonomia: o gate como INFORMAÇÃO no `revisar-arte`, o bloco `gate` em `auditar-operacao` e a prova ponta a ponta sintética (contrato)
 
-**Estado: PROPOSTA, em revisão do Codex (rodada 2). Rodada 1: NÃO APTO — 3 BLOQUEADOR, 5 IMPORTANTE, 2 MENOR, endereçados
+**Estado: PROPOSTA, em revisão do Codex (rodada 3). Rodada 2: NÃO APTO — 2 BLOQUEADOR, 4 IMPORTANTE, 2 MENOR, endereçados abaixo
+(E-div sobre o cenário do véu ESCURO com folga, em que a régua corrige de verdade; E10 "post existente vira `historico`" exposto
+pelos dois leitores; releitura da Generation escolhida com `sourcePageId`; `pageId` + `generationId` juntos como mudança
+deliberada; I2 em termos de `resultado`; `Template.projectId` no select e `permitidos === null`; barreira de lint por NOME com
+teste; tipo do bloco com `vinculo`; rótulo `coincidente` em todo o texto; custo = dois renders de fundo + as outras etapas). Rodada 1: NÃO APTO — 3 BLOQUEADOR, 5 IMPORTANTE, 2 MENOR, endereçados
 abaixo (§ 1.2 medida fiel `corrigir: false`; § 1.4 saídas tipadas; § 3 caso E0 com o compositor real; § 1.2 item 2 a seleção da
 Generation unificada com `contextoDaMedicao`; § 2 identidade completa de `validadeDoGate`, rótulo `coincidente` com `naoConferido`,
 teto de posts, módulo puro novo; matriz E1/E2/E7 corrigidas; § 3.1 contrato de extração do banco falso e o que NÃO se prova; I2 e
@@ -16,7 +20,7 @@ lista "Não entra" (provas ponta a ponta e o piloto; bloco `gate` em `auditar-op
 veredito que o gate daria à página COMO ESTÁ — **informação**, nunca autorização, nunca gravado; (b) o `hojeViola` "em até 2
 ciclos com os ajustes do próprio revisor, a peça termina apta ou com REVISAO_HUMANA_NECESSARIA" (`piloto-ciclo.test.ts`) vira
 `it()`; (c) `auditar-operacao` ganha um bloco `gate` por cliente: quantos posts da janela têm veredito gravado, qual, e se o
-registro é da versão atual da página (rótulo `atual`/`historico`/`ilegivel`); (d) a prova PONTA A PONTA sintética do fluxo
+registro coincide com a versão de hoje da página (rótulo `coincidente`/`historico`/`ilegivel`, os de `validadeDoGate`); (d) a prova PONTA A PONTA sintética do fluxo
 autônomo (compor → revisar → ajustar → revisar → agendar DRAFT) nos seis casos do plano-mestre § 4.7; (e) manual do Dot v8 e docs.
 
 **NÃO é**: o piloto sintético de autonomia (§ 4.8: lote representativo, taxas, custo, repetibilidade — é o checkpoint SEGUINTE e
@@ -45,17 +49,22 @@ veredito do gate aparece**: o chat humano só vê achados; a única escalada que
    anterior fica só no resumo do GRUPO, `antesDaCorrecao`, não por texto — e o gate lê `textos[]`, `gate.ts:777-782`). Os
    produtores medem com `corrigir: false` (`agendar-itens.ts:611`, `arte-rapida.ts:1220`). Um gate sobre a medida corrigida
    diria APTO para uma hipótese. Então: `revisarArte` chama `medirCamadasDaPeca(camadas, ctx, { corrigir: false })` uma SEGUNDA
-   vez, com o MESMO `ctx` (contexto, downloads, assunto e referências reaproveitados) — **custo dito: +1 passada da régua (um
-   render do fundo + leitura dos textos) por chamada de `revisar-arte`, nenhum download a mais** — e passa ESSA medida a
+   vez, com o MESMO `ctx` (contexto, downloads, assunto e referências reaproveitados) — **custo dito: +1 passada da régua por chamada de `revisar-arte` — DOIS renders do fundo (sem tratamento e sem
+   tinta, `regua.ts:466-469`) mais a leitura dos textos e as demais etapas de `medirCamadasDaPeca` (geometria, fontes, logo,
+   assunto já em cache); nenhum download a mais** — e passa ESSA medida a
    `decidirEMontarRegistro` (`gate-registro.ts:119`) com `origem: 'revisar-arte'`, `principal` ausente. O relatório do revisor
-   continua saindo da medida corrigida (os ajustes `gradiente` precisam de `tintaCorrigida`). Teste E-div (§ 3): a fixture do
-   piloto, em que a régua corrige (serviço sem leitura com força no piso): o revisor propõe `gradiente`, o gate informativo diz
-   `REVISAO_HUMANA_NECESSARIA` por `texto-sem-leitura` — e a medida do gate é igual (`JSON` do `contraste`) à de
-   `agendar-leva` sobre a mesma página. Alternativa (decisão 5.5): a régua passar a guardar `antesDaCorrecao` POR TEXTO e o
+   continua saindo da medida corrigida (os ajustes `gradiente` precisam de `tintaCorrigida`). Teste E-div (§ 3): a régua só corrige quando calcula força MAIOR que a atual
+   (`regua.ts:509`), e na fixture v1 o véu claro não corrige (o serviço não tem ajuste executável, `piloto-ciclo.test.ts:833`) —
+   por isso E-div usa o cenário em que ela corrige de verdade, o do véu ESCURO com folga de força (0,45 na faixa 0,45–0,9) e o
+   serviço 130 px acima (`piloto-ciclo.test.ts:474-497`, "a régua do executor NÃO aplica a correção hipotética"): a medida
+   corrigida traz `tintaCorrigida` e `p98ComHalo`/`ok` por texto diferentes da fiel; o relatório propõe `gradiente`; o gate
+   informativo decide sobre a fiel e diz `REVISAO_HUMANA_NECESSARIA` por `texto-sem-leitura` no serviço; e `JSON(contraste)` da
+   medida do gate é igual ao da medida de `agendar-leva` sobre a mesma página (os dois `corrigir: false`). Controle: o mesmo
+   cenário medido com `corrigir: true` dá `ok` no serviço — o APTO hipotético que o gate informativo NÃO pode emitir. Alternativa (decisão 5.5): a régua passar a guardar `antesDaCorrecao` POR TEXTO e o
    gate ler uma transformação pura da medida única — muda `regua.ts` (compositor), por isso não é a proposta deste CP.
    O bloco vai em `RevisaoDaArte.gate`:
    - `{ tipo: 'medida', resultado, rulesVersion, versaoDoGate, medidoEm, motivos, naoMedidos, pageVersion, copyVersion,
-     informacao: FRASE_FIXA }` quando há vínculo;
+     politicaDoAssunto, vinculo: { generationId, postType }, informacao: FRASE_FIXA }` quando há vínculo;
    - `{ tipo: 'sem-vinculo', motivo, informacao: FRASE_FIXA }` quando `decidirEMontarRegistro` devolve `sem-vinculo` (página-modelo,
      formato que os classificadores não acordam, sem Generation da peça — § 1.4);
    - `{ tipo: 'nao-medida', motivo, informacao: FRASE_FIXA }` quando a decisão lança (fail-closed; a revisão humana continua
@@ -66,12 +75,16 @@ veredito do gate aparece**: o chat humano só vê achados; a única escalada que
 2. **Vínculo e UMA seleção da Generation** (`vinculo.generationId`, exigido por `decidirEMontarRegistro`, que NÃO consulta a
    linha — confere medida e identidade, `gate-registro.ts:119-150`). Hoje `contextoDaMedicao` faz a própria busca (15 mais
    recentes da página, primeira `source: 'compositor'`, `revisar-arte.ts:423-441`) e reaproveita a composição por padrão.
-   Passa a valer, em `revisarArte`, UMA seleção, feita ANTES do contexto e passada como `generationDaPeca` (como CP5c/CP5d):
-   (i) `input.generationId` quando o chamador o deu — a Generation pedida, se `fieldValues.pageId` for a página (senão a
-   recusa de hoje, `GERACAO_NAO_ENCONTRADA`/página divergente); (ii) senão a Generation de ORIGEM da página, a mesma seleção do
-   CP5d (`source: 'compositor'`, `fieldValues.pageId = page.id`, a mais recente, sem o `take: 15`); (iii) senão a última arte
-   da página (`alvoDaRecomposicao`, `recompor.ts:778`); (iv) nenhuma → `generationDaPeca: null` (contexto sem referências, como
-   hoje nesse caso) e `gate: sem-vinculo` ("a página não tem arte: o gate só decide sobre arte"). `composicaoReaproveitavel` =
+   Passa a valer, em `revisarArte`, UMA seleção, feita ANTES do contexto e passada como `generationDaPeca` (como CP5c/CP5d),
+   SEMPRE como releitura da linha escolhida com `select: { id, fieldValues, sourcePageId }` (o contexto precisa de
+   `sourcePageId` para a referência de modelo, `revisar-arte.ts:158-220`; `alvoDaRecomposicao` devolve só `id` e `fieldValues`,
+   `recompor.ts:778`): (i) `input.generationId` quando o chamador o deu — a Generation pedida, se `fieldValues.pageId` for a
+   página; **mudança deliberada de comportamento, dita**: hoje, com `pageId` E `generationId`, o segundo é ignorado
+   (`revisar-arte.ts:576-577`, só é lido sem `pageId`); passa a ser validado e, se for de OUTRA página, `GERACAO_DE_OUTRA_PAGINA`
+   (422) — a tool documenta; (ii) senão a Generation de ORIGEM da página, a mesma seleção do CP5d (`source: 'compositor'`,
+   `fieldValues.pageId = page.id`, a mais recente, sem o `take: 15`); (iii) senão a última arte da página (`alvoDaRecomposicao`,
+   relida); (iv) nenhuma → `generationDaPeca: null` (contexto sem referências, como hoje nesse caso) e `gate: sem-vinculo` ("a
+   página não tem arte: o gate só decide sobre arte"). `composicaoReaproveitavel` =
    `fieldValues.versaoRenderizada === versaoDaPagina(page)` (a regra do CP5c) — **efeito dito no revisor**: numa página editada
    depois da arte, o assunto deixa de vir do cache e é estimado de novo (mais fiel; `assuntoOrigem: 'estimado'` segue a
    política). Em (ii) a escolha coincide com a de hoje sempre que a arte do compositor está entre as 15 mais recentes; fora
@@ -87,19 +100,22 @@ veredito do gate aparece**: o chat humano só vê achados; a única escalada que
 5. **A tool `revisar-arte` repassa `gate` no corpo** (depois de `cobertura`), e `comoAplicar` ganha a frase: se `gate.resultado`
    for `REVISAO_HUMANA_NECESSARIA` e não houver `ajustes`, "leve à pessoa: o gate não aprovaria esta versão e o revisor não tem
    ajuste a propor". `revisar-arte` continua `readOnlyHint: true` e no perfil draft-only como hoje.
-6. **Barreira de lint e inventário**: `revisar-arte.ts` entra na lista dos consumidores (pode importar `decidirEMontarRegistro`,
-   nunca `gateDaMedida`); o inventário H12 (`inventario-gate-da-arte.test.ts`) ganha o arquivo e o caso "revisar-arte não chama
-   gateDaMedida nem gravarGateDaArte".
+6. **Barreira de lint e inventário**: `revisar-arte.ts` entra como PRODUTOR na exceção por nome (§ 2.2 item 4: só
+   `decidirEMontarRegistro`, nunca `gateDaMedida`, `lerGateDaArte` ou `validadeDoGate`); o inventário H12
+   (`inventario-gate-da-arte.test.ts`) ganha o arquivo e o caso "revisar-arte não chama gateDaMedida nem gravarGateDaArte".
 
 ### 1.3 Invariantes (os testes exercitam)
 
 - I1 `revisar-arte` não escreve em `Generation` nem em `Page` (nenhum `update`/`$executeRaw` no banco falso; `gravarGateDaArte` não
   é importada em `revisar-arte.ts` — inventário).
 - I2 Relação entre o relatório e o gate (as duas medidas saem do MESMO `ctx`, camadas e canvas): todo achado `problema` do
-  relatório numa regra crítica do gate (`REGRAS_DE_TEXTO` e as demais de `gate.ts:47`) que NÃO seja o efeito da correção da
-  régua ⇒ `gate.resultado = REVISAO_HUMANA_NECESSARIA` com motivo `ACHADO_CRITICO` nessa regra; e as conferências próprias do
-  gate (`copy-completa`, `piso-de-interface`, `oclusao`, `identidade`, `gate.ts:50`) podem aparecer em `gate.motivos` sem
-  achado correspondente no relatório — o teste lista as duas famílias e confere cada motivo contra uma delas.
+  relatório numa regra crítica do gate (`gate.ts:47`) que NÃO seja o efeito da correção da régua ⇒ `gate.resultado =
+  REVISAO_HUMANA_NECESSARIA`, com um motivo NESSA regra cujo código é o que a cobertura e a política efetivas permitem
+  (`ACHADO_CRITICO` quando a regra foi medida e reprovou; `NAO_COMPROVADA` quando o gate recusa antes de medir — quadro com
+  movimento, `gate.ts:720`; assunto estimado sob a política, `gate.ts:938`); e as conferências próprias do gate
+  (`copy-completa`, `piso-de-interface`, `oclusao`, `identidade`, `gate.ts:50`) podem aparecer em `gate.motivos` sem achado
+  correspondente no relatório. O teste confere o `resultado` e, para cada motivo, que a regra está numa das duas famílias e o
+  código é o permitido para a cobertura daquela medida.
 - I3 Falha ao decidir (exceção) ⇒ `gate.tipo = 'nao-medida'` e o resto da revisão igual ao de hoje (snapshot do corpo sem `gate`).
 - I4 `pageVersion` do bloco = `versao` da revisão (`RevisaoDaArte.versao` já é `versaoDaPagina`).
 - I5 O bloco NUNCA vem com `resultado: 'APTO'` quando `naoMedidos` não está vazio (invariante 2.3 do CP5a, herdada).
@@ -134,10 +150,12 @@ amanhã, com tolerância) com `id, status, pageId, renderStatus, …` — **sem 
 
 1. A consulta dos posts da janela passa a selecionar também `generationId`; para os posts com `generationId`, UMA consulta
    `generation.findMany({ where: { id: { in } }, select: { id, fieldValues, projectId } })` e UMA `page.findMany` das páginas
-   desses posts (`select` da identidade: `id, name, tags, width, height, background, layers, copyAutoral`) — custo O(posts da
-   janela), dito; sem N+1.
+   desses posts (`select`: a identidade `id, name, tags, width, height, background, layers, copyAutoral` E
+   `Template: { select: { projectId } }`, para o vínculo) — custo O(posts da janela), dito; sem N+1.
 2. Por post, **fail-closed no vínculo** antes de ler qualquer registro: `post.projectId === generation.projectId ===
-   page.Template.projectId` e `generation.fieldValues.pageId === post.pageId` e `post.projectId ∈ permitidos`; qualquer
+   page.Template.projectId` e `generation.fieldValues.pageId === post.pageId`, e o escopo da auditoria de sempre: os posts já
+   vêm filtrados pelos projetos visíveis (`permitidos`; `null` = acesso de serviço à carteira inteira, `auditar-operacao.ts:30`),
+   e o resumo confere `post.projectId ∈ permitidos` só quando `permitidos !== null`; qualquer
    divergência ou ausência (Generation/página que não vieram) → `registroInvalido` (nenhum resultado exibido). Então
    `lerGateDaArte(fieldValues)` → `validadeDoGate(registro, identidadeAtual)` (os dois já existem, CP5b; `gate-registro.ts:333-360`),
    com `IdentidadeAtual` COMPLETA: `projectId`, `generationId`, `pageId`, `formato` e `formatoDoCompositor` (de
@@ -158,9 +176,14 @@ amanhã, com tolerância) com `id, status, pageId, renderStatus, …` — **sem 
    PURO novo, `src/lib/creatives/revisao/gate-resumo.ts` (`resumoDoGateDosPosts(posts, generations, pages, { permitidos,
    agora })`), que importa só `gate-registro.ts` (`lerGateDaArte`, `validadeDoGate`), `versao.ts`, `gate.ts` (tipos e
    `VERSAO_DO_GATE`), `contrato.ts` e `agendamento.ts` — NUNCA `@/lib/db` nem `mesclar-field-values` (o `gate-persistido.ts`
-   de hoje importa o merge que carrega o banco, `gate-persistido.ts:13` — por isso não serve). O módulo entra na lista fechada
-   de consumidores do lint (pode importar `lerGateDaArte`/`validadeDoGate`, nunca `gateDaMedida` nem `decidirEMontarRegistro`)
-   e no inventário.
+   de hoje importa o merge que carrega o banco, `gate-persistido.ts:13` — por isso não serve). **Barreira de lint por NOME** (hoje a
+   exceção dos consumidores, `restricao(true, false)` em `eslint.config.mjs:56-60`, libera JUNTOS `lerGateDaArte`,
+   `validadeDoGate` e `decidirEMontarRegistro` — pôr `gate-resumo.ts` nela deixaria o leitor decidir): a configuração ganha
+   exceções por nome — `leitorDoRegistro` (só `lerGateDaArte`/`validadeDoGate`: `gate-resumo.ts`, `ver-geracao-retorno.ts`,
+   `gate-persistido.ts` se não decidir) e `produtor` (só `decidirEMontarRegistro`: `agendar-itens.ts`, `arte-rapida.ts`,
+   `revisar-arte.ts`) — e um teste de lint (`inventario-gate-da-arte.test.ts`, caso novo por arquivo-fixture ou pelo ESLint em
+   memória) recusa `decidirEMontarRegistro` em `gate-resumo.ts` e `gateDaMedida` em qualquer um deles. O inventário H12 ganha
+   os dois arquivos.
 
 ### 2.3 Invariantes
 
@@ -201,9 +224,9 @@ nos testes de `perfil`/C9); o comportamento do chat (se ele leva à pessoa); cus
 | Caso | Entrada | Esperado |
 |---|---|---|
 | E0 compor | `comporPeca` real sobre a spec da peça limpa, gravando no banco falso | Page + Generation do compositor (`source: 'compositor'`, `versaoRenderizada` = `versaoDaPagina`) nascem do fluxo real; `revisar-arte` sobre ela: `gate.tipo = 'medida'` e `vinculo.generationId` = a Generation composta |
-| E1 APTO → DRAFT | peça de E0; `revisar-arte` (gate APTO, informação) → `agendar-leva` draft-only | DRAFT criado; registro APTO; `ver-geracao` rotula `coincidente`; `auditar-operacao` conta 1 em `coincidente.APTO` |
+| E1 APTO → DRAFT | peça de E0; `revisar-arte` (gate APTO, informação, `vinculo.generationId` = a de E0) → `agendar-leva` draft-only | DRAFT criado; registro APTO; `ver-geracao` rotula `coincidente`; `auditar-operacao` conta 1 em `coincidente.APTO` |
 | E2 não APTO → nenhum DRAFT | peça de E0 com o apoio sobre o piso de interface (y 1750) | `revisar-arte` informa `REVISAO_HUMANA_NECESSARIA` (piso-de-interface); `agendar-leva` não cria post, registro reprovado gravado na Generation da peça (CP5c); `auditar-operacao` não conta nada para esta página (não há post) — e `ver-geracao` da Generation mostra o registro reprovado |
-| E-div medida fiel | fixture do piloto v1 (a régua corrige em memória) | o relatório propõe `gradiente`; o `gate` informativo diz `REVISAO_HUMANA_NECESSARIA` por `texto-sem-leitura`; `JSON(contraste)` da medida do gate = o de `agendar-leva` sobre a mesma página (mesma `corrigir: false`) |
+| E-div medida fiel | fixture do piloto v1 com véu ESCURO com folga e o serviço 130 px acima (`piloto-ciclo.test.ts:474-497`): a régua CORRIGE em memória | a medida corrigida tem `tintaCorrigida` e `ok` no serviço (controle: o APTO hipotético); o relatório propõe `gradiente`; o `gate` informativo decide sobre a fiel: `REVISAO_HUMANA_NECESSARIA` por `texto-sem-leitura` no serviço; `JSON(contraste)` da medida do gate = o de `agendar-leva` sobre a mesma página (os dois `corrigir: false`) |
 | E3 corrigir e agendar | E2 + `ajustar-arte` draft-only com o `mover` que o revisor propõe → `revisar-arte` APTO → `agendar-leva` | 2 ciclos; a versão gravada é a APTA; DRAFT criado sobre ela; dois registros (ajuste e lote) com a mesma `pageVersion` (A9 do CP5d, ponta a ponta) |
 | E4 edição concorrente | o editor grava a página entre o `revisar-arte` e o `ajustar-arte` (versão do revisor envelhece) | `VERSAO_DIVERGENTE`, nada gravado; o `revisar-arte` seguinte traz o `gate` da versão nova |
 | E5 DRAFT anterior bom preservado | E1 feito; `ajustar-arte` draft-only que o gate recusa (piora que o CP4 aceita: apoio para o piso) | página intacta, DRAFT e sua Generation intactos, nenhuma Generation nova, `invalidateScheduledRenders` não chamado |
@@ -211,10 +234,12 @@ nos testes de `perfil`/C9); o comportamento do chat (se ele leva à pessoa); cus
 | E7 regra não medida → humano | peça de E0 com a conferência de fontes FALHANDO (`motivoSemFontes`: `familiasNaoCarregadas` lança) | `revisar-arte` informa `gate.tipo = 'medida'`, `REVISAO_HUMANA_NECESSARIA` com motivo `NAO_COMPROVADA`/`NAO_MEDIDO` em `fonte-nao-carregada` (`gate.ts:736-739`); `agendar-leva` recusa; nenhum DRAFT. (`nao-medida` fica reservado para a DECISÃO lançar — I3.) |
 | E7b fonte ausente → humano | peça de E0 com uma fonte da marca não cadastrada | achado `fonte-nao-carregada` crítico (`regras.ts:675`) ⇒ `ACHADO_CRITICO`; `agendar-leva` recusa; nenhum DRAFT |
 | E8 sem efeitos externos | todos os casos | nenhum `fetch` para fora (a suíte é hermética), nenhum lembrete, webhook, publicação, Zernio: espiões de `efeitosDoAgendamento`/notificações não chamados |
-| E9 `auditar-operacao` lê o que E1–E7 deixaram | banco ao fim de cada caso | contagens batem com o estado (`atual`/`historico`/`semRegistro`), nada medido, nada escrito |
+| E9 `auditar-operacao` lê o que E1–E7 deixaram | banco ao fim de cada caso | contagens batem com o estado (`coincidente`/`historico`/`semRegistro`/`registroInvalido`), nada medido, nada escrito |
+| E10 post existente vira `historico` | E1 feito; a página é editada no editor (camadas e contrato mudam, o DRAFT e a Generation ficam) | `ver-geracao` da Generation do DRAFT rotula `historico` com `divergencias` (pageVersion/copyVersion); `auditar-operacao` conta o post em `historico` (não em `coincidente`); nenhuma medição nem escrita pelos dois leitores; o `revisar-arte` da página nova traz `gate` da versão nova com `vinculo` ainda na Generation do compositor |
 
-Mais os unitários: `revisar-arte` (I1–I5, com `decidirEMontarRegistro` real sobre medida do corpus e o caso de exceção), o helper
-`resumoDoGateDosPosts` (I6–I8), o `hojeViola` → `it()` (§ 1.4) e o inventário.
+Mais os unitários: `revisar-arte` (I1–I5, com `decidirEMontarRegistro` real sobre medida do corpus e o caso de exceção; a
+seleção única nos quatro ramos, inclusive `pageId` + `generationId` de outra página), o helper `resumoDoGateDosPosts` (I6–I8,
+`permitidos` nulo e não nulo, teto e `parcial`), o `hojeViola` → `it()` (§ 1.4), a barreira por nome e o inventário.
 
 ## 4. Arquivos
 
