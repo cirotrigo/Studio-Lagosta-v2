@@ -48,7 +48,7 @@ humano (9.4), ausência de logo solta = aviso (9.5), `texto-pequeno` crítica (9
 
 **Seguem PROPOSTA nomeada** (implementadas como recomendação, trocáveis numa constante, nenhuma aprovada): caso B
 `estimado: 'humano'` (9.1 do CP5a, ainda no valor de `POLITICA_DO_ASSUNTO_RECOMENDADA`); CP5b § 9 "Decisões pendentes do owner"
-(9.1–9.13, entre elas `rulesVersion` por hash = decisão 7 do plano); CP5c § 8 (8.1–8.9, entre elas efeitos pós-commit que NÃO
+(9.1–9.13, entre elas `rulesVersion` por bump manual cobrado por impressão digital e validador — hash do fonte descartado, CP5b § 5 — = decisão 7 do plano); CP5c § 8 (8.1–8.9, entre elas efeitos pós-commit que NÃO
 rodam no draft-only); CP5d § 8 (8.1–8.8, entre elas P1 "só grava versão APTA"); CP5e § 5 (5.1–5.5). Do piloto e do adendo: B, 2
 (janelas), 3 (assinatura real × piso), T1a (92 px × margem 96), H, estimador, 5.1/5.2/5.3. Do plano-mestre: 4, 5 e 6.
 
@@ -157,7 +157,7 @@ registrado); **agendados** (população SEPARADA, só se o owner pedir, D3) — 
 | E6b | contribuição visual NÃO trivialmente nula, avaliada só no caso SIMPLES: `visible !== false`; `style.opacity` ausente ou número finito > 0; `size` com largura e altura > 0; `rotation` ausente ou 0; `style` contém SÓ chaves da lista fechada do caso simples (`opacity`, `objectFit`, `cropPosition`, `flipH`, `flipV`) — qualquer outra (`filter`, `mask`, ajustes de imagem, sombra, borda…) pode alterar ou anular pixels (`render-engine.ts:1530` aplica `style.filter` antes de desenhar) e a P1 não a avalia; dimensões do canvas DO RENDER comprovadas pelo cabeçalho PNG (IHDR) da própria mídia da prova (`proof.mediaUrl`, lida só nos primeiros 64 bytes, com as regras de E7) = 1080 × 1920 — a `Page` atual NUNCA entra (pode ter mudado depois do render); caixa (`position`/`size`) intersecta 1080 × 1920 com área > 0. Rotação ≠ 0, máscara, mídia que não é PNG, IHDR ilegível, dimensões ≠ 1080 × 1920 ou campo de transformação não previsto → a P1 NÃO avalia: exclusão, nunca aceite. Na `--contar` (sem rede) a dimensão não é lida: os elegíveis da contagem são TETO, rotulados "canvas não comprovado" | `fundo-invisivel` (oculto / opacidade 0 / sem área / fora do canvas) · `fundo-nao-avaliavel` (rotação / chave de `style` fora da lista / canvas do render não comprovado ou ≠ story / transformação desconhecida) |
 | E7 | URL de download segura: `URL` parseável; protocolo `https:`; sem usuário/senha nem porta; `hostname` (minúsculas) IGUAL a um item da lista FECHADA `STORES_DO_STUDIO` — constante revisada no PR (proposta: `2rhsgfleozgl5jbm.public.blob.vercel-storage.com`, o store atual, citado em `scripts/recover-blob-files.ts:5`), confirmada pelo owner em D7; nunca sufixo, nunca `includes`, nunca os outros hosts de `HOSTS_PROPRIOS` | `host-nao-autorizado` |
 | E8 | classe de origem (3.4) ≠ `render` | `fundo-e-render` (arte dentro de arte) |
-| E8b | a classe tem caminho IMUTÁVEL comprovado no código (3.4, coluna "imutável"): a URL de hoje é necessariamente os bytes do dia do render. A prova não guarda hash dos bytes de origem (`schema.prisma`, `PostRenderProof`), então caminho sobrescrevível ou não comprovado não tem identidade histórica | `origem-sobrescrevivel` · `imutabilidade-nao-comprovada` |
+| E8b | identidade histórica dos bytes: (i) o pathname NÃO casa o padrão de nenhum escritor que sobrescreve — inventário FECHADO de `allowOverwrite: true` em `src/` (hoje: `creatives/persist.ts:174` `drive-cache/`, `creatives/chat-upload.ts:128` `chat-uploads/`, `templates/miniatura.ts:55`, `api/templates/generate-thumbnail/route.ts:69`), mantido por teste no PR que falha quando surgir outro; e (ii) a condição da nota de imutabilidade (padrão do Blob desde 12/10) comprovada. Escritor de caminho livre (`generations/konva-export/route.ts:159`, `fileName` do corpo) grava com `addRandomSuffix: true` — cria caminho novo, não sobrescreve. A prova não guarda hash dos bytes de origem, por isso sem (i) e (ii) não há identidade | `origem-sobrescrevivel` · `imutabilidade-nao-comprovada` |
 | E9 | `fileUrl` (sem query) ainda não selecionado neste cliente | `arquivo-repetido` |
 
 **O que E1–E9 provam, e o que não**: a foto é a camada de fundo REFERENCIADA nas camadas que produziram a mídia efetiva do post
@@ -172,7 +172,7 @@ de fundo é decisão, não código.
 
 ### 3.4 Classe de origem — função pura sobre o `pathname` (minúsculas, sem query, sem `..`)
 
-| Prefixo | Classe | "Original"? | Imutável? (E8b) |
+| Prefixo | Classe (INDÍCIO pelo prefixo) | "Original"? | Escritor conhecido (indício; quem decide é E8b) |
 |---|---|---|---|
 | `uploads/` | `upload` | não afirmado em P1 (ver 3.6) | a confirmar no PR: `put` sem `allowOverwrite` (`api/upload/google-drive/route.ts:65`) — o PR cita o padrão da versão instalada de `@vercel/blob`; até lá `imutabilidade-nao-comprovada` |
 | `chat-uploads/` | `chat-reduzida` | não (convertida/reduzida) | **não**: `addRandomSuffix: false` + `allowOverwrite: true` (`chat-upload.ts:127-128`) → excluída por E8b |
@@ -183,18 +183,20 @@ de fundo é decisão, não código.
 | `posts/<x>/normalized/` | `normalizada` | não | sim (`addRandomSuffix: true`, `later-scheduler.ts`) |
 | qualquer outro `posts/…` ou prefixo | `desconhecida` | não | não comprovada |
 
-**Nota de imutabilidade (vale para `uploads/` e para a mídia `posts/rendered/` lida em E6b)**: as duas rotas chamam `put` sem
+**Nota de imutabilidade (vale para TODA classe em E8b e para a mídia `posts/rendered/` lida em E6b)**: as duas rotas chamam `put` sem
 `allowOverwrite` (`api/upload/google-drive/route.ts:65`, `story-renderer.ts:148`); na versão instalada (`@vercel/blob` 2.0.0) o
 padrão documentado é ERRO ao reusar o pathname (declaração do pacote instalado no checkout de trabalho, `dist/index.d.ts`, a
 conferir e anexar no PR de P1 — o `package-lock.json` só registra a versão), e o pathname leva timestamp. Isso só prova para arquivos gravados com uma versão de mesmo padrão: o PR de P1 tem de mostrar, pelo histórico do `package-lock.json`,
 qual versão estava em produção desde 12/10/2026 (início das provas) e que o padrão era o mesmo; enquanto isso não estiver
-comprovado, `uploads/` fica `imutabilidade-nao-comprovada` e o canvas de E6b fica `fundo-nao-avaliavel`.
+comprovado, todo fundo fica `imutabilidade-nao-comprovada` e o canvas de E6b fica `fundo-nao-avaliavel`.
 
-Tabela fechada; prefixo novo cai em `desconhecida`. Cada linha cita, no PR, a rota que a produz. Por foto o manifesto registra
+Tabela fechada; prefixo novo cai em `desconhecida`. **O prefixo é INDÍCIO, não proveniência**: há escritor de caminho livre
+(`konva-export`, `fileName` arbitrário), então nenhum pathname prova qual rota o gravou nem o que ela fez com os pixels. Cada linha
+cita, no PR, as rotas CONHECIDAS que escrevem ali. Por foto o manifesto registra
 SEPARADOS: (i) a classe; (ii) nome/MIME declarados; (iii) o formato e as dimensões lidos do próprio arquivo baixado; (iv) a
-transformação de pixels: `comprovada` só quando TODA rota que escreve no prefixo transforma (`chat-uploads/`, `drive-cache/`,
-`normalized/`); `desconhecida` quando só o pathname existe e há rota que transforma e rota que não (`posts/<x>/google-drive/`) ou
-quando a rota não foi conferida; nunca "preservada" — e nenhuma delas é chamada de "original".
+transformação de pixels INDICADA pelo prefixo (`indicio`: reduzida, miniatura, recorte possível, normalizada, nenhuma
+conhecida), sempre rotulada como indício — nada no manifesto diz "comprovada" nem "preservada", e nenhuma foto é chamada de
+"original". Afirmação forte exigiria proveniência fora do pathname (ex.: registro da ingestão ligado à URL), que a P1 não lê.
 
 ### 3.5 Contagem (`--contar`)
 
@@ -260,14 +262,14 @@ continua "não medida" e contada. O estimador, na fixture pseudonimizada, mede "
 | T5 | E5 | array; string JSON de array; string dupla-codificada; objeto; JSON inválido; `null` | só os dois primeiros elegíveis |
 | T6 | E6–E6b | 0 / 2 `bg-foto`; `type: 'shape'`; `data:`; `http:`; outras imagens sem `bg-foto` (não cai em `imagens[0]`); oculta; `style.opacity` 0 / −1 / `NaN` / `'0'` (string) / 0,01; `size` 0 × N; caixa inteira fora do canvas; caixa parcialmente dentro; camada opaca acima cobrindo o fundo; `rotation` 45 com a caixa dentro antes de girar e fora depois; `rotation` 0 explícito; `style.mask` presente; `style.filter: 'opacity(0)'` com `style.opacity` 1; `style.filter: 'none'`; `style.brightness` presente; `style` vazio; IHDR da mídia 1080 × 1350 com a caixa em y 1500 (página alterada depois para 1920: a `Page` atual não é lida); mídia JPEG; IHDR truncado; campo de transformação desconhecido | motivo exato; 0,01, parcial e `rotation` 0 elegíveis; `style` vazio elegível; rotação ≠ 0, qualquer chave de `style` fora da lista (inclusive `filter: 'none'`), canvas ≠ story ou não comprovado e campo desconhecido → `fundo-nao-avaliavel`; na `--contar`, elegíveis rotulados "canvas não comprovado"; "coberta" elegível com a contagem de camadas acima registrada (não decide) |
 | T7 | E7–E8 | o host de `STORES_DO_STUDIO` (ok); OUTRO store válido da Vercel (`abcdefghijklmnop.public.blob.vercel-storage.com`); o store antigo `sqc9qfyearji7bel`; `a.b.public.blob.vercel-storage.com`; `public.blob.vercel-storage.com.evil.com`; `evil.com/?x=.public.blob.vercel-storage.com`; `lh3.googleusercontent.com`; `x.supabase.co`; `user@host`; porta; maiúsculas no host; `posts/rendered/` | só o host listado (e a variante em maiúsculas) autorizado; motivos exatos |
-| T8 | 3.4 | cada prefixo; os DOIS fluxos que gravam `posts/<x>/google-drive/` (com e sem recorte) dão a mesma classe e transformação `desconhecida`; `normalized/` com transformação `comprovada`; maiúsculas; query; `%2e%2e`/`..`; prefixo novo | classe da tabela; desconhecida no resto |
+| T8 | 3.4 | cada prefixo; os DOIS fluxos que gravam `posts/<x>/google-drive/` (com e sem recorte) e um pathname com esse prefixo escrito pelo `konva-export` dão a mesma classe; toda transformação sai como `indicio`, nunca `comprovada`; maiúsculas; query; `%2e%2e`/`..`; prefixo novo | classe da tabela; desconhecida no resto |
 | T9 | E9 + ordem | mesma URL com query diferente; empate da data de referência | repetido; desempate por `id`; mesma entrada → manifesto byte a byte igual (hash) |
 | T10 | transação | `tx` falso que registra chamadas | 1ª chamada `SET TRANSACTION READ ONLY`; nenhum SQL com `INSERT/UPDATE/DELETE/ALTER` (lista das strings enviadas) |
 | T11 | `--contar` | `fetch` espião em todos; (a) tabela ausente; (b) migração não registrada com tabela presente; (c) os dois; (d) tabela e migração presentes, nenhuma prova na seleção | `fetch` nunca chamado e nenhum arquivo escrito em (a)–(d); (a), (b), (c): recusa com o(s) sinal(is) exatos e causa "indeterminada"; (d): não recusa, reporta "nenhuma prova nesta seleção" + `COUNT` global |
 | T12 | download | 403, timeout, `text/html` com status 200, bytes que não são imagem com `image/png`, 30 MB sem `content-length`, redirecionamento para host autorizado, para host alheio, cadeia de 4; OK | exclusões `download-falhou:<subcódigo>` contadas; redirecionamento autorizado segue; OK com SHA-256 certo e extensão pela assinatura |
 | T13 | cota/déficit/reposição | 3 elegíveis com cota 10; 12 elegíveis com cota 10 e 2 falhas; 7 elegíveis com 2 falhas e cota 10 | fora da leva (< 6 exportados); 10 exportados com os 2 reservas seguintes no lugar, na ordem; 5 exportados → fora da leva, déficit 5 |
 | T16 | E6b × imutabilidade da mídia | flag "imutabilidade de `posts/rendered/` comprovada" falsa × verdadeira (constante do módulo, fixada pelo PR com a evidência) | falsa → todo elegível vira `fundo-nao-avaliavel`; verdadeira → IHDR decide |
-| T15 | E8b | cada classe da tabela 3.4; `chat-uploads/` e `drive-cache/` com a mesma URL e bytes trocados entre o render e o download (sobrescrita) | `origem-sobrescrevivel` nessas duas; `imutabilidade-nao-comprovada` em `uploads/` até o PR citar a lib; elegível só nas classes "sim" |
+| T15 | E8b | inventário: o teste lista todo `allowOverwrite: true` de `src/` e falha com um a mais; pathname de cada escritor do inventário; `konva-export` com `fileName` = `drive-cache/x.jpg` (cai no padrão → `origem-sobrescrevivel`); condição da nota falsa × verdadeira; cada classe da tabela 3.4; `chat-uploads/` e `drive-cache/` com a mesma URL e bytes trocados entre o render e o download (sobrescrita) | `origem-sobrescrevivel` nessas duas; `imutabilidade-nao-comprovada` em todas enquanto a condição da nota for falsa; com ela verdadeira, elegível só fora dos padrões do inventário |
 | T14 | pureza | `selecao-de-fotos.ts` | não importa `@/lib/db` nem `node:fs`/rede (teste de import, padrão do repo) |
 
 Gates do PR de P1: matriz verde; `npx vitest run` dos arquivos novos; typecheck; lint; `git diff --check`; Codex APTO no HEAD;
@@ -317,3 +319,7 @@ Clientes, cota final, pixels versionáveis e destino das fixtures (5.1/5.2) fica
   corrigidos: (1) § 1.3 reclassificava decisões do CP5a ADOTADAS pelo owner como propostas → separadas; (2) E6b não excluía
   `style.filter` (`render-engine.ts:1530`) → lista fechada de chaves de `style` no caso simples, T6 com `filter: 'opacity(0)'`;
   (3) a declaração do `@vercel/blob` passa a evidência a anexar em P1.
+- **R6 (HEAD b3a67c9e) — NÃO APTO**: R5 resolvidos → novos, corrigidos: (1) o prefixo não prova a rota (`konva-export` aceita
+  `fileName` livre, `route.ts:21, 159`) → classe e transformação viram INDÍCIO, nunca "comprovada"; E8b decide pela ausência de
+  escritor que sobrescreve (inventário fechado de `allowOverwrite: true`, por teste) + a condição do Blob; T8/T15 com o caso;
+  (2) `rulesVersion` proposto é bump manual cobrado por impressão digital, não hash (CP5b § 5).
