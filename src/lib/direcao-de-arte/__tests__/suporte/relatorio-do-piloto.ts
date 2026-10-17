@@ -7,7 +7,8 @@ import type { Rect } from '@/lib/creatives/halo/halo'
 import type { SpecDoLote } from './lote-do-piloto'
 import { MATRIZ, REGRAS_JULGADAS, regrasCobertas, type VereditoDoJuiz } from './oraculos-do-piloto'
 
-export type Etapa = 'compor' | 'revisar' | 'ajustar' | 'agendar' | 'juizes' | 'png'
+export type Etapa = 'compor' | 'revisar' | 'ajustar' | 'agendar' | 'juizes' | 'png' | 'pareada' | 'repeticao' | 'injecao' | 'modoG'
+export const ETAPAS: readonly Etapa[] = ['compor', 'revisar', 'ajustar', 'agendar', 'juizes', 'png', 'pareada', 'repeticao', 'injecao', 'modoG']
 export interface GateRegistrado {
   tipo: 'medida' | 'sem-vinculo' | 'nao-medida'
   resultado?: 'APTO' | 'REVISAO_HUMANA_NECESSARIA'
@@ -36,6 +37,10 @@ export interface RegistroDaPeca {
   assunto?: { estimado: Rect | null; catalogo: Rect | null; verdade: Rect | null; origemNaPeca: 'estimado' | 'catalogo' | 'nenhum' | null }
   /** Modo G: a falha injetada depois da composição. */
   modoG?: { fetchFalhou: boolean; motivoSemAssunto: boolean; gateRecusou: boolean; valido: boolean }
+  /** Foto REAL da fixture: caixas de texto/logo da peça final FORA das janelas fiéis (contrato § 1.2: medida fora delas é "não medida", nunca contada). */
+  fidelidade?: { fora: string[] }
+  /** Decisão 2, cenário INJETADO: uma shape acima da headline — o gate tem de não dar APTO. */
+  oclusaoInjetada?: { gateRecusou: boolean; motivos: string[] }
 }
 
 export const iou = (a: Rect | null, b: Rect | null): number | null => {
@@ -57,13 +62,16 @@ export interface Resumo {
   taxaApto: Record<'cliente' | 'formato' | 'foto' | 'copy' | 'arquetipo', Record<string, { pecas: number; aptasV1: number; aptasFinal: number; drafts: number }>>
   motivos: Record<string, Record<string, number>>
   motivosPorCliente: Record<string, Record<string, number>>
-  falsoApto: Array<{ chave: string; regra: string; camadas: string[]; png?: string }>
-  candidatosFalsoBloqueio: Array<{ chave: string; motivos: string[]; naoComprovadas: number; criticos: number; png?: string }>
+  falsoApto: Array<{ chave: string; regra: string; camadas: string[]; png?: string; sha256?: string }>
+  candidatosFalsoBloqueio: Array<{ chave: string; motivos: string[]; naoComprovadas: number; criticos: number; png?: string; sha256?: string }>
+  /** Peças que chegaram ao gate mas NÃO contam (caixas fora das janelas fiéis da fixture): o que o gate disse e o que o juiz acusaria — indício, não veredito. */
+  naoMedidas: Array<{ chave: string; fora: string[]; gate: string; juizAcusa: string[]; png?: string; sha256?: string }>
   custo: Record<Etapa, { rendersMediana: number; rendersP95: number; msMediana: number; msP95: number }>
   estabilidade: { excecoes: number; naoMedida: number; semVinculo: number; timeouts: number; excecoesPorMensagem: Record<string, number> }
   repetibilidade: { comparadas: number; iguais: number; divergencias: Array<{ chave: string; diferencas: string[] }> }
   decisao1: { fotos: number; iouEstimadoCatalogo: number | null; iouEstimadoVerdade: number | null; iouCatalogoVerdade: number | null; estimadoAcertouInvasao: number; estimadoErrouInvasao: number; bloqueiosPorCaso: Record<string, { pecas: number; bloqueadas: number; bloqueadasQueAVerdadeAprovaria: number; aptasQueAVerdadeReprovaria: number }> }
-  decisao2: { pecasComCamadaAcimaDeTexto: number; oclusaoNaoComprovada: number }
+  decisao2: { pecasComCamadaAcimaDeTexto: number; oclusaoNaoComprovada: number; injecoes: number; injecoesRecusadas: number; motivosDasInjecoes: Record<string, number> }
+  rendersSomados: number
   modoG: { leituras: number; validas: number; invalidas: number; recusadas: number }
   naoCoberto: Array<{ regra: string; estado: string; limite: string }>
 }
@@ -94,18 +102,29 @@ export function agregar(registros: RegistroDaPeca[], elegiveis: number): Resumo 
       ;(motivosPorCliente[r.spec.cliente] ??= {})[m.regra] = (motivosPorCliente[r.spec.cliente][m.regra] ?? 0) + 1
     }
   }
+  // Só a peça MEDIDA conta (contrato § 1.2): com caixa fora das janelas fiéis da fixture, o gate leu pixels que não são os da foto.
+  const naoMedida = (r: RegistroDaPeca) => (r.fidelidade?.fora.length ?? 0) > 0
+  const medidas = chegaram.filter((r) => !naoMedida(r))
   const falsoApto: Resumo['falsoApto'] = []
   const candidatosFalsoBloqueio: Resumo['candidatosFalsoBloqueio'] = []
-  for (const r of chegaram) {
+  for (const r of medidas) {
     const violacoesCobertas = r.juizes.filter((j) => j.viola === true && cobertas.has(j.regra))
-    if (aptoFinal(r)) for (const j of violacoesCobertas) falsoApto.push({ chave: r.spec.chave, regra: j.regra, camadas: j.camadas, png: r.png?.caminho })
+    if (aptoFinal(r)) for (const j of violacoesCobertas) falsoApto.push({ chave: r.spec.chave, regra: j.regra, camadas: j.camadas, png: r.png?.caminho, sha256: r.png?.sha256 })
     else if (r.gateFinal?.tipo === 'medida' && violacoesCobertas.length === 0) {
       const ms = r.gateFinal.motivos
-      candidatosFalsoBloqueio.push({ chave: r.spec.chave, motivos: ms.map((m) => `${m.regra}:${m.codigo}`), naoComprovadas: ms.filter((m) => m.codigo !== 'ACHADO_CRITICO').length, criticos: ms.filter((m) => m.codigo === 'ACHADO_CRITICO').length, png: r.png?.caminho })
+      candidatosFalsoBloqueio.push({ chave: r.spec.chave, motivos: ms.map((m) => `${m.regra}:${m.codigo}`), naoComprovadas: ms.filter((m) => m.codigo !== 'ACHADO_CRITICO').length, criticos: ms.filter((m) => m.codigo === 'ACHADO_CRITICO').length, png: r.png?.caminho, sha256: r.png?.sha256 })
     }
   }
+  const naoMedidas: Resumo['naoMedidas'] = chegaram.filter(naoMedida).map((r) => ({
+    chave: r.spec.chave,
+    fora: r.fidelidade!.fora,
+    gate: r.gateFinal?.tipo === 'medida' ? `${r.gateFinal.resultado}${r.gateFinal.motivos.length ? ` (${r.gateFinal.motivos.map((m) => `${m.regra}:${m.codigo}`).join(', ')})` : ''}` : (r.gateFinal?.tipo ?? '—'),
+    juizAcusa: r.juizes.filter((j) => j.viola === true && cobertas.has(j.regra)).map((j) => `${j.regra} (${j.camadas.join(', ')})`),
+    png: r.png?.caminho,
+    sha256: r.png?.sha256,
+  }))
   const custo = {} as Resumo['custo']
-  for (const etapa of ['compor', 'revisar', 'ajustar', 'agendar', 'juizes', 'png'] as const) {
+  for (const etapa of ETAPAS) {
     const renders = registros.map((r) => r.renders[etapa]).filter((x): x is number => typeof x === 'number')
     const ms = registros.map((r) => r.ms[etapa]).filter((x): x is number => typeof x === 'number')
     custo[etapa] = { rendersMediana: mediana(renders), rendersP95: p95(renders), msMediana: Math.round(mediana(ms)), msP95: Math.round(p95(ms)) }
@@ -122,7 +141,7 @@ export function agregar(registros: RegistroDaPeca[], elegiveis: number): Resumo 
   const invasaoPeloGate = (r: RegistroDaPeca) => (r.gateFinal?.motivos ?? []).some((m) => m.regra === 'texto-sobre-assunto')
   let acertou = 0
   let errou = 0
-  for (const r of comAssunto) {
+  for (const r of comAssunto.filter((r) => !naoMedida(r))) {
     if (r.assunto?.origemNaPeca !== 'estimado') continue
     const verdade = invasaoPelaVerdade(r)
     if (verdade === null || verdade === undefined) continue
@@ -130,7 +149,7 @@ export function agregar(registros: RegistroDaPeca[], elegiveis: number): Resumo 
     else errou++
   }
   const bloqueiosPorCaso: Resumo['decisao1']['bloqueiosPorCaso'] = {}
-  for (const r of chegaram) {
+  for (const r of medidas) {
     const caso = r.modoG ? 'D-falha-de-leitura' : r.spec.foto === 'sem-foto' ? 'E-sem-foto' : r.assunto?.origemNaPeca === 'catalogo' ? 'A-catalogo' : r.assunto?.origemNaPeca === 'estimado' ? 'B-estimado' : 'C-nao-se-aplica'
     const b = (bloqueiosPorCaso[caso] ??= { pecas: 0, bloqueadas: 0, bloqueadasQueAVerdadeAprovaria: 0, aptasQueAVerdadeReprovaria: 0 })
     b.pecas++
@@ -158,6 +177,8 @@ export function agregar(registros: RegistroDaPeca[], elegiveis: number): Resumo 
     motivosPorCliente,
     falsoApto,
     candidatosFalsoBloqueio,
+    naoMedidas,
+    rendersSomados: registros.reduce((t, r) => t + Object.values(r.renders).reduce((a, b) => a + (b ?? 0), 0), 0),
     custo,
     estabilidade: {
       excecoes: excecoes.length,
@@ -179,6 +200,9 @@ export function agregar(registros: RegistroDaPeca[], elegiveis: number): Resumo 
     decisao2: {
       pecasComCamadaAcimaDeTexto: compostas.filter((r) => r.oclusaoProduzida.length > 0).length,
       oclusaoNaoComprovada: chegaram.filter((r) => (r.gateFinal?.motivos ?? []).some((m) => m.regra === 'oclusao')).length,
+      injecoes: registros.filter((r) => r.oclusaoInjetada).length,
+      injecoesRecusadas: registros.filter((r) => r.oclusaoInjetada?.gateRecusou).length,
+      motivosDasInjecoes: contar(registros.flatMap((r) => r.oclusaoInjetada?.motivos ?? [])),
     },
     modoG: { leituras: modoG.length, validas: modoG.filter((r) => r.modoG!.valido).length, invalidas: modoG.filter((r) => !r.modoG!.valido).length, recusadas: modoG.filter((r) => r.modoG!.valido && r.modoG!.gateRecusou).length },
     naoCoberto: REGRAS_JULGADAS.filter((r) => MATRIZ[r].estado === 'nao-coberta' || MATRIZ[r].estado === 'mesma-medida').map((r) => ({ regra: r, estado: MATRIZ[r].estado, limite: MATRIZ[r].limite })),
@@ -188,7 +212,7 @@ export function agregar(registros: RegistroDaPeca[], elegiveis: number): Resumo 
 export const sha256 = (texto: string | Buffer) => createHash('sha256').update(texto).digest('hex')
 
 /** O RESUMO versionado (`docs/piloto-sintetico/<data>-resumo.md`): HEAD, lote, ambiente, denominadores, tabelas e hashes. */
-export function paraMarkdown(resumo: Resumo, meta: { data: string; head: string; loteId: string; ambiente: string; rodada: string; hashRelatorio: string; limites: string[] }): string {
+export function paraMarkdown(resumo: Resumo, meta: { data: string; head: string; loteId: string; ambiente: string; rodada: string; hashRelatorio: string; limites: string[]; excluidosPorMotivo?: Record<string, number>; rendersObservados?: number }): string {
   const L: string[] = []
   L.push(`# Piloto sintético de autonomia — resumo da rodada ${meta.rodada} (${meta.data})`)
   L.push('')
@@ -198,7 +222,8 @@ export function paraMarkdown(resumo: Resumo, meta: { data: string; head: string;
   L.push('')
   const d = resumo.denominadores
   L.push('## Denominadores')
-  L.push(`elegíveis ${d.elegiveis} → peças da rodada ${resumo.pecas} → compostas ${d.compostas} (recusas estruturais ${d.recusasEstruturais}, erros ${d.erros}) → chegaram ao gate ${d.chegaramAoGate} → APTAS na v1 ${d.aptasV1} → APTAS ao fim ${d.aptasFinal} → DRAFTs ${d.drafts}.`)
+  L.push(`elegíveis ${d.elegiveis} → peças da rodada ${resumo.pecas} → compostas ${d.compostas} (recusas estruturais ${d.recusasEstruturais}, erros ${d.erros}) → chegaram ao gate ${d.chegaramAoGate} → APTAS na v1 ${d.aptasV1} → APTAS ao fim ${d.aptasFinal} → DRAFTs ${d.drafts}. Peças NÃO MEDIDAS (fora das janelas fiéis): ${resumo.naoMedidas.length}.`)
+  if (meta.excluidosPorMotivo) L.push(`Exclusões do lote por motivo (não são peças): ${Object.entries(meta.excluidosPorMotivo).map(([m, n]) => `${m} ${n}`).join(' · ') || 'nenhuma'}.`)
   L.push('')
   L.push('## 1. Taxa APTO por eixo (v1 composta · ao fim dos ciclos · DRAFT)')
   for (const eixo of ['cliente', 'formato', 'foto', 'copy', 'arquetipo'] as const) {
@@ -213,24 +238,36 @@ export function paraMarkdown(resumo: Resumo, meta: { data: string; head: string;
   L.push('|---|---|---|---|---|')
   for (const [regra, c] of Object.entries(resumo.motivos).sort()) L.push(`| ${regra} | ${c.ACHADO_CRITICO ?? 0} | ${c.NAO_COMPROVADA ?? 0} | ${c.NAO_MEDIDO ?? 0} | ${c.IDENTIDADE_ILEGIVEL ?? 0} |`)
   L.push('')
-  L.push(`## 3. Falso APTO (gate APTO ∧ juiz coberto acusa) — ${resumo.falsoApto.length === 0 ? 'NENHUM nas regras cobertas' : `**${resumo.falsoApto.length}** — o piloto é INSATISFATÓRIO por definição`}`)
-  for (const f of resumo.falsoApto) L.push(`- ${f.chave}: ${f.regra} (${f.camadas.join(', ')})${f.png ? ` — ${f.png}` : ''}`)
+  L.push('### 2b. Motivos de revisão humana por cliente (gate final)')
+  const regrasPorCliente = [...new Set(Object.values(resumo.motivosPorCliente).flatMap((m) => Object.keys(m)))].sort()
+  L.push(`| cliente | ${regrasPorCliente.join(' | ')} |`)
+  L.push(`|---|${regrasPorCliente.map(() => '---').join('|')}|`)
+  for (const [cliente, m] of Object.entries(resumo.motivosPorCliente).sort()) L.push(`| ${cliente} | ${regrasPorCliente.map((r) => m[r] ?? 0).join(' | ')} |`)
+  L.push('')
+  const indicios = resumo.naoMedidas.filter((n) => n.juizAcusa.length > 0 && /^APTO/.test(n.gate))
+  const veredito3 = resumo.falsoApto.length > 0 ? `**${resumo.falsoApto.length}** — o piloto é INSATISFATÓRIO por definição` : indicios.length > 0 ? `NENHUM nas peças MEDIDAS — mas ${indicios.length} peça(s) NÃO MEDIDA(S) APTA(S) com o juiz acusando (§ 3b): INCONCLUSIVO sobre essa regra até as janelas da fixture cobrirem as caixas` : 'NENHUM nas regras cobertas'
+  L.push(`## 3. Falso APTO (gate APTO ∧ juiz coberto acusa, só peças MEDIDAS) — ${veredito3}`)
+  for (const f of resumo.falsoApto) L.push(`- ${f.chave}: ${f.regra} (${f.camadas.join(', ')})${f.png ? ` — ${f.png}` : ''}${f.sha256 ? ` (SHA-256 \`${f.sha256}\`)` : ''}`)
+  L.push('')
+  L.push(`### 3b. Peças NÃO MEDIDAS (caixas fora das janelas fiéis da foto da fixture) — ${resumo.naoMedidas.length}; indício, nunca contado`)
+  for (const n of resumo.naoMedidas) L.push(`- ${n.chave}: fora das janelas: ${n.fora.join(', ')} · gate: ${n.gate} · juiz acusaria: ${n.juizAcusa.join('; ') || 'nada'}${n.png ? ` — ${n.png}` : ''}${n.sha256 ? ` (SHA-256 \`${n.sha256}\`)` : ''}`)
   L.push('')
   L.push(`## 4. Candidatos a falso bloqueio (gate recusa ∧ nenhum juiz coberto acusa) — ${resumo.candidatosFalsoBloqueio.length} para inspeção humana`)
   L.push(`(${resumo.candidatosFalsoBloqueio.filter((c) => c.criticos === 0).length} só com motivos NÃO COMPROVADOS — o gate não mediu; ${resumo.candidatosFalsoBloqueio.filter((c) => c.criticos > 0).length} com ACHADO_CRITICO — o gate mediu e o juiz discorda)`)
-  for (const c of resumo.candidatosFalsoBloqueio.slice(0, 50)) L.push(`- ${c.chave}: ${c.motivos.join(', ')}${c.png ? ` — ${c.png}` : ''}`)
+  for (const c of resumo.candidatosFalsoBloqueio.slice(0, 50)) L.push(`- ${c.chave}: ${c.motivos.join(', ')}${c.png ? ` — ${c.png}` : ''}${c.sha256 ? ` (SHA-256 \`${c.sha256}\`)` : ''}`)
   L.push('')
-  L.push('## 5. Custo por etapa (renders mediana/p95 · ms mediana/p95)')
+  L.push('## 5. Custo por etapa (renders mediana/p95 · ms mediana/p95) — a peça principal (compor…png), a leitura pareada, a repetição e a injeção em linhas próprias')
   L.push('| etapa | renders med | renders p95 | ms med | ms p95 |')
   L.push('|---|---|---|---|---|')
   for (const [etapa, c] of Object.entries(resumo.custo)) L.push(`| ${etapa} | ${c.rendersMediana} | ${c.rendersP95} | ${c.msMediana} | ${c.msP95} |`)
+  L.push(`Renders somados por etapa: ${resumo.rendersSomados}${meta.rendersObservados !== undefined ? ` · observados pelo contador do renderer na rodada: ${meta.rendersObservados}` : ''}.`)
   L.push('')
   const e = resumo.estabilidade
   L.push(`## 6. Estabilidade: exceções ${e.excecoes} · nao-medida ${e.naoMedida} · sem-vinculo ${e.semVinculo} · timeouts ${e.timeouts}`)
   for (const [m, n] of Object.entries(e.excecoesPorMensagem)) L.push(`- ${n}× ${m}`)
   L.push('')
   const r = resumo.repetibilidade
-  L.push(`## 7. Repetibilidade: ${pct(r.iguais, r.comparadas)} iguais (veredito, motivos, impressão, camadas normalizadas, hash do PNG)`)
+  L.push(`## 7. Repetibilidade: ${pct(r.iguais, r.comparadas)} iguais (compostas: veredito, motivos, camadas normalizadas e hash do PNG; recusas estruturais: o mesmo código)`)
   for (const dv of r.divergencias) L.push(`- ${dv.chave}: ${dv.diferencas.join('; ')}`)
   L.push('')
   const d1 = resumo.decisao1
@@ -241,6 +278,7 @@ export function paraMarkdown(resumo: Resumo, meta: { data: string; head: string;
   for (const [caso, b] of Object.entries(d1.bloqueiosPorCaso).sort()) L.push(`| ${caso} | ${b.pecas} | ${b.bloqueadas} | ${b.bloqueadasQueAVerdadeAprovaria} | ${b.aptasQueAVerdadeReprovaria} |`)
   L.push('')
   L.push(`## 9. Decisão 2 — peças com camada não-texto acima de texto (produzidas): ${resumo.decisao2.pecasComCamadaAcimaDeTexto}; \`oclusao\` não comprovada no gate: ${resumo.decisao2.oclusaoNaoComprovada}`)
+  L.push(`Cenário INJETADO (shape acima da headline em peça APTA): ${resumo.decisao2.injecoes} injeções, ${resumo.decisao2.injecoesRecusadas} recusadas pelo gate${Object.keys(resumo.decisao2.motivosDasInjecoes).length ? ` — motivos: ${Object.entries(resumo.decisao2.motivosDasInjecoes).map(([m, n]) => `${m} ${n}`).join(', ')}` : ''}.`)
   L.push(`Modo G (falha de leitura injetada): ${resumo.modoG.leituras} leituras, ${resumo.modoG.validas} válidas (${resumo.modoG.recusadas} recusadas pelo gate), ${resumo.modoG.invalidas} inválidas (cache usado).`)
   L.push('')
   L.push('## 10. O que NÃO está coberto por juiz (inspeção humana nos PNGs amostrados)')

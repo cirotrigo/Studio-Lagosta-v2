@@ -4,17 +4,20 @@ Esta pasta recebe `cliente-NN/assinaturas.json` (as páginas do template "Assina
 candidatas do véu de cada cliente, com o NOME trocado por `cliente-NN` e nenhuma URL real), gerados em dois passos, uma vez:
 
 1. `npx tsx scripts/fixtures/exportar-piloto-sintetico.ts --cliente <id> [--cliente <id>…] <pasta-dos-exports>` — o EXPORTADOR
-   de leitura: conecta SÓ ao branch de desenvolvimento do Neon (`.env.development.local`; confere o compute contra a produção e
-   aborta se for o mesmo, ou se o arquivo não existir), sessão `default_transaction_read_only=on`, e escreve JSON local.
-2. `npx tsx scripts/fixtures/gerar-fixtures-do-piloto-sintetico.ts <pasta-dos-exports> <esta pasta>` — o GERADOR, sem banco:
-   pseudonimiza (a tabela nome ↔ NN fica em `human-output/`, fora do repositório), troca URLs por tokens `fixture:*` e grava as
-   logos pixel a pixel.
+   de leitura: conecta SÓ pelo `.env.development.local` (o branch de desenvolvimento do Neon); lê o `.env` SÓ para a identidade
+   da produção e é FAIL-CLOSED (`guarda-do-exportador.ts`: sem `.env`, sem URL parseável nele, ou com o mesmo compute no dev —
+   pooled, direto ou em maiúsculas — aborta); transação `READ ONLY`; escreve JSON + PNGs das logos na pasta local.
+2. `npx tsx scripts/fixtures/gerar-fixtures-do-piloto-sintetico.ts <pasta-dos-exports> <esta pasta>` — o GERADOR, OFFLINE (sem
+   banco, Blob, Drive nem rede): pseudonimiza em qualquer profundidade (`pseudonimizar.ts`: só campos permitidos da página, nome
+   → `cliente-NN`, URL → token `fixture:*`, identificador externo zerado) e RECUSA a saída se sobrou qualquer um deles; a tabela
+   nome ↔ NN fica em `human-output/`, fora do repositório.
 
 **Hoje a pasta está vazia de propósito**: a lista de clientes é a decisão 5.2 do owner (contrato
 `docs/PLANO-2026-10-17-PILOTO-SINTETICO-CONTRATO.md`), e as logos/assinaturas identificam a marca (pseudonimização, não
 anonimização). Enquanto isso o piloto roda com `cliente-00` (assinatura sintética limpa) e `cliente-fixture` (a assinatura
 anonimizada de 13/10) — e o resumo diz isso ao lado do veredito.
 
-Formato de `assinaturas.json`: `{ "clienteId": "cliente-NN", "numerosDoProjeto": <Project.assinatura>, "paginas": [<Page da
-assinatura com layers, tags, width, height, background, name>], "logos": [{ "fileUrl": "fixture:logo-<k>", "isProjectLogo": true }],
-"arquivos": { "fixture:logo-<k>": "<png em base64>" }, "candidatasDoVeu": ["#..."] }`.
+Formato de `assinaturas.json` (o que `suporte/fixtures-de-clientes.ts` lê — cada cliente entra com os PRÓPRIOS ativos):
+`{ "clienteId": "cliente-NN", "numerosDoProjeto": <Project.assinatura pseudonimizado>, "paginas": [<name, tags, width, height,
+background, layers, order>], "logos": [{ "fileUrl": "fixture:logo-<k>", "isProjectLogo": true }], "arquivos": { "fixture:logo-<k>":
+"<png em base64>" }, "candidatasDoVeu": ["#..."] }`.

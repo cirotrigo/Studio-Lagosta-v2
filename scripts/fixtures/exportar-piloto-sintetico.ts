@@ -1,35 +1,34 @@
 /**
  * EXPORTADOR de leitura do piloto sintético (contrato § 1.1): lê as assinaturas de clientes do branch de DESENVOLVIMENTO do
- * Neon e escreve JSON local. Nunca toca a produção:
- *  - lê SÓ `.env.development.local` (aborta se não existir — nunca cai no `.env`);
- *  - confere por `computeDe` que o compute do `DATABASE_URL` de dev NÃO é o da produção (`.env`), e aborta se for;
+ * Neon e escreve JSON + PNGs das logos numa pasta local. Nunca toca a produção — e a guarda é FAIL-CLOSED
+ * (`scripts/fixtures/guarda-do-exportador.ts`, testada em `guarda-do-exportador.test.ts`):
+ *  - a conexão sai SÓ de `.env.development.local` (aborta se não existir);
+ *  - o `.env` é lido SÓ para a identidade da produção: sem ele, sem URL parseável nele, ou com o MESMO compute no dev
+ *    (direto, pooled ou em maiúsculas), aborta — sem a prova de que o dev não é a produção, não exporta;
  *  - toda leitura dentro de UMA transação `READ ONLY` (o Postgres recusa qualquer escrita nela).
+ * As logos são baixadas AQUI (pelas URLs públicas do Blob) para a pasta do export: o gerador fica offline.
  *
  *   npx tsx scripts/fixtures/exportar-piloto-sintetico.ts --cliente <projectId> [--cliente <id>…] <pasta-dos-exports>
  *   npx tsx scripts/fixtures/exportar-piloto-sintetico.ts --listar                      # só lista os clientes ativos com assinatura
  *
- * A lista de clientes a exportar é a decisão 5.2 do owner: este script não escolhe por ninguém.
+ * A lista de clientes a exportar é a decisão 5.2 do owner: este script não escolhe por ninguém. ESCRITO E NÃO EXECUTADO.
  */
 import fs from 'node:fs'
 import path from 'node:path'
 import { PrismaClient } from '@prisma/client'
-import { computeDe } from '../../src/lib/compute-do-banco'
+import { lerEnv, recusaDoExportador } from './guarda-do-exportador'
 
-function urlDe(arquivo: string): string | null {
-  if (!fs.existsSync(arquivo)) return null
-  return /^DATABASE_URL=(.+)$/m.exec(fs.readFileSync(arquivo, 'utf8'))?.[1]?.trim().replace(/^"|"$/g, '') ?? null
-}
+const ler = (arquivo: string) => (fs.existsSync(arquivo) ? fs.readFileSync(arquivo, 'utf8') : null)
 
 function urlDoBranchDeDev(): string {
-  const dev = urlDe(path.resolve(process.cwd(), '.env.development.local'))
-  if (!dev) throw new Error('`.env.development.local` não existe ou não tem DATABASE_URL: crie o branch de dev (npm run db:dev:setup) antes de exportar. Este exportador NUNCA lê o `.env`.')
-  const prod = urlDe(path.resolve(process.cwd(), '.env'))
-  if (prod && computeDe(prod) && computeDe(prod) === computeDe(dev)) throw new Error(`o DATABASE_URL de dev aponta para o MESMO compute da produção (${computeDe(dev)}): recusado.`)
-  return dev
+  const dev = lerEnv(ler(path.resolve(process.cwd(), '.env.development.local')))
+  const prod = lerEnv(ler(path.resolve(process.cwd(), '.env')))
+  const recusa = recusaDoExportador({ prod, dev })
+  if (recusa) throw new Error([recusa.titulo, ...recusa.linhas].join('\n'))
+  return dev!.DATABASE_URL
 }
 
 type Pagina = { id: number; name: string; tags: string[]; width: number; height: number; background: string | null; layers: unknown; order: number }
-type Logo = { id: number; fileUrl: string; isProjectLogo: boolean }
 
 async function main() {
   const args = process.argv.slice(2)
@@ -60,8 +59,16 @@ async function main() {
             `SELECT pg.id, pg.name, pg.tags, pg.width, pg.height, pg.background, pg.layers, pg."order" FROM "Page" pg JOIN "Template" t ON t.id = pg."templateId" WHERE t."projectId" = $1 AND pg."isTemplate" = true AND 'assinatura' = ANY(pg.tags) ORDER BY pg."order", pg.id`,
             id,
           )
-          const logos: Logo[] = await tx.logo.findMany({ where: { projectId: id }, select: { id: true, fileUrl: true, isProjectLogo: true }, orderBy: { id: 'asc' } })
-          fs.writeFileSync(path.join(saida!, `projeto-${id}.json`), JSON.stringify({ projeto, paginas, logos }, null, 1))
+          const logos = await tx.logo.findMany({ where: { projectId: id }, select: { id: true, fileUrl: true, isProjectLogo: true }, orderBy: { id: 'asc' } })
+          const comArquivo = []
+          for (const [k, l] of logos.entries()) {
+            const r = await fetch(l.fileUrl)
+            if (!r.ok) throw new Error(`logo ${l.id}: HTTP ${r.status}`)
+            const arquivo = `projeto-${id}-logo-${k}.png`
+            fs.writeFileSync(path.join(saida!, arquivo), Buffer.from(await r.arrayBuffer()))
+            comArquivo.push({ ...l, arquivo })
+          }
+          fs.writeFileSync(path.join(saida!, `projeto-${id}.json`), JSON.stringify({ projeto, paginas, logos: comArquivo }, null, 1))
           console.log(`projeto ${id} (${projeto.name}): ${paginas.length} página(s) de assinatura, ${logos.length} logo(s) → ${saida}/projeto-${id}.json`)
         }
       },

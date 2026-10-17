@@ -1172,9 +1172,14 @@ forte, A2 assunto de contraste baixo, B difusa, C clara, D escura, E gradiente, 
 de 13/10 (a verdade dela é a REGIÃO PROTEGIDA da vitrine, do catálogo — não "o assunto"), e sem-foto; copies curta / média
 (com pré-título) / longa; os dois arquétipos do T1a e a via sem arquétipo; dois clientes: `cliente-00` (assinatura sintética
 limpa, logo sintética toda branca) e `cliente-fixture` (a assinatura anonimizada de 13/10). Fixtures de clientes reais
-pseudonimizados **não existem ainda**: os scripts (`scripts/fixtures/exportar-piloto-sintetico.ts`, só branch de dev,
-`computeDe` contra a produção, transação `READ ONLY`; `gerar-fixtures-do-piloto-sintetico.ts`) estão escritos e **não foram
-executados** — a lista é a decisão 5.2 do owner (`fixtures/piloto-sintetico/LEIAME.md`).
+pseudonimizados **não existem ainda**: os scripts estão escritos e **não foram executados** — a lista é a decisão 5.2 do
+owner (`fixtures/piloto-sintetico/LEIAME.md`). O exportador (`scripts/fixtures/exportar-piloto-sintetico.ts`) conecta SÓ pelo
+`.env.development.local`, lê o `.env` SÓ para a identidade da produção e é **fail-closed** (`guarda-do-exportador.ts`,
+testada: produção pooled, direta, em maiúsculas e referência ausente → recusa), tudo numa transação `READ ONLY`, e baixa as
+logos para a pasta do export; o gerador (`gerar-fixtures-do-piloto-sintetico.ts`) é offline e pseudonimiza em qualquer
+profundidade (`pseudonimizar.ts`, testado: só campos permitidos da página, nome → `cliente-NN`, URL → token, identificador
+externo zerado, conferência final que recusa sobras). Cada `cliente-NN` entra no piloto com os PRÓPRIOS ativos
+(`suporte/fixtures-de-clientes.ts`, testado), não com os da fixture de 13/10.
 
 **Como o piloto julga**: matriz regra → juiz (`suporte/oraculos-do-piloto.ts`). `texto-sobre-assunto` é a única regra
 COBERTA (juiz = a verdade da foto); piso, logo, contraste e tratamento são cobertas-PARCIAIS por juízes independentes
@@ -1185,23 +1190,30 @@ bloqueio** (gate recusa ∧ nenhum juiz coberto acusa) é lista para inspeção 
 
 **Resultados da rodada `--completo` de 17/10** (126 peças, com repetição, 311 s nesta máquina; o resumo versionado traz os
 hashes): 126 elegíveis → 54 compostas (72 recusas estruturais, 0 erros) → 26 APTAS → 26 DRAFTs. Repetibilidade 100 %
-(54/54: veredito, motivos, camadas normalizadas e hash do PNG iguais); estabilidade 0 exceções / 0 não-medidas / 0
+(126/126: nas compostas veredito, motivos, camadas normalizadas e hash do PNG iguais; nas recusas estruturais o mesmo código); estabilidade 0 exceções / 0 não-medidas / 0
 sem-vínculo. Custo mediano por peça: compor 3 renders, revisar 4, agendar 2 (os juízes e o PNG do piloto, 3). O que ele
 achou:
 
-- 🔴 **Falso APTO = 2 → o piloto é INSATISFATÓRIO pela definição do § 6.** As duas peças são a foto REAL sem catálogo
-  (`cliente-00|story|real|{curta,longa}|sem`): o estimador não localizou assunto na foto (origem `nenhum`), a política
-  recomendada trata "foto lida sem assunto localizável" como **não se aplica** (caso C de `PoliticaDoAssunto`, que o owner
-  NÃO fixou — decisão 9.1 do CP5a), o gate deu APTO e o `servico` ficou 100 % sobre a vitrine que o catálogo protege. É a
-  pergunta da decisão 1 medida: **"não se aplica" por estimativa é um APTO silencioso**. Com
-  `semAssuntoLocalizavel: 'humano'` as duas iriam ao humano — e com elas as 34 peças do caso C (B/C/D/E/F sintéticas), que
-  hoje passam. A alternativa é fechar a porta do catálogo: a foto que TEM região protegida no catálogo nunca deveria chegar
-  ao gate sem ela (a peça do piloto nasce sem catálogo de propósito, para medir a estimativa). Ressalva: a imagem da fixture é
-  anonimizada (listras + recortes), não os pixels reais — o estimador na foto real pode se comportar diferente.
+- 🔴 **Falso APTO nas peças MEDIDAS = 0; mas 2 peças APTAS com o juiz acusando ficaram NÃO MEDIDAS → INCONCLUSIVO sobre
+  `texto-sobre-assunto` na foto real.** As duas são a foto REAL da fixture sem catálogo (`cliente-00|story|real|{curta,longa}|sem`):
+  o estimador não localizou assunto na foto anonimizada (origem `nenhum`), a política RECOMENDADA trata "foto lida sem
+  assunto localizável" como **não se aplica** (caso C de `PoliticaDoAssunto`, que o owner NÃO fixou — decisão 9.1 do CP5a),
+  o gate deu APTO e a CAIXA do `servico` ficou 100 % dentro da vitrine que o catálogo protege. Só que todas as caixas dessas
+  peças (headline, serviço, logo) caem FORA das janelas fiéis da fixture (§ 1.2 do contrato: medida fora delas é "não
+  medida", nunca contada) — a imagem ali é a grade anonimizada, não os pixels da foto, e o estimador leu essa grade. Por isso
+  o resumo as lista em § 3b como INDÍCIO, não como falso APTO, e o juiz mede CAIXAS (100 % da caixa, não da tinta). O que o
+  indício diz: **"não se aplica" por estimativa é um APTO silencioso quando a foto não está no catálogo** — com
+  `semAssuntoLocalizavel: 'humano'` as duas iriam ao humano (e com elas as 34 peças do caso C, as sintéticas difusas); a
+  alternativa é fechar a porta do catálogo (foto com região protegida no catálogo nunca chega ao gate sem ela). Para virar
+  medida, as janelas da fixture têm de cobrir as caixas que o compositor produz nessa assinatura — e isso é regenerar a fixture
+  a partir da foto original (`scripts/fixtures/gerar-fixture-piloto-direcao-de-arte.ts`), revelando mais pixels do cliente:
+  anonimização × fidelidade é decisão do owner, não do piloto.
 - **Caso B (assunto só estimado) bloqueia tudo**: 6 peças A1/A2 sem catálogo, todas `NAO_COMPROVADA`, todas aprovadas pela
   verdade (o texto não tocava o assunto). IoU estimado × verdade 0,30. É o custo da política `estimado: 'humano'`: 100 % de
   revisão humana em foto sem catálogo. Modo G (leitura da foto falha depois de composta, caso D): 6 de 6 leituras válidas,
-  as 6 recusadas pelo gate — a falha não vira APTO.
+  as 6 recusadas pelo gate — a falha não vira APTO. **Oclusão injetada** (decisão 2, § 4.3): numa peça APTA sem foto ou de foto
+  difusa, uma shape opaca sobre metade da headline → 100 % recusadas pelo gate (`oclusao:NAO_MEDIDO`, transformação não
+  suportada acima de texto é fail-closed); peças produzidas com camada não-texto acima de texto: 0.
 - 🔴 **A assinatura da fixture de 13/10 não passa no piso de interface em NENHUMA peça**: 18 de 18 compostas com
   `piso-de-interface` (headline no topo < 188 px, logo e serviço no rodapé > 1696 px), 9 também com `tinta-fora-da-caixa`
   (fonte da marca ausente → fonte de reserva mais larga; limite conhecido do piloto). Se a fixture reflete a assinatura real
@@ -1219,12 +1231,15 @@ achou:
 
 **O que o piloto NÃO prova** (sempre ao lado do veredito): fontes da marca (declaradas presentes; render com fonte de
 reserva), a visão (gpt-5.2 não roda), fotos reais dos clientes (decisão 5.1), travas/SQL reais e Blob, custo na Vercel,
-MCP e chat. **§ 6 do contrato: o piloto controlado não autoriza MCP-M0** — e com falso APTO > 0 nem um piloto representativo
-autorizaria. Caminho: decisão do owner sobre o caso C (política ou porta do catálogo) → rodada nova → falso APTO = 0 → aí
-a conversa do 5.1 (fotos reais) e do § 4.8.
+MCP e chat. **§ 6 do contrato: o piloto controlado não autoriza MCP-M0** — e um piloto INCONCLUSIVO sobre a regra coberta, com indícios
+de APTO silencioso, menos ainda. Caminho: decisão do owner sobre o caso C (política ou porta do catálogo) e sobre as
+janelas da fixture (anonimização × fidelidade) → rodada nova → falso APTO = 0 SEM peça não medida → aí a conversa do 5.1
+(fotos reais) e do § 4.8.
 
 **Regras do runner que custaram uma rodada cada**: a amostra padrão (1/6) tem de garantir o PAR foto-com-assunto ×
 sem-arquétipo (a cobertura por eixo não garante — sem ele a decisão 1 e o modo G saem vazios); o modo G roda em TODA peça
 A1 sem arquétipo (`i % 3` deixava a amostra sem nenhuma); a logo sintética é toda branca (um miolo escuro contava como
-`logo-sem-leitura` sobre fundo escuro por construção); os renders dos juízes e do PNG saem do CONTADOR do renderer; os
-caminhos no resumo são relativos à raiz e o HEAD vem marcado `(árvore SUJA)` quando o código que rodou não é o do commit.
+`logo-sem-leitura` sobre fundo escuro por construção); os renders dos juízes, do PNG, da leitura pareada, da repetição, do modo G e da injeção saem do CONTADOR do renderer e o
+resumo diz a soma e o contador (têm de bater); a repetição cobre também as recusas estruturais; o `loteId` é hash dos INSUMOS
+(copies, fotos, arquétipos, versão de cada cliente), não só das chaves; os caminhos no resumo são relativos à raiz e o HEAD
+vem marcado `(árvore SUJA)` quando o código que rodou não é o do commit.

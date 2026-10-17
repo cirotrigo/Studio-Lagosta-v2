@@ -36,6 +36,8 @@ export interface ClienteDoLote {
   id: string
   /** Formatos com página de assinatura disponível. */
   formatos: FormatoDaFoto[]
+  /** Hash dos insumos do cliente (assinatura, números, logos): entra no `loteId`. */
+  versao?: string
 }
 export interface EntradaDeFoto {
   id: string
@@ -117,7 +119,9 @@ export function specsDoLote(entrada: { clientes: ClienteDoLote[]; amostra: numbe
     }
   }
   elegiveis.sort((x, y) => x.chave.localeCompare(y.chave))
-  const loteId = `piloto-sintetico-${createHash('sha256').update(elegiveis.map((e) => e.chave).join('\n')).digest('hex').slice(0, 12)}`
+  // O id do lote identifica os INSUMOS, não só as chaves: copies, entradas de foto, arquétipos e a versão de cada cliente.
+  const insumos = JSON.stringify({ copies: COPIES, fotos: ENTRADAS_DE_FOTO, arquetipos: arquetipos.map((a) => `${a.id}:${a.disponivel}:${a.formatos.join('/')}`), clientes: entrada.clientes.map((c) => [c.id, c.versao ?? null]) })
+  const loteId = `piloto-sintetico-${createHash('sha256').update(insumos).update('\n').update(elegiveis.map((e) => e.chave).join('\n')).digest('hex').slice(0, 12)}`
   let amostra: SpecDoLote[]
   if (entrada.amostra === 'completo') amostra = [...elegiveis]
   else {
