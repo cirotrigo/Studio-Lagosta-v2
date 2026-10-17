@@ -1146,11 +1146,10 @@ Contrato: `docs/PLANO-2026-10-17-CP5E-CONTRATO.md` (Codex APTO na rodada 5). O q
 - **Barreira de lint por NOME** (`eslint.config.mjs`): leitores nunca decidem, produtores nunca leem/validam; o inventário
   cobre os dois lados.
 - **Prova ponta a ponta** (`piloto-ponta-a-ponta.test.ts`, banco falso com travas em `suporte/banco-com-travas.ts` +
-  medição real): E0 compõe com o compositor REAL no banco falso e `revisar-arte` vê o gate com o vínculo na Generation
-  composta — **medido**: a composição legada (assinatura 250/350) cai no piso de interface 188/224 e em `texto-sem-leitura`
-  (headline escuro sobre o fundo escuro), REVISAO_HUMANA_NECESSARIA; por isso E1–E10 partem da peça limpa montada à mão (o
-  controle positivo dos pilotos), e o compor APTO de ponta a ponta fica para quando o compositor respeitar o piso (P6, trilha
-  de design). E1 APTO → DRAFT (registro, `coincidente`, resumo); E2 não APTO → nenhum DRAFT; E3 corrigir → APTO → DRAFT (dois
+  medição real): E0 compõe com o compositor REAL no banco falso — com uma assinatura SINTÉTICA limpa (posições/cores da peça
+  limpa como variante, fontes declaradas presentes) a peça sai APTA e é dela que E1–E10 partem; **medido** (E0-legado): com
+  a assinatura da FIXTURE a composição legada (250/350) cai no piso de interface 188/224 e em `texto-sem-leitura` (headline
+  escuro sobre fundo escuro) → REVISAO_HUMANA_NECESSARIA (P6, trilha de design, não defeito do gate). E1 APTO → DRAFT (registro, `coincidente`, resumo); E2 não APTO → nenhum DRAFT; E3 corrigir → APTO → DRAFT (dois
   registros, mesma `pageVersion`); E-div (véu escuro com folga: a medida corrigida dá `ok` no serviço, a fiel não; os motivos
   do gate informativo = os do `agendar-leva`); E4 edição concorrente → `VERSAO_DIVERGENTE`; E5 DRAFT bom preservado; E6 post
   aprovado intocável e `agendar-leva` reaproveita; E7 conferência de fontes falha → não comprovada → humano; E7b fonte

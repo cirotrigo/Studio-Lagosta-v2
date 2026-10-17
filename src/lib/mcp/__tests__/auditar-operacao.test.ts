@@ -69,7 +69,7 @@ vi.mock('@/lib/db', () => ({
     // CP5e § 2: as DUAS consultas do bloco `gate` (só quando há post com generationId).
     generation: {
       findMany: leitura('generation', ({ where }) =>
-        m.generations.filter((g) => where.id.in.includes(g.id))
+        Array.from(m.generations as any[]).filter((g) => where.id.in.includes(g.id))
       ),
     },
     page: {
@@ -223,6 +223,21 @@ describe('auditar-operacao', () => {
     expect(nove.gate).toMatchObject({ posts: 1, semRegistro: 1 });
     // Registro de gen-2 alega a pg-1? Vínculo cruzado → registroInvalido (o registro de gen-2 foi gravado com pageId pg-1).
     expect(oito.gate.registroInvalido).toBe(0);
+  });
+
+  it('CP5e § 2: o bloco `gate` nunca some — sem projetos visíveis vem VAZIO; quando a leitura do registro falha vem `indisponivel` com o motivo (a auditoria segue)', async () => {
+    carteira(0);
+    m.visiveis.mockResolvedValue(null);
+    const vazio = await auditar({ kind: 'service' });
+    expect(vazio.gate).toMatchObject({ posts: 0, coincidente: { APTO: 0, REVISAO_HUMANA_NECESSARIA: 0 }, parcial: false, teto: 200 });
+    carteira(1);
+    const base = { scheduledDatetime: brt('2026-10-14 10:00'), postType: 'STORY', status: 'DRAFT', mediaUrls: ['x'], renderStatus: 'RENDERED', renderError: null, errorMessage: null, verificationStatus: 'SKIPPED', campaignId: null };
+    m.posts = [{ id: 'c1', projectId: 1, pageId: 'pg-1', generationId: 'gen-1', ...base }];
+    m.generations = { get length() { throw new Error('banco piscou'); } } as any;
+    const r = await auditar({ kind: 'service' });
+    expect(r.gate).toMatchObject({ indisponivel: true, motivo: expect.stringMatching(/banco piscou/) });
+    expect(r.clientes).toHaveLength(1);
+    expect(r.clientes[0].gate).toBeUndefined();
   });
 
   it('saída por cliente: estruturada e compacta', async () => {

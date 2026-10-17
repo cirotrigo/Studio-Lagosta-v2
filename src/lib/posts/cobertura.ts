@@ -729,8 +729,8 @@ export interface CampanhaDaBase {
 }
 
 export interface AuditoriaDaCarteira {
-  /** CP5e § 2: o resumo do registro do gate da carteira (ausente quando a leitura falhou — dito no log). */
-  gate?: ResumoDoGateDaCarteira['total'];
+  /** CP5e § 2: o resumo do registro do gate da carteira — sempre presente na auditoria do banco (vazio sem projetos; `indisponivel` com motivo quando a leitura falhou). */
+  gate?: ResumoDoGateDaCarteira['total'] | { indisponivel: true; motivo: string };
   alvoDias: number;
   /** "AAAA-MM-DD HH:mm" em Brasília. */
   agora: string;

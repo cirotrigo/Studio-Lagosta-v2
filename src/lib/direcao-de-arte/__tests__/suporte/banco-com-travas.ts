@@ -141,10 +141,10 @@ const banco = {
     page: tabela('pages', tx),
     generation: tabela('generations', tx),
     generationJob: { findUnique: async () => null },
-    socialPost: tabela('posts', tx),
+    socialPost: { ...tabela('posts', tx), groupBy: async () => [] as Linha[] },
     itemDeLote: tabela('itensDeLote', tx),
     itemDePlano: tabela('itensDePlano', tx),
-    knowledgeBaseEntry: { findFirst: async () => null },
+    knowledgeBaseEntry: { findFirst: async () => null, findMany: async () => [] as Linha[] },
     learningSignal: { upsert: async () => ({ id: 'sinal' }), findFirst: async () => null, findMany: async () => [] },
   })
   const MAPA: Record<string, Tabela> = { ItemDeLote: 'itensDeLote', ItemDePlano: 'itensDePlano', Page: 'pages', Generation: 'generations', Project: 'projects' }

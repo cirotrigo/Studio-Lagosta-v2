@@ -59,7 +59,12 @@ export async function auditarOperacao(args: {
     comAssinatura: new Set<number>(),
     agora,
   };
-  if (projetos.length === 0) return auditarCarteira({ projetos, ...vazio });
+  if (projetos.length === 0)
+    return {
+      ...auditarCarteira({ projetos, ...vazio }),
+      // CP5e § 2: o bloco `gate` está SEMPRE na resposta — sem projetos, vazio.
+      gate: resumoDoGateDosPosts({ posts: [], generations: [], pages: [], permitidos: args.permitidos }).total,
+    };
 
   const ids = projetos.map((p) => p.id);
   const inicioHistorico = new Date(
@@ -202,12 +207,15 @@ export async function auditarOperacao(args: {
   // teto por chamada; o vínculo post → Generation → página → projeto é conferido no resumo (fail-closed). Falha aqui
   // degrada para "sem bloco" com o motivo, nunca derruba a auditoria.
   const gate = await resumoDoGateDaJanela(posts, args.permitidos).catch(
-    (erro: unknown) => {
+    (erro: unknown): GateIndisponivel => {
       console.error(
-        '[auditar-operacao] não deu para ler o registro do gate dos posts (seguindo sem o bloco):',
+        '[auditar-operacao] não deu para ler o registro do gate dos posts (o bloco sai como indisponível):',
         erro
       );
-      return null;
+      return {
+        indisponivel: true,
+        motivo: `a leitura do registro do gate falhou: ${(erro instanceof Error ? erro.message : String(erro)).slice(0, 160)}`,
+      };
     }
   );
 
@@ -223,7 +231,7 @@ export async function auditarOperacao(args: {
     ),
     agora,
   });
-  if (!gate) return auditoria;
+  if ('indisponivel' in gate) return { ...auditoria, gate };
   return {
     ...auditoria,
     gate: gate.total,
@@ -232,6 +240,12 @@ export async function auditarOperacao(args: {
       gate: gate.porProjeto.get(c.projectId) ?? resumoVazio(),
     })),
   };
+}
+
+/** CP5e § 2: a leitura do registro falhou — o bloco diz isso em vez de sumir (nunca "sem registro"). */
+export interface GateIndisponivel {
+  indisponivel: true;
+  motivo: string;
 }
 
 async function resumoDoGateDaJanela(

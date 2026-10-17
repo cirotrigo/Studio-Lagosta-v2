@@ -808,12 +808,14 @@ describe('P9 — recuperação', () => {
    * lançou REVISAO_HUMANA_NECESSARIA com `details.revisao` tipado. `sem-vinculo`/`nao-medida` na última revisão = FALHA.
    * O que isto prova: o fluxo HUMANO termina numa das duas saídas em ≤ 2 ciclos — não que o chat escalou (decisão 5.4).
    */
-  const ciclos = async (opcoes: { medidorCalibrado?: boolean } = {}) => {
+  const TIPOS_DE_REVISAO = new Set(['medida', 'sem-vinculo', 'nao-medida'])
+  const ciclos = async (opcoes: { medidorCalibrado?: boolean; apenasRascunho?: boolean; ajustesDoCiclo?: (r: Awaited<ReturnType<typeof revisar>>) => Ajuste[] } = {}) => {
     let revisao = await revisar()
     let ultimoAjuste: { code: string; details: unknown } | null = null
-    for (let ciclo = 0; ciclo < 2 && !(revisao.gate.tipo === 'medida' && revisao.gate.resultado === 'APTO') && revisao.relatorio.ajustes.length > 0; ciclo++) {
+    const ajustesDe = opcoes.ajustesDoCiclo ?? ((r: Awaited<ReturnType<typeof revisar>>) => r.relatorio.ajustes)
+    for (let ciclo = 0; ciclo < 2 && !(revisao.gate.tipo === 'medida' && revisao.gate.resultado === 'APTO') && ajustesDe(revisao).length > 0; ciclo++) {
       try {
-        await ajustarArte({ projectId: projectId(), pageId: PAGINA, versaoEsperada: revisao.versao!, ajustes: revisao.relatorio.ajustes })
+        await ajustarArte({ projectId: projectId(), pageId: PAGINA, versaoEsperada: revisao.versao!, ajustes: ajustesDe(revisao), ...(opcoes.apenasRascunho ? { apenasRascunho: true, principal: { tipo: 'user', id: 'piloto' } } : {}) })
         ultimoAjuste = null
       } catch (e) {
         // A recusa de qualidade do CP4 é um desfecho do ciclo (a peça fica como estava), não erro de setup.
@@ -830,8 +832,9 @@ describe('P9 — recuperação', () => {
     const apta = gate.resultado === 'APTO' && problemasAbertos(revisao).length === 0
     const escalada =
       (gate.resultado === CODIGOS.revisaoHumana && gate.motivos.length > 0) ||
-      (ultimoAjuste?.code === CODIGOS.revisaoHumana && typeof (ultimoAjuste.details as { revisao?: { tipo?: string } } | undefined)?.revisao?.tipo === 'string')
-    return { revisao, gate, apta, escalada }
+      // Só o draft-only devolve REVISAO_HUMANA_NECESSARIA em `ajustar-arte` (CP5d); o `revisao` tipado é a prova de que foi o gate.
+      (ultimoAjuste?.code === CODIGOS.revisaoHumana && TIPOS_DE_REVISAO.has(String((ultimoAjuste.details as { revisao?: { tipo?: string } } | undefined)?.revisao?.tipo)))
+    return { revisao, gate, apta, escalada, ultimoAjuste }
   }
 
   it('em até 2 ciclos com os ajustes do próprio revisor, a peça termina apta ou com REVISAO_HUMANA_NECESSARIA — a fixture do piloto: escalada tipada (o serviço sem leitura não tem correção executável)', async () => {
@@ -841,6 +844,17 @@ describe('P9 — recuperação', () => {
     // Hoje a fixture ESCALA (CP2 fica): o motivo está no gate, tipado, e a informação é dita.
     expect(r.escalada).toBe(true)
     expect(r.gate.informacao).toMatch(/não autoriza, não grava/)
+  }, 240_000)
+
+  // A fixture não tem ajuste executável (CP2): o ciclo draft-only usa o ajuste que o CP4 ACEITA (ACEITO_TOPO, como o P11) — é o
+  // gate, na transação do ajustar-arte, que recusa a versão ajustada e produz a escalada tipada pelo último ajuste.
+  it('…e no DRAFT-ONLY a escalada vem do último ajustar-arte: o gate recusa a versão ajustada (REVISAO_HUMANA_NECESSARIA com `details.revisao` tipado) e a página fica como estava', async () => {
+    exigirMedidaFiel(banco.pagina.layers)
+    const antes = JSON.stringify(banco.pagina.layers)
+    const r = await ciclos({ apenasRascunho: true, ajustesDoCiclo: () => [ACEITO_TOPO] as unknown as Ajuste[] })
+    expect(r.escalada).toBe(true)
+    expect(r.ultimoAjuste).toMatchObject({ code: CODIGOS.revisaoHumana, details: { ajusteGravado: false, revisao: { tipo: expect.stringMatching(/^(medida|nao-medida|sem-vinculo)$/) } } })
+    expect(JSON.stringify(banco.pagina.layers)).toBe(antes)
   }, 240_000)
 
   it('…e termina APTA em ≤ 2 ciclos quando o defeito é corrigível pelo revisor: a peça limpa com o apoio invadindo a margem de segurança (fora-da-area-segura → mover → APTO)', async () => {
