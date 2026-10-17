@@ -1,6 +1,6 @@
 # Piloto SINTÉTICO de autonomia — o checkpoint depois do CP5e (contrato)
 
-**Estado: PROPOSTA, em revisão do Codex (rodada 4). Rodada 3: NÃO APTO — 2 BLOQUEADOR, 1 IMPORTANTE, 1 MENOR, endereçados abaixo
+**Estado: APTO PARA MERGE como documento (Codex, rodada 4, HEAD c0bc30bf). As decisões da seção 5 continuam do OWNER (5.1 decide a representatividade do § 4.8; 5.2 a lista de clientes antes de gerar fixtures); a implementação usa as recomendações como proposta nomeada. Histórico — rodada 3: NÃO APTO — 2 BLOQUEADOR, 1 IMPORTANTE, 1 MENOR, endereçados abaixo
 (o modo G força a RELEITURA real da foto — a página é editada depois da composição para a composição não ser reaproveitada — e
 confere que `fetchBuffer` falhou, que saiu `motivoSemAssunto` e que o gate recusou; o juiz do piso é declarado PARCIAL — caixas, sem
 glifos/rotação/efeitos, com a folga de 1 px do CP5a — e o "falso APTO = 0" do piso vale só nesse recorte; § 2 e § 4 alinhados à
