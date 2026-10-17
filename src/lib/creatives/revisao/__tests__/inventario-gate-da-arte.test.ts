@@ -122,13 +122,29 @@ describe('H12 (a) — a barreira por import no lint', () => {
     }
   }, 60_000)
 
+  it('CP5e: leitor e produtor são exceções DIFERENTES — o produtor não lê/valida o registro, o leitor não decide; revisar-arte.ts é produtor', async () => {
+    // Produtores: decidem, nunca leem/validam.
+    for (const produtor of ['src/lib/lotes/agendar-itens.ts', 'src/lib/creatives/arte-rapida.ts', 'src/lib/creatives/revisao/revisar-arte.ts']) {
+      expect(await errosDe("import { decidirEMontarRegistro } from '@/lib/creatives/revisao/gate-registro'\nexport const x = decidirEMontarRegistro\n", produtor), produtor).toEqual([])
+      expect((await errosDe("import { lerGateDaArte } from '@/lib/creatives/revisao/gate-registro'\nexport const x = lerGateDaArte\n", produtor)).length, produtor).toBeGreaterThan(0)
+      expect((await errosDe("import { validadeDoGate } from '@/lib/creatives/revisao/gate-registro'\nexport const x = validadeDoGate\n", produtor)).length, produtor).toBeGreaterThan(0)
+      expect((await errosDe("import { gateDaMedida } from '@/lib/creatives/revisao/gate'\nexport const x = gateDaMedida\n", produtor)).length, produtor).toBeGreaterThan(0)
+    }
+    // Leitores: leem/validam, nunca decidem.
+    for (const leitor of ['src/lib/creatives/revisao/gate-persistido.ts', 'src/lib/creatives/revisao/gate-resumo.ts', 'src/lib/mcp/catalogo/ver-geracao-retorno.ts', 'src/lib/mcp/catalogo/arte-ia.ts']) {
+      expect(await errosDe("import { lerGateDaArte, validadeDoGate } from '@/lib/creatives/revisao/gate-registro'\nexport const x = [lerGateDaArte, validadeDoGate]\n", leitor), leitor).toEqual([])
+      expect((await errosDe("import { decidirEMontarRegistro } from '@/lib/creatives/revisao/gate-registro'\nexport const x = decidirEMontarRegistro\n", leitor)).length, leitor).toBeGreaterThan(0)
+      expect((await errosDe("import { gateDaMedida } from '@/lib/creatives/revisao/gate'\nexport const x = gateDaMedida\n", leitor)).length, leitor).toBeGreaterThan(0)
+    }
+  }, 60_000)
+
   it('os consumidores nomeados passam (e o próprio código deles também); gate-persistido não pode chamar gateDaMedida', async () => {
     expect(await errosDe("import { lerGateDaArte, validadeDoGate } from '../../creatives/revisao/gate-registro'\nexport const x = [lerGateDaArte, validadeDoGate]\n", 'src/lib/mcp/catalogo/ver-geracao-retorno.ts')).toEqual([])
     expect(await errosDe("import { gateDaMedida } from './gate'\nexport const x = gateDaMedida\n", 'src/lib/creatives/revisao/gate-registro.ts')).toEqual([])
     expect((await errosDe("import { gateDaMedida } from './gate'\nexport const x = gateDaMedida\n", 'src/lib/creatives/revisao/gate-persistido.ts')).length).toBeGreaterThan(0)
     // Um teste pode tudo.
     expect(await errosDe("import { gateDaMedida } from '../gate'\nexport const x = gateDaMedida\n", 'src/lib/creatives/revisao/__tests__/qualquer.test.ts')).toEqual([])
-    for (const real of ['src/lib/creatives/revisao/gate-persistido.ts', 'src/lib/mcp/catalogo/ver-geracao-retorno.ts', 'src/lib/mcp/catalogo/arte-ia.ts', 'src/lib/creatives/revisao/gate-registro.ts', 'src/lib/lotes/agendar-itens.ts', 'src/lib/creatives/arte-rapida.ts']) {
+    for (const real of ['src/lib/creatives/revisao/gate-persistido.ts', 'src/lib/mcp/catalogo/ver-geracao-retorno.ts', 'src/lib/mcp/catalogo/arte-ia.ts', 'src/lib/creatives/revisao/gate-registro.ts', 'src/lib/lotes/agendar-itens.ts', 'src/lib/creatives/arte-rapida.ts', 'src/lib/creatives/revisao/revisar-arte.ts']) {
       expect(await errosDe(readFileSync(join(raiz, real), 'utf8'), real), real).toEqual([])
     }
   }, 60_000)

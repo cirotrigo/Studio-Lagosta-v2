@@ -213,7 +213,8 @@ describe('C9 — inventário: quem cria DRAFT, e o que as tools da allowlist alc
   })
 
   it('agendar-itens.ts está nas listas do CP5b: a regra do lint (consumidor nomeado) e o inventário H12', () => {
-    expect(ler('eslint.config.mjs')).toMatch(/"src\/lib\/lotes\/agendar-itens\.ts", "src\/lib\/creatives\/arte-rapida\.ts"\]/)
+    // CP5e: a exceção dos PRODUTORES (por nome) lista agendar-itens, arte-rapida e revisar-arte.
+    expect(ler('eslint.config.mjs')).toMatch(/"src\/lib\/lotes\/agendar-itens\.ts", "src\/lib\/creatives\/arte-rapida\.ts", "src\/lib\/creatives\/revisao\/revisar-arte\.ts"\]/)
     expect(ler('src/lib/creatives/revisao/__tests__/inventario-gate-da-arte.test.ts')).toMatch(/PERMITIDOS_GATE_DA_ARTE = new Set\(\[[^\]]*'src\/lib\/lotes\/agendar-itens\.ts'/)
   })
 })
