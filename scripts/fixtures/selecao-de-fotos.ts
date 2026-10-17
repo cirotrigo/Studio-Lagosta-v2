@@ -168,10 +168,13 @@ export function recusaDoDestino(pasta: string, raizDoRepo: string, realpath: (p:
 
 /** Forma CANÔNICA exigida antes de tudo: `https://<host>` seguido de `/`, `?`, `#` ou fim — sem porta, credencial nem barra extra. */
 const URL_CANONICA = /^https:\/\/[a-z0-9.-]+(?=[/?#]|$)/i
+/** Só ASCII imprimível, sem espaço nem `\\`: o parser de URL REMOVE tab/quebra de linha e troca `\\` por `/` em silêncio. */
+const SO_ASCII_VISIVEL = /^[\x21-\x5b\x5d-\x7e]+$/
 
 /** `null` = autorizado. Comparação EXATA do hostname com `STORES_DO_STUDIO` — nunca sufixo, nunca `includes`. */
 export function recusaDoHost(url: string): string | null {
   // O parser normaliza `https:////h:443` e `h:443` para porta vazia: a forma é lida no TEXTO, antes de parsear.
+  if (!SO_ASCII_VISIVEL.test(url)) return 'url-nao-canonica'
   if (!/^https:\/\//i.test(url)) return 'protocolo-nao-https'
   const autoridade = /^https:\/\/([^/?#]*)/i.exec(url)![1]
   if (autoridade.includes('@')) return 'credencial-na-url'
@@ -562,6 +565,7 @@ export async function baixarComGuarda(
  * a autoridade e é aceito aqui (a URL resolvida é validada de novo por quem chama).
  */
 export function recusaDoLocation(destino: string): string | null {
+  if (!SO_ASCII_VISIVEL.test(destino)) return 'url-nao-canonica'
   if (/^[a-z][a-z0-9+.-]*:/i.test(destino)) return recusaDoHost(destino)
   if (/^[\\/]{2}/.test(destino)) return recusaDoHost(`https:${destino}`)
   return null
