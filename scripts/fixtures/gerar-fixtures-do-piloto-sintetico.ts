@@ -37,7 +37,8 @@ async function main() {
     for (const [url, arquivo] of [...j.logos.map((l) => [l.fileUrl, l.arquivo] as const), ...Object.entries(j.arquivos ?? {})]) {
       if (arquivo) arquivos[url] = (await pngNormalizado(fs.readFileSync(path.join(entrada, arquivo)))).toString('base64')
     }
-    const fixture = pseudonimizar(j, clienteId, arquivos)
+    const { fixture, descartados } = pseudonimizar(j, clienteId, arquivos)
+    for (const d of descartados) console.log(`  descartado (fora do esquema): ${d}`)
     const pasta = path.join(saida, clienteId)
     fs.mkdirSync(pasta, { recursive: true })
     fs.writeFileSync(path.join(pasta, 'assinaturas.json'), JSON.stringify(fixture, null, 1))

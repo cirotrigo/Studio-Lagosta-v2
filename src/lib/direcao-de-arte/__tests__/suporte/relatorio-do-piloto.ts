@@ -225,6 +225,26 @@ export function agregar(registros: RegistroDaPeca[], elegiveis: number): Resumo 
 
 export const sha256 = (texto: string | Buffer) => createHash('sha256').update(texto).digest('hex')
 
+/**
+ * O que o PILOTO exige de si (contrato § 5.3 e § 4): a rodada que viola um destes NÃO passa — o teste cai, em vez de o número
+ * ir quieto para o resumo. Recusa estrutural é desfecho registrado, não violação; o resto do veredito (taxas, caso C, piso) é
+ * do owner, lendo o resumo.
+ */
+export function violacoesDoPiloto(resumo: Resumo, registros: RegistroDaPeca[]): string[] {
+  const v: string[] = []
+  const erros = registros.filter((r) => r.compor.desfecho === 'erro')
+  if (erros.length) v.push(`erro de execução em ${erros.length} peça(s): ${erros.map((r) => `${r.spec.chave}: ${r.compor.codigo}`).join('; ')}`)
+  if (resumo.estabilidade.excecoes) v.push(`${resumo.estabilidade.excecoes} exceção(ões) durante a rodada`)
+  if (resumo.estabilidade.timeouts) v.push(`${resumo.estabilidade.timeouts} timeout(s)`)
+  if (resumo.denominadores.chegaramAoGate === 0) v.push('nenhuma peça MEDIDA chegou ao gate (cobertura vazia)')
+  if (resumo.falsoApto.length) v.push(`falso APTO em ${resumo.falsoApto.length} peça(s) MEDIDA(S): ${resumo.falsoApto.map((f) => `${f.chave} (${f.regra})`).join('; ')}`)
+  if (resumo.repetibilidade.iguais !== resumo.repetibilidade.comparadas) v.push(`repetibilidade ${resumo.repetibilidade.iguais}/${resumo.repetibilidade.comparadas}: ${resumo.repetibilidade.divergencias.map((d) => d.chave).join(', ')}`)
+  if (resumo.modoG.invalidas) v.push(`modo G: ${resumo.modoG.invalidas} leitura(s) inválida(s) (a falha não foi injetada ou o cache serviu)`)
+  if (resumo.modoG.recusadas !== resumo.modoG.validas) v.push(`modo G: ${resumo.modoG.validas - resumo.modoG.recusadas} leitura(s) válida(s) que o gate NÃO recusou`)
+  if (resumo.decisao2.injecoes !== resumo.decisao2.injecoesRecusadas) v.push(`oclusão injetada: ${resumo.decisao2.injecoes - resumo.decisao2.injecoesRecusadas} injeção(ões) que o gate NÃO recusou`)
+  return v
+}
+
 /** O RESUMO versionado (`docs/piloto-sintetico/<data>-resumo.md`): HEAD, lote, ambiente, denominadores, tabelas e hashes. */
 export function paraMarkdown(resumo: Resumo, meta: { data: string; head: string; loteId: string; ambiente: string; rodada: string; hashRelatorio: string; limites: string[]; excluidosPorMotivo?: Record<string, number>; rendersObservados?: number }): string {
   const L: string[] = []
@@ -237,7 +257,7 @@ export function paraMarkdown(resumo: Resumo, meta: { data: string; head: string;
   const d = resumo.denominadores
   L.push('## Denominadores')
   L.push(`elegíveis ${d.elegiveis} → peças da rodada ${resumo.pecas} → compostas ${d.compostas} (recusas estruturais ${d.recusasEstruturais}, erros ${d.erros}) → chegaram ao gate e foram MEDIDAS ${d.chegaramAoGate} → APTAS na v1 ${d.aptasV1} → APTAS ao fim ${d.aptasFinal} → DRAFTs ${d.drafts}.`)
-  L.push(`Desfechos BRUTOS do fluxo (incluem as ${resumo.brutos.naoMedidas} peças NÃO MEDIDAS, fora das janelas fiéis — § 3b): chegaram ao gate ${resumo.brutos.chegaramAoGate} · APTAS ao fim ${resumo.brutos.aptasFinal} · DRAFTs ${resumo.brutos.drafts}. Toda taxa e tabela abaixo é sobre as peças MEDIDAS.`)
+  L.push(`Desfechos BRUTOS do fluxo (incluem as ${resumo.brutos.naoMedidas} peças NÃO MEDIDAS, fora das janelas fiéis — § 3b): chegaram ao gate ${resumo.brutos.chegaramAoGate} · APTAS ao fim ${resumo.brutos.aptasFinal} · DRAFTs ${resumo.brutos.drafts}. As seções 1–4 e 8 são sobre as peças MEDIDAS; custo (5), estabilidade (6) e repetibilidade (7) cobrem todas as peças da rodada.`)
   if (meta.excluidosPorMotivo) L.push(`Exclusões do lote por motivo (não são peças): ${Object.entries(meta.excluidosPorMotivo).map(([m, n]) => `${m} ${n}`).join(' · ') || 'nenhuma'}.`)
   L.push('')
   L.push('## 1. Taxa APTO por eixo, peças MEDIDAS (v1 composta · ao fim dos ciclos · DRAFT)')

@@ -8,10 +8,11 @@ candidatas do véu de cada cliente, com o NOME trocado por `cliente-NN` e nenhum
    da produção e é FAIL-CLOSED (`guarda-do-exportador.ts`: sem `.env`, sem URL parseável nele, ou com o mesmo compute no dev —
    pooled, direto ou em maiúsculas — aborta); transação `READ ONLY`; escreve JSON + PNGs das logos na pasta local.
 2. `npx tsx scripts/fixtures/gerar-fixtures-do-piloto-sintetico.ts <pasta-dos-exports> <esta pasta>` — o GERADOR, OFFLINE (sem
-   banco, Blob, Drive nem rede): re-codifica cada PNG com o sharp (sem metadado) e pseudonimiza em qualquer profundidade
-   (`pseudonimizar.ts`: só campos permitidos da página, nome → `cliente-NN`, texto de exemplo → copy sintética pelo papel,
-   URL → token `fixture:*`, identificador externo zerado) e RECUSA a saída se sobrou URL, nome, identificador, texto sob chave
-   não prevista ou PNG com metadado; a tabela nome ↔ NN fica em `human-output/`, fora do repositório. O piloto recusa fixture
+   banco, Blob, Drive nem rede): re-codifica cada PNG com o sharp (sem metadado) e pseudonimiza por PROJEÇÃO DE ESQUEMA
+   (`pseudonimizar.ts`: só sobrevive o que o esquema conhece — números, cores, enums, fontes; texto → copy sintética pelo papel;
+   `name`/`id` → papel ou `camada-N`; `fileUrl` → token `fixture:*` com bytes obrigatórios; toda string sob chave fora do
+   esquema é DESCARTADA e listada) e RECUSA a saída se sobrou URL, nome, identificador, texto sob chave não prevista ou PNG
+   com metadado; a tabela nome ↔ NN fica em `human-output/`, fora do repositório. O piloto recusa fixture
    cuja camada aponte para um token sem arquivo.
 
 **Hoje a pasta está vazia de propósito**: a lista de clientes é a decisão 5.2 do owner (contrato

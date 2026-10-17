@@ -1176,9 +1176,12 @@ pseudonimizados **não existem ainda**: os scripts estão escritos e **não fora
 owner (`fixtures/piloto-sintetico/LEIAME.md`). O exportador (`scripts/fixtures/exportar-piloto-sintetico.ts`) conecta SÓ pelo
 `.env.development.local`, lê o `.env` SÓ para a identidade da produção e é **fail-closed** (`guarda-do-exportador.ts`,
 testada: produção pooled, direta, em maiúsculas e referência ausente → recusa), tudo numa transação `READ ONLY`, e baixa as
-logos para a pasta do export; o gerador (`gerar-fixtures-do-piloto-sintetico.ts`) é offline e pseudonimiza em qualquer
-profundidade (`pseudonimizar.ts`, testado: só campos permitidos da página, nome → `cliente-NN`, URL → token, identificador
-externo zerado, conferência final que recusa sobras). Cada `cliente-NN` entra no piloto com os PRÓPRIOS ativos
+logos para a pasta do export; o gerador (`gerar-fixtures-do-piloto-sintetico.ts`) é offline, re-codifica cada PNG com o sharp (sem metadado) e
+pseudonimiza por PROJEÇÃO DE ESQUEMA (`pseudonimizar.ts`, testado): só sobrevive o que o esquema conhece — números,
+booleanos, cores, enums sob chaves de enum, nomes de fonte; `content` vira copy sintética pelo papel, `name`/`id` viram o papel
+ou `camada-N`, `groupId` vira `grupo-N`, `fileUrl` vira token e EXIGE os bytes; toda string sob chave fora do esquema é
+DESCARTADA e listada (`descartados`) — e a conferência final recusa URL, nome do cliente, identificador externo, texto sob
+chave não prevista e PNG com metadado. Cada `cliente-NN` entra no piloto com os PRÓPRIOS ativos
 (`suporte/fixtures-de-clientes.ts`, testado), não com os da fixture de 13/10.
 
 **Como o piloto julga**: matriz regra → juiz (`suporte/oraculos-do-piloto.ts`). `texto-sobre-assunto` é a única regra
@@ -1242,6 +1245,8 @@ janelas da fixture (anonimização × fidelidade) → rodada nova → falso APTO
 sem-arquétipo (a cobertura por eixo não garante — sem ele a decisão 1 e o modo G saem vazios); o modo G roda em TODA peça
 A1 sem arquétipo (`i % 3` deixava a amostra sem nenhuma); a logo sintética é toda branca (um miolo escuro contava como
 `logo-sem-leitura` sobre fundo escuro por construção); os renders dos juízes, do PNG, da leitura pareada, da repetição, do modo G e da injeção saem do CONTADOR do renderer e o
-resumo diz a soma e o contador (têm de bater); a repetição cobre também as recusas estruturais; o `loteId` é hash dos INSUMOS
+resumo diz a soma e o contador (têm de bater); a rodada CAI (`violacoesDoPiloto`, puro e testado) com erro de execução,
+exceção, timeout, cobertura vazia, falso APTO em peça medida, repetibilidade < 100 %, modo G inválido ou não recusado e
+oclusão injetada não recusada — o número ruim não vai quieto para o resumo; a repetição cobre também as recusas estruturais; o `loteId` é hash dos INSUMOS
 (copies, fotos, arquétipos, versão de cada cliente), não só das chaves; os caminhos no resumo são relativos à raiz e o HEAD
 vem marcado `(árvore SUJA)` quando o código que rodou não é o do commit.

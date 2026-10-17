@@ -145,7 +145,7 @@ import { fotoSintetica, type CasoDaFoto, type FormatoDaFoto } from './suporte/fo
 import { COPIES, ENTRADAS_DE_FOTO, specsDoLote, type ClienteDoLote, type SpecDoLote } from './suporte/lote-do-piloto'
 import { camadasNaoTextoAcimaDeTexto, julgar, type VereditoDoJuiz } from './suporte/oraculos-do-piloto'
 import { pngDaPeca } from './suporte/png-do-piloto'
-import { agregar, paraMarkdown, sha256, type GateRegistrado, type RegistroDaPeca } from './suporte/relatorio-do-piloto'
+import { agregar, paraMarkdown, sha256, violacoesDoPiloto, type GateRegistrado, type RegistroDaPeca } from './suporte/relatorio-do-piloto'
 
 const LIGADO = !!process.env.PILOTO_SINTETICO
 const PROJETO = 8
@@ -456,7 +456,7 @@ describe.skipIf(!LIGADO)('piloto sintético de autonomia', () => {
     CLIENTES.push(...clientesDoLote())
     const clientes: ClienteDoLote[] = CLIENTES.map((c) => ({ id: c.id, formatos: c.formatos, versao: sha256(JSON.stringify({ numeros: c.numeros, paginas: c.paginas, logos: c.logos, veu: c.candidatasDoVeu })).slice(0, 12) }))
     // Os insumos visuais que o lote não enxerga: os bytes da foto real da fixture (as sintéticas entram pela versão da geração).
-    const lote = specsDoLote({ clientes, amostra: process.env.PILOTO_SINTETICO === 'completo' ? 'completo' : 1 / 6, insumosVisuais: sha256(arquivos['fixture:foto']).slice(0, 16) })
+    const lote = specsDoLote({ clientes, amostra: process.env.PILOTO_SINTETICO === 'completo' ? 'completo' : 1 / 6, insumosVisuais: sha256(Buffer.from(arquivos['fixture:foto'].split(',')[1], 'base64')).slice(0, 16) })
     const n = process.env.PILOTO_CALIBRACAO ? Number(process.env.PILOTO_CALIBRACAO) : lote.amostra.length
     const specs = lote.amostra.slice(0, n)
     const repetir = !process.env.PILOTO_SEM_REPETICAO
@@ -494,11 +494,9 @@ describe.skipIf(!LIGADO)('piloto sintético de autonomia', () => {
     // O que o PILOTO exige de si (o resto é do owner): nenhum efeito pós-commit; o resumo existe.
     expect(espioes.efeitos).not.toHaveBeenCalled()
     expect(registros.length).toBe(specs.length)
-    // A rodada não pode passar em silêncio: erro de execução, exceção ou timeout derrubam o teste (recusa estrutural é desfecho
-    // registrado, não erro); e tem de haver cobertura — pelo menos uma peça MEDIDA chegou ao gate.
-    expect(registros.filter((r) => r.compor.desfecho === 'erro').map((r) => `${r.spec.chave}: ${r.compor.codigo}`)).toEqual([])
-    expect(resumo.estabilidade.excecoes, 'exceções durante a rodada').toBe(0)
-    expect(resumo.estabilidade.timeouts).toBe(0)
-    expect(resumo.denominadores.chegaramAoGate, 'nenhuma peça MEDIDA chegou ao gate').toBeGreaterThan(0)
+    // A rodada não pode passar em silêncio: os invariantes do piloto (erro/exceção/timeout, cobertura vazia, falso APTO em peça
+    // medida, repetibilidade < 100 %, modo G ou oclusão injetada não recusados) derrubam o teste — `violacoesDoPiloto` é puro e
+    // tem teste próprio provando que cada violação cai.
+    expect(violacoesDoPiloto(resumo, registros)).toEqual([])
   }, 8 * 3600_000)
 })

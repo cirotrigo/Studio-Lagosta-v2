@@ -35,7 +35,10 @@ export function carregarClientesDasFixtures(pasta: string): ClienteDaFixture[] {
       })
     const paginas = j.paginas.map((p, i) => ({ ...p, id: `${nome}-pagina-${i}`, tags: (p.tags as string[]) ?? [], layers: trocar((typeof p.layers === 'string' ? JSON.parse(p.layers) : p.layers) as Layer[]) }))
     const formatos = [...new Set(paginas.map((p) => (p.tags.includes('feed') ? 'feed' : 'story')))] as ClienteDaFixture['formatos']
-    lista.push({ id: nome, formatos, numeros: (j.numerosDoProjeto ?? {}) as Record<string, unknown>, paginas, logos: (j.logos ?? []).map((l) => ({ fileUrl: dataUrls[l.fileUrl] ?? l.fileUrl, isProjectLogo: l.isProjectLogo })), candidatasDoVeu: j.candidatasDoVeu ?? [] })
+    lista.push({ id: nome, formatos, numeros: (j.numerosDoProjeto ?? {}) as Record<string, unknown>, paginas, logos: (j.logos ?? []).map((l) => {
+      if (!dataUrls[l.fileUrl]) throw new Error(`fixture ${nome} incompleta: a logo ${l.fileUrl} não tem arquivo na fixture`)
+      return { fileUrl: dataUrls[l.fileUrl], isProjectLogo: l.isProjectLogo }
+    }), candidatasDoVeu: j.candidatasDoVeu ?? [] })
   }
   return lista
 }
