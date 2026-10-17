@@ -1124,3 +1124,35 @@ P11 tem fila por trava e um controle POSITIVO com medição real (a peça limpa,
 da escrita no draft-only usa o carimbo `updatedAt` lido SOB TRAVA (a conferência sob trava é a prova de versão) — o render
 condicionado de outra chamada move o `@updatedAt` ao gravar só a miniatura, e com o carimbo de antes da espera o ajuste
 recusaria `VERSAO_DIVERGENTE` numa página igual (A13e; o banco falso move o carimbo em toda escrita de Page, como o Prisma).
+
+## CP5e — provas de autonomia: o gate como informação, o resumo do registro e a prova ponta a ponta (17/10/2026)
+
+Contrato: `docs/PLANO-2026-10-17-CP5E-CONTRATO.md` (Codex APTO na rodada 5). O que entrou:
+
+- **`revisarArte` devolve `gate`** (`GateInformativo`: `medida` | `sem-vinculo` | `nao-medida`, sempre com a frase fixa
+  `INFORMACAO_DO_GATE_DO_REVISOR`). A medida do revisor é CORRIGIDA em memória pela régua (`corrigir: true`: o `ok` da força
+  PROPOSTA); o gate decide sobre uma SEGUNDA medida fiel (`corrigir: false`, a dos produtores) sobre o mesmo contexto —
+  custo: dois renders do fundo a mais por chamada. `decidirEMontarRegistro` com origem `revisar-arte`, SEM gravar. A
+  Generation da peça é escolhida UMA vez e relida com `sourcePageId` (pedida → compositor → última arte → nenhuma) e passada
+  ao contexto; a composição só é reaproveitada quando a arte é desta versão (regra do CP5c) — numa página editada depois da
+  arte, o assunto é estimado de novo. Página-modelo → `sem-vinculo` (decisão 5.2, proposta).
+- **O "em até 2 ciclos" virou `it()` tipado** (`piloto-ciclo.test.ts`): apta ⇔ gate APTO + regras duras mediram + sem
+  problema aberto; escalada ⇔ gate REVISAO_HUMANA_NECESSARIA com motivos ou `ajustar-arte` com `details.revisao`. Dois
+  casos: a fixture (escala — CP2 fica) e a peça limpa com o apoio fora da margem (mover → APTO). "Não há" conta como medido
+  (`naoSeAplica`), só a falha de leitura não.
+- **`auditar-operacao`**: bloco `gate` por `gate-resumo.ts` (puro; `lerGateDaArte` + `validadeDoGate`; fail-closed no vínculo
+  post → Generation → `fieldValues.pageId` → `Template.projectId`; rótulos `coincidente`/`historico`/`ilegivel`/`semRegistro`/
+  `registroInvalido`; teto 200 e `parcial`). Nada medido, nada escrito.
+- **Barreira de lint por NOME** (`eslint.config.mjs`): leitores nunca decidem, produtores nunca leem/validam; o inventário
+  cobre os dois lados.
+- **Prova ponta a ponta** (`piloto-ponta-a-ponta.test.ts`, banco falso com travas em `suporte/banco-com-travas.ts` +
+  medição real): E0 compõe com o compositor REAL no banco falso — com uma assinatura SINTÉTICA limpa (posições/cores da peça
+  limpa como variante, fontes declaradas presentes) a peça sai APTA e é dela que E1–E10 partem; **medido** (E0-legado): com
+  a assinatura da FIXTURE a composição legada (250/350) cai no piso de interface 188/224 e em `texto-sem-leitura` (headline
+  escuro sobre fundo escuro) → REVISAO_HUMANA_NECESSARIA (P6, trilha de design, não defeito do gate). E1 APTO → DRAFT (registro, `coincidente`, resumo); E2 não APTO (margem de segurança, que revisor e gate veem) → nenhum
+  DRAFT; E2b o piso de interface (só o gate vê; o revisor não tem ajuste → "leve à pessoa"); E3 = E2 corrigido pelo mover do
+  revisor → APTO → DRAFT (dois registros, mesma `pageVersion`); E-div (véu escuro com folga: a medida corrigida dá `ok` no serviço, a fiel não; os motivos
+  do gate informativo = os do `agendar-leva`); E4 edição concorrente → `VERSAO_DIVERGENTE`; E5 DRAFT bom preservado; E6 post
+  aprovado intocável e `agendar-leva` reaproveita; E7 conferência de fontes falha → não comprovada → humano; E7b fonte
+  ausente → crítico → humano; E8 nenhum efeito pós-commit em caso algum; E10 página editada → `historico` nos dois leitores.
+  **Não prova**: travas/SQL reais, Blob, autorização MCP, comportamento do chat, custo/repetibilidade (§ 4.8).

@@ -298,3 +298,12 @@ intacta. A recusa TOTAL do CP4 no draft-only também sai como `REVISAO_HUMANA_NE
 `details.causa`. O sucesso traz `revisao` (APTO) com o `generationId`. Fluxo humano igual (código do CP4 mantido).
 Nenhum parâmetro novo; a descrição ganhou o parágrafo "GATE DE AUTONOMIA". Detalhe em `docs/regras/revisor-da-arte.md`
 § CP5d.
+
+## CP5e — o gate como informação no `revisar-arte` e o bloco `gate` em `auditar-operacao` (17/10/2026)
+
+Contrato: `docs/PLANO-2026-10-17-CP5E-CONTRATO.md`. `revisar-arte` (consultiva, `readOnlyHint`) devolve `gate` (informação,
+sem gravar; segunda medida fiel com `corrigir: false`; seleção ÚNICA da Generation da peça: a pedida → a do compositor → a
+última arte → `sem-vinculo`). Com `pageId` E `generationId`, a arte precisa ser desta página (`GERACAO_DE_OUTRA_PAGINA`, 422 —
+antes o `generationId` era ignorado). `auditar-operacao` lê o registro dos posts da janela (duas consultas, teto 200) e
+rotula por `validadeDoGate`. Barreira de lint por NOME: leitores (`lerGateDaArte`/`validadeDoGate`: gate-persistido,
+gate-resumo, ver-geracao-retorno, arte-ia) × produtores (`decidirEMontarRegistro`: agendar-itens, arte-rapida, revisar-arte).
