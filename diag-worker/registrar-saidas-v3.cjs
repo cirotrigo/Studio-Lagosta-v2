@@ -7,7 +7,7 @@
 const os = require('node:os')
 const path = require('node:path')
 const cp = require('node:child_process')
-const { gravar, texto } = require('./diario-seguro.cjs')
+const { gravar, enumeracao } = require('./diario-seguro.cjs')
 if (process.env.DIAG_LOG) {
   const papel = (arquivo, args) => {
     const nome = path.basename(String(arquivo || ''))
@@ -25,7 +25,7 @@ if (process.env.DIAG_LOG) {
     const filho = this.pid
     const p = papel(opcoes && opcoes.file, opcoes && opcoes.args)
     gravar({ ev: 'spawn', filho, papel: p })
-    this.once('exit', (code, signal) => gravar({ ev: 'exit', filho, papel: p, code, signal: signal ? texto(signal) : null, vidaMs: Date.now() - inicio }))
+    this.once('exit', (code, signal) => gravar({ ev: 'exit', filho, papel: p, code, signal: signal ? enumeracao(signal) : null, vidaMs: Date.now() - inicio }))
     return r
   }
   setInterval(() => {

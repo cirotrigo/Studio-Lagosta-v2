@@ -3,24 +3,26 @@
  *  - o arquivo tem de estar DIRETAMENTE em DIAG_DIR (realpath do diretório pai === realpath de DIAG_DIR), terminar em `.jsonl`;
  *  - aberto com O_APPEND | O_CREAT | O_NOFOLLOW e modo 0600: symlink no próprio arquivo é recusado pelo SO; se já existir,
  *    tem de ser arquivo regular do mesmo dono;
- *  - teto de 20 MB por processo; passou, para de gravar e avisa no stderr;
+ *  - teto de 20 MB POR PROCESSO (não por diário: vários processos somam); passou, para de gravar e avisa no stderr;
+ *  - arquivo já existente só é aceito com 1 link (sem hardlink) e sem permissão de grupo/outros (modo & 077 === 0);
  *  - toda falha (recusa, abertura, escrita) é avisada no stderr — canal independente, vai para o .out da execução;
- *  - campos de texto só entram SANITIZADOS (`texto`): fora de [A-Za-z0-9 ._/:-]{1,120} vira `h:<sha256[0..12]>`;
+ *  - texto livre (nome de teste) NUNCA é gravado: o rastro usa o `task.id` opaco do Vitest; `caminhoDeTeste` só aceita
+ *    caminho de teste do repositório (`src/…` ou `diag-worker/…` terminando em `.test.ts`), senão `fora-do-padrao`;
+ *    `enumeracao` só aceita valores de uma lista fechada (sinal, estado);
  *    DIAG_EXEC só 1–3 dígitos.
  */
 const fs = require('node:fs')
 const path = require('node:path')
-const crypto = require('node:crypto')
 const TETO = 20 * 1024 * 1024
 const avisar = (m) => {
   try {
     process.stderr.write(`[diag] ${m}\n`)
   } catch {}
 }
-const texto = (v) => {
-  const s = String(v ?? '')
-  return /^[A-Za-z0-9 ._/:-]{1,120}$/.test(s) ? s : `h:${crypto.createHash('sha256').update(s).digest('hex').slice(0, 12)}`
-}
+const ENUMERACAO = new Set(['SIGKILL', 'SIGSEGV', 'SIGABRT', 'SIGTERM', 'SIGBUS', 'SIGILL', 'SIGFPE', 'SIGINT', 'SIGHUP', 'SIGPIPE', 'pass', 'fail', 'skip', 'todo', 'run', 'queued'])
+const enumeracao = (v) => (ENUMERACAO.has(String(v)) ? String(v) : 'outro')
+const caminhoDeTeste = (v) => (/^(src|diag-worker)\/[A-Za-z0-9._/-]{1,200}\.test\.ts$/.test(String(v ?? '')) && !String(v).includes('..') ? String(v) : 'fora-do-padrao')
+const opaco = (v) => (/^[A-Za-z0-9_-]{1,64}$/.test(String(v ?? '')) ? String(v) : 'fora-do-padrao')
 const EXEC = /^\d{1,3}$/.test(process.env.DIAG_EXEC || '') ? process.env.DIAG_EXEC : 'invalido'
 let fd = null
 let bytes = 0
@@ -34,9 +36,9 @@ function abrir() {
     if (fs.realpathSync(path.dirname(path.resolve(LOG))) !== fs.realpathSync(path.resolve(DIR))) throw new Error('DIAG_LOG fora de DIAG_DIR')
     const f = fs.openSync(LOG, fs.constants.O_WRONLY | fs.constants.O_APPEND | fs.constants.O_CREAT | fs.constants.O_NOFOLLOW, 0o600)
     const st = fs.fstatSync(f)
-    if (!st.isFile() || (typeof process.getuid === 'function' && st.uid !== process.getuid())) {
+    if (!st.isFile() || (typeof process.getuid === 'function' && st.uid !== process.getuid()) || st.nlink !== 1 || (st.mode & 0o077) !== 0) {
       fs.closeSync(f)
-      throw new Error('DIAG_LOG não é arquivo regular do usuário')
+      throw new Error('DIAG_LOG não é arquivo regular do usuário, com 1 link e modo 0600')
     }
     return f
   } catch (e) {
@@ -56,10 +58,12 @@ function gravar(o) {
     return
   }
   try {
-    fs.writeSync(fd, linha)
-    bytes += linha.length
+    const buf = Buffer.from(linha)
+    const n = fs.writeSync(fd, buf)
+    bytes += n
+    if (n !== buf.length) avisar(`gravação parcial: ${n} de ${buf.length} bytes`)
   } catch (e) {
     avisar(`falha de gravação: ${e.message}`)
   }
 }
-module.exports = { gravar, texto }
+module.exports = { gravar, enumeracao, caminhoDeTeste, opaco }
