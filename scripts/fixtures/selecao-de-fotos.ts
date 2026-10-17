@@ -376,8 +376,15 @@ export interface OpcoesDaAvaliacao {
   imutabilidadeComprovada: boolean
 }
 
-/** Chave de E9: o `fileUrl` sem query nem fragmento. */
-export const chaveDoArquivo = (url: string) => url.split(/[?#]/)[0]
+/** Chave de E9: esquema + host (minúsculos, como o servidor os trata) + caminho; sem query nem fragmento. */
+export function chaveDoArquivo(url: string): string {
+  try {
+    const u = new URL(url)
+    return `${u.protocol}//${u.hostname}${u.pathname}`
+  } catch {
+    return url.split(/[?#]/)[0]
+  }
+}
 
 /**
  * E1–E8b, em ordem; o primeiro motivo vence. Ficam com quem chama: o canvas de E6b (rede, `conferirCanvas`) e E9
@@ -394,7 +401,8 @@ export function avaliarPost(p: PostLido, o: OpcoesDaAvaliacao): Avaliacao {
   if (!p.pageId) return { exclusao: 'midia-direta-sem-pagina' }
   const prova = p.provas.find((pr) => pr.mediaUrl === p.mediaUrls[0])
   if (!prova) return { exclusao: p.provas.length === 0 ? 'sem-prova' : 'prova-de-outra-midia' }
-  if (o.populacao === 'publicados' && (!prova.createdAt || prova.createdAt.getTime() > ref.data.getTime())) {
+  if (!prova.createdAt) return { exclusao: 'prova-sem-data' }
+  if (o.populacao === 'publicados' && prova.createdAt.getTime() > ref.data.getTime()) {
     return { exclusao: 'prova-posterior-a-publicacao' }
   }
   if (typeof prova.proofVersion !== 'number' || !VERSOES_DA_PROVA_CONHECIDAS.includes(prova.proofVersion)) {
@@ -419,7 +427,7 @@ export function avaliarPost(p: PostLido, o: OpcoesDaAvaliacao): Avaliacao {
       campoDaData: ref.campo,
       pageId: p.pageId,
       mediaUrl: prova.mediaUrl,
-      provaCriadaEm: prova.createdAt!.toISOString(),
+      provaCriadaEm: prova.createdAt.toISOString(),
       proofVersion: prova.proofVersion,
       fileUrl,
       cropPosition: typeof crop === 'string' ? crop : 'ausente',
