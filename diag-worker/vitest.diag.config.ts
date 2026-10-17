@@ -10,7 +10,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    setupFiles: [resolve(raiz, 'vitest.setup.ts'), resolve(__dirname, 'rastro.ts')],
+    setupFiles: [resolve(raiz, 'vitest.setup.ts'), resolve(__dirname, process.env.DIAG_RASTRO ?? 'rastro-v3.ts')],
     testTimeout: 20_000,
     include: (process.env.DIAG_INCLUDE ?? '').split(',').filter(Boolean),
     pool: 'forks',
