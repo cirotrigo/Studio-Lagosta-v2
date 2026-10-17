@@ -1,6 +1,6 @@
 # Continuidade do plano-mestre e contrato PROPOSTO do exportador `--fotos` (17/10/2026)
 
-> **Estado: PROPOSTA para decisão do owner.** Nada aqui está implementado nem autorizado. Este documento (1) reconcilia o
+> **Estado: PROPOSTA para decisão do owner — Codex APTO (R9, mantido na R10 proporcional, HEAD 40b4e4e6).** Nada aqui está implementado nem autorizado. Este documento (1) reconcilia o
 > plano-mestre (`docs/PLANO-2026-10-15-AUTONOMIA-DIRECAO-DE-ARTE-E-MCP.md`) com a main `ac69d767`, (2) dá a ordem de
 > continuidade com dependências e critérios de aceite, e (3) detalha, a partir do § 4 do adendo
 > (`docs/PLANO-2026-10-17-PILOTO-ADENDO-DIAGNOSTICO.md`), o contrato técnico do modo `--fotos` do exportador e a sua matriz de
@@ -346,3 +346,5 @@ Clientes, cota final, pixels versionáveis e destino das fixtures (5.1/5.2) fica
   expressa do owner, e P6 só se chama "representativa" com D8 decidida. A imutabilidade do Blob fica como exigência do PR de P1.
 - **R9 (HEAD 5d19e5c2) — APTO para decisão do owner.** Uma condição técnica (classe ii, não bloqueia a decisão) incorporada
   depois do APTO: aceitar só `proofVersion` conhecida (E4b, T4c).
+- **R10 proporcional (HEAD 40b4e4e6, diff 5d19e5c2..HEAD) — APTO**, nenhum achado. Todas as rodadas foram revisão ESTÁTICA: o
+  Codex não executou testes nem acessou banco, rede, Blob ou dados de clientes.
