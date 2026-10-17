@@ -1,6 +1,10 @@
 # Piloto SINTÉTICO de autonomia — o checkpoint depois do CP5e (contrato)
 
-**Estado: PROPOSTA, em revisão do Codex (rodada 3). Rodada 2: NÃO APTO — 3 BLOQUEADOR, 1 IMPORTANTE, 1 MENOR, endereçados abaixo
+**Estado: PROPOSTA, em revisão do Codex (rodada 4). Rodada 3: NÃO APTO — 2 BLOQUEADOR, 1 IMPORTANTE, 1 MENOR, endereçados abaixo
+(o modo G força a RELEITURA real da foto — a página é editada depois da composição para a composição não ser reaproveitada — e
+confere que `fetchBuffer` falhou, que saiu `motivoSemAssunto` e que o gate recusou; o juiz do piso é declarado PARCIAL — caixas, sem
+glifos/rotação/efeitos, com a folga de 1 px do CP5a — e o "falso APTO = 0" do piso vale só nesse recorte; § 2 e § 4 alinhados à
+matriz; a conta das specs refeita). Rodada 2: NÃO APTO — 3 BLOQUEADOR, 1 IMPORTANTE, 1 MENOR, endereçados abaixo
 (o piloto CONTROLADO não autoriza a passagem para o MCP-M0 — § 6 exige a alternativa de 5.1 ou a alteração explícita do § 4.8 pelo
 owner; a matriz 2.1 rebaixa para "mesma medida — não é juiz" o que reaproveita `pisoDeInterface`/`checkTextGeometry` e ganha
 `logo-sobre-texto`; o caso D (falha de leitura) vira falha INJETADA depois da composição, no caminho de leitura do revisor;
@@ -69,15 +73,20 @@ localizado (região de alto contraste/textura com caixa CONHECIDA — a verdade 
 contraste (a estimativa tende a errar: é o caso que a decisão 1 precisa); (B) textura difusa sem região forte (`naoSeAplica`
 esperado); (C) fundo liso claro; (D) fundo liso escuro; (E) gradiente vertical claro → escuro; (F) ruído em toda a área (o pior
 caso da régua); (G) a FALHA de leitura (caso D do § 4.2) — NÃO é uma foto: é um MODO aplicado a uma peça composta com a foto
-A1 VÁLIDA (bytes inválidos abortariam a composição em `carregarFoto` → `sharp.metadata()`), em que o harness faz `fetchBuffer`
-da foto falhar DURANTE a leitura do revisor e do gate dos produtores (o precedente é `fotoIlegivel` do harness do CP0) →
-`motivoSemAssunto` sem a marca → não medido → humano; (H) peça SEM foto (caso E do § 4.2). Cada foto leva `assuntoVerdade: Rect | null`. Mais UMA foto real: a da fixture de 13/10 (anonimizada, com a região
+A1 VÁLIDA (bytes inválidos abortariam a composição em `carregarFoto` → `sharp.metadata()`). Como o revisor devolve o assunto do
+CACHE da composição antes de chamar `fetchBuffer` quando a composição é reaproveitável, o modo G primeiro EDITA a página
+composta (um texto movido 1 px: a `versaoRenderizada` deixa de ser a da página e o cache cai — a regra do CP5c) e só então faz
+`fetchBuffer` da foto FALHAR durante a leitura do revisor e do gate dos produtores (precedente: `fotoIlegivel` do harness do
+CP0); o piloto CONFERE que a chamada falhou (contador do harness), que saiu `motivoSemAssunto` sem a marca, que o gate do revisor
+e o do `agendar-leva` recusaram por `texto-sobre-assunto` NÃO COMPROVADA e que nenhum DRAFT nasceu — uma leitura em que o cache
+foi usado é contada como "modo G inválido", nunca como caso D; (H) peça SEM foto (caso E do § 4.2). Cada foto leva `assuntoVerdade: Rect | null`. Mais UMA foto real: a da fixture de 13/10 (anonimizada, com a região
 protegida anotada) — o único caso real do lote, dito; toda medida de texto/logo sobre ela passa por `exigirMedidaFiel`, inclusive
 DEPOIS de cada ajuste (medida fora das janelas é "não medida", nunca contada).
 
 ### 1.3 Specs
 
-Por cliente × formato (story, feed quando houver assinatura de feed) × foto (6 sintéticas + a real quando story) × copy (3
+Por cliente × formato (story, feed quando houver assinatura de feed) × entrada do eixo "foto" (7 sintéticas A1–F + a real de
+13/10 quando story + "sem foto" H; o modo G à parte) × copy (3
 copies sintéticas: curta — headline + apoio + serviço, o mínimo que TODO arquétipo do catálogo aceita (`apoio` é obrigatório em
 dois deles); média — pré-título, headline, apoio, serviço; longa — headline de 2 linhas, apoio de 3, serviço de 2) × arquétipo
 (sem; `minimal-fb-topo-esquerda`; `minimal-fb-centro-optico`; `minimal-fb-base-esquerda` entra SÓ se `disponibilidadeNoT1a` o der
@@ -103,9 +112,9 @@ REAL (persistência falsa: Page + Generation no banco, como no CP5e) — conta r
 visão é gpt-5.2 e o piloto é hermético) — guarda `gate` (informação), achados, ajustes propostos; 3. se o gate recusar e houver
 `ajustes`, até 2 ciclos de `ajustarArte` draft-only com os ajustes do revisor (o CP4 e o gate dos produtores decidem), revisando
 depois de cada; 4. `agendarItensDoLote` draft-only (item do lote apontando a Generation): `criado` ou recusa (REVISAO_HUMANA_
-NECESSARIA com motivos); 5. os ORÁCULOS do CP0 sobre a versão FINAL da página, pela matriz da § 2.1 (independência PARCIAL, dita: o mesmo
-`CanvasRenderer`, e `propriedades.ts` importa limites e funções da régua e `foraDaInterface` do gate — eles são um segundo JUIZ
-sobre a peça renderizada, não um medidor independente da régua); 6. repetição: a MESMA spec roda uma segunda vez num banco novo;
+NECESSARIA com motivos); 5. os JUÍZES da matriz da § 2.1 sobre a versão FINAL da página (independência PARCIAL, dita: o mesmo `CanvasRenderer`; os
+limites da régua importados; o piso por geometria pura reimplementada; o que só repete a medida do revisor — `checkTextGeometry`,
+`foraDaInterface` — NÃO é juiz e fica em inspeção); 6. repetição: a MESMA spec roda uma segunda vez num banco novo;
 têm de ser iguais o veredito, os motivos (regra:código:camadas), `serializarParaImpressao(gate)`, as CAMADAS finais (ids, posições,
 tamanhos, estilos, crop — normalizadas: ids voláteis, `createdAt`, URLs falsas e `medidoEm` fora da comparação) e o HASH do PNG
 final; 7. o PNG da versão FINAL é renderizado PELO PILOTO com `CanvasRenderer` (o harness do CP5e não produz PNG: `persistAndRender
@@ -123,7 +132,7 @@ REPETE a função que o gate/revisor já usa não é juiz (pode repetir o mesmo 
 | `texto-sem-leitura`, `tratamento-piorou-leitura` | `leiturasDosTextos` + `leituraDentroDoAlvo` + `tratamentosQuePioram` (CP0) sobre o PNG final — leitura de pixels própria, com os limites da régua importados | coberta (parcial: mesmos limites) |
 | `logo-sem-leitura` | `leituraDaLogo` + `resumoDaLogo` (CP0) sobre o PNG final | coberta (parcial) |
 | `texto-sobre-assunto` | `textosQueInvadem` com a `assuntoVerdade` (fotos sintéticas) / região protegida anotada (fixture) — a verdade é POR CONSTRUÇÃO, não a estimativa | coberta — e é o juiz da decisão 1 |
-| `piso-de-interface` | geometria PURA reimplementada em `suporte/oraculos-do-piloto.ts` (y/altura das caixas de texto e logo × 188/224 no canvas canônico; NÃO chama `pisoDeInterface`/`foraDaInterface`) | coberta (reimplementada; os números 188/224 são os do contrato do CP5a) |
+| `piso-de-interface` | geometria PURA reimplementada em `suporte/oraculos-do-piloto.ts`: caixas de texto e logo (`position`/`size`) × 188/224 no canvas canônico, COM a folga de 1 px do CP5a (caixa que toca 188/224 reprova); NÃO chama `pisoDeInterface`/`foraDaInterface` | coberta (PARCIAL — dito: caixas, não glifos medidos; sem rotação nem efeitos — uma peça com texto rotacionado ou com sombra/halo que avance no piso pode passar no juiz e reprovar no gate; o "falso APTO = 0" do piso vale só para caixas sem rotação/efeitos, e as peças com rotação/efeitos vão à inspeção) |
 | `fora-da-area-segura` | geometria pura das caixas × margens do projeto (`oraculos-do-piloto.ts`) | coberta |
 | `logo-sobre-texto` | interseção pura das caixas da logo e dos textos (`oraculos-do-piloto.ts`) | coberta (parcial: caixas, não tinta) |
 | `colisao`, `texto-cortado`, `tinta-fora-da-caixa` | o único medidor é `checkTextGeometry` (o mesmo do revisor) — repetir não é juiz | **mesma medida — não é juiz**; INSPEÇÃO humana nos PNGs amostrados |
@@ -180,7 +189,8 @@ repetibilidade, caminho do PNG) e os PNGs — com os hashes conferíveis pelo re
 `scripts/fixtures/exportar-piloto-sintetico.ts` (exportador de LEITURA do branch de dev, com conferência do compute) e
 `scripts/fixtures/gerar-fixtures-do-piloto-sintetico.ts` (gerador, sem banco; os dois rodam uma vez, fora da suíte); `src/lib/direcao-de-arte/__tests__/
 fixtures/piloto-sintetico/<cliente-NN>/{assinaturas.json, marca.json, LEIAME.md}`; `suporte/fotos-sinteticas.ts` (puro + sharp),
-`suporte/lote-do-piloto.ts` (`specsDoLote`, puro), `suporte/oraculos-do-piloto.ts` (envolve `propriedades.ts` + a área segura + `checkTextGeometry`, pela matriz 2.1),
+`suporte/lote-do-piloto.ts` (`specsDoLote`, puro), `suporte/oraculos-do-piloto.ts` (envolve as leituras de `propriedades.ts` + geometria pura do piso, da área segura e da logo sobre
+texto — SEM `checkTextGeometry` nem `foraDaInterface`, pela matriz 2.1),
 `suporte/png-do-piloto.ts` (o render final pelo `CanvasRenderer`, contado à parte), `suporte/relatorio-
 do-piloto.ts` (puro: agrega e escreve); `src/lib/direcao-de-arte/__tests__/piloto-sintetico.test.ts` — **roda só com
 `PILOTO_SINTETICO=1`** (`describe.skipIf`), fora da suíte normal e do CI (um job manual `workflow_dispatch` opcional, decisão 5.4);
