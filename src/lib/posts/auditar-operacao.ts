@@ -12,6 +12,12 @@
  * não pode entrar no denominador da taxa de aceitação.
  */
 
+import {
+  resumoDoGateDosPosts,
+  resumoVazio,
+  TETO_DE_POSTS_DO_GATE,
+  type ResumoDoGateDaCarteira,
+} from '@/lib/creatives/revisao/gate-resumo';
 import { db } from '@/lib/db';
 import { NOME_DO_TEMPLATE_DE_ASSINATURA } from '@/lib/compositor/assinatura';
 import {
@@ -101,6 +107,8 @@ export async function auditarOperacao(args: {
           status: true,
           mediaUrls: true,
           pageId: true,
+          // CP5e § 2: o bloco `gate` lê o registro da Generation do post.
+          generationId: true,
           renderStatus: true,
           renderError: true,
           errorMessage: true,
@@ -190,7 +198,20 @@ export async function auditarOperacao(args: {
         })
     : [];
 
-  return auditarCarteira({
+  // CP5e § 2 — o bloco `gate`: só LEITURA do registro (CP5b) dos posts da janela, em DUAS consultas (sem N+1), com
+  // teto por chamada; o vínculo post → Generation → página → projeto é conferido no resumo (fail-closed). Falha aqui
+  // degrada para "sem bloco" com o motivo, nunca derruba a auditoria.
+  const gate = await resumoDoGateDaJanela(posts, args.permitidos).catch(
+    (erro: unknown) => {
+      console.error(
+        '[auditar-operacao] não deu para ler o registro do gate dos posts (seguindo sem o bloco):',
+        erro
+      );
+      return null;
+    }
+  );
+
+  const auditoria = auditarCarteira({
     projetos,
     historico,
     posts,
@@ -202,4 +223,63 @@ export async function auditarOperacao(args: {
     ),
     agora,
   });
+  if (!gate) return auditoria;
+  return {
+    ...auditoria,
+    gate: gate.total,
+    clientes: auditoria.clientes.map((c) => ({
+      ...c,
+      gate: gate.porProjeto.get(c.projectId) ?? resumoVazio(),
+    })),
+  };
+}
+
+async function resumoDoGateDaJanela(
+  posts: Array<{
+    id: string;
+    projectId: number;
+    pageId: string | null;
+    generationId: string | null;
+  }>,
+  permitidos: number[] | null
+): Promise<ResumoDoGateDaCarteira> {
+  const lidos = posts.slice(0, TETO_DE_POSTS_DO_GATE);
+  const generationIds = Array.from(
+    new Set(
+      lidos.map((p) => p.generationId).filter((id): id is string => !!id)
+    )
+  );
+  const pageIds = Array.from(
+    new Set(
+      lidos
+        .filter((p) => p.generationId)
+        .map((p) => p.pageId)
+        .filter((id): id is string => !!id)
+    )
+  );
+  const [generations, pages] = await Promise.all([
+    generationIds.length
+      ? db.generation.findMany({
+          where: { id: { in: generationIds } },
+          select: { id: true, projectId: true, fieldValues: true },
+        })
+      : Promise.resolve([]),
+    pageIds.length
+      ? db.page.findMany({
+          where: { id: { in: pageIds } },
+          select: {
+            id: true,
+            name: true,
+            tags: true,
+            width: true,
+            height: true,
+            background: true,
+            layers: true,
+            copyAutoral: true,
+            Template: { select: { projectId: true } },
+          },
+        })
+      : Promise.resolve([]),
+  ]);
+  return resumoDoGateDosPosts({ posts, generations, pages, permitidos });
 }

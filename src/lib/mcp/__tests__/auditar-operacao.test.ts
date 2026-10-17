@@ -15,6 +15,8 @@ const m = vi.hoisted(() => ({
   grades: [] as any[],
   templates: [] as Array<{ projectId: number }>,
   semHorario: [] as Array<{ projectId: number; _count: { _all: number } }>,
+  generations: [] as any[],
+  pages: [] as any[],
   chamadas: [] as string[],
   visiveis: vi.fn(),
   registrarSugestoes: vi.fn(),
@@ -62,6 +64,17 @@ vi.mock('@/lib/db', () => ({
     template: {
       findMany: leitura('template', ({ where }) =>
         m.templates.filter((t) => noEscopo(where, t.projectId))
+      ),
+    },
+    // CP5e § 2: as DUAS consultas do bloco `gate` (só quando há post com generationId).
+    generation: {
+      findMany: leitura('generation', ({ where }) =>
+        m.generations.filter((g) => where.id.in.includes(g.id))
+      ),
+    },
+    page: {
+      findMany: leitura('page', ({ where }) =>
+        m.pages.filter((pg) => where.id.in.includes(pg.id))
       ),
     },
   },
@@ -174,6 +187,44 @@ describe('auditar-operacao', () => {
     expect(m.chamadas.length).toBeLessThanOrEqual(7);
   });
 
+  it('CP5e § 2: o bloco `gate` lê o registro dos posts da janela em DUAS consultas a mais (só quando há post com arte), rotula coincidente/historico/semRegistro e nunca mede nem escreve', async () => {
+    const { decidirOk } = await import('@/lib/creatives/revisao/__tests__/suporte/pagina-limpa');
+    const { PAGINA_LIMPA } = await import('@/lib/creatives/revisao/__tests__/suporte/pagina-limpa');
+    const { CHAVE_DO_GATE } = await import('@/lib/creatives/revisao/gate-registro');
+    carteira(2);
+    const registro = decidirOk().registro; // projeto 8, gen-1, pg-1, APTO
+    m.projetos = [{ id: 8, name: 'Oito', status: 'ACTIVE' }, { id: 9, name: 'Nove', status: 'ACTIVE' }];
+    m.grades = m.projetos.map((p) => ({ projectId: p.id, title: 'Padrões de Postagem', content: 'SLOT 1 — 10h, todos os dias' }));
+    m.templates = m.projetos.map((p) => ({ projectId: p.id }));
+    const base = { scheduledDatetime: brt('2026-10-14 10:00'), postType: 'STORY', status: 'DRAFT', mediaUrls: ['x'], renderStatus: 'RENDERED', renderError: null, errorMessage: null, verificationStatus: 'SKIPPED', campaignId: null };
+    m.posts = [
+      { id: 'c1', projectId: 8, pageId: 'pg-1', generationId: 'gen-1', ...base }, // coincidente APTO
+      { id: 'h1', projectId: 8, pageId: 'pg-2', generationId: 'gen-2', ...base, scheduledDatetime: brt('2026-10-15 10:00') }, // página mudou → historico
+      { id: 's1', projectId: 9, pageId: 'pg-9', generationId: null, ...base }, // sem arte → semRegistro
+    ];
+    m.generations = [
+      { id: 'gen-1', projectId: 8, fieldValues: { source: 'compositor', pageId: 'pg-1', [CHAVE_DO_GATE]: registro } },
+      { id: 'gen-2', projectId: 8, fieldValues: { source: 'compositor', pageId: 'pg-2', [CHAVE_DO_GATE]: registro } },
+    ];
+    m.pages = [
+      { ...PAGINA_LIMPA, Template: { projectId: 8 } },
+      { ...PAGINA_LIMPA, id: 'pg-2', layers: (PAGINA_LIMPA.layers as any[]).map((l) => (l.id === 'apoio' ? { ...l, content: 'mudou' } : l)), Template: { projectId: 8 } },
+    ];
+    m.visiveis.mockResolvedValue(null);
+    const antes = m.chamadas.length;
+    const r = await auditar({ kind: 'service' });
+    expect(m.chamadas.filter((c) => c === 'generation' || c === 'page')).toEqual(['generation', 'page']);
+    expect(m.chamadas.length - antes).toBeLessThanOrEqual(9);
+    expect(r.gate).toMatchObject({ posts: 3, coincidente: { APTO: 1, REVISAO_HUMANA_NECESSARIA: 0 }, historico: 1, semRegistro: 1, registroInvalido: 0, parcial: false });
+    expect(r.gate.aviso).toMatch(/não é o veredito atual/);
+    const oito = r.clientes.find((c: any) => c.projectId === 8);
+    const nove = r.clientes.find((c: any) => c.projectId === 9);
+    expect(oito.gate).toMatchObject({ posts: 2, coincidente: { APTO: 1 }, historico: 1 });
+    expect(nove.gate).toMatchObject({ posts: 1, semRegistro: 1 });
+    // Registro de gen-2 alega a pg-1? Vínculo cruzado → registroInvalido (o registro de gen-2 foi gravado com pageId pg-1).
+    expect(oito.gate.registroInvalido).toBe(0);
+  });
+
   it('saída por cliente: estruturada e compacta', async () => {
     carteira(1);
     m.visiveis.mockResolvedValue(null);
@@ -184,6 +235,8 @@ describe('auditar-operacao', () => {
       [
         'acao',
         'rascunhosSemHorario',
+        // CP5e § 2: o resumo do registro do gate dos posts da janela (só leitura).
+        'gate',
         'acoes',
         'agendados',
         'amanha',

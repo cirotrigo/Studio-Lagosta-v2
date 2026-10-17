@@ -24,6 +24,10 @@
  * para a carteira inteira. Daqui sai tudo o que se decide, e é testável sem banco.
  */
 
+import type {
+  ResumoDoGate,
+  ResumoDoGateDaCarteira,
+} from '@/lib/creatives/revisao/gate-resumo';
 import {
   calcularCadencia,
   emBRT,
@@ -607,6 +611,8 @@ export interface ClienteAuditado extends CoberturaDoProjeto {
   projectId: number;
   nome: string;
   assinatura: boolean;
+  /** CP5e § 2: o registro do gate dos posts da janela deste cliente — só leitura, rotulado (coincidente/historico/…). */
+  gate?: ResumoDoGate;
   /**
    * Rascunhos SEM horário. Não ocupam slot nenhum, mas podem ter sido feitos
    * para um dos horários vazios. Enquanto existirem, compor fica atrás da conferência.
@@ -723,6 +729,8 @@ export interface CampanhaDaBase {
 }
 
 export interface AuditoriaDaCarteira {
+  /** CP5e § 2: o resumo do registro do gate da carteira (ausente quando a leitura falhou — dito no log). */
+  gate?: ResumoDoGateDaCarteira['total'];
   alvoDias: number;
   /** "AAAA-MM-DD HH:mm" em Brasília. */
   agora: string;
