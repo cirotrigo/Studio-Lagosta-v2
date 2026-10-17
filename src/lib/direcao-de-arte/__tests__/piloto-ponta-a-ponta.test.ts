@@ -151,8 +151,11 @@ import { ajustarArte } from '@/lib/creatives/arte-rapida'
 import { agendarItensDoLote } from '@/lib/lotes/agendar-itens'
 import { CreativeError } from '@/lib/creatives/errors'
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
-import { lerGateDaArte } from '@/lib/creatives/revisao/gate-registro'
+import { decidirEMontarRegistro, lerGateDaArte } from '@/lib/creatives/revisao/gate-registro'
 import { CONFERENCIAS_DO_GATE, REGRAS_CRITICAS } from '@/lib/creatives/revisao/gate'
+import { identidadeDaPagina } from '@/lib/creatives/revisao/versao'
+import { formatoDaPaginaGravada } from '@/lib/compositor/formato'
+import { POLITICA_DO_ASSUNTO_DO_GATE, TIPO_DO_POST_POR_FORMATO } from '@/lib/lotes/agendamento'
 import { blocoDoGate } from '@/lib/mcp/catalogo/ver-geracao-retorno'
 import { resumoDoGateDosPosts } from '@/lib/creatives/revisao/gate-resumo'
 import { auditarOperacao } from '@/lib/posts/auditar-operacao'
@@ -239,34 +242,62 @@ const agendar = (itemId: string) => agendarItensDoLote({ projectId: PROJETO, lot
 const ajustar = (pageId: string, ajustes: Ajuste[], versaoEsperada: string) => ajustarArte({ projectId: PROJETO, pageId, versaoEsperada, ajustes, apenasRascunho: true, principal: { tipo: 'user', id: 'dot' } })
 const erroDe = (p: Promise<unknown>) => p.then(() => null, (e: unknown) => e)
 const posts = () => [...banco.posts.values()]
-/** I2/I4/I5 em toda revisão medida: motivos nas duas famílias (crítica medida ⇒ há achado dela no relatório), identidade da leitura, APTO só com naoMedidos vazio. */
-const gateMedido = (r: Awaited<ReturnType<typeof revisar>>) => {
+/**
+ * I2/I4/I5 em toda revisão medida. A decisão do gate é sobre a medida FIEL (`corrigir: false`): para conferir o CÓDIGO de cada
+ * motivo, o teste REFAZ essa decisão (mesmo contexto, mesma seleção da Generation, `decidirEMontarRegistro` sem gravar) e
+ * compara: os motivos do bloco são os da decisão fiel; cada código é o que a cobertura FIEL (`gate.cobertura`) permite —
+ * `ACHADO_CRITICO` ⇔ cobertura `reprovada` + achado `problema` medido NA MEDIDA FIEL; `NAO_COMPROVADA`/`NAO_MEDIDO` ⇔
+ * cobertura `nao-comprovada`; `IDENTIDADE_ILEGIVEL` ⇔ `identidade`. E a direção essencial sobre o relatório do revisor
+ * (corrigido): todo `problema` numa regra crítica ⇒ o gate recusa com motivo nessa regra. I4: pageVersion = versao. I5: APTO só
+ * com `naoMedidos` vazio.
+ */
+const gateMedido = async (r: Awaited<ReturnType<typeof revisar>>) => {
   expect(r.gate.tipo).toBe('medida')
   const gate = r.gate as Extract<typeof r.gate, { tipo: 'medida' }>
   const criticas = new Set<string>(REGRAS_CRITICAS)
   const conferencias = new Set<string>(CONFERENCIAS_DO_GATE)
+  // A decisão FIEL refeita pelo teste (sem gravar), com a MESMA seleção da Generation que o revisar-arte faz.
+  const page = banco.pages.get(r.pageId)!
+  const geracao = banco.generations.get(gate.vinculo.generationId)!
+  const camadas = page.layers as Layer[]
+  const ctx = await contextoDaMedicao({
+    projectId: PROJETO,
+    page: { id: page.id, name: page.name, width: page.width, height: page.height, tags: page.tags, background: page.background, layers: page.layers },
+    camadas,
+    generationDaPeca: { id: geracao.id, fieldValues: geracao.fieldValues, sourcePageId: geracao.sourcePageId ?? null },
+    composicaoReaproveitavel: geracao.fieldValues?.versaoRenderizada === versaoDaPagina(page as never),
+  })
+  const fiel = await medirCamadasDaPeca(camadas, ctx, { corrigir: false })
+  const identidade = identidadeDaPagina(page as never)
+  const decisao = decidirEMontarRegistro({
+    entrada: { medida: fiel, identidade: { pageVersion: identidade.pageVersion, copyVersion: identidade.copyVersion }, politicaDoAssunto: POLITICA_DO_ASSUNTO_DO_GATE },
+    page: page as never,
+    vinculo: { projectId: PROJETO, generationId: geracao.id, postType: TIPO_DO_POST_POR_FORMATO[formatoDaPaginaGravada(page as never)!] },
+    origem: 'piloto',
+    agora: () => new Date(),
+  })
+  expect(decisao.decisao).toBe('ok')
+  const fielGate = (decisao as Extract<typeof decisao, { decisao: 'ok' }>).gate
+  const fielRelatorio = (decisao as Extract<typeof decisao, { decisao: 'ok' }>).relatorio
+  // A decisão fiel refeita e a do revisar-arte saem de medidas independentes do mesmo contexto: resultado e motivos iguais.
+  const resumoDe = (ms: Array<{ regra: string; codigo: string; camadas: string[] }>) => ms.map((m) => `${m.regra}:${m.codigo}:${[...m.camadas].sort().join(',')}`).sort()
+  expect(gate.resultado).toBe(fielGate.resultado)
+  expect(resumoDe(gate.motivos)).toEqual(resumoDe(fielGate.motivos))
+  // O código de cada motivo é o que a cobertura FIEL permite.
+  const cobertura = fielGate.cobertura as Record<string, { estado: string }>
   for (const m of gate.motivos) {
     expect(criticas.has(m.regra) || conferencias.has(m.regra), m.regra).toBe(true)
-    if (m.codigo === 'ACHADO_CRITICO' && criticas.has(m.regra)) expect(r.relatorio.achados.some((a) => a.regra === m.regra), `${m.regra}: achado no relatório`).toBe(true)
-  }
-  // I2 — o CÓDIGO de cada motivo é o permitido pela cobertura e pela política efetivas: ACHADO_CRITICO só com achado `problema`
-  // medido na regra; NAO_COMPROVADA só em conferência própria do gate, em regra cuja cobertura não é `avaliada`, ou no assunto sob
-  // a política (estimado → humano); NAO_MEDIDO só com a regra em `naoMedidos`/cobertura parcial; IDENTIDADE_ILEGIVEL só em identidade.
-  // As regras da RÉGUA são as que a medida corrigida do revisor pode deixar limpas enquanto a fiel reprova (é o que E-div prova).
-  const daRegua = new Set(['texto-sem-leitura', 'tratamento-piorou-leitura'])
-  for (const m of gate.motivos) {
-    const cob = (r.relatorio.cobertura as Record<string, { estado?: string } | undefined>)[m.regra]
+    const estado = cobertura[m.regra]?.estado
     if (m.codigo === 'ACHADO_CRITICO') {
-      // O gate avalia a medida FIEL: um crítico numa conferência própria (piso) não tem contraparte no relatório; nas regras
-      // da régua o relatório (corrigido) pode estar limpo; nas demais o relatório tem ao menos um achado na regra.
-      if (!conferencias.has(m.regra) && !daRegua.has(m.regra)) expect(r.relatorio.achados.some((a) => a.regra === m.regra), `${m.regra}: ACHADO_CRITICO com achado no relatório`).toBe(true)
-    } else if (m.codigo === 'NAO_COMPROVADA') expect(conferencias.has(m.regra) || !cob || cob.estado !== 'avaliada' || m.regra === 'texto-sobre-assunto', `${m.regra}: NAO_COMPROVADA (cobertura ${cob?.estado})`).toBe(true)
-    else if (m.codigo === 'NAO_MEDIDO') expect(gate.naoMedidos.some((n) => n.regra === m.regra) || cob?.estado === 'parcial', `${m.regra}: NAO_MEDIDO`).toBe(true)
+      expect(estado, `${m.regra}: cobertura fiel`).toBe('reprovada')
+      // Os achados CRÍTICOS que o gate registrou na medida fiel (`gate.achados`, `achadoCritico` por regra e política).
+      if (criticas.has(m.regra)) expect(fielGate.achados.some((a) => a.regra === m.regra && a.certeza === 'medida'), `${m.regra}: achado crítico medido na decisão fiel`).toBe(true)
+      else expect(fielRelatorio.cobertura, `${m.regra}: conferência própria do gate`).toBeDefined()
+    } else if (m.codigo === 'NAO_COMPROVADA' || m.codigo === 'NAO_MEDIDO') expect(estado, `${m.regra}: cobertura fiel`).toBe('nao-comprovada')
     else if (m.codigo === 'IDENTIDADE_ILEGIVEL') expect(m.regra).toBe('identidade')
     else expect.unreachable(`código desconhecido ${String(m.codigo)}`)
   }
-  // A direção essencial: todo `problema` do relatório numa regra crítica do gate (o relatório vem da medida CORRIGIDA; o que
-  // está mal mesmo com a correção está mal na fiel) ⇒ o gate recusa com um motivo NESSA regra.
+  // A direção essencial sobre o relatório do revisor (corrigido): o que está mal mesmo com a correção está mal na fiel.
   for (const a of r.relatorio.achados) {
     if (a.severidade !== 'problema' || !criticas.has(a.regra)) continue
     expect(gate.resultado, `${a.regra} é problema no relatório`).toBe('REVISAO_HUMANA_NECESSARIA')
@@ -289,8 +320,18 @@ const resumo = () =>
     pages: [...banco.pages.values()].map((pg) => ({ id: pg.id, name: pg.name, tags: pg.tags, width: pg.width, height: pg.height, background: pg.background, layers: pg.layers, copyAutoral: pg.copyAutoral, Template: pg.Template ? { projectId: pg.Template.projectId } : null })),
     permitidos: null,
   })
-/** E9: a auditoria REAL da carteira (janela hoje → depois de amanhã a partir de 20/10 09:00 BRT: pega o DRAFT de 21/10 10:00). */
-const auditoria = () => auditarOperacao({ permitidos: null, agora: new Date('2026-10-20T12:00:00Z') })
+/**
+ * E9: a auditoria REAL da carteira (janela hoje → depois de amanhã a partir de 20/10 09:00 BRT: pega o DRAFT de 21/10 10:00) —
+ * e a prova de que ela NÃO escreve (nenhuma `escrita:` no banco) nem MEDE (nenhuma medida nova pelo wrapper de `medirCamadasDaPeca`).
+ */
+const auditoria = async () => {
+  const escritas = banco.eventos.filter((e) => e.e.startsWith('escrita:')).length
+  const medidas = espioes.medidasDeFora.length
+  const r = await auditarOperacao({ permitidos: null, agora: new Date('2026-10-20T12:00:00Z') })
+  expect(banco.eventos.filter((e) => e.e.startsWith('escrita:')).length, 'auditar-operacao não escreve').toBe(escritas)
+  expect(espioes.medidasDeFora.length, 'auditar-operacao não mede').toBe(medidas)
+  return r
+}
 /** E8: em TODO caso draft-only, nenhum efeito pós-commit (lembrete, Zernio, webhook) roda. */
 const semEfeitos = () => expect(espioes.efeitos).not.toHaveBeenCalled()
 
@@ -320,7 +361,7 @@ describe('E0 — compor de verdade', () => {
     expect(banco.generations.get(generationId)).toMatchObject({ status: 'COMPLETED', fieldValues: { source: 'compositor', pageId, versaoRenderizada: versaoDaPagina(pagina as never) } })
     expect(espioes.renders).toHaveLength(1)
     const rev = await revisar(pageId)
-    const gate = gateMedido(rev)
+    const gate = await gateMedido(rev)
     expect(gate.resultado).toBe('APTO')
     expect(gate.vinculo).toEqual({ generationId, postType: 'STORY' })
     expect(posts()).toEqual([])
@@ -331,7 +372,7 @@ describe('E0 — compor de verdade', () => {
     const r = await comporPeca(SPEC_LIMPA)
     const pageId = r.persistido!.pageId
     const rev = await revisar(pageId)
-    const gate = gateMedido(rev)
+    const gate = await gateMedido(rev)
     expect(gate.resultado).toBe(CODIGOS.revisaoHumana)
     expect(gate.motivos.map((m) => m.regra)).toContain('piso-de-interface')
     expect(posts()).toEqual([])
@@ -345,7 +386,7 @@ describe('E1/E2/E3 — APTO → DRAFT; não APTO → nenhum DRAFT; corrigir e ag
     const rev = await revisar(pageId)
     // I1: revisar-arte não escreve nada (nem a Generation, nem a página).
     expect(banco.eventos.filter((e) => e.e.startsWith('escrita:')).length).toBe(escritasAntes)
-    expect(gateMedido(rev).resultado).toBe('APTO')
+    expect((await gateMedido(rev)).resultado).toBe('APTO')
     const lote = await agendar(itemId)
     expect(lote.itens[0]).toMatchObject({ desfecho: 'criado', revisao: { tipo: 'medida', resultado: 'APTO' } })
     expect(posts()).toHaveLength(1)
@@ -367,7 +408,7 @@ describe('E1/E2/E3 — APTO → DRAFT; não APTO → nenhum DRAFT; corrigir e ag
   it('E2: o apoio invadindo a margem de segurança → revisar-arte informa REVISAO_HUMANA_NECESSARIA (fora-da-area-segura) e propõe o mover → agendar-leva não cria post; o veredito reprovado fica registrado; nada para a auditoria contar nesta página', async () => {
     const { pageId, generationId, itemId } = await pecaComposta({ editar: APOIO_NA_MARGEM })
     const rev = await revisar(pageId)
-    const gate = gateMedido(rev)
+    const gate = await gateMedido(rev)
     expect(gate.resultado).toBe(CODIGOS.revisaoHumana)
     expect(gate.motivos.map((m) => m.regra)).toContain('fora-da-area-segura')
     expect(rev.relatorio.ajustes.some((a) => a.tipo === 'mover')).toBe(true)
@@ -385,7 +426,7 @@ describe('E1/E2/E3 — APTO → DRAFT; não APTO → nenhum DRAFT; corrigir e ag
   it('E2b: o apoio sobre o piso de interface (conferência SÓ do gate: o revisor não tem regra nem ajuste para isso) → gate REVISAO_HUMANA_NECESSARIA (piso-de-interface) sem ajuste a propor → agendar-leva não cria post', async () => {
     const { pageId, itemId } = await pecaComposta({ editar: (ls) => ls.map((l) => (l.id === 'apoio' ? { ...l, position: { ...l.position, y: 1750 } } : l)) })
     const rev = await revisar(pageId)
-    const gate = gateMedido(rev)
+    const gate = await gateMedido(rev)
     expect(gate.resultado).toBe(CODIGOS.revisaoHumana)
     expect(gate.motivos.map((m) => m.regra)).toContain('piso-de-interface')
     // O revisor não vê o piso: nenhum achado, nenhum ajuste — é o caso em que a tool diz "leve à pessoa".
@@ -398,7 +439,7 @@ describe('E1/E2/E3 — APTO → DRAFT; não APTO → nenhum DRAFT; corrigir e ag
   it('E3: o caso E2 (apoio na margem) corrigido pelo próprio revisor — o `mover` que ele propõe, por ajustar-arte draft-only → APTO → agendar-leva cria o DRAFT; dois registros (ajuste e lote) com a MESMA pageVersion', async () => {
     const { pageId, generationId, itemId } = await pecaComposta({ editar: APOIO_NA_MARGEM })
     const antes = await revisar(pageId)
-    const gateAntes = gateMedido(antes)
+    const gateAntes = await gateMedido(antes)
     expect(gateAntes.resultado).toBe(CODIGOS.revisaoHumana)
     expect(gateAntes.motivos.map((m) => m.regra)).toContain('fora-da-area-segura')
     const mover = antes.relatorio.ajustes.filter((a) => a.tipo === 'mover' && (a as { camadas?: string[] }).camadas?.includes('apoio'))
@@ -406,7 +447,7 @@ describe('E1/E2/E3 — APTO → DRAFT; não APTO → nenhum DRAFT; corrigir e ag
     const r = await ajustar(pageId, mover as unknown as Ajuste[], antes.versao!)
     expect(r).toMatchObject({ ajustada: true, revisao: { tipo: 'medida', resultado: 'APTO' } })
     const depois = await revisar(pageId)
-    expect(gateMedido(depois).resultado).toBe('APTO')
+    expect((await gateMedido(depois)).resultado).toBe('APTO')
     const lote = await agendar(itemId)
     expect(lote.itens[0]).toMatchObject({ desfecho: 'criado', revisao: { tipo: 'medida', resultado: 'APTO' } })
     const pageVersion = versaoDaPagina(banco.pages.get(pageId)! as never)
@@ -448,7 +489,7 @@ describe('E-div — a medida do gate informativo é a FIEL (corrigir: false), n�
     // O revisor: relatório da medida corrigida (propõe gradiente); o gate: informação da FIEL.
     const rev = await revisar(id)
     expect(rev.relatorio.ajustes.some((a) => a.tipo === 'gradiente')).toBe(true)
-    const gate = gateMedido(rev)
+    const gate = await gateMedido(rev)
     expect(gate.resultado).toBe(CODIGOS.revisaoHumana)
     expect(gate.motivos.some((m) => m.regra === 'texto-sem-leitura' && m.camadas.includes('servico'))).toBe(true)
     // …e são os mesmos motivos que o agendar-leva (corrigir: false sob trava) devolve para a mesma página.
@@ -474,7 +515,7 @@ describe('E4/E5/E6 — concorrência, versão boa preservada, post aprovado into
     expect([...banco.generations.values()].filter((g) => g.fieldValues?.source === 'ajuste-arte')).toEqual([])
     const depois = await revisar(pageId)
     expect(depois.versao).not.toBe(rev.versao)
-    expect(gateMedido(depois).pageVersion).toBe(depois.versao)
+    expect((await gateMedido(depois)).pageVersion).toBe(depois.versao)
   }, 240_000)
 
   it('E5: DRAFT anterior bom preservado — um ajuste draft-only que o gate (ou o CP4) recusa deixa página, DRAFT e Generation como estavam; nenhuma Generation nova fica; render não reaberto', async () => {
@@ -519,7 +560,7 @@ describe('E7/E7b — regra não medida → humano; fonte ausente → humano', ()
     const { pageId, itemId } = await pecaComposta()
     espioes.fontesFalham = true
     const rev = await revisar(pageId)
-    const gate = gateMedido(rev)
+    const gate = await gateMedido(rev)
     expect(gate.resultado).toBe(CODIGOS.revisaoHumana)
     expect(gate.motivos.some((m) => m.regra === 'fonte-nao-carregada' && (m.codigo === 'NAO_COMPROVADA' || m.codigo === 'NAO_MEDIDO'))).toBe(true)
     const lote = await agendar(itemId)
@@ -532,7 +573,7 @@ describe('E7/E7b — regra não medida → humano; fonte ausente → humano', ()
   it('E7b: um texto com fonte da marca NÃO cadastrada → achado fonte-nao-carregada crítico → gate recusa (ACHADO_CRITICO); agendar-leva recusa; nenhum DRAFT', async () => {
     const { pageId, itemId } = await pecaComposta({ editar: (ls) => ls.map((l) => (l.id === 'apoio' ? { ...l, style: { ...l.style, fontFamily: 'Fonte Inexistente Da Marca' } } : l)) })
     const rev = await revisar(pageId)
-    const gate = gateMedido(rev)
+    const gate = await gateMedido(rev)
     expect(gate.resultado).toBe(CODIGOS.revisaoHumana)
     expect(gate.motivos.some((m) => m.regra === 'fonte-nao-carregada' && m.codigo === 'ACHADO_CRITICO')).toBe(true)
     const lote = await agendar(itemId)
@@ -550,7 +591,7 @@ describe('seleção única da Generation', () => {
     expect(erro.code).toBe('GERACAO_DE_OUTRA_PAGINA')
     const r = await revisarArte({ projectId: PROJETO, generationId: a.generationId, visao: false, previa: false })
     expect(r.pageId).toBe(a.pageId)
-    expect(gateMedido(r).vinculo.generationId).toBe(a.generationId)
+    expect((await gateMedido(r)).vinculo.generationId).toBe(a.generationId)
   }, 240_000)
 })
 
@@ -589,7 +630,7 @@ describe('E9/E10 — os leitores sobre o que o fluxo deixou', () => {
     expect(banco.eventos.filter((e) => e.e.startsWith('escrita:')).length).toBe(depoisDaEdicao)
     expect(depoisDaEdicao - escritas).toBe(1)
     const rev = await revisar(pageId)
-    const gate = gateMedido(rev)
+    const gate = await gateMedido(rev)
     expect(gate.pageVersion).toBe(rev.versao)
     expect(gate.vinculo.generationId).toBe(generationId)
   }, 240_000)
