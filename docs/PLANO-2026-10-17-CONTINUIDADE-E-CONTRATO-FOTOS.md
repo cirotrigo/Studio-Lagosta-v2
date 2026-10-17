@@ -99,7 +99,7 @@ Cada passo só começa com o anterior aceito. "Autorização" = palavra do owner
 - Prefixos de upload (inspeção): `chat-uploads/<proj>/<token>.jpg` (`chat-upload.ts`, convertida/processada);
   `drive-cache/<proj>/…-s1920.jpg` (`persist.ts`, miniatura); `posts/<user>/google-drive/<ts>-<nome>.jpg` (rotas de download do
   Drive, `google-drive-download/route.ts:136-145`: o NOME vira `.jpg` e o MIME é declarado `image/jpeg`, mas o `buffer` recebido
-  é enviado sem recodificar — bytes preservados pela rota, formato real NÃO comprovado pelo nome); `posts/<user>/ai-images/…`
+  é enviado sem recodificar; MAS `projects/[projectId]/google-drive/download/route.ts:110-149` grava no MESMO prefixo depois de tentar recortar para 4:5 (e, se o recorte falhar, envia os bytes recebidos) — pelo pathname não se distingue um fluxo do outro); `posts/<user>/ai-images/…`
   (`ai-images-download/route.ts:109-121`, mesmo padrão);
   `uploads/<user>/drive-…` (`api/upload/google-drive`). A camada de fundo do compositor tem `id === 'bg-foto'`
   (`defasagem.ts:214`, que em produção cai para `imagens[0]` quando falta — heurística que este contrato NÃO adota).
@@ -175,16 +175,24 @@ de fundo é decisão, não código.
 | `uploads/` | `upload` | não afirmado em P1 (ver 3.6) | a confirmar no PR: `put` sem `allowOverwrite` (`api/upload/google-drive/route.ts:65`) — o PR cita o padrão da versão instalada de `@vercel/blob`; até lá `imutabilidade-nao-comprovada` |
 | `chat-uploads/` | `chat-reduzida` | não (convertida/reduzida) | **não**: `addRandomSuffix: false` + `allowOverwrite: true` (`chat-upload.ts:127-128`) → excluída por E8b |
 | `drive-cache/` | `drive-miniatura` | não (s1920; original no Drive, só com autorização) | **não**: `allowOverwrite: true` (`persist.ts:173-174`) → excluída por E8b |
-| `posts/<x>/google-drive/` | `drive-download` (bytes enviados sem recodificar pela rota; nome `.jpg` e MIME declarados — formato real só pelo cabeçalho do arquivo, registrado à parte) | não afirmado: o arquivo do Drive pode já ser derivado; "original" exige comparar com o Drive (fora da P1) | sim (`addRandomSuffix: true`, `google-drive-download/route.ts:143`) |
+| `posts/<x>/google-drive/` | `drive-download` (DUAS rotas no mesmo prefixo: uma envia os bytes recebidos, outra tenta recortar para 4:5; nome `.jpg` e MIME declarados) | não | sim (`addRandomSuffix: true` nas duas rotas: `google-drive-download/route.ts:143`, `projects/[projectId]/google-drive/download/route.ts:149`) |
 | `posts/<x>/ai-images/` | `ia-download` (mesmo padrão) | não se aplica | sim (`addRandomSuffix: true`, `ai-images-download/route.ts:119`) |
-| `posts/rendered/` | `render` | — (excluída por E8) | — |
+| `posts/rendered/` | `render` | — (excluída por E8) | (vale para a MÍDIA da prova em E6b: ver nota abaixo) |
 | `posts/<x>/normalized/` | `normalizada` | não | sim (`addRandomSuffix: true`, `later-scheduler.ts`) |
 | qualquer outro `posts/…` ou prefixo | `desconhecida` | não | não comprovada |
 
+**Nota de imutabilidade (vale para `uploads/` e para a mídia `posts/rendered/` lida em E6b)**: as duas rotas chamam `put` sem
+`allowOverwrite` (`api/upload/google-drive/route.ts:65`, `story-renderer.ts:148`); na versão instalada (`@vercel/blob` 2.0.0) o
+padrão documentado é ERRO ao reusar o pathname (`node_modules/@vercel/blob/dist/index.d.ts:235`), e o pathname leva timestamp. Isso
+só prova para arquivos gravados com uma versão de mesmo padrão: o PR de P1 tem de mostrar, pelo histórico do `package-lock.json`,
+qual versão estava em produção desde 12/10/2026 (início das provas) e que o padrão era o mesmo; enquanto isso não estiver
+comprovado, `uploads/` fica `imutabilidade-nao-comprovada` e o canvas de E6b fica `fundo-nao-avaliavel`.
+
 Tabela fechada; prefixo novo cai em `desconhecida`. Cada linha cita, no PR, a rota que a produz. Por foto o manifesto registra
 SEPARADOS: (i) a classe; (ii) nome/MIME declarados; (iii) o formato e as dimensões lidos do próprio arquivo baixado; (iv) a
-transformação de pixels COMPROVADA pelo código da rota (hoje: só `chat-uploads/` e `drive-cache/`; nas outras, "nenhuma
-comprovada", o que não é o mesmo que "original").
+transformação de pixels: `comprovada` só quando TODA rota que escreve no prefixo transforma (`chat-uploads/`, `drive-cache/`,
+`normalized/`); `desconhecida` quando só o pathname existe e há rota que transforma e rota que não (`posts/<x>/google-drive/`) ou
+quando a rota não foi conferida; nunca "preservada" — e nenhuma delas é chamada de "original".
 
 ### 3.5 Contagem (`--contar`)
 
@@ -250,12 +258,13 @@ continua "não medida" e contada. O estimador, na fixture pseudonimizada, mede "
 | T5 | E5 | array; string JSON de array; string dupla-codificada; objeto; JSON inválido; `null` | só os dois primeiros elegíveis |
 | T6 | E6–E6b | 0 / 2 `bg-foto`; `type: 'shape'`; `data:`; `http:`; outras imagens sem `bg-foto` (não cai em `imagens[0]`); oculta; `style.opacity` 0 / −1 / `NaN` / `'0'` (string) / 0,01; `size` 0 × N; caixa inteira fora do canvas; caixa parcialmente dentro; camada opaca acima cobrindo o fundo; `rotation` 45 com a caixa dentro antes de girar e fora depois; `rotation` 0 explícito; `style.mask` presente; IHDR da mídia 1080 × 1350 com a caixa em y 1500 (página alterada depois para 1920: a `Page` atual não é lida); mídia JPEG; IHDR truncado; campo de transformação desconhecido | motivo exato; 0,01, parcial e `rotation` 0 elegíveis; rotação ≠ 0, máscara, canvas ≠ story ou não comprovado e campo desconhecido → `fundo-nao-avaliavel`; na `--contar`, elegíveis rotulados "canvas não comprovado"; "coberta" elegível com a contagem de camadas acima registrada (não decide) |
 | T7 | E7–E8 | o host de `STORES_DO_STUDIO` (ok); OUTRO store válido da Vercel (`abcdefghijklmnop.public.blob.vercel-storage.com`); o store antigo `sqc9qfyearji7bel`; `a.b.public.blob.vercel-storage.com`; `public.blob.vercel-storage.com.evil.com`; `evil.com/?x=.public.blob.vercel-storage.com`; `lh3.googleusercontent.com`; `x.supabase.co`; `user@host`; porta; maiúsculas no host; `posts/rendered/` | só o host listado (e a variante em maiúsculas) autorizado; motivos exatos |
-| T8 | 3.4 | cada prefixo; maiúsculas; query; `%2e%2e`/`..`; prefixo novo | classe da tabela; desconhecida no resto |
+| T8 | 3.4 | cada prefixo; os DOIS fluxos que gravam `posts/<x>/google-drive/` (com e sem recorte) dão a mesma classe e transformação `desconhecida`; `normalized/` com transformação `comprovada`; maiúsculas; query; `%2e%2e`/`..`; prefixo novo | classe da tabela; desconhecida no resto |
 | T9 | E9 + ordem | mesma URL com query diferente; empate da data de referência | repetido; desempate por `id`; mesma entrada → manifesto byte a byte igual (hash) |
 | T10 | transação | `tx` falso que registra chamadas | 1ª chamada `SET TRANSACTION READ ONLY`; nenhum SQL com `INSERT/UPDATE/DELETE/ALTER` (lista das strings enviadas) |
 | T11 | `--contar` | `fetch` espião em todos; (a) tabela ausente; (b) migração não registrada com tabela presente; (c) os dois; (d) tabela e migração presentes, nenhuma prova na seleção | `fetch` nunca chamado e nenhum arquivo escrito em (a)–(d); (a), (b), (c): recusa com o(s) sinal(is) exatos e causa "indeterminada"; (d): não recusa, reporta "nenhuma prova nesta seleção" + `COUNT` global |
 | T12 | download | 403, timeout, `text/html` com status 200, bytes que não são imagem com `image/png`, 30 MB sem `content-length`, redirecionamento para host autorizado, para host alheio, cadeia de 4; OK | exclusões `download-falhou:<subcódigo>` contadas; redirecionamento autorizado segue; OK com SHA-256 certo e extensão pela assinatura |
 | T13 | cota/déficit/reposição | 3 elegíveis com cota 10; 12 elegíveis com cota 10 e 2 falhas; 7 elegíveis com 2 falhas e cota 10 | fora da leva (< 6 exportados); 10 exportados com os 2 reservas seguintes no lugar, na ordem; 5 exportados → fora da leva, déficit 5 |
+| T16 | E6b × imutabilidade da mídia | flag "imutabilidade de `posts/rendered/` comprovada" falsa × verdadeira (constante do módulo, fixada pelo PR com a evidência) | falsa → todo elegível vira `fundo-nao-avaliavel`; verdadeira → IHDR decide |
 | T15 | E8b | cada classe da tabela 3.4; `chat-uploads/` e `drive-cache/` com a mesma URL e bytes trocados entre o render e o download (sobrescrita) | `origem-sobrescrevivel` nessas duas; `imutabilidade-nao-comprovada` em `uploads/` até o PR citar a lib; elegível só nas classes "sim" |
 | T14 | pureza | `selecao-de-fotos.ts` | não importa `@/lib/db` nem `node:fs`/rede (teste de import, padrão do repo) |
 
@@ -297,3 +306,8 @@ Clientes, cota final, pixels versionáveis e destino das fixtures (5.1/5.2) fica
   `Page` sai do critério; na contagem o canvas fica "não comprovado"; (2) `chat-uploads/` e `drive-cache/` são sobrescrevíveis
   (`allowOverwrite: true`) e a prova não tem hash dos bytes de origem → E8b exclui origem sem imutabilidade comprovada (T15);
   (3) T11 com os quatro casos nomeados.
+- **R4 (HEAD f7abfea7) — NÃO APTO**: R3 2 e 3 resolvidos, 1 parcial → corrigidos: (1) o IHDR lido hoje só vale se a mídia
+  `posts/rendered/` for imutável → nota de imutabilidade (`@vercel/blob` 2.0.0, padrão "erro ao sobrescrever",
+  `index.d.ts:235`), exigência de provar a versão em produção desde 12/10 e, sem prova, `fundo-nao-avaliavel` (T16); (2) o
+  prefixo `posts/<x>/google-drive/` tem DUAS rotas, uma que recorta (`projects/[projectId]/google-drive/download/route.ts`) →
+  transformação `desconhecida`, nunca "preservada"; `normalized/` como transformação comprovada; T8 com os dois fluxos.
