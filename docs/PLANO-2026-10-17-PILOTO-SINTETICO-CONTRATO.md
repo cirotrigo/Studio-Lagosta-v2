@@ -1,6 +1,12 @@
 # Piloto SINTÉTICO de autonomia — o checkpoint depois do CP5e (contrato)
 
-**Estado: PROPOSTA, em revisão do Codex (rodada 1). Nada aqui está implementado; este PR é documental.** Base: `main` `61ca3e15`
+**Estado: PROPOSTA, em revisão do Codex (rodada 2). Rodada 1: NÃO APTO — 5 BLOQUEADOR, 3 IMPORTANTE, 1 MENOR, endereçados abaixo
+(lote CONTROLADO, não "representativo" — a representatividade do § 4.8 depende da decisão 5.1; matriz regra → juiz com estado
+"não coberto" e "falso APTO = 0" só nas regras cobertas; decisão 1 por leitura PAREADA estimado × catálogo sintético × verdade;
+decisão 2 só sobre camadas realmente produzidas + cenários injetados à parte; o PNG final é renderizado pelo piloto e contado;
+repetibilidade sobre camadas/crop/assets/PNG normalizados; duração como hipótese a calibrar; exportador de leitura com conferência
+do compute; pseudonimização; resumo versionado em `docs/` e relatório integral fora do repositório; denominadores por etapa e copies
+por arquétipo). Nada aqui está implementado; este PR é documental.** Base: `main` `61ca3e15`
 (CP5a–CP5e mergeados). Plano-mestre: `docs/PLANO-2026-10-15-AUTONOMIA-DIRECAO-DE-ARTE-E-MCP.md` § 4.8 ("ainda NÃO cliente real;
 lote sintético representativo medindo taxa APTO, motivos de revisão humana por regra, falsos bloqueios, custo, estabilidade,
 repetibilidade; o resultado alimenta as decisões 1 e 2 da § 10; só depois discutir piloto real, § 9") e § 9 (critério para
@@ -10,15 +16,17 @@ falso, medição REAL) e os oráculos do CP0 (`suporte/propriedades.ts`).
 
 ## 0. O que o piloto É e o que NÃO é
 
-**É**: um LOTE sintético, determinístico e reprodutível, de peças que atravessam o fluxo autônomo REAL (compor → revisar →
+**É**: um LOTE sintético **CONTROLADO** (não "representativo das fotos dos clientes" — ver 1.2 e a decisão 5.1), determinístico e
+reprodutível, de peças que atravessam o fluxo autônomo REAL (compor → revisar →
 ajustar → revisar → agendar DRAFT, no perfil draft-only, sobre o banco falso), MEDIDO por: (a) taxa APTO por cliente, por formato
-e com/sem arquétipo; (b) motivos de revisão humana por regra e por código; (c) **falso APTO** (o gate aprova e um oráculo
-independente do CP0 acusa violação) — tem de ser ZERO; (d) **candidatos a falso bloqueio** (o gate recusa e nenhum oráculo acusa)
+e com/sem arquétipo; (b) motivos de revisão humana por regra e por código; (c) **falso APTO** (o gate aprova e um oráculo do CP0
+acusa violação) — tem de ser ZERO **nas regras que os oráculos cobrem** (a matriz regra → juiz está na § 2.1; o que não é
+coberto é dito "não coberto", nunca "zero"); (d) **candidatos a falso bloqueio** (o gate recusa e nenhum oráculo acusa)
 — listados com o PNG para inspeção humana, nunca decididos pelo piloto; (e) custo: renders por peça por etapa (compor, revisar,
 gate, ajustar, agendar) e tempo; (f) estabilidade: exceções, `nao-medida`, `sem-vinculo`, timeouts; (g) repetibilidade: a mesma
-entrada duas vezes → o mesmo veredito, os mesmos motivos e a mesma impressão do gate; (h) para a decisão 1 da § 10: a concordância
-`assunto estimado × verdade` nas fotos sintéticas (que têm o assunto POR CONSTRUÇÃO); para a decisão 2: quantas peças do lote
-têm camada não-texto acima de texto (os elementos dos arquétipos). Sai um RELATÓRIO (JSON + markdown + PNGs das recusas) em
+entrada duas vezes → o mesmo veredito, os mesmos motivos e a mesma impressão do gate; (h) para a decisão 1 da § 10: a leitura PAREADA
+`assunto estimado × caixa de catálogo × verdade` nas fotos sintéticas (que têm o assunto POR CONSTRUÇÃO — § 3.8); para a decisão 2:
+quantas peças do lote têm camada não-texto REALMENTE produzida acima de texto, à parte dos cenários de oclusão injetados (§ 3.9). Sai um RELATÓRIO (JSON + markdown + PNGs das recusas) em
 `human-output/relatorios/piloto-sintetico/<data>/` para o owner julgar "satisfatório".
 
 **NÃO é**: cliente real, DRAFT real, agenda, publicação, mensagem, webhook ou banco de produção — nada disso é tocado (o
@@ -30,35 +38,54 @@ X % da decisão 1) — o piloto MEDE, o owner decide (seção 5); MCP-M (só dep
 
 ### 1.1 Clientes e assinaturas (reais, anonimizadas)
 
-Fixtures por cliente em `src/lib/direcao-de-arte/__tests__/fixtures/piloto-sintetico/<cliente-NN>/`, geradas UMA vez por
-`scripts/fixtures/gerar-fixtures-do-piloto-sintetico.ts <pasta-dos-exports> <pasta-das-fixtures>` a partir de exports LOCAIS
-feitos em leitura (`default_transaction_read_only=on`, como o gerador de 13/10 — `scripts/fixtures/gerar-fixture-piloto-direcao-
-de-arte.ts`), do branch de DESENVOLVIMENTO do Neon (`npm run db:dev:*`; nunca o `.env` de produção). Por cliente: as páginas do
+Fixtures por cliente em `src/lib/direcao-de-arte/__tests__/fixtures/piloto-sintetico/<cliente-NN>/`, geradas UMA vez em DOIS passos, como a de
+13/10: (1) `scripts/fixtures/exportar-piloto-sintetico.ts --cliente <id>… <pasta-dos-exports>` — o EXPORTADOR de leitura: conecta
+SÓ ao endpoint do branch de desenvolvimento do Neon (lê `.env.development.local`; confere por `computeDe` que o compute NÃO é o da
+produção e aborta se for ou se o arquivo não existir — nunca cai no `.env`), abre a sessão com `default_transaction_read_only=on`,
+e escreve JSON local (páginas do template "Assinatura", `Project.assinatura`, gradientes da marca, logos baixadas); (2)
+`scripts/fixtures/gerar-fixtures-do-piloto-sintetico.ts <pasta-dos-exports> <pasta-das-fixtures>` — o GERADOR, que não fala com
+banco, Blob nem Drive (como `gerar-fixture-piloto-direcao-de-arte.ts`). Por cliente: as páginas do
 template "Assinatura" (todas as variantes, story e feed), `Project.assinatura` (números), as candidatas do véu e as logos (pixel a
 pixel, como `marca.json`), as fontes DECLARADAS (família e pesos — as fontes não entram; o harness as declara presentes, como os
-pilotos). **Anonimização**: nome do cliente → `cliente-NN`; nenhuma URL real (tokens `fixture:*`); nenhuma foto de cliente (ver 1.2);
-textos de exemplo das assinaturas trocados por copy sintética (1.3). **Quantos**: os clientes ativos com assinatura de story (hoje
+pilotos). **Pseudonimização** (dito assim: as logos e as assinaturas
+identificam a marca; o que sai é o NOME e as URLs): nome do cliente → `cliente-NN` (a tabela nome ↔ NN fica FORA do repositório,
+em `human-output/`); nenhuma URL real (tokens `fixture:*`); nenhuma foto de cliente (ver 1.2); textos de exemplo das assinaturas
+trocados por copy sintética (1.3). **Quantos**: os clientes ativos com assinatura de story (hoje
 ≈ 8–10, decisão 5.2); o gerador lista e o owner confirma a lista antes de gerar.
 
 ### 1.2 Fotos (sintéticas, com assunto por construção)
 
-Nenhuma foto real entra (o Blob de teste não existe — decisão 5.1). As fotos são GERADAS localmente por `suporte/fotos-sinteticas.ts`
-(sharp, determinístico por semente), em 1080×1920 e 1080×1350, cobrindo os casos da § 4.2 do plano-mestre: (A) assunto forte
-localizado (uma região de alto contraste/textura com caixa CONHECIDA — a verdade do `texto-sobre-assunto`); (B) textura difusa sem
-região forte (`naoSeAplica` esperado); (C) fundo liso claro, (D) fundo liso escuro, (E) gradiente vertical claro → escuro, (F)
-"foto ruidosa" (ruído em toda a área: o pior caso da régua). Cada foto leva `assuntoVerdade: Rect | null`. Mais UMA foto real:
-a da fixture de 13/10 (anonimizada, com a região protegida anotada) — o único caso real do lote, dito.
+**O que este lote NÃO é**: o § 4.8 fala em "fotos reais já no Blob de teste"; o Blob de teste não existe e nenhuma foto de cliente
+entra sem a decisão 5.1 do owner. Com fotos SINTÉTICAS o lote é CONTROLADO: mede o fluxo, o gate, a régua e o assunto em casos
+construídos, e NÃO mede a distribuição de textura, recorte e contraste das fotos dos clientes — o relatório diz isso ao lado do
+veredito, e a representatividade do § 4.8 só se reivindica depois da alternativa de 5.1 (fotos reais anonimizadas por peça, com
+janelas, como a de 13/10). As fotos são GERADAS localmente por `suporte/fotos-sinteticas.ts` (sharp, determinístico por semente),
+em 1080×1920 e 1080×1350, cobrindo os CINCO casos da § 4.2 do plano-mestre e os piores casos da régua: (A1) assunto forte
+localizado (região de alto contraste/textura com caixa CONHECIDA — a verdade do `texto-sobre-assunto`); (A2) assunto de BAIXO
+contraste (a estimativa tende a errar: é o caso que a decisão 1 precisa); (B) textura difusa sem região forte (`naoSeAplica`
+esperado); (C) fundo liso claro; (D) fundo liso escuro; (E) gradiente vertical claro → escuro; (F) ruído em toda a área (o pior
+caso da régua); (G) a FALHA de leitura (bytes que não são imagem → `motivoSemAssunto`, caso D do § 4.2); (H) peça SEM foto (caso
+E do § 4.2). Cada foto leva `assuntoVerdade: Rect | null`. Mais UMA foto real: a da fixture de 13/10 (anonimizada, com a região
+protegida anotada) — o único caso real do lote, dito; toda medida de texto/logo sobre ela passa por `exigirMedidaFiel`, inclusive
+DEPOIS de cada ajuste (medida fora das janelas é "não medida", nunca contada).
 
 ### 1.3 Specs
 
 Por cliente × formato (story, feed quando houver assinatura de feed) × foto (6 sintéticas + a real quando story) × copy (3
-copies sintéticas: curta — headline + serviço; média — pré-título, headline, apoio, serviço; longa — headline de 2 linhas, apoio
-de 3, serviço de 2) × arquétipo (sem; `minimal-fb-topo-esquerda`; `minimal-fb-base-esquerda`; `minimal-fb-centro-optico` — só nos
-formatos que o arquétipo aceita e só com foto com caixa de assunto quando o arquétipo a exige, como o T1a/CP2B mandam).
-Teto do lote: ~10 clientes × 2 formatos × 7 fotos × 3 copies × 4 arquétipos ≈ 1.700 peças — **grande demais para cada
-rodada**; o lote PADRÃO é uma amostra determinística de 1 em 6 (≈ 280 peças, ~15 min a 3–4 renders por peça), e `--completo`
-roda tudo (uma vez, ~1,5 h). As specs são DITAS (geradas por função pura `specsDoLote(fixtures, amostra)`, com `loteId`
-determinístico), nunca sorteadas em runtime.
+copies sintéticas: curta — headline + apoio + serviço, o mínimo que TODO arquétipo do catálogo aceita (`apoio` é obrigatório em
+dois deles); média — pré-título, headline, apoio, serviço; longa — headline de 2 linhas, apoio de 3, serviço de 2) × arquétipo
+(sem; `minimal-fb-topo-esquerda`; `minimal-fb-centro-optico`; `minimal-fb-base-esquerda` entra SÓ se `disponibilidadeNoT1a` o der
+disponível — hoje aguarda o T1b e é registrado como EXCLUSÃO, não como peça — só nos formatos que o arquétipo aceita e só com foto
+com caixa de assunto quando o arquétipo a exige, como o T1a/CP2B mandam).
+Teto do lote: ~10 clientes × 2 formatos × 9 fotos × 3 copies × 3 arquétipos ≈ 1.600 specs ELEGÍVEIS. O lote PADRÃO é uma
+amostra determinística de 1 em 6 (≈ 270) **com cobertura mínima de cada eixo** (todo cliente, formato, foto, copy e arquétipo
+aparece ≥ 3 vezes), e `--completo` roda tudo. **Denominadores por etapa**, sempre: specs elegíveis → recusas ESTRUTURAIS esperadas
+do compositor (T1a/CP2B/CP3, `FOTO_INDISPONIVEL`, `ASSINATURA_INCOMPLETA`) → peças compostas → peças que chegaram ao gate →
+APTAS → DRAFTs. **A duração é HIPÓTESE, não promessa**: a conta do CP5e é 3–4 renders por composição, +2 por `revisar-arte`,
++2 por `ajustar-arte` e mais o PNG final do piloto — ~10–14 renders por peça, ×2 pela repetição; a implementação começa por uma
+RODADA DE CALIBRAÇÃO de 20 peças, reporta renders e ms (mediana e p95) e só então fixa o tamanho da rodada padrão (decisão 5.5
+pode mudar com o número medido). O teste do piloto tem timeout próprio (horas, por caso), não o padrão de 20 s do vitest. As specs
+são DITAS (função pura `specsDoLote(fixtures, amostra)`, `loteId` determinístico), nunca sorteadas em runtime.
 
 ## 2. O fluxo por peça (o REAL, sobre o banco falso)
 
@@ -68,10 +95,29 @@ REAL (persistência falsa: Page + Generation no banco, como no CP5e) — conta r
 visão é gpt-5.2 e o piloto é hermético) — guarda `gate` (informação), achados, ajustes propostos; 3. se o gate recusar e houver
 `ajustes`, até 2 ciclos de `ajustarArte` draft-only com os ajustes do revisor (o CP4 e o gate dos produtores decidem), revisando
 depois de cada; 4. `agendarItensDoLote` draft-only (item do lote apontando a Generation): `criado` ou recusa (REVISAO_HUMANA_
-NECESSARIA com motivos); 5. os ORÁCULOS do CP0 sobre a versão FINAL da página (`leiturasDosTextos`, `leituraDaLogo`, `foraDaInterface`,
-`textosQueInvadem` com a `assuntoVerdade`, `ordemDeLeituraInvertida`) — independentes do gate; 6. repetição: a MESMA spec roda uma
-segunda vez num banco novo; veredito, motivos (regra:código:camadas) e `serializarParaImpressao(gate)` têm de ser iguais; 7. PNG
-da versão final (render real, já feito pelo fluxo) guardado para toda peça recusada e para 1 em 10 das aptas (controle visual).
+NECESSARIA com motivos); 5. os ORÁCULOS do CP0 sobre a versão FINAL da página, pela matriz da § 2.1 (independência PARCIAL, dita: o mesmo
+`CanvasRenderer`, e `propriedades.ts` importa limites e funções da régua e `foraDaInterface` do gate — eles são um segundo JUIZ
+sobre a peça renderizada, não um medidor independente da régua); 6. repetição: a MESMA spec roda uma segunda vez num banco novo;
+têm de ser iguais o veredito, os motivos (regra:código:camadas), `serializarParaImpressao(gate)`, as CAMADAS finais (ids, posições,
+tamanhos, estilos, crop — normalizadas: ids voláteis, `createdAt`, URLs falsas e `medidoEm` fora da comparação) e o HASH do PNG
+final; 7. o PNG da versão FINAL é renderizado PELO PILOTO com `CanvasRenderer` (o harness do CP5e não produz PNG: `persistAndRender
+Creative`/`renderPageAndRegister` são falsos e gravam uma URL) e esse render é CONTADO à parte ("render do piloto", não do fluxo);
+guardado para toda peça recusada, todo candidato a falso APTO/bloqueio e 1 em 10 das aptas (controle visual).
+
+### 2.1 Matriz regra → juiz (o que "falso APTO = 0" significa)
+
+| Regra/conferência do gate | Juiz do piloto | Estado |
+|---|---|---|
+| `texto-sem-leitura`, `tratamento-piorou-leitura` | `leiturasDosTextos` + `leituraDentroDoAlvo` + `tratamentosQuePioram` (CP0) sobre o PNG final | coberta (parcial: mesma régua por trás) |
+| `logo-sem-leitura` | `leituraDaLogo` + `resumoDaLogo` (CP0) | coberta (parcial) |
+| `piso-de-interface` | `foraDaInterface` com `interfaceDoStory` (CP0) | coberta (o limite vem do gate: é a mesma régua) |
+| `texto-sobre-assunto` | `textosQueInvadem` com a `assuntoVerdade` (fotos sintéticas) / região protegida anotada (fixture) | coberta — e é o juiz da decisão 1 |
+| `fora-da-area-segura` | geometria das caixas × margens do projeto (`suporte/oraculos-do-piloto.ts`, puro) | coberta |
+| `colisao`, `texto-cortado`, `tinta-fora-da-caixa` | `checkTextGeometry` com o medidor REAL sobre as camadas finais (o mesmo medidor do revisor: parcial) | coberta (parcial) |
+| `texto-pequeno`, `copy-completa`, `identidade` | sem juiz externo — INSPEÇÃO humana nos PNGs das aptas amostradas | **não coberta** |
+| `oclusao` | cenários INJETADOS (§ 3.9) com verdade por construção | coberta só nos cenários injetados |
+| `fonte-nao-carregada` | fora do lote (fontes declaradas presentes; render com fonte de reserva) | **não coberta — dito ao lado do veredito** |
+| visão (gpt-5.2) | não roda | **não coberta — dito ao lado do veredito** |
 
 Limites ditos (os do CP5e, § 3.1): o banco falso não prova travas/SQL reais nem Blob; a visão não roda; as fontes da marca não
 estão instaladas (as famílias são declaradas presentes — `fonte-nao-carregada` real fica fora do lote, dito no relatório); o custo
@@ -79,8 +125,11 @@ medido é o do ambiente local (renders e ms), não o da Vercel.
 
 ## 3. As medidas e o relatório
 
-`human-output/relatorios/piloto-sintetico/<AAAA-MM-DD>/relatorio.json` (toda peça: spec, cliente, desfechos por etapa, gate,
-motivos, oráculos, renders, ms, repetibilidade, caminho do PNG) e `relatorio.md` com:
+Dois produtos: (i) VERSIONADO, `docs/piloto-sintetico/<AAAA-MM-DD>-resumo.md` — HEAD, `loteId`, ambiente (máquina, versões),
+denominadores por etapa, as tabelas 1–10 abaixo e os hashes (SHA-256) do `relatorio.json` e de cada PNG citado — é o que o PR
+commita e o Codex lê; (ii) FORA do repositório (`human-output/` é saída local, como o plano-mestre a usa), `human-output/relatorios/
+piloto-sintetico/<AAAA-MM-DD>/relatorio.json` (toda peça: spec, cliente, desfechos por etapa, gate, motivos, oráculos, renders, ms,
+repetibilidade, caminho do PNG) e os PNGs — com os hashes conferíveis pelo resumo. O resumo traz:
 
 1. **Taxa APTO** (gate informativo da v1 composta; APTO final depois dos ciclos; DRAFT criado) por cliente, formato, foto, copy e
    arquétipo — tabelas, sem média geral escondendo cliente ruim.
@@ -95,40 +144,54 @@ motivos, oráculos, renders, ms, repetibilidade, caminho do PNG) e `relatorio.md
 6. **Estabilidade**: exceções, `nao-medida`, `sem-vinculo`, timeouts da medição (8 s), por etapa.
 7. **Repetibilidade**: % de peças com veredito + motivos + impressão iguais nas duas rodadas (esperado 100 %; cada divergência
    listada com o diff).
-8. **Decisão 1 (§ 10)**: nas fotos (A) com `assuntoVerdade`, a concordância `assunto estimado × verdade` (IoU por foto, e a taxa
-   de peças em que `texto-sobre-assunto` estimado acertou a invasão que o oráculo mede com a verdade) — e quantas peças a política
-   RECOMENDADA (estimado → humano) bloqueou que a verdade aprovaria.
-9. **Decisão 2 (§ 10)**: quantas peças têm camada não-texto acima de texto (elementos de arquétipo, molduras, fios), e em quantas
-   a conferência `oclusao` do gate foi `nao-comprovada`.
-10. **O que o piloto NÃO mediu** (os limites da § 2) — em toda rodada.
+8. **Decisão 1 (§ 10 — estimado × CATÁLOGO, e a taxa de bloqueio por caso)**: leitura PAREADA dos MESMOS bytes e do MESMO
+   corte de cada foto (A1/A2): uma vez SEM anotação de catálogo (sai a ESTIMATIVA — `assuntoOrigem: 'estimado'`) e outra COM a
+   `assuntoVerdade` entregue como caixa de catálogo (`assuntoOrigem: 'catalogo'` — no compositor a caixa presente SUBSTITUI a
+   estimativa, por isso são duas leituras), e a verdade construída como terceiro referencial: IoU estimado × catálogo, estimado ×
+   verdade e catálogo × verdade por foto; a taxa de peças em que o estimado acertou/errou a invasão que o oráculo mede com a verdade;
+   e, por caso do § 4.2 (A catálogo, B estimado, C `naoSeAplica`, D falha de leitura, E sem foto), a taxa de bloqueio da política
+   RECOMENDADA e quantas peças ela bloqueou que a verdade aprovaria. Dito: a estimativa sobre fotos sintéticas pode ser mais fácil
+   ou mais difícil do que sobre fotos reais — o número informa, não decide (5.3).
+9. **Decisão 2 (§ 10)**: (a) quantas peças do lote têm camada não-texto REALMENTE produzida acima de texto (o T1a de hoje não
+   materializa os elementos dos arquétipos; `minimal-fb-base-esquerda` está indisponível até o T1b — registrado como exclusão), e
+   em quantas a conferência `oclusao` do gate foi `nao-comprovada`; (b) à parte, cenários de oclusão INJETADOS no harness (um
+   retângulo/`shape` sobre um texto, por construção) para medir se o gate os pega; (c) o que o lote NÃO mede: a prevalência em
+   peças REAIS da carteira — fica para uma consulta de leitura à parte (fora deste contrato).
+10. **O que o piloto NÃO mediu** (os limites da § 2 e da matriz 2.1: fontes reais, visão, fotos reais, travas/SQL, Blob) — ao
+    lado do veredito, em toda rodada.
 
 ## 4. Arquivos
 
-`scripts/fixtures/gerar-fixtures-do-piloto-sintetico.ts` (gerador, roda uma vez, fora da suíte); `src/lib/direcao-de-arte/__tests__/
+`scripts/fixtures/exportar-piloto-sintetico.ts` (exportador de LEITURA do branch de dev, com conferência do compute) e
+`scripts/fixtures/gerar-fixtures-do-piloto-sintetico.ts` (gerador, sem banco; os dois rodam uma vez, fora da suíte); `src/lib/direcao-de-arte/__tests__/
 fixtures/piloto-sintetico/<cliente-NN>/{assinaturas.json, marca.json, LEIAME.md}`; `suporte/fotos-sinteticas.ts` (puro + sharp),
-`suporte/lote-do-piloto.ts` (`specsDoLote`, puro), `suporte/oraculos-do-piloto.ts` (envolve `propriedades.ts`), `suporte/relatorio-
+`suporte/lote-do-piloto.ts` (`specsDoLote`, puro), `suporte/oraculos-do-piloto.ts` (envolve `propriedades.ts` + a área segura + `checkTextGeometry`, pela matriz 2.1),
+`suporte/png-do-piloto.ts` (o render final pelo `CanvasRenderer`, contado à parte), `suporte/relatorio-
 do-piloto.ts` (puro: agrega e escreve); `src/lib/direcao-de-arte/__tests__/piloto-sintetico.test.ts` — **roda só com
 `PILOTO_SINTETICO=1`** (`describe.skipIf`), fora da suíte normal e do CI (um job manual `workflow_dispatch` opcional, decisão 5.4);
 `scripts/piloto-sintetico.ts` (atalho: roda o vitest com a variável, `--completo`, `--cliente NN`, `--so <trecho>`); docs:
 `docs/regras/revisor-da-arte.md § Piloto sintético`, `docs/regras/aprendizado.md` (o que o piloto NÃO grava: nenhum sinal).
 Testes do próprio piloto (na suíte normal): `fotos-sinteticas.test.ts` (determinismo, `assuntoVerdade` dentro da foto),
 `lote-do-piloto.test.ts` (amostra determinística, cobertura dos eixos), `relatorio-do-piloto.test.ts` (agregações sobre um lote
-falso de 20 peças, inclusive um falso APTO e uma divergência de repetibilidade).
+falso de 20 peças, inclusive um falso APTO, uma regra "não coberta" e uma divergência de repetibilidade por camada e por PNG),
+`oraculos-do-piloto.test.ts` (cada linha da matriz 2.1 com um caso positivo e um negativo).
 
 ## 5. Decisões pendentes do OWNER (o piloto usa a recomendação como PROPOSTA nomeada)
 
 | # | Decisão | Proposta | Alternativa |
 |---|---|---|---|
-| 5.1 | Fotos do lote | SINTÉTICAS com assunto por construção (+ a real anonimizada de 13/10) — nenhuma foto de cliente, nenhum Blob de teste | criar um Blob de teste com fotos reais anonimizadas por peça (o gerador compõe localmente e recorta janelas — o método de 13/10, ~1 h por cliente) |
+| 5.1 | Fotos do lote — **decide a representatividade do § 4.8** | SINTÉTICAS com assunto por construção (+ a real de 13/10): lote CONTROLADO, sem reivindicar o § 4.8 — nenhuma foto de cliente, nenhum Blob de teste | fotos reais anonimizadas POR PEÇA (compor localmente, recortar janelas — o método de 13/10, ~1 h por cliente) num Blob de teste ou em fixtures; só então o lote é "representativo" |
 | 5.2 | Clientes do lote | todos os ativos com assinatura de story (o gerador lista; o owner confirma) | só os 3 do piloto do Dot |
 | 5.3 | O que é "satisfatório" | o owner decide lendo o relatório; o contrato só FIXA: falso APTO = 0 e repetibilidade = 100 % são obrigatórios | limiares numéricos de taxa APTO por cliente neste contrato |
 | 5.4 | Onde roda | local, sob demanda (`npm run piloto:sintetico`), relatório em human-output; CI não roda | job manual no GitHub Actions com o relatório como artefato |
-| 5.5 | Tamanho da rodada padrão | amostra determinística 1/6 (~280 peças, ~15 min); `--completo` uma vez por semana | lote completo sempre |
+| 5.5 | Tamanho da rodada padrão | amostra determinística 1/6 com cobertura mínima por eixo; o tamanho FINAL sai da rodada de calibração (renders e ms medidos) | lote completo sempre |
 
 ## 6. Gates do PR de implementação
 
-Testes do piloto na suíte normal verdes; UMA rodada padrão e UMA `--completo` executadas localmente com o relatório COMMITADO em
-`human-output/` (data e HEAD no cabeçalho); falso APTO = 0 na rodada completa (ou o PR traz o achado como BLOQUEADOR nomeado para o
-próximo contrato, não como "satisfatório"); repetibilidade 100 %; suíte completa sozinha; typecheck; lint; `git diff --check
+Testes do piloto na suíte normal verdes; a rodada de CALIBRAÇÃO (20 peças), UMA rodada padrão e UMA `--completo` executadas
+localmente, com o RESUMO versionado em `docs/piloto-sintetico/` (HEAD, `loteId`, denominadores, hashes) e o relatório integral +
+PNGs em `human-output/` (fora do repositório, hashes conferíveis); falso APTO = 0 nas regras COBERTAS da rodada completa, com as
+"não cobertas" ditas ao lado (ou o PR traz o achado como BLOQUEADOR nomeado para o próximo contrato, não como "satisfatório");
+repetibilidade 100 % (veredito, motivos, impressão, camadas normalizadas e hash do PNG); suíte completa sozinha; typecheck; lint; `git diff --check
 <base>`; 3 validadores; Codex APTO no HEAD final; CI e Vercel verdes; merge por merge commit com `--match-head-commit`. Depois:
 o owner lê o relatório e decide "satisfatório" (5.3) → só então o contrato do MCP-M0 (§ 5.0, só leitura).
