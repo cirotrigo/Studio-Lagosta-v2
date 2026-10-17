@@ -16,7 +16,7 @@ describe('fotos sintéticas', () => {
     expect([r1(), r1(), r1()]).toEqual([r2(), r2(), r2()])
   }, 60_000)
 
-  it('cada caso tem as dimensões do formato, é PNG legível e só A1/A2 têm assunto — dentro da foto', async () => {
+  it('cada caso tem as dimensões do formato, é PNG legível e só A1/A2/A3 têm assunto — dentro da foto', async () => {
     for (const formato of ['story', 'feed'] as const) {
       const fotos = await fotosDoLote(formato)
       expect(fotos.map((f) => f.caso)).toEqual([...CASOS_DA_FOTO])
@@ -24,8 +24,8 @@ describe('fotos sintéticas', () => {
         const meta = await sharp(f.png).metadata()
         expect([meta.width, meta.height]).toEqual([DIMENSOES_DA_FOTO[formato].width, DIMENSOES_DA_FOTO[formato].height])
         expect(f.dataUrl.startsWith('data:image/png;base64,')).toBe(true)
-        if (f.caso === 'A1' || f.caso === 'A2') {
-          expect(f.assuntoVerdade).toEqual(caixaDoAssunto(formato))
+        if (f.caso === 'A1' || f.caso === 'A2' || f.caso === 'A3') {
+          expect(f.assuntoVerdade).toEqual(caixaDoAssunto(formato, f.caso))
           expect(f.assuntoVerdade!.x + f.assuntoVerdade!.width).toBeLessThanOrEqual(f.width)
           expect(f.assuntoVerdade!.y + f.assuntoVerdade!.height).toBeLessThanOrEqual(f.height)
         } else expect(f.assuntoVerdade).toBeNull()
@@ -57,4 +57,21 @@ describe('fotos sintéticas', () => {
     expect(topo.min).toBeGreaterThan(220)
     expect(base.max).toBeLessThan(45)
   }, 120_000)
+})
+
+describe('A3 — assunto na borda superior sobre fundo escuro (adendo § 1/§ 2)', () => {
+  it('a caixa fica colada ao topo, centrada, fora das zonas de texto dos arquétipos de centro (y ≥ 0,42); o fundo é escuro (~72) e o assunto claro', async () => {
+    const sharp = (await import('sharp')).default
+    for (const formato of ['story', 'feed'] as const) {
+      const f = await fotoSintetica('A3', formato)
+      const { width, height } = DIMENSOES_DA_FOTO[formato]
+      expect(f.assuntoVerdade).toEqual({ x: Math.round(width * 0.3), y: Math.round(height * 0.03), width: Math.round(width * 0.4), height: Math.round(height * 0.17) })
+      expect(f.assuntoVerdade!.y + f.assuntoVerdade!.height).toBeLessThan(Math.round(height * 0.42))
+      const fundo = await sharp(f.png).extract({ left: 0, top: Math.round(height * 0.5), width, height: 40 }).toBuffer().then((b) => sharp(b).stats())
+      expect(fundo.channels[0].mean).toBeGreaterThan(60)
+      expect(fundo.channels[0].mean).toBeLessThan(85)
+      const assunto = await sharp(f.png).extract({ left: f.assuntoVerdade!.x, top: f.assuntoVerdade!.y, width: f.assuntoVerdade!.width, height: f.assuntoVerdade!.height }).toBuffer().then((b) => sharp(b).stats())
+      expect(assunto.channels[0].mean).toBeGreaterThan(120)
+    }
+  }, 60_000)
 })

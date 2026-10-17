@@ -8,8 +8,8 @@ import type { Rect } from '@/lib/creatives/halo/halo'
 import type { SpecDoLote } from './lote-do-piloto'
 import { MATRIZ, REGRAS_JULGADAS, regrasCobertas, type VereditoDoJuiz } from './oraculos-do-piloto'
 
-export type Etapa = 'compor' | 'revisar' | 'ajustar' | 'agendar' | 'juizes' | 'png' | 'pareada' | 'repeticao' | 'injecao' | 'modoG'
-export const ETAPAS: readonly Etapa[] = ['compor', 'revisar', 'ajustar', 'agendar', 'juizes', 'png', 'pareada', 'repeticao', 'injecao', 'modoG']
+export type Etapa = 'compor' | 'revisar' | 'ajustar' | 'agendar' | 'juizes' | 'png' | 'pareada' | 'repeticao' | 'injecao' | 'modoG' | 'cenarioH'
+export const ETAPAS: readonly Etapa[] = ['compor', 'revisar', 'ajustar', 'agendar', 'juizes', 'png', 'pareada', 'repeticao', 'injecao', 'modoG', 'cenarioH']
 export interface GateRegistrado {
   tipo: 'medida' | 'sem-vinculo' | 'nao-medida'
   resultado?: 'APTO' | 'REVISAO_HUMANA_NECESSARIA'
@@ -18,7 +18,7 @@ export interface GateRegistrado {
 }
 export interface RegistroDaPeca {
   spec: SpecDoLote
-  compor: { desfecho: 'composta' | 'recusa-estrutural' | 'erro'; codigo?: string; ms: number }
+  compor: { desfecho: 'composta' | 'recusa-estrutural' | 'erro'; codigo?: string; /** O texto da recusa estrutural (CreativeError.message), para diagnosticar o LOTE. */ motivo?: string; ms: number }
   /** O gate informativo da v1 composta (`revisar-arte`). */
   gateV1?: GateRegistrado
   /** Ciclos revisar → ajustar executados (0–2) e o gate da versão final. */
@@ -35,7 +35,26 @@ export interface RegistroDaPeca {
   repeticao?: { igual: boolean; diferencas: string[] }
   png?: { caminho: string; sha256: string }
   /** Decisão 1: a leitura pareada (fotos A1/A2). */
-  assunto?: { estimado: Rect | null; catalogo: Rect | null; verdade: Rect | null; origemNaPeca: 'estimado' | 'catalogo' | 'nenhum' | null }
+  assunto?: {
+    estimado: Rect | null
+    /** Adendo § 1: de onde veio o ESTIMADO — do compositor (peça sem arquétipo, que nasce sem catálogo) ou do harness, sobre os mesmos bytes e o mesmo corte (peça com arquétipo, que nasce com catálogo). */
+    estimadoPor?: 'compositor' | 'harness-mesmo-corte'
+    catalogo: Rect | null
+    verdade: Rect | null
+    origemNaPeca: 'estimado' | 'catalogo' | 'nenhum' | null
+    /** Adendo § 1: só existe com DUAS leituras efetivas (com e sem catálogo) — o que elas têm de ter igual: bytes, dimensões e corte. */
+    par?: { sha256DaFoto: string; dimensoes: string; corteComCatalogo: string | null; corteSemCatalogo: string | null; mesmoCorte: boolean | null }
+    /** Sem par: uma das execuções recusou (qual e por quê). */
+    naoPareada?: string
+  }
+  /** Adendo § 1: os três elos da anotação do assunto — compositor (gravou), revisor (reaproveitou = 0 estimativas) e produtor (contexto sob trava). */
+  anotacao?: {
+    compositor: { origem: 'catalogo' | 'estimado' | 'nenhum'; rect: Rect | null }
+    revisor: { estimativas: number[]; cobertura: { estado: string | null; naoSeAplica: boolean; motivo: string | null }; motivos: string[] }
+    produtor: { assunto: { rect: Rect; origem: 'catalogo' | 'estimado' } | null; naoSeAplica: boolean; motivos: string[] } | null
+  }
+  /** Adendo § 1, cenário H: anotação perdida de propósito (corte da bg-foto trocado) — o que o revisor fez e o que o produtor respondeu. */
+  cenarioH?: { corte: string; tipo: 'anotacao-reaproveitada' | 'reestimada-com-assunto' | 'reestimada-sem-assunto' | 'falha-de-leitura'; revisorRecusou: boolean; produtorRecusou: boolean; aoHumano: boolean; codigoDoProdutor: string }
   /** Modo G: a falha injetada depois da composição. */
   modoG?: { fetchFalhou: boolean; motivoSemAssunto: boolean; gateRecusou: boolean; valido: boolean; /** O que o PRODUTOR (`agendar-leva`) respondeu com o item desligado e sem DRAFT na página. */ produtor?: { codigo: string; postsDaPagina: number; motivos: string[] } }
   /** Foto REAL da fixture: caixas de texto/logo da peça final FORA das janelas fiéis (contrato § 1.2: medida fora delas é "não medida", nunca contada). */
@@ -73,11 +92,29 @@ export interface Resumo {
   custo: Record<Etapa, { rendersMediana: number; rendersP95: number; msMediana: number; msP95: number }>
   estabilidade: { excecoes: number; naoMedida: number; semVinculo: number; timeouts: number; excecoesPorMensagem: Record<string, number> }
   repetibilidade: { comparadas: number; iguais: number; divergencias: Array<{ chave: string; diferencas: string[] }> }
-  decisao1: { fotos: number; iouEstimadoCatalogo: number | null; iouEstimadoVerdade: number | null; iouCatalogoVerdade: number | null; estimadoAcertouInvasao: number; estimadoErrouInvasao: number; bloqueiosPorCaso: Record<string, { pecas: number; bloqueadas: number; bloqueadasQueAVerdadeAprovaria: number; aptasQueAVerdadeReprovaria: number }> }
+  decisao1: { fotos: number; /** Pares em que o estimado LOCALIZOU uma caixa (o denominador dos IoU com estimado) e em que não localizou. */ estimadoLocalizado: number; estimadoSemCaixa: number; iouEstimadoCatalogo: number | null; iouEstimadoVerdade: number | null; iouCatalogoVerdade: number | null; estimadoAcertouInvasao: number; estimadoErrouInvasao: number; bloqueiosPorCaso: Record<string, { pecas: number; bloqueadas: number; bloqueadasQueAVerdadeAprovaria: number; aptasQueAVerdadeReprovaria: number }> }
   decisao2: { pecasComCamadaAcimaDeTexto: number; oclusaoNaoComprovada: number; injecoes: number; injecoesRecusadas: number; motivosDasInjecoes: Record<string, number> }
   rendersSomados: number
   modoG: { leituras: number; validas: number; invalidas: number; recusadas: number }
   naoCoberto: Array<{ regra: string; estado: string; limite: string }>
+  /** Adendo § 1: anotação do caso A ao longo dos três elos; e o cenário H. */
+  anotacao: { casoA: number; preservadas: number; naoPreservadas: Record<string, number>; detalhes: Array<{ chave: string; situacao: string }> }
+  cenarioH: { total: number; aoHumano: number; porTipo: Record<string, number>; detalhes: Array<{ chave: string; corte: string; tipo: string; aoHumano: boolean }> }
+  par: { comparados: number; corteDivergente: number; naoPareadas: number; estimadoPor: Record<string, number> }
+}
+
+/** Adendo § 1: a anotação de uma peça do caso A está preservada quando o compositor gravou catálogo, o revisor NÃO estimou (reaproveitou) e avaliou a regra, e o produtor usou catálogo com a MESMA caixa. */
+export function situacaoDaAnotacao(a: NonNullable<RegistroDaPeca['anotacao']>): 'preservada' | 'revisor-reestimou' | 'revisor-nao-avaliou' | 'produtor-sem-catalogo' | 'produtor-outra-caixa' | 'produtor-nao-mediu' | 'nao-e-caso-a' {
+  if (a.compositor.origem !== 'catalogo' || !a.compositor.rect) return 'nao-e-caso-a'
+  if (a.revisor.estimativas.some((n) => n > 0)) return 'revisor-reestimou'
+  if (a.revisor.cobertura.estado !== 'avaliada' || a.revisor.motivos.length > 0) return 'revisor-nao-avaliou'
+  if (!a.produtor) return 'produtor-nao-mediu'
+  if (a.produtor.assunto?.origem !== 'catalogo' || a.produtor.motivos.length > 0) return 'produtor-sem-catalogo'
+  // A MESMA caixa, sem arredondar: compositor e produtor leem o mesmo cache da composição — qualquer diferença é outra caixa.
+  const r1 = a.compositor.rect
+  const r2 = a.produtor.assunto.rect
+  if (r1.x !== r2.x || r1.y !== r2.y || r1.width !== r2.width || r1.height !== r2.height) return 'produtor-outra-caixa'
+  return 'preservada'
 }
 
 export function agregar(registros: RegistroDaPeca[], elegiveis: number): Resumo {
@@ -136,7 +173,8 @@ export function agregar(registros: RegistroDaPeca[], elegiveis: number): Resumo 
   const excecoes = registros.flatMap((r) => r.estabilidade.excecoes)
   const comparadas = registros.filter((r) => r.repeticao)
   const divergencias = comparadas.filter((r) => !r.repeticao!.igual).map((r) => ({ chave: r.spec.chave, diferencas: r.repeticao!.diferencas }))
-  const comAssunto = registros.filter((r) => r.assunto && r.assunto.verdade)
+  // Decisão 1 só sobre PARES reais (as duas leituras compuseram, mesmo corte): recusa de um lado não é par.
+  const comAssunto = registros.filter((r) => r.assunto && r.assunto.verdade && r.assunto.par && r.assunto.par.mesmoCorte === true)
   const media = (xs: Array<number | null>) => {
     const v = xs.filter((x): x is number => x !== null)
     return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null
@@ -206,6 +244,8 @@ export function agregar(registros: RegistroDaPeca[], elegiveis: number): Resumo 
     repetibilidade: { comparadas: comparadas.length, iguais: comparadas.length - divergencias.length, divergencias },
     decisao1: {
       fotos: comAssunto.length,
+      estimadoLocalizado: comAssunto.filter((r) => r.assunto!.estimado).length,
+      estimadoSemCaixa: comAssunto.filter((r) => !r.assunto!.estimado).length,
       iouEstimadoCatalogo: media(comAssunto.map((r) => iou(r.assunto!.estimado, r.assunto!.catalogo))),
       iouEstimadoVerdade: media(comAssunto.map((r) => iou(r.assunto!.estimado, r.assunto!.verdade))),
       iouCatalogoVerdade: media(comAssunto.map((r) => iou(r.assunto!.catalogo, r.assunto!.verdade))),
@@ -221,6 +261,16 @@ export function agregar(registros: RegistroDaPeca[], elegiveis: number): Resumo 
       motivosDasInjecoes: contar(registros.flatMap((r) => r.oclusaoInjetada?.motivos ?? [])),
     },
     modoG: { leituras: modoG.length, validas: modoG.filter((r) => r.modoG!.valido).length, invalidas: modoG.filter((r) => !r.modoG!.valido).length, recusadas: modoG.filter((r) => r.modoG!.valido && r.modoG!.gateRecusou).length },
+    anotacao: (() => {
+      const casoA = medidas.filter((r) => r.anotacao && r.anotacao.compositor.origem === 'catalogo')
+      const situacoes = casoA.map((r) => ({ chave: r.spec.chave, situacao: situacaoDaAnotacao(r.anotacao!) }))
+      return { casoA: casoA.length, preservadas: situacoes.filter((s) => s.situacao === 'preservada').length, naoPreservadas: contar(situacoes.filter((s) => s.situacao !== 'preservada').map((s) => s.situacao)), detalhes: situacoes.filter((s) => s.situacao !== 'preservada') }
+    })(),
+    cenarioH: (() => {
+      const h = registros.filter((r) => r.cenarioH)
+      return { total: h.length, aoHumano: h.filter((r) => r.cenarioH!.aoHumano).length, porTipo: contar(h.map((r) => r.cenarioH!.tipo)), detalhes: h.map((r) => ({ chave: r.spec.chave, corte: r.cenarioH!.corte, tipo: r.cenarioH!.tipo, aoHumano: r.cenarioH!.aoHumano })) }
+    })(),
+    par: { comparados: registros.filter((r) => r.assunto?.par).length, corteDivergente: registros.filter((r) => r.assunto?.par?.mesmoCorte === false).length, naoPareadas: registros.filter((r) => r.assunto?.naoPareada).length, estimadoPor: contar(registros.filter((r) => r.assunto?.par).map((r) => `${r.assunto!.estimadoPor ?? 'compositor'}${r.assunto!.estimado ? '' : ' (sem caixa)'}`)) },
     naoCoberto: REGRAS_JULGADAS.filter((r) => MATRIZ[r].estado === 'nao-coberta' || MATRIZ[r].estado === 'mesma-medida').map((r) => ({ regra: r, estado: MATRIZ[r].estado, limite: MATRIZ[r].limite })),
   }
 }
@@ -266,6 +316,10 @@ export function violacoesDoPiloto(resumo: Resumo, registros: RegistroDaPeca[], o
   if (resumo.modoG.invalidas) v.push(`modo G: ${resumo.modoG.invalidas} leitura(s) inválida(s) (a falha não foi injetada ou o cache serviu)`)
   if (resumo.modoG.recusadas !== resumo.modoG.validas) v.push(`modo G: ${resumo.modoG.validas - resumo.modoG.recusadas} leitura(s) válida(s) que o gate NÃO recusou`)
   if (resumo.decisao2.injecoes !== resumo.decisao2.injecoesRecusadas) v.push(`oclusão injetada: ${resumo.decisao2.injecoes - resumo.decisao2.injecoesRecusadas} injeção(ões) que o gate NÃO recusou`)
+  // Adendo § 1: na rodada oficial o cenário H tem de existir e toda anotação perdida tem de ir ao humano (APTO depois de perder a anotação seria APTO silencioso).
+  if (opcoes.oficial && resumo.cenarioH.total === 0) v.push('rodada oficial sem nenhum cenário H (anotação perdida)')
+  if (resumo.cenarioH.total !== resumo.cenarioH.aoHumano) v.push(`cenário H: ${resumo.cenarioH.total - resumo.cenarioH.aoHumano} peça(s) com a anotação perdida que NÃO foram ao humano`)
+  if (resumo.par.corteDivergente > 0) v.push(`par catálogo × sem catálogo com corte divergente em ${resumo.par.corteDivergente} peça(s): o par não é sobre o mesmo recorte`)
   return v
 }
 
@@ -331,7 +385,7 @@ export function paraMarkdown(resumo: Resumo, meta: { data: string; head: string;
   L.push('')
   const d1 = resumo.decisao1
   const f = (x: number | null) => (x === null ? '—' : x.toFixed(2))
-  L.push(`## 8. Decisão 1 — assunto estimado × catálogo × verdade (${d1.fotos} peças com verdade): IoU est×cat ${f(d1.iouEstimadoCatalogo)} · est×verdade ${f(d1.iouEstimadoVerdade)} · cat×verdade ${f(d1.iouCatalogoVerdade)} · o estimado acertou a invasão em ${d1.estimadoAcertouInvasao} e errou em ${d1.estimadoErrouInvasao}`)
+  L.push(`## 8. Decisão 1 — assunto estimado × catálogo × verdade (${d1.fotos} PARES reais, mesmo corte conhecido): o estimado localizou caixa em ${d1.estimadoLocalizado}/${d1.fotos} e NÃO localizou em ${d1.estimadoSemCaixa}/${d1.fotos}; IoU est×cat ${f(d1.iouEstimadoCatalogo)} e est×verdade ${f(d1.iouEstimadoVerdade)} (denominador: os ${d1.estimadoLocalizado} com caixa) · cat×verdade ${f(d1.iouCatalogoVerdade)} (denominador: ${d1.fotos}) · o estimado acertou a invasão em ${d1.estimadoAcertouInvasao} e errou em ${d1.estimadoErrouInvasao}. Em peça com arquétipo o par é "catálogo × estimativa do HARNESS no mesmo recorte" (as duas composições nascem com catálogo).`)
   L.push('A linha D é o gate DEPOIS da falha de leitura injetada (as mesmas peças também aparecem no seu caso de origem).')
   L.push('| caso (§ 4.2) | peças | bloqueadas por texto-sobre-assunto | das quais a verdade aprovaria | APTAS que a verdade reprovaria |')
   L.push('|---|---|---|---|---|')
@@ -340,6 +394,12 @@ export function paraMarkdown(resumo: Resumo, meta: { data: string; head: string;
   L.push(`## 9. Decisão 2 — peças com camada não-texto acima de texto (produzidas): ${resumo.decisao2.pecasComCamadaAcimaDeTexto}; \`oclusao\` não comprovada no gate: ${resumo.decisao2.oclusaoNaoComprovada}`)
   L.push(`Cenário INJETADO (shape acima da headline em peça APTA): ${resumo.decisao2.injecoes} injeções, ${resumo.decisao2.injecoesRecusadas} recusadas pelo gate${Object.keys(resumo.decisao2.motivosDasInjecoes).length ? ` — motivos: ${Object.entries(resumo.decisao2.motivosDasInjecoes).map(([m, n]) => `${m} ${n}`).join(', ')}` : ''}.`)
   L.push(`Modo G (falha de leitura injetada): ${resumo.modoG.leituras} leituras, ${resumo.modoG.validas} válidas (${resumo.modoG.recusadas} recusadas pelo REVISOR e pelo PRODUTOR — item desligado, sem DRAFT na página, resposta REVISAO_HUMANA_NECESSARIA por texto-sobre-assunto e nenhum post criado), ${resumo.modoG.invalidas} inválidas (cache usado).`)
+  L.push('')
+  L.push(`## 9b. Anotação do assunto (adendo § 1) — caso A: ${resumo.anotacao.casoA} peças; preservada nos três elos (compositor gravou catálogo → revisor reaproveitou sem estimar e avaliou → produtor usou catálogo com a mesma caixa): ${resumo.anotacao.preservadas}; não preservada: ${Object.entries(resumo.anotacao.naoPreservadas).map(([k, n]) => `${k} ${n}`).join(', ') || 'nenhuma'}`)
+  for (const d of resumo.anotacao.detalhes) L.push(`- ${d.chave}: ${d.situacao}`)
+  L.push(`Par catálogo presente × ausente: ${resumo.par.comparados} pares REAIS (as duas execuções compuseram; SHA-256, dimensões e corte registrados), ${resumo.par.corteDivergente} com corte divergente (fora do IoU), ${resumo.par.naoPareadas} não pareadas (uma das execuções recusou, ou o corte ficou desconhecido num dos lados). Origem do estimado nos pares (inclusive quando não localizou caixa): ${Object.entries(resumo.par.estimadoPor).map(([k, n]) => `${k} ${n}`).join(', ') || '—'} — compositor = peça sem arquétipo; harness-mesmo-corte = peça com arquétipo (nasce com catálogo; a leitura sem catálogo é o cálculo do harness sobre os mesmos bytes e corte).`)
+  L.push(`Cenário H (anotação perdida de propósito: corte da bg-foto trocado numa peça APTA do caso A → nova medida e decisão): ${resumo.cenarioH.total} peças, ${resumo.cenarioH.aoHumano} ao humano pelo revisor E pelo produtor; tipo da nova medida: ${Object.entries(resumo.cenarioH.porTipo).map(([k, n]) => `${k} ${n}`).join(', ') || '—'}. Hoje o revisor NÃO relê o catálogo quando o cache cai (comportamento medido; mudar é decisão do owner).`)
+  for (const d of resumo.cenarioH.detalhes) L.push(`- ${d.chave}: ${d.corte} → ${d.tipo} → ${d.aoHumano ? 'humano' : 'NÃO foi ao humano'}`)
   L.push('')
   L.push('## 10. O que NÃO está coberto por juiz (inspeção humana nos PNGs amostrados)')
   for (const n of resumo.naoCoberto) L.push(`- ${n.regra} — ${n.estado}: ${n.limite}`)

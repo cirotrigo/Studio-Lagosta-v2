@@ -1,6 +1,6 @@
 /** Piloto sintético — o resumo agrega um lote falso de 20 peças: falso APTO, regra não coberta, divergência de repetibilidade, decisão 1 e 2, modo G. */
 import { describe, expect, it } from 'vitest'
-import { agregar, impressaoDoGate, iou, paraMarkdown, violacoesDoPiloto, type RegistroDaPeca } from './suporte/relatorio-do-piloto'
+import { agregar, impressaoDoGate, iou, paraMarkdown, situacaoDaAnotacao, violacoesDoPiloto, type RegistroDaPeca } from './suporte/relatorio-do-piloto'
 import { REGRAS_JULGADAS, MATRIZ } from './suporte/oraculos-do-piloto'
 
 const juizes = (viola: Partial<Record<string, boolean | null>> = {}) => REGRAS_JULGADAS.map((regra) => ({ regra, estado: MATRIZ[regra].estado, viola: viola[regra] ?? (MATRIZ[regra].estado === 'coberta' || MATRIZ[regra].estado === 'coberta-parcial' ? false : null), camadas: viola[regra] ? ['apoio'] : [], detalhe: '' }))
@@ -17,7 +17,7 @@ const peca = (i: number, extra: Partial<RegistroDaPeca> = {}): RegistroDaPeca =>
   ms: { compor: 500, revisar: 300 },
   estabilidade: { excecoes: [], naoMedida: false, semVinculo: false, timeout: false },
   repeticao: { igual: true, diferencas: [] },
-  assunto: { estimado: { x: 540, y: 1113, width: 432, height: 480 }, catalogo: { x: 540, y: 1114, width: 432, height: 480 }, verdade: { x: 540, y: 1114, width: 432, height: 480 }, origemNaPeca: 'estimado' },
+  assunto: { estimado: { x: 540, y: 1113, width: 432, height: 480 }, estimadoPor: 'compositor', catalogo: { x: 540, y: 1114, width: 432, height: 480 }, verdade: { x: 540, y: 1114, width: 432, height: 480 }, origemNaPeca: 'estimado', par: { sha256DaFoto: 'abc', dimensoes: '1080x1920', corteComCatalogo: 'center-middle', corteSemCatalogo: 'center-middle', mesmoCorte: true } },
   ...extra,
 })
 
@@ -75,10 +75,10 @@ describe('violacoesDoPiloto — cada invariante violado derruba a rodada', () =>
   it('rodada limpa EXPLORATÓRIA: nenhuma violação; a OFICIAL exige cobertura dos cenários (repetição de tudo, modo G, oclusão injetada)', () => {
     const registros = [base()]
     expect(violacoesDoPiloto(agregar(registros, 1), registros, { oficial: false })).toEqual([])
-    expect(violacoesDoPiloto(agregar(registros, 1), registros)).toEqual(['rodada oficial sem nenhuma leitura em modo G', 'rodada oficial sem nenhuma oclusão injetada'])
+    expect(violacoesDoPiloto(agregar(registros, 1), registros)).toEqual(['rodada oficial sem nenhuma leitura em modo G', 'rodada oficial sem nenhuma oclusão injetada', 'rodada oficial sem nenhum cenário H (anotação perdida)'])
     const semRepeticao = [{ ...base(), repeticao: undefined }]
     expect(violacoesDoPiloto(agregar(semRepeticao, 1), semRepeticao)[0]).toMatch(/sem repetir todas as specs \(0\/1\)/)
-    const completa = [{ ...base(), modoG: { fetchFalhou: true, motivoSemAssunto: true, gateRecusou: true, valido: true }, oclusaoInjetada: { gateRecusou: true, motivos: ['oclusao:NAO_MEDIDO'] } }]
+    const completa = [{ ...base(), modoG: { fetchFalhou: true, motivoSemAssunto: true, gateRecusou: true, valido: true }, oclusaoInjetada: { gateRecusou: true, motivos: ['oclusao:NAO_MEDIDO'] }, cenarioH: { corte: 'center-middle → left-top', tipo: 'reestimada-com-assunto' as const, revisorRecusou: true, produtorRecusou: true, aoHumano: true, codigoDoProdutor: 'REVISAO_HUMANA_NECESSARIA' } }]
     expect(violacoesDoPiloto(agregar(completa, 1), completa)).toEqual([])
   })
   it('erro de execução, exceção, timeout e cobertura vazia caem', () => {
@@ -121,5 +121,39 @@ describe('impressaoDoGate — a repetibilidade compara o gate INTEIRO, menos o r
     expect(impressaoDoGate({ ...g, pageVersion: 'p2' })).not.toBe(impressaoDoGate(g))
     expect(impressaoDoGate({ ...g, copyVersion: 'c2' })).not.toBe(impressaoDoGate(g))
     expect(impressaoDoGate({ ...g, politicaDoAssunto: { estimado: 'comprova', semAssuntoLocalizavel: 'nao-se-aplica' } })).not.toBe(impressaoDoGate(g))
+  })
+})
+
+describe('adendo § 1 — anotação do assunto e cenário H', () => {
+  const rect = { x: 0, y: 900, width: 1080, height: 500 }
+  const ok: NonNullable<RegistroDaPeca['anotacao']> = { compositor: { origem: 'catalogo', rect }, revisor: { estimativas: [0, 0], cobertura: { estado: 'avaliada', naoSeAplica: false, motivo: null }, motivos: [] }, produtor: { assunto: { rect, origem: 'catalogo' }, naoSeAplica: false, motivos: [] } }
+  it('preservada só quando os três elos batem; cada quebra tem o seu nome', () => {
+    expect(situacaoDaAnotacao(ok)).toBe('preservada')
+    expect(situacaoDaAnotacao({ ...ok, compositor: { origem: 'estimado', rect } })).toBe('nao-e-caso-a')
+    expect(situacaoDaAnotacao({ ...ok, revisor: { ...ok.revisor, estimativas: [0, 1] } })).toBe('revisor-reestimou')
+    expect(situacaoDaAnotacao({ ...ok, revisor: { ...ok.revisor, motivos: ['NAO_COMPROVADA'] } })).toBe('revisor-nao-avaliou')
+    expect(situacaoDaAnotacao({ ...ok, produtor: null })).toBe('produtor-nao-mediu')
+    expect(situacaoDaAnotacao({ ...ok, produtor: { assunto: { rect, origem: 'estimado' }, naoSeAplica: false, motivos: ['NAO_COMPROVADA'] } })).toBe('produtor-sem-catalogo')
+    expect(situacaoDaAnotacao({ ...ok, produtor: { assunto: { rect: { ...rect, y: 901 }, origem: 'catalogo' }, naoSeAplica: false, motivos: [] } })).toBe('produtor-outra-caixa')
+    // Sem arredondamento: 0,4 px de diferença já é outra caixa.
+    expect(situacaoDaAnotacao({ ...ok, produtor: { assunto: { rect: { ...rect, x: 0.4 }, origem: 'catalogo' }, naoSeAplica: false, motivos: [] } })).toBe('produtor-outra-caixa')
+  })
+  it('cenário H que NÃO vai ao humano e par com corte divergente derrubam a rodada', () => {
+    const base = (): RegistroDaPeca => ({ spec: { chave: 'c|story|A1|curta|minimal-fb-centro-optico', cliente: 'c', formato: 'story', foto: 'A1', copy: 'curta', arquetipo: 'minimal-fb-centro-optico' }, compor: { desfecho: 'composta', ms: 1 }, ciclos: 0, draft: 'criado', juizes: [], oclusaoProduzida: [], renders: {}, ms: {}, estabilidade: { excecoes: [], naoMedida: false, semVinculo: false, timeout: false }, gateV1: { tipo: 'medida', resultado: 'APTO', motivos: [], naoMedidos: [] }, gateFinal: { tipo: 'medida', resultado: 'APTO', motivos: [], naoMedidos: [] }, repeticao: { igual: true, diferencas: [] } })
+    const h = [{ ...base(), cenarioH: { corte: 'a → b', tipo: 'reestimada-com-assunto' as const, revisorRecusou: true, produtorRecusou: false, aoHumano: false, codigoDoProdutor: 'criado' } }]
+    expect(violacoesDoPiloto(agregar(h, 1), h, { oficial: false })).toContainEqual(expect.stringMatching(/cenário H: 1 peça\(s\) com a anotação perdida que NÃO foram ao humano/))
+    const par = [{ ...base(), assunto: { estimado: null, catalogo: rect, verdade: rect, origemNaPeca: 'catalogo' as const, par: { sha256DaFoto: 'abc', dimensoes: '1080x1920', corteComCatalogo: 'center-middle', corteSemCatalogo: 'left-top', mesmoCorte: false } } }]
+    expect(violacoesDoPiloto(agregar(par, 1), par, { oficial: false })).toContainEqual(expect.stringMatching(/corte divergente em 1/))
+    // Decisão 1 só agrega pares com mesmoCorte === true; `null` (corte desconhecido) e `false` ficam de fora.
+    const desconhecido = [{ ...base(), assunto: { estimado: rect, catalogo: rect, verdade: rect, origemNaPeca: 'estimado' as const, par: { sha256DaFoto: 'abc', dimensoes: '1080x1920', corteComCatalogo: null, corteSemCatalogo: null, mesmoCorte: null } } }]
+    expect(agregar(desconhecido, 1).decisao1.fotos).toBe(0)
+    // Os denominadores: par com estimado nulo conta em `estimadoSemCaixa` e não entra no IoU com estimado.
+    const semCaixa = [{ ...base(), assunto: { estimado: null, estimadoPor: 'harness-mesmo-corte' as const, catalogo: rect, verdade: rect, origemNaPeca: 'catalogo' as const, par: { sha256DaFoto: 'abc', dimensoes: '1080x1920', corteComCatalogo: 'center-middle', corteSemCatalogo: 'center-middle', mesmoCorte: true } } }]
+    const d1 = agregar(semCaixa, 1)
+    expect(d1.decisao1).toMatchObject({ fotos: 1, estimadoLocalizado: 0, estimadoSemCaixa: 1, iouEstimadoCatalogo: null, iouCatalogoVerdade: 1 })
+    expect(d1.par.estimadoPor).toEqual({ 'harness-mesmo-corte (sem caixa)': 1 })
+    const resumo = agregar([{ ...base(), anotacao: ok }], 1)
+    expect(resumo.anotacao).toMatchObject({ casoA: 1, preservadas: 1 })
+    expect(paraMarkdown(resumo, { data: 'd', head: 'h', loteId: 'l', ambiente: 'a', rodada: 'r', hashRelatorio: 'x', limites: [] })).toMatch(/9b\. Anotação do assunto.*caso A: 1 peças; preservada[^:]*: 1/)
   })
 })

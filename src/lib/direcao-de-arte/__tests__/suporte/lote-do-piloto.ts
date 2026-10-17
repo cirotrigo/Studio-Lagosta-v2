@@ -50,6 +50,7 @@ export interface EntradaDeFoto {
 export const ENTRADAS_DE_FOTO: readonly EntradaDeFoto[] = [
   { id: 'A1', caso: 'A1', temAssunto: true, formatos: ['story', 'feed'] },
   { id: 'A2', caso: 'A2', temAssunto: true, formatos: ['story', 'feed'] },
+  { id: 'A3', caso: 'A3', temAssunto: true, formatos: ['story', 'feed'] },
   { id: 'B', caso: 'B', temAssunto: false, formatos: ['story', 'feed'] },
   { id: 'C', caso: 'C', temAssunto: false, formatos: ['story', 'feed'] },
   { id: 'D', caso: 'D', temAssunto: false, formatos: ['story', 'feed'] },
