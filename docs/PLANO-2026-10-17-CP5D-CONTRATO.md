@@ -1,6 +1,6 @@
 # CP5d — contrato técnico do GATE em `ajustar-arte` (perfil draft-only) — proposta para revisão, 17/10/2026
 
-**Estado: PROPOSTA (rodada 0 — ainda sem revisão do Codex).** Nada aqui está implementado; este PR é documental. Base:
+**Estado: PROPOSTA (rodada 1 do Codex: NÃO APTO — 2 BLOCKER, 4 IMPORTANTE; todos endereçados abaixo: a Generation de ORIGEM é a do compositor da página, travada `FOR UPDATE` antes das referências e passada ao contexto com `composicaoReaproveitavel: false`; a Generation PROCESSING criada na transação é FECHADA explicitamente como `FAILED` quando o render falha ou a página muda — o cron não a renderiza, só a marca FAILED aos 10 min; `audio` relido sob trava; a ordem das travas inclui a escrita de `travarRecomposicaoDaArte` (Page → Generation do compositor → FOR SHARE, a mesma do CP5c); os leitores (bancada, galeria, `ver-geracao`, `agendar-leva`) ditos na § 4.4; matriz A13–A17 e o harness de P11 com rollback; "os testes provam" rebaixado para "os testes exercitam, com os limites ditos").** Nada aqui está implementado; este PR é documental. Base:
 `main` `cc6b01f0` (CP5c mergeado: PR #242; contrato do CP5c em `docs/PLANO-2026-10-16-CP5C-CONTRATO.md`). Fontes:
 plano-mestre `docs/PLANO-2026-10-15-AUTONOMIA-DIRECAO-DE-ARTE-E-MCP.md` § 4.6, contratos do CP5b (§ 12) e do CP5c
 (§ 2 "não entra"), o executor do CP4 (`revisao/ajustar-sem-piorar.ts`, `nao-piora.ts`) e `ajustarArte`
@@ -67,19 +67,24 @@ O executor mede cada candidata por `medidaDe(camadas, ctx)` (→ `MedidaComparav
 `MedidaDaPeca`). O gate precisa da `MedidaDaPeca` da candidata FINAL, medida pelo cliente da transação (as linhas que
 ela lê estão travadas). Por isso a medição do gate é UMA medida nova, DENTRO da transação, com `contextoDaMedicao({
 cliente: tx, sinal, prazoPorDownloadMs, composicaoReaproveitavel: false, generationDaPeca: null })` +
-`medirCamadasDaPeca(candidata, ctx, { corrigir: false })` — a mesma medição do CP4 e do CP5c. `composicaoReaproveitavel:
-false` e `generationDaPeca: null` de propósito: a candidata é uma versão NOVA da página; nenhuma Generation tem a arte
-dela, então o assunto é estimado de novo pela foto e a variante da logo vem da página; as referências de corpo vêm da
-assinatura/modelo apontadas pela Generation do compositor da página (lida pela transação, `FOR SHARE`, como no CP5c
-— § 4). Custo: +1 medida (~0,4–0,6 s medido no CP5c) dentro dos 20 s; os N renders do CP4 continuam fora. **Não** se
-reaproveita a última `medidaAtual` do executor: ela foi medida fora da transação, pelo `db`, antes das travas.
+`medirCamadasDaPeca(candidata, ctx, { corrigir: false })` — a mesma medição do CP4 e do CP5c. `generationDaPeca` é a
+**Generation de ORIGEM da página** (§ 4.3: a do compositor — `fieldValues.pageId = page.id` e `source: 'compositor'`, a
+mais recente —, relida e travada `FOR UPDATE` pela transação ANTES das referências), com `composicaoReaproveitavel:
+false` de propósito: a candidata é uma versão NOVA da página, nenhuma arte é dela, então o assunto é estimado de novo
+pela foto e a variante da logo vem da página; as referências de corpo e entrelinha vêm da assinatura e da página-modelo
+apontadas por essa Generation (`composicao.assinatura.pageId`, `sourcePageId`), travadas `FOR SHARE`. Codex R1: `null`
+no contexto significa NENHUMA Generation — sem referência nenhuma —, não "sem cache". **Página SEM Generation do
+compositor** (arte livre, arte de modelo): a medição roda sem referências, `texto-pequeno` do título fica não comprovada
+e o gate recusa, com o motivo dito ("página sem arte do compositor: o agente não ajusta; peça ao editor") — A18. Custo: +1
+medida (~0,4–0,6 s medido no CP5c) dentro dos 20 s; os N renders do CP4 continuam fora. **Não** se reaproveita a última
+`medidaAtual` do executor: ela foi medida fora da transação, pelo `db`, antes das travas.
 
 ### 3.3 A decisão
 
 ```ts
 // arte-rapida.ts (novo, dentro da transação): medirEDecidirAjuste(tx, …)
-//  1. recusaComoImagem(candidata, page.audio) → 'nao-medida' (já recusado antes por PAGINA_COM_VIDEO; música idem)
-//  2. contextoDaMedicao + medirCamadasDaPeca (§ 3.2), com Promise.race(PRAZO_DA_MEDICAO_MS = 8_000) sobre a cadeia inteira
+//  1. recusaComoImagem(candidata, paginaTravada.audio) → 'nao-medida' — o `audio` RELIDO sob a trava (Codex R1: `versaoDaPagina` não cobre áudio)
+//  2. contextoDaMedicao({ cliente: tx, sinal, prazoPorDownloadMs, composicaoReaproveitavel: false, generationDaPeca: geracaoDeOrigem }) + medirCamadasDaPeca (§ 3.2), com Promise.race(PRAZO_DA_MEDICAO_MS = 8_000) sobre a cadeia inteira
 //  3. decidirEMontarRegistro({ entrada: { medida, identidade: identidadeDaPagina(paginaFutura), politicaDoAssunto: POLITICA_DO_ASSUNTO_DO_AGENDAR_LEVA },
 //       page: paginaFutura, vinculo: { projectId, generationId: generationNova.id, postType: TIPO_DO_POST_POR_FORMATO[formato] },
 //       origem: 'ajustar-arte', principal, agora })
@@ -104,29 +109,48 @@ reaproveita a última `medidaAtual` do executor: ela foi medida fora da transaç
 **Ordem COMUM das travas** (a do CP5c, sem as do lote): `pg_advisory_xact_lock(agenda do projeto)` →
 `pg_advisory_xact_lock(fontes do projeto)` → **posts da página `ORDER BY "id" FOR UPDATE`** (já existe) → `Page FOR
 UPDATE` (nova: hoje a escrita é por CAS sem trava de linha; a trava serializa com o gate do `agendar-leva`, que trava
-a página depois dos posts — mesma ordem) → `FOR SHARE`: `Project`, página de assinatura e página-modelo apontadas pela
-Generation do compositor da página, `CustomFont` do projeto. Não trava Generation nenhuma existente: a medição lê só
-a candidata em memória e as referências (`FOR SHARE`); a Generation NOVA nasce na transação (linha própria). Ciclo:
-`agendar-leva` toma agenda → fontes → ItemDeLote → ItemDePlano → posts → Page → Generation → shares; `ajustar-arte`
-toma agenda → fontes → posts → Page → shares — subsequência, sem inversão. **A trava consultiva da agenda entra no
-`ajustar-arte` draft-only** porque é ela que serializa com o `agendar-leva` do mesmo projeto antes de qualquer trava
-de linha (sem ela, A trava posts e espera Page; B trava Page e espera posts? Não: B também trava posts antes de Page.
-Então a consultiva da agenda é redundante para o ciclo — fica como **decisão 8.4**, recomendação: tomar, pelo custo
-zero e pela simetria com o `agendar-leva`; alternativa: não tomar).
+a página depois dos posts — mesma ordem) → **`Generation` de ORIGEM da página `FOR UPDATE`** (a do compositor, § 4.3:
+é a que `travarRecomposicaoDaArte` ESCREVE no fim da transação — hoje ela a procura e escreve sem trava prévia (Codex
+R1); travá-la aqui põe essa escrita na posição da ordem comum, Page → Generation → shares, exatamente a do CP5c) →
+`FOR SHARE`: `Project`, página de assinatura e página-modelo apontadas por essa Generation, `CustomFont` do projeto.
+A Generation NOVA (PROCESSING) nasce na transação (linha própria, não disputada). Ciclo: `agendar-leva` toma agenda →
+fontes → ItemDeLote → ItemDePlano → posts → Page → Generation → shares; `ajustar-arte` toma agenda → fontes → posts →
+Page → Generation → shares — subsequência, sem inversão; `persist.ts` (render condicionado) toma Page → escreve
+Generation (compatível); `recompor.ts` escreve Page (CAS) e DEPOIS, fora de transação, a Generation (compatível: nunca
+segura uma esperando a outra); `later-scheduler` toma agenda → posts; as rotas de fontes só a consultiva das fontes.
+Deadlock que escape disso → `AJUSTE_CONCORRENTE` (§ 8.5), nunca `ERRO`. **A trava consultiva da agenda** entra pela
+simetria com o `agendar-leva` (decisão 8.4; redundante para o ciclo, custo zero).
 
 Passos (dentro de `db.$transaction`, isolamento `ReadCommitted`, 20 s):
 
 1. Travas acima. `POST_APROVADO_INTOCAVEL` como hoje (post não-DRAFT ou `laterPostId`).
-2. **Conferência da versão sob trava**: `tx.page.findUnique` → `versaoDaPagina(atual) === versaoAntes` e mesmo
-   contrato (as duas conferências que hoje acontecem no CAS/releitura passam a ser feitas EXPLICITAMENTE antes de medir,
-   com a página travada: se a página mudou, `VERSAO_DIVERGENTE`/`PAGINA_MUDOU_DURANTE_O_AJUSTE` como hoje, sem medir).
-   A candidata foi derivada da página lida ANTES das travas; com a página travada e na mesma versão, a candidata é a
-   versão seguinte dela — não há janela entre "o que medi" e "o que gravo".
+2. **Conferência da versão sob trava**: `tx.page.findUnique` (com `audio`, `copyAutoral`, `templateId`) →
+   `versaoDaPagina(atual) === versaoAntes`, mesmo contrato E **mesmo `audio`** (`JSON.stringify` do áudio lido antes;
+   Codex R1: `versaoDaPagina` não cobre áudio, e a música decide `recusaComoImagem`) — as conferências que hoje acontecem
+   no CAS/releitura passam a ser feitas EXPLICITAMENTE antes de medir, com a página travada: mudou →
+   `VERSAO_DIVERGENTE`/`PAGINA_MUDOU_DURANTE_O_AJUSTE` como hoje, sem medir. A candidata foi derivada da página lida
+   ANTES das travas; com a página travada, na mesma versão e com o mesmo áudio, a candidata é a versão seguinte dela —
+   não há janela entre "o que medi" e "o que gravo". **Limite dito**: as travas de linha não congelam os BYTES remotos
+   de foto, logo e fontes servidos por URL (`NAO_CONFERIDO_PELA_IDENTIDADE`, CP5b § 4.2) — a mesma lacuna do CP5c.
+2b. **Generation de ORIGEM** (§ 3.2): `SELECT id FROM "Generation" WHERE id = $1 FOR UPDATE` sobre a Generation do
+   compositor da página achada pela transação (a mais recente com `fieldValues.pageId = page.id` e `source:
+   'compositor'`); relida com `fieldValues` e `sourcePageId` para as referências. Uma Generation inserida DURANTE a
+   transação não entra (a escolha é a lida; dito, como C22 do CP5c). Sem Generation do compositor → medição sem
+   referências → recusa do gate (A18).
 3. **Generation PROCESSING** criada pela transação (`tx.generation.create`: `status: 'PROCESSING'`, `projectId`,
-   `templateId`, `authorName: 'ajuste-arte'`, `canal`, `fieldValues: { source: 'ajuste-arte', pageId: page.id,
-   sourcePageId: page.id, … os mesmos campos que hoje vão no render }`) — é a linha que o render fecha
+   `templateId`, `authorName: 'ajuste-arte'`, `canal`, `createdBy`, `fieldValues: { source: 'ajuste-arte', pageId:
+   page.id, sourcePageId: page.id, … os mesmos campos que hoje vão no render }`) — é a linha que o render fecha
    (`renderPageAndRegister({ generationId })`, caminho que já existe para a fila). Se o gate recusar, a transação volta
-   atrás e a linha não existe.
+   atrás e a linha não existe. **Fechamento quando o render NÃO fecha** (Codex R1, BLOCKER 2): o cron de render
+   pendente NÃO renderiza uma Generation PROCESSING sem job — só a marca `FAILED` aos 10 minutos (`generation-queue.ts`,
+   recuperação de órfãs). Por isso `ajustarArte` fecha a linha EXPLICITAMENTE: render que lança (Blob, canvas) ou
+   `PAGINA_MUDOU_DURANTE` (a página já está na versão seguinte; o PNG foi descartado) → `generation.updateMany({ where:
+   { id, status: 'PROCESSING' }, data: { status: 'FAILED', errorMessage: <motivo fixo>, completedAt } })` — idempotente
+   (o `where` por status) e feito ANTES de relançar o erro; o registro do gate fica (é a auditoria de uma versão cuja
+   arte não nasceu; `ver-geracao` mostra `FAILED` + bloco `gate` `coincidente` enquanto a página não muda). Se o próprio
+   fechamento falhar (banco fora), a órfã fica PROCESSING e o cron a marca FAILED aos 10 min — dito, sem outra promessa.
+   Estados observáveis da linha: PROCESSING (segundos, entre o commit e o render), COMPLETED (render ok) ou FAILED
+   (render falhou / página mudou); nunca PROCESSING por mais de 10 min.
 4. `medirEDecidirAjuste(tx, …)` (§ 3.3).
 5. Resultado:
    - `nao-medida` / `sem-vinculo` / `medida` com `gate.resultado !== 'APTO'` → `throw new RecusaDoGate(…)` → **rollback
@@ -145,9 +169,21 @@ Passos (dentro de `db.$transaction`, isolamento `ReadCommitted`, 20 s):
 **Depois do commit** (igual a hoje, com a Generation já existente): `renderPageAndRegister({ …, generationId:
 generationNova.id, versaoEsperada: versaoGravada })` fecha a linha (COMPLETED + `resultUrl`, `fieldValues` por merge —
 o registro do gate, já gravado, sobrevive ao merge porque `mesclarFieldValuesDaArte` é raso por chave e o render não
-escreve `gateDaArte`); render que falha → a Generation fica PROCESSING com o registro (dito: `ver-geracao` mostra
-`coincidente` numa arte sem `resultUrl`; o cron de render pendente a fecha); `invalidateScheduledRenders(apenasRascunho)`
-e aprendizado como hoje. **Nenhuma escrita nova depois do commit** além das de hoje (C6 do CP5c vale aqui: inventário).
+escreve `gateDaArte`); render que falha ou `PAGINA_MUDOU_DURANTE` → fechamento explícito como `FAILED` (passo 3) e o
+resto como hoje (invalidação com `renderFalhou`, erro relançado); `invalidateScheduledRenders(apenasRascunho)` e
+aprendizado como hoje. **A única escrita nova depois do commit** é esse fechamento `FAILED` (inventário C6 do CP5c
+ganha a exceção nomeada).
+
+### 4.4 O que cada leitor vê (Codex R1, IMPORTANTE 4)
+
+| Leitor | Hoje | Com o CP5d |
+|---|---|---|
+| `agendar-leva` (draft-only) | mede a Generation do ITEM do lote (a do compositor), não "a mais recente" | igual: a Generation do ajuste NÃO é a peça do item; o lote relê a página (versão nova), `composicaoReaproveitavel: false` (a `versaoRenderizada` do compositor é a antiga) e grava o SEU registro na Generation do item → dois registros `coincidente`, um por Generation, ambos da mesma `pageVersion` (A9) |
+| Bancada / item do plano | `ItemDePlano.generationId` = a do compositor | igual; o ajuste não reaponta o item |
+| Galeria (`/api/templates/[id]/creatives`) | lista COMPLETED e PROCESSING | vê a linha nova PROCESSING por segundos, depois COMPLETED (ou FAILED com motivo) — como já acontece com a fila |
+| `ver-geracao` | PROCESSING → "em andamento; consulte de novo"; COMPLETED → arte + bloco `gate` | igual; FAILED → "falhou" + motivo fixo + bloco `gate` (`coincidente` enquanto a página não muda) |
+| Catálogo de artes (`registrarArtesDoPost`) | só pelo agendamento/efeitos | nada muda (o ajuste não cataloga) |
+| Cron de render pendente | marca FAILED PROCESSING órfã aos 10 min | backstop do fechamento explícito |
 
 ## 5. Política de preservação (a decisão de produto, § 8.2)
 
@@ -162,7 +198,9 @@ O plano-mestre diz "não substituir a última versão boa quando a política exi
   custa UMA medida a mais (a página atual, sob trava) e deixa o agente gravar versões não aptas — que o `agendar-leva`
   vai recusar depois, de qualquer forma.
 
-O contrato implementa **P1**; P2 fica como alternativa documentada (uma constante `POLITICA_DE_PRESERVACAO`).
+O contrato implementa **P1**; P2 fica como alternativa documentada (uma constante `POLITICA_DE_PRESERVACAO`). Codex
+R1 sobre P2: exigiria medir a versão ANTERIOR sob as mesmas travas — um registro histórico nunca serve de prova de que
+ela era boa.
 
 ## 6. O retorno
 
@@ -179,7 +217,7 @@ revisao: { tipo: 'medida'; resultado: 'APTO'; rulesVersion; versaoDoGate; medido
 compartilhado (`revisao/revisao-do-item.ts`) para `arte-rapida.ts` não importar o serviço do lote. Fluxo humano: sem o
 campo. Nenhum parâmetro novo na tool; a descrição de `ajustar-arte` ganha o parágrafo do gate.
 
-## 7. Invariantes (os testes provam)
+## 7. Invariantes (o que os testes EXERCITAM — com os limites ditos na § 9; "provado" só o que o banco falso com travas, fila e rollback consegue provar)
 
 1. Draft-only: nenhuma escrita em `Page` (nem Generation nova, nem trava de recomposição, nem render, nem invalidação)
    sem `decidirEMontarRegistro` → `ok` + `APTO` sobre a candidata FINAL, na MESMA transação (A1, A2, A10).
@@ -189,9 +227,10 @@ campo. Nenhum parâmetro novo na tool; a descrição de `ajustar-arte` ganha o p
    sobrevive ao merge do render (A4).
 4. Recusa do gate → rollback inteiro: página, Generation, trava e render intactos; `invalidateScheduledRenders` NUNCA
    chamado (A2 — é o P11 "render não reaberto").
-5. Página/assinatura/fontes/projeto travados da medição ao commit (A5: edição concorrente espera; a chamada seguinte
-   mede a versão nova com `VERSAO_DIVERGENTE`); ordem comum sem inversão com o `agendar-leva` (inventário C13 do CP5c
-   ganha as linhas de `arte-rapida.ts`).
+5. Página (inclusive `audio`), Generation de origem, assinatura/modelo, fontes e projeto travados da medição ao commit
+   (A5, A14: edição concorrente espera; a chamada seguinte recusa `VERSAO_DIVERGENTE` ou mede com o novo); ordem comum
+   sem inversão com o `agendar-leva`, o render condicionado, `recompor`, `later-scheduler` e as rotas de fontes (A13:
+   intercalações no banco falso que controlam a ORDEM de aquisição; I1: inventário).
 6. Fluxo humano byte a byte igual (A6: perfil normal, mesmas chamadas, mesmo rastro de escritas e nenhuma trava nova).
 7. A recusa do CP4 continua a mesma e vem antes (A7); `CONTEUDO_NAO_PODE_SER_REMOVIDO` antes de tudo (A8).
 8. `agendar-leva` sobre a versão gravada pelo ajuste APTO mede de novo e cria o DRAFT (A9 — ponta a ponta mínima do
@@ -206,7 +245,7 @@ campo. Nenhum parâmetro novo na tool; a descrição de `ajustar-arte` ganha o p
 | 8.3 | Registro do veredito reprovado no ajuste | NÃO gravar (a Generation da versão recusada não existe; a do compositor é de outra versão) | gravar na Generation do compositor com identidade da candidata: `ver-geracao` mostraria `historico` sempre |
 | 8.4 | Trava consultiva da agenda no `ajustar-arte` | tomar (simetria com `agendar-leva`, custo zero) | não tomar (a ordem posts → Page já evita o ciclo) |
 | 8.5 | Código da concorrência (deadlock, CAS perdido depois de medir) | `AJUSTE_CONCORRENTE` novo ("repita") | reaproveitar `PAGINA_MUDOU_DURANTE_O_AJUSTE` (que manda NÃO repetir sem olhar — semântica diferente) |
-| 8.6 | O `hojeViola` humano "em até 2 ciclos" | CP5e: `revisar-arte` humano devolve o veredito do gate como INFORMAÇÃO (`decidirEMontarRegistro` com origem `revisar-arte`, sem gravar) | agora: amplia o CP5d ao fluxo humano (warn-only) |
+| 8.6 | O `hojeViola` humano "em até 2 ciclos" | CP5e: `revisar-arte` humano devolve o veredito do gate como INFORMAÇÃO (`decidirEMontarRegistro` com origem `revisar-arte`, sem gravar). O CP5d NÃO reivindica essa garantia (Codex R1) | agora: amplia o CP5d ao fluxo humano (warn-only) |
 | 8.7 | Prazo da medição do gate no ajuste | `PRAZO_DA_MEDICAO_MS` 8 s / `PRAZO_POR_DOWNLOAD_MS` 4 s (as do CP5c) | valores próprios |
 
 ## 9. Matriz de testes (banco falso com travas de linha e eventos — o harness de `agendar-itens-gate.test.ts`, estendido)
@@ -216,17 +255,23 @@ campo. Nenhum parâmetro novo na tool; a descrição de `ajustar-arte` ganha o p
 | A1 | draft-only, ajustes aceitos pelo CP4, candidata APTA | ordem: travas → conferência da versão → `INSERT Generation PROCESSING` → medição pela `tx` → `UPDATE Generation … (registro)` → `UPDATE Page` → trava de recomposição → commit → render fecha a MESMA Generation → invalidação; `revisao.resultado = 'APTO'` |
 | A2 | draft-only, candidata NÃO apta (v2 do piloto com ajustes que o CP4 aceita mas deixam blocker) | `REVISAO_HUMANA_NECESSARIA` 422, `ajusteGravado: false`, `achados`/`motivos`, `editUrl`; página byte a byte igual; nenhuma Generation; `invalidateScheduledRenders` não chamado; render não chamado |
 | A3 | identidade | `registro.identidade.pageVersion === versaoDaPagina(página gravada)`; `copyVersion` do contrato gravado; `ver-geracao` → `coincidente` |
-| A4 | render depois do commit | fecha a Generation criada (mesmo id); `gateDaArte` presente depois do merge do render; render que falha → Generation PROCESSING com o registro, página gravada, invalidação como hoje |
+| A4 | render depois do commit | fecha a Generation criada (mesmo id); `gateDaArte` presente depois do merge do render; estados observáveis: PROCESSING (entre commit e render) → COMPLETED; A15/A16 cobrem as falhas |
 | A5 | edição concorrente da página / assinatura / fonte / projeto durante a medição | espera a trava; a chamada seguinte recusa `VERSAO_DIVERGENTE` (página) ou mede com o novo |
 | A6 | perfil normal, mesmas chamadas | rastro de escritas idêntico ao de hoje; nenhuma trava nova; sem `revisao` |
 | A7 | todos os ajustes recusados pelo CP4 (draft-only) | o código do CP4 de hoje; `details.revisao.tipo = 'nao-medida'`; mensagem com "Revisão humana necessária"; nada medido pelo gate (0 medidas da `tx`) |
 | A8 | `slotValues` que esvaziam texto (draft-only) | `CONTEUDO_NAO_PODE_SER_REMOVIDO` antes de qualquer medida |
-| A9 | ajuste APTO gravado → `agendar-leva` draft-only na mesma página | o lote mede de novo (Generation da peça = a do ajuste? NÃO: a do compositor; `composicaoReaproveitavel` decide) e cria o DRAFT; dois registros (um por Generation), ambos `coincidente` |
+| A9 | ajuste APTO gravado → `agendar-leva` draft-only na mesma página | o lote mede de novo a Generation do ITEM (a do compositor; `composicaoReaproveitavel: false`, porque a `versaoRenderizada` dela é a antiga) e cria o DRAFT; dois registros (um por Generation), ambos `coincidente` com a mesma `pageVersion`; `ver-geracao` de cada um diz qual arte é (`source`) e qual URL expõe (a do ajuste = a página atual; a do compositor = a arte antiga, com `thumbnail` da página regravado pelo render do ajuste) |
 | A10 | gravação do registro falha / timeout / deadlock | rollback; `REVISAO_HUMANA_NECESSARIA` (ou `AJUSTE_CONCORRENTE` no deadlock); nada gravado |
 | A11 | página sem contrato de copy (draft-only) | `copy-completa` não comprovada → recusa do gate, dita no motivo ("página sem contrato de copy: o agente não ajusta") |
 | A12 | `nao-medida` por prazo (rede presa na foto da candidata) | recusa no prazo; travas liberadas; nenhuma Generation órfã |
-| P11 | `piloto-ciclo.test.ts` "o ajuste que piora é recusado ANTES de substituir…" | vira `it()`: página intacta, render não reaberto, `REVISAO_HUMANA_NECESSARIA` na resposta |
-| I1 | inventário | `arte-rapida.ts` nas listas do lint e do H12; C13 do CP5c com as travas novas de `arte-rapida.ts` na ordem comum; `revisao-do-item.ts` puro sem `@/lib/db` |
+| A13 | intercalações que controlam a ORDEM de aquisição (banco falso com travas e gancho por trava): `agendar-leva` draft-only × `ajustar-arte` draft-only na mesma página (as duas ordens); render condicionado (`persist.ts`: Page FOR UPDATE → Generation) × `ajustar-arte`; `recompor` (Page CAS, depois Generation fora de transação) × `ajustar-arte`; `later-scheduler` (agenda → posts) × `ajustar-arte`; rota de fontes × `ajustar-arte` | nenhuma espera cruzada; quem chega depois espera o commit; deadlock injetado (`40P01`) → `AJUSTE_CONCORRENTE`, nada gravado |
+| A14 | música adicionada à página entre a leitura inicial e a transação | a conferência sob trava recusa (`PAGINA_MUDOU_DURANTE_O_AJUSTE`), nada medido, nada gravado; música presente desde o início → `PAGINA_COM_MUSICA`/`nao-medida` antes de medir |
+| A15 | a página muda DEPOIS do commit e ANTES de o render fechar (`PAGINA_MUDOU_DURANTE`) | Generation fechada como `FAILED` com o motivo fixo; registro do gate presente; página gravada; invalidação como hoje; `ver-geracao` → FAILED + `gate` `historico` (a página já é outra) |
+| A16 | render lança (Blob/canvas) depois do commit | Generation `FAILED` (fechamento explícito, idempotente); fechamento que falha → fica PROCESSING e o teste do cron de órfãs (`generation-queue`) a marca FAILED |
+| A17 | referência (assinatura/modelo) editada DURANTE a medição; Generation de origem reescrita por um worker durante a medição | esperam a trava (FOR SHARE / FOR UPDATE); a chamada seguinte mede com o novo |
+| A18 | página sem Generation do compositor (arte livre) | medição sem referências → recusa do gate com o motivo dito; nada gravado |
+| P11 | `piloto-ciclo.test.ts` "o ajuste que piora é recusado ANTES de substituir…" | vira `it()`: página intacta, render não reaberto, `REVISAO_HUMANA_NECESSARIA` na resposta — **o harness de `piloto-ciclo` ganha rollback de verdade** (foto do banco em memória restaurada quando a transação lança) e espera por trava (`$queryRaw` com fila por chave), senão "página intacta" passaria por acidente (Codex R1) |
+| I1 | inventário | `arte-rapida.ts` nas listas do lint e do H12; C13 do CP5c com as travas novas de `arte-rapida.ts` na ordem comum (inclusive a Generation de origem antes dos shares); a escrita de `travarRecomposicaoDaArte` listada como escrita em linha JÁ travada; `revisao-do-item.ts` puro sem `@/lib/db`; C6 do CP5c (zero escritas após o commit) com a exceção nomeada do fechamento `FAILED` |
 
 ## 10. Arquivos (os principais)
 
