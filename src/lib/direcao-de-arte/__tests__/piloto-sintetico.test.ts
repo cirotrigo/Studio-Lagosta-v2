@@ -152,7 +152,9 @@ const PROJETO = 8
 const LOTE = 'dot-8-piloto-sintetico'
 const RAIZ = path.resolve(__dirname, '../../../..')
 const DATA = new Date().toISOString().slice(0, 10)
-const RODADA = process.env.PILOTO_SO ? `so-${process.env.PILOTO_SO.replace(/[^a-zA-Z0-9]+/g, '_')}` : process.env.PILOTO_CALIBRACAO ? `calibracao-${process.env.PILOTO_CALIBRACAO}` : process.env.PILOTO_SINTETICO === 'completo' ? 'completo' : 'padrao'
+/** `PILOTO_ROTULO`: um rótulo no nome da rodada (ex.: a decisão que ela mede) — NÃO é filtro: a rodada continua oficial. */
+const ROTULO = process.env.PILOTO_ROTULO ? `-${process.env.PILOTO_ROTULO.replace(/[^a-zA-Z0-9]+/g, '-')}` : ''
+const RODADA = (process.env.PILOTO_SO ? `so-${process.env.PILOTO_SO.replace(/[^a-zA-Z0-9]+/g, '_')}` : process.env.PILOTO_CALIBRACAO ? `calibracao-${process.env.PILOTO_CALIBRACAO}` : process.env.PILOTO_SINTETICO === 'completo' ? 'completo' : 'padrao') + ROTULO
 /** Oficial = padrão ou --completo SEM filtros; qualquer filtro torna a rodada EXPLORATÓRIA (o resumo diz, e a cobertura dos cenários não é exigida). */
 const OFICIAL = !process.env.PILOTO_CALIBRACAO && !process.env.PILOTO_CLIENTE && !process.env.PILOTO_SEM_REPETICAO && !process.env.PILOTO_SO
 const SAIDA = path.join(RAIZ, 'human-output', 'relatorios', 'piloto-sintetico', `${DATA}-${RODADA}`)

@@ -3,7 +3,8 @@
  * declarado), copy que reconcilia como `sem-mudanca`, formato story pelos dois classificadores. Sem `expect`.
  */
 import type { Layer } from '@/types/template'
-import { POLITICA_DO_ASSUNTO_RECOMENDADA, type EntradaDoGate } from '../../gate'
+import type { EntradaDoGate } from '../../gate'
+import { POLITICA_DO_ASSUNTO_DO_GATE } from '@/lib/lotes/agendamento'
 import { decidirEMontarRegistro } from '../../gate-registro'
 import { identidadeDaPagina } from '../../versao'
 import { medida, pecaLimpa } from './corpus-do-gate'
@@ -27,7 +28,7 @@ export const AGORA = () => new Date('2026-10-16T03:00:00.000Z')
 export function entradaDa(page: PaginaDeTeste, parcial: Partial<EntradaDoGate['medida']> = {}): Omit<EntradaDoGate, 'copy'> {
   const id = identidadeDaPagina(page)
   const camadas = Array.isArray(page.layers) ? (page.layers as Layer[]) : camadasDaPaginaLimpa()
-  return { medida: medida({ camadas, ...parcial }), identidade: { pageVersion: id.pageVersion, copyVersion: id.copyVersion }, politicaDoAssunto: POLITICA_DO_ASSUNTO_RECOMENDADA }
+  return { medida: medida({ camadas, ...parcial }), identidade: { pageVersion: id.pageVersion, copyVersion: id.copyVersion }, politicaDoAssunto: POLITICA_DO_ASSUNTO_DO_GATE } // a política EFETIVA: é com ela que os leitores (gate-resumo, ver-geracao, auditar) comparam
 }
 
 /** Decide e exige `ok` — lança (não é asserção) quando o vínculo falha. */

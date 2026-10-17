@@ -42,11 +42,16 @@ import { validarIdentidadeDeLote } from './identidade'
 export const VERSAO_DO_AGENDAMENTO = 'agendamento-v1'
 
 /**
- * CP5c § 8.1 — a política EFETIVA do assunto no gate do `agendar-leva` (draft-only). PROPOSTA (decisão 9.12 do
- * CP5b, ainda do owner): a RECOMENDADA do CP5a (`estimado: 'humano'`, `semAssuntoLocalizavel: 'nao-se-aplica'`),
- * nomeada aqui para ser trocada numa linha. `ver-geracao` compara o registro gravado com ESTA constante.
+ * CP5c § 8.1 — a política EFETIVA do assunto no gate (agendar-leva, ajustar-arte, revisar-arte informativo, ver-geracao,
+ * auditar-operacao, impressão digital): a FONTE ÚNICA; `ver-geracao` compara o registro gravado com ESTA constante e todo
+ * registro gravado com outra política vira `historico` (divergência `politica` de `validadeDoGate`) e é re-medido.
+ *
+ * - `semAssuntoLocalizavel: 'humano'` — DECIDIDO pelo owner em 17/10/2026 (contrato `docs/PLANO-2026-10-17-CASO-C-HUMANO-
+ *   CONTRATO.md` § 0): foto LIDA sem assunto localizável vai ao humano. O piloto sintético (PR #249, § 3b do resumo) mostrou
+ *   que "não se aplica" por estimativa era um APTO silencioso sem catálogo.
+ * - `estimado: 'humano'` — continua a PROPOSTA do CP5a (`POLITICA_DO_ASSUNTO_RECOMENDADA`): o owner NÃO decidiu o caso B.
  */
-export const POLITICA_DO_ASSUNTO_DO_GATE: PoliticaDoAssunto = POLITICA_DO_ASSUNTO_RECOMENDADA
+export const POLITICA_DO_ASSUNTO_DO_GATE: PoliticaDoAssunto = { estimado: POLITICA_DO_ASSUNTO_RECOMENDADA.estimado, semAssuntoLocalizavel: 'humano' }
 /** O nome do CP5c; o CP5d usa a MESMA constante (um gate, uma política — decisão 8.1 do CP5d). */
 export const POLITICA_DO_ASSUNTO_DO_AGENDAR_LEVA = POLITICA_DO_ASSUNTO_DO_GATE
 export const MAX_ITENS_DO_AGENDAMENTO = 60

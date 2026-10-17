@@ -97,7 +97,7 @@ export interface PoliticaDoAssunto {
   /** Caso C: foto LIDA sem assunto localizável (`naoSeAplica`) não bloqueia, ou manda ao humano. */
   semAssuntoLocalizavel: 'nao-se-aplica' | 'humano'
 }
-/** PROPOSTA nomeada (decisão 9.1 do contrato): o owner NÃO fixou a política no CP5a — não é padrão de nada; `gateDaMedida` exige a política explicitamente e quem chamar (CP5c) passa a que o owner decidir. */
+/** PROPOSTA nomeada do CP5a (decisão 9.1): não é padrão de nada — `gateDaMedida` exige a política explicitamente. A EFETIVA é `POLITICA_DO_ASSUNTO_DO_GATE` (`lotes/agendamento.ts`): o caso C foi DECIDIDO pelo owner em 17/10/2026 como `'humano'` (fora desta proposta); o caso B continua esta proposta. */
 export const POLITICA_DO_ASSUNTO_RECOMENDADA: PoliticaDoAssunto = { estimado: 'humano', semAssuntoLocalizavel: 'nao-se-aplica' }
 
 export interface EntradaDoGate {

@@ -1262,3 +1262,23 @@ oclusão injetada não recusada — e a rodada OFICIAL (padrão ou `--completo` 
 a rodada é EXPLORATÓRIA e o resumo diz isso na primeira linha de limites; a repetição cobre também as recusas estruturais; o `loteId` é hash dos INSUMOS
 (copies, fotos, arquétipos, versão de cada cliente), não só das chaves; os caminhos no resumo são relativos à raiz e o HEAD
 vem marcado `(árvore SUJA)` quando o código que rodou não é o do commit.
+
+## Caso C da política do assunto DECIDIDO: foto lida sem assunto localizável vai ao HUMANO (17/10/2026)
+
+Decisão do owner (verbatim no contrato `docs/PLANO-2026-10-17-CASO-C-HUMANO-CONTRATO.md` § 0; Codex APTO na rodada 2 do
+contrato): `POLITICA_DO_ASSUNTO_DO_GATE` (`src/lib/lotes/agendamento.ts`, a FONTE ÚNICA de agendar-leva, ajustar-arte,
+revisar-arte informativo, ver-geracao, auditar-operacao e impressão digital) passa a
+`{ estimado: 'humano' (continua a PROPOSTA do CP5a — caso B NÃO decidido), semAssuntoLocalizavel: 'humano' (DECIDIDO) }`.
+`gate.ts` não muda: `PoliticaDoAssunto` mantém as duas opções; `POLITICA_DO_ASSUNTO_RECOMENDADA` fica como a proposta histórica.
+O que motivou: o piloto sintético (PR #249, § 3b do resumo) mostrou que "não se aplica" por estimativa era um APTO silencioso
+sem catálogo. Consequências ditas no contrato: (1) `VERSAO_DO_GATE`/`VERSAO_DAS_REGRAS` NÃO sobem — a política é parte da
+identidade do registro e a divergência `politica` de `validadeDoGate` torna `historico` todo registro gravado com a política
+antiga, re-medido no próximo agendar/ajustar/revisar; a troca não migra nem apaga registro, posts e artes aprovadas e
+`laterPostId` ficam intactos, mas uma reavaliação sem APTO grava o veredito novo na mesma chave `gateDaArte`; (2) caso E
+(sem foto de fundo) é decidido ANTES da política e continua não se aplicando; (3) em produção a DIREÇÃO do efeito é certa
+(mais revisão humana: toda foto lida sem catálogo e sem assunto localizável) e a MAGNITUDE não foi medida — o lote do piloto
+é controlado. Testes: as fixtures que carregavam a política antiga passaram à efetiva (`pagina-limpa.ts`, `ver-geracao-retorno`,
+`gate-registro` leitor e H5), o mock de `agendar-itens-gate` ficou coerente com a página (contexto E medida; catálogo
+em y 900–1400, longe dos textos) e ganhou a prova do caminho efetivo (foto lida sem assunto → `REVISAO_HUMANA_NECESSARIA` por
+`texto-sobre-assunto:NAO_COMPROVADA`, nenhum DRAFT; com catálogo cria; sem foto cria). Rodada nova do piloto com
+`PILOTO_ROTULO=caso-c-humano` (rótulo, não filtro): resumo em `docs/piloto-sintetico/2026-10-17-*-caso-c-humano-resumo.md`.
