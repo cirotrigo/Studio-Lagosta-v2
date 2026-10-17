@@ -118,11 +118,11 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
     if (canvasChanged) {
       patch.width = design.canvas.width
       patch.height = design.canvas.height
-      // O PATCH não aceita null — background só entra quando é string.
-      // (Limpar o fundo grava a string 'transparent', nunca null.)
-      if (typeof design.canvas.backgroundColor === 'string') {
-        patch.background = design.canvas.backgroundColor
-      }
+      // O PATCH não aceita null: página sem fundo grava o branco que todo
+      // renderizador já desenha no lugar (`?? '#ffffff'`). Omitir deixava no
+      // banco o fundo velho — desfazer o "Aplicar esta página" sobre página sem
+      // fundo ficava com o da aplicada. (Limpar o fundo grava 'transparent'.)
+      patch.background = typeof design.canvas.backgroundColor === 'string' ? design.canvas.backgroundColor : '#ffffff'
     }
     // Trilha entra no MESMO PATCH (nunca dois writers na mesma página);
     // null explícito limpa a coluna no banco.

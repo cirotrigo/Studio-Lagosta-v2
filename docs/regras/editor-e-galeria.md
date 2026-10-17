@@ -362,3 +362,28 @@ mesma página em 100 s, com a miniatura alternando entre null e o JPEG.
   vez e pode não sair antes de a aba fechar (antes saía em paralelo, com risco
   de o estado velho chegar por último). O "Salvar e Voltar" usa `descarregar`,
   que espera.
+
+### Aplicar página de outro template é edição desfazível; `loadTemplate` é só navegação (14/10/2026)
+
+O "Aplicar esta página" do painel Templates (`templates-panel.tsx`) chamava
+`loadTemplate` sem `historyKey`: a troca pulava o desfazer (`skipHistory`) e
+ainda ZERAVA a pilha da página aberta. O autosave do `PageSyncWrapper` (800 ms)
+gravava a página substituída logo em seguida — um clique errado apagava o
+trabalho da página sem volta.
+
+- **Trocar o conteúdo da página por ação do usuário é `replacePageContent`**
+  (`template-editor-context.tsx`): um `applyDesign` normal, que empilha o design
+  de antes (canvas inteiro e camadas) na pilha da página. Cmd+Z volta
+  exatamente ao que estava, e o autosave grava a volta.
+- **`loadTemplate` é só a carga de navegação** (o PageSync ao trocar de página):
+  pula o histórico e troca de pilha. Nunca o use para uma edição.
+- **As operações da pilha são puras** (`registrarEdicao` e `desfazerNaPilha` em
+  `src/lib/historico-do-editor.ts`, com teste) e MUTAM a pilha recebida: ela é a
+  entrada da página no mapa de históricos, e devolver objeto novo soltaria o
+  mapa — o desfazer da página se perderia na navegação.
+- **Página sem fundo grava `#ffffff` quando o canvas muda**: o PATCH não aceita
+  `null`, e omitir o campo deixava no banco o fundo velho (desfazer a aplicação
+  sobre uma página sem fundo ficava com o da página aplicada). Branco é o que
+  todo renderizador já desenha para fundo ausente (`?? '#ffffff'`).
+- A aplicação não troca mais os `dynamicFields` do template: são do template,
+  não da página, e ficariam fora do desfazer.
