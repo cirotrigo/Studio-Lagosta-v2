@@ -266,6 +266,18 @@ vi.mock('@/lib/db', () => {
     evento(`fora:solta:${t}:${id}`)
     for (const soltar of tx.travas.values()) soltar()
   }
+  /** Outra transação segurando VÁRIAS linhas, adquiridas nesta ordem (o render condicionado: Page → Generation), por `ms`. */
+  const segurarVarias = async (linhas: Array<[Tabela, string]>, ms: number, mutar?: Partial<Record<Tabela, (l: Linha) => Linha>>) => {
+    const tx: Tx = { travas: new Map(), escritas: [], espera: 0, fechada: false }
+    for (const [t, id] of linhas) {
+      await travar(`${t}:${id}`, tx, 'update')
+      evento(`fora:segura:${t}:${id}`)
+    }
+    await new Promise((r) => setTimeout(r, ms))
+    for (const [t, id] of linhas) if (mutar?.[t]) gravar(t, id, mutar[t]!(banco[t].get(id)!), null)
+    for (const [t, id] of linhas) evento(`fora:solta:${t}:${id}`)
+    for (const soltar of tx.travas.values()) soltar()
+  }
   /** Outra conexão segurando uma trava CONSULTIVA (a rota de fontes, o agendar-leva) por `ms`. */
   const segurarChave = async (chave: string, ms: number) => {
     const tx: Tx = { travas: new Map(), escritas: [], espera: 0, fechada: false }
@@ -275,7 +287,7 @@ vi.mock('@/lib/db', () => {
     evento(`fora:solta:adv:${chave}`)
     for (const soltar of tx.travas.values()) soltar()
   }
-  return { db: { ...delegados(null), $transaction, $executeRaw: executeRaw(null), $queryRaw: async () => [] }, escreverFora, segurarFora, segurarChave }
+  return { db: { ...delegados(null), $transaction, $executeRaw: executeRaw(null), $queryRaw: async () => [] }, escreverFora, segurarFora, segurarVarias, segurarChave }
 })
 
 vi.mock('@prisma/client', async () => await import('../../../../prisma/generated/client'))
@@ -395,9 +407,10 @@ import { fecharGenerationComoFalha } from '../mesclar-field-values'
 import { alvoDaRecomposicao, travarRecomposicaoDaArte } from '@/lib/compositor/recompor'
 import { agendarItensDoLote } from '@/lib/lotes/agendar-itens'
 
-const { escreverFora, segurarFora, segurarChave } = (await import('@/lib/db')) as unknown as {
+const { escreverFora, segurarFora, segurarVarias, segurarChave } = (await import('@/lib/db')) as unknown as {
   escreverFora: (t: Tabela, id: string, mutar: (l: Linha) => Linha) => Promise<void>
   segurarFora: (t: Tabela, id: string, ms: number, mutar?: (l: Linha) => Linha) => Promise<void>
+  segurarVarias: (linhas: Array<[Tabela, string]>, ms: number, mutar?: Partial<Record<Tabela, (l: Linha) => Linha>>) => Promise<void>
   segurarChave: (chave: string, ms: number) => Promise<void>
 }
 
@@ -682,6 +695,47 @@ describe('A5/A14/A17 — o que a medição lê está travado; a conferência sob
     expect(ev.indexOf('fora:solta:posts:post-1')).toBeLessThan(ev.indexOf('travou-posts-da-pagina:post-1'))
     expect(medicao.chamadas).toEqual([])
     expect(novas()).toEqual([])
+  })
+
+  it('A13e (Codex R2): o render CONDICIONADO de outra chamada (persist.ts: Page FOR UPDATE → Generation) segura a página e a Generation da arte e regrava a miniatura antes de soltar → o ajuste espera na Page (mesma ordem, sem deadlock), confere a versão sob trava e segue; nenhuma escrita cruzada', async () => {
+    const render = segurarVarias([['pages', 'p1'], ['generations', 'g-comp']], 70, { pages: (p) => ({ ...p, thumbnail: 'https://blob.test/render-condicionado.png' }), generations: (g) => ({ ...g, resultUrl: 'https://blob.test/render-condicionado.png' }) })
+    await new Promise((r) => setImmediate(r))
+    const r = await ajustar()
+    await render
+    expect(r.ajustada).toBe(true)
+    const ev = eventos()
+    expect(ev.indexOf('fora:solta:pages:p1')).toBeLessThan(ev.lastIndexOf('trava:pages:p1'))
+    expect(ev.lastIndexOf('trava:pages:p1')).toBeLessThan(ev.lastIndexOf('trava:generations:g-comp'))
+    expect(ev).not.toContain('rollback')
+    // A miniatura que o render de fora gravou sobreviveu até a escrita do ajuste (que grava a sua depois, pelo próprio render).
+    expect(ev.indexOf('fora:solta:pages:p1')).toBeLessThan(ev.lastIndexOf('escrita:pages:p1'))
+    expect(banco.generations.get('g-comp')!.resultUrl).toBe('https://blob.test/render-condicionado.png')
+    expect(Number(ev.find((e) => e.startsWith('espera:'))!.slice(7))).toBeGreaterThanOrEqual(50)
+  })
+
+  it('A13f (Codex R2): o recompor (CAS da Page fora de transação, depois a Generation) entre a leitura inicial do ajuste e a trava → a conferência sob trava recusa, nada medido; a escrita dele na Generation DURANTE a medição do ajuste espera o commit', async () => {
+    // 1) o recompor passa ANTES da trava: CAS da Page (camadas e carimbo novos) e a Generation regravada.
+    banco.aoTravarAgenda = async () => {
+      await escreverFora('pages', 'p1', (p) => ({ ...p, layers: p.layers.map((l: Layer) => (l.id === 'headline' ? { ...l, content: 'Recomposta' } : l)), updatedAt: new Date('2026-10-17T02:00:00Z') }))
+      await escreverFora('generations', 'g-comp', (g) => ({ ...g, fieldValues: { ...g.fieldValues, versaoRenderizada: 'recomposta' } }))
+    }
+    const erro = (await erroDe(ajustar())) as CreativeError
+    expect(erro.code).toBe('VERSAO_DIVERGENTE')
+    expect(medicao.chamadas).toEqual([])
+    expect(novas()).toEqual([])
+    // 2) o recompor chega DURANTE a medição do ajuste: a Generation está travada, ele espera o commit; a página não muda por baixo.
+    banco.eventos = []
+    let recompor: Promise<void> | null = null
+    medicao.durante = () => {
+      recompor = escreverFora('generations', 'g-comp', (g) => ({ ...g, fieldValues: { ...g.fieldValues, versaoRenderizada: 'recomposta-2' } }))
+    }
+    const r = await ajustar({ versaoEsperada: versaoDe('p1') })
+    await recompor!
+    expect(r.ajustada).toBe(true)
+    const ev = eventos()
+    expect(ev.indexOf('fora:quer:generations:g-comp')).toBeLessThan(ev.indexOf('commit'))
+    expect(ev.lastIndexOf('escrita:generations:g-comp')).toBeGreaterThan(ev.indexOf('commit'))
+    expect(medicao.chamadas).toHaveLength(1)
   })
 
   it('A17: SEGUNDO ajuste na mesma página — a Generation de origem (compositor) e o alvo da recomposição (a do primeiro ajuste) são travadas em ordem de id ANTES dos shares, e a trava de recomposição cai na linha travada', async () => {

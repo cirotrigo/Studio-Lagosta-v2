@@ -26,4 +26,3 @@ export const PECA_LIMPA = {
     ],
   },
 }
-

@@ -54,7 +54,11 @@ vi.mock('@/lib/db', () => {
         banco.generations.push({ id, createdAt: new Date(++banco.relogio), ...data })
         return { id }
       },
-      findFirst: async () => banco.generations.at(-1) ?? null,
+      // CP5d: a busca da Generation de ORIGEM (`source: compositor`) honra o where — este harness não tem arte do compositor
+      // (a peça nasceu no chat), então a origem é nula e a medição corre sem referências; as demais buscas devolvem a última.
+      findFirst: async ({ where }: { where?: Record<string, unknown> } = {}) =>
+        JSON.stringify(where ?? {}).includes('"compositor"') ? (banco.generations.find((g) => (g.fieldValues as Record<string, unknown> | undefined)?.source === 'compositor') ?? null) : (banco.generations.at(-1) ?? null),
+      findUnique: async ({ where }: { where: { id: string } }) => banco.generations.find((g) => g.id === where.id) ?? null,
       // CP5d: o render FECHA a Generation PROCESSING criada na transação do ajuste (draft-only).
       update: async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
         const i = banco.generations.findIndex((g) => g.id === where.id)

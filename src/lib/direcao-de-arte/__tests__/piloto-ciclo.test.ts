@@ -28,8 +28,7 @@ const banco = vi.hoisted(() => ({
   geracaoDoCompositor: null as any,
   /** A página de assinatura (o revisor compara corpo e entrelinha com ela). */
   assinatura: null as any,
-  /** CP5d: travas da transação em curso e a fila por chave (§ 9). */
-  travas: new Map<string, () => void>(),
+  /** CP5d: a fila por chave das travas (§ 9); a posse é do cliente de cada transação. */
   filas: new Map<string, Promise<void>>(),
 }))
 
@@ -79,38 +78,51 @@ vi.mock('@/lib/db', () => {
       findMany: async () => [...banco.generations].reverse().concat(banco.geracaoDoCompositor ? [banco.geracaoDoCompositor] : []),
     },
     knowledgeBaseEntry: { findFirst: async () => null },
-    // CP5d (contrato § 9, P11): as travas de linha/consultivas têm FILA por chave — quem pede a mesma chave espera quem a
-    // segura soltar (no fim da transação). Sem concorrência no P11 isto é estrutural, mas é o que o § 9 pede do harness.
+    // Fora de transação, uma trava de linha dura só a instrução: pede, obtém e solta.
     $queryRaw: async (partes: TemplateStringsArray, ...valores: unknown[]) => {
+      const travas = new Map<string, () => void>()
+      const linhas = await queryRawDaTransacao(travas)(partes, ...valores)
+      for (const soltar of travas.values()) soltar()
+      return linhas
+    },
+    $executeRaw: async () => 1,
+    // CP5d: a transação que LANÇA volta atrás — a página e as Generations ficam como estavam (P11 "página intacta" só
+    // significa alguma coisa se o rollback for de verdade, não um acidente do mock). As travas (§ 9: fila por chave, posse
+    // POR transação — Codex R2) são do cliente da transação e só as dela são soltas no fim.
+    $transaction: async (arg: unknown) => {
+      if (typeof arg !== 'function') return Promise.all(arg as unknown[])
+      const foto = { pagina: structuredClone(banco.pagina), generations: structuredClone(banco.generations), escritas: banco.escritas, relogio: banco.relogio }
+      const travas = new Map<string, () => void>()
+      const cliente = { ...db, $queryRaw: queryRawDaTransacao(travas) }
+      try {
+        return await (arg as (tx: unknown) => unknown)(cliente)
+      } catch (erro) {
+        Object.assign(banco, foto)
+        throw erro
+      } finally {
+        for (const soltar of travas.values()) soltar()
+      }
+    },
+  }
+  /**
+   * CP5d (contrato § 9, P11): toda trava de linha/consultiva tem FILA por chave — quem pede a chave que OUTRA transação
+   * segura espera ela soltar (no fim daquela transação); a própria transação re-pede a chave sem esperar.
+   */
+  function queryRawDaTransacao(travas: Map<string, () => void>) {
+    return async (partes: TemplateStringsArray, ...valores: unknown[]) => {
       const sql = partes.join('?')
       const chave = sql.includes('pg_advisory_xact_lock') ? `adv:${String(valores[0])}` : `${/FROM "(\w+)"/.exec(sql)?.[1] ?? '?'}:${String(valores[0])}`
-      if (!banco.travas.has(chave)) {
+      if (!travas.has(chave)) {
         const anterior = banco.filas.get(chave) ?? Promise.resolve()
         let soltar!: () => void
         const minha = new Promise<void>((r) => (soltar = r))
         banco.filas.set(chave, anterior.then(() => minha))
         await anterior
-        banco.travas.set(chave, soltar)
+        travas.set(chave, soltar)
       }
       // A página não tem post nem fonte própria neste harness: as travas de SocialPost/CustomFont não devolvem linhas.
       return /FROM "(SocialPost|CustomFont)"/.test(sql) ? [] : [{ id: String(valores[0]) }]
-    },
-    $executeRaw: async () => 1,
-    // CP5d: a transação que LANÇA volta atrás — a página e as Generations ficam como estavam (P11 "página intacta" só
-    // significa alguma coisa se o rollback for de verdade, não um acidente do mock).
-    $transaction: async (arg: unknown) => {
-      if (typeof arg !== 'function') return Promise.all(arg as unknown[])
-      const foto = { pagina: structuredClone(banco.pagina), generations: structuredClone(banco.generations), escritas: banco.escritas, relogio: banco.relogio }
-      try {
-        return await (arg as (tx: unknown) => unknown)(db)
-      } catch (erro) {
-        Object.assign(banco, foto)
-        throw erro
-      } finally {
-        for (const soltar of banco.travas.values()) soltar()
-        banco.travas.clear()
-      }
-    },
+    }
   }
   return { db }
 })
@@ -200,7 +212,6 @@ beforeEach(() => {
   banco.putSeq = 0
   banco.escritas = 0
   banco.fotoIlegivel = null
-  banco.travas.clear()
   banco.filas.clear()
   medidas.chamadas.length = 0
   banco.projeto = { id: Number(peca.spec.projectId), name: 'Projeto da fixture', userId: 'dono-interno', instagramAccountId: null, assinatura: fixture.assinatura().numerosDoProjeto }
