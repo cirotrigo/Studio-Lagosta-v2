@@ -1120,4 +1120,7 @@ passou a comparar `name` e `tags` com a leitura inicial (mudou → `VERSAO_DIVER
 sem medir) e `paginaFutura` nasce das tags lidas sob trava. Harness: `FOR UPDATE` falso devolve a linha DEPOIS da trava
 (o publicador que segurava o DRAFT e o entregou ao Zernio é visto); a matriz ganhou as intercalações A13 (worker segurando
 a origem, ordem inversa com `agendar-leva`, rota de fontes, `later-scheduler`) e as demais causas de A7; o harness de
-P11 tem fila por trava e um controle POSITIVO com medição real (a peça limpa, `suporte/peca-limpa.ts`).
+P11 tem fila por trava e um controle POSITIVO com medição real (a peça limpa, `suporte/peca-limpa.ts`). **R3**: o CAS
+da escrita no draft-only usa o carimbo `updatedAt` lido SOB TRAVA (a conferência sob trava é a prova de versão) — o render
+condicionado de outra chamada move o `@updatedAt` ao gravar só a miniatura, e com o carimbo de antes da espera o ajuste
+recusaria `VERSAO_DIVERGENTE` numa página igual (A13e; o banco falso move o carimbo em toda escrita de Page, como o Prisma).

@@ -1585,6 +1585,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
        * Ordem comum (a do CP5c): agenda → fontes → posts da página → Page → Generations (origem e alvo da
        * recomposição, em ordem de id) → FOR SHARE (Project, assinatura/modelo, CustomFont).
        */
+      let carimboDaEscrita = page.updatedAt
       if (input.apenasRascunho) {
         await tx.$queryRaw`SELECT 1 AS ok FROM pg_advisory_xact_lock(hashtext(${chaveDaAgenda(projectId)}))`
         await tx.$queryRaw`SELECT 1 AS ok FROM pg_advisory_xact_lock(hashtext(${chaveDasFontes(projectId)}))`
@@ -1600,7 +1601,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
         // § 4.2 — a conferência SOB TRAVA: versão visual, contrato e ÁUDIO (a música decide `recusaComoImagem` e
         // `versaoDaPagina` não a cobre). Mudou → a recusa de sempre, sem medir. Com a página travada e igual, a
         // candidata é a versão seguinte dela: não há janela entre "o que medi" e "o que gravo".
-        const atual = await tx.page.findUnique({ where: { id: page.id }, select: { name: true, tags: true, width: true, height: true, background: true, layers: true, copyAutoral: true, audio: true, isTemplate: true } })
+        const atual = await tx.page.findUnique({ where: { id: page.id }, select: { name: true, tags: true, width: true, height: true, background: true, layers: true, copyAutoral: true, audio: true, isTemplate: true, updatedAt: true } })
         if (!atual) throw new CreativeError('PAGE_NOT_FOUND', `Página não encontrada neste projeto: ${pageId}`, 404)
         if (atual.isTemplate) throw erroDePaginaModelo()
         const mesmaVersao = versaoAntes !== null && versaoDaPagina(atual) === versaoAntes
@@ -1609,6 +1610,10 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
         // Codex R1 (BLOQUEADOR 2): `versaoDaPagina` não cobre nome e tags, e as TAGS decidem o formato que o gate mede
         // (`formatoDaPaginaGravada`) — uma troca story → feed sem mexer nas camadas passaria pela versão.
         const mesmaIdentidade = atual.name === page.name && JSON.stringify(atual.tags) === JSON.stringify(page.tags)
+        // Codex R3: esta conferência (conteúdo, contrato, áudio, nome, tags) sob a trava É a prova de versão; o CAS da
+        // escrita usa o carimbo lido AQUI — o render condicionado de outra chamada move `@updatedAt` ao gravar só a
+        // miniatura, e com o carimbo de antes da espera o ajuste recusaria VERSAO_DIVERGENTE numa página igual.
+        carimboDaEscrita = atual.updatedAt
         if (!mesmaVersao || !mesmoContrato || !mesmoAudio || !mesmaIdentidade) {
           if (input.versaoEsperada) throw new CreativeError('VERSAO_DIVERGENTE', 'A página mudou enquanto o ajuste era aplicado. Rode revisar-arte de novo.', 409, { versaoEsperada: input.versaoEsperada, ajusteGravado: false })
           throw new CreativeError('PAGINA_MUDOU_DURANTE_O_AJUSTE', 'A arte foi editada enquanto o ajuste era aplicado (no editor ou por outro ajuste) e NADA foi gravado. Veja a arte como ela está agora (conferir-arte) e confirme o que ainda precisa ajustar.', 409, { ajusteGravado: false })
@@ -1677,7 +1682,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
         // Compare-and-set: a conferência de versão lá em cima e esta escrita
         // não são atômicas, e o autosave do editor pode cair no meio.
         // `isTemplate: false` também na escrita: a página promovida a modelo no meio do ajuste não é gravada (C3-12).
-        const gravada = await tx.page.updateMany({ where: { id: page.id, updatedAt: page.updatedAt, isTemplate: false }, data: dadosDaPagina })
+        const gravada = await tx.page.updateMany({ where: { id: page.id, updatedAt: carimboDaEscrita, isTemplate: false }, data: dadosDaPagina })
         if (gravada.count === 0) {
           const agora = await tx.page.findUnique({ where: { id: page.id }, select: { isTemplate: true } })
           if (agora?.isTemplate) throw erroDePaginaModelo()

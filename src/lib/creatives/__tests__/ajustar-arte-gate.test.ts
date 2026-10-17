@@ -68,9 +68,11 @@ vi.mock('@/lib/db', () => {
     espera: number
     fechada: boolean
   }
+  // Como o `@updatedAt` do Prisma: TODA escrita em Page (camadas, miniatura, nome…) move o carimbo — inclusive a do render
+  // condicionado de outra chamada, que grava só a miniatura (Codex R3).
   const gravar = (tabela: Tabela, id: string, linha: Linha, tx: Tx | null) => {
     if (tx) tx.escritas.push([tabela, id, banco[tabela].get(id)])
-    banco[tabela].set(id, linha)
+    banco[tabela].set(id, tabela === 'pages' ? { ...linha, updatedAt: new Date(Date.parse('2026-10-17T00:00:00Z') + ++banco.seq) } : linha)
     evento(`escrita:${tabela}:${id}`)
   }
   const travar = async (chave: string, tx: Tx, modo: 'update' | 'share') => {
@@ -126,7 +128,7 @@ vi.mock('@/lib/db', () => {
         let count = 0
         for (const l of vivos()) {
           if (!casa(l, where)) continue
-          gravar(nome, l.id, { ...l, ...data, ...(nome === 'pages' ? { updatedAt: new Date(Date.parse('2026-10-17T00:00:00Z') + ++banco.seq) } : {}) }, tx)
+          gravar(nome, l.id, { ...l, ...data }, tx)
           count++
         }
         return { count }
@@ -697,12 +699,18 @@ describe('A5/A14/A17 — o que a medição lê está travado; a conferência sob
     expect(novas()).toEqual([])
   })
 
-  it('A13e (Codex R2): o render CONDICIONADO de outra chamada (persist.ts: Page FOR UPDATE → Generation) segura a página e a Generation da arte e regrava a miniatura antes de soltar → o ajuste espera na Page (mesma ordem, sem deadlock), confere a versão sob trava e segue; nenhuma escrita cruzada', async () => {
-    const render = segurarVarias([['pages', 'p1'], ['generations', 'g-comp']], 70, { pages: (p) => ({ ...p, thumbnail: 'https://blob.test/render-condicionado.png' }), generations: (g) => ({ ...g, resultUrl: 'https://blob.test/render-condicionado.png' }) })
+  it('A13e (Codex R2/R3): o render CONDICIONADO de outra chamada (persist.ts: Page FOR UPDATE → Generation) segura a página e a Generation da arte e regrava a miniatura (movendo o @updatedAt) antes de soltar → o ajuste espera na Page (mesma ordem, sem deadlock), confere a versão sob trava e GRAVA (o CAS usa o carimbo lido sob trava); nenhuma escrita cruzada', async () => {
+    const carimboInicial = banco.pages.get('p1')!.updatedAt.getTime()
+    let carimboVistoPeloRender = carimboInicial
+    const render = segurarVarias([['pages', 'p1'], ['generations', 'g-comp']], 70, { pages: (p) => { carimboVistoPeloRender = p.updatedAt.getTime(); return { ...p, thumbnail: 'https://blob.test/render-condicionado.png' } }, generations: (g) => ({ ...g, resultUrl: 'https://blob.test/render-condicionado.png' }) })
     await new Promise((r) => setImmediate(r))
     const r = await ajustar()
     await render
     expect(r.ajustada).toBe(true)
+    // O render de fora escreveu sobre a página ainda com o carimbo inicial (o ajuste esperava) e o moveu: o CAS com o
+    // carimbo de ANTES da espera teria recusado VERSAO_DIVERGENTE numa página de conteúdo igual.
+    expect(carimboVistoPeloRender).toBe(carimboInicial)
+    expect(banco.pages.get('p1')!.updatedAt.getTime()).not.toBe(carimboInicial)
     const ev = eventos()
     expect(ev.indexOf('fora:solta:pages:p1')).toBeLessThan(ev.lastIndexOf('trava:pages:p1'))
     expect(ev.lastIndexOf('trava:pages:p1')).toBeLessThan(ev.lastIndexOf('trava:generations:g-comp'))
