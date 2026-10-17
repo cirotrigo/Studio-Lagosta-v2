@@ -62,7 +62,7 @@ export interface Resumo {
   custo: Record<Etapa, { rendersMediana: number; rendersP95: number; msMediana: number; msP95: number }>
   estabilidade: { excecoes: number; naoMedida: number; semVinculo: number; timeouts: number; excecoesPorMensagem: Record<string, number> }
   repetibilidade: { comparadas: number; iguais: number; divergencias: Array<{ chave: string; diferencas: string[] }> }
-  decisao1: { fotos: number; iouEstimadoCatalogo: number | null; iouEstimadoVerdade: number | null; iouCatalogoVerdade: number | null; estimadoAcertouInvasao: number; estimadoErrouInvasao: number; bloqueiosPorCaso: Record<string, { pecas: number; bloqueadas: number; bloqueadasQueAVerdadeAprovaria: number }> }
+  decisao1: { fotos: number; iouEstimadoCatalogo: number | null; iouEstimadoVerdade: number | null; iouCatalogoVerdade: number | null; estimadoAcertouInvasao: number; estimadoErrouInvasao: number; bloqueiosPorCaso: Record<string, { pecas: number; bloqueadas: number; bloqueadasQueAVerdadeAprovaria: number; aptasQueAVerdadeReprovaria: number }> }
   decisao2: { pecasComCamadaAcimaDeTexto: number; oclusaoNaoComprovada: number }
   modoG: { leituras: number; validas: number; invalidas: number; recusadas: number }
   naoCoberto: Array<{ regra: string; estado: string; limite: string }>
@@ -132,13 +132,13 @@ export function agregar(registros: RegistroDaPeca[], elegiveis: number): Resumo 
   const bloqueiosPorCaso: Resumo['decisao1']['bloqueiosPorCaso'] = {}
   for (const r of chegaram) {
     const caso = r.modoG ? 'D-falha-de-leitura' : r.spec.foto === 'sem-foto' ? 'E-sem-foto' : r.assunto?.origemNaPeca === 'catalogo' ? 'A-catalogo' : r.assunto?.origemNaPeca === 'estimado' ? 'B-estimado' : 'C-nao-se-aplica'
-    const b = (bloqueiosPorCaso[caso] ??= { pecas: 0, bloqueadas: 0, bloqueadasQueAVerdadeAprovaria: 0 })
+    const b = (bloqueiosPorCaso[caso] ??= { pecas: 0, bloqueadas: 0, bloqueadasQueAVerdadeAprovaria: 0, aptasQueAVerdadeReprovaria: 0 })
     b.pecas++
     const bloqueada = (r.gateFinal?.motivos ?? []).some((m) => m.regra === 'texto-sobre-assunto')
     if (bloqueada) {
       b.bloqueadas++
       if (invasaoPelaVerdade(r) === false) b.bloqueadasQueAVerdadeAprovaria++
-    }
+    } else if (aptoFinal(r) && invasaoPelaVerdade(r) === true) b.aptasQueAVerdadeReprovaria++ // o falso APTO da decisão 1, por caso
   }
   const modoG = registros.filter((r) => r.modoG)
   return {
@@ -236,9 +236,9 @@ export function paraMarkdown(resumo: Resumo, meta: { data: string; head: string;
   const d1 = resumo.decisao1
   const f = (x: number | null) => (x === null ? '—' : x.toFixed(2))
   L.push(`## 8. Decisão 1 — assunto estimado × catálogo × verdade (${d1.fotos} peças com verdade): IoU est×cat ${f(d1.iouEstimadoCatalogo)} · est×verdade ${f(d1.iouEstimadoVerdade)} · cat×verdade ${f(d1.iouCatalogoVerdade)} · o estimado acertou a invasão em ${d1.estimadoAcertouInvasao} e errou em ${d1.estimadoErrouInvasao}`)
-  L.push('| caso (§ 4.2) | peças | bloqueadas por texto-sobre-assunto | das quais a verdade aprovaria |')
-  L.push('|---|---|---|---|')
-  for (const [caso, b] of Object.entries(d1.bloqueiosPorCaso).sort()) L.push(`| ${caso} | ${b.pecas} | ${b.bloqueadas} | ${b.bloqueadasQueAVerdadeAprovaria} |`)
+  L.push('| caso (§ 4.2) | peças | bloqueadas por texto-sobre-assunto | das quais a verdade aprovaria | APTAS que a verdade reprovaria |')
+  L.push('|---|---|---|---|---|')
+  for (const [caso, b] of Object.entries(d1.bloqueiosPorCaso).sort()) L.push(`| ${caso} | ${b.pecas} | ${b.bloqueadas} | ${b.bloqueadasQueAVerdadeAprovaria} | ${b.aptasQueAVerdadeReprovaria} |`)
   L.push('')
   L.push(`## 9. Decisão 2 — peças com camada não-texto acima de texto (produzidas): ${resumo.decisao2.pecasComCamadaAcimaDeTexto}; \`oclusao\` não comprovada no gate: ${resumo.decisao2.oclusaoNaoComprovada}`)
   L.push(`Modo G (falha de leitura injetada): ${resumo.modoG.leituras} leituras, ${resumo.modoG.validas} válidas (${resumo.modoG.recusadas} recusadas pelo gate), ${resumo.modoG.invalidas} inválidas (cache usado).`)

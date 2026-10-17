@@ -323,7 +323,8 @@ async function rodarPeca(spec: SpecDoLote, cliente: ClienteSemeado, opcoes: { re
   // Decisão 1 — leitura PAREADA (A1/A2): a MESMA foto e corte, uma vez COM a caixa de catálogo (a verdade), outra SEM (a estimativa).
   let assunto: RegistroDaPeca['assunto']
   const arquetipo = spec.arquetipo !== 'sem'
-  if (foto?.verdade && entrada.caso !== 'real') {
+  // A foto REAL (fixture de 13/10) entra no par também: a verdade dela é a região protegida da vitrine (catálogo), não "o assunto".
+  if (foto?.verdade) {
     const comCatalogo = await executar(spec, cliente, foto, true)
     const catalogo = 'recusa' in comCatalogo ? null : comCatalogo.assuntoNaPeca.assunto
     assunto = { estimado: null, catalogo, verdade: foto.verdade, origemNaPeca: null }
@@ -416,8 +417,8 @@ describe.skipIf(!LIGADO)('piloto sintético de autonomia', () => {
     const inicio = Date.now()
     for (const [i, spec] of specs.entries()) {
       const cliente = CLIENTES.find((c) => c.id === spec.cliente)!
-      // Modo G em 1 de cada 3 peças sem arquétipo com foto de assunto A1 (a conta das leituras com falha vai à parte).
-      const modoG = spec.foto === 'A1' && spec.arquetipo === 'sem' && i % 3 === 0
+      // Modo G em TODA peça sem arquétipo com foto de assunto A1 (a conta das leituras com falha vai à parte; `i % 3` deixava a amostra sem nenhuma).
+      const modoG = spec.foto === 'A1' && spec.arquetipo === 'sem'
       try {
         registros.push(await rodarPeca(spec, cliente, { repetir, modoG }))
       } catch (e) {
