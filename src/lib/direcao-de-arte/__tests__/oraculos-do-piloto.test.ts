@@ -50,6 +50,27 @@ describe('juízes de pixel (CP0 sobre o render de produção) e a matriz', () =>
     // Assunto: um texto dentro da caixa da verdade invade.
     const invade = await julgar({ layers: structuredClone(PECA_LIMPA.layers), canvas: CANVAS, background: PECA_LIMPA.background, formato: 'story', assuntoVerdade: { x: 0, y: 380, width: 1080, height: 300 }, margens: MARGENS })
     expect(invade.vereditos.find((x) => x.regra === 'texto-sobre-assunto')!.viola).toBe(true)
+    // Assunto: caixa da verdade LONGE de todo texto → aplicável e não viola (o caso negativo aplicável).
+    const longe = await julgar({ layers: structuredClone(PECA_LIMPA.layers), canvas: CANVAS, background: PECA_LIMPA.background, formato: 'story', assuntoVerdade: { x: 0, y: 800, width: 1080, height: 150 }, margens: MARGENS }) // entre o apoio (y 560) e o serviço
+    expect(longe.vereditos.find((x) => x.regra === 'texto-sobre-assunto')!.viola).toBe(false)
+  }, 120_000)
+  it('tratamento que piora: caixa de fundo BRANCA sob texto branco em fundo preto viola; sem a caixa, não', async () => {
+    const comCaixa = (structuredClone(PECA_LIMPA.layers) as Layer[]).map((l) => (l.type === 'text' ? { ...l, effects: { ...(l.effects ?? {}), background: { enabled: true, backgroundColor: '#FFFFFF', baseColor: '#FFFFFF', fit: 'texto', padding: 24, borderRadius: 0, opacity: 1 } } } : l)) as Layer[]
+    const piora = await julgar({ layers: comCaixa, canvas: CANVAS, background: PECA_LIMPA.background, formato: 'story', assuntoVerdade: null, margens: MARGENS })
+    expect(piora.vereditos.find((x) => x.regra === 'tratamento-piorou-leitura')!.viola).toBe(true)
+    expect(piora.vereditos.find((x) => x.regra === 'texto-sem-leitura')!.viola).toBe(true)
+    const semCaixa = await julgar({ layers: structuredClone(PECA_LIMPA.layers), canvas: CANVAS, background: PECA_LIMPA.background, formato: 'story', assuntoVerdade: null, margens: MARGENS })
+    expect(semCaixa.vereditos.find((x) => x.regra === 'tratamento-piorou-leitura')!.viola).toBe(false)
+  }, 120_000)
+  it('logo sem leitura: logo branca sobre fundo branco viola; sobre fundo preto, não (p10 da diferença pixel a pixel)', async () => {
+    const sharp = (await import('sharp')).default
+    const png = await sharp({ create: { width: 200, height: 80, channels: 4, background: '#FFFFFF' } }).png().toBuffer()
+    const branca: Layer = { ...logo('l', 100, 1000, 200, 80), fileUrl: `data:image/png;base64,${png.toString('base64')}` } as Layer
+    const sobreBranco = await julgar({ layers: [branca], canvas: CANVAS, background: '#FFFFFF', formato: 'story', assuntoVerdade: null, margens: MARGENS })
+    expect(sobreBranco.vereditos.find((x) => x.regra === 'logo-sem-leitura')!.viola).toBe(true)
+    expect(sobreBranco.renders).toBe(1)
+    const sobrePreto = await julgar({ layers: [branca], canvas: CANVAS, background: '#000000', formato: 'story', assuntoVerdade: null, margens: MARGENS })
+    expect(sobrePreto.vereditos.find((x) => x.regra === 'logo-sem-leitura')!.viola).toBe(false)
   }, 120_000)
   it('a matriz: "falso APTO = 0" só nas cobertas; as da régua são "mesma-medida"', () => {
     expect(regrasCobertas()).toEqual(expect.arrayContaining(['texto-sem-leitura', 'piso-de-interface', 'fora-da-area-segura', 'texto-sobre-assunto', 'logo-sobre-texto']))

@@ -17,7 +17,7 @@ const LOGO = 'https://blob.test/logo.png'
 const EXEMPLO = 'https://blob.test/exemplo.jpg'
 const camadas = [
   { id: '3afceabf-5c85', name: 'Logo - Ativo 2 Bistrô Maré.png', type: 'logo', fileUrl: LOGO, position: { x: 1, y: 2 }, size: { width: 3, height: 4 }, style: { objectFit: 'cover', border: { color: '#000000', width: 2 } }, metadata: { driveFileId: '1AbCdEfGhIjKlMnOpQrStUvWxYz0123', externalId: 'acme', groupId: 'grupo-292f' } },
-  { id: 'headline', name: 'headline', type: 'text', content: 'Bistrô Maré: feijoada de sábado', position: { x: 0, y: 0 }, size: { width: 1, height: 1 }, style: { fontFamily: 'Branley GC', textAlign: 'left', color: '#283D36', fontWeight: '400' }, effects: { shadow: { shadowColor: '#283D36', blur: 4 }, background: { fit: 'texto', baseColor: '#111111' } }, textboxConfig: { anchor: 'top', autoWrap: { breakMode: 'word' }, textMode: 'auto-wrap-fixed' }, metadata: { groupId: 'grupo-292f', nota: 'ligar pro Zé 99999-1234' } },
+  { id: 'headline', name: 'headline', type: 'text', content: 'Bistrô Maré: feijoada de sábado', position: { x: 0, y: 0 }, size: { width: 1, height: 1 }, style: { fontFamily: 'Branley GC', textAlign: 'left', color: '#283D36', fontWeight: '400' }, effects: { shadow: { shadowColor: '#283D36', blur: 4 }, background: { fit: 'texto', baseColor: '#111111' }, blur: { enabled: true, blurRadius: 6 }, curved: { enabled: false, curvature: 12 } }, textboxConfig: { anchor: 'top', autoWrap: { breakMode: 'word' }, textMode: 'auto-wrap-fixed' }, metadata: { groupId: 'grupo-292f', nota: 'ligar pro Zé 99999-1234', layers: [{ type: 'image', position: { x: 0, y: 0 }, fileUrl: LOGO }] } },
   { id: 'b6b72c00', name: 'Imagem - Delivery-cmt05362.jpg', type: 'image', fileUrl: EXEMPLO, position: { x: 0, y: 0 }, size: { width: 1, height: 1 }, style: { objectFit: 'cover', backgroundImage: 'https://blob.test/bg.jpg', fileUrl: LOGO, preview: { type: 'image', position: { x: 0, y: 0 }, fileUrl: LOGO } }, 'Bistrô Maré': 7, 'chave com espaço': 1, telefone: 5511999999999 },
 ]
 const exp = {
@@ -41,9 +41,9 @@ describe('pseudonimizar (projeção por esquema)', () => {
     expect(head.content).toBe('Almoço do dia')
     expect(head.id).toBe('headline')
     expect(head.style).toEqual({ fontFamily: 'Branley GC', textAlign: 'left', color: '#283D36', fontWeight: '400' })
-    expect(head.effects).toEqual({ shadow: { shadowColor: '#283D36', blur: 4 }, background: { fit: 'texto', baseColor: '#111111' } })
+    expect(head.effects).toEqual({ shadow: { shadowColor: '#283D36', blur: 4 }, background: { fit: 'texto', baseColor: '#111111' }, blur: { enabled: true, blurRadius: 6 }, curved: { enabled: false, curvature: 12 } }) // efeitos numéricos do tipo Layer preservados
     expect(head.textboxConfig).toEqual({ anchor: 'top', autoWrap: { breakMode: 'word' }, textMode: 'auto-wrap-fixed' })
-    expect(head.metadata).toEqual({ groupId: 'grupo-1' })
+    expect(head.metadata).toEqual({ groupId: 'grupo-1', layers: [{ type: 'image', position: { x: 0, y: 0 } }] }) // `metadata.layers` aninhado NÃO é camada: o fileUrl dele cai
     expect(img.id).toBe('camada-3')
     expect(img.name).toBe('image-3')
     expect(img.fileUrl).toBe('fixture:arquivo-1')
@@ -59,6 +59,7 @@ describe('pseudonimizar (projeção por esquema)', () => {
       'paginas[0].layers[0].metadata.driveFileId: string sob chave fora do esquema',
       'paginas[0].layers[0].metadata.externalId: string sob chave fora do esquema',
       'paginas[0].layers[1].metadata.nota: string sob chave fora do esquema',
+      'paginas[0].layers[1].metadata.layers[0].fileUrl: fileUrl fora do topo da camada',
       'paginas[0].layers[2].style.backgroundImage: string sob chave fora do esquema',
       'paginas[0].layers[2].style.fileUrl: fileUrl fora do topo da camada',
       'paginas[0].layers[2].style.preview.fileUrl: fileUrl fora do topo da camada',
@@ -80,6 +81,14 @@ describe('pseudonimizar (projeção por esquema)', () => {
     expect(fixture.numerosDoProjeto).toEqual({ fundo: '#112233' })
     expect(descartados).toContain('numerosDoProjeto.ze: chave fora do esquema')
     expect(conferirPseudonimo({ paginas: [{ layers: [{ name: 'zé' }] }] }, 'Zé')).toEqual(['fixture.paginas[0].layers[0].name: nome do cliente'])
+  })
+  it('nome curto com DUAS palavras ("Jo Li"): barra `fontFamily: \'Jo Li\'`, a chave `jo_li` e `joli`', () => {
+    const joli = { ...exp, projeto: { ...exp.projeto, name: 'Jo Li', assinatura: { fundo: '#112233', jo_li: 12, joli: { margemH: 1 } } }, paginas: [{ ...exp.paginas[0], layers: JSON.stringify([{ id: 'headline', name: 'headline', type: 'text', content: 'x', position: { x: 0, y: 0 }, size: { width: 1, height: 1 }, style: { fontFamily: 'Jo Li', color: '#fff' } }]) }] }
+    const { fixture, descartados } = pseudonimizar(joli, 'cliente-03', arquivos)
+    expect(fixture.numerosDoProjeto).toEqual({ fundo: '#112233' })
+    expect((fixture.paginas[0].layers as Array<Record<string, unknown>>)[0].style).toEqual({ color: '#fff' })
+    expect(descartados).toEqual(expect.arrayContaining(['paginas[0].layers[0].style.fontFamily: fonte com o nome do cliente', 'numerosDoProjeto.jo_li: chave fora do esquema', 'numerosDoProjeto.joli: chave fora do esquema']))
+    expect(conferirPseudonimo({ a: 'jo-li', jo_li: 1 }, 'Jo Li')).toEqual(['fixture.a: nome do cliente', 'fixture.a: texto sob chave não prevista', 'fixture.jo_li: chave identifica ou fora da forma'])
   })
   it('fileUrl sem bytes no export é ERRO (a fixture nunca sai incompleta)', () => {
     expect(() => pseudonimizar(exp, 'cliente-01', { [LOGO]: PNG_LIMPO })).toThrow(/layers\[2\]\.fileUrl: a camada aponta para um arquivo que o export não trouxe/)

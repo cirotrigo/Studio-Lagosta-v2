@@ -31,8 +31,8 @@ const COR = /^(#[0-9a-f]{3,8}|rgba?\([\d.,\s%]+\)|hsla?\([\d.,\s%]+\)|transparen
 const CHAVES_DE_ENUM = new Set(['type', 'fontWeight', 'fontStyle', 'textAlign', 'verticalAlign', 'objectFit', 'textTransform', 'textDecoration', 'anchor', 'breakMode', 'textMode', 'fit', 'gradientType', 'shapeType', 'blendMode', 'papel', 'role', 'mode', 'unit', 'align', 'position', 'direction', 'repeat', 'lineCap', 'lineJoin'])
 const ENUM = /^([a-z][a-z0-9-]{0,31}|\d{3})$/i // `\d{3}`: `fontWeight: '400'`
 const CHAVES_DE_TEXTO = new Set(['content', 'text'])
-/** Chaves cujo valor numérico/booleano o esquema prevê (geometria, tipografia, efeitos, números da assinatura). Número sob OUTRA chave é descartado: `telefone: 5511999999999` não é geometria. */
-const CHAVES_NUMERICAS = new Set(['x', 'y', 'width', 'height', 'rotation', 'order', 'ordem', 'opacity', 'visible', 'locked', 'fontSize', 'lineHeight', 'letterSpacing', 'minFontSize', 'maxFontSize', 'maxLines', 'padding', 'paddingX', 'paddingY', 'borderRadius', 'radius', 'blur', 'offsetX', 'offsetY', 'shadowBlur', 'shadowOffsetX', 'shadowOffsetY', 'shadowOpacity', 'strokeWidth', 'strokeOpacity', 'fillOpacity', 'spacing', 'brightness', 'contrast', 'saturation', 'exposure', 'highlights', 'shadows', 'whites', 'blacks', 'grayscale', 'sepia', 'invert', 'vignette', 'tone', 'overlay', 'enabled', 'autoExpand', 'isDynamic', 'required', 'wordBreak', 'flipH', 'flipV', 'gradientAngle', 'gradientCenterX', 'gradientCenterY', 'gradientStartX', 'gradientStartY', 'gradientEndX', 'gradientEndY', 'gradientRadiusScale', 'position', 'escalaDeFonte', 'gapEntreBlocos', 'margemH', 'safeTopo', 'safeRodape', 'largura', 'larguraMaxima', 'altura', 'raioMarca', 'raioTexto', 'faixaMarca', 'faixaTexto', 'pesado', 'razao', 'pontos', 'luzDaFoto', 'min', 'max', 'isProjectLogo'])
+/** Chaves cujo valor numérico/booleano o esquema prevê: TODO campo `number`/`boolean` do tipo `Layer` (src/types/template.ts, inclusive os aninhados como `blurRadius` e `curvature`) e dos números da assinatura (`compositor/assinatura.ts`), menos identificadores de linha (`elementId`, `logoId`…). Número sob OUTRA chave é descartado: `telefone: 5511999999999` não é geometria. */
+const CHAVES_NUMERICAS = new Set(['altura', 'autoExpand', 'autoplay', 'blacks', 'blur', 'blurRadius', 'borderRadius', 'brightness', 'contrast', 'currentTime', 'curvature', 'duracao', 'duration', 'enabled', 'end', 'endTime', 'escalaDeFonte', 'exposure', 'fadeIn', 'fadeInDuration', 'fadeOut', 'fadeOutDuration', 'faixaMarca', 'faixaTexto', 'fillOpacity', 'flipH', 'flipV', 'fontSize', 'fontWeight', 'gapEntreBlocos', 'gradientAngle', 'gradientCenterX', 'gradientCenterY', 'gradientEndX', 'gradientEndY', 'gradientRadiusScale', 'gradientStartX', 'gradientStartY', 'grayscale', 'height', 'highlights', 'invert', 'isDynamic', 'isProjectLogo', 'largura', 'larguraMaxima', 'letterSpacing', 'lineHeight', 'locked', 'loop', 'luzDaFoto', 'margemH', 'max', 'maxFontSize', 'min', 'minFontSize', 'muted', 'offsetX', 'offsetY', 'opacity', 'ordem', 'order', 'overlay', 'padding', 'paddingX', 'paddingY', 'padrao', 'pesado', 'playbackRate', 'pontos', 'position', 'radius', 'raioMarca', 'raioTexto', 'razao', 'required', 'rotation', 'safeRodape', 'safeTopo', 'saturation', 'sepia', 'shadowBlur', 'shadowOffsetX', 'shadowOffsetY', 'shadowOpacity', 'shadows', 'spacing', 'start', 'startTime', 'strokeOpacity', 'strokeWidth', 'tone', 'trimEnd', 'trimStart', 'vignette', 'visible', 'volume', 'volumeMusic', 'volumeOriginal', 'whites', 'width', 'wordBreak', 'x', 'y'])
 /** Tags estruturais que a fixture pode levar; qualquer outra é descartada (uma tag pode ser o apelido do cliente). */
 const TAGS_CONHECIDAS = new Set(['assinatura', 'story', 'feed', 'quadrado', 'clara', 'escura', 'modelo', 'conteudo'])
 /** Forma de uma CHAVE de objeto que pode sobreviver: identificador curto; chave com espaço, acento ou longa demais é descartada com o valor. */
@@ -46,8 +46,10 @@ export function fragmentosDoNome(nome: string): string[] {
   return [...new Set([...(inteiro ? [inteiro] : []), ...palavras.filter((w) => w.length >= 3)])]
 }
 const temFragmento = (texto: string, fragmentos: string[]) => {
+  // Com e SEM separadores: "Jo Li" tem de barrar `fontFamily: 'Jo Li'`, a chave `jo_li` e `joli`.
   const t = semAcento(texto)
-  return fragmentos.some((f) => t.includes(f))
+  const colado = t.replace(/[^a-z0-9]/g, '')
+  return fragmentos.some((f) => t.includes(f) || colado.includes(f))
 }
 const CHAVES_EXTERNAS = /drive|fileid|blob|imageurl|_imageurl|thumbnail|src$|externalid|url$/i
 const URL = /(https?:\/\/|data:|blob:|gs:\/\/|s3:\/\/)/i
@@ -121,14 +123,13 @@ export function pseudonimizar(exp: ExportDoCliente, clienteId: string, arquivos:
       // `fileUrl` só no TOPO da camada (é dela que o compositor lê a imagem); aninhado em style/metadata é descartado, não vira token.
       if (chave === 'fileUrl') return ehCamada ? token(v, caminho) : (descartados.push(`${caminho}: fileUrl fora do topo da camada`), undefined)
       if (CHAVES_DE_TEXTO.has(chave)) return camada ? copySintetica(papelDa(camada) ?? '') : (descartados.push(`${caminho}: texto fora de camada`), undefined)
-      if (chave === 'fontFamily') return v
+      if (chave === 'fontFamily') return identifica(v) ? (descartados.push(`${caminho}: fonte com o nome do cliente`), undefined) : v
       if (chave === 'groupId') return grupos.get(v) ?? (grupos.set(v, `grupo-${grupos.size + 1}`), grupos.get(v)!)
       if (CHAVES_DE_ENUM.has(chave) && ENUM.test(v) && !identifica(v)) return v
       descartados.push(`${caminho}: string sob chave fora do esquema`)
       return undefined
     }
-    // Só a ENTRADA de `layers[]` é camada; um objeto aninhado com `type`+`position` em style/metadata não é.
-    if (Array.isArray(v)) return v.map((x, i) => (chave === 'layers' && x && typeof x === 'object' && !Array.isArray(x) ? projetarCamada(x as Record<string, unknown>, `${caminho}[${i}]`) : projetar(x, chave, `${caminho}[${i}]`, camada))).filter((x) => x !== undefined)
+    if (Array.isArray(v)) return v.map((x, i) => projetar(x, chave, `${caminho}[${i}]`, camada)).filter((x) => x !== undefined)
     if (typeof v === 'object') {
       const o = v as Record<string, unknown>
       const saida: Record<string, unknown> = {}
@@ -140,7 +141,7 @@ export function pseudonimizar(exp: ExportDoCliente, clienteId: string, arquivos:
           continue
         }
         // `fileUrl` só vira token no TOPO da camada (chave direta da entrada de layers[]).
-        const r = projetar(x, k, `${caminho}.${k}`, camada, false) 
+        const r = projetar(x, k, `${caminho}.${k}`, camada, false)
         if (r !== undefined) saida[k] = r
       }
       return saida
@@ -159,11 +160,14 @@ export function pseudonimizar(exp: ExportDoCliente, clienteId: string, arquivos:
   }
   const paginas = exp.paginas.map((p, i) => {
     const so: Record<string, unknown> = {}
-    for (const c of CAMPOS_DA_PAGINA) if (c in p && c !== 'tags') so[c] = c === 'layers' && typeof p.layers === 'string' ? JSON.parse(p.layers) : p[c]
+    for (const c of CAMPOS_DA_PAGINA) if (c in p && c !== 'tags' && c !== 'layers') so[c] = p[c]
+    // Só o `layers[]` DA PÁGINA é de camadas (um `metadata.layers` aninhado é objeto comum: nada nele ganha token).
+    const layers = (typeof p.layers === 'string' ? JSON.parse(p.layers) : (p.layers ?? [])) as unknown[]
     // Tags à parte (não passam pela projeção): só palavras minúsculas sem o nome do cliente.
     const tags = Array.isArray(p.tags) ? (p.tags as unknown[]).filter((t): t is string => typeof t === 'string' && TAGS_CONHECIDAS.has(t)) : []
     for (const t of Array.isArray(p.tags) ? (p.tags as unknown[]) : []) if (!(typeof t === 'string' && TAGS_CONHECIDAS.has(t))) descartados.push(`paginas[${i}].tags: tag fora das conhecidas`)
     const saida = projetar(so, '', `paginas[${i}]`) as Record<string, unknown>
+    saida.layers = layers.map((l, k) => (l && typeof l === 'object' && !Array.isArray(l) ? projetarCamada(l as Record<string, unknown>, `paginas[${i}].layers[${k}]`) : (descartados.push(`paginas[${i}].layers[${k}]: entrada que não é camada`), undefined))).filter((l) => l !== undefined)
     saida.tags = tags
     saida.name = `Assinatura — ${clienteId} — ${tags.find((t) => t === 'feed' || t === 'story' || t === 'quadrado') ?? `${so.width}x${so.height}`}`
     return saida
