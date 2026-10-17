@@ -65,7 +65,7 @@ describe('resumo da carteira', () => {
     const r = resumoDoGateDosPosts({ posts, generations: [generation('gen-1')], pages: [pagina], permitidos: null, teto: 3 })
     expect(r.total).toMatchObject({ posts: 3, parcial: true, naoLidos: 2, teto: 3, coincidente: { APTO: 3 } })
   })
-  it('custo: 60 posts resumidos de uma vez (puro, sem banco) — correto e linear no número de posts', () => {
+  it('custo: 60 posts resumidos de uma vez (puro, sem banco) — correto, e insensível ao tamanho do banco (guarda grosseira, não prova de complexidade)', () => {
     // Tempo de parede NÃO é asserção (o runner do CI compartilhado levou 57 ms onde a máquina local leva 10 — a primeira
     // rodada da main depois do CP5e caiu nisso): o que se prova é a correção do resumo e que o custo cresce com os POSTS,
     // não com o tamanho do banco (Generations e páginas são indexadas por id uma vez).
@@ -75,8 +75,8 @@ describe('resumo da carteira', () => {
     const r = resumoDoGateDosPosts({ posts, generations: muitasGenerations, pages: muitasPaginas, permitidos: null })
     expect(r.total).toMatchObject({ posts: 60, coincidente: { APTO: 60 }, parcial: false })
     expect(r.porProjeto.get(8)).toMatchObject({ posts: 60 })
-    // Guarda grosseira contra uma regressão para O(posts × banco): com 2.000 linhas de cada lado isto tem de ficar em bem
-    // menos de alguns segundos mesmo num runner lento.
+    // Guarda GROSSEIRA contra uma regressão para O(posts × banco) — não prova complexidade: com 2.000 linhas de cada lado isto
+    // tem de ficar em bem menos de alguns segundos mesmo num runner lento (o teto de 50 ms que caiu no CI era tempo de parede).
     const t0 = performance.now()
     resumoDoGateDosPosts({ posts, generations: muitasGenerations, pages: muitasPaginas, permitidos: null })
     expect(performance.now() - t0).toBeLessThan(2_000)
