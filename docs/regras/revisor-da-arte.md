@@ -1282,3 +1282,46 @@ antiga, re-medido no próximo agendar/ajustar/revisar; a troca não migra nem ap
 em y 900–1400, longe dos textos) e ganhou a prova do caminho efetivo (foto lida sem assunto → `REVISAO_HUMANA_NECESSARIA` por
 `texto-sobre-assunto:NAO_COMPROVADA`, nenhum DRAFT; com catálogo cria; sem foto cria). Rodada nova do piloto com
 `PILOTO_ROTULO=caso-c-humano` (rótulo, não filtro): resumo em `docs/piloto-sintetico/2026-10-17-*-caso-c-humano-resumo.md`.
+
+## Adendo do piloto: anotação rastreada, par real, cenário H, arquétipos que compõem, variante de teste da assinatura (17/10/2026)
+
+Pedido do owner depois de conferir o caso C (verbatim no adendo `docs/PLANO-2026-10-17-PILOTO-ADENDO-DIAGNOSTICO.md`; Codex R1–R5
+NÃO APTO → R6 APTO para implementar). Só lote, harness e documento — política, gate, compositor, assinatura real e produção
+intocados; **MCP-M0 continua bloqueado**. Resumos oficiais: `docs/piloto-sintetico/2026-10-17-{padrao,completo}-adendo-resumo.md`.
+
+**O que entrou no harness** (`piloto-sintetico.test.ts`, `suporte/*`): foto **A3** (assunto colado à borda SUPERIOR, fundo
+escuro — o "assunto deslocado" dos arquétipos de centro); clientes de teste **`cliente-00-m90`** (a assinatura sintética com
+margem 90) e **`cliente-fixture-piso`** (a assinatura de 13/10 com as caixas dentro do piso com folga e inteiras na área
+segura — variante EXCLUSIVAMENTE de teste; `cliente-fixture` fica como regressão); `compor.motivo` no registro; rastro
+**`anotacao`** por peça com captura no harness (`estimarAssunto` embrulhado conta as estimativas por `revisarArte`;
+`contextoDaMedicao` embrulhado guarda o assunto que o PRODUTOR usou sob trava); **par** catálogo presente × ausente só com duas
+leituras efetivas dos mesmos bytes e do mesmo corte CONHECIDO (peça com arquétipo nasce com catálogo: o estimado é calculado
+pelo harness no mesmo recorte e rotulado); **cenário H** (corte da `bg-foto` trocado numa peça APTA do caso A → o cache da
+composição cai → nova medida e decisão, tipo registrado; produtor com item desligado e sem DRAFT); oclusão injetada também em
+caso A; invariantes novos (`violacoesDoPiloto`: cenário H > 0 na oficial e 100 % ao humano; corte divergente derruba).
+
+**Rodada oficial `--completo` (HEAD 61a6d4a0; 306 specs em 4 clientes, 174 recusas estruturais, 132 compostas, 124 medidas,
+24 APTAS, repetibilidade 306/306, 0 exceções, 3.756 renders = contador):**
+
+- **Arquétipos compõem e passam**: 16/16 APTAS (8 `minimal-fb-centro-optico` com A3; 8 `minimal-fb-topo-esquerda` em
+  `cliente-00-m90`). Diagnóstico confirmado: `topo-esquerda` recusa por construção com margem 96 (`ARQUETIPO_FORA_DA_ZONA`:
+  referência x 0,085 × 1080 = 92 px dentro da margem do projeto) — achado do compositor/T1a para o owner, não consertado aqui;
+  `centro-optico` recusa assunto centrado (`SEM_COMBINACAO`, invade a região protegida) e compõe com assunto na borda. As recusas
+  existentes seguem no lote, com o motivo gravado.
+- **Anotação preservada 16/16** no caso A: compositor gravou catálogo → revisor reaproveitou (0 estimativas) e avaliou → produtor
+  usou catálogo com a MESMA caixa. **Cenário H 16/16 ao humano** (revisor E produtor; 8 reestimadas com assunto, 8 sem assunto):
+  hoje o revisor NÃO relê o catálogo quando o cache da composição cai — comportamento medido; mudar é decisão do owner (H no § 7
+  do adendo).
+- **Par**: 60 pares reais (0 corte divergente; 138 não pareadas por recusa de um lado). O estimador localizou caixa em 32/60 —
+  todas A1/A2 (IoU com o catálogo 0,30) — e em **0/20 de A3**: assunto colado à borda superior não é localizado pela
+  estimativa (`mapaDeCalma` → `estimarAssunto`), medido sobre pixels sintéticos fiéis, não defeito comprovado nas fotos dos
+  clientes; sem catálogo essa foto cai no caso C (humano) — 8 dessas peças a verdade aprovaria.
+- **Variante de teste `cliente-fixture-piso`**: `piso-de-interface` **0** (contra 18 na fixture histórica) — a
+  variante faz o que promete; continua 0/18 APTAS por texto-sem-leitura 4, texto-sobre-assunto 16, tinta-fora-da-caixa 9 (fonte de reserva e a política do caso C
+  nas fotos), e as peças com a foto REAL seguem não medidas (fora das janelas).
+- Falso APTO em peça medida: 0. Modo G 24/24; oclusão injetada 24/24 (agora também em caso A).
+
+**Decisões do owner que o adendo deixa abertas**: caso B; janelas da fixture (ou a etapa representativa no lugar); assinatura
+real × piso; referência x dos arquétipos de canto × margem do projeto (T1a); se o revisor deve reler o catálogo quando o cache
+cai (H); e a etapa representativa (§ 4 do adendo: clientes, cota, seleção por `PostRenderProof`, origem por fluxo, janelas
+conferidas por `exigirMedidaFiel`, quais pixels podem ser versionados) — **nada disso foi executado**.
