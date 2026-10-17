@@ -290,7 +290,7 @@ CI e Vercel verdes. Sem rodada do piloto (nada nele muda).
 
 | # | Decisão | Proposta | Alternativa |
 |---|---|---|---|
-| D1 | Autorizar ESCREVER o `--fotos` (P1, só código + testes offline) | sim | não: a etapa representativa fica parada, e com ela o MCP-M0 |
+| D1 | Autorizar ESCREVER o `--fotos` (P1, só código + testes offline) | **AUTORIZADA pelo owner em 17/10/2026** ("Pode sim."), no contrato do HEAD 55779cc4: código e testes offline; rede dos testes simulada; nenhuma contagem/exportação contra banco, Blob, Drive ou dados de clientes; sem autorização de merge | — |
 | D2 | Autorizar a CONTAGEM no branch de dev (P2) e recriá-lo se for anterior a 12/10 | sim, depois de P1 na main | export manual do Blob pelo owner (adendo § 4, alternativa) |
 | D3 | Populações | só PUBLICADOS (`POSTED`, janela por `latePublishedAt ?? sentAt`) | + agendados (`SCHEDULED`) como população SEPARADA, nunca somada |
 | D4 | Estratificação | sem categoria na ferramenta; exportar `--candidatos` = 2× a cota final (20 para cota 10) e escolher 4/3/3 em P5 sobre os classificados | sem estratificação: `--candidatos` = cota final, menos fotos lidas |
@@ -299,7 +299,9 @@ CI e Vercel verdes. Sem rodada do piloto (nada nele muda).
 | D6 | Fundo sem `bg-foto` | excluído e contado | heurística declarada (`imagens[0]`), rotulada |
 | D7 | Stores do Blob autorizados para download (`STORES_DO_STUDIO`) | só o store atual | incluir outro store do Studio, citado por você |
 
-Clientes, cota final, pixels versionáveis e destino das fixtures (5.1/5.2) ficam para P3, com os números de P2.
+Clientes, cota final, pixels versionáveis e destino das fixtures (5.1/5.2) ficam para P3, com os números de P2. **D2–D8, dados reais, a etapa representativa e o MCP-M0 continuam pendentes.**
+
+**Achado da implementação de P1 (condição técnica da nota de imutabilidade, § 3.4)**: a evidência levantada NÃO basta — o `package-lock.json` fixa `@vercel/blob` 2.0.0 desde 30/08/2026 (antes das provas), mas o cliente 2.0.0 só envia `x-allow-overwrite` quando a opção é passada (`dist/index.js:139-140`); o "erro ao reusar o pathname" é comportamento do servidor do Blob, apenas documentado (`dist/index.d.ts:235`). Por isso o código fixa `IMUTABILIDADE_DO_BLOB_COMPROVADA = false`: hoje TODO fundo sai `imutabilidade-nao-comprovada` e nenhum arquivo seria exportado. Aceitar a documentação do fornecedor como prova (ou exigir outra, ex. hash na prova de render) é decisão nova (D9), não do código.
 
 ## 6. Revisão do Codex
 

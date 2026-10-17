@@ -11,13 +11,29 @@
  *
  *   npx tsx scripts/fixtures/exportar-piloto-sintetico.ts --cliente <projectId> [--cliente <id>…] <pasta-dos-exports>
  *   npx tsx scripts/fixtures/exportar-piloto-sintetico.ts --listar                      # só lista os clientes ativos com assinatura
+ *   npx tsx scripts/fixtures/exportar-piloto-sintetico.ts --fotos --contar --cliente <id>… --desde <ISO> --ate <ISO>
+ *   npx tsx scripts/fixtures/exportar-piloto-sintetico.ts --fotos --cliente <id>… --desde <ISO> --ate <ISO> --candidatos <n> <pasta>
+ *
+ * `--fotos` (P1 de `docs/PLANO-2026-10-17-CONTINUIDADE-E-CONTRATO-FOTOS.md`): seleção em `selecao-de-fotos.ts`, SQL em
+ * `fotos-do-banco.ts`. ESCRITO E NÃO EXECUTADO: rodar a contagem (P2) ou a exportação (P4) exige autorização própria do owner.
  *
  * A lista de clientes a exportar é a decisão 5.2 do owner: este script não escolhe por ninguém. ESCRITO E NÃO EXECUTADO.
  */
 import fs from 'node:fs'
 import path from 'node:path'
 import { PrismaClient } from '@prisma/client'
+import { execFileSync } from 'node:child_process'
 import { lerEnv, recusaDoExportador } from './guarda-do-exportador'
+import { lerDoBranch } from './fotos-do-banco'
+import {
+  IMUTABILIDADE_DO_BLOB_COMPROVADA,
+  ROTULOS_DO_MANIFESTO,
+  contarCliente,
+  exportarCliente,
+  lerArgsDasFotos,
+  recusaDoDestino,
+  type Buscar,
+} from './selecao-de-fotos'
 
 const ler = (arquivo: string) => (fs.existsSync(arquivo) ? fs.readFileSync(arquivo, 'utf8') : null)
 
@@ -31,8 +47,57 @@ function urlDoBranchDeDev(): string {
 
 type Pagina = { id: number; name: string; tags: string[]; width: number; height: number; background: string | null; layers: unknown; order: number }
 
+async function principalDasFotos(argv: string[]) {
+  const args = lerArgsDasFotos(argv)
+  if ('recusa' in args) throw new Error(`--fotos: ${args.recusa}`)
+  const raiz = path.resolve(__dirname, '../..')
+  // Destino e guarda ANTES de qualquer conexão.
+  if (args.pasta) {
+    const recusa = recusaDoDestino(args.pasta, raiz, fs.realpathSync)
+    if (recusa) throw new Error(recusa)
+    if (fs.existsSync(args.pasta) && fs.readdirSync(args.pasta).length > 0) throw new Error(`a pasta ${args.pasta} não está vazia`)
+  }
+  const db = new PrismaClient({ datasources: { db: { url: urlDoBranchDeDev() } } })
+  let leitura: Awaited<ReturnType<typeof lerDoBranch>>
+  try {
+    // Só a LEITURA fica na transação READ ONLY; nenhum download acontece com ela aberta.
+    leitura = await db.$transaction((tx) => lerDoBranch(tx, args.clientes, args.ate), { timeout: 60_000 })
+  } finally {
+    await db.$disconnect()
+  }
+  if ('recusa' in leitura) throw new Error(`a contagem não pode rodar (causa ${leitura.causa}): ${leitura.recusa.join('; ')}`)
+  const opcoes = { desde: args.desde, ate: args.ate, populacao: args.populacao, imutabilidadeComprovada: IMUTABILIDADE_DO_BLOB_COMPROVADA }
+  const todos = [...leitura.postsPorCliente.values()].flat()
+  const semProva = todos.every((p) => p.provas.length === 0)
+  const comum = {
+    args: { ...args, desde: args.desde.toISOString(), ate: args.ate.toISOString() },
+    head: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: raiz, encoding: 'utf8' }).trim(),
+    marcadorDoSnapshot: leitura.marcador,
+    ...(semProva ? { aviso: `nenhuma prova nesta seleção (o branch tem ${leitura.marcador.provas} no total)` } : {}),
+    rotulos: ROTULOS_DO_MANIFESTO,
+  }
+  if (args.modo === 'contar') {
+    const clientes = args.clientes.map((c) => contarCliente(c, leitura.postsPorCliente.get(c) ?? [], opcoes))
+    console.log(JSON.stringify({ ...comum, clientes }, null, 1))
+    return
+  }
+  fs.mkdirSync(args.pasta!, { recursive: true })
+  const clientes = []
+  for (const c of args.clientes) {
+    clientes.push(
+      await exportarCliente(c, leitura.postsPorCliente.get(c) ?? [], { ...opcoes, candidatos: args.candidatos! }, {
+        buscar: fetch as unknown as Buscar,
+        gravar: (nome, bytes) => fs.writeFileSync(path.join(args.pasta!, nome), bytes, { flag: 'wx' }),
+      }),
+    )
+  }
+  fs.writeFileSync(path.join(args.pasta!, 'manifesto.json'), JSON.stringify({ ...comum, clientes }, null, 1), { flag: 'wx' })
+  for (const r of clientes) console.log(`cliente ${r.cliente}: ${r.exportados.length} exportado(s) de ${r.elegiveis} elegível(is)${r.foraDaLeva ? ' — FORA DA LEVA' : ''}`)
+}
+
 async function main() {
   const args = process.argv.slice(2)
+  if (args.includes('--fotos')) return principalDasFotos(args)
   const clientes = args.flatMap((a, i) => (a === '--cliente' ? [Number(args[i + 1])] : [])).filter((n) => Number.isFinite(n))
   const listar = args.includes('--listar')
   const saida = args.filter((a, i) => !a.startsWith('--') && args[i - 1] !== '--cliente').at(-1)

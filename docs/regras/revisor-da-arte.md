@@ -1325,3 +1325,18 @@ caso A; invariantes novos (`violacoesDoPiloto`: cenário H > 0 na oficial e 100 
 real × piso; referência x dos arquétipos de canto × margem do projeto (T1a); se o revisor deve reler o catálogo quando o cache
 cai (H); e a etapa representativa (§ 4 do adendo: clientes, cota, seleção por `PostRenderProof`, origem por fluxo, janelas
 conferidas por `exigirMedidaFiel`, quais pixels podem ser versionados) — **nada disso foi executado**.
+
+## Exportador `--fotos` da etapa representativa (P1, 17/10/2026)
+
+Contrato: `docs/PLANO-2026-10-17-CONTINUIDADE-E-CONTRATO-FOTOS.md` (§ 3–4, Codex APTO R9/R10; D1 autorizada pelo owner).
+Seleção PURA em `scripts/fixtures/selecao-de-fotos.ts` (E1–E9, classe de origem como INDÍCIO, download com guarda de host
+EXATO e redirecionamento revalidado, canvas pelo IHDR da mídia da prova, reposição determinística); SQL só de leitura em
+`scripts/fixtures/fotos-do-banco.ts` (`SET TRANSACTION READ ONLY` primeiro); casca em `exportar-piloto-sintetico.ts --fotos`.
+
+- 🔴 **Escrito e NÃO executado.** Contar (P2) ou exportar (P4) contra o branch de dev exige autorização própria do owner.
+- 🔴 **`IMUTABILIDADE_DO_BLOB_COMPROVADA = false`**: sem prova de que a URL de hoje tem os bytes do dia do render, todo
+  fundo sai `imutabilidade-nao-comprovada`. Virar `true` é decisão (D9), nunca conveniência para "dar número".
+- 🔴 **Escritor novo com `allowOverwrite: true`** (em `src/` ou `scripts/`) tem de entrar em `INVENTARIO_DE_SOBRESCRITA`
+  — o teste varre o repositório e falha.
+- O que a seleção NÃO prova: que a mídia registrada é a do publicador; que a foto ficou visível (oclusão). Os rótulos do
+  manifesto dizem isso; não os apague.
