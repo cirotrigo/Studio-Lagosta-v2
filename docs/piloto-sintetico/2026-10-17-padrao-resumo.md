@@ -1,12 +1,12 @@
 # Piloto sintético de autonomia — resumo da rodada padrao (2026-10-17)
 
-HEAD `367c3f67` · lote `piloto-sintetico-40afb08600fe` · ambiente darwin arm64 node v22.23.3 · relatório integral: `human-output/relatorios/piloto-sintetico/2026-10-17-padrao/relatorio.json` (SHA-256 `55c9236ffe3c0f89c8c43049d34bb86ac048465e225dbd236f43f616a956d44c`).
+HEAD `c9d02307` · lote `piloto-sintetico-cdce41047cff` · ambiente darwin arm64 node v22.23.3 · relatório integral: `human-output/relatorios/piloto-sintetico/2026-10-17-padrao/relatorio.json` (SHA-256 `6540273d8a7e205c40c80632871b6821004093c406e96ec49265ae611dc3d2ff`).
 
 **O que este piloto NÃO mede** (ao lado do veredito, sempre): fontes da marca não instaladas (declaradas presentes; render com fonte de reserva); a visão (gpt-5.2) não roda; fotos SINTÉTICAS + a real anonimizada de 13/10 — lote CONTROLADO, não representativo das fotos dos clientes (decisão 5.1); banco falso com travas: travas/SQL reais e Blob não provados; custo medido nesta máquina, não na Vercel; clientes: cliente-00, cliente-fixture (fixtures reais pseudonimizadas aguardam a lista do owner — decisão 5.2).
 
 ## Denominadores
 elegíveis 126 → peças da rodada 42 → compostas 25 (recusas estruturais 17, erros 0) → chegaram ao gate e foram MEDIDAS 23 → APTAS na v1 16 → APTAS ao fim 16 → DRAFTs 16.
-Desfechos BRUTOS do fluxo (incluem as 2 peças NÃO MEDIDAS, fora das janelas fiéis — § 3b): chegaram ao gate 25 · APTAS ao fim 18 · DRAFTs 18. Toda taxa e tabela abaixo é sobre as peças MEDIDAS.
+Desfechos BRUTOS do fluxo (incluem as 2 peças NÃO MEDIDAS, fora das janelas fiéis — § 3b): chegaram ao gate 25 · APTAS ao fim 18 · DRAFTs 18. As seções 1–4 e 8 são sobre as peças MEDIDAS; custo (5), estabilidade (6) e repetibilidade (7) cobrem todas as peças da rodada.
 Exclusões do lote por motivo (não são peças): arquetipo-indisponivel 78 · arquetipo-exige-assunto 108 · arquetipo-sem-formato 0.
 
 ## 1. Taxa APTO por eixo, peças MEDIDAS (v1 composta · ao fim dos ciclos · DRAFT)
@@ -72,16 +72,16 @@ Exclusões do lote por motivo (não são peças): arquetipo-indisponivel 78 · a
 ## 5. Custo por etapa (renders mediana/p95 · ms mediana/p95) — a peça principal (compor…png), a leitura pareada, a repetição e a injeção em linhas próprias
 | etapa | renders med | renders p95 | ms med | ms p95 |
 |---|---|---|---|---|
-| compor | 3 | 3 | 531 | 1137 |
-| revisar | 4 | 4 | 630 | 1466 |
+| compor | 3 | 3 | 535 | 1137 |
+| revisar | 4 | 4 | 629 | 1511 |
 | ajustar | 0 | 0 | 0 | 0 |
-| agendar | 2 | 2 | 326 | 752 |
-| juizes | 2 | 2 | 289 | 705 |
+| agendar | 2 | 2 | 319 | 755 |
+| juizes | 2 | 2 | 290 | 707 |
 | png | 1 | 1 | 105 | 309 |
-| pareada | 0 | 9 | 24 | 2317 |
-| repeticao | 10 | 10 | 574 | 3168 |
-| injecao | 4 | 4 | 322 | 1492 |
-| modoG | 6 | 6 | 1503 | 1506 |
+| pareada | 0 | 9 | 24 | 2319 |
+| repeticao | 10 | 10 | 569 | 3166 |
+| injecao | 4 | 4 | 324 | 1487 |
+| modoG | 6 | 6 | 1503 | 1529 |
 Renders somados por etapa: 643 · observados pelo contador do renderer na rodada: 643.
 
 ## 6. Estabilidade: exceções 0 · nao-medida 0 · sem-vinculo 0 · timeouts 0
