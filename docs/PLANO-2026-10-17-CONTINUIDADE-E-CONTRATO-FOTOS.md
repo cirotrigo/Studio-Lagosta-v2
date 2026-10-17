@@ -133,7 +133,7 @@ exportar-piloto-sintetico.ts --fotos           --cliente <id>… --desde <ISO> -
 ### 3.2 Consulta (uma só, igual nos dois modos)
 
 Por cliente: `SocialPost` com `projectId = <id>`, `postType = 'STORY'`, `createdAt < ate` (um post não é publicado antes de
-existir); junto, as `PostRenderProof` desse post. Nenhuma outra tabela entra no critério; `Generation` só como metadado auxiliar
+existir); junto, as `PostRenderProof` desse post. Nenhuma outra tabela entra no critério (a `Page` atual inclusive: só o `pageId` do post é lido); `Generation` só como metadado auxiliar
 opcional (tema), nunca como vínculo. Janela, status e todo o resto são decididos em TypeScript pela função pura (3.3) sobre as
 linhas lidas — o SQL não filtra por janela nem por status, para que todo descarte apareça contado.
 
@@ -152,9 +152,10 @@ registrado); **agendados** (população SEPARADA, só se o owner pedir, D3) — 
 | E4 | existe prova com `mediaUrl === mediaUrls[0]` (igualdade exata de string) | `sem-prova` (nenhuma prova) · `prova-de-outra-midia` (há provas, nenhuma da mídia efetiva) |
 | E5 | `layersSnapshot` é array de objetos (aceita string JSON uma vez decodificada; nada além) | `snapshot-ilegivel` |
 | E6 | exatamente UMA camada `id === 'bg-foto'`, `type === 'image'`, `fileUrl` `https:` | `fundo-ausente` · `fundo-duplicado` · `fundo-nao-imagem` · `fundo-nao-https` |
-| E6b | contribuição visual NÃO trivialmente nula, avaliada só no caso SIMPLES: `visible !== false`; `style.opacity` ausente ou número finito > 0; `size` com largura e altura > 0; `rotation` ausente ou 0; sem `style.mask`; `Page.width × Page.height` atuais = 1080 × 1920 (o snapshot não traz o canvas); caixa (`position`/`size`) intersecta 1080 × 1920 com área > 0. Rotação ≠ 0, máscara, dimensões da página diferentes ou campo de transformação não previsto → a P1 NÃO avalia: exclusão, nunca aceite | `fundo-invisivel` (oculto / opacidade 0 / sem área / fora do canvas) · `fundo-nao-avaliavel` (rotação / máscara / dimensões da página / transformação desconhecida) |
+| E6b | contribuição visual NÃO trivialmente nula, avaliada só no caso SIMPLES: `visible !== false`; `style.opacity` ausente ou número finito > 0; `size` com largura e altura > 0; `rotation` ausente ou 0; sem `style.mask`; dimensões do canvas DO RENDER comprovadas pelo cabeçalho PNG (IHDR) da própria mídia da prova (`proof.mediaUrl`, lida só nos primeiros 64 bytes, com as regras de E7) = 1080 × 1920 — a `Page` atual NUNCA entra (pode ter mudado depois do render); caixa (`position`/`size`) intersecta 1080 × 1920 com área > 0. Rotação ≠ 0, máscara, mídia que não é PNG, IHDR ilegível, dimensões ≠ 1080 × 1920 ou campo de transformação não previsto → a P1 NÃO avalia: exclusão, nunca aceite. Na `--contar` (sem rede) a dimensão não é lida: os elegíveis da contagem são TETO, rotulados "canvas não comprovado" | `fundo-invisivel` (oculto / opacidade 0 / sem área / fora do canvas) · `fundo-nao-avaliavel` (rotação / máscara / canvas do render não comprovado ou ≠ story / transformação desconhecida) |
 | E7 | URL de download segura: `URL` parseável; protocolo `https:`; sem usuário/senha nem porta; `hostname` (minúsculas) IGUAL a um item da lista FECHADA `STORES_DO_STUDIO` — constante revisada no PR (proposta: `2rhsgfleozgl5jbm.public.blob.vercel-storage.com`, o store atual, citado em `scripts/recover-blob-files.ts:5`), confirmada pelo owner em D7; nunca sufixo, nunca `includes`, nunca os outros hosts de `HOSTS_PROPRIOS` | `host-nao-autorizado` |
 | E8 | classe de origem (3.4) ≠ `render` | `fundo-e-render` (arte dentro de arte) |
+| E8b | a classe tem caminho IMUTÁVEL comprovado no código (3.4, coluna "imutável"): a URL de hoje é necessariamente os bytes do dia do render. A prova não guarda hash dos bytes de origem (`schema.prisma`, `PostRenderProof`), então caminho sobrescrevível ou não comprovado não tem identidade histórica | `origem-sobrescrevivel` · `imutabilidade-nao-comprovada` |
 | E9 | `fileUrl` (sem query) ainda não selecionado neste cliente | `arquivo-repetido` |
 
 **O que E1–E9 provam, e o que não**: a foto é a camada de fundo REFERENCIADA nas camadas que produziram a mídia efetiva do post
@@ -169,16 +170,16 @@ de fundo é decisão, não código.
 
 ### 3.4 Classe de origem — função pura sobre o `pathname` (minúsculas, sem query, sem `..`)
 
-| Prefixo | Classe | "Original"? |
-|---|---|---|
-| `uploads/` | `upload` | não afirmado em P1 (ver 3.6) |
-| `chat-uploads/` | `chat-reduzida` | não (convertida/reduzida) |
-| `drive-cache/` | `drive-miniatura` | não (s1920; original no Drive, só com autorização) |
-| `posts/<x>/google-drive/` | `drive-download` (bytes enviados sem recodificar pela rota; nome `.jpg` e MIME declarados — formato real só pelo cabeçalho do arquivo, registrado à parte) | não afirmado: o arquivo do Drive pode já ser derivado; "original" exige comparar com o Drive (fora da P1) |
-| `posts/<x>/ai-images/` | `ia-download` (mesmo padrão) | não se aplica |
-| `posts/rendered/` | `render` | — (excluída por E8) |
-| `posts/<x>/normalized/` | `normalizada` | não |
-| qualquer outro `posts/…` ou prefixo | `desconhecida` | não |
+| Prefixo | Classe | "Original"? | Imutável? (E8b) |
+|---|---|---|---|
+| `uploads/` | `upload` | não afirmado em P1 (ver 3.6) | a confirmar no PR: `put` sem `allowOverwrite` (`api/upload/google-drive/route.ts:65`) — o PR cita o padrão da versão instalada de `@vercel/blob`; até lá `imutabilidade-nao-comprovada` |
+| `chat-uploads/` | `chat-reduzida` | não (convertida/reduzida) | **não**: `addRandomSuffix: false` + `allowOverwrite: true` (`chat-upload.ts:127-128`) → excluída por E8b |
+| `drive-cache/` | `drive-miniatura` | não (s1920; original no Drive, só com autorização) | **não**: `allowOverwrite: true` (`persist.ts:173-174`) → excluída por E8b |
+| `posts/<x>/google-drive/` | `drive-download` (bytes enviados sem recodificar pela rota; nome `.jpg` e MIME declarados — formato real só pelo cabeçalho do arquivo, registrado à parte) | não afirmado: o arquivo do Drive pode já ser derivado; "original" exige comparar com o Drive (fora da P1) | sim (`addRandomSuffix: true`, `google-drive-download/route.ts:143`) |
+| `posts/<x>/ai-images/` | `ia-download` (mesmo padrão) | não se aplica | sim (`addRandomSuffix: true`, `ai-images-download/route.ts:119`) |
+| `posts/rendered/` | `render` | — (excluída por E8) | — |
+| `posts/<x>/normalized/` | `normalizada` | não | sim (`addRandomSuffix: true`, `later-scheduler.ts`) |
+| qualquer outro `posts/…` ou prefixo | `desconhecida` | não | não comprovada |
 
 Tabela fechada; prefixo novo cai em `desconhecida`. Cada linha cita, no PR, a rota que a produz. Por foto o manifesto registra
 SEPARADOS: (i) a classe; (ii) nome/MIME declarados; (iii) o formato e as dimensões lidos do próprio arquivo baixado; (iv) a
@@ -244,14 +245,15 @@ continua "não medida" e contada. O estimador, na fixture pseudonimizada, mede "
 | T3 | E1–E3 | cada status nas duas populações (SCHEDULED nunca entra em publicados; nada aparece nas duas); `latePublishedAt` presente / só `sentAt` / ambos nulos; limites `desde` (entra) e `ate` (sai); `scheduledDatetime` nulo num POSTED (elegível); `mediaUrls` [] / 2; `pageId` null | motivo exato; campo de referência registrado |
 | T4 | E4 | sem prova; prova de outra URL; duas provas, uma casa; URL com query diferente | `sem-prova` / `prova-de-outra-midia` / elegível / `prova-de-outra-midia` (igualdade exata) |
 | T5 | E5 | array; string JSON de array; string dupla-codificada; objeto; JSON inválido; `null` | só os dois primeiros elegíveis |
-| T6 | E6–E6b | 0 / 2 `bg-foto`; `type: 'shape'`; `data:`; `http:`; outras imagens sem `bg-foto` (não cai em `imagens[0]`); oculta; `style.opacity` 0 / −1 / `NaN` / `'0'` (string) / 0,01; `size` 0 × N; caixa inteira fora do canvas; caixa parcialmente dentro; camada opaca acima cobrindo o fundo; `rotation` 45 com a caixa dentro antes de girar e fora depois; `rotation` 0 explícito; `style.mask` presente; `Page` 1080 × 1350; campo de transformação desconhecido | motivo exato; 0,01, parcial e `rotation` 0 elegíveis; rotação ≠ 0, máscara, página ≠ story e campo desconhecido → `fundo-nao-avaliavel`; "coberta" elegível com a contagem de camadas acima registrada (não decide) |
+| T6 | E6–E6b | 0 / 2 `bg-foto`; `type: 'shape'`; `data:`; `http:`; outras imagens sem `bg-foto` (não cai em `imagens[0]`); oculta; `style.opacity` 0 / −1 / `NaN` / `'0'` (string) / 0,01; `size` 0 × N; caixa inteira fora do canvas; caixa parcialmente dentro; camada opaca acima cobrindo o fundo; `rotation` 45 com a caixa dentro antes de girar e fora depois; `rotation` 0 explícito; `style.mask` presente; IHDR da mídia 1080 × 1350 com a caixa em y 1500 (página alterada depois para 1920: a `Page` atual não é lida); mídia JPEG; IHDR truncado; campo de transformação desconhecido | motivo exato; 0,01, parcial e `rotation` 0 elegíveis; rotação ≠ 0, máscara, canvas ≠ story ou não comprovado e campo desconhecido → `fundo-nao-avaliavel`; na `--contar`, elegíveis rotulados "canvas não comprovado"; "coberta" elegível com a contagem de camadas acima registrada (não decide) |
 | T7 | E7–E8 | o host de `STORES_DO_STUDIO` (ok); OUTRO store válido da Vercel (`abcdefghijklmnop.public.blob.vercel-storage.com`); o store antigo `sqc9qfyearji7bel`; `a.b.public.blob.vercel-storage.com`; `public.blob.vercel-storage.com.evil.com`; `evil.com/?x=.public.blob.vercel-storage.com`; `lh3.googleusercontent.com`; `x.supabase.co`; `user@host`; porta; maiúsculas no host; `posts/rendered/` | só o host listado (e a variante em maiúsculas) autorizado; motivos exatos |
 | T8 | 3.4 | cada prefixo; maiúsculas; query; `%2e%2e`/`..`; prefixo novo | classe da tabela; desconhecida no resto |
 | T9 | E9 + ordem | mesma URL com query diferente; empate da data de referência | repetido; desempate por `id`; mesma entrada → manifesto byte a byte igual (hash) |
 | T10 | transação | `tx` falso que registra chamadas | 1ª chamada `SET TRANSACTION READ ONLY`; nenhum SQL com `INSERT/UPDATE/DELETE/ALTER` (lista das strings enviadas) |
-| T11 | `--contar` | `fetch` espião; tabela ausente; migração não registrada com tabela presente; os dois; tabela com provas fora da seleção | `fetch` nunca chamado; nenhum arquivo escrito; recusa nos três primeiros, com o(s) sinal(is) exatos e causa "indeterminada"; no segundo, "nenhuma prova nesta seleção" + `COUNT` global |
+| T11 | `--contar` | `fetch` espião em todos; (a) tabela ausente; (b) migração não registrada com tabela presente; (c) os dois; (d) tabela e migração presentes, nenhuma prova na seleção | `fetch` nunca chamado e nenhum arquivo escrito em (a)–(d); (a), (b), (c): recusa com o(s) sinal(is) exatos e causa "indeterminada"; (d): não recusa, reporta "nenhuma prova nesta seleção" + `COUNT` global |
 | T12 | download | 403, timeout, `text/html` com status 200, bytes que não são imagem com `image/png`, 30 MB sem `content-length`, redirecionamento para host autorizado, para host alheio, cadeia de 4; OK | exclusões `download-falhou:<subcódigo>` contadas; redirecionamento autorizado segue; OK com SHA-256 certo e extensão pela assinatura |
 | T13 | cota/déficit/reposição | 3 elegíveis com cota 10; 12 elegíveis com cota 10 e 2 falhas; 7 elegíveis com 2 falhas e cota 10 | fora da leva (< 6 exportados); 10 exportados com os 2 reservas seguintes no lugar, na ordem; 5 exportados → fora da leva, déficit 5 |
+| T15 | E8b | cada classe da tabela 3.4; `chat-uploads/` e `drive-cache/` com a mesma URL e bytes trocados entre o render e o download (sobrescrita) | `origem-sobrescrevivel` nessas duas; `imutabilidade-nao-comprovada` em `uploads/` até o PR citar a lib; elegível só nas classes "sim" |
 | T14 | pureza | `selecao-de-fotos.ts` | não importa `@/lib/db` nem `node:fs`/rede (teste de import, padrão do repo) |
 
 Gates do PR de P1: matriz verde; `npx vitest run` dos arquivos novos; typecheck; lint; `git diff --check`; Codex APTO no HEAD;
@@ -287,3 +289,8 @@ Clientes, cota final, pixels versionáveis e destino das fixtures (5.1/5.2) fica
   caso simples e exclui o resto como `fundo-nao-avaliavel`; (2) E7 aceitava qualquer store da Vercel → lista fechada
   `STORES_DO_STUDIO` (D7) e teste com outro store recusado; (3) tabela ausente e migração não registrada relatadas
   separadamente, causa indeterminada.
+- **R3 (HEAD a68d2af1) — NÃO APTO**: R2 2 e 3 resolvidos, 1 parcial → corrigidos: (1) E6b julgava o render histórico pela `Page`
+  ATUAL (`story-renderer.ts:69, 139`; a prova não guarda o canvas) → canvas comprovado pelo IHDR da própria mídia da prova; a
+  `Page` sai do critério; na contagem o canvas fica "não comprovado"; (2) `chat-uploads/` e `drive-cache/` são sobrescrevíveis
+  (`allowOverwrite: true`) e a prova não tem hash dos bytes de origem → E8b exclui origem sem imutabilidade comprovada (T15);
+  (3) T11 com os quatro casos nomeados.
