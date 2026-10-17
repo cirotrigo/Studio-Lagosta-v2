@@ -150,7 +150,7 @@ vi.mock('@/lib/creatives/agendar', () => ({
   // O caminho HUMANO de criação: se uma tool da allowlist o alcançasse, o post nasceria SEM o gate — e o detector pega.
   agendarPost: async (input: Linha) => {
     banco.eventos.push('agendarPost')
-    const { db } = await import('@/lib/db')
+    const { db } = (await import('@/lib/db')) as unknown as { db: { socialPost: { create: (a: Linha) => Promise<Linha> } } }
     const post = await db.socialPost.create({ data: { projectId: input.projectId, pageId: input.pageId, generationId: input.generationId ?? null, postType: input.postType ?? 'STORY', status: 'DRAFT', scheduledDatetime: new Date(input.scheduledDatetime), mediaUrls: [], renderStatus: 'PENDING', laterPostId: null } })
     return { post, mensagem: 'rascunho criado' }
   },
