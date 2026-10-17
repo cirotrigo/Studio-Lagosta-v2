@@ -12,10 +12,10 @@
 import sharp from 'sharp'
 import type { Rect } from '@/lib/creatives/halo/halo'
 
-export type CasoDaFoto = 'A1' | 'A2' | 'B' | 'C' | 'D' | 'E' | 'F'
-export const CASOS_DA_FOTO: readonly CasoDaFoto[] = ['A1', 'A2', 'B', 'C', 'D', 'E', 'F']
+export type CasoDaFoto = 'A1' | 'A2' | 'A3' | 'B' | 'C' | 'D' | 'E' | 'F'
+export const CASOS_DA_FOTO: readonly CasoDaFoto[] = ['A1', 'A2', 'A3', 'B', 'C', 'D', 'E', 'F']
 /** Versão da GERAÇÃO das fotos sintéticas: entra no `loteId`; suba quando a função mudar os pixels. */
-export const VERSAO_DAS_FOTOS_SINTETICAS = 1
+export const VERSAO_DAS_FOTOS_SINTETICAS = 2 // v2: caso A3 (assunto forte colado à BORDA SUPERIOR, fundo escuro — para os arquétipos de centro, que pedem assunto deslocado)
 export type FormatoDaFoto = 'story' | 'feed'
 export const DIMENSOES_DA_FOTO: Record<FormatoDaFoto, { width: number; height: number }> = { story: { width: 1080, height: 1920 }, feed: { width: 1080, height: 1350 } }
 
@@ -58,11 +58,14 @@ const DESCRICAO: Record<CasoDaFoto, string> = {
   D: 'fundo liso escuro',
   E: 'gradiente vertical claro → escuro',
   F: 'ruído forte em toda a área (o pior caso da régua)',
+  A3: 'assunto forte (xadrez) colado à BORDA SUPERIOR, centrado, sobre fundo escuro — o "assunto deslocado" que os arquétipos de centro pedem',
 }
 
-/** A caixa do assunto construído: 40 % da largura × 25 % da altura, no terço inferior, deslocada à direita. */
-export function caixaDoAssunto(formato: FormatoDaFoto): Rect {
+/** A caixa do assunto construído: A1/A2 — 40 % × 25 %, no terço inferior, deslocada à direita; A3 — 40 % × 17 % colada à borda SUPERIOR, centrada (assunto "deslocado para a borda", como os arquétipos de centro pedem; fora das zonas de texto deles). */
+export function caixaDoAssunto(formato: FormatoDaFoto, caso: 'A1' | 'A2' | 'A3' = 'A1'): Rect {
   const { width, height } = DIMENSOES_DA_FOTO[formato]
+  // A3: na BORDA SUPERIOR, centrado (y 3 %–20 %): fora das zonas de texto dos arquétipos de centro (headline a partir de y 0,42).
+  if (caso === 'A3') return { x: Math.round(width * 0.3), y: Math.round(height * 0.03), width: Math.round(width * 0.4), height: Math.round(height * 0.17) }
   const w = Math.round(width * 0.4)
   const h = Math.round(height * 0.25)
   return { x: Math.round(width * 0.5), y: Math.round(height * 0.58), width: w, height: h }
@@ -72,7 +75,7 @@ export async function fotoSintetica(caso: CasoDaFoto, formato: FormatoDaFoto, se
   const { width, height } = DIMENSOES_DA_FOTO[formato]
   const rnd = prng(sementeDe(caso, formato, semente))
   const raw = Buffer.alloc(width * height * 3)
-  const assunto = caso === 'A1' || caso === 'A2' ? caixaDoAssunto(formato) : null
+  const assunto = caso === 'A1' || caso === 'A2' || caso === 'A3' ? caixaDoAssunto(formato, caso) : null
   const dentro = (x: number, y: number) => !!assunto && x >= assunto.x && x < assunto.x + assunto.width && y >= assunto.y && y < assunto.y + assunto.height
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
@@ -94,13 +97,15 @@ export async function fotoSintetica(caso: CasoDaFoto, formato: FormatoDaFoto, se
           v = Math.round(120 + (rnd() - 0.5) * 36)
           break
         case 'A1':
-        case 'A2': {
-          const fundo = 128 + (rnd() - 0.5) * 10
+        case 'A2':
+        case 'A3': {
+          // A1/A2: fundo médio (128); A3: fundo ESCURO (72), para o texto claro dos arquétipos de centro ter leitura.
+          const fundo = (caso === 'A3' ? 72 : 128) + (rnd() - 0.5) * 10
           if (dentro(x, y)) {
             // Textura em xadrez de 24 px: forte (A1) ou fraca (A2) em relação ao fundo.
             const xadrez = (Math.floor(x / 24) + Math.floor(y / 24)) % 2 === 0
-            const amplitude = caso === 'A1' ? 95 : 12
-            v = Math.round(128 + (xadrez ? amplitude : -amplitude) + (rnd() - 0.5) * 6)
+            const amplitude = caso === 'A2' ? 12 : 95
+            v = Math.round((caso === 'A3' ? 150 : 128) + (xadrez ? amplitude : -amplitude) + (rnd() - 0.5) * 6)
           } else v = Math.round(fundo)
           break
         }

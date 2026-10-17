@@ -32,6 +32,10 @@ const espioes = vi.hoisted(() => ({
   falhasDeLeitura: 0,
   /** A caixa de catálogo (frações) por driveFileId — a leitura "com catálogo" da decisão 1 e o requisito do arquétipo (CP2B). */
   catalogo: new Map<string, { x0: number; y0: number; x1: number; y1: number }>(),
+  /** Adendo § 1: quantas vezes `estimarAssunto` rodou (o revisor só estima quando NÃO reaproveita a anotação do compositor). */
+  estimativas: 0,
+  /** Adendo § 1: o assunto que cada `contextoDaMedicao` chamado DE FORA (o produtor, `agendar-itens`) usou sob trava. */
+  contextos: [] as Array<{ assunto: { rect: Rect; origem: 'catalogo' | 'estimado' } | null; naoSeAplica: boolean; motivo: string | null }>,
 }))
 
 vi.mock('@/lib/db', () => ({ db: harness.db }))
@@ -42,6 +46,21 @@ vi.mock('@/lib/aprendizado/captura', () => ({ registrarDecisaoSemSugestao: vi.fn
 vi.mock('@/lib/aprendizado/fechar-copy-por-pagina', () => ({ fecharDicaDeCopyDaPagina: async () => ({ estado: 'sem-plano' }), caiNaEscolhaPropria: () => false }))
 vi.mock('@/lib/creatives/text-autofix', () => ({ aplicarAutofixOuFalhar: async (a: { layers: unknown[] }) => ({ layers: a.layers, autocorrecao: { necessaria: false, aplicada: false, iteracoes: 0, ajustes: [], pendencias: [] }, avisos: [] }) }))
 vi.mock('@/lib/creatives/uso-de-foto', () => ({ registrarUsoDeFoto: async () => undefined }))
+vi.mock('@/lib/compositor/mapa-de-calma', async (original) => {
+  const m = await original<typeof import('@/lib/compositor/mapa-de-calma')>()
+  return { ...m, estimarAssunto: (...a: Parameters<typeof m.estimarAssunto>) => { espioes.estimativas++; return m.estimarAssunto(...a) } }
+})
+vi.mock('@/lib/creatives/revisao/revisar-arte', async (original) => {
+  const m = await original<typeof import('@/lib/creatives/revisao/revisar-arte')>()
+  return {
+    ...m,
+    contextoDaMedicao: async (...a: Parameters<typeof m.contextoDaMedicao>) => {
+      const ctx = await m.contextoDaMedicao(...a)
+      espioes.contextos.push({ assunto: ctx.assunto ? { rect: ctx.assunto.rect, origem: ctx.assunto.origem } : null, naoSeAplica: ctx.assuntoNaoSeAplica === true, motivo: ctx.motivoSemAssunto ?? null })
+      return ctx
+    },
+  }
+})
 vi.mock('@/lib/creatives/acervo', () => ({ lerCatalogoDoProjeto: async () => ({ catalogo: null, todas: [...espioes.catalogo.entries()].map(([driveFileId, assunto]) => ({ driveFileId, assunto })) }) }))
 vi.mock('@/lib/assets/gradients-library', async (original) => {
   return {
@@ -138,6 +157,7 @@ import { revisarArte, type GateInformativo } from '@/lib/creatives/revisao/revis
 import { ajustarArte } from '@/lib/creatives/arte-rapida'
 import { agendarItensDoLote } from '@/lib/lotes/agendar-itens'
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
+import { lerFotoComoCover } from '@/lib/creatives/halo/halo-medicao'
 import { arquivosDaFixture, caixasForaDasJanelas, comArquivos, fixture } from './suporte/fixture'
 import { carregarClientesDasFixtures } from './suporte/fixtures-de-clientes'
 import { PECA_LIMPA } from './suporte/peca-limpa'
@@ -193,9 +213,34 @@ function clientesDoLote(): ClienteSemeado[] {
   const lista: ClienteSemeado[] = [
     // cliente-00: a assinatura SINTÉTICA limpa (o controle positivo), story e feed, com uma logo sintética (os arquétipos a exigem).
     { id: 'cliente-00', formatos: ['story', 'feed'], numeros: { ...numeros, fundo: '#000000', mancha: '#000000', logo: { largura: 170 } }, paginas: [assinaturaSintetica('story'), assinaturaSintetica('feed')], logos: [{ fileUrl: LOGO_SINTETICA, isProjectLogo: true }], candidatasDoVeu: veuDaFixture },
+    // cliente-00-m90: a MESMA assinatura sintética com margem horizontal 90 (< 92 = 0,085 × 1080, a referência x dos arquétipos
+    // de canto): isola a recusa ARQUETIPO_FORA_DA_ZONA de `minimal-fb-topo-esquerda`, que com margemH 96 é por construção.
+    { id: 'cliente-00-m90', formatos: ['story', 'feed'], numeros: { ...numeros, fundo: '#000000', mancha: '#000000', logo: { largura: 170 }, geometria: Object.fromEntries(Object.entries((numeros.geometria as Record<string, Record<string, number>>) ?? {}).map(([f, g]) => [f, { ...g, margemH: 90 }])) }, paginas: [assinaturaSintetica('story'), assinaturaSintetica('feed')], logos: [{ fileUrl: LOGO_SINTETICA, isProjectLogo: true }], candidatasDoVeu: veuDaFixture },
     // cliente-fixture: a assinatura REAL anonimizada de 13/10 (a composição legada — P6).
     { id: 'cliente-fixture', formatos: ['story'], numeros, paginas: [{ ...fixture.assinatura().pagina, layers: comArquivos(fixture.assinatura().pagina.layers, arquivos), templateId: 7, isTemplate: true, order: 0, copyAutoral: null, audio: null, thumbnail: null, updatedAt: new Date('2026-10-01T00:00:00Z'), Template: { id: 7, name: 'Assinatura', projectId: PROJETO } }], logos: [{ fileUrl: arquivos['fixture:logo-monograma'], isProjectLogo: true }], candidatasDoVeu: veuDaFixture },
   ]
+  // cliente-fixture-piso (adendo § 3): a MESMA assinatura de 13/10 — camadas, cores, fontes e números — com as caixas movidas para
+  // DENTRO do piso (188/1696, com folga) e INTEIRAS na área segura (x 96…984; y 250…1570). Variante EXCLUSIVAMENTE DE TESTE: a
+  // assinatura real não muda e o piso não ganha exceção; com a foto REAL as caixas caem fora das janelas fiéis (fica "não medida").
+  const PISO_DA_VARIANTE: Record<string, { x: number; y: number; width: number; height: number }> = {
+    headline: { x: 243, y: 250, width: 741, height: 164 },
+    apoio: { x: 243, y: 420, width: 741, height: 92 },
+    servico: { x: 200, y: 1500, width: 680, height: 52 },
+    logo: { x: 442, y: 1395, width: 197, height: 95 },
+  }
+  const paginaDaFixture = lista.find((c) => c.id === 'cliente-fixture')!.paginas[0]
+  lista.push({
+    id: 'cliente-fixture-piso',
+    formatos: ['story'],
+    numeros,
+    paginas: [{ ...paginaDaFixture, id: 'assinatura-fixture-piso', name: 'Assinatura — story (variante de teste: dentro do piso)', layers: (paginaDaFixture.layers as Layer[]).map((l) => {
+      const papel = l.type === 'logo' ? 'logo' : String(l.name ?? l.id)
+      const caixa = PISO_DA_VARIANTE[papel]
+      return caixa ? { ...l, position: { x: caixa.x, y: caixa.y }, size: { width: caixa.width, height: caixa.height } } : l
+    }) }],
+    logos: [{ fileUrl: arquivos['fixture:logo-monograma'], isProjectLogo: true }],
+    candidatasDoVeu: veuDaFixture,
+  })
   // Fixtures de clientes reais pseudonimizados (decisão 5.2 do owner): só se existirem — cada um com os PRÓPRIOS ativos (logo, páginas, véu).
   for (const c of carregarClientesDasFixtures(path.join(__dirname, 'fixtures', 'piloto-sintetico'))) {
     lista.push({ id: c.id, formatos: c.formatos, numeros: c.numeros, paginas: c.paginas.map((p, i) => ({ ...p, templateId: 7, isTemplate: true, order: i, copyAutoral: null, audio: null, thumbnail: null, updatedAt: new Date('2026-10-01T00:00:00Z'), Template: { id: 7, name: 'Assinatura', projectId: PROJETO } }) as unknown as Linha), logos: c.logos, candidatasDoVeu: c.candidatasDoVeu })
@@ -240,12 +285,16 @@ interface Execucao {
   pageId: string
   generationId: string
   assuntoNaPeca: { assunto: Rect | null; origem: 'catalogo' | 'estimado' | 'nenhum' }
+  /** Adendo § 1: os três elos da anotação do assunto. */
+  anotacao: RegistroDaPeca['anotacao']
+  /** O corte da bg-foto composta e o SHA-256 dos bytes da foto: o que o par (catálogo presente × ausente) tem de ter igual. */
+  corte: string | null
   excecoes: string[]
   renders: RegistroDaPeca['renders']
   ms: RegistroDaPeca['ms']
 }
 
-async function executar(spec: SpecDoLote, cliente: ClienteSemeado, foto: { id: string; dataUrl: string; verdade: Rect | null; width: number; height: number } | null, comCatalogo: boolean): Promise<Execucao | { recusa: { desfecho: 'recusa-estrutural' | 'erro'; codigo: string }; ms: number }> {
+async function executar(spec: SpecDoLote, cliente: ClienteSemeado, foto: { id: string; dataUrl: string; verdade: Rect | null; width: number; height: number } | null, comCatalogo: boolean): Promise<Execucao | { recusa: { desfecho: 'recusa-estrutural' | 'erro'; codigo: string; motivo: string }; ms: number }> {
   semear(cliente)
   espioes.catalogo.clear()
   if (foto) {
@@ -279,13 +328,19 @@ async function executar(spec: SpecDoLote, cliente: ClienteSemeado, foto: { id: s
     composta = await medir('compor', () => comporPeca(specDoCompositor))
   } catch (e) {
     const codigo = e instanceof CreativeError ? e.code : e instanceof Error ? e.constructor.name : 'erro'
-    return { recusa: { desfecho: e instanceof CreativeError ? 'recusa-estrutural' : 'erro', codigo }, ms: ms.compor ?? 0 }
+    return { recusa: { desfecho: e instanceof CreativeError ? 'recusa-estrutural' : 'erro', codigo, motivo: e instanceof Error ? e.message.slice(0, 400) : String(e).slice(0, 400) }, ms: ms.compor ?? 0 }
   }
   const pageId = composta.persistido!.pageId
   const layersV1 = structuredClone(banco.pages.get(pageId)!.layers as Layer[])
   const generationId = [...banco.generations.values()].find((g) => g.fieldValues?.source === 'compositor' && g.fieldValues?.pageId === pageId)!.id
   banco.itensDeLote.set(`lote-${pageId}`, { id: `lote-${pageId}`, projectId: PROJETO, loteId: LOTE, itemId: `item-${pageId}`, generationId, postId: null, hashDoAgendamento: null, efeitosDoAgendamentoEm: null, payload: null })
-  const revisar = () => medir('revisar', () => revisarArte({ projectId: PROJETO, pageId, visao: false, previa: false }))
+  const estimativasPorRevisao: number[] = []
+  const revisar = async () => {
+    const e0 = espioes.estimativas
+    const r = await medir('revisar', () => revisarArte({ projectId: PROJETO, pageId, visao: false, previa: false }))
+    estimativasPorRevisao.push(espioes.estimativas - e0)
+    return r
+  }
   let rev = await revisar()
   const gateV1 = gateRegistrado(rev.gate)
   let impressaoDoGateFinal = impressaoDoGate(rev.gate)
@@ -304,21 +359,32 @@ async function executar(spec: SpecDoLote, cliente: ClienteSemeado, foto: { id: s
   }
   let draft: RegistroDaPeca['draft'] = 'nao-tentado'
   let draftCodigo: string | undefined
+  let produtor: RegistroDaPeca['anotacao']['produtor'] = null
+  const c0 = espioes.contextos.length
   try {
     const lote = await medir('agendar', () => agendarItensDoLote({ projectId: PROJETO, loteId: LOTE, itens: [{ itemId: `item-${pageId}` }], apenasRascunho: true, principal: { tipo: 'user', id: 'piloto' } }))
-    const item = lote.itens[0] as { situacao: string; desfecho?: string; codigo?: string }
+    const item = lote.itens[0] as { situacao: string; desfecho?: string; codigo?: string; motivos?: Array<{ regra: string; codigo: string }> }
     draft = item.situacao === 'concluido' && (item.desfecho === 'criado' || item.desfecho === 'recriado') ? 'criado' : 'recusado'
     draftCodigo = item.codigo ?? item.desfecho
+    const ctx = espioes.contextos.slice(c0).at(-1)
+    produtor = ctx ? { assunto: ctx.assunto, naoSeAplica: ctx.naoSeAplica, motivos: (item.motivos ?? []).filter((m) => m.regra === 'texto-sobre-assunto').map((m) => m.codigo) } : null
   } catch (e) {
     excecoes.push(`agendar: ${String(e)}`)
     draft = 'recusado'
     draftCodigo = e instanceof CreativeError ? e.code : 'erro'
   }
   const page = banco.pages.get(pageId)!
-  return { gateV1, gateFinal: gate, impressaoDoGateFinal, ciclos, draft, draftCodigo, layers: page.layers as Layer[], layersV1, background: String(page.background ?? '#FFFFFF'), pageId, generationId, assuntoNaPeca: { assunto: composta.diagnostico.assunto, origem: composta.diagnostico.assuntoOrigem }, excecoes, renders, ms }
+  const cob = (rev.relatorio.cobertura as Record<string, { estado?: string; naoSeAplica?: boolean; motivo?: string } | undefined>)['texto-sobre-assunto']
+  const bgFoto = (page.layers as Layer[]).find((l) => l.id === 'bg-foto' || (l.type === 'image' && l.size.width >= 1080))
+  const anotacao: RegistroDaPeca['anotacao'] = {
+    compositor: { origem: composta.diagnostico.assuntoOrigem, rect: composta.diagnostico.assunto },
+    revisor: { estimativas: estimativasPorRevisao, cobertura: { estado: cob?.estado ?? null, naoSeAplica: cob?.naoSeAplica === true, motivo: cob?.motivo ?? null }, motivos: gate.tipo === 'medida' ? gate.motivos.filter((m) => m.regra === 'texto-sobre-assunto').map((m) => m.codigo) : [] },
+    produtor,
+  }
+  return { gateV1, gateFinal: gate, impressaoDoGateFinal, ciclos, draft, draftCodigo, layers: page.layers as Layer[], layersV1, background: String(page.background ?? '#FFFFFF'), pageId, generationId, assuntoNaPeca: { assunto: composta.diagnostico.assunto, origem: composta.diagnostico.assuntoOrigem }, anotacao, corte: (bgFoto?.style as { cropPosition?: string } | undefined)?.cropPosition ?? null, excecoes, renders, ms }
 }
 
-async function rodarPeca(spec: SpecDoLote, cliente: ClienteSemeado, opcoes: { repetir: boolean; modoG: boolean }): Promise<RegistroDaPeca> {
+async function rodarPeca(spec: SpecDoLote, cliente: ClienteSemeado, opcoes: { repetir: boolean; modoG: boolean; cenarioH: boolean }): Promise<RegistroDaPeca> {
   const entrada = ENTRADAS_DE_FOTO.find((f) => f.id === spec.foto)!
   const canvas = { width: 1080, height: spec.formato === 'story' ? 1920 : 1350 }
   let foto: Parameters<typeof executar>[2] = null
@@ -333,8 +399,8 @@ async function rodarPeca(spec: SpecDoLote, cliente: ClienteSemeado, opcoes: { re
   let assunto: RegistroDaPeca['assunto']
   const arquetipo = spec.arquetipo !== 'sem'
   // A foto REAL (fixture de 13/10) entra no par também: a verdade dela é a região protegida da vitrine (catálogo), não "o assunto".
-  const extras: { renders: Partial<Record<'pareada' | 'repeticao' | 'injecao' | 'modoG', number>>; ms: Partial<Record<'pareada' | 'repeticao' | 'injecao' | 'modoG', number>> } = { renders: {}, ms: {} }
-  const contar = async <T>(etapa: 'pareada' | 'repeticao' | 'injecao' | 'modoG', f: () => Promise<T>): Promise<T> => {
+  const extras: { renders: Partial<Record<'pareada' | 'repeticao' | 'injecao' | 'modoG' | 'cenarioH', number>>; ms: Partial<Record<'pareada' | 'repeticao' | 'injecao' | 'modoG' | 'cenarioH', number>> } = { renders: {}, ms: {} }
+  const contar = async <T>(etapa: 'pareada' | 'repeticao' | 'injecao' | 'modoG' | 'cenarioH', f: () => Promise<T>): Promise<T> => {
     const r0 = espioes.renders
     const t0 = performance.now()
     try {
@@ -347,7 +413,7 @@ async function rodarPeca(spec: SpecDoLote, cliente: ClienteSemeado, opcoes: { re
   if (foto?.verdade) {
     const comCatalogo = await contar('pareada', () => executar(spec, cliente, foto, true))
     const catalogo = 'recusa' in comCatalogo ? null : comCatalogo.assuntoNaPeca.assunto
-    assunto = { estimado: null, catalogo, verdade: foto.verdade, origemNaPeca: null }
+    assunto = { estimado: null, catalogo, verdade: foto.verdade, origemNaPeca: null, ...('recusa' in comCatalogo ? { naoPareada: `com catálogo: ${comCatalogo.recusa.codigo}` } : { corteComCatalogo: comCatalogo.corte }) }
   }
   // Com arquétipo a caixa de catálogo é obrigatória (CP2B): a peça do fluxo nasce COM catálogo; sem arquétipo, nasce da estimativa.
   const principal = await executar(spec, cliente, foto, arquetipo)
@@ -360,9 +426,31 @@ async function rodarPeca(spec: SpecDoLote, cliente: ClienteSemeado, opcoes: { re
       const codigo = 'recusa' in outra ? outra.recusa.codigo : 'composta'
       repeticao = { igual: codigo === principal.recusa.codigo, diferencas: codigo === principal.recusa.codigo ? [] : [`compor: ${principal.recusa.codigo} → ${codigo} na repetição`] }
     }
-    return { ...registroBase(), compor: { desfecho: principal.recusa.desfecho, codigo: principal.recusa.codigo, ms: principal.ms }, renders: { ...extras.renders }, ms: { ...extras.ms }, estabilidade: { excecoes: principal.recusa.desfecho === 'erro' ? [principal.recusa.codigo] : [], naoMedida: false, semVinculo: false, timeout: false }, ...(assunto ? { assunto } : {}), ...(repeticao ? { repeticao } : {}) }
+    if (assunto) {
+      const { corteComCatalogo: _c, ...resto } = assunto as typeof assunto & { corteComCatalogo?: string | null }
+      assunto = { ...resto, naoPareada: `principal: ${principal.recusa.codigo}` }
+    }
+    return { ...registroBase(), compor: { desfecho: principal.recusa.desfecho, codigo: principal.recusa.codigo, motivo: principal.recusa.motivo, ms: principal.ms }, renders: { ...extras.renders }, ms: { ...extras.ms }, estabilidade: { excecoes: principal.recusa.desfecho === 'erro' ? [principal.recusa.codigo] : [], naoMedida: false, semVinculo: false, timeout: false }, ...(assunto ? { assunto } : {}), ...(repeticao ? { repeticao } : {}) }
   }
-  if (assunto) assunto = { ...assunto, estimado: arquetipo ? null : principal.assuntoNaPeca.assunto, origemNaPeca: principal.assuntoNaPeca.origem }
+  if (assunto) {
+    // O ESTIMADO: sem arquétipo é o do compositor (a execução principal nasce sem catálogo); com arquétipo a principal nasce COM
+    // catálogo (CP2B), então a estimativa é calculada pelo HARNESS sobre os MESMOS bytes e o MESMO corte da peça — e rotulada.
+    let estimado: Rect | null = null
+    let estimadoPor: NonNullable<RegistroDaPeca['assunto']>['estimadoPor'] = 'compositor'
+    if (arquetipo) {
+      const atual = await vi.importActual<typeof import('@/lib/compositor/mapa-de-calma')>('@/lib/compositor/mapa-de-calma')
+      const bytes = Buffer.from(foto!.dataUrl.split(',')[1], 'base64')
+      estimado = atual.estimarAssunto(atual.mapaDeCalma(await lerFotoComoCover(bytes, canvas, principal.corte ? { cropPosition: principal.corte as never } : {})))
+      estimadoPor = 'harness-mesmo-corte'
+    } else estimado = principal.assuntoNaPeca.assunto
+    // O par só existe com DUAS leituras efetivas (com e sem catálogo) dos mesmos bytes e do mesmo corte.
+    const corteCom = (assunto as { corteComCatalogo?: string | null }).corteComCatalogo
+    // O corte tem de ser CONHECIDO dos dois lados; desconhecido não é "igual", é não pareado.
+    const corteConhecido = typeof corteCom === 'string' && typeof principal.corte === 'string'
+    const par = 'naoPareada' in assunto || !corteConhecido ? undefined : { sha256DaFoto: sha256(Buffer.from(foto!.dataUrl.split(',')[1], 'base64')).slice(0, 16), dimensoes: `${foto!.width}x${foto!.height}`, corteComCatalogo: corteCom!, corteSemCatalogo: principal.corte, mesmoCorte: corteCom === principal.corte }
+    const { corteComCatalogo: _c, ...resto } = assunto as typeof assunto & { corteComCatalogo?: string | null }
+    assunto = { ...resto, estimado, estimadoPor, origemNaPeca: principal.assuntoNaPeca.origem, ...(par ? { par } : 'naoPareada' in resto ? {} : { naoPareada: 'corte desconhecido num dos lados' }) }
+  }
   // Juízes e PNG sobre a peça FINAL.
   // Renders e tempo dos juízes e do PNG pelo CONTADOR do renderer (não pela conta própria de `julgar`).
   const r0 = espioes.renders
@@ -390,6 +478,7 @@ async function rodarPeca(spec: SpecDoLote, cliente: ClienteSemeado, opcoes: { re
     // Caminho RELATIVO à raiz do repositório: o resumo é versionado e não pode carregar o caminho desta máquina.
     png: { caminho: path.relative(RAIZ, path.join(SAIDA, 'png', `${spec.chave.replace(/[|/]/g, '_')}.png`)), sha256: png.sha256 },
     ...(assunto ? { assunto } : {}),
+    anotacao: principal.anotacao,
     // Foto REAL da fixture: a medida só vale DENTRO das janelas fiéis (contrato § 1.2) — conferido na peça FINAL, depois dos ajustes.
     ...(entrada.caso === 'real' ? { fidelidade: { fora: [...new Set([...caixasForaDasJanelas(principal.layersV1), ...caixasForaDasJanelas(principal.layers)])] } } : {}),
   }
@@ -436,10 +525,43 @@ async function rodarPeca(spec: SpecDoLote, cliente: ClienteSemeado, opcoes: { re
     espioes.fotoFalha = null
   }
   const apta = registro.gateFinal?.tipo === 'medida' && registro.gateFinal.resultado === 'APTO'
+  const casoA = principal.assuntoNaPeca.origem === 'catalogo'
+  // Adendo § 1, cenário H — anotação PERDIDA de propósito: numa peça APTA do caso A, o `cropPosition` da bg-foto muda (o cache da
+  // composição deixa de casar: `assuntoDaPeca` só reaproveita com formato, imageUrl e corte iguais) e o revisor faz NOVA
+  // medida e decisão; depois o produtor, com o item desligado e sem DRAFT (como no modo G). Registra-se QUAL foi a nova medida.
+  if (opcoes.cenarioH && apta && casoA && foto) {
+    const p = banco.pages.get(principal.pageId)!
+    const layers = p.layers as Layer[]
+    const bg = layers.find((l) => l.id === 'bg-foto' || (l.type === 'image' && l.size.width >= 1080))
+    if (bg) {
+      const corteAtual = (bg.style as { cropPosition?: string } | undefined)?.cropPosition
+      const novoCorte = corteAtual === 'left-top' ? 'right-bottom' : 'left-top'
+      banco.pages.set(p.id, { ...p, layers: layers.map((l) => (l === bg ? { ...l, style: { ...(l.style ?? {}), cropPosition: novoCorte } } : l)) })
+      const e0 = espioes.estimativas
+      espioes.falhasDeLeitura = 0
+      const rev = await contar('cenarioH', () => revisarArte({ projectId: PROJETO, pageId: principal.pageId, visao: false, previa: false }))
+      const estimou = espioes.estimativas - e0 > 0
+      const cob = (rev.relatorio.cobertura as Record<string, { estado?: string; naoSeAplica?: boolean; motivo?: string } | undefined>)['texto-sobre-assunto']
+      const tipo: NonNullable<RegistroDaPeca['cenarioH']>['tipo'] = !estimou && cob?.estado === 'avaliada' ? 'anotacao-reaproveitada' : espioes.falhasDeLeitura > 0 || /não foi estimado/.test(cob?.motivo ?? '') ? 'falha-de-leitura' : cob?.naoSeAplica ? 'reestimada-sem-assunto' : 'reestimada-com-assunto'
+      const revisorRecusou = rev.gate.tipo === 'medida' && rev.gate.resultado === 'REVISAO_HUMANA_NECESSARIA' && rev.gate.motivos.some((m) => m.regra === 'texto-sobre-assunto')
+      for (const post of [...banco.posts.values()].filter((x) => x.pageId === principal.pageId)) banco.posts.delete(post.id)
+      const itemDoLote = banco.itensDeLote.get(`lote-${principal.pageId}`)!
+      banco.itensDeLote.set(itemDoLote.id, { ...itemDoLote, postId: null, hashDoAgendamento: null, efeitosDoAgendamentoEm: null })
+      const lote = await contar('cenarioH', () => agendarItensDoLote({ projectId: PROJETO, loteId: LOTE, itens: [{ itemId: `item-${principal.pageId}` }], apenasRascunho: true, principal: { tipo: 'user', id: 'piloto' } }))
+      const item = lote.itens[0] as { situacao: string; desfecho?: string; codigo?: string; postId?: string; motivos?: Array<{ regra: string; codigo: string }> }
+      const postsDaPagina = [...banco.posts.values()].filter((x) => x.pageId === principal.pageId).length
+      const produtorRecusou = item.codigo === 'REVISAO_HUMANA_NECESSARIA' && !item.postId && postsDaPagina === 0 && (item.motivos ?? []).some((m) => m.regra === 'texto-sobre-assunto')
+      registro.cenarioH = { corte: `${corteAtual ?? 'padrão'} → ${novoCorte}`, tipo, revisorRecusou, produtorRecusou, aoHumano: revisorRecusou && produtorRecusou, codigoDoProdutor: item.codigo ?? item.desfecho ?? item.situacao }
+      registro.renders.cenarioH = extras.renders.cenarioH
+      registro.ms.cenarioH = extras.ms.cenarioH
+      banco.pages.set(p.id, p)
+    }
+  }
   // Decisão 2, cenário INJETADO (contrato § 4.3): numa peça APTA, uma shape opaca passa a cobrir metade da headline, por cima
   // de tudo — o gate não pode dar APTO (`oclusao` não medida / transformação não suportada é o esperado). Só em peças sem foto
   // ou de foto difusa, para a injeção não se confundir com o assunto.
-  if (apta && (spec.foto === 'sem-foto' || spec.foto === 'B')) {
+  // Adendo § 2: também em peça APTA do caso A (catálogo) — devolve a cobertura que a política do caso C tirou das peças de foto B.
+  if (apta && (spec.foto === 'sem-foto' || spec.foto === 'B' || casoA)) {
     const p = banco.pages.get(principal.pageId)!
     const layers = p.layers as Layer[]
     const headline = layers.find((l) => l.id === 'headline') ?? layers.find((l) => l.type === 'text')
@@ -487,7 +609,7 @@ describe.skipIf(!LIGADO)('piloto sintético de autonomia', () => {
       // é APTA — é aqui que a falha de leitura tem de virar recusa de uma peça que passaria). `i % 3` deixava a amostra sem nenhuma.
       const modoG = (spec.foto === 'A1' || spec.foto === 'B') && spec.arquetipo === 'sem'
       try {
-        registros.push(await rodarPeca(spec, cliente, { repetir, modoG }))
+        registros.push(await rodarPeca(spec, cliente, { repetir, modoG, cenarioH: true }))
       } catch (e) {
         registros.push({ spec, compor: { desfecho: 'erro', codigo: String(e).slice(0, 120), ms: 0 }, ciclos: 0, draft: 'nao-tentado', juizes: [], oclusaoProduzida: [], renders: {}, ms: {}, estabilidade: { excecoes: [String(e).slice(0, 200)], naoMedida: false, semVinculo: false, timeout: false } })
       }
@@ -506,7 +628,7 @@ describe.skipIf(!LIGADO)('piloto sintético de autonomia', () => {
         return 'desconhecido'
       }
     })()
-    const limites = [...(OFICIAL ? [] : ['RODADA EXPLORATÓRIA (com filtro de calibração/cliente/repetição/--so): NÃO vale como rodada oficial nem para o resumo versionado']), 'fontes da marca não instaladas (declaradas presentes; render com fonte de reserva)', 'a visão (gpt-5.2) não roda', 'fotos SINTÉTICAS + a real anonimizada de 13/10 — lote CONTROLADO, não representativo das fotos dos clientes (decisão 5.1)', 'banco falso com travas: travas/SQL reais e Blob não provados', 'custo medido nesta máquina, não na Vercel', `clientes: ${clientes.map((c) => c.id).join(', ')} (fixtures reais pseudonimizadas aguardam a lista do owner — decisão 5.2)`]
+    const limites = [...(OFICIAL ? [] : ['RODADA EXPLORATÓRIA (com filtro de calibração/cliente/repetição/--so): NÃO vale como rodada oficial nem para o resumo versionado']), 'fontes da marca não instaladas (declaradas presentes; render com fonte de reserva)', 'a visão (gpt-5.2) não roda', 'fotos SINTÉTICAS + a real anonimizada de 13/10 — lote CONTROLADO, não representativo das fotos dos clientes (decisão 5.1)', 'banco falso com travas: travas/SQL reais e Blob não provados', 'custo medido nesta máquina, não na Vercel', `clientes: ${clientes.map((c) => c.id).join(', ')} (fixtures reais pseudonimizadas aguardam a lista do owner — decisão 5.2; cliente-00-m90 e cliente-fixture-piso são VARIANTES DE TESTE do lote, não assinaturas reais)`]
     const md = paraMarkdown(resumo, { data: DATA, head, loteId: lote.loteId, ambiente: `${process.platform} ${process.arch} node ${process.version}`, rodada: RODADA, hashRelatorio: sha256(relatorio), limites, excluidosPorMotivo: lote.denominadores.excluidos, rendersObservados: espioes.renders })
     fs.writeFileSync(path.join(SAIDA, 'resumo.md'), md)
     console.log(`[piloto] relatório em ${SAIDA} · ${registros.length} peças · ${Math.round((Date.now() - inicio) / 1000)} s · renders ${espioes.renders}`)
