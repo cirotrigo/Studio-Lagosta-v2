@@ -14,6 +14,7 @@ import { crc32 } from 'node:zlib'
 import path from 'node:path'
 import sharp from 'sharp'
 import { VERSAO_DA_PROVA } from '../../src/lib/posts/prova-do-render'
+import type { LeituraDoBranch, MarcadorDoSnapshot } from './fotos-do-banco'
 
 // ── Constantes do contrato ─────────────────────────────────────────────────────────────────────────────────────────
 
@@ -717,4 +718,77 @@ export async function exportarCliente(
     deficitDeCandidatos: o.candidatos - exportados.length,
     foraDaLeva: exportados.length < MINIMO_DA_LEVA,
   }
+}
+
+// ── Orquestração (a casca só injeta disco, rede, git e a leitura do branch) ───────────────────────────────────────
+
+export interface DependenciasDasFotos {
+  raizDoRepo: string
+  realpath: (p: string) => string
+  pastaNaoVazia: (p: string) => boolean
+  criarPasta: (p: string) => void
+  /** Abre a conexão (guarda `recusaDoExportador` inclusa) e lê em `READ ONLY`. Só é chamada depois de args e destino. */
+  lerBranch: (clientes: readonly number[], ate: Date) => Promise<LeituraDoBranch>
+  buscar: Buscar
+  gravar: (pasta: string, nome: string, bytes: Buffer) => void
+  head: () => string
+  imutabilidadeComprovada?: boolean
+}
+
+/** O cabeçalho comum da saída da contagem e do manifesto (determinístico: nada de relógio). */
+export function cabecalhoDaSaida(args: ArgsDasFotos, head: string, marcador: MarcadorDoSnapshot, posts: readonly PostLido[]) {
+  const semProva = posts.every((p) => p.provas.length === 0)
+  return {
+    args: { ...args, desde: args.desde.toISOString(), ate: args.ate.toISOString() },
+    head,
+    marcadorDoSnapshot: marcador,
+    ...(semProva ? { aviso: `nenhuma prova nesta seleção (o branch tem ${marcador.provas} no total)` } : {}),
+    rotulos: ROTULOS_DO_MANIFESTO,
+  }
+}
+
+export const serializar = (o: unknown) => JSON.stringify(o, null, 1)
+
+/**
+ * `--fotos` inteiro: args → destino → pasta vazia → leitura do branch → contagem (zero rede, zero disco) ou exportação (o
+ * manifesto é o último arquivo gravado). Lança `Error` em toda recusa; devolve o texto da saída e linhas de resumo.
+ */
+export async function executarFotos(argv: readonly string[], d: DependenciasDasFotos): Promise<{ modo: ArgsDasFotos['modo']; saida: string; resumo: string[] }> {
+  const args = lerArgsDasFotos(argv)
+  if ('recusa' in args) throw new Error(`--fotos: ${args.recusa}`)
+  if (args.pasta) {
+    const recusa = recusaDoDestino(args.pasta, d.raizDoRepo, d.realpath)
+    if (recusa) throw new Error(recusa)
+    if (d.pastaNaoVazia(args.pasta)) throw new Error(`a pasta ${args.pasta} não está vazia`)
+  }
+  const leitura = await d.lerBranch(args.clientes, args.ate)
+  if ('recusa' in leitura) throw new Error(`a contagem não pode rodar (causa ${leitura.causa}): ${leitura.recusa.join('; ')}`)
+  const opcoes: OpcoesDaAvaliacao = {
+    desde: args.desde,
+    ate: args.ate,
+    populacao: args.populacao,
+    imutabilidadeComprovada: d.imutabilidadeComprovada ?? IMUTABILIDADE_DO_BLOB_COMPROVADA,
+  }
+  const comum = cabecalhoDaSaida(args, d.head(), leitura.marcador, [...leitura.postsPorCliente.values()].flat())
+  if (args.modo === 'contar') {
+    const clientes = args.clientes.map((c) => contarCliente(c, leitura.postsPorCliente.get(c) ?? [], opcoes))
+    return { modo: 'contar', saida: serializar({ ...comum, clientes }), resumo: [] }
+  }
+  const pasta = args.pasta!
+  d.criarPasta(pasta)
+  const clientes: ResultadoDoCliente[] = []
+  for (const c of args.clientes) {
+    clientes.push(
+      await exportarCliente(c, leitura.postsPorCliente.get(c) ?? [], { ...opcoes, candidatos: args.candidatos! }, {
+        buscar: d.buscar,
+        gravar: (nome, bytes) => d.gravar(pasta, nome, bytes),
+      }),
+    )
+  }
+  const saida = serializar({ ...comum, clientes })
+  d.gravar(pasta, 'manifesto.json', Buffer.from(saida))
+  const resumo = clientes.map(
+    (r) => `cliente ${r.cliente}: ${r.exportados.length} exportado(s); ${r.elegiveis} elegível(is) conferido(s) de ${r.elegiveisPreliminares} preliminar(es)${r.foraDaLeva ? ' — FORA DA LEVA' : ''}`,
+  )
+  return { modo: 'exportar', saida, resumo }
 }
