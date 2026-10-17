@@ -1039,8 +1039,11 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
   } catch (erro) {
     // CP5c § 6: no draft-only toda recusa leva as referências da intervenção (generationId, pageId, editUrl do template
     // ATUAL — relido depois do rollback, porque a página pode ter mudado de pasta enquanto a chamada esperava a trava).
-    const paginaAtual = ctx.apenasRascunho ? await lerPagina(db, pageId, projectId) : null
-    const editUrl = ctx.apenasRascunho ? editUrlDe(paginaAtual?.templateId ?? antes.pagina.templateId, pageId) : undefined
+    // A releitura é melhor esforço: se o banco ainda estiver caído, o link vem da leitura de antes das travas (dito);
+    // se a página não existir mais (ou não for mais do projeto), não há template ATUAL confirmado e o link é omitido.
+    const paginaAtual = ctx.apenasRascunho ? await lerPagina(db, pageId, projectId).then((p) => ({ ok: true as const, p })).catch(() => ({ ok: false as const })) : null
+    const templateAtual = paginaAtual === null ? null : paginaAtual.ok ? (paginaAtual.p?.templateId ?? null) : antes.pagina.templateId
+    const editUrl = templateAtual !== null ? editUrlDe(templateAtual, pageId) : undefined
     const referencias = { generationId: antes.peca.id, pageId, ...(editUrl ? { editUrl } : {}) }
     if (erro instanceof RecusaSobTrava) {
       // A recusa do gate (registro APTO que não gravou) diz que esta chamada não deixou veredito; as outras recusas sob trava são as de sempre.

@@ -38,6 +38,10 @@ const banco = vi.hoisted(() => ({
   falharGravacao: false,
   /** O próximo `UPDATE "Generation"` devolve 0 linhas (o vínculo não casou) — o `'sem-vinculo'` de `gravarGateDaArte`. */
   gravacaoSemVinculo: false,
+  /** As próximas N leituras de página FORA de transação caem no banco (a releitura do `editUrl` depois do rollback). */
+  falharLeituraDaPaginaFora: 0,
+  /** Roda logo DEPOIS do rollback de uma transação: o que o mundo fez entre o rollback e a releitura. */
+  aoRollback: null as null | (() => void),
   /** Roda logo depois da PRIMEIRA trava (a consultiva da agenda): o que outra chamada gravou enquanto esta esperava. */
   aoTravarAgenda: null as null | (() => void | Promise<void>),
 }))
@@ -114,6 +118,10 @@ vi.mock('@/lib/db', () => {
     }
     return {
       findUnique: async ({ where, select }: { where: Linha; select?: Linha }) => {
+        if (nome === 'pages' && !tx && banco.falharLeituraDaPaginaFora > 0) {
+          banco.falharLeituraDaPaginaFora--
+          throw new Error('connection reset na releitura da página')
+        }
         const l = acha(where)
         return l ? projetar(l, select) : null
       },
@@ -243,6 +251,9 @@ vi.mock('@/lib/db', () => {
         else banco[t].set(id, antes)
       }
       evento('rollback')
+      const gancho = banco.aoRollback
+      banco.aoRollback = null
+      gancho?.()
       throw erro
     } finally {
       clearTimeout(timer)
@@ -476,6 +487,8 @@ beforeEach(() => {
   banco.deadlockEm = null
   banco.falharGravacao = false
   banco.gravacaoSemVinculo = false
+  banco.falharLeituraDaPaginaFora = 0
+  banco.aoRollback = null
   banco.aoTravarAgenda = null
   medicao.modo = 'limpa'
   medicao.fila = []
@@ -746,6 +759,24 @@ describe('C10/C18 — exceções do gate e o prazo da transação', () => {
     const r = await agendar([i1])
     expect(r.itens[0]).toMatchObject({ codigo: 'REVISAO_HUMANA_NECESSARIA', editUrl: 'https://studio.test/templates/99/editor?pageId=p1' })
     await new Promise((resolve) => setTimeout(resolve, 200))
+  })
+
+  it('C10/§ 6: a gravação falha E a releitura da página depois do rollback também falha → ainda REVISAO_HUMANA_NECESSARIA (não ERRO), com as referências e o link da leitura de antes', async () => {
+    const i1 = cenarioLimpo()
+    banco.falharGravacao = true
+    banco.aoRollback = () => void (banco.falharLeituraDaPaginaFora = 1)
+    const r = await agendar([i1])
+    expect(r.itens[0]).toMatchObject({ situacao: 'falhou', codigo: 'REVISAO_HUMANA_NECESSARIA', generationId: 'g1', pageId: 'p1', editUrl: 'https://studio.test/templates/42/editor?pageId=p1', revisao: { tipo: 'nao-medida' } })
+    expect(posts()).toEqual([])
+  })
+
+  it('C10/§ 6: a página some depois do rollback → recusa com generationId, pageId e revisao, SEM editUrl (não há template atual confirmado)', async () => {
+    const i1 = cenarioLimpo()
+    banco.falharGravacao = true
+    banco.aoRollback = () => void banco.pages.delete('p1')
+    const r = await agendar([i1])
+    expect(r.itens[0]).toMatchObject({ situacao: 'falhou', codigo: 'REVISAO_HUMANA_NECESSARIA', generationId: 'g1', pageId: 'p1', revisao: { tipo: 'nao-medida' } })
+    expect(r.itens[0].editUrl).toBeUndefined()
   })
 
   it('C10: o registro APTO não grava (0 linhas: sem vínculo) → RecusaSobTrava, rollback, REVISAO_HUMANA_NECESSARIA com editUrl e revisao; nenhum post', async () => {
