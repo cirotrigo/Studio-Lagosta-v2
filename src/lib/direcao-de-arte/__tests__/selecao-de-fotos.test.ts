@@ -772,9 +772,9 @@ describe('contarCliente', () => {
       post(5, { provas: [] }),
     ]
     const r = contarCliente(7, posts, OPC)
+    expect(r.exclusoes).toEqual({ 'origem-sobrescrevivel': 1, 'fundo-e-render': 1, 'sem-prova': 1 })
     expect(r).toMatchObject({
       cliente: 7, lidos: 5, elegiveisTeto: 2, rotuloDosElegiveis: 'canvas não comprovado: teto',
-      exclusoes: { 'origem-sobrescrevivel': 1, 'fundo-e-render': 1, 'sem-prova': 1 },
       classesQueChegaramAOrigem: { upload: 1, 'drive-download': 1, 'drive-miniatura': 1, render: 1 },
       elegiveisPorClasse: { upload: 1, 'drive-download': 1 },
       cropPosition: { ausente: 1, presente: 1 },
@@ -1004,19 +1004,42 @@ describe('T15 E8b: inventário de allowOverwrite', () => {
     expect(comCamadas([fundo({ fileUrl: `${STORE}/drive-cache/x-Ab12Cd34Ef.jpg` })])).toBe('origem-sobrescrevivel')
     expect(comCamadas([fundo({ fileUrl: `${STORE}/uploads/..%2fx.jpg` })])).toBe('origem-sobrescrevivel')
   })
-  it('bytes trocados na mesma URL de chat-uploads/ e drive-cache/ → só origem-sobrescrevivel, sem chamar o Buscar', async () => {
+  it('bytes trocados na mesma URL de chat-uploads/ e drive-cache/ → só origem-sobrescrevivel, sem chamar o Buscar (com controle)', async () => {
     const chat = `${STORE}/chat-uploads/12/token-fixo.jpg`
     const cache = `${STORE}/drive-cache/12/foto-s1920.jpg`
-    let chamadas = 0
-    // se fosse chamado, devolveria bytes DIFERENTES a cada chamada (o objeto foi sobrescrito entre o render e o download)
-    const buscar: Buscar = async () => (chamadas++, resposta(chamadas % 2 ? PNG_REAL : JPEG_REAL, 200))
+    const imutavel = `${STORE}/posts/u1/google-drive/1760000000000-foto.jpg`
+    // a "fonte" (o Blob) no momento do render: estes são os bytes que as camadas da prova referenciaram
+    const fonte = new Map<string, Buffer>([[chat, PNG_REAL], [cache, PNG_REAL], [imutavel, WEBP_REAL]])
+    const lidas: string[] = []
+    const buscar: Buscar = async (url) => {
+      lidas.push(url)
+      if (url.includes('/posts/rendered/')) return resposta(CAB_STORY, 206)
+      const b = fonte.get(url)
+      return b ? resposta(b, 200, { 'content-type': 'image/png' }) : resposta('nada', 404, { 'content-type': 'text/plain' })
+    }
+    // depois do render e ANTES do download, os escritores com allowOverwrite trocam os bytes no MESMO pathname
+    fonte.set(chat, JPEG_REAL)
+    fonte.set(cache, JPEG_REAL)
+    expect(Buffer.compare(fonte.get(chat)!, PNG_REAL)).not.toBe(0)
+
     const posts = [chat, chat, cache, cache].map((u, i) => post(i + 1, {}, [fundo({ fileUrl: u })]))
     const g = gravador()
     const r = await exportarCliente(7, posts, { ...OPC, candidatos: 20 }, { buscar, gravar: g.gravar })
     expect(r.exclusoes).toEqual({ 'origem-sobrescrevivel': 4 })
-    expect([chamadas, r.exportados.length, r.elegiveisPreliminares, r.tentados, g.gravados.length]).toEqual([0, 0, 0, 0, 0])
+    expect([lidas.length, r.exportados.length, r.elegiveisPreliminares, r.tentados, r.elegiveis, g.gravados.length]).toEqual([0, 0, 0, 0, 0, 0])
     const c = contarCliente(7, posts, OPC)
     expect([c.exclusoes, c.classesQueChegaramAOrigem, c.elegiveisTeto]).toEqual([{ 'origem-sobrescrevivel': 4 }, { 'chat-reduzida': 2, 'drive-miniatura': 2 }, 0])
+
+    // CONTROLE: a mesma fonte e o mesmo Buscar leem e exportam uma URL de classe imutável — o zero acima não é fonte quebrada
+    const controle = gravador()
+    const rc = await exportarCliente(7, [post(9, {}, [fundo({ fileUrl: imutavel })])], { ...OPC, candidatos: 20 }, { buscar, gravar: controle.gravar })
+    expect(rc.exclusoes).toEqual({})
+    expect(rc.exportados.map((e) => [e.classe, e.arquivo, e.sha256])).toEqual([['drive-download', 'cliente-7-1.webp', createHash('sha256').update(WEBP_REAL).digest('hex')]])
+    expect(lidas).toEqual([MIDIA(9), imutavel])
+    expect(controle.gravados.map((x) => x.nome)).toEqual(['cliente-7-1.webp'])
+    // e, lida pelo mesmo Buscar, a URL sobrescrevível devolveria os bytes TROCADOS (o que a exclusão evita exportar)
+    const trocado = await baixarComGuarda(chat, buscar)
+    expect('bytes' in trocado && createHash('sha256').update(trocado.bytes).digest('hex')).toBe(createHash('sha256').update(JPEG_REAL).digest('hex'))
   })
   it('nota falsa → toda classe fora do inventário e do render é imutabilidade-nao-comprovada; verdadeira → elegível', () => {
     for (const p of ['uploads/u1/x.jpg', 'posts/u1/google-drive/1-x.jpg', 'posts/u1/ai-images/x.png', 'posts/u1/normalized/x.jpg', 'outro/x.jpg']) {
