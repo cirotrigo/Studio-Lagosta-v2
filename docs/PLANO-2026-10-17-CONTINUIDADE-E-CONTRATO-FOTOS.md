@@ -98,10 +98,18 @@ Cada passo só começa com o anterior aceito. "Autorização" = palavra do owner
   `posts/<user>/normalized/…jpg` (STORY não passa por ali — a confirmar no PR por teste/inspeção, ver 3.5).
 - Prefixos de upload (inspeção): `chat-uploads/<proj>/<token>.jpg` (`chat-upload.ts`, convertida/processada);
   `drive-cache/<proj>/…-s1920.jpg` (`persist.ts`, miniatura); `posts/<user>/google-drive/<ts>-<nome>.jpg` (rotas de download do
-  Drive: extensão trocada para `.jpg` → **convertida**); `posts/<user>/ai-images/…` (imagem de IA baixada);
+  Drive, `google-drive-download/route.ts:136-145`: o NOME vira `.jpg` e o MIME é declarado `image/jpeg`, mas o `buffer` recebido
+  é enviado sem recodificar — bytes preservados pela rota, formato real NÃO comprovado pelo nome); `posts/<user>/ai-images/…`
+  (`ai-images-download/route.ts:109-121`, mesmo padrão);
   `uploads/<user>/drive-…` (`api/upload/google-drive`). A camada de fundo do compositor tem `id === 'bg-foto'`
   (`defasagem.ts:214`, que em produção cai para `imagens[0]` quando falta — heurística que este contrato NÃO adota).
-- Hosts próprios: `HOSTS_PROPRIOS` (`src/lib/creatives/ingerir-midia.ts`) — reutilizar, não duplicar.
+- `HOSTS_PROPRIOS` (`src/lib/creatives/ingerir-midia.ts:32-40`) inclui o Blob, `lh3.googleusercontent.com` e `.supabase.co`, e
+  `ehHostProprio` testa `url.includes(host)` — serve à pergunta "a arte sobrevive?", **não** a autorizar download. O `--fotos`
+  NÃO a usa como validação (3.3 E7).
+- Status: `SCHEDULED` é gravado na CRIAÇÃO do post agendado, antes de qualquer envio (`later-scheduler.ts:359-382`); `POSTED` só
+  depois do retorno da publicação (`later-scheduler.ts:935-954`). `scheduledDatetime` pode ser nulo (publicação imediata).
+- Visibilidade da imagem no render: `drawImage` aplica `style.opacity` como `globalAlpha` (`render-engine.ts:1515-1528`) — uma
+  camada com `opacity: 0` está no snapshot e não deixa pixel.
 - Guarda existente: `recusaDoExportador` (fail-closed por compute) + transação `SET TRANSACTION READ ONLY`
   (`exportar-piloto-sintetico.ts`). `human-output/` está no `.gitignore` da main (linha 126).
 - `exigirMedidaFiel`/`caixasForaDasJanelas` (`__tests__/suporte/fixture.ts:124-139`) leem as janelas de UMA foto
@@ -124,26 +132,37 @@ exportar-piloto-sintetico.ts --fotos           --cliente <id>… --desde <ISO> -
 
 ### 3.2 Consulta (uma só, igual nos dois modos)
 
-Por cliente: `SocialPost` com `projectId = <id>`, `postType = 'STORY'`, `scheduledDatetime ∈ [desde, ate)`; ordem
-`scheduledDatetime DESC, id ASC`; junto, as `PostRenderProof` desse post. Nenhuma outra tabela entra no critério; `Generation`
-só como metadado auxiliar opcional (tema), nunca como vínculo. A decisão de elegibilidade é tomada em TypeScript pela função pura
-(3.3) sobre as linhas lidas — o SQL só filtra por cliente, tipo e janela, para que todo descarte apareça contado.
+Por cliente: `SocialPost` com `projectId = <id>`, `postType = 'STORY'`, `createdAt < ate` (um post não é publicado antes de
+existir); junto, as `PostRenderProof` desse post. Nenhuma outra tabela entra no critério; `Generation` só como metadado auxiliar
+opcional (tema), nunca como vínculo. Janela, status e todo o resto são decididos em TypeScript pela função pura (3.3) sobre as
+linhas lidas — o SQL não filtra por janela nem por status, para que todo descarte apareça contado.
+
+**Data de referência** por população: **publicados** (a amostra principal) — `latePublishedAt ?? sentAt` (o campo usado fica
+registrado); **agendados** (população SEPARADA, só se o owner pedir, D3) — `scheduledDatetime`. Ordem: data de referência DESC,
+`id` ASC.
 
 ### 3.3 Elegibilidade — predicado puro, em ordem, primeiro motivo vence
 
 | # | Condição | Exclusão contada como |
 |---|---|---|
-| E1 | `status ∈ {POSTED, SCHEDULED}` (proposta do adendo; alternativa: só POSTED) | `status-fora` (por status) |
+| E1 | população publicados: `status === 'POSTED'`; população agendados (opcional, separada): `status === 'SCHEDULED'`. Uma peça nunca está nas duas, e o relatório nunca soma as duas | `status-fora` (por status) |
+| E1b | data de referência (3.2) existe e está em `[desde, ate)` | `sem-data-de-referencia` · `fora-da-janela` |
 | E2 | `mediaUrls.length === 1` | `midia-multipla-ou-vazia` |
 | E3 | `pageId !== null` | `midia-direta-sem-pagina` |
 | E4 | existe prova com `mediaUrl === mediaUrls[0]` (igualdade exata de string) | `sem-prova` (nenhuma prova) · `prova-de-outra-midia` (há provas, nenhuma da mídia efetiva) |
 | E5 | `layersSnapshot` é array de objetos (aceita string JSON uma vez decodificada; nada além) | `snapshot-ilegivel` |
-| E6 | exatamente UMA camada `id === 'bg-foto'`, `type === 'image'`, `visible !== false`, `fileUrl` `https:` | `fundo-ausente` · `fundo-duplicado` · `fundo-oculto-ou-nao-imagem` · `fundo-nao-https` |
-| E7 | host do `fileUrl` em `HOSTS_PROPRIOS` | `host-nao-proprio` |
+| E6 | exatamente UMA camada `id === 'bg-foto'`, `type === 'image'`, `fileUrl` `https:` | `fundo-ausente` · `fundo-duplicado` · `fundo-nao-imagem` · `fundo-nao-https` |
+| E6b | contribuição visual NÃO trivialmente nula: `visible !== false`; `style.opacity` ausente ou > 0 (numérico finito); `size` com largura e altura > 0; caixa (`position`/`size`) intersecta o canvas 1080 × 1920 com área > 0 | `fundo-invisivel` (com o subcampo: oculto / opacidade 0 / sem área / fora do canvas) |
+| E7 | URL de download segura: `URL` parseável; protocolo `https:`; `hostname` (minúsculas) termina EXATAMENTE em `.public.blob.vercel-storage.com` com UM só rótulo antes (o id do store) — sem `includes`, sem os outros hosts de `HOSTS_PROPRIOS` (Drive/Supabase ficam fora da P1); sem usuário/senha nem porta | `host-nao-autorizado` |
 | E8 | classe de origem (3.4) ≠ `render` | `fundo-e-render` (arte dentro de arte) |
 | E9 | `fileUrl` (sem query) ainda não selecionado neste cliente | `arquivo-repetido` |
 
-Registrado por elegível: `postId`, `status`, `scheduledDatetime`, `pageId`, `mediaUrl` da prova, `proof.createdAt`,
+**O que E1–E9 provam, e o que não**: a foto é a camada de fundo REFERENCIADA nas camadas que produziram a mídia efetiva do post
+publicado, com opacidade, área e posição que não a anulam. Não provam que ela ficou VISÍVEL na arte final: uma camada opaca
+acima pode cobri-la (é a lacuna de oclusão, § 4.3 do plano-mestre). O manifesto rotula toda foto como "fundo referenciado no
+render, não anulado" e registra, sem decidir, quantas camadas de `order` maior intersectam a caixa do fundo.
+
+Registrado por elegível: `postId`, `status`, data de referência e o campo de onde veio, `pageId`, `mediaUrl` da prova, `proof.createdAt`,
 `proofVersion`, `fileUrl` do fundo, `cropPosition` (valor ou `ausente` — nunca preenchido com padrão), classe de origem, formato
 `story` (do `postType`). Quando E6 recusar muito (páginas legadas sem `bg-foto`), isso é DITO na contagem; adotar uma heurística
 de fundo é decisão, não código.
@@ -155,35 +174,46 @@ de fundo é decisão, não código.
 | `uploads/` | `upload` | não afirmado em P1 (ver 3.6) |
 | `chat-uploads/` | `chat-reduzida` | não (convertida/reduzida) |
 | `drive-cache/` | `drive-miniatura` | não (s1920; original no Drive, só com autorização) |
-| `posts/<x>/google-drive/` | `drive-convertida` | não |
-| `posts/<x>/ai-images/` | `ia` | não se aplica |
+| `posts/<x>/google-drive/` | `drive-download` (bytes enviados sem recodificar pela rota; nome `.jpg` e MIME declarados — formato real só pelo cabeçalho do arquivo, registrado à parte) | não afirmado: o arquivo do Drive pode já ser derivado; "original" exige comparar com o Drive (fora da P1) |
+| `posts/<x>/ai-images/` | `ia-download` (mesmo padrão) | não se aplica |
 | `posts/rendered/` | `render` | — (excluída por E8) |
 | `posts/<x>/normalized/` | `normalizada` | não |
 | qualquer outro `posts/…` ou prefixo | `desconhecida` | não |
 
-Tabela fechada; prefixo novo cai em `desconhecida`. Cada linha cita, no PR, a rota que a produz.
+Tabela fechada; prefixo novo cai em `desconhecida`. Cada linha cita, no PR, a rota que a produz. Por foto o manifesto registra
+SEPARADOS: (i) a classe; (ii) nome/MIME declarados; (iii) o formato e as dimensões lidos do próprio arquivo baixado; (iv) a
+transformação de pixels COMPROVADA pelo código da rota (hoje: só `chat-uploads/` e `drive-cache/`; nas outras, "nenhuma
+comprovada", o que não é o mesmo que "original").
 
 ### 3.5 Contagem (`--contar`)
 
 Zero `fetch`, zero arquivo de pixel. Saída (stdout + JSON opcional): por cliente — lidos, elegíveis, exclusões por motivo (E1–E9),
 elegíveis por classe de origem, `cropPosition` ausente/presente; global — `min/max(proof.createdAt)` e `max(SocialPost.updatedAt)`
 observados como **marcador do snapshot** (rotulado "estimado pelo dado mais recente do branch"; a idade real é a de
-`db:dev:status`, que fica com o owner). **Se não houver nenhuma prova no branch → recusa** com "branch anterior à prova de
-render (migração de 12/10/2026)". Também mostra se algum STORY elegível tem mídia em `normalized/` (deveria ser 0; se não for,
+`db:dev:status`, que fica com o owner). Dois casos distintos, nunca confundidos: **(i) o branch não tem a tabela/migração**
+(`PostRenderProof` ausente, ou `20261012120000_post_render_proof` fora de `_prisma_migrations`) → recusa com "branch anterior à
+prova de render"; **(ii) a tabela existe e a SELEÇÃO não tem prova** → não recusa, reporta "nenhuma prova nesta seleção" com o
+total de provas do branch inteiro (só `COUNT` e `min/max(createdAt)`, sem ler linhas) para o owner julgar — sem atribuir a causa à
+idade do branch. Também mostra se algum STORY elegível tem mídia em `normalized/` (deveria ser 0; se não for,
 o fato vai ao relatório).
 
 ### 3.6 Exportação
 
 - Destino: pasta passada por argumento; **recusa se estiver dentro do repositório** fora de `human-output/` (proposta do owner a
   confirmar: pasta fora do repositório; `human-output/` ignorado é a alternativa).
-- Seleção: as primeiras `cota` elegíveis na ordem de 3.2 (sem categoria: a ferramenta não sabe o que é produto/ambiente/pessoa —
-  a estratificação 4/3/3 do adendo exige marcação humana em P5; ver decisão D4).
-- Download só de `fileUrl` elegível: prazo 10 s, teto 25 MB, `content-type image/*`; falha → exclusão `download-falhou`
-  (contada; não aborta a leva). Arquivo gravado com nome `cliente-<id>-<n>.<ext>` + SHA-256 no manifesto.
+- Seleção com REPOSIÇÃO determinística: percorre os elegíveis na ordem de 3.2 e baixa até ter `cota` arquivos EXPORTADOS; cada
+  falha (`download-falhou`, com o subcódigo) é contada e o próximo elegível entra no lugar; acabaram os elegíveis → déficit. Cota,
+  déficit e "cliente fora da leva" (`< 6`) são calculados sobre os arquivos **efetivamente exportados**, nunca sobre elegíveis.
+  Sem categoria: a ferramenta não sabe o que é produto/ambiente/pessoa — a estratificação 4/3/3 do adendo exige marcação humana
+  em P5 (decisão D4).
+- Download só de URL que passou em E7: `redirect: 'manual'`; cada redirecionamento é revalidado por E7 antes de seguir (até 3;
+  destino fora → `download-falhou:redirecionamento-nao-autorizado`); prazo 10 s; teto 25 MB lido em fluxo (aborta ao passar, não
+  confia em `content-length`); `content-type image/*` E assinatura do arquivo (PNG/JPEG/WebP) conferida nos bytes. Arquivo gravado
+  como `cliente-<id>-<n>.<ext da assinatura>` + SHA-256 no manifesto.
 - **Só os bytes desenhados (a).** O "original" (b) fica FORA de P1: nenhuma classe comprova preservação hoje; lê-lo do Drive
   exige autorização própria. O manifesto diz `original: indisponivel` em toda foto.
 - Manifesto: args, HEAD do repositório, marcador do snapshot, por foto os campos de 3.3 + SHA-256 + dimensões lidas do arquivo,
-  totais e déficits por cliente (`< 6` elegíveis → "cliente fora da leva", dito). Sem pixel no manifesto.
+  totais (lidos, elegíveis, tentados, exportados) e déficits por cliente. Sem pixel no manifesto.
 
 ### 3.7 O que P1 NÃO faz
 
@@ -195,7 +225,9 @@ não roda a rodada, não executa contra o branch de dev (os testes usam linhas f
 - A janela real disponível é curta (prova desde 12/10): a cota de 10/cliente pode não fechar — só P2 diz.
 - Posts de STORY anteriores ao compositor (sem `bg-foto`) são excluídos por E6, enviesando a amostra para peças do
   compositor; o relatório tem de dizer a proporção.
-- `scheduledDatetime` é UTC sem fuso (`reference_horario_do_post_no_banco`): os limites são UTC e assim rotulados.
+- As datas do post são gravadas em UTC sem fuso: os limites `--desde`/`--ate` são UTC e assim rotulados.
+- E7 restringe a P1 ao Blob do Studio: fundos servidos pelo Drive ou pelo Supabase saem como `host-nao-autorizado` (contados);
+  incluí-los é decisão, com regra de host própria.
 - O snapshot de dev envelhece; recriar é decisão do owner (P2).
 
 ### 3.9 Para P6 (registrado agora, contratado depois)
@@ -209,17 +241,17 @@ continua "não medida" e contada. O estimador, na fixture pseudonimizada, mede "
 |---|---|---|---|
 | T1 | guarda | reaproveita `guarda-do-exportador.test.ts`; + sem `--cliente`; datas ausentes/inválidas/`desde ≥ ate`; `--cota` 0, > 20 | recusa antes de conectar |
 | T2 | destino | pasta em `src/`, `docs/`, raiz do repo, `../repo/src` por caminho relativo/symlink; pasta fora | recusa nos 4 primeiros; aceita fora (e `human-output/` conforme D5) |
-| T3 | E1–E3 | cada status; `mediaUrls` [] / 2; `pageId` null | motivo exato |
+| T3 | E1–E3 | cada status nas duas populações (SCHEDULED nunca entra em publicados; nada aparece nas duas); `latePublishedAt` presente / só `sentAt` / ambos nulos; limites `desde` (entra) e `ate` (sai); `scheduledDatetime` nulo num POSTED (elegível); `mediaUrls` [] / 2; `pageId` null | motivo exato; campo de referência registrado |
 | T4 | E4 | sem prova; prova de outra URL; duas provas, uma casa; URL com query diferente | `sem-prova` / `prova-de-outra-midia` / elegível / `prova-de-outra-midia` (igualdade exata) |
 | T5 | E5 | array; string JSON de array; string dupla-codificada; objeto; JSON inválido; `null` | só os dois primeiros elegíveis |
-| T6 | E6 | 0 / 2 `bg-foto`; oculta; `type: 'shape'`; `data:`; `http:`; outras imagens sem `bg-foto` (não cai em `imagens[0]`) | motivo exato |
-| T7 | E7–E8 | host próprio × alheio × parecido (`blob.vercel-storage.com.evil`); `posts/rendered/` | motivo exato |
+| T6 | E6–E6b | 0 / 2 `bg-foto`; `type: 'shape'`; `data:`; `http:`; outras imagens sem `bg-foto` (não cai em `imagens[0]`); oculta; `style.opacity` 0 / −1 / `NaN` / `'0'` (string) / 0,01; `size` 0 × N; caixa inteira fora do canvas; caixa parcialmente dentro; camada opaca acima cobrindo o fundo | motivo exato; 0,01 e parcial elegíveis; "coberta" elegível com a contagem de camadas acima registrada (não decide) |
+| T7 | E7–E8 | `x.public.blob.vercel-storage.com` (ok); `a.b.public.blob.vercel-storage.com`; `public.blob.vercel-storage.com.evil.com`; `evil.com/?x=.public.blob.vercel-storage.com`; `lh3.googleusercontent.com`; `x.supabase.co`; `user@host`; porta; maiúsculas no host; `posts/rendered/` | só o primeiro (e a variante em maiúsculas) autorizado; motivos exatos |
 | T8 | 3.4 | cada prefixo; maiúsculas; query; `%2e%2e`/`..`; prefixo novo | classe da tabela; desconhecida no resto |
-| T9 | E9 + ordem | mesma URL com query diferente; empate de `scheduledDatetime` | repetido; desempate por `id`; mesma entrada → manifesto byte a byte igual (hash) |
+| T9 | E9 + ordem | mesma URL com query diferente; empate da data de referência | repetido; desempate por `id`; mesma entrada → manifesto byte a byte igual (hash) |
 | T10 | transação | `tx` falso que registra chamadas | 1ª chamada `SET TRANSACTION READ ONLY`; nenhum SQL com `INSERT/UPDATE/DELETE/ALTER` (lista das strings enviadas) |
-| T11 | `--contar` | `fetch` espião | nunca chamado; nenhum arquivo escrito; recusa sem prova no branch |
-| T12 | download | 403, timeout, `text/html`, 30 MB, OK | 4 exclusões `download-falhou` contadas; OK com SHA-256 certo |
-| T13 | cota/déficit | 3 elegíveis com cota 10; 12 com cota 10 | "cliente fora da leva" (< 6); 10 selecionados + déficit 0 |
+| T11 | `--contar` | `fetch` espião; branch sem a tabela; tabela com provas fora da seleção | `fetch` nunca chamado; nenhum arquivo escrito; recusa só no primeiro caso; no segundo, "nenhuma prova nesta seleção" + `COUNT` global |
+| T12 | download | 403, timeout, `text/html` com status 200, bytes que não são imagem com `image/png`, 30 MB sem `content-length`, redirecionamento para host autorizado, para host alheio, cadeia de 4; OK | exclusões `download-falhou:<subcódigo>` contadas; redirecionamento autorizado segue; OK com SHA-256 certo e extensão pela assinatura |
+| T13 | cota/déficit/reposição | 3 elegíveis com cota 10; 12 elegíveis com cota 10 e 2 falhas; 7 elegíveis com 2 falhas e cota 10 | fora da leva (< 6 exportados); 10 exportados com os 2 reservas seguintes no lugar, na ordem; 5 exportados → fora da leva, déficit 5 |
 | T14 | pureza | `selecao-de-fotos.ts` | não importa `@/lib/db` nem `node:fs`/rede (teste de import, padrão do repo) |
 
 Gates do PR de P1: matriz verde; `npx vitest run` dos arquivos novos; typecheck; lint; `git diff --check`; Codex APTO no HEAD;
@@ -231,7 +263,7 @@ CI e Vercel verdes. Sem rodada do piloto (nada nele muda).
 |---|---|---|---|
 | D1 | Autorizar ESCREVER o `--fotos` (P1, só código + testes offline) | sim | não: a etapa representativa fica parada, e com ela o MCP-M0 |
 | D2 | Autorizar a CONTAGEM no branch de dev (P2) e recriá-lo se for anterior a 12/10 | sim, depois de P1 na main | export manual do Blob pelo owner (adendo § 4, alternativa) |
-| D3 | Status elegíveis | POSTED + SCHEDULED | só POSTED |
+| D3 | Populações | só PUBLICADOS (`POSTED`, janela por `latePublishedAt ?? sentAt`) | + agendados (`SCHEDULED`) como população SEPARADA, nunca somada |
 | D4 | Estratificação | sem categoria na ferramenta; categoria marcada em P5, sobre-amostra de 2× a cota | sem estratificação |
 | D5 | Destino da exportação | fora do repositório | `human-output/` (ignorado) |
 | D6 | Fundo sem `bg-foto` | excluído e contado | heurística declarada (`imagens[0]`), rotulada |
@@ -240,4 +272,12 @@ Clientes, cota final, pixels versionáveis e destino das fixtures (5.1/5.2) fica
 
 ## 6. Revisão do Codex
 
-(preenchida abaixo após a revisão independente)
+- **R1 (HEAD b4a7974e, `gpt-6-sol`) — NÃO APTO**, 3 BLOQUEADORES e 3 MAIORES, todos conferidos no código e corrigidos:
+  (1) "publicado" incluía `SCHEDULED` e a janela usava `scheduledDatetime` (nulo em publicação imediata) → só `POSTED` na amostra,
+  janela por `latePublishedAt ?? sentAt`, agendados como população separada (E1/E1b, D3); (2) E6 não provava contribuição visual
+  (`style.opacity: 0` fica no snapshot) → E6b + rótulo "referenciado, não anulado" e a oclusão por camada acima dita, não
+  decidida; (3) `HOSTS_PROPRIOS`/`includes` não valida download → E7 por hostname exato do Blob e redirecionamento revalidado;
+  (4) `drive-convertida` afirmava transformação que a rota não faz → `drive-download`, com nome/MIME declarados × formato lido ×
+  transformação comprovada registrados à parte; (5) "nenhuma prova" na seleção ≠ branch anterior à migração → dois casos
+  distintos; (6) cota calculada sobre elegíveis → reposição determinística e cota/déficit sobre exportados. Matriz T3, T6, T7,
+  T11, T12, T13 ampliada.
