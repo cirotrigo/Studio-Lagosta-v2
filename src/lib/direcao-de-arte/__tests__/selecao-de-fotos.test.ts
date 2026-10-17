@@ -8,8 +8,9 @@ import os from 'node:os'
 import path from 'node:path'
 import zlib from 'node:zlib'
 import sharp from 'sharp'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { VERSAO_DA_PROVA } from '@/lib/posts/prova-do-render'
+import type { LeituraDoBranch, MarcadorDoSnapshot } from '../../../../scripts/fixtures/fotos-do-banco'
 import {
   IMUTABILIDADE_DO_BLOB_COMPROVADA,
   INDICIO_DE_TRANSFORMACAO,
@@ -25,6 +26,8 @@ import {
   chaveDoArquivo,
   classeDeOrigem,
   conferirCanvas,
+  executarFotos,
+  serializar,
   contarCliente,
   exportarCliente,
   lerArgsDasFotos,
@@ -35,6 +38,7 @@ import {
   recusaDoHost,
   recusaDoLocation,
   type Buscar,
+  type DependenciasDasFotos,
   type PostLido,
 } from '../../../../scripts/fixtures/selecao-de-fotos'
 
@@ -226,18 +230,154 @@ describe('T1 lerArgsDasFotos / lerDataUtc', () => {
   })
 })
 
-// ── T1 (casca): recusa ANTES de conectar ───────────────────────────────────────────────────────────────────────────
-describe('T1 casca principalDasFotos (inspeção do fonte, sem importar: o módulo roda main() no import)', () => {
-  const fonte = fs.readFileSync(path.join(RAIZ, 'scripts/fixtures/exportar-piloto-sintetico.ts'), 'utf8')
-  const corpo = fonte.slice(fonte.indexOf('async function principalDasFotos'), fonte.indexOf('async function main'))
-  it('args e destino são conferidos antes do PrismaClient; a imutabilidade vem da constante', () => {
-    const iArgs = corpo.indexOf('lerArgsDasFotos(')
-    const iDestino = corpo.indexOf('recusaDoDestino(')
-    const iDb = corpo.indexOf('new PrismaClient')
-    expect(iArgs).toBeGreaterThan(-1)
-    expect(iArgs).toBeLessThan(iDestino)
-    expect(iDestino).toBeLessThan(iDb)
-    expect(corpo).toMatch(/imutabilidadeComprovada:\s*IMUTABILIDADE_DO_BLOB_COMPROVADA/)
+// ── executarFotos: a orquestração da casca, com dependências falsas ───────────────────────────────────────────────
+const MSG_TABELA = 'tabela PostRenderProof ausente'
+const MSG_MIGRACAO = 'migração 20261012120000_post_render_proof não registrada em _prisma_migrations'
+const MARCADOR = (provas: number): MarcadorDoSnapshot => ({
+  rotulo: 'estimado pelo dado mais recente do branch (a idade real é a de db:dev:status)',
+  provas,
+  provaMaisAntiga: provas ? '2026-10-12T13:00:00.000Z' : null,
+  provaMaisRecente: provas ? '2026-10-16T10:00:00.000Z' : null,
+  postMaisRecente: '2026-10-16T11:00:00.000Z',
+})
+const leituraOk = (posts: PostLido[], provas = 3): LeituraDoBranch => ({ marcador: MARCADOR(provas), postsPorCliente: new Map([[7, posts]]) })
+const RAIZ_FALSA = '/repo-falso-p1'
+const PASTA = '/tmp/destino-p1'
+const ARGV_CONTAR = ['--fotos', '--contar', '--cliente', '7', '--desde', '2026-10-12', '--ate', '2026-10-17']
+const ARGV_EXPORTAR = ['--fotos', '--cliente', '7', '--desde', '2026-10-12', '--ate', '2026-10-17', '--candidatos', '6', PASTA]
+
+function depsFalsas(o: { leitura?: LeituraDoBranch; naoVazia?: boolean; imutabilidadeComprovada?: boolean; loja?: ReturnType<typeof lojaFalsa> } = {}) {
+  const loja = o.loja ?? lojaFalsa()
+  const ch = { lerBranch: 0, buscar: 0, pastaNaoVazia: 0, gravar: [] as Array<{ pasta: string; nome: string; bytes: Buffer }>, criarPasta: [] as string[] }
+  const deps: DependenciasDasFotos = {
+    raizDoRepo: RAIZ_FALSA,
+    realpath: (p) => p, // caminhos sintéticos: nenhum symlink
+    pastaNaoVazia: () => (ch.pastaNaoVazia++, o.naoVazia ?? false),
+    criarPasta: (p) => void ch.criarPasta.push(p),
+    lerBranch: async () => (ch.lerBranch++, o.leitura ?? leituraOk([])),
+    buscar: async (u, i) => (ch.buscar++, loja.buscar(u, i)),
+    gravar: (pasta, nome, bytes) => void ch.gravar.push({ pasta, nome, bytes }),
+    head: () => 'cafe1234cafe1234',
+    ...(o.imutabilidadeComprovada === undefined ? {} : { imutabilidadeComprovada: o.imutabilidadeComprovada }),
+  }
+  return { deps, ch }
+}
+
+describe('executarFotos: ordem das recusas (nada lido antes de args e destino)', () => {
+  it('args inválidos lançam antes de lerBranch', async () => {
+    for (const [argv, msg] of [
+      [ARGV_EXPORTAR.slice(1), '--fotos: falta --fotos'],
+      [[...ARGV_EXPORTAR, '--cota', '10'], '--fotos: opção desconhecida: --cota'],
+      [ARGV_EXPORTAR.map((a) => (a === '6' ? '21' : a)), '--fotos: --candidatos é obrigatório na exportação, de 1 a 20'],
+    ] as Array<[string[], string]>) {
+      const { deps, ch } = depsFalsas()
+      await expect(executarFotos(argv, deps)).rejects.toThrow(msg)
+      expect([ch.lerBranch, ch.pastaNaoVazia, ch.buscar, ch.gravar.length, ch.criarPasta.length]).toEqual([0, 0, 0, 0, 0])
+    }
+  })
+  it('destino dentro do repositório lança antes de lerBranch (e antes de olhar a pasta)', async () => {
+    const { deps, ch } = depsFalsas()
+    const argv = ARGV_EXPORTAR.map((a) => (a === PASTA ? `${RAIZ_FALSA}/src` : a))
+    await expect(executarFotos(argv, deps)).rejects.toThrow('destino dentro do repositório (src): use uma pasta fora dele ou em human-output/')
+    expect([ch.lerBranch, ch.pastaNaoVazia, ch.buscar, ch.gravar.length, ch.criarPasta.length]).toEqual([0, 0, 0, 0, 0])
+  })
+  it('pasta não vazia lança antes de lerBranch', async () => {
+    const { deps, ch } = depsFalsas({ naoVazia: true })
+    await expect(executarFotos(ARGV_EXPORTAR, deps)).rejects.toThrow(`a pasta ${PASTA} não está vazia`)
+    expect([ch.lerBranch, ch.pastaNaoVazia, ch.buscar, ch.gravar.length, ch.criarPasta.length]).toEqual([0, 1, 0, 0, 0])
+  })
+})
+
+describe('T11 via executarFotos: sinais e "nenhuma prova nesta seleção"', () => {
+  const casos: Array<[string, string[]]> = [
+    ['(a) tabela ausente', [MSG_TABELA]],
+    ['(b) migração não registrada', [MSG_MIGRACAO]],
+    ['(c) os dois', [MSG_TABELA, MSG_MIGRACAO]],
+  ]
+  for (const [nome, recusa] of casos) {
+    it(`${nome}: lança com os sinais exatos e causa indeterminada; nada baixado, criado nem gravado (contar e exportar)`, async () => {
+      for (const argv of [ARGV_CONTAR, ARGV_EXPORTAR]) {
+        const { deps, ch } = depsFalsas({ leitura: { recusa, causa: 'indeterminada' }, imutabilidadeComprovada: true })
+        const erro = await executarFotos(argv, deps).then(() => null, (e: Error) => e.message)
+        expect(erro).toBe(`a contagem não pode rodar (causa indeterminada): ${recusa.join('; ')}`)
+        expect([ch.lerBranch, ch.buscar, ch.gravar.length, ch.criarPasta.length]).toEqual([1, 0, 0, 0])
+      }
+    })
+  }
+  it('(d) tudo presente, nenhuma prova na seleção: --contar devolve o aviso exato e o marcador; nada baixado, criado nem gravado', async () => {
+    const { deps, ch } = depsFalsas({ leitura: leituraOk([post(1, { provas: [] }), post(2, { provas: [] })], 3), imutabilidadeComprovada: true })
+    const r = await executarFotos(ARGV_CONTAR, deps)
+    const saida = JSON.parse(r.saida)
+    expect(r.modo).toBe('contar')
+    expect(saida.aviso).toBe('nenhuma prova nesta seleção (o branch tem 3 no total)')
+    expect(saida.marcadorDoSnapshot).toEqual(MARCADOR(3))
+    expect(saida.head).toBe('cafe1234cafe1234')
+    expect(saida.rotulos).toEqual([...ROTULOS_DO_MANIFESTO])
+    expect(saida.clientes[0].exclusoes).toEqual({ 'sem-prova': 2 })
+    expect(r.saida).toBe(serializar(JSON.parse(r.saida)))
+    expect([ch.lerBranch, ch.buscar, ch.gravar.length, ch.criarPasta.length]).toEqual([1, 0, 0, 0])
+  })
+  it('com prova na seleção, --contar não traz o aviso e também não baixa nada', async () => {
+    const { deps, ch } = depsFalsas({ leitura: leituraOk([post(1)]), imutabilidadeComprovada: true })
+    const saida = JSON.parse((await executarFotos(ARGV_CONTAR, deps)).saida)
+    expect('aviso' in saida).toBe(false)
+    expect(saida.clientes[0].elegiveisTeto).toBe(1)
+    expect([ch.buscar, ch.gravar.length, ch.criarPasta.length]).toEqual([0, 0, 0])
+  })
+  it('sem imutabilidadeComprovada nas deps vale a constante (false): a exportação não baixa nada', async () => {
+    const { deps, ch } = depsFalsas({ leitura: leituraOk([post(1), post(2)]) })
+    const r = await executarFotos(ARGV_EXPORTAR, deps)
+    expect(ch.buscar).toBe(0)
+    expect(ch.gravar.map((g) => g.nome)).toEqual(['manifesto.json'])
+    expect(JSON.parse(r.saida).clientes[0].exclusoes).toEqual({ 'imutabilidade-nao-comprovada': 2 })
+  })
+})
+
+describe('T9 determinismo do manifesto completo (executarFotos)', () => {
+  afterAll(() => vi.useRealTimers())
+  const exportarManifesto = async (posts: PostLido[], agora: string) => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(agora))
+    try {
+      const { deps, ch } = depsFalsas({ leitura: leituraOk(posts), imutabilidadeComprovada: true })
+      const r = await executarFotos(ARGV_EXPORTAR, deps)
+      return { r, ch }
+    } finally {
+      vi.useRealTimers()
+    }
+  }
+  it('mesma entrada e entrada embaralhada, em relógios diferentes → manifesto.json byte a byte igual; é a última gravação', async () => {
+    const posts = Array.from({ length: 8 }, (_, i) => post(i + 1))
+    const a = await exportarManifesto(posts, '2026-10-17T10:00:00Z')
+    const b = await exportarManifesto(posts, '2031-01-01T00:00:00Z')
+    const c = await exportarManifesto([posts[3], posts[0], ...posts.slice(4).reverse(), posts[2], posts[1]], '2027-06-06T06:06:06Z')
+    const hash = (x: Buffer) => createHash('sha256').update(x).digest('hex')
+    for (const { ch, r } of [a, b, c]) {
+      const ultima = ch.gravar.at(-1)!
+      expect(ultima.nome).toBe('manifesto.json')
+      expect(ultima.pasta).toBe(PASTA)
+      expect(ch.gravar.filter((g) => g.nome === 'manifesto.json')).toHaveLength(1)
+      expect(ch.gravar.slice(0, -1).map((g) => g.nome)).toEqual(['1', '2', '3', '4', '5', '6'].map((n) => `cliente-7-${n}.png`))
+      expect(ch.criarPasta).toEqual([PASTA])
+      expect(ultima.bytes.toString('utf8')).toBe(r.saida)
+    }
+    const [ma, mb, mc] = [a, b, c].map((x) => x.ch.gravar.at(-1)!.bytes)
+    expect(Buffer.compare(mb, ma)).toBe(0)
+    expect(Buffer.compare(mc, ma)).toBe(0)
+    expect(hash(mb)).toBe(hash(ma))
+    expect(hash(mc)).toBe(hash(ma))
+    const m = JSON.parse(ma.toString('utf8'))
+    expect(Object.keys(m)).toEqual(['args', 'head', 'marcadorDoSnapshot', 'rotulos', 'clientes'])
+    expect(m.args).toEqual({ modo: 'exportar', clientes: [7], desde: '2026-10-12T00:00:00.000Z', ate: '2026-10-17T00:00:00.000Z', populacao: 'publicados', candidatos: 6, pasta: PASTA })
+    expect(m.head).toBe('cafe1234cafe1234')
+    expect(m.marcadorDoSnapshot).toEqual(MARCADOR(3))
+    expect(m.rotulos).toEqual([...ROTULOS_DO_MANIFESTO])
+    expect(m.clientes[0].exportados.map((e: { postId: string }) => e.postId)).toEqual(['p001', 'p002', 'p003', 'p004', 'p005', 'p006'])
+    // nenhum campo de relógio: nenhuma data do "agora" simulado aparece, nem chave com nome de instante
+    const texto = ma.toString('utf8')
+    for (const ano of ['2027', '2031']) expect(texto).not.toContain(ano)
+    expect(texto).not.toMatch(/"(geradoEm|gerado_em|timestamp|agora|now|executadoEm|data)"\s*:/i)
+    expect(a.r.resumo).toEqual(['cliente 7: 6 exportado(s); 6 elegível(is) conferido(s) de 8 preliminar(es)'])
   })
 })
 
@@ -598,7 +738,7 @@ describe('T9 E9 e ordem', () => {
     const posts = [post(1, {}, [fundo({ fileUrl: FOTO(1) })]), post(2, {}, [fundo({ fileUrl: FOTO(1) })]), post(3, {}, [fundo({ fileUrl: FOTO(1) })])]
     const { r } = await exportar(posts, {}, lojaFalsa({ canvasFalha: new Set([MIDIA(1)]) }))
     expect(r.exportados.map((e) => e.postId)).toEqual(['p002'])
-    expect(r.exclusoes).toMatchObject({ 'fundo-nao-avaliavel:canvas-nao-comprovado:http-403': 1, 'arquivo-repetido': 1 })
+    expect(r.exclusoes).toEqual({ 'fundo-nao-avaliavel:canvas-nao-comprovado:http-403': 1, 'arquivo-repetido': 1 })
     expect([r.elegiveisPreliminares, r.tentados, r.elegiveis]).toEqual([3, 3, 1])
   })
   it('empate da data de referência é desempatado por id ASC', async () => {
@@ -818,6 +958,8 @@ describe('T13 exportarCliente: candidatos, déficit e reposição', () => {
   it('7 elegíveis, 2 falhas → 5 exportados, fora da leva, déficit 15', async () => {
     const { r } = await exportar(muitos(7), {}, lojaFalsa({ falhas: new Set([FOTO(1), FOTO(4)]) }))
     expect([r.elegiveisPreliminares, r.tentados, r.elegiveis, r.exportados.length, r.deficitDeCandidatos, r.foraDaLeva]).toEqual([7, 7, 7, 5, 15, true])
+    expect(r.exclusoes).toEqual({ 'download-falhou:http-403': 2 })
+    expect(r.exportados.map((e) => e.postId)).toEqual(['p002', 'p003', 'p005', 'p006', 'p007'])
   })
   it('imutabilidade falsa → zero exportados e zero chamadas ao Buscar', async () => {
     const loja = lojaFalsa()
@@ -861,6 +1003,20 @@ describe('T15 E8b: inventário de allowOverwrite', () => {
     // konva-export com fileName = drive-cache/x.jpg (addRandomSuffix acrescenta sufixo ao nome, o prefixo fica)
     expect(comCamadas([fundo({ fileUrl: `${STORE}/drive-cache/x-Ab12Cd34Ef.jpg` })])).toBe('origem-sobrescrevivel')
     expect(comCamadas([fundo({ fileUrl: `${STORE}/uploads/..%2fx.jpg` })])).toBe('origem-sobrescrevivel')
+  })
+  it('bytes trocados na mesma URL de chat-uploads/ e drive-cache/ → só origem-sobrescrevivel, sem chamar o Buscar', async () => {
+    const chat = `${STORE}/chat-uploads/12/token-fixo.jpg`
+    const cache = `${STORE}/drive-cache/12/foto-s1920.jpg`
+    let chamadas = 0
+    // se fosse chamado, devolveria bytes DIFERENTES a cada chamada (o objeto foi sobrescrito entre o render e o download)
+    const buscar: Buscar = async () => (chamadas++, resposta(chamadas % 2 ? PNG_REAL : JPEG_REAL, 200))
+    const posts = [chat, chat, cache, cache].map((u, i) => post(i + 1, {}, [fundo({ fileUrl: u })]))
+    const g = gravador()
+    const r = await exportarCliente(7, posts, { ...OPC, candidatos: 20 }, { buscar, gravar: g.gravar })
+    expect(r.exclusoes).toEqual({ 'origem-sobrescrevivel': 4 })
+    expect([chamadas, r.exportados.length, r.elegiveisPreliminares, r.tentados, g.gravados.length]).toEqual([0, 0, 0, 0, 0])
+    const c = contarCliente(7, posts, OPC)
+    expect([c.exclusoes, c.classesQueChegaramAOrigem, c.elegiveisTeto]).toEqual([{ 'origem-sobrescrevivel': 4 }, { 'chat-reduzida': 2, 'drive-miniatura': 2 }, 0])
   })
   it('nota falsa → toda classe fora do inventário e do render é imutabilidade-nao-comprovada; verdadeira → elegível', () => {
     for (const p of ['uploads/u1/x.jpg', 'posts/u1/google-drive/1-x.jpg', 'posts/u1/ai-images/x.png', 'posts/u1/normalized/x.jpg', 'outro/x.jpg']) {
