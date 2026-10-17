@@ -1,6 +1,6 @@
 # Piloto sintético de autonomia — resumo da rodada padrao (2026-10-17)
 
-HEAD `dbcd97f4` · lote `piloto-sintetico-cdce41047cff` · ambiente darwin arm64 node v22.23.3 · relatório integral: `human-output/relatorios/piloto-sintetico/2026-10-17-padrao/relatorio.json` (SHA-256 `db38d1490bc03679ea983de60c42dcdd3ba9b37695672d1c3c4bfde2e5b53289`).
+HEAD `4aa86bcf` · lote `piloto-sintetico-cdce41047cff` · ambiente darwin arm64 node v22.23.3 · relatório integral: `human-output/relatorios/piloto-sintetico/2026-10-17-padrao/relatorio.json` (SHA-256 `0e095251de67608a4979c836c616b941b218e6a2631811f418dc383b8cc40c3b`).
 
 **O que este piloto NÃO mede** (ao lado do veredito, sempre): fontes da marca não instaladas (declaradas presentes; render com fonte de reserva); a visão (gpt-5.2) não roda; fotos SINTÉTICAS + a real anonimizada de 13/10 — lote CONTROLADO, não representativo das fotos dos clientes (decisão 5.1); banco falso com travas: travas/SQL reais e Blob não provados; custo medido nesta máquina, não na Vercel; clientes: cliente-00, cliente-fixture (fixtures reais pseudonimizadas aguardam a lista do owner — decisão 5.2).
 
@@ -72,21 +72,21 @@ Exclusões do lote por motivo (não são peças): arquetipo-indisponivel 78 · a
 ## 5. Custo por etapa (renders mediana/p95 · ms mediana/p95) — a peça principal (compor…png), a leitura pareada, a repetição e a injeção em linhas próprias
 | etapa | renders med | renders p95 | ms med | ms p95 |
 |---|---|---|---|---|
-| compor | 3 | 3 | 527 | 1195 |
-| revisar | 4 | 4 | 626 | 1466 |
+| compor | 3 | 3 | 526 | 1144 |
+| revisar | 4 | 4 | 626 | 1464 |
 | ajustar | 0 | 0 | 0 | 0 |
-| agendar | 2 | 2 | 322 | 755 |
-| juizes | 2 | 2 | 295 | 707 |
-| png | 1 | 1 | 109 | 311 |
-| pareada | 0 | 9 | 23 | 2307 |
-| repeticao | 10 | 10 | 579 | 3172 |
-| injecao | 4 | 4 | 322 | 1495 |
-| modoG | 6 | 6 | 1537 | 2214 |
+| agendar | 2 | 2 | 324 | 755 |
+| juizes | 2 | 2 | 297 | 707 |
+| png | 1 | 1 | 108 | 311 |
+| pareada | 0 | 9 | 22 | 2310 |
+| repeticao | 10 | 10 | 577 | 3175 |
+| injecao | 4 | 4 | 326 | 1492 |
+| modoG | 6 | 6 | 1545 | 2215 |
 Renders somados por etapa: 661 · observados pelo contador do renderer na rodada: 661.
 
 ## 6. Estabilidade: exceções 0 · nao-medida 0 · sem-vinculo 0 · timeouts 0
 
-## 7. Repetibilidade: 100.0 % (42/42) iguais (compostas: veredito, motivos, camadas normalizadas e hash do PNG; recusas estruturais: o mesmo código)
+## 7. Repetibilidade: 100.0 % (42/42) iguais (compostas: impressão COMPLETA do gate final sem medidoEm, camadas normalizadas e hash do PNG; recusas estruturais: o mesmo código)
 
 ## 8. Decisão 1 — assunto estimado × catálogo × verdade (24 peças com verdade): IoU est×cat 0.29 · est×verdade 0.29 · cat×verdade 1.00 · o estimado acertou a invasão em 0 e errou em 4
 A linha D é o gate DEPOIS da falha de leitura injetada (as mesmas peças também aparecem no seu caso de origem).
