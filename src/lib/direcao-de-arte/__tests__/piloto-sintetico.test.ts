@@ -412,10 +412,18 @@ async function rodarPeca(spec: SpecDoLote, cliente: ClienteSemeado, opcoes: { re
     const rev = await contar('modoG', () => revisarArte({ projectId: PROJETO, pageId: principal.pageId, visao: false, previa: false }))
     const cob = (rev.relatorio.cobertura as Record<string, { estado?: string; naoSeAplica?: boolean } | undefined>)['texto-sobre-assunto']
     const motivoSemAssunto = cob?.estado === 'nao-avaliada' && !cob.naoSeAplica
-    const gateRecusou = rev.gate.tipo === 'medida' && rev.gate.resultado === 'REVISAO_HUMANA_NECESSARIA' && rev.gate.motivos.some((m) => m.regra === 'texto-sobre-assunto' && m.codigo !== 'ACHADO_CRITICO')
+    const revisorRecusou = rev.gate.tipo === 'medida' && rev.gate.resultado === 'REVISAO_HUMANA_NECESSARIA' && rev.gate.motivos.some((m) => m.regra === 'texto-sobre-assunto' && m.codigo !== 'ACHADO_CRITICO')
+    // O PRODUTOR tem de medir: sem o DRAFT que o fluxo principal criou (apagado do banco falso) e com o item DESLIGADO
+    // (`postId: null`) o `agendar-leva` não pode reaproveitar nada — ou cria (falha do gate) ou recusa por texto-sobre-assunto.
+    for (const post of [...banco.posts.values()].filter((x) => x.pageId === principal.pageId)) banco.posts.delete(post.id)
+    const itemDoLote = banco.itensDeLote.get(`lote-${principal.pageId}`)!
+    banco.itensDeLote.set(itemDoLote.id, { ...itemDoLote, postId: null, hashDoAgendamento: null, efeitosDoAgendamentoEm: null })
     const lote = await contar('modoG', () => agendarItensDoLote({ projectId: PROJETO, loteId: LOTE, itens: [{ itemId: `item-${principal.pageId}` }], apenasRascunho: true, principal: { tipo: 'user', id: 'piloto' } }))
-    const criou = (lote.itens[0] as { desfecho?: string }).desfecho === 'criado'
-    registro.modoG = { fetchFalhou: espioes.falhasDeLeitura > 0, motivoSemAssunto, gateRecusou: gateRecusou && !criou, valido: espioes.falhasDeLeitura > 0 && motivoSemAssunto }
+    // A resposta do produtor: `revisao` (tipo/resultado) e `motivos` do gate no TOPO do item (`revisaoDe`, gate-no-fluxo.ts).
+    const item = lote.itens[0] as { situacao: string; desfecho?: string; codigo?: string; postId?: string; revisao?: { tipo?: string; resultado?: string }; motivos?: Array<{ regra: string; codigo: string }> }
+    const postsDaPagina = [...banco.posts.values()].filter((x) => x.pageId === principal.pageId).length
+    const produtorRecusou = item.codigo === 'REVISAO_HUMANA_NECESSARIA' && !item.postId && postsDaPagina === 0 && item.revisao?.tipo === 'medida' && item.revisao.resultado === 'REVISAO_HUMANA_NECESSARIA' && (item.motivos ?? []).some((m) => m.regra === 'texto-sobre-assunto' && m.codigo !== 'ACHADO_CRITICO')
+    registro.modoG = { fetchFalhou: espioes.falhasDeLeitura > 0, motivoSemAssunto, gateRecusou: revisorRecusou && produtorRecusou, valido: espioes.falhasDeLeitura > 0 && motivoSemAssunto, produtor: { codigo: item.codigo ?? item.desfecho ?? item.situacao, postsDaPagina, motivos: (item.motivos ?? []).map((m) => `${m.regra}:${m.codigo}`) } }
     registro.renders.modoG = extras.renders.modoG
     registro.ms.modoG = extras.ms.modoG
     espioes.fotoFalha = null
@@ -466,8 +474,9 @@ describe.skipIf(!LIGADO)('piloto sintético de autonomia', () => {
     const inicio = Date.now()
     for (const [i, spec] of specs.entries()) {
       const cliente = CLIENTES.find((c) => c.id === spec.cliente)!
-      // Modo G em TODA peça sem arquétipo com foto de assunto A1 (a conta das leituras com falha vai à parte; `i % 3` deixava a amostra sem nenhuma).
-      const modoG = spec.foto === 'A1' && spec.arquetipo === 'sem'
+      // Modo G em TODA peça sem arquétipo com foto A1 (assunto forte; a principal já cai no caso B) E com foto B (difusa: a principal
+      // é APTA — é aqui que a falha de leitura tem de virar recusa de uma peça que passaria). `i % 3` deixava a amostra sem nenhuma.
+      const modoG = (spec.foto === 'A1' || spec.foto === 'B') && spec.arquetipo === 'sem'
       try {
         registros.push(await rodarPeca(spec, cliente, { repetir, modoG }))
       } catch (e) {

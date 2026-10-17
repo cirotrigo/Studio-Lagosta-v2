@@ -28,11 +28,19 @@ const CAMPOS_DA_PAGINA = ['tags', 'width', 'height', 'background', 'layers', 'or
 const PAPEIS = new Set(['pre', 'headline', 'apoio', 'servico', 'logo', 'foto', 'fundo', 'veu', 'imagem', 'texto'])
 const COR = /^(#[0-9a-f]{3,8}|rgba?\([\d.,\s%]+\)|hsla?\([\d.,\s%]+\)|transparent)$/i
 /** Chaves cujo valor é um enum (uma palavra; dígitos permitidos para `fontWeight: '400'`). */
-const CHAVES_DE_ENUM = new Set(['type', 'fontWeight', 'fontStyle', 'textAlign', 'verticalAlign', 'objectFit', 'textTransform', 'textDecoration', 'anchor', 'breakMode', 'textMode', 'fit', 'gradientType', 'shapeType', 'blendMode', 'papel', 'role', 'mode', 'unit', 'align', 'position', 'direction', 'repeat', 'lineCap', 'lineJoin'])
+const CHAVES_DE_ENUM = new Set(['type', 'fontWeight', 'fontStyle', 'textAlign', 'verticalAlign', 'objectFit', 'cropPosition', 'textTransform', 'textDecoration', 'anchor', 'breakMode', 'textMode', 'fit', 'gradientType', 'shapeType', 'blendMode', 'papel', 'role', 'mode', 'unit', 'align', 'position', 'direction', 'repeat', 'lineCap', 'lineJoin', 'lineStyle', 'lineEndCap', 'lineStartCap', 'pathFillRule', 'fieldType', 'pattern', 'movimento', 'filter', 'audioVersion'])
 const ENUM = /^([a-z][a-z0-9-]{0,31}|\d{3})$/i // `\d{3}`: `fontWeight: '400'`
 const CHAVES_DE_TEXTO = new Set(['content', 'text'])
+/** Todas as chaves do tipo `Layer` (src/types/template.ts): descartar uma delas é mudar a assinatura visual em silêncio — a geração RECUSA, salvo as de descarte previsto. */
+const CHAVES_DO_TIPO = new Set(['anchor', 'audio', 'audioVersion', 'autoExpand', 'autoResize', 'autoWrap', 'autoplay', 'background', 'backgroundColor', 'baseColor', 'blacks', 'blur', 'border', 'borderRadius', 'breakMode', 'brightness', 'canvas', 'clipe', 'color', 'content', 'contrast', 'createdAt', 'crop', 'cropPosition', 'currentPageId', 'currentTime', 'curved', 'defaultValue', 'duration', 'effects', 'elementId', 'elementLabel', 'enabled', 'end', 'endTime', 'exposure', 'fadeIn', 'fadeInDuration', 'fadeOut', 'fadeOutDuration', 'fieldType', 'fileUrl', 'fill', 'fillOpacity', 'filter', 'fit', 'flipH', 'flipV', 'fontFamily', 'fontSize', 'fontStyle', 'fontWeight', 'gradientAngle', 'gradientCenterX', 'gradientCenterY', 'gradientEndX', 'gradientEndY', 'gradientRadiusScale', 'gradientStartX', 'gradientStartY', 'gradientStops', 'gradientType', 'grayscale', 'height', 'highlights', 'iconId', 'id', 'invert', 'isDynamic', 'isTemplate', 'label', 'layerId', 'layers', 'letterSpacing', 'lineEndCap', 'lineHeight', 'lineStartCap', 'lineStyle', 'locked', 'logoId', 'loop', 'mask', 'max', 'maxFontSize', 'metadata', 'min', 'minFontSize', 'movimento', 'musicId', 'musicName', 'musicThumbnailUrl', 'muted', 'name', 'objectFit', 'offset', 'offsetX', 'offsetY', 'opacity', 'order', 'overlay', 'padding', 'paddingX', 'paddingY', 'pages', 'parentId', 'pathData', 'pathFillRule', 'pathViewBox', 'pattern', 'placeholder', 'playbackRate', 'position', 'posterUrl', 'presetId', 'presetName', 'radius', 'required', 'richTextStyles', 'rotation', 'saturation', 'sepia', 'shadow', 'shadows', 'shapeType', 'size', 'source', 'spacing', 'start', 'startTime', 'stroke', 'strokeColor', 'strokeOpacity', 'strokeWidth', 'style', 'tags', 'temCopyAutoral', 'templateId', 'templateName', 'textAlign', 'textDecoration', 'textMode', 'textTransform', 'textboxConfig', 'thumbnail', 'tone', 'trimEnd', 'trimStart', 'type', 'updatedAt', 'validation', 'videoMetadata', 'vignette', 'visible', 'volume', 'volumeMusic', 'volumeOriginal', 'whites', 'width', 'wordBreak'])
+/** Chaves do tipo cujo descarte é POR DESENHO (identificam, apontam para fora ou são metadado): nome/arquivo/legenda/ids de linha/datas/metadata livre. */
+const DESCARTE_PREVISTO = new Set(['id', 'name', 'fileUrl', 'fontFamily', 'label', 'placeholder', 'defaultValue', 'elementLabel', 'musicName', 'presetName', 'templateName', 'posterUrl', 'musicThumbnailUrl', 'thumbnail', 'createdAt', 'updatedAt', 'elementId', 'logoId', 'musicId', 'templateId', 'iconId', 'presetId', 'currentPageId', 'isTemplate', 'temCopyAutoral', 'validation', 'metadata', 'audio', 'clipe', 'videoMetadata', 'source', 'pages', 'layers'])
+/** Referências entre camadas (`groupId`, `layerId`, `parentId`): renumeradas de forma consistente — a relação fica, o id original não. */
+const CHAVES_DE_REFERENCIA = new Set(['groupId', 'layerId', 'parentId'])
+/** `pathData` é a gramática de caminho SVG (comandos + números): não carrega nome; qualquer outro caractere derruba. */
+const PATH_SVG = /^[MmLlHhVvCcSsQqTtAaZz0-9\s,.eE+-]+$/
 /** Chaves cujo valor numérico/booleano o esquema prevê: TODO campo `number`/`boolean` do tipo `Layer` (src/types/template.ts, inclusive os aninhados como `blurRadius` e `curvature`) e dos números da assinatura (`compositor/assinatura.ts`), menos identificadores de linha (`elementId`, `logoId`…). Número sob OUTRA chave é descartado: `telefone: 5511999999999` não é geometria. */
-const CHAVES_NUMERICAS = new Set(['altura', 'autoExpand', 'autoplay', 'blacks', 'blur', 'blurRadius', 'borderRadius', 'brightness', 'contrast', 'currentTime', 'curvature', 'duracao', 'duration', 'enabled', 'end', 'endTime', 'escalaDeFonte', 'exposure', 'fadeIn', 'fadeInDuration', 'fadeOut', 'fadeOutDuration', 'faixaMarca', 'faixaTexto', 'fillOpacity', 'flipH', 'flipV', 'fontSize', 'fontWeight', 'gapEntreBlocos', 'gradientAngle', 'gradientCenterX', 'gradientCenterY', 'gradientEndX', 'gradientEndY', 'gradientRadiusScale', 'gradientStartX', 'gradientStartY', 'grayscale', 'height', 'highlights', 'invert', 'isDynamic', 'isProjectLogo', 'largura', 'larguraMaxima', 'letterSpacing', 'lineHeight', 'locked', 'loop', 'luzDaFoto', 'margemH', 'max', 'maxFontSize', 'min', 'minFontSize', 'muted', 'offsetX', 'offsetY', 'opacity', 'ordem', 'order', 'overlay', 'padding', 'paddingX', 'paddingY', 'padrao', 'pesado', 'playbackRate', 'pontos', 'position', 'radius', 'raioMarca', 'raioTexto', 'razao', 'required', 'rotation', 'safeRodape', 'safeTopo', 'saturation', 'sepia', 'shadowBlur', 'shadowOffsetX', 'shadowOffsetY', 'shadowOpacity', 'shadows', 'spacing', 'start', 'startTime', 'strokeOpacity', 'strokeWidth', 'tone', 'trimEnd', 'trimStart', 'vignette', 'visible', 'volume', 'volumeMusic', 'volumeOriginal', 'whites', 'width', 'wordBreak', 'x', 'y'])
+const CHAVES_NUMERICAS = new Set(['altura', 'autoExpand', 'autoplay', 'blacks', 'blur', 'blurRadius', 'borderRadius', 'brightness', 'contrast', 'currentTime', 'curvature', 'duracao', 'duration', 'enabled', 'end', 'endTime', 'escalaDeFonte', 'exposure', 'fadeIn', 'fadeInDuration', 'fadeOut', 'fadeOutDuration', 'faixaMarca', 'faixaTexto', 'fillOpacity', 'flipH', 'flipV', 'fontSize', 'fontWeight', 'gapEntreBlocos', 'gradientAngle', 'gradientCenterX', 'gradientCenterY', 'gradientEndX', 'gradientEndY', 'gradientRadiusScale', 'gradientStartX', 'gradientStartY', 'grayscale', 'height', 'highlights', 'invert', 'isDynamic', 'isProjectLogo', 'largura', 'larguraMaxima', 'letterSpacing', 'lineHeight', 'locked', 'loop', 'luzDaFoto', 'margemH', 'max', 'maxFontSize', 'min', 'minFontSize', 'muted', 'offsetX', 'offsetY', 'opacity', 'ordem', 'order', 'overlay', 'padding', 'paddingX', 'paddingY', 'padrao', 'pesado', 'playbackRate', 'pontos', 'position', 'radius', 'raioMarca', 'raioTexto', 'razao', 'required', 'rotation', 'safeRodape', 'safeTopo', 'saturation', 'sepia', 'shadowBlur', 'shadowOffsetX', 'shadowOffsetY', 'shadowOpacity', 'shadows', 'spacing', 'start', 'startTime', 'strokeOpacity', 'strokeWidth', 'tone', 'trimEnd', 'trimStart', 'vignette', 'visible', 'volume', 'volumeMusic', 'volumeOriginal', 'whites', 'width', 'wordBreak', 'x', 'y', 'pathViewBox'])
 /** Tags estruturais que a fixture pode levar; qualquer outra é descartada (uma tag pode ser o apelido do cliente). */
 const TAGS_CONHECIDAS = new Set(['assinatura', 'story', 'feed', 'quadrado', 'clara', 'escura', 'modelo', 'conteudo'])
 /** Forma de uma CHAVE de objeto que pode sobreviver: identificador curto; chave com espaço, acento ou longa demais é descartada com o valor. */
@@ -46,10 +54,12 @@ export function fragmentosDoNome(nome: string): string[] {
   return [...new Set([...(inteiro ? [inteiro] : []), ...palavras.filter((w) => w.length >= 3)])]
 }
 const temFragmento = (texto: string, fragmentos: string[]) => {
-  // Com e SEM separadores: "Jo Li" tem de barrar `fontFamily: 'Jo Li'`, a chave `jo_li` e `joli`.
+  // Com e SEM separadores: "Jo Li" tem de barrar `fontFamily: 'Jo Li'`, a chave `jo_li` e `joli`. Fragmento CURTO (até 3
+  // letras, como "ze") só por palavra inteira — senão "ze" barraria `size`.
   const t = semAcento(texto)
   const colado = t.replace(/[^a-z0-9]/g, '')
-  return fragmentos.some((f) => t.includes(f) || colado.includes(f))
+  const palavras = t.split(/[^a-z0-9]+/).filter(Boolean)
+  return fragmentos.some((f) => (f.length >= 4 ? t.includes(f) || colado.includes(f) : palavras.includes(f) || colado === f))
 }
 const CHAVES_EXTERNAS = /drive|fileid|blob|imageurl|_imageurl|thumbnail|src$|externalid|url$/i
 const URL = /(https?:\/\/|data:|blob:|gs:\/\/|s3:\/\/)/i
@@ -90,6 +100,12 @@ export function pseudonimizar(exp: ExportDoCliente, clienteId: string, arquivos:
   const fragmentos = fragmentosDoNome(nome)
   const identifica = (t: string) => temFragmento(t, fragmentos)
   const descartados: string[] = []
+  /** Descartes de chave TIPADA do Layer fora do descarte previsto: a assinatura mudaria em silêncio → a geração recusa. */
+  const recusas: string[] = []
+  const descartar = (caminho: string, chave: string, motivo: string) => {
+    descartados.push(`${caminho}: ${motivo}`)
+    if (CHAVES_DO_TIPO.has(chave) && !DESCARTE_PREVISTO.has(chave)) recusas.push(`${caminho}: ${motivo}`)
+  }
   const tokens = new Map<string, string>(exp.logos.map((l, k) => [l.fileUrl, `fixture:logo-${k}`] as const))
   const arquivosDaFixture: Record<string, string> = Object.fromEntries(exp.logos.map((l, k) => [`fixture:logo-${k}`, arquivos[l.fileUrl] ?? '']))
   const grupos = new Map<string, string>()
@@ -115,18 +131,19 @@ export function pseudonimizar(exp: ExportDoCliente, clienteId: string, arquivos:
     if (v === null || v === undefined) return v
     if (typeof v === 'number' || typeof v === 'boolean') {
       if (CHAVES_NUMERICAS.has(chave)) return v
-      descartados.push(`${caminho}: ${typeof v} sob chave fora do esquema`)
+      descartar(caminho, chave, `${typeof v} sob chave fora do esquema`)
       return undefined
     }
     if (typeof v === 'string') {
       if (COR.test(v)) return v
       // `fileUrl` só no TOPO da camada (é dela que o compositor lê a imagem); aninhado em style/metadata é descartado, não vira token.
-      if (chave === 'fileUrl') return ehCamada ? token(v, caminho) : (descartados.push(`${caminho}: fileUrl fora do topo da camada`), undefined)
-      if (CHAVES_DE_TEXTO.has(chave)) return camada ? copySintetica(papelDa(camada) ?? '') : (descartados.push(`${caminho}: texto fora de camada`), undefined)
-      if (chave === 'fontFamily') return identifica(v) ? (descartados.push(`${caminho}: fonte com o nome do cliente`), undefined) : v
-      if (chave === 'groupId') return grupos.get(v) ?? (grupos.set(v, `grupo-${grupos.size + 1}`), grupos.get(v)!)
+      if (chave === 'fileUrl') return ehCamada ? token(v, caminho) : (descartar(caminho, chave, 'fileUrl fora do topo da camada'), undefined)
+      if (CHAVES_DE_TEXTO.has(chave)) return camada ? copySintetica(papelDa(camada) ?? '') : (descartar(caminho, chave, 'texto fora de camada'), undefined)
+      if (chave === 'fontFamily') return identifica(v) ? (descartar(caminho, chave, 'fonte com o nome do cliente'), undefined) : v
+      if (CHAVES_DE_REFERENCIA.has(chave)) return grupos.get(v) ?? (grupos.set(v, `ref-${grupos.size + 1}`), grupos.get(v)!)
+      if (chave === 'pathData') return PATH_SVG.test(v) ? v : (descartar(caminho, chave, 'pathData fora da gramática SVG'), undefined)
       if (CHAVES_DE_ENUM.has(chave) && ENUM.test(v) && !identifica(v)) return v
-      descartados.push(`${caminho}: string sob chave fora do esquema`)
+      descartar(caminho, chave, 'string sob chave fora do esquema')
       return undefined
     }
     if (Array.isArray(v)) return v.map((x, i) => projetar(x, chave, `${caminho}[${i}]`, camada)).filter((x) => x !== undefined)
@@ -137,7 +154,7 @@ export function pseudonimizar(exp: ExportDoCliente, clienteId: string, arquivos:
         if (ehCamada && (k === 'id' || k === 'name' || k === 'fileUrl')) continue // tratados em projetarCamada
         // A CHAVE também é dado: `{ "Acme Corp": 12 }` levaria o nome; chave fora da forma ou com fragmento do nome cai com o valor.
         if (!CHAVE.test(k) || identifica(k)) {
-          descartados.push(`${caminho}.${k}: chave fora do esquema`)
+          descartar(`${caminho}.${k}`, k, 'chave fora do esquema')
           continue
         }
         // `fileUrl` só vira token no TOPO da camada (chave direta da entrada de layers[]).
@@ -146,7 +163,7 @@ export function pseudonimizar(exp: ExportDoCliente, clienteId: string, arquivos:
       }
       return saida
     }
-    descartados.push(`${caminho}: tipo não previsto`)
+    descartar(caminho, chave, 'tipo não previsto')
     return undefined
   }
   const projetarCamada = (o: Record<string, unknown>, caminho: string): Record<string, unknown> => {
@@ -180,6 +197,7 @@ export function pseudonimizar(exp: ExportDoCliente, clienteId: string, arquivos:
     arquivos: arquivosDaFixture,
     candidatasDoVeu: candidatasDoVeuDe(exp.projeto.assinatura),
   }
+  if (recusas.length > 0) throw new Error(`campo visual TIPADO descartado em ${nome} — complete o esquema antes de gerar: ${recusas.join('; ')}`)
   const sobras = conferirPseudonimo(fixture, nome)
   if (sobras.length > 0) throw new Error(`pseudonimização incompleta de ${nome}: ${sobras.join('; ')}`)
   return { fixture, descartados }
@@ -199,7 +217,7 @@ export function conferirPseudonimo(valor: unknown, nome: string): string[] {
       if (URL.test(v)) sobras.push(`${caminho}: URL`)
       if (temFragmento(v, fragmentos)) sobras.push(`${caminho}: nome do cliente`)
       if (CHAVES_EXTERNAS.test(chave) && !v.startsWith('fixture:')) sobras.push(`${caminho}: identificador externo`)
-      const conhecida = COR.test(v) || v.startsWith('fixture:') || CHAVES_DE_TEXTO.has(chave) || chave === 'fontFamily' || chave === 'name' || chave === 'id' || chave === 'groupId' || chave === 'clienteId' || chave === 'tags' || (CHAVES_DE_ENUM.has(chave) && ENUM.test(v))
+      const conhecida = COR.test(v) || v.startsWith('fixture:') || CHAVES_DE_TEXTO.has(chave) || chave === 'fontFamily' || chave === 'name' || chave === 'id' || CHAVES_DE_REFERENCIA.has(chave) || chave === 'clienteId' || chave === 'tags' || (chave === 'pathData' && PATH_SVG.test(v)) || (CHAVES_DE_ENUM.has(chave) && ENUM.test(v))
       if (!conhecida) sobras.push(`${caminho}: texto sob chave não prevista`)
       return
     }

@@ -18,7 +18,8 @@ const EXEMPLO = 'https://blob.test/exemplo.jpg'
 const camadas = [
   { id: '3afceabf-5c85', name: 'Logo - Ativo 2 Bistrô Maré.png', type: 'logo', fileUrl: LOGO, position: { x: 1, y: 2 }, size: { width: 3, height: 4 }, style: { objectFit: 'cover', border: { color: '#000000', width: 2 } }, metadata: { driveFileId: '1AbCdEfGhIjKlMnOpQrStUvWxYz0123', externalId: 'acme', groupId: 'grupo-292f' } },
   { id: 'headline', name: 'headline', type: 'text', content: 'Bistrô Maré: feijoada de sábado', position: { x: 0, y: 0 }, size: { width: 1, height: 1 }, style: { fontFamily: 'Branley GC', textAlign: 'left', color: '#283D36', fontWeight: '400' }, effects: { shadow: { shadowColor: '#283D36', blur: 4 }, background: { fit: 'texto', baseColor: '#111111' }, blur: { enabled: true, blurRadius: 6 }, curved: { enabled: false, curvature: 12 } }, textboxConfig: { anchor: 'top', autoWrap: { breakMode: 'word' }, textMode: 'auto-wrap-fixed' }, metadata: { groupId: 'grupo-292f', nota: 'ligar pro Zé 99999-1234', layers: [{ type: 'image', position: { x: 0, y: 0 }, fileUrl: LOGO }] } },
-  { id: 'b6b72c00', name: 'Imagem - Delivery-cmt05362.jpg', type: 'image', fileUrl: EXEMPLO, position: { x: 0, y: 0 }, size: { width: 1, height: 1 }, style: { objectFit: 'cover', backgroundImage: 'https://blob.test/bg.jpg', fileUrl: LOGO, preview: { type: 'image', position: { x: 0, y: 0 }, fileUrl: LOGO } }, 'Bistrô Maré': 7, 'chave com espaço': 1, telefone: 5511999999999 },
+  { id: 'b6b72c00', name: 'Imagem - Delivery-cmt05362.jpg', type: 'image', fileUrl: EXEMPLO, position: { x: 0, y: 0 }, size: { width: 1, height: 1 }, style: { objectFit: 'cover', cropPosition: 'center-bottom', backgroundImage: 'https://blob.test/bg.jpg', fileUrl: LOGO, preview: { type: 'image', position: { x: 0, y: 0 }, fileUrl: LOGO } }, 'Bistrô Maré': 7, 'chave com espaço': 1, telefone: 5511999999999 },
+  { id: 'veu', name: 'veu', type: 'shape', position: { x: 0, y: 0 }, size: { width: 1080, height: 400 }, style: { shapeType: 'svg-path', pathData: 'M0 0 L1080 0 L1080 400 Z', pathViewBox: [0, 0, 1080, 400], fill: '#000000' } },
 ]
 const exp = {
   projeto: { id: 42, name: 'Bistrô Maré', assinatura: { fundo: '#112233', referencia: 'https://blob.test/ref.png', geometria: { story: { margemH: 96 } }, destaque: { fill: '#EA5328', pesado: true }, 'Bistrô Maré': 12, mare: { x: 1 } } },
@@ -37,17 +38,20 @@ describe('pseudonimizar (projeção por esquema)', () => {
     expect(p.name).toBe('Assinatura — cliente-01 — story')
     expect(p.tags).toEqual(['assinatura', 'story']) // 'bistro' (fragmento do nome) e 'promo' (fora das conhecidas) caem
     const [logo, head, img] = p.layers as Array<Record<string, unknown>>
-    expect(logo).toEqual({ type: 'logo', fileUrl: 'fixture:logo-0', position: { x: 1, y: 2 }, size: { width: 3, height: 4 }, style: { objectFit: 'cover', border: { color: '#000000', width: 2 } }, metadata: { groupId: 'grupo-1' }, id: 'logo', name: 'logo' })
+    expect(logo).toEqual({ type: 'logo', fileUrl: 'fixture:logo-0', position: { x: 1, y: 2 }, size: { width: 3, height: 4 }, style: { objectFit: 'cover', border: { color: '#000000', width: 2 } }, metadata: { groupId: 'ref-1' }, id: 'logo', name: 'logo' })
     expect(head.content).toBe('Almoço do dia')
     expect(head.id).toBe('headline')
     expect(head.style).toEqual({ fontFamily: 'Branley GC', textAlign: 'left', color: '#283D36', fontWeight: '400' })
     expect(head.effects).toEqual({ shadow: { shadowColor: '#283D36', blur: 4 }, background: { fit: 'texto', baseColor: '#111111' }, blur: { enabled: true, blurRadius: 6 }, curved: { enabled: false, curvature: 12 } }) // efeitos numéricos do tipo Layer preservados
     expect(head.textboxConfig).toEqual({ anchor: 'top', autoWrap: { breakMode: 'word' }, textMode: 'auto-wrap-fixed' })
-    expect(head.metadata).toEqual({ groupId: 'grupo-1', layers: [{ type: 'image', position: { x: 0, y: 0 } }] }) // `metadata.layers` aninhado NÃO é camada: o fileUrl dele cai
+    expect(head.metadata).toEqual({ groupId: 'ref-1', layers: [{ type: 'image', position: { x: 0, y: 0 } }] }) // `metadata.layers` aninhado NÃO é camada: o fileUrl dele cai
     expect(img.id).toBe('camada-3')
     expect(img.name).toBe('image-3')
     expect(img.fileUrl).toBe('fixture:arquivo-1')
-    expect(img.style).toEqual({ objectFit: 'cover', preview: { type: 'image', position: { x: 0, y: 0 } } }) // backgroundImage e os fileUrl ANINHADOS (direto e no objeto-que-parece-camada) descartados
+    expect(img.style).toEqual({ objectFit: 'cover', cropPosition: 'center-bottom', preview: { type: 'image', position: { x: 0, y: 0 } } }) // backgroundImage e os fileUrl ANINHADOS (direto e no objeto-que-parece-camada) descartados; cropPosition fica
+    const veu = (p.layers as Array<Record<string, unknown>>)[3]
+    expect(veu.style).toEqual({ shapeType: 'svg-path', pathData: 'M0 0 L1080 0 L1080 400 Z', pathViewBox: [0, 0, 1080, 400], fill: '#000000' }) // o vetor da assinatura sobrevive inteiro
+    expect(veu.id).toBe('veu')
     expect(Object.keys(img)).not.toContain('telefone')
     expect(Object.keys(img)).not.toContain('Bistrô Maré')
     expect(f.arquivos).toEqual({ 'fixture:logo-0': PNG_LIMPO, 'fixture:arquivo-1': PNG_LIMPO })
@@ -89,6 +93,12 @@ describe('pseudonimizar (projeção por esquema)', () => {
     expect((fixture.paginas[0].layers as Array<Record<string, unknown>>)[0].style).toEqual({ color: '#fff' })
     expect(descartados).toEqual(expect.arrayContaining(['paginas[0].layers[0].style.fontFamily: fonte com o nome do cliente', 'numerosDoProjeto.jo_li: chave fora do esquema', 'numerosDoProjeto.joli: chave fora do esquema']))
     expect(conferirPseudonimo({ a: 'jo-li', jo_li: 1 }, 'Jo Li')).toEqual(['fixture.a: nome do cliente', 'fixture.a: texto sob chave não prevista', 'fixture.jo_li: chave identifica ou fora da forma'])
+  })
+  it('campo visual TIPADO do Layer que o esquema não sabe projetar RECUSA a geração (a assinatura mudaria em silêncio)', () => {
+    const cropRuim = { ...exp, paginas: [{ ...exp.paginas[0], layers: JSON.stringify([{ id: 'x', type: 'image', fileUrl: EXEMPLO, position: { x: 0, y: 0 }, size: { width: 1, height: 1 }, style: { cropPosition: 'https://x' } }]) }] }
+    expect(() => pseudonimizar(cropRuim, 'cliente-01', arquivos)).toThrow(/campo visual TIPADO descartado.*style\.cropPosition/)
+    const pathRuim = { ...exp, paginas: [{ ...exp.paginas[0], layers: JSON.stringify([{ id: 'x', type: 'shape', position: { x: 0, y: 0 }, size: { width: 1, height: 1 }, style: { pathData: 'M0 0 bistro' } }]) }] }
+    expect(() => pseudonimizar(pathRuim, 'cliente-01', arquivos)).toThrow(/pathData fora da gramática SVG/)
   })
   it('fileUrl sem bytes no export é ERRO (a fixture nunca sai incompleta)', () => {
     expect(() => pseudonimizar(exp, 'cliente-01', { [LOGO]: PNG_LIMPO })).toThrow(/layers\[2\]\.fileUrl: a camada aponta para um arquivo que o export não trouxe/)

@@ -1185,7 +1185,9 @@ das conhecidas (assinatura, story, feed, quadrado, clara, escura, modelo, conteu
 CHAVE também é dado (`{ "Acme Corp": 12 }` cai com o valor; chave fora da forma de identificador idem) — nenhum FRAGMENTO
 do nome do cliente (o nome inteiro normalizado, mesmo curto como "Zé", e cada palavra com 3+ letras) sobrevive em string
 nem em chave; só a entrada de `layers[]` é camada (um objeto aninhado com `type`+`position` não ganha token); a conferência final recusa URL, fragmento do nome, identificador externo, texto sob chave não prevista, chave
-que identifica e PNG com metadado. Cada `cliente-NN` entra no piloto com os PRÓPRIOS ativos
+que identifica e PNG com metadado. Descartar um campo TIPADO do `Layer` fora do descarte previsto (nome, arquivo, ids de
+linha, datas, metadata) RECUSA a geração: a assinatura mudaria em silêncio (`cropPosition`, `pathViewBox`, `pathData` na
+gramática SVG, `blurRadius`… sobrevivem; referências `groupId`/`layerId`/`parentId` são renumeradas). Cada `cliente-NN` entra no piloto com os PRÓPRIOS ativos
 (`suporte/fixtures-de-clientes.ts`, testado), não com os da fixture de 13/10.
 
 **Como o piloto julga**: matriz regra → juiz (`suporte/oraculos-do-piloto.ts`). `texto-sobre-assunto` é a única regra
@@ -1219,8 +1221,10 @@ achou:
   anonimização × fidelidade é decisão do owner, não do piloto.
 - **Caso B (assunto só estimado) bloqueia tudo**: 6 peças A1/A2 sem catálogo, todas `NAO_COMPROVADA`, todas aprovadas pela
   verdade (o texto não tocava o assunto). IoU estimado × verdade 0,30. É o custo da política `estimado: 'humano'`: 100 % de
-  revisão humana em foto sem catálogo. Modo G (leitura da foto falha depois de composta, caso D): 6 de 6 leituras válidas,
-  as 6 recusadas pelo gate — a falha não vira APTO. **Oclusão injetada** (decisão 2, § 4.3): numa peça APTA sem foto ou de foto
+  revisão humana em foto sem catálogo. Modo G (leitura da foto falha depois de composta, caso D; em peças A1 E em peças B, que a principal aprovaria): toda leitura
+  válida é recusada pelo REVISOR e pelo PRODUTOR — o `agendar-leva` é chamado com o item DESLIGADO e sem DRAFT na página (o do
+  fluxo principal é apagado do banco falso), responde `REVISAO_HUMANA_NECESSARIA` por `texto-sobre-assunto` e não cria post;
+  um `reaproveitado` não conta como recusa. **Oclusão injetada** (decisão 2, § 4.3): numa peça APTA sem foto ou de foto
   difusa, uma shape opaca sobre metade da headline → 100 % recusadas pelo gate (`oclusao:NAO_MEDIDO`, transformação não
   suportada acima de texto é fail-closed); peças produzidas com camada não-texto acima de texto: 0.
 - 🔴 **A assinatura da fixture de 13/10 não passa no piso de interface em NENHUMA peça**: 18 de 18 compostas com

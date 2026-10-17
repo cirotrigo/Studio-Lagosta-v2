@@ -36,7 +36,7 @@ export interface RegistroDaPeca {
   /** Decisão 1: a leitura pareada (fotos A1/A2). */
   assunto?: { estimado: Rect | null; catalogo: Rect | null; verdade: Rect | null; origemNaPeca: 'estimado' | 'catalogo' | 'nenhum' | null }
   /** Modo G: a falha injetada depois da composição. */
-  modoG?: { fetchFalhou: boolean; motivoSemAssunto: boolean; gateRecusou: boolean; valido: boolean }
+  modoG?: { fetchFalhou: boolean; motivoSemAssunto: boolean; gateRecusou: boolean; valido: boolean; /** O que o PRODUTOR (`agendar-leva`) respondeu com o item desligado e sem DRAFT na página. */ produtor?: { codigo: string; postsDaPagina: number; motivos: string[] } }
   /** Foto REAL da fixture: caixas de texto/logo da peça final FORA das janelas fiéis (contrato § 1.2: medida fora delas é "não medida", nunca contada). */
   fidelidade?: { fora: string[] }
   /** Decisão 2, cenário INJETADO: uma shape acima da headline — o gate tem de não dar APTO. */
@@ -325,7 +325,7 @@ export function paraMarkdown(resumo: Resumo, meta: { data: string; head: string;
   L.push('')
   L.push(`## 9. Decisão 2 — peças com camada não-texto acima de texto (produzidas): ${resumo.decisao2.pecasComCamadaAcimaDeTexto}; \`oclusao\` não comprovada no gate: ${resumo.decisao2.oclusaoNaoComprovada}`)
   L.push(`Cenário INJETADO (shape acima da headline em peça APTA): ${resumo.decisao2.injecoes} injeções, ${resumo.decisao2.injecoesRecusadas} recusadas pelo gate${Object.keys(resumo.decisao2.motivosDasInjecoes).length ? ` — motivos: ${Object.entries(resumo.decisao2.motivosDasInjecoes).map(([m, n]) => `${m} ${n}`).join(', ')}` : ''}.`)
-  L.push(`Modo G (falha de leitura injetada): ${resumo.modoG.leituras} leituras, ${resumo.modoG.validas} válidas (${resumo.modoG.recusadas} recusadas pelo gate), ${resumo.modoG.invalidas} inválidas (cache usado).`)
+  L.push(`Modo G (falha de leitura injetada): ${resumo.modoG.leituras} leituras, ${resumo.modoG.validas} válidas (${resumo.modoG.recusadas} recusadas pelo REVISOR e pelo PRODUTOR — item desligado, sem DRAFT na página, resposta REVISAO_HUMANA_NECESSARIA por texto-sobre-assunto e nenhum post criado), ${resumo.modoG.invalidas} inválidas (cache usado).`)
   L.push('')
   L.push('## 10. O que NÃO está coberto por juiz (inspeção humana nos PNGs amostrados)')
   for (const n of resumo.naoCoberto) L.push(`- ${n.regra} — ${n.estado}: ${n.limite}`)
