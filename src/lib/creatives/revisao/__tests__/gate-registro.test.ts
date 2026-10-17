@@ -8,6 +8,7 @@ import type { Layer } from '@/types/template'
 import { revisaoDaPaginaComCamadas } from '@/lib/copy-autoral/revisar-pagina'
 import { VERSAO_DAS_REGRAS } from '../contrato'
 import { CONFERENCIAS_DO_GATE, POLITICA_DO_ASSUNTO_RECOMENDADA, REGRAS_CRITICAS, VERSAO_DO_GATE, gateDaMedida, type EntradaDoGate } from '../gate'
+import { POLITICA_DO_ASSUNTO_DO_GATE } from '@/lib/lotes/agendamento'
 import {
   NAO_CONFERIDO_PELA_IDENTIDADE,
   ORIGENS_DO_GATE,
@@ -28,7 +29,7 @@ import { AGORA, PAGINA_LIMPA, VINCULO, camadasDaPaginaLimpa, decidirOk, entradaD
 
 const atual = (extra: Partial<IdentidadeAtual> = {}): IdentidadeAtual => {
   const id = identidadeDaPagina(PAGINA_LIMPA)
-  return { projectId: 8, generationId: 'gen-1', pageId: 'pg-1', formato: id.formato, formatoDoCompositor: id.formatoDoCompositor, pageVersion: id.pageVersion, copyVersion: id.copyVersion, rulesVersion: VERSAO_DAS_REGRAS, versaoDoGate: VERSAO_DO_GATE, politica: POLITICA_DO_ASSUNTO_RECOMENDADA, ...extra }
+  return { projectId: 8, generationId: 'gen-1', pageId: 'pg-1', formato: id.formato, formatoDoCompositor: id.formatoDoCompositor, pageVersion: id.pageVersion, copyVersion: id.copyVersion, rulesVersion: VERSAO_DAS_REGRAS, versaoDoGate: VERSAO_DO_GATE, politica: POLITICA_DO_ASSUNTO_DO_GATE, ...extra }
 }
 
 describe('H3b — decidirEMontarRegistro: o vínculo antes da decisão', () => {
@@ -45,7 +46,7 @@ describe('H3b — decidirEMontarRegistro: o vínculo antes da decisão', () => {
     expect(r.registro.medidoEm).toBe('2026-10-16T03:00:00.000Z')
     expect(r.registro.origem).toBe('piloto')
     expect(r.registro.principal).toEqual({ tipo: 'oauth', id: 'cliente-x' })
-    expect(r.registro.politica).toEqual(POLITICA_DO_ASSUNTO_RECOMENDADA)
+    expect(r.registro.politica).toEqual(POLITICA_DO_ASSUNTO_DO_GATE)
     expect(foiSeladoPorDecidir(r.registro)).toBe(true)
     expect(congeladoEmProfundidade(r.registro)).toBe(true)
     expect(() => {
@@ -147,10 +148,15 @@ describe('H4/H5/H6 — validadeDoGate é fail-closed e nunca diz "vigente"', () 
       [{ rulesVersion: 'revisao-v2' }, 'rulesVersion'],
       [{ versaoDoGate: 'gate-v2' }, 'versaoDoGate'],
       [{ politica: { estimado: 'comprova', semAssuntoLocalizavel: 'nao-se-aplica' } }, 'politica'],
-      [{ politica: { estimado: 'humano', semAssuntoLocalizavel: 'humano' } }, 'politica'],
+      [{ politica: { estimado: 'humano', semAssuntoLocalizavel: 'nao-se-aplica' } }, 'politica'], // a PROPOSTA antiga do CP5a: registro gravado com ela vira historico
     ]
     for (const [mudanca, divergencia] of casos) expect(validadeDoGate(r, atual(mudanca)), JSON.stringify(mudanca)).toEqual({ estado: 'historico', divergencias: [divergencia] })
     expect(validadeDoGate(r, atual({ generationId: 'gen-2', rulesVersion: 'revisao-v2' }))).toEqual({ estado: 'historico', divergencias: ['vinculo', 'rulesVersion'] })
+    // O sentido que importa em produção (17/10/2026): registro GRAVADO com a política ANTIGA (a proposta do CP5a) lido pelo
+    // leitor com a política EFETIVA → historico por `politica`, e só por ela.
+    const antigo = decidirOk(PAGINA_LIMPA, { entrada: { ...entradaDa(PAGINA_LIMPA), politicaDoAssunto: POLITICA_DO_ASSUNTO_RECOMENDADA } }).registro
+    expect(antigo.politica).toEqual(POLITICA_DO_ASSUNTO_RECOMENDADA)
+    expect(validadeDoGate(antigo, atual())).toEqual({ estado: 'historico', divergencias: ['politica'] })
   })
 
   it('H5 pelas páginas: renomear 1080×1920 para "feed" muda só o formato do revisor; trocar só as tags de uma 1080×1350 muda só o do compositor; o mesmo conteúdo noutra Generation → vinculo', () => {

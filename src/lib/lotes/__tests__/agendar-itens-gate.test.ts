@@ -47,6 +47,8 @@ const banco = vi.hoisted(() => ({
 }))
 const medicao = vi.hoisted(() => ({
   modo: 'limpa' as 'limpa' | 'reprovada' | 'real' | 'outra-pagina' | 'lenta',
+  /** Página COM foto de fundo nos modos simulados: assunto de CATÁLOGO (coerente, APTO) ou foto LIDA sem assunto localizável (caso C). */
+  assunto: 'catalogo' as 'catalogo' | 'nenhum',
   /** Modos consumidos em ordem, uma chamada cada (vazia = `modo`). */
   fila: [] as Array<'limpa' | 'reprovada'>,
   chamadas: [] as Array<{ naTransacao: boolean; camadas: unknown[]; composicaoReaproveitavel: boolean | undefined; generationDaPeca: string | null | undefined; nomeDaPagina: string }>,
@@ -352,6 +354,14 @@ vi.mock('@/lib/creatives/revisao/revisar-arte', async (importOriginal) => {
   const { formatoDaPaginaGravada } = await import('@/lib/compositor/formato')
   type Camada = { id: string; type: string; visible?: boolean }
   const SEM_FUNDO = { assunto: null, assuntoNaoSeAplica: true as const, motivoSemAssunto: 'a peça não tem foto de fundo: não há assunto a proteger' }
+  // Página COM foto de fundo (cenarioReal): o contexto diz um assunto de CATÁLOGO numa região sem texto — coerente com a página
+  // (o gate vê a `bg-foto`; dizer "sem foto" aqui é entrada contraditória e, com o caso C em 'humano', iria ao humano).
+  // O retângulo fica entre o apoio (y 560) e o serviço (y 1500): nenhuma caixa de texto o cruza.
+  const COM_CATALOGO = { assunto: { rect: { x: 0, y: 900, width: 1080, height: 500 }, origem: 'catalogo' as const } }
+  // Caso C: a foto foi LIDA e não tem assunto localizável — a política efetiva (owner, 17/10/2026) manda ao humano.
+  const FOTO_SEM_ASSUNTO = { assunto: null, assuntoNaoSeAplica: true as const, motivoSemAssunto: 'a foto foi lida e não tem assunto localizável (mapa de calma sem região forte): nada a proteger' }
+  const temFotoDeFundo = (camadas: Camada[]) => camadas.some((l) => l.visible !== false && (l.id === 'bg-foto' || l.type === 'image'))
+  const assuntoDa = (camadas: Camada[]) => (temFotoDeFundo(camadas) ? (medicao.assunto === 'nenhum' ? FOTO_SEM_ASSUNTO : COM_CATALOGO) : SEM_FUNDO)
   return {
     ...real,
     contextoDaMedicao: async (args: Parameters<typeof real.contextoDaMedicao>[0]) => {
@@ -371,7 +381,7 @@ vi.mock('@/lib/creatives/revisao/revisar-arte', async (importOriginal) => {
         faixa: [0.45, 0.9] as [number, number],
         referencias: { headline: { fontSize1080: 84, entrelinha: null, origem: 'assinatura' } },
         referencia: 'assinatura',
-        ...SEM_FUNDO,
+        ...assuntoDa(args.camadas as Camada[]),
         origensDaLogo: new Map(),
         cacheDeLogos: new Map(),
         cliente: args.cliente,
@@ -394,7 +404,7 @@ vi.mock('@/lib/creatives/revisao/revisar-arte', async (importOriginal) => {
         metricas: textos.map((l) => metrica(l as never)),
         referencias: ctx.referencias as never,
         leituraDaLogo: logos.map((l) => leitura(l.id, medidaDaLogo())),
-        ...SEM_FUNDO,
+        ...assuntoDa(base as Camada[]),
         ...(modo === 'reprovada' ? { geometria: [{ tipo: 'colisao', camadas: ['headline', 'apoio'], layerIds: ['headline', 'apoio'], px: 60, detalhe: 'sobrepõem' } as never] } : {}),
       })
     },
@@ -1070,6 +1080,26 @@ describe('C21 — rede presa em cada caminho: o prazo da medição cobre a cadei
       expect(Date.now() - t0).toBeLessThan(5_000)
     }, 60_000)
   }
+  it('caso C da política do assunto (owner, 17/10/2026): foto LIDA sem assunto localizável → REVISAO_HUMANA_NECESSARIA por texto-sobre-assunto NAO_COMPROVADA, nenhum DRAFT; com assunto de catálogo a mesma página cria; sem foto de fundo (caso E) cria', async () => {
+    const i1 = await cenarioReal()
+    medicao.modo = 'limpa'
+    medicao.assunto = 'nenhum'
+    const r = (await agendar([i1])).itens[0]
+    expect(r).toMatchObject({ situacao: 'falhou', codigo: 'REVISAO_HUMANA_NECESSARIA', revisao: { tipo: 'medida', resultado: 'REVISAO_HUMANA_NECESSARIA' } })
+    expect((r as { motivos?: Array<{ regra: string; codigo: string }> }).motivos).toEqual([expect.objectContaining({ regra: 'texto-sobre-assunto', codigo: 'NAO_COMPROVADA' })])
+    expect(posts()).toEqual([])
+    // A mesma página com assunto de CATÁLOGO numa região sem texto: APTO → DRAFT.
+    medicao.assunto = 'catalogo'
+    expect((await agendar([i1])).itens[0]).toMatchObject({ desfecho: 'criado' })
+    expect(posts()).toHaveLength(1)
+    // Caso E (sem foto de fundo) não depende da política: cria.
+    medicao.assunto = 'nenhum'
+    pagina('p2', { layers: camadasLimpas() })
+    peca('g2', 'p2', { quando: '2026-10-22 10:00' }) // outro horário: o DRAFT de i1 já ocupa o padrão
+    expect((await agendar([item('i2', 'g2')])).itens[0]).toMatchObject({ desfecho: 'criado' })
+    medicao.assunto = 'catalogo'
+  })
+
 
   /**
    * C18 (sintético). LIMITE DITO: o contrato fala em "benchmark sintético do CP3"; não existe um harness com esse nome no

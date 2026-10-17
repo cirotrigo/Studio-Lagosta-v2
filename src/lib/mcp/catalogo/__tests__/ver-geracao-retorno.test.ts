@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { AVISO_DO_GATE, avisosDoCompositor, copyDaArte, falhaDaGeracao, montarRetornoDaPagina, type PaginaDaGeracao } from '../ver-geracao-retorno'
-import { POLITICA_DO_ASSUNTO_RECOMENDADA } from '@/lib/creatives/revisao/gate'
+import { POLITICA_DO_ASSUNTO_DO_GATE } from '@/lib/lotes/agendamento'
 import { NAO_CONFERIDO_PELA_IDENTIDADE } from '@/lib/creatives/revisao/gate-registro'
 import { AGORA, PAGINA_LIMPA, VINCULO, camadasDaPaginaLimpa, decidirOk, entradaDa } from '@/lib/creatives/revisao/__tests__/suporte/pagina-limpa'
 import { decidirEMontarRegistro } from '@/lib/creatives/revisao/gate-registro'
@@ -106,7 +106,7 @@ describe('CP5b — H11: o bloco `gate` de ver-geracao é auditoria rotulada, nun
 
   it('registro coincidente: resultado, versões, política gravada e comparada, naoConferido e o aviso fixo; o resto do retorno é o de sempre', () => {
     const r = retorno({ gateDaArte: registro() }, paginaCompleta)
-    expect(r.gate).toMatchObject({ validade: 'coincidente', resultado: 'APTO', rulesVersion: 'revisao-v1', versaoDoGate: 'gate-v1', medidoEm: '2026-10-16T03:00:00.000Z', origem: 'piloto', politica: POLITICA_DO_ASSUNTO_RECOMENDADA, politicaComparada: POLITICA_DO_ASSUNTO_RECOMENDADA, naoConferido: NAO_CONFERIDO_PELA_IDENTIDADE, motivos: [], aviso: AVISO_DO_GATE })
+    expect(r.gate).toMatchObject({ validade: 'coincidente', resultado: 'APTO', rulesVersion: 'revisao-v1', versaoDoGate: 'gate-v1', medidoEm: '2026-10-16T03:00:00.000Z', origem: 'piloto', politica: POLITICA_DO_ASSUNTO_DO_GATE, politicaComparada: POLITICA_DO_ASSUNTO_DO_GATE, naoConferido: NAO_CONFERIDO_PELA_IDENTIDADE, motivos: [], aviso: AVISO_DO_GATE })
     expect(r.gate && 'divergencias' in r.gate).toBe(false)
     expect(AVISO_DO_GATE).toMatch(/não é o veredito atual/)
     expect(r.pageId).toBe('pg-1')
