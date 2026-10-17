@@ -121,3 +121,6 @@ design-canvas/**/*.html
 
 # saída local do gerador de motions (os .webm vão para o Drive)
 scripts/motions/saida/
+
+# Saída local para o owner (relatórios, PNGs do piloto sintético, tabelas de pseudonimização): nunca versionada
+human-output/

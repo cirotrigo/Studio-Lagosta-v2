@@ -24,9 +24,10 @@ export const COPIES: Record<CopyDoLote, Array<{ papel: 'pre' | 'headline' | 'apo
     { papel: 'apoio', linhas: ['Entrada, prato e café'] },
     { papel: 'servico', linhas: ['Reserve pelo direct'] },
   ],
+  // Longa dentro do teto dos arquétipos (apoio e serviço ≤ 2 linhas): o excesso de linhas é recusa estrutural do T1a, não um caso do lote.
   longa: [
     { papel: 'headline', linhas: ['Almoço executivo', 'de sexta'] },
-    { papel: 'apoio', linhas: ['Entrada da casa', 'prato do chef', 'e café coado'] },
+    { papel: 'apoio', linhas: ['Entrada da casa, prato', 'do chef e café coado'] },
     { papel: 'servico', linhas: ['Seg a sex, 11h30 às 15h', 'Reserve pelo direct'] },
   ],
 }
@@ -133,6 +134,17 @@ export function specsDoLote(entrada: { clientes: ClienteDoLote[]; amostra: numbe
             amostra.push(e)
             faltam--
           }
+        }
+      }
+    }
+    // Decisão 1 e modo G (§ 4.2) precisam de peças SEM arquétipo com foto de assunto (A1/A2): a cobertura por eixo não garante o PAR.
+    for (const foto of ENTRADAS_DE_FOTO.filter((f) => f.temAssunto)) {
+      let faltam = minimo - amostra.filter((e) => e.foto === foto.id && e.arquetipo === 'sem').length
+      for (const e of elegiveis) {
+        if (faltam <= 0) break
+        if (e.foto === foto.id && e.arquetipo === 'sem' && !amostra.includes(e)) {
+          amostra.push(e)
+          faltam--
         }
       }
     }
