@@ -37,7 +37,7 @@ este mesmo arquivo** (o `CLAUDE.md` é só um `@AGENTS.md`, o import do Claude C
 | `docs/regras/canvas-de-design.md` | arte em HTML pelo /design e o halo do canvas |
 | `docs/regras/melhoria.md` | melhoria na carteira (F0–F6), regras da casa preservadoras, logo composta, sem contraste acrescentado, régua sem a logo, rodada de revisão do Espeto |
 | `docs/regras/compositor.md` | assinatura, variantes, pastas da semana, recomposição de slide, gradiente de leitura e destaque, combinações de texto, modelos da marca na usina |
-| `docs/regras/revisor-da-arte.md` | revisar-arte e ajustar-arte por medida e visão, recuperação forçada, versão visual, merge no banco de fieldValues |
+| `docs/regras/revisor-da-arte.md` | revisar-arte e ajustar-arte por medida e visão, recuperação forçada, versão visual, merge no banco de fieldValues, gate de autonomia (CP5b–e), piloto sintético |
 | `docs/regras/copy-autoral.md` | contrato (PR 2), persistência (PR 3), compositor fiel (PR 4), medir-copy (PR 8), vias que consomem o contrato (PR 5), camada extra (PRs 9 e 10) |
 | `docs/regras/lotes.md` | compor-leva idempotente (PR 11) e agendar-leva até os rascunhos (PR 12) |
 | `docs/regras/dot-lagosta-operacao.md` | Constituição operacional do Dot Lagosta: missão, estados da auditoria (coberto/pendente/vazio), autonomia até rascunho, gate humano, idempotência da leva, relatório; o manual canônico é `src/lib/mcp/operacao-dot.ts` |

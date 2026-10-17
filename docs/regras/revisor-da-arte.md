@@ -1156,3 +1156,109 @@ Contrato: `docs/PLANO-2026-10-17-CP5E-CONTRATO.md` (Codex APTO na rodada 5). O q
   aprovado intocável e `agendar-leva` reaproveita; E7 conferência de fontes falha → não comprovada → humano; E7b fonte
   ausente → crítico → humano; E8 nenhum efeito pós-commit em caso algum; E10 página editada → `historico` nos dois leitores.
   **Não prova**: travas/SQL reais, Blob, autorização MCP, comportamento do chat, custo/repetibilidade (§ 4.8).
+
+## Piloto sintético de autonomia (17/10/2026)
+
+Contrato: `docs/PLANO-2026-10-17-PILOTO-SINTETICO-CONTRATO.md` (Codex APTO R4). Runner:
+`src/lib/direcao-de-arte/__tests__/piloto-sintetico.test.ts`, desligado por padrão
+(`describe.skipIf(!process.env.PILOTO_SINTETICO)`); roda por `npm run piloto:sintetico [--completo | --calibracao N |
+--cliente <id> | --sem-repeticao | --so <trecho-da-chave>]` (qualquer filtro = rodada EXPLORATÓRIA). Tudo em banco falso com travas (`suporte/banco-com-travas.ts`), Blob falso e efeitos
+espionados: **nenhum cliente real, DRAFT real, agenda, mensagem ou banco de produção** — o `agendar-leva` do piloto cria
+DRAFTs no banco falso. O relatório integral (JSON + PNGs) vai para `human-output/relatorios/piloto-sintetico/<data>-<rodada>/`
+(fora do versionamento, `.gitignore`); o **resumo** de cada rodada oficial é versionado em `docs/piloto-sintetico/`.
+
+**O que o lote é** (§ 1 do contrato): lote CONTROLADO, não representativo. Fotos sintéticas com verdade conhecida (A1 assunto
+forte, A2 assunto de contraste baixo, B difusa, C clara, D escura, E gradiente, F ruído), a foto real anonimizada da fixture
+de 13/10 (a verdade dela é a REGIÃO PROTEGIDA da vitrine, do catálogo — não "o assunto"), e sem-foto; copies curta / média
+(com pré-título) / longa; os dois arquétipos do T1a e a via sem arquétipo; dois clientes: `cliente-00` (assinatura sintética
+limpa, logo sintética toda branca) e `cliente-fixture` (a assinatura anonimizada de 13/10). Fixtures de clientes reais
+pseudonimizados **não existem ainda**: os scripts estão escritos e **não foram executados** — a lista é a decisão 5.2 do
+owner (`fixtures/piloto-sintetico/LEIAME.md`). O exportador (`scripts/fixtures/exportar-piloto-sintetico.ts`) conecta SÓ pelo
+`.env.development.local`, lê o `.env` SÓ para a identidade da produção e é **fail-closed** (`guarda-do-exportador.ts`,
+testada: produção pooled, direta, em maiúsculas e referência ausente → recusa), tudo numa transação `READ ONLY`, e baixa as
+logos para a pasta do export; o gerador (`gerar-fixtures-do-piloto-sintetico.ts`) é offline, re-codifica cada PNG com o sharp (sem metadado) e
+pseudonimiza por PROJEÇÃO DE ESQUEMA (`pseudonimizar.ts`, testado): só sobrevive o que o esquema conhece — números,
+booleanos, cores, enums sob chaves de enum, nomes de fonte; `content` vira copy sintética pelo papel, `name`/`id` viram o papel
+ou `camada-N`, `groupId` vira `grupo-N`, `fileUrl` vira token SÓ no topo da camada e EXIGE os bytes (aninhado é descartado); `tags` só
+das conhecidas (assinatura, story, feed, quadrado, clara, escura, modelo, conteudo); toda string sob chave fora do esquema
+é DESCARTADA e listada (`descartados`), número e booleano só sob chave numérica PREVISTA (`telefone: 55119…` cai), e a
+CHAVE também é dado (`{ "Acme Corp": 12 }` cai com o valor; chave fora da forma de identificador idem) — nenhum FRAGMENTO
+do nome do cliente (o nome inteiro normalizado, mesmo curto como "Zé", e cada palavra com 3+ letras) sobrevive em string
+nem em chave; só a entrada de `layers[]` é camada (um objeto aninhado com `type`+`position` não ganha token); a conferência final recusa URL, fragmento do nome, identificador externo, texto sob chave não prevista, chave
+que identifica e PNG com metadado. Descartar um campo TIPADO do `Layer` fora do descarte previsto (nome, arquivo, ids de
+linha, datas, metadata) RECUSA a geração: a assinatura mudaria em silêncio (`cropPosition`, `pathViewBox`, `pathData` e `mask.path` na
+gramática SVG, `mask.shapeId`, `blurRadius`… sobrevivem — as chaves do tipo incluem as dos tipos inline; referências `groupId`/`layerId`/`parentId` são renumeradas). Cada `cliente-NN` entra no piloto com os PRÓPRIOS ativos
+(`suporte/fixtures-de-clientes.ts`, testado), não com os da fixture de 13/10.
+
+**Como o piloto julga**: matriz regra → juiz (`suporte/oraculos-do-piloto.ts`). `texto-sobre-assunto` é a única regra
+COBERTA (juiz = a verdade da foto); piso, logo, contraste e tratamento são cobertas-PARCIAIS por juízes independentes
+(`foraDoPiso`, luminância do p10 sob a logo, luminância sob o texto); colisão, tinta fora da caixa e texto cortado são
+"mesma medida" (repetir `checkTextGeometry` não é juiz); texto-pequeno, copy-completa, identidade, oclusão e fonte são
+não cobertas. **Falso APTO** (gate APTO ∧ juiz coberto acusa) só se conta nas regras cobertas; **candidato a falso
+bloqueio** (gate recusa ∧ nenhum juiz coberto acusa) é lista para inspeção humana, não veredito.
+
+**Resultados da rodada `--completo` de 17/10** (126 peças, com repetição, ~5 min nesta máquina; o resumo versionado traz os
+hashes): 126 elegíveis → 54 compostas (72 recusas estruturais, 0 erros) → 50 MEDIDAS (4 da foto real ficaram fora das
+janelas fiéis) → 24 APTAS → 24 DRAFTs; os desfechos BRUTOS do fluxo (com as não medidas) são 54 → 26 → 26 e saem numa
+linha própria. Toda taxa e tabela do resumo é sobre peças MEDIDAS; a linha D da decisão 1 é o gate DEPOIS da falha injetada. Repetibilidade 100 %
+(126/126: nas compostas a IMPRESSÃO COMPLETA do gate final — `serializarParaImpressao` sem `medidoEm`: resultado, motivos, não
+medidos, rulesVersion, versão do gate, pageVersion, copyVersion, política, vínculo —, camadas normalizadas e hash do PNG iguais;
+nas recusas estruturais o mesmo código); estabilidade 0 exceções / 0 não-medidas / 0
+sem-vínculo. Custo mediano por peça: compor 3 renders, revisar 4, agendar 2 (os juízes e o PNG do piloto, 3). O que ele
+achou:
+
+- 🔴 **Falso APTO nas peças MEDIDAS = 0; mas 2 peças APTAS com o juiz acusando ficaram NÃO MEDIDAS → INCONCLUSIVO sobre
+  `texto-sobre-assunto` na foto real.** As duas são a foto REAL da fixture sem catálogo (`cliente-00|story|real|{curta,longa}|sem`):
+  o estimador não localizou assunto na foto anonimizada (origem `nenhum`), a política RECOMENDADA trata "foto lida sem
+  assunto localizável" como **não se aplica** (caso C de `PoliticaDoAssunto`, que o owner NÃO fixou — decisão 9.1 do CP5a),
+  o gate deu APTO e a CAIXA do `servico` ficou 100 % dentro da vitrine que o catálogo protege. Só que todas as caixas dessas
+  peças (headline, serviço, logo) caem FORA das janelas fiéis da fixture (§ 1.2 do contrato: medida fora delas é "não
+  medida", nunca contada) — a imagem ali é a grade anonimizada, não os pixels da foto, e o estimador leu essa grade. Por isso
+  o resumo as lista em § 3b como INDÍCIO, não como falso APTO, e o juiz mede CAIXAS (100 % da caixa, não da tinta). O que o
+  indício diz: **"não se aplica" por estimativa é um APTO silencioso quando a foto não está no catálogo** — com
+  `semAssuntoLocalizavel: 'humano'` as duas iriam ao humano (e com elas as 30 peças do caso C da rodada completa, as sintéticas difusas); a
+  alternativa é fechar a porta do catálogo (foto com região protegida no catálogo nunca chega ao gate sem ela). Para virar
+  medida, as janelas da fixture têm de cobrir as caixas que o compositor produz nessa assinatura — e isso é regenerar a fixture
+  a partir da foto original (`scripts/fixtures/gerar-fixture-piloto-direcao-de-arte.ts`), revelando mais pixels do cliente:
+  anonimização × fidelidade é decisão do owner, não do piloto.
+- **Caso B (assunto só estimado) bloqueia tudo**: 6 peças A1/A2 sem catálogo, todas `NAO_COMPROVADA`, todas aprovadas pela
+  verdade (o texto não tocava o assunto). IoU estimado × verdade 0,30. É o custo da política `estimado: 'humano'`: 100 % de
+  revisão humana em foto sem catálogo. Modo G (leitura da foto falha depois de composta, caso D; em peças A1 E em peças B, que a principal aprovaria): toda leitura
+  válida é recusada pelo REVISOR e pelo PRODUTOR — o `agendar-leva` é chamado com o item DESLIGADO e sem DRAFT na página (o do
+  fluxo principal é apagado do banco falso), responde `REVISAO_HUMANA_NECESSARIA` por `texto-sobre-assunto` e não cria post;
+  um `reaproveitado` não conta como recusa. **Oclusão injetada** (decisão 2, § 4.3): numa peça APTA sem foto ou de foto
+  difusa, uma shape opaca sobre metade da headline → 100 % recusadas pelo gate (`oclusao:NAO_MEDIDO`, transformação não
+  suportada acima de texto é fail-closed); peças produzidas com camada não-texto acima de texto: 0.
+- 🔴 **A assinatura da fixture de 13/10 não passa no piso de interface em NENHUMA peça**: 18 de 18 compostas com
+  `piso-de-interface` (headline no topo < 188 px, logo e serviço no rodapé > 1696 px), 9 também com `tinta-fora-da-caixa`
+  (fonte da marca ausente → fonte de reserva mais larga; limite conhecido do piloto). Se a fixture reflete a assinatura real
+  (margens 100/90 do cliente de origem), **todo story desse cliente vai ao humano com o gate ligado** — conflito entre a
+  régua do piso (CP3) e a assinatura, a decidir pelo owner (mover a assinatura ou excetuar a logo/rodapé da assinatura no
+  piso). Não é defeito do gate: o juiz independente do piso concorda nas 18.
+- **A via dos arquétipos quase não foi medida**: 2 de 48 peças com arquétipo compuseram (`ARQUETIPO_FORA_DA_ZONA` 16,
+  `ARQUETIPO_LINHAS_EXCEDIDAS` 8, `ARQUETIPO_PAPEIS_INCOMPATIVEIS` 8, `PAPEIS_INCOMPATIVEIS` 8, `SEM_COMBINACAO` 6) — a caixa
+  do assunto sintético (40 % × 25 % em x 50 % / y 58 %) e as copies do lote não cabem nas zonas do T1a. E a copy `media`
+  (com pré-título) sem arquétipo caiu 26 vezes em `PAPEIS_INCOMPATIVEIS`: as duas assinaturas do lote não têm combinação
+  com pré-título. São limites do LOTE, a corrigir na próxima rodada (copies por arquétipo; assinatura sintética com pré-título),
+  não achados sobre o gate.
+- `texto-sem-leitura` 4 (headline branco sobre a faixa clara da foto C e E) — o gate mediu, o juiz de luminância concorda.
+  Nenhum falso bloqueio com `ACHADO_CRITICO`: em toda recusa medida o juiz independente concordou.
+
+**O que o piloto NÃO prova** (sempre ao lado do veredito): fontes da marca (declaradas presentes; render com fonte de
+reserva), a visão (gpt-5.2 não roda), fotos reais dos clientes (decisão 5.1), travas/SQL reais e Blob, custo na Vercel,
+MCP e chat. **§ 6 do contrato: o piloto controlado não autoriza MCP-M0** — e um piloto INCONCLUSIVO sobre a regra coberta, com indícios
+de APTO silencioso, menos ainda. Caminho: decisão do owner sobre o caso C (política ou porta do catálogo) e sobre as
+janelas da fixture (anonimização × fidelidade) → rodada nova → falso APTO = 0 SEM peça não medida → aí a conversa do 5.1
+(fotos reais) e do § 4.8.
+
+**Regras do runner que custaram uma rodada cada**: a amostra padrão (1/6) tem de garantir o PAR foto-com-assunto ×
+sem-arquétipo (a cobertura por eixo não garante — sem ele a decisão 1 e o modo G saem vazios); o modo G roda em TODA peça
+A1 sem arquétipo (`i % 3` deixava a amostra sem nenhuma); a logo sintética é toda branca (um miolo escuro contava como
+`logo-sem-leitura` sobre fundo escuro por construção); os renders dos juízes, do PNG, da leitura pareada, da repetição, do modo G e da injeção saem do CONTADOR do renderer e o
+resumo diz a soma e o contador (têm de bater); a rodada CAI (`violacoesDoPiloto`, puro e testado) com erro de execução,
+exceção, timeout, cobertura vazia, falso APTO em peça medida, repetibilidade < 100 %, modo G inválido ou não recusado e
+oclusão injetada não recusada — e a rodada OFICIAL (padrão ou `--completo` sem `PILOTO_CALIBRACAO`/`PILOTO_CLIENTE`/
+`PILOTO_SEM_REPETICAO`/`PILOTO_SO`) exige ainda toda spec repetida, modo G > 0 e oclusão injetada > 0 (0/0 não é prova); com filtro
+a rodada é EXPLORATÓRIA e o resumo diz isso na primeira linha de limites; a repetição cobre também as recusas estruturais; o `loteId` é hash dos INSUMOS
+(copies, fotos, arquétipos, versão de cada cliente), não só das chaves; os caminhos no resumo são relativos à raiz e o HEAD
+vem marcado `(árvore SUJA)` quando o código que rodou não é o do commit.
