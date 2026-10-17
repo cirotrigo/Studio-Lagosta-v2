@@ -36,6 +36,8 @@ const banco = vi.hoisted(() => ({
   deadlockEm: null as string | null,
   /** O próximo `UPDATE "Generation"` (a gravação do registro) cai no banco. */
   falharGravacao: false,
+  /** O próximo `UPDATE "Generation"` devolve 0 linhas (o vínculo não casou) — o `'sem-vinculo'` de `gravarGateDaArte`. */
+  gravacaoSemVinculo: false,
   /** Roda logo depois da PRIMEIRA trava (a consultiva da agenda): o que outra chamada gravou enquanto esta esperava. */
   aoTravarAgenda: null as null | (() => void | Promise<void>),
 }))
@@ -205,6 +207,10 @@ vi.mock('@/lib/db', () => {
       banco.falharGravacao = false
       throw new Error('connection reset')
     }
+    if (banco.gravacaoSemVinculo) {
+      banco.gravacaoSemVinculo = false
+      return 0
+    }
     const [patch, id, projectId, pageId] = valores as [string, string, number, string]
     const g = banco.generations.get(id)
     const pagina = banco.pages.get(pageId)
@@ -253,7 +259,16 @@ vi.mock('@/lib/db', () => {
   }
   /** Uma linha NOVA (que nenhuma trava de linha impede), de fora. */
   const inserirFora = (t: Tabela, linha: Linha) => gravar(t, linha.id, { createdAt: ++banco.seq, ...linha }, null)
-  return { db: { ...delegados(null), $transaction }, escreverFora, inserirFora }
+  /** Um escritor de fora que SEGURA a trava da linha por `ms` (um worker no meio da escrita): quem precisar dela espera. */
+  const segurarFora = async (t: Tabela, id: string, ms: number) => {
+    const tx: Tx = { travas: new Map(), escritas: [], espera: 0, fechada: false }
+    await travar(`${t}:${id}`, tx, 'update')
+    evento(`fora:segura:${t}:${id}`)
+    await new Promise((r) => setTimeout(r, ms))
+    evento(`fora:solta:${t}:${id}`)
+    for (const soltar of tx.travas.values()) soltar()
+  }
+  return { db: { ...delegados(null), $transaction }, escreverFora, inserirFora, segurarFora }
 })
 
 vi.mock('@/lib/creatives/persist', () => ({ getPublicAppUrl: () => 'https://studio.test' }))
@@ -382,7 +397,11 @@ import { chaveDasFontes, comTravaPorChave } from '@/lib/trava-por-chave'
 import { dataUrl } from '../../direcao-de-arte/__tests__/suporte/fixture'
 import { fotoSintetica, logoSintetica } from '../../direcao-de-arte/__tests__/suporte/sinteticos'
 
-const { escreverFora, inserirFora } = (await import('@/lib/db')) as unknown as { escreverFora: (t: Tabela, id: string, mutar: (l: Linha) => Linha) => Promise<void>; inserirFora: (t: Tabela, l: Linha) => void }
+const { escreverFora, inserirFora, segurarFora } = (await import('@/lib/db')) as unknown as {
+  escreverFora: (t: Tabela, id: string, mutar: (l: Linha) => Linha) => Promise<void>
+  inserirFora: (t: Tabela, l: Linha) => void
+  segurarFora: (t: Tabela, id: string, ms: number) => Promise<void>
+}
 
 const PROJETO = 8
 const LOTE = 'dot-8-2026-S42'
@@ -455,6 +474,7 @@ beforeEach(() => {
   banco.timeoutDaTransacao = null
   banco.deadlockEm = null
   banco.falharGravacao = false
+  banco.gravacaoSemVinculo = false
   banco.aoTravarAgenda = null
   medicao.modo = 'limpa'
   medicao.fila = []
@@ -609,10 +629,13 @@ describe('C5b/C12 — adotar e o post aprovado', () => {
       banco.eventos = []
       medicao.chamadas = []
       const r = await agendar([i1])
-      expect(r.itens[0]).toMatchObject({ situacao: 'falhou', codigo: 'REVISAO_HUMANA_NECESSARIA', postId: 'd1', revisao: { tipo: 'nao-medida' } })
+      expect(r.itens[0]).toMatchObject({ situacao: 'falhou', codigo: 'REVISAO_HUMANA_NECESSARIA', postId: 'd1', generationId: 'g1', pageId: 'p1', editUrl: 'https://studio.test/templates/42/editor?pageId=p1', revisao: { tipo: 'nao-medida' } })
       expect(r.itens[0].motivo).toMatch(/outra arte/)
       expect(medicao.chamadas).toEqual([])
       expect(banco.posts.get('d1')!.generationId).toBe(generationId)
+      // A simulação dá a mesma resposta, com as mesmas referências.
+      const sim = await agendar([i1], { simular: true })
+      expect(sim.itens[0]).toMatchObject({ situacao: 'falhou', codigo: 'REVISAO_HUMANA_NECESSARIA', postId: 'd1', generationId: 'g1', pageId: 'p1', editUrl: expect.stringContaining('pageId=p1'), revisao: { tipo: 'nao-medida' } })
     }
   })
 
@@ -707,10 +730,19 @@ describe('C10/C18 — exceções do gate e o prazo da transação', () => {
     const i1 = cenarioLimpo()
     banco.falharGravacao = true
     const r = await agendar([i1])
-    expect(r.itens[0]).toMatchObject({ situacao: 'falhou', codigo: 'REVISAO_HUMANA_NECESSARIA', revisao: { tipo: 'nao-medida', motivo: expect.stringMatching(/connection reset/) } })
+    expect(r.itens[0]).toMatchObject({ situacao: 'falhou', codigo: 'REVISAO_HUMANA_NECESSARIA', generationId: 'g1', pageId: 'p1', editUrl: expect.stringContaining('pageId=p1'), revisao: { tipo: 'nao-medida', motivo: expect.stringMatching(/connection reset/) } })
     expect(posts()).toEqual([])
     expect(eventos()).toContain('rollback')
     expect(registroDe('g1')).toBeUndefined()
+  })
+
+  it('C10: o registro APTO não grava (0 linhas: sem vínculo) → RecusaSobTrava, rollback, REVISAO_HUMANA_NECESSARIA com editUrl e revisao; nenhum post', async () => {
+    const i1 = cenarioLimpo()
+    banco.gravacaoSemVinculo = true
+    const r = await agendar([i1])
+    expect(r.itens[0]).toMatchObject({ situacao: 'falhou', codigo: 'REVISAO_HUMANA_NECESSARIA', generationId: 'g1', pageId: 'p1', editUrl: expect.stringContaining('pageId=p1'), revisao: { tipo: 'nao-medida', motivo: expect.stringMatching(/sem-vinculo/) } })
+    expect(posts()).toEqual([])
+    expect(eventos()).toContain('rollback')
   })
 
   it('C18: timeout da transação durante a medição → recusa REVISAO_HUMANA_NECESSARIA sem post parcial; travas liberadas (a próxima chamada não espera)', async () => {
@@ -718,7 +750,7 @@ describe('C10/C18 — exceções do gate e o prazo da transação', () => {
     banco.timeoutDaTransacao = 40
     medicao.modo = 'lenta'
     const r = await agendar([i1])
-    expect(r.itens[0]).toMatchObject({ situacao: 'falhou', codigo: 'REVISAO_HUMANA_NECESSARIA', revisao: { tipo: 'nao-medida', motivo: expect.stringMatching(/prazo/) } })
+    expect(r.itens[0]).toMatchObject({ situacao: 'falhou', codigo: 'REVISAO_HUMANA_NECESSARIA', generationId: 'g1', pageId: 'p1', editUrl: expect.stringContaining('pageId=p1'), revisao: { tipo: 'nao-medida', motivo: expect.stringMatching(/prazo/) } })
     expect(posts()).toEqual([])
     // A medição lenta ainda termina em segundo plano: a transação FECHADA recusa a gravação e o post — nada vaza.
     await new Promise((resolve) => setTimeout(resolve, 200))
@@ -732,20 +764,26 @@ describe('C10/C18 — exceções do gate e o prazo da transação', () => {
     expect(Date.now() - t0).toBeLessThan(2_000)
   })
 
-  it('C18: o orçamento no banco falso — espera pelas travas, medição e o resto, medidos em separado, cabem com folga', async () => {
+  it('C18: o orçamento no banco falso — a espera por um escritor que SEGURA a Generation da peça aparece separada da medição e do resto', async () => {
     const i1 = cenarioLimpo()
-    // Um escritor concorrente segura a Generation da peça por 60 ms: a espera aparece separada da medição.
-    const segurar = escreverFora('generations', 'g1', (g) => g)
-    banco.eventos = []
+    // Um worker segura a linha da Generation da peça por 120 ms: o gate ESPERA por ela (trava de linha), e a espera é medida à parte.
+    const segurando = segurarFora('generations', 'g1', 120)
+    while (!eventos().includes('fora:segura:generations:g1')) await new Promise((r) => setImmediate(r))
     const chamada = agendar([i1])
-    await segurar
-    await chamada
+    await segurando
+    const r = await chamada
+    expect(r.itens[0]).toMatchObject({ desfecho: 'criado' })
+    const ev = eventos()
+    // O primeiro `trava:generations:g1` é o do worker; o do gate vem DEPOIS de ele soltar.
+    expect(ev.lastIndexOf('trava:generations:g1')).toBeGreaterThan(ev.indexOf('fora:solta:generations:g1'))
     const t = (e: string) => banco.eventos.find((x) => x.e === e)!.t
-    const espera = Number(eventos().find((e) => e.startsWith('espera:'))!.slice(7))
+    const espera = Number(ev.find((e) => e.startsWith('espera:'))!.slice(7))
     const medicaoMs = t('gate:gravado') - t('medicao')
     const resto = t('commit') - t('gate:gravado')
     const total = t('commit') - t('tx:inicio')
     console.info(`[C18] espera pelas travas ${espera} ms · medição ${medicaoMs} ms · resto ${resto} ms · total ${total} ms`)
+    expect(espera).toBeGreaterThanOrEqual(80)
+    expect(total).toBeGreaterThanOrEqual(espera)
     expect(medicaoMs).toBeLessThan(10_000)
     expect(total).toBeLessThan(20_000)
   })
@@ -792,6 +830,41 @@ describe('C13 — deadlock e a intercalação com ajustar-arte', () => {
     // O ajuste só escreveu DEPOIS do commit do gate, e os dois commits aconteceram (sem espera cruzada).
     expect(ev.indexOf('escrita:pages:p1')).toBeGreaterThan(ev.indexOf('commit'))
     expect(ev.filter((e) => e === 'commit')).toHaveLength(2)
+  })
+})
+
+describe('C13 — intercalação: ajustar-arte toma os posts ANTES de o gate chegar a eles', () => {
+  const ajusteComoArteRapida = () =>
+    db.$transaction(async (tx) => {
+      // As DUAS instruções de `ajustarArte` (arte-rapida.ts), na ordem do arquivo: posts da página em ORDER BY id, depois a página.
+      await tx.$queryRaw`SELECT "status"::text AS status, "laterPostId" FROM "SocialPost" WHERE "pageId" = ${'p1'} ORDER BY "id" FOR UPDATE`
+      await new Promise((r) => setTimeout(r, 40))
+      await tx.$queryRaw`SELECT "id" FROM "Page" WHERE "id" = ${'p1'} FOR UPDATE`
+      await tx.page.update({ where: { id: 'p1' }, data: { name: 'ajustada' } })
+    })
+
+  it('o gate tomou a agenda e o item; o ajuste já tem os posts (d1, d2) e vai pegar a página: o gate espera o commit do ajuste e depois adota — sem espera cruzada, sem deadlock', async () => {
+    const i1 = cenarioLimpo()
+    for (const id of ['d2', 'd1']) banco.posts.set(id, { id, projectId: PROJETO, pageId: 'p1', postType: 'STORY', status: 'DRAFT', scheduledDatetime: new Date('2026-10-14T13:00:00Z'), mediaUrls: [], renderStatus: 'PENDING', generationId: 'g1', laterPostId: null, createdAt: id === 'd1' ? 1 : 2 })
+    let ajuste: Promise<unknown> | null = null
+    // Logo depois da trava da agenda (antes do item, dos posts e da página), o ajuste entra e toma os posts primeiro.
+    banco.aoTravarAgenda = async () => {
+      ajuste = ajusteComoArteRapida()
+      while (!eventos().some((e) => e.startsWith('travou-posts-da-pagina:d1,d2'))) await new Promise((r) => setImmediate(r))
+    }
+    const r = await agendar([i1])
+    await ajuste!
+    expect(r.itens[0]).toMatchObject({ desfecho: 'adotado', postId: 'd1' })
+    const ev = eventos()
+    const commitDoAjuste = ev.indexOf('commit')
+    // O ajuste travou posts → página e commitou ANTES de o gate conseguir os posts; o gate então adquiriu na mesma ordem (d1, d2) e seguiu.
+    expect(ev.indexOf('escrita:pages:p1')).toBeLessThan(commitDoAjuste)
+    expect(ev.filter((e) => e === 'travou-posts-da-pagina:d1,d2')).toHaveLength(2)
+    expect(ev.lastIndexOf('travou-posts-da-pagina:d1,d2')).toBeGreaterThan(commitDoAjuste)
+    expect(ev.filter((e) => e === 'commit')).toHaveLength(2)
+    expect(ev).not.toContain('rollback')
+    // A medição leu a página JÁ ajustada (nome novo): é a leitura sob a trava que vale.
+    expect(banco.pages.get('p1')!.name).toBe('ajustada')
   })
 })
 
@@ -949,8 +1022,13 @@ describe('C21 — rede presa em cada caminho: o prazo da medição cobre a cadei
     }, 60_000)
   }
 
-  it('C18 (sintético): a medição REAL de três páginas sintéticas, dentro da transação, cabe no orçamento', async () => {
-    const tempos: number[] = []
+  /**
+   * C18 (sintético). LIMITE DITO: o contrato fala em "benchmark sintético do CP3"; não existe um harness com esse nome no
+   * repositório (o "benchmark REA" da fixture é externo). O que há de sintético são as páginas de `sinteticos.ts` (CP0/CP2):
+   * três delas, com foto e textos, medidas de VERDADE dentro da transação falsa — medição, resto e total por página.
+   */
+  it('C18 (sintético): a medição REAL de três páginas sintéticas, dentro da transação, cabe no orçamento — medição, resto e total', async () => {
+    const tempos: Array<{ medicao: number; resto: number; total: number }> = []
     for (const [n, luz] of [[1, (_x: number, y: number) => (y < 960 ? 40 : 230)], [2, () => 60], [3, (x: number) => (x < 540 ? 30 : 220)]] as const) {
       banco.eventos = []
       banco.pages.delete(`p${n}`)
@@ -962,9 +1040,12 @@ describe('C21 — rede presa em cada caminho: o prazo da medição cobre a cadei
       const r = await agendar([item(`i${n}`, `g${n}`)])
       expect(r.itens[0].revisao?.tipo, JSON.stringify(r.itens[0])).toBe('medida')
       const t = (e: string) => banco.eventos.find((x) => x.e === e)!.t
-      tempos.push(t('gate:gravado') - t('medicao'))
+      tempos.push({ medicao: t('gate:gravado') - t('medicao'), resto: t('commit') - t('gate:gravado'), total: t('commit') - t('tx:inicio') })
     }
-    console.info(`[C18 sintético] medição real por página: ${tempos.map((t) => `${t} ms`).join(' · ')}`)
-    for (const t of tempos) expect(t).toBeLessThan(10_000)
+    console.info(`[C18 sintético] por página: ${tempos.map((t) => `medição ${t.medicao} ms · resto ${t.resto} ms · total ${t.total} ms`).join(' | ')}`)
+    for (const t of tempos) {
+      expect(t.medicao).toBeLessThan(10_000)
+      expect(t.total).toBeLessThan(20_000)
+    }
   }, 120_000)
 })

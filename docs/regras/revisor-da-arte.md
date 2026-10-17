@@ -1053,6 +1053,13 @@ o fluxo humano é byte a byte o de antes (C7).
   `inventario-gate-agendar-leva.test.ts` (C9, C11, C13 por código-fonte), `fetch-buffer-sinal.test.ts`,
   `piloto-portao.test.ts` (P11: os 8 `hojeViola` viraram `it()`, com a medição REAL sobre a fixture — v1 e v2
   recusadas com os achados do serviço, controle limpo aprovado), harness de `agendar-itens.test.ts` (mede limpo; o
-  resto do serviço igual). Limites ditos: bytes de assets/fontes por URL não protegidos (CP5b § 4.2); `scripts/` que
-  gravem `CustomFont` fora das rotas ficam fora da garantia da trava das fontes; o inventário por regex não vê SQL
-  montado em variável.
+  resto do serviço igual), `c9-allowlist-comportamental.test.ts` (cada tool MUTANTE da allowlist executada com banco
+  falso que registra criação de post e gravação do veredito + o fecho de imports de cada handler). Limites ditos (Codex
+  R1 do PR #242): bytes de assets/fontes por URL não protegidos (CP5b § 4.2); `scripts/` que gravem `CustomFont` fora
+  das rotas ficam fora da garantia da trava das fontes; `Template.projectId` é lido para conferir a posse sem trava
+  própria — a garantia supõe que um Template não muda de projeto (nenhuma rota faz isso hoje); páginas de referência
+  (assinatura/modelo) de projetos diferentes podem formar ciclo entre travas de `Page` — o deadlock é mapeado para
+  `LOTE_AGENDAMENTO_CONCORRENTE` ("repita"); o "benchmark sintético do CP3" do contrato não existe como harness no
+  repositório — C18 usa as páginas sintéticas de `sinteticos.ts` (CP0/CP2); C7 prova um cenário do fluxo humano, não
+  igualdade byte a byte (o diff do fluxo humano é só o `ORDER BY "id"` em `ajustar-arte`); o inventário por regex não
+  vê SQL montado em variável.

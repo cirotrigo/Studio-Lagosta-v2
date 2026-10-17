@@ -827,7 +827,10 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
         const motivo = alvo
           ? motivoParaNaoAdotar(alvo, { projectId, pageId, pecaId: antes.peca.id })
           : { codigo: 'LOTE_AGENDAMENTO_CONCORRENTE', motivo: 'O rascunho a adotar sumiu durante a simulação; repita a chamada.' }
-        if (motivo) return falhou(itemId, motivo, { postId: antes.postId, generationId: antes.peca.id, pageId, avisos, revisao: { tipo: 'nao-medida', motivo: motivo.motivo } })
+        if (motivo) {
+          const editUrl = editUrlDe(pagina.templateId, pageId)
+          return falhou(itemId, motivo, { postId: antes.postId, generationId: antes.peca.id, pageId, ...(editUrl ? { editUrl } : {}), avisos, revisao: { tipo: 'nao-medida', motivo: motivo.motivo } })
+        }
         postType = alvo!.postType as TipoDoPostDoLote
       }
       const gate = await medirEDecidir(ctx.leitor, ctx, { peca: antes.peca, page: pagina, postType, generation: await lerGeracaoDaPeca(ctx.leitor, antes.peca.id, projectId) })
@@ -1034,17 +1037,22 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
       return { tipo: 'ligado', postId, desfecho, resolucao, peca: sob.peca, pagina: sob.pagina, pedido: pedidoSob.pedido, avisos: pedidoSob.avisos, input, gate }
   }, { isolationLevel: 'ReadCommitted', maxWait: 10_000, timeout: 20_000 })
   } catch (erro) {
+    // CP5c § 6: no draft-only toda recusa leva as referências da intervenção (generationId, pageId, editUrl do template atual).
+    const editUrl = ctx.apenasRascunho ? editUrlDe(antes.pagina.templateId, pageId) : undefined
+    const referencias = { generationId: antes.peca.id, pageId, ...(editUrl ? { editUrl } : {}) }
     if (erro instanceof RecusaSobTrava) {
-      escrita = { tipo: 'recusado', resposta: falhou(itemId, erro.falha, { generationId: antes.peca.id, pageId }) }
+      // A recusa do gate (registro APTO que não gravou) diz que esta chamada não deixou veredito; as outras recusas sob trava são as de sempre.
+      const doGate = ctx.apenasRascunho && erro.falha.codigo === 'REVISAO_HUMANA_NECESSARIA' ? { revisao: { tipo: 'nao-medida' as const, motivo: erro.falha.motivo } } : {}
+      escrita = { tipo: 'recusado', resposta: falhou(itemId, erro.falha, { ...referencias, ...doGate }) }
     } else if (ctx.apenasRascunho && ehDeadlock(erro)) {
       // CP5c § 4.1: deadlock detectado pelo Postgres entre as travas novas → "repita", nunca `ERRO`.
-      escrita = { tipo: 'recusado', resposta: falhou(itemId, { codigo: 'LOTE_AGENDAMENTO_CONCORRENTE', motivo: 'Outra escrita concorreu com o agendamento (travas em conflito). Repita a chamada.' }, { generationId: antes.peca.id, pageId }) }
+      escrita = { tipo: 'recusado', resposta: falhou(itemId, { codigo: 'LOTE_AGENDAMENTO_CONCORRENTE', motivo: 'Outra escrita concorreu com o agendamento (travas em conflito). Repita a chamada.' }, referencias) }
     } else if (ctx.apenasRascunho && (erro instanceof ErroDoGate || ehTimeoutDaTransacao(erro))) {
       // CP5c § 4.7: exceção na gravação do registro ou timeout da transação → rollback, revisão humana, nunca `ERRO`.
       const motivo = erro instanceof ErroDoGate ? `o registro do veredito falhou: ${erro.message}` : 'a transação do agendamento estourou o prazo'
       escrita = {
         tipo: 'recusado',
-        resposta: falhou(itemId, { codigo: 'REVISAO_HUMANA_NECESSARIA', motivo: `A peça não foi agendada (${motivo}); nada foi gravado. Repita ou peça revisão humana.` }, { generationId: antes.peca.id, pageId, revisao: { tipo: 'nao-medida', motivo } }),
+        resposta: falhou(itemId, { codigo: 'REVISAO_HUMANA_NECESSARIA', motivo: `A peça não foi agendada (${motivo}); nada foi gravado. Repita ou peça revisão humana.` }, { ...referencias, revisao: { tipo: 'nao-medida', motivo } }),
       }
     } else throw erro
   }
