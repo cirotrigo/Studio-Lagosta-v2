@@ -1,6 +1,6 @@
 # CP5d — contrato técnico do GATE em `ajustar-arte` (perfil draft-only) — proposta para revisão, 17/10/2026
 
-**Estado: PROPOSTA (rodada 2 do Codex: NÃO APTO — 2 BLOCKER, 3 IMPORTANTE, endereçados: o alvo REAL de `travarRecomposicaoDaArte` (a Generation com `resultUrl` mais recente, qualquer `source`) é travado junto com a de origem, em ordem de id; o fechamento `FAILED` grava `fieldValues.error` por merge (não existe coluna `errorMessage`) e o cron só SELECIONA órfãs com 10 min, em lotes — não é teto; o exemplo de § 3.3 passa `geracaoDeOrigem`; a galeria NÃO lista `FAILED`; no draft-only a recusa total do CP4 sai como `REVISAO_HUMANA_NECESSARIA` com `details.causa` = código do CP4 (decisão 8.8) — é o que P11 verifica; o custo de contenção da trava da Generation é dito e medido em A13. Rodada 1: NÃO APTO — 2 BLOCKER, 4 IMPORTANTE; endereçados: a Generation de ORIGEM é a do compositor da página, travada `FOR UPDATE` antes das referências e passada ao contexto com `composicaoReaproveitavel: false`; a Generation PROCESSING criada na transação é FECHADA explicitamente como `FAILED` quando o render falha ou a página muda — o cron não a renderiza, só a marca FAILED aos 10 min; `audio` relido sob trava; a ordem das travas inclui a escrita de `travarRecomposicaoDaArte` (Page → Generation do compositor → FOR SHARE, a mesma do CP5c); os leitores (bancada, galeria, `ver-geracao`, `agendar-leva`) ditos na § 4.4; matriz A13–A17 e o harness de P11 com rollback; "os testes provam" rebaixado para "os testes exercitam, com os limites ditos").** Nada aqui está implementado; este PR é documental. Base:
+**Estado: PROPOSTA (rodada 3 do Codex: NÃO APTO — 2 BLOCKER, 2 IMPORTANTE, 1 MENOR, endereçados: a seleção do alvo da recomposição é a MESMA de `travarRecomposicaoDaArte` (20 mais recentes com `resultUrl`, a primeira aceita por `ehArteDaPagina`), extraída para `alvoDaRecomposicao(client, pageId, projectId)` e usada pelos dois; `marcarGenerationFalha` do cron passa a gravar por MERGE (viola a regra 🔴 do `AGENTS.md` hoje — `{ ...anterior, error }` apaga `gateDaArte`), entra no escopo com A16 cobrindo a corrida; § 3.2 corrigido (`geracaoDeOrigem`); §§ 1, 6 e 7 unificados com a decisão 8.8 (código do CP4 só no perfil normal); § 4.4 corrigido; descrição da tool e A7 cobrem `details.causa`. Rodada 2: NÃO APTO — 2 BLOCKER, 3 IMPORTANTE, endereçados: o alvo REAL de `travarRecomposicaoDaArte` (a Generation com `resultUrl` mais recente, qualquer `source`) é travado junto com a de origem, em ordem de id; o fechamento `FAILED` grava `fieldValues.error` por merge (não existe coluna `errorMessage`) e o cron só SELECIONA órfãs com 10 min, em lotes — não é teto; o exemplo de § 3.3 passa `geracaoDeOrigem`; a galeria NÃO lista `FAILED`; no draft-only a recusa total do CP4 sai como `REVISAO_HUMANA_NECESSARIA` com `details.causa` = código do CP4 (decisão 8.8) — é o que P11 verifica; o custo de contenção da trava da Generation é dito e medido em A13. Rodada 1: NÃO APTO — 2 BLOCKER, 4 IMPORTANTE; endereçados: a Generation de ORIGEM é a do compositor da página, travada `FOR UPDATE` antes das referências e passada ao contexto com `composicaoReaproveitavel: false`; a Generation PROCESSING criada na transação é FECHADA explicitamente como `FAILED` quando o render falha ou a página muda — o cron não a renderiza, só a marca FAILED aos 10 min; `audio` relido sob trava; a ordem das travas inclui a escrita de `travarRecomposicaoDaArte` (Page → Generation do compositor → FOR SHARE, a mesma do CP5c); os leitores (bancada, galeria, `ver-geracao`, `agendar-leva`) ditos na § 4.4; matriz A13–A17 e o harness de P11 com rollback; "os testes provam" rebaixado para "os testes exercitam, com os limites ditos").** Nada aqui está implementado; este PR é documental. Base:
 `main` `cc6b01f0` (CP5c mergeado: PR #242; contrato do CP5c em `docs/PLANO-2026-10-16-CP5C-CONTRATO.md`). Fontes:
 plano-mestre `docs/PLANO-2026-10-15-AUTONOMIA-DIRECAO-DE-ARTE-E-MCP.md` § 4.6, contratos do CP5b (§ 12) e do CP5c
 (§ 2 "não entra"), o executor do CP4 (`revisao/ajustar-sem-piorar.ts`, `nao-piora.ts`) e `ajustarArte`
@@ -23,7 +23,7 @@ WARN-ONLY + CP4, byte a byte.
 | Ponto | Hoje (`ajustarArte`) | CP5d (só `apenasRascunho`) |
 |---|---|---|
 | Pré-checagens | formato dos `slotValues`, versão esperada, `CONTEUDO_NAO_PODE_SER_REMOVIDO` (draft-only), foto, bake, reflow, `PAGINA_COM_VIDEO`, autofix da base | iguais |
-| Executor do CP4 | `aplicarAjustesSemPiorar` mede N candidatas FORA de transação; todos recusados e nada mais a gravar → `AJUSTE_PIOROU_ARTE`/… (422, nada gravado) | igual; a recusa do CP4 continua a mesma e vem ANTES do gate (§ 3.1) |
+| Executor do CP4 | `aplicarAjustesSemPiorar` mede N candidatas FORA de transação; todos recusados e nada mais a gravar → `AJUSTE_PIOROU_ARTE`/… (422, nada gravado) | o executor e a ordem não mudam; no draft-only a recusa TOTAL sai como `REVISAO_HUMANA_NECESSARIA` com `details.causa` = o código do CP4 (§ 3.1, decisão 8.8); no perfil normal o código do CP4 continua |
 | Transação de escrita (20 s) | draft-only: posts da página `ORDER BY "id" FOR UPDATE` e `POST_APROVADO_INTOCAVEL`; CAS da página (`updatedAt`/`isTemplate`, ou releitura por conteúdo); `travarRecomposicaoDaArte` | igual + (§ 4): travas do que a medição lê; Generation PROCESSING criada na transação; **a medição do gate e a decisão acontecem aqui**, sobre a candidata final; `gravarGateDaArte(tx, registro)`; não APTO → `RecusaSobTrava` → rollback inteiro (nada gravado) |
 | Depois do commit | `renderPageAndRegister` (Generation nova, `versaoEsperada`), `invalidateScheduledRenders` (`apenasRascunho` → só DRAFT), aprendizado | `renderPageAndRegister({ generationId })` FECHA a Generation criada na transação; o resto igual. Nenhum efeito roda quando o gate recusou (não há commit) |
 | Retorno (`AjustarArteResult`) | `ajustada`, `versao`, `ajustesAplicados/Recusados`, … | + `revisao` (§ 6) no draft-only; a recusa do gate é `CreativeError('REVISAO_HUMANA_NECESSARIA', …, 422, { ajusteGravado: false, revisao, achados, motivos })` |
@@ -68,7 +68,7 @@ CP4 além de expor a medida crua da candidata final (§ 3.2); mexer em `gate.ts`
 O executor mede cada candidata por `medidaDe(camadas, ctx)` (→ `MedidaComparavel`: relatório + contraste, não a
 `MedidaDaPeca`). O gate precisa da `MedidaDaPeca` da candidata FINAL, medida pelo cliente da transação (as linhas que
 ela lê estão travadas). Por isso a medição do gate é UMA medida nova, DENTRO da transação, com `contextoDaMedicao({
-cliente: tx, sinal, prazoPorDownloadMs, composicaoReaproveitavel: false, generationDaPeca: null })` +
+cliente: tx, sinal, prazoPorDownloadMs, composicaoReaproveitavel: false, generationDaPeca: geracaoDeOrigem })` +
 `medirCamadasDaPeca(candidata, ctx, { corrigir: false })` — a mesma medição do CP4 e do CP5c. `generationDaPeca` é a
 **Generation de ORIGEM da página** (§ 4.3: a do compositor — `fieldValues.pageId = page.id` e `source: 'compositor'`, a
 mais recente —, relida e travada `FOR UPDATE` pela transação ANTES das referências), com `composicaoReaproveitavel:
@@ -113,12 +113,16 @@ medida (~0,4–0,6 s medido no CP5c) dentro dos 20 s; os N renders do CP4 contin
 UPDATE` (nova: hoje a escrita é por CAS sem trava de linha; a trava serializa com o gate do `agendar-leva`, que trava
 a página depois dos posts — mesma ordem) → **`Generation` `FOR UPDATE`, em ORDEM DE ID, das linhas que esta transação
 LÊ ou ESCREVE**: a de ORIGEM da página (a do compositor, § 4.3 — entrada da medição) e o **alvo real de
-`travarRecomposicaoDaArte`** — que é a Generation da página com `resultUrl` mais recente, de QUALQUER `source`
-(`recompor.ts`: depois de um ajuste bem-sucedido, é a Generation do ajuste anterior; Codex R2). As duas são resolvidas
-pela transação com as consultas de hoje (`findFirst` por `fieldValues.pageId`), e travadas numa só instrução (`SELECT
-id FROM "Generation" WHERE id IN ($1, $2) ORDER BY id FOR UPDATE`); quando coincidem, uma linha. `travarRecomposicaoDaArte`
-não muda: no fim da transação escreve uma linha que ela já segura — a escrita entra na posição da ordem comum, Page →
-Generation → shares, a do CP5c. **Custo dito**: a trava espera o worker da fila que estiver escrevendo essas linhas
+`travarRecomposicaoDaArte`**. A seleção do alvo é EXATAMENTE a da função (Codex R3): das 20 Generations mais recentes
+do projeto com `resultUrl` e `fieldValues.pageId = page.id` (`orderBy createdAt desc`), a PRIMEIRA aceita por
+`ehArteDaPagina` (não é export de vídeo, `resultUrl` não é vídeo) — depois de um ajuste bem-sucedido, é a Generation
+do ajuste anterior; um vídeo mais recente não é o alvo. Para a linha travada ser a linha escrita, essa seleção sai de
+`travarRecomposicaoDaArte` para uma função exportada do mesmo módulo, `alvoDaRecomposicao(client, pageId, { projectId })`
+(a MESMA consulta e o MESMO `find`, sem mudar a seleção), usada pela transação do gate para resolver o alvo e por
+`travarRecomposicaoDaArte`, que ganha a opção `alvo?: string` (o id já resolvido e travado) — com `alvo`, ela não busca
+de novo; sem, comporta-se como hoje (`recompor.ts` entra no escopo só nessa extração). As duas Generations são
+travadas numa só instrução (`SELECT id FROM "Generation" WHERE id IN ($1, $2) ORDER BY id FOR UPDATE`); quando coincidem,
+uma linha. A escrita da trava entra na posição da ordem comum, Page → Generation → shares, a do CP5c. **Custo dito**: a trava espera o worker da fila que estiver escrevendo essas linhas
 (recomposição/re-render) dentro dos `maxWait` 10 s / 20 s da transação; A13 mede a espera. →
 `FOR SHARE`: `Project`, página de assinatura e página-modelo apontadas por essa Generation, `CustomFont` do projeto.
 A Generation NOVA (PROCESSING) nasce na transação (linha própria, não disputada). Ciclo: `agendar-leva` toma agenda →
@@ -141,8 +145,8 @@ Passos (dentro de `db.$transaction`, isolamento `ReadCommitted`, 20 s):
    não há janela entre "o que medi" e "o que gravo". **Limite dito**: as travas de linha não congelam os BYTES remotos
    de foto, logo e fontes servidos por URL (`NAO_CONFERIDO_PELA_IDENTIDADE`, CP5b § 4.2) — a mesma lacuna do CP5c.
 2b. **Generations travadas** (§ 3.2 e ordem acima): a de ORIGEM (compositor, mais recente com `fieldValues.pageId =
-   page.id` e `source: 'compositor'`) e o alvo da recomposição (`resultUrl` mais recente), achadas pela transação e
-   travadas `FOR UPDATE` em ordem de id; a de origem relida com `fieldValues` e `sourcePageId` para as referências. Uma
+   page.id` e `source: 'compositor'`) e o alvo da recomposição (`alvoDaRecomposicao(tx, page.id, { projectId })`),
+   achadas pela transação e travadas `FOR UPDATE` em ordem de id; a de origem relida com `fieldValues` e `sourcePageId` para as referências. Uma
    Generation inserida DURANTE a transação não entra em nenhuma das duas escolhas (dito, como C22 do CP5c) — se ela for
    a que `travarRecomposicaoDaArte` encontraria, a trava de recomposição cai nela sem trava prévia: janela DITA, igual
    à de hoje, estreita (a inserção teria de acontecer entre a resolução e a escrita, dentro da mesma transação de 20 s)
@@ -161,7 +165,14 @@ Passos (dentro de `db.$transaction`, isolamento `ReadCommitted`, 20 s):
    completedAt } })` — idempotente (o `where` por status) e feito ANTES de relançar o erro. O registro do gate fica (é
    a auditoria de uma versão cuja arte não nasceu; `ver-geracao` mostra `FAILED` + o motivo + bloco `gate`
    `coincidente` enquanto a página não muda). Se o próprio fechamento falhar (banco fora), a órfã fica PROCESSING até
-   o cron a selecionar — dito, sem outra promessa. Estados observáveis da linha: PROCESSING (segundos, entre o commit e
+   o cron a selecionar — dito, sem outra promessa. **O cron entra no escopo** (Codex R3): `marcarGenerationFalha`
+   (`generation-queue.ts`) hoje lê `fieldValues` e grava `{ ...anterior, error }` — viola a regra 🔴 do `AGENTS.md` e,
+   numa corrida com o fechamento explícito (cron lê → `ajustarArte` grava `error`+`FAILED` → cron grava o objeto
+   inteiro lido), apagaria `gateDaArte` e `error`. Passa a `mesclarFieldValuesDaArte(db, id, { error })` +
+   `updateMany({ where: { id, status: 'PROCESSING' }, data: { status: 'FAILED', completedAt } })` — o mesmo par do
+   fechamento explícito; com o `where` por status, quem fechar primeiro vence e o segundo não escreve nada (A16).
+   Render de ajuste que dure mais de 10 min enquanto o cron varre: o render roda na própria requisição (limite da
+   função serverless, 60 s) — a janela é teórica e fica dita. Estados observáveis da linha: PROCESSING (segundos, entre o commit e
    o render; mais, se o fechamento falhar), COMPLETED (render ok) ou FAILED (render falhou / página mudou).
 4. `medirEDecidirAjuste(tx, …)` (§ 3.3).
 5. Resultado:
@@ -195,7 +206,7 @@ ganha a exceção nomeada).
 | Galeria (`/api/templates/[id]/creatives`) | lista só COMPLETED e PROCESSING | vê a linha nova PROCESSING por segundos, depois COMPLETED; se o render falhar, a linha vira FAILED e **some da galeria** (a rota não lista FAILED — fora do escopo mudar isso); o motivo fica em `ver-geracao` |
 | `ver-geracao` | PROCESSING → "em andamento; consulte de novo"; COMPLETED → arte + bloco `gate` | igual; FAILED → "falhou" + motivo fixo + bloco `gate` (`coincidente` enquanto a página não muda) |
 | Catálogo de artes (`registrarArtesDoPost`) | só pelo agendamento/efeitos | nada muda (o ajuste não cataloga) |
-| Cron de render pendente | marca FAILED PROCESSING órfã aos 10 min | backstop do fechamento explícito |
+| Cron de órfãs (`generation-queue.ts`) | seleciona PROCESSING sem job com 10 min ou mais, em lotes de 50, quando roda, e marca FAILED gravando `fieldValues` inteiro | backstop do fechamento explícito; passa a gravar por merge (passo 3) |
 
 ## 5. Política de preservação (a decisão de produto, § 8.2)
 
@@ -221,8 +232,9 @@ ela era boa.
 revisao: { tipo: 'medida'; resultado: 'APTO'; rulesVersion; versaoDoGate; medidoEm; naoMedidos; generationId }
 // CreativeError REVISAO_HUMANA_NECESSARIA (gate recusou), details:
 { ajusteGravado: false, pageId, versao: versaoAntes, editUrl, revisao: RevisaoDoItem (medida reprovada | sem-vinculo | nao-medida), achados?, motivos?, ajustesAplicados?, ajustesRecusados? }
-// Recusa do CP4 (todos recusados, nada a gravar) no draft-only: details ganha revisao: { tipo: 'nao-medida', motivo: 'nenhuma versão nova para medir: a peça ficou como estava' }
-// e a mensagem termina com "Revisão humana necessária." — o código continua o do CP4 (a causa é a piora/não-medição, não o gate).
+// Recusa TOTAL do CP4 (todos recusados, nada a gravar) no draft-only (decisão 8.8): CreativeError('REVISAO_HUMANA_NECESSARIA', 422,
+//   { causa: <código do CP4 que teria saído>, recusados, ajusteGravado: false, revisao: { tipo: 'nao-medida', motivo: 'nenhuma versão nova para medir: a peça ficou como estava' } })
+//   — a mensagem é a do CP4 terminada em "Revisão humana necessária."; no perfil NORMAL o código continua o do CP4, como hoje.
 ```
 
 `RevisaoDoItem` é o tipo já exportado por `agendar-itens.ts` (CP5c § 6); move para `lotes/agendamento.ts` ou módulo puro
@@ -244,7 +256,9 @@ campo. Nenhum parâmetro novo na tool; a descrição de `ajustar-arte` ganha o p
    sem inversão com o `agendar-leva`, o render condicionado, `recompor`, `later-scheduler` e as rotas de fontes (A13:
    intercalações no banco falso que controlam a ORDEM de aquisição; I1: inventário).
 6. Fluxo humano byte a byte igual (A6: perfil normal, mesmas chamadas, mesmo rastro de escritas e nenhuma trava nova).
-7. A recusa do CP4 continua a mesma e vem antes (A7); `CONTEUDO_NAO_PODE_SER_REMOVIDO` antes de tudo (A8).
+7. O executor do CP4 e a sua posição (antes do gate) não mudam; no draft-only a recusa total sai como
+   `REVISAO_HUMANA_NECESSARIA` com `details.causa` (A7), no perfil normal com o código do CP4 (A6);
+   `CONTEUDO_NAO_PODE_SER_REMOVIDO` antes de tudo (A8).
 8. `agendar-leva` sobre a versão gravada pelo ajuste APTO mede de novo e cria o DRAFT (A9 — ponta a ponta mínima do
    CP5d → CP5c, com o mesmo gate e a mesma política).
 
@@ -271,7 +285,7 @@ campo. Nenhum parâmetro novo na tool; a descrição de `ajustar-arte` ganha o p
 | A4 | render depois do commit | fecha a Generation criada (mesmo id); `gateDaArte` presente depois do merge do render; estados observáveis: PROCESSING (entre commit e render) → COMPLETED; A15/A16 cobrem as falhas |
 | A5 | edição concorrente da página / assinatura / fonte / projeto durante a medição | espera a trava; a chamada seguinte recusa `VERSAO_DIVERGENTE` (página) ou mede com o novo |
 | A6 | perfil normal, mesmas chamadas | rastro de escritas idêntico ao de hoje; nenhuma trava nova; sem `revisao` |
-| A7 | todos os ajustes recusados pelo CP4 (draft-only) | `REVISAO_HUMANA_NECESSARIA` com `details.causa` = o código do CP4 que teria saído e `details.recusados` iguais aos de hoje; `details.revisao.tipo = 'nao-medida'`; nada medido pelo gate (0 medidas da `tx`); perfil normal: o código do CP4, como hoje (A6) |
+| A7 | todos os ajustes recusados pelo CP4 (draft-only) | o CÓDIGO da chamada é `REVISAO_HUMANA_NECESSARIA` (asserção explícita, não presença textual) e `details.causa` é o código do CP4 que teria saído (um caso por código: `AJUSTE_PIOROU_ARTE`, `AJUSTE_NAO_MEDIDO`, `CONTEUDO_NAO_PODE_SER_OCULTADO`); `details.recusados` iguais aos de hoje; `details.revisao.tipo = 'nao-medida'`; nada medido pelo gate (0 medidas da `tx`); perfil normal: o código do CP4, como hoje (A6) |
 | A8 | `slotValues` que esvaziam texto (draft-only) | `CONTEUDO_NAO_PODE_SER_REMOVIDO` antes de qualquer medida |
 | A9 | ajuste APTO gravado → `agendar-leva` draft-only na mesma página | o lote mede de novo a Generation do ITEM (a do compositor; `composicaoReaproveitavel: false`, porque a `versaoRenderizada` dela é a antiga) e cria o DRAFT; dois registros (um por Generation), ambos `coincidente` com a mesma `pageVersion`; `ver-geracao` de cada um diz qual arte é (`source`) e qual URL expõe (a do ajuste = a página atual; a do compositor = a arte antiga, com `thumbnail` da página regravado pelo render do ajuste) |
 | A10 | gravação do registro falha / timeout / deadlock | rollback; `REVISAO_HUMANA_NECESSARIA` (ou `AJUSTE_CONCORRENTE` no deadlock); nada gravado |
@@ -280,7 +294,7 @@ campo. Nenhum parâmetro novo na tool; a descrição de `ajustar-arte` ganha o p
 | A13 | intercalações que controlam a ORDEM de aquisição (banco falso com travas e gancho por trava): `agendar-leva` draft-only × `ajustar-arte` draft-only na mesma página (as duas ordens); render condicionado (`persist.ts`: Page FOR UPDATE → Generation) × `ajustar-arte`; `recompor` (Page CAS, depois Generation fora de transação) × `ajustar-arte`; worker da fila SEGURANDO a Generation de origem/alvo × `ajustar-arte` (a espera é MEDIDA à parte, como C18 do CP5c); `later-scheduler` (agenda → posts) × `ajustar-arte`; rota de fontes × `ajustar-arte` | nenhuma espera cruzada; quem chega depois espera o commit; a espera pela Generation aparece separada da medição; deadlock injetado (`40P01`) → `AJUSTE_CONCORRENTE`, nada gravado |
 | A14 | música adicionada à página entre a leitura inicial e a transação | a conferência sob trava recusa (`PAGINA_MUDOU_DURANTE_O_AJUSTE`), nada medido, nada gravado; música presente desde o início → `PAGINA_COM_MUSICA`/`nao-medida` antes de medir |
 | A15 | a página muda DEPOIS do commit e ANTES de o render fechar (`PAGINA_MUDOU_DURANTE`) | Generation fechada como `FAILED` com o motivo fixo; registro do gate presente; página gravada; invalidação como hoje; `ver-geracao` → FAILED + `gate` `historico` (a página já é outra) |
-| A16 | render lança (Blob/canvas) depois do commit | Generation `FAILED` (fechamento explícito, idempotente); fechamento que falha → fica PROCESSING e o teste do cron de órfãs (`generation-queue`) a marca FAILED |
+| A16 | render lança (Blob/canvas) depois do commit; e a CORRIDA com o cron de órfãs (o cron lê a Generation, o fechamento explícito grava `error`+`FAILED`, o cron escreve depois) | Generation `FAILED` (fechamento explícito, idempotente); com o cron por merge e `where` por status, `gateDaArte` e `error` sobrevivem à corrida nas duas ordens; fechamento que falha → fica PROCESSING e o cron a marca FAILED preservando `gateDaArte` |
 | A17 | referência (assinatura/modelo) editada DURANTE a medição; Generation de origem reescrita por um worker durante a medição; **SEGUNDO ajuste na mesma página** (o alvo da recomposição é a Generation do primeiro ajuste, de `source: 'ajuste-arte'`) | esperam a trava (FOR SHARE / FOR UPDATE); a chamada seguinte mede com o novo; no segundo ajuste as DUAS Generations (origem do compositor e alvo do ajuste anterior) aparecem travadas em ordem de id ANTES dos shares, e `travarRecomposicaoDaArte` escreve a linha já travada |
 | A18 | página sem Generation do compositor (arte livre) | medição sem referências → recusa do gate com o motivo dito; nada gravado |
 | P11 | `piloto-ciclo.test.ts` "o ajuste que piora é recusado ANTES de substituir…" | vira `it()`: página intacta, render não reaberto, `REVISAO_HUMANA_NECESSARIA` na resposta — **o harness de `piloto-ciclo` ganha rollback de verdade** (foto do banco em memória restaurada quando a transação lança) e espera por trava (`$queryRaw` com fila por chave), senão "página intacta" passaria por acidente (Codex R1) |
@@ -292,13 +306,17 @@ campo. Nenhum parâmetro novo na tool; a descrição de `ajustar-arte` ganha o p
   `RecusaDoGate` e o mapeamento no `catch`, `revisao` no retorno e nas recusas, `renderPageAndRegister({ generationId })`;
 - `src/lib/creatives/revisao/revisao-do-item.ts` (novo, puro): `RevisaoDoItem` (movido de `agendar-itens.ts`, que reexporta);
 - `src/lib/lotes/agendamento.ts`: `POLITICA_DO_ASSUNTO_DO_GATE` (renome; `POLITICA_DO_ASSUNTO_DO_AGENDAR_LEVA` reexportado);
-- `src/lib/mcp/catalogo/arte-ia.ts` (`ajustar-arte`): descrição + `principal` ao serviço; `scripts/validar-registro-mcp.ts` (snapshot só de schema: não muda);
+- `src/lib/mcp/catalogo/arte-ia.ts` (`ajustar-arte`): descrição (a frase que anuncia o código do CP4 para a recusa total ganha o
+  caso draft-only: `REVISAO_HUMANA_NECESSARIA` com `details.causa`) + `principal` ao serviço; `scripts/validar-registro-mcp.ts`
+  (snapshot só de schema: não muda);
+- `src/lib/compositor/recompor.ts`: só a extração `alvoDaRecomposicao` + opção `alvo` em `travarRecomposicaoDaArte` (seleção igual);
+- `src/lib/ai/generation-queue.ts`: `marcarGenerationFalha` por merge (regra 🔴 do `AGENTS.md`);
 - `eslint.config.mjs`, `inventario-gate-da-arte.test.ts`, `inventario-gate-agendar-leva.test.ts` (listas + travas);
 - testes: `src/lib/creatives/__tests__/ajustar-arte-gate.test.ts` (A1–A12), `piloto-ciclo.test.ts` (P11 → `it()`);
 - docs: `docs/regras/revisor-da-arte.md` § CP5d, `docs/regras/mcp.md`, `docs/regras/dot-lagosta-operacao.md` + `operacao-dot.ts` (v7).
 
 Fora: `gate.ts`, `gate-registro.ts`, `gate-persistido.ts`, `agendar-itens.ts` (só o reexport), `ajustar-sem-piorar.ts`,
-`nao-piora.ts`, `persist.ts` (o caminho `generationId` já existe), schema do Prisma, fluxo humano.
+`nao-piora.ts`, `persist.ts` (o caminho `generationId` já existe), a rota da galeria, schema do Prisma, fluxo humano.
 
 ## 11. Gates do PR de implementação
 
