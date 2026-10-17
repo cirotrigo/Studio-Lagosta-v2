@@ -325,7 +325,7 @@ export function paraMarkdown(resumo: Resumo, meta: { data: string; head: string;
   for (const [m, n] of Object.entries(e.excecoesPorMensagem)) L.push(`- ${n}× ${m}`)
   L.push('')
   const r = resumo.repetibilidade
-  L.push(`## 7. Repetibilidade: ${pct(r.iguais, r.comparadas)} iguais (compostas: veredito, motivos, camadas normalizadas e hash do PNG; recusas estruturais: o mesmo código)`)
+  L.push(`## 7. Repetibilidade: ${pct(r.iguais, r.comparadas)} iguais (compostas: impressão COMPLETA do gate final sem medidoEm, camadas normalizadas e hash do PNG; recusas estruturais: o mesmo código)`)
   for (const dv of r.divergencias) L.push(`- ${dv.chave}: ${dv.diferencas.join('; ')}`)
   L.push('')
   const d1 = resumo.decisao1
