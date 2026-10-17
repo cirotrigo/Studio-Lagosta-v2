@@ -152,8 +152,8 @@ registrado); **agendados** (população SEPARADA, só se o owner pedir, D3) — 
 | E4 | existe prova com `mediaUrl === mediaUrls[0]` (igualdade exata de string) | `sem-prova` (nenhuma prova) · `prova-de-outra-midia` (há provas, nenhuma da mídia efetiva) |
 | E5 | `layersSnapshot` é array de objetos (aceita string JSON uma vez decodificada; nada além) | `snapshot-ilegivel` |
 | E6 | exatamente UMA camada `id === 'bg-foto'`, `type === 'image'`, `fileUrl` `https:` | `fundo-ausente` · `fundo-duplicado` · `fundo-nao-imagem` · `fundo-nao-https` |
-| E6b | contribuição visual NÃO trivialmente nula: `visible !== false`; `style.opacity` ausente ou > 0 (numérico finito); `size` com largura e altura > 0; caixa (`position`/`size`) intersecta o canvas 1080 × 1920 com área > 0 | `fundo-invisivel` (com o subcampo: oculto / opacidade 0 / sem área / fora do canvas) |
-| E7 | URL de download segura: `URL` parseável; protocolo `https:`; `hostname` (minúsculas) termina EXATAMENTE em `.public.blob.vercel-storage.com` com UM só rótulo antes (o id do store) — sem `includes`, sem os outros hosts de `HOSTS_PROPRIOS` (Drive/Supabase ficam fora da P1); sem usuário/senha nem porta | `host-nao-autorizado` |
+| E6b | contribuição visual NÃO trivialmente nula, avaliada só no caso SIMPLES: `visible !== false`; `style.opacity` ausente ou número finito > 0; `size` com largura e altura > 0; `rotation` ausente ou 0; sem `style.mask`; `Page.width × Page.height` atuais = 1080 × 1920 (o snapshot não traz o canvas); caixa (`position`/`size`) intersecta 1080 × 1920 com área > 0. Rotação ≠ 0, máscara, dimensões da página diferentes ou campo de transformação não previsto → a P1 NÃO avalia: exclusão, nunca aceite | `fundo-invisivel` (oculto / opacidade 0 / sem área / fora do canvas) · `fundo-nao-avaliavel` (rotação / máscara / dimensões da página / transformação desconhecida) |
+| E7 | URL de download segura: `URL` parseável; protocolo `https:`; sem usuário/senha nem porta; `hostname` (minúsculas) IGUAL a um item da lista FECHADA `STORES_DO_STUDIO` — constante revisada no PR (proposta: `2rhsgfleozgl5jbm.public.blob.vercel-storage.com`, o store atual, citado em `scripts/recover-blob-files.ts:5`), confirmada pelo owner em D7; nunca sufixo, nunca `includes`, nunca os outros hosts de `HOSTS_PROPRIOS` | `host-nao-autorizado` |
 | E8 | classe de origem (3.4) ≠ `render` | `fundo-e-render` (arte dentro de arte) |
 | E9 | `fileUrl` (sem query) ainda não selecionado neste cliente | `arquivo-repetido` |
 
@@ -190,9 +190,9 @@ comprovada", o que não é o mesmo que "original").
 Zero `fetch`, zero arquivo de pixel. Saída (stdout + JSON opcional): por cliente — lidos, elegíveis, exclusões por motivo (E1–E9),
 elegíveis por classe de origem, `cropPosition` ausente/presente; global — `min/max(proof.createdAt)` e `max(SocialPost.updatedAt)`
 observados como **marcador do snapshot** (rotulado "estimado pelo dado mais recente do branch"; a idade real é a de
-`db:dev:status`, que fica com o owner). Dois casos distintos, nunca confundidos: **(i) o branch não tem a tabela/migração**
-(`PostRenderProof` ausente, ou `20261012120000_post_render_proof` fora de `_prisma_migrations`) → recusa com "branch anterior à
-prova de render"; **(ii) a tabela existe e a SELEÇÃO não tem prova** → não recusa, reporta "nenhuma prova nesta seleção" com o
+`db:dev:status`, que fica com o owner). Dois casos distintos, nunca confundidos: **(i) a contagem não pode rodar** → recusa,
+dizendo QUAL sinal falhou, separados — `tabela PostRenderProof ausente` e/ou `migração 20261012120000_post_render_proof não
+registrada em _prisma_migrations` — com causa "indeterminada" (nenhum dos dois data o branch); **(ii) a tabela existe e a SELEÇÃO não tem prova** → não recusa, reporta "nenhuma prova nesta seleção" com o
 total de provas do branch inteiro (só `COUNT` e `min/max(createdAt)`, sem ler linhas) para o owner julgar — sem atribuir a causa à
 idade do branch. Também mostra se algum STORY elegível tem mídia em `normalized/` (deveria ser 0; se não for,
 o fato vai ao relatório).
@@ -226,7 +226,7 @@ não roda a rodada, não executa contra o branch de dev (os testes usam linhas f
 - Posts de STORY anteriores ao compositor (sem `bg-foto`) são excluídos por E6, enviesando a amostra para peças do
   compositor; o relatório tem de dizer a proporção.
 - As datas do post são gravadas em UTC sem fuso: os limites `--desde`/`--ate` são UTC e assim rotulados.
-- E7 restringe a P1 ao Blob do Studio: fundos servidos pelo Drive ou pelo Supabase saem como `host-nao-autorizado` (contados);
+- E7 restringe a P1 aos stores listados em `STORES_DO_STUDIO`: fundos servidos pelo Drive ou pelo Supabase saem como `host-nao-autorizado` (contados);
   incluí-los é decisão, com regra de host própria.
 - O snapshot de dev envelhece; recriar é decisão do owner (P2).
 
@@ -244,12 +244,12 @@ continua "não medida" e contada. O estimador, na fixture pseudonimizada, mede "
 | T3 | E1–E3 | cada status nas duas populações (SCHEDULED nunca entra em publicados; nada aparece nas duas); `latePublishedAt` presente / só `sentAt` / ambos nulos; limites `desde` (entra) e `ate` (sai); `scheduledDatetime` nulo num POSTED (elegível); `mediaUrls` [] / 2; `pageId` null | motivo exato; campo de referência registrado |
 | T4 | E4 | sem prova; prova de outra URL; duas provas, uma casa; URL com query diferente | `sem-prova` / `prova-de-outra-midia` / elegível / `prova-de-outra-midia` (igualdade exata) |
 | T5 | E5 | array; string JSON de array; string dupla-codificada; objeto; JSON inválido; `null` | só os dois primeiros elegíveis |
-| T6 | E6–E6b | 0 / 2 `bg-foto`; `type: 'shape'`; `data:`; `http:`; outras imagens sem `bg-foto` (não cai em `imagens[0]`); oculta; `style.opacity` 0 / −1 / `NaN` / `'0'` (string) / 0,01; `size` 0 × N; caixa inteira fora do canvas; caixa parcialmente dentro; camada opaca acima cobrindo o fundo | motivo exato; 0,01 e parcial elegíveis; "coberta" elegível com a contagem de camadas acima registrada (não decide) |
-| T7 | E7–E8 | `x.public.blob.vercel-storage.com` (ok); `a.b.public.blob.vercel-storage.com`; `public.blob.vercel-storage.com.evil.com`; `evil.com/?x=.public.blob.vercel-storage.com`; `lh3.googleusercontent.com`; `x.supabase.co`; `user@host`; porta; maiúsculas no host; `posts/rendered/` | só o primeiro (e a variante em maiúsculas) autorizado; motivos exatos |
+| T6 | E6–E6b | 0 / 2 `bg-foto`; `type: 'shape'`; `data:`; `http:`; outras imagens sem `bg-foto` (não cai em `imagens[0]`); oculta; `style.opacity` 0 / −1 / `NaN` / `'0'` (string) / 0,01; `size` 0 × N; caixa inteira fora do canvas; caixa parcialmente dentro; camada opaca acima cobrindo o fundo; `rotation` 45 com a caixa dentro antes de girar e fora depois; `rotation` 0 explícito; `style.mask` presente; `Page` 1080 × 1350; campo de transformação desconhecido | motivo exato; 0,01, parcial e `rotation` 0 elegíveis; rotação ≠ 0, máscara, página ≠ story e campo desconhecido → `fundo-nao-avaliavel`; "coberta" elegível com a contagem de camadas acima registrada (não decide) |
+| T7 | E7–E8 | o host de `STORES_DO_STUDIO` (ok); OUTRO store válido da Vercel (`abcdefghijklmnop.public.blob.vercel-storage.com`); o store antigo `sqc9qfyearji7bel`; `a.b.public.blob.vercel-storage.com`; `public.blob.vercel-storage.com.evil.com`; `evil.com/?x=.public.blob.vercel-storage.com`; `lh3.googleusercontent.com`; `x.supabase.co`; `user@host`; porta; maiúsculas no host; `posts/rendered/` | só o host listado (e a variante em maiúsculas) autorizado; motivos exatos |
 | T8 | 3.4 | cada prefixo; maiúsculas; query; `%2e%2e`/`..`; prefixo novo | classe da tabela; desconhecida no resto |
 | T9 | E9 + ordem | mesma URL com query diferente; empate da data de referência | repetido; desempate por `id`; mesma entrada → manifesto byte a byte igual (hash) |
 | T10 | transação | `tx` falso que registra chamadas | 1ª chamada `SET TRANSACTION READ ONLY`; nenhum SQL com `INSERT/UPDATE/DELETE/ALTER` (lista das strings enviadas) |
-| T11 | `--contar` | `fetch` espião; branch sem a tabela; tabela com provas fora da seleção | `fetch` nunca chamado; nenhum arquivo escrito; recusa só no primeiro caso; no segundo, "nenhuma prova nesta seleção" + `COUNT` global |
+| T11 | `--contar` | `fetch` espião; tabela ausente; migração não registrada com tabela presente; os dois; tabela com provas fora da seleção | `fetch` nunca chamado; nenhum arquivo escrito; recusa nos três primeiros, com o(s) sinal(is) exatos e causa "indeterminada"; no segundo, "nenhuma prova nesta seleção" + `COUNT` global |
 | T12 | download | 403, timeout, `text/html` com status 200, bytes que não são imagem com `image/png`, 30 MB sem `content-length`, redirecionamento para host autorizado, para host alheio, cadeia de 4; OK | exclusões `download-falhou:<subcódigo>` contadas; redirecionamento autorizado segue; OK com SHA-256 certo e extensão pela assinatura |
 | T13 | cota/déficit/reposição | 3 elegíveis com cota 10; 12 elegíveis com cota 10 e 2 falhas; 7 elegíveis com 2 falhas e cota 10 | fora da leva (< 6 exportados); 10 exportados com os 2 reservas seguintes no lugar, na ordem; 5 exportados → fora da leva, déficit 5 |
 | T14 | pureza | `selecao-de-fotos.ts` | não importa `@/lib/db` nem `node:fs`/rede (teste de import, padrão do repo) |
@@ -267,6 +267,7 @@ CI e Vercel verdes. Sem rodada do piloto (nada nele muda).
 | D4 | Estratificação | sem categoria na ferramenta; categoria marcada em P5, sobre-amostra de 2× a cota | sem estratificação |
 | D5 | Destino da exportação | fora do repositório | `human-output/` (ignorado) |
 | D6 | Fundo sem `bg-foto` | excluído e contado | heurística declarada (`imagens[0]`), rotulada |
+| D7 | Stores do Blob autorizados para download (`STORES_DO_STUDIO`) | só o store atual | incluir outro store do Studio, citado por você |
 
 Clientes, cota final, pixels versionáveis e destino das fixtures (5.1/5.2) ficam para P3, com os números de P2.
 
@@ -281,3 +282,8 @@ Clientes, cota final, pixels versionáveis e destino das fixtures (5.1/5.2) fica
   transformação comprovada registrados à parte; (5) "nenhuma prova" na seleção ≠ branch anterior à migração → dois casos
   distintos; (6) cota calculada sobre elegíveis → reposição determinística e cota/déficit sobre exportados. Matriz T3, T6, T7,
   T11, T12, T13 ampliada.
+- **R2 (HEAD c29453ce) — NÃO APTO**: R1 1, 4 e 6 resolvidos; 2, 3 e 5 parciais → corrigidos: (1) E6b não considerava rotação,
+  máscara nem as dimensões da página (`render-engine.ts:189-208, 1657-1669`; `story-renderer.ts:138-143`) → a P1 só avalia o
+  caso simples e exclui o resto como `fundo-nao-avaliavel`; (2) E7 aceitava qualquer store da Vercel → lista fechada
+  `STORES_DO_STUDIO` (D7) e teste com outro store recusado; (3) tabela ausente e migração não registrada relatadas
+  separadamente, causa indeterminada.
