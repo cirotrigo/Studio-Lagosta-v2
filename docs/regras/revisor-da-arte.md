@@ -1162,7 +1162,7 @@ Contrato: `docs/PLANO-2026-10-17-CP5E-CONTRATO.md` (Codex APTO na rodada 5). O q
 Contrato: `docs/PLANO-2026-10-17-PILOTO-SINTETICO-CONTRATO.md` (Codex APTO R4). Runner:
 `src/lib/direcao-de-arte/__tests__/piloto-sintetico.test.ts`, desligado por padrão
 (`describe.skipIf(!process.env.PILOTO_SINTETICO)`); roda por `npm run piloto:sintetico [--completo | --calibracao N |
---cliente <id> | --sem-repeticao]`. Tudo em banco falso com travas (`suporte/banco-com-travas.ts`), Blob falso e efeitos
+--cliente <id> | --sem-repeticao | --so <trecho-da-chave>]` (qualquer filtro = rodada EXPLORATÓRIA). Tudo em banco falso com travas (`suporte/banco-com-travas.ts`), Blob falso e efeitos
 espionados: **nenhum cliente real, DRAFT real, agenda, mensagem ou banco de produção** — o `agendar-leva` do piloto cria
 DRAFTs no banco falso. O relatório integral (JSON + PNGs) vai para `human-output/relatorios/piloto-sintetico/<data>-<rodada>/`
 (fora do versionamento, `.gitignore`); o **resumo** de cada rodada oficial é versionado em `docs/piloto-sintetico/`.
@@ -1258,7 +1258,7 @@ A1 sem arquétipo (`i % 3` deixava a amostra sem nenhuma); a logo sintética é 
 resumo diz a soma e o contador (têm de bater); a rodada CAI (`violacoesDoPiloto`, puro e testado) com erro de execução,
 exceção, timeout, cobertura vazia, falso APTO em peça medida, repetibilidade < 100 %, modo G inválido ou não recusado e
 oclusão injetada não recusada — e a rodada OFICIAL (padrão ou `--completo` sem `PILOTO_CALIBRACAO`/`PILOTO_CLIENTE`/
-`PILOTO_SEM_REPETICAO`) exige ainda toda spec repetida, modo G > 0 e oclusão injetada > 0 (0/0 não é prova); com filtro
+`PILOTO_SEM_REPETICAO`/`PILOTO_SO`) exige ainda toda spec repetida, modo G > 0 e oclusão injetada > 0 (0/0 não é prova); com filtro
 a rodada é EXPLORATÓRIA e o resumo diz isso na primeira linha de limites; a repetição cobre também as recusas estruturais; o `loteId` é hash dos INSUMOS
 (copies, fotos, arquétipos, versão de cada cliente), não só das chaves; os caminhos no resumo são relativos à raiz e o HEAD
 vem marcado `(árvore SUJA)` quando o código que rodou não é o do commit.

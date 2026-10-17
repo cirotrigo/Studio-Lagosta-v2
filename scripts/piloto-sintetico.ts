@@ -5,6 +5,7 @@
  *   npx tsx scripts/piloto-sintetico.ts --completo      # o lote inteiro
  *   npx tsx scripts/piloto-sintetico.ts --calibracao 20 # só as N primeiras peças da amostra
  *   npx tsx scripts/piloto-sintetico.ts --cliente cliente-00 [--sem-repeticao]
+ *   npx tsx scripts/piloto-sintetico.ts --so 'feed|B'            # só as specs cuja chave contém o trecho (rodada EXPLORATÓRIA)
  *
  * Roda o vitest do piloto com a variável de ambiente; nada toca produção (banco falso, Blob falso, efeitos espionados).
  * Saída: human-output/relatorios/piloto-sintetico/<data>-<rodada>/ (relatório integral + PNGs; fora do versionamento) e o
@@ -23,5 +24,7 @@ if (calibracao && calibracao !== '1') env.PILOTO_CALIBRACAO = calibracao
 const cliente = flag('--cliente')
 if (cliente && cliente !== '1') env.PILOTO_CLIENTE = cliente
 if (args.includes('--sem-repeticao')) env.PILOTO_SEM_REPETICAO = '1'
+const so = flag('--so')
+if (so && so !== '1') env.PILOTO_SO = so
 const r = spawnSync('npx', ['vitest', 'run', 'src/lib/direcao-de-arte/__tests__/piloto-sintetico.test.ts', '--maxWorkers=1'], { stdio: 'inherit', env })
 process.exit(r.status ?? 1)

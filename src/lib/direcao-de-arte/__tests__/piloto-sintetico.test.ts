@@ -152,9 +152,9 @@ const PROJETO = 8
 const LOTE = 'dot-8-piloto-sintetico'
 const RAIZ = path.resolve(__dirname, '../../../..')
 const DATA = new Date().toISOString().slice(0, 10)
-const RODADA = process.env.PILOTO_CALIBRACAO ? `calibracao-${process.env.PILOTO_CALIBRACAO}` : process.env.PILOTO_SINTETICO === 'completo' ? 'completo' : 'padrao'
+const RODADA = process.env.PILOTO_SO ? `so-${process.env.PILOTO_SO.replace(/[^a-zA-Z0-9]+/g, '_')}` : process.env.PILOTO_CALIBRACAO ? `calibracao-${process.env.PILOTO_CALIBRACAO}` : process.env.PILOTO_SINTETICO === 'completo' ? 'completo' : 'padrao'
 /** Oficial = padrão ou --completo SEM filtros; qualquer filtro torna a rodada EXPLORATÓRIA (o resumo diz, e a cobertura dos cenários não é exigida). */
-const OFICIAL = !process.env.PILOTO_CALIBRACAO && !process.env.PILOTO_CLIENTE && !process.env.PILOTO_SEM_REPETICAO
+const OFICIAL = !process.env.PILOTO_CALIBRACAO && !process.env.PILOTO_CLIENTE && !process.env.PILOTO_SEM_REPETICAO && !process.env.PILOTO_SO
 const SAIDA = path.join(RAIZ, 'human-output', 'relatorios', 'piloto-sintetico', `${DATA}-${RODADA}`)
 
 // ─── Clientes do lote ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -473,7 +473,9 @@ describe.skipIf(!LIGADO)('piloto sintético de autonomia', () => {
     // Os insumos visuais que o lote não enxerga: os bytes da foto real da fixture (as sintéticas entram pela versão da geração).
     const lote = specsDoLote({ clientes, amostra: process.env.PILOTO_SINTETICO === 'completo' ? 'completo' : 1 / 6, insumosVisuais: sha256(Buffer.from(arquivos['fixture:foto'].split(',')[1], 'base64')).slice(0, 16) })
     const n = process.env.PILOTO_CALIBRACAO ? Number(process.env.PILOTO_CALIBRACAO) : lote.amostra.length
-    const specs = lote.amostra.slice(0, n)
+    // `--so <trecho>` (contrato § 4.7): só as specs cuja chave contém o trecho — rodada EXPLORATÓRIA, nunca oficial.
+    const so = process.env.PILOTO_SO
+    const specs = lote.amostra.filter((s) => !so || s.chave.includes(so)).slice(0, n)
     const repetir = !process.env.PILOTO_SEM_REPETICAO
     const registros: RegistroDaPeca[] = []
     const inicio = Date.now()
@@ -502,7 +504,7 @@ describe.skipIf(!LIGADO)('piloto sintético de autonomia', () => {
         return 'desconhecido'
       }
     })()
-    const limites = [...(OFICIAL ? [] : ['RODADA EXPLORATÓRIA (com filtro de calibração/cliente/repetição): NÃO vale como rodada oficial nem para o resumo versionado']), 'fontes da marca não instaladas (declaradas presentes; render com fonte de reserva)', 'a visão (gpt-5.2) não roda', 'fotos SINTÉTICAS + a real anonimizada de 13/10 — lote CONTROLADO, não representativo das fotos dos clientes (decisão 5.1)', 'banco falso com travas: travas/SQL reais e Blob não provados', 'custo medido nesta máquina, não na Vercel', `clientes: ${clientes.map((c) => c.id).join(', ')} (fixtures reais pseudonimizadas aguardam a lista do owner — decisão 5.2)`]
+    const limites = [...(OFICIAL ? [] : ['RODADA EXPLORATÓRIA (com filtro de calibração/cliente/repetição/--so): NÃO vale como rodada oficial nem para o resumo versionado']), 'fontes da marca não instaladas (declaradas presentes; render com fonte de reserva)', 'a visão (gpt-5.2) não roda', 'fotos SINTÉTICAS + a real anonimizada de 13/10 — lote CONTROLADO, não representativo das fotos dos clientes (decisão 5.1)', 'banco falso com travas: travas/SQL reais e Blob não provados', 'custo medido nesta máquina, não na Vercel', `clientes: ${clientes.map((c) => c.id).join(', ')} (fixtures reais pseudonimizadas aguardam a lista do owner — decisão 5.2)`]
     const md = paraMarkdown(resumo, { data: DATA, head, loteId: lote.loteId, ambiente: `${process.platform} ${process.arch} node ${process.version}`, rodada: RODADA, hashRelatorio: sha256(relatorio), limites, excluidosPorMotivo: lote.denominadores.excluidos, rendersObservados: espioes.renders })
     fs.writeFileSync(path.join(SAIDA, 'resumo.md'), md)
     console.log(`[piloto] relatório em ${SAIDA} · ${registros.length} peças · ${Math.round((Date.now() - inicio) / 1000)} s · renders ${espioes.renders}`)
