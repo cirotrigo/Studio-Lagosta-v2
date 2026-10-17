@@ -8,12 +8,12 @@ import { AVISO_DO_GATE } from '@/lib/mcp/catalogo/ver-geracao-retorno'
 import { POLITICA_DO_ASSUNTO_DO_GATE } from '@/lib/lotes/agendamento'
 import { NAO_CONFERIDO_PELA_IDENTIDADE } from '../gate-registro'
 import { CHAVE_DO_GATE } from '../gate-registro'
-import { resumoDoGateDosPosts, resumoVazio, situacaoDoRegistroDoPost, TETO_DE_POSTS_DO_GATE, type PaginaParaOResumo } from '../gate-resumo'
+import { resumoDoGateDosPosts, resumoVazio, situacaoDoRegistroDoPost, TETO_DE_POSTS_DO_GATE, type GenerationParaOResumo, type PaginaParaOResumo } from '../gate-resumo'
 import { PAGINA_LIMPA, decidirOk } from './suporte/pagina-limpa'
 
 const pagina: PaginaParaOResumo = { ...PAGINA_LIMPA, Template: { projectId: 8 } }
 const registro = decidirOk().registro // vínculo: projeto 8, gen-1, pg-1; APTO
-const generation = (id: string, extra: Record<string, unknown> = {}) => ({ id, projectId: 8, fieldValues: { source: 'compositor', pageId: 'pg-1', [CHAVE_DO_GATE]: registro, ...extra } })
+const generation = (id: string, extra: Record<string, unknown> = {}): GenerationParaOResumo => ({ id, projectId: 8, fieldValues: { source: 'compositor', pageId: 'pg-1', [CHAVE_DO_GATE]: registro, ...extra } as Record<string, unknown> })
 const post = (id: string, extra: Partial<{ projectId: number; pageId: string | null; generationId: string | null }> = {}) => ({ id, projectId: 8, pageId: 'pg-1', generationId: 'gen-1', ...extra })
 const situacao = (p: ReturnType<typeof post>, gens = [generation('gen-1')], pags = [pagina], permitidos: number[] | null = null) =>
   situacaoDoRegistroDoPost(p, new Map(gens.map((g) => [g.id, g])), new Map(pags.map((x) => [x.id, x])), permitidos)
