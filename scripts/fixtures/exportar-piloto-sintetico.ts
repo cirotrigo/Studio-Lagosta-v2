@@ -92,7 +92,7 @@ async function principalDasFotos(argv: string[]) {
     )
   }
   fs.writeFileSync(path.join(args.pasta!, 'manifesto.json'), JSON.stringify({ ...comum, clientes }, null, 1), { flag: 'wx' })
-  for (const r of clientes) console.log(`cliente ${r.cliente}: ${r.exportados.length} exportado(s) de ${r.elegiveis} elegível(is)${r.foraDaLeva ? ' — FORA DA LEVA' : ''}`)
+  for (const r of clientes) console.log(`cliente ${r.cliente}: ${r.exportados.length} exportado(s); ${r.elegiveis} elegível(is) conferido(s) de ${r.elegiveisPreliminares} preliminar(es)${r.foraDaLeva ? ' — FORA DA LEVA' : ''}`)
 }
 
 async function main() {

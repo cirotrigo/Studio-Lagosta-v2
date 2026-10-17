@@ -166,19 +166,24 @@ export function recusaDoDestino(pasta: string, raizDoRepo: string, realpath: (p:
 
 // ── Host (E7) ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
+/** Forma CANÔNICA exigida antes de tudo: `https://<host>` seguido de `/`, `?`, `#` ou fim — sem porta, credencial nem barra extra. */
+const URL_CANONICA = /^https:\/\/[a-z0-9.-]+(?=[/?#]|$)/i
+
 /** `null` = autorizado. Comparação EXATA do hostname com `STORES_DO_STUDIO` — nunca sufixo, nunca `includes`. */
 export function recusaDoHost(url: string): string | null {
+  // O parser normaliza `https:////h:443` e `h:443` para porta vazia: a forma é lida no TEXTO, antes de parsear.
+  if (!/^https:\/\//i.test(url)) return 'protocolo-nao-https'
+  const autoridade = /^https:\/\/([^/?#]*)/i.exec(url)![1]
+  if (autoridade.includes('@')) return 'credencial-na-url'
+  if (autoridade.includes(':')) return 'porta-explicita'
+  if (!URL_CANONICA.test(url)) return 'url-nao-canonica'
   let u: URL
   try {
     u = new URL(url)
   } catch {
     return 'url-invalida'
   }
-  if (u.protocol !== 'https:') return 'protocolo-nao-https'
-  if (u.username || u.password) return 'credencial-na-url'
-  // `URL.port` normaliza `:443` (e `:`) para vazio: a porta explícita se lê na AUTORIDADE original.
-  const autoridade = /^https:\/\/([^/?#]*)/i.exec(url.trim())?.[1] ?? ''
-  if (u.port || autoridade.includes(':')) return 'porta-explicita'
+  if (u.protocol !== 'https:' || u.username || u.password || u.port) return 'url-nao-canonica'
   return STORES_DO_STUDIO.includes(u.hostname.toLowerCase()) ? null : 'host-fora-da-lista'
 }
 
@@ -603,8 +608,12 @@ export interface FotoExportada extends FotoElegivel {
 export interface ResultadoDoCliente {
   cliente: number
   lidos: number
-  elegiveis: number
+  /** Passaram E1–E8b (antes do canvas e de E9) — preliminar, não é o total de elegíveis. */
+  elegiveisPreliminares: number
+  /** Preliminares conferidos (canvas + E9), em ordem, até fechar os candidatos. */
   tentados: number
+  /** Conferidos que passaram TAMBÉM no canvas e em E9: os elegíveis de fato (inclui os que falharam no download). */
+  elegiveis: number
   exportados: FotoExportada[]
   exclusoes: Record<string, number>
   deficitDeCandidatos: number
@@ -627,6 +636,7 @@ export async function exportarCliente(
   }
   const exportados: FotoExportada[] = []
   let tentados = 0
+  let elegiveisDeFato = 0
   // Reposição determinística: na ordem, até `candidatos` EXPORTADOS; cada falha é contada e o próximo entra.
   for (const e of elegiveis) {
     if (exportados.length >= o.candidatos) break
@@ -641,6 +651,7 @@ export async function exportarCliente(
       somar(exclusoes, 'arquivo-repetido')
       continue
     }
+    elegiveisDeFato++
     const r = await baixarComGuarda(e.fileUrl, deps.buscar)
     if ('falha' in r) {
       somar(exclusoes, `download-falhou:${r.falha}`)
@@ -674,8 +685,9 @@ export async function exportarCliente(
   return {
     cliente,
     lidos: posts.length,
-    elegiveis: elegiveis.length,
+    elegiveisPreliminares: elegiveis.length,
     tentados,
+    elegiveis: elegiveisDeFato,
     exportados,
     exclusoes,
     deficitDeCandidatos: o.candidatos - exportados.length,
