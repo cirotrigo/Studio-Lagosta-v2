@@ -266,13 +266,13 @@ describe('C9 — as tools MUTANTES da allowlist, executadas com banco falso', ()
     expect(medicao.chamadas).toBe(0)
   })
 
-  it('ajustar-arte: conferida (posts da página) e executada até onde o banco falso a leva; NÃO cria post nem grava veredito', async () => {
+  it('ajustar-arte: conferida (posts da página) e executada até onde o banco falso a leva; NÃO cria post (desde o CP5d ela PODE gravar o seu veredito — na Generation do ajuste, nunca num post)', async () => {
     const { erro } = await executar('ajustar-arte', { projectId: PROJETO, pageId: 'p1', slotValues: { headline: 'Texto headline ajustado' } })
     // Com o render e o Blob falsos ela pode terminar ou cair numa recusa de DOMÍNIO (CreativeError) — nunca num erro do harness.
     if (erro) expect(erro, String(erro)).toBeInstanceOf(CreativeError)
     expect(banco.eventos.some((e) => e.startsWith('escrita:page:') || e.startsWith('escrita:generation:')) || erro).toBeTruthy()
     expect(banco.postsCriados).toBe(0)
-    expect(banco.eventos).not.toContain('VEREDITO GRAVADO')
+    expect(banco.eventos).not.toContain('POST CRIADO')
     expect(banco.eventos).not.toContain('criarPostDoAgendamento')
     expect(banco.eventos).not.toContain('agendarPost')
   })

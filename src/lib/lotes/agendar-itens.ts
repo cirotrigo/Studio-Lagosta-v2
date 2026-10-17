@@ -61,7 +61,8 @@ import type { GateDaArte } from '@/lib/creatives/revisao/gate'
 import { decidirEMontarRegistro, type RegistroSelado } from '@/lib/creatives/revisao/gate-registro'
 import { gravarGateDaArte } from '@/lib/creatives/revisao/gate-persistido'
 import { contextoDaMedicao, medirCamadasDaPeca } from '@/lib/creatives/revisao/revisar-arte'
-import { identidadeDaPagina, versaoDaPagina, type IdentidadeDaPagina } from '@/lib/creatives/revisao/versao'
+import { identidadeDaPagina, versaoDaPagina } from '@/lib/creatives/revisao/versao'
+import { PRAZO_DA_MEDICAO_MS, PRAZO_POR_DOWNLOAD_MS, ehDeadlock, ehTimeoutDaTransacao, paginasDeReferencia, revisaoDe, type ResultadoDaMedicao, type RevisaoDoItem } from '@/lib/creatives/revisao/gate-no-fluxo'
 import type { Prisma } from '../../../prisma/generated/client'
 import {
   decidirAgendamento,
@@ -117,15 +118,8 @@ export interface EntradaDoAgendamentoDoLote {
   principal?: { tipo: string; id: string } | null
 }
 
-/**
- * CP5c § 6 — o que o gate do draft-only disse DESTA chamada: `medida` (a peça foi medida e decidida), `sem-vinculo`
- * (a medida não pôde ser vinculada à página — não há veredito), `nao-medida` (recusa antes de medir, prazo, erro, ou
- * uma linha já ligada que esta chamada não mediu). Só no perfil draft-only; o fluxo humano não traz o campo.
- */
-export type RevisaoDoItem =
-  | { tipo: 'medida'; resultado: GateDaArte['resultado']; rulesVersion: string; versaoDoGate: string; medidoEm: string; naoMedidos: GateDaArte['naoMedidos'] }
-  | { tipo: 'sem-vinculo'; motivo: string }
-  | { tipo: 'nao-medida'; motivo: string }
+/** CP5c § 6 — o tipo mora em `revisao/gate-no-fluxo.ts` (CP5d: `ajustar-arte` também o devolve); reexportado para os chamadores de hoje. */
+export type { RevisaoDoItem } from '@/lib/creatives/revisao/gate-no-fluxo'
 
 export interface ItemAgendadoDoLote {
   itemId: string
@@ -531,10 +525,8 @@ async function executarEfeitos(ctx: Contexto, linhaId: string, post: Post, peca:
 // CP5c — o GATE do perfil draft-only (docs/PLANO-2026-10-16-CP5C-CONTRATO.md)
 // ─────────────────────────────────────────────────────────────────────────
 
-/** § 8.9 (proposta): prazo da cadeia INTEIRA de `medirEDecidir` (contexto + medida + decisão), imposto POR FORA (race). */
-export const PRAZO_DA_MEDICAO_MS = 8_000
-/** § 8.9 (proposta): teto de cada download que aceita cancelamento (foto do assunto, fontes). */
-export const PRAZO_POR_DOWNLOAD_MS = 4_000
+/** § 8.9 (proposta): os prazos moram em `revisao/gate-no-fluxo.ts` (compartilhados com o CP5d); reexportados. */
+export { PRAZO_DA_MEDICAO_MS, PRAZO_POR_DOWNLOAD_MS } from '@/lib/creatives/revisao/gate-no-fluxo'
 export const MOTIVO_RASCUNHO_JA_EXISTENTE = 'rascunho já existente; nada foi criado nem ligado nesta chamada'
 /** § 5 (decisão 8.7, proposta B): no draft-only os efeitos pós-commit não rodam — só a repetição HUMANA do mesmo pedido os completa. */
 export const AVISO_EFEITOS_NAO_RODAM_NO_DRAFT_ONLY =
@@ -573,17 +565,8 @@ async function lerGeracaoDaPeca(cliente: Cliente, generationId: string, projectI
   return (await cliente.generation.findFirst({ where: { id: generationId, projectId }, select: { id: true, fieldValues: true, sourcePageId: true } })) as GeracaoDaPeca | null
 }
 
-/** As páginas que a medição lê além da própria: a de assinatura e a página-modelo apontadas pela Generation da peça. */
-function paginasDeReferencia(geracao: GeracaoDaPeca | null): string[] {
-  const fv = (geracao?.fieldValues && typeof geracao.fieldValues === 'object' ? geracao.fieldValues : {}) as Record<string, any>
-  const assinatura = fv.composicao?.assinatura?.pageId
-  return [...new Set([typeof assinatura === 'string' ? assinatura : null, geracao?.sourcePageId ?? null].filter((x): x is string => !!x))]
-}
-
-type ResultadoDaMedicao =
-  | { tipo: 'nao-medida'; motivo: string }
-  | { tipo: 'sem-vinculo'; motivo: string }
-  | { tipo: 'medida'; registro: RegistroSelado; gate: GateDaArte; identidade: IdentidadeDaPagina }
+// `paginasDeReferencia`, `revisaoDe`, `ehDeadlock`, `ehTimeoutDaTransacao` e `ResultadoDaMedicao` moram em
+// `revisao/gate-no-fluxo.ts` (compartilhados com o CP5d).
 
 /**
  * § 3 — mede a página e decide com `decidirEMontarRegistro` (CP5b), lendo TUDO pelo `cliente` que recebe: a
@@ -637,7 +620,8 @@ async function medirEDecidir(cliente: Cliente, ctx: Contexto, args: { peca: Peca
         agora: () => new Date(),
       })
       if (decisao.decisao === 'sem-vinculo') return { tipo: 'sem-vinculo', motivo: decisao.motivo }
-      return { tipo: 'medida', registro: decisao.registro, gate: decisao.gate, identidade }
+      void identidade
+      return { tipo: 'medida', registro: decisao.registro, gate: decisao.gate }
     } catch (erro) {
       return { tipo: 'nao-medida', motivo: `a medição falhou: ${(erro instanceof Error ? erro.message : String(erro)).slice(0, 200)}` }
     }
@@ -663,17 +647,6 @@ function motivoParaNaoAdotar(
   return null
 }
 
-/** § 6 — `revisao`, `achados` e `motivos` do item a partir do resultado da medição (achados só no tipo `medida`). */
-function revisaoDe(r: ResultadoDaMedicao): Pick<ItemAgendadoDoLote, 'revisao' | 'achados' | 'motivos'> {
-  if (r.tipo !== 'medida') return { revisao: { tipo: r.tipo, motivo: r.motivo } }
-  const { gate } = r
-  return {
-    revisao: { tipo: 'medida', resultado: gate.resultado, rulesVersion: gate.rulesVersion, versaoDoGate: gate.versao, medidoEm: r.registro.medidoEm, naoMedidos: gate.naoMedidos },
-    achados: gate.achados,
-    motivos: gate.motivos,
-  }
-}
-
 /** § 6 — a recusa do gate: SEMPRE com as referências para a intervenção (generationId, pageId, editUrl do template atual, revisao). */
 function recusaDoGate(itemId: string, peca: { generationId: string; pageId: string; templateId: number }, r: ResultadoDaMedicao, extra: Partial<ItemAgendadoDoLote> = {}): ItemAgendadoDoLote {
   const motivo =
@@ -696,14 +669,6 @@ const gravarOuLancar = (tx: Prisma.TransactionClient, registro: RegistroSelado) 
   gravarGateDaArte(tx, registro).catch((erro: unknown) => {
     throw new ErroDoGate(erro)
   })
-
-/** Os códigos (Prisma e SQLSTATE) de um erro do banco: P2028 = timeout da transação; 40P01 / P2034 = deadlock. */
-function codigosDoErro(erro: unknown): string[] {
-  const e = erro as { code?: unknown; meta?: { code?: unknown } } | null
-  return [e?.code, e?.meta?.code].filter((c): c is string => typeof c === 'string')
-}
-const ehDeadlock = (erro: unknown) => codigosDoErro(erro).some((c) => c === '40P01' || c === 'P2034') || /40P01|deadlock detected/i.test(erro instanceof Error ? erro.message : '')
-const ehTimeoutDaTransacao = (erro: unknown) => codigosDoErro(erro).includes('P2028')
 
 type PostTravado = { id: string; status: string; laterPostId: string | null; postType: string; generationId: string | null; projectId: number; pageId: string | null }
 

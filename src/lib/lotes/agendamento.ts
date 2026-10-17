@@ -46,7 +46,9 @@ export const VERSAO_DO_AGENDAMENTO = 'agendamento-v1'
  * CP5b, ainda do owner): a RECOMENDADA do CP5a (`estimado: 'humano'`, `semAssuntoLocalizavel: 'nao-se-aplica'`),
  * nomeada aqui para ser trocada numa linha. `ver-geracao` compara o registro gravado com ESTA constante.
  */
-export const POLITICA_DO_ASSUNTO_DO_AGENDAR_LEVA: PoliticaDoAssunto = POLITICA_DO_ASSUNTO_RECOMENDADA
+export const POLITICA_DO_ASSUNTO_DO_GATE: PoliticaDoAssunto = POLITICA_DO_ASSUNTO_RECOMENDADA
+/** O nome do CP5c; o CP5d usa a MESMA constante (um gate, uma política — decisão 8.1 do CP5d). */
+export const POLITICA_DO_ASSUNTO_DO_AGENDAR_LEVA = POLITICA_DO_ASSUNTO_DO_GATE
 export const MAX_ITENS_DO_AGENDAMENTO = 60
 
 export type FormatoDaPeca = 'story' | 'feed' | 'quadrado'

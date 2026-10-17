@@ -138,6 +138,8 @@ describe('quem decide se a página vira post como imagem', () => {
         'components/templates/timeline.tsx',
         'components/templates/video-export-button.tsx',
         'lib/creatives/agendar.ts',
+        // CP5d: o gate do draft-only de ajustar-arte recusa a página-vídeo como imagem antes de medir (contrato § 3.2)
+        'lib/creatives/arte-rapida.ts',
         'lib/lotes/agendar-itens.ts',
         'lib/posts/later-scheduler.ts',
         'lib/video/camadas-de-video.ts',

@@ -18,7 +18,7 @@ const compat = new FlatCompat({
 const NOMES_DO_GATE = ["gateDaMedida"];
 const NOMES_DO_REGISTRO = ["lerGateDaArte", "validadeDoGate", "decidirEMontarRegistro"];
 const MSG_GATE = "CP5b: gateDaMedida só pode ser chamada por src/lib/creatives/revisao/gate-registro.ts (decidirEMontarRegistro) e por testes — a decisão autônoma nasce da mesma chamada que grava o registro.";
-const MSG_REGISTRO = "CP5b: lerGateDaArte/validadeDoGate/decidirEMontarRegistro só podem ser importadas por gate-persistido.ts, ver-geracao-retorno.ts, arte-ia.ts, o produtor do CP5c (src/lib/lotes/agendar-itens.ts) e testes.";
+const MSG_REGISTRO = "CP5b: lerGateDaArte/validadeDoGate/decidirEMontarRegistro só podem ser importadas por gate-persistido.ts, ver-geracao-retorno.ts, arte-ia.ts, os produtores do CP5c/CP5d (src/lib/lotes/agendar-itens.ts, src/lib/creatives/arte-rapida.ts) e testes.";
 // `**/gate` cobre `../gate`, `../../gate` e `x/revisao/gate` (gitignore: `..` é um segmento); `./gate` é o mesmo diretório.
 // Outro módulo chamado `gate` em outra pasta só é barrado se exportar os mesmos nomes — aceitável.
 const PADROES_DO_GATE = ["**/gate", "**/gate.ts", "./gate", "./gate.ts"];
@@ -55,7 +55,7 @@ const eslintConfig = [
   { files: ["src/lib/creatives/revisao/gate-registro.ts"], rules: { "no-restricted-imports": "off" } },
   // Os consumidores nomeados do registro: podem ler/validar, nunca chamar gateDaMedida.
   {
-    files: ["src/lib/creatives/revisao/gate-persistido.ts", "src/lib/mcp/catalogo/ver-geracao-retorno.ts", "src/lib/mcp/catalogo/arte-ia.ts", "src/lib/lotes/agendar-itens.ts"],
+    files: ["src/lib/creatives/revisao/gate-persistido.ts", "src/lib/mcp/catalogo/ver-geracao-retorno.ts", "src/lib/mcp/catalogo/arte-ia.ts", "src/lib/lotes/agendar-itens.ts", "src/lib/creatives/arte-rapida.ts"],
     rules: { "no-restricted-imports": ["error", restricao(true, false)] },
   },
 ];

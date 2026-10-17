@@ -1,4 +1,4 @@
-# Dot Lagosta: Constituição Operacional (`dot-operacao-v6`)
+# Dot Lagosta: Constituição Operacional (`dot-operacao-v7`)
 
 Criada em 13/10/2026 (H3 do Dot; o mapa e as decisões estão em
 `docs/PLANO-2026-10-13-DOT-OPERACAO-H1.md`).
@@ -341,3 +341,16 @@ ajustar com `ajustar-arte` ou relatar — repetir a mesma chamada não muda o ve
 pós-commit (pasta da semana, catálogo) NÃO rodam: uma pessoa os completa repetindo o mesmo pedido; a aprovação não os
 executa. `simular: true` mede e decide igual, sem gravar nada. Contrato e decisões pendentes do owner (política do
 assunto, efeitos, prazos): `docs/PLANO-2026-10-16-CP5C-CONTRATO.md` § 8.
+
+## `ajustar-arte` só grava versão APTA (`dot-operacao-v7`, CP5d, 17/10/2026)
+
+No perfil draft-only, `ajustar-arte` (`src/lib/creatives/arte-rapida.ts`) passou a MEDIR, dentro da transação que
+grava e sob as travas (agenda, fontes, posts da página, página, as Generations de origem e do alvo da recomposição,
+e `FOR SHARE` em projeto/assinatura/modelo/fontes), a versão FINAL que seria gravada — os ajustes aceitos pelo CP4 mais
+os textos/foto/nome da chamada — e só a grava com veredito APTO do gate (CP5a/CP5b). O veredito fica registrado na
+Generation que o render desta versão fecha (`ver-geracao` → bloco `gate`). Não APTO → `REVISAO_HUMANA_NECESSARIA` com
+`revisao`, `achados`, `motivos`, `ajusteGravado: false`: página intacta, nenhuma Generation, render não reaberto.
+Quando TODOS os ajustes caem no CP4 (nada novo para medir), o código da chamada também é `REVISAO_HUMANA_NECESSARIA`,
+com a causa do CP4 em `details.causa`. Regra do manual (`src/lib/mcp/operacao-dot.ts`): relatar — repetir a mesma
+chamada não muda o veredito. "Não piorou" (CP4) continua necessário e deixou de ser suficiente para o agente gravar.
+Contrato e decisões do owner (P1 × P2 de preservação, etc.): `docs/PLANO-2026-10-17-CP5D-CONTRATO.md` § 8.
