@@ -89,8 +89,8 @@ describe('C13 — inventário dos FOR UPDATE / FOR SHARE / pg_advisory_xact_lock
         const depois = relevantes[i]
         // Mesma tabela repetida (vários itens) e FOR SHARE depois de FOR UPDATE da mesma tabela são permitidos.
         if (posicao(depois.tabela) < posicao(antes.tabela)) {
-          // `trava-por-chave.ts` só tem a consultiva; a transação do gate trava Page FOR SHARE (assinatura) DEPOIS de Generation — é a ordem do contrato.
-          const excecaoDoGate = c === 'src/lib/lotes/agendar-itens.ts' && depois.tabela === 'Page' && depois.modo === 'share'
+          // A transação do gate (CP5c em agendar-itens.ts, CP5d em arte-rapida.ts) trava Page FOR SHARE (assinatura/modelo) DEPOIS de Generation — é a ordem do contrato.
+          const excecaoDoGate = (c === 'src/lib/lotes/agendar-itens.ts' || c === 'src/lib/creatives/arte-rapida.ts') && depois.tabela === 'Page' && depois.modo === 'share'
           expect(excecaoDoGate, `${c}: "${antes.tabela}" (linha ${antes.linha}) antes de "${depois.tabela}" (linha ${depois.linha}) inverte a ordem comum`).toBe(true)
         }
       }
@@ -115,6 +115,23 @@ describe('C13 — inventário dos FOR UPDATE / FOR SHARE / pg_advisory_xact_lock
     expect(travas[1].sql).toContain('chaveDasFontes')
   })
 
+  it('CP5d: ajustar-arte trava na ordem do contrato — agenda, fontes, posts da página (ORDER BY "id"), Page, Generations (origem e alvo, em ordem de id), depois FOR SHARE em Project, Page e CustomFont', () => {
+    const travas = porArquivo.get('src/lib/creatives/arte-rapida.ts')!
+    expect(travas.map((t) => `${t.tabela}:${t.modo}`)).toEqual([
+      'advisory:advisory',
+      'advisory:advisory',
+      'SocialPost:update',
+      'Page:update',
+      'Generation:update',
+      'Project:share',
+      'Page:share',
+      'CustomFont:share',
+    ])
+    expect(travas[0].sql).toContain('chaveDaAgenda')
+    expect(travas[1].sql).toContain('chaveDasFontes')
+    expect(travas[4].sql).toMatch(/IN \(.*\) ORDER BY "id" FOR UPDATE/)
+  })
+
   it('toda consulta que trava VÁRIAS linhas de SocialPost pela página (gate e ajustar-arte) tem ORDER BY "id"', () => {
     const pelaPagina = [...porArquivo].flatMap(([c, travas]) => travas.filter((t) => t.tabela === 'SocialPost' && /"pageId" = /.test(t.sql)).map((t) => ({ c, ...t })))
     expect(pelaPagina.map((t) => t.c).sort()).toEqual(['src/lib/creatives/arte-rapida.ts', 'src/lib/lotes/agendar-itens.ts'])
@@ -123,7 +140,8 @@ describe('C13 — inventário dos FOR UPDATE / FOR SHARE / pg_advisory_xact_lock
 
   it('a chave das fontes é tomada por quem cria/apaga CustomFont (as rotas) e pelo gate — e só por eles', () => {
     const quem = fontes().filter((c) => /chaveDasFontes\(/.test(ler(c))).sort()
-    expect(quem).toEqual(['src/app/api/projects/[projectId]/fonts/[fontId]/route.ts', 'src/app/api/projects/[projectId]/fonts/route.ts', 'src/lib/lotes/agendar-itens.ts', 'src/lib/trava-por-chave.ts'])
+    // CP5d: o gate do ajustar-arte também a toma (mesma ordem: agenda → fontes).
+    expect(quem).toEqual(['src/app/api/projects/[projectId]/fonts/[fontId]/route.ts', 'src/app/api/projects/[projectId]/fonts/route.ts', 'src/lib/creatives/arte-rapida.ts', 'src/lib/lotes/agendar-itens.ts', 'src/lib/trava-por-chave.ts'])
     for (const rota of quem.filter((c) => c.startsWith('src/app'))) {
       const texto = ler(rota)
       // Toda escrita em CustomFont da rota está dentro de `comTravaPorChave(chaveDasFontes(…), (tx) => tx.customFont.…)`.
@@ -195,7 +213,7 @@ describe('C9 — inventário: quem cria DRAFT, e o que as tools da allowlist alc
   })
 
   it('agendar-itens.ts está nas listas do CP5b: a regra do lint (consumidor nomeado) e o inventário H12', () => {
-    expect(ler('eslint.config.mjs')).toMatch(/"src\/lib\/lotes\/agendar-itens\.ts"\]/)
+    expect(ler('eslint.config.mjs')).toMatch(/"src\/lib\/lotes\/agendar-itens\.ts", "src\/lib\/creatives\/arte-rapida\.ts"\]/)
     expect(ler('src/lib/creatives/revisao/__tests__/inventario-gate-da-arte.test.ts')).toMatch(/PERMITIDOS_GATE_DA_ARTE = new Set\(\[[^\]]*'src\/lib\/lotes\/agendar-itens\.ts'/)
   })
 })

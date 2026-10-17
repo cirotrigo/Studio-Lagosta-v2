@@ -64,7 +64,18 @@ import { aplicarAjustesSemPiorar } from '@/lib/creatives/revisao/ajustar-sem-pio
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
 import { MOTIVO_DO_AJUSTE_DO_REVISOR } from '@/lib/relatorios/qualidade-da-copy-contrato'
 import { temContratoSemantico } from '@/lib/posts/copy-segue-a-pagina'
-import { MENSAGEM_PAGINA_COM_VIDEO, videoNaPagina } from '@/lib/video/pagina-com-video'
+import { MENSAGEM_PAGINA_COM_VIDEO, recusaComoImagem, videoNaPagina } from '@/lib/video/pagina-com-video'
+// CP5d: o segundo PRODUTOR do registro do gate (regra de lint do CP5b: só agendar-itens.ts e este arquivo, fora dos consumidores nomeados).
+import { decidirEMontarRegistro } from '@/lib/creatives/revisao/gate-registro'
+import { gravarGateDaArte } from '@/lib/creatives/revisao/gate-persistido'
+import { contextoDaMedicao, medirCamadasDaPeca } from '@/lib/creatives/revisao/revisar-arte'
+import { identidadeDaPagina } from '@/lib/creatives/revisao/versao'
+import { PRAZO_DA_MEDICAO_MS, PRAZO_POR_DOWNLOAD_MS, ehDeadlock, ehTimeoutDaTransacao, paginasDeReferencia, revisaoDe, type ResultadoDaMedicao, type RevisaoDoItem } from '@/lib/creatives/revisao/gate-no-fluxo'
+import { POLITICA_DO_ASSUNTO_DO_GATE, TIPO_DO_POST_POR_FORMATO } from '@/lib/lotes/agendamento'
+import { formatoDaPaginaGravada } from '@/lib/compositor/formato'
+import { chaveDaAgenda, chaveDasFontes } from '@/lib/trava-por-chave'
+import { fecharGenerationComoFalha } from '@/lib/creatives/mesclar-field-values'
+import { Prisma } from '@prisma/client'
 
 export { CreativeError, getPublicAppUrl }
 
@@ -1060,6 +1071,8 @@ export interface AjustarArteInput {
    * post aprovado que ela não viu, ou aprovado entre a conferência e a escrita, fica com a arte que foi aprovada.
    */
   apenasRascunho?: boolean
+  /** CP5d: quem pediu (tipo e id do principal MCP) — vai no registro do gate como auditoria; nunca decide nada. */
+  principal?: { tipo: string; id: string } | null
   /** Só para a prova de integração: costura que roda DENTRO da transação, entre a escrita da página e a trava. */
   _prova?: {
     entreGravarETravar?: () => Promise<void>
@@ -1082,6 +1095,8 @@ export interface AjustarArteResult {
    * `ajustada: true` sozinho não distingue (CP1, 13/10/2026).
    */
   resultadoDosAjustes?: 'completo' | 'parcial'
+  /** CP5d (draft-only): o veredito do gate sobre a versão GRAVADA — sempre `medida` APTO num sucesso; `generationId` é a Generation que o render fechou. */
+  revisao?: RevisaoDoItem
   generationId: string
   pageId: string
   templateId: number
@@ -1135,6 +1150,100 @@ function erroDePaginaModelo(): CreativeError {
     'Esta página é um MODELO do cliente, não uma arte gerada. Ajustar aqui mudaria todas as artes futuras do tema — modelos se editam no editor.',
     400,
   )
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// CP5d — o GATE do perfil draft-only em `ajustarArte` (docs/PLANO-2026-10-17-CP5D-CONTRATO.md)
+// ─────────────────────────────────────────────────────────────────────────
+
+export const MOTIVO_SEM_VERSAO_NOVA = 'nenhuma versão nova para medir: a peça ficou como estava'
+export const MOTIVO_RENDER_DO_AJUSTE_FALHOU = 'O render do ajuste falhou depois de a página ser gravada; a arte desta versão não nasceu. A página está ajustada; o próximo render a desenha.'
+export const MOTIVO_PAGINA_MUDOU_ANTES_DO_RENDER = 'A página mudou antes de a arte deste ajuste ser renderizada; a arte desta versão foi descartada.'
+
+/** A recusa do GATE dentro da transação de escrita: lançar é o que desfaz a página, a Generation e a trava. */
+class RecusaDoGate extends Error {
+  constructor(readonly resultado: ResultadoDaMedicao) {
+    super(resultado.tipo === 'medida' ? 'gate: não APTO' : resultado.motivo)
+  }
+}
+/** Exceção nascida na GRAVAÇÃO do registro: o `catch` em volta da transação a mapeia para REVISAO_HUMANA_NECESSARIA. */
+class ErroDoGateDoAjuste extends Error {
+  constructor(readonly causa: unknown) {
+    super(causa instanceof Error ? causa.message : String(causa))
+  }
+}
+
+type GeracaoDeOrigem = { id: string; fieldValues: unknown; sourcePageId: string | null }
+
+/**
+ * § 3.2/3.3 — mede a CANDIDATA final pela transação (as linhas lidas estão travadas) e decide com
+ * `decidirEMontarRegistro`. A cadeia inteira corre numa `Promise.race` com `PRAZO_DA_MEDICAO_MS`; toda exceção vira
+ * `nao-medida` (fail-closed). `generationDaPeca` é a Generation de ORIGEM (a do compositor), com
+ * `composicaoReaproveitavel: false`: a candidata é uma versão NOVA, nenhuma arte é dela — o assunto é estimado de novo
+ * e a variante da logo vem da página; as referências de corpo vêm da assinatura/modelo dessa Generation. `null` aqui
+ * significa "sem Generation do compositor" → sem referências → o gate recusa (A18).
+ */
+async function medirEDecidirAjuste(
+  tx: Prisma.TransactionClient,
+  args: {
+    projectId: number
+    paginaFutura: { id: string; name: string; tags: string[]; width: number; height: number; background: string | null; layers: Layer[]; copyAutoral: unknown }
+    audio: unknown
+    origem: GeracaoDeOrigem | null
+    generationId: string
+    principal: { tipo: string; id: string } | null
+  },
+): Promise<ResultadoDaMedicao> {
+  const { projectId, paginaFutura } = args
+  const controle = new AbortController()
+  let temporizador: ReturnType<typeof setTimeout> | undefined
+  const prazo = new Promise<ResultadoDaMedicao>((resolve) => {
+    temporizador = setTimeout(() => {
+      controle.abort(new Error('a medição não coube no prazo'))
+      resolve({ tipo: 'nao-medida', motivo: `a medição não coube no prazo de ${PRAZO_DA_MEDICAO_MS / 1000} s; repita` })
+    }, PRAZO_DA_MEDICAO_MS)
+  })
+  const medir = async (): Promise<ResultadoDaMedicao> => {
+    try {
+      const recusa = recusaComoImagem(paginaFutura.layers, args.audio)
+      if (recusa) return { tipo: 'nao-medida', motivo: recusa.mensagem }
+      const contexto = await contextoDaMedicao({
+        projectId,
+        page: { id: paginaFutura.id, name: paginaFutura.name, width: paginaFutura.width, height: paginaFutura.height, tags: paginaFutura.tags, background: paginaFutura.background, layers: paginaFutura.layers },
+        camadas: paginaFutura.layers,
+        cliente: tx,
+        sinal: controle.signal,
+        prazoPorDownloadMs: PRAZO_POR_DOWNLOAD_MS,
+        composicaoReaproveitavel: false,
+        generationDaPeca: args.origem,
+      })
+      const medida = await medirCamadasDaPeca(paginaFutura.layers, contexto, { corrigir: false })
+      const identidade = identidadeDaPagina(paginaFutura)
+      const decisao = decidirEMontarRegistro({
+        entrada: { medida, identidade: { pageVersion: identidade.pageVersion, copyVersion: identidade.copyVersion }, politicaDoAssunto: POLITICA_DO_ASSUNTO_DO_GATE },
+        page: paginaFutura,
+        vinculo: { projectId, generationId: args.generationId, postType: TIPO_DO_POST_POR_FORMATO[formatoDaPaginaGravada(paginaFutura)] },
+        origem: 'ajustar-arte',
+        ...(args.principal ? { principal: args.principal } : {}),
+        agora: () => new Date(),
+      })
+      if (decisao.decisao === 'sem-vinculo') return { tipo: 'sem-vinculo', motivo: decisao.motivo }
+      return { tipo: 'medida', registro: decisao.registro, gate: decisao.gate }
+    } catch (erro) {
+      return { tipo: 'nao-medida', motivo: `a medição falhou: ${(erro instanceof Error ? erro.message : String(erro)).slice(0, 200)}` }
+    }
+  }
+  try {
+    return await Promise.race([medir(), prazo])
+  } finally {
+    clearTimeout(temporizador)
+  }
+}
+
+/** O `revisao` do retorno de sucesso: a `medida` APTO com a Generation que o render fechou. */
+function revisaoDoAjuste(gate: ResultadoDaMedicao, generationId: string): RevisaoDoItem {
+  const r = revisaoDe(gate).revisao
+  return r.tipo === 'medida' ? { ...r, generationId } : r
 }
 
 export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteResult> {
@@ -1356,6 +1465,16 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
             : codigo === 'CONTEUDO_NAO_PODE_SER_OCULTADO'
               ? 'Nenhum ajuste foi gravado: esconder texto com conteúdo é apagar copy, e ajustar-arte não apaga copy (deixe o achado aberto para revisão humana ou proponha outra composição)'
               : 'Nenhum ajuste pôde ser aplicado'
+    // CP5d § 3.1 (decisão 8.8, proposta): no draft-only o código da CHAMADA é REVISAO_HUMANA_NECESSARIA, com a causa
+    // do CP4 em `details.causa` — a peça não foi medida pelo gate (nenhuma versão nova), nenhum veredito é inventado.
+    if (input.apenasRascunho) {
+      throw new CreativeError(
+        'REVISAO_HUMANA_NECESSARIA',
+        `${resumo} — ${revisao.recusados.map((r) => `ajuste ${r.indice}: ${r.motivo}`).join('; ')}. Revisão humana necessária.`,
+        422,
+        { causa: codigo, recusados: revisao.recusados, ajusteGravado: false, revisao: { tipo: 'nao-medida', motivo: MOTIVO_SEM_VERSAO_NOVA } satisfies RevisaoDoItem },
+      )
+    }
     throw new CreativeError(codigo, `${resumo} — ${revisao.recusados.map((r) => `ajuste ${r.indice}: ${r.motivo}`).join('; ')}.`, 422, { recusados: revisao.recusados, ajusteGravado: false })
   }
 
@@ -1445,16 +1564,30 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
   // (A recusa de página com vídeo mora antes do executor do CP4 — ver acima.)
 
   const travar = !!revisao && revisao.aplicados.length > 0
-  const { travarRecomposicaoDaArte } = travar ? await import('@/lib/compositor/recompor') : { travarRecomposicaoDaArte: null }
-  await db.$transaction(
-    async (tx) => {
+  const recompor = travar || input.apenasRascunho ? await import('@/lib/compositor/recompor') : null
+  const travarRecomposicaoDaArte = travar && recompor ? recompor.travarRecomposicaoDaArte : null
+  /** O que a transação devolve: a Generation PROCESSING do draft-only (o render a fecha) e o veredito do gate. */
+  type Escrita = { generationId: string | null; gate: ResultadoDaMedicao | null }
+  let escrita: Escrita
+  try {
+  escrita = await db.$transaction(
+    async (tx): Promise<Escrita> => {
+      let generationNova: string | null = null
+      let gate: ResultadoDaMedicao | null = null
+      let alvoDaTrava: string | undefined
       /**
        * Perfil draft-only (H4): a conferência que fecha a corrida mora AQUI, na transação que grava a página. Os
        * posts que renderizam desta página são travados (FOR UPDATE). Uma aprovação concorrente espera este commit,
        * e se ela já aconteceu a página não é gravada. A conferência larga da tool (`assertPaginaSoEmRascunho`)
        * cobre os outros vínculos, que não re-renderizam da página.
+       *
+       * CP5d: e é aqui, SOB AS TRAVAS, que a candidata final é medida e o gate decide — antes de qualquer escrita.
+       * Ordem comum (a do CP5c): agenda → fontes → posts da página → Page → Generations (origem e alvo da
+       * recomposição, em ordem de id) → FOR SHARE (Project, assinatura/modelo, CustomFont).
        */
       if (input.apenasRascunho) {
+        await tx.$queryRaw`SELECT 1 AS ok FROM pg_advisory_xact_lock(hashtext(${chaveDaAgenda(projectId)}))`
+        await tx.$queryRaw`SELECT 1 AS ok FROM pg_advisory_xact_lock(hashtext(${chaveDasFontes(projectId)}))`
         const ligados = await tx.$queryRaw<Array<{ status: string; laterPostId: string | null }>>`SELECT "status"::text AS status, "laterPostId" FROM "SocialPost" WHERE "pageId" = ${page.id} ORDER BY "id" FOR UPDATE`
         if (ligados.some((p) => p.status !== 'DRAFT' || !!p.laterPostId)) {
           throw new CreativeError(
@@ -1463,6 +1596,67 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
             409,
           )
         }
+        await tx.$queryRaw`SELECT "id" FROM "Page" WHERE "id" = ${page.id} FOR UPDATE`
+        // § 4.2 — a conferência SOB TRAVA: versão visual, contrato e ÁUDIO (a música decide `recusaComoImagem` e
+        // `versaoDaPagina` não a cobre). Mudou → a recusa de sempre, sem medir. Com a página travada e igual, a
+        // candidata é a versão seguinte dela: não há janela entre "o que medi" e "o que gravo".
+        const atual = await tx.page.findUnique({ where: { id: page.id }, select: { width: true, height: true, background: true, layers: true, copyAutoral: true, audio: true, isTemplate: true } })
+        if (!atual) throw new CreativeError('PAGE_NOT_FOUND', `Página não encontrada neste projeto: ${pageId}`, 404)
+        if (atual.isTemplate) throw erroDePaginaModelo()
+        const mesmaVersao = versaoAntes !== null && versaoDaPagina(atual) === versaoAntes
+        const mesmoContrato = JSON.stringify(atual.copyAutoral ?? null) === JSON.stringify(page.copyAutoral ?? null)
+        const mesmoAudio = JSON.stringify(atual.audio ?? null) === JSON.stringify(page.audio ?? null)
+        if (!mesmaVersao || !mesmoContrato || !mesmoAudio) {
+          if (input.versaoEsperada) throw new CreativeError('VERSAO_DIVERGENTE', 'A página mudou enquanto o ajuste era aplicado. Rode revisar-arte de novo.', 409, { versaoEsperada: input.versaoEsperada, ajusteGravado: false })
+          throw new CreativeError('PAGINA_MUDOU_DURANTE_O_AJUSTE', 'A arte foi editada enquanto o ajuste era aplicado (no editor ou por outro ajuste) e NADA foi gravado. Veja a arte como ela está agora (conferir-arte) e confirme o que ainda precisa ajustar.', 409, { ajusteGravado: false })
+        }
+        // § 4.2b — as Generations que esta transação LÊ (origem: a do compositor) ou ESCREVE (o alvo real de
+        // `travarRecomposicaoDaArte`), travadas FOR UPDATE em ordem de id, numa instrução.
+        const origem = (await tx.generation.findFirst({
+          where: { projectId, AND: [{ fieldValues: { path: ['pageId'], equals: page.id } }, { fieldValues: { path: ['source'], equals: 'compositor' } }] },
+          orderBy: { createdAt: 'desc' },
+          select: { id: true, fieldValues: true, sourcePageId: true },
+        })) as GeracaoDeOrigem | null
+        const alvo = await recompor!.alvoDaRecomposicao(tx, page.id, { projectId })
+        const ids = [...new Set([origem?.id, alvo?.id].filter((x): x is string => !!x))].sort()
+        if (ids.length > 0) await tx.$queryRaw`SELECT "id" FROM "Generation" WHERE "id" IN (${Prisma.join(ids)}) ORDER BY "id" FOR UPDATE`
+        alvoDaTrava = alvo?.id
+        await tx.$queryRaw`SELECT "id" FROM "Project" WHERE "id" = ${projectId} FOR SHARE`
+        for (const referencia of paginasDeReferencia(origem)) await tx.$queryRaw`SELECT "id" FROM "Page" WHERE "id" = ${referencia} FOR SHARE`
+        await tx.$queryRaw`SELECT "id" FROM "CustomFont" WHERE "projectId" = ${projectId} FOR SHARE`
+        // § 4.3 — a Generation PROCESSING desta versão: é dela o registro do gate; o render depois do commit a fecha.
+        const nova = await tx.generation.create({
+          data: {
+            status: 'PROCESSING',
+            projectId,
+            templateId: page.Template.id,
+            templateName: page.Template.name,
+            projectName: project.name,
+            createdBy: project.userId,
+            authorName: 'ajuste-arte',
+            canal: input.canal ?? null,
+            sourcePageId: page.id,
+            fileName: `${pageName}.png`,
+            fieldValues: { source: 'ajuste-arte', pageId: page.id, sourcePageId: page.id } as never,
+          },
+          select: { id: true },
+        })
+        generationNova = nova.id
+        // § 3 — a medição e a decisão, sobre a página COMO VAI SER GRAVADA (camadas finais, nome e contrato revisado).
+        const copyFutura = 'copyAutoral' in dadosDaPagina ? dadosDaPagina.copyAutoral : page.copyAutoral
+        gate = await medirEDecidirAjuste(tx, {
+          projectId,
+          paginaFutura: { id: page.id, name: pageName, tags: page.tags, width: page.width, height: page.height, background: page.background, layers: layers as Layer[], copyAutoral: copyFutura },
+          audio: atual.audio,
+          origem,
+          generationId: nova.id,
+          principal: input.principal ?? null,
+        })
+        if (gate.tipo !== 'medida' || gate.gate.resultado !== 'APTO') throw new RecusaDoGate(gate)
+        const gravado = await gravarGateDaArte(tx, gate.registro).catch((erro: unknown) => {
+          throw new ErroDoGateDoAjuste(erro)
+        })
+        if (gravado !== 'gravado') throw new RecusaDoGate({ tipo: 'nao-medida', motivo: `o veredito do gate não pôde ser registrado na arte (${gravado})` })
       }
       if (input.versaoEsperada) {
         // Compare-and-set: a conferência de versão lá em cima e esta escrita
@@ -1538,11 +1732,35 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
       }
       if (travarRecomposicaoDaArte) {
         if (input._prova?.entreGravarETravar) await input._prova.entreGravarETravar()
-        await travarRecomposicaoDaArte(page.id, 'ajuste do revisor gravado na página', { projectId: input.projectId, client: tx })
+        await travarRecomposicaoDaArte(page.id, 'ajuste do revisor gravado na página', { projectId: input.projectId, client: tx, ...(alvoDaTrava ? { alvo: alvoDaTrava } : {}) })
       }
+      return { generationId: generationNova, gate }
     },
     { maxWait: 10_000, timeout: 20_000 },
   )
+  } catch (erro) {
+    // CP5d § 4.5/§ 6 — as recusas do gate e os erros nascidos nele, só no draft-only; o resto sobe como hoje.
+    if (input.apenasRascunho) {
+      const editUrl = `${getPublicAppUrl()}/templates/${page.Template.id}/editor?pageId=${encodeURIComponent(page.id)}`
+      const base = { ajusteGravado: false, pageId: page.id, versao: versaoAntes, editUrl, ...(revisao ? { ajustesAplicados: revisao.aplicados, ajustesRecusados: revisao.recusados } : {}) }
+      if (erro instanceof RecusaDoGate) {
+        const r = erro.resultado
+        const motivo =
+          r.tipo === 'medida'
+            ? `A versão ajustada não passou no gate de autonomia (${r.gate.motivos.map((m) => m.regra).join(', ') || 'sem motivo listado'}): nada foi gravado — a página ficou como estava.`
+            : r.tipo === 'sem-vinculo'
+              ? `A medida não pôde ser vinculada à página (${r.motivo}): nada foi gravado.`
+              : `A versão ajustada não pôde ser medida (${r.motivo}): nada foi gravado.`
+        throw new CreativeError('REVISAO_HUMANA_NECESSARIA', `${motivo} Revisão humana necessária.`, 422, { ...base, ...revisaoDe(r) })
+      }
+      if (erro instanceof ErroDoGateDoAjuste || ehTimeoutDaTransacao(erro)) {
+        const motivo = erro instanceof ErroDoGateDoAjuste ? `o registro do veredito falhou: ${erro.message}` : 'a transação do ajuste estourou o prazo'
+        throw new CreativeError('REVISAO_HUMANA_NECESSARIA', `A versão ajustada não foi gravada (${motivo}). Repita ou peça revisão humana.`, 422, { ...base, revisao: { tipo: 'nao-medida', motivo } satisfies RevisaoDoItem })
+      }
+      if (ehDeadlock(erro)) throw new CreativeError('AJUSTE_CONCORRENTE', 'Outra escrita concorreu com o ajuste (travas em conflito). Nada foi gravado; repita a chamada.', 409, { ajusteGravado: false, pageId: page.id })
+    }
+    throw erro
+  }
 
   // Textos FINAIS da arte, por nome de camada — é o que alimenta a verificação
   // por visão do conferir-arte e do melhorar-arte (extractExpectedTexts lê
@@ -1588,6 +1806,8 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
   try {
     persisted = await renderPageAndRegister({
       versaoEsperada: versaoGravada,
+      // CP5d: o render FECHA a Generation PROCESSING criada na transação (é nela que o registro do gate está).
+      ...(escrita.generationId ? { generationId: escrita.generationId } : {}),
       antesDePublicar: input._prova?.antesDePublicar,
       project,
       templateId: page.Template.id,
@@ -1621,6 +1841,12 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
       },
     })
   } catch (erro) {
+    // CP5d § 4.3: a Generation desta versão fecha como FAILED numa instrução condicionada a PROCESSING (o cron de órfãs
+    // usa a mesma; quem fechar primeiro vence) — o registro do gate fica como auditoria da versão cuja arte não nasceu.
+    if (escrita.generationId) {
+      const motivo = erro instanceof CreativeError && erro.code === 'PAGINA_MUDOU_DURANTE' ? MOTIVO_PAGINA_MUDOU_ANTES_DO_RENDER : MOTIVO_RENDER_DO_AJUSTE_FALHOU
+      await fecharGenerationComoFalha(db, escrita.generationId, { error: motivo }).catch((falha) => console.warn('[ajustar-arte] a Generation do ajuste não pôde ser fechada como FAILED (o cron de órfãs a fecha):', falha))
+    }
     await avisarAgenda({ renderFalhou: true }).catch((falha) => console.warn('[ajustar-arte] invalidação depois da falha do render:', falha))
     if (erro instanceof CreativeError && erro.code === 'PAGINA_MUDOU_DURANTE') {
       // O render desta versão foi DESCARTADO (a página já está na seguinte): o ajuste está gravado, a arte não.
@@ -1709,6 +1935,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
     ...(revisao
       ? { ajustesAplicados: revisao.aplicados, ajustesRecusados: revisao.recusados, resultadoDosAjustes: revisao.recusados.length > 0 ? ('parcial' as const) : ('completo' as const) }
       : {}),
+    ...(escrita.gate ? { revisao: revisaoDoAjuste(escrita.gate, persisted.generationId) } : {}),
     imageApplied,
     ...(imageWarning ? { imageWarning } : {}),
     camposAlterados,

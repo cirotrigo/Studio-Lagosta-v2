@@ -56,6 +56,19 @@ export function mesclarFieldValuesDaArte(
 }
 
 /**
+ * CP5d § 4.3 — FECHA como `FAILED` uma Generation que ainda está `PROCESSING`, numa ÚNICA instrução: status,
+ * `completedAt` e o patch do `fieldValues` (por merge raso — o registro do gate e o resto ficam) na mesma `UPDATE`,
+ * condicionada ao status. Dois fechamentos concorrentes (o explícito de `ajustarArte` e o cron de órfãs): quem chegar
+ * primeiro vence e grava o seu motivo; o segundo não escreve NADA (0 linhas) — em duas instruções (merge e depois
+ * `updateMany`) o segundo sobrescrevia o motivo antes de perder o status (Codex R4 do contrato do CP5d). Devolve o
+ * número de linhas (0 ou 1). `fieldValues` que não for objeto vira `{}` antes do merge.
+ */
+export function fecharGenerationComoFalha(client: ClienteDoBanco, generationId: string, patch: Record<string, unknown>) {
+  const json = JSON.stringify(patch)
+  return client.$executeRaw`UPDATE "Generation" SET "status" = 'FAILED'::"GenerationStatus", "completedAt" = NOW(), "fieldValues" = (CASE WHEN jsonb_typeof("fieldValues") = 'object' THEN "fieldValues" ELSE '{}'::jsonb END) || ${json}::jsonb WHERE "id" = ${generationId} AND "status" = 'PROCESSING'::"GenerationStatus"`
+}
+
+/**
  * Antes de o re-render SUBSTITUIR a copy visual (`slotValues`) de uma arte,
  * guarda a copy anterior como proposta de aprendizado quando a arte ainda não
  * tem uma válida. `lerProcedencia` usa `slotValues` como `copyProposta` na

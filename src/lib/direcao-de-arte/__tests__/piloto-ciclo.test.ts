@@ -68,7 +68,18 @@ vi.mock('@/lib/db', () => {
     knowledgeBaseEntry: { findFirst: async () => null },
     $queryRaw: async () => [],
     $executeRaw: async () => 1,
-    $transaction: async (arg: unknown) => (typeof arg === 'function' ? (arg as (tx: unknown) => unknown)(db) : Promise.all(arg as unknown[])),
+    // CP5d: a transação que LANÇA volta atrás — a página e as Generations ficam como estavam (P11 "página intacta" só
+    // significa alguma coisa se o rollback for de verdade, não um acidente do mock).
+    $transaction: async (arg: unknown) => {
+      if (typeof arg !== 'function') return Promise.all(arg as unknown[])
+      const foto = { pagina: structuredClone(banco.pagina), generations: structuredClone(banco.generations), escritas: banco.escritas, relogio: banco.relogio }
+      try {
+        return await (arg as (tx: unknown) => unknown)(db)
+      } catch (erro) {
+        Object.assign(banco, foto)
+        throw erro
+      }
+    },
   }
   return { db }
 })
@@ -108,7 +119,7 @@ vi.mock('@napi-rs/canvas', async (original) => {
   return { ...m, GlobalFonts }
 })
 vi.mock('@/lib/posts/invalidate-renders', () => ({ invalidateScheduledRenders: espioes.invalidar }))
-vi.mock('@/lib/compositor/recompor', () => ({ travarRecomposicaoDaArte: vi.fn(async () => undefined), pedirRecomposicaoDaArteCongelada: vi.fn(async () => null) }))
+vi.mock('@/lib/compositor/recompor', () => ({ travarRecomposicaoDaArte: vi.fn(async () => undefined), pedirRecomposicaoDaArteCongelada: vi.fn(async () => null), alvoDaRecomposicao: vi.fn(async () => null) }))
 vi.mock('@/lib/aprendizado/captura', () => ({ registrarDecisaoSemSugestao: vi.fn(async () => null) }))
 // O espião da MEDIDA: cada chamada de `medirCamadasDaPeca` grava as camadas que mediu (prova da ordem do lote, CP4).
 const medidas = vi.hoisted(() => ({ chamadas: [] as Array<{ camadas: unknown[]; corrigir: boolean | undefined }> }))
@@ -792,15 +803,26 @@ describe('o revisor (só medida) sobre a v1', () => {
   }, 120_000)
 })
 
-describe('P11 — o re-render de rascunho pelo ajustar-arte no draft-only', () => {
-  it('caracterização: o ajuste ACEITO no perfil draft-only reabre o render dos rascunhos da página (os ajustes do agente já não entram: CP4)', async () => {
-    await ajustarArte({ projectId: projectId(), pageId: PAGINA, versaoEsperada: versaoDaPagina(banco.pagina)!, ajustes: [ACEITO_TOPO] as unknown as Ajuste[], apenasRascunho: true })
-    expect(espioes.invalidar).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ pageIds: [PAGINA], apenasRascunho: true }))
+describe('P11 — o re-render de rascunho pelo ajustar-arte no draft-only (CP5d)', () => {
+  it('CP5d: o ajuste ACEITO pelo CP4 numa versão que o gate NÃO aprova (o serviço sem leitura continua) não grava, não reabre o render e volta REVISAO_HUMANA_NECESSARIA com os achados medidos', async () => {
+    const antes = structuredClone(banco.pagina.layers)
+    const erro = await ajustarArte({ projectId: projectId(), pageId: PAGINA, versaoEsperada: versaoDaPagina(banco.pagina)!, ajustes: [ACEITO_TOPO] as unknown as Ajuste[], apenasRascunho: true }).then(
+      () => null,
+      (e: unknown) => e,
+    )
+    expect(erro).toBeInstanceOf(CreativeError)
+    const e = erro as CreativeError
+    expect(e.code).toBe(CODIGOS.revisaoHumana)
+    expect(e.details).toMatchObject({ ajusteGravado: false, pageId: PAGINA, revisao: { tipo: 'medida', resultado: CODIGOS.revisaoHumana } })
+    expect(((e.details as { achados?: Array<{ regra: string; camadas: string[] }> }).achados ?? []).some((a) => a.camadas.includes('servico'))).toBe(true)
+    expect(JSON.stringify(banco.pagina.layers)).toBe(JSON.stringify(antes))
+    expect(banco.generations.filter((g) => g.status === 'PROCESSING' || g.status === 'COMPLETED')).toEqual([])
+    expect(espioes.invalidar).not.toHaveBeenCalled()
   }, 120_000)
 
   // Contrato alvo da V1 (owner, 13/10/2026): no draft-only, ajuste que piora, deixa blocker aberto ou não tem
-  // veredito válido para a versão nova é recusado/revertido ANTES de substituir a versão do rascunho.
-  hojeViola('o ajuste que piora é recusado ANTES de substituir a versão do rascunho: página intacta, render não reaberto, REVISAO_HUMANA_NECESSARIA', async () => {
+  // veredito válido para a versão nova é recusado/revertido ANTES de substituir a versão do rascunho. CP5d: `it()`.
+  it('o ajuste que piora é recusado ANTES de substituir a versão do rascunho: página intacta, render não reaberto, REVISAO_HUMANA_NECESSARIA', async () => {
     const antes = structuredClone(banco.pagina.layers)
     let resposta: unknown
     try {
@@ -814,5 +836,7 @@ describe('P11 — o re-render de rascunho pelo ajustar-arte no draft-only', () =
       renderReaberto: espioes.invalidar.mock.calls.length > 0,
       revisaoHumana: JSON.stringify(resposta).includes(CODIGOS.revisaoHumana),
     }).toEqual({ paginaIntacta: true, renderReaberto: false, revisaoHumana: true })
+    // CP5d (decisão 8.8): o CÓDIGO da chamada é REVISAO_HUMANA_NECESSARIA e a CAUSA é a recusa do CP4 (a peça não foi medida pelo gate: nada novo a medir).
+    expect(resposta).toMatchObject({ code: CODIGOS.revisaoHumana, details: { causa: 'AJUSTE_PIOROU_ARTE', ajusteGravado: false, revisao: { tipo: 'nao-medida' } } })
   }, 120_000)
 })

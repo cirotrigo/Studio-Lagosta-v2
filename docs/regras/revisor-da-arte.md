@@ -1063,3 +1063,50 @@ o fluxo humano é byte a byte o de antes (C7).
   repositório — C18 usa as páginas sintéticas de `sinteticos.ts` (CP0/CP2); C7 prova um cenário do fluxo humano, não
   igualdade byte a byte (o diff do fluxo humano é só o `ORDER BY "id"` em `ajustar-arte`); o inventário por regex não
   vê SQL montado em variável.
+
+### CP5d — o gate em `ajustar-arte` (perfil draft-only): a versão final medida sob as travas (17/10/2026)
+
+Contrato: `docs/PLANO-2026-10-17-CP5D-CONTRATO.md` (PR #243, 6 rodadas do Codex; APTO na rodada 6). Só vale com
+`apenasRascunho`; o fluxo humano é byte a byte o de antes (A6).
+
+- **Onde**: dentro de `db.$transaction` de `ajustarArte`, depois do executor do CP4 (que continua FORA, medindo as N
+  candidatas como hoje) e ANTES de qualquer escrita. Ordem comum (a do CP5c): `pg_advisory_xact_lock(agenda)` →
+  `pg_advisory_xact_lock(fontes)` → posts da página `ORDER BY "id" FOR UPDATE` → `Page FOR UPDATE` → **Generations de
+  ORIGEM (a do compositor da página) e do ALVO da recomposição** (`alvoDaRecomposicao`, extraída de
+  `travarRecomposicaoDaArte` — a mesma seleção: 20 mais recentes com `resultUrl`, a primeira por `ehArteDaPagina`)
+  numa instrução `IN (…) ORDER BY "id" FOR UPDATE` → `FOR SHARE` em `Project`, assinatura/modelo apontadas pela origem
+  e `CustomFont`.
+- **Conferência sob trava** (§ 4.2): versão visual (`versaoDaPagina`), contrato (`copyAutoral`) E áudio da página
+  relida iguais aos lidos antes — senão `VERSAO_DIVERGENTE` / `PAGINA_MUDOU_DURANTE_O_AJUSTE`, sem medir.
+- **Generation PROCESSING** criada na transação (`source: 'ajuste-arte'`, `pageId`, `sourcePageId`): é dela o
+  `generationId` do registro; o render depois do commit a FECHA (`renderPageAndRegister({ generationId })`). Render que
+  falha ou `PAGINA_MUDOU_DURANTE` → `fecharGenerationComoFalha(db, id, { error })` — UMA `UPDATE` condicionada a
+  `PROCESSING` (status, `completedAt`, `fieldValues || patch`); o cron de órfãs (`generation-queue.ts`,
+  `marcarGenerationFalha`) passou a usar a mesma (antes gravava `{ ...lido, error }`, violando a regra 🔴 do
+  `AGENTS.md` e apagando o que outro escritor gravou). Quem fecha primeiro vence; o segundo escreve 0 linhas.
+- **`medirEDecidirAjuste(tx, …)`**: `recusaComoImagem(candidata, audio travado)` → `contextoDaMedicao({ cliente: tx,
+  sinal, prazoPorDownloadMs, composicaoReaproveitavel: false, generationDaPeca: origem })` + `medirCamadasDaPeca(…, {
+  corrigir: false })` → `decidirEMontarRegistro` sobre a PÁGINA FUTURA (camadas finais, nome e contrato revisado;
+  `vinculo.postType` pelo formato; origem `ajustar-arte`). Race de 8 s. Sem Generation do compositor (arte livre) →
+  sem referências → recusa dita. APTO → `gravarGateDaArte(tx)` ANTES da escrita da página (CAS como hoje) e de
+  `travarRecomposicaoDaArte(…, { alvo })` (que agora respeita a linha já travada e a marca já gravada). Não APTO →
+  `RecusaDoGate` → rollback inteiro → `CreativeError('REVISAO_HUMANA_NECESSARIA', 422, { ajusteGravado: false,
+  pageId, versao, editUrl, revisao, achados?, motivos?, ajustesAplicados?, ajustesRecusados? })`; exceção na
+  gravação / timeout → o mesmo código com `revisao` `nao-medida`; deadlock → `AJUSTE_CONCORRENTE` ("repita").
+- **Recusa TOTAL do CP4 no draft-only** (decisão 8.8, proposta): código `REVISAO_HUMANA_NECESSARIA` com
+  `details.causa` = o código do CP4 (`AJUSTE_PIOROU_ARTE`…), `details.recusados` iguais, `revisao` `nao-medida`
+  ("nenhuma versão nova para medir"). No perfil normal o código do CP4 continua.
+- **Política de preservação (decisão 8.2, proposta P1)**: o agente só grava versão APTA — não existe versão
+  intermediária não apta gravada pelo agente; o progresso incremental sobre uma peça reprovada fica para o humano (ou
+  P2, documentada no contrato).
+- **Decisões do owner implementadas como PROPOSTA nomeada**: 8.1 `POLITICA_DO_ASSUNTO_DO_GATE` (a do CP5c, renomeada;
+  `POLITICA_DO_ASSUNTO_DO_AGENDAR_LEVA` reexportada), 8.2 P1, 8.3 reprovado não gravado, 8.4 trava da agenda tomada,
+  8.5 `AJUSTE_CONCORRENTE`, 8.7 prazos do CP5c (`revisao/gate-no-fluxo.ts`, compartilhados), 8.8 acima. 8.6 (P11
+  humano) fica para o CP5e.
+- **Módulo compartilhado** `revisao/gate-no-fluxo.ts` (puro): `RevisaoDoItem`, prazos, `revisaoDe`,
+  `paginasDeReferencia`, `ehDeadlock`/`ehTimeoutDaTransacao` — usados pelos dois produtores (`agendar-itens.ts` reexporta
+  os nomes antigos). O nome do contrato (`revisao-do-item.ts`) colidia com `planos/revisao-do-item.ts`.
+- **Testes**: `creatives/__tests__/ajustar-arte-gate.test.ts` (A1–A18 com banco falso de travas e eventos),
+  `piloto-ciclo.test.ts` (P11 draft-only vira `it()`, com rollback real no harness; o ajuste ACEITO pelo CP4 numa
+  página não apta agora é recusado — a caracterização antiga foi invertida), `ajustar-arte-concorrencia.test.ts` (mede
+  limpo: a corrida e a escrita são o objeto), inventários do CP5c estendidos a `arte-rapida.ts`.

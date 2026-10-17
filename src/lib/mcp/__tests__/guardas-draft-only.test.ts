@@ -321,7 +321,8 @@ describe('ajustarArte: a conferência que fecha a corrida mora na transação da
     const { readFileSync } = await import('node:fs')
     const { join } = await import('node:path')
     const fonte = readFileSync(join(process.cwd(), 'src/lib/creatives/arte-rapida.ts'), 'utf8')
-    const transacao = fonte.indexOf('await db.$transaction(\n    async (tx) => {', fonte.indexOf('export async function ajustarArte'))
+    // CP5d: a transação devolve a Generation PROCESSING e o veredito do gate (`Promise<Escrita>`).
+    const transacao = fonte.indexOf('await db.$transaction(\n    async (tx): Promise<Escrita> => {', fonte.indexOf('export async function ajustarArte'))
     expect(transacao).toBeGreaterThan(0)
     const conferencia = fonte.indexOf('if (input.apenasRascunho) {', transacao)
     const travaDosPosts = fonte.indexOf('FROM "SocialPost" WHERE "pageId" = ${page.id} ORDER BY "id" FOR UPDATE', transacao)

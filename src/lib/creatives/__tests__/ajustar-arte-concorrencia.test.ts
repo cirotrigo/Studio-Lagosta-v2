@@ -55,6 +55,13 @@ vi.mock('@/lib/db', () => {
         return { id }
       },
       findFirst: async () => banco.generations.at(-1) ?? null,
+      // CP5d: o render FECHA a Generation PROCESSING criada na transação do ajuste (draft-only).
+      update: async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+        const i = banco.generations.findIndex((g) => g.id === where.id)
+        if (i < 0) throw new Error('generation not found')
+        banco.generations[i] = { ...banco.generations[i], ...data }
+        return { id: where.id }
+      },
     },
     knowledgeBaseEntry: { findFirst: async () => null },
     $queryRaw: async () => [],
@@ -110,7 +117,28 @@ vi.mock('@/lib/posts/invalidate-renders', () => ({ invalidateScheduledRenders: a
 vi.mock('@/lib/compositor/recompor', () => ({
   travarRecomposicaoDaArte: vi.fn(async () => undefined),
   pedirRecomposicaoDaArteCongelada: vi.fn(async () => null),
+  // CP5d: a transação do gate resolve o alvo da recomposição pela própria função; aqui a página não tem arte com resultUrl.
+  alvoDaRecomposicao: vi.fn(async () => null),
 }))
+/**
+ * CP5d: no perfil draft-only o ajuste MEDE a versão final antes de gravar. A medição não é o objeto deste harness (a
+ * corrida e a escrita são) — a página mede LIMPA (a medida da peça limpa do gate, com as camadas reais); o gate decide
+ * sobre ela e grava o registro na Generation do ajuste. A medição real está em `piloto-ciclo.test.ts` e no gate.
+ */
+vi.mock('@/lib/creatives/revisao/revisar-arte', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/creatives/revisao/revisar-arte')>()
+  const { medida, metrica } = await import('../revisao/__tests__/suporte/corpus-do-gate')
+  const SEM_FUNDO = { assunto: null, assuntoNaoSeAplica: true as const, motivoSemAssunto: 'a peça não tem foto de fundo: não há assunto a proteger' }
+  return {
+    ...real,
+    contextoDaMedicao: async (args: Parameters<typeof real.contextoDaMedicao>[0]) => ({
+      projectId: args.projectId, canvas: { width: args.page.width, height: args.page.height }, formato: 'story' as const, background: '#101010', faixa: [0.45, 0.9] as [number, number],
+      referencias: { headline: { fontSize1080: 80, entrelinha: null, origem: 'assinatura' } }, referencia: 'assinatura', ...SEM_FUNDO, origensDaLogo: new Map(), cacheDeLogos: new Map(),
+    }),
+    medirCamadasDaPeca: async (camadas: Array<{ id: string; type: string; visible?: boolean }>, ctx: Parameters<typeof real.medirCamadasDaPeca>[1]) =>
+      medida({ canvas: ctx.canvas, formato: ctx.formato, camadas: camadas as never, metricas: camadas.filter((l) => l.type === 'text' && l.visible !== false).map((l) => metrica(l as never)), referencias: ctx.referencias as never, leituraDaLogo: [], ...SEM_FUNDO }),
+  }
+})
 vi.mock('@/lib/aprendizado/captura', () => ({ registrarDecisaoSemSugestao: vi.fn(async () => null) }))
 
 import { ajustarArte } from '../arte-rapida'
@@ -144,7 +172,9 @@ function paginaInicial(comContrato = true) {
     templateId: 77,
     thumbnail: 'https://blob.test/render-anterior.png',
     updatedAt: new Date(banco.relogio),
-    layers: [texto('headline', 1500, 'Almoço executivo'), texto('cta', 1650, 'Reserve pelo direct')],
+    // CP5d: no draft-only a versão final passa pelo gate, que mede o piso de interface do story (rodapé 224 px): os textos
+    // ficam ACIMA dele, senão toda escrita draft-only deste harness seria recusada pela peça, não pelo que se prova aqui.
+    layers: [texto('headline', 1200, 'Almoço executivo'), texto('cta', 1350, 'Reserve pelo direct')],
     copyAutoral: comContrato ? serializarCopyAutoral(contratoX) : null,
   }
 }
@@ -255,7 +285,7 @@ describe('C3-12 — a página promovida a MODELO durante o ajuste não é gravad
     expect(banco.pagina.isTemplate).toBe(true)
     expect(banco.pagina.name).toBe('Peça do chat')
     expect(banco.pagina.thumbnail).toBe('https://blob.test/render-anterior.png')
-    expect((banco.pagina.layers as Array<Record<string, any>>).find((l) => l.id === 'headline')!.position.y).toBe(1500)
+    expect((banco.pagina.layers as Array<Record<string, any>>).find((l) => l.id === 'headline')!.position.y).toBe(1200)
     expect(banco.generations).toHaveLength(0)
   }
 

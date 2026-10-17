@@ -287,3 +287,14 @@ gravado na mesma transação (APTO antes do post; reprovado, só ele). O item ga
 em nada: nenhuma medição, trava nova ou campo novo. A descrição da tool ganhou o parágrafo "GATE DE AUTONOMIA"; nenhum
 parâmetro novo. `ver-geracao` compara a política gravada com `POLITICA_DO_ASSUNTO_DO_AGENDAR_LEVA` (proposta nomeada,
 decisão 8.1 do contrato). Detalhe em `docs/regras/revisor-da-arte.md` § CP5c.
+
+### `ajustar-arte` no perfil draft-only passa pelo gate de autonomia (CP5d, 17/10/2026)
+
+Só no perfil draft-only: a versão final que seria gravada é medida DENTRO da transação de escrita, sob as travas, e
+só é gravada se o gate disser APTO; o registro vai para a Generation PROCESSING criada na mesma transação e fechada
+pelo render (render que falha → `FAILED` por uma `UPDATE` atômica com `fieldValues.error`, o registro fica como
+auditoria). Recusa → `REVISAO_HUMANA_NECESSARIA` com `revisao`/`achados`/`motivos` e `ajusteGravado: false`, página
+intacta. A recusa TOTAL do CP4 no draft-only também sai como `REVISAO_HUMANA_NECESSARIA`, com a causa em
+`details.causa`. O sucesso traz `revisao` (APTO) com o `generationId`. Fluxo humano igual (código do CP4 mantido).
+Nenhum parâmetro novo; a descrição ganhou o parágrafo "GATE DE AUTONOMIA". Detalhe em `docs/regras/revisor-da-arte.md`
+§ CP5d.

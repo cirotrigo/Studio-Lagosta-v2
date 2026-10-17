@@ -769,21 +769,17 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
  * FINAL do Codex, 12/09/2026). A proteção nasce junto da gravação do ajuste,
  * não do desfecho do render. Idempotente; nunca lança para quem chama.
  */
-export async function travarRecomposicaoDaArte(
+/**
+ * CP5d § 4: o ALVO da trava de recomposição — a arte mais recente da página com `resultUrl` (a que `levantarPagina`
+ * escolhe para recompor), pela MESMA seleção de sempre (20 mais recentes, a primeira aceita por `ehArteDaPagina`).
+ * Extraída para a transação do gate do `ajustar-arte` travar `FOR UPDATE` exatamente a linha que
+ * `travarRecomposicaoDaArte` vai escrever. Devolve `null` quando a página não tem arte.
+ */
+export async function alvoDaRecomposicao(
+  client: Prisma.TransactionClient | typeof db,
   pageId: string,
-  motivo: string,
-  opcoes: { projectId?: number; client?: Prisma.TransactionClient | typeof db } = {},
-): Promise<boolean> {
-  // `client` é a TRANSAÇÃO de quem grava a página: página ajustada e trava
-  // aparecem JUNTAS para qualquer leitor, ou nenhuma das duas (REV-D01 da
-  // revisão do Codex, 12/09/2026 — fora da transação um worker lia a página
-  // já ajustada com a arte ainda sem trava e recompunha por cima).
-  // 🔴 DENTRO da transação NADA pode usar `db`: no pool do dev (medido em
-  // 12/09/2026) uma leitura pelo cliente raiz com a transação aberta fica
-  // presa até o timeout dela (P2028 aos 20s) — por isso o `projectId` entra
-  // no filtro (a busca por JSON path sem ele varria a tabela inteira: 1,9s
-  // contra 0,75s com o índice do projeto) e tudo aqui passa por `client`.
-  const client = opcoes.client ?? db
+  opcoes: { projectId?: number } = {},
+): Promise<{ id: string; fieldValues: unknown } | null> {
   const geracoes = await client.generation.findMany({
     where: {
       ...(opcoes.projectId ? { projectId: opcoes.projectId } : {}),
@@ -795,6 +791,29 @@ export async function travarRecomposicaoDaArte(
     take: 20,
   })
   const primeira = geracoes.find((g) => ehArteDaPagina(g))
+  return primeira ? { id: primeira.id, fieldValues: primeira.fieldValues } : null
+}
+
+export async function travarRecomposicaoDaArte(
+  pageId: string,
+  motivo: string,
+  opcoes: { projectId?: number; client?: Prisma.TransactionClient | typeof db; alvo?: string } = {},
+): Promise<boolean> {
+  // `client` é a TRANSAÇÃO de quem grava a página: página ajustada e trava
+  // aparecem JUNTAS para qualquer leitor, ou nenhuma das duas (REV-D01 da
+  // revisão do Codex, 12/09/2026 — fora da transação um worker lia a página
+  // já ajustada com a arte ainda sem trava e recompunha por cima).
+  // 🔴 DENTRO da transação NADA pode usar `db`: no pool do dev (medido em
+  // 12/09/2026) uma leitura pelo cliente raiz com a transação aberta fica
+  // presa até o timeout dela (P2028 aos 20s) — por isso o `projectId` entra
+  // no filtro (a busca por JSON path sem ele varria a tabela inteira: 1,9s
+  // contra 0,75s com o índice do projeto) e tudo aqui passa por `client`.
+  const client = opcoes.client ?? db
+  // CP5d: com `alvo` (o id que a transação do gate já resolveu por `alvoDaRecomposicao` e travou), a linha é LIDA, não
+  // procurada de novo — a checagem da marca já gravada é a mesma. Sem `alvo`, a busca de sempre.
+  const primeira = opcoes.alvo
+    ? await client.generation.findUnique({ where: { id: opcoes.alvo }, select: { id: true, fieldValues: true } })
+    : await alvoDaRecomposicao(client, pageId, { projectId: opcoes.projectId })
   if (!primeira) return false
   const fv =
     primeira.fieldValues && typeof primeira.fieldValues === 'object' && !Array.isArray(primeira.fieldValues)
