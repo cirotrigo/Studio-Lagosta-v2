@@ -39,18 +39,20 @@
 | Travas/SQL reais, Blob, autorização MCP do gate | § CP5e "não prova" | o piloto roda sobre banco falso com travas |
 | § 9 itens 4, 5 e 8 (piloto satisfatório, bloqueios entendidos por cliente, autorização) | plano § 9 | dependem do representativo e do owner |
 
-### 1.3 Decisões exclusivas do owner, hoje em vigor como PROPOSTA nomeada
+### 1.3 Decisões do owner: o que já foi ADOTADO e o que segue PROPOSTA
 
-Implementadas e trocáveis numa constante; nenhuma foi aprovada. Lista para o owner revisar em bloco, sem pressa — nenhuma delas
-bloqueia a preparação técnica abaixo:
+**Adotadas pelo owner** (não reabrir): CP4.2 (contrato "aprovado pelo owner"); CP5a — aprovado para implementação em 16/10
+(`PLANO-2026-10-15-CP5A-CONTRATO.md:3`; `revisor-da-arte.md:831`): oclusão (B) conservadora (9.2), copy sem contrato exige
+humano (9.4), ausência de logo solta = aviso (9.5), `texto-pequeno` crítica (9.6), tolerância texto × texto = a de `colisao`
+(9.7), e a política do assunto como parâmetro OBRIGATÓRIO; caso C do assunto = humano (17/10).
 
-- CP5a 9.1 (caso B `estimado: 'humano'`), 9.2 (oclusão B), 9.4 (copy sem contrato), 9.5 (sem logo solta), 9.6 (`texto-pequeno`
-  crítica), 9.7 (tolerância texto × texto); CP5b 9.1–9.13 (nome `gateDaArte`, fonte da `copyVersion`, histórico, `rulesVersion`
-  por hash, política efetiva…); CP5c 8.1–8.9 (política efetiva, códigos de concorrência, registro do reprovado, efeitos
-  pós-commit NÃO rodam no draft-only, prazos 8 s / 4 s); CP5d 8.1–8.8 (P1, `AJUSTE_CONCORRENTE`…); CP5e 5.1–5.5.
-- Do piloto e do adendo: B, 2 (janelas), 3 (assinatura real × piso), T1a (92 px × margem 96), H (reler catálogo quando o cache
-  cai), estimador (assunto na borda), 5.1/5.2/5.3.
-- Do plano-mestre ainda abertas: 4 e 5 (MCP-M), 6 (T1b × CP-V2).
+**Seguem PROPOSTA nomeada** (implementadas como recomendação, trocáveis numa constante, nenhuma aprovada): caso B
+`estimado: 'humano'` (9.1 do CP5a, ainda no valor de `POLITICA_DO_ASSUNTO_RECOMENDADA`); CP5b § 9 "Decisões pendentes do owner"
+(9.1–9.13, entre elas `rulesVersion` por hash = decisão 7 do plano); CP5c § 8 (8.1–8.9, entre elas efeitos pós-commit que NÃO
+rodam no draft-only); CP5d § 8 (8.1–8.8, entre elas P1 "só grava versão APTA"); CP5e § 5 (5.1–5.5). Do piloto e do adendo: B, 2
+(janelas), 3 (assinatura real × piso), T1a (92 px × margem 96), H, estimador, 5.1/5.2/5.3. Do plano-mestre: 4, 5 e 6.
+
+Nenhuma das propostas bloqueia a preparação técnica abaixo.
 
 ### 1.4 Bloqueios que continuam
 
@@ -152,7 +154,7 @@ registrado); **agendados** (população SEPARADA, só se o owner pedir, D3) — 
 | E4 | existe prova com `mediaUrl === mediaUrls[0]` (igualdade exata de string) | `sem-prova` (nenhuma prova) · `prova-de-outra-midia` (há provas, nenhuma da mídia efetiva) |
 | E5 | `layersSnapshot` é array de objetos (aceita string JSON uma vez decodificada; nada além) | `snapshot-ilegivel` |
 | E6 | exatamente UMA camada `id === 'bg-foto'`, `type === 'image'`, `fileUrl` `https:` | `fundo-ausente` · `fundo-duplicado` · `fundo-nao-imagem` · `fundo-nao-https` |
-| E6b | contribuição visual NÃO trivialmente nula, avaliada só no caso SIMPLES: `visible !== false`; `style.opacity` ausente ou número finito > 0; `size` com largura e altura > 0; `rotation` ausente ou 0; sem `style.mask`; dimensões do canvas DO RENDER comprovadas pelo cabeçalho PNG (IHDR) da própria mídia da prova (`proof.mediaUrl`, lida só nos primeiros 64 bytes, com as regras de E7) = 1080 × 1920 — a `Page` atual NUNCA entra (pode ter mudado depois do render); caixa (`position`/`size`) intersecta 1080 × 1920 com área > 0. Rotação ≠ 0, máscara, mídia que não é PNG, IHDR ilegível, dimensões ≠ 1080 × 1920 ou campo de transformação não previsto → a P1 NÃO avalia: exclusão, nunca aceite. Na `--contar` (sem rede) a dimensão não é lida: os elegíveis da contagem são TETO, rotulados "canvas não comprovado" | `fundo-invisivel` (oculto / opacidade 0 / sem área / fora do canvas) · `fundo-nao-avaliavel` (rotação / máscara / canvas do render não comprovado ou ≠ story / transformação desconhecida) |
+| E6b | contribuição visual NÃO trivialmente nula, avaliada só no caso SIMPLES: `visible !== false`; `style.opacity` ausente ou número finito > 0; `size` com largura e altura > 0; `rotation` ausente ou 0; `style` contém SÓ chaves da lista fechada do caso simples (`opacity`, `objectFit`, `cropPosition`, `flipH`, `flipV`) — qualquer outra (`filter`, `mask`, ajustes de imagem, sombra, borda…) pode alterar ou anular pixels (`render-engine.ts:1530` aplica `style.filter` antes de desenhar) e a P1 não a avalia; dimensões do canvas DO RENDER comprovadas pelo cabeçalho PNG (IHDR) da própria mídia da prova (`proof.mediaUrl`, lida só nos primeiros 64 bytes, com as regras de E7) = 1080 × 1920 — a `Page` atual NUNCA entra (pode ter mudado depois do render); caixa (`position`/`size`) intersecta 1080 × 1920 com área > 0. Rotação ≠ 0, máscara, mídia que não é PNG, IHDR ilegível, dimensões ≠ 1080 × 1920 ou campo de transformação não previsto → a P1 NÃO avalia: exclusão, nunca aceite. Na `--contar` (sem rede) a dimensão não é lida: os elegíveis da contagem são TETO, rotulados "canvas não comprovado" | `fundo-invisivel` (oculto / opacidade 0 / sem área / fora do canvas) · `fundo-nao-avaliavel` (rotação / chave de `style` fora da lista / canvas do render não comprovado ou ≠ story / transformação desconhecida) |
 | E7 | URL de download segura: `URL` parseável; protocolo `https:`; sem usuário/senha nem porta; `hostname` (minúsculas) IGUAL a um item da lista FECHADA `STORES_DO_STUDIO` — constante revisada no PR (proposta: `2rhsgfleozgl5jbm.public.blob.vercel-storage.com`, o store atual, citado em `scripts/recover-blob-files.ts:5`), confirmada pelo owner em D7; nunca sufixo, nunca `includes`, nunca os outros hosts de `HOSTS_PROPRIOS` | `host-nao-autorizado` |
 | E8 | classe de origem (3.4) ≠ `render` | `fundo-e-render` (arte dentro de arte) |
 | E8b | a classe tem caminho IMUTÁVEL comprovado no código (3.4, coluna "imutável"): a URL de hoje é necessariamente os bytes do dia do render. A prova não guarda hash dos bytes de origem (`schema.prisma`, `PostRenderProof`), então caminho sobrescrevível ou não comprovado não tem identidade histórica | `origem-sobrescrevivel` · `imutabilidade-nao-comprovada` |
@@ -183,8 +185,8 @@ de fundo é decisão, não código.
 
 **Nota de imutabilidade (vale para `uploads/` e para a mídia `posts/rendered/` lida em E6b)**: as duas rotas chamam `put` sem
 `allowOverwrite` (`api/upload/google-drive/route.ts:65`, `story-renderer.ts:148`); na versão instalada (`@vercel/blob` 2.0.0) o
-padrão documentado é ERRO ao reusar o pathname (`node_modules/@vercel/blob/dist/index.d.ts:235`), e o pathname leva timestamp. Isso
-só prova para arquivos gravados com uma versão de mesmo padrão: o PR de P1 tem de mostrar, pelo histórico do `package-lock.json`,
+padrão documentado é ERRO ao reusar o pathname (declaração do pacote instalado no checkout de trabalho, `dist/index.d.ts`, a
+conferir e anexar no PR de P1 — o `package-lock.json` só registra a versão), e o pathname leva timestamp. Isso só prova para arquivos gravados com uma versão de mesmo padrão: o PR de P1 tem de mostrar, pelo histórico do `package-lock.json`,
 qual versão estava em produção desde 12/10/2026 (início das provas) e que o padrão era o mesmo; enquanto isso não estiver
 comprovado, `uploads/` fica `imutabilidade-nao-comprovada` e o canvas de E6b fica `fundo-nao-avaliavel`.
 
@@ -256,7 +258,7 @@ continua "não medida" e contada. O estimador, na fixture pseudonimizada, mede "
 | T3 | E1–E3 | cada status nas duas populações (SCHEDULED nunca entra em publicados; nada aparece nas duas); `latePublishedAt` presente / só `sentAt` / ambos nulos; limites `desde` (entra) e `ate` (sai); `scheduledDatetime` nulo num POSTED (elegível); `mediaUrls` [] / 2; `pageId` null | motivo exato; campo de referência registrado |
 | T4 | E4 | sem prova; prova de outra URL; duas provas, uma casa; URL com query diferente | `sem-prova` / `prova-de-outra-midia` / elegível / `prova-de-outra-midia` (igualdade exata) |
 | T5 | E5 | array; string JSON de array; string dupla-codificada; objeto; JSON inválido; `null` | só os dois primeiros elegíveis |
-| T6 | E6–E6b | 0 / 2 `bg-foto`; `type: 'shape'`; `data:`; `http:`; outras imagens sem `bg-foto` (não cai em `imagens[0]`); oculta; `style.opacity` 0 / −1 / `NaN` / `'0'` (string) / 0,01; `size` 0 × N; caixa inteira fora do canvas; caixa parcialmente dentro; camada opaca acima cobrindo o fundo; `rotation` 45 com a caixa dentro antes de girar e fora depois; `rotation` 0 explícito; `style.mask` presente; IHDR da mídia 1080 × 1350 com a caixa em y 1500 (página alterada depois para 1920: a `Page` atual não é lida); mídia JPEG; IHDR truncado; campo de transformação desconhecido | motivo exato; 0,01, parcial e `rotation` 0 elegíveis; rotação ≠ 0, máscara, canvas ≠ story ou não comprovado e campo desconhecido → `fundo-nao-avaliavel`; na `--contar`, elegíveis rotulados "canvas não comprovado"; "coberta" elegível com a contagem de camadas acima registrada (não decide) |
+| T6 | E6–E6b | 0 / 2 `bg-foto`; `type: 'shape'`; `data:`; `http:`; outras imagens sem `bg-foto` (não cai em `imagens[0]`); oculta; `style.opacity` 0 / −1 / `NaN` / `'0'` (string) / 0,01; `size` 0 × N; caixa inteira fora do canvas; caixa parcialmente dentro; camada opaca acima cobrindo o fundo; `rotation` 45 com a caixa dentro antes de girar e fora depois; `rotation` 0 explícito; `style.mask` presente; `style.filter: 'opacity(0)'` com `style.opacity` 1; `style.filter: 'none'`; `style.brightness` presente; `style` vazio; IHDR da mídia 1080 × 1350 com a caixa em y 1500 (página alterada depois para 1920: a `Page` atual não é lida); mídia JPEG; IHDR truncado; campo de transformação desconhecido | motivo exato; 0,01, parcial e `rotation` 0 elegíveis; `style` vazio elegível; rotação ≠ 0, qualquer chave de `style` fora da lista (inclusive `filter: 'none'`), canvas ≠ story ou não comprovado e campo desconhecido → `fundo-nao-avaliavel`; na `--contar`, elegíveis rotulados "canvas não comprovado"; "coberta" elegível com a contagem de camadas acima registrada (não decide) |
 | T7 | E7–E8 | o host de `STORES_DO_STUDIO` (ok); OUTRO store válido da Vercel (`abcdefghijklmnop.public.blob.vercel-storage.com`); o store antigo `sqc9qfyearji7bel`; `a.b.public.blob.vercel-storage.com`; `public.blob.vercel-storage.com.evil.com`; `evil.com/?x=.public.blob.vercel-storage.com`; `lh3.googleusercontent.com`; `x.supabase.co`; `user@host`; porta; maiúsculas no host; `posts/rendered/` | só o host listado (e a variante em maiúsculas) autorizado; motivos exatos |
 | T8 | 3.4 | cada prefixo; os DOIS fluxos que gravam `posts/<x>/google-drive/` (com e sem recorte) dão a mesma classe e transformação `desconhecida`; `normalized/` com transformação `comprovada`; maiúsculas; query; `%2e%2e`/`..`; prefixo novo | classe da tabela; desconhecida no resto |
 | T9 | E9 + ordem | mesma URL com query diferente; empate da data de referência | repetido; desempate por `id`; mesma entrada → manifesto byte a byte igual (hash) |
@@ -311,3 +313,7 @@ Clientes, cota final, pixels versionáveis e destino das fixtures (5.1/5.2) fica
   `index.d.ts:235`), exigência de provar a versão em produção desde 12/10 e, sem prova, `fundo-nao-avaliavel` (T16); (2) o
   prefixo `posts/<x>/google-drive/` tem DUAS rotas, uma que recorta (`projects/[projectId]/google-drive/download/route.ts`) →
   transformação `desconhecida`, nunca "preservada"; `normalized/` como transformação comprovada; T8 com os dois fluxos.
+- **R5 (HEAD 7c4f5931) — NÃO APTO**: R4 resolvidos (o 1 condicionalmente: a evidência da versão do Blob fica para P1) → novos,
+  corrigidos: (1) § 1.3 reclassificava decisões do CP5a ADOTADAS pelo owner como propostas → separadas; (2) E6b não excluía
+  `style.filter` (`render-engine.ts:1530`) → lista fechada de chaves de `style` no caso simples, T6 com `filter: 'opacity(0)'`;
+  (3) a declaração do `@vercel/blob` passa a evidência a anexar em P1.
