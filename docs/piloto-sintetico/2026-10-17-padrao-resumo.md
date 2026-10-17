@@ -1,6 +1,6 @@
 # Piloto sintético de autonomia — resumo da rodada padrao (2026-10-17)
 
-HEAD `4aa86bcf` · lote `piloto-sintetico-cdce41047cff` · ambiente darwin arm64 node v22.23.3 · relatório integral: `human-output/relatorios/piloto-sintetico/2026-10-17-padrao/relatorio.json` (SHA-256 `0e095251de67608a4979c836c616b941b218e6a2631811f418dc383b8cc40c3b`).
+HEAD `76522776` · lote `piloto-sintetico-cdce41047cff` · ambiente darwin arm64 node v22.23.3 · relatório integral: `human-output/relatorios/piloto-sintetico/2026-10-17-padrao/relatorio.json` (SHA-256 `8aebd1c40fb3554b070d94a149f0bc1015afc6a84b5a2b468b9d04bd20612ba3`).
 
 **O que este piloto NÃO mede** (ao lado do veredito, sempre): fontes da marca não instaladas (declaradas presentes; render com fonte de reserva); a visão (gpt-5.2) não roda; fotos SINTÉTICAS + a real anonimizada de 13/10 — lote CONTROLADO, não representativo das fotos dos clientes (decisão 5.1); banco falso com travas: travas/SQL reais e Blob não provados; custo medido nesta máquina, não na Vercel; clientes: cliente-00, cliente-fixture (fixtures reais pseudonimizadas aguardam a lista do owner — decisão 5.2).
 
@@ -72,16 +72,16 @@ Exclusões do lote por motivo (não são peças): arquetipo-indisponivel 78 · a
 ## 5. Custo por etapa (renders mediana/p95 · ms mediana/p95) — a peça principal (compor…png), a leitura pareada, a repetição e a injeção em linhas próprias
 | etapa | renders med | renders p95 | ms med | ms p95 |
 |---|---|---|---|---|
-| compor | 3 | 3 | 526 | 1144 |
-| revisar | 4 | 4 | 626 | 1464 |
+| compor | 3 | 3 | 531 | 1139 |
+| revisar | 4 | 4 | 633 | 1466 |
 | ajustar | 0 | 0 | 0 | 0 |
-| agendar | 2 | 2 | 324 | 755 |
-| juizes | 2 | 2 | 297 | 707 |
-| png | 1 | 1 | 108 | 311 |
-| pareada | 0 | 9 | 22 | 2310 |
-| repeticao | 10 | 10 | 577 | 3175 |
-| injecao | 4 | 4 | 326 | 1492 |
-| modoG | 6 | 6 | 1545 | 2215 |
+| agendar | 2 | 2 | 320 | 754 |
+| juizes | 2 | 2 | 294 | 708 |
+| png | 1 | 1 | 111 | 311 |
+| pareada | 0 | 9 | 21 | 2314 |
+| repeticao | 10 | 10 | 579 | 3186 |
+| injecao | 4 | 4 | 324 | 1522 |
+| modoG | 6 | 6 | 1537 | 2212 |
 Renders somados por etapa: 661 · observados pelo contador do renderer na rodada: 661.
 
 ## 6. Estabilidade: exceções 0 · nao-medida 0 · sem-vinculo 0 · timeouts 0

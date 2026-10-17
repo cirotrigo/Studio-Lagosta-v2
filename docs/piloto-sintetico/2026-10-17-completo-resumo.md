@@ -1,6 +1,6 @@
 # Piloto sintético de autonomia — resumo da rodada completo (2026-10-17)
 
-HEAD `4aa86bcf` · lote `piloto-sintetico-cdce41047cff` · ambiente darwin arm64 node v22.23.3 · relatório integral: `human-output/relatorios/piloto-sintetico/2026-10-17-completo/relatorio.json` (SHA-256 `cd776cc48648f557d39268e6e590793368ae9115429cad2e8e1a3b535a0ee44a`).
+HEAD `76522776` · lote `piloto-sintetico-cdce41047cff` · ambiente darwin arm64 node v22.23.3 · relatório integral: `human-output/relatorios/piloto-sintetico/2026-10-17-completo/relatorio.json` (SHA-256 `fc301d5bde5675879e4f59b3f83b755da7fc30ffd76f7aa30aed8d624a7dd44b`).
 
 **O que este piloto NÃO mede** (ao lado do veredito, sempre): fontes da marca não instaladas (declaradas presentes; render com fonte de reserva); a visão (gpt-5.2) não roda; fotos SINTÉTICAS + a real anonimizada de 13/10 — lote CONTROLADO, não representativo das fotos dos clientes (decisão 5.1); banco falso com travas: travas/SQL reais e Blob não provados; custo medido nesta máquina, não na Vercel; clientes: cliente-00, cliente-fixture (fixtures reais pseudonimizadas aguardam a lista do owner — decisão 5.2).
 
@@ -78,16 +78,16 @@ Exclusões do lote por motivo (não são peças): arquetipo-indisponivel 78 · a
 ## 5. Custo por etapa (renders mediana/p95 · ms mediana/p95) — a peça principal (compor…png), a leitura pareada, a repetição e a injeção em linhas próprias
 | etapa | renders med | renders p95 | ms med | ms p95 |
 |---|---|---|---|---|
-| compor | 3 | 3 | 604 | 1399 |
-| revisar | 4 | 4 | 761 | 1859 |
+| compor | 3 | 3 | 603 | 1394 |
+| revisar | 4 | 4 | 762 | 1856 |
 | ajustar | 0 | 0 | 0 | 0 |
-| agendar | 2 | 2 | 385 | 974 |
-| juizes | 2 | 2 | 369 | 877 |
-| png | 1 | 1 | 131 | 376 |
-| pareada | 0 | 9 | 29 | 3492 |
-| repeticao | 0 | 10 | 32 | 3852 |
-| injecao | 4 | 4 | 376 | 1520 |
-| modoG | 6 | 6 | 2205 | 2391 |
+| agendar | 2 | 2 | 386 | 970 |
+| juizes | 2 | 2 | 368 | 875 |
+| png | 1 | 1 | 131 | 378 |
+| pareada | 0 | 9 | 29 | 3485 |
+| repeticao | 0 | 10 | 32 | 3856 |
+| injecao | 4 | 4 | 376 | 1523 |
+| modoG | 6 | 6 | 2206 | 2388 |
 Renders somados por etapa: 1442 · observados pelo contador do renderer na rodada: 1442.
 
 ## 6. Estabilidade: exceções 0 · nao-medida 0 · sem-vinculo 0 · timeouts 0
