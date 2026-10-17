@@ -80,10 +80,10 @@ Cada passo só começa com o anterior aceito. "Autorização" = palavra do owner
 | P0 | Este documento revisado (Codex APTO) | — | nenhuma (preparação autorizada) | Codex APTO no HEAD do documento |
 | P1 | **Escrever** o modo `--fotos` (código + testes OFFLINE, § 3–4), sem executar contra banco | P0 | **sim** — "escrever a ferramenta" (o adendo já listava isso como decisão) | matriz do § 4 verde; typecheck/lint; Codex APTO no código; merge só com APTO no HEAD exato e CI/Vercel verdes |
 | P2 | **Contagem** (`--fotos --contar`) no branch de dev, sem baixar pixel | P1 na main | **sim** — ler o branch de dev (cópia de dados reais) e, se velho, **recriá-lo** (`db:dev:setup --recriar`, também decisão do owner) | relatório de elegíveis/exclusões por cliente e motivo, data do snapshot, déficits ditos |
-| P3 | Decisões 5.1/5.2 com os números de P2: clientes, cota, janela de datas, pixels versionáveis, destino | P2 | **sim** (são as decisões) | registro escrito das escolhas no plano |
+| P3 | Decisões 5.1/5.2 e D8 com os números de P2: clientes, candidatos e cota final, janela de datas, pixels versionáveis, destino | P2 | **sim** (são as decisões) | registro escrito das escolhas no plano |
 | P4 | **Exportação** (`--fotos` sem `--contar`) para pasta privada fora do repositório | P3 | **sim** | manifesto com SHA-256 por arquivo; exclusões contadas; nada no repositório |
 | P5 | Marcação humana (região protegida, categoria, difusa/forte) | P4 | **sim** (quem marca; custo ~1 h/cliente) | arquivo de marcação por foto, versionado só se P3 permitir |
-| P6 | Fixtures representativas + generalizar `exigirMedidaFiel` por foto (§ 3.9) + rodada | P5 | contrato próprio + Codex | resumo versionado; falso APTO = 0; repetibilidade 100 %; NÃO MEDIDAS contadas |
+| P6 | Fixtures ("representativas" só com D8 decidida) + generalizar `exigirMedidaFiel` por foto (§ 3.9) + rodada | P5 | contrato próprio + Codex | resumo versionado; falso APTO = 0; repetibilidade 100 %; NÃO MEDIDAS contadas |
 | P7 | Owner lê e decide "satisfatório" (5.3) → só então MCP-M0 pode ser discutido | P6 | **sim** | decisão registrada no plano |
 
 ## 3. Contrato técnico PROPOSTO do modo `--fotos` (P1)
@@ -123,13 +123,15 @@ Novo módulo puro `scripts/fixtures/selecao-de-fotos.ts` (sem `@/lib/db`, sem re
 
 ```
 exportar-piloto-sintetico.ts --fotos --contar  --cliente <id>… --desde <ISO> --ate <ISO>
-exportar-piloto-sintetico.ts --fotos           --cliente <id>… --desde <ISO> --ate <ISO> --cota <n> <pasta-privada>
+exportar-piloto-sintetico.ts --fotos           --cliente <id>… --desde <ISO> --ate <ISO> --candidatos <n> <pasta-privada>
 ```
 
 - `--cliente` obrigatório e explícito (a ferramenta nunca escolhe cliente; sem `--cliente` recusa).
 - `--desde`/`--ate` obrigatórios, ISO absolutos (`[desde, ate)` em UTC; nada relativo a "hoje" → a mesma entrada no mesmo
   snapshot dá o mesmo manifesto).
-- `--cota` só no modo de exportação; teto rígido 20 por cliente (proposta), recusa acima.
+- `--candidatos` só no modo de exportação: quantos arquivos EXPORTAR por cliente (proposta: 2× a cota final, para P5 classificar e
+  escolher; teto rígido 20, recusa acima). A **cota final** da leva (proposta 10, estratificada 4/3/3) NÃO é parâmetro da
+  ferramenta: é aplicada em P5, sobre os candidatos já classificados por pessoa.
 - A mesma guarda (`recusaDoExportador`) e UMA transação `READ ONLY`; a guarda roda antes de qualquer conexão.
 
 ### 3.2 Consulta (uma só, igual nos dois modos)
@@ -218,16 +220,18 @@ o fato vai ao relatório).
 
 - Destino: pasta passada por argumento; **recusa se estiver dentro do repositório** fora de `human-output/` (proposta do owner a
   confirmar: pasta fora do repositório; `human-output/` ignorado é a alternativa).
-- Seleção com REPOSIÇÃO determinística: percorre os elegíveis na ordem de 3.2 e baixa até ter `cota` arquivos EXPORTADOS; cada
-  falha (`download-falhou`, com o subcódigo) é contada e o próximo elegível entra no lugar; acabaram os elegíveis → déficit. Cota,
-  déficit e "cliente fora da leva" (`< 6`) são calculados sobre os arquivos **efetivamente exportados**, nunca sobre elegíveis.
+- Seleção com REPOSIÇÃO determinística: percorre os elegíveis na ordem de 3.2 e baixa até ter `candidatos` arquivos EXPORTADOS; cada
+  falha (`download-falhou`, com o subcódigo) é contada e o próximo elegível entra no lugar; acabaram os elegíveis → déficit de
+  candidatos. Na ferramenta: déficit de candidatos e "cliente fora da leva" (`< 6` exportados) sobre os arquivos **efetivamente
+  exportados**, nunca sobre elegíveis. Em P5 (fora da ferramenta): cota final e déficit por categoria sobre os candidatos
+  CLASSIFICADOS, com o mesmo corte `< 6` aplicado de novo aos aproveitáveis.
   Sem categoria: a ferramenta não sabe o que é produto/ambiente/pessoa — a estratificação 4/3/3 do adendo exige marcação humana
   em P5 (decisão D4).
 - Download só de URL que passou em E7: `redirect: 'manual'`; cada redirecionamento é revalidado por E7 antes de seguir (até 3;
   destino fora → `download-falhou:redirecionamento-nao-autorizado`); prazo 10 s; teto 25 MB lido em fluxo (aborta ao passar, não
   confia em `content-length`); `content-type image/*` E assinatura do arquivo (PNG/JPEG/WebP) conferida nos bytes. Arquivo gravado
   como `cliente-<id>-<n>.<ext da assinatura>` + SHA-256 no manifesto.
-- **Só os bytes desenhados (a).** O "original" (b) fica FORA de P1: nenhuma classe comprova preservação hoje; lê-lo do Drive
+- **Só os bytes HOJE na URL do fundo referenciado no render da mídia registrada (a)** — não "os bytes publicados" (3.3, D8). O "original" (b) fica FORA de P1: nenhuma classe comprova preservação hoje; lê-lo do Drive
   exige autorização própria. O manifesto diz `original: indisponivel` em toda foto.
 - Manifesto: args, HEAD do repositório, marcador do snapshot, por foto os campos de 3.3 + SHA-256 + dimensões lidas do arquivo,
   totais (lidos, elegíveis, tentados, exportados) e déficits por cliente. Sem pixel no manifesto.
@@ -259,7 +263,7 @@ continua "não medida" e contada. O estimador, na fixture pseudonimizada, mede "
 
 | # | Alvo | Casos | Espera |
 |---|---|---|---|
-| T1 | guarda | reaproveita `guarda-do-exportador.test.ts`; + sem `--cliente`; datas ausentes/inválidas/`desde ≥ ate`; `--cota` 0, > 20 | recusa antes de conectar |
+| T1 | guarda | reaproveita `guarda-do-exportador.test.ts`; + sem `--cliente`; datas ausentes/inválidas/`desde ≥ ate`; `--candidatos` 0, > 20; `--cota` (inexistente) recusado | recusa antes de conectar |
 | T2 | destino | pasta em `src/`, `docs/`, raiz do repo, `../repo/src` por caminho relativo/symlink; pasta fora | recusa nos 4 primeiros; aceita fora (e `human-output/` conforme D5) |
 | T3 | E1–E3 | cada status nas duas populações (SCHEDULED nunca entra em publicados; nada aparece nas duas); `latePublishedAt` presente / só `sentAt` / ambos nulos; limites `desde` (entra) e `ate` (sai); `scheduledDatetime` nulo num POSTED (elegível); `mediaUrls` [] / 2; `pageId` null | motivo exato; campo de referência registrado |
 | T4 | E4 | sem prova; prova de outra URL; duas provas, uma casa; URL com query diferente | `sem-prova` / `prova-de-outra-midia` / elegível / `prova-de-outra-midia` (igualdade exata) |
@@ -272,7 +276,7 @@ continua "não medida" e contada. O estimador, na fixture pseudonimizada, mede "
 | T10 | transação | `tx` falso que registra chamadas | 1ª chamada `SET TRANSACTION READ ONLY`; nenhum SQL com `INSERT/UPDATE/DELETE/ALTER` (lista das strings enviadas) |
 | T11 | `--contar` | `fetch` espião em todos; (a) tabela ausente; (b) migração não registrada com tabela presente; (c) os dois; (d) tabela e migração presentes, nenhuma prova na seleção | `fetch` nunca chamado e nenhum arquivo escrito em (a)–(d); (a), (b), (c): recusa com o(s) sinal(is) exatos e causa "indeterminada"; (d): não recusa, reporta "nenhuma prova nesta seleção" + `COUNT` global |
 | T12 | download | 403, timeout, `text/html` com status 200, bytes que não são imagem com `image/png`, 30 MB sem `content-length`, redirecionamento para host autorizado, para host alheio, cadeia de 4; OK | exclusões `download-falhou:<subcódigo>` contadas; redirecionamento autorizado segue; OK com SHA-256 certo e extensão pela assinatura |
-| T13 | cota/déficit/reposição | 3 elegíveis com cota 10; 12 elegíveis com cota 10 e 2 falhas; 7 elegíveis com 2 falhas e cota 10 | fora da leva (< 6 exportados); 10 exportados com os 2 reservas seguintes no lugar, na ordem; 5 exportados → fora da leva, déficit 5 |
+| T13 | candidatos/déficit/reposição | 3 elegíveis com `--candidatos 20`; 24 elegíveis com `--candidatos 20` e 2 falhas; 7 elegíveis com 2 falhas e `--candidatos 20` | fora da leva (< 6 exportados); 20 exportados com os 2 reservas seguintes no lugar, na ordem; 5 exportados → fora da leva, déficit de candidatos 15 (a cota final não é testada aqui: é de P5) |
 | T16 | E6b × imutabilidade da mídia | flag "imutabilidade de `posts/rendered/` comprovada" falsa × verdadeira (constante do módulo, fixada pelo PR com a evidência) | falsa → todo elegível vira `fundo-nao-avaliavel`; verdadeira → IHDR decide |
 | T15 | E8b | inventário: o teste lista todo `allowOverwrite: true` de `src/` e `scripts/` e falha com um a mais; pathname no padrão de `compor-leva-setembro.ts` (com `head` falho → sobrescrita); pathname de cada escritor do inventário; `konva-export` com `fileName` = `drive-cache/x.jpg` (cai no padrão → `origem-sobrescrevivel`); condição da nota falsa × verdadeira; cada classe da tabela 3.4; `chat-uploads/` e `drive-cache/` com a mesma URL e bytes trocados entre o render e o download (sobrescrita) | `origem-sobrescrevivel` nessas duas; `imutabilidade-nao-comprovada` em todas enquanto a condição da nota for falsa; com ela verdadeira, elegível só fora dos padrões do inventário |
 | T14 | pureza | `selecao-de-fotos.ts` | não importa `@/lib/db` nem `node:fs`/rede (teste de import, padrão do repo) |
@@ -287,7 +291,8 @@ CI e Vercel verdes. Sem rodada do piloto (nada nele muda).
 | D1 | Autorizar ESCREVER o `--fotos` (P1, só código + testes offline) | sim | não: a etapa representativa fica parada, e com ela o MCP-M0 |
 | D2 | Autorizar a CONTAGEM no branch de dev (P2) e recriá-lo se for anterior a 12/10 | sim, depois de P1 na main | export manual do Blob pelo owner (adendo § 4, alternativa) |
 | D3 | Populações | só PUBLICADOS (`POSTED`, janela por `latePublishedAt ?? sentAt`) | + agendados (`SCHEDULED`) como população SEPARADA, nunca somada |
-| D4 | Estratificação | sem categoria na ferramenta; categoria marcada em P5, sobre-amostra de 2× a cota | sem estratificação |
+| D4 | Estratificação | sem categoria na ferramenta; exportar `--candidatos` = 2× a cota final (20 para cota 10) e escolher 4/3/3 em P5 sobre os classificados | sem estratificação: `--candidatos` = cota final, menos fotos lidas |
+| D8 | Evidência da mídia | **escolha expressa do owner**, porque muda o requisito do adendo § 4 ("vínculo verificável com o que foi PUBLICADO"): (a) aceitar "mídia registrada no banco, não conferida contra o publicador" e registrar essa alteração do requisito no plano; ou (b) exigir conferência da mídia no publicador antes de chamar a leva de representativa — leitura de serviço externo, autorização e contrato próprios, fora da P1 | — (não há recomendação neutra: (a) é mais barata e mais fraca; (b) é a que o adendo pedia) |
 | D5 | Destino da exportação | fora do repositório | `human-output/` (ignorado) |
 | D6 | Fundo sem `bg-foto` | excluído e contado | heurística declarada (`imagens[0]`), rotulada |
 | D7 | Stores do Blob autorizados para download (`STORES_DO_STUDIO`) | só o store atual | incluir outro store do Studio, citado por você |
@@ -333,3 +338,7 @@ Clientes, cota final, pixels versionáveis e destino das fixtures (5.1/5.2) fica
   (código fora da main não é visto; imutabilidade inferida, não provada por hash); (2) E4 casa com a mídia REGISTRADA, não com a
   publicada (PUT legado, `posts/[postId]/route.ts:207, 413`) → afirmação reduzida, rótulo "não conferida contra o publicador",
   `prova-posterior-a-publicacao`, T4b; (3) "convertida/reduzida" e "miniatura" viram indício nas células e no risco.
+- **R8 (HEAD 0d2da9bb) — NÃO APTO**: R7 resolvidos → dois MAIORES que impediam a decisão, corrigidos: (1) D4 prometia 2× a cota,
+  mas a exportação parava na cota → `--candidatos` (exportados) separado da cota final (aplicada em P5), déficits e corte `< 6`
+  para cada um, T1/T13; (2) a evidência "mídia registrada no banco" é mais fraca que o "publicado" do adendo § 4 → D8, escolha
+  expressa do owner, e P6 só se chama "representativa" com D8 decidida. A imutabilidade do Blob fica como exigência do PR de P1.
