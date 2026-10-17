@@ -1048,3 +1048,12 @@ este bloco o SUPERA; o bullet fica como registro.
   arte (3 testes caem), sem a busca da criação (1), `ajuste-arte` como produtor
   de criação (4), sem o aviso (1), sem a regra da janela (4), o agregado sem a
   contagem do tempo (1), o bloco sem dizê-la (1), a medida sem marcá-la (1).
+
+## Piloto sintético e o aprendizado (17/10/2026)
+
+O piloto sintético de autonomia (`revisor-da-arte.md`, § "Piloto sintético de autonomia") roda inteiro em banco falso: as
+peças, os DRAFTs e os registros do gate que ele produz **não existem** no banco de verdade e **nada dele entra no
+aprendizado** — nem `LearningSignal`, nem feedback de arte, nem destilação. Isso é por desenho (contrato § 1: nenhum
+cliente real, nenhum banco de produção como teste), e vale para qualquer rodada futura com fixtures de clientes reais
+pseudonimizados: fixture é insumo do piloto, não evidência de uso. O que o piloto ensina vai para `docs/piloto-sintetico/`
+(resumo versionado por rodada) e para a decisão do owner, não para a base de conhecimento dos clientes.

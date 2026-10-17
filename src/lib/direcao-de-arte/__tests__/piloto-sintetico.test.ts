@@ -360,7 +360,8 @@ async function rodarPeca(spec: SpecDoLote, cliente: ClienteSemeado, opcoes: { re
     renders: { ...principal.renders, juizes: rendersJuizes, png: rendersPng },
     ms: { ...principal.ms, juizes: msJuizes, png: msPng },
     estabilidade: { excecoes: principal.excecoes, naoMedida: principal.gateFinal?.tipo === 'nao-medida', semVinculo: principal.gateFinal?.tipo === 'sem-vinculo', timeout: principal.excecoes.some((e) => /prazo|timeout/i.test(e)) },
-    png: { caminho: path.join(SAIDA, 'png', `${spec.chave.replace(/[|/]/g, '_')}.png`), sha256: png.sha256 },
+    // Caminho RELATIVO à raiz do repositório: o resumo é versionado e não pode carregar o caminho desta máquina.
+    png: { caminho: path.relative(RAIZ, path.join(SAIDA, 'png', `${spec.chave.replace(/[|/]/g, '_')}.png`)), sha256: png.sha256 },
     ...(assunto ? { assunto } : {}),
   }
   // Repetição: a MESMA spec num banco novo — veredito, motivos, camadas normalizadas e hash do PNG iguais.
@@ -396,8 +397,8 @@ async function rodarPeca(spec: SpecDoLote, cliente: ClienteSemeado, opcoes: { re
   const apta = registro.gateFinal?.tipo === 'medida' && registro.gateFinal.resultado === 'APTO'
   const indice = parseInt(createHash('sha1').update(spec.chave).digest('hex').slice(0, 2), 16)
   if (!apta || indice % 10 === 0 || vereditos.some((v) => v.viola)) {
-    fs.mkdirSync(path.dirname(registro.png!.caminho), { recursive: true })
-    fs.writeFileSync(registro.png!.caminho, png.png)
+    fs.mkdirSync(path.dirname(path.join(RAIZ, registro.png!.caminho)), { recursive: true })
+    fs.writeFileSync(path.join(RAIZ, registro.png!.caminho), png.png)
   }
   return registro
 }
@@ -432,7 +433,9 @@ describe.skipIf(!LIGADO)('piloto sintético de autonomia', () => {
     fs.writeFileSync(path.join(SAIDA, 'relatorio.json'), relatorio)
     const head = (() => {
       try {
-        return execSync('git rev-parse --short HEAD', { cwd: RAIZ }).toString().trim()
+        const head = execSync('git rev-parse --short HEAD', { cwd: RAIZ }).toString().trim()
+        // Árvore suja = o código que rodou NÃO é o do commit: o resumo diz, para ninguém versionar número de HEAD sujo.
+        return execSync('git status --porcelain', { cwd: RAIZ }).toString().trim() ? `${head} (árvore SUJA)` : head
       } catch {
         return 'desconhecido'
       }
