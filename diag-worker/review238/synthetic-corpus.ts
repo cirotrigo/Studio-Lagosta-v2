@@ -115,4 +115,3 @@ export function entrada(parcial: Omit<Partial<EntradaDoGate>, 'medida'> & { medi
   const { medida: m, ...resto } = parcial
   return { medida: medida(m), identidade: IDENTIDADE, copy: COPY_OK, politicaDoAssunto: POLITICA, ...resto }
 }
-
