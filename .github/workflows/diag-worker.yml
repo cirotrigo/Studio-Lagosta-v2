@@ -1,102 +1,63 @@
-# DIAGNÓSTICO (não é gate, não vai para main): teste dirigido ORIGINAL do PR238,
-# candidata canvas 1.0.11 isolada + encode pendente + GC, UMA execução, captura nativa.
-# Dispara SÓ por push neste branch isolado (o ci.yml só roda em push na main e em PR; sem PR, ele não roda aqui).
-# Sem secrets, sem banco, sem rede além do npm, sem upload de artefato: só o resumo sanitizado no summary do job.
+# Diagnostic branch only. No merge/PR, secrets, DB, external images, or deployment.
 name: diag-worker
-
 on:
   push:
     branches: [diag/morte-do-worker]
-
 permissions:
   contents: read
-
 concurrency:
   group: diag-worker
   cancel-in-progress: false
-
 jobs:
   diag:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
-    env:
-      DIAG_EXEC: '1'
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22.23.3
           cache: npm
-
-      - name: Instalar dependências
+      - name: Install candidate integration dependencies
         run: npm ci
-
-      - name: Prisma generate
-        run: npx prisma generate
-
-      - name: Instalar candidata isolada do lock do PR238
-        run: |
-          umask 077
-          C="$RUNNER_TEMP/canvas-candidate"
-          mkdir -m 700 "$C"
-          cp diag-worker/candidate/package.json diag-worker/candidate/package-lock.json "$C/"
-          npm ci --prefix "$C" --ignore-scripts --no-audit --no-fund
-          node diag-worker/verify-candidate.cjs "$C"
-          echo "CANVAS_PACOTE=$C/node_modules/@napi-rs/canvas" >> "$GITHUB_ENV"
-
-      - name: Recursos do runner
-        run: |
-          uname -srm; echo "nproc=$(nproc)"; free -m; node -v
-          cat /sys/fs/cgroup/memory.max 2>/dev/null || echo "memory.max indisponível"
-          ulimit -c; df -h . | tail -1
-          sudo dmesg -C 2>/dev/null && echo "dmesg limpo" || echo "dmesg indisponível"
-
-      - name: Preparar captura nativa isolada
-        run: |
-          umask 077
-          command -v gcc
-          command -v gdb || { sudo apt-get update -qq && sudo apt-get install -y -qq gdb; }
-          mkdir -m 700 "$RUNNER_TEMP/diag-cores"
-          cat /proc/sys/kernel/core_pattern > "$RUNNER_TEMP/diag-cores/original-pattern"
-          sudo sysctl -w "kernel.core_pattern=$RUNNER_TEMP/diag-cores/core.%p" > /dev/null
-
-      - name: Execução 1 de 2 - prova da captura SIGSEGV
-        run: |
-          umask 077
-          ulimit -c unlimited
-          python3 diag-worker/native-capture.py prove
-
-      # Asserções e subprocesso são idênticos ao PR238. Falha continua falha.
-      - name: Execução 2 de 2 - reprodutor PR238 original
-        run: |
-          umask 077
-          ulimit -c unlimited
-          BUDGET_SECONDS=$(python3 diag-worker/native-capture.py begin-suite)
-          echo 'EXECUTION 2/2: unchanged PR238 GC reproducer, no retry'
-          test -n "$CANVAS_PACOTE"
-          node -e "console.log('canvas-candidate='+require(process.env.CANVAS_PACOTE+'/package.json').version); console.log('canvas-project='+require('@napi-rs/canvas/package.json').version)"
-          D="$RUNNER_TEMP/diag"; mkdir -m 700 "$D"
-          echo "DIAG_LOG=$D/diario.jsonl" >> "$GITHUB_ENV"
-          DIAG_EXEC=2 DIAG_DIR="$D" DIAG_LOG="$D/diario.jsonl" NODE_OPTIONS="--require $GITHUB_WORKSPACE/diag-worker/registrar-saidas-v3.cjs --require $GITHUB_WORKSPACE/diag-worker/registrar-repro-sync.cjs" \
-            timeout --signal=TERM --kill-after=15s "${BUDGET_SECONDS}s" npx vitest run --config diag-worker/vitest.gc-diag.config.ts
-
-      - name: Pilha nativa sanitizada
+      - name: Prepare synthetic evidence directory
+        run: mkdir -p "$RUNNER_TEMP/review238"
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
         if: always()
-        shell: bash
-        run: python3 diag-worker/native-capture.py summarize | tee -a "$GITHUB_STEP_SUMMARY"
-
-      - name: Restaurar coleta de core no runner temporário
+        run: npm run lint
+      - name: Original regressions unchanged
+        if: always()
+        run: npx vitest run --config diag-worker/vitest.review238.config.ts --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/review238/regressions.json"
+      - name: Synthetic G21 rendering parity only (G24 uses historical client fixture)
+        if: always()
+        run: npx vitest run --config diag-worker/vitest.review238-gate.config.ts --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/review238/gate-parity.json"
+      - name: Directed recovery probes and cold thumbnail
+        if: always()
+        env:
+          REVIEW_OUTPUT: ${{ runner.temp }}/review238
+        run: npx vitest run --config diag-worker/vitest.review238-probes.config.ts --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/review238/probes.json"
+      - name: Compare synthetic rasters old and candidate
         if: always()
         run: |
-          if [ -f "$RUNNER_TEMP/diag-cores/original-pattern" ]; then
-            sudo sysctl -w "kernel.core_pattern=$(cat "$RUNNER_TEMP/diag-cores/original-pattern")" > /dev/null
-          fi
-
-      - name: Resumo sanitizado
+          set -e
+          B="$RUNNER_TEMP/baseline"
+          mkdir -p "$B"
+          cp diag-worker/baseline/package*.json "$B/"
+          npm ci --prefix "$B" --ignore-scripts --no-audit --no-fund
+          node diag-worker/review238/raster.cjs "$B/node_modules/@napi-rs/canvas" "$RUNNER_TEMP/review238" baseline
+          node diag-worker/review238/raster.cjs "$GITHUB_WORKSPACE/node_modules/@napi-rs/canvas" "$RUNNER_TEMP/review238" candidate
+          node diag-worker/review238/compare.cjs "$RUNNER_TEMP/review238"
+      - name: Preserve only synthetic images and test reports
         if: always()
-        run: |
-          sudo dmesg > "$RUNNER_TEMP/dmesg.txt" 2>/dev/null || rm -f "$RUNNER_TEMP/dmesg.txt"
-          node diag-worker/resumo-ci.cjs "$DIAG_LOG" "$RUNNER_TEMP/dmesg.txt" | tee -a "$GITHUB_STEP_SUMMARY"
+        uses: actions/upload-artifact@v4
+        with:
+          name: review238-synthetic
+          path: |
+            ${{ runner.temp }}/review238/*.json
+            ${{ runner.temp }}/review238/*.png
+          retention-days: 7
+          if-no-files-found: error

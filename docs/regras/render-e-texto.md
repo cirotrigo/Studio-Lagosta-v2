@@ -296,3 +296,58 @@ valem para qualquer mexida no editor:
   `textboxConfig.autoWrap.lineHeight` sobre `style.lineHeight`. Escreva sempre
   nos dois — escrever em um só faz o editor e a arte agendada divergirem, e o
   download do editor (`stage.toDataURL()`, que lê o `style`) **não** revela isso.
+
+### Workers do vitest morrendo no skia: `encode()` assíncrono × GC do Canvas (15/10/2026)
+
+Na revisão do CP5a os forks do vitest morriam com "[vitest-pool] Worker exited unexpectedly" em ~1 de cada 2–3
+rodadas completas (local) e em 1 de 6 runs do CI. O crash report (`~/Library/Logs/DiagnosticReports/node-*.ips`) era
+sempre o mesmo: SIGSEGV dentro de `skia.darwin-arm64.node`, numa thread `libuv-worker` (`node::ThreadPoolWork`), e
+o fork morria DEPOIS de todos os arquivos passarem — ou seja, uma tarefa nativa pendente, não uma asserção.
+
+**Causa (fechada, não suposta).** `canvas.encode('png')` do `@napi-rs/canvas` roda no pool do libuv. Até a 1.0.5 a
+tarefa guardava um ponteiro CRU para a superfície do skia; quando o Canvas saía de escopo e o GC o coletava antes
+do PNG terminar, o finalizador destruía a superfície debaixo do encoder. É exatamente o padrão
+`await new CanvasRenderer(...).renderDesign(...)` (compositor, régua, legibilidade da logo, gate do CP5a): só a
+Promise fica viva. A 1.0.6 conta referências da superfície (Brooooooklyn/canvas#1312) e a 1.0.8 tira a foto dos
+pixels no momento da chamada (#1313). Prova em processo filho com `--expose-gc`
+(`src/lib/__tests__/canvas-encode-sobrevive-ao-gc.test.ts`): na 0.1.84 morre com SIGSEGV em 3 de 3 execuções; na
+1.0.11 passa.
+
+**Medição (suíte completa, 383 arquivos, mesma máquina):**
+
+| Configuração | Mortes em 3 rodadas | Tempo por rodada |
+|---|---|---|
+| 0.1.84, `encode('png')` (antes) | 1 | 76–78 s |
+| 0.1.84, `toBuffer('image/png')` síncrono | 0 | 93–105 s |
+| **1.0.11, `encode('png')` (escolhido)** | **0** | 78–83 s |
+
+O `toBuffer` síncrono também zera as mortes, mas custa ~160 ms de event loop bloqueado por arte de 1080×1920
+(encode e toBuffer medem o mesmo, ~160 ms; a diferença é onde rodam) e 20–35 % a mais de suíte. A 1.0.11 corrige
+a causa em todos os `encode` (inclusive o JPEG do revisor) sem mudar o caminho do render.
+
+**O que a 1.0.x muda no render (dito aqui para não ser descoberto na arte):**
+
+- **Sombra alinhada ao Chromium** (1.0.3): `shadowColor` com alfa aplicava o alfa duas vezes; agora uma. Sombra
+  fica um pouco mais forte — igual à do editor, que roda no Chrome. Medido: 23 % dos pixels de um texto com
+  `shadowBlur 24` mudam, no máximo 40/255 por canal. Texto sem sombra: 0 pixel diferente.
+- **Família genérica ou desconhecida perde os acentos**: `sans-serif`, `serif` e nome fora do registro caem numa
+  fonte padrão sem Ç/à/ã (tofu) — igual da 1.0.5 à 1.0.11; na 0.1.84 o padrão era Arial/Helvetica. Cartões de
+  referência, manual de marca e revisor desenham com `sans-serif` direto. Por isso `garantirFontesPadrao()`
+  (em `canvas-renderer.ts`, chamada pelo construtor e por `registerProjectFonts`) registra a Montserrat e faz
+  `GlobalFonts.setAlias('Montserrat', 'sans-serif')`: o fallback vira Montserrat regular (o peso pedido não é
+  honrado pelo alias). Camada sem `fontFamily`, que caía em `sans-serif`, agora sai em Montserrat. Teste:
+  `src/lib/__tests__/canvas-fonte-generica-tem-acento.test.ts`.
+- **`GlobalFonts.registerFromPath` devolve `FontKey | null`**, não boolean. `!== false` passaria sempre — a
+  conferência de arquivo corrompido em `register-project-fonts.ts` virou `Boolean(...)`.
+- As fontes padrão passam a ser registradas UMA vez por processo (antes, a cada `new CanvasRenderer`): o registro é
+  global e a 1.0.9 invalida o cache de typefaces a cada registro.
+
+**Regras que ficam:**
+
+- 🔴 **Worker do vitest que morre com SIGSEGV no skia é lifetime de objeto nativo, não teste quebrado.** Olhe o
+  `.ips` antes de mexer no teste: thread `libuv-worker` + `ThreadPoolWork` = chamada assíncrona nativa com o objeto
+  JS já coletado.
+- **Não troque `encode` por `toBuffer` para "estabilizar"**: é o event loop de produção que paga.
+- **`--maxWorkers=4` "passar" não é evidência**: só muda o ritmo do GC. A correção é a versão com refcount.
+- **Subida do `@napi-rs/canvas` é mudança de render**: meça sombra, família genérica e o retorno das APIs de
+  registro antes de subir de novo (o método e os números estão no PR desta seção).

@@ -1,0 +1,7 @@
+{
+  "name": "canvas-baseline-diagnostic",
+  "version": "1.0.0",
+  "dependencies": {
+    "@napi-rs/canvas": "0.1.84"
+  }
+}
