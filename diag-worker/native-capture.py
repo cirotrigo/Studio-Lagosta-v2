@@ -1,4 +1,4 @@
-"""One synthetic validation and one real suite; cores never leave ephemeral runner.
+"""One synthetic validation and one directed PR238 test; no core leaves the runner.
 
 Only parsed frame symbols/module basenames are printed. Raw GDB output is captured
 in memory and discarded. No debuginfod or automatic GDB scripts are permitted.
@@ -15,7 +15,7 @@ import time
 
 ROOT = Path(__file__).resolve().parent
 CORES = Path(os.environ["RUNNER_TEMP"]) / "diag-cores"
-DEADLINE = datetime.datetime.fromisoformat("2026-10-18T13:00:44+00:00").timestamp()
+DEADLINE = datetime.datetime.fromisoformat("2026-10-18T13:25:55+00:00").timestamp()
 
 def require_time(seconds=120):
     if time.time() + seconds >= DEADLINE:
@@ -71,7 +71,7 @@ def begin_suite():
     with (CORES / "suite-started").open("x") as f:
         f.write(datetime.datetime.now(datetime.timezone.utc).isoformat())
     # Only the timeout value goes to shell; the execution count is printed there.
-    print(min(900, int(DEADLINE - time.time() - 120)))
+    print(min(180, int(DEADLINE - time.time() - 120)))
 
 def summarize():
     print("## Native stack diagnostic (sanitized)")
@@ -97,12 +97,17 @@ def summarize():
             continue
         pid = int(core.name[5:])
         event = exits.get(pid, {})
-        if event.get("papel") != "worker-forks":
+        if event.get("papel") not in {"worker-forks", "encode-gc-probe"}:
             print(json.dumps({"pid": pid, "error": "core-not-confirmed-worker"}))
             continue
-        info = {"pid": pid, "signal": event.get("signal"), "bytes": core.stat().st_size,
+        info = {"pid": pid, "role": event.get("papel"), "signal": event.get("signal"), "bytes": core.stat().st_size,
                 "core_sha256": digest(core), "stack": extract(executable, core)}
         print(json.dumps(info, ensure_ascii=True))
+    for pid, event in exits.items():
+        if event.get("papel") == "encode-gc-probe":
+            print(json.dumps({"probe_exit": {"pid": pid, "code": event.get("code"),
+                              "signal": event.get("signal"), "error": event.get("temErro"),
+                              "source_sha256": event.get("probeSha256")}}))
     print("No core/memory/arguments/environment/source paths uploaded. Missing frames remain inconclusive.")
 
 try:
