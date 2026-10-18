@@ -18,7 +18,7 @@ concurrency:
 jobs:
   diag:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 25
     env:
       DIAG_EXEC: '1'
     steps:
@@ -44,14 +44,44 @@ jobs:
           ulimit -c; df -h . | tail -1
           sudo dmesg -C 2>/dev/null && echo "dmesg limpo" || echo "dmesg indisponível"
 
+      - name: Preparar captura nativa isolada
+        run: |
+          umask 077
+          command -v gcc
+          command -v gdb || { sudo apt-get update -qq && sudo apt-get install -y -qq gdb; }
+          mkdir -m 700 "$RUNNER_TEMP/diag-cores"
+          cat /proc/sys/kernel/core_pattern > "$RUNNER_TEMP/diag-cores/original-pattern"
+          sudo sysctl -w "kernel.core_pattern=$RUNNER_TEMP/diag-cores/core.%p" > /dev/null
+
+      - name: Execução 1 de 2 - prova da captura SIGSEGV
+        run: |
+          umask 077
+          ulimit -c unlimited
+          python3 diag-worker/native-capture.py prove
+
       # O `npx vitest run` é o `npm run test:unit` oficial com a config oficial + rastro (vitest.ci-diag.config.ts).
       # Falha de teste ou worker morto derruba o job, como no gate.
       - name: Testes unitários (suíte oficial + instrumentação)
         run: |
+          umask 077
+          ulimit -c unlimited
+          BUDGET_SECONDS=$(python3 diag-worker/native-capture.py begin-suite)
+          echo 'EXECUTION 2/2: official suite, no retry'
           D="$RUNNER_TEMP/diag"; mkdir -m 700 "$D"
           echo "DIAG_LOG=$D/diario.jsonl" >> "$GITHUB_ENV"
           DIAG_DIR="$D" DIAG_LOG="$D/diario.jsonl" NODE_OPTIONS="--require $GITHUB_WORKSPACE/diag-worker/registrar-saidas-v3.cjs" \
-            npx vitest run --config diag-worker/vitest.ci-diag.config.ts
+            timeout --signal=TERM --kill-after=15s "${BUDGET_SECONDS}s" npx vitest run --config diag-worker/vitest.ci-diag.config.ts
+
+      - name: Pilha nativa sanitizada
+        if: always()
+        run: python3 diag-worker/native-capture.py summarize | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Restaurar coleta de core no runner temporário
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/diag-cores/original-pattern" ]; then
+            sudo sysctl -w "kernel.core_pattern=$(cat "$RUNNER_TEMP/diag-cores/original-pattern")" > /dev/null
+          fi
 
       - name: Resumo sanitizado
         if: always()
