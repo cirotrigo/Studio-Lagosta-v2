@@ -1,7 +1,8 @@
 {
   "git": { "deploymentEnabled": { "diag/morte-do-worker": false } },
-  "installCommand": "npm install --include=optional",
-  "buildCommand": "npm run vercel-build",
+  "ignoreCommand": "echo '[diag] branch de diagnostico: build ignorado'; exit 0",
+  "installCommand": "echo '[diag] install neutralizado neste branch'; exit 1",
+  "buildCommand": "echo '[diag] build neutralizado neste branch: sem prisma, sem next build'; exit 1",
   "functions": {
     "app/api/**/*.ts": {
       "maxDuration": 60
