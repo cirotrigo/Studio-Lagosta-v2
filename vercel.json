@@ -1,4 +1,5 @@
 {
+  "git": { "deploymentEnabled": { "diag/morte-do-worker": false } },
   "installCommand": "npm install --include=optional",
   "buildCommand": "npm run vercel-build",
   "functions": {

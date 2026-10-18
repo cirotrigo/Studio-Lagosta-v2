@@ -1,0 +1,60 @@
+# DIAGNÓSTICO (não é gate, não vai para a main): UMA execução da suíte OFICIAL do Vitest no Linux do CI com a instrumentação
+# v3.2 (diag-worker/), para capturar exit(code, signal) do WORKER do pool forks que morre — o log do Vitest não distingue.
+# Dispara SÓ por push neste branch isolado (o ci.yml só roda em push na main e em PR; sem PR, ele não roda aqui).
+# Sem secrets, sem banco, sem rede além do npm, sem upload de artefato: só o resumo sanitizado no summary do job.
+name: diag-worker
+
+on:
+  push:
+    branches: [diag/morte-do-worker]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: diag-worker
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DIAG_EXEC: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Prisma generate
+        run: npx prisma generate
+
+      - name: Recursos do runner
+        run: |
+          uname -srm; echo "nproc=$(nproc)"; free -m; node -v
+          cat /sys/fs/cgroup/memory.max 2>/dev/null || echo "memory.max indisponível"
+          ulimit -c; df -h . | tail -1
+          sudo dmesg -C 2>/dev/null && echo "dmesg limpo" || echo "dmesg indisponível"
+
+      # O `npx vitest run` é o `npm run test:unit` oficial com a config oficial + rastro (vitest.ci-diag.config.ts).
+      # Falha de teste ou worker morto derruba o job, como no gate.
+      - name: Testes unitários (suíte oficial + instrumentação)
+        run: |
+          D="$RUNNER_TEMP/diag"; mkdir -m 700 "$D"
+          echo "DIAG_LOG=$D/diario.jsonl" >> "$GITHUB_ENV"
+          DIAG_DIR="$D" DIAG_LOG="$D/diario.jsonl" NODE_OPTIONS="--require $GITHUB_WORKSPACE/diag-worker/registrar-saidas-v3.cjs" \
+            npx vitest run --config diag-worker/vitest.ci-diag.config.ts
+
+      - name: Resumo sanitizado
+        if: always()
+        run: |
+          sudo dmesg > "$RUNNER_TEMP/dmesg.txt" 2>/dev/null || rm -f "$RUNNER_TEMP/dmesg.txt"
+          node diag-worker/resumo-ci.cjs "$DIAG_LOG" "$RUNNER_TEMP/dmesg.txt" | tee -a "$GITHUB_STEP_SUMMARY"
