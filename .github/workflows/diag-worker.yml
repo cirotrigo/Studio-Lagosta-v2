@@ -74,6 +74,7 @@ jobs:
 
       - name: Pilha nativa sanitizada
         if: always()
+        shell: bash
         run: python3 diag-worker/native-capture.py summarize | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Restaurar coleta de core no runner temporário
