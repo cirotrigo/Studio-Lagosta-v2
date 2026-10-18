@@ -2,4 +2,4 @@
 // Original assertions and official configuration remain unchanged.
 import { defineConfig } from 'vitest/config'
 import oficial from '../vitest.config'
-export default defineConfig({ ...oficial, test: { ...oficial.test, include: ['src/lib/creatives/revisao/__tests__/gate.test.ts'], testNamePattern: 'G21' } })
+export default defineConfig({ ...oficial, test: { ...oficial.test, include: ['diag-worker/review238/gate-synthetic.test.ts'], testNamePattern: 'G21' } })
