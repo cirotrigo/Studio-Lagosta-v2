@@ -21,7 +21,7 @@ import * as path from 'path'
 import * as https from 'https'
 import * as http from 'http'
 import { db } from '@/lib/db'
-import { garantirFontesPadrao } from '@/lib/canvas-renderer'
+import { fontesPadraoIncompletas } from '@/lib/fontes-padrao-estado'
 
 /** CP5c § 3: o download aceita cancelamento (`req.destroy()` no abort) e um teto por download (`socket.setTimeout`). */
 export interface OpcoesDoDownload {
@@ -93,6 +93,10 @@ export interface OpcoesDoRegistroDeFontes extends OpcoesDoDownload {
 }
 
 export async function registerProjectFonts(projectId: number, opcoes: OpcoesDoRegistroDeFontes = {}): Promise<void> {
+  // Antes das fontes do projeto: a Montserrat e o fallback das famílias genéricas, para quem desenha com createCanvas
+  // direto. Import DINÂMICO de propósito: sem o addon nativo, importar este módulo, `fetchBuffer` e
+  // `familiasNaoCarregadas` continuam possíveis; quem falha (alto) é só o registro, que exige o addon.
+  const { garantirFontesPadrao } = await import('@/lib/canvas-renderer')
   garantirFontesPadrao()
   const cliente = opcoes.cliente ?? db
   const fonts = await cliente.customFont.findMany({ where: { projectId } })
@@ -168,13 +172,18 @@ export async function registerProjectFonts(projectId: number, opcoes: OpcoesDoRe
  * (nem como fonte do projeto, nem como fonte do sistema). Texto nessas
  * famílias é medido e desenhado na fonte de FALLBACK — a medida não vale, e
  * quem compõe precisa dizer "não medido" em vez de fingir que mediu (PR 4 de
- * "Marca simples, copy melhor", 12/09/2026). Nunca lança: sem o módulo nativo
- * devolve todas como não carregadas, que é o lado honesto do erro.
+ * "Marca simples, copy melhor", 12/09/2026). Nunca lança: sem o módulo nativo,
+ * ou com as fontes padrão incompletas, devolve todas como não carregadas, que é
+ * o lado honesto do erro.
  */
 export async function familiasNaoCarregadas(familias: string[]): Promise<Set<string>> {
   const pedidas = [...new Set(familias.filter((f) => typeof f === 'string' && f.trim()))]
   try {
     const { GlobalFonts } = await import('@napi-rs/canvas')
+    // Fontes padrão incompletas (Montserrat ou o fallback genérico sem algum peso): a medida de QUALQUER texto pode
+    // ter saído noutra fonte, então nenhuma família conta como carregada — o compositor diz "não medido" e o gate
+    // não aprova. O render não é bloqueado aqui (ver docs/regras/render-e-texto.md, "Workers do vitest morrendo no skia").
+    if (fontesPadraoIncompletas()) return new Set(pedidas)
     return new Set(pedidas.filter((f) => !GlobalFonts.has(f)))
   } catch {
     return new Set(pedidas)

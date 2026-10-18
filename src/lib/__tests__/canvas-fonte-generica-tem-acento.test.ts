@@ -2,7 +2,8 @@
  * Desde o @napi-rs/canvas 1.0.x, `sans-serif`, `serif` e família que não está no registro caem numa fonte padrão
  * SEM os glifos acentuados — "ALMOÇO às" saía "ALMO▯O ▯s" (medido no macOS em 15/10/2026, idêntico da 1.0.5 à
  * 1.0.11; na 0.1.84 o padrão era Arial/Helvetica, com os glifos). Os cartões de referência, o manual de marca e o
- * revisor desenham com `sans-serif` direto. O alias em `garantirFontesPadrao` manda esse fallback para a Montserrat.
+ * revisor desenham com `sans-serif` direto. `garantirFontesPadrao` registra cada peso da Montserrat também como
+ * `sans-serif`, e esse fallback passa a ser a Montserrat (o peso: `fontes-padrao-processo-isolado.test.ts`).
  *
  * O teste mede o que o render vê: se a largura de "Ç" é a mesma de um código não atribuído (U+0378), o glifo é o
  * .notdef (tofu). Hermético, sem rede.

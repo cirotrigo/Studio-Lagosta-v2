@@ -2165,6 +2165,11 @@ export async function generateThumbnail(
   options: { width?: number; height?: number } = {},
 ): Promise<Buffer> {
   const { createCanvas, loadImage } = await import('@napi-rs/canvas')
+  // As mesmas fontes padrão do CanvasRenderer ANTES de medir/desenhar: sem isto a miniatura de um processo frio sai
+  // com outra fonte (e outras larguras) que a de um processo que já renderizou. Import dinâmico: canvas-renderer
+  // importa este módulo.
+  const { garantirFontesPadrao } = await import('./canvas-renderer')
+  garantirFontesPadrao()
 
   const thumbnailWidth = options.width ?? 400
   const thumbnailHeight = options.height ?? 300

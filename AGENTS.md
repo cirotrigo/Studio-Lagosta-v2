@@ -77,9 +77,9 @@ Uma linha cada; o porquê e a medição estão no arquivo indicado.
   palavras da referência, nome de fonte) (`geracao-ia.md`).
 - 🔴 **Não existem classes Tailwind "mortas"**: o JIT só gera o que está no fonte; meça depois de
   escrever a classe (`editor-e-galeria.md`).
-- 🔴 **Worker do vitest morrendo com SIGSEGV no skia é objeto nativo coletado, não teste quebrado**:
-  leia o `.ips` (thread `libuv-worker`) e não "estabilize" com `toBuffer` nem `--maxWorkers`
-  (`render-e-texto.md`, "Workers do vitest morrendo no skia").
+- 🔴 **Worker do vitest morrendo com SIGSEGV no skia: suspeite de objeto nativo coletado durante o encode** (reproduzido
+  na 0.1.84, corrigido na 1.0.11) e confirme pela pilha nativa — o sinal sozinho não prova a causa; não "estabilize"
+  com `toBuffer` nem `--maxWorkers` (`render-e-texto.md`, "Workers do vitest morrendo no skia").
 
 ## Testes e formatação
 

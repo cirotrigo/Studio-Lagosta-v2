@@ -29,6 +29,7 @@ import { getPublicAppUrl } from '@/lib/creatives/persist'
 import { lerCamadas } from '@/lib/posts/page-layers'
 import { convertPageToDesignData } from '@/lib/posts/page-to-design-data'
 import { fetchBuffer, registerProjectFonts, type OpcoesDoDownload } from '@/lib/posts/register-project-fonts'
+import { fontesPadraoIncompletas } from '@/lib/fontes-padrao-estado'
 import type { Prisma } from '../../../../prisma/generated/client'
 import { createServerTextBoxMeasurer } from '@/lib/creatives/server-text-measurer'
 import { checkTextGeometry } from '@/lib/creatives/text-geometry'
@@ -150,9 +151,14 @@ function numero(valor: unknown, padrao: number): number {
   return typeof valor === 'number' && Number.isFinite(valor) ? valor : padrao
 }
 
-/** Família (ou peso) pedida por um texto que o render não tem: ele desenha outra no lugar. */
-async function fontesQueFaltam(camadas: Layer[]) {
+/**
+ * Família (ou peso) pedida por um texto que o render não tem: ele desenha outra no lugar. Com as fontes padrão
+ * incompletas (`fontes-padrao-estado`), nenhuma família conta como presente: o gate não aprova a medida.
+ * Exportado para a regressão (`fontes-padrao-consumidores.test.ts`).
+ */
+export async function fontesQueFaltam(camadas: Layer[]) {
   const { GlobalFonts } = await import('@napi-rs/canvas')
+  const incompletas = fontesPadraoIncompletas()
   const pesos = new Map<string, number[]>()
   for (const f of GlobalFonts.families) {
     const chave = f.family.toLowerCase()
@@ -170,14 +176,15 @@ async function fontesQueFaltam(camadas: Layer[]) {
       })),
     ]
     for (const p of pedidas) {
-      const familia = primeiraFamilia(p.familia)
+      // Família genérica (ou ausente) desenha no fallback padrão: com ele incompleto, ela também falta.
+      const familia = primeiraFamilia(p.familia) ?? (incompletas ? 'sans-serif' : null)
       if (!familia) continue
       const lista = pesos.get(familia.toLowerCase())
       // Só a família AUSENTE conta. A carteira cadastra cada peso como família
       // própria ("Lato Bold", "Didot HTF B06 Bold") e o render usa o estilo do
       // arquivo que existe: medido em 11/09/2026, conferir o peso pedido contra
       // o do arquivo acusou 45 falsos alarmes em 30 peças reais.
-      if ((lista && lista.length > 0) || GlobalFonts.has(familia)) continue
+      if (!incompletas && ((lista && lista.length > 0) || GlobalFonts.has(familia))) continue
       const peso: number | null = null
       const chave = `${familia}|${peso}`
       const falta = faltas.get(chave) ?? { familia, peso, camadas: [] }

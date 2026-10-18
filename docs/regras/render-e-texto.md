@@ -304,14 +304,19 @@ rodadas completas (local) e em 1 de 6 runs do CI. O crash report (`~/Library/Log
 sempre o mesmo: SIGSEGV dentro de `skia.darwin-arm64.node`, numa thread `libuv-worker` (`node::ThreadPoolWork`), e
 o fork morria DEPOIS de todos os arquivos passarem — ou seja, uma tarefa nativa pendente, não uma asserção.
 
-**Causa (fechada, não suposta).** `canvas.encode('png')` do `@napi-rs/canvas` roda no pool do libuv. Até a 1.0.5 a
+**Causa no reprodutor (medida); nas mortes da suíte, compatível — não comprovada uma a uma.** `canvas.encode('png')` do `@napi-rs/canvas` roda no pool do libuv. Até a 1.0.5 a
 tarefa guardava um ponteiro CRU para a superfície do skia; quando o Canvas saía de escopo e o GC o coletava antes
 do PNG terminar, o finalizador destruía a superfície debaixo do encoder. É exatamente o padrão
 `await new CanvasRenderer(...).renderDesign(...)` (compositor, régua, legibilidade da logo, gate do CP5a): só a
 Promise fica viva. A 1.0.6 conta referências da superfície (Brooooooklyn/canvas#1312) e a 1.0.8 tira a foto dos
 pixels no momento da chamada (#1313). Prova em processo filho com `--expose-gc`
 (`src/lib/__tests__/canvas-encode-sobrevive-ao-gc.test.ts`): na 0.1.84 morre com SIGSEGV em 3 de 3 execuções; na
-1.0.11 passa.
+1.0.11 passa. No Linux do CI (18/10/2026, mesma imagem Ubuntu 24.04 e Node 22.23.3): o MESMO teste caiu com SIGSEGV na
+0.1.84 (run 39127576872; pilha nativa do filho: frames do `skia.linux-x64-gnu.node` sob `node::ThreadPoolWork`) e
+passou na 1.0.11 (run 39128974941) — uma execução por versão. Uma morte da suíte oficial no CI (run 39085815314)
+foi SIGSEGV de um worker durante um `it` que faz `await new CanvasRenderer(...).renderDesign(...)`, mas SEM core:
+é compatível com esta causa, não prova dela. Use-after-free é a leitura do upstream (#1312), não detecção de ASan
+aqui. As demais mortes históricas não têm causa comprovada.
 
 **Medição (suíte completa, 383 arquivos, mesma máquina):**
 
@@ -327,26 +332,53 @@ a causa em todos os `encode` (inclusive o JPEG do revisor) sem mudar o caminho d
 
 **O que a 1.0.x muda no render (dito aqui para não ser descoberto na arte):**
 
-- **Sombra alinhada ao Chromium** (1.0.3): `shadowColor` com alfa aplicava o alfa duas vezes; agora uma. Sombra
-  fica um pouco mais forte — igual à do editor, que roda no Chrome. Medido: 23 % dos pixels de um texto com
-  `shadowBlur 24` mudam, no máximo 40/255 por canal. Texto sem sombra: 0 pixel diferente.
+- **Sombra COM blur muda; sem blur, não** (medido em 18/10/2026, mesmos comandos de Canvas2D na 0.1.84, na 1.0.11 e
+  no Chromium 143 headless — a base do editor, não o Konva em si; macOS arm64; script e imagens no relatório do
+  PR #238). Sombra SEM blur: as três iguais (retângulo, alfa 0,5 e 1). Sombra COM blur num retângulo: a 1.0.11 sai
+  igual ao Chromium (0 pixel ou ±1/255 de arredondamento, blur 8 e 24, alfa 0,5 e 1); a 0.1.84 não — com alfa 0,5
+  ela escurece METADE do que o Chromium escurece (o alfa entrava duas vezes, só no caminho com blur) e com alfa 1 o
+  perfil do blur difere (até 38/255). Em TEXTO, nenhuma das duas é igual ao Chromium (o raster dos glifos já difere
+  sem sombra, igual nas duas versões), mas com blur a 1.0.11 fica mais perto (maior delta 10–41/255 × 50–75 na
+  0.1.84). Consequência na arte: sombra com blur fica mais forte que antes, mais perto do editor. Linux não foi
+  comparado com Chromium.
 - **Família genérica ou desconhecida perde os acentos**: `sans-serif`, `serif` e nome fora do registro caem numa
-  fonte padrão sem Ç/à/ã (tofu) — igual da 1.0.5 à 1.0.11; na 0.1.84 o padrão era Arial/Helvetica. Cartões de
-  referência, manual de marca e revisor desenham com `sans-serif` direto. Por isso `garantirFontesPadrao()`
-  (em `canvas-renderer.ts`, chamada pelo construtor e por `registerProjectFonts`) registra a Montserrat e faz
-  `GlobalFonts.setAlias('Montserrat', 'sans-serif')`: o fallback vira Montserrat regular (o peso pedido não é
-  honrado pelo alias). Camada sem `fontFamily`, que caía em `sans-serif`, agora sai em Montserrat. Teste:
-  `src/lib/__tests__/canvas-fonte-generica-tem-acento.test.ts`.
+  fonte padrão sem Ç/à/ã (tofu) — igual da 1.0.5 à 1.0.11 (macOS); na 0.1.84 o padrão era Arial/Helvetica. Cartões
+  de referência, manual de marca e revisor desenham com `sans-serif` direto. Por isso `garantirFontesPadrao()` (em
+  `canvas-renderer.ts`, chamada pelo construtor, por `registerProjectFonts` e por `generateThumbnail`) registra cada
+  arquivo `Montserrat-<peso>.ttf` como `Montserrat` E como `sans-serif`. **Não use `setAlias`**: o alias aponta para
+  a face regular — `700 sans-serif` saía com a largura do 400 e outro desenho (medido: 456,84 px × 472,24 px da
+  Montserrat 700). Com os arquivos, `sans-serif`, `serif` e família inexistente desenham pixel a pixel igual à
+  Montserrat explícita NO MESMO PESO (oráculo medido no mesmo processo, não número fixo). Camada sem `fontFamily`,
+  que caía em `sans-serif`, agora sai em Montserrat no peso pedido. Testes:
+  `src/lib/__tests__/fontes-padrao-processo-isolado.test.ts` e `canvas-fonte-generica-tem-acento.test.ts`.
 - **`GlobalFonts.registerFromPath` devolve `FontKey | null`**, não boolean. `!== false` passaria sempre — a
   conferência de arquivo corrompido em `register-project-fonts.ts` virou `Boolean(...)`.
 - As fontes padrão passam a ser registradas UMA vez por processo (antes, a cada `new CanvasRenderer`): o registro é
-  global e a 1.0.9 invalida o cache de typefaces a cada registro.
+  global e a 1.0.9 invalida o cache de typefaces a cada registro. O processo só é dado por pronto quando TODOS os
+  pesos registraram nas duas famílias (`null`/`false`/exceção não contam); registro parcial avisa alto e a próxima
+  chamada refaz só o que faltou, inclusive as fontes do sistema (`fontes-padrao-registro.test.ts`). O resultado fica
+  em `src/lib/fontes-padrao-estado.ts` (sem o addon), e os três que decidem se a MEDIDA de um texto vale o leem
+  (as outras consultas diretas ao registro — o verificador de fontes do render, a escolha das fontes da prancha
+  tipográfica e a fonte dos rótulos sobrepostos do revisor — não aprovam medida):
+  `familiasNaoCarregadas` (compositor), o predicado do `medirCopyDoProjeto` e a conferência de fontes do revisor
+  (`fontesQueFaltam` → `fontesAusentes` → regra `fonte-nao-carregada` do gate). Com o estado incompleto, toda família
+  pedida — inclusive genérica ou camada sem família, que desenham no fallback — conta como ausente: a medida sai "não
+  medida" e o gate não aprova (`fontes-padrao-consumidores.test.ts`). Estado "não tentado" (renderer simulado nos
+  testes) mantém o comportamento de antes; nos fluxos reais o `registerProjectFonts` tenta antes de medir.
+  O render NÃO é bloqueado: a Montserrat só vai no bundle das rotas listadas em `outputFileTracingIncludes`
+  (`next.config.ts`). `/api/templates/generate-thumbnail` não está lá e gera/grava PNG; na Vercel não há fonte de
+  sistema — recusar o render derrubaria essa rota, que hoje desenha com fallback. (`create-from-template` também não
+  está na lista, mas usa as fontes para reflow, não gera PNG.) Isso fica como decisão do owner.
+- O inicializador é importado DINAMICAMENTE em `register-project-fonts.ts`: sem o addon nativo, o módulo importa,
+  `fetchBuffer` baixa e `familiasNaoCarregadas` devolve todas as famílias; só o registro falha, alto
+  (`register-project-fonts-sem-addon.test.ts`).
 
 **Regras que ficam:**
 
-- 🔴 **Worker do vitest que morre com SIGSEGV no skia é lifetime de objeto nativo, não teste quebrado.** Olhe o
-  `.ips` antes de mexer no teste: thread `libuv-worker` + `ThreadPoolWork` = chamada assíncrona nativa com o objeto
-  JS já coletado.
+- 🔴 **Worker do vitest que morre com SIGSEGV no skia: investigue lifetime de objeto nativo ANTES de mexer no teste.**
+  Olhe o `.ips` (macOS) ou um core com a pilha nativa (Linux): thread `libuv-worker` / `ThreadPoolWork` dentro do
+  skia é o padrão do encode assíncrono × GC reproduzido aqui. O sinal sozinho não identifica biblioteca nem causa —
+  não atribua toda morte a este defeito sem a pilha.
 - **Não troque `encode` por `toBuffer` para "estabilizar"**: é o event loop de produção que paga.
 - **`--maxWorkers=4` "passar" não é evidência**: só muda o ritmo do GC. A correção é a versão com refcount.
 - **Subida do `@napi-rs/canvas` é mudança de render**: meça sombra, família genérica e o retorno das APIs de

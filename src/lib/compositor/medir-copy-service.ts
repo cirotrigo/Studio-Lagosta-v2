@@ -9,6 +9,7 @@ import { db } from '@/lib/db'
 import { CreativeError } from '@/lib/creatives/errors'
 import { createServerTextBoxMeasurer } from '@/lib/creatives/server-text-measurer'
 import { familiasNaoCarregadas, registerProjectFonts } from '@/lib/posts/register-project-fonts'
+import { fontesPadraoIncompletas } from '@/lib/fontes-padrao-estado'
 import { parsePageLayers } from '@/lib/posts/page-layers'
 import type { Layer } from '@/types/template'
 import { formatoDaPagina, montarAssinatura, NOME_DO_TEMPLATE_DE_ASSINATURA, papelDoNome, type AssinaturaDaMarca, type EstiloDePapel } from './assinatura'
@@ -177,7 +178,10 @@ export async function medirCopyDoProjeto(pedido: PedidoDeMedicao): Promise<Resul
   }
 }
 
-async function predicadoDeFonteCarregada(): Promise<(familia: string) => boolean> {
+/** Exportado para a regressão das fontes padrão incompletas (`fontes-padrao-consumidores.test.ts`). */
+export async function predicadoDeFonteCarregada(): Promise<(familia: string) => boolean> {
+  // Fontes padrão incompletas: nenhuma família conta como carregada (a mesma regra de `familiasNaoCarregadas`).
+  if (fontesPadraoIncompletas()) return () => false
   try {
     const { GlobalFonts } = await import('@napi-rs/canvas')
     return (familia) => GlobalFonts.has(familia)

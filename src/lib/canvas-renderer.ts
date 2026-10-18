@@ -7,20 +7,49 @@ import { createCanvas, loadImage, GlobalFonts, Path2D as NapiPath2D } from '@nap
 import type { Canvas, SKRSContext2D, Image } from '@napi-rs/canvas'
 import { RenderEngine } from './render-engine'
 import { FONT_CONFIG } from './font-config'
+import { marcarFontesPadrao } from './fontes-padrao-estado'
 import type { DesignData, FieldValues } from '@/types/template'
 import type { FontValidationResult } from './render-engine'
 
-let fontesPadraoRegistradas = false
+/** Família genérica que recebe cada peso da Montserrat empacotada (ver registerDefaultFonts). */
+export const FAMILIA_GENERICA_DO_FALLBACK = 'sans-serif'
+
+export interface EstadoDasFontesPadrao {
+  /** Pesos da Montserrat empacotada que o processo precisa ter (FONT_CONFIG.BUNDLED_MONTSERRAT_WEIGHTS). */
+  esperados: number
+  /** Pesos registrados de verdade como `Montserrat` (retorno verdadeiro de registerFromPath). */
+  montserrat: number
+  /** Pesos registrados de verdade sob a família genérica do fallback. */
+  generica: number
+  /** Só verdadeiro com TODOS os pesos nas duas famílias; parcial ou zero é incompleto e tenta de novo. */
+  completo: boolean
+}
+
+/** Chaves `família|peso` já registradas com sucesso: a nova tentativa refaz só o que faltou (sem duplicar typeface). */
+const registrosFeitos = new Set<string>()
+let fontesPadraoCompletas = false
 
 /**
- * Montserrat empacotada + fontes do sistema + o alias de `sans-serif`, uma vez por processo (o registro do
- * @napi-rs/canvas é global). Quem desenha texto com `createCanvas` direto, fora do CanvasRenderer, chama isto
- * antes — senão família genérica sai sem acento (ver registerDefaultFonts).
+ * Montserrat empacotada (por peso) + o fallback das famílias genéricas + fontes do sistema, uma vez por processo (o
+ * registro do @napi-rs/canvas é global). Quem desenha texto com `createCanvas` direto, fora do CanvasRenderer, chama
+ * isto antes — senão, na 1.0.x, família genérica ou desconhecida sai sem acento (ver registerDefaultFonts).
+ *
+ * Só dá o processo por pronto quando TODOS os registros necessários foram confirmados: `null`/`false`/exceção ou
+ * registro parcial deixam o estado incompleto, avisam alto e a próxima chamada tenta de novo (nunca sucesso silencioso).
  */
-export function garantirFontesPadrao(): void {
-  if (fontesPadraoRegistradas) return
-  fontesPadraoRegistradas = true
-  CanvasRenderer.registerDefaultFonts()
+export function garantirFontesPadrao(): EstadoDasFontesPadrao {
+  if (fontesPadraoCompletas) {
+    const n = FONT_CONFIG.BUNDLED_MONTSERRAT_WEIGHTS.length
+    return { esperados: n, montserrat: n, generica: n, completo: true }
+  }
+  const estado = CanvasRenderer.registerDefaultFonts()
+  marcarFontesPadrao(estado.completo)
+  if (estado.completo) fontesPadraoCompletas = true
+  else
+    console.error(
+      `[CanvasRenderer] fontes padrão INCOMPLETAS: Montserrat ${estado.montserrat}/${estado.esperados}, ${FAMILIA_GENERICA_DO_FALLBACK} ${estado.generica}/${estado.esperados} — família genérica pode sair sem acento ou no peso errado; a próxima chamada tenta de novo`,
+    )
+  return estado
 }
 
 export class CanvasRenderer {
@@ -43,48 +72,69 @@ export class CanvasRenderer {
   /**
    * Registra fontes padrão do sistema
    */
-  static registerDefaultFonts(): void {
+  static registerDefaultFonts(): EstadoDasFontesPadrao {
     // Montserrat vem empacotada no repositório, um arquivo por peso — o
     // matcher do napi-rs escolhe o arquivo certo pelo peso pedido.
     // (fs/path ficam aqui, e não em font-config, que também roda no client)
+    //
+    // Cada arquivo também é registrado sob a família genérica: desde o @napi-rs/canvas 1.0.x, família genérica ou
+    // desconhecida (`sans-serif`, `serif`, nome fora do registro) cai numa fonte padrão SEM Ç/à/ã (tofu). Registrar os
+    // ARQUIVOS (e não um alias, que só aponta para a face regular) mantém o peso pedido: medido em processo isolado, a
+    // 1.0.11 desenha `400/700 sans-serif` pixel a pixel igual a `400/700 Montserrat` (docs/regras/render-e-texto.md,
+    // "Workers do vitest morrendo no skia"). O retorno é conferido: `null` (1.0.x), `false` (0.1.x) ou exceção não contam.
     const baseDir = nodePath.join(process.cwd(), FONT_CONFIG.BUNDLED_MONTSERRAT_DIR)
-    let montserratCount = 0
-    for (const weight of FONT_CONFIG.BUNDLED_MONTSERRAT_WEIGHTS) {
-      const filePath = nodePath.join(baseDir, `Montserrat-${weight}.ttf`)
-      if (!nodeFs.existsSync(filePath)) continue
+    const pesos = FONT_CONFIG.BUNDLED_MONTSERRAT_WEIGHTS
+    const registrar = (filePath: string, familia: string, peso: string): boolean => {
+      const chave = `${familia}|${peso}`
+      if (registrosFeitos.has(chave)) return true
       try {
-        GlobalFonts.registerFromPath(filePath, 'Montserrat')
-        montserratCount++
+        if (!GlobalFonts.registerFromPath(filePath, familia)) {
+          console.warn(`[CanvasRenderer] Montserrat ${peso} NÃO registrada como ${familia} (registerFromPath recusou)`)
+          return false
+        }
+        registrosFeitos.add(chave)
+        return true
       } catch (error) {
-        console.warn(`[CanvasRenderer] Failed to register Montserrat ${weight}:`, error)
+        console.warn(`[CanvasRenderer] Failed to register Montserrat ${peso} as ${familia}:`, error)
+        return false
       }
     }
-    if (montserratCount > 0) {
-      console.log(`[CanvasRenderer] Montserrat registered (${montserratCount} weights)`)
-      // Desde o @napi-rs/canvas 1.0.x, família genérica ou desconhecida (`sans-serif`, `serif`, nome que não
-      // está no registro) cai numa fonte padrão SEM os glifos acentuados — Ç, à, ã viravam tofu. O alias faz
-      // esse fallback ser a Montserrat (regular), em qualquer plataforma (ver docs/regras/render-e-texto.md,
-      // "Workers do vitest morrendo no skia", 15/10/2026).
-      GlobalFonts.setAlias('Montserrat', 'sans-serif')
-    } else {
-      console.warn('[CanvasRenderer] Montserrat files not found — falling back to system font')
+    let montserrat = 0
+    let generica = 0
+    for (const weight of pesos) {
+      const filePath = nodePath.join(baseDir, `Montserrat-${weight}.ttf`)
+      if (!nodeFs.existsSync(filePath)) {
+        console.warn(`[CanvasRenderer] Montserrat ${weight} não encontrada em ${filePath}`)
+        continue
+      }
+      if (registrar(filePath, 'Montserrat', weight)) montserrat++
+      if (registrar(filePath, FAMILIA_GENERICA_DO_FALLBACK, weight)) generica++
     }
+    const estado: EstadoDasFontesPadrao = {
+      esperados: pesos.length,
+      montserrat,
+      generica,
+      completo: pesos.length > 0 && montserrat === pesos.length && generica === pesos.length,
+    }
+    if (montserrat > 0) console.log(`[CanvasRenderer] Montserrat registered (${montserrat}/${pesos.length} weights)`)
+    else console.warn('[CanvasRenderer] Montserrat files not found — falling back to system font')
 
     const fontPaths = FONT_CONFIG.getSystemFontPaths()
-    const registeredFamilies = new Set<string>()
 
     for (const [name, path] of Object.entries(fontPaths)) {
       try {
-        // Evitar registrar a mesma família múltiplas vezes
-        if (registeredFamilies.has(name)) continue
+        // Evitar registrar a mesma família múltiplas vezes (também entre tentativas, com o estado incompleto)
+        const chave = `sistema|${name}`
+        if (registrosFeitos.has(chave)) continue
 
-        GlobalFonts.registerFromPath(path, name)
-        registeredFamilies.add(name)
+        if (!GlobalFonts.registerFromPath(path, name)) continue
+        registrosFeitos.add(chave)
         console.log(`[CanvasRenderer] Font registered: ${name}`)
       } catch (error) {
         console.warn(`[CanvasRenderer] Failed to register font ${name} from ${path}:`, error)
       }
     }
+    return estado
   }
 
   /**

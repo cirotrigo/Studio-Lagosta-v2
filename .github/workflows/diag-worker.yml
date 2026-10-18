@@ -1,4 +1,7 @@
-# Diagnostic branch only. No merge/PR, secrets, DB, external images, or deployment.
+# SÓ DIAGNÓSTICO, nesta branch isolada (nunca merge/PR). Validação Linux do HEAD corrigido do PR #238 (5b3a831f):
+# a árvore da aplicação é provada igual à do 5b3a831f pelo manifesto; só material sintético; sem secrets, banco, Blob,
+# Drive ou imagens reais; as fixtures reais do piloto são APAGADAS do checkout antes dos testes. Um disparo, sem retry,
+# com limite próprio (timeout do job e de cada passo). Preview da Vercel bloqueado pelo vercel.json desta branch.
 name: diag-worker
 on:
   push:
@@ -11,39 +14,138 @@ concurrency:
 jobs:
   diag:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 35
+    env:
+      D: diag-worker/pr238-final
+      DIAG_EXEC: '1'
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22.23.3
           cache: npm
-      - name: Install candidate integration dependencies
-        run: npm ci
-      - name: Prepare synthetic evidence directory
-        run: mkdir -p "$RUNNER_TEMP/review238"
-      - name: Application typecheck (same official config, excluding added diagnostic harness only)
-        run: npx tsc --noEmit --project tsconfig.review238.json
-      - name: Compare synthetic rasters old and candidate
-        if: always()
+
+      - name: Diretório de evidências (fora do checkout, 0700)
         run: |
-          set -e
-          B="$RUNNER_TEMP/baseline"
-          mkdir -p "$B"
-          cp diag-worker/baseline/package*.json "$B/"
+          mkdir -m 700 -p "$RUNNER_TEMP/pr238-final/diario"
+          echo "O=$RUNNER_TEMP/pr238-final" >> "$GITHUB_ENV"
+
+      - name: Instalar dependências (lock do 5b3a831f, conferido pelo manifesto)
+        timeout-minutes: 8
+        run: npm ci --no-audit --no-fund
+
+      - name: Prisma generate (sem banco)
+        timeout-minutes: 2
+        run: npx prisma generate
+
+      - name: Ambiente, versões e hashes
+        timeout-minutes: 2
+        run: |
+          {
+            echo "HEAD=$(git rev-parse HEAD)"; echo "imagem=$ImageOS $ImageVersion"; uname -srm; echo "nproc=$(nproc)"; free -m
+            echo "node=$(node -v) npm=$(npm -v)"
+            node -p "'canvas=' + require('@napi-rs/canvas/package.json').version + ' sharp=' + require('sharp/package.json').version + ' playwright=' + require('@playwright/test/package.json').version"
+            sha256sum node_modules/@napi-rs/canvas-linux-x64-gnu/*.node
+            google-chrome --version || echo "google-chrome ausente"
+          } | tee "$O/ambiente.txt"
+
+      - name: Guardas (árvore = 5b3a831f, travas da Vercel, cópia do G21, imports sem fixture real)
+        id: guardas
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          sha256sum --quiet -c "$D/manifesto-5b3a831f.sha256"
+          test "$(git ls-files src package.json package-lock.json assets/fonts vitest.config.ts vitest.setup.ts tsconfig.json next.config.ts AGENTS.md docs/regras/render-e-texto.md | wc -l)" = "$(wc -l < "$D/manifesto-5b3a831f.sha256")"
+          echo "árvore da aplicação = 5b3a831f ($(wc -l < "$D/manifesto-5b3a831f.sha256") arquivos)"
+          node -e "const v=require('./vercel.json'); const ok=v.git?.deploymentEnabled?.['diag/morte-do-worker']===false && /exit 0\s*$/.test(v.ignoreCommand) && /exit 1\s*$/.test(v.installCommand) && /exit 1\s*$/.test(v.buildCommand); if(!ok){console.error('travas da Vercel ausentes'); process.exit(1)} console.log('travas da Vercel presentes')"
+          python3 "$D/verificar-copia-g21.py"
+          node "$D/auditar-imports.mjs" "$D/nucleo.txt" "$D/consumidores.txt" "$D/g21.txt" | tee "$O/auditoria-imports.json"
+
+      - name: Typecheck da aplicação (config oficial, só diag-worker excluído)
+        if: ${{ steps.guardas.outcome == 'success' }}
+        timeout-minutes: 5
+        run: npx tsc --noEmit --project tsconfig.review238.json
+
+      - name: Apagar as fixtures reais do checkout (qualquer leitura delas passa a falhar alto)
+        id: fixtures
+        if: ${{ !cancelled() && steps.guardas.outcome == 'success' }}
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          rm -rf src/lib/direcao-de-arte/__tests__/fixtures src/lib/brand/__tests__/fixtures scripts/fixtures
+          for p in src/lib/direcao-de-arte/__tests__/fixtures src/lib/brand/__tests__/fixtures scripts/fixtures; do test ! -e "$p"; done
+          echo "fixtures reais ausentes"
+
+      - name: Núcleo — GC original, fontes, consumidores, miniatura fria/quente (15 arquivos)
+        if: ${{ !cancelled() && steps.fixtures.outcome == 'success' }}
+        timeout-minutes: 8
+        run: |
+          DIAG_DIR="$O/diario" DIAG_LOG="$O/diario/nucleo.jsonl" NODE_OPTIONS="--require $GITHUB_WORKSPACE/diag-worker/registrar-saidas-v3.cjs" \
+            npx vitest run $(cat "$D/nucleo.txt") --reporter=default --reporter=json --outputFile.json="$O/nucleo.json"
+
+      - name: Consumidores oficiais sintéticos (37 arquivos, auditados)
+        if: ${{ !cancelled() && steps.fixtures.outcome == 'success' }}
+        timeout-minutes: 10
+        run: |
+          DIAG_DIR="$O/diario" DIAG_LOG="$O/diario/consumidores.jsonl" NODE_OPTIONS="--require $GITHUB_WORKSPACE/diag-worker/registrar-saidas-v3.cjs" \
+            npx vitest run $(cat "$D/consumidores.txt") --reporter=default --reporter=json --outputFile.json="$O/consumidores.json"
+
+      - name: G21 sintético (cópia provada do gate.test.ts sem o G24)
+        if: ${{ !cancelled() && steps.fixtures.outcome == 'success' }}
+        timeout-minutes: 5
+        run: |
+          DIAG_DIR="$O/diario" DIAG_LOG="$O/diario/g21.jsonl" NODE_OPTIONS="--require $GITHUB_WORKSPACE/diag-worker/registrar-saidas-v3.cjs" \
+            npx vitest run --config diag-worker/vitest.review238-gate.config.ts --reporter=default --reporter=json --outputFile.json="$O/g21.json"
+
+      - name: Raster de texto 0.1.84 (registro da main) × 1.0.11 (registro corrigido)
+        id: texto
+        if: ${{ !cancelled() && steps.fixtures.outcome == 'success' }}
+        timeout-minutes: 4
+        run: |
+          set -euo pipefail
+          B="$RUNNER_TEMP/baseline"; mkdir -p "$B"; cp diag-worker/baseline/package*.json "$B/"
           npm ci --prefix "$B" --ignore-scripts --no-audit --no-fund
-          node diag-worker/review238/raster.cjs "$B/node_modules/@napi-rs/canvas" "$RUNNER_TEMP/review238" baseline
-          node diag-worker/review238/raster.cjs "$GITHUB_WORKSPACE/node_modules/@napi-rs/canvas" "$RUNNER_TEMP/review238" candidate
-          node diag-worker/review238/compare.cjs "$RUNNER_TEMP/review238"
-      - name: Preserve only synthetic images and test reports
+          node -p "'baseline=' + require('$B/node_modules/@napi-rs/canvas/package.json').version" | tee -a "$O/ambiente.txt"
+          node "$D/texto-raster.cjs" "$B/node_modules/@napi-rs/canvas" "$O/texto" v0 main
+          node "$D/texto-raster.cjs" "$GITHUB_WORKSPACE/node_modules/@napi-rs/canvas" "$O/texto" v1 pr
+          node "$D/texto-comparar.cjs" "$O/texto"
+
+      - name: Sombras 0.1.84 × 1.0.11 × Chrome do runner (bytes locais, rede bloqueada)
+        if: ${{ !cancelled() && steps.texto.outcome == 'success' }}
+        timeout-minutes: 4
+        env:
+          CHROMIUM_CANAL: chrome
+        run: |
+          set -euo pipefail
+          B="$RUNNER_TEMP/baseline"
+          node "$D/sombras-napi.cjs" "$B/node_modules/@napi-rs/canvas" "$O/sombras" napi-0.1.84
+          node "$D/sombras-napi.cjs" "$GITHUB_WORKSPACE/node_modules/@napi-rs/canvas" "$O/sombras" napi-1.0.11
+          node "$D/sombras-chromium.cjs" "$O/sombras"
+          node "$D/sombras-comparar.cjs" "$O/sombras"
+
+      - name: Resumo sanitizado (saída de cada worker, sinal/código; contagem dos testes)
+        if: always()
+        timeout-minutes: 1
+        run: |
+          for f in nucleo consumidores g21; do
+            echo "### $f" | tee -a "$GITHUB_STEP_SUMMARY"; node diag-worker/resumo-ci.cjs "$O/diario/$f.jsonl" | tee -a "$GITHUB_STEP_SUMMARY"
+            node -e "try{const r=require(process.argv[1]);console.log(JSON.stringify({arquivos:r.numTotalTestSuites,passaram:r.numPassedTests,falharam:r.numFailedTests,pulados:r.numPendingTests,total:r.numTotalTests}))}catch{console.log('sem relatório json')}" "$O/$f.json" | tee -a "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Guardar só o sintético (JSON e PNG), retenção curta
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: review238-synthetic
+          name: pr238-final-sintetico
           path: |
-            ${{ runner.temp }}/review238/*.json
-            ${{ runner.temp }}/review238/*.png
-          retention-days: 7
-          if-no-files-found: error
+            ${{ runner.temp }}/pr238-final/*.json
+            ${{ runner.temp }}/pr238-final/ambiente.txt
+            ${{ runner.temp }}/pr238-final/texto/*.json
+            ${{ runner.temp }}/pr238-final/texto/*.png
+            ${{ runner.temp }}/pr238-final/sombras/*.json
+            ${{ runner.temp }}/pr238-final/sombras/*.png
+          retention-days: 3
+          if-no-files-found: warn
