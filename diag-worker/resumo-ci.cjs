@@ -30,10 +30,14 @@ else {
   const picoWorker = amostras.length ? Math.max(...amostras) : "sem amostra"
   out.push(`- workers do pool forks criados: ${workers}; com linha \`exit\`: ${saidas.length} (sem \`exit\` = inconclusivo)`)
   out.push(`- saídas dos workers: ${Object.entries(grupos).map(([k, n]) => `${k} ×${n}`).join(' · ') || 'nenhuma'}`)
-  const anormais = saidas.filter((s) => !(s.signal === 'SIGTERM' || (s.code === 0 && s.signal === null)))
-  out.push(`- saídas ANORMAIS (nem SIGTERM do pool, nem code 0): ${anormais.length}`)
-  for (const s of anormais) {
-    const its = [...abertos.values()].filter((e) => e.pid === s.filho).map((e) => `${e.arquivo}#${e.teste}`)
+  // R5: SIGTERM não é presumido normal — lista-se todo worker que não saiu com code 0; o SIGTERM com `it` em curso é o suspeito.
+  const emCurso = (pid) => [...abertos.values()].filter((e) => e.pid === pid).map((e) => `${e.arquivo}#${e.teste}`)
+  const detalhar = saidas.filter((s) => !(s.code === 0 && s.signal === null))
+  const anormais = detalhar.filter((s) => s.signal !== 'SIGTERM' || emCurso(s.filho).length > 0)
+  out.push(`- saídas ANORMAIS (sinal ≠ SIGTERM, code ≠ 0, ou SIGTERM com it em curso): ${anormais.length}`)
+  out.push(`- detalhe de todo worker que não saiu com code 0 (${detalhar.length}):`)
+  for (const s of detalhar) {
+    const its = emCurso(s.filho)
     out.push(`  - worker ${s.filho}: code=${s.code} signal=${s.signal} vida=${s.vidaMs} ms; it em curso: ${its.join(', ') || 'nenhum registrado'}; pico RSS ${pico.get(s.filho) ?? '?'} MB`)
   }
   out.push(`- it-inicio sem it-fim (todos os processos): ${abertos.size}`)
