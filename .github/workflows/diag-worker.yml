@@ -63,6 +63,10 @@ jobs:
           node -e "const v=require('./vercel.json'); const ok=v.git?.deploymentEnabled?.['diag/morte-do-worker']===false && /exit 0\s*$/.test(v.ignoreCommand) && /exit 1\s*$/.test(v.installCommand) && /exit 1\s*$/.test(v.buildCommand); if(!ok){console.error('travas da Vercel ausentes'); process.exit(1)} console.log('travas da Vercel presentes')"
           python3 "$D/verificar-copia-g21.py"
           node "$D/auditar-imports.mjs" "$D/nucleo.txt" "$D/consumidores.txt" "$D/g21.txt" | tee "$O/auditoria-imports.json"
+          # Contraprova: um módulo sintético que só CITA a pasta da fixture tem de ser recusado (VIOLA-CAMINHO, código 1).
+          if node "$D/auditar-imports.mjs" "$D/prova-auditoria/lista.txt" > "$O/prova-auditoria.txt"; then echo "a auditoria NÃO recusou a prova sintética"; exit 1; fi
+          grep -q '^VIOLA-CAMINHO ' "$O/prova-auditoria.txt"
+          echo "auditoria recusa a prova sintética"
 
       - name: Typecheck da aplicação (config oficial, só diag-worker excluído)
         if: ${{ steps.guardas.outcome == 'success' }}

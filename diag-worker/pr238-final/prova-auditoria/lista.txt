@@ -1,0 +1,1 @@
+diag-worker/pr238-final/prova-auditoria/cita-fixture-por-caminho.ts
