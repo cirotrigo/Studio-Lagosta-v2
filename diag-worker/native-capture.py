@@ -15,7 +15,7 @@ import time
 
 ROOT = Path(__file__).resolve().parent
 CORES = Path(os.environ["RUNNER_TEMP"]) / "diag-cores"
-DEADLINE = datetime.datetime.fromisoformat("2026-10-18T13:25:55+00:00").timestamp()
+DEADLINE = datetime.datetime.fromisoformat("2026-10-18T13:48:26+00:00").timestamp()
 
 def require_time(seconds=120):
     if time.time() + seconds >= DEADLINE:

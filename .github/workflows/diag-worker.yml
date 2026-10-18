@@ -1,5 +1,5 @@
 # DIAGNÓSTICO (não é gate, não vai para main): teste dirigido ORIGINAL do PR238,
-# canvas 0.1.84 + encode pendente + GC, UMA execução, com captura nativa sanitizada.
+# candidata canvas 1.0.11 isolada + encode pendente + GC, UMA execução, captura nativa.
 # Dispara SÓ por push neste branch isolado (o ci.yml só roda em push na main e em PR; sem PR, ele não roda aqui).
 # Sem secrets, sem banco, sem rede além do npm, sem upload de artefato: só o resumo sanitizado no summary do job.
 name: diag-worker
@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   diag:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
       DIAG_EXEC: '1'
@@ -28,7 +28,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 22.23.3
           cache: npm
 
       - name: Instalar dependências
@@ -36,6 +36,16 @@ jobs:
 
       - name: Prisma generate
         run: npx prisma generate
+
+      - name: Instalar candidata isolada do lock do PR238
+        run: |
+          umask 077
+          C="$RUNNER_TEMP/canvas-candidate"
+          mkdir -m 700 "$C"
+          cp diag-worker/candidate/package.json diag-worker/candidate/package-lock.json "$C/"
+          npm ci --prefix "$C" --ignore-scripts --no-audit --no-fund
+          node diag-worker/verify-candidate.cjs "$C"
+          echo "CANVAS_PACOTE=$C/node_modules/@napi-rs/canvas" >> "$GITHUB_ENV"
 
       - name: Recursos do runner
         run: |
@@ -66,8 +76,8 @@ jobs:
           ulimit -c unlimited
           BUDGET_SECONDS=$(python3 diag-worker/native-capture.py begin-suite)
           echo 'EXECUTION 2/2: unchanged PR238 GC reproducer, no retry'
-          unset CANVAS_PACOTE
-          node -e "console.log('canvas='+require('@napi-rs/canvas/package.json').version)"
+          test -n "$CANVAS_PACOTE"
+          node -e "console.log('canvas-candidate='+require(process.env.CANVAS_PACOTE+'/package.json').version); console.log('canvas-project='+require('@napi-rs/canvas/package.json').version)"
           D="$RUNNER_TEMP/diag"; mkdir -m 700 "$D"
           echo "DIAG_LOG=$D/diario.jsonl" >> "$GITHUB_ENV"
           DIAG_EXEC=2 DIAG_DIR="$D" DIAG_LOG="$D/diario.jsonl" NODE_OPTIONS="--require $GITHUB_WORKSPACE/diag-worker/registrar-saidas-v3.cjs --require $GITHUB_WORKSPACE/diag-worker/registrar-repro-sync.cjs" \
