@@ -27,8 +27,9 @@
 import { db } from '@/lib/db'
 import { put } from '@vercel/blob'
 import { classificarStems, getFileName, getFileUrl } from '@/lib/mvsep/classificar-stems'
+import { chaveDaMvsep } from '@/lib/mvsep/chave'
 
-const MVSEP_API_KEY = process.env.MVSEP_API_KEY || 'BrIkx8zYQbvc4TggAZbsL96Mag9WN5'
+const MVSEP_API_KEY = chaveDaMvsep()
 const MVSEP_API_URL = 'https://mvsep.com/api'
 
 const confirmar = process.argv.includes('--confirmar')
