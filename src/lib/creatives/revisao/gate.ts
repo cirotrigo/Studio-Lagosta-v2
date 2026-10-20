@@ -66,7 +66,7 @@ export interface MotivoDoGate {
 }
 
 /** A versão da DECISÃO do gate (CP5b § 5): bump obrigatório cobrado pela impressão digital `gate-<versao>.json`. */
-export const VERSAO_DO_GATE = 'gate-v1' as const
+export const VERSAO_DO_GATE = 'gate-v2' as const
 
 export interface GateDaArte {
   versao: typeof VERSAO_DO_GATE
