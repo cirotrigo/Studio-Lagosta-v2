@@ -18,13 +18,24 @@ import { comparar, escuro, maiorCorrida, pixelsDePng, pixelsDoKonva, pixelsDoSer
 
 const caso = (id: string) => CASOS.find((c) => c.id === id) as Caso
 
+/** O editor de antes podia LANÇAR (ex.: arco de raio negativo): registra e devolve o fundo liso. */
+const lancamentos: Record<string, string> = {}
+function editorAntes(c: Caso): Pixels {
+  try {
+    return pixelsDoKonva(c.canvas.largura, c.canvas.altura, FUNDO, configKonvaAntes(c))
+  } catch (e) {
+    lancamentos[c.id] = String((e as Error).message ?? e)
+    return pixelsDoKonva(c.canvas.largura, c.canvas.altura, FUNDO, { width: 0, height: 0 })
+  }
+}
+
 async function quatro(c: Caso) {
   const { largura, altura } = c.canvas
   return {
     servidor: await pixelsDoServidor(largura, altura, FUNDO, [camadaDo(c)]),
     editor: pixelsDoKonva(largura, altura, FUNDO, configKonvaDepois(c)),
     servidorAntes: pixelsDoServidorAntes(c),
-    editorAntes: pixelsDoKonva(largura, altura, FUNDO, configKonvaAntes(c)),
+    editorAntes: editorAntes(c),
   }
 }
 
@@ -46,7 +57,7 @@ describe('CP-V0: servidor × editor no mesmo canvas de Node', () => {
     const antes = comparar(q.servidorAntes, q.editorAntes)
     const servidorMudou = comparar(q.servidorAntes, q.servidor)
     const editorMudou = comparar(q.editorAntes, q.editor)
-    guardar(id, q, { descricao: c.descricao, depois, antes, servidorMudou, editorMudou })
+    guardar(id, q, { descricao: c.descricao, depois, antes, servidorMudou, editorMudou, editorAntesLancou: lancamentos[id] })
     // tolerância declarada: zero — os dois lados emitem as mesmas operações no mesmo rasterizador
     expect(depois).toEqual({ diferentes: 0, maxDelta: 0, total: c.canvas.largura * c.canvas.altura })
   })
@@ -54,7 +65,7 @@ describe('CP-V0: servidor × editor no mesmo canvas de Node', () => {
   it('inventário da biblioteca (todo svg-path × 2): depois, servidor = editor; antes × depois registrado', async () => {
     const casos = casosDaBiblioteca(SHAPES_LIBRARY)
     const comPath = SHAPES_LIBRARY.filter((s) => s.shapeType === 'svg-path' && s.pathData).length
-    expect(comPath).toBeGreaterThan(0)
+    expect(comPath).toBeGreaterThanOrEqual(26) // a biblioteca tinha 26 svg-path na base edb46935
     expect(casos).toHaveLength(comPath * 2)
     for (const c of casos) {
       const q = await quatro(c)

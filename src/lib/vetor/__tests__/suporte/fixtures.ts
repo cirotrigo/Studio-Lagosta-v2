@@ -7,7 +7,9 @@
 import type { ShapeConfig } from 'konva/lib/Shape'
 import type { Layer, LayerStyle } from '@/types/template'
 import { pinturaDoSvgPath, shapeKonvaDoSvgPath } from '../../desenhar'
-import { tracarSvgPathNaCaixa, type CtxDeTraco, type ViewBox } from '../../tracar'
+import { Path } from 'konva/lib/shapes/Path'
+import type Konva from 'konva'
+import type { ViewBox } from '../../tracar'
 
 export const FUNDO = '#ffffff'
 
@@ -43,6 +45,8 @@ export const CASOS: Caso[] = [
   { id: 'quadro-so-preenchimento', descricao: 'retângulo, preenchimento sem contorno (sem curvas)', canvas: { largura: 240, altura: 140 }, caixa: { x: 20, y: 20, largura: 200, altura: 100 }, pathData: QUADRO, fill: '#8e44ad', strokeWidth: 0 },
   { id: 'relativo-apos-z', descricao: 'l relativo depois de Z sem M (o parser do Konva diverge do SVG; o validador recusa)', canvas: { largura: 240, altura: 240 }, caixa: { x: 20, y: 20, largura: 200, altura: 200 }, pathData: 'M10 10 L50 10 L50 50 Z l20 20', fill: 'transparent', stroke: '#000000', strokeWidth: 4 },
   { id: 'comando-invalido-no-meio', descricao: 'comando inválido (X) no meio do path: o Skia de antes parava; o parser do Konva segue', canvas: { largura: 240, altura: 240 }, caixa: { x: 20, y: 20, largura: 200, altura: 200 }, pathData: 'M10 10 L90 10 X 5 5 L90 90 Z', fill: 'transparent', stroke: '#000000', strokeWidth: 4 },
+  { id: 'arco-raio-negativo', descricao: 'arco com raio negativo: o traçado pula o arco nos dois lados (antes o editor lançava no navegador; o validador recusa)', canvas: { largura: 240, altura: 240 }, caixa: { x: 20, y: 20, largura: 200, altura: 200 }, pathData: 'M10 50 L10 90 L90 90 L90 50 A-40 -40 0 0 1 10 50 Z', fill: '#2980b9', stroke: '#000000', strokeWidth: 3 },
+  { id: 'alfa', descricao: 'preenchimento e contorno com alfa (rgba): a cor chega igual aos dois lados', canvas: { largura: 240, altura: 240 }, caixa: { x: 20, y: 20, largura: 200, altura: 200 }, pathData: PENTAGRAMA, fill: 'rgba(26,57,135,0.5)', stroke: 'rgba(0,0,0,0.6)', strokeWidth: 6, fillRule: 'evenodd' },
   { id: 'lixo', descricao: 'path inválido ("hello")', canvas: { largura: 120, altura: 120 }, caixa: { x: 10, y: 10, largura: 100, altura: 100 }, pathData: 'hello', fill: '#000000', strokeWidth: 0 },
 ]
 
@@ -81,8 +85,14 @@ export function configKonvaAntes(c: Caso): ShapeConfig {
     x: c.caixa.x, y: c.caixa.y, width: c.caixa.largura, height: c.caixa.altura,
     fill: c.fill, stroke: c.stroke, strokeWidth: c.strokeWidth, lineJoin: 'round',
     sceneFunc: (ctx, shape) => {
-      // o traçado de antes era o mesmo traceSvgPath (Konva.Path.parsePathData) na mesma ordem
-      tracarSvgPathNaCaixa(ctx as unknown as CtxDeTraco, c.pathData, c.viewBox, shape.width(), shape.height())
+      // cópia literal do sceneFunc da base, com o traceSvgPath da base (abaixo)
+      const [vx, vy, vw, vh] = c.viewBox ?? [0, 0, 100, 100]
+      ctx.save()
+      ctx.scale(shape.width() / (vw || 1), shape.height() / (vh || 1))
+      ctx.translate(-vx, -vy)
+      ctx.beginPath()
+      traceSvgPathDaBase(ctx, c.pathData)
+      ctx.restore()
       ctx.fillStrokeShape(shape)
     },
   }
@@ -100,4 +110,54 @@ export function casosDaBiblioteca(biblioteca: Array<{ id: string; shapeType: str
       { id: `lib-${s.id}`, descricao: `biblioteca ${s.id} (vitrine)`, canvas: { largura: 240, altura: 240 }, caixa: { x: 20, y: 20, largura: 200, altura: 200 }, pathData: s.pathData as string, fill: s.fill, stroke: s.strokeColor, strokeWidth: s.strokeWidth ?? 0, fillRule: s.pathFillRule },
       { id: `lib-${s.id}-contorno`, descricao: `biblioteca ${s.id} com contorno 4 px em 300×100`, canvas: { largura: 340, altura: 140 }, caixa: { x: 20, y: 20, largura: 300, altura: 100 }, pathData: s.pathData as string, fill: s.fill, stroke: '#000000', strokeWidth: 4, fillRule: s.pathFillRule },
     ])
+}
+
+/** `traceSvgPath` de src/lib/konva/svg-path-clip.ts em edb46935, copiado sem mudança (só o nome e o parser importado). */
+function traceSvgPathDaBase(ctx: Konva.Context, d: string): void {
+  const segments = Path.parsePathData(d)
+
+  for (const segment of segments) {
+    const p = segment.points
+    switch (segment.command) {
+      case 'L':
+        ctx.lineTo(p[0], p[1])
+        break
+      case 'M':
+        ctx.moveTo(p[0], p[1])
+        break
+      case 'C':
+        ctx.bezierCurveTo(p[0], p[1], p[2], p[3], p[4], p[5])
+        break
+      case 'Q':
+        ctx.quadraticCurveTo(p[0], p[1], p[2], p[3])
+        break
+      case 'A': {
+        // parsePathData converte o arco de endpoint para center parameterization
+        const cx = p[0]
+        const cy = p[1]
+        const rx = p[2]
+        const ry = p[3]
+        const theta = p[4]
+        const dTheta = p[5]
+        const psi = p[6]
+        const fs = p[7]
+        const r = rx > ry ? rx : ry
+        const scaleX = rx > ry ? 1 : rx / ry
+        const scaleY = rx > ry ? ry / rx : 1
+        ctx.translate(cx, cy)
+        ctx.rotate(psi)
+        ctx.scale(scaleX, scaleY)
+        ctx.arc(0, 0, r, theta, theta + dTheta, 1 - fs > 0)
+        ctx.scale(1 / scaleX, 1 / scaleY)
+        ctx.rotate(-psi)
+        ctx.translate(-cx, -cy)
+        break
+      }
+      case 'z':
+        ctx.closePath()
+        break
+      default:
+        break
+    }
+  }
 }

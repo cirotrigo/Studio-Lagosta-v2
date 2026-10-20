@@ -375,14 +375,22 @@ fixture sintética no canvas do Node, `src/lib/vetor/__tests__/paridade-pixel.te
   canvas de hit com a mesma regra) e o `RenderEngine` usa `desenharSvgPath`. Nenhum dos dois traça por conta própria.
 - **Semântica única:** o path é traçado já escalado para a caixa e o transform é restaurado antes de pintar, então o
   contorno tem `strokeWidth` px da camada nos dois eixos; `pathFillRule` vale nos dois lados; junção redonda; pontas por
-  `style.tracoPontas` (`butt` por padrão).
-- **Parser único: o do Konva**, importado de `konva/lib/shapes/Path` (o pacote raiz exige o `canvas` nativo no Node). Ele
-  diverge do SVG num caso: comando relativo logo depois de `Z` sem `M` parte do último ponto, não do início do subpath.
-  O validador recusa esse caso.
-- **`validarPathData`** (`src/lib/vetor/validar.ts`, puro): texto não vazio, ≤ 16 KB, gramática de path do SVG, começa
-  com `M`, flags de arco 0/1, desenha algo, nada depois de `Z` sem `M`. Ainda **não** está ligado nas portas de escrita
+  `style.tracoPontas` (`butt` por padrão). No servidor com `scaleFactor` ≠ 1 (a miniatura avulsa) a caixa escala e o
+  `strokeWidth` não, como nas outras formas.
+- **Área de clique:** com `evenodd`, clicar no furo deixa de selecionar a camada (o Konva aplica a regra também no
+  canvas de hit). É o mesmo que se vê.
+- **Parser único: o do Konva**, importado de `konva/lib/shapes/Path` (o pacote raiz exige o `canvas` nativo no Node;
+  o import profundo deixa `globalThis.Konva` definido no processo do servidor). Ele diverge do SVG em quatro casos, todos
+  recusados pelo validador: comando relativo logo depois de `Z` sem `M` (parte do último ponto, não do início do
+  subpath); flags de arco coladas (`1010` vira um número); número `10.e5` (vira dois); raio de arco ≤ 0 (ângulos errados
+  ou NaN — o traçado PULA esse arco nos dois lados, em vez de o navegador lançar `IndexSizeError`). O bundle da função de
+  render na Vercel com esse import **não foi provado** no CP-V0 local.
+- **`validarPathData`** (`src/lib/vetor/validar.ts`, puro): texto não vazio, ≤ 16 KB, gramática de path do SVG
+  restrita ao que o parser do Konva lê igual (começa com `M`, desenha algo, nada depois de `Z` sem `M`, flags de arco
+  0/1 separadas, raio > 0, números finitos, vírgula só entre números). Ainda **não** está ligado nas portas de escrita
   (é o CP-X2, que precisa antes da varredura das camadas existentes para não travar o autosave).
-- O `svg-path` não depende mais de `Path2D`: a miniatura avulsa (`generateThumbnail`) passou a desenhá-lo. Máscara de
+- O `svg-path` não depende mais de `Path2D`: a miniatura avulsa (`generateThumbnail`) passou a desenhá-lo. Path que
+  lança no desenho é ignorado com aviso (não derruba a arte), como era com o `Path2D`. Máscara de
   imagem e ícone continuam com `Path2D` no servidor; a máscara do editor já usa o traçado único.
 - ⚠️ **Muda pixel de propósito**: o contorno do servidor (px da camada), o furo do `evenodd` no editor e o parser do
   servidor. Antes do merge, o inventário de diferenças (incluindo as `PostRenderProof` já gravadas) e, depois do deploy,

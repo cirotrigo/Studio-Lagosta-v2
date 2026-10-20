@@ -14,7 +14,8 @@ describe('validarPathData', () => {
     expect(codigo('m10 10 h20 v20 h-20 z m30 0 l10 10')).toBe('ok')
     expect(codigo('M10 80 C 40 10, 65 10, 95 80 S 150 150, 180 80 Q 10 10 20 20 T 40 40')).toBe('ok')
     expect(codigo('M50 0 A50 50 0 1 1 50 100 A50 50 0 1 1 50 0 Z')).toBe('ok')
-    expect(codigo('M0 0a25 25 0 1010 10')).toBe('ok')
+    expect(codigo('M0 0a25 25 0 1 0 10 10')).toBe('ok')
+    expect(codigo('M0 0a25,25,0,1,0,10,10')).toBe('ok')
     expect(codigo('M0 0 10 10')).toBe('ok') // M com par extra = L implícito
   })
 
@@ -38,6 +39,17 @@ describe('validarPathData', () => {
     expect(codigo('M10 10 C1 2 3 4 5')).toBe('ARGUMENTOS')
     expect(codigo('M10 10 L')).toBe('ARGUMENTOS')
     expect(codigo('M0 0 A25 25 0 2 1 10 10')).toBe('ARCO_FLAG')
+  })
+
+  it('recusa o que o parser do Konva lê diferente do SVG (achados da revisão independente)', () => {
+    expect(codigo('M0 0a25 25 0 1010 10')).toBe('ARCO_FLAG') // flags coladas: o Konva lê 1010 como um número
+    expect(codigo('M0 0 L10.e5 3')).toBe('CARACTERE_INVALIDO') // o Konva lê 10 e 5
+    expect(codigo('M0 0 L1e999 3')).toBe('CARACTERE_INVALIDO') // Infinity
+    expect(codigo('M10 50 A-20 -20 0 0 1 90 50')).toBe('ARCO_RAIO')
+    expect(codigo('M10 50 A0 20 0 0 1 90 50')).toBe('ARCO_RAIO')
+    expect(codigo('M,10,10 L20 20')).toBe('CARACTERE_INVALIDO') // vírgula antes do 1º número
+    expect(codigo('M10,,10 L20 20')).toBe('CARACTERE_INVALIDO') // vírgula dupla
+    expect(codigo('M10 10, L20 20')).toBe('CARACTERE_INVALIDO') // vírgula sem número depois
   })
 
   it('recusa comando depois de Z sem M (o parser do Konva diverge do SVG aí) e path que não desenha', () => {

@@ -1843,14 +1843,19 @@ export class RenderEngine {
     // eixos. Não depende de Path2D, então a miniatura avulsa também desenha.
     if (shapeType === 'svg-path') {
       if (!style.pathData) return
-      desenharSvgPath(
-        ctx as unknown as CtxDePintura,
-        style.pathData,
-        style.pathViewBox,
-        width,
-        height,
-        pinturaDoSvgPath(style, { fill, stroke, strokeWidth }),
-      )
+      try {
+        desenharSvgPath(
+          ctx as unknown as CtxDePintura,
+          style.pathData,
+          style.pathViewBox,
+          width,
+          height,
+          pinturaDoSvgPath(style, { fill, stroke, strokeWidth }),
+        )
+      } catch (error) {
+        // path ruim não derruba a arte inteira (era o papel do try do getPath2D)
+        console.warn('[RenderEngine] Path SVG inválido — ignorando:', error)
+      }
       return
     }
 

@@ -6,9 +6,15 @@
  * arquivo do Path — não do pacote raiz, que no Node exige o `canvas` nativo. Ele
  * devolve só M, L, C, Q, A (arco em parametrização de centro) e z, já absolutos.
  *
- * Diferença conhecida do parser em relação à especificação SVG: comando relativo
- * logo depois de `z` sem `m` parte do último ponto desenhado, não do início do
- * subpath. O validador (`validar.ts`) recusa esse caso nas portas de escrita.
+ * Onde o parser diverge da especificação SVG (o validador, `validar.ts`, recusa
+ * todos esses casos nas portas de escrita):
+ * - comando relativo logo depois de `z` sem `m` parte do último ponto desenhado,
+ *   não do início do subpath;
+ * - flags de arco coladas (`a25 25 0 1010 10`) viram um número só;
+ * - número com ponto e expoente sem decimal (`10.e5`) vira dois números;
+ * - arco com raio negativo sai com ângulos errados e raio zero sai com NaN. Aqui o
+ *   traçado PULA o arco com raio <= 0 ou número não finito (o canvas do navegador
+ *   lança IndexSizeError com raio negativo; o SVG desenharia uma reta).
  */
 import { Path } from 'konva/lib/shapes/Path'
 
@@ -73,6 +79,7 @@ export function tracarSegmentos(ctx: CtxDeTraco, segmentos: Segmento[]): void {
       case 'A': {
         // parsePathData converte o arco de endpoint para center parameterization
         const [cx, cy, rx, ry, theta, dTheta, psi, fs] = p
+        if (!(rx > 0 && ry > 0) || !p.every(Number.isFinite)) break
         const r = rx > ry ? rx : ry
         const scaleX = rx > ry ? 1 : rx / ry
         const scaleY = rx > ry ? ry / rx : 1
