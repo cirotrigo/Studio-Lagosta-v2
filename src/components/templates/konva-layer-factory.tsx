@@ -29,6 +29,7 @@ import { useMultiPageOpcional } from '@/contexts/multi-page-context'
  */
 const LATERAL_ANCHORS = new Set(['middle-left', 'middle-right', 'top-center', 'bottom-center'])
 import { traceSvgPath } from '@/lib/konva/svg-path-clip'
+import { pinturaDoSvgPath, shapeKonvaDoSvgPath } from '@/lib/vetor/desenhar'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { throttle, getPerformanceConfig } from '@/lib/performance-utils'
 // Import custom Konva filters
@@ -1450,6 +1451,10 @@ function ShapeNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
   const blurRadius = layer.effects?.blur?.enabled ? (layer.effects.blur.blurRadius ?? 0) : 0
   const escalaBlur = React.useMemo(() => escalaDoBlur(blurRadius), [blurRadius])
   const filters = React.useMemo(() => (escalaBlur.raioNoBuffer > 0 ? [Konva.Filters.Blur] : undefined), [escalaBlur.raioNoBuffer])
+  const pathData = layer.style?.pathData
+  const pathViewBoxChave = layer.style?.pathViewBox?.join(',')
+  const pathFillRule = layer.style?.pathFillRule
+  const tracoPontas = layer.style?.tracoPontas
   React.useEffect(() => {
     const node = shapeRef.current
     if (!node) return
@@ -1458,7 +1463,10 @@ function ShapeNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
       node.cache({ offset: folgaDoBlur(blurRadius), pixelRatio: 1 / escalaBlur.k })
     }
     node.getLayer()?.batchDraw()
-  }, [shapeRef, blurRadius, escalaBlur, shapeType, fill, stroke, strokeWidth, width, height, borderRadius])
+  }, [shapeRef, blurRadius, escalaBlur, shapeType, fill, stroke, strokeWidth, width, height, borderRadius,
+    // svg-path: o desenho cacheado também muda com o path e a pintura
+    pathData, pathViewBoxChave, pathFillRule, tracoPontas,
+  ])
   const blurProps = { filters, blurRadius: escalaBlur.raioNoBuffer }
 
   switch (shapeType) {
@@ -1516,12 +1524,10 @@ function ShapeNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
         />
       )
     case 'svg-path': {
-      // Forma vetorial genérica: path normalizado (viewBox 0 0 100 100 por
-      // padrão) desenhado via sceneFunc — o path é traçado JÁ escalado para a
-      // caixa e o transform é restaurado antes do fill/stroke, então o stroke
-      // não distorce (equivalente a strokeScaleEnabled=false) e o
-      // handleTransformEnd genérico (width/height) continua valendo.
-      const pathData = layer.style?.pathData
+      // Forma vetorial genérica: traçado e pintura do src/lib/vetor, os MESMOS
+      // do servidor — o path é traçado já escalado para a caixa e o transform é
+      // restaurado antes de pintar (contorno em px da camada nos dois eixos, o
+      // handleTransformEnd genérico continua valendo) e o pathFillRule vale.
       if (!pathData) {
         return (
           <Rect
@@ -1534,7 +1540,6 @@ function ShapeNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
           />
         )
       }
-      const [vx, vy, vw, vh] = layer.style?.pathViewBox ?? [0, 0, 100, 100]
       return (
         <Shape
           {...commonProps}
@@ -1542,19 +1547,11 @@ function ShapeNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
           ref={shapeRef as React.RefObject<Konva.Shape>}
           width={width}
           height={height}
-          fill={fill}
-          stroke={stroke}
-          strokeWidth={strokeWidth}
-          lineJoin="round"
-          sceneFunc={(ctx, shape) => {
-            ctx.save()
-            ctx.scale(shape.width() / (vw || 1), shape.height() / (vh || 1))
-            ctx.translate(-vx, -vy)
-            ctx.beginPath()
-            traceSvgPath(ctx as unknown as Konva.Context, pathData)
-            ctx.restore()
-            ctx.fillStrokeShape(shape)
-          }}
+          {...shapeKonvaDoSvgPath(
+            pathData,
+            layer.style?.pathViewBox,
+            pinturaDoSvgPath(layer.style ?? {}, { fill, stroke, strokeWidth }),
+          )}
         />
       )
     }

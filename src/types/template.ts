@@ -193,6 +193,8 @@ export interface LayerStyle {
   pathData?: string
   pathViewBox?: [number, number, number, number]
   pathFillRule?: 'nonzero' | 'evenodd'
+  /** Pontas do contorno do svg-path (padrão 'butt'), igual no editor e no servidor (src/lib/vetor) */
+  tracoPontas?: 'butt' | 'round'
   /** Estilo do traço de shapeType 'line' */
   lineStyle?: 'solid' | 'dashed' | 'dotted'
   lineStartCap?: 'none' | 'arrow'

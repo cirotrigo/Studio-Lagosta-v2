@@ -362,3 +362,28 @@ mesma página em 100 s, com a miniatura alternando entre null e o JPEG.
   vez e pode não sair antes de a aba fechar (antes saía em paralelo, com risco
   de o estado velho chegar por último). O "Salvar e Voltar" usa `descarregar`,
   que espera.
+
+## `svg-path`: um traçado só para editor e servidor (CP-V0, 20/10/2026)
+
+A camada `shape` com `shapeType: 'svg-path'` era desenhada por dois códigos com dois parsers: o editor pelo
+`Konva.Path.parsePathData` sem aplicar `pathFillRule`, e o servidor pelo `Path2D` do Skia, com o contorno dividido pela
+escala MÉDIA da caixa: em 300×100, um contorno de 8 px saía com 4 px em cima e 12 px dos lados (medido no CP-V0 com
+fixture sintética no canvas do Node, `src/lib/vetor/__tests__/paridade-pixel.test.ts`).
+
+- **Todo desenho de `svg-path` passa por `src/lib/vetor/`** (`tracar.ts` + `desenhar.ts`): o editor usa
+  `shapeKonvaDoSvgPath` (atributos e `sceneFunc` do `Konva.Shape`, pintura pelo `fillStrokeShape`, que também desenha o
+  canvas de hit com a mesma regra) e o `RenderEngine` usa `desenharSvgPath`. Nenhum dos dois traça por conta própria.
+- **Semântica única:** o path é traçado já escalado para a caixa e o transform é restaurado antes de pintar, então o
+  contorno tem `strokeWidth` px da camada nos dois eixos; `pathFillRule` vale nos dois lados; junção redonda; pontas por
+  `style.tracoPontas` (`butt` por padrão).
+- **Parser único: o do Konva**, importado de `konva/lib/shapes/Path` (o pacote raiz exige o `canvas` nativo no Node). Ele
+  diverge do SVG num caso: comando relativo logo depois de `Z` sem `M` parte do último ponto, não do início do subpath.
+  O validador recusa esse caso.
+- **`validarPathData`** (`src/lib/vetor/validar.ts`, puro): texto não vazio, ≤ 16 KB, gramática de path do SVG, começa
+  com `M`, flags de arco 0/1, desenha algo, nada depois de `Z` sem `M`. Ainda **não** está ligado nas portas de escrita
+  (é o CP-X2, que precisa antes da varredura das camadas existentes para não travar o autosave).
+- O `svg-path` não depende mais de `Path2D`: a miniatura avulsa (`generateThumbnail`) passou a desenhá-lo. Máscara de
+  imagem e ícone continuam com `Path2D` no servidor; a máscara do editor já usa o traçado único.
+- ⚠️ **Muda pixel de propósito**: o contorno do servidor (px da camada), o furo do `evenodd` no editor e o parser do
+  servidor. Antes do merge, o inventário de diferenças (incluindo as `PostRenderProof` já gravadas) e, depois do deploy,
+  o re-render dos agendados; `laterPostId` não nulo continua intocável.

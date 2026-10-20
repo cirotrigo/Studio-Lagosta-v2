@@ -287,6 +287,7 @@ export const CHAVES_CLASSIFICADAS: Record<string, ChaveClassificada> = {
   'style.pathData': naoSuportada, // svg-path: não recortado ao viewBox, :1843-1850
   'style.pathViewBox': naoSuportada,
   'style.pathFillRule': naoSuportada,
+  'style.tracoPontas': naoSuportada, // pontas do contorno do svg-path (src/lib/vetor), CP-V0
   'style.lineStyle': naoSuportada, // line/arrow, :1870-1908
   'style.lineStartCap': naoSuportada,
   'style.lineEndCap': naoSuportada,

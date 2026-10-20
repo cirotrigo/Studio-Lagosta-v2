@@ -14,6 +14,7 @@ import {
   applyStackBlur,
   hasImageFilters,
 } from './konva/filters/apply'
+import { desenharSvgPath, pinturaDoSvgPath, type CtxDePintura } from './vetor/desenhar'
 import { flattenRichTextStyles } from './rich-text-styles'
 import type { Rect } from './creatives/halo/halo'
 import {
@@ -1837,28 +1838,19 @@ export class RenderEngine {
       return
     }
 
-    // Forma vetorial genérica: path normalizado escalado para a caixa da
-    // camada — espelha o <Path> dentro de Group do editor. Stroke compensado
-    // pela escala média (editor usa strokeScaleEnabled=false).
+    // Forma vetorial genérica: o MESMO traçado e a mesma pintura do editor
+    // (src/lib/vetor): fillRule respeitado, contorno em px da camada nos dois
+    // eixos. Não depende de Path2D, então a miniatura avulsa também desenha.
     if (shapeType === 'svg-path') {
       if (!style.pathData) return
-      const path = this.getPath2D(style.pathData, options)
-      if (!path) return
-      const [vx, vy, vw, vh] = style.pathViewBox ?? [0, 0, 100, 100]
-      const scaleX = width / (vw || 1)
-      const scaleY = height / (vh || 1)
-      ctx.save()
-      ctx.scale(scaleX, scaleY)
-      ctx.translate(-vx, -vy)
-      ctx.fillStyle = fill
-      ctx.fill(path, style.pathFillRule ?? 'nonzero')
-      if (stroke && strokeWidth > 0) {
-        ctx.strokeStyle = stroke
-        ctx.lineWidth = strokeWidth / ((scaleX + scaleY) / 2 || 1)
-        ctx.lineJoin = 'round'
-        ctx.stroke(path)
-      }
-      ctx.restore()
+      desenharSvgPath(
+        ctx as unknown as CtxDePintura,
+        style.pathData,
+        style.pathViewBox,
+        width,
+        height,
+        pinturaDoSvgPath(style, { fill, stroke, strokeWidth }),
+      )
       return
     }
 
