@@ -115,9 +115,13 @@ export function tracarSvgPathNaCaixa(
 ): void {
   const [vx, vy, vw, vh] = viewBox ?? [0, 0, 100, 100]
   ctx.save()
-  ctx.scale(largura / (vw || 1), altura / (vh || 1))
-  ctx.translate(-vx, -vy)
-  ctx.beginPath()
-  tracarSegmentos(ctx, segmentosDoPath(d))
-  ctx.restore()
+  try {
+    ctx.scale(largura / (vw || 1), altura / (vh || 1))
+    ctx.translate(-vx, -vy)
+    ctx.beginPath()
+    tracarSegmentos(ctx, segmentosDoPath(d))
+  } finally {
+    // se algo lançar no meio, a escala do path não vaza para as camadas seguintes
+    ctx.restore()
+  }
 }
