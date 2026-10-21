@@ -470,3 +470,45 @@ página feita no web era apagada, desvinculando os posts agendados dela (`Social
   forma sem o path e sem as páginas preservadas, e o push seguinte as perderia.
 - **Limite**: camada COMUM que só existe no web e não está no push sai, como antes. Distinguir isso exige versionar o
   pull do desktop.
+
+## /gerar-criativo desenha o `svg-path` (CP-X1, 21/10/2026)
+
+O PNG que o assistente exporta (`CanvasPreview.exportToDataUrl`) é o que vai ao ar: o `finalize` o grava como
+`Generation.resultUrl` e o agendamento publica esse arquivo, sem re-render no servidor. A prévia desenhava toda
+forma como `Rect`, e o export zerava o `stroke` do nó selecionado, o que apagava contorno legítimo.
+
+- **A prévia desenha `svg-path` pelo adaptador do editor** (`shapeKonvaDoSvgPath` + `pinturaDoSvgPath`, por
+  `configDoSvgPathNaPrevia` em `src/lib/gerar-criativo/previa-do-vetor.ts`). Ela nunca pinta direto no ctx do Konva.
+  A opacidade da camada vai no nó, a do canal na cor, e o nó leva `perfectDrawEnabled: false`: assim a opacidade se
+  aplica por operação, como o `globalAlpha` do servidor. Com o padrão do Konva, preenchimento + contorno com
+  opacidade < 1 são compostos num buffer e a faixa de sobreposição sai diferente do servidor (o editor ainda usa o
+  padrão; divergência anterior, fora do CP-X1).
+- **Candidato** = `shape` + `svg-path`, com ou sem `pathData`. **Desenhado** = fora de `hiddenLayerIds` e
+  `visible !== false`. `diagnosticoDoVetor` recusa no candidato desenhado:
+  - path ausente ou que não passa no `validarPathData` (só neste fluxo; as outras portas são o CP-X2);
+  - `pathViewBox` presente e malformado, **inclusive `null`** (ausente, `undefined`, vale como `0 0 100 100`);
+  - efeito que a prévia não desenha: `effects.*` ligado (blur só com raio > 0), `style.shadow`, `vetor.partes`.
+
+  Nada disso vira retângulo nem é omitido em silêncio. A tela bloqueia "Gerar criativo" com o motivo, e o export
+  interrompe com o diagnóstico.
+- **O export não muta camada nenhuma.** Transformer, realce de seleção (nó próprio `__ui-da-previa`, que substitui o
+  `stroke` azul na imagem) e guias saem do PNG só por visibilidade. O estado de snap não é tocado, para o React não
+  desmontar as guias no meio. Escala, posição e visibilidade voltam no `finally`, também quando o export falha.
+- **Trava de proporção**: forma com `style.manterProporcao` redimensiona na prévia com `keepRatio` e só pelos
+  cantos (`travaDaPrevia`). O resto continua livre, com 8 alças.
+- **`finalize` — precedência**: 401 → 400 (zod; `previa` só aceita `'vetor-v1'`) → 404 (acesso, como antes) →
+  **422 `VETOR_SEM_SUPORTE_NA_PREVIA`** (o diagnóstico acima, com ou sem a marca) → **409 `PREVIA_DESATUALIZADA`**
+  (vetor desenhado sem `previa: 'vetor-v1'`, ou seja, a aba anterior ao CP-X1). Em recusa: nada de `put`,
+  `Page.create`, `Generation.create`, `AICreativeGeneration.create` nem `registrarUsoDeModelo`. Sem vetor desenhado,
+  o comportamento é o de antes.
+- 🔴 **A marca `previa` não é prova de pixel.** Ela separa o fluxo atualizado do app da aba antiga. Uma chamada
+  forjada por quem tem escrita no projeto, com a marca e um PNG qualquer, continua aceita, como para toda camada.
+  Não afirme "nenhum caminho publica retângulo" sem essa ressalva. Prova de pixel no servidor seria renderizar a
+  página no `finalize`.
+- **Prova**: o harness `tests/harness/cp-x1` (`npx playwright test -c tests/harness/cp-x1/playwright.config.ts`)
+  monta o `CanvasPreview` REAL no Chromium, sem rede, login, banco ou Blob, e compara o PNG do export com o
+  `CanvasRenderer`. As tolerâncias foram medidas e não têm folga: fora da faixa de borda de 2 px nada difere; na
+  borda, delta de canal ≤ 1 e contagem ≤ o teto medido por caso. Um controle negativo mostra que contorno apagado
+  ou acinzentado fora das amostras reprova.
+- **Fora do CP-X1**: o fundo da prévia é sempre branco (o modelo não é passado), e as formas que não são `svg-path`
+  ainda saem como `Rect` na prévia.

@@ -1,13 +1,25 @@
 'use client'
 
 import { useEffect, useRef, useState, forwardRef, useImperativeHandle, useCallback, useMemo } from 'react'
-import { Stage, Layer as KonvaLayer, Image, Text, Rect, Line, Transformer } from 'react-konva'
+import { Stage, Layer as KonvaLayer, Image, Text, Rect, Line, Shape, Transformer } from 'react-konva'
 import { useImage } from 'react-konva-utils'
 import type Konva from 'konva'
 import type { Layer } from '@/types/template'
 import type { ImageSource } from '@/lib/ai-creative-generator/layout-types'
 import { getFontManager } from '@/lib/font-manager'
 import { calculateImageCrop } from '@/lib/image-crop-utils'
+import { applyOpacityToColor, getShapeChannelOpacity } from '@/lib/gerar-criativo/opacidade-da-previa'
+import {
+  configDoSvgPathNaPrevia,
+  diagnosticoDoVetor,
+  ehCandidatoVetorial,
+  resumoDosProblemas,
+  travaDaPrevia,
+  vetoresComProblema,
+} from '@/lib/gerar-criativo/previa-do-vetor'
+
+/** Nós da UI de edição (realce de seleção, guias): nunca entram no PNG. */
+const NOME_DA_UI = '__ui-da-previa'
 
 interface ProjectFont {
   id: number
@@ -45,7 +57,6 @@ interface SnapGuides {
 
 function ImageLayer({
   layer,
-  isSelected,
   onSelect,
   imageUrl,
   onDragEnd,
@@ -101,8 +112,9 @@ function ImageLayer({
       rotation={layer.rotation || 0}
       opacity={layer.style?.opacity ?? 1}
       cornerRadius={borderRadius}
-      stroke={isSelected ? '#3b82f6' : (borderWidth > 0 ? borderColor : undefined)}
-      strokeWidth={isSelected ? 4 : (borderWidth > 0 ? borderWidth : 0)}
+      // a seleção é desenhada pelo RealceDeSelecao, nunca no contorno da camada
+      stroke={borderWidth > 0 ? borderColor : undefined}
+      strokeWidth={borderWidth > 0 ? borderWidth : 0}
       onClick={onSelect}
       onTap={onSelect}
       draggable={!!onDragEnd}
@@ -212,35 +224,6 @@ function TextLayer({
   )
 }
 
-function normalizeOpacityValue(value: unknown): number | undefined {
-  const numeric = typeof value === 'string'
-    ? (value.trim().endsWith('%') ? Number.parseFloat(value) / 100 : Number(value))
-    : value
-  if (typeof numeric !== 'number' || Number.isNaN(numeric)) return undefined
-  if (numeric > 1 && numeric <= 100) return Math.max(0, Math.min(1, numeric / 100))
-  return Math.max(0, Math.min(1, numeric))
-}
-
-function getShapeChannelOpacity(
-  layer: Layer,
-  channel: 'fill' | 'stroke',
-): number {
-  const style = layer.style as Record<string, unknown> | undefined
-  const border = (layer.style?.border ?? {}) as Record<string, unknown>
-  const keys = channel === 'fill'
-    ? ['fillOpacity', 'fillAlpha']
-    : ['strokeOpacity', 'strokeAlpha', 'borderOpacity', 'borderAlpha']
-
-  for (const key of keys) {
-    const fromStyle = normalizeOpacityValue(style?.[key])
-    if (fromStyle !== undefined) return fromStyle
-    const fromBorder = normalizeOpacityValue(border[key])
-    if (fromBorder !== undefined) return fromBorder
-  }
-
-  return 1
-}
-
 function ShapeLayer({
   layer,
   isSelected,
@@ -256,8 +239,33 @@ function ShapeLayer({
   onDragEnd?: (position: { x: number; y: number }) => void
   onDragMove?: (e: Konva.KonvaEventObject<DragEvent>, width: number, height: number) => void
   onDragStart?: () => void
-  shapeRef?: React.RefObject<Konva.Rect>
+  shapeRef?: React.RefObject<Konva.Shape>
 }) {
+  // svg-path: o adaptador do editor (traçado único do CP-V0, pintura pelo
+  // fillStrokeShape, que também desenha o canvas de clique com o fillRule).
+  // Vetor que a prévia não desenha igual ao servidor não vira retângulo: não é
+  // desenhado, e a tela e o export bloqueiam a geração (diagnosticoDoVetor).
+  if (ehCandidatoVetorial(layer)) {
+    if (diagnosticoDoVetor(layer).length > 0) return null
+    const config = configDoSvgPathNaPrevia(layer)
+    return (
+      <Shape
+        ref={shapeRef}
+        {...config}
+        onClick={onSelect}
+        onTap={onSelect}
+        draggable={!!onDragEnd}
+        onDragStart={onDragStart}
+        onDragMove={(e) => onDragMove?.(e, config.width as number, config.height as number)}
+        onDragEnd={(e) => {
+          if (onDragEnd) {
+            onDragEnd({ x: e.target.x(), y: e.target.y() })
+          }
+        }}
+      />
+    )
+  }
+
   const width = Math.max(10, layer.size?.width ?? 100)
   const height = Math.max(10, layer.size?.height ?? 100)
   const fill = layer.style?.fill ?? '#2563eb'
@@ -272,7 +280,7 @@ function ShapeLayer({
 
   return (
     <Rect
-      ref={shapeRef}
+      ref={shapeRef as React.RefObject<Konva.Rect>}
       name={layer.id}
       x={layer.position?.x || 0}
       y={layer.position?.y || 0}
@@ -323,93 +331,6 @@ function calculateGradientFromAngle(
     start: { x: cx - halfx, y: cy - halfy },
     end: { x: cx + halfx, y: cy + halfy },
   }
-}
-
-/**
- * Convert hex color to rgba string
- */
-function hexToRgba(hex: string, opacity: number): string {
-  const normalized = hex.replace('#', '')
-
-  if (normalized.length === 8) {
-    const r = parseInt(normalized.slice(0, 2), 16)
-    const g = parseInt(normalized.slice(2, 4), 16)
-    const b = parseInt(normalized.slice(4, 6), 16)
-    const a = parseInt(normalized.slice(6, 8), 16) / 255
-    return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, a * opacity))})`
-  }
-
-  if (normalized.length === 4) {
-    const r = parseInt(`${normalized[0]}${normalized[0]}`, 16)
-    const g = parseInt(`${normalized[1]}${normalized[1]}`, 16)
-    const b = parseInt(`${normalized[2]}${normalized[2]}`, 16)
-    const a = parseInt(`${normalized[3]}${normalized[3]}`, 16) / 255
-    return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, a * opacity))})`
-  }
-
-  const expanded = normalized.length === 3
-    ? `${normalized[0]}${normalized[0]}${normalized[1]}${normalized[1]}${normalized[2]}${normalized[2]}`
-    : normalized
-
-  const r = parseInt(expanded.slice(0, 2), 16)
-  const g = parseInt(expanded.slice(2, 4), 16)
-  const b = parseInt(expanded.slice(4, 6), 16)
-  return `rgba(${r}, ${g}, ${b}, ${opacity})`
-}
-
-function parseAlphaValue(value: string): number {
-  const normalized = value.trim()
-  if (normalized.endsWith('%')) {
-    return Number.parseFloat(normalized) / 100
-  }
-  return Number(normalized)
-}
-
-function withAdjustedFunctionalColor(
-  family: 'rgb' | 'hsl',
-  content: string,
-  opacity: number,
-): string {
-  const normalized = content.trim()
-
-  if (normalized.includes('/')) {
-    const [base, alphaValue = '1'] = normalized.split('/').map((part) => part.trim())
-    const alpha = Math.max(0, Math.min(1, parseAlphaValue(alphaValue) * opacity))
-    return `${family}(${base} / ${alpha})`
-  }
-
-  const commaParts = normalized.split(',').map((part) => part.trim())
-  if (commaParts.length >= 4) {
-    const base = commaParts.slice(0, 3).join(', ')
-    const alpha = Math.max(0, Math.min(1, parseAlphaValue(commaParts[3]) * opacity))
-    return `${family}a(${base}, ${alpha})`
-  }
-
-  if (commaParts.length === 3) {
-    return `${family}a(${commaParts.join(', ')}, ${opacity})`
-  }
-
-  return `${family}(${normalized} / ${opacity})`
-}
-
-function applyOpacityToColor(color: string, opacity: number): string {
-  const normalizedOpacity = Math.max(0, Math.min(1, opacity))
-
-  if (color.startsWith('#') && [4, 5, 7, 9].includes(color.length)) {
-    return hexToRgba(color, normalizedOpacity)
-  }
-
-  const rgbMatch = color.match(/rgba?\(([^)]+)\)/i)
-  if (rgbMatch) {
-    return withAdjustedFunctionalColor('rgb', rgbMatch[1], normalizedOpacity)
-  }
-
-  const hslMatch = color.match(/hsla?\(([^)]+)\)/i)
-  if (hslMatch) {
-    return withAdjustedFunctionalColor('hsl', hslMatch[1], normalizedOpacity)
-  }
-
-  return color
 }
 
 function GradientLayer({
@@ -598,7 +519,7 @@ function LayerRenderer({
         onDragEnd={onDragEnd}
         onDragMove={onDragMove}
         onDragStart={onDragStart}
-        shapeRef={shapeRef as React.RefObject<Konva.Rect>}
+        shapeRef={shapeRef}
       />
     )
   }
@@ -797,35 +718,30 @@ export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>
           console.log('[CanvasPreview] Fonts loaded:', fontsLoaded)
         }
 
+        // Vetor que a prévia não desenha igual ao servidor: interrompe antes do
+        // PNG (a tela já bloqueia o botão; esta é a segunda linha de defesa)
+        const problemas = vetoresComProblema(layers, hiddenLayerIds)
+        if (problemas.length > 0) {
+          throw new Error(`Vetor que o assistente não desenha: ${resumoDosProblemas(problemas)}`)
+        }
+
         // Save current state
         const previousScale = { x: stage.scaleX(), y: stage.scaleY() }
         const previousPosition = { x: stage.x(), y: stage.y() }
 
-        // Hide guides and transformer during export
-        setSnapGuides({ vertical: false, horizontal: false })
-
-        // Hide transformer during export
-        const transformerWasVisible = transformer?.visible() ?? false
-        if (transformer) {
-          transformer.visible(false)
-        }
-
-        // Hide selection stroke on selected layer during export
-        let selectedShape: Konva.Shape | null = null
-        let prevStroke: string | CanvasGradient | undefined
-        let prevStrokeWidth: number | undefined
-        if (selectedLayerId) {
-          const node = stage.findOne(`.${selectedLayerId}`)
-          if (node && 'stroke' in node) {
-            selectedShape = node as Konva.Shape
-            prevStroke = selectedShape.stroke()
-            prevStrokeWidth = selectedShape.strokeWidth()
-            selectedShape.stroke('')
-            selectedShape.strokeWidth(0)
-          }
-        }
+        // A UI de edição (Transformer, realce de seleção, guias) sai do PNG por
+        // visibilidade. Nenhuma camada da arte é tocada: zerar o contorno do nó
+        // selecionado apagava o contorno legítimo de forma, texto e gradiente.
+        // As guias também saem só por visibilidade: mudar o estado de snap aqui
+        // desmontaria os nós no meio do export e eles não voltariam no finally.
+        const uiDeEdicao: Konva.Node[] = [
+          ...(transformer ? [transformer] : []),
+          ...stage.find(`.${NOME_DA_UI}`),
+        ]
+        const visibilidadeAntes = uiDeEdicao.map((node) => node.visible())
 
         try {
+          uiDeEdicao.forEach((node) => node.visible(false))
           // Reset to 1:1 scale for export
           stage.scale({ x: 1, y: 1 })
           stage.position({ x: 0, y: 0 })
@@ -856,27 +772,18 @@ export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>
           console.error('[CanvasPreview] Export error:', exportError)
           throw exportError
         } finally {
-          // Restore previous state
+          // Restore previous state (também quando o export falha)
           stage.scale(previousScale)
           stage.position(previousPosition)
-
-          // Restore transformer visibility
-          if (transformer && transformerWasVisible) {
-            transformer.visible(true)
-          }
-
-          // Restore selection stroke
-          if (selectedShape) {
-            selectedShape.stroke(prevStroke)
-            selectedShape.strokeWidth(prevStrokeWidth)
-          }
-
+          uiDeEdicao.forEach((node, i) => node.visible(visibilidadeAntes[i]))
           stage.batchDraw()
         }
       },
-    }), [fontsLoaded, projectFonts.length, templateWidth, templateHeight, selectedLayerId])
+    }), [fontsLoaded, projectFonts.length, templateWidth, templateHeight, layers, hiddenLayerIds])
 
     const visibleLayers = layers.filter((l) => !hiddenLayerIds.has(l.id) && l.visible !== false)
+    const selectedLayer = visibleLayers.find((l) => l.id === selectedLayerId)
+    const trava = travaDaPrevia(selectedLayer)
 
     return (
       <div ref={containerRef} className="w-full">
@@ -913,6 +820,22 @@ export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>
               />
             ))}
 
+            {/* Realce de seleção da imagem: nó da UI, fora da camada (o export o esconde) */}
+            {selectedLayer && ['image', 'logo', 'element'].includes(selectedLayer.type) && (
+              <Rect
+                name={NOME_DA_UI}
+                x={selectedLayer.position?.x || 0}
+                y={selectedLayer.position?.y || 0}
+                width={Math.max(20, selectedLayer.size?.width ?? 100)}
+                height={Math.max(20, selectedLayer.size?.height ?? 100)}
+                rotation={selectedLayer.rotation || 0}
+                cornerRadius={selectedLayer.style?.border?.radius ?? 0}
+                stroke="#3b82f6"
+                strokeWidth={4}
+                listening={false}
+              />
+            )}
+
             {/* Transformer for resize - only show when onLayerResize is provided */}
             {onLayerResize && (
               <Transformer
@@ -936,16 +859,17 @@ export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>
                 borderDash={[6, 3]}
                 // Enable rotation
                 rotateEnabled={false}
-                // Keep aspect ratio when pressing shift
-                keepRatio={false}
+                // Forma com manterProporcao: keepRatio e só os cantos (como no editor)
+                keepRatio={trava.keepRatio}
                 // Enable all anchors for touch
-                enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right', 'top-center', 'bottom-center']}
+                enabledAnchors={trava.ancoras}
               />
             )}
 
             {/* Snap guide lines */}
             {snapGuides.vertical && (
               <Line
+                name={NOME_DA_UI}
                 points={[centerX, 0, centerX, templateHeight]}
                 stroke="#3b82f6"
                 strokeWidth={2}
@@ -955,6 +879,7 @@ export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>
             )}
             {snapGuides.horizontal && (
               <Line
+                name={NOME_DA_UI}
                 points={[0, centerY, templateWidth, centerY]}
                 stroke="#3b82f6"
                 strokeWidth={2}
