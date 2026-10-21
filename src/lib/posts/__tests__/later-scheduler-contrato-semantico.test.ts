@@ -8,7 +8,7 @@
  *
  * Banco e Zernio falsos: o predicado SQL em si é conferido à parte, num Postgres de verdade.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const banco = vi.hoisted(() => ({
   pagina: null as any,
@@ -62,10 +62,19 @@ import { db } from '@/lib/db'
 
 const camadas = [{ id: 't-h', name: 'Título', type: 'text', content: 'modelo', visible: true, metadata: { slot: { id: 'manchete' } } }]
 const paginaModelo = { id: 'p1', isTemplate: true, layers: camadas, audio: null, Template: { projectId: 8 } }
+// Relógio fixo: `validatePost` exige data futura, e uma data fixa sem relógio controlado vence (venceu em 20/10/2026).
+const AGORA = new Date('2026-10-20T12:00:00.000Z')
+const daquiA = (horas: number) => new Date(AGORA.getTime() + horas * 3_600_000).toISOString()
 const pedido = (extra: Record<string, unknown> = {}) =>
-  ({ projectId: 8, userId: 'u1', postType: 'STORY', caption: 'c', mediaUrls: [], scheduleType: 'SCHEDULED', scheduledDatetime: '2026-10-20T15:00:00.000Z', pageId: 'p1', slotValues: { _slots: { manchete: 'Noite do vinho' } }, ...extra }) as any
+  ({ projectId: 8, userId: 'u1', postType: 'STORY', caption: 'c', mediaUrls: [], scheduleType: 'SCHEDULED', scheduledDatetime: daquiA(3), pageId: 'p1', slotValues: { _slots: { manchete: 'Noite do vinho' } }, ...extra }) as any
+
+afterEach(() => {
+  vi.useRealTimers()
+})
 
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(AGORA)
   vi.clearAllMocks()
   banco.pagina = paginaModelo
   banco.post = null
@@ -99,6 +108,13 @@ describe('createPost: admissão do contrato novo antes do insert', () => {
 
   it('F. contrato novo + mídia pronta: recusa, e nunca nasce RENDERED', async () => {
     await expect(new LaterPostScheduler().createPost(pedido({ mediaUrls: ['https://cliente.jpg'] }))).rejects.toMatchObject({ codigo: 'CONTRATO_COM_MIDIA_PRONTA' })
+    expect(db.socialPost.create).not.toHaveBeenCalled()
+  })
+
+  it('data no passado ou igual a agora: recusa antes do insert (a validação de data futura continua valendo)', async () => {
+    const s = new LaterPostScheduler()
+    await expect(s.createPost(pedido({ scheduledDatetime: daquiA(-1) }))).rejects.toThrow('Data/hora deve ser no futuro')
+    await expect(s.createPost(pedido({ scheduledDatetime: AGORA.toISOString() }))).rejects.toThrow('Data/hora deve ser no futuro')
     expect(db.socialPost.create).not.toHaveBeenCalled()
   })
 

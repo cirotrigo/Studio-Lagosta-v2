@@ -31,14 +31,14 @@ vi.mock('@/lib/db', () => ({
 vi.mock('next/headers', () => ({
   cookies: async () => ({ get: () => (m.estadoNoCookie ? { value: m.estadoNoCookie } : undefined) }),
 }))
-vi.mock('googleapis', () => {
+vi.mock('googleapis/build/src/apis/drive', () => {
   class OAuth2 {
     async getToken() {
       m.trocouCodigo = true
       return { tokens: { refresh_token: 'r', access_token: 'a' } }
     }
   }
-  return { google: { auth: { OAuth2 } } }
+  return { auth: { OAuth2 } }
 })
 
 import { PATCH } from '../../projects/[projectId]/settings/route'

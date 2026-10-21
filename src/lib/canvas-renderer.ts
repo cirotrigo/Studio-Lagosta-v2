@@ -103,7 +103,8 @@ export class CanvasRenderer {
         imageLoader: this.nodeImageLoader.bind(this),
         imageCache: this.imageCache as unknown as Map<string, CanvasImageSource>,
         fontChecker: this.nodeFontChecker.bind(this),
-        // Máscaras, formas svg-path e ícones precisam de Path2D — no Node é o
+        // Máscaras e ícones precisam de Path2D (o svg-path usa o traçado de
+        // src/lib/vetor, sem Path2D) — no Node é o
         // do @napi-rs/canvas (não existe global)
         createPath2D: (d: string) => new NapiPath2D(d) as unknown as Path2D,
         // Filtros de imagem e blur de texto rodam num canvas offscreen —

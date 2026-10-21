@@ -524,7 +524,7 @@ describe('C1 — draft-only, criar, peça APTO: a ordem da transação', () => {
   it('travas (agenda, fontes, item, posts da página, página, Generation, FOR SHARE) → medição pela transação → registro → INSERT do post → CAS da linha → commit; revisao APTO', async () => {
     const i1 = cenarioLimpo()
     const r = await agendar([i1])
-    expect(r.itens[0]).toMatchObject({ situacao: 'concluido', desfecho: 'criado', estadoDoPost: 'rascunho', revisao: { tipo: 'medida', resultado: 'APTO', versaoDoGate: 'gate-v1' }, achados: [], motivos: [] })
+    expect(r.itens[0]).toMatchObject({ situacao: 'concluido', desfecho: 'criado', estadoDoPost: 'rascunho', revisao: { tipo: 'medida', resultado: 'APTO', versaoDoGate: 'gate-v2' }, achados: [], motivos: [] })
     const ordem = eventos().filter((e) => /^(trava|trava-share|travou|medicao|gate:gravado|insert:post|escrita:itensDeLote|commit)/.test(e))
     expect(ordem).toEqual([
       `trava:adv:agenda-slot:${PROJETO}`,

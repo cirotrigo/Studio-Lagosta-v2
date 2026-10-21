@@ -66,7 +66,7 @@ export interface MotivoDoGate {
 }
 
 /** A versão da DECISÃO do gate (CP5b § 5): bump obrigatório cobrado pela impressão digital `gate-<versao>.json`. */
-export const VERSAO_DO_GATE = 'gate-v1' as const
+export const VERSAO_DO_GATE = 'gate-v2' as const
 
 export interface GateDaArte {
   versao: typeof VERSAO_DO_GATE
@@ -287,6 +287,7 @@ export const CHAVES_CLASSIFICADAS: Record<string, ChaveClassificada> = {
   'style.pathData': naoSuportada, // svg-path: não recortado ao viewBox, :1843-1850
   'style.pathViewBox': naoSuportada,
   'style.pathFillRule': naoSuportada,
+  'style.tracoPontas': naoSuportada, // pontas do contorno do svg-path (src/lib/vetor), CP-V0
   'style.lineStyle': naoSuportada, // line/arrow, :1870-1908
   'style.lineStartCap': naoSuportada,
   'style.lineEndCap': naoSuportada,

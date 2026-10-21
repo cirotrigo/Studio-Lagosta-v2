@@ -44,7 +44,7 @@ import {
   type AnaliseNormalizada,
   type VocabularioDeTags,
 } from '../src/lib/creatives/catalogo-de-fotos'
-import { google } from 'googleapis'
+import * as google from 'googleapis/build/src/apis/drive'
 import { PrismaClient } from '../prisma/generated/client'
 import * as https from 'https'
 import * as http from 'http'

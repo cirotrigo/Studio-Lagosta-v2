@@ -2,8 +2,10 @@
  * Pixel loops dos filtros de imagem, compartilhados entre o editor e o render
  * server-side — a arte agendada passa pelos MESMOS loops que a tela.
  *
- * Isomórfico de propósito: este arquivo NÃO pode importar `konva` (quebra no
- * server) nem `@napi-rs/canvas` (quebra o bundle client). Os wrappers Konva
+ * Isomórfico de propósito: este arquivo NÃO pode importar o pacote raiz `konva`
+ * (no Node ele exige o `canvas` nativo; import profundo como `konva/lib/shapes/Path`
+ * não exige — ver src/lib/vetor/tracar.ts) nem `@napi-rs/canvas` (quebra o bundle
+ * client). Os wrappers Konva
  * (HighlightsShadowsFilter/WhitesBlacksFilter/VignetteFilter) chamam estas
  * funções no editor; o `drawImage` do RenderEngine chama a mesma cadeia num
  * canvas offscreen no server.

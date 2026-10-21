@@ -11,7 +11,7 @@ import 'dotenv/config'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
-import { google } from 'googleapis'
+import * as google from 'googleapis/build/src/apis/drive'
 import { PrismaClient } from '../prisma/generated/client'
 // Caminho relativo de propósito: este servidor roda fora do bundle do Next,
 // onde o alias `@/` pode não resolver. O módulo não tem dependência nenhuma.
