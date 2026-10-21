@@ -66,7 +66,7 @@ export interface MotivoDoGate {
 }
 
 /** A versão da DECISÃO do gate (CP5b § 5): bump obrigatório cobrado pela impressão digital `gate-<versao>.json`. */
-export const VERSAO_DO_GATE = 'gate-v2' as const
+export const VERSAO_DO_GATE = 'gate-v3' as const
 
 export interface GateDaArte {
   versao: typeof VERSAO_DO_GATE
@@ -267,6 +267,7 @@ export const CHAVES_CLASSIFICADAS: Record<string, ChaveClassificada> = {
   'style.crop.height': inerte(0.9),
   'style.flipH': suportada(true), // espelha DENTRO da caixa, :1692-1693
   'style.flipV': suportada(true),
+  'style.manterProporcao': inerte(true), // CP-V1: só a trava do gesto de redimensionar no editor; o render não a lê
   'style.mask.shapeId': suportada('circle'), // clip só retira, :1664-1668
   'style.mask.path': suportada('M50 0 A50 50 0 1 1 50 100 A50 50 0 1 1 50 0 Z'),
   'style.opacity': inerte(1),

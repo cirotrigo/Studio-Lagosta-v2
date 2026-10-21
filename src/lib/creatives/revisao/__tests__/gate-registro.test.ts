@@ -146,7 +146,7 @@ describe('H4/H5/H6 — validadeDoGate é fail-closed e nunca diz "vigente"', () 
       [{ pageVersion: 'v1:ffffffffffffffffffff' }, 'pageVersion'],
       [{ copyVersion: 'c1:ffffffffffffffffffff' }, 'copyVersion'],
       [{ rulesVersion: 'revisao-v2' }, 'rulesVersion'],
-      [{ versaoDoGate: 'gate-v1' }, 'versaoDoGate'],
+      [{ versaoDoGate: 'gate-v2' }, 'versaoDoGate'],
       [{ politica: { estimado: 'comprova', semAssuntoLocalizavel: 'nao-se-aplica' } }, 'politica'],
       [{ politica: { estimado: 'humano', semAssuntoLocalizavel: 'nao-se-aplica' } }, 'politica'], // a PROPOSTA antiga do CP5a: registro gravado com ela vira historico
     ]
@@ -202,7 +202,7 @@ describe('H7 — lerGateDaArte em três estados, estrito, nunca lança, nunca ex
 
   it('forma inválida → invalido com motivo, e só as versões gravadas (quando válidas pelo regex) saem', () => {
     const casos: Array<[string, (r: Record<string, any>) => void, RegExp]> = [
-      ['versao gate-v1', (r) => (r.gate.versao = 'gate-v1'), /versão anterior ou desconhecida.*gate-v1/],
+      ['versao gate-v2', (r) => (r.gate.versao = 'gate-v2'), /versão anterior ou desconhecida.*gate-v2/],
       ['sem politica', (r) => delete r.politica, /forma inválida em politica/],
       ['politica fora do enum', (r) => (r.politica.estimado = 'sempre'), /politica\.estimado/],
       ['cobertura sem colisao', (r) => delete r.gate.cobertura.colisao, /cobertura\.colisao/],
@@ -233,9 +233,9 @@ describe('H7 — lerGateDaArte em três estados, estrito, nunca lança, nunca ex
       expect(JSON.stringify(lido), nome).not.toMatch(/APTO|REVISAO_HUMANA|comprovada/)
     }
     const anterior = valido()
-    anterior.gate.versao = 'gate-v1'
-    expect(lerGateDaArte({ gateDaArte: anterior })).toMatchObject({ estado: 'invalido', versaoGravada: 'gate-v1', rulesVersionGravada: 'revisao-v1' })
-    for (const versao of ['x'.repeat(200), '<script>', 'Gate-V2', ' gate-v2', '']) {
+    anterior.gate.versao = 'gate-v2'
+    expect(lerGateDaArte({ gateDaArte: anterior })).toMatchObject({ estado: 'invalido', versaoGravada: 'gate-v2', rulesVersionGravada: 'revisao-v1' })
+    for (const versao of ['x'.repeat(200), '<script>', 'Gate-V3', ' gate-v3', '']) {
       const r = valido()
       r.gate.versao = versao
       const lido = lerGateDaArte({ gateDaArte: r })

@@ -41,6 +41,12 @@ export interface CtxDeTraco {
 
 export type ViewBox = [number, number, number, number]
 
+/** Espelhamento da forma DENTRO da própria caixa (CP-V1): `style.flipH` → `h`, `style.flipV` → `v`. */
+export interface Espelho {
+  h: boolean
+  v: boolean
+}
+
 const MEMO_MAX = 500
 const memo = new Map<string, Segmento[]>()
 
@@ -105,6 +111,10 @@ export function tracarSegmentos(ctx: CtxDeTraco, segmentos: Segmento[]): void {
  * Traça o path JÁ escalado para a caixa (largura × altura da camada) e restaura o
  * transform: quem preenche ou contorna depois trabalha em px da camada, então o
  * contorno tem a mesma espessura nos dois eixos, inclusive em caixa não quadrada.
+ *
+ * O espelho (CP-V1) também entra no transform restaurado: reflete o path em torno do
+ * centro da caixa, então a caixa, a rotação da camada e o contorno ficam como estão.
+ * Sem espelho, a sequência de chamadas é exatamente a de antes.
  */
 export function tracarSvgPathNaCaixa(
   ctx: CtxDeTraco,
@@ -112,10 +122,15 @@ export function tracarSvgPathNaCaixa(
   viewBox: ViewBox | undefined,
   largura: number,
   altura: number,
+  espelho?: Espelho,
 ): void {
   const [vx, vy, vw, vh] = viewBox ?? [0, 0, 100, 100]
   ctx.save()
   try {
+    if (espelho?.h || espelho?.v) {
+      ctx.translate(espelho.h ? largura : 0, espelho.v ? altura : 0)
+      ctx.scale(espelho.h ? -1 : 1, espelho.v ? -1 : 1)
+    }
     ctx.scale(largura / (vw || 1), altura / (vh || 1))
     ctx.translate(-vx, -vy)
     ctx.beginPath()
