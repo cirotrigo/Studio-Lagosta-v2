@@ -428,6 +428,11 @@ isso e o resto da digitação colava atrás — `rgba(17, 17, 17, 1)827` foi gra
 - **`CampoDeCorDigitada`** (`properties-panel.tsx`) guarda o rascunho local e grava no Enter ou ao sair do
   campo; Esc e texto inválido voltam ao salvo. `key={layer.id}`: o rascunho não atravessa a troca de seleção,
   e é DESCARTADO (não só escondido) quando o valor muda por fora (seletor, alpha, paleta, undo).
+- **Clicar em outra camada no palco desmonta o campo ANTES do blur** (a seleção muda no mousedown): sem
+  cuidado o rascunho se perdia calado. Com rascunho, um `pointerdown` FORA do campo (captura no document,
+  antes do palco) confirma na camada atual. **Desmontar sem gesto descarta** (troca de página, camada removida,
+  editor fechado): gravar no unmount acertaria a página errada quando páginas repetem o id da camada. O campo
+  recebe a camada (`origem`): trocar de objeto também descarta, mesmo com o mesmo id e a mesma cor.
 - **`corDigitadaParaGravar`** (`src/lib/shape-style.ts`) confere o formato com números de verdade, converte a
   sintaxe moderna com espaços para vírgulas (o helper só entende espaço com `/`: `rgb(1 2 3)` saía
   `rgba(1 2 3, 1)`) e exige que entrada E saída passem em `CSS.supports('color', …)`. `rgb(10 20% 30)`

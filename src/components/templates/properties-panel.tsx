@@ -1428,25 +1428,54 @@ const ehCorCss = (cor: string) => typeof CSS !== 'undefined' && CSS.supports('co
  * Quem usa passa `key` da camada: o rascunho nunca atravessa a troca de seleção. Se o valor salvo
  * mudar por fora durante a digitação (seletor, alpha, paleta, undo), o rascunho é DESCARTADO — não
  * só escondido: voltar depois ao valor antigo não o ressuscita.
+ * Clicar em outra camada no palco troca a seleção no mousedown e desmonta o campo ANTES de o foco
+ * sair: o blur nunca chegava e a cor digitada se perdia (prova do componente, 21/10/2026). Por isso,
+ * com rascunho, um `pointerdown` FORA do campo (captura no document, antes do palco) confirma na
+ * camada atual. Desmontar sem gesto (troca de página, camada removida, editor fechado) DESCARTA o
+ * rascunho: gravar na desmontagem acertaria a página errada quando páginas repetem o id da camada.
+ * `origem` é o objeto da camada: trocar de página com o MESMO id e a MESMA cor não remonta o campo
+ * nem muda o valor, mas troca o objeto — e isso também descarta o rascunho.
  */
-function CampoDeCorDigitada({ valor, aoGravar }: { valor: string; aoGravar: (texto: string) => void }) {
+function CampoDeCorDigitada({ valor, origem, aoGravar }: { valor: string; origem: object; aoGravar: (texto: string) => void }) {
   const [rascunho, setRascunho] = React.useState<string | null>(null)
-  const [valorVisto, setValorVisto] = React.useState(valor)
-  if (valorVisto !== valor) {
-    setValorVisto(valor)
+  const [visto, setVisto] = React.useState({ valor, origem })
+  if (visto.valor !== valor || visto.origem !== origem) {
+    setVisto({ valor, origem })
     setRascunho(null)
   }
+  const campo = React.useRef<HTMLInputElement>(null)
+  // Espelho do rascunho: o pointerdown e o blur do mesmo clique confirmam UMA vez só.
+  const pendente = React.useRef<string | null>(null)
+  React.useEffect(() => {
+    pendente.current = rascunho
+  }, [rascunho])
+  const editar = (texto: string | null) => {
+    pendente.current = texto
+    setRascunho(texto)
+  }
+  const confirmar = () => {
+    const texto = pendente.current
+    editar(null)
+    if (texto !== null && texto.trim() !== valor) aoGravar(texto)
+  }
+  React.useEffect(() => {
+    if (rascunho === null) return
+    const aoTocarFora = (event: PointerEvent) => {
+      if (event.target instanceof Node && campo.current?.contains(event.target)) return
+      confirmar()
+    }
+    document.addEventListener('pointerdown', aoTocarFora, true)
+    return () => document.removeEventListener('pointerdown', aoTocarFora, true)
+  })
   return (
     <Input
+      ref={campo}
       value={rascunho ?? valor}
-      onChange={(event) => setRascunho(event.target.value)}
-      onBlur={() => {
-        if (rascunho !== null && rascunho.trim() !== valor) aoGravar(rascunho)
-        setRascunho(null)
-      }}
+      onChange={(event) => editar(event.target.value)}
+      onBlur={confirmar}
       onKeyDown={(event) => {
         if (event.key === 'Enter') event.currentTarget.blur()
-        if (event.key === 'Escape') setRascunho(null)
+        if (event.key === 'Escape') editar(null)
       }}
     />
   )
@@ -1464,6 +1493,7 @@ function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
           <CampoDeCorDigitada
             key={layer.id}
             valor={layer.style?.fill ?? '#2563eb'}
+            origem={layer}
             aoGravar={(texto) => {
               const fill = corDigitadaParaGravar(texto, fillOpacity / 100, '#2563eb', ehCorCss)
               if (fill) setStyleValue(layer, { fill, fillOpacity: 1 })
@@ -1517,6 +1547,7 @@ function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
             <CampoDeCorDigitada
               key={layer.id}
               valor={layer.style?.strokeColor ?? '#1e3a8a'}
+              origem={layer}
               aoGravar={(texto) => {
                 const strokeColor = corDigitadaParaGravar(texto, strokeOpacity / 100, '#1e3a8a', ehCorCss)
                 if (strokeColor) setStyleValue(layer, { strokeColor, strokeOpacity: 1 })
