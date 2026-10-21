@@ -438,3 +438,35 @@ isso e o resto da digitação colava atrás — `rgba(17, 17, 17, 1)827` foi gra
   `rgba(1 2 3, 1)`) e exige que entrada E saída passem em `CSS.supports('color', …)`. `rgb(10 20% 30)`
   (moderna, mistura número e %) é recusado de propósito: a conversão ficaria inválida.
 - Nunca chame `applyOpacityToEditableColor` com texto parcial da digitação.
+
+## O push do desktop não perde o que o desktop não representa (CP-X0, 21/10/2026)
+
+O `PUT /api/templates/[id]` com `designData.pages` é o push do app desktop: o Salvar do web não manda `pages`. O
+desktop devolve uma forma só com `fill`, `strokeColor`, `strokeWidth` e `shapeType` (`localLayerToWeb` no normalizador
+dele) e manda só as páginas que conhece. O PUT gravava isso por cima: o `svg-path` perdia o path, a máscara sumia, e a
+página feita no web era apagada, desvinculando os posts agendados dela (`SocialPost.pageId` é SetNull).
+
+- **Camadas**: a mescla é feita por `mesclarCamadasDoDesktop` (`src/lib/templates/guarda-do-push-do-desktop.ts`),
+  dentro do `camadas(base)` de `gravarCamadasComRevisao`, ou seja, sobre a base RELIDA a cada volta do
+  compare-and-set. O payload vence no que manda, e o que ele não traz (topo, `style`, `metadata`) fica da base.
+- **Camada protegida**: `svg-path`, `pathData`/`pathViewBox`/`pathFillRule`, `mask`, `vetor`, `metadata.compositor`
+  ou `metadata.slot`. A identidade dela (`type`, `shape`/`style.shapeType` e essas chaves) vem SEMPRE da base, e
+  `null` no payload não apaga. Se o payload troca o `type` ou a forma, a resposta é **409 `PUSH_ALTERA_VETOR`**. Se
+  ela some do payload, **409 `PUSH_APAGARIA_CAMADA`**.
+- **Páginas**: página ausente do push é **preservada** (`paginasPreservadas` na resposta). A página casada por
+  ordem/nome com camada protegida dá **409 `PUSH_PAGINA_INCERTA`**. Dois itens do payload no mesmo destino dão **409
+  `PUSH_DESTINO_REPETIDO`**, e id repetido dá **409 `PUSH_PAGINAS_DUPLICADAS`**.
+- **JSON ilegível** (base ou payload; `id` ausente; `style`/`metadata` não-objeto) dá **409** e nunca vira camada nova.
+- **Toda recusa LANÇA de dentro da transação**: o `$transaction` desfaz o template e as páginas já gravadas, e a
+  rota responde 409 fora dela.
+- 🔴 **Nada com efeito externo antes da guarda.** A miniatura do push (`thumbnailUrl`) só passa pelo
+  `guardarMiniatura` DEPOIS do commit das páginas, numa escrita separada: o upload sobrescreve o caminho estável
+  `templates/thumbnails/<id>` no Blob, e a transação não desfaz Blob. Limite: essa atualização é pós-commit e não
+  atômica com as páginas, e pode ficar PARCIAL (bytes novos no Blob com a coluna ainda antiga, se o update da coluna
+  falhar depois do upload); as páginas valem e o erro vai para o log. O Salvar do web (sem `pages`) continua subindo
+  a miniatura antes, como sempre.
+- **O `designData.pages` do template é reconstruído das páginas FINAIS** na mesma transação: é a cópia que o
+  `GET /api/templates/[id]` devolve ao desktop (`fetchRemoteTemplateById`). Gravar o payload cru devolveria ao app a
+  forma sem o path e sem as páginas preservadas, e o push seguinte as perderia.
+- **Limite**: camada COMUM que só existe no web e não está no push sai, como antes. Distinguir isso exige versionar o
+  pull do desktop.

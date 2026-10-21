@@ -8,6 +8,8 @@ import { hasProjectReadAccess, hasProjectWriteAccess, withProjectOwner } from '@
 import { invalidateScheduledRenders, normalizeLayersString } from '@/lib/posts/invalidate-renders'
 import { PostStatus } from '../../../../../prisma/generated/client'
 import { gravarCamadasComRevisao } from '@/lib/copy-autoral/persistir'
+import { RecusaDoPushDoDesktop, idsDePaginaRepetidos, mesclarCamadasDoDesktop } from '@/lib/templates/guarda-do-push-do-desktop'
+import { lerCamadas } from '@/lib/posts/page-layers'
 
 export const runtime = 'nodejs'
 
@@ -126,7 +128,12 @@ export async function PUT(
     if (parsed.dynamicFields !== undefined) {
       data.dynamicFields = parsed.dynamicFields as unknown as Prisma.JsonValue
     }
-    if (parsed.thumbnailUrl !== undefined) {
+    // CP-X0: no push do desktop (com `pages`) a miniatura só é processada DEPOIS do commit das páginas. O upload de
+    // data URL sobrescreve o caminho estável do Blob, e a transação não desfaz Blob: subir antes deixaria um push
+    // recusado (409) trocando a miniatura que o web usa. URL comum passa intacta pelo `guardarMiniatura`.
+    const ehPushDoDesktop = Array.isArray((parsed.designData as { pages?: unknown } | undefined)?.pages)
+    const miniaturaAdiada = ehPushDoDesktop && parsed.thumbnailUrl ? parsed.thumbnailUrl : null
+    if (parsed.thumbnailUrl !== undefined && !miniaturaAdiada) {
       // O editor manda a miniatura como data URL; ela vai para o Blob e a
       // coluna guarda só a URL. Ver src/lib/templates/miniatura.ts.
       data.thumbnailUrl = parsed.thumbnailUrl
@@ -139,12 +146,14 @@ export async function PUT(
 
     let invalidados = 0
     let congelados: string[] = []
+    /** Páginas do template ausentes do push do desktop: preservadas, nunca apagadas (CP-X0). */
+    let paginasPreservadas: string[] = []
     /** As páginas cujo visual mudou — a recomposição da arte congelada roda FORA da transação. */
     let alteradas: string[] = []
 
     // Use transaction to update template and pages together
-    const updated = await db.$transaction(async (tx) => {
-      const updatedTemplate = await tx.template.update({
+    let updated = await db.$transaction(async (tx) => {
+      let updatedTemplate = await tx.template.update({
         where: { id: templateId },
         data,
       })
@@ -152,6 +161,11 @@ export async function PUT(
       // If designData.pages is provided, update the Page records
       const designData = parsed.designData as { pages?: Array<{ id?: string; name?: string; width?: number; height?: number; layers?: unknown; background?: string; order?: number; thumbnail?: string | null; tags?: string[] }> } | undefined
       if (designData?.pages && Array.isArray(designData.pages)) {
+        // CP-X0: este ramo é o push do desktop (o Salvar do web não manda `pages`). Id de página repetido deixaria
+        // duas páginas do payload disputando o mesmo destino — recusa, e o $transaction desfaz o update acima.
+        const repetidas = idsDePaginaRepetidos(designData.pages)
+        if (repetidas.length > 0) throw new RecusaDoPushDoDesktop('PUSH_PAGINAS_DUPLICADAS', repetidas[0])
+
         // Get existing pages to know which to update vs delete.
         // Desktop sync can send page IDs that belong to another template; in that case
         // fall back to matching the current template page by order/name.
@@ -195,14 +209,20 @@ export async function PUT(
          * de Y para X sem invalidar a imagem única nem pedir a recomposição do
          * slide. É a MESMA lição do REV-01 da 3ª rodada no PATCH da página.
          */
-        const gravarPagina = async (pageId: string, pageData: { layers: string; background: string; width: number; height: number; [campo: string]: unknown }) => {
+        /**
+         * 🔴 CP-X0: as camadas do desktop são MESCLADAS sobre a base relida a cada volta do compare-and-set — o que o
+         * desktop não representa (path do svg-path, máscara, compositor, slot) é preservado, e o push que perderia
+         * isso é recusado (`RecusaDoPushDoDesktop` lança daqui e o $transaction desfaz TUDO). Ver
+         * src/lib/templates/guarda-do-push-do-desktop.ts.
+         */
+        const gravarPagina = async (pageId: string, pageData: { layers: string; background: string; width: number; height: number; [campo: string]: unknown }, casadaPorFallback: boolean) => {
           const { layers, ...dados } = pageData
           const g = await gravarCamadasComRevisao(tx, {
             pageId,
             humana: true,
             dados,
             quem: { autor: 'equipe', motivo: 'edição no editor (salvar o template)', superficie: 'editor' },
-            camadas: () => layers,
+            camadas: (base) => mesclarCamadasDoDesktop(base.layers, layers, { paginaId: pageId, casadaPorFallback }),
           })
           if (!g) return
           if (g.aviso) console.warn(`[API] Template ${templateId}, página ${pageId}: camadas gravadas sem revisão do contrato da copy — ${g.aviso}`)
@@ -264,7 +284,9 @@ export async function PUT(
           }
 
           if (requestedPageId && existingPageIds.has(requestedPageId)) {
-            await gravarPagina(requestedPageId, pageData)
+            // CP-X0: duas páginas do payload no mesmo destino (por exemplo, uma por ordem/nome e outra por id).
+            if (resolvedCurrentPageIds.has(requestedPageId)) throw new RecusaDoPushDoDesktop('PUSH_DESTINO_REPETIDO', requestedPageId)
+            await gravarPagina(requestedPageId, pageData, false)
             matchedExistingPageIds.add(requestedPageId)
             resolvedCurrentPageIds.add(requestedPageId)
           } else {
@@ -272,7 +294,8 @@ export async function PUT(
             const hasForeignIdConflict = requestedPageId ? foreignPageIds.has(requestedPageId) : false
 
             if (fallbackPage) {
-              await gravarPagina(fallbackPage.id, pageData)
+              if (resolvedCurrentPageIds.has(fallbackPage.id)) throw new RecusaDoPushDoDesktop('PUSH_DESTINO_REPETIDO', fallbackPage.id)
+              await gravarPagina(fallbackPage.id, pageData, true)
               matchedExistingPageIds.add(fallbackPage.id)
               resolvedCurrentPageIds.add(fallbackPage.id)
             } else {
@@ -287,15 +310,35 @@ export async function PUT(
           }
         }
 
-        const pagesToDelete = existingPages
+        // CP-X0: página ausente do push NÃO é apagada. O desktop só manda as páginas que conhece, e apagar levava
+        // junto a página feita no web e desvinculava os posts agendados dela (`SocialPost.pageId` é SetNull).
+        paginasPreservadas = existingPages
           .map((page) => page.id)
           .filter((pageId) => !resolvedCurrentPageIds.has(pageId))
-
-        if (pagesToDelete.length > 0) {
-          await tx.page.deleteMany({
-            where: { id: { in: pagesToDelete } },
-          })
+        if (paginasPreservadas.length > 0) {
+          console.warn(`[API] Template ${templateId}: ${paginasPreservadas.length} página(s) ausente(s) do push preservada(s): ${paginasPreservadas.join(', ')}`)
         }
+
+        // CP-X0: o `designData.pages` gravado acima é o payload CRU do desktop (sem o path, sem as páginas
+        // preservadas) — e é a cópia que o GET deste template devolve ao app (`fetchRemoteTemplateById`). Ele é
+        // reconstruído das páginas FINAIS, na mesma transação; o resto do `designData` fica como veio.
+        const finais = await tx.page.findMany({
+          where: { templateId },
+          orderBy: { order: 'asc' },
+          select: { id: true, name: true, width: true, height: true, layers: true, background: true, order: true, thumbnail: true, tags: true },
+        })
+        updatedTemplate = await tx.template.update({
+          where: { id: templateId },
+          data: {
+            designData: {
+              ...(parsed.designData as Record<string, unknown>),
+              pages: finais.map((p) => {
+                const { camadas, legivel } = lerCamadas(p.layers)
+                return { id: p.id, name: p.name, width: p.width, height: p.height, layers: legivel ? camadas : p.layers, background: p.background, order: p.order, thumbnail: p.thumbnail, tags: p.tags }
+              }),
+            } as unknown as Prisma.JsonValue,
+          },
+        })
 
         // Página cujo visual mudou faz a arte agendada valer nada: volta para
         // a fila de render. Só as alteradas — e só quando o payload traz
@@ -339,6 +382,21 @@ export async function PUT(
       return updatedTemplate
     })
 
+    if (miniaturaAdiada) {
+      // Limite: a atualização da miniatura é pós-commit e NÃO atômica com as páginas, e pode ficar parcial. Se o
+      // upload no caminho estável funcionar e o update da coluna falhar, os bytes no Blob já são os novos e a coluna
+      // segue com o valor anterior. As páginas já valem: só log, sem 500 enganoso. Um salvamento concorrente nesse
+      // intervalo segue a regra de sempre (a última escrita vence).
+      try {
+        updated = await db.template.update({
+          where: { id: templateId },
+          data: { thumbnailUrl: await guardarMiniatura(miniaturaAdiada, templateId) },
+        })
+      } catch (erro) {
+        console.error(`[API] Template ${templateId}: páginas gravadas, mas a miniatura do push não foi atualizada`, erro)
+      }
+    }
+
     if (congelados.length > 0) {
       console.warn(
         `[API] Template ${templateId}: ${congelados.length} post(s) já entregues ao publicador não receberam a alteração`,
@@ -365,8 +423,23 @@ export async function PUT(
       // que permite ao editor avisar em vez de deixar a pessoa achar que a
       // mudança valeu para tudo.
       ...(congelados.length > 0 ? { postsCongelados: congelados } : {}),
+      ...(paginasPreservadas.length > 0 ? { paginasPreservadas } : {}),
     })
   } catch (error) {
+    if (error instanceof RecusaDoPushDoDesktop) {
+      // A recusa saiu de DENTRO da transação: o template e as páginas gravadas antes dela foram desfeitos, e a
+      // miniatura do push nem subiu (ela só sobe depois do commit).
+      console.warn(`[API] Template ${templateId}: push do desktop recusado — ${error.message}`)
+      return NextResponse.json(
+        {
+          error: 'O envio do app desktop perderia conteúdo que só existe no web (vetor, máscara, página ou camada do compositor). Nada foi gravado. Atualize o template no app (puxe de novo) e envie outra vez.',
+          codigo: error.codigo,
+          paginaId: error.paginaId,
+          ...(error.camadaId ? { camadaId: error.camadaId } : {}),
+        },
+        { status: 409 },
+      )
+    }
     console.error('[API] Failed to update template:', error)
 
     // Se for erro do Zod, retornar detalhes
