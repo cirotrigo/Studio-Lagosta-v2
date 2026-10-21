@@ -12,7 +12,7 @@
  *   npx tsx scripts/plan-reorg-seu-quinto.ts --out /caminho/manifesto
  */
 
-import { google } from 'googleapis'
+import * as google from 'googleapis/build/src/apis/drive'
 import * as fs from 'fs'
 import 'dotenv/config'
 

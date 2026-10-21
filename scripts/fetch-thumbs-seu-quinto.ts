@@ -8,7 +8,7 @@
  *   npx tsx scripts/fetch-thumbs-seu-quinto.ts --out <dir> [--size 240]
  */
 
-import { google } from 'googleapis'
+import * as google from 'googleapis/build/src/apis/drive'
 import * as https from 'https'
 import * as http from 'http'
 import * as fs from 'fs'

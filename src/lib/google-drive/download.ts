@@ -1,4 +1,4 @@
-import { google } from 'googleapis'
+import * as google from 'googleapis/build/src/apis/drive'
 
 interface DownloadParams {
   fileId: string

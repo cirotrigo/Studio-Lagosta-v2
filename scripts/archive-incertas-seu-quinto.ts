@@ -20,7 +20,7 @@
  *   npx tsx scripts/archive-incertas-seu-quinto.ts --rollback <path>
  */
 
-import { google } from 'googleapis'
+import * as google from 'googleapis/build/src/apis/drive'
 import * as fs from 'fs'
 import 'dotenv/config'
 

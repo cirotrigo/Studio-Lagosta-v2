@@ -30,7 +30,7 @@ vi.mock('@/lib/projects/access', async () => {
   }
 })
 vi.mock('@/lib/rate-limit', () => ({ assertRateLimit: () => undefined, RateLimitError: class extends Error {} }))
-vi.mock('googleapis', () => {
+vi.mock('googleapis/build/src/apis/drive', () => {
   const files = {
     get: async ({ fileId, alt }: { fileId: string; alt?: string }) => {
       if (alt === 'media') {
@@ -43,7 +43,7 @@ vi.mock('googleapis', () => {
   class OAuth2 {
     setCredentials() {}
   }
-  return { google: { auth: { OAuth2 }, drive: () => ({ files }) } }
+  return { auth: { OAuth2 }, drive: () => ({ files }) }
 })
 
 import { POST as baixarGlobal } from '../route'

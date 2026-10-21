@@ -23,7 +23,7 @@
  */
 
 import { createCanvas, loadImage, GlobalFonts } from '@napi-rs/canvas'
-import { google } from 'googleapis'
+import * as google from 'googleapis/build/src/apis/drive'
 import { put } from '@vercel/blob'
 import { PrismaClient } from '../prisma/generated/client'
 import * as fs from 'fs'

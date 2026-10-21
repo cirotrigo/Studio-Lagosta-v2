@@ -1,4 +1,4 @@
-import { google } from 'googleapis'
+import * as google from 'googleapis/build/src/apis/drive'
 import { PrismaClient } from '../prisma/generated/client'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import https from 'https'
