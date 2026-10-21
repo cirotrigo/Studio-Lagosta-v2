@@ -349,7 +349,10 @@ async function desenharMarcas(
     ctx.textBaseline = 'middle'
     ctx.fillText(m.marca, x + 10 * s, y + alturaDoRotulo / 2)
   }
-  return tela.encode('jpeg', 85)
+  // `tela` lida de novo depois do encode: mantém o Canvas vivo até o fim (ver CanvasRenderer.renderDesign).
+  const jpeg = await tela.encode('jpeg', 85)
+  void tela.width
+  return jpeg
 }
 
 /** Recortes dos maiores blocos em resolução real: é onde a cedilha cortada e o acento aparecem. */
