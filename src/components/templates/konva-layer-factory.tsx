@@ -1455,6 +1455,8 @@ function ShapeNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
   const pathViewBoxChave = layer.style?.pathViewBox?.join(',')
   const pathFillRule = layer.style?.pathFillRule
   const tracoPontas = layer.style?.tracoPontas
+  const espelhoH = layer.style?.flipH === true
+  const espelhoV = layer.style?.flipV === true
   React.useEffect(() => {
     const node = shapeRef.current
     if (!node) return
@@ -1465,7 +1467,7 @@ function ShapeNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
     node.getLayer()?.batchDraw()
   }, [shapeRef, blurRadius, escalaBlur, shapeType, fill, stroke, strokeWidth, width, height, borderRadius,
     // svg-path: o desenho cacheado também muda com o path e a pintura
-    pathData, pathViewBoxChave, pathFillRule, tracoPontas,
+    pathData, pathViewBoxChave, pathFillRule, tracoPontas, espelhoH, espelhoV,
   ])
   const blurProps = { filters, blurRadius: escalaBlur.raioNoBuffer }
 

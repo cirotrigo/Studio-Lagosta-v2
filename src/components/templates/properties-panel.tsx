@@ -24,12 +24,15 @@ import {
   SendToBack,
   ArrowUp,
   ArrowDown,
+  FlipHorizontal2,
+  FlipVertical2,
 } from 'lucide-react'
 import { FONT_CONFIG } from '@/lib/font-config'
 import { patchLineHeight } from '@/lib/text-line-height'
 import { getFontManager } from '@/lib/font-manager'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import type { Layer, LayerStyle } from '@/types/template'
+import { controlesDaForma } from '@/lib/konva/trava-de-proporcao'
 import { ImageEditorModal } from './modals/image-editor-modal'
 import { GradientEditor } from './gradient-editor'
 import { ColorPicker } from '@/components/canvas/effects/ColorPicker'
@@ -1534,6 +1537,55 @@ function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
           }}
         />
       </div>
+      <GestoDaFormaControls layer={layer} setStyleValue={setStyleValue} />
+    </div>
+  )
+}
+
+/**
+ * Espelhar e travar a proporção (CP-V1), pelo que `controlesDaForma` libera: a trava em toda
+ * forma; o espelho só no `svg-path`, o único desenho que espelha nos dois renderers (src/lib/vetor).
+ */
+function GestoDaFormaControls({ layer, setStyleValue }: ShapeControlsProps) {
+  const controles = controlesDaForma(layer)
+  if (!controles.trava && !controles.espelho) return null
+  const flipH = layer.style?.flipH === true
+  const flipV = layer.style?.flipV === true
+  return (
+    <div className="space-y-2 border-t border-border/30 pt-3">
+      {controles.espelho && <div className="flex items-center justify-between">
+        <Label>Espelhar</Label>
+        <div className="flex items-center gap-1">
+          <Button
+            size="sm"
+            variant={flipH ? 'default' : 'ghost'}
+            className="h-8 w-8 p-0"
+            title="Espelhar horizontalmente"
+            aria-pressed={flipH}
+            onClick={() => setStyleValue(layer, { flipH: !flipH })}
+          >
+            <FlipHorizontal2 className="h-4 w-4" />
+          </Button>
+          <Button
+            size="sm"
+            variant={flipV ? 'default' : 'ghost'}
+            className="h-8 w-8 p-0"
+            title="Espelhar verticalmente"
+            aria-pressed={flipV}
+            onClick={() => setStyleValue(layer, { flipV: !flipV })}
+          >
+            <FlipVertical2 className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>}
+      {controles.trava && <div className="flex items-center justify-between">
+        <Label htmlFor={`manter-proporcao-${layer.id}`}>Manter proporção</Label>
+        <Switch
+          id={`manter-proporcao-${layer.id}`}
+          checked={layer.style?.manterProporcao === true}
+          onCheckedChange={(checked) => setStyleValue(layer, { manterProporcao: checked })}
+        />
+      </div>}
     </div>
   )
 }

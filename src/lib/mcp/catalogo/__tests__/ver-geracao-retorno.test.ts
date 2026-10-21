@@ -106,7 +106,7 @@ describe('CP5b — H11: o bloco `gate` de ver-geracao é auditoria rotulada, nun
 
   it('registro coincidente: resultado, versões, política gravada e comparada, naoConferido e o aviso fixo; o resto do retorno é o de sempre', () => {
     const r = retorno({ gateDaArte: registro() }, paginaCompleta)
-    expect(r.gate).toMatchObject({ validade: 'coincidente', resultado: 'APTO', rulesVersion: 'revisao-v1', versaoDoGate: 'gate-v2', medidoEm: '2026-10-16T03:00:00.000Z', origem: 'piloto', politica: POLITICA_DO_ASSUNTO_DO_GATE, politicaComparada: POLITICA_DO_ASSUNTO_DO_GATE, naoConferido: NAO_CONFERIDO_PELA_IDENTIDADE, motivos: [], aviso: AVISO_DO_GATE })
+    expect(r.gate).toMatchObject({ validade: 'coincidente', resultado: 'APTO', rulesVersion: 'revisao-v1', versaoDoGate: 'gate-v3', medidoEm: '2026-10-16T03:00:00.000Z', origem: 'piloto', politica: POLITICA_DO_ASSUNTO_DO_GATE, politicaComparada: POLITICA_DO_ASSUNTO_DO_GATE, naoConferido: NAO_CONFERIDO_PELA_IDENTIDADE, motivos: [], aviso: AVISO_DO_GATE })
     expect(r.gate && 'divergencias' in r.gate).toBe(false)
     expect(AVISO_DO_GATE).toMatch(/não é o veredito atual/)
     expect(r.pageId).toBe('pg-1')
@@ -130,7 +130,7 @@ describe('CP5b — H11: o bloco `gate` de ver-geracao é auditoria rotulada, nun
 
   it('ilegível: registro malformado (com as versões gravadas só quando válidas), APTO forjado, página sumida, sem os campos da identidade, camadas ilegíveis → sem resultado nenhum', () => {
     const anterior = registro()
-    ;(anterior.gate as Record<string, unknown>).versao = 'gate-v1'
+    ;(anterior.gate as Record<string, unknown>).versao = 'gate-v2'
     const longa = registro()
     ;(longa.gate as Record<string, unknown>).versao = 'x'.repeat(200)
     const casos: Array<[string, Record<string, unknown>, PaginaDaGeracao | null]> = [
@@ -149,7 +149,7 @@ describe('CP5b — H11: o bloco `gate` de ver-geracao é auditoria rotulada, nun
       expect(r.gate && 'motivo' in r.gate && r.gate.motivo.length > 0, nome).toBe(true)
       expect(r.gate?.aviso, nome).toBe(AVISO_DO_GATE)
     }
-    expect(retorno({ gateDaArte: anterior }, paginaCompleta).gate).toMatchObject({ validade: 'ilegivel', versaoGravada: 'gate-v1', rulesVersionGravada: 'revisao-v1' })
+    expect(retorno({ gateDaArte: anterior }, paginaCompleta).gate).toMatchObject({ validade: 'ilegivel', versaoGravada: 'gate-v2', rulesVersionGravada: 'revisao-v1' })
     expect(retorno({ gateDaArte: longa }, paginaCompleta).gate).not.toHaveProperty('versaoGravada')
   })
 })

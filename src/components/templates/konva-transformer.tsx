@@ -6,6 +6,7 @@ import { Transformer } from 'react-konva'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { CANVAS_MARGIN } from '@/lib/canvas-margin'
 import type { GuideLine } from '@/lib/konva-smart-guides'
+import { travaDeProporcao } from '@/lib/konva/trava-de-proporcao'
 
 interface KonvaSelectionTransformerProps {
   selectedLayerIds: string[]
@@ -117,26 +118,20 @@ export function KonvaSelectionTransformer({
     }
   }, [isShiftPressed])
 
-  // Atualizar keepRatio do transformer (Konva best practice: images always keep ratio)
+  // keepRatio e alças pela seleção (src/lib/konva/trava-de-proporcao): imagem sempre
+  // proporcional; forma com style.manterProporcao proporcional e só pelos cantos;
+  // o resto só com Shift
+  const trava = React.useMemo(
+    () => travaDeProporcao(design.layers, selectedLayerIds, isShiftPressed),
+    [design.layers, selectedLayerIds, isShiftPressed],
+  )
   React.useEffect(() => {
     const transformer = transformerRef.current
     if (!transformer) return
-
-    // Check if any selected node is an image type
-    const nodes = transformer.nodes()
-    const hasImageNode = nodes.some((node) => {
-      const layerId = node.id()
-      const layer = design.layers.find((l) => l.id === layerId)
-      return layer && (layer.type === 'image' || layer.type === 'logo' || layer.type === 'element')
-    })
-
-    // Images ALWAYS keep aspect ratio (Konva best practice)
-    // Other elements only when Shift is pressed
-    const keepRatio = hasImageNode || isShiftPressed
-    transformer.keepRatio(keepRatio)
-    snapDataRef.current.keepRatio = keepRatio
+    transformer.keepRatio(trava.keepRatio)
+    snapDataRef.current.keepRatio = trava.keepRatio
     transformer.getLayer()?.batchDraw()
-  }, [isShiftPressed, design.layers, selectedLayerIds])
+  }, [trava])
 
   const boundBoxFunc = React.useCallback(
     (oldBox: { x: number; y: number; width: number; height: number; rotation: number }, newBox: { x: number; y: number; width: number; height: number; rotation: number }) => {
@@ -283,7 +278,7 @@ export function KonvaSelectionTransformer({
       anchorFill="#ffffff"
       anchorSize={10}
       anchorCornerRadius={4}
-      enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right', 'top-center', 'bottom-center']}
+      enabledAnchors={trava.ancoras}
       rotateAnchorOffset={30}
       boundBoxFunc={boundBoxFunc}
     />

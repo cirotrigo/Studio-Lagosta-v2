@@ -5,13 +5,15 @@
  * - `fillRule` (`style.pathFillRule`) respeitado nos dois lados;
  * - contorno em px da camada nos dois eixos (o path é traçado escalado e o
  *   transform é restaurado antes de pintar);
- * - junção redonda; pontas por `style.tracoPontas` (padrão `butt`, o do canvas).
+ * - junção redonda; pontas por `style.tracoPontas` (padrão `butt`, o do canvas);
+ * - espelho por `style.flipH`/`style.flipV` (CP-V1), só com `true` literal: dentro da
+ *   caixa, nos dois renderers.
  *
  * As cores (já com a opacidade do canal) continuam vindo de cada renderer.
  */
 import type Konva from 'konva'
 import type { LayerStyle } from '@/types/template'
-import { tracarSvgPathNaCaixa, type CtxDeTraco, type ViewBox } from './tracar'
+import { tracarSvgPathNaCaixa, type CtxDeTraco, type Espelho, type ViewBox } from './tracar'
 
 export interface PinturaDoSvgPath {
   fill: string
@@ -20,10 +22,11 @@ export interface PinturaDoSvgPath {
   fillRule: 'nonzero' | 'evenodd'
   lineJoin: 'round'
   lineCap: 'butt' | 'round'
+  espelho: Espelho
 }
 
 export function pinturaDoSvgPath(
-  style: Pick<LayerStyle, 'pathFillRule' | 'tracoPontas'>,
+  style: Pick<LayerStyle, 'pathFillRule' | 'tracoPontas' | 'flipH' | 'flipV'>,
   cores: { fill: string; stroke?: string; strokeWidth: number },
 ): PinturaDoSvgPath {
   return {
@@ -33,6 +36,7 @@ export function pinturaDoSvgPath(
     fillRule: style.pathFillRule === 'evenodd' ? 'evenodd' : 'nonzero',
     lineJoin: 'round',
     lineCap: style.tracoPontas === 'round' ? 'round' : 'butt',
+    espelho: { h: style.flipH === true, v: style.flipV === true },
   }
 }
 
@@ -55,7 +59,7 @@ export function desenharSvgPath(
   altura: number,
   pintura: PinturaDoSvgPath,
 ): void {
-  tracarSvgPathNaCaixa(ctx, d, viewBox, largura, altura)
+  tracarSvgPathNaCaixa(ctx, d, viewBox, largura, altura, pintura.espelho)
   ctx.fillStyle = pintura.fill
   ctx.fill(pintura.fillRule)
   if (pintura.stroke && pintura.strokeWidth > 0) {
@@ -81,7 +85,7 @@ export function shapeKonvaDoSvgPath(d: string, viewBox: ViewBox | undefined, pin
     lineJoin: pintura.lineJoin,
     lineCap: pintura.lineCap,
     sceneFunc: (ctx: Konva.Context, shape: Konva.Shape) => {
-      tracarSvgPathNaCaixa(ctx as unknown as CtxDeTraco, d, viewBox, shape.width(), shape.height())
+      tracarSvgPathNaCaixa(ctx as unknown as CtxDeTraco, d, viewBox, shape.width(), shape.height(), pintura.espelho)
       ctx.fillStrokeShape(shape)
     },
   }

@@ -174,9 +174,14 @@ export interface LayerStyle {
    * resolução diferente — a fração sobrevive à troca.
    */
   crop?: { x: number; y: number; width: number; height: number }
-  /** Espelhamento — desenhado no node interno, NUNCA no scale (o transformEnd reseta o scale) */
+  /**
+   * Espelhamento — desenhado no node interno, NUNCA no scale (o transformEnd reseta o scale).
+   * Vale para imagem e, desde o CP-V1, para forma `svg-path` (dentro da caixa, pelo traçado de src/lib/vetor).
+   */
   flipH?: boolean
   flipV?: boolean
+  /** Forma: redimensionar mantém a proporção (keepRatio e só as alças dos cantos no editor). CP-V1. */
+  manterProporcao?: boolean
   /** Máscara de forma aplicada à imagem. path é um SVG path CONGELADO em viewBox 0 0 100 100. */
   mask?: { shapeId: string; path: string }
   opacity?: number

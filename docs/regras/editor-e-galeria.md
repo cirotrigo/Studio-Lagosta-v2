@@ -395,3 +395,26 @@ fixture sintética no canvas do Node, `src/lib/vetor/__tests__/paridade-pixel.te
 - ⚠️ **Muda pixel de propósito**: o contorno do servidor (px da camada), o furo do `evenodd` no editor e o parser do
   servidor. Antes do merge, o inventário de diferenças (incluindo as `PostRenderProof` já gravadas) e, depois do deploy,
   o re-render dos agendados; `laterPostId` não nulo continua intocável.
+
+## Espelhar e travar a proporção da forma (CP-V1, 21/10/2026)
+
+- **O espelho da forma `svg-path` mora no traçado único** (`src/lib/vetor/tracar.ts`). `style.flipH`/`style.flipV`
+  refletem o path em torno do centro da CAIXA, antes da escala do path e dentro do mesmo `save`/`restore`. Por isso:
+  - **a caixa e a rotação não mudam:** uma forma girada espelha no próprio referencial;
+  - **o contorno continua em px da camada;**
+  - **`fillRule` e `tracoPontas` valem iguais.**
+  Editor (`shapeKonvaDoSvgPath`) e servidor (`desenharSvgPath`) recebem o espelho pelo mesmo `pinturaDoSvgPath`.
+- **Só `true` literal espelha** (`style.flipH === true`). Sem os campos, a sequência de chamadas é exatamente a do CP-V0:
+  camada antiga não muda um pixel.
+- **Só o `svg-path` espelha.** Retângulo, círculo, triângulo, estrela, seta e linha NÃO têm espelho, e o painel não
+  oferece o botão para elas. Levar o espelho a outra forma exige o mesmo desenho nos dois renderers. Espelhar
+  ARRASTANDO a alça continua bloqueado no `boundBoxFunc` do Transformer.
+- **`style.manterProporcao`** é só o gesto do editor, e o render não a lê. **Toda forma** com `true` redimensiona com
+  `keepRatio` e **só pelas alças dos cantos**, porque o `keepRatio` do Konva não vale nas alças do meio.
+  - **Quem decide:** `src/lib/konva/trava-de-proporcao.ts` (puro), que o Transformer e o painel consultam.
+  - **O que não muda:** imagem, logo e elemento seguem proporcionais com as 8 alças; texto e forma sem a trava, livres
+    (Shift trava).
+  - **Multisseleção:** o Transformer é um só, então uma forma travada na seleção faz o grupo todo redimensionar pelos
+    cantos.
+- **Gate da revisão:** `style.manterProporcao` está classificada como **inerte** (`gate-v3`, impressão digital
+  `gate-gate-v3.json`; os JSONs v1 e v2 continuam imutáveis). O `svg-path` continua não suportado pelo gate.
