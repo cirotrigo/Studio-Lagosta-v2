@@ -16,6 +16,7 @@ import { CanvasPreview, type CanvasPreviewHandle } from '../components/canvas-pr
 import { LayerActionsToolbar } from '../components/layer-actions-toolbar'
 import { LayerControls } from '../components/layer-controls'
 import type { Layer } from '@/types/template'
+import { VERSAO_DA_PREVIA, resumoDosProblemas, vetoresComProblema } from '@/lib/gerar-criativo/previa-do-vetor'
 
 function colorHasTransparency(color?: string): boolean {
   if (!color) return false
@@ -160,7 +161,18 @@ export function AdjustmentsStep() {
   const isMobile = useMediaQuery('(max-width: 1023px)')
   const canvasRef = useRef<CanvasPreviewHandle>(null)
 
+  // Vetor que a prévia não desenha igual ao servidor (sombra, desfoque, path
+  // inválido…): bloqueia a geração com o motivo, em vez de publicar sem ele
+  const problemasDoVetor = vetoresComProblema(layers, hiddenLayerIds)
+  const avisoDoVetor = problemasDoVetor.length > 0
+    ? `O assistente ainda não desenha este vetor (${resumoDosProblemas(problemasDoVetor)}). Oculte a camada ou ajuste no editor.`
+    : null
+
   const handleGenerateCreative = async () => {
+    if (avisoDoVetor) {
+      toast.error(avisoDoVetor)
+      return
+    }
     try {
       console.log('[AdjustmentsStep] Starting creative generation...')
       console.log('[AdjustmentsStep] canvasRef.current:', !!canvasRef.current)
@@ -200,6 +212,7 @@ export function AdjustmentsStep() {
         texts: textValues,
         layers,
         hiddenLayerIds: Array.from(hiddenLayerIds),
+        previa: VERSAO_DA_PREVIA,
       })
 
       console.log('[AdjustmentsStep] Finalize result:', result)
@@ -331,11 +344,12 @@ export function AdjustmentsStep() {
           </TabsContent>
         </Tabs>
 
+        {avisoDoVetor && <p className="text-sm text-destructive">{avisoDoVetor}</p>}
         <Button
           className="w-full"
           size="lg"
           onClick={handleGenerateCreative}
-          disabled={finalize.isPending}
+          disabled={finalize.isPending || !!avisoDoVetor}
         >
           {finalize.isPending ? (
             <>
@@ -435,11 +449,12 @@ export function AdjustmentsStep() {
             </Card>
           )}
 
+          {avisoDoVetor && <p className="text-sm text-destructive">{avisoDoVetor}</p>}
           <Button
             className="w-full"
             size="lg"
             onClick={handleGenerateCreative}
-            disabled={finalize.isPending}
+            disabled={finalize.isPending || !!avisoDoVetor}
           >
             {finalize.isPending ? (
               <>
