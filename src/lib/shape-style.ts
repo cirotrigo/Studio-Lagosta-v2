@@ -129,6 +129,47 @@ export function applyOpacityToEditableColor(
   return baseColor
 }
 
+/**
+ * O que o campo de TEXTO da cor grava quando a pessoa confirma (Enter ou sair do campo): a cor com
+ * a transparência atual, ou `null` se o texto não for uma cor completa. Nunca chamar por tecla:
+ * `#111` é cor completa no meio de `#111827`, virava `rgba(17, 17, 17, 1)` e o resto da digitação
+ * colava atrás (`rgba(17, 17, 17, 1)827` gravado no banco, smoke do CP-V1 em 21/10/2026).
+ * Aceita os formatos que `applyOpacityToEditableColor` sabe tratar, com números de verdade: hex de
+ * 3/4/6/8 dígitos, `rgb()`/`rgba()`/`hsl()`/`hsla()` e nome CSS (`red`, `transparent`), que segue
+ * gravado como digitado, sem a transparência do slider. A sintaxe moderna com espaços (`rgb(1 2 3)`,
+ * `hsl(10 50% 50% / .5)`) vira a de vírgulas ANTES: o helper só entende espaços quando há `/`, e
+ * `rgb(1 2 3)` saía `rgba(1 2 3, 1)`. Entrada E saída têm de passar em `ehCorCss` — no navegador,
+ * `CSS.supports('color', …)`, que recusa `banana`; sem ele, nada grava.
+ */
+export function corDigitadaParaGravar(
+  texto: string,
+  opacity: number,
+  fallback: string,
+  ehCorCss: (cor: string) => boolean,
+): string | null {
+  let cor = texto.trim()
+  const n = String.raw`[+-]?(?:\d+(?:\.\d+)?|\.\d+)`
+  const c = String.raw`${n}%?`
+  const h = String.raw`${n}(?:deg|rad|grad|turn)?`
+  const p = String.raw`${n}%`
+  const virgulas = (a: string, b: string, d: string) => String.raw`\(\s*${a}\s*,\s*${b}\s*,\s*${d}\s*(?:,\s*${c}\s*)?\)`
+  const espacos = (a: string, b: string, d: string) => String.raw`\(\s*${a}\s+${b}\s+${d}\s*(?:\/\s*${c}\s*)?\)`
+  const formatos = [
+    /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i,
+    new RegExp(`^rgba?(?:${virgulas(c, c, c)}|${espacos(c, c, c)})$`, 'i'),
+    new RegExp(`^hsla?(?:${virgulas(h, p, p)}|${espacos(h, p, p)})$`, 'i'),
+    /^[a-z]+$/i,
+  ]
+  if (!formatos.some((formato) => formato.test(cor)) || !ehCorCss(cor)) return null
+  const moderna = cor.match(/^(rgba?|hsla?)\(([^,()]+)\)$/i)
+  if (moderna) {
+    const [base, alfa] = moderna[2].split('/').map((parte) => parte.trim())
+    cor = `${moderna[1]}(${[...base.split(/\s+/), ...(alfa ? [alfa] : [])].join(', ')})`
+  }
+  const saida = applyOpacityToEditableColor(cor, opacity, fallback)
+  return ehCorCss(saida) ? saida : null
+}
+
 export function canonicalizeShapeStyleForPersistence(style: LayerStyle | undefined): LayerStyle | undefined {
   if (!style) return style
 

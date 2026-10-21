@@ -113,8 +113,13 @@ export class CanvasRenderer {
       },
     )
 
-    // Retornar buffer PNG
-    return this.canvas.encode('png')
+    // Retornar buffer PNG. O canvas é lido de novo DEPOIS do encode: o encode roda numa thread do libuv com um
+    // ponteiro cru da superfície do skia (até a 1.0.5 do @napi-rs/canvas), e no padrão
+    // `await new CanvasRenderer(...).renderDesign(...)` o GC coletava o Canvas no meio do PNG → SIGSEGV
+    // (reproduzido 3/3 na 0.1.84, 21/10/2026). Ler `this.canvas` após o await o mantém alcançável até o fim.
+    const png = await this.canvas.encode('png')
+    void this.canvas.width
+    return png
   }
 
   /**
