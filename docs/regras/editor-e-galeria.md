@@ -418,3 +418,18 @@ fixture sintética no canvas do Node, `src/lib/vetor/__tests__/paridade-pixel.te
     cantos.
 - **Gate da revisão:** `style.manterProporcao` está classificada como **inerte** (`gate-v3`, impressão digital
   `gate-gate-v3.json`; os JSONs v1 e v2 continuam imutáveis). O `svg-path` continua não suportado pelo gate.
+
+## Campo de texto da cor grava só ao confirmar (21/10/2026)
+
+O `<Input>` de "Preenchimento" e "Cor da borda" da forma era controlado pelo valor SALVO e gravava a cada
+tecla: `#111` (cor completa no meio de `#111827`) virava `rgba(17, 17, 17, 1)`, o campo passava a mostrar
+isso e o resto da digitação colava atrás — `rgba(17, 17, 17, 1)827` foi gravado no banco (smoke do CP-V1).
+
+- **`CampoDeCorDigitada`** (`properties-panel.tsx`) guarda o rascunho local e grava no Enter ou ao sair do
+  campo; Esc e texto inválido voltam ao salvo. `key={layer.id}`: o rascunho não atravessa a troca de seleção,
+  e é DESCARTADO (não só escondido) quando o valor muda por fora (seletor, alpha, paleta, undo).
+- **`corDigitadaParaGravar`** (`src/lib/shape-style.ts`) confere o formato com números de verdade, converte a
+  sintaxe moderna com espaços para vírgulas (o helper só entende espaço com `/`: `rgb(1 2 3)` saía
+  `rgba(1 2 3, 1)`) e exige que entrada E saída passem em `CSS.supports('color', …)`. `rgb(10 20% 30)`
+  (moderna, mistura número e %) é recusado de propósito: a conversão ficaria inválida.
+- Nunca chame `applyOpacityToEditableColor` com texto parcial da digitação.

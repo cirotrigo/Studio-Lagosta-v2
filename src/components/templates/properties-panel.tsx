@@ -41,6 +41,7 @@ import { FundoDeTextoControls } from './fundo-de-texto-controls'
 import { VideoProperties } from './video-properties'
 import {
   applyOpacityToEditableColor,
+  corDigitadaParaGravar,
   parseColorOpacity,
 } from '@/lib/shape-style'
 
@@ -1418,6 +1419,39 @@ function toColorInputValue(color: string | undefined, fallback: string): string 
   return fallback
 }
 
+const ehCorCss = (cor: string) => typeof CSS !== 'undefined' && CSS.supports('color', cor)
+
+/**
+ * Campo de texto da cor: enquanto a pessoa digita, mostra o rascunho e não grava; grava no Enter ou
+ * ao sair do campo, se for cor completa (`corDigitadaParaGravar`). Esc ou texto inválido voltam ao
+ * salvo. Gravar por tecla reescrevia o campo no meio da digitação (`#111` → rgba).
+ * Quem usa passa `key` da camada: o rascunho nunca atravessa a troca de seleção. Se o valor salvo
+ * mudar por fora durante a digitação (seletor, alpha, paleta, undo), o rascunho é DESCARTADO — não
+ * só escondido: voltar depois ao valor antigo não o ressuscita.
+ */
+function CampoDeCorDigitada({ valor, aoGravar }: { valor: string; aoGravar: (texto: string) => void }) {
+  const [rascunho, setRascunho] = React.useState<string | null>(null)
+  const [valorVisto, setValorVisto] = React.useState(valor)
+  if (valorVisto !== valor) {
+    setValorVisto(valor)
+    setRascunho(null)
+  }
+  return (
+    <Input
+      value={rascunho ?? valor}
+      onChange={(event) => setRascunho(event.target.value)}
+      onBlur={() => {
+        if (rascunho !== null && rascunho.trim() !== valor) aoGravar(rascunho)
+        setRascunho(null)
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') event.currentTarget.blur()
+        if (event.key === 'Escape') setRascunho(null)
+      }}
+    />
+  )
+}
+
 function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
   const fillOpacity = Math.round(parseColorOpacity(layer.style?.fill, layer.style?.fillOpacity ?? 1) * 100)
   const strokeOpacity = Math.round(parseColorOpacity(layer.style?.strokeColor, layer.style?.strokeOpacity ?? 1) * 100)
@@ -1427,12 +1461,13 @@ function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
       <div className="space-y-1">
         <Label>Preenchimento</Label>
         <div className="flex items-center gap-2">
-          <Input
-            value={layer.style?.fill ?? '#2563eb'}
-            onChange={(event) => setStyleValue(layer, {
-              fill: applyOpacityToEditableColor(event.target.value, fillOpacity / 100, '#2563eb'),
-              fillOpacity: 1,
-            })}
+          <CampoDeCorDigitada
+            key={layer.id}
+            valor={layer.style?.fill ?? '#2563eb'}
+            aoGravar={(texto) => {
+              const fill = corDigitadaParaGravar(texto, fillOpacity / 100, '#2563eb', ehCorCss)
+              if (fill) setStyleValue(layer, { fill, fillOpacity: 1 })
+            }}
           />
           <input
             type="color"
@@ -1479,12 +1514,13 @@ function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
         <div className="space-y-1">
           <Label>Cor da borda</Label>
           <div className="flex items-center gap-2">
-            <Input
-              value={layer.style?.strokeColor ?? '#1e3a8a'}
-              onChange={(event) => setStyleValue(layer, {
-                strokeColor: applyOpacityToEditableColor(event.target.value, strokeOpacity / 100, '#1e3a8a'),
-                strokeOpacity: 1,
-              })}
+            <CampoDeCorDigitada
+              key={layer.id}
+              valor={layer.style?.strokeColor ?? '#1e3a8a'}
+              aoGravar={(texto) => {
+                const strokeColor = corDigitadaParaGravar(texto, strokeOpacity / 100, '#1e3a8a', ehCorCss)
+                if (strokeColor) setStyleValue(layer, { strokeColor, strokeOpacity: 1 })
+              }}
             />
             <input
               type="color"
