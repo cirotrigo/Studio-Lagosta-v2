@@ -21,6 +21,8 @@ import {
   hasTemplateWriteAccess,
 } from '@/lib/templates/access'
 import { canonicalizeLayersForPersistence } from '@/lib/shape-style'
+import { VetorInvalido } from '@/lib/vetor/validar-camada'
+import { corpoDoVetorInvalido, exigirVetoresValidos } from '@/lib/vetor/guarda-de-porta'
 import { Prisma } from '../../../../../../../prisma/generated/client'
 
 const pageAudioSchema = z.object({
@@ -148,6 +150,10 @@ export async function PATCH(
       }
     }
 
+    // CP-X2b (a): o vetor é conferido CRU, antes da canonização — ela chama `trim` na cor e lançaria 500 com
+    // `fill: 123`. Recusa com 422 `VETOR_INVALIDO` sem nenhuma escrita (ver docs/regras/editor-e-galeria.md).
+    if (validatedData.layers !== undefined) exigirVetoresValidos(validatedData.layers)
+
     // Preparar dados com layers serializados se fornecidos
     const updateData: Record<string, unknown> = { ...validatedData }
     const canonicas = validatedData.layers !== undefined ? canonicalizeLayersForPersistence(validatedData.layers) : undefined
@@ -170,6 +176,8 @@ export async function PATCH(
         ? reconciliarMarcasDoRevisor(lerCamadas(camadasDaBase).camadas as Array<{ id: string; visible?: unknown }>, canonicas as Array<{ id: string; [chave: string]: unknown }>)
         : canonicas
       updateData.layers = JSON.stringify(reconciliadas)
+      // CP-X2b (b): o estado final (canonizado e reconciliado contra ESTA base) também precisa ser válido.
+      exigirVetoresValidos(reconciliadas)
     }
     // Prisma não aceita null literal em coluna Json — limpar exige DbNull
     if (validatedData.audio === null) {
@@ -506,6 +514,9 @@ export async function PATCH(
         { error: 'Invalid data', details: error.errors },
         { status: 400 }
       )
+    }
+    if (error instanceof VetorInvalido) {
+      return NextResponse.json(corpoDoVetorInvalido(error), { status: 422 })
     }
 
     console.error('Error updating page:', error)

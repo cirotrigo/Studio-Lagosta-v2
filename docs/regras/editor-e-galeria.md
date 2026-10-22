@@ -512,3 +512,51 @@ forma como `Rect`, e o export zerava o `stroke` do nó selecionado, o que apagav
   ou acinzentado fora das amostras reprova.
 - **Fora do CP-X1**: o fundo da prévia é sempre branco (o modelo não é passado), e as formas que não são `svg-path`
   ainda saem como `Rect` na prévia.
+
+## Forma vetorial inválida não é gravada pelas portas P1–P5 (CP-X2b, 21/10/2026)
+
+O `svg-path` com dado inválido era gravado em silêncio: o render do servidor pula o path ruim com um `console.warn`,
+o post sai sem o vetor e a `PostRenderProof` é gravada sem erro. O validador (`validarPathData`, `lerCor`) existia,
+mas nenhuma porta de escrita o chamava.
+
+- **Quem decide:** `exigirVetoresValidos` (`src/lib/vetor/guarda-de-porta.ts`, puro) sobre `problemasDoVetor`
+  (`validar-camada.ts`). Ele lança `VetorInvalido`, o **único** erro que vira **422 `VETOR_INVALIDO`**, no corpo
+  `{ error, codigo, camadas: [{ id, motivos, paginaId? }] }`. Qualquer outro erro segue o mapeamento que a porta já
+  tinha (500 no PATCH da página, 400 "Dados inválidos" no PUT do template).
+- **Candidato:** `type === 'shape'` e `style.shapeType === 'svg-path'`, visível ou não. O estado final **inteiro** é
+  conferido, e não só a camada editada: uma página com `svg-path` inválido legado recusa a próxima escrita de
+  camadas. Por isso a ativação depende da varredura G zerada.
+- **Precedência preservada:** auth, acesso, corpo e zod continuam antes e com os mesmos códigos (P1 sem acesso 404; P2,
+  P3, P4 e P5 403; o P5 segue lendo o corpo antes do acesso). A guarda entra depois deles.
+- **Por porta:**
+  - **P1 (PATCH da página):** (a) payload CRU antes da canonização, que chama `trim` na cor e daria 500 com
+    `fill: 123`; (b) estado canonizado e reconciliado, antes da transação e em CADA volta do compare-and-set.
+  - **P2 (PATCH da camada):** a cada volta, a camada fundida crua → canonização → a lista final da página. A recusa
+    lança de dentro da transação.
+  - **P3 (POST de página):** depois do zod, antes do `create`.
+  - **P4 (PUT do template):** `designData.layers` da RAIZ, sempre que vier, com ou sem `pages` (vai cru para
+    `Template.designData`, que o render de generations lê), antes de Blob e escrita. As páginas do push do desktop
+    **não** são pré-conferidas: o X0 restaura da base o que o push omite (o normalizador real manda `svg-path` sem
+    `pathData` e nunca manda camadas na raiz). Por isso só o estado **mesclado** é conferido, em cada volta, depois
+    das recusas 409 do X0, que continuam iguais. Página nova é conferida antes do `create`. A recusa desfaz o
+    template e as páginas.
+  - **P5 (POST de template):** raiz e cada página antes da transação.
+- **Autosave:** o 422 do PATCH da página não é mais silencioso (`src/lib/editor/recusa-do-vetor.ts` + o aviso do
+  `PageSyncWrapper`).
+  - **A recusa fica por página, com o pendente inteiro.** Ela sobrevive à troca de página, e o aviso continua
+    visível com **Restaurar** (devolve a edição recusada à tela) e **Descartar**.
+  - **Sem laço:** o mesmo conteúdo recusado não é reenviado; qualquer edição nova é.
+  - **Linhagem:** só a correção gravada da própria edição recusada (mesma linhagem, captura mais nova) ou o descarte
+    explícito resolve a recusa. Gravar só fundo ou áudio sobre a versão do banco, depois de voltar à página, não a
+    apaga. Confirmação antiga também não.
+  - **Saída do editor:** o `descarregar` lança enquanto houver recusa, para o "Salvar e Voltar" não sair como se
+    tivesse gravado.
+- **Campo de cor do `svg-path`:** além do `CSS.supports`, o campo exige `lerCor(texto) !== null`. Assim
+  `currentcolor` e as CSS-wide são recusados na própria UI, que volta ao salvo. As outras formas não mudam.
+- **Fora do X2b:** `font-combinations` (P6), MCP stdio (P7) e `reverter` (são o X2c). Aceite global do X2 = P1–P7 +
+  reverter ativados juntos, depois da varredura G.
+- ⚠️ **Limite anterior ao X2b:** a carga de página termina no `requestAnimationFrame` seguinte (`isSyncingRef`).
+  Troca de página ou edição feita durante esse quadro faz os efeitos do `PageSyncWrapper` saírem cedo, e eles não
+  reagem quando o ref zera: a troca pode não carregar a página nova, e a edição pode não disparar o timer até a
+  próxima mudança. Isso vem da leitura do código e de timeouts do harness; não foi medido de forma determinística.
+  O harness do CP-X2b aguarda dois quadros depois de cada carga, e o caso ficou fora da suíte.
