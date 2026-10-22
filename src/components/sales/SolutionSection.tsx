@@ -1,6 +1,7 @@
 "use client";
 
 import React from 'react';
+import Link from 'next/link';
 import { Camera, Share2, Bot, Globe, Megaphone } from 'lucide-react';
 import { GlowingEffect } from '@/components/ui/glowing-effect';
 
@@ -9,7 +10,16 @@ const features = [
     {
         icon: Camera,
         title: "Foto e Vídeo que Dão Fome",
-        description: "Sessões mensais no seu restaurante: comida real, apetitosa, sem banco de imagens genérico."
+        description: "Sessões mensais no seu restaurante: comida real, apetitosa, sem banco de imagens genérico.",
+        // O único link para o site do fundador fora do rodapé: liga as duas marcas
+        // para o Google (o cirotrigo.com.br aponta de volta). Texto do link é só o nome.
+        nota: (
+            <>
+                A Lagosta Criativa foi fundada por{' '}
+                <Link href="https://cirotrigo.com.br/sobre" target="_blank" rel="noopener" className="underline hover:text-orange-500">Ciro Trigo</Link>
+                , fotógrafo em Vitória – ES desde 2010.
+            </>
+        ),
     },
     {
         icon: Share2,
@@ -58,6 +68,9 @@ export function SolutionSection() {
                                 </div>
                                 <h3 className="text-xl font-bold mb-3">{feature.title}</h3>
                                 <p className="text-muted-foreground">{feature.description}</p>
+                                {'nota' in feature && feature.nota ? (
+                                    <p className="relative z-10 mt-3 text-sm text-muted-foreground">{feature.nota}</p>
+                                ) : null}
                             </div>
                         </div>
                     ))}
