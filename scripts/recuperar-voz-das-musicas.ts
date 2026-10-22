@@ -27,14 +27,19 @@
 import { db } from '@/lib/db'
 import { put } from '@vercel/blob'
 import { classificarStems, getFileName, getFileUrl } from '@/lib/mvsep/classificar-stems'
+import { chaveDoMvsep } from '@/lib/mvsep/mvsep-client'
 
-const MVSEP_API_KEY = process.env.MVSEP_API_KEY || 'BrIkx8zYQbvc4TggAZbsL96Mag9WN5'
 const MVSEP_API_URL = 'https://mvsep.com/api'
 
 const confirmar = process.argv.includes('--confirmar')
 const reprocessar = process.argv.includes('--reprocessar')
 
 async function main() {
+  const MVSEP_API_KEY = chaveDoMvsep()
+  if (!MVSEP_API_KEY) {
+    throw new Error('Defina MVSEP_API_KEY no ambiente para consultar o MVSEP.')
+  }
+
   const semVoz = await db.musicLibrary.findMany({
     where: { hasInstrumentalStem: true, hasVocalsStem: false },
     include: { stemJob: true },
