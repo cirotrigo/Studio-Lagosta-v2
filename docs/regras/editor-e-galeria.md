@@ -438,6 +438,11 @@ isso e o resto da digitação colava atrás — `rgba(17, 17, 17, 1)827` foi gra
   `rgba(1 2 3, 1)`) e exige que entrada E saída passem em `CSS.supports('color', …)`. `rgb(10 20% 30)`
   (moderna, mistura número e %) é recusado de propósito: a conversão ficaria inválida.
 - Nunca chame `applyOpacityToEditableColor` com texto parcial da digitação.
+- **O seletor nativo e a paleta da marca da forma mostram os CANAIS da cor salva** (`corParaSeletor`,
+  `src/lib/editor/cor-do-seletor.ts`, pelo `lerCor`): `rgba(15, 118, 110, 1)` aparece `#0f766e`, e `rgba(…, 0)` também
+  mostra os canais; o alfa fica no `style` e no slider. Só o literal `transparent`, o ausente, o ilegível e o contextual
+  mostram o fallback (`#2563eb` preenchimento, `#1e3a8a` borda). Antes, toda cor não-hex caía no azul do fallback e a
+  paleta acendia o swatch errado. Só apresentação: nada grava ao renderizar (22/10/2026).
 
 ## O push do desktop não perde o que o desktop não representa (CP-X0, 21/10/2026)
 

@@ -34,6 +34,7 @@ import { useTemplateEditor } from '@/contexts/template-editor-context'
 import type { Layer, LayerStyle } from '@/types/template'
 import { controlesDaForma } from '@/lib/konva/trava-de-proporcao'
 import { lerCor } from '@/lib/vetor/cor'
+import { corParaSeletor } from '@/lib/editor/cor-do-seletor'
 import { ImageEditorModal } from './modals/image-editor-modal'
 import { GradientEditor } from './gradient-editor'
 import { ColorPicker } from '@/components/canvas/effects/ColorPicker'
@@ -1400,26 +1401,6 @@ interface ShapeControlsProps {
   setStyleValue: (layer: Layer, style: Partial<LayerStyle>) => void
 }
 
-function toColorInputValue(color: string | undefined, fallback: string): string {
-  if (!color) return fallback
-
-  const normalized = color.trim()
-  if (/^#[0-9a-f]{6}$/i.test(normalized)) {
-    return normalized
-  }
-  if (/^#[0-9a-f]{3}$/i.test(normalized)) {
-    return `#${normalized[1]}${normalized[1]}${normalized[2]}${normalized[2]}${normalized[3]}${normalized[3]}`
-  }
-  if (/^#[0-9a-f]{8}$/i.test(normalized)) {
-    return `#${normalized.slice(1, 7)}`
-  }
-  if (/^#[0-9a-f]{4}$/i.test(normalized)) {
-    return `#${normalized[1]}${normalized[1]}${normalized[2]}${normalized[2]}${normalized[3]}${normalized[3]}`
-  }
-
-  return fallback
-}
-
 const ehCorCss = (cor: string) => typeof CSS !== 'undefined' && CSS.supports('color', cor)
 /**
  * CP-X2b: no `svg-path` o servidor recusa (422 `VETOR_INVALIDO`) a cor que o `lerCor` não lê — `currentcolor` e as
@@ -1510,7 +1491,7 @@ function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
           <input
             type="color"
             className="h-9 w-9 rounded-md border border-border/30"
-            value={toColorInputValue(layer.style?.fill, '#2563eb')}
+            value={corParaSeletor(layer.style?.fill, '#2563eb')}
             onChange={(event) => setStyleValue(layer, {
               fill: applyOpacityToEditableColor(event.target.value, fillOpacity / 100, '#2563eb'),
               fillOpacity: 1,
@@ -1518,7 +1499,7 @@ function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
           />
         </div>
         <BrandColorSwatches
-          value={toColorInputValue(layer.style?.fill, '#2563eb')}
+          value={corParaSeletor(layer.style?.fill, '#2563eb')}
           onSelect={(hex) => setStyleValue(layer, {
             fill: applyOpacityToEditableColor(hex, fillOpacity / 100, '#2563eb'),
             fillOpacity: 1,
@@ -1564,7 +1545,7 @@ function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
             <input
               type="color"
               className="h-9 w-9 rounded-md border border-border/30"
-              value={toColorInputValue(layer.style?.strokeColor, '#1e3a8a')}
+              value={corParaSeletor(layer.style?.strokeColor, '#1e3a8a')}
               onChange={(event) => setStyleValue(layer, {
                 strokeColor: applyOpacityToEditableColor(event.target.value, strokeOpacity / 100, '#1e3a8a'),
                 strokeOpacity: 1,
@@ -1572,7 +1553,7 @@ function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
             />
           </div>
           <BrandColorSwatches
-            value={toColorInputValue(layer.style?.strokeColor, '#1e3a8a')}
+            value={corParaSeletor(layer.style?.strokeColor, '#1e3a8a')}
             onSelect={(hex) => setStyleValue(layer, {
               strokeColor: applyOpacityToEditableColor(hex, strokeOpacity / 100, '#1e3a8a'),
               strokeOpacity: 1,
