@@ -10,6 +10,8 @@ import { PostStatus } from '../../../../../prisma/generated/client'
 import { gravarCamadasComRevisao } from '@/lib/copy-autoral/persistir'
 import { RecusaDoPushDoDesktop, idsDePaginaRepetidos, mesclarCamadasDoDesktop } from '@/lib/templates/guarda-do-push-do-desktop'
 import { lerCamadas } from '@/lib/posts/page-layers'
+import { VetorInvalido } from '@/lib/vetor/validar-camada'
+import { corpoDoVetorInvalido, exigirVetoresValidos } from '@/lib/vetor/guarda-de-porta'
 
 export const runtime = 'nodejs'
 
@@ -119,6 +121,11 @@ export async function PUT(
     })
 
     const parsed = updateTemplateSchema.parse(payload)
+    // CP-X2b: as camadas da RAIZ (`designData.layers`) vão cruas para `Template.designData`, que o render de
+    // generations lê — conferidas sempre que vierem, com ou sem `pages`, ANTES de qualquer Blob ou escrita. As
+    // páginas do desktop NÃO são pré-conferidas aqui: o X0 restaura da base o que o push omite, e só o estado
+    // mesclado (abaixo, a cada volta) é o que vai ser gravado.
+    if (parsed.designData?.layers !== undefined) exigirVetoresValidos(parsed.designData.layers)
 
     const data: Prisma.TemplateUpdateInput = {}
     if (parsed.name !== undefined) data.name = parsed.name
@@ -222,7 +229,13 @@ export async function PUT(
             humana: true,
             dados,
             quem: { autor: 'equipe', motivo: 'edição no editor (salvar o template)', superficie: 'editor' },
-            camadas: (base) => mesclarCamadasDoDesktop(base.layers, layers, { paginaId: pageId, casadaPorFallback }),
+            camadas: (base) => {
+              const mescladas = mesclarCamadasDoDesktop(base.layers, layers, { paginaId: pageId, casadaPorFallback })
+              // CP-X2b: o estado FINAL desta volta (base relida + payload, depois das recusas 409 do X0) precisa
+              // ser válido; a recusa lança daqui e o $transaction desfaz o template e as páginas já gravadas.
+              exigirVetoresValidos(mescladas, { paginaId: pageId })
+              return mescladas
+            },
           })
           if (!g) return
           if (g.aviso) console.warn(`[API] Template ${templateId}, página ${pageId}: camadas gravadas sem revisão do contrato da copy — ${g.aviso}`)
@@ -299,6 +312,8 @@ export async function PUT(
               matchedExistingPageIds.add(fallbackPage.id)
               resolvedCurrentPageIds.add(fallbackPage.id)
             } else {
+              // CP-X2b: página nova (sem par) não tem base para mesclar — o payload É o estado final.
+              exigirVetoresValidos(pageData.layers, { paginaId: requestedPageId ?? `#${i}` })
               await tx.page.create({
                 data: {
                   id: hasForeignIdConflict ? crypto.randomUUID() : (requestedPageId ?? crypto.randomUUID()),
@@ -439,6 +454,10 @@ export async function PUT(
         },
         { status: 409 },
       )
+    }
+    if (error instanceof VetorInvalido) {
+      // De antes do Blob (raiz) ou de dentro da transação (páginas): nada foi gravado.
+      return NextResponse.json(corpoDoVetorInvalido(error), { status: 422 })
     }
     console.error('[API] Failed to update template:', error)
 

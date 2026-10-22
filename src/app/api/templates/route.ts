@@ -4,6 +4,8 @@ import { db } from '@/lib/db'
 import { ehMiniaturaEmbutida, guardarMiniatura } from '@/lib/templates/miniatura'
 import type { Prisma } from '@/lib/prisma-types'
 import { hasProjectWriteAccess, withProjectOwner } from '@/lib/projects/access'
+import { VetorInvalido } from '@/lib/vetor/validar-camada'
+import { corpoDoVetorInvalido, exigirVetoresValidos } from '@/lib/vetor/guarda-de-porta'
 import { KONVA_PROJECT_EXPORT_CATEGORY } from '@/lib/konva-project-creatives'
 
 export const runtime = 'nodejs'
@@ -187,6 +189,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
     }
 
+    // CP-X2b: forma vetorial inválida na raiz ou em qualquer página recusa ANTES da transação (422, nada criado).
+    // `designData` ilegível segue como hoje: o JSON.parse de dentro da transação é que falha.
+    exigirVetoresDoDesign(designData)
+
     // Criar template e páginas juntos em uma transação
     const template = await db.$transaction(async (tx) => {
       // Criar o template
@@ -260,7 +266,28 @@ export async function POST(req: Request) {
 
     return NextResponse.json(template, { status: 201 })
   } catch (error) {
+    if (error instanceof VetorInvalido) {
+      return NextResponse.json(corpoDoVetorInvalido(error), { status: 422 })
+    }
     console.error('Error creating template:', error)
     return NextResponse.json({ error: 'Erro ao criar template' }, { status: 500 })
   }
+}
+
+function exigirVetoresDoDesign(designData: unknown) {
+  let design: unknown = designData
+  if (typeof design === 'string') {
+    try {
+      design = JSON.parse(design)
+    } catch {
+      return
+    }
+  }
+  if (typeof design !== 'object' || design === null) return
+  const { layers, pages } = design as { layers?: unknown; pages?: unknown }
+  if (layers !== undefined) exigirVetoresValidos(layers)
+  if (!Array.isArray(pages)) return
+  pages.forEach((pagina: { id?: unknown; layers?: unknown } | null, i) => {
+    exigirVetoresValidos(pagina?.layers, { paginaId: typeof pagina?.id === 'string' ? pagina.id : `#${i}` })
+  })
 }

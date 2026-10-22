@@ -1123,3 +1123,43 @@ prova que a logo lê. O CP3 prova mecanicamente, contra o fundo REAL.
     duas logos têm a mesma razão 0,5); a reprodução da variante gravada só está provada em `cp3-logo` 14/14b.
 - Fora do CP3: gate autônomo (CP5), logo do arranjo (elementos), mais de uma logo por peça no
   compositor, piso de tamanho da marca, recalibração do 45 (REA).
+
+## Forma vetorial inválida: combinações (P6), MCP stdio (P7) e `reverter` (CP-X2c, 22/10/2026)
+
+O CP-X2b ligou a guarda do `svg-path` nas portas de `Page.layers` (P1–P5; ver `editor-e-galeria.md`, "Forma vetorial
+inválida não é gravada pelas portas P1–P5"). O CP-X2c fecha as três entradas que sobravam. Candidato, códigos e
+`lerCor` são os mesmos (`src/lib/vetor/validar-camada.ts`).
+
+- **P6 — combinações de texto** (`POST`/`PUT` de `/api/projects/[projectId]/font-combinations`):
+  - `elements[].ornamentos[].camada` é um Layer cru, que o compositor e a `criar-arte` materializam por spread na
+    peça. `exigirOrnamentosValidos` (`src/lib/vetor/guarda-dos-ornamentos.ts`) roda **depois** de auth (401),
+    projeto (404), acesso (403), combinação de outro projeto (404, no PUT) e zod (400), e **antes** de qualquer
+    escrita;
+  - recusa com **422 `VETOR_INVALIDO`**, com `elemento` e o índice do `ornamento` em cada camada. **Nunca** por
+    `superRefine` no zod, que daria 400;
+  - `shapeType` na RAIZ da camada não é candidato. O catálogo base (`FONT_COMBO_LAYOUTS`) não tem ornamentos.
+- **P7 — `prepararCamadasParaGravar`** (`layer-contract.ts`):
+  - junta aos problemas, como avulso, `camada <id>: VETOR_INVALIDO (<códigos>)`, examinando os candidatos CRUS
+    (a camada que o schema recusa e que também tem vetor inválido sai com os dois motivos), e lança como antes. A camada não
+    sai de `camadas` e o `camadaSchema` **não muda**: se o vetor entrasse no schema, o `reverter` restauraria o
+    snapshot sem a camada, em silêncio;
+  - `validarCamadas` também não muda: só quem grava recusa;
+  - no MCP stdio, `create-page` e `create-template` devolvem `isError` com `VETOR_INVALIDO` no texto e não criam
+    nada. O `create-template` prepara todas as páginas antes do `template.create`.
+  - **Consumidores:** as duas tools do stdio e o `recompor` (`recompor.ts`). No `recompor`, a recusa é um `Error`
+    comum: cai no ramo de infra (ganha nova tentativa), depois registra a recusa e marca o job FAILED. Não é
+    silenciosa, mas também não é tratada como determinística. `compor.ts` e
+    `scripts/criar-pagina-de-assinatura.ts` usam só `normalizarCamadas` e não passam por aqui.
+- **`reverter` R1** (`reverterCamadasDaArte`, rota `generations/[id]/reverter-camadas` e a tool `reverter-arte`):
+  - depois de `GENERATION_NOT_FOUND` 404, `PROJETO_SEM_ACESSO` 403, `SEM_PAGINA`, `SEM_SNAPSHOT`,
+    `PAGE_NOT_FOUND` e `PAGINA_E_MODELO`, vetor inválido no snapshot dá **`CreativeError` 422 `VETOR_INVALIDO`**
+    (`details.camadas`), **antes da transação**: nada é gravado, invalidado nem recomposto;
+  - a conferência é no snapshot CRU (`lerCamadas`), para que uma camada vetorial que o schema descartasse não saia
+    da restauração em silêncio;
+  - **corpo:** a rota HTTP devolve, **só** para `VETOR_INVALIDO`, o corpo das portas
+    `{ error, codigo, camadas }`, com `code` como alias; os outros `CreativeError` respondem como antes
+    (`{ error, code }`). Na tool MCP, a porta serializa o `CreativeError` pelo `toJSON()`, que inclui `camadas`;
+  - os outros `v.problemas` seguem como hoje: o PR #225 não é presumido.
+- **Fora daqui:** a primeira composição (`compor` → `persist`) e as outras cópias (§3.3 do preflight do X2)
+  propagam o que já está gravado. Quem garante o legado é a varredura G. O aceite global do X2 é P1–P7 + `reverter`
+  ativados juntos, com a varredura zerada.

@@ -28,6 +28,12 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     const r = await reverterCamadasDaArte(id, { projectId: gen.projectId })
     return NextResponse.json(r)
   } catch (error) {
+    // CP-X2c (R1): só a recusa vetorial sai no corpo das portas (`{ error, codigo, camadas }`, preflight X2 §4.4);
+    // `code` fica como alias. Os outros CreativeError respondem como sempre.
+    if (error instanceof CreativeError && error.code === 'VETOR_INVALIDO') {
+      const camadas = (error.details as { camadas?: unknown } | undefined)?.camadas ?? []
+      return NextResponse.json({ error: error.message, codigo: error.code, code: error.code, camadas }, { status: error.status })
+    }
     if (error instanceof CreativeError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: error.status })
     }

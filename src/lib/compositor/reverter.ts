@@ -11,6 +11,7 @@ import { invalidateScheduledRenders } from '@/lib/posts/invalidate-renders'
 import { validarCamadas } from '@/lib/creatives/layer-contract'
 import { lerCamadas } from '@/lib/posts/page-layers'
 import { descreverAvisoDeSlot, semSlots, transportarSlots, type AvisoDeSlot } from '@/lib/semantica/transportar-slots'
+import { problemasDosVetores } from '@/lib/vetor/validar-camada'
 import type { Layer } from '@/types/template'
 
 export interface ReversaoDeArte {
@@ -37,6 +38,17 @@ export async function reverterCamadasDaArte(generationId: string, opts: { projec
   const page = await db.page.findUnique({ where: { id: pageId }, select: { id: true, isTemplate: true } })
   if (!page) throw new CreativeError('PAGE_NOT_FOUND', 'A página desta arte não existe mais', 404)
   if (page.isTemplate) throw new CreativeError('PAGINA_E_MODELO', 'A página virou modelo do cliente; reverter apagaria a curadoria', 409)
+  /**
+   * CP-X2c (R1): forma vetorial inválida no snapshot recusa a reversão INTEIRA, antes da transação — nada é gravado,
+   * invalidado nem recomposto. Conferido no snapshot CRU (`lerCamadas`), não só em `v.camadas`: uma camada vetorial
+   * que o schema descartasse sairia da restauração em silêncio. Sem presumir o PR #225 (os outros `v.problemas`
+   * seguem como hoje).
+   */
+  const vetores = problemasDosVetores(lerCamadas(fv.layersSnapshot).camadas)
+  if (vetores.length > 0) {
+    const resumo = vetores.map((c) => `${c.id}: ${c.motivos.map((m) => m.codigo).join(', ')}`).join('; ')
+    throw new CreativeError('VETOR_INVALIDO', `O snapshot desta arte tem forma vetorial inválida — nada foi revertido (${resumo}).`, 422, { camadas: vetores })
+  }
 
   // F1: o contrato da página acompanha as camadas restauradas — a reversão é
   // uma revisão do SISTEMA (motivo `reverter-arte`), na mesma transação; sem

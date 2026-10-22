@@ -10,6 +10,8 @@ import { canonicalizeShapeLayerForPersistence } from '@/lib/shape-style'
 import { lerCamadas } from '@/lib/posts/page-layers'
 import { gravarCamadasComRevisao } from '@/lib/copy-autoral/persistir'
 import { CreativeError } from '@/lib/creatives/errors'
+import { VetorInvalido } from '@/lib/vetor/validar-camada'
+import { corpoDoVetorInvalido, exigirVetoresValidos } from '@/lib/vetor/guarda-de-porta'
 
 class CamadaNaoEncontrada extends Error {}
 
@@ -52,8 +54,8 @@ export async function PATCH(
     const updates = await request.json()
 
     /** A camada editada fundida numa lista de camadas (a da página COMO ESTÁ no banco). */
-    const fundir = (camada: Record<string, unknown>) =>
-      canonicalizeShapeLayerForPersistence({
+    const fundir = (camada: Record<string, unknown>) => {
+      const crua = {
         ...camada,
         ...updates,
         // Manter text e content sincronizados para layers de texto
@@ -65,7 +67,11 @@ export async function PATCH(
           text: updates.text,
           content: updates.text,
         }),
-      })
+      }
+      // CP-X2b (a): a camada fundida é conferida CRUA, antes da canonização (que lançaria 500 com cor não-texto).
+      exigirVetoresValidos([crua])
+      return canonicalizeShapeLayerForPersistence(crua)
+    }
 
     /**
      * 🔴 A camada é fundida na página RELIDA e gravada COM a revisão do
@@ -93,7 +99,11 @@ export async function PATCH(
           // Mudança real? O mesmo endpoint recebe autosave; layer idêntica não pode
           // invalidar o render dos posts agendados desta página
           layerChanged = JSON.stringify(layers[i]) !== JSON.stringify(updatedLayer)
-          return JSON.stringify(layers.map((l, j) => (j === i ? updatedLayer : l)))
+          const finais = layers.map((l, j) => (j === i ? updatedLayer : l))
+          // CP-X2b (b): o estado final da página, nesta volta do compare-and-set, precisa ser válido. A recusa
+          // lança de dentro da transação: nada é gravado nem invalidado.
+          exigirVetoresValidos(finais)
+          return JSON.stringify(finais)
         },
       })
       if (!g) throw new CamadaNaoEncontrada()
@@ -142,6 +152,9 @@ export async function PATCH(
   } catch (error) {
     if (error instanceof CamadaNaoEncontrada) {
       return NextResponse.json({ error: 'Layer not found' }, { status: 404 })
+    }
+    if (error instanceof VetorInvalido) {
+      return NextResponse.json(corpoDoVetorInvalido(error), { status: 422 })
     }
     if (error instanceof CreativeError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: error.status })

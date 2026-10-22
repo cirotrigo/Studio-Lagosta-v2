@@ -33,6 +33,7 @@ import { getFontManager } from '@/lib/font-manager'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import type { Layer, LayerStyle } from '@/types/template'
 import { controlesDaForma } from '@/lib/konva/trava-de-proporcao'
+import { lerCor } from '@/lib/vetor/cor'
 import { ImageEditorModal } from './modals/image-editor-modal'
 import { GradientEditor } from './gradient-editor'
 import { ColorPicker } from '@/components/canvas/effects/ColorPicker'
@@ -1420,6 +1421,12 @@ function toColorInputValue(color: string | undefined, fallback: string): string 
 }
 
 const ehCorCss = (cor: string) => typeof CSS !== 'undefined' && CSS.supports('color', cor)
+/**
+ * CP-X2b: no `svg-path` o servidor recusa (422 `VETOR_INVALIDO`) a cor que o `lerCor` não lê — `currentcolor` e as
+ * palavras CSS-wide, que o `CSS.supports` aceita. O campo recusa antes e volta ao salvo, como com qualquer texto
+ * inválido; assim o autosave nunca manda o que o servidor recusa. As outras formas seguem só com o `CSS.supports`.
+ */
+const ehCorDoSvgPath = (cor: string) => ehCorCss(cor) && lerCor(cor) !== null
 
 /**
  * Campo de texto da cor: enquanto a pessoa digita, mostra o rascunho e não grava; grava no Enter ou
@@ -1484,6 +1491,7 @@ function CampoDeCorDigitada({ valor, origem, aoGravar }: { valor: string; origem
 function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
   const fillOpacity = Math.round(parseColorOpacity(layer.style?.fill, layer.style?.fillOpacity ?? 1) * 100)
   const strokeOpacity = Math.round(parseColorOpacity(layer.style?.strokeColor, layer.style?.strokeOpacity ?? 1) * 100)
+  const corAceita = layer.style?.shapeType === 'svg-path' ? ehCorDoSvgPath : ehCorCss
 
   return (
     <div className="space-y-3 text-xs">
@@ -1495,7 +1503,7 @@ function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
             valor={layer.style?.fill ?? '#2563eb'}
             origem={layer}
             aoGravar={(texto) => {
-              const fill = corDigitadaParaGravar(texto, fillOpacity / 100, '#2563eb', ehCorCss)
+              const fill = corDigitadaParaGravar(texto, fillOpacity / 100, '#2563eb', corAceita)
               if (fill) setStyleValue(layer, { fill, fillOpacity: 1 })
             }}
           />
@@ -1549,7 +1557,7 @@ function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
               valor={layer.style?.strokeColor ?? '#1e3a8a'}
               origem={layer}
               aoGravar={(texto) => {
-                const strokeColor = corDigitadaParaGravar(texto, strokeOpacity / 100, '#1e3a8a', ehCorCss)
+                const strokeColor = corDigitadaParaGravar(texto, strokeOpacity / 100, '#1e3a8a', corAceita)
                 if (strokeColor) setStyleValue(layer, { strokeColor, strokeOpacity: 1 })
               }}
             />
