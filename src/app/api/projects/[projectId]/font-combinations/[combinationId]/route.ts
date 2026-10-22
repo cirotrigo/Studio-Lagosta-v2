@@ -11,6 +11,9 @@ import { z } from 'zod'
 import { db } from '@/lib/db'
 import { fetchProjectWithShares, hasProjectWriteAccess } from '@/lib/projects/access'
 import { criarSchema } from '@/lib/font-combinations-schema'
+import { VetorInvalido } from '@/lib/vetor/validar-camada'
+import { corpoDoVetorInvalido } from '@/lib/vetor/guarda-de-porta'
+import { exigirOrnamentosValidos } from '@/lib/vetor/guarda-dos-ornamentos'
 
 const atualizarSchema = criarSchema.partial().extend({
   order: z.number().int().min(0).optional(),
@@ -49,6 +52,8 @@ export async function PUT(
     if (erro) return erro
 
     const dados = atualizarSchema.parse(await req.json())
+    // CP-X2c (P6): forma vetorial inválida num ornamento não é gravada — 422 `VETOR_INVALIDO`, separado do 400 do zod
+    exigirOrnamentosValidos(dados.elements)
 
     const atualizada = await db.fontCombination.update({
       where: { id: combinationId },
@@ -63,6 +68,9 @@ export async function PUT(
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.errors[0]?.message ?? 'Dados inválidos' }, { status: 400 })
+    }
+    if (error instanceof VetorInvalido) {
+      return NextResponse.json(corpoDoVetorInvalido(error), { status: 422 })
     }
     console.error('[FontCombinations] erro ao atualizar:', error)
     return NextResponse.json({ error: 'Erro ao salvar combinação' }, { status: 500 })

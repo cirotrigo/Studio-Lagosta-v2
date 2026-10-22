@@ -12,6 +12,9 @@ import { db } from '@/lib/db'
 import { fetchProjectWithShares, hasProjectReadAccess, hasProjectWriteAccess } from '@/lib/projects/access'
 import { FONT_COMBO_LAYOUTS } from '@/lib/font-combinations'
 import { criarSchema } from '@/lib/font-combinations-schema'
+import { VetorInvalido } from '@/lib/vetor/validar-camada'
+import { corpoDoVetorInvalido } from '@/lib/vetor/guarda-de-porta'
+import { exigirOrnamentosValidos } from '@/lib/vetor/guarda-dos-ornamentos'
 
 async function autorizar(projectId: number, escrita = false) {
   const { userId, orgId } = await auth()
@@ -75,6 +78,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pro
     if (erro) return erro
 
     const dados = criarSchema.parse(await req.json())
+    // CP-X2c (P6): forma vetorial inválida num ornamento não é gravada — 422 `VETOR_INVALIDO`, separado do 400 do zod
+    exigirOrnamentosValidos(dados.elements)
 
     const ultima = await db.fontCombination.findFirst({
       where: { projectId },
@@ -96,6 +101,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pro
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.errors[0]?.message ?? 'Dados inválidos' }, { status: 400 })
+    }
+    if (error instanceof VetorInvalido) {
+      return NextResponse.json(corpoDoVetorInvalido(error), { status: 422 })
     }
     console.error('[FontCombinations] erro ao criar:', error)
     return NextResponse.json({ error: 'Erro ao criar combinação' }, { status: 500 })
