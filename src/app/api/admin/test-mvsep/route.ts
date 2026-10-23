@@ -4,9 +4,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { chaveDaMvsep } from '@/lib/mvsep/chave'
 import { db } from '@/lib/db'
 
-const MVSEP_API_KEY = process.env.MVSEP_API_KEY || 'BrIkx8zYQbvc4TggAZbsL96Mag9WN5'
 const MVSEP_API_URL = 'https://mvsep.com/api'
 
 export async function GET(req: NextRequest) {
@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
 
     // Preparar request para MVSEP
     const requestBody = {
-      api_token: MVSEP_API_KEY,
+      api_token: chaveDaMvsep(),
       url: music.blobUrl,
       separation_type: 37,
       output_format: 'mp3',
@@ -57,8 +57,6 @@ export async function GET(req: NextRequest) {
 
     logs.push('[TEST] Calling MVSEP API...')
     logs.push(`[TEST] Endpoint: ${MVSEP_API_URL}/separation/create`)
-    logs.push(`[TEST] API Key length: ${MVSEP_API_KEY?.length || 0}`)
-    logs.push(`[TEST] API Key starts with: ${MVSEP_API_KEY?.substring(0, 5)}...`)
 
     // Chamar MVSEP
     const response = await fetch(`${MVSEP_API_URL}/separation/create`, {
