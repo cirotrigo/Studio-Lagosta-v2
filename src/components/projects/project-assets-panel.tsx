@@ -1180,6 +1180,8 @@ function ColorSection({ projectId }: { projectId: number }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project-assets', projectId, 'colors'] })
+      // a paleta do editor (seletores e inserção pela marca, CP-V2c) é outra key: sem isto, levava até 5 min
+      queryClient.invalidateQueries({ queryKey: ['brand-colors', projectId] })
       toast({ title: 'Cor cadastrada', description: 'A cor foi adicionada ao projeto.' })
       setIsDialogOpen(false)
       setColorName('')
@@ -1207,6 +1209,8 @@ function ColorSection({ projectId }: { projectId: number }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project-assets', projectId, 'colors'] })
+      // a paleta do editor (seletores e inserção pela marca, CP-V2c) é outra key: sem isto, levava até 5 min
+      queryClient.invalidateQueries({ queryKey: ['brand-colors', projectId] })
       toast({ title: 'Cor removida', description: 'A cor foi deletada.' })
     },
     onError: (error: unknown) => {

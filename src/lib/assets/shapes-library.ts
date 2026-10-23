@@ -16,7 +16,8 @@ export interface ShapeDefinition {
   id: string
   label: string
   shapeType: 'rectangle' | 'rounded-rectangle' | 'circle' | 'triangle' | 'star' | 'arrow' | 'line' | 'svg-path'
-  category: 'basicas' | 'setas' | 'linhas' | 'decorativas'
+  /** As 4 dos 37 legados e, desde a ativação do CP-V2c, as dos candidatos (`CategoriaDoElemento`). */
+  category: 'basicas' | 'setas' | 'linhas' | 'decorativas' | CategoriaDoElemento
   keywords?: string[]
   fill: string
   strokeColor?: string
@@ -45,7 +46,8 @@ export interface ShapeDefinition {
 const AZUL = '#2563eb'
 const CINZA = '#374151'
 
-export const SHAPES_LIBRARY: ShapeDefinition[] = [
+/** Os 37 legados, literais como na base (o catálogo vivo é `SHAPES_LIBRARY`, no fim do arquivo). */
+const FORMAS_LEGADAS: ShapeDefinition[] = [
   // ── Básicas (legadas + novas) ───────────────────────────────────────────
   { id: 'rectangle', label: 'Retângulo', shapeType: 'rectangle', category: 'basicas', keywords: ['quadrado', 'caixa'], fill: AZUL },
   { id: 'rounded', label: 'Retângulo Arredondado', shapeType: 'rounded-rectangle', category: 'basicas', keywords: ['caixa', 'cartao'], fill: AZUL },
@@ -92,7 +94,7 @@ export const SHAPES_LIBRARY: ShapeDefinition[] = [
   { id: 'banner', label: 'Faixa', shapeType: 'svg-path', category: 'decorativas', keywords: ['fita', 'ribbon'], fill: '#e11d48', pathData: 'M0 20 H100 V80 H0 L15 50 Z', aspect: 2.2 },
 ]
 
-export const SHAPE_CATEGORIES: Array<{ id: ShapeDefinition['category']; label: string }> = [
+const CATEGORIAS_LEGADAS: Array<{ id: ShapeDefinition['category']; label: string }> = [
   { id: 'basicas', label: 'Básicas' },
   { id: 'setas', label: 'Setas' },
   { id: 'linhas', label: 'Linhas' },
@@ -111,7 +113,7 @@ const IDS_DAS_MASCARAS = [
 ]
 
 export const MASCARAS_DE_IMAGEM: ShapeDefinition[] = IDS_DAS_MASCARAS.map((id) => {
-  const forma = SHAPES_LIBRARY.find((s) => s.id === id)
+  const forma = FORMAS_LEGADAS.find((s) => s.id === id)
   if (forma?.shapeType !== 'svg-path' || !forma.pathData) throw new Error(`máscara sem svg-path no catálogo: ${id}`)
   return forma
 })
@@ -119,13 +121,13 @@ export const MASCARAS_DE_IMAGEM: ShapeDefinition[] = IDS_DAS_MASCARAS.map((id) =
 // ── Catálogo CANDIDATO de elementos (CP-V2b) ──────────────────────────────
 
 /**
- * Os 10 itens do MVP do painel "Elementos", FORA do catálogo vivo. Nem o painel de formas nem a barra de imagem
- * importam este export: ele entra no catálogo que o painel consome só no V2c, no mesmo PR em que a inserção passa a
- * resolver a cor pela marca (preflight do CP-V2, §8.1). A categoria não é trava de exibição.
+ * Os 10 itens do MVP do painel "Elementos". Ficaram FORA do catálogo vivo no CP-V2b e foram ativados no CP-V2c, num
+ * ponto só (`SHAPES_LIBRARY`, no fim do arquivo), no mesmo PR em que a inserção passou a resolver a cor pela marca
+ * (preflight do CP-V2, §8.1). A barra de imagem não os vê. A categoria não é trava de exibição.
  *
  * - São 3 presets de forma nativa (`fio-fino`, `moldura-fina`, `pilula-contorno`), 1 cópia de path (`spark-4`, o
  *   desenho do `sparkle`) e 6 `svg-path` novos, todos em viewBox 0 0 100 100 com comandos absolutos M L C Z.
- * - `fill` e `strokeColor` são só vitrine (cinza neutro); a inserção do V2c pinta cada canal pelo papel do slot. Item só
+ * - `fill` e `strokeColor` são só vitrine (cinza neutro); a inserção pinta cada canal pelo papel do slot. Item só
  *   de contorno tem `fill: 'transparent'`.
  * - A `line` pinta com `fill` nos dois renderers: o slot do `fio-fino` é `preenchimento`.
  * - `fio-fino`, `moldura-aberta` (┌) e `spark-4` são ids publicados nos arquétipos (`arquetipos/tipos.ts`):
@@ -166,4 +168,37 @@ export const CATEGORIAS_CANDIDATAS: Array<{ id: CategoriaDoElemento; label: stri
   { id: 'destaques', label: 'Destaques' },
   { id: 'editorial', label: 'Editorial' },
   { id: 'ornamentos', label: 'Ornamentos' },
+]
+
+// ── Ativação (CP-V2c): o catálogo que o painel consome ────────────────────
+
+/**
+ * Papel da marca dos 37 legados (D3, preflight do CP-V2 §7.1): básicas e decorativas → destaque; setas e linhas →
+ * texto. Os legados têm um canal só, o preenchimento (a `line` e a `arrow` também pintam com `fill`).
+ */
+const PAPEL_DO_LEGADO: Record<'basicas' | 'setas' | 'linhas' | 'decorativas', PapelDaMarca> = {
+  basicas: 'destaque',
+  decorativas: 'destaque',
+  setas: 'texto',
+  linhas: 'texto',
+}
+
+/**
+ * O catálogo VIVO: os 37 legados com versão e slot, mais os 10 candidatos. É o ÚNICO ponto que junta os candidatos ao
+ * que o painel lê, e o painel só insere pelo construtor (`camadaDoElemento`), que nunca lê a vitrine (`fill` e
+ * `strokeColor` da definição). As máscaras de imagem não derivam daqui (`MASCARAS_DE_IMAGEM`).
+ */
+export const SHAPES_LIBRARY: ShapeDefinition[] = [
+  ...FORMAS_LEGADAS.map((s) => ({
+    ...s,
+    versao: 1,
+    slots: [preenchimento(PAPEL_DO_LEGADO[s.category as keyof typeof PAPEL_DO_LEGADO], s.shapeType === 'line' ? 'Cor da linha' : 'Preenchimento')],
+  })),
+  ...ELEMENTOS_CANDIDATOS,
+]
+
+/** As categorias do painel: as 4 legadas e as dos candidatos que ainda não existem nelas. Toda categoria usada está aqui (teste). O remapeamento para as 8 é do V2d. */
+export const SHAPE_CATEGORIES: Array<{ id: ShapeDefinition['category']; label: string }> = [
+  ...CATEGORIAS_LEGADAS,
+  ...CATEGORIAS_CANDIDATAS.filter((c) => !CATEGORIAS_LEGADAS.some((l) => l.id === c.id)),
 ]

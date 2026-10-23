@@ -1724,24 +1724,15 @@ export class RenderEngine {
     }
   }
 
+  /** O contorno arredondado da imagem: o mesmo canto do recorte (`traceRoundedRectPath`). */
   private static strokeRoundedRect(
     ctx: CanvasRenderingContext2D,
     width: number,
     height: number,
     radius: number,
   ) {
-    const r = Math.min(radius, width / 2, height / 2)
     ctx.beginPath()
-    ctx.moveTo(r, 0)
-    ctx.lineTo(width - r, 0)
-    ctx.quadraticCurveTo(width, 0, width, r)
-    ctx.lineTo(width, height - r)
-    ctx.quadraticCurveTo(width, height, width - r, height)
-    ctx.lineTo(r, height)
-    ctx.quadraticCurveTo(0, height, 0, height - r)
-    ctx.lineTo(0, r)
-    ctx.quadraticCurveTo(0, 0, r, 0)
-    ctx.closePath()
+    this.traceRoundedRectPath(ctx, width, height, radius)
     ctx.stroke()
   }
 
@@ -2073,22 +2064,33 @@ export class RenderEngine {
     }
   }
 
+  /**
+   * O canto arredondado do servidor: a MESMA sequência do `Konva.Util.drawRoundedRectPath` (Konva 9.3.22) que o editor
+   * usa em `Rect` e `Image`, arcos de círculo, mais o `closePath` do `Konva.Rect`. Era `quadraticCurveTo` com o controle
+   * no vértice: o canto saía 0,06 × raio mais "quadrado" que no editor (preflight da pílula, 23/10/2026).
+   * Não abre o path (quem chama faz o `beginPath`). Raio ≤ 0 (ou inválido) é retângulo: `arc` com raio negativo lança.
+   */
   private static traceRoundedRectPath(
     ctx: CanvasRenderingContext2D,
     width: number,
     height: number,
     radius: number,
   ): void {
-    const r = Math.min(radius, width / 2, height / 2)
+    const r = Math.max(0, Math.min(radius, width / 2, height / 2))
+    if (!(r > 0)) {
+      ctx.rect(0, 0, width, height)
+      ctx.closePath()
+      return
+    }
     ctx.moveTo(r, 0)
     ctx.lineTo(width - r, 0)
-    ctx.quadraticCurveTo(width, 0, width, r)
+    ctx.arc(width - r, r, r, (Math.PI * 3) / 2, 0, false)
     ctx.lineTo(width, height - r)
-    ctx.quadraticCurveTo(width, height, width - r, height)
+    ctx.arc(width - r, height - r, r, 0, Math.PI / 2, false)
     ctx.lineTo(r, height)
-    ctx.quadraticCurveTo(0, height, 0, height - r)
+    ctx.arc(r, height - r, r, Math.PI / 2, Math.PI, false)
     ctx.lineTo(0, r)
-    ctx.quadraticCurveTo(0, 0, r, 0)
+    ctx.arc(r, r, r, Math.PI, (Math.PI * 3) / 2, false)
     ctx.closePath()
   }
 

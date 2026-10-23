@@ -35,6 +35,7 @@ import type { Layer, LayerStyle } from '@/types/template'
 import { controlesDaForma } from '@/lib/konva/trava-de-proporcao'
 import { lerCor } from '@/lib/vetor/cor'
 import { corParaSeletor } from '@/lib/editor/cor-do-seletor'
+import { escolhaExplicitaDaCor } from '@/lib/editor/camada-do-elemento'
 import { ImageEditorModal } from './modals/image-editor-modal'
 import { GradientEditor } from './gradient-editor'
 import { ColorPicker } from '@/components/canvas/effects/ColorPicker'
@@ -1485,7 +1486,7 @@ function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
             origem={layer}
             aoGravar={(texto) => {
               const fill = corDigitadaParaGravar(texto, fillOpacity / 100, '#2563eb', corAceita)
-              if (fill) setStyleValue(layer, { fill, fillOpacity: 1 })
+              if (fill) setStyleValue(layer, { fill, fillOpacity: 1, ...escolhaExplicitaDaCor(layer.style, 'preenchimento') })
             }}
           />
           <input
@@ -1495,6 +1496,7 @@ function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
             onChange={(event) => setStyleValue(layer, {
               fill: applyOpacityToEditableColor(event.target.value, fillOpacity / 100, '#2563eb'),
               fillOpacity: 1,
+              ...escolhaExplicitaDaCor(layer.style, 'preenchimento'),
             })}
           />
         </div>
@@ -1503,6 +1505,7 @@ function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
           onSelect={(hex) => setStyleValue(layer, {
             fill: applyOpacityToEditableColor(hex, fillOpacity / 100, '#2563eb'),
             fillOpacity: 1,
+            ...escolhaExplicitaDaCor(layer.style, 'preenchimento'),
           })}
         />
         <p className="text-[10px] text-muted-foreground break-all">
@@ -1539,7 +1542,7 @@ function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
               origem={layer}
               aoGravar={(texto) => {
                 const strokeColor = corDigitadaParaGravar(texto, strokeOpacity / 100, '#1e3a8a', corAceita)
-                if (strokeColor) setStyleValue(layer, { strokeColor, strokeOpacity: 1 })
+                if (strokeColor) setStyleValue(layer, { strokeColor, strokeOpacity: 1, ...escolhaExplicitaDaCor(layer.style, 'contorno') })
               }}
             />
             <input
@@ -1549,6 +1552,7 @@ function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
               onChange={(event) => setStyleValue(layer, {
                 strokeColor: applyOpacityToEditableColor(event.target.value, strokeOpacity / 100, '#1e3a8a'),
                 strokeOpacity: 1,
+                ...escolhaExplicitaDaCor(layer.style, 'contorno'),
               })}
             />
           </div>
@@ -1557,6 +1561,7 @@ function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
             onSelect={(hex) => setStyleValue(layer, {
               strokeColor: applyOpacityToEditableColor(hex, strokeOpacity / 100, '#1e3a8a'),
               strokeOpacity: 1,
+              ...escolhaExplicitaDaCor(layer.style, 'contorno'),
             })}
           />
           <p className="text-[10px] text-muted-foreground break-all">

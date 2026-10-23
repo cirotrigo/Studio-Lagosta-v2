@@ -565,3 +565,49 @@ mas nenhuma porta de escrita o chamava.
   reagem quando o ref zera: a troca pode não carregar a página nova, e a edição pode não disparar o timer até a
   próxima mudança. Isso vem da leitura do código e de timeouts do harness; não foi medido de forma determinística.
   O harness do CP-X2b aguarda dois quadros depois de cada carga, e o caso ficou fora da suíte.
+
+## A forma inserida pelo painel sai na cor da marca, nunca na vitrine (CP-V2c, 23/10/2026)
+
+- **Ponto único de inserção.** O painel de formas só insere pelo construtor puro `camadaDoElemento`
+  (`src/lib/editor/camada-do-elemento.ts`), num `addLayer` só: uma camada, uma entrada de desfazer, selecionada. Ele
+  **nunca lê** `fill`/`strokeColor` da definição (a vitrine do catálogo; um teste com cor-sentinela prova). A cor de
+  cada canal é o papel do slot resolvido por `resolverCorDaMarca` (CP-V2a) e sai já pela
+  `canonicalizeShapeStyleForPersistence`, a mesma do PATCH. Canal sem slot: `fill: 'transparent'`, sem `strokeColor`.
+- **Proveniência em `style.vetor`** (`LayerStyle.vetor`, tipo `VetorDaCamada`): `{ asset: { id, versao }, papeis:
+  { <canal>: <papel> } }`, com o canal FÍSICO (`preenchimento` → `fill`, `contorno` → `strokeColor`; a `line` pinta
+  com `fill`). `manterProporcao: true` só no item `travado` (nunca grava `false`). A pílula leva
+  `border: { width: 0, color: 'transparent', radius: 9999 }`: o raio não liga contorno nenhum nos dois renderers.
+- **Escolher a cor à mão apaga o papel daquele canal** (`escolhaExplicitaDaCor`): campo de texto, seletor nativo e
+  swatch, nos dois canais. Os sliders de transparência não são escolha de cor e não tocam o papel.
+- **Bloqueio até os dados confirmarem** (`src/lib/editor/estado-da-insercao.ts`): `carregando` e `erro` não criam
+  camada nem desfazer. Erro é consulta falhada, paleta que não é lista (HTML 200), cor sem `hexCode` em texto ou
+  projeto sem a chave `assinatura`; **nunca** vira "marca sem cores". "Tentar de novo" refaz só o que falhou. O padrão
+  do resolvedor só vale com ausência CONFIRMADA (lista vazia válida, `assinatura: null` ou campo ausente no JSON).
+  Dado de outro `projectId` nunca entra: a paleta estrita volta marcada com o projeto, e o projeto tem o `id`.
+- **Paleta estrita é opt-in:** `useBrandColorsEstrita` (key `['brand-colors', id, 'estrita']`) lança no que não é
+  lista. O `useBrandColors` e os 4 consumidores dele seguem devolvendo `[]`. A aba Marca invalida
+  `['brand-colors', id]` ao criar e apagar cor, o que renova as duas keys.
+- **Catálogo vivo = 37 legados + 10 ativados**, num ponto só (`SHAPES_LIBRARY` no fim de `shapes-library.ts`). Os 37
+  ganham `versao: 1` e um slot de preenchimento (D3: básicas e decorativas → destaque; setas e linhas → texto); os
+  campos literais deles não mudam (o teste confere o sha256 da base). `SHAPE_CATEGORIES` cobre toda categoria usada.
+  O remapeamento para as 8 categorias e a troca do `sparkle` pelo `spark-4` são do V2d.
+- **Máscaras de imagem continuam as 26** (`MASCARAS_DE_IMAGEM`, por id); a ativação não as muda.
+- **Gate da revisão:** `style.vetor.*` é **inerte** (`gate-v4`, impressão `gate-gate-v4.json`; v1–v3 imutáveis).
+  Retângulo e pílula seguem medidos; `svg-path` e linha seguem fora (pelo desenho, nunca pela proveniência). O
+  pseudonimizador das fixtures preserva `vetor` inteiro.
+- **Um canto arredondado só, no editor e no servidor** (correção da pílula, 23/10/2026). O
+  `RenderEngine.traceRoundedRectPath` faz a MESMA sequência do `Konva.Util.drawRoundedRectPath` (Konva 9.3.22: `arc`
+  de círculo, mais o `closePath` do `Konva.Rect`), com o raio limitado a `max(0, min(r, w/2, h/2))` e retângulo
+  quando o raio é ≤ 0. O `strokeRoundedRect` (borda da imagem) abre o path e reutiliza o helper. Antes era
+  `quadraticCurveTo` com o controle no vértice: o canto saía 0,06 × raio mais "quadrado" (a pílula media 1.346 px).
+  - Vale para forma `rounded-rectangle`, `rectangle` com `border.radius` (inclusive o **halo**) e o recorte e a borda
+    de imagem/logo/elemento. O `rounded-rectangle` sem raio continua 24 pelo chamador.
+  - Paridade medida no Node, 0 px: `paridade-presets.test.ts` e `paridade-cantos.test.ts` (sequência contra o
+    `Konva.Util` real, raios 8/24/50/9999, caixa quadrada, alfa, rotação, recorte de imagem contra o `Konva.Image`).
+    Não prova o navegador.
+  - **Sem paridade, de propósito:** imagem com raio E borda (o editor traça antes da foto, o servidor depois) e raio
+    negativo (o servidor desenha retângulo; o editor não desenha). O gradiente com raio segue quadrado no servidor e o
+    fundo de texto usa outro helper (`arcTo`): nenhum dos dois mudou.
+  - Helper novo de canto no servidor tem de seguir a sequência do Konva, ou o teste de sequência reprova.
+- **Push do desktop (X0):** toda forma com `vetor` passa a ser protegida (inclusive `rectangle`/`line`); um `fill`
+  vindo do desktop deixa o papel antigo em `vetor.papeis`. Comportamento aceito até aposentar o push (d02).
