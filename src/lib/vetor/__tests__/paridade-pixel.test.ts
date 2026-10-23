@@ -65,7 +65,7 @@ describe('CP-V0: servidor × editor no mesmo canvas de Node', () => {
   it('inventário da biblioteca (todo svg-path × 2): depois, servidor = editor; antes × depois registrado', async () => {
     const casos = casosDaBiblioteca(SHAPES_LIBRARY)
     const comPath = SHAPES_LIBRARY.filter((s) => s.shapeType === 'svg-path' && s.pathData).length
-    expect(comPath).toBeGreaterThanOrEqual(26) // a biblioteca tinha 26 svg-path na base edb46935
+    expect(comPath).toBeGreaterThanOrEqual(33) // 26 svg-path na base edb46935 + spark-4 + 6 novos (ativação do CP-V2c)
     expect(casos).toHaveLength(comPath * 2)
     for (const c of casos) {
       const q = await quatro(c)

@@ -105,6 +105,15 @@ describe('pseudonimizar (projeção por esquema)', () => {
     const maskRuim = { ...exp, paginas: [{ ...exp.paginas[0], layers: JSON.stringify([{ id: 'x', type: 'image', fileUrl: EXEMPLO, position: { x: 0, y: 0 }, size: { width: 1, height: 1 }, style: { mask: { shapeId: 'bistro maré', path: 'M0 0' } } }]) }] }
     expect(() => pseudonimizar(maskRuim, 'cliente-01', arquivos)).toThrow(/campo visual TIPADO descartado.*mask\.shapeId/)
   })
+  it('a proveniência do vetor (style.vetor, CP-V2c) sobrevive inteira; id de item com o nome do cliente cai', () => {
+    const vetor = { asset: { id: 'moldura-fina', versao: 1 }, papeis: { contorno: 'texto', preenchimento: 'destaque2' } }
+    const forma = (v: unknown) => ({ ...exp, paginas: [{ ...exp.paginas[0], layers: JSON.stringify([{ id: 'x', type: 'shape', position: { x: 0, y: 0 }, size: { width: 1, height: 1 }, style: { shapeType: 'rectangle', fill: 'transparent', strokeColor: 'rgba(15, 32, 39, 1)', vetor: v } }]) }] })
+    const { fixture, descartados } = pseudonimizar(forma(vetor), 'cliente-01', arquivos)
+    expect((fixture.paginas[0].layers as Array<{ style: unknown }>)[0].style).toEqual({ shapeType: 'rectangle', fill: 'transparent', strokeColor: 'rgba(15, 32, 39, 1)', vetor })
+    expect(descartados.filter((d) => d.includes('vetor'))).toEqual([])
+    const comNome = pseudonimizar(forma({ ...vetor, asset: { id: 'bistro-mare', versao: 1 } }), 'cliente-01', arquivos)
+    expect((comNome.fixture.paginas[0].layers as Array<{ style: { vetor: unknown } }>)[0].style.vetor).toEqual({ asset: { versao: 1 }, papeis: vetor.papeis })
+  })
   it('fileUrl sem bytes no export é ERRO (a fixture nunca sai incompleta)', () => {
     expect(() => pseudonimizar(exp, 'cliente-01', { [LOGO]: PNG_LIMPO })).toThrow(/layers\[2\]\.fileUrl: a camada aponta para um arquivo que o export não trouxe/)
   })

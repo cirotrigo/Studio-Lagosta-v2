@@ -1,8 +1,8 @@
 /**
  * CP-V2b — paridade de pixel dos `svg-path` do catálogo CANDIDATO (o `spark-4` e os 6 novos), no MESMO canvas de
- * Node do CP-V0: servidor (RenderEngine) × adaptador do editor (Konva real). Os candidatos ainda não estão no
- * catálogo vivo, então o inventário do V0 (`paridade-pixel.test.ts`) não os percorre: este teste aplica o mesmo
- * `casosDaBiblioteca` ao export candidato. Entra no inventário do V0 na ativação (V2c).
+ * Node do CP-V0: servidor (RenderEngine) × adaptador do editor (Konva real). Desde a ativação (CP-V2c) o inventário
+ * do V0 (`paridade-pixel.test.ts`) também os percorre, com a vitrine; este teste segue com a cor de teste no canal de
+ * cada slot.
  *
  * Cor de teste no canal de cada slot (a vitrine do catálogo nunca vai para a camada); item só de contorno com fill
  * transparente. Com CPV2B_SAIDA=<dir>, grava os PNGs (servidor e editor) e as medidas.

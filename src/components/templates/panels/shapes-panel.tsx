@@ -3,16 +3,24 @@
 import * as React from 'react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
 import { SHAPES_LIBRARY, SHAPE_CATEGORIES, type ShapeDefinition } from '@/lib/assets/shapes-library'
 import { useTemplateEditor, createDefaultLayer } from '@/contexts/template-editor-context'
+import { useBrandColorsEstrita } from '@/hooks/use-brand-colors'
+import { useProject } from '@/hooks/use-project'
+import { camadaParaInserir, estadoDaInsercao } from '@/lib/editor/estado-da-insercao'
 
 /**
- * Painel "Formas" único (estilo Polotno): busca + categorias (básicas, setas,
- * linhas, decorativas). Substitui os antigos painéis órfãos de formas/ícones.
+ * Painel "Formas" único (estilo Polotno): busca + categorias. Substitui os antigos painéis órfãos de formas/ícones.
+ * Insere SÓ pelo construtor (`camadaParaInserir`, CP-V2c): cores da marca por papel, nunca a vitrine do item, e só
+ * com a paleta e a assinatura do projeto atual confirmadas (`estadoDaInsercao`).
  */
 export function ShapesPanel() {
-  const { addLayer, design } = useTemplateEditor()
+  const { addLayer, design, projectId } = useTemplateEditor()
   const [query, setQuery] = React.useState('')
+  const paleta = useBrandColorsEstrita(projectId)
+  const projeto = useProject(projectId)
+  const estado = estadoDaInsercao({ projectId, paleta, projeto })
 
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -26,36 +34,13 @@ export function ShapesPanel() {
 
   const handleAddShape = React.useCallback(
     (definition: ShapeDefinition) => {
-      const base = createDefaultLayer('shape')
-      const aspect = definition.aspect ?? 1
-      const baseWidth = Math.min(360, Math.round(design.canvas.width * 0.33)) || 240
-      const width = baseWidth
-      const height = definition.shapeType === 'line' ? 40 : Math.round(baseWidth / aspect)
-
-      addLayer({
-        ...base,
-        name: definition.label,
-        size: { width, height },
-        position: {
-          x: Math.max(0, Math.round((design.canvas.width - width) / 2)),
-          y: Math.max(0, Math.round((design.canvas.height - height) / 2)),
-        },
-        style: {
-          ...base.style,
-          shapeType: definition.shapeType,
-          fill: definition.fill,
-          strokeColor: definition.strokeColor,
-          strokeWidth: definition.strokeWidth ?? base.style?.strokeWidth,
-          pathData: definition.pathData,
-          pathFillRule: definition.pathFillRule,
-          lineStyle: definition.lineStyle,
-          lineStartCap: definition.lineStartCap,
-          lineEndCap: definition.lineEndCap,
-        },
-      })
+      // fora de `pronto` não há camada: nenhum addLayer, nenhuma entrada de desfazer
+      const camada = camadaParaInserir(estado, definition, { base: createDefaultLayer('shape'), canvas: design.canvas })
+      if (camada) addLayer(camada)
     },
-    [addLayer, design.canvas.width, design.canvas.height],
+    [addLayer, design.canvas, estado],
   )
+  const pronto = estado.estado === 'pronto'
 
   return (
     <div className="flex h-full min-h-[400px] flex-col gap-3 rounded-lg border border-border/40 bg-card/60 p-4 shadow-sm">
@@ -67,6 +52,25 @@ export function ShapesPanel() {
           placeholder="Buscar forma..."
           className="h-8 text-xs"
         />
+        {estado.estado === 'carregando' && (
+          <p className="text-xs text-muted-foreground">Carregando as cores da marca…</p>
+        )}
+        {estado.estado === 'erro' && (
+          <div className="space-y-2 rounded-md border border-destructive/40 p-2 text-xs">
+            <p>Não foi possível carregar as cores da marca. As formas ficam bloqueadas até carregar.</p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs"
+              onClick={() => {
+                if (estado.falhas.includes('paleta')) void paleta.refetch()
+                if (estado.falhas.includes('projeto')) void projeto.refetch()
+              }}
+            >
+              Tentar de novo
+            </Button>
+          </div>
+        )}
       </div>
       <ScrollArea className="flex-1">
         <div className="space-y-4 pr-2">
@@ -84,8 +88,9 @@ export function ShapesPanel() {
                       key={shape.id}
                       type="button"
                       onClick={() => handleAddShape(shape)}
+                      disabled={!pronto}
                       title={shape.label}
-                      className="flex aspect-square items-center justify-center rounded-lg border border-border/40 bg-muted/40 p-2 transition hover:border-primary hover:bg-muted"
+                      className="flex aspect-square items-center justify-center rounded-lg border border-border/40 bg-muted/40 p-2 transition hover:border-primary hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <ShapePreview shape={shape} />
                     </button>

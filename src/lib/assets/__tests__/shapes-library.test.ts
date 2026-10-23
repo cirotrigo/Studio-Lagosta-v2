@@ -29,28 +29,45 @@ const IDS_CANDIDATOS = [
   'cantoneiras', 'colchete',
 ]
 
-describe('catálogo vivo (SHAPES_LIBRARY e SHAPE_CATEGORIES): idêntico à base', () => {
-  it('os 37 itens, na ordem, com todos os campos iguais aos da base (sha256 do JSON)', () => {
-    expect(SHAPES_LIBRARY.map((s) => s.id)).toEqual(IDS_VIVOS)
-    expect(SHAPES_LIBRARY.filter((s) => s.shapeType === 'svg-path')).toHaveLength(26)
-    // hash de JSON.stringify(SHAPES_LIBRARY) medido na base 54fc701d, antes de qualquer mudança
-    expect(sha(JSON.stringify(SHAPES_LIBRARY))).toBe('e58a7999fdcd0884e68c8f0743ee722561c5f5a4b79419fb742ee64379b0afdd')
+describe('catálogo vivo (SHAPES_LIBRARY e SHAPE_CATEGORIES): os 37 legados + os 10 ativados (CP-V2c)', () => {
+  it('os 37 legados primeiro, na ordem, com os campos da base intactos (sha256), mais versão e slot; depois os 10', () => {
+    expect(SHAPES_LIBRARY.map((s) => s.id)).toEqual([...IDS_VIVOS, ...IDS_CANDIDATOS])
+    expect(SHAPES_LIBRARY.filter((s) => s.shapeType === 'svg-path')).toHaveLength(33)
+    // sem os 2 campos que a ativação acrescenta, o JSON dos 37 é o da base 54fc701d, byte a byte
+    const legados = SHAPES_LIBRARY.slice(0, 37).map(({ versao: _v, slots: _s, ...resto }) => resto)
+    expect(sha(JSON.stringify(legados))).toBe('e58a7999fdcd0884e68c8f0743ee722561c5f5a4b79419fb742ee64379b0afdd')
+    expect(SHAPES_LIBRARY.slice(37)).toEqual(ELEMENTOS_CANDIDATOS)
   })
 
-  it('as 4 categorias de hoje, e todo item vivo numa delas', () => {
+  it('papel e slot dos 37 (D3): básicas e decorativas → destaque; setas e linhas → texto; um canal só, versão 1, livres', () => {
+    const papel = { basicas: 'destaque', decorativas: 'destaque', setas: 'texto', linhas: 'texto' } as const
+    for (const s of SHAPES_LIBRARY.slice(0, 37)) {
+      const rotulo = s.shapeType === 'line' ? 'Cor da linha' : 'Preenchimento'
+      expect([s.id, s.versao, s.ajuste, s.slots]).toEqual([s.id, 1, undefined, [{ canal: 'preenchimento', papelPadrao: papel[s.category as keyof typeof papel], rotulo }]])
+    }
+    expect(SHAPES_LIBRARY.every((s) => (s.slots?.length ?? 0) > 0 && s.versao === 1)).toBe(true)
+  })
+
+  it('categorias do painel: as 4 legadas e as 5 dos candidatos que faltavam; toda categoria usada está na lista (nenhum item escondido)', () => {
     expect(SHAPE_CATEGORIES).toEqual([
       { id: 'basicas', label: 'Básicas' },
       { id: 'setas', label: 'Setas' },
       { id: 'linhas', label: 'Linhas' },
       { id: 'decorativas', label: 'Decorativas' },
+      { id: 'formas', label: 'Formas' },
+      { id: 'organicos', label: 'Orgânicos' },
+      { id: 'destaques', label: 'Destaques' },
+      { id: 'editorial', label: 'Editorial' },
+      { id: 'ornamentos', label: 'Ornamentos' },
     ])
-    const categorias = new Set(SHAPE_CATEGORIES.map((c) => c.id))
-    for (const s of SHAPES_LIBRARY) expect([s.id, categorias.has(s.category)]).toEqual([s.id, true])
+    expect(new Set(SHAPE_CATEGORIES.map((c) => c.id)).size).toBe(SHAPE_CATEGORIES.length)
+    // o que o painel monta: cada categoria filtra os seus itens; a união é o catálogo inteiro
+    const mostrados = SHAPE_CATEGORIES.flatMap((c) => SHAPES_LIBRARY.filter((s) => s.category === c.id).map((s) => s.id))
+    expect(mostrados.sort()).toEqual(SHAPES_LIBRARY.map((s) => s.id).sort())
   })
 
-  it('nenhum id candidato no catálogo vivo nem nas máscaras', () => {
+  it('nenhum id candidato nas máscaras', () => {
     const candidatos = new Set(IDS_CANDIDATOS)
-    expect(SHAPES_LIBRARY.filter((s) => candidatos.has(s.id))).toEqual([])
     expect(MASCARAS_DE_IMAGEM.filter((s) => candidatos.has(s.id))).toEqual([])
   })
 })
@@ -63,15 +80,17 @@ describe('máscaras de imagem: lista explícita dos 26 svg-path legados', () => 
     expect(sha(JSON.stringify(lido))).toBe('95e2b6cc078f9f95119f2333f7c995562ab4b4b20974ee032d43188c816dc988')
   })
 
-  it('é a mesma lista que a derivação antiga ("todo svg-path do catálogo vivo") dava', () => {
-    expect(MASCARAS_DE_IMAGEM).toEqual(SHAPES_LIBRARY.filter((s) => s.shapeType === 'svg-path' && s.pathData))
+  it('não deriva do catálogo vivo: a derivação antiga ("todo svg-path") daria os 26 + os 7 ativados', () => {
+    const derivada = SHAPES_LIBRARY.filter((s) => s.shapeType === 'svg-path' && s.pathData)
+    expect(derivada).toHaveLength(33)
+    expect(MASCARAS_DE_IMAGEM.map((s) => s.id)).toEqual(derivada.map((s) => s.id).filter((id) => !IDS_CANDIDATOS.includes(id)))
   })
 })
 
-describe('consumidores: o estado intermediário do V2b, lido na fonte', () => {
+describe('consumidores: a ativação é um ponto só, lido na fonte', () => {
   const fonte = (caminho: string) => readFileSync(join(process.cwd(), caminho), 'utf8')
 
-  it('nenhum arquivo de produção importa o catálogo candidato', () => {
+  it('nenhum arquivo de produção além do catálogo usa o export candidato (os candidatos chegam pelo SHAPES_LIBRARY)', () => {
     const src = join(process.cwd(), 'src')
     const usam = (readdirSync(src, { recursive: true }) as string[])
       .filter((f) => /\.tsx?$/.test(f) && !f.split('/').includes('__tests__') && f !== 'lib/assets/shapes-library.ts')
@@ -89,9 +108,9 @@ describe('consumidores: o estado intermediário do V2b, lido na fonte', () => {
 })
 
 describe('catálogo candidato (ELEMENTOS_CANDIDATOS)', () => {
-  it('10 ids únicos, sem colisão com os 37: 3 presets nativos, 1 cópia de path e 6 svg-path novos', () => {
+  it('10 ids únicos, sem colisão com os 37 legados: 3 presets nativos, 1 cópia de path e 6 svg-path novos', () => {
     expect(ELEMENTOS_CANDIDATOS.map((e) => e.id)).toEqual(IDS_CANDIDATOS)
-    const vivos = new Set(SHAPES_LIBRARY.map((s) => s.id))
+    const vivos = new Set(SHAPES_LIBRARY.slice(0, 37).map((s) => s.id))
     expect(ELEMENTOS_CANDIDATOS.filter((e) => vivos.has(e.id))).toEqual([])
 
     expect(ELEMENTOS_CANDIDATOS.filter((e) => e.shapeType !== 'svg-path').map((e) => [e.id, e.shapeType])).toEqual([
@@ -100,7 +119,7 @@ describe('catálogo candidato (ELEMENTOS_CANDIDATOS)', () => {
       ['pilula-contorno', 'rounded-rectangle'],
     ])
     expect(porId('spark-4').pathData).toBe(SHAPES_LIBRARY.find((s) => s.id === 'sparkle')!.pathData)
-    const pathsVivos = new Set(SHAPES_LIBRARY.map((s) => s.pathData).filter(Boolean))
+    const pathsVivos = new Set(SHAPES_LIBRARY.slice(0, 37).map((s) => s.pathData).filter(Boolean))
     const novos = ELEMENTOS_CANDIDATOS.filter((e) => e.shapeType === 'svg-path' && !pathsVivos.has(e.pathData))
     expect(novos.map((e) => e.id)).toEqual(['onda-suave', 'sublinhado-suave', 'pontos', 'moldura-aberta', 'cantoneiras', 'colchete'])
     expect(new Set(novos.map((e) => e.pathData)).size).toBe(6)

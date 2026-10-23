@@ -32,13 +32,18 @@ export interface Pixels {
 
 /** Desenha UM Konva.Shape com `config` num canvas `largura × altura` pintado de `fundo`. */
 export function pixelsDoKonva(largura: number, altura: number, fundo: string, config: ShapeConfig): Pixels {
+  return pixelsDoNoKonva(largura, altura, fundo, () => new Shape(config))
+}
+
+/** Desenha UM nó do Konva (Shape, ou uma forma pronta como `Konva.Line`/`Konva.Rect`, CP-V2c) criado por `criar`. */
+export function pixelsDoNoKonva(largura: number, altura: number, fundo: string, criar: () => Shape): Pixels {
   preparar()
   const canvas = new SceneCanvas({ width: largura, height: altura, pixelRatio: 1 })
   const nativo = (canvas as unknown as { _canvas: Canvas })._canvas
   const ctx2d = nativo.getContext('2d')
   ctx2d.fillStyle = fundo
   ctx2d.fillRect(0, 0, largura, altura)
-  new Shape(config).drawScene(canvas)
+  criar().drawScene(canvas)
   return { largura, altura, dados: new Uint8ClampedArray(ctx2d.getImageData(0, 0, largura, altura).data) }
 }
 

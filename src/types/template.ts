@@ -1,3 +1,5 @@
+import type { VetorDaCamada } from '@/lib/vetor/tipos'
+
 export interface DesignData {
   canvas: CanvasConfig
   layers: Layer[]
@@ -182,6 +184,11 @@ export interface LayerStyle {
   flipV?: boolean
   /** Forma: redimensionar mantém a proporção (keepRatio e só as alças dos cantos no editor). CP-V1. */
   manterProporcao?: boolean
+  /**
+   * Proveniência da forma inserida pelo catálogo de elementos (CP-V2c): de qual item e versão veio o desenho e de qual
+   * papel da marca veio a cor de cada canal. INERTE: nenhum renderer a lê; a cor fica congelada em `fill`/`strokeColor`.
+   */
+  vetor?: VetorDaCamada
   /** Máscara de forma aplicada à imagem. path é um SVG path CONGELADO em viewBox 0 0 100 100. */
   mask?: { shapeId: string; path: string }
   opacity?: number
