@@ -166,6 +166,89 @@ export function lerVoz(entrada: unknown): { voz: VozCompacta | null; problemas: 
   return problemas.length > 0 ? { voz: null, problemas } : { voz: parsed.data, problemas: [] }
 }
 
+/**
+ * O problema do contrato EM PORTUGUÊS, pelo rótulo que o campo tem na TELA.
+ *
+ * `lerVoz` devolve `{ caminho, mensagem }` com o caminho do schema
+ * (`descricao`, `regras.0.texto`) e, quando o zod recusa, a mensagem dele em
+ * inglês. Quem lê isso é quem cuida do Instagram de restaurante: "descricao:
+ * String must contain at least 1 character(s)" não diz o que falta nem onde
+ * (relatado pelo Ciro em 22/09/2026, na Real Gelateria). A regra da casa vale
+ * aqui como vale na conversa: nada de jargão técnico na tela.
+ *
+ * Molde do `orientacaoDosProblemas` da copy autoral: lê o CAMINHO do problema
+ * e o LIMITE citado pelo zod, nunca a frase em inglês. Problema de COERÊNCIA
+ * (id repetido, substituição que não existe, voz acima do teto) já nasce em
+ * português em `problemasDeCoerenciaDaVoz` e passa inteiro, só ganhando o
+ * rótulo do campo na frente.
+ */
+
+/** O rótulo de cada campo como ele aparece na aba Marca. */
+const ROTULO_DO_CAMPO: Record<string, string> = {
+  descricao: 'Descrição',
+  tratamento: 'Tratamento',
+  termos: 'Termos da casa',
+  exemplos: 'Exemplos aprovados',
+  antesDepois: 'Reescritas',
+  proibicoes: 'Proibições',
+  regras: 'Regras recentes',
+}
+
+/** O rótulo da parte de um item (a reescrita tem antes/depois/motivo; a regra, texto/motivo/data). */
+const ROTULO_DA_PARTE: Record<string, string> = {
+  antes: 'o "antes"',
+  depois: 'o "depois"',
+  motivo: 'o motivo',
+  texto: 'a regra',
+  em: 'a data',
+  escopo: 'o escopo',
+  id: 'o id',
+  substitui: 'a substituição',
+}
+
+/** "Exemplos aprovados (item 2)", "Regras recentes (item 1), a regra" — null quando o campo não é da tela. */
+function ondeEstaOProblema(caminho: string): string | null {
+  const [campo, indice, parte] = caminho.split('.')
+  const rotulo = ROTULO_DO_CAMPO[campo]
+  if (!rotulo) return null
+  const n = Number(indice)
+  const item = Number.isInteger(n) ? ` (item ${n + 1})` : ''
+  const daParte = parte ? ROTULO_DA_PARTE[parte] : undefined
+  return `${rotulo}${item}${daParte ? `, ${daParte}` : ''}`
+}
+
+/** O que falta, lido do LIMITE que o zod cita — nunca da frase em inglês. Null quando a mensagem não é do zod. */
+function oQueFalta(mensagem: string): string | null {
+  if (mensagem === 'Required') return 'falta preencher'
+  const minimo = /^String must contain at least (\d+) character/.exec(mensagem)
+  if (minimo) return minimo[1] === '1' ? 'falta preencher' : `precisa de pelo menos ${minimo[1]} caracteres`
+  const maximo = /^String must contain at most (\d+) character/.exec(mensagem)
+  if (maximo) return `passou de ${maximo[1]} caracteres — encurte o texto`
+  const itensDemais = /^Array must contain at most (\d+) element/.exec(mensagem)
+  if (itensDemais) return `cabem no máximo ${itensDemais[1]} — tire os que sobram`
+  const poucosItens = /^Array must contain at least (\d+) element/.exec(mensagem)
+  if (poucosItens) return `precisa de pelo menos ${poucosItens[1]}`
+  if (/^Invalid enum value/.test(mensagem)) return 'escolha uma das opções da lista'
+  if (/^Expected /.test(mensagem)) return 'falta preencher'
+  if (mensagem === 'Invalid') return 'está num formato que o Studio não entende'
+  return null
+}
+
+/** Uma linha por problema, em português, pronta para a tela. */
+export function problemaDaVozEmPortugues(problema: ProblemaDaVoz): string {
+  const onde = ondeEstaOProblema(problema.caminho)
+  const falta = oQueFalta(problema.mensagem)
+  if (onde) return `${onde}: ${falta ?? problema.mensagem}`
+  // Sem rótulo de tela é problema da voz INTEIRA (o teto do prompt), e a
+  // mensagem de coerência já é a frase em português que a pessoa precisa ler.
+  return falta ?? problema.mensagem
+}
+
+/** As linhas de todos os problemas, na ordem em que `lerVoz` os devolveu. */
+export function problemasDaVozEmPortugues(problemas: ProblemaDaVoz[]): string[] {
+  return problemas.map(problemaDaVozEmPortugues)
+}
+
 export function regrasAtivas(voz: VozCompacta, escopo: 'copy' | 'arte'): RegraDaVoz[] {
   return voz.regras.filter((r) => r.ativa && escoposSeCruzam(r.escopo, escopo))
 }
@@ -272,7 +355,7 @@ export function aplicarRegraNaVoz(voz: VozCompacta, nova: NovaRegra): ResultadoD
     return {
       ok: false,
       erro: 'VOZ_RESULTANTE_INVALIDA',
-      mensagem: `A voz com esta regra não passa no contrato: ${conferida.problemas.map((p) => `${p.caminho}: ${p.mensagem}`).join(' · ')}`,
+      mensagem: `A voz com esta regra não passa no contrato: ${problemasDaVozEmPortugues(conferida.problemas).join(' · ')}`,
       conflitos,
       proibicoesRelacionadas: relacionadas,
     }
