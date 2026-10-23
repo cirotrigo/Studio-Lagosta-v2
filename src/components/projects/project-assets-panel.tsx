@@ -18,6 +18,8 @@ import { DesktopGoogleDriveModal } from '@/components/projects/google-drive-fold
 import type { GoogleDriveItem } from '@/types/google-drive'
 import { useProject } from '@/hooks/use-project'
 import { useBrandFonts, useUpdateBrandFonts } from '@/hooks/use-brand-fonts'
+import { invalidarElementosDoProjeto } from '@/hooks/use-project-elements'
+import { useConfirmarExclusaoDeElemento } from '@/components/projects/confirmar-exclusao-de-elemento'
 import { FONT_CONFIG } from '@/lib/font-config'
 
 type DriveStatus = 'loading' | 'available' | 'unavailable'
@@ -484,6 +486,8 @@ function ElementSection({
   const [driveImporting, setDriveImporting] = React.useState(false)
 
   const driveAvailable = driveStatus === 'available'
+  // CP-V2e: a exclusão de elementos passa pelo hook e pela confirmação D6 comum com a Marca do editor
+  const exclusao = useConfirmarExclusaoDeElemento(projectId)
 
   const { data: elements, isLoading } = useQuery<ElementRecord[]>({
     queryKey: ['project-assets', projectId, 'elements'],
@@ -494,12 +498,14 @@ function ElementSection({
   })
 
   const uploadElement = useMutation({
-    mutationFn: async (file: File) => {
+    // o projeto vai nas VARIÁVEIS, capturado ao selecionar o arquivo: se a tela trocar de projeto com o upload ao Blob
+    // pendente, o TanStack passa as opções novas à mutação em voo, e um `projectId` da closure seria o do projeto novo
+    mutationFn: async ({ file, projectId: origem }: { file: File; projectId: number }) => {
       // Client-side upload direto ao Vercel Blob
       const fileUrl = await uploadToBlob(file)
 
       // Criar registro no banco com a URL do Vercel Blob
-      const response = await fetch(`/api/projects/${projectId}/elements`, {
+      const response = await fetch(`/api/projects/${origem}/elements`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -515,8 +521,11 @@ function ElementSection({
       }
       return response.json()
     },
+    // as 3 keys do endpoint (Marca do editor e modal de melhoria inclusive), também no erro: reconcilia sem repetir
+    onSettled: (_dado, _erro, variables) => {
+      void invalidarElementosDoProjeto(queryClient, variables.projectId)
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['project-assets', projectId, 'elements'] })
       toast({ title: 'Elemento enviado', description: 'O elemento foi adicionado ao projeto.' })
     },
     onError: (error: unknown) => {
@@ -528,34 +537,10 @@ function ElementSection({
     },
   })
 
-  const deleteElement = useMutation({
-    mutationFn: async (elementId: number) => {
-      const response = await fetch(`/api/projects/${projectId}/elements/${elementId}`, {
-        method: 'DELETE',
-      })
-      if (!response.ok) {
-        const message = await response.text()
-        throw new Error(message || 'Falha ao remover elemento')
-      }
-      return response.json()
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['project-assets', projectId, 'elements'] })
-      toast({ title: 'Elemento removido', description: 'O elemento foi deletado.' })
-    },
-    onError: (error: unknown) => {
-      toast({
-        title: 'Erro ao remover elemento',
-        description: error instanceof Error ? error.message : 'Não foi possível remover o elemento.',
-        variant: 'destructive',
-      })
-    },
-  })
-
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file) {
-      uploadElement.mutate(file)
+      uploadElement.mutate({ file, projectId })
       event.target.value = ''
     }
   }
@@ -596,7 +581,6 @@ function ElementSection({
       }
 
       await createResponse.json()
-      queryClient.invalidateQueries({ queryKey: ['project-assets', projectId, 'elements'] })
       toast({ title: 'Elemento importado', description: 'O arquivo do Google Drive foi adicionado ao projeto.' })
       setIsDriveModalOpen(false)
     } catch (_error) {
@@ -608,6 +592,7 @@ function ElementSection({
       })
     } finally {
       setDriveImporting(false)
+      void invalidarElementosDoProjeto(queryClient, projectId)
     }
   }
 
@@ -730,7 +715,13 @@ function ElementSection({
                           <Button size="icon" variant="outline" onClick={() => window.open(element.fileUrl, '_blank', 'noopener,noreferrer')}>
                             <Download className="h-4 w-4" />
                           </Button>
-                          <Button size="icon" variant="ghost" onClick={() => deleteElement.mutate(element.id)}>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            aria-label={`Apagar ${element.name}`}
+                            disabled={exclusao.apagando === element.id}
+                            onClick={() => exclusao.pedir({ projectId, elementId: element.id, nome: element.name })}
+                          >
                             <Trash2 className="h-4 w-4 text-red-500" />
                           </Button>
                         </div>
@@ -764,7 +755,13 @@ function ElementSection({
                     <Button size="icon" variant="outline" onClick={() => window.open(element.fileUrl, '_blank', 'noopener,noreferrer')}>
                       <Download className="h-4 w-4" />
                     </Button>
-                    <Button size="icon" variant="ghost" onClick={() => deleteElement.mutate(element.id)}>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      aria-label={`Apagar ${element.name}`}
+                      disabled={exclusao.apagando === element.id}
+                      onClick={() => exclusao.pedir({ projectId, elementId: element.id, nome: element.name })}
+                    >
                       <Trash2 className="h-4 w-4 text-red-500" />
                     </Button>
                   </div>
@@ -778,6 +775,7 @@ function ElementSection({
           Nenhum elemento cadastrado. Faça upload de ícones ou ilustrações.
         </Card>
       )}
+      {exclusao.dialogo}
       </section>
       <DesktopGoogleDriveModal
         open={isDriveModalOpen}

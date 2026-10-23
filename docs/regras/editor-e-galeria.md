@@ -632,6 +632,7 @@ mas nenhuma porta de escrita o chamava.
 - **"Marca" só lista e insere** (`panels/marca-do-projeto.tsx`): pelo `useProjectElements` (mesma key das
   combinações), camada `image` até 200 px, centrada, um `addLayer`. Sem `fetch` direto, sem envio e sem exclusão no
   editor até o V2e; eles continuam na Identidade visual do projeto. Limite herdado do hook: HTML 200 vira "vazia".
+  *(Superado pelo CP-V2e, seção abaixo: a Marca envia e apaga pelos hooks, e HTML 200 é erro.)*
 - **Busca não inventa vazio** (revisão do Codex, 23/10/2026): a busca só esconde a Marca, e o painel só diz "Nenhum
   elemento encontrado.", com a consulta da Marca em **sucesso** e sem resultado. Carregando e erro (com o "Tentar de
   novo") continuam visíveis durante a busca.
@@ -642,3 +643,38 @@ mas nenhuma porta de escrita o chamava.
   imagem do Next, créditos, metadado de página). Rede falsa numa origem própria; desfazer pelo `undo()` do contexto.
   **Não prova** o atalho Ctrl/⌘+Z nem o canvas Konva real. O `index.html` do harness precisa da
   `<meta name="viewport">`: sem ela o Chromium com `isMobile` usa 980 px de layout e o editor abre no modo computador.
+
+## Elementos da Marca: lista estrita, envio e exclusão só por hook, apagar não toca o arquivo (CP-V2e, 23/10/2026)
+
+- **Leitura estrita** (`src/lib/brand/lista-de-elementos.ts`, puro): `lerListaDeElementos(dado, projectId)` LANÇA
+  para não-lista (HTML 200 do login, `{}`, texto) e para qualquer item sem `id` inteiro seguro > 0, `name` texto,
+  `fileUrl` `http(s)://`, `category` `null`/texto ou com `projectId` diferente do pedido. Um item ruim recusa a lista
+  inteira (fail-closed, como a paleta do V2c): a Marca mostra erro com "Tentar de novo", **nunca "vazia"**. O `POST`
+  só é sucesso com o elemento do mesmo projeto (`lerElementoCriado`); o `DELETE`, só com `{ success: true }`
+  (`lerExclusaoConfirmada`). Texto e HTML 200 nunca viram sucesso.
+- **As 3 keys do endpoint** (`chavesDosElementos`): `['project-elements', id]`, `['project-assets', id, 'elements']` e
+  `['project', id, 'elements']`. Toda escrita invalida as 3 pelo `invalidarElementosDoProjeto(queryClient, id)` do
+  **projeto da mutação**, nunca o da tela — no `onSettled` (sucesso OU erro), sem nova tentativa automática: a nova
+  leitura é a autoridade, inclusive quando o servidor apagou e a resposta se perdeu. Isso vale para o envio e o Drive
+  da Identidade visual também. O `staleTime` de 5 min não é prazo máximo: query montada sem evento fica velha além.
+- **Envio no editor é multipart** pelo `importarElemento` (o mesmo serviço do MCP), com `fetch` dentro do hook
+  (`useUploadProjectElement`): o `api.post` faz `JSON.stringify` e o `FormData` vira `{}`. PNG, JPEG, WebP e SVG, teto
+  de **4.194.304 bytes** no cliente (corpo da função da Vercel é 4.5 MB); maior vai pela Identidade visual (upload
+  direto ao Blob). Vários arquivos vão em série; erro no meio não para a fila, resumo no fim. Nada é inserido sozinho.
+- **Apagar elemento (D6 b) remove só a linha da biblioteca**: a rota `DELETE …/elements/[elementId]` não chama mais o
+  `del` do Blob. As artes COPIAM a `fileUrl` para as camadas (sem referência por id), e apagar o arquivo quebrava o
+  editor e o render no servidor de toda arte que o usa. Arquivos órfãos no Blob ficam para uma limpeza futura com
+  conferência de uso (D6 c). Não volte a apagar o arquivo nesta rota sem essa conferência.
+- **Confirmação D6 comum** (`components/projects/confirmar-exclusao-de-elemento.tsx`), na Marca e na Identidade
+  visual: alvo (`projectId`, `elementId`, nome) capturado ao abrir; "Apagar" é `Button` comum num diálogo controlado
+  (o `AlertDialogAction` fecharia no clique, antes do resultado); clique fora não fecha; Esc cancela, mas é ignorado
+  com o DELETE em voo. **O "em voo" é uma ref marcada no clique**, não só o `isPending`: o TanStack notifica a tela
+  numa tarefa adiada, e nessa janela um 2º clique faria outro DELETE e um Esc fecharia o diálogo (medido no harness).
+- **Lixeira é irmã do botão de inserir**, nunca aninhada: clicar nela não chama `addLayer`. Desfazer do editor não
+  traz o elemento de volta (não é camada); a confirmação é a única barreira.
+- **Troca de projeto A → B**: a confirmação não iniciada fecha sem DELETE; a fila de envio cancela o que não saiu; o
+  pedido em voo termina e reconcilia só A. Callback tardio não anuncia nem fecha nada no projeto novo.
+- **Prova:** `tests/harness/cp-v2d/marca.spec.ts` (asserções `V2E-…`, espião exato em `invalidateQueries` pelo
+  `QueryClient` real da sonda) e os controles negativos do `bundle.ts`. Limites: o harness não prova o upload real ao
+  Blob (corpo real, `sharp`), a exclusão real nem o efeito em arte existente; isso é smoke de produção (D-E6).
+

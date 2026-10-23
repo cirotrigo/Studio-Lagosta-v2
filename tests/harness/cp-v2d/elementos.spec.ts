@@ -537,11 +537,11 @@ test('Marca: lista pelo hook e insere imagem; 1 desfazer, PATCH e reload; nenhum
   expect([nova.position.x + 100, nova.position.y + 50], 'V2D-MARCA-CENTRADA').toEqual([540, 960])
   if (c.celular) await expect(page.getByRole('dialog'), 'V2D-DRAWER-FECHA').toBeHidden()
   await cicloDeDesfazerEGravar(c, base, nova)
-  const escritasDeElementos = c.srv.desconhecidas.filter((d) => d.includes('/elements'))
-  expect(escritasDeElementos, 'V2D-MARCA-SEM-ESCRITA').toEqual([])
+  // inserir não envia nem apaga elemento (o servidor do V2e registra POST/DELETE de elementos em `escritas`)
+  expect([...c.srv.escritas, ...c.srv.desconhecidas.filter((d) => d.includes('/elements'))], 'V2D-MARCA-SEM-ESCRITA').toEqual([])
 })
 
-test('Marca: 500 com "Tentar de novo"; vazia; HTML 200 vira vazia (limite conhecido do hook, V2e)', async ({ page }) => {
+test('Marca: 500 com "Tentar de novo"; vazia; HTML 200 é ERRO (o limite do hook fechado no V2e)', async ({ page }) => {
   const c = await montar(page, { 8: marca8({ elementos: { tipo: '500' } }) })
   await abrirTemplate(c, T8)
   await abrirPainel(c)
@@ -559,8 +559,9 @@ test('Marca: 500 com "Tentar de novo"; vazia; HTML 200 vira vazia (limite conhec
   const h = await montar(await page.context().newPage(), { 8: marca8({ elementos: { tipo: 'html' } }) })
   await abrirTemplate(h, T8)
   await abrirPainel(h)
-  // LIMITE CONHECIDO (preflight §10.2): o hook transforma não-lista em []; o V2e corrige. Não é aceite.
-  await expect(h.aba.locator('[data-aviso="marca-vazia"]'), 'V2D-MARCA-HTML200-LIMITE').toBeVisible()
+  // CP-V2e: o hook é estrito; HTML 200 (redirect do login) é erro com "Tentar de novo", nunca "vazia"
+  await expect(h.aba.locator('[data-aviso="marca-erro"]'), 'V2D-MARCA-HTML200-LIMITE').toBeVisible({ timeout: 15_000 })
+  expect(await h.aba.locator('[data-aviso="marca-vazia"]').count(), 'V2D-MARCA-HTML200-LIMITE').toBe(0)
 })
 
 test('busca com a Marca lenta: a seção segue "carregando" e não há falso vazio; o vazio só vem depois do sucesso', async ({ page }) => {
