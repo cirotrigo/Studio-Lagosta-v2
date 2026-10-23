@@ -207,7 +207,7 @@ describe('cliente HTTP real: como o HTML 200 de autenticação chega', () => {
 })
 
 describe('painel de formas: insere só pelo construtor, só em pronto, e refaz só o que falhou', () => {
-  const fonte = readFileSync(join(process.cwd(), 'src/components/templates/panels/shapes-panel.tsx'), 'utf8')
+  const fonte = readFileSync(join(process.cwd(), 'src/components/templates/panels/elementos-panel.tsx'), 'utf8')
   const insercao = fonte.slice(fonte.indexOf('const handleAddShape'), fonte.indexOf('const pronto ='))
 
   it('um addLayer, guardado pelo construtor; nenhuma leitura da vitrine', () => {

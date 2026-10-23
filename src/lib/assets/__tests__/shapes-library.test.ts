@@ -102,8 +102,10 @@ describe('consumidores: a ativação é um ponto só, lido na fonte', () => {
     const barra = fonte('src/components/templates/image-toolbar.tsx')
     expect(barra).toContain("import { MASCARAS_DE_IMAGEM } from '@/lib/assets/shapes-library'")
     expect(barra).not.toContain('SHAPES_LIBRARY')
-    const painel = fonte('src/components/templates/panels/shapes-panel.tsx')
-    expect(painel).toMatch(/import \{ SHAPES_LIBRARY, SHAPE_CATEGORIES(, type ShapeDefinition)? \} from '@\/lib\/assets\/shapes-library'/)
+    // desde o CP-V2d o painel é o "Elementos": lê o catálogo vivo pelo módulo do painel (`gruposDoPainel`)
+    const painel = fonte('src/lib/assets/painel-de-elementos.ts')
+    expect(painel).toContain("import { SHAPES_LIBRARY, type ShapeDefinition } from '@/lib/assets/shapes-library'")
+    expect(fonte('src/components/templates/panels/elementos-panel.tsx')).toMatch(/import \{[^}]*\bgruposDoPainel\b[^}]*\} from '@\/lib\/assets\/painel-de-elementos'/)
   })
 })
 

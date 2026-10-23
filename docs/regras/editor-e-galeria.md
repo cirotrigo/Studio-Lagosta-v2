@@ -611,3 +611,34 @@ mas nenhuma porta de escrita o chamava.
   - Helper novo de canto no servidor tem de seguir a sequência do Konva, ou o teste de sequência reprova.
 - **Push do desktop (X0):** toda forma com `vetor` passa a ser protegida (inclusive `rectangle`/`line`); um `fill`
   vindo do desktop deixa o papel antigo em `vetor.papeis`. Comportamento aceito até aposentar o push (d02).
+
+## Um rail só: o painel "Elementos" (CP-V2d, 23/10/2026)
+
+- **"Formas" saiu do rail.** No computador e no celular, "Elementos" monta o `ElementosPanel`
+  (`panels/elementos-panel.tsx`, ex-`shapes-panel.tsx`): busca, as 7 categorias do catálogo, "Outros" e a "Marca".
+  Painel novo de formas não volta a ser um item separado no rail.
+- **Categoria do painel é apresentação** (`src/lib/assets/painel-de-elementos.ts`, puro). Linhas, Formas, Orgânicos,
+  Setas, Destaques, Editorial e Ornamentos; os 37 legados vão por `category` (`basicas` → Formas) e as decorativas
+  **por id** (D3). O `category` literal dos 37 NÃO muda (o teste trava o sha256 deles). Item com categoria fora da
+  lista, ou decorativa nova sem id mapeado, cai em **"Outros"** (que só aparece com item): nunca some.
+- **`sparkle` só sai da exibição** (`OCULTOS_NO_PAINEL`), em favor do `spark-4` (D4a). Ele continua no
+  `SHAPES_LIBRARY` e nas 26 máscaras (`MASCARAS_DE_IMAGEM`, mesmos ids e paths); camada antiga com `sparkle` não muda.
+- **Busca sem acento e sem caixa, PT e EN** (`normalizarBusca`: NFD, sem diacríticos). Os termos em inglês dos 37
+  moram em `TERMOS_DO_PAINEL`, não nas `keywords` deles. Substring, sem ranking: "onda" também acha "Retângulo
+  Arredondado" e "selo" também acha a "Explosão".
+- **Aviso de marca sem cores (D5)** só com `estado === 'pronto' && ausenciaConfirmada` do adaptador do V2c, que é
+  `every(fonte === 'padrao')`: inclui paleta só com hex inválidos e assinatura `{}`. Nunca em carregamento ou erro;
+  projeto **sem a chave** `assinatura` é erro. O painel não refaz a conta.
+- **"Marca" só lista e insere** (`panels/marca-do-projeto.tsx`): pelo `useProjectElements` (mesma key das
+  combinações), camada `image` até 200 px, centrada, um `addLayer`. Sem `fetch` direto, sem envio e sem exclusão no
+  editor até o V2e; eles continuam na Identidade visual do projeto. Limite herdado do hook: HTML 200 vira "vazia".
+- **Busca não inventa vazio** (revisão do Codex, 23/10/2026): a busca só esconde a Marca, e o painel só diz "Nenhum
+  elemento encontrado.", com a consulta da Marca em **sucesso** e sem resultado. Carregando e erro (com o "Tentar de
+  novo") continuam visíveis durante a busca.
+- **Tabelas por chave usam `Map` ou `Object.hasOwn`**, nunca `objeto[chave]` cru: `category` ou `id` como
+  `constructor`/`toString`/`__proto__` achava membro herdado e o item sumia (ou o `gruposDoPainel` lançava).
+- **Prova:** `tests/harness/cp-v2d` (`npx playwright test -c tests/harness/cp-v2d/playwright.config.ts`), o
+  `TemplateEditorShell` REAL com 7 módulos falsos listados em `bundle.ts` (canvas, propriedades, Clerk, roteador,
+  imagem do Next, créditos, metadado de página). Rede falsa numa origem própria; desfazer pelo `undo()` do contexto.
+  **Não prova** o atalho Ctrl/⌘+Z nem o canvas Konva real. O `index.html` do harness precisa da
+  `<meta name="viewport">`: sem ela o Chromium com `isMobile` usa 980 px de layout e o editor abre no modo computador.

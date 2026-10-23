@@ -4,33 +4,33 @@ import * as React from 'react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { SHAPES_LIBRARY, SHAPE_CATEGORIES, type ShapeDefinition } from '@/lib/assets/shapes-library'
+import type { ShapeDefinition } from '@/lib/assets/shapes-library'
+import { casaBusca, gruposDoPainel } from '@/lib/assets/painel-de-elementos'
 import { useTemplateEditor, createDefaultLayer } from '@/contexts/template-editor-context'
 import { useBrandColorsEstrita } from '@/hooks/use-brand-colors'
 import { useProject } from '@/hooks/use-project'
+import { useProjectElements } from '@/hooks/use-project-elements'
 import { camadaParaInserir, estadoDaInsercao } from '@/lib/editor/estado-da-insercao'
+import { MarcaDoProjeto } from './marca-do-projeto'
 
 /**
- * Painel "Formas" único (estilo Polotno): busca + categorias. Substitui os antigos painéis órfãos de formas/ícones.
- * Insere SÓ pelo construtor (`camadaParaInserir`, CP-V2c): cores da marca por papel, nunca a vitrine do item, e só
- * com a paleta e a assinatura do projeto atual confirmadas (`estadoDaInsercao`).
+ * Painel "Elementos" (CP-V2d): o único do rail para formas, ornamentos e os elementos do projeto. Busca PT/EN sem
+ * acento + as 7 categorias do catálogo (`gruposDoPainel`), "Outros" só com item, e a seção "Marca".
+ * Insere forma SÓ pelo construtor (`camadaParaInserir`, CP-V2c): cores da marca por papel, nunca a vitrine do item, e
+ * só com a paleta e a assinatura do projeto atual confirmadas (`estadoDaInsercao`). O aviso de marca sem cores (D5)
+ * sai do próprio adaptador: `pronto` com `ausenciaConfirmada`, nunca em carregamento ou erro.
  */
-export function ShapesPanel() {
+export function ElementosPanel() {
   const { addLayer, design, projectId } = useTemplateEditor()
   const [query, setQuery] = React.useState('')
   const paleta = useBrandColorsEstrita(projectId)
   const projeto = useProject(projectId)
   const estado = estadoDaInsercao({ projectId, paleta, projeto })
 
-  const filtered = React.useMemo(() => {
-    const q = query.trim().toLowerCase()
-    if (!q) return SHAPES_LIBRARY
-    return SHAPES_LIBRARY.filter(
-      (shape) =>
-        shape.label.toLowerCase().includes(q) ||
-        shape.keywords?.some((k) => k.toLowerCase().includes(q)),
-    )
-  }, [query])
+  const grupos = React.useMemo(() => gruposDoPainel(query), [query])
+  // a mesma consulta da seção Marca (mesma key): "nada encontrado" só com a Marca CONFIRMADA sem resultado
+  const elementos = useProjectElements(projectId)
+  const marcaCasa = (elementos.data ?? []).some((e) => casaBusca([e.name], query))
 
   const handleAddShape = React.useCallback(
     (definition: ShapeDefinition) => {
@@ -45,11 +45,10 @@ export function ShapesPanel() {
   return (
     <div className="flex h-full min-h-[400px] flex-col gap-3 rounded-lg border border-border/40 bg-card/60 p-4 shadow-sm">
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold">Formas</h3>
         <Input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Buscar forma..."
+          placeholder="Buscar elemento..."
           className="h-8 text-xs"
         />
         {estado.estado === 'carregando' && (
@@ -71,37 +70,38 @@ export function ShapesPanel() {
             </Button>
           </div>
         )}
+        {estado.estado === 'pronto' && estado.ausenciaConfirmada && (
+          <p data-aviso="sem-cores" className="text-xs text-muted-foreground">
+            Cores da marca não cadastradas: os elementos entram nas cores padrão.
+          </p>
+        )}
       </div>
       <ScrollArea className="flex-1">
         <div className="space-y-4 pr-2">
-          {SHAPE_CATEGORIES.map((category) => {
-            const shapes = filtered.filter((shape) => shape.category === category.id)
-            if (shapes.length === 0) return null
-            return (
-              <div key={category.id}>
-                <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  {category.label}
-                </p>
-                <div className="grid grid-cols-3 gap-2">
-                  {shapes.map((shape) => (
-                    <button
-                      key={shape.id}
-                      type="button"
-                      onClick={() => handleAddShape(shape)}
-                      disabled={!pronto}
-                      title={shape.label}
-                      className="flex aspect-square items-center justify-center rounded-lg border border-border/40 bg-muted/40 p-2 transition hover:border-primary hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <ShapePreview shape={shape} />
-                    </button>
-                  ))}
-                </div>
+          {grupos.map((grupo) => (
+            <div key={grupo.id} data-secao={grupo.id}>
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                {grupo.label}
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                {grupo.itens.map((shape) => (
+                  <button
+                    key={shape.id}
+                    type="button"
+                    data-elemento={shape.id}
+                    onClick={() => handleAddShape(shape)}
+                    disabled={!pronto}
+                    title={shape.label}
+                    className="flex aspect-square items-center justify-center rounded-lg border border-border/40 bg-muted/40 p-2 transition hover:border-primary hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <ShapePreview shape={shape} />
+                  </button>
+                ))}
               </div>
-            )
-          })}
-          {filtered.length === 0 && (
-            <p className="text-xs text-muted-foreground">Nenhuma forma encontrada.</p>
-          )}
+            </div>
+          ))}
+          {grupos.length === 0 && elementos.isSuccess && !marcaCasa && <p className="text-xs text-muted-foreground">Nenhum elemento encontrado.</p>}
+          <MarcaDoProjeto busca={query} />
         </div>
       </ScrollArea>
     </div>
