@@ -4,6 +4,7 @@
  * do editor e o expõe em `window.__v2d` (o stage Konva, e com ele o atalho Ctrl/⌘+Z, fica fora da prova).
  */
 import * as React from 'react'
+import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import type { DesignData } from '@/types/template'
 
@@ -19,6 +20,13 @@ export interface SondaV2d {
 declare global {
   interface Window {
     __v2d?: SondaV2d
+    /** CP-V2e: o `QueryClient` REAL do `QueryProvider`, para o espião exato de `invalidateQueries` */
+    __v2dQueryClient?: QueryClient
+    /** CP-V2e: enquanto existir, o upload falso ao Blob espera por ela */
+    __v2dBlobPreso?: Promise<void>
+    __v2dBlobPedidos?: number
+    /** CP-V2e: quantas vezes a sonda (e com ela o shell) montou; troca sem remontagem não muda o número */
+    __v2dMontagens?: number
   }
 }
 
@@ -63,6 +71,13 @@ export function EditorCanvas() {
   const editor = useTemplateEditor()
   const ref = React.useRef(editor)
   ref.current = editor
+  const queryClient = useQueryClient()
+  React.useEffect(() => {
+    window.__v2dQueryClient = queryClient
+  }, [queryClient])
+  React.useEffect(() => {
+    window.__v2dMontagens = (window.__v2dMontagens ?? 0) + 1
+  }, [])
   React.useEffect(() => {
     window.__v2d = {
       design: () => JSON.parse(JSON.stringify(ref.current.design)) as DesignData,
@@ -90,3 +105,13 @@ export const useCredits = () => ({ canPerformOperation: () => true, getCost: () 
 
 // @/hooks/use-page-config
 export const usePageConfig = () => undefined
+
+// @/hooks/use-blob-upload: sem rede; devolve uma URL da própria origem falsa (o servidor a serve)
+export function useBlobUpload() {
+  const upload = React.useCallback(async (_file: File) => {
+    window.__v2dBlobPedidos = (window.__v2dBlobPedidos ?? 0) + 1
+    await window.__v2dBlobPreso
+    return `${window.location.origin}/imagens/selo.png`
+  }, [])
+  return { upload, isUploading: false, progress: null, error: null, reset: () => {} }
+}

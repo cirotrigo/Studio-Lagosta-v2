@@ -8,6 +8,14 @@
  * - `sem-bloqueio`: o painel insere fora de `pronto` (sem `disabled` e sem o estado no construtor);
  * - `d5-solto`: o aviso D5 ligado a "paleta sem cor", ignorando `ausenciaConfirmada` e o erro;
  * - `busca-antiga`: a Marca e o "nada encontrado" como antes da revisão do Codex (a busca escondia carregando/erro).
+ *
+ * Variantes do CP-V2e (só no bundle; cada uma recusa o bundle se a troca não aplicar):
+ * - `sem-confirmacao`: a lixeira da Marca chama a exclusão direto, sem o diálogo;
+ * - `hook-permissivo`: a consulta volta a `Array.isArray(d) ? d : []` (HTML 200 e não-lista viram vazia);
+ * - `sem-invalidacao`: o `onSettled` das mutações não invalida nada;
+ * - `delete-aceita-qualquer-resposta`: a exclusão não passa pelo `lerExclusaoConfirmada`;
+ * - `invalida-projeto-atual`: as mutações invalidam o projeto DA TELA (lido da sonda), não o da mutação;
+ * - `upload-json`: o envio sai como JSON (`JSON.stringify(FormData)` = `{}`, como o `api.post`), sem multipart.
  */
 import { build, type Plugin } from 'esbuild'
 import { execFileSync } from 'node:child_process'
@@ -18,7 +26,29 @@ import tailwind from '@tailwindcss/postcss'
 
 export const RAIZ = path.resolve(__dirname, '../../..')
 export const BASE = 'f561dc2bd0e27996121229e24ab73bc0ba734518'
-export type Variante = 'v2d' | 'base' | 'sem-bloqueio' | 'd5-solto' | 'busca-antiga'
+export type Variante =
+  | 'v2d'
+  | 'base'
+  | 'sem-bloqueio'
+  | 'd5-solto'
+  | 'busca-antiga'
+  | 'sem-confirmacao'
+  | 'hook-permissivo'
+  | 'sem-invalidacao'
+  | 'delete-aceita-qualquer-resposta'
+  | 'invalida-projeto-atual'
+  | 'upload-json'
+
+/** Troca TODAS as ocorrências de cada par e exige que cada uma tenha aplicado exatamente `vezes` vezes. */
+function trocar(atual: string, variante: string, pares: Array<[string, string, number?]>): string {
+  let saida = atual
+  for (const [de, para, vezes = 1] of pares) {
+    const n = saida.split(de).length - 1
+    if (n !== vezes) throw new Error(`variante ${variante} não aplicou (${n}× em vez de ${vezes}×): ${de.slice(0, 60)}`)
+    saida = saida.split(de).join(para)
+  }
+  return saida
+}
 
 /** Módulo → motivo. Todos vão para `falsos.tsx`; nenhum dos arquivos que o V2d muda está aqui. */
 export const FALSOS: Record<string, string> = {
@@ -29,12 +59,16 @@ export const FALSOS: Record<string, string> = {
   '@/hooks/use-credits': 'Clerk e créditos',
   '@/hooks/use-page-config': 'metadado de página do layout autenticado',
   '@clerk/nextjs': 'sem Clerk no harness (nenhum provedor montado; nenhuma rede)',
+  // CP-V2e (revisão 2): só a dependência EXTERNA do upload da Identidade visual; a mutação e o componente são os reais
+  '@/hooks/use-blob-upload': 'upload direto ao Vercel Blob (rede externa); vira um upload falso controlável pela página',
 }
 
 const ehFalso = (spec: string) => Object.prototype.hasOwnProperty.call(FALSOS, spec)
 
 function fonteDaVariante(variante: Variante, arquivo: string): string | null {
   const rel = path.relative(RAIZ, arquivo).split(path.sep).join('/')
+  const v2e = fonteDaVarianteV2e(variante, rel, arquivo)
+  if (v2e !== null) return v2e
   if (variante === 'base' && rel === 'src/components/templates/template-editor-shell.tsx') {
     return execFileSync('git', ['show', `${BASE}:${rel}`], { cwd: RAIZ }).toString()
   }
@@ -70,6 +104,52 @@ function fonteDaVariante(variante: Variante, arquivo: string): string | null {
     return trocado
   }
   return null
+}
+
+function fonteDaVarianteV2e(variante: Variante, rel: string, arquivo: string): string | null {
+  const HOOK = 'src/hooks/use-project-elements.ts'
+  const MARCA = 'src/components/templates/panels/marca-do-projeto.tsx'
+  if (variante === 'sem-confirmacao' && rel === MARCA) {
+    return trocar(readFileSync(arquivo, 'utf8'), variante, [
+      ['useUploadProjectElement, type ProjectElement', 'useUploadProjectElement, useDeleteProjectElement, type ProjectElement'],
+      ['const enviar = useUploadProjectElement()', 'const enviar = useUploadProjectElement()\n  const excluirDireto = useDeleteProjectElement()'],
+      [
+        'onClick={() => exclusao.pedir({ projectId: elemento.projectId, elementId: elemento.id, nome: elemento.name })}',
+        'onClick={() => excluirDireto.mutate({ projectId: elemento.projectId, elementId: elemento.id })}',
+      ],
+    ])
+  }
+  if (rel !== HOOK) return null
+  const atual = readFileSync(arquivo, 'utf8')
+  const invalida = 'void invalidarElementosDoProjeto(queryClient, variables.projectId)'
+  switch (variante) {
+    case 'hook-permissivo':
+      return trocar(atual, variante, [
+        [
+          'queryFn: async () => lerListaDeElementos(await api.get<unknown>(`/api/projects/${projectId}/elements`), projectId as number),',
+          'queryFn: async () => { const d = await api.get<unknown>(`/api/projects/${projectId}/elements`); return (Array.isArray(d) ? d : []) as ProjectElement[] },',
+        ],
+      ])
+    case 'sem-invalidacao':
+      return trocar(atual, variante, [[invalida, 'void 0', 2]])
+    case 'delete-aceita-qualquer-resposta':
+      return trocar(atual, variante, [
+        ['lerExclusaoConfirmada(await api.delete<unknown>(`/api/projects/${projectId}/elements/${elementId}`))', 'await api.delete<unknown>(`/api/projects/${projectId}/elements/${elementId}`)'],
+      ])
+    case 'invalida-projeto-atual':
+      return trocar(atual, variante, [
+        [invalida, 'void invalidarElementosDoProjeto(queryClient, (globalThis as { __v2d?: { projectId: () => number } }).__v2d?.projectId() ?? variables.projectId)', 2],
+      ])
+    case 'upload-json':
+      return trocar(atual, variante, [
+        [
+          "await fetch(`/api/projects/${projectId}/elements`, { method: 'POST', body: form })",
+          "await fetch(`/api/projects/${projectId}/elements`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })",
+        ],
+      ])
+    default:
+      return null
+  }
 }
 
 function plugin(variante: Variante, outros: boolean): Plugin {

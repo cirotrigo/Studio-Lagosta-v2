@@ -129,9 +129,54 @@ describe('fontes do rail e do painel (CP-V2d)', () => {
     expect(painel).toContain("estado.estado === 'pronto' && estado.ausenciaConfirmada")
   })
 
-  it('a Marca lista pelo hook existente e só insere: sem POST, DELETE nem upload', () => {
+  it('a Marca lista pelo hook; envio e exclusão SÓ pelos hooks (CP-V2e): sem method, DELETE, POST nem FormData aqui', () => {
     expect(marca).toContain('useProjectElements(projectId)')
-    expect(marca).not.toMatch(/method:|DELETE|POST|FormData|type="file"/)
+    expect(marca).toContain('useUploadProjectElement()')
+    expect(marca).toContain('useConfirmarExclusaoDeElemento(projectId)')
+    expect(marca).not.toMatch(/method:|DELETE|POST|FormData/)
     expect(marca.match(/addLayer\(/g)).toHaveLength(1)
+  })
+})
+
+describe('fontes do CP-V2e: hooks, confirmação comum e órfão removido', () => {
+  const fonte = (caminho: string) => readFileSync(join(process.cwd(), caminho), 'utf8')
+  const marca = fonte('src/components/templates/panels/marca-do-projeto.tsx')
+  const confirmacao = fonte('src/components/projects/confirmar-exclusao-de-elemento.tsx')
+  const identidade = fonte('src/components/projects/project-assets-panel.tsx')
+
+  it('a lixeira é IRMÃ do botão de inserir, só abre a confirmação, e nunca chama addLayer', () => {
+    const insere = marca.indexOf('data-marca={elemento.id}')
+    const lixeira = marca.indexOf('data-apagar={elemento.id}')
+    expect(insere).toBeGreaterThan(0)
+    expect(lixeira).toBeGreaterThan(insere)
+    // o </button> do inserir fecha ANTES da lixeira abrir
+    expect(marca.slice(insere, lixeira)).toContain('</button>')
+    const blocoDaLixeira = marca.slice(lixeira, marca.indexOf('</button>', lixeira))
+    expect(blocoDaLixeira).toContain('exclusao.pedir(')
+    expect(blocoDaLixeira).not.toMatch(/addLayer|inserir\(|mutate/)
+  })
+
+  it('confirmação controlada: "Apagar" não é AlertDialogAction (que fecharia no clique) e Esc pendente é ignorado', () => {
+    expect(confirmacao).not.toMatch(/<AlertDialogAction|^\s*AlertDialogAction,$/m)
+    expect(confirmacao).toMatch(/onEscapeKeyDown=\{\(evento\) => \{\s*if \(ocupado\(\)\) evento\.preventDefault\(\)/)
+    // `ocupado` lê a ref marcada no clique, não só o `isPending` (que chega à tela depois)
+    expect(confirmacao).toContain('const ocupado = () => emVoo.current || pendente')
+    expect(confirmacao).toContain('useDeleteProjectElement()')
+    expect(confirmacao).not.toMatch(/(^|[^\w.])fetch\(/m)
+  })
+
+  it('Identidade visual: nenhum fetch DELETE para /elements/; exclusão pelo hook comum; envio e Drive invalidam as 3 keys', () => {
+    expect(identidade).not.toMatch(/fetch\(`\/api\/projects\/\$\{projectId\}\/elements\/\$\{[^`]*`,\s*\{\s*method: 'DELETE'/)
+    expect(identidade).not.toMatch(/deleteElement/)
+    expect(identidade).toContain('useConfirmarExclusaoDeElemento(projectId)')
+    // envio: o projeto da MUTAÇÃO (variáveis), nunca a closure da tela; Drive: o da invocação, no `finally`
+    expect(identidade.match(/invalidarElementosDoProjeto\(queryClient, variables\.projectId\)/g)).toHaveLength(1)
+    expect(identidade).toContain('uploadElement.mutate({ file, projectId })')
+    expect(identidade.match(/invalidarElementosDoProjeto\(queryClient, projectId\)/g)).toHaveLength(1)
+    expect(identidade).not.toMatch(/invalidateQueries\(\{ queryKey: \['project-assets', projectId, 'elements'\] \}\)/)
+  })
+
+  it('o painel antigo de Elementos (sem consumidor desde o V2d) não existe mais', () => {
+    expect(existsSync(join(process.cwd(), 'src/components/templates/panels/elements-panel.tsx'))).toBe(false)
   })
 })

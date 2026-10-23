@@ -7,6 +7,8 @@ import { createRoot } from 'react-dom/client'
 import { QueryProvider } from '@/components/providers/query-provider'
 import { Toaster } from '@/components/ui/toaster'
 import { TemplateEditorShell } from '@/components/templates/template-editor-shell'
+import { ProjectAssetsPanel } from '@/components/projects/project-assets-panel'
+import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import type { TemplateDto } from '@/hooks/use-template'
 import type { Layer } from '@/types/template'
 import { MASCARAS_DE_IMAGEM } from '@/lib/assets/shapes-library'
@@ -24,6 +26,8 @@ export interface AreaDeClique {
 declare global {
   interface Window {
     __v2dAbrir: (template: TemplateDto) => void
+    /** CP-V2e: monta a Identidade visual REAL (`ProjectAssetsPanel`) do projeto, no mesmo `QueryProvider` */
+    __v2dAbrirIdentidade: (projectId: number) => void
     __v2dMascaras: Array<[string, string | undefined]>
     __v2dAreaDeClique: (layer: Layer) => AreaDeClique
   }
@@ -38,8 +42,23 @@ function App({ template }: { template: TemplateDto }) {
   )
 }
 
+function Identidade({ projectId }: { projectId: number }) {
+  const queryClient = useQueryClient()
+  React.useEffect(() => {
+    window.__v2dQueryClient = queryClient as QueryClient
+  }, [queryClient])
+  return <ProjectAssetsPanel projectId={projectId} />
+}
+
 const raiz = createRoot(document.getElementById('app')!)
 window.__v2dAbrir = (template) => raiz.render(<App template={template} />)
+window.__v2dAbrirIdentidade = (projectId) =>
+  raiz.render(
+    <QueryProvider>
+      <Identidade projectId={projectId} />
+      <Toaster />
+    </QueryProvider>,
+  )
 
 window.__v2dMascaras = MASCARAS_DE_IMAGEM.map((m) => [m.id, m.pathData])
 

@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
-import { del } from '@vercel/blob'
 import { db } from '@/lib/db'
 import {
   fetchProjectWithShares,
@@ -40,15 +39,9 @@ export async function DELETE(
     return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
   }
 
-  const token = process.env.BLOB_READ_WRITE_TOKEN
-  if (token) {
-    try {
-      await del(element.fileUrl, { token })
-    } catch (error) {
-      console.warn('[elements] Falha ao remover blob', error)
-    }
-  }
-
+  // D6 (b), CP-V2e: apaga só a entrada da biblioteca. O arquivo no Blob FICA: as artes copiam a `fileUrl` para as
+  // camadas (sem referência por id), e apagá-lo quebraria editor e render no servidor de toda arte que o usa.
+  // Arquivos órfãos ficam para uma limpeza futura com conferência de uso (D6 c).
   await db.element.delete({ where: { id: elementIdNum } })
 
   return NextResponse.json({ success: true })
