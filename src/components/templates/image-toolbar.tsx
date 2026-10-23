@@ -11,7 +11,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { FlipHorizontal2, FlipVertical2, Expand, Shapes, Ban, Crop } from 'lucide-react'
-import { SHAPES_LIBRARY } from '@/lib/assets/shapes-library'
+import { MASCARAS_DE_IMAGEM } from '@/lib/assets/shapes-library'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { paginaEVideo } from '@/lib/video/camadas-de-video'
 import { MovimentoDaFoto } from './movimento-da-foto'
@@ -29,8 +29,8 @@ interface ImageToolbarProps {
   onUpdateLayer: (id: string, updates: Partial<Layer>) => void
 }
 
-/** Formas com path disponíveis como máscara (o path fica CONGELADO na camada) */
-const MASK_SHAPES = SHAPES_LIBRARY.filter((shape) => shape.shapeType === 'svg-path' && shape.pathData)
+/** Formas disponíveis como máscara: a lista explícita dos 26 legados (o path fica CONGELADO na camada) */
+const MASK_SHAPES = MASCARAS_DE_IMAGEM
 
 export function ImageToolbar({ selectedLayer, onUpdateLayer }: ImageToolbarProps) {
   const { design, setCroppingLayerId } = useTemplateEditor()
