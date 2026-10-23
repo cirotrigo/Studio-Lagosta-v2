@@ -12,20 +12,19 @@ import { useToast } from '@/hooks/use-toast'
 import { usePageConfig } from '@/hooks/use-page-config'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Save, Maximize2, Minimize2, FileText, Image as ImageIcon, Type as TypeIcon, Square, Layers2, Award, Palette, Sparkles, Settings, Copy, Trash2, Plus, ChevronLeft, ChevronRight, Wand2, ChevronDown, ChevronUp, FileImage, Film, GalleryVertical, Menu, Music, X, ZoomIn, ZoomOut, MessageSquare, Calendar, ArrowLeft, Check, PaintBucket, Shapes } from 'lucide-react'
+import { Save, Maximize2, Minimize2, FileText, Image as ImageIcon, Type as TypeIcon, Square, Layers2, Award, Palette, Sparkles, Settings, Copy, Trash2, Plus, ChevronLeft, ChevronRight, Wand2, ChevronDown, ChevronUp, FileImage, Film, GalleryVertical, Menu, Music, X, ZoomIn, ZoomOut, MessageSquare, Calendar, ArrowLeft, Check, PaintBucket } from 'lucide-react'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { EditorCanvas } from './editor-canvas'
 import { PropertiesPanel, EffectsPanel } from './properties-panel'
 import { EditorSidebar } from './sidebar/editor-sidebar'
 import { TextToolsPanel } from './panels/text-panel'
 import { ImagesPanelContent } from './panels/images-panel'
-import { ElementsPanelContent } from './panels/elements-panel'
+import { ElementosPanel } from './panels/elementos-panel'
 import { LogoPanelContent } from './panels/logo-panel'
 import { ColorsPanelContent } from './panels/colors-panel'
 import { LayersPanelAdvanced } from './layers-panel-advanced'
 import { GradientsPanel } from './sidebar/gradients-panel'
 import { BackgroundsPanel } from './sidebar/backgrounds-panel'
-import { ShapesPanel } from './panels/shapes-panel'
 import { AIImagesPanel } from './sidebar/ai-images-panel'
 import { VideosPanel } from './sidebar/videos-panel'
 import { MusicPanel } from './sidebar/music-panel'
@@ -189,7 +188,7 @@ export function TemplateEditorShell({ template, prefillDriveImage, aiEditMode, i
   )
 }
 
-type SidePanel = 'templates' | 'text' | 'images' | 'videos' | 'music' | 'elements' | 'shapes' | 'logo' | 'colors' | 'gradients' | 'backgrounds' | 'ai-images' | 'ai-creative' | 'layers' | null
+type SidePanel = 'templates' | 'text' | 'images' | 'videos' | 'music' | 'elements' | 'logo' | 'colors' | 'gradients' | 'backgrounds' | 'ai-images' | 'ai-creative' | 'layers' | null
 
 // Ferramentas disponíveis no drawer mobile (grid inicial e linha de chips)
 const MOBILE_TOOL_ITEMS: Array<{
@@ -202,7 +201,6 @@ const MOBILE_TOOL_ITEMS: Array<{
   { key: 'videos', label: 'Vídeos', icon: Film },
   { key: 'music', label: 'Músicas', icon: Music },
   { key: 'elements', label: 'Elementos', icon: Square },
-  { key: 'shapes', label: 'Formas', icon: Shapes },
   { key: 'logo', label: 'Logo', icon: Award },
   { key: 'colors', label: 'Cores', icon: Palette },
   { key: 'gradients', label: 'Gradientes', icon: Sparkles },
@@ -719,8 +717,7 @@ function TemplateEditorContent({
             {activePanel === 'images' && <ImagesPanelContent />}
             {activePanel === 'videos' && <VideosPanel />}
             {activePanel === 'music' && <MusicPanel />}
-            {activePanel === 'elements' && <ElementsPanelContent />}
-            {activePanel === 'shapes' && <ShapesPanel />}
+            {activePanel === 'elements' && <ElementosPanel />}
             {activePanel === 'logo' && <LogoPanelContent />}
             {activePanel === 'colors' && <ColorsPanelContent />}
             {activePanel === 'gradients' && <GradientsPanel />}
@@ -882,12 +879,6 @@ function TemplateEditorContent({
             onClick={() => togglePanel('elements')}
           />
           <ToolbarButton
-            icon={<Shapes className="h-5 w-5" />}
-            label="Formas"
-            active={activePanel === 'shapes'}
-            onClick={() => togglePanel('shapes')}
-          />
-          <ToolbarButton
             icon={<Award className="h-5 w-5" />}
             label="Logo"
             active={activePanel === 'logo'}
@@ -943,7 +934,6 @@ function TemplateEditorContent({
                 {activePanel === 'videos' && 'Vídeos'}
                 {activePanel === 'music' && 'Músicas'}
                 {activePanel === 'elements' && 'Elementos'}
-                {activePanel === 'shapes' && 'Formas'}
                 {activePanel === 'logo' && 'Logo da Marca'}
                 {activePanel === 'colors' && 'Cores da Marca'}
                 {activePanel === 'gradients' && 'Gradientes'}
@@ -958,8 +948,7 @@ function TemplateEditorContent({
               {activePanel === 'images' && <ImagesPanelContent />}
               {activePanel === 'videos' && <VideosPanel />}
               {activePanel === 'music' && <MusicPanel />}
-              {activePanel === 'elements' && <ElementsPanelContent />}
-              {activePanel === 'shapes' && <ShapesPanel />}
+              {activePanel === 'elements' && <ElementosPanel />}
               {activePanel === 'logo' && <LogoPanelContent />}
               {activePanel === 'colors' && <ColorsPanelContent />}
               {activePanel === 'gradients' && <GradientsPanel />}
