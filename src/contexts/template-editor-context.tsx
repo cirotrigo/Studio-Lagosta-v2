@@ -17,6 +17,7 @@ import { ehClipe } from '@/lib/video/camadas-de-video'
 import { criarReservaDeClipes, inserirClipe, MENSAGEM_TETO_DE_CLIPES, normalizarClipes } from '@/lib/video/linha-do-tempo'
 import { toast } from '@/hooks/use-toast'
 import { consumirInsercaoDeClipe } from '@/lib/video/insercao-de-clipe'
+import { criarGeracaoDaCarga } from '@/lib/editor/cores-da-forma'
 import { useQueryClient } from '@tanstack/react-query'
 import { canonicalizeShapeStyleForPersistence } from '@/lib/shape-style'
 
@@ -76,6 +77,11 @@ export interface TemplateEditorContextValue {
   dynamicFields: DynamicField[]
   setDynamicFields: React.Dispatch<React.SetStateAction<DynamicField[]>>
   dirty: boolean
+  /**
+   * Geração da carga do documento (CP-V3): sobe em toda `loadTemplate` e na troca de template/projeto do provider;
+   * não sobe em edição nem com um novo objeto do mesmo template. Só leitura (o Reaplicar confere o alvo por ela).
+   */
+  geracaoDaCarga: () => number
   markSaved: (nextTemplate?: Partial<TemplateResource>) => void
   zoom: number
   setZoom: (value: number) => void
@@ -211,6 +217,11 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
   // recriar os callbacks a cada edição
   const designAtualRef = React.useRef(design)
   designAtualRef.current = design
+  // CP-V3: carga e troca de documento sobem a geração; o mesmo template com objeto novo, não
+  const geracaoRef = React.useRef<ReturnType<typeof criarGeracaoDaCarga> | null>(null)
+  geracaoRef.current ??= criarGeracaoDaCarga(`${template.id}:${template.projectId}`)
+  geracaoRef.current.documento(`${template.id}:${template.projectId}`)
+  const geracaoDaCarga = React.useCallback(() => geracaoRef.current!.valor(), [])
   // Teto de clipes em lote: o `design` desta renderização já conta o que entrou
   const reservaDeClipesRef = React.useRef(criarReservaDeClipes())
   reservaDeClipesRef.current.zerar()
@@ -1075,6 +1086,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
        */
       historyKey?: string
     }) => {
+      geracaoRef.current!.carregou()
       const clonedDesign: DesignData = cloneDesign(designData)
       clonedDesign.layers = normalizeLayerOrder(clonedDesign.layers ?? [])
 
@@ -1400,6 +1412,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
         })
       },
       dirty,
+      geracaoDaCarga,
       markSaved,
       zoom,
       focusTextMode,
@@ -1472,6 +1485,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
       setPageAudio,
       dynamicFields,
       dirty,
+      geracaoDaCarga,
       markSaved,
       zoom,
       focusTextMode,

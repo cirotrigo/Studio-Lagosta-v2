@@ -26,6 +26,7 @@ import {
   ArrowDown,
   FlipHorizontal2,
   FlipVertical2,
+  Link2,
 } from 'lucide-react'
 import { FONT_CONFIG } from '@/lib/font-config'
 import { patchLineHeight } from '@/lib/text-line-height'
@@ -36,6 +37,27 @@ import { controlesDaForma } from '@/lib/konva/trava-de-proporcao'
 import { lerCor } from '@/lib/vetor/cor'
 import { corParaSeletor } from '@/lib/editor/cor-do-seletor'
 import { escolhaExplicitaDaCor } from '@/lib/editor/camada-do-elemento'
+import {
+  alvoValido,
+  atualizadorDoReaplicar,
+  classificarPaleta,
+  coresNestaPagina,
+  DICA_DO_ELO,
+  eloDoCanal,
+  podeReaplicar,
+  reaplicarCoresDaMarca,
+  resumoDoReaplicar,
+  rotuloDoCanal,
+  swatchAtivo,
+  type AlvoDoReaplicar,
+  type CorAplicavel,
+  type SituacaoDoEditor,
+} from '@/lib/editor/cores-da-forma'
+import { estadoDaInsercao } from '@/lib/editor/estado-da-insercao'
+import { useBrandColorsEstrita } from '@/hooks/use-brand-colors'
+import { useProject } from '@/hooks/use-project'
+import { useMultiPageOpcional } from '@/contexts/multi-page-context'
+import type { CanalDeCor } from '@/lib/vetor/tipos'
 import { ImageEditorModal } from './modals/image-editor-modal'
 import { GradientEditor } from './gradient-editor'
 import { ColorPicker } from '@/components/canvas/effects/ColorPicker'
@@ -1473,12 +1495,29 @@ function CampoDeCorDigitada({ valor, origem, aoGravar }: { valor: string; origem
 function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
   const fillOpacity = Math.round(parseColorOpacity(layer.style?.fill, layer.style?.fillOpacity ?? 1) * 100)
   const strokeOpacity = Math.round(parseColorOpacity(layer.style?.strokeColor, layer.style?.strokeOpacity ?? 1) * 100)
-  const corAceita = layer.style?.shapeType === 'svg-path' ? ehCorDoSvgPath : ehCorCss
+  // CP-V3: o `lerCor` vale também na camada com `style.vetor` que não é `svg-path` (fio, moldura, pílula)
+  const corAceita = layer.style?.shapeType === 'svg-path' || ehObjetoDeEstilo(layer.style?.vetor) ? ehCorDoSvgPath : ehCorCss
+  const editor = useTemplateEditor()
+  const consultaDaPaleta = useBrandColorsEstrita(editor.projectId)
+  const paleta = consultaDaPaleta.status === 'success' && consultaDaPaleta.data?.projectId === editor.projectId
+    ? classificarPaleta(consultaDaPaleta.data.cores)
+    : null
+  const nestaPagina = coresNestaPagina(editor.design, paleta?.aplicaveis.map((c) => c.hex) ?? [])
+  const escolher = (canal: CanalDeCor, hex: string) => {
+    const preenchimento = canal === 'preenchimento'
+    setStyleValue(layer, preenchimento
+      ? { fill: applyOpacityToEditableColor(hex, fillOpacity / 100, '#2563eb'), fillOpacity: 1, ...escolhaExplicitaDaCor(layer.style, 'preenchimento') }
+      : { strokeColor: applyOpacityToEditableColor(hex, strokeOpacity / 100, '#1e3a8a'), strokeOpacity: 1, ...escolhaExplicitaDaCor(layer.style, 'contorno') })
+  }
 
   return (
     <div className="space-y-3 text-xs">
+      <EstadoDaPaletaDaForma consulta={consultaDaPaleta} paleta={paleta} />
       <div className="space-y-1">
-        <Label>Preenchimento</Label>
+        <Label>{rotuloDoCanal(layer, 'preenchimento')}</Label>
+        <EloDoCanal layer={layer} canal="preenchimento" />
+        <FileirasDoCanal paleta={paleta} nestaPagina={nestaPagina} valor={layer.style?.fill} onSelect={(hex) => escolher('preenchimento', hex)} />
+        <span data-fileira="personalizada" className="block text-[10px] text-muted-foreground">Personalizada</span>
         <div className="flex items-center gap-2">
           <CampoDeCorDigitada
             key={layer.id}
@@ -1500,14 +1539,6 @@ function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
             })}
           />
         </div>
-        <BrandColorSwatches
-          value={corParaSeletor(layer.style?.fill, '#2563eb')}
-          onSelect={(hex) => setStyleValue(layer, {
-            fill: applyOpacityToEditableColor(hex, fillOpacity / 100, '#2563eb'),
-            fillOpacity: 1,
-            ...escolhaExplicitaDaCor(layer.style, 'preenchimento'),
-          })}
-        />
         <p className="text-[10px] text-muted-foreground break-all">
           Valor salvo: {layer.style?.fill ?? '#2563eb'}
         </p>
@@ -1534,7 +1565,10 @@ function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
-          <Label>Cor da borda</Label>
+          <Label>{rotuloDoCanal(layer, 'contorno')}</Label>
+          <EloDoCanal layer={layer} canal="contorno" />
+          <FileirasDoCanal paleta={paleta} nestaPagina={nestaPagina} valor={layer.style?.strokeColor} onSelect={(hex) => escolher('contorno', hex)} />
+          <span data-fileira="personalizada" className="block text-[10px] text-muted-foreground">Personalizada</span>
           <div className="flex items-center gap-2">
             <CampoDeCorDigitada
               key={layer.id}
@@ -1556,14 +1590,6 @@ function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
               })}
             />
           </div>
-          <BrandColorSwatches
-            value={corParaSeletor(layer.style?.strokeColor, '#1e3a8a')}
-            onSelect={(hex) => setStyleValue(layer, {
-              strokeColor: applyOpacityToEditableColor(hex, strokeOpacity / 100, '#1e3a8a'),
-              strokeOpacity: 1,
-              ...escolhaExplicitaDaCor(layer.style, 'contorno'),
-            })}
-          />
           <p className="text-[10px] text-muted-foreground break-all">
             Valor salvo: {layer.style?.strokeColor ?? '#1e3a8a'}
           </p>
@@ -1598,7 +1624,242 @@ function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
           }}
         />
       </div>
+      <ReaplicarCoresDaMarca layer={layer} />
       <GestoDaFormaControls layer={layer} setStyleValue={setStyleValue} />
+    </div>
+  )
+}
+
+const ehObjetoDeEstilo = (v: unknown): boolean => typeof v === 'object' && v !== null && !Array.isArray(v)
+
+type PaletaDaForma = ReturnType<typeof classificarPaleta> | null
+
+/**
+ * CP-V3: o estado da paleta ESTRITA da forma, uma vez para os dois canais. Carregando e erro (HTML 200, cor sem
+ * `hexCode`) nunca viram "sem cores"; item com hex inválido sai da fileira e é contado.
+ */
+function EstadoDaPaletaDaForma({ consulta, paleta }: { consulta: ReturnType<typeof useBrandColorsEstrita>; paleta: PaletaDaForma }) {
+  if (consulta.status === 'error') {
+    return (
+      <div data-paleta-da-forma="erro" className="space-y-1 rounded-md border border-destructive/40 p-2 text-[10px]">
+        <p>Não foi possível carregar as cores da marca.</p>
+        <Button size="sm" variant="outline" className="h-6 text-[10px]" onClick={() => void consulta.refetch()}>
+          Tentar de novo
+        </Button>
+      </div>
+    )
+  }
+  if (!paleta) return <p data-paleta-da-forma="carregando" className="text-[10px] text-muted-foreground">Carregando as cores da marca…</p>
+  if (paleta.aplicaveis.length === 0 && paleta.ignoradas === 0) {
+    return <p data-paleta-da-forma="vazia" className="text-[10px] text-muted-foreground">Sem cores cadastradas.</p>
+  }
+  if (paleta.ignoradas === 0) return null
+  return (
+    <p data-paleta-da-forma="ignoradas" className="text-[10px] text-muted-foreground">
+      {paleta.ignoradas === 1 ? '1 cor da paleta ignorada: hex inválido.' : `${paleta.ignoradas} cores da paleta ignoradas: hex inválido.`}
+    </p>
+  )
+}
+
+/** CP-V3: o elo do canal com o papel da marca. Só o Reaplicar o usa; a cor não muda sozinha (d08). */
+function EloDoCanal({ layer, canal }: { layer: Layer; canal: CanalDeCor }) {
+  const elo = eloDoCanal(layer.style, canal)
+  if (!elo) return null
+  return (
+    <p data-elo={canal} title={DICA_DO_ELO} className="flex items-center gap-1 text-[10px] text-muted-foreground">
+      <Link2 className="h-3 w-3" aria-hidden="true" />
+      {elo}
+    </p>
+  )
+}
+
+/**
+ * CP-V3: Marca (só os itens aplicáveis da paleta estrita, gravando o hex canônico) e Nesta página (as cores já usadas,
+ * sem a paleta). O ativo compara os canais da cor SALVA, crua, pelo `lerCor`: sem cor legível, nada acende.
+ */
+function FileirasDoCanal({ paleta, nestaPagina, valor, onSelect }: { paleta: PaletaDaForma; nestaPagina: string[]; valor: string | undefined; onSelect: (hex: string) => void }) {
+  return (
+    <>
+      {paleta && paleta.aplicaveis.length > 0 && (
+        <div className="space-y-1" data-fileira="marca">
+          <span className="text-[10px] text-muted-foreground">Marca</span>
+          <BrandColorSwatches cores={paleta.aplicaveis as CorAplicavel[]} ativo={(hex) => swatchAtivo(valor, hex)} onSelect={onSelect} />
+        </div>
+      )}
+      {nestaPagina.length > 0 && (
+        <div className="space-y-1" data-fileira="nesta-pagina">
+          <span className="text-[10px] text-muted-foreground">Nesta página</span>
+          <div className="flex flex-wrap gap-1.5" data-nesta-pagina="">
+            {nestaPagina.map((hex) => (
+              <button
+                key={hex}
+                type="button"
+                onClick={() => onSelect(hex)}
+                className="relative h-5 w-5 shrink-0 rounded border border-border transition hover:scale-110 hover:border-primary"
+                style={{ backgroundColor: hex }}
+                title={hex}
+                aria-label={`Usar ${hex} desta página`}
+              >
+                {swatchAtivo(valor, hex) && (
+                  <span className="absolute inset-0 flex items-center justify-center">
+                    <span className="h-1.5 w-1.5 rounded-full bg-white shadow-sm ring-1 ring-black/20" />
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+/** Número de cada operação do Reaplicar: identidade do aviso e chave de desfazer única (o histórico funde a mesma chave em 800 ms). */
+let operacoesDoReaplicar = 0
+
+type ConsultaLida = { status: 'pending' | 'error' | 'success'; data: unknown }
+/** O estado de UMA operação: só ela o muda, e só enquanto o token dela vale. */
+interface OperacaoDoReaplicar {
+  op: number
+  token: number
+  chave: string
+  alvo: AlvoDoReaplicar
+  tipo: 'em-voo' | 'carregando' | 'erro' | 'feito'
+  texto: string
+  /** Na falha: a consulta que voltou boa, guardada para o "Tentar de novo" (mesmo alvo e token) não relê-la. */
+  confirmadas: { paleta?: ConsultaLida; projeto?: ConsultaLida }
+}
+
+/**
+ * CP-V3: "Reaplicar cores da marca" na camada. Relê a paleta e a assinatura (R2) e só grava com o alvo do clique
+ * intacto: token da operação, montagem, projeto, template, página, geração da carga e a seleção exatamente [camada].
+ * A guarda se repete DENTRO do atualizador (`atualizadorDoReaplicar`). O aviso, o "em voo" e o retry pertencem à
+ * operação (número + token): trocar o alvo os descarta, e uma resposta velha nunca mexe no aviso de outra operação,
+ * mesmo quando a seleção volta à mesma camada. "Tentar de novo" relê só a consulta que falhou; um clique novo relê as
+ * duas. Sem mudança, nada é gravado (nem desfazer, nem PATCH). Só os canais ainda vinculados mudam (Q1 = A).
+ */
+function ReaplicarCoresDaMarca({ layer }: { layer: Layer }) {
+  const editor = useTemplateEditor()
+  const multiPage = useMultiPageOpcional()
+  const paleta = useBrandColorsEstrita(editor.projectId)
+  const projeto = useProject(editor.projectId)
+  const situacao = {
+    projectId: editor.projectId,
+    templateId: editor.templateId,
+    pageId: multiPage?.currentPageId ?? null,
+    selecao: editor.selectedLayerIds,
+    geracao: editor.geracaoDaCarga(),
+  }
+  const chave = [situacao.projectId, situacao.templateId, situacao.pageId, situacao.selecao.join(','), situacao.geracao, layer.id].join('|')
+  const situacaoRef = React.useRef(situacao)
+  situacaoRef.current = situacao
+  const camadaRef = React.useRef(layer)
+  camadaRef.current = layer
+  const tokenRef = React.useRef(0)
+  const montadoRef = React.useRef(false)
+  const emVooRef = React.useRef<{ op: number; token: number } | null>(null)
+  const [operacao, setOperacao] = React.useState<OperacaoDoReaplicar | null>(null)
+  React.useEffect(() => {
+    montadoRef.current = true
+    return () => {
+      montadoRef.current = false
+      tokenRef.current += 1
+    }
+  }, [])
+  // Qualquer troca do alvo invalida a operação em voo e DESCARTA o aviso dela (A → B → A não o ressuscita)
+  React.useEffect(() => () => {
+    tokenRef.current += 1
+    emVooRef.current = null
+    setOperacao(null)
+  }, [chave])
+
+  if (!ehObjetoDeEstilo(layer.style?.vetor)) return null
+
+  const geracaoDaCarga = editor.geracaoDaCarga
+  const lerSituacao = (): SituacaoDoEditor => ({ ...situacaoRef.current, token: tokenRef.current, montado: montadoRef.current, geracao: geracaoDaCarga() })
+  const desta = (op: number, mudar: (o: OperacaoDoReaplicar) => OperacaoDoReaplicar | null) =>
+    setOperacao((o) => (o && o.op === op ? mudar(o) : o))
+
+  const executar = async (alvo: AlvoDoReaplicar, op: number, confirmadas: OperacaoDoReaplicar['confirmadas']) => {
+    emVooRef.current = { op, token: alvo.token }
+    try {
+      const [p, j] = await Promise.all([
+        confirmadas.paleta ? Promise.resolve(confirmadas.paleta) : paleta.refetch(),
+        confirmadas.projeto ? Promise.resolve(confirmadas.projeto) : projeto.refetch(),
+      ])
+      if (!alvoValido(alvo, lerSituacao())) {
+        if (montadoRef.current) desta(op, () => null)
+        return
+      }
+      const estado = estadoDaInsercao({ projectId: alvo.projectId, paleta: p, projeto: j })
+      if (estado.estado !== 'pronto') {
+        const falhas = estado.estado === 'erro' ? estado.falhas : []
+        desta(op, (o) => ({
+          ...o,
+          tipo: estado.estado,
+          texto: estado.estado === 'erro' ? 'Não foi possível reler as cores da marca. Nada foi alterado.' : 'Carregando as cores da marca…',
+          confirmadas: estado.estado === 'erro'
+            ? { paleta: falhas.includes('paleta') ? undefined : p, projeto: falhas.includes('projeto') ? undefined : j }
+            : {},
+        }))
+        return
+      }
+      const resumo = resumoDoReaplicar(reaplicarCoresDaMarca(camadaRef.current.style, estado.marca).canais)
+      editor.updateLayer(alvo.layerId, atualizadorDoReaplicar(alvo, lerSituacao, estado.marca), { coalesceKey: `reaplicar:${op}` })
+      desta(op, (o) => ({
+        ...o,
+        tipo: 'feito',
+        texto: estado.ausenciaConfirmada ? `${resumo} Marca sem cores cadastradas: foram usadas as cores padrão.` : resumo,
+        confirmadas: {},
+      }))
+    } finally {
+      if (emVooRef.current?.op === op) emVooRef.current = null
+    }
+  }
+
+  const reaplicar = () => {
+    if (emVooRef.current?.token === tokenRef.current) return
+    const agora = lerSituacao()
+    const alvo: AlvoDoReaplicar = { token: agora.token, projectId: agora.projectId, templateId: agora.templateId, pageId: agora.pageId, geracao: agora.geracao, layerId: camadaRef.current.id }
+    if (!alvoValido(alvo, agora)) return
+    operacoesDoReaplicar += 1
+    const op = operacoesDoReaplicar
+    setOperacao({ op, token: alvo.token, chave, alvo, tipo: 'em-voo', texto: 'Relendo as cores da marca…', confirmadas: {} })
+    void executar(alvo, op, {})
+  }
+
+  const visivel = operacao && operacao.chave === chave && operacao.token === tokenRef.current ? operacao : null
+
+  const tentarDeNovo = () => {
+    if (!visivel || visivel.tipo !== 'erro' || emVooRef.current?.token === tokenRef.current) return
+    if (!alvoValido(visivel.alvo, lerSituacao())) return
+    desta(visivel.op, (o) => ({ ...o, tipo: 'em-voo', texto: 'Relendo as cores da marca…' }))
+    void executar(visivel.alvo, visivel.op, visivel.confirmadas)
+  }
+
+  const habilitado = podeReaplicar(layer.style) && situacao.selecao.length === 1 && situacao.selecao[0] === layer.id
+  return (
+    <div className="space-y-1 border-t border-border/30 pt-3">
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-8 w-full text-xs"
+        disabled={!habilitado || visivel?.tipo === 'em-voo'}
+        onClick={reaplicar}
+      >
+        Reaplicar cores da marca
+      </Button>
+      {!habilitado && <p className="text-[10px] text-muted-foreground">Nenhuma cor desta forma acompanha a marca.</p>}
+      {visivel && (
+        <p data-aviso-reaplicar={visivel.tipo} data-operacao={visivel.op} className="text-[10px] text-muted-foreground">
+          {visivel.texto}
+        </p>
+      )}
+      {visivel?.tipo === 'erro' && (
+        <Button size="sm" variant="outline" className="h-6 text-[10px]" data-tentar-reaplicar="" onClick={tentarDeNovo}>
+          Tentar de novo
+        </Button>
+      )}
     </div>
   )
 }
