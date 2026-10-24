@@ -678,3 +678,57 @@ mas nenhuma porta de escrita o chamava.
   `QueryClient` real da sonda) e os controles negativos do `bundle.ts`. Limites: o harness não prova o upload real ao
   Blob (corpo real, `sharp`), a exclusão real nem o efeito em arte existente; isso é smoke de produção (D-E6).
 
+
+## Cores da forma por canal: Marca, Nesta página, elo e Reaplicar (CP-V3, 23/10/2026)
+
+- **Dois canais físicos, sempre visíveis**: `preenchimento` → `style.fill` e `contorno` → `style.strokeColor`. O catálogo
+  só dá o RÓTULO do canal (item conhecido e mesma `versao`; a `line` diz "Cor da linha"). O papel vem só de
+  `style.vetor.papeis` da camada, lido com `Object.hasOwn` e contra `PAPEIS_DA_MARCA`. Papel fora da lista é
+  "Papel desconhecido" e não é reaplicado. Tudo em `src/lib/editor/cores-da-forma.ts` (puro).
+- **Ordem de cada canal: Marca → Nesta página → Personalizada** (o campo de texto e o seletor nativo ficam na
+  Personalizada, com o mesmo `CampoDeCorDigitada`).
+- **Fileira Marca da forma = paleta ESTRITA** (`useBrandColorsEstrita`). Carregando e erro (HTML 200, cor sem `hexCode`)
+  mostram a mensagem e nunca viram "sem cores". O item só é aplicável se o `hexValido` o lê (`#rgb`/`#rrggbb`, espaço
+  externo vale), e o clique grava o hex CANÔNICO com a transparência do canal; o resto sai da fileira e é contado.
+  Os outros usos do `BrandColorSwatches` seguem como antes (as props `cores`/`ativo` são opcionais).
+- **Swatch ativo** = os canais da cor SALVA, crua, pelo `lerCor` (o alfa é do slider). `transparent`, ilegível e
+  ausente não acendem nada: nunca passe o `corParaSeletor` (o fallback acendia o swatch azul).
+- **Nesta página**: cores lidas pelo `lerCor` nas formas, no texto (`style.color`), no ícone e no fundo, sem repetir, sem
+  a paleta aplicável, teto 8. Derivada, nunca armazenada. O clique é escolha explícita.
+- **Escolha explícita (swatch, Nesta página, seletor, campo confirmado) tira o papel daquele canal**, e ele volta SÓ
+  pelo desfazer (Q1 = A, decidida pelo Ciro). Não existe "religar". O campo de texto exige `lerCor` em toda camada com
+  `style.vetor`, não só no `svg-path` (`currentcolor` é recusado no fio, na moldura e na pílula).
+- **Reaplicar cores da marca** (na camada; aparece com `style.vetor`):
+  - relê a paleta estrita e o projeto ANTES de gravar (o cache tem `refetchOnWindowFocus: false`); releitura que falha
+    não grava nada, mesmo com o cache bom;
+  - só os canais AINDA vinculados mudam; grava `resolverCorDaMarca(papel)` com o alfa EXATO da cor salva e não toca
+    `opacity`/`fillOpacity`/`strokeOpacity`: a canonização aplica os multiplicadores uma vez (opacity 0,5 + rgba 0,5 →
+    0,25, nunca 0,125);
+  - **sem mudança, o atualizador devolve a PRÓPRIA camada antes de canonizar**: nada de `dirty`, desfazer ou PATCH, e a
+    camada não canônica não é normalizada. Nunca use o `updateLayerStyle` aqui (ele canoniza sempre);
+  - **guarda completa do alvo** no clique, na volta da releitura e DENTRO do atualizador (`atualizadorDoReaplicar`):
+    token da operação, montagem, projeto, template, página (nula fora do multipágina), geração da carga e a seleção
+    exatamente [camada]. Resultado tardio não grava nem mostra mensagem na origem nova;
+  - chave de desfazer própria (`reaplicar:<n>`): nunca se funde com a edição anterior nem com a seguinte;
+  - **o aviso, o "em voo" e o retry pertencem à OPERAÇÃO** (número + token), não à chave do alvo: trocar o alvo os
+    DESCARTA (A → B → A não ressuscita "em voo" nem erro velho), e a resposta de uma operação velha nunca apaga nem
+    sobrescreve o aviso da nova;
+  - **"Tentar de novo" relê só a consulta que falhou** e reusa a que voltou boa, sob o MESMO alvo e token; um clique novo
+    no Reaplicar relê as duas (R2).
+- **`geracaoDaCarga()` do contexto** sobe em toda `loadTemplate` e na troca de template/projeto do provider (que NÃO
+  remonta: `key={initialPageId}`); não sobe em edição nem com objeto novo do mesmo template. Só leitura.
+- **Limites que ficam** (aprovados): no seletor nativo, eventos com menos de 800 ms entre si viram uma entrada de desfazer;
+  uma pausa maior abre outra, e o papel só volta no desfazer do primeiro trecho. Duas ações discretas na mesma camada a
+  menos de 800 ms também se fundem.
+- **Prova:**
+  - unitário: `src/lib/editor/__tests__/cores-da-forma.test.ts`;
+  - harness principal `tests/harness/cp-v3` (`cp-v3.spec.ts`): `TemplateEditorProvider` e `ShapeControls` reais; os
+    hooks da marca (paleta estrita, projeto) e a página multipágina são SIMULADOS (`falsos.tsx`), sem autosave. Os
+    controles negativos M0–M13 rodam nele e são classificados por `classificar-controles.mjs`, que fecha em INVÁLIDO
+    diante de qualquer falha não semântica (infraestrutura, pré-condição não alcançada, troca que não aplicou); um
+    subconjunto só vale declarado (`--grep`), sem esconder a rodada integral;
+  - H11 separado (`autosave.spec.ts`, `playwright.autosave.config.ts`): `QueryProvider`, `MultiPageProvider`,
+    `TemplateEditorProvider`, `PageSyncWrapper` (fila e PATCH) e os hooks da marca REAIS; só a API é falsa (o
+    `ServidorFalso` do V2d, com a guarda de vetor e a canonização da rota real). Prova o PATCH 200 com a cor, o `vetor`
+    e o `metadata`, o no-op sem PATCH e o reload pelo GET;
+  - continuam fora: banco, Clerk, Blob, canvas Konva, ⌘Z de teclado e Vercel.

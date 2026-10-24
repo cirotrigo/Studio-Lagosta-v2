@@ -58,8 +58,22 @@ export function useMultiPage(): MultiPage {
 export function useMultiPageOpcional(): MultiPage | null {
   return React.useContext(MultiPageContext)
 }
+/**
+ * CP-V3: o campo isolado (`window.__campo`, fora da `Bancada`) monta o `ShapeControls`, que passou a ler projeto,
+ * template, design, seleção e a geração da carga do editor. Fora da `Bancada`, um editor mínimo SEM projeto:
+ * `projectId` NaN desliga as consultas da marca (`useBrandColorsEstrita` e `useProject`), e nada é gravado por ele.
+ * Dentro da `Bancada` (o `PageSyncWrapper`), continua o contexto de sempre.
+ */
+const EDITOR_DO_CAMPO = {
+  projectId: Number.NaN,
+  templateId: 0,
+  design: { canvas: { width: 1080, height: 1920 }, layers: [] },
+  selectedLayerIds: [],
+  geracaoDaCarga: () => 0,
+  updateLayer: () => {},
+}
 export function useTemplateEditor(): Editor {
-  return React.useContext(EditorContext)!
+  return React.useContext(EditorContext) ?? (EDITOR_DO_CAMPO as unknown as Editor)
 }
 
 export interface ApiDaBancada {
