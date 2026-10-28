@@ -21,7 +21,7 @@ import { useFotoNaGrade, usePreencherGrade, type FonteDaFoto } from '@/hooks/use
 import { armarInsercaoDeClipe, consumirInsercaoDeClipe, desarmarInsercaoDeClipe } from '@/lib/video/insercao-de-clipe'
 import { conferirGrade } from '../conferir'
 import { refazerGrade } from '../operacoes'
-import type { DesfechoDoPreenchimento, PlanoDePreenchimento } from '../preenchimento'
+import { mensagemDoDesfecho, type DesfechoDoPreenchimento, type PlanoDePreenchimento } from '../preenchimento'
 import { emAct, montar } from './suporte/host-sem-dom'
 import { BLOB, doisPorDois } from './fixtures'
 
@@ -204,6 +204,35 @@ describe('G2 · lote pelo provider e hook reais', () => {
     const r = await p
     expect(r).toMatchObject({ ok: true, aplicadas: ['d1'] })
     expect(r.falhas).toEqual([{ celulaId: 'd0', nome: 'a.jpg', motivo: expect.any(String) }])
+  })
+
+  it('dois arquivos do computador e o 1º recusado no envio (nome já existente no Blob): o 2º entra, o 1º sai pelo NOME e a célula dele fica como estava; um desfazer', async () => {
+    await abrir(design(doisPorDois(['', '', '', ''])))
+    await selecionar(GRADE)
+    const inicial = json(ctx().design)
+    const { plano, p } = await iniciar(2, [arquivo('Story-4-7-quadrada-28.png'), arquivo('Feed-4-5-quadrada-20.png')])
+    expect(plano).toMatchObject({ tipo: 'grade', modo: 'lote', alvo: { celulas: ['d0', 'd1'] } })
+    // os envios são em sequência: o 2º só começa depois do 1º
+    await emAct(async () => {
+      envio.pendentes[0].falhar(new Error('Vercel Blob: This blob already exists'))
+      await correr()
+    })
+    expect(envio.pendentes.map((e) => e.nome)).toEqual(['Story-4-7-quadrada-28.png', 'Feed-4-5-quadrada-20.png'])
+    await emAct(async () => {
+      envio.pendentes[1].resolver(B)
+      await correr()
+    })
+    const r = await p
+    expect(r).toMatchObject({ ok: true, aplicadas: ['d1'] })
+    expect(r.falhas).toEqual([{ celulaId: 'd0', nome: 'Story-4-7-quadrada-28.png', motivo: 'não subiu (Vercel Blob: This blob already exists)' }])
+    expect(GRADE.map((id) => camada(id).fileUrl)).toEqual(['', B, '', ''])
+    expect(mensagemDoDesfecho(r)).toEqual({
+      texto: 'Foto aplicada na grade. Não entraram: Story-4-7-quadrada-28.png (não subiu (Vercel Blob: This blob already exists)).',
+      erro: false,
+    })
+    await emAct(() => ctx().undo())
+    expect(json(ctx().design)).toBe(inicial)
+    expect(ctx().canUndo).toBe(false)
   })
 })
 

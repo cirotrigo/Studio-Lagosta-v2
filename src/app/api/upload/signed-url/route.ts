@@ -59,6 +59,10 @@ export async function POST(request: Request): Promise<NextResponse> {
           }),
           // Maximum file size: 100MB
           maximumSizeInBytes: 100 * 1024 * 1024,
+          // O cliente sobe com `file.name` cru e, no Blob v2, sufixo e sobrescrita valem `false` por padrão: o mesmo
+          // nome enviado de novo era recusado (no lote da grade, a primeira foto ficava de fora). Sufixo único no
+          // servidor, que é onde o SDK deixa configurar; nunca `allowOverwrite`, que trocaria a foto de outra arte.
+          addRandomSuffix: true,
         }
       },
       onUploadCompleted: async ({ blob, tokenPayload }) => {

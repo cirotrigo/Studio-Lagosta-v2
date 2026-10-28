@@ -1147,6 +1147,10 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
           guidesLayer.visible(false)
         }
 
+        // O design de AGORA, não o do render em que esta função nasceu: o lote de criativos troca de página e chama a
+        // mesma `exportDesign` capturada no início, e com o `design` do fechamento a Story saía na altura da Feed.
+        const atual = designAtualRef.current
+
         // 6. Ocultar completamente camadas invisíveis (visible: false)
         const contentLayer = stage.findOne('.content-layer') as Konva.Layer | undefined
 
@@ -1155,7 +1159,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
 
           children.forEach((node: Konva.Node) => {
             const layerId = node.id() || node.getAttr('camadaId')
-            const layer = design.layers.find((l) => l.id === layerId)
+            const layer = atual.layers.find((l) => l.id === layerId)
 
             // Se a camada está marcada como invisível, ocultar completamente para exportação
             if (layer && layer.visible === false) {
@@ -1179,8 +1183,8 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
         await new Promise((resolve) => requestAnimationFrame(resolve))
 
         // 8. Exportar com dimensões exatas do canvas em resolução nativa
-        const canvasWidth = design.canvas.width
-        const canvasHeight = design.canvas.height
+        const canvasWidth = atual.canvas.width
+        const canvasHeight = atual.canvas.height
 
         // Para JPEG, tentar diferentes qualidades até atingir tamanho aceitável (8MB max)
         const MAX_SIZE_MB = 8
@@ -1331,7 +1335,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
         setIsExporting(false)
       }
     },
-    [template.id, design.canvas.width, design.canvas.height, zoom, design.layers, queryClient],
+    [template.id, zoom, queryClient],
   )
 
   const removeExport = React.useCallback((id: string) => {
