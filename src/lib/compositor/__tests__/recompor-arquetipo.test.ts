@@ -264,14 +264,63 @@ describe('CP2B · a recomposição reproduz a escolha espacial gravada', () => {
     prepararPeca(specGravada(V1))
     comArquetipoGravado({ ...V1, modo: 'busca-espacial-v1', buscaEspacial: { versao: 'busca-espacial-v1', id: 'esc-1', escolha, vencedor: null, recusas: {} } })
     await recomporPaginaDefasada({ pageId: 'p9' })
-    expect(segundoArgumento()).toEqual({ provar: true, escolhaEspacial: escolha })
+    // T1b: a peça de antes dos acentos não gravou receita nenhuma — recompõe SEM acento (`[]`), nunca pelo catálogo de hoje.
+    expect(segundoArgumento()).toEqual({ provar: true, escolhaEspacial: escolha, acentosCongelados: [] })
     expect(banco.posts.get('post-carrossel')!.mediaUrls).toEqual([CAPA, 'https://blob.test/arte-rapida/8/p9-nova.png'])
   })
 
   it('peça do T1a: o comporPeca recebe { modo: referencia }', async () => {
     prepararPeca(specGravada(V1))
     await recomporPaginaDefasada({ pageId: 'p9' })
-    expect(segundoArgumento()).toEqual({ provar: true, escolhaEspacial: { modo: 'referencia' } })
+    expect(segundoArgumento()).toEqual({ provar: true, escolhaEspacial: { modo: 'referencia' }, acentosCongelados: [] })
+  })
+
+  const FIO = {
+    elemento: 'fio',
+    tipo: 'fio-fino',
+    presoA: 'headline',
+    corPorPapel: 'texto',
+    canal: 'preenchimento',
+    asset: { id: 'fio-fino', versao: 1 },
+    desenho: { shapeType: 'line', strokeWidth: 2, ajuste: 'livre' },
+    cor: '#f5f5f5',
+    fonteDaCor: 'texto-do-papel',
+  }
+
+  it('T1b: a receita GRAVADA dos acentos vai para o comporPeca com a COR congelada (a camada e o retângulo de antes ficam)', async () => {
+    prepararPeca(specGravada(V1))
+    comArquetipoGravado({ ...V1, modo: 'busca-espacial-v1', buscaEspacial: { escolha }, acentos: [{ ...FIO, camada: 'acento-fio', rect: { x: 98, y: 1, width: 2, height: 6 } }] })
+    await recomporPaginaDefasada({ pageId: 'p9' })
+    expect(segundoArgumento()).toEqual({ provar: true, escolhaEspacial: escolha, acentosCongelados: [FIO] })
+  })
+
+  it('T1b: acento gravado malformado recusa ANTES de compor, como a escolha ilegível (nunca redesenha pelo catálogo de hoje)', async () => {
+    prepararPeca(specGravada(V1))
+    comArquetipoGravado({ ...V1, modo: 'busca-espacial-v1', buscaEspacial: { escolha }, acentos: [{ ...FIO, desenho: { shapeType: 'svg-path', pathData: 'Q1', ajuste: 'livre' } }] })
+    const erro = await recomporPaginaDefasada({ pageId: 'p9' }).then(
+      () => null,
+      (e) => e,
+    )
+    expect((erro as CreativeError).code).toBe('ARQUETIPO_ESCOLHA_ILEGIVEL')
+    expect((erro as CreativeError).details).toMatchObject({ problema: expect.stringMatching(/pathData/) })
+    expect(banco.specsRecebidas).toEqual([])
+    expect(banco.puts).toBe(0)
+  })
+
+  it('T1b: acento gravado sem cor legível também recusa antes de compor e de escrever (nunca repinta pela paleta de hoje)', async () => {
+    for (const ruim of [{ ...FIO, cor: '#zz0000' }, { ...FIO, cor: undefined }, { ...FIO, fonteDaCor: '' }]) {
+      prepararPeca(specGravada(V1))
+      comArquetipoGravado({ ...V1, modo: 'busca-espacial-v1', buscaEspacial: { escolha }, acentos: [ruim] })
+      const erro = await recomporPaginaDefasada({ pageId: 'p9' }).then(
+        () => null,
+        (e) => e,
+      )
+      expect((erro as CreativeError).code).toBe('ARQUETIPO_ESCOLHA_ILEGIVEL')
+      expect((erro as CreativeError).details).toMatchObject({ problema: expect.stringMatching(/cor/) })
+      expect(banco.specsRecebidas).toEqual([])
+      expect(banco.puts).toBe(0)
+      expect(banco.sql).toEqual([])
+    }
   })
 
   // A foto TROCADA não recompõe (re-renderiza a página); o descarte do driveFileId nela está em `defasagem.test.ts`.

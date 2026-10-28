@@ -132,7 +132,13 @@ describe('T1a · arquetipo nas portas MCP', () => {
     const r = (await tool('ver-assinatura').handler({ projectId: 8 }, { kind: 'user' } as never)) as Record<string, any>
     const porId = Object.fromEntries(r.arquetipos.map((a: Record<string, unknown>) => [a.id, a]))
     expect(porId['minimal-fb-topo-esquerda']).toMatchObject({ versao: 1, codigoTaxonomico: 'MIN-01', formatos: ['story', 'feed'], disponibilidade: 'disponivel' })
-    expect(porId['minimal-fb-centro-optico']).toMatchObject({ disponibilidade: 'disponivel' })
-    expect(porId['minimal-fb-base-esquerda']).toMatchObject({ disponibilidade: 'aguarda-t1b' })
+    // O #3 guardado fora da vitrine (26/10): sem texto central sobre foto nas próximas provas (segue resolvível pelo id).
+    expect(porId['minimal-fb-centro-optico']).toBeUndefined()
+    // T1b: o modelo da moldura compõe, e cada arquétipo diz os acentos que a peça ganha.
+    expect(porId['minimal-fb-base-esquerda']).toMatchObject({ disponibilidade: 'disponivel', elementos: [{ id: 'moldura', tipo: 'moldura-aberta', opcional: false, corPorPapel: 'texto', presoA: 'headline' }] })
+    // H9: o #9 publicado, com a máscara da caixa (o topo em arco) por formato.
+    expect(porId['minimal-divisao-cor-topo-arco']).toMatchObject({ versao: 1, codigoTaxonomico: 'MIN-04', fundo: 'foto-em-caixa', disponibilidade: 'disponivel', mascaraDaFoto: { story: { tipo: 'arco-janela', raio: 0.62 }, feed: { tipo: 'arco-janela', raio: 0.62 } } })
+    // O #4 guardado fora da vitrine (25/10): o agente não o lê no ver-assinatura (segue resolvível pelo id).
+    expect(porId['minimal-fb-base-centro']).toBeUndefined()
   })
 })

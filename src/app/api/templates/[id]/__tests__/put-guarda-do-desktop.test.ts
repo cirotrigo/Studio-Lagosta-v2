@@ -361,3 +361,102 @@ describe('CP-X0 — o PUT do desktop não perde o que o desktop não representa'
     expect(banco.template.thumbnailUrl).toBe('https://blob.teste/templates/thumbnails/77.jpg')
   })
 })
+
+/**
+ * G4.1 (27/10/2026) — grade de fotos no PUT real do desktop. A guarda roda DENTRO do compare-and-set, sobre a base
+ * relida; a recusa numa página desfaz o template e as páginas gravadas antes (diário), sem miniatura nem invalidação.
+ */
+describe('G4.1 — o PUT do desktop não mexe em grade de fotos', () => {
+  const BLOB = 'https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com'
+  const g = { id: 'g2', layout: '2-colunas', versao: 1, espacamento: 10, raio: 0, caixa: { x: 0, y: 0, w: 1080, h: 1350 } }
+  const cel = (id: string, i: number, x: number, fileUrl: string): Camada => ({
+    id, type: 'image', name: `Grade · foto ${i + 1}`, visible: true, locked: false, order: i, position: { x, y: 0 }, size: { width: 535, height: 1350 }, rotation: 0,
+    fileUrl, style: { objectFit: 'cover', border: { radius: 0 }, ...(i === 0 ? { crop: { x: 0.1, y: 0, width: 0.5, height: 1 } } : {}) }, metadata: { grade: { ...g, celula: i }, groupId: 'g2' },
+  })
+  const grade = () => [cel('c0', 0, 0, `${BLOB}/a.jpg`), cel('c1', 1, 545, '')]
+  /** Push do desktop pelo normalizador REAL, com as duas páginas, editando o que `editar` mandar. */
+  const pushReal = (editar: (paginas: Array<{ id: string; layers: Camada[] }>) => void, extra: Record<string, unknown> = {}) => {
+    const local = normalizeForLocal(
+      { id: 77, name: 'Programação', type: 'STORY', updatedAt: '2026-10-27T12:00:00.000Z', designData: { canvas: { width: 1080, height: 1920 }, pages: [doPayload('p1', 0, 'Sexta', camadasDe('p1')), doPayload('p2', 1, 'Grade', camadasDe('p2'))] } },
+      8,
+    )
+    editar(local.data.design.pages as unknown as Array<{ id: string; layers: Camada[] }>)
+    return put({ ...(normalizeForWeb(local.data).data as unknown as Record<string, unknown>), name: 'Nome novo', ...extra })
+  }
+  const estadoDoBanco = () => structuredClone({ template: banco.template, paginas: banco.paginas })
+
+  it('célula movida 10 px na 2ª página: 409 PUSH_ALTERA_GRADE e ZERO escrita (template e 1ª página desfeitos, sem miniatura nem invalidação)', async () => {
+    banco.template = { id: 77, name: 'Programação', thumbnailUrl: 'https://blob.teste/t.jpg?v=antiga' }
+    banco.paginas = { p1: pagina('p1', 0, 'Sexta', [texto('t')]), p2: pagina('p2', 1, 'Grade', grade()) }
+    const antes = estadoDoBanco()
+    const r = await pushReal((ps) => {
+      ;(ps[0].layers[0] as Camada).text = 'Gravaria'
+      ;(ps[1].layers.find((c) => c.id === 'c1') as Camada).x += 10
+    }, { thumbnailUrl: 'data:image/jpeg;base64,/9j/AAAA' })
+    expect(r.status).toBe(409)
+    expect(r.body).toMatchObject({ codigo: 'PUSH_ALTERA_GRADE', paginaId: 'p2', camadaId: 'c1' })
+    expect(r.body.error).toMatch(/grade de fotos/)
+    expect(banco.updates).toBeGreaterThan(0) // a 1ª página chegou a ser gravada dentro da transação…
+    expect(estadoDoBanco()).toEqual(antes) // …e o rollback desfez tudo
+    expect(invalidados).toEqual([])
+    expect(miniatura.chamadas).toEqual([])
+    expect(banco.criadas).toEqual([])
+    expect(banco.apagadas).toEqual([])
+  })
+
+  it('foto trocada numa célula: 409 sem escrita', async () => {
+    banco.paginas = { p1: pagina('p1', 0, 'Sexta', [texto('t')]), p2: pagina('p2', 1, 'Grade', grade()) }
+    const antes = estadoDoBanco()
+    const r = await pushReal((ps) => { ;(ps[1].layers.find((c) => c.id === 'c0') as Camada).src = `${BLOB}/b.jpg` })
+    expect(r.status).toBe(409)
+    expect(r.body).toMatchObject({ codigo: 'PUSH_ALTERA_GRADE', camadaId: 'c0' })
+    expect(estadoDoBanco()).toEqual(antes)
+  })
+
+  it('push real sem mexer na grade: 200, texto gravado e a grade byte a byte (recorte, raio, metadata, vazia)', async () => {
+    banco.paginas = { p1: pagina('p1', 0, 'Sexta', [texto('t')]), p2: pagina('p2', 1, 'Grade', grade()) }
+    const r = await pushReal((ps) => { ;(ps[0].layers[0] as Camada).text = 'Novo' })
+    expect(r.status).toBe(200)
+    expect(camadasDe('p1')[0].content).toBe('Novo')
+    const gravada = camadasDe('p2')
+    for (const esperado of grade()) {
+      const c = gravada.find((x) => x.id === esperado.id)!
+      expect([c.position, c.size, c.fileUrl, c.style, c.metadata]).toEqual([esperado.position, esperado.size, esperado.fileUrl, esperado.style, esperado.metadata])
+    }
+  })
+
+  it('página NOVA do push com metadata de grade: 409 sem criar nada', async () => {
+    banco.paginas = { p1: pagina('p1', 0, 'Sexta', [texto('t')]) }
+    const antes = estadoDoBanco()
+    const r = await pushDoDesktop([doPayload('p1', 0, 'Sexta', [texto('t', 'X')]), doPayload('nova', 1, 'Nova', grade())])
+    expect(r.status).toBe(409)
+    expect(r.body).toMatchObject({ codigo: 'PUSH_ALTERA_GRADE' })
+    expect(estadoDoBanco()).toEqual(antes)
+    expect(banco.paginas.nova).toBeUndefined()
+  })
+})
+
+describe('G4.1 rodada 1 — sombra nova numa célula pelo PUT do desktop', () => {
+  const BLOB = 'https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com'
+  const g = { id: 'g2', layout: '2-colunas', versao: 1, espacamento: 10, raio: 0, caixa: { x: 0, y: 0, w: 1080, h: 1350 } }
+  const cel = (id: string, i: number, x: number) => ({
+    id, type: 'image', name: `Grade · foto ${i + 1}`, visible: true, locked: false, order: i, position: { x, y: 0 }, size: { width: 535, height: 1350 }, rotation: 0,
+    fileUrl: `${BLOB}/${id}.jpg`, style: { objectFit: 'cover', border: { radius: 0 } }, metadata: { grade: { ...g, celula: i }, groupId: 'g2' },
+  })
+
+  it('2ª página com effects.shadow novo na célula: 409 e zero escrita (1ª página e template desfeitos, sem miniatura nem invalidação)', async () => {
+    banco.template = { id: 77, name: 'Programação', thumbnailUrl: 'https://blob.teste/t.jpg?v=antiga' }
+    banco.paginas = { p1: pagina('p1', 0, 'Sexta', [texto('t')]), p2: pagina('p2', 1, 'Grade', [cel('c0', 0, 0), cel('c1', 1, 545)]) }
+    const antes = structuredClone({ template: banco.template, paginas: banco.paginas })
+    const sombra = { enabled: true, shadowColor: '#000000', shadowBlur: 30, shadowOffsetX: 0, shadowOffsetY: 12, shadowOpacity: 0.6 }
+    const r = await put({
+      name: 'Nome novo', localId: 'local-1', thumbnailUrl: 'data:image/jpeg;base64,/9j/AAAA',
+      designData: { canvas: { width: 1080, height: 1920 }, pages: [doPayload('p1', 0, 'Sexta', [texto('t', 'Gravaria')]), doPayload('p2', 1, 'Grade', [{ ...cel('c0', 0, 0), effects: { shadow: sombra } }, cel('c1', 1, 545)])] },
+    })
+    expect(r.status).toBe(409)
+    expect(r.body).toMatchObject({ codigo: 'PUSH_ALTERA_GRADE', paginaId: 'p2', camadaId: 'c0' })
+    expect(structuredClone({ template: banco.template, paginas: banco.paginas })).toEqual(antes)
+    expect(invalidados).toEqual([])
+    expect(miniatura.chamadas).toEqual([])
+  })
+})

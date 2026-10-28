@@ -16,7 +16,12 @@ import {
   chaveDoArquetipo,
   CODIGOS_TAXONOMICOS,
   ELEMENTOS_DO_ARQUETIPO,
+  ELEMENTOS_PRESOS_A_PECA,
+  ELEMENTOS_QUE_ENVOLVEM,
+  ESCALAS_DO_PAPEL,
   FORMATOS_DO_ARQUETIPO,
+  FUNDOS_DO_ARQUETIPO,
+  MASCARAS_DO_ARQUETIPO,
   PAPEIS_DE_COR,
   PAPEIS_DO_ARQUETIPO,
   type ArquetipoDeLayout,
@@ -24,6 +29,7 @@ import {
   type FormatoDoArquetipo,
   type Zona,
 } from './tipos'
+import { problemaDoArcoJanela } from './mascara'
 
 export const CODIGOS_DO_ARQUETIPO = [
   'ID_INVALIDO',
@@ -46,6 +52,7 @@ export const CODIGOS_DO_ARQUETIPO = [
   'CAMPO_PROIBIDO',
   'CAMPO_DESCONHECIDO',
   'CAMPO_INVALIDO',
+  'ZONA_SOBRE_A_FOTO',
 ] as const
 export type CodigoDoArquetipo = (typeof CODIGOS_DO_ARQUETIPO)[number]
 
@@ -110,12 +117,14 @@ const VALOR_DE_COR = /#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?)\(/i
  * desenho entrariam com outro nome.
  */
 const CHAVES = {
-  raiz: ['id', 'versao', 'codigoTaxonomico', 'nome', 'papeis', 'elementos', 'preferencias', 'fotoIdeal', 'formatos'],
-  papel: ['papel', 'obrigatorio', 'ordemDeLeitura'],
-  elemento: ['id', 'tipo', 'opcional', 'corPorPapel', 'presoA', 'canto'],
+  raiz: ['id', 'versao', 'codigoTaxonomico', 'nome', 'papeis', 'elementos', 'preferencias', 'fundo', 'fotoIdeal', 'formatos'],
+  papel: ['papel', 'obrigatorio', 'ordemDeLeitura', 'escala', 'alinha', 'lista'],
+  elemento: ['id', 'tipo', 'opcional', 'corPorPapel', 'presoA', 'canto', 'porItem', 'braco'],
   preferencias: ['ancora', 'alinha', 'cantoDaMarca'],
   fotoIdeal: ['areaCalma', 'assunto', 'descricao', 'referencias'],
-  geometria: ['papeis', 'elementos', 'limitesDeTexto'],
+  geometria: ['papeis', 'elementos', 'limitesDeTexto', 'itens', 'foto', 'mascaraDaFoto'],
+  mascara: ['tipo', 'raio'],
+  itens: ['vao'],
   posicao: ['referencia', 'zona'],
   automatica: ['automatica'],
   caixa: ['x', 'y', 'w', 'h'],
@@ -168,11 +177,23 @@ export function validarArquetipo(arquetipo: ArquetipoDeLayout, opcoes: OpcoesDaV
       recusar('CAMPO_INVALIDO', `${campo}.ordemDeLeitura`, 'a ordem de leitura é um inteiro ≥ 0, sem repetição')
     }
     ordens.add(p.ordemDeLeitura)
+    // A escala dominante é a da manchete (MIN-10): em outro papel, a peça teria dois "títulos".
+    if (p.escala !== undefined && (!contem(ESCALAS_DO_PAPEL, p.escala) || p.papel !== 'headline')) {
+      recusar('CAMPO_INVALIDO', `${campo}.escala`, `escala só "${ESCALAS_DO_PAPEL.join('", "')}", e só na headline`)
+    }
+    // O alinhamento próprio é de papel de texto que não é a manchete: a dela é `preferencias.alinha` (uma fonte só).
+    if (p.alinha !== undefined && (!contem(ALINHAMENTOS, p.alinha) || p.papel === 'headline' || p.papel === 'logo')) {
+      recusar('CAMPO_INVALIDO', `${campo}.alinha`, `alinhamento próprio só em papel de texto que não é a headline, e dentro de ${ALINHAMENTOS.join(', ')}`)
+    }
+    // A lista (#15) é do apoio: um item por linha autoral. Em outro papel a manchete viraria itens, ou o rodapé.
+    if (p.lista !== undefined && (p.lista !== true || p.papel !== 'apoio')) recusar('CAMPO_INVALIDO', `${campo}.lista`, 'lista só true, e só no apoio')
   })
+  const papeisDeLista = new Set(listaDePapeis.filter((p) => p?.lista === true && p.papel === 'apoio').map((p) => p.papel as string))
   if (!listaDePapeis.some((p) => p?.papel === 'headline' && p.obrigatorio === true)) recusar('SEM_HEADLINE', 'papeis', 'todo arquétipo tem headline obrigatória')
 
   // Elementos: só a referência semântica (o T0 não materializa nem desenha).
   const elementos = new Set<string>()
+  const envolvidos = new Set<string>()
   ;(Array.isArray(a.elementos) ? a.elementos : []).forEach((e, i) => {
     const campo = `elementos[${i}]`
     fechado(e, CHAVES.elemento, campo)
@@ -181,9 +202,27 @@ export function validarArquetipo(arquetipo: ArquetipoDeLayout, opcoes: OpcoesDaV
     elementos.add(e.id)
     if (typeof e.opcional !== 'boolean') recusar('CAMPO_INVALIDO', `${campo}.opcional`, 'opcional é booleano')
     if (!contem(PAPEIS_DE_COR, e.corPorPapel)) recusar('CAMPO_INVALIDO', `${campo}.corPorPapel`, `a cor do elemento é um papel (${PAPEIS_DE_COR.join(', ')}), nunca um valor`)
-    if (e.presoA !== undefined && !papeis.has(e.presoA)) recusar('PAPEL_FORA_DO_CONTRATO', `${campo}.presoA`, `"${e.presoA}" não é papel deste arquétipo`)
+    // #16: as cantoneiras são da PEÇA (nunca seguem um texto); todo outro acento se prende a um papel de texto.
+    if (ELEMENTOS_PRESOS_A_PECA.includes(e.tipo)) {
+      if (e.presoA !== undefined) recusar('CAMPO_INVALIDO', `${campo}.presoA`, `"${e.tipo}" é presa à peça: não tem presoA`)
+    } else if (e.presoA === undefined || e.presoA === 'logo') recusar('CAMPO_INVALIDO', `${campo}.presoA`, `"${e.tipo}" se prende a um papel de texto (presoA)`)
+    else if (!papeis.has(e.presoA)) recusar('PAPEL_FORA_DO_CONTRATO', `${campo}.presoA`, `"${e.presoA}" não é papel deste arquétipo`)
+    // Um por item: só o fio, só preso a um papel de lista (sem itens não há "cada item").
+    if (e.porItem !== undefined && (e.porItem !== true || e.tipo !== 'fio-fino' || !papeisDeLista.has(e.presoA as string))) {
+      recusar('CAMPO_INVALIDO', `${campo}.porItem`, 'porItem só true, só no fio-fino, e só preso a um papel com lista')
+    }
     if (e.tipo === 'moldura-aberta' ? !contem(CANTOS, e.canto) : e.canto !== undefined) {
       recusar('CAMPO_INVALIDO', `${campo}.canto`, 'só a moldura-aberta tem canto, e ela sempre tem (a orientação do L é identidade)')
+    }
+    // #16@2: o braço igual só existe no elemento preso à peça (o caber na caixa é conferido por formato, abaixo).
+    if (e.braco !== undefined && (!ELEMENTOS_PRESOS_A_PECA.includes(e.tipo) || !ehNumero(e.braco) || e.braco <= 0)) {
+      recusar('CAMPO_INVALIDO', `${campo}.braco`, 'braco só no elemento preso à peça, e é uma fração > 0 da largura da peça')
+    }
+    // #5: o envolvente abraça UM texto de uma linha — nunca a lista (cada item é um texto) nem dois envolventes no mesmo.
+    if (ELEMENTOS_QUE_ENVOLVEM.includes(e.tipo) && typeof e.presoA === 'string') {
+      if (papeisDeLista.has(e.presoA)) recusar('CAMPO_INVALIDO', `${campo}.presoA`, `"${e.tipo}" envolve um texto, não a lista "${e.presoA}"`)
+      if (envolvidos.has(e.presoA)) recusar('CAMPO_INVALIDO', `${campo}.presoA`, `o papel "${e.presoA}" já tem um elemento que o envolve`)
+      envolvidos.add(e.presoA)
     }
   })
 
@@ -191,7 +230,13 @@ export function validarArquetipo(arquetipo: ArquetipoDeLayout, opcoes: OpcoesDaV
   fechado(pref, CHAVES.preferencias, 'preferencias')
   if (!contem(ANCORAS, pref?.ancora)) recusar('CAMPO_INVALIDO', 'preferencias.ancora', `âncora fora de ${ANCORAS.join(', ')}`)
   if (!contem(ALINHAMENTOS, pref?.alinha)) recusar('CAMPO_INVALIDO', 'preferencias.alinha', `alinhamento fora de ${ALINHAMENTOS.join(', ')}`)
-  if (pref?.cantoDaMarca !== 'auto' && !contem(CANTOS, pref?.cantoDaMarca)) recusar('CAMPO_INVALIDO', 'preferencias.cantoDaMarca', 'canto fora dos quatro cantos ou auto')
+  if (pref?.cantoDaMarca !== 'auto' && pref?.cantoDaMarca !== 'superior-centro' && !contem(CANTOS, pref?.cantoDaMarca)) recusar('CAMPO_INVALIDO', 'preferencias.cantoDaMarca', 'canto fora dos quatro cantos, superior-centro ou auto')
+  if (a.fundo === 'liso-claro' && pref?.cantoDaMarca === 'auto') recusar('PREFERENCIA_INCOERENTE', 'preferencias.cantoDaMarca', 'sem foto, o canto da marca é fixo (auto mede a foto)')
+  // #8: com a foto numa caixa a logo fica no liso, fora dela — o canto "mais calmo" mediria a foto, onde a logo não pousa.
+  if (a.fundo === 'foto-em-caixa' && pref?.cantoDaMarca === 'auto') recusar('PREFERENCIA_INCOERENTE', 'preferencias.cantoDaMarca', 'com a foto em caixa, o canto da marca é fixo no liso (auto mede a foto)')
+  if (a.fundo !== undefined && !contem(FUNDOS_DO_ARQUETIPO, a.fundo)) recusar('CAMPO_INVALIDO', 'fundo', `fundo fora de ${FUNDOS_DO_ARQUETIPO.join(', ')}`)
+  // Sem foto não há foto a favorecer: a foto ideal num `liso-claro` seria uma segunda fonte (contraditória) do fundo.
+  if (a.fundo === 'liso-claro' && a.fotoIdeal !== undefined) recusar('PREFERENCIA_INCOERENTE', 'fotoIdeal', 'o arquétipo de fundo liso não tem foto ideal')
   const foto = a.fotoIdeal
   fechado(foto, CHAVES.fotoIdeal, 'fotoIdeal')
   if (
@@ -231,6 +276,7 @@ export function validarArquetipo(arquetipo: ArquetipoDeLayout, opcoes: OpcoesDaV
 
     const posicoes = (ehObjeto(g.papeis) ? g.papeis : {}) as Record<string, unknown>
     const fixas = new Map<string, Posicao>()
+    const zonas = new Map<string, Zona>()
     const automaticas = new Set<string>()
     for (const papel of papeis) if (!posicoes[papel]) recusar('POSICAO_AUSENTE', `${base}.papeis.${papel}`, `o papel "${papel}" não tem posição no ${f}`)
     for (const [papel, pos] of Object.entries(posicoes)) {
@@ -250,6 +296,7 @@ export function validarArquetipo(arquetipo: ArquetipoDeLayout, opcoes: OpcoesDaV
       }
       const referencia = conferirCaixa(p.referencia, `${campo}.referencia`, recusar)
       const zona = conferirZona(p.zona, `${campo}.zona`, recusar)
+      if (zona) zonas.set(papel, zona)
       if (!referencia || !zona) continue
       if (!caixaNaZona(referencia, zona)) recusar('REFERENCIA_FORA_DA_ZONA', `${campo}.referencia`, 'a referência sai da zona permitida')
       else fixas.set(papel, { referencia, zona })
@@ -258,6 +305,41 @@ export function validarArquetipo(arquetipo: ArquetipoDeLayout, opcoes: OpcoesDaV
       }
     }
 
+    // O canto mais calmo é o da FOTO: sem foto não há o que medir, e a logo cairia num canto arbitrário.
+    if (a.fundo === 'liso-claro' && automaticas.size > 0) recusar('PREFERENCIA_INCOERENTE', `${base}.papeis.logo`, 'sem foto, a logo tem posição fixa (não há canto mais calmo a medir)')
+    if (a.fundo === 'foto-em-caixa' && automaticas.size > 0) recusar('PREFERENCIA_INCOERENTE', `${base}.papeis.logo`, 'com a foto em caixa, a logo tem posição fixa no liso (o canto mais calmo seria da foto)')
+
+    // #8: a caixa da foto existe sse o fundo é `foto-em-caixa`, e nada do texto nem dos elementos a toca (HARD).
+    if (g.foto !== undefined && a.fundo !== 'foto-em-caixa') recusar('CAMPO_DESCONHECIDO', `${base}.foto`, 'a caixa da foto só existe no fundo foto-em-caixa')
+    if (g.foto === undefined && a.fundo === 'foto-em-caixa') recusar('CAMPO_INVALIDO', `${base}.foto`, `o fundo foto-em-caixa declara a caixa da foto no ${f}`)
+    fechado(g.foto, CHAVES.caixa, `${base}.foto`)
+    const caixaDaFoto = a.fundo === 'foto-em-caixa' && g.foto !== undefined ? conferirCaixa(g.foto, `${base}.foto`, recusar) : null
+    if (caixaDaFoto) {
+      for (const [papel, zona] of zonas) {
+        if (tocaAFoto(zona, caixaDaFoto)) recusar('ZONA_SOBRE_A_FOTO', `${base}.papeis.${papel}.zona`, `a zona do ${papel} toca a caixa da foto: com a foto em caixa, o texto e a logo ficam no liso`)
+      }
+      for (const [id, c] of Object.entries(ehObjeto(g.elementos) ? g.elementos : {})) {
+        if (ehObjeto(c) && [c.x, c.y, c.w, c.h].every(ehNumero) && tocaAFoto(zonaDaCaixa(c as Caixa), caixaDaFoto)) recusar('ZONA_SOBRE_A_FOTO', `${base}.elementos.${id}`, `o elemento "${id}" toca a caixa da foto`)
+      }
+    }
+    // #9: a máscara só existe com a caixa da foto, e só a intenção (tipo + raio): o desenho é derivado na composição. A
+    // flecha conta em px da caixa como a composição a desenha (`caixaDaFoto` arredonda w/h). O `ZONA_SOBRE_A_FOTO` acima
+    // segue sobre o RETÂNGULO, mais conservador que o arco.
+    const mascara = g.mascaraDaFoto as unknown
+    if (mascara !== undefined) {
+      const campo = `${base}.mascaraDaFoto`
+      if (a.fundo !== 'foto-em-caixa') recusar('CAMPO_DESCONHECIDO', campo, 'a máscara da foto só existe no fundo foto-em-caixa')
+      else if (!ehObjeto(mascara)) recusar('CAMPO_INVALIDO', campo, 'a máscara da foto é { tipo, raio }')
+      else {
+        fechado(mascara, CHAVES.mascara, campo)
+        if (!contem(MASCARAS_DO_ARQUETIPO, mascara.tipo)) recusar('CAMPO_INVALIDO', `${campo}.tipo`, `máscara fora de ${MASCARAS_DO_ARQUETIPO.join(', ')}`)
+        if (!ehNumero(mascara.raio) || mascara.raio < 0.5) recusar('CAMPO_INVALIDO', `${campo}.raio`, 'o raio do arco é uma fração ≥ 0,5 da largura da caixa da foto')
+        else if (caixaDaFoto) {
+          const problema = problemaDoArcoJanela({ w: Math.round(caixaDaFoto.w * area.largura), h: Math.round(caixaDaFoto.h * area.altura) }, mascara.raio)
+          if (problema) recusar('CAMPO_INVALIDO', `${campo}.raio`, `no ${f}, ${problema}`)
+        }
+      }
+    }
     const caixas = (ehObjeto(g.elementos) ? g.elementos : {}) as Record<string, Caixa>
     for (const id of elementos) if (!caixas[id]) recusar('POSICAO_AUSENTE', `${base}.elementos.${id}`, `o elemento "${id}" não tem posição no ${f}`)
     for (const [id, c] of Object.entries(caixas)) {
@@ -270,6 +352,15 @@ export function validarArquetipo(arquetipo: ArquetipoDeLayout, opcoes: OpcoesDaV
       const caixa = conferirCaixa(c, campo, recusar)
       if (caixa && areaPossivel && !recorteComporta(zonaDaCaixa(caixa), caixa, area)) recusar('FORA_DA_AREA_SEGURA', campo, `o elemento invade a área segura do ${f}`)
     }
+    // #16@2: os dois braços de um L cabem na metade do menor lado da caixa (senão os Ls vizinhos se cruzariam).
+    ;(Array.isArray(a.elementos) ? a.elementos : []).forEach((e, i) => {
+      const c = caixas[e?.id]
+      if (!ehNumero(e?.braco) || e.braco <= 0 || !ELEMENTOS_PRESOS_A_PECA.includes(e.tipo) || !c || !ehNumero(c.w) || !ehNumero(c.h)) return
+      const bracoPx = e.braco * area.largura
+      if (bracoPx > Math.min(c.w * area.largura, c.h * area.altura) / 2) {
+        recusar('CAMPO_INVALIDO', `elementos[${i}].braco`, `no ${f}, o braço (${bracoPx.toFixed(1)} px) passa da metade do menor lado da caixa do elemento`)
+      }
+    })
 
     const limites = (ehObjeto(g.limitesDeTexto) ? g.limitesDeTexto : {}) as Record<string, { linhasMax?: unknown; caracteresPorLinha?: unknown }>
     for (const papel of papeis) {
@@ -288,7 +379,57 @@ export function validarArquetipo(arquetipo: ArquetipoDeLayout, opcoes: OpcoesDaV
       }
     }
 
+    // #5: o envolvente (a pílula) abraça UMA linha; a caixa dele contém a referência do papel com margens simétricas de
+    // ≥ 8 px (a folga, da definição) e fica na zona do papel.
+    for (const e of Array.isArray(a.elementos) ? a.elementos : []) {
+      if (!ELEMENTOS_QUE_ENVOLVEM.includes(e?.tipo) || typeof e.presoA !== 'string' || e.presoA === 'logo') continue
+      const campo = `${base}.elementos.${e.id}`
+      const limite = limites[e.presoA]
+      if (limite && limite.linhasMax !== 1) recusar('CAMPO_INVALIDO', `${base}.limitesDeTexto.${e.presoA}.linhasMax`, `a pílula envolve uma linha: o ${e.presoA} tem linhasMax 1 no ${f}`)
+      const E = caixas[e.id]
+      const pos = fixas.get(e.presoA)
+      if (!pos || !ehObjeto(E) || ![E.x, E.y, E.w, E.h].every(ehNumero)) continue
+      const R = pos.referencia
+      const [esq, dir, topo, baixo] = [R.x - E.x, E.x + E.w - (R.x + R.w), R.y - E.y, E.y + E.h - (R.y + R.h)]
+      if (esq <= 0 || topo <= 0 || Math.abs(esq - dir) > EPSILON || Math.abs(topo - baixo) > EPSILON) {
+        recusar('PREFERENCIA_INCOERENTE', campo, `a caixa da pílula contém a referência do ${e.presoA} com margens simétricas no ${f}`)
+      } else if (Math.round(esq * area.largura) < 8 || Math.round(topo * area.altura) < 8) {
+        recusar('PREFERENCIA_INCOERENTE', campo, `a folga da pílula no ${f} (${Math.round(esq * area.largura)} × ${Math.round(topo * area.altura)} px) é menor que 8 px`)
+      }
+      if (!caixaNaZona(E, pos.zona)) recusar('PREFERENCIA_INCOERENTE', campo, `a caixa da pílula sai da zona do ${e.presoA} no ${f}`)
+    }
+
+    // Os ITENS da lista: todo papel de lista declara o vão em cada formato, e nada além dele. O fio por item mora no vão:
+    // a folga declarada entre o fio e o topo do item, mais o fio, cabem nele (senão o fio do item seguinte encostaria no
+    // anterior).
+    tipoDoConteiner(g.itens, false, true, `${base}.itens`)
+    const itens = (ehObjeto(g.itens) ? g.itens : {}) as Record<string, { vao?: unknown }>
+    for (const papel of papeisDeLista) if (!itens[papel]) recusar('POSICAO_AUSENTE', `${base}.itens.${papel}`, `a lista "${papel}" não declara o vão entre itens no ${f}`)
+    for (const [papel, it] of Object.entries(itens)) {
+      const campo = `${base}.itens.${papel}`
+      fechado(it, CHAVES.itens, campo)
+      if (!papeisDeLista.has(papel)) recusar('PAPEL_FORA_DO_CONTRATO', campo, `"${papel}" não é papel de lista deste arquétipo`)
+      if (!ehNumero(it?.vao) || it.vao <= 0 || it.vao > 0.2) recusar('CAMPO_INVALIDO', `${campo}.vao`, 'o vão entre itens é uma fração da altura em (0, 0,2]')
+    }
+    for (const e of Array.isArray(a.elementos) ? a.elementos : []) {
+      const c = caixas[e?.id]
+      const r = fixas.get(e?.presoA as string)?.referencia
+      const vao = itens[e?.presoA as string]?.vao
+      if (e?.porItem !== true || !c || !r || !ehNumero(vao)) continue
+      if (c.y + c.h > r.y + EPSILON || r.y - c.y >= vao) {
+        recusar('PREFERENCIA_INCOERENTE', `${base}.elementos.${e.id}`, `o fio por item fica ACIMA do item e cabe no vão entre itens (${vao}): a caixa dele termina em ${c.y + c.h}, o item começa em ${r.y}`)
+      }
+    }
+
     if (pref) conferirPreferencias(pref, fixas, automaticas, base, recusar)
+    // O alinhamento próprio de um papel também não é uma segunda fonte: prende a referência à borda (ou ao eixo) da zona.
+    for (const p of listaDePapeis) {
+      const pos = p && contem(ALINHAMENTOS, p.alinha) && p.papel !== 'headline' ? fixas.get(p.papel) : undefined
+      if (!pos) continue
+      const { referencia: r, zona: z } = pos
+      const coerente = p.alinha === 'esquerda' ? perto(r.x, z.xMin) : p.alinha === 'direita' ? perto(r.x + r.w, z.xMax) : perto(r.x + r.w / 2, (z.xMin + z.xMax) / 2)
+      if (!coerente) recusar('PREFERENCIA_INCOERENTE', `${base}.papeis.${p.papel}.referencia`, `o alinhamento próprio "${p.alinha}" do ${p.papel} não bate com a referência e a zona dele`)
+    }
   }
   return problemas
 }
@@ -340,6 +481,14 @@ function conferirPreferencias(
   const logo = fixas.get('logo')
   if (pref.cantoDaMarca === 'auto') {
     if (logo) recusar('PREFERENCIA_INCOERENTE', `${base}.papeis.logo`, 'cantoDaMarca "auto" pede a logo automática (o canto mais calmo)')
+  } else if (pref.cantoDaMarca === 'superior-centro') {
+    // #16: a logo FIXA centrada no topo — a referência e a zona no eixo da peça, na metade de cima. Nunca automática.
+    if (automaticas.has('logo')) recusar('PREFERENCIA_INCOERENTE', `${base}.papeis.logo`, 'cantoDaMarca "superior-centro" pede a logo fixa, não automática')
+    if (logo) {
+      const { referencia: r, zona: z } = logo
+      const noEixo = perto(r.x + r.w / 2, 0.5) && perto((z.xMin + z.xMax) / 2, 0.5)
+      if (!noEixo || (z.yMin + z.yMax) / 2 >= 0.5) recusar('PREFERENCIA_INCOERENTE', `${base}.papeis.logo.zona`, 'a logo "superior-centro" tem referência e zona no eixo da peça, na metade de cima')
+    }
   } else if (contem(CANTOS, pref.cantoDaMarca)) {
     if (automaticas.has('logo')) recusar('PREFERENCIA_INCOERENTE', `${base}.papeis.logo`, `cantoDaMarca "${pref.cantoDaMarca}" pede a logo nesse canto, não automática`)
     if (logo) {
@@ -385,6 +534,9 @@ function conferirZona(z: Zona | undefined, campo: string, recusar: Recusar): Zon
 }
 
 const zonaDaCaixa = (c: Caixa): Zona => ({ xMin: c.x, xMax: c.x + c.w, yMin: c.y, yMax: c.y + c.h })
+
+/** A zona e a caixa da foto têm interseção de ÁREA (encostar na borda não é tocar). */
+const tocaAFoto = (z: Zona, c: Caixa) => z.xMin < c.x + c.w - EPSILON && c.x < z.xMax - EPSILON && z.yMin < c.y + c.h - EPSILON && c.y < z.yMax - EPSILON
 
 const caixaNaZona = (c: Caixa, z: Zona) =>
   c.x >= z.xMin - EPSILON && c.x + c.w <= z.xMax + EPSILON && c.y >= z.yMin - EPSILON && c.y + c.h <= z.yMax + EPSILON

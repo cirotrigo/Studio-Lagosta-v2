@@ -22,6 +22,7 @@ import {
 import type {
   ImageSource,
 } from '@/lib/ai-creative-generator/layout-types'
+import { vinculadaAGrade } from '@/lib/grades/no-editor'
 
 interface CreativeGeneratorPanelProps {
   projectId: number
@@ -283,7 +284,10 @@ export function CreativeGeneratorPanel({
     if (isEditing && layerBindings[layerId]) {
       console.log('[CreativeGenerator] Updating image layer in real-time:', layerBindings[layerId])
       onLayerUpdate?.(layerBindings[layerId], { fileUrl: imageSource.url })
-      autoSave(layerBindings[layerId], { fileUrl: imageSource.url })
+      // G4.3: célula de grade só muda pelo editor (lá a foto passa por `preencherCelula` e o autosave da página grava);
+      // o PATCH direto da camada gravaria a foto sem limpar o recorte nem conferir o host
+      const alvo = currentPage?.layers?.find((l: any) => l.id === layerBindings[layerId])
+      if (!(alvo && vinculadaAGrade(alvo))) autoSave(layerBindings[layerId], { fileUrl: imageSource.url })
     } else {
       console.log('[CreativeGenerator] Not updating - isEditing:', isEditing, 'hasBinding:', !!layerBindings[layerId])
     }

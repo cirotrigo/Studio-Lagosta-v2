@@ -7,6 +7,8 @@ import { registrarUsoDeModelo } from '@/lib/aprendizado/uso-de-modelo'
 import { fetchProjectWithShares, hasProjectWriteAccess } from '@/lib/projects/access'
 import type { Layer } from '@/types/template'
 import { VERSAO_DA_PREVIA, temVetorDesenhado, vetoresComProblema } from '@/lib/gerar-criativo/previa-do-vetor'
+import { VERSAO_DA_PREVIA_DE_IMAGEM, imagensQueExigemAPrevia } from '@/lib/gerar-criativo/previa-da-imagem'
+import { conferirGrade } from '@/lib/grades/conferir'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120
@@ -37,6 +39,8 @@ const finalizeSchema = z.object({
   // Compatibilidade do cliente que desenha svg-path (CP-X1). Não é prova de
   // pixel: o PNG continua sendo o do cliente; serve para recusar a aba antiga.
   previa: z.literal(VERSAO_DA_PREVIA).optional(),
+  // G4.2: compatibilidade do cliente que desenha recorte manual e grade de fotos (não é prova de pixel).
+  previaDeImagem: z.literal(VERSAO_DA_PREVIA_DE_IMAGEM).optional(),
 })
 
 export async function POST(request: Request) {
@@ -47,7 +51,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json()
-    const { templateId, templatePageId, dataUrl, images, texts, layers, hiddenLayerIds, previa } = finalizeSchema.parse(body)
+    const { templateId, templatePageId, dataUrl, images, texts, layers, hiddenLayerIds, previa, previaDeImagem } = finalizeSchema.parse(body)
 
     console.log('[Gerar Criativo Finalize] Processing for user:', userId)
     console.log('[Gerar Criativo Finalize] Has dataUrl:', !!dataUrl)
@@ -128,6 +132,33 @@ export async function POST(request: Request) {
 
       return newLayer
     }) as Layer[]
+
+    // G4.2: guardas da imagem e da grade sobre as camadas EFETIVAS (a foto trocada acima pode introduzir o recorte ou
+    // preencher a célula), ainda antes de qualquer escrita. Dado antes de versão, como no vetor.
+    // 422: grade que a página nova gravaria quebrada (foto de host alheio, célula oculta, geometria) — com ou sem a marca.
+    const diagnosticosDaGrade = conferirGrade(processedLayers)
+    if (diagnosticosDaGrade.length > 0) {
+      return NextResponse.json(
+        {
+          error: `A grade de fotos não pode ser gravada assim: ${diagnosticosDaGrade[0].mensagem}`,
+          codigo: 'GRADE_INCOERENTE',
+          diagnosticos: diagnosticosDaGrade,
+        },
+        { status: 422 },
+      )
+    }
+    // 409: célula de grade ou foto com recorte manual vinda de cliente sem a marca (a prévia antiga não os desenhava).
+    const exigemAPreviaNova = imagensQueExigemAPrevia(processedLayers)
+    if (previaDeImagem !== VERSAO_DA_PREVIA_DE_IMAGEM && exigemAPreviaNova.length > 0) {
+      return NextResponse.json(
+        {
+          error: 'Esta página do assistente está desatualizada. Recarregue a página e gere de novo.',
+          codigo: 'PREVIA_DESATUALIZADA',
+          camadas: exigemAPreviaNova,
+        },
+        { status: 409 },
+      )
+    }
 
     // 3. Convert dataURL to buffer and upload to Vercel Blob
     console.log('[Gerar Criativo Finalize] Uploading to Blob...')

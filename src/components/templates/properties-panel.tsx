@@ -26,6 +26,9 @@ import {
   ArrowDown,
   FlipHorizontal2,
   FlipVertical2,
+  Link2,
+  Lock,
+  Unlock,
 } from 'lucide-react'
 import { FONT_CONFIG } from '@/lib/font-config'
 import { patchLineHeight } from '@/lib/text-line-height'
@@ -36,15 +39,46 @@ import { controlesDaForma } from '@/lib/konva/trava-de-proporcao'
 import { lerCor } from '@/lib/vetor/cor'
 import { corParaSeletor } from '@/lib/editor/cor-do-seletor'
 import { escolhaExplicitaDaCor } from '@/lib/editor/camada-do-elemento'
+import {
+  alvoValido,
+  atualizadorDoReaplicar,
+  alvoDaChave,
+  chavesDaForma,
+  classificarPaleta,
+  coresNestaPagina,
+  estiloComCorDoSlot,
+  fallbackDaChave,
+  valorDaChave,
+  DICA_DO_ELO,
+  eloDoCanal,
+  podeReaplicar,
+  reaplicarCoresDaMarca,
+  resumoDoReaplicar,
+  rotuloDoCanal,
+  swatchAtivo,
+  type AlvoDoReaplicar,
+  type CorAplicavel,
+  type SituacaoDoEditor,
+} from '@/lib/editor/cores-da-forma'
+import { estadoDaInsercao } from '@/lib/editor/estado-da-insercao'
+import { useBrandColorsEstrita } from '@/hooks/use-brand-colors'
+import { useProject } from '@/hooks/use-project'
+import { useMultiPageOpcional } from '@/contexts/multi-page-context'
+import type { ChaveDeCor } from '@/lib/vetor/tipos'
+import { ehMulticor } from '@/lib/vetor/partes'
 import { ImageEditorModal } from './modals/image-editor-modal'
 import { GradientEditor } from './gradient-editor'
 import { ColorPicker } from '@/components/canvas/effects/ColorPicker'
 import { BrandColorSwatches } from './brand-color-swatches'
 import { FundoDeTextoControls } from './fundo-de-texto-controls'
 import { VideoProperties } from './video-properties'
+import { CamposDaCaixa } from './grade-toolbar'
+import { metadadoDeGrade } from '@/lib/grades/conferir'
 import {
   applyOpacityToEditableColor,
   corDigitadaParaGravar,
+  estiloComOpacidadeDaForma,
+  opacidadeDaForma,
   parseColorOpacity,
 } from '@/lib/shape-style'
 
@@ -314,6 +348,7 @@ function PropertiesContent({
   imageEditorOpen: boolean
   setImageEditorOpen: (open: boolean) => void
 }) {
+  const gradeDaCamada = selectedLayer ? metadadoDeGrade(selectedLayer) : undefined
   return (
     <div className="space-y-3">
       <div className="space-y-2 rounded-md border border-border/30 bg-muted/30 p-2 text-xs">
@@ -373,6 +408,26 @@ function PropertiesContent({
             </div>
 
             <div className="grid grid-cols-2 gap-2 text-xs">
+              {/* G3: célula de grade — posição e tamanho são da grade inteira (operações da grade), rotação bloqueada */}
+              {gradeDaCamada ? (
+                <>
+                  <p className="col-span-2 text-[10px] text-muted-foreground">Célula de grade: posição e tamanho valem para a grade inteira.</p>
+                  <CamposDaCaixa gradeId={gradeDaCamada.id} campos={['x', 'y', 'w', 'h']} variante="painel" />
+                  <div className="space-y-1">
+                    <Label className="text-[10px]">Rotação</Label>
+                    <Input
+                      aria-label="Rotação da grade"
+                      type="number"
+                      className="h-8 text-xs"
+                      value={0}
+                      readOnly
+                      disabled
+                      title="Rotação bloqueada na grade: desvincule da grade para girar a foto."
+                    />
+                  </div>
+                </>
+              ) : (
+              <>
               <div className="space-y-1">
                 <Label className="text-[10px]">Posição X</Label>
                 <Input
@@ -422,6 +477,8 @@ function PropertiesContent({
                   }
                 />
               </div>
+              </>
+              )}
               <div className="space-y-1">
                 <Label className="text-[10px]">Opacidade</Label>
                 <input
@@ -429,19 +486,11 @@ function PropertiesContent({
                   min={10}
                   max={100}
                   className="w-full"
-                  value={Math.round((selectedLayer.style?.opacity ?? 1) * 100)}
+                  value={Math.round((selectedLayer.type === 'shape' ? opacidadeDaForma(selectedLayer.style) : selectedLayer.style?.opacity ?? 1) * 100)}
                   onChange={(event) => {
                     const nextOpacity = Number(event.target.value) / 100
                     if (selectedLayer.type === 'shape') {
-                      editor.updateLayerStyle(selectedLayer.id, {
-                        fill: applyOpacityToEditableColor(selectedLayer.style?.fill, nextOpacity, '#2563eb'),
-                        strokeColor: selectedLayer.style?.strokeColor
-                          ? applyOpacityToEditableColor(selectedLayer.style.strokeColor, nextOpacity, '#1e3a8a')
-                          : selectedLayer.style?.strokeColor,
-                        opacity: 1,
-                        fillOpacity: 1,
-                        strokeOpacity: 1,
-                      })
+                      editor.updateLayerStyle(selectedLayer.id, estiloComOpacidadeDaForma(selectedLayer.style, nextOpacity))
                       return
                     }
 
@@ -1191,6 +1240,8 @@ interface ImageControlsProps {
 }
 
 function ImageControls({ layer, setStyleValue, updateLayerPartial, resetFilters, onEdit }: ImageControlsProps) {
+  // G3: na célula de grade a foto entra só pelo preenchimento (URL validada, cover, recorte limpo) e a caixa é da grade
+  const naGrade = metadadoDeGrade(layer) !== undefined
   return (
     <div className="space-y-2 text-xs">
       <div className="space-y-1">
@@ -1200,6 +1251,7 @@ function ImageControls({ layer, setStyleValue, updateLayerPartial, resetFilters,
           className="h-8 text-xs"
           value={layer.fileUrl ?? ''}
           onChange={(event) => updateLayerPartial(layer.id, { fileUrl: event.target.value })}
+          {...(naGrade ? { disabled: true, title: 'Na grade, troque a foto pelo painel Imagens (com a célula selecionada).' } : {})}
         />
       </div>
 
@@ -1228,6 +1280,7 @@ function ImageControls({ layer, setStyleValue, updateLayerPartial, resetFilters,
             onValueChange={(value) =>
               setStyleValue(layer, { objectFit: value as 'cover' | 'contain' | 'fill' })
             }
+            {...(naGrade ? { disabled: true } : {})}
           >
             <SelectTrigger className="h-8 text-xs">
               <SelectValue />
@@ -1240,7 +1293,13 @@ function ImageControls({ layer, setStyleValue, updateLayerPartial, resetFilters,
           </Select>
         </div>
         <div className="flex items-end">
-          <Button variant="outline" size="sm" className="h-8 w-full text-xs" onClick={onEdit}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 w-full text-xs"
+            onClick={onEdit}
+            {...(naGrade ? { disabled: true, title: 'Editar a imagem mudaria a caixa da célula: desvincule da grade para editar.' } : {})}
+          >
             Editar
           </Button>
         </div>
@@ -1425,7 +1484,7 @@ const ehCorDoSvgPath = (cor: string) => ehCorCss(cor) && lerCor(cor) !== null
  * `origem` é o objeto da camada: trocar de página com o MESMO id e a MESMA cor não remonta o campo
  * nem muda o valor, mas troca o objeto — e isso também descarta o rascunho.
  */
-function CampoDeCorDigitada({ valor, origem, aoGravar }: { valor: string; origem: object; aoGravar: (texto: string) => void }) {
+export function CampoDeCorDigitada({ valor, origem, aoGravar }: { valor: string; origem: object; aoGravar: (texto: string) => void }) {
   const [rascunho, setRascunho] = React.useState<string | null>(null)
   const [visto, setVisto] = React.useState({ valor, origem })
   if (visto.valor !== valor || visto.origem !== origem) {
@@ -1470,44 +1529,80 @@ function CampoDeCorDigitada({ valor, origem, aoGravar }: { valor: string; origem
   )
 }
 
-function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
+/**
+ * CP-V4: a leitura e a escrita de cor da forma, UMA vez para o painel (`ShapeControls`) e a toolbar (`ShapeToolbar`).
+ * Cor escolhida (paleta, seletor nativo, texto digitado) grava com o alfa atual do canal e rompe só o elo DESSE canal
+ * (`escolhaExplicitaDaCor`, Q1); a transparência muda só o alfa e mantém o elo.
+ * CP-V5: a chave é o canal (monocolor) ou o slot das partes (multicor, `chaves`); a escrita do slot vai por
+ * `estiloComCorDoSlot` (só a cor daquele slot, e a silhueta quando é o slot dela).
+ */
+export function useCoresDaForma(layer: Layer, setStyleValue: ShapeControlsProps['setStyleValue']) {
   const fillOpacity = Math.round(parseColorOpacity(layer.style?.fill, layer.style?.fillOpacity ?? 1) * 100)
   const strokeOpacity = Math.round(parseColorOpacity(layer.style?.strokeColor, layer.style?.strokeOpacity ?? 1) * 100)
-  const corAceita = layer.style?.shapeType === 'svg-path' ? ehCorDoSvgPath : ehCorCss
+  // CP-V3: o `lerCor` vale também na camada com `style.vetor` que não é `svg-path` (fio, moldura, pílula)
+  const corAceita = layer.style?.shapeType === 'svg-path' || ehObjetoDeEstilo(layer.style?.vetor) ? ehCorDoSvgPath : ehCorCss
+  const editor = useTemplateEditor()
+  const consultaDaPaleta = useBrandColorsEstrita(editor.projectId)
+  const paleta = consultaDaPaleta.status === 'success' && consultaDaPaleta.data?.projectId === editor.projectId
+    ? classificarPaleta(consultaDaPaleta.data.cores)
+    : null
+  const nestaPagina = coresNestaPagina(editor.design, paleta?.aplicaveis.map((c) => c.hex) ?? [])
+  const multicor = ehMulticor(layer.style)
+  const chaves = chavesDaForma(layer.style)
+  const valorDo = (canal: ChaveDeCor) => valorDaChave(layer.style, canal)
+  /** O alfa da chave em %: o do canal (legado, com o multiplicador) ou o próprio da cor do slot (multicor). */
+  const alfaEmPorcento = (canal: ChaveDeCor) =>
+    multicor ? Math.round(parseColorOpacity(valorDo(canal), 1) * 100) : canal === 'preenchimento' ? fillOpacity : strokeOpacity
+  const alfaDo = (canal: ChaveDeCor) => alfaEmPorcento(canal) / 100
+  const gravar = (canal: ChaveDeCor, cor: string, explicita: boolean) => {
+    const elo = explicita ? escolhaExplicitaDaCor(layer.style, canal) : {}
+    setStyleValue(
+      layer,
+      multicor
+        ? estiloComCorDoSlot({ ...layer.style, ...elo }, canal, cor)
+        : canal === 'preenchimento' ? { fill: cor, fillOpacity: 1, ...elo } : { strokeColor: cor, strokeOpacity: 1, ...elo },
+    )
+  }
+  /** Paleta ou seletor nativo: a cor com o alfa atual do canal. */
+  const escolher = (canal: ChaveDeCor, hex: string) => gravar(canal, applyOpacityToEditableColor(hex, alfaDo(canal), fallbackDaChave(canal)), true)
+  /** Texto confirmado no `CampoDeCorDigitada`; texto que não é cor não grava. */
+  const digitar = (canal: ChaveDeCor, texto: string) => {
+    const cor = corDigitadaParaGravar(texto, alfaDo(canal), fallbackDaChave(canal), corAceita)
+    if (cor) gravar(canal, cor, true)
+  }
+  const transparencia = (canal: ChaveDeCor, alfa: number) =>
+    gravar(canal, applyOpacityToEditableColor(valorDo(canal), alfa, fallbackDaChave(canal)), false)
+  const alvoDo = (canal: ChaveDeCor) => alvoDaChave(layer.style, canal)
+  return { consultaDaPaleta, paleta, nestaPagina, fillOpacity, strokeOpacity, multicor, chaves, valorDo, alfaEmPorcento, alvoDo, escolher, digitar, transparencia }
+}
+
+function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
+  const cores = useCoresDaForma(layer, setStyleValue)
+  const { consultaDaPaleta, paleta, nestaPagina, fillOpacity, strokeOpacity, escolher, digitar, transparencia } = cores
+  if (cores.multicor) return <ControlesDosSlots layer={layer} setStyleValue={setStyleValue} cores={cores} />
 
   return (
     <div className="space-y-3 text-xs">
+      <EstadoDaPaletaDaForma consulta={consultaDaPaleta} paleta={paleta} />
       <div className="space-y-1">
-        <Label>Preenchimento</Label>
+        <Label>{rotuloDoCanal(layer, 'preenchimento')}</Label>
+        <EloDoCanal layer={layer} canal="preenchimento" />
+        <FileirasDoCanal paleta={paleta} nestaPagina={nestaPagina} valor={layer.style?.fill} onSelect={(hex) => escolher('preenchimento', hex)} />
+        <span data-fileira="personalizada" className="block text-[10px] text-muted-foreground">Personalizada</span>
         <div className="flex items-center gap-2">
           <CampoDeCorDigitada
             key={layer.id}
             valor={layer.style?.fill ?? '#2563eb'}
             origem={layer}
-            aoGravar={(texto) => {
-              const fill = corDigitadaParaGravar(texto, fillOpacity / 100, '#2563eb', corAceita)
-              if (fill) setStyleValue(layer, { fill, fillOpacity: 1, ...escolhaExplicitaDaCor(layer.style, 'preenchimento') })
-            }}
+            aoGravar={(texto) => digitar('preenchimento', texto)}
           />
           <input
             type="color"
             className="h-9 w-9 rounded-md border border-border/30"
             value={corParaSeletor(layer.style?.fill, '#2563eb')}
-            onChange={(event) => setStyleValue(layer, {
-              fill: applyOpacityToEditableColor(event.target.value, fillOpacity / 100, '#2563eb'),
-              fillOpacity: 1,
-              ...escolhaExplicitaDaCor(layer.style, 'preenchimento'),
-            })}
+            onChange={(event) => escolher('preenchimento', event.target.value)}
           />
         </div>
-        <BrandColorSwatches
-          value={corParaSeletor(layer.style?.fill, '#2563eb')}
-          onSelect={(hex) => setStyleValue(layer, {
-            fill: applyOpacityToEditableColor(hex, fillOpacity / 100, '#2563eb'),
-            fillOpacity: 1,
-            ...escolhaExplicitaDaCor(layer.style, 'preenchimento'),
-          })}
-        />
         <p className="text-[10px] text-muted-foreground break-all">
           Valor salvo: {layer.style?.fill ?? '#2563eb'}
         </p>
@@ -1522,48 +1617,30 @@ function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
             max={100}
             className="w-full"
             value={fillOpacity}
-            onChange={(event) => {
-              const nextOpacity = Number(event.target.value) / 100
-              setStyleValue(layer, {
-                fill: applyOpacityToEditableColor(layer.style?.fill, nextOpacity, '#2563eb'),
-                fillOpacity: 1,
-              })
-            }}
+            onChange={(event) => transparencia('preenchimento', Number(event.target.value) / 100)}
           />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
-          <Label>Cor da borda</Label>
+          <Label>{rotuloDoCanal(layer, 'contorno')}</Label>
+          <EloDoCanal layer={layer} canal="contorno" />
+          <FileirasDoCanal paleta={paleta} nestaPagina={nestaPagina} valor={layer.style?.strokeColor} onSelect={(hex) => escolher('contorno', hex)} />
+          <span data-fileira="personalizada" className="block text-[10px] text-muted-foreground">Personalizada</span>
           <div className="flex items-center gap-2">
             <CampoDeCorDigitada
               key={layer.id}
               valor={layer.style?.strokeColor ?? '#1e3a8a'}
               origem={layer}
-              aoGravar={(texto) => {
-                const strokeColor = corDigitadaParaGravar(texto, strokeOpacity / 100, '#1e3a8a', corAceita)
-                if (strokeColor) setStyleValue(layer, { strokeColor, strokeOpacity: 1, ...escolhaExplicitaDaCor(layer.style, 'contorno') })
-              }}
+              aoGravar={(texto) => digitar('contorno', texto)}
             />
             <input
               type="color"
               className="h-9 w-9 rounded-md border border-border/30"
               value={corParaSeletor(layer.style?.strokeColor, '#1e3a8a')}
-              onChange={(event) => setStyleValue(layer, {
-                strokeColor: applyOpacityToEditableColor(event.target.value, strokeOpacity / 100, '#1e3a8a'),
-                strokeOpacity: 1,
-                ...escolhaExplicitaDaCor(layer.style, 'contorno'),
-              })}
+              onChange={(event) => escolher('contorno', event.target.value)}
             />
           </div>
-          <BrandColorSwatches
-            value={corParaSeletor(layer.style?.strokeColor, '#1e3a8a')}
-            onSelect={(hex) => setStyleValue(layer, {
-              strokeColor: applyOpacityToEditableColor(hex, strokeOpacity / 100, '#1e3a8a'),
-              strokeOpacity: 1,
-              ...escolhaExplicitaDaCor(layer.style, 'contorno'),
-            })}
-          />
           <p className="text-[10px] text-muted-foreground break-all">
             Valor salvo: {layer.style?.strokeColor ?? '#1e3a8a'}
           </p>
@@ -1589,16 +1666,301 @@ function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
           max={100}
           className="w-full"
           value={strokeOpacity}
-          onChange={(event) => {
-            const nextOpacity = Number(event.target.value) / 100
-            setStyleValue(layer, {
-              strokeColor: applyOpacityToEditableColor(layer.style?.strokeColor, nextOpacity, '#1e3a8a'),
-              strokeOpacity: 1,
-            })
-          }}
+          onChange={(event) => transparencia('contorno', Number(event.target.value) / 100)}
         />
       </div>
+      <ReaplicarCoresDaMarca layer={layer} />
       <GestoDaFormaControls layer={layer} setStyleValue={setStyleValue} />
+    </div>
+  )
+}
+
+const ehObjetoDeEstilo = (v: unknown): boolean => typeof v === 'object' && v !== null && !Array.isArray(v)
+
+/**
+ * CP-V5: os controles da forma MULTICOR — um bloco por slot (na ordem das partes), com as mesmas fileiras Marca → Nesta
+ * página → Personalizada, elo e transparência própria do slot; a escrita é a do `useCoresDaForma` (nada próprio aqui).
+ * A opacidade da forma inteira é o slider geral; espessura só quando algum slot é de contorno.
+ */
+function ControlesDosSlots({ layer, setStyleValue, cores }: ShapeControlsProps & { cores: ReturnType<typeof useCoresDaForma> }) {
+  return (
+    <div className="space-y-3 text-xs" data-controles-multicor="">
+      <EstadoDaPaletaDaForma consulta={cores.consultaDaPaleta} paleta={cores.paleta} />
+      {cores.chaves.map((c) => {
+        const valor = cores.valorDo(c)
+        const fallback = fallbackDaChave(c)
+        return (
+          <div key={c} className="space-y-1" data-slot-da-forma={c}>
+            <Label>{rotuloDoCanal(layer, c)}</Label>
+            <EloDoCanal layer={layer} canal={c} />
+            <FileirasDoCanal paleta={cores.paleta} nestaPagina={cores.nestaPagina} valor={valor} onSelect={(hex) => cores.escolher(c, hex)} />
+            <span data-fileira="personalizada" className="block text-[10px] text-muted-foreground">Personalizada</span>
+            <div className="flex items-center gap-2">
+              <CampoDeCorDigitada key={`${layer.id}:${c}`} valor={valor ?? fallback} origem={layer} aoGravar={(texto) => cores.digitar(c, texto)} />
+              <input
+                type="color"
+                aria-label={`Escolher ${rotuloDoCanal(layer, c).toLowerCase()}`}
+                className="h-9 w-9 rounded-md border border-border/30"
+                value={corParaSeletor(valor, fallback)}
+                onChange={(event) => cores.escolher(c, event.target.value)}
+              />
+            </div>
+            <div className="flex items-center justify-between pt-1">
+              <Label className="text-[10px]">Transparência</Label>
+              <span className="text-[10px] text-muted-foreground">{cores.alfaEmPorcento(c)}%</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              aria-label={`Transparência: ${rotuloDoCanal(layer, c).toLowerCase()}`}
+              className="w-full"
+              value={cores.alfaEmPorcento(c)}
+              onChange={(event) => cores.transparencia(c, Number(event.target.value) / 100)}
+            />
+          </div>
+        )
+      })}
+      {cores.chaves.some((c) => cores.alvoDo(c) === 'stroke') && (
+        <div className="space-y-1">
+          <Label>Espessura</Label>
+          <Input type="number" min={0} value={layer.style?.strokeWidth ?? 0} onChange={(event) => setStyleValue(layer, { strokeWidth: Number(event.target.value) })} />
+        </div>
+      )}
+      <ReaplicarCoresDaMarca layer={layer} />
+      <GestoDaFormaControls layer={layer} setStyleValue={setStyleValue} />
+    </div>
+  )
+}
+
+type PaletaDaForma = ReturnType<typeof classificarPaleta> | null
+
+/**
+ * CP-V3: o estado da paleta ESTRITA da forma, uma vez para os dois canais. Carregando e erro (HTML 200, cor sem
+ * `hexCode`) nunca viram "sem cores"; item com hex inválido sai da fileira e é contado.
+ */
+export function EstadoDaPaletaDaForma({ consulta, paleta }: { consulta: ReturnType<typeof useBrandColorsEstrita>; paleta: PaletaDaForma }) {
+  if (consulta.status === 'error') {
+    return (
+      <div data-paleta-da-forma="erro" className="space-y-1 rounded-md border border-destructive/40 p-2 text-[10px]">
+        <p>Não foi possível carregar as cores da marca.</p>
+        <Button size="sm" variant="outline" className="h-6 text-[10px]" onClick={() => void consulta.refetch()}>
+          Tentar de novo
+        </Button>
+      </div>
+    )
+  }
+  if (!paleta) return <p data-paleta-da-forma="carregando" className="text-[10px] text-muted-foreground">Carregando as cores da marca…</p>
+  if (paleta.aplicaveis.length === 0 && paleta.ignoradas === 0) {
+    return <p data-paleta-da-forma="vazia" className="text-[10px] text-muted-foreground">Sem cores cadastradas.</p>
+  }
+  if (paleta.ignoradas === 0) return null
+  return (
+    <p data-paleta-da-forma="ignoradas" className="text-[10px] text-muted-foreground">
+      {paleta.ignoradas === 1 ? '1 cor da paleta ignorada: hex inválido.' : `${paleta.ignoradas} cores da paleta ignoradas: hex inválido.`}
+    </p>
+  )
+}
+
+/** CP-V3: o elo do canal com o papel da marca. Só o Reaplicar o usa; a cor não muda sozinha (d08). */
+export function EloDoCanal({ layer, canal }: { layer: Layer; canal: ChaveDeCor }) {
+  const elo = eloDoCanal(layer.style, canal)
+  if (!elo) return null
+  return (
+    <p data-elo={canal} title={DICA_DO_ELO} className="flex items-center gap-1 text-[10px] text-muted-foreground">
+      <Link2 className="h-3 w-3" aria-hidden="true" />
+      {elo}
+    </p>
+  )
+}
+
+/**
+ * CP-V3: Marca (só os itens aplicáveis da paleta estrita, gravando o hex canônico) e Nesta página (as cores já usadas,
+ * sem a paleta). O ativo compara os canais da cor SALVA, crua, pelo `lerCor`: sem cor legível, nada acende.
+ */
+export function FileirasDoCanal({ paleta, nestaPagina, valor, onSelect }: { paleta: PaletaDaForma; nestaPagina: string[]; valor: string | undefined; onSelect: (hex: string) => void }) {
+  return (
+    <>
+      {paleta && paleta.aplicaveis.length > 0 && (
+        <div className="space-y-1" data-fileira="marca">
+          <span className="text-[10px] text-muted-foreground">Marca</span>
+          <BrandColorSwatches cores={paleta.aplicaveis as CorAplicavel[]} ativo={(hex) => swatchAtivo(valor, hex)} onSelect={onSelect} />
+        </div>
+      )}
+      {nestaPagina.length > 0 && (
+        <div className="space-y-1" data-fileira="nesta-pagina">
+          <span className="text-[10px] text-muted-foreground">Nesta página</span>
+          <div className="flex flex-wrap gap-1.5" data-nesta-pagina="">
+            {nestaPagina.map((hex) => (
+              <button
+                key={hex}
+                type="button"
+                onClick={() => onSelect(hex)}
+                className="relative h-5 w-5 shrink-0 rounded border border-border transition hover:scale-110 hover:border-primary"
+                style={{ backgroundColor: hex }}
+                title={hex}
+                aria-label={`Usar ${hex} desta página`}
+              >
+                {swatchAtivo(valor, hex) && (
+                  <span className="absolute inset-0 flex items-center justify-center">
+                    <span className="h-1.5 w-1.5 rounded-full bg-white shadow-sm ring-1 ring-black/20" />
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+/** Número de cada operação do Reaplicar: identidade do aviso e chave de desfazer única (o histórico funde a mesma chave em 800 ms). */
+let operacoesDoReaplicar = 0
+
+type ConsultaLida = { status: 'pending' | 'error' | 'success'; data: unknown }
+/** O estado de UMA operação: só ela o muda, e só enquanto o token dela vale. */
+interface OperacaoDoReaplicar {
+  op: number
+  token: number
+  chave: string
+  alvo: AlvoDoReaplicar
+  tipo: 'em-voo' | 'carregando' | 'erro' | 'feito'
+  texto: string
+  /** Na falha: a consulta que voltou boa, guardada para o "Tentar de novo" (mesmo alvo e token) não relê-la. */
+  confirmadas: { paleta?: ConsultaLida; projeto?: ConsultaLida }
+}
+
+/**
+ * CP-V3: "Reaplicar cores da marca" na camada. Relê a paleta e a assinatura (R2) e só grava com o alvo do clique
+ * intacto: token da operação, montagem, projeto, template, página, geração da carga e a seleção exatamente [camada].
+ * A guarda se repete DENTRO do atualizador (`atualizadorDoReaplicar`). O aviso, o "em voo" e o retry pertencem à
+ * operação (número + token): trocar o alvo os descarta, e uma resposta velha nunca mexe no aviso de outra operação,
+ * mesmo quando a seleção volta à mesma camada. "Tentar de novo" relê só a consulta que falhou; um clique novo relê as
+ * duas. Sem mudança, nada é gravado (nem desfazer, nem PATCH). Só os canais ainda vinculados mudam (Q1 = A).
+ */
+function ReaplicarCoresDaMarca({ layer }: { layer: Layer }) {
+  const editor = useTemplateEditor()
+  const multiPage = useMultiPageOpcional()
+  const paleta = useBrandColorsEstrita(editor.projectId)
+  const projeto = useProject(editor.projectId)
+  const situacao = {
+    projectId: editor.projectId,
+    templateId: editor.templateId,
+    pageId: multiPage?.currentPageId ?? null,
+    selecao: editor.selectedLayerIds,
+    geracao: editor.geracaoDaCarga(),
+  }
+  const chave = [situacao.projectId, situacao.templateId, situacao.pageId, situacao.selecao.join(','), situacao.geracao, layer.id].join('|')
+  const situacaoRef = React.useRef(situacao)
+  situacaoRef.current = situacao
+  const camadaRef = React.useRef(layer)
+  camadaRef.current = layer
+  const tokenRef = React.useRef(0)
+  const montadoRef = React.useRef(false)
+  const emVooRef = React.useRef<{ op: number; token: number } | null>(null)
+  const [operacao, setOperacao] = React.useState<OperacaoDoReaplicar | null>(null)
+  React.useEffect(() => {
+    montadoRef.current = true
+    return () => {
+      montadoRef.current = false
+      tokenRef.current += 1
+    }
+  }, [])
+  // Qualquer troca do alvo invalida a operação em voo e DESCARTA o aviso dela (A → B → A não o ressuscita)
+  React.useEffect(() => () => {
+    tokenRef.current += 1
+    emVooRef.current = null
+    setOperacao(null)
+  }, [chave])
+
+  if (!ehObjetoDeEstilo(layer.style?.vetor)) return null
+
+  const geracaoDaCarga = editor.geracaoDaCarga
+  const lerSituacao = (): SituacaoDoEditor => ({ ...situacaoRef.current, token: tokenRef.current, montado: montadoRef.current, geracao: geracaoDaCarga() })
+  const desta = (op: number, mudar: (o: OperacaoDoReaplicar) => OperacaoDoReaplicar | null) =>
+    setOperacao((o) => (o && o.op === op ? mudar(o) : o))
+
+  const executar = async (alvo: AlvoDoReaplicar, op: number, confirmadas: OperacaoDoReaplicar['confirmadas']) => {
+    emVooRef.current = { op, token: alvo.token }
+    try {
+      const [p, j] = await Promise.all([
+        confirmadas.paleta ? Promise.resolve(confirmadas.paleta) : paleta.refetch(),
+        confirmadas.projeto ? Promise.resolve(confirmadas.projeto) : projeto.refetch(),
+      ])
+      if (!alvoValido(alvo, lerSituacao())) {
+        if (montadoRef.current) desta(op, () => null)
+        return
+      }
+      const estado = estadoDaInsercao({ projectId: alvo.projectId, paleta: p, projeto: j })
+      if (estado.estado !== 'pronto') {
+        const falhas = estado.estado === 'erro' ? estado.falhas : []
+        desta(op, (o) => ({
+          ...o,
+          tipo: estado.estado,
+          texto: estado.estado === 'erro' ? 'Não foi possível reler as cores da marca. Nada foi alterado.' : 'Carregando as cores da marca…',
+          confirmadas: estado.estado === 'erro'
+            ? { paleta: falhas.includes('paleta') ? undefined : p, projeto: falhas.includes('projeto') ? undefined : j }
+            : {},
+        }))
+        return
+      }
+      const resumo = resumoDoReaplicar(reaplicarCoresDaMarca(camadaRef.current.style, estado.marca).canais)
+      editor.updateLayer(alvo.layerId, atualizadorDoReaplicar(alvo, lerSituacao, estado.marca), { coalesceKey: `reaplicar:${op}` })
+      desta(op, (o) => ({
+        ...o,
+        tipo: 'feito',
+        texto: estado.ausenciaConfirmada ? `${resumo} Marca sem cores cadastradas: foram usadas as cores padrão.` : resumo,
+        confirmadas: {},
+      }))
+    } finally {
+      if (emVooRef.current?.op === op) emVooRef.current = null
+    }
+  }
+
+  const reaplicar = () => {
+    if (emVooRef.current?.token === tokenRef.current) return
+    const agora = lerSituacao()
+    const alvo: AlvoDoReaplicar = { token: agora.token, projectId: agora.projectId, templateId: agora.templateId, pageId: agora.pageId, geracao: agora.geracao, layerId: camadaRef.current.id }
+    if (!alvoValido(alvo, agora)) return
+    operacoesDoReaplicar += 1
+    const op = operacoesDoReaplicar
+    setOperacao({ op, token: alvo.token, chave, alvo, tipo: 'em-voo', texto: 'Relendo as cores da marca…', confirmadas: {} })
+    void executar(alvo, op, {})
+  }
+
+  const visivel = operacao && operacao.chave === chave && operacao.token === tokenRef.current ? operacao : null
+
+  const tentarDeNovo = () => {
+    if (!visivel || visivel.tipo !== 'erro' || emVooRef.current?.token === tokenRef.current) return
+    if (!alvoValido(visivel.alvo, lerSituacao())) return
+    desta(visivel.op, (o) => ({ ...o, tipo: 'em-voo', texto: 'Relendo as cores da marca…' }))
+    void executar(visivel.alvo, visivel.op, visivel.confirmadas)
+  }
+
+  const habilitado = podeReaplicar(layer.style) && situacao.selecao.length === 1 && situacao.selecao[0] === layer.id
+  return (
+    <div className="space-y-1 border-t border-border/30 pt-3">
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-8 w-full text-xs"
+        disabled={!habilitado || visivel?.tipo === 'em-voo'}
+        onClick={reaplicar}
+      >
+        Reaplicar cores da marca
+      </Button>
+      {!habilitado && <p className="text-[10px] text-muted-foreground">Nenhuma cor desta forma acompanha a marca.</p>}
+      {visivel && (
+        <p data-aviso-reaplicar={visivel.tipo} data-operacao={visivel.op} className="text-[10px] text-muted-foreground">
+          {visivel.texto}
+        </p>
+      )}
+      {visivel?.tipo === 'erro' && (
+        <Button size="sm" variant="outline" className="h-6 text-[10px]" data-tentar-reaplicar="" onClick={tentarDeNovo}>
+          Tentar de novo
+        </Button>
+      )}
     </div>
   )
 }
@@ -1606,43 +1968,74 @@ function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
 /**
  * Espelhar e travar a proporção (CP-V1), pelo que `controlesDaForma` libera: a trava em toda
  * forma; o espelho só no `svg-path`, o único desenho que espelha nos dois renderers (src/lib/vetor).
+ * CP-V4: a `variante="barra"` é a mesma regra em botões compactos na toolbar da forma; o id do switch vem do `useId`
+ * para painel e toolbar abertos juntos não repetirem id no DOM.
  */
-function GestoDaFormaControls({ layer, setStyleValue }: ShapeControlsProps) {
+export function GestoDaFormaControls({ layer, setStyleValue, variante = 'painel' }: ShapeControlsProps & { variante?: 'painel' | 'barra' }) {
+  const idDaTrava = React.useId()
   const controles = controlesDaForma(layer)
   if (!controles.trava && !controles.espelho) return null
   const flipH = layer.style?.flipH === true
   const flipV = layer.style?.flipV === true
+  const travada = layer.style?.manterProporcao === true
+  const barra = variante === 'barra'
+  const botao = barra ? 'h-9 w-9 p-0 md:h-8 md:w-8' : 'h-8 w-8 p-0'
+  const espelhos = (
+    <>
+      <Button
+        size="sm"
+        variant={flipH ? 'default' : 'ghost'}
+        className={botao}
+        title="Espelhar horizontalmente"
+        aria-pressed={flipH}
+        onClick={() => setStyleValue(layer, { flipH: !flipH })}
+      >
+        <FlipHorizontal2 className="h-4 w-4" />
+      </Button>
+      <Button
+        size="sm"
+        variant={flipV ? 'default' : 'ghost'}
+        className={botao}
+        title="Espelhar verticalmente"
+        aria-pressed={flipV}
+        onClick={() => setStyleValue(layer, { flipV: !flipV })}
+      >
+        <FlipVertical2 className="h-4 w-4" />
+      </Button>
+    </>
+  )
+  if (barra) {
+    return (
+      <div className="flex flex-shrink-0 items-center gap-1" data-gesto-da-forma="barra">
+        {controles.espelho && espelhos}
+        {controles.trava && (
+          <Button
+            size="sm"
+            variant={travada ? 'default' : 'ghost'}
+            className={botao}
+            title="Manter proporção"
+            aria-label="Manter proporção"
+            aria-pressed={travada}
+            onClick={() => setStyleValue(layer, { manterProporcao: !travada })}
+          >
+            {travada ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
+          </Button>
+        )}
+      </div>
+    )
+  }
   return (
     <div className="space-y-2 border-t border-border/30 pt-3">
       {controles.espelho && <div className="flex items-center justify-between">
         <Label>Espelhar</Label>
         <div className="flex items-center gap-1">
-          <Button
-            size="sm"
-            variant={flipH ? 'default' : 'ghost'}
-            className="h-8 w-8 p-0"
-            title="Espelhar horizontalmente"
-            aria-pressed={flipH}
-            onClick={() => setStyleValue(layer, { flipH: !flipH })}
-          >
-            <FlipHorizontal2 className="h-4 w-4" />
-          </Button>
-          <Button
-            size="sm"
-            variant={flipV ? 'default' : 'ghost'}
-            className="h-8 w-8 p-0"
-            title="Espelhar verticalmente"
-            aria-pressed={flipV}
-            onClick={() => setStyleValue(layer, { flipV: !flipV })}
-          >
-            <FlipVertical2 className="h-4 w-4" />
-          </Button>
+          {espelhos}
         </div>
       </div>}
       {controles.trava && <div className="flex items-center justify-between">
-        <Label htmlFor={`manter-proporcao-${layer.id}`}>Manter proporção</Label>
+        <Label htmlFor={idDaTrava}>Manter proporção</Label>
         <Switch
-          id={`manter-proporcao-${layer.id}`}
+          id={idDaTrava}
           checked={layer.style?.manterProporcao === true}
           onCheckedChange={(checked) => setStyleValue(layer, { manterProporcao: checked })}
         />

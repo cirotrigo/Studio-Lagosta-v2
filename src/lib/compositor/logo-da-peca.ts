@@ -53,7 +53,7 @@ import {
   type VarianteCarregada,
   type VarianteDaLogo,
 } from './legibilidade-da-logo'
-import type { Canto } from './spec'
+import type { CantoDaLogo } from './arquetipos/tipos'
 
 /** Por URL: os bytes e a proporção (ou o motivo de não ter carregado). A variante (origem, ids) é de quem pede. */
 export type CacheDeLogos = Map<string, Promise<Omit<VarianteCarregada, 'variante'>>>
@@ -68,7 +68,7 @@ export interface LegibilidadeDaLogo {
   percentil: number
   /** A variante DESENHADA ao final, o canto e a caixa dela. */
   variante: VarianteDaLogo
-  canto: Canto
+  canto: CantoDaLogo
   posicao: Rect
   medida: MedidaDaLogo | null
   legivel: boolean
@@ -81,9 +81,9 @@ export interface LegibilidadeDaLogo {
   /** Legado: o código que a conferência SINALIZA (a peça sai mesmo assim; o gate é do CP5). */
   codigo?: typeof LOGO_SEM_VARIANTE_LEGIVEL | 'PREFERENCIA_INVIAVEL'
   /** Legado: a primeira variante × canto que leria. */
-  alternativa?: { variante: VarianteDaLogo; canto: Canto; posicao: Rect; medida: MedidaDaLogo }
+  alternativa?: { variante: VarianteDaLogo; canto: CantoDaLogo; posicao: Rect; medida: MedidaDaLogo }
   /** Toda a grade medida, na ordem de preferência. */
-  avaliacoes: Array<{ variante: VarianteDaLogo; canto: Canto; posicao: Rect; estado: AvaliacaoDaLogo['estado']; medida: MedidaDaLogo | null; motivo?: string }>
+  avaliacoes: Array<{ variante: VarianteDaLogo; canto: CantoDaLogo; posicao: Rect; estado: AvaliacaoDaLogo['estado']; medida: MedidaDaLogo | null; motivo?: string }>
   /** Os véus automáticos da logo que saíram (não a salvaram). */
   veusRemovidos?: string[]
   /** Legado: a explicação, que NÃO vai aos avisos da peça (o caminho sem arquétipo não muda em nada visível). */
@@ -102,7 +102,7 @@ export interface ArgsDaConferencia {
   variantes: VarianteDaLogo[]
   /** Recomposição: a variante gravada na peça — vai primeiro. */
   gravada?: VarianteDaLogo | null
-  cantoAtual: Canto
+  cantoAtual: CantoDaLogo
   /**
    * Os cantos alternativos AUTORIZADOS para o tamanho da logo (sem colisão, dentro da área), em ordem de
    * preferência; `[]` para a logo fixa do arquétipo. Recebe a largura e devolve as caixas para a altura dada.
@@ -132,7 +132,7 @@ export interface ResultadoDaConferencia {
   legibilidade: LegibilidadeDaLogo
   avisos: string[]
   variante: VarianteDaLogo
-  canto: Canto
+  canto: CantoDaLogo
   veusRemovidos: string[]
 }
 
@@ -141,12 +141,12 @@ const arred = (r: Rect): Rect => ({ x: Math.round(r.x), y: Math.round(r.y), widt
 /**
  * A caixa de uma variante DENTRO da caixa dada (contain pela proporção do
  * arquivo): rente ao lado do canto, centrada na altura. A mesma proporção dá a
- * mesma caixa.
+ * mesma caixa. No `superior-centro` (a logo fixa do #16), centrada também na largura.
  */
-export function caixaDaVariante(caixa: Rect, razao: number, canto: Canto): Rect {
+export function caixaDaVariante(caixa: Rect, razao: number, canto: CantoDaLogo): Rect {
   const w = Math.min(caixa.width, razao > 0 ? caixa.height / razao : caixa.width)
   const h = w * razao
-  const x = canto.endsWith('direito') ? caixa.x + caixa.width - w : caixa.x
+  const x = canto === 'superior-centro' ? caixa.x + (caixa.width - w) / 2 : canto.endsWith('direito') ? caixa.x + caixa.width - w : caixa.x
   const y = caixa.y + (caixa.height - h) / 2
   return arred({ x, y, width: w, height: h })
 }
@@ -230,14 +230,14 @@ export async function conferirLogoDaPeca(args: ArgsDaConferencia): Promise<Resul
   // 2. A desenhada (ou a gravada) onde está. A caixa de cada variante: a DESENHADA é medida na caixa exata em que o
   //    render a desenha; outra variante no canto atual ocupa a caixa que a regra do canto lhe dá (`caixaNoCantoAtual`,
   //    pela largura — ou o contain da caixa materializada na logo fixa), a mesma que teria num canto alternativo.
-  const caixaDe = (c: VarianteCarregada, canto: Canto): Rect => {
+  const caixaDe = (c: VarianteCarregada, canto: CantoDaLogo): Rect => {
     if (c.variante.url === args.desenhada.url && canto === args.cantoAtual) return caixaAtual
     const largura = caixaAtual.width
     return canto === args.cantoAtual ? args.caixaNoCantoAtual({ width: largura, height: Math.round(largura * (c.razao ?? 0)) }) : caixaAtual
   }
-  const avaliar = async (c: VarianteCarregada, canto: Canto, posicao: Rect, f: RasterRGB, livre = true): Promise<AvaliacaoDaLogo> => {
+  const avaliar = async (c: VarianteCarregada, canto: CantoDaLogo, posicao: Rect, f: RasterRGB, livre = true): Promise<AvaliacaoDaLogo> => {
     if (!c.bytes || c.razao === null) return { variante: c.variante, canto, posicao, medida: null, estado: 'indisponivel', motivo: c.indisponivel }
-    if (!livre) return { variante: c.variante, canto, posicao, medida: null, estado: 'fora-da-area', motivo: 'o canto encosta num texto ou sai da área válida' }
+    if (!livre) return { variante: c.variante, canto, posicao, medida: null, estado: 'fora-da-area', motivo: 'o canto encosta num texto (ou num acento do arquétipo) ou sai da área válida' }
     // Arquivo cuja cabeça decodifica e o corpo não (PNG/JPEG truncado) falha só aqui, no resize da grade: é
     // `indisponivel` (transitório), nunca uma exceção que derrube a peça legada (revisor F, 15/10/2026).
     let medida: MedidaDaLogo | null

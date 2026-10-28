@@ -10,7 +10,7 @@
  * camadas antigas já persistidas.
  */
 import type { PapelDaMarca } from '@/lib/brand/papeis-de-cor'
-import type { SlotDeCor } from '@/lib/vetor/tipos'
+import type { ParteDoVetor, SlotDeCor } from '@/lib/vetor/tipos'
 
 export interface ShapeDefinition {
   id: string
@@ -41,6 +41,13 @@ export interface ShapeDefinition {
   tracoPontas?: 'butt' | 'round'
   /** Raio do canto em px (`style.border.radius`); os dois renderers o limitam a min(largura, altura) / 2. */
   raio?: number
+  /** viewBox do desenho quando não é 0 0 100 100 (o multicor desenha em "meet" e precisa do viewBox da proporção real). */
+  pathViewBox?: [number, number, number, number]
+  /**
+   * Multicor (CP-V5): as partes em ordem de pintura, cada uma num slot de `slots` (pelo `id`). O `pathData` continua
+   * sendo a SILHUETA que o leitor antigo desenha numa cor só. Teto do catálogo: 4 slots, 8 partes (teste).
+   */
+  partes?: ParteDoVetor[]
 }
 
 const AZUL = '#2563eb'
@@ -146,6 +153,14 @@ export interface ElementoCandidato extends Omit<ShapeDefinition, 'category'> {
 
 const contorno = (papelPadrao: PapelDaMarca): SlotDeCor => ({ canal: 'contorno', papelPadrao, rotulo: 'Contorno' })
 const preenchimento = (papelPadrao: PapelDaMarca, rotulo = 'Preenchimento'): SlotDeCor => ({ canal: 'preenchimento', papelPadrao, rotulo })
+const slotDaParte = (id: string, papelPadrao: PapelDaMarca, rotulo: string): SlotDeCor => ({ canal: 'preenchimento', id, papelPadrao, rotulo })
+
+/** `onda-base` (CP-V5, SVG-ELEMENTOS §7 item 9): três ondas sobrepostas, a de trás é a silhueta. viewBox 400 × 100. */
+const ONDAS = [
+  'M0 40 C66.67 10 133.33 10 200 40 C266.67 70 333.33 70 400 40 L400 100 L0 100 Z',
+  'M0 60 C66.67 35 133.33 35 200 60 C266.67 85 333.33 85 400 60 L400 100 L0 100 Z',
+  'M0 80 C66.67 62 133.33 62 200 80 C266.67 98 333.33 98 400 80 L400 100 L0 100 Z',
+] as const
 
 export const ELEMENTOS_CANDIDATOS: ElementoCandidato[] = [
   { id: 'fio-fino', label: 'Fio fino', shapeType: 'line', category: 'linhas', keywords: ['fio', 'linha fina', 'traco', 'divisor', 'line', 'hairline', 'divider', 'rule'], fill: CINZA, strokeWidth: 2, versao: 1, ajuste: 'livre', slots: [preenchimento('texto', 'Cor da linha')] },
@@ -158,6 +173,14 @@ export const ELEMENTOS_CANDIDATOS: ElementoCandidato[] = [
   { id: 'moldura-aberta', label: 'Moldura aberta', shapeType: 'svg-path', category: 'editorial', keywords: ['canto', 'moldura aberta', 'fio em l', 'cantoneira', 'corner', 'open frame', 'l shape'], fill: 'transparent', strokeColor: CINZA, strokeWidth: 2, versao: 1, ajuste: 'livre', slots: [contorno('texto')], pathData: 'M0 100 L0 0 L100 0' },
   { id: 'cantoneiras', label: 'Cantoneiras', shapeType: 'svg-path', category: 'editorial', keywords: ['cantoneiras', 'cantos', 'moldura', 'corners', 'corner frame', 'crop marks'], fill: 'transparent', strokeColor: CINZA, strokeWidth: 2, versao: 1, ajuste: 'livre', slots: [contorno('destaque')], pathData: 'M0 25 L0 0 L25 0 M75 0 L100 0 L100 25 M100 75 L100 100 L75 100 M25 100 L0 100 L0 75' },
   { id: 'colchete', label: 'Colchete', shapeType: 'svg-path', category: 'editorial', keywords: ['colchete', 'parentese', 'parenteses', 'bracket', 'parenthesis'], fill: 'transparent', strokeColor: CINZA, strokeWidth: 2, aspect: 0.4, versao: 1, ajuste: 'livre', slots: [contorno('texto')], pathData: 'M100 0 C-33.33 25 -33.33 75 100 100' },
+]
+
+/**
+ * Os itens MULTICOR (CP-V5), fora dos 10 do MVP: partes por slot, cada slot com o papel da marca (`id` = chave em
+ * `style.vetor.cores`/`papeis`). Ativados no catálogo vivo junto dos candidatos.
+ */
+export const ELEMENTOS_MULTICOR: ElementoCandidato[] = [
+  { id: 'onda-base', label: 'Ondas em camadas', shapeType: 'svg-path', category: 'organicos', keywords: ['onda', 'ondas', 'base', 'rodape', 'faixa', 'wave', 'waves', 'border'], fill: CINZA, aspect: 4, pathViewBox: [0, 0, 400, 100], versao: 1, ajuste: 'travado', slots: [slotDaParte('fundo', 'escuro', 'Onda de trás'), slotDaParte('meio', 'destaque', 'Onda do meio'), slotDaParte('frente', 'claro', 'Onda da frente')], pathData: ONDAS[0], partes: [{ d: ONDAS[0], slot: 'fundo', alvo: 'fill' }, { d: ONDAS[1], slot: 'meio', alvo: 'fill' }, { d: ONDAS[2], slot: 'frente', alvo: 'fill' }] },
 ]
 
 export const CATEGORIAS_CANDIDATAS: Array<{ id: CategoriaDoElemento; label: string }> = [
@@ -184,7 +207,7 @@ const PAPEL_DO_LEGADO: Record<'basicas' | 'setas' | 'linhas' | 'decorativas', Pa
 }
 
 /**
- * O catálogo VIVO: os 37 legados com versão e slot, mais os 10 candidatos. É o ÚNICO ponto que junta os candidatos ao
+ * O catálogo VIVO: os 37 legados com versão e slot, mais os 10 candidatos e os multicor (CP-V5). É o ÚNICO ponto que junta os candidatos ao
  * que o painel lê, e o painel só insere pelo construtor (`camadaDoElemento`), que nunca lê a vitrine (`fill` e
  * `strokeColor` da definição). As máscaras de imagem não derivam daqui (`MASCARAS_DE_IMAGEM`).
  */
@@ -195,6 +218,7 @@ export const SHAPES_LIBRARY: ShapeDefinition[] = [
     slots: [preenchimento(PAPEL_DO_LEGADO[s.category as keyof typeof PAPEL_DO_LEGADO], s.shapeType === 'line' ? 'Cor da linha' : 'Preenchimento')],
   })),
   ...ELEMENTOS_CANDIDATOS,
+  ...ELEMENTOS_MULTICOR,
 ]
 
 /** As categorias do painel: as 4 legadas e as dos candidatos que ainda não existem nelas. Toda categoria usada está aqui (teste). O remapeamento para as 8 é do V2d. */

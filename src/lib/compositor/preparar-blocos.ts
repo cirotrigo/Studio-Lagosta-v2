@@ -142,6 +142,11 @@ export function prepararBlocos(args: {
   caixaDoPapel?: (papel: Papel) => { largura: number; altura: number } | undefined
   /** Com arquétipo: o fator (≤ 1) em que a escada de cada papel começa — a escada da unidade (`no-compositor.ts`). */
   escalaMaximaDoPapel?: (papel: Papel) => number | undefined
+  /**
+   * Com arquétipo de LISTA (#15): o papel cujo bloco vira um ITEM por linha autoral — uma camada por linha, do MESMO
+   * bloco (`origem.linhas` = a linha dela), na ordem do autor. O item que quebra em duas linhas visuais segue uma camada.
+   */
+  listaDoPapel?: (papel: Papel) => boolean
 }): BlocosPreparados {
   const { spec, assinatura, colunaUtil, escalaDoFormato, mancha, medir, familias, combinacoesSalvas } = args
   const avisos: string[] = []
@@ -305,7 +310,14 @@ export function prepararBlocos(args: {
         : doArranjo.map((b) => ({ ...b, texto: null }))),
       ...extrasDoGrupo.map((b) => ({ papel: b.papel, linhas: b.linhas, indicesDoBloco: b.indicesDoBloco, texto: null, extra: b.extra })),
     ]
-    for (const p of preenchidos) {
+    // A lista: cada linha do autor é um item, com camada própria. Os ornamentos do arranjo (ícone, filete, selo) ficam
+    // só no PRIMEIRO item — repeti-los seria desenho que a página não tem.
+    const porItem = preenchidos.flatMap((p) =>
+      !p.extra && p.linhas.length > 1 && args.listaDoPapel?.(p.papel)
+        ? p.linhas.map((linha, k) => ({ ...p, linhas: [linha], indicesDoBloco: [p.indicesDoBloco[k]], texto: k === 0 || !p.texto ? p.texto : { ...p.texto, elementos: [] } }))
+        : [p],
+    )
+    for (const p of porItem) {
       // O extra veste o estilo do papel de origem SEM a posição dele.
       const estiloBase = p.texto?.estilo ?? assinatura.papeis[p.papel]
       if (!estiloBase) continue

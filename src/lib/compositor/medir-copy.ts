@@ -33,11 +33,13 @@ import { estiloDeDestaqueDoPapel, prepararBlocos, type PecaParaBlocos } from './
 import { DIMENSOES, type Formato, type Papel } from './spec'
 import { colunaDaCaixa } from './blocos'
 import { conferirLogo, excessosDeLinhas, type ArquetipoPreparado } from './arquetipos/na-spec'
-import { caixasMaximas, type Materializacao, type PapelMaterializado, type ProblemaDeMaterializacao } from './arquetipos/materializar'
-import { ajusteFinalNecessario, camadasNaReferencia, papelGeometrico, prepararNoArquetipo } from './arquetipos/no-compositor'
+import { alinhaDoPapel, caixasMaximas, type Materializacao, type PapelMaterializado, type ProblemaDeMaterializacao } from './arquetipos/materializar'
+import { ajusteFinalNecessario, caixasDosItens, camadasNaReferencia, papeisDeLista, papelGeometrico, prepararNoArquetipo } from './arquetipos/no-compositor'
 import { partidaNoArquetipo } from './arquetipos/candidatos-espaciais'
+import { obstaculosDosAcentos, posicionarAcentos, receitasDoArquetipo, type ProblemaDoAcento } from './arquetipos/acentos'
 import type { TextGeometryIssue } from '@/lib/creatives/text-geometry'
 import type { PapelDeTexto } from './arquetipos/tipos'
+import { papelDoBloco, tintasAtivas } from './arquetipos/fundo'
 
 /** Amostra em português para o orçamento por caracteres (a largura média de uma letra da marca). */
 export const AMOSTRA_DO_ORCAMENTO = 'Sexta é dia de churrasco com a família no salão'
@@ -189,6 +191,11 @@ export interface MedicaoDaCopy {
    * zona efetiva). Ausente sem arquétipo.
    */
   arquetipo?: MedicaoDoArquetipo
+  /**
+   * #8 (foto em caixa): o papel do liso que ESTA medição escolheu (`papelDoBloco`) pelas tintas da preparação dela — a da
+   * variante medida, seja a escolhida ou uma de `outrasVariantes`. Ausente nos outros fundos.
+   */
+  fundo?: string
   avisos: string[]
 }
 
@@ -215,6 +222,12 @@ export interface MedicaoDoArquetipo {
   excessosDeLinhas: Array<{ papel: Papel; linhas: number; linhasMax: number }>
   /** O que o ajuste final (autofix) teria de encolher na referência — com arquétipo, recusa (a mesma conferência do compor). */
   ajustesFinais: TextGeometryIssue[]
+  /**
+   * T1b: os acentos do arquétipo na posição de PARTIDA, pela mesma conta do compor (`posicionarAcentos`): onde cada um
+   * pousaria, o opcional que sairia e o OBRIGATÓRIO que não cabe (recusa no compor: `cabeTudo` falso). A logo
+   * automática (canto mais calmo) só é conhecida no compor, com a foto.
+   */
+  acentos: { previstos: Array<{ elemento: string; tipo: string; rect: { x: number; y: number; width: number; height: number }; item?: number }>; omitidos: ProblemaDoAcento[]; recusas: ProblemaDoAcento[] }
 }
 
 /**
@@ -246,6 +259,7 @@ export function medirCopy(args: {
   const arq = args.arquetipo ?? null
   if (arq) conferirLogo(arq.definicao, Boolean(args.assinatura.logo))
   const caixasArq = arq ? caixasMaximas(arq.definicao, arq.formato, DIMENSOES[args.formato]) : null
+  const listasArq = arq ? papeisDeLista(arq.definicao) : null
   const preparar = (escalaMaximaDoPapel?: (p: Papel) => number | undefined) =>
     prepararBlocos({
       spec: args.spec,
@@ -257,12 +271,16 @@ export function medirCopy(args: {
       familias: args.familias,
       combinacoesSalvas: args.combinacoesSalvas ?? [],
       ...(caixasArq ? { caixaDoPapel: (p: Papel) => caixasArq[papelGeometrico(p)], ...(escalaMaximaDoPapel ? { escalaMaximaDoPapel } : {}) } : {}),
+      ...(listasArq?.size ? { listaDoPapel: (p: Papel) => listasArq.has(papelGeometrico(p)) } : {}),
     })
   // Com arquétipo, a MESMA escada da unidade do compor (`prepararNoArquetipo`).
   const noArquetipo = arq
     ? prepararNoArquetipo({ arquetipo: arq.definicao, formato: arq.formato, canvas: DIMENSOES[args.formato], gap: args.assinatura.numeros.geometria[args.formato].gapEntreBlocos, preparar })
     : null
   const preparados = noArquetipo ? noArquetipo.preparados : preparar()
+  // #8: o papel do liso pelas tintas DESTA preparação (a da assinatura recebida), a mesma conta do compor — sem preparar
+  // de novo. Nenhum papel serve: a mesma recusa do compor (`ARQUETIPO_FUNDO_INDISPONIVEL`).
+  const fundo = arq?.definicao.fundo === 'foto-em-caixa' ? papelDoBloco(arq.definicao, args.assinatura.numeros, tintasAtivas(noArquetipo!.montados)).fundo : undefined
   const avisos = [...preparados.avisos]
   // Os avisos que a montagem deu por PAPEL ("headline: a copy marcou destaque, mas a marca não tem estilo…") viajam
   // também no bloco: quem lê o bloco tem de ver por que ele saiu sem destaque ou sem o que pediu.
@@ -435,7 +453,7 @@ export function medirCopy(args: {
     }
     for (const e of excessos) avisos.push(`arquétipo: ${e.papel} tem ${e.linhas} linhas e o máximo é ${e.linhasMax} (limite estrutural)`)
     // A geometria FINAL, como o compor a confere antes do autofix: as mesmas camadas, na mesma posição.
-    const naReferencia = 'papeis' in m ? camadasNaReferencia(unidades, m.papeis, arq.definicao.preferencias.alinha).flatMap((x) => x.camadas) : []
+    const naReferencia = 'papeis' in m ? camadasNaReferencia(unidades, m.papeis, (p) => alinhaDoPapel(arq.definicao, p)).flatMap((x) => x.camadas) : []
     const ajustesFinais = naReferencia.length > 0 ? ajusteFinalNecessario(naReferencia, DIMENSOES[args.formato], args.medir) : []
     // A conferência nomeia as camadas pelo nome; o bloco medido, pelo id.
     const idDoNome = new Map(naReferencia.map((c) => [c.name ?? c.id, c.id]))
@@ -448,6 +466,25 @@ export function medirCopy(args: {
         b.avisos.push(`na referência do arquétipo: ${a.detalhe}`)
       }
     }
+    // T1b: os acentos presos ao texto onde ele pousaria — a mesma conta e os mesmos obstáculos do compor.
+    const acentos: MedicaoDoArquetipo['acentos'] = { previstos: [], omitidos: [], recusas: [] }
+    if ('papeis' in m) {
+      const pos = posicionarAcentos({
+        arquetipo: arq.definicao,
+        formato: arq.formato,
+        canvas: DIMENSOES[args.formato],
+        geometria: piso,
+        receitas: receitasDoArquetipo(arq.definicao, { formato: arq.formato, canvas: DIMENSOES[args.formato] }).receitas,
+        papeis: m.papeis,
+        obstaculos: obstaculosDosAcentos(unidades, m.papeis, m.papeis.logo?.posicao ?? null, caixasDosItens(arq.definicao, unidades, m.papeis)),
+        itens: caixasDosItens(arq.definicao, unidades, m.papeis),
+      })
+      acentos.previstos = pos.acentos.map((a) => ({ elemento: a.receita.elemento, tipo: a.receita.tipo, rect: a.rect, ...(a.item ? { item: a.item } : {}) }))
+      acentos.omitidos = pos.omitidos
+      acentos.recusas = pos.recusas
+      for (const o of pos.omitidos) avisos.push(`arquétipo: o acento ${o.elemento} (${o.tipo}, opcional) não seria desenhado: ${o.motivo}`)
+      for (const r of pos.recusas) avisos.push(`arquétipo: o acento ${r.elemento} (${r.tipo}, obrigatório) não cabe: ${r.motivo} — o compositor recusa`)
+    }
     medicaoDoArquetipo = {
       id: arq.resolvido.id,
       versao: arq.resolvido.versao,
@@ -458,6 +495,7 @@ export function medirCopy(args: {
       problemas,
       excessosDeLinhas: excessos,
       ajustesFinais,
+      acentos,
       avaliacaoEspacial: 'nao-executada',
     }
   }
@@ -468,7 +506,7 @@ export function medirCopy(args: {
       papeisAusentes.length === 0 &&
       preparados.falhas.length === 0 &&
       medidas.every((m) => m.situacao === 'cabe' || m.situacao === 'cabe-reduzido') &&
-      (!medicaoDoArquetipo || (medicaoDoArquetipo.problemas.length === 0 && medicaoDoArquetipo.excessosDeLinhas.length === 0 && medicaoDoArquetipo.ajustesFinais.length === 0)),
+      (!medicaoDoArquetipo || (medicaoDoArquetipo.problemas.length === 0 && medicaoDoArquetipo.excessosDeLinhas.length === 0 && medicaoDoArquetipo.ajustesFinais.length === 0 && medicaoDoArquetipo.acentos.recusas.length === 0)),
     papeisAusentes,
     naoMedido: medidas.some((m) => m.naoMedido),
     aproximado: medidas.some((m) => m.aproximado),
@@ -477,6 +515,7 @@ export function medirCopy(args: {
     segundaVoz: preparados.segundaVoz,
     arranjos: preparados.arranjos,
     ...(medicaoDoArquetipo ? { arquetipo: medicaoDoArquetipo } : {}),
+    ...(fundo ? { fundo } : {}),
     avisos,
   }
 }

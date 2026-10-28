@@ -7,6 +7,10 @@ import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { CANVAS_MARGIN } from '@/lib/canvas-margin'
 import type { GuideLine } from '@/lib/konva-smart-guides'
 import { travaDeProporcao } from '@/lib/konva/trava-de-proporcao'
+import { useAjustarGrade } from '@/hooks/use-ajustar-grade'
+import { caixaPeloTransformer, modoDaSelecao } from '@/lib/grades/ajustes'
+import { metadadoDeGrade } from '@/lib/grades/conferir'
+import { membrosDaGrade } from '@/lib/grades/preenchimento'
 
 interface KonvaSelectionTransformerProps {
   selectedLayerIds: string[]
@@ -29,6 +33,44 @@ export function KonvaSelectionTransformer({
   const transformerRef = React.useRef<Konva.Transformer | null>(null)
   const { design } = useTemplateEditor()
   const [isShiftPressed, setIsShiftPressed] = React.useState(false)
+
+  // G3: grade inteira redimensiona como UMA caixa (sem girar); célula, subconjunto ou seleção mista com grade não tem
+  // alça nenhuma — senão o Konva escalaria calhas e células uma a uma
+  const { ajustar } = useAjustarGrade()
+  const grade = React.useMemo(() => modoDaSelecao(design.layers, selectedLayerIds), [design.layers, selectedLayerIds])
+  const gradeRef = React.useRef({ grade, layers: design.layers, ajustar })
+  gradeRef.current = { grade, layers: design.layers, ajustar }
+
+  // Fim do gesto na grade inteira: o Konva já escalou e moveu os nós; eles voltam NA HORA (escala 1, lugar do estado),
+  // com ou sem recusa, e a grade é refeita UMA vez pela caixa nova (calhas fixas em px) num desfazer
+  React.useEffect(() => {
+    const transformer = transformerRef.current
+    if (!transformer) return
+    transformer.on('transformend.grade', () => {
+      const { grade: sel, layers, ajustar: refazer } = gradeRef.current
+      if (sel.modo !== 'inteira' || !sel.gradeId) return
+      const membros = membrosDaGrade(layers, sel.gradeId)
+      const nos = transformer.nodes()
+      // `antes`: onde o nó estava no estado (a margem da grade quadrada entre caixa e nós escala junto)
+      const medidos = nos.map((n) => ({ x: n.x(), y: n.y(), scaleX: n.scaleX(), scaleY: n.scaleY(), antes: membros.find((m) => m.id === n.id())?.position }))
+      for (const n of nos) {
+        const camada = membros.find((m) => m.id === n.id())
+        n.scaleX(1)
+        n.scaleY(1)
+        if (camada) {
+          n.position({ x: camada.position.x, y: camada.position.y })
+          n.rotation(camada.rotation ?? 0)
+        }
+      }
+      transformer.getLayer()?.batchDraw()
+      const meta = membros[0] ? metadadoDeGrade(membros[0]) : undefined
+      const caixa = meta ? caixaPeloTransformer(meta.caixa, medidos) : undefined
+      if (caixa) void refazer(sel.gradeId, { caixa })
+    })
+    return () => {
+      transformer.off('transformend.grade')
+    }
+  }, [])
 
   // Refs para o boundBoxFunc (callback vive fora do ciclo de render)
   const snapDataRef = React.useRef({
@@ -270,7 +312,7 @@ export function KonvaSelectionTransformer({
   return (
     <Transformer
       ref={transformerRef}
-      rotateEnabled
+      rotateEnabled={grade.modo === 'nenhuma'}
       keepRatio={false} // Será controlado dinamicamente via effect
       borderStroke="hsl(var(--primary))"
       borderStrokeWidth={2}
@@ -278,7 +320,7 @@ export function KonvaSelectionTransformer({
       anchorFill="#ffffff"
       anchorSize={10}
       anchorCornerRadius={4}
-      enabledAnchors={trava.ancoras}
+      enabledAnchors={grade.modo === 'parcial' ? [] : trava.ancoras}
       rotateAnchorOffset={30}
       boundBoxFunc={boundBoxFunc}
     />

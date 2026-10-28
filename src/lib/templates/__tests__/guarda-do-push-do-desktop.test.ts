@@ -5,7 +5,9 @@
  */
 import { describe, expect, it } from 'vitest'
 import { normalizeForLocal, normalizeForWeb } from '../../../../desktop-app/electron/services/sync/template-normalizer'
-import { RecusaDoPushDoDesktop, ehCamadaProtegida, idsDePaginaRepetidos, mesclarCamadasDoDesktop } from '../guarda-do-push-do-desktop'
+import { RecusaDoPushDoDesktop, ehCamadaProtegida, exigirPaginaNovaSemGrade, idsDePaginaRepetidos, mesclarCamadasDoDesktop } from '../guarda-do-push-do-desktop'
+import { conferirGrade } from '@/lib/grades/conferir'
+import { BLOB, doisPorDois } from '@/lib/grades/__tests__/fixtures'
 
 type Camada = Record<string, any>
 
@@ -261,5 +263,131 @@ describe('idsDePaginaRepetidos (R4)', () => {
   it('acha ids repetidos e ignora páginas sem id', () => {
     expect(idsDePaginaRepetidos([{ id: 'p1' }, { id: 'p2' }, { id: 'p1' }, {}, { id: undefined }])).toEqual(['p1'])
     expect(idsDePaginaRepetidos([{ id: 'p1' }, { id: 'p2' }])).toEqual([])
+  })
+})
+
+/**
+ * G4.1 (27/10/2026) — grade de fotos no push do desktop. O desktop não conhece grade: o round-trip REAL devolve só
+ * posição/tamanho/src/fit/opacidade da célula e perde `style.crop`, `border` e `metadata`. A mescla preserva o que
+ * falta, mas aceitava geometria, URL e estilo do payload; a guarda confere o RESULTADO mesclado de todos os membros.
+ */
+describe('G4.1 — grade de fotos: o resultado mesclado de cada membro não muda', () => {
+  const A = `${BLOB}/fotos/a.jpg`
+  const B = `${BLOB}/fotos/b.jpg`
+  const C = `${BLOB}/fotos/c.jpg`
+  /** 2×2 do Feed com recorte manual na d1, raio 24 e a d2 vazia; mais um texto comum e uma foto avulsa */
+  const comGrade = (): Camada[] => {
+    const celulas = doisPorDois([A, B, '', C]).map((c) => ({ ...c, style: { ...c.style, border: { radius: 24 } }, metadata: { ...c.metadata, grade: { ...(c.metadata as any).grade, raio: 24 } } })) as Camada[]
+    celulas[1].style.crop = { x: 0.1, y: 0.2, width: 0.5, height: 0.6 }
+    return [textoComum('headline'), ...celulas, { id: 'avulsa', type: 'image', name: 'Avulsa', visible: true, locked: false, order: 9, position: { x: 10, y: 10 }, size: { width: 200, height: 100 }, fileUrl: A, style: { objectFit: 'cover' } }]
+  }
+  const idx = (camadas: Camada[], id: string) => camadas.findIndex((c) => c.id === id)
+
+  it('round-trip real sem mexer na grade (texto e foto avulsa editados): passa e cada membro sai IGUAL à base', () => {
+    const base = comGrade()
+    expect(conferirGrade(base as any)).toEqual([])
+    const r = mesclar(base, idaEVolta(base, (local) => {
+      local[idx(local, 'headline')].text = 'Domingo também'
+      local[idx(local, 'avulsa')].x = 40
+    }))
+    for (const id of ['d0', 'd1', 'd2', 'd3']) {
+      const c = r.find((x) => x.id === id)!
+      const b = base.find((x) => x.id === id)!
+      expect([c.position, c.size, c.fileUrl ?? '', c.style, c.metadata], id).toEqual([b.position, b.size, b.fileUrl ?? '', b.style, b.metadata])
+    }
+    expect(r.find((x) => x.id === 'd1')!.style.crop).toEqual({ x: 0.1, y: 0.2, width: 0.5, height: 0.6 })
+    expect(r.find((x) => x.id === 'headline')!.content).toBe('Domingo também')
+    expect(r.find((x) => x.id === 'avulsa')!.position.x).toBe(40)
+    expect(conferirGrade(r as any)).toEqual([])
+  })
+
+  it.each([
+    ['célula movida 10 px', (l: Camada[]) => { l[idx(l, 'd1')].x += 10 }, 'd1'],
+    ['célula redimensionada 10 px', (l: Camada[]) => { l[idx(l, 'd3')].width -= 10 }, 'd3'],
+    ['foto trocada', (l: Camada[]) => { l[idx(l, 'd0')].src = C }, 'd0'],
+    ['célula vazia recebe foto', (l: Camada[]) => { l[idx(l, 'd2')].src = A }, 'd2'],
+    ['célula girada', (l: Camada[]) => { l[idx(l, 'd0')].rotation = 5 }, 'd0'],
+    ['opacidade da célula', (l: Camada[]) => { l[idx(l, 'd0')].opacity = 0.5 }, 'd0'],
+    ['ajuste de foto (fit contain)', (l: Camada[]) => { l[idx(l, 'd1')].fit = 'contain' }, 'd1'],
+    ['recorte do desktop (crop de topo)', (l: Camada[]) => { l[idx(l, 'd1')].crop = { x: 0, y: 0, width: 10, height: 10 } }, 'd1'],
+    ['célula escondida', (l: Camada[]) => { l[idx(l, 'd3')].visible = false }, 'd3'],
+  ])('round-trip real com %s → PUSH_ALTERA_GRADE na célula', (_nome, editar, camadaId) => {
+    const base = comGrade()
+    expect(recusa(() => mesclar(base, idaEVolta(base, editar)))).toEqual({ codigo: 'PUSH_ALTERA_GRADE', camadaId })
+  })
+
+  it('round-trip real com a célula apagada no desktop → PUSH_ALTERA_GRADE (a célula não é camada comum que some)', () => {
+    const base = comGrade()
+    expect(recusa(() => mesclar(base, idaEVolta(base, (l) => { l.splice(idx(l, 'd2'), 1) })))).toEqual({ codigo: 'PUSH_ALTERA_GRADE', camadaId: 'd2' })
+  })
+
+  it('payload forjado: recorte, cantos, metadata da grade e groupId mudados ou retirados → recusa', () => {
+    const base = comGrade()
+    const com = (id: string, extra: Camada) => base.map((c) => (c.id === id ? { ...c, ...extra } : c))
+    expect(recusa(() => mesclar(base, com('d1', { style: { crop: { x: 0, y: 0, width: 1, height: 1 } } }))).camadaId).toBe('d1')
+    expect(recusa(() => mesclar(base, com('d0', { style: { border: { radius: 0 } } }))).camadaId).toBe('d0')
+    expect(recusa(() => mesclar(base, com('d0', { metadata: { grade: null } }))).camadaId).toBe('d0')
+    expect(recusa(() => mesclar(base, com('d3', { metadata: { groupId: 'outro' } }))).camadaId).toBe('d3')
+    expect(recusa(() => mesclar(base, com('d0', { style: { mask: { shapeId: 'heart', path: 'M0 0 Z' } } }))).codigo).toBe('PUSH_ALTERA_GRADE')
+  })
+
+  it('camada de fora entrando na grade (groupId da grade) ou camada nova com metadata.grade → recusa', () => {
+    const base = comGrade()
+    const entra = base.map((c) => (c.id === 'avulsa' ? { ...c, metadata: { groupId: 'g2' } } : c))
+    expect(recusa(() => mesclar(base, entra))).toEqual({ codigo: 'PUSH_ALTERA_GRADE', camadaId: 'avulsa' })
+    const nova = [...base, { ...base[1], id: 'intrusa' }]
+    expect(recusa(() => mesclar(base, nova))).toEqual({ codigo: 'PUSH_ALTERA_GRADE', camadaId: 'intrusa' })
+  })
+
+  it('grade já quebrada na base e intocada pelo push: passa (a guarda não piora nem conserta); mexida, recusa', () => {
+    const quebrada = comGrade().map((c) => (c.id === 'd0' ? { ...c, position: { x: 3, y: 0 } } : c))
+    expect(conferirGrade(quebrada as any).length).toBeGreaterThan(0)
+    const ok = mesclar(quebrada, idaEVolta(quebrada, (l) => { l[idx(l, 'headline')].text = 'X' }))
+    expect(ok.find((c) => c.id === 'd0')!.position).toEqual({ x: 3, y: 0 })
+    expect(recusa(() => mesclar(quebrada, idaEVolta(quebrada, (l) => { l[idx(l, 'd0')].x = 0 }))).camadaId).toBe('d0')
+  })
+
+  it('página nova (sem base) do desktop: sem grade passa; com metadata de grade, recusa', () => {
+    expect(() => exigirPaginaNovaSemGrade(JSON.stringify([textoComum('a')]), 'nova')).not.toThrow()
+    try {
+      exigirPaginaNovaSemGrade(JSON.stringify(comGrade()), 'nova')
+      throw new Error('esperava recusa')
+    } catch (e) {
+      expect(e).toBeInstanceOf(RecusaDoPushDoDesktop)
+      expect((e as RecusaDoPushDoDesktop).codigo).toBe('PUSH_ALTERA_GRADE')
+    }
+  })
+})
+
+/**
+ * G4.1 · rodada 1 do Codex (27/10): o RenderEngine desenha também o que fica na RAIZ da camada (`effects.shadow`,
+ * `movimento`…). Comparação conservadora: o membro inteiro, menos a lista explícita do que o normalizador do desktop
+ * renormaliza sem mudar o desenho (nome, `order`, `fit` de topo; `visible`/`locked` como booleanos).
+ */
+describe('G4.1 rodada 1 — campos de raiz da célula também não mudam pelo push', () => {
+  const BLOB_R1 = 'https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com'
+  const sombra = { enabled: true, shadowColor: '#000000', shadowBlur: 30, shadowOffsetX: 0, shadowOffsetY: 12, shadowOpacity: 0.6 }
+  const base = () => [textoComum('headline'), ...(doisPorDois([`${BLOB_R1}/a.jpg`, `${BLOB_R1}/b.jpg`, '', `${BLOB_R1}/c.jpg`]) as Camada[])]
+  const com = (camadas: Camada[], id: string, extra: Camada) => camadas.map((c) => (c.id === id ? { ...c, ...extra } : c))
+
+  it.each([
+    ['sombra nova (effects.shadow)', { effects: { shadow: sombra } }],
+    ['desfoque novo (effects.blur)', { effects: { blur: { enabled: true, blurRadius: 12 } } }],
+    ['movimento novo (foto animada)', { movimento: { tipo: 'aproximar', duracao: 5 } }],
+    ['camada travada', { locked: true }],
+  ])('payload com %s numa célula → PUSH_ALTERA_GRADE', (_nome, extra) => {
+    const b = base()
+    expect(recusa(() => mesclar(b, com(b, 'd1', extra as Camada)))).toEqual({ codigo: 'PUSH_ALTERA_GRADE', camadaId: 'd1' })
+  })
+
+  it('célula que JÁ tem sombra e movimento: o round-trip real (que não os leva) passa e eles ficam', () => {
+    const b = com(base(), 'd0', { effects: { shadow: sombra }, movimento: { tipo: 'aproximar', duracao: 5 } })
+    const r = mesclar(b, idaEVolta(b, (l) => { l[0].text = 'Outro' }))
+    expect(r.find((c) => c.id === 'd0')).toMatchObject({ effects: { shadow: sombra }, movimento: { tipo: 'aproximar', duracao: 5 } })
+  })
+
+  it('a mesma sombra num texto comum (fora da grade) passa, como antes', () => {
+    const b = base()
+    expect(mesclar(b, com(b, 'headline', { effects: { shadow: sombra } })).find((c) => c.id === 'headline')!.effects).toEqual({ shadow: sombra })
   })
 })

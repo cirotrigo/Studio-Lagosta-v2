@@ -75,6 +75,7 @@ import { POLITICA_DO_ASSUNTO_DO_GATE, TIPO_DO_POST_POR_FORMATO } from '@/lib/lot
 import { formatoDaPaginaGravada } from '@/lib/compositor/formato'
 import { chaveDaAgenda, chaveDasFontes } from '@/lib/trava-por-chave'
 import { fecharGenerationComoFalha } from '@/lib/creatives/mesclar-field-values'
+import { vinculadaAGrade } from '@/lib/grades/presenca'
 import { Prisma } from '@prisma/client'
 
 export { CreativeError, getPublicAppUrl }
@@ -1390,7 +1391,8 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
   if (!imageApplied && resolved.url && !baked.imageBloqueadaPeloSemantico) {
     const fundo = (bakedLayers as any[]).find((l) => l.type === 'image')
     fundoComFileUrlExplicito = !!fundo && baked.explicitFileUrlIds.includes(fundo.id)
-    if (fundo && !fundoComFileUrlExplicito) {
+    // G4.5: célula de grade não é "o fundo" (grade é composição manual): a foto não cai nela por este atalho
+    if (fundo && !fundoComFileUrlExplicito && !vinculadaAGrade(fundo)) {
       fundo.fileUrl = resolved.url
       imageApplied = true
     }

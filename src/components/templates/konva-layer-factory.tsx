@@ -30,8 +30,11 @@ import { useMultiPageOpcional } from '@/contexts/multi-page-context'
 const LATERAL_ANCHORS = new Set(['middle-left', 'middle-right', 'top-center', 'bottom-center'])
 import { traceSvgPath } from '@/lib/konva/svg-path-clip'
 import { pinturaDoSvgPath, shapeKonvaDoSvgPath } from '@/lib/vetor/desenhar'
+import { partesParaPintar } from '@/lib/vetor/partes'
+import { FiltroBlurDoMulticor } from '@/lib/vetor/blur-do-multicor'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { throttle, getPerformanceConfig } from '@/lib/performance-utils'
+import { celulaVinculada, ladoMinimoNoEditor } from '@/lib/grades/ajustes'
 // Import custom Konva filters
 import '@/lib/konva/filters'
 
@@ -412,7 +415,8 @@ export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDra
 
   const handleTransformEnd = React.useCallback<CommonProps['onTransformEnd']>(
     () => {
-      if (interactionsDisabled) return
+      // G3: célula de grade (a vazia cai aqui) nunca grava a própria caixa — o Transformer da grade refaz e restaura
+      if (interactionsDisabled || celulaVinculada(layer)) return
       const node = shapeRef.current
       if (!node) return
 
@@ -444,7 +448,7 @@ export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDra
         rotation: Math.round(node.rotation()),
       })
     },
-    [interactionsDisabled, onChange],
+    [interactionsDisabled, layer, onChange],
   )
 
   const borderColor = layer.style?.border?.color ?? '#000000'
@@ -999,8 +1003,12 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
     // com filtro (bitmap cacheado) não redesenha ao mudar o enquadramento
   }, [filters, image, layer.size?.width, layer.size?.height, layer.style?.objectFit, layer.style?.cropPosition, opcoesDoCache])
 
-  const width = Math.max(20, layer.size?.width ?? 0)
-  const height = Math.max(20, layer.size?.height ?? 0)
+  // G3: célula de grade desenha no tamanho real até o piso do G0 (8 px); foto avulsa segue no piso de 20 px.
+  // A geometria dela só muda pela operação da grade: o transform do nó não grava nem recorta nada sozinho.
+  const vinculada = celulaVinculada(layer)
+  const piso = ladoMinimoNoEditor(layer)
+  const width = Math.max(piso, layer.size?.width ?? 0)
+  const height = Math.max(piso, layer.size?.height ?? 0)
 
   // Crop automático (objectFit: cover) resolvido pelo MESMO helper do render
   // server-side (src/lib/image-fit.ts) — inclusive o cropPosition da grade 3×3
@@ -1056,7 +1064,7 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
   // Limpar cache durante transform para evitar conflito (Konva issue #835)
   const handleTransform = React.useCallback(() => {
     const imageNode = imageRef.current
-    if (!imageNode) return
+    if (!imageNode || vinculada) return
 
     // Limpar cache durante transform
     if (filters.length > 0) {
@@ -1087,7 +1095,7 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
     imageNode.cropWidth(crop.width * image.width)
     imageNode.cropHeight(crop.height * image.height)
     node.getLayer()?.batchDraw()
-  }, [filters.length, hasWrapper, image, anchorAtual, recorteParaCaixa, flipH, flipV])
+  }, [filters.length, hasWrapper, image, anchorAtual, recorteParaCaixa, flipH, flipV, vinculada])
 
   // Handler customizado - recalcular crop manualmente
   const handleTransformEnd = React.useCallback(() => {
@@ -1095,7 +1103,7 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
     // Com wrapper, o transformer escala o GROUP (que não tem width próprio);
     // a base do cálculo é o tamanho atual da imagem interna
     const node = hasWrapper ? groupRef.current : imageRef.current
-    if (!node || !imageNode || !image) return
+    if (!node || !imageNode || !image || vinculada) return
 
     const anchor = anchorAtual(node)
     const lateral = LATERAL_ANCHORS.has(anchor)
@@ -1190,6 +1198,7 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
     anchorAtual,
     recorteParaCaixa,
     opcoesDoCache,
+    vinculada,
   ])
 
   if (!image) {
@@ -1450,13 +1459,21 @@ function ShapeNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
   // em retina, o borrão do editor saía com METADE do raio da arte publicada.
   const blurRadius = layer.effects?.blur?.enabled ? (layer.effects.blur.blurRadius ?? 0) : 0
   const escalaBlur = React.useMemo(() => escalaDoBlur(blurRadius), [blurRadius])
-  const filters = React.useMemo(() => (escalaBlur.raioNoBuffer > 0 ? [Konva.Filters.Blur] : undefined), [escalaBlur.raioNoBuffer])
+  // multicor (CP-V5): blur sobre cor pré-multiplicada, o MESMO do servidor (blur-do-multicor.ts); o resto segue no do Konva
+  const multicorDesenhavel = !!partesParaPintar(layer.style?.vetor)
+  const filters = React.useMemo(
+    () => (escalaBlur.raioNoBuffer > 0 ? [multicorDesenhavel ? FiltroBlurDoMulticor : Konva.Filters.Blur] : undefined),
+    [escalaBlur.raioNoBuffer, multicorDesenhavel],
+  )
   const pathData = layer.style?.pathData
   const pathViewBoxChave = layer.style?.pathViewBox?.join(',')
   const pathFillRule = layer.style?.pathFillRule
   const tracoPontas = layer.style?.tracoPontas
   const espelhoH = layer.style?.flipH === true
   const espelhoV = layer.style?.flipV === true
+  // multicor (CP-V5): partes e cores congeladas também mudam o que o cache guarda (recolorir sob blur)
+  const partesDoVetor = layer.style?.vetor?.partes
+  const coresDoVetor = layer.style?.vetor?.cores
   React.useEffect(() => {
     const node = shapeRef.current
     if (!node) return
@@ -1467,7 +1484,7 @@ function ShapeNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
     node.getLayer()?.batchDraw()
   }, [shapeRef, blurRadius, escalaBlur, shapeType, fill, stroke, strokeWidth, width, height, borderRadius,
     // svg-path: o desenho cacheado também muda com o path e a pintura
-    pathData, pathViewBoxChave, pathFillRule, tracoPontas, espelhoH, espelhoV,
+    pathData, pathViewBoxChave, pathFillRule, tracoPontas, espelhoH, espelhoV, partesDoVetor, coresDoVetor,
   ])
   const blurProps = { filters, blurRadius: escalaBlur.raioNoBuffer }
 

@@ -731,3 +731,50 @@ describe('CP4.2b — slotValues inválido é recusado ANTES de qualquer escrita 
     expect(porId.get('rodape')).toBe('Rodapé novo')
   })
 })
+
+/**
+ * G4.5 (27/10/2026) — célula de grade de fotos no `ajustarArte`: a foto genérica nunca cai numa célula (nem pelo
+ * atalho da "primeira imagem"), e a foto pedida para uma célula entra só por `preencherCelula` ou é recusada (422).
+ */
+describe('G4.5 — grade de fotos no ajustarArte', () => {
+  const BLOB = 'https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com'
+  const g = { id: 'g1', layout: '2-colunas', versao: 1, espacamento: 10, raio: 0, caixa: { x: 0, y: 0, w: 1080, h: 1100 } }
+  const cel = (id: string, i: number, fileUrl: string) => ({
+    id, name: `Grade · foto ${i + 1}`, type: 'image', visible: true, locked: false, order: i, rotation: 0,
+    position: { x: i === 0 ? 0 : 545, y: 0 }, size: { width: 535, height: 1100 }, fileUrl,
+    style: { objectFit: 'cover', border: { radius: 0 }, crop: { x: 0.1, y: 0, width: 0.5, height: 1 } }, metadata: { grade: { ...g, celula: i }, groupId: 'g1' },
+  })
+  const comGrade = () => {
+    banco.pagina = { ...banco.pagina, layers: [cel('c0', 0, `${BLOB}/a.jpg`), cel('c1', 1, `${BLOB}/b.jpg`), ...(banco.pagina.layers as unknown[])] }
+  }
+  const camada = (id: string) => (banco.pagina.layers as Array<Record<string, any>>).find((l) => l.id === id)!
+
+  it('foto genérica numa página cuja primeira imagem é célula: as células ficam, imageApplied false e aviso', async () => {
+    comGrade()
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', imageUrl: 'https://blob.test/generica.jpg' })
+    expect([camada('c0').fileUrl, camada('c1').fileUrl]).toEqual([`${BLOB}/a.jpg`, `${BLOB}/b.jpg`])
+    expect(camada('c0').style.crop).toEqual({ x: 0.1, y: 0, width: 0.5, height: 1 })
+    expect(r.imageApplied).toBe(false)
+    expect(r.imageWarning).toBeTruthy()
+  })
+
+  it('foto pedida para a célula de host alheio: 422 FOTO_DA_GRADE_RECUSADA, nada gravado', async () => {
+    comGrade()
+    const antes = banco.pagina.updatedAt.getTime()
+    const erro = await erroDe(ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { c1: { fileUrl: 'https://blob.test/de-fora.jpg' } } }))
+    expect((erro as CreativeError).code).toBe('FOTO_DA_GRADE_RECUSADA')
+    expect((erro as CreativeError).status).toBe(422)
+    expect(banco.pagina.updatedAt.getTime()).toBe(antes)
+    expect(banco.generations).toHaveLength(0)
+    expect(banco.putSeq).toBe(0)
+  })
+
+  it('foto pedida para a célula do Blob próprio: entra por preencherCelula (recorte limpo, cover)', async () => {
+    comGrade()
+    await ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { c1: { fileUrl: `${BLOB}/nova.jpg` } } })
+    expect(camada('c1').fileUrl).toBe(`${BLOB}/nova.jpg`)
+    expect(camada('c1').style.crop).toBeUndefined()
+    expect(camada('c1').style.objectFit).toBe('cover')
+    expect(camada('c0').style.crop).toEqual({ x: 0.1, y: 0, width: 0.5, height: 1 })
+  })
+})

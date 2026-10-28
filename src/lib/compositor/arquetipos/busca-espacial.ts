@@ -15,7 +15,7 @@ import type { CropPosition } from '@/lib/image-crop-utils'
 import { bordaDoGrupo, type Borda } from '../gradiente-de-leitura'
 import { combinacoesDasFaixas, limiteDaBusca, type PartidaNoArquetipo } from './candidatos-espaciais'
 import { jsonCanonico } from './impressao'
-import type { GeometriaEfetiva, Materializacao, ProblemaDeMaterializacao } from './materializar'
+import { alinhaDoPapel, type GeometriaEfetiva, type Materializacao, type ProblemaDeMaterializacao } from './materializar'
 import { camadasNaReferencia, grupoDaUnidade, materializarUnidades, type UnidadeDoArquetipo } from './no-compositor'
 import { avaliarCombinacao, descreverTratamento, invadeAEstimada, motivoDaVitoria, ordenarAvaliacoes, resumirAvaliacao } from './pontuacao-espacial'
 import { chaveDoArquetipo, type ArquetipoDeLayout, type FormatoDoArquetipo } from './tipos'
@@ -73,7 +73,7 @@ export function unidadesDaCombinacao(args: {
   H: number
 }): UnidadeDaCombinacao[] {
   const ordem = new Map(args.arquetipo.papeis.map((p) => [p.papel, p.ordemDeLeitura]))
-  return camadasNaReferencia(args.unidades, args.materializacao.papeis, args.arquetipo.preferencias.alinha).map(({ unidade: u, rect, camadas }) => {
+  return camadasNaReferencia(args.unidades, args.materializacao.papeis, (p) => alinhaDoPapel(args.arquetipo, p)).map(({ unidade: u, rect, camadas }) => {
     const dy = args.deslocamentos[u.papel] ?? 0
     const o = u.ornamentos
     const rectComOrnamentos = { x: rect.x - o.esquerda, y: rect.y - o.topo, width: rect.width + o.esquerda + o.direita, height: rect.height + o.topo + o.base }
@@ -283,6 +283,11 @@ export interface ArgsDaSelecao {
   reproduzir?: (EscolhaEspacial & { buscaOriginal?: ResumoDaBuscaOriginal }) | null
   /** A reprodução é de uma peça do T1a (a posição é a referência, não uma escolha pela foto) — muda só as mensagens. */
   reproduzirReferencia?: boolean
+  /**
+   * #8 (foto em caixa): o corte que o compositor escolheu pela CAIXA da foto, para o ramo sem leitura (o texto não pousa
+   * na foto, então ela não escolhe posição). Ausente = o corte central de sempre. A reprodução segue usando o gravado.
+   */
+  corteSemLeitura?: CropPosition
 }
 
 export type SelecaoNoArquetipo =
@@ -357,7 +362,7 @@ export function selecionarNoArquetipo(args: ArgsDaSelecao): SelecaoNoArquetipo {
 
   // Reprodução (ou sem foto): uma combinação só. A geometria e o que a copy nova viola recusam; o tratamento avisa.
   if (args.reproduzir || args.cortes.length === 0) {
-    const { buscaOriginal, ...gravada } = args.reproduzir ?? { modo: MODO_BUSCA_ESPACIAL, foto: args.foto, corte: 'center-middle' as CropPosition, deslocamentos: args.partida.deslocamentos }
+    const { buscaOriginal, ...gravada } = args.reproduzir ?? { modo: MODO_BUSCA_ESPACIAL, foto: args.foto, corte: args.corteSemLeitura ?? ('center-middle' as CropPosition), deslocamentos: args.partida.deslocamentos }
     const avisos: string[] = []
     const origem = args.reproduzirReferencia ? 'a posição de referência do arquétipo (peça do T1a)' : 'a posição desta peça foi escolhida pela foto e está congelada'
     const recusa = (problemas: unknown[], descricao: string) =>
@@ -419,7 +424,11 @@ export function selecionarNoArquetipo(args: ArgsDaSelecao): SelecaoNoArquetipo {
       cortesAvaliados: corte ? [corte.crop] : [],
       ...(args.reproduzir ? { reproduzida: { de: idDaEscolha(gravada), ...(buscaOriginal ? { original: buscaOriginal } : {}) } } : {}),
     })
-    if (!args.reproduzir) diagnostico.motivo = 'sem foto para ler: ficou a posição de partida (a referência, ou o resgate mais perto dela) no corte central'
+    if (!args.reproduzir) {
+      diagnostico.motivo = args.corteSemLeitura
+        ? `texto no liso (foto em caixa): a foto não escolhe a posição; ficou a posição de partida (a referência, ou o resgate mais perto dela), com o corte ${args.corteSemLeitura} escolhido pela caixa da foto`
+        : 'sem foto para ler: ficou a posição de partida (a referência, ou o resgate mais perto dela) no corte central'
+    }
     return { ok: true, materializacao: m, crop: fixa.corte, escolha: fixa, diagnostico, avisos }
   }
 

@@ -22,7 +22,8 @@ export type FalhaDoPath =
   | 'APOS_Z_SEM_M'
   | 'SEM_DESENHO'
 
-export type ResultadoDoPath = { ok: true } | { ok: false; codigo: FalhaDoPath; mensagem: string }
+/** `comandos`: quantos grupos de comando o path traça (o `M`, o `Z` e cada repetição implícita) — o orçamento do multicor. */
+export type ResultadoDoPath = { ok: true; comandos: number } | { ok: false; codigo: FalhaDoPath; mensagem: string }
 
 const ARGS: Record<string, number> = { m: 2, l: 2, h: 1, v: 1, c: 6, s: 4, q: 4, t: 2, a: 7, z: 0 }
 const NUMERO = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/
@@ -43,6 +44,7 @@ export function validarPathData(d: unknown): ResultadoDoPath {
   let anterior = ''
   let desenha = false
   let primeiro = true
+  let comandos = 0
   while (resto) {
     const letra = resto[0]
     const cmd = letra.toLowerCase()
@@ -80,10 +82,11 @@ export function validarPathData(d: unknown): ResultadoDoPath {
     if (n === 0 ? lidos !== 0 : lidos === 0 || lidos % n !== 0) {
       return falha('ARGUMENTOS', `"${letra}" com ${lidos} número(s); espera múltiplo de ${n}`)
     }
+    comandos += n === 0 ? 1 : lidos / n
     // M com pares extras = L implícitos
     if (cmd !== 'm' || lidos > 2) desenha ||= cmd !== 'z'
     anterior = cmd
   }
   if (!desenha) return falha('SEM_DESENHO', 'o path não desenha nada (só M)')
-  return { ok: true }
+  return { ok: true, comandos }
 }

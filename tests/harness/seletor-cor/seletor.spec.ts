@@ -42,7 +42,7 @@ test.beforeAll(async () => {
       {
         name: 'seletor-cor',
         setup(b) {
-          b.onResolve({ filter: /^@\/(contexts\/(multi-page-context|template-editor-context)|hooks\/use-brand-colors)$/ }, () => ({ path: path.join(__dirname, 'falsos.tsx') }))
+          b.onResolve({ filter: /^@\/(contexts\/(multi-page-context|template-editor-context)|hooks\/use-brand-colors|hooks\/use-project)$/ }, () => ({ path: path.join(__dirname, 'falsos.tsx') }))
           b.onLoad({ filter: /components[\\/]templates[\\/]properties-panel\.tsx$/ }, (a) => ({
             contents: `${fonteDoPainel(a.path)}\nexport { ShapeControls }\n`,
             loader: 'tsx',

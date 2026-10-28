@@ -18,6 +18,8 @@ import {
   type MembroDaFaixa,
 } from './busca-espacial-tipos'
 import { CreativeError } from '@/lib/creatives/errors'
+import { envoltoriosDoArquetipo } from './acentos'
+import { textoNoLiso } from './fundo'
 import { materializarUnidades, type UnidadeDoArquetipo } from './no-compositor'
 import type { GeometriaEfetiva, Materializacao, PapelMaterializado, ProblemaDeMaterializacao } from './materializar'
 import type { ArquetipoDeLayout, FormatoDoArquetipo, PapelDeTexto, Zona } from './tipos'
@@ -78,7 +80,11 @@ export function candidatosDasFaixas(args: {
   const presentes = faixasDoArquetipo(args.arquetipo, args.formato)
     .map((f) => f.filter((m) => args.papeis[m]))
     .filter((f) => f.length > 0)
-  if (presentes.length > LIMITES_DA_BUSCA.faixas) throw limiteDaBusca(`${presentes.length} faixas passam do limite de ${LIMITES_DA_BUSCA.faixas}`)
+  // Sem foto — ou com a foto numa caixa, longe do texto (#8) —, a faixa não tem alternativa a avaliar (nada a ler): só a
+  // partida, e por isso cabem 3 faixas.
+  const soPartida = textoNoLiso(args.arquetipo)
+  const teto = soPartida ? LIMITES_DA_BUSCA.faixasSemFoto : LIMITES_DA_BUSCA.faixas
+  if (presentes.length > teto) throw limiteDaBusca(`${presentes.length} faixas passam do limite de ${teto}`)
 
   return presentes.map((membros, indice) => {
     let maxLo = -Infinity
@@ -122,7 +128,7 @@ export function candidatosDasFaixas(args: {
         : { rotulo: 'abaixo', dy: intervalo.max }
     // Os 5 rótulos são o teto de `candidatosPorFaixa`; passo pequeno e repetido não são alternativa.
     const candidatos: CandidatoDaFaixa[] = [partida]
-    for (const rotulo of ROTULOS_DO_DESLOCAMENTO) {
+    for (const rotulo of soPartida ? [] : ROTULOS_DO_DESLOCAMENTO) {
       const dy = dys[rotulo]
       if (dy === null || candidatos.some((c) => Math.abs(c.dy - dy) < PASSO_MINIMO_PX)) continue
       candidatos.push({ rotulo, dy })
@@ -188,7 +194,14 @@ export function partidaNoArquetipo(args: {
   const conferida = materializarUnidades(base)
   const problemasDeZona = 'problemas' in conferida ? conferida.problemas : []
   const foraDaZona = new Set(problemasDeZona.map((p) => p.papel as MembroDaFaixa))
-  const ornamentos = Object.fromEntries(args.unidades.map((u) => [u.papel, u.ornamentos]))
+  // #5: a faixa conta a folga da pílula ao lado dos ornamentos (a busca não oferece um dy que a tire da zona).
+  const envoltorios = envoltoriosDoArquetipo(args.arquetipo, args.formato, args.canvas)
+  const ornamentos = Object.fromEntries(
+    args.unidades.map((u) => {
+      const e = envoltorios[u.papel]
+      return [u.papel, e ? { esquerda: u.ornamentos.esquerda + e.x, direita: u.ornamentos.direita + e.x, topo: u.ornamentos.topo + e.y, base: u.ornamentos.base + e.y } : u.ornamentos]
+    }),
+  )
   const faixas = candidatosDasFaixas({ arquetipo: args.arquetipo, formato: args.formato, papeis: naReferencia.papeis, ornamentos, foraDaZona })
   const semPosicao = faixas.filter((f) => f.candidatos.length === 0)
   if (semPosicao.length > 0) {

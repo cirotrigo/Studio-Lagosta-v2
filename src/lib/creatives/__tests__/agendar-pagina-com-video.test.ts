@@ -143,3 +143,38 @@ describe('o que a trava NÃO alcança', () => {
     expect(banco.posts[0]).toMatchObject({ pageId: 'p1', mediaUrls: ['https://blob.test/arte.png'], renderStatus: 'RENDERED' })
   })
 })
+
+/**
+ * G4.6 (27/10/2026) — grade de fotos com célula vazia ao agendar pela página: AVISA ("a grade tem N células vazias"),
+ * nunca bloqueia. `''` e ausente são a mesma célula vazia; célula oculta não conta. Banco falso deste arquivo — nada de
+ * agendamento real, Zernio ou upload.
+ */
+describe('G4.6 — célula vazia de grade ao agendar: aviso, não bloqueio', () => {
+  const BLOB = 'https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com'
+  const cel = (id: string, fileUrl?: string, extra: Record<string, unknown> = {}) => ({
+    id, type: 'image', name: id, ...(fileUrl === undefined ? {} : { fileUrl }), metadata: { grade: { id: 'g1' }, groupId: 'g1' }, ...extra,
+  })
+
+  it('duas vazias ("" e ausente) e uma oculta: o resolver avisa "A grade tem 2 células vazias" e segue', async () => {
+    banco.estado.camadas = [cel('c0', `${BLOB}/a.jpg`), cel('c1', ''), cel('c2'), cel('c3', '', { visible: false })]
+    banco.estado.thumbnail = `${BLOB}/render.png`
+    const r = await resolverAgendamento({ ...base, pageId: 'p1' })
+    expect(r.avisos).toContain('A grade tem 2 células vazias: elas saem sem foto na arte publicada.')
+    expect(banco.posts).toEqual([])
+  })
+
+  it('agendarPost como rascunho (banco falso): cria o post e devolve o aviso junto', async () => {
+    banco.estado.camadas = [cel('c0', `${BLOB}/a.jpg`), cel('c1', '')]
+    banco.estado.thumbnail = `${BLOB}/render.png`
+    const r = await agendarPost({ ...base, pageId: 'p1' })
+    expect(banco.posts).toHaveLength(1)
+    expect(r.aviso).toContain('A grade tem 1 célula vazia')
+  })
+
+  it('grade cheia e foto avulsa vazia: sem aviso de grade', async () => {
+    banco.estado.camadas = [cel('c0', `${BLOB}/a.jpg`), { id: 'avulsa', type: 'image', fileUrl: '' }]
+    banco.estado.thumbnail = `${BLOB}/render.png`
+    const r = await resolverAgendamento({ ...base, pageId: 'p1' })
+    expect(r.avisos.join(' ')).not.toMatch(/grade/)
+  })
+})

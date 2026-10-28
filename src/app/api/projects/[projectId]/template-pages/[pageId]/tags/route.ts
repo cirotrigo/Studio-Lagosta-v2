@@ -7,6 +7,7 @@ import {
   hasProjectOwnership,
   hasProjectReadAccess,
 } from '@/lib/projects/access'
+import { tagsComMarcaPreservada, TAG_FORA_DO_RODIZIO } from '@/lib/compositor/fora-do-rodizio'
 
 export const runtime = 'nodejs'
 
@@ -60,9 +61,10 @@ export async function PATCH(
       .replace(/\s+/g, '-')
       .replace(/[^a-z0-9-]/g, '')
 
+  // T5: a marca `fora-do-rodizio` é do sistema — nunca vem do pedido (nem vira ProjectTag); a da linha é preservada.
   const normalizedTags = Array.from(
     new Set(parsed.data.tags.map(normalize).filter(Boolean)),
-  )
+  ).filter((tag) => tag !== TAG_FORA_DO_RODIZIO)
 
   // Auto-create ProjectTag entries for any new tag names so they appear
   // in the global suggestion list (mirrors /designs/[designId]/tags pattern).
@@ -97,7 +99,7 @@ export async function PATCH(
       isTemplate: true,
       Template: { projectId: projectIdNum },
     },
-    select: { id: true },
+    select: { id: true, tags: true },
   })
 
   if (!page) {
@@ -109,7 +111,7 @@ export async function PATCH(
 
   const updated = await db.page.update({
     where: { id: pageId },
-    data: { tags: normalizedTags, updatedAt: new Date() },
+    data: { tags: tagsComMarcaPreservada(page.tags, normalizedTags), updatedAt: new Date() },
     select: { id: true, tags: true, updatedAt: true },
   })
 

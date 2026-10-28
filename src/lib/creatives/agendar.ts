@@ -33,6 +33,7 @@ import { isVideoUrl } from '@/lib/media-type'
 import type { Superficie } from '@/lib/aprendizado/vocabulario'
 import { PostType, PostStatus, Prisma } from '@prisma/client'
 import { formatarBRT, parseBRT } from './data-brt'
+import { avisoDeCelulasVazias } from '@/lib/grades/presenca'
 
 export { parseBRT } from './data-brt'
 
@@ -358,6 +359,9 @@ export async function resolverAgendamento(input: AgendarPostInput, opcoes: Opcoe
    * publicação passa a depender de um link de terceiro sobreviver até a hora.
    */
   const avisos: string[] = []
+  // G4.6: grade de fotos com célula vazia vai ao ar com o buraco — avisa, não bloqueia (página como está agora)
+  const avisoDaGrade = avisoDeCelulasVazias(camadasDaPagina)
+  if (avisoDaGrade) avisos.push(avisoDaGrade)
   if (copyInvalidada && !input.pageId) {
     avisos.push(AVISO_COPY_DE_ARTE_RE_RENDERIZADA)
   }

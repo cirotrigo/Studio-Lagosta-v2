@@ -14,6 +14,7 @@ import { fetchBuffer } from '@/lib/posts/register-project-fonts'
 import type { Layer } from '@/types/template'
 
 import { aplicarHalo, ehCamadaDeVeu, ehFotoDeFundo, type HaloDeBloco } from './aplicar-halo'
+import { temGradeVisivel } from '@/lib/grades/presenca'
 import { lerFotoComoCover, medirFaixasDaFoto, type CanvasSize, type FotoCinza } from './halo-medicao'
 import {
   ehTemplateDeTresLayouts,
@@ -137,6 +138,9 @@ export async function aplicarHaloNaArte(input: AplicarHaloNaArteInput): Promise<
   })
 
   if (!ehFamiliaDeHalo(input.templateTags, input.layers)) return semHalo()
+  // G4.5: o halo mede UMA foto (a de fundo) e calibra a mancha por ela; com grade de fotos, os textos ficam sobre fotos
+  // que ninguém mediu — fica o véu, com aviso, em vez de um halo calibrado pela foto errada
+  if (temGradeVisivel(input.layers)) return semHalo('halo não aplicado: a arte tem grade de fotos e o halo mede uma foto só; ficou o véu')
 
   const fundo = input.layers.find((l) => ehFotoDeFundo(l, input.canvas) && l.visible !== false)
   const urlDoFundo = fundo?.fileUrl

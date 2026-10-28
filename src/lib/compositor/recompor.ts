@@ -65,7 +65,9 @@ import { comporPeca } from './compor'
 import { specTemExtra } from './camadas-extras'
 import {
   edicaoDuranteOJob,
+  acentosCongelados,
   escolhaEspacialOriginal,
+  mascaraCongelada,
   medirDefasagem,
   paginaMudouDesde,
   precisaRefazer,
@@ -75,9 +77,12 @@ import {
   type Defasagem,
   type SlideDefasado,
 } from './defasagem'
-import { validarSpec, type SpecDePeca } from './spec'
+import { DIMENSOES, validarSpec, type SpecDePeca } from './spec'
 import { contratoLidoParaRecompor, specDaRecomposicao } from './spec-da-recomposicao'
 import { resolverArquetipo, type ArquetipoDaSpec } from './arquetipos/na-spec'
+import { verArquetipo } from './arquetipos/catalogo'
+import { caixaDaFoto, textoNoLiso } from './arquetipos/fundo'
+import type { ArquetipoDeLayout, FormatoDoArquetipo } from './arquetipos/tipos'
 
 /** As situações de post que a recomposição alcança — as mesmas da invalidação. */
 const SITUACOES_ALCANCADAS = ['DRAFT', 'SCHEDULED'] as const
@@ -407,7 +412,7 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
   // T1a: a spec gravada com ARQUÉTIPO recompõe na MESMA definição — id + versão + impressão conferidos contra o
   // catálogo, nunca "a mais recente" (versão ausente é recusada). Impressão divergente recusa ANTES de qualquer
   // escrita: a peça não finge que a definição com que nasceu ainda é a mesma.
-  if (candidataARecompor && arte.spec!.arquetipo) resolverArquetipo(arte.spec!.arquetipo as ArquetipoDaSpec, { persistida: true })
+  const resolvida = candidataARecompor && arte.spec!.arquetipo ? resolverArquetipo(arte.spec!.arquetipo as ArquetipoDaSpec, { persistida: true }) : null
   // CP2B: a ESCOLHA ESPACIAL gravada (corte e deslocamentos) é reproduzida, nunca refeita — a busca pela foto não roda
   // de novo numa edição de texto. Ilegível recusa AQUI, antes de qualquer escrita (ver `escolhaEspacialOriginal`).
   const lida = candidataARecompor && arte.spec!.arquetipo ? escolhaEspacialOriginal(arte.fieldValues, arte.spec!) : null
@@ -416,6 +421,11 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
   // CP3: a variante da logo gravada é preferência e não depende da foto — segue na busca nova (a conferência mede).
   const escolhaEspacial = lida?.modo === 'referencia' && defasagem.fotoTrocada ? (lida.logo ? { modo: 'referencia' as const, logo: lida.logo } : null) : lida
   if (lida?.modo === 'referencia' && defasagem.fotoTrocada) avisos.push('A foto da peça mudou: a posição foi escolhida de novo pela foto nova (a peça estava na referência do arquétipo).')
+  // T1b: os acentos da peça pela receita CONGELADA (a de antes do T1b, `[]`: continua sem) — com foto trocada também.
+  const acentos = candidataARecompor && arte.spec!.arquetipo ? acentosCongelados(arte.fieldValues, arte.spec!) : null
+  // #9: a máscara pela receita CONGELADA, conferida contra ela mesma e contra a definição EXATA resolvida acima (nunca a
+  // mais recente). Ilegível ou incoerente recusa AQUI, antes do `comporPeca` (que carrega a foto e consulta o acervo).
+  const mascara = resolvida ? mascaraCongelada(arte.fieldValues, arte.spec!, mascaraEsperada(resolvida.definicao, arte.spec!.formato)) : null
   /**
    * F1: a spec da recomposição leva o CONTRATO da página como ele está —
    * lido das camadas atuais sobre o contrato gravado (o que já foi revisado
@@ -523,7 +533,11 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
      * semana, ordem na pasta, `registrarUsoDeFoto` e a transição do item do
      * plano. Recompor é refazer A MESMA peça, não criar outra.
      */
-    const composicao = await comporPeca(spec, { provar: true, ...(escolhaEspacial ? { escolhaEspacial } : {}) })
+    // T4-E (rodada 1): o fundo da peça sem foto é o da PÁGINA gravada — o mesmo com que a versão abaixo é calculada.
+    // Só no texto no liso (a peça E e, desde o #8, a foto em caixa — onde o fundo da página é CONFERIDO contra as tintas):
+    // com foto de fundo ou sem arquétipo, as opções ficam as de sempre.
+    const textoNoLisoNaPeca = !!spec.arquetipo && textoNoLiso(verArquetipo(spec.arquetipo.id, spec.arquetipo.versao))
+    const composicao = await comporPeca(spec, { provar: true, ...(escolhaEspacial ? { escolhaEspacial } : {}), ...(acentos ? { acentosCongelados: acentos } : {}), ...(mascara ? { mascaraCongelada: mascara } : {}), ...(textoNoLisoNaPeca ? { fundoCongelado: page.background ?? null } : {}) })
     avisos.push(...composicao.diagnostico.avisos)
     if (!composicao.prova) throw new CreativeError('RENDER_VAZIO', 'A composição não devolveu imagem.', 500)
 
@@ -1287,4 +1301,11 @@ export async function registrarRecusa(args: {
       metadata: { pageId: args.pageId, errorCode: code, detalhes: detalhes ?? null },
     })
   }
+}
+
+/** #9: o raio e a caixa (px) que a definição EXATA da peça dá à máscara; `null` quando ela não declara máscara. */
+function mascaraEsperada(definicao: ArquetipoDeLayout, formato: SpecDePeca['formato']) {
+  const m = definicao.formatos[formato as FormatoDoArquetipo]?.mascaraDaFoto
+  const caixa = m ? caixaDaFoto(definicao, formato as FormatoDoArquetipo, DIMENSOES[formato]) : null
+  return m && caixa ? { raio: m.raio, caixa: { w: caixa.width, h: caixa.height } } : null
 }

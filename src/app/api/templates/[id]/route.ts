@@ -8,10 +8,11 @@ import { hasProjectReadAccess, hasProjectWriteAccess, withProjectOwner } from '@
 import { invalidateScheduledRenders, normalizeLayersString } from '@/lib/posts/invalidate-renders'
 import { PostStatus } from '../../../../../prisma/generated/client'
 import { gravarCamadasComRevisao } from '@/lib/copy-autoral/persistir'
-import { RecusaDoPushDoDesktop, idsDePaginaRepetidos, mesclarCamadasDoDesktop } from '@/lib/templates/guarda-do-push-do-desktop'
+import { RecusaDoPushDoDesktop, exigirPaginaNovaSemGrade, idsDePaginaRepetidos, mesclarCamadasDoDesktop } from '@/lib/templates/guarda-do-push-do-desktop'
 import { lerCamadas } from '@/lib/posts/page-layers'
 import { VetorInvalido } from '@/lib/vetor/validar-camada'
 import { corpoDoVetorInvalido, exigirVetoresValidos } from '@/lib/vetor/guarda-de-porta'
+import { tagsComMarcaPreservada } from '@/lib/compositor/fora-do-rodizio'
 
 export const runtime = 'nodejs'
 
@@ -227,7 +228,8 @@ export async function PUT(
           const g = await gravarCamadasComRevisao(tx, {
             pageId,
             humana: true,
-            dados,
+            // T5: a marca `fora-do-rodizio` é a da base relida a cada volta, nunca a do push.
+            dados: (base) => ({ ...dados, tags: tagsComMarcaPreservada(base.tags, (dados.tags as string[] | undefined) ?? []) }),
             quem: { autor: 'equipe', motivo: 'edição no editor (salvar o template)', superficie: 'editor' },
             camadas: (base) => {
               const mescladas = mesclarCamadasDoDesktop(base.layers, layers, { paginaId: pageId, casadaPorFallback })
@@ -314,6 +316,8 @@ export async function PUT(
             } else {
               // CP-X2b: página nova (sem par) não tem base para mesclar — o payload É o estado final.
               exigirVetoresValidos(pageData.layers, { paginaId: requestedPageId ?? `#${i}` })
+              // G4.1: o desktop não cria grade de fotos — página nova com metadata de grade é recusada (409).
+              exigirPaginaNovaSemGrade(pageData.layers, requestedPageId ?? `#${i}`)
               await tx.page.create({
                 data: {
                   id: hasForeignIdConflict ? crypto.randomUUID() : (requestedPageId ?? crypto.randomUUID()),
@@ -447,7 +451,7 @@ export async function PUT(
       console.warn(`[API] Template ${templateId}: push do desktop recusado — ${error.message}`)
       return NextResponse.json(
         {
-          error: 'O envio do app desktop perderia conteúdo que só existe no web (vetor, máscara, página ou camada do compositor). Nada foi gravado. Atualize o template no app (puxe de novo) e envie outra vez.',
+          error: 'O envio do app desktop perderia conteúdo que só existe no web (vetor, máscara, página, camada do compositor ou grade de fotos). Nada foi gravado. Atualize o template no app (puxe de novo) e envie outra vez.',
           codigo: error.codigo,
           paginaId: error.paginaId,
           ...(error.camadaId ? { camadaId: error.camadaId } : {}),

@@ -178,3 +178,84 @@ describe('finalize × svg-path: aceites', () => {
     expect(gravado?.style).toEqual(v.style)
   })
 })
+
+/**
+ * G4.2 (27/10/2026) — imagem e grade de fotos. A guarda corre nas camadas EFETIVAS (`processedLayers`, depois das fotos
+ * trocadas) e antes de qualquer efeito: célula de grade ou foto com recorte manual vinda de cliente sem
+ * `previaDeImagem: 'imagem-v1'` → 409; grade incoerente nas camadas efetivas (foto de host alheio, célula oculta) →
+ * 422 MESMO com a marca. Camadas só de imagem, sem vetor nenhum.
+ */
+describe('finalize × imagem e grade (G4.2)', () => {
+  const BLOB = 'https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com'
+  const gm = { id: 'g1', layout: '2-colunas', versao: 1, espacamento: 10, raio: 0, caixa: { x: 0, y: 0, w: 1080, h: 1350 } }
+  const cel = (id: string, i: number, fileUrl: string, style: Record<string, unknown> = {}) => ({
+    id, type: 'image', name: `Grade · foto ${i + 1}`, visible: true, locked: false, order: i, rotation: 0,
+    position: { x: i === 0 ? 0 : 545, y: 0 }, size: { width: 535, height: 1350 }, fileUrl,
+    style: { objectFit: 'cover', border: { radius: 0 }, ...style }, metadata: { grade: { ...gm, celula: i }, groupId: 'g1' },
+  })
+  const grade = () => [cel('c0', 0, `${BLOB}/a.jpg`, { crop: { x: 0.1, y: 0, width: 0.4, height: 1 } }), cel('c1', 1, '')]
+  const avulsa = (style: Record<string, unknown>, fileUrl = `${BLOB}/f.jpg`) => ({ id: 'f', type: 'image', name: 'Foto', position: { x: 0, y: 0 }, size: { width: 400, height: 300 }, fileUrl, style })
+  const MARCA = { previaDeImagem: 'imagem-v1' }
+
+  it('grade só de imagens, sem vetor, de cliente sem a marca → 409 PREVIA_DESATUALIZADA com as células, zero efeito', async () => {
+    const r = await post(corpo({ layers: [texto, ...grade()], previa: 'vetor-v1' }))
+    expect(r.status).toBe(409)
+    expect(await r.json()).toMatchObject({ codigo: 'PREVIA_DESATUALIZADA', camadas: ['c0', 'c1'] })
+    expect(m.efeitos).toEqual(NADA)
+  })
+
+  it('foto avulsa com recorte manual, sem a marca → 409; a mesma foto só com cover → 200 (cliente antigo segue)', async () => {
+    const r = await post(corpo({ layers: [texto, avulsa({ objectFit: 'cover', crop: { x: 0.2, y: 0.2, width: 0.5, height: 0.5 } })] }))
+    expect(r.status).toBe(409)
+    expect(m.efeitos).toEqual(NADA)
+    const ok = await post(corpo({ layers: [texto, avulsa({ objectFit: 'cover' })] }))
+    expect(ok.status).toBe(200)
+    expect(m.efeitos).toEqual(TUDO)
+  })
+
+  it('o override de foto é o que introduz o recorte: sem foto o recorte não é desenhado (200); com a foto trocada, 409', async () => {
+    const semFoto = avulsa({ objectFit: 'cover', crop: { x: 0.2, y: 0.2, width: 0.5, height: 0.5 } }, '')
+    expect((await post(corpo({ layers: [texto, semFoto] }))).status).toBe(200)
+    m.efeitos = []
+    const r = await post(corpo({ layers: [texto, semFoto], images: { f: { type: 'upload', url: `${BLOB}/nova.jpg` } } }))
+    expect(r.status).toBe(409)
+    expect(m.efeitos).toEqual(NADA)
+  })
+
+  it('com a marca: 200 e a grade gravada inteira (recorte, raio, metadata, vazia); a foto trocada numa célula vale', async () => {
+    const r = await post(corpo({ layers: [texto, ...grade()], images: { c1: { type: 'upload', url: `${BLOB}/b.jpg` } }, ...MARCA }))
+    expect(r.status).toBe(200)
+    expect(m.efeitos).toEqual(TUDO)
+    const gravadas = m.layersGravadas as Array<Record<string, any>>
+    expect(gravadas.find((l) => l.id === 'c0')).toEqual(grade()[0])
+    expect(gravadas.find((l) => l.id === 'c1')!.fileUrl).toBe(`${BLOB}/b.jpg`)
+    expect(gravadas.find((l) => l.id === 'c1')!.metadata).toEqual(grade()[1].metadata)
+  })
+
+  it.each([
+    ['foto da célula de host alheio (data:)', { images: { c1: { type: 'upload', url: 'data:image/png;base64,aGVsbG8=' } } }, 'URL_INVALIDA'],
+    ['foto da célula do CDN do Drive (lh3)', { images: { c0: { type: 'drive', url: 'https://lh3.googleusercontent.com/x' } } }, 'URL_INVALIDA'],
+    ['célula oculta pelo assistente (grade gravada pela metade)', { hiddenLayerIds: ['c1'] }, 'GRADE_INCOERENTE'],
+  ])('%s, MESMO com a marca → 422 com o diagnóstico, zero efeito', async (_nome, extra, codigo) => {
+    const r = await post(corpo({ layers: [texto, ...grade()], ...MARCA, ...extra }))
+    expect(r.status).toBe(422)
+    const json = await r.json()
+    expect(json.codigo).toBe('GRADE_INCOERENTE')
+    expect(json.diagnosticos.map((d: { codigo: string }) => d.codigo)).toContain(codigo)
+    expect(m.efeitos).toEqual(NADA)
+  })
+
+  it('marca de imagem com valor desconhecido → 400; a guarda do vetor segue igual (vetor sem `previa` → 409)', async () => {
+    expect((await post(corpo({ layers: [texto, ...grade()], previaDeImagem: 'imagem-v0' }))).status).toBe(400)
+    const r = await post(corpo({ layers: [texto, vetor(), ...grade()], ...MARCA }))
+    expect(r.status).toBe(409)
+    expect(await r.json()).toMatchObject({ codigo: 'PREVIA_DESATUALIZADA' })
+    expect(m.efeitos).toEqual(NADA)
+  })
+
+  it('as duas marcas, vetor válido e grade: 200', async () => {
+    const r = await post(corpo({ layers: [texto, vetor(), ...grade()], previa: 'vetor-v1', ...MARCA }))
+    expect(r.status).toBe(200)
+    expect(m.efeitos).toEqual(TUDO)
+  })
+})

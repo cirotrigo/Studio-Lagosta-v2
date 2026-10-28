@@ -17,8 +17,49 @@ import { ehClipe } from '@/lib/video/camadas-de-video'
 import { criarReservaDeClipes, inserirClipe, MENSAGEM_TETO_DE_CLIPES, normalizarClipes } from '@/lib/video/linha-do-tempo'
 import { toast } from '@/hooks/use-toast'
 import { consumirInsercaoDeClipe } from '@/lib/video/insercao-de-clipe'
+import { criarGeracaoDaCarga } from '@/lib/editor/cores-da-forma'
 import { useQueryClient } from '@tanstack/react-query'
 import { canonicalizeShapeStyleForPersistence } from '@/lib/shape-style'
+import { dimensoesDaFotoCarregada } from '@/lib/image-fit'
+import { layoutDoCatalogo, VERSAO_DO_CATALOGO } from '@/lib/grades/catalogo'
+import { fundoParaMedir, inserirGradeNoDesign, MENSAGEM_ALVO_MUDOU, type DesfechoDaInsercao, type MedidaDoFundo } from '@/lib/grades/insercao'
+import {
+  MENSAGEM_ALVO_MUDOU as MENSAGEM_LOTE_FORA_DO_ALVO,
+  fotoAvulsaLimpa,
+  planoDePreenchimento,
+  preencherNoDesign,
+  recusaDoPreenchimento,
+  type AlvoDePreenchimento,
+  type DesfechoDoPreenchimento,
+  type FalhaDaFoto,
+  type FotoParaCelula,
+  type PlanoDePreenchimento,
+} from '@/lib/grades/preenchimento'
+import {
+  MENSAGEM_AJUSTE_FORA_DO_ALVO,
+  MENSAGEM_ALINHAR_GRADE,
+  ajustarGradeNoDesign,
+  desvincularNoDesign,
+  moverNoDesign,
+  planoDoAjuste,
+  selecaoTocaGrade,
+  type AlvoDoAjuste,
+  type DesfechoDoAjuste,
+  type PlanoDoAjuste,
+} from '@/lib/grades/ajustes'
+import type { MudancaDeGrade } from '@/lib/grades/operacoes'
+import { metadadoDeGrade } from '@/lib/grades/conferir'
+import { membrosDaGrade } from '@/lib/grades/preenchimento'
+import {
+  MENSAGEM_AGRUPAR_GRADE,
+  agruparTocaGrade,
+  desagruparNoDesign,
+  duplicarGradeNoDesign,
+  edicaoDaCamada,
+  removerNoDesign,
+  semVinculoDeGrade,
+  vinculadaAGrade,
+} from '@/lib/grades/no-editor'
 
 export interface TemplateResource {
   id: number
@@ -64,9 +105,68 @@ export interface TemplateEditorContextValue {
   updateLayerStyle: (id: string, style: Layer['style']) => void
   moveLayer: (id: string, deltaX: number, deltaY: number) => void
   addLayer: (layer: Layer) => void
+  /**
+   * G1: insere uma grade do catálogo como N camadas `image` num `applyDesign` só (um desfazer), sem o desvio de clipe
+   * do `addLayer`. O fundo único elegível vira a célula 1 depois de `medirFoto` (dimensão conferida pela URL exata);
+   * página, template/projeto, geração da carga e impressão do fundo/canvas são conferidos de novo DENTRO do
+   * `applyDesign`. Página de vídeo é recusada sem tocar design nem histórico. Ver `src/lib/grades/insercao.ts`.
+   */
+  inserirGrade: (
+    layout: string,
+    opcoes: { medirFoto: (url: string) => Promise<{ src: string; width: number; height: number } | undefined> },
+  ) => Promise<DesfechoDaInsercao>
+  /**
+   * G2: onde a(s) próxima(s) foto(s) entram, decidido AGORA (seleção, design, página, documento e geração da carga
+   * deste instante), antes de qualquer upload, download ou geração. `'uma'`: grade inteira → próxima célula vazia;
+   * célula → substitui; grade cheia ou sem grade → avulsa pelo caminho de sempre. Número: lote para a grade inteira.
+   * Ver `src/lib/grades/preenchimento.ts`.
+   */
+  planejarPreenchimento: (quantas: 'uma' | number) => PlanoDePreenchimento
+  /**
+   * G2: aplica fotos já baixadas e medidas nas células do plano num `applyDesign` só (um desfazer), sem `addLayer` e
+   * sem o "+" da linha do tempo. Página, documento, geração e a assinatura de TODOS os membros da grade são conferidos
+   * DENTRO do updater, sobre o estado atual: mudou ⇒ nada aplicado. Foto que falhou deixa a célula como estava.
+   * `cancelado` também é lido DENTRO do updater: cancelado antes de ele rodar ⇒ `prev`, sem histórico nem dirty.
+   */
+  preencherGrade: (
+    alvo: AlvoDePreenchimento,
+    fotos: FotoParaCelula[],
+    falhas?: FalhaDaFoto[],
+    cancelado?: AbortSignal,
+  ) => Promise<DesfechoDoPreenchimento>
+  /**
+   * G2: a foto que a grade CHEIA manda avulsa — `image` comum no topo, um desfazer, SEM o desvio de clipe do `addLayer`
+   * (o "+" armado da linha do tempo continua armado) e sem metadado, grupo ou clipe herdados. Sem grade, é o `addLayer`.
+   */
+  adicionarFotoAvulsa: (camada: Layer) => void
+  /**
+   * G3: alvo de um ajuste da grade (espaçamento, cantos, caixa, layout) decidido AGORA, antes de medir as fotos: grade,
+   * assinatura de todos os membros, URLs a medir, página, documento e geração. Ver `src/lib/grades/ajustes.ts`.
+   */
+  planejarAjusteDaGrade: (gradeId: string) => PlanoDoAjuste
+  /**
+   * G3: aplica a mudança num `applyDesign` só (um desfazer) pelo `refazerGrade` do G0, com as medidas por URL exata.
+   * Cancelamento, página, documento, geração e assinatura são conferidos DENTRO do updater: mudou ⇒ `prev` intacto.
+   * Seleciona a grade (ou as fotos que sobraram avulsas).
+   */
+  aplicarAjusteDaGrade: (
+    alvo: AlvoDoAjuste,
+    mudanca: MudancaDeGrade,
+    dimensoes: ReadonlyMap<string, { width: number; height: number }>,
+    cancelado?: AbortSignal,
+  ) => Promise<DesfechoDoAjuste>
+  /**
+   * G3: move `ids` por (dx, dy) num `applyDesign`: grade tocada anda INTEIRA (caixa + células, translação pura), as
+   * outras como no `moveLayer`. `coalesceKey` só para as setas (a janela de 800 ms de sempre); arraste, sem chave.
+   */
+  moverSelecao: (ids: string[], dx: number, dy: number, opcoes?: { coalesceKey?: string }) => Promise<DesfechoDoAjuste>
+  /** G3: "Desvincular da grade" — `grade` e o `groupId` dela saem de todos os membros num desfazer; fotos e recortes ficam */
+  desvincularGrade: (gradeId: string) => Promise<DesfechoDoAjuste>
   applySoftTopGradient: () => void
   duplicateLayer: (id: string) => void
   removeLayer: (id: string) => void
+  /** Exclui várias camadas numa operação só (um desfazer): a seleção do Delete, do botão de excluir e do painel */
+  removeLayers: (ids: string[]) => void
   toggleLayerVisibility: (id: string) => void
   toggleLayerLock: (id: string) => void
   reorderLayers: (idsInOrder: string[]) => void
@@ -76,6 +176,11 @@ export interface TemplateEditorContextValue {
   dynamicFields: DynamicField[]
   setDynamicFields: React.Dispatch<React.SetStateAction<DynamicField[]>>
   dirty: boolean
+  /**
+   * Geração da carga do documento (CP-V3): sobe em toda `loadTemplate` e na troca de template/projeto do provider;
+   * não sobe em edição nem com um novo objeto do mesmo template. Só leitura (o Reaplicar confere o alvo por ela).
+   */
+  geracaoDaCarga: () => number
   markSaved: (nextTemplate?: Partial<TemplateResource>) => void
   zoom: number
   setZoom: (value: number) => void
@@ -211,6 +316,16 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
   // recriar os callbacks a cada edição
   const designAtualRef = React.useRef(design)
   designAtualRef.current = design
+  // G1: o alvo de uma inserção de grade que espera a medida da foto (conferido dentro do applyDesign)
+  const paginaAtualRef = React.useRef<string | null>(null)
+  paginaAtualRef.current = multiPage?.currentPageId ?? null
+  const documentoAtualRef = React.useRef('')
+  documentoAtualRef.current = `${template.id}:${template.projectId}`
+  // CP-V3: carga e troca de documento sobem a geração; o mesmo template com objeto novo, não
+  const geracaoRef = React.useRef<ReturnType<typeof criarGeracaoDaCarga> | null>(null)
+  geracaoRef.current ??= criarGeracaoDaCarga(`${template.id}:${template.projectId}`)
+  geracaoRef.current.documento(`${template.id}:${template.projectId}`)
+  const geracaoDaCarga = React.useCallback(() => geracaoRef.current!.valor(), [])
   // Teto de clipes em lote: o `design` desta renderização já conta o que entrou
   const reservaDeClipesRef = React.useRef(criarReservaDeClipes())
   reservaDeClipesRef.current.zerar()
@@ -237,6 +352,8 @@ const [historyMeta, setHistoryMeta] = React.useState<{ canUndo: boolean; canRedo
 const clipboardRef = React.useRef<Layer[] | null>(null)
 const stageInstanceRef = React.useRef<Konva.Stage | null>(null)
 const selectedLayerIdsRef = React.useRef<string[]>(selectedLayerIds)
+/** G4.3: a última "duplicar a grade inteira" (seleção e grade) — o "duplicar seleção" chama uma vez por membro */
+const ultimaGradeDuplicadaRef = React.useRef<{ selecao: string[] | null; gradeId: string | null }>({ selecao: null, gradeId: null })
 const [, setUpdateCounter] = React.useState(0)
 const [croppingLayerId, setCroppingLayerId] = React.useState<string | null>(null)
 const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
@@ -369,6 +486,11 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
   const groupSelectedLayers = React.useCallback(() => {
     const ids = selectedLayerIdsRef.current
     if (ids.length < 2) return
+    // G4.3: célula de grade não entra em grupo (o groupId dela é o da grade; trocá-lo quebraria a grade)
+    if (agruparTocaGrade(designAtualRef.current.layers, ids)) {
+      toast({ description: MENSAGEM_AGRUPAR_GRADE })
+      return
+    }
     const groupId = `grupo-${createId()}`
     applyDesign((prev) => ({
       ...prev,
@@ -380,36 +502,38 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
 
   const ungroupLayers = React.useCallback((ids: string[] = selectedLayerIdsRef.current) => {
     if (ids.length === 0) return
+    // G4.3: o grupo comum perde o groupId como sempre; o que é uma GRADE é desvinculado em todos os membros (sai
+    // `grade` e `groupId` juntos — tirar só o groupId deixava a grade incoerente), no mesmo desfazer
     applyDesign((prev) => {
-      const groupIds = new Set<string>()
-      for (const layer of prev.layers) {
-        const groupId = layer.metadata?.groupId
-        if (ids.includes(layer.id) && typeof groupId === 'string' && groupId) groupIds.add(groupId)
-      }
-      if (groupIds.size === 0) return prev
-      return {
-        ...prev,
-        layers: prev.layers.map((layer) => {
-          const groupId = layer.metadata?.groupId
-          if (typeof groupId !== 'string' || !groupIds.has(groupId)) return layer
-          const { groupId: _removed, ...metadata } = layer.metadata ?? {}
-          void _removed
-          return { ...layer, metadata }
-        }),
-      }
+      const layers = desagruparNoDesign(prev, ids)
+      return layers ? { ...prev, layers } : prev
     })
   }, [applyDesign])
 
   const updateLayer = React.useCallback(
     (id: string, updater: (layer: Layer) => Layer, options?: { coalesceKey?: string; gesto?: boolean }) => {
+      // G4.3: a edição genérica de UMA camada (propriedades, painéis, gerador de criativo, arraste antigo) não quebra
+      // a grade — ver `edicaoDaCamada`. O aviso é decidido aqui, sobre o estado mais novo; o updater (que o React
+      // pode repetir) só confere de novo e devolve a camada como estava.
+      const atual = designAtualRef.current.layers.find((layer) => layer.id === id)
+      if (atual && (vinculadaAGrade(atual) || atual.metadata?.groupId)) {
+        const e = edicaoDaCamada(atual, updater(atual), designAtualRef.current.layers)
+        if (!e.ok) {
+          toast({ description: e.motivo })
+          return
+        }
+      }
       applyDesign(
         (prev) => {
           let changed = false
           const nextLayers = prev.layers.map((layer) => {
             if (layer.id !== id) return layer
-            const next = updater(layer)
-            if (next !== layer) changed = true
-            return next
+            const proposta = updater(layer)
+            if (proposta === layer) return layer
+            const e = edicaoDaCamada(layer, proposta, prev.layers)
+            if (!e.ok) return layer
+            changed = true
+            return e.camada
           })
           if (!changed) return prev
           return { ...prev, layers: normalizeLayerOrder(nextLayers) }
@@ -477,6 +601,130 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
     [applyDesign],
   )
 
+  const inserirGrade = React.useCallback<TemplateEditorContextValue['inserirGrade']>(
+    async (layout, { medirFoto }) => {
+      // Nada de `consumirInsercaoDeClipe`: a grade nunca vira clipe e o "+" armado segue armado
+      const n = layoutDoCatalogo(layout, VERSAO_DO_CATALOGO)?.celulas.length ?? 0
+      const pedido = { layout, idDaGrade: `grade-${createId()}`, idsDasCelulas: Array.from({ length: n }, () => createId()) }
+      const alvo = { pagina: paginaAtualRef.current, documento: documentoAtualRef.current, geracao: geracaoRef.current!.valor() }
+      const fundo = fundoParaMedir(designAtualRef.current)
+      let medida: MedidaDoFundo | null = null
+      if (fundo) {
+        const foto = await Promise.resolve()
+          .then(() => medirFoto(fundo.fileUrl))
+          .catch(() => undefined)
+        const base = typeof window === 'undefined' ? undefined : window.location.href
+        medida = { camadaId: fundo.camadaId, impressao: fundo.impressao, natural: dimensoesDaFotoCarregada(foto, fundo.fileUrl, base) }
+      }
+      return new Promise<DesfechoDaInsercao>((resolve) => {
+        applyDesign((prev) => {
+          const outroAlvo =
+            paginaAtualRef.current !== alvo.pagina || documentoAtualRef.current !== alvo.documento || geracaoRef.current!.valor() !== alvo.geracao
+          const r: DesfechoDaInsercao = outroAlvo ? { ok: false, codigo: 'ALVO_MUDOU', mensagem: MENSAGEM_ALVO_MUDOU } : inserirGradeNoDesign(prev, pedido, medida)
+          resolve(r)
+          if (!r.ok) return prev
+          setSelectedLayerIds(r.celulas)
+          return { ...prev, layers: normalizeLayerOrder(r.layers) }
+        })
+      })
+    },
+    [applyDesign],
+  )
+
+  const planejarPreenchimento = React.useCallback<TemplateEditorContextValue['planejarPreenchimento']>((quantas) => {
+    const plano = planoDePreenchimento(designAtualRef.current, selectedLayerIdsRef.current, quantas)
+    if (plano.tipo !== 'grade') return plano
+    const chave = { pagina: paginaAtualRef.current, documento: documentoAtualRef.current, geracao: geracaoRef.current!.valor() }
+    return { ...plano, alvo: { ...plano.alvo, chave } }
+  }, [])
+
+  const preencherGrade = React.useCallback<TemplateEditorContextValue['preencherGrade']>(
+    (alvo, fotos, falhas = [], cancelado) =>
+      new Promise<DesfechoDoPreenchimento>((resolve) => {
+        // Nada de `addLayer` nem `consumirInsercaoDeClipe`: a foto entra na célula e o "+" armado segue armado
+        applyDesign((prev) => {
+          const c = alvo.chave
+          const outroAlvo =
+            !c || paginaAtualRef.current !== c.pagina || documentoAtualRef.current !== c.documento || geracaoRef.current!.valor() !== c.geracao
+          const r = cancelado?.aborted
+            ? recusaDoPreenchimento('CANCELADO', 'Preenchimento cancelado: nada foi aplicado.', falhas)
+            : outroAlvo
+              ? recusaDoPreenchimento('ALVO_MUDOU', MENSAGEM_LOTE_FORA_DO_ALVO, falhas)
+              : preencherNoDesign(prev, alvo, fotos, falhas)
+          resolve(r)
+          return r.ok ? { ...prev, layers: normalizeLayerOrder(r.layers) } : prev
+        })
+      }),
+    [applyDesign],
+  )
+
+  const adicionarFotoAvulsa = React.useCallback(
+    (camada: Layer) => {
+      const limpa = fotoAvulsaLimpa(camada)
+      applyDesign((prev) => ({ ...prev, layers: normalizeLayerOrder([...prev.layers, limpa]) }))
+      setSelectedLayerIds([limpa.id])
+    },
+    [applyDesign],
+  )
+
+  const planejarAjusteDaGrade = React.useCallback<TemplateEditorContextValue['planejarAjusteDaGrade']>((gradeId) => {
+    const plano = planoDoAjuste(designAtualRef.current, gradeId)
+    if (plano.tipo !== 'grade') return plano
+    const chave = { pagina: paginaAtualRef.current, documento: documentoAtualRef.current, geracao: geracaoRef.current!.valor() }
+    return { ...plano, alvo: { ...plano.alvo, chave } }
+  }, [])
+
+  const aplicarAjusteDaGrade = React.useCallback<TemplateEditorContextValue['aplicarAjusteDaGrade']>(
+    (alvo, mudanca, dimensoes, cancelado) =>
+      new Promise<DesfechoDoAjuste>((resolve) => {
+        // Ids das células que um layout maior criar: gerados fora do updater (o React pode rodá-lo duas vezes)
+        const n = mudanca.layout ? (layoutDoCatalogo(mudanca.layout, VERSAO_DO_CATALOGO)?.celulas.length ?? 0) : 0
+        const idsNovos = Array.from({ length: n }, () => createId())
+        applyDesign((prev) => {
+          const c = alvo.chave
+          const outroAlvo =
+            !c || paginaAtualRef.current !== c.pagina || documentoAtualRef.current !== c.documento || geracaoRef.current!.valor() !== c.geracao
+          const r: DesfechoDoAjuste = cancelado?.aborted
+            ? { ok: false, codigo: 'CANCELADO', mensagem: 'Ajuste cancelado: nada foi aplicado.' }
+            : outroAlvo
+              ? { ok: false, codigo: 'ALVO_MUDOU', mensagem: MENSAGEM_AJUSTE_FORA_DO_ALVO }
+              : ajustarGradeNoDesign(prev, alvo, mudanca, dimensoes, idsNovos)
+          resolve(r)
+          if (!r.ok) return prev
+          setSelectedLayerIds(r.selecionar)
+          return { ...prev, layers: normalizeLayerOrder(r.layers) }
+        })
+      }),
+    [applyDesign],
+  )
+
+  const moverSelecao = React.useCallback<TemplateEditorContextValue['moverSelecao']>(
+    (ids, dx, dy, opcoes) =>
+      new Promise<DesfechoDoAjuste>((resolve) => {
+        applyDesign(
+          (prev) => {
+            const r = moverNoDesign(prev, ids, dx, dy)
+            resolve(r)
+            return r.ok ? { ...prev, layers: normalizeLayerOrder(r.layers) } : prev
+          },
+          { coalesceKey: opcoes?.coalesceKey },
+        )
+      }),
+    [applyDesign],
+  )
+
+  const desvincularGrade = React.useCallback<TemplateEditorContextValue['desvincularGrade']>(
+    (gradeId) =>
+      new Promise<DesfechoDoAjuste>((resolve) => {
+        applyDesign((prev) => {
+          const r = desvincularNoDesign(prev, gradeId)
+          resolve(r)
+          return r.ok ? { ...prev, layers: normalizeLayerOrder(r.layers) } : prev
+        })
+      }),
+    [applyDesign],
+  )
+
   const applySoftTopGradient = React.useCallback(() => {
     applyDesign((prev) => {
       const layers = aplicarGradienteSuave(prev.layers, prev.canvas)
@@ -489,9 +737,33 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
     (id: string) => {
       const source = design.layers.find((layer) => layer.id === id)
       if (!source) return
+      // G4.3: com a grade INTEIRA selecionada, duplicar é duplicar a grade (ids novos, um deslocamento, um desfazer); a
+      // célula sozinha sai foto avulsa. "Duplicar seleção" chama uma vez por membro: só a 1ª chamada desta seleção conta.
+      const gradeId = metadadoDeGrade(source)?.id
+      const selecao = selectedLayerIdsRef.current
+      if (typeof gradeId === 'string' && gradeId && membrosDaGrade(designAtualRef.current.layers, gradeId).every((c) => selecao.includes(c.id))) {
+        const ultima = ultimaGradeDuplicadaRef.current
+        if (ultima.selecao === selecao && ultima.gradeId === gradeId) return
+        const novos = { idDaGrade: `grade-${createId()}`, ids: membrosDaGrade(designAtualRef.current.layers, gradeId).map(() => createId()) }
+        const proximo = () => {
+          const fila = [...novos.ids]
+          return { idDaGrade: novos.idDaGrade, idDaCelula: () => fila.shift()! }
+        }
+        if (!duplicarGradeNoDesign(designAtualRef.current, gradeId, proximo())) {
+          toast({ description: 'A grade está quebrada e não foi duplicada: desvincule da grade para copiar as fotos soltas.' })
+          return
+        }
+        ultimaGradeDuplicadaRef.current = { selecao, gradeId }
+        applyDesign((prev) => {
+          const r = duplicarGradeNoDesign(prev, gradeId, proximo())
+          return r ? { ...prev, layers: normalizeLayerOrder(r.layers) } : prev
+        })
+        setSelectedLayerIds(novos.ids)
+        return
+      }
       // C9-02/C9-11: a cópia é texto NOVO — sem a identidade autoral da original (e sem o papel, se a página tem
-      // contrato). A transformação é pura e testada em `camada-copiada.ts`.
-      const copia = camadaDuplicadaNoEditor(source, { novoId: createId(), paginaTemContrato: temCopyAutoral })
+      // contrato). A transformação é pura e testada em `camada-copiada.ts`. G4.3: célula copiada sozinha sai avulsa.
+      const copia = semVinculoDeGrade(camadaDuplicadaNoEditor(source, { novoId: createId(), paginaTemContrato: temCopyAutoral }))
       if (ehClipe(source)) {
         if (!reservaDeClipesRef.current.reservar(designAtualRef.current.layers)) {
           toast({ variant: 'destructive', description: MENSAGEM_TETO_DE_CLIPES })
@@ -511,16 +783,26 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
     [addLayer, applyDesign, design.layers, temCopyAutoral],
   )
 
-  const removeLayer = React.useCallback(
-    (id: string) => {
+  const excluir = React.useCallback(
+    (ids: string[], opcoes: { celulaSoEsvazia?: boolean } = {}) => {
+      if (ids.length === 0) return
+      // G4.3 (rodada 1): a exclusão em lote é UMA operação, um desfazer — grade INTEIRA entre os ids sai inteira,
+      // célula sem as irmãs é ESVAZIADA (continua selecionada; a geometria não fura), o resto sai como sempre
+      const previsto = removerNoDesign(designAtualRef.current, ids, opcoes)
       applyDesign((prev) => {
-        const nextLayers = prev.layers.filter((layer) => layer.id !== id)
-        return { ...prev, layers: normalizeLayerOrder(nextLayers) }
+        const r = removerNoDesign(prev, ids, opcoes)
+        return r ? { ...prev, layers: normalizeLayerOrder(r.layers) } : prev
       })
-      setSelectedLayerIds((prev) => prev.filter((layerId) => layerId !== id))
+      const saem = new Set(previsto?.removidas ?? [])
+      if (saem.size > 0) setSelectedLayerIds((prev) => prev.filter((layerId) => !saem.has(layerId)))
     },
     [applyDesign],
   )
+  const removeLayers = React.useCallback((ids: string[]) => excluir(ids), [excluir])
+
+  // A lixeira de UMA camada (linha do painel): só ela — célula de grade é ESVAZIADA (vazia: nada muda), nunca apagada,
+  // nem a única de uma grade de uma célula
+  const removeLayer = React.useCallback((id: string) => excluir([id], { celulaSoEsvazia: true }), [excluir])
 
   const toggleLayerVisibility = React.useCallback(
     (id: string) => {
@@ -1075,6 +1357,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
        */
       historyKey?: string
     }) => {
+      geracaoRef.current!.carregou()
       const clonedDesign: DesignData = cloneDesign(designData)
       clonedDesign.layers = normalizeLayerOrder(clonedDesign.layers ?? [])
 
@@ -1186,8 +1469,16 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
    * simplesmente não fazia nada, que era o comportamento que os usuários
    * reportavam como "o alinhamento não funciona".
    */
+  /** G3: alinhar/distribuir movem nó por nó; com célula de grade na seleção, bloqueado com motivo no MVP */
+  const bloqueadoPelaGrade = React.useCallback(() => {
+    if (!selecaoTocaGrade(designAtualRef.current.layers, selectedLayerIdsRef.current)) return false
+    toast({ description: MENSAGEM_ALINHAR_GRADE })
+    return true
+  }, [])
+
   const alinharSelecao = React.useCallback(
     (axis: AlignAxis, mode: AlignMode, forcarCanvas = false) => {
+      if (bloqueadoPelaGrade()) return
       const colhido = colherNodesSelecionados()
       if (!colhido) return
       const { contentLayer, nodes } = colhido
@@ -1206,7 +1497,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
         persistirPosicoes(nodes)
       })
     },
-    [colherNodesSelecionados, persistirPosicoes, design.canvas.width, design.canvas.height],
+    [bloqueadoPelaGrade, colherNodesSelecionados, persistirPosicoes, design.canvas.width, design.canvas.height],
   )
 
   const alignSelectedLeft = React.useCallback(() => alinharSelecao('x', 'start'), [alinharSelecao])
@@ -1217,6 +1508,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
   const alignSelectedBottom = React.useCallback(() => alinharSelecao('y', 'end'), [alinharSelecao])
 
   const distributeSelectedH = React.useCallback(() => {
+    if (bloqueadoPelaGrade()) return
     const stage = stageInstanceRef.current
     if (!stage || selectedLayerIds.length < 3) return
 
@@ -1242,9 +1534,10 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
         }))
       })
     })
-  }, [selectedLayerIds, design.layers, updateLayer])
+  }, [bloqueadoPelaGrade, selectedLayerIds, design.layers, updateLayer])
 
   const distributeSelectedV = React.useCallback(() => {
+    if (bloqueadoPelaGrade()) return
     const stage = stageInstanceRef.current
     if (!stage || selectedLayerIds.length < 3) return
 
@@ -1270,7 +1563,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
         }))
       })
     })
-  }, [selectedLayerIds, design.layers, updateLayer])
+  }, [bloqueadoPelaGrade, selectedLayerIds, design.layers, updateLayer])
 
   const bringSelectedToFront = React.useCallback(() => {
     const stage = stageInstanceRef.current
@@ -1383,9 +1676,18 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
       updateLayerStyle,
       moveLayer,
       addLayer,
+      inserirGrade,
+      planejarPreenchimento,
+      preencherGrade,
+      adicionarFotoAvulsa,
+      planejarAjusteDaGrade,
+      aplicarAjusteDaGrade,
+      moverSelecao,
+      desvincularGrade,
       applySoftTopGradient,
       duplicateLayer,
       removeLayer,
+      removeLayers,
       toggleLayerVisibility,
       toggleLayerLock,
       reorderLayers,
@@ -1400,6 +1702,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
         })
       },
       dirty,
+      geracaoDaCarga,
       markSaved,
       zoom,
       focusTextMode,
@@ -1462,9 +1765,18 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
       updateLayerStyle,
       moveLayer,
       addLayer,
+      inserirGrade,
+      planejarPreenchimento,
+      preencherGrade,
+      adicionarFotoAvulsa,
+      planejarAjusteDaGrade,
+      aplicarAjusteDaGrade,
+      moverSelecao,
+      desvincularGrade,
       applySoftTopGradient,
       duplicateLayer,
       removeLayer,
+      removeLayers,
       toggleLayerVisibility,
       toggleLayerLock,
       reorderLayers,
@@ -1472,6 +1784,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
       setPageAudio,
       dynamicFields,
       dirty,
+      geracaoDaCarga,
       markSaved,
       zoom,
       focusTextMode,

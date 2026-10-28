@@ -43,7 +43,6 @@ import { cenarioSintetico, fotoSintetica, logoSintetica, paginaSintetica, specSi
 
 const TOPO = 'minimal-fb-topo-esquerda'
 const CENTRO = 'minimal-fb-centro-optico'
-const BASE = 'minimal-fb-base-esquerda'
 const ASSINATURA = { mancha: VEU_ESCURO, gradiente: { cor: VEU_CLARO } }
 const CLARO = '#F5F5F5'
 
@@ -119,7 +118,7 @@ describe('T1a · minimal-fb-topo-esquerda no compositor real', () => {
     expect(camada(r, 'headline').style).toMatchObject({ fontFamily: 'Sintetica Display', color: CLARO })
     // A procedência fica no diagnóstico e a spec gravada traz a versão exata — nunca "a mais recente".
     const d = r.diagnostico.arquetipo!
-    expect(d).toMatchObject({ id: TOPO, versao: 1, impressao: impressaoDe(TOPO), codigoTaxonomico: 'MIN-01', formato: 'story', modo: 'busca-espacial-v1', elementosMaterializados: [] })
+    expect(d).toMatchObject({ id: TOPO, versao: 1, impressao: impressaoDe(TOPO), codigoTaxonomico: 'MIN-01', formato: 'story', modo: 'busca-espacial-v1', elementosMaterializados: ['fio'] })
     expect(d.elementosDeclarados).toEqual([{ id: 'fio', tipo: 'fio-fino', opcional: true }])
     expect(d.papeis.map((p) => [p.papel, p.posicao.x, p.posicao.y])).toEqual([
       ['headline', 92, 298],
@@ -131,8 +130,8 @@ describe('T1a · minimal-fb-topo-esquerda no compositor real', () => {
     expect(r.diagnostico.candidatos).toEqual([])
     expect(entrada!.fieldValues.spec.arquetipo).toEqual({ id: TOPO, versao: 1, impressao: impressaoDe(TOPO) })
     expect(entrada!.fieldValues.composicao.arquetipo.impressao).toBe(impressaoDe(TOPO))
-    // A Page é Layer[] normal: nenhum tipo novo de camada.
-    expect(new Set(entrada!.layers.map((l: Layer) => l.type))).toEqual(new Set(['image', 'text', 'logo', 'gradient']))
+    // A Page é Layer[] normal: nenhum tipo novo de camada (o fio do T1b é um `shape`, tipo que o editor e o render já têm).
+    expect(new Set(entrada!.layers.map((l: Layer) => l.type))).toEqual(new Set(['image', 'text', 'logo', 'gradient', 'shape']))
   }, 60_000)
 
   it('14. feed: a geometria própria do feed (não a do story escalada)', async () => {
@@ -214,14 +213,14 @@ describe('T1a · minimal-fb-centro-optico no compositor real', () => {
     expect(['inferior-esquerdo', 'inferior-direito', 'superior-esquerdo', 'superior-direito']).toContain(d.logo.canto)
     expect(camada(r, 'logo').metadata).toMatchObject({ compositor: { canto: d.logo.canto } })
     expect(d.elementosDeclarados).toEqual([{ id: 'spark', tipo: 'spark-4', opcional: true }])
-    expect(d.elementosMaterializados).toEqual([])
+    // T1b: o spark opcional é desenhado, preso à manchete (o detalhe está em t1b-acentos.test.ts).
+    expect(d.elementosMaterializados).toEqual(['spark'])
   }, 60_000)
 })
 
 describe('T1a · recusas estruturadas no compositor', () => {
-  it('12. o modelo 2 é recusado até o T1b (nunca sai sem o L); 8. quadrado; 9. CTA', async () => {
+  it('8. quadrado; 9. CTA (o 12 — o modelo 2 recusado até o T1b — compõe desde o T1b: t1b-acentos.test.ts)', async () => {
     await montar({ id: 't1a-rec', apoio: true })
-    expect((await recusa(spec('t1a-rec', [HEADLINE, APOIO, SERVICO], { arquetipo: { id: BASE } }))).code).toBe('ARQUETIPO_INDISPONIVEL')
     expect((await recusa(spec('t1a-rec', [HEADLINE, SERVICO], { formato: 'quadrado', arquetipo: { id: TOPO } }))).code).toBe('ARQUETIPO_FORMATO_NAO_SUPORTADO')
     const cta = await recusa(spec('t1a-rec', [HEADLINE, SERVICO, { papel: 'cta', linhas: ['Reserve'] }], { arquetipo: { id: TOPO } }))
     expect(cta.code).toBe('ARQUETIPO_PAPEIS_INCOMPATIVEIS')

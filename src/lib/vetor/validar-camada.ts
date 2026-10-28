@@ -9,7 +9,8 @@
  * - Ainda NÃO ligado em porta nenhuma (é o X2b/X2c).
  */
 import { lerCor } from './cor'
-import { validarPathData } from './validar'
+import { MAX_COMANDOS_DAS_PARTES, MAX_PARTES, MAX_SLOTS, SLOT_VALIDO } from './partes'
+import { PATH_DATA_MAX_BYTES, validarPathData } from './validar'
 
 export interface ProblemaDoVetor {
   codigo: string
@@ -22,8 +23,7 @@ export interface VetorComProblemas {
   motivos: ProblemaDoVetor[]
 }
 
-/** Máximo de partes de um vetor multicor (arquitetura §6.6). */
-export const MAX_PARTES = 8
+export { MAX_PARTES }
 
 type Objeto = Record<string, unknown>
 const ehObjeto = (v: unknown): v is Objeto => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -41,10 +41,18 @@ function problemaDaCor(valor: unknown, campo: string): ProblemaDoVetor[] {
     : []
 }
 
+/**
+ * Multicor (CP-V5): cada parte com `d` válido, `slot` curto e `alvo` fill/stroke; cada slot usado com cor em
+ * `vetor.cores` lida pelo `lerCor`; nenhuma cor sem parte; `cores` sem `partes` não desenha nada e é recusado. Tetos:
+ * 8 partes, 4 slots e, somando as partes, 16 KB de `d` e 400 comandos.
+ */
 function problemasDasPartes(vetor: unknown): ProblemaDoVetor[] {
-  if (!ehObjeto(vetor) || vetor.partes === undefined) return []
-  const partes = vetor.partes
+  if (!ehObjeto(vetor)) return []
   const campo = 'style.vetor.partes'
+  if (vetor.partes === undefined) {
+    return vetor.cores === undefined ? [] : [{ codigo: 'CORES_SEM_PARTES', campo: 'style.vetor.cores', mensagem: 'cores do multicor sem partes' }]
+  }
+  const partes = vetor.partes
   if (!Array.isArray(partes) || partes.length === 0) {
     return [{ codigo: 'PARTES_INVALIDAS', campo, mensagem: 'partes precisa ser uma lista com pelo menos uma parte' }]
   }
@@ -52,6 +60,9 @@ function problemasDasPartes(vetor: unknown): ProblemaDoVetor[] {
     return [{ codigo: 'PARTES_DEMAIS', campo, mensagem: `${partes.length} partes (máximo ${MAX_PARTES})` }]
   }
   const problemas: ProblemaDoVetor[] = []
+  const slots: string[] = []
+  let bytes = 0
+  let comandos = 0
   partes.forEach((parte, i) => {
     if (!ehObjeto(parte)) {
       problemas.push({ codigo: 'PARTES_INVALIDAS', campo: `${campo}[${i}]`, mensagem: 'parte não é um objeto' })
@@ -61,11 +72,46 @@ function problemasDasPartes(vetor: unknown): ProblemaDoVetor[] {
     if (r.ok === false) {
       const falha = r as Extract<typeof r, { ok: false }>
       problemas.push({ codigo: `PARTE_PATH_INVALIDO:${i}:${falha.codigo}`, campo: `${campo}[${i}].d`, mensagem: falha.mensagem })
+    } else {
+      bytes += new TextEncoder().encode(parte.d as string).length
+      comandos += r.comandos
     }
     if (parte.fillRule !== undefined && !FILL_RULES.includes(parte.fillRule as string)) {
       problemas.push({ codigo: 'PARTES_INVALIDAS', campo: `${campo}[${i}].fillRule`, mensagem: 'fillRule fora de nonzero/evenodd' })
     }
+    if (parte.alvo !== 'fill' && parte.alvo !== 'stroke') {
+      problemas.push({ codigo: 'PARTE_ALVO_INVALIDO', campo: `${campo}[${i}].alvo`, mensagem: 'alvo da parte precisa ser fill ou stroke' })
+    }
+    if (typeof parte.slot !== 'string' || !SLOT_VALIDO.test(parte.slot)) {
+      problemas.push({ codigo: 'PARTE_SLOT_INVALIDO', campo: `${campo}[${i}].slot`, mensagem: 'slot da parte precisa ser um id curto (letras, números e hífen)' })
+    } else if (!slots.includes(parte.slot)) {
+      slots.push(parte.slot)
+    }
   })
+  if (slots.length > MAX_SLOTS) {
+    problemas.push({ codigo: 'SLOTS_DEMAIS', campo, mensagem: `${slots.length} cores (máximo ${MAX_SLOTS})` })
+  }
+  if (bytes > PATH_DATA_MAX_BYTES) {
+    problemas.push({ codigo: 'PARTES_GRANDES_DEMAIS', campo, mensagem: `partes somam ${bytes} bytes (máximo ${PATH_DATA_MAX_BYTES})` })
+  }
+  if (comandos > MAX_COMANDOS_DAS_PARTES) {
+    problemas.push({ codigo: 'PARTES_COMPLEXAS_DEMAIS', campo, mensagem: `partes somam ${comandos} comandos (máximo ${MAX_COMANDOS_DAS_PARTES})` })
+  }
+  const cores = vetor.cores
+  if (!ehObjeto(cores)) {
+    problemas.push({ codigo: 'CORES_AUSENTES', campo: 'style.vetor.cores', mensagem: 'o multicor precisa de uma cor por slot' })
+    return problemas
+  }
+  for (const slot of slots) {
+    if (!Object.hasOwn(cores, slot)) {
+      problemas.push({ codigo: `COR_DO_SLOT_AUSENTE:${slot}`, campo: `style.vetor.cores.${slot}`, mensagem: `slot ${slot} sem cor` })
+    } else if (typeof cores[slot] !== 'string' || lerCor(cores[slot]) === null) {
+      problemas.push({ codigo: `COR_INVALIDA:vetor.cores.${slot}`, campo: `style.vetor.cores.${slot}`, mensagem: `cor ilegível no slot ${slot}` })
+    }
+  }
+  for (const chave of Object.keys(cores)) {
+    if (!slots.includes(chave)) problemas.push({ codigo: `COR_SEM_PARTE:${chave}`, campo: `style.vetor.cores.${chave}`, mensagem: `cor ${chave} sem parte` })
+  }
   return problemas
 }
 

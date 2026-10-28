@@ -678,3 +678,330 @@ mas nenhuma porta de escrita o chamava.
   `QueryClient` real da sonda) e os controles negativos do `bundle.ts`. Limites: o harness não prova o upload real ao
   Blob (corpo real, `sharp`), a exclusão real nem o efeito em arte existente; isso é smoke de produção (D-E6).
 
+
+## Cores da forma por canal: Marca, Nesta página, elo e Reaplicar (CP-V3, 23/10/2026)
+
+- **Dois canais físicos, sempre visíveis**: `preenchimento` → `style.fill` e `contorno` → `style.strokeColor`. O catálogo
+  só dá o RÓTULO do canal (item conhecido e mesma `versao`; a `line` diz "Cor da linha"). O papel vem só de
+  `style.vetor.papeis` da camada, lido com `Object.hasOwn` e contra `PAPEIS_DA_MARCA`. Papel fora da lista é
+  "Papel desconhecido" e não é reaplicado. Tudo em `src/lib/editor/cores-da-forma.ts` (puro).
+- **Ordem de cada canal: Marca → Nesta página → Personalizada** (o campo de texto e o seletor nativo ficam na
+  Personalizada, com o mesmo `CampoDeCorDigitada`).
+- **Fileira Marca da forma = paleta ESTRITA** (`useBrandColorsEstrita`). Carregando e erro (HTML 200, cor sem `hexCode`)
+  mostram a mensagem e nunca viram "sem cores". O item só é aplicável se o `hexValido` o lê (`#rgb`/`#rrggbb`, espaço
+  externo vale), e o clique grava o hex CANÔNICO com a transparência do canal; o resto sai da fileira e é contado.
+  Os outros usos do `BrandColorSwatches` seguem como antes (as props `cores`/`ativo` são opcionais).
+- **Swatch ativo** = os canais da cor SALVA, crua, pelo `lerCor` (o alfa é do slider). `transparent`, ilegível e
+  ausente não acendem nada: nunca passe o `corParaSeletor` (o fallback acendia o swatch azul).
+- **Nesta página**: cores lidas pelo `lerCor` nas formas, no texto (`style.color`), no ícone e no fundo, sem repetir, sem
+  a paleta aplicável, teto 8. Derivada, nunca armazenada. O clique é escolha explícita.
+- **Escolha explícita (swatch, Nesta página, seletor, campo confirmado) tira o papel daquele canal**, e ele volta SÓ
+  pelo desfazer (Q1 = A, decidida pelo Ciro). Não existe "religar". O campo de texto exige `lerCor` em toda camada com
+  `style.vetor`, não só no `svg-path` (`currentcolor` é recusado no fio, na moldura e na pílula).
+- **Reaplicar cores da marca** (na camada; aparece com `style.vetor`):
+  - relê a paleta estrita e o projeto ANTES de gravar (o cache tem `refetchOnWindowFocus: false`); releitura que falha
+    não grava nada, mesmo com o cache bom;
+  - só os canais AINDA vinculados mudam; grava `resolverCorDaMarca(papel)` com o alfa EXATO da cor salva e não toca
+    `opacity`/`fillOpacity`/`strokeOpacity`: a canonização aplica os multiplicadores uma vez (opacity 0,5 + rgba 0,5 →
+    0,25, nunca 0,125);
+  - **sem mudança, o atualizador devolve a PRÓPRIA camada antes de canonizar**: nada de `dirty`, desfazer ou PATCH, e a
+    camada não canônica não é normalizada. Nunca use o `updateLayerStyle` aqui (ele canoniza sempre);
+  - **guarda completa do alvo** no clique, na volta da releitura e DENTRO do atualizador (`atualizadorDoReaplicar`):
+    token da operação, montagem, projeto, template, página (nula fora do multipágina), geração da carga e a seleção
+    exatamente [camada]. Resultado tardio não grava nem mostra mensagem na origem nova;
+  - chave de desfazer própria (`reaplicar:<n>`): nunca se funde com a edição anterior nem com a seguinte;
+  - **o aviso, o "em voo" e o retry pertencem à OPERAÇÃO** (número + token), não à chave do alvo: trocar o alvo os
+    DESCARTA (A → B → A não ressuscita "em voo" nem erro velho), e a resposta de uma operação velha nunca apaga nem
+    sobrescreve o aviso da nova;
+  - **"Tentar de novo" relê só a consulta que falhou** e reusa a que voltou boa, sob o MESMO alvo e token; um clique novo
+    no Reaplicar relê as duas (R2).
+- **`geracaoDaCarga()` do contexto** sobe em toda `loadTemplate` e na troca de template/projeto do provider (que NÃO
+  remonta: `key={initialPageId}`); não sobe em edição nem com objeto novo do mesmo template. Só leitura.
+- **Limites que ficam** (aprovados): no seletor nativo, eventos com menos de 800 ms entre si viram uma entrada de desfazer;
+  uma pausa maior abre outra, e o papel só volta no desfazer do primeiro trecho. Duas ações discretas na mesma camada a
+  menos de 800 ms também se fundem.
+- **Prova:**
+  - unitário: `src/lib/editor/__tests__/cores-da-forma.test.ts`;
+  - harness principal `tests/harness/cp-v3` (`cp-v3.spec.ts`): `TemplateEditorProvider` e `ShapeControls` reais; os
+    hooks da marca (paleta estrita, projeto) e a página multipágina são SIMULADOS (`falsos.tsx`), sem autosave. Os
+    controles negativos M0–M13 rodam nele e são classificados por `classificar-controles.mjs`, que fecha em INVÁLIDO
+    diante de qualquer falha não semântica (infraestrutura, pré-condição não alcançada, troca que não aplicou); um
+    subconjunto só vale declarado (`--grep`), sem esconder a rodada integral;
+  - H11 separado (`autosave.spec.ts`, `playwright.autosave.config.ts`): `QueryProvider`, `MultiPageProvider`,
+    `TemplateEditorProvider`, `PageSyncWrapper` (fila e PATCH) e os hooks da marca REAIS; só a API é falsa (o
+    `ServidorFalso` do V2d, com a guarda de vetor e a canonização da rota real). Prova o PATCH 200 com a cor, o `vetor`
+    e o `metadata`, o no-op sem PATCH e o reload pelo GET;
+  - continuam fora: banco, Clerk, Blob, canvas Konva, ⌘Z de teclado e Vercel.
+
+## Aba Layouts: o arquétipo cria PÁGINA NOVA, a origem não muda (CP-T2, 24/10/2026 — local, sem release)
+
+- **Onde:** 3ª aba da `EditorSidebar` (desktop) e item "Layouts" do drawer do celular; painel
+  `sidebar/layouts-panel.tsx`, hooks `use-layouts.ts`, rota `POST/GET /api/templates/[id]/pages/from-layout`, módulo
+  puro `compositor/arquetipos/da-pagina.ts`.
+- **d07: layout só em página nova.** Nada de "aplicar na aberta" nem `loadTemplate` sobrescrevendo: a rota cria a
+  página `isTemplate: false`, tags `['layout', 'arquetipo:<id>']`, logo depois da origem (as de baixo descem uma
+  posição, outro template não se mexe), e a UI navega para ela depois de a lista recarregar.
+- **Entrada estrita:** `{ arquetipo: { id, versao?, params? }, aPartirDaPagina, fotoUrl? }`. Nenhum arquétipo tem
+  parâmetro: `params` com chave, chave a mais ou `fotoUrl` sem https são 400 — recusados, nunca ignorados.
+- **Foto:** `fotoUrl` > camada `bg-foto` > a maior imagem visível cobrindo ≥ 90% da página; sem nenhuma, **409
+  `LAYOUT_SEM_FOTO`** (o único 409 da rota: a UI abre o painel de imagens pelo status, o `ApiError` não carrega o
+  código).
+- **Origem COM contrato de copy (rodada 1):** a spec é o CONTRATO, nunca blocos lidos das camadas — sem ele, a
+  divisão legada da manchete voltaria (a última linha na voz 2) e a segunda voz declarada (`linhasNaVoz2`) e a autoria
+  se perderiam. O contrato é confrontado com as camadas de hoje (`revisaoDaPaginaComCamadas`, a diferença é
+  reconciliação do sistema) e recortado ao arquétipo por `contratoDoLayout`: UMA revisão do `sistema`, superfície
+  `layout` — o bloco sem lugar (`cta`, `livre`, papel fora do modelo) sai com o que dizia em `removidos`, a ordem dos que
+  ficam é compactada (o leitor exige ordem contígua) e o papel obrigatório sem texto ganha o placeholder escrito pelo
+  sistema, dito no motivo. Origem e histórico seguem; a página nova guarda a EFETIVA sobre esse contrato.
+  **Rodada 2:** contrato que não pode ser levado com fidelidade — ilegível, reconciliação, recorte ou efetiva recusados
+  pelo leitor (histórico cheio de 200 revisões, por exemplo) — é **422 `COPY_DA_ORIGEM_NAO_TRANSPORTAVEL`** antes de
+  compor e de gravar. Nunca cair nos blocos legados: comporiam com outra regra de voz (a classe do PR10-05). Não há,
+  nesta fase, política nova para histórico cheio.
+- **Origem SEM contrato (legado):** textos por papel (`papelDoTexto`: `metadata.compositor.papel`, depois o nome); a
+  segunda voz volta para a manchete; texto sem papel, `cta` ou papel que o arquétipo não posiciona NÃO entra e volta
+  DITO em `foraDoLayout` (e no toast). Papel obrigatório ausente vira placeholder e a página nasce
+  "Layout — <preset> (rascunho)" sem contrato; com texto real, a copy efetiva de autoria `desconhecido`
+  (`copyAutoralDaSpec` + `tentarCopyEfetivaDasCamadas`), como o compositor grava.
+- **Composição:** `comporPeca(spec, { somenteAvaliar: true })` com `spec.arquetipo` (impressão, zonas HARD e recusas
+  do contrato atual — as `ARQUETIPO_*` saem com o código e a mensagem do compositor) → `prepararCamadasParaGravar`. Sem
+  página de assinatura: **422 `ASSINATURA_INCOMPLETA`** antes de baixar a foto; o GET diz o mesmo e a aba mostra o
+  motivo uma vez, com os cards desabilitados.
+- **Escrita (rodada 1):** `comTravaPorChave('paginas-do-template:<id>')` (trava consultiva de transação, READ
+  COMMITTED) → `SELECT "order" … FOR UPDATE` da origem, RELIDA ali (a lida antes do compositor pode ter vencido; sumiu
+  → 404 sem escrita) → descer irmãos → criar → `invalidateScheduledRenders`; fora dela,
+  `pedirRecomposicaoDaArteCongelada` — as DUAS, mesmo a página sendo nova. A trava serializa as criações de layout
+  entre si; duplicar, reordenar e criar página pelas outras rotas NÃO a pegam (a linha da origem travada só segura quem
+  escreve nela). Antes do POST a aba chama `pageSync.descarregar()`: a rota lê a origem do banco.
+- **Abrir a página criada (rodada 1):** o POST e a abertura são separados. A aba só navega depois de
+  `useAbrirPaginaCriada` (o MESMO GET e a mesma chave de `usePages`, `fetchQuery`) trazer a página nova; se a recarga
+  falha, a página fica "criada sem abrir": aviso com **Abrir página criada** (só GET) e nenhum card cria outra até
+  abrir — repetir o POST duplicaria a página.
+- **Sem Generation:** a página é conteúdo editável, não arte persistida; a procedência fica nas tags e no `metadata`
+  das camadas (o acento leva a receita em `metadata.compositor.acento`). O diagnóstico (`composicao.arquetipo`) não é
+  gravado — não há coluna para ele sem migração.
+- **Só os presets `disponivel` da vitrine** aparecem (hoje os três MIN-01/MIN-02); família ainda não aprovada (d04)
+  não entra por inferência.
+- **Prova:** `da-pagina.test.ts` (puro), `from-layout/__tests__/route.test.ts` (handler, acesso e contrato de camadas
+  reais, banco em memória, compositor dublado; reabre pelo GET real de `pages/route.ts`; trava e releitura da ordem
+  com a trava EMULADA — não prova o isolamento do Postgres), `cadeia-copy.test.ts` (rota → `comporPeca` REAL com o
+  suporte das provas T1a/T1b: segunda voz, autoria e recorte pelo contrato) e o harness Playwright do
+  relatório `human-output/relatorios/editor-madrugada-2026-10-24/cp-t2/harness` (providers reais do editor, API falsa
+  no `fetch`, desktop e celular emulado). Fora: banco, Clerk, Blob, foto e fonte reais, canvas Konva.
+
+## Grades de fotos, G1: inserir pelo painel Elementos (27/10/2026 — local, sem release)
+
+Motor do G0 em `src/lib/grades/` (sem alteração); a inserção é `src/lib/grades/insercao.ts` (puro), o contexto ganhou
+`inserirGrade` e o painel a seção `panels/secao-grades.tsx`. **Grades ainda não servem a piloto nem à equipe: o G4 bloqueia.**
+
+- **Seção "Grades"** no `ElementosPanel`, irmã da Marca: os 14 layouts do catálogo em miniatura na proporção da página
+  (espaçamento padrão 10; contorno da cor do fundo separa as células na miniatura), `aria-label="Grade <nome>"`. Não espera
+  a paleta da marca (só as formas esperam). Busca sem acento, pelo nome (× lido como x) e por grade/grid/colagem/fotos;
+  "Nenhum elemento encontrado." só sem forma, grade e Marca casando. Página de vídeo: botões desabilitados com o motivo.
+- **Um `applyDesign` por inserção = um desfazer.** As N células (camadas `image` do `criarGrade`, ids novos de `createId`,
+  nunca `bg-foto`/`bg-img`, conferidos contra os ids, `groupId` e ids de grade da página) entram num bloco, a ordem é
+  normalizada uma vez e a seleção vira as células. Cmd+Z devolve o design normalizado anterior byte a byte.
+- **Nunca o desvio de clipe do `addLayer`**: não consome o "+" armado da linha do tempo e não cria clipe. **Página de
+  vídeo** (`paginaEVideo(layers, audio)`: vídeo visível, sequência de clipes ou música) recusa sem medir e sem tocar
+  design, histórico ou dirty.
+- **Pilha:** o bloco entra logo abaixo da primeira camada que não é fundo, visível ou oculta (a oculta reaparece por
+  cima); texto, logo, elementos e o resto ficam por cima, na mesma ordem. Fundo convertido sai antes dessa conta (nunca
+  deixa o bloco no índice antigo dele).
+- **Fundo → célula 1** só com UM fundo (imagem visível com id reservado ou caixa sem rotação cobrindo ≥ 90% da página, a
+  régua de `COBERTURA_MINIMA_DA_FOTO`) que seja imagem comum: raiz só com as chaves da célula (qualquer outra com valor —
+  `logoId`, `elementId`, `clipe`, `movimento`, `__quadroDoMovimento`… — é especial), sem metadata, sem `style.vetor`,
+  nome sem logo/elemento/sombra/ícone, sem máscara, reta, destravada, sem borda/cantos/sombra/efeito ligado, estilo só com
+  enquadramento e ajustes de imagem (que a célula leva), foto do Blob próprio e cobrindo a página. A dimensão natural é
+  conferida pela URL exata (`dimensoesDaFotoCarregada`). O enquadramento passa pelo G0 (grade de 1 célula na caixa do
+  fundo → `refazerGrade`): mesma escala e centro; foto já esticada é recusada, nunca normalizada. O fundo sai e as
+  células entram no MESMO `applyDesign`; a célula não herda id, `isDynamic`, metadata, máscara nem borda.
+- **Na dúvida o fundo fica intacto**: a grade entra vazia e o toast diz o motivo (`AMBIGUO`, `ESPECIAL`, `MASCARA`,
+  `GIRADO`, `TRAVADO`, `ESTILO`, `URL`, `NAO_COBRE`, `SEM_MEDIDA`, `RECORTE`). Nada é apagado.
+- **Medida assíncrona:** o alvo (página, template/projeto, `geracaoDaCarga` e a impressão do fundo + canvas, sem a
+  `order`) é capturado antes de medir e conferido DENTRO do updater do `applyDesign`, sobre o estado atual. Troca de
+  página (inclusive ida e volta à mesma), de documento, recorte/foto/geometria do fundo ou do canvas durante a medida ⇒
+  `ALVO_MUDOU`, nada aplicado e a edição concorrente fica. Edição de outra camada não impede.
+- **Prova:** `insercao.test.ts` (puro), `inserir-grade-no-editor.test.ts` (`QueryClientProvider`, `MultiPageProvider` e
+  `TemplateEditorProvider` REAIS num host sem DOM pelo `react-reconciler` instalado, `__tests__/suporte/host-sem-dom.ts`;
+  só `use-pages` é dublê) e `secao-grades.test.ts` (painel real em SSR). **Não provam** clique no navegador, canvas Konva,
+  toast, a imagem real do `new Image()` nem o desenho das classes `fill-muted-foreground/60`/`stroke-background` na tela.
+- **Fora do G1** (G2–G4): preencher células, toolbar/transformer/setas/alinhar da grade, copiar/colar/duplicar, reflow,
+  push do desktop, `finalize` do /gerar-criativo. Célula vazia no editor/servidor não foi conferida visualmente.
+
+## Grades de fotos, G2: preencher células (27/10/2026 — local, sem release)
+
+Motor do G0/G1 sem alteração. O preenchimento é `src/lib/grades/preenchimento.ts` (puro), o contexto ganhou
+`planejarPreenchimento` e `preencherGrade`, o hook `src/hooks/use-preencher-grade.ts` busca as fotos e o painel Imagens a
+barra `panels/lote-da-grade.tsx`. **Grades ainda não servem a piloto nem à equipe: o G4 bloqueia.**
+
+- **O alvo é decidido ANTES de qualquer API** (`planejarPreenchimento`, sobre a seleção e o design do instante), em todas
+  as entradas: upload, arrastar, Drive e acervo no painel Imagens; biblioteca e geração no painel IA (a geração captura o
+  alvo antes de enviar referências ou gastar crédito). Grade inteira selecionada ⇒ próxima célula VAZIA em ordem de
+  leitura (pela geometria, `ordemDeLeitura`); célula selecionada ⇒ substitui a dela; grade cheia ⇒ avulsa com aviso;
+  sem grade ⇒ a avulsa de sempre, intocada. Página de vídeo, célula girada ou grade quebrada (`conferirGrade`) ⇒ recusa
+  com o motivo e nada sobe. As cinco entradas passam pelo MESMO `useFotoNaGrade` (a entrada só monta a avulsa e a
+  entrega a `inserir`).
+- **Grade cheia ≠ sem grade.** A avulsa da grade CHEIA entra por `adicionarFotoAvulsa` (imagem comum, sem metadado, grupo
+  ou clipe; o "+" armado da linha do tempo continua armado). Sem grade é o `addLayer` de sempre, inclusive consumindo o
+  "+". O `addLayer` não foi interceptado.
+- **Foto em célula só por `preencherCelula`** (cover escrito, recorte limpo, URL só do Blob próprio). Nunca `addLayer`:
+  a foto não vira clipe e o "+" armado da linha do tempo continua armado. A avulsa não herda metadado, grupo nem clipe.
+- **Lote** ("Preencher com várias fotos", só com a grade inteira selecionada): toques em fotos do Drive, do acervo e do
+  computador entram numa fila ordenada (selo 1, 2, 3…), até `min(6, células vazias)`; nada sobe nem baixa antes de
+  "Preencher". As fotos vão para as células VAZIAS em ordem de leitura; foto existente nunca é trocada pelo lote.
+- **Drive** por `useMutation` + `api` central num único `POST /api/google-drive-download` (limite da rota intocado). A
+  resposta 200 pode ser parcial: mapeada por `file.id`, nunca pela posição; id repetido ou `url` que não é texto vira
+  falha da célula. Toda URL (Drive, Blob, IA) passa por `motivoDaUrl` (https do Blob próprio; nunca `data:`, `blob:`,
+  lh3) e pela medida da dimensão natural na URL EXATA (`dimensoesDaFotoCarregada`) antes de qualquer escrita. O medidor
+  (`src/lib/grades/medir-foto.ts`, também usado pela inserção do G1) tem prazo de 20 s e cancelamento.
+- **Uma operação, um desfazer.** `preencherGrade` aplica num `applyDesign` só; dentro do updater confere cancelamento,
+  página, documento, geração da carga e a ASSINATURA da grade (todos os membros inteiros, menos a `order`). Recorte,
+  foto, geometria ou metadado de QUALQUER membro, grade removida ou trocada, navegação (inclusive ida e volta) ⇒ nada
+  aplicado e a edição concorrente fica. Sucesso parcial aplica as válidas nas células previstas e lista as falhas pelo
+  nome; a célula que falhou fica como estava. Zero sucesso ou cancelamento ⇒ sem histórico nem dirty.
+- **Cancelar vale até a decisão do updater**: o hook mantém o controlador até `preencherGrade` decidir (só limpa o
+  próprio), o sinal é lido dentro do updater e um segundo pedido com o primeiro em voo é recusado (`EM_ANDAMENTO`). Cada
+  entrada mostra o controle da SUA instância: a barra do lote no painel Imagens e `AplicandoNaGrade` na biblioteca e na
+  geração de IA (com o botão de gerar bloqueado enquanto a imagem gerada é aplicada).
+- **Aprendizado do acervo** (`docs/regras/aprendizado.md`, uma escolha por busca): na grade, o sinal só sai com a foto
+  APLICADA, para a busca de onde ela foi escolhida (`ContextoDaBusca`, preso no toque); tocar, retirar, lote cheio,
+  cancelar ou falha não emitem nada; no sucesso parcial, só as aplicadas. A avulsa sem grade segue registrando no
+  clique, como sempre.
+- **Prova:** `preenchimento.test.ts` (puro), `preencher-grade-no-editor.test.ts` (providers e hooks REAIS no host sem DOM;
+  só rede, envio e medidor dublados), `painel-imagens-grade.test.ts` e `painel-ia-grade.test.ts` (painéis reais; props
+  chamadas direto na árvore do host, não clique; o de IA dubla créditos, prompts, Radix e `window.location`),
+  `lote-da-grade.test.ts` (barra em SSR) e `medir-foto.test.ts`. **Não provam** clique no navegador, toast, canvas Konva,
+  a célula vazia desenhada, o upload real do Blob, a rota real do Drive, a IA real nem o desenho das classes novas
+  (`bg-primary/5`, `border-primary/30`, o selo e o `AplicandoNaGrade`). Fora do G2 (G3/G4):
+  barra de ajustes, transformer/setas/alinhar, copiar/colar, reflow, push do desktop, `finalize`.
+
+## Grades de fotos, G3: ajustar a grade (27/10/2026 — local, sem release)
+
+Motor do G0 sem alteração. Os ajustes são `src/lib/grades/ajustes.ts` (puro: `refazerGrade` do G0 para espaçamento,
+cantos, caixa e layout; translação pura para mover; desvincular), o contexto ganhou `planejarAjusteDaGrade`,
+`aplicarAjusteDaGrade`, `moverSelecao` e `desvincularGrade`, o hook `src/hooks/use-ajustar-grade.ts` mede e aplica
+(`useAjustarGrade`) e cola o arraste do stage (`useArrasteDaGrade`), e a barra é `grade-toolbar.tsx`. **Grades ainda não
+servem a piloto nem à equipe: o G4 bloqueia.**
+
+- **Barra da grade inteira** (no lugar da barra de alinhamento, que não vale para grade): espaçamento 0–100 px, cantos,
+  trocar layout (14), largura/altura da caixa e "Desvincular". Slider grava UMA vez ao soltar (arrastando, só o número
+  da barra muda): um gesto = um desfazer, dois gestos = dois desfazer — nada de `coalesceKey` + `gesto` que valeria para
+  sempre. Campos confirmam ao sair ou com Enter.
+- **Toda mudança geométrica passa pelo `refazerGrade`** com o espaçamento fixo em px e a dimensão natural de CADA foto
+  medida pela URL EXATA (`dimensoesDaFotoCarregada`; medida de outra URL não vale). Foto sem medida, recorte que não
+  cabe sem deformar, caixa pequena demais (célula < 8 px), célula girada ou grade quebrada ⇒ nada muda e o motivo
+  aparece. O enquadramento segue o `cropForResizedBox` (mesma escala, mesmo centro). Layout menor: as fotos que sobram
+  ficam AVULSAS no mesmo lugar (sem `grade` nem `groupId`), selecionadas e com aviso; células vazias que sobram saem;
+  layout maior cria células vazias logo depois da grade na pilha. Nenhuma foto é apagada.
+- **Espera da medida:** o alvo (grade, assinatura de TODOS os membros, página, documento, geração) é preso antes de
+  medir e conferido de novo DENTRO do updater. Recortou, moveu, removeu, navegou (inclusive ida e volta) ⇒ nada aplicado
+  e a edição concorrente fica; editar OUTRA camada não impede. Um pedido por vez por instância (`EM_ANDAMENTO`).
+- **Mover:** arraste, setas e X/Y do painel movem a grade INTEIRA (caixa + células) num `applyDesign`, sem medir e sem
+  arredondar a geometria fracionária; célula ou subconjunto arrastado leva as irmãs. No stage, a posição que cada nó
+  gravaria sozinho é consumida e o soltar faz UMA operação (os proxies do Transformer não movem de novo); recusa (ex.:
+  célula travada) devolve os nós do Konva ao lugar. Setas usam a janela de 800 ms de sempre (`setas:<ids>`).
+- **Transformer:** grade inteira tem alças e redimensiona como UMA caixa (sem girar); célula, subconjunto ou seleção
+  mista com grade: sem alças e sem girar. No fim do gesto os nós voltam NA HORA (escala 1, lugar do estado) e a grade é
+  refeita uma vez pela caixa nova. O nó da célula não grava transform nem recorta sozinho, e desenha até o piso de 8 px
+  do G0 (foto avulsa segue nos 20 px).
+- **Alinhar e distribuir** com célula de grade na seleção: bloqueados com motivo (MVP).
+- **Célula vinculada:** a toolbar não tem Quadrado 1:1, Ajustar à página nem Máscara (o motivo fica escrito) e ganha
+  "Desvincular da grade"; recortar, restaurar recorte e flips ficam. No painel Propriedades, posição e tamanho são os da
+  grade inteira, rotação bloqueada, e URL, "Object Fit" e "Editar" ficam desabilitados com motivo. Foto avulsa: toolbar
+  e painel como antes.
+- **Desvincular:** `grade` sai de todos os membros e o `groupId` igual ao id da grade sai de todas as camadas (grupo
+  alheio fica); foto, recorte, cantos e cover intactos; vale para grade girada ou quebrada; um desfazer.
+- **Prova:** `ajustes.test.ts` (puro, Story e Feed), `ajustar-grade-no-editor.test.ts` (providers e hooks REAIS no host
+  sem DOM; medidor dublado; nós/stage do arraste são objetos simples), `barra-da-grade.test.ts` (barra, toolbar e
+  Transformer reais; Slider/Popover e o `Transformer` do react-konva dublados) e `propriedades-da-grade.test.ts` (painel
+  real; Radix e modais dublados). **Não provam** clique, arraste ou alça no navegador, o Konva real (escala, proxies,
+  ordem dos eventos), toast, o desenho da barra nem paridade editor × PNG. Fora do G3 (G4): copiar/colar/duplicar,
+  excluir, agrupar/desagrupar (o "Desagrupar" ainda quebra a grade: use "Desvincular"), reflow, push do desktop,
+  `finalize`, persistência.
+
+## Grades de fotos, G4: as proteções (27/10/2026 — local, sem release)
+
+Plano: `docs/research/canva-grades-de-fotos-2026-10/PLANO-GRADES-PRIORITARIO.md` §4 e §7 G4 (fora do git). As sete
+proteções que bloqueiam piloto e uso da equipe. Todas valem para qualquer cliente, sem lista de ids.
+
+- **Push do desktop** (`guarda-do-push-do-desktop.ts`): dentro do compare-and-set, sobre a base RELIDA, o resultado
+  MESCLADO de cada membro de grade tem de sair igual à base — a camada INTEIRA (raiz, `style`, `metadata`, `effects`,
+  `movimento`…), menos a lista explícita do que o normalizador do desktop renormaliza sem mudar o desenho (nome,
+  `order`, o `fit` de topo; `visible`/`locked`/`rotation`/URL/`crop` de topo pelo valor efetivo). Membro apagado, camada
+  entrando na grade, página NOVA do push com metadata de grade ou `conferirGrade` pior ⇒ 409 `PUSH_ALTERA_GRADE` e o
+  `$transaction` desfaz tudo (template e páginas já gravadas; miniatura e invalidação não rodam). Push sem mexer na
+  grade passa; mudança fora dela também.
+- **`/gerar-criativo` → `finalize`**: sobre as camadas EFETIVAS (`processedLayers`, depois das fotos trocadas) e antes
+  do Blob: grade incoerente (foto de host alheio, célula oculta, geometria) ⇒ 422 `GRADE_INCOERENTE` mesmo com a
+  marca; célula de grade ou foto com recorte manual vinda de cliente sem `previaDeImagem: 'imagem-v1'` ⇒ 409
+  `PREVIA_DESATUALIZADA`. A marca vai do `useGerarCriativoFinalize` (compatibilidade, NÃO prova de pixel). A prévia
+  desenha pelo `desenhoDaImagemNaPrevia` (recorte do `resolveImageSourceRect`, raio, espelho num grupo, piso do editor:
+  8 px na célula) com a foto conferida pela URL (`dimensoesDaFotoCarregada`); célula não arrasta nem tem alças lá. O
+  export da prévia espera (com teto) a foto da URL ATUAL de toda imagem desenhada e, depois de todas as esperas,
+  confere de novo a arte (camadas, fotos, textos, ocultas, tamanho) e a prontidão imediatamente antes do `toDataURL`:
+  foto pendente, com erro, da URL anterior, ou arte trocada/ocultada na janela ⇒ nada de PNG nem finalize. A guarda do
+  vetor é a de antes.
+- **Operações genéricas do editor** (`src/lib/grades/no-editor.ts`, ligadas no contexto): a exclusão em lote (Delete,
+  botão de excluir do shell, Delete do painel de camadas) é UMA operação (`removeLayers`, um desfazer): grade INTEIRA
+  selecionada sai inteira; célula sem as irmãs é ESVAZIADA (sem recorte) e não fura a geometria; o resto sai como
+  sempre. A lixeira de UMA linha (`removeLayer`) vale só para ela e, numa célula, só ESVAZIA (vazia: nada muda) —
+  nem a única célula de uma grade `1-celula` é apagada por ela. Copiar/colar
+  e duplicar a grade inteira criam grade NOVA (ids, `grade.id`/`groupId` novos, UM deslocamento, caixa junto, sem
+  arredondar); célula solta copiada vira foto avulsa. "Duplicar seleção" (uma chamada por membro) gera uma grade só.
+  Cmd+G com célula: recusado com motivo. Cmd+Shift+G numa grade: desvincula todos os membros num desfazer. Toda edição
+  genérica de UMA camada (`updateLayer` e o que passa por ele: painéis, propriedades, gerador de criativo) não muda
+  posição, tamanho, rotação, cantos, ajuste, máscara nem o vínculo da célula; foto nova entra por `preencherCelula`.
+  O `CreativeGeneratorPanel` não faz mais o PATCH direto da camada numa célula (o autosave da página grava).
+- **Reflow:** célula de grade nunca é empurrada — `reflowComboStack`/`reflowLayersAfterFill` e o laço do texto
+  auto-expandido (`irmaosQueAcompanham`, provado com o `KonvaEditableText` real montado); os outros membros do grupo
+  seguem fluindo.
+- **Revisor, halo, bake, defasagem:** página com várias fotos cai no fallback que o gate já tinha (`texto-sobre-assunto`
+  não comprovada ⇒ revisão humana), sem esconder colisão, fonte, copy nem identidade. Halo com grade: fica o véu, com
+  aviso, sem ler a foto. Bake: `fileUrl` explícito para célula só por `preencherCelula` (host alheio ⇒ 422
+  `FOTO_DA_GRADE_RECUSADA`); a foto genérica nunca entra numa célula nem troca a foto dela (sem outra vaga,
+  `imageApplied: false` e aviso) — nem pelo atalho da "primeira imagem" do `ajustarArte`. Defasagem: foto trocada em
+  QUALQUER célula conta; página com grade nunca é recomposta pela spec (só re-render como está).
+- **Agendar:** "A grade tem N células vazias" (`''` ou ausente, visível) no `resolverAgendamento`, no POST de posts
+  (`warnings`) e no modal "Agendar Story" ANTES de confirmar (o botão segue habilitado) e no toast depois. Avisa, não
+  bloqueia.
+- **Persistência e paridade:** o PageSync real → PATCH real (`JSON.stringify` gravado) → GET real → provider novo
+  reidratam Story 2/1/2 e Feed 2×3 com `conferirGrade` limpo e ids, ordem, caixa, recorte, raio, espelhos, fotos e
+  vazias intactos; Konva real no Node × `CanvasRenderer` com diferença 0 por canal (tolerância declarada 8) inclusive a
+  célula de 8 px. Na célula vazia o editor mostra o marcador e a arte publicada deixa o fundo.
+- **Não provam:** navegador, clique em Salvar, reload, o banco real, o componente Konva montado, o desktop real nem o
+  gerador de criativo na tela. Prova: `guarda-do-push-do-desktop.test.ts` e `put-guarda-do-desktop.test.ts` (normalizador
+  real do desktop, diário de rollback), `contrato-do-vetor.test.ts` + `previa-da-imagem.test.ts` +
+  `emissor-da-previa.test.ts`, `no-editor.test.ts` + `operacoes-genericas-no-editor.test.ts`, `reflow-sem-grade.test.ts` +
+  `reflow-sem-grade-no-editor.test.ts`, `export-espera-a-foto.test.ts`, `pagina-e-video.test.ts` (inventário),
+  `grade-no-bake-halo-defasagem.test.ts` + `gate-grade-de-fotos.test.ts` + `ajustar-arte-concorrencia.test.ts`,
+  `aviso-ao-agendar.test.ts` + `agendar-pagina-com-video.test.ts` + `avisos-da-grade.test.ts`,
+  `persistencia-da-grade.test.ts` + `paridade-da-grade.test.ts`.
+
+## Grades de fotos, quadradas de 4 colunas: Story 4×7 e Feed 4×5 (Q1/Q2, 27/10/2026 — local, sem release)
+
+Plano: `docs/research/canva-grades-de-fotos-2026-10/PLANO-GRADES-QUADRADAS-4-COLUNAS.md` (fora do git). Dois ids novos
+no FIM do catálogo: `4x7-quadrada` ("Story · 28 fotos quadradas (4×7)") e `4x5-quadrada` ("Feed retrato · 20 fotos
+quadradas (4×5)"), versão 1. Os 14 anteriores não mudam (ids, versões, objetos e geometria; o teste
+`grades-quadradas.test.ts` trava a geometria deles por impressão digital tirada antes do Q1).
+
+- **Política `quadradas`** (`LayoutDeGrade.politica`): células iguais 1:1 CONTIDAS e centralizadas na caixa —
+  `s = min((W − (C−1)g)/C, (H − (R−1)g)/R)`, calha CHEIA entre células, sobra de um eixo vira margem igual dos dois
+  lados (mostra o fundo). O quadrado nunca estica. Piso de 8 px e calha inteira em [0, 100]; caixa que não comporta nem
+  com calha 0 ⇒ `GRADE_PEQUENA_DEMAIS`. Story 1080×1920: 270 px com margem de 15 em cima e embaixo (calha 0), encaixe
+  exato com calha 40. Feed 1080×1350: 270 px exato (calha 0), margem lateral 1 (calha 10).
+- **Espaçamento inicial** por layout só pelo `espacamentoInicial(layout)` (geometria): 0 nas quadradas, 10 nos outros.
+  Inserção (inclusive fundo → célula 1), `criarGrade` sem espaçamento e miniaturas leem dele; trocar de layout mantém o
+  espaçamento ATUAL da grade.
+- 🔴 **Nas quadradas a caixa NÃO é o menor x/y das células.** Quem deduz a caixa pelos nós (Transformer) aplica a mesma
+  afim dos nós à caixa inteira: `origem = nó − escala × (posição anterior do nó − origem da caixa)`
+  (`caixaPeloTransformer` com `antes`). Tomar o mínimo dos nós fazia a grade andar a margem (15 px no Story, 1 px no
+  Feed) a cada gesto, até no gesto sem mudança.
+- **Ajustes medem em fila de 2** (`medirEmFila`, `src/lib/grades/fila-de-medidas.ts`): 28 fotos nunca decodificam
+  juntas; cancelado, nenhuma medida nova começa; falha não trava a fila; a URL exata continua conferida por quem chama.
+- **Lote continua de até 6** (`LIMITE_DO_LOTE`): as quadradas se preenchem em vários lotes, na próxima vazia em ordem de
+  leitura.
+- **Seleção depois do desfazer** segue o contrato do editor: filtra ids que existem; não restaura a seleção exata (após
+  desfazer 28→20 as oito células antes avulsas podem seguir selecionadas).
+- **Não provam:** navegador, Konva montado, clique na seção, Salvar/recarregar real. Prova: `grades-quadradas.test.ts`,
+  `fila-de-medidas.test.ts`, os casos Q2 de `secao-grades`, `barra-da-grade` (handler real do Transformer, nós
+  dublados), `ajustes`, `ajustar-grade-no-editor`, `inserir-grade-no-editor`, `persistencia-da-grade` e
+  `paridade-da-grade` (Story 28 e Feed 20 com diferença 0 por canal no Node).

@@ -1,6 +1,11 @@
 {
   "installCommand": "npm install --include=optional",
   "buildCommand": "npm run build",
+  "git": {
+    "deploymentEnabled": {
+      "codex/pacote-integral-editor-grades-2026-10-27": false
+    }
+  },
   "functions": {
     "app/api/**/*.ts": {
       "maxDuration": 60

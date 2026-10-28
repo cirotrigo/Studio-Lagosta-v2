@@ -115,6 +115,9 @@ export function tracarSegmentos(ctx: CtxDeTraco, segmentos: Segmento[]): void {
  * O espelho (CP-V1) também entra no transform restaurado: reflete o path em torno do
  * centro da caixa, então a caixa, a rotação da camada e o contorno ficam como estão.
  * Sem espelho, a sequência de chamadas é exatamente a de antes.
+ *
+ * `ajuste: 'meet'` (multicor, CP-V5): escala UNIFORME, a menor das duas, com o viewBox centrado na caixa — o desenho
+ * não deforma quando a caixa estica. O padrão (`esticar`) é o monocolor de sempre, com a mesma sequência de chamadas.
  */
 export function tracarSvgPathNaCaixa(
   ctx: CtxDeTraco,
@@ -123,6 +126,7 @@ export function tracarSvgPathNaCaixa(
   largura: number,
   altura: number,
   espelho?: Espelho,
+  ajuste: 'esticar' | 'meet' = 'esticar',
 ): void {
   const [vx, vy, vw, vh] = viewBox ?? [0, 0, 100, 100]
   ctx.save()
@@ -131,7 +135,13 @@ export function tracarSvgPathNaCaixa(
       ctx.translate(espelho.h ? largura : 0, espelho.v ? altura : 0)
       ctx.scale(espelho.h ? -1 : 1, espelho.v ? -1 : 1)
     }
-    ctx.scale(largura / (vw || 1), altura / (vh || 1))
+    if (ajuste === 'meet') {
+      const s = Math.min(largura / (vw || 1), altura / (vh || 1))
+      ctx.translate((largura - (vw || 1) * s) / 2, (altura - (vh || 1) * s) / 2)
+      ctx.scale(s, s)
+    } else {
+      ctx.scale(largura / (vw || 1), altura / (vh || 1))
+    }
     ctx.translate(-vx, -vy)
     ctx.beginPath()
     tracarSegmentos(ctx, segmentosDoPath(d))

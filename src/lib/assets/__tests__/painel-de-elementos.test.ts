@@ -22,14 +22,14 @@ const ESPERADO: Record<string, string> = {
   line: 'linhas', 'line-dashed': 'linhas', 'line-dotted': 'linhas', 'line-arrow': 'linhas', 'line-arrow-both': 'linhas',
   heart: 'ornamentos', sparkle: 'ornamentos', burst: 'destaques', bolt: 'ornamentos', drop: 'organicos', pin: 'ornamentos',
   speech: 'destaques', cloud: 'organicos', blob: 'organicos', shield: 'ornamentos', tag: 'destaques', banner: 'destaques',
-  'fio-fino': 'linhas', 'moldura-fina': 'formas', 'pilula-contorno': 'formas', 'spark-4': 'ornamentos', 'onda-suave': 'organicos',
+  'fio-fino': 'linhas', 'moldura-fina': 'formas', 'pilula-contorno': 'formas', 'spark-4': 'ornamentos', 'onda-suave': 'organicos', 'onda-base': 'organicos',
   'sublinhado-suave': 'destaques', pontos: 'ornamentos', 'moldura-aberta': 'editorial', cantoneiras: 'editorial', colchete: 'editorial',
 }
 const ids = (termo: string) => gruposDoPainel(termo).flatMap((g) => g.itens.map((s) => s.id))
 
 describe('categorias do painel (D3)', () => {
-  it('os 47 itens caem na categoria da tabela', () => {
-    expect(SHAPES_LIBRARY).toHaveLength(47)
+  it('os 48 itens caem na categoria da tabela', () => {
+    expect(SHAPES_LIBRARY).toHaveLength(48)
     expect(Object.fromEntries(SHAPES_LIBRARY.map((s) => [s.id, categoriaNoPainel(s)]))).toEqual(ESPERADO)
   })
 
@@ -56,18 +56,18 @@ describe('categorias do painel (D3)', () => {
     const grupos = gruposDoPainel('', [...SHAPES_LIBRARY, ...sinteticos])
     expect(grupos.at(-1)).toEqual({ id: 'outros', label: 'Outros', itens: sinteticos })
     expect(gruposDoPainel('deco', [...SHAPES_LIBRARY, ...porId]).flatMap((g) => g.itens.map((i) => i.id))).toEqual(herdados)
-    // o catálogo real segue igual: 47 no catálogo, 46 exibidos, 26 máscaras
-    expect([SHAPES_LIBRARY.length, gruposDoPainel().flatMap((g) => g.itens).length, MASCARAS_DE_IMAGEM.length]).toEqual([47, 46, 26])
+    // o catálogo real segue igual: 48 no catálogo (CP-V5: + onda-base), 47 exibidos, 26 máscaras
+    expect([SHAPES_LIBRARY.length, gruposDoPainel().flatMap((g) => g.itens).length, MASCARAS_DE_IMAGEM.length]).toEqual([48, 47, 26])
   })
 
   it('nenhum item some: exibidos + ocultos = o catálogo inteiro; o sparkle é o único oculto; Outros vazio hoje', () => {
     const grupos = gruposDoPainel()
     const exibidos = grupos.flatMap((g) => g.itens.map((s) => s.id))
-    expect(exibidos).toHaveLength(46)
+    expect(exibidos).toHaveLength(47)
     expect([...exibidos, ...OCULTOS_NO_PAINEL].sort()).toEqual(SHAPES_LIBRARY.map((s) => s.id).sort())
     expect(OCULTOS_NO_PAINEL).toEqual(['sparkle'])
     expect(grupos.map((g) => [g.id, g.itens.length])).toEqual([
-      ['linhas', 6], ['formas', 16], ['organicos', 4], ['setas', 6], ['destaques', 5], ['editorial', 3], ['ornamentos', 6],
+      ['linhas', 6], ['formas', 16], ['organicos', 5], ['setas', 6], ['destaques', 5], ['editorial', 3], ['ornamentos', 6],
     ])
   })
 
@@ -93,8 +93,8 @@ describe('busca PT/EN sem acento', () => {
     expect(ids('  CÍRCULO ')).toEqual(ids('circulo'))
     expect(ids('circle')).toEqual(['circle', 'semicircle'])
     // substring: "arredONDAdo" também casa (Retângulo Arredondado); a busca não ranqueia
-    expect(ids('onda')).toEqual(['rounded', 'onda-suave'])
-    expect(ids('wave')).toEqual(['onda-suave'])
+    expect(ids('onda')).toEqual(['rounded', 'onda-suave', 'onda-base'])
+    expect(ids('wave')).toEqual(['onda-suave', 'onda-base'])
     expect(ids('sparkle')).toEqual(['spark-4'])
     expect(ids('brilho')).toEqual(['spark-4'])
     expect(ids('xyz')).toEqual([])

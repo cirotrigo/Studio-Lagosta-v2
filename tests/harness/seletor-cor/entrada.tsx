@@ -31,7 +31,8 @@ function Teste({ inicial }: { inicial: Layer }) {
   const [, setTique] = React.useState(0)
   controle = { trocar: setLayer, tique: () => setTique((n) => n + 1) }
   return (
-    <TemplateEditorContext.Provider value={{ projectId: 8 }}>
+    // CP-V3: o `ShapeControls` lê o editor (página, seleção, geração da carga); só a camada montada, sem escrita aqui
+    <TemplateEditorContext.Provider value={{ projectId: 8, templateId: 538, design: { canvas: { width: 1080, height: 1920 }, layers: [] }, selectedLayerIds: [layer.id], geracaoDaCarga: () => 0, updateLayer: () => {} } as never}>
       <ShapeControls
         layer={layer}
         setStyleValue={(_l: Layer, style: Partial<LayerStyle>) => {

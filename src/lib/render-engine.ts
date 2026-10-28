@@ -15,6 +15,8 @@ import {
   hasImageFilters,
 } from './konva/filters/apply'
 import { desenharSvgPath, pinturaDoSvgPath, type CtxDePintura } from './vetor/desenhar'
+import { partesParaPintar } from './vetor/partes'
+import { borrarPreMultiplicado } from './vetor/blur-do-multicor'
 import { flattenRichTextStyles } from './rich-text-styles'
 import type { Rect } from './creatives/halo/halo'
 import {
@@ -854,6 +856,8 @@ export class RenderEngine {
     layer: Layer,
   ): {
     height: number
+    /** A altura antes de arredondar: quem decide escala usa `round` dela; a caixa gravada é `height` (ceil). */
+    naturalHeight: number
     maxLineWidth: number
     lineCount: number
     inkTopSlack: number
@@ -933,8 +937,10 @@ export class RenderEngine {
     ctx.restore()
     spacingCtx.letterSpacing = '0px'
 
+    const naturalHeight = Math.max(1, lines.length) * lineBox + pad * 2
     return {
-      height: Math.round(Math.max(1, lines.length) * lineBox + pad * 2),
+      height: Math.ceil(naturalHeight),
+      naturalHeight,
       maxLineWidth: Math.ceil(maxLineWidth),
       lineCount: Math.max(1, lines.length),
       inkTopSlack: Math.round(inkTopSlack * 10) / 10,
@@ -1842,6 +1848,8 @@ export class RenderEngine {
           width,
           height,
           pinturaDoSvgPath(style, { fill, stroke, strokeWidth }),
+          // multicor: o canvas auxiliar da opacidade de GRUPO (desenhar.ts), o mesmo offscreen dos filtros
+          (w, h) => this.getOffscreen(w, h, options)?.canvas,
         )
       } catch (error) {
         // path ruim não derruba a arte inteira (era o papel do try do getPath2D)
@@ -2019,7 +2027,9 @@ export class RenderEngine {
 
     try {
       const imageData = octx.getImageData(0, 0, off.width, off.height)
-      applyStackBlur(imageData.data, off.width, off.height, raioNoBuffer)
+      // multicor: blur sobre cor pré-multiplicada (a cor semitransparente das partes não satura); o resto, como sempre
+      if (partesParaPintar(layer.style?.vetor)) borrarPreMultiplicado(imageData.data, off.width, off.height, raioNoBuffer)
+      else applyStackBlur(imageData.data, off.width, off.height, raioNoBuffer)
       octx.putImageData(imageData, 0, 0)
     } catch (error) {
       console.warn('[RenderEngine] Falha ao borrar shape:', error)

@@ -5,12 +5,14 @@
  *   delas recortam a janela, não esticam (`cropForResizedBox`);
  * - forma com `style.manterProporcao === true`: `keepRatio` e SÓ as alças dos cantos. O
  *   `keepRatio` do Konva não vale nas alças do meio, que mudariam um eixo só;
+ * - foto com a máscara Quadrado 1:1: idem, só os cantos, para a caixa (e o quadrado) seguir 1:1;
  * - o resto (texto, forma sem a trava): livre, com `keepRatio` só com Shift.
  *
  * O Transformer é um só para a seleção inteira: basta uma forma travada na seleção para
  * o grupo todo redimensionar pelos cantos com a proporção mantida.
  */
 import type { Layer } from '@/types/template'
+import { MASCARA_QUADRADA } from '@/lib/image-fit'
 
 export type Ancora =
   | 'top-left' | 'top-center' | 'top-right'
@@ -35,7 +37,11 @@ export function controlesDaForma(layer: Pick<Layer, 'type' | 'style'>): { trava:
 export function travaDeProporcao(layers: Layer[], selecionadas: string[], shift: boolean): { keepRatio: boolean; ancoras: Ancora[] } {
   const ids = new Set(selecionadas)
   const sel = layers.filter((l) => ids.has(l.id))
-  const formaTravada = sel.some((l) => l.type === 'shape' && l.style?.manterProporcao === true)
+  const formaTravada = sel.some(
+    (l) =>
+      (l.type === 'shape' && l.style?.manterProporcao === true) ||
+      (l.type === 'image' && l.style?.mask?.shapeId === MASCARA_QUADRADA.shapeId),
+  )
   return {
     keepRatio: formaTravada || shift || sel.some((l) => SEMPRE_PROPORCIONAL.has(l.type)),
     ancoras: formaTravada ? ANCORAS_DOS_CANTOS : TODAS_AS_ANCORAS,

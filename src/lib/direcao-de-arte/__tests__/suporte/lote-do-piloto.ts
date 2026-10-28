@@ -7,7 +7,6 @@
  */
 import { createHash } from 'node:crypto'
 import { listarArquetipos } from '@/lib/compositor/arquetipos/catalogo'
-import { disponibilidadeNoT1a } from '@/lib/compositor/arquetipos/na-spec'
 import { VERSAO_DAS_FOTOS_SINTETICAS, type CasoDaFoto, type FormatoDaFoto } from './fotos-sinteticas'
 
 export type CopyDoLote = 'curta' | 'media' | 'longa'
@@ -84,11 +83,18 @@ export interface Denominadores {
   porEixo: Record<'cliente' | 'formato' | 'foto' | 'copy' | 'arquetipo', Record<string, number>>
 }
 
-/** Os arquétipos do catálogo com a disponibilidade do T1a (o indisponível vira exclusão, não peça). */
+/**
+ * Os arquétipos do catálogo com a disponibilidade do T1a (o indisponível vira exclusão, não peça). A regra do T1a fica
+ * CONGELADA aqui (elemento obrigatório = indisponível): o lote do piloto foi fixado então, e o `loteId` e os
+ * denominadores versionados não mudam porque o T1b passou a desenhar a moldura. Pelo mesmo motivo o lote só conhece
+ * os TRÊS arquétipos de então: um modelo publicado depois (o título gigante do T4-A) não entra no piloto medido.
+ */
+const ARQUETIPOS_DO_PILOTO = ['minimal-fb-base-esquerda', 'minimal-fb-centro-optico', 'minimal-fb-topo-esquerda']
 export function arquetiposDoLote(): Array<{ id: string; formatos: FormatoDaFoto[]; disponivel: boolean; motivo?: string }> {
-  return listarArquetipos().map((a) => {
-    const d = disponibilidadeNoT1a(a)
-    return { id: a.id, formatos: Object.keys(a.formatos) as FormatoDaFoto[], disponivel: d.disponivel, ...(d.motivo ? { motivo: d.motivo } : {}) }
+  return listarArquetipos().filter((a) => ARQUETIPOS_DO_PILOTO.includes(a.id)).map((a) => {
+    const obrigatorios = (a.elementos ?? []).filter((e) => !e.opcional)
+    const motivo = obrigatorios.length > 0 ? `o elemento obrigatório ${obrigatorios.map((e) => `"${e.tipo}"`).join(', ')} é materializado no T1b — sem ele a peça sairia sem a identidade do modelo` : undefined
+    return { id: a.id, formatos: Object.keys(a.formatos) as FormatoDaFoto[], disponivel: !motivo, ...(motivo ? { motivo } : {}) }
   })
 }
 
