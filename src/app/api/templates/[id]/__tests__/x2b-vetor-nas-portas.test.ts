@@ -254,7 +254,7 @@ describe('P1 — PATCH da página (autosave)', () => {
   })
 
   it('CAS com a base mudando entre as voltas: a guarda roda sobre o estado FINAL de cada volta, e grava a canonização de hoje', async () => {
-    const payload = [texto('t', 'Novo'), vetor('etq', { fill: 'rgba(249, 115, 22, 0.5)', flipH: true, vetor: { partes: [{ d: 'M0 0 H10 V10 Z' }] } })]
+    const payload = [texto('t', 'Novo'), vetor('etq', { fill: 'rgba(249, 115, 22, 0.5)', flipH: true, vetor: { partes: [{ d: 'M0 0 H10 V10 Z', slot: 'a', alvo: 'fill' }], cores: { a: '#000000' } } })]
     banco.antesDoUpdate[1] = () => {
       banco.paginas.p1 = { ...banco.paginas.p1, layers: JSON.stringify([texto('t', 'Outra aba'), vetor()]), updatedAt: new Date(++banco.relogio) }
     }

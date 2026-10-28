@@ -35,6 +35,8 @@ const ler = (c: string) => readFileSync(join(raiz, c), 'utf8')
 const ARQUIVOS_COM_TRAVAS = [
   'src/app/api/external/posts/[postId]/route.ts',
   'src/app/api/projects/[projectId]/posts/[postId]/route.ts',
+  'src/app/api/templates/[id]/pages/[pageId]/promover-variante/route.ts', // T5 (variante promovida): advisory do destino → Template FOR SHARE; ordem no teste próprio
+  'src/app/api/templates/[id]/pages/from-layout/route.ts', // T2 (Layouts): advisory do template → Page da origem; ordem no teste próprio
   'src/lib/brand/voz-service.ts',
   'src/lib/creatives/arte-rapida.ts',
   'src/lib/creatives/persist.ts',
@@ -95,6 +97,49 @@ describe('C13 — inventário dos FOR UPDATE / FOR SHARE / pg_advisory_xact_lock
         }
       }
     }
+  })
+
+  it('T2 from-layout: advisory do template ANTES do FOR UPDATE da Page de origem; irmãos/criação e invalidação (só do id novo) na transação; recomposição fora', () => {
+    const c = 'src/app/api/templates/[id]/pages/from-layout/route.ts'
+    const travas = porArquivo.get(c)!
+    expect(travas.map((t) => `${t.tabela}:${t.modo}`)).toEqual(['Page:update'])
+    expect(travas[0].sql).toMatch(/WHERE "id" = \$\{origem\.id\} AND "templateId" = \$\{templateId\} FOR UPDATE/)
+    const texto = ler(c)
+    const em = (trecho: string) => texto.indexOf(trecho)
+    // o advisory é o de `comTravaPorChave` (src/lib/trava-por-chave.ts, já inventariado): a chave do template abre a transação
+    expect(em('comTravaPorChave(`paginas-do-template:${templateId}`, async (tx) =>')).toBeGreaterThan(0)
+    const ordem = ['comTravaPorChave(`paginas-do-template:', 'FOR UPDATE', 'tx.page.updateMany(', 'tx.page.create(', 'invalidateScheduledRenders(tx, { pageIds: [criada.id] })', 'pedirRecomposicaoDaArteCongelada([nova.id])']
+    const posicoes = ordem.map(em)
+    expect(posicoes.every((p) => p > 0), JSON.stringify(Object.fromEntries(ordem.map((o, i) => [o, posicoes[i]])))).toBe(true)
+    expect([...posicoes].sort((a, b) => a - b)).toEqual(posicoes)
+    // a recomposição fica FORA do callback da transação (depois do fechamento de comTravaPorChave)
+    expect(texto.slice(em('invalidateScheduledRenders(tx'), em('pedirRecomposicaoDaArteCongelada([nova.id])'))).toMatch(/\}\)\s*\n/)
+  })
+
+  it('T5 promover-variante: advisory do template destino ANTES do Template FOR SHARE; contagem, origem, idempotência, criação e invalidação na transação; recomposição fora', () => {
+    const c = 'src/app/api/templates/[id]/pages/[pageId]/promover-variante/route.ts'
+    const travas = porArquivo.get(c)!
+    expect(travas.map((t) => `${t.tabela}:${t.modo}`)).toEqual(['Template:share'])
+    expect(travas[0].sql).toMatch(/FROM "Template" WHERE "id" = \$\{destinoId\} FOR SHARE/)
+    const texto = ler(c)
+    const em = (trecho: string) => texto.indexOf(trecho)
+    // o advisory é o de `comTravaPorChave` (src/lib/trava-por-chave.ts, já inventariado): a chave do template destino abre a transação
+    const ordem = [
+      'comTravaPorChave(`paginas-do-template:${destinoId}`, async (tx) =>',
+      // o trecho exato do SQL (o cabeçalho da rota também menciona "FOR SHARE", num comentário)
+      'FROM "Template" WHERE "id" = ${destinoId} FOR SHARE',
+      'tx.template.count(',
+      'tx.page.findFirst({ where: { id: pageId, templateId }',
+      'tx.page.findMany({ where: { templateId: destinoId',
+      'tx.page.create(',
+      'invalidateScheduledRenders(tx, { pageIds: [nova.id] })',
+      'pedirRecomposicaoDaArteCongelada([r.pageId])',
+    ]
+    const posicoes = ordem.map(em)
+    expect(posicoes.every((p) => p > 0), JSON.stringify(Object.fromEntries(ordem.map((o, i) => [o, posicoes[i]])))).toBe(true)
+    expect([...posicoes].sort((a, b) => a - b)).toEqual(posicoes)
+    // a recomposição fica FORA do callback da transação (depois do fechamento de comTravaPorChave)
+    expect(texto.slice(em('invalidateScheduledRenders(tx'), em('pedirRecomposicaoDaArteCongelada([r.pageId])'))).toMatch(/\}\)\s*\n/)
   })
 
   it('o gate trava na ordem do contrato: agenda, fontes, ItemDeLote, ItemDePlano, SocialPost (ORDER BY "id"), Page, Generation, depois FOR SHARE em Project, Page e CustomFont', () => {

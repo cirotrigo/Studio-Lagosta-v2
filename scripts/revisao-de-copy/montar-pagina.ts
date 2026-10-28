@@ -35,6 +35,7 @@ import { FONT_CONFIG } from '@/lib/font-config'
 import type { Papel } from '@/lib/compositor/spec'
 import { fetchBuffer } from '@/lib/posts/register-project-fonts'
 import { googleDriveService } from '@/server/google-drive-service'
+import { varianteDaRevisao } from './variante-da-revisao'
 
 const W = 1080
 const H = 1920
@@ -290,12 +291,12 @@ async function main() {
     const variantes = new Map<string, Variante>()
 
     for (const s of propostas.stories.filter((x) => x.projectId === projectId)) {
-      const pedida = s.variante?.toLowerCase()
-      const casam = pedida ? doStory.filter((p) => p.id === s.variante || p.name.toLowerCase().includes(pedida)) : [doStory[0]]
-      if (casam.length !== 1) {
-        throw new Error(`story ${s.id}: a variante "${s.variante}" ${casam.length ? 'é ambígua (use o id)' : 'não existe'} em ${projeto.name}. Variantes: ${doStory.map((p, n) => `${nomes[n]} [${p.id}]`).join(' · ')}`)
+      // T5: sem pedido, a primeira story do rodízio (a promovida só quando pedida) — `variante-da-revisao.ts`.
+      const escolha = varianteDaRevisao(doStory, s.variante)
+      if ('motivo' in escolha) {
+        throw new Error(`story ${s.id}: ${escolha.motivo} em ${projeto.name}. Variantes: ${doStory.map((p, n) => `${nomes[n]} [${p.id}]`).join(' · ')}`)
       }
-      const pagina = casam[0]
+      const pagina = escolha.pagina
       if (!variantes.has(pagina.id)) {
         variantes.set(pagina.id, await montarVariante(projectId, { id: pagina.id, nome: nomes[doStory.indexOf(pagina)] }, familias, imagens))
       }

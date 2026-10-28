@@ -9,9 +9,12 @@
  * Puro, sem `@/lib/db`: roda dentro do compare-and-set de `gravarCamadasComRevisao`, sobre a base RELIDA.
  */
 import { lerCamadas } from '@/lib/posts/page-layers'
+import { conferirGrade } from '@/lib/grades/conferir'
+import type { Layer } from '@/types/template'
 
 export type CodigoDaRecusa =
   | 'PUSH_ALTERA_VETOR'
+  | 'PUSH_ALTERA_GRADE'
   | 'PUSH_APAGARIA_CAMADA'
   | 'PUSH_PAGINA_INCERTA'
   | 'PUSH_PAGINAS_DUPLICADAS'
@@ -66,6 +69,58 @@ function lerCamadasEstritas(raw: unknown): Camada[] | null {
     if (c.metadata !== undefined && !ehObjeto(c.metadata)) return null
   }
   return camadas as unknown as Camada[]
+}
+
+/**
+ * G4.1 — grade de fotos (27/10/2026). O desktop não conhece grade: no pull ele descarta `style.crop`, `border` e
+ * `metadata`, e no push devolve posição, tamanho, `src`, `fit` e opacidade da célula. A mescla preserva o que falta,
+ * mas aceitava do payload a geometria, a foto e o estilo — e uma célula movida 10 px quebrava a grade em silêncio.
+ * Enquanto o desktop não tiver suporte, NENHUM membro muda pelo push: a camada mesclada INTEIRA (raiz, `style`,
+ * `metadata`, `effects`, `movimento`…) sai igual à base RELIDA, ou o push inteiro é recusado (409, a transação desfaz
+ * tudo). Comparação conservadora com a lista EXPLÍCITA do que o normalizador do desktop renormaliza sem mudar o desenho
+ * nem a grade: nome, `order` (o zIndex dele), o `fit` de topo (só o desktop lê) e a posição na pilha; `visible`,
+ * `locked`, `rotation`, `fileUrl` e `crop` de topo comparados pelo valor efetivo (ausente = padrão).
+ */
+const idsDeGradeEm = (camadas: Camada[]) =>
+  new Set(camadas.map((c) => (ehObjeto(c.metadata) && ehObjeto(c.metadata.grade) ? c.metadata.grade.id : null)).filter((id): id is string => typeof id === 'string' && id.length > 0))
+const vinculadaAGrade = (c: Camada, ids: ReadonlySet<string>) => {
+  const meta = ehObjeto(c.metadata) ? c.metadata : {}
+  return temValor(meta.grade) || (typeof meta.groupId === 'string' && ids.has(meta.groupId))
+}
+/** JSON com as chaves em ordem: a mescla pode reordenar chaves sem mudar nada */
+const canonico = (v: unknown): unknown =>
+  Array.isArray(v) ? v.map(canonico) : ehObjeto(v) ? Object.fromEntries(Object.keys(v).sort().filter((k) => v[k] !== undefined).map((k) => [k, canonico(v[k])])) : v
+const RENORMALIZADAS_PELO_DESKTOP = ['name', 'order', 'fit'] as const
+const desenhoDoMembro = (c: Camada) => {
+  const resto: Objeto = { ...c }
+  for (const k of RENORMALIZADAS_PELO_DESKTOP) delete resto[k]
+  return JSON.stringify(canonico({
+    ...resto, rotation: c.rotation ?? 0, fileUrl: c.fileUrl ?? '', crop: c.crop ?? null, visible: c.visible !== false, locked: c.locked === true,
+    style: c.style ?? {}, metadata: c.metadata ?? {},
+  }))
+}
+const chaveDoDiagnostico = (d: { codigo: string; gradeId?: string; camadaId?: string; mensagem: string }) => `${d.codigo}|${d.gradeId ?? ''}|${d.camadaId ?? ''}|${d.mensagem}`
+
+/** Recusa (PUSH_ALTERA_GRADE) se o push mexe em membro de grade, cria vínculo novo com grade ou piora `conferirGrade`. */
+function exigirGradeIntocada(base: Camada[], mescladas: Camada[], paginaId: string): void {
+  const ids = new Set([...idsDeGradeEm(base), ...idsDeGradeEm(mescladas)])
+  const membrosDaBase = new Map(base.filter((c) => vinculadaAGrade(c, ids)).map((c) => [c.id, c]))
+  const doResultado = new Map(mescladas.map((c) => [c.id, c]))
+  for (const [id, antes] of membrosDaBase) {
+    const depois = doResultado.get(id)
+    if (!depois || desenhoDoMembro(depois) !== desenhoDoMembro(antes)) throw new RecusaDoPushDoDesktop('PUSH_ALTERA_GRADE', paginaId, id)
+  }
+  const intrusa = mescladas.find((c) => vinculadaAGrade(c, ids) && !membrosDaBase.has(c.id))
+  if (intrusa) throw new RecusaDoPushDoDesktop('PUSH_ALTERA_GRADE', paginaId, intrusa.id)
+  const antes = new Set(conferirGrade(base as unknown as Layer[]).map(chaveDoDiagnostico))
+  const nova = conferirGrade(mescladas as unknown as Layer[]).find((d) => !antes.has(chaveDoDiagnostico(d)))
+  if (nova) throw new RecusaDoPushDoDesktop('PUSH_ALTERA_GRADE', paginaId, nova.camadaId)
+}
+
+/** Página NOVA do push (sem base para mesclar): o desktop não cria grade. Camadas ilegíveis seguem a regra de antes. */
+export function exigirPaginaNovaSemGrade(layersRaw: unknown, paginaId: string): void {
+  const camadas = lerCamadasEstritas(layersRaw)
+  if (camadas) exigirGradeIntocada([], camadas, paginaId)
 }
 
 const formaDe = (c: Objeto): unknown => (temValor(c.shape) ? c.shape : ehObjeto(c.style) ? c.style.shapeType : undefined)
@@ -154,7 +209,8 @@ export function mesclarCamadasDoDesktop(
     }
     if (!('style' in anterior) && !('style' in doPayload)) delete camada.style
     if (!('metadata' in anterior) && !('metadata' in doPayload)) delete camada.metadata
-    return camada
+    return camada as Camada
   })
+  exigirGradeIntocada(base, mescladas, paginaId)
   return JSON.stringify(mescladas)
 }

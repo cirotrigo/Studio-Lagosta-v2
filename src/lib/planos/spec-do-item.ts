@@ -2,6 +2,7 @@ import { CreativeError } from '@/lib/creatives/errors'
 import { copyParaBlocos } from '@/lib/compositor/copy-para-blocos'
 import { blocosParaOCompositor, lerCopyAutoral } from '@/lib/copy-autoral'
 import type { Formato, Papel, SpecDePeca } from '@/lib/compositor/spec'
+import { entraNoRodizio } from '@/lib/compositor/fora-do-rodizio'
 import { lerFotoCandidatas } from './proposta-de-semana'
 
 interface ItemParaComposicao {
@@ -19,9 +20,10 @@ interface ItemParaComposicao {
 }
 
 /** Ponte pura entre o item revisado e a spec durável da fila. */
-export function montarSpecDoItem(item: ItemParaComposicao, projectId: number, paginas: Array<{ formato: Formato | null; papeis: Papel[] }>, selecaoExperimental = false): SpecDePeca {
+export function montarSpecDoItem(item: ItemParaComposicao, projectId: number, paginas: Array<{ formato: Formato | null; papeis: Papel[]; tags?: string[] }>, selecaoExperimental = false): SpecDePeca {
   const formato = (item.formato ?? 'story') as Formato
-  const doFormato = paginas.filter((p) => p.formato === formato)
+  // T5: a variante promovida (fora do rodízio) não decide os papéis da copy legada — a peça não cai nela sozinha.
+  const doFormato = paginas.filter((p) => p.formato === formato && entraNoRodizio(p))
   const papeis = doFormato.length > 0
     ? [...new Set(doFormato.flatMap((p) => p.papeis))].filter((p): p is Exclude<Papel, 'headline2'> => p !== 'headline2')
     : undefined

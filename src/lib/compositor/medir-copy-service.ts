@@ -13,10 +13,12 @@ import { parsePageLayers } from '@/lib/posts/page-layers'
 import type { Layer } from '@/types/template'
 import { formatoDaPagina, montarAssinatura, NOME_DO_TEMPLATE_DE_ASSINATURA, papelDoNome, type AssinaturaDaMarca, type EstiloDePapel } from './assinatura'
 import { arranjosDasCombinacoes, carregarAssinatura, familiasDoProjeto, luzMediaDaFoto } from './compor'
+import { entraNoRodizio, TAG_FORA_DO_RODIZIO } from './fora-do-rodizio'
 import { carregarFotoParaMedir } from './foto-para-medir'
 import { chaveDaPeca } from './preparar-blocos'
 import { areaUtilDe, familiasUsadasNaVariante, medirCopy, orcamentoDaVariante, type AreaUtil, type MedicaoDaCopy, type OrcamentoDoPapel } from './medir-copy'
 import { DIMENSOES, validarSpec, type Formato, type GrupoVisual, type Papel, type SpecDePeca } from './spec'
+import { fundoDaPeca, luzParaAVariante } from './arquetipos/fundo'
 import { prepararArquetipo, type ArquetipoResolvido } from './arquetipos/na-spec'
 
 export interface PedidoDeMedicao {
@@ -68,6 +70,11 @@ export interface ResultadoDaMedicao {
    * arquétipo, `arquetipo` RESOLVIDO (id + versão + impressão) — medir só com o id devolve a versão exata.
    */
   fixacao: { variante: string | null; arranjos: Array<{ grupo: string; arranjo: string }>; arquetipo?: ArquetipoResolvido }
+  /**
+   * T4-E: o fundo liso EFETIVO com que a composição desenharia e mediria (`fundoDaPeca`, a mesma conta do compor). #8 (foto
+   * em caixa): o papel do liso que a medição da variante escolhida deu (`medicao.fundo`, pelas tintas dela).
+   */
+  fundo: string
   medicao: MedicaoDaCopy
   /** As outras variantes do formato, medidas com a mesma copy — para escolher pela capacidade, não só pelo nome. */
   outrasVariantes: VarianteMedida[]
@@ -101,6 +108,9 @@ export async function medirCopyDoProjeto(pedido: PedidoDeMedicao): Promise<Resul
   // escolhe entre clara/escura), o tema OU o nome, e a chave da peça (R02).
   let luzDaFoto: number | null = null
   const avisosDaFoto: string[] = []
+  // #8 (foto em caixa): o texto fica no liso — a luz não escolhe variante nem arranjo (`luzParaAVariante`), e o que torna a
+  // escolha provisória é só a falta da IDENTIDADE da foto na spec (ela entra na chave do rodízio).
+  const emCaixa = arquetipo?.definicao.fundo === 'foto-em-caixa'
   if (spec.foto) {
     // SEM publicar no Blob: a medição é leitura (R10). A luz e a escolha da
     // variante saem dos mesmos bytes que a composição usaria.
@@ -108,13 +118,24 @@ export async function medirCopyDoProjeto(pedido: PedidoDeMedicao): Promise<Resul
     if (aviso) avisosDaFoto.push(aviso)
     luzDaFoto = foto ? await luzMediaDaFoto(foto.bytes, DIMENSOES[spec.formato]) : null
     // Foto pedida e não medida NÃO é contexto suficiente (R13): a escolha fica provisória como se não houvesse foto.
-    if (luzDaFoto === null) avisosDaFoto.push('a foto não pôde ser lida/medida: a escolha da variante e dos arranjos ficou PROVISÓRIA — repita a medição quando ela carregar, ou fixe `preferencias.variante` e `preferencias.arranjos` ao compor')
+    if (luzDaFoto === null) {
+      avisosDaFoto.push(
+        emCaixa
+          ? 'a foto não pôde ser lida/medida: neste modelo a luz não escolhe a variante nem os arranjos, e a identidade da foto já está na chave — a escolha não muda por isso; o compor precisa da foto'
+          : 'a foto não pôde ser lida/medida: a escolha da variante e dos arranjos ficou PROVISÓRIA — repita a medição quando ela carregar, ou fixe `preferencias.variante` e `preferencias.arranjos` ao compor',
+      )
+    }
   }
-  const criterios = { papeis, tema: spec.tema ?? spec.nome ?? null, luzDaFoto, chave: chaveDaPeca(spec) }
+  const criterios = { papeis, tema: spec.tema ?? spec.nome ?? null, luzDaFoto: luzParaAVariante(arquetipo?.definicao, luzDaFoto), chave: chaveDaPeca(spec) }
   const assinatura = await carregarAssinatura(pedido.projectId, pedido.formato, { variante: spec.preferencias?.variante ?? null, varianteOriginal: spec.preferencias?.varianteOriginal ?? null, ...criterios })
   if (!assinatura.origem.pageId) {
-    throw new CreativeError('ASSINATURA_INCOMPLETA', 'O projeto não tem página de assinatura (template "Assinatura"): sem ela não há fonte, tamanho nem cor para medir.', 422)
+    // T5: com só variantes fora do rodízio a página existe — a mensagem leva o motivo da escolha.
+    const motivo = assinatura.origem.motivoDaVariante !== 'sem página' ? assinatura.origem.motivoDaVariante : null
+    throw new CreativeError('ASSINATURA_INCOMPLETA', motivo ? `Nenhuma variante de assinatura foi escolhida: ${motivo}.` : 'O projeto não tem página de assinatura (template "Assinatura"): sem ela não há fonte, tamanho nem cor para medir.', 422, motivo ? { motivo } : undefined)
   }
+  // T4-E: a marca sem fundo claro não mede um arquétipo sem foto como se o compusesse (a mesma recusa do compor). #8: o
+  // papel do liso sai da medição (depois da preparação), não daqui.
+  const fundoAntes = emCaixa ? null : fundoDaPeca(arquetipo?.definicao, assinatura.numeros)
 
   await registerProjectFonts(pedido.projectId)
   const [medir, familias] = await Promise.all([createServerTextBoxMeasurer(), familiasDoProjeto(pedido.projectId)])
@@ -129,6 +150,7 @@ export async function medirCopyDoProjeto(pedido: PedidoDeMedicao): Promise<Resul
     medirCopy({ spec, assinatura: a, formato: pedido.formato, medir, familias, fonteCarregada, combinacoesSalvas, ...(arquetipo ? { arquetipo } : {}) })
   const medicao = await medirContra(assinatura)
   medicao.avisos.unshift(...avisosDaFoto)
+  const fundo = fundoAntes ?? medicao.fundo!
 
   // As outras variantes do MESMO formato (a página é a verdade do formato), pela mesma régua.
   const template = await db.template.findFirst({ where: { projectId: pedido.projectId, name: NOME_DO_TEMPLATE_DE_ASSINATURA }, select: { id: true } })
@@ -137,7 +159,8 @@ export async function medirCopyDoProjeto(pedido: PedidoDeMedicao): Promise<Resul
     : []
   const outrasVariantes: VarianteMedida[] = []
   for (const p of outras) {
-    if (formatoDaPagina(p) !== (assinatura.origem.formatoDaPagina ?? pedido.formato)) continue
+    // T5: a promovida não é alternativa automática — é medida só quando pedida (`variante: id`).
+    if (!entraNoRodizio(p) || formatoDaPagina(p) !== (assinatura.origem.formatoDaPagina ?? pedido.formato)) continue
     const a = await carregarAssinatura(pedido.projectId, pedido.formato, { variante: p.id, papeis })
     if (!a.origem.pageId) continue
     let m: MedicaoDaCopy
@@ -162,9 +185,17 @@ export async function medirCopyDoProjeto(pedido: PedidoDeMedicao): Promise<Resul
 
   // Provisoriedade pela LUZ efetivamente disponível (não pela presença do pedido de foto — R13), e também pelo
   // rodízio de arranjos: a chave da peça inclui a foto, então fixar só a variante não fixa o segundo sorteio (R12).
-  const semLuz = luzDaFoto === null
+  const semLuz = emCaixa ? !spec.foto?.driveFileId && !spec.foto?.url : luzDaFoto === null
   const motivosDaProvisoriedade: string[] = []
-  if (semLuz && !spec.preferencias?.variante && outrasVariantes.length > 0) motivosDaProvisoriedade.push(spec.foto ? 'a foto não pôde ser medida: a luz (clara/escura) e a chave do rodízio de variantes mudam a escolha' : 'sem a foto, a luz (clara/escura) e a chave do rodízio de variantes mudam a escolha')
+  if (semLuz && !spec.preferencias?.variante && outrasVariantes.length > 0) {
+    motivosDaProvisoriedade.push(
+      emCaixa
+        ? 'sem a foto na spec, a chave do rodízio de variantes (que inclui a identidade da foto) muda a escolha — neste modelo a luz não escolhe'
+        : spec.foto
+          ? 'a foto não pôde ser medida: a luz (clara/escura) e a chave do rodízio de variantes mudam a escolha'
+          : 'sem a foto, a luz (clara/escura) e a chave do rodízio de variantes mudam a escolha',
+    )
+  }
   // R17 (P3): fixar o arranjo de UM grupo não fixa o do outro — o motivo vale enquanto algum arranjo ainda sai por rodízio.
   if (semLuz && medicao.arranjos.some((a) => /rod[ií]zio/.test(a.motivo))) motivosDaProvisoriedade.push('algum arranjo saiu por rodízio, e a chave do rodízio inclui a foto: com ela a composição pode escolher outro arranjo (fonte, tamanho, distribuição das linhas)')
   return {
@@ -172,6 +203,7 @@ export async function medirCopyDoProjeto(pedido: PedidoDeMedicao): Promise<Resul
     escolhaProvisoria: motivosDaProvisoriedade.length > 0,
     motivosDaProvisoriedade,
     fixacao: { variante: assinatura.origem.pageId, arranjos: medicao.arranjos.map((a) => ({ grupo: a.grupo, arranjo: a.id })), ...(arquetipo ? { arquetipo: arquetipo.resolvido } : {}) },
+    fundo,
     medicao,
     outrasVariantes,
   }
@@ -206,6 +238,8 @@ export interface VarianteDescrita {
   nome: string
   formato: Formato | null
   tags: string[]
+  /** T5: página promovida — só entra numa peça quando pedida (id ou nome). */
+  foraDoRodizio: boolean
   papeis: Papel[]
   aceitaServico: boolean
   temSegundaVoz: boolean
@@ -281,7 +315,8 @@ export async function descreverVariantes(projectId: number, formato: Formato): P
       id: p.id,
       nome: p.name,
       formato: fmt,
-      tags: p.tags.filter((t) => t !== 'assinatura'),
+      tags: p.tags.filter((t) => t !== 'assinatura' && t !== TAG_FORA_DO_RODIZIO),
+      foraDoRodizio: !entraNoRodizio(p),
       papeis,
       aceitaServico: papeis.includes('servico'),
       temSegundaVoz: papeis.includes('headline2'),

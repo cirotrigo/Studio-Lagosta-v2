@@ -7,7 +7,7 @@ import { listarArquetipos } from '@/lib/compositor/arquetipos/catalogo'
 import { ELEMENTOS_DO_ARQUETIPO, PAPEIS_DE_COR } from '@/lib/compositor/arquetipos/tipos'
 import { segmentosDoPath } from '@/lib/vetor/tracar'
 import { validarPathData } from '@/lib/vetor/validar'
-import { CATEGORIAS_CANDIDATAS, ELEMENTOS_CANDIDATOS, MASCARAS_DE_IMAGEM, SHAPE_CATEGORIES, SHAPES_LIBRARY } from '../shapes-library'
+import { CATEGORIAS_CANDIDATAS, ELEMENTOS_CANDIDATOS, ELEMENTOS_MULTICOR, MASCARAS_DE_IMAGEM, SHAPE_CATEGORIES, SHAPES_LIBRARY } from '../shapes-library'
 
 const sha = (s: string) => createHash('sha256').update(s).digest('hex')
 const porId = (id: string) => ELEMENTOS_CANDIDATOS.find((e) => e.id === id)!
@@ -30,13 +30,13 @@ const IDS_CANDIDATOS = [
 ]
 
 describe('catálogo vivo (SHAPES_LIBRARY e SHAPE_CATEGORIES): os 37 legados + os 10 ativados (CP-V2c)', () => {
-  it('os 37 legados primeiro, na ordem, com os campos da base intactos (sha256), mais versão e slot; depois os 10', () => {
-    expect(SHAPES_LIBRARY.map((s) => s.id)).toEqual([...IDS_VIVOS, ...IDS_CANDIDATOS])
-    expect(SHAPES_LIBRARY.filter((s) => s.shapeType === 'svg-path')).toHaveLength(33)
+  it('os 37 legados primeiro, na ordem, com os campos da base intactos (sha256), mais versão e slot; depois os 10 e os multicor (CP-V5)', () => {
+    expect(SHAPES_LIBRARY.map((s) => s.id)).toEqual([...IDS_VIVOS, ...IDS_CANDIDATOS, 'onda-base'])
+    expect(SHAPES_LIBRARY.filter((s) => s.shapeType === 'svg-path')).toHaveLength(34)
     // sem os 2 campos que a ativação acrescenta, o JSON dos 37 é o da base 54fc701d, byte a byte
     const legados = SHAPES_LIBRARY.slice(0, 37).map(({ versao: _v, slots: _s, ...resto }) => resto)
     expect(sha(JSON.stringify(legados))).toBe('e58a7999fdcd0884e68c8f0743ee722561c5f5a4b79419fb742ee64379b0afdd')
-    expect(SHAPES_LIBRARY.slice(37)).toEqual(ELEMENTOS_CANDIDATOS)
+    expect(SHAPES_LIBRARY.slice(37)).toEqual([...ELEMENTOS_CANDIDATOS, ...ELEMENTOS_MULTICOR])
   })
 
   it('papel e slot dos 37 (D3): básicas e decorativas → destaque; setas e linhas → texto; um canal só, versão 1, livres', () => {
@@ -80,10 +80,10 @@ describe('máscaras de imagem: lista explícita dos 26 svg-path legados', () => 
     expect(sha(JSON.stringify(lido))).toBe('95e2b6cc078f9f95119f2333f7c995562ab4b4b20974ee032d43188c816dc988')
   })
 
-  it('não deriva do catálogo vivo: a derivação antiga ("todo svg-path") daria os 26 + os 7 ativados', () => {
+  it('não deriva do catálogo vivo: a derivação antiga ("todo svg-path") daria os 26 + os 7 ativados + a onda-base', () => {
     const derivada = SHAPES_LIBRARY.filter((s) => s.shapeType === 'svg-path' && s.pathData)
-    expect(derivada).toHaveLength(33)
-    expect(MASCARAS_DE_IMAGEM.map((s) => s.id)).toEqual(derivada.map((s) => s.id).filter((id) => !IDS_CANDIDATOS.includes(id)))
+    expect(derivada).toHaveLength(34)
+    expect(MASCARAS_DE_IMAGEM.map((s) => s.id)).toEqual(derivada.map((s) => s.id).filter((id) => !IDS_CANDIDATOS.includes(id) && id !== 'onda-base'))
   })
 })
 
@@ -93,9 +93,15 @@ describe('consumidores: a ativação é um ponto só, lido na fonte', () => {
   it('nenhum arquivo de produção além do catálogo usa o export candidato (os candidatos chegam pelo SHAPES_LIBRARY)', () => {
     const src = join(process.cwd(), 'src')
     const usam = (readdirSync(src, { recursive: true }) as string[])
-      .filter((f) => /\.tsx?$/.test(f) && !f.split('/').includes('__tests__') && f !== 'lib/assets/shapes-library.ts')
+      .filter((f) => /\.tsx?$/.test(f) && !f.split('/').includes('__tests__') && f !== 'lib/assets/shapes-library.ts' && f !== 'lib/vetor/importar.ts')
       .filter((f) => /ELEMENTOS_CANDIDATOS|CATEGORIAS_CANDIDATAS|ElementoCandidato|CategoriaDoElemento/.test(readFileSync(join(src, f), 'utf8')))
     expect(usam).toEqual([])
+  })
+
+  it('o importador de SVG (CP-V6) EMITE o formato candidato e valida a categoria, mas nunca lê os itens do catálogo', () => {
+    const importador = fonte('src/lib/vetor/importar.ts')
+    expect(importador).toContain("import { CATEGORIAS_CANDIDATAS, type CategoriaDoElemento, type ElementoCandidato } from '@/lib/assets/shapes-library'")
+    expect(importador).not.toMatch(/ELEMENTOS_CANDIDATOS|ELEMENTOS_MULTICOR|SHAPES_LIBRARY|FORMAS_LEGADAS|MASCARAS_DE_IMAGEM/)
   })
 
   it('a barra de imagem lê só as máscaras explícitas; o painel de formas segue no catálogo vivo', () => {
@@ -153,7 +159,7 @@ describe('catálogo candidato (ELEMENTOS_CANDIDATOS)', () => {
     for (const e of comPath) {
       const d = e.pathData!
       const segmentos = segmentosDoPath(d)
-      expect([e.id, validarPathData(d)]).toEqual([e.id, { ok: true }])
+      expect([e.id, validarPathData(d).ok]).toEqual([e.id, true])
       expect([e.id, /^[MLCZ\d.\s-]+$/.test(d)]).toEqual([e.id, true])
       expect([e.id, new TextEncoder().encode(d).length <= 4096]).toEqual([e.id, true])
       expect([e.id, segmentos.filter((s) => s.command === 'M').length <= 4]).toEqual([e.id, true])
@@ -221,16 +227,21 @@ describe('catálogo candidato (ELEMENTOS_CANDIDATOS)', () => {
   })
 })
 
-describe('contrato publicado nos arquétipos (fio-fino, moldura-aberta, spark-4)', () => {
+describe('contrato publicado nos arquétipos (fio-fino, moldura-aberta, spark-4, cantoneiras, pilula-contorno)', () => {
   it('os tipos dos arquétipos não mudaram', () => {
-    expect([...ELEMENTOS_DO_ARQUETIPO]).toEqual(['fio-fino', 'moldura-aberta', 'spark-4'])
+    // O #16 (24/10) acrescenta as cantoneiras, presas à peça; o #5 (24/10), a pílula de contorno, que envolve o serviço.
+    // Os de antes não mudam.
+    expect([...ELEMENTOS_DO_ARQUETIPO]).toEqual(['fio-fino', 'moldura-aberta', 'spark-4', 'cantoneiras', 'pilula-contorno'])
     expect([...PAPEIS_DE_COR]).toEqual(['texto', 'destaque'])
     for (const p of PAPEIS_DE_COR) expect(PAPEIS_DA_MARCA).toContain(p)
   })
 
   it('todo elemento de arquétipo publicado existe no candidato, com o mesmo papel no seu único slot', () => {
     const declarados = listarArquetipos().flatMap((a) => (a.elementos ?? []).map((el) => [`${a.id}@${a.versao}`, el] as const))
-    expect(declarados.map(([, el]) => el.tipo).sort()).toEqual(['fio-fino', 'moldura-aberta', 'spark-4'])
+    // O #15 (24/10) declara o segundo fio-fino publicado (um por item da lista); o #16, as cantoneiras e o terceiro fio; o
+    // #16@2 (C2), as mesmas duas de novo (versão publicada ao lado — a lista conta versões); o #5, a pílula de contorno; os
+    // 2 ids do #10 (IH, 25/10: `minimal-coluna-foto` e `minimal-coluna-foto-esquerda`), um fio-fino opcional cada → 6 fios.
+    expect(declarados.map(([, el]) => el.tipo).sort()).toEqual(['cantoneiras', 'cantoneiras', 'fio-fino', 'fio-fino', 'fio-fino', 'fio-fino', 'fio-fino', 'fio-fino', 'moldura-aberta', 'pilula-contorno', 'spark-4'])
     for (const [chave, el] of declarados) {
       const e = porId(el.tipo)
       expect([chave, e.slots.length, e.slots[0].papelPadrao]).toEqual([chave, 1, el.corPorPapel])

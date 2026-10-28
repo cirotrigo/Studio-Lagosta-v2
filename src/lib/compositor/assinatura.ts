@@ -18,6 +18,7 @@ import { grupoDaCamada, membrosDoBloco, papelNoBloco } from '@/lib/creatives/hal
 import { destaqueDaCamada, type EstiloDeDestaque } from './destaques'
 import { configDaCamada, ehGradienteDeLeituraDaPagina, GRADIENTE_PADRAO, type AjustesDoGradiente, type ConfigDoGradiente, type CurvaDoGradiente } from './gradiente-de-leitura'
 import { papelDoNome } from './papel-do-nome'
+import { entraNoRodizio, TAG_FORA_DO_RODIZIO } from './fora-do-rodizio'
 import type { Formato, Papel } from './spec'
 
 export const TAG_DA_ASSINATURA = 'assinatura'
@@ -104,6 +105,11 @@ export interface NumerosDaAssinatura {
   mancha: string
   /** Fundo liso, quando a peça não tem foto. */
   fundo: string
+  /**
+   * O fundo liso CLARO da marca (T4-E): o dos arquétipos `liso-claro` (família E, sem foto). Sem padrão — a marca que
+   * não o define não compõe esses arquétipos (recusa explícita em `fundoDaPeca`, nunca o fundo escuro em silêncio).
+   */
+  fundoClaro?: string
   /**
    * Os números do halo — LEGADO desde 11/09/2026: o compositor não desenha mais
    * halo. Ficam aceitos no JSON para não quebrar quem ainda os grava.
@@ -320,6 +326,7 @@ function mesclarNumeros(base: NumerosDaAssinatura, extra: unknown): NumerosDaAss
   return {
     mancha: typeof e.mancha === 'string' ? e.mancha : base.mancha,
     fundo: typeof e.fundo === 'string' ? e.fundo : base.fundo,
+    ...(typeof e.fundoClaro === 'string' ? { fundoClaro: e.fundoClaro } : base.fundoClaro ? { fundoClaro: base.fundoClaro } : {}),
     halo: { ...base.halo, ...(e.halo ?? {}) },
     gradiente: mesclarGradiente(base.gradiente, e.gradiente),
     destaque: mesclarDestaque(base.destaque, e.destaque),
@@ -619,21 +626,29 @@ export function avaliarVariantes<T extends CandidataAVariante>(paginas: T[], c: 
     .sort((a, b) => b.pontos - a.pontos || `${a.pagina.name}`.localeCompare(`${b.pagina.name}`))
 }
 
+/** T5: só há variantes promovidas (fora do rodízio) para a peça e nada foi pedido — fail-closed, sem sorteio. */
+export const MOTIVO_SO_FORA_DO_RODIZIO = 'só há variantes fora do rodízio neste formato: peça uma pelo id ou pelo nome'
+
 /**
  * Escolhe a página de assinatura entre as VARIANTES do formato:
  * 1. `variante` pedida (nome, tag ou id) vence;
  * 2. senão, a melhor pontuação de `avaliarVariantes`; entre empatadas, o
  *    RODÍZIO determinístico pela chave da peça — uma leva varia sem repetir.
  * Sem página do formato cai na de story (escala de fonte), e sem nenhuma, null.
+ *
+ * T5: a variante PROMOVIDA (`fora-do-rodizio.ts`) fica fora da base, calculada como se ela não existisse — com zero
+ * promovidas, tudo é idêntico. Ela é achada pelo id, pela `varianteOriginal` e pelo nome (depois das da base); nunca
+ * pela tag reservada, nunca pela pontuação.
  */
 export function escolherVariante<T extends CandidataAVariante>(
   paginas: T[],
   args: CriteriosDeVariante,
 ): { pagina: T | null; formatoDaPagina: Formato | null; motivo: string } {
-  const doFormato = paginas.filter((p) => formatoDaPagina(p) === args.formato)
-  const candidatas = doFormato.length > 0 ? doFormato : paginas.filter((p) => formatoDaPagina(p) === 'story')
-  const base = candidatas.length > 0 ? candidatas : paginas
-  if (base.length === 0) return { pagina: null, formatoDaPagina: null, motivo: 'sem página' }
+  if (paginas.length === 0) return { pagina: null, formatoDaPagina: null, motivo: 'sem página' }
+  const noRodizio = paginas.filter(entraNoRodizio)
+  const doFormato = noRodizio.filter((p) => formatoDaPagina(p) === args.formato)
+  const candidatas = doFormato.length > 0 ? doFormato : noRodizio.filter((p) => formatoDaPagina(p) === 'story')
+  const base = candidatas.length > 0 ? candidatas : noRodizio
   const fmt = (p: T) => formatoDaPagina(p)
 
   // O id é procurado ANTES do filtro por formato: a peça de feed que nasceu na
@@ -652,7 +667,12 @@ export function escolherVariante<T extends CandidataAVariante>(
     // ambiguidade (ver-assinatura lista o `id`).
     const pedidaPorId = porId(alvo)
     if (pedidaPorId) return { pagina: pedidaPorId, formatoDaPagina: fmt(pedidaPorId), motivo: 'fixada por id' }
-    const achada = base.find((p) => `${p.name ?? ''}`.toLowerCase().includes(alvo) || (p.tags ?? []).some((t) => t.toLowerCase() === alvo))
+    const casa = (p: T) => `${p.name ?? ''}`.toLowerCase().includes(alvo) || (p.tags ?? []).some((t) => t.toLowerCase() === alvo && t !== TAG_FORA_DO_RODIZIO)
+    // T5: as promovidas só depois da base (o resultado de hoje fica), as do formato antes das de story.
+    const promovidas = paginas.filter((p) => !entraNoRodizio(p))
+    const achada =
+      base.find(casa) ??
+      [...promovidas.filter((p) => fmt(p) === args.formato), ...(args.formato === 'story' ? [] : promovidas.filter((p) => fmt(p) === 'story'))].find(casa)
     if (achada) return { pagina: achada, formatoDaPagina: fmt(achada), motivo: 'pedida' }
     return { pagina: null, formatoDaPagina: null, motivo: 'variante pedida não encontrada' }
   }
@@ -661,6 +681,7 @@ export function escolherVariante<T extends CandidataAVariante>(
     if (original) return { pagina: original, formatoDaPagina: fmt(original), motivo: 'fixada por id' }
     motivoDaOriginal = 'a variante com que a peça nasceu não existe mais; '
   }
+  if (base.length === 0) return { pagina: null, formatoDaPagina: null, motivo: `${motivoDaOriginal}${MOTIVO_SO_FORA_DO_RODIZIO}` }
 
   const avaliadas = avaliarVariantes(base, args)
   const melhor = avaliadas[0].pontos

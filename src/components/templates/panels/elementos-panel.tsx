@@ -12,6 +12,7 @@ import { useProject } from '@/hooks/use-project'
 import { useProjectElements } from '@/hooks/use-project-elements'
 import { camadaParaInserir, estadoDaInsercao } from '@/lib/editor/estado-da-insercao'
 import { MarcaDoProjeto } from './marca-do-projeto'
+import { SecaoGrades, gradesDaBusca } from './secao-grades'
 
 /**
  * Painel "Elementos" (CP-V2d): o único do rail para formas, ornamentos e os elementos do projeto. Busca PT/EN sem
@@ -19,6 +20,7 @@ import { MarcaDoProjeto } from './marca-do-projeto'
  * Insere forma SÓ pelo construtor (`camadaParaInserir`, CP-V2c): cores da marca por papel, nunca a vitrine do item, e
  * só com a paleta e a assinatura do projeto atual confirmadas (`estadoDaInsercao`). O aviso de marca sem cores (D5)
  * sai do próprio adaptador: `pronto` com `ausenciaConfirmada`, nunca em carregamento ou erro.
+ * G1: a seção "Grades" (irmã da Marca) não espera a paleta; "nada encontrado" só sem forma, grade e Marca casando.
  */
 export function ElementosPanel() {
   const { addLayer, design, projectId } = useTemplateEditor()
@@ -100,7 +102,10 @@ export function ElementosPanel() {
               </div>
             </div>
           ))}
-          {grupos.length === 0 && elementos.isSuccess && !marcaCasa && <p className="text-xs text-muted-foreground">Nenhum elemento encontrado.</p>}
+          {grupos.length === 0 && gradesDaBusca(query).length === 0 && elementos.isSuccess && !marcaCasa && (
+            <p className="text-xs text-muted-foreground">Nenhum elemento encontrado.</p>
+          )}
+          <SecaoGrades busca={query} />
           <MarcaDoProjeto busca={query} />
         </div>
       </ScrollArea>

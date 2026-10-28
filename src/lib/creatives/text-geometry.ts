@@ -25,6 +25,8 @@ import { CANVAS_MARGIN } from '@/lib/canvas-margin'
 
 export type MeasureTextBox = (layer: Layer) => {
   height: number
+  /** A altura antes de arredondar. Ausente = o medidor só sabe `height`; ninguém inventa a fração. */
+  naturalHeight?: number
   maxLineWidth: number
   lineCount: number
   /** Folga entre a caixa-fórmula e a tinta real dos glifos (borda de cima/baixo). */

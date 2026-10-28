@@ -40,6 +40,26 @@ function layerGroupId(layer: Layer): string | null {
 }
 
 /**
+ * G4.4 (27/10/2026): célula de grade de fotos NUNCA é empurrada — a geometria dela é a da grade (mover uma célula
+ * quebra a grade inteira). Vale para o reflow do servidor e para o laço do texto auto-expandido do editor; os outros
+ * membros do grupo seguem fluindo como sempre.
+ */
+const celulaDeGrade = (layer: Layer) => (layer.metadata as { grade?: unknown } | undefined)?.grade != null
+
+/**
+ * O laço do texto que cresceu no EDITOR (`konva-editable-text`): os irmãos do mesmo grupo inteiramente abaixo do
+ * bottom ORIGINAL da caixa (colunas na mesma faixa de y não se movem — a regra do `reflowComboStack`), menos as
+ * células de grade.
+ */
+export function irmaosQueAcompanham(layers: Layer[], texto: Layer, bottomOriginal: number): Layer[] {
+  const groupId = layerGroupId(texto)
+  if (!groupId) return []
+  return layers.filter(
+    (outro) => outro.id !== texto.id && layerGroupId(outro) === groupId && !celulaDeGrade(outro) && (outro.position?.y ?? 0) + 0.5 >= bottomOriginal,
+  )
+}
+
+/**
  * Reflui UM grupo (todas as camadas com o mesmo groupId). Camadas fora do
  * grupo não são tocadas — quem chama filtra ou usa reflowLayersAfterFill.
  */
@@ -64,6 +84,7 @@ export function reflowComboStack(members: Layer[], measure: MeasureLayerHeight):
   // 2. Cada membro desloca pela soma dos diffs dos textos inteiramente acima
   const patches: StackReflowPatch[] = []
   for (const member of members) {
+    if (celulaDeGrade(member)) continue
     const top = member.position?.y ?? 0
     let shift = 0
     for (const d of diffs) {

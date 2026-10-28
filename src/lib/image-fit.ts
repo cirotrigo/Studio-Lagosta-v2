@@ -135,3 +135,68 @@ export function cropForResizedBox(
     height: height / natural.height,
   }
 }
+
+/**
+ * Máscara "Quadrado 1:1" da foto (26/10/2026). Fora de `MASCARAS_DE_IMAGEM` de propósito: aquelas congelam um path
+ * esticado na caixa, e um quadrado esticado vira retângulo. Aqui a CAIXA vira o quadrado do menor lado, com o mesmo
+ * centro (girado junto, o pivô dos dois renderers é o canto superior esquerdo), e o recorte é refeito por
+ * `cropForResizedBox` (mesma escala, mesmo centro do enquadramento, sem deformar). O path cobre a caixa inteira, então
+ * editor e render server-side desenham o mesmo quadrado; a trava de proporção mantém a caixa 1:1 depois. O raio da
+ * borda vai a 0 (cantos retos).
+ */
+export const MASCARA_QUADRADA = { shapeId: 'quadrado-1-1', path: 'M0 0 L100 0 L100 100 L0 100 Z' } as const
+
+/**
+ * Dimensões naturais da foto carregada SÓ se ela for a da camada. O `use-image` instalado tem corrida: trocando de
+ * foto com o `decode()` de A pendente, o `finally` de A grava a imagem depois que a seleção já é B. Sem conferir a
+ * URL, o Quadrado de B sairia recortado com as dimensões de A. `img.src` vem absoluto do navegador; `base` resolve a
+ * `fileUrl` (relativa ou não) da mesma forma.
+ */
+export function dimensoesDaFotoCarregada(
+  img: { src: string; width: number; height: number } | undefined,
+  fileUrl: string | undefined,
+  base: string | undefined,
+): ImageSize | undefined {
+  if (!img || !fileUrl || !(img.width > 0) || !(img.height > 0)) return undefined
+  let esperada: string
+  try {
+    esperada = new URL(fileUrl, base).href
+  } catch {
+    return undefined
+  }
+  return img.src === esperada ? { width: img.width, height: img.height } : undefined
+}
+
+export function aplicarMascaraQuadrada(
+  layer: { position?: { x: number; y: number }; size?: { width: number; height: number }; rotation?: number; style?: LayerStyle },
+  natural: ImageSize,
+): { position: { x: number; y: number }; size: { width: number; height: number }; style: LayerStyle } | undefined {
+  const w = layer.size?.width ?? 0
+  const h = layer.size?.height ?? 0
+  if (!(w > 0) || !(h > 0)) return undefined
+  const lado = Math.min(w, h)
+  const caixa = { width: lado, height: lado }
+  const crop = cropForResizedBox(natural, { width: w, height: h }, caixa, layer.style)
+  if (!crop) return undefined
+
+  const rad = ((layer.rotation ?? 0) * Math.PI) / 180
+  const cos = Math.cos(rad)
+  const sin = Math.sin(rad)
+  const girar = (dx: number, dy: number) => ({ x: dx * cos - dy * sin, y: dx * sin + dy * cos })
+  const x0 = layer.position?.x ?? 0
+  const y0 = layer.position?.y ?? 0
+  const centro = girar(w / 2, h / 2)
+  const meio = girar(lado / 2, lado / 2)
+
+  return {
+    position: { x: x0 + centro.x - meio.x, y: y0 + centro.y - meio.y },
+    size: caixa,
+    // Cantos retos: o raio da borda também recorta a foto nos dois renderers, então zera aqui
+    style: {
+      ...layer.style,
+      crop,
+      mask: { ...MASCARA_QUADRADA },
+      ...(layer.style?.border ? { border: { ...layer.style.border, radius: 0 } } : {}),
+    },
+  }
+}

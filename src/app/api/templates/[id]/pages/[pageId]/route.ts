@@ -23,6 +23,7 @@ import {
 import { canonicalizeLayersForPersistence } from '@/lib/shape-style'
 import { VetorInvalido } from '@/lib/vetor/validar-camada'
 import { corpoDoVetorInvalido, exigirVetoresValidos } from '@/lib/vetor/guarda-de-porta'
+import { tagsComMarcaPreservada } from '@/lib/compositor/fora-do-rodizio'
 import { Prisma } from '../../../../../../../prisma/generated/client'
 
 const pageAudioSchema = z.object({
@@ -206,7 +207,7 @@ export async function PATCH(
       validatedData.width !== undefined ||
       validatedData.height !== undefined ||
       validatedData.audio !== undefined
-    type BaseVisual = { layers: unknown; background: string | null; width: number; height: number; audio: unknown }
+    type BaseVisual = { layers: unknown; background: string | null; width: number; height: number; audio: unknown; tags?: string[] }
     /** Música só é visual quando liga ou desliga o movimento das fotos no quadro 0 — com as camadas que ficam. */
     const audioMudaOQuadroZero = (base: BaseVisual) => {
       const camadas = lerCamadas(validatedData.layers !== undefined ? updateData.layers : base.layers).camadas
@@ -234,6 +235,8 @@ export async function PATCH(
       if (validatedData.background !== undefined && !m.backgroundChanged) delete dados.background
       if (validatedData.width !== undefined && !m.widthChanged) delete dados.width
       if (validatedData.height !== undefined && !m.heightChanged) delete dados.height
+      // T5: a marca `fora-do-rodizio` é a da linha que esta escrita substitui (a relida no compare-and-set), nunca a do pedido.
+      if (validatedData.tags !== undefined) dados.tags = tagsComMarcaPreservada(base.tags, validatedData.tags)
       return dados
     }
 
@@ -243,7 +246,7 @@ export async function PATCH(
     // "Unable to start a transaction in the given time" no meio da edição.
     // A leitura fresca abaixo é o que decide se a transação abre: custa um
     // SELECT a mais por PATCH com campo visual e nenhuma transação nova.
-    const selecaoDaBase = { updatedAt: true, layers: true, background: true, width: true, height: true, audio: true, copyAutoral: true } as const
+    const selecaoDaBase = { updatedAt: true, layers: true, background: true, width: true, height: true, audio: true, copyAutoral: true, tags: true } as const
     const baseFresca = payloadVisual ? await db.page.findUnique({ where: { id: pageId }, select: selecaoDaBase }) : null
     if (payloadVisual && !baseFresca) {
       return NextResponse.json({ error: 'Page not found' }, { status: 404 })

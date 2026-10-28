@@ -27,6 +27,7 @@ import { CANVAS_MARGIN } from '@/lib/canvas-margin'
 import { decidirSelecaoPorGesto, type FaseDoGesto, type GestoDeSelecao } from '@/lib/selecao-por-gesto'
 import { ehIconeDeTexto } from '@/lib/font-combinations-icones'
 import { useIsMobile } from '@/hooks/use-device-detection'
+import { useArrasteDaGrade } from '@/hooks/use-ajustar-grade'
 
 /**
  * KonvaEditorStage - Componente principal do canvas Konva.js
@@ -579,9 +580,12 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
   // e as que o Transformer "puxa" (startDrag proxy) persistem cada uma pelo
   // seu factory — sem uma chave comum, UM arraste virava três passos de undo
   const groupDragKeyRef = React.useRef<string | null>(null)
+  // G3: arraste que toca grade grava UMA vez (a grade inteira anda), nunca nó por nó
+  const arrasteDaGrade = useArrasteDaGrade()
 
   const handleLayerChange = React.useCallback(
     (layerId: string, updates: Partial<Layer>) => {
+      if (arrasteDaGrade.consumirGeometria(layerId, updates)) return
       updateLayer(
         layerId,
         (current) => ({
@@ -594,7 +598,7 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
         { coalesceKey: groupDragKeyRef.current ?? undefined },
       )
     },
-    [updateLayer],
+    [updateLayer, arrasteDaGrade],
   )
 
   // Um gesto do ponteiro chama onSelect mais de uma vez (mousedown/touchstart
@@ -697,8 +701,11 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
       // Seleção múltipla (ex.: grupo de combinação de fontes): move as demais
       // layers selecionadas junto, mantendo o deslocamento relativo.
       // node.isDragging() filtra chamadas atrasadas do throttle pós-dragend,
-      // que reaplicariam o delta sobre posições já persistidas
-      if (node.isDragging() && selectedLayerIds.length > 1 && selectedLayerIds.includes(layer.id)) {
+      // que reaplicariam o delta sobre posições já persistidas.
+      // G3: com grade, quem acompanha são os participantes (a célula arrastada leva as irmãs)
+      if (node.isDragging() && arrasteDaGrade.acompanhar(layer, node, node.getStage())) {
+        // a grade anda inteira no Konva; gravado só no soltar
+      } else if (node.isDragging() && selectedLayerIds.length > 1 && selectedLayerIds.includes(layer.id)) {
         const stage = node.getStage()
         const deltaX = node.x() - (layer.position?.x ?? 0)
         const deltaY = node.y() - (layer.position?.y ?? 0)
@@ -717,11 +724,18 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
 
       setGuides(nextGuides)
     },
-    [canvasHeight, canvasWidth, design.layers, snapConfig, snappingEnabled, showMarginGuides, selectedLayerIds, zoom],
+    [canvasHeight, canvasWidth, design.layers, snapConfig, snappingEnabled, showMarginGuides, selectedLayerIds, zoom, arrasteDaGrade],
   )
 
-  const handleLayerDragEnd = React.useCallback(() => {
+  const handleLayerDragEnd = React.useCallback((layer: Layer) => {
     setGuides([])
+    // G3: arraste com grade — UMA operação move tudo (os proxies do Transformer soltam juntos e não movem de novo);
+    // recusa devolve os nós do Konva. A chave do arraste em grupo (armada no dragstart) não pode ficar presa: senão as
+    // próximas gravações coalesceriam com ela
+    if (arrasteDaGrade.soltar(layer, stageRef.current)) {
+      groupDragKeyRef.current = null
+      return
+    }
     // Persiste as posições das demais layers movidas no arraste em grupo
     // (a layer arrastada é gravada pelo próprio KonvaLayerFactory)
     if (selectedLayerIds.length > 1) {
@@ -747,7 +761,7 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
         }
       }
     }
-  }, [selectedLayerIds, design.layers, updateLayer])
+  }, [selectedLayerIds, design.layers, updateLayer, arrasteDaGrade])
 
   // Atalhos de teclado para zoom, copy/paste, undo/redo
   React.useEffect(() => {
@@ -1143,7 +1157,7 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
                 onSelect={(event) => handleLayerSelect(event, layer)}
                 onChange={(updates) => handleLayerChange(layer.id, updates)}
                 onDragMove={(event) => handleLayerDragMove(event, layer)}
-                onDragEnd={handleLayerDragEnd}
+                onDragEnd={() => handleLayerDragEnd(layer)}
                 stageRef={stageRef}
                 projectId={projectId}
               />

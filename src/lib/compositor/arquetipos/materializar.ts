@@ -12,7 +12,22 @@
  *
  * Puro: quem chama mede (com o medidor real) e passa as medidas.
  */
+import type { Alinhamento } from '../spec'
 import type { ArquetipoDeLayout, Caixa, FormatoDoArquetipo, PapelDeTexto, Zona } from './tipos'
+
+/** O alinhamento de um papel: o próprio (T4-A) ou, sem ele, o do arquétipo. */
+export const alinhaDoPapel = (arquetipo: ArquetipoDeLayout, papel: PapelDeTexto): Alinhamento =>
+  arquetipo.papeis.find((p) => p.papel === papel)?.alinha ?? arquetipo.preferencias.alinha
+
+/** O papel de escala DOMINANTE do arquétipo (MIN-10), ou `null` — o validador só a admite na headline. */
+export const papelDominante = (arquetipo: ArquetipoDeLayout): PapelDeTexto | null =>
+  (arquetipo.papeis.find((p) => p.escala === 'dominante')?.papel as PapelDeTexto | undefined) ?? null
+
+/**
+ * O que é DOMINANTE, em frações da peça: a caixa real ocupa ao menos 80% da largura OU 22% da altura — os pisos da
+ * pesquisa para o título gigante (largura 80–100, altura 22–38). Abaixo disso a peça seria um título comum.
+ */
+export const DOMINANCIA = { largura: 0.8, altura: 0.22 } as const
 
 export interface RetanguloPx {
   x: number
@@ -37,6 +52,15 @@ const emPx = (c: Caixa, canvas: { width: number; height: number }): RetanguloPx 
   width: c.w * canvas.width,
   height: c.h * canvas.height,
 })
+
+/**
+ * A régua FINAL de altura de uma referência: px brutos (`emPx`, sem floor) + `TOLERANCIA_PX`. É a MESMA conta da
+ * recusa da materialização e a parada da escada da unidade (`prepararNoArquetipo`); a capacidade preliminar
+ * (`caixasMaximas`, floor) não muda.
+ */
+export function excedeAlturaDaReferencia(altura: number, referencia: Caixa, canvas: { width: number; height: number }): boolean {
+  return altura > emPx(referencia, canvas).height + TOLERANCIA_PX
+}
 
 const arredondado = (r: RetanguloPx): RetanguloPx => ({ x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) })
 
@@ -83,7 +107,7 @@ export function referenciaDoPapel(
 }
 
 export interface ProblemaDeMaterializacao {
-  codigo: 'ARQUETIPO_TEXTO_NAO_CABE' | 'ARQUETIPO_FORA_DA_ZONA' | 'ARQUETIPO_ZONA_EFETIVA_VAZIA' | 'ARQUETIPO_LOGO_SEM_PROPORCAO'
+  codigo: 'ARQUETIPO_TEXTO_NAO_CABE' | 'ARQUETIPO_FORA_DA_ZONA' | 'ARQUETIPO_ZONA_EFETIVA_VAZIA' | 'ARQUETIPO_LOGO_SEM_PROPORCAO' | 'ARQUETIPO_ESCALA_NAO_DOMINANTE'
   papel: PapelDeTexto | 'logo'
   referencia: RetanguloPx
   zonaEfetiva: RetanguloPx | null
@@ -130,6 +154,11 @@ export function materializarArquetipo(args: {
   medidas: Partial<Record<PapelDeTexto, { width: number; height: number }>>
   /** Quanto os ornamentos presos aos textos passam da caixa de cada papel (não deslocam a âncora; também têm de caber na zona). */
   ornamentos?: Partial<Record<PapelDeTexto, { esquerda: number; direita: number; topo: number; base: number }>>
+  /**
+   * #5: a folga (px) do ENVOLVENTE de cada papel (`envoltoriosDoArquetipo`) — a pílula abraça o texto com os ornamentos e
+   * também tem de caber na zona efetiva. Ausente = nada a mais (a saída de sempre).
+   */
+  envoltorios?: Partial<Record<PapelDeTexto, { x: number; y: number }>>
   logo: { razao: number } | null
   /** O `dy` (px, só vertical) de cada papel na busca espacial; ausente = 0, a referência. */
   deslocamentos?: Partial<Record<PapelDeTexto | 'logo', number>>
@@ -143,7 +172,7 @@ export function materializarArquetipo(args: {
   const problemas: ProblemaDeMaterializacao[] = []
   const papeis: Partial<Record<PapelDeTexto | 'logo', PapelMaterializado>> = {}
   let logoAutomatica = false
-  const alinha = arquetipo.preferencias.alinha
+  const dominante = papelDominante(arquetipo)
 
   for (const [papel, pos] of Object.entries(arquetipo.formatos[formato].papeis) as Array<[PapelDeTexto | 'logo', NonNullable<ArquetipoDeLayout['formatos']['story']['papeis']['headline']>]>) {
     if ('automatica' in pos) {
@@ -176,18 +205,21 @@ export function materializarArquetipo(args: {
       // contain: a maior caixa com a proporção do arquivo dentro da referência.
       const width = Math.min(referencia.width, referencia.height / args.logo.razao)
       const height = width * args.logo.razao
-      const direita = arquetipo.preferencias.cantoDaMarca !== 'auto' && arquetipo.preferencias.cantoDaMarca.endsWith('direito')
+      const canto = arquetipo.preferencias.cantoDaMarca
+      // Rente ao lado do canto; no `superior-centro` (#16), centrada na referência — nunca cai num canto.
+      const x = canto === 'superior-centro' ? referencia.x + (referencia.width - width) / 2 : canto !== 'auto' && canto.endsWith('direito') ? referencia.x + referencia.width - width : referencia.x
       medida = { width, height }
-      posicao = { x: direita ? referencia.x + referencia.width - width : referencia.x, y: y0 + (referencia.height - height) / 2, width, height }
+      posicao = { x, y: y0 + (referencia.height - height) / 2, width, height }
     } else {
       medida = args.medidas[papel] ?? null
       if (!medida) continue
+      const alinha = alinhaDoPapel(arquetipo, papel)
       const x = alinha === 'esquerda' ? referencia.x : alinha === 'direita' ? referencia.x + referencia.width - medida.width : referencia.x + (referencia.width - medida.width) / 2
       posicao = { x, y: y0, width: medida.width, height: medida.height }
       // A capacidade é a referência inteira: a altura (com a segunda voz e os elementos presos) e a largura
       // (o texto já foi medido na coluna dela; o que passar daqui são os elementos do arranjo).
       const estouros = [
-        ...(medida.height > referencia.height + TOLERANCIA_PX ? [`${Math.round(medida.height)} px de altura contra ${Math.floor(referencia.height)} px de capacidade`] : []),
+        ...(excedeAlturaDaReferencia(medida.height, pos.referencia, canvas) ? [`${Math.round(medida.height)} px de altura contra ${Math.floor(referencia.height)} px de capacidade`] : []),
         ...(medida.width > referencia.width + TOLERANCIA_PX ? [`${Math.round(medida.width)} px de largura contra ${Math.floor(referencia.width)} px da referência`] : []),
       ]
       if (estouros.length > 0) {
@@ -198,6 +230,19 @@ export function materializarArquetipo(args: {
           zonaEfetiva: zona ? arredondado(zona) : null,
           medida: { width: Math.round(medida.width), height: Math.round(medida.height) },
           motivo: `a caixa medida tem ${estouros.join(' e ')}`,
+        })
+        continue
+      }
+      // A escala dominante é a identidade do modelo: a escada subiu até onde a referência deixou, e a caixa ainda não
+      // domina — recusa dita, nunca um título comum calado.
+      if (papel === dominante && medida.width < DOMINANCIA.largura * canvas.width - TOLERANCIA_PX && medida.height < DOMINANCIA.altura * canvas.height - TOLERANCIA_PX) {
+        problemas.push({
+          codigo: 'ARQUETIPO_ESCALA_NAO_DOMINANTE',
+          papel,
+          referencia: arredondado(referencia),
+          zonaEfetiva: zona ? arredondado(zona) : null,
+          medida: { width: Math.round(medida.width), height: Math.round(medida.height) },
+          motivo: `a ${papel} tem escala dominante e a caixa real (${Math.round(medida.width)}×${Math.round(medida.height)} px) não chega a ${Math.round(DOMINANCIA.largura * 100)}% da largura (${Math.round(DOMINANCIA.largura * canvas.width)} px) nem a ${Math.round(DOMINANCIA.altura * 100)}% da altura (${Math.round(DOMINANCIA.altura * canvas.height)} px) da peça`,
         })
         continue
       }
@@ -224,6 +269,22 @@ export function materializarArquetipo(args: {
           zonaEfetiva: arredondado(zona),
           medida: { width: Math.round(comOrnamentos.width), height: Math.round(comOrnamentos.height) },
           motivo: `com o texto ${onde}, os ornamentos do arranjo da assinatura (ícone, filete, selo) ocupam ${Math.round(comOrnamentos.x)},${Math.round(comOrnamentos.y)} ${Math.round(comOrnamentos.width)}×${Math.round(comOrnamentos.height)} e saem da zona efetiva (${Math.round(zona.x)},${Math.round(zona.y)} ${Math.round(zona.width)}×${Math.round(zona.height)}) — o texto não é deslocado por eles`,
+        })
+        continue
+      }
+    }
+    const env = papel !== 'logo' ? args.envoltorios?.[papel] : undefined
+    if (args.conferirZona !== false && env) {
+      const o = orn ?? { esquerda: 0, direita: 0, topo: 0, base: 0 }
+      const comPilula = { x: posicao.x - o.esquerda - env.x, y: posicao.y - o.topo - env.y, width: posicao.width + o.esquerda + o.direita + 2 * env.x, height: posicao.height + o.topo + o.base + 2 * env.y }
+      if (!dentro(comPilula, zona)) {
+        problemas.push({
+          codigo: 'ARQUETIPO_FORA_DA_ZONA',
+          papel,
+          referencia: arredondado(referencia),
+          zonaEfetiva: arredondado(zona),
+          medida: { width: Math.round(comPilula.width), height: Math.round(comPilula.height) },
+          motivo: `com o texto ${onde}, a pílula de contorno (folga ${env.x} × ${env.y} px) ocupa ${Math.round(comPilula.x)},${Math.round(comPilula.y)} ${Math.round(comPilula.width)}×${Math.round(comPilula.height)} e sai da zona efetiva (${Math.round(zona.x)},${Math.round(zona.y)} ${Math.round(zona.width)}×${Math.round(zona.height)}) — o texto não é deslocado por ela`,
         })
         continue
       }

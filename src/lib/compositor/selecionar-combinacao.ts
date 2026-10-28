@@ -2,6 +2,7 @@
 import { CreativeError } from '@/lib/creatives/errors'
 import { compararComBaseline, leituraComparavel, type LeituraComparavel } from './comparar-baseline'
 import { lerCaixaDoAssunto } from './assunto-da-foto'
+import { entraNoRodizio } from './fora-do-rodizio'
 import type { SpecDePeca } from './spec'
 import type { ResultadoDaComposicao, OpcoesDeComposicao } from './compor'
 
@@ -56,10 +57,12 @@ export async function selecionarCombinacao(spec: SpecDePeca) {
   const cacheDeLogos: NonNullable<OpcoesDeComposicao['cacheDeLogos']> = new Map()
   const { paginas } = await paginasDeAssinatura(spec.projectId)
   const variantes = paginas.filter((p) => p.formato === spec.formato && spec.blocos.every((b) => p.papeis.includes(b.papel)))
+  // T5: a promovida (fora do rodízio) só serve ao pedido explícito — nunca entra no laço, e sem pedido não conta na guarda.
+  const automaticas = variantes.filter(entraNoRodizio)
   const fotos: NonNullable<SpecDePeca['foto']>[] = spec.foto?.driveFileId || spec.foto?.url ? [spec.foto] :
     [...new Set(spec.fotosCandidatas ?? [])].slice(0, 3).map((driveFileId) => ({ driveFileId }))
   if (!fotos.length) throw new CreativeError('SPEC_INVALIDA', 'Seleção experimental exige foto explícita ou candidatas curadas.', 422)
-  if (!variantes.length) throw new CreativeError('SEM_COMBINACAO', 'Nenhuma variante do formato comporta todos os papéis pedidos. Preserve serviço e condições obrigatórias.', 422)
+  if (!(spec.preferencias?.variante ? variantes : automaticas).length) throw new CreativeError('SEM_COMBINACAO', 'Nenhuma variante do formato comporta todos os papéis pedidos. Preserve serviço e condições obrigatórias.', 422)
   let catalogo: Awaited<ReturnType<typeof lerCatalogoDoProjeto>> | null = null
   const avisos: string[] = []
   try { catalogo = await lerCatalogoDoProjeto(spec.projectId) } catch {
@@ -104,7 +107,7 @@ export async function selecionarCombinacao(spec: SpecDePeca) {
   const baseline = await tentar(fotos[0], spec.preferencias?.variante, true)
   let interrompida = false
   if (!spec.preferencias?.variante) {
-    for (const variante of variantes) {
+    for (const variante of automaticas) {
       for (const foto of fotos) {
         if (baseline && baseline.registro.variante === variante.id && baseline.registro.foto === idFoto(foto)) continue
         if (bloqueadas.has(idFoto(foto))) continue

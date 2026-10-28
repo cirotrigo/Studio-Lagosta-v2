@@ -103,7 +103,8 @@ describe('escolha espacial na recomposição (CP2B)', () => {
     ['dy não inteiro', daBusca({ ...escolha, deslocamentos: { headline: 12.5 } })],
     ['dy infinito', daBusca({ ...escolha, deslocamentos: { headline: Infinity } })],
     ['dy em texto', daBusca({ ...escolha, deslocamentos: { headline: '12' } })],
-    ['membro inválido', daBusca({ ...escolha, deslocamentos: { cta: 0 } })],
+    // O cta virou membro no #15 (coluna do rodapé); "rodape" nunca foi papel.
+    ['membro inválido', daBusca({ ...escolha, deslocamentos: { rodape: 0 } })],
     ['canto inválido', daBusca({ ...escolha, cantoDaLogo: 'meio' })],
   ])('ilegível (%s) recusa com ARQUETIPO_ESCOLHA_ILEGIVEL', (_nome, fv) => {
     expect(codigo(() => escolhaEspacialOriginal(fv, comArquetipo))).toBe('ARQUETIPO_ESCOLHA_ILEGIVEL')

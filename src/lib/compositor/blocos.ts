@@ -57,6 +57,11 @@ export interface BlocoMontado {
   escalaDosElementos?: number
   /** As famílias que ENTRARAM na medição (ver `RecusaDeBloco.familiasMedidas`). */
   familiasMedidas: string[]
+  /**
+   * A altura com que a ESCALA foi decidida — `round(naturalHeight)` do medidor (a quantidade de antes da caixa
+   * `ceil`), ou `height` quando o medidor não dá a fração. Transitório: nunca entra no `Layer` nem na persistência.
+   */
+  orcamentoDeAltura?: number
 }
 
 export interface OrcamentoDeLinha {
@@ -315,6 +320,8 @@ export function montarBloco(args: {
    * Só com arquétipo (T1a): a escada da UNIDADE (manchete + segunda voz, texto +
    * elementos) começa abaixo do tamanho de assinatura — este fator (≤ 1) sobre
    * `escalaDoFormato`. O piso continua o mesmo (80% da assinatura).
+   * Acima de 1 só no papel de escala DOMINANTE (T4-A, MIN-10): a escada começa
+   * no teto e desce até o maior corpo que cabe na referência.
    */
   escalaMaxima?: number
   /** F3: a camada extra que este bloco é (vai à camada, não muda a medida). */
@@ -353,7 +360,7 @@ export function montarBloco(args: {
   // arquétipo, a sequência é exatamente a de antes.
   const piso = args.escalaDoFormato * PISO_DE_ESCALA
   const degraus: number[] = []
-  for (let escala = args.escalaDoFormato * Math.min(1, args.escalaMaxima ?? 1); escala >= piso - 1e-9; escala -= PASSO_DE_ESCALA) degraus.push(escala)
+  for (let escala = args.escalaDoFormato * (args.escalaMaxima ?? 1); escala >= piso - 1e-9; escala -= PASSO_DE_ESCALA) degraus.push(escala)
   if (args.alturaMaxima !== undefined && (degraus.length === 0 || degraus[degraus.length - 1] > piso + 1e-9)) degraus.push(piso)
 
   for (const escala of degraus) {
@@ -378,7 +385,9 @@ export function montarBloco(args: {
     // A caixa gravada é a altura MEDIDA (ceil, nunca round — o Konva descarta
     // a linha inteira que não cabe por fração de pixel).
     const height = medida ? Math.ceil(medida.height) : simples.size.height * linhas.length
-    if (args.alturaMaxima !== undefined && height > args.alturaMaxima) {
+    // A decisão do degrau usa o orçamento (round da altura natural); a caixa gravada continua `height` (ceil).
+    const orcamentoDeAltura = medida && Number.isFinite(medida.naturalHeight) ? Math.round(medida.naturalHeight as number) : height
+    if (args.alturaMaxima !== undefined && orcamentoDeAltura > args.alturaMaxima) {
       alturaQueNaoCoube = height
       continue
     }
@@ -393,6 +402,7 @@ export function montarBloco(args: {
         cor: args.estilo.color,
         destacado: Boolean(destaque),
         familiasMedidas,
+        orcamentoDeAltura,
       },
       recusa: null,
       avisos,

@@ -39,6 +39,11 @@ export const LIMITES_DA_BUSCA = {
   cortes: 3,
   /** 2 × 5 candidatos = 25 por corte: os limites fecham entre si (3 faixas passariam das 25 combinações). */
   faixas: 2,
+  /**
+   * Sem foto (`liso-claro`, #15) não há busca: cada faixa tem UM candidato, a partida — 3 × 1 = 1 combinação por corte e
+   * nenhuma avaliação (não há corte). Os tetos acima continuam valendo para toda peça com foto.
+   */
+  faixasSemFoto: 3,
   candidatosPorFaixa: 5,
   combinacoesPorCorte: 25,
   avaliacoes: 75,

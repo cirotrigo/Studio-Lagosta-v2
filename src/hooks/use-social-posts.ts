@@ -75,8 +75,9 @@ export function useSocialPosts(projectId: number) {
 
   // Create post
   const createPost = useMutation({
+    // `warnings` (G4.6): avisos que não bloqueiam, como a célula vazia da grade — quem agenda mostra
     mutationFn: (data: CreatePostData) =>
-      api.post(`/api/projects/${projectId}/posts`, data),
+      api.post<{ postId?: string; warnings?: string[] }>(`/api/projects/${projectId}/posts`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['social-posts', projectId] })
       // Also invalidate agenda-posts to update calendar view

@@ -268,7 +268,7 @@ export const CHAVES_CLASSIFICADAS: Record<string, ChaveClassificada> = {
   'style.flipH': suportada(true), // espelha DENTRO da caixa, :1692-1693
   'style.flipV': suportada(true),
   'style.manterProporcao': inerte(true), // CP-V1: só a trava do gesto de redimensionar no editor; o render não a lê
-  'style.vetor.*': inerte({ asset: { id: 'moldura-fina', versao: 1 }, papeis: { contorno: 'texto' } }), // CP-V2c: proveniência do catálogo (item, versão, papel por canal); nenhum renderer a lê
+  'style.vetor.*': inerte({ asset: { id: 'moldura-fina', versao: 1 }, papeis: { contorno: 'texto' } }), // CP-V2c: proveniência (item, versão, papel). CP-V5: `partes`/`cores` DESENHAM o multicor, mas só com `style.pathData` presente — já `nao-suportada` acima (fail-closed), então inerte aqui não deixa geometria sem medida
   'style.mask.shapeId': suportada('circle'), // clip só retira, :1664-1668
   'style.mask.path': suportada('M50 0 A50 50 0 1 1 50 100 A50 50 0 1 1 50 0 Z'),
   'style.opacity': inerte(1),

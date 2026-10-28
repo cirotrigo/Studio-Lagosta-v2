@@ -12,11 +12,12 @@ import { useToast } from '@/hooks/use-toast'
 import { usePageConfig } from '@/hooks/use-page-config'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Save, Maximize2, Minimize2, FileText, Image as ImageIcon, Type as TypeIcon, Square, Layers2, Award, Palette, Sparkles, Settings, Copy, Trash2, Plus, ChevronLeft, ChevronRight, Wand2, ChevronDown, ChevronUp, FileImage, Film, GalleryVertical, Menu, Music, X, ZoomIn, ZoomOut, MessageSquare, Calendar, ArrowLeft, Check, PaintBucket } from 'lucide-react'
+import { Save, Maximize2, Minimize2, FileText, Image as ImageIcon, Type as TypeIcon, Square, Layers2, Award, Palette, Sparkles, Settings, Copy, Trash2, Plus, ChevronLeft, ChevronRight, Wand2, ChevronDown, ChevronUp, FileImage, Film, GalleryVertical, Menu, Music, X, ZoomIn, ZoomOut, MessageSquare, Calendar, ArrowLeft, Check, PaintBucket, LayoutTemplate } from 'lucide-react'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { EditorCanvas } from './editor-canvas'
 import { PropertiesPanel, EffectsPanel } from './properties-panel'
 import { EditorSidebar } from './sidebar/editor-sidebar'
+import { LayoutsPanel } from './sidebar/layouts-panel'
 import { TextToolsPanel } from './panels/text-panel'
 import { ImagesPanelContent } from './panels/images-panel'
 import { ElementosPanel } from './panels/elementos-panel'
@@ -35,6 +36,7 @@ import { BotaoPlayPause } from './botao-play-pause'
 import { Timeline } from './timeline'
 import { paginaEVideo, videosDaPagina } from '@/lib/video/camadas-de-video'
 import { PageModelButton, PageModelMobileSection } from './page-model-control'
+import { PageVariantButton, PageVariantMobileSection } from './page-variant-control'
 import { TemplateAIChat } from './template-ai-chat'
 import { ZoomControls, ZoomControlsMobile } from './zoom-controls'
 import { AgendaPanel } from './panels/agenda-panel'
@@ -188,7 +190,7 @@ export function TemplateEditorShell({ template, prefillDriveImage, aiEditMode, i
   )
 }
 
-type SidePanel = 'templates' | 'text' | 'images' | 'videos' | 'music' | 'elements' | 'logo' | 'colors' | 'gradients' | 'backgrounds' | 'ai-images' | 'ai-creative' | 'layers' | null
+type SidePanel = 'templates' | 'text' | 'images' | 'videos' | 'music' | 'elements' | 'logo' | 'colors' | 'gradients' | 'backgrounds' | 'ai-images' | 'ai-creative' | 'layers' | 'layouts' | null
 
 // Ferramentas disponíveis no drawer mobile (grid inicial e linha de chips)
 const MOBILE_TOOL_ITEMS: Array<{
@@ -206,6 +208,7 @@ const MOBILE_TOOL_ITEMS: Array<{
   { key: 'gradients', label: 'Gradientes', icon: Sparkles },
   { key: 'backgrounds', label: 'Fundo', icon: PaintBucket },
   { key: 'layers', label: 'Camadas', icon: Layers2 },
+  { key: 'layouts', label: 'Layouts', icon: LayoutTemplate },
   { key: 'ai-images', label: 'IA ✨', icon: Wand2 },
   { key: 'ai-creative', label: 'Editor', icon: Sparkles },
 ]
@@ -247,7 +250,7 @@ function TemplateEditorContent({
     setZoom,
     setPendingAIImageEdit,
     selectedLayerIds,
-    removeLayer,
+    removeLayers,
     selectLayers,
   } = useTemplateEditor()
 
@@ -724,6 +727,7 @@ function TemplateEditorContent({
             {activePanel === 'backgrounds' && <BackgroundsPanel />}
             {activePanel === 'ai-images' && <AIImagesPanel />}
             {activePanel === 'layers' && <LayersPanelAdvanced />}
+            {activePanel === 'layouts' && <LayoutsPanel onPrecisaDeFoto={() => setActivePanel('images')} />}
             {activePanel === 'ai-creative' && (
               <CreativeGeneratorPanel
                 projectId={projectId}
@@ -833,6 +837,8 @@ function TemplateEditorContent({
                 </Button>
               )}
               <PageModelButton projectId={projectId} />
+              {/* T5: no próprio template "Assinatura" o gesto é duplicar a página (o servidor também recusa). */}
+              {name !== 'Assinatura' && <PageVariantButton projectId={projectId} />}
               <BotaoPlayPause />
               <VideoExportButton />
               <Button size="sm" variant="outline" onClick={toggleFullscreen}>
@@ -943,7 +949,7 @@ function TemplateEditorContent({
               </h2>
             </div>
             <div className="flex-1 min-h-0 overflow-y-auto p-4">
-              {activePanel === 'templates' && <EditorSidebar />}
+              {activePanel === 'templates' && <EditorSidebar onPrecisaDeFoto={() => setActivePanel('images')} />}
               {activePanel === 'text' && <TextToolsPanel />}
               {activePanel === 'images' && <ImagesPanelContent />}
               {activePanel === 'videos' && <VideosPanel />}
@@ -1219,7 +1225,8 @@ function TemplateEditorContent({
                     onClick={() => {
                       const label = selectedLayerIds.length === 1 ? 'esta camada' : `estas ${selectedLayerIds.length} camadas`
                       if (!window.confirm(`Excluir ${label}?`)) return
-                      selectedLayerIds.forEach((id) => removeLayer(id))
+                      // G4.3: a seleção sai numa operação só, um desfazer
+                      removeLayers(selectedLayerIds)
                       selectLayers([])
                     }}
                     aria-label="Excluir camada selecionada"
@@ -1358,6 +1365,7 @@ function TemplateEditorContent({
               {!agendaMode && (
                 <div className="mt-1 border-t border-border/60 pt-1">
                   <PageModelMobileSection projectId={projectId} />
+                  {name !== 'Assinatura' && <PageVariantMobileSection projectId={projectId} />}
                 </div>
               )}
             </div>

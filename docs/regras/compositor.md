@@ -1163,3 +1163,338 @@ inválida não é gravada pelas portas P1–P5"). O CP-X2c fecha as três entrad
 - **Fora daqui:** a primeira composição (`compor` → `persist`) e as outras cópias (§3.3 do preflight do X2)
   propagam o que já está gravado. Quem garante o legado é a varredura G. O aceite global do X2 é P1–P7 + `reverter`
   ativados juntos, com a varredura zerada.
+
+## Acentos do arquétipo presos ao texto (T1b, 24/10/2026)
+
+O `fio-fino`, a `moldura-aberta` (┌) e o `spark-4` que o arquétipo declara viram camadas `shape` normais
+(`arquetipos/acentos.ts`), o MESMO código no compor e no medir-copy. Com isso o `minimal-fb-base-esquerda`
+(moldura obrigatória) deixou de ser indisponível.
+
+- 🔴 **O acento segue o texto, depois da foto.** A posição sai da definição imutável e da caixa REAL do
+  papel (`presoA`) onde a busca a pôs: abaixo do papel, o vão declarado depois do fim da caixa; acima, o
+  vão declarado antes do topo; a moldura tem o braço de cima parado e o fim do vertical o vão declarado
+  acima do texto. Na horizontal, rente à tinta (caixa + `PADDING_DE_DESENHO`) ou centrado na caixa. A
+  busca espacial NÃO considera o acento.
+- 🔴 **Nada é empurrado.** Fora da área segura do projeto (`pisoDoProjeto`) ou encostando em outra
+  unidade de texto (com os ornamentos do arranjo) ou na logo: o opcional sai, dito em `avisos` e
+  `composicao.arquetipo.acentosOmitidos`; o obrigatório recusa (`ARQUETIPO_ELEMENTO_NAO_CABE`). Os
+  obstáculos saem de `obstaculosDosAcentos` nos dois lados; o medir-copy só não conhece a logo
+  automática (canto escolhido pela foto).
+- 🔴 **A logo do CP3 desvia dos acentos** (rodada 1 da revisão): `livre` e os cantos alternativos da
+  conferência de legibilidade contam os acentos já desenhados como obstáculo — a variante/canto que os
+  tocaria sai da grade como `fora-da-area`. Depois do CP3, a reconciliação (8c) confere a logo
+  DEFINITIVA: o opcional que ela tocasse sai (dito), o obrigatório recusa.
+- **A cor é a do texto**: `texto` = a cor da manchete desenhada; `destaque` = o `destaque.fill` que o
+  compositor já resolveu para aquele papel (`destaqueDoPapel`); sem destaque de cor, a do texto, dito em
+  `fonteDaCor`. Nunca a vitrine do catálogo nem `resolverCorDaMarca` (lá `texto` é o escuro da marca).
+- 🔴 **`style.vetor` do acento leva só o asset, SEM `papeis`**: o "Reaplicar cores da marca" (CP-V3)
+  trocaria a cor da manchete pelo escuro da marca. Quem é o acento fica em `metadata.compositor.acento`.
+  A camada entra ABAIXO de todo texto (acima da foto e dos véus).
+- 🔴 **A receita e a COR congelam na peça**: `composicao.arquetipo.acentos` grava o desenho do asset
+  (forma, path, espessura, canal, versão), o papel de cor e a cor RESOLVIDA (`cor` literal +
+  `fonteDaCor`). A recomposição desenha SÓ por ela (`acentosCongelados`, `defasagem.ts`), com a cor
+  gravada: mudar a paleta/destaque da marca depois não repinta a peça antiga (só a peça nova herda).
+  Peça do T1a/CP2B, sem o campo, continua sem acento; campo malformado (inclusive sem cor legível por
+  `lerCor`) é `ARQUETIPO_ESCOLHA_ILEGIVEL` antes de qualquer escrita. Nunca reler `SHAPES_LIBRARY` para
+  peça que já nasceu — nem para decidir disponibilidade: com `acentosCongelados`, `prepararArquetipo`
+  pula `disponibilidadeDoArquetipo` (id, versão, impressão, formato e papéis continuam conferidos).
+- **Lacunas**: o contraste do acento sobre a foto não entra na régua nem no tratamento (o L longo pode
+  cruzar uma área clara); aceite visual com marcas reais pendente do owner.
+
+## Título gigante e escala dominante (T4-A, 24/10/2026)
+
+- **`minimal-titulo-gigante@1` (MIN-10)** entrou no catálogo ao lado dos três do T0 (impressão
+  `arq1-1025df9d49631a` desde a rodada 1; as três antigas não mudaram um byte). Detalhe e desvios da pesquisa em
+  `docs/design/arquetipos-minimalistas-v1.md`, seção "T4-A".
+- **Escala é relação, nunca corpo.** O papel declara `escala: 'dominante'` (só a headline; o validador recusa em
+  outro papel ou com outro valor). O corpo-base continua o da assinatura; `fontSize` no arquétipo segue proibido.
+- **A escada do dominante sobe.** `prepararNoArquetipo` começa o papel em `TETO_DA_ESCALA_DOMINANTE` (8× a assinatura)
+  e `montarBloco` desce no passo de sempre até o MAIOR corpo que cabe na referência (largura e altura), com o piso de
+  sempre. Se a unidade (segunda voz) ainda não cabe, o próximo degrau é o de baixo do MAIOR corpo real da unidade —
+  nunca do menor, que pularia o teto em que a primeira voz encolhe e a segunda, já no piso, cabe. Só no dominante; os
+  outros papéis seguem a escada antiga exatamente. É a mesma função no compor e no medir-copy.
+- **Dominância é conferida na materialização** (pura, a mesma nos dois lados): a caixa real do dominante tem de
+  chegar a 80% da largura OU 22% da altura da peça (`DOMINANCIA`); abaixo, `ARQUETIPO_ESCALA_NAO_DOMINANTE` — nunca
+  um título comum calado. Copy que não cabe nem no piso continua `ARQUETIPO_TEXTO_NAO_CABE`, sem corte.
+- **Alinhamento próprio do papel** (`PapelNoArquetipo.alinha`, rodada 1): o apoio do #7 é alinhado à direita com a
+  manchete à esquerda. `alinhaDoPapel` (fallback `preferencias.alinha`) decide o x da materialização e o `textAlign` de
+  `camadasNaReferencia` — compor, medir-copy e busca usam a mesma função. Nunca na headline nem na logo.
+- **Lote do piloto**: `arquetiposDoLote` lista só os três do piloto de 17/10 (loteId e denominadores congelados).
+- **Lacunas**: aceite visual com marcas reais pendente; provas locais com medidor calibrado (a tinta Arial sai um pouco
+  mais estreita que a caixa medida); "1–2 palavras" é SOFT (`caracteresPorLinha` 10), quem decide é a medida.
+  #4/#5 (logo topo-centro) e #6 (marca-herói) seguem bloqueados por d09/CP1.
+
+## Modelo sem foto e lista tipográfica (T4-E e #15, 24/10/2026)
+
+Registro do contrato já existente (lacuna apontada na revisão do preflight do #16). Detalhe em
+`docs/design/arquetipos-minimalistas-v1.md`, seção "T4-E e #15".
+
+- 🔴 **`fundo: 'liso-claro'` é identidade, não sugestão.** O fundo sai de `fundoDaPeca` (`arquetipos/fundo.ts`), a mesma
+  conta no compor, no medir-copy e na página de Layouts: o `fundoClaro` da marca, ou `ARQUETIPO_FUNDO_INDISPONIVEL`
+  (nunca o fundo escuro com cara de E). Foto pedida: `ARQUETIPO_FOTO_NAO_SUPORTADA`.
+- 🔴 **Recompor usa o `Page.background` congelado** (`fundoCongelado`), conferido do mesmo jeito; a paleta de hoje não
+  repinta a peça.
+- **Sem foto não há busca**: cada faixa na partida, teto de 3 faixas só sem foto (`faixasSemFoto`).
+- **`cta` no arquétipo** é aditivo: modelo que não o declara segue recusando o bloco.
+
+## Convite tipográfico: logo topo-centro e cantoneiras da peça (#16, 24/10/2026)
+
+- **`minimal-tipografico-convite@1` (MIN-09)** entrou ao lado dos cinco (impressão `arq1-1cdd408f7eeb8d`; as cinco antigas
+  não mudaram um byte). Sem foto (F1, escolha do owner), tudo centrado. Detalhe em `docs/design/arquetipos-minimalistas-v1.md`, seção "#16".
+- 🔴 **d09 liberado só para ESTA logo**: fixa, topo-centro, escala normal, sem tratamento novo. Não libera #4, #5, #6
+  nem marca-herói. `superior-centro` existe só no arquétipo (`CantoDaLogo`); a spec pública e `CANTOS` não mudam; a
+  logo automática e o legado nunca o recebem.
+- 🔴 **Cantoneiras são presas à PEÇA e ocupam só os braços.** `presoA` ausente só nelas (validador e
+  `lerAcentosGravados`: fio, moldura e spark sem `presoA` continuam `ARQUETIPO_ESCOLHA_ILEGIVEL`). A colisão é por
+  `ocupacaoDoAcento` (a caixa de cada subpath do path da RECEITA em uso) no compor, no medir-copy, no CP3 e na
+  reconciliação — o retângulo inteiro conteria todos os textos e a logo. Na recomposição, o path congelado, nunca o
+  `SHAPES_LIBRARY` vivo. Texto ou logo num braço: a obrigatória recusa `ARQUETIPO_ELEMENTO_NAO_CABE`, nada é empurrado.
+- **Cor**: o destaque da manchete (`destaque-da-manchete (cantoneiras)`), congelada. A camada diz
+  `ancoradoA: 'peca'` em `metadata.compositor.acento`; a vitrine (MCP e Layouts) também.
+- **A linha final é o `cta`**: não há papel URL; herda o estilo inteiro da assinatura, inclusive o prefixo
+  (`aplicarPrefixo`), sem prefixo dobrado quando o autor já o escreveu; a linha efetiva é a medida.
+- **Lacunas**: aceite visual do owner (braço longo no Story, peças) pendente; marcas reais sem `fundoClaro`, sem estilo
+  `cta` ou sem variante autorizada que leia sobre o claro recusam (422), não consultadas.
+
+## #16 @2 — cantoneiras de braço igual e margens (24/10/2026)
+
+- **`minimal-tipografico-convite@2`** ao lado do `@1` (impressões `arq1-01570f16b5b8cb` e `arq1-1cdd408f7eeb8d`). Detalhe
+  em `docs/design/arquetipos-minimalistas-v1.md`, seção "#16 @2".
+- 🔴 **Desenho derivado é congelado, nunca rederivado.** `receitasDoArquetipo(a, { formato, canvas })` deriva o path das
+  cantoneiras do `braco` só na peça NOVA (compor e medir-copy, a mesma chamada); o replay desenha a receita gravada.
+  `derivacao` diz de onde veio o path; `style.vetor.asset` continua `cantoneiras@1`.
+- 🔴 **A guarda confere o PATH, não a flag** (`incoerenciaDoDesenho`): 4 Ls nos 4 cantos com braço = `bracoPx` ±0,5 px.
+  Flag 130 com path C1, braço desigual ou canto deslocado → `ARQUETIPO_ELEMENTO_NAO_CABE` 422; `derivacao` malformada →
+  `ARQUETIPO_ESCOLHA_ILEGIVEL` 422 (pelo `acentosCongelados`). Receita sem contexto não desenha o `@2`.
+- **Vitrine = a mais recente por id** (`vitrineDeArquetipos`); o pedido com versão segue valendo, a peça persistida sem
+  versão segue recusada.
+- **Teste que pede o #16 sem versão passa a testar o `@2`**: os testes do `@1` fixam `versao: 1`.
+
+## Divisão com a foto no alto: foto em caixa e papel do liso (#8, 24/10/2026)
+
+- **`minimal-divisao-foto-topo@1` (MIN-04)** entrou ao lado das sete versões (impressão `arq1-03ccaf6af70501`; as sete
+  antigas não mudaram um byte). Foto retangular no alto (60% Story, 58% Feed), texto embaixo no liso, logo fixa no canto
+  inferior direito. Detalhe em `docs/design/arquetipos-minimalistas-v1.md`, seção "#8".
+- 🔴 **`foto-em-caixa` = texto no liso** (`textoNoLiso`): a caixa da foto (`formatos.<f>.foto`) é obrigatória nele e
+  proibida nos outros fundos; nenhuma zona de papel nem caixa de elemento a toca (`ZONA_SOBRE_A_FOTO`); logo fixa. Sem
+  busca pela foto (só a partida), sem mapa de calma, sem véu — nem o automático nem o explícito da página (aviso dito).
+- 🔴 **O papel do liso sai DEPOIS da preparação**, das tintas que a peça DESENHA (`tintasAtivas`: voz 2 criada, estilo do
+  arranjo, destaque efetivo com a alternativa; por segmento efetivo com glifo, como o renderer — a base integralmente
+  sobrescrita não conta). `papelDoBloco` escolhe entre o escuro e o claro da marca pelo critério da régua (sem a
+  tolerância dela: aqui a escolha recusa), a mesma preparação para os dois, sem novo sorteio. Nenhum serve:
+  `ARQUETIPO_FUNDO_INDISPONIVEL` (origem `contraste`), com tintas e folgas — a variante escolhida não é trocada. No
+  medir-copy, cada variante com as tintas DELA (`MedicaoDaCopy.fundo`).
+- 🔴 **Luz neutra não tira a foto da chave.** `luzParaAVariante` só zera o ±2 da luz na escolha de variante; a identidade
+  da foto segue em `chaveDaPeca`. No medir-copy do `foto-em-caixa`, provisório é a falta da identidade da foto na spec
+  (com as mesmas condições de variante e arranjos de hoje); identidade presente com bytes ilegíveis não é provisória e
+  o aviso diz isso (sem "PROVISÓRIA").
+- **Corte pela CAIXA** (`cortesCandidatos`, `assuntoEmPixels`, `fracaoVisivelDoAssunto` com a caixa): assunto catalogado →
+  o corte de maior fração visível (≥ 0,75, senão `SEM_COMBINACAO`/`CORTE_PERDE_O_ASSUNTO`; com o fixo impedindo,
+  `PREFERENCIA_INVIAVEL`); sem catálogo ou fixo → central. O corte vai em `corteSemLeitura` e fica gravado na escolha.
+  Foto ampliada (cover > 1,0×): aviso com o fator, nunca veto.
+- **Sem foto**: o compor recusa `ARQUETIPO_FOTO_AUSENTE` (opção `exigirFoto` de `prepararArquetipo`, só no compor); o
+  medir-copy mede. A rota de Layouts já recusa antes (409 `LAYOUT_SEM_FOTO`).
+- 🔴 **Recomposição**: o `Page.background` atual é o candidato ÚNICO (`fundoCongelado` por `textoNoLiso`), CONFERIDO
+  contra as tintas (recusa origem `pagina`). Fundo editado não é ajuste manual detectado; caixa e enquadramento da foto
+  mexidos à mão são (re-render como está). Corte congelado que perde o assunto catalogado: `ARQUETIPO_CORTE_CONGELADO_PERDE_O_ASSUNTO`.
+  A variante segue VIVA (cor nova da assinatura entra e é conferida); este corte não congela marca, estilo nem logo.
+- **Recusa antes de escrever** quer dizer sem Generation, Page nem arte final; o cache Drive→Blob herdado de
+  `carregarFoto` pode acontecer antes do papel e do corte (não redesenhado aqui).
+- 🔴 **Gate de autonomia fail-closed** para a foto em caixa (`assuntoRepresentaORender`: caixa ≠ canvas → texto-sobre-assunto
+  não comprovada → revisão humana). Não relaxar; ensinar o revisor a foto em caixa é tarefa à parte.
+- Sem `pre`/`cta` no `@1` (recusa; nos Layouts o recorte autoral é revisão do sistema no histórico da página nova).
+  Não há `variante.ts`: o arquétipo já é a variante sintetizada em memória (estilo da página real, geometria do arquétipo).
+
+## #4 base centrada: `superior-centro` sobre foto inteira (24/10/2026)
+
+- **`minimal-fb-base-centro@1` (MIN-01)** entrou ao lado das oito versões (impressão `arq1-15c914b2112ca8`; as oito
+  antigas não mudaram um byte). Foto inteira, manchete e serviço centrados na base, logo fixa no topo-centro. O delta de
+  produto é só a definição no catálogo. Detalhe em `docs/design/arquetipos-minimalistas-v1.md`, seção "#4".
+- **Supera** a linha "não libera #4, #5" da seção do #16 (acima), só para o #4: o d09 de 24/10 liberou a logo fixa
+  topo-centro, normal, sem tratamento novo, sobre foto. O #5 (pílula) e o #6 (marca-herói, CP1) seguem fora.
+- 🔴 **A logo fixa não muda de lugar**: a faixa dela só sai do `dy` 0 por eliminação (região protegida do catálogo ou
+  colisão), na vertical, dentro da zona, no eixo. Nunca automática, nunca num canto.
+- 🔴 **Nenhum véu novo para a logo**: o véu automático fraco existente é da família A (regra de 02/09) e sai quando
+  não a salva; sem variante cadastrada legível, a peça recusa (`LOGO_SEM_VARIANTE_LEGIVEL`). No diagnóstico, o véu da
+  logo no topo do #4 aparece como camada e em `legibilidade.veusRemovidos`, não em `tratamentoDeLeitura` (que só lista
+  bordas com texto).
+- 🔴 **Pré, apoio e cta recusam no `@1`** (`ARQUETIPO_PAPEIS_INCOMPATIVEIS`, compor e medir-copy); nos Layouts, saem em
+  `foraDoLayout` com a revisão do sistema no contrato.
+
+## Variante promovida: cópia de página fora do rodízio (T5, 24/10/2026)
+
+- **O gesto**: `POST /api/templates/[id]/pages/[pageId]/promover-variante` (botão "Variante da marca" no editor, só o
+  curador) COPIA qualquer página própria válida para o fim do template "Assinatura" do mesmo projeto. A origem nunca é
+  escrita. Desfazer = apagar a variante no template Assinatura (a peça que nasceu com ela recompõe noutra: "não existe
+  mais"). Decisões do owner: copiar; qualquer página válida; só estilo e geometria; semântica viva (editar a variante muda
+  as próximas peças e recomposições); fora do rodízio.
+- 🔴 **Cópia CRUA**: as camadas da origem na mesma ordem, com os mesmos ids, `parentId`, `order`, texto e metadata —
+  nunca `normalizarCamadas` (ordenaria e completaria peso, entrelinha, `autoExpand`…). De `metadata.compositor` fica só
+  a allowlist `{ papel }` (os ARRANJOS leem o papel por ali — `papelDoTexto`); bloco, linhas, extra, prefixo, encaixe,
+  canto, elementoDe e acento saem (contrato de copy e receita de arquétipo), e o objeto some quando nada sobra. Tags
+  recriadas `['fora-do-rodizio', formato]`; `copyAutoral` nulo; nenhuma tag `layout`/`arquetipo:*`/`compositor` viaja.
+- 🔴 **Valida, nunca conserta** (`variante-promovida.ts`, puro): `validarCamadas(...).problemas` (a saída com defaults
+  não é usada), ids únicos na página, vetores, formato story/feed pelos DOIS classificadores, manchete, e a
+  EQUIVALÊNCIA origem × cópia — `montarAssinatura`, papéis pelas duas derivações (`papelDoNome(name) ?? papelDoNome(id)`
+  e `papelDoTexto`) e `arranjosDaPagina`, com o mesmo medidor determinístico nos dois lados. Divergiu → 422
+  `COPIA_NAO_EQUIVALENTE`. Página de Layouts vira variante sem a regra do arquétipo: foto em caixa, fundo liso e
+  acentos NÃO se repetem nas peças (o diálogo avisa).
+- 🔴 **A marca `fora-do-rodizio` (`fora-do-rodizio.ts`) exclui só da CANDIDATURA automática**, nunca do carregamento:
+  `escolherVariante` calcula a base como se a promovida não existisse (com zero promovidas, tudo idêntico); a promovida é
+  achada por id, `varianteOriginal` e nome (depois das da base), nunca pela tag reservada; só promovidas e nada pedido →
+  sem página com o motivo, e compor/medir-copy recusam `ASSINATURA_INCOMPLETA` com ele. Consumidores fora do seletor:
+  `selecionar-combinacao` (a promovida nunca entra no laço; a guarda usa as automáticas sem pedido), `outrasVariantes`
+  do medir-copy, `spec-do-item` (união de papéis da copy legada), `descreverVariantes`/`ver-assinatura`/aba Marca
+  (`foraDoRodizio`, marca filtrada das tags) e o padrão do script de revisão de copy (`variante-da-revisao.ts`).
+- 🔴 **Os CINCO escritores que SUBSTITUEM `Page.tags`** preservam a marca da linha gravada (`tagsComMarcaPreservada`):
+  rota de tags do curador, rota de tags do design, MCP `marcar-como-modelo`, PATCH da página (a linha relida em cada
+  volta do compare-and-set) e PUT do template (a base relida por `gravarCamadasComRevisao`, `dados` como função). O
+  pedido não põe nem tira a marca; não existe "entrar no rodízio" nesta fase. Escritor que CRIA página com tags do
+  cliente pode nascer com a marca: isso exclui, não escala (limite declarado, sem guarda).
+- 🔴 **Travas, ordem fixa**: consultiva `paginas-do-template:<destino>` → `Template` destino `FOR SHARE` (relido: nome,
+  projeto, e a contagem de "Assinatura" = 1 dentro da transação) → leituras. Só `tx` e só banco dentro (cópia e
+  validação são puras). Idempotente: a mesma cópia já promovida devolve 200 `jaExistia`. Depois do commit,
+  `pedirRecomposicaoDaArteCongelada` só quando criou (AGENTS: as duas chamadas). Limites: a serialização real só se prova
+  em PostgreSQL; não há unicidade GLOBAL do nome "Assinatura" contra quem cria template sem cooperar (só índice único).
+
+## #5 topo centrado: a pílula de contorno, o primeiro acento que ENVOLVE (24/10/2026)
+
+- **`minimal-fb-topo-centro@1` (MIN-01)** entrou ao lado das nove versões (impressão `arq1-023d4c649e2482`; as nove
+  antigas não mudaram um byte). Foto inteira, logo fixa no topo-centro (d09 "#4 e #5", escala normal, CP3, sem
+  tratamento novo), manchete e apoio opcional centrados logo abaixo e, na base, o serviço de UMA linha dentro de uma
+  pílula de contorno obrigatória. Detalhe em `docs/design/arquetipos-minimalistas-v1.md`, seção "#5".
+- **O tipo `pilula-contorno`** (`ELEMENTOS_QUE_ENVOLVEM`) é o único acento que envolve o papel a que se prende. A borda
+  externa O é a caixa REAL do serviço (texto + ornamentos do arranjo, o mesmo obstáculo de `obstaculosDosAcentos`) mais a
+  folga da DEFINIÇÃO (`envoltoriosDoArquetipo`: a caixa E do elemento contra a referência R, 32 × 19 px no Story, 32 × 16
+  no Feed); a camada é O ⊖ ⌈traço/2⌉, `rounded-rectangle`, raio 9999 (os renderers limitam a meia altura), cor do serviço.
+- 🔴 **O interior permitido é o CURVO** (`cabeNoInteriorDaPilula`): os quatro cantos do serviço ficam ≥ 1 px dentro da
+  borda interna do traço, com o raio do clamp dos renderers. Nunca a AABB nem a folga escalar: com traço 16 e a mesma folga
+  o canto invade o arco (contraexemplo da revisão do preflight) e a peça recusa (`ARQUETIPO_ELEMENTO_NAO_CABE`). A ocupação
+  da pílula para os OUTROS (logo, CP3, 8c) é a AABB cheia O — conservadora, nunca o interior do serviço.
+- 🔴 **A folga conta na zona e na faixa** (`materializarUnidades` e `partidaNoArquetipo`): a busca nunca oferece um `dy`
+  que tire a pílula da zona efetiva; sem posição, `ARQUETIPO_FORA_DA_ZONA` com o motivo "pílula de contorno".
+  Arquétipo sem envolvente: nada muda.
+- 🔴 **Receita × elemento ANTES do lookup**: no ramo do envolvente, `posicionarAcentos` confere id, tipo, `presoA`
+  declarado, envoltório (inteiro ≥ 8) e desenho antes de ler referência, posição ou obstáculo — receita incoerente é
+  recusa, nunca opcional, nunca TypeError. No replay, `incoerenciaDosEnvolventesCongelados` (chamada no `compor` antes de
+  medir) recusa `ARQUETIPO_ESCOLHA_ILEGIVEL` a peça sem a receita do envolvente obrigatório ou com ela presa a outro papel.
+  A mesma lacuna nos acentos antigos (moldura do #2, cantoneiras do #16) é herdada e não foi tocada.
+- 🔴 **O raio é congelado e transportado**: `lerAcentosGravados` aceita `rounded-rectangle` só na pílula (contorno, raio
+  inteiro em [1, 9999], espessura, sem path, sem derivação) e devolve o raio; os tipos antigos saem como antes (sem raio).
+- 🔴 **A logo topo-centro exige 24 px de folga dos textos no CP3** (`intersecta` do compor, folga padrão 24): a definição
+  do #5 no Feed baixou a manchete para .16 (o preflight dizia .155, vão de 20 px, e toda peça Feed recusava a logo). Quem
+  publicar outro modelo com logo fixa perto de texto confere esse vão.
+- 🔴 **Pré e cta recusam no `@1`**; serviço em 2 linhas recusa (`ARQUETIPO_LINHAS_EXCEDIDAS`): pílula de 2 linhas seria
+  `@2` com aceite próprio.
+
+## Foto em caixa com máscara `arco-janela` (#9 técnico por fixture, 25/10/2026)
+
+- **Só a técnica, por FIXTURE.** `minimal-divisao-cor-topo-arco@1` (MIN-04) NÃO está em `PUBLICADOS`: os testes o
+  injetam por mock do catálogo (`arquetipos/__tests__/suporte/arquetipo-arco-9.ts`). Catálogo, impressão travada,
+  Layouts, vitrine, MCP e candidatos são a habilitação (outra etapa, depois da revisão).
+- 🔴 **O arquétipo guarda a INTENÇÃO, nunca o path**: `formatos.<f>.mascaraDaFoto = { tipo: 'arco-janela', raio }`
+  (raio em fração da LARGURA da caixa, ≥ 0,5), só com `foto-em-caixa` (`CAMPO_DESCONHECIDO` fora dele), contrato
+  fechado, flecha < altura da caixa em px (`CAMPO_INVALIDO`). `ZONA_SOBRE_A_FOTO` segue sobre o RETÂNGULO da caixa.
+- 🔴 **O desenho é DERIVADO e CONGELADO.** `pathDoArcoJanela` (`arquetipos/mascara.ts`, v1 imutável: ⌈θ/45°⌉ cúbicas
+  por metade, só `M L C Z`, 4 casas) sai da caixa em px na peça nova, passa pelos DOIS parsers (`segmentosDoPath` e o
+  `Path2D` do @napi-rs/canvas — o servidor ignora path ruim em silêncio; aqui a falha recusa `ARQUETIPO_INDISPONIVEL`)
+  e vai para `bg-foto.style.mask = { shapeId: 'arco-janela', path }` e para a receita
+  `composicao.arquetipo.foto.mascara = { tipo, versao: 1, raio, caixa: {w,h}, path }` (`composicao.foto` não muda).
+  Mudar o algoritmo ou o formatador = `versao: 2` ao lado, nunca reescrever a v1.
+- 🔴 **O assunto é medido no ARCO** (`fracaoVisivelNoArco`), com a mesma regra 0,75 e as mesmas recusas do #8
+  (`SEM_COMBINACAO`, `PREFERENCIA_INVIAVEL`, `ARQUETIPO_CORTE_CONGELADO_PERDE_O_ASSUNTO`): o canto que o arco esconde não
+  conta como assunto visível.
+- 🔴 **Recomposição: a receita é lida em `recompor.ts` ANTES do `comporPeca`** (`mascaraCongelada`), fechada, conferida
+  contra a derivação v1 do PRÓPRIO raio/caixa (byte a byte) e depois contra o raio/caixa da definição EXATA já resolvida
+  (id/versão/impressão) — nunca a mais recente, nunca o catálogo vivo de elementos. Passou: desenha o path GRAVADO e mede o
+  assunto com o raio/caixa dele. Ausente (o arquétipo declara máscara), ilegível, de outra caixa, de outro raio (mesmo
+  coerente) ou presente numa definição sem máscara: `ARQUETIPO_ESCOLHA_ILEGIVEL`, com zero consultas novas e nada escrito.
+- 🔴 **Máscara mexida à mão é ajuste manual** (`mudancasDeEnquadramento` compara `shapeId`/`path` por VALOR; ordem das
+  chaves irrelevante, ausência = ausência, SVG não validado): acrescentada, removida ou trocada → re-render como está, as
+  camadas ficam, a receita não é lida. Vale para o #9 e para o legado (sem isso a recomposição apagava a máscara que a
+  equipe pôs). Máscara igual: o caminho de antes.
+- **Limites ditos**: redimensionar a foto à mão ESTICA o arco (o path é 0–100 da caixa e vira elipse) — e a caixa mexida
+  já manda para o re-render como está; a edição de imagem do editor (`handleApplyImageEdit`) grava o tamanho da imagem
+  editada (mesma coisa, também no #8). As portas de escrita não validam `style.mask.path` (lacuna herdada do CP-X2).
+- 🔴 **A definição do #9 tem as referências de TEXTO com w .602 (650 px) e a logo do Feed com h .0348** (A-I1/A-I2 da
+  I9, adotados na R1). Com as referências literais das amostras (w .60, h .035) o produto não reproduz o visual aceito:
+  a coluna numa referência de 648 px é 634 (`colunaDaCaixa` = largura − 14) e a manchete de 87 px (636 px de linha)
+  desce para 84 no Story; a logo do Feed (94,5 px) arredonda x e largura separados na materialização e passa 1 px da
+  zona efetiva (recusa). Quem publicar outro arquétipo com o corpo medido numa amostra confere a coluna justa
+  (referência − 14) e o arredondamento da logo contra a borda da área segura; o motor não muda por isso.
+- 🔴 **Raio finito não basta**: o domínio da máscara recusa a conta não representável (r ou r² transbordando, r ou w/2
+  sumindo, flecha ≤ 0 por cancelamento) — raio 1e308 dava path `NaN` aceito pelo leitor (R1 da I9).
+- **Adendo H9 (25/10/2026) — publicado.** `minimal-divisao-cor-topo-arco@1` entrou em `PUBLICADOS` (`catalogo.ts`,
+  `DIVISAO_ARCO`) com a definição final acima (texto w .602, logo do Feed h .0348, raio 0,62) e a impressão travada
+  `arq1-04603bcf9d7623` (11 versões, 10 ids; as 10 impressões anteriores intocadas). A literal das amostras continua só
+  na fixture de teste (`arq1-139cae795189c3`, não publicada); o mock `catalogoComOArco` tira o #9 real da lista antes de
+  pôr a base, senão o publicado a esconderia (`resolverArquetipo` devolve o primeiro). A vitrine (`vitrineDeArquetipos`,
+  GET dos Layouts e `ver-assinatura`) leva `mascaraDaFoto: { <formato>: { tipo, raio, path } }` com o path pela MESMA
+  conta do compor (`caixaDaFoto` × `DIMENSOES` → `receitaDoArcoJanela`); o card do Layouts desenha o arco com esse path
+  num `<svg viewBox="0 0 100 100" preserveAspectRatio="none">` e a legenda diz onde a foto está ("Foto embaixo com o topo
+  em arco · fundo da marca em cima"; o #8 segue "Foto no alto"). `ARQUETIPO_FOTO_AUSENTE` diz "numa caixa", sem "no
+  alto". Limites: o #9 é o 1º card, o 1º candidato e o 1º da vitrine (ordem por id, não escolha); a página criada tem
+  `mask.shapeId: 'arco-janela'`, que a barra de imagem não lista (nenhum item marcado; trocar/tirar é ajuste manual);
+  criar Layouts A PARTIR de uma página #9 pede foto de novo (409 `LAYOUT_SEM_FOTO`: a `bg-foto` cobre 58%, abaixo dos 90%
+  da detecção, como no #8); o arredondamento separado de x/largura em `materializar.ts` segue como dívida.
+
+## #10 `minimal-coluna-foto@1` e `minimal-coluna-foto-esquerda@1` — coluna de foto (IH, 25/10/2026)
+
+- **Dois ids, um por lado** (MIN-05, `fundo: 'foto-em-caixa'`): a foto numa caixa de altura inteira e 42,5% da largura
+  (D `x .575`, E `x 0`; 621/0 × 459 px), o texto numa coluna estreita no liso do outro lado, a logo FIXA no canto de
+  cima do lado do texto (D superior-esquerdo, E superior-direito) e o fio opcional sob a manchete. Não existe parâmetro
+  de espelho: a spec segue `arquetipo` strict e o lado é o id. O espelho é FUNCIONAL — foto, zonas e a referência da
+  logo espelham; textos e fio ficam no `xMin` da coluna, alinhados à esquerda nos dois lados.
+- 🔴 **A definição tem as referências de TEXTO com w .436 e a logo D x .086 / E x .739** (A10-1/A10-2a, decisões técnicas
+  do preflight focal adotadas pelo Codex; o G-A10 aprovou as amostras v2 com .435 e .085/.74). Com .435 a coluna do
+  medidor é 455 e "Bastidores" a 80 px (456 medido no servidor) desce para 77; com .74 a logo do Feed E 2:1 arredonda
+  para 894 + 95 = 989 contra a zona que termina em 988 (e cerca de 18% das proporções de logo seriam recusadas). O texto
+  E fica em .479 (zona .479–.915: .48 + .436 passaria do piso). Medido pela IH: corpos 80/40/30, largura gravada
+  470/427/351 (`min(coluna, ceil(maior)) + 14`), tinta dos textos/logo/fio a ±2 px das amostras aceitas.
+- **Coluna estreita, quebra do autor** (`blocos.ts`): toda linha da copy tem de caber inteira em 456 px; o produto não
+  quebra dentro da linha. A manchete de 3 linhas e o apoio em 2 vêm com `\n` autoral; "Luz natural e cada prato no
+  ponto certo" numa linha só é `ARQUETIPO_TEXTO_NAO_CABE`, e o medir-copy diz isso antes. Limite, não defeito.
+- **Limites ditos**: ordem por id, não escolha — os 2 do #10 são o 1º e o 2º card, candidato e item da vitrine (o #9 vai
+  a 3º, o #4 a 5º); o card desenha o retângulo da foto com a legenda pelo lado ("Foto à direita · fundo da marca à
+  esquerda" / "Foto à esquerda · fundo da marca à direita"). Pré e cta fora do `@1`; sem manchete girada, pílula, fios
+  cruzados, foto em altura parcial ou linha vertical. Toda peça #10 em leva autônoma vai à revisão humana (D8 do #8). A
+  marca do G-A10 era sintética: não valida marcas reais nem release. O arredondamento separado de x/largura em
+  `materializar.ts` segue como dívida (o #9 publicado, canto direito, tem a mesma exposição).
+
+## #4 guardado: fora da vitrine, resolvível por id (25/10/2026)
+
+- **`minimal-fb-base-centro@1` sai dos seletores**: `vitrineDeArquetipos()` (`na-spec.ts`) filtra os ids de
+  `FORA_DA_VITRINE`, então o GET de Layouts, o painel e o `ver-assinatura` passam a listar 11 ids. O aceite visual
+  G-H1 do #4 foi adiado pelo owner; a ocultação não o fecha.
+- **O catálogo não muda**: 13 versões / 12 ids, `PUBLICADOS`, a impressão `arq1-15c914b2112ca8`, as receitas, o
+  `resolverArquetipo` e o `recompor.ts` ficam como estavam. O replay das peças `#4@1` e o pedido explícito por id
+  (`compor-arte`, `compor-leva`, `medir-copy`, POST de Layouts com `{ id, versao }`) continuam resolvendo.
+- **Limite dito**: é ocultação dos seletores, não proibição de composições novas — quem conhece o id ainda compõe.
+  `candidatosDeArquetipo` (`candidatos.ts`) continua listando os 12 ids pelo catálogo porque não está ligado a fluxo
+  nenhum; quem o ligar decide ali se respeita `FORA_DA_VITRINE`.
+- 🔴 **Contagem da vitrine ≠ contagem do catálogo**: teste de vitrine conta 11; teste de catálogo conta 13/12. Não troque
+  um número pelo outro às cegas. O helper `card()` dos testes do painel lança quando o id não está no HTML — antes, um
+  `not.toContain` contra um card ausente passava vazio.
+
+## Altura física e orçamento transitório na escolha da escala (26/10/2026)
+
+- **Caixa gravada = física**: a altura do bloco de texto é `ceil` da altura medida (o Konva descarta a linha que não
+  cabe por fração de pixel). O medidor real expõe também `naturalHeight` (a altura antes do arredondamento).
+- **Orçamento transitório só escolhe o degrau**: `montarBloco` decide descer a escala por `round(naturalHeight)`
+  (`orcamentoDeAltura`); a pilha da unidade soma o mesmo orçamento (`alturaDoOrcamento`) só para essa decisão.
+- **A régua física final encerra a descida**: a escada da unidade só para quando a pilha FÍSICA (ceil) também cabe na
+  régua da materialização — `excedeAlturaDaReferencia` (`materializar.ts`, px brutos + `TOLERANCIA_PX`), a mesma conta
+  da recusa. Orçamento menor nunca autoriza caixa física acima da referência (175,49/176 recusa; 175,5/176 aceita).
+- **Medidor sem `naturalHeight`** (contrato antigo, mocks) usa a altura física: ninguém inventa a fração.
+- **Nada transitório persiste**: `orcamentoDeAltura`/`alturaDoOrcamento` não entram no `Layer` nem na página.
+- Consequência medida: #9 mantém corpo 86; #16@2 C2 Feed corpo 69, caixas 85/85, pilha 170 (folga 5,5); C1 corpo 62,
+  pilha 156. Controles em `arquetipos/__tests__/materializar.test.ts` e `src/lib/__tests__/altura-fisica-reflow-real.test.ts`.
+
+## #3 guardado: sem texto central sobre foto nas opções (26/10/2026)
+
+- Decisão do owner (26/10): `minimal-fb-centro-optico` entra em `FORA_DA_VITRINE` (`arquetipos/na-spec.ts`), com o
+  mesmo limite do #4 — o GET de Layouts, o painel e o `ver-assinatura` passam a listar 10 ids, e o #3 não é usado nas
+  próximas provas.
+- Catálogo (13 versões / 12 ids), impressões, resolução por id direto e replay de artes persistidas continuam iguais:
+  só a vitrine muda. Nenhuma guarda nova em `prepararArquetipo`/`resolverArquetipo`, nenhuma troca automática de
+  layout, artes existentes intocadas.

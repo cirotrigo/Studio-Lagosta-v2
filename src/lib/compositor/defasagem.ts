@@ -36,6 +36,7 @@ import { diffDeGeometria, type DiffDeGeometria } from '@/lib/aprendizado/diff-ge
 import { lerCamadas } from '@/lib/posts/page-layers'
 import { renderDaPaginaCobreAMidia } from '@/lib/posts/render-da-pagina'
 import { ehClipe } from '@/lib/video/camadas-de-video'
+import { temGradeVisivel, vinculadaAGrade } from '@/lib/grades/presenca'
 
 import type { CropPosition } from '@/lib/image-crop-utils'
 import { CreativeError } from '@/lib/creatives/errors'
@@ -44,6 +45,8 @@ import type { VarianteDaLogo } from './legibilidade-da-logo'
 import { linhasComColchetes } from './destaques'
 import { CANTOS, PAPEIS, type Canto, type Papel, type SpecDePeca } from './spec'
 import { PAPEIS_DO_ARQUETIPO } from './arquetipos/tipos'
+import { lerAcentosGravados, type AcentoCongelado } from './arquetipos/acentos'
+import { lerReceitaDaMascara, type CaixaDaMascara, type ReceitaDaMascara } from './arquetipos/mascara'
 import { MODO_BUSCA_ESPACIAL, type EscolhaEspacial, type EscolhaParaReproduzir, type MembroDaFaixa, type ResumoDaBuscaOriginal } from './arquetipos/busca-espacial-tipos'
 
 /**
@@ -316,14 +319,21 @@ function mudancasDeTipo(antes: unknown, depois: unknown): string[] {
  * caixa, fonte, alinhamento e visibilidade). Recompor escolhe o corte de novo
  * pelo mapa de calma e jogaria fora o que a pessoa acertou — conta como ajuste
  * manual, e a arte é só re-renderizada como está.
+ *
+ * A MÁSCARA também (#9, A-07, 25/10/2026): acrescentada, removida ou trocada
+ * (`shapeId` ou `path`) pela barra de imagem, a recomposição a redesenharia pela
+ * receita — ou a apagaria, no legado — em silêncio. Comparada por VALOR das duas
+ * chaves (a ordem não importa; ausência = ausência), sem validar nem normalizar
+ * o SVG.
  */
 function mudancasDeEnquadramento(antes: unknown, depois: unknown): string[] {
   const a = lerCamadas(antes)
   const d = lerCamadas(depois)
   if (!a.legivel || !d.legivel) return []
   const enquadramento = (c: Layer) => {
-    const estilo = (c.style ?? {}) as { crop?: unknown; cropPosition?: unknown; objectFit?: unknown }
-    return JSON.stringify([estilo.crop ?? null, estilo.cropPosition ?? null, estilo.objectFit ?? null])
+    const estilo = (c.style ?? {}) as { crop?: unknown; cropPosition?: unknown; objectFit?: unknown; mask?: unknown }
+    const mascara = ehObjeto(estilo.mask) ? [estilo.mask.shapeId ?? null, estilo.mask.path ?? null] : [null, null]
+    return JSON.stringify([estilo.crop ?? null, estilo.cropPosition ?? null, estilo.objectFit ?? null, ...mascara])
   }
   const imagensAntes = new Map((a.camadas as Layer[]).filter((c) => c?.type === 'image').map((c) => [c.id, c]))
   const motivos: string[] = []
@@ -344,6 +354,26 @@ function clipesDaLinhaDoTempo(camadasDaPagina: unknown): string[] {
   const d = lerCamadas(camadasDaPagina)
   if (!d.legivel) return []
   return (d.camadas as Layer[]).some((c) => ehClipe(c)) ? ['a página tem clipes na linha do tempo'] : []
+}
+
+/**
+ * G4.5 (27/10/2026): foto trocada numa célula de GRADE, qualquer uma — `fotoDaPagina` só olha a primeira imagem, e a
+ * troca da segunda foto da grade deixava o slide publicando a anterior. Comparada por id nos dois lados (`''` e
+ * ausente são a mesma célula vazia).
+ */
+function fotosDaGradeTrocadas(antes: unknown, depois: unknown): string[] {
+  const a = lerCamadas(antes)
+  const d = lerCamadas(depois)
+  if (!a.legivel || !d.legivel) return []
+  const url = (c: Layer | undefined) => (typeof c?.fileUrl === 'string' ? c.fileUrl : '')
+  const daArte = new Map((a.camadas as Layer[]).filter((c) => c && vinculadaAGrade(c)).map((c) => [c.id, c]))
+  const motivos: string[] = []
+  for (const c of d.camadas as Layer[]) {
+    if (!c || !vinculadaAGrade(c)) continue
+    const anterior = daArte.get(c.id)
+    if (anterior && url(anterior) !== url(c)) motivos.push(`a foto da célula "${c.id}" da grade foi trocada`)
+  }
+  return motivos
 }
 
 /**
@@ -376,6 +406,7 @@ export function medirDefasagem(camadasDaPagina: unknown, snapshot: unknown): Def
         ...mudancasDeTipo(snapshot, camadasDaPagina),
         ...mudancasDeEnquadramento(snapshot, camadasDaPagina),
         ...clipesDaLinhaDoTempo(camadasDaPagina),
+        ...fotosDaGradeTrocadas(snapshot, camadasDaPagina),
       ]
 
   // A foto trocada é defasagem como o texto editado (PR 10). Só conta quando a
@@ -383,14 +414,16 @@ export function medirDefasagem(camadasDaPagina: unknown, snapshot: unknown): Def
   // aparece no diff de geometria como ajuste manual.
   const fotoAntes = fotoDaPagina(snapshot)
   const fotoAgora = fotoDaPagina(camadasDaPagina)
-  const fotoTrocada = !!fotoAntes && !!fotoAgora && fotoAntes !== fotoAgora
+  const fotoTrocada = (!!fotoAntes && !!fotoAgora && fotoAntes !== fotoAgora) || fotosDaGradeTrocadas(snapshot, camadasDaPagina).length > 0
 
   return {
     ilegivel: false,
     defasada: papeis.length > 0 || fotoTrocada,
     fotoTrocada,
     papeis,
-    soTexto: motivos.length === 0,
+    // G4.5: grade de fotos é composição manual — recompor pela spec a desmontaria em UMA foto. A peça com grade (de um
+    // lado ou do outro) só é re-renderizada como está; nada entra em `mexidoNaMao`, que não acusa mudança sem mudança.
+    soTexto: motivos.length === 0 && !temGradeVisivel(camadasDaPagina) && !temGradeVisivel(snapshot),
     mexidoNaMao: motivos,
   }
 }
@@ -664,6 +697,63 @@ export function escolhaEspacialOriginal(fieldValues: unknown, spec: SpecDePeca):
   const original = resumoDaBuscaOriginal(gravado.buscaEspacial)
   if (original) limpa.buscaOriginal = original
   return limpa
+}
+
+/**
+ * T1b: os ACENTOS que a peça gravou (`composicao.arquetipo.acentos`) — a receita congelada que a recomposição desenha,
+ * nunca o catálogo de elementos de hoje. A peça de antes do T1b (sem o campo) nasceu sem acento e continua sem (`[]`);
+ * campo malformado recusa como a escolha ilegível, antes de qualquer escrita. Sem arquétipo, `null`.
+ */
+export function acentosCongelados(fieldValues: unknown, spec: SpecDePeca): AcentoCongelado[] | null {
+  if (!spec.arquetipo) return null
+  const composicao = ehObjeto(fieldValues) && ehObjeto(fieldValues.composicao) ? fieldValues.composicao : null
+  const gravado = composicao && ehObjeto(composicao.arquetipo) ? composicao.arquetipo : null
+  const lidos = lerAcentosGravados(gravado?.acentos)
+  if (!('problema' in lidos)) return lidos
+  throw new CreativeError(
+    'ARQUETIPO_ESCOLHA_ILEGIVEL',
+    `Os acentos gravados desta arte não puderam ser lidos (${lidos.problema}); a recomposição não os redesenha pelo catálogo de hoje — peça uma nova composição da peça.`,
+    422,
+    { arquetipo: spec.arquetipo, problema: lidos.problema },
+  )
+}
+
+/** O que a definição EXATA da peça (id/versão/impressão já resolvidos) espera da máscara: o raio e a caixa em px. */
+export interface MascaraEsperada {
+  raio: number
+  caixa: CaixaDaMascara
+}
+
+/**
+ * #9: a MÁSCARA que a peça gravou (`composicao.arquetipo.foto.mascara`) — a receita congelada que a recomposição desenha,
+ * nunca a derivação do catálogo de hoje. Leitura FECHADA e conferida ANTES de qualquer consulta nova, medição, render ou
+ * escrita: 1º a forma e a coerência v1 contra o PRÓPRIO raio/caixa (`lerReceitaDaMascara`, MK-16); 2º raio e caixa iguais
+ * aos da definição exata que a recomposição já resolveu (`esperada`, A-09) — nunca a mais recente nem o catálogo vivo de
+ * elementos. Passou: o path GRAVADO é o desenho. Arquétipo que declara máscara e peça sem receita = ilegível (não há
+ * desenho de reserva); receita numa definição sem máscara também. Sem arquétipo, ou sem máscara dos dois lados, `null`.
+ */
+export function mascaraCongelada(fieldValues: unknown, spec: SpecDePeca, esperada: MascaraEsperada | null): ReceitaDaMascara | null {
+  if (!spec.arquetipo) return null
+  const recusar = (problema: string): never => {
+    throw new CreativeError(
+      'ARQUETIPO_ESCOLHA_ILEGIVEL',
+      `A máscara gravada desta arte não pôde ser lida (${problema}); a recomposição não a redesenha pelo catálogo de hoje — peça uma nova composição da peça.`,
+      422,
+      { arquetipo: spec.arquetipo, problema },
+    )
+  }
+  const composicao = ehObjeto(fieldValues) && ehObjeto(fieldValues.composicao) ? fieldValues.composicao : null
+  const gravado = composicao && ehObjeto(composicao.arquetipo) ? composicao.arquetipo : null
+  const foto = gravado?.foto
+  if (!esperada) return foto === undefined ? null : recusar('a arte guardou uma máscara, mas a definição exata do arquétipo não declara máscara')
+  if (foto === undefined || (ehObjeto(foto) && foto.mascara === undefined)) return recusar('a arte não guardou a máscara que o arquétipo declara')
+  const lida = lerReceitaDaMascara(ehObjeto(foto) ? foto.mascara : foto)
+  if ('problema' in lida) return recusar(lida.problema)
+  if (lida.caixa.w !== esperada.caixa.w || lida.caixa.h !== esperada.caixa.h) {
+    return recusar(`a caixa da máscara (${lida.caixa.w}×${lida.caixa.h}) não é a da foto da peça (${esperada.caixa.w}×${esperada.caixa.h})`)
+  }
+  if (lida.raio !== esperada.raio) return recusar(`o raio gravado (${lida.raio}) não é o da definição exata da peça (${esperada.raio})`)
+  return lida
 }
 
 /** A variante da logo gravada (CP3): `undefined` = peça de antes do CP3; forma estranha = ilegível. */

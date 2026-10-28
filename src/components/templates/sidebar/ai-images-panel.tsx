@@ -16,6 +16,9 @@ import { useCredits } from '@/hooks/use-credits'
 import { useProject } from '@/hooks/use-project'
 import { usePhotoSwipe } from '@/hooks/use-photoswipe'
 import { useUploadImageToDrive } from '@/hooks/use-drive'
+import { useFotoNaGrade } from '@/hooks/use-preencher-grade'
+import type { PlanoDePreenchimento } from '@/lib/grades/preenchimento'
+import { AplicandoNaGrade } from '@/components/templates/panels/lote-da-grade'
 import { cn } from '@/lib/utils'
 import type { GoogleDriveItem } from '@/types/google-drive'
 import { DesktopGoogleDriveModal } from '@/components/projects/google-drive-folder-selector'
@@ -89,8 +92,10 @@ function AspectRatioIcon({ ratio }: { ratio: string }) {
 }
 
 export function AIImagesPanel() {
-  const { addLayer, projectId, design, pendingAIImageEdit, setPendingAIImageEdit } = useTemplateEditor()
+  const { projectId, design, pendingAIImageEdit, setPendingAIImageEdit } = useTemplateEditor()
   const { toast } = useToast()
+  // G2: grade selecionada recebe a imagem; este é o controle (aplicando/Cancelar) da biblioteca
+  const { planejar: planejarFoto, colocar: colocarNaGrade, cancelar: cancelarNaGrade, emVoo: aplicandoNaGrade } = useFotoNaGrade()
 
   const [mode, setMode] = React.useState<'generate' | 'library' | 'prompts'>('generate')
   const [search, setSearch] = React.useState('')
@@ -157,18 +162,23 @@ export function AIImagesPanel() {
   }
 
   // Handler para adicionar imagem ao canvas
-  const handleAddToCanvas = (image: AIImageRecord) => {
-    const layer = createDefaultLayer('image')
-    layer.name = image.name
-    layer.fileUrl = image.fileUrl
+  // G2: grade/célula selecionada recebe a imagem (alvo decidido no clique); senão, a avulsa de sempre
+  const handleAddToCanvas = async (image: AIImageRecord) => {
+    // uma imagem por vez enquanto a anterior é aplicada na grade (nem célula nem avulsa)
+    if (aplicandoNaGrade) return
+    await colocarNaGrade(planejarFoto(), { tipo: 'url', url: image.fileUrl, nome: image.name }, (inserir) => {
+      const layer = createDefaultLayer('image')
+      layer.name = image.name
+      layer.fileUrl = image.fileUrl
 
-    // Calcular tamanho e posição com largura total e centralizada
-    const placement = calculateCanvasPlacement(image.width, image.height)
-    layer.size = placement.size
-    layer.position = placement.position
+      // Calcular tamanho e posição com largura total e centralizada
+      const placement = calculateCanvasPlacement(image.width, image.height)
+      layer.size = placement.size
+      layer.position = placement.position
 
-    addLayer(layer)
-    toast({ description: `${image.name} adicionado ao canvas` })
+      inserir(layer)
+      toast({ description: `${image.name} adicionado ao canvas` })
+    })
   }
 
   // Handler para editar imagem
@@ -253,6 +263,7 @@ export function AIImagesPanel() {
         </TabsContent>
 
         <TabsContent value="library" className="mt-4 space-y-4">
+          <AplicandoNaGrade emVoo={aplicandoNaGrade} onCancelar={cancelarNaGrade} />
           {/* Busca */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -290,6 +301,7 @@ export function AIImagesPanel() {
                     image={image}
                     projectId={projectId}
                     onAddToCanvas={() => handleAddToCanvas(image)}
+                    adicionarBloqueado={aplicandoNaGrade}
                     onEditImage={() => handleEditImage(image)}
                   />
                 ))}
@@ -335,7 +347,9 @@ function GenerateImageForm({
   const { toast } = useToast()
   const { credits, creditosAplicados, canPerformOperation, getCost, refresh } = useCredits()
   const queryClient = useQueryClient()
-  const { addLayer, design } = useTemplateEditor()
+  const { design } = useTemplateEditor()
+  // G2: a imagem gerada vai para o alvo decidido ANTES de gerar; este é o controle (aplicando/Cancelar) da geração
+  const { planejar: planejarFoto, colocar: colocarNaGrade, cancelar: cancelarNaGrade, emVoo: aplicandoNaGrade } = useFotoNaGrade()
   const { data: project } = useProject(projectId)
   const uploadToDrive = useUploadImageToDrive()
   const driveFolderId =
@@ -542,6 +556,8 @@ function GenerateImageForm({
       mode: 'generate' | 'edit'
       baseImage?: string
       maskImage?: string
+      /** G2: alvo decidido ANTES da geração (não vai no payload) */
+      plano?: PlanoDePreenchimento
     }) => {
       // Validar projectId antes de enviar
       if (projectId === null || projectId === undefined) {
@@ -641,17 +657,20 @@ function GenerateImageForm({
         setMode('generate') // Voltar para modo geração
       }
 
-      // Adicionar automaticamente ao canvas com largura total e centralizada
-      const layer = createDefaultLayer('image')
-      layer.name = data.name
-      layer.fileUrl = data.fileUrl
+      // G2: a grade/célula escolhida ANTES de gerar recebe a imagem (mudou no meio? nada aplicado, ela fica na biblioteca)
+      void colocarNaGrade(variables.plano ?? { tipo: 'avulsa' }, { tipo: 'url', url: data.fileUrl, nome: data.name }, (inserir) => {
+        // Adicionar automaticamente ao canvas com largura total e centralizada
+        const layer = createDefaultLayer('image')
+        layer.name = data.name
+        layer.fileUrl = data.fileUrl
 
-      // Calcular tamanho e posição com largura total e centralizada
-      const placement = calculateCanvasPlacement(data.width, data.height)
-      layer.size = placement.size
-      layer.position = placement.position
+        // Calcular tamanho e posição com largura total e centralizada
+        const placement = calculateCanvasPlacement(data.width, data.height)
+        layer.size = placement.size
+        layer.position = placement.position
 
-      addLayer(layer)
+        inserir(layer)
+      })
 
       // Fazer upload para o Drive se tiver pasta de destino
       if (driveUploadTarget?.folderId && data.fileUrl) {
@@ -771,6 +790,12 @@ function GenerateImageForm({
   }, [selectedModel, mode, modelSupportsEditing, toast])
 
   const handleGenerate = async () => {
+    // G2: onde a imagem vai entrar é decidido agora, antes de qualquer envio ou geração
+    const plano = planejarFoto()
+    if (plano.tipo === 'recusa') {
+      toast({ variant: 'destructive', description: plano.mensagem })
+      return
+    }
     if (!prompt.trim()) {
       toast({ variant: 'destructive', description: 'Digite um prompt' })
       return
@@ -1000,6 +1025,7 @@ function GenerateImageForm({
         mode,
         baseImage: finalBaseImageUrl,
         maskImage: maskImageUrl,
+        plano,
       })
     } catch (_error) {
       toast({
@@ -1635,6 +1661,7 @@ function GenerateImageForm({
           </div>
         )}
 
+        <AplicandoNaGrade emVoo={aplicandoNaGrade} onCancelar={cancelarNaGrade} />
         <div className="flex items-center justify-between">
           <span className="text-xs text-muted-foreground">
             {/* O span fica (vazio) para o botão seguir à direita. */}
@@ -1642,7 +1669,7 @@ function GenerateImageForm({
           </span>
           <Button
             onClick={handleGenerate}
-            disabled={!prompt.trim() || generateMutation.isPending || !canPerformOperation('ai_image_generation')}
+            disabled={!prompt.trim() || generateMutation.isPending || aplicandoNaGrade || !canPerformOperation('ai_image_generation')}
           >
             {generateMutation.isPending ? (
               <>
@@ -1684,11 +1711,14 @@ function ImageCard({
   image,
   projectId,
   onAddToCanvas,
+  adicionarBloqueado = false,
   onEditImage
 }: {
   image: AIImageRecord
   projectId: number | null | undefined
   onAddToCanvas: () => void
+  /** G2: uma imagem está sendo aplicada na grade */
+  adicionarBloqueado?: boolean
   onEditImage: () => void
 }) {
   const queryClient = useQueryClient()
@@ -1760,6 +1790,7 @@ function ImageCard({
                   e.stopPropagation()
                   onAddToCanvas()
                 }}
+                disabled={adicionarBloqueado}
                 className="h-8 w-8"
                 title="Adicionar ao canvas"
               >

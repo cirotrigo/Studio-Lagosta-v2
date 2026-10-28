@@ -6,7 +6,11 @@ import { describe, expect, it } from 'vitest'
 import { NUMEROS_PADRAO } from '../../assinatura'
 import { DIMENSOES } from '../../spec'
 import { verArquetipo } from '../catalogo'
-import { caixasMaximas, materializarArquetipo, zonaEfetiva, type Materializacao, type ProblemaDeMaterializacao } from '../materializar'
+import { caixasMaximas, excedeAlturaDaReferencia, materializarArquetipo, zonaEfetiva, type Materializacao, type ProblemaDeMaterializacao } from '../materializar'
+import { materializarUnidades, unidadesDoArquetipo } from '../no-compositor'
+import { montarBloco } from '../../blocos'
+import type { BlocoPreparado } from '../../preparar-blocos'
+import type { MeasureTextBox } from '@/lib/creatives/text-geometry'
 
 const TOPO = verArquetipo('minimal-fb-topo-esquerda', 1)!
 const CENTRO = verArquetipo('minimal-fb-centro-optico', 1)!
@@ -200,5 +204,54 @@ describe('CP2B · materialização deslocada (dy da busca espacial)', () => {
       expect(JSON.stringify(materializarArquetipo({ ...args, deslocamentos: zeros }))).toBe(hoje)
     }
     expect(problemas(materializarArquetipo({ ...casos[1], deslocamentos: zeros }))[0].motivo).toMatch(/^na referência, .* — a área segura do projeto corta a referência$/)
+  })
+})
+
+describe('régua física de altura e orçamento transitório', () => {
+  // Medidores injetados: com a fração (altura natural 175,3 → caixa ceil 176) e o contrato antigo (só `height`).
+  const comFracao: MeasureTextBox = () => ({ height: 176, naturalHeight: 175.3, maxLineWidth: 300, lineCount: 1, linhas: [{ texto: 'Linha', largura: 300 }] })
+  const semFracao: MeasureTextBox = () => ({ height: 176, maxLineWidth: 300, lineCount: 1, linhas: [{ texto: 'Linha', largura: 300 }] })
+  const ESTILO = { fontFamily: 'Inter', fontSize: 80, lineHeight: 1, color: '#000000', fontWeight: '700' } as never
+  const argsDoBloco = (medir: MeasureTextBox) => ({ papel: 'headline' as const, linhas: ['Linha'], estilo: ESTILO, escalaDoFormato: 1, colunaUtil: 800, textAlign: 'left' as const, groupId: 'g', corDaMancha: '#fff', medir, alturaMaxima: 175 })
+  const bloco = (h: number, orcamento: number) =>
+    ({ papel: 'headline', layer: { id: 'headline', name: 'headline', type: 'text', content: 'x', position: { x: 0, y: 0 }, size: { width: 600, height: h }, style: { fontSize: 90, lineHeight: 1 }, metadata: { groupId: 'g' } }, width: 600, height: h, escala: 1, cor: '#fff', chave: 'g', linhasDaCopy: ['x'], indicesDoBloco: [0], familiasMedidas: [], orcamentoDeAltura: orcamento }) as unknown as BlocoPreparado
+  const topoComReferencia = (h: number) => {
+    const a = structuredClone(TOPO) as any
+    a.formatos.story.papeis.headline.referencia.h = h / DIMENSOES.story.height
+    return a
+  }
+  const materializa = (arquetipo: any, blocos: BlocoPreparado[]) => {
+    const unidades = unidadesDoArquetipo(arquetipo, blocos, 14)
+    return { unidades, m: materializarUnidades({ arquetipo, formato: 'story', canvas: DIMENSOES.story, geometria: geo('story'), unidades, logo: null }) }
+  }
+
+  it('referência 175,49/176 recusa, 175,5/176 aceita, 177 recusa', () => {
+    const casos: Array<[number, number]> = [[175.49, 176], [175.5, 176], [175.5, 177]]
+    const vistos = casos.map(([ref, alt]) => {
+      const a = topoComReferencia(ref)
+      const { m } = materializa(a, [bloco(alt, Math.min(alt, Math.floor(ref)))])
+      return ['problemas' in m, excedeAlturaDaReferencia(alt, a.formatos.story.papeis.headline.referencia, DIMENSOES.story)]
+    })
+    expect(vistos).toEqual([[true, true], [false, false], [true, true]])
+  })
+
+  it('orçamento menor não autoriza altura física excessiva', () => {
+    const { unidades, m } = materializa(topoComReferencia(175.49), [bloco(176, 175)])
+    expect([unidades[0].pilha.height, unidades[0].alturaDoOrcamento]).toEqual([176, 175])
+    expect('problemas' in m).toBe(true)
+    // Duas vozes ceil somam +2 na pilha física; o orçamento só decide a escala.
+    const b2 = { ...bloco(85, 84), papel: 'headline2', layer: { ...bloco(85, 84).layer, id: 'headline2' }, indicesDoBloco: [1] } as unknown as BlocoPreparado
+    const [u] = unidadesDoArquetipo(TOPO, [bloco(85, 84), b2], 14)
+    expect(u.pilha.height).toBe(u.pilha.offsets[1] + 85)
+    expect(u.pilha.height - u.alturaDoOrcamento).toBe(2)
+  })
+
+  it('medidor sem naturalHeight mantém o contrato (recusa sem fração)', () => {
+    expect(montarBloco(argsDoBloco(semFracao)).bloco).toBeNull()
+  })
+
+  it('orçamento decide o degrau e fica fora do Layer', () => {
+    const { bloco: b } = montarBloco(argsDoBloco(comFracao))
+    expect(b && [b.height, b.layer.size.height, b.orcamentoDeAltura, 'orcamentoDeAltura' in b.layer]).toEqual([176, 176, 175, false])
   })
 })

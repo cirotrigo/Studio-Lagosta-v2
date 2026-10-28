@@ -6,11 +6,12 @@ import { describe, expect, it } from 'vitest'
 import { CreativeError } from '@/lib/creatives/errors'
 import { verArquetipo } from '../catalogo'
 import { impressaoDoArquetipo } from '../impressao'
-import { conferirLinhas, conferirPapeis, conferirPreferencias, disponibilidadeNoT1a, excessosDeLinhas, prepararArquetipo, resolverArquetipo, vitrineDeArquetipos } from '../na-spec'
+import { conferirLinhas, conferirPapeis, conferirPreferencias, disponibilidadeDoArquetipo, excessosDeLinhas, prepararArquetipo, resolverArquetipo, vitrineDeArquetipos } from '../na-spec'
 
 const TOPO = 'minimal-fb-topo-esquerda'
 const BASE = 'minimal-fb-base-esquerda'
 const CENTRO = 'minimal-fb-centro-optico'
+const CONVITE = 'minimal-tipografico-convite'
 const impressaoDe = (id: string) => impressaoDoArquetipo(verArquetipo(id, 1)!)
 
 function codigo(f: () => unknown): string {
@@ -122,13 +123,13 @@ describe('T1a · recusas antes da medida', () => {
     ).toBe('ARQUETIPO_PAPEIS_INCOMPATIVEIS')
   })
 
-  it('12. o modelo 2 (moldura-aberta obrigatória) é recusado até o T1b — nunca sai sem o L', () => {
-    const f = () => prepararArquetipo({ formato: 'story', arquetipo: { id: BASE }, blocos: [{ papel: 'headline', linhas: ['x'] }, { papel: 'apoio', linhas: ['y'] }, { papel: 'servico', linhas: ['z'] }] })
-    expect(codigo(f)).toBe('ARQUETIPO_INDISPONIVEL')
-    expect(detalhes(f)).toMatchObject({ aguarda: 'T1b' })
-    expect(disponibilidadeNoT1a(verArquetipo(BASE)!).disponivel).toBe(false)
-    expect(disponibilidadeNoT1a(verArquetipo(TOPO)!).disponivel).toBe(true)
-    expect(disponibilidadeNoT1a(verArquetipo(CENTRO)!).disponivel).toBe(true)
+  it('12. T1b: o modelo 2 (moldura-aberta obrigatória) compõe — a moldura tem desenho; elemento SEM desenho deixa o modelo indisponível', () => {
+    const p = prepararArquetipo({ formato: 'story', arquetipo: { id: BASE }, blocos: [{ papel: 'headline', linhas: ['x'] }, { papel: 'apoio', linhas: ['y'] }, { papel: 'servico', linhas: ['z'] }] })
+    expect(p?.resolvido).toMatchObject({ id: BASE, versao: 1 })
+    for (const id of [BASE, TOPO, CENTRO]) expect(disponibilidadeDoArquetipo(verArquetipo(id)!).disponivel).toBe(true)
+    // Um elemento cujo tipo não tem asset (rascunho, fora do catálogo publicado) continua sendo recusa: a peça sairia sem a identidade.
+    const semDesenho = { ...verArquetipo(BASE)!, elementos: [{ id: 'moldura', tipo: 'estrela-8' as never, opcional: false, corPorPapel: 'texto' as const, presoA: 'headline' as const }] }
+    expect(disponibilidadeDoArquetipo(semDesenho)).toMatchObject({ disponivel: false, motivo: expect.stringMatching(/estrela-8/) })
   })
 
   it('preferência posicional diferente do arquétipo é recusada; a igual é aceita e declarada; auto não conta', () => {
@@ -163,11 +164,37 @@ describe('T1a · recusas antes da medida', () => {
     expect(() => conferirPapeis(p.definicao, spec)).not.toThrow()
   })
 
-  it('a vitrine (ver-assinatura) diz o que está disponível e o que aguarda o T1b', () => {
+  it('V-1/V-3 (#16@2): a vitrine tem um item por id — o #16 em versão 2, disponível sem contexto (inspeção não desenha)', () => {
+    const vitrine = vitrineDeArquetipos()
+    // H9: o #9@1 publicado → 10 ids; IH #10: os 2 da coluna → 12; o #4 guardado fora da vitrine (25/10) → 11; o #3 guardado (26/10) → 10.
+    expect(vitrine).toHaveLength(10)
+    expect(new Set(vitrine.map((a) => a.id)).size).toBe(10)
+    // O #4 sai só da vitrine: segue no catálogo e resolvível pelo id, com a mesma impressão.
+    expect(vitrine.map((a) => a.id)).not.toContain('minimal-fb-base-centro')
+    expect(verArquetipo('minimal-fb-base-centro', 1)).not.toBeNull()
+    expect(resolverArquetipo({ id: 'minimal-fb-base-centro' }).resolvido).toEqual({ id: 'minimal-fb-base-centro', versao: 1, impressao: 'arq1-15c914b2112ca8' })
+    const convite = vitrine.find((a) => a.id === CONVITE)!
+    expect([convite.versao, convite.disponibilidade]).toEqual([2, 'disponivel'])
+    expect(disponibilidadeDoArquetipo(verArquetipo(CONVITE, 2)!)).toEqual({ disponivel: true })
+    expect(disponibilidadeDoArquetipo(verArquetipo(CONVITE, 1)!)).toEqual({ disponivel: true })
+  })
+
+  it('V-2 (#16@2): o @1 explícito e persistido continua resolvível; persistida sem versão recusa; sem versão (pedido novo) → @2', () => {
+    const r1 = resolverArquetipo({ id: CONVITE, versao: 1, impressao: 'arq1-1cdd408f7eeb8d' }, { persistida: true })
+    expect([r1.definicao.versao, r1.resolvido]).toEqual([1, { id: CONVITE, versao: 1, impressao: 'arq1-1cdd408f7eeb8d' }])
+    expect(codigo(() => resolverArquetipo({ id: CONVITE }, { persistida: true }))).toBe('ARQUETIPO_VERSAO_AUSENTE')
+    expect(resolverArquetipo({ id: CONVITE }).resolvido.versao).toBe(2)
+    expect(codigo(() => resolverArquetipo({ id: CONVITE, versao: 2, impressao: 'arq1-1cdd408f7eeb8d' }))).toBe('ARQUETIPO_IMPRESSAO_DIVERGENTE')
+  })
+
+  it('a vitrine (ver-assinatura) diz o que está disponível e os acentos de cada um (T1b)', () => {
     const v = Object.fromEntries(vitrineDeArquetipos().map((a) => [a.id, a]))
     expect(v[TOPO]).toMatchObject({ versao: 1, codigoTaxonomico: 'MIN-01', formatos: ['story', 'feed'], disponibilidade: 'disponivel' })
-    expect(v[CENTRO]).toMatchObject({ versao: 1, codigoTaxonomico: 'MIN-02', disponibilidade: 'disponivel' })
-    expect(v[BASE]).toMatchObject({ disponibilidade: 'aguarda-t1b' })
-    expect(v[BASE].motivo).toMatch(/moldura-aberta/)
+    // O #3 guardado fora da vitrine (26/10): sem card; segue no catálogo e resolvível pelo id (casos acima).
+    expect(v[CENTRO]).toBeUndefined()
+    expect(v[BASE]).toMatchObject({ disponibilidade: 'disponivel' })
+    expect(v[BASE].motivo).toBeUndefined()
+    expect(v[TOPO].elementos).toEqual([{ id: 'fio', tipo: 'fio-fino', opcional: true, corPorPapel: 'texto', presoA: 'headline' }])
+    expect(v[BASE].elementos).toEqual([{ id: 'moldura', tipo: 'moldura-aberta', opcional: false, corPorPapel: 'texto', presoA: 'headline' }])
   })
 })

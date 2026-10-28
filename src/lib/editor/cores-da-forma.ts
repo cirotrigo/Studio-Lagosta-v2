@@ -8,13 +8,17 @@
  *   nunca o `hexCode` cru.
  * - O Reaplicar preserva o alfa DA COR e não toca `opacity`/`fillOpacity`/`strokeOpacity`: a canonização aplica os
  *   multiplicadores uma vez só. Sem mudança, nada é canonizado (a camada volta igual, sem desfazer nem PATCH).
+ * - Multicor (CP-V5): a chave de cor é o SLOT das partes (`chavesDaForma`), a cor mora em `style.vetor.cores[slot]` e o
+ *   papel em `style.vetor.papeis[slot]`; gravar o slot da silhueta também grava `style.fill` (o leitor antigo). Tudo o
+ *   mais (Marca → Nesta página → Personalizada, elo por chave, Reaplicar) é o mesmo caminho.
  */
 import { SHAPES_LIBRARY } from '@/lib/assets/shapes-library'
 import { PAPEIS_DA_MARCA, resolverCorDaMarca, type DadosDaMarca, type PapelDaMarca } from '@/lib/brand/papeis-de-cor'
 import { hexValido } from '@/lib/creatives/halo/fundo-de-texto'
 import { applyOpacityToEditableColor, canonicalizeShapeStyleForPersistence } from '@/lib/shape-style'
 import { lerCor } from '@/lib/vetor/cor'
-import type { CanalDeCor } from '@/lib/vetor/tipos'
+import { ehMulticor, slotDaSilhueta, slotsDasPartes } from '@/lib/vetor/partes'
+import type { CanalDeCor, ChaveDeCor } from '@/lib/vetor/tipos'
 import type { DesignData, Layer, LayerStyle } from '@/types/template'
 
 export const CANAIS_DA_FORMA = ['preenchimento', 'contorno'] as const satisfies readonly CanalDeCor[]
@@ -22,6 +26,42 @@ const CAMPO: Record<CanalDeCor, 'fill' | 'strokeColor'> = { preenchimento: 'fill
 /** Os fallbacks que o painel já usa para cada canal (só para o `applyOpacityToEditableColor`; a entrada é hex válido). */
 const FALLBACK: Record<CanalDeCor, string> = { preenchimento: '#2563eb', contorno: '#1e3a8a' }
 const NOME_DO_CANAL: Record<CanalDeCor, string> = { preenchimento: 'Preenchimento', contorno: 'Cor da borda' }
+
+/** As chaves de cor da forma, na ordem dos controles: os 2 canais, ou os slots das partes no multicor. */
+export function chavesDaForma(style: LayerStyle | undefined): ChaveDeCor[] {
+  return ehMulticor(style) ? slotsDasPartes(style!.vetor!.partes) : [...CANAIS_DA_FORMA]
+}
+
+/** O valor salvo da chave (o que o swatch e o campo leem). */
+export function valorDaChave(style: LayerStyle | undefined, chave: ChaveDeCor): string | undefined {
+  if (ehMulticor(style)) {
+    const cores = style!.vetor!.cores
+    return ehObjeto(cores) && typeof cores[chave] === 'string' ? cores[chave] : undefined
+  }
+  return chave === 'contorno' ? style?.strokeColor : chave === 'preenchimento' ? style?.fill : undefined
+}
+
+/**
+ * Se a chave pinta contorno (a espessura e o anel do botão só aparecem no contorno). Multicor: QUALQUER parte de contorno
+ * do slot conta — um slot pode pintar preenchimento e contorno (a mesma cor em duas partes).
+ */
+export function alvoDaChave(style: LayerStyle | undefined, chave: ChaveDeCor): 'fill' | 'stroke' {
+  if (ehMulticor(style)) return style!.vetor!.partes!.some((p) => p?.slot === chave && p.alvo === 'stroke') ? 'stroke' : 'fill'
+  return chave === 'contorno' ? 'stroke' : 'fill'
+}
+
+/** O fallback do `applyOpacityToEditableColor` (a entrada é hex válido; só o contorno legado usa o azul escuro). */
+export function fallbackDaChave(chave: ChaveDeCor): string {
+  return chave === 'contorno' ? FALLBACK.contorno : FALLBACK.preenchimento
+}
+
+/** Multicor: a escrita da cor de UM slot (o resto do `vetor` intacto); o slot da silhueta grava também `style.fill`. */
+export function estiloComCorDoSlot(style: LayerStyle | undefined, slot: string, cor: string): Partial<LayerStyle> {
+  const vetor = style!.vetor!
+  const proximo: Partial<LayerStyle> = { vetor: { ...vetor, cores: { ...(vetor.cores ?? {}), [slot]: cor } } }
+  if (slotDaSilhueta(vetor.partes) === slot) proximo.fill = cor
+  return proximo
+}
 
 export const ROTULO_DO_PAPEL: Record<PapelDaMarca, string> = {
   escuro: 'Escuro',
@@ -38,34 +78,36 @@ const ehPapel = (v: unknown): v is PapelDaMarca => typeof v === 'string' && (PAP
 
 export type PapelLido = { tipo: 'vinculado'; papel: PapelDaMarca } | { tipo: 'desconhecido'; valor: string } | null
 
-export function papelDoCanal(style: LayerStyle | undefined, canal: CanalDeCor): PapelLido {
+export function papelDoCanal(style: LayerStyle | undefined, canal: ChaveDeCor): PapelLido {
   const papeis = ehObjeto(style?.vetor) ? (style!.vetor as unknown as Record<string, unknown>).papeis : undefined
   if (!ehObjeto(papeis) || !Object.hasOwn(papeis, canal)) return null
   const valor = papeis[canal]
   return ehPapel(valor) ? { tipo: 'vinculado', papel: valor } : { tipo: 'desconhecido', valor: String(valor) }
 }
 
-export function eloDoCanal(style: LayerStyle | undefined, canal: CanalDeCor): string | null {
+export function eloDoCanal(style: LayerStyle | undefined, canal: ChaveDeCor): string | null {
   const p = papelDoCanal(style, canal)
   if (!p) return null
   return p.tipo === 'vinculado' ? `Acompanha a marca: ${ROTULO_DO_PAPEL[p.papel]}` : 'Papel desconhecido (não é reaplicado)'
 }
 
 export function podeReaplicar(style: LayerStyle | undefined): boolean {
-  return CANAIS_DA_FORMA.some((c) => papelDoCanal(style, c)?.tipo === 'vinculado')
+  return chavesDaForma(style).some((c) => papelDoCanal(style, c)?.tipo === 'vinculado')
 }
 
 const CATALOGO = new Map(SHAPES_LIBRARY.map((d) => [d.id, d]))
 
 /** O rótulo do slot do catálogo (item conhecido e mesma versão); senão o padrão. Só apresentação. */
-export function rotuloDoCanal(layer: Pick<Layer, 'style'>, canal: CanalDeCor): string {
+export function rotuloDoCanal(layer: Pick<Layer, 'style'>, canal: ChaveDeCor): string {
   const asset = ehObjeto(layer.style?.vetor) ? layer.style!.vetor!.asset : undefined
   const definicao = asset && typeof asset.id === 'string' ? CATALOGO.get(asset.id) : undefined
-  const slot = definicao && (definicao.versao ?? 1) === asset!.versao ? definicao.slots?.find((s) => s.canal === canal) : undefined
+  const slot = definicao && (definicao.versao ?? 1) === asset!.versao ? definicao.slots?.find((s) => (s.id ?? s.canal) === canal) : undefined
   if (slot) return slot.rotulo
   if (canal === 'preenchimento' && layer.style?.shapeType === 'line') return 'Cor da linha'
-  return NOME_DO_CANAL[canal]
+  return nomeDaChave(canal)
 }
+
+const nomeDaChave = (chave: ChaveDeCor) => NOME_DO_CANAL[chave as CanalDeCor] ?? `Cor ${chave}`
 
 export interface CorAplicavel {
   id: unknown
@@ -114,6 +156,7 @@ export function coresNestaPagina(design: Pick<DesignData, 'layers' | 'canvas'>, 
     if (!ehObjeto(layer) || !ehObjeto(layer.style)) continue
     const s = layer.style as LayerStyle
     if (layer.type === 'shape') {
+      if (ehMulticor(s) && ehObjeto(s.vetor!.cores)) for (const cor of Object.values(s.vetor!.cores)) ver(cor)
       ver(s.fill)
       ver(s.strokeColor)
       ver(ehObjeto(s.border) ? s.border.color : undefined)
@@ -126,7 +169,7 @@ export function coresNestaPagina(design: Pick<DesignData, 'layers' | 'canvas'>, 
 
 export type MotivoDoCanal = 'reaplicado' | 'sem-mudanca' | 'sem-papel' | 'papel-desconhecido' | 'sem-cor' | 'cor-ilegivel'
 export interface ResultadoDoCanal {
-  canal: CanalDeCor
+  canal: ChaveDeCor
   motivo: MotivoDoCanal
   papel?: PapelDaMarca
 }
@@ -134,7 +177,8 @@ export interface ResultadoDoCanal {
 export function reaplicarCoresDaMarca(style: LayerStyle | undefined, marca: DadosDaMarca): { style: LayerStyle | undefined; canais: ResultadoDoCanal[] } {
   const canais: ResultadoDoCanal[] = []
   let proximo = style
-  for (const canal of CANAIS_DA_FORMA) {
+  const multicor = ehMulticor(style)
+  for (const canal of chavesDaForma(style)) {
     const p = papelDoCanal(style, canal)
     if (!p) {
       canais.push({ canal, motivo: 'sem-papel' })
@@ -144,7 +188,7 @@ export function reaplicarCoresDaMarca(style: LayerStyle | undefined, marca: Dado
       canais.push({ canal, motivo: 'papel-desconhecido' })
       continue
     }
-    const valor = style?.[CAMPO[canal]]
+    const valor = valorDaChave(style, canal)
     const lida = lerCor(valor)
     if (valor === undefined || valor === null || valor === '' || lida === 'transparente') {
       canais.push({ canal, motivo: 'sem-cor', papel: p.papel })
@@ -154,13 +198,13 @@ export function reaplicarCoresDaMarca(style: LayerStyle | undefined, marca: Dado
       canais.push({ canal, motivo: 'cor-ilegivel', papel: p.papel })
       continue
     }
-    const novo = applyOpacityToEditableColor(resolverCorDaMarca(p.papel, marca).hex, lida.alfa, FALLBACK[canal])
+    const novo = applyOpacityToEditableColor(resolverCorDaMarca(p.papel, marca).hex, lida.alfa, fallbackDaChave(canal))
     const lidaNova = lerCor(novo)
     if (lidaNova && lidaNova !== 'transparente' && lidaNova.hex === lida.hex && lidaNova.alfa === lida.alfa) {
       canais.push({ canal, motivo: 'sem-mudanca', papel: p.papel })
       continue
     }
-    proximo = { ...proximo, [CAMPO[canal]]: novo }
+    proximo = multicor ? { ...proximo, ...estiloComCorDoSlot(proximo, canal, novo) } : { ...proximo, [CAMPO[canal as CanalDeCor]]: novo }
     canais.push({ canal, motivo: 'reaplicado', papel: p.papel })
   }
   return { style: proximo, canais }
@@ -184,7 +228,7 @@ export function resumoDoReaplicar(canais: readonly ResultadoDoCanal[]): string {
   const abertura = canais.some((c) => c.motivo === 'reaplicado') ? 'Cores da marca reaplicadas.' : 'Nada mudou.'
   const notas = canais
     .filter((c): c is ResultadoDoCanal & { motivo: keyof typeof TEXTO_DO_MOTIVO } => c.motivo !== 'reaplicado' && c.motivo !== 'sem-papel')
-    .map((c) => `${NOME_DO_CANAL[c.canal]}: ${TEXTO_DO_MOTIVO[c.motivo]}.`)
+    .map((c) => `${nomeDaChave(c.canal)}: ${TEXTO_DO_MOTIVO[c.motivo]}.`)
   return [abertura, ...notas].join(' ')
 }
 

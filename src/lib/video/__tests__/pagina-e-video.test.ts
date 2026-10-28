@@ -142,6 +142,12 @@ describe('quem decide se a página vira post como imagem', () => {
         'lib/creatives/arte-rapida.ts',
         'lib/lotes/agendar-itens.ts',
         'lib/posts/later-scheduler.ts',
+        // Grades de fotos (G1/G2, 27/10/2026): CONTROLES de edição, não portas de publicação — a página-vídeo recusa
+        // inserir grade (painel e motor da inserção) e preencher célula (painel de imagens e motor do lote) com motivo
+        'components/templates/panels/images-panel.tsx',
+        'components/templates/panels/secao-grades.tsx',
+        'lib/grades/insercao.ts',
+        'lib/grades/preenchimento.ts',
         'lib/video/camadas-de-video.ts',
         'lib/video/pagina-com-video.ts',
       ].sort(),

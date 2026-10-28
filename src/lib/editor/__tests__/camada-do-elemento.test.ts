@@ -73,13 +73,13 @@ describe('camadaDoElemento: cor pela marca, canonizada, com proveniência', () =
   })
 
   it('vetor.asset e vetor.papeis em todo item; manterProporcao só nos travados (nunca false)', () => {
-    for (const d of SHAPES_LIBRARY) {
+    for (const d of SHAPES_LIBRARY.filter((x) => !x.partes)) { // o multicor tem partes/cores por slot: multicor.test.ts
       const s = construir(d).style!
       expect([d.id, s.vetor]).toEqual([d.id, { asset: { id: d.id, versao: 1 }, papeis: Object.fromEntries(d.slots!.map((x) => [x.canal, x.papelPadrao])) }])
       expect([d.id, s.manterProporcao]).toEqual([d.id, d.ajuste === 'travado' ? true : undefined])
       expect([d.id, 'manterProporcao' in s]).toEqual([d.id, d.ajuste === 'travado'])
     }
-    expect(SHAPES_LIBRARY.filter((d) => construir(d).style!.manterProporcao).map((d) => d.id)).toEqual(['spark-4', 'pontos'])
+    expect(SHAPES_LIBRARY.filter((d) => construir(d).style!.manterProporcao).map((d) => d.id)).toEqual(['spark-4', 'pontos', 'onda-base'])
   })
 
   it('pílula com raio de pílula (sem ligar contorno de borda); moldura só contorno; pontas e traço do item', () => {
@@ -164,17 +164,35 @@ describe('escolhaExplicitaDaCor: escolher a cor de um canal apaga só o papel da
     expect(JSON.stringify(style)).toBe(antes)
   })
 
-  it('no painel: campo, seletor nativo e swatch dos dois canais passam pelo helper; as transparências não', async () => {
+  // CP-V4: a escrita mora em `useCoresDaForma`, usado pelo painel E pela toolbar da forma
+  it('no painel e na toolbar: campo, seletor nativo e swatch dos dois canais passam pelo helper; as transparências não', async () => {
     const { readFileSync } = await import('node:fs')
     const { join } = await import('node:path')
     const fonte = readFileSync(join(process.cwd(), 'src/components/templates/properties-panel.tsx'), 'utf8')
-    const ini = fonte.indexOf('function ShapeControls(')
-    const controles = fonte.slice(ini, fonte.indexOf('\nfunction GestoDaFormaControls', ini))
-    expect(controles.match(/escolhaExplicitaDaCor\(layer\.style, 'preenchimento'\)/g)).toHaveLength(3)
-    expect(controles.match(/escolhaExplicitaDaCor\(layer\.style, 'contorno'\)/g)).toHaveLength(3)
-    // os dois sliders de transparência gravam a mesma cor com outro alfa: não é escolha de cor
-    const sliders = controles.split('type="range"').slice(1).map((t) => t.slice(0, t.indexOf('/>\n')))
-    expect(sliders).toHaveLength(2)
-    for (const s of sliders) expect(s).not.toContain('escolhaExplicitaDaCor')
+    const trecho = (de: string, ate: string) => fonte.slice(fonte.indexOf(de), fonte.indexOf(ate, fonte.indexOf(de)))
+    const sliders = (codigo: string) => codigo.split('type="range"').slice(1).map((t) => t.slice(0, t.indexOf('/>\n')))
+    // o hook: o elo sai só na escrita EXPLÍCITA (escolher/digitar), nunca na transparência
+    const hook = trecho('export function useCoresDaForma(', '\nfunction ShapeControls(')
+    expect(hook.match(/escolhaExplicitaDaCor\(/g)).toHaveLength(1)
+    expect(hook).toContain('const elo = explicita ? escolhaExplicitaDaCor(layer.style, canal) : {}')
+    expect(hook).toMatch(/const escolher = [^\n]*, true\)\n/)
+    expect(hook).toContain('if (cor) gravar(canal, cor, true)')
+    expect(hook).toMatch(/const transparencia = [\s\S]*?, false\)\n/)
+    // o painel: swatch + seletor por `escolher`, campo por `digitar`, nos dois canais; sliders só `transparencia`
+    const controles = trecho('function ShapeControls(', '\nconst ehObjetoDeEstilo')
+    for (const canal of ['preenchimento', 'contorno']) {
+      expect(controles.split(`escolher('${canal}'`).length - 1).toBe(2)
+      expect(controles.split(`digitar('${canal}'`).length - 1).toBe(1)
+    }
+    expect(controles).not.toContain('escolhaExplicitaDaCor')
+    expect(sliders(controles)).toHaveLength(2)
+    for (const s of sliders(controles)) expect(s).toMatch(/transparencia\('(preenchimento|contorno)'/)
+    // a toolbar: nenhuma escrita de cor própria — só o hook
+    const barra = readFileSync(join(process.cwd(), 'src/components/templates/shape-toolbar.tsx'), 'utf8')
+    expect(barra).not.toMatch(/escolhaExplicitaDaCor|applyOpacityToEditableColor|corDigitadaParaGravar/)
+    expect(barra).toContain('onSelect={(hex) => cores.escolher(c, hex)}')
+    expect(barra).toContain('aoGravar={(texto) => cores.digitar(c, texto)}')
+    expect(barra).toContain('onChange={(event) => cores.escolher(c, event.target.value)}')
+    expect(sliders(barra)[0]).toContain('cores.transparencia(c,')
   })
 })

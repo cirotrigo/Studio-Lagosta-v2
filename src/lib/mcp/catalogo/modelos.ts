@@ -7,6 +7,7 @@
 
 import { z } from 'zod'
 import { definirTool } from '../registro/definir'
+import { tagsComMarcaPreservada } from '../../compositor/fora-do-rodizio'
 
 export const toolsDeModelos = [
   definirTool({
@@ -224,7 +225,8 @@ export const toolsDeModelos = [
           where: { id: pageId },
           data: {
             isTemplate: marcar,
-            ...(tags !== undefined ? { tags } : {}),
+            // T5: a marca `fora-do-rodizio` é do sistema — a da página fica, a do pedido não entra.
+            ...(tags !== undefined ? { tags: tagsComMarcaPreservada(page.tags, tags) } : {}),
           },
           select: { id: true, name: true, isTemplate: true, tags: true },
         })
