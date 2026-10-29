@@ -3,6 +3,8 @@
 import * as React from 'react'
 import type { DesignData, DynamicField, Layer } from '@/types/template'
 import type Konva from 'konva'
+import { margensDoEixo } from '@/lib/margens-no-editor'
+import { useMargensDoEditor } from '@/hooks/use-margens-do-editor'
 import type { AlignAxis, AlignMode } from '@/lib/konva-alignment'
 import { FONT_CONFIG } from '@/lib/font-config'
 import { aplicarGradienteSuave, ID_GRADIENTE_SUAVE } from '@/lib/creatives/gradiente-suave'
@@ -321,6 +323,10 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
   paginaAtualRef.current = multiPage?.currentPageId ?? null
   const documentoAtualRef = React.useRef('')
   documentoAtualRef.current = `${template.id}:${template.projectId}`
+  // L1 das linhas-guia: a margem da marca da página aberta, para o "alinhar" (o stage tem o próprio hook para desenhar e encaixar)
+  const margens = useMargensDoEditor(template.projectId, design.canvas)
+  const margensRef = React.useRef(margens)
+  margensRef.current = margens
   // CP-V3: carga e troca de documento sobem a geração; o mesmo template com objeto novo, não
   const geracaoRef = React.useRef<ReturnType<typeof criarGeracaoDaCarga> | null>(null)
   geracaoRef.current ??= criarGeracaoDaCarga(`${template.id}:${template.projectId}`)
@@ -1496,7 +1502,8 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
           entreSi(nodes, contentLayer)
         } else {
           const canvasSize = axis === 'x' ? design.canvas.width : design.canvas.height
-          alinhamento.alignToCanvas(nodes, contentLayer, axis, mode, canvasSize)
+          // As guias azuis da página aberta (margem da MARCA), não o padrão do Story
+          alinhamento.alignToCanvas(nodes, contentLayer, axis, mode, canvasSize, margensDoEixo(margensRef.current.marca, axis, design.canvas.width, design.canvas.height))
         }
         persistirPosicoes(nodes)
       })

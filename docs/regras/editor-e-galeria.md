@@ -1049,3 +1049,31 @@ na guia azul do Story (y = 120) fazia uma arte que o gate reprovava.
 - **Prova:** `src/lib/__tests__/margens-do-editor.test.ts` (30 testes: Story e Feed com o padrão; marca própria;
   marca mais frouxa que o piso; fora do canônico; dimensões inválidas; `NaN` na assinatura; a delegação;
   `limitesDoEditor` do revisor em 70/120/100; a reexportação do gate; identidade com `montarAssinatura`).
+
+## Linhas-guia e margens, L1: o editor desenha as duas camadas (29/10/2026 — PR aberto, sem release)
+
+Segundo checkpoint da instrução de 29/10. O editor passa a mostrar e a usar a margem da MARCA da página aberta e, no
+Story, a faixa da interface — as duas de `margensDoEditor` (L0), nada copiado.
+
+- **`useMargensDoEditor(projectId, canvas)`** (`src/hooks/use-margens-do-editor.ts`): lê `Project.assinatura` pelo
+  `useProject` que o editor já carrega e devolve `margensDoEditor(...)` para o formato que o tamanho do canvas diz
+  (`formatoDaPaginaGravada`). Enquanto o projeto não chegou vale o padrão; `origem` diz qual está valendo (o rótulo
+  do overlay mostra "Margem da marca" ou "Margem padrão").
+- **`src/lib/margens-no-editor.ts`** (puro): `retangulosDeEncaixe` (os quatro objetos invisíveis do encaixe ao
+  arrastar), `paradasDeEncaixe` (o snap do redimensionar), `linhasDaMarca` (as azuis), `faixasDaInterface` (as
+  hachuradas, só Story) e `margensDoEixo` (as distâncias do "alinhar"). Uma conversão só para stage, transformer e
+  contexto.
+- **Overlay** na `guides-layer` (continua fora do download, da miniatura, do `exportDesign` e do vídeo): linhas azuis
+  tracejadas com traço e tracejado compensados pelo zoom (`2 / zoom`), rótulo discreto no canto; faixa da interface
+  hachurada (ladrilho 8×8 feito uma vez, `useHachura`) com o rótulo "Interface do Instagram". A faixa liga e desliga
+  com a máscara M; as linhas com R.
+- **Encaixe, alinhar e snap do resize usam a margem da marca**: o stage passa `margens.marca` ao transformer
+  (`margens`), o contexto passa `margensDoEixo(...)` ao `alignToCanvas` (parâmetro novo; sem ele vale o padrão do
+  Story, compatibilidade) e o Feed 4:5 ganha a mesma margem azul.
+- **O chrome do Story nasce da faixa**: `buildStoryChrome(baseHeight, faixa)`; a máscara recebe `faixa` em px da
+  página e devolve à base 1080 pela mesma escala. Sem `faixa`, o padrão de antes.
+- 🔴 **A faixa é a do piso, não a da marca**: uma marca com rodapé 150 (Wine) tem a linha azul em 1770 e a faixa
+  continua 224 — texto e logo dentro da faixa é aviso (L3), nunca bloqueio (D2).
+- **Prova:** `src/lib/__tests__/margens-no-editor.test.ts` (overlay = margensDoEditor em Story padrão, Wine e Feed;
+  encaixe em y = 188 e na direita; Feed encaixa em 120; alinhar pela marca com nós falsos; chrome dentro da faixa).
+  Não prova: Konva montado, o hook com React Query, o clique no editor — isso é a prova visual.

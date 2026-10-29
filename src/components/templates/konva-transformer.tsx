@@ -4,7 +4,8 @@ import * as React from 'react'
 import Konva from 'konva'
 import { Transformer } from 'react-konva'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
-import { CANVAS_MARGIN } from '@/lib/canvas-margin'
+import { CANVAS_MARGIN, type LinhasDaMarca } from '@/lib/canvas-margin'
+import { paradasDeEncaixe } from '@/lib/margens-no-editor'
 import type { GuideLine } from '@/lib/konva-smart-guides'
 import { travaDeProporcao } from '@/lib/konva/trava-de-proporcao'
 import { useAjustarGrade } from '@/hooks/use-ajustar-grade'
@@ -17,8 +18,10 @@ interface KonvaSelectionTransformerProps {
   stageRef: React.RefObject<Konva.Stage | null>
   /** Snap das bordas durante o resize (mesmas guias do drag) */
   snapEnabled?: boolean
-  /** Incluir as margens de segurança (CANVAS_MARGIN) como alvo de snap */
+  /** Incluir a margem da marca como alvo de snap */
   snapToMargins?: boolean
+  /** As linhas da margem da MARCA da página aberta (`margensDoEditor(...).marca`); sem elas, o padrão do Story. */
+  margens?: LinhasDaMarca
   /** Recebe as guias a desenhar durante o resize (mesma layer de guias do drag) */
   onSnapGuides?: (guides: GuideLine[]) => void
 }
@@ -28,6 +31,7 @@ export function KonvaSelectionTransformer({
   stageRef,
   snapEnabled = true,
   snapToMargins = true,
+  margens,
   onSnapGuides,
 }: KonvaSelectionTransformerProps) {
   const transformerRef = React.useRef<Konva.Transformer | null>(null)
@@ -81,9 +85,11 @@ export function KonvaSelectionTransformer({
     layers: design.layers,
     selectedIds: selectedLayerIds,
     keepRatio: false,
+    margensDaMarca: margens,
   })
   snapDataRef.current.enabled = snapEnabled
   snapDataRef.current.margins = snapToMargins
+  snapDataRef.current.margensDaMarca = margens
   snapDataRef.current.canvasWidth = design.canvas.width
   snapDataRef.current.canvasHeight = design.canvas.height
   snapDataRef.current.layers = design.layers
@@ -225,8 +231,11 @@ export function KonvaSelectionTransformer({
       const vStops: number[] = [0, snap.canvasWidth / 2, snap.canvasWidth]
       const hStops: number[] = [0, snap.canvasHeight / 2, snap.canvasHeight]
       if (snap.margins) {
-        vStops.push(CANVAS_MARGIN.left, snap.canvasWidth - CANVAS_MARGIN.right)
-        hStops.push(CANVAS_MARGIN.top, snap.canvasHeight - CANVAS_MARGIN.bottom)
+        const paradas = paradasDeEncaixe(
+          snap.margensDaMarca ?? { topo: CANVAS_MARGIN.top, base: snap.canvasHeight - CANVAS_MARGIN.bottom, esquerda: CANVAS_MARGIN.left, direita: snap.canvasWidth - CANVAS_MARGIN.right },
+        )
+        vStops.push(...paradas.v)
+        hStops.push(...paradas.h)
       }
       for (const layer of snap.layers) {
         if (snap.selectedIds.includes(layer.id)) continue

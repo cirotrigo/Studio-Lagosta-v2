@@ -24,7 +24,7 @@ import {
  * O render server-side (`render-engine`) nunca vê isto: ele desenha a partir do
  * JSON de `Page.layers`, e a máscara não é uma camada.
  *
- * Sem gradiente por trás: o chrome cabe dentro das margens de segurança e a
+ * Sem gradiente por trás: o chrome cabe dentro da faixa da interface e a
  * legibilidade sobre foto clara fica por conta de uma sombra discreta.
  */
 
@@ -54,12 +54,15 @@ interface KonvaInstagramStoryMaskProps {
   projectId: number
   canvasWidth: number
   canvasHeight: number
+  /** A faixa da interface em px da PÁGINA (`margensDoEditor(...).interface`); `null`/ausente = padrão do Story. */
+  faixa?: { topo: number; rodape: number } | null
 }
 
 export function KonvaInstagramStoryMask({
   projectId,
   canvasWidth,
   canvasHeight,
+  faixa,
 }: KonvaInstagramStoryMaskProps) {
   const isStory = isStoryRatio(canvasWidth, canvasHeight)
 
@@ -74,7 +77,9 @@ export function KonvaInstagramStoryMask({
   const s = canvasWidth / STORY_REFERENCE_WIDTH
   const baseHeight = canvasHeight / s
 
-  const chrome = React.useMemo(() => buildStoryChrome(baseHeight), [baseHeight])
+  // A faixa chega em px da página; o chrome é descrito na base 1080, então volta pela mesma escala
+  const faixaNaBase = React.useMemo(() => (faixa ? { topo: faixa.topo / s, rodape: faixa.rodape / s } : undefined), [faixa, s])
+  const chrome = React.useMemo(() => buildStoryChrome(baseHeight, faixaNaBase), [baseHeight, faixaNaBase])
 
   const usernameWidth = React.useMemo(
     () => measureTextWidth(username, `bold ${chrome.username.fontSize}px ${CHROME_FONT}`),

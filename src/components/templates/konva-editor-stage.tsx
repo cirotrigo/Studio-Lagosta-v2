@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import Konva from 'konva'
-import { Stage, Layer as KonvaLayer, Rect, Line } from 'react-konva'
+import { Stage, Layer as KonvaLayer, Rect, Line, Text as KonvaText } from 'react-konva'
 
 // IMPORTANTE: Ativar fix de renderização para melhor qualidade de fontes
 // Especialmente importante para fontes ornamentadas/decorativas
@@ -23,7 +23,8 @@ import {
   type SnapConfig,
   DEFAULT_SNAP_CONFIG,
 } from '@/lib/konva-smart-guides'
-import { CANVAS_MARGIN } from '@/lib/canvas-margin'
+import { faixasDaInterface, linhasDaMarca, retangulosDeEncaixe } from '@/lib/margens-no-editor'
+import { useMargensDoEditor } from '@/hooks/use-margens-do-editor'
 import { decidirSelecaoPorGesto, type FaseDoGesto, type GestoDeSelecao } from '@/lib/selecao-por-gesto'
 import { ehIconeDeTexto } from '@/lib/font-combinations-icones'
 import { useIsMobile } from '@/hooks/use-device-detection'
@@ -107,6 +108,10 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
   // diagramação, ligada por padrão — o chrome cabe dentro das margens de
   // segurança, então não atrapalha quem está editando
   const [showInstagramMask, setShowInstagramMask] = React.useState(true)
+  // L1 das linhas-guia (29/10/2026): as duas camadas da página aberta — a faixa da interface (só Story) e a margem
+  // da MARCA (`Project.assinatura`, pelo hook do projeto). O encaixe, o alinhar e as guias azuis usam a marca.
+  const margens = useMargensDoEditor(projectId, design.canvas)
+  const hachura = useHachura()
   const [_fontsReady, setFontsReady] = React.useState(false)
 
   // Retângulo de seleção (marquee). Vive em coordenadas do CANVAS, as mesmas
@@ -662,15 +667,9 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
           height: Math.max(1, item.size?.height ?? 0),
         }))
 
-      // Se as guias de margem estiverem ativas, adicionar retângulos invisíveis nas margens
+      // Se as guias de margem estiverem ativas, a margem da MARCA entra como objetos invisíveis (encaixe nela)
       if (showMarginGuides) {
-        // Adicionar guias de margem como se fossem objetos invisíveis
-        otherRects.push(
-          { id: 'margin-left', x: CANVAS_MARGIN.left, y: 0, width: 0, height: canvasHeight },
-          { id: 'margin-right', x: canvasWidth - CANVAS_MARGIN.right, y: 0, width: 0, height: canvasHeight },
-          { id: 'margin-top', x: 0, y: CANVAS_MARGIN.top, width: canvasWidth, height: 0 },
-          { id: 'margin-bottom', x: 0, y: canvasHeight - CANVAS_MARGIN.bottom, width: canvasWidth, height: 0 },
-        )
+        otherRects.push(...retangulosDeEncaixe(margens.marca, canvasWidth, canvasHeight))
       }
 
       // Usar a biblioteca otimizada de smart guides com configuração ativa.
@@ -724,7 +723,7 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
 
       setGuides(nextGuides)
     },
-    [canvasHeight, canvasWidth, design.layers, snapConfig, snappingEnabled, showMarginGuides, selectedLayerIds, zoom, arrasteDaGrade],
+    [canvasHeight, canvasWidth, design.layers, snapConfig, snappingEnabled, showMarginGuides, selectedLayerIds, zoom, arrasteDaGrade, margens.marca],
   )
 
   const handleLayerDragEnd = React.useCallback((layer: Layer) => {
@@ -1167,6 +1166,7 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
               stageRef={stageRef}
               snapEnabled={snappingEnabled}
               snapToMargins={showMarginGuides}
+              margens={margens.marca}
               onSnapGuides={setGuides}
             />
             <KonvaGradientHandles stageRef={stageRef} />
@@ -1190,8 +1190,41 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
                 projectId={projectId}
                 canvasWidth={canvasWidth}
                 canvasHeight={canvasHeight}
+                faixa={margens.interface}
               />
             )}
+
+            {/* Faixa da interface do Instagram (só Story): hachurada, com o rótulo — texto e logo não entram; foto pode passar por baixo */}
+            {showInstagramMask &&
+              faixasDaInterface(margens.interface, canvasWidth, canvasHeight).map((f) => (
+                <React.Fragment key={f.id}>
+                  <Rect
+                    x={f.x}
+                    y={f.y}
+                    width={f.width}
+                    height={f.height}
+                    // O Konva aceita um canvas como padrão; só o tipo do react-konva pede HTMLImageElement
+                    fillPatternImage={(hachura ?? undefined) as unknown as HTMLImageElement | undefined}
+                    fillPatternRepeat="repeat"
+                    fillPatternScaleX={1 / zoom}
+                    fillPatternScaleY={1 / zoom}
+                    fill={hachura ? undefined : 'rgba(239, 68, 68, 0.08)'}
+                    listening={false}
+                    perfectDrawEnabled={false}
+                  />
+                  <KonvaText
+                    x={12 / zoom}
+                    y={f.id === 'interface-topo' ? f.y + f.height - 22 / zoom : f.y + 8 / zoom}
+                    text="Interface do Instagram"
+                    fontSize={13 / zoom}
+                    fontFamily="Inter, -apple-system, Helvetica, Arial, sans-serif"
+                    fill="#B91C1C"
+                    opacity={0.85}
+                    listening={false}
+                    perfectDrawEnabled={false}
+                  />
+                </React.Fragment>
+              ))}
 
             {/* Drag-to-select rectangle */}
             {selectionRect.visible && (
@@ -1208,46 +1241,29 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
               />
             )}
 
-            {/* Guias de margem — a margem da marca (`CANVAS_MARGIN`: padrão 92 laterais, 188 topo, 224 base) - Ativado com tecla 'R' */}
+            {/* Guias de margem — a margem da MARCA da página aberta (`margensDoEditor`), traço compensado pelo zoom - Ativado com tecla 'R' */}
             {showMarginGuides && (
               <>
-                {/* Borda esquerda */}
-                <Line
-                  points={[CANVAS_MARGIN.left, 0, CANVAS_MARGIN.left, canvasHeight]}
-                  stroke="#3B82F6"
-                  strokeWidth={3}
-                  dash={[6, 4]}
-                  opacity={0.8}
-                  listening={false}
-                  perfectDrawEnabled={false}
-                />
-                {/* Borda direita */}
-                <Line
-                  points={[canvasWidth - CANVAS_MARGIN.right, 0, canvasWidth - CANVAS_MARGIN.right, canvasHeight]}
-                  stroke="#3B82F6"
-                  strokeWidth={3}
-                  dash={[6, 4]}
-                  opacity={0.8}
-                  listening={false}
-                  perfectDrawEnabled={false}
-                />
-                {/* Borda superior */}
-                <Line
-                  points={[0, CANVAS_MARGIN.top, canvasWidth, CANVAS_MARGIN.top]}
-                  stroke="#3B82F6"
-                  strokeWidth={3}
-                  dash={[6, 4]}
-                  opacity={0.8}
-                  listening={false}
-                  perfectDrawEnabled={false}
-                />
-                {/* Borda inferior */}
-                <Line
-                  points={[0, canvasHeight - CANVAS_MARGIN.bottom, canvasWidth, canvasHeight - CANVAS_MARGIN.bottom]}
-                  stroke="#3B82F6"
-                  strokeWidth={3}
-                  dash={[6, 4]}
-                  opacity={0.8}
+                {linhasDaMarca(margens.marca, canvasWidth, canvasHeight).map((linha) => (
+                  <Line
+                    key={linha.id}
+                    points={linha.points}
+                    stroke="#3B82F6"
+                    strokeWidth={2 / zoom}
+                    dash={[8 / zoom, 5 / zoom]}
+                    opacity={0.8}
+                    listening={false}
+                    perfectDrawEnabled={false}
+                  />
+                ))}
+                <KonvaText
+                  x={margens.marca.esquerda + 8 / zoom}
+                  y={margens.marca.topo + 6 / zoom}
+                  text={margens.origem === 'marca' ? 'Margem da marca' : 'Margem padrão'}
+                  fontSize={13 / zoom}
+                  fontFamily="Inter, -apple-system, Helvetica, Arial, sans-serif"
+                  fill="#3B82F6"
+                  opacity={0.85}
                   listening={false}
                   perfectDrawEnabled={false}
                 />
@@ -1343,4 +1359,28 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
       </div>
     </div>
   )
+}
+
+/**
+ * A hachura da faixa da interface: um ladrilho de 8×8 com uma diagonal, feito uma vez no navegador. `null` no servidor
+ * (sem `document`) — aí a faixa sai como véu liso.
+ */
+function useHachura(): HTMLCanvasElement | null {
+  return React.useMemo(() => {
+    if (typeof document === 'undefined') return null
+    const tile = document.createElement('canvas')
+    tile.width = 8
+    tile.height = 8
+    const ctx = tile.getContext('2d')
+    if (!ctx) return null
+    ctx.fillStyle = 'rgba(239, 68, 68, 0.05)'
+    ctx.fillRect(0, 0, 8, 8)
+    ctx.strokeStyle = 'rgba(239, 68, 68, 0.45)'
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.moveTo(0, 8)
+    ctx.lineTo(8, 0)
+    ctx.stroke()
+    return tile
+  }, [])
 }
