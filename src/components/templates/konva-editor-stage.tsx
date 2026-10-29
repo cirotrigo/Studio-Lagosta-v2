@@ -23,7 +23,7 @@ import {
   type SnapConfig,
   DEFAULT_SNAP_CONFIG,
 } from '@/lib/konva-smart-guides'
-import { faixasDaInterface, linhasDaMarca, retangulosDeEncaixe } from '@/lib/margens-no-editor'
+import { avisosDeMargem, caixaDaSelecao, faixasDaInterface, linhasDaMarca, retangulosDeEncaixe, retangulosDosOutros, type AvisoDeMargem } from '@/lib/margens-no-editor'
 import { useMargensDoEditor } from '@/hooks/use-margens-do-editor'
 import { useExibicaoDoEditor } from '@/hooks/use-exibicao-do-editor'
 import { acaoDaTecla, alvoIgnoraAtalhos } from '@/lib/exibicao-do-editor'
@@ -207,6 +207,24 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
 
   const canvasWidth = design.canvas.width
   const canvasHeight = design.canvas.height
+  // L3: os avisos de "fora da margem" (texto/logo na faixa da interface; texto, logo, forma, ícone e elemento cruzando a
+  // margem da marca). Avisa, nunca bloqueia; o botão "Trazer para dentro" move o mínimo, num desfazer.
+  const avisos = React.useMemo(
+    () => (showMarginGuides ? avisosDeMargem(design.layers, margens, canvasHeight) : []),
+    [design.layers, margens, canvasHeight, showMarginGuides],
+  )
+  const trazerParaDentro = React.useCallback(
+    (ids: string[]) => {
+      const coalesceKey = `para-dentro:${Date.now()}`
+      for (const aviso of avisos) {
+        if (!ids.includes(aviso.layerId)) continue
+        const { dx, dy } = aviso.ajuste
+        if (!dx && !dy) continue
+        updateLayer(aviso.layerId, (l) => ({ ...l, position: { x: Math.round((l.position?.x ?? 0) + dx), y: Math.round((l.position?.y ?? 0) + dy) } }), { coalesceKey })
+      }
+    },
+    [avisos, updateLayer],
+  )
   const deferredLayers = React.useDeferredValue(design.layers)
 
   React.useEffect(() => {
@@ -652,23 +670,24 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
   const handleLayerDragMove = React.useCallback(
     (event: KonvaEventObject<DragEvent>, layer: Layer) => {
       const node = event.target
-      const movingRect: RectInfo = {
-        id: layer.id,
-        x: node.x(),
-        y: node.y(),
-        width: Math.max(1, layer.size?.width ?? node.width()),
-        height: Math.max(1, layer.size?.height ?? node.height()),
-      }
+      // L3 das linhas-guia: com seleção múltipla, o encaixe usa a CAIXA DA SELEÇÃO inteira deslocada pelo arrasto
+      // (não só a camada agarrada); as outras caixas ignoram as invisíveis e a própria seleção (a posição antiga do
+      // grupo não é alvo — antes o conjunto grudava nela)
+      const emGrupo = selectedLayerIds.length > 1 && selectedLayerIds.includes(layer.id)
+      const arrastoX = node.x() - (layer.position?.x ?? 0)
+      const arrastoY = node.y() - (layer.position?.y ?? 0)
+      const selecao = emGrupo ? caixaDaSelecao(design.layers, selectedLayerIds) : null
+      const movingRect: RectInfo = selecao
+        ? { ...selecao, x: selecao.x + arrastoX, y: selecao.y + arrastoY }
+        : {
+            id: layer.id,
+            x: node.x(),
+            y: node.y(),
+            width: Math.max(1, layer.size?.width ?? node.width()),
+            height: Math.max(1, layer.size?.height ?? node.height()),
+          }
 
-      const otherRects: RectInfo[] = design.layers
-        .filter((item) => item.id !== layer.id)
-        .map((item) => ({
-          id: item.id,
-          x: item.position?.x ?? 0,
-          y: item.position?.y ?? 0,
-          width: Math.max(1, item.size?.width ?? 0),
-          height: Math.max(1, item.size?.height ?? 0),
-        }))
+      const otherRects: RectInfo[] = retangulosDosOutros(design.layers, emGrupo ? selectedLayerIds : [layer.id])
 
       // Se as guias de margem estiverem ativas, a margem da MARCA entra como objetos invisíveis (encaixe nela)
       if (showMarginGuides) {
@@ -697,7 +716,8 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
       // }
 
       if (position.x !== movingRect.x || position.y !== movingRect.y) {
-        node.position(position)
+        // O encaixe moveu a caixa da seleção: a camada agarrada anda o mesmo tanto
+        node.position({ x: node.x() + (position.x - movingRect.x), y: node.y() + (position.y - movingRect.y) })
       }
 
       // Seleção múltipla (ex.: grupo de combinação de fontes): move as demais
@@ -1282,6 +1302,22 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
               </>
             )}
 
+            {/* L3: contorno de aviso nas camadas fora da margem (laranja); a faixa/margem são as de cima */}
+            {avisos.map((a) => (
+              <Rect
+                key={`aviso-${a.layerId}`}
+                x={a.caixa.x}
+                y={a.caixa.y}
+                width={a.caixa.width}
+                height={a.caixa.height}
+                stroke={a.tipo === 'interface' ? '#DC2626' : '#F59E0B'}
+                strokeWidth={2 / zoom}
+                dash={[4 / zoom, 3 / zoom]}
+                listening={false}
+                perfectDrawEnabled={false}
+              />
+            ))}
+
             {guides.map((guide, index) => {
               const points = guide.orientation === 'vertical'
                 ? [guide.position, 0, guide.position, canvasHeight]
@@ -1344,9 +1380,14 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
         </Stage>
   )
 
+  const chipDeAvisos = avisos.length > 0 && !croppingLayerId ? (
+    <AvisosForaDaMargem avisos={avisos} selecionadas={selectedLayerIds} aoTrazer={trazerParaDentro} />
+  ) : null
+
   if (embedded) {
     return (
       <div className="relative" style={{ width: scaledWidth, height: scaledHeight }}>
+        {chipDeAvisos}
         {cropMargin ? (
           // O slot da coluna mantém o tamanho da página: a área extra do stage
           // transborda por cima do resto do workspace, em vez de empurrar as
@@ -1366,9 +1407,45 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
       className="h-full w-full bg-[#f5f5f5] dark:bg-[#1a1a1a] overflow-y-auto overflow-x-auto"
       style={{ padding: isMobile ? '0.5rem' : '2rem' }}
     >
-      <div className={`flex ${isMobile ? 'justify-start' : 'justify-center'} min-h-full`}>
+      <div className={`relative flex ${isMobile ? 'justify-start' : 'justify-center'} min-h-full`}>
+        {chipDeAvisos}
         {stageElement}
       </div>
+    </div>
+  )
+}
+
+/**
+ * O aviso de "fora da margem" com o botão "Trazer para dentro" (L3): HTML por cima do canvas (a guides-layer não
+ * escuta cliques e não sai no export de qualquer jeito). Com seleção, age só nas selecionadas que têm aviso; sem
+ * seleção, em todas. Avisa, nunca bloqueia.
+ */
+function AvisosForaDaMargem({ avisos, selecionadas, aoTrazer }: { avisos: AvisoDeMargem[]; selecionadas: string[]; aoTrazer: (ids: string[]) => void }) {
+  const alvo = selecionadas.length > 0 ? avisos.filter((a) => selecionadas.includes(a.layerId)) : avisos
+  if (alvo.length === 0) return null
+  const moviveis = alvo.filter((a) => a.ajuste.dx || a.ajuste.dy)
+  const naInterface = alvo.filter((a) => a.tipo === 'interface').length
+  const texto =
+    alvo.length === 1
+      ? `${alvo[0].nome}: ${alvo[0].tipo === 'interface' ? 'dentro da faixa do Instagram' : 'fora da margem da marca'} (${alvo[0].ajuste.lados.join(', ')})`
+      : `${alvo.length} camadas fora da margem${naInterface ? ` (${naInterface} na faixa do Instagram)` : ''}`
+  return (
+    <div className="pointer-events-auto absolute left-2 top-2 z-40 flex max-w-[90%] items-center gap-2 rounded-md border border-amber-500/60 bg-background/95 px-2 py-1 text-xs shadow-sm backdrop-blur">
+      <span className="truncate text-amber-700 dark:text-amber-300" title={texto}>
+        {texto}
+      </span>
+      {moviveis.length > 0 ? (
+        <button
+          type="button"
+          className="flex-shrink-0 rounded bg-amber-500 px-2 py-0.5 font-medium text-black hover:bg-amber-400"
+          onClick={() => aoTrazer(moviveis.map((a) => a.layerId))}
+          title="Move o mínimo para dentro (Cmd+Z desfaz)"
+        >
+          Trazer para dentro
+        </button>
+      ) : (
+        <span className="flex-shrink-0 text-muted-foreground">maior que a área: encurte o texto ou reduza a fonte</span>
+      )}
     </div>
   )
 }
