@@ -194,6 +194,8 @@ export function materializarArquetipo(args: {
   conferirZona?: boolean
   /** A pilha da faixa com o gap da marca (ver acima). Ausente = cada papel na própria referência. */
   empilhar?: { gap: number }
+  /** Quanto os acentos PRESOS ocupam acima/abaixo de cada papel (`extensoesDosAcentosPresos`): a pilha reserva isso. */
+  acentosPresos?: Partial<Record<PapelDeTexto, { topo: number; base: number }>>
 }): Materializacao {
   const { arquetipo, formato, canvas, geometria } = args
   const problemas: ProblemaDeMaterializacao[] = []
@@ -294,7 +296,7 @@ export function materializarArquetipo(args: {
   }
 
   // A pilha da faixa (29/10/2026): só muda o y dos papéis que seguem a âncora; referência, zona e capacidade ficam.
-  if (args.empilhar) empilharNasFaixas(arquetipo, formato, entradas, args.empilhar.gap, args.ornamentos, args.envoltorios)
+  if (args.empilhar) empilharNasFaixas(arquetipo, formato, entradas, args.empilhar.gap, args.ornamentos, args.envoltorios, args.acentosPresos)
 
   // 2ª passada: ornamentos, envoltório e a zona, onde a caixa pousou.
   for (const { papel, referencia, zona, medida, posicao, onde, dy } of entradas) {
@@ -362,12 +364,14 @@ function empilharNasFaixas(
   gap: number,
   ornamentos?: Partial<Record<PapelDeTexto, { esquerda: number; direita: number; topo: number; base: number }>>,
   envoltorios?: Partial<Record<PapelDeTexto, { x: number; y: number }>>,
+  acentosPresos?: Partial<Record<PapelDeTexto, { topo: number; base: number }>>,
 ): void {
   const ancora = arquetipo.preferencias.ancora
   if (ancora === 'meio') return
   if (arquetipo.papeis.some((p) => (p as { lista?: boolean }).lista)) return
-  const topoDe = (p: PapelDeTexto) => (ornamentos?.[p]?.topo ?? 0) + (envoltorios?.[p]?.y ?? 0)
-  const baseDe = (p: PapelDeTexto) => (ornamentos?.[p]?.base ?? 0) + (envoltorios?.[p]?.y ?? 0)
+  // O que cada papel ocupa além da caixa: os ornamentos do arranjo, o envoltório (#5) e os acentos presos do catálogo (o fio).
+  const topoDe = (p: PapelDeTexto) => (ornamentos?.[p]?.topo ?? 0) + (envoltorios?.[p]?.y ?? 0) + (acentosPresos?.[p]?.topo ?? 0)
+  const baseDe = (p: PapelDeTexto) => (ornamentos?.[p]?.base ?? 0) + (envoltorios?.[p]?.y ?? 0) + (acentosPresos?.[p]?.base ?? 0)
   type E = (typeof entradas)[number]
   // Mesma COLUNA: as caixas REAIS (já alinhadas na referência) se sobrepõem na horizontal — as referências do catálogo
   // não servem, porque o apoio do título-gigante é alinhado à direita numa referência que cruza a do serviço. A faixa

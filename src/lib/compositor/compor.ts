@@ -1200,6 +1200,11 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   const unidadesArq: UnidadeDoArquetipo[] | null = noArquetipo ? noArquetipo.unidades : null
   let materializacao: Extract<Materializacao, { ok: true }> | null = null
   let partidaArq: Extract<PartidaNoArquetipo, { ok: true }> | null = null
+  // A PILHA da faixa (29/10/2026): a peça nova empilha com o gap da marca e grava `pilha` na escolha; a reprodução usa o
+  // que a peça gravou — a de antes da regra (sem `pilha`) não empilha, como nasceu. `pedidoDeReproducao` é o pedido
+  // bruto (a foto ainda não foi conferida): a identidade da pilha é da peça, não da foto.
+  const pedidoDeReproducao = arq ? opcoes.escolhaEspacial ?? null : null
+  const gapDaPilha = pedidoDeReproducao ? (pedidoDeReproducao.modo === MODO_BUSCA_ESPACIAL ? pedidoDeReproducao.pilha : undefined) : g.gap
   if (arq && unidadesArq && pisoArq) {
     const p = partidaNoArquetipo({
       arquetipo: arq.definicao,
@@ -1208,7 +1213,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       geometria: pisoArq,
       unidades: unidadesArq,
       logo: assinatura.logo ? { razao: assinatura.logo.razao } : null,
-      gap: g.gap,
+      ...(gapDaPilha !== undefined ? { gap: gapDaPilha } : {}),
     })
     if ('problemas' in p) {
       const m = p
@@ -1235,7 +1240,6 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   // A identidade da foto é a impressão da URL que a peça DESENHA (a do fundo): a recomposição troca `driveFileId` pela URL da página
   // (`specComACopyDaPagina`), e a mesma foto não pode parecer outra — senão toda recomposição refaria a busca.
   const chaveDaFotoDaPeca = impressaoDaFoto(foto?.url ?? spec.foto?.url ?? spec.foto?.driveFileId)
-  const pedidoDeReproducao = arq ? opcoes.escolhaEspacial ?? null : null
   const reproducao = pedidoDeReproducao && pedidoDeReproducao.modo === MODO_BUSCA_ESPACIAL && pedidoDeReproducao.foto !== chaveDaFotoDaPeca ? null : pedidoDeReproducao
   if (pedidoDeReproducao && !reproducao) avisos.push('A foto da peça mudou: a posição foi escolhida de novo pela foto nova (a escolha gravada era de outra foto).')
   // O resgate da partida só é notícia quando a busca roda (na reprodução vale a posição congelada).
@@ -1390,7 +1394,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
         geometria: pisoArq,
         unidades: unidadesArq,
         logo: assinatura.logo ? { razao: assinatura.logo.razao } : null,
-        gap: g.gap,
+        ...(gapDaPilha !== undefined ? { gap: gapDaPilha } : {}),
         partida: partidaArq,
         cortes: leituras,
         planejamento,

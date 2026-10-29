@@ -1546,10 +1546,15 @@ Registro do contrato já existente (lacuna apontada na revisão do preflight do 
   respondem ao casco das zonas da faixa na vertical; a horizontal segue a de cada papel.
 - **Quem não empilha:** âncora `meio` (#3, #16) e layouts com lista (#15) — ali os vãos são da receita. Faixa com um
   papel só (manchete do título-gigante; serviço ao lado da logo) não tem o que empilhar.
+- **Entre dois papéis conta o que cada um ocupa além da caixa:** os ornamentos do arranjo, o envoltório (#5) e os
+  acentos PRESOS do catálogo (`extensoesDosAcentosPresos`: o fio sob a manchete, o spark acima) — senão o apoio encosta
+  no fio ou o apaga por colisão (revisão do Codex, 29/10).
 - **Quem passa o gap:** `compor` e `medir-copy` (`gapEntreBlocos` da geometria do formato) por `partidaNoArquetipo` e
-  `selecionarNoArquetipo` → `materializarUnidades`. Sem `gap`, a saída é a de sempre (testes antigos e replay).
+  `selecionarNoArquetipo` → `materializarUnidades`. A peça nova grava `pilha` (o gap) na escolha espacial; a
+  recomposição usa o que a peça gravou — **a peça de antes da regra (sem `pilha`) reproduz sem empilhar, como nasceu**:
+  editar só o texto não move o apoio dela. Sem `gap`, a materialização é a de sempre.
 - **O que muda de verdade:** toda composição por arquétipo com faixa de 2+ papéis sobe o apoio (e o serviço nos layouts
   de rodapé) para junto da manchete. As amostras aprovadas antes desta regra (Bv3 do #9, #8, #4, #10) mudam a posição
   vertical desses papéis — o owner decidiu em 29/10 que o espaçamento antigo estava errado. `gapEntreBlocos` é o botão
   da marca (padrão 14 px; as páginas da equipe usam 0–9).
-- Controles em `arquetipos/__tests__/materializar.test.ts` (18, 18b).
+- Controles em `arquetipos/__tests__/materializar.test.ts` (18, 18b, 18c) e `t1a-arquetipo-no-compositor.test.ts` (13, 19, 20).

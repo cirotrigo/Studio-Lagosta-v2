@@ -364,7 +364,8 @@ export function selecionarNoArquetipo(args: ArgsDaSelecao): SelecaoNoArquetipo {
 
   // Reprodução (ou sem foto): uma combinação só. A geometria e o que a copy nova viola recusam; o tratamento avisa.
   if (args.reproduzir || args.cortes.length === 0) {
-    const { buscaOriginal, ...gravada } = args.reproduzir ?? { modo: MODO_BUSCA_ESPACIAL, foto: args.foto, corte: args.corteSemLeitura ?? ('center-middle' as CropPosition), deslocamentos: args.partida.deslocamentos }
+    // Combinação única (sem foto, ou texto no liso): a escolha nova também grava a pilha com que a peça nasceu (29/10/2026).
+    const { buscaOriginal, ...gravada } = args.reproduzir ?? { modo: MODO_BUSCA_ESPACIAL, foto: args.foto, corte: args.corteSemLeitura ?? ('center-middle' as CropPosition), deslocamentos: args.partida.deslocamentos, ...(args.gap !== undefined ? { pilha: args.gap } : {}) }
     const avisos: string[] = []
     const origem = args.reproduzirReferencia ? 'a posição de referência do arquétipo (peça do T1a)' : 'a posição desta peça foi escolhida pela foto e está congelada'
     const recusa = (problemas: unknown[], descricao: string) =>
@@ -450,7 +451,7 @@ export function selecionarNoArquetipo(args: ArgsDaSelecao): SelecaoNoArquetipo {
   const resultado = buscarNaFoto({ materializadas, cortes: args.cortes, faixas, energiaDeReferencia, planejamento: args.planejamento, canvas: args.canvas })
   if (!resultado.vencedora) return { ok: false, resultado, faixas, motivo: motivoDaFalta(resultado.ordenadas) }
   const v = resultado.vencedora
-  const escolha: EscolhaEspacial = { modo: MODO_BUSCA_ESPACIAL, foto: args.foto, corte: v.crop, deslocamentos: v.combinacao.deslocamentos }
+  const escolha: EscolhaEspacial = { modo: MODO_BUSCA_ESPACIAL, foto: args.foto, corte: v.crop, deslocamentos: v.combinacao.deslocamentos, ...(args.gap !== undefined ? { pilha: args.gap } : {}) }
   const diagnostico = diagnosticoDaBusca({ escolha, resultado, faixas, cortesAvaliados: args.cortes.map((c) => c.crop) })
   const menorCobertura = Math.min(...resultado.ordenadas.filter((a) => a.eliminada.length === 0).map((a) => a.regiaoEstimada?.cobertura ?? 0))
   const avisos = invadeAEstimada(v)

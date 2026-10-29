@@ -16,7 +16,7 @@ import { empilhar, PISO_DE_ESCALA, type PilhaDeBlocos } from '../blocos'
 import { extensoesDosElementos } from '../combinacoes'
 import type { BlocoPreparado, BlocosPreparados } from '../preparar-blocos'
 import type { Alinhamento, Papel } from '../spec'
-import { envoltoriosDoArquetipo } from './acentos'
+import { envoltoriosDoArquetipo, extensoesDosAcentosPresos } from './acentos'
 import { alinhaDoPapel, caixasMaximas, excedeAlturaDaReferencia, materializarArquetipo, papelDominante, type GeometriaEfetiva, type Materializacao, type RetanguloPx } from './materializar'
 import type { ArquetipoDeLayout, FormatoDoArquetipo, PapelDeTexto } from './tipos'
 
@@ -304,7 +304,7 @@ export function materializarUnidades(args: {
   }
   // #5: a folga da pílula conta na zona (vazio sem envolvente: a materialização de sempre).
   const envoltorios = envoltoriosDoArquetipo(args.arquetipo, args.formato, args.canvas)
-  const m = materializarArquetipo({ arquetipo: args.arquetipo, formato: args.formato, canvas: args.canvas, geometria: args.geometria, medidas, ornamentos, logo: args.logo, deslocamentos: args.deslocamentos, ...(Object.keys(envoltorios).length > 0 ? { envoltorios } : {}), ...(args.conferirZona === false ? { conferirZona: false } : {}), ...(args.gap !== undefined ? { empilhar: { gap: args.gap } } : {}) })
+  const m = materializarArquetipo({ arquetipo: args.arquetipo, formato: args.formato, canvas: args.canvas, geometria: args.geometria, medidas, ornamentos, logo: args.logo, deslocamentos: args.deslocamentos, ...(Object.keys(envoltorios).length > 0 ? { envoltorios } : {}), ...(args.conferirZona === false ? { conferirZona: false } : {}), ...(args.gap !== undefined ? { empilhar: { gap: args.gap }, acentosPresos: extensoesDosAcentosPresos(args.arquetipo, args.formato, args.canvas) } : {}) })
   if (!('problemas' in m)) return m
   // A recusa por capacidade leva o orçamento da unidade: a caixa, a escala em que a escada parou e cada bloco.
   const caixas = caixasMaximas(args.arquetipo, args.formato, args.canvas, args.geometria)
