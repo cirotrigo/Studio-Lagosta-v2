@@ -1360,10 +1360,21 @@ de régua em `docs/research/canva-guias-e-margens-2026-10/teste-de-regua/` e pod
   tamanho do canvas (`formatoDaPaginaGravada`); a margem é a PADRÃO da casa, não a da marca (a da marca entra no
   revisor numa fase posterior, se o Ciro quiser).
 - **Antes de integrar, medir**: `scripts/medir-margens-2026-10-29.ts` (só leitura; roda em produção só com o ok do
-  Ciro no chat) mede os textos uma vez e confere as mesmas métricas contra as margens antigas e as novas, contando
-  quantas artes agendadas e dos últimos 30 dias mudam de aviso em `fora-da-area-segura` e de veredito no piso.
-  Post com `laterPostId` é só contado — intocável. `foraDaAreaSegura(metricas, limites)` foi separado de
-  `checkTextGeometry` para essa comparação.
+  Ciro no chat) mede os textos uma vez e confere as mesmas métricas, pela MESMA regra do revisor (a tinta de cada
+  bloco, `blocosDeTexto` — não a caixa do `text-geometry`, Codex R1), contra as margens antigas e as novas, contando
+  quantas artes agendadas e dos últimos 30 dias mudam de aviso em `fora-da-area-segura` e de veredito no piso. O que
+  não dá para medir (camadas ilegíveis, fontes do projeto sem registro, texto que o medidor omitiu) sai contado à
+  parte, nunca como "sem impacto"; rich text é aproximação, dita. Post com `laterPostId` é só contado — intocável.
+  `foraDaAreaSegura(metricas, limites)` foi separado de `checkTextGeometry` (o `text-geometry` usa a caixa).
+- **Reconciliar `Project.assinatura`** (`scripts/reconciliar-assinatura-2026-10-29.ts`): simulação por padrão; com
+  `--gravar` a escrita é ATÔMICA (`updateMany` com `assinatura: { equals: <o que foi lido> }`) — uma edição no meio
+  aborta aquele projeto em vez de apagá-la. Os kits de `scripts/lib/kits-de-assinatura.ts` (o padrão da casa) e a logo
+  de `criar-pagina-de-assinatura.ts` passaram a ler `GEOMETRIA_PADRAO`: rodar o script de novo não regrava 92/188/224.
+  Os kits POR MARCA (Real 96/250/350, Quintal 92/200/172…) continuam como estão até a reconciliação.
+- **Limite do classificador sem tags** (Codex): um Story gravado como 1080×1600 (razão 1,48 < 1,6) recebe os limites
+  do Feed no revisor. O gate já recusa comprovar o piso fora do canônico; avisos e propostas do revisor é que mudam.
+- **Cobertura que mudou de natureza**: E5 passou a provar a barreira do CP4 (a recusa transacional do gate sobre um
+  DRAFT existente ficou sem caso — substituto pendente); P9 pulado é cobertura pendente, não prova de recuperação.
 - 🔴 **`VERSAO_DAS_REGRAS` subiu para `revisao-v2` e `VERSAO_DO_GATE` para `gate-v5`** (a impressão digital das regras
   mudou com os números): `revisao-revisao-v2.json` e `gate-gate-v5.json` gerados com `IMPRESSAO_DIGITAL=gravar`; os da
   v1/v4 continuam imutáveis (`scripts/validar-impressao-digital.ts`). Consequência da decisão 9.13: **os registros de

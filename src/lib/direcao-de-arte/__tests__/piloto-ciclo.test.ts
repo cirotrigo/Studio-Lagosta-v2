@@ -336,6 +336,9 @@ describe('CP4 — medir antes, aplicar em memória, medir depois; UMA escrita no
     const v1 = fixture.peca().v1.layers
     expect(camada(persistidas, 'apoio').position.y).toBe(camada(v1, 'apoio').position.y + ACEITO_APOIO.dy + ACEITO_TOPO.dy)
     expect(camada(persistidas, 'headline').position.y).toBe(camada(v1, 'headline').position.y + ACEITO_TOPO.dy)
+    // O 3º ajuste anda em X (29/10): as duas camadas andaram os 8 px; o serviço não (Codex R1)
+    expect(camada(persistidas, 'apoio').position.x).toBe(camada(v1, 'apoio').position.x + ACEITO_TOPO.dx)
+    expect(camada(persistidas, 'headline').position.x).toBe(camada(v1, 'headline').position.x + ACEITO_TOPO.dx)
     expect(camada(persistidas, 'servico').position).toEqual(camada(v1, 'servico').position)
     expect({ escritas: banco.escritas, generations: banco.generations.length }).toEqual({ escritas: 1, generations: 1 })
     // O que ficou gravado na Generation diz o mesmo que a resposta (nada em silêncio).
@@ -471,12 +474,15 @@ describe('CP4 — medir antes, aplicar em memória, medir depois; UMA escrita no
     await ajustar([ACEITO_APOIO, PIORA_SERVICO, ACEITO_TOPO] as unknown as Ajuste[])
     const v1 = fixture.peca().v1.layers
     const y = (chamada: number, id: string) => camada(medidas.chamadas[chamada].camadas as Layer[], id).position.y
-    // 0: a entrada; 1: candidata com apoio −6; 2: a candidata do serviço (sobre o estado COM o 1º); 3: a do 3º (topo −20), SEM o serviço movido.
+    const x = (chamada: number, id: string) => camada(medidas.chamadas[chamada].camadas as Layer[], id).position.x
+    // 0: a entrada; 1: candidata com apoio −6; 2: a candidata do serviço (sobre o estado COM o 1º); 3: a do 3º (topo +8 em x), SEM o serviço movido.
     expect(medidas.chamadas.map((c) => c.corrigir)).toEqual([false, false, false, false])
     expect([y(0, 'apoio'), y(0, 'servico')]).toEqual([camada(v1, 'apoio').position.y, camada(v1, 'servico').position.y])
     expect([y(1, 'apoio'), y(1, 'servico')]).toEqual([camada(v1, 'apoio').position.y - 6, camada(v1, 'servico').position.y])
     expect([y(2, 'apoio'), y(2, 'servico')]).toEqual([camada(v1, 'apoio').position.y - 6, camada(v1, 'servico').position.y - 230])
     expect([y(3, 'apoio'), y(3, 'headline'), y(3, 'servico')]).toEqual([camada(v1, 'apoio').position.y + ACEITO_APOIO.dy + ACEITO_TOPO.dy, camada(v1, 'headline').position.y + ACEITO_TOPO.dy, camada(v1, 'servico').position.y])
+    // A candidata do 3º ajuste anda em X (29/10): headline e apoio +8; as anteriores e o serviço não (Codex R1)
+    expect([x(2, 'apoio'), x(3, 'apoio'), x(3, 'headline'), x(3, 'servico')]).toEqual([camada(v1, 'apoio').position.x, camada(v1, 'apoio').position.x + ACEITO_TOPO.dx, camada(v1, 'headline').position.x + ACEITO_TOPO.dx, camada(v1, 'servico').position.x])
   }, 180_000)
 
   it('a régua do executor NÃO aplica a correção hipotética: com véu escuro e folga de força, mover o serviço para a área clara é piora REAL, não "ok" corrigido (revisores A e B)', async () => {

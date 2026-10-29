@@ -47,8 +47,10 @@ async function main() {
     mudam++
     console.log(`#${p.id} ${p.name}:\n${linhas.join('\n')}`)
     if (gravar) {
-      await db.project.update({ where: { id: p.id }, data: { assinatura: { ...assinatura, geometria: nova } as Prisma.InputJsonValue } })
-      console.log('  gravado')
+      // Atômico: só grava se a assinatura ainda for a que foi LIDA (Codex R1) — outra edição no meio aborta este projeto
+      const r = await db.project.updateMany({ where: { id: p.id, assinatura: { equals: p.assinatura as Prisma.InputJsonValue } }, data: { assinatura: { ...assinatura, geometria: nova } as Prisma.InputJsonValue } })
+      if (r.count === 1) console.log('  gravado')
+      else console.log('  NÃO gravado: a assinatura mudou entre a leitura e a escrita — rode de novo')
     }
   }
   console.log(`${mudam} projeto(s) ${gravar ? 'gravados' : 'mudariam'}; Quadrado intocado; gap/escala intocados.`)
