@@ -8,7 +8,7 @@ import { margensDoEditor } from '@/lib/canvas-margin'
 import { buildStoryChrome } from '@/lib/instagram-story-chrome'
 import { alignToCanvas, type AlignmentNode } from '@/lib/konva-alignment'
 import { computeAlignmentGuides, DEFAULT_SNAP_CONFIG } from '@/lib/konva-smart-guides'
-import { faixasDaInterface, linhasDaMarca, margensDoEixo, paradasDeEncaixe, retangulosDeEncaixe } from '@/lib/margens-no-editor'
+import { faixasDaInterface, linhasDaMarca, margensDaPagina, margensDoEixo, paradasDeEncaixe, retangulosDeEncaixe } from '@/lib/margens-no-editor'
 
 const WINE = { geometria: { story: { margemH: 96, safeTopo: 200, safeRodape: 150 }, feed: { margemH: 96, safeTopo: 120, safeRodape: 100 } } }
 const story = margensDoEditor({ formato: 'story', assinatura: null, largura: 1080, altura: 1920 })
@@ -123,5 +123,23 @@ describe('o chrome do Story nasce da faixa da interface', () => {
   it('sem faixa vale o padrão (188/224): avatar maior que com 160', () => {
     expect(buildStoryChrome(1920).avatar.radius).toBeGreaterThan(buildStoryChrome(1920, { topo: 160, rodape: 160 }).avatar.radius)
     expect(buildStoryChrome(1920).avatar.cy + buildStoryChrome(1920).avatar.radius).toBeLessThanOrEqual(188)
+  })
+})
+
+describe('margensDaPagina: uma decisão só de formato (Codex R1 do L1)', () => {
+  it('o formato sai do tamanho: 1080×1920 e 1080×1800 são Story (faixa presente); 1080×1350 e 1080×1080 não', () => {
+    expect(margensDaPagina(null, { width: 1080, height: 1920 }).interface).toEqual({ topo: 188, rodape: 224 })
+    expect(margensDaPagina(null, { width: 1080, height: 1800 }).interface).toEqual({ topo: 188, rodape: 224 })
+    expect(margensDaPagina(null, { width: 1080, height: 1350 }).interface).toBeNull()
+    expect(margensDaPagina(null, { width: 1080, height: 1080 }).interface).toBeNull()
+  })
+
+  it('a assinatura que chega depois muda a marca, não a faixa', () => {
+    const antes = margensDaPagina(undefined, { width: 1080, height: 1920 })
+    const depois = margensDaPagina(WINE, { width: 1080, height: 1920 })
+    expect(antes.origem).toBe('padrao')
+    expect(depois.origem).toBe('marca')
+    expect(depois.marca.topo).toBe(200)
+    expect(depois.interface).toEqual(antes.interface)
   })
 })

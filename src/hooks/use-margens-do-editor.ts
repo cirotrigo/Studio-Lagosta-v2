@@ -2,8 +2,8 @@
 
 import * as React from 'react'
 
-import { margensDoEditor, type MargensDoEditor } from '@/lib/canvas-margin'
-import { formatoDaPaginaGravada } from '@/lib/compositor/formato'
+import type { MargensDoEditor } from '@/lib/canvas-margin'
+import { margensDaPagina } from '@/lib/margens-no-editor'
 import { useProject } from './use-project'
 
 /**
@@ -15,8 +15,5 @@ export function useMargensDoEditor(projectId: number | null, canvas: { width: nu
   const { data: projeto } = useProject(projectId)
   const assinatura = projeto?.assinatura ?? null
   const { width, height } = canvas
-  return React.useMemo(
-    () => margensDoEditor({ formato: formatoDaPaginaGravada({ width, height }), assinatura, largura: width, altura: height }),
-    [assinatura, width, height],
-  )
+  return React.useMemo(() => margensDaPagina(assinatura, { width, height }), [assinatura, width, height])
 }

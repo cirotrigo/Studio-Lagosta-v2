@@ -1492,6 +1492,9 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
       const colhido = colherNodesSelecionados()
       if (!colhido) return
       const { contentLayer, nodes } = colhido
+      // Codex R1 do L1: as margens entram no MESMO fechamento dos nós e das dimensões — lidas antes do import()
+      // assíncrono, nunca depois (troca de página durante a espera misturaria nós antigos com margens novas)
+      const marca = margensRef.current.marca
 
       import('@/lib/konva-alignment').then((alinhamento) => {
         if (!forcarCanvas && nodes.length >= 2) {
@@ -1503,7 +1506,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
         } else {
           const canvasSize = axis === 'x' ? design.canvas.width : design.canvas.height
           // As guias azuis da página aberta (margem da MARCA), não o padrão do Story
-          alinhamento.alignToCanvas(nodes, contentLayer, axis, mode, canvasSize, margensDoEixo(margensRef.current.marca, axis, design.canvas.width, design.canvas.height))
+          alinhamento.alignToCanvas(nodes, contentLayer, axis, mode, canvasSize, margensDoEixo(marca, axis, design.canvas.width, design.canvas.height))
         }
         persistirPosicoes(nodes)
       })

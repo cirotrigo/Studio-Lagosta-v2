@@ -64,7 +64,10 @@ export function KonvaInstagramStoryMask({
   canvasHeight,
   faixa,
 }: KonvaInstagramStoryMaskProps) {
-  const isStory = isStoryRatio(canvasWidth, canvasHeight)
+  // Uma decisão só de formato (Codex R1 do L1): quem passa `faixa` já decidiu pelo `formatoDaPaginaGravada` do hook
+  // (`null` = não é Story); só quem chama sem a prop cai na razão 9:16 de antes. Senão 1080×1800 ganharia a faixa
+  // hachurada e nenhum chrome.
+  const isStory = faixa !== undefined ? faixa !== null : isStoryRatio(canvasWidth, canvasHeight)
 
   const { data: project } = useProject(isStory ? projectId : null)
   const { data: logo } = useProjectLogo(projectId, isStory)

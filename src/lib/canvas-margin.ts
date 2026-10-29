@@ -4,7 +4,7 @@
  * O editor desenha DUAS camadas, e são coisas diferentes (decisão do owner de 13/10/2026):
  *
  * - a **faixa da interface do Instagram**, só no Story: onde o app desenha avatar, barra de progresso e caixa de
- *   resposta. Texto e logo não entram; foto pode passar por baixo. Vem de `interfaceDoStory` (piso 188/224, que a
+ *   resposta. Texto e logo não entram (gera AVISO no L3, nunca bloqueio — D2); foto pode passar por baixo. Vem de `interfaceDoStory` (piso 188/224, que a
  *   configuração do cliente só aperta, nunca afrouxa);
  * - a **margem da marca** (composição): `GEOMETRIA_PADRAO` (o `NUMEROS_PADRAO.geometria` do compositor) com
  *   `Project.assinatura` por cima, pela MESMA mesclagem do compositor (`pisoDoProjetoDe` em `geometria.ts`, o

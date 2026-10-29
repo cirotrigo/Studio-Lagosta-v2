@@ -4,8 +4,17 @@
  * da margem da marca, as faixas hachuradas da interface e as distâncias por eixo do "alinhar". Uma conversão só,
  * testada, para o stage, o transformer e o contexto não refazerem a conta cada um do seu jeito.
  */
-import type { FaixasDaInterface, LinhasDaMarca } from './canvas-margin'
+import { margensDoEditor, type FaixasDaInterface, type LinhasDaMarca, type MargensDoEditor } from './canvas-margin'
+import { formatoDaPaginaGravada } from './compositor/formato'
 import type { RectInfo } from './konva-smart-guides'
+
+/**
+ * As margens da página aberta: o formato sai do TAMANHO do canvas (`formatoDaPaginaGravada`, a decisão única — a
+ * máscara M segue `interface !== null`, nunca outra razão de tela) e a assinatura é o JSON cru de `Project.assinatura`.
+ */
+export function margensDaPagina(assinatura: unknown, canvas: { width: number; height: number }): MargensDoEditor {
+  return margensDoEditor({ formato: formatoDaPaginaGravada(canvas), assinatura, largura: canvas.width, altura: canvas.height })
+}
 
 /** As quatro linhas da marca como "objetos" de largura ou altura zero: o encaixe ao arrastar gruda nelas. */
 export function retangulosDeEncaixe(marca: LinhasDaMarca, largura: number, altura: number): RectInfo[] {
