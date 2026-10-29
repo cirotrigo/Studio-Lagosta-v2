@@ -1527,3 +1527,29 @@ Registro do contrato já existente (lacuna apontada na revisão do preflight do 
   recusando com margem 96; `vaosDaLista` e `envoltoriosDoArquetipo` seguem derivados do catálogo (são folgas da
   receita, não coluna). Esta fase recolhe só a referência dos papéis de texto e da logo fixa.
 - Controles em `arquetipos/__tests__/materializar.test.ts` (17 e 17b).
+
+## Empilhar como a assinatura: a pilha da faixa (29/10/2026)
+
+- **O problema medido** (29/10, artes agendadas da Wine e da Real, páginas de assinatura e os 6 stories do 465): a
+  equipe empilha pré, manchete, apoio e serviço como UMA coluna contínua — 0 a 9 px entre as caixas, a entrelinha já
+  dá o ar. O arquétipo pousava cada papel na própria referência do catálogo (pré y .105, manchete .14, apoio .27…),
+  abrindo 20 px entre pré e manchete e 75–85 px entre manchete e apoio: a arte ficava com cara de blocos soltos.
+  Corpos e entrelinha estavam certos (vêm da assinatura); o espaço entre os blocos é que não.
+- **A regra:** `materializarArquetipo({ empilhar: { gap } })` — dentro de cada FAIXA (`faixasDoArquetipo`, agora em
+  `arquetipos/faixas.ts`), os papéis de texto, na ordem das referências, encostam uns nos outros com o `gap` da marca
+  (`gapEntreBlocos`, o mesmo da unidade). Âncora `topo`: o primeiro fica na referência e os outros descem; `rodape`: o
+  último fica e os outros sobem. Entre dois papéis contam os ornamentos presos e o envoltório (#5). Só o y muda:
+  referência, zona, capacidade e x ficam; a logo não entra; o `dy` da busca espacial vale para a faixa inteira.
+- **A zona da pilha:** as zonas por papel do catálogo foram desenhadas em volta das referências soltas (no #8 a da
+  manchete acaba 116 px acima da do serviço) e, mantidas, recusavam a pilha. A ÂNCORA guarda a própria zona — é ela que
+  segura a identidade na busca espacial (a manchete do topo-esquerda nunca desce ao centro, CP2B 20); os que a seguem
+  respondem ao casco das zonas da faixa na vertical; a horizontal segue a de cada papel.
+- **Quem não empilha:** âncora `meio` (#3, #16) e layouts com lista (#15) — ali os vãos são da receita. Faixa com um
+  papel só (manchete do título-gigante; serviço ao lado da logo) não tem o que empilhar.
+- **Quem passa o gap:** `compor` e `medir-copy` (`gapEntreBlocos` da geometria do formato) por `partidaNoArquetipo` e
+  `selecionarNoArquetipo` → `materializarUnidades`. Sem `gap`, a saída é a de sempre (testes antigos e replay).
+- **O que muda de verdade:** toda composição por arquétipo com faixa de 2+ papéis sobe o apoio (e o serviço nos layouts
+  de rodapé) para junto da manchete. As amostras aprovadas antes desta regra (Bv3 do #9, #8, #4, #10) mudam a posição
+  vertical desses papéis — o owner decidiu em 29/10 que o espaçamento antigo estava errado. `gapEntreBlocos` é o botão
+  da marca (padrão 14 px; as páginas da equipe usam 0–9).
+- Controles em `arquetipos/__tests__/materializar.test.ts` (18, 18b).

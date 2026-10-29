@@ -106,7 +106,8 @@ describe('T1a · minimal-fb-topo-esquerda no compositor real', () => {
     await montar({ id: 't1a-13', apoio: true })
     const { r, entrada } = await compor(spec('t1a-13', [HEADLINE, APOIO, SERVICO], { arquetipo: { id: TOPO } }))
     expect(camada(r, 'headline').position).toEqual({ x: 92, y: 298 })
-    expect(camada(r, 'apoio').position).toEqual({ x: 92, y: 547 })
+    // Pilha (29/10/2026): o apoio encosta na manchete com o gap da marca (298 + 194 + 14), não na referência solta (547).
+    expect(camada(r, 'apoio').position).toEqual({ x: 92, y: 506 })
     expect(camada(r, 'servico').position).toEqual({ x: 92, y: 1555 })
     for (const id of ['headline', 'apoio', 'servico']) expect(camada(r, id).style?.textAlign).toBe('left')
     // A logo do arquivo (160×80, razão 0,5) em contain na referência (799,1555 189×134): a maior caixa com a proporção.
@@ -122,7 +123,7 @@ describe('T1a · minimal-fb-topo-esquerda no compositor real', () => {
     expect(d.elementosDeclarados).toEqual([{ id: 'fio', tipo: 'fio-fino', opcional: true }])
     expect(d.papeis.map((p) => [p.papel, p.posicao.x, p.posicao.y])).toEqual([
       ['headline', 92, 298],
-      ['apoio', 92, 547],
+      ['apoio', 92, 506],
       ['servico', 92, 1555],
     ])
     expect(d.logo).toMatchObject({ modo: 'referencia', canto: 'inferior-direito' })
@@ -148,8 +149,8 @@ describe('T1a · minimal-fb-topo-esquerda no compositor real', () => {
     const grupo = (id: string) => (camada(r, id).metadata as { groupId?: string }).groupId
     expect([grupo('headline'), grupo('apoio'), grupo('servico')]).toEqual(['grupo-arq-headline', 'grupo-arq-apoio', 'grupo-arq-servico'])
     expect(r.diagnostico.arquetipo!.papeis.map((p) => p.papel)).toEqual(['headline', 'apoio', 'servico'])
-    // Na página os dois moram juntos no topo; na peça, cada um na referência dele.
-    expect(camada(r, 'apoio').position.y - camada(r, 'headline').position.y).toBe(249)
+    // Na página os dois moram juntos no topo; na peça, empilhados com o gap da marca (29/10/2026: 194 + 14, não os 249 das referências soltas).
+    expect(camada(r, 'apoio').position.y - camada(r, 'headline').position.y).toBe(208)
   }, 60_000)
 
   it('as margens da PÁGINA não competem: o pré-título pousa em 230 mesmo com o primeiro texto da página em 230/300', async () => {
@@ -168,8 +169,8 @@ describe('T1a · minimal-fb-topo-esquerda no compositor real', () => {
     expect(pre.referencia).toEqual({ x: 92, y: 230, width: 540, height: 58 })
     expect(pre.zonaEfetiva.y).toBe(250)
     expect(pre.posicao.y).toBeGreaterThanOrEqual(250)
-    const dy = pre.posicao.y - 230
-    expect(d.papeis.find((p) => p.papel === 'headline')!.posicao.y).toBe(298 + dy)
+    // A manchete empilha sob o pré resgatado (29/10/2026): pré + altura + gap 14, não a referência 298 + dy.
+    expect(d.papeis.find((p) => p.papel === 'headline')!.posicao.y).toBe(pre.posicao.y + pre.posicao.height + 14)
     expect(r.diagnostico.avisos.some((a) => /pre: a referência do arquétipo sai da zona efetiva/.test(a))).toBe(true)
     // O medir-copy mede na MESMA partida (o resgate), e diz que cabe.
     const assinatura = montarAssinatura({ pagina, formatoDaPagina: 'story', numerosDoProjeto: { ...ASSINATURA, geometria: { story: { safeTopo: 250 } } }, logoDoProjeto: null })

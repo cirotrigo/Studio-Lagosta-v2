@@ -82,8 +82,9 @@ const tintaTextos = (dx: number, ys: [number, number, number], larguraDaManchete
   apoio: { x: 101 + dx, y: ys[1], width: 408, height: 85 },
   servico: { x: 97 + dx, y: ys[2], width: 335, height: 23 },
 })
-const STORY_Y: [number, number, number] = [297.6, 1190.4, 1574.4]
-const FEED_Y: [number, number, number] = [222.8, 810, 1107]
+// Pilha (29/10/2026): o serviço encosta no apoio com o gap da marca (apoio + 108 + 14) — era a referência solta 1574,4 / 1107.
+const STORY_Y: [number, number, number] = [297.6, 1190.4, 1312.4]
+const FEED_Y: [number, number, number] = [222.8, 810, 932]
 const ALVO: Record<string, Alvo> = {
   'D-story-claro-fio': {
     sha: '9cc1305693540fd6573481c9676c964598d11c42d89f844bd17616db68c986f3',
@@ -91,7 +92,7 @@ const ALVO: Record<string, Alvo> = {
     logo: { x: 91.8, y: 201.6, width: 134.4, height: 67.2 },
     fio: { x: 98, y: 547, width: 194, height: 4 },
     foto: { x: 621, y: 0, width: 459, height: 1920 },
-    tinta: { ...tintaTextos(0, [305, 1206, 1586], 453), fio: { x: 97, y: 548, width: 196, height: 2 }, logo: { x: 96, y: 205, width: 122, height: 61 } },
+    tinta: { ...tintaTextos(0, [305, 1206, 1324], 453), fio: { x: 97, y: 548, width: 196, height: 2 }, logo: { x: 96, y: 205, width: 122, height: 61 } },
   },
   'D-feed-claro-fio': {
     sha: 'f53a5f76f4800f8fe11e82a06d757ba1ddd3a74612fd395f25e45620ee24f6ec',
@@ -99,7 +100,7 @@ const ALVO: Record<string, Alvo> = {
     logo: { x: 91.8, y: 135, width: 94.5, height: 47.3 },
     fio: { x: 98, y: 470, width: 194, height: 4 },
     foto: { x: 621, y: 0, width: 459, height: 1350 },
-    tinta: { ...tintaTextos(0, [230, 826, 1119], 453), fio: { x: 97, y: 471, width: 196, height: 2 }, logo: { x: 94, y: 138, width: 87, height: 42 } },
+    tinta: { ...tintaTextos(0, [230, 826, 944], 453), fio: { x: 97, y: 471, width: 196, height: 2 }, logo: { x: 94, y: 138, width: 87, height: 42 } },
   },
   'E-story-claro-fio': {
     sha: '8ebe9e4a3a668498802c522c4d77fb8f5460ee819d94b7f0754c7dcbe93119f1',
@@ -107,7 +108,7 @@ const ALVO: Record<string, Alvo> = {
     logo: { x: 853.8, y: 201.6, width: 134.4, height: 67.2 },
     fio: { x: 524, y: 547, width: 194, height: 4 },
     foto: { x: 0, y: 0, width: 459, height: 1920 },
-    tinta: { ...tintaTextos(427, [305, 1206, 1586], 452), fio: { x: 523, y: 548, width: 196, height: 2 }, logo: { x: 858, y: 205, width: 122, height: 61 } },
+    tinta: { ...tintaTextos(427, [305, 1206, 1324], 452), fio: { x: 523, y: 548, width: 196, height: 2 }, logo: { x: 858, y: 205, width: 122, height: 61 } },
   },
   'E-feed-claro-fio': {
     sha: 'cbf2fe52f9860303493506c9f0d0048c26d35da2ea015f32782842aea6138ccf',
@@ -115,7 +116,7 @@ const ALVO: Record<string, Alvo> = {
     logo: { x: 893.7, y: 135, width: 94.5, height: 47.3 },
     fio: { x: 524, y: 470, width: 194, height: 4 },
     foto: { x: 0, y: 0, width: 459, height: 1350 },
-    tinta: { ...tintaTextos(427, [230, 826, 1119], 452), fio: { x: 523, y: 471, width: 196, height: 2 }, logo: { x: 896, y: 138, width: 87, height: 42 } },
+    tinta: { ...tintaTextos(427, [230, 826, 944], 452), fio: { x: 523, y: 471, width: 196, height: 2 }, logo: { x: 896, y: 138, width: 87, height: 42 } },
   },
   'D-story-escuro-fio': {
     sha: '61088ec77f479cd0bd8647b5bca2be95c71db1f88e8bead08ff0c10b3fc56aeb',
@@ -123,7 +124,7 @@ const ALVO: Record<string, Alvo> = {
     logo: { x: 91.8, y: 201.6, width: 134.4, height: 67.2 },
     fio: { x: 98, y: 547, width: 194, height: 4 },
     foto: { x: 621, y: 0, width: 459, height: 1920 },
-    tinta: { ...tintaTextos(0, [305, 1206, 1586], 453), fio: { x: 97, y: 548, width: 196, height: 2 }, logo: { x: 96, y: 205, width: 122, height: 61 } },
+    tinta: { ...tintaTextos(0, [305, 1206, 1324], 453), fio: { x: 97, y: 548, width: 196, height: 2 }, logo: { x: 96, y: 205, width: 122, height: 61 } },
   },
 }
 /** A largura da caixa do motor pela regra justa: `min(456, ceil(maior linha)) + 14` (CT-08 mediu 456 / 413 / 337). */

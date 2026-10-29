@@ -272,6 +272,8 @@ export interface ArgsDaSelecao {
   geometria: GeometriaEfetiva
   unidades: UnidadeDoArquetipo[]
   logo: { razao: number } | null
+  /** O gap da marca: os papéis de cada faixa empilham (29/10/2026). */
+  gap?: number
   /** O portão estrutural já passado (`partidaNoArquetipo`): as faixas, os candidatos e a posição de partida. */
   partida: Extract<PartidaNoArquetipo, { ok: true }>
   /** A foto em cada corte candidato (vazio sem foto). */
@@ -295,7 +297,7 @@ export type SelecaoNoArquetipo =
   | { ok: false; resultado: ResultadoDaBusca; faixas: FaixaDeBusca[]; motivo: string | null }
 
 const materializarCom = (args: ArgsDaSelecao, deslocamentos: Combinacao['deslocamentos']): Materializacao =>
-  materializarUnidades({ arquetipo: args.arquetipo, formato: args.formato, canvas: args.canvas, geometria: args.geometria, unidades: args.unidades, logo: args.logo, deslocamentos })
+  materializarUnidades({ arquetipo: args.arquetipo, formato: args.formato, canvas: args.canvas, geometria: args.geometria, unidades: args.unidades, logo: args.logo, deslocamentos, ...(args.gap !== undefined ? { gap: args.gap } : {}) })
 
 /** A combinação que reproduz deslocamentos dados (a escolha gravada, ou a referência): rótulo `congelado` fora do 0. */
 function combinacaoDosDeslocamentos(faixas: FaixaDeBusca[], deslocamentos: Combinacao['deslocamentos']): Combinacao {

@@ -1208,6 +1208,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       geometria: pisoArq,
       unidades: unidadesArq,
       logo: assinatura.logo ? { razao: assinatura.logo.razao } : null,
+      gap: g.gap,
     })
     if ('problemas' in p) {
       const m = p
@@ -1389,6 +1390,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
         geometria: pisoArq,
         unidades: unidadesArq,
         logo: assinatura.logo ? { razao: assinatura.logo.razao } : null,
+        gap: g.gap,
         partida: partidaArq,
         cortes: leituras,
         planejamento,

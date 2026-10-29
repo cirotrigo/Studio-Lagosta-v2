@@ -293,6 +293,8 @@ export function materializarUnidades(args: {
   logo: { razao: number } | null
   deslocamentos?: Partial<Record<PapelDeTexto | 'logo', number>>
   conferirZona?: boolean
+  /** O gap da marca (`gapEntreBlocos`): com ele, os papéis de cada faixa empilham (29/10/2026); sem ele, cada um na própria referência. */
+  gap?: number
 }): Materializacao {
   const medidas: Partial<Record<PapelDeTexto, { width: number; height: number }>> = {}
   const ornamentos: Partial<Record<PapelDeTexto, UnidadeDoArquetipo['ornamentos']>> = {}
@@ -302,7 +304,7 @@ export function materializarUnidades(args: {
   }
   // #5: a folga da pílula conta na zona (vazio sem envolvente: a materialização de sempre).
   const envoltorios = envoltoriosDoArquetipo(args.arquetipo, args.formato, args.canvas)
-  const m = materializarArquetipo({ arquetipo: args.arquetipo, formato: args.formato, canvas: args.canvas, geometria: args.geometria, medidas, ornamentos, logo: args.logo, deslocamentos: args.deslocamentos, ...(Object.keys(envoltorios).length > 0 ? { envoltorios } : {}), ...(args.conferirZona === false ? { conferirZona: false } : {}) })
+  const m = materializarArquetipo({ arquetipo: args.arquetipo, formato: args.formato, canvas: args.canvas, geometria: args.geometria, medidas, ornamentos, logo: args.logo, deslocamentos: args.deslocamentos, ...(Object.keys(envoltorios).length > 0 ? { envoltorios } : {}), ...(args.conferirZona === false ? { conferirZona: false } : {}), ...(args.gap !== undefined ? { empilhar: { gap: args.gap } } : {}) })
   if (!('problemas' in m)) return m
   // A recusa por capacidade leva o orçamento da unidade: a caixa, a escala em que a escada parou e cada bloco.
   const caixas = caixasMaximas(args.arquetipo, args.formato, args.canvas, args.geometria)

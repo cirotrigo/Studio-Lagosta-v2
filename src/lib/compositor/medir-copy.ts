@@ -428,6 +428,7 @@ export function medirCopy(args: {
       geometria: piso,
       unidades,
       logo: args.assinatura.logo ? { razao: args.assinatura.logo.razao } : null,
+      gap: args.assinatura.numeros.geometria[args.formato].gapEntreBlocos,
     })
     const m: Materializacao = 'problemas' in partida ? { ok: false, problemas: partida.problemas } : partida.materializacao
     for (const r of 'resgatados' in partida ? partida.resgatados : []) {

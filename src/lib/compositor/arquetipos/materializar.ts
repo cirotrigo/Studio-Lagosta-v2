@@ -13,6 +13,7 @@
  * Puro: quem chama mede (com o medidor real) e passa as medidas.
  */
 import type { Alinhamento } from '../spec'
+import { faixasDoArquetipo } from './faixas'
 import type { ArquetipoDeLayout, Caixa, FormatoDoArquetipo, PapelDeTexto, Zona } from './tipos'
 
 /** O alinhamento de um papel: o próprio (T4-A) ou, sem ele, o do arquétipo. */
@@ -164,6 +165,11 @@ export type Materializacao =
  * sendo a referência (não muda com o dy), e a zona efetiva e os ornamentos são
  * conferidos onde a caixa pousou, com a mesma tolerância. Sem ele (ou com dy 0)
  * a saída é a de sempre, byte a byte.
+ *
+ * `empilhar` (29/10/2026, "empilhar como a assinatura"): dentro de cada FAIXA, os papéis de texto formam UMA pilha com
+ * o `gap` da marca (`gapEntreBlocos`) — o primeiro (âncora `topo`) ou o último (âncora `rodape`) fica na referência e os
+ * outros encostam nele, contando os ornamentos presos e o envoltório. Sem ele, cada papel pousa na própria referência
+ * do catálogo (a saída de sempre). Âncora `meio` e layouts com lista (#15) não empilham: os vãos são da receita.
  */
 export function materializarArquetipo(args: {
   arquetipo: ArquetipoDeLayout
@@ -186,6 +192,8 @@ export function materializarArquetipo(args: {
    * capacidade, a logo e a zona vazia continuam conferidas; a caixa e os ornamentos fora da zona, não.
    */
   conferirZona?: boolean
+  /** A pilha da faixa com o gap da marca (ver acima). Ausente = cada papel na própria referência. */
+  empilhar?: { gap: number }
 }): Materializacao {
   const { arquetipo, formato, canvas, geometria } = args
   const problemas: ProblemaDeMaterializacao[] = []
@@ -193,6 +201,9 @@ export function materializarArquetipo(args: {
   let logoAutomatica = false
   const dominante = papelDominante(arquetipo)
 
+  // 1ª passada: referência efetiva, zona, capacidade e o pouso de cada papel na própria referência (com o dy).
+  type Entrada = { papel: PapelDeTexto | 'logo'; referencia: RetanguloPx; zona: RetanguloPx; medida: { width: number; height: number }; posicao: RetanguloPx; onde: string; dy: number }
+  const entradas: Entrada[] = []
   for (const [papel, pos] of Object.entries(arquetipo.formatos[formato].papeis) as Array<[PapelDeTexto | 'logo', NonNullable<ArquetipoDeLayout['formatos']['story']['papeis']['headline']>]>) {
     if ('automatica' in pos) {
       logoAutomatica = true
@@ -279,6 +290,14 @@ export function materializarArquetipo(args: {
       })
       continue
     }
+    entradas.push({ papel, referencia, zona, medida, posicao, onde, dy })
+  }
+
+  // A pilha da faixa (29/10/2026): só muda o y dos papéis que seguem a âncora; referência, zona e capacidade ficam.
+  if (args.empilhar) empilharNasFaixas(arquetipo, formato, entradas, args.empilhar.gap, args.ornamentos, args.envoltorios)
+
+  // 2ª passada: ornamentos, envoltório e a zona, onde a caixa pousou.
+  for (const { papel, referencia, zona, medida, posicao, onde, dy } of entradas) {
     const orn = papel !== 'logo' ? args.ornamentos?.[papel] : undefined
     if (args.conferirZona !== false && orn && (orn.esquerda > 0 || orn.direita > 0 || orn.topo > 0 || orn.base > 0)) {
       const comOrnamentos = { x: posicao.x - orn.esquerda, y: posicao.y - orn.topo, width: posicao.width + orn.esquerda + orn.direita, height: posicao.height + orn.topo + orn.base }
@@ -325,4 +344,71 @@ export function materializarArquetipo(args: {
     papeis[papel] = { referencia: arredondado(referencia), zonaEfetiva: arredondado(zona), posicao: arredondado(posicao) }
   }
   return problemas.length > 0 ? { ok: false, problemas } : { ok: true, papeis, logoAutomatica }
+}
+
+/**
+ * A PILHA da faixa (29/10/2026): os papéis de texto de uma mesma faixa (zonas que se sobrepõem na vertical), na ordem
+ * das referências, encostam uns nos outros com o `gap` da marca — como a equipe empilha pré, manchete, apoio e serviço
+ * nas páginas de assinatura (medido em 29/10: 0 a 9 px entre as caixas, nunca os 20 e 75 px que as referências soltas
+ * do catálogo davam). A âncora `topo` fixa o primeiro na referência e desce os outros; `rodape` fixa o último e sobe.
+ * Entre dois papéis contam os ornamentos presos (ícone, fio) e o envoltório (#5), que também ocupam altura. Só o y muda:
+ * referência, zona, capacidade e x ficam; a logo e os papéis sem posição não entram. Âncora `meio` (#3, #16) e layouts
+ * com lista (#15) não empilham — ali os vãos são da receita.
+ */
+function empilharNasFaixas(
+  arquetipo: ArquetipoDeLayout,
+  formato: FormatoDoArquetipo,
+  entradas: Array<{ papel: PapelDeTexto | 'logo'; referencia: RetanguloPx; zona: RetanguloPx; posicao: RetanguloPx }>,
+  gap: number,
+  ornamentos?: Partial<Record<PapelDeTexto, { esquerda: number; direita: number; topo: number; base: number }>>,
+  envoltorios?: Partial<Record<PapelDeTexto, { x: number; y: number }>>,
+): void {
+  const ancora = arquetipo.preferencias.ancora
+  if (ancora === 'meio') return
+  if (arquetipo.papeis.some((p) => (p as { lista?: boolean }).lista)) return
+  const topoDe = (p: PapelDeTexto) => (ornamentos?.[p]?.topo ?? 0) + (envoltorios?.[p]?.y ?? 0)
+  const baseDe = (p: PapelDeTexto) => (ornamentos?.[p]?.base ?? 0) + (envoltorios?.[p]?.y ?? 0)
+  type E = (typeof entradas)[number]
+  // Mesma COLUNA: as caixas REAIS (já alinhadas na referência) se sobrepõem na horizontal — as referências do catálogo
+  // não servem, porque o apoio do título-gigante é alinhado à direita numa referência que cruza a do serviço. A faixa
+  // junta zonas que se sobrepõem na vertical — ali a logo liga o apoio (direita) ao serviço (esquerda), e esses dois
+  // não se empilham.
+  const mesmaColuna = (a: E, b: E) => a.posicao.x < b.posicao.x + b.posicao.width && b.posicao.x < a.posicao.x + a.posicao.width
+  for (const faixa of faixasDoArquetipo(arquetipo, formato)) {
+    const membros = faixa
+      .filter((m): m is PapelDeTexto => m !== 'logo')
+      .map((m) => entradas.find((e) => e.papel === m))
+      .filter((e): e is NonNullable<typeof e> => Boolean(e))
+      .sort((a, b) => a.referencia.y - b.referencia.y)
+    // As PILHAS da faixa: membros consecutivos na mesma coluna.
+    const pilhas: E[][] = []
+    for (const m of membros) {
+      const ultima = pilhas[pilhas.length - 1]
+      if (ultima && mesmaColuna(ultima[ultima.length - 1], m)) ultima.push(m)
+      else pilhas.push([m])
+    }
+    for (const pilha of pilhas) {
+      if (pilha.length < 2) continue
+      // A zona da PILHA: as zonas por papel do catálogo foram desenhadas em volta de cada referência solta (no #8 a da
+      // manchete acaba 116 px acima da do serviço) e brigariam com a pilha. A ÂNCORA guarda a própria zona — é ela que
+      // segura a identidade do layout na busca espacial (a manchete do topo-esquerda nunca desce ao centro); os que a
+      // seguem respondem ao casco das zonas da pilha na vertical (∩ piso, já descontado em cada uma). A horizontal segue
+      // a de cada papel (o serviço é mais estreito que a manchete por causa da logo). A busca lê as mesmas zonas.
+      const y0 = Math.min(...pilha.map((m) => m.zona.y))
+      const y1 = Math.max(...pilha.map((m) => m.zona.y + m.zona.height))
+      const ancorado = ancora === 'rodape' ? pilha[pilha.length - 1] : pilha[0]
+      for (const m of pilha) if (m !== ancorado) m.zona = { x: m.zona.x, width: m.zona.width, y: y0, height: y1 - y0 }
+      if (ancora === 'rodape') {
+        for (let i = pilha.length - 2; i >= 0; i--) {
+          const abaixo = pilha[i + 1]
+          pilha[i].posicao.y = abaixo.posicao.y - topoDe(abaixo.papel as PapelDeTexto) - gap - baseDe(pilha[i].papel as PapelDeTexto) - pilha[i].posicao.height
+        }
+      } else {
+        for (let i = 1; i < pilha.length; i++) {
+          const acima = pilha[i - 1]
+          pilha[i].posicao.y = acima.posicao.y + acima.posicao.height + baseDe(acima.papel as PapelDeTexto) + gap + topoDe(pilha[i].papel as PapelDeTexto)
+        }
+      }
+    }
+  }
 }
