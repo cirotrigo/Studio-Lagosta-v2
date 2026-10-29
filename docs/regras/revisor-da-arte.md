@@ -1366,6 +1366,13 @@ de régua em `docs/research/canva-guias-e-margens-2026-10/teste-de-regua/` e pod
   não dá para medir (camadas ilegíveis, fontes do projeto sem registro, texto que o medidor omitiu) sai contado à
   parte, nunca como "sem impacto"; rich text é aproximação, dita. Post com `laterPostId` é só contado — intocável.
   `foraDaAreaSegura(metricas, limites)` foi separado de `checkTextGeometry` (o `text-geometry` usa a caixa).
+- **Medido em produção em 29/10 (ok do Ciro no chat)**: 729 páginas (8 de posts agendados, 721 dos últimos 30 dias,
+  0 com `laterPostId`); 647 medidas, 71 aproximadas (rich text), 0 não medidas, 0 falhas. `fora-da-area-segura`:
+  32 ganham aviso (serviço/CTA no rodapé e pré/headline no topo de stories — Real 12, Empório Fonseca 6, TERO 5,
+  By Rock 3, Wine Vix 3, Seu Quinto 2, Quintal 1) e 2 perdem (feeds do By Rock, 120 → 72). Piso da interface: 16
+  passam a aceitar (Quintal 11, Seu Quinto 3, TERO 1, Wine Vix 1), nenhuma passa a reprovar. Aviso nunca bloqueia e
+  nada é re-renderizado: o efeito fica no revisor/gate de quem abrir essas páginas. Log fora do git em
+  `human-output/relatorios/editor-madrugada-2026-10-24/margens-2026-10-29/medicao-2026-10-29.log`.
 - **Reconciliar `Project.assinatura`** (`scripts/reconciliar-assinatura-2026-10-29.ts`): simulação por padrão; com
   `--gravar` a escrita é ATÔMICA (`updateMany` com `assinatura: { equals: <o que foi lido> }`) — uma edição no meio
   aborta aquele projeto em vez de apagá-la. Os kits de `scripts/lib/kits-de-assinatura.ts` (o padrão da casa) e a logo
