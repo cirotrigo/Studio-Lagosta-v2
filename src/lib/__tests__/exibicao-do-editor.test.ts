@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { acaoDaTecla, CHAVE_DA_EXIBICAO, EXIBICAO_PADRAO, lerExibicao } from '@/lib/exibicao-do-editor'
+import { acaoDaTecla, alvoIgnoraAtalhos, CHAVE_DA_EXIBICAO, EXIBICAO_PADRAO, lerExibicao } from '@/lib/exibicao-do-editor'
 
 describe('lerExibicao', () => {
   it('sem nada gravado vale o padrão: margens e interface ligadas, bordas desligadas, encaixe ligado', () => {
@@ -54,5 +54,29 @@ describe('acaoDaTecla', () => {
     expect(acaoDaTecla({ key: 'R', shiftKey: true })).toBeNull()
     expect(acaoDaTecla({ key: 'm', altKey: true, code: 'KeyM' })).toBeNull()
     expect(acaoDaTecla({ key: 'x', code: 'KeyX', shiftKey: true, altKey: true })).toBeNull()
+  })
+})
+
+describe('alvoIgnoraAtalhos (Codex R1 do L2: o menu aberto não dispara os atalhos do canvas)', () => {
+  const el = (tagName: string, extra: { isContentEditable?: boolean; dentroDe?: string } = {}) => ({
+    tagName,
+    isContentEditable: extra.isContentEditable ?? false,
+    closest: (seletor: string) => (extra.dentroDe && seletor.includes(`[role="${extra.dentroDe}"]`) ? {} : null),
+  })
+
+  it('campos de texto e conteúdo editável', () => {
+    expect(alvoIgnoraAtalhos(el('INPUT'))).toBe(true)
+    expect(alvoIgnoraAtalhos(el('TEXTAREA'))).toBe(true)
+    expect(alvoIgnoraAtalhos(el('DIV', { isContentEditable: true }))).toBe(true)
+  })
+
+  it('o item do menu "Exibir" com foco (Radix: role menuitemcheckbox dentro de role menu) ignora; o canvas e o body não', () => {
+    expect(alvoIgnoraAtalhos(el('DIV', { dentroDe: 'menuitemcheckbox' }))).toBe(true)
+    expect(alvoIgnoraAtalhos(el('DIV', { dentroDe: 'menu' }))).toBe(true)
+    expect(alvoIgnoraAtalhos(el('DIV', { dentroDe: 'dialog' }))).toBe(true)
+    expect(alvoIgnoraAtalhos(el('BODY'))).toBe(false)
+    expect(alvoIgnoraAtalhos(el('CANVAS'))).toBe(false)
+    expect(alvoIgnoraAtalhos(null)).toBe(false)
+    expect(alvoIgnoraAtalhos({ tagName: 'DIV' })).toBe(false) // sem closest (alvo fora do DOM)
   })
 })

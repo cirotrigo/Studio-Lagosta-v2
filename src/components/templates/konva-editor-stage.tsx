@@ -26,7 +26,7 @@ import {
 import { faixasDaInterface, linhasDaMarca, retangulosDeEncaixe } from '@/lib/margens-no-editor'
 import { useMargensDoEditor } from '@/hooks/use-margens-do-editor'
 import { useExibicaoDoEditor } from '@/hooks/use-exibicao-do-editor'
-import { acaoDaTecla } from '@/lib/exibicao-do-editor'
+import { acaoDaTecla, alvoIgnoraAtalhos } from '@/lib/exibicao-do-editor'
 import { decidirSelecaoPorGesto, type FaseDoGesto, type GestoDeSelecao } from '@/lib/selecao-por-gesto'
 import { ehIconeDeTexto } from '@/lib/font-combinations-icones'
 import { useIsMobile } from '@/hooks/use-device-detection'
@@ -84,6 +84,8 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
     alignSelectedTop,
     alignSelectedMiddleV,
     alignSelectedBottom,
+    alignSelectedToCanvasCenterH,
+    alignSelectedToCanvasCenterV,
     distributeSelectedH,
     distributeSelectedV,
     bringSelectedToFront,
@@ -767,9 +769,12 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+      // Campos de texto, conteúdo editável e MENUS abertos (o Radix procura o item pela letra) ficam de fora
+      if (alvoIgnoraAtalhos(target)) {
         return
       }
+      // Alt solto fora da janela: qualquer tecla sem Alt reconcilia o encaixe (Codex R1 do L2)
+      if (!event.altKey) setAltSegurado(false)
 
       // Modo de recorte: Enter/Esc pertencem ao overlay; setas/atalhos não
       // podem mexer na camada por baixo
@@ -791,10 +796,12 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
         alternar(acao)
         return
       }
+      // O mesmo que os botões "Centralizar no canvas": o CONJUNTO vai ao centro, preservando o arranjo (não é o
+      // alinhar entre si, que sobrepõe as caixas — Codex R1 do L2)
       if (acao === 'centrar-h' || acao === 'centrar-v') {
         event.preventDefault()
-        if (acao === 'centrar-h') alignSelectedCenterH()
-        else alignSelectedMiddleV()
+        if (acao === 'centrar-h') alignSelectedToCanvasCenterH()
+        else alignSelectedToCanvasCenterV()
         return
       }
 
@@ -925,12 +932,20 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
         setAltSegurado(false)
       }
     }
+    // Alt preso quando a janela perde o foco nunca chega ao keyup: a perda de foco solta; o primeiro gesto do
+    // ponteiro reconcilia pelo próprio evento (vale também para o stage remontado com Alt ainda preso)
+    const handleBlur = () => setAltSegurado(false)
+    const handlePointerDown = (event: PointerEvent) => setAltSegurado(event.altKey)
 
     window.addEventListener('keydown', handleKeyDown)
     window.addEventListener('keyup', handleKeyUp)
+    window.addEventListener('blur', handleBlur)
+    window.addEventListener('pointerdown', handlePointerDown, true)
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
+      window.removeEventListener('blur', handleBlur)
+      window.removeEventListener('pointerdown', handlePointerDown, true)
     }
   }, [
     animateZoom,
@@ -949,6 +964,8 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
     alignSelectedTop,
     alignSelectedMiddleV,
     alignSelectedBottom,
+    alignSelectedToCanvasCenterH,
+    alignSelectedToCanvasCenterV,
     distributeSelectedH,
     distributeSelectedV,
     bringSelectedToFront,

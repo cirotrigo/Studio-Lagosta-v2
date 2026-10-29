@@ -662,6 +662,8 @@ function TemplateEditorContent({
           />
           {dirty && <span className="text-xs text-orange-500 flex-shrink-0" title="Alterações não salvas">●</span>}
         </div>
+        {/* L2 das linhas-guia: a mesma preferência de exibição do desktop, no cabeçalho mobile (Codex R1) */}
+        <MenuExibir compacto />
         <Button
           size="sm"
           className="h-8 flex-shrink-0 px-3 text-xs"

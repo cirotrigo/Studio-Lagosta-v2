@@ -63,3 +63,14 @@ export function acaoDaTecla(e: { key: string; code?: string; metaKey?: boolean; 
   if (k === 'c') return 'bordas'
   return null
 }
+
+/**
+ * O alvo do evento de teclado em que os atalhos do canvas NÃO valem: campos de texto, conteúdo editável e um MENU
+ * aberto (Radix procura o item pela letra digitada sem `preventDefault` — "M" com o "Exibir" aberto alternava a
+ * interface por tabela, Codex R1 do L2).
+ */
+export function alvoIgnoraAtalhos(target: { tagName?: string; isContentEditable?: boolean; closest?: (seletor: string) => unknown } | null | undefined): boolean {
+  if (!target) return false
+  if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return true
+  return !!target.closest?.('[role="menu"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="listbox"], [role="combobox"], [role="dialog"]')
+}

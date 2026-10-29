@@ -1095,10 +1095,16 @@ botão, atalho e persistência.
 - 🔴 **R, M e C só valem sozinhas** (`acaoDaTecla`): com Ctrl/Cmd, Alt ou Shift não alternam nada. No Windows
   `Shift+Alt+C` chegava como `c` e ligava as bordas da página.
 - **Os atalhos fantasma viraram atalhos**: `Shift+Alt+C` e `Shift+Alt+M` eram anunciados em `alignment-toolbar.tsx`
-  e `properties-panel.tsx` sem handler nenhum. Agora centralizam a seleção no canvas (H/V) pelo `alignSelectedCenterH`
-  / `alignSelectedMiddleV` do contexto, lidos pelo `code` da tecla (no Mac `Alt+C` produz `ç` em `key`).
+  e `properties-panel.tsx` sem handler nenhum. Agora fazem o MESMO que os botões "Centralizar no canvas":
+  `alignSelectedToCanvasCenterH/V` (o conjunto vai ao centro preservando o arranjo — `alignSelectedCenterH` alinharia
+  as caixas ENTRE SI e as sobreporia, Codex R1), lidos pelo `code` da tecla (no Mac `Alt+C` produz `ç` em `key`).
+- 🔴 **Menu aberto não dispara atalho** (`alvoIgnoraAtalhos`): o Radix procura o item pela letra digitada sem
+  `preventDefault`, então "M" com o "Exibir" aberto alternava a interface por tabela. Alvo dentro de `role=menu*`,
+  `listbox`, `combobox` ou `dialog` fica de fora, como `input`/`textarea`/`contentEditable`.
 - **Alt segurado** desliga o encaixe enquanto a tecla está presa; soltar devolve a PREFERÊNCIA (antes voltava sempre
-  para ligado). Mobile continua sem encaixe.
+  para ligado). Alt solto fora da janela nunca chega ao `keyup`: a perda de foco (`blur`) solta, qualquer tecla sem
+  Alt e o primeiro `pointerdown` reconciliam pelo próprio evento. Mobile continua sem encaixe; o menu "Exibir" também
+  está no cabeçalho mobile (`compacto`, só o ícone).
 - Ajuda em `layers-help-modal.tsx` (seção "Exibição do canvas") e `docs/KEYBOARD-SHORTCUTS.md`.
 - **Prova:** `src/lib/__tests__/exibicao-do-editor.test.ts` (leitura com lixo e parcial; R/M/C sozinhas; Windows
   Shift+Alt+C → centrar, não bordas; Mac `ç`/`µ` pelo code; Ctrl/Cmd nunca). Não prova: o menu montado, o localStorage
