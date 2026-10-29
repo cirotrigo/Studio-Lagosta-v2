@@ -157,6 +157,13 @@ export interface AvisoDeMargem {
   tipo: 'margem' | 'interface'
   caixa: RectInfo
   ajuste: AjusteParaDentro
+  /** Camada travada: avisa, mas o botão não a move (Codex R1 do L3). */
+  travada: boolean
+}
+
+/** O Transformer do Konva nomeia as alças: só as de CANTO mudam os dois eixos; a lateral muda um só (recorte da foto). */
+export function alcaDeCanto(alca: string | null | undefined): boolean {
+  return /^(top|bottom)-(left|right)$/.test(alca ?? '')
 }
 
 /**
@@ -176,9 +183,13 @@ export function avisosDeMargem(layers: Layer[], margens: MargensDoEditor, altura
       naFaixa && margens.interface
         ? { ...margens.marca, topo: Math.max(margens.marca.topo, margens.interface.topo), base: Math.min(margens.marca.base, altura - margens.interface.rodape) }
         : margens.marca
-    const a = ajusteParaDentro(caixa, lim)
+    let a = ajusteParaDentro(caixa, lim)
     if (a.lados.length === 0) continue
-    avisos.push({ layerId: l.id, nome: l.name, tipo: naFaixa && naFaixa.lados.length > 0 ? 'interface' : 'margem', caixa, ajuste: a })
+    // Caixa MAIOR que a área num eixo: mover não resolve e o botão oscilaria (−14, 94, −14…); o revisor só marca
+    // `horizontal`/`vertical` quando os DOIS lados já passam — aqui zera o eixo sem mudar a conta dele (Codex R1)
+    if (caixa.width > lim.direita - lim.esquerda) a = { ...a, dx: 0, horizontal: true }
+    if (caixa.height > lim.base - lim.topo) a = { ...a, dy: 0, vertical: true }
+    avisos.push({ layerId: l.id, nome: l.name, tipo: naFaixa && naFaixa.lados.length > 0 ? 'interface' : 'margem', caixa, ajuste: a, travada: l.locked === true })
   }
   return avisos
 }

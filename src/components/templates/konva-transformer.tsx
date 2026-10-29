@@ -5,7 +5,7 @@ import Konva from 'konva'
 import { Transformer } from 'react-konva'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { CANVAS_MARGIN, type LinhasDaMarca } from '@/lib/canvas-margin'
-import { encaixeProporcional, paradasDeEncaixe } from '@/lib/margens-no-editor'
+import { alcaDeCanto, encaixeProporcional, paradasDeEncaixe } from '@/lib/margens-no-editor'
 import type { GuideLine } from '@/lib/konva-smart-guides'
 import { travaDeProporcao } from '@/lib/konva/trava-de-proporcao'
 import { useAjustarGrade } from '@/hooks/use-ajustar-grade'
@@ -257,7 +257,9 @@ export function KonvaSelectionTransformer({
 
       const guides: GuideLine[] = []
 
-      if (snap.keepRatio) {
+      // Com proporção travada só a alça de CANTO muda os dois eixos; a lateral muda um só (recorte da janela da
+      // foto) e segue o encaixe de borda de sempre (Codex R1 do L3)
+      if (snap.keepRatio && alcaDeCanto(transformerRef.current?.getActiveAnchor())) {
         const r = encaixeProporcional(old, box, { v: vStops, h: hStops }, threshold, eps)
         onSnapGuidesRef.current?.(r ? [r.guia] : [])
         const c = r?.caixa ?? box

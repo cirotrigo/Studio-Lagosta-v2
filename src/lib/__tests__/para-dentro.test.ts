@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 
 import { margensDoEditor } from '@/lib/canvas-margin'
 import { computeAlignmentGuides, DEFAULT_SNAP_CONFIG } from '@/lib/konva-smart-guides'
-import { avisosDeMargem, caixaDaSelecao, encaixeProporcional, paradasDeEncaixe, retangulosDosOutros, retangulosDeEncaixe } from '@/lib/margens-no-editor'
+import { alcaDeCanto, avisosDeMargem, caixaDaSelecao, encaixeProporcional, paradasDeEncaixe, retangulosDosOutros, retangulosDeEncaixe } from '@/lib/margens-no-editor'
 import { ajusteParaDentro, limitesDaFaixa } from '@/lib/creatives/revisao/para-dentro'
 import type { Layer } from '@/types/template'
 
@@ -135,5 +135,35 @@ describe('avisosDeMargem — um clique resolve faixa E margem', () => {
     const avisos = avisosDeMargem([camada('t', 'text', 100, 1720, 500, 60)], real, 1920)
     expect(avisos[0].tipo).toBe('interface')
     expect(avisos[0].ajuste.dy).toBe(-(1780 - 1570 + 2)) // base 1780 contra a linha 1920 − 350 = 1570
+  })
+})
+
+describe('avisosDeMargem — ajustes da revisão R1', () => {
+  it('camada travada avisa, mas vem marcada (o botão não a move)', () => {
+    const travada = { ...camada('t', 'text', 60, 500, 300, 60), locked: true } as Layer
+    const avisos = avisosDeMargem([travada], story, 1920)
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0].travada).toBe(true)
+    expect(avisosDeMargem([camada('t', 'text', 60, 500, 300, 60)], story, 1920)[0].travada).toBe(false)
+  })
+
+  it('forma mais larga que a área (1000 > 896) não ganha dx: o botão não oscila; a conta do revisor fica como está', () => {
+    const avisos = avisosDeMargem([camada('f', 'shape', 92, 500, 1000, 100)], story, 1920)
+    expect(avisos[0].ajuste).toMatchObject({ dx: 0, horizontal: true, lados: ['direita'] })
+    expect(ajusteParaDentro({ x: 92, y: 500, width: 1000, height: 100 }, LIM).dx).toBe(-106) // o revisor continua propondo
+  })
+
+  it('texto em (60,100) no Story padrão: UM ajuste resolve esquerda e faixa', () => {
+    const avisos = avisosDeMargem([camada('t', 'text', 60, 100, 300, 60)], story, 1920)
+    expect(avisos[0].tipo).toBe('interface')
+    expect(avisos[0].ajuste).toMatchObject({ dx: 34, dy: 90 })
+  })
+
+  it('alcaDeCanto: só as quatro alças de canto do Transformer', () => {
+    expect(alcaDeCanto('top-left')).toBe(true)
+    expect(alcaDeCanto('bottom-right')).toBe(true)
+    expect(alcaDeCanto('middle-right')).toBe(false)
+    expect(alcaDeCanto('top-center')).toBe(false)
+    expect(alcaDeCanto(undefined)).toBe(false)
   })
 })

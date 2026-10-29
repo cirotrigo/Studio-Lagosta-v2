@@ -1130,6 +1130,12 @@ Quarto checkpoint da instrução de 29/10.
   por cima do canvas com o botão "Trazer para dentro" — com seleção, age nas selecionadas com aviso; sem seleção, em
   todas. Um clique = um passo de desfazer (`coalesceKey` por gesto, via `updateLayer`). Camada maior que a área ganha
   a observação do revisor ("encurte o texto ou reduza a fonte") em vez do botão.
+- **Ajustes da revisão R1 do Codex**: texto e logo no Story são ajustados contra a linha mais apertada entre faixa e
+  margem em cada lado (um clique resolve as duas; na Wine, topo 200 da marca × 188 da faixa); camada TRAVADA avisa
+  mas o botão não a move (`travada`); caixa MAIOR que a área num eixo não ganha dx/dy no editor (o botão oscilava
+  −14 → 94 → −14; a conta do revisor fica como está); com proporção travada só a alça de CANTO usa o encaixe
+  proporcional — a lateral muda um eixo só (recorte da janela da foto) e segue o encaixe de borda (`alcaDeCanto`,
+  pelo `getActiveAnchor()` do Transformer).
 - **Não feito (P1)**: espaçamento igual entre 3 ou mais elementos com a linha e a medida — fica registrado.
 - **Prova:** `src/lib/__tests__/para-dentro.test.ts` (a conta do revisor em 4 casos e a faixa; seleção e invisíveis;
   encaixe do conjunto em y = 188; resize proporcional nos dois cantos; avisos por tipo). `regras.test.ts` continua

@@ -217,7 +217,7 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
     (ids: string[]) => {
       const coalesceKey = `para-dentro:${Date.now()}`
       for (const aviso of avisos) {
-        if (!ids.includes(aviso.layerId)) continue
+        if (!ids.includes(aviso.layerId) || aviso.travada) continue
         const { dx, dy } = aviso.ajuste
         if (!dx && !dy) continue
         updateLayer(aviso.layerId, (l) => ({ ...l, position: { x: Math.round((l.position?.x ?? 0) + dx), y: Math.round((l.position?.y ?? 0) + dy) } }), { coalesceKey })
@@ -1423,12 +1423,13 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
 function AvisosForaDaMargem({ avisos, selecionadas, aoTrazer }: { avisos: AvisoDeMargem[]; selecionadas: string[]; aoTrazer: (ids: string[]) => void }) {
   const alvo = selecionadas.length > 0 ? avisos.filter((a) => selecionadas.includes(a.layerId)) : avisos
   if (alvo.length === 0) return null
-  const moviveis = alvo.filter((a) => a.ajuste.dx || a.ajuste.dy)
+  const moviveis = alvo.filter((a) => (a.ajuste.dx || a.ajuste.dy) && !a.travada)
+  const travadas = alvo.filter((a) => a.travada).length
   const naInterface = alvo.filter((a) => a.tipo === 'interface').length
   const texto =
     alvo.length === 1
       ? `${alvo[0].nome}: ${alvo[0].tipo === 'interface' ? 'dentro da faixa do Instagram' : 'fora da margem da marca'} (${alvo[0].ajuste.lados.join(', ')})`
-      : `${alvo.length} camadas fora da margem${naInterface ? ` (${naInterface} na faixa do Instagram)` : ''}`
+      : `${alvo.length} camadas fora da margem${naInterface ? ` (${naInterface} na faixa do Instagram)` : ''}${travadas ? ` · ${travadas} travada${travadas > 1 ? 's' : ''}` : ''}`
   return (
     <div className="pointer-events-auto absolute left-2 top-2 z-40 flex max-w-[90%] items-center gap-2 rounded-md border border-amber-500/60 bg-background/95 px-2 py-1 text-xs shadow-sm backdrop-blur">
       <span className="truncate text-amber-700 dark:text-amber-300" title={texto}>
@@ -1444,7 +1445,7 @@ function AvisosForaDaMargem({ avisos, selecionadas, aoTrazer }: { avisos: AvisoD
           Trazer para dentro
         </button>
       ) : (
-        <span className="flex-shrink-0 text-muted-foreground">maior que a área: encurte o texto ou reduza a fonte</span>
+        <span className="flex-shrink-0 text-muted-foreground">{travadas === alvo.length ? 'travada: destrave para mover' : 'maior que a área: encurte o texto ou reduza a fonte'}</span>
       )}
     </div>
   )
