@@ -58,12 +58,14 @@ export function ReguasEGuias({ largura, altura, zoom, origem, marca, selecao, ap
     (e: React.PointerEvent, orientacao: Guia['orientacao'], id: string | null) => {
       if (e.button !== 0) return
       if (id && estado.travadas) return
+      // Um gesto por vez: um segundo ponteiro (dedo, outra régua) não substitui o arrasto em curso (Codex R2)
+      if (arrasto) return
       e.preventDefault()
       e.stopPropagation()
       const p = noDesign(e.clientX, e.clientY)
       setArrasto({ id, orientacao, posicao: orientacao === 'vertical' ? p.x : p.y, tela: { x: e.clientX, y: e.clientY }, pointerId: e.pointerId })
     },
-    [estado.travadas, noDesign],
+    [estado.travadas, noDesign, arrasto],
   )
 
   React.useEffect(() => {
@@ -76,6 +78,9 @@ export function ReguasEGuias({ largura, altura, zoom, origem, marca, selecao, ap
     // O navegador pode cancelar o ponteiro (pointercancel) ou a janela perder o foco sem entregar o pointerup: o
     // gesto termina sem gravar nada (Codex R1 do L4)
     const cancelar = () => setArrasto(null)
+    const cancelarDoPonteiro = (e: PointerEvent) => {
+      if (e.pointerId === arrasto.pointerId) cancelar()
+    }
     const soltar = (e: PointerEvent) => {
       if (e.pointerId !== arrasto.pointerId) return
       const p = noDesign(e.clientX, e.clientY)
@@ -89,12 +94,12 @@ export function ReguasEGuias({ largura, altura, zoom, origem, marca, selecao, ap
     }
     window.addEventListener('pointermove', mover)
     window.addEventListener('pointerup', soltar)
-    window.addEventListener('pointercancel', cancelar)
+    window.addEventListener('pointercancel', cancelarDoPonteiro)
     window.addEventListener('blur', cancelar)
     return () => {
       window.removeEventListener('pointermove', mover)
       window.removeEventListener('pointerup', soltar)
-      window.removeEventListener('pointercancel', cancelar)
+      window.removeEventListener('pointercancel', cancelarDoPonteiro)
       window.removeEventListener('blur', cancelar)
     }
   }, [arrasto, noDesign, largura, altura, api])
