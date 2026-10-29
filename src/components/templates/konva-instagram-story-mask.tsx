@@ -54,7 +54,10 @@ interface KonvaInstagramStoryMaskProps {
   projectId: number
   canvasWidth: number
   canvasHeight: number
-  /** A faixa da interface em px da PÁGINA (`margensDoEditor(...).interface`); `null`/ausente = padrão do Story. */
+  /**
+   * A faixa da interface em px da PÁGINA (`margensDoEditor(...).interface`). `null` = a página NÃO é Story (a máscara
+   * não desenha); ausente = quem chamou não decidiu, e vale a razão 9:16 de antes com o padrão do Story.
+   */
   faixa?: { topo: number; rodape: number } | null
 }
 
