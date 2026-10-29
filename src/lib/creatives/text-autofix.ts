@@ -24,7 +24,7 @@
 import { db } from '@/lib/db'
 import type { Layer } from '@/types/template'
 import { CreativeError } from '@/lib/creatives/errors'
-import { MARGEM_LEGADA_DO_REVISOR } from '@/lib/canvas-margin'
+import { limitesDaAreaSegura } from '@/lib/creatives/text-geometry'
 import {
   checkTextGeometry,
   measureTextLayers,
@@ -230,7 +230,7 @@ export function autofixTextGeometry(
       )
       if (overflowProprio && !temColisao) {
         const m = measureTextLayers(layers, measure).find((x) => x.layerId === layerId)
-        const limiteBase = canvas.height - MARGEM_LEGADA_DO_REVISOR.bottom * (canvas.width / 1080)
+        const limiteBase = limitesDaAreaSegura(canvas).bottom
         if (m && m.glyphBottom <= limiteBase && m.realHeight > m.box.height) {
           layers = patchLayer(layers, layerId, (l) => ({
             ...l,

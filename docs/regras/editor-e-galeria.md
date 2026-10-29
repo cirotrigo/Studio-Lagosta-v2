@@ -1175,3 +1175,22 @@ Quinto checkpoint da instrução de 29/10 (P1). Pesquisa do Canva em `docs/resea
 - **Prova:** `src/lib/__tests__/guias-manuais.test.ts` (leitura; gerar 2 colunas/3 linhas no Story dentro da margem;
   encaixe em 283; ocultas não encaixam; apagar fora da página; marcas da régua). Não prova: o arrasto real na
   tela, o canvas da régua — prova visual.
+
+## Margens de 29/10/2026: os números da casa na fonte única (PR aberto, sem release)
+
+Decisão do owner (29/10/2026), relayada pela sessão-mãe: Story laterais 64 · topo 160 · base 160; Feed 4:5 laterais
+64 · topo 72 · base 72; topo e base IGUAIS. Substituem 92/188/224 e 92/120/104 como padrão de `GEOMETRIA_PADRAO`
+(`compositor/geometria.ts`) e o piso 188/224 de `interface-do-story.ts` vira 160/160. Com a fonte única do L0, o
+editor (`CANVAS_MARGIN`, encaixe, alinhar, máscara M) mostra os números novos sem trabalho extra: Story 64/160/160.
+- No Feed nada cobre a foto aberta; a grade 3:4 do perfil corta ~34 px de cada lado e os 64 cobrem esse corte (D5
+  fica como P1 desligado).
+- 🔴 **Revisor, autofix e `text-geometry` vieram junto** (ver `revisor-da-arte.md`, seção de 29/10): a margem nova
+  do Feed e a lateral 64 ficam abaixo da margem antiga do revisor. `MARGEM_LEGADA_DO_REVISOR` deixou de existir.
+- **Quadrado não foi decidido**: segue 92/120/104.
+- **`Project.assinatura` por marca** (Real Story 96/250/350, Wine 96/200/150, Feed 96/120/100 nas duas) é dado de
+  produção: `scripts/reconciliar-assinatura-2026-10-29.ts` imprime o diff por projeto em SIMULAÇÃO e só grava com
+  `--gravar` depois do ok explícito do Ciro. Até lá o editor mostra o que está cadastrado.
+- **O catálogo dos arquétipos NÃO mudou**: versão publicada é imutável (`catalogo.ts`), a zona de cada arquétipo é
+  RECORTADA pelo piso na materialização e a referência pousa dentro do piso da marca (opção A, PR #270). Com o piso
+  mais folgado (160 < 188) os arquétipos v1 simplesmente não usam a faixa liberada; usar exige publicar `@2`, decisão
+  à parte.

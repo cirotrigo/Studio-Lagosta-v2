@@ -1340,3 +1340,28 @@ EXATO e redirecionamento revalidado, canvas pelo IHDR da mídia da prova, reposi
   — o teste varre o repositório e falha.
 - O que a seleção NÃO prova: que a mídia registrada é a do publicador; que a foto ficou visível (oclusão). Os rótulos do
   manifesto dizem isso; não os apague.
+
+
+## Margens de 29/10/2026: piso da interface 160/160 e revisor pela fonte única (PR aberto, sem release)
+
+Decisão do owner (29/10/2026): as margens da casa passam a ser Story laterais 64 · topo 160 · base 160 e Feed 4:5
+laterais 64 · topo 72 · base 72 (eram 92/188/224 e 92/120/104 no compositor; 70/120/100 no editor e no revisor). São
+estimativas da pesquisa das linhas-guia (a interface cobre ~150–160 px no topo; nos celulares altos a caixa "Enviar
+mensagem" fica abaixo da arte; a equipe trabalha a 94–153 px da base), não medição oficial — o Ciro tem duas artes
+de régua em `docs/research/canva-guias-e-margens-2026-10/teste-de-regua/` e pode ajustar com prints.
+
+- 🔴 **`PISO_DE_INTERFACE_DO_STORY` é 160/160** (`revisao/interface-do-story.ts`, único lugar com o número). O G26
+  passou a ser: no topo y = 160 reprova e 161 passa; no rodapé base em H−160 reprova e H−161 passa. A configuração
+  do cliente continua só apertando. Fora do canônico o piso segue "não comprovado" (Codex R11).
+- 🔴 **`limitesDoEditor` (regra `fora-da-area-segura`), `limitesDaAreaSegura` do `text-geometry` e o autofix leem
+  `margensDoEditor`** — o L5 da instrução das linhas-guia, antecipado neste PR porque a geometria nova do Feed (72) e
+  a lateral 64 ficam ABAIXO da margem antiga do revisor (120/100/70): sem isso o compositor pousaria texto onde o
+  próprio gate acusa (a armadilha de `compositor.md`, "pre invade a margem em toda peça de feed"). O formato sai do
+  tamanho do canvas (`formatoDaPaginaGravada`); a margem é a PADRÃO da casa, não a da marca (a da marca entra no
+  revisor numa fase posterior, se o Ciro quiser).
+- **Antes de integrar, medir**: `scripts/medir-margens-2026-10-29.ts` (só leitura; roda em produção só com o ok do
+  Ciro no chat) mede os textos uma vez e confere as mesmas métricas contra as margens antigas e as novas, contando
+  quantas artes agendadas e dos últimos 30 dias mudam de aviso em `fora-da-area-segura` e de veredito no piso.
+  Post com `laterPostId` é só contado — intocável. `foraDaAreaSegura(metricas, limites)` foi separado de
+  `checkTextGeometry` para essa comparação.
+- **Quadrado não foi decidido**: continua 92/120/104 até o Ciro dizer.

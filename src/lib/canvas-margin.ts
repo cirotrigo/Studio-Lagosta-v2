@@ -4,14 +4,17 @@
  * O editor desenha DUAS camadas, e são coisas diferentes (decisão do owner de 13/10/2026):
  *
  * - a **faixa da interface do Instagram**, só no Story: onde o app desenha avatar, barra de progresso e caixa de
- *   resposta. Texto e logo não entram (gera AVISO no L3, nunca bloqueio — D2); foto pode passar por baixo. Vem de `interfaceDoStory` (piso 188/224, que a
- *   configuração do cliente só aperta, nunca afrouxa);
+ *   resposta. Texto e logo não entram (gera AVISO no L3, nunca bloqueio — D2); foto pode passar por baixo. Vem de
+ *   `interfaceDoStory` (piso 160/160 desde 29/10/2026, que a configuração do cliente só aperta, nunca afrouxa);
  * - a **margem da marca** (composição): `GEOMETRIA_PADRAO` (o `NUMEROS_PADRAO.geometria` do compositor) com
  *   `Project.assinatura` por cima, pela MESMA mesclagem do compositor (`pisoDoProjetoDe` em `geometria.ts`, o
- *   `pisoDoProjeto` de `assinatura.ts`). Padrão da casa: Story 92/188/224, Feed 4:5 e Quadrado 92/120/104. É nela
- *   que o encaixe, o alinhar e as guias azuis trabalham.
+ *   `pisoDoProjeto` de `assinatura.ts`). Padrão da casa (decisão do owner de 29/10/2026): Story 64/160/160,
+ *   Feed 4:5 64/72/72, Quadrado ainda 92/120/104. É nela que o encaixe, o alinhar e as guias azuis trabalham — e,
+ *   desde 29/10, também o revisor (`limitesDoEditor`), o `text-geometry` e o autofix (o L5 da instrução, antecipado
+ *   porque a geometria nova do Feed e a lateral 64 ficam abaixo da margem antiga do revisor: sem isso o compositor
+ *   faria peças que o próprio gate reprova).
  *
- * Nenhuma constante nova com 188, 224 ou 92: os números moram em `interface-do-story.ts` e em `geometria.ts`.
+ * Nenhuma constante com os números copiados: eles moram em `interface-do-story.ts` e em `geometria.ts`.
  * Página fora do tamanho canônico escala por `largura / 1080` (a largura canônica de `DIMENSOES`), como o revisor
  * (`text-geometry.ts`); dimensão inválida (NaN, Infinity, ≤ 0) cai na canônica do formato.
  *
@@ -85,7 +88,7 @@ export function margensDoEditor(args: { formato: Formato; assinatura: unknown; l
 const padraoDoStory = margensDoEditor({ formato: 'story', assinatura: null, largura: 1080, altura: 1920 }).marca
 
 /**
- * A margem padrão do Story (92/188/224), nos nomes antigos — delega para `margensDoEditor`. Com o L1 os
+ * A margem padrão do Story (64/160/160), nos nomes antigos — delega para `margensDoEditor`. Com o L1 os
  * consumidores do editor passam a chamar `margensDoEditor` com o formato e a assinatura da página aberta.
  */
 export const CANVAS_MARGIN = {
@@ -101,10 +104,3 @@ export function marginsForAxis(axis: 'x' | 'y'): { start: number; end: number } 
     ? { start: CANVAS_MARGIN.left, end: CANVAS_MARGIN.right }
     : { start: CANVAS_MARGIN.top, end: CANVAS_MARGIN.bottom }
 }
-
-/**
- * 🔴 LEGADO até o L5: os números que o revisor (`fora-da-area-segura`), o autofix e o `text-geometry` conferiam quando
- * as guias do editor eram 70/120/100. O L0 mudou só o editor; mudar o revisor exige medir antes quantas artes agendadas
- * mudariam de aviso, e o Ciro confirma no chat. Ninguém novo importa isto.
- */
-export const MARGEM_LEGADA_DO_REVISOR = { top: 120, right: 70, bottom: 100, left: 70 } as const
