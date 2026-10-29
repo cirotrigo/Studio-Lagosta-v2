@@ -1015,21 +1015,28 @@ editor desenhava, encaixava e alinhava em 70/120/100 (`CANVAS_MARGIN`), o compos
 na guia azul do Story (y = 120) fazia uma arte que o gate reprovava.
 
 - **`margensDoEditor({ formato, assinatura, largura, altura })`** (`src/lib/canvas-margin.ts`) é a fonte única.
-  Devolve `interface` (altura da faixa de cima e de baixo; `null` fora do Story), `marca` (as quatro LINHAS, em
-  coordenadas da página, como `limitesDoEditor` do revisor) e `origem` (`marca` quando `Project.assinatura` tem
-  geometria válida para o formato, senão `padrao`).
+  Devolve `interface` (`FaixasDaInterface`: ALTURA da faixa de cima e de baixo; `null` fora do Story), `marca`
+  (`LinhasDaMarca`: as quatro LINHAS em COORDENADAS da página, como `limitesDoEditor` do revisor — `base` e `direita`
+  são y e x, não distâncias) e `origem` (`marca` quando `Project.assinatura.geometria[formato]` trouxe ao menos uma
+  das três margens válida, senão `padrao`). Dimensão inválida (NaN, Infinity, ≤ 0) cai na canônica de `DIMENSOES`:
+  as quatro linhas saem sempre finitas (Codex R1, achado P2).
 - **Duas camadas, nunca uma** (decisão do owner de 13/10/2026): a faixa da interface vem de `interfaceDoStory`
   (piso 188/224, nunca afrouxa; no L0 sem configuração do cliente — o L5 liga) e a margem da marca vem de
   `pisoDoProjetoDe`, a MESMA mesclagem do `pisoDoProjeto` do compositor. Nenhuma constante nova com 188, 224 ou 92.
 - 🔴 **A geometria e a mesclagem moram em `compositor/geometria.ts`** (módulo puro: `GEOMETRIA_PADRAO`,
   `mesclarGeometria`, `pisoDoProjetoDe`); `NUMEROS_PADRAO.geometria` É `GEOMETRIA_PADRAO` e `mesclarNumeros` chama
-  `mesclarGeometria`. O editor lê dali sem puxar halo, gradiente, destaques e logo para o bundle. Um teste confere que
-  `pisoDoProjetoDe(x)` é idêntico ao `pisoDoProjeto` de `montarAssinatura` (Real, Wine, Lagosta, vazio, lixo).
+  `mesclarGeometria`. O editor lê dali sem puxar halo, gradiente, destaques e logo para o bundle. A equivalência é
+  de VALORES e de identidade (sem JSON só o mapa externo é copiado, como o `mesclarNumeros` antigo). Um teste confere
+  que `pisoDoProjetoDe(x)` é idêntico ao `pisoDoProjeto` de `montarAssinatura` (Real, Wine, Lagosta, vazio, lixo, e
+  com página de assinatura derivando `numeros.geometria`).
 - 🔴 **`interfaceDoStory` e `PISO_DE_INTERFACE_DO_STORY` moram em `revisao/interface-do-story.ts`** (módulo puro);
   o `gate.ts` reexporta. Importar o gate do `canvas-margin.ts` fechava um ciclo (gate → text-geometry → canvas-margin)
   e puxaria o revisor inteiro para o bundle do cliente.
 - **Lixo nunca afrouxa**: `NaN`, string e negativo em `Project.assinatura.geometria` caem no padrão e não contam como
   `origem: 'marca'`. Página fora do canônico escala por `largura / 1080` (as duas camadas), como `text-geometry.ts`.
+- **A máscara do Story (tecla M) é a faixa da interface, não a margem da marca**: uma marca com rodapé 150 compõe
+  DENTRO da faixa e a máscara continua mostrando o que o app cobre. No L0 ela ainda lê `CANVAS_MARGIN` (o padrão do
+  Story, que coincide com o piso); no L1 nasce de `margensDoEditor(...).interface`.
 - **`CANVAS_MARGIN` e `marginsForAxis` delegam** para o padrão do Story de `margensDoEditor` (D1: 92/188/224 no lugar
   de 70/120/100). Os consumidores do editor (`konva-editor-stage`, `konva-transformer`, `konva-alignment`,
   `instagram-story-chrome`) mudam de número por tabela; no L1 passam a chamar `margensDoEditor` com o formato e a
@@ -1039,5 +1046,6 @@ na guia azul do Story (y = 120) fazia uma arte que o gate reprovava.
   Ciro confirma no chat. Ninguém novo importa a legada.
 - **Não muda:** `Page.layers`, o render do servidor, o PNG, o vídeo, `render-engine.ts`, o limiar do gate, o app
   desktop e o `/gerar-criativo`.
-- **Prova:** `src/lib/__tests__/margens-do-editor.test.ts` (Story e Feed com o padrão; marca própria; marca mais
-  frouxa que o piso; fora do canônico; `NaN`; a delegação; a reexportação do gate).
+- **Prova:** `src/lib/__tests__/margens-do-editor.test.ts` (30 testes: Story e Feed com o padrão; marca própria;
+  marca mais frouxa que o piso; fora do canônico; dimensões inválidas; `NaN` na assinatura; a delegação;
+  `limitesDoEditor` do revisor em 70/120/100; a reexportação do gate; identidade com `montarAssinatura`).

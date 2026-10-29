@@ -9,6 +9,8 @@ import { CANVAS_MARGIN, MARGEM_LEGADA_DO_REVISOR, margensDoEditor, marginsForAxi
 import { montarAssinatura, NUMEROS_PADRAO } from '@/lib/compositor/assinatura'
 import { GEOMETRIA_PADRAO, pisoDoProjetoDe } from '@/lib/compositor/geometria'
 import { interfaceDoStory as doGate, PISO_DE_INTERFACE_DO_STORY as pisoDoGate } from '@/lib/creatives/revisao/gate'
+import { limitesDoEditor } from '@/lib/creatives/revisao/regras'
+import type { Layer } from '@/types/template'
 import { interfaceDoStory, PISO_DE_INTERFACE_DO_STORY } from '@/lib/creatives/revisao/interface-do-story'
 
 const story = { largura: 1080, altura: 1920 }
@@ -97,10 +99,21 @@ describe('margensDoEditor — página fora do tamanho canônico', () => {
     expect(m.interface).toEqual({ topo: 376, rodape: 448 })
   })
 
-  it('largura inválida não gera NaN: escala 1', () => {
-    const m = margensDoEditor({ formato: 'feed', assinatura: null, largura: NaN, altura: 1350 })
-    expect(m.marca.topo).toBe(120)
-    expect(m.marca.esquerda).toBe(92)
+  it.each([
+    ['largura NaN', { largura: NaN, altura: 1350 }],
+    ['altura NaN', { largura: 1080, altura: NaN }],
+    ['largura Infinity', { largura: Infinity, altura: 1350 }],
+    ['altura Infinity', { largura: 1080, altura: Infinity }],
+    ['largura negativa', { largura: -1, altura: 1350 }],
+    ['altura zero', { largura: 1080, altura: 0 }],
+  ])('dimensão inválida (%s) cai na canônica do formato: as QUATRO linhas saem finitas (Codex R1)', (_n, dims) => {
+    const m = margensDoEditor({ formato: 'feed', assinatura: null, ...dims })
+    expect(m.marca).toEqual({ topo: 120, base: 1350 - 104, esquerda: 92, direita: 988 })
+  })
+
+  it('dimensão inválida no Story: a faixa também sai do canônico', () => {
+    const m = margensDoEditor({ formato: 'story', assinatura: null, largura: NaN, altura: NaN })
+    expect(m).toEqual({ interface: { topo: 188, rodape: 224 }, marca: { topo: 188, base: 1696, esquerda: 92, direita: 988 }, origem: 'padrao' })
   })
 })
 
@@ -113,8 +126,10 @@ describe('os consumidores antigos delegam', () => {
     expect(CANVAS_MARGIN).toEqual({ top: g.safeTopo, right: g.margemH, bottom: g.safeRodape, left: g.margemH })
   })
 
-  it('o revisor, o autofix e os arquétipos continuam com 120/100/70 até o L5', () => {
+  it('o revisor, o autofix e os arquétipos continuam com 120/100/70 até o L5 — pelo consumidor real', () => {
     expect(MARGEM_LEGADA_DO_REVISOR).toEqual({ top: 120, right: 70, bottom: 100, left: 70 })
+    expect(limitesDoEditor({ width: 1080, height: 1920 })).toEqual({ topo: 120, base: 1820, esquerda: 70, direita: 1010 })
+    expect(limitesDoEditor({ width: 540, height: 960 })).toEqual({ topo: 60, base: 910, esquerda: 35, direita: 505 })
   })
 
   it('o gate reexporta a MESMA interfaceDoStory do módulo puro (fonte única dos 188/224)', () => {
@@ -149,6 +164,27 @@ describe('geometria.ts é a MESMA mesclagem do compositor', () => {
     const m = margensDoEditor({ formato: 'story', assinatura: REAL, ...story })
     expect(m.marca).toEqual({ topo: 250, base: 1920 - 350, esquerda: 96, direita: 984 })
     expect(m.interface).toEqual({ topo: 188, rodape: 224 })
+  })
+
+  it('com PÁGINA de assinatura: a derivação reescreve numeros.geometria, mas o pisoDoProjeto continua o de pisoDoProjetoDe', () => {
+    const texto = (id: string, x: number, y: number, w: number, h: number): Layer =>
+      ({ id, name: id, type: 'text', visible: true, locked: false, order: 0, rotation: 0, content: id, position: { x, y }, size: { width: w, height: h },
+        style: { fontFamily: 'Montserrat', fontSize: 40, lineHeight: 1.1, color: '#FFFFFF', textAlign: 'left' }, metadata: { groupId: 'principal' } }) as unknown as Layer
+    const assinatura = montarAssinatura({
+      pagina: { id: 'p', name: 'Modelo · story', tags: ['story'], width: 1080, height: 1920, layers: [texto('headline', 116, 173, 700, 217), texto('servico', 71, 1684, 700, 47)], background: '#000' },
+      formatoDaPagina: 'story',
+      numerosDoProjeto: WINE,
+      logoDoProjeto: null,
+    })
+    expect(assinatura.numeros.geometria.story.safeTopo).toBe(173) // derivado da página
+    expect(assinatura.pisoDoProjeto).toEqual(pisoDoProjetoDe(WINE)) // o piso não
+    expect(assinatura.pisoDoProjeto!.story.safeTopo).toBe(200)
+  })
+
+  it('sem JSON a mesclagem copia só o mapa externo (identidade dos formatos preservada, como antes)', () => {
+    expect(pisoDoProjetoDe(null).story).toBe(GEOMETRIA_PADRAO.story)
+    expect(pisoDoProjetoDe({}).story).not.toBe(GEOMETRIA_PADRAO.story)
+    expect(pisoDoProjetoDe({})).toEqual(GEOMETRIA_PADRAO)
   })
 
   it('a mesclagem não altera o padrão (sem mutação)', () => {

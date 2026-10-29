@@ -12,20 +12,37 @@
  *   que o encaixe, o alinhar e as guias azuis trabalham.
  *
  * Nenhuma constante nova com 188, 224 ou 92: os números moram em `interface-do-story.ts` e em `geometria.ts`.
- * Página fora do tamanho canônico escala por `largura / 1080`, como o revisor (`text-geometry.ts`).
+ * Página fora do tamanho canônico escala por `largura / 1080` (a largura canônica de `DIMENSOES`), como o revisor
+ * (`text-geometry.ts`); dimensão inválida (NaN, Infinity, ≤ 0) cai na canônica do formato.
  *
  * As margens são ASSIMÉTRICAS no eixo vertical: quem consome trata início e fim separadamente.
  */
 import { GEOMETRIA_PADRAO, pisoDoProjetoDe } from '@/lib/compositor/geometria'
-import type { Formato } from '@/lib/compositor/spec'
+import { DIMENSOES, type Formato } from '@/lib/compositor/spec'
 import { interfaceDoStory } from '@/lib/creatives/revisao/interface-do-story'
 
+/** A faixa da interface do Instagram, em px da página: a ALTURA da faixa de cima e a da de baixo (como `interfaceDoStory`). */
+export interface FaixasDaInterface {
+  topo: number
+  rodape: number
+}
+
+/** As quatro LINHAS da margem da marca, em COORDENADAS da página (como `limitesDoEditor` do revisor): `base` e `direita` são y e x da linha, não distâncias. */
+export interface LinhasDaMarca {
+  topo: number
+  base: number
+  esquerda: number
+  direita: number
+}
+
 export interface MargensDoEditor {
-  /** A faixa da interface do Instagram, em px da página: ALTURA da faixa de cima e da de baixo. `null` fora do Story. */
-  interface: { topo: number; rodape: number } | null
-  /** As quatro LINHAS da margem da marca, em coordenadas da página (como `limitesDoEditor` do revisor). */
-  marca: { topo: number; base: number; esquerda: number; direita: number }
-  /** `marca` quando `Project.assinatura` tem geometria válida para o formato; `padrao` é `NUMEROS_PADRAO`. */
+  /** `null` fora do Story. */
+  interface: FaixasDaInterface | null
+  marca: LinhasDaMarca
+  /**
+   * `marca` quando `Project.assinatura.geometria[formato]` trouxe AO MENOS UMA das três margens válida (`margemH`,
+   * `safeTopo`, `safeRodape`); `gapEntreBlocos` e `escalaDeFonte` não contam. `padrao` é `GEOMETRIA_PADRAO`.
+   */
   origem: 'marca' | 'padrao'
 }
 
@@ -36,9 +53,16 @@ function numeroOu(v: unknown, padrao: number): number {
   return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : padrao
 }
 
+/** Dimensão finita e positiva; qualquer outra coisa cai no canônico do formato (`DIMENSOES`) — nunca NaN nem Infinity nas linhas. */
+function dimensaoOu(v: number, canonica: number): number {
+  return Number.isFinite(v) && v > 0 ? v : canonica
+}
+
 export function margensDoEditor(args: { formato: Formato; assinatura: unknown; largura: number; altura: number }): MargensDoEditor {
-  const { formato, largura, altura } = args
-  const s = Number.isFinite(largura) && largura > 0 ? largura / 1080 : 1
+  const { formato } = args
+  const largura = dimensaoOu(args.largura, DIMENSOES[formato].width)
+  const altura = dimensaoOu(args.altura, DIMENSOES[formato].height)
+  const s = largura / DIMENSOES[formato].width
   const padrao = GEOMETRIA_PADRAO[formato]
   const piso = pisoDoProjetoDe(args.assinatura)[formato]
   const margemH = numeroOu(piso.margemH, padrao.margemH)

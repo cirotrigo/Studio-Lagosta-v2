@@ -37,7 +37,9 @@ export const GEOMETRIA_PADRAO: Record<Formato, GeometriaDoFormato> = {
  * finito guarda na ponta — `margensDoEditor`).
  */
 export function mesclarGeometria(base: Record<Formato, GeometriaDoFormato>, numerosDoProjeto: unknown): Record<Formato, GeometriaDoFormato> {
-  const e = numerosDoProjeto && typeof numerosDoProjeto === 'object' ? (numerosDoProjeto as { geometria?: Partial<Record<Formato, Partial<GeometriaDoFormato>>> }).geometria : undefined
+  // Como o `mesclarNumeros` antigo: sem JSON, só o mapa externo é copiado (os formatos continuam os mesmos objetos).
+  if (!numerosDoProjeto || typeof numerosDoProjeto !== 'object') return { ...base }
+  const e = (numerosDoProjeto as { geometria?: Partial<Record<Formato, Partial<GeometriaDoFormato>>> }).geometria
   const geometria = { ...base }
   for (const f of Object.keys(base) as Formato[]) {
     geometria[f] = { ...base[f], ...(e?.[f] ?? {}) }
