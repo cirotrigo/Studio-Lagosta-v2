@@ -21,6 +21,7 @@ import { createServerTextBoxMeasurer } from '@/lib/creatives/server-text-measure
 import { measureTextLayers } from '@/lib/creatives/text-geometry'
 import { foraDaInterface } from '@/lib/creatives/revisao/gate'
 import { blocosDeTexto, limitesDoEditor } from '@/lib/creatives/revisao/regras'
+import { fontesQueFaltam } from '@/lib/creatives/revisao/revisar-arte'
 import { formatoDaPaginaGravada } from '@/lib/compositor/formato'
 import type { Layer } from '@/types/template'
 
@@ -124,13 +125,26 @@ async function main() {
         detalhes.push(`${l.origem} ${l.pageId} (${page.name}): NÃO medida (texto sem métrica: ${semMetrica.map((c) => c.name).join(', ')})`)
         continue
       }
-      if (originais.some((c) => c.type === 'rich-text' && c.visible !== false)) resumo.aproximadas++
+      // `registerProjectFonts` só loga a falha de uma fonte (não lança): a conferência real é por família carregada
+      const faltam = await fontesQueFaltam(camadas)
+      if (faltam.length > 0) {
+        resumo.naoMedidas++
+        detalhes.push(`${l.origem} ${l.pageId} (${page.name}): NÃO medida (fonte ausente: ${faltam.map((f) => f.familia).join(', ')} — a métrica sairia com fonte substituta)`)
+        continue
+      }
+      // Rich text é medido como texto simples: aproximação — dita à parte e FORA dos contadores de impacto
+      const aproximada = originais.some((c) => c.type === 'rich-text' && c.visible !== false)
       const s = canvas.width / 1080
       const antes = blocosFora(camadas, metricas, { topo: ANTES.top * s, base: canvas.height - ANTES.bottom * s, esquerda: ANTES.left * s, direita: canvas.width - ANTES.right * s })
       const depois = blocosFora(camadas, metricas, limitesDoEditor(canvas))
-      resumo.medidas++
       const a = antes.length > 0
       const d = depois.length > 0
+      if (aproximada) {
+        resumo.aproximadas++
+        if (a !== d) detalhes.push(`${l.origem} ${l.pageId} (${page.name}, ${formato}): APROXIMADA (rich text) — área segura ${a ? 'avisava' : 'ok'} → ${d ? 'avisa' : 'ok'}; não conta no resumo`)
+        continue
+      }
+      resumo.medidas++
       if (a !== d) {
         resumo.areaSeguraMudou++
         if (d) resumo.ganhouAviso++

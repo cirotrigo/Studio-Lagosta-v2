@@ -27,6 +27,8 @@ async function main() {
   const projetos = await db.project.findMany({ where: { assinatura: { not: null } }, select: { id: true, name: true, assinatura: true }, orderBy: { id: 'asc' } })
   console.log(`${gravar ? 'GRAVANDO' : 'SIMULAÇÃO'} — ${projetos.length} projetos com assinatura`)
   let mudam = 0
+  let gravados = 0
+  let conflitos = 0
   for (const p of projetos) {
     const assinatura = (p.assinatura && typeof p.assinatura === 'object' ? p.assinatura : {}) as Record<string, unknown>
     const geometria = (assinatura.geometria && typeof assinatura.geometria === 'object' ? assinatura.geometria : {}) as Record<string, Geo>
@@ -49,11 +51,17 @@ async function main() {
     if (gravar) {
       // Atômico: só grava se a assinatura ainda for a que foi LIDA (Codex R1) — outra edição no meio aborta este projeto
       const r = await db.project.updateMany({ where: { id: p.id, assinatura: { equals: p.assinatura as Prisma.InputJsonValue } }, data: { assinatura: { ...assinatura, geometria: nova } as Prisma.InputJsonValue } })
-      if (r.count === 1) console.log('  gravado')
-      else console.log('  NÃO gravado: a assinatura mudou entre a leitura e a escrita — rode de novo')
+      if (r.count === 1) {
+        gravados++
+        console.log('  gravado')
+      } else {
+        conflitos++
+        console.log('  NÃO gravado: a assinatura mudou entre a leitura e a escrita — rode de novo')
+      }
     }
   }
-  console.log(`${mudam} projeto(s) ${gravar ? 'gravados' : 'mudariam'}; Quadrado intocado; gap/escala intocados.`)
+  if (gravar) console.log(`${mudam} projeto(s) diferentes: ${gravados} gravado(s), ${conflitos} em conflito (rode de novo); Quadrado intocado; gap/escala intocados.`)
+  else console.log(`${mudam} projeto(s) mudariam; Quadrado intocado; gap/escala intocados.`)
   await db.$disconnect()
 }
 
