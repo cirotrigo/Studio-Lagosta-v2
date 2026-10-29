@@ -1498,3 +1498,25 @@ Registro do contrato já existente (lacuna apontada na revisão do preflight do 
 - Catálogo (13 versões / 12 ids), impressões, resolução por id direto e replay de artes persistidas continuam iguais:
   só a vitrine muda. Nenhuma guarda nova em `prepararArquetipo`/`resolverArquetipo`, nenhuma troca automática de
   layout, artes existentes intocadas.
+
+## O piso da marca vence na horizontal: a referência efetiva (opção A, 29/10/2026)
+
+- **O problema medido** (coleção de revisão de 28/10, 19 páginas "[Rever margem]"): Wine e Real têm `margemH` 96 em
+  `Project.assinatura`; o catálogo põe a referência dos papéis à esquerda em x .085 = 91,8 px. A zona efetiva
+  (`zona ∩ pisoDoProjeto`) começava em 96, cortava a referência por 4,2 px e a materialização recusava todo papel com
+  "a área segura do projeto corta a referência" — a saída de 28/10 foi relaxar o piso para 92 em memória, o contrário
+  do que a marca cadastrou. Decisão do owner (29/10): **o piso da marca vence**.
+- **A regra:** `referenciaEfetiva(referência, zonaEfetiva)` (`arquetipos/materializar.ts`) recolhe a referência do
+  catálogo para DENTRO da zona efetiva **na horizontal**, de cada lado que o piso corta por mais que a tolerância de
+  ½ px. A coluna do medidor (`caixasMaximas(…, geometria)`), a escada da unidade (`prepararNoArquetipo`, agora com
+  `geometria`), o pouso e o `contain` da logo usam a MESMA caixa — no compor e no medir-copy, pelo mesmo
+  `pisoDoProjeto[formato]`. Não é "empurrar para caber": é a precedência que o piso já tinha na vertical, onde a busca
+  espacial resgata a referência cortada (CP2B).
+- **O que não muda:** a vertical (capacidade de altura e resgate por dy); a zona; a recusa quando a zona não alcança a
+  referência; e **o padrão** (`margemH` 92): 91,8 contra 92 está dentro da tolerância, nada é recolhido, e
+  `caixasMaximas` sai byte a byte igual em todo o catálogo (teste 17b). Marcas com piso maior que 92 passam a compor
+  4 px (ou mais) para dentro, com a coluna correspondentemente mais estreita — pode mudar quebra de linha.
+- **Recomposição:** a receita congelada da spec continua valendo; a referência efetiva é derivada do piso que a
+  assinatura devolve na hora, como a zona já era. Peça antiga de marca no padrão recompõe igual; de marca com piso
+  maior, nenhuma existe pelo motor (eram recusadas).
+- Controles em `arquetipos/__tests__/materializar.test.ts` (17 e 17b).

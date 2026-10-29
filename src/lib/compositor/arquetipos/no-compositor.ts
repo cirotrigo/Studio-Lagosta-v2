@@ -202,11 +202,13 @@ export function prepararNoArquetipo(args: {
   arquetipo: ArquetipoDeLayout
   formato: FormatoDoArquetipo
   canvas: { width: number; height: number }
+  /** O piso do projeto (`pisoDoProjeto[formato]`): a coluna de cada papel é a da referência efetiva (opção A). */
+  geometria: GeometriaEfetiva
   gap: number
   /** Roda `prepararBlocos` com a caixa de cada papel e o fator de início da escada de cada papel. */
   preparar: (escalaMaximaDoPapel: (papel: Papel) => number | undefined) => BlocosPreparados
 }): PreparoNoArquetipo {
-  const caixas = caixasMaximas(args.arquetipo, args.formato, args.canvas)
+  const caixas = caixasMaximas(args.arquetipo, args.formato, args.canvas, args.geometria)
   const dominante = papelDominante(args.arquetipo)
   const listas = papeisDeLista(args.arquetipo)
   const fatores: Partial<Record<PapelDeTexto, number>> = dominante ? { [dominante]: TETO_DA_ESCALA_DOMINANTE } : {}
@@ -303,7 +305,7 @@ export function materializarUnidades(args: {
   const m = materializarArquetipo({ arquetipo: args.arquetipo, formato: args.formato, canvas: args.canvas, geometria: args.geometria, medidas, ornamentos, logo: args.logo, deslocamentos: args.deslocamentos, ...(Object.keys(envoltorios).length > 0 ? { envoltorios } : {}), ...(args.conferirZona === false ? { conferirZona: false } : {}) })
   if (!('problemas' in m)) return m
   // A recusa por capacidade leva o orçamento da unidade: a caixa, a escala em que a escada parou e cada bloco.
-  const caixas = caixasMaximas(args.arquetipo, args.formato, args.canvas)
+  const caixas = caixasMaximas(args.arquetipo, args.formato, args.canvas, args.geometria)
   for (const p of m.problemas) {
     const u = args.unidades.find((x) => x.papel === p.papel)
     const caixa = caixas[p.papel as PapelDeTexto]

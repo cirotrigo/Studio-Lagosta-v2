@@ -258,7 +258,9 @@ export function medirCopy(args: {
   const area = areaUtilDe(args.assinatura, args.formato)
   const arq = args.arquetipo ?? null
   if (arq) conferirLogo(arq.definicao, Boolean(args.assinatura.logo))
-  const caixasArq = arq ? caixasMaximas(arq.definicao, arq.formato, DIMENSOES[args.formato]) : null
+  // O piso do PROJETO, como no compor (`pisoDoProjeto`): a coluna de cada papel é a da referência efetiva (opção A).
+  const pisoArq = arq ? (args.assinatura.pisoDoProjeto ?? args.assinatura.numeros.geometria)[args.formato] : null
+  const caixasArq = arq ? caixasMaximas(arq.definicao, arq.formato, DIMENSOES[args.formato], pisoArq!) : null
   const listasArq = arq ? papeisDeLista(arq.definicao) : null
   const preparar = (escalaMaximaDoPapel?: (p: Papel) => number | undefined) =>
     prepararBlocos({
@@ -275,7 +277,7 @@ export function medirCopy(args: {
     })
   // Com arquétipo, a MESMA escada da unidade do compor (`prepararNoArquetipo`).
   const noArquetipo = arq
-    ? prepararNoArquetipo({ arquetipo: arq.definicao, formato: arq.formato, canvas: DIMENSOES[args.formato], gap: args.assinatura.numeros.geometria[args.formato].gapEntreBlocos, preparar })
+    ? prepararNoArquetipo({ arquetipo: arq.definicao, formato: arq.formato, canvas: DIMENSOES[args.formato], geometria: pisoArq!, gap: args.assinatura.numeros.geometria[args.formato].gapEntreBlocos, preparar })
     : null
   const preparados = noArquetipo ? noArquetipo.preparados : preparar()
   // #8: o papel do liso pelas tintas DESTA preparação (a da assinatura recebida), a mesma conta do compor — sem preparar

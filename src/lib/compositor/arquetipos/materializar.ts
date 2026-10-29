@@ -74,6 +74,23 @@ export function zonaEfetiva(zona: Zona, canvas: { width: number; height: number 
   return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 }
 }
 
+/**
+ * A referência EFETIVA de um papel (opção A, 29/10/2026 — "o piso da marca vence"): a referência do catálogo recolhida
+ * para DENTRO da zona efetiva na horizontal quando o piso do projeto a corta por mais que a tolerância (Wine e Real com
+ * `margemH` 96 contra a referência do catálogo em x .085 = 91,8 px). A coluna do medidor (`caixasMaximas`) e o pouso
+ * (`materializarArquetipo`) usam a MESMA caixa, nos dois lados. Na vertical nada muda: o corte do piso é resgatado
+ * pela busca espacial (dy). Corte dentro da tolerância (91,8 contra o piso padrão 92) não recolhe nada — o padrão sai
+ * byte a byte igual. Zona que não alcança a referência devolve a referência intacta (a recusa de sempre).
+ */
+export function referenciaEfetiva(referencia: RetanguloPx, zona: RetanguloPx | null): RetanguloPx {
+  if (!zona) return referencia
+  const direita = referencia.x + referencia.width
+  const x0 = referencia.x < zona.x - TOLERANCIA_PX ? zona.x : referencia.x
+  const x1 = direita > zona.x + zona.width + TOLERANCIA_PX ? zona.x + zona.width : direita
+  if (x1 - x0 <= 0 || (x0 === referencia.x && x1 === direita)) return referencia
+  return { ...referencia, x: x0, width: x1 - x0 }
+}
+
 const dentro = (r: RetanguloPx, z: RetanguloPx) =>
   r.x >= z.x - TOLERANCIA_PX && r.y >= z.y - TOLERANCIA_PX && r.x + r.width <= z.x + z.width + TOLERANCIA_PX && r.y + r.height <= z.y + z.height + TOLERANCIA_PX
 
@@ -82,12 +99,14 @@ const dentro = (r: RetanguloPx, z: RetanguloPx) =>
  * medidor (a mesma no medir-copy e no compor), a altura é a capacidade
  * estrutural. A segunda voz (`headline2`) mede na caixa da manchete.
  */
-export function caixasMaximas(arquetipo: ArquetipoDeLayout, formato: FormatoDoArquetipo, canvas: { width: number; height: number }): Partial<Record<PapelDeTexto, { largura: number; altura: number }>> {
+export function caixasMaximas(arquetipo: ArquetipoDeLayout, formato: FormatoDoArquetipo, canvas: { width: number; height: number }, geometria?: GeometriaEfetiva): Partial<Record<PapelDeTexto, { largura: number; altura: number }>> {
   const saida: Partial<Record<PapelDeTexto, { largura: number; altura: number }>> = {}
   for (const [papel, pos] of Object.entries(arquetipo.formatos[formato].papeis)) {
     if (papel === 'logo' || !pos || !('referencia' in pos)) continue
     const r = emPx(pos.referencia, canvas)
-    saida[papel as PapelDeTexto] = { largura: Math.floor(r.width), altura: Math.floor(r.height) }
+    // Com a geometria do projeto, a coluna é a da referência EFETIVA (recolhida para dentro do piso); a altura é a do catálogo.
+    const e = geometria ? referenciaEfetiva(r, zonaEfetiva(pos.zona, canvas, geometria)) : r
+    saida[papel as PapelDeTexto] = { largura: Math.floor(e.width), altura: Math.floor(r.height) }
   }
   return saida
 }
@@ -103,7 +122,7 @@ export function referenciaDoPapel(
   const pos = arquetipo.formatos[formato].papeis[papel]
   if (!pos || !('referencia' in pos)) return null
   const z = zonaEfetiva(pos.zona, canvas, geometria)
-  return { referencia: arredondado(emPx(pos.referencia, canvas)), zonaEfetiva: z ? arredondado(z) : null }
+  return { referencia: arredondado(referenciaEfetiva(emPx(pos.referencia, canvas), z)), zonaEfetiva: z ? arredondado(z) : null }
 }
 
 export interface ProblemaDeMaterializacao {
@@ -179,8 +198,10 @@ export function materializarArquetipo(args: {
       logoAutomatica = true
       continue
     }
-    const referencia = emPx(pos.referencia, canvas)
     const zona = zonaEfetiva(pos.zona, canvas, geometria)
+    // A referência efetiva: a do catálogo, recolhida para dentro do piso na horizontal (opção A). A capacidade de
+    // altura (`excedeAlturaDaReferencia`) segue a do catálogo.
+    const referencia = referenciaEfetiva(emPx(pos.referencia, canvas), zona)
     const dy = args.deslocamentos?.[papel] ?? 0
     // Onde a caixa pousa: a referência transladada. As medidas (capacidade, contain) seguem as da referência.
     const y0 = referencia.y + dy
