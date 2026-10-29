@@ -12,6 +12,7 @@
 import 'dotenv/config'
 
 import { db } from '@/lib/db'
+import type { Prisma } from '../prisma/generated/client'
 import { GEOMETRIA_PADRAO } from '@/lib/compositor/geometria'
 
 const ALVO = {
@@ -46,7 +47,7 @@ async function main() {
     mudam++
     console.log(`#${p.id} ${p.name}:\n${linhas.join('\n')}`)
     if (gravar) {
-      await db.project.update({ where: { id: p.id }, data: { assinatura: { ...assinatura, geometria: nova } } })
+      await db.project.update({ where: { id: p.id }, data: { assinatura: { ...assinatura, geometria: nova } as Prisma.InputJsonValue } })
       console.log('  gravado')
     }
   }

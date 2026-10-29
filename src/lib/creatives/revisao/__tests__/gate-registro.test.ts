@@ -145,13 +145,13 @@ describe('H4/H5/H6 — validadeDoGate é fail-closed e nunca diz "vigente"', () 
       [{ formatoDoCompositor: 'feed' }, 'formatoDoCompositor'],
       [{ pageVersion: 'v1:ffffffffffffffffffff' }, 'pageVersion'],
       [{ copyVersion: 'c1:ffffffffffffffffffff' }, 'copyVersion'],
-      [{ rulesVersion: 'revisao-v2' }, 'rulesVersion'],
+      [{ rulesVersion: 'revisao-v9' }, 'rulesVersion'],
       [{ versaoDoGate: 'gate-v2' }, 'versaoDoGate'],
       [{ politica: { estimado: 'comprova', semAssuntoLocalizavel: 'nao-se-aplica' } }, 'politica'],
       [{ politica: { estimado: 'humano', semAssuntoLocalizavel: 'nao-se-aplica' } }, 'politica'], // a PROPOSTA antiga do CP5a: registro gravado com ela vira historico
     ]
     for (const [mudanca, divergencia] of casos) expect(validadeDoGate(r, atual(mudanca)), JSON.stringify(mudanca)).toEqual({ estado: 'historico', divergencias: [divergencia] })
-    expect(validadeDoGate(r, atual({ generationId: 'gen-2', rulesVersion: 'revisao-v2' }))).toEqual({ estado: 'historico', divergencias: ['vinculo', 'rulesVersion'] })
+    expect(validadeDoGate(r, atual({ generationId: 'gen-2', rulesVersion: 'revisao-v9' }))).toEqual({ estado: 'historico', divergencias: ['vinculo', 'rulesVersion'] })
     // O sentido que importa em produção (17/10/2026): registro GRAVADO com a política ANTIGA (a proposta do CP5a) lido pelo
     // leitor com a política EFETIVA → historico por `politica`, e só por ela.
     const antigo = decidirOk(PAGINA_LIMPA, { entrada: { ...entradaDa(PAGINA_LIMPA), politicaDoAssunto: POLITICA_DO_ASSUNTO_RECOMENDADA } }).registro
@@ -234,7 +234,7 @@ describe('H7 — lerGateDaArte em três estados, estrito, nunca lança, nunca ex
     }
     const anterior = valido()
     anterior.gate.versao = 'gate-v2'
-    expect(lerGateDaArte({ gateDaArte: anterior })).toMatchObject({ estado: 'invalido', versaoGravada: 'gate-v2', rulesVersionGravada: 'revisao-v1' })
+    expect(lerGateDaArte({ gateDaArte: anterior })).toMatchObject({ estado: 'invalido', versaoGravada: 'gate-v2', rulesVersionGravada: 'revisao-v2' })
     for (const versao of ['x'.repeat(200), '<script>', 'Gate-V3', ' gate-v3', '']) {
       const r = valido()
       r.gate.versao = versao

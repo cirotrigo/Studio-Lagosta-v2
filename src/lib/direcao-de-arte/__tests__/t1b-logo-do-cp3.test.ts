@@ -38,15 +38,19 @@ import { cenarioSintetico, fotoSintetica, logoSintetica, paginaSintetica, specSi
 const CENTRO = 'minimal-fb-centro-optico'
 const CLARO = '#F5F5F5'
 
-/** Logo 160×200 (razão 1,25): um bloco claro opaco no meio — em 500 px de largura, 625 de altura. */
+/**
+ * Logo 160×210 (razão 1,31): um bloco claro opaco no meio — em 500 px de largura, 656 de altura. Era 160×200 (625 de
+ * altura) até 29/10/2026: com a margem da casa no topo em 160 (era 188) a variante pousa 28 px mais alto e a de 625
+ * parava 2 px ANTES do spark (785 × 787) — a premissa do caso ("a variante alta alcançaria o spark") pede 656.
+ */
 async function logoAlta(tinta: string): Promise<Buffer> {
   const W = 160
-  const H = 200
+  const H = 210
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(tinta.slice(i, i + 2), 16))
   const px = Buffer.alloc(W * H * 4)
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const p = (y * W + x) * 4
-    const opaco = x > 20 && x < 140 && y > 20 && y < 180
+    const opaco = x > 20 && x < 140 && y > 20 && y < 190
     px[p] = r; px[p + 1] = g; px[p + 2] = b; px[p + 3] = opaco ? 255 : 0
   }
   return sharp(px, { raw: { width: W, height: H, channels: 4 } }).png().toBuffer()

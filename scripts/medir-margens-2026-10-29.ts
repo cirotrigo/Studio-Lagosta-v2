@@ -20,6 +20,7 @@ import { createServerTextBoxMeasurer } from '@/lib/creatives/server-text-measure
 import { foraDaAreaSegura, limitesDaAreaSegura, measureTextLayers } from '@/lib/creatives/text-geometry'
 import { foraDaInterface } from '@/lib/creatives/revisao/gate'
 import { formatoDaPaginaGravada } from '@/lib/compositor/formato'
+import type { Layer } from '@/types/template'
 
 /** As margens que o revisor conferia ATÉ 29/10 (eram `CANVAS_MARGIN` 70/120/100); só existem aqui, para a comparação. */
 const ANTES = { top: 120, bottom: 100, left: 70, right: 70 }
@@ -83,7 +84,7 @@ async function main() {
         await registerProjectFonts(l.projectId)
         fontesPorProjeto.add(l.projectId)
       }
-      const camadas = lerCamadas(page.layers).map((c) => (c.type === 'rich-text' ? ({ ...c, type: 'text', richTextStyles: undefined } as typeof c) : c))
+      const camadas = (lerCamadas(page.layers).camadas as unknown as Layer[]).map((c) => (c.type === 'rich-text' ? ({ ...c, type: 'text', richTextStyles: undefined } as Layer) : c))
       const canvas = { width: page.width, height: page.height }
       const formato = formatoDaPaginaGravada(page)
       const metricas = measureTextLayers(camadas, medir)

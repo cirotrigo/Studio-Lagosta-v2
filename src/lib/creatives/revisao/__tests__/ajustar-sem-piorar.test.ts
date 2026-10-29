@@ -50,7 +50,7 @@ const page = { id: 'p', name: 'Peça', width: 1080, height: 1920, tags: ['story'
 const cobertura = Object.fromEntries(
   ['fonte-nao-carregada', 'texto-cortado', 'tinta-fora-da-caixa', 'colisao', 'fora-da-area-segura', 'logo-sobre-texto', 'logo-sem-leitura', 'texto-sem-leitura', 'gradiente-forte-demais', 'titulo-grande', 'entrelinha-grande', 'texto-pequeno', 'palavra-orfa', 'texto-sobre-assunto', 'tratamento-piorou-leitura'].map((r) => [r, { estado: 'avaliada' }]),
 ) as RelatorioDaRevisao['cobertura']
-const relatorio: RelatorioDaRevisao = { versaoDasRegras: 'revisao-v1', achados: [], ajustes: [], cobertura: { ...cobertura, visao: { estado: 'nao-avaliada', motivo: 'sem visão' } }, resumo: 'sintético' }
+const relatorio: RelatorioDaRevisao = { versaoDasRegras: 'revisao-v2', achados: [], ajustes: [], cobertura: { ...cobertura, visao: { estado: 'nao-avaliada', motivo: 'sem visão' } }, resumo: 'sintético' }
 
 /** A leitura do serviço piora 0,15 por px subido: 10 px = 1,5 (dentro da tolerância 2 por passo), 30 px = 4,5 (fora). */
 const medidaSintetica = async (camadas: Layer[]): Promise<MedidaComparavel> => {

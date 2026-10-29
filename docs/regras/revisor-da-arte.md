@@ -1364,4 +1364,17 @@ de régua em `docs/research/canva-guias-e-margens-2026-10/teste-de-regua/` e pod
   quantas artes agendadas e dos últimos 30 dias mudam de aviso em `fora-da-area-segura` e de veredito no piso.
   Post com `laterPostId` é só contado — intocável. `foraDaAreaSegura(metricas, limites)` foi separado de
   `checkTextGeometry` para essa comparação.
+- 🔴 **`VERSAO_DAS_REGRAS` subiu para `revisao-v2` e `VERSAO_DO_GATE` para `gate-v5`** (a impressão digital das regras
+  mudou com os números): `revisao-revisao-v2.json` e `gate-gate-v5.json` gerados com `IMPRESSAO_DIGITAL=gravar`; os da
+  v1/v4 continuam imutáveis (`scripts/validar-impressao-digital.ts`). Consequência da decisão 9.13: **os registros de
+  gate gravados nas Generations com `gate-v4` passam a `invalido`** — a peça volta a ser revisada antes de agendar.
+- **Re-caracterização do piloto (ok do Ciro em 29/10)**: a v1 da fixture (Real, headline em y = 148, tinta ≈ 154) já
+  toca a margem de 160 do topo. `ACEITO_TOPO` dos testes do CP4 deixou de ser "subir 20" (piora a margem) e não pode
+  ser "descer 20" (piora o contraste do apoio, 122 → 112): é "8 px para a direita". Os casos de piso da fonte
+  (CP4.2a) descem o bloco 24 px antes, para a margem não decidir por eles. E2b: o revisor agora também acusa o apoio
+  no piso e propõe o `mover` (margem = piso). E5: a barreira que preserva o DRAFT passou a ser o CP4
+  (`fora-da-area-segura`), não o gate. t1b: a logo sintética "alta" cresceu de 625 para 656 px para seguir alcançando
+  o spark com o topo em 160. **P9 ficou `it.skip`**: o `mover` do serviço proposto pelo revisor tira a caixa da
+  janela fiel `servico-v1` da fixture; estender a janela exige regenerar a fixture a partir dos exports locais da
+  peça (não estão no repo — leitura em produção com o ok do Ciro).
 - **Quadrado não foi decidido**: continua 92/120/104 até o Ciro dizer.
