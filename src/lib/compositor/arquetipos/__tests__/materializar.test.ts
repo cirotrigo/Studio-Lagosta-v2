@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { NUMEROS_PADRAO } from '../../assinatura'
 import { DIMENSOES } from '../../spec'
 import { listarArquetipos, verArquetipo } from '../catalogo'
-import { caixasMaximas, excedeAlturaDaReferencia, materializarArquetipo, referenciaEfetiva, zonaEfetiva, type Materializacao, type ProblemaDeMaterializacao } from '../materializar'
+import { caixasMaximas, excedeAlturaDaReferencia, materializarArquetipo, referenciaDoPapel, referenciaEfetiva, zonaEfetiva, type Materializacao, type ProblemaDeMaterializacao } from '../materializar'
 import { materializarUnidades, unidadesDoArquetipo } from '../no-compositor'
 import { montarBloco } from '../../blocos'
 import type { BlocoPreparado } from '../../preparar-blocos'
@@ -149,6 +149,21 @@ describe('T1a · materialização', () => {
     const dir = referenciaEfetiva({ x: 799.2, y: 0, width: 189, height: 10 }, { x: 670, y: 0, width: 314, height: 10 })
     expect([dir.x, dir.y, dir.height]).toEqual([799.2, 0, 10])
     expect(dir.width).toBeCloseTo(184.8, 9)
+  })
+
+  it('17c. no piso padrão a referência de TODO papel (logo fixa incluída) é a do catálogo ao pixel, em todo o catálogo', () => {
+    // Pedido da revisão do Codex (29/10): a prova de posição, não só de coluna — nenhum x/largura é recolhido no padrão.
+    for (const a of listarArquetipos()) {
+      for (const f of ['story', 'feed'] as const) {
+        const canvas = DIMENSOES[f]
+        for (const [papel, pos] of Object.entries(a.formatos[f].papeis)) {
+          if (!pos || !('referencia' in pos)) continue
+          const r = pos.referencia
+          const esperada = { x: Math.round(r.x * canvas.width), y: Math.round(r.y * canvas.height), width: Math.round(r.w * canvas.width), height: Math.round(r.h * canvas.height) }
+          expect(referenciaDoPapel(a, f, canvas, geo(f), papel as 'logo' | 'headline')?.referencia, `${a.id}@${a.versao} ${f} ${papel}`).toEqual(esperada)
+        }
+      }
+    }
   })
 
   it('caixa maior que a capacidade da referência: recusa com a medida (sem esmagar fonte, sem empurrar)', () => {

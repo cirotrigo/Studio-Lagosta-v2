@@ -1516,7 +1516,14 @@ Registro do contrato já existente (lacuna apontada na revisão do preflight do 
   referência; e **o padrão** (`margemH` 92): 91,8 contra 92 está dentro da tolerância, nada é recolhido, e
   `caixasMaximas` sai byte a byte igual em todo o catálogo (teste 17b). Marcas com piso maior que 92 passam a compor
   4 px (ou mais) para dentro, com a coluna correspondentemente mais estreita — pode mudar quebra de linha.
-- **Recomposição:** a receita congelada da spec continua valendo; a referência efetiva é derivada do piso que a
-  assinatura devolve na hora, como a zona já era. Peça antiga de marca no padrão recompõe igual; de marca com piso
-  maior, nenhuma existe pelo motor (eram recusadas).
+- **Recomposição usa o piso ATUAL** (revisão do Codex, 29/10): a receita congelada da spec (id, versão, impressão,
+  corte e `dy`) continua valendo e nenhuma identidade muda — a impressão é da definição imutável, não da referência
+  materializada. A referência efetiva é derivada do piso que a assinatura devolve na hora, como a zona já era. Logo:
+  peça de marca no padrão (92) recompõe igual; peça composta com piso maior (há casos aceitos antes desta regra, ex.
+  modelos centrados como o centro-óptico, e as cópias de 28/10 feitas com o piso relaxado em memória) pode mudar a
+  posição horizontal e a quebra na recomposição, ou recusar, se o piso cadastrado mudou. Não há coordenadas
+  históricas congeladas na horizontal — a garantia é a receita, não o pixel.
+- **Fora desta regra:** acentos presos à PEÇA (ex. cantoneiras) seguem sujeitos à área segura e podem continuar
+  recusando com margem 96; `vaosDaLista` e `envoltoriosDoArquetipo` seguem derivados do catálogo (são folgas da
+  receita, não coluna). Esta fase recolhe só a referência dos papéis de texto e da logo fixa.
 - Controles em `arquetipos/__tests__/materializar.test.ts` (17 e 17b).
