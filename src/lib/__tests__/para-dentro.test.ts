@@ -118,3 +118,22 @@ describe('avisosDeMargem — avisa, nunca bloqueia', () => {
     expect(avisos[0].ajuste.dy).toBe(22)
   })
 })
+
+describe('avisosDeMargem — um clique resolve faixa E margem', () => {
+  it('Wine (marca topo 200 > faixa 188): a logo na faixa sai com o dy até a MARGEM (200), não só até a faixa', () => {
+    const WINE = { geometria: { story: { margemH: 96, safeTopo: 200, safeRodape: 150 } } }
+    const wine = margensDoEditor({ formato: 'story', assinatura: WINE, largura: 1080, altura: 1920 })
+    const avisos = avisosDeMargem([camada('logo', 'logo', 420, 150, 240, 100)], wine, 1920)
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0].tipo).toBe('interface')
+    expect(avisos[0].ajuste).toMatchObject({ dy: 52, dx: 0 }) // 200 − 150 = 50, +2 de folga; na faixa seria 40
+  })
+
+  it('Real (marca rodapé 350 > faixa 224): texto na faixa de baixo sobe até a margem da marca', () => {
+    const REAL = { geometria: { story: { margemH: 96, safeTopo: 250, safeRodape: 350 } } }
+    const real = margensDoEditor({ formato: 'story', assinatura: REAL, largura: 1080, altura: 1920 })
+    const avisos = avisosDeMargem([camada('t', 'text', 100, 1720, 500, 60)], real, 1920)
+    expect(avisos[0].tipo).toBe('interface')
+    expect(avisos[0].ajuste.dy).toBe(-(1780 - 1570 + 2)) // base 1780 contra a linha 1920 − 350 = 1570
+  })
+})

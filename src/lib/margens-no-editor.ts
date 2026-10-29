@@ -167,19 +167,18 @@ export interface AvisoDeMargem {
 export function avisosDeMargem(layers: Layer[], margens: MargensDoEditor, altura: number): AvisoDeMargem[] {
   const avisos: AvisoDeMargem[] = []
   for (const l of layers) {
-    if (l.visible === false) continue
+    if (l.visible === false || !VIGIADOS_NA_MARGEM.has(l.type)) continue
     const caixa = caixaDaCamada(l)
-    if (margens.interface && VIGIADOS_NA_FAIXA.has(l.type)) {
-      const a = ajusteParaDentro(caixa, limitesDaFaixa(caixa, margens.interface, altura))
-      if (a.lados.length > 0) {
-        avisos.push({ layerId: l.id, nome: l.name, tipo: 'interface', caixa, ajuste: a })
-        continue
-      }
-    }
-    if (VIGIADOS_NA_MARGEM.has(l.type)) {
-      const a = ajusteParaDentro(caixa, margens.marca)
-      if (a.lados.length > 0) avisos.push({ layerId: l.id, nome: l.name, tipo: 'margem', caixa, ajuste: a })
-    }
+    const naFaixa = margens.interface && VIGIADOS_NA_FAIXA.has(l.type) ? ajusteParaDentro(caixa, limitesDaFaixa(caixa, margens.interface, altura)) : null
+    // Texto e logo no Story respeitam a faixa E a margem: o ajuste é contra a mais apertada das duas em cada lado, para
+    // UM clique resolver as duas (na Wine, topo 200 da marca × 188 da faixa — sair da faixa ainda deixava fora da margem)
+    const lim =
+      naFaixa && margens.interface
+        ? { ...margens.marca, topo: Math.max(margens.marca.topo, margens.interface.topo), base: Math.min(margens.marca.base, altura - margens.interface.rodape) }
+        : margens.marca
+    const a = ajusteParaDentro(caixa, lim)
+    if (a.lados.length === 0) continue
+    avisos.push({ layerId: l.id, nome: l.name, tipo: naFaixa && naFaixa.lados.length > 0 ? 'interface' : 'margem', caixa, ajuste: a })
   }
   return avisos
 }
