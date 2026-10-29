@@ -28,6 +28,7 @@ import { useMargensDoEditor } from '@/hooks/use-margens-do-editor'
 import { useExibicaoDoEditor } from '@/hooks/use-exibicao-do-editor'
 import { useGuiasDaPagina } from '@/hooks/use-guias-da-pagina'
 import { useMultiPageOpcional } from '@/contexts/multi-page-context'
+import { useUser } from '@clerk/nextjs'
 import { paradasDasGuias, retangulosDasGuias } from '@/lib/guias-manuais'
 import { ReguasEGuias } from './reguas-e-guias'
 import { acaoDaTecla, alvoIgnoraAtalhos } from '@/lib/exibicao-do-editor'
@@ -112,7 +113,8 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
   const { exibicao, alternar } = useExibicaoDoEditor()
   // L4: as guias manuais desta página (por pessoa, localStorage); valem só com "Réguas e guias" ligado (Shift+R)
   const pageIdAtual = useMultiPageOpcional()?.currentPageId ?? null
-  const guiasManuais = useGuiasDaPagina(pageIdAtual)
+  const { user } = useUser()
+  const guiasManuais = useGuiasDaPagina(pageIdAtual, user?.id ?? null)
   const mostrarReguas = exibicao.reguas && !isMobile
   const [altSegurado, setAltSegurado] = React.useState(false)
   const snappingEnabled = exibicao.encaixe && !isMobile && !altSegurado
@@ -824,7 +826,7 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
 
       // Exibição (R, M, C sozinhas) e os centralizar no canvas (Shift+Alt+C / Shift+Alt+M, antes só anunciados)
       const acao = acaoDaTecla(event)
-      if (acao === 'margens' || acao === 'interface' || acao === 'bordas') {
+      if (acao === 'margens' || acao === 'interface' || acao === 'bordas' || acao === 'reguas') {
         alternar(acao)
         return
       }
@@ -1399,11 +1401,17 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
     if (embedded || !mostrarReguas) return
     const stage = stageRef.current
     if (!stage) return
-    const ler = () => setOrigemClassica({ left: stage.x(), top: stage.y() })
+    // O overlay é irmão do container do stage dentro do wrapper `relative` (não um wrapper novo: o ResizeObserver do
+    // clássico observa o pai do container e um wrapper do tamanho do stage faria o stage medir a si mesmo — Codex R1)
+    const container = stage.container()
+    const ler = () => setOrigemClassica({ left: container.offsetLeft + stage.x(), top: container.offsetTop + stage.y() })
     ler()
     stage.on('xChange.reguas yChange.reguas scaleXChange.reguas', ler)
+    const observador = new ResizeObserver(() => requestAnimationFrame(ler))
+    observador.observe(container)
     return () => {
       stage.off('xChange.reguas yChange.reguas scaleXChange.reguas')
+      observador.disconnect()
     }
   }, [embedded, mostrarReguas, zoom])
   const reguasEGuias =
@@ -1449,10 +1457,8 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
     >
       <div className={`relative flex ${isMobile ? 'justify-start' : 'justify-center'} min-h-full`}>
         {chipDeAvisos}
-        <div className="relative">
-          {stageElement}
-          {reguasEGuias}
-        </div>
+        {stageElement}
+        {reguasEGuias}
       </div>
     </div>
   )

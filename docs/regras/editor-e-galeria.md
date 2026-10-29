@@ -1164,6 +1164,12 @@ Quinto checkpoint da instrução de 29/10 (P1). Pesquisa do Canva em `docs/resea
 - **Encaixe**: `retangulosDasGuias` entra no `otherRects` do arrasto e `paradasDasGuias` nas paradas do resize
   (prop `guias` do transformer), só com "Réguas e guias" ligado (Shift+R, no menu Exibir; `reguas` na preferência,
   padrão desligado). Mobile não mostra réguas.
+- **Ajustes da revisão R1 do Codex**: a chave é por PESSOA (id do Clerk) e por página — duas contas no mesmo
+  navegador não dividem guias; sem página ou sem pessoa nada é gravado; toda guia que entra por "Adicionar" ganha id
+  único (`acrescentarGuias`; o id de `gerarGuias` vinha da posição e repetia depois de mover); `pointercancel` e
+  `blur` cancelam o arrasto e só o `pointerId` do gesto conta; teto de 24 colunas/linhas e finitude antes da conta; no
+  modo clássico o overlay é IRMÃO do container do stage (um wrapper novo fazia o `ResizeObserver` do stage medir a si
+  mesmo) e a origem é `container.offsetLeft/Top + stage.position()`.
 - **Não feito**: guias gravadas na página para a equipe (migração — perguntar antes); guia que vai e volta ao mudar o
   tamanho da página (as posições são absolutas em px).
 - **Prova:** `src/lib/__tests__/guias-manuais.test.ts` (leitura; gerar 2 colunas/3 linhas no Story dentro da margem;

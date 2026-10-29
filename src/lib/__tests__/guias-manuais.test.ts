@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 
 import { margensDoEditor } from '@/lib/canvas-margin'
 import { computeAlignmentGuides, DEFAULT_SNAP_CONFIG } from '@/lib/konva-smart-guides'
-import { cairForaDaPagina, chaveDasGuias, gerarGuias, GUIAS_VAZIAS, lerGuias, marcasDaRegua, paradasDasGuias, retangulosDasGuias } from '@/lib/guias-manuais'
+import { acrescentarGuias, cairForaDaPagina, chaveDasGuias, gerarGuias, GUIAS_VAZIAS, lerGuias, marcasDaRegua, MAX_COLUNAS, paradasDasGuias, retangulosDasGuias } from '@/lib/guias-manuais'
 
 const story = margensDoEditor({ formato: 'story', assinatura: null, largura: 1080, altura: 1920 })
 
@@ -22,7 +22,7 @@ describe('lerGuias', () => {
       ocultas: false,
       travadas: true,
     })
-    expect(chaveDasGuias('p1')).toBe('lagosta:editor:guias:p1')
+    expect(chaveDasGuias('user_1', 'p1')).toBe('lagosta:editor:guias:user_1:p1') // por pessoa E por página
   })
 })
 
@@ -78,5 +78,23 @@ describe('encaixe e réguas', () => {
     expect(m[2]).toEqual({ posicao: 100, maior: true })
     expect(m[m.length - 1].posicao).toBe(1050)
     expect(marcasDaRegua(1080, 0.2).map((x) => x.posicao)).toEqual([0, 200, 400, 600, 800, 1000])
+  })
+})
+
+describe('ajustes da revisão R1', () => {
+  it('acrescentarGuias: posição ocupada não entra e toda guia nova ganha id único (gerar, mover, gerar de novo)', () => {
+    const marca = story.marca
+    const primeiras = acrescentarGuias([], gerarGuias({ colunas: 2, linhas: 0, espacamento: 40, marca }))
+    const movidas = primeiras.map((g, i) => (i === 0 ? { ...g, posicao: 150 } : g))
+    const depois = acrescentarGuias(movidas, gerarGuias({ colunas: 2, linhas: 0, espacamento: 40, marca }))
+    expect(depois.map((g) => g.posicao)).toEqual([150, 520, 560, 988, 92])
+    expect(new Set(depois.map((g) => g.id)).size).toBe(depois.length)
+    expect(acrescentarGuias(primeiras, gerarGuias({ colunas: 2, linhas: 0, espacamento: 40, marca }))).toHaveLength(4)
+  })
+
+  it('gerarGuias: colunas acima do teto, NaN e Infinity não travam a prévia', () => {
+    // sem espaçamento as colunas vizinhas dividem a borda: 24 colunas = 25 posições únicas
+    expect(gerarGuias({ colunas: 1e9, linhas: 0, espacamento: 0, marca: story.marca }).length).toBe(MAX_COLUNAS + 1)
+    expect(gerarGuias({ colunas: NaN, linhas: Infinity, espacamento: NaN, marca: story.marca })).toEqual([])
   })
 })

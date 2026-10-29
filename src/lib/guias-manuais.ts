@@ -23,7 +23,11 @@ export interface GuiasDaPagina {
 
 export const GUIAS_VAZIAS: GuiasDaPagina = { guias: [], ocultas: false, travadas: false }
 
-export const chaveDasGuias = (pageId: string): string => `lagosta:editor:guias:${pageId}`
+/** Por PESSOA (a conta, não o navegador — duas contas no mesmo perfil não dividem guias) e por página. */
+export const chaveDasGuias = (pessoaId: string, pageId: string): string => `lagosta:editor:guias:${pessoaId}:${pageId}`
+
+/** O teto de colunas/linhas de "Adicionar guias": acima disso é lixo, não grade (e travava a prévia). */
+export const MAX_COLUNAS = 24
 
 /** O JSON gravado → o estado; guia sem número finito ou sem orientação válida é descartada, o resto fica. */
 export function lerGuias(json: string | null | undefined): GuiasDaPagina {
@@ -61,9 +65,9 @@ export function cairForaDaPagina(posicao: number, comprimento: number): boolean 
  * saem uma vez. `colunas`/`linhas` = 0 não gera nada naquele eixo; espaçamento negativo vira 0.
  */
 export function gerarGuias(args: { colunas: number; linhas: number; espacamento: number; marca: LinhasDaMarca }): Guia[] {
-  const esp = Math.max(0, args.espacamento || 0)
+  const esp = Number.isFinite(args.espacamento) ? Math.max(0, args.espacamento) : 0
   const eixo = (n: number, inicio: number, fim: number): number[] => {
-    const qtd = Math.max(0, Math.floor(n))
+    const qtd = Number.isFinite(n) ? Math.min(MAX_COLUNAS, Math.max(0, Math.floor(n))) : 0
     if (qtd === 0) return []
     const util = fim - inicio - esp * (qtd - 1)
     if (util <= 0) return []
@@ -114,4 +118,20 @@ export function marcasDaRegua(comprimento: number, zoom: number): Array<{ posica
   const marcas: Array<{ posicao: number; maior: boolean }> = []
   for (let p = 0; p <= comprimento; p += passo) marcas.push({ posicao: p, maior: p % (passo * 2) === 0 || passo >= 100 })
   return marcas
+}
+
+/**
+ * Junta guias novas às da página: posição já ocupada (mesma orientação) não entra, e TODA guia que entra ganha id
+ * novo — o id de `gerarGuias` vem da posição original e repetiria depois de a pessoa mover a guia (Codex R1 do L4).
+ */
+export function acrescentarGuias(atuais: Guia[], novas: Guia[]): Guia[] {
+  const ocupadas = new Set(atuais.map((g) => `${g.orientacao}:${g.posicao}`))
+  const entram: Guia[] = []
+  for (const g of novas) {
+    const chave = `${g.orientacao}:${g.posicao}`
+    if (ocupadas.has(chave)) continue
+    ocupadas.add(chave)
+    entram.push({ ...g, id: novoIdDeGuia() })
+  }
+  return [...atuais, ...entram]
 }

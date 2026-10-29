@@ -9,7 +9,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import type { LinhasDaMarca } from '@/lib/canvas-margin'
-import { cairForaDaPagina, gerarGuias, marcasDaRegua, type Guia } from '@/lib/guias-manuais'
+import { cairForaDaPagina, gerarGuias, marcasDaRegua, MAX_COLUNAS, type Guia } from '@/lib/guias-manuais'
 import type { GuiasApi } from '@/hooks/use-guias-da-pagina'
 import type { RectInfo } from '@/lib/konva-smart-guides'
 
@@ -29,7 +29,7 @@ interface Props {
   api: GuiasApi
 }
 
-type Arrasto = { id: string | null; orientacao: Guia['orientacao']; posicao: number; tela: { x: number; y: number } }
+type Arrasto = { id: string | null; orientacao: Guia['orientacao']; posicao: number; tela: { x: number; y: number }; pointerId: number }
 
 /**
  * Réguas em px do design e guias manuais (L4 das linhas-guia, 29/10/2026), em HTML por cima do stage — fora da
@@ -61,7 +61,7 @@ export function ReguasEGuias({ largura, altura, zoom, origem, marca, selecao, ap
       e.preventDefault()
       e.stopPropagation()
       const p = noDesign(e.clientX, e.clientY)
-      setArrasto({ id, orientacao, posicao: orientacao === 'vertical' ? p.x : p.y, tela: { x: e.clientX, y: e.clientY } })
+      setArrasto({ id, orientacao, posicao: orientacao === 'vertical' ? p.x : p.y, tela: { x: e.clientX, y: e.clientY }, pointerId: e.pointerId })
     },
     [estado.travadas, noDesign],
   )
@@ -69,10 +69,15 @@ export function ReguasEGuias({ largura, altura, zoom, origem, marca, selecao, ap
   React.useEffect(() => {
     if (!arrasto) return
     const mover = (e: PointerEvent) => {
+      if (e.pointerId !== arrasto.pointerId) return
       const p = noDesign(e.clientX, e.clientY)
       setArrasto((a) => (a ? { ...a, posicao: a.orientacao === 'vertical' ? p.x : p.y, tela: { x: e.clientX, y: e.clientY } } : a))
     }
+    // O navegador pode cancelar o ponteiro (pointercancel) ou a janela perder o foco sem entregar o pointerup: o
+    // gesto termina sem gravar nada (Codex R1 do L4)
+    const cancelar = () => setArrasto(null)
     const soltar = (e: PointerEvent) => {
+      if (e.pointerId !== arrasto.pointerId) return
       const p = noDesign(e.clientX, e.clientY)
       const posicao = arrasto.orientacao === 'vertical' ? p.x : p.y
       const comprimento = arrasto.orientacao === 'vertical' ? largura : altura
@@ -83,10 +88,14 @@ export function ReguasEGuias({ largura, altura, zoom, origem, marca, selecao, ap
       setArrasto(null)
     }
     window.addEventListener('pointermove', mover)
-    window.addEventListener('pointerup', soltar, { once: true })
+    window.addEventListener('pointerup', soltar)
+    window.addEventListener('pointercancel', cancelar)
+    window.addEventListener('blur', cancelar)
     return () => {
       window.removeEventListener('pointermove', mover)
       window.removeEventListener('pointerup', soltar)
+      window.removeEventListener('pointercancel', cancelar)
+      window.removeEventListener('blur', cancelar)
     }
   }, [arrasto, noDesign, largura, altura, api])
 
@@ -241,7 +250,7 @@ function DialogoAdicionarGuias({ aberto, aoFechar, marca, aoAdicionar }: { abert
   const [linhas, setLinhas] = React.useState(0)
   const [espacamento, setEspacamento] = React.useState(24)
   const previa = React.useMemo(() => gerarGuias({ colunas, linhas, espacamento, marca }), [colunas, linhas, espacamento, marca])
-  const num = (v: string, min = 0) => Math.max(min, Math.floor(Number(v) || 0))
+  const num = (v: string, max = MAX_COLUNAS) => Math.min(max, Math.max(0, Math.floor(Number(v) || 0)))
   return (
     <Dialog open={aberto} onOpenChange={(o) => !o && aoFechar()}>
       <DialogContent className="pointer-events-auto sm:max-w-sm">
@@ -252,15 +261,15 @@ function DialogoAdicionarGuias({ aberto, aoFechar, marca, aoAdicionar }: { abert
         <div className="grid grid-cols-3 gap-3">
           <div className="space-y-1">
             <Label htmlFor="guias-colunas">Colunas</Label>
-            <Input id="guias-colunas" type="number" min={0} max={24} value={colunas} onChange={(e) => setColunas(num(e.target.value))} />
+            <Input id="guias-colunas" type="number" min={0} max={MAX_COLUNAS} value={colunas} onChange={(e) => setColunas(num(e.target.value))} />
           </div>
           <div className="space-y-1">
             <Label htmlFor="guias-linhas">Linhas</Label>
-            <Input id="guias-linhas" type="number" min={0} max={24} value={linhas} onChange={(e) => setLinhas(num(e.target.value))} />
+            <Input id="guias-linhas" type="number" min={0} max={MAX_COLUNAS} value={linhas} onChange={(e) => setLinhas(num(e.target.value))} />
           </div>
           <div className="space-y-1">
             <Label htmlFor="guias-espacamento">Espaçamento</Label>
-            <Input id="guias-espacamento" type="number" min={0} value={espacamento} onChange={(e) => setEspacamento(num(e.target.value))} />
+            <Input id="guias-espacamento" type="number" min={0} max={2000} value={espacamento} onChange={(e) => setEspacamento(num(e.target.value, 2000))} />
           </div>
         </div>
         <p className="text-xs text-muted-foreground">
