@@ -6,7 +6,7 @@
  * (`NUMEROS_PADRAO.geometria` + `DIMENSOES`), lido daqui, nunca copiado. Ela
  * RECORTA a zona na materialização, e o validador confere que o recorte ainda
  * comporta a caixa — mudar o piso global não invalida uma versão publicada
- * enquanto ela couber. (O autofix confere o `CANVAS_MARGIN`, mais frouxo em
+ * enquanto ela couber. (O autofix confere a `MARGEM_LEGADA_DO_REVISOR`, mais frouxa em
  * todos os lados: quem passa aqui passa lá. A geometria efetiva de cada
  * projeto, que a assinatura pode sobrescrever, é do T1a.)
  */

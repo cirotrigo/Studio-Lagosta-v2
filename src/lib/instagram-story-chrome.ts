@@ -35,7 +35,7 @@ export const STORY_REFERENCE_WIDTH = 1080
 export const STORY_REFERENCE_HEIGHT = 1920
 
 /** Distância das bordas laterais. O chrome do Instagram encosta bem mais na
- *  borda que o conteúdo (70px), e é isso mesmo: ele só ocupa a faixa externa. */
+ *  borda que o conteúdo (92px), e é isso mesmo: ele só ocupa a faixa externa. */
 const EDGE = 28
 
 export type StoryChrome = ReturnType<typeof buildStoryChrome>

@@ -28,7 +28,7 @@
 import type { Layer } from '@/types/template'
 import { temTextoVisivel } from './texto-visivel'
 import { TEXT_DRAW_PADDING, type TextGeometryIssue, type TextLayerMetrics } from '@/lib/creatives/text-geometry'
-import { CANVAS_MARGIN } from '@/lib/canvas-margin'
+import { MARGEM_LEGADA_DO_REVISOR } from '@/lib/canvas-margin'
 import { textosForaDaPiora, tratamentosQuePioraramALeitura, type ContrasteMedido, type PioraDeTratamento } from '@/lib/compositor/regua'
 import { papelDaCamada } from '@/lib/compositor/defasagem'
 import { alcanceDoGrupo, alturaDaFaixa, bordaDoGrupo, ehGradienteDeLeitura, forcaDaCamada, GRADIENTE_PADRAO, type Borda } from '@/lib/compositor/gradiente-de-leitura'
@@ -379,10 +379,10 @@ function expandir(r: Rect, d: number): Rect {
 export function limitesDoEditor(canvas: { width: number; height: number }) {
   const s = canvas.width / 1080
   return {
-    topo: CANVAS_MARGIN.top * s,
-    base: canvas.height - CANVAS_MARGIN.bottom * s,
-    esquerda: CANVAS_MARGIN.left * s,
-    direita: canvas.width - CANVAS_MARGIN.right * s,
+    topo: MARGEM_LEGADA_DO_REVISOR.top * s,
+    base: canvas.height - MARGEM_LEGADA_DO_REVISOR.bottom * s,
+    esquerda: MARGEM_LEGADA_DO_REVISOR.left * s,
+    direita: canvas.width - MARGEM_LEGADA_DO_REVISOR.right * s,
   }
 }
 

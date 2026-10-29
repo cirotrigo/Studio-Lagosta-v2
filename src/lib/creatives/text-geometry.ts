@@ -5,7 +5,7 @@
  * RenderEngine.measureTextLayerBox) e aponta:
  *  - overflow: o texto não cabe na caixa gravada (altura ou largura);
  *  - colisão: os GLIFOS de duas camadas de texto se sobrepõem;
- *  - fora-da-area-segura: texto invade as margens do story (CANVAS_MARGIN,
+ *  - fora-da-area-segura: texto invade as margens do story (MARGEM_LEGADA_DO_REVISOR, 70/120/100 até o L5;
  *    as guias azuis do editor).
  *
  * Duas sutilezas aprendidas no repro do By Rock (template 140, Layout 2):
@@ -21,7 +21,7 @@
  * As fontes do projeto PRECISAM estar registradas antes de medir.
  */
 import type { Layer } from '@/types/template'
-import { CANVAS_MARGIN } from '@/lib/canvas-margin'
+import { MARGEM_LEGADA_DO_REVISOR } from '@/lib/canvas-margin'
 
 export type MeasureTextBox = (layer: Layer) => {
   height: number
@@ -224,10 +224,10 @@ export function checkTextGeometry(
   //    layout, não defeito.
   const escala = canvas.width / 1080
   const limites = {
-    top: CANVAS_MARGIN.top * escala,
-    bottom: canvas.height - CANVAS_MARGIN.bottom * escala,
-    left: CANVAS_MARGIN.left * escala,
-    right: canvas.width - CANVAS_MARGIN.right * escala,
+    top: MARGEM_LEGADA_DO_REVISOR.top * escala,
+    bottom: canvas.height - MARGEM_LEGADA_DO_REVISOR.bottom * escala,
+    left: MARGEM_LEGADA_DO_REVISOR.left * escala,
+    right: canvas.width - MARGEM_LEGADA_DO_REVISOR.right * escala,
   }
   for (const m of metricas) {
     const excessos: string[] = []

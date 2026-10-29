@@ -258,8 +258,8 @@ export type AlignMode = 'start' | 'center' | 'end'
  *
  * As bordas são as **guias azuis** (`CANVAS_MARGIN`), não a borda da página:
  * é onde o conteúdo deve parar para não ser cortado pela interface do
- * Instagram. No eixo vertical as margens são assimétricas (120 no topo, 100 na
- * base), então `start` e `end` usam valores diferentes — já `center` continua
+ * Instagram. No eixo vertical as margens são assimétricas (padrão 188 no topo,
+ * 224 na base), então `start` e `end` usam valores diferentes — já `center` continua
  * sendo o centro da PÁGINA, não o centro da área útil: centralizar é uma
  * relação com a arte inteira, e deslocar por causa da margem surpreenderia.
  *
