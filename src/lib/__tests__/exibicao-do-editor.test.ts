@@ -8,14 +8,14 @@ import { acaoDaTecla, alvoIgnoraAtalhos, CHAVE_DA_EXIBICAO, EXIBICAO_PADRAO, ler
 
 describe('lerExibicao', () => {
   it('sem nada gravado vale o padrão: margens e interface ligadas, bordas desligadas, encaixe ligado', () => {
-    expect(lerExibicao(null)).toEqual({ margens: true, interface: true, bordas: false, encaixe: true })
+    expect(lerExibicao(null)).toEqual({ margens: true, interface: true, bordas: false, encaixe: true, reguas: false })
     expect(lerExibicao(undefined)).toEqual(EXIBICAO_PADRAO)
     expect(lerExibicao(null)).not.toBe(EXIBICAO_PADRAO) // cópia, nunca o objeto compartilhado
   })
 
   it('gravação parcial ou com lixo: cada chave cai no padrão sozinha', () => {
-    expect(lerExibicao(JSON.stringify({ margens: false }))).toEqual({ margens: false, interface: true, bordas: false, encaixe: true })
-    expect(lerExibicao(JSON.stringify({ margens: 'não', bordas: true, encaixe: 0, extra: 1 }))).toEqual({ margens: true, interface: true, bordas: true, encaixe: true })
+    expect(lerExibicao(JSON.stringify({ margens: false }))).toEqual({ margens: false, interface: true, bordas: false, encaixe: true, reguas: false })
+    expect(lerExibicao(JSON.stringify({ margens: 'não', bordas: true, encaixe: 0, extra: 1, reguas: true }))).toEqual({ margens: true, interface: true, bordas: true, encaixe: true, reguas: true })
     expect(lerExibicao('{lixo')).toEqual(EXIBICAO_PADRAO)
     expect(lerExibicao('7')).toEqual(EXIBICAO_PADRAO)
     expect(lerExibicao('null')).toEqual(EXIBICAO_PADRAO)
@@ -50,8 +50,9 @@ describe('acaoDaTecla', () => {
     expect(acaoDaTecla({ key: 'ç', code: 'KeyC', altKey: true })).toBeNull() // só Alt, sem Shift: nada
   })
 
-  it('Shift sozinho ou Alt sozinho com R/M/C não alterna nada', () => {
-    expect(acaoDaTecla({ key: 'R', shiftKey: true })).toBeNull()
+  it('Shift+R liga as réguas e guias (L4); Shift com outra letra ou Alt sozinho não alterna nada', () => {
+    expect(acaoDaTecla({ key: 'R', code: 'KeyR', shiftKey: true })).toBe('reguas')
+    expect(acaoDaTecla({ key: 'M', shiftKey: true })).toBeNull()
     expect(acaoDaTecla({ key: 'm', altKey: true, code: 'KeyM' })).toBeNull()
     expect(acaoDaTecla({ key: 'x', code: 'KeyX', shiftKey: true, altKey: true })).toBeNull()
   })

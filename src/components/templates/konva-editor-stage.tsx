@@ -26,6 +26,10 @@ import {
 import { avisosDeMargem, caixaDaSelecao, faixasDaInterface, linhasDaMarca, retangulosDeEncaixe, retangulosDosOutros, type AvisoDeMargem } from '@/lib/margens-no-editor'
 import { useMargensDoEditor } from '@/hooks/use-margens-do-editor'
 import { useExibicaoDoEditor } from '@/hooks/use-exibicao-do-editor'
+import { useGuiasDaPagina } from '@/hooks/use-guias-da-pagina'
+import { useMultiPageOpcional } from '@/contexts/multi-page-context'
+import { paradasDasGuias, retangulosDasGuias } from '@/lib/guias-manuais'
+import { ReguasEGuias } from './reguas-e-guias'
 import { acaoDaTecla, alvoIgnoraAtalhos } from '@/lib/exibicao-do-editor'
 import { decidirSelecaoPorGesto, type FaseDoGesto, type GestoDeSelecao } from '@/lib/selecao-por-gesto'
 import { ehIconeDeTexto } from '@/lib/font-combinations-icones'
@@ -106,6 +110,10 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
   // salva e viva acima das páginas (`ExibicaoDoEditorProvider`) — com `useState` aqui, no modo contínuo cada troca de
   // página voltava tudo ao padrão. Alt segurado desliga o encaixe só enquanto a tecla está presa; mobile não encaixa.
   const { exibicao, alternar } = useExibicaoDoEditor()
+  // L4: as guias manuais desta página (por pessoa, localStorage); valem só com "Réguas e guias" ligado (Shift+R)
+  const pageIdAtual = useMultiPageOpcional()?.currentPageId ?? null
+  const guiasManuais = useGuiasDaPagina(pageIdAtual)
+  const mostrarReguas = exibicao.reguas && !isMobile
   const [altSegurado, setAltSegurado] = React.useState(false)
   const snappingEnabled = exibicao.encaixe && !isMobile && !altSegurado
   const showMarginGuides = exibicao.margens
@@ -693,6 +701,10 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
       if (showMarginGuides) {
         otherRects.push(...retangulosDeEncaixe(margens.marca, canvasWidth, canvasHeight))
       }
+      // L4: as guias manuais também encaixam (visíveis e não ocultas)
+      if (mostrarReguas) {
+        otherRects.push(...retangulosDasGuias(guiasManuais.estado, canvasWidth, canvasHeight))
+      }
 
       // Usar a biblioteca otimizada de smart guides com configuração ativa.
       // Threshold é em pixels de TELA: em zoom baixo o valor bruto (5px do
@@ -746,7 +758,7 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
 
       setGuides(nextGuides)
     },
-    [canvasHeight, canvasWidth, design.layers, snapConfig, snappingEnabled, showMarginGuides, selectedLayerIds, zoom, arrasteDaGrade, margens.marca],
+    [canvasHeight, canvasWidth, design.layers, snapConfig, snappingEnabled, showMarginGuides, selectedLayerIds, zoom, arrasteDaGrade, margens.marca, mostrarReguas, guiasManuais.estado],
   )
 
   const handleLayerDragEnd = React.useCallback((layer: Layer) => {
@@ -1199,6 +1211,7 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
               snapEnabled={snappingEnabled}
               snapToMargins={showMarginGuides}
               margens={margens.marca}
+              guias={mostrarReguas ? paradasDasGuias(guiasManuais.estado) : undefined}
               onSnapGuides={setGuides}
             />
             <KonvaGradientHandles stageRef={stageRef} />
@@ -1380,6 +1393,32 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
         </Stage>
   )
 
+  // L4: onde a página começa na tela, relativo ao pai do stage — no clássico é stage.position() (muda com zoom e pan)
+  const [origemClassica, setOrigemClassica] = React.useState({ left: 0, top: 0 })
+  React.useEffect(() => {
+    if (embedded || !mostrarReguas) return
+    const stage = stageRef.current
+    if (!stage) return
+    const ler = () => setOrigemClassica({ left: stage.x(), top: stage.y() })
+    ler()
+    stage.on('xChange.reguas yChange.reguas scaleXChange.reguas', ler)
+    return () => {
+      stage.off('xChange.reguas yChange.reguas scaleXChange.reguas')
+    }
+  }, [embedded, mostrarReguas, zoom])
+  const reguasEGuias =
+    mostrarReguas && !croppingLayerId ? (
+      <ReguasEGuias
+        largura={canvasWidth}
+        altura={canvasHeight}
+        zoom={zoom}
+        origem={embedded ? { left: 0, top: 0 } : origemClassica}
+        marca={margens.marca}
+        selecao={caixaDaSelecao(design.layers, selectedLayerIds)}
+        api={guiasManuais}
+      />
+    ) : null
+
   const chipDeAvisos = avisos.length > 0 && !croppingLayerId ? (
     <AvisosForaDaMargem avisos={avisos} selecionadas={selectedLayerIds} aoTrazer={trazerParaDentro} />
   ) : null
@@ -1388,6 +1427,7 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
     return (
       <div className="relative" style={{ width: scaledWidth, height: scaledHeight }}>
         {chipDeAvisos}
+        {reguasEGuias}
         {cropMargin ? (
           // O slot da coluna mantém o tamanho da página: a área extra do stage
           // transborda por cima do resto do workspace, em vez de empurrar as
@@ -1409,7 +1449,10 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
     >
       <div className={`relative flex ${isMobile ? 'justify-start' : 'justify-center'} min-h-full`}>
         {chipDeAvisos}
-        {stageElement}
+        <div className="relative">
+          {stageElement}
+          {reguasEGuias}
+        </div>
       </div>
     </div>
   )
