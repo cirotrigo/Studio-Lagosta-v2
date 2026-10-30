@@ -1403,4 +1403,4 @@ de régua em `docs/research/canva-guias-e-margens-2026-10/teste-de-regua/` e pod
   olho (balcão e um frasco, nenhum rosto). A área das janelas foi de 18,2 % para 20,0 % da foto e o teto do guarda de
   anonimização (`piloto-fixture.test.ts`) subiu de 19 % para 21 %. P9 voltou a `it()` e passa (41 verdes no
   `piloto-ciclo`; o pulado restante é o `hojeViola` do CP2). `piloto-fixture`, `piloto-compositor` e `piloto-portao` verdes.
-- **Quadrado não foi decidido**: continua 92/120/104 até o Ciro dizer.
+- **Quadrado decidido em 29/10 (Ciro no chat: "Manter 92/120/104")**: fica como está em `GEOMETRIA_PADRAO.quadrado`; nenhum projeto tem geometria própria de quadrado reconciliada, e a reconciliação de 29/10 não o tocou de propósito.
