@@ -253,6 +253,25 @@ describe('CP2B · resgate da referência (a referência é preferência, não ob
     expect(f.semPosicao?.motivo).toMatch(/nenhuma posição vertical/)
   })
 
+  it('A-I2 (29/10/2026): caixa arredondada 1 px além da zona arredondada é folga do arredondamento, não estouro — a referência fica', () => {
+    // O caso real: logo de 94,5 px em x 893,7 (direita 988,2) contra a zona até 988,2 → inteiros 894 + 95 = 989 vs 988.
+    const logo = { zonaEfetiva: { x: 756, y: 132, width: 232, height: 138 }, posicao: { x: 894, y: 142, width: 95, height: 47 } }
+    const [f] = candidatosDasFaixas({ arquetipo: TOPO, formato: 'feed', papeis: { logo }, ornamentos: {} })
+    expect(f.semPosicao).toBeUndefined()
+    expect(f.candidatos[0]).toEqual({ rotulo: 'referencia', dy: 0 })
+    // 2 px além ainda é arredondamento (quatro parcelas de até ½ px na direita); 3 px é estouro, sem candidatos.
+    const [g2] = candidatosDasFaixas({ arquetipo: TOPO, formato: 'feed', papeis: { logo: { ...logo, posicao: { ...logo.posicao, width: 96 } } }, ornamentos: {} })
+    expect(g2.semPosicao).toBeUndefined()
+    const [g] = candidatosDasFaixas({ arquetipo: TOPO, formato: 'feed', papeis: { logo: { ...logo, posicao: { ...logo.posicao, width: 97 } } }, ornamentos: {} })
+    expect(g.candidatos).toEqual([])
+    expect(g.semPosicao?.motivo).toMatch(/x 894–991.*horizontal.*x 756–988/)
+    // À esquerda só o x erra (½ px de cada lado): 1 px aquém da zona é folga, 2 px é estouro.
+    const [h1] = candidatosDasFaixas({ arquetipo: TOPO, formato: 'feed', papeis: { logo: { ...logo, posicao: { ...logo.posicao, x: 755, width: 94 } } }, ornamentos: {} })
+    expect(h1.semPosicao).toBeUndefined()
+    const [h2] = candidatosDasFaixas({ arquetipo: TOPO, formato: 'feed', papeis: { logo: { ...logo, posicao: { ...logo.posicao, x: 754, width: 94 } } }, ornamentos: {} })
+    expect(h2.semPosicao?.motivo).toMatch(/horizontal/)
+  })
+
   it('caixa que passa da zona na HORIZONTAL: nenhum dy conserta — sem candidatos', () => {
     const [f] = candidatosDasFaixas({ arquetipo: TOPO, formato: 'story', papeis: { headline: papel([188, 639], [298, 200], [92, 700]) }, ornamentos: { headline: { esquerda: 30, direita: 0, topo: 0, base: 0 } } })
     expect(f.candidatos).toEqual([])

@@ -36,8 +36,19 @@ type Ornamentos = { esquerda: number; direita: number; topo: number; base: numbe
  */
 const FOLGA_DO_TOPO = 0.5
 const FOLGA_DA_BASE = 1.5
-/** A tolerância da materialização (½ px), na conferência horizontal. */
+/**
+ * A tolerância da materialização (½ px) na conferência horizontal, MAIS a folga do arredondamento (A-I2, 29/10/2026).
+ * Caixa e zona chegam INTEIRAS, x e largura arredondados separados (`arredondado`), e a conferência exata já admitiu
+ * ½ px. À esquerda comparam-se dois x: dois erros de até ½ px, excesso inteiro < 1,5 → no máximo 1 px. À direita
+ * comparam-se x + largura de cada lado: quatro erros de até ½ px, excesso inteiro < 2,5 → no máximo 2 px. Sem a
+ * folga, a logo de 94,5 px em x 893,7 (direita real 988,2, aceita pela conferência exata contra a zona em 988 =
+ * 1080 − 92) saía arredondada como 894 + 95 = 989 contra 988 e a composição recusava o que a materialização aceitara.
+ * Limite conhecido: a conferência final do compor (`compor.ts`, o `foraDaZona` da unidade final, +1 px) é mais estreita que
+ * os 2 px daqui — uma caixa no extremo teórico passa aqui e cai lá; o A-I2 real (+1) passa nas duas.
+ */
 const TOLERANCIA_HORIZONTAL = 0.5
+const TOLERANCIA_DA_ESQUERDA = TOLERANCIA_HORIZONTAL + FOLGA_DO_TOPO
+const TOLERANCIA_DA_DIREITA = TOLERANCIA_HORIZONTAL + FOLGA_DA_BASE
 
 export { faixasDoArquetipo } from './faixas'
 
@@ -78,7 +89,7 @@ export function candidatosDasFaixas(args: {
       maxLo = Math.max(maxLo, z.y - (p.y - o.topo))
       minHi = Math.min(minHi, z.y + z.height - (p.y + p.height + o.base))
       // Na horizontal o x é do alinhamento: caixa que passa da zona de lado não tem conserto vertical.
-      if (!semPosicao && (p.x - o.esquerda < z.x - TOLERANCIA_HORIZONTAL || p.x + p.width + o.direita > z.x + z.width + TOLERANCIA_HORIZONTAL)) {
+      if (!semPosicao && (p.x - o.esquerda < z.x - TOLERANCIA_DA_ESQUERDA || p.x + p.width + o.direita > z.x + z.width + TOLERANCIA_DA_DIREITA)) {
         semPosicao = { membro: m, motivo: `a caixa de ${m} (x ${Math.round(p.x - o.esquerda)}–${Math.round(p.x + p.width + o.direita)}) passa da zona efetiva na horizontal (x ${Math.round(z.x)}–${Math.round(z.x + z.width)}); o alinhamento fixa o x e a busca só move na vertical` }
       }
     }
