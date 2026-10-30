@@ -1632,3 +1632,24 @@ do T1a sem variante de logo (`escolhaEspacial` null) empilhava a peça antiga co
 escolha nova — a peça mudava de identidade por uma troca de foto. Regressão: t3b8 G-R5b, que agora também confere que
 a escolha regravada sai sem `pilha` e sem `margem`. Peça do CP2B (modo busca) com foto trocada já ia certa: o pedido
 bruto leva a escolha inteira e `gapDaPilha` lê a `pilha` dela.
+
+## O rodapé pela base e a pilha fechada (30/10/2026)
+
+Medidos nos ajustes manuais do Ciro sobre a leva de 12 peças compostas com a cadeia #269–#279
+(`human-output/relatorios/editor-madrugada-2026-10-24/integracao-da-cadeia-2026-10-30/ajustes-do-ciro.json`; logo e
+pré ele não mexeu):
+
+- **R1 — o papel do rodapé pousa com a BASE na margem, em todo arquétipo.** `baseNaFaixaDaMargem` (materializar.ts):
+  a referência do catálogo cuja base está até `FAIXA_DA_MARGEM.vertical` além do quadro de baixo (o serviço dos
+  layouts de topo, o serviço do base-esquerda) pousa com a base em `H − safeRodape`, sem guardar o recuo do catálogo —
+  antes só o arquétipo de âncora rodapé pousava pela base (e pela base da referência mapeada, com o recuo: 1265 no
+  base-esquerda Feed). O Ciro pôs a base na margem em 11/12 (faltavam 31–83 px nos layouts de topo).
+- **R2 — a pilha fecha: `GAP_DA_PILHA = 0`** no caminho do arquétipo (compor, medir-copy e a preparação das
+  unidades), em vez do `gapEntreBlocos` da marca (14): as caixas já carregam entrelinha e padding; o Ciro levou o vão
+  a 0 em toda a Real e a 0–18 na Wine. A peça grava a pilha com que nasceu: a de antes reproduz com 14.
+- **O fio fica como estava** (o vão do catálogo a partir da caixa, reservado na pilha). Tentei pousá-lo pela tinta
+  (padding + meia-entrelinha) e desfiz: nos ajustes do Ciro a Real pôs o fio DENTRO da caixa (base −6..0) e a Wine 10 px
+  abaixo dela — a média dos dois cai em cima da conta atual (apoio ≈ 12 px abaixo da manchete), e a versão pela tinta
+  ainda dependia do arredondamento do fio contra a caixa do apoio. Dois pontos de dado não sustentam outra regra.
+- Fora desta fase, decisão do Ciro: R3 (o título-gigante sem escala dominante, apoio no rodapé) e R4 (gradiente de
+  leitura mais longo na base).

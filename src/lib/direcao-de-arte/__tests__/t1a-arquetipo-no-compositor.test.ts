@@ -107,14 +107,14 @@ describe('T1a · minimal-fb-topo-esquerda no compositor real', () => {
     await montar({ id: 't1a-13', apoio: true })
     const { r, entrada } = await compor(spec('t1a-13', [HEADLINE, APOIO, SERVICO], { arquetipo: { id: TOPO } }))
     expect(camada(r, 'headline').position).toEqual({ x: 92, y: 298 })
-    // Pilha (29/10/2026): o apoio encosta no FIO da manchete com o gap da marca (manchete 298 + 194, fio 5,8 + 5,8 → 503,
-    // + 14 = 517), não na referência solta (547). O fio é reservado pela pilha (`extensoesDosAcentosPresos`) com a conta em
-    // fração; a camada do fio é arredondada ao pixel, por isso a diferença de até 1 px.
+    // Pilha fechada (30/10/2026): vão 0 entre as caixas; o fio continua reservado pela pilha (`extensoesDosAcentosPresos`:
+    // 5,8 de vão + 5,8 de altura) e o apoio encosta nele — manchete 298 + 194 + 11,5 ≈ 504, não os 517 do gap 14 nem a
+    // referência solta (547). A camada do fio é arredondada ao pixel, por isso a diferença de até 1 px.
     const fio = camada(r, 'acento-fio')
-    expect(Math.abs(camada(r, 'apoio').position.y - (fio.position.y + fio.size.height + 14))).toBeLessThanOrEqual(1)
-    expect(camada(r, 'apoio').position).toEqual({ x: 92, y: 517 })
-    // Na margem da marca (29/10/2026): a base do serviço e da logo (1689,6 no catálogo) é a base do piso padrão (1696) — +6,4 px.
-    expect(camada(r, 'servico').position).toEqual({ x: 92, y: 1562 })
+    expect(Math.abs(camada(r, 'apoio').position.y - (fio.position.y + fio.size.height))).toBeLessThanOrEqual(1)
+    expect(camada(r, 'apoio').position).toEqual({ x: 92, y: 504 })
+    // O serviço pousa com a BASE na margem (30/10/2026): 1696 − 39 = 1657 (até 29/10 era o topo da referência mapeada, 1562).
+    expect(camada(r, 'servico').position).toEqual({ x: 92, y: 1657 })
     for (const id of ['headline', 'apoio', 'servico']) expect(camada(r, id).style?.textAlign).toBe('left')
     // A logo do arquivo (160×80, razão 0,5) em contain na referência (799,1562 189×134): a maior caixa com a proporção.
     const logo = camada(r, 'logo')
@@ -129,8 +129,8 @@ describe('T1a · minimal-fb-topo-esquerda no compositor real', () => {
     expect(d.elementosDeclarados).toEqual([{ id: 'fio', tipo: 'fio-fino', opcional: true }])
     expect(d.papeis.map((p) => [p.papel, p.posicao.x, p.posicao.y])).toEqual([
       ['headline', 92, 298],
-      ['apoio', 92, 517],
-      ['servico', 92, 1562],
+      ['apoio', 92, 504],
+      ['servico', 92, 1657],
     ])
     expect(d.logo).toMatchObject({ modo: 'referencia', canto: 'inferior-direito' })
     expect(r.diagnostico.posicao).toMatchObject({ ancora: 'topo', alinha: 'esquerda', crop: 'center-middle' })
@@ -145,7 +145,7 @@ describe('T1a · minimal-fb-topo-esquerda no compositor real', () => {
     await montar({ id: 't1a-14' })
     const { r } = await compor(spec('t1a-14', [HEADLINE, SERVICO], { formato: 'feed', arquetipo: { id: TOPO } }))
     expect(camada(r, 'headline').position).toEqual({ x: 92, y: 209 })
-    expect(camada(r, 'servico').position).toEqual({ x: 92, y: 1138 })
+    expect(camada(r, 'servico').position).toEqual({ x: 92, y: 1211 })
     expect(r.diagnostico.arquetipo!.formato).toBe('feed')
   }, 60_000)
 
@@ -155,8 +155,8 @@ describe('T1a · minimal-fb-topo-esquerda no compositor real', () => {
     const grupo = (id: string) => (camada(r, id).metadata as { groupId?: string }).groupId
     expect([grupo('headline'), grupo('apoio'), grupo('servico')]).toEqual(['grupo-arq-headline', 'grupo-arq-apoio', 'grupo-arq-servico'])
     expect(r.diagnostico.arquetipo!.papeis.map((p) => p.papel)).toEqual(['headline', 'apoio', 'servico'])
-    // Na página os dois moram juntos no topo; na peça, empilhados com o gap da marca (29/10/2026: 194 + fio 11,5 + 14 = 219, não os 249 das referências soltas).
-    expect(camada(r, 'apoio').position.y - camada(r, 'headline').position.y).toBe(219)
+    // Na página os dois moram juntos no topo; na peça, empilhados com vão 0 (30/10/2026: 194 + fio 11,5 = 205,5 → 206, não os 249 das referências soltas nem os 219 do gap 14).
+    expect(camada(r, 'apoio').position.y - camada(r, 'headline').position.y).toBe(206)
   }, 60_000)
 
   it('as margens da PÁGINA não competem: o pré-título pousa na margem da marca (o piso padrão, 188) mesmo com o primeiro texto da página em 230/300', async () => {
@@ -177,8 +177,8 @@ describe('T1a · minimal-fb-topo-esquerda no compositor real', () => {
     expect(pre.referencia).toEqual({ x: 92, y: 250, width: 540, height: 58 })
     expect(pre.zonaEfetiva.y).toBe(250)
     expect(pre.posicao.y).toBe(250)
-    // A manchete empilha sob o pré resgatado (29/10/2026): pré + altura + gap 14, não a referência 298 + dy.
-    expect(d.papeis.find((p) => p.papel === 'headline')!.posicao.y).toBe(pre.posicao.y + pre.posicao.height + 14)
+    // A manchete empilha sob o pré (30/10/2026, vão 0): pré + altura, não a referência 298 + dy.
+    expect(d.papeis.find((p) => p.papel === 'headline')!.posicao.y).toBe(pre.posicao.y + pre.posicao.height)
     expect(r.diagnostico.avisos.some((a) => /pre: a referência do arquétipo sai da zona efetiva/.test(a))).toBe(false)
     // O medir-copy mede na MESMA partida (a margem da marca), e diz que cabe.
     const assinatura = montarAssinatura({ pagina, formatoDaPagina: 'story', numerosDoProjeto: noPisoDe1310({ ...ASSINATURA, geometria: { story: { safeTopo: 250 } } }), logoDoProjeto: null })
@@ -189,16 +189,16 @@ describe('T1a · minimal-fb-topo-esquerda no compositor real', () => {
     expect(m.arquetipo!.avaliacaoEspacial).toBe('nao-executada')
   }, 60_000)
 
-  it('20. a pilha reserva o fio com o gap da marca (9 px: o fio fica, o apoio logo abaixo dele); a peça de ANTES da regra reproduz sem empilhar', async () => {
+  it('20. a pilha é GAP_DA_PILHA (0) mesmo com gapEntreBlocos 9 na marca: o fio fica, o apoio encosta nele; a peça grava pilha 0; a de ANTES da regra reproduz sem empilhar', async () => {
     await montar({ id: 't1a-20', apoio: true, assinatura: { ...ASSINATURA, geometria: { story: { gapEntreBlocos: 9 } } } })
     const { r, entrada } = await compor(spec('t1a-20', [HEADLINE, APOIO, SERVICO], { arquetipo: { id: TOPO } }))
     const fio = camada(r, 'acento-fio')
     expect(fio).toBeTruthy()
-    expect(Math.abs(camada(r, 'apoio').position.y - (fio.position.y + fio.size.height + 9))).toBeLessThanOrEqual(1)
+    expect(Math.abs(camada(r, 'apoio').position.y - (fio.position.y + fio.size.height))).toBeLessThanOrEqual(1)
     // A peça nova grava a pilha na escolha; reproduzida, sai igual.
     const gravada = validarSpec(entrada!.fieldValues.spec).spec!
     const escolha = escolhaEspacialOriginal(entrada!.fieldValues, gravada)!
-    expect((escolha as { pilha?: number }).pilha).toBe(9)
+    expect((escolha as { pilha?: number }).pilha).toBe(0)
     await montar({ id: 't1a-20', apoio: true, assinatura: { ...ASSINATURA, geometria: { story: { gapEntreBlocos: 9 } } } })
     const r2 = await comporPeca(spec('t1a-20', [HEADLINE, APOIO, SERVICO], { arquetipo: { id: TOPO } }), { somenteAvaliar: true, escolhaEspacial: escolha })
     expect(camada(r2, 'apoio').position.y).toBe(camada(r, 'apoio').position.y)
@@ -236,7 +236,7 @@ describe('T1a · minimal-fb-centro-optico no compositor real', () => {
     expect(h.style?.textAlign).toBe('center')
     expect(h.position.y).toBe(854)
     expect(Math.abs(h.position.x + h.size.width / 2 - 540)).toBeLessThanOrEqual(1)
-    expect(camada(r, 'servico').position.y).toBe(1619)
+    expect(camada(r, 'servico').position.y).toBe(1657)
     const d = r.diagnostico.arquetipo!
     expect(d.logo.modo).toBe('automatica')
     expect(['inferior-esquerdo', 'inferior-direito', 'superior-esquerdo', 'superior-direito']).toContain(d.logo.canto)
@@ -373,11 +373,11 @@ describe('T1a · a página não decide geometria por outra via', () => {
     expect(camada(r, 'headline2').position.y).toBeGreaterThan(camada(r, 'headline').position.y)
   }, 60_000)
 
-  it('o ornamento do arranjo não desloca o texto: com o ícone DEPOIS, o serviço pousa exatamente na referência', async () => {
+  it('o ornamento do arranjo não desloca o texto: com o ícone DEPOIS, o serviço pousa pela base da margem, e o ícone (2 px abaixo) fica dentro dela', async () => {
     const pagina = await montar({ id: 't1a-orn-depois' })
     cenario.atual = { ...cenario.atual!, paginasDeAssinatura: [await comIcone(pagina, 'depois')] }
     const { r } = await compor(spec('t1a-orn-depois', [HEADLINE, SERVICO], { arquetipo: { id: TOPO } }))
-    expect(camada(r, 'servico').position).toEqual({ x: 92, y: 1562 })
+    expect(camada(r, 'servico').position).toEqual({ x: 92, y: 1655 })
     expect(r.layers.some((l) => (l.metadata as { compositor?: { elementoDe?: string } } | undefined)?.compositor?.elementoDe === 'servico')).toBe(true)
   }, 60_000)
 

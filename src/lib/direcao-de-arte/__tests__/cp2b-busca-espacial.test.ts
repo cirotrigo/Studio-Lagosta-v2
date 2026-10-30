@@ -103,8 +103,12 @@ interface Cena {
   logo?: { width: number; height: number }
 }
 
-/** A faixa escura do serviço no topo-esquerda: logo ACIMA da referência (y 1555), dentro da zona dele (1382–1695). */
-const FAIXA_ESCURA = { y0: 1340, y1: 1450 }
+/**
+ * A faixa escura do serviço no topo-esquerda: logo ACIMA de onde ele pousa, dentro da zona dele (1382–1695). Desde
+ * 30/10/2026 o serviço pousa pela BASE da margem (1657–1696 no piso de 13/10), 95 px abaixo da referência de antes
+ * (1657): a faixa desceu os mesmos 95 (era 1340–1450) para o dy −179 continuar caindo nela.
+ */
+const FAIXA_ESCURA = { y0: 1435, y1: 1545 }
 const naFaixaEscura = (y: number) => y >= FAIXA_ESCURA.y0 && y < FAIXA_ESCURA.y1
 /** Ruído forte e determinístico, ±40 por pixel (a textura que a calma enxerga). */
 const ruidoForte = (x: number, y: number) => (((Math.imul(x, 2654435761) ^ Math.imul(y, 40503)) >>> 0) % 81) - 40
@@ -375,8 +379,8 @@ describe('CP2B · a busca escolhe a posição pela foto', () => {
   it('2. referência perfeita vence: manchete em 298, serviço na referência, todas as escolhas "referencia", sem véu nenhum', async () => {
     const { r } = await peca(CENAS.h)
     expect(camada(r, 'headline').position).toEqual({ x: 92, y: 298 })
-    // Na margem da marca (29/10/2026) a referência do serviço (base 1689,6 do catálogo) pousa na base do piso padrão (1696): 1562.
-    expect(camada(r, 'servico').position).toEqual({ x: 92, y: 1562 })
+    // Na margem da marca (29/10/2026) a referência do serviço pousa na base do piso de 13/10 (1696); desde 30/10/2026 pela BASE da caixa: 1696 − 39 = 1657.
+    expect(camada(r, 'servico').position).toEqual({ x: 92, y: 1657 })
     const b = busca(r)
     expect(rotulos(b.vencedor!.escolhas)).toEqual(['referencia', 'referencia'])
     expect(b.escolha.deslocamentos).toEqual({ headline: 0, servico: 0, logo: 0 })
@@ -390,17 +394,17 @@ describe('CP2B · a busca escolhe a posição pela foto', () => {
   it('3. referência ruim → outra posição válida vence: o serviço sobe para a faixa escura (acima) e lê sem véu, dentro da zona', async () => {
     const { r } = await peca(CENAS.faixa)
     const b = busca(r)
-    // A referência (serviço em 1562, sobre o claro) pede véu escuro no rodapé.
+    // A referência (serviço em 1657, sobre o claro) pede véu escuro no rodapé.
     const referencia = b.alternativas.find(ehReferenciaCentral)!
     expect(referencia.eliminada).toEqual([])
     expect(referencia.tratamento.find((t) => t.borda === 'rodape')).toMatchObject({ estado: 'tratado', cor: VEU_ESCURO })
     expect(referencia.componentes!.custoDoTratamento).toBeGreaterThan(0)
     // A candidata 'acima' cai na faixa escura e lê sem véu: vence.
-    expect(escolhaDa(b, 'servico')).toMatchObject({ rotulo: 'acima', dy: -179 })
+    expect(escolhaDa(b, 'servico')).toMatchObject({ rotulo: 'acima', dy: -199 })
     expect(escolhaDa(b, 'headline').rotulo).toBe('referencia')
     expect(b.vencedor!.componentes!.custoDoTratamento).toBe(0)
     const servico = camada(r, 'servico')
-    expect(servico.position.y).toBe(1555 - 172)
+    expect(servico.position.y).toBe(1657 - 199)
     expect(servico.position.y).toBeGreaterThanOrEqual(FAIXA_ESCURA.y0)
     expect(servico.position.y + servico.size.height).toBeLessThanOrEqual(FAIXA_ESCURA.y1)
     const zona = r.diagnostico.arquetipo!.papeis.find((p) => p.papel === 'servico')!.zonaEfetiva
@@ -642,8 +646,10 @@ describe('CP2B · a escolha congelada na recomposição', () => {
     const livre = (await peca(CONGELADA)).r
     const b = busca(livre)
     const abaixo = (membro: MembroDaFaixa) => b.faixas[faixaDe(b, membro)].candidatos.find((c) => c.rotulo === 'abaixo')!.dy
+    // O serviço pousa pela BASE da margem (30/10/2026): não tem 'abaixo' — congela o menor 'acima' dele.
+    const acimaDoServico = b.faixas[faixaDe(b, 'servico')].candidatos.filter((c) => c.rotulo === 'acima').sort((x, y) => y.dy - x.dy)[0]!.dy
     // A escolha gravada leva a margem com que a peça nasceu (29/10/2026): sem `margem` ela reproduziria na opção A.
-    const congelada: EscolhaEspacial = { modo: MODO_BUSCA_ESPACIAL, foto: b.escolha.foto, corte: 'center-middle', deslocamentos: { headline: abaixo('headline'), servico: abaixo('servico'), logo: abaixo('servico') }, margem: 'marca' }
+    const congelada: EscolhaEspacial = { modo: MODO_BUSCA_ESPACIAL, foto: b.escolha.foto, corte: 'center-middle', deslocamentos: { headline: abaixo('headline'), servico: acimaDoServico, logo: acimaDoServico }, margem: 'marca' }
     // Uma busca nova NÃO escolhe essa posição.
     expect(rotulos(b.vencedor!.escolhas)).not.toEqual(['abaixo', 'abaixo'])
     expect(b.escolha.deslocamentos).not.toEqual(congelada.deslocamentos)
@@ -655,10 +661,12 @@ describe('CP2B · a escolha congelada na recomposição', () => {
     expect(busca(r).reproduzida).toBeDefined()
     expect(busca(r).combinacoesAvaliadas).toBe(1)
 
-    // O exemplo do pedido (serviço de 2 linhas no 'abaixo') CABE: o 'abaixo' do serviço é limitado pela LOGO (23 px), e
-    // duas linhas de serviço ainda terminam antes de 1695. O que não cabe é a manchete de 2 linhas no fundo da zona.
+    // O exemplo do pedido (serviço de 2 linhas) CABE: pela base, a segunda linha cresce para CIMA, dentro da zona. O que
+    // não cabe é a manchete de 2 linhas no fundo da zona.
     const servico2 = await compor({ ...CONGELADA, blocos: [{ papel: 'headline', linhas: ['Almoço'] }, { papel: 'servico', linhas: ['Dom · 12h às 16h', 'Reservas pelo direct'] }] }, { somenteAvaliar: true, escolhaEspacial: congelada })
-    expect(camada(servico2.r, 'servico').position.y).toBe(camada(r, 'servico').position.y)
+    const base = (l: Layer) => l.position.y + l.size.height
+    expect(base(camada(servico2.r, 'servico'))).toBe(base(camada(r, 'servico')))
+    expect(camada(servico2.r, 'servico').position.y).toBeLessThan(camada(r, 'servico').position.y)
 
     const e = await recusa({ ...CONGELADA, blocos: [{ papel: 'headline', linhas: ['Almoço', 'de domingo'] }, { papel: 'servico', linhas: ['Dom · 12h às 16h'] }] }, { escolhaEspacial: congelada })
     expect(e.code).toBe('ARQUETIPO_POSICAO_CONGELADA_NAO_CABE')
@@ -730,10 +738,11 @@ describe('CP2B · diagnóstico, estabilidade e medir-copy', () => {
     expect(r.diagnostico.arquetipo!.modo).toBe('busca-espacial-v1')
     expect(b.versao).toBe('busca-espacial-v1')
     expect(b.id).toMatch(/^be1-[0-9a-f]{12}$/)
-    expect(b.escolha).toMatchObject({ modo: 'busca-espacial-v1', corte: 'center-middle', deslocamentos: { headline: 0, servico: -179, logo: -179 } })
+    expect(b.escolha).toMatchObject({ modo: 'busca-espacial-v1', corte: 'center-middle', deslocamentos: { headline: 0, servico: -199, logo: -199 } })
     expect(typeof b.escolha.foto).toBe('string')
     expect(b.cortesAvaliados).toEqual(['center-middle'])
-    expect(b.combinacoesAvaliadas).toBe(20)
+    // 5 candidatas da manchete × 3 do serviço (pela base, o serviço não tem 'abaixo': referência, meio-acima e acima).
+    expect(b.combinacoesAvaliadas).toBe(15)
     expect(b.combinacoesAvaliadas).toBeLessThanOrEqual(75)
     expect(b.limite).toBe(75)
     expect(b.limite).toBe(LIMITES_DA_BUSCA.avaliacoes)
@@ -770,9 +779,9 @@ describe('CP2B · diagnóstico, estabilidade e medir-copy', () => {
     const m = medirCopy({ spec: v.spec!, assinatura, formato: 'story', medir: medidorCalibrado(), familias: [], fonteCarregada: () => true, combinacoesSalvas: [], arquetipo: prepararArquetipo(v.spec!) })
     expect(m.cabeTudo).toBe(true)
     expect(m.arquetipo!.avaliacaoEspacial).toBe('nao-executada')
-    // A medida diz a referência na margem da marca (1562); o compor, pela foto, sobe o serviço (1383).
-    expect(m.arquetipo!.posicoes!.servico!.posicao.y).toBe(1562)
-    expect(camada((await peca(CENAS.faixa)).r, 'servico').position.y).toBe(1383)
+    // A medida diz a partida na margem da marca (a base, 1657); o compor, pela foto, sobe o serviço (1458).
+    expect(m.arquetipo!.posicoes!.servico!.posicao.y).toBe(1657)
+    expect(camada((await peca(CENAS.faixa)).r, 'servico').position.y).toBe(1458)
   }, 60_000)
 })
 
@@ -814,7 +823,9 @@ describe('CP2B · correções da revisão adversarial', () => {
   it('a logo de referência fixa que mudou de proporção não derruba a recomposição: ela se ajusta na zona, dito; o texto fica', async () => {
     const livre = (await peca(CONGELADA)).r
     const b = busca(livre)
-    const abaixo = b.faixas[faixaDe(b, 'servico')].candidatos.find((c) => c.rotulo === 'abaixo')!.dy
+    // O serviço pousa pela BASE (30/10/2026): sem 'abaixo', a logo quadrada já não sai da zona por baixo — congela o
+    // 'acima' (−199): a logo de 134 px (contain) em 1363 passa 19 px do topo da zona (1382) e precisa se ajustar.
+    const abaixo = b.faixas[faixaDe(b, 'servico')].candidatos.find((c) => c.rotulo === 'acima')!.dy
     const congelada: EscolhaEspacial = { modo: MODO_BUSCA_ESPACIAL, foto: b.escolha.foto, corte: 'center-middle', deslocamentos: { headline: 0, servico: abaixo, logo: abaixo }, margem: 'marca' }
     // O mesmo id (a mesma foto, a mesma escolha); só a logo da página virou quadrada.
     const { r } = await compor({ ...CONGELADA, logo: { width: 120, height: 120 } }, { somenteAvaliar: true, escolhaEspacial: congelada })
@@ -874,10 +885,10 @@ describe('CP2B · correções da revisão adversarial', () => {
   }, 60_000)
 
   it('na reprodução, a copy nova que invade a região protegida do catálogo é recusada (nunca publicada por cima do produto)', async () => {
-    const produto: Cena = { id: 'cp2b-produto', arquetipo: TOPO, luz: () => 60, cores: { headline: CLARO, servico: CLARO }, assunto: { x0: 0.36, y0: 0.8, x1: 0.5, y1: 0.86 } }
+    const produto: Cena = { id: 'cp2b-produto', arquetipo: TOPO, luz: () => 60, cores: { headline: CLARO, servico: CLARO }, assunto: { x0: 0.36, y0: 0.85, x1: 0.5, y1: 0.91 } }
     const { r } = await compor(produto, { somenteAvaliar: true })
     const escolha = busca(r).escolha
-    // A copy curta não toca a região (x 389–540) e fica na referência; a longa passaria por cima dela na posição congelada.
+    // A copy curta não toca a região (x 389–540, na altura do serviço que pousa pela base: 1632–1747) e fica na referência; a longa passaria por cima dela na posição congelada.
     expect(escolha.deslocamentos.servico).toBe(0)
     const e = await recusa({ ...produto, blocos: [{ papel: 'headline', linhas: ['Almoço', 'de domingo'] }, { papel: 'servico', linhas: ['Domingo · das 12h às 16h'] }] }, { escolhaEspacial: escolha })
     expect(e.code).toBe('ARQUETIPO_POSICAO_CONGELADA_NAO_CABE')
@@ -898,7 +909,7 @@ describe('CP2B · correções da revisão adversarial', () => {
   }, 60_000)
 
   it('pela cadeia real da recomposição (driveFileId → URL da página), o assunto do catálogo continua protegendo a posição congelada', async () => {
-    const produto: Cena = { id: 'cp2b-produto-ciclo', arquetipo: TOPO, luz: () => 60, cores: { headline: CLARO, servico: CLARO }, assunto: { x0: 0.36, y0: 0.8, x1: 0.5, y1: 0.86 }, dataUrl: true }
+    const produto: Cena = { id: 'cp2b-produto-ciclo', arquetipo: TOPO, luz: () => 60, cores: { headline: CLARO, servico: CLARO }, assunto: { x0: 0.36, y0: 0.85, x1: 0.5, y1: 0.91 }, dataUrl: true }
     const { entrada } = await compor(produto)
     const fv = entrada!.fieldValues
     const gravada = validarSpec(fv.spec).spec as SpecDePeca

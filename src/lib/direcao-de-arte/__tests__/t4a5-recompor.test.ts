@@ -254,10 +254,10 @@ describe.skipIf(!fontesNoDisco())('#5 · recomposição real da Generation', () 
   }, 120_000)
 
   it('R-09: a copy editada que não cabe na posição congelada → ARQUETIPO_POSICAO_CONGELADA_NAO_CABE; nada movido nem escrito', async () => {
-    // A peça nasce com o serviço CURTO ("20h", x ≈ 504–577) ao lado de uma região anotada (x 230–470, na altura do
-    // serviço); o serviço editado para a linha longa (x ≈ 295–785) cobriria mais de 25% dela NA POSIÇÃO CONGELADA — a
-    // recomposição não o move.
-    await montar({ topo: 40, base: 40, catalogo: { x0: 230 / 1080, y0: 1560 / 1920, x1: 470 / 1080, y1: 1660 / 1920 } })
+    // A peça nasce com o serviço CURTO ("20h", x ≈ 504–577) ao lado de uma região anotada (x 300–470, na altura do
+    // serviço — que desde 30/10/2026 pousa pela base da margem, 1629–1677); o serviço editado para a linha longa
+    // (x ≈ 343–738) cobriria mais de 25% dela NA POSIÇÃO CONGELADA — a recomposição não o move.
+    await montar({ topo: 40, base: 40, catalogo: { x0: 300 / 1080, y0: 1600 / 1920, x1: 470 / 1080, y1: 1700 / 1920 } })
     await nascerEEditar(trocarServico('Sexta, 14/11 · 20h · Centro'), spec5('p5-recompor', { foto: { driveFileId: 'drive-5' }, copyAutoral: copy5({ servico: ['20h'] }) }))
     const e = await recusaSemEscrever(recomporPaginaDefasada({ pageId: 'p5' }))
     expect([e.code, e.status], e.message).toEqual(['ARQUETIPO_POSICAO_CONGELADA_NAO_CABE', 422])

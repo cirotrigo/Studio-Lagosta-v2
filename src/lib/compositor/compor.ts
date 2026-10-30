@@ -106,7 +106,7 @@ import {
 } from './regua'
 import { candidatasDistintas, gradientesARecusar, MOTIVOS_DO_TRATAMENTO, planejarTratamentoDaBorda, type PlanoDaBorda } from './tratamento-de-leitura'
 import { conferirLinhas, conferirLogo, prepararArquetipo, type ArquetipoPreparado } from './arquetipos/na-spec'
-import { alinhaDoPapel, caixasMaximas, type MargemDaPeca, referenciaDoPapel, type Materializacao, type RetanguloPx } from './arquetipos/materializar'
+import { alinhaDoPapel, caixasMaximas, GAP_DA_PILHA, type MargemDaPeca, referenciaDoPapel, type Materializacao, type RetanguloPx } from './arquetipos/materializar'
 import { MODO_BUSCA_ESPACIAL, MOTIVOS_DE_ELIMINACAO, type DiagnosticoDaBuscaEspacial, type EscolhaParaReproduzir, type LeituraDoCorte, type PlanejamentoDoTratamento } from './arquetipos/busca-espacial-tipos'
 import { chaveDaFoto as impressaoDaFoto, contarRecusas, exemplosDeRecusa, motivoDaFalta, selecionarNoArquetipo, type SelecaoNoArquetipo } from './arquetipos/busca-espacial'
 import { partidaNoArquetipo, type PartidaNoArquetipo } from './arquetipos/candidatos-espaciais'
@@ -936,7 +936,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     })
   // Com arquétipo, a preparação passa pela escada da UNIDADE (a mesma do medir-copy) — e a logo dos arranjos sai
   // deles: com arquétipo a logo é do arquétipo (senão a marca sairia duas vezes).
-  const noArquetipo: PreparoNoArquetipo | null = arq ? prepararNoArquetipo({ arquetipo: arq.definicao, formato: arq.formato, canvas, geometria: pisoArq!, gap: g.gap, ...(margemDaPeca ? { margem: margemDaPeca } : {}), preparar }) : null
+  const noArquetipo: PreparoNoArquetipo | null = arq ? prepararNoArquetipo({ arquetipo: arq.definicao, formato: arq.formato, canvas, geometria: pisoArq!, gap: GAP_DA_PILHA, ...(margemDaPeca ? { margem: margemDaPeca } : {}), preparar }) : null
   const preparados = noArquetipo ? noArquetipo.preparados : preparar()
   avisos.push(...preparados.avisos)
   const { arranjos, arranjoPorGrupo, elementosPorTexto, segundaVoz, gruposExtras } = preparados
@@ -1229,7 +1229,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   // bruto (a foto ainda não foi conferida): a identidade da pilha é da peça, não da foto.
   const pedidoDeReproducao = arq ? opcoes.escolhaEspacial ?? null : null
   const gapDaPilha =
-    opcoes.pilhaDaPeca !== undefined ? (opcoes.pilhaDaPeca ?? undefined) : pedidoDeReproducao ? (pedidoDeReproducao.modo === MODO_BUSCA_ESPACIAL ? pedidoDeReproducao.pilha : undefined) : g.gap
+    opcoes.pilhaDaPeca !== undefined ? (opcoes.pilhaDaPeca ?? undefined) : pedidoDeReproducao ? (pedidoDeReproducao.modo === MODO_BUSCA_ESPACIAL ? pedidoDeReproducao.pilha : undefined) : GAP_DA_PILHA
   if (arq && unidadesArq && pisoArq) {
     const p = partidaNoArquetipo({
       arquetipo: arq.definicao,

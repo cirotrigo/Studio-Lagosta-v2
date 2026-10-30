@@ -305,19 +305,26 @@ export function extensoesDosAcentosPresos(a: ArquetipoDeLayout, formato: Formato
   const geo = a.formatos[formato]
   const H = canvas.height
   const saida: Partial<Record<PapelDeTexto, { topo: number; base: number }>> = {}
-  for (const r of receitasDoArquetipo(a, { formato, canvas }).receitas) {
-    const e = a.elementos?.find((x) => x.id === r.elemento)
-    if (!r.presoA || !e || e.porItem || r.tipo === 'moldura-aberta' || ELEMENTOS_QUE_ENVOLVEM.includes(r.tipo)) continue
-    const caixa = geo.elementos?.[r.elemento]
-    const posRef = geo.papeis[r.presoA]
+  // A reserva nasce do elemento DECLARADO na definição (30/10/2026), não da receita do catálogo de elementos vivo: a
+  // peça que reproduz a receita GRAVADA com a biblioteca de shapes mudada (replay sem o catálogo vivo) também empilha
+  // reservando o fio — com a pilha fechada, sem reserva o fio congelado caía dentro do apoio. A receita viva, quando
+  // existe, só acrescenta o traço (um fio mais grosso que a caixa ocupa a espessura).
+  const receitas = receitasDoArquetipo(a, { formato, canvas }).receitas
+  for (const e of a.elementos ?? []) {
+    if (!e.presoA || e.presoA === 'logo' || e.porItem || e.tipo === 'moldura-aberta' || ELEMENTOS_QUE_ENVOLVEM.includes(e.tipo)) continue
+    const r = receitas.find((x) => x.elemento === e.id)
+    const caixa = geo.elementos?.[e.id]
+    const posRef = geo.papeis[e.presoA]
     if (!caixa || !posRef || !('referencia' in posRef)) continue
     const R = { y: posRef.referencia.y * H, h: posRef.referencia.h * H }
     const E = { y: caixa.y * H, h: caixa.h * H }
-    const altura = r.desenho.shapeType === 'line' ? Math.max(E.h, r.desenho.strokeWidth ?? 1) : E.h
-    const atual = saida[r.presoA] ?? { topo: 0, base: 0 }
-    if (E.y >= R.y + R.h - TOLERANCIA_PX) atual.base = Math.max(atual.base, E.y - (R.y + R.h) + altura)
-    else if (E.y + E.h <= R.y + TOLERANCIA_PX) atual.topo = Math.max(atual.topo, R.y - (E.y + E.h) + E.h)
-    saida[r.presoA] = atual
+    const altura = r?.desenho.shapeType === 'line' ? Math.max(E.h, r.desenho.strokeWidth ?? 1) : E.h
+    const atual = saida[e.presoA] ?? { topo: 0, base: 0 }
+    // `ceil` (30/10/2026): o acento pousa em px inteiros (`posicionarAcentos` arredonda) e, com a pilha fechada
+    // (`GAP_DA_PILHA` 0), a reserva em fração deixava o fio meio pixel dentro do apoio — e ele saía por "encosta".
+    if (E.y >= R.y + R.h - TOLERANCIA_PX) atual.base = Math.max(atual.base, Math.ceil(E.y - (R.y + R.h) + altura))
+    else if (E.y + E.h <= R.y + TOLERANCIA_PX) atual.topo = Math.max(atual.topo, Math.ceil(R.y - (E.y + E.h) + E.h))
+    saida[e.presoA] = atual
   }
   return saida
 }
