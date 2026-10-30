@@ -6,6 +6,7 @@
  * liso `#0B0B0B`/`#F4EFE6`. A foto é a de bastidores da própria Lagosta versionada na worktree, servida pelo dublê do
  * fetch — nada de Drive, Blob ou rede. Esses números moram SÓ aqui (IF-05), nunca no produto.
  */
+import { noPisoDe1310 } from './compositor'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Layer } from '@/types/template'
@@ -99,7 +100,7 @@ export async function cenario9(
   return {
     projeto: {
       id: PROJETO_9,
-      assinatura: { fundo: ESCURO_9, fundoClaro: CLARO_9 },
+      assinatura: noPisoDe1310({ fundo: ESCURO_9, fundoClaro: CLARO_9 }),
       logoDoProjeto: null,
       logosDoProjeto: [
         { fileUrl: dataUrl(await logoSintetica(CLARO_9)), isProjectLogo: true },

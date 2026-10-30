@@ -44,6 +44,20 @@ export interface CenarioDoCompositor {
 
 export const cenario: { atual: CenarioDoCompositor | null } = { atual: null }
 
+/**
+ * O PISO DE 13/10/2026 (Story 92/188/224, Feed 92/120/104), fixado como geometria do PROJETO nos cenários sintéticos
+ * cujas caracterizações nasceram nele. Desde 29/10 o padrão da casa é 64/160/160 e 64/72/72 (#276, `GEOMETRIA_PADRAO`):
+ * com ele estas mesmas peças pousam na margem nova — o que o piloto, o t1a-baseline e a prova com as marcas reais cobrem.
+ * Aqui o piso explícito mantém legíveis as caracterizações da cadeia (opção A, pilha da faixa, margem da marca), que
+ * medem a REGRA e não o número da casa. Chave explícita do cenário vence, formato a formato (como `mesclarGeometria`).
+ */
+export const PISO_13_10 = { story: { margemH: 92, safeTopo: 188, safeRodape: 224 }, feed: { margemH: 92, safeTopo: 120, safeRodape: 104 } } as const
+export function noPisoDe1310<T extends Record<string, unknown> | undefined>(assinatura: T): Record<string, unknown> {
+  const g = ((assinatura as Record<string, unknown> | undefined)?.geometria ?? {}) as Record<string, Record<string, unknown> | undefined>
+  return { ...(assinatura ?? {}), geometria: { ...g, story: { ...PISO_13_10.story, ...(g.story ?? {}) }, feed: { ...PISO_13_10.feed, ...(g.feed ?? {}) } } }
+}
+
+
 function atual(): CenarioDoCompositor {
   if (!cenario.atual) throw new Error('cenário do compositor não montado (cenario.atual)')
   return cenario.atual

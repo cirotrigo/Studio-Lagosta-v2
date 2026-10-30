@@ -8,6 +8,7 @@
  * Diferença em relação ao #4: o texto mora no TOPO (logo, manchete e apoio na mesma faixa) e na base só o serviço, de uma
  * linha, envolvido pela pílula de contorno. A luz `base` é a que a pílula e o serviço leem; a `topo`, a da logo e da manchete.
  */
+import { noPisoDe1310 } from './compositor'
 import type { Layer } from '@/types/template'
 import type { CenarioDoCompositor, PaginaDeAssinatura } from './compositor'
 import { dataUrl } from './fixture'
@@ -75,7 +76,7 @@ export async function cenario5(
   opcoes: { foto: Buffer; assinatura?: Record<string, unknown>; catalogo?: CenarioDoCompositor['catalogo']; variantes?: Array<{ fileUrl: string; isProjectLogo: true }> },
 ): Promise<CenarioDoCompositor> {
   return {
-    projeto: { id: PROJETO_5, assinatura: opcoes.assinatura ?? {}, logoDoProjeto: null, logosDoProjeto: opcoes.variantes ?? (await variantesClaraEEscura()) },
+    projeto: { id: PROJETO_5, assinatura: noPisoDe1310(opcoes.assinatura ?? {}), logoDoProjeto: null, logosDoProjeto: opcoes.variantes ?? (await variantesClaraEEscura()) },
     paginasDeAssinatura: [pagina],
     foto: { url: dataUrl(opcoes.foto), bytes: opcoes.foto },
     candidatasDoVeu: [VEU_ESCURO, VEU_CLARO],
