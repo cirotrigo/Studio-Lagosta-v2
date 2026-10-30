@@ -6,6 +6,7 @@
  *
  * A marca é SINTÉTICA (página de assinatura gerada aqui; `fundoClaro` de teste): nenhuma marca real é consultada.
  */
+import { noPisoDe1310 } from './compositor'
 import { existsSync } from 'node:fs'
 import type { Layer } from '@/types/template'
 import type { MeasureTextBox } from '@/lib/creatives/text-geometry'
@@ -100,7 +101,7 @@ export async function paginaDoCenario15(
 /** O cenário do compositor real para o #15: sem foto, `fundoClaro` de teste na RAIZ de `Project.assinatura`. */
 export async function cenario15(pagina: PaginaDeAssinatura, medir: MeasureTextBox, assinatura: Record<string, unknown> = { fundoClaro: CLARO }): Promise<CenarioDoCompositor> {
   return {
-    projeto: { id: 9002, assinatura, logoDoProjeto: null, logosDoProjeto: (await variantesClaraEEscura()).map((l) => ({ fileUrl: l.fileUrl, isProjectLogo: true })) },
+    projeto: { id: 9002, assinatura: noPisoDe1310(assinatura), logoDoProjeto: null, logosDoProjeto: (await variantesClaraEEscura()).map((l) => ({ fileUrl: l.fileUrl, isProjectLogo: true })) },
     paginasDeAssinatura: [pagina],
     foto: null,
     candidatasDoVeu: [],

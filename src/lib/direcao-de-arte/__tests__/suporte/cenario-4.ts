@@ -7,6 +7,7 @@
  * Diferença em relação ao #8 (`cenario-8.ts`): aqui a foto é INTEIRA, sem caixa e sem papel de fundo — o texto e a logo
  * pousam na foto, e a leitura da logo é do CP3 sobre a foto. As expectativas de fundo e de papel do #8 não valem aqui.
  */
+import { noPisoDe1310 } from './compositor'
 import type { Layer } from '@/types/template'
 import type { CenarioDoCompositor, PaginaDeAssinatura } from './compositor'
 import { dataUrl } from './fixture'
@@ -107,7 +108,7 @@ export async function cenario4(
   opcoes: { foto: Buffer; assinatura?: Record<string, unknown>; catalogo?: CenarioDoCompositor['catalogo']; variantes?: Array<{ fileUrl: string; isProjectLogo: true }>; candidatasDoVeu?: string[] },
 ): Promise<CenarioDoCompositor> {
   return {
-    projeto: { id: PROJETO_4, assinatura: opcoes.assinatura ?? {}, logoDoProjeto: null, logosDoProjeto: opcoes.variantes ?? (await variantesClaraEEscura()) },
+    projeto: { id: PROJETO_4, assinatura: noPisoDe1310(opcoes.assinatura ?? {}), logoDoProjeto: null, logosDoProjeto: opcoes.variantes ?? (await variantesClaraEEscura()) },
     paginasDeAssinatura: [pagina],
     foto: { url: dataUrl(opcoes.foto), bytes: opcoes.foto },
     candidatasDoVeu: opcoes.candidatasDoVeu ?? [VEU_ESCURO, VEU_CLARO],

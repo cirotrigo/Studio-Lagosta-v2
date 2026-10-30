@@ -7,6 +7,7 @@
  * bastidores da Lagosta versionada na worktree, servida pelo dublê do fetch. A copy tem as linhas LITERAIS das amostras
  * (F3: o produto não quebra dentro da linha). Esses números moram SÓ aqui, nunca no produto.
  */
+import { noPisoDe1310 } from './compositor'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Layer } from '@/types/template'
@@ -92,7 +93,7 @@ export async function cenario10(
   return {
     projeto: {
       id: PROJETO_10,
-      assinatura: { fundo: ESCURO_10, fundoClaro: CLARO_10 },
+      assinatura: noPisoDe1310({ fundo: ESCURO_10, fundoClaro: CLARO_10 }),
       logoDoProjeto: null,
       logosDoProjeto: [
         { fileUrl: dataUrl(await logoSintetica(CLARO_10)), isProjectLogo: true },
