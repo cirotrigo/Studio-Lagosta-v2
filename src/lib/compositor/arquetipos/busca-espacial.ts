@@ -17,6 +17,7 @@ import { combinacoesDasFaixas, limiteDaBusca, type PartidaNoArquetipo } from './
 import { jsonCanonico } from './impressao'
 import { alinhaDoPapel, type GeometriaEfetiva, type MargemDaPeca, type Materializacao, type ProblemaDeMaterializacao } from './materializar'
 import { camadasNaReferencia, grupoDaUnidade, materializarUnidades, type UnidadeDoArquetipo } from './no-compositor'
+import type { ReceitaDoAcento } from './acentos'
 import { avaliarCombinacao, descreverTratamento, invadeAEstimada, motivoDaVitoria, ordenarAvaliacoes, resumirAvaliacao } from './pontuacao-espacial'
 import { chaveDoArquetipo, type ArquetipoDeLayout, type FormatoDoArquetipo } from './tipos'
 import {
@@ -276,6 +277,8 @@ export interface ArgsDaSelecao {
   gap?: number
   /** `'marca'`: a margem da marca é a margem (29/10/2026); a escolha grava o modo. Ausente = opção A. */
   margem?: MargemDaPeca
+  /** As receitas dos acentos que a peça vai desenhar (a reserva do fio na pilha). */
+  receitas?: ReadonlyArray<ReceitaDoAcento>
   /** O portão estrutural já passado (`partidaNoArquetipo`): as faixas, os candidatos e a posição de partida. */
   partida: Extract<PartidaNoArquetipo, { ok: true }>
   /** A foto em cada corte candidato (vazio sem foto). */
@@ -299,7 +302,7 @@ export type SelecaoNoArquetipo =
   | { ok: false; resultado: ResultadoDaBusca; faixas: FaixaDeBusca[]; motivo: string | null }
 
 const materializarCom = (args: ArgsDaSelecao, deslocamentos: Combinacao['deslocamentos']): Materializacao =>
-  materializarUnidades({ arquetipo: args.arquetipo, formato: args.formato, canvas: args.canvas, geometria: args.geometria, unidades: args.unidades, logo: args.logo, deslocamentos, ...(args.gap !== undefined ? { gap: args.gap } : {}), ...(args.margem ? { margem: args.margem } : {}) })
+  materializarUnidades({ arquetipo: args.arquetipo, formato: args.formato, canvas: args.canvas, geometria: args.geometria, unidades: args.unidades, logo: args.logo, deslocamentos, ...(args.gap !== undefined ? { gap: args.gap } : {}), ...(args.margem ? { margem: args.margem } : {}), ...(args.receitas ? { receitas: args.receitas } : {}) })
 
 /** A combinação que reproduz deslocamentos dados (a escolha gravada, ou a referência): rótulo `congelado` fora do 0. */
 function combinacaoDosDeslocamentos(faixas: FaixaDeBusca[], deslocamentos: Combinacao['deslocamentos']): Combinacao {

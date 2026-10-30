@@ -301,15 +301,16 @@ export function ocupacaoDoAcento(a: { tipo: ElementoDoArquetipo; desenho: Desenh
  * só que independente de onde o texto pousa. Fora: envolventes (#5, folga do `envoltoriosDoArquetipo`), fio por item
  * (#15), moldura aberta (#2: o braço de cima é fixo na peça) e os presos à peça (#16).
  */
-export function extensoesDosAcentosPresos(a: ArquetipoDeLayout, formato: FormatoDoArquetipo, canvas: { width: number; height: number }): Partial<Record<PapelDeTexto, { topo: number; base: number }>> {
+export function extensoesDosAcentosPresos(a: ArquetipoDeLayout, formato: FormatoDoArquetipo, canvas: { width: number; height: number }, receitasDaPeca?: ReadonlyArray<ReceitaDoAcento>): Partial<Record<PapelDeTexto, { topo: number; base: number }>> {
   const geo = a.formatos[formato]
   const H = canvas.height
   const saida: Partial<Record<PapelDeTexto, { topo: number; base: number }>> = {}
   // A reserva nasce do elemento DECLARADO na definição (30/10/2026), não da receita do catálogo de elementos vivo: a
   // peça que reproduz a receita GRAVADA com a biblioteca de shapes mudada (replay sem o catálogo vivo) também empilha
-  // reservando o fio — com a pilha fechada, sem reserva o fio congelado caía dentro do apoio. A receita viva, quando
-  // existe, só acrescenta o traço (um fio mais grosso que a caixa ocupa a espessura).
-  const receitas = receitasDoArquetipo(a, { formato, canvas }).receitas
+  // reservando o fio — com a pilha fechada, sem reserva o fio congelado caía dentro do apoio. O traço vem das receitas
+  // que SERÃO desenhadas (`receitasDaPeca`: as congeladas da peça, senão as do catálogo): um fio mais grosso que a
+  // caixa ocupa a espessura, e a reserva tem de ser a do desenho, não a da biblioteca de hoje (revisão do Codex, P2).
+  const receitas = receitasDaPeca ?? receitasDoArquetipo(a, { formato, canvas }).receitas
   for (const e of a.elementos ?? []) {
     if (!e.presoA || e.presoA === 'logo' || e.porItem || e.tipo === 'moldura-aberta' || ELEMENTOS_QUE_ENVOLVEM.includes(e.tipo)) continue
     const r = receitas.find((x) => x.elemento === e.id)

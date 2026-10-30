@@ -278,7 +278,7 @@ export function medirCopy(args: {
     })
   // Com arquétipo, a MESMA escada da unidade do compor (`prepararNoArquetipo`).
   const noArquetipo = arq
-    ? prepararNoArquetipo({ arquetipo: arq.definicao, formato: arq.formato, canvas: DIMENSOES[args.formato], geometria: pisoArq!, gap: GAP_DA_PILHA, margem: 'marca', preparar })
+    ? prepararNoArquetipo({ arquetipo: arq.definicao, formato: arq.formato, canvas: DIMENSOES[args.formato], geometria: pisoArq!, gap: args.assinatura.numeros.geometria[args.formato].gapEntreBlocos, margem: 'marca', preparar })
     : null
   const preparados = noArquetipo ? noArquetipo.preparados : preparar()
   // #8: o papel do liso pelas tintas DESTA preparação (a da assinatura recebida), a mesma conta do compor — sem preparar

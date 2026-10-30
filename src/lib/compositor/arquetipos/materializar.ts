@@ -293,7 +293,7 @@ export function materializarArquetipo(args: {
   const dominante = papelDominante(arquetipo)
 
   // 1ª passada: referência efetiva, zona, capacidade e o pouso de cada papel na própria referência (com o dy).
-  type Entrada = { papel: PapelDeTexto | 'logo'; referencia: RetanguloPx; zona: RetanguloPx; medida: { width: number; height: number }; posicao: RetanguloPx; onde: string; dy: number }
+  type Entrada = { papel: PapelDeTexto | 'logo'; referencia: RetanguloPx; zona: RetanguloPx; medida: { width: number; height: number }; posicao: RetanguloPx; onde: string; dy: number; naBase: boolean }
   const entradas: Entrada[] = []
   for (const [papel, pos] of Object.entries(arquetipo.formatos[formato].papeis) as Array<[PapelDeTexto | 'logo', NonNullable<ArquetipoDeLayout['formatos']['story']['papeis']['headline']>]>) {
     if ('automatica' in pos) {
@@ -396,7 +396,7 @@ export function materializarArquetipo(args: {
       })
       continue
     }
-    entradas.push({ papel, referencia, zona, medida, posicao, onde, dy })
+    entradas.push({ papel, referencia, zona, medida, posicao, onde, dy , naBase })
   }
 
   // A pilha da faixa (29/10/2026): só muda o y dos papéis que seguem a âncora; referência, zona e capacidade ficam.
@@ -464,7 +464,7 @@ export function materializarArquetipo(args: {
 function empilharNasFaixas(
   arquetipo: ArquetipoDeLayout,
   formato: FormatoDoArquetipo,
-  entradas: Array<{ papel: PapelDeTexto | 'logo'; referencia: RetanguloPx; zona: RetanguloPx; posicao: RetanguloPx }>,
+  entradas: Array<{ papel: PapelDeTexto | 'logo'; referencia: RetanguloPx; zona: RetanguloPx; posicao: RetanguloPx; naBase?: boolean }>,
   gap: number,
   ornamentos?: Partial<Record<PapelDeTexto, { esquerda: number; direita: number; topo: number; base: number }>>,
   envoltorios?: Partial<Record<PapelDeTexto, { x: number; y: number }>>,
@@ -483,10 +483,13 @@ function empilharNasFaixas(
   // não se empilham.
   const mesmaColuna = (a: E, b: E) => a.posicao.x < b.posicao.x + b.posicao.width && b.posicao.x < a.posicao.x + a.posicao.width
   for (const faixa of faixasDoArquetipo(arquetipo, formato)) {
+    // O papel que pousa pela BASE da margem (30/10/2026, `naBase`) não entra numa pilha de âncora topo: ela o puxaria
+    // para baixo do apoio (nos modelos de coluna #10 o serviço acabava 420 px acima da margem). Com âncora rodapé ele
+    // é o último da pilha, e é dele que os outros sobem.
     const membros = faixa
       .filter((m): m is PapelDeTexto => m !== 'logo')
       .map((m) => entradas.find((e) => e.papel === m))
-      .filter((e): e is NonNullable<typeof e> => Boolean(e))
+      .filter((e): e is NonNullable<typeof e> => Boolean(e) && !(ancora === 'topo' && e!.naBase))
       .sort((a, b) => a.referencia.y - b.referencia.y)
     // As PILHAS da faixa: membros consecutivos na mesma coluna.
     const pilhas: E[][] = []

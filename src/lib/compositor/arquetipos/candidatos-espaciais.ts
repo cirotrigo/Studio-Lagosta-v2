@@ -18,7 +18,7 @@ import {
   type MembroDaFaixa,
 } from './busca-espacial-tipos'
 import { CreativeError } from '@/lib/creatives/errors'
-import { envoltoriosDoArquetipo } from './acentos'
+import { envoltoriosDoArquetipo, type ReceitaDoAcento } from './acentos'
 import { faixasDoArquetipo } from './faixas'
 import { textoNoLiso } from './fundo'
 import { materializarUnidades, type UnidadeDoArquetipo } from './no-compositor'
@@ -184,8 +184,10 @@ export function partidaNoArquetipo(args: {
   gap?: number
   /** `'marca'`: a margem da marca é a margem (29/10/2026). Ausente = opção A. */
   margem?: MargemDaPeca
+  /** As receitas dos acentos que a peça vai desenhar (a reserva do fio na pilha). */
+  receitas?: ReadonlyArray<ReceitaDoAcento>
 }): PartidaNoArquetipo {
-  const base = { arquetipo: args.arquetipo, formato: args.formato, canvas: args.canvas, geometria: args.geometria, unidades: args.unidades, logo: args.logo, ...(args.gap !== undefined ? { gap: args.gap } : {}), ...(args.margem ? { margem: args.margem } : {}) }
+  const base = { arquetipo: args.arquetipo, formato: args.formato, canvas: args.canvas, geometria: args.geometria, unidades: args.unidades, logo: args.logo, ...(args.gap !== undefined ? { gap: args.gap } : {}), ...(args.margem ? { margem: args.margem } : {}), ...(args.receitas ? { receitas: args.receitas } : {}) }
   const naReferencia = materializarUnidades({ ...base, conferirZona: false })
   if ('problemas' in naReferencia) return { ok: false, problemas: naReferencia.problemas }
   const conferida = materializarUnidades(base)

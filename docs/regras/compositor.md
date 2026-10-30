@@ -1651,5 +1651,12 @@ pré ele não mexeu):
   (padding + meia-entrelinha) e desfiz: nos ajustes do Ciro a Real pôs o fio DENTRO da caixa (base −6..0) e a Wine 10 px
   abaixo dela — a média dos dois cai em cima da conta atual (apoio ≈ 12 px abaixo da manchete), e a versão pela tinta
   ainda dependia do arredondamento do fio contra a caixa do apoio. Dois pontos de dado não sustentam outra regra.
+- Rodada 1 do Codex (30/10, NÃO APTO → corrigido): (1) o vão INTERNO da unidade (horário e endereço em duas camadas,
+  `gap × 1,6` = 22) continua o da marca — `GAP_DA_PILHA` só vale ENTRE papéis (`prepararNoArquetipo` recebe `g.gap`);
+  (2) o papel que pousa pela base NÃO entra numa pilha de âncora topo — nos modelos de coluna #10 ela puxava o serviço
+  para baixo do apoio (`naBase` na entrada; `empilharNasFaixas` o deixa de fora); (3) a reserva do fio na pilha usa as
+  receitas que a peça VAI desenhar (`receitasDaPeca`: as congeladas da recomposição, senão as do catálogo), passadas
+  de `compor` a `partidaNoArquetipo`/`selecionarNoArquetipo`/`materializarUnidades` — traço congelado 9 contra 2 vivo
+  reservava 2 e omitia o fio.
 - Fora desta fase, decisão do Ciro: R3 (o título-gigante sem escala dominante, apoio no rodapé) e R4 (gradiente de
   leitura mais longo na base).
