@@ -147,18 +147,16 @@ describe('#9 · a fixture LITERAL das Bv3 no produto: os dois achados medidos (A
     }
   }, 180_000)
 
-  it('A-I2 Feed: a logo de 94,5 px arredonda para 894 + 95 = 989 > zona 988 → a composição recusa (a materialização arredonda x e largura separados)', async () => {
+  it('A-I2 Feed: a logo de 94,5 px arredonda para 894 + 95 = 989 contra a zona 988 — a folga do arredondamento na horizontal (29/10/2026) aceita o que a materialização aceitou', async () => {
+    // Antes da folga, a composição recusava: "a caixa de logo (x 894–989) passa da zona efetiva na horizontal (x 756–988)".
     cap.diagnostico = false
     for (const liso of ['claro', 'escuro'] as const) {
       cenario.atual = await cenario9(liso, await medir())
-      let erro: { code?: string; message: string } | null = null
-      try {
-        await comporPeca(spec9('feed', liso), { autor: 'u-fixture' })
-      } catch (e) {
-        erro = e as { code?: string; message: string }
-      }
-      expect(erro?.message).toMatch(/logo — a caixa de logo \(x 894–989\) passa da zona efetiva na horizontal \(x 756–988\)/)
-      medidas[`A-I2-feed-${liso}`] = { code: erro?.code, message: erro?.message }
+      const r = await comporPeca(spec9('feed', liso), { autor: 'u-fixture' })
+      const logo = camada(r, 'logo')
+      // A caixa gravada é a arredondada (x e largura separados): 894 + 95; a borda real é 988,2, a da zona 988,2.
+      expect([logo.position.x, logo.size.width, logo.position.x + logo.size.width]).toEqual([894, 95, 989])
+      medidas[`A-I2-feed-${liso}`] = { logo: { x: logo.position.x, width: logo.size.width }, corpos: ['pre', 'headline', 'apoio'].map((p) => Number(camada(r, p).style?.fontSize)) }
     }
   }, 180_000)
 })
