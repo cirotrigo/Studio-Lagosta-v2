@@ -352,7 +352,7 @@ describe('G13–G18 — política do assunto', () => {
     expect(motivosDe(estimado, 'texto-sobre-assunto')[0]?.motivo).toContain('fora do canônico')
     const nenhum = gate({ medida: { canvas: grande, camadas, assunto: null, assuntoNaoSeAplica: true, motivoSemAssunto: 'a foto não tem assunto localizável (o compositor leu esta foto neste corte e não achou região forte): nada a proteger' } })
     expect(nenhum.cobertura['texto-sobre-assunto'].estado).toBe('nao-comprovada')
-    // Story 2160×3840 com texto em y=250 (passaria pelos 188 px absolutos; exibido em 1080 cai em y=125): piso não comprovado, nunca APTO.
+    // Story 2160×3840 com texto em y=250 (passaria pelos 160 px absolutos; exibido em 1080 cai em y=125): piso não comprovado, nunca APTO.
     const y250 = pecaLimpa().camadas.map((l) => (l.id === 'bg-foto' ? { ...l, size: grande } : l.id === 'apoio' ? { ...l, position: { x: 100, y: 250 } } : l))
     const m250 = pecaLimpa().metricas.map((m) => (m.layerId === 'apoio' ? { ...m, box: { ...m.box, y: 250 }, glyphTop: 256, glyphBottom: 304 } : m))
     const g250 = gate({ medida: { canvas: grande, camadas: y250, metricas: m250 } })
@@ -457,7 +457,7 @@ describe('G19/G26 — piso de interface do story', () => {
     const feed = gate({ medida: { formato: 'feed', camadas: base.camadas.map((l) => (l.id === 'apoio' ? { ...l, position: { x: 100, y: 100 } } : l)) } })
     expect(feed.cobertura['piso-de-interface'].estado).toBe('nao-se-aplica')
     // Texto 300×100 em (400, 450) girado 90° em torno da origem: ocupa x 300–400 × y 450–750 — a caixa original (y 450–550)
-    // está na faixa livre; o limite girado também... então usamos -90°: ocupa x 400–500 × y 150–450 → invade o topo (188).
+    // está na faixa livre; o limite girado também... então usamos -90°: ocupa x 400–500 × y 150–450 → invade o topo (160).
     const girado = { ...base.camadas.find((l) => l.id === 'apoio')!, position: { x: 400, y: 450 }, size: { width: 300, height: 100 }, rotation: -90 } as Layer
     const g = gate({ medida: { camadas: base.camadas.map((l) => (l.id === 'apoio' ? girado : l)), metricas: base.metricas.map((m) => (m.layerId === 'apoio' ? metrica(girado) : m)) } })
     expect(g.cobertura['piso-de-interface'].estado).toBe('reprovada')
@@ -466,33 +466,34 @@ describe('G19/G26 — piso de interface do story', () => {
     expect(logoFiltro.naoMedidos.some((n) => n.regra === 'piso-de-interface' && n.camadas.includes('logo'))).toBe(true)
   })
 
-  it('G26 (ratificado pelo owner em 16/10: folga de antialias de 1 px, pisos 188/224): TOPO — texto ou logo em y=188 reprova, y=189 passa; RODAPÉ — base em H−224 reprova, H−225 passa; cliente menos restritivo não afrouxa; mais restritivo aperta; oculta não conta', () => {
+  it('G26 (ratificado pelo owner em 16/10: folga de antialias de 1 px; pisos 160/160 desde 29/10): TOPO — texto ou logo em y=160 reprova, y=161 passa; RODAPÉ — base em H−160 reprova, H−161 passa; cliente menos restritivo não afrouxa; mais restritivo aperta; oculta não conta', () => {
     const t = (y: number, extra: Partial<Layer> = {}) => texto('t', { x: 100, y, width: 300, height: 50 }, 30, extra)
     const sem = (ls: Layer[], iface = interfaceDoStory()) => foraDaInterface(ls, CANVAS, iface).map((f) => f.camada)
     const logoEm = (y: number) => logo({ position: { x: 799, y } })
     expect(FOLGA_DE_ANTIALIAS).toBe(1)
     // Topo: os dois lados da fronteira, texto e logo.
-    expect(sem([t(187)])).toEqual(['t'])
-    expect(sem([t(188)])).toEqual(['t'])
-    expect(sem([t(189)])).toEqual([])
-    expect(sem([logoEm(188)])).toEqual(['logo'])
-    expect(sem([logoEm(189)])).toEqual([])
+    expect(sem([t(159)])).toEqual(['t'])
+    expect(sem([t(160)])).toEqual(['t'])
+    expect(sem([t(161)])).toEqual([])
+    expect(sem([logoEm(160)])).toEqual(['logo'])
+    expect(sem([logoEm(161)])).toEqual([])
     // Rodapé: os dois lados da fronteira, logo (95 de altura) e texto (50 de altura).
-    expect(sem([logoEm(H - 223 - 95)])).toEqual(['logo'])
-    expect(sem([logoEm(H - 224 - 95)])).toEqual(['logo'])
-    expect(sem([logoEm(H - 225 - 95)])).toEqual([])
-    expect(sem([t(H - 224 - 50)])).toEqual(['t'])
-    expect(sem([t(H - 225 - 50)])).toEqual([])
-    expect(interfaceDoStory({ topo: 100 })).toEqual({ topo: 188, rodape: 224 })
-    // Codex R9: configuração não finita nunca afrouxa (`Math.max(NaN, 188)` era NaN e o piso deixava de pegar invasão).
+    expect(sem([logoEm(H - 159 - 95)])).toEqual(['logo'])
+    expect(sem([logoEm(H - 160 - 95)])).toEqual(['logo'])
+    expect(sem([logoEm(H - 161 - 95)])).toEqual([])
+    expect(sem([t(H - 160 - 50)])).toEqual(['t'])
+    expect(sem([t(H - 161 - 50)])).toEqual([])
+    expect(interfaceDoStory({ topo: 100 })).toEqual({ topo: 160, rodape: 160 })
+    // Codex R9: configuração não finita nunca afrouxa (`Math.max(NaN, 160)` era NaN e o piso deixava de pegar invasão).
     for (const cfg of [{ topo: Number.NaN, rodape: Number.NaN }, { topo: Infinity, rodape: -Infinity }, { topo: '300', rodape: null }] as unknown as Array<{ topo?: number; rodape?: number }>) {
       const i = interfaceDoStory(cfg)
-      expect(Number.isFinite(i.topo) && i.topo >= 188 && Number.isFinite(i.rodape) && i.rodape >= 224, JSON.stringify(cfg)).toBe(true)
-      expect(sem([t(187)], i), JSON.stringify(cfg)).toEqual(['t'])
+      expect(Number.isFinite(i.topo) && i.topo >= 160 && Number.isFinite(i.rodape) && i.rodape >= 160, JSON.stringify(cfg)).toBe(true)
+      expect(sem([t(159)], i), JSON.stringify(cfg)).toEqual(['t'])
     }
     expect(sem([t(250)], interfaceDoStory({ topo: 300 }))).toEqual(['t'])
     expect(sem([t(100, { visible: false })])).toEqual([])
-    expect(PISO_DE_INTERFACE_DO_STORY).toEqual({ topo: 188, rodape: 224 })
+    // 29/10/2026, decisão do owner: 160/160 (eram 188/224 — ver `interface-do-story.ts`).
+    expect(PISO_DE_INTERFACE_DO_STORY).toEqual({ topo: 160, rodape: 160 })
   })
 })
 
@@ -886,12 +887,20 @@ describe('G22/G27–G29 — APTO exige copy completa, identidade válida e piso 
     expect(g.cobertura.identidade).toEqual({ estado: 'nao-comprovada', motivo: 'camadas ilegíveis' })
   })
 
-  it('G29: story com texto em y=150 (dentro da margem, fora do piso) → só piso-de-interface; a mesma peça em feed → APTO', () => {
+  it('G29: story com texto em y=150 → fora-da-area-segura E piso-de-interface (desde 29/10 a margem padrão do Story É o piso, 160); em y=165 → APTO; a mesma peça em feed → APTO', () => {
     const b = pecaLimpa()
     const camadas = b.camadas.map((l) => (l.id === 'apoio' ? { ...l, position: { x: 100, y: 150 } } : l))
     const metricas = b.metricas.map((m) => (m.layerId === 'apoio' ? { ...m, box: { ...m.box, y: 150 }, glyphTop: 156, glyphBottom: 204 } : m))
     const story = gate({ medida: { camadas, metricas } })
-    expect(story.motivos.map((m) => m.regra)).toEqual(['piso-de-interface'])
+    expect(story.motivos.map((m) => m.regra)).toEqual(['fora-da-area-segura', 'piso-de-interface'])
+    // Até 29/10 (margem 120, piso 188) este caso era "só piso-de-interface"; hoje as duas linhas coincidem no Story.
+    const dentro = gate({
+      medida: {
+        camadas: b.camadas.map((l) => (l.id === 'apoio' ? { ...l, position: { x: 100, y: 165 } } : l)),
+        metricas: b.metricas.map((m) => (m.layerId === 'apoio' ? { ...m, box: { ...m.box, y: 165 }, glyphTop: 171, glyphBottom: 219 } : m)),
+      },
+    })
+    expect(dentro.resultado).toBe('APTO')
     // Em feed a peça é a MESMA no canvas canônico do feed (1080×1350): o fundo cobre o canvas e o `servico` sobe para caber.
     const feed = { width: 1080, height: 1350 }
     const emFeed = camadas.map((l) => (l.id === 'bg-foto' ? { ...l, size: feed } : l.id === 'servico' ? { ...l, position: { x: 100, y: 1150 } } : l))

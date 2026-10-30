@@ -8,6 +8,7 @@
  * Fonte de cada papel = `CustomFont.fontFamily` cadastrada no projeto — o
  * script confere e recusa fonte que não existe.
  */
+import { GEOMETRIA_PADRAO } from '@/lib/compositor/geometria'
 import type { NumerosDaAssinatura } from '@/lib/compositor/assinatura'
 import type { Formato } from '@/lib/compositor/spec'
 
@@ -212,11 +213,8 @@ export const KITS_DE_ASSINATURA: Record<number, KitDeAssinatura> = {
       fundo: '#0B0B0B',
       halo: { faixaTexto: [0.26, 0.58], faixaMarca: [0.12, 0.3], raioTexto: 190, raioMarca: 96 },
       logo: { largura: 236 },
-      geometria: {
-        story: { margemH: 92, safeTopo: 188, safeRodape: 224, gapEntreBlocos: 14, escalaDeFonte: 1 },
-        feed: { margemH: 92, safeTopo: 120, safeRodape: 104, gapEntreBlocos: 14, escalaDeFonte: 84 / 96 },
-        quadrado: { margemH: 92, safeTopo: 120, safeRodape: 104, gapEntreBlocos: 12, escalaDeFonte: 0.85 },
-      },
+      // Os números da casa vêm da fonte única (29/10/2026): este kit não pode regravar os antigos em Project.assinatura
+      geometria: { ...GEOMETRIA_PADRAO, feed: { ...GEOMETRIA_PADRAO.feed, escalaDeFonte: 84 / 96 } },
     },
   },
   11: { formatos: { story: wineVix }, logo: { largura: 148 }, fundo: '#241A16', numeros: { mancha: '#240000', fundo: '#241A16', halo: { faixaTexto: [0.3, 0.85], faixaMarca: [0, 0], raioTexto: 150, raioMarca: 60 }, logo: { largura: 148 }, geometria: { story: geo(96, 200, 150, 1), feed: geo(96, 120, 100, 0.875), quadrado: geo(96, 120, 100, 0.85, 12) } } },

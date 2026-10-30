@@ -423,14 +423,15 @@ describe('E1/E2/E3 — APTO → DRAFT; não APTO → nenhum DRAFT; corrigir e ag
     expect((await auditoria()).gate).toMatchObject({ posts: 0, semRegistro: 0, coincidente: { APTO: 0, REVISAO_HUMANA_NECESSARIA: 0 } })
   }, 240_000)
 
-  it('E2b: o apoio sobre o piso de interface (conferência SÓ do gate: o revisor não tem regra nem ajuste para isso) → gate REVISAO_HUMANA_NECESSARIA (piso-de-interface) sem ajuste a propor → agendar-leva não cria post', async () => {
+  it('E2b: o apoio sobre o piso de interface → gate REVISAO_HUMANA_NECESSARIA (piso-de-interface); desde 29/10 a margem do revisor coincide com o piso, então o revisor TAMBÉM acusa e propõe o mover → agendar-leva não cria post', async () => {
     const { pageId, itemId } = await pecaComposta({ editar: (ls) => ls.map((l) => (l.id === 'apoio' ? { ...l, position: { ...l.position, y: 1750 } } : l)) })
     const rev = await revisar(pageId)
     const gate = await gateMedido(rev)
     expect(gate.resultado).toBe(CODIGOS.revisaoHumana)
     expect(gate.motivos.map((m) => m.regra)).toContain('piso-de-interface')
-    // O revisor não vê o piso: nenhum achado, nenhum ajuste — é o caso em que a tool diz "leve à pessoa".
-    expect(rev.relatorio.ajustes).toEqual([])
+    // Até 29/10 o revisor não via o piso (margem 100 na base < piso 224): nenhum ajuste. Com a margem da casa em 160
+    // (= o piso), `fora-da-area-segura` acusa o apoio e o ajuste é o mover para dentro — o gate continua decidindo.
+    expect(rev.relatorio.ajustes.some((a) => a.tipo === 'mover' && a.camadas.includes('apoio'))).toBe(true)
     const lote = await agendar(itemId)
     expect(lote.itens[0]).toMatchObject({ situacao: 'falhou', codigo: CODIGOS.revisaoHumana })
     expect(posts()).toEqual([])
@@ -527,12 +528,12 @@ describe('E4/E5/E6 — concorrência, versão boa preservada, post aprovado into
     // O apoio da peça composta está em y ≈ 400: +1350 o leva para dentro do piso de interface do story (1750).
     const erro = (await erroDe(ajustar(pageId, [{ tipo: 'mover', camadas: ['apoio'], dy: 1350 } as unknown as Ajuste], rev.versao!))) as CreativeError
     expect(erro.code).toBe(CODIGOS.revisaoHumana)
-    // QUAL barreira preservou o DRAFT: o CP4 ACEITOU o movimento (`ajustesAplicados` com a comparação sem pioras — a peça
-    // composta não tem foto, e o piso de interface não é regra do revisor) e foi o GATE, na transação, que recusou a versão
-    // ajustada por `piso-de-interface` (`revisao.tipo = 'medida'`, sem `causa` do CP4).
-    expect(erro.details).toMatchObject({ ajusteGravado: false, revisao: { tipo: 'medida', resultado: CODIGOS.revisaoHumana }, ajustesAplicados: [expect.objectContaining({ tipo: 'mover' })], ajustesRecusados: [] })
-    expect((erro.details as { causa?: string }).causa).toBeUndefined()
-    expect(((erro.details as { motivos: Array<{ regra: string }> }).motivos ?? []).map((m) => m.regra)).toContain('piso-de-interface')
+    // QUAL barreira preservou o DRAFT: até 29/10 o CP4 aceitava o movimento (o piso de interface não era regra do
+    // revisor) e o GATE recusava por `piso-de-interface`. Desde 29/10 a margem da casa na base (160) coincide com o
+    // piso: é o CP4, pela não-piora (`fora-da-area-segura` do apoio), que recusa antes do gate — `causa`
+    // AJUSTE_PIOROU_ARTE, nada aplicado, nada gravado. O gate continua lá para o que passar pelo CP4.
+    expect(erro.details).toMatchObject({ ajusteGravado: false, causa: 'AJUSTE_PIOROU_ARTE', recusados: [expect.objectContaining({ indice: 0, tipo: 'mover', codigo: 'AJUSTE_PIOROU_ARTE' })], revisao: { tipo: 'nao-medida' } })
+    expect(JSON.stringify((erro.details as { recusados: unknown[] }).recusados)).toContain('fora-da-area-segura')
     expect(JSON.stringify([banco.pages.get(pageId), banco.generations.get(generationId), banco.posts.get(post.id)])).toBe(antes)
     expect([...banco.generations.values()].filter((g) => g.fieldValues?.source === 'ajuste-arte' && g.status !== 'FAILED')).toEqual([])
     expect(espioes.invalidar).not.toHaveBeenCalled()

@@ -6,9 +6,9 @@
  * (`NUMEROS_PADRAO.geometria` + `DIMENSOES`), lido daqui, nunca copiado. Ela
  * RECORTA a zona na materialização, e o validador confere que o recorte ainda
  * comporta a caixa — mudar o piso global não invalida uma versão publicada
- * enquanto ela couber. (O autofix confere o `CANVAS_MARGIN`, mais frouxo em
- * todos os lados: quem passa aqui passa lá. A geometria efetiva de cada
- * projeto, que a assinatura pode sobrescrever, é do T1a.)
+ * enquanto ela couber. (Desde 29/10/2026 o autofix e o revisor conferem os
+ * MESMOS números, por `margensDoEditor`: quem passa aqui passa lá. A geometria
+ * efetiva de cada projeto, que a assinatura pode sobrescrever, é do T1a.)
  */
 import { NUMEROS_PADRAO } from '../assinatura'
 import { ALINHAMENTOS, ANCORAS, CANTOS, DIMENSOES } from '../spec'
