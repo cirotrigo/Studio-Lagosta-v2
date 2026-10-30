@@ -1208,7 +1208,7 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
               />
             )}
 
-            {/* Guias de margem (70px laterais, 120px topo, 100px base) - Ativado com tecla 'R' */}
+            {/* Guias de margem — a margem da marca (`CANVAS_MARGIN`: padrão 92 laterais, 188 topo, 224 base) - Ativado com tecla 'R' */}
             {showMarginGuides && (
               <>
                 {/* Borda esquerda */}

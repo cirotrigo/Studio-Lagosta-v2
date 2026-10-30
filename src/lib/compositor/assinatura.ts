@@ -20,6 +20,9 @@ import { configDaCamada, ehGradienteDeLeituraDaPagina, GRADIENTE_PADRAO, type Aj
 import { papelDoNome } from './papel-do-nome'
 import { entraNoRodizio, TAG_FORA_DO_RODIZIO } from './fora-do-rodizio'
 import type { Formato, Papel } from './spec'
+import { GEOMETRIA_PADRAO, mesclarGeometria, type GeometriaDoFormato } from './geometria'
+
+export type { GeometriaDoFormato } from './geometria'
 
 export const TAG_DA_ASSINATURA = 'assinatura'
 export const NOME_DO_TEMPLATE_DE_ASSINATURA = 'Assinatura'
@@ -90,15 +93,6 @@ export interface LogoDaAssinatura {
   posicao?: { x: number; y: number }
 }
 
-export interface GeometriaDoFormato {
-  margemH: number
-  safeTopo: number
-  safeRodape: number
-  /** Vão vertical entre blocos (px). */
-  gapEntreBlocos: number
-  /** Multiplicador dos tamanhos de fonte da página de assinatura de STORY, quando o formato não tem página própria. */
-  escalaDeFonte: number
-}
 
 export interface NumerosDaAssinatura {
   /** O dark da marca: cor padrão do gradiente de leitura e sombra padrão do glifo. */
@@ -143,15 +137,8 @@ export const NUMEROS_PADRAO: NumerosDaAssinatura = {
   gradiente: { ...GRADIENTE_PADRAO },
   destaque: { pesado: true },
   logo: { largura: 236 },
-  geometria: {
-    // Safe area do story: onde o Instagram desenha avatar e barra de resposta.
-    story: { margemH: 92, safeTopo: 188, safeRodape: 224, gapEntreBlocos: 14, escalaDeFonte: 1 },
-    // Feed e quadrado não têm faixa do Instagram, mas o autofix confere a
-    // margem de segurança do editor (CANVAS_MARGIN: 120 no topo, 100 na
-    // base) — o compositor não pode pousar texto onde o editor o acusa.
-    feed: { margemH: 92, safeTopo: 120, safeRodape: 104, gapEntreBlocos: 14, escalaDeFonte: 0.875 },
-    quadrado: { margemH: 92, safeTopo: 120, safeRodape: 104, gapEntreBlocos: 12, escalaDeFonte: 0.85 },
-  },
+  // Os números moram em `geometria.ts` (módulo puro, 29/10/2026): o editor os lê sem puxar o resto da assinatura.
+  geometria: GEOMETRIA_PADRAO,
 }
 
 export interface AssinaturaDaMarca {
@@ -317,12 +304,9 @@ function mesclarDestaque(base: NumerosDaAssinatura['destaque'], extra: unknown):
 }
 
 function mesclarNumeros(base: NumerosDaAssinatura, extra: unknown): NumerosDaAssinatura {
-  if (!extra || typeof extra !== 'object') return { ...base, gradiente: { ...base.gradiente }, destaque: { ...base.destaque }, geometria: { ...base.geometria } }
-  const e = extra as Partial<NumerosDaAssinatura> & { geometria?: Partial<Record<Formato, Partial<GeometriaDoFormato>>> }
-  const geometria = { ...base.geometria }
-  for (const f of Object.keys(base.geometria) as Formato[]) {
-    geometria[f] = { ...base.geometria[f], ...(e.geometria?.[f] ?? {}) }
-  }
+  if (!extra || typeof extra !== 'object') return { ...base, gradiente: { ...base.gradiente }, destaque: { ...base.destaque }, geometria: mesclarGeometria(base.geometria, extra) }
+  const e = extra as Partial<NumerosDaAssinatura>
+  const geometria = mesclarGeometria(base.geometria, extra)
   return {
     mancha: typeof e.mancha === 'string' ? e.mancha : base.mancha,
     fundo: typeof e.fundo === 'string' ? e.fundo : base.fundo,
