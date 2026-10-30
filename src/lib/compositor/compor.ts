@@ -870,7 +870,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   // ver `AssinaturaDaMarca.pisoDoProjeto`.
   const pisoArq = arq ? (assinatura.pisoDoProjeto ?? assinatura.numeros.geometria)[spec.formato] : null
   const gArq: GeometriaDaPeca | null = pisoArq ? { ...g, margemH: pisoArq.margemH, safeTopo: pisoArq.safeTopo, safeRodape: pisoArq.safeRodape } : null
-  const caixasArq = arq ? caixasMaximas(arq.definicao, arq.formato, canvas) : null
+  const caixasArq = arq ? caixasMaximas(arq.definicao, arq.formato, canvas, pisoArq!) : null
   const listasArq = arq ? papeisDeLista(arq.definicao) : null
   const escalaDoFormato = assinatura.origem.formatoDaPagina === spec.formato ? 1 : geo.escalaDeFonte
   const mancha = assinatura.numeros.mancha
@@ -912,7 +912,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     })
   // Com arquétipo, a preparação passa pela escada da UNIDADE (a mesma do medir-copy) — e a logo dos arranjos sai
   // deles: com arquétipo a logo é do arquétipo (senão a marca sairia duas vezes).
-  const noArquetipo: PreparoNoArquetipo | null = arq ? prepararNoArquetipo({ arquetipo: arq.definicao, formato: arq.formato, canvas, gap: g.gap, preparar }) : null
+  const noArquetipo: PreparoNoArquetipo | null = arq ? prepararNoArquetipo({ arquetipo: arq.definicao, formato: arq.formato, canvas, geometria: pisoArq!, gap: g.gap, preparar }) : null
   const preparados = noArquetipo ? noArquetipo.preparados : preparar()
   avisos.push(...preparados.avisos)
   const { arranjos, arranjoPorGrupo, elementosPorTexto, segundaVoz, gruposExtras } = preparados

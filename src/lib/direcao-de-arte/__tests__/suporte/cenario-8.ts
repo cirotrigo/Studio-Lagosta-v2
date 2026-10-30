@@ -5,6 +5,7 @@
  * logo (clara e escura). A foto é gerada (cinza com textura, tingida), com o "assunto" num retângulo claro — nenhuma
  * foto, logo ou marca real é consultada.
  */
+import { noPisoDe1310 } from './compositor'
 import sharp from 'sharp'
 import type { Layer } from '@/types/template'
 import type { CenarioDoCompositor, PaginaDeAssinatura } from './compositor'
@@ -105,7 +106,7 @@ export async function cenario8(
 ): Promise<CenarioDoCompositor> {
   const foto = opcoes.foto === undefined ? await fotoDoCenario8({ width: 1080, height: 1350 }) : opcoes.foto
   return {
-    projeto: { id: PROJETO_8, assinatura: opcoes.assinatura ?? { fundo: ESCURO_8, fundoClaro: CLARO_8 }, logoDoProjeto: null, logosDoProjeto: opcoes.variantes ?? (await variantesClaraEEscura()) },
+    projeto: { id: PROJETO_8, assinatura: noPisoDe1310(opcoes.assinatura ?? { fundo: ESCURO_8, fundoClaro: CLARO_8 }), logoDoProjeto: null, logosDoProjeto: opcoes.variantes ?? (await variantesClaraEEscura()) },
     paginasDeAssinatura: [pagina],
     foto: foto ? { url: dataUrl(foto), bytes: foto } : null,
     candidatasDoVeu: [],

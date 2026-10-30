@@ -5,8 +5,8 @@
 import { describe, expect, it } from 'vitest'
 import { NUMEROS_PADRAO } from '../../assinatura'
 import { DIMENSOES } from '../../spec'
-import { verArquetipo } from '../catalogo'
-import { caixasMaximas, excedeAlturaDaReferencia, materializarArquetipo, zonaEfetiva, type Materializacao, type ProblemaDeMaterializacao } from '../materializar'
+import { listarArquetipos, verArquetipo } from '../catalogo'
+import { caixasMaximas, excedeAlturaDaReferencia, materializarArquetipo, referenciaDoPapel, referenciaEfetiva, zonaEfetiva, type Materializacao, type ProblemaDeMaterializacao } from '../materializar'
 import { materializarUnidades, unidadesDoArquetipo } from '../no-compositor'
 import { montarBloco } from '../../blocos'
 import type { BlocoPreparado } from '../../preparar-blocos'
@@ -109,23 +109,61 @@ describe('T1a · materialização', () => {
     expect(zonaEfetiva(zonaDoPre, DIMENSOES.story, { ...geo('story'), safeTopo: 250 })!.y).toBe(250)
   })
 
-  it('17. piso do projeto com margem 96 corta a referência do catálogo (x 92): todo papel à esquerda é recusado, não movido (triagem 29/10/2026)', () => {
+  it('17. o piso da marca vence na horizontal (opção A, 29/10/2026): margem 96 contra a referência do catálogo em x 92 recolhe a caixa para dentro do piso, dos dois lados', () => {
     // O caso das 19 páginas "[Rever margem]" de 28/10: `Project.assinatura` com margemH 96 (o catálogo põe a referência em
-    // x .085 = 91,8 px). A materialização não empurra 4 px: recusa cada papel com a frase da área segura. Com o piso em 92
-    // (o padrão, e o que a coleção de revisão relaxou "em memória") a mesma copy entra. Caracterização — a correção é decisão.
+    // x .085 = 91,8 px). Antes, recusa de todo papel ("a área segura do projeto corta a referência"); agora a referência
+    // efetiva é a do catálogo ∩ o piso: o texto à esquerda pousa em 96 e a logo, rente à direita, recolhe para 984.
     const medidas = { pre: { width: 300, height: 50 }, headline: { width: 600, height: 200 }, servico: { width: 300, height: 60 } }
-    const com96 = materializarArquetipo({ arquetipo: TOPO, formato: 'story', canvas: DIMENSOES.story, geometria: { ...geo('story'), margemH: 96 }, medidas, logo: { razao: 0.5 } })
-    expect(com96.ok).toBe(false)
-    expect(problemas(com96).map((p) => [p.papel, p.codigo, p.referencia.x, p.zonaEfetiva?.x])).toEqual([
-      ['pre', 'ARQUETIPO_FORA_DA_ZONA', 92, 96],
-      ['headline', 'ARQUETIPO_FORA_DA_ZONA', 92, 96],
-      ['servico', 'ARQUETIPO_FORA_DA_ZONA', 92, 96],
-      // A logo, rente à direita (799 + 189 = 988 contra o piso 1080 − 96 = 984), cai pelo mesmo caminho.
-      ['logo', 'ARQUETIPO_FORA_DA_ZONA', 799, 670],
-    ])
-    for (const p of problemas(com96)) expect(p.motivo).toMatch(/a área segura do projeto corta a referência/)
-    const com92 = materializarArquetipo({ arquetipo: TOPO, formato: 'story', canvas: DIMENSOES.story, geometria: geo('story'), medidas, logo: { razao: 0.5 } })
-    expect(com92.ok).toBe(true)
+    const geo96 = { ...geo('story'), margemH: 96 }
+    const m = materializarArquetipo({ arquetipo: TOPO, formato: 'story', canvas: DIMENSOES.story, geometria: geo96, medidas, logo: { razao: 0.5 } })
+    expect(m.ok).toBe(true)
+    if (!m.ok) return
+    expect(m.papeis.pre!.posicao).toEqual({ x: 96, y: 230, width: 300, height: 50 })
+    expect(m.papeis.headline!.posicao).toEqual({ x: 96, y: 298, width: 600, height: 200 })
+    expect(m.papeis.servico!.posicao.x).toBe(96)
+    // A referência efetiva perde só o lado cortado: 91,8 + 756 → 96 … 847,8 (largura 751,8 → 752 ao pixel).
+    expect(m.papeis.headline!.referencia).toEqual({ x: 96, y: 298, width: 752, height: 230 })
+    // A logo em contain na referência efetiva (799,2 … 984): 184,8 × 92,4, rente à direita do piso.
+    expect(m.papeis.logo!.posicao).toEqual({ x: 799, y: 1576, width: 185, height: 92 })
+    // A coluna do medidor é a MESMA caixa: 751 contra 756 do catálogo.
+    expect(caixasMaximas(TOPO, 'story', DIMENSOES.story, geo96).headline).toEqual({ largura: 751, altura: 230 })
+    expect(caixasMaximas(TOPO, 'story', DIMENSOES.story).headline).toEqual({ largura: 756, altura: 230 })
+    // Piso que engole a referência não inventa posição: com margem 300 a coluna efetiva da manchete é 480 (300 … 780)
+    // e a caixa de 600 não cabe — recusa por capacidade, como a escada do medidor também veria.
+    const longe = materializarArquetipo({ arquetipo: TOPO, formato: 'story', canvas: DIMENSOES.story, geometria: { ...geo('story'), margemH: 300 }, medidas, logo: null })
+    expect(longe.ok).toBe(false)
+    expect(problemas(longe).find((p) => p.papel === 'headline')).toMatchObject({ codigo: 'ARQUETIPO_TEXTO_NAO_CABE', referencia: { x: 300, width: 480 } })
+  })
+
+  it('17b. no piso padrão (92) a referência efetiva É a do catálogo: coluna e caixas byte a byte iguais, em todo o catálogo', () => {
+    // 91,8 contra 92 está dentro da tolerância de ½ px: nada é recolhido (a prova pedida pelo Codex na triagem de 29/10).
+    for (const a of listarArquetipos()) {
+      for (const f of ['story', 'feed'] as const) {
+        expect(caixasMaximas(a, f, DIMENSOES[f], geo(f))).toEqual(caixasMaximas(a, f, DIMENSOES[f]))
+      }
+    }
+    expect(referenciaEfetiva({ x: 91.8, y: 0, width: 756, height: 10 }, { x: 92, y: 0, width: 896, height: 10 })).toEqual({ x: 91.8, y: 0, width: 756, height: 10 })
+    const esq = referenciaEfetiva({ x: 91.8, y: 0, width: 756, height: 10 }, { x: 96, y: 0, width: 888, height: 10 })
+    expect([esq.x, esq.y, esq.height]).toEqual([96, 0, 10])
+    expect(esq.width).toBeCloseTo(751.8, 9)
+    const dir = referenciaEfetiva({ x: 799.2, y: 0, width: 189, height: 10 }, { x: 670, y: 0, width: 314, height: 10 })
+    expect([dir.x, dir.y, dir.height]).toEqual([799.2, 0, 10])
+    expect(dir.width).toBeCloseTo(184.8, 9)
+  })
+
+  it('17c. no piso padrão a referência de TODO papel (logo fixa incluída) é a do catálogo ao pixel, em todo o catálogo', () => {
+    // Pedido da revisão do Codex (29/10): a prova de posição, não só de coluna — nenhum x/largura é recolhido no padrão.
+    for (const a of listarArquetipos()) {
+      for (const f of ['story', 'feed'] as const) {
+        const canvas = DIMENSOES[f]
+        for (const [papel, pos] of Object.entries(a.formatos[f].papeis)) {
+          if (!pos || !('referencia' in pos)) continue
+          const r = pos.referencia
+          const esperada = { x: Math.round(r.x * canvas.width), y: Math.round(r.y * canvas.height), width: Math.round(r.w * canvas.width), height: Math.round(r.h * canvas.height) }
+          expect(referenciaDoPapel(a, f, canvas, geo(f), papel as 'logo' | 'headline')?.referencia, `${a.id}@${a.versao} ${f} ${papel}`).toEqual(esperada)
+        }
+      }
+    }
   })
 
   it('caixa maior que a capacidade da referência: recusa com a medida (sem esmagar fonte, sem empurrar)', () => {

@@ -1507,3 +1507,32 @@ Registro do contrato já existente (lacuna apontada na revisão do preflight do 
 29/10 o autofix, o revisor e o `text-geometry` leem os MESMOS números do compositor (`margensDoEditor`). O catálogo
 dos arquétipos não mudou (versão imutável; a zona é recortada pelo piso). `Project.assinatura` por marca só muda
 pelo script de reconciliação, com o ok do Ciro.
+
+## O piso da marca vence na horizontal: a referência efetiva (opção A, 29/10/2026)
+
+- **O problema medido** (coleção de revisão de 28/10, 19 páginas "[Rever margem]"): Wine e Real têm `margemH` 96 em
+  `Project.assinatura`; o catálogo põe a referência dos papéis à esquerda em x .085 = 91,8 px. A zona efetiva
+  (`zona ∩ pisoDoProjeto`) começava em 96, cortava a referência por 4,2 px e a materialização recusava todo papel com
+  "a área segura do projeto corta a referência" — a saída de 28/10 foi relaxar o piso para 92 em memória, o contrário
+  do que a marca cadastrou. Decisão do owner (29/10): **o piso da marca vence**.
+- **A regra:** `referenciaEfetiva(referência, zonaEfetiva)` (`arquetipos/materializar.ts`) recolhe a referência do
+  catálogo para DENTRO da zona efetiva **na horizontal**, de cada lado que o piso corta por mais que a tolerância de
+  ½ px. A coluna do medidor (`caixasMaximas(…, geometria)`), a escada da unidade (`prepararNoArquetipo`, agora com
+  `geometria`), o pouso e o `contain` da logo usam a MESMA caixa — no compor e no medir-copy, pelo mesmo
+  `pisoDoProjeto[formato]`. Não é "empurrar para caber": é a precedência que o piso já tinha na vertical, onde a busca
+  espacial resgata a referência cortada (CP2B).
+- **O que não muda:** a vertical (capacidade de altura e resgate por dy); a zona; a recusa quando a zona não alcança a
+  referência; e **o padrão** (`margemH` 92): 91,8 contra 92 está dentro da tolerância, nada é recolhido, e
+  `caixasMaximas` sai byte a byte igual em todo o catálogo (teste 17b). Marcas com piso maior que 92 passam a compor
+  4 px (ou mais) para dentro, com a coluna correspondentemente mais estreita — pode mudar quebra de linha.
+- **Recomposição usa o piso ATUAL** (revisão do Codex, 29/10): a receita congelada da spec (id, versão, impressão,
+  corte e `dy`) continua valendo e nenhuma identidade muda — a impressão é da definição imutável, não da referência
+  materializada. A referência efetiva é derivada do piso que a assinatura devolve na hora, como a zona já era. Logo:
+  peça de marca no padrão (92) recompõe igual; peça composta com piso maior (há casos aceitos antes desta regra, ex.
+  modelos centrados como o centro-óptico, e as cópias de 28/10 feitas com o piso relaxado em memória) pode mudar a
+  posição horizontal e a quebra na recomposição, ou recusar, se o piso cadastrado mudou. Não há coordenadas
+  históricas congeladas na horizontal — a garantia é a receita, não o pixel.
+- **Fora desta regra:** acentos presos à PEÇA (ex. cantoneiras) seguem sujeitos à área segura e podem continuar
+  recusando com margem 96; `vaosDaLista` e `envoltoriosDoArquetipo` seguem derivados do catálogo (são folgas da
+  receita, não coluna). Esta fase recolhe só a referência dos papéis de texto e da logo fixa.
+- Controles em `arquetipos/__tests__/materializar.test.ts` (17 e 17b).
