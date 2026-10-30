@@ -49,6 +49,10 @@ export function MenuExibir({ compacto = false }: { compacto?: boolean } = {}) {
           Bordas da página
           <DropdownMenuShortcut>C</DropdownMenuShortcut>
         </DropdownMenuCheckboxItem>
+        <DropdownMenuCheckboxItem checked={exibicao.reguas} onCheckedChange={(v) => definir('reguas', v === true)}>
+          Réguas e guias
+          <DropdownMenuShortcut>Shift+R</DropdownMenuShortcut>
+        </DropdownMenuCheckboxItem>
         <DropdownMenuSeparator />
         <DropdownMenuCheckboxItem checked={exibicao.encaixe} onCheckedChange={(v) => definir('encaixe', v === true)}>
           Encaixe ao arrastar

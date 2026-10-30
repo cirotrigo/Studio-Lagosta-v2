@@ -1140,3 +1140,38 @@ Quarto checkpoint da instrução de 29/10.
 - **Prova:** `src/lib/__tests__/para-dentro.test.ts` (a conta do revisor em 4 casos e a faixa; seleção e invisíveis;
   encaixe do conjunto em y = 188; resize proporcional nos dois cantos; avisos por tipo). `regras.test.ts` continua
   verde com a conta extraída. Não prova: o gesto real no Konva, o chip montado — prova visual.
+
+
+## Linhas-guia e margens, L4: réguas e guias manuais, como no Canva (29/10/2026 — PR aberto, sem release)
+
+Quinto checkpoint da instrução de 29/10 (P1). Pesquisa do Canva em `docs/research/canva-guias-e-margens-2026-10/`.
+
+- **`src/lib/guias-manuais.ts`** (puro): `Guia`, `GuiasDaPagina` (guias, ocultas, travadas), `lerGuias` (lixo cai
+  fora guia a guia), `gerarGuias` (colunas e linhas DENTRO da margem da marca — cada coluna com as duas bordas, como
+  o Canva, mas o Canva calcula na página inteira com margem 0 e não sabe de topo ≠ base), `retangulosDasGuias` e
+  `paradasDasGuias` (o encaixe ao arrastar e no resize; vazios quando ocultas), `cairForaDaPagina` (solta de volta na
+  régua = apaga), `marcasDaRegua`/`intervaloDaRegua` (os degraus da régua do desktop, 10/25/50/100/200 pelo zoom).
+- **`useGuiasDaPagina(pageId)`** (`src/hooks/use-guias-da-pagina.tsx`): localStorage `lagosta:editor:guias:<pageId>`
+  com try/catch — por PESSOA e por PÁGINA (D4, v1). Trocar de página relê a chave. A equipe não vê as guias de
+  ninguém; gravar na página exigiria campo novo em `Page` e no zod do PATCH (migração) — não feito.
+- **`ReguasEGuias`** (`reguas-e-guias.tsx`): HTML por cima do stage (fora da `guides-layer` e do export), nos dois
+  modos (embutido: origem 0,0 do slot; clássico: `stage.position()` ouvido por `xChange/yChange/scaleXChange`).
+  Réguas em px do design (canvas 2D, sombreiam a faixa da seleção); a régua de cima cria guia horizontal e a da
+  esquerda cria vertical, com o selo da posição em px durante o arrasto; guia solta fora da página é apagada;
+  travadas não pegam; ocultas somem e deixam de encaixar; o canto das réguas abre o menu (Adicionar guias…,
+  Ocultar/Mostrar, Travar/Destravar, Limpar). "Adicionar guias" = colunas, linhas e espaçamento, com prévia da
+  contagem, dentro da margem da marca.
+- **Encaixe**: `retangulosDasGuias` entra no `otherRects` do arrasto e `paradasDasGuias` nas paradas do resize
+  (prop `guias` do transformer), só com "Réguas e guias" ligado (Shift+R, no menu Exibir; `reguas` na preferência,
+  padrão desligado). Mobile não mostra réguas.
+- **Ajustes da revisão R1 do Codex**: a chave é por PESSOA (id do Clerk) e por página — duas contas no mesmo
+  navegador não dividem guias; sem página ou sem pessoa nada é gravado; toda guia que entra por "Adicionar" ganha id
+  único (`acrescentarGuias`; o id de `gerarGuias` vinha da posição e repetia depois de mover); `pointercancel` e
+  `blur` cancelam o arrasto e só o `pointerId` do gesto conta; teto de 24 colunas/linhas e finitude antes da conta; no
+  modo clássico o overlay é IRMÃO do container do stage (um wrapper novo fazia o `ResizeObserver` do stage medir a si
+  mesmo) e a origem é `container.offsetLeft/Top + stage.position()`.
+- **Não feito**: guias gravadas na página para a equipe (migração — perguntar antes); guia que vai e volta ao mudar o
+  tamanho da página (as posições são absolutas em px).
+- **Prova:** `src/lib/__tests__/guias-manuais.test.ts` (leitura; gerar 2 colunas/3 linhas no Story dentro da margem;
+  encaixe em 283; ocultas não encaixam; apagar fora da página; marcas da régua). Não prova: o arrasto real na
+  tela, o canvas da régua — prova visual.

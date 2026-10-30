@@ -16,9 +16,11 @@ export interface ExibicaoDoEditor {
   bordas: boolean
   /** O encaixe ao arrastar e redimensionar; segurar Alt desliga enquanto a tecla está presa. */
   encaixe: boolean
+  /** Réguas em px e as guias manuais da página (Shift+R), L4. */
+  reguas: boolean
 }
 
-export const EXIBICAO_PADRAO: ExibicaoDoEditor = { margens: true, interface: true, bordas: false, encaixe: true }
+export const EXIBICAO_PADRAO: ExibicaoDoEditor = { margens: true, interface: true, bordas: false, encaixe: true, reguas: false }
 
 export const CHAVE_DA_EXIBICAO = 'lagosta:editor:exibicao'
 
@@ -40,11 +42,12 @@ export function lerExibicao(json: string | null | undefined): ExibicaoDoEditor {
   return r
 }
 
-export type AcaoDaTecla = 'margens' | 'interface' | 'bordas' | 'centrar-h' | 'centrar-v'
+export type AcaoDaTecla = 'margens' | 'interface' | 'bordas' | 'reguas' | 'centrar-h' | 'centrar-v'
 
 /**
  * A ação de uma tecla do canvas (quem chama já descartou campos de texto e o modo de recorte):
  * - `R`, `M`, `C` SOZINHAS alternam margens, interface e bordas — com Ctrl/Cmd, Alt ou Shift não (no Windows,
+ * - `Shift+R` alterna réguas e guias (L4);
  *   Shift+Alt+C chegava como `c` e ligava as bordas);
  * - `Shift+Alt+C` / `Shift+Alt+M` centralizam a seleção no canvas (H / V) — pelo `code`, porque no Mac Alt+C
  *   produz `ç` em `key`. Eram atalhos anunciados nos rótulos sem handler nenhum.
@@ -56,7 +59,9 @@ export function acaoDaTecla(e: { key: string; code?: string; metaKey?: boolean; 
     if (e.code === 'KeyM') return 'centrar-v'
     return null
   }
-  if (e.altKey || e.shiftKey) return null
+  if (e.altKey) return null
+  // Shift+R: réguas e guias (como no Canva). Outras letras com Shift não alternam nada.
+  if (e.shiftKey) return e.code === 'KeyR' || e.key.toLowerCase() === 'r' ? 'reguas' : null
   const k = e.key.toLowerCase()
   if (k === 'r') return 'margens'
   if (k === 'm') return 'interface'

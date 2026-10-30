@@ -95,6 +95,7 @@ export function LayersHelpModal({ open, onOpenChange }: LayersHelpModalProps) {
                 <ShortcutItem keys={['R']} description="Mostrar ou esconder as margens da marca (linhas azuis)" />
                 <ShortcutItem keys={['M']} description="Mostrar ou esconder a interface do Instagram (faixa e máscara, só no Story)" />
                 <ShortcutItem keys={['C']} description="Mostrar ou esconder as bordas da página" />
+                <ShortcutItem keys={['Shift', 'R']} description="Réguas em px e guias manuais (arraste da régua para criar; de volta para apagar)" />
                 <ShortcutItem keys={['Alt', '(segurar)']} description="Desliga o encaixe enquanto arrasta ou redimensiona" />
                 <ShortcutItem keys={['Shift', 'Alt', 'C']} description="Centralizar a seleção no canvas (horizontal)" />
                 <ShortcutItem keys={['Shift', 'Alt', 'M']} description="Centralizar a seleção no canvas (vertical)" />

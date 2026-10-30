@@ -22,6 +22,8 @@ interface KonvaSelectionTransformerProps {
   snapToMargins?: boolean
   /** As linhas da margem da MARCA da página aberta (`margensDoEditor(...).marca`); sem elas, o padrão do Story. */
   margens?: LinhasDaMarca
+  /** As guias manuais da página (L4) como paradas do encaixe; ausente = sem guias. */
+  guias?: { v: number[]; h: number[] }
   /** Recebe as guias a desenhar durante o resize (mesma layer de guias do drag) */
   onSnapGuides?: (guides: GuideLine[]) => void
 }
@@ -32,6 +34,7 @@ export function KonvaSelectionTransformer({
   snapEnabled = true,
   snapToMargins = true,
   margens,
+  guias,
   onSnapGuides,
 }: KonvaSelectionTransformerProps) {
   const transformerRef = React.useRef<Konva.Transformer | null>(null)
@@ -86,10 +89,12 @@ export function KonvaSelectionTransformer({
     selectedIds: selectedLayerIds,
     keepRatio: false,
     margensDaMarca: margens,
+    guias,
   })
   snapDataRef.current.enabled = snapEnabled
   snapDataRef.current.margins = snapToMargins
   snapDataRef.current.margensDaMarca = margens
+  snapDataRef.current.guias = guias
   snapDataRef.current.canvasWidth = design.canvas.width
   snapDataRef.current.canvasHeight = design.canvas.height
   snapDataRef.current.layers = design.layers
@@ -231,6 +236,10 @@ export function KonvaSelectionTransformer({
         )
         vStops.push(...paradas.v)
         hStops.push(...paradas.h)
+      }
+      if (snap.guias) {
+        vStops.push(...snap.guias.v)
+        hStops.push(...snap.guias.h)
       }
       for (const layer of snap.layers) {
         if (snap.selectedIds.includes(layer.id) || layer.visible === false) continue

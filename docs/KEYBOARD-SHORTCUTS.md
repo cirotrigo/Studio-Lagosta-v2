@@ -34,6 +34,7 @@ nem no vídeo.
 | `M` | **Interface do Instagram** | Mostra ou esconde a faixa hachurada e a máscara do Story |
 | `C` | **Bordas da página** | Mostra ou esconde as bordas amarelas do canvas |
 | `Alt` (segurar) | **Encaixe desligado** | Enquanto a tecla está presa, arrastar e redimensionar não encaixam; soltar devolve a preferência |
+| `Shift + R` | **Réguas e guias** | Mostra as réguas em px e as guias manuais da página (L4); a guia nasce arrastada da régua e some arrastada de volta |
 | `Shift + Alt + C` | **Centralizar (H)** | Centraliza a seleção no canvas, na horizontal |
 | `Shift + Alt + M` | **Centralizar (V)** | Centraliza a seleção no canvas, na vertical |
 
