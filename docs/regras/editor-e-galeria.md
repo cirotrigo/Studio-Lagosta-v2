@@ -1077,3 +1077,35 @@ Story, a faixa da interface — as duas de `margensDoEditor` (L0), nada copiado.
 - **Prova:** `src/lib/__tests__/margens-no-editor.test.ts` (overlay = margensDoEditor em Story padrão, Wine e Feed;
   encaixe em y = 188 e na direita; Feed encaixa em 120; alinhar pela marca com nós falsos; chrome dentro da faixa).
   Não prova: Konva montado, o hook com React Query, o clique no editor — isso é a prova visual.
+
+## Linhas-guia e margens, L2: menu "Exibir", preferência por pessoa e atalhos (29/10/2026 — PR aberto, sem release)
+
+Terceiro checkpoint da instrução de 29/10. O que o editor mostra por cima da arte virou uma preferência só, com
+botão, atalho e persistência.
+
+- **`src/lib/exibicao-do-editor.ts`** (puro): `ExibicaoDoEditor` (`margens` R, `interface` M, `bordas` C, `encaixe`),
+  `EXIBICAO_PADRAO` (margens e interface ligadas, bordas desligadas, encaixe ligado — o que o stage já fazia),
+  `lerExibicao` (JSON do localStorage; lixo cai no padrão chave a chave) e `acaoDaTecla`.
+- **`ExibicaoDoEditorProvider` / `useExibicaoDoEditor`** (`src/hooks/use-exibicao-do-editor.tsx`): o padrão de
+  `use-editor-view-mode.tsx` (localStorage `lagosta:editor:exibicao` com try/catch). Mora no shell, ACIMA das páginas:
+  no modo contínuo cada página monta o stage de novo e, com `useState` no stage, R/M/C voltavam ao padrão a cada
+  troca. Sem o provider (stage montado solto, como em teste) o hook devolve um estado local sem persistência.
+- **Menu "Exibir"** (`menu-exibir.tsx`) na barra do editor, nos três modos (normal, agenda, IA): quatro caixas com o
+  atalho ao lado. É o MESMO estado das teclas.
+- 🔴 **R, M e C só valem sozinhas** (`acaoDaTecla`): com Ctrl/Cmd, Alt ou Shift não alternam nada. No Windows
+  `Shift+Alt+C` chegava como `c` e ligava as bordas da página.
+- **Os atalhos fantasma viraram atalhos**: `Shift+Alt+C` e `Shift+Alt+M` eram anunciados em `alignment-toolbar.tsx`
+  e `properties-panel.tsx` sem handler nenhum. Agora fazem o MESMO que os botões "Centralizar no canvas":
+  `alignSelectedToCanvasCenterH/V` (o conjunto vai ao centro preservando o arranjo — `alignSelectedCenterH` alinharia
+  as caixas ENTRE SI e as sobreporia, Codex R1), lidos pelo `code` da tecla (no Mac `Alt+C` produz `ç` em `key`).
+- 🔴 **Menu aberto não dispara atalho** (`alvoIgnoraAtalhos`): o Radix procura o item pela letra digitada sem
+  `preventDefault`, então "M" com o "Exibir" aberto alternava a interface por tabela. Alvo dentro de `role=menu*`,
+  `listbox`, `combobox` ou `dialog` fica de fora, como `input`/`textarea`/`contentEditable`.
+- **Alt segurado** desliga o encaixe enquanto a tecla está presa; soltar devolve a PREFERÊNCIA (antes voltava sempre
+  para ligado). Alt solto fora da janela nunca chega ao `keyup`: a perda de foco (`blur`) solta, qualquer tecla sem
+  Alt e o primeiro `pointerdown` reconciliam pelo próprio evento. Mobile continua sem encaixe; o menu "Exibir" também
+  está no cabeçalho mobile (`compacto`, só o ícone).
+- Ajuda em `layers-help-modal.tsx` (seção "Exibição do canvas") e `docs/KEYBOARD-SHORTCUTS.md`.
+- **Prova:** `src/lib/__tests__/exibicao-do-editor.test.ts` (leitura com lixo e parcial; R/M/C sozinhas; Windows
+  Shift+Alt+C → centrar, não bordas; Mac `ç`/`µ` pelo code; Ctrl/Cmd nunca). Não prova: o menu montado, o localStorage
+  real, a troca de página no contínuo — prova visual.

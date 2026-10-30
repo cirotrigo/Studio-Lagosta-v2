@@ -45,6 +45,8 @@ import { getFontManager } from '@/lib/font-manager'
 import { useReorderPages } from '@/hooks/use-pages'
 import { usePageActions } from '@/hooks/use-page-actions'
 import { EditorViewModeProvider, useEditorViewMode } from '@/hooks/use-editor-view-mode'
+import { ExibicaoDoEditorProvider } from '@/hooks/use-exibicao-do-editor'
+import { MenuExibir } from './menu-exibir'
 import { PageSyncWrapper, usePageSync } from './page-sync-wrapper'
 import { GenerateCreativesModal } from './modals/generate-creatives-modal'
 import { ScheduleStoryModal } from './modals/schedule-story-modal'
@@ -176,12 +178,15 @@ export function TemplateEditorShell({ template, prefillDriveImage, aiEditMode, i
             }}
           >
             <EditorViewModeProvider>
-              <TemplateEditorContent
-                prefillDriveImage={prefillDriveImage}
-                aiEditMode={aiEditMode}
-                agendaMode={agendaMode}
-                postId={agendaMode ? postId : undefined}
-              />
+              {/* L2 das linhas-guia: o que o editor exibe (R, M, C, encaixe) mora acima das páginas e fica salvo por pessoa */}
+              <ExibicaoDoEditorProvider>
+                <TemplateEditorContent
+                  prefillDriveImage={prefillDriveImage}
+                  aiEditMode={aiEditMode}
+                  agendaMode={agendaMode}
+                  postId={agendaMode ? postId : undefined}
+                />
+              </ExibicaoDoEditorProvider>
             </EditorViewModeProvider>
           </GerarVideoProvider>
         </PageSyncWrapper>
@@ -657,6 +662,8 @@ function TemplateEditorContent({
           />
           {dirty && <span className="text-xs text-orange-500 flex-shrink-0" title="Alterações não salvas">●</span>}
         </div>
+        {/* L2 das linhas-guia: a mesma preferência de exibição do desktop, no cabeçalho mobile (Codex R1) */}
+        <MenuExibir compacto />
         <Button
           size="sm"
           className="h-8 flex-shrink-0 px-3 text-xs"
@@ -784,6 +791,8 @@ function TemplateEditorContent({
 
         {/* Right: Actions — rolam horizontalmente em telas estreitas em vez de cortar */}
         <div className="flex min-w-0 items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:flex-shrink-0">
+          {/* L2 das linhas-guia: o que o editor mostra por cima da arte, em qualquer modo */}
+          <MenuExibir />
           {agendaMode && substituirNaAgenda ? (
             <>
               <BotaoPlayPause />

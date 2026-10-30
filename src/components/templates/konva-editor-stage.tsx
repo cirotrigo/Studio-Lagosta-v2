@@ -25,6 +25,8 @@ import {
 } from '@/lib/konva-smart-guides'
 import { faixasDaInterface, linhasDaMarca, retangulosDeEncaixe } from '@/lib/margens-no-editor'
 import { useMargensDoEditor } from '@/hooks/use-margens-do-editor'
+import { useExibicaoDoEditor } from '@/hooks/use-exibicao-do-editor'
+import { acaoDaTecla, alvoIgnoraAtalhos } from '@/lib/exibicao-do-editor'
 import { decidirSelecaoPorGesto, type FaseDoGesto, type GestoDeSelecao } from '@/lib/selecao-por-gesto'
 import { ehIconeDeTexto } from '@/lib/font-combinations-icones'
 import { useIsMobile } from '@/hooks/use-device-detection'
@@ -82,6 +84,8 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
     alignSelectedTop,
     alignSelectedMiddleV,
     alignSelectedBottom,
+    alignSelectedToCanvasCenterH,
+    alignSelectedToCanvasCenterV,
     distributeSelectedH,
     distributeSelectedV,
     bringSelectedToFront,
@@ -98,16 +102,15 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
   const [guides, setGuides] = React.useState<GuideLine[]>([])
   const [showGrid, _setShowGrid] = React.useState(false)
   const [snapConfig, _setSnapConfig] = React.useState<SnapConfig>(DEFAULT_SNAP_CONFIG)
-  // OTIMIZAÇÃO MOBILE: Desabilitar snapping em mobile (pesado de calcular)
-  const [snappingEnabled, setSnappingEnabled] = React.useState(!isMobile)
-  const [showMarginGuides, setShowMarginGuides] = React.useState(true)
-  // Bordas amarelas do canvas: ferramenta de conferência, desligada por padrão
-  // (era um resto de debug que vinha ligado em produção, junto com a cruz verde)
-  const [showCanvasBounds, setShowCanvasBounds] = React.useState(false)
-  // Máscara com a interface do story do Instagram ('M'): referência de
-  // diagramação, ligada por padrão — o chrome cabe dentro das margens de
-  // segurança, então não atrapalha quem está editando
-  const [showInstagramMask, setShowInstagramMask] = React.useState(true)
+  // L2 das linhas-guia: o que o editor exibe (margens R, interface M, bordas C, encaixe) é a preferência da pessoa,
+  // salva e viva acima das páginas (`ExibicaoDoEditorProvider`) — com `useState` aqui, no modo contínuo cada troca de
+  // página voltava tudo ao padrão. Alt segurado desliga o encaixe só enquanto a tecla está presa; mobile não encaixa.
+  const { exibicao, alternar } = useExibicaoDoEditor()
+  const [altSegurado, setAltSegurado] = React.useState(false)
+  const snappingEnabled = exibicao.encaixe && !isMobile && !altSegurado
+  const showMarginGuides = exibicao.margens
+  const showCanvasBounds = exibicao.bordas
+  const showInstagramMask = exibicao.interface
   // L1 das linhas-guia (29/10/2026): as duas camadas da página aberta — a faixa da interface (só Story) e a margem
   // da MARCA (`Project.assinatura`, pelo hook do projeto). O encaixe, o alinhar e as guias azuis usam a marca.
   const margens = useMargensDoEditor(projectId, design.canvas)
@@ -766,9 +769,12 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+      // Campos de texto, conteúdo editável e MENUS abertos (o Radix procura o item pela letra) ficam de fora
+      if (alvoIgnoraAtalhos(target)) {
         return
       }
+      // Alt solto fora da janela: qualquer tecla sem Alt reconcilia o encaixe (Codex R1 do L2)
+      if (!event.altKey) setAltSegurado(false)
 
       // Modo de recorte: Enter/Esc pertencem ao overlay; setas/atalhos não
       // podem mexer na camada por baixo
@@ -779,26 +785,23 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
 
       // Desabilitar snap temporariamente com Alt
       if (key === 'alt') {
-        setSnappingEnabled(false)
+        setAltSegurado(true)
         setGuides([])
         return
       }
 
-      // Toggle guias de margem com 'r'
-      if (key === 'r' && !isModifier) {
-        setShowMarginGuides(prev => !prev)
+      // Exibição (R, M, C sozinhas) e os centralizar no canvas (Shift+Alt+C / Shift+Alt+M, antes só anunciados)
+      const acao = acaoDaTecla(event)
+      if (acao === 'margens' || acao === 'interface' || acao === 'bordas') {
+        alternar(acao)
         return
       }
-
-      // Toggle canvas bounds com 'c'
-      if (key === 'c' && !isModifier) {
-        setShowCanvasBounds(prev => !prev)
-        return
-      }
-
-      // Toggle máscara da interface do Instagram com 'm'
-      if (key === 'm' && !isModifier) {
-        setShowInstagramMask(prev => !prev)
+      // O mesmo que os botões "Centralizar no canvas": o CONJUNTO vai ao centro, preservando o arranjo (não é o
+      // alinhar entre si, que sobrepõe as caixas — Codex R1 do L2)
+      if (acao === 'centrar-h' || acao === 'centrar-v') {
+        event.preventDefault()
+        if (acao === 'centrar-h') alignSelectedToCanvasCenterH()
+        else alignSelectedToCanvasCenterV()
         return
       }
 
@@ -924,17 +927,25 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
     }
 
     const handleKeyUp = (event: KeyboardEvent) => {
-      // Reativar snap quando soltar Alt
+      // Soltar Alt devolve a PREFERÊNCIA de encaixe (não liga à força)
       if (event.key === 'Alt') {
-        setSnappingEnabled(true)
+        setAltSegurado(false)
       }
     }
+    // Alt preso quando a janela perde o foco nunca chega ao keyup: a perda de foco solta; o primeiro gesto do
+    // ponteiro reconcilia pelo próprio evento (vale também para o stage remontado com Alt ainda preso)
+    const handleBlur = () => setAltSegurado(false)
+    const handlePointerDown = (event: PointerEvent) => setAltSegurado(event.altKey)
 
     window.addEventListener('keydown', handleKeyDown)
     window.addEventListener('keyup', handleKeyUp)
+    window.addEventListener('blur', handleBlur)
+    window.addEventListener('pointerdown', handlePointerDown, true)
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
+      window.removeEventListener('blur', handleBlur)
+      window.removeEventListener('pointerdown', handlePointerDown, true)
     }
   }, [
     animateZoom,
@@ -945,8 +956,7 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
     redo,
     selectedLayerIds.length,
     undo,
-    showMarginGuides,
-    showCanvasBounds,
+    alternar,
     croppingLayerId,
     alignSelectedLeft,
     alignSelectedCenterH,
@@ -954,6 +964,8 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
     alignSelectedTop,
     alignSelectedMiddleV,
     alignSelectedBottom,
+    alignSelectedToCanvasCenterH,
+    alignSelectedToCanvasCenterV,
     distributeSelectedH,
     distributeSelectedV,
     bringSelectedToFront,
