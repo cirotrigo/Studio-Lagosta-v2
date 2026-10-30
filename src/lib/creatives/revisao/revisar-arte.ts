@@ -151,7 +151,8 @@ function numero(valor: unknown, padrao: number): number {
 }
 
 /** Família (ou peso) pedida por um texto que o render não tem: ele desenha outra no lugar. */
-async function fontesQueFaltam(camadas: Layer[]) {
+/** Exportada para a medição das margens de 29/10 (`scripts/medir-margens-2026-10-29.ts`): fonte ausente = página NÃO medida. */
+export async function fontesQueFaltam(camadas: Layer[]) {
   const { GlobalFonts } = await import('@napi-rs/canvas')
   const pesos = new Map<string, number[]>()
   for (const f of GlobalFonts.families) {

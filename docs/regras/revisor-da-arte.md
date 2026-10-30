@@ -1340,3 +1340,67 @@ EXATO e redirecionamento revalidado, canvas pelo IHDR da mídia da prova, reposi
   — o teste varre o repositório e falha.
 - O que a seleção NÃO prova: que a mídia registrada é a do publicador; que a foto ficou visível (oclusão). Os rótulos do
   manifesto dizem isso; não os apague.
+
+
+## Margens de 29/10/2026: piso da interface 160/160 e revisor pela fonte única (PR aberto, sem release)
+
+Decisão do owner (29/10/2026): as margens da casa passam a ser Story laterais 64 · topo 160 · base 160 e Feed 4:5
+laterais 64 · topo 72 · base 72 (eram 92/188/224 e 92/120/104 no compositor; 70/120/100 no editor e no revisor). São
+estimativas da pesquisa das linhas-guia (a interface cobre ~150–160 px no topo; nos celulares altos a caixa "Enviar
+mensagem" fica abaixo da arte; a equipe trabalha a 94–153 px da base), não medição oficial — o Ciro tem duas artes
+de régua em `docs/research/canva-guias-e-margens-2026-10/teste-de-regua/` e pode ajustar com prints.
+
+- 🔴 **`PISO_DE_INTERFACE_DO_STORY` é 160/160** (`revisao/interface-do-story.ts`, único lugar com o número). O G26
+  passou a ser: no topo y = 160 reprova e 161 passa; no rodapé base em H−160 reprova e H−161 passa. A configuração
+  do cliente continua só apertando. Fora do canônico o piso segue "não comprovado" (Codex R11).
+- 🔴 **`limitesDoEditor` (regra `fora-da-area-segura`), `limitesDaAreaSegura` do `text-geometry` e o autofix leem
+  `margensDoEditor`** — o L5 da instrução das linhas-guia, antecipado neste PR porque a geometria nova do Feed (72) e
+  a lateral 64 ficam ABAIXO da margem antiga do revisor (120/100/70): sem isso o compositor pousaria texto onde o
+  próprio gate acusa (a armadilha de `compositor.md`, "pre invade a margem em toda peça de feed"). O formato sai do
+  tamanho do canvas (`formatoDaPaginaGravada`); a margem é a PADRÃO da casa, não a da marca (a da marca entra no
+  revisor numa fase posterior, se o Ciro quiser).
+- **Antes de integrar, medir**: `scripts/medir-margens-2026-10-29.ts` (só leitura; roda em produção só com o ok do
+  Ciro no chat) mede os textos uma vez e confere as mesmas métricas, pela MESMA regra do revisor (a tinta de cada
+  bloco, `blocosDeTexto` — não a caixa do `text-geometry`, Codex R1), contra as margens antigas e as novas, contando
+  quantas artes agendadas e dos últimos 30 dias mudam de aviso em `fora-da-area-segura` e de veredito no piso. O que
+  não dá para medir (camadas ilegíveis, fontes do projeto sem registro, texto que o medidor omitiu) sai contado à
+  parte, nunca como "sem impacto"; rich text é aproximação, dita. Post com `laterPostId` é só contado — intocável.
+  `foraDaAreaSegura(metricas, limites)` foi separado de `checkTextGeometry` (o `text-geometry` usa a caixa).
+- **Medido em produção em 29/10 (ok do Ciro no chat)**: 729 páginas (8 de posts agendados, 721 dos últimos 30 dias,
+  0 com `laterPostId`); 647 medidas, 71 aproximadas (rich text), 0 não medidas, 0 falhas. `fora-da-area-segura`:
+  32 ganham aviso (serviço/CTA no rodapé e pré/headline no topo de stories — Real 12, Empório Fonseca 6, TERO 5,
+  By Rock 3, Wine Vix 3, Seu Quinto 2, Quintal 1) e 2 perdem (feeds do By Rock, 120 → 72). Piso da interface: 16
+  passam a aceitar (Quintal 11, Seu Quinto 3, TERO 1, Wine Vix 1), nenhuma passa a reprovar. Aviso nunca bloqueia e
+  nada é re-renderizado: o efeito fica no revisor/gate de quem abrir essas páginas. Log fora do git em
+  `human-output/relatorios/editor-madrugada-2026-10-24/margens-2026-10-29/medicao-2026-10-29.log`.
+- **Reconciliar `Project.assinatura`** (`scripts/reconciliar-assinatura-2026-10-29.ts`): simulação por padrão; com
+  `--gravar` a escrita é ATÔMICA (`updateMany` com `assinatura: { equals: <o que foi lido> }`) — uma edição no meio
+  aborta aquele projeto em vez de apagá-la. Os kits de `scripts/lib/kits-de-assinatura.ts` (o padrão da casa) e a logo
+  de `criar-pagina-de-assinatura.ts` passaram a ler `GEOMETRIA_PADRAO`: rodar o script de novo não regrava 92/188/224.
+  Os kits POR MARCA (Real 96/250/350, Quintal 92/200/172…) foram reconciliados em 29/10 (10 projetos, ok do Ciro no chat).
+- **Limite do classificador sem tags** (Codex): um Story gravado como 1080×1600 (razão 1,48 < 1,6) recebe os limites
+  do Feed no revisor. O gate já recusa comprovar o piso fora do canônico; avisos e propostas do revisor é que mudam.
+- **Cobertura que mudou de natureza**: E5 passou a provar a barreira do CP4 (a recusa transacional do gate sobre um
+  DRAFT existente ficou sem caso — substituto pendente); P9 voltou a rodar em 29/10 com a fixture regenerada (abaixo).
+- 🔴 **`VERSAO_DAS_REGRAS` subiu para `revisao-v2` e `VERSAO_DO_GATE` para `gate-v5`** (a impressão digital das regras
+  mudou com os números): `revisao-revisao-v2.json` e `gate-gate-v5.json` gerados com `IMPRESSAO_DIGITAL=gravar`; os da
+  v1/v4 continuam imutáveis (`scripts/validar-impressao-digital.ts`). Consequência da decisão 9.13: **os registros de
+  gate gravados nas Generations com `gate-v4` passam a `invalido`** — a peça volta a ser revisada antes de agendar.
+- **Re-caracterização do piloto (ok do Ciro em 29/10)**: a v1 da fixture (Real, headline em y = 148, tinta ≈ 154) já
+  toca a margem de 160 do topo. `ACEITO_TOPO` dos testes do CP4 deixou de ser "subir 20" (piora a margem) e não pode
+  ser "descer 20" (piora o contraste do apoio, 122 → 112): é "8 px para a direita". Os casos de piso da fonte
+  (CP4.2a) descem o bloco 24 px antes, para a margem não decidir por eles. E2b: o revisor agora também acusa o apoio
+  no piso e propõe o `mover` (margem = piso). E5: a barreira que preserva o DRAFT passou a ser o CP4
+  (`fora-da-area-segura`), não o gate. t1b: a logo sintética "alta" cresceu de 625 para 656 px para seguir alcançando
+  o spark com o topo em 160. **P9**: o `mover` do serviço proposto pelo revisor tirava a caixa da janela fiel
+  `servico-v1` da fixture (ficou `it.skip` até a fixture ser regenerada — abaixo).
+- **Fixture do piloto regenerada em 29/10 (ok do Ciro)**: os exports de 13/10 não existiam mais em disco; os mesmos
+  registros (Generations v1/v2, Page, página de assinatura) e a foto e as logos foram lidos de novo em produção, só
+  leitura — a Page não mudou desde 13/10 e a assinatura desde 03/09; `Project.assinatura` entrou como o snapshot de
+  13/10 da própria fixture, não o reconciliado. O gerador reproduziu `peca.json`, `assinatura.json` e `marca.json`
+  byte a byte (o monograma é a cópia `isProjectLogo`, 400×398 — as outras cópias do Blob têm 2645×2626 e tinta
+  escura). Só `foto.json` mudou: a janela `servico-v1` cresceu 80 px para cima (1712–1837 → 1632–1837), conferida a
+  olho (balcão e um frasco, nenhum rosto). A área das janelas foi de 18,2 % para 20,0 % da foto e o teto do guarda de
+  anonimização (`piloto-fixture.test.ts`) subiu de 19 % para 21 %. P9 voltou a `it()` e passa (41 verdes no
+  `piloto-ciclo`; o pulado restante é o `hojeViola` do CP2). `piloto-fixture`, `piloto-compositor` e `piloto-portao` verdes.
+- **Quadrado decidido em 29/10 (Ciro no chat: "Manter 92/120/104")**: fica como está em `GEOMETRIA_PADRAO.quadrado`; nenhum projeto tem geometria própria de quadrado reconciliada, e a reconciliação de 29/10 não o tocou de propósito.

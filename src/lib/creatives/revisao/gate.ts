@@ -17,6 +17,7 @@ import type { RevisaoDaPagina } from '@/lib/copy-autoral/revisar-pagina'
 import { REGRAS_DA_REVISAO, type AchadoDaRevisao, type RegraDaRevisao, type RelatorioDaRevisao, type Severidade } from './contrato'
 import { avaliarPeca, ehTextoVisivel, fotoDeFundo, logosDaPeca, type EntradaDaRevisao } from './regras'
 import { DIMENSOES } from '@/lib/compositor/spec'
+import { interfaceDoStory, PISO_DE_INTERFACE_DO_STORY } from './interface-do-story'
 
 /** A medida que `medirCamadasDaPeca` devolve (a entrada do revisor sem a visão). Tipo repetido aqui para o gate não importar `revisar-arte` (que importa o banco). */
 export type MedidaDaPeca = Omit<EntradaDaRevisao, 'vistos' | 'motivoSemVisao' | 'marcas'>
@@ -66,7 +67,7 @@ export interface MotivoDoGate {
 }
 
 /** A versão da DECISÃO do gate (CP5b § 5): bump obrigatório cobrado pela impressão digital `gate-<versao>.json`. */
-export const VERSAO_DO_GATE = 'gate-v4' as const
+export const VERSAO_DO_GATE = 'gate-v5' as const
 
 export interface GateDaArte {
   versao: typeof VERSAO_DO_GATE
@@ -111,19 +112,10 @@ export interface EntradaDoGate {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Piso de interface do story (seção 4.3) — único lugar com 188/224
+// Piso de interface do story (seção 4.3) — mora em `interface-do-story.ts` (módulo puro, L0 das linhas-guia 29/10/2026)
 // ─────────────────────────────────────────────────────────────────────────
 
-export const PISO_DE_INTERFACE_DO_STORY = { topo: 188, rodape: 224 } as const
-
-/** Uma configuração do cliente pode ser MAIS restritiva, nunca menos. */
-export function interfaceDoStory(doCliente?: { topo?: number; rodape?: number }): { topo: number; rodape: number } {
-  return {
-    // Configuração do cliente NUNCA afrouxa: só número finito acima do piso aperta (`NaN` em `Math.max` dava `NaN` — Codex R9).
-    topo: Number.isFinite(doCliente?.topo) ? Math.max(PISO_DE_INTERFACE_DO_STORY.topo, doCliente!.topo!) : PISO_DE_INTERFACE_DO_STORY.topo,
-    rodape: Number.isFinite(doCliente?.rodape) ? Math.max(PISO_DE_INTERFACE_DO_STORY.rodape, doCliente!.rodape!) : PISO_DE_INTERFACE_DO_STORY.rodape,
-  }
-}
+export { PISO_DE_INTERFACE_DO_STORY, interfaceDoStory }
 
 /**
  * Texto visível e logo solta fora da faixa livre da interface, pelos LIMITES conservadores (girados). Camada cuja
