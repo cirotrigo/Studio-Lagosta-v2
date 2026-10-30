@@ -209,6 +209,15 @@ describe('T1b · a recomposição desenha a receita CONGELADA', () => {
     const { r } = await compor(spec('t1b-rec-receita', [HEADLINE, SERVICO], { arquetipo: { id: TOPO } }), { acentosCongelados: [congelada] })
     expect(camada(r, 'acento-fio')!.style?.strokeWidth).toBe(5)
     expect(r.diagnostico.arquetipo!.acentos![0].desenho.strokeWidth).toBe(5)
+    // 30/10/2026 (revisão do Codex, P2): com a pilha fechada, a reserva do fio na pilha é a do DESENHO congelado (traço
+    // 9), não a do catálogo vivo (2): o apoio começa depois do fio, e o fio é desenhado — não omitido por "encosta".
+    await montar({ id: 't1b-rec-grosso', apoio: true })
+    const grossa = { ...fio, desenho: { ...fio.desenho, strokeWidth: 9 }, cor: CLARO, fonteDaCor: 'texto-do-papel' }
+    const g = (await compor(spec('t1b-rec-grosso', [HEADLINE, APOIO, SERVICO], { arquetipo: { id: TOPO } }), { acentosCongelados: [grossa] })).r
+    const fioGrosso = camada(g, 'acento-fio')!
+    expect(fioGrosso.size.height).toBe(9)
+    expect(g.diagnostico.arquetipo!.acentosOmitidos).toBeUndefined()
+    expect(camada(g, 'apoio').position.y).toBeGreaterThanOrEqual(fioGrosso.position.y + fioGrosso.size.height)
   }, 60_000)
 
   it('receita de um elemento que a definição não tem: não é desenhada, e a peça diz por quê (aviso e acentosOmitidos)', async () => {

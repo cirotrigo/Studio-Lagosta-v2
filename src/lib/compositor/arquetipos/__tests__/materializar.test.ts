@@ -484,6 +484,19 @@ describe('o rodapé pela base e o vão da pilha (30/10/2026, medidos nos ajustes
     expect(m.papeis.headline!.posicao.y + m.papeis.headline!.posicao.height).toBe(m.papeis.apoio!.posicao.y)
   })
 
+  it('20e. modelo de coluna (#10): o serviço pela base NÃO entra na pilha de âncora topo — a pilha o puxaria para baixo do apoio (revisão do Codex, P2)', () => {
+    const COLUNA = verArquetipo('minimal-coluna-foto', 1)!
+    const m = materializarArquetipo({ arquetipo: COLUNA, formato: 'story', canvas: DIMENSOES.story, geometria: G.story, medidas: { headline: { width: 450, height: 240 }, apoio: { width: 400, height: 108 }, servico: { width: 300, height: 48 } }, logo: { razao: 0.5 }, margem: 'marca', empilhar: { gap: GAP_DA_PILHA } })
+    expect(m.ok).toBe(true)
+    if (!m.ok) return
+    expect(m.papeis.servico!.posicao.y + m.papeis.servico!.posicao.height).toBe(1760)
+    // O apoio fica na própria referência (a faixa dele era só com o serviço, que saiu da pilha): nada o puxa.
+    expect(m.papeis.apoio!.posicao.y).toBe(m.papeis.apoio!.referencia.y)
+    expect(m.papeis.apoio!.posicao.y + m.papeis.apoio!.posicao.height).toBeLessThan(m.papeis.servico!.posicao.y)
+    const f = materializarArquetipo({ arquetipo: COLUNA, formato: 'feed', canvas: DIMENSOES.feed, geometria: G.feed, medidas: { headline: { width: 450, height: 150 }, apoio: { width: 400, height: 50 }, servico: { width: 300, height: 48 } }, logo: { razao: 0.5 }, margem: 'marca', empilhar: { gap: GAP_DA_PILHA } })
+    expect(f.ok && f.papeis.servico!.posicao.y + f.papeis.servico!.posicao.height).toBe(1278)
+  })
+
   it('20d. GAP_DA_PILHA é 0: na faixa do topo, pré, manchete e apoio encostam caixa com caixa', () => {
     expect(GAP_DA_PILHA).toBe(0)
     const m = materializarArquetipo({ arquetipo: TOPO, formato: 'story', canvas: DIMENSOES.story, geometria: G.story, medidas, logo: { razao: 0.5 }, margem: 'marca', empilhar: { gap: GAP_DA_PILHA } })

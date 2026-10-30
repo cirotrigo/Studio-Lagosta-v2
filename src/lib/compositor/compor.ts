@@ -964,7 +964,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     })
   // Com arquétipo, a preparação passa pela escada da UNIDADE (a mesma do medir-copy) — e a logo dos arranjos sai
   // deles: com arquétipo a logo é do arquétipo (senão a marca sairia duas vezes).
-  const noArquetipo: PreparoNoArquetipo | null = arq ? prepararNoArquetipo({ arquetipo: arq.definicao, formato: arq.formato, canvas, geometria: pisoArq!, gap: GAP_DA_PILHA, ...(margemDaPeca ? { margem: margemDaPeca } : {}), preparar }) : null
+  const noArquetipo: PreparoNoArquetipo | null = arq ? prepararNoArquetipo({ arquetipo: arq.definicao, formato: arq.formato, canvas, geometria: pisoArq!, gap: g.gap, ...(margemDaPeca ? { margem: margemDaPeca } : {}), preparar }) : null
   const preparados = noArquetipo ? noArquetipo.preparados : preparar()
   avisos.push(...preparados.avisos)
   const { arranjos, arranjoPorGrupo, elementosPorTexto, segundaVoz, gruposExtras } = preparados
@@ -1273,6 +1273,9 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   // A PILHA da faixa (29/10/2026): a peça nova empilha com o gap da marca e grava `pilha` na escolha; a reprodução usa o
   // que a peça gravou — a de antes da regra (sem `pilha`) não empilha, como nasceu. `pedidoDeReproducao` é o pedido
   // bruto (a foto ainda não foi conferida): a identidade da pilha é da peça, não da foto.
+  // As receitas dos acentos que a peça VAI desenhar (as congeladas na recomposição, senão as do catálogo): a reserva do
+  // fio na pilha (`extensoesDosAcentosPresos`) tem de ser a do desenho — não a da biblioteca de hoje (Codex, P2).
+  const receitasDaPeca = arq ? opcoes.acentosCongelados ?? receitasDoArquetipo(arq.definicao, { formato: arq.formato, canvas, geometria: pisoArq!, ...(margemDaPeca ? { margem: margemDaPeca } : {}) }).receitas : null
   const pedidoDeReproducao = arq ? opcoes.escolhaEspacial ?? null : null
   // F1: a peça por REFERÊNCIA não empilha — o espaçamento entre as caixas aprovadas é o do Ciro, não o gap da marca.
   const gapDaPilha =
@@ -1287,6 +1290,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       logo: assinatura.logo ? { razao: assinatura.logo.razao } : null,
       ...(gapDaPilha !== undefined ? { gap: gapDaPilha } : {}),
       ...(margemDaPeca ? { margem: margemDaPeca } : {}),
+      ...(receitasDaPeca ? { receitas: receitasDaPeca } : {}),
     })
     if ('problemas' in p) {
       const m = p
@@ -1523,6 +1527,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
         logo: assinatura.logo ? { razao: assinatura.logo.razao } : null,
         ...(gapDaPilha !== undefined ? { gap: gapDaPilha } : {}),
         ...(margemDaPeca ? { margem: margemDaPeca } : {}),
+        ...(receitasDaPeca ? { receitas: receitasDaPeca } : {}),
         partida: partidaArq,
         cortes: leituras,
         planejamento,
@@ -1952,7 +1957,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   const acentosDesenhados: NonNullable<DiagnosticoDoArquetipo['acentos']> = []
   let acentosOmitidos: ProblemaDoAcento[] = []
   if (arq && materializacao && unidadesArq && pisoArq) {
-    const receitas = opcoes.acentosCongelados ?? receitasDoArquetipo(arq.definicao, { formato: arq.formato, canvas, geometria: pisoArq, ...(margemDaPeca ? { margem: margemDaPeca } : {}) }).receitas
+    const receitas = receitasDaPeca!
     // #15: a caixa de cada item da lista, onde a unidade pousou — o fio de cada item se prende a ela.
     const itensArq = caixasDosItens(arq.definicao, unidadesArq, materializacao.papeis)
     const pos = posicionarAcentos({
