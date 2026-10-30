@@ -1612,3 +1612,14 @@ conferente estrito. (4) A faixa vertical subiu de 24 para 60 px para os rodapés
 #5/#10/#16 148,5, chamada do #16 261 no Story) seguirem a guia guardando o recuo. Regressões: t3b8 G-R5b, t4e15 "na
 margem da marca", t4e16c2 RG-1b. Furo conhecido e NÃO corrigido aqui: a `pilha` tem o mesmo buraco da foto trocada no
 T1a (`gapDaPilha` lê só a escolha) — fica para a fase seguinte.
+
+### A pilha da peça antiga com foto trocada (30/10/2026, fase seguinte à margem)
+
+O furo acima, fechado do mesmo jeito que a margem: `OpcoesDeComposicao.pilhaDaPeca` (`number` = o gap gravado na
+escolha; `null` = peça de antes da pilha, não empilha). O `recompor` lê a pilha da escolha gravada ANTES de anulá-la
+pela foto trocada e passa à parte; no `comporPeca`, `pilhaDaPeca` vence a derivação pela `escolhaEspacial`
+(`gapDaPilha`), e só a peça nova (sem nenhuma das duas) empilha com o gap da marca. Sem isto a foto trocada numa peça
+do T1a sem variante de logo (`escolhaEspacial` null) empilhava a peça antiga com o gap da marca e regravava `pilha` na
+escolha nova — a peça mudava de identidade por uma troca de foto. Regressão: t3b8 G-R5b, que agora também confere que
+a escolha regravada sai sem `pilha` e sem `margem`. Peça do CP2B (modo busca) com foto trocada já ia certa: o pedido
+bruto leva a escolha inteira e `gapDaPilha` lê a `pilha` dela.

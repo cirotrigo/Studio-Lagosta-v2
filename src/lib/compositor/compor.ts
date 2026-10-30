@@ -351,6 +351,13 @@ export interface OpcoesDeComposicao {
    */
   margemDaPeca?: MargemDaPeca | null
   /**
+   * Interno (recomposição, 30/10/2026): a PILHA com que a peça existente foi composta — o gap gravado na escolha ou
+   * `null` (peça de antes da regra: não empilha). Como `margemDaPeca`, vale mesmo quando a escolha gravada não é
+   * reproduzida (foto trocada numa peça do T1a): sem isto a troca de foto empilhava a peça antiga com o gap da marca.
+   * Ausente = deriva da `escolhaEspacial` (reprodução) ou é peça nova (o gap da marca).
+   */
+  pilhaDaPeca?: number | null
+  /**
    * Interno (#9): a receita da máscara que a peça GRAVOU (`composicao.arquetipo.foto.mascara`), já conferida pelo
    * leitor da recomposição (`mascaraCongelada`). Com ela, a `bg-foto` desenha o path GRAVADO (nunca rederivado) e a
    * fração do assunto é medida com o raio/caixa dela. Ignorada no arquétipo sem máscara. Não vem da spec nem do MCP.
@@ -1221,7 +1228,8 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   // que a peça gravou — a de antes da regra (sem `pilha`) não empilha, como nasceu. `pedidoDeReproducao` é o pedido
   // bruto (a foto ainda não foi conferida): a identidade da pilha é da peça, não da foto.
   const pedidoDeReproducao = arq ? opcoes.escolhaEspacial ?? null : null
-  const gapDaPilha = pedidoDeReproducao ? (pedidoDeReproducao.modo === MODO_BUSCA_ESPACIAL ? pedidoDeReproducao.pilha : undefined) : g.gap
+  const gapDaPilha =
+    opcoes.pilhaDaPeca !== undefined ? (opcoes.pilhaDaPeca ?? undefined) : pedidoDeReproducao ? (pedidoDeReproducao.modo === MODO_BUSCA_ESPACIAL ? pedidoDeReproducao.pilha : undefined) : g.gap
   if (arq && unidadesArq && pisoArq) {
     const p = partidaNoArquetipo({
       arquetipo: arq.definicao,
