@@ -109,6 +109,25 @@ describe('T1a · materialização', () => {
     expect(zonaEfetiva(zonaDoPre, DIMENSOES.story, { ...geo('story'), safeTopo: 250 })!.y).toBe(250)
   })
 
+  it('17. piso do projeto com margem 96 corta a referência do catálogo (x 92): todo papel à esquerda é recusado, não movido (triagem 29/10/2026)', () => {
+    // O caso das 19 páginas "[Rever margem]" de 28/10: `Project.assinatura` com margemH 96 (o catálogo põe a referência em
+    // x .085 = 91,8 px). A materialização não empurra 4 px: recusa cada papel com a frase da área segura. Com o piso em 92
+    // (o padrão, e o que a coleção de revisão relaxou "em memória") a mesma copy entra. Caracterização — a correção é decisão.
+    const medidas = { pre: { width: 300, height: 50 }, headline: { width: 600, height: 200 }, servico: { width: 300, height: 60 } }
+    const com96 = materializarArquetipo({ arquetipo: TOPO, formato: 'story', canvas: DIMENSOES.story, geometria: { ...geo('story'), margemH: 96 }, medidas, logo: { razao: 0.5 } })
+    expect(com96.ok).toBe(false)
+    expect(problemas(com96).map((p) => [p.papel, p.codigo, p.referencia.x, p.zonaEfetiva?.x])).toEqual([
+      ['pre', 'ARQUETIPO_FORA_DA_ZONA', 92, 96],
+      ['headline', 'ARQUETIPO_FORA_DA_ZONA', 92, 96],
+      ['servico', 'ARQUETIPO_FORA_DA_ZONA', 92, 96],
+      // A logo, rente à direita (799 + 189 = 988 contra o piso 1080 − 96 = 984), cai pelo mesmo caminho.
+      ['logo', 'ARQUETIPO_FORA_DA_ZONA', 799, 670],
+    ])
+    for (const p of problemas(com96)) expect(p.motivo).toMatch(/a área segura do projeto corta a referência/)
+    const com92 = materializarArquetipo({ arquetipo: TOPO, formato: 'story', canvas: DIMENSOES.story, geometria: geo('story'), medidas, logo: { razao: 0.5 } })
+    expect(com92.ok).toBe(true)
+  })
+
   it('caixa maior que a capacidade da referência: recusa com a medida (sem esmagar fonte, sem empurrar)', () => {
     const m = materializarArquetipo({
       arquetipo: TOPO,
