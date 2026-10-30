@@ -256,10 +256,10 @@ export type AlignMode = 'start' | 'center' | 'end'
 /**
  * Alinha a seleção às margens de segurança ou ao centro do canvas, num eixo.
  *
- * As bordas são as **guias azuis** (`CANVAS_MARGIN`), não a borda da página:
- * é onde o conteúdo deve parar para não ser cortado pela interface do
- * Instagram. No eixo vertical as margens são assimétricas (padrão 188 no topo,
- * 224 na base), então `start` e `end` usam valores diferentes — já `center` continua
+ * As bordas são as **guias azuis** (a margem da marca de `margensDoEditor`; o
+ * contexto passa as distâncias do eixo), não a borda da página: é onde o
+ * conteúdo deve parar. No eixo vertical as margens podem ser assimétricas,
+ * então `start` e `end` usam valores diferentes — já `center` continua
  * sendo o centro da PÁGINA, não o centro da área útil: centralizar é uma
  * relação com a arte inteira, e deslocar por causa da margem surpreenderia.
  *
@@ -278,6 +278,8 @@ export function alignToCanvas(
   axis: AlignAxis,
   mode: AlignMode,
   canvasSize: number,
+  /** As distâncias das bordas neste eixo — a margem da MARCA da página aberta (`margensDoEixo`); sem ela, o padrão do Story. */
+  margens: { start: number; end: number } = marginsForAxis(axis),
 ) {
   if (nodes.length === 0) return
 
@@ -294,7 +296,7 @@ export function alignToCanvas(
   const size = max - min
   // Um bloco maior que a área útil não tem para onde encostar sem estourar a
   // margem oposta; nesse caso encosta na borda da página, que é o menor dos males
-  const { start, end } = marginsForAxis(axis)
+  const { start, end } = margens
   const cabe = size <= canvasSize - start - end
   const target =
     mode === 'start'
