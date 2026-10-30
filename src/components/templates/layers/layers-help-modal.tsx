@@ -85,6 +85,23 @@ export function LayersHelpModal({ open, onOpenChange }: LayersHelpModalProps) {
               </div>
             </section>
 
+            {/* Exibição do canvas (L2 das linhas-guia) — o mesmo estado do menu "Exibir"; nada disso sai no download */}
+            <section>
+              <div className="mb-3 flex items-center gap-2">
+                <Keyboard className="h-5 w-5 text-primary" />
+                <h3 className="font-semibold">Exibição do canvas</h3>
+              </div>
+              <div className="space-y-2 rounded-lg border bg-muted/30 p-4">
+                <ShortcutItem keys={['R']} description="Mostrar ou esconder as margens da marca (linhas azuis)" />
+                <ShortcutItem keys={['M']} description="Mostrar ou esconder a interface do Instagram (faixa e máscara, só no Story)" />
+                <ShortcutItem keys={['C']} description="Mostrar ou esconder as bordas da página" />
+                <ShortcutItem keys={['Shift', 'R']} description="Réguas em px e guias manuais (arraste da régua para criar; de volta para apagar)" />
+                <ShortcutItem keys={['Alt', '(segurar)']} description="Desliga o encaixe enquanto arrasta ou redimensiona" />
+                <ShortcutItem keys={['Shift', 'Alt', 'C']} description="Centralizar a seleção no canvas (horizontal)" />
+                <ShortcutItem keys={['Shift', 'Alt', 'M']} description="Centralizar a seleção no canvas (vertical)" />
+              </div>
+            </section>
+
             {/* Ações do Mouse */}
             <section>
               <div className="mb-3 flex items-center gap-2">

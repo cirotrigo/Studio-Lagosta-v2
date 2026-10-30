@@ -1499,6 +1499,15 @@ Registro do contrato já existente (lacuna apontada na revisão do preflight do 
   só a vitrine muda. Nenhuma guarda nova em `prepararArquetipo`/`resolverArquetipo`, nenhuma troca automática de
   layout, artes existentes intocadas.
 
+
+## Margens de 29/10/2026 no compositor (PR aberto, sem release)
+
+`GEOMETRIA_PADRAO` (`geometria.ts`): Story 64/160/160, Feed 64/72/72, Quadrado 92/120/104 (não decidido). A nota
+"Feed e quadrado usam `safeTopo` 120, não 96, porque o autofix confere a margem do editor" deixou de valer: desde
+29/10 o autofix, o revisor e o `text-geometry` leem os MESMOS números do compositor (`margensDoEditor`). O catálogo
+dos arquétipos não mudou (versão imutável; a zona é recortada pelo piso). `Project.assinatura` por marca só muda
+pelo script de reconciliação, com o ok do Ciro.
+
 ## O piso da marca vence na horizontal: a referência efetiva (opção A, 29/10/2026)
 
 - **O problema medido** (coleção de revisão de 28/10, 19 páginas "[Rever margem]"): Wine e Real têm `margemH` 96 em
