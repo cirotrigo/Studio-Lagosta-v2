@@ -428,7 +428,7 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
   // A pilha com que a peça EXISTENTE foi composta (30/10/2026), pelo mesmo motivo: o gap gravado na escolha, senão `null`
   // (não empilha, como nasceu). Sem isto a foto trocada no T1a empilhava a peça antiga com o gap da marca (furo deixado
   // na fase da margem, dito no relatório dela).
-  const pilhaDaPeca = candidataARecompor && arte.spec!.arquetipo ? (lida && 'pilha' in lida && typeof lida.pilha === 'number' ? lida.pilha : null) : undefined
+  const pilhaDaPeca = candidataARecompor && arte.spec!.arquetipo ? (lida && 'pilha' in lida && lida.pilha !== undefined ? lida.pilha : null) : undefined
   // T1b: os acentos da peça pela receita CONGELADA (a de antes do T1b, `[]`: continua sem) — com foto trocada também.
   const acentos = candidataARecompor && arte.spec!.arquetipo ? acentosCongelados(arte.fieldValues, arte.spec!) : null
   // #9: a máscara pela receita CONGELADA, conferida contra ela mesma e contra a definição EXATA resolvida acima (nunca a
