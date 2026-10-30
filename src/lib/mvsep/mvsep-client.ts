@@ -9,7 +9,21 @@ import { put } from '@vercel/blob'
 import type { MusicStemJob } from '@prisma/client'
 import { classificarStems, getFileName, getFileUrl } from './classificar-stems'
 
-const MVSEP_API_KEY = process.env.MVSEP_API_KEY || 'BrIkx8zYQbvc4TggAZbsL96Mag9WN5'
+/**
+ * A chave vem SÓ do ambiente. Até 24/09/2026 havia uma chave literal como
+ * fallback, versionada no git — ela foi trocada e não deve voltar ao código.
+ * Sem a variável a separação fica PENDENTE (o job não muda de status) e volta
+ * sozinha quando a chave é cadastrada: o upload de música nunca depende disso.
+ */
+export function chaveDoMvsep(): string | null {
+  const chave = process.env.MVSEP_API_KEY?.trim()
+  if (!chave) {
+    console.warn('[MVSEP] MVSEP_API_KEY não configurada — separação de stems pausada; os jobs seguem pendentes.')
+    return null
+  }
+  return chave
+}
+
 const MVSEP_API_URL = 'https://mvsep.com/api'
 
 interface MvsepCreateResponse {
@@ -38,6 +52,9 @@ interface MvsepStatusResponse {
  * Inicia a separação de stems para um job de música
  */
 export async function startStemSeparation(job: MusicStemJob & { music: any }) {
+  const chave = chaveDoMvsep()
+  if (!chave) return
+
   try {
     console.log(`[MVSEP] Starting stem separation for job ${job.id}, music ${job.musicId}`)
 
@@ -64,7 +81,7 @@ export async function startStemSeparation(job: MusicStemJob & { music: any }) {
 
     // Criar FormData para upload multipart
     const formData = new FormData()
-    formData.append('api_token', MVSEP_API_KEY)
+    formData.append('api_token', chave)
     formData.append('audiofile', audioBlob, 'audio.mp3')
     formData.append('sep_type', '48') // MelBand Roformer (vocals, instrumental)
     formData.append('output_format', '0') // 0 = mp3 320kbps
@@ -139,12 +156,14 @@ export async function checkMvsepJobStatus(job: MusicStemJob) {
     console.warn(`[MVSEP] Job ${job.id} has no MVSEP hash`)
     return
   }
+  const chave = chaveDoMvsep()
+  if (!chave) return
 
   try {
     console.log(`[MVSEP] Checking status for job ${job.id}, hash: ${job.mvsepJobHash}`)
 
     const response = await fetch(
-      `${MVSEP_API_URL}/separation/get?api_token=${MVSEP_API_KEY}&hash=${job.mvsepJobHash}`
+      `${MVSEP_API_URL}/separation/get?api_token=${chave}&hash=${job.mvsepJobHash}`
     )
 
     const responseText = await response.text()
