@@ -27,26 +27,26 @@ describe('lerGuias', () => {
 })
 
 describe('gerarGuias — dentro da margem da marca, assimétrica no Story', () => {
-  it('2 colunas com 40 de espaçamento no Story padrão (92…988): bordas 92, 520, 560, 988', () => {
+  it('2 colunas com 40 de espaçamento no Story padrão (64…1016): bordas 64, 520, 560, 1016', () => {
     const g = gerarGuias({ colunas: 2, linhas: 0, espacamento: 40, marca: story.marca })
     expect(g.map((x) => [x.orientacao, x.posicao])).toEqual([
-      ['vertical', 92],
+      ['vertical', 64],
       ['vertical', 520],
       ['vertical', 560],
-      ['vertical', 988],
+      ['vertical', 1016],
     ])
   })
 
-  it('3 linhas com 40 no Story: começam em 188 e terminam em 1696 (não 1732 como na página inteira do Canva)', () => {
+  it('3 linhas com 40 no Story: começam em 160 e terminam em 1760 (não 1732 como na página inteira do Canva)', () => {
     const g = gerarGuias({ colunas: 0, linhas: 3, espacamento: 40, marca: story.marca })
     const ys = g.map((x) => x.posicao)
-    expect(ys[0]).toBe(188)
-    expect(ys[ys.length - 1]).toBe(1696)
+    expect(ys[0]).toBe(160)
+    expect(ys[ys.length - 1]).toBe(1760)
     expect(ys).toHaveLength(6)
   })
 
   it('1 coluna sem espaçamento = as duas margens; 0 colunas = nada; espaçamento maior que a área = nada', () => {
-    expect(gerarGuias({ colunas: 1, linhas: 0, espacamento: 0, marca: story.marca }).map((x) => x.posicao)).toEqual([92, 988])
+    expect(gerarGuias({ colunas: 1, linhas: 0, espacamento: 0, marca: story.marca }).map((x) => x.posicao)).toEqual([64, 1016])
     expect(gerarGuias({ colunas: 0, linhas: 0, espacamento: 0, marca: story.marca })).toEqual([])
     expect(gerarGuias({ colunas: 3, linhas: 0, espacamento: 600, marca: story.marca })).toEqual([])
   })
@@ -87,7 +87,7 @@ describe('ajustes da revisão R1', () => {
     const primeiras = acrescentarGuias([], gerarGuias({ colunas: 2, linhas: 0, espacamento: 40, marca }))
     const movidas = primeiras.map((g, i) => (i === 0 ? { ...g, posicao: 150 } : g))
     const depois = acrescentarGuias(movidas, gerarGuias({ colunas: 2, linhas: 0, espacamento: 40, marca }))
-    expect(depois.map((g) => g.posicao)).toEqual([150, 520, 560, 988, 92])
+    expect(depois.map((g) => g.posicao)).toEqual([150, 520, 560, 1016, 64])
     expect(new Set(depois.map((g) => g.id)).size).toBe(depois.length)
     expect(acrescentarGuias(primeiras, gerarGuias({ colunas: 2, linhas: 0, espacamento: 40, marca }))).toHaveLength(4)
   })

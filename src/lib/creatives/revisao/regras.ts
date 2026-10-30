@@ -28,7 +28,8 @@
 import type { Layer } from '@/types/template'
 import { temTextoVisivel } from './texto-visivel'
 import { TEXT_DRAW_PADDING, type TextGeometryIssue, type TextLayerMetrics } from '@/lib/creatives/text-geometry'
-import { MARGEM_LEGADA_DO_REVISOR } from '@/lib/canvas-margin'
+import { margensDoEditor } from '@/lib/canvas-margin'
+import { formatoDaPaginaGravada } from '@/lib/compositor/formato'
 import { ajusteParaDentro } from './para-dentro'
 import { textosForaDaPiora, tratamentosQuePioraramALeitura, type ContrasteMedido, type PioraDeTratamento } from '@/lib/compositor/regua'
 import { papelDaCamada } from '@/lib/compositor/defasagem'
@@ -376,15 +377,13 @@ function expandir(r: Rect, d: number): Rect {
   return { x: r.x - d, y: r.y - d, width: r.width + 2 * d, height: r.height + 2 * d }
 }
 
-/** As margens de segurança do editor (as guias azuis), na escala da peça. */
+/**
+ * As margens de segurança do editor (as guias azuis), na escala da peça — a MARGEM DA MARCA padrão de
+ * `margensDoEditor` (29/10/2026: Story 64/160/160, Feed 64/72/72), pelo formato que o tamanho do canvas diz. Eram
+ * 70/120/100 fixos (até o L5 da instrução das linhas-guia, antecipado no PR das margens de 29/10).
+ */
 export function limitesDoEditor(canvas: { width: number; height: number }) {
-  const s = canvas.width / 1080
-  return {
-    topo: MARGEM_LEGADA_DO_REVISOR.top * s,
-    base: canvas.height - MARGEM_LEGADA_DO_REVISOR.bottom * s,
-    esquerda: MARGEM_LEGADA_DO_REVISOR.left * s,
-    direita: canvas.width - MARGEM_LEGADA_DO_REVISOR.right * s,
-  }
+  return margensDoEditor({ formato: formatoDaPaginaGravada(canvas), assinatura: null, largura: canvas.width, altura: canvas.height }).marca
 }
 
 /** A TINTA do texto na peça: vertical pelos glifos, horizontal pela linha mais larga no alinhamento. */

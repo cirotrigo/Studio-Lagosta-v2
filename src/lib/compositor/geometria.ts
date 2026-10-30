@@ -20,14 +20,15 @@ export interface GeometriaDoFormato {
 }
 
 export const GEOMETRIA_PADRAO: Record<Formato, GeometriaDoFormato> = {
-  // Safe area do story: onde o Instagram desenha avatar e barra de resposta.
-  story: { margemH: 92, safeTopo: 188, safeRodape: 224, gapEntreBlocos: 14, escalaDeFonte: 1 },
-  // Feed e quadrado não têm faixa do Instagram, mas o autofix confere a
-  // margem legada do revisor (`MARGEM_LEGADA_DO_REVISOR`: 120 no topo, 100 na
-  // base, até o L5) — o compositor não pode pousar texto onde o revisor o acusa.
-  // Desde o L0 (29/10/2026) estes números são também a margem da marca que o
-  // EDITOR desenha e encaixa (`margensDoEditor`).
-  feed: { margemH: 92, safeTopo: 120, safeRodape: 104, gapEntreBlocos: 14, escalaDeFonte: 0.875 },
+  // Margens da casa de 29/10/2026 (decisão do owner): laterais 64, topo e base IGUAIS. Story 160/160 é o piso da
+  // interface (`interface-do-story.ts`) — texto e logo não entram na faixa, foto pode passar por baixo. Eram
+  // 92/188/224 (13/10) e, no editor, 70/120/100.
+  story: { margemH: 64, safeTopo: 160, safeRodape: 160, gapEntreBlocos: 14, escalaDeFonte: 1 },
+  // Feed: nada cobre a foto aberta; a grade 3:4 do perfil corta ~34 px de cada lado e os 64 cobrem o corte. Eram
+  // 92/120/104 — o 120 existia porque o revisor conferia a margem do editor; desde 29/10 revisor, autofix e
+  // text-geometry leem ESTES números (`margensDoEditor`), então o compositor não pousa texto onde o revisor acusa.
+  feed: { margemH: 64, safeTopo: 72, safeRodape: 72, gapEntreBlocos: 14, escalaDeFonte: 0.875 },
+  // Quadrado NÃO foi decidido em 29/10: fica como estava até o Ciro dizer.
   quadrado: { margemH: 92, safeTopo: 120, safeRodape: 104, gapEntreBlocos: 12, escalaDeFonte: 0.85 },
 }
 

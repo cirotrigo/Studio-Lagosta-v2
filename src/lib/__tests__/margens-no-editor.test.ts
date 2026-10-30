@@ -16,16 +16,16 @@ const wine = margensDoEditor({ formato: 'story', assinatura: WINE, largura: 1080
 const feed = margensDoEditor({ formato: 'feed', assinatura: WINE, largura: 1080, altura: 1350 })
 
 describe('overlay: os números são os de margensDoEditor', () => {
-  it('Story padrão: linhas em 92 / 988 / 188 / 1696; faixas de 188 em cima e 224 embaixo', () => {
+  it('Story padrão (29/10: 64/160/160): linhas em 64 / 1016 / 160 / 1760; faixas de 160 em cima e embaixo', () => {
     expect(linhasDaMarca(story.marca, 1080, 1920).map((l) => l.points)).toEqual([
-      [92, 0, 92, 1920],
-      [988, 0, 988, 1920],
-      [0, 188, 1080, 188],
-      [0, 1696, 1080, 1696],
+      [64, 0, 64, 1920],
+      [1016, 0, 1016, 1920],
+      [0, 160, 1080, 160],
+      [0, 1760, 1080, 1760],
     ])
     expect(faixasDaInterface(story.interface, 1080, 1920)).toEqual([
-      { id: 'interface-topo', x: 0, y: 0, width: 1080, height: 188 },
-      { id: 'interface-rodape', x: 0, y: 1920 - 224, width: 1080, height: 224 },
+      { id: 'interface-topo', x: 0, y: 0, width: 1080, height: 160 },
+      { id: 'interface-rodape', x: 0, y: 1920 - 160, width: 1080, height: 160 },
     ])
   })
 
@@ -36,7 +36,7 @@ describe('overlay: os números são os de margensDoEditor', () => {
       [0, 200, 1080, 200],
       [0, 1770, 1080, 1770],
     ])
-    expect(faixasDaInterface(wine.interface, 1080, 1920).map((f) => f.height)).toEqual([188, 224])
+    expect(faixasDaInterface(wine.interface, 1080, 1920).map((f) => f.height)).toEqual([160, 160])
     expect(wine.origem).toBe('marca')
   })
 
@@ -54,17 +54,17 @@ describe('overlay: os números são os de margensDoEditor', () => {
 describe('encaixe', () => {
   const config = { ...DEFAULT_SNAP_CONFIG, enabled: true, threshold: 5 }
 
-  it('ao arrastar no Story, uma caixa a 3 px da linha do topo (y = 191) encaixa em y = 188', () => {
-    const r = computeAlignmentGuides({ id: 't', x: 300, y: 191, width: 300, height: 50 }, retangulosDeEncaixe(story.marca, 1080, 1920), 1080, 1920, config)
-    expect(r.position.y).toBe(188)
-    expect(r.guides.some((g) => g.orientation === 'horizontal' && g.position === 188)).toBe(true)
+  it('ao arrastar no Story, uma caixa a 3 px da linha do topo (y = 163) encaixa em y = 160', () => {
+    const r = computeAlignmentGuides({ id: 't', x: 300, y: 163, width: 300, height: 50 }, retangulosDeEncaixe(story.marca, 1080, 1920), 1080, 1920, config)
+    expect(r.position.y).toBe(160)
+    expect(r.guides.some((g) => g.orientation === 'horizontal' && g.position === 160)).toBe(true)
   })
 
-  it('a borda direita a 3 px da linha da direita (x + w = 985) encaixa em 988; a 20 px não', () => {
-    const perto = computeAlignmentGuides({ id: 't', x: 685, y: 500, width: 300, height: 50 }, retangulosDeEncaixe(story.marca, 1080, 1920), 1080, 1920, config)
-    expect(perto.position.x).toBe(688)
-    const longe = computeAlignmentGuides({ id: 't', x: 668, y: 500, width: 300, height: 50 }, retangulosDeEncaixe(story.marca, 1080, 1920), 1080, 1920, config)
-    expect(longe.position.x).toBe(668)
+  it('a borda direita a 3 px da linha da direita (x + w = 1013) encaixa em 1016; a 20 px não', () => {
+    const perto = computeAlignmentGuides({ id: 't', x: 713, y: 500, width: 300, height: 50 }, retangulosDeEncaixe(story.marca, 1080, 1920), 1080, 1920, config)
+    expect(perto.position.x).toBe(716)
+    const longe = computeAlignmentGuides({ id: 't', x: 696, y: 500, width: 300, height: 50 }, retangulosDeEncaixe(story.marca, 1080, 1920), 1080, 1920, config)
+    expect(longe.position.x).toBe(696)
   })
 
   it('no Feed da Wine a caixa encaixa na margem da marca (y = 120), não no padrão do Story', () => {
@@ -104,10 +104,10 @@ describe('alinhar pela margem da marca', () => {
     expect(a.pos.x).toBe(984 - 200)
   })
 
-  it('sem margens explícitas vale o padrão do Story (compatibilidade)', () => {
+  it('sem margens explícitas vale o padrão do Story (compatibilidade): topo 160 desde 29/10', () => {
     const a = no(300, 500, 200, 100)
     alignToCanvas([a], layerInstance, 'y', 'start', 1920)
-    expect(a.pos.y).toBe(188)
+    expect(a.pos.y).toBe(160)
   })
 })
 
@@ -120,16 +120,16 @@ describe('o chrome do Story nasce da faixa da interface', () => {
     expect(c.replyBox.y + c.replyBox.height).toBeLessThanOrEqual(1920)
   })
 
-  it('sem faixa vale o padrão (188/224): avatar maior que com 160', () => {
-    expect(buildStoryChrome(1920).avatar.radius).toBeGreaterThan(buildStoryChrome(1920, { topo: 160, rodape: 160 }).avatar.radius)
-    expect(buildStoryChrome(1920).avatar.cy + buildStoryChrome(1920).avatar.radius).toBeLessThanOrEqual(188)
+  it('sem faixa vale o padrão (160/160 desde 29/10): uma faixa de 188/224 daria avatar maior', () => {
+    expect(buildStoryChrome(1920, { topo: 188, rodape: 224 }).avatar.radius).toBeGreaterThan(buildStoryChrome(1920).avatar.radius)
+    expect(buildStoryChrome(1920).avatar.cy + buildStoryChrome(1920).avatar.radius).toBeLessThanOrEqual(160)
   })
 })
 
 describe('margensDaPagina: uma decisão só de formato (Codex R1 do L1)', () => {
   it('o formato sai do tamanho: 1080×1920 e 1080×1800 são Story (faixa presente); 1080×1350 e 1080×1080 não', () => {
-    expect(margensDaPagina(null, { width: 1080, height: 1920 }).interface).toEqual({ topo: 188, rodape: 224 })
-    expect(margensDaPagina(null, { width: 1080, height: 1800 }).interface).toEqual({ topo: 188, rodape: 224 })
+    expect(margensDaPagina(null, { width: 1080, height: 1920 }).interface).toEqual({ topo: 160, rodape: 160 })
+    expect(margensDaPagina(null, { width: 1080, height: 1800 }).interface).toEqual({ topo: 160, rodape: 160 })
     expect(margensDaPagina(null, { width: 1080, height: 1350 }).interface).toBeNull()
     expect(margensDaPagina(null, { width: 1080, height: 1080 }).interface).toBeNull()
   })

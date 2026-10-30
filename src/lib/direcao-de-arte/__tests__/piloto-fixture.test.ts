@@ -63,7 +63,9 @@ describe('a fixture é local e anonimizada', () => {
       expect(j.escala, j.id).toBe(0.5)
     }
     const areaDasJanelas = f.janelas.reduce((s, j) => s + j.w * j.h, 0)
-    expect(areaDasJanelas / (f.origem.largura * f.origem.altura)).toBeLessThan(0.19)
+    // 29/10/2026: a janela `servico-v1` cresceu 80 px para cima (P9 com a margem da base em 160), com o ok do Ciro —
+    // a área das janelas foi de 18,2 % para 20,0 % da foto. O teto sobe de 19 % para 21 %; a faixa nova é balcão e um frasco.
+    expect(areaDasJanelas / (f.origem.largura * f.origem.altura)).toBeLessThan(0.21)
   })
 
   it('o projeto da spec é o fictício 9001 (a fixture não depende do projectId real)', () => {

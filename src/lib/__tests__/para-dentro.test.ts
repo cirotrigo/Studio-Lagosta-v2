@@ -14,7 +14,7 @@ const camada = (id: string, type: Layer['type'], x: number, y: number, w: number
   ({ id, name: id, type, visible, locked: false, order: 0, position: { x, y }, size: { width: w, height: h } }) as unknown as Layer
 
 const story = margensDoEditor({ formato: 'story', assinatura: null, largura: 1080, altura: 1920 })
-const LIM = story.marca // 92 / 1696 / 188 / 988
+const LIM = story.marca // 29/10: esquerda 64 / direita 1016 / topo 160 / base 1760
 
 describe('ajusteParaDentro — a conta do revisor', () => {
   it('dentro, com folga de 2 px: nenhum lado, nada a mover', () => {
@@ -23,9 +23,9 @@ describe('ajusteParaDentro — a conta do revisor', () => {
   })
 
   it('passa do topo em 26 px → desce 28 (ceil(26 + 2)); da direita em 10 → dx −12; dos dois → dx e dy', () => {
-    expect(ajusteParaDentro({ x: 100, y: 162, width: 500, height: 100 }, LIM)).toMatchObject({ lados: ['topo'], dx: 0, dy: 28, maior: 26 })
-    expect(ajusteParaDentro({ x: 598, y: 300, width: 400, height: 100 }, LIM)).toMatchObject({ lados: ['direita'], dx: -12, dy: 0, maior: 10 })
-    expect(ajusteParaDentro({ x: 80, y: 1650, width: 400, height: 100 }, LIM)).toMatchObject({ lados: ['base', 'esquerda'], dx: 14, dy: -56 })
+    expect(ajusteParaDentro({ x: 100, y: 134, width: 500, height: 100 }, LIM)).toMatchObject({ lados: ['topo'], dx: 0, dy: 28, maior: 26 })
+    expect(ajusteParaDentro({ x: 626, y: 300, width: 400, height: 100 }, LIM)).toMatchObject({ lados: ['direita'], dx: -12, dy: 0, maior: 10 })
+    expect(ajusteParaDentro({ x: 50, y: 1700, width: 400, height: 100 }, LIM)).toMatchObject({ lados: ['base', 'esquerda'], dx: 16, dy: -42 })
   })
 
   it('maior que a área num eixo: avisa, mas não move nesse eixo (encurtar o texto ou reduzir a fonte)', () => {
@@ -36,11 +36,11 @@ describe('ajusteParaDentro — a conta do revisor', () => {
     expect(a.horizontal).toBe(false)
   })
 
-  it('a faixa da interface só tem topo e base: texto em y = 100 na faixa de 188 → desce 90; na de baixo → sobe', () => {
+  it('a faixa da interface só tem topo e base: texto em y = 100 na faixa de 160 → desce 62; na de baixo → sobe', () => {
     const c = { x: 300, y: 100, width: 400, height: 60 }
-    expect(ajusteParaDentro(c, limitesDaFaixa(c, story.interface!, 1920))).toMatchObject({ lados: ['topo'], dy: 90, dx: 0 })
-    const b = { x: 300, y: 1750, width: 400, height: 60 } // base 1810 > 1696 em 114
-    expect(ajusteParaDentro(b, limitesDaFaixa(b, story.interface!, 1920))).toMatchObject({ lados: ['base'], dy: -116, dx: 0 })
+    expect(ajusteParaDentro(c, limitesDaFaixa(c, story.interface!, 1920))).toMatchObject({ lados: ['topo'], dy: 62, dx: 0 })
+    const b = { x: 300, y: 1750, width: 400, height: 60 } // base 1810 > 1760 em 50
+    expect(ajusteParaDentro(b, limitesDaFaixa(b, story.interface!, 1920))).toMatchObject({ lados: ['base'], dy: -52, dx: 0 })
   })
 })
 
@@ -57,32 +57,32 @@ describe('encaixe pela seleção inteira', () => {
     expect(retangulosDosOutros(layers, ['a', 'b']).map((r) => r.id)).toEqual(['c'])
   })
 
-  it('o conjunto a 3 px da margem do topo encaixa em 188 pela caixa inteira (não pela camada agarrada)', () => {
+  it('o conjunto a 3 px da margem do topo encaixa em 160 pela caixa inteira (não pela camada agarrada)', () => {
     const selecao = caixaDaSelecao(layers, ['a', 'b'])!
-    const movendo = { ...selecao, y: 191 }
+    const movendo = { ...selecao, y: 163 }
     const r = computeAlignmentGuides(movendo, [...retangulosDosOutros(layers, ['a', 'b']), ...retangulosDeEncaixe(LIM, 1080, 1920)], 1080, 1920, { ...DEFAULT_SNAP_CONFIG, enabled: true, threshold: 5 })
-    expect(r.position.y).toBe(188)
+    expect(r.position.y).toBe(160)
   })
 })
 
 describe('encaixeProporcional (foto, logo, elemento com proporção travada)', () => {
-  const paradas = paradasDeEncaixe(LIM) // v [92, 988], h [188, 1696]
+  const paradas = paradasDeEncaixe(LIM) // v [64, 1016], h [160, 1760]
   const antiga = { x: 300, y: 500, width: 400, height: 200 } // 2:1
 
-  it('arrastando o canto inferior direito, a direita a 3 px de 988 encaixa e a altura segue a proporção; o topo-esquerda fica', () => {
-    const nova = { x: 300, y: 500, width: 685, height: 342.5 }
+  it('arrastando o canto inferior direito, a direita a 3 px de 1016 encaixa e a altura segue a proporção; o topo-esquerda fica', () => {
+    const nova = { x: 300, y: 500, width: 713, height: 356.5 }
     const r = encaixeProporcional(antiga, nova, paradas, 5)!
-    expect(r.guia).toEqual({ orientation: 'vertical', position: 988, snapType: 'end' })
-    expect(r.caixa).toEqual({ x: 300, y: 500, width: 688, height: 344 })
+    expect(r.guia).toEqual({ orientation: 'vertical', position: 1016, snapType: 'end' })
+    expect(r.caixa).toEqual({ x: 300, y: 500, width: 716, height: 358 })
   })
 
-  it('arrastando o canto superior esquerdo, o topo a 3 px de 188 encaixa (anda mais na vertical); a base e a direita ficam', () => {
-    const nova = { x: 250, y: 191, width: 450, height: 509 } // esquerda andou 50, topo andou 309
+  it('arrastando o canto superior esquerdo, o topo a 3 px de 160 encaixa (anda mais na vertical); a base e a direita ficam', () => {
+    const nova = { x: 250, y: 163, width: 450, height: 537 } // esquerda andou 50, topo andou 337
     const r = encaixeProporcional(antiga, nova, paradas, 5)!
-    expect(r.guia).toEqual({ orientation: 'horizontal', position: 188, snapType: 'start' })
-    expect(r.caixa.y).toBe(188)
-    expect(r.caixa.height).toBe(700 - 188)
-    expect(r.caixa.width).toBeCloseTo((700 - 188) * 2, 6)
+    expect(r.guia).toEqual({ orientation: 'horizontal', position: 160, snapType: 'start' })
+    expect(r.caixa.y).toBe(160)
+    expect(r.caixa.height).toBe(700 - 160)
+    expect(r.caixa.width).toBeCloseTo((700 - 160) * 2, 6)
     expect(r.caixa.x + r.caixa.width).toBeCloseTo(700, 6)
     expect(r.caixa.y + r.caixa.height).toBe(700)
   })
@@ -107,15 +107,15 @@ describe('avisosDeMargem — avisa, nunca bloqueia', () => {
       ['titulo', 'interface'],
       ['forma', 'margem'],
     ])
-    expect(avisos[0].ajuste).toMatchObject({ dy: 70, dx: 0 })
-    expect(avisos[1].ajuste).toMatchObject({ dx: 34, dy: 0 })
+    expect(avisos[0].ajuste).toMatchObject({ dy: 42, dx: 0 }) // faixa e margem em 160: 120 → sobra 40, +2
+    expect(avisos[1].ajuste).toMatchObject({ dx: 6, dy: 0 }) // lateral 64: x 60 → sobra 4, +2
   })
 
   it('no Feed não há faixa: texto no topo só avisa pela margem da marca', () => {
     const feed = margensDoEditor({ formato: 'feed', assinatura: null, largura: 1080, altura: 1350 })
-    const avisos = avisosDeMargem([camada('t', 'text', 100, 100, 500, 60)], feed, 1350)
+    const avisos = avisosDeMargem([camada('t', 'text', 100, 50, 500, 60)], feed, 1350)
     expect(avisos.map((a) => a.tipo)).toEqual(['margem'])
-    expect(avisos[0].ajuste.dy).toBe(22)
+    expect(avisos[0].ajuste.dy).toBe(24) // topo do Feed 72 (29/10): sobra 22, +2
   })
 })
 
@@ -147,16 +147,16 @@ describe('avisosDeMargem — ajustes da revisão R1', () => {
     expect(avisosDeMargem([camada('t', 'text', 60, 500, 300, 60)], story, 1920)[0].travada).toBe(false)
   })
 
-  it('forma mais larga que a área (1000 > 896) não ganha dx: o botão não oscila; a conta do revisor fica como está', () => {
+  it('forma mais larga que a área (1000 > 952) não ganha dx: o botão não oscila; a conta do revisor fica como está', () => {
     const avisos = avisosDeMargem([camada('f', 'shape', 92, 500, 1000, 100)], story, 1920)
     expect(avisos[0].ajuste).toMatchObject({ dx: 0, horizontal: true, lados: ['direita'] })
-    expect(ajusteParaDentro({ x: 92, y: 500, width: 1000, height: 100 }, LIM).dx).toBe(-106) // o revisor continua propondo
+    expect(ajusteParaDentro({ x: 92, y: 500, width: 1000, height: 100 }, LIM).dx).toBe(-78) // o revisor continua propondo (1092 − 1016 + 2)
   })
 
   it('texto em (60,100) no Story padrão: UM ajuste resolve esquerda e faixa', () => {
     const avisos = avisosDeMargem([camada('t', 'text', 60, 100, 300, 60)], story, 1920)
     expect(avisos[0].tipo).toBe('interface')
-    expect(avisos[0].ajuste).toMatchObject({ dx: 34, dy: 90 })
+    expect(avisos[0].ajuste).toMatchObject({ dx: 6, dy: 62 })
   })
 
   it('alcaDeCanto: só as quatro alças de canto do Transformer', () => {

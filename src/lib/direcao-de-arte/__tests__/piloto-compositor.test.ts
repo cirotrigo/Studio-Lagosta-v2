@@ -221,16 +221,16 @@ describe('K de hierarquia NÃO é gate (decisão do owner, 13/10/2026)', () => {
 })
 
 describe('safe interface ≠ geometria de composição (decisões do owner, 13/10/2026)', () => {
-  it('o piso HARD de interface é 188/224, e uma configuração de INTERFACE do cliente só pode apertar', () => {
+  it('o piso HARD de interface é 160/160 (29/10; era 188/224), e uma configuração de INTERFACE do cliente só pode apertar', () => {
     expect(interfaceDoStory()).toEqual(PISO_DE_INTERFACE_DO_STORY)
-    expect(interfaceDoStory({ topo: 100, rodape: 90 })).toEqual({ topo: 188, rodape: 224 })
+    expect(interfaceDoStory({ topo: 100, rodape: 90 })).toEqual({ topo: 160, rodape: 160 })
     expect(interfaceDoStory({ topo: 200, rodape: 260 })).toEqual({ topo: 200, rodape: 260 })
   })
 
   it('Project.assinatura.geometria.story (250/350) é geometria de composição / configuração LEGADA: não entra na safe interface', () => {
     const numeros = fixture.assinatura().numerosDoProjeto as { geometria: { story: { safeTopo: number; safeRodape: number } } }
     expect(numeros.geometria.story).toMatchObject({ safeTopo: 250, safeRodape: 350 })
-    expect(interfaceDoStory()).toEqual({ topo: 188, rodape: 224 })
+    expect(interfaceDoStory()).toEqual({ topo: 160, rodape: 160 })
   })
 
   it('caracterização: hoje a geometria derivada da página (148) sobrepõe a do projeto (250) sem aviso — a reconciliar/migrar, nunca vencer em silêncio', () => {

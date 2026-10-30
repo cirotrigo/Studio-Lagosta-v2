@@ -5,7 +5,7 @@
  * RenderEngine.measureTextLayerBox) e aponta:
  *  - overflow: o texto não cabe na caixa gravada (altura ou largura);
  *  - colisão: os GLIFOS de duas camadas de texto se sobrepõem;
- *  - fora-da-area-segura: texto invade as margens do story (MARGEM_LEGADA_DO_REVISOR, 70/120/100 até o L5;
+ *  - fora-da-area-segura: texto invade a margem da marca padrão (`margensDoEditor`, 29/10/2026;
  *    as guias azuis do editor).
  *
  * Duas sutilezas aprendidas no repro do By Rock (template 140, Layout 2):
@@ -21,7 +21,8 @@
  * As fontes do projeto PRECISAM estar registradas antes de medir.
  */
 import type { Layer } from '@/types/template'
-import { MARGEM_LEGADA_DO_REVISOR } from '@/lib/canvas-margin'
+import { margensDoEditor } from '@/lib/canvas-margin'
+import { formatoDaPaginaGravada } from '@/lib/compositor/formato'
 
 export type MeasureTextBox = (layer: Layer) => {
   height: number
@@ -151,7 +152,6 @@ export function checkTextGeometry(
   const metricas = measureTextLayers(layers, measure)
   const colisoes: TextGeometryIssue[] = []
   const overflows: TextGeometryIssue[] = []
-  const foraDaArea: TextGeometryIssue[] = []
 
   // a) overflow da própria caixa (vertical e horizontal). O critério vertical
   //    é PARIDADE COM O TRUNCAMENTO do render: sem autoExpand, ele descarta
@@ -219,16 +219,26 @@ export function checkTextGeometry(
     }
   }
 
-  // c) área segura do story (margens assimétricas das guias do editor),
-  //    escaladas pela largura do canvas. Só texto: logo na borda é decisão de
-  //    layout, não defeito.
-  const escala = canvas.width / 1080
-  const limites = {
-    top: MARGEM_LEGADA_DO_REVISOR.top * escala,
-    bottom: canvas.height - MARGEM_LEGADA_DO_REVISOR.bottom * escala,
-    left: MARGEM_LEGADA_DO_REVISOR.left * escala,
-    right: canvas.width - MARGEM_LEGADA_DO_REVISOR.right * escala,
-  }
+  // c) área segura (a margem da marca padrão, pelo formato do canvas), já na
+  //    escala da peça. Só texto: logo na borda é decisão de layout, não defeito.
+  const foraDaArea = foraDaAreaSegura(metricas, limitesDaAreaSegura(canvas))
+
+  return { issues: [...colisoes, ...overflows, ...foraDaArea], metricas }
+}
+
+/** As quatro linhas da área segura da peça (`margensDoEditor`, padrão da casa), nos nomes deste módulo. */
+export function limitesDaAreaSegura(canvas: { width: number; height: number }): { top: number; bottom: number; left: number; right: number } {
+  const m = margensDoEditor({ formato: formatoDaPaginaGravada(canvas), assinatura: null, largura: canvas.width, altura: canvas.height }).marca
+  return { top: m.topo, bottom: m.base, left: m.esquerda, right: m.direita }
+}
+
+/**
+ * Os textos cuja tinta (vertical) ou caixa (horizontal) passa das linhas, com a folga `SAFE_AREA_TOLERANCE_PX`.
+ * Separado de `checkTextGeometry` para a medição de 29/10 comparar as margens antigas e as novas sobre as MESMAS
+ * métricas (`scripts/medir-margens-2026-10-29.ts`).
+ */
+export function foraDaAreaSegura(metricas: TextLayerMetrics[], limites: { top: number; bottom: number; left: number; right: number }): TextGeometryIssue[] {
+  const foraDaArea: TextGeometryIssue[] = []
   for (const m of metricas) {
     const excessos: string[] = []
     let maiorExcesso = 0
@@ -258,6 +268,5 @@ export function checkTextGeometry(
       })
     }
   }
-
-  return { issues: [...colisoes, ...overflows, ...foraDaArea], metricas }
+  return foraDaArea
 }
