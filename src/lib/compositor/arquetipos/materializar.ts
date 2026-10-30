@@ -65,12 +65,18 @@ export function excedeAlturaDaReferencia(altura: number, referencia: Caixa, canv
 
 const arredondado = (r: RetanguloPx): RetanguloPx => ({ x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) })
 
+/** O formato pelo canvas (as frações do quadro são por formato; `zonaEfetiva` não recebe o formato). */
+const formatoDaZona = (canvas: { width: number; height: number }): FormatoDoArquetipo => (canvas.height > canvas.width * 1.5 ? 'story' : 'feed')
+
 /** A zona do arquétipo ∩ a área segura efetiva, em px — `null` quando a interseção é vazia. */
-export function zonaEfetiva(zona: Zona, canvas: { width: number; height: number }, geometria: GeometriaEfetiva): RetanguloPx | null {
-  const x0 = Math.max(zona.xMin * canvas.width, geometria.margemH)
-  const x1 = Math.min(zona.xMax * canvas.width, canvas.width - geometria.margemH)
-  const y0 = Math.max(zona.yMin * canvas.height, geometria.safeTopo)
-  const y1 = Math.min(zona.yMax * canvas.height, canvas.height - geometria.safeRodape)
+export function zonaEfetiva(zona: Zona, canvas: { width: number; height: number }, geometria: GeometriaEfetiva, margem?: MargemDaPeca): RetanguloPx | null {
+  // Na margem da marca, a zona do catálogo também segue a margem (borda a borda) antes do recorte pelo piso.
+  const bruta = { x: zona.xMin * canvas.width, y: zona.yMin * canvas.height, width: (zona.xMax - zona.xMin) * canvas.width, height: (zona.yMax - zona.yMin) * canvas.height }
+  const z = margem ? naMargemDaMarca(bruta, formatoDaZona(canvas), canvas, geometria, 'caixa') : bruta
+  const x0 = Math.max(z.x, geometria.margemH)
+  const x1 = Math.min(z.x + z.width, canvas.width - geometria.margemH)
+  const y0 = Math.max(z.y, geometria.safeTopo)
+  const y1 = Math.min(z.y + z.height, canvas.height - geometria.safeRodape)
   if (x1 - x0 <= 0 || y1 - y0 <= 0) return null
   return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 }
 }
@@ -92,6 +98,66 @@ export function referenciaEfetiva(referencia: RetanguloPx, zona: RetanguloPx | n
   return { ...referencia, x: x0, width: x1 - x0 }
 }
 
+/**
+ * O QUADRO DE DESENHO do catálogo (frações da peça): onde as referências, as zonas e os elementos que ficam na BORDA
+ * da composição pousam. Lateral .085 (91,8 px); Story topo e base .12 (230,4 px); Feed topo .11 (148,5 px) e base .08
+ * (108 px). Medido no catálogo em 29/10/2026 — é a margem que o desenhista usou, não a área segura (`NUMEROS_PADRAO`).
+ */
+export const QUADRO_DO_CATALOGO = {
+  story: { lateral: 0.085, topo: 0.12, base: 0.12 },
+  feed: { lateral: 0.085, topo: 0.11, base: 0.08 },
+} as const
+/**
+ * A faixa (px) além do quadro em que uma borda ainda conta como "na margem": lateral 24 (as zonas em 108 dos layouts
+ * centrados entram; a manchete centrada em 129,6 não); vertical 60 (os rodapés mais recuados do catálogo — o serviço
+ * do #4 no Feed a 162 px da base, a pílula do #5/#16 a 148,5, a chamada do #16 a 261 no Story — entram e guardam o
+ * recuo; a manchete em 297,6 no Story e o pré do #9 em 216 no Feed não entram).
+ */
+export const FAIXA_DA_MARGEM = { lateral: 24, vertical: 60 } as const
+const EPSILON = 1e-6
+/** O modo da margem da peça: `'marca'` = a margem da marca É a margem (29/10/2026). Ausente = opção A (só recolhe). */
+export type MargemDaPeca = 'marca'
+
+/**
+ * A MARGEM DA MARCA É A MARGEM (29/10/2026, decisão do Ciro depois da reconciliação das assinaturas): toda borda de uma
+ * caixa do catálogo que está na faixa da margem (até `FAIXA_DA_MARGEM` além do quadro: 24 px na lateral, 60 na vertical) passa a ser a borda do piso
+ * do projeto, nos dois sentidos — piso mais folgado afasta o texto para a margem nova, piso mais apertado recolhe
+ * (o que a opção A já fazia). O que a borda tinha de recuo além do quadro ela guarda (o serviço em pílula do #16 fica
+ * 19 px acima da base). Bordas de dentro (a coluna de um papel, o miolo de um layout centrado) não mexem.
+ *
+ * `texto`: na horizontal cada borda vai sozinha (a coluna cresce até a margem); na vertical a caixa TRANSLADA quando
+ * só uma borda está na margem (o serviço do rodapé desce inteiro; a altura é a capacidade) e abre quando as duas estão.
+ * `logo`: translada nos dois eixos (o tamanho é do catálogo), abre só com as duas bordas na margem. `caixa` (zonas,
+ * elementos presos à peça): cada borda sozinha. Movimento de até ½ px não conta (91,8 contra o piso padrão 92: nada).
+ */
+export function naMargemDaMarca(r: RetanguloPx, formato: FormatoDoArquetipo, canvas: { width: number; height: number }, geometria: GeometriaEfetiva, modo: 'texto' | 'logo' | 'caixa'): RetanguloPx {
+  const q = QUADRO_DO_CATALOGO[formato]
+  const borda = (d: number, quadro: number, piso: number, faixa: number) => {
+    if (d > quadro + faixa) return d
+    const recuo = d - quadro
+    const novo = piso + (recuo > EPSILON ? recuo : 0)
+    return Math.abs(novo - d) <= TOLERANCIA_PX ? d : novo
+  }
+  const eixo = (a0: number, a1: number, lado: number, quadro0: number, quadro1: number, piso0: number, piso1: number, faixa: number, translada: boolean): [number, number] => {
+    // `lado − (lado − a1)` não devolve a1 exato em ponto flutuante: "mexeu" é mais que 1e-6 px.
+    const n0 = borda(a0, quadro0, piso0, faixa)
+    const n1 = lado - borda(lado - a1, quadro1, piso1, faixa)
+    const m0 = Math.abs(n0 - a0) > EPSILON, m1 = Math.abs(n1 - a1) > EPSILON
+    if (!m0 && !m1) return [a0, a1]
+    if (translada && m0 !== m1) return m0 ? [n0, n0 + (a1 - a0)] : [n1 - (a1 - a0), n1]
+    return [m0 ? n0 : a0, m1 ? n1 : a1]
+  }
+  const [x0, x1] = eixo(r.x, r.x + r.width, canvas.width, q.lateral * canvas.width, q.lateral * canvas.width, geometria.margemH, geometria.margemH, FAIXA_DA_MARGEM.lateral, modo === 'logo')
+  const [y0, y1] = eixo(r.y, r.y + r.height, canvas.height, q.topo * canvas.height, q.base * canvas.height, geometria.safeTopo, geometria.safeRodape, FAIXA_DA_MARGEM.vertical, modo !== 'caixa')
+  return x0 === r.x && y0 === r.y && x1 === r.x + r.width && y1 === r.y + r.height ? r : { x: x0, y: y0, width: x1 - x0, height: y1 - y0 }
+}
+
+/** A referência de um papel em px: a do catálogo, na margem da marca (modo `'marca'`) ou não (opção A). */
+const referenciaBase = (referencia: Caixa, papel: PapelDeTexto | 'logo', formato: FormatoDoArquetipo, canvas: { width: number; height: number }, geometria: GeometriaEfetiva | undefined, margem: MargemDaPeca | undefined): RetanguloPx => {
+  const r = emPx(referencia, canvas)
+  return margem && geometria ? naMargemDaMarca(r, formato, canvas, geometria, papel === 'logo' ? 'logo' : 'texto') : r
+}
+
 const dentro = (r: RetanguloPx, z: RetanguloPx) =>
   r.x >= z.x - TOLERANCIA_PX && r.y >= z.y - TOLERANCIA_PX && r.x + r.width <= z.x + z.width + TOLERANCIA_PX && r.y + r.height <= z.y + z.height + TOLERANCIA_PX
 
@@ -100,13 +166,14 @@ const dentro = (r: RetanguloPx, z: RetanguloPx) =>
  * medidor (a mesma no medir-copy e no compor), a altura é a capacidade
  * estrutural. A segunda voz (`headline2`) mede na caixa da manchete.
  */
-export function caixasMaximas(arquetipo: ArquetipoDeLayout, formato: FormatoDoArquetipo, canvas: { width: number; height: number }, geometria?: GeometriaEfetiva): Partial<Record<PapelDeTexto, { largura: number; altura: number }>> {
+export function caixasMaximas(arquetipo: ArquetipoDeLayout, formato: FormatoDoArquetipo, canvas: { width: number; height: number }, geometria?: GeometriaEfetiva, margem?: MargemDaPeca): Partial<Record<PapelDeTexto, { largura: number; altura: number }>> {
   const saida: Partial<Record<PapelDeTexto, { largura: number; altura: number }>> = {}
   for (const [papel, pos] of Object.entries(arquetipo.formatos[formato].papeis)) {
     if (papel === 'logo' || !pos || !('referencia' in pos)) continue
     const r = emPx(pos.referencia, canvas)
-    // Com a geometria do projeto, a coluna é a da referência EFETIVA (recolhida para dentro do piso); a altura é a do catálogo.
-    const e = geometria ? referenciaEfetiva(r, zonaEfetiva(pos.zona, canvas, geometria)) : r
+    // Com a geometria do projeto, a coluna é a da referência EFETIVA (na margem da marca, e recolhida para dentro do
+    // piso); a altura é a do catálogo.
+    const e = geometria ? referenciaEfetiva(referenciaBase(pos.referencia, papel as PapelDeTexto, formato, canvas, geometria, margem), zonaEfetiva(pos.zona, canvas, geometria, margem)) : r
     saida[papel as PapelDeTexto] = { largura: Math.floor(e.width), altura: Math.floor(r.height) }
   }
   return saida
@@ -119,11 +186,12 @@ export function referenciaDoPapel(
   canvas: { width: number; height: number },
   geometria: GeometriaEfetiva,
   papel: PapelDeTexto | 'logo',
+  margem?: MargemDaPeca,
 ): { referencia: RetanguloPx; zonaEfetiva: RetanguloPx | null } | null {
   const pos = arquetipo.formatos[formato].papeis[papel]
   if (!pos || !('referencia' in pos)) return null
-  const z = zonaEfetiva(pos.zona, canvas, geometria)
-  return { referencia: arredondado(referenciaEfetiva(emPx(pos.referencia, canvas), z)), zonaEfetiva: z ? arredondado(z) : null }
+  const z = zonaEfetiva(pos.zona, canvas, geometria, margem)
+  return { referencia: arredondado(referenciaEfetiva(referenciaBase(pos.referencia, papel, formato, canvas, geometria, margem), z)), zonaEfetiva: z ? arredondado(z) : null }
 }
 
 export interface ProblemaDeMaterializacao {
@@ -196,6 +264,8 @@ export function materializarArquetipo(args: {
   empilhar?: { gap: number }
   /** Quanto os acentos PRESOS ocupam acima/abaixo de cada papel (`extensoesDosAcentosPresos`): a pilha reserva isso. */
   acentosPresos?: Partial<Record<PapelDeTexto, { topo: number; base: number }>>
+  /** `'marca'`: a margem da marca é a margem — referências e zonas de borda seguem o piso (29/10/2026). Ausente = opção A. */
+  margem?: MargemDaPeca
 }): Materializacao {
   const { arquetipo, formato, canvas, geometria } = args
   const problemas: ProblemaDeMaterializacao[] = []
@@ -211,13 +281,16 @@ export function materializarArquetipo(args: {
       logoAutomatica = true
       continue
     }
-    const zona = zonaEfetiva(pos.zona, canvas, geometria)
-    // A referência efetiva: a do catálogo, recolhida para dentro do piso na horizontal (opção A). A capacidade de
-    // altura (`excedeAlturaDaReferencia`) segue a do catálogo.
-    const referencia = referenciaEfetiva(emPx(pos.referencia, canvas), zona)
+    const zona = zonaEfetiva(pos.zona, canvas, geometria, args.margem)
+    // A referência efetiva: a do catálogo — na margem da marca (modo `'marca'`) — recolhida para dentro do piso na
+    // horizontal (opção A). A capacidade de altura (`excedeAlturaDaReferencia`) segue a do catálogo.
+    const referencia = referenciaEfetiva(referenciaBase(pos.referencia, papel, formato, canvas, geometria, args.margem), zona)
     const dy = args.deslocamentos?.[papel] ?? 0
-    // Onde a caixa pousa: a referência transladada. As medidas (capacidade, contain) seguem as da referência.
-    const y0 = referencia.y + dy
+    // Onde a caixa pousa: a referência transladada. As medidas (capacidade, contain) seguem as da referência. Na margem
+    // da marca, o texto de um arquétipo ancorado no RODAPÉ pousa pela BASE da referência (a caixa real é mais baixa que
+    // a capacidade): é a base que está na margem, e a pilha sobe a partir dela.
+    const pelaBase = Boolean(args.margem) && papel !== 'logo' && arquetipo.preferencias.ancora === 'rodape'
+    const y0 = (pelaBase && args.medidas[papel] ? referencia.y + referencia.height - args.medidas[papel]!.height : referencia.y) + dy
     const onde = dy ? `na posição candidata (dy=${dy}px)` : 'na referência'
 
     let medida: { width: number; height: number } | null

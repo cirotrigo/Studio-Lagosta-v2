@@ -153,7 +153,8 @@ describe('T1b · base-esquerda: a moldura em L obrigatória — o modelo compõe
       const e = def.elementos!.moldura
       const ref = (def.papeis.headline as { referencia: { y: number } }).referencia
       const unidade = r.diagnostico.arquetipo!.papeis.find((p) => p.papel === 'headline')!.posicao
-      expect(l.position).toEqual({ x: h.position.x + 6, y: Math.round(e.y * H) })
+      // Na margem da marca (29/10/2026) o braço de cima da moldura (211/135 no catálogo, na faixa da margem) pousa no topo do piso padrão.
+      expect(l.position).toEqual({ x: h.position.x + 6, y: formato === 'story' ? 188 : 120 })
       expect(l.size.width).toBe(Math.round(e.w * W))
       expect(Math.abs(fundo(l) - (unidade.y - (ref.y - (e.y + e.h)) * H))).toBeLessThanOrEqual(1)
       expect(fundo(l)).toBeLessThan(h.position.y)

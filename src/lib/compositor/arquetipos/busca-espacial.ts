@@ -15,7 +15,7 @@ import type { CropPosition } from '@/lib/image-crop-utils'
 import { bordaDoGrupo, type Borda } from '../gradiente-de-leitura'
 import { combinacoesDasFaixas, limiteDaBusca, type PartidaNoArquetipo } from './candidatos-espaciais'
 import { jsonCanonico } from './impressao'
-import { alinhaDoPapel, type GeometriaEfetiva, type Materializacao, type ProblemaDeMaterializacao } from './materializar'
+import { alinhaDoPapel, type GeometriaEfetiva, type MargemDaPeca, type Materializacao, type ProblemaDeMaterializacao } from './materializar'
 import { camadasNaReferencia, grupoDaUnidade, materializarUnidades, type UnidadeDoArquetipo } from './no-compositor'
 import { avaliarCombinacao, descreverTratamento, invadeAEstimada, motivoDaVitoria, ordenarAvaliacoes, resumirAvaliacao } from './pontuacao-espacial'
 import { chaveDoArquetipo, type ArquetipoDeLayout, type FormatoDoArquetipo } from './tipos'
@@ -274,6 +274,8 @@ export interface ArgsDaSelecao {
   logo: { razao: number } | null
   /** O gap da marca: os papéis de cada faixa empilham (29/10/2026). */
   gap?: number
+  /** `'marca'`: a margem da marca é a margem (29/10/2026); a escolha grava o modo. Ausente = opção A. */
+  margem?: MargemDaPeca
   /** O portão estrutural já passado (`partidaNoArquetipo`): as faixas, os candidatos e a posição de partida. */
   partida: Extract<PartidaNoArquetipo, { ok: true }>
   /** A foto em cada corte candidato (vazio sem foto). */
@@ -297,7 +299,7 @@ export type SelecaoNoArquetipo =
   | { ok: false; resultado: ResultadoDaBusca; faixas: FaixaDeBusca[]; motivo: string | null }
 
 const materializarCom = (args: ArgsDaSelecao, deslocamentos: Combinacao['deslocamentos']): Materializacao =>
-  materializarUnidades({ arquetipo: args.arquetipo, formato: args.formato, canvas: args.canvas, geometria: args.geometria, unidades: args.unidades, logo: args.logo, deslocamentos, ...(args.gap !== undefined ? { gap: args.gap } : {}) })
+  materializarUnidades({ arquetipo: args.arquetipo, formato: args.formato, canvas: args.canvas, geometria: args.geometria, unidades: args.unidades, logo: args.logo, deslocamentos, ...(args.gap !== undefined ? { gap: args.gap } : {}), ...(args.margem ? { margem: args.margem } : {}) })
 
 /** A combinação que reproduz deslocamentos dados (a escolha gravada, ou a referência): rótulo `congelado` fora do 0. */
 function combinacaoDosDeslocamentos(faixas: FaixaDeBusca[], deslocamentos: Combinacao['deslocamentos']): Combinacao {
@@ -365,7 +367,8 @@ export function selecionarNoArquetipo(args: ArgsDaSelecao): SelecaoNoArquetipo {
   // Reprodução (ou sem foto): uma combinação só. A geometria e o que a copy nova viola recusam; o tratamento avisa.
   if (args.reproduzir || args.cortes.length === 0) {
     // Combinação única (sem foto, ou texto no liso): a escolha nova também grava a pilha com que a peça nasceu (29/10/2026).
-    const { buscaOriginal, ...gravada } = args.reproduzir ?? { modo: MODO_BUSCA_ESPACIAL, foto: args.foto, corte: args.corteSemLeitura ?? ('center-middle' as CropPosition), deslocamentos: args.partida.deslocamentos, ...(args.gap !== undefined ? { pilha: args.gap } : {}) }
+    const nova: EscolhaEspacial & { buscaOriginal?: ResumoDaBuscaOriginal } = { modo: MODO_BUSCA_ESPACIAL, foto: args.foto, corte: args.corteSemLeitura ?? ('center-middle' as CropPosition), deslocamentos: args.partida.deslocamentos, ...(args.gap !== undefined ? { pilha: args.gap } : {}), ...(args.margem ? { margem: args.margem } : {}) }
+    const { buscaOriginal, ...gravada } = args.reproduzir ?? nova
     const avisos: string[] = []
     const origem = args.reproduzirReferencia ? 'a posição de referência do arquétipo (peça do T1a)' : 'a posição desta peça foi escolhida pela foto e está congelada'
     const recusa = (problemas: unknown[], descricao: string) =>
@@ -451,7 +454,7 @@ export function selecionarNoArquetipo(args: ArgsDaSelecao): SelecaoNoArquetipo {
   const resultado = buscarNaFoto({ materializadas, cortes: args.cortes, faixas, energiaDeReferencia, planejamento: args.planejamento, canvas: args.canvas })
   if (!resultado.vencedora) return { ok: false, resultado, faixas, motivo: motivoDaFalta(resultado.ordenadas) }
   const v = resultado.vencedora
-  const escolha: EscolhaEspacial = { modo: MODO_BUSCA_ESPACIAL, foto: args.foto, corte: v.crop, deslocamentos: v.combinacao.deslocamentos, ...(args.gap !== undefined ? { pilha: args.gap } : {}) }
+  const escolha: EscolhaEspacial = { modo: MODO_BUSCA_ESPACIAL, foto: args.foto, corte: v.crop, deslocamentos: v.combinacao.deslocamentos, ...(args.gap !== undefined ? { pilha: args.gap } : {}), ...(args.margem ? { margem: args.margem } : {}) }
   const diagnostico = diagnosticoDaBusca({ escolha, resultado, faixas, cortesAvaliados: args.cortes.map((c) => c.crop) })
   const menorCobertura = Math.min(...resultado.ordenadas.filter((a) => a.eliminada.length === 0).map((a) => a.regiaoEstimada?.cobertura ?? 0))
   const avisos = invadeAEstimada(v)

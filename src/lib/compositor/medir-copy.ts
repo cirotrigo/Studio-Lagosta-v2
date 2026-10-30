@@ -260,7 +260,8 @@ export function medirCopy(args: {
   if (arq) conferirLogo(arq.definicao, Boolean(args.assinatura.logo))
   // O piso do PROJETO, como no compor (`pisoDoProjeto`): a coluna de cada papel é a da referência efetiva (opção A).
   const pisoArq = arq ? (args.assinatura.pisoDoProjeto ?? args.assinatura.numeros.geometria)[args.formato] : null
-  const caixasArq = arq ? caixasMaximas(arq.definicao, arq.formato, DIMENSOES[args.formato], pisoArq!) : null
+  // A margem da marca (29/10/2026): o medir mede a peça NOVA — sempre `'marca'`, como o compor compõe.
+  const caixasArq = arq ? caixasMaximas(arq.definicao, arq.formato, DIMENSOES[args.formato], pisoArq!, 'marca') : null
   const listasArq = arq ? papeisDeLista(arq.definicao) : null
   const preparar = (escalaMaximaDoPapel?: (p: Papel) => number | undefined) =>
     prepararBlocos({
@@ -277,7 +278,7 @@ export function medirCopy(args: {
     })
   // Com arquétipo, a MESMA escada da unidade do compor (`prepararNoArquetipo`).
   const noArquetipo = arq
-    ? prepararNoArquetipo({ arquetipo: arq.definicao, formato: arq.formato, canvas: DIMENSOES[args.formato], geometria: pisoArq!, gap: args.assinatura.numeros.geometria[args.formato].gapEntreBlocos, preparar })
+    ? prepararNoArquetipo({ arquetipo: arq.definicao, formato: arq.formato, canvas: DIMENSOES[args.formato], geometria: pisoArq!, gap: args.assinatura.numeros.geometria[args.formato].gapEntreBlocos, margem: 'marca', preparar })
     : null
   const preparados = noArquetipo ? noArquetipo.preparados : preparar()
   // #8: o papel do liso pelas tintas DESTA preparação (a da assinatura recebida), a mesma conta do compor — sem preparar
@@ -429,6 +430,7 @@ export function medirCopy(args: {
       unidades,
       logo: args.assinatura.logo ? { razao: args.assinatura.logo.razao } : null,
       gap: args.assinatura.numeros.geometria[args.formato].gapEntreBlocos,
+      margem: 'marca',
     })
     const m: Materializacao = 'problemas' in partida ? { ok: false, problemas: partida.problemas } : partida.materializacao
     for (const r of 'resgatados' in partida ? partida.resgatados : []) {
@@ -477,10 +479,11 @@ export function medirCopy(args: {
         formato: arq.formato,
         canvas: DIMENSOES[args.formato],
         geometria: piso,
-        receitas: receitasDoArquetipo(arq.definicao, { formato: arq.formato, canvas: DIMENSOES[args.formato] }).receitas,
+        receitas: receitasDoArquetipo(arq.definicao, { formato: arq.formato, canvas: DIMENSOES[args.formato], geometria: piso, margem: 'marca' }).receitas,
         papeis: m.papeis,
         obstaculos: obstaculosDosAcentos(unidades, m.papeis, m.papeis.logo?.posicao ?? null, caixasDosItens(arq.definicao, unidades, m.papeis)),
         itens: caixasDosItens(arq.definicao, unidades, m.papeis),
+        margem: 'marca',
       })
       acentos.previstos = pos.acentos.map((a) => ({ elemento: a.receita.elemento, tipo: a.receita.tipo, rect: a.rect, ...(a.item ? { item: a.item } : {}) }))
       acentos.omitidos = pos.omitidos

@@ -108,8 +108,13 @@ describe.skipIf(!fontesNoDisco())('#16 · minimal-tipografico-convite no composi
       const logo = camada(r, 'logo')
       const refLogo = (geo.papeis.logo as any).referencia
       expect(Math.abs(centroX(logo) - W / 2)).toBeLessThanOrEqual(1)
-      expect(logo.position.y).toBeGreaterThanOrEqual(Math.floor(refLogo.y * H))
-      expect(logo.position.y + logo.size.height).toBeLessThanOrEqual(Math.ceil((refLogo.y + refLogo.h) * H))
+      // Na margem da marca (29/10/2026) a referência da logo (249,6/168,8 no catálogo, na faixa da margem) pousa no topo do piso padrão.
+      // O recuo além do quadro do catálogo (230,4 / 148,5) a logo guarda: 188 + 19,2 no Story, 120 + 20,3 no Feed.
+      const topoDaMarca = formato === 'story' ? 188 : 120
+      const quadro = formato === 'story' ? 0.12 : 0.11
+      const topoEsperado = topoDaMarca + Math.max(0, (refLogo.y - quadro) * H)
+      expect(logo.position.y).toBeGreaterThanOrEqual(Math.floor(topoEsperado))
+      expect(logo.position.y + logo.size.height).toBeLessThanOrEqual(Math.ceil(topoEsperado + refLogo.h * H))
       const diagLogo = (r.diagnostico as any).logo
       expect([diagLogo.canto, diagLogo.legibilidade.escolha, diagLogo.legibilidade.legivel]).toEqual(['superior-centro', 'mantida', true])
       expect((r.diagnostico as any).arquetipo.logo).toMatchObject({ modo: 'referencia', canto: 'superior-centro' })
@@ -117,8 +122,11 @@ describe.skipIf(!fontesNoDisco())('#16 · minimal-tipografico-convite no composi
       // CANTONEIRAS: uma camada, na caixa DECLARADA (não segue texto), o path do asset, a cor do destaque da manchete.
       const [cant] = cantoneiras(r)
       expect(cantoneiras(r)).toHaveLength(1)
+      // Na margem da marca (29/10/2026) a caixa das cantoneiras segue o piso padrão borda a borda: topo 188/120, base 1696/1246.
       const c = geo.elementos!.cantoneiras
-      expect(ret(cant)).toEqual({ x: Math.round(c.x * W), y: Math.round(c.y * H), width: Math.round(c.w * W), height: Math.round(c.h * H) })
+      const topo = formato === 'story' ? 188 : 120
+      const base = formato === 'story' ? 1696 : 1246
+      expect(ret(cant)).toEqual({ x: Math.round(c.x * W), y: topo, width: Math.round(c.w * W), height: base - topo })
       expect((cant.style as any).pathData ?? (cant.style as any).vetor?.pathData ?? JSON.stringify(cant.style)).toContain(PATH_DO_ASSET)
       expect((cant.style as any).strokeColor).toBe(DOURADO_NO_TRACO)
       const meta = (cant.metadata as any).compositor.acento

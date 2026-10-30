@@ -421,6 +421,10 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
   // CP3: a variante da logo gravada é preferência e não depende da foto — segue na busca nova (a conferência mede).
   const escolhaEspacial = lida?.modo === 'referencia' && defasagem.fotoTrocada ? (lida.logo ? { modo: 'referencia' as const, logo: lida.logo } : null) : lida
   if (lida?.modo === 'referencia' && defasagem.fotoTrocada) avisos.push('A foto da peça mudou: a posição foi escolhida de novo pela foto nova (a peça estava na referência do arquétipo).')
+  // A margem com que a peça EXISTENTE foi composta (30/10/2026): `'marca'` só se a escolha gravada diz; senão `null`
+  // (opção A, como nasceu). Vai à parte da escolha, porque a foto trocada no T1a anula a escolha mas não a identidade
+  // geométrica da peça — sem isto a troca de foto migrava a peça antiga para a margem nova (revisão do Codex, P2).
+  const margemDaPeca = candidataARecompor && arte.spec!.arquetipo ? (lida && 'margem' in lida && lida.margem === 'marca' ? ('marca' as const) : null) : undefined
   // T1b: os acentos da peça pela receita CONGELADA (a de antes do T1b, `[]`: continua sem) — com foto trocada também.
   const acentos = candidataARecompor && arte.spec!.arquetipo ? acentosCongelados(arte.fieldValues, arte.spec!) : null
   // #9: a máscara pela receita CONGELADA, conferida contra ela mesma e contra a definição EXATA resolvida acima (nunca a
@@ -537,7 +541,7 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
     // Só no texto no liso (a peça E e, desde o #8, a foto em caixa — onde o fundo da página é CONFERIDO contra as tintas):
     // com foto de fundo ou sem arquétipo, as opções ficam as de sempre.
     const textoNoLisoNaPeca = !!spec.arquetipo && textoNoLiso(verArquetipo(spec.arquetipo.id, spec.arquetipo.versao))
-    const composicao = await comporPeca(spec, { provar: true, ...(escolhaEspacial ? { escolhaEspacial } : {}), ...(acentos ? { acentosCongelados: acentos } : {}), ...(mascara ? { mascaraCongelada: mascara } : {}), ...(textoNoLisoNaPeca ? { fundoCongelado: page.background ?? null } : {}) })
+    const composicao = await comporPeca(spec, { provar: true, ...(escolhaEspacial ? { escolhaEspacial } : {}), ...(margemDaPeca !== undefined ? { margemDaPeca } : {}), ...(acentos ? { acentosCongelados: acentos } : {}), ...(mascara ? { mascaraCongelada: mascara } : {}), ...(textoNoLisoNaPeca ? { fundoCongelado: page.background ?? null } : {}) })
     avisos.push(...composicao.diagnostico.avisos)
     if (!composicao.prova) throw new CreativeError('RENDER_VAZIO', 'A composição não devolveu imagem.', 500)
 

@@ -77,21 +77,21 @@ const ALVO: Record<Formato9, { motor: Record<'pre' | 'headline' | 'apoio', { x: 
   story: {
     // Pilha (29/10/2026): o apoio encosta na manchete com o gap da marca (365 + 177 + 14 − 1 de arredondamento) — era a referência solta 624.
     motor: { pre: { x: 92, y: 298, height: 50 }, headline: { x: 92, y: 365, height: 177 }, apoio: { x: 92, y: 555, height: 108 } },
-    logo: { x: 854, y: 202, width: 134, height: 67 },
+    logo: { x: 854, y: 188, width: 134, height: 67 },
     foto: { x: 0, y: 806, width: 1080, height: 1114 },
     tinta: {
-      claro: { pre: { x: 101, y: 313, width: 236, height: 22 }, headline: { x: 103, y: 373, width: 626, height: 154 }, apoio: { x: 102, y: 571, width: 407, height: 85 }, logo: { x: 858, y: 206, width: 122, height: 60 } },
-      escuro: { pre: { x: 101, y: 313, width: 236, height: 22 }, headline: { x: 103, y: 373, width: 626, height: 154 }, apoio: { x: 101, y: 571, width: 408, height: 85 }, logo: { x: 858, y: 206, width: 122, height: 60 } },
+      claro: { pre: { x: 101, y: 313, width: 236, height: 22 }, headline: { x: 103, y: 373, width: 626, height: 154 }, apoio: { x: 102, y: 571, width: 407, height: 85 }, logo: { x: 858, y: 192, width: 122, height: 60 } },
+      escuro: { pre: { x: 101, y: 313, width: 236, height: 22 }, headline: { x: 103, y: 373, width: 626, height: 154 }, apoio: { x: 101, y: 571, width: 408, height: 85 }, logo: { x: 858, y: 192, width: 122, height: 60 } },
     },
   },
   feed: {
     // Pilha (29/10/2026): a manchete encosta no pré (216 + 47 + 14 = 277); o apoio já coincidia com a pilha (277 + 175 + 14 = 466).
     motor: { pre: { x: 92, y: 216, height: 47 }, headline: { x: 92, y: 277, height: 175 }, apoio: { x: 92, y: 466, height: 50 } },
-    logo: { x: 894, y: 142, width: 94, height: 47 },
+    logo: { x: 894, y: 120, width: 94, height: 47 },
     foto: { x: 0, y: 594, width: 1080, height: 756 },
     tinta: {
-      claro: { pre: { x: 100, y: 229, width: 214, height: 21 }, headline: { x: 103, y: 284, width: 619, height: 153 }, apoio: { x: 101, y: 479, width: 627, height: 30 }, logo: { x: 897, y: 145, width: 85, height: 42 } },
-      escuro: { pre: { x: 100, y: 229, width: 215, height: 21 }, headline: { x: 103, y: 284, width: 619, height: 153 }, apoio: { x: 101, y: 479, width: 627, height: 30 }, logo: { x: 897, y: 145, width: 85, height: 42 } },
+      claro: { pre: { x: 100, y: 229, width: 214, height: 21 }, headline: { x: 103, y: 284, width: 619, height: 153 }, apoio: { x: 101, y: 479, width: 627, height: 30 }, logo: { x: 897, y: 123, width: 85, height: 42 } },
+      escuro: { pre: { x: 100, y: 229, width: 215, height: 21 }, headline: { x: 103, y: 284, width: 619, height: 153 }, apoio: { x: 101, y: 479, width: 627, height: 30 }, logo: { x: 897, y: 123, width: 85, height: 42 } },
     },
   },
 }

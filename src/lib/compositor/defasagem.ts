@@ -695,6 +695,11 @@ export function escolhaEspacialOriginal(fieldValues: unknown, spec: SpecDePeca):
     if (!(Number.isInteger(escolha.pilha) && (escolha.pilha as number) >= 0)) return recusar(`pilha inválida: ${String(escolha.pilha)}`)
     limpa.pilha = escolha.pilha as number
   }
+  // A margem da marca (29/10/2026): ausente na peça de antes (só a opção A); presente, só `'marca'` é legível.
+  if (escolha.margem !== undefined) {
+    if (escolha.margem !== 'marca') return recusar(`margem inválida: ${String(escolha.margem)}`)
+    limpa.margem = 'marca'
+  }
   // CP3: a variante da logo desenhada. Ausente nas peças de antes; presente e malformada é escolha ilegível.
   const varianteDaLogo = varianteGravada(escolha.logo, recusar)
   if (varianteDaLogo) limpa.logo = varianteDaLogo

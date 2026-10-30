@@ -196,13 +196,15 @@ describe.skipIf(!fontesNoDisco())('#4 · recomposição real da Generation', () 
   }, 120_000)
 
   it('G-R2: a copy editada que não cabe na posição congelada → ARQUETIPO_POSICAO_CONGELADA_NAO_CABE; nada movido nem escrito', async () => {
-    // A peça nasce com o serviço de 1 linha logo acima de uma região anotada (y 1585–1690); o serviço editado para 2
-    // linhas (dentro do limite e da capacidade) cobriria a região NA POSIÇÃO CONGELADA — a recomposição não o move.
+    // A peça nasce com o serviço de 1 linha no alto da zona (dy −140, pela foto), acima de uma região anotada (y 1585–1690).
+    // Na margem da marca (29/10/2026) o serviço do #4 (âncora no rodapé) pousa pela BASE da referência e cresce para CIMA:
+    // editado para 2 linhas (dentro do limite e da capacidade) ele sairia da zona por cima NA POSIÇÃO CONGELADA — a
+    // recomposição não o move. (Até 29/10 crescia para baixo e cobria a região; o código e a guarda são os mesmos.)
     await montar({ topo: 40, catalogo: { x0: 0.3, y0: 1585 / 1920, x1: 0.7, y1: 1690 / 1920 } })
     await nascerEEditar((l) => (l.id === 'servico' ? { ...l, content: 'Sexta, 14/11 · 20h\nRua das Flores, 120' } : l))
     const e = await recusaSemEscrever(recomporPaginaDefasada({ pageId: 'p4' }))
     expect([e.code, e.status], e.message).toEqual(['ARQUETIPO_POSICAO_CONGELADA_NAO_CABE', 422])
-    expect(e.message).toMatch(/servico .* região protegida/)
+    expect(e.message).toMatch(/servico .* sai da zona efetiva/)
     expect(e.details!.escolha.deslocamentos).toEqual(escolhaGravada().deslocamentos)
   }, 120_000)
 
@@ -270,7 +272,8 @@ describe.skipIf(!fontesNoDisco())('#4 · recomposição real da Generation', () 
     cenario.atual = await cenario4(pagina, medir, { foto: await fotoDoCenario4(DIMENSOES.story, { topo: 40 }), catalogo: { driveFileId: 'drive-4', assunto: { x0: 443 / 1080, y0: 240 / 1920, x1: 453 / 1080, y1: 269 / 1920 } }, variantes: [] })
     const entrada = await nascerEEditar()
     const dy = escolhaGravada().deslocamentos.logo
-    expect(dy).toBeLessThan(-20)
+    // Na margem da marca (29/10/2026) a referência da logo já está no topo da zona (188, não 201,6): o "acima" é −18.
+    expect(dy).toBeLessThan(-10)
     // A assinatura troca a logo por uma de razão 0,5 (mais alta): no dy congelado ela sairia da zona por cima.
     const nova = dataUrl(await logoSintetica(LOGO_CLARA))
     cenario.atual!.paginasDeAssinatura[0].layers = cenario.atual!.paginasDeAssinatura[0].layers.map((l) => (l.type === 'logo' ? { ...l, fileUrl: nova, size: { width: 160, height: 80 } } : l))

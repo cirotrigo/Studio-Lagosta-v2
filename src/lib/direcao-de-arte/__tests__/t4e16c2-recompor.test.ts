@@ -2,7 +2,7 @@
  * #16@2 — a RECOMPOSIÇÃO REAL da Generation (`recomporPaginaDefasada`), compositor real e fontes reais, com o `@2` publicado:
  * - RG-1: a peça `@2` recomposta com o `SHAPES_LIBRARY` mutado e a paleta trocada mantém o path DERIVADO congelado
  *   (braços de 130 px), a cor e a variante da logo — o replay nunca deriva de novo nem lê o catálogo vivo;
- * - RG-2: a peça `@1` (a do t4e16-recompor) recomposta COM o `@2` publicado continua C1 (path do asset, ocupação 226 × 376,5,
+ * - RG-2: a peça `@1` (a do t4e16-recompor) recomposta COM o `@2` publicado continua C1 (path do asset, ocupação 226 × 379,
  *   impressão do `@1`);
  * - RG-3: `derivacao` malformada → ARQUETIPO_ESCOLHA_ILEGIVEL 422; derivação válida com o path C1 →
  *   ARQUETIPO_ELEMENTO_NAO_CABE 422 — nos dois, nada é escrito (Generation, Page, Blob dublê).
@@ -136,7 +136,8 @@ beforeEach(() => {
   banco.posts = new Map([['post-carrossel', { id: 'post-carrossel', projectId: 9002, status: 'DRAFT', pageId: null, renderStatus: 'NOT_NEEDED', mediaUrls: ['https://blob.test/capa.png', 'https://blob.test/arte-e.png'], laterPostId: null }]])
 })
 
-const PATH_STORY = 'M0 8.6782 L0 0 L14.5089 0 M85.4911 0 L100 0 L100 8.6782 M100 91.3218 L100 100 L85.4911 100 M14.5089 100 L0 100 L0 91.3218'
+// Na margem da marca (29/10/2026) a caixa das cantoneiras é 896 × 1508 (topo 188, base 1696 — o piso padrão): 130/1508.
+const PATH_STORY = 'M0 8.6207 L0 0 L14.5089 0 M85.4911 0 L100 0 L100 8.6207 M100 91.3793 L100 100 L85.4911 100 M14.5089 100 L0 100 L0 91.3793'
 const ASSET = SHAPES_LIBRARY.find((a) => a.id === 'cantoneiras')!.pathData!
 async function recusa(promessa: Promise<unknown>): Promise<{ code: string; status?: number; message: string }> {
   try {
@@ -154,7 +155,7 @@ describe.skipIf(!fontesNoDisco())('#16@2 · recomposição real da Generation', 
     expect(entrada.fieldValues.spec.arquetipo).toMatchObject({ id: ID_CONVITE, versao: 2 })
     const nascida = entrada.layers as Layer[]
     const gravada = entrada.fieldValues.composicao.arquetipo.acentos[0]
-    expect([gravada.desenho.pathData, gravada.derivacao]).toEqual([PATH_STORY, { regra: 'bracos-iguais', bracoPx: 130 }])
+    expect([gravada.desenho.pathData, gravada.derivacao]).toEqual([PATH_STORY, { regra: 'bracos-iguais', bracoPx: 130, caixa: { width: 896, height: 1508 } }])
     const variante = entrada.fieldValues.composicao.arquetipo.buscaEspacial.escolha.logo
     const asset = SHAPES_LIBRARY.find((a) => a.id === 'cantoneiras')!
     try {
@@ -180,7 +181,26 @@ describe.skipIf(!fontesNoDisco())('#16@2 · recomposição real da Generation', 
     expect(await pixel(banco.pngs[0], c.x + 140, c.y)).toBe(CLARO)
   }, 120_000)
 
-  it('RG-2: @1 recomposto com o @2 publicado continua C1 — path do asset, ocupação 226 × 376,5, impressão do @1', async () => {
+  it('RG-1b (30/10/2026, revisão do Codex): a marca muda a margem depois de a peça nascer → a moldura segue o piso e o path é re-derivado pela MESMA regra e braço congelados', async () => {
+    await montar({ fundoClaro: CLARO, destaque: { fill: DOURADO }, geometria: { story: { margemH: 64 } } }, '#F2F2F2')
+    const entrada = await nascerEEditar(trocarApoio)
+    const gravada = entrada.fieldValues.composicao.arquetipo.acentos[0]
+    expect(gravada.derivacao).toEqual({ regra: 'bracos-iguais', bracoPx: 130, caixa: { width: 952, height: 1508 } })
+    const nascida = porId(entrada.layers as Layer[], 'acento-cantoneiras')
+    expect(caixa(nascida)).toEqual({ x: 64, y: 188, w: 952, h: 1508 })
+    // A marca afrouxa a margem para 48: a caixa da moldura cresce para 984; o path congelado (130/952) não vale mais nela.
+    cenario.atual = { ...cenario.atual!, projeto: { ...cenario.atual!.projeto, assinatura: noPisoDe1310({ fundoClaro: CLARO, destaque: { fill: DOURADO }, geometria: { story: { margemH: 48 } } }) } }
+    const r = await recomporPaginaDefasada({ pageId: 'p9' })
+    expect(r.recomposta).toBe(true)
+    const depois = porId(banco.pagina!.layers as Layer[], 'acento-cantoneiras')
+    expect(caixa(depois)).toEqual({ x: 48, y: 188, w: 984, h: 1508 })
+    expect((depois.metadata as any).compositor.acento.derivacao).toEqual({ regra: 'bracos-iguais', bracoPx: 130, caixa: { width: 984, height: 1508 } })
+    // Os braços continuam de 130 px nos dois eixos: 130/984 e 130/1508 (não 130/952 esticado).
+    expect((depois.style as any).pathData).toMatch(/^M0 8\.6207 L0 0 L13\.2114 0 /)
+    expect(porId(banco.pagina!.layers as Layer[], 'apoio').content).toBe('Menu degustação')
+  }, 120_000)
+
+  it('RG-2: @1 recomposto com o @2 publicado continua C1 — path do asset, ocupação 226 × 379, impressão do @1', async () => {
     await montar({ fundoClaro: CLARO, destaque: { fill: DOURADO } })
     const entrada = await nascerEEditar(trocarApoio, 1)
     expect(entrada.fieldValues.spec.arquetipo).toEqual({ id: ID_CONVITE, versao: 1, impressao: impressaoDoArquetipo(verArquetipo(ID_CONVITE, 1)!) })
@@ -193,7 +213,7 @@ describe.skipIf(!fontesNoDisco())('#16@2 · recomposição real da Generation', 
     const receita = entrada.fieldValues.composicao.arquetipo.acentos[0]
     expect(receita.derivacao).toBeUndefined()
     const o = ocupacaoDoAcento(receita, { x: depois.position.x, y: depois.position.y, width: depois.size.width, height: depois.size.height })
-    expect(o.map((r) => [r.width, r.height])).toEqual(Array(4).fill([226, 376.5]))
+    expect(o.map((r) => [r.width, r.height])).toEqual(Array(4).fill([226, 379]))
   }, 120_000)
 
   it('RG-3: derivação malformada → ESCOLHA_ILEGIVEL; derivação válida com path C1 → ELEMENTO_NAO_CABE; nada escrito', async () => {

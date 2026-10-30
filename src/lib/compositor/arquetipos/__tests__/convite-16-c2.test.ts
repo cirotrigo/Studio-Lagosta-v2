@@ -59,7 +59,8 @@ describe('#16@2 · derivação do desenho', () => {
     it(`P-2/P-3 ${f}: o path congelado é o literal; os 4 Ls têm braço H = V = 130 ± 0,5 px; derivação 130`, () => {
       const r = receita(V2, f)
       expect(r.desenho.pathData).toBe(PATH[f])
-      expect(r.derivacao).toEqual({ regra: 'bracos-iguais', bracoPx: 130 })
+      // 30/10/2026: a derivação grava a CAIXA em que o path vale (sem geometria no `onde`, a do catálogo: 896 × 1498 / 1121).
+      expect(r.derivacao).toEqual({ regra: 'bracos-iguais', bracoPx: 130, caixa: f === 'story' ? { width: 896, height: 1498 } : { width: 896, height: 1121 } })
       expect([r.asset, r.desenho.strokeWidth, r.desenho.shapeType]).toEqual([{ id: 'cantoneiras', versao: 1 }, 2, 'svg-path'])
       const bracos = bracosEmPx(r.desenho.pathData!, caixa(V2, f))
       expect(bracos).toHaveLength(4)

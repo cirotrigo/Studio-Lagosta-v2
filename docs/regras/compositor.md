@@ -1567,3 +1567,57 @@ pelo script de reconciliação, com o ok do Ciro.
   vertical desses papéis — o owner decidiu em 29/10 que o espaçamento antigo estava errado. `gapEntreBlocos` é o botão
   da marca (padrão 14 px; as páginas da equipe usam 0–9).
 - Controles em `arquetipos/__tests__/materializar.test.ts` (18, 18b, 18c) e `t1a-arquetipo-no-compositor.test.ts` (13, 19, 20).
+
+## A margem da marca É a margem (29/10/2026)
+
+Decisão do Ciro em 29/10, depois da reconciliação das assinaturas (Story 64/160/160, Feed 64/72/72) e de ver os
+renders: "os modelos devem respeitar a guia". A opção A (acima) só recolhia a referência para dentro de um piso mais
+apertado; com o piso mais folgado o texto seguia na referência do catálogo (x 92, topo 230) e a guia do editor (L0–L5)
+ficava em 64/160 — desalinhados.
+
+- **O quadro do catálogo** (`QUADRO_DO_CATALOGO`, `materializar.ts`): as referências, zonas e elementos de BORDA do
+  catálogo pousam num quadro próprio — lateral .085 (91,8 px); Story topo e base .12 (230,4); Feed topo .11 (148,5) e
+  base .08 (108). É a margem que o desenhista usou, não a área segura (`NUMEROS_PADRAO`, 188/224 e 120/104).
+- **A regra** (`naMargemDaMarca`): toda borda de caixa que está na faixa da margem (`FAIXA_DA_MARGEM`: até 24 px além
+  do quadro na lateral, 60 na vertical — os rodapés mais recuados do catálogo, como o serviço do #4 no Feed a 162 px da
+  base, entram guardando o recuo) passa a ser a borda do piso do projeto, nos dois sentidos. O recuo além do quadro a borda guarda (o
+  serviço em pílula do #16 fica 19 px acima da base; a logo do convite v1, 19 px abaixo do topo). Bordas de dentro (a
+  coluna de um papel, o miolo de um layout centrado) não mexem. Movimento de até ½ px não conta — no piso padrão a
+  lateral é identidade (91,8 contra 92).
+- **Por tipo de caixa**: texto — cada borda horizontal vai sozinha (a coluna do medidor cresce até a margem) e na
+  vertical a caixa translada quando só uma borda está na margem (o serviço do rodapé desce inteiro); logo — translada
+  nos dois eixos (o tamanho é do catálogo); zonas e elementos presos à peça (cantoneiras do #16, moldura do #2) — borda
+  a borda. A zona ainda é recortada pelo piso depois; a referência ainda passa pela `referenciaEfetiva` (o corte da
+  opção A continua como rede).
+- **Âncora no rodapé pousa pela base**: com o modo ligado, o texto de um arquétipo `ancora: 'rodape'` pousa com a base
+  da caixa na base da referência (a caixa real é mais baixa que a capacidade) e a pilha sobe dele; crescer o texto é
+  crescer para cima. Consequência medida no #4 (G-R2): a copy que não cabe na posição congelada sai da zona por cima,
+  não cobre a região protegida embaixo.
+- **O padrão move**: projeto sem `Project.assinatura.geometria` compõe em 188/224 (Story) e 120/104 (Feed) — a área
+  segura é a margem dele. Trinta e seis caracterizações de posição foram atualizadas (t1a, t1b, cp2b, t3b9, t3b10,
+  t4a4, t4a5, t4e16, t4e16c2): topo −42 px no Story e −28,5 no Feed; base +6 e +4; logos do alto em 188/120; as
+  cantoneiras do convite em 896 × 1508 e 896 × 1126 (paths derivados novos). As dez marcas de produção têm geometria
+  própria (64/160/160 e 64/72/72) e não passam pelo padrão.
+- **A peça grava o modo**: `EscolhaEspacial.margem = 'marca'` (os dois ramos da busca; o leitor
+  `escolhaEspacialOriginal` só aceita `'marca'`). A recomposição usa o que a peça gravou — peça de antes da regra (sem
+  `margem`) reproduz na opção A, como nasceu. O compor liga o modo para toda peça nova (`margemDaPeca`), o medir-copy
+  mede sempre com ele; `receitasDoArquetipo` e `posicionarAcentos` recebem `geometria` + `margem` para a derivação das
+  cantoneiras e o pouso dos acentos seguirem a mesma caixa.
+- **O que não muda**: sem `margem` a materialização, as zonas, a coluna do medidor e os acentos saem byte a byte como
+  antes (teste 19b); âncora `meio` e layouts centrados ficam no lugar; a caixa da foto (`foto-em-caixa`) não é borda
+  de texto e não segue a margem.
+- Prova local (Wine 11 e Real 1, 12/12, zero escritas) em
+  `human-output/relatorios/editor-madrugada-2026-10-24/margem-da-marca-2026-10-30/`: texto em x 64, topo 160/72,
+  logo rente a 1016, base 160/72 nos modelos de topo e no título-gigante; o base-esquerda com o serviço na base.
+
+Rodada 1 do Codex (30/10, NÃO APTO → corrigido): (1) a foto trocada numa peça do T1a anulava a escolha gravada e o
+compor lia "peça nova" — a peça antiga migrava para a margem nova; agora `recompor` passa `margemDaPeca` (`'marca'`
+só se a escolha gravada diz, senão `null` = opção A) à parte da escolha. (2) O fio por item do #15 ficava com a
+largura do catálogo e saía do piso em 96: o ramo `porItem` usa a caixa mapeada (Rm/Em) como os outros acentos.
+(3) A margem da marca mudada depois de a peça nascer invalidava o path congelado das cantoneiras (#16@2): a
+`derivacao` passou a gravar `caixa` (a caixa em que o path valia) e, quando a caixa de hoje é outra, o path é
+re-derivado pela MESMA regra e braço congelados (nunca pelo catálogo); receita sem `caixa` (de antes) segue o
+conferente estrito. (4) A faixa vertical subiu de 24 para 60 px para os rodapés recuados do catálogo (#4 Feed 162,
+#5/#10/#16 148,5, chamada do #16 261 no Story) seguirem a guia guardando o recuo. Regressões: t3b8 G-R5b, t4e15 "na
+margem da marca", t4e16c2 RG-1b. Furo conhecido e NÃO corrigido aqui: a `pilha` tem o mesmo buraco da foto trocada no
+T1a (`gapDaPilha` lê só a escolha) — fica para a fase seguinte.

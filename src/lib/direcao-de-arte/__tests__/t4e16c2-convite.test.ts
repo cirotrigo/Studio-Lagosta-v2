@@ -51,22 +51,26 @@ const CANVAS = { story: { width: 1080, height: 1920 }, feed: { width: 1080, heig
 const V2 = verArquetipo(ID_CONVITE, 2)!
 const DOURADO_NO_TRACO = 'rgba(176, 141, 87, 1)'
 const PATH = {
-  story: 'M0 8.6782 L0 0 L14.5089 0 M85.4911 0 L100 0 L100 8.6782 M100 91.3218 L100 100 L85.4911 100 M14.5089 100 L0 100 L0 91.3218',
-  feed: 'M0 11.5968 L0 0 L14.5089 0 M85.4911 0 L100 0 L100 11.5968 M100 88.4032 L100 100 L85.4911 100 M14.5089 100 L0 100 L0 88.4032',
+  // Na margem da marca (29/10/2026) a caixa das cantoneiras segue o piso padrão: 896 × 1508 (topo 188, base 1696) e 896 × 1126 (120, 1246).
+  story: 'M0 8.6207 L0 0 L14.5089 0 M85.4911 0 L100 0 L100 8.6207 M100 91.3793 L100 100 L85.4911 100 M14.5089 100 L0 100 L0 91.3793',
+  feed: 'M0 11.5453 L0 0 L14.5089 0 M85.4911 0 L100 0 L100 11.5453 M100 88.4547 L100 100 L85.4911 100 M14.5089 100 L0 100 L0 88.4547',
 }
 /** A caixa da moldura (a do @1) e as posições y que o PREFLIGHT §3.3 previu para a marca sintética. */
-const MOLDURA = { story: { x: 92, y: 192, width: 896, height: 1498 }, feed: { x: 92, y: 122, width: 896, height: 1121 } }
+const MOLDURA = { story: { x: 92, y: 188, width: 896, height: 1508 }, feed: { x: 92, y: 120, width: 896, height: 1126 } }
 const PREVISTO = {
-  story: { logo: 219, pre: 538, headline: 676, 'acento-fio': 1004, apoio: 1068, servico: 1275, cta: 1592 },
-  feed: { logo: 157, pre: 383, headline: 472, 'acento-fio': 741, apoio: 772, servico: 926, cta: 1152 },
+  // 30/10: a chamada (base 1658,9 no catálogo, 261 px da base) entrou na faixa vertical de 60 px e guarda 30,7 de recuo: +6/+4.
+  story: { logo: 188, pre: 538, headline: 676, 'acento-fio': 1004, apoio: 1068, servico: 1275, cta: 1598 },
+  feed: { logo: 128, pre: 383, headline: 472, 'acento-fio': 741, apoio: 772, servico: 926, cta: 1156 },
 }
 /** C2-09: borda → logo, chamada → borda (máximos); linha → logo, chamada → linha e o vão fio → apoio (±1). */
 const MARGENS = {
-  story: { bordaLogo: 220, chamadaBorda: 286, linhaLogo: 27, chamadaLinha: 55, vaoFio: 59.5, folgaManchete: 20 },
+  // 29/10/2026 (margem da marca): a logo e a moldura pousam no topo do piso (188): linhaLogo 0; a base da moldura é 1696: chamadaLinha +6.
+  story: { bordaLogo: 220, chamadaBorda: 286, linhaLogo: 0, chamadaLinha: 55, vaoFio: 59.5, folgaManchete: 20 },
   // DESVIO MEDIDO da previsão do preflight (≥ 12 no Feed): com a referência .13 o corpo da manchete é 69 px (não o do
   // C1) e cada voz grava caixa física de 85 px (ceil da altura medida); a pilha é 170 e a folga real é 5,5 px — cabe em
   // 2 linhas, sem corte. (O texto antigo chamava de corpo 84 a caixa de 84 px de antes do ceil.) Fica a medida real.
-  feed: { bordaLogo: 158, chamadaBorda: 156, linhaLogo: 35, chamadaLinha: 48, vaoFio: 27, folgaManchete: 5.5 },
+  // No Feed a logo do @2 (156,6 no catálogo) guarda 8 px além do quadro (148,5): linhaLogo 8.
+  feed: { bordaLogo: 158, chamadaBorda: 156, linhaLogo: 8, chamadaLinha: 47, vaoFio: 27, folgaManchete: 5.5 },
 }
 
 let real: { medir: MeasureTextBox; registradas: string[] } | null = null
@@ -129,7 +133,7 @@ describe.skipIf(!fontesNoDisco())('#16@2 · convite C2 no compositor e no medido
       expect((cant.metadata as any).compositor.acento).toMatchObject({ elemento: 'cantoneiras', ancoradoA: 'peca', derivacao: { regra: 'bracos-iguais', bracoPx: 130 }, arquetipo: `${ID_CONVITE}@2` })
       const gravados = entrada!.fieldValues.composicao.arquetipo.acentos as Array<Record<string, any>>
       const receita = gravados.find((a) => a.elemento === 'cantoneiras')!
-      expect([receita.desenho.pathData, receita.derivacao, receita.cor]).toEqual([PATH[formato], { regra: 'bracos-iguais', bracoPx: 130 }, DOURADO])
+      expect([receita.desenho.pathData, receita.derivacao, receita.cor]).toEqual([PATH[formato], { regra: 'bracos-iguais', bracoPx: 130, caixa: { width: MOLDURA[formato].width, height: MOLDURA[formato].height } }, DOURADO])
       expect(gravados.find((a) => a.elemento === 'fio')!.derivacao).toBeUndefined()
 
       // Nenhum texto nem a logo toca a ocupação (4 × 132 × 132).
@@ -213,7 +217,7 @@ describe.skipIf(!fontesNoDisco())('#16@2 · convite C2 no compositor e no medido
     expect(leg.avaliacoes.every((a: any) => a.canto === 'superior-centro')).toBe(true)
     expect(Math.abs(centroX(logo) - 540)).toBeLessThanOrEqual(1)
     const receita = entrada!.fieldValues.composicao.arquetipo.acentos[0]
-    expect([receita.desenho.pathData, receita.derivacao]).toEqual([PATH.story, { regra: 'bracos-iguais', bracoPx: 130 }])
+    expect([receita.desenho.pathData, receita.derivacao]).toEqual([PATH.story, { regra: 'bracos-iguais', bracoPx: 130, caixa: { width: 896, height: 1508 } }])
     for (const b of ocupacaoDoAcento(receita, ret(cantoneiras(r)[0]))) expect(toca(ret(logo), b)).toBe(false)
   }, 120_000)
 
@@ -241,12 +245,14 @@ describe.skipIf(!fontesNoDisco())('#16@2 · convite C2 no compositor e no medido
     expect(cap.entradas.length).toBe(antes)
   }, 120_000)
 
-  it('I-4: projeto com área segura maior (safeTopo 200) recusa o @2 inteiro — a moldura obrigatória não é empurrada', async () => {
+  it('I-4: projeto com área segura maior (safeTopo 200): na margem da marca (29/10/2026) a moldura e a logo SEGUEM o piso — compõe, sem empurrão', async () => {
+    // Até 29/10 a moldura ficava na caixa do catálogo (topo 192) e o piso 200 recusava o @2 inteiro (ARQUETIPO_ELEMENTO_NAO_CABE).
     await montar('c16c2-hard', { assinatura: { fundoClaro: CLARO, destaque: { fill: DOURADO }, geometria: { story: { safeTopo: 200 } } } })
-    const antes = cap.entradas.length
-    const e = await recusa(compor(spec2('c16c2-hard')))
-    expect([e.code, e.status]).toEqual(['ARQUETIPO_ELEMENTO_NAO_CABE', 422])
-    expect(cap.entradas.length).toBe(antes)
+    const { r } = await compor(spec2('c16c2-hard'))
+    const cant = cantoneiras(r)[0]
+    expect(ret(cant)).toEqual({ x: 92, y: 200, width: 896, height: 1496 })
+    expect(camada(r, 'logo').position.y).toBeGreaterThanOrEqual(200)
+    expect((r.diagnostico as any).arquetipo.acentos?.recusas ?? []).toEqual([])
   }, 120_000)
 
   for (const formato of FORMATOS) {

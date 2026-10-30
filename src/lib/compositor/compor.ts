@@ -106,7 +106,7 @@ import {
 } from './regua'
 import { candidatasDistintas, gradientesARecusar, MOTIVOS_DO_TRATAMENTO, planejarTratamentoDaBorda, type PlanoDaBorda } from './tratamento-de-leitura'
 import { conferirLinhas, conferirLogo, prepararArquetipo, type ArquetipoPreparado } from './arquetipos/na-spec'
-import { alinhaDoPapel, caixasMaximas, referenciaDoPapel, type Materializacao, type RetanguloPx } from './arquetipos/materializar'
+import { alinhaDoPapel, caixasMaximas, type MargemDaPeca, referenciaDoPapel, type Materializacao, type RetanguloPx } from './arquetipos/materializar'
 import { MODO_BUSCA_ESPACIAL, MOTIVOS_DE_ELIMINACAO, type DiagnosticoDaBuscaEspacial, type EscolhaParaReproduzir, type LeituraDoCorte, type PlanejamentoDoTratamento } from './arquetipos/busca-espacial-tipos'
 import { chaveDaFoto as impressaoDaFoto, contarRecusas, exemplosDeRecusa, motivoDaFalta, selecionarNoArquetipo, type SelecaoNoArquetipo } from './arquetipos/busca-espacial'
 import { partidaNoArquetipo, type PartidaNoArquetipo } from './arquetipos/candidatos-espaciais'
@@ -343,6 +343,13 @@ export interface OpcoesDeComposicao {
    * elementos não decide a disponibilidade. Ausente = peça nova (receita do catálogo, cor herdada do texto).
    */
   acentosCongelados?: AcentoCongelado[]
+  /**
+   * Interno (recomposição, 30/10/2026): a MARGEM com que a peça existente foi composta — `'marca'` (a margem da marca é
+   * a margem) ou `null` (peça de antes da regra: opção A). Vale mesmo quando a escolha espacial gravada não é
+   * reproduzida (foto trocada numa peça do T1a): a identidade geométrica é da peça, não da foto. Ausente = deriva da
+   * `escolhaEspacial` (reprodução) ou é peça nova (`'marca'`).
+   */
+  margemDaPeca?: MargemDaPeca | null
   /**
    * Interno (#9): a receita da máscara que a peça GRAVOU (`composicao.arquetipo.foto.mascara`), já conferida pelo
    * leitor da recomposição (`mascaraCongelada`). Com ela, a `bg-foto` desenha o path GRAVADO (nunca rederivado) e a
@@ -870,7 +877,17 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   // ver `AssinaturaDaMarca.pisoDoProjeto`.
   const pisoArq = arq ? (assinatura.pisoDoProjeto ?? assinatura.numeros.geometria)[spec.formato] : null
   const gArq: GeometriaDaPeca | null = pisoArq ? { ...g, margemH: pisoArq.margemH, safeTopo: pisoArq.safeTopo, safeRodape: pisoArq.safeRodape } : null
-  const caixasArq = arq ? caixasMaximas(arq.definicao, arq.formato, canvas, pisoArq!) : null
+  // A MARGEM DA MARCA (29/10/2026): a peça nova compõe com `'marca'` (referências e zonas de borda no piso do projeto)
+  // e grava o modo na escolha espacial; a reprodução usa o que a peça gravou — a de antes da regra (sem `margem`) fica
+  // na opção A, como nasceu. Lido do pedido bruto, como a pilha: a identidade é da peça, não da foto.
+  const margemDaPeca: MargemDaPeca | undefined = !arq
+    ? undefined
+    : opcoes.margemDaPeca !== undefined
+      ? (opcoes.margemDaPeca ?? undefined)
+      : opcoes.escolhaEspacial
+        ? (opcoes.escolhaEspacial.modo === MODO_BUSCA_ESPACIAL ? opcoes.escolhaEspacial.margem : undefined)
+        : 'marca'
+  const caixasArq = arq ? caixasMaximas(arq.definicao, arq.formato, canvas, pisoArq!, margemDaPeca) : null
   const listasArq = arq ? papeisDeLista(arq.definicao) : null
   const escalaDoFormato = assinatura.origem.formatoDaPagina === spec.formato ? 1 : geo.escalaDeFonte
   const mancha = assinatura.numeros.mancha
@@ -912,7 +929,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     })
   // Com arquétipo, a preparação passa pela escada da UNIDADE (a mesma do medir-copy) — e a logo dos arranjos sai
   // deles: com arquétipo a logo é do arquétipo (senão a marca sairia duas vezes).
-  const noArquetipo: PreparoNoArquetipo | null = arq ? prepararNoArquetipo({ arquetipo: arq.definicao, formato: arq.formato, canvas, geometria: pisoArq!, gap: g.gap, preparar }) : null
+  const noArquetipo: PreparoNoArquetipo | null = arq ? prepararNoArquetipo({ arquetipo: arq.definicao, formato: arq.formato, canvas, geometria: pisoArq!, gap: g.gap, ...(margemDaPeca ? { margem: margemDaPeca } : {}), preparar }) : null
   const preparados = noArquetipo ? noArquetipo.preparados : preparar()
   avisos.push(...preparados.avisos)
   const { arranjos, arranjoPorGrupo, elementosPorTexto, segundaVoz, gruposExtras } = preparados
@@ -962,7 +979,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       return {
         codigo: 'ARQUETIPO_TEXTO_NAO_CABE' as const,
         papel: r.papel,
-        ...(referenciaDoPapel(arq.definicao, arq.formato, canvas, pisoArq!, papelGeometrico(r.papel)) ?? {}),
+        ...(referenciaDoPapel(arq.definicao, arq.formato, canvas, pisoArq!, papelGeometrico(r.papel), margemDaPeca) ?? {}),
         coluna: r.coluna,
         ...(r.altura
           ? { altura: r.altura, medida: { height: r.altura.medida } }
@@ -1214,6 +1231,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       unidades: unidadesArq,
       logo: assinatura.logo ? { razao: assinatura.logo.razao } : null,
       ...(gapDaPilha !== undefined ? { gap: gapDaPilha } : {}),
+      ...(margemDaPeca ? { margem: margemDaPeca } : {}),
     })
     if ('problemas' in p) {
       const m = p
@@ -1395,6 +1413,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
         unidades: unidadesArq,
         logo: assinatura.logo ? { razao: assinatura.logo.razao } : null,
         ...(gapDaPilha !== undefined ? { gap: gapDaPilha } : {}),
+        ...(margemDaPeca ? { margem: margemDaPeca } : {}),
         partida: partidaArq,
         cortes: leituras,
         planejamento,
@@ -1817,7 +1836,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   const acentosDesenhados: NonNullable<DiagnosticoDoArquetipo['acentos']> = []
   let acentosOmitidos: ProblemaDoAcento[] = []
   if (arq && materializacao && unidadesArq && pisoArq) {
-    const receitas = opcoes.acentosCongelados ?? receitasDoArquetipo(arq.definicao, { formato: arq.formato, canvas }).receitas
+    const receitas = opcoes.acentosCongelados ?? receitasDoArquetipo(arq.definicao, { formato: arq.formato, canvas, geometria: pisoArq, ...(margemDaPeca ? { margem: margemDaPeca } : {}) }).receitas
     // #15: a caixa de cada item da lista, onde a unidade pousou — o fio de cada item se prende a ela.
     const itensArq = caixasDosItens(arq.definicao, unidadesArq, materializacao.papeis)
     const pos = posicionarAcentos({
@@ -1831,6 +1850,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       // automática). O CP3 (8b) só escolhe variante/canto livre também dos acentos, e o 8c reconcilia o resultado.
       obstaculos: obstaculosDosAcentos(unidadesArq, materializacao.papeis, ((l) => (l ? caixaDe(l) : null))(layers.find((l) => l.id === 'logo')), itensArq),
       itens: itensArq,
+      ...(margemDaPeca ? { margem: margemDaPeca } : {}),
     })
     avisos.push(...pos.avisos)
     if (pos.recusas.length > 0) {

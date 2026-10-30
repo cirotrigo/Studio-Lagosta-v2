@@ -276,8 +276,10 @@ describe.skipIf(!fontesNoDisco())('#5 · topo centrado com o serviço em pílula
   it('H-07: área segura do rodapé mais apertada — resgate na faixa com a pílula dentro; mais apertada ainda → FORA_DA_ZONA com o motivo da pílula', async () => {
     await montar('p5-area', { topo: 40, base: 40, assinatura: { geometria: { story: { safeRodape: 300 } } } })
     const { r } = await compor(spec5('p5-area'), { somenteAvaliar: true })
-    const dy = r.diagnostico.arquetipo!.buscaEspacial!.escolha.deslocamentos.servico
-    expect(dy).toBeLessThan(0)
+    // Na margem da marca (29/10/2026) a referência do serviço já segue o rodapé de 300 (a base do catálogo, 1670, vira
+    // 1620 − 19): não há resgate por dy — a pílula cabe na faixa de saída.
+    const servico = r.diagnostico.arquetipo!.papeis.find((p) => p.papel === 'servico')!
+    expect(servico.referencia.y + servico.referencia.height).toBeLessThanOrEqual(1620)
     const L = caixa(pilula(r))
     expect(L.y + L.height + 1).toBeLessThanOrEqual(1620 + 0.5)
     await montar('p5-area', { topo: 40, base: 40, assinatura: { geometria: { story: { safeRodape: 340 } } } })

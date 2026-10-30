@@ -113,11 +113,12 @@ describe('T1a · minimal-fb-topo-esquerda no compositor real', () => {
     const fio = camada(r, 'acento-fio')
     expect(Math.abs(camada(r, 'apoio').position.y - (fio.position.y + fio.size.height + 14))).toBeLessThanOrEqual(1)
     expect(camada(r, 'apoio').position).toEqual({ x: 92, y: 517 })
-    expect(camada(r, 'servico').position).toEqual({ x: 92, y: 1555 })
+    // Na margem da marca (29/10/2026): a base do serviço e da logo (1689,6 no catálogo) é a base do piso padrão (1696) — +6,4 px.
+    expect(camada(r, 'servico').position).toEqual({ x: 92, y: 1562 })
     for (const id of ['headline', 'apoio', 'servico']) expect(camada(r, id).style?.textAlign).toBe('left')
-    // A logo do arquivo (160×80, razão 0,5) em contain na referência (799,1555 189×134): a maior caixa com a proporção.
+    // A logo do arquivo (160×80, razão 0,5) em contain na referência (799,1562 189×134): a maior caixa com a proporção.
     const logo = camada(r, 'logo')
-    expect(logo.position).toEqual({ x: 799, y: 1575 })
+    expect(logo.position).toEqual({ x: 799, y: 1582 })
     expect(logo.size).toEqual({ width: 189, height: 95 })
     expect(logo.style?.objectFit).toBe('contain')
     // O estilo é da assinatura: a fonte e a cor da página.
@@ -129,7 +130,7 @@ describe('T1a · minimal-fb-topo-esquerda no compositor real', () => {
     expect(d.papeis.map((p) => [p.papel, p.posicao.x, p.posicao.y])).toEqual([
       ['headline', 92, 298],
       ['apoio', 92, 517],
-      ['servico', 92, 1555],
+      ['servico', 92, 1562],
     ])
     expect(d.logo).toMatchObject({ modo: 'referencia', canto: 'inferior-direito' })
     expect(r.diagnostico.posicao).toMatchObject({ ancora: 'topo', alinha: 'esquerda', crop: 'center-middle' })
@@ -144,7 +145,7 @@ describe('T1a · minimal-fb-topo-esquerda no compositor real', () => {
     await montar({ id: 't1a-14' })
     const { r } = await compor(spec('t1a-14', [HEADLINE, SERVICO], { formato: 'feed', arquetipo: { id: TOPO } }))
     expect(camada(r, 'headline').position).toEqual({ x: 92, y: 209 })
-    expect(camada(r, 'servico').position).toEqual({ x: 92, y: 1134 })
+    expect(camada(r, 'servico').position).toEqual({ x: 92, y: 1138 })
     expect(r.diagnostico.arquetipo!.formato).toBe('feed')
   }, 60_000)
 
@@ -158,27 +159,29 @@ describe('T1a · minimal-fb-topo-esquerda no compositor real', () => {
     expect(camada(r, 'apoio').position.y - camada(r, 'headline').position.y).toBe(219)
   }, 60_000)
 
-  it('as margens da PÁGINA não competem: o pré-título pousa em 230 mesmo com o primeiro texto da página em 230/300', async () => {
+  it('as margens da PÁGINA não competem: o pré-título pousa na margem da marca (o piso padrão, 188) mesmo com o primeiro texto da página em 230/300', async () => {
     await montar({ id: 't1a-margem', pre: true })
     const { r } = await compor(spec('t1a-margem', [{ papel: 'pre', linhas: ['hoje'] }, HEADLINE, SERVICO], { arquetipo: { id: TOPO } }))
-    expect(camada(r, 'pre').position).toEqual({ x: 92, y: 230 })
+    // 29/10/2026: a referência de borda do catálogo (230,4) segue o piso do projeto — 188 no padrão; a página não entra.
+    expect(camada(r, 'pre').position).toEqual({ x: 92, y: 188 })
   }, 60_000)
 
-  it('16. referência fora da área segura EFETIVA do projeto: desde o CP2B a faixa é RESGATADA na vertical (a referência é preferência), dito no aviso — e o medir-copy parte do mesmo lugar', async () => {
+  it('16. piso do projeto mais apertado (safeTopo 250): a referência de borda SEGUE a margem da marca (29/10/2026) — nada a resgatar, e o medir-copy parte do mesmo lugar', async () => {
     const pagina = await montar({ id: 't1a-16', pre: true, luz: 60, assinatura: { ...ASSINATURA, geometria: { story: { safeTopo: 250 } } } })
     const blocos = [{ papel: 'pre', linhas: ['hoje'] }, HEADLINE, SERVICO]
     const { r } = await compor(spec('t1a-16', blocos, { arquetipo: { id: TOPO } }))
     const d = r.diagnostico.arquetipo!
     const pre = d.papeis.find((p) => p.papel === 'pre')!
-    // A referência (y 230) fica acima do piso de 250: a faixa {pre, headline} desce o mínimo para caber.
-    expect(pre.referencia).toEqual({ x: 92, y: 230, width: 540, height: 58 })
+    // A referência do catálogo (y 230) está na faixa da margem: na margem da marca ela É o piso (250) — a faixa não
+    // precisa do resgate por dy (até 29/10 a referência ficava em 230 e a busca descia a faixa o mínimo).
+    expect(pre.referencia).toEqual({ x: 92, y: 250, width: 540, height: 58 })
     expect(pre.zonaEfetiva.y).toBe(250)
-    expect(pre.posicao.y).toBeGreaterThanOrEqual(250)
+    expect(pre.posicao.y).toBe(250)
     // A manchete empilha sob o pré resgatado (29/10/2026): pré + altura + gap 14, não a referência 298 + dy.
     expect(d.papeis.find((p) => p.papel === 'headline')!.posicao.y).toBe(pre.posicao.y + pre.posicao.height + 14)
-    expect(r.diagnostico.avisos.some((a) => /pre: a referência do arquétipo sai da zona efetiva/.test(a))).toBe(true)
-    // O medir-copy mede na MESMA partida (o resgate), e diz que cabe.
-    const assinatura = montarAssinatura({ pagina, formatoDaPagina: 'story', numerosDoProjeto: { ...ASSINATURA, geometria: { story: { safeTopo: 250 } } }, logoDoProjeto: null })
+    expect(r.diagnostico.avisos.some((a) => /pre: a referência do arquétipo sai da zona efetiva/.test(a))).toBe(false)
+    // O medir-copy mede na MESMA partida (a margem da marca), e diz que cabe.
+    const assinatura = montarAssinatura({ pagina, formatoDaPagina: 'story', numerosDoProjeto: noPisoDe1310({ ...ASSINATURA, geometria: { story: { safeTopo: 250 } } }), logoDoProjeto: null })
     const v = validarSpec(spec('t1a-16', blocos, { arquetipo: { id: TOPO } }))
     const m = medirCopy({ spec: v.spec!, assinatura, formato: 'story', medir: medidorCalibrado(), familias: [], fonteCarregada: () => true, combinacoesSalvas: [], arquetipo: prepararArquetipo(v.spec!) })
     expect(m.cabeTudo).toBe(true)
@@ -233,7 +236,7 @@ describe('T1a · minimal-fb-centro-optico no compositor real', () => {
     expect(h.style?.textAlign).toBe('center')
     expect(h.position.y).toBe(854)
     expect(Math.abs(h.position.x + h.size.width / 2 - 540)).toBeLessThanOrEqual(1)
-    expect(camada(r, 'servico').position.y).toBe(1613)
+    expect(camada(r, 'servico').position.y).toBe(1619)
     const d = r.diagnostico.arquetipo!
     expect(d.logo.modo).toBe('automatica')
     expect(['inferior-esquerdo', 'inferior-direito', 'superior-esquerdo', 'superior-direito']).toContain(d.logo.canto)
@@ -374,7 +377,7 @@ describe('T1a · a página não decide geometria por outra via', () => {
     const pagina = await montar({ id: 't1a-orn-depois' })
     cenario.atual = { ...cenario.atual!, paginasDeAssinatura: [await comIcone(pagina, 'depois')] }
     const { r } = await compor(spec('t1a-orn-depois', [HEADLINE, SERVICO], { arquetipo: { id: TOPO } }))
-    expect(camada(r, 'servico').position).toEqual({ x: 92, y: 1555 })
+    expect(camada(r, 'servico').position).toEqual({ x: 92, y: 1562 })
     expect(r.layers.some((l) => (l.metadata as { compositor?: { elementoDe?: string } } | undefined)?.compositor?.elementoDe === 'servico')).toBe(true)
   }, 60_000)
 
