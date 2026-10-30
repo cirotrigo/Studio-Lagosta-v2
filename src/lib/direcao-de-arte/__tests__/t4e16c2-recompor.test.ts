@@ -99,7 +99,7 @@ import { comporPeca } from '@/lib/compositor/compor'
 import { recomporPaginaDefasada } from '@/lib/compositor/recompor'
 import { revisaoDaPaginaComCamadas } from '@/lib/copy-autoral/revisar-pagina'
 import { lerCopyAutoral } from '@/lib/copy-autoral'
-import { cenario } from './suporte/compositor'
+import { cenario, noPisoDe1310 } from './suporte/compositor'
 import { ocupacaoDoAcento } from '@/lib/compositor/arquetipos/acentos'
 import { verArquetipo } from '@/lib/compositor/arquetipos/catalogo'
 import { impressaoDoArquetipo } from '@/lib/compositor/arquetipos/impressao'
@@ -160,7 +160,7 @@ describe.skipIf(!fontesNoDisco())('#16@2 · recomposição real da Generation', 
     const asset = SHAPES_LIBRARY.find((a) => a.id === 'cantoneiras')!
     try {
       asset.pathData = 'M0 25 L0 0 L25 0 M75 0 L100 0 L100 25'
-      cenario.atual = { ...cenario.atual!, projeto: { ...cenario.atual!.projeto, assinatura: { fundoClaro: '#FFFFFF', destaque: { fill: '#C0392B' } } } }
+      cenario.atual = { ...cenario.atual!, projeto: { ...cenario.atual!.projeto, assinatura: noPisoDe1310({ fundoClaro: '#FFFFFF', destaque: { fill: '#C0392B' } }) } }
       await recomporPaginaDefasada({ pageId: 'p9' })
     } finally {
       asset.pathData = ASSET
@@ -189,7 +189,7 @@ describe.skipIf(!fontesNoDisco())('#16@2 · recomposição real da Generation', 
     const nascida = porId(entrada.layers as Layer[], 'acento-cantoneiras')
     expect(caixa(nascida)).toEqual({ x: 64, y: 188, w: 952, h: 1508 })
     // A marca afrouxa a margem para 48: a caixa da moldura cresce para 984; o path congelado (130/952) não vale mais nela.
-    cenario.atual = { ...cenario.atual!, projeto: { ...cenario.atual!.projeto, assinatura: { fundoClaro: CLARO, destaque: { fill: DOURADO }, geometria: { story: { margemH: 48 } } } } }
+    cenario.atual = { ...cenario.atual!, projeto: { ...cenario.atual!.projeto, assinatura: noPisoDe1310({ fundoClaro: CLARO, destaque: { fill: DOURADO }, geometria: { story: { margemH: 48 } } }) } }
     const r = await recomporPaginaDefasada({ pageId: 'p9' })
     expect(r.recomposta).toBe(true)
     const depois = porId(banco.pagina!.layers as Layer[], 'acento-cantoneiras')
