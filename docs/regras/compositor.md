@@ -1558,3 +1558,44 @@ Registro do contrato já existente (lacuna apontada na revisão do preflight do 
   vertical desses papéis — o owner decidiu em 29/10 que o espaçamento antigo estava errado. `gapEntreBlocos` é o botão
   da marca (padrão 14 px; as páginas da equipe usam 0–9).
 - Controles em `arquetipos/__tests__/materializar.test.ts` (18, 18b, 18c) e `t1a-arquetipo-no-compositor.test.ts` (13, 19, 20).
+
+## A margem da marca É a margem (29/10/2026)
+
+Decisão do Ciro em 29/10, depois da reconciliação das assinaturas (Story 64/160/160, Feed 64/72/72) e de ver os
+renders: "os modelos devem respeitar a guia". A opção A (acima) só recolhia a referência para dentro de um piso mais
+apertado; com o piso mais folgado o texto seguia na referência do catálogo (x 92, topo 230) e a guia do editor (L0–L5)
+ficava em 64/160 — desalinhados.
+
+- **O quadro do catálogo** (`QUADRO_DO_CATALOGO`, `materializar.ts`): as referências, zonas e elementos de BORDA do
+  catálogo pousam num quadro próprio — lateral .085 (91,8 px); Story topo e base .12 (230,4); Feed topo .11 (148,5) e
+  base .08 (108). É a margem que o desenhista usou, não a área segura (`NUMEROS_PADRAO`, 188/224 e 120/104).
+- **A regra** (`naMargemDaMarca`): toda borda de caixa que está na faixa da margem (até `FAIXA_DA_MARGEM` = 24 px além
+  do quadro) passa a ser a borda do piso do projeto, nos dois sentidos. O recuo além do quadro a borda guarda (o
+  serviço em pílula do #16 fica 19 px acima da base; a logo do convite v1, 19 px abaixo do topo). Bordas de dentro (a
+  coluna de um papel, o miolo de um layout centrado) não mexem. Movimento de até ½ px não conta — no piso padrão a
+  lateral é identidade (91,8 contra 92).
+- **Por tipo de caixa**: texto — cada borda horizontal vai sozinha (a coluna do medidor cresce até a margem) e na
+  vertical a caixa translada quando só uma borda está na margem (o serviço do rodapé desce inteiro); logo — translada
+  nos dois eixos (o tamanho é do catálogo); zonas e elementos presos à peça (cantoneiras do #16, moldura do #2) — borda
+  a borda. A zona ainda é recortada pelo piso depois; a referência ainda passa pela `referenciaEfetiva` (o corte da
+  opção A continua como rede).
+- **Âncora no rodapé pousa pela base**: com o modo ligado, o texto de um arquétipo `ancora: 'rodape'` pousa com a base
+  da caixa na base da referência (a caixa real é mais baixa que a capacidade) e a pilha sobe dele; crescer o texto é
+  crescer para cima. Consequência medida no #4 (G-R2): a copy que não cabe na posição congelada sai da zona por cima,
+  não cobre a região protegida embaixo.
+- **O padrão move**: projeto sem `Project.assinatura.geometria` compõe em 188/224 (Story) e 120/104 (Feed) — a área
+  segura é a margem dele. Trinta e seis caracterizações de posição foram atualizadas (t1a, t1b, cp2b, t3b9, t3b10,
+  t4a4, t4a5, t4e16, t4e16c2): topo −42 px no Story e −28,5 no Feed; base +6 e +4; logos do alto em 188/120; as
+  cantoneiras do convite em 896 × 1508 e 896 × 1126 (paths derivados novos). As dez marcas de produção têm geometria
+  própria (64/160/160 e 64/72/72) e não passam pelo padrão.
+- **A peça grava o modo**: `EscolhaEspacial.margem = 'marca'` (os dois ramos da busca; o leitor
+  `escolhaEspacialOriginal` só aceita `'marca'`). A recomposição usa o que a peça gravou — peça de antes da regra (sem
+  `margem`) reproduz na opção A, como nasceu. O compor liga o modo para toda peça nova (`margemDaPeca`), o medir-copy
+  mede sempre com ele; `receitasDoArquetipo` e `posicionarAcentos` recebem `geometria` + `margem` para a derivação das
+  cantoneiras e o pouso dos acentos seguirem a mesma caixa.
+- **O que não muda**: sem `margem` a materialização, as zonas, a coluna do medidor e os acentos saem byte a byte como
+  antes (teste 19b); âncora `meio` e layouts centrados ficam no lugar; a caixa da foto (`foto-em-caixa`) não é borda
+  de texto e não segue a margem.
+- Prova local (Wine 11 e Real 1, 12/12, zero escritas) em
+  `human-output/relatorios/editor-madrugada-2026-10-24/margem-da-marca-2026-10-30/`: texto em x 64, topo 160/72,
+  logo rente a 1016, base 160/72 nos modelos de topo e no título-gigante; o base-esquerda com o serviço na base.

@@ -375,7 +375,8 @@ describe('CP2B · a busca escolhe a posição pela foto', () => {
   it('2. referência perfeita vence: manchete em 298, serviço na referência, todas as escolhas "referencia", sem véu nenhum', async () => {
     const { r } = await peca(CENAS.h)
     expect(camada(r, 'headline').position).toEqual({ x: 92, y: 298 })
-    expect(camada(r, 'servico').position).toEqual({ x: 92, y: 1555 })
+    // Na margem da marca (29/10/2026) a referência do serviço (base 1689,6 do catálogo) pousa na base do piso padrão (1696): 1562.
+    expect(camada(r, 'servico').position).toEqual({ x: 92, y: 1562 })
     const b = busca(r)
     expect(rotulos(b.vencedor!.escolhas)).toEqual(['referencia', 'referencia'])
     expect(b.escolha.deslocamentos).toEqual({ headline: 0, servico: 0, logo: 0 })
@@ -389,13 +390,13 @@ describe('CP2B · a busca escolhe a posição pela foto', () => {
   it('3. referência ruim → outra posição válida vence: o serviço sobe para a faixa escura (acima) e lê sem véu, dentro da zona', async () => {
     const { r } = await peca(CENAS.faixa)
     const b = busca(r)
-    // A referência (serviço em 1555, sobre o claro) pede véu escuro no rodapé.
+    // A referência (serviço em 1562, sobre o claro) pede véu escuro no rodapé.
     const referencia = b.alternativas.find(ehReferenciaCentral)!
     expect(referencia.eliminada).toEqual([])
     expect(referencia.tratamento.find((t) => t.borda === 'rodape')).toMatchObject({ estado: 'tratado', cor: VEU_ESCURO })
     expect(referencia.componentes!.custoDoTratamento).toBeGreaterThan(0)
     // A candidata 'acima' cai na faixa escura e lê sem véu: vence.
-    expect(escolhaDa(b, 'servico')).toMatchObject({ rotulo: 'acima', dy: -172 })
+    expect(escolhaDa(b, 'servico')).toMatchObject({ rotulo: 'acima', dy: -179 })
     expect(escolhaDa(b, 'headline').rotulo).toBe('referencia')
     expect(b.vencedor!.componentes!.custoDoTratamento).toBe(0)
     const servico = camada(r, 'servico')
@@ -641,7 +642,8 @@ describe('CP2B · a escolha congelada na recomposição', () => {
     const livre = (await peca(CONGELADA)).r
     const b = busca(livre)
     const abaixo = (membro: MembroDaFaixa) => b.faixas[faixaDe(b, membro)].candidatos.find((c) => c.rotulo === 'abaixo')!.dy
-    const congelada: EscolhaEspacial = { modo: MODO_BUSCA_ESPACIAL, foto: b.escolha.foto, corte: 'center-middle', deslocamentos: { headline: abaixo('headline'), servico: abaixo('servico'), logo: abaixo('servico') } }
+    // A escolha gravada leva a margem com que a peça nasceu (29/10/2026): sem `margem` ela reproduziria na opção A.
+    const congelada: EscolhaEspacial = { modo: MODO_BUSCA_ESPACIAL, foto: b.escolha.foto, corte: 'center-middle', deslocamentos: { headline: abaixo('headline'), servico: abaixo('servico'), logo: abaixo('servico') }, margem: 'marca' }
     // Uma busca nova NÃO escolhe essa posição.
     expect(rotulos(b.vencedor!.escolhas)).not.toEqual(['abaixo', 'abaixo'])
     expect(b.escolha.deslocamentos).not.toEqual(congelada.deslocamentos)
@@ -728,7 +730,7 @@ describe('CP2B · diagnóstico, estabilidade e medir-copy', () => {
     expect(r.diagnostico.arquetipo!.modo).toBe('busca-espacial-v1')
     expect(b.versao).toBe('busca-espacial-v1')
     expect(b.id).toMatch(/^be1-[0-9a-f]{12}$/)
-    expect(b.escolha).toMatchObject({ modo: 'busca-espacial-v1', corte: 'center-middle', deslocamentos: { headline: 0, servico: -172, logo: -172 } })
+    expect(b.escolha).toMatchObject({ modo: 'busca-espacial-v1', corte: 'center-middle', deslocamentos: { headline: 0, servico: -179, logo: -179 } })
     expect(typeof b.escolha.foto).toBe('string')
     expect(b.cortesAvaliados).toEqual(['center-middle'])
     expect(b.combinacoesAvaliadas).toBe(20)
@@ -768,8 +770,8 @@ describe('CP2B · diagnóstico, estabilidade e medir-copy', () => {
     const m = medirCopy({ spec: v.spec!, assinatura, formato: 'story', medir: medidorCalibrado(), familias: [], fonteCarregada: () => true, combinacoesSalvas: [], arquetipo: prepararArquetipo(v.spec!) })
     expect(m.cabeTudo).toBe(true)
     expect(m.arquetipo!.avaliacaoEspacial).toBe('nao-executada')
-    // A medida diz a referência (1555); o compor, pela foto, sobe o serviço (1383).
-    expect(m.arquetipo!.posicoes!.servico!.posicao.y).toBe(1555)
+    // A medida diz a referência na margem da marca (1562); o compor, pela foto, sobe o serviço (1383).
+    expect(m.arquetipo!.posicoes!.servico!.posicao.y).toBe(1562)
     expect(camada((await peca(CENAS.faixa)).r, 'servico').position.y).toBe(1383)
   }, 60_000)
 })
@@ -813,7 +815,7 @@ describe('CP2B · correções da revisão adversarial', () => {
     const livre = (await peca(CONGELADA)).r
     const b = busca(livre)
     const abaixo = b.faixas[faixaDe(b, 'servico')].candidatos.find((c) => c.rotulo === 'abaixo')!.dy
-    const congelada: EscolhaEspacial = { modo: MODO_BUSCA_ESPACIAL, foto: b.escolha.foto, corte: 'center-middle', deslocamentos: { headline: 0, servico: abaixo, logo: abaixo } }
+    const congelada: EscolhaEspacial = { modo: MODO_BUSCA_ESPACIAL, foto: b.escolha.foto, corte: 'center-middle', deslocamentos: { headline: 0, servico: abaixo, logo: abaixo }, margem: 'marca' }
     // O mesmo id (a mesma foto, a mesma escolha); só a logo da página virou quadrada.
     const { r } = await compor({ ...CONGELADA, logo: { width: 120, height: 120 } }, { somenteAvaliar: true, escolhaEspacial: congelada })
     expect(r.diagnostico.avisos.some((a) => /A logo da assinatura não cabia mais/.test(a))).toBe(true)

@@ -22,7 +22,7 @@ import { envoltoriosDoArquetipo } from './acentos'
 import { faixasDoArquetipo } from './faixas'
 import { textoNoLiso } from './fundo'
 import { materializarUnidades, type UnidadeDoArquetipo } from './no-compositor'
-import type { GeometriaEfetiva, Materializacao, PapelMaterializado, ProblemaDeMaterializacao } from './materializar'
+import type { GeometriaEfetiva, MargemDaPeca, Materializacao, PapelMaterializado, ProblemaDeMaterializacao } from './materializar'
 import type { ArquetipoDeLayout, FormatoDoArquetipo, PapelDeTexto, Zona } from './tipos'
 
 type Ornamentos = { esquerda: number; direita: number; topo: number; base: number }
@@ -171,8 +171,10 @@ export function partidaNoArquetipo(args: {
   logo: { razao: number } | null
   /** O gap da marca: os papéis de cada faixa empilham (29/10/2026). */
   gap?: number
+  /** `'marca'`: a margem da marca é a margem (29/10/2026). Ausente = opção A. */
+  margem?: MargemDaPeca
 }): PartidaNoArquetipo {
-  const base = { arquetipo: args.arquetipo, formato: args.formato, canvas: args.canvas, geometria: args.geometria, unidades: args.unidades, logo: args.logo, ...(args.gap !== undefined ? { gap: args.gap } : {}) }
+  const base = { arquetipo: args.arquetipo, formato: args.formato, canvas: args.canvas, geometria: args.geometria, unidades: args.unidades, logo: args.logo, ...(args.gap !== undefined ? { gap: args.gap } : {}), ...(args.margem ? { margem: args.margem } : {}) }
   const naReferencia = materializarUnidades({ ...base, conferirZona: false })
   if ('problemas' in naReferencia) return { ok: false, problemas: naReferencia.problemas }
   const conferida = materializarUnidades(base)

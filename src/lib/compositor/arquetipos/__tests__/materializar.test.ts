@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { NUMEROS_PADRAO } from '../../assinatura'
 import { DIMENSOES } from '../../spec'
 import { listarArquetipos, verArquetipo } from '../catalogo'
-import { caixasMaximas, excedeAlturaDaReferencia, materializarArquetipo, referenciaDoPapel, referenciaEfetiva, zonaEfetiva, type Materializacao, type ProblemaDeMaterializacao } from '../materializar'
+import { caixasMaximas, excedeAlturaDaReferencia, materializarArquetipo, naMargemDaMarca, referenciaDoPapel, referenciaEfetiva, zonaEfetiva, type Materializacao, type ProblemaDeMaterializacao } from '../materializar'
 import { materializarUnidades, unidadesDoArquetipo } from '../no-compositor'
 import { montarBloco } from '../../blocos'
 import type { BlocoPreparado } from '../../preparar-blocos'
@@ -373,5 +373,74 @@ describe('régua física de altura e orçamento transitório', () => {
   it('orçamento decide o degrau e fica fora do Layer', () => {
     const { bloco: b } = montarBloco(argsDoBloco(comFracao))
     expect(b && [b.height, b.layer.size.height, b.orcamentoDeAltura, 'orcamentoDeAltura' in b.layer]).toEqual([176, 176, 175, false])
+  })
+})
+
+describe('a margem da marca é a margem (29/10/2026)', () => {
+  const S = DIMENSOES.story
+  const BASE = verArquetipo('minimal-fb-base-esquerda', 1)!
+  const medidas = { pre: { width: 300, height: 48 }, headline: { width: 600, height: 164 }, apoio: { width: 500, height: 48 }, servico: { width: 300, height: 51 } }
+
+  const r6 = (r: { x: number; y: number; width: number; height: number }) => ({ x: +r.x.toFixed(6), y: +r.y.toFixed(6), width: +r.width.toFixed(6), height: +r.height.toFixed(6) })
+
+  it('19. a borda na faixa da margem vira a borda do piso; o recuo além do quadro fica; o miolo não mexe', () => {
+    const g = { margemH: 64, safeTopo: 160, safeRodape: 160 }
+    // Texto do topo-esquerda (91,8 / 230,4 … 847,8 / 288): a esquerda e o topo vão para 64 e 160; a direita (847,8) e a base ficam.
+    expect(r6(naMargemDaMarca({ x: 91.8, y: 230.4, width: 540, height: 57.6 }, 'story', S, g, 'texto'))).toEqual({ x: 64, y: 160, width: 567.8, height: 57.6 })
+    // O serviço do rodapé (1555,2 … 1689,6): a base está na margem → a caixa translada inteira para a base 1760.
+    const servico = naMargemDaMarca({ x: 91.8, y: 1555.2, width: 594, height: 134.4 }, 'story', S, g, 'texto')
+    expect([+(servico.y + servico.height).toFixed(6), +servico.height.toFixed(6), servico.x]).toEqual([1760, 134.4, 64])
+    // A logo (799,2 … 988,2 × 1555,2 … 1689,6): translada nos dois eixos, tamanho do catálogo.
+    expect(r6(naMargemDaMarca({ x: 799.2, y: 1555.2, width: 189, height: 134.4 }, 'story', S, g, 'logo'))).toEqual({ x: 827, y: 1625.6, width: 189, height: 134.4 })
+    // A logo do convite v1 (249,6) guarda os 19,2 px além do quadro (230,4): 160 + 19,2.
+    expect(naMargemDaMarca({ x: 442.8, y: 249.6, width: 194.4, height: 76.8 }, 'story', S, g, 'logo').y).toBeCloseTo(179.2, 9)
+    // A zona (caixa) abre borda a borda: 92 … 988 × 188 … 1695 → 64,2 … 1015,8 × 160 … 1760 (a zona do catálogo está em
+    // 92, 0,2 px além do quadro de 91,8, e guarda esse recuo — dentro da tolerância de ½ px da zona).
+    const z = naMargemDaMarca({ x: 92, y: 188, width: 896, height: 1507 }, 'story', S, g, 'caixa')
+    expect([z.x, z.y, z.x + z.width, z.y + z.height].map((v) => +v.toFixed(6))).toEqual([64.2, 160, 1015.8, 1760])
+    // O miolo (a manchete centrada do centro-óptico, 216 … 864 × 854 … 1046) não mexe.
+    const miolo = { x: 216, y: 854.4, width: 648, height: 192 }
+    expect(naMargemDaMarca(miolo, 'story', S, g, 'texto')).toBe(miolo)
+    // Piso mais apertado recolhe (o que a opção A fazia): margem 96 → 96; topo 250 → 250.
+    expect(r6(naMargemDaMarca({ x: 91.8, y: 230.4, width: 540, height: 57.6 }, 'story', S, { margemH: 96, safeTopo: 250, safeRodape: 224 }, 'texto'))).toEqual({ x: 96, y: 250, width: 535.8, height: 57.6 })
+    // No piso padrão a lateral é identidade (91,8 contra 92: meio pixel) e a vertical vai para a área segura (188 / 1696).
+    expect(r6(naMargemDaMarca({ x: 91.8, y: 230.4, width: 540, height: 57.6 }, 'story', S, geo('story'), 'texto'))).toEqual({ x: 91.8, y: 188, width: 540, height: 57.6 })
+  })
+
+  it('19b. com `margem: "marca"` o topo-esquerda pousa na margem do projeto; sem ela, a saída é a de antes, byte a byte', () => {
+    const g = { margemH: 64, safeTopo: 160, safeRodape: 160 }
+    const com = materializarArquetipo({ arquetipo: TOPO, formato: 'story', canvas: S, geometria: g, medidas, logo: { razao: 0.5 }, margem: 'marca', empilhar: { gap: 14 } })
+    expect(com.ok).toBe(true)
+    if (!com.ok) return
+    expect(com.papeis.pre!.posicao).toEqual({ x: 64, y: 160, width: 300, height: 48 })
+    expect(com.papeis.headline!.posicao).toEqual({ x: 64, y: 222, width: 600, height: 164 })
+    expect(com.papeis.logo!.posicao).toEqual({ x: 827, y: 1646, width: 189, height: 95 })
+    // A coluna do medidor cresce até a margem: 756 + 27,8 → 783.
+    expect(caixasMaximas(TOPO, 'story', S, g, 'marca').headline).toEqual({ largura: 783, altura: 230 })
+    const sem = materializarArquetipo({ arquetipo: TOPO, formato: 'story', canvas: S, geometria: g, medidas, logo: { razao: 0.5 }, empilhar: { gap: 14 } })
+    const antes = materializarArquetipo({ arquetipo: TOPO, formato: 'story', canvas: S, geometria: geo('story'), medidas, logo: { razao: 0.5 }, empilhar: { gap: 14 } })
+    expect(sem.ok && antes.ok).toBe(true)
+    if (!sem.ok || !antes.ok) return
+    // Piso 64 mais folgado que o catálogo (92): sem o modo nada recolhe — cada papel pousa onde pousa no padrão (a zona
+    // efetiva da logo difere 1 px no arredondamento, porque o padrão a recorta em 988 e o piso 64 não).
+    for (const papel of Object.keys(antes.papeis) as Array<keyof typeof antes.papeis>) expect(sem.papeis[papel]!.posicao, String(papel)).toEqual(antes.papeis[papel]!.posicao)
+    expect(caixasMaximas(TOPO, 'story', S, g)).toEqual(caixasMaximas(TOPO, 'story', S))
+  })
+
+  it('19c. âncora no rodapé: na margem da marca o texto pousa pela BASE da referência e a pilha sobe dele', () => {
+    const g = { margemH: 64, safeTopo: 160, safeRodape: 160 }
+    const m = materializarArquetipo({ arquetipo: BASE, formato: 'story', canvas: S, geometria: g, medidas: { headline: medidas.headline, apoio: medidas.apoio, servico: medidas.servico }, logo: { razao: 0.5 }, margem: 'marca', empilhar: { gap: 14 } })
+    expect(m.ok).toBe(true)
+    if (!m.ok) return
+    const s = m.papeis.servico!.posicao
+    expect(s.y + s.height).toBe(1760)
+    expect(m.papeis.apoio!.posicao.y + m.papeis.apoio!.posicao.height + 14).toBe(s.y)
+    expect(m.papeis.headline!.posicao.y + m.papeis.headline!.posicao.height + 14).toBe(m.papeis.apoio!.posicao.y)
+    // A logo do alto à direita: 1016 rente, topo em 160 + o centro do contain.
+    expect(m.papeis.logo!.posicao.x + m.papeis.logo!.posicao.width).toBe(1016)
+    expect(m.papeis.logo!.referencia.y).toBe(160)
+    // Sem o modo, o serviço pousa pelo topo da referência (como antes).
+    const sem = materializarArquetipo({ arquetipo: BASE, formato: 'story', canvas: S, geometria: g, medidas: { headline: medidas.headline, apoio: medidas.apoio, servico: medidas.servico }, logo: { razao: 0.5 }, empilhar: { gap: 14 } })
+    expect(sem.ok && sem.papeis.servico!.posicao.y).toBe(1603)
   })
 })

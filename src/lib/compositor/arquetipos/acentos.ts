@@ -28,6 +28,7 @@ import { SHAPES_LIBRARY } from '@/lib/assets/shapes-library'
 import { PADDING_DE_DESENHO } from '@/lib/creatives/halo/fundo-de-texto'
 import { estiloDoElemento, type DesenhoDoElemento } from '@/lib/editor/camada-do-elemento'
 import { lerCor } from '@/lib/vetor/cor'
+import { naMargemDaMarca, type MargemDaPeca } from './materializar'
 import { segmentosDoPath } from '@/lib/vetor/tracar'
 import { validarPathData } from '@/lib/vetor/validar'
 import type { CanalDeCor } from '@/lib/vetor/tipos'
@@ -123,8 +124,11 @@ function receitaDoCatalogo(e: NonNullable<ArquetipoDeLayout['elementos']>[number
 }
 
 /** A caixa de um elemento preso à peça, em px: `round(fração × lado)` — a MESMA conta na derivação e na posição. */
-export function caixaDaPecaEmPx(caixa: { x: number; y: number; w: number; h: number }, canvas: { width: number; height: number }): RetanguloPx {
-  return { x: Math.round(caixa.x * canvas.width), y: Math.round(caixa.y * canvas.height), width: Math.round(caixa.w * canvas.width), height: Math.round(caixa.h * canvas.height) }
+export function caixaDaPecaEmPx(caixa: { x: number; y: number; w: number; h: number }, canvas: { width: number; height: number }, margem?: { formato: FormatoDoArquetipo; geometria: GeometriaEfetiva; modo: MargemDaPeca }): RetanguloPx {
+  const bruta = { x: caixa.x * canvas.width, y: caixa.y * canvas.height, width: caixa.w * canvas.width, height: caixa.h * canvas.height }
+  // Na margem da marca (29/10/2026) as cantoneiras (#16) seguem o piso, borda a borda; o arredondamento é o mesmo.
+  const r = margem ? naMargemDaMarca(bruta, margem.formato, canvas, margem.geometria, 'caixa') : bruta
+  return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) }
 }
 
 const n4 = (v: number) => String(Number(v.toFixed(4)))
@@ -146,7 +150,7 @@ export function pathDasCantoneiras(hx: number, vy: number): string {
  */
 export function receitasDoArquetipo(
   a: ArquetipoDeLayout,
-  onde?: { formato: FormatoDoArquetipo; canvas: { width: number; height: number } },
+  onde?: { formato: FormatoDoArquetipo; canvas: { width: number; height: number }; geometria?: GeometriaEfetiva; margem?: MargemDaPeca },
 ): { receitas: ReceitaDoAcento[]; semReceita: string[] } {
   const receitas: ReceitaDoAcento[] = []
   const semReceita: string[] = []
@@ -162,7 +166,7 @@ export function receitasDoArquetipo(
         semReceita.push(e.id)
         continue
       }
-      const rect = caixaDaPecaEmPx(caixa, onde.canvas)
+      const rect = caixaDaPecaEmPx(caixa, onde.canvas, onde.margem && onde.geometria ? { formato: onde.formato, geometria: onde.geometria, modo: onde.margem } : undefined)
       const bracoPx = Math.round(e.braco * onde.canvas.width)
       r.desenho = { ...r.desenho, pathData: pathDasCantoneiras((bracoPx / rect.width) * 100, (bracoPx / rect.height) * 100) }
       r.derivacao = { regra: 'bracos-iguais', bracoPx }
@@ -414,8 +418,11 @@ export function posicionarAcentos(args: {
   obstaculos: Array<{ id: string; rect: RetanguloPx }>
   /** As caixas dos itens de cada papel de lista (`caixasDosItens`). */
   itens?: Partial<Record<PapelDeTexto, RetanguloPx[]>>
+  /** `'marca'`: a margem da marca é a margem (29/10/2026) — a referência do papel e a caixa do elemento seguem o piso. */
+  margem?: MargemDaPeca
 }): { acentos: AcentoPosicionado[]; omitidos: ProblemaDoAcento[]; recusas: ProblemaDoAcento[]; avisos: string[] } {
   const { arquetipo, formato, canvas, geometria } = args
+  const naMargem = (r: RetanguloPx, modo: 'texto' | 'caixa') => (args.margem ? naMargemDaMarca(r, formato, canvas, geometria, modo) : r)
   const W = canvas.width
   const H = canvas.height
   const geo = arquetipo.formatos[formato]
@@ -480,7 +487,7 @@ export function posicionarAcentos(args: {
         falhar(`o elemento "${receita.elemento}" (${receita.tipo}, preso à peça) não existe em ${chaveDoArquetipo(arquetipo)} no ${formato}`, null)
         continue
       }
-      const rect = caixaDaPecaEmPx(caixa, canvas)
+      const rect = caixaDaPecaEmPx(caixa, canvas, args.margem ? { formato, geometria, modo: args.margem } : undefined)
       // #16@2: o desenho congelado tem de ser o do elemento, neste retângulo — nunca redesenhado aqui.
       const incoerente = incoerenciaDoDesenho(declarado.braco, receita, rect, W)
       if (incoerente) {
@@ -528,8 +535,12 @@ export function posicionarAcentos(args: {
       item = undefined
       continue
     }
-    const R = { x: posRef.referencia.x * W, y: posRef.referencia.y * H, w: posRef.referencia.w * W, h: posRef.referencia.h * H }
-    const E = { x: caixa.x * W, y: caixa.y * H, w: caixa.w * W, h: caixa.h * H }
+    // Na margem da marca, a referência do papel (como na materialização) e a caixa do elemento seguem o piso: o vão
+    // entre as duas é o do catálogo, e o braço de cima da moldura (#2) pousa na margem.
+    const Rm = naMargem({ x: posRef.referencia.x * W, y: posRef.referencia.y * H, width: posRef.referencia.w * W, height: posRef.referencia.h * H }, 'texto')
+    const Em = naMargem({ x: caixa.x * W, y: caixa.y * H, width: caixa.w * W, height: caixa.h * H }, 'caixa')
+    const R = { x: Rm.x, y: Rm.y, w: Rm.width, h: Rm.height }
+    const E = { x: Em.x, y: Em.y, w: Em.width, h: Em.height }
     // A espessura da linha não some num fio de 4 px: a caixa tem pelo menos o traço.
     const alturaPropria = receita.desenho.shapeType === 'line' ? Math.max(E.h, receita.desenho.strokeWidth ?? 1) : E.h
     const x =

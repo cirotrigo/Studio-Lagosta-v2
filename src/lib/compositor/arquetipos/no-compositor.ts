@@ -17,7 +17,7 @@ import { extensoesDosElementos } from '../combinacoes'
 import type { BlocoPreparado, BlocosPreparados } from '../preparar-blocos'
 import type { Alinhamento, Papel } from '../spec'
 import { envoltoriosDoArquetipo, extensoesDosAcentosPresos } from './acentos'
-import { alinhaDoPapel, caixasMaximas, excedeAlturaDaReferencia, materializarArquetipo, papelDominante, type GeometriaEfetiva, type Materializacao, type RetanguloPx } from './materializar'
+import { alinhaDoPapel, caixasMaximas, excedeAlturaDaReferencia, materializarArquetipo, papelDominante, type MargemDaPeca, type GeometriaEfetiva, type Materializacao, type RetanguloPx } from './materializar'
 import type { ArquetipoDeLayout, FormatoDoArquetipo, PapelDeTexto } from './tipos'
 
 /** O papel do arquétipo que posiciona um bloco: a segunda voz vai com a manchete. */
@@ -205,10 +205,12 @@ export function prepararNoArquetipo(args: {
   /** O piso do projeto (`pisoDoProjeto[formato]`): a coluna de cada papel é a da referência efetiva (opção A). */
   geometria: GeometriaEfetiva
   gap: number
+  /** `'marca'`: a margem da marca é a margem (29/10/2026) — a coluna de cada papel cresce até ela. Ausente = opção A. */
+  margem?: MargemDaPeca
   /** Roda `prepararBlocos` com a caixa de cada papel e o fator de início da escada de cada papel. */
   preparar: (escalaMaximaDoPapel: (papel: Papel) => number | undefined) => BlocosPreparados
 }): PreparoNoArquetipo {
-  const caixas = caixasMaximas(args.arquetipo, args.formato, args.canvas, args.geometria)
+  const caixas = caixasMaximas(args.arquetipo, args.formato, args.canvas, args.geometria, args.margem)
   const dominante = papelDominante(args.arquetipo)
   const listas = papeisDeLista(args.arquetipo)
   const fatores: Partial<Record<PapelDeTexto, number>> = dominante ? { [dominante]: TETO_DA_ESCALA_DOMINANTE } : {}
@@ -295,6 +297,8 @@ export function materializarUnidades(args: {
   conferirZona?: boolean
   /** O gap da marca (`gapEntreBlocos`): com ele, os papéis de cada faixa empilham (29/10/2026); sem ele, cada um na própria referência. */
   gap?: number
+  /** `'marca'`: a margem da marca é a margem (29/10/2026). Ausente = opção A. */
+  margem?: MargemDaPeca
 }): Materializacao {
   const medidas: Partial<Record<PapelDeTexto, { width: number; height: number }>> = {}
   const ornamentos: Partial<Record<PapelDeTexto, UnidadeDoArquetipo['ornamentos']>> = {}
@@ -304,10 +308,10 @@ export function materializarUnidades(args: {
   }
   // #5: a folga da pílula conta na zona (vazio sem envolvente: a materialização de sempre).
   const envoltorios = envoltoriosDoArquetipo(args.arquetipo, args.formato, args.canvas)
-  const m = materializarArquetipo({ arquetipo: args.arquetipo, formato: args.formato, canvas: args.canvas, geometria: args.geometria, medidas, ornamentos, logo: args.logo, deslocamentos: args.deslocamentos, ...(Object.keys(envoltorios).length > 0 ? { envoltorios } : {}), ...(args.conferirZona === false ? { conferirZona: false } : {}), ...(args.gap !== undefined ? { empilhar: { gap: args.gap }, acentosPresos: extensoesDosAcentosPresos(args.arquetipo, args.formato, args.canvas) } : {}) })
+  const m = materializarArquetipo({ arquetipo: args.arquetipo, formato: args.formato, canvas: args.canvas, geometria: args.geometria, medidas, ornamentos, logo: args.logo, deslocamentos: args.deslocamentos, ...(args.margem ? { margem: args.margem } : {}), ...(Object.keys(envoltorios).length > 0 ? { envoltorios } : {}), ...(args.conferirZona === false ? { conferirZona: false } : {}), ...(args.gap !== undefined ? { empilhar: { gap: args.gap }, acentosPresos: extensoesDosAcentosPresos(args.arquetipo, args.formato, args.canvas) } : {}) })
   if (!('problemas' in m)) return m
   // A recusa por capacidade leva o orçamento da unidade: a caixa, a escala em que a escada parou e cada bloco.
-  const caixas = caixasMaximas(args.arquetipo, args.formato, args.canvas, args.geometria)
+  const caixas = caixasMaximas(args.arquetipo, args.formato, args.canvas, args.geometria, args.margem)
   for (const p of m.problemas) {
     const u = args.unidades.find((x) => x.papel === p.papel)
     const caixa = caixas[p.papel as PapelDeTexto]

@@ -307,6 +307,11 @@ export interface EscolhaEspacial {
    * pilha. Ausente = peça de antes da regra: cada papel na própria referência, como nasceu — editar só o texto não a move.
    */
   pilha?: number
+  /**
+   * A MARGEM com que a peça foi composta (29/10/2026): `'marca'` = a margem da marca é a margem (referências e zonas de
+   * borda seguem o piso do projeto). Ausente = peça de antes da regra: só a opção A (o piso recolhe), como nasceu.
+   */
+  margem?: 'marca'
 }
 
 /** O resumo da busca que ESCOLHEU a posição — a recomposição o carrega adiante, para a explicação não se perder. */
