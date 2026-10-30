@@ -115,6 +115,14 @@ export const QUADRO_DO_CATALOGO = {
  */
 export const FAIXA_DA_MARGEM = { lateral: 24, vertical: 60 } as const
 const EPSILON = 1e-6
+/**
+ * O VÃO DA PILHA (30/10/2026): 0. Medido nos ajustes manuais do Ciro sobre a leva de 12 peças compostas com a cadeia
+ * (`integracao-da-cadeia-2026-10-30/ajustes-do-ciro.json`): o gap da marca (14) entre as caixas de pré, manchete, apoio
+ * e serviço virou 0 em todas as peças da Real e 0–18 na Wine — as caixas já carregam a entrelinha e o padding de
+ * desenho; com 14 o vão visível ficava largo. A peça grava a pilha com que nasceu (`EscolhaEspacial.pilha`): a de
+ * antes reproduz com o 14 dela.
+ */
+export const GAP_DA_PILHA = 0
 /** O modo da margem da peça: `'marca'` = a margem da marca É a margem (29/10/2026). Ausente = opção A (só recolhe). */
 export type MargemDaPeca = 'marca'
 
@@ -150,6 +158,17 @@ export function naMargemDaMarca(r: RetanguloPx, formato: FormatoDoArquetipo, can
   const [x0, x1] = eixo(r.x, r.x + r.width, canvas.width, q.lateral * canvas.width, q.lateral * canvas.width, geometria.margemH, geometria.margemH, FAIXA_DA_MARGEM.lateral, modo === 'logo')
   const [y0, y1] = eixo(r.y, r.y + r.height, canvas.height, q.topo * canvas.height, q.base * canvas.height, geometria.safeTopo, geometria.safeRodape, FAIXA_DA_MARGEM.vertical, modo !== 'caixa')
   return x0 === r.x && y0 === r.y && x1 === r.x + r.width && y1 === r.y + r.height ? r : { x: x0, y: y0, width: x1 - x0, height: y1 - y0 }
+}
+
+/**
+ * A BASE desta referência do catálogo está na faixa da margem (até `FAIXA_DA_MARGEM.vertical` além do quadro de baixo)?
+ * É o papel do rodapé: o serviço (e a logo) dos layouts de topo, o serviço do base-esquerda. Na margem da marca ele
+ * pousa pela base do PISO, sem o recuo do catálogo (ver `materializarArquetipo`).
+ */
+export function baseNaFaixaDaMargem(referencia: Caixa, formato: FormatoDoArquetipo, canvas: { width: number; height: number }): boolean {
+  const q = QUADRO_DO_CATALOGO[formato]
+  const distancia = (1 - (referencia.y + referencia.h)) * canvas.height
+  return distancia <= q.base * canvas.height + FAIXA_DA_MARGEM.vertical
 }
 
 /** A referência de um papel em px: a do catálogo, na margem da marca (modo `'marca'`) ou não (opção A). */
@@ -290,7 +309,19 @@ export function materializarArquetipo(args: {
     // da marca, o texto de um arquétipo ancorado no RODAPÉ pousa pela BASE da referência (a caixa real é mais baixa que
     // a capacidade): é a base que está na margem, e a pilha sobe a partir dela.
     const pelaBase = Boolean(args.margem) && papel !== 'logo' && arquetipo.preferencias.ancora === 'rodape'
-    const y0 = (pelaBase && args.medidas[papel] ? referencia.y + referencia.height - args.medidas[papel]!.height : referencia.y) + dy
+    // O PAPEL DO RODAPÉ pousa com a base NA margem, em qualquer arquétipo (30/10/2026, medido nos ajustes do Ciro: o
+    // serviço dos layouts de topo ficava 31–83 px acima da margem; ele pôs a base na margem em 11 das 12 peças, e no
+    // base-esquerda Feed tirou também os 13,5 px de recuo do catálogo). É a base do piso, não a da referência mapeada.
+    const naBase = Boolean(args.margem) && papel !== 'logo' && baseNaFaixaDaMargem(pos.referencia, formato, canvas)
+    // O que o papel ocupa ABAIXO da caixa (o envoltório da pílula do #5, o ornamento do arranjo) também fica dentro da
+    // margem: é a base do conjunto que pousa nela.
+    const abaixoDaCaixa = papel === 'logo' ? 0 : (args.envoltorios?.[papel]?.y ?? 0) + (args.ornamentos?.[papel]?.base ?? 0)
+    const y0 =
+      (args.medidas[papel] && naBase
+        ? canvas.height - geometria.safeRodape - abaixoDaCaixa - args.medidas[papel]!.height
+        : pelaBase && args.medidas[papel]
+          ? referencia.y + referencia.height - args.medidas[papel]!.height
+          : referencia.y) + dy
     const onde = dy ? `na posição candidata (dy=${dy}px)` : 'na referência'
 
     let medida: { width: number; height: number } | null

@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { NUMEROS_PADRAO } from '../../assinatura'
 import { DIMENSOES } from '../../spec'
 import { listarArquetipos, verArquetipo } from '../catalogo'
-import { caixasMaximas, excedeAlturaDaReferencia, materializarArquetipo, naMargemDaMarca, referenciaDoPapel, referenciaEfetiva, zonaEfetiva, type Materializacao, type ProblemaDeMaterializacao } from '../materializar'
+import { baseNaFaixaDaMargem, caixasMaximas, excedeAlturaDaReferencia, GAP_DA_PILHA, materializarArquetipo, naMargemDaMarca, referenciaDoPapel, referenciaEfetiva, zonaEfetiva, type Materializacao, type ProblemaDeMaterializacao } from '../materializar'
 import { materializarUnidades, unidadesDoArquetipo } from '../no-compositor'
 import { montarBloco } from '../../blocos'
 import type { BlocoPreparado } from '../../preparar-blocos'
@@ -444,5 +444,53 @@ describe('a margem da marca é a margem (29/10/2026)', () => {
     // Sem o modo, o serviço pousa pelo topo da referência (como antes).
     const sem = materializarArquetipo({ arquetipo: BASE, formato: 'story', canvas: S, geometria: g, medidas: { headline: medidas.headline, apoio: medidas.apoio, servico: medidas.servico }, logo: { razao: 0.5 }, empilhar: { gap: 14 } })
     expect(sem.ok && sem.papeis.servico!.posicao.y).toBe(1603)
+  })
+})
+
+describe('o rodapé pela base e o vão da pilha (30/10/2026, medidos nos ajustes do Ciro)', () => {
+  const G = { story: { margemH: 64, safeTopo: 160, safeRodape: 160 }, feed: { margemH: 64, safeTopo: 72, safeRodape: 72 } } as const
+  const BASE = verArquetipo('minimal-fb-base-esquerda', 1)!
+  const GIGANTE = verArquetipo('minimal-titulo-gigante', 1)!
+  const medidas = { pre: { width: 300, height: 48 }, headline: { width: 600, height: 164 }, apoio: { width: 500, height: 48 }, servico: { width: 300, height: 52 } }
+  const na = (a: typeof TOPO, f: 'story' | 'feed', papel: string) => baseNaFaixaDaMargem((a.formatos[f].papeis as Record<string, { referencia: { x: number; y: number; w: number; h: number } }>)[papel].referencia, f, DIMENSOES[f])
+
+  it('20. baseNaFaixaDaMargem: o serviço (e a logo) dos layouts de topo e o serviço do base-esquerda estão na faixa; pré, manchete e apoio não', () => {
+    expect([na(TOPO, 'story', 'servico'), na(TOPO, 'story', 'logo'), na(TOPO, 'feed', 'servico'), na(BASE, 'story', 'servico'), na(BASE, 'feed', 'servico'), na(GIGANTE, 'story', 'servico'), na(GIGANTE, 'feed', 'servico')]).toEqual([true, true, true, true, true, true, true])
+    expect([na(TOPO, 'story', 'pre'), na(TOPO, 'story', 'headline'), na(TOPO, 'story', 'apoio'), na(BASE, 'story', 'headline'), na(BASE, 'story', 'apoio')]).toEqual([false, false, false, false, false])
+  })
+
+  it('20b. na margem da marca o serviço dos layouts de TOPO pousa com a BASE na margem (1760 / 1278); sem o modo, no topo da referência, como antes', () => {
+    for (const [f, base] of [['story', 1760], ['feed', 1278]] as const) {
+      const m = materializarArquetipo({ arquetipo: TOPO, formato: f, canvas: DIMENSOES[f], geometria: G[f], medidas, logo: { razao: 0.5 }, margem: 'marca', empilhar: { gap: GAP_DA_PILHA } })
+      expect(m.ok, f).toBe(true)
+      if (!m.ok) return
+      const s = m.papeis.servico!.posicao
+      expect(s.y + s.height, f).toBe(base)
+      // A logo não entra: translada com o catálogo (a base da referência dela guarda o recuo de sempre).
+      expect(m.papeis.logo!.posicao.x + m.papeis.logo!.posicao.width, f).toBe(1016)
+      const sem = materializarArquetipo({ arquetipo: TOPO, formato: f, canvas: DIMENSOES[f], geometria: G[f], medidas, logo: { razao: 0.5 }, empilhar: { gap: GAP_DA_PILHA } })
+      expect(sem.ok && sem.papeis.servico!.posicao.y, f).toBe(sem.ok && sem.papeis.servico!.referencia.y)
+    }
+  })
+
+  it('20c. base-esquerda no Feed: o serviço pousa em 1278, sem os 13,5 px de recuo do catálogo (a referência termina em 0,91)', () => {
+    const m = materializarArquetipo({ arquetipo: BASE, formato: 'feed', canvas: DIMENSOES.feed, geometria: G.feed, medidas: { headline: { width: 600, height: 150 }, apoio: medidas.apoio, servico: medidas.servico }, logo: { razao: 0.5 }, margem: 'marca', empilhar: { gap: GAP_DA_PILHA } })
+    expect(m.ok).toBe(true)
+    if (!m.ok) return
+    const s = m.papeis.servico!.posicao
+    expect(s.y + s.height).toBe(1278)
+    // A pilha sobe dele com vão 0: o apoio termina onde o serviço começa, a manchete onde o apoio começa.
+    expect(m.papeis.apoio!.posicao.y + m.papeis.apoio!.posicao.height).toBe(s.y)
+    expect(m.papeis.headline!.posicao.y + m.papeis.headline!.posicao.height).toBe(m.papeis.apoio!.posicao.y)
+  })
+
+  it('20d. GAP_DA_PILHA é 0: na faixa do topo, pré, manchete e apoio encostam caixa com caixa', () => {
+    expect(GAP_DA_PILHA).toBe(0)
+    const m = materializarArquetipo({ arquetipo: TOPO, formato: 'story', canvas: DIMENSOES.story, geometria: G.story, medidas, logo: { razao: 0.5 }, margem: 'marca', empilhar: { gap: GAP_DA_PILHA } })
+    expect(m.ok).toBe(true)
+    if (!m.ok) return
+    expect(m.papeis.pre!.posicao.y).toBe(160)
+    expect(m.papeis.headline!.posicao.y).toBe(160 + 48)
+    expect(m.papeis.apoio!.posicao.y).toBe(160 + 48 + 164)
   })
 })
