@@ -5,7 +5,7 @@ import Konva from 'konva'
 import { Transformer } from 'react-konva'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { CANVAS_MARGIN, type LinhasDaMarca } from '@/lib/canvas-margin'
-import { paradasDeEncaixe } from '@/lib/margens-no-editor'
+import { alcaDeCanto, encaixeProporcional, paradasDeEncaixe } from '@/lib/margens-no-editor'
 import type { GuideLine } from '@/lib/konva-smart-guides'
 import { travaDeProporcao } from '@/lib/konva/trava-de-proporcao'
 import { useAjustarGrade } from '@/hooks/use-ajustar-grade'
@@ -188,14 +188,9 @@ export function KonvaSelectionTransformer({
       }
 
       const snap = snapDataRef.current
-      // Snap de resize: só para caixas sem rotação e sem keepRatio (snapar uma
-      // borda de um node keepRatio quebraria a proporção que o Konva calculou)
-      if (
-        !snap.enabled ||
-        snap.keepRatio ||
-        Math.abs(newBox.rotation) > 0.001 ||
-        Math.abs(oldBox.rotation) > 0.001
-      ) {
+      // Snap de resize: só para caixas sem rotação. Com keepRatio (foto, logo, elemento) o canto arrastado encaixa
+      // no eixo que mais anda e o outro segue a proporção (L3 das linhas-guia; antes não encaixava)
+      if (!snap.enabled || Math.abs(newBox.rotation) > 0.001 || Math.abs(oldBox.rotation) > 0.001) {
         onSnapGuidesRef.current?.([])
         return newBox
       }
@@ -238,7 +233,7 @@ export function KonvaSelectionTransformer({
         hStops.push(...paradas.h)
       }
       for (const layer of snap.layers) {
-        if (snap.selectedIds.includes(layer.id)) continue
+        if (snap.selectedIds.includes(layer.id) || layer.visible === false) continue
         const x = layer.position?.x ?? 0
         const y = layer.position?.y ?? 0
         const w = Math.max(1, layer.size?.width ?? 0)
@@ -261,6 +256,16 @@ export function KonvaSelectionTransformer({
       }
 
       const guides: GuideLine[] = []
+
+      // Com proporção travada só a alça de CANTO muda os dois eixos; a lateral muda um só (recorte da janela da
+      // foto) e segue o encaixe de borda de sempre (Codex R1 do L3)
+      if (snap.keepRatio && alcaDeCanto(transformerRef.current?.getActiveAnchor())) {
+        const r = encaixeProporcional(old, box, { v: vStops, h: hStops }, threshold, eps)
+        onSnapGuidesRef.current?.(r ? [r.guia] : [])
+        const c = r?.caixa ?? box
+        if (c.width * scale < 5 || c.height * scale < 5) return oldBox
+        return { x: c.x * scale + stageX, y: c.y * scale + stageY, width: c.width * scale, height: c.height * scale, rotation: newBox.rotation }
+      }
 
       // Detectar quais bordas o gesto está movendo e snapar só essas,
       // mantendo a borda oposta fixa

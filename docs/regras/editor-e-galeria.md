@@ -1109,3 +1109,34 @@ botão, atalho e persistência.
 - **Prova:** `src/lib/__tests__/exibicao-do-editor.test.ts` (leitura com lixo e parcial; R/M/C sozinhas; Windows
   Shift+Alt+C → centrar, não bordas; Mac `ç`/`µ` pelo code; Ctrl/Cmd nunca). Não prova: o menu montado, o localStorage
   real, a troca de página no contínuo — prova visual.
+
+## Linhas-guia e margens, L3: encaixe melhor e "Trazer para dentro" (29/10/2026 — PR aberto, sem release)
+
+Quarto checkpoint da instrução de 29/10.
+
+- **Encaixe pela seleção inteira** (`caixaDaSelecao`, `retangulosDosOutros` em `margens-no-editor.ts`): com seleção
+  múltipla, a caixa que encaixa é a união das camadas selecionadas VISÍVEIS, deslocada pelo arrasto, e a camada
+  agarrada anda o que a caixa andou. As caixas-alvo ignoram as invisíveis e a própria seleção (antes o grupo grudava
+  na posição antiga dele mesmo). O transformer também ignora as invisíveis nas paradas.
+- **Resize com proporção travada encaixa** (`encaixeProporcional`): foto, logo e elemento com `keepRatio` — o canto
+  arrastado encaixa no eixo em que mais anda e o outro eixo segue a proporção da caixa antiga, com a âncora (o canto
+  oposto) parada. Antes o `boundBoxFunc` pulava o snap com `keepRatio`.
+- 🔴 **"Trazer para dentro" usa a MESMA conta do revisor**: `ajusteParaDentro` (`revisao/para-dentro.ts`, puro) é a
+  regra `fora-da-area-segura` extraída de `regras.ts` (folga 2 px, `ceil(+2)`, "maior que a área" não move). O
+  editor vigia pela CAIXA da camada (sem rotação — limite registrado): texto, logo, forma, ícone e elemento cruzando a
+  margem da marca (`margem`); texto e logo dentro da faixa da interface (`interface`, D2). Foto, vídeo e gradiente
+  passam por baixo de propósito. `avisosDeMargem` só roda com as margens ligadas (R).
+- **Avisa, nunca bloqueia**: contorno tracejado (laranja = margem, vermelho = faixa) na `guides-layer` e um chip HTML
+  por cima do canvas com o botão "Trazer para dentro" — com seleção, age nas selecionadas com aviso; sem seleção, em
+  todas. Um clique = um passo de desfazer (`coalesceKey` por gesto, via `updateLayer`). Camada maior que a área ganha
+  a observação do revisor ("encurte o texto ou reduza a fonte") em vez do botão.
+- **Ajustes da revisão R1 do Codex**: texto e logo no Story são ajustados contra a linha mais apertada entre faixa e
+  margem em cada lado (um clique resolve as duas; na Wine, topo 200 da marca × 188 da faixa); camada TRAVADA avisa
+  mas o botão não a move (`travada`); caixa MAIOR que a área num eixo não ganha dx/dy no editor (o botão oscilava
+  −14 → 94 → −14; a conta do revisor fica como está); com proporção travada só a alça de CANTO usa o encaixe
+  proporcional — a lateral muda um eixo só (recorte da janela da foto) e segue o encaixe de borda (`alcaDeCanto`,
+  pelo `getActiveAnchor()` do Transformer).
+- **Não feito (P1)**: espaçamento igual entre 3 ou mais elementos com a linha e a medida — fica registrado.
+- **Prova:** `src/lib/__tests__/para-dentro.test.ts` (a conta do revisor em 4 casos e a faixa; seleção e invisíveis;
+  encaixe do conjunto em y = 188; resize proporcional nos dois cantos; avisos por tipo). `regras.test.ts` continua
+  verde com a conta extraída. Não prova: o gesto real no Konva, o chip montado — prova visual.

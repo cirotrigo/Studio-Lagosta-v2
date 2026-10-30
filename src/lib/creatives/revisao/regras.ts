@@ -29,6 +29,7 @@ import type { Layer } from '@/types/template'
 import { temTextoVisivel } from './texto-visivel'
 import { TEXT_DRAW_PADDING, type TextGeometryIssue, type TextLayerMetrics } from '@/lib/creatives/text-geometry'
 import { MARGEM_LEGADA_DO_REVISOR } from '@/lib/canvas-margin'
+import { ajusteParaDentro } from './para-dentro'
 import { textosForaDaPiora, tratamentosQuePioraramALeitura, type ContrasteMedido, type PioraDeTratamento } from '@/lib/compositor/regua'
 import { papelDaCamada } from '@/lib/compositor/defasagem'
 import { alcanceDoGrupo, alturaDaFaixa, bordaDoGrupo, ehGradienteDeLeitura, forcaDaCamada, GRADIENTE_PADRAO, type Borda } from '@/lib/compositor/gradiente-de-leitura'
@@ -801,24 +802,11 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
       marcarParcial('fora-da-area-segura', 'bloco com fonte não cadastrada')
       continue
     }
-    const t = b.tinta
-    const sobra = {
-      topo: lim.topo - t.y,
-      base: t.y + t.height - lim.base,
-      esquerda: lim.esquerda - t.x,
-      direita: t.x + t.width - lim.direita,
-    }
-    const lados = (Object.keys(sobra) as Array<keyof typeof sobra>).filter((k) => sobra[k] > 2)
+    // A conta mora em `para-dentro.ts` (L3 das linhas-guia): o editor usa a MESMA para o "Trazer para dentro"
+    const { lados, dx, dy, maior, vertical, horizontal } = ajusteParaDentro(b.tinta, lim)
     if (lados.length === 0) continue
-    let dy = 0
-    let dx = 0
-    const vertical = sobra.topo > 2 && sobra.base > 2
-    const horizontal = sobra.esquerda > 2 && sobra.direita > 2
-    if (!vertical) dy = sobra.topo > 2 ? Math.ceil(sobra.topo + 2) : sobra.base > 2 ? -Math.ceil(sobra.base + 2) : 0
-    if (!horizontal) dx = sobra.esquerda > 2 ? Math.ceil(sobra.esquerda + 2) : sobra.direita > 2 ? -Math.ceil(sobra.direita + 2) : 0
     const ids = b.textos.map((x) => x.camada.id)
     const nomes = b.textos.map((x) => nomeDaCamada(x.camada)).join(' + ')
-    const maior = Math.max(...lados.map((k) => sobra[k]))
     adicionar(
       {
         regra: 'fora-da-area-segura',
