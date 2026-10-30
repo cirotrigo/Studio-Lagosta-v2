@@ -403,8 +403,10 @@ describe('a margem da marca é a margem (29/10/2026)', () => {
     expect(naMargemDaMarca(miolo, 'story', S, g, 'texto')).toBe(miolo)
     // Piso mais apertado recolhe (o que a opção A fazia): margem 96 → 96; topo 250 → 250.
     expect(r6(naMargemDaMarca({ x: 91.8, y: 230.4, width: 540, height: 57.6 }, 'story', S, { margemH: 96, safeTopo: 250, safeRodape: 224 }, 'texto'))).toEqual({ x: 96, y: 250, width: 535.8, height: 57.6 })
-    // No piso padrão a lateral é identidade (91,8 contra 92: meio pixel) e a vertical vai para a área segura (188 / 1696).
-    expect(r6(naMargemDaMarca({ x: 91.8, y: 230.4, width: 540, height: 57.6 }, 'story', S, geo('story'), 'texto'))).toEqual({ x: 91.8, y: 188, width: 540, height: 57.6 })
+    // No piso de 13/10 (92/188/224) a lateral é identidade (91,8 contra 92: meio pixel) e a vertical vai para a área
+    // segura (188 / 1696). O PADRÃO desde 29/10 (#276) é 64/160/160 — o caso da primeira linha deste teste.
+    expect(r6(naMargemDaMarca({ x: 91.8, y: 230.4, width: 540, height: 57.6 }, 'story', S, { margemH: 92, safeTopo: 188, safeRodape: 224 }, 'texto'))).toEqual({ x: 91.8, y: 188, width: 540, height: 57.6 })
+    expect(r6(naMargemDaMarca({ x: 91.8, y: 230.4, width: 540, height: 57.6 }, 'story', S, geo('story'), 'texto'))).toEqual({ x: 64, y: 160, width: 567.8, height: 57.6 })
   })
 
   it('19b. com `margem: "marca"` o topo-esquerda pousa na margem do projeto; sem ela, a saída é a de antes, byte a byte', () => {

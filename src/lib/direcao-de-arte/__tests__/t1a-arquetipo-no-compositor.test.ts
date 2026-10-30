@@ -181,7 +181,7 @@ describe('T1a · minimal-fb-topo-esquerda no compositor real', () => {
     expect(d.papeis.find((p) => p.papel === 'headline')!.posicao.y).toBe(pre.posicao.y + pre.posicao.height + 14)
     expect(r.diagnostico.avisos.some((a) => /pre: a referência do arquétipo sai da zona efetiva/.test(a))).toBe(false)
     // O medir-copy mede na MESMA partida (a margem da marca), e diz que cabe.
-    const assinatura = montarAssinatura({ pagina, formatoDaPagina: 'story', numerosDoProjeto: { ...ASSINATURA, geometria: { story: { safeTopo: 250 } } }, logoDoProjeto: null })
+    const assinatura = montarAssinatura({ pagina, formatoDaPagina: 'story', numerosDoProjeto: noPisoDe1310({ ...ASSINATURA, geometria: { story: { safeTopo: 250 } } }), logoDoProjeto: null })
     const v = validarSpec(spec('t1a-16', blocos, { arquetipo: { id: TOPO } }))
     const m = medirCopy({ spec: v.spec!, assinatura, formato: 'story', medir: medidorCalibrado(), familias: [], fonteCarregada: () => true, combinacoesSalvas: [], arquetipo: prepararArquetipo(v.spec!) })
     expect(m.cabeTudo).toBe(true)
