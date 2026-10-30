@@ -37,7 +37,7 @@ import { verArquetipo } from '@/lib/compositor/arquetipos/catalogo'
 import { impressaoDoArquetipo } from '@/lib/compositor/arquetipos/impressao'
 import { prepararArquetipo } from '@/lib/compositor/arquetipos/na-spec'
 import { CreativeError } from '@/lib/creatives/errors'
-import { cenario, medidorCalibrado, type PaginaDeAssinatura } from './suporte/compositor'
+import { cenario, medidorCalibrado, type PaginaDeAssinatura, noPisoDe1310 } from './suporte/compositor'
 import { dataUrl } from './suporte/fixture'
 import { leiturasDosTextos, tratamentosQuePioram } from './suporte/propriedades'
 import { cenarioSintetico, fotoSintetica, logoSintetica, paginaSintetica, specSintetica, variantesClaraEEscura, VEU_CLARO, VEU_ESCURO } from './suporte/sinteticos'
@@ -74,7 +74,7 @@ async function montar(m: Montagem) {
   })
   if (m.pre) pagina = comPre(pagina)
   const base = await cenarioSintetico({ pagina, foto, candidatasDoVeu: [], logosDoProjeto: await variantesClaraEEscura() })
-  cenario.atual = { ...base, projeto: { ...base.projeto, assinatura: m.assinatura ?? ASSINATURA } }
+  cenario.atual = { ...base, projeto: { ...base.projeto, assinatura: noPisoDe1310(m.assinatura ?? ASSINATURA) } }
   return pagina
 }
 
@@ -284,7 +284,7 @@ describe('T1a · a escada da UNIDADE (manchete + segunda voz)', () => {
     return cenario.atual.paginasDeAssinatura[0]
   }
   const medirCom = (pagina: PaginaDeAssinatura, blocos: Array<{ papel: string; linhas: string[] }>) => {
-    const assinatura = montarAssinatura({ pagina, formatoDaPagina: 'story', numerosDoProjeto: ASSINATURA, logoDoProjeto: null })
+    const assinatura = montarAssinatura({ pagina, formatoDaPagina: 'story', numerosDoProjeto: noPisoDe1310(ASSINATURA), logoDoProjeto: null })
     assinatura.camadasDaPagina = pagina.layers
     const v = validarSpec(spec(pagina.id, blocos, { arquetipo: { id: TOPO } }))
     return medirCopy({ spec: v.spec!, assinatura, formato: 'story', medir: medidorCalibrado(), familias: [], fonteCarregada: () => true, combinacoesSalvas: [], arquetipo: prepararArquetipo(v.spec!) })
@@ -386,7 +386,7 @@ describe('T1a · a página não decide geometria por outra via', () => {
     const problema = (e.details as { problemas: Array<{ papel: string; motivo: string }> }).problemas[0]
     expect(problema.papel).toBe('servico')
     expect(problema.motivo).toMatch(/ornamentos/)
-    const assinatura = montarAssinatura({ pagina, formatoDaPagina: 'story', numerosDoProjeto: ASSINATURA, logoDoProjeto: null })
+    const assinatura = montarAssinatura({ pagina, formatoDaPagina: 'story', numerosDoProjeto: noPisoDe1310(ASSINATURA), logoDoProjeto: null })
     assinatura.camadasDaPagina = pagina.layers
     const v = validarSpec(spec('t1a-orn-antes', [HEADLINE, SERVICO], { arquetipo: { id: TOPO } }))
     const m = medirCopy({ spec: v.spec!, assinatura, formato: 'story', medir: medidorCalibrado(), familias: [], fonteCarregada: () => true, combinacoesSalvas: [], arquetipo: prepararArquetipo(v.spec!) })
@@ -398,7 +398,7 @@ describe('T1a · a página não decide geometria por outra via', () => {
 describe('T1a · medir-copy e compositor concordam', () => {
   async function medir(paginaId: string, blocos: Array<{ papel: string; linhas: string[] }>, arquetipo: Record<string, unknown>) {
     const pagina = cenario.atual!.paginasDeAssinatura[0]
-    const assinatura = montarAssinatura({ pagina: { ...pagina, layers: pagina.layers }, formatoDaPagina: 'story', numerosDoProjeto: ASSINATURA, logoDoProjeto: null })
+    const assinatura = montarAssinatura({ pagina: { ...pagina, layers: pagina.layers }, formatoDaPagina: 'story', numerosDoProjeto: noPisoDe1310(ASSINATURA), logoDoProjeto: null })
     assinatura.camadasDaPagina = pagina.layers
     const v = validarSpec(spec(paginaId, blocos, { arquetipo }))
     const arq = prepararArquetipo(v.spec!)
@@ -449,7 +449,7 @@ describe('T1a · medir-copy e compositor concordam', () => {
     const blocos = [{ papel: 'headline', linhas: ['Almoço especial sexta'] }, SERVICO]
     const { r } = await compor(spec('t1a-piso', blocos, { formato: 'feed', arquetipo: { id: TOPO } }))
     expect(r.diagnostico.blocos.find((b) => b.id === 'headline')!.escala).toBe(0.8)
-    const assinatura = montarAssinatura({ pagina: comCorpo, formatoDaPagina: 'story', numerosDoProjeto: ASSINATURA, logoDoProjeto: null })
+    const assinatura = montarAssinatura({ pagina: comCorpo, formatoDaPagina: 'story', numerosDoProjeto: noPisoDe1310(ASSINATURA), logoDoProjeto: null })
     assinatura.camadasDaPagina = comCorpo.layers
     const v = validarSpec(spec('t1a-piso', blocos, { formato: 'feed', arquetipo: { id: TOPO } }))
     const m = medirCopy({ spec: v.spec!, assinatura, formato: 'feed', medir: medidorCalibrado(), familias: [], fonteCarregada: () => true, combinacoesSalvas: [], arquetipo: prepararArquetipo(v.spec!) })

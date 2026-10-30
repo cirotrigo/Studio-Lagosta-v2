@@ -3,6 +3,7 @@
  * Montserrat de um kit local), no medidor REAL do servidor. A marca é SINTÉTICA: página de assinatura gerada aqui, com o
  * prefixo "→ " no cta; `fundoClaro` e destaque dourado de teste. Nenhuma marca real é consultada.
  */
+import { noPisoDe1310 } from './compositor'
 import type { Layer } from '@/types/template'
 import type { CenarioDoCompositor, PaginaDeAssinatura } from './compositor'
 import { CLARO, TINTA } from './cenario-15'
@@ -67,7 +68,7 @@ export async function cenario16(
   variantes?: Array<{ fileUrl: string; isProjectLogo: true }>,
 ): Promise<CenarioDoCompositor> {
   return {
-    projeto: { id: 9002, assinatura, logoDoProjeto: null, logosDoProjeto: variantes ?? (await variantesClaraEEscura()) },
+    projeto: { id: 9002, assinatura: noPisoDe1310(assinatura), logoDoProjeto: null, logosDoProjeto: variantes ?? (await variantesClaraEEscura()) },
     paginasDeAssinatura: [pagina],
     foto: null,
     candidatasDoVeu: [],

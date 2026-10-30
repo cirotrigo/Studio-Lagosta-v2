@@ -71,7 +71,7 @@ import {
   type UnidadeDaCombinacao,
 } from '@/lib/compositor/arquetipos/busca-espacial-tipos'
 import type { PapelDeTexto } from '@/lib/compositor/arquetipos/tipos'
-import { cenario, medidorCalibrado, type PaginaDeAssinatura } from './suporte/compositor'
+import { cenario, medidorCalibrado, type PaginaDeAssinatura, noPisoDe1310 } from './suporte/compositor'
 import { dataUrl } from './suporte/fixture'
 import { leituraDentroDoAlvo, leiturasDosTextos, ordemDeLeituraInvertida, servicoDisputaEntrada, textosQueInvadem, tratamentosQuePioram } from './suporte/propriedades'
 import { cenarioSintetico, fotoSintetica, logoSintetica, paginaSintetica, specSintetica, variantesClaraEEscura, VEU_CLARO, VEU_ESCURO } from './suporte/sinteticos'
@@ -178,7 +178,7 @@ async function montar(c: Cena): Promise<PaginaDeAssinatura> {
   const base = await cenarioSintetico({ pagina, foto, candidatasDoVeu: [], logosDoProjeto: await variantesClaraEEscura(), ...(c.assunto ? { assunto: c.assunto } : {}) })
   const url = c.dataUrl ? dataUrl(foto) : join(tmpdir(), `cp2b-busca-espacial-${c.id}.png`)
   if (!c.dataUrl) writeFileSync(url, foto)
-  cenario.atual = { ...base, foto: { url, bytes: foto }, projeto: { ...base.projeto, assinatura: ASSINATURA } }
+  cenario.atual = { ...base, foto: { url, bytes: foto }, projeto: { ...base.projeto, assinatura: noPisoDe1310(ASSINATURA) } }
   return pagina
 }
 
@@ -762,7 +762,7 @@ describe('CP2B · diagnóstico, estabilidade e medir-copy', () => {
 
   it('MEDIR-COPY: com arquétipo a busca espacial não roda lá (avaliacaoEspacial "nao-executada"); a posição dita é a de partida', async () => {
     const pagina = await montar(CENAS.faixa)
-    const assinatura = montarAssinatura({ pagina, formatoDaPagina: 'story', numerosDoProjeto: ASSINATURA, logoDoProjeto: null })
+    const assinatura = montarAssinatura({ pagina, formatoDaPagina: 'story', numerosDoProjeto: noPisoDe1310(ASSINATURA), logoDoProjeto: null })
     assinatura.camadasDaPagina = pagina.layers
     const v = validarSpec(specDe(CENAS.faixa))
     const m = medirCopy({ spec: v.spec!, assinatura, formato: 'story', medir: medidorCalibrado(), familias: [], fonteCarregada: () => true, combinacoesSalvas: [], arquetipo: prepararArquetipo(v.spec!) })

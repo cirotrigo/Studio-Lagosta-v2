@@ -37,7 +37,7 @@ import { lerAcentosGravados, receitasDoArquetipo } from '@/lib/compositor/arquet
 import { prepararArquetipo } from '@/lib/compositor/arquetipos/na-spec'
 import { problemasDosVetores } from '@/lib/vetor/validar-camada'
 import { PADDING_DE_DESENHO } from '@/lib/creatives/halo/fundo-de-texto'
-import { cenario, medidorCalibrado } from './suporte/compositor'
+import { cenario, medidorCalibrado, noPisoDe1310 } from './suporte/compositor'
 import { dataUrl } from './suporte/fixture'
 import { cenarioSintetico, fotoSintetica, logoSintetica, paginaSintetica, specSintetica, variantesClaraEEscura, VEU_CLARO, VEU_ESCURO } from './suporte/sinteticos'
 
@@ -65,7 +65,7 @@ async function montar(m: { id: string; luz?: number; assinatura?: Record<string,
   })
   const pagina = m.arial ? { ...sintetica, layers: sintetica.layers.map(emArial) } : sintetica
   const base = await cenarioSintetico({ pagina, foto, candidatasDoVeu: [], logosDoProjeto: await variantesClaraEEscura() })
-  cenario.atual = { ...base, ...(m.arial ? { medidor: ARIAL } : {}), projeto: { ...base.projeto, assinatura: m.assinatura ?? ASSINATURA } }
+  cenario.atual = { ...base, ...(m.arial ? { medidor: ARIAL } : {}), projeto: { ...base.projeto, assinatura: noPisoDe1310(m.assinatura ?? ASSINATURA) } }
   return pagina
 }
 
@@ -243,7 +243,7 @@ describe('T1b · a recomposição desenha a receita CONGELADA', () => {
 describe('T1b · o medir-copy prevê o mesmo acento que o compor desenha', () => {
   function medir(formato: 'story' | 'feed', paginaId: string, blocos: Array<{ papel: string; linhas: string[] }>, id: string) {
     const pagina = cenario.atual!.paginasDeAssinatura[0]
-    const assinatura = montarAssinatura({ pagina: { ...pagina, layers: pagina.layers }, formatoDaPagina: 'story', numerosDoProjeto: ASSINATURA, logoDoProjeto: null })
+    const assinatura = montarAssinatura({ pagina: { ...pagina, layers: pagina.layers }, formatoDaPagina: 'story', numerosDoProjeto: noPisoDe1310(ASSINATURA), logoDoProjeto: null })
     assinatura.camadasDaPagina = pagina.layers
     const v = validarSpec(spec(paginaId, blocos, { formato, arquetipo: { id } }))
     return medirCopy({ spec: v.spec!, assinatura, formato, medir: medidorCalibrado(), familias: [], fonteCarregada: () => true, combinacoesSalvas: [], arquetipo: prepararArquetipo(v.spec!) })

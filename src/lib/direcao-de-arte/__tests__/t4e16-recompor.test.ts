@@ -97,7 +97,7 @@ import { comporPeca } from '@/lib/compositor/compor'
 import { recomporPaginaDefasada } from '@/lib/compositor/recompor'
 import { revisaoDaPaginaComCamadas } from '@/lib/copy-autoral/revisar-pagina'
 import { lerCopyAutoral } from '@/lib/copy-autoral'
-import { cenario } from './suporte/compositor'
+import { cenario, noPisoDe1310 } from './suporte/compositor'
 import { CLARO, DOURADO, cenario16, fontesNoDisco, medidorComFontesReais, paginaDoCenario16, spec16 } from './suporte/cenario-16'
 
 async function montar(assinatura: Record<string, unknown>, logo?: string) {
@@ -143,7 +143,7 @@ describe.skipIf(!fontesNoDisco())('#16 · recomposição real da Generation (rec
     const original = asset.pathData
     try {
       asset.pathData = 'M0 25 L0 0 L25 0 M75 0 L100 0 L100 25'
-      cenario.atual = { ...cenario.atual!, projeto: { ...cenario.atual!.projeto, assinatura: { fundoClaro: '#FFFFFF', destaque: { fill: '#C0392B' } } } }
+      cenario.atual = { ...cenario.atual!, projeto: { ...cenario.atual!.projeto, assinatura: noPisoDe1310({ fundoClaro: '#FFFFFF', destaque: { fill: '#C0392B' } }) } }
       await recomporPaginaDefasada({ pageId: 'p9' })
     } finally {
       asset.pathData = original
