@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import Konva from 'konva'
-import { Stage, Layer as KonvaLayer, Rect, Line, Text as KonvaText } from 'react-konva'
+import { Stage, Layer as KonvaLayer, Rect, Line } from 'react-konva'
 
 // IMPORTANTE: Ativar fix de renderização para melhor qualidade de fontes
 // Especialmente importante para fontes ornamentadas/decorativas
@@ -1259,17 +1259,6 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
                     listening={false}
                     perfectDrawEnabled={false}
                   />
-                  <KonvaText
-                    x={12 / zoom}
-                    y={f.id === 'interface-topo' ? f.y + f.height - 22 / zoom : f.y + 8 / zoom}
-                    text="Interface do Instagram"
-                    fontSize={13 / zoom}
-                    fontFamily="Inter, -apple-system, Helvetica, Arial, sans-serif"
-                    fill="#B91C1C"
-                    opacity={0.85}
-                    listening={false}
-                    perfectDrawEnabled={false}
-                  />
                 </React.Fragment>
               ))}
 
@@ -1303,17 +1292,6 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
                     perfectDrawEnabled={false}
                   />
                 ))}
-                <KonvaText
-                  x={margens.marca.esquerda + 8 / zoom}
-                  y={margens.marca.topo + 6 / zoom}
-                  text={margens.origem === 'marca' ? 'Margem da marca' : 'Margem padrão'}
-                  fontSize={13 / zoom}
-                  fontFamily="Inter, -apple-system, Helvetica, Arial, sans-serif"
-                  fill="#3B82F6"
-                  opacity={0.85}
-                  listening={false}
-                  perfectDrawEnabled={false}
-                />
               </>
             )}
 
