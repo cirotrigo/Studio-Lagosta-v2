@@ -282,6 +282,34 @@ export function ocupacaoDoAcento(a: { tipo: ElementoDoArquetipo; desenho: Desenh
  * do elemento contra a referência R do papel, `round((R − E) × lado)` —, nunca do catálogo de elementos nem da página.
  * Arquétipo sem envolvente: `{}` (a zona, a faixa e os acentos ficam os de sempre).
  */
+/**
+ * Quanto os acentos PRESOS a cada papel ocupam ACIMA e ABAIXO da caixa dele (29/10/2026): o fio sob a manchete (#1, #9,
+ * #10), o spark acima. A pilha da faixa reserva isso entre dois papéis, senão o apoio encosta no fio ou o apaga por
+ * colisão. A conta é a de `posicionarAcentos` (vão declarado entre a referência e a caixa do elemento, altura ≥ traço),
+ * só que independente de onde o texto pousa. Fora: envolventes (#5, folga do `envoltoriosDoArquetipo`), fio por item
+ * (#15), moldura aberta (#2: o braço de cima é fixo na peça) e os presos à peça (#16).
+ */
+export function extensoesDosAcentosPresos(a: ArquetipoDeLayout, formato: FormatoDoArquetipo, canvas: { width: number; height: number }): Partial<Record<PapelDeTexto, { topo: number; base: number }>> {
+  const geo = a.formatos[formato]
+  const H = canvas.height
+  const saida: Partial<Record<PapelDeTexto, { topo: number; base: number }>> = {}
+  for (const r of receitasDoArquetipo(a, { formato, canvas }).receitas) {
+    const e = a.elementos?.find((x) => x.id === r.elemento)
+    if (!r.presoA || !e || e.porItem || r.tipo === 'moldura-aberta' || ELEMENTOS_QUE_ENVOLVEM.includes(r.tipo)) continue
+    const caixa = geo.elementos?.[r.elemento]
+    const posRef = geo.papeis[r.presoA]
+    if (!caixa || !posRef || !('referencia' in posRef)) continue
+    const R = { y: posRef.referencia.y * H, h: posRef.referencia.h * H }
+    const E = { y: caixa.y * H, h: caixa.h * H }
+    const altura = r.desenho.shapeType === 'line' ? Math.max(E.h, r.desenho.strokeWidth ?? 1) : E.h
+    const atual = saida[r.presoA] ?? { topo: 0, base: 0 }
+    if (E.y >= R.y + R.h - TOLERANCIA_PX) atual.base = Math.max(atual.base, E.y - (R.y + R.h) + altura)
+    else if (E.y + E.h <= R.y + TOLERANCIA_PX) atual.topo = Math.max(atual.topo, R.y - (E.y + E.h) + E.h)
+    saida[r.presoA] = atual
+  }
+  return saida
+}
+
 export function envoltoriosDoArquetipo(a: ArquetipoDeLayout, formato: FormatoDoArquetipo, canvas: { width: number; height: number }): Partial<Record<PapelDeTexto, { x: number; y: number }>> {
   const saida: Partial<Record<PapelDeTexto, { x: number; y: number }>> = {}
   const geo = a.formatos[formato]

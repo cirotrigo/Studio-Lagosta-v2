@@ -690,6 +690,11 @@ export function escolhaEspacialOriginal(fieldValues: unknown, spec: SpecDePeca):
 
   const limpa: EscolhaEspacial & { buscaOriginal?: ResumoDaBuscaOriginal } = { modo: MODO_BUSCA_ESPACIAL, foto: escolha.foto as string | null, corte: escolha.corte as CropPosition, deslocamentos }
   if (canto !== undefined) limpa.cantoDaLogo = canto as Canto | null
+  // A pilha da faixa (29/10/2026): ausente na peça de antes (reproduz sem empilhar); presente e malformada é ilegível.
+  if (escolha.pilha !== undefined) {
+    if (!(Number.isInteger(escolha.pilha) && (escolha.pilha as number) >= 0)) return recusar(`pilha inválida: ${String(escolha.pilha)}`)
+    limpa.pilha = escolha.pilha as number
+  }
   // CP3: a variante da logo desenhada. Ausente nas peças de antes; presente e malformada é escolha ilegível.
   const varianteDaLogo = varianteGravada(escolha.logo, recusar)
   if (varianteDaLogo) limpa.logo = varianteDaLogo

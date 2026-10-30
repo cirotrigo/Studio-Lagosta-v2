@@ -19,6 +19,7 @@ import {
 } from './busca-espacial-tipos'
 import { CreativeError } from '@/lib/creatives/errors'
 import { envoltoriosDoArquetipo } from './acentos'
+import { faixasDoArquetipo } from './faixas'
 import { textoNoLiso } from './fundo'
 import { materializarUnidades, type UnidadeDoArquetipo } from './no-compositor'
 import type { GeometriaEfetiva, Materializacao, PapelMaterializado, ProblemaDeMaterializacao } from './materializar'
@@ -49,26 +50,7 @@ const TOLERANCIA_HORIZONTAL = 0.5
 const TOLERANCIA_DA_ESQUERDA = TOLERANCIA_HORIZONTAL + FOLGA_DO_TOPO
 const TOLERANCIA_DA_DIREITA = TOLERANCIA_HORIZONTAL + FOLGA_DA_BASE
 
-/**
- * As FAIXAS do arquétipo num formato: os papéis com referência e zona (a logo automática fica fora) cujas ZONAS se
- * sobrepõem na vertical, por fecho transitivo. Faixas na ordem do primeiro membro na leitura; membros na leitura.
- */
-export function faixasDoArquetipo(arquetipo: ArquetipoDeLayout, formato: FormatoDoArquetipo): MembroDaFaixa[][] {
-  const ordem = new Map(arquetipo.papeis.map((p) => [p.papel, p.ordemDeLeitura]))
-  const porOrdem = (a: MembroDaFaixa, b: MembroDaFaixa) => (ordem.get(a) ?? 99) - (ordem.get(b) ?? 99)
-  const zonas = new Map<MembroDaFaixa, Zona>()
-  for (const [papel, pos] of Object.entries(arquetipo.formatos[formato].papeis)) {
-    if (pos && 'zona' in pos) zonas.set(papel as MembroDaFaixa, pos.zona)
-  }
-  const sobrepoem = (a: MembroDaFaixa, b: MembroDaFaixa) => zonas.get(a)!.yMin < zonas.get(b)!.yMax && zonas.get(b)!.yMin < zonas.get(a)!.yMax
-  let faixas: MembroDaFaixa[][] = []
-  // União incremental: cada membro funde todas as faixas que toca (o fecho transitivo).
-  for (const m of [...zonas.keys()].sort(porOrdem)) {
-    const tocadas = faixas.filter((f) => f.some((o) => sobrepoem(o, m)))
-    faixas = [...faixas.filter((f) => !tocadas.includes(f)), [...tocadas.flat(), m].sort(porOrdem)]
-  }
-  return faixas.sort((a, b) => porOrdem(a[0], b[0]))
-}
+export { faixasDoArquetipo } from './faixas'
 
 /**
  * As faixas de busca de uma peça medida na REFERÊNCIA: só os membros presentes (texto na peça; logo de referência
@@ -198,8 +180,10 @@ export function partidaNoArquetipo(args: {
   geometria: GeometriaEfetiva
   unidades: UnidadeDoArquetipo[]
   logo: { razao: number } | null
+  /** O gap da marca: os papéis de cada faixa empilham (29/10/2026). */
+  gap?: number
 }): PartidaNoArquetipo {
-  const base = { arquetipo: args.arquetipo, formato: args.formato, canvas: args.canvas, geometria: args.geometria, unidades: args.unidades, logo: args.logo }
+  const base = { arquetipo: args.arquetipo, formato: args.formato, canvas: args.canvas, geometria: args.geometria, unidades: args.unidades, logo: args.logo, ...(args.gap !== undefined ? { gap: args.gap } : {}) }
   const naReferencia = materializarUnidades({ ...base, conferirZona: false })
   if ('problemas' in naReferencia) return { ok: false, problemas: naReferencia.problemas }
   const conferida = materializarUnidades(base)

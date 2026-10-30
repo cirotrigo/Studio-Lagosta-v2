@@ -166,6 +166,69 @@ describe('T1a · materialização', () => {
     }
   })
 
+  it('18. empilhar como a assinatura (29/10/2026): na faixa do topo, pré, manchete e apoio encostam com o gap da marca; serviço e logo ficam', () => {
+    const medidas = { pre: { width: 300, height: 48 }, headline: { width: 600, height: 164 }, apoio: { width: 500, height: 48 }, servico: { width: 300, height: 52 } }
+    const solto = materializarArquetipo({ arquetipo: TOPO, formato: 'story', canvas: DIMENSOES.story, geometria: geo('story'), medidas, logo: { razao: 0.5 } })
+    const pilha = materializarArquetipo({ arquetipo: TOPO, formato: 'story', canvas: DIMENSOES.story, geometria: geo('story'), medidas, logo: { razao: 0.5 }, empilhar: { gap: 14 } })
+    expect(solto.ok && pilha.ok).toBe(true)
+    if (!solto.ok || !pilha.ok) return
+    // Solto (a saída de sempre): cada papel na própria referência — 230, 298 e 547, com 20 e 85 px de vão.
+    expect([solto.papeis.pre!.posicao.y, solto.papeis.headline!.posicao.y, solto.papeis.apoio!.posicao.y]).toEqual([230, 298, 547])
+    // Pilha: o pré (âncora topo) fica em 230; a manchete em 230 + 48 + 14 = 292; o apoio em 292 + 164 + 14 = 470.
+    expect([pilha.papeis.pre!.posicao.y, pilha.papeis.headline!.posicao.y, pilha.papeis.apoio!.posicao.y]).toEqual([230, 292, 470])
+    // Só o y muda: x, largura e referência são os mesmos; a outra faixa (serviço + logo) e a logo não se mexem.
+    for (const p of ['pre', 'headline', 'apoio'] as const) {
+      expect([pilha.papeis[p]!.posicao.x, pilha.papeis[p]!.posicao.width, pilha.papeis[p]!.referencia]).toEqual([solto.papeis[p]!.posicao.x, solto.papeis[p]!.posicao.width, solto.papeis[p]!.referencia])
+    }
+    // A âncora (o pré) guarda a própria zona — é ela que segura a identidade na busca; os que a seguem ganham o CASCO
+    // das zonas da faixa na vertical (as zonas por papel foram desenhadas em volta das referências soltas e brigariam
+    // com a pilha); a horizontal segue a de cada papel.
+    expect(pilha.papeis.pre!.zonaEfetiva).toEqual(solto.papeis.pre!.zonaEfetiva)
+    const casco = { y: Math.min(...['pre', 'headline', 'apoio'].map((p) => solto.papeis[p as 'pre']!.zonaEfetiva.y)), base: Math.max(...['pre', 'headline', 'apoio'].map((p) => solto.papeis[p as 'pre']!.zonaEfetiva.y + solto.papeis[p as 'pre']!.zonaEfetiva.height)) }
+    for (const p of ['headline', 'apoio'] as const) {
+      const z = pilha.papeis[p]!.zonaEfetiva
+      expect([z.x, z.width, z.y, z.y + z.height]).toEqual([solto.papeis[p]!.zonaEfetiva.x, solto.papeis[p]!.zonaEfetiva.width, casco.y, casco.base])
+    }
+    expect([pilha.papeis.servico, pilha.papeis.logo]).toEqual([solto.papeis.servico, solto.papeis.logo])
+    // O ornamento preso à manchete (o fio, 24 px abaixo) e o dy da busca contam na pilha.
+    const comFio = materializarArquetipo({ arquetipo: TOPO, formato: 'story', canvas: DIMENSOES.story, geometria: geo('story'), medidas, logo: { razao: 0.5 }, empilhar: { gap: 14 }, ornamentos: { headline: { esquerda: 0, direita: 0, topo: 0, base: 24 } }, deslocamentos: { pre: -10, headline: -10, apoio: -10 } })
+    expect(comFio.ok).toBe(true)
+    if (!comFio.ok) return
+    expect([comFio.papeis.pre!.posicao.y, comFio.papeis.headline!.posicao.y, comFio.papeis.apoio!.posicao.y]).toEqual([220, 282, 484])
+  })
+
+  it('18b. âncora no rodapé: o último papel fica na referência e os outros sobem; âncora no meio e lista não empilham', () => {
+    const BASE = verArquetipo('minimal-fb-base-esquerda', 1)!
+    const medidas = { headline: { width: 600, height: 164 }, apoio: { width: 500, height: 48 }, servico: { width: 300, height: 52 } }
+    const solto = materializarArquetipo({ arquetipo: BASE, formato: 'story', canvas: DIMENSOES.story, geometria: geo('story'), medidas, logo: { razao: 0.5 } })
+    const pilha = materializarArquetipo({ arquetipo: BASE, formato: 'story', canvas: DIMENSOES.story, geometria: geo('story'), medidas, logo: { razao: 0.5 }, empilhar: { gap: 14 } })
+    expect(solto.ok && pilha.ok).toBe(true)
+    if (!solto.ok || !pilha.ok) return
+    const s = solto.papeis.servico!.posicao
+    expect(pilha.papeis.servico!.posicao).toEqual(s)
+    expect(pilha.papeis.apoio!.posicao.y).toBe(s.y - 14 - 48)
+    expect(pilha.papeis.headline!.posicao.y).toBe(s.y - 14 - 48 - 14 - 164)
+    expect(pilha.papeis.logo).toEqual(solto.papeis.logo)
+    // #16 (âncora meio) e #15 (lista) saem iguais com ou sem o gap: os vãos são da receita.
+    for (const [id, versao] of [['minimal-tipografico-convite', 2], ['minimal-tipografico-lista', 1]] as const) {
+      const a = verArquetipo(id, versao)!
+      const m = Object.fromEntries(a.papeis.filter((p) => p.papel !== 'logo').map((p) => [p.papel, { width: 300, height: 40 }]))
+      const x = materializarArquetipo({ arquetipo: a, formato: 'story', canvas: DIMENSOES.story, geometria: geo('story'), medidas: m, logo: { razao: 0.5 } })
+      const y = materializarArquetipo({ arquetipo: a, formato: 'story', canvas: DIMENSOES.story, geometria: geo('story'), medidas: m, logo: { razao: 0.5 }, empilhar: { gap: 14 } })
+      expect(y, id).toEqual(x)
+    }
+  })
+
+  it('18c. só empilha na mesma coluna: no título-gigante o apoio (direita) não desce sobre o serviço (esquerda), mesmo na mesma faixa pela logo', () => {
+    const GIGANTE = verArquetipo('minimal-titulo-gigante', 1)!
+    const medidas = { headline: { width: 880, height: 300 }, apoio: { width: 320, height: 86 }, servico: { width: 440, height: 49 } }
+    const solto = materializarArquetipo({ arquetipo: GIGANTE, formato: 'story', canvas: DIMENSOES.story, geometria: geo('story'), medidas, logo: { razao: 0.5 } })
+    const pilha = materializarArquetipo({ arquetipo: GIGANTE, formato: 'story', canvas: DIMENSOES.story, geometria: geo('story'), medidas, logo: { razao: 0.5 }, empilhar: { gap: 14 } })
+    expect(solto.ok && pilha.ok).toBe(true)
+    if (!solto.ok || !pilha.ok) return
+    expect(pilha.papeis).toEqual(solto.papeis)
+  })
+
   it('caixa maior que a capacidade da referência: recusa com a medida (sem esmagar fonte, sem empurrar)', () => {
     const m = materializarArquetipo({
       arquetipo: TOPO,

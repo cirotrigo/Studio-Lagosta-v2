@@ -302,6 +302,11 @@ export interface EscolhaEspacial {
    * ela continua a ler; trocar é dito, nunca silencioso. Ausente nas peças anteriores ao CP3 (a explícita vale).
    */
   logo?: VarianteDaLogo
+  /**
+   * O gap da PILHA da faixa com que a peça foi composta (29/10/2026, `gapEntreBlocos`). A recomposição reproduz a mesma
+   * pilha. Ausente = peça de antes da regra: cada papel na própria referência, como nasceu — editar só o texto não a move.
+   */
+  pilha?: number
 }
 
 /** O resumo da busca que ESCOLHEU a posição — a recomposição o carrega adiante, para a explicação não se perder. */
