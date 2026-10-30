@@ -1644,9 +1644,13 @@ pré ele não mexeu):
   layouts de topo, o serviço do base-esquerda) pousa com a base em `H − safeRodape`, sem guardar o recuo do catálogo —
   antes só o arquétipo de âncora rodapé pousava pela base (e pela base da referência mapeada, com o recuo: 1265 no
   base-esquerda Feed). O Ciro pôs a base na margem em 11/12 (faltavam 31–83 px nos layouts de topo).
-- **R2 — a pilha fecha: `GAP_DA_PILHA = 0`** no caminho do arquétipo (compor, medir-copy e a preparação das
-  unidades), em vez do `gapEntreBlocos` da marca (14): as caixas já carregam entrelinha e padding; o Ciro levou o vão
-  a 0 em toda a Real e a 0–18 na Wine. A peça grava a pilha com que nasceu: a de antes reproduz com 14.
+- **R2 — a pilha fecha: `GAP_DA_PILHA = 0` ENTRE os papéis da faixa** (o `gap` da partida e da seleção, no compor e
+  no medir-copy), em vez do `gapEntreBlocos` da marca (14): as caixas já carregam entrelinha e padding; o Ciro levou o
+  vão a 0 em toda a Real e a 0–18 na Wine. O vão INTERNO da unidade (as camadas de um mesmo papel, `gap × 1,6` = 22)
+  continua o da marca — `prepararNoArquetipo` recebe `g.gap`, nunca o zero. A peça grava a pilha com que nasceu: a de
+  antes reproduz com 14.
+- **Peça existente com `margem: 'marca'`** (composta entre a margem da marca e esta regra) recebe R1 na recomposição:
+  o serviço desce para a base. `pilha` gravada preserva o vão, não o pouso — a identidade pela base não é congelada.
 - **O fio fica como estava** (o vão do catálogo a partir da caixa, reservado na pilha). Tentei pousá-lo pela tinta
   (padding + meia-entrelinha) e desfiz: nos ajustes do Ciro a Real pôs o fio DENTRO da caixa (base −6..0) e a Wine 10 px
   abaixo dela — a média dos dois cai em cima da conta atual (apoio ≈ 12 px abaixo da manchete), e a versão pela tinta
