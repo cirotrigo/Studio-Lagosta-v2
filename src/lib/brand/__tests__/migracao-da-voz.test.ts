@@ -709,7 +709,9 @@ describe('o texto de marca: exemplos e CTAs da voz × o DNA (13/09/2026)', () =>
   })
 
   it('as dez vozes propostas × os excertos verbatim do DNA de produção: zero divergência, a lista de CTAs do DNA inteira, e as frases inventadas de antes seriam pegas', () => {
-    const ctasEsperados: Record<number, number> = { 1: 7, 2: 8, 3: 7, 4: 10, 5: 7, 6: 21, 7: 10, 8: 6, 11: 6, 12: 7 }
+    // O Quintal subiu de 8 para 10 em 22/09/2026: o DNA ganhou a lista de NOVE da revisão da Roberta
+    // (13/09) ao lado da de oito, e a união acrescenta "A mesa é de vocês" e "Chega pra resenha".
+    const ctasEsperados: Record<number, number> = { 1: 7, 2: 10, 3: 7, 4: 10, 5: 7, 6: 21, 7: 10, 8: 6, 11: 6, 12: 7 }
     for (const id of PROJETOS_COM_VOZ_PROPOSTA) {
       const { nome, voz } = VOZES_PROPOSTAS[id]
       const c = conferirTextoDeMarca(voz, DNA_DA_CARTEIRA[id])
