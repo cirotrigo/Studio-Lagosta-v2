@@ -258,18 +258,21 @@ describe.skipIf(!fontesNoDisco())('#8 · recomposição real da Generation', () 
     // A peça ANTIGA do T1a: posição na referência, sem busca gravada e sem `margem` — a troca de foto anula a escolha
     // (a busca roda de novo) mas NÃO a identidade geométrica: ela continua na opção A.
     const fv = banco.generations[0].fieldValues as Record<string, any>
-    fv.composicao = { ...fv.composicao, arquetipo: { ...fv.composicao.arquetipo, modo: 'referencia', buscaEspacial: undefined } }
+    // Sem variante de logo gravada: é o ramo em que a foto trocada ANULA a escolha (`escolhaEspacial` null) — o que
+    // originou o P2 (rodada 2 do Codex, P3: com a variante o recompor mantinha `{ modo: 'referencia', logo }`).
+    fv.composicao = { ...fv.composicao, arquetipo: { ...fv.composicao.arquetipo, modo: 'referencia', buscaEspacial: undefined, logo: undefined } }
+    expect(fv.composicao.arquetipo.logo).toBeUndefined()
     cenario.atual = { ...cenario.atual!, foto: { url: dataUrl(nova), bytes: nova } }
     const r = await recomporPaginaDefasada({ pageId: 'p9' })
     expect(r.recomposta).toBe(true)
     expect(r.avisos.join(' ')).toMatch(/A foto da peça mudou/)
-    // A página recomposta pousa onde a opção A pousa (a peça do T1a reproduz a referência): a MESMA composição com
+    // A página recomposta (busca NOVA pela foto nova, sem escolha) pousa onde a opção A pousa: a MESMA composição com
     // `margemDaPeca: null` — e NÃO onde a margem da marca pousaria (o serviço do #8 na base do piso).
     const pos = (l: Layer | undefined) => (l ? [l.position.x, l.position.y] : null)
     const headline = porId(banco.pagina!.layers as Layer[], 'headline')
     const servico = porId(banco.pagina!.layers as Layer[], 'servico')
-    const comoAntes = await comporPeca(specRecompor(), { somenteAvaliar: true, margemDaPeca: null, escolhaEspacial: { modo: 'referencia' } })
-    const naMarca = await comporPeca(specRecompor(), { somenteAvaliar: true, margemDaPeca: 'marca', escolhaEspacial: { modo: 'referencia' } })
+    const comoAntes = await comporPeca(specRecompor(), { somenteAvaliar: true, margemDaPeca: null })
+    const naMarca = await comporPeca(specRecompor(), { somenteAvaliar: true, margemDaPeca: 'marca' })
     expect([pos(headline), pos(servico)]).toEqual([pos(comoAntes.layers.find((l) => l.id === 'headline')), pos(comoAntes.layers.find((l) => l.id === 'servico'))])
     expect(pos(servico)).not.toEqual(pos(naMarca.layers.find((l) => l.id === 'servico')))
   }, 120_000)
