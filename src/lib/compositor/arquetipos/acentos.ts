@@ -69,6 +69,12 @@ export interface ReceitaDoAcento {
 export interface DerivacaoDoDesenho {
   regra: 'bracos-iguais'
   bracoPx: number
+  /**
+   * A caixa (px) para a qual o path foi derivado (30/10/2026). Quando a margem da marca muda a caixa da peça, a
+   * recomposição re-deriva o desenho pela MESMA regra e braço congelados — nunca pelo catálogo vivo. Ausente = receita
+   * de antes: o path só vale na caixa de hoje (o conferente estrito).
+   */
+  caixa?: { width: number; height: number }
 }
 
 /** O acento GRAVADO numa peça: a receita e a cor que ela resolveu ao nascer (literal e de onde veio). */
@@ -169,7 +175,7 @@ export function receitasDoArquetipo(
       const rect = caixaDaPecaEmPx(caixa, onde.canvas, onde.margem && onde.geometria ? { formato: onde.formato, geometria: onde.geometria, modo: onde.margem } : undefined)
       const bracoPx = Math.round(e.braco * onde.canvas.width)
       r.desenho = { ...r.desenho, pathData: pathDasCantoneiras((bracoPx / rect.width) * 100, (bracoPx / rect.height) * 100) }
-      r.derivacao = { regra: 'bracos-iguais', bracoPx }
+      r.derivacao = { regra: 'bracos-iguais', bracoPx, caixa: { width: rect.width, height: rect.height } }
     }
     receitas.push(r)
   }
@@ -216,7 +222,9 @@ export function lerAcentosGravados(valor: unknown): AcentoCongelado[] | { proble
     // #16@2: ausente = desenho do asset (C1); presente, só a regra conhecida com o braço inteiro em (0, 1080].
     const dv = r.derivacao
     if (envolve && dv !== undefined) return { problema: `${onde}: a pílula não tem derivação do desenho` }
-    if (dv !== undefined && !(ehObjeto(dv) && Object.keys(dv).length === 2 && dv.regra === 'bracos-iguais' && Number.isInteger(dv.bracoPx) && (dv.bracoPx as number) > 0 && (dv.bracoPx as number) <= 1080)) {
+    const caixaDv = ehObjeto(dv) ? (dv as { caixa?: unknown }).caixa : undefined
+    const caixaLegivel = caixaDv === undefined || (ehObjeto(caixaDv) && Object.keys(caixaDv).length === 2 && Number.isInteger((caixaDv as { width: unknown }).width) && Number.isInteger((caixaDv as { height: unknown }).height) && (caixaDv as { width: number }).width > 0 && (caixaDv as { height: number }).height > 0)
+    if (dv !== undefined && !(ehObjeto(dv) && Object.keys(dv).length === (caixaDv === undefined ? 2 : 3) && dv.regra === 'bracos-iguais' && Number.isInteger(dv.bracoPx) && (dv.bracoPx as number) > 0 && (dv.bracoPx as number) <= 1080 && caixaLegivel)) {
       return { problema: `${onde}: derivação do desenho ilegível` }
     }
     saida.push({
@@ -236,7 +244,7 @@ export function lerAcentosGravados(valor: unknown): AcentoCongelado[] | { proble
         ...(envolve ? { raio: d.raio as number } : {}),
         ajuste: d.ajuste,
       },
-      ...(dv !== undefined ? { derivacao: { regra: 'bracos-iguais' as const, bracoPx: (dv as { bracoPx: number }).bracoPx } } : {}),
+      ...(dv !== undefined ? { derivacao: { regra: 'bracos-iguais' as const, bracoPx: (dv as { bracoPx: number }).bracoPx, ...(caixaDv !== undefined ? { caixa: { width: (caixaDv as { width: number }).width, height: (caixaDv as { height: number }).height } } : {}) } } : {}),
       cor: r.cor as string,
       fonteDaCor: r.fonteDaCor,
     })
@@ -488,18 +496,30 @@ export function posicionarAcentos(args: {
         continue
       }
       const rect = caixaDaPecaEmPx(caixa, canvas, args.margem ? { formato, geometria, modo: args.margem } : undefined)
-      // #16@2: o desenho congelado tem de ser o do elemento, neste retângulo — nunca redesenhado aqui.
-      const incoerente = incoerenciaDoDesenho(declarado.braco, receita, rect, W)
+      // #16@2: o desenho congelado tem de ser o do elemento, neste retângulo — nunca redesenhado pelo catálogo. Se a
+      // margem da marca mudou a caixa desde que a peça nasceu (30/10/2026), o path é RE-DERIVADO pela mesma regra e braço
+      // congelados (`derivacao.caixa` diz a caixa em que o path valia; a receita tem de ser coerente com ELA).
+      let desenhada = receita
+      const dv = receita.derivacao
+      if (dv?.caixa && declarado.braco !== undefined && (dv.caixa.width !== rect.width || dv.caixa.height !== rect.height)) {
+        const incoerenteComASua = incoerenciaDoDesenho(declarado.braco, receita, { x: 0, y: 0, ...dv.caixa }, W)
+        if (incoerenteComASua) {
+          falhar(`o desenho congelado não é o do elemento na caixa em que nasceu (${dv.caixa.width}×${dv.caixa.height}): ${incoerenteComASua}`, rect)
+          continue
+        }
+        desenhada = { ...receita, desenho: { ...receita.desenho, pathData: pathDasCantoneiras((dv.bracoPx / rect.width) * 100, (dv.bracoPx / rect.height) * 100) }, derivacao: { ...dv, caixa: { width: rect.width, height: rect.height } } }
+      }
+      const incoerente = incoerenciaDoDesenho(declarado.braco, desenhada, rect, W)
       if (incoerente) {
         falhar(`o desenho do acento (${rotulo(rect)}) não é o do elemento: ${incoerente}`, rect)
         continue
       }
       const fora = rect.x < area.x - TOLERANCIA_PX || rect.y < area.y - TOLERANCIA_PX || rect.x + rect.width > area.x + area.width + TOLERANCIA_PX || rect.y + rect.height > area.y + area.height + TOLERANCIA_PX
-      const ocupa = ocupacaoDoAcento(receita, rect)
+      const ocupa = ocupacaoDoAcento(desenhada, rect)
       const tocados = args.obstaculos.filter((o) => ocupa.some((r) => intersecta(r, o.rect))).map((o) => o.id)
       if (fora) falhar(`o acento (${rotulo(rect)}) sai da área segura do projeto (${rotulo({ x: Math.round(area.x), y: Math.round(area.y), width: Math.round(area.width), height: Math.round(area.height) })})`, rect)
       else if (tocados.length > 0) falhar(`um braço do acento (${rotulo(rect)}) encosta em ${tocados.join(', ')}`, rect)
-      else acentos.push({ receita, rect })
+      else acentos.push({ receita: desenhada, rect })
       continue
     }
     const posRef = geo.papeis[receita.presoA]
@@ -512,17 +532,22 @@ export function posicionarAcentos(args: {
       falhar(`o papel "${receita.presoA}", a que o acento se prende, não está na peça`, null)
       continue
     }
+    // Na margem da marca, a referência do papel (como na materialização) e a caixa do elemento seguem o piso: o vão
+    // entre as duas é o do catálogo, e o braço de cima da moldura (#2) pousa na margem. Vale também para o fio por item.
+    const Rm = naMargem({ x: posRef.referencia.x * W, y: posRef.referencia.y * H, width: posRef.referencia.w * W, height: posRef.referencia.h * H }, 'texto')
+    const Em = naMargem({ x: caixa.x * W, y: caixa.y * H, width: caixa.w * W, height: caixa.h * H }, 'caixa')
     if (declarado.porItem) {
       const itens = args.itens?.[receita.presoA] ?? []
       if (itens.length === 0) {
         falhar(`a lista "${receita.presoA}", a cujos itens o fio se prende, não tem itens na peça`, null)
         continue
       }
-      const R = posRef.referencia
-      const vaoAcima = (R.y - (caixa.y + caixa.h)) * H
-      const largura = caixa.w * W
-      const altura = Math.max(caixa.h * H, receita.desenho.strokeWidth ?? 1)
-      const x = alinha === 'esquerda' ? P.x + PADDING_DE_DESENHO + (caixa.x - R.x) * W : alinha === 'direita' ? P.x + P.width - PADDING_DE_DESENHO - ((R.x + R.w) - (caixa.x + caixa.w)) * W - largura : P.x + P.width / 2 + (caixa.x + caixa.w / 2 - (R.x + R.w / 2)) * W - largura / 2
+      // #15: o fio de cada item com a largura da caixa do elemento — na margem da marca (30/10/2026), a caixa mapeada
+      // como a coluna da lista (revisão do Codex, P2: antes ficava com os 886 px do catálogo e saía do piso em 96).
+      const vaoAcima = Rm.y - (Em.y + Em.height)
+      const largura = Em.width
+      const altura = Math.max(Em.height, receita.desenho.strokeWidth ?? 1)
+      const x = alinha === 'esquerda' ? P.x + PADDING_DE_DESENHO + (Em.x - Rm.x) : alinha === 'direita' ? P.x + P.width - PADDING_DE_DESENHO - (Rm.x + Rm.width - (Em.x + Em.width)) - largura : P.x + P.width / 2 + (Em.x + Em.width / 2 - (Rm.x + Rm.width / 2)) - largura / 2
       itens.forEach((it, k) => {
         item = k + 1
         const rect: RetanguloPx = { x: Math.round(x), y: Math.round(it.y - vaoAcima - altura), width: Math.round(largura), height: Math.round(altura) }
@@ -535,10 +560,6 @@ export function posicionarAcentos(args: {
       item = undefined
       continue
     }
-    // Na margem da marca, a referência do papel (como na materialização) e a caixa do elemento seguem o piso: o vão
-    // entre as duas é o do catálogo, e o braço de cima da moldura (#2) pousa na margem.
-    const Rm = naMargem({ x: posRef.referencia.x * W, y: posRef.referencia.y * H, width: posRef.referencia.w * W, height: posRef.referencia.h * H }, 'texto')
-    const Em = naMargem({ x: caixa.x * W, y: caixa.y * H, width: caixa.w * W, height: caixa.h * H }, 'caixa')
     const R = { x: Rm.x, y: Rm.y, w: Rm.width, h: Rm.height }
     const E = { x: Em.x, y: Em.y, w: Em.width, h: Em.height }
     // A espessura da linha não some num fio de 4 px: a caixa tem pelo menos o traço.

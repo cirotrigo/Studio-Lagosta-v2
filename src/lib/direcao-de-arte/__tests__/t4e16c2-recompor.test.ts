@@ -155,7 +155,7 @@ describe.skipIf(!fontesNoDisco())('#16@2 · recomposição real da Generation', 
     expect(entrada.fieldValues.spec.arquetipo).toMatchObject({ id: ID_CONVITE, versao: 2 })
     const nascida = entrada.layers as Layer[]
     const gravada = entrada.fieldValues.composicao.arquetipo.acentos[0]
-    expect([gravada.desenho.pathData, gravada.derivacao]).toEqual([PATH_STORY, { regra: 'bracos-iguais', bracoPx: 130 }])
+    expect([gravada.desenho.pathData, gravada.derivacao]).toEqual([PATH_STORY, { regra: 'bracos-iguais', bracoPx: 130, caixa: { width: 896, height: 1508 } }])
     const variante = entrada.fieldValues.composicao.arquetipo.buscaEspacial.escolha.logo
     const asset = SHAPES_LIBRARY.find((a) => a.id === 'cantoneiras')!
     try {
@@ -179,6 +179,25 @@ describe.skipIf(!fontesNoDisco())('#16@2 · recomposição real da Generation', 
     expect(await pixel(banco.pngs[0], c.x + 129, c.y)).not.toBe(CLARO)
     expect(await pixel(banco.pngs[0], c.x + 129, c.y)).not.toBe('#C0392B')
     expect(await pixel(banco.pngs[0], c.x + 140, c.y)).toBe(CLARO)
+  }, 120_000)
+
+  it('RG-1b (30/10/2026, revisão do Codex): a marca muda a margem depois de a peça nascer → a moldura segue o piso e o path é re-derivado pela MESMA regra e braço congelados', async () => {
+    await montar({ fundoClaro: CLARO, destaque: { fill: DOURADO }, geometria: { story: { margemH: 64 } } }, '#F2F2F2')
+    const entrada = await nascerEEditar(trocarApoio)
+    const gravada = entrada.fieldValues.composicao.arquetipo.acentos[0]
+    expect(gravada.derivacao).toEqual({ regra: 'bracos-iguais', bracoPx: 130, caixa: { width: 952, height: 1508 } })
+    const nascida = porId(entrada.layers as Layer[], 'acento-cantoneiras')
+    expect(caixa(nascida)).toEqual({ x: 64, y: 188, w: 952, h: 1508 })
+    // A marca afrouxa a margem para 48: a caixa da moldura cresce para 984; o path congelado (130/952) não vale mais nela.
+    cenario.atual = { ...cenario.atual!, projeto: { ...cenario.atual!.projeto, assinatura: { fundoClaro: CLARO, destaque: { fill: DOURADO }, geometria: { story: { margemH: 48 } } } } }
+    const r = await recomporPaginaDefasada({ pageId: 'p9' })
+    expect(r.recomposta).toBe(true)
+    const depois = porId(banco.pagina!.layers as Layer[], 'acento-cantoneiras')
+    expect(caixa(depois)).toEqual({ x: 48, y: 188, w: 984, h: 1508 })
+    expect((depois.metadata as any).compositor.acento.derivacao).toEqual({ regra: 'bracos-iguais', bracoPx: 130, caixa: { width: 984, height: 1508 } })
+    // Os braços continuam de 130 px nos dois eixos: 130/984 e 130/1508 (não 130/952 esticado).
+    expect((depois.style as any).pathData).toMatch(/^M0 8\.6207 L0 0 L13\.2114 0 /)
+    expect(porId(banco.pagina!.layers as Layer[], 'apoio').content).toBe('Menu degustação')
   }, 120_000)
 
   it('RG-2: @1 recomposto com o @2 publicado continua C1 — path do asset, ocupação 226 × 379, impressão do @1', async () => {

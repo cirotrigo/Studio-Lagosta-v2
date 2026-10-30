@@ -107,15 +107,20 @@ export const QUADRO_DO_CATALOGO = {
   story: { lateral: 0.085, topo: 0.12, base: 0.12 },
   feed: { lateral: 0.085, topo: 0.11, base: 0.08 },
 } as const
-/** A faixa (px) além do quadro em que uma borda ainda conta como "na margem" (as logos do topo, as zonas, os fios do rodapé). */
-export const FAIXA_DA_MARGEM = 24
+/**
+ * A faixa (px) além do quadro em que uma borda ainda conta como "na margem": lateral 24 (as zonas em 108 dos layouts
+ * centrados entram; a manchete centrada em 129,6 não); vertical 60 (os rodapés mais recuados do catálogo — o serviço
+ * do #4 no Feed a 162 px da base, a pílula do #5/#16 a 148,5, a chamada do #16 a 261 no Story — entram e guardam o
+ * recuo; a manchete em 297,6 no Story e o pré do #9 em 216 no Feed não entram).
+ */
+export const FAIXA_DA_MARGEM = { lateral: 24, vertical: 60 } as const
 const EPSILON = 1e-6
 /** O modo da margem da peça: `'marca'` = a margem da marca É a margem (29/10/2026). Ausente = opção A (só recolhe). */
 export type MargemDaPeca = 'marca'
 
 /**
  * A MARGEM DA MARCA É A MARGEM (29/10/2026, decisão do Ciro depois da reconciliação das assinaturas): toda borda de uma
- * caixa do catálogo que está na faixa da margem (até `FAIXA_DA_MARGEM` px além do quadro) passa a ser a borda do piso
+ * caixa do catálogo que está na faixa da margem (até `FAIXA_DA_MARGEM` além do quadro: 24 px na lateral, 60 na vertical) passa a ser a borda do piso
  * do projeto, nos dois sentidos — piso mais folgado afasta o texto para a margem nova, piso mais apertado recolhe
  * (o que a opção A já fazia). O que a borda tinha de recuo além do quadro ela guarda (o serviço em pílula do #16 fica
  * 19 px acima da base). Bordas de dentro (a coluna de um papel, o miolo de um layout centrado) não mexem.
@@ -127,23 +132,23 @@ export type MargemDaPeca = 'marca'
  */
 export function naMargemDaMarca(r: RetanguloPx, formato: FormatoDoArquetipo, canvas: { width: number; height: number }, geometria: GeometriaEfetiva, modo: 'texto' | 'logo' | 'caixa'): RetanguloPx {
   const q = QUADRO_DO_CATALOGO[formato]
-  const borda = (d: number, quadro: number, piso: number) => {
-    if (d > quadro + FAIXA_DA_MARGEM) return d
+  const borda = (d: number, quadro: number, piso: number, faixa: number) => {
+    if (d > quadro + faixa) return d
     const recuo = d - quadro
     const novo = piso + (recuo > EPSILON ? recuo : 0)
     return Math.abs(novo - d) <= TOLERANCIA_PX ? d : novo
   }
-  const eixo = (a0: number, a1: number, lado: number, quadro0: number, quadro1: number, piso0: number, piso1: number, translada: boolean): [number, number] => {
+  const eixo = (a0: number, a1: number, lado: number, quadro0: number, quadro1: number, piso0: number, piso1: number, faixa: number, translada: boolean): [number, number] => {
     // `lado − (lado − a1)` não devolve a1 exato em ponto flutuante: "mexeu" é mais que 1e-6 px.
-    const n0 = borda(a0, quadro0, piso0)
-    const n1 = lado - borda(lado - a1, quadro1, piso1)
+    const n0 = borda(a0, quadro0, piso0, faixa)
+    const n1 = lado - borda(lado - a1, quadro1, piso1, faixa)
     const m0 = Math.abs(n0 - a0) > EPSILON, m1 = Math.abs(n1 - a1) > EPSILON
     if (!m0 && !m1) return [a0, a1]
     if (translada && m0 !== m1) return m0 ? [n0, n0 + (a1 - a0)] : [n1 - (a1 - a0), n1]
     return [m0 ? n0 : a0, m1 ? n1 : a1]
   }
-  const [x0, x1] = eixo(r.x, r.x + r.width, canvas.width, q.lateral * canvas.width, q.lateral * canvas.width, geometria.margemH, geometria.margemH, modo === 'logo')
-  const [y0, y1] = eixo(r.y, r.y + r.height, canvas.height, q.topo * canvas.height, q.base * canvas.height, geometria.safeTopo, geometria.safeRodape, modo !== 'caixa')
+  const [x0, x1] = eixo(r.x, r.x + r.width, canvas.width, q.lateral * canvas.width, q.lateral * canvas.width, geometria.margemH, geometria.margemH, FAIXA_DA_MARGEM.lateral, modo === 'logo')
+  const [y0, y1] = eixo(r.y, r.y + r.height, canvas.height, q.topo * canvas.height, q.base * canvas.height, geometria.safeTopo, geometria.safeRodape, FAIXA_DA_MARGEM.vertical, modo !== 'caixa')
   return x0 === r.x && y0 === r.y && x1 === r.x + r.width && y1 === r.y + r.height ? r : { x: x0, y: y0, width: x1 - x0, height: y1 - y0 }
 }
 

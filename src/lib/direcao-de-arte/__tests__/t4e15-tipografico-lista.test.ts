@@ -82,6 +82,23 @@ const fios = (r: ResultadoDaComposicao) => r.layers.filter((l) => (l.metadata as
 const itens = (r: ResultadoDaComposicao) => ['apoio', 'apoio-2', 'apoio-3'].map((id) => camada(r, id))
 
 describe.skipIf(!fontesNoDisco())('#15 · minimal-tipografico-lista no compositor real, fontes reais', () => {
+  it('na margem da marca (30/10/2026, revisão do Codex): o fio de cada item segue a coluna da lista — margem 64 alarga, 96 recolhe, nunca sai do piso', async () => {
+    for (const [margemH, x0, direita] of [[64, 64, 1005], [96, 96, 973]] as const) {
+      await montar(`l15-margem-${margemH}`, { fundoClaro: CLARO, geometria: { story: { margemH } } })
+      const { r } = await compor(spec15(`l15-margem-${margemH}`, { formato: 'story' }))
+      const [i1] = itens(r)
+      expect(i1.position.x).toBe(x0)
+      const f = fios(r)
+      expect(f).toHaveLength(3)
+      for (const fio of f) {
+        expect(fio.position.x).toBe(x0 + 6)
+        // A caixa do fio do catálogo (91,8 … 977,4) na margem da marca: a direita guarda o recuo de 10,8 px além do quadro.
+        expect(Math.abs(fio.position.x + fio.size.width - (direita + 6))).toBeLessThanOrEqual(1)
+        expect(fio.position.x + fio.size.width).toBeLessThanOrEqual(1080 - margemH + 6.5)
+      }
+    }
+  }, 120_000)
+
   it('as fontes REAIS estão no canvas e o medidor é o do servidor (Georgia ≠ fallback)', async () => {
     const { medir, registradas } = await medidorReal()
     expect(registradas.sort()).toEqual(['Georgia', 'Georgia Italica', 'Montserrat'])

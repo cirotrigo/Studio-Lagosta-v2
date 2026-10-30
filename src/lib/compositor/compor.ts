@@ -344,6 +344,13 @@ export interface OpcoesDeComposicao {
    */
   acentosCongelados?: AcentoCongelado[]
   /**
+   * Interno (recomposição, 30/10/2026): a MARGEM com que a peça existente foi composta — `'marca'` (a margem da marca é
+   * a margem) ou `null` (peça de antes da regra: opção A). Vale mesmo quando a escolha espacial gravada não é
+   * reproduzida (foto trocada numa peça do T1a): a identidade geométrica é da peça, não da foto. Ausente = deriva da
+   * `escolhaEspacial` (reprodução) ou é peça nova (`'marca'`).
+   */
+  margemDaPeca?: MargemDaPeca | null
+  /**
    * Interno (#9): a receita da máscara que a peça GRAVOU (`composicao.arquetipo.foto.mascara`), já conferida pelo
    * leitor da recomposição (`mascaraCongelada`). Com ela, a `bg-foto` desenha o path GRAVADO (nunca rederivado) e a
    * fração do assunto é medida com o raio/caixa dela. Ignorada no arquétipo sem máscara. Não vem da spec nem do MCP.
@@ -873,7 +880,13 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   // A MARGEM DA MARCA (29/10/2026): a peça nova compõe com `'marca'` (referências e zonas de borda no piso do projeto)
   // e grava o modo na escolha espacial; a reprodução usa o que a peça gravou — a de antes da regra (sem `margem`) fica
   // na opção A, como nasceu. Lido do pedido bruto, como a pilha: a identidade é da peça, não da foto.
-  const margemDaPeca: MargemDaPeca | undefined = arq ? (opcoes.escolhaEspacial ? (opcoes.escolhaEspacial.modo === MODO_BUSCA_ESPACIAL ? opcoes.escolhaEspacial.margem : undefined) : 'marca') : undefined
+  const margemDaPeca: MargemDaPeca | undefined = !arq
+    ? undefined
+    : opcoes.margemDaPeca !== undefined
+      ? (opcoes.margemDaPeca ?? undefined)
+      : opcoes.escolhaEspacial
+        ? (opcoes.escolhaEspacial.modo === MODO_BUSCA_ESPACIAL ? opcoes.escolhaEspacial.margem : undefined)
+        : 'marca'
   const caixasArq = arq ? caixasMaximas(arq.definicao, arq.formato, canvas, pisoArq!, margemDaPeca) : null
   const listasArq = arq ? papeisDeLista(arq.definicao) : null
   const escalaDoFormato = assinatura.origem.formatoDaPagina === spec.formato ? 1 : geo.escalaDeFonte

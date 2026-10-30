@@ -249,6 +249,31 @@ describe.skipIf(!fontesNoDisco())('#8 · recomposição real da Generation', () 
     expect(geometria(porId(banco.pagina!.layers as Layer[], 'bg-foto'))).toEqual({ x: 0, y: 0, w: 1080, h: 1152, corte: 'center-middle' })
   }, 120_000)
 
+  it('G-R5b (30/10/2026, revisão do Codex): peça de ANTES da margem da marca (T1a, na referência) com foto trocada → a busca nova nasce na opção A, sem `margem`; a peça nova guarda `margem: "marca"`', async () => {
+    await montar()
+    const nova = await fotoDoCenario8({ width: 1080, height: 1350 }, { assunto: [0.4, 0.6] })
+    const entrada = await nascerEEditar((l) => (l.id === 'bg-foto' ? { ...l, fileUrl: dataUrl(nova) } : trocarApoio(l)))
+    // A peça nova grava a margem da marca.
+    expect(entrada.fieldValues.composicao.arquetipo.buscaEspacial.escolha.margem).toBe('marca')
+    // A peça ANTIGA do T1a: posição na referência, sem busca gravada e sem `margem` — a troca de foto anula a escolha
+    // (a busca roda de novo) mas NÃO a identidade geométrica: ela continua na opção A.
+    const fv = banco.generations[0].fieldValues as Record<string, any>
+    fv.composicao = { ...fv.composicao, arquetipo: { ...fv.composicao.arquetipo, modo: 'referencia', buscaEspacial: undefined } }
+    cenario.atual = { ...cenario.atual!, foto: { url: dataUrl(nova), bytes: nova } }
+    const r = await recomporPaginaDefasada({ pageId: 'p9' })
+    expect(r.recomposta).toBe(true)
+    expect(r.avisos.join(' ')).toMatch(/A foto da peça mudou/)
+    // A página recomposta pousa onde a opção A pousa (a peça do T1a reproduz a referência): a MESMA composição com
+    // `margemDaPeca: null` — e NÃO onde a margem da marca pousaria (o serviço do #8 na base do piso).
+    const pos = (l: Layer | undefined) => (l ? [l.position.x, l.position.y] : null)
+    const headline = porId(banco.pagina!.layers as Layer[], 'headline')
+    const servico = porId(banco.pagina!.layers as Layer[], 'servico')
+    const comoAntes = await comporPeca(specRecompor(), { somenteAvaliar: true, margemDaPeca: null, escolhaEspacial: { modo: 'referencia' } })
+    const naMarca = await comporPeca(specRecompor(), { somenteAvaliar: true, margemDaPeca: 'marca', escolhaEspacial: { modo: 'referencia' } })
+    expect([pos(headline), pos(servico)]).toEqual([pos(comoAntes.layers.find((l) => l.id === 'headline')), pos(comoAntes.layers.find((l) => l.id === 'servico'))])
+    expect(pos(servico)).not.toEqual(pos(naMarca.layers.find((l) => l.id === 'servico')))
+  }, 120_000)
+
   it('G-R6: a caixa da foto movida ou o enquadramento mudado à mão → ajuste manual detectado, re-render como está, sem recompor', async () => {
     for (const mexer of [(l: Layer): Layer => ({ ...l, position: { x: 0, y: 40 } }), (l: Layer): Layer => ({ ...l, style: { ...l.style, cropPosition: 'center-top' } })]) {
       await montar()
