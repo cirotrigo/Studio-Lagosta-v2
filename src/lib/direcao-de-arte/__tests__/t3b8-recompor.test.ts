@@ -271,10 +271,18 @@ describe.skipIf(!fontesNoDisco())('#8 · recomposição real da Generation', () 
     const pos = (l: Layer | undefined) => (l ? [l.position.x, l.position.y] : null)
     const headline = porId(banco.pagina!.layers as Layer[], 'headline')
     const servico = porId(banco.pagina!.layers as Layer[], 'servico')
-    const comoAntes = await comporPeca(specRecompor(), { somenteAvaliar: true, margemDaPeca: null })
+    // ... e sem a PILHA da marca (30/10/2026, fase seguinte à margem): a peça de antes não empilhava, e a foto trocada
+    // não muda isso — a escolha regravada pela busca nova sai sem `pilha` e sem `margem`, como a peça nasceu.
+    const comoAntes = await comporPeca(specRecompor(), { somenteAvaliar: true, margemDaPeca: null, pilhaDaPeca: null })
     const naMarca = await comporPeca(specRecompor(), { somenteAvaliar: true, margemDaPeca: 'marca' })
+    const naPilha = await comporPeca(specRecompor(), { somenteAvaliar: true, margemDaPeca: null })
     expect([pos(headline), pos(servico)]).toEqual([pos(comoAntes.layers.find((l) => l.id === 'headline')), pos(comoAntes.layers.find((l) => l.id === 'servico'))])
     expect(pos(servico)).not.toEqual(pos(naMarca.layers.find((l) => l.id === 'servico')))
+    expect([pos(headline), pos(servico)]).not.toEqual([pos(naPilha.layers.find((l) => l.id === 'headline')), pos(naPilha.layers.find((l) => l.id === 'servico'))])
+    // O patch que a recomposição mesclou na arte (o JSON do `UPDATE … || $json::jsonb`): a escolha nova, sem os dois modos.
+    const patch = banco.sql.map((v) => (typeof v[0] === 'string' ? JSON.parse(v[0]) : null)).find((j) => j?.composicao?.arquetipo?.buscaEspacial)
+    const regravada = patch.composicao.arquetipo.buscaEspacial.escolha
+    expect([regravada.modo, regravada.pilha, regravada.margem]).toEqual(['busca-espacial-v1', undefined, undefined])
   }, 120_000)
 
   it('G-R6: a caixa da foto movida ou o enquadramento mudado à mão → ajuste manual detectado, re-render como está, sem recompor', async () => {

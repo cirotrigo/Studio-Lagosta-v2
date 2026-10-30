@@ -266,14 +266,14 @@ describe('CP2B · a recomposição reproduz a escolha espacial gravada', () => {
     await recomporPaginaDefasada({ pageId: 'p9' })
     // T1b: a peça de antes dos acentos não gravou receita nenhuma — recompõe SEM acento (`[]`), nunca pelo catálogo de hoje.
     // 30/10/2026: a margem da peça EXISTENTE vai à parte da escolha (`null` = peça de antes da regra, opção A).
-    expect(segundoArgumento()).toEqual({ provar: true, escolhaEspacial: escolha, margemDaPeca: null, acentosCongelados: [] })
+    expect(segundoArgumento()).toEqual({ provar: true, escolhaEspacial: escolha, margemDaPeca: null, pilhaDaPeca: null, acentosCongelados: [] })
     expect(banco.posts.get('post-carrossel')!.mediaUrls).toEqual([CAPA, 'https://blob.test/arte-rapida/8/p9-nova.png'])
   })
 
   it('peça do T1a: o comporPeca recebe { modo: referencia }', async () => {
     prepararPeca(specGravada(V1))
     await recomporPaginaDefasada({ pageId: 'p9' })
-    expect(segundoArgumento()).toEqual({ provar: true, escolhaEspacial: { modo: 'referencia' }, margemDaPeca: null, acentosCongelados: [] })
+    expect(segundoArgumento()).toEqual({ provar: true, escolhaEspacial: { modo: 'referencia' }, margemDaPeca: null, pilhaDaPeca: null, acentosCongelados: [] })
   })
 
   const FIO = {
@@ -292,7 +292,7 @@ describe('CP2B · a recomposição reproduz a escolha espacial gravada', () => {
     prepararPeca(specGravada(V1))
     comArquetipoGravado({ ...V1, modo: 'busca-espacial-v1', buscaEspacial: { escolha }, acentos: [{ ...FIO, camada: 'acento-fio', rect: { x: 98, y: 1, width: 2, height: 6 } }] })
     await recomporPaginaDefasada({ pageId: 'p9' })
-    expect(segundoArgumento()).toEqual({ provar: true, escolhaEspacial: escolha, margemDaPeca: null, acentosCongelados: [FIO] })
+    expect(segundoArgumento()).toEqual({ provar: true, escolhaEspacial: escolha, margemDaPeca: null, pilhaDaPeca: null, acentosCongelados: [FIO] })
   })
 
   it('T1b: acento gravado malformado recusa ANTES de compor, como a escolha ilegível (nunca redesenha pelo catálogo de hoje)', async () => {
