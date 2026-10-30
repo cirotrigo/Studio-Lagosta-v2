@@ -852,10 +852,9 @@ describe('P9 — recuperação', () => {
   }
 
   // 29/10/2026: com a margem do revisor em 160 na base, o revisor passa a propor `mover` o serviço (1728–1820) para
-  // cima de ≈ 62 px — e a caixa sai da janela fiel `servico-v1` (1712–1837) da fixture: a medida do 2º ciclo não é
-  // comprovável. Estender a janela exige regenerar a fixture a partir dos exports locais da peça (não estão no repo;
-  // leitura em produção com o ok do Ciro). Pendência registrada no relatório das margens de 29/10.
-  it.skip('em até 2 ciclos com os ajustes do próprio revisor, a peça termina apta ou com REVISAO_HUMANA_NECESSARIA — a fixture do piloto: escalada tipada (o serviço sem leitura não tem correção executável) [PENDENTE: janela fiel do serviço, margens de 29/10]', async () => {
+  // cima de ≈ 62 px. A janela fiel `servico-v1` da fixture foi ampliada para 1632–1837 (fixture regenerada em 29/10 a
+  // partir dos registros e da foto lidos em produção, com o ok do Ciro) para o 2º ciclo ser medido.
+  it('em até 2 ciclos com os ajustes do próprio revisor, a peça termina apta ou com REVISAO_HUMANA_NECESSARIA — a fixture do piloto: escalada tipada (o serviço sem leitura não tem correção executável)', async () => {
     exigirMedidaFiel(banco.pagina.layers)
     const r = await ciclos()
     expect(r.apta || r.escalada, JSON.stringify({ gate: r.gate.resultado, motivos: r.gate.motivos.map((m) => `${m.regra}:${m.codigo}`) })).toBe(true)

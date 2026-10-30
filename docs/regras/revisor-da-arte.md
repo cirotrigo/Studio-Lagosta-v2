@@ -1377,11 +1377,11 @@ de régua em `docs/research/canva-guias-e-margens-2026-10/teste-de-regua/` e pod
   `--gravar` a escrita é ATÔMICA (`updateMany` com `assinatura: { equals: <o que foi lido> }`) — uma edição no meio
   aborta aquele projeto em vez de apagá-la. Os kits de `scripts/lib/kits-de-assinatura.ts` (o padrão da casa) e a logo
   de `criar-pagina-de-assinatura.ts` passaram a ler `GEOMETRIA_PADRAO`: rodar o script de novo não regrava 92/188/224.
-  Os kits POR MARCA (Real 96/250/350, Quintal 92/200/172…) continuam como estão até a reconciliação.
+  Os kits POR MARCA (Real 96/250/350, Quintal 92/200/172…) foram reconciliados em 29/10 (10 projetos, ok do Ciro no chat).
 - **Limite do classificador sem tags** (Codex): um Story gravado como 1080×1600 (razão 1,48 < 1,6) recebe os limites
   do Feed no revisor. O gate já recusa comprovar o piso fora do canônico; avisos e propostas do revisor é que mudam.
 - **Cobertura que mudou de natureza**: E5 passou a provar a barreira do CP4 (a recusa transacional do gate sobre um
-  DRAFT existente ficou sem caso — substituto pendente); P9 pulado é cobertura pendente, não prova de recuperação.
+  DRAFT existente ficou sem caso — substituto pendente); P9 voltou a rodar em 29/10 com a fixture regenerada (abaixo).
 - 🔴 **`VERSAO_DAS_REGRAS` subiu para `revisao-v2` e `VERSAO_DO_GATE` para `gate-v5`** (a impressão digital das regras
   mudou com os números): `revisao-revisao-v2.json` e `gate-gate-v5.json` gerados com `IMPRESSAO_DIGITAL=gravar`; os da
   v1/v4 continuam imutáveis (`scripts/validar-impressao-digital.ts`). Consequência da decisão 9.13: **os registros de
@@ -1392,7 +1392,15 @@ de régua em `docs/research/canva-guias-e-margens-2026-10/teste-de-regua/` e pod
   (CP4.2a) descem o bloco 24 px antes, para a margem não decidir por eles. E2b: o revisor agora também acusa o apoio
   no piso e propõe o `mover` (margem = piso). E5: a barreira que preserva o DRAFT passou a ser o CP4
   (`fora-da-area-segura`), não o gate. t1b: a logo sintética "alta" cresceu de 625 para 656 px para seguir alcançando
-  o spark com o topo em 160. **P9 ficou `it.skip`**: o `mover` do serviço proposto pelo revisor tira a caixa da
-  janela fiel `servico-v1` da fixture; estender a janela exige regenerar a fixture a partir dos exports locais da
-  peça (não estão no repo — leitura em produção com o ok do Ciro).
+  o spark com o topo em 160. **P9**: o `mover` do serviço proposto pelo revisor tirava a caixa da janela fiel
+  `servico-v1` da fixture (ficou `it.skip` até a fixture ser regenerada — abaixo).
+- **Fixture do piloto regenerada em 29/10 (ok do Ciro)**: os exports de 13/10 não existiam mais em disco; os mesmos
+  registros (Generations v1/v2, Page, página de assinatura) e a foto e as logos foram lidos de novo em produção, só
+  leitura — a Page não mudou desde 13/10 e a assinatura desde 03/09; `Project.assinatura` entrou como o snapshot de
+  13/10 da própria fixture, não o reconciliado. O gerador reproduziu `peca.json`, `assinatura.json` e `marca.json`
+  byte a byte (o monograma é a cópia `isProjectLogo`, 400×398 — as outras cópias do Blob têm 2645×2626 e tinta
+  escura). Só `foto.json` mudou: a janela `servico-v1` cresceu 80 px para cima (1712–1837 → 1632–1837), conferida a
+  olho (balcão e um frasco, nenhum rosto). A área das janelas foi de 18,2 % para 20,0 % da foto e o teto do guarda de
+  anonimização (`piloto-fixture.test.ts`) subiu de 19 % para 21 %. P9 voltou a `it()` e passa (41 verdes no
+  `piloto-ciclo`; o pulado restante é o `hojeViola` do CP2). `piloto-fixture`, `piloto-compositor` e `piloto-portao` verdes.
 - **Quadrado não foi decidido**: continua 92/120/104 até o Ciro dizer.
