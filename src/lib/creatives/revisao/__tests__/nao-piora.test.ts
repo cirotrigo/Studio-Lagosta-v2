@@ -41,7 +41,7 @@ function relatorio(achados: AchadoDaRevisao[], cobertura: Partial<RelatorioDaRev
     'tratamento-piorou-leitura': { estado: 'avaliada' },
     visao: { estado: 'nao-avaliada', motivo: 'sem visão' },
   }
-  return { versaoDasRegras: 'revisao-v1', achados, ajustes: [], cobertura: { ...base, ...cobertura }, resumo: 'sintético' }
+  return { versaoDasRegras: 'revisao-v2', achados, ajustes: [], cobertura: { ...base, ...cobertura }, resumo: 'sintético' }
 }
 
 const texto = (id: string, y = 300): Layer => ({ id, name: id, type: 'text', visible: true, locked: false, order: 1, content: id, position: { x: 92, y }, size: { width: 896, height: 100 }, style: { fontSize: 60 } }) as Layer

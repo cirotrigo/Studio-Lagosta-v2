@@ -1005,3 +1005,192 @@ quadradas (4×5)"), versão 1. Os 14 anteriores não mudam (ids, versões, objet
   `fila-de-medidas.test.ts`, os casos Q2 de `secao-grades`, `barra-da-grade` (handler real do Transformer, nós
   dublados), `ajustes`, `ajustar-grade-no-editor`, `inserir-grade-no-editor`, `persistencia-da-grade` e
   `paridade-da-grade` (Story 28 e Feed 20 com diferença 0 por canal no Node).
+
+## Linhas-guia e margens, L0: uma fonte só para as margens do editor (29/10/2026 — PR aberto, sem release)
+
+Instrução do Ciro de 29/10/2026 ("Linhas-guia e margens no editor do Studio"); pesquisa do Canva em
+`docs/research/canva-guias-e-margens-2026-10/`. Havia três conjuntos de margem que importavam e nenhum conversava: o
+editor desenhava, encaixava e alinhava em 70/120/100 (`CANVAS_MARGIN`), o compositor compunha em 92/188/224 por marca
+(`NUMEROS_PADRAO.geometria` + `Project.assinatura`) e o gate reprovava texto acima de 188/224. Quem encostava o texto
+na guia azul do Story (y = 120) fazia uma arte que o gate reprovava.
+
+- **`margensDoEditor({ formato, assinatura, largura, altura })`** (`src/lib/canvas-margin.ts`) é a fonte única.
+  Devolve `interface` (`FaixasDaInterface`: ALTURA da faixa de cima e de baixo; `null` fora do Story), `marca`
+  (`LinhasDaMarca`: as quatro LINHAS em COORDENADAS da página, como `limitesDoEditor` do revisor — `base` e `direita`
+  são y e x, não distâncias) e `origem` (`marca` quando `Project.assinatura.geometria[formato]` trouxe ao menos uma
+  das três margens válida, senão `padrao`). Dimensão inválida (NaN, Infinity, ≤ 0) cai na canônica de `DIMENSOES`:
+  as quatro linhas saem sempre finitas (Codex R1, achado P2).
+- **Duas camadas, nunca uma** (decisão do owner de 13/10/2026): a faixa da interface vem de `interfaceDoStory`
+  (piso 188/224, nunca afrouxa; no L0 sem configuração do cliente — o L5 liga) e a margem da marca vem de
+  `pisoDoProjetoDe`, a MESMA mesclagem do `pisoDoProjeto` do compositor. Nenhuma constante nova com 188, 224 ou 92.
+- 🔴 **A geometria e a mesclagem moram em `compositor/geometria.ts`** (módulo puro: `GEOMETRIA_PADRAO`,
+  `mesclarGeometria`, `pisoDoProjetoDe`); `NUMEROS_PADRAO.geometria` É `GEOMETRIA_PADRAO` e `mesclarNumeros` chama
+  `mesclarGeometria`. O editor lê dali sem puxar halo, gradiente, destaques e logo para o bundle. A equivalência é
+  de VALORES e de identidade (sem JSON só o mapa externo é copiado, como o `mesclarNumeros` antigo). Um teste confere
+  que `pisoDoProjetoDe(x)` é idêntico ao `pisoDoProjeto` de `montarAssinatura` (Real, Wine, Lagosta, vazio, lixo, e
+  com página de assinatura derivando `numeros.geometria`).
+- 🔴 **`interfaceDoStory` e `PISO_DE_INTERFACE_DO_STORY` moram em `revisao/interface-do-story.ts`** (módulo puro);
+  o `gate.ts` reexporta. Importar o gate do `canvas-margin.ts` fechava um ciclo (gate → text-geometry → canvas-margin)
+  e puxaria o revisor inteiro para o bundle do cliente.
+- **Lixo nunca afrouxa**: `NaN`, string e negativo em `Project.assinatura.geometria` caem no padrão e não contam como
+  `origem: 'marca'`. Página fora do canônico escala por `largura / 1080` (as duas camadas), como `text-geometry.ts`.
+- **A máscara do Story (tecla M) é a faixa da interface, não a margem da marca**: uma marca com rodapé 150 compõe
+  DENTRO da faixa e a máscara continua mostrando o que o app cobre. No L0 ela ainda lê `CANVAS_MARGIN` (o padrão do
+  Story, que coincide com o piso); no L1 nasce de `margensDoEditor(...).interface`.
+- **`CANVAS_MARGIN` e `marginsForAxis` delegam** para o padrão do Story de `margensDoEditor` (D1: 92/188/224 no lugar
+  de 70/120/100). Os consumidores do editor (`konva-editor-stage`, `konva-transformer`, `konva-alignment`,
+  `instagram-story-chrome`) mudam de número por tabela; no L1 passam a chamar `margensDoEditor` com o formato e a
+  assinatura da página aberta. Até lá o Feed 4:5 no editor mostra o padrão do Story.
+- 🔴 **Revisor, autofix e `text-geometry` continuam em 70/120/100** pela `MARGEM_LEGADA_DO_REVISOR` (mesmo arquivo),
+  até o L5: mudar o revisor exige medir antes quantas artes agendadas e dos últimos 30 dias mudariam de aviso, e o
+  Ciro confirma no chat. Ninguém novo importa a legada.
+- **Não muda:** `Page.layers`, o render do servidor, o PNG, o vídeo, `render-engine.ts`, o limiar do gate, o app
+  desktop e o `/gerar-criativo`.
+- **Prova:** `src/lib/__tests__/margens-do-editor.test.ts` (30 testes: Story e Feed com o padrão; marca própria;
+  marca mais frouxa que o piso; fora do canônico; dimensões inválidas; `NaN` na assinatura; a delegação;
+  `limitesDoEditor` do revisor em 70/120/100; a reexportação do gate; identidade com `montarAssinatura`).
+
+## Linhas-guia e margens, L1: o editor desenha as duas camadas (29/10/2026 — PR aberto, sem release)
+
+Segundo checkpoint da instrução de 29/10. O editor passa a mostrar e a usar a margem da MARCA da página aberta e, no
+Story, a faixa da interface — as duas de `margensDoEditor` (L0), nada copiado.
+
+- **`useMargensDoEditor(projectId, canvas)`** (`src/hooks/use-margens-do-editor.ts`): lê `Project.assinatura` pelo
+  `useProject` que o editor já carrega e devolve `margensDoEditor(...)` para o formato que o tamanho do canvas diz
+  (`formatoDaPaginaGravada`). Enquanto o projeto não chegou vale o padrão; `origem` diz qual está valendo (o rótulo
+  do overlay mostra "Margem da marca" ou "Margem padrão").
+- **`src/lib/margens-no-editor.ts`** (puro): `retangulosDeEncaixe` (os quatro objetos invisíveis do encaixe ao
+  arrastar), `paradasDeEncaixe` (o snap do redimensionar), `linhasDaMarca` (as azuis), `faixasDaInterface` (as
+  hachuradas, só Story) e `margensDoEixo` (as distâncias do "alinhar"). Uma conversão só para stage, transformer e
+  contexto.
+- **Overlay** na `guides-layer` (continua fora do download, da miniatura, do `exportDesign` e do vídeo): linhas azuis
+  tracejadas com traço e tracejado compensados pelo zoom (`2 / zoom`), rótulo discreto no canto; faixa da interface
+  hachurada (ladrilho 8×8 feito uma vez, `useHachura`) com o rótulo "Interface do Instagram". A faixa liga e desliga
+  com a máscara M; as linhas com R.
+- **Encaixe, alinhar e snap do resize usam a margem da marca**: o stage passa `margens.marca` ao transformer
+  (`margens`), o contexto passa `margensDoEixo(...)` ao `alignToCanvas` (parâmetro novo; sem ele vale o padrão do
+  Story, compatibilidade) e o Feed 4:5 ganha a mesma margem azul.
+- **O chrome do Story nasce da faixa**: `buildStoryChrome(baseHeight, faixa)`; a máscara recebe `faixa` em px da
+  página e devolve à base 1080 pela mesma escala. Sem `faixa`, o padrão de antes.
+- 🔴 **A faixa é a do piso, não a da marca**: uma marca com rodapé 150 (Wine) tem a linha azul em 1770 e a faixa
+  continua 224 — texto e logo dentro da faixa é aviso (L3), nunca bloqueio (D2).
+- **Prova:** `src/lib/__tests__/margens-no-editor.test.ts` (overlay = margensDoEditor em Story padrão, Wine e Feed;
+  encaixe em y = 188 e na direita; Feed encaixa em 120; alinhar pela marca com nós falsos; chrome dentro da faixa).
+  Não prova: Konva montado, o hook com React Query, o clique no editor — isso é a prova visual.
+
+## Linhas-guia e margens, L2: menu "Exibir", preferência por pessoa e atalhos (29/10/2026 — PR aberto, sem release)
+
+Terceiro checkpoint da instrução de 29/10. O que o editor mostra por cima da arte virou uma preferência só, com
+botão, atalho e persistência.
+
+- **`src/lib/exibicao-do-editor.ts`** (puro): `ExibicaoDoEditor` (`margens` R, `interface` M, `bordas` C, `encaixe`),
+  `EXIBICAO_PADRAO` (margens e interface ligadas, bordas desligadas, encaixe ligado — o que o stage já fazia),
+  `lerExibicao` (JSON do localStorage; lixo cai no padrão chave a chave) e `acaoDaTecla`.
+- **`ExibicaoDoEditorProvider` / `useExibicaoDoEditor`** (`src/hooks/use-exibicao-do-editor.tsx`): o padrão de
+  `use-editor-view-mode.tsx` (localStorage `lagosta:editor:exibicao` com try/catch). Mora no shell, ACIMA das páginas:
+  no modo contínuo cada página monta o stage de novo e, com `useState` no stage, R/M/C voltavam ao padrão a cada
+  troca. Sem o provider (stage montado solto, como em teste) o hook devolve um estado local sem persistência.
+- **Menu "Exibir"** (`menu-exibir.tsx`) na barra do editor, nos três modos (normal, agenda, IA): quatro caixas com o
+  atalho ao lado. É o MESMO estado das teclas.
+- 🔴 **R, M e C só valem sozinhas** (`acaoDaTecla`): com Ctrl/Cmd, Alt ou Shift não alternam nada. No Windows
+  `Shift+Alt+C` chegava como `c` e ligava as bordas da página.
+- **Os atalhos fantasma viraram atalhos**: `Shift+Alt+C` e `Shift+Alt+M` eram anunciados em `alignment-toolbar.tsx`
+  e `properties-panel.tsx` sem handler nenhum. Agora fazem o MESMO que os botões "Centralizar no canvas":
+  `alignSelectedToCanvasCenterH/V` (o conjunto vai ao centro preservando o arranjo — `alignSelectedCenterH` alinharia
+  as caixas ENTRE SI e as sobreporia, Codex R1), lidos pelo `code` da tecla (no Mac `Alt+C` produz `ç` em `key`).
+- 🔴 **Menu aberto não dispara atalho** (`alvoIgnoraAtalhos`): o Radix procura o item pela letra digitada sem
+  `preventDefault`, então "M" com o "Exibir" aberto alternava a interface por tabela. Alvo dentro de `role=menu*`,
+  `listbox`, `combobox` ou `dialog` fica de fora, como `input`/`textarea`/`contentEditable`.
+- **Alt segurado** desliga o encaixe enquanto a tecla está presa; soltar devolve a PREFERÊNCIA (antes voltava sempre
+  para ligado). Alt solto fora da janela nunca chega ao `keyup`: a perda de foco (`blur`) solta, qualquer tecla sem
+  Alt e o primeiro `pointerdown` reconciliam pelo próprio evento. Mobile continua sem encaixe; o menu "Exibir" também
+  está no cabeçalho mobile (`compacto`, só o ícone).
+- Ajuda em `layers-help-modal.tsx` (seção "Exibição do canvas") e `docs/KEYBOARD-SHORTCUTS.md`.
+- **Prova:** `src/lib/__tests__/exibicao-do-editor.test.ts` (leitura com lixo e parcial; R/M/C sozinhas; Windows
+  Shift+Alt+C → centrar, não bordas; Mac `ç`/`µ` pelo code; Ctrl/Cmd nunca). Não prova: o menu montado, o localStorage
+  real, a troca de página no contínuo — prova visual.
+
+## Linhas-guia e margens, L3: encaixe melhor e "Trazer para dentro" (29/10/2026 — PR aberto, sem release)
+
+Quarto checkpoint da instrução de 29/10.
+
+- **Encaixe pela seleção inteira** (`caixaDaSelecao`, `retangulosDosOutros` em `margens-no-editor.ts`): com seleção
+  múltipla, a caixa que encaixa é a união das camadas selecionadas VISÍVEIS, deslocada pelo arrasto, e a camada
+  agarrada anda o que a caixa andou. As caixas-alvo ignoram as invisíveis e a própria seleção (antes o grupo grudava
+  na posição antiga dele mesmo). O transformer também ignora as invisíveis nas paradas.
+- **Resize com proporção travada encaixa** (`encaixeProporcional`): foto, logo e elemento com `keepRatio` — o canto
+  arrastado encaixa no eixo em que mais anda e o outro eixo segue a proporção da caixa antiga, com a âncora (o canto
+  oposto) parada. Antes o `boundBoxFunc` pulava o snap com `keepRatio`.
+- 🔴 **"Trazer para dentro" usa a MESMA conta do revisor**: `ajusteParaDentro` (`revisao/para-dentro.ts`, puro) é a
+  regra `fora-da-area-segura` extraída de `regras.ts` (folga 2 px, `ceil(+2)`, "maior que a área" não move). O
+  editor vigia pela CAIXA da camada (sem rotação — limite registrado): texto, logo, forma, ícone e elemento cruzando a
+  margem da marca (`margem`); texto e logo dentro da faixa da interface (`interface`, D2). Foto, vídeo e gradiente
+  passam por baixo de propósito. `avisosDeMargem` só roda com as margens ligadas (R).
+- **Avisa, nunca bloqueia**: contorno tracejado (laranja = margem, vermelho = faixa) na `guides-layer` e um chip HTML
+  por cima do canvas com o botão "Trazer para dentro" — com seleção, age nas selecionadas com aviso; sem seleção, em
+  todas. Um clique = um passo de desfazer (`coalesceKey` por gesto, via `updateLayer`). Camada maior que a área ganha
+  a observação do revisor ("encurte o texto ou reduza a fonte") em vez do botão.
+- **Ajustes da revisão R1 do Codex**: texto e logo no Story são ajustados contra a linha mais apertada entre faixa e
+  margem em cada lado (um clique resolve as duas; na Wine, topo 200 da marca × 188 da faixa); camada TRAVADA avisa
+  mas o botão não a move (`travada`); caixa MAIOR que a área num eixo não ganha dx/dy no editor (o botão oscilava
+  −14 → 94 → −14; a conta do revisor fica como está); com proporção travada só a alça de CANTO usa o encaixe
+  proporcional — a lateral muda um eixo só (recorte da janela da foto) e segue o encaixe de borda (`alcaDeCanto`,
+  pelo `getActiveAnchor()` do Transformer).
+- **Não feito (P1)**: espaçamento igual entre 3 ou mais elementos com a linha e a medida — fica registrado.
+- **Prova:** `src/lib/__tests__/para-dentro.test.ts` (a conta do revisor em 4 casos e a faixa; seleção e invisíveis;
+  encaixe do conjunto em y = 188; resize proporcional nos dois cantos; avisos por tipo). `regras.test.ts` continua
+  verde com a conta extraída. Não prova: o gesto real no Konva, o chip montado — prova visual.
+
+
+## Linhas-guia e margens, L4: réguas e guias manuais, como no Canva (29/10/2026 — PR aberto, sem release)
+
+Quinto checkpoint da instrução de 29/10 (P1). Pesquisa do Canva em `docs/research/canva-guias-e-margens-2026-10/`.
+
+- **`src/lib/guias-manuais.ts`** (puro): `Guia`, `GuiasDaPagina` (guias, ocultas, travadas), `lerGuias` (lixo cai
+  fora guia a guia), `gerarGuias` (colunas e linhas DENTRO da margem da marca — cada coluna com as duas bordas, como
+  o Canva, mas o Canva calcula na página inteira com margem 0 e não sabe de topo ≠ base), `retangulosDasGuias` e
+  `paradasDasGuias` (o encaixe ao arrastar e no resize; vazios quando ocultas), `cairForaDaPagina` (solta de volta na
+  régua = apaga), `marcasDaRegua`/`intervaloDaRegua` (os degraus da régua do desktop, 10/25/50/100/200 pelo zoom).
+- **`useGuiasDaPagina(pageId)`** (`src/hooks/use-guias-da-pagina.tsx`): localStorage `lagosta:editor:guias:<pageId>`
+  com try/catch — por PESSOA e por PÁGINA (D4, v1). Trocar de página relê a chave. A equipe não vê as guias de
+  ninguém; gravar na página exigiria campo novo em `Page` e no zod do PATCH (migração) — não feito.
+- **`ReguasEGuias`** (`reguas-e-guias.tsx`): HTML por cima do stage (fora da `guides-layer` e do export), nos dois
+  modos (embutido: origem 0,0 do slot; clássico: `stage.position()` ouvido por `xChange/yChange/scaleXChange`).
+  Réguas em px do design (canvas 2D, sombreiam a faixa da seleção); a régua de cima cria guia horizontal e a da
+  esquerda cria vertical, com o selo da posição em px durante o arrasto; guia solta fora da página é apagada;
+  travadas não pegam; ocultas somem e deixam de encaixar; o canto das réguas abre o menu (Adicionar guias…,
+  Ocultar/Mostrar, Travar/Destravar, Limpar). "Adicionar guias" = colunas, linhas e espaçamento, com prévia da
+  contagem, dentro da margem da marca.
+- **Encaixe**: `retangulosDasGuias` entra no `otherRects` do arrasto e `paradasDasGuias` nas paradas do resize
+  (prop `guias` do transformer), só com "Réguas e guias" ligado (Shift+R, no menu Exibir; `reguas` na preferência,
+  padrão desligado). Mobile não mostra réguas.
+- **Ajustes da revisão R1 do Codex**: a chave é por PESSOA (id do Clerk) e por página — duas contas no mesmo
+  navegador não dividem guias; sem página ou sem pessoa nada é gravado; toda guia que entra por "Adicionar" ganha id
+  único (`acrescentarGuias`; o id de `gerarGuias` vinha da posição e repetia depois de mover); `pointercancel` e
+  `blur` cancelam o arrasto e só o `pointerId` do gesto conta; teto de 24 colunas/linhas e finitude antes da conta; no
+  modo clássico o overlay é IRMÃO do container do stage (um wrapper novo fazia o `ResizeObserver` do stage medir a si
+  mesmo) e a origem é `container.offsetLeft/Top + stage.position()`.
+- **Não feito**: guias gravadas na página para a equipe (migração — perguntar antes); guia que vai e volta ao mudar o
+  tamanho da página (as posições são absolutas em px).
+- **Prova:** `src/lib/__tests__/guias-manuais.test.ts` (leitura; gerar 2 colunas/3 linhas no Story dentro da margem;
+  encaixe em 283; ocultas não encaixam; apagar fora da página; marcas da régua). Não prova: o arrasto real na
+  tela, o canvas da régua — prova visual.
+
+## Margens de 29/10/2026: os números da casa na fonte única (PR aberto, sem release)
+
+Decisão do owner (29/10/2026), relayada pela sessão-mãe: Story laterais 64 · topo 160 · base 160; Feed 4:5 laterais
+64 · topo 72 · base 72; topo e base IGUAIS. Substituem 92/188/224 e 92/120/104 como padrão de `GEOMETRIA_PADRAO`
+(`compositor/geometria.ts`) e o piso 188/224 de `interface-do-story.ts` vira 160/160. Com a fonte única do L0, o
+editor (`CANVAS_MARGIN`, encaixe, alinhar, máscara M) mostra os números novos sem trabalho extra: Story 64/160/160.
+- No Feed nada cobre a foto aberta; a grade 3:4 do perfil corta ~34 px de cada lado e os 64 cobrem esse corte (D5
+  fica como P1 desligado).
+- 🔴 **Revisor, autofix e `text-geometry` vieram junto** (ver `revisor-da-arte.md`, seção de 29/10): a margem nova
+  do Feed e a lateral 64 ficam abaixo da margem antiga do revisor. `MARGEM_LEGADA_DO_REVISOR` deixou de existir.
+- **Quadrado não foi decidido**: segue 92/120/104.
+- **`Project.assinatura` por marca** (Real Story 96/250/350, Wine 96/200/150, Feed 96/120/100 nas duas) é dado de
+  produção: `scripts/reconciliar-assinatura-2026-10-29.ts` imprime o diff por projeto em SIMULAÇÃO e só grava com
+  `--gravar` depois do ok explícito do Ciro. Até lá o editor mostra o que está cadastrado.
+- **O catálogo dos arquétipos NÃO mudou**: versão publicada é imutável (`catalogo.ts`), a zona de cada arquétipo é
+  RECORTADA pelo piso na materialização e a referência pousa dentro do piso da marca (opção A, PR #270). Com o piso
+  mais folgado (160 < 188) os arquétipos v1 simplesmente não usam a faixa liberada; usar exige publicar `@2`, decisão
+  à parte.

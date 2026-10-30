@@ -8,6 +8,7 @@ Esta fixture é a peça real que a auditoria de direção de arte de 13/10/2026 
 | **Origem** | Page `cmv7brg8c0005ii06rdbe4vc4`, Generation v1 `cmv7bqyvd0002ii06n3iq5ef0` (compositor) e v2 `cmv7bur3d0008ii06nvxat755` (depois de `ajustar-arte`). |
 | **Exportação** | Feita só com leitura (`default_transaction_read_only=on`) mais o download dos arquivos da peça. |
 | **Geração** | `npx tsx scripts/fixtures/gerar-fixture-piloto-direcao-de-arte.ts <exports> <esta pasta>` |
+| **Regeneração** | 29/10/2026, com o ok do Ciro: os mesmos registros e a foto lidos de novo em produção (só leitura; a Page não mudou desde 13/10 e a assinatura desde 03/09; `Project.assinatura` entrou como o snapshot de 13/10, não o reconciliado em 29/10). Só `foto.json` mudou, e só a janela `servico-v1`. |
 
 Os testes **não dependem** de banco, Blob, Drive, rede nem do `projectId` real. A spec usa o projeto `9001`, e as candidatas do véu entram por mock a partir de `marca.json`.
 
@@ -30,7 +31,7 @@ A foto original tem clientes reconhecíveis e **não entra** na fixture. No luga
 - **Quatro janelas de medida** em meia resolução (a escala da régua), só sobre as caixas que as propriedades medem:
   - o texto do topo da v1 e da v2;
   - a logo;
-  - o serviço da v1, no balcão;
+  - o serviço da v1, no balcão — ampliada 80 px para cima em 29/10/2026 (1632–1837), para cobrir o `mover` que o revisor passou a propor com a margem da base em 160 (P9); a faixa nova mostra o balcão e um frasco, nenhum rosto;
   - o serviço da v2, na vitrine.
 
   Elas foram conferidas a olho e mostram teto, mezanino, decoração, balcão, vitrine e uma mão. Nenhum rosto.

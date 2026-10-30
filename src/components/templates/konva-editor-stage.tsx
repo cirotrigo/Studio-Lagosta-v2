@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import Konva from 'konva'
-import { Stage, Layer as KonvaLayer, Rect, Line } from 'react-konva'
+import { Stage, Layer as KonvaLayer, Rect, Line, Text as KonvaText } from 'react-konva'
 
 // IMPORTANTE: Ativar fix de renderização para melhor qualidade de fontes
 // Especialmente importante para fontes ornamentadas/decorativas
@@ -23,7 +23,15 @@ import {
   type SnapConfig,
   DEFAULT_SNAP_CONFIG,
 } from '@/lib/konva-smart-guides'
-import { CANVAS_MARGIN } from '@/lib/canvas-margin'
+import { avisosDeMargem, caixaDaSelecao, faixasDaInterface, linhasDaMarca, retangulosDeEncaixe, retangulosDosOutros, type AvisoDeMargem } from '@/lib/margens-no-editor'
+import { useMargensDoEditor } from '@/hooks/use-margens-do-editor'
+import { useExibicaoDoEditor } from '@/hooks/use-exibicao-do-editor'
+import { useGuiasDaPagina } from '@/hooks/use-guias-da-pagina'
+import { useMultiPageOpcional } from '@/contexts/multi-page-context'
+import { useUser } from '@clerk/nextjs'
+import { paradasDasGuias, retangulosDasGuias } from '@/lib/guias-manuais'
+import { ReguasEGuias } from './reguas-e-guias'
+import { acaoDaTecla, alvoIgnoraAtalhos } from '@/lib/exibicao-do-editor'
 import { decidirSelecaoPorGesto, type FaseDoGesto, type GestoDeSelecao } from '@/lib/selecao-por-gesto'
 import { ehIconeDeTexto } from '@/lib/font-combinations-icones'
 import { useIsMobile } from '@/hooks/use-device-detection'
@@ -81,6 +89,8 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
     alignSelectedTop,
     alignSelectedMiddleV,
     alignSelectedBottom,
+    alignSelectedToCanvasCenterH,
+    alignSelectedToCanvasCenterV,
     distributeSelectedH,
     distributeSelectedV,
     bringSelectedToFront,
@@ -97,16 +107,24 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
   const [guides, setGuides] = React.useState<GuideLine[]>([])
   const [showGrid, _setShowGrid] = React.useState(false)
   const [snapConfig, _setSnapConfig] = React.useState<SnapConfig>(DEFAULT_SNAP_CONFIG)
-  // OTIMIZAÇÃO MOBILE: Desabilitar snapping em mobile (pesado de calcular)
-  const [snappingEnabled, setSnappingEnabled] = React.useState(!isMobile)
-  const [showMarginGuides, setShowMarginGuides] = React.useState(true)
-  // Bordas amarelas do canvas: ferramenta de conferência, desligada por padrão
-  // (era um resto de debug que vinha ligado em produção, junto com a cruz verde)
-  const [showCanvasBounds, setShowCanvasBounds] = React.useState(false)
-  // Máscara com a interface do story do Instagram ('M'): referência de
-  // diagramação, ligada por padrão — o chrome cabe dentro das margens de
-  // segurança, então não atrapalha quem está editando
-  const [showInstagramMask, setShowInstagramMask] = React.useState(true)
+  // L2 das linhas-guia: o que o editor exibe (margens R, interface M, bordas C, encaixe) é a preferência da pessoa,
+  // salva e viva acima das páginas (`ExibicaoDoEditorProvider`) — com `useState` aqui, no modo contínuo cada troca de
+  // página voltava tudo ao padrão. Alt segurado desliga o encaixe só enquanto a tecla está presa; mobile não encaixa.
+  const { exibicao, alternar } = useExibicaoDoEditor()
+  // L4: as guias manuais desta página (por pessoa, localStorage); valem só com "Réguas e guias" ligado (Shift+R)
+  const pageIdAtual = useMultiPageOpcional()?.currentPageId ?? null
+  const { user } = useUser()
+  const guiasManuais = useGuiasDaPagina(pageIdAtual, user?.id ?? null)
+  const mostrarReguas = exibicao.reguas && !isMobile
+  const [altSegurado, setAltSegurado] = React.useState(false)
+  const snappingEnabled = exibicao.encaixe && !isMobile && !altSegurado
+  const showMarginGuides = exibicao.margens
+  const showCanvasBounds = exibicao.bordas
+  const showInstagramMask = exibicao.interface
+  // L1 das linhas-guia (29/10/2026): as duas camadas da página aberta — a faixa da interface (só Story) e a margem
+  // da MARCA (`Project.assinatura`, pelo hook do projeto). O encaixe, o alinhar e as guias azuis usam a marca.
+  const margens = useMargensDoEditor(projectId, design.canvas)
+  const hachura = useHachura()
   const [_fontsReady, setFontsReady] = React.useState(false)
 
   // Retângulo de seleção (marquee). Vive em coordenadas do CANVAS, as mesmas
@@ -199,6 +217,24 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
 
   const canvasWidth = design.canvas.width
   const canvasHeight = design.canvas.height
+  // L3: os avisos de "fora da margem" (texto/logo na faixa da interface; texto, logo, forma, ícone e elemento cruzando a
+  // margem da marca). Avisa, nunca bloqueia; o botão "Trazer para dentro" move o mínimo, num desfazer.
+  const avisos = React.useMemo(
+    () => (showMarginGuides ? avisosDeMargem(design.layers, margens, canvasHeight) : []),
+    [design.layers, margens, canvasHeight, showMarginGuides],
+  )
+  const trazerParaDentro = React.useCallback(
+    (ids: string[]) => {
+      const coalesceKey = `para-dentro:${Date.now()}`
+      for (const aviso of avisos) {
+        if (!ids.includes(aviso.layerId) || aviso.travada) continue
+        const { dx, dy } = aviso.ajuste
+        if (!dx && !dy) continue
+        updateLayer(aviso.layerId, (l) => ({ ...l, position: { x: Math.round((l.position?.x ?? 0) + dx), y: Math.round((l.position?.y ?? 0) + dy) } }), { coalesceKey })
+      }
+    },
+    [avisos, updateLayer],
+  )
   const deferredLayers = React.useDeferredValue(design.layers)
 
   React.useEffect(() => {
@@ -644,33 +680,32 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
   const handleLayerDragMove = React.useCallback(
     (event: KonvaEventObject<DragEvent>, layer: Layer) => {
       const node = event.target
-      const movingRect: RectInfo = {
-        id: layer.id,
-        x: node.x(),
-        y: node.y(),
-        width: Math.max(1, layer.size?.width ?? node.width()),
-        height: Math.max(1, layer.size?.height ?? node.height()),
-      }
+      // L3 das linhas-guia: com seleção múltipla, o encaixe usa a CAIXA DA SELEÇÃO inteira deslocada pelo arrasto
+      // (não só a camada agarrada); as outras caixas ignoram as invisíveis e a própria seleção (a posição antiga do
+      // grupo não é alvo — antes o conjunto grudava nela)
+      const emGrupo = selectedLayerIds.length > 1 && selectedLayerIds.includes(layer.id)
+      const arrastoX = node.x() - (layer.position?.x ?? 0)
+      const arrastoY = node.y() - (layer.position?.y ?? 0)
+      const selecao = emGrupo ? caixaDaSelecao(design.layers, selectedLayerIds) : null
+      const movingRect: RectInfo = selecao
+        ? { ...selecao, x: selecao.x + arrastoX, y: selecao.y + arrastoY }
+        : {
+            id: layer.id,
+            x: node.x(),
+            y: node.y(),
+            width: Math.max(1, layer.size?.width ?? node.width()),
+            height: Math.max(1, layer.size?.height ?? node.height()),
+          }
 
-      const otherRects: RectInfo[] = design.layers
-        .filter((item) => item.id !== layer.id)
-        .map((item) => ({
-          id: item.id,
-          x: item.position?.x ?? 0,
-          y: item.position?.y ?? 0,
-          width: Math.max(1, item.size?.width ?? 0),
-          height: Math.max(1, item.size?.height ?? 0),
-        }))
+      const otherRects: RectInfo[] = retangulosDosOutros(design.layers, emGrupo ? selectedLayerIds : [layer.id])
 
-      // Se as guias de margem estiverem ativas, adicionar retângulos invisíveis nas margens
+      // Se as guias de margem estiverem ativas, a margem da MARCA entra como objetos invisíveis (encaixe nela)
       if (showMarginGuides) {
-        // Adicionar guias de margem como se fossem objetos invisíveis
-        otherRects.push(
-          { id: 'margin-left', x: CANVAS_MARGIN.left, y: 0, width: 0, height: canvasHeight },
-          { id: 'margin-right', x: canvasWidth - CANVAS_MARGIN.right, y: 0, width: 0, height: canvasHeight },
-          { id: 'margin-top', x: 0, y: CANVAS_MARGIN.top, width: canvasWidth, height: 0 },
-          { id: 'margin-bottom', x: 0, y: canvasHeight - CANVAS_MARGIN.bottom, width: canvasWidth, height: 0 },
-        )
+        otherRects.push(...retangulosDeEncaixe(margens.marca, canvasWidth, canvasHeight))
+      }
+      // L4: as guias manuais também encaixam (visíveis e não ocultas)
+      if (mostrarReguas) {
+        otherRects.push(...retangulosDasGuias(guiasManuais.estado, canvasWidth, canvasHeight))
       }
 
       // Usar a biblioteca otimizada de smart guides com configuração ativa.
@@ -695,7 +730,8 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
       // }
 
       if (position.x !== movingRect.x || position.y !== movingRect.y) {
-        node.position(position)
+        // O encaixe moveu a caixa da seleção: a camada agarrada anda o mesmo tanto
+        node.position({ x: node.x() + (position.x - movingRect.x), y: node.y() + (position.y - movingRect.y) })
       }
 
       // Seleção múltipla (ex.: grupo de combinação de fontes): move as demais
@@ -724,7 +760,7 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
 
       setGuides(nextGuides)
     },
-    [canvasHeight, canvasWidth, design.layers, snapConfig, snappingEnabled, showMarginGuides, selectedLayerIds, zoom, arrasteDaGrade],
+    [canvasHeight, canvasWidth, design.layers, snapConfig, snappingEnabled, showMarginGuides, selectedLayerIds, zoom, arrasteDaGrade, margens.marca, mostrarReguas, guiasManuais.estado],
   )
 
   const handleLayerDragEnd = React.useCallback((layer: Layer) => {
@@ -767,9 +803,12 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+      // Campos de texto, conteúdo editável e MENUS abertos (o Radix procura o item pela letra) ficam de fora
+      if (alvoIgnoraAtalhos(target)) {
         return
       }
+      // Alt solto fora da janela: qualquer tecla sem Alt reconcilia o encaixe (Codex R1 do L2)
+      if (!event.altKey) setAltSegurado(false)
 
       // Modo de recorte: Enter/Esc pertencem ao overlay; setas/atalhos não
       // podem mexer na camada por baixo
@@ -780,26 +819,23 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
 
       // Desabilitar snap temporariamente com Alt
       if (key === 'alt') {
-        setSnappingEnabled(false)
+        setAltSegurado(true)
         setGuides([])
         return
       }
 
-      // Toggle guias de margem com 'r'
-      if (key === 'r' && !isModifier) {
-        setShowMarginGuides(prev => !prev)
+      // Exibição (R, M, C sozinhas) e os centralizar no canvas (Shift+Alt+C / Shift+Alt+M, antes só anunciados)
+      const acao = acaoDaTecla(event)
+      if (acao === 'margens' || acao === 'interface' || acao === 'bordas' || acao === 'reguas') {
+        alternar(acao)
         return
       }
-
-      // Toggle canvas bounds com 'c'
-      if (key === 'c' && !isModifier) {
-        setShowCanvasBounds(prev => !prev)
-        return
-      }
-
-      // Toggle máscara da interface do Instagram com 'm'
-      if (key === 'm' && !isModifier) {
-        setShowInstagramMask(prev => !prev)
+      // O mesmo que os botões "Centralizar no canvas": o CONJUNTO vai ao centro, preservando o arranjo (não é o
+      // alinhar entre si, que sobrepõe as caixas — Codex R1 do L2)
+      if (acao === 'centrar-h' || acao === 'centrar-v') {
+        event.preventDefault()
+        if (acao === 'centrar-h') alignSelectedToCanvasCenterH()
+        else alignSelectedToCanvasCenterV()
         return
       }
 
@@ -925,17 +961,25 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
     }
 
     const handleKeyUp = (event: KeyboardEvent) => {
-      // Reativar snap quando soltar Alt
+      // Soltar Alt devolve a PREFERÊNCIA de encaixe (não liga à força)
       if (event.key === 'Alt') {
-        setSnappingEnabled(true)
+        setAltSegurado(false)
       }
     }
+    // Alt preso quando a janela perde o foco nunca chega ao keyup: a perda de foco solta; o primeiro gesto do
+    // ponteiro reconcilia pelo próprio evento (vale também para o stage remontado com Alt ainda preso)
+    const handleBlur = () => setAltSegurado(false)
+    const handlePointerDown = (event: PointerEvent) => setAltSegurado(event.altKey)
 
     window.addEventListener('keydown', handleKeyDown)
     window.addEventListener('keyup', handleKeyUp)
+    window.addEventListener('blur', handleBlur)
+    window.addEventListener('pointerdown', handlePointerDown, true)
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
+      window.removeEventListener('blur', handleBlur)
+      window.removeEventListener('pointerdown', handlePointerDown, true)
     }
   }, [
     animateZoom,
@@ -946,8 +990,7 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
     redo,
     selectedLayerIds.length,
     undo,
-    showMarginGuides,
-    showCanvasBounds,
+    alternar,
     croppingLayerId,
     alignSelectedLeft,
     alignSelectedCenterH,
@@ -955,6 +998,8 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
     alignSelectedTop,
     alignSelectedMiddleV,
     alignSelectedBottom,
+    alignSelectedToCanvasCenterH,
+    alignSelectedToCanvasCenterV,
     distributeSelectedH,
     distributeSelectedV,
     bringSelectedToFront,
@@ -1167,6 +1212,8 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
               stageRef={stageRef}
               snapEnabled={snappingEnabled}
               snapToMargins={showMarginGuides}
+              margens={margens.marca}
+              guias={mostrarReguas ? paradasDasGuias(guiasManuais.estado) : undefined}
               onSnapGuides={setGuides}
             />
             <KonvaGradientHandles stageRef={stageRef} />
@@ -1190,8 +1237,41 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
                 projectId={projectId}
                 canvasWidth={canvasWidth}
                 canvasHeight={canvasHeight}
+                faixa={margens.interface}
               />
             )}
+
+            {/* Faixa da interface do Instagram (só Story): hachurada, com o rótulo — texto e logo não entram; foto pode passar por baixo */}
+            {showInstagramMask &&
+              faixasDaInterface(margens.interface, canvasWidth, canvasHeight).map((f) => (
+                <React.Fragment key={f.id}>
+                  <Rect
+                    x={f.x}
+                    y={f.y}
+                    width={f.width}
+                    height={f.height}
+                    // O Konva aceita um canvas como padrão; só o tipo do react-konva pede HTMLImageElement
+                    fillPatternImage={(hachura ?? undefined) as unknown as HTMLImageElement | undefined}
+                    fillPatternRepeat="repeat"
+                    fillPatternScaleX={1 / zoom}
+                    fillPatternScaleY={1 / zoom}
+                    fill={hachura ? undefined : 'rgba(239, 68, 68, 0.08)'}
+                    listening={false}
+                    perfectDrawEnabled={false}
+                  />
+                  <KonvaText
+                    x={12 / zoom}
+                    y={f.id === 'interface-topo' ? f.y + f.height - 22 / zoom : f.y + 8 / zoom}
+                    text="Interface do Instagram"
+                    fontSize={13 / zoom}
+                    fontFamily="Inter, -apple-system, Helvetica, Arial, sans-serif"
+                    fill="#B91C1C"
+                    opacity={0.85}
+                    listening={false}
+                    perfectDrawEnabled={false}
+                  />
+                </React.Fragment>
+              ))}
 
             {/* Drag-to-select rectangle */}
             {selectionRect.visible && (
@@ -1208,51 +1288,50 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
               />
             )}
 
-            {/* Guias de margem (70px laterais, 120px topo, 100px base) - Ativado com tecla 'R' */}
+            {/* Guias de margem — a margem da MARCA da página aberta (`margensDoEditor`), traço compensado pelo zoom - Ativado com tecla 'R' */}
             {showMarginGuides && (
               <>
-                {/* Borda esquerda */}
-                <Line
-                  points={[CANVAS_MARGIN.left, 0, CANVAS_MARGIN.left, canvasHeight]}
-                  stroke="#3B82F6"
-                  strokeWidth={3}
-                  dash={[6, 4]}
-                  opacity={0.8}
-                  listening={false}
-                  perfectDrawEnabled={false}
-                />
-                {/* Borda direita */}
-                <Line
-                  points={[canvasWidth - CANVAS_MARGIN.right, 0, canvasWidth - CANVAS_MARGIN.right, canvasHeight]}
-                  stroke="#3B82F6"
-                  strokeWidth={3}
-                  dash={[6, 4]}
-                  opacity={0.8}
-                  listening={false}
-                  perfectDrawEnabled={false}
-                />
-                {/* Borda superior */}
-                <Line
-                  points={[0, CANVAS_MARGIN.top, canvasWidth, CANVAS_MARGIN.top]}
-                  stroke="#3B82F6"
-                  strokeWidth={3}
-                  dash={[6, 4]}
-                  opacity={0.8}
-                  listening={false}
-                  perfectDrawEnabled={false}
-                />
-                {/* Borda inferior */}
-                <Line
-                  points={[0, canvasHeight - CANVAS_MARGIN.bottom, canvasWidth, canvasHeight - CANVAS_MARGIN.bottom]}
-                  stroke="#3B82F6"
-                  strokeWidth={3}
-                  dash={[6, 4]}
-                  opacity={0.8}
+                {linhasDaMarca(margens.marca, canvasWidth, canvasHeight).map((linha) => (
+                  <Line
+                    key={linha.id}
+                    points={linha.points}
+                    stroke="#3B82F6"
+                    strokeWidth={2 / zoom}
+                    dash={[8 / zoom, 5 / zoom]}
+                    opacity={0.8}
+                    listening={false}
+                    perfectDrawEnabled={false}
+                  />
+                ))}
+                <KonvaText
+                  x={margens.marca.esquerda + 8 / zoom}
+                  y={margens.marca.topo + 6 / zoom}
+                  text={margens.origem === 'marca' ? 'Margem da marca' : 'Margem padrão'}
+                  fontSize={13 / zoom}
+                  fontFamily="Inter, -apple-system, Helvetica, Arial, sans-serif"
+                  fill="#3B82F6"
+                  opacity={0.85}
                   listening={false}
                   perfectDrawEnabled={false}
                 />
               </>
             )}
+
+            {/* L3: contorno de aviso nas camadas fora da margem (laranja); a faixa/margem são as de cima */}
+            {avisos.map((a) => (
+              <Rect
+                key={`aviso-${a.layerId}`}
+                x={a.caixa.x}
+                y={a.caixa.y}
+                width={a.caixa.width}
+                height={a.caixa.height}
+                stroke={a.tipo === 'interface' ? '#DC2626' : '#F59E0B'}
+                strokeWidth={2 / zoom}
+                dash={[4 / zoom, 3 / zoom]}
+                listening={false}
+                perfectDrawEnabled={false}
+              />
+            ))}
 
             {guides.map((guide, index) => {
               const points = guide.orientation === 'vertical'
@@ -1316,9 +1395,47 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
         </Stage>
   )
 
+  // L4: onde a página começa na tela, relativo ao pai do stage — no clássico é stage.position() (muda com zoom e pan)
+  const [origemClassica, setOrigemClassica] = React.useState({ left: 0, top: 0 })
+  React.useEffect(() => {
+    if (embedded || !mostrarReguas) return
+    const stage = stageRef.current
+    if (!stage) return
+    // O overlay é irmão do container do stage dentro do wrapper `relative` (não um wrapper novo: o ResizeObserver do
+    // clássico observa o pai do container e um wrapper do tamanho do stage faria o stage medir a si mesmo — Codex R1)
+    const container = stage.container()
+    const ler = () => setOrigemClassica({ left: container.offsetLeft + stage.x(), top: container.offsetTop + stage.y() })
+    ler()
+    stage.on('xChange.reguas yChange.reguas scaleXChange.reguas', ler)
+    const observador = new ResizeObserver(() => requestAnimationFrame(ler))
+    observador.observe(container)
+    return () => {
+      stage.off('xChange.reguas yChange.reguas scaleXChange.reguas')
+      observador.disconnect()
+    }
+  }, [embedded, mostrarReguas, zoom])
+  const reguasEGuias =
+    mostrarReguas && !croppingLayerId ? (
+      <ReguasEGuias
+        largura={canvasWidth}
+        altura={canvasHeight}
+        zoom={zoom}
+        origem={embedded ? { left: 0, top: 0 } : origemClassica}
+        marca={margens.marca}
+        selecao={caixaDaSelecao(design.layers, selectedLayerIds)}
+        api={guiasManuais}
+      />
+    ) : null
+
+  const chipDeAvisos = avisos.length > 0 && !croppingLayerId ? (
+    <AvisosForaDaMargem avisos={avisos} selecionadas={selectedLayerIds} aoTrazer={trazerParaDentro} />
+  ) : null
+
   if (embedded) {
     return (
       <div className="relative" style={{ width: scaledWidth, height: scaledHeight }}>
+        {chipDeAvisos}
+        {reguasEGuias}
         {cropMargin ? (
           // O slot da coluna mantém o tamanho da página: a área extra do stage
           // transborda por cima do resto do workspace, em vez de empurrar as
@@ -1338,9 +1455,71 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
       className="h-full w-full bg-[#f5f5f5] dark:bg-[#1a1a1a] overflow-y-auto overflow-x-auto"
       style={{ padding: isMobile ? '0.5rem' : '2rem' }}
     >
-      <div className={`flex ${isMobile ? 'justify-start' : 'justify-center'} min-h-full`}>
+      <div className={`relative flex ${isMobile ? 'justify-start' : 'justify-center'} min-h-full`}>
+        {chipDeAvisos}
         {stageElement}
+        {reguasEGuias}
       </div>
     </div>
   )
+}
+
+/**
+ * O aviso de "fora da margem" com o botão "Trazer para dentro" (L3): HTML por cima do canvas (a guides-layer não
+ * escuta cliques e não sai no export de qualquer jeito). Com seleção, age só nas selecionadas que têm aviso; sem
+ * seleção, em todas. Avisa, nunca bloqueia.
+ */
+function AvisosForaDaMargem({ avisos, selecionadas, aoTrazer }: { avisos: AvisoDeMargem[]; selecionadas: string[]; aoTrazer: (ids: string[]) => void }) {
+  const alvo = selecionadas.length > 0 ? avisos.filter((a) => selecionadas.includes(a.layerId)) : avisos
+  if (alvo.length === 0) return null
+  const moviveis = alvo.filter((a) => (a.ajuste.dx || a.ajuste.dy) && !a.travada)
+  const travadas = alvo.filter((a) => a.travada).length
+  const naInterface = alvo.filter((a) => a.tipo === 'interface').length
+  const texto =
+    alvo.length === 1
+      ? `${alvo[0].nome}: ${alvo[0].tipo === 'interface' ? 'dentro da faixa do Instagram' : 'fora da margem da marca'} (${alvo[0].ajuste.lados.join(', ')})`
+      : `${alvo.length} camadas fora da margem${naInterface ? ` (${naInterface} na faixa do Instagram)` : ''}${travadas ? ` · ${travadas} travada${travadas > 1 ? 's' : ''}` : ''}`
+  return (
+    <div className="pointer-events-auto absolute left-2 top-2 z-40 flex max-w-[90%] items-center gap-2 rounded-md border border-amber-500/60 bg-background/95 px-2 py-1 text-xs shadow-sm backdrop-blur">
+      <span className="truncate text-amber-700 dark:text-amber-300" title={texto}>
+        {texto}
+      </span>
+      {moviveis.length > 0 ? (
+        <button
+          type="button"
+          className="flex-shrink-0 rounded bg-amber-500 px-2 py-0.5 font-medium text-black hover:bg-amber-400"
+          onClick={() => aoTrazer(moviveis.map((a) => a.layerId))}
+          title="Move o mínimo para dentro (Cmd+Z desfaz)"
+        >
+          Trazer para dentro
+        </button>
+      ) : (
+        <span className="flex-shrink-0 text-muted-foreground">{travadas === alvo.length ? 'travada: destrave para mover' : 'maior que a área: encurte o texto ou reduza a fonte'}</span>
+      )}
+    </div>
+  )
+}
+
+/**
+ * A hachura da faixa da interface: um ladrilho de 8×8 com uma diagonal, feito uma vez no navegador. `null` no servidor
+ * (sem `document`) — aí a faixa sai como véu liso.
+ */
+function useHachura(): HTMLCanvasElement | null {
+  return React.useMemo(() => {
+    if (typeof document === 'undefined') return null
+    const tile = document.createElement('canvas')
+    tile.width = 8
+    tile.height = 8
+    const ctx = tile.getContext('2d')
+    if (!ctx) return null
+    ctx.fillStyle = 'rgba(239, 68, 68, 0.05)'
+    ctx.fillRect(0, 0, 8, 8)
+    ctx.strokeStyle = 'rgba(239, 68, 68, 0.45)'
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.moveTo(0, 8)
+    ctx.lineTo(8, 0)
+    ctx.stroke()
+    return tile
+  }, [])
 }

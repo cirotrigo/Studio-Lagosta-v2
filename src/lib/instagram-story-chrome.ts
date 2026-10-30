@@ -4,12 +4,15 @@ import { CANVAS_MARGIN } from './canvas-margin'
  * Geometria da interface (chrome) do story do Instagram, em pixels de uma arte
  * 1080x1920 — a base da máscara de referência do editor (tecla `M`).
  *
- * ## O contrato: o chrome cabe DENTRO das margens de segurança
+ * ## O contrato: o chrome cabe DENTRO da faixa da interface
  *
- * A máscara é derivada de `CANVAS_MARGIN`: o cabeçalho vive inteiro acima da
- * guia superior e a caixa de mensagem inteira abaixo da inferior. Isso torna as
- * duas referências uma coisa só — **conteúdo dentro das guias azuis é conteúdo
- * que a interface não cobre**. Mexeu na margem, a máscara acompanha sozinha.
+ * O cabeçalho vive inteiro na faixa de cima e a caixa de mensagem inteira na
+ * faixa de baixo. A faixa da interface (piso 188/224, `interfaceDoStory`) NÃO
+ * é a margem da marca (decisão do owner de 13/10/2026): uma marca com rodapé
+ * 150 compõe DENTRO da faixa, e a máscara continua mostrando o que o app
+ * cobre. Desde o L1 (29/10/2026) a máscara nasce de `margensDoEditor(...).interface`
+ * (o `faixa` de `buildStoryChrome`), independente da margem de composição; o
+ * padrão `CANVAS_MARGIN` só vale para quem chama sem a faixa.
  *
  * Foi uma decisão de projeto, não uma medição: os guias de "safe zone" pregam
  * 250px no topo e na base, mas isso é recomendação conservadora, com folga
@@ -35,19 +38,23 @@ export const STORY_REFERENCE_WIDTH = 1080
 export const STORY_REFERENCE_HEIGHT = 1920
 
 /** Distância das bordas laterais. O chrome do Instagram encosta bem mais na
- *  borda que o conteúdo (70px), e é isso mesmo: ele só ocupa a faixa externa. */
+ *  borda que o conteúdo (92px), e é isso mesmo: ele só ocupa a faixa externa. */
 const EDGE = 28
 
 export type StoryChrome = ReturnType<typeof buildStoryChrome>
 
 /**
  * Monta a geometria para uma arte de altura `baseHeight` (na base 1080 de
- * largura). As frações verticais são sobre a faixa da margem, então o desenho
- * encolhe e cresce junto com `CANVAS_MARGIN`.
+ * largura). As frações verticais são sobre a faixa da interface, então o
+ * desenho encolhe e cresce junto com ela.
  */
-export function buildStoryChrome(baseHeight: number = STORY_REFERENCE_HEIGHT) {
-  const topBand = CANVAS_MARGIN.top
-  const bottomBand = CANVAS_MARGIN.bottom
+export function buildStoryChrome(
+  baseHeight: number = STORY_REFERENCE_HEIGHT,
+  /** A faixa da interface (`margensDoEditor(...).interface`), na base 1080. Sem ela, o padrão do Story. */
+  faixa: { topo: number; rodape: number } = { topo: CANVAS_MARGIN.top, rodape: CANVAS_MARGIN.bottom },
+) {
+  const topBand = faixa.topo
+  const bottomBand = faixa.rodape
 
   // Cabeçalho: barra de progresso em cima, linha do perfil embaixo
   const headerCy = topBand * 0.62

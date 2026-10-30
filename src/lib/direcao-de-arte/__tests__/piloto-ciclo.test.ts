@@ -318,8 +318,10 @@ describe('caracterização: o caminho real hoje', () => {
 
 /** Ajustes que o piloto ACEITA e RECUSA pela não-piora (medidos em 15/10/2026, a v1 da fixture). */
 const ACEITO_APOIO = { tipo: 'mover', dy: -6, camadas: ['apoio'] } as const
-// −60 invadia a margem de segurança do topo em 26 px (recusado pela não-piora desde que as fontes contam): −20 fica dentro.
-const ACEITO_TOPO = { tipo: 'mover', dy: -20, camadas: ['headline', 'apoio'] } as const
+// Até 29/10/2026 (margem do revisor 120 no topo): −60 invadia a margem em 26 px e −20 ficava dentro. Com as margens
+// de 29/10 (160) a tinta do bloco da v1 já toca a margem (≈154): SUBIR piora a margem e DESCER piora o contraste do
+// apoio (122 → 112 com +20, alvo 130). O que entra é andar 8 px para a direita (x 70 → 78, dentro da lateral 64).
+const ACEITO_TOPO = { tipo: 'mover', dx: 8, dy: 0, camadas: ['headline', 'apoio'] } as const
 const PIORA_SERVICO = { tipo: 'mover', dy: -230, camadas: ['servico'] } as const
 const PIORA_GRADIENTE = { tipo: 'gradiente', borda: 'rodape', forca: 0.95, altura: 730 } as const
 
@@ -334,6 +336,9 @@ describe('CP4 — medir antes, aplicar em memória, medir depois; UMA escrita no
     const v1 = fixture.peca().v1.layers
     expect(camada(persistidas, 'apoio').position.y).toBe(camada(v1, 'apoio').position.y + ACEITO_APOIO.dy + ACEITO_TOPO.dy)
     expect(camada(persistidas, 'headline').position.y).toBe(camada(v1, 'headline').position.y + ACEITO_TOPO.dy)
+    // O 3º ajuste anda em X (29/10): as duas camadas andaram os 8 px; o serviço não (Codex R1)
+    expect(camada(persistidas, 'apoio').position.x).toBe(camada(v1, 'apoio').position.x + ACEITO_TOPO.dx)
+    expect(camada(persistidas, 'headline').position.x).toBe(camada(v1, 'headline').position.x + ACEITO_TOPO.dx)
     expect(camada(persistidas, 'servico').position).toEqual(camada(v1, 'servico').position)
     expect({ escritas: banco.escritas, generations: banco.generations.length }).toEqual({ escritas: 1, generations: 1 })
     // O que ficou gravado na Generation diz o mesmo que a resposta (nada em silêncio).
@@ -469,12 +474,15 @@ describe('CP4 — medir antes, aplicar em memória, medir depois; UMA escrita no
     await ajustar([ACEITO_APOIO, PIORA_SERVICO, ACEITO_TOPO] as unknown as Ajuste[])
     const v1 = fixture.peca().v1.layers
     const y = (chamada: number, id: string) => camada(medidas.chamadas[chamada].camadas as Layer[], id).position.y
-    // 0: a entrada; 1: candidata com apoio −6; 2: a candidata do serviço (sobre o estado COM o 1º); 3: a do 3º (topo −20), SEM o serviço movido.
+    const x = (chamada: number, id: string) => camada(medidas.chamadas[chamada].camadas as Layer[], id).position.x
+    // 0: a entrada; 1: candidata com apoio −6; 2: a candidata do serviço (sobre o estado COM o 1º); 3: a do 3º (topo +8 em x), SEM o serviço movido.
     expect(medidas.chamadas.map((c) => c.corrigir)).toEqual([false, false, false, false])
     expect([y(0, 'apoio'), y(0, 'servico')]).toEqual([camada(v1, 'apoio').position.y, camada(v1, 'servico').position.y])
     expect([y(1, 'apoio'), y(1, 'servico')]).toEqual([camada(v1, 'apoio').position.y - 6, camada(v1, 'servico').position.y])
     expect([y(2, 'apoio'), y(2, 'servico')]).toEqual([camada(v1, 'apoio').position.y - 6, camada(v1, 'servico').position.y - 230])
     expect([y(3, 'apoio'), y(3, 'headline'), y(3, 'servico')]).toEqual([camada(v1, 'apoio').position.y + ACEITO_APOIO.dy + ACEITO_TOPO.dy, camada(v1, 'headline').position.y + ACEITO_TOPO.dy, camada(v1, 'servico').position.y])
+    // A candidata do 3º ajuste anda em X (29/10): headline e apoio +8; as anteriores e o serviço não (Codex R1)
+    expect([x(2, 'apoio'), x(3, 'apoio'), x(3, 'headline'), x(3, 'servico')]).toEqual([camada(v1, 'apoio').position.x, camada(v1, 'apoio').position.x + ACEITO_TOPO.dx, camada(v1, 'headline').position.x + ACEITO_TOPO.dx, camada(v1, 'servico').position.x])
   }, 180_000)
 
   it('a régua do executor NÃO aplica a correção hipotética: com véu escuro e folga de força, mover o serviço para a área clara é piora REAL, não "ok" corrigido (revisores A e B)', async () => {
@@ -565,6 +573,12 @@ describe('CP4.1 — `texto-pequeno` entra na não-piora (a regra do revisor: cor
 })
 
 describe('CP4.2a — o piso da MANCHETE no renderer real (fixture: headline 84 = referência 84 da assinatura; apoio 40; serviço 32 → pisos modelo 67, hierarquia 40, celular 24)', () => {
+  // 29/10/2026: com a margem do revisor em 160 no topo, o bloco da v1 (tinta ≈ 154) já toca a margem e QUALQUER
+  // redução de fonte sobe a tinta da primeira linha (piora `fora-da-area-segura`). Estes casos medem o PISO da
+  // fonte, não a margem: o bloco desce 24 px antes, para a margem não decidir por eles.
+  beforeEach(() => {
+    banco.pagina = { ...banco.pagina, layers: (banco.pagina.layers as Layer[]).map((l) => (l.id === 'headline' || l.id === 'apoio' ? { ...l, position: { ...l.position, y: l.position.y + 24 } } : l)) }
+  })
   const comCorpo = (id: string, fontSize: number) => {
     banco.pagina = { ...banco.pagina, layers: (banco.pagina.layers as Layer[]).map((l) => (l.id === id ? { ...l, style: { ...(l.style ?? {}), fontSize } } : l)) }
   }
@@ -837,6 +851,9 @@ describe('P9 — recuperação', () => {
     return { revisao, gate, apta, escalada, escaladaPelaRevisao, escaladaPeloAjuste, ultimoAjuste }
   }
 
+  // 29/10/2026: com a margem do revisor em 160 na base, o revisor passa a propor `mover` o serviço (1728–1820) para
+  // cima de ≈ 62 px. A janela fiel `servico-v1` da fixture foi ampliada para 1632–1837 (fixture regenerada em 29/10 a
+  // partir dos registros e da foto lidos em produção, com o ok do Ciro) para o 2º ciclo ser medido.
   it('em até 2 ciclos com os ajustes do próprio revisor, a peça termina apta ou com REVISAO_HUMANA_NECESSARIA — a fixture do piloto: escalada tipada (o serviço sem leitura não tem correção executável)', async () => {
     exigirMedidaFiel(banco.pagina.layers)
     const r = await ciclos()

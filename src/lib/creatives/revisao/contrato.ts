@@ -24,7 +24,7 @@
 
 import { z } from 'zod'
 
-export const VERSAO_DAS_REGRAS = 'revisao-v1'
+export const VERSAO_DAS_REGRAS = 'revisao-v2'
 
 export const REGRAS_DA_REVISAO = [
   'fonte-nao-carregada',

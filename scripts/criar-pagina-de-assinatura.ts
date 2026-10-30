@@ -20,6 +20,7 @@
  *
  * ⚠️ Roda contra o banco do `.env` (produção): é curadoria, como `/modelos`.
  */
+import { GEOMETRIA_PADRAO } from '@/lib/compositor/geometria'
 import 'dotenv/config'
 
 import { db } from '@/lib/db'
@@ -105,7 +106,8 @@ async function criarAssinatura(projectId: number, confirmar: boolean) {
       const largura = Math.round(kit.logo.largura * (formato === 'story' ? 1 : (papeis.headline?.fontSize ?? 96) / 96))
       camadas.push({
         id: 'logo', name: 'Logo', type: 'logo', visible: true, locked: false, order: ordem++, rotation: 0,
-        position: { x: dims.width - 92 - largura, y: dims.height - 224 - Math.round(largura * 0.41) },
+        // A logo pousa na margem da marca do kit (ou da casa): os 92/224 antigos não voltam por aqui (29/10/2026)
+        position: { x: dims.width - (kit.numeros.geometria?.[formato]?.margemH ?? GEOMETRIA_PADRAO[formato].margemH) - largura, y: dims.height - (kit.numeros.geometria?.[formato]?.safeRodape ?? GEOMETRIA_PADRAO[formato].safeRodape) - Math.round(largura * 0.41) },
         size: { width: largura, height: Math.round(largura * 0.41) },
         fileUrl: logoUrl, style: { objectFit: 'contain' },
       })
