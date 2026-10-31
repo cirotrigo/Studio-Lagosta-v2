@@ -1198,7 +1198,17 @@ toolEstrita(
       if (mappedStatus !== 'POSTING') patch.processingStartedAt = null
       if (mappedStatus === 'POSTED') {
         patch.sentAt = post.sentAt || new Date()
-        if (zRaw.publishedAt) patch.latePublishedAt = new Date(zRaw.publishedAt)
+        patch.errorMessage = null
+        patch.failedAt = null
+        // O link e a data moram na plataforma, não na raiz do post do Zernio.
+        const instagram = zRaw.platforms?.find((p: any) => p.platform === 'instagram')
+        const publicadoEm = instagram?.publishedAt || zRaw.publishedAt
+        if (publicadoEm) patch.latePublishedAt = new Date(publicadoEm)
+        if (instagram?.platformPostUrl) {
+          patch.publishedUrl = instagram.platformPostUrl
+          patch.latePlatformUrl = instagram.platformPostUrl
+        }
+        if (instagram?.platformPostId) patch.instagramMediaId = instagram.platformPostId
       }
       if (mappedStatus === 'DRAFT' || mappedStatus === 'SCHEDULED') {
         patch.errorMessage = null

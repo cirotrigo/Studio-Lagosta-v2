@@ -11,6 +11,9 @@ import { ErroAdmissaoSemantica } from '@/lib/posts/admitir-pedido-semantico'
 import { fecharPropostaDeRepost } from '@/lib/aprendizado/sinal-de-repost'
 import { avisoDeCelulasVazias } from '@/lib/grades/presenca'
 
+// Post IMMEDIATE espera o Zernio dentro desta função: carrossel leva quase 2 minutos.
+export const maxDuration = 300
+
 // Dynamic validation schema based on post type
 const createPostValidationSchema = (postType?: PostType) => {
   const isStory = postType === PostType.STORY

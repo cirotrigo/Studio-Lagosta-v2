@@ -529,3 +529,17 @@ gerar o criativo, apagar o post e agendar o criativo.
   `comoCopiaDaPagina`.** Sem a marca, a cópia volta a ser aplicada por cima e o
   defeito reaparece em silêncio na primeira escrita de camadas por outro
   caminho.
+
+### "Postar agora" não pode ser promessa solta (31/10/2026)
+
+O PUT do post disparava `sendToLater` sem `await`. A rota respondia, a Vercel congelava a função e o post
+ficava em "postando" sem chegar ao Zernio até a varredura de travados, 30 minutos depois. Em 45 dias foram 8 de
+54 carrosséis imediatos, com 13 registros de travamento.
+
+- 🔴 **Trabalho depois da resposta vai em `after()`**, nunca em promessa solta. Uma promessa solta pode nem
+  chegar a logar erro: o post só reserva o status e para.
+- 🔴 **`after()` respeita o `maxDuration` da rota, e o `vercel.json` não alcança `src/app/**`** (o glob dele é
+  `app/api/**`). A chamada ao Zernio de um carrossel com `publishNow` levou quase 2 minutos: as rotas de criar e
+  editar post declaram `maxDuration = 300` inline.
+- **Só `console.error`/`warn` chegam aos logs de produção.** Ausência de `console.log` ali não prova que o código
+  não rodou: compare com uma execução que se sabe ter acontecido antes de concluir.
