@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { desfazerUsoDeFotoDoPost } from '@/lib/creatives/uso-de-foto'
@@ -16,6 +16,9 @@ import { estadoDoVideoDosPosts } from '@/lib/video/estado-do-video-do-post'
 import { ErroAdmissaoSemantica } from '@/lib/posts/admitir-pedido-semantico'
 import { temContratoSemantico } from '@/lib/posts/copy-segue-a-pagina'
 import { renderDaPaginaCobreAMidia } from '@/lib/posts/render-da-pagina'
+
+// "Postar agora" espera o Zernio dentro desta função: carrossel leva quase 2 minutos.
+export const maxDuration = 300
 
 const areStringArraysEqual = (left?: string[] | null, right?: string[] | null) => {
   const leftValue = left ?? []
@@ -494,8 +497,14 @@ export async function PUT(
         }
       } else {
         console.log('[PUT /posts] Sending post immediately via Late API')
-        scheduler.sendToLater(postId).catch((error) => {
-          console.error('Error sending immediate post via Late API:', error)
+        // `after()`, não promessa solta: sem ele a função congela ao responder e o
+        // post fica em POSTING sem chegar ao Zernio até a varredura de travados.
+        after(async () => {
+          try {
+            await scheduler.sendToLater(postId)
+          } catch (error) {
+            console.error('Error sending immediate post via Late API:', error)
+          }
         })
       }
     }
