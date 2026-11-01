@@ -35,7 +35,7 @@ import { descreverArteAtualDoItem, type ArteAtualDoItem } from '@/lib/planos/dec
 import { comporPeca } from './compor'
 import { garantirPasta } from './pastas'
 import { validarSpec, type SpecDePeca } from './spec'
-import { conferirLinhas, prepararArquetipo, type ArquetipoPreparado } from './arquetipos/na-spec'
+import { conferirLinhas, prepararArquetipo } from './arquetipos/na-spec'
 import { ehIdDeReferencia } from './arquetipos/referencia'
 import { resolucaoParaASpec } from './referencias'
 
@@ -103,24 +103,22 @@ export async function enfileirarPeca(entrada: unknown, opcoes: OpcoesDeEnfileira
   // do lote e a composição no worker usam a mesma versão — publicar uma nova no meio não muda a peça pedida. As
   // recusas que não dependem da medida saem aqui, na hora, e não no worker.
   // F1: pedido novo resolve a referência do CLIENTE (só as revisões vigentes; o catálogo bloqueado para quem tem
-  // referência) e a fixa aqui, ANTES da reserva. A REPETIÇÃO de uma leva cuja referência foi revogada no meio não é
-  // pedido novo: resolve com as revogadas só para REAPROVEITAR a peça reservada (`somenteReaproveitar`) — nunca cria.
-  let arquetipo: ArquetipoPreparado | null
-  let somenteReaproveitar = false
-  try {
-    arquetipo = prepararArquetipo(v.spec, await resolucaoParaASpec(v.spec))
-  } catch (e) {
-    const id = v.spec.arquetipo?.id
-    if (!(opcoes.lote != null && e instanceof CreativeError && e.code === 'ARQUETIPO_DESCONHECIDO' && typeof id === 'string' && ehIdDeReferencia(id))) throw e
-    arquetipo = prepararArquetipo(v.spec, await resolucaoParaASpec(v.spec, { reproducao: true }))
-    somenteReaproveitar = true
+  // referência) e a fixa AQUI, antes da reserva. Com identidade de LOTE e id `ref-…`, a resolução é PREGUIÇOSA
+  // (`resolverAgora`): a chave da reserva é o pedido como veio (`{ id }`), a repetição de uma peça viva REAPROVEITA sem
+  // resolver nada (revisão nova ou revogada no meio não muda a chave nem recusa), a retomada reproduz a spec GRAVADA
+  // na Generation que a linha aponta, e só o CRIAR resolve — como pedido novo (revogada é recusa, nada criado).
+  // O catálogo segue como sempre (resolvido na porta, chave pela versão resolvida): a chave das levas vivas não muda.
+  const idPedido = v.spec.arquetipo?.id
+  const preguicosa = opcoes.lote != null && typeof idPedido === 'string' && ehIdDeReferencia(idPedido)
+  let resolvida: SpecDePeca | null = null
+  const resolverAgora = async (): Promise<SpecDePeca> => {
+    if (resolvida) return resolvida
+    const arquetipo = prepararArquetipo(v.spec, await resolucaoParaASpec(v.spec))
+    if (arquetipo) conferirLinhas(arquetipo.definicao, arquetipo.formato, v.spec)
+    resolvida = arquetipo ? { ...v.spec, arquetipo: arquetipo.resolvido } : v.spec
+    return resolvida
   }
-  if (arquetipo) conferirLinhas(arquetipo.definicao, arquetipo.formato, v.spec)
-  const spec: SpecDePeca = arquetipo ? { ...v.spec, arquetipo: arquetipo.resolvido } : v.spec
-  // F1: a chave da reserva leva a referência COMO FOI PEDIDA (`{ id }`), não a revisão resolvida — repetir o mesmo
-  // pedido depois de uma revisão nova reaproveita a peça reservada em vez de conflitar; pedir a versão explícita é
-  // outro pedido. O catálogo segue como sempre (a versão resolvida), para não mudar a chave das levas vivas.
-  const specParaHash: SpecDePeca = arquetipo && ehIdDeReferencia(arquetipo.resolvido.id) ? { ...spec, arquetipo: v.spec.arquetipo! } : spec
+  const spec: SpecDePeca = preguicosa ? v.spec : await resolverAgora()
 
   let identidade: IdentidadeDeLote | null = null
   if (opcoes.lote != null) {
@@ -132,7 +130,7 @@ export async function enfileirarPeca(entrada: unknown, opcoes: OpcoesDeEnfileira
   const projeto = await db.project.findUnique({ where: { id: spec.projectId }, select: { id: true, name: true, userId: true } })
   if (!projeto) throw new CreativeError('PROJECT_NOT_FOUND', `Projeto ${spec.projectId} não encontrado`, 404)
 
-  if (identidade) return enfileirarPecaDoLote(spec, projeto, identidade, opcoes, { specParaHash, somenteReaproveitar })
+  if (identidade) return enfileirarPecaDoLote(spec, projeto, identidade, opcoes, preguicosa ? resolverAgora : null)
 
   const coletor = await garantirPasta(spec.projectId, projeto.userId, spec.quando ?? null, spec.formato)
 
@@ -160,7 +158,20 @@ export async function enfileirarPeca(entrada: unknown, opcoes: OpcoesDeEnfileira
  * item tenha sido revisado fora da spec (campanha, escopo) — revisão nova pede
  * lote ou item novo.
  */
-async function enfileirarPecaDoLote(spec: SpecDePeca, projeto: ProjetoDaPeca, identidade: IdentidadeDeLote, opcoes: OpcoesDeEnfileirar, f1: { specParaHash: SpecDePeca; somenteReaproveitar: boolean }): Promise<PecaEnfileirada> {
+/**
+ * A spec GRAVADA na Generation que a linha do lote aponta (`fieldValues.spec`, a resolução originalmente persistida):
+ * é ela que a retomada reproduz — no job recriado e na resposta. `null` quando a Generation sumiu ou não tem spec.
+ */
+async function specGravada(cliente: Pick<typeof db, 'generation'>, generationId: string | null | undefined): Promise<SpecDePeca | null> {
+  if (!generationId) return null
+  const g = await cliente.generation.findUnique({ where: { id: generationId }, select: { fieldValues: true } })
+  const fv = g?.fieldValues && typeof g.fieldValues === 'object' ? (g.fieldValues as Record<string, unknown>) : null
+  const s = fv?.spec
+  return s && typeof s === 'object' ? (s as SpecDePeca) : null
+}
+
+/** `resolverAgora` só na resolução PREGUIÇOSA (referência do cliente, F1); `null` = a spec já veio resolvida (catálogo e sem arquétipo: o caminho de sempre). */
+async function enfileirarPecaDoLote(spec: SpecDePeca, projeto: ProjetoDaPeca, identidade: IdentidadeDeLote, opcoes: OpcoesDeEnfileirar, resolverAgora: (() => Promise<SpecDePeca>) | null): Promise<PecaEnfileirada> {
   const decididoPor = opcoes.decididoPor ?? null
   const autor = opcoes.autor ?? null
   let coletor: Pasta | null = null
@@ -179,37 +190,48 @@ async function enfileirarPecaDoLote(spec: SpecDePeca, projeto: ProjetoDaPeca, id
   }
   const plano = spec.itemDePlanoId ? await import('@/lib/planos/enfileirar-composicao') : null
 
+  // F1: a spec que a retomada REPRODUZ é a gravada na Generation que a linha aponta (a resolução original — mesmo que a
+  // revisão tenha sido revogada depois, como o worker); sem Generation (ou sem spec gravada) não há o que reproduzir:
+  // resolve como pedido NOVO (vigentes; revogada é recusa, nada criado).
+  // Sem resolução preguiçosa (catálogo, sem arquétipo), a spec é a da chamada, como sempre — o caminho do plano compara
+  // a spec gravada com a da chamada (R03) e precisa continuar recusando conteúdo diferente.
+  const specDaPeca = async (cliente: Pick<typeof db, 'generation'>, recuperacao: { generationId: string } | null) => (resolverAgora ? ((recuperacao ? await specGravada(cliente, recuperacao.generationId) : null) ?? (await resolverAgora())) : spec)
+  let usada: SpecDePeca = spec
   const r = await reservarItemDeLote({
     projectId: spec.projectId,
     identidade,
-    payload: payloadParaHash(f1.specParaHash),
+    payload: payloadParaHash(spec),
     planoRevisao: plano ? itemRevisao : undefined,
     preparar: async () => {
       await pasta()
     },
     criar: async (tx, { recuperacao }) => {
-      // F1: a referência revogada só reaproveita o que já foi reservado; criar uma peça nova com ela é recusa.
-      if (f1.somenteReaproveitar && !recuperacao) {
-        throw new CreativeError('REFERENCIA_REVOGADA', `A referência ${spec.arquetipo?.id}@${spec.arquetipo?.versao} foi revogada: a repetição só reaproveitaria a peça já reservada deste item, e não há nenhuma. Aprove a página de novo ou peça outra referência (listar-referencias).`, 422, { arquetipo: spec.arquetipo, loteId: identidade.loteId, itemId: identidade.itemId })
-      }
-      const data = dadosDaGeracao(spec, projeto, await pasta(), opcoes)
+      const s = (usada = await specDaPeca(tx, recuperacao))
+      const data = dadosDaGeracao(s, projeto, await pasta(), opcoes)
       if (plano) {
         // Com `lote`, o caminho do plano compara as specs como o lote (R03) e
         // decide pela tabela única sob a trava do item (revisão final R05–R06),
         // que só produz quando a revisão declarada pela chamada é a do item (C11-1a).
-        const p = await plano.enfileirarComposicaoDoPlanoEm(tx, spec, data, decididoPor, autor, opcoes.itemAtualizadoEm, { recuperacao, revisaoDaChamada: itemRevisao })
+        const p = await plano.enfileirarComposicaoDoPlanoEm(tx, s, data, decididoPor, autor, opcoes.itemAtualizadoEm, { recuperacao, revisaoDaChamada: itemRevisao })
         return { generationId: p.generationId, jobId: p.jobId, reaproveitado: p.reaproveitado, retomado: p.retomado }
       }
       const generation = await tx.generation.create({ data, select: { id: true } })
-      const jobId = await enfileirarComposicao({ generationId: generation.id, projectId: spec.projectId, spec, decididoPor, autor }, tx)
+      const jobId = await enfileirarComposicao({ generationId: generation.id, projectId: s.projectId, spec: s, decididoPor, autor }, tx)
       return { generationId: generation.id, jobId }
     },
     // O job do item de plano carrega a revisão do item: só o caminho do plano o
     // monta, e recebe a retomada "só o job" pela `recuperacao` de `criar`.
     ...(spec.itemDePlanoId
       ? {}
-      : { criarJob: (tx, generationId) => enfileirarComposicao({ generationId, projectId: spec.projectId, spec, decididoPor, autor }, tx) }),
+      : {
+          criarJob: async (tx, generationId) => {
+            const s = (usada = await specDaPeca(tx, { generationId }))
+            return enfileirarComposicao({ generationId, projectId: s.projectId, spec: s, decididoPor, autor }, tx)
+          },
+        }),
   })
+  // A resposta diz a spec DA PEÇA devolvida: a reaproveitada é a gravada nela (a resolução original), nunca a de hoje.
+  if (resolverAgora && r.desfecho === 'reaproveitado') usada = (await specGravada(db, r.generationId)) ?? usada
   // A reserva reaproveita pela LINHA do lote, sem olhar o item do plano: o
   // pedido antigo repetido depois de o item ganhar outra arte devolveria a peça
   // antiga como se ela fosse a do plano. Só leitura — nada muda (Ciro, 13/09).
@@ -217,7 +239,7 @@ async function enfileirarPecaDoLote(spec: SpecDePeca, projeto: ProjetoDaPeca, id
   return {
     generationId: r.generationId,
     jobId: r.jobId,
-    spec,
+    spec: usada,
     lote: { loteId: r.loteId, itemId: r.itemId, desfecho: r.desfecho, situacao: r.situacao, ...(superada ? { superada } : {}) },
   }
 }

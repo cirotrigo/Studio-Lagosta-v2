@@ -43,11 +43,14 @@ export async function resolucaoParaASpec(
   if (typeof id !== 'string' || typeof spec.projectId !== 'number') return {}
   if (opcoes.reproducao) return ehIdDeReferencia(id) ? { definicoes: await referenciasDoProjeto(spec.projectId, { incluirRevogadas: true }) } : {}
   const formato = spec.formato === 'story' || spec.formato === 'feed' ? spec.formato : undefined
-  const vigentes = await referenciasDoProjeto(spec.projectId, { ...(formato ? { formato } : {}) })
+  // Formato que nenhum arquétipo define (quadrado): o catálogo não é bloqueado (a recusa certa é a do formato), e a
+  // referência pedida resolve entre todas as vigentes para a recusa também ser a do formato.
+  if (!formato) return ehIdDeReferencia(id) ? { definicoes: await referenciasDoProjeto(spec.projectId) } : {}
+  const vigentes = await referenciasDoProjeto(spec.projectId, { formato })
   if (vigentes.length === 0 || ehIdDeReferencia(id)) return { definicoes: vigentes }
   return {
     definicoes: vigentes,
-    catalogoBloqueado: { motivo: `o cliente tem ${vigentes.length} referência(s) aprovada(s) no ${formato ?? 'formato'} (${vigentes.map((a) => `${a.id}@${a.versao}`).join(', ')}) — peça uma delas em arquetipo.id (listar-referencias)` },
+    catalogoBloqueado: { motivo: `o cliente tem ${vigentes.length} referência(s) aprovada(s) no ${formato} (${vigentes.map((a) => `${a.id}@${a.versao}`).join(', ')}) — peça uma delas em arquetipo.id (listar-referencias)` },
   }
 }
 
@@ -147,7 +150,9 @@ export async function aprovarReferencia(args: { projectId: number; pageId: strin
     return { definicao, leitura, formato, impressao: impressaoDoArquetipo(definicao) }
   }
 
-  const gravar = async () => {
+  // DECIDIR (ler a vigente, compilar, validar, conferir a idempotência) é separado de INSERIR: a releitura depois de um
+  // conflito decide sem gravar nada.
+  const decidir = async () => {
     const anteriores = await db.referenciaDeLayout.findMany({ where: { arquetipoId }, orderBy: { versao: 'desc' }, take: 1, select: { ...selecao, definicao: true } })
     const vigente = anteriores[0]
     const versao = (vigente?.versao ?? 0) + 1
@@ -155,22 +160,27 @@ export async function aprovarReferencia(args: { projectId: number; pageId: strin
     // Idempotente (depois de validar): a mesma página já aprovada e vigente é a mesma revisão — nada a gravar.
     if (vigente && !vigente.revogadaEm && vigente.pageVersion === pageVersion && impressaoDoArquetipo({ ...(vigente.definicao as unknown as ArquetipoDeLayout), versao }) === impressao) {
       const { definicao: _d, ...revisao } = vigente
-      return { arquetipo: { id: arquetipoId, versao: vigente.versao, impressao: vigente.impressao }, revisao, leitura, reaproveitada: true }
+      return { reaproveitada: true as const, resultado: { arquetipo: { id: arquetipoId, versao: vigente.versao, impressao: vigente.impressao }, revisao, leitura, reaproveitada: true } }
     }
+    return { reaproveitada: false as const, versao, definicao, leitura, formato, impressao }
+  }
+  const inserir = async (d: Extract<Awaited<ReturnType<typeof decidir>>, { reaproveitada: false }>) => {
     const criada = await db.referenciaDeLayout.create({
-      data: { projectId: args.projectId, pageId: page.id, formato, arquetipoId, versao, impressao, pageVersion, definicao: definicao as never, aprovadaPor: args.aprovadaPor },
+      data: { projectId: args.projectId, pageId: page.id, formato: d.formato, arquetipoId, versao: d.versao, impressao: d.impressao, pageVersion, definicao: d.definicao as never, aprovadaPor: args.aprovadaPor },
       select: selecao,
     })
-    return { arquetipo: { id: arquetipoId, versao, impressao }, revisao: criada, leitura, reaproveitada: false }
+    return { arquetipo: { id: arquetipoId, versao: d.versao, impressao: d.impressao }, revisao: criada, leitura: d.leitura, reaproveitada: false }
   }
+  const decisao = await decidir()
+  if (decisao.reaproveitada) return decisao.resultado
   try {
-    return await gravar()
+    return await inserir(decisao as Extract<typeof decisao, { reaproveitada: false }>)
   } catch (e) {
-    // Concorrência: outra aprovação ganhou `versao`. Reler decide — a equivalente reaproveita, a diferente é dita.
+    // Concorrência: outra aprovação ganhou `versao`. Reler decide SEM inserir — a equivalente reaproveita, a diferente é dita.
     if (!(e && typeof e === 'object' && (e as { code?: string }).code === 'P2002')) throw e
-    const r = await gravar()
-    if (r.reaproveitada) return r
-    throw new CreativeError('REFERENCIA_CONCORRENTE', `Outra aprovação de ${arquetipoId} gravou uma revisão diferente ao mesmo tempo (agora v${r.arquetipo.versao}): confira listar-referencias e aprove de novo se ainda for o caso.`, 409, { arquetipo: r.arquetipo })
+    const releitura = await decidir()
+    if (releitura.reaproveitada) return releitura.resultado
+    throw new CreativeError('REFERENCIA_CONCORRENTE', `Outra aprovação de ${arquetipoId} gravou uma revisão diferente ao mesmo tempo (a próxima seria v${releitura.versao}): confira listar-referencias e aprove de novo se ainda for o caso. Nada foi gravado por esta chamada.`, 409, { arquetipoId, proximaVersao: releitura.versao })
   }
 }
 

@@ -1655,17 +1655,26 @@ limitada.
 - `referencias.ts` (serviço): `aprovarReferencia` compila **com o piso do projeto** (toda caixa dentro dele, senão
   `REFERENCIA_FORA_DO_PISO` com o lado e a medida), valida o contrato, e grava; `versaoEsperada` recusa aprovar uma
   página editada depois da conferência (`REFERENCIA_PAGINA_MUDOU`); idempotente DEPOIS de validar; concorrência pelo
-  índice único relê e reaproveita a equivalente (`REFERENCIA_CONCORRENTE` se for outra).
+  índice único RELÊ SEM INSERIR e reaproveita a equivalente (`REFERENCIA_CONCORRENTE` se for outra — zero gravações
+  pela chamada que perdeu).
 - **O gate por cliente/formato é no servidor** (`resolucaoParaASpec` → `prepararArquetipo`): pedido NOVO (fila,
   medir-copy, `compor-arte` direto, executar-plano) resolve só as revisões VIGENTES do cliente no formato, e **o
   cliente que tem referência aprovada no formato perde o catálogo** (`ARQUETIPO_NAO_APROVADO`, com as referências que
   valem) — cliente sem referência segue no catálogo (legado, dito). `reproducao` (worker da fila, recomposição) resolve
   com as revogadas e o catálogo aberto: o pedido já fixou id + versão + impressão. `compor-arte` e qualquer entrada
   direta em `comporPeca` são pedido novo — a revogação não é contornável por elas.
-- **Leva idempotente**: a chave da reserva leva a referência COMO PEDIDA (`{ id }`), não a revisão resolvida — repetir
-  o pedido depois de uma revisão nova REAPROVEITA a peça reservada; pedir a versão explícita é outro pedido. Se a
-  referência foi revogada no meio, a repetição resolve com as revogadas só para reaproveitar; criar com ela é
-  `REFERENCIA_REVOGADA`. (O catálogo continua chaveado pela versão resolvida: as levas vivas não mudam de chave.)
+- **Leva idempotente** (rodada 2 do Codex): com identidade de lote e id `ref-…` a resolução é PREGUIÇOSA — a chave da
+  reserva é o pedido COMO VEIO (`{ id }`); a repetição de uma peça viva reaproveita SEM resolver (revisão nova ou
+  revogada no meio não muda a chave nem recusa) e responde a spec GRAVADA na peça; a retomada (Generation falhou ou
+  ficou sem job) reproduz a spec gravada na Generation que a linha aponta — a resolução original, mesmo revogada
+  depois, como o worker; só o CRIAR (sem peça anterior ou sem spec gravada) resolve, como pedido novo: revogada é
+  recusa e nada é criado. Pedir a versão explícita é outro pedido. (O catálogo e a spec sem arquétipo continuam
+  resolvidos na porta e chaveados como sempre: as levas vivas não mudam de chave.) Prova: `fila-referencia-lote.test.ts`.
+- **Alcance do gate, dito**: o gate é sobre PEDIDOS DE ARQUÉTIPO. Spec sem `arquetipo` (a composição legada por
+  assinatura — é o que `executar-plano` monta hoje) não passa por ele; revogar a última referência vigente do formato
+  REABRE o catálogo (a política é por referência vigente, não um modo permanente); formato que nenhum arquétipo define
+  (quadrado) não bloqueia nada (a recusa certa é a do formato). Pedido novo de catálogo consulta a tabela uma vez
+  (índice `projectId, formato`): a tabela tem de existir antes de este código entrar (`npm run db:deploy`).
 - Tools MCP `aprovar-referencia` (gate `curador`, `revogar: true`, `versaoEsperada`) e `listar-referencias`.
 
 **Precedência explícita** (o que a referência FIXA × o que continua com as outras autoridades):

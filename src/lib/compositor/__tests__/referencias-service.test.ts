@@ -97,17 +97,25 @@ describe('aprovarReferencia', () => {
     db.referenciaDeLayout.create.mockRejectedValueOnce(Object.assign(new Error('unique'), { code: 'P2002' }))
     db.referenciaDeLayout.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([linha(definicaoV1)])
     expect((await aprovarReferencia({ projectId: 12, pageId: PAGINA.id, aprovadaPor: null })).reaproveitada).toBe(true)
+    db.referenciaDeLayout.create.mockClear()
     db.referenciaDeLayout.create.mockRejectedValueOnce(Object.assign(new Error('unique'), { code: 'P2002' }))
     db.referenciaDeLayout.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([linha(definicaoV1, { pageVersion: 'v1:outra-pagina' })])
-    expect((await erro(() => aprovarReferencia({ projectId: 12, pageId: PAGINA.id, aprovadaPor: null }))).code).toBe('REFERENCIA_CONCORRENTE')
+    const e = await erro(() => aprovarReferencia({ projectId: 12, pageId: PAGINA.id, aprovadaPor: null }))
+    expect(e.code).toBe('REFERENCIA_CONCORRENTE')
+    // A releitura decide SEM inserir: só a tentativa que perdeu o índice foi ao banco.
+    expect(db.referenciaDeLayout.create).toHaveBeenCalledTimes(1)
   })
 })
 
 describe('resolucaoParaASpec — o gate por cliente/formato no servidor', () => {
   const v2 = { ...definicaoV1, versao: 2 }
-  it('sem arquétipo na spec, não vai ao banco', async () => {
+  it('sem arquétipo na spec, não vai ao banco; no quadrado o catálogo não é bloqueado (a recusa certa é a do formato)', async () => {
     expect(await resolucaoParaASpec({ projectId: 12, formato: 'story' })).toEqual({})
     expect(db.referenciaDeLayout.findMany).not.toHaveBeenCalled()
+    db.referenciaDeLayout.findMany.mockResolvedValue([linha(definicaoV1)])
+    expect(await resolucaoParaASpec({ projectId: 12, formato: 'quadrado', arquetipo: { id: 'minimal-fb-topo-esquerda' } })).toEqual({})
+    expect(db.referenciaDeLayout.findMany).not.toHaveBeenCalled()
+    expect((await resolucaoParaASpec({ projectId: 12, formato: 'quadrado', arquetipo: { id: definicaoV1.id } })).definicoes).toEqual([definicaoV1])
   })
 
   it('pedido novo: só as vigentes do cliente no formato; com referência, o catálogo fica bloqueado; sem, aberto', async () => {
