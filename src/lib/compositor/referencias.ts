@@ -36,17 +36,20 @@ import { DIMENSOES, type Formato } from './spec'
  */
 export async function resolucaoParaASpec(
   spec: { projectId?: number; formato?: string; arquetipo?: { id?: string; versao?: number; impressao?: string } | null },
-  opcoes: { reproducao?: boolean } = {},
+  opcoes: { reproducao?: boolean; cliente?: LeitorDeReferencias } = {},
 ): Promise<Pick<OpcoesDeResolucao, 'definicoes' | 'catalogoBloqueado'>> {
   const id = spec.arquetipo?.id
   // `z.infer` com strict:false marca `projectId` opcional; a spec validada sempre o tem — sem ele não há cliente a consultar.
   if (typeof id !== 'string' || typeof spec.projectId !== 'number') return {}
-  if (opcoes.reproducao) return ehIdDeReferencia(id) ? { definicoes: await referenciasDoProjeto(spec.projectId, { incluirRevogadas: true }) } : {}
+  // Quem resolve de DENTRO de uma transação (a reserva do lote, `resolverAgora(tx)`) lê pela transação: com o pooler em
+  // `connection_limit=1`, a consulta pelo cliente global esperaria pela conexão que a própria transação segura (Codex, rodada 4).
+  const cliente = opcoes.cliente
+  if (opcoes.reproducao) return ehIdDeReferencia(id) ? { definicoes: await referenciasDoProjeto(spec.projectId, { incluirRevogadas: true, cliente }) } : {}
   const formato = spec.formato === 'story' || spec.formato === 'feed' ? spec.formato : undefined
   // Formato que nenhum arquétipo define (quadrado): o catálogo não é bloqueado (a recusa certa é a do formato), e a
   // referência pedida resolve entre todas as vigentes para a recusa também ser a do formato.
-  if (!formato) return ehIdDeReferencia(id) ? { definicoes: await referenciasDoProjeto(spec.projectId) } : {}
-  const vigentes = await referenciasDoProjeto(spec.projectId, { formato })
+  if (!formato) return ehIdDeReferencia(id) ? { definicoes: await referenciasDoProjeto(spec.projectId, { cliente }) } : {}
+  const vigentes = await referenciasDoProjeto(spec.projectId, { formato, cliente })
   if (vigentes.length === 0 || ehIdDeReferencia(id)) return { definicoes: vigentes }
   return {
     definicoes: vigentes,
@@ -71,8 +74,11 @@ export interface RevisaoDeReferencia {
  * composição pelo worker, que já carregam id + versão + impressão fixados): todas. Linha cuja impressão não bate com a
  * definição gravada é recusada, nunca pulada em silêncio.
  */
-export async function referenciasDoProjeto(projectId: number, opcoes: { formato?: Formato; incluirRevogadas?: boolean } = {}): Promise<ArquetipoDeLayout[]> {
-  const linhas = await db.referenciaDeLayout.findMany({
+/** O cliente Prisma que lê: o global, ou a TRANSAÇÃO de quem chama de dentro de uma (a reserva do lote) — ver `LeitorDeReferencias`. */
+export type LeitorDeReferencias = Pick<typeof db, 'referenciaDeLayout'>
+
+export async function referenciasDoProjeto(projectId: number, opcoes: { formato?: Formato; incluirRevogadas?: boolean; cliente?: LeitorDeReferencias } = {}): Promise<ArquetipoDeLayout[]> {
+  const linhas = await (opcoes.cliente ?? db).referenciaDeLayout.findMany({
     where: { projectId, ...(opcoes.formato ? { formato: opcoes.formato } : {}), ...(opcoes.incluirRevogadas ? {} : { revogadaEm: null }) },
     select: { arquetipoId: true, versao: true, impressao: true, definicao: true },
     orderBy: [{ arquetipoId: 'asc' }, { versao: 'asc' }],

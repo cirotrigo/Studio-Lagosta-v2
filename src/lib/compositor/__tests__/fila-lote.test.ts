@@ -77,8 +77,12 @@ vi.mock('@/lib/db', () => {
     return {
       project: { findUnique: async ({ where }: { where: { id: number } }) => ({ id: where.id, name: 'Espeto Gaúcho', userId: 'dono-interno' }) },
       referenciaDeLayout: {
-        findMany: async ({ where }: { where: { projectId: number; formato?: string; revogadaEm?: null } }) =>
-          banco.referencias.filter((r) => r.projectId === where.projectId && (!where.formato || r.formato === where.formato) && !('revogadaEm' in where && where.revogadaEm === null && r.revogadaEm)),
+        findMany: async ({ where }: { where: { projectId: number; formato?: string; revogadaEm?: null } }) => {
+          // Pelo cliente GLOBAL com uma transação aberta: no pooler (connection_limit=1) a consulta esperaria pela conexão
+          // que a transação segura — aqui é defeito, não espera (Codex, rodada 4 da F1).
+          if (!naTransacao && banco.emTransacao > 0) throw new Error('consulta a ReferenciaDeLayout pelo cliente global com a transação da reserva aberta')
+          return banco.referencias.filter((r) => r.projectId === where.projectId && (!where.formato || r.formato === where.formato) && !('revogadaEm' in where && where.revogadaEm === null && r.revogadaEm))
+        },
       },
       generation: {
         create: async ({ data }: { data: Record<string, unknown> }) => {

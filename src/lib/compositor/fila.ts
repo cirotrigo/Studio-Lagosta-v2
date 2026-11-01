@@ -37,7 +37,7 @@ import { garantirPasta } from './pastas'
 import { validarSpec, type SpecDePeca } from './spec'
 import { conferirLinhas, prepararArquetipo, type ArquetipoResolvido } from './arquetipos/na-spec'
 import { ehIdDeReferencia } from './arquetipos/referencia'
-import { resolucaoParaASpec } from './referencias'
+import { resolucaoParaASpec, type LeitorDeReferencias } from './referencias'
 
 export interface PecaEnfileirada {
   generationId: string
@@ -111,9 +111,11 @@ export async function enfileirarPeca(entrada: unknown, opcoes: OpcoesDeEnfileira
   const idPedido = v.spec.arquetipo?.id
   const preguicosa = opcoes.lote != null && typeof idPedido === 'string' && ehIdDeReferencia(idPedido)
   let resolvida: SpecDePeca | null = null
-  const resolverAgora = async (): Promise<SpecDePeca> => {
+  // `cliente`: a TRANSAÇÃO de quem resolve de dentro da reserva (a consulta pelo cliente global esperaria pela conexão
+  // que a transação segura, com o pooler em connection_limit=1 — Codex, rodada 4). Fora dela, o cliente global.
+  const resolverAgora = async (cliente: LeitorDeReferencias = db): Promise<SpecDePeca> => {
     if (resolvida) return resolvida
-    const arquetipo = prepararArquetipo(v.spec, await resolucaoParaASpec(v.spec))
+    const arquetipo = prepararArquetipo(v.spec, await resolucaoParaASpec(v.spec, { cliente }))
     if (arquetipo) conferirLinhas(arquetipo.definicao, arquetipo.formato, v.spec)
     resolvida = arquetipo ? { ...v.spec, arquetipo: arquetipo.resolvido } : v.spec
     return resolvida
@@ -176,7 +178,7 @@ async function revisaoGravada(cliente: Pick<typeof db, 'generation'>, generation
 }
 
 /** `resolverAgora` só na resolução PREGUIÇOSA (referência do cliente, F1); `null` = a spec já veio resolvida (catálogo e sem arquétipo: o caminho de sempre). */
-async function enfileirarPecaDoLote(spec: SpecDePeca, projeto: ProjetoDaPeca, identidade: IdentidadeDeLote, opcoes: OpcoesDeEnfileirar, resolverAgora: (() => Promise<SpecDePeca>) | null): Promise<PecaEnfileirada> {
+async function enfileirarPecaDoLote(spec: SpecDePeca, projeto: ProjetoDaPeca, identidade: IdentidadeDeLote, opcoes: OpcoesDeEnfileirar, resolverAgora: ((cliente: LeitorDeReferencias) => Promise<SpecDePeca>) | null): Promise<PecaEnfileirada> {
   const decididoPor = opcoes.decididoPor ?? null
   const autor = opcoes.autor ?? null
   let coletor: Pasta | null = null
@@ -201,10 +203,11 @@ async function enfileirarPecaDoLote(spec: SpecDePeca, projeto: ProjetoDaPeca, id
   // reproduzir: resolve como pedido NOVO (vigentes; revogada é recusa, nada criado). Sem resolução preguiçosa
   // (catálogo, sem arquétipo), a spec é a da chamada, como sempre.
   const idPedido = spec.arquetipo?.id ?? ''
-  const specDaPeca = async (cliente: Pick<typeof db, 'generation'>, recuperacao: { generationId: string } | null): Promise<SpecDePeca> => {
+  const specDaPeca = async (cliente: Pick<typeof db, 'generation' | 'referenciaDeLayout'>, recuperacao: { generationId: string } | null): Promise<SpecDePeca> => {
     if (!resolverAgora) return spec
     const gravada = recuperacao ? await revisaoGravada(cliente, recuperacao.generationId, idPedido) : null
-    return gravada ? { ...spec, arquetipo: gravada } : await resolverAgora()
+    // Tudo pela TRANSAÇÃO da reserva (`cliente` é o `tx`): a Generation gravada e, sem ela, as referências do cliente.
+    return gravada ? { ...spec, arquetipo: gravada } : await resolverAgora(cliente)
   }
   let usada: SpecDePeca = spec
   const r = await reservarItemDeLote({
