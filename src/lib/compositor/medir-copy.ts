@@ -38,7 +38,7 @@ import { ajusteFinalNecessario, caixasDosItens, camadasNaReferencia, papeisDeLis
 import { partidaNoArquetipo } from './arquetipos/candidatos-espaciais'
 import { obstaculosDosAcentos, posicionarAcentos, receitasDoArquetipo, type ProblemaDoAcento } from './arquetipos/acentos'
 import type { TextGeometryIssue } from '@/lib/creatives/text-geometry'
-import type { PapelDeTexto } from './arquetipos/tipos'
+import { ehReferencia, type PapelDeTexto } from './arquetipos/tipos'
 import { papelDoBloco, tintasAtivas } from './arquetipos/fundo'
 
 /** Amostra em português para o orçamento por caracteres (a largura média de uma letra da marca). */
@@ -260,8 +260,10 @@ export function medirCopy(args: {
   if (arq) conferirLogo(arq.definicao, Boolean(args.assinatura.logo))
   // O piso do PROJETO, como no compor (`pisoDoProjeto`): a coluna de cada papel é a da referência efetiva (opção A).
   const pisoArq = arq ? (args.assinatura.pisoDoProjeto ?? args.assinatura.numeros.geometria)[args.formato] : null
-  // A margem da marca (29/10/2026): o medir mede a peça NOVA — sempre `'marca'`, como o compor compõe.
-  const caixasArq = arq ? caixasMaximas(arq.definicao, arq.formato, DIMENSOES[args.formato], pisoArq!, 'marca') : null
+  // A margem da marca (29/10/2026): o medir mede a peça NOVA — `'marca'`, como o compor compõe. F1: a peça por
+  // REFERÊNCIA não vai à margem da marca nem empilha (a caixa aprovada é a margem e o espaçamento), como no compor.
+  const margemArq = arq && !ehReferencia(arq.definicao) ? ('marca' as const) : undefined
+  const caixasArq = arq ? caixasMaximas(arq.definicao, arq.formato, DIMENSOES[args.formato], pisoArq!, margemArq) : null
   const listasArq = arq ? papeisDeLista(arq.definicao) : null
   const preparar = (escalaMaximaDoPapel?: (p: Papel) => number | undefined) =>
     prepararBlocos({
@@ -278,7 +280,7 @@ export function medirCopy(args: {
     })
   // Com arquétipo, a MESMA escada da unidade do compor (`prepararNoArquetipo`).
   const noArquetipo = arq
-    ? prepararNoArquetipo({ arquetipo: arq.definicao, formato: arq.formato, canvas: DIMENSOES[args.formato], geometria: pisoArq!, gap: args.assinatura.numeros.geometria[args.formato].gapEntreBlocos, margem: 'marca', preparar })
+    ? prepararNoArquetipo({ arquetipo: arq.definicao, formato: arq.formato, canvas: DIMENSOES[args.formato], geometria: pisoArq!, gap: args.assinatura.numeros.geometria[args.formato].gapEntreBlocos, ...(margemArq ? { margem: margemArq } : {}), preparar })
     : null
   const preparados = noArquetipo ? noArquetipo.preparados : preparar()
   // #8: o papel do liso pelas tintas DESTA preparação (a da assinatura recebida), a mesma conta do compor — sem preparar
@@ -429,8 +431,8 @@ export function medirCopy(args: {
       geometria: piso,
       unidades,
       logo: args.assinatura.logo ? { razao: args.assinatura.logo.razao } : null,
-      gap: args.assinatura.numeros.geometria[args.formato].gapEntreBlocos,
-      margem: 'marca',
+      // A pilha da faixa, como no compor: a peça por REFERÊNCIA não empilha (sem `gap`, cada papel na própria caixa).
+      ...(margemArq ? { gap: args.assinatura.numeros.geometria[args.formato].gapEntreBlocos, margem: margemArq } : {}),
     })
     const m: Materializacao = 'problemas' in partida ? { ok: false, problemas: partida.problemas } : partida.materializacao
     for (const r of 'resgatados' in partida ? partida.resgatados : []) {
@@ -479,11 +481,11 @@ export function medirCopy(args: {
         formato: arq.formato,
         canvas: DIMENSOES[args.formato],
         geometria: piso,
-        receitas: receitasDoArquetipo(arq.definicao, { formato: arq.formato, canvas: DIMENSOES[args.formato], geometria: piso, margem: 'marca' }).receitas,
+        receitas: receitasDoArquetipo(arq.definicao, { formato: arq.formato, canvas: DIMENSOES[args.formato], geometria: piso, ...(margemArq ? { margem: margemArq } : {}) }).receitas,
         papeis: m.papeis,
         obstaculos: obstaculosDosAcentos(unidades, m.papeis, m.papeis.logo?.posicao ?? null, caixasDosItens(arq.definicao, unidades, m.papeis)),
         itens: caixasDosItens(arq.definicao, unidades, m.papeis),
-        margem: 'marca',
+        ...(margemArq ? { margem: margemArq } : {}),
       })
       acentos.previstos = pos.acentos.map((a) => ({ elemento: a.receita.elemento, tipo: a.receita.tipo, rect: a.rect, ...(a.item ? { item: a.item } : {}) }))
       acentos.omitidos = pos.omitidos

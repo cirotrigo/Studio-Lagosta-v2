@@ -11,6 +11,8 @@ const banco = vi.hoisted(() => ({ generations: [] as Array<Record<string, any>>,
 vi.mock('@/lib/db', () => ({
   db: {
     project: { findUnique: async () => ({ id: 6, name: 'Projeto', userId: 'dono-interno' }) },
+    // F1: o pedido novo consulta as referências do cliente (nenhuma aqui → o catálogo segue aberto).
+    referenciaDeLayout: { findMany: async () => [] },
     generation: {
       create: async ({ data }: { data: Record<string, any> }) => {
         banco.generations.push(data)

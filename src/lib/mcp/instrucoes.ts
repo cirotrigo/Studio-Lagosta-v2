@@ -49,6 +49,7 @@ ARTES — crie, analise, melhore (o fluxo completo)
 - Problema simples de texto (erro de digitação, campo errado, foto errada) se corrige com ajustar-arte — é grátis e instantâneo; não gaste uma melhoria para isso.
 - A resposta da criação traz "autocorrecao": quando aplicada, o sistema encolheu fonte/entrelinha para o texto caber — mencione se relevante. Se a criação FALHAR com "texto não cabe", encurte o texto ou troque de modelo, nunca insista igual. "avisos" são problemas reais não corrigidos — repasse à pessoa.
 - Uma arte que a pessoa amou pode virar modelo das próximas: ofereça marcar-como-modelo com as tags do tema.
+- Uma PÁGINA que o Ciro ajustou no editor pode virar a geometria das próximas peças do cliente: aprovar-referencia (curadoria) cria ref-<pageId>, que compor-arte, compor-leva e medir-copy aceitam em arquetipo.id; listar-referencias diz as que valem.
 
 ARTE PELO EDITOR (o compositor) — a via sem crédito
 - Para cliente com página de assinatura (confira com ver-assinatura), a arte pode nascer pelo EDITOR: compor-arte recebe a copy por papel e por LINHA (pre, headline, apoio, cta, servico), a foto e o formato, e o sistema pousa o texto na área livre da foto, desenha um gradiente de leitura sutil na borda onde o texto pousou (topo e rodapé em camadas independentes) e põe a logo no canto pela luz. Zero crédito, ~5 segundos, e a peça já é página editável — a equipe ajusta na mão pelo editUrl.

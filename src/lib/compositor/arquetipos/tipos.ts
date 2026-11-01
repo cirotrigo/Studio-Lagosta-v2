@@ -33,7 +33,8 @@ export type PapelDeTexto = Exclude<PapelDoArquetipo, 'logo'>
  * a família macro A–E da pesquisa, que o T0 não modela — se o T1a ou um
  * ranking precisar dela, ela entra depois, com nome próprio.
  */
-export const CODIGOS_TAXONOMICOS = ['MIN-01', 'MIN-02', 'MIN-04', 'MIN-09', 'MIN-10', 'MIN-05'] as const
+/** `REF-01` (F1, 01/11/2026): a REFERÊNCIA compilada de uma página do cliente — não é família da pesquisa. */
+export const CODIGOS_TAXONOMICOS = ['MIN-01', 'MIN-02', 'MIN-04', 'MIN-09', 'MIN-10', 'MIN-05', 'REF-01'] as const
 export type CodigoTaxonomico = (typeof CODIGOS_TAXONOMICOS)[number]
 
 /**
@@ -217,8 +218,20 @@ export interface FotoIdeal {
   readonly referencias: ReadonlyArray<string>
 }
 
+/**
+ * A PROVENIÊNCIA de uma definição compilada de PÁGINA DE REFERÊNCIA do cliente (F1 da direção por referência,
+ * 01/11/2026): a página de que a geometria foi lida e a versão dela (`versaoDaPagina`) no momento da aprovação. A
+ * definição é uma REVISÃO imutável (gravada em `ReferenciaDeLayout`); a página viva pode mudar sem mexer nela. Só
+ * o formato da página existe em `formatos` — a referência não é escalada para o outro formato.
+ */
+export interface ReferenciaDaDefinicao {
+  readonly pageId: string
+  readonly pageVersion: string
+  readonly formato: FormatoDoArquetipo
+}
+
 export interface ArquetipoDeLayout {
-  /** kebab-case, estável. A identidade publicada é `id@versao`. */
+  /** kebab-case, estável. A identidade publicada é `id@versao`. Referência: `ref-<pageId>`, versão = revisão aprovada. */
   readonly id: string
   /** Inteiro ≥ 1. Qualquer mudança é VERSÃO nova; a publicada nunca muda. */
   readonly versao: number
@@ -231,9 +244,14 @@ export interface ArquetipoDeLayout {
   /** Ausente = `foto`. `liso-claro` não tem `fotoIdeal` (não há foto a favorecer). */
   readonly fundo?: FundoDoArquetipo
   readonly fotoIdeal?: FotoIdeal
-  /** Cada formato é uma definição PRÓPRIA (não uma escala da outra). */
+  /** Cada formato é uma definição PRÓPRIA (não uma escala da outra). Na referência compilada, só o formato da página. */
   readonly formatos: Readonly<Record<FormatoDoArquetipo, GeometriaDoArquetipo>>
+  /** Só na definição compilada de uma página de referência (F1). Ausente = arquétipo do catálogo. */
+  readonly referencia?: ReferenciaDaDefinicao
 }
+
+/** A definição veio de uma página de referência do cliente (F1), não do catálogo. */
+export const ehReferencia = (a: Pick<ArquetipoDeLayout, 'referencia'> | null | undefined): boolean => !!a?.referencia
 
 /** A identidade publicada de um arquétipo: `id@versao`. */
 export const chaveDoArquetipo = (a: Pick<ArquetipoDeLayout, 'id' | 'versao'>) => `${a.id}@${a.versao}`

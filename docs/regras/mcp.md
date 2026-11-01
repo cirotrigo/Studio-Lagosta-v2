@@ -307,3 +307,14 @@ sem gravar; segunda medida fiel com `corrigir: false`; seleção ÚNICA da Gener
 antes o `generationId` era ignorado). `auditar-operacao` lê o registro dos posts da janela (duas consultas, teto 200) e
 rotula por `validadeDoGate`. Barreira de lint por NOME: leitores (`lerGateDaArte`/`validadeDoGate`: gate-persistido,
 gate-resumo, ver-geracao-retorno, arte-ia) × produtores (`decidirEMontarRegistro`: agendar-itens, arte-rapida, revisar-arte).
+
+### `aprovar-referencia` e `listar-referencias`: a página do Ciro vira o layout do cliente (F1, 01/11/2026)
+
+`aprovar-referencia` (gate `curador`, como `marcar-como-modelo`) compila uma página do editor em arquétipo do cliente
+(`ref-<pageId>`) e grava a revisão imutável; `versaoEsperada` (a `versao` do `revisar-arte`) aprova exatamente o que
+foi conferido; `revogar: true` tira a referência dos pedidos novos. `listar-referencias` (gate `projeto`) diz as que
+valem. A spec de `compor-arte`, `compor-leva` e `medir-copy` pede `"arquetipo": { "id": "ref-<pageId>" }`; referência
+de outro cliente ou revogada não resolve (`ARQUETIPO_DESCONHECIDO`), e **o cliente com referência aprovada no formato
+perde o catálogo** (`ARQUETIPO_NAO_APROVADO`, com as que valem). O
+detalhe (precedência, recusas, o que fica em `leitura.ignoradas`) está em `docs/regras/compositor.md`, seção "F1 da
+direção por referência".

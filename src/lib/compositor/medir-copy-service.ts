@@ -20,6 +20,7 @@ import { areaUtilDe, familiasUsadasNaVariante, medirCopy, orcamentoDaVariante, t
 import { DIMENSOES, validarSpec, type Formato, type GrupoVisual, type Papel, type SpecDePeca } from './spec'
 import { fundoDaPeca, luzParaAVariante } from './arquetipos/fundo'
 import { prepararArquetipo, type ArquetipoResolvido } from './arquetipos/na-spec'
+import { resolucaoParaASpec } from './referencias'
 
 export interface PedidoDeMedicao {
   projectId: number
@@ -99,7 +100,8 @@ export async function medirCopyDoProjeto(pedido: PedidoDeMedicao): Promise<Resul
   })
   if (!v.spec) throw new CreativeError('SPEC_INVALIDA', v.problemas.join('; '), 400, { problemas: v.problemas })
   // T1a: a MESMA resolução e as mesmas recusas do compor (id + versão + impressão; formato, papéis, preferências).
-  const arquetipo = prepararArquetipo(v.spec)
+  // F1: a referência do cliente (não revogada) resolve aqui e sai FIXADA em `fixacao.arquetipo` (id + versão + impressão).
+  const arquetipo = prepararArquetipo(v.spec, await resolucaoParaASpec(v.spec))
   const spec: SpecDePeca = arquetipo ? { ...v.spec, arquetipo: arquetipo.resolvido } : v.spec
   const blocos = spec.blocos as Array<{ papel: Papel; linhas: string[] }>
   const papeis = blocos.map((b) => b.papel)

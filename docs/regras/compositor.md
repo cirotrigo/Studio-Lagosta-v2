@@ -1632,3 +1632,79 @@ do T1a sem variante de logo (`escolhaEspacial` null) empilhava a peça antiga co
 escolha nova — a peça mudava de identidade por uma troca de foto. Regressão: t3b8 G-R5b, que agora também confere que
 a escolha regravada sai sem `pilha` e sem `margem`. Peça do CP2B (modo busca) com foto trocada já ia certa: o pedido
 bruto leva a escolha inteira e `gapDaPilha` lê a `pilha` dela.
+
+### F1 da direção por referência: a página aprovada do Ciro é o arquétipo do cliente (01/11/2026)
+
+**Pedido do Ciro** (30/10): "não estou gostando desses testes; a relação com a foto, o crop da foto e o layout" — ele
+quer mandar uma arte pronta de que gosta, tê-la montada no editor (F0, feita em 30/10 com duas artes do Empório
+Fonseca) e **o motor seguir essa geometria**. A proposta foi revisada pelo Codex em 30/10 (`human-output/relatorios/
+editor-madrugada-2026-10-24/direcao-por-referencia-2026-10-30/REVISAO-CODEX.md`), que cortou a F1 para "reduzida + gate
+no servidor": revisão aprovada imutável, seleção só do aprovado por cliente/formato, aplicação fiel com adaptação
+limitada.
+
+**O que existe:**
+
+- `compilarReferencia` (`arquetipos/referencia.ts`, puro): uma `Page` vira um `ArquetipoDeLayout` do cliente com id
+  `ref-<pageId>`, código `REF-01` e `referencia: { pageId, pageVersion, formato }`. Só o formato da página existe em
+  `formatos` — a referência **não é escalada** para o outro (`ARQUETIPO_FORMATO_NAO_SUPORTADO`; o validador aceita
+  `opcoes.formatos`).
+- `ReferenciaDeLayout` (tabela nova, migration `20261101120000_referencia_de_layout`): a **revisão aprovada**, com a
+  definição inteira, a impressão e a `versaoDaPagina` do momento. Trigger no banco (provado em Postgres isolado,
+  `prova-migration-docker.md`): UPDATE de qualquer coisa que não seja `revogadaEm` e DELETE fora do cascade são
+  recusados — aprovar de novo cria `versao + 1`.
+- `referencias.ts` (serviço): `aprovarReferencia` compila **com o piso do projeto** (toda caixa dentro dele, senão
+  `REFERENCIA_FORA_DO_PISO` com o lado e a medida), valida o contrato, e grava; `versaoEsperada` recusa aprovar uma
+  página editada depois da conferência (`REFERENCIA_PAGINA_MUDOU`); idempotente DEPOIS de validar; concorrência pelo
+  índice único RELÊ SEM INSERIR e reaproveita a equivalente (`REFERENCIA_CONCORRENTE` se for outra — zero gravações
+  pela chamada que perdeu).
+- **O gate por cliente/formato é no servidor** (`resolucaoParaASpec` → `prepararArquetipo`): pedido NOVO (fila,
+  medir-copy, `compor-arte` direto, executar-plano) resolve só as revisões VIGENTES do cliente no formato, e **o
+  cliente que tem referência aprovada no formato perde o catálogo** (`ARQUETIPO_NAO_APROVADO`, com as referências que
+  valem) — cliente sem referência segue no catálogo (legado, dito). `reproducao` (worker da fila, recomposição) resolve
+  com as revogadas e o catálogo aberto: o pedido já fixou id + versão + impressão. `compor-arte` e qualquer entrada
+  direta em `comporPeca` são pedido novo — a revogação não é contornável por elas.
+- **Leva idempotente** (rodada 2 do Codex): com identidade de lote e id `ref-…` a resolução é PREGUIÇOSA — a chave da
+  reserva é o pedido COMO VEIO (`{ id }`); a repetição de uma peça viva reaproveita SEM resolver (revisão nova ou
+  revogada no meio não muda a chave nem recusa) e responde a spec GRAVADA na peça; a retomada (Generation falhou ou
+  ficou sem job) reproduz a spec gravada na Generation que a linha aponta — a resolução original, mesmo revogada
+  depois, como o worker; só o CRIAR (sem peça anterior ou sem spec gravada) resolve, como pedido novo: revogada é
+  recusa e nada é criado. Pedir a versão explícita é outro pedido. (O catálogo e a spec sem arquétipo continuam
+  resolvidos na porta e chaveados como sempre: as levas vivas não mudam de chave.) Prova: `fila-referencia-lote.test.ts`.
+- **Alcance do gate, dito**: o gate é sobre PEDIDOS DE ARQUÉTIPO. Spec sem `arquetipo` (a composição legada por
+  assinatura — é o que `executar-plano` monta hoje) não passa por ele; revogar a última referência vigente do formato
+  REABRE o catálogo (a política é por referência vigente, não um modo permanente); formato que nenhum arquétipo define
+  (quadrado) não bloqueia nada (a recusa certa é a do formato). Pedido novo de catálogo consulta a tabela uma vez
+  (índice `projectId, formato`): a tabela tem de existir antes de este código entrar (`npm run db:deploy`).
+- Tools MCP `aprovar-referencia` (gate `curador`, `revogar: true`, `versaoEsperada`) e `listar-referencias`.
+
+**Precedência explícita** (o que a referência FIXA × o que continua com as outras autoridades):
+
+| Fixa a referência | Continua com quem era |
+|---|---|
+| papéis presentes, ordem de leitura, `linhasMax` = linhas da página | fonte, corpo e cor (assinatura) — a escada desce do corpo da assinatura até caber na caixa; o corpo do Ciro NÃO entra |
+| caixa de cada papel (referência = zona na horizontal; zona vertical = união dos textos → uma faixa só; **`dy` = 0 por regra** em `candidatosDasFaixas`, qualquer que seja a altura medida ou o papel opcional ausente) | o piso do projeto recorta a zona (caixa fora do piso é recusa NA APROVAÇÃO, `REFERENCIA_FORA_DO_PISO`) |
+| alinhamento da manchete e próprio de cada papel; âncora pela faixa da manchete | tratamento de leitura (gradiente do compositor); a foto do pedido em cover |
+| caixa e canto da logo | **margem da marca e pilha da faixa DESLIGADAS** no compor E no medir-copy (a partida é a mesma: manchete em y 1618 na prova, não 1637 pela pilha): a caixa aprovada é a margem e o espaçamento |
+
+O que a página tem e a referência ignora volta **dito** em `leitura.ignoradas` (fios/formas, gradiente, fotos extras,
+textos sem papel, logos além da primeira). Recusas ditas: sem foto de fundo ≥ 90 % (`REFERENCIA_SEM_FOTO` — página de
+várias fotos ou liso fica para a F2), sem manchete, sem logo, manchete fora das faixas de âncora, texto centralizado
+fugindo > 8 px do eixo, **duas camadas do mesmo papel** (a segunda voz conta como manchete — uma caixa envolvente
+apagaria colunas e vãos: `REFERENCIA_PAPEL_REPETIDO`), **camada girada** (`REFERENCIA_CAMADA_GIRADA`), caixa fora do
+piso do projeto.
+
+**Prova (01/11/2026)**: `arquetipos/__tests__/referencia.test.ts` com a página real do Brunch do Empório (ajustada pelo
+Ciro em 01/11, fixture `suporte/emporio-ref02-brunch.json`): compila, valida no piso 64/160/160, forma as faixas
+`[headline, apoio] [logo]` com intervalo `[0, 0]`, e **materializa onde o Ciro pôs cada caixa (≤ 1 px)**. A de três
+fotos (Ref 01) é recusada dita.
+
+**Armadilhas:**
+
+- 🔴 O validador exige o centro EXATO em 0,5 para `alinha: 'centro'` (epsilon 1e-9): a caixa centralizada é
+  **simetrizada** no eixo pelo compilador (até 8 px de fuga); além disso é `REFERENCIA_ALINHAMENTO_INCOERENTE`.
+- `candidatosDeArquetipo` (puro, só testes) e a rota `from-layout` do editor continuam só no catálogo — a referência
+  entra por `arquetipo.id` na spec. Exclusividade referência × modelo (`isTemplate`) NÃO foi imposta: a revisão é
+  um snapshot separado da página, e as duas páginas da F0 já eram modelo a pedido do Ciro.
+- O corpo do Ciro não entra (é da assinatura): a referência entrega geometria com a tipografia da assinatura; se a
+  hierarquia visual dele precisar do corpo, é uma decisão à parte (representar o corpo desejado sob o piso, ou
+  aprovar visualmente a substituição).

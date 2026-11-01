@@ -123,7 +123,8 @@ import {
   type PreparoNoArquetipo,
   type UnidadeDoArquetipo,
 } from './arquetipos/no-compositor'
-import { chaveDoArquetipo, type CantoDaLogo } from './arquetipos/tipos'
+import { chaveDoArquetipo, ehReferencia, type CantoDaLogo } from './arquetipos/tipos'
+import { resolucaoParaASpec } from './referencias'
 import { caixaDaFoto, fundoDaPeca, luzParaAVariante, papelDoBloco, tintasAtivas, type FolgaDoCandidato, type PapelDoFundo, type TintaAtiva } from './arquetipos/fundo'
 import { camadaDoAcento, idDoAcento, incoerenciaDosEnvolventesCongelados, obstaculosDosAcentos, ocupacaoDoAcento, posicionarAcentos, receitasDoArquetipo, type AcentoCongelado, type ProblemaDoAcento, type ReceitaDoAcento } from './arquetipos/acentos'
 import { caixaDaVariante, conferirLogoDaPeca, type CacheDeLogos, type LegibilidadeDaLogo } from './logo-da-peca'
@@ -301,6 +302,12 @@ export interface DiagnosticoDoArquetipo {
 }
 
 export interface OpcoesDeComposicao {
+  /**
+   * F1: a composição é a REPRODUÇÃO de um pedido já fixado (o worker da fila, a recomposição): a referência resolve
+   * com as revisões revogadas e o catálogo fica aberto. Ausente = pedido NOVO (compor-arte direto, executar-plano,
+   * scripts): só as referências vigentes do cliente, e o catálogo bloqueado para quem tem referência aprovada.
+   */
+  reproducao?: boolean
   /** Interno: mede e monta camadas sem persistir nem exportar prova. */
   somenteAvaliar?: boolean
   medirComparacao?: boolean
@@ -793,7 +800,11 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   if (!v.spec) throw new CreativeError('SPEC_INVALIDA', `Spec inválida — ${v.problemas.join('; ')}`, 400, { problemas: v.problemas })
   // T1a: o arquétipo é RESOLVIDO antes de tudo (id + versão + impressão exatas, impressão gravada conferida) e
   // as recusas que não dependem da medida saem aqui. Sem `arquetipo`, `null` — e nada abaixo muda.
-  const arq: ArquetipoPreparado | null = prepararArquetipo(v.spec, { exigirFoto: true, ...(opcoes.acentosCongelados ? { acentosCongelados: true } : {}) })
+  // F1: as referências do CLIENTE entram na resolução (`definicoes`) e o gate do catálogo com elas. `reproducao` (worker,
+  // recomposição) = o pedido já fixou id + versão + impressão: as revogadas resolvem e o catálogo fica aberto. Pedido
+  // NOVO (compor-arte direto, executar-plano): só as vigentes, e ARQUETIPO_NAO_APROVADO para o catálogo de quem tem referência.
+  const resolucao = await resolucaoParaASpec(v.spec, { reproducao: opcoes.reproducao === true })
+  const arq: ArquetipoPreparado | null = prepararArquetipo(v.spec, { exigirFoto: true, ...resolucao, ...(opcoes.acentosCongelados ? { acentosCongelados: true } : {}) })
   if (v.spec.selecaoExperimental === true && !opcoes.somenteAvaliar) {
     const { selecionarCombinacao } = await import('./selecionar-combinacao')
     const selecao = await selecionarCombinacao(v.spec)
@@ -893,7 +904,9 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       ? (opcoes.margemDaPeca ?? undefined)
       : opcoes.escolhaEspacial
         ? (opcoes.escolhaEspacial.modo === MODO_BUSCA_ESPACIAL ? opcoes.escolhaEspacial.margem : undefined)
-        : 'marca'
+        : ehReferencia(arq.definicao)
+          ? undefined // F1: a caixa aprovada do Ciro É a margem — a referência não vai à margem da marca.
+          : 'marca'
   const caixasArq = arq ? caixasMaximas(arq.definicao, arq.formato, canvas, pisoArq!, margemDaPeca) : null
   const listasArq = arq ? papeisDeLista(arq.definicao) : null
   const escalaDoFormato = assinatura.origem.formatoDaPagina === spec.formato ? 1 : geo.escalaDeFonte
@@ -1228,8 +1241,9 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   // que a peça gravou — a de antes da regra (sem `pilha`) não empilha, como nasceu. `pedidoDeReproducao` é o pedido
   // bruto (a foto ainda não foi conferida): a identidade da pilha é da peça, não da foto.
   const pedidoDeReproducao = arq ? opcoes.escolhaEspacial ?? null : null
+  // F1: a peça por REFERÊNCIA não empilha — o espaçamento entre as caixas aprovadas é o do Ciro, não o gap da marca.
   const gapDaPilha =
-    opcoes.pilhaDaPeca !== undefined ? (opcoes.pilhaDaPeca ?? undefined) : pedidoDeReproducao ? (pedidoDeReproducao.modo === MODO_BUSCA_ESPACIAL ? pedidoDeReproducao.pilha : undefined) : g.gap
+    opcoes.pilhaDaPeca !== undefined ? (opcoes.pilhaDaPeca ?? undefined) : pedidoDeReproducao ? (pedidoDeReproducao.modo === MODO_BUSCA_ESPACIAL ? pedidoDeReproducao.pilha : undefined) : arq && ehReferencia(arq.definicao) ? undefined : g.gap
   if (arq && unidadesArq && pisoArq) {
     const p = partidaNoArquetipo({
       arquetipo: arq.definicao,
