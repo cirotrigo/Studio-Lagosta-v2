@@ -53,8 +53,8 @@ const zona = (a: ArquetipoDeLayout, f: 'story' | 'feed', papel: string) => (a.fo
 const perto = (a: number, b: number) => Math.abs(a - b) < 1e-9
 
 describe('#10 · contrato e catálogo (CT-01–CT-03)', () => {
-  it('CT-01: MIN-05 em CODIGOS_TAXONOMICOS (aditivo, os 5 de antes na mesma ordem)', () => {
-    expect(CODIGOS_TAXONOMICOS).toEqual(['MIN-01', 'MIN-02', 'MIN-04', 'MIN-09', 'MIN-10', 'MIN-05'])
+  it('CT-01: MIN-05 em CODIGOS_TAXONOMICOS (aditivo, os 5 de antes na mesma ordem; REF-01 da F1 depois)', () => {
+    expect(CODIGOS_TAXONOMICOS).toEqual(['MIN-01', 'MIN-02', 'MIN-04', 'MIN-09', 'MIN-10', 'MIN-05', 'REF-01'])
   })
 
   for (const [id, canto] of [

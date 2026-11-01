@@ -764,6 +764,8 @@ model Project {
   @@index([userId, updatedAt(sort: Desc)])
   @@index([updatedAt(sort: Desc)])
   @@index([isClientProject])
+  /// F1 da direção por referência (01/11/2026): as revisões aprovadas das páginas de referência do cliente.
+  referenciasDeLayout         ReferenciaDeLayout[]
 }
 
 /// DNA da marca — identidade que entra INCONDICIONALMENTE em todo prompt de
@@ -1682,6 +1684,35 @@ model SocialPost {
 /// da aplicação de valores, de camadasNoInstante e do reflow). APPEND-ONLY: só create, nunca update/upsert. Nasce
 /// na MESMA transação que confirma a mídia (RENDERED); render vencido (sem a ficha) nunca ganha prova. Obrigatória
 /// para enviar post com contrato semântico (_slots/_papeis); no legado é registrada, mas a ausência não bloqueia.
+/// A REVISÃO APROVADA de uma página de referência (F1 da direção por referência, 01/11/2026): a definição de
+/// arquétipo compilada da página (`compilarReferencia`), IMUTÁVEL — editar a página não a muda; aprovar de novo cria
+/// a versão seguinte do mesmo `arquetipoId` (`ref-<pageId>`). O compositor só lê as revisões não revogadas para
+/// pedidos novos; a recomposição lê qualquer uma (a peça fixou id + versão + impressão). Trigger no banco impede
+/// UPDATE do conteúdo e DELETE fora do cascade do projeto.
+model ReferenciaDeLayout {
+  id          String    @id @default(cuid())
+  projectId   Int
+  pageId      String
+  /// 'story' | 'feed' — o formato da página; a referência não é escalada para o outro.
+  formato     String
+  /// `ref-<pageId>`: o id que a spec pede em `arquetipo.id`.
+  arquetipoId String
+  versao      Int
+  /// `impressaoDoArquetipo(definicao)` — conferida na leitura.
+  impressao   String
+  /// `versaoDaPagina` no momento da aprovação.
+  pageVersion String
+  definicao   Json
+  /// `User.id` INTERNO de quem aprovou (nunca o clerkId); null quando o serviço não resolveu.
+  aprovadaPor String?
+  aprovadaEm  DateTime  @default(now())
+  revogadaEm  DateTime?
+  Project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([arquetipoId, versao])
+  @@index([projectId, formato])
+}
+
 model PostRenderProof {
   postId         String
   mediaUrl       String

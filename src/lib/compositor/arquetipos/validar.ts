@@ -81,8 +81,13 @@ export function areaSeguraPadrao(formato: FormatoDoArquetipo): AreaSegura {
 }
 
 export interface OpcoesDaValidacao {
-  /** Só para teste: substitui a área segura padrão de um formato. */
+  /** Substitui a área segura padrão de um formato: teste, ou o PISO DO PROJETO na aprovação de uma referência (F1). */
   readonly areaSegura?: Partial<Record<FormatoDoArquetipo, AreaSegura>>
+  /**
+   * Os formatos que a definição TEM de definir (default: todos). A referência compilada de uma página (F1) só define o
+   * formato da página; o catálogo continua obrigado aos dois. Formato definido fora desta lista continua conferido.
+   */
+  readonly formatos?: ReadonlyArray<FormatoDoArquetipo>
 }
 
 /** Meio pixel: 8,5% de 1080 é 91,8 px contra a margem de 92 — arredondamento, não invasão. */
@@ -117,7 +122,8 @@ const VALOR_DE_COR = /#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?)\(/i
  * desenho entrariam com outro nome.
  */
 const CHAVES = {
-  raiz: ['id', 'versao', 'codigoTaxonomico', 'nome', 'papeis', 'elementos', 'preferencias', 'fundo', 'fotoIdeal', 'formatos'],
+  raiz: ['id', 'versao', 'codigoTaxonomico', 'nome', 'papeis', 'elementos', 'preferencias', 'fundo', 'fotoIdeal', 'formatos', 'referencia'],
+  referencia: ['pageId', 'pageVersion', 'formato'],
   papel: ['papel', 'obrigatorio', 'ordemDeLeitura', 'escala', 'alinha', 'lista'],
   elemento: ['id', 'tipo', 'opcional', 'corPorPapel', 'presoA', 'canto', 'porItem', 'braco'],
   preferencias: ['ancora', 'alinha', 'cantoDaMarca'],
@@ -254,16 +260,30 @@ export function validarArquetipo(arquetipo: ArquetipoDeLayout, opcoes: OpcoesDaV
     recusar('CAMPO_INVALIDO', 'fotoIdeal', 'a foto ideal é descritiva: área calma, assunto, descrição e referências')
   }
 
-  // Formatos: story e feed, cada um com geometria própria.
+  // F1: a proveniência da referência compilada — só a forma; o conteúdo (página, versão) é de quem aprovou.
+  if (a.referencia !== undefined) {
+    const r = a.referencia as unknown
+    if (!ehObjeto(r)) recusar('CAMPO_INVALIDO', 'referencia', 'a referência é { pageId, pageVersion, formato }')
+    else {
+      fechado(r, CHAVES.referencia, 'referencia')
+      if (typeof r.pageId !== 'string' || !r.pageId) recusar('CAMPO_INVALIDO', 'referencia.pageId', 'a referência diz a página de origem')
+      if (typeof r.pageVersion !== 'string' || !r.pageVersion) recusar('CAMPO_INVALIDO', 'referencia.pageVersion', 'a referência diz a versão da página aprovada')
+      if (!contem(FORMATOS_DO_ARQUETIPO, r.formato)) recusar('CAMPO_INVALIDO', 'referencia.formato', `formato fora de ${FORMATOS_DO_ARQUETIPO.join(', ')}`)
+      else if (a.codigoTaxonomico !== 'REF-01') recusar('CAMPO_INVALIDO', 'codigoTaxonomico', 'a definição de referência tem o código REF-01')
+    }
+  } else if (a.codigoTaxonomico === 'REF-01') recusar('CAMPO_INVALIDO', 'codigoTaxonomico', 'REF-01 é só da definição compilada de uma página de referência')
+
+  // Formatos: story e feed, cada um com geometria própria (a referência compilada só tem o da página: `opcoes.formatos`).
   const formatos = (ehObjeto(a.formatos) ? a.formatos : {}) as Record<string, ArquetipoDeLayout['formatos'][FormatoDoArquetipo]>
   for (const f of Object.keys(formatos)) {
     if (!contem(FORMATOS_DO_ARQUETIPO, f)) recusar('FORMATO_DESCONHECIDO', `formatos.${f}`, `formato fora de ${FORMATOS_DO_ARQUETIPO.join(', ')}`)
   }
+  const exigidos = opcoes.formatos ?? FORMATOS_DO_ARQUETIPO
   for (const f of FORMATOS_DO_ARQUETIPO) {
     const g = formatos[f]
     const base = `formatos.${f}`
     if (!ehObjeto(g)) {
-      recusar('FORMATO_AUSENTE', base, `o arquétipo não define o ${f}`)
+      if (exigidos.includes(f)) recusar('FORMATO_AUSENTE', base, `o arquétipo não define o ${f}`)
       continue
     }
     fechado(g, CHAVES.geometria, base)

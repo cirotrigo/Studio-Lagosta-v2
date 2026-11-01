@@ -18,7 +18,7 @@ import { listarArquetipos, verArquetipo } from './catalogo'
 import { caixaDaFoto, semFoto } from './fundo'
 import { impressaoDoArquetipo } from './impressao'
 import { receitaDoArcoJanela } from './mascara'
-import { chaveDoArquetipo, FORMATOS_DO_ARQUETIPO, type ArquetipoDeLayout, type FormatoDoArquetipo, type PapelDeTexto } from './tipos'
+import { chaveDoArquetipo, ehReferencia, FORMATOS_DO_ARQUETIPO, type ArquetipoDeLayout, type FormatoDoArquetipo, type PapelDeTexto } from './tipos'
 
 /** O que a spec carrega. Pedido público: só `id` (e talvez `versao`); resolvido: os três. */
 export interface ArquetipoDaSpec {
@@ -32,6 +32,16 @@ export interface ArquetipoResolvido {
   id: string
   versao: number
   impressao: string
+}
+
+/**
+ * As definições que NÃO moram no catálogo (F1, 01/11/2026): as revisões aprovadas das páginas de referência do
+ * CLIENTE, carregadas pela camada de serviço (`referenciasDoProjeto`) e entregues ao núcleo puro. Um id que está
+ * aqui resolve daqui (o catálogo nunca tem `ref-…`); um `ref-…` de outro cliente não chega — é o gate por cliente.
+ */
+export interface OpcoesDeResolucao {
+  persistida?: boolean
+  definicoes?: ReadonlyArray<ArquetipoDeLayout>
 }
 
 export interface DisponibilidadeDoArquetipo {
@@ -101,7 +111,7 @@ function mascaraDaVitrine(a: ArquetipoDeLayout) {
  * quando `persistida` é falso: a spec de uma peça que já nasceu (recomposição)
  * tem de dizer a versão, e a falta dela é recusada em vez de cair na mais recente.
  */
-export function resolverArquetipo(pedido: ArquetipoDaSpec, opcoes: { persistida?: boolean } = {}): { definicao: ArquetipoDeLayout; resolvido: ArquetipoResolvido } {
+export function resolverArquetipo(pedido: ArquetipoDaSpec, opcoes: OpcoesDeResolucao = {}): { definicao: ArquetipoDeLayout; resolvido: ArquetipoResolvido } {
   if (!pedido || typeof pedido.id !== 'string' || !pedido.id) {
     throw new CreativeError('ARQUETIPO_DESCONHECIDO', 'O arquétipo pedido não tem id.', 422, { arquetipo: pedido ?? null })
   }
@@ -125,18 +135,29 @@ export function resolverArquetipo(pedido: ArquetipoDaSpec, opcoes: { persistida?
       { arquetipo: pedido },
     )
   }
-  const maisRecente = verArquetipo(pedido.id)
+  // F1: as referências do cliente resolvem ANTES do catálogo (ids `ref-…`, que o catálogo nunca publica); a mais
+  // recente é a revisão de maior número. Sem definições do cliente, o catálogo é a única fonte, como sempre.
+  const doCliente = (opcoes.definicoes ?? []).filter((a) => a.id === pedido.id)
+  const maisRecente = doCliente.length > 0 ? doCliente.reduce((m, a) => (a.versao > m.versao ? a : m)) : verArquetipo(pedido.id)
   if (!maisRecente) {
-    throw new CreativeError('ARQUETIPO_DESCONHECIDO', `O arquétipo "${pedido.id}" não existe no catálogo. Consulte ver-assinatura (campo arquetipos).`, 422, {
-      arquetipo: pedido,
-      disponiveis: listarArquetipos().map(chaveDoArquetipo),
-    })
+    const ehRef = pedido.id.startsWith('ref-')
+    throw new CreativeError(
+      'ARQUETIPO_DESCONHECIDO',
+      ehRef
+        ? `A referência "${pedido.id}" não é uma referência aprovada deste cliente (listar-referencias diz as que valem).`
+        : `O arquétipo "${pedido.id}" não existe no catálogo. Consulte ver-assinatura (campo arquetipos).`,
+      422,
+      {
+        arquetipo: pedido,
+        disponiveis: [...listarArquetipos(), ...(opcoes.definicoes ?? [])].map(chaveDoArquetipo),
+      },
+    )
   }
-  const definicao = pedido.versao === undefined ? maisRecente : verArquetipo(pedido.id, pedido.versao)
+  const definicao = pedido.versao === undefined ? maisRecente : doCliente.length > 0 ? (doCliente.find((a) => a.versao === pedido.versao) ?? null) : verArquetipo(pedido.id, pedido.versao)
   if (!definicao) {
     throw new CreativeError('ARQUETIPO_VERSAO_INEXISTENTE', `O arquétipo "${pedido.id}" não tem a versão ${pedido.versao}.`, 422, {
       arquetipo: pedido,
-      versoes: listarArquetipos().filter((a) => a.id === pedido.id).map((a) => a.versao),
+      versoes: (doCliente.length > 0 ? doCliente : listarArquetipos().filter((a) => a.id === pedido.id)).map((a) => a.versao),
     })
   }
   const impressao = impressaoDoArquetipo(definicao)
@@ -300,7 +321,7 @@ export interface ArquetipoPreparado {
  * medir-copy declara com `excessosDeLinhas`). Sem `spec.arquetipo`, `null` — e
  * nada muda.
  */
-export function prepararArquetipo(spec: SpecComArquetipo, opcoes: { persistida?: boolean; acentosCongelados?: boolean; exigirFoto?: boolean } = {}): ArquetipoPreparado | null {
+export function prepararArquetipo(spec: SpecComArquetipo, opcoes: OpcoesDeResolucao & { acentosCongelados?: boolean; exigirFoto?: boolean } = {}): ArquetipoPreparado | null {
   if (!spec.arquetipo) return null
   const { definicao, resolvido } = resolverArquetipo(spec.arquetipo as ArquetipoDaSpec, opcoes)
   // A recomposição com os acentos GRAVADOS não depende do catálogo de elementos de hoje: a receita da peça é a fonte do
@@ -311,12 +332,16 @@ export function prepararArquetipo(spec: SpecComArquetipo, opcoes: { persistida?:
       arquetipo: chaveDoArquetipo(definicao),
     })
   }
-  if (!FORMATOS_DO_ARQUETIPO.includes(spec.formato as FormatoDoArquetipo)) {
+  // A referência compilada (F1) só define o formato da PÁGINA dela: pedir o outro é recusa, nunca uma escala.
+  const formatosDefinidos = FORMATOS_DO_ARQUETIPO.filter((f) => !!definicao.formatos[f])
+  if (!formatosDefinidos.includes(spec.formato as FormatoDoArquetipo)) {
     throw new CreativeError(
       'ARQUETIPO_FORMATO_NAO_SUPORTADO',
-      `${chaveDoArquetipo(definicao)} define ${FORMATOS_DO_ARQUETIPO.join(' e ')}; o formato "${spec.formato}" não é aproximado por nenhum deles.`,
+      ehReferencia(definicao)
+        ? `${chaveDoArquetipo(definicao)} é a referência de uma página de ${formatosDefinidos.join(' e ')}; o formato "${spec.formato}" não é aproximado por ela (aprove uma página desse formato).`
+        : `${chaveDoArquetipo(definicao)} define ${formatosDefinidos.join(' e ')}; o formato "${spec.formato}" não é aproximado por nenhum deles.`,
       422,
-      { arquetipo: chaveDoArquetipo(definicao), formato: spec.formato, formatos: [...FORMATOS_DO_ARQUETIPO] },
+      { arquetipo: chaveDoArquetipo(definicao), formato: spec.formato, formatos: formatosDefinidos },
     )
   }
   if (spec.selecaoExperimental) {

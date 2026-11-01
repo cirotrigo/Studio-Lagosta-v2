@@ -20,10 +20,12 @@ import { toolsDeFeedback } from './feedback'
 import { toolsDeFotos } from './fotos'
 import { toolsDeModelos } from './modelos'
 import { toolsDePlanos } from './planos'
+import { toolsDeReferencias } from './referencias'
 
 const TODAS: ToolPronta[] = [
   ...toolsDeClientes,
   ...toolsDeModelos,
+  ...toolsDeReferencias,
   ...toolsDeAgenda,
   ...toolsDePlanos,
   ...toolsDeArteIA,

@@ -1632,3 +1632,57 @@ do T1a sem variante de logo (`escolhaEspacial` null) empilhava a peça antiga co
 escolha nova — a peça mudava de identidade por uma troca de foto. Regressão: t3b8 G-R5b, que agora também confere que
 a escolha regravada sai sem `pilha` e sem `margem`. Peça do CP2B (modo busca) com foto trocada já ia certa: o pedido
 bruto leva a escolha inteira e `gapDaPilha` lê a `pilha` dela.
+
+### F1 da direção por referência: a página aprovada do Ciro é o arquétipo do cliente (01/11/2026)
+
+**Pedido do Ciro** (30/10): "não estou gostando desses testes; a relação com a foto, o crop da foto e o layout" — ele
+quer mandar uma arte pronta de que gosta, tê-la montada no editor (F0, feita em 30/10 com duas artes do Empório
+Fonseca) e **o motor seguir essa geometria**. A proposta foi revisada pelo Codex em 30/10 (`human-output/relatorios/
+editor-madrugada-2026-10-24/direcao-por-referencia-2026-10-30/REVISAO-CODEX.md`), que cortou a F1 para "reduzida + gate
+no servidor": revisão aprovada imutável, seleção só do aprovado por cliente/formato, aplicação fiel com adaptação
+limitada.
+
+**O que existe:**
+
+- `compilarReferencia` (`arquetipos/referencia.ts`, puro): uma `Page` vira um `ArquetipoDeLayout` do cliente com id
+  `ref-<pageId>`, código `REF-01` e `referencia: { pageId, pageVersion, formato }`. Só o formato da página existe em
+  `formatos` — a referência **não é escalada** para o outro (`ARQUETIPO_FORMATO_NAO_SUPORTADO`; o validador aceita
+  `opcoes.formatos`).
+- `ReferenciaDeLayout` (tabela nova, migration `20261101120000_referencia_de_layout`): a **revisão aprovada**, com a
+  definição inteira, a impressão e a `versaoDaPagina` do momento. Trigger no banco: UPDATE do conteúdo e DELETE fora do
+  cascade são recusados — aprovar de novo cria `versao + 1`; `revogadaEm` é o único campo vivo.
+- `referencias.ts` (serviço): `aprovarReferencia` compila, **valida contra o piso do projeto** (`pisoDoProjetoDe`), e
+  grava; idempotente quando a página não mudou. `definicoesParaASpec` entrega as revisões ao núcleo puro
+  (`resolverArquetipo`/`prepararArquetipo`, opção `definicoes`) **só quando a spec pede `ref-…`** — composição de
+  catálogo não toca a tabela. Pedido novo (fila, medir-copy): só as não revogadas; worker e recomposição: todas (a
+  peça fixou id + versão + impressão quando nasceu; revogar não a apaga).
+- Tools MCP `aprovar-referencia` (gate `curador`, com `revogar: true`) e `listar-referencias`.
+
+**Precedência explícita** (o que a referência FIXA × o que continua com as outras autoridades):
+
+| Fixa a referência | Continua com quem era |
+|---|---|
+| papéis presentes, ordem de leitura, `linhasMax` = linhas da página | fonte, corpo e cor (assinatura) — a escada desce do corpo da assinatura até caber na caixa; o corpo do Ciro NÃO entra |
+| caixa de cada papel (referência = zona na horizontal; zona vertical = união dos textos → uma faixa só, `dy` 0) | o piso do projeto recorta a zona (texto fora do piso é recusa NA APROVAÇÃO, `REFERENCIA_INVALIDA`) |
+| alinhamento da manchete e próprio de cada papel; âncora pela faixa da manchete | tratamento de leitura (gradiente do compositor); a foto do pedido em cover |
+| caixa e canto da logo | **margem da marca e pilha da faixa DESLIGADAS** (`compor.ts`, `medir-copy.ts`): a caixa aprovada é a margem e o espaçamento |
+
+O que a página tem e a referência ignora volta **dito** em `leitura.ignoradas` (fios/formas, gradiente, fotos extras,
+textos sem papel, logos além da primeira). Recusas ditas: sem foto de fundo ≥ 90 % (`REFERENCIA_SEM_FOTO` — página de
+várias fotos ou liso fica para a F2), sem manchete, sem logo, manchete fora das faixas de âncora, texto centralizado
+fugindo > 8 px do eixo.
+
+**Prova (01/11/2026)**: `arquetipos/__tests__/referencia.test.ts` com a página real do Brunch do Empório (ajustada pelo
+Ciro em 01/11, fixture `suporte/emporio-ref02-brunch.json`): compila, valida no piso 64/160/160, forma as faixas
+`[headline, apoio] [logo]` com intervalo `[0, 0]`, e **materializa onde o Ciro pôs cada caixa (≤ 1 px)**. A de três
+fotos (Ref 01) é recusada dita.
+
+**Armadilhas:**
+
+- 🔴 O validador exige o centro EXATO em 0,5 para `alinha: 'centro'` (epsilon 1e-9): a caixa centralizada é
+  **simetrizada** no eixo pelo compilador (até 8 px de fuga); além disso é `REFERENCIA_ALINHAMENTO_INCOERENTE`.
+- `candidatosDeArquetipo` (puro, só testes) e a rota `from-layout` do editor continuam só no catálogo — a referência
+  entra por `arquetipo.id` na spec. Exclusividade referência × modelo (`isTemplate`) NÃO foi imposta: a revisão é
+  um snapshot separado da página, e as duas páginas da F0 já eram modelo a pedido do Ciro.
+- A leva idempotente fixa a revisão na porta (antes da reserva); se uma revisão nova for aprovada entre a primeira
+  tentativa e a repetição, o hash do payload muda e a repetição conflita — dito, nunca escondido.

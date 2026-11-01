@@ -36,6 +36,7 @@ import { comporPeca } from './compor'
 import { garantirPasta } from './pastas'
 import { validarSpec, type SpecDePeca } from './spec'
 import { conferirLinhas, prepararArquetipo } from './arquetipos/na-spec'
+import { definicoesParaASpec } from './referencias'
 
 export interface PecaEnfileirada {
   generationId: string
@@ -100,7 +101,8 @@ export async function enfileirarPeca(entrada: unknown, opcoes: OpcoesDeEnfileira
   // T1a: o arquétipo entra na fila RESOLVIDO (id + versão + impressão): o payload, a Generation PROCESSING, o hash
   // do lote e a composição no worker usam a mesma versão — publicar uma nova no meio não muda a peça pedida. As
   // recusas que não dependem da medida saem aqui, na hora, e não no worker.
-  const arquetipo = prepararArquetipo(v.spec)
+  // F1: pedido novo resolve a referência do CLIENTE (só as revisões não revogadas) e a fixa aqui, ANTES da reserva.
+  const arquetipo = prepararArquetipo(v.spec, { definicoes: await definicoesParaASpec(v.spec) })
   if (arquetipo) conferirLinhas(arquetipo.definicao, arquetipo.formato, v.spec)
   const spec: SpecDePeca = arquetipo ? { ...v.spec, arquetipo: arquetipo.resolvido } : v.spec
 
