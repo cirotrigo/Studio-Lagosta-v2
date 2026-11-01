@@ -12,11 +12,12 @@ export const toolsDeReferencias = [
   definirTool({
     nome: 'aprovar-referencia',
     descricao:
-      'Aprova uma PÁGINA do editor como REFERÊNCIA DE LAYOUT do cliente: a geometria dela (caixa de cada papel de texto, alinhamento, âncora, caixa e canto da logo, linhas de cada papel) vira um arquétipo do cliente, `ref-<pageId>`, que compor-arte, compor-leva e medir-copy aceitam em `arquetipo.id`. A revisão aprovada é IMUTÁVEL: editar a página depois não muda as próximas peças; aprovar de novo cria a versão seguinte. Fonte, corpo e cor continuam da assinatura; a foto é a do pedido; o piso do projeto recorta a zona. Só compila página de foto inteira (bg-foto ou imagem ≥ 90%) com manchete e logo; o resto (fios, gradiente, fotos extras, textos sem papel) volta DITO em `leitura.ignoradas`. Confirme com a pessoa antes: a referência passa a valer para todo mundo que compõe para este cliente. `revogar: true` tira a referência dos pedidos novos (as peças que nasceram dela seguem recompondo).',
+      'Aprova uma PÁGINA do editor como REFERÊNCIA DE LAYOUT do cliente: a geometria dela (caixa de cada papel de texto, alinhamento, âncora, caixa e canto da logo, linhas de cada papel) vira um arquétipo do cliente, `ref-<pageId>`, que compor-arte, compor-leva e medir-copy aceitam em `arquetipo.id`. A revisão aprovada é IMUTÁVEL: editar a página depois não muda as próximas peças; aprovar de novo cria a versão seguinte. Fonte, corpo e cor continuam da assinatura; a foto é a do pedido; o piso do projeto recorta a zona. Só compila página de foto inteira (bg-foto ou imagem ≥ 90%) com manchete e logo; o resto (fios, gradiente, fotos extras, textos sem papel) volta DITO em `leitura.ignoradas`. Confirme com a pessoa antes: a referência passa a valer para todo mundo que compõe para este cliente — e, a partir da primeira aprovada no formato, o CATÁLOGO de layouts deixa de valer para ele (ARQUETIPO_NAO_APROVADO): só as referências. Passe `versaoEsperada` (a versao do revisar-arte) para aprovar exatamente o que foi conferido. `revogar: true` tira a referência dos pedidos novos (as peças que nasceram dela seguem recompondo).',
     schema: z.object({
       projectId: z.number().describe('ID do cliente.'),
       pageId: z.string().describe('A página do editor (de listar-modelos, get-template-pages ou do editor).'),
       revogar: z.boolean().optional().describe('true = revoga as revisões vigentes desta página em vez de aprovar.'),
+      versaoEsperada: z.string().optional().describe('A `versao` da página que você conferiu (revisar-arte a devolve): se a página mudou depois, a aprovação é recusada (REFERENCIA_PAGINA_MUDOU) em vez de aprovar o que ninguém viu.'),
     }),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     acesso: { tipo: 'curador' },
@@ -29,7 +30,7 @@ export const toolsDeReferencias = [
         const r = await revogarReferencia({ projectId, pageId })
         return { ...r, mensagem: r.revogadas > 0 ? `${r.revogadas} revisão(ões) de ref-${pageId} revogada(s): pedidos novos não a resolvem mais; as peças que nasceram dela seguem recompondo.` : 'Nenhuma revisão vigente desta página para revogar.' }
       }
-      const r = await aprovarReferencia({ projectId, pageId, aprovadaPor: (await quemDecidiu(projectId, principal)) ?? null })
+      const r = await aprovarReferencia({ projectId, pageId, aprovadaPor: (await quemDecidiu(projectId, principal)) ?? null, ...(typeof args.versaoEsperada === 'string' ? { versaoEsperada: args.versaoEsperada } : {}) })
       return {
         arquetipo: r.arquetipo,
         revisao: { versao: r.revisao.versao, formato: r.revisao.formato, pageVersion: r.revisao.pageVersion, aprovadaEm: r.revisao.aprovadaEm },

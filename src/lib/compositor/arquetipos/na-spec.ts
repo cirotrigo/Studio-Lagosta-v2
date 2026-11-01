@@ -42,6 +42,11 @@ export interface ArquetipoResolvido {
 export interface OpcoesDeResolucao {
   persistida?: boolean
   definicoes?: ReadonlyArray<ArquetipoDeLayout>
+  /**
+   * F1 (gate da F3 antecipado): o cliente tem referência aprovada no formato — o CATÁLOGO não vale para pedido novo
+   * dele. Um id que não está em `definicoes` é recusado com o motivo (`ARQUETIPO_NAO_APROVADO`), antes do catálogo.
+   */
+  catalogoBloqueado?: { motivo: string }
 }
 
 export interface DisponibilidadeDoArquetipo {
@@ -138,13 +143,19 @@ export function resolverArquetipo(pedido: ArquetipoDaSpec, opcoes: OpcoesDeResol
   // F1: as referências do cliente resolvem ANTES do catálogo (ids `ref-…`, que o catálogo nunca publica); a mais
   // recente é a revisão de maior número. Sem definições do cliente, o catálogo é a única fonte, como sempre.
   const doCliente = (opcoes.definicoes ?? []).filter((a) => a.id === pedido.id)
+  if (doCliente.length === 0 && opcoes.catalogoBloqueado) {
+    throw new CreativeError('ARQUETIPO_NAO_APROVADO', `"${pedido.id}" não é uma referência aprovada deste cliente, e o catálogo não vale para ele: ${opcoes.catalogoBloqueado.motivo}.`, 422, {
+      arquetipo: pedido,
+      disponiveis: (opcoes.definicoes ?? []).map(chaveDoArquetipo),
+    })
+  }
   const maisRecente = doCliente.length > 0 ? doCliente.reduce((m, a) => (a.versao > m.versao ? a : m)) : verArquetipo(pedido.id)
   if (!maisRecente) {
     const ehRef = pedido.id.startsWith('ref-')
     throw new CreativeError(
       'ARQUETIPO_DESCONHECIDO',
       ehRef
-        ? `A referência "${pedido.id}" não é uma referência aprovada deste cliente (listar-referencias diz as que valem).`
+        ? `A referência "${pedido.id}" não é uma referência aprovada (vigente) deste cliente — não existe, é de outro cliente ou foi revogada (listar-referencias diz as que valem).`
         : `O arquétipo "${pedido.id}" não existe no catálogo. Consulte ver-assinatura (campo arquetipos).`,
       422,
       {

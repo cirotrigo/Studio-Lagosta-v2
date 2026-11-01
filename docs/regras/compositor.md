@@ -1649,28 +1649,40 @@ limitada.
   `formatos` — a referência **não é escalada** para o outro (`ARQUETIPO_FORMATO_NAO_SUPORTADO`; o validador aceita
   `opcoes.formatos`).
 - `ReferenciaDeLayout` (tabela nova, migration `20261101120000_referencia_de_layout`): a **revisão aprovada**, com a
-  definição inteira, a impressão e a `versaoDaPagina` do momento. Trigger no banco: UPDATE do conteúdo e DELETE fora do
-  cascade são recusados — aprovar de novo cria `versao + 1`; `revogadaEm` é o único campo vivo.
-- `referencias.ts` (serviço): `aprovarReferencia` compila, **valida contra o piso do projeto** (`pisoDoProjetoDe`), e
-  grava; idempotente quando a página não mudou. `definicoesParaASpec` entrega as revisões ao núcleo puro
-  (`resolverArquetipo`/`prepararArquetipo`, opção `definicoes`) **só quando a spec pede `ref-…`** — composição de
-  catálogo não toca a tabela. Pedido novo (fila, medir-copy): só as não revogadas; worker e recomposição: todas (a
-  peça fixou id + versão + impressão quando nasceu; revogar não a apaga).
-- Tools MCP `aprovar-referencia` (gate `curador`, com `revogar: true`) e `listar-referencias`.
+  definição inteira, a impressão e a `versaoDaPagina` do momento. Trigger no banco (provado em Postgres isolado,
+  `prova-migration-docker.md`): UPDATE de qualquer coisa que não seja `revogadaEm` e DELETE fora do cascade são
+  recusados — aprovar de novo cria `versao + 1`.
+- `referencias.ts` (serviço): `aprovarReferencia` compila **com o piso do projeto** (toda caixa dentro dele, senão
+  `REFERENCIA_FORA_DO_PISO` com o lado e a medida), valida o contrato, e grava; `versaoEsperada` recusa aprovar uma
+  página editada depois da conferência (`REFERENCIA_PAGINA_MUDOU`); idempotente DEPOIS de validar; concorrência pelo
+  índice único relê e reaproveita a equivalente (`REFERENCIA_CONCORRENTE` se for outra).
+- **O gate por cliente/formato é no servidor** (`resolucaoParaASpec` → `prepararArquetipo`): pedido NOVO (fila,
+  medir-copy, `compor-arte` direto, executar-plano) resolve só as revisões VIGENTES do cliente no formato, e **o
+  cliente que tem referência aprovada no formato perde o catálogo** (`ARQUETIPO_NAO_APROVADO`, com as referências que
+  valem) — cliente sem referência segue no catálogo (legado, dito). `reproducao` (worker da fila, recomposição) resolve
+  com as revogadas e o catálogo aberto: o pedido já fixou id + versão + impressão. `compor-arte` e qualquer entrada
+  direta em `comporPeca` são pedido novo — a revogação não é contornável por elas.
+- **Leva idempotente**: a chave da reserva leva a referência COMO PEDIDA (`{ id }`), não a revisão resolvida — repetir
+  o pedido depois de uma revisão nova REAPROVEITA a peça reservada; pedir a versão explícita é outro pedido. Se a
+  referência foi revogada no meio, a repetição resolve com as revogadas só para reaproveitar; criar com ela é
+  `REFERENCIA_REVOGADA`. (O catálogo continua chaveado pela versão resolvida: as levas vivas não mudam de chave.)
+- Tools MCP `aprovar-referencia` (gate `curador`, `revogar: true`, `versaoEsperada`) e `listar-referencias`.
 
 **Precedência explícita** (o que a referência FIXA × o que continua com as outras autoridades):
 
 | Fixa a referência | Continua com quem era |
 |---|---|
 | papéis presentes, ordem de leitura, `linhasMax` = linhas da página | fonte, corpo e cor (assinatura) — a escada desce do corpo da assinatura até caber na caixa; o corpo do Ciro NÃO entra |
-| caixa de cada papel (referência = zona na horizontal; zona vertical = união dos textos → uma faixa só, `dy` 0) | o piso do projeto recorta a zona (texto fora do piso é recusa NA APROVAÇÃO, `REFERENCIA_INVALIDA`) |
+| caixa de cada papel (referência = zona na horizontal; zona vertical = união dos textos → uma faixa só; **`dy` = 0 por regra** em `candidatosDasFaixas`, qualquer que seja a altura medida ou o papel opcional ausente) | o piso do projeto recorta a zona (caixa fora do piso é recusa NA APROVAÇÃO, `REFERENCIA_FORA_DO_PISO`) |
 | alinhamento da manchete e próprio de cada papel; âncora pela faixa da manchete | tratamento de leitura (gradiente do compositor); a foto do pedido em cover |
-| caixa e canto da logo | **margem da marca e pilha da faixa DESLIGADAS** (`compor.ts`, `medir-copy.ts`): a caixa aprovada é a margem e o espaçamento |
+| caixa e canto da logo | **margem da marca e pilha da faixa DESLIGADAS** no compor E no medir-copy (a partida é a mesma: manchete em y 1618 na prova, não 1637 pela pilha): a caixa aprovada é a margem e o espaçamento |
 
 O que a página tem e a referência ignora volta **dito** em `leitura.ignoradas` (fios/formas, gradiente, fotos extras,
 textos sem papel, logos além da primeira). Recusas ditas: sem foto de fundo ≥ 90 % (`REFERENCIA_SEM_FOTO` — página de
 várias fotos ou liso fica para a F2), sem manchete, sem logo, manchete fora das faixas de âncora, texto centralizado
-fugindo > 8 px do eixo.
+fugindo > 8 px do eixo, **duas camadas do mesmo papel** (a segunda voz conta como manchete — uma caixa envolvente
+apagaria colunas e vãos: `REFERENCIA_PAPEL_REPETIDO`), **camada girada** (`REFERENCIA_CAMADA_GIRADA`), caixa fora do
+piso do projeto.
 
 **Prova (01/11/2026)**: `arquetipos/__tests__/referencia.test.ts` com a página real do Brunch do Empório (ajustada pelo
 Ciro em 01/11, fixture `suporte/emporio-ref02-brunch.json`): compila, valida no piso 64/160/160, forma as faixas
@@ -1684,5 +1696,6 @@ fotos (Ref 01) é recusada dita.
 - `candidatosDeArquetipo` (puro, só testes) e a rota `from-layout` do editor continuam só no catálogo — a referência
   entra por `arquetipo.id` na spec. Exclusividade referência × modelo (`isTemplate`) NÃO foi imposta: a revisão é
   um snapshot separado da página, e as duas páginas da F0 já eram modelo a pedido do Ciro.
-- A leva idempotente fixa a revisão na porta (antes da reserva); se uma revisão nova for aprovada entre a primeira
-  tentativa e a repetição, o hash do payload muda e a repetição conflita — dito, nunca escondido.
+- O corpo do Ciro não entra (é da assinatura): a referência entrega geometria com a tipografia da assinatura; se a
+  hierarquia visual dele precisar do corpo, é uma decisão à parte (representar o corpo desejado sob o piso, ou
+  aprovar visualmente a substituição).

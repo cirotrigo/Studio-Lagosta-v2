@@ -36,6 +36,9 @@ export const CODIGOS_DA_COMPILACAO = [
   'REFERENCIA_ANCORA_INDEFINIDA',
   'REFERENCIA_ALINHAMENTO_INCOERENTE',
   'REFERENCIA_PAGINA_ILEGIVEL',
+  'REFERENCIA_PAPEL_REPETIDO',
+  'REFERENCIA_CAMADA_GIRADA',
+  'REFERENCIA_FORA_DO_PISO',
 ] as const
 export type CodigoDaCompilacao = (typeof CODIGOS_DA_COMPILACAO)[number]
 
@@ -57,6 +60,13 @@ export interface LeituraDaReferencia {
 export type CompilacaoDaReferencia =
   | { ok: true; definicao: ArquetipoDeLayout; leitura: LeituraDaReferencia }
   | { ok: false; codigo: CodigoDaCompilacao; mensagem: string; detalhes?: Record<string, unknown> }
+
+/** O piso do PROJETO (px) em que toda caixa da referência tem de caber: o que o compositor vai recortar. */
+export interface PisoDaReferencia {
+  margemH: number
+  safeTopo: number
+  safeRodape: number
+}
 
 export interface PaginaParaReferencia {
   id: string
@@ -81,10 +91,6 @@ type Ret = { x: number; y: number; w: number; h: number }
 function retangulo(c: Layer): Ret {
   return { x: c.position?.x ?? 0, y: c.position?.y ?? 0, w: c.size?.width ?? 0, h: c.size?.height ?? 0 }
 }
-function uniao(a: Ret, b: Ret): Ret {
-  const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y)
-  return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y }
-}
 /** Em frações da peça, recortado a 0..1 (o que passa da borda não é geometria da peça). */
 function emFracoes(r: Ret, pagina: { width: number; height: number }): Caixa {
   const x0 = clamp01(r.x / pagina.width), y0 = clamp01(r.y / pagina.height)
@@ -105,7 +111,7 @@ function simetrizar(c: Caixa): Caixa {
   return { x: arredondar(0.5 - meia), y: c.y, w: arredondar(2 * meia), h: c.h }
 }
 
-export function compilarReferencia(pagina: PaginaParaReferencia, args: { pageVersion: string; versao: number }): CompilacaoDaReferencia {
+export function compilarReferencia(pagina: PaginaParaReferencia, args: { pageVersion: string; versao: number; piso?: PisoDaReferencia }): CompilacaoDaReferencia {
   const recusa = (codigo: CodigoDaCompilacao, mensagem: string, detalhes?: Record<string, unknown>): CompilacaoDaReferencia => ({ ok: false, codigo, mensagem, ...(detalhes ? { detalhes } : {}) })
   if (!Array.isArray(pagina.layers) || !(pagina.width > 0) || !(pagina.height > 0)) return recusa('REFERENCIA_PAGINA_ILEGIVEL', 'A página não tem camadas legíveis ou tamanho.')
   const formatoLido = formatoDaPaginaGravada(pagina)
@@ -138,14 +144,24 @@ export function compilarReferencia(pagina: PaginaParaReferencia, args: { pageVer
         ignorar(c, 'sem-papel')
         continue
       }
+      // Camada girada não é descrita pela caixa: a referência perderia a geometria que o Ciro desenhou. Recusa, não aproximação.
+      if (c.rotation && Math.abs(c.rotation) > EPS) return recusa('REFERENCIA_CAMADA_GIRADA', `A camada "${c.name ?? c.id}" (${papel}) está girada (${c.rotation}°): a F1 só compila texto e logo sem rotação. Zere a rotação ou tire a camada.`, { camada: c.id, rotacao: c.rotation })
       const r = retangulo(c)
       const atual = porPapel.get(papel)
-      porPapel.set(papel, atual ? { camadas: [...atual.camadas, c], caixa: uniao(atual.caixa, r), linhas: atual.linhas + linhasDe(c) } : { camadas: [c], caixa: r, linhas: linhasDe(c) })
+      // Uma camada por papel (F1 reduzida): duas manchetes (ou manchete + segunda voz), dois serviços etc. teriam
+      // colunas, alinhamentos e vãos próprios que uma caixa envolvente apaga — recusa dita, não uma união.
+      if (atual) {
+        return recusa('REFERENCIA_PAPEL_REPETIDO', `O papel ${papel} aparece em mais de uma camada ("${atual.camadas[0].name ?? atual.camadas[0].id}" e "${c.name ?? c.id}"${lido === 'headline2' ? ', a segunda voz conta como manchete' : ''}): a F1 compila UMA camada por papel. Junte o texto numa camada só ou tire a repetida.`, { papel, camadas: [...atual.camadas.map((x) => x.id), c.id] })
+      }
+      porPapel.set(papel, { camadas: [c], caixa: r, linhas: linhasDe(c) })
       continue
     }
     if (c.type === 'logo') {
       if (logo) ignorar(c, 'logo-extra')
-      else logo = c
+      else {
+        if (c.rotation && Math.abs(c.rotation) > EPS) return recusa('REFERENCIA_CAMADA_GIRADA', `A logo "${c.name ?? c.id}" está girada (${c.rotation}°): a F1 só compila a logo sem rotação.`, { camada: c.id, rotacao: c.rotation })
+        logo = c
+      }
       continue
     }
     if (c.type === 'image') {
@@ -191,6 +207,26 @@ export function compilarReferencia(pagina: PaginaParaReferencia, args: { pageVer
   const zonaDosTextos: Zona = { xMin: arredondar(uniaoDosTextos.x), xMax: arredondar(uniaoDosTextos.x + uniaoDosTextos.w), yMin: arredondar(uniaoDosTextos.y), yMax: arredondar(uniaoDosTextos.y + uniaoDosTextos.h) }
 
   const caixaDaLogo = emFracoes(retangulo(logo), pagina)
+  // Toda caixa aprovada tem de estar DENTRO do piso do projeto: é o piso que recorta a zona na composição, e uma caixa
+  // fora dele não tem posição válida (nem resgate, já que a zona é a própria caixa). Medido em px, ½ px de tolerância.
+  if (args.piso) {
+    const { margemH, safeTopo, safeRodape } = args.piso
+    const W = pagina.width, H = pagina.height, TOL = 0.5
+    const fora = (papel: string, c: Caixa) => {
+      const x0 = c.x * W, x1 = (c.x + c.w) * W, y0 = c.y * H, y1 = (c.y + c.h) * H
+      const lados = [
+        ...(x0 < margemH - TOL ? [`esquerda ${Math.round(margemH - x0)} px`] : []),
+        ...(x1 > W - margemH + TOL ? [`direita ${Math.round(x1 - (W - margemH))} px`] : []),
+        ...(y0 < safeTopo - TOL ? [`topo ${Math.round(safeTopo - y0)} px`] : []),
+        ...(y1 > H - safeRodape + TOL ? [`base ${Math.round(y1 - (H - safeRodape))} px`] : []),
+      ]
+      return lados.length ? { papel, caixa: c, lados } : null
+    }
+    const invasoes = [...[...caixas.entries()].map(([papel, c]) => fora(papel, c.caixa)), fora('logo', caixaDaLogo)].filter((x): x is NonNullable<typeof x> => !!x)
+    if (invasoes.length > 0) {
+      return recusa('REFERENCIA_FORA_DO_PISO', `A referência invade o piso do projeto (margem ${margemH}, topo ${safeTopo}, base ${safeRodape}): ${invasoes.map((i) => `${i.papel} passa ${i.lados.join(' e ')}`).join('; ')}. Afaste a caixa ou ajuste o piso do projeto e aprove de novo.`, { invasoes, piso: args.piso })
+    }
+  }
   const cx = caixaDaLogo.x + caixaDaLogo.w / 2, cy = caixaDaLogo.y + caixaDaLogo.h / 2
   const cantoDaMarca: CantoDaLogo = `${cy < 0.5 ? 'superior' : 'inferior'}-${cx < 0.5 ? 'esquerdo' : 'direito'}`
   const alinhaDaManchete = caixas.get('headline')!.alinha

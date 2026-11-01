@@ -23,7 +23,7 @@ import { faixasDoArquetipo } from './faixas'
 import { textoNoLiso } from './fundo'
 import { materializarUnidades, type UnidadeDoArquetipo } from './no-compositor'
 import type { GeometriaEfetiva, MargemDaPeca, Materializacao, PapelMaterializado, ProblemaDeMaterializacao } from './materializar'
-import type { ArquetipoDeLayout, FormatoDoArquetipo, PapelDeTexto, Zona } from './tipos'
+import { ehReferencia, type ArquetipoDeLayout, type FormatoDoArquetipo, type PapelDeTexto, type Zona } from './tipos'
 
 type Ornamentos = { esquerda: number; direita: number; topo: number; base: number }
 
@@ -102,6 +102,12 @@ export function candidatosDasFaixas(args: {
       semPosicao = { membro: membros[0], motivo: `nenhuma posição vertical da faixa (${membros.join(', ')}) cabe na zona efetiva: o espaço que a zona dá é menor que a caixa real` }
     }
     if (semPosicao) return { indice, membros, intervalo, referenciaValida, candidatos: [], semPosicao }
+    // F1: a peça por REFERÊNCIA não se desloca — a posição aprovada é a única, qualquer que seja a altura medida do
+    // texto ou o papel opcional ausente (o intervalo pela caixa real abriria 24–68 px). Só o resgate pelo piso (acima)
+    // continua, dito.
+    if (ehReferencia(args.arquetipo) && referenciaValida) {
+      return { indice, membros, intervalo: { min: 0, max: 0 }, referenciaValida, candidatos: [{ rotulo: 'referencia', dy: 0 }] }
+    }
 
     // Os rótulos dizem ONDE no intervalo: o topo, o meio do caminho para cima, o meio do caminho para baixo e a base.
     // Com a referência válida, o "meio" é rumo à referência (0); sem ela, o meio do intervalo.

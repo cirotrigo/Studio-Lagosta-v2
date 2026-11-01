@@ -124,7 +124,7 @@ import {
   type UnidadeDoArquetipo,
 } from './arquetipos/no-compositor'
 import { chaveDoArquetipo, ehReferencia, type CantoDaLogo } from './arquetipos/tipos'
-import { definicoesParaASpec } from './referencias'
+import { resolucaoParaASpec } from './referencias'
 import { caixaDaFoto, fundoDaPeca, luzParaAVariante, papelDoBloco, tintasAtivas, type FolgaDoCandidato, type PapelDoFundo, type TintaAtiva } from './arquetipos/fundo'
 import { camadaDoAcento, idDoAcento, incoerenciaDosEnvolventesCongelados, obstaculosDosAcentos, ocupacaoDoAcento, posicionarAcentos, receitasDoArquetipo, type AcentoCongelado, type ProblemaDoAcento, type ReceitaDoAcento } from './arquetipos/acentos'
 import { caixaDaVariante, conferirLogoDaPeca, type CacheDeLogos, type LegibilidadeDaLogo } from './logo-da-peca'
@@ -302,6 +302,12 @@ export interface DiagnosticoDoArquetipo {
 }
 
 export interface OpcoesDeComposicao {
+  /**
+   * F1: a composição é a REPRODUÇÃO de um pedido já fixado (o worker da fila, a recomposição): a referência resolve
+   * com as revisões revogadas e o catálogo fica aberto. Ausente = pedido NOVO (compor-arte direto, executar-plano,
+   * scripts): só as referências vigentes do cliente, e o catálogo bloqueado para quem tem referência aprovada.
+   */
+  reproducao?: boolean
   /** Interno: mede e monta camadas sem persistir nem exportar prova. */
   somenteAvaliar?: boolean
   medirComparacao?: boolean
@@ -794,10 +800,11 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   if (!v.spec) throw new CreativeError('SPEC_INVALIDA', `Spec inválida — ${v.problemas.join('; ')}`, 400, { problemas: v.problemas })
   // T1a: o arquétipo é RESOLVIDO antes de tudo (id + versão + impressão exatas, impressão gravada conferida) e
   // as recusas que não dependem da medida saem aqui. Sem `arquetipo`, `null` — e nada abaixo muda.
-  // F1: as referências do CLIENTE entram na resolução (`definicoes`) — com as revogadas, porque quem chega aqui já
-  // fixou id + versão + impressão na porta (fila, medir-copy) ou na peça (recomposição); o gate do pedido novo é lá.
-  const definicoesDoCliente = await definicoesParaASpec(v.spec, { incluirRevogadas: true })
-  const arq: ArquetipoPreparado | null = prepararArquetipo(v.spec, { exigirFoto: true, definicoes: definicoesDoCliente, ...(opcoes.acentosCongelados ? { acentosCongelados: true } : {}) })
+  // F1: as referências do CLIENTE entram na resolução (`definicoes`) e o gate do catálogo com elas. `reproducao` (worker,
+  // recomposição) = o pedido já fixou id + versão + impressão: as revogadas resolvem e o catálogo fica aberto. Pedido
+  // NOVO (compor-arte direto, executar-plano): só as vigentes, e ARQUETIPO_NAO_APROVADO para o catálogo de quem tem referência.
+  const resolucao = await resolucaoParaASpec(v.spec, { reproducao: opcoes.reproducao === true })
+  const arq: ArquetipoPreparado | null = prepararArquetipo(v.spec, { exigirFoto: true, ...resolucao, ...(opcoes.acentosCongelados ? { acentosCongelados: true } : {}) })
   if (v.spec.selecaoExperimental === true && !opcoes.somenteAvaliar) {
     const { selecionarCombinacao } = await import('./selecionar-combinacao')
     const selecao = await selecionarCombinacao(v.spec)

@@ -17,21 +17,38 @@ import { parsePageLayers } from '@/lib/posts/page-layers'
 import type { Layer } from '@/types/template'
 import { impressaoDoArquetipo } from './arquetipos/impressao'
 import { compilarReferencia, ehIdDeReferencia, idDaReferencia, type CompilacaoDaReferencia, type LeituraDaReferencia } from './arquetipos/referencia'
+import type { OpcoesDeResolucao } from './arquetipos/na-spec'
 import type { ArquetipoDeLayout, FormatoDoArquetipo } from './arquetipos/tipos'
 import { validarArquetipo } from './arquetipos/validar'
+import { formatoDaPaginaGravada } from './formato'
 import { pisoDoProjetoDe } from './geometria'
 import { DIMENSOES, type Formato } from './spec'
 
 /**
- * As definições que a RESOLUÇÃO de uma spec precisa: só quando o pedido é `ref-…` (o catálogo resolve o resto sem ir
- * ao banco — composição de catálogo não toca a tabela). Pedido novo: só as não revogadas; `incluirRevogadas` para a
- * composição pelo worker e a recomposição, que já carregam id + versão + impressão fixados.
+ * O que a RESOLUÇÃO de uma spec precisa (`prepararArquetipo`/`resolverArquetipo`): as definições do cliente e o gate
+ * do catálogo. Nada vai ao banco sem `spec.arquetipo`.
+ *
+ * - Pedido NOVO (default — fila, medir-copy, compor-arte direto, executar-plano): só as revisões VIGENTES do cliente
+ *   no formato da spec; e, se ele tem alguma, o catálogo fica BLOQUEADO (`ARQUETIPO_NAO_APROVADO`) — é o gate da F3
+ *   antecipado, no servidor. Cliente sem referência continua no catálogo (legado, dito).
+ * - `reproducao` (worker da fila, recomposição): o pedido já fixou id + versão + impressão; as revogadas resolvem e o
+ *   catálogo fica aberto. Só consulta a tabela quando o id é `ref-…`.
  */
-export async function definicoesParaASpec(spec: { projectId?: number; arquetipo?: { id?: string } | null }, opcoes: { incluirRevogadas?: boolean } = {}): Promise<ArquetipoDeLayout[]> {
+export async function resolucaoParaASpec(
+  spec: { projectId?: number; formato?: string; arquetipo?: { id?: string; versao?: number; impressao?: string } | null },
+  opcoes: { reproducao?: boolean } = {},
+): Promise<Pick<OpcoesDeResolucao, 'definicoes' | 'catalogoBloqueado'>> {
   const id = spec.arquetipo?.id
   // `z.infer` com strict:false marca `projectId` opcional; a spec validada sempre o tem — sem ele não há cliente a consultar.
-  if (typeof id !== 'string' || !ehIdDeReferencia(id) || typeof spec.projectId !== 'number') return []
-  return referenciasDoProjeto(spec.projectId, opcoes)
+  if (typeof id !== 'string' || typeof spec.projectId !== 'number') return {}
+  if (opcoes.reproducao) return ehIdDeReferencia(id) ? { definicoes: await referenciasDoProjeto(spec.projectId, { incluirRevogadas: true }) } : {}
+  const formato = spec.formato === 'story' || spec.formato === 'feed' ? spec.formato : undefined
+  const vigentes = await referenciasDoProjeto(spec.projectId, { ...(formato ? { formato } : {}) })
+  if (vigentes.length === 0 || ehIdDeReferencia(id)) return { definicoes: vigentes }
+  return {
+    definicoes: vigentes,
+    catalogoBloqueado: { motivo: `o cliente tem ${vigentes.length} referência(s) aprovada(s) no ${formato ?? 'formato'} (${vigentes.map((a) => `${a.id}@${a.versao}`).join(', ')}) — peça uma delas em arquetipo.id (listar-referencias)` },
+  }
 }
 
 export interface RevisaoDeReferencia {
@@ -86,8 +103,14 @@ export interface AprovacaoDeReferencia {
   reaproveitada: boolean
 }
 
-/** Aprova a página como referência do cliente: compila, valida contra o piso do projeto e grava a revisão seguinte. */
-export async function aprovarReferencia(args: { projectId: number; pageId: string; aprovadaPor: string | null }): Promise<AprovacaoDeReferencia> {
+/**
+ * Aprova a página como referência do cliente: compila com o PISO DO PROJETO (toda caixa dentro dele), valida o
+ * contrato, e grava a revisão seguinte. `versaoEsperada` (a `versaoDaPagina` que quem aprovou viu) recusa a aprovação
+ * de uma página editada depois da conferência. Idempotente: a mesma versão da página já vigente não grava de novo —
+ * conferida DEPOIS da validação (mudar o piso e reapresentar a página revalida). Duas aprovações concorrentes: a que
+ * perde o índice único relê e reaproveita a revisão equivalente, ou recusa com o motivo.
+ */
+export async function aprovarReferencia(args: { projectId: number; pageId: string; aprovadaPor: string | null; versaoEsperada?: string }): Promise<AprovacaoDeReferencia> {
   const [page, projeto] = await Promise.all([
     db.page.findUnique({ where: { id: args.pageId }, select: { id: true, name: true, width: true, height: true, tags: true, layers: true, background: true, Template: { select: { projectId: true } } } }),
     db.project.findUnique({ where: { id: args.projectId }, select: { id: true, assinatura: true } }),
@@ -96,39 +119,59 @@ export async function aprovarReferencia(args: { projectId: number; pageId: strin
   if (!page || page.Template.projectId !== args.projectId) throw new CreativeError('PAGE_NOT_FOUND', 'Página não encontrada neste cliente.', 404)
   const pageVersion = versaoDaPagina(page)
   if (!pageVersion) throw new CreativeError('REFERENCIA_PAGINA_ILEGIVEL', 'As camadas da página não são legíveis: nada foi aprovado.', 422)
-
-  const arquetipoId = idDaReferencia(page.id)
-  const anteriores = await db.referenciaDeLayout.findMany({ where: { arquetipoId }, orderBy: { versao: 'desc' }, select: { id: true, pageId: true, arquetipoId: true, versao: true, formato: true, impressao: true, pageVersion: true, aprovadaEm: true, revogadaEm: true, definicao: true } })
-  const vigente = anteriores[0]
+  if (args.versaoEsperada && args.versaoEsperada !== pageVersion) {
+    throw new CreativeError('REFERENCIA_PAGINA_MUDOU', `A página mudou desde a versão conferida (${args.versaoEsperada} → ${pageVersion}): releia a página (revisar-arte devolve a versão) e aprove o que viu.`, 409, { versaoEsperada: args.versaoEsperada, versaoAtual: pageVersion })
+  }
   const camadas = parsePageLayers(page.layers) as unknown as Layer[]
-  const versao = (vigente?.versao ?? 0) + 1
-  const compilada = compilarReferencia({ id: page.id, name: page.name, width: page.width, height: page.height, tags: page.tags, layers: camadas }, { pageVersion, versao })
-  if (!compilada.ok) {
-    const r = compilada as Extract<CompilacaoDaReferencia, { ok: false }>
-    throw new CreativeError(r.codigo, r.mensagem, 422, r.detalhes)
-  }
-  const { definicao, leitura } = compilada
+  const arquetipoId = idDaReferencia(page.id)
+  const selecao = { id: true, pageId: true, arquetipoId: true, versao: true, formato: true, impressao: true, pageVersion: true, aprovadaEm: true, revogadaEm: true } as const
 
-  // Idempotente: a mesma página (versão) já aprovada e vigente é a mesma revisão — nada a gravar.
-  if (vigente && !vigente.revogadaEm && vigente.pageVersion === pageVersion && impressaoDoArquetipo({ ...(vigente.definicao as unknown as ArquetipoDeLayout), versao }) === impressaoDoArquetipo(definicao)) {
-    const { definicao: _d, ...revisao } = vigente
-    return { arquetipo: { id: arquetipoId, versao: vigente.versao, impressao: vigente.impressao }, revisao, leitura, reaproveitada: true }
+  const compilarEValidar = (versao: number) => {
+    // O piso do PROJETO (não o padrão): é o que vai recortar a zona na composição — a caixa fora dele é recusa aqui.
+    const pisos = pisoDoProjetoDe(projeto.assinatura)
+    const formatoLido = formatoDaPaginaGravada({ tags: page.tags, width: page.width, height: page.height })
+    const pisoDoFormato = formatoLido === 'story' || formatoLido === 'feed' ? pisos[formatoLido] : undefined
+    const compilada = compilarReferencia({ id: page.id, name: page.name, width: page.width, height: page.height, tags: page.tags, layers: camadas }, { pageVersion, versao, ...(pisoDoFormato ? { piso: pisoDoFormato } : {}) })
+    if (!compilada.ok) {
+      const r = compilada as Extract<CompilacaoDaReferencia, { ok: false }>
+      throw new CreativeError(r.codigo, r.mensagem, 422, r.detalhes)
+    }
+    const { definicao, leitura } = compilada
+    const formato = leitura.formato
+    const piso = pisos[formato]
+    const { width, height } = DIMENSOES[formato]
+    const problemas = validarArquetipo(definicao, { formatos: [formato], areaSegura: { [formato]: { largura: width, altura: height, margemH: piso.margemH, safeTopo: piso.safeTopo, safeRodape: piso.safeRodape } } })
+    if (problemas.length > 0) {
+      throw new CreativeError('REFERENCIA_INVALIDA', `A página não serve de referência como está: ${problemas.map((p) => `${p.campo}: ${p.mensagem}`).join('; ')}. Ajuste a página (ou o piso do projeto) e aprove de novo.`, 422, { problemas, piso, leitura })
+    }
+    return { definicao, leitura, formato, impressao: impressaoDoArquetipo(definicao) }
   }
 
-  // Validada contra o PISO DO PROJETO (não o padrão): é o piso que vai recortar a zona na composição.
-  const formato = leitura.formato
-  const piso = pisoDoProjetoDe(projeto.assinatura)[formato]
-  const { width, height } = DIMENSOES[formato]
-  const problemas = validarArquetipo(definicao, { formatos: [formato], areaSegura: { [formato]: { largura: width, altura: height, margemH: piso.margemH, safeTopo: piso.safeTopo, safeRodape: piso.safeRodape } } })
-  if (problemas.length > 0) {
-    throw new CreativeError('REFERENCIA_INVALIDA', `A página não serve de referência como está: ${problemas.map((p) => `${p.campo}: ${p.mensagem}`).join('; ')}. Ajuste a página (ou o piso do projeto) e aprove de novo.`, 422, { problemas, piso, leitura })
+  const gravar = async () => {
+    const anteriores = await db.referenciaDeLayout.findMany({ where: { arquetipoId }, orderBy: { versao: 'desc' }, take: 1, select: { ...selecao, definicao: true } })
+    const vigente = anteriores[0]
+    const versao = (vigente?.versao ?? 0) + 1
+    const { definicao, leitura, formato, impressao } = compilarEValidar(versao)
+    // Idempotente (depois de validar): a mesma página já aprovada e vigente é a mesma revisão — nada a gravar.
+    if (vigente && !vigente.revogadaEm && vigente.pageVersion === pageVersion && impressaoDoArquetipo({ ...(vigente.definicao as unknown as ArquetipoDeLayout), versao }) === impressao) {
+      const { definicao: _d, ...revisao } = vigente
+      return { arquetipo: { id: arquetipoId, versao: vigente.versao, impressao: vigente.impressao }, revisao, leitura, reaproveitada: true }
+    }
+    const criada = await db.referenciaDeLayout.create({
+      data: { projectId: args.projectId, pageId: page.id, formato, arquetipoId, versao, impressao, pageVersion, definicao: definicao as never, aprovadaPor: args.aprovadaPor },
+      select: selecao,
+    })
+    return { arquetipo: { id: arquetipoId, versao, impressao }, revisao: criada, leitura, reaproveitada: false }
   }
-  const impressao = impressaoDoArquetipo(definicao)
-  const criada = await db.referenciaDeLayout.create({
-    data: { projectId: args.projectId, pageId: page.id, formato, arquetipoId, versao, impressao, pageVersion, definicao: definicao as never, aprovadaPor: args.aprovadaPor },
-    select: { id: true, pageId: true, arquetipoId: true, versao: true, formato: true, impressao: true, pageVersion: true, aprovadaEm: true, revogadaEm: true },
-  })
-  return { arquetipo: { id: arquetipoId, versao, impressao }, revisao: criada, leitura, reaproveitada: false }
+  try {
+    return await gravar()
+  } catch (e) {
+    // Concorrência: outra aprovação ganhou `versao`. Reler decide — a equivalente reaproveita, a diferente é dita.
+    if (!(e && typeof e === 'object' && (e as { code?: string }).code === 'P2002')) throw e
+    const r = await gravar()
+    if (r.reaproveitada) return r
+    throw new CreativeError('REFERENCIA_CONCORRENTE', `Outra aprovação de ${arquetipoId} gravou uma revisão diferente ao mesmo tempo (agora v${r.arquetipo.versao}): confira listar-referencias e aprove de novo se ainda for o caso.`, 409, { arquetipo: r.arquetipo })
+  }
 }
 
 /** Revoga as revisões vigentes da página (ou só uma versão): pedidos novos deixam de resolvê-la; peças que nasceram dela seguem recompondo. */

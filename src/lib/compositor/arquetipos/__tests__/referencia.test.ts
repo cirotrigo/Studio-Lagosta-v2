@@ -91,6 +91,18 @@ describe('F1 · compilar a página de referência', () => {
     expect(f.every((x) => x.candidatos.length === 1 && x.candidatos[0].rotulo === 'referencia')).toBe(true)
   })
 
+  it('o deslocamento é zero mesmo com texto menor que a caixa ou sem o apoio (opcional): a posição aprovada é a única', () => {
+    const { definicao } = compilada()
+    const menor = materializarArquetipo({ arquetipo: definicao, formato: 'story', canvas: DIMENSOES.story, geometria: piso, medidas: { headline: { width: 600, height: 70 }, apoio: { width: 500, height: 25 } }, logo: { razao: 65 / 200 } })
+    if (!menor.ok) throw new Error('não materializou')
+    const f = candidatosDasFaixas({ arquetipo: definicao, formato: 'story', papeis: (menor as Extract<typeof menor, { ok: true }>).papeis, ornamentos: {} })
+    expect(f.map((x) => [x.intervalo, x.candidatos.map((c) => c.dy)])).toEqual([[{ min: 0, max: 0 }, [0]], [{ min: 0, max: 0 }, [0]]])
+    const semApoio = materializarArquetipo({ arquetipo: definicao, formato: 'story', canvas: DIMENSOES.story, geometria: piso, medidas: { headline: { width: 600, height: 70 } }, logo: { razao: 65 / 200 } })
+    if (!semApoio.ok) throw new Error('não materializou')
+    const g = candidatosDasFaixas({ arquetipo: definicao, formato: 'story', papeis: (semApoio as Extract<typeof semApoio, { ok: true }>).papeis, ornamentos: {} })
+    expect(g.map((x) => [x.membros, x.intervalo])).toEqual([[['headline'], { min: 0, max: 0 }], [['logo'], { min: 0, max: 0 }]])
+  })
+
   it('MATERIALIZA onde o Ciro pôs cada caixa (fidelidade com os mesmos insumos, ≤ 1 px)', () => {
     const { definicao } = compilada()
     const m = materializada(definicao)
@@ -126,6 +138,27 @@ describe('F1 · compilar a página de referência', () => {
     const semTitulo = { ...BRUNCH, layers: BRUNCH.layers.map((c) => (c.id === 'titulo' ? { ...c, name: 'Texto solto' } : c)) }
     const r = compilarReferencia(semTitulo, { pageVersion: 'v', versao: 1 })
     expect((r as { codigo: string }).codigo).toBe('REFERENCIA_SEM_HEADLINE')
+  })
+
+  it('duas camadas do mesmo papel (ou a segunda voz) são recusadas: a F1 compila UMA camada por papel', () => {
+    const titulo = BRUNCH.layers.find((c) => c.id === 'titulo')!
+    const duas = { ...BRUNCH, layers: [...BRUNCH.layers, { ...titulo, id: 'titulo-2', name: 'Título 2', position: { x: 64, y: 1500 } }] }
+    const r = compilarReferencia(duas, { pageVersion: 'v', versao: 1 }) as Recusa
+    expect(r.codigo).toBe('REFERENCIA_PAPEL_REPETIDO')
+    expect(r.mensagem).toContain('segunda voz')
+  })
+
+  it('camada girada é recusada (a caixa não descreve o desenho)', () => {
+    const torta = { ...BRUNCH, layers: BRUNCH.layers.map((c) => (c.id === 'titulo' ? { ...c, rotation: 15 } : c)) }
+    expect((compilarReferencia(torta, { pageVersion: 'v', versao: 1 }) as Recusa).codigo).toBe('REFERENCIA_CAMADA_GIRADA')
+  })
+
+  it('com o piso do projeto, caixa fora dele é recusa DITA com o lado e a medida (base 180 corta o apoio em 18 px)', () => {
+    const ok = compilarReferencia(BRUNCH, { pageVersion: 'v', versao: 1, piso: { margemH: 64, safeTopo: 160, safeRodape: 160 } })
+    expect(ok.ok).toBe(true)
+    const r = compilarReferencia(BRUNCH, { pageVersion: 'v', versao: 1, piso: { margemH: 64, safeTopo: 160, safeRodape: 180 } }) as Recusa
+    expect(r.codigo).toBe('REFERENCIA_FORA_DO_PISO')
+    expect(r.mensagem).toContain('apoio passa base 18 px')
   })
 
   it('texto centralizado fora do eixo da peça é incoerente (o validador exige o centro em 0,5)', () => {
@@ -165,6 +198,15 @@ describe('F1 · a referência na spec (gate por cliente, versão e impressão)',
   it('o formato da página é o único: pedir o feed da referência de story é recusa, nunca escala', () => {
     const { definicao } = compilada()
     expect(codigo(() => prepararArquetipo(spec({ formato: 'feed' }), { definicoes: [definicao] }))).toBe('ARQUETIPO_FORMATO_NAO_SUPORTADO')
+  })
+
+  it('gate do catálogo: com referência aprovada, o id do catálogo é recusado DITO; a referência resolve', () => {
+    const { definicao } = compilada()
+    const bloqueio = { catalogoBloqueado: { motivo: 'o cliente tem 1 referência aprovada no story' } }
+    expect(codigo(() => prepararArquetipo(spec({ arquetipo: { id: 'minimal-fb-topo-esquerda' } }), { definicoes: [definicao], ...bloqueio }))).toBe('ARQUETIPO_NAO_APROVADO')
+    expect(prepararArquetipo(spec(), { definicoes: [definicao], ...bloqueio })!.resolvido.id).toBe(definicao.id)
+    // Sem bloqueio (cliente sem referência), o catálogo segue como sempre.
+    expect(prepararArquetipo(spec({ arquetipo: { id: 'minimal-fb-topo-esquerda' }, blocos: [{ papel: 'headline', linhas: ['Café'] }, { papel: 'servico', linhas: ['9h'] }] }), { definicoes: [definicao] })!.resolvido.id).toBe('minimal-fb-topo-esquerda')
   })
 
   it('papel que a referência não tem (serviço) é recusado — a referência decide os papéis', () => {

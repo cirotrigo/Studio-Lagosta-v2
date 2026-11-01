@@ -431,8 +431,8 @@ export function medirCopy(args: {
       geometria: piso,
       unidades,
       logo: args.assinatura.logo ? { razao: args.assinatura.logo.razao } : null,
-      gap: args.assinatura.numeros.geometria[args.formato].gapEntreBlocos,
-      ...(margemArq ? { margem: margemArq } : {}),
+      // A pilha da faixa, como no compor: a peça por REFERÊNCIA não empilha (sem `gap`, cada papel na própria caixa).
+      ...(margemArq ? { gap: args.assinatura.numeros.geometria[args.formato].gapEntreBlocos, margem: margemArq } : {}),
     })
     const m: Materializacao = 'problemas' in partida ? { ok: false, problemas: partida.problemas } : partida.materializacao
     for (const r of 'resgatados' in partida ? partida.resgatados : []) {

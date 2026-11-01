@@ -35,8 +35,9 @@ import { descreverArteAtualDoItem, type ArteAtualDoItem } from '@/lib/planos/dec
 import { comporPeca } from './compor'
 import { garantirPasta } from './pastas'
 import { validarSpec, type SpecDePeca } from './spec'
-import { conferirLinhas, prepararArquetipo } from './arquetipos/na-spec'
-import { definicoesParaASpec } from './referencias'
+import { conferirLinhas, prepararArquetipo, type ArquetipoPreparado } from './arquetipos/na-spec'
+import { ehIdDeReferencia } from './arquetipos/referencia'
+import { resolucaoParaASpec } from './referencias'
 
 export interface PecaEnfileirada {
   generationId: string
@@ -101,10 +102,25 @@ export async function enfileirarPeca(entrada: unknown, opcoes: OpcoesDeEnfileira
   // T1a: o arquétipo entra na fila RESOLVIDO (id + versão + impressão): o payload, a Generation PROCESSING, o hash
   // do lote e a composição no worker usam a mesma versão — publicar uma nova no meio não muda a peça pedida. As
   // recusas que não dependem da medida saem aqui, na hora, e não no worker.
-  // F1: pedido novo resolve a referência do CLIENTE (só as revisões não revogadas) e a fixa aqui, ANTES da reserva.
-  const arquetipo = prepararArquetipo(v.spec, { definicoes: await definicoesParaASpec(v.spec) })
+  // F1: pedido novo resolve a referência do CLIENTE (só as revisões vigentes; o catálogo bloqueado para quem tem
+  // referência) e a fixa aqui, ANTES da reserva. A REPETIÇÃO de uma leva cuja referência foi revogada no meio não é
+  // pedido novo: resolve com as revogadas só para REAPROVEITAR a peça reservada (`somenteReaproveitar`) — nunca cria.
+  let arquetipo: ArquetipoPreparado | null
+  let somenteReaproveitar = false
+  try {
+    arquetipo = prepararArquetipo(v.spec, await resolucaoParaASpec(v.spec))
+  } catch (e) {
+    const id = v.spec.arquetipo?.id
+    if (!(opcoes.lote != null && e instanceof CreativeError && e.code === 'ARQUETIPO_DESCONHECIDO' && typeof id === 'string' && ehIdDeReferencia(id))) throw e
+    arquetipo = prepararArquetipo(v.spec, await resolucaoParaASpec(v.spec, { reproducao: true }))
+    somenteReaproveitar = true
+  }
   if (arquetipo) conferirLinhas(arquetipo.definicao, arquetipo.formato, v.spec)
   const spec: SpecDePeca = arquetipo ? { ...v.spec, arquetipo: arquetipo.resolvido } : v.spec
+  // F1: a chave da reserva leva a referência COMO FOI PEDIDA (`{ id }`), não a revisão resolvida — repetir o mesmo
+  // pedido depois de uma revisão nova reaproveita a peça reservada em vez de conflitar; pedir a versão explícita é
+  // outro pedido. O catálogo segue como sempre (a versão resolvida), para não mudar a chave das levas vivas.
+  const specParaHash: SpecDePeca = arquetipo && ehIdDeReferencia(arquetipo.resolvido.id) ? { ...spec, arquetipo: v.spec.arquetipo! } : spec
 
   let identidade: IdentidadeDeLote | null = null
   if (opcoes.lote != null) {
@@ -116,7 +132,7 @@ export async function enfileirarPeca(entrada: unknown, opcoes: OpcoesDeEnfileira
   const projeto = await db.project.findUnique({ where: { id: spec.projectId }, select: { id: true, name: true, userId: true } })
   if (!projeto) throw new CreativeError('PROJECT_NOT_FOUND', `Projeto ${spec.projectId} não encontrado`, 404)
 
-  if (identidade) return enfileirarPecaDoLote(spec, projeto, identidade, opcoes)
+  if (identidade) return enfileirarPecaDoLote(spec, projeto, identidade, opcoes, { specParaHash, somenteReaproveitar })
 
   const coletor = await garantirPasta(spec.projectId, projeto.userId, spec.quando ?? null, spec.formato)
 
@@ -144,7 +160,7 @@ export async function enfileirarPeca(entrada: unknown, opcoes: OpcoesDeEnfileira
  * item tenha sido revisado fora da spec (campanha, escopo) — revisão nova pede
  * lote ou item novo.
  */
-async function enfileirarPecaDoLote(spec: SpecDePeca, projeto: ProjetoDaPeca, identidade: IdentidadeDeLote, opcoes: OpcoesDeEnfileirar): Promise<PecaEnfileirada> {
+async function enfileirarPecaDoLote(spec: SpecDePeca, projeto: ProjetoDaPeca, identidade: IdentidadeDeLote, opcoes: OpcoesDeEnfileirar, f1: { specParaHash: SpecDePeca; somenteReaproveitar: boolean }): Promise<PecaEnfileirada> {
   const decididoPor = opcoes.decididoPor ?? null
   const autor = opcoes.autor ?? null
   let coletor: Pasta | null = null
@@ -166,12 +182,16 @@ async function enfileirarPecaDoLote(spec: SpecDePeca, projeto: ProjetoDaPeca, id
   const r = await reservarItemDeLote({
     projectId: spec.projectId,
     identidade,
-    payload: payloadParaHash(spec),
+    payload: payloadParaHash(f1.specParaHash),
     planoRevisao: plano ? itemRevisao : undefined,
     preparar: async () => {
       await pasta()
     },
     criar: async (tx, { recuperacao }) => {
+      // F1: a referência revogada só reaproveita o que já foi reservado; criar uma peça nova com ela é recusa.
+      if (f1.somenteReaproveitar && !recuperacao) {
+        throw new CreativeError('REFERENCIA_REVOGADA', `A referência ${spec.arquetipo?.id}@${spec.arquetipo?.versao} foi revogada: a repetição só reaproveitaria a peça já reservada deste item, e não há nenhuma. Aprove a página de novo ou peça outra referência (listar-referencias).`, 422, { arquetipo: spec.arquetipo, loteId: identidade.loteId, itemId: identidade.itemId })
+      }
       const data = dadosDaGeracao(spec, projeto, await pasta(), opcoes)
       if (plano) {
         // Com `lote`, o caminho do plano compara as specs como o lote (R03) e
@@ -245,7 +265,8 @@ export async function processarComposicaoEmBackground(args: ComposicaoJobArgs & 
 
   const t0 = Date.now()
   try {
-    const r = await comporPeca(args.spec, { generationId: args.generationId, decididoPor: args.decididoPor ?? null, autor: args.autor ?? null })
+    // F1: o worker REPRODUZ o pedido fixado na porta (id + versão + impressão): revisão revogada no meio ainda compõe.
+    const r = await comporPeca(args.spec, { reproducao: true, generationId: args.generationId, decididoPor: args.decididoPor ?? null, autor: args.autor ?? null })
     console.log(
       `[compositor] ${args.generationId} pronta em ${Math.round((Date.now() - t0) / 1000)}s — ${r.diagnostico.posicao.ancora}/${r.diagnostico.posicao.alinha}@${r.diagnostico.posicao.crop}` +
         (r.diagnostico.avisos.length ? ` | avisos: ${r.diagnostico.avisos.join(' · ')}` : ''),

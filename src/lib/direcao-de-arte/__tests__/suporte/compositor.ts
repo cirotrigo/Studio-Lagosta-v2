@@ -66,6 +66,8 @@ function atual(): CenarioDoCompositor {
 export function mockDoBanco() {
   return {
     db: {
+      // F1 (01/11/2026): o pedido novo consulta as referências de layout do cliente — nenhuma aqui, o catálogo segue aberto.
+      referenciaDeLayout: { findMany: async () => [] },
       project: {
         findUnique: async (args?: { select?: { Logo?: { where?: { isProjectLogo?: boolean } } } }) => {
           const p = atual().projeto

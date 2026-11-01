@@ -25,7 +25,7 @@ DO $$ BEGIN
     FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
--- A revisão é imutável: só `revogadaEm` (e `aprovadaPor`) mudam; a definição, a impressão, a versão e a origem nunca.
+-- A revisão é imutável: só `revogadaEm` muda; a definição, a impressão, a versão, a origem e quem aprovou nunca.
 -- DELETE só pelo cascade do projeto (o projeto já não existe quando a FK apaga as revisões dele).
 CREATE OR REPLACE FUNCTION "ReferenciaDeLayout_imutavel"() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
@@ -38,7 +38,8 @@ BEGIN
   END IF;
   IF NEW."definicao" IS DISTINCT FROM OLD."definicao" OR NEW."impressao" <> OLD."impressao" OR NEW."versao" <> OLD."versao"
      OR NEW."arquetipoId" <> OLD."arquetipoId" OR NEW."pageId" <> OLD."pageId" OR NEW."projectId" <> OLD."projectId"
-     OR NEW."formato" <> OLD."formato" OR NEW."pageVersion" <> OLD."pageVersion" OR NEW."aprovadaEm" <> OLD."aprovadaEm" THEN
+     OR NEW."formato" <> OLD."formato" OR NEW."pageVersion" <> OLD."pageVersion" OR NEW."aprovadaEm" <> OLD."aprovadaEm"
+     OR NEW."aprovadaPor" IS DISTINCT FROM OLD."aprovadaPor" THEN
     RAISE EXCEPTION 'ReferenciaDeLayout é imutável: UPDATE do conteúdo recusado (% v%) — aprove de novo para criar a versão seguinte', OLD."arquetipoId", OLD."versao"
       USING ERRCODE = 'restrict_violation';
   END IF;
