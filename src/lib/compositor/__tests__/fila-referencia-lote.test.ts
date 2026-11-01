@@ -11,14 +11,12 @@ import brunch from '../arquetipos/__tests__/suporte/emporio-ref02-brunch.json'
 
 const db = {
   project: { findUnique: vi.fn(async () => ({ id: 12, name: 'Empório', userId: 'dono' })) },
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   generation: { findUnique: vi.fn(), create: vi.fn(async (_a: any) => ({ id: 'gen-nova' })) },
   referenciaDeLayout: { findMany: vi.fn() },
 }
 vi.mock('@/lib/db', () => ({ db }))
 const reservar = vi.fn()
 vi.mock('@/lib/lotes/reserva', () => ({ reservarItemDeLote: (e: unknown) => reservar(e) }))
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const enfileirarComposicao = vi.fn(async (_args: any, _tx: unknown) => 'job-novo')
 vi.mock('@/lib/ai/generation-queue', async (orig) => ({ ...(await orig<Record<string, unknown>>()), enfileirarComposicao: (a: unknown, tx: unknown) => enfileirarComposicao(a, tx) }))
 vi.mock('../pastas', () => ({ garantirPasta: async () => ({ id: 1, name: 'Pasta' }) }))
