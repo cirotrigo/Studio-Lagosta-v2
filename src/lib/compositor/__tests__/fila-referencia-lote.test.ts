@@ -69,14 +69,17 @@ describe('a referência na leva', () => {
 
   it('retomada (Generation falhou ou ficou sem job) REPRODUZ a spec gravada — a v1 original, mesmo revogada', async () => {
     banco(linha(1, true), linha(2))
-    db.generation.findUnique.mockResolvedValue({ fieldValues: { spec: { ...pedido, arquetipo: resolvidaComo(1) } } })
+    // A Generation gravada tem OUTRO conteúdo: só a revisão vem dela; o conteúdo da peça é o do pedido (R03 segue valendo).
+    db.generation.findUnique.mockResolvedValue({ fieldValues: { spec: { ...pedido, blocos: [{ papel: 'headline', linhas: ['Outro conteúdo'] }], arquetipo: resolvidaComo(1) } } })
     reservar.mockImplementation(async (e) => {
       const c = await e.criar(db, { recuperacao: { falta: 'geracao-e-job', generationId: 'gen-morta' } })
       return { ...c, loteId: 'leva-1', itemId: 'item-1', desfecho: 'retomado', situacao: 'pendente' }
     })
     const r = await enfileirarPeca(pedido, { lote })
-    expect(db.generation.create.mock.calls[0][0].data.fieldValues.spec.arquetipo).toEqual(resolvidaComo(1))
-    expect(r.spec.arquetipo).toEqual(resolvidaComo(1))
+    const gravada = db.generation.create.mock.calls[0][0].data.fieldValues.spec
+    expect(gravada.arquetipo).toEqual(resolvidaComo(1))
+    expect(gravada.blocos).toEqual(pedido.blocos)
+    expect(r.spec).toEqual({ ...pedido, arquetipo: resolvidaComo(1) })
     expect(db.referenciaDeLayout.findMany).not.toHaveBeenCalled()
     // Só o job: idem, pela spec da Generation que ficou sem ele.
     reservar.mockImplementation(async (e) => ({ generationId: 'gen-sem-job', jobId: await e.criarJob(db, 'gen-sem-job'), loteId: 'leva-1', itemId: 'item-1', desfecho: 'retomado', situacao: 'pendente' }))
@@ -85,8 +88,14 @@ describe('a referência na leva', () => {
     expect(r2.spec.arquetipo).toEqual(resolvidaComo(1))
   })
 
-  it('retomada sem spec gravada (Generation sumiu) resolve como pedido NOVO: revogada é recusa e nada é criado', async () => {
+  it('retomada sem spec gravada (Generation sumiu), ou com identidade gravada de outra referência, resolve como pedido NOVO: revogada é recusa e nada é criado', async () => {
     banco(linha(1, true))
+    db.generation.findUnique.mockResolvedValue({ fieldValues: { spec: { ...pedido, arquetipo: { id: 'ref-outra', versao: 1, impressao: 'arq1-00000000000000' } } } })
+    reservar.mockImplementation(async (e) => {
+      const c = await e.criar(db, { recuperacao: { falta: 'geracao-e-job', generationId: 'gen-outra' } })
+      return { ...c, loteId: 'leva-1', itemId: 'item-1', desfecho: 'retomado', situacao: 'pendente' }
+    })
+    expect(((await enfileirarPeca(pedido, { lote }).catch((x) => x)) as CreativeError).code).toBe('ARQUETIPO_DESCONHECIDO')
     db.generation.findUnique.mockResolvedValue(null)
     reservar.mockImplementation(async (e) => {
       const c = await e.criar(db, { recuperacao: { falta: 'geracao-e-job', generationId: 'gen-sumida' } })

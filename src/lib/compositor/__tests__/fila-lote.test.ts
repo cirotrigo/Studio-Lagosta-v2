@@ -26,6 +26,8 @@ const banco = vi.hoisted(() => ({
   jobs: new Map<string, Record<string, unknown>>(),
   itensDeLote: new Map<string, Record<string, unknown>>(),
   itensDePlano: new Map<string, Record<string, unknown>>(),
+  /** F1: as revisões de referência de layout do cliente (lidas por `resolucaoParaASpec`). */
+  referencias: [] as Array<Record<string, unknown>>,
   seq: 0,
   violacoesDeUnicidade: 0,
   pastas: 0,
@@ -74,6 +76,10 @@ vi.mock('@/lib/db', () => {
     }
     return {
       project: { findUnique: async ({ where }: { where: { id: number } }) => ({ id: where.id, name: 'Espeto Gaúcho', userId: 'dono-interno' }) },
+      referenciaDeLayout: {
+        findMany: async ({ where }: { where: { projectId: number; formato?: string; revogadaEm?: null } }) =>
+          banco.referencias.filter((r) => r.projectId === where.projectId && (!where.formato || r.formato === where.formato) && !('revogadaEm' in where && where.revogadaEm === null && r.revogadaEm)),
+      },
       generation: {
         create: async ({ data }: { data: Record<string, unknown> }) => {
           const id = `gen-${++banco.seq}`
@@ -259,6 +265,9 @@ import { hashDoPayload, payloadParaHash } from '@/lib/lotes/identidade'
 import { mesmaSpecDaPeca } from '@/lib/planos/enfileirar-composicao'
 import { revisaoDoItem } from '@/lib/planos/revisao-do-item'
 import { VERSAO_DO_CONTRATO } from '@/lib/copy-autoral/contrato'
+import { compilarReferencia } from '../arquetipos/referencia'
+import { impressaoDoArquetipo } from '../arquetipos/impressao'
+import brunchDoEmporio from '../arquetipos/__tests__/suporte/emporio-ref02-brunch.json'
 
 const peca = (n: number) => ({
   projectId: 6,
@@ -1573,5 +1582,121 @@ describe('varredura do PR11-F02: a reconciliação leva a peça sem arquivo a "e
     const antes = structuredClone(banco.itensDePlano.get('item-1'))
     expect(await reconciliarPlano(6, 'plano-1')).toEqual({ conferidos: 0, movidos: [] })
     expect(banco.itensDePlano.get('item-1')).toEqual(antes)
+  })
+})
+
+/**
+ * F1 — a REFERÊNCIA do cliente na leva, pelo caminho REAL (reserva, plano e banco fingido; rodada 3 do Codex): a
+ * retomada reproduz a REVISÃO gravada na Generation (mesmo revogada depois) sobre a spec da CHAMADA — e o confronto
+ * com o conteúdo gravado (R03) continua recusando conteúdo diferente.
+ */
+describe('F1 — referência de layout na leva, pelo caminho real', () => {
+  type Pagina = { id: string; name: string; width: number; height: number; tags: string[]; layers: unknown[] }
+  const def = (versao: number) => {
+    const r = compilarReferencia(brunchDoEmporio as unknown as Pagina & { layers: never[] }, { pageVersion: `v1:p${versao}`, versao })
+    if (!r.ok) throw new Error('fixture não compila')
+    return r.definicao
+  }
+  const REF = def(1).id
+  const resolvida = (versao: number) => ({ id: REF, versao, impressao: impressaoDoArquetipo(def(versao)) })
+  const publicar = (versao: number, revogada = false) => banco.referencias.push({ projectId: 6, formato: 'story', arquetipoId: REF, versao, impressao: impressaoDoArquetipo(def(versao)), definicao: def(versao), revogadaEm: revogada ? new Date() : null })
+  const revogar = (versao: number) => banco.referencias.filter((r) => r.versao === versao).forEach((r) => (r.revogadaEm = new Date()))
+  const specRef = (extra: Record<string, unknown> = {}) => ({
+    projectId: 6, formato: 'story', nome: 'Café', quando: '2026-09-11T18:00:00.000Z', arquetipo: { id: REF },
+    blocos: [{ papel: 'headline', linhas: ['Café da manhã'] }, { papel: 'apoio', linhas: ['Sabores da manhã'] }],
+    ...extra,
+  })
+  const DO_PLANO = { itemDePlanoId: 'item-1', planoId: 'plano-1' }
+  let lido = ''
+  const criarItemDoPlano = () => {
+    banco.itensDePlano.set('item-1', { id: 'item-1', planoId: 'plano-1', projectId: 6, status: 'proposto', updatedAt: new Date('2026-09-08') })
+    lido = leitura()
+  }
+  const specGravadaDe = (generationId: string) => (banco.generations.get(generationId)!.fieldValues as { spec: Record<string, unknown> }).spec
+  const retrato = () => structuredClone({ generations: banco.generations, jobs: banco.jobs, itensDePlano: banco.itensDePlano })
+
+  beforeEach(() => {
+    banco.referencias = []
+    publicar(1)
+  })
+
+  it('a peça nasce com a revisão vigente resolvida, e a repetição (com v2 aprovada e v1 revogada) reaproveita sem resolver, respondendo a revisão gravada', async () => {
+    criarItemDoPlano()
+    const primeira = await enfileirarPeca(specRef(DO_PLANO), lotePlano('seg-19h', lido))
+    expect(specGravadaDe(primeira.generationId).arquetipo).toEqual(resolvida(1))
+    expect(primeira.spec.arquetipo).toEqual(resolvida(1))
+    publicar(2)
+    revogar(1)
+    const repetida = await enfileirarPeca(specRef(DO_PLANO), lotePlano('seg-19h', lido))
+    expect(repetida).toMatchObject({ generationId: primeira.generationId, jobId: primeira.jobId, lote: { desfecho: 'reaproveitado' } })
+    expect(repetida.spec.arquetipo).toEqual(resolvida(1))
+    expect(banco.generations.size).toBe(1)
+  })
+
+  it('job removido e revisão revogada: a retomada reproduz a v1 gravada (versão e impressão), no job novo e na resposta', async () => {
+    criarItemDoPlano()
+    const primeira = await enfileirarPeca(specRef(DO_PLANO), lotePlano('seg-19h', lido))
+    banco.jobs.delete(primeira.jobId)
+    publicar(2)
+    revogar(1)
+    const r = await enfileirarPeca(specRef(DO_PLANO), lotePlano('seg-19h', lido))
+    expect(r).toMatchObject({ generationId: primeira.generationId, lote: { desfecho: 'retomado' } })
+    expect(r.jobId).not.toBe(primeira.jobId)
+    expect((banco.jobs.get(r.jobId)!.payload as { spec: { arquetipo: unknown } }).spec.arquetipo).toEqual(resolvida(1))
+    expect(r.spec.arquetipo).toEqual(resolvida(1))
+    expect(banco.generations.size).toBe(1)
+    expect(banco.jobs.size).toBe(1)
+  })
+
+  it('job removido com a Generation guardando OUTRO conteúdo: o R03 continua recusando (ITEM_EXECUCAO_CONCORRENTE), nada escrito', async () => {
+    criarItemDoPlano()
+    const primeira = await enfileirarPeca(specRef(DO_PLANO), lotePlano('seg-19h', lido))
+    banco.jobs.delete(primeira.jobId)
+    const g = banco.generations.get(primeira.generationId)!
+    const fv = g.fieldValues as { spec: Record<string, unknown> }
+    banco.generations.set(primeira.generationId, { ...g, fieldValues: { ...fv, spec: { ...fv.spec, blocos: [{ papel: 'headline', linhas: ['Outro conteúdo'] }] } } })
+    const antes = retrato()
+    await expect(enfileirarPeca(specRef(DO_PLANO), lotePlano('seg-19h', lido))).rejects.toMatchObject({ code: 'ITEM_EXECUCAO_CONCORRENTE' })
+    expect(retrato()).toEqual(antes)
+    expect(banco.jobs.size).toBe(0)
+  })
+
+  it('Generation FAILED e v1 revogada: a retomada cria a peça nova com a v1 gravada; identidade gravada de OUTRA referência é outro conteúdo (R03 recusa)', async () => {
+    criarItemDoPlano()
+    const primeira = await enfileirarPeca(specRef(DO_PLANO), lotePlano('seg-19h', lido))
+    banco.generations.set(primeira.generationId, { ...banco.generations.get(primeira.generationId)!, status: 'FAILED' })
+    publicar(2)
+    revogar(1)
+    const segunda = await enfileirarPeca(specRef(DO_PLANO), lotePlano('seg-19h', lido))
+    expect(segunda.generationId).not.toBe(primeira.generationId)
+    expect(segunda.lote?.desfecho).toBe('retomado')
+    expect(specGravadaDe(segunda.generationId).arquetipo).toEqual(resolvida(1))
+    // A identidade gravada é de OUTRA referência: não é a resolução deste pedido, a fila resolveria como pedido novo
+    // (v2 vigente — provado em `fila-referencia-lote.test.ts`), mas antes disso o confronto do plano com o gravado (R03)
+    // vê outro conteúdo e recusa — nada escrito.
+    banco.generations.set(segunda.generationId, { ...banco.generations.get(segunda.generationId)!, status: 'FAILED', fieldValues: { ...(banco.generations.get(segunda.generationId)!.fieldValues as object), spec: { ...specGravadaDe(segunda.generationId), arquetipo: { id: 'ref-outra', versao: 1, impressao: 'arq1-00000000000000' } } } })
+    const antes = retrato()
+    await expect(enfileirarPeca(specRef(DO_PLANO), lotePlano('seg-19h', lido))).rejects.toMatchObject({ code: 'ITEM_EXECUCAO_CONCORRENTE' })
+    expect(retrato()).toEqual(antes)
+  })
+
+  it('sem item de plano: job removido → só o job novo (criarJob), com a v1 gravada mesmo revogada', async () => {
+    const primeira = await enfileirarPeca(specRef(), lote('seg-19h'))
+    banco.jobs.delete(primeira.jobId)
+    revogar(1)
+    const r = await enfileirarPeca(specRef(), lote('seg-19h'))
+    expect(r).toMatchObject({ generationId: primeira.generationId, lote: { desfecho: 'retomado' } })
+    expect((banco.jobs.get(r.jobId)!.payload as { spec: { arquetipo: unknown } }).spec.arquetipo).toEqual(resolvida(1))
+    expect(banco.generations.size).toBe(1)
+    // Revogada e sem nenhuma vigente, a peça NOVA (outro item) é recusa dita, nada criado.
+    await expect(enfileirarPeca(specRef(), lote('ter-19h'))).rejects.toMatchObject({ code: 'ARQUETIPO_DESCONHECIDO' })
+    expect(banco.generations.size).toBe(1)
+  })
+
+  it('o catálogo fica bloqueado para o cliente com referência vigente no formato, e reabre quando a última é revogada', async () => {
+    await expect(enfileirarPeca({ ...specRef(), arquetipo: { id: 'minimal-fb-topo-esquerda' }, blocos: [{ papel: 'headline', linhas: ['Café'] }, { papel: 'servico', linhas: ['9h'] }] }, lote('qua-19h'))).rejects.toMatchObject({ code: 'ARQUETIPO_NAO_APROVADO' })
+    revogar(1)
+    const r = await enfileirarPeca({ ...specRef(), arquetipo: { id: 'minimal-fb-topo-esquerda' }, blocos: [{ papel: 'headline', linhas: ['Café'] }, { papel: 'servico', linhas: ['9h'] }] }, lote('qua-19h'))
+    expect(r.spec.arquetipo).toMatchObject({ id: 'minimal-fb-topo-esquerda', versao: 1 })
   })
 })
