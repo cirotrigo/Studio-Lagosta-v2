@@ -1708,3 +1708,82 @@ fotos (Ref 01) é recusada dita.
 - O corpo do Ciro não entra (é da assinatura): a referência entrega geometria com a tipografia da assinatura; se a
   hierarquia visual dele precisar do corpo, é uma decisão à parte (representar o corpo desejado sob o piso, ou
   aprovar visualmente a substituição).
+
+### F2a da direção por referência: o corte explícito da foto é uma JANELA (01/11/2026)
+
+**Pedido do Ciro**: "a relação com a foto, o crop da foto". A prova visual da F1 mostrou a geometria fiel e o corte
+ainda do compositor. Plano e revisão do Codex (PRECISA DE AJUSTE → v2) em `human-output/relatorios/
+editor-madrugada-2026-10-24/direcao-por-referencia-2026-10-30/f2-corte/`.
+
+**O que existe:**
+
+- `corte-da-foto.ts` (puro): `Janela = { x, y, width, height }` em FRAÇÕES da foto original — o MESMO `style.crop` do
+  editor; `lerJanela` RESOLVE o estado existente como o desenho (o clamp de `resolveImageSourceRect`: mínimo 0,01,
+  dentro de 0..1), nunca o ignora — a forma estrita é só do pedido novo (`janelaSchema`); `Corte = { janela, rotulo? }`:
+  a âncora (`CropPosition`) vira janela pela MESMA conta do desenho (`calculateImageCrop`), a janela explícita não tem
+  rótulo. Igualdade por VALOR (`chaveDoCorte`, `chaveDaEscolha`), nunca por referência. Proporção em px
+  (`janelaNaProporcao`): erro ≤ 0,5 % não muda; acima, expansão mínima centrada (desliza para ficar dentro), dita;
+  fora da foto, `null` → `JANELA_NAO_CABE`.
+- **Spec**: `foto.janela` (zod `janelaSchema`) e `foto.corte` (a âncora efetiva da página — só a recomposição a
+  escreve). Recusas em `validarSpec`: janela/corte sem foto; com `fotosCandidatas` ou `selecaoExperimental`; os dois juntos.
+- **Compositor** (`compor.ts`): precedência do corte no pedido NOVO — `foto.janela` (conferida na proporção da caixa) >
+  `foto.corte` > os candidatos de sempre (3 âncoras no eixo em que a foto sobra). Na REPRODUÇÃO (`opcoes.reproducao`,
+  a recomposição) o corte veio dado e é reproduzido VERBATIM, sem normalizar: a escolha gravada (busca), ou a
+  janela/âncora da página que a spec recomposta leva (peça do T1a), senão o central. O raster (`lerFotoComoCover({ janela })`), a
+  projeção do assunto (`assuntoEmPixels(…, janela)`), a busca (`LeituraDoCorte.janela`, `EscolhaEspacial.corte:
+  'janela' + janela`), a foto em caixa (#8: a janela é da CAIXA, o assunto projetado nela e medido no arco #9; a
+  ampliação conta a janela-fonte) e a camada gravada seguem a mesma janela: **âncora grava `cropPosition` como sempre;
+  janela explícita grava `style.crop`** (sem `cropPosition`) — o editor abre o mesmo recorte. `diagnostico.posicao`:
+  `crop: 'janela'`, `janela`, e `janelaPedida` quando a efetiva foi ajustada.
+- **Recomposição** — o contrato: *na foto que a página mostra (a mesma ou a trocada), a recomposição adota o
+  ENQUADRAMENTO EFETIVO da página — a janela (`style.crop`) sempre que a página a tem; a âncora (`cropPosition`; e o
+  cover SEM crop nem âncora, que "Remover" deixa, é o central) só quando o enquadramento foi MUDADO no editor —
+  preserva deslocamentos, logo, pilha e margem, e revalida texto e foto; o que não cabe na posição congelada é recusa,
+  não busca nova. O corte dado que agora PERDE o assunto catalogado recusa na reprodução
+  (`ARQUETIPO_CORTE_CONGELADO_PERDE_O_ASSUNTO`): só o pedido novo relaxa isso em aviso.* `Defasagem.
+  enquadramentoAlterado` (crop/âncora da camada de FUNDO) entra em `defasada` (e por ela em `precisaRefazer` e
+  `paginaMudouDesde`) e SAI de `mexidoNaMao`; `objectFit`, máscara e as outras imagens continuam "mexido na mão".
+  `enquadramentoDaPagina` (defasagem.ts) é a leitura; `specComACopyDaPagina({ enquadramento })` leva o resultado à spec
+  recomposta (e tira a seleção de fotos dela); `escolhaEspacialOriginal` lê `corte: 'janela'` + janela (ilegível é
+  recusa, nunca "center-middle" por cima).
+- **Revisor**: `assuntoDaPeca` lê `style.crop` (a janela entra na chave do cache e no raster). O gate continua
+  conservador (crop manual "não representado").
+- **MCP**: `fotoJanela` em `compor-arte`, `compor-leva` (itens) e `medir-copy`.
+
+**O que NÃO muda**: a luz da foto (`luzMediaDaFoto`) continua pelo cover central no compor e no medir; a régua
+estrutural do medir-copy não fixa a janela; `enquadramento: 'fixo'` legado = center-middle; peça antiga com rótulo
+recompõe byte a byte igual (raster pela âncora).
+
+**Prova**: `corte-da-foto.test.ts` (os 9 rótulos × story/feed × foto larga/alta reproduzem `calculateImageCrop` E o
+retângulo que o renderizador desenha de `style.crop`), `f2a-janela.test.ts` (compositor real com foto sintética: a
+janela no raster, na escolha, na camada; ajuste de proporção dito; `JANELA_NAO_CABE`; recusas da spec; `foto.corte`),
+`ciclo-extras` e `t3b8-recompor` (G-R6b: a âncora mudada no editor é adotada na recomposição; a caixa movida continua
+ajuste manual), `defasagem*.test.ts`.
+
+**Armadilhas:**
+- 🔴 Levar a âncora da página para a spec SEMPRE prendia a busca nova da foto trocada ao corte antigo e saltava a
+  recusa `ARQUETIPO_CORTE_CONGELADO_PERDE_O_ASSUNTO` (11 testes acusaram): a âncora só vai quando
+  `enquadramentoAlterado`; a janela, sempre.
+- `fieldValues.spec` da recomposição é gravado por MERGE (`mesclarFieldValuesDaArte`): no teste com banco fingido,
+  o que foi gravado está em `banco.sql`, não em `banco.generations`.
+- A expansão de proporção pode SAIR da foto num lado: a janela desliza para dentro (y 0), não é recusa; só a que não
+  cabe inteira é `JANELA_NAO_CABE`.
+
+Rodada 1 do Codex sobre o código (01/11/2026, sete P2, nenhum P1) — o que ela corrigiu e vale como regra:
+- 🔴 **`enquadramentoDaPagina` sem crop nem âncora, com `objectFit: 'cover'`, é `{ corte: 'center-middle' }`**, não
+  `null`: a peça por janela nasce sem `cropPosition`, e "Remover" apaga só o `crop` — `null` deixava a recomposição
+  ressuscitar a janela gravada.
+- 🔴 **A janela da página é reproduzida verbatim na recomposição**: normalizá-la (`janelaNaProporcao`) trocava o
+  enquadramento aprovado numa edição de texto, ou a recusava (`JANELA_NAO_CABE`). A proporção só se confere no pedido novo.
+- 🔴 **A leitura do corte gravado é obrigatória na reprodução** (`ARQUETIPO_LEITURA_DO_CORTE_AUSENTE`) quando a foto foi
+  lida: sem ela a avaliação saía sem eliminações. A peça do T1a reproduz no corte que DESENHA (`cortes[0]`), não num
+  `center-middle` fixo — era isso que descasava a leitura da escolha quando a página tinha âncora.
+- 🔴 **`cortePedido` é só do pedido novo**: `foto.janela`/`foto.corte` na spec recomposta é o que a página mostra, não
+  autorização — na reprodução o corte que perde o assunto recusa.
+- **Foto pedida com janela/corte e indisponível é `FOTO_INDISPONIVEL` também sem arquétipo** (antes a peça saía sem foto
+  e sem a janela, calada).
+- **`fotoJanela` sem foto chega à validação** (compor-arte, compor-leva, medir-copy): `SPEC_INVALIDA`, não descarte.
+- **`lerJanela` resolve o crop fora de faixa como o renderer** (clamp): `{ x: 0.9, width: 0.5 }` é a faixa direita que
+  a página mostra, não "ilegível → âncora por baixo". Vale até a faixa abaixo de 1 % depois do clamp (`x: 0.995` → 10 px
+  de 2000): ela é lida, mas a RECOMPOSIÇÃO dela é recusada (`janelaSchema` exige 0,01 → `SPEC_INVALIDA`) — recusa
+  explícita, nunca troca silenciosa pelo central (rodada 3 do Codex).

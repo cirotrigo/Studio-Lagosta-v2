@@ -35,6 +35,8 @@ export interface PedidoDeMedicao {
   nome?: string | null
   /** A foto da peça: entra na escolha da variante (luz clara/escura) e na chave do rodízio — como na composição. */
   fotoDriveId?: string | null
+  /** F2a: a janela da foto (frações, o `style.crop` do editor) — só diz respeito à foto; a régua estrutural não a fixa. */
+  fotoJanela?: { x: number; y: number; width: number; height: number } | null
   fotoUrl?: string | null
   preferencias?: { arranjos?: Array<string | { grupo?: string; arranjo?: string }> } | null
   /** T1a: o arquétipo — o MESMO pedido do compor (`{ id }`, `{ id, versao }` ou a fixação de uma medição anterior). */
@@ -92,7 +94,7 @@ export async function medirCopyDoProjeto(pedido: PedidoDeMedicao): Promise<Resul
     blocos: pedido.blocos,
     ...(pedido.camadasExtras ? { camadasExtras: pedido.camadasExtras } : {}),
     copyAutoral: pedido.copyAutoral,
-    ...(pedido.fotoDriveId || pedido.fotoUrl ? { foto: { ...(pedido.fotoDriveId ? { driveFileId: pedido.fotoDriveId } : {}), ...(pedido.fotoUrl ? { url: pedido.fotoUrl } : {}) } } : {}),
+    ...(pedido.fotoDriveId || pedido.fotoUrl || pedido.fotoJanela ? { foto: { ...(pedido.fotoDriveId ? { driveFileId: pedido.fotoDriveId } : {}), ...(pedido.fotoUrl ? { url: pedido.fotoUrl } : {}), ...(pedido.fotoJanela ? { janela: pedido.fotoJanela } : {}) } } : {}),
     ...(pedido.nome ? { nome: pedido.nome } : {}),
     ...(pedido.tema ? { tema: pedido.tema } : {}),
     ...(pedido.variante || pedido.preferencias?.arranjos ? { preferencias: { ...(pedido.variante ? { variante: pedido.variante } : {}), ...(pedido.preferencias?.arranjos ? { arranjos: pedido.preferencias.arranjos } : {}) } } : {}),

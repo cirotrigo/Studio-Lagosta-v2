@@ -1,5 +1,6 @@
 import { calculateImageCrop, type CropPosition } from '@/lib/image-crop-utils'
 import type { Rect } from '@/lib/creatives/halo/halo'
+import { janelaEmPx, type Janela } from './corte-da-foto'
 
 export interface AssuntoNormalizado { x0: number; y0: number; x1: number; y1: number }
 
@@ -11,9 +12,9 @@ export function lerCaixaDoAssunto(valor: unknown): AssuntoNormalizado | null {
   return a.x1 > a.x0 && a.y1 > a.y0 ? { x0: a.x0, y0: a.y0, x1: a.x1, y1: a.y1 } : null
 }
 
-/** Mantém a caixa fora do canvas: sua interseção mede o que o corte preservou. */
-export function assuntoEmPixels(a: AssuntoNormalizado, foto: { width: number; height: number }, canvas: { width: number; height: number }, posicao: CropPosition): Rect {
-  const crop = calculateImageCrop(foto, canvas, posicao)
+/** Mantém a caixa fora do canvas: sua interseção mede o que o corte preservou. F2a: a janela (frações) vale como a âncora. */
+export function assuntoEmPixels(a: AssuntoNormalizado, foto: { width: number; height: number }, canvas: { width: number; height: number }, posicao: CropPosition | Janela): Rect {
+  const crop = typeof posicao === 'string' ? calculateImageCrop(foto, canvas, posicao) : janelaEmPx(posicao, foto)
   const sx = canvas.width / crop.cropWidth
   const sy = canvas.height / crop.cropHeight
   return { x: (a.x0 * foto.width - crop.cropX) * sx, y: (a.y0 * foto.height - crop.cropY) * sy, width: (a.x1 - a.x0) * foto.width * sx, height: (a.y1 - a.y0) * foto.height * sy }

@@ -11,7 +11,7 @@ import { createHash } from 'node:crypto'
 
 import type { Rect } from '@/lib/creatives/halo/halo'
 import { CreativeError } from '@/lib/creatives/errors'
-import type { CropPosition } from '@/lib/image-crop-utils'
+import { chaveDaEscolha, type Janela, type RotuloDoCorte } from '../corte-da-foto'
 import { bordaDoGrupo, type Borda } from '../gradiente-de-leitura'
 import { combinacoesDasFaixas, limiteDaBusca, type PartidaNoArquetipo } from './candidatos-espaciais'
 import { jsonCanonico } from './impressao'
@@ -133,7 +133,8 @@ export function chaveDaFoto(url: string | null | undefined): string | null {
 /** A impressão de uma escolha (foto, corte, deslocamentos): a mesma escolha tem o mesmo id — e a reproduzida também. */
 export function idDaEscolha(escolha: EscolhaEspacial): string {
   const { modo, foto, corte, deslocamentos } = escolha
-  return `be1-${createHash('sha1').update(jsonCanonico({ modo, foto, corte, deslocamentos })).digest('hex').slice(0, 12)}`
+  // F2a: a janela explícita é parte da identidade da escolha (dois cortes 'janela' diferentes são escolhas diferentes).
+  return `be1-${createHash('sha1').update(jsonCanonico({ modo, foto, corte, deslocamentos, ...(escolha.janela ? { janela: escolha.janela } : {}) })).digest('hex').slice(0, 12)}`
 }
 
 /** Quantas avaliações caíram em cada motivo (uma avaliação conta uma vez por motivo distinto). */
@@ -291,11 +292,11 @@ export interface ArgsDaSelecao {
    * #8 (foto em caixa): o corte que o compositor escolheu pela CAIXA da foto, para o ramo sem leitura (o texto não pousa
    * na foto, então ela não escolhe posição). Ausente = o corte central de sempre. A reprodução segue usando o gravado.
    */
-  corteSemLeitura?: CropPosition
+  corteSemLeitura?: { crop: RotuloDoCorte; janela?: Janela }
 }
 
 export type SelecaoNoArquetipo =
-  | { ok: true; materializacao: MaterializacaoOk; crop: CropPosition; escolha: EscolhaEspacial; diagnostico: DiagnosticoDaBuscaEspacial; avisos: string[] }
+  | { ok: true; materializacao: MaterializacaoOk; crop: RotuloDoCorte; escolha: EscolhaEspacial; diagnostico: DiagnosticoDaBuscaEspacial; avisos: string[] }
   | { ok: false; resultado: ResultadoDaBusca; faixas: FaixaDeBusca[]; motivo: string | null }
 
 const materializarCom = (args: ArgsDaSelecao, deslocamentos: Combinacao['deslocamentos']): Materializacao =>
@@ -367,7 +368,7 @@ export function selecionarNoArquetipo(args: ArgsDaSelecao): SelecaoNoArquetipo {
   // Reprodução (ou sem foto): uma combinação só. A geometria e o que a copy nova viola recusam; o tratamento avisa.
   if (args.reproduzir || args.cortes.length === 0) {
     // Combinação única (sem foto, ou texto no liso): a escolha nova também grava a pilha com que a peça nasceu (29/10/2026).
-    const nova: EscolhaEspacial & { buscaOriginal?: ResumoDaBuscaOriginal } = { modo: MODO_BUSCA_ESPACIAL, foto: args.foto, corte: args.corteSemLeitura ?? ('center-middle' as CropPosition), deslocamentos: args.partida.deslocamentos, ...(args.gap !== undefined ? { pilha: args.gap } : {}), ...(args.margem ? { margem: args.margem } : {}) }
+    const nova: EscolhaEspacial & { buscaOriginal?: ResumoDaBuscaOriginal } = { modo: MODO_BUSCA_ESPACIAL, foto: args.foto, corte: args.corteSemLeitura?.crop ?? 'center-middle', ...(args.corteSemLeitura?.janela ? { janela: args.corteSemLeitura.janela } : {}), deslocamentos: args.partida.deslocamentos, ...(args.gap !== undefined ? { pilha: args.gap } : {}), ...(args.margem ? { margem: args.margem } : {}) }
     const { buscaOriginal, ...gravada } = args.reproduzir ?? nova
     const avisos: string[] = []
     const origem = args.reproduzirReferencia ? 'a posição de referência do arquétipo (peça do T1a)' : 'a posição desta peça foi escolhida pela foto e está congelada'
@@ -396,7 +397,19 @@ export function selecionarNoArquetipo(args: ArgsDaSelecao): SelecaoNoArquetipo {
     if ('problemas' in m) throw recusa(m.problemas, m.problemas.map((p) => `${p.papel} — ${p.motivo}`).join('; '))
     const fixa: EscolhaEspacial = { ...gravada, deslocamentos }
     const combinacao = combinacaoDosDeslocamentos(faixas, deslocamentos)
-    const corte = args.cortes.find((c) => c.crop === fixa.corte)
+    // F2a: igualdade por VALOR (a janela explícita não tem rótulo): a mesma régua de `chaveDoCorte`.
+    const corte = args.cortes.find((c) => chaveDaEscolha({ corte: c.crop, janela: c.janela }) === chaveDaEscolha(fixa))
+    // A leitura do corte gravado é OBRIGATÓRIA quando a foto foi lida: sem ela a avaliação sairia sem eliminações (nem
+    // assunto, nem texto sobre a foto) e o diagnóstico discordaria do corte desenhado. Só o texto no liso e a peça sem foto
+    // (sem leituras) seguem sem (Codex, F2a rodada 1, P2 #3).
+    if (!corte && args.cortes.length > 0) {
+      throw new CreativeError(
+        'ARQUETIPO_LEITURA_DO_CORTE_AUSENTE',
+        `${chaveDoArquetipo(args.arquetipo)}: ${origem} (corte ${chaveDaEscolha(fixa)}), mas a foto não foi lida nesse corte (lida em: ${args.cortes.map((c) => chaveDaEscolha({ corte: c.crop, janela: c.janela })).join(', ')}). Nada foi movido: peça uma nova composição da peça.`,
+        422,
+        { arquetipo: chaveDoArquetipo(args.arquetipo), formato: args.formato, escolha: gravada, lidos: args.cortes.map((c) => c.crop) },
+      )
+    }
     const unidades = unidadesDaCombinacao({ unidades: args.unidades, materializacao: m, arquetipo: args.arquetipo, deslocamentos, faixas, H })
     const avaliacao: AvaliacaoDaCombinacao = corte
       ? avaliarCombinacao({ corte, energiaDeReferencia: Math.max(1, corte.mapa.energiaMaxima), materializada: { combinacao, unidades, logo: m.papeis.logo?.posicao }, faixas, planejamento: args.planejamento, canvas: args.canvas })
@@ -432,7 +445,7 @@ export function selecionarNoArquetipo(args: ArgsDaSelecao): SelecaoNoArquetipo {
     })
     if (!args.reproduzir) {
       diagnostico.motivo = args.corteSemLeitura
-        ? `texto no liso (foto em caixa): a foto não escolhe a posição; ficou a posição de partida (a referência, ou o resgate mais perto dela), com o corte ${args.corteSemLeitura} escolhido pela caixa da foto`
+        ? `texto no liso (foto em caixa): a foto não escolhe a posição; ficou a posição de partida (a referência, ou o resgate mais perto dela), com o corte ${args.corteSemLeitura.crop} escolhido pela caixa da foto`
         : 'sem foto para ler: ficou a posição de partida (a referência, ou o resgate mais perto dela) no corte central'
     }
     return { ok: true, materializacao: m, crop: fixa.corte, escolha: fixa, diagnostico, avisos }
@@ -454,7 +467,8 @@ export function selecionarNoArquetipo(args: ArgsDaSelecao): SelecaoNoArquetipo {
   const resultado = buscarNaFoto({ materializadas, cortes: args.cortes, faixas, energiaDeReferencia, planejamento: args.planejamento, canvas: args.canvas })
   if (!resultado.vencedora) return { ok: false, resultado, faixas, motivo: motivoDaFalta(resultado.ordenadas) }
   const v = resultado.vencedora
-  const escolha: EscolhaEspacial = { modo: MODO_BUSCA_ESPACIAL, foto: args.foto, corte: v.crop, deslocamentos: v.combinacao.deslocamentos, ...(args.gap !== undefined ? { pilha: args.gap } : {}), ...(args.margem ? { margem: args.margem } : {}) }
+  const corteVencedor = args.cortes.find((c) => c.crop === v.crop)
+  const escolha: EscolhaEspacial = { modo: MODO_BUSCA_ESPACIAL, foto: args.foto, corte: v.crop, ...(v.crop === 'janela' && corteVencedor ? { janela: corteVencedor.janela } : {}), deslocamentos: v.combinacao.deslocamentos, ...(args.gap !== undefined ? { pilha: args.gap } : {}), ...(args.margem ? { margem: args.margem } : {}) }
   const diagnostico = diagnosticoDaBusca({ escolha, resultado, faixas, cortesAvaliados: args.cortes.map((c) => c.crop) })
   const menorCobertura = Math.min(...resultado.ordenadas.filter((a) => a.eliminada.length === 0).map((a) => a.regiaoEstimada?.cobertura ?? 0))
   const avisos = invadeAEstimada(v)
