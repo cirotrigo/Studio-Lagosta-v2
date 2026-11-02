@@ -211,7 +211,7 @@ describe('T1b · a recomposição desenha a receita CONGELADA', () => {
     expect(r.diagnostico.arquetipo!.acentos![0].desenho.strokeWidth).toBe(5)
     // 30/10/2026 (revisão do Codex, P2): com a pilha fechada, a reserva do fio na pilha é a do DESENHO congelado (traço
     // 9), não a do catálogo vivo (2): o apoio começa depois do fio, e o fio é desenhado — não omitido por "encosta".
-    await montar({ id: 't1b-rec-grosso', apoio: true })
+    await montar({ id: 't1b-rec-grosso' })
     const grossa = { ...fio, desenho: { ...fio.desenho, strokeWidth: 9 }, cor: CLARO, fonteDaCor: 'texto-do-papel' }
     const g = (await compor(spec('t1b-rec-grosso', [HEADLINE, APOIO, SERVICO], { arquetipo: { id: TOPO } }), { acentosCongelados: [grossa] })).r
     const fioGrosso = camada(g, 'acento-fio')!
