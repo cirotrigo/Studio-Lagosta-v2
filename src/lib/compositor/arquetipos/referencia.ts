@@ -22,7 +22,7 @@ import { papelDoTexto } from '@/lib/font-combinations-capture'
 import { formatoDaPaginaGravada } from '../formato'
 import { DIMENSOES, type Alinhamento, type Papel } from '../spec'
 import { fotoDaPaginaParaLayout } from './da-pagina'
-import { CORPO_MINIMO_DA_REFERENCIA, FORMATOS_DO_ARQUETIPO, type ArquetipoDeLayout, type Caixa, type CantoDaLogo, type FormatoDoArquetipo, type PapelDeTexto, type PapelNoArquetipo, type PosicaoDoPapel, type Zona } from './tipos'
+import { COR_HEX, CORPO_MINIMO_DA_REFERENCIA, FORMATOS_DO_ARQUETIPO, TRANSFORMACOES_DO_ESTILO, type ArquetipoDeLayout, type EstiloDaReferencia, type Caixa, type CantoDaLogo, type FormatoDoArquetipo, type PapelDeTexto, type PapelNoArquetipo, type PosicaoDoPapel, type Zona } from './tipos'
 
 /** O id da definição de uma página: `ref-<pageId>` (o cuid é a-z0-9, kebab-case válido). */
 export const idDaReferencia = (pageId: string) => `ref-${pageId.toLowerCase()}`
@@ -41,6 +41,8 @@ export const CODIGOS_DA_COMPILACAO = [
   'REFERENCIA_FORA_DO_PISO',
   'REFERENCIA_CORPO_INVALIDO',
   'REFERENCIA_DIMENSOES_INCOMPATIVEIS',
+  'REFERENCIA_ESTILO_INVALIDO',
+  'REFERENCIA_ESTILO_NAO_SUPORTADO',
 ] as const
 export type CodigoDaCompilacao = (typeof CODIGOS_DA_COMPILACAO)[number]
 
@@ -55,8 +57,8 @@ export interface LeituraDaReferencia {
   formato: FormatoDoArquetipo
   foto: string
   logo: string
-  /** F2c: `corpo` = o tamanho da fonte desenhado na camada (px), o teto da escada da peça por esta referência. */
-  papeis: Array<{ papel: PapelDeTexto; camadas: string[]; linhas: number; caixa: Caixa; alinha: Alinhamento; corpo: number }>
+  /** F2c: `corpo` = o tamanho da fonte desenhado na camada (px), o teto da escada da peça por esta referência. F2d: `estilo`. */
+  papeis: Array<{ papel: PapelDeTexto; camadas: string[]; linhas: number; caixa: Caixa; alinha: Alinhamento; corpo: number; estilo: EstiloDaReferencia }>
   ignoradas: CamadaIgnorada[]
 }
 
@@ -108,6 +110,44 @@ function alinhamentoDe(c: Layer): Alinhamento {
 }
 const linhasDe = (c: Layer) => (typeof c.content === 'string' ? c.content.split('\n').filter((l) => l.trim() !== '').length : 0)
 
+/**
+ * F2d: o ESTILO desenhado numa camada de texto da referência — leitor PRÓPRIO (o da assinatura, `estiloDaCamada`, troca
+ * cor ausente por branco e omite o peso: aqui a cor é validada antes de qualquer fallback e as ausências são explícitas).
+ * O que a F2d não representa é RECUSADO, nunca descartado em silêncio: rich-text com runs (corpo, espaçamento, itálico,
+ * decoração, stroke e sombra por trecho), `fontStyle` itálico, stroke e decoração, sombra com deslocamento horizontal.
+ */
+function estiloDaReferencia(c: Layer): { ok: true; estilo: EstiloDaReferencia } | { ok: false; codigo: 'REFERENCIA_ESTILO_INVALIDO' | 'REFERENCIA_ESTILO_NAO_SUPORTADO'; motivo: string } {
+  const s = (c.style ?? {}) as Record<string, unknown>
+  const naoSuportado = (motivo: string) => ({ ok: false as const, codigo: 'REFERENCIA_ESTILO_NAO_SUPORTADO' as const, motivo })
+  const invalido = (motivo: string) => ({ ok: false as const, codigo: 'REFERENCIA_ESTILO_INVALIDO' as const, motivo })
+  const runs = (c as { richTextStyles?: unknown }).richTextStyles
+  if (c.type === 'rich-text' || (Array.isArray(runs) && runs.length > 0)) return naoSuportado('a camada é rich-text (trechos com estilo próprio): a F2d só representa o estilo da camada inteira')
+  if (typeof s.fontStyle === 'string' && /italic/i.test(s.fontStyle)) return naoSuportado('itálico')
+  if (typeof s.textDecoration === 'string' && s.textDecoration !== 'none') return naoSuportado(`decoração de texto "${s.textDecoration}"`)
+  if (c.effects?.stroke?.enabled) return naoSuportado('contorno (stroke)')
+  const shadow = c.effects?.shadow
+  if (shadow?.enabled && shadow.shadowOffsetX) return naoSuportado(`sombra com deslocamento horizontal (${shadow.shadowOffsetX})`)
+  const fontFamily = typeof s.fontFamily === 'string' ? s.fontFamily.trim() : ''
+  if (!fontFamily) return invalido('sem família de fonte')
+  const color = typeof s.color === 'string' ? s.color.trim() : ''
+  if (!COR_HEX.test(color)) return invalido(`cor "${String(s.color)}" não é #rrggbb`)
+  const autoWrap = (c.textboxConfig as { autoWrap?: { lineHeight?: number } } | undefined)?.autoWrap
+  const lineHeight = typeof autoWrap?.lineHeight === 'number' && autoWrap.lineHeight > 0 ? autoWrap.lineHeight : typeof s.lineHeight === 'number' && s.lineHeight > 0 ? s.lineHeight : null
+  if (lineHeight === null) return invalido('sem entrelinha')
+  const letterSpacing = s.letterSpacing === undefined ? 0 : typeof s.letterSpacing === 'number' && Number.isFinite(s.letterSpacing) ? s.letterSpacing : null
+  if (letterSpacing === null) return invalido(`espaçamento "${String(s.letterSpacing)}" não é número`)
+  const fontWeight =
+    typeof s.fontWeight === 'number' && Number.isFinite(s.fontWeight) ? s.fontWeight : typeof s.fontWeight === 'string' && /^\d{3}$/.test(s.fontWeight.trim()) ? Number(s.fontWeight.trim()) : s.fontWeight === 'bold' ? 700 : s.fontWeight === undefined || s.fontWeight === 'normal' ? null : NaN
+  if (Number.isNaN(fontWeight) || (fontWeight !== null && (!Number.isInteger(fontWeight) || fontWeight < 100 || fontWeight > 900))) return invalido(`peso "${String(s.fontWeight)}" não é 100–900`)
+  const textTransform = s.textTransform === undefined ? 'none' : (TRANSFORMACOES_DO_ESTILO as readonly unknown[]).includes(s.textTransform) ? (s.textTransform as EstiloDaReferencia['textTransform']) : null
+  if (textTransform === null) return invalido(`caixa "${String(s.textTransform)}" desconhecida`)
+  const sombra = shadow?.enabled
+    ? { color: shadow.shadowColor, blur: shadow.shadowBlur, offsetY: shadow.shadowOffsetY, opacity: shadow.shadowOpacity }
+    : undefined
+  if (sombra && (!COR_HEX.test(String(sombra.color)) || !(sombra.blur >= 0) || !Number.isFinite(sombra.offsetY) || !(sombra.opacity >= 0 && sombra.opacity <= 1))) return invalido('sombra fora do contrato (cor #rrggbb, blur ≥ 0, opacidade 0..1)')
+  return { ok: true, estilo: { fontFamily, fontWeight, lineHeight, letterSpacing, textTransform, color, ...(sombra ? { sombra } : {}) } }
+}
+
 /** A caixa de um texto CENTRALIZADO simetrizada no eixo da peça (o validador exige o centro exato em 0,5). */
 function simetrizar(c: Caixa): Caixa {
   const meia = Math.max(c.x + c.w - 0.5, 0.5 - c.x)
@@ -138,7 +178,7 @@ export function compilarReferencia(pagina: PaginaParaReferencia, args: { pageVer
     })
   }
 
-  const porPapel = new Map<PapelDeTexto, { camadas: Layer[]; caixa: Ret; linhas: number; corpo: number }>()
+  const porPapel = new Map<PapelDeTexto, { camadas: Layer[]; caixa: Ret; linhas: number; corpo: number; estilo: EstiloDaReferencia }>()
   let logo: Layer | null = null
   for (const c of pagina.layers) {
     if (c.visible === false) continue
@@ -168,7 +208,10 @@ export function compilarReferencia(pagina: PaginaParaReferencia, args: { pageVer
       if (!Number.isInteger(corpo) || (corpo as number) < CORPO_MINIMO_DA_REFERENCIA || (corpo as number) > pagina.height) {
         return recusa('REFERENCIA_CORPO_INVALIDO', `A camada "${c.name ?? c.id}" (${papel}) tem corpo ${String(corpo)} px: a referência lê o corpo em px inteiros, de ${CORPO_MINIMO_DA_REFERENCIA} até a altura da página (${pagina.height}). Ajuste o tamanho da fonte no editor.`, { camada: c.id, papel, corpo })
       }
-      porPapel.set(papel, { camadas: [c], caixa: r, linhas: linhasDe(c), corpo: corpo as number })
+      // F2d: o estilo desenhado — o que a F2d não representa recusa, dito.
+      const e = estiloDaReferencia(c)
+      if (e.ok === false) return recusa(e.codigo, `A camada "${c.name ?? c.id}" (${papel}): ${e.motivo}. ${e.codigo === 'REFERENCIA_ESTILO_NAO_SUPORTADO' ? 'A referência representa a camada de texto inteira (família, peso, entrelinha, espaçamento, caixa, cor e sombra vertical); simplifique a camada ou tire-a.' : 'Ajuste o estilo no editor.'}`, { camada: c.id, papel, motivo: e.motivo })
+      porPapel.set(papel, { camadas: [c], caixa: r, linhas: linhasDe(c), corpo: corpo as number, estilo: e.estilo })
       continue
     }
     if (c.type === 'logo') {
@@ -193,7 +236,7 @@ export function compilarReferencia(pagina: PaginaParaReferencia, args: { pageVer
   if (!logo) return recusa('REFERENCIA_SEM_LOGO', 'A página não tem a logo (camada do tipo logo): toda referência carrega a logo da marca.', { ignoradas })
 
   // As caixas em frações; a centralizada no eixo da peça é simetrizada (até 8 px de fuga), senão é incoerente.
-  const caixas = new Map<PapelDeTexto, { caixa: Caixa; alinha: Alinhamento; linhas: number; camadas: string[]; corpo: number }>()
+  const caixas = new Map<PapelDeTexto, { caixa: Caixa; alinha: Alinhamento; linhas: number; camadas: string[]; corpo: number; estilo: EstiloDaReferencia }>()
   for (const [papel, p] of porPapel) {
     const ordenadas = [...p.camadas].sort((a, b) => (a.position?.y ?? 0) - (b.position?.y ?? 0))
     const alinha = alinhamentoDe(ordenadas[0])
@@ -205,7 +248,7 @@ export function compilarReferencia(pagina: PaginaParaReferencia, args: { pageVer
       }
       caixa = simetrizar(caixa)
     }
-    caixas.set(papel, { caixa, alinha, linhas: Math.max(1, p.linhas), camadas: ordenadas.map((c) => c.id), corpo: p.corpo })
+    caixas.set(papel, { caixa, alinha, linhas: Math.max(1, p.linhas), camadas: ordenadas.map((c) => c.id), corpo: p.corpo, estilo: p.estilo })
   }
   // A âncora é a faixa em que a manchete INTEIRA cai (as mesmas do validador); rodapé e topo antes do meio, que as
   // sobrepõe.
@@ -258,10 +301,12 @@ export function compilarReferencia(pagina: PaginaParaReferencia, args: { pageVer
   const posicoes: Partial<Record<PapelDeTexto | 'logo', PosicaoDoPapel>> = {}
   const limitesDeTexto: Partial<Record<PapelDeTexto, { linhasMax: number }>> = {}
   const corpos: Partial<Record<PapelDeTexto, number>> = {}
+  const estilos: Partial<Record<PapelDeTexto, EstiloDaReferencia>> = {}
   for (const [papel, c] of caixas) {
     posicoes[papel] = { referencia: c.caixa, zona: { ...zonaDaCaixa(c.caixa), yMin: zonaDosTextos.yMin, yMax: zonaDosTextos.yMax } }
     limitesDeTexto[papel] = { linhasMax: c.linhas }
     corpos[papel] = c.corpo
+    estilos[papel] = c.estilo
   }
   posicoes.logo = { referencia: caixaDaLogo, zona: zonaDaCaixa(caixaDaLogo) }
 
@@ -272,7 +317,7 @@ export function compilarReferencia(pagina: PaginaParaReferencia, args: { pageVer
     nome: `Referência · ${(pagina.name ?? pagina.id).trim() || pagina.id}`,
     papeis,
     preferencias: { ancora: faixa, alinha: alinhaDaManchete, cantoDaMarca },
-    formatos: { [formato]: { papeis: posicoes, limitesDeTexto, corpos } } as unknown as ArquetipoDeLayout['formatos'],
+    formatos: { [formato]: { papeis: posicoes, limitesDeTexto, corpos, estilos } } as unknown as ArquetipoDeLayout['formatos'],
     referencia: { pageId: pagina.id, pageVersion: args.pageVersion, formato },
   }
   return {
@@ -282,7 +327,7 @@ export function compilarReferencia(pagina: PaginaParaReferencia, args: { pageVer
       formato,
       foto,
       logo: logo.id,
-      papeis: ordem.map(([papel, c]) => ({ papel, camadas: c.camadas, linhas: c.linhas, caixa: c.caixa, alinha: c.alinha, corpo: c.corpo })),
+      papeis: ordem.map(([papel, c]) => ({ papel, camadas: c.camadas, linhas: c.linhas, caixa: c.caixa, alinha: c.alinha, corpo: c.corpo, estilo: c.estilo })),
       ignoradas,
     },
   }

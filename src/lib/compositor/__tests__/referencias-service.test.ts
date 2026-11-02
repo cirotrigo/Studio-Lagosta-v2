@@ -105,6 +105,21 @@ describe('aprovarReferencia', () => {
     expect(db.referenciaDeLayout.create).not.toHaveBeenCalled()
   })
 
+  it('F2d: a revisão vigente SÓ com corpos (a @2 da F2c) + a mesma página → o compilador novo grava a seguinte com estilos; a equivalente reaproveita', async () => {
+    const { estilos: _e, ...soCorpos } = definicaoV1.formatos.story
+    const v2 = { ...definicaoV1, versao: 2, formatos: { story: soCorpos } } as typeof definicaoV1
+    db.referenciaDeLayout.findMany.mockResolvedValue([linha(v2)])
+    const r = await aprovarReferencia({ projectId: 12, pageId: PAGINA.id, aprovadaPor: null })
+    expect([r.reaproveitada, r.arquetipo.versao]).toEqual([false, 3])
+    const data = db.referenciaDeLayout.create.mock.calls[0][0].data
+    expect(data.definicao.formatos.story.estilos.headline).toMatchObject({ fontFamily: 'TrajanPro Regular', color: '#F8F8F8' })
+    expect(r.leitura.papeis.map((p) => p.estilo.letterSpacing)).toEqual([0, 3])
+    db.referenciaDeLayout.create.mockClear()
+    db.referenciaDeLayout.findMany.mockResolvedValue([linha({ ...definicaoV1, versao: 3 })])
+    expect((await aprovarReferencia({ projectId: 12, pageId: PAGINA.id, aprovadaPor: null })).reaproveitada).toBe(true)
+    expect(db.referenciaDeLayout.create).not.toHaveBeenCalled()
+  })
+
   it('a idempotência vem DEPOIS da validação: com o piso mudado, a mesma página é recusada em vez de reaproveitada', async () => {
     db.referenciaDeLayout.findMany.mockResolvedValue([linha(definicaoV1)])
     db.project.findUnique.mockResolvedValue({ id: 12, assinatura: { geometria: { story: { safeRodape: 180 } } } })

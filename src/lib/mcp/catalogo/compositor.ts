@@ -258,7 +258,7 @@ export const toolsDoCompositor = [
       // F2c: as REFERÊNCIAS aprovadas do cliente neste formato, com o corpo desenhado por papel (da revisão persistida) —
       // com uma delas, o catálogo abaixo não vale para o cliente e a peça parte do corpo da referência, não do da assinatura.
       const { listarReferencias } = await import('../../compositor/referencias')
-      const referencias = (await listarReferencias(projectId)).filter((l) => !l.revogadaEm && l.formato === formato).map((l) => ({ arquetipoId: l.arquetipoId, versao: l.versao, pagina: l.pagina, corpos: l.corpos }))
+      const referencias = (await listarReferencias(projectId)).filter((l) => !l.revogadaEm && l.formato === formato).map((l) => ({ arquetipoId: l.arquetipoId, versao: l.versao, pagina: l.pagina, corpos: l.corpos, estilos: l.estilos }))
       const template = templateId ? { id: templateId } : null
       return {
         temAssinatura: Boolean(a.origem.pageId),

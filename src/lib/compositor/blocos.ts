@@ -190,7 +190,11 @@ export function camadaDoPapel(args: {
       ...(estilo.fontWeight ? { fontWeight: estilo.fontWeight } : {}),
       fontSize,
       lineHeight: estilo.lineHeight,
-      letterSpacing: Math.round(estilo.letterSpacing * args.escala * 100) / 100,
+      // F2d: com o contrato da referência, o espaçamento é derivado do corpo MATERIALIZADO (o mesmo 31 px dá o mesmo
+      // 2,38 em qualquer degrau); sem ele, a conta de sempre, byte a byte.
+      letterSpacing: estilo.espacamentoDaReferencia
+        ? Math.round(((estilo.espacamentoDaReferencia.spacing * fontSize) / estilo.espacamentoDaReferencia.corpo) * 100) / 100
+        : Math.round(estilo.letterSpacing * args.escala * 100) / 100,
       ...(estilo.textTransform ? { textTransform: estilo.textTransform } : {}),
       color: estilo.color,
       textAlign: args.textAlign,
