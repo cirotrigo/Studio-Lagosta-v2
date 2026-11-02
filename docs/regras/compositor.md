@@ -1888,7 +1888,10 @@ editor-madrugada-2026-10-24/direcao-por-referencia-2026-10-30/f2d-estilo/`.
 - **Medição**: o bloco MONTADO é medido com a camada preparada (corpo e espaçamento materializados), não reconstruído por
   uma escala com três casas; a recusa reconstrói no piso pelo mesmo contrato; o orçamento do papel sem bloco veste a
   assinatura com a referência (`medidoCom` na família certa). `MedidaDeBloco.estilo` e `diagnostico.arquetipo.estilos[]`
-  dizem família, peso, caixa, espaçamento, cor e a ORIGEM por campo (referência / assinatura / arranjo).
+  dizem família, peso, caixa, espaçamento, cor e a ORIGEM por campo (referência / assinatura / arranjo). **O estilo da
+  RECUSA sai de uma função só**, `estiloDaRecusa` (`preparar-blocos.ts`), no compor e no medir-copy: a camada da recusa
+  materializada no piso por `camadaDoPapel` — inclusive a segunda voz, que não tem contrato e publica o espaçamento
+  ESCALADO (2,92 em 35 px → 5,34 em 64 px), não a reserva da base (Codex R3).
 - **Fontes e destaque**: a família da referência e a do destaque RESOLVIDO sobre ela entram em `familiasCandidatas`
   (família não carregada → `naoMedido`, como sempre: a medida em fallback nunca é apresentada como válida). O destaque
   entre [colchetes] mantém a precedência de hoje (destaque da página de assinatura > `padrao.fontFamily` > família pesada
