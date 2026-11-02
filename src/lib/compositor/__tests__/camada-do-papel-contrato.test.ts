@@ -51,5 +51,8 @@ describe('camadaDoPapel · o contrato do espaçamento', () => {
     const vestido = vestirEstiloDaReferencia({ base, origemDaBase: 'assinatura', estilo: ref, corpo: 39 }).estilo
     expect(estiloDaRecusa(recusa(vestido, 31, 39), 1, '#000000')).toMatchObject({ fontFamily: 'TrajanPro Regular', fontWeight: null, textTransform: 'uppercase', letterSpacing: 2.38, color: '#F8F8F8' })
     expect(estiloDaRecusa({ ...recusa(vestido, 31, 39), estiloDaReferencia: undefined }, 1, '#000000')).toBeNull()
+    // Sem `corpo` (peça sem a F2c) a recusa materializa na escala do formato: 38 × 0,875 → 33 px, 3 × 33/39 = 2,54; a voz 2, 2,92 × 0,875 = 2,555 → 2,55 (round2 em ponto flutuante, byte a byte como a camada).
+    expect(estiloDaRecusa({ ...recusa(vestido, 31, 39), corpo: undefined }, 0.875, '#000000')?.letterSpacing).toBe(2.54)
+    expect(estiloDaRecusa({ ...recusa(voz2, 64, 85), corpo: undefined }, 0.875, '#000000')?.letterSpacing).toBe(2.55)
   })
 })
