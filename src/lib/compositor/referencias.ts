@@ -16,9 +16,11 @@ import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
 import { parsePageLayers } from '@/lib/posts/page-layers'
 import type { Layer } from '@/types/template'
 import { impressaoDoArquetipo } from './arquetipos/impressao'
-import { compilarReferencia, ehIdDeReferencia, idDaReferencia, type CompilacaoDaReferencia, type LeituraDaReferencia } from './arquetipos/referencia'
+import { camadaDaFotoDaPagina } from './arquetipos/da-pagina'
+import { compilarReferencia, ehIdDeReferencia, idDaReferencia, type CompilacaoDaReferencia, type InsumoDoAssunto, type LeituraDaReferencia } from './arquetipos/referencia'
+import { fonteDaFoto } from './assunto-da-foto'
 import type { OpcoesDeResolucao } from './arquetipos/na-spec'
-import type { ArquetipoDeLayout, FormatoDoArquetipo } from './arquetipos/tipos'
+import type { ArquetipoDeLayout, AssuntoNoQuadro, FormatoDoArquetipo } from './arquetipos/tipos'
 import { validarArquetipo } from './arquetipos/validar'
 import { formatoDaPaginaGravada } from './formato'
 import { pisoDoProjetoDe } from './geometria'
@@ -93,7 +95,7 @@ export async function referenciasDoProjeto(projectId: number, opcoes: { formato?
   })
 }
 
-export async function listarReferencias(projectId: number): Promise<Array<RevisaoDeReferencia & { pagina: string | null; corpos: Partial<Record<string, number>> | null; estilos: Partial<Record<string, unknown>> | null }>> {
+export async function listarReferencias(projectId: number): Promise<Array<RevisaoDeReferencia & { pagina: string | null; corpos: Partial<Record<string, number>> | null; estilos: Partial<Record<string, unknown>> | null; assunto: AssuntoNoQuadro | null }>> {
   const linhas = await db.referenciaDeLayout.findMany({
     where: { projectId },
     select: { id: true, pageId: true, arquetipoId: true, versao: true, formato: true, impressao: true, pageVersion: true, aprovadaEm: true, revogadaEm: true, definicao: true },
@@ -102,13 +104,13 @@ export async function listarReferencias(projectId: number): Promise<Array<Revisa
   const paginas = await db.page.findMany({ where: { id: { in: [...new Set(linhas.map((l) => l.pageId))] } }, select: { id: true, name: true } })
   const nome = new Map(paginas.map((p) => [p.id, p.name]))
   // F2c: os corpos aprovados saem da REVISÃO PERSISTIDA (a definição gravada, no formato dela) — nunca recompilados.
-  const campoDe = <T,>(definicao: unknown, formato: string, campo: 'corpos' | 'estilos'): T | null => {
+  const campoDe = <T,>(definicao: unknown, formato: string, campo: 'corpos' | 'estilos' | 'assunto'): T | null => {
     const d = definicao as { formatos?: Record<string, Record<string, unknown>> } | null
     const c = d?.formatos?.[formato]?.[campo]
     return c && typeof c === 'object' ? (c as T) : null
   }
-  // F2d: `estilos` (o estilo desenhado por papel) também sai da revisão persistida; null nas revisões de antes.
-  return linhas.map(({ definicao, ...l }) => ({ ...l, pagina: nome.get(l.pageId) ?? null, corpos: campoDe<Partial<Record<string, number>>>(definicao, l.formato, 'corpos'), estilos: campoDe<Partial<Record<string, unknown>>>(definicao, l.formato, 'estilos') }))
+  // F2d: `estilos` (o estilo desenhado por papel) também sai da revisão persistida; null nas revisões de antes. F2b: `assunto`, idem.
+  return linhas.map(({ definicao, ...l }) => ({ ...l, pagina: nome.get(l.pageId) ?? null, corpos: campoDe<Partial<Record<string, number>>>(definicao, l.formato, 'corpos'), estilos: campoDe<Partial<Record<string, unknown>>>(definicao, l.formato, 'estilos'), assunto: campoDe<AssuntoNoQuadro>(definicao, l.formato, 'assunto') }))
 }
 
 export interface AprovacaoDeReferencia {
@@ -117,6 +119,30 @@ export interface AprovacaoDeReferencia {
   leitura: LeituraDaReferencia
   /** A página não mudou desde a revisão vigente: nada foi gravado, a revisão é a mesma. */
   reaproveitada: boolean
+}
+
+/**
+ * F2b: o que a compilação precisa do assunto da foto da página. A caixa vale na imagem que o Drive RENDERIZA, e
+ * `imageMediaMetadata` dá o arquivo ARMAZENADO: `rotation` é em quartos de volta (doc da API v3), ímpar troca os eixos.
+ * Falha de catálogo, tabela ou Drive vira `catalogo-indisponivel`: quem decide se isso recusa é `decidir`.
+ */
+async function insumoDoAssunto(projectId: number, url: string | null | undefined): Promise<InsumoDoAssunto> {
+  const fonte = fonteDaFoto({ url })
+  if (!fonte.id) return { ausente: 'foto-sem-id' }
+  if (!fonte.coerente) return { ausente: 'fonte-nao-coerente' }
+  try {
+    const { assuntosEfetivosDoProjeto } = await import('@/lib/creatives/acervo')
+    const efetivo = (await assuntosEfetivosDoProjeto(projectId, [fonte.id])).get(fonte.id)
+    if (efetivo?.estado === 'sem-assunto') return { ausente: 'sem-assunto' }
+    if (!efetivo?.caixa) return { ausente: 'nao-analisada' }
+    const { googleDriveService } = await import('@/server/google-drive-service')
+    const arquivo = (await googleDriveService.getFileMetadata(fonte.id, 'imageMediaMetadata(width,height,rotation)')) as { imageMediaMetadata?: { width?: number; height?: number; rotation?: number } }
+    const { width, height, rotation } = arquivo.imageMediaMetadata ?? {}
+    if (!Number.isFinite(width) || !Number.isFinite(height) || !(width! > 0) || !(height! > 0)) return { ausente: 'sem-dimensoes' }
+    return { caixa: efetivo.caixa, dimensoes: (rotation ?? 0) % 2 !== 0 ? { width: height!, height: width! } : { width: width!, height: height! } }
+  } catch {
+    return { ausente: 'catalogo-indisponivel' }
+  }
 }
 
 /**
@@ -142,12 +168,15 @@ export async function aprovarReferencia(args: { projectId: number; pageId: strin
   const arquetipoId = idDaReferencia(page.id)
   const selecao = { id: true, pageId: true, arquetipoId: true, versao: true, formato: true, impressao: true, pageVersion: true, aprovadaEm: true, revogadaEm: true } as const
 
+  // F2b: um snapshot só dos insumos do assunto, reutilizado na releitura depois de um conflito.
+  const insumo = await insumoDoAssunto(args.projectId, camadaDaFotoDaPagina(camadas, page)?.fileUrl)
+
   const compilarEValidar = (versao: number) => {
     // O piso do PROJETO (não o padrão): é o que vai recortar a zona na composição — a caixa fora dele é recusa aqui.
     const pisos = pisoDoProjetoDe(projeto.assinatura)
     const formatoLido = formatoDaPaginaGravada({ tags: page.tags, width: page.width, height: page.height })
     const pisoDoFormato = formatoLido === 'story' || formatoLido === 'feed' ? pisos[formatoLido] : undefined
-    const compilada = compilarReferencia({ id: page.id, name: page.name, width: page.width, height: page.height, tags: page.tags, layers: camadas }, { pageVersion, versao, ...(pisoDoFormato ? { piso: pisoDoFormato } : {}) })
+    const compilada = compilarReferencia({ id: page.id, name: page.name, width: page.width, height: page.height, tags: page.tags, layers: camadas }, { pageVersion, versao, assunto: insumo, ...(pisoDoFormato ? { piso: pisoDoFormato } : {}) })
     if (!compilada.ok) {
       const r = compilada as Extract<CompilacaoDaReferencia, { ok: false }>
       throw new CreativeError(r.codigo, r.mensagem, 422, r.detalhes)
@@ -169,6 +198,10 @@ export async function aprovarReferencia(args: { projectId: number; pageId: strin
     const anteriores = await db.referenciaDeLayout.findMany({ where: { arquetipoId }, orderBy: { versao: 'desc' }, take: 1, select: { ...selecao, definicao: true } })
     const vigente = anteriores[0]
     const versao = (vigente?.versao ?? 0) + 1
+    // F2b: uma leitura que falhou não apaga o assunto de uma revisão que o tem; a aprovação espera. Sem ele, nada a perder.
+    if ('ausente' in insumo && insumo.ausente === 'catalogo-indisponivel' && (vigente?.definicao as unknown as ArquetipoDeLayout | undefined)?.formatos?.[vigente.formato as FormatoDoArquetipo]?.assunto) {
+      throw new CreativeError('CATALOGO_INDISPONIVEL', `Não deu para ler o catálogo, a tabela de decisões ou o Drive agora, e a revisão v${vigente.versao} tem o assunto da foto: aprovar agora gravaria uma revisão sem ele. Nada foi gravado. Tente de novo em instantes.`, 503, { arquetipoId, versaoVigente: vigente.versao })
+    }
     const { definicao, leitura, formato, impressao } = compilarEValidar(versao)
     // Idempotente (depois de validar): a mesma página já aprovada e vigente é a mesma revisão — nada a gravar.
     if (vigente && !vigente.revogadaEm && vigente.pageVersion === pageVersion && impressaoDoArquetipo({ ...(vigente.definicao as unknown as ArquetipoDeLayout), versao }) === impressao) {

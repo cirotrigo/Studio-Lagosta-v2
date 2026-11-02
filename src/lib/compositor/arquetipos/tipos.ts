@@ -134,6 +134,12 @@ export interface GeometriaDoArquetipo {
    */
   readonly estilos?: Readonly<Partial<Record<PapelDeTexto, EstiloDaReferencia>>>
   /**
+   * F2b (02/11/2026): onde o assunto da foto da referência ficou no QUADRO — a caixa VISÍVEL em frações do canvas, e
+   * `visivel` = área visível ÷ área projetada, depois dos dois recortes (camada e página). `visivel < 1` = a página
+   * cortou o assunto de propósito. Só na definição compilada de uma referência; ausente = sem assistência.
+   */
+  readonly assunto?: AssuntoNoQuadro
+  /**
    * Só no fundo `foto-em-caixa` (#8, 24/10/2026), e nele obrigatória: a CAIXA da foto, em frações. A foto pousa nela em
    * cover; nenhuma zona de papel nem caixa de elemento a toca (o texto fica no liso).
    */
@@ -264,6 +270,13 @@ export interface ArquetipoDeLayout {
   readonly formatos: Readonly<Record<FormatoDoArquetipo, GeometriaDoArquetipo>>
   /** Só na definição compilada de uma página de referência (F1). Ausente = arquétipo do catálogo. */
   readonly referencia?: ReferenciaDaDefinicao
+}
+
+/** F2b: o assunto da foto da referência no quadro (`GeometriaDoArquetipo.assunto`). */
+export interface AssuntoNoQuadro {
+  readonly caixa: Caixa
+  /** Em (0, 1]. */
+  readonly visivel: number
 }
 
 /** F2d: o estilo desenhado de um papel na página de referência. `fontWeight: null` = peso normal; `textTransform: 'none'` explícito. */

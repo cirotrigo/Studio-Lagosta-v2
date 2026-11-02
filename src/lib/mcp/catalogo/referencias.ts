@@ -59,9 +59,10 @@ export const toolsDeReferencias = [
       const linhas = await listarReferencias(args.projectId as number)
       const vigentes = linhas.filter((l) => !l.revogadaEm)
       return {
+        // F2b: `assunto` = o assunto da foto no quadro (caixa em frações e `visivel`), null nas revisões sem ele.
         // F2c: `corpos` = o corpo desenhado por papel na revisão (px); F2d: `estilos` = família, peso, entrelinha, espaçamento,
         // caixa, cor e sombra desenhados; null nas revisões de antes (a peça parte da assinatura).
-        referencias: linhas.map((l) => ({ arquetipoId: l.arquetipoId, versao: l.versao, pageId: l.pageId, pagina: l.pagina, formato: l.formato, aprovadaEm: l.aprovadaEm, revogadaEm: l.revogadaEm, impressao: l.impressao, corpos: l.corpos, estilos: l.estilos })),
+        referencias: linhas.map((l) => ({ arquetipoId: l.arquetipoId, versao: l.versao, pageId: l.pageId, pagina: l.pagina, formato: l.formato, aprovadaEm: l.aprovadaEm, revogadaEm: l.revogadaEm, impressao: l.impressao, corpos: l.corpos, estilos: l.estilos, assunto: l.assunto })),
         countVigentes: vigentes.length,
         ...(vigentes.length === 0 ? { aviso: 'Este cliente não tem referência de layout aprovada: os layouts do catálogo (ver-assinatura, campo arquetipos) são os únicos. Aprove uma página ajustada com aprovar-referencia.' } : {}),
       }

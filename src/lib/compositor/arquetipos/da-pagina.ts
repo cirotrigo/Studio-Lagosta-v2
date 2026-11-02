@@ -87,16 +87,16 @@ export function textosDaPagina(camadas: Layer[], definicao: Pick<ArquetipoDeLayo
 }
 
 /**
- * A foto da página para o layout: a camada `bg-foto`; senão a MAIOR imagem visível que cubra ≥ 90% da página.
- * `null` = a página não tem foto (a rota responde 409 `LAYOUT_SEM_FOTO`).
+ * A camada da foto da página: a `bg-foto`; senão a MAIOR imagem visível que cubra ≥ 90% da página. UMA camada, não uma
+ * URL: duas camadas com o mesmo arquivo não são ambíguas para quem precisa do crop e da posição dela (F2b).
  */
 // ponytail: cobertura pelo retângulo sem rotação; imagem girada conta como se estivesse reta.
-export function fotoDaPaginaParaLayout(camadas: Layer[], pagina: { width: number; height: number }): string | null {
+export function camadaDaFotoDaPagina(camadas: Layer[], pagina: { width: number; height: number }): Layer | null {
   const imagens = camadas.filter(
     (c) => c.type === 'image' && c.visible !== false && typeof c.fileUrl === 'string' && c.fileUrl !== '',
   )
   const fundo = imagens.find((c) => c.id === 'bg-foto')
-  if (fundo) return fundo.fileUrl!
+  if (fundo) return fundo
   const areaDaPagina = pagina.width * pagina.height
   if (!(areaDaPagina > 0)) return null
   const cobertura = (c: Layer) => {
@@ -110,7 +110,12 @@ export function fotoDaPaginaParaLayout(camadas: Layer[], pagina: { width: number
     .map((c) => ({ c, cobre: cobertura(c) }))
     .filter((i) => i.cobre >= COBERTURA_MINIMA_DA_FOTO)
     .sort((a, b) => b.cobre - a.cobre)[0]
-  return maior ? maior.c.fileUrl! : null
+  return maior ? maior.c : null
+}
+
+/** A foto da página para o layout. `null` = a página não tem foto (a rota responde 409 `LAYOUT_SEM_FOTO`). */
+export function fotoDaPaginaParaLayout(camadas: Layer[], pagina: { width: number; height: number }): string | null {
+  return camadaDaFotoDaPagina(camadas, pagina)?.fileUrl ?? null
 }
 
 /**
