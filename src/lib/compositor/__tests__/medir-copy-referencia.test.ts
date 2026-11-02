@@ -156,6 +156,28 @@ describe('F2c · o corpo da referência no medir-copy', () => {
     expect(m.arquetipo!.papeis.headline!.corpo!.medidoCom.map((x) => x.bloco)).toEqual(['headline2'])
   })
 
+  it('feed a partir da assinatura de STORY (escalaDoFormato 0,875): o corpo da referência sai em px LITERAIS (85), não 0,875 × — a divisão por escalaDoFormato é explícita', () => {
+    // A Brunch transposta para o canvas canônico do feed (1080×1350), com as mesmas caixas e corpos.
+    const feed = { ...PAGINA, width: 1080, height: 1350, tags: ['feed'], layers: PAGINA.layers.map((l) => (l.id === 'titulo' ? ({ ...l, position: { ...l.position, y: 1100 } } as Layer) : l.id === 'apoio' ? ({ ...l, position: { ...l.position, y: 1190 } } as Layer) : l.type === 'image' ? ({ ...l, size: { width: 1080, height: 1350 } } as Layer) : l)) }
+    const d = compilar(feed as typeof PAGINA)
+    expect(d.formatos.feed.corpos).toEqual({ headline: 85, apoio: 39 })
+    const spec = { projectId: 12, formato: 'feed' as const, foto: { driveFileId: 'x' }, arquetipo: { id: d.id }, blocos: [{ papel: 'headline' as const, linhas: ['Café da manhã'] }, { papel: 'apoio' as const, linhas: ['Sabores'] }] }
+    const arq = prepararArquetipo(spec, { definicoes: [d] })!
+    const m = medirCopy({ assinatura, medir: medirFalso, familias: ['Montserrat'], fonteCarregada: () => true, formato: 'feed', spec, arquetipo: arq })
+    expect(m.areaUtil.escalaDoFormato).toBe(0.875)
+    expect([bloco(m, 'headline').fontSize, bloco(m, 'apoio').fontSize]).toEqual([85, 39])
+    expect(bloco(m, 'headline').corpo).toMatchObject({ referencia: 85, efetivo: 85, piso: 68, reducao: 0 })
+  })
+
+  it('o retorno ao teto é medido também pelo medir-copy: a unidade de 3 linhas desce até 73; com 2 linhas as duas vozes voltam a 80 — e o orçamento do papel vale para as duas', () => {
+    const tres = medirPor(compilar(brunchAlto), [{ papel: 'headline', linhas: ['Café', 'da', 'manhã'] }, { papel: 'apoio', linhas: ['Sabores'] }], assinaturaComVoz2)
+    const duas = medirPor(compilar(brunchAlto), [{ papel: 'headline', linhas: ['Café', 'da manhã'] }, { papel: 'apoio', linhas: ['Sabores'] }], assinaturaComVoz2)
+    expect([bloco(tres, 'headline').corpo!.teto, bloco(duas, 'headline').corpo!.teto]).toEqual([73, 80])
+    expect([bloco(duas, 'headline').fontSize, bloco(duas, 'headline2').fontSize]).toEqual([80, 80])
+    // O orçamento do papel (no corpo da referência) é o MESMO nos dois ciclos: ele não depende da copy, só do corpo e dos estilos.
+    expect(tres.arquetipo!.papeis.headline!.corpo!.caracteresPorLinha).toBe(duas.arquetipo!.papeis.headline!.corpo!.caracteresPorLinha)
+  })
+
   it('a recusa por ALTURA no piso da referência: duas linhas de manchete numa caixa de 100 px (linhasMax 3) não cabem nem a 64', () => {
     const baixa = { ...PAGINA, layers: PAGINA.layers.map((l) => (l.id === 'titulo' ? ({ ...l, content: 'Brunch\nEmpório\nFonseca', position: { ...l.position, y: 1600 }, size: { ...l.size, height: 100 }, style: { ...l.style, fontSize: 80 } } as Layer) : l)) }
     const m = medirPor(compilar(baixa), [{ papel: 'headline', linhas: ['Café', 'da manhã'] }, { papel: 'apoio', linhas: ['Sabores'] }])

@@ -57,9 +57,11 @@ async function montar(opcoes: { segundaVoz?: boolean } = {}) {
   const base0 = paginaSintetica({ id: 'f2c', headline: { cor: '#F5F5F5' }, apoio: { cor: '#F5F5F5' }, logoUrl: dataUrl(await logoSintetica('#808080')), fundoUrl: dataUrl(foto) })
   // A segunda voz na assinatura (45 px, metade da manchete): a regra legada manda a última linha da manchete para ela.
   const manchete = base0.layers.find((l) => l.name === 'headline')!
+  // A manchete da assinatura com letterSpacing 2 (px no corpo de 90): o efeito existente de escalar junto fica medido.
+  const comEspaco = { ...base0, layers: base0.layers.map((l) => (l.name === 'headline' ? ({ ...l, style: { ...l.style, letterSpacing: 2 } } as Layer) : l)) }
   const pagina = opcoes.segundaVoz
-    ? { ...base0, layers: [...base0.layers, { ...manchete, id: 'headline2-pagina', name: 'headline2', position: { x: 92, y: 410 }, size: { width: 896, height: 54 }, style: { ...manchete.style, fontSize: 45 } } as Layer] }
-    : base0
+    ? { ...comEspaco, layers: [...comEspaco.layers, { ...manchete, id: 'headline2-pagina', name: 'headline2', position: { x: 92, y: 410 }, size: { width: 896, height: 54 }, style: { ...manchete.style, fontSize: 45 } } as Layer] }
+    : comEspaco
   const base = await cenarioSintetico({ pagina, foto, candidatasDoVeu: [], logosDoProjeto: await variantesClaraEEscura() })
   cenario.atual = { ...base, projeto: { ...base.projeto, assinatura: { mancha: VEU_ESCURO, gradiente: { cor: VEU_CLARO } } } }
 }
@@ -78,6 +80,8 @@ describe('F2c · o corpo da referência no compositor', () => {
       { camada: 'apoio', papel: 'apoio', referencia: 39, teto: 39, piso: 31, efetivo: 39, reducao: 0 },
     ])
     expect(r.diagnostico.avisos.join(' ')).not.toMatch(/não nos 85 px/)
+    // O letterSpacing da assinatura (2 px em 90) escala com o fator do bloco (85/90): 1,89 — efeito existente, dito.
+    expect(camada(r.layers, 'headline').style?.letterSpacing).toBeCloseTo(2 * (85 / 90), 2)
     const m = await medirCopyDoProjeto({ projectId: 9002, formato: 'story', blocos: BLOCOS, arquetipo: { id: def.id } } as never)
     expect(m.medicao.blocos.map((b) => [b.id, b.fontSize, b.situacao])).toEqual([['headline', 85, 'cabe'], ['apoio', 39, 'cabe']])
   }, 60_000)

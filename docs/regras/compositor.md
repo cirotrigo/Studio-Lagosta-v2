@@ -1838,7 +1838,8 @@ emite `lista: true`).
 `medir-copy-referencia.test` (85/39 com assinatura 70/25; copy longa desce dita; congelada mede 70; segunda voz no mesmo
 teto 80 e a unidade de 3 linhas desce na régua comum até 73), `referencias-service.test` (congelada vigente + mesma página
 → revisão 2 com corpos), `f2c-corpo.test` (compositor real sintético: 85/39 contra assinatura 90/40, paridade com o
-medir-copy; 100 px em duas linhas desce até ≥ 80 e avisa; congelada compõe em 90).
+medir-copy; 150 px em duas linhas numa caixa de 260 desce até ≥ 120 e avisa; redução conjunta das duas vozes com paridade
+compor/medir; a congelada intacta medida com versão e impressão fixadas, e composta em 90 pelo caminho sem corpos).
 
 **Armadilhas:**
 - 🔴 O fator sobre a ASSINATURA errava o teto quando o estilo efetivo vinha de um arranjo (72 → 106 px): o teto é px e a
@@ -1847,8 +1848,8 @@ medir-copy; 100 px em duas linhas desce até ≥ 80 e avisa; congelada compõe e
   qualquer escada (não é a F2c; é a F1). Nos testes, a página de três linhas.
 - O medidor calibrado do harness sintético mede a manchete da Brunch terminando em 1713 (o apoio começa em 1707) seja
   qual for o corpo da assinatura: a busca espacial elimina por ORDEM_DE_LEITURA, também na F1. A geometria REAL só
-  compõe com a TrajanPro de verdade (a prova real pelo compositor); nos testes de composição a caixa é de 220 px, e a
-  definição congelada intacta é medida pelo medir-copy (sem busca espacial).
+  compõe com a TrajanPro de verdade (a prova real pelo compositor); nos testes de composição a caixa é de 260 px (y 1440),
+  e a definição congelada intacta é medida pelo medir-copy (sem busca espacial).
 - `definicaoV1` compilada pelo compilador corrente não prova compatibilidade com a F1: a prova é a fixture congelada.
 - Rodada 1 do Codex sobre o código (02/11): o orçamento da RECUSA é medido no piso da referência (medir na assinatura
   deixava `orcamento: []` para a linha que só estoura a 68); `papeis[].corpo.caracteresPorLinha` é medido com o estilo
