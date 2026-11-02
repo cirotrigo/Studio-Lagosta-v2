@@ -20,19 +20,17 @@ interface CampoPermitido {
   padrao: RegExp
   tipo: TipoDoValor
   exemplo: string
-  /** Só altera chave que já existe: intervalos livres como "terca-sabado" não podem nascer por pedido. */
-  soExistente?: boolean
 }
 
+/** Só altera chave que já existe: criar `address` ao lado de `endereco`, ou `horarios.quarta` ao lado de `horarios.terca-sabado`, daria duas verdades. */
 const CAMPOS: CampoPermitido[] = [
   { padrao: new RegExp(`^hours\\.(${DIAS_EN.join('|')})$`), tipo: 'faixas', exemplo: 'hours.monday' },
-  { padrao: new RegExp(`^horarios\\.(${DIAS_PT.join('|')})$`), tipo: 'faixas', exemplo: 'horarios.segunda' },
-  { padrao: /^horarios\.[a-z]+-[a-z]+$/, tipo: 'faixas', exemplo: 'horarios.terca-sabado', soExistente: true },
-  { padrao: /^horarios_funcionamento\.[a-z_]+$/, tipo: 'faixas', exemplo: 'horarios_funcionamento.todos_os_dias', soExistente: true },
-  { padrao: /^delivery\.[a-z_]+$/, tipo: 'faixas', exemplo: 'delivery.segunda_a_quinta', soExistente: true },
+  { padrao: /^horarios\.[a-z]+(-[a-z]+)?$/, tipo: 'faixas', exemplo: 'horarios.segunda' },
+  { padrao: /^horarios_funcionamento\.[a-z_]+$/, tipo: 'faixas', exemplo: 'horarios_funcionamento.todos_os_dias' },
+  { padrao: /^delivery\.[a-z_]+$/, tipo: 'faixas', exemplo: 'delivery.segunda_a_quinta' },
   { padrao: /^happy_hour\.(time|horario)$/, tipo: 'faixas', exemplo: 'happy_hour.time' },
-  { padrao: /^happy_hour\.(days|dias)$/, tipo: 'dias', exemplo: 'happy_hour.days', soExistente: true },
-  { padrao: /^happy_hour\.(offer|desconto)$/, tipo: 'texto', exemplo: 'happy_hour.offer', soExistente: true },
+  { padrao: /^happy_hour\.(days|dias)$/, tipo: 'dias', exemplo: 'happy_hour.days' },
+  { padrao: /^happy_hour\.(offer|desconto)$/, tipo: 'texto', exemplo: 'happy_hour.offer' },
   { padrao: /^(address|endereco)$/, tipo: 'texto', exemplo: 'address' },
 ]
 export const CAMPOS_PERMITIDOS = CAMPOS.map((c) => c.exemplo)
@@ -57,19 +55,20 @@ function minutos(hora: string): number {
 
 /** Cada faixa "HH:MM-HH:MM"; turnos separados por ", ". Fim 24:00 ou 00:00 é meia-noite; fim antes do início atravessa a madrugada. */
 function problemaDasFaixas(valor: string): string | null {
-  const faixas = valor.split(', ')
-  let fimAnterior = 0
-  for (const [i, faixa] of faixas.entries()) {
+  const turnos: [number, number][] = []
+  for (const faixa of valor.split(', ')) {
     const m = /^(\d{2}:\d{2})-(\d{2}:\d{2})$/.exec(faixa)
     if (!m) return `"${faixa}" não está no formato HH:MM-HH:MM`
     const [inicio, fim] = [minutos(m[1]), minutos(m[2])]
     if (inicio > 23 * 60 + 59 || Number(m[1].slice(3)) > 59) return `início inválido em "${faixa}"`
     if (fim > 24 * 60 || Number(m[2].slice(3)) > 59) return `fim inválido em "${faixa}"`
     if (inicio === fim % (24 * 60)) return `início e fim iguais em "${faixa}"`
-    if (i > 0 && inicio < fimAnterior) return `os turnos se sobrepõem em "${valor}"`
-    fimAnterior = fim === 0 ? 24 * 60 : fim
+    turnos.push([inicio, fim <= inicio ? fim + 24 * 60 : fim])
   }
-  return null
+  // O turno que atravessa a madrugada também ocupa o começo do dia seguinte: compara em linha do tempo, não por ordem.
+  const cruzam = (a: [number, number], b: [number, number]) => [-1, 0, 1].some((d) => a[0] < b[1] + d * 24 * 60 && b[0] + d * 24 * 60 < a[1])
+  const sobrepostos = turnos.some((a, i) => turnos.slice(i + 1).some((b) => cruzam(a, b)))
+  return sobrepostos ? `os turnos se sobrepõem em "${valor}"` : null
 }
 
 function problemaDosDias(campo: string, valor: string): string | null {
@@ -111,7 +110,7 @@ export function problemasDasAlteracoes(dados: Record<string, unknown>, alteracoe
       problemas.push({ campo, motivo: `esta entrada não tem "${campo.split('.')[0]}" como objeto` })
       continue
     }
-    if (regra.soExistente && !Object.hasOwn(pai, chave)) {
+    if (!Object.hasOwn(pai, chave)) {
       problemas.push({ campo, motivo: 'só altera chave que já existe nesta entrada' })
       continue
     }
@@ -203,6 +202,8 @@ export interface Divergencia {
   valorNoTexto: string
   trecho: string
   origem: { entradaId: string; titulo: string; atualizadaEm: string }
+  /** A entrada dona do campo: o texto de uma entrada pode contradizer os dados de outra. */
+  entradaDosDados?: string
 }
 
 const semAcento = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
@@ -220,8 +221,9 @@ const FAIXA = new RegExp(`\\bdas?\\s+(${HORA_RE})${ATE_RE}(${HORA_RE})`, 'g')
 const OUTRO_SERVICO = /executivo|delivery|entrega|ifood|retirada|cozinha|brunch/
 const HAPPY_HOUR = /happy[ -]?hour/
 /** Linha que fala de uma data ou de feriado é exceção: fica preservada e não se compara com o horário habitual. */
-const DATADA = /\b\d{1,2}\/\d{1,2}\b|feriado|vespera|natal|reveillon|carnaval|pascoa|excepcional/
-const VALE_SEMPRE = /habitual|vigente desde/
+const DATADA = /\b\d{1,2}\/\d{1,2}\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2} de (?:janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b|feriado|vespera|natal|reveillon|carnaval|pascoa|excepcional/
+/** "habitual" sozinho não serve: "no lugar do horário habitual" é justamente a exceção. */
+const VALE_SEMPRE = /habitualmente|vigente desde|nao e excecao/
 
 function horaDe(token: string, comoFim: boolean): string {
   if (token.startsWith('meia')) return '24:00'
@@ -251,9 +253,23 @@ function diasDe(expressao: string): number[] {
 
 const faixaNormal = (valor: string) => valor.split(', ').map((f) => f.replace(/-00:00$/, '-24:00')).join(', ')
 
-/** As linhas do texto que são exceção datada. É o que uma troca de texto não pode apagar sem dizer. */
+/** As cláusulas de uma linha. A que segue uma data herda a exceção ("Natal: seg das 11h às 14h; ter das 11h às 15h"), até uma que se diga regra. */
+function clausulasDaLinha(linha: string): { clausula: string; datada: boolean }[] {
+  let datada = false
+  return linha
+    .split(/\s·\s|;\s*|(?<=[.!?])\s+/)
+    .map((c) => c.trim())
+    .filter(Boolean)
+    .map((clausula) => {
+      const c = semAcento(clausula)
+      datada = !VALE_SEMPRE.test(c) && (datada || DATADA.test(c))
+      return { clausula, datada }
+    })
+}
+
+/** Os trechos do texto que são exceção datada. É o que uma troca de texto não pode apagar sem dizer. */
 export function linhasDatadas(texto: string): string[] {
-  return texto.split(/\n+/).map((l) => l.trim()).filter((l) => l && DATADA.test(semAcento(l)) && !VALE_SEMPRE.test(semAcento(l)))
+  return texto.split(/\n+/).flatMap((l) => clausulasDaLinha(l).filter((c) => c.datada).map((c) => c.clausula))
 }
 
 interface FatoDoTexto {
@@ -266,10 +282,9 @@ function fatosDoTexto(titulo: string, texto: string): FatoDoTexto[] {
   const fatos: FatoDoTexto[] = []
   const tituloNormal = semAcento(titulo)
   for (const linha of texto.split(/\n+/)) {
-    if (linhasDatadas(linha).length > 0) continue
-    for (const clausula of linha.split(/\s·\s|;\s*|(?<=[.!?])\s+/)) {
-      const c = semAcento(clausula)
-      const trecho = clausula.trim()
+    for (const { clausula: trecho, datada } of clausulasDaLinha(linha)) {
+      if (datada) continue
+      const c = semAcento(trecho)
       const happy = HAPPY_HOUR.test(c) || (HAPPY_HOUR.test(tituloNormal) && !OUTRO_SERVICO.test(c))
       if (happy) {
         for (const m of c.matchAll(FAIXA)) fatos.push({ dias: null, faixa: `${horaDe(m[1], false)}-${horaDe(m[2], true)}`, fim: null, trecho })
@@ -313,6 +328,12 @@ export function temHorarioNosDados(metadata: unknown): boolean {
   return horariosNosDados(metadataComoObjeto(metadata)).length > 0
 }
 
+/** Os campos que o detector NÃO compara com os textos: a proposta diz, para ninguém ler "sem divergência" como "conferido". */
+export function camposSemConferencia(dados: Record<string, unknown>, campos: string[]): string[] {
+  const comparados = new Set(horariosNosDados(dados).map((h) => h.campo))
+  return campos.filter((c) => !comparados.has(c))
+}
+
 /**
  * Compara os `dados` dados com o que TODOS os textos ativos do cliente afirmam. Só aponta: quem decide é a pessoa.
  * Entrada com validade é campanha, logo exceção por natureza, e não entra.
@@ -328,7 +349,7 @@ export function divergenciasDe(dados: Record<string, unknown>, textos: LinhaDaBa
         if (!mesmoAlvo) continue
         const valorNoDado = faixaNormal(h.valor)
         const valorNoTexto = fato.faixa ?? `fecha ${fato.fim}`
-        if (fato.faixa ? valorNoDado === fato.faixa : valorNoDado.endsWith(`-${fato.fim}`)) continue
+        if (fato.faixa ? valorNoDado.split(', ').includes(fato.faixa) : valorNoDado.endsWith(`-${fato.fim}`)) continue
         achadas.set(`${h.campo}|${valorNoTexto}|${linha.id}`, {
           campo: h.campo,
           valorNosDados: h.valor,

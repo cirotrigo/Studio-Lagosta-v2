@@ -10,6 +10,7 @@
 import { db } from '@/lib/db'
 import { CreativeError } from '@/lib/creatives/errors'
 import { chunkText } from './chunking'
+import { vetoresAusentes } from './vector-client'
 import { invalidateProjectCache } from './cache'
 import { reindexEntry } from './indexer'
 import { editarEntradaCoordenada, type Lida } from './arrendamento'
@@ -17,6 +18,7 @@ import { ehIndexacaoEmAndamento, indexacaoPendenteDe, metadataComoObjeto, metada
 import {
   CAMPOS_PERMITIDOS,
   aplicarAlteracoes,
+  camposSemConferencia,
   diffDeDados,
   divergenciasDe,
   hashDoPedido,
@@ -35,12 +37,15 @@ export const TETO_DE_TOKENS_DA_ENTRADA = 1200
 /** O nome que `aceitarDivergencias` usa para autorizar a remoção de linhas datadas do texto. */
 export const ACEITE_DE_EXCECOES = 'texto.excecoes'
 
-export type EstadoDaOperacao = 'concluida' | 'indexacao_pendente' | 'indexacao_falhou'
+export type EstadoDaOperacao = 'concluida' | 'indexacao_pendente' | 'indexacao_falhou' | 'superada'
 const ESTADOS: Record<string, EstadoDaOperacao> = {
   CONCLUIDA: 'concluida',
   INDEXACAO_PENDENTE: 'indexacao_pendente',
   INDEXACAO_FALHOU: 'indexacao_falhou',
+  SUPERADA: 'superada',
 }
+/** Os status que ainda devem indexação e seguram novas operações na entrada. */
+const DEVE_INDEXACAO = ['INDEXACAO_PENDENTE', 'INDEXACAO_FALHOU']
 
 export interface PedidoDeOperacao {
   projectId: number
@@ -72,15 +77,26 @@ export async function linhasDaBase(projectId: number): Promise<LinhaDaBase[]> {
 
 /** O que os textos do cliente contradizem nos dados de qualquer entrada: é o aviso de quem edita só o texto. */
 export function divergenciasDaBase(linhas: LinhaDaBase[]): Divergencia[] {
-  return linhas.filter((l) => temHorarioNosDados(l.metadata)).flatMap((l) => divergenciasDe(metadataComoObjeto(l.metadata), linhas))
+  return linhas
+    .filter((l) => temHorarioNosDados(l.metadata))
+    .flatMap((l) => divergenciasDe(metadataComoObjeto(l.metadata), linhas).map((d) => ({ ...d, entradaDosDados: l.id })))
 }
 
-/** Os chunks gravados são os do texto? Prova os chunks, não os vetores: quem sabe dos vetores é o estado da operação. */
+/** O índice serve este texto? Chunks iguais E vetores no Upstash: reindexação que caiu no meio deixa chunk sem vetor. */
 async function indiceDoTexto(entryId: string, content: string) {
   const chunks = chunkText(content)
-  const gravados = await db.knowledgeChunk.findMany({ where: { entryId }, orderBy: { ordinal: 'asc' }, select: { content: true } })
-  const confere = chunks.length === gravados.length && chunks.every((c, i) => c.content === gravados[i].content)
-  return { confere, trechos: chunks.length, tokens: Math.ceil(content.length / 4) }
+  const custo = { trechos: chunks.length, tokens: Math.ceil(content.length / 4) }
+  const gravados = await db.knowledgeChunk.findMany({ where: { entryId }, orderBy: { ordinal: 'asc' }, select: { content: true, vectorId: true } })
+  if (chunks.length !== gravados.length || chunks.some((c, i) => c.content !== gravados[i].content)) {
+    return { confere: false, motivo: 'os trechos gravados não são os deste texto', ...custo }
+  }
+  try {
+    const ausentes = await vetoresAusentes(gravados.map((g) => g.vectorId))
+    return ausentes.length === 0 ? { confere: true, motivo: null, ...custo } : { confere: false, motivo: `faltam ${ausentes.length} vetores no índice`, ...custo }
+  } catch (erro) {
+    console.error(`[knowledge] não deu para conferir os vetores da entrada ${entryId}:`, erro)
+    return { confere: false, motivo: 'não deu para conferir os vetores no índice', ...custo }
+  }
 }
 
 function lerOperacao(projectId: number, operacaoId: string) {
@@ -90,9 +106,10 @@ function lerOperacao(projectId: number, operacaoId: string) {
 function resultado(op: OperacaoDaBase, extras: Record<string, unknown> = {}) {
   const estado = ESTADOS[op.status]
   const mensagens: Record<EstadoDaOperacao, string> = {
-    concluida: 'Operação concluída: dados e índice em dia.',
+    concluida: 'Operação concluída: os dados foram gravados e o índice ficou em dia ao terminar.',
     indexacao_pendente: `Os dados foram gravados, mas a indexação está PENDENTE: ${op.erroIndexacao ?? 'ela ainda não terminou'}. Repita a chamada com o mesmo operacaoId para retomar.`,
     indexacao_falhou: `Os dados foram gravados, mas a indexação FALHOU: ${op.erroIndexacao ?? 'erro desconhecido'}. A entrada pode estar fora da busca. Repita a chamada com o mesmo operacaoId para retomar; a escrita não se repete.`,
+    superada: 'Os dados foram gravados, mas o texto da entrada mudou depois e a indexação desta operação NÃO foi retomada: ela autorizava outro texto. Consulte a base; se o índice estiver atrás, a próxima operação vai dizer.',
   }
   return {
     estado,
@@ -109,8 +126,15 @@ function resultado(op: OperacaoDaBase, extras: Record<string, unknown> = {}) {
   }
 }
 
-/** Sem reindexar não há o que fazer; com a reindexação recusada ou falha, o erro vira ESTADO, nunca sucesso. */
+/**
+ * Com a reindexação recusada ou falha, o erro vira ESTADO, nunca sucesso. `atualizadaEm` é a posse da tentativa: quem
+ * começa depois a toma, e o resultado da tentativa anterior não se publica por cima (a nova pode ter apagado os vetores).
+ */
 async function indexar(op: OperacaoDaBase): Promise<OperacaoDaBase> {
+  const atual = () => db.operacaoDaBase.findUniqueOrThrow({ where: { id: op.id } })
+  const tentativa = new Date(Math.max(Date.now(), op.atualizadaEm.getTime() + 1))
+  const tomada = await db.operacaoDaBase.updateMany({ where: { id: op.id, atualizadaEm: op.atualizadaEm, status: { in: DEVE_INDEXACAO } }, data: { atualizadaEm: tentativa } })
+  if (tomada.count === 0) return atual()
   let status = 'CONCLUIDA'
   let erroIndexacao: string | null = null
   try {
@@ -122,11 +146,12 @@ async function indexar(op: OperacaoDaBase): Promise<OperacaoDaBase> {
     erroIndexacao = pendente?.aviso ?? (erro instanceof Error ? erro.message : String(erro))
   }
   await invalidateProjectCache(op.projectId).catch((e) => console.error('[knowledge] invalidateProjectCache falhou:', e))
-  return db.operacaoDaBase.update({ where: { id: op.id }, data: { status, erroIndexacao } })
+  await db.operacaoDaBase.updateMany({ where: { id: op.id, atualizadaEm: tentativa }, data: { status, erroIndexacao } })
+  return atual()
 }
 
-/** A repetição: mesmo pedido devolve o registrado e retoma só a indexação; pedido diferente é reuso indevido do id. */
-async function repetir(op: OperacaoDaBase, hash: string) {
+/** A repetição: mesmo pedido devolve o registrado e, se confirmado, retoma só a indexação; pedido diferente é reuso indevido do id. */
+async function repetir(op: OperacaoDaBase, hash: string, confirmado: boolean) {
   if (op.hashDoPedido !== hash) {
     throw new CreativeError(
       'OPERACAO_REUTILIZADA',
@@ -134,16 +159,23 @@ async function repetir(op: OperacaoDaBase, hash: string) {
       409,
     )
   }
-  return resultado(op.status === 'CONCLUIDA' ? op : await indexar(op), { repetida: true })
+  if (!confirmado || !DEVE_INDEXACAO.includes(op.status)) return resultado(op, { repetida: true })
+  const entrada = await db.knowledgeBaseEntry.findUnique({ where: { id: op.entryId }, select: { content: true } })
+  // A autorização cobre o texto desta operação: outro texto na linha não se indexa por conta dela.
+  if (entrada?.content !== (op.depois as unknown as Foto).content) {
+    return resultado(await db.operacaoDaBase.update({ where: { id: op.id }, data: { status: 'SUPERADA', erroIndexacao: null } }), { repetida: true })
+  }
+  return resultado(await indexar(op), { repetida: true })
 }
 
 export async function executarOperacaoDaBase(pedido: PedidoDeOperacao) {
   const { projectId, entradaId, operacaoId, versaoEsperada, autor, ator } = pedido
   const reversao = pedido.reverterOperacaoId
-  const hash = hashDoPedido({ entradaId, alteracoes: pedido.alteracoes ?? null, content: pedido.content ?? null, reversao: reversao ?? null })
+  const confirmado = pedido.confirmado === true
+  const hash = hashDoPedido({ entradaId, versaoEsperada, alteracoes: pedido.alteracoes ?? null, content: pedido.content ?? null, reversao: reversao ?? null })
 
   const jaFeita = await lerOperacao(projectId, operacaoId)
-  if (jaFeita) return repetir(jaFeita, hash)
+  if (jaFeita) return repetir(jaFeita, hash, confirmado)
 
   if (reversao ? pedido.alteracoes || pedido.content !== undefined : !pedido.alteracoes?.length && pedido.content === undefined) {
     throw new CreativeError('PEDIDO_INVALIDO', 'Envie alteracoes e/ou content, ou então só reverterOperacaoId.', 400)
@@ -160,7 +192,7 @@ export async function executarOperacaoDaBase(pedido: PedidoDeOperacao) {
   if (entrada.metadata !== null && (typeof entrada.metadata !== 'object' || Array.isArray(entrada.metadata))) {
     throw new CreativeError('DADOS_ILEGIVEIS', 'O metadata desta entrada não é um objeto: alterar aqui destruiria o que está gravado.', 422)
   }
-  const pendente = await db.operacaoDaBase.findFirst({ where: { projectId, entryId: entradaId, status: { not: 'CONCLUIDA' } }, select: { operacaoId: true } })
+  const pendente = await db.operacaoDaBase.findFirst({ where: { projectId, entryId: entradaId, status: { in: DEVE_INDEXACAO } }, select: { operacaoId: true } })
   if (pendente) {
     throw new CreativeError(
       'INDEXACAO_PENDENTE_NA_ENTRADA',
@@ -207,9 +239,10 @@ export async function executarOperacaoDaBase(pedido: PedidoDeOperacao) {
     content: contentNovo ?? antes.content,
     dados: reversao ? (alvo?.antes as unknown as Foto).dados : aplicarAlteracoes(antes.dados, pedido.alteracoes ?? []),
   }
-  const diff = diffDeDados(antes.dados, depois.dados)
   const mudouTexto = depois.content !== antes.content
-  if (diff.length === 0 && !mudouTexto) {
+  const diffDosDados = diffDeDados(antes.dados, depois.dados)
+  const diff = [...diffDosDados, ...(mudouTexto ? [{ campo: 'content', antes: antes.content, depois: depois.content }] : [])]
+  if (diff.length === 0) {
     throw new CreativeError('NADA_A_MUDAR', 'O pedido não muda nada: a entrada já tem esses valores. Nada foi gravado.', 400, { versaoAtual })
   }
 
@@ -217,19 +250,19 @@ export async function executarOperacaoDaBase(pedido: PedidoDeOperacao) {
   if (indice.trechos === 0) throw new CreativeError('TEXTO_CURTO_DEMAIS', 'O texto é curto demais para ser indexado. Nada foi gravado.', 400)
 
   const linhas = (await linhasDaBase(projectId)).map((l) => (l.id === entradaId ? { ...l, content: depois.content, metadata: depois.dados } : l))
-  const divergencias = divergenciasDe(depois.dados, linhas)
-  const tocados = new Set(diff.map((d) => d.campo))
+  const divergencias = divergenciasDaBase(linhas)
+  const tocados = new Set(diffDosDados.map((d) => d.campo))
   const aceitas = new Set(pedido.aceitarDivergencias ?? [])
   // Numa reversão nada se decide de novo: ela devolve um estado que já existiu, e as divergências só são relatadas.
-  const bloqueiam = reversao ? [] : divergencias.filter((d) => (tocados.has(d.campo) || (mudouTexto && d.origem.entradaId === entradaId)) && !aceitas.has(d.campo))
+  const bloqueiam = reversao ? [] : divergencias.filter((d) => ((d.entradaDosDados === entradaId && tocados.has(d.campo)) || (mudouTexto && d.origem.entradaId === entradaId)) && !aceitas.has(d.campo))
   const excecoesRemovidas = reversao ? [] : linhasDatadas(antes.content).filter((l) => !depois.content.includes(l))
   const excecoesBloqueiam = excecoesRemovidas.length > 0 && !aceitas.has(ACEITE_DE_EXCECOES)
-  const indexacao = { necessaria: !indice.confere, trechos: indice.trechos, tokens: indice.tokens, tetoDeTokens: TETO_DE_TOKENS_DA_ENTRADA }
+  const indexacao = { necessaria: !indice.confere, motivo: indice.motivo, trechos: indice.trechos, tokens: indice.tokens, tetoDeTokens: TETO_DE_TOKENS_DA_ENTRADA }
   const acimaDoTeto = !reversao && mudouTexto && indice.tokens > TETO_DE_TOKENS_DA_ENTRADA
 
-  const analise = { versaoAtual, diff, mudouTexto, divergencias, excecoesPreservadas: linhasDatadas(depois.content), excecoesRemovidas, indexacao, origemDosDados: { atualizadaEm: entrada.updatedAt.toISOString(), atualizadaPor: entrada.updatedBy ?? entrada.createdBy } }
+  const analise = { versaoAtual, diff, mudouTexto, divergencias, camposSemConferencia: camposSemConferencia(depois.dados, [...tocados]), excecoesPreservadas: linhasDatadas(depois.content), excecoesRemovidas, indexacao, origemDosDados: { atualizadaEm: entrada.updatedAt.toISOString(), atualizadaPor: entrada.updatedBy ?? entrada.createdBy } }
 
-  if (pedido.confirmado !== true) {
+  if (!confirmado) {
     return {
       estado: 'proposta' as const,
       gravado: false,
@@ -299,7 +332,7 @@ export async function executarOperacaoDaBase(pedido: PedidoDeOperacao) {
   } catch (erro) {
     // Duas chamadas iguais ao mesmo tempo: a segunda perde o compare-and-set ou o unique e tem de ver a primeira.
     const outra = await lerOperacao(projectId, operacaoId)
-    if (outra) return repetir(outra, hash)
+    if (outra) return repetir(outra, hash, confirmado)
     if (ehIndexacaoEmAndamento(erro)) {
       throw new CreativeError('INDEXACAO_EM_ANDAMENTO', 'Esta entrada está sendo indexada para a busca agora. Nada foi gravado: tente de novo em alguns minutos.', 409)
     }
@@ -308,7 +341,7 @@ export async function executarOperacaoDaBase(pedido: PedidoDeOperacao) {
 
   const op = registrada as unknown as OperacaoDaBase
   const final = indexacao.necessaria ? await indexar(op) : op
-  return resultado(final, { divergencias, excecoesPreservadas: analise.excecoesPreservadas, indexacao })
+  return resultado(final, { divergencias, camposSemConferencia: analise.camposSemConferencia, excecoesPreservadas: analise.excecoesPreservadas, indexacao })
 }
 
 /** A consulta depois de um timeout, e a trilha da entrada. Só lê: é o que evita repetir a escrita às cegas. */
@@ -326,13 +359,18 @@ export async function consultarOperacaoDaBase(args: { projectId: number; operaca
     }
     const entrada = await db.knowledgeBaseEntry.findUnique({ where: { id: op.entryId } })
     const indice = entrada ? await indiceDoTexto(op.entryId, entrada.content) : null
+    const versaoAtual = entrada ? versaoDaEntrada(entrada) : null
     return resultado(op, {
       autor: op.autor,
       ator: op.ator,
       antes: op.antes,
       depois: op.depois,
-      versaoAtual: entrada ? versaoDaEntrada(entrada) : null,
+      versaoAtual,
       indiceConfere: indice?.confere ?? null,
+      // O estado é da operação, quando terminou; aqui se diz como a entrada está AGORA.
+      ...(op.status === 'CONCLUIDA' && (versaoAtual !== op.versaoDepois || !indice?.confere)
+        ? { mensagem: `A operação foi concluída, mas a entrada ${entrada ? 'mudou depois ou o índice dela não confere agora' : 'não existe mais'}: veja versaoAtual e indiceConfere.` }
+        : {}),
     })
   }
   if (!entradaId) throw new CreativeError('PEDIDO_INVALIDO', 'Envie operacaoId ou entradaId.', 400)

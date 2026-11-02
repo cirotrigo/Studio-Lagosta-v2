@@ -110,16 +110,23 @@ export const dbFalso = {
       const op = base.operacoes.find((o) => o.projectId === projectId && o.operacaoId === operacaoId)
       return op ? clonar(op) : null
     }),
-    findFirst: vi.fn(async ({ where }: { where: { projectId: number; entryId: string; status: { not: string } } }) => {
-      const op = base.operacoes.find((o) => o.projectId === where.projectId && o.entryId === where.entryId && o.status !== where.status.not)
+    findFirst: vi.fn(async ({ where }: { where: { projectId: number; entryId: string; status: { in: string[] } } }) => {
+      const op = base.operacoes.find((o) => o.projectId === where.projectId && o.entryId === where.entryId && where.status.in.includes(o.status as string))
       return op ? clonar(op) : null
+    }),
+    findUniqueOrThrow: vi.fn(async ({ where }: { where: { id: string } }) => clonar(base.operacoes.find((o) => o.id === where.id))),
+    updateMany: vi.fn(async ({ where, data }: { where: { id: string; atualizadaEm: Date; status?: { in: string[] } }; data: Record<string, unknown> }) => {
+      const op = base.operacoes.find((o) => o.id === where.id && +(o.atualizadaEm as Date) === +where.atualizadaEm && (!where.status || where.status.in.includes(o.status as string)))
+      if (!op) return { count: 0 }
+      Object.assign(op, clonar(data))
+      return { count: 1 }
     }),
     findMany: vi.fn(async ({ where }: { where: { projectId: number; entryId: string } }) =>
       base.operacoes.filter((o) => o.projectId === where.projectId && o.entryId === where.entryId).reverse().map(clonar),
     ),
     create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
       if (base.operacoes.some((o) => o.projectId === data.projectId && o.operacaoId === data.operacaoId)) throw new Error('Unique constraint failed on (projectId, operacaoId)')
-      const op = { id: `op-${++base.seq}`, erroIndexacao: null, criadaEm: new Date(), ...clonar(data) }
+      const op = { id: `op-${++base.seq}`, erroIndexacao: null, criadaEm: new Date(), atualizadaEm: new Date(), ...clonar(data) }
       base.operacoes.push(op)
       return clonar(op)
     }),
@@ -231,6 +238,9 @@ export class IndiceFalso {
     const r = [...base.vetores.values()].filter((v) => v.metadata.entryId === entryId).map((v) => ({ id: v.id, score: 0, metadata: clonar(v.metadata) }))
     await base.aoConsultar?.(entryId)
     return r
+  }
+  async fetch(ids: string[]) {
+    return ids.map((id) => base.vetores.get(id) ?? null)
   }
   async delete(ids: string[]) {
     base.chamadas.delete.push([...ids])

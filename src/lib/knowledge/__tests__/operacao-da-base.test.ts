@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { base, dbFalso } from './fixtures/base-falsa'
+import { barreira, base, dbFalso, IndiceFalso } from './fixtures/base-falsa'
 
 vi.mock('@/lib/db', async () => ({ db: (await import('./fixtures/base-falsa')).dbFalso }))
 vi.mock('@upstash/vector', async () => ({ Index: (await import('./fixtures/base-falsa')).IndiceFalso }))
@@ -43,6 +43,7 @@ const SEGUNDA = [{ campo: 'hours.monday', valor: '11:00-17:00' }]
 function semearEntrada() {
   base.entradas.set(ID, { id: ID, projectId: 2, title: 'Horário de funcionamento e endereço — Quintal', content: TEXTO, category: 'HORARIOS', status: 'ACTIVE', tags: ['horario'], expiresAt: null, metadata: structuredClone(META), updatedAt: new Date('2026-11-02T14:55:24Z'), createdBy: 'u', userId: 'u' })
   base.chunks = chunkText(TEXTO).map((c) => ({ id: `c${c.ordinal}`, entryId: ID, ordinal: c.ordinal, content: c.content, tokens: c.tokens, vectorId: `${ID}:${c.ordinal}` }))
+  for (const c of base.chunks) base.vetores.set(c.vectorId, { id: c.vectorId, vector: [1], metadata: { entryId: ID, ordinal: c.ordinal, projectId: 2 } })
 }
 const linha = () => base.linha(ID)
 const versao = () => versaoDaEntrada(linha())
@@ -200,7 +201,16 @@ describe('entradas inválidas', () => {
     await expect(executarOperacaoDaBase(pedido())).rejects.toMatchObject({ code: 'DADOS_ILEGIVEIS' })
   })
   it('turnos e madrugada válidos passam', () => {
-    expect(problemasDasAlteracoes({ hours: {} }, [{ campo: 'hours.monday', valor: '11:00-15:30, 18:00-23:30' }, { campo: 'hours.friday', valor: '18:00-02:00' }, { campo: 'hours.sunday', valor: '11:00-00:00' }])).toEqual([])
+    expect(problemasDasAlteracoes({ hours: HOURS }, [{ campo: 'hours.monday', valor: '11:00-15:30, 18:00-23:30' }, { campo: 'hours.friday', valor: '18:00-02:00' }, { campo: 'hours.sunday', valor: '11:00-00:00' }])).toEqual([])
+  })
+  it('turno que atravessa a madrugada não engole outro', () => {
+    expect(problemasDasAlteracoes({ hours: HOURS }, [{ campo: 'hours.friday', valor: '18:00-02:00, 19:00-23:00' }])[0].motivo).toContain('sobrepõem')
+    expect(problemasDasAlteracoes({ hours: HOURS }, [{ campo: 'hours.friday', valor: '01:00-03:00, 18:00-02:00' }])[0].motivo).toContain('sobrepõem')
+  })
+  it('não cria a segunda verdade ao lado da que existe', () => {
+    expect(problemasDasAlteracoes({ endereco: 'Rua A' }, [{ campo: 'address', valor: 'Rua B' }])[0].motivo).toContain('já existe')
+    expect(problemasDasAlteracoes({ happy_hour: { horario: '16:00-19:00' } }, [{ campo: 'happy_hour.time', valor: '16:00-19:00' }])[0].motivo).toContain('já existe')
+    expect(problemasDasAlteracoes({ horarios: { 'terca-sabado': '11:30-23:30' } }, [{ campo: 'horarios.quarta', valor: '11:30-23:30' }])[0].motivo).toContain('já existe')
   })
   it('aplicar preserva chave desconhecida dentro do mesmo objeto', () => {
     expect(aplicarAlteracoes({ hours: { monday: 'a', extra: { x: 1 } } }, SEGUNDA)).toEqual({ hours: { monday: '11:00-17:00', extra: { x: 1 } } })
@@ -240,6 +250,16 @@ describe('coerência com os textos', () => {
     expect(divergenciasDe(dados, [texto('Segunda das 11h às 20h.', { expiresAt: new Date('2026-12-01') })])).toEqual([])
     expect(linhasDatadas(`${excecoes.join('\n')}\nTodos os dias das 11h30 às 23h30 (vigente desde 15/10/2026).`)).toEqual(excecoes)
   })
+  it('reconhece data ISO e por extenso, e "horário habitual" não apaga a exceção', () => {
+    for (const l of ['Em 2026-11-20, abrimos das 11h às 15h.', 'No dia 20 de novembro, abrimos das 11h às 15h.', 'Dia 20/11 abrimos das 11h às 15h, no lugar do horário habitual.']) expect(linhasDatadas(l)).toEqual([l])
+  })
+  it('separa a regra habitual da exceção na mesma linha, e a exceção alcança o que vem depois dela', () => {
+    expect(linhasDatadas('Segunda funciona habitualmente das 11h às 17h; dia 20/11 abrimos das 11h às 15h.')).toEqual(['dia 20/11 abrimos das 11h às 15h.'])
+    expect(divergenciasDe({ hours: HOURS }, [texto('Natal: terça das 11h às 14h; quarta das 11h às 15h.')])).toEqual([])
+  })
+  it('dois turnos no dado aceitam o turno do texto', () => {
+    expect(divergenciasDe({ hours: { ...HOURS, monday: '11:00-15:00, 18:00-23:00' } }, [texto('Segunda das 11h às 15h e das 18h às 23h.')])).toEqual([])
+  })
   it('entende os outros vocabulários: intervalo, todos os dias e 00:00', () => {
     const d = divergenciasDe({ horarios: { domingo: '11:30-16:00', segunda: '18:30-23:30', 'terca-sabado': '11:30-23:30' } }, [texto('Todos os dias das 11h30 às 23h30 (vigente desde 15/10/2026).')])
     expect(d.map((x) => x.campo).sort()).toEqual(['horarios.domingo', 'horarios.segunda'])
@@ -261,6 +281,20 @@ describe('coerência com os textos', () => {
     expect(r.estado).toBe('concluida')
     expect(r.divergencias.map((d) => d.campo)).toEqual(['happy_hour.time'])
     expect((linha().metadata as typeof META).happy_hour.time).toBe('17:00-19:00')
+  })
+  it('texto novo que contradiz os dados de OUTRA entrada bloqueia', async () => {
+    base.entradas.set('dados', { ...structuredClone(linha()), id: 'dados', title: 'Ficha', content: 'Ficha de horários sem frase de dia.', metadata: { hours: { ...HOURS, monday: '11:00-17:00' } } })
+    linha().metadata = null
+    linha().content = 'Funcionamento conforme a ficha da casa.'
+    const novo = 'Segunda das 11h às 18h.'
+    await expect(executarOperacaoDaBase(pedido({ alteracoes: undefined, content: novo, autorizarIndexacao: true }))).rejects.toMatchObject({ code: 'DIVERGENCIA_NAO_RESOLVIDA', details: { divergencias: [{ campo: 'hours.monday', entradaDosDados: 'dados', origem: { entradaId: ID } }] } })
+    expect(linha().content).not.toBe(novo)
+  })
+  it('a proposta diz o que o sistema não comparou, e traz o texto antes e depois', async () => {
+    const novo = TEXTO.replace('Domingo: das 11h às 17h.', 'Domingo: das 11h às 17h, sempre.')
+    const r = (await executarOperacaoDaBase(pedido({ confirmado: false, content: novo, alteracoes: [...SEGUNDA, { campo: 'happy_hour.days', valor: 'wednesday-friday' }, { campo: 'address', valor: 'Rua Nova' }] }))) as unknown as { camposSemConferencia: string[]; diff: { campo: string; antes: unknown; depois: unknown }[] }
+    expect(r.camposSemConferencia.sort()).toEqual(['address', 'happy_hour.days'])
+    expect(r.diff.find((d) => d.campo === 'content')).toEqual({ campo: 'content', antes: TEXTO, depois: novo })
   })
   it('apagar exceção datada pelo texto exige aceite nominal', async () => {
     const comExcecao = `${TEXTO}\nDia 24/12 fechamos às 15h.`
@@ -295,6 +329,7 @@ describe('indexação', () => {
   })
   it('falha da indexação não vira sucesso, e repetir o mesmo id retoma sem reescrever', async () => {
     embeddings.mockRejectedValueOnce(new Error('embeddings fora do ar'))
+    const versaoLida = versao()
     const r = await executarOperacaoDaBase(pedido({ content: NOVO, autorizarIndexacao: true }))
     expect(r).toMatchObject({ estado: 'indexacao_falhou', gravado: true, mensagem: expect.stringContaining('embeddings fora do ar') })
     expect(linha().content).toBe(NOVO)
@@ -303,10 +338,54 @@ describe('indexação', () => {
     const carimbo = versao()
     await expect(executarOperacaoDaBase(pedido({ operacaoId: 'outra-operacao', versaoEsperada: carimbo, alteracoes: [{ campo: 'address', valor: 'Outra rua' }] }))).rejects.toMatchObject({ code: 'INDEXACAO_PENDENTE_NA_ENTRADA', details: { operacaoPendente: 'quintal-segunda-17h' } })
 
-    const retomada = await executarOperacaoDaBase(pedido({ content: NOVO, autorizarIndexacao: true }))
+    expect(await executarOperacaoDaBase(pedido({ versaoEsperada: versaoLida, content: NOVO, autorizarIndexacao: true, confirmado: false }))).toMatchObject({ estado: 'indexacao_falhou', repetida: true })
+    expect(embeddings).toHaveBeenCalledTimes(1)
+
+    const retomada = await executarOperacaoDaBase(pedido({ versaoEsperada: versaoLida, content: NOVO, autorizarIndexacao: true }))
     expect(retomada).toMatchObject({ estado: 'concluida', repetida: true })
     expect(versao()).toBe(carimbo)
     expect(base.operacoes).toHaveLength(1)
+  })
+  it('retomar não indexa texto que a operação não autorizou', async () => {
+    embeddings.mockRejectedValueOnce(new Error('embeddings fora do ar'))
+    const versaoLida = versao()
+    await executarOperacaoDaBase(pedido({ content: NOVO, autorizarIndexacao: true }))
+    linha().content = `${NOVO}\nmudou pelo site`
+    embeddings.mockClear()
+    expect(await executarOperacaoDaBase(pedido({ versaoEsperada: versaoLida, content: NOVO, autorizarIndexacao: true }))).toMatchObject({ estado: 'superada', gravado: true })
+    expect(embeddings).not.toHaveBeenCalled()
+    expect(await executarOperacaoDaBase(pedido({ operacaoId: 'operacao-seguinte', alteracoes: [{ campo: 'address', valor: 'Rua Nova' }], autorizarIndexacao: true }))).toMatchObject({ gravado: true })
+  })
+  it('a tentativa antiga não publica o resultado por cima da mais nova', async () => {
+    embeddings.mockRejectedValueOnce(new Error('embeddings fora do ar'))
+    const versaoLida = versao()
+    await executarOperacaoDaBase(pedido({ content: NOVO, autorizarIndexacao: true }))
+    const parada = barreira()
+    embeddings.mockImplementationOnce(async (textos: string[]) => {
+      await parada.parar()
+      return textos.map(() => [0.1, 0.2])
+    })
+    const repete = () => executarOperacaoDaBase(pedido({ versaoEsperada: versaoLida, content: NOVO, autorizarIndexacao: true }))
+    const primeira = repete()
+    await parada.chegou
+    expect(await repete()).toMatchObject({ estado: 'indexacao_pendente' })
+    parada.liberar()
+    expect(await primeira).toMatchObject({ estado: 'indexacao_pendente' })
+    expect(await repete()).toMatchObject({ estado: 'concluida' })
+  })
+  it('chunk certo sem vetor não é índice em dia', async () => {
+    base.vetores.clear()
+    const proposta = await executarOperacaoDaBase(pedido({ confirmado: false }))
+    expect(proposta).toMatchObject({ indexacao: { necessaria: true, motivo: expect.stringContaining('vetores') } })
+    await expect(executarOperacaoDaBase(pedido())).rejects.toMatchObject({ code: 'INDEXACAO_NAO_AUTORIZADA' })
+    expect(await executarOperacaoDaBase(pedido({ autorizarIndexacao: true }))).toMatchObject({ estado: 'concluida' })
+    expect(base.vetores.size).toBeGreaterThan(0)
+  })
+  it('índice que não responde não conta como conferido', async () => {
+    const espiao = vi.spyOn(IndiceFalso.prototype, 'fetch').mockRejectedValue(new Error('upstash fora'))
+    await expect(executarOperacaoDaBase(pedido())).rejects.toMatchObject({ code: 'INDEXACAO_NAO_AUTORIZADA' })
+    espiao.mockRestore()
+    expect(linha().metadata).toEqual(META)
   })
   it('indexação em curso recusa o texto novo antes de gravar', async () => {
     linha().metadata = { ...META, cicloExpiraEm: new Date(Date.now() + 60_000).toISOString() }
@@ -337,5 +416,18 @@ describe('leitura', () => {
     expect(await consultarOperacaoDaBase({ projectId: 2, operacaoId: 'nao-existe' })).toMatchObject({ estado: 'nao_encontrada', gravado: false })
     await executarOperacaoDaBase(pedido())
     expect(await consultarOperacaoDaBase({ projectId: 2, entradaId: ID })).toMatchObject({ count: 1, operacoes: [{ operacaoId: 'quintal-segunda-17h', estado: 'concluida' }] })
+  })
+  it('a operação concluída não atesta a entrada de agora', async () => {
+    await executarOperacaoDaBase(pedido())
+    const ok = await consultarOperacaoDaBase({ projectId: 2, operacaoId: 'quintal-segunda-17h' })
+    expect(ok).toMatchObject({ estado: 'concluida', indiceConfere: true, mensagem: expect.stringContaining('ficou em dia') })
+    linha().content = `${TEXTO}\nmudou depois`
+    expect(await consultarOperacaoDaBase({ projectId: 2, operacaoId: 'quintal-segunda-17h' })).toMatchObject({ estado: 'concluida', indiceConfere: false, mensagem: expect.stringContaining('mudou depois') })
+    base.entradas.delete(ID)
+    expect(await consultarOperacaoDaBase({ projectId: 2, operacaoId: 'quintal-segunda-17h' })).toMatchObject({ indiceConfere: null, mensagem: expect.stringContaining('não existe mais') })
+  })
+  it('repetir o id com outra versão esperada é outro pedido', async () => {
+    await executarOperacaoDaBase(pedido())
+    await expect(executarOperacaoDaBase(pedido({ versaoEsperada: 'outra-versao' }))).rejects.toMatchObject({ code: 'OPERACAO_REUTILIZADA' })
   })
 })
