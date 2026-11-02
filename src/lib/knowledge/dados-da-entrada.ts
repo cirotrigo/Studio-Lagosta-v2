@@ -288,7 +288,8 @@ function fatosDoTexto(titulo: string, texto: string): FatoDoTexto[] {
       const c = semAcento(trecho)
       const happy = HAPPY_HOUR.test(c) || (HAPPY_HOUR.test(tituloNormal) && !OUTRO_SERVICO.test(c))
       if (happy) {
-        for (const m of c.matchAll(FAIXA)) fatos.push({ dias: null, faixa: `${horaDe(m[1], false)}-${horaDe(m[2], true)}`, fim: null, trecho })
+        const turnos = [...c.matchAll(FAIXA)].map((m) => `${horaDe(m[1], false)}-${horaDe(m[2], true)}`)
+        if (turnos.length > 0) fatos.push({ dias: null, faixa: turnos.join(', '), fim: null, trecho })
         continue
       }
       if (OUTRO_SERVICO.test(c) || OUTRO_SERVICO.test(tituloNormal)) continue

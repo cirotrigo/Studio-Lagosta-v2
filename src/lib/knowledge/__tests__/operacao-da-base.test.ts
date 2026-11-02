@@ -262,6 +262,11 @@ describe('coerência com os textos', () => {
     expect(segunda('11:00-15:00, 18:00-23:00')).toEqual([])
     expect(segunda('11:00-15:00, 18:00-22:00')).toMatchObject([{ campo: 'hours.monday', valorNoTexto: '11:00-15:00, 18:00-23:00' }])
   })
+  it('o happy hour de dois turnos também se compara inteiro', () => {
+    const hh = (time: string) => divergenciasDe({ happy_hour: { time } }, [texto('Happy hour das 17h às 19h e das 22h às 23h.')])
+    expect(hh('17:00-19:00, 22:00-23:00')).toEqual([])
+    expect(hh('17:00-19:00, 22:00-23:30')).toMatchObject([{ campo: 'happy_hour.time' }])
+  })
   it('os dados de campanha não vigiam o horário habitual', () => {
     const campanha = texto('Ceia de Natal por encomenda.', { id: 'natal', expiresAt: new Date('2026-12-26'), metadata: { hours: { monday: '11:00-14:00' } } })
     expect(divergenciasDaBase([campanha, texto('Segunda das 11h às 17h.')])).toEqual([])
