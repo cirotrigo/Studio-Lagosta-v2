@@ -419,10 +419,12 @@ export function montarBloco(args: {
     }
   }
 
-  // Nada coube nem a 80%: devolve o orçamento medido no tamanho de assinatura.
-  const base = camadaDoPapel({ ...semDestaque, escala: args.escalaDoFormato, width: coluna + PADDING_DE_DESENHO * 2 })
-  // Com arquétipo, também as linhas que quebram por dentro (no piso, onde a escada parou).
+  // Nada coube nem no piso: devolve o orçamento medido no tamanho de assinatura — ou, com o piso da REFERÊNCIA (F2c),
+  // no próprio piso: é nele que a linha tem de caber, e medir na assinatura (58) deixava o orçamento vazio para a linha
+  // que só estoura a 68 (Codex, F2c rodada 1, P2).
   const noPiso = camadaDoPapel({ ...semDestaque, escala: piso, width: coluna + PADDING_DE_DESENHO * 2 })
+  const base = args.pisoDeEscala !== undefined ? noPiso : camadaDoPapel({ ...semDestaque, escala: args.escalaDoFormato, width: coluna + PADDING_DE_DESENHO * 2 })
+  // Com arquétipo, também as linhas que quebram por dentro (no piso, onde a escada parou).
   const quebras =
     args.alturaMaxima !== undefined
       ? linhas.flatMap((linha) => {

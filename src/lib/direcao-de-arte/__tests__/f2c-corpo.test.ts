@@ -98,14 +98,27 @@ describe('F2c · o corpo da referência no compositor', () => {
     expect(h.corpo).toMatchObject({ referencia: 120, piso: 96, efetivo: corpo })
   }, 60_000)
 
-  it('a revisão F1 CONGELADA (sem corpos) compõe como antes: a manchete nos 90 px da assinatura, sem `corpos` no diagnóstico', async () => {
+  it('a revisão F1 CONGELADA (sem corpos), com a GEOMETRIA e a IMPRESSÃO intactas: o medir-copy mede como antes (90 px da assinatura, sem corpo) e a composição pelo caminho sem corpos sai em 90', async () => {
     await montar()
-    // A congelada é da página REAL (caixa de 97 px): a manchete de 90 px da assinatura sintética não cabe nela com o medidor
-    // sintético — a caixa alta entra na definição congelada sem tocar no resto (impressão recomputada só para este teste).
-    const v1 = { ...(congelada.definicao as unknown as ReturnType<typeof compilar>), formatos: { story: { ...compilar().formatos.story, corpos: undefined } } } as ReturnType<typeof compilar>
-    delete (v1.formatos.story as unknown as Record<string, unknown>).corpos
+    // A geometria real (manchete y 1618, 97 px; apoio y 1707) só compõe com a TrajanPro de verdade: o medidor calibrado do
+    // harness mede a manchete terminando em 1713 e a busca espacial elimina por ORDEM_DE_LEITURA (também na F1, antes da
+    // F2c). A medição estrutural não passa pela busca: roda sobre a definição congelada INTACTA, com versão e impressão fixadas.
+    const v1 = congelada.definicao as unknown as ReturnType<typeof compilar>
     definicoes.atual = [v1]
-    const r = await comporPeca(spec(v1.id), { somenteAvaliar: true })
+    const m = await medirCopyDoProjeto({ projectId: 9002, formato: 'story', blocos: BLOCOS, arquetipo: { id: v1.id, versao: 1, impressao: congelada.impressao } } as never)
+    expect(m.medicao.arquetipo!.impressao).toBe(congelada.impressao)
+    // A escada legada: parte dos 90 da assinatura e desce (até 80 %) para caber nos 97 px da caixa real — sem `corpo`.
+    const h = m.medicao.blocos.find((b) => b.id === 'headline')!
+    expect(h.fontSize!).toBeLessThanOrEqual(90)
+    expect(h.fontSize!).toBeGreaterThanOrEqual(72)
+    expect([h.corpo, m.medicao.blocos.find((b) => b.id === 'apoio')!.fontSize]).toEqual([undefined, 40])
+    expect(m.medicao.arquetipo!.papeis.headline!.corpo).toBeUndefined()
+    // A composição real pelo caminho SEM corpos (a definição congelada com a caixa alta do harness, impressão recomputada só
+    // para o teste): a manchete nos 90 px da assinatura, nenhum `corpos` no diagnóstico.
+    const alta = { ...v1, formatos: { story: { ...compilar().formatos.story } } } as ReturnType<typeof compilar>
+    delete (alta.formatos.story as unknown as Record<string, unknown>).corpos
+    definicoes.atual = [alta]
+    const r = await comporPeca(spec(alta.id), { somenteAvaliar: true })
     expect([camada(r.layers, 'headline').style?.fontSize, camada(r.layers, 'apoio').style?.fontSize]).toEqual([90, 40])
     expect(r.diagnostico.arquetipo!.corpos).toBeUndefined()
   }, 60_000)

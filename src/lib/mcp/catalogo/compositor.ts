@@ -255,6 +255,10 @@ export const toolsDoCompositor = [
       // Cada variante com os PRÓPRIOS estilos, a fonte disponível no servidor,
       // a área útil do formato pedido e o orçamento por papel (PR 8).
       const { templateId, variantes } = await descreverVariantes(projectId, formato)
+      // F2c: as REFERÊNCIAS aprovadas do cliente neste formato, com o corpo desenhado por papel (da revisão persistida) —
+      // com uma delas, o catálogo abaixo não vale para o cliente e a peça parte do corpo da referência, não do da assinatura.
+      const { listarReferencias } = await import('../../compositor/referencias')
+      const referencias = (await listarReferencias(projectId)).filter((l) => !l.revogadaEm && l.formato === formato).map((l) => ({ arquetipoId: l.arquetipoId, versao: l.versao, pagina: l.pagina, corpos: l.corpos }))
       const template = templateId ? { id: templateId } : null
       return {
         temAssinatura: Boolean(a.origem.pageId),
@@ -281,6 +285,8 @@ export const toolsDoCompositor = [
         // T1a: os arquétipos de layout (só leitura) — o agente pede pelo id, sem decorar; a disponibilidade diz o que já compõe
         // e `elementos` os acentos que a peça ganha (T1b).
         arquetipos: vitrineDeArquetipos(),
+        referencias,
+        ...(referencias.length > 0 ? { avisoDasReferencias: `O cliente tem ${referencias.length} referência(s) aprovada(s) no ${formato}: o catálogo acima não vale para ele (ARQUETIPO_NAO_APROVADO) e a peça por referência parte do corpo desenhado nela (\`corpos\`; null = revisão de antes, que parte da assinatura). Peça uma em arquetipo.id.` } : {}),
         editorUrl: template ? `${getPublicAppUrl()}/templates/${template.id}/editor` : null,
         // T5: a variante promovida (foraDoRodizio) só entra numa peça quando a pessoa pede por ela.
         dica: a.origem.pageId

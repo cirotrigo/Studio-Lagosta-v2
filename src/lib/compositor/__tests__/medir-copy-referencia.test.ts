@@ -103,7 +103,44 @@ describe('F2c · o corpo da referência no medir-copy', () => {
     expect(h.corpo).toMatchObject({ referencia: 85, efetivo: h.fontSize, piso: 68 })
     expect(h.corpo!.reducao).toBeGreaterThan(0)
     expect(h.avisos.join(' ')).toMatch(/abaixo dos 85 px da referência/)
+    // Só a manchete encolheu: o apoio fica no teto dele (a independência do teto inicial).
+    expect(bloco(m, 'apoio')).toMatchObject({ fontSize: 39, situacao: 'cabe', corpo: { reducao: 0 } })
   })
+
+  it('a chegada EXATA ao piso (39 → 31, 79 %) e a recusa logo abaixo dele, com o orçamento medido NO PISO (não na assinatura) e a mensagem em px', () => {
+    // Coluna de tinta da caixa do apoio: 951 − 2×6 − 2 = 937 px; o medidor falso dá 0,55 × corpo por caractere.
+    // 54 caracteres cabem só a 31 px (920 ≤ 937; a 32: 950); 55 não cabem nem a 31 (938 > 937).
+    const cabe31 = medirPor(compilar(), [{ papel: 'headline', linhas: ['Café'] }, { papel: 'apoio', linhas: ['a'.repeat(54)] }])
+    expect(bloco(cabe31, 'apoio')).toMatchObject({ fontSize: 31, situacao: 'cabe-reduzido', corpo: { referencia: 39, efetivo: 31, piso: 31, reducao: 0.205 } })
+    const recusa = medirPor(compilar(), [{ papel: 'headline', linhas: ['Café'] }, { papel: 'apoio', linhas: ['a'.repeat(55)] }])
+    const a = bloco(recusa, 'apoio')
+    expect(a.situacao).toBe('nao-cabe')
+    expect(a.corpo).toMatchObject({ referencia: 39, piso: 31, efetivo: null })
+    expect(a.avisos.join(' ')).toMatch(/no piso da referência \(31 px, 79 % dos 39 px desenhados\)/)
+    // O orçamento é medido no piso: a linha de 55 estoura por 1 caractere (54 cabem) — na assinatura (25 px) caberia e o orçamento sairia vazio.
+    expect(a.orcamento).toHaveLength(1)
+    expect(a.orcamento![0].caracteresQueCabem).toBe(54)
+    expect(a.linhasMedidas[0].cabe).toBe(false)
+    expect(recusa.cabeTudo).toBe(false)
+  })
+
+  it('corpo 8 na referência: piso 8 = teto — a copy curta sai em 8, a longa recusa sem escada', () => {
+    const miudo = { ...PAGINA, layers: PAGINA.layers.map((l) => (l.id === 'apoio' ? ({ ...l, style: { ...l.style, fontSize: 8 } } as Layer) : l)) }
+    expect(compilar(miudo).formatos.story.corpos).toEqual({ headline: 85, apoio: 8 })
+    const curta = medirPor(compilar(miudo), [{ papel: 'headline', linhas: ['Café'] }, { papel: 'apoio', linhas: ['Sabores'] }])
+    expect(bloco(curta, 'apoio')).toMatchObject({ fontSize: 8, situacao: 'cabe', corpo: { referencia: 8, piso: 8, efetivo: 8 } })
+    const longa = medirPor(compilar(miudo), [{ papel: 'headline', linhas: ['Café'] }, { papel: 'apoio', linhas: ['a'.repeat(220)] }])
+    expect(bloco(longa, 'apoio')).toMatchObject({ situacao: 'nao-cabe', corpo: { referencia: 8, piso: 8 } })
+  })
+
+  it('a recusa por ALTURA no piso da referência: duas linhas de manchete numa caixa de 100 px (linhasMax 3) não cabem nem a 64', () => {
+    const baixa = { ...PAGINA, layers: PAGINA.layers.map((l) => (l.id === 'titulo' ? ({ ...l, content: 'Brunch\nEmpório\nFonseca', position: { ...l.position, y: 1600 }, size: { ...l.size, height: 100 }, style: { ...l.style, fontSize: 80 } } as Layer) : l)) }
+    const m = medirPor(compilar(baixa), [{ papel: 'headline', linhas: ['Café', 'da manhã'] }, { papel: 'apoio', linhas: ['Sabores'] }])
+    const h = bloco(m, 'headline')
+    expect(h.situacao).toBe('nao-cabe')
+    expect(h.avisos.join(' ')).toMatch(/altura.*no piso da referência \(64 px, 80 % dos 80 px desenhados\)/)
+  })
+
 
   it('a revisão F1 CONGELADA (sem corpos) mede como antes: 70 px da assinatura, sem o campo corpo', () => {
     const m = medirPor(congelada.definicao as unknown as Definicao, [{ papel: 'headline', linhas: ['Café da manhã'] }, { papel: 'apoio', linhas: ['Sabores da manhã'] }])
@@ -116,6 +153,10 @@ describe('F2c · o corpo da referência no medir-copy', () => {
     const duas = medirPor(compilar(brunchAlto), [{ papel: 'headline', linhas: ['Café', 'da manhã'] }, { papel: 'apoio', linhas: ['Sabores'] }], assinaturaComVoz2)
     expect([bloco(duas, 'headline').fontSize, bloco(duas, 'headline2').fontSize]).toEqual([80, 80])
     expect(bloco(duas, 'headline2').corpo).toMatchObject({ referencia: 80, efetivo: 80, piso: 64, reducao: 0 })
+    // A política é DITA no bloco: os dois partem do mesmo teto; a hierarquia pode inverter.
+    expect(bloco(duas, 'headline2').avisos.join(' ')).toMatch(/os 2 blocos de headline \(headline, headline2\) partem do MESMO teto de 80 px/)
+    // O orçamento do papel é medido com o estilo EFETIVO de cada bloco (os dois, aqui com a mesma família) e diz de onde saiu.
+    expect(duas.arquetipo!.papeis.headline!.corpo!.medidoCom.map((x) => x.bloco)).toEqual(['headline', 'headline2'])
     // Três linhas: 2 × 80 + 80 = 240 > 220 → a unidade desce 1 px por rodada na régua da referência até 73 (219 ≤ 220).
     const tres = medirPor(compilar(brunchAlto), [{ papel: 'headline', linhas: ['Café', 'da', 'manhã'] }, { papel: 'apoio', linhas: ['Sabores'] }], assinaturaComVoz2)
     expect([bloco(tres, 'headline').fontSize, bloco(tres, 'headline2').fontSize]).toEqual([73, 73])

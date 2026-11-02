@@ -1845,7 +1845,13 @@ medir-copy; 100 px em duas linhas desce até ≥ 80 e avisa; congelada compõe e
   conversão é por bloco, onde o estilo efetivo já está resolvido.
 - 🔴 `linhasMax` da referência é o número de linhas DESENHADAS: uma manchete de uma linha recusa copy de duas antes de
   qualquer escada (não é a F2c; é a F1). Nos testes, a página de três linhas.
-- O medidor sintético dos testes mede a linha mais alta que a TrajanPro real: nos 97 px da Brunch a manchete de 85
-  invade o apoio (ORDEM_DE_LEITURA) — os testes de composição usam a caixa de 220 px; a geometria real fica para a prova
-  real pelo compositor.
+- O medidor calibrado do harness sintético mede a manchete da Brunch terminando em 1713 (o apoio começa em 1707) seja
+  qual for o corpo da assinatura: a busca espacial elimina por ORDEM_DE_LEITURA, também na F1. A geometria REAL só
+  compõe com a TrajanPro de verdade (a prova real pelo compositor); nos testes de composição a caixa é de 220 px, e a
+  definição congelada intacta é medida pelo medir-copy (sem busca espacial).
 - `definicaoV1` compilada pelo compilador corrente não prova compatibilidade com a F1: a prova é a fixture congelada.
+- Rodada 1 do Codex sobre o código (02/11): o orçamento da RECUSA é medido no piso da referência (medir na assinatura
+  deixava `orcamento: []` para a linha que só estoura a 68); `papeis[].corpo.caracteresPorLinha` é medido com o estilo
+  EFETIVO de cada bloco do papel (`medidoCom`), não só com o da assinatura; `ver-assinatura` lista as referências
+  aprovadas no formato com os corpos; a política do teto absoluto é dita no diagnóstico (`corpos[].observacao`) e no
+  bloco do medir-copy quando o papel tem mais de um bloco.

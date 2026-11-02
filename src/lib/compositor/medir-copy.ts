@@ -214,7 +214,7 @@ export interface MedicaoDoArquetipo {
    * `corpo` = o corpo desenhado na referência, o piso materializado e os caracteres por linha MEDIDOS nesse corpo (a
    * assinatura dá o estilo; o orçamento é no corpo da referência, dito).
    */
-  papeis: Partial<Record<PapelDeTexto, { largura: number; coluna: number; capacidade: number; linhasMax: number; caracteresPorLinha?: number; corpo?: { referencia: number; piso: number; caracteresPorLinha: number | null } }>>
+  papeis: Partial<Record<PapelDeTexto, { largura: number; coluna: number; capacidade: number; linhasMax: number; caracteresPorLinha?: number; corpo?: { referencia: number; piso: number; caracteresPorLinha: number | null; medidoCom: Array<{ bloco: string; fonte: string; caracteresPorLinha: number | null }> } }>>
   /**
    * Onde cada caixa pousaria na posição de PARTIDA (quando tudo coube): a referência, ou — se a área segura do projeto
    * a corta — a posição válida mais perto dela. Não é a posição final: desde o CP2B o compor escolhe, pela foto, o
@@ -301,6 +301,13 @@ export function medirCopy(args: {
   const avisosDoPapel = (papel: Papel) => preparados.avisos.filter((a) => a.startsWith(`${papel}:`))
   const medidas: MedidaDeBloco[] = []
   const fontesUsadasSemCarregar = new Set<string>()
+  // F2c: a política do teto absoluto, dita no bloco quando o papel tem mais de um (segunda voz, serviço repartido).
+  const blocosComCorpoPorPapel = new Map<PapelDeTexto, string[]>()
+  for (const b of preparados.montados) if (b.corpo) blocosComCorpoPorPapel.set(papelGeometrico(b.papel), [...(blocosComCorpoPorPapel.get(papelGeometrico(b.papel)) ?? []), b.layer.id])
+  const observacaoDoTeto = (b: { papel: Papel; corpo?: { referencia: number } }) => {
+    const irmaos = b.corpo ? blocosComCorpoPorPapel.get(papelGeometrico(b.papel)) ?? [] : []
+    return irmaos.length > 1 ? [`os ${irmaos.length} blocos de ${papelGeometrico(b.papel)} (${irmaos.join(', ')}) partem do MESMO teto de ${b.corpo!.referencia} px: a referência desenha uma camada por papel e não dá proporção entre eles — a hierarquia pode inverter (a manchete longa encolhe, a segunda voz curta não)`] : []
+  }
 
   // Papel pedido que a variante (e os arranjos) não têm: a preparação o
   // descarta em silêncio; aqui ele é DECLARADO.
@@ -405,6 +412,7 @@ export function medirCopy(args: {
           : b.escala < 1
             ? [`fonte reduzida a ${Math.round(b.escala * 100)}% para caber na coluna (piso ${Math.round(PISO_DE_ESCALA * 100)}%)`]
             : []),
+        ...observacaoDoTeto(b),
       ],
     })
   }
@@ -424,7 +432,8 @@ export function medirCopy(args: {
       linhas: r.linhasDaCopy.length,
       naoMedido,
       aproximado: r.linhasDaCopy.some((l) => lerDestaques(l).trechos.length > 0),
-      linhasMedidas: medirLinhas(r.papel, r.estilo, r.linhasDaCopy, naoMedido, r.destaque, r.coluna),
+      // F2c: a recusa é medida no PISO da referência (é nele que a linha tem de caber), como o orçamento de `montarBloco`.
+      linhasMedidas: medirLinhas(r.papel, r.estilo, r.linhasDaCopy, naoMedido, r.destaque, r.coluna, r.corpo ? r.corpo.piso / r.estilo.fontSize : undefined),
       orcamento: r.orcamento,
       ...(r.corpo ? { corpo: { referencia: r.corpo.referencia, teto: r.corpo.teto, efetivo: null, piso: r.corpo.piso, reducao: null } } : {}),
       avisos: [
@@ -473,12 +482,25 @@ export function medirCopy(args: {
       const coluna = colunaDaCaixa(caixa.largura)
       // F2c: o orçamento de caracteres MEDIDO no corpo da referência, com o estilo da assinatura (a fonte que a peça usa).
       const referencia = corposDaRef?.[papel]
-      const estilo = args.assinatura.papeis[papel]
-      let corpo: { referencia: number; piso: number; caracteresPorLinha: number | null } | undefined
+      let corpo: NonNullable<MedicaoDoArquetipo['papeis'][PapelDeTexto]>['corpo']
       if (referencia !== undefined) {
-        const base = estilo && args.fonteCarregada(estilo.fontFamily) ? camadaDoPapel({ papel, linhas: [AMOSTRA_DO_ORCAMENTO], estilo, escala: referencia / estilo.fontSize, width: coluna, textAlign: 'left', groupId: 'orcamento', corDaMancha: args.assinatura.numeros.mancha }) : null
-        const m = base ? medirLinha(args.medir, base, AMOSTRA_DO_ORCAMENTO, coluna) : null
-        corpo = { referencia, piso: pisoDoCorpoDaReferencia(referencia), caracteresPorLinha: m && m.largura > 0 ? Math.max(1, Math.floor((AMOSTRA_DO_ORCAMENTO.length * coluna) / m.largura)) : null }
+        // Com os estilos EFETIVOS dos blocos do papel (o do arranjo ou o da assinatura — o que a peça usa), não só o da
+        // assinatura (Codex, F2c rodada 1, P2); sem bloco do papel nesta copy, o da assinatura. O mínimo entre eles é o
+        // orçamento do papel; `medidoCom` diz de onde saiu cada número.
+        const dosBlocos = [
+          ...noArquetipo!.montados.filter((b) => papelGeometrico(b.papel) === papel).map((b) => ({ bloco: b.layer.id, estilo: b.estilo })),
+          ...preparados.recusas.filter((r) => papelGeometrico(r.papel) === papel).map((r) => ({ bloco: r.id, estilo: r.estilo })),
+        ]
+        const daAssinatura = args.assinatura.papeis[papel]
+        const fontes = dosBlocos.length > 0 ? dosBlocos : daAssinatura ? [{ bloco: papel, estilo: daAssinatura }] : []
+        const medidoCom = fontes.map(({ bloco, estilo: e }) => {
+          if (!args.fonteCarregada(e.fontFamily)) return { bloco, fonte: e.fontFamily, caracteresPorLinha: null }
+          const base = camadaDoPapel({ papel, linhas: [AMOSTRA_DO_ORCAMENTO], estilo: e, escala: referencia / e.fontSize, width: coluna, textAlign: 'left', groupId: 'orcamento', corDaMancha: args.assinatura.numeros.mancha })
+          const m = medirLinha(args.medir, base, AMOSTRA_DO_ORCAMENTO, coluna)
+          return { bloco, fonte: e.fontFamily, caracteresPorLinha: m && m.largura > 0 ? Math.max(1, Math.floor((AMOSTRA_DO_ORCAMENTO.length * coluna) / m.largura)) : null }
+        })
+        const validos = medidoCom.map((m) => m.caracteresPorLinha).filter((n): n is number => n !== null)
+        corpo = { referencia, piso: pisoDoCorpoDaReferencia(referencia), caracteresPorLinha: validos.length > 0 ? Math.min(...validos) : null, medidoCom }
       }
       papeis[papel] = { largura: caixa.largura, coluna, capacidade: caixa.altura, linhasMax: limite?.linhasMax ?? 0, ...(limite?.caracteresPorLinha ? { caracteresPorLinha: limite.caracteresPorLinha } : {}), ...(corpo ? { corpo } : {}) }
     }

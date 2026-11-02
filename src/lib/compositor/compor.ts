@@ -303,7 +303,7 @@ export interface DiagnosticoDoArquetipo {
    * F2c: na peça por referência com `corpos` — por bloco, o corpo desenhado na referência, o teto em que a escada da
    * unidade parou, o piso materializado, o corpo efetivo e a redução (fração, 0 = no corpo desenhado). Ausente sem `corpos`.
    */
-  corpos?: Array<{ camada: string; papel: string; referencia: number; teto: number; piso: number; efetivo: number; reducao: number }>
+  corpos?: Array<{ camada: string; papel: string; referencia: number; teto: number; piso: number; efetivo: number; reducao: number; observacao?: string }>
   /**
    * #9: a RECEITA da máscara desenhada na `bg-foto` (`{ tipo, versao, raio, caixa, path }`) — a única fonte do desenho
    * na recomposição (`mascaraCongelada`). `caixa` = w/h de `composicao.foto.caixa`. Ausente sem máscara.
@@ -982,6 +982,16 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     if (b.corpo?.efetivo !== undefined && b.corpo.efetivo < b.corpo.referencia) {
       avisos.push(`${b.layer.id}: coube em ${b.corpo.efetivo} px, não nos ${b.corpo.referencia} px da referência (−${Math.round((1 - b.corpo.efetivo / b.corpo.referencia) * 100)} %): encurte a copy para sair no corpo desenhado.`)
     }
+  }
+  // F2c: o teto é ABSOLUTO por papel — quando o papel tem mais de um bloco (segunda voz, serviço repartido), a política é dita.
+  const blocosComCorpoPorPapel = new Map<string, string[]>()
+  for (const b of montados) if (b.corpo) blocosComCorpoPorPapel.set(papelGeometrico(b.papel), [...(blocosComCorpoPorPapel.get(papelGeometrico(b.papel)) ?? []), b.layer.id])
+  const observacaoDoTeto = (b: (typeof montados)[number]) => {
+    const irmaos = b.corpo ? blocosComCorpoPorPapel.get(papelGeometrico(b.papel)) ?? [] : []
+    return irmaos.length > 1 ? `os ${irmaos.length} blocos de ${papelGeometrico(b.papel)} (${irmaos.join(', ')}) partem do MESMO teto de ${b.corpo!.referencia} px: a referência desenha uma camada por papel e não dá proporção entre eles — a hierarquia pode inverter (a manchete longa encolhe, a segunda voz curta não)` : null
+  }
+  for (const [papel, irmaos] of blocosComCorpoPorPapel) {
+    if (irmaos.length > 1) avisos.push(`${papel}: ${observacaoDoTeto(montados.find((b) => b.layer.id === irmaos[0])!)}.`)
   }
   // #8: o papel do liso pelas tintas que a preparação REAL desenha (voz 2 criada, estilo do arranjo, destaque efetivo) —
   // a MESMA preparação para os dois papéis, sem preparar de novo nem trocar de variante. Na recomposição, o fundo da
@@ -2391,7 +2401,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
               ? {
                   corpos: montados
                     .filter((b) => b.corpo?.efetivo !== undefined)
-                    .map((b) => ({ camada: b.layer.id, papel: b.papel, referencia: b.corpo!.referencia, teto: b.corpo!.teto, piso: b.corpo!.piso, efetivo: b.corpo!.efetivo!, reducao: Math.round((1 - b.corpo!.efetivo! / b.corpo!.referencia) * 1000) / 1000 })),
+                    .map((b) => ({ camada: b.layer.id, papel: b.papel, referencia: b.corpo!.referencia, teto: b.corpo!.teto, piso: b.corpo!.piso, efetivo: b.corpo!.efetivo!, reducao: Math.round((1 - b.corpo!.efetivo! / b.corpo!.referencia) * 1000) / 1000, ...(observacaoDoTeto(b) ? { observacao: observacaoDoTeto(b)! } : {}) })),
                 }
               : {}),
             ...(mascara ? { foto: { mascara } } : {}),
