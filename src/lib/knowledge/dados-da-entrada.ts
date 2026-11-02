@@ -228,9 +228,9 @@ const HAPPY_HOUR = /happy[ -]?hour/
  * Palavra solta não muda de quem ela é ("na varanda aberta", "antes do jantar"): sem sujeito, vale o happy hour.
  */
 const CASA_NA_FAIXA = new RegExp(`(?:\\b${DIAS_RE}[\\s:,–—-]*${VERBO_DA_CASA}\\s+(?:${ADVERBIO_RE}\\s+)*|(?:a casa\\s+(?:funciona|abre)|funcionamento(?:\\s+habitual)?)[\\s:]+(?:de\\s+)?${DIAS_RE}[\\s:,–—-]*)das?\\s+${HORA_RE}`)
-const REFEICAO_NA_FAIXA = new RegExp(`(?<!(?:antes|depois) d[oe] |apos o )\\b(?:almoco|jantar)\\b[^,;]*?\\bdas?\\s+${HORA_RE}`)
-/** "Happy Hour — dias e horários" é exclusivo; "Horário de funcionamento e happy hour" não, e não empresta assunto. */
-const TITULO_MISTO = /funcion|expediente|almoco|jantar|\bhorarios?\b(?!\s+d[oe]\s+happy)/
+const REFEICAO_NA_FAIXA = new RegExp(`(?<!(?:antes|depois) d[oe] |apos o )\\b(?:almoco|jantar)\\b:?[^,;:]*?\\bdas?\\s+${HORA_RE}`)
+/** "Horário de funcionamento e happy hour" não empresta assunto. "Happy Hour: horários e condições" empresta: sem sinal claro, vale o exclusivo. */
+const TITULO_MISTO = /funcion|expediente|almoco|jantar|\bhorarios?\s+(?:da casa|e\s+happy)|happy[ -]?hour\s+e\s+horarios?\b/
 /** Linha que fala de uma data ou de feriado é exceção: fica preservada e não se compara com o horário habitual. */
 const DATADA = /\b\d{1,2}\/\d{1,2}\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2} de (?:janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b|feriado|vespera|natal|reveillon|carnaval|pascoa|excepcional/
 /** "habitual" sozinho não serve: "no lugar do horário habitual" é justamente a exceção. */
@@ -321,7 +321,7 @@ function fatosDoTexto(titulo: string, texto: string): FatoDoTexto[] {
         if (!m || citacao <= 0 || !CASA_NA_FAIXA.test(c.slice(0, citacao))) continue
         doResto = c.slice(0, citacao)
       }
-      if (OUTRO_SERVICO.test(doResto) || OUTRO_SERVICO.test(tituloNormal) || REFEICAO_NA_FAIXA.test(doResto)) continue
+      if (OUTRO_SERVICO.test(doResto) || OUTRO_SERVICO.test(tituloNormal) || (REFEICAO_NA_FAIXA.test(doResto) && !CASA_NA_FAIXA.test(doResto))) continue
       for (const m of doResto.matchAll(FAIXA_DO_DIA)) {
         if (/almoco/.test(doResto.slice(0, m.index))) continue
         fatos.push({ dias: diasDe(m[1]), faixa: turnosDesde(doResto, m), fim: null, trecho })

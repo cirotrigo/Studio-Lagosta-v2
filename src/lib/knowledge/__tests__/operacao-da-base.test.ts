@@ -376,7 +376,7 @@ describe('o serviço de cada frase, em entrada que fala de happy hour', () => {
     expect(achado({ ...CERTO, happy_hour: HAPPY }, 'Almoço de terça a sexta das 11h às 15h e happy hour das 16h às 19h.', MISTO)).toEqual([['happy_hour.time', '16:00-19:00']])
   })
   it('título exclusivo que fala de horários segue exclusivo', () => {
-    for (const titulo of ['Happy Hour — dias e horários', 'Horários do happy hour — Quintal', 'Quintal — Happy Hour']) {
+    for (const titulo of ['Happy Hour — dias e horários', 'Horários do happy hour — Quintal', 'Quintal — Happy Hour', 'Happy Hour: horários e condições — Quintal']) {
       expect(achado({ happy_hour: HAPPY, hours: HOURS }, 'Terça a sexta, das 16h às 19h.', titulo)).toEqual([['happy_hour.time', '16:00-19:00']])
     }
   })
@@ -393,6 +393,9 @@ describe('o serviço de cada frase, em entrada que fala de happy hour', () => {
     expect(achado(CERTO, 'O jantar de terça a sexta fecha às 23h, e o happy hour vai das 16h às 19h.', 'Ficha')).toEqual([])
     // Citar o jantar não apaga o funcionamento que vem depois.
     expect(achado({ hours: HOURS }, 'Jantar somente aos sábados, segunda e domingo funcionam habitualmente das 11h às 17h.', 'Ficha')).toEqual([['hours.monday', '11:00-17:00']])
+    expect(achado({ hours: HOURS }, 'Não servimos jantar aos domingos: domingo funciona das 11h às 16h.', 'Ficha')).toEqual([['hours.sunday', '11:00-16:00']])
+    expect(achado({ hours: HOURS }, 'Não servimos jantar aos domingos e segunda funciona das 11h às 17h.', 'Ficha')).toEqual([['hours.monday', '11:00-17:00']])
+    expect(achado({ hours: HOURS, happy_hour: { time: '16:00-19:00' } }, 'Almoço: das 11h às 15h.', SO_HAPPY)).toEqual([])
   })
   it('a mesma faixa antes da citação é o happy hour se apresentando', () => {
     const frase = 'Terça a sexta das 16h às 19h: nosso happy hour tem chope em dobro das 16h às 19h.'
