@@ -376,7 +376,7 @@ describe('o serviço de cada frase, em entrada que fala de happy hour', () => {
     expect(achado({ ...CERTO, happy_hour: HAPPY }, 'Almoço de terça a sexta das 11h às 15h e happy hour das 16h às 19h.', MISTO)).toEqual([['happy_hour.time', '16:00-19:00']])
   })
   it('título exclusivo que fala de horários segue exclusivo', () => {
-    for (const titulo of ['Happy Hour — dias e horários', 'Horários do happy hour — Quintal', 'Quintal — Happy Hour', 'Happy Hour: horários e condições — Quintal']) {
+    for (const titulo of ['Happy Hour — dias e horários', 'Horários do happy hour — Quintal', 'Quintal — Happy Hour', 'Happy Hour: horários e condições — Quintal', 'Happy Hour: como funciona — Quintal']) {
       expect(achado({ happy_hour: HAPPY, hours: HOURS }, 'Terça a sexta, das 16h às 19h.', titulo)).toEqual([['happy_hour.time', '16:00-19:00']])
     }
   })
@@ -401,6 +401,15 @@ describe('o serviço de cada frase, em entrada que fala de happy hour', () => {
     const frase = 'Terça a sexta das 16h às 19h: nosso happy hour tem chope em dobro das 16h às 19h.'
     expect(achado(CERTO, frase, SO_HAPPY)).toEqual([])
     expect(achado({ ...CERTO, happy_hour: HAPPY }, frase, SO_HAPPY)).toEqual([['happy_hour.time', '16:00-19:00']])
+  })
+  it('cada faixa se julga no seu trecho, mesmo com sujeito da casa na frase', () => {
+    const vizinha = 'Terça a sexta das 16h às 19h, segunda funciona das 11h às 17h.'
+    expect(achado(CERTO, vizinha, SO_HAPPY)).toEqual([])
+    expect(achado({ ...CERTO, happy_hour: HAPPY }, vizinha, SO_HAPPY)).toEqual([['happy_hour.time', '16:00-19:00']])
+    expect(achado({ ...CERTO, hours: HOURS }, vizinha, SO_HAPPY)).toEqual([['hours.monday', '11:00-17:00']])
+    expect(achado(CERTO, 'Jantar de terça a sexta das 19h às 23h, domingo funciona das 11h às 17h e happy hour das 16h às 19h.', 'Ficha')).toEqual([])
+    // Lista de dias com o verbo no fim não se parte: a segunda é do mesmo sujeito que o domingo.
+    expect(achado({ hours: HOURS }, 'Segunda, sexta e domingo funcionam das 11h às 17h.', 'Ficha').map(([campo]) => campo)).toEqual(['hours.monday', 'hours.friday'])
   })
   it('sem faixa própria o happy hour não leva a frase junto', () => {
     expect(achado(CERTO, 'Terça a sexta, das 16h às 19h, tem happy hour.', 'Ficha')).toEqual([])
