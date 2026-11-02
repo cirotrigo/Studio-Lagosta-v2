@@ -1784,4 +1784,6 @@ Rodada 1 do Codex sobre o código (01/11/2026, sete P2, nenhum P1) — o que ela
   e sem a janela, calada).
 - **`fotoJanela` sem foto chega à validação** (compor-arte, compor-leva, medir-copy): `SPEC_INVALIDA`, não descarte.
 - **`lerJanela` resolve o crop fora de faixa como o renderer** (clamp): `{ x: 0.9, width: 0.5 }` é a faixa direita que
-  a página mostra, não "ilegível → âncora por baixo".
+  a página mostra, não "ilegível → âncora por baixo". Vale até a faixa abaixo de 1 % depois do clamp (`x: 0.995` → 10 px
+  de 2000): ela é lida, mas a RECOMPOSIÇÃO dela é recusada (`janelaSchema` exige 0,01 → `SPEC_INVALIDA`) — recusa
+  explícita, nunca troca silenciosa pelo central (rodada 3 do Codex).
