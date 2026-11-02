@@ -325,7 +325,7 @@ function fatosDoTexto(titulo: string, texto: string): FatoDoTexto[] {
           if (!m || citacao <= 0 || !CASA_NA_FAIXA.test(c.slice(0, citacao))) continue
           doResto = c.slice(0, citacao)
         }
-        if (OUTRO_SERVICO.test(doResto) || OUTRO_SERVICO.test(tituloNormal) || (REFEICAO_NA_FAIXA.test(doResto) && !CASA_NA_FAIXA.test(doResto))) continue
+        if (OUTRO_SERVICO.test(doResto) || OUTRO_SERVICO.test(tituloNormal) || ((REFEICAO_NA_FAIXA.test(doResto) || /^(?:almoco|jantar)\b/.test(doResto)) && !CASA_NA_FAIXA.test(doResto))) continue
         for (const m of doResto.matchAll(FAIXA_DO_DIA)) {
           if (/almoco/.test(doResto.slice(0, m.index))) continue
           fatos.push({ dias: diasDe(m[1]), faixa: turnosDesde(doResto, m), fim: null, trecho })
