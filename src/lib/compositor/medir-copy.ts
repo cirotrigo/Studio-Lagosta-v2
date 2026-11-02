@@ -34,11 +34,11 @@ import { DIMENSOES, type Formato, type Papel } from './spec'
 import { colunaDaCaixa } from './blocos'
 import { conferirLogo, excessosDeLinhas, type ArquetipoPreparado } from './arquetipos/na-spec'
 import { alinhaDoPapel, caixasMaximas, type Materializacao, type PapelMaterializado, type ProblemaDeMaterializacao } from './arquetipos/materializar'
-import { ajusteFinalNecessario, caixasDosItens, camadasNaReferencia, papeisDeLista, papelGeometrico, prepararNoArquetipo } from './arquetipos/no-compositor'
+import { ajusteFinalNecessario, caixasDosItens, camadasNaReferencia, papeisDeLista, papelGeometrico, prepararNoArquetipo, type CorpoDoPapel } from './arquetipos/no-compositor'
 import { partidaNoArquetipo } from './arquetipos/candidatos-espaciais'
 import { obstaculosDosAcentos, posicionarAcentos, receitasDoArquetipo, type ProblemaDoAcento } from './arquetipos/acentos'
 import type { TextGeometryIssue } from '@/lib/creatives/text-geometry'
-import { ehReferencia, type PapelDeTexto } from './arquetipos/tipos'
+import { pisoDoCorpoDaReferencia, ehReferencia, type PapelDeTexto } from './arquetipos/tipos'
 import { papelDoBloco, tintasAtivas } from './arquetipos/fundo'
 
 /** Amostra em português para o orçamento por caracteres (a largura média de uma letra da marca). */
@@ -164,6 +164,11 @@ export interface MedidaDeBloco {
   orcamento?: OrcamentoDeLinha[]
   /** F3: o bloco é uma camada EXTRA — `papel` é o de estilo; aqui a função original, a herança e onde pousa. */
   extra?: { funcao: string; herdaDe: Papel; grupoVisual: string }
+  /**
+   * F2c: na peça por referência com `corpos` — o corpo desenhado (px), o efetivo com que o bloco sai, o piso materializado
+   * e a redução contra a REFERÊNCIA (0 = saiu no corpo desenhado). `escala` continua técnica (relativa ao estilo-base).
+   */
+  corpo?: { referencia: number; teto: number; efetivo: number | null; piso: number; reducao: number | null }
   avisos: string[]
 }
 
@@ -204,8 +209,12 @@ export interface MedicaoDoArquetipo {
   versao: number
   impressao: string
   formato: Formato
-  /** Por papel: a coluna de tinta (px), a capacidade de altura (px), as linhas máximas (HARD) e a estimativa SOFT. */
-  papeis: Partial<Record<PapelDeTexto, { largura: number; coluna: number; capacidade: number; linhasMax: number; caracteresPorLinha?: number }>>
+  /**
+   * Por papel: a coluna de tinta (px), a capacidade de altura (px), as linhas máximas (HARD) e a estimativa SOFT. F2c:
+   * `corpo` = o corpo desenhado na referência, o piso materializado e os caracteres por linha MEDIDOS nesse corpo (a
+   * assinatura dá o estilo; o orçamento é no corpo da referência, dito).
+   */
+  papeis: Partial<Record<PapelDeTexto, { largura: number; coluna: number; capacidade: number; linhasMax: number; caracteresPorLinha?: number; corpo?: { referencia: number; piso: number; caracteresPorLinha: number | null } }>>
   /**
    * Onde cada caixa pousaria na posição de PARTIDA (quando tudo coube): a referência, ou — se a área segura do projeto
    * a corta — a posição válida mais perto dela. Não é a posição final: desde o CP2B o compor escolhe, pela foto, o
@@ -265,7 +274,7 @@ export function medirCopy(args: {
   const margemArq = arq && !ehReferencia(arq.definicao) ? ('marca' as const) : undefined
   const caixasArq = arq ? caixasMaximas(arq.definicao, arq.formato, DIMENSOES[args.formato], pisoArq!, margemArq) : null
   const listasArq = arq ? papeisDeLista(arq.definicao) : null
-  const preparar = (escalaMaximaDoPapel?: (p: Papel) => number | undefined) =>
+  const preparar = (escalaMaximaDoPapel?: (p: Papel) => number | undefined, corpoDoPapel?: (p: Papel) => CorpoDoPapel | undefined) =>
     prepararBlocos({
       spec: args.spec,
       assinatura: args.assinatura,
@@ -275,7 +284,7 @@ export function medirCopy(args: {
       medir: args.medir,
       familias: args.familias,
       combinacoesSalvas: args.combinacoesSalvas ?? [],
-      ...(caixasArq ? { caixaDoPapel: (p: Papel) => caixasArq[papelGeometrico(p)], ...(escalaMaximaDoPapel ? { escalaMaximaDoPapel } : {}) } : {}),
+      ...(caixasArq ? { caixaDoPapel: (p: Papel) => caixasArq[papelGeometrico(p)], ...(escalaMaximaDoPapel ? { escalaMaximaDoPapel } : {}), ...(corpoDoPapel ? { corpoDoPapel } : {}) } : {}),
       ...(listasArq?.size ? { listaDoPapel: (p: Papel) => listasArq.has(papelGeometrico(p)) } : {}),
     })
   // Com arquétipo, a MESMA escada da unidade do compor (`prepararNoArquetipo`).
@@ -356,6 +365,9 @@ export function medirCopy(args: {
       }
     })
   }
+  // F2c: o piso da recusa é o da REFERÊNCIA (px) quando há `corpos`; senão os 80 % da assinatura de sempre.
+  const pisoDaRecusa = (r: { corpo?: { referencia: number; piso: number } }) =>
+    r.corpo ? `no piso da referência (${r.corpo.piso} px, ${Math.round((r.corpo.piso / r.corpo.referencia) * 100)} % dos ${r.corpo.referencia} px desenhados)` : `a ${Math.round(PISO_DE_ESCALA * 100)}% da fonte`
   const naoCarregou = (familias: string[]) => {
     const faltam = familias.filter((f) => !args.fonteCarregada(f))
     for (const f of faltam) fontesUsadasSemCarregar.add(f)
@@ -367,10 +379,12 @@ export function medirCopy(args: {
     // o estilo, e a peça o compõe — declará-lo ausente seria medir outra peça.
     if (faltamNaAssinatura.has(b.papel) && !b.extra) continue
     const naoMedido = naoCarregou(b.familiasMedidas)
+    const corpo = b.corpo && b.corpo.efetivo !== undefined ? { referencia: b.corpo.referencia, teto: b.corpo.teto, efetivo: b.corpo.efetivo, piso: b.corpo.piso, reducao: Math.round((1 - b.corpo.efetivo / b.corpo.referencia) * 1000) / 1000 } : null
     medidas.push({
       papel: b.papel,
       id: b.layer.id,
-      situacao: b.escala < 1 ? 'cabe-reduzido' : 'cabe',
+      // F2c: com o corpo da referência, "reduzido" é contra o DESENHADO (85 → 74 é reduzido; 40 pedidos e 40 obtidos é cabe).
+      situacao: corpo ? (corpo.efetivo < corpo.referencia ? 'cabe-reduzido' : 'cabe') : b.escala < 1 ? 'cabe-reduzido' : 'cabe',
       fonte: b.estilo.fontFamily,
       escala: b.escala,
       fontSize: Number(b.layer.style?.fontSize ?? null),
@@ -381,7 +395,17 @@ export function medirCopy(args: {
       aproximado: Boolean(b.destacado),
       linhasMedidas: medirLinhas(b.papel, b.estilo, b.linhasDaCopy, naoMedido, b.destaque, b.coluna, arq ? area.escalaDoFormato * b.escala : area.escalaDoFormato),
       ...(b.extra ? { extra: { funcao: b.extra.funcao, herdaDe: b.extra.herdaDe, grupoVisual: b.extra.grupoVisual } } : {}),
-      avisos: [...avisosDoPapel(b.papel), ...(b.escala < 1 ? [`fonte reduzida a ${Math.round(b.escala * 100)}% para caber na coluna (piso ${Math.round(PISO_DE_ESCALA * 100)}%)`] : [])],
+      ...(corpo ? { corpo } : {}),
+      avisos: [
+        ...avisosDoPapel(b.papel),
+        ...(corpo
+          ? corpo.efetivo < corpo.referencia
+            ? [`fonte em ${corpo.efetivo} px, abaixo dos ${corpo.referencia} px da referência (−${Math.round(corpo.reducao * 100)} %; piso ${corpo.piso} px)`]
+            : []
+          : b.escala < 1
+            ? [`fonte reduzida a ${Math.round(b.escala * 100)}% para caber na coluna (piso ${Math.round(PISO_DE_ESCALA * 100)}%)`]
+            : []),
+      ],
     })
   }
   for (const r of preparados.recusas) {
@@ -402,15 +426,16 @@ export function medirCopy(args: {
       aproximado: r.linhasDaCopy.some((l) => lerDestaques(l).trechos.length > 0),
       linhasMedidas: medirLinhas(r.papel, r.estilo, r.linhasDaCopy, naoMedido, r.destaque, r.coluna),
       orcamento: r.orcamento,
+      ...(r.corpo ? { corpo: { referencia: r.corpo.referencia, teto: r.corpo.teto, efetivo: null, piso: r.corpo.piso, reducao: null } } : {}),
       avisos: [
         ...avisosDoPapel(r.papel),
         naoMedido
           ? `a fonte de "${r.papel}" (${r.familiasMedidas.filter((f) => !args.fonteCarregada(f)).join(', ')}) não está no servidor: a recusa foi medida na fonte de fallback e NÃO vale — cadastre a fonte antes de reescrever`
           : r.altura
-            ? `a caixa tem ${r.altura.medida}px de altura e a referência do arquétipo comporta ${r.altura.capacidade}px mesmo a ${Math.round(PISO_DE_ESCALA * 100)}% da fonte: tire linhas ou encurte`
+            ? `a caixa tem ${r.altura.medida}px de altura e a referência do arquétipo comporta ${r.altura.capacidade}px mesmo ${pisoDaRecusa(r)}: tire linhas ou encurte`
             : r.orcamento.length === 0 && r.quebras?.length
               ? `${r.quebras.map((q) => `"${q.linha}"`).join(', ')} se desenha em mais de uma linha na coluna (${coluna}px) — há quebra dentro do item: cada linha da copy é um item`
-              : `linha maior que a coluna (${coluna}px) mesmo a ${Math.round(PISO_DE_ESCALA * 100)}% da fonte: reescreva com o orçamento`,
+              : `linha maior que a coluna (${coluna}px) mesmo ${pisoDaRecusa(r)}: reescreva com o orçamento`,
       ],
     })
   }
@@ -441,10 +466,21 @@ export function medirCopy(args: {
       )
     }
     const limites = arq.definicao.formatos[arq.formato].limitesDeTexto
+    const corposDaRef = arq.definicao.formatos[arq.formato].corpos
     const papeis: MedicaoDoArquetipo['papeis'] = {}
     for (const [papel, caixa] of Object.entries(caixasArq ?? {}) as Array<[PapelDeTexto, { largura: number; altura: number }]>) {
       const limite = limites[papel]
-      papeis[papel] = { largura: caixa.largura, coluna: colunaDaCaixa(caixa.largura), capacidade: caixa.altura, linhasMax: limite?.linhasMax ?? 0, ...(limite?.caracteresPorLinha ? { caracteresPorLinha: limite.caracteresPorLinha } : {}) }
+      const coluna = colunaDaCaixa(caixa.largura)
+      // F2c: o orçamento de caracteres MEDIDO no corpo da referência, com o estilo da assinatura (a fonte que a peça usa).
+      const referencia = corposDaRef?.[papel]
+      const estilo = args.assinatura.papeis[papel]
+      let corpo: { referencia: number; piso: number; caracteresPorLinha: number | null } | undefined
+      if (referencia !== undefined) {
+        const base = estilo && args.fonteCarregada(estilo.fontFamily) ? camadaDoPapel({ papel, linhas: [AMOSTRA_DO_ORCAMENTO], estilo, escala: referencia / estilo.fontSize, width: coluna, textAlign: 'left', groupId: 'orcamento', corDaMancha: args.assinatura.numeros.mancha }) : null
+        const m = base ? medirLinha(args.medir, base, AMOSTRA_DO_ORCAMENTO, coluna) : null
+        corpo = { referencia, piso: pisoDoCorpoDaReferencia(referencia), caracteresPorLinha: m && m.largura > 0 ? Math.max(1, Math.floor((AMOSTRA_DO_ORCAMENTO.length * coluna) / m.largura)) : null }
+      }
+      papeis[papel] = { largura: caixa.largura, coluna, capacidade: caixa.altura, linhasMax: limite?.linhasMax ?? 0, ...(limite?.caracteresPorLinha ? { caracteresPorLinha: limite.caracteresPorLinha } : {}), ...(corpo ? { corpo } : {}) }
     }
     const problemas = 'problemas' in m ? m.problemas : []
     const excessos = excessosDeLinhas(arq.definicao, arq.formato, args.spec)

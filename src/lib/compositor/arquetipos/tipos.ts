@@ -118,6 +118,14 @@ export interface GeometriaDoArquetipo {
   /** Obrigatório para todo papel de texto declarado: `linhasMax` é estrutural. */
   readonly limitesDeTexto: Readonly<Partial<Record<PapelDeTexto, LimiteDeTexto>>>
   /**
+   * F2c (02/11/2026): o CORPO desenhado na página de referência, por papel de texto — px no canvas canônico do formato,
+   * inteiro ≥ `CORPO_MINIMO_DA_REFERENCIA`. Só na definição compilada de uma referência (`referencia` presente): no
+   * catálogo "escala é relação, nunca corpo". É o TETO ABSOLUTO de todo bloco do papel (a manchete e a segunda voz, cada
+   * parte do serviço): a escada começa nele e desce até `pisoDoCorpoDaReferencia`. Obrigatório para todo papel de texto
+   * declarado quando presente.
+   */
+  readonly corpos?: Readonly<Partial<Record<PapelDeTexto, number>>>
+  /**
    * Só no fundo `foto-em-caixa` (#8, 24/10/2026), e nele obrigatória: a CAIXA da foto, em frações. A foto pousa nela em
    * cover; nenhuma zona de papel nem caixa de elemento a toca (o texto fica no liso).
    */
@@ -249,6 +257,13 @@ export interface ArquetipoDeLayout {
   /** Só na definição compilada de uma página de referência (F1). Ausente = arquétipo do catálogo. */
   readonly referencia?: ReferenciaDaDefinicao
 }
+
+/** F2c: o menor corpo que a materialização desenha (`camadaDoPapel`: `max(8, …)`) — o domínio de `corpos` começa nele. */
+export const CORPO_MINIMO_DA_REFERENCIA = 8
+/** F2c: a escada da peça por referência desce até esta fração do corpo DESENHADO (o legado desce até 80 % da assinatura). */
+export const PISO_DO_CORPO_DA_REFERENCIA = 0.8
+/** F2c: o piso MATERIALIZADO do corpo da referência (px inteiro): `max(8, round(0,8 × corpo))` — 39 → 31 (79 %), 8 → 8. */
+export const pisoDoCorpoDaReferencia = (corpo: number) => Math.max(CORPO_MINIMO_DA_REFERENCIA, Math.round(PISO_DO_CORPO_DA_REFERENCIA * corpo))
 
 /** A definição veio de uma página de referência do cliente (F1), não do catálogo. */
 export const ehReferencia = (a: Pick<ArquetipoDeLayout, 'referencia'> | null | undefined): boolean => !!a?.referencia

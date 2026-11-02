@@ -8,6 +8,7 @@ import type { Layer } from '@/types/template'
 import { CreativeError } from '@/lib/creatives/errors'
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
 import brunch from '../arquetipos/__tests__/suporte/emporio-ref02-brunch.json'
+import congelada from '../arquetipos/__tests__/suporte/emporio-ref02-brunch-v1-congelada.json'
 
 const db = {
   page: { findUnique: vi.fn() },
@@ -85,6 +86,23 @@ describe('aprovarReferencia', () => {
     expect(db.referenciaDeLayout.create).not.toHaveBeenCalled()
     db.referenciaDeLayout.findMany.mockResolvedValue([linha(definicaoV1, { revogadaEm: new Date() })])
     expect((await aprovarReferencia({ projectId: 12, pageId: PAGINA.id, aprovadaPor: null })).arquetipo.versao).toBe(2)
+  })
+
+  it('F2c: a revisão F1 CONGELADA vigente (sem corpos) + a MESMA página → o compilador novo grava a revisão 2 (com corpos, impressão nova); a 2 vigente reaproveita', async () => {
+    const v1 = congelada.definicao as unknown as typeof definicaoV1
+    expect(impressaoDoArquetipo(v1)).toBe(congelada.impressao)
+    db.referenciaDeLayout.findMany.mockResolvedValue([linha(v1)])
+    const r = await aprovarReferencia({ projectId: 12, pageId: PAGINA.id, aprovadaPor: null })
+    expect(r.reaproveitada).toBe(false)
+    expect(r.arquetipo.versao).toBe(2)
+    const data = db.referenciaDeLayout.create.mock.calls[0][0].data
+    expect(data.definicao.formatos.story.corpos).toEqual({ headline: 85, apoio: 39 })
+    expect(r.leitura.papeis.map((p) => p.corpo)).toEqual([85, 39])
+    // A 2 vigente: a mesma página reaproveita (impressão igual à gravada, normalizada para a versão seguinte).
+    db.referenciaDeLayout.create.mockClear()
+    db.referenciaDeLayout.findMany.mockResolvedValue([linha({ ...definicaoV1, versao: 2 })])
+    expect((await aprovarReferencia({ projectId: 12, pageId: PAGINA.id, aprovadaPor: null })).reaproveitada).toBe(true)
+    expect(db.referenciaDeLayout.create).not.toHaveBeenCalled()
   })
 
   it('a idempotência vem DEPOIS da validação: com o piso mudado, a mesma página é recusada em vez de reaproveitada', async () => {

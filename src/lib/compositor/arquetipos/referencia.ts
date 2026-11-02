@@ -20,9 +20,9 @@
 import type { Layer } from '@/types/template'
 import { papelDoTexto } from '@/lib/font-combinations-capture'
 import { formatoDaPaginaGravada } from '../formato'
-import type { Alinhamento, Papel } from '../spec'
+import { DIMENSOES, type Alinhamento, type Papel } from '../spec'
 import { fotoDaPaginaParaLayout } from './da-pagina'
-import { FORMATOS_DO_ARQUETIPO, type ArquetipoDeLayout, type Caixa, type CantoDaLogo, type FormatoDoArquetipo, type PapelDeTexto, type PapelNoArquetipo, type PosicaoDoPapel, type Zona } from './tipos'
+import { CORPO_MINIMO_DA_REFERENCIA, FORMATOS_DO_ARQUETIPO, type ArquetipoDeLayout, type Caixa, type CantoDaLogo, type FormatoDoArquetipo, type PapelDeTexto, type PapelNoArquetipo, type PosicaoDoPapel, type Zona } from './tipos'
 
 /** O id da definição de uma página: `ref-<pageId>` (o cuid é a-z0-9, kebab-case válido). */
 export const idDaReferencia = (pageId: string) => `ref-${pageId.toLowerCase()}`
@@ -39,6 +39,8 @@ export const CODIGOS_DA_COMPILACAO = [
   'REFERENCIA_PAPEL_REPETIDO',
   'REFERENCIA_CAMADA_GIRADA',
   'REFERENCIA_FORA_DO_PISO',
+  'REFERENCIA_CORPO_INVALIDO',
+  'REFERENCIA_DIMENSOES_INCOMPATIVEIS',
 ] as const
 export type CodigoDaCompilacao = (typeof CODIGOS_DA_COMPILACAO)[number]
 
@@ -53,7 +55,8 @@ export interface LeituraDaReferencia {
   formato: FormatoDoArquetipo
   foto: string
   logo: string
-  papeis: Array<{ papel: PapelDeTexto; camadas: string[]; linhas: number; caixa: Caixa; alinha: Alinhamento }>
+  /** F2c: `corpo` = o tamanho da fonte desenhado na camada (px), o teto da escada da peça por esta referência. */
+  papeis: Array<{ papel: PapelDeTexto; camadas: string[]; linhas: number; caixa: Caixa; alinha: Alinhamento; corpo: number }>
   ignoradas: CamadaIgnorada[]
 }
 
@@ -119,6 +122,12 @@ export function compilarReferencia(pagina: PaginaParaReferencia, args: { pageVer
     return recusa('REFERENCIA_FORMATO_NAO_SUPORTADO', `A página é ${formatoLido}; a referência só compila story e feed.`, { formato: formatoLido })
   }
   const formato = formatoLido as FormatoDoArquetipo
+  // F2c: a referência lê o CORPO da fonte em px — pixels literais só valem no canvas canônico do formato (uma página
+  // 2160×3840 ou com tag trocada é recusada aqui, na compilação; a reprodução pela revisão persistida não revalida).
+  const canonico = DIMENSOES[formato]
+  if (pagina.width !== canonico.width || pagina.height !== canonico.height) {
+    return recusa('REFERENCIA_DIMENSOES_INCOMPATIVEIS', `A página tem ${pagina.width}×${pagina.height} e o ${formato} é ${canonico.width}×${canonico.height}: a referência lê o corpo da fonte em px, então a página precisa estar no tamanho canônico do formato.`, { pagina: { width: pagina.width, height: pagina.height }, formato, canonico })
+  }
   const ignoradas: CamadaIgnorada[] = []
   const ignorar = (c: Layer, motivo: CamadaIgnorada['motivo']) => ignoradas.push({ camada: c.id, nome: c.name ?? c.id, tipo: c.type, motivo })
 
@@ -129,7 +138,7 @@ export function compilarReferencia(pagina: PaginaParaReferencia, args: { pageVer
     })
   }
 
-  const porPapel = new Map<PapelDeTexto, { camadas: Layer[]; caixa: Ret; linhas: number }>()
+  const porPapel = new Map<PapelDeTexto, { camadas: Layer[]; caixa: Ret; linhas: number; corpo: number }>()
   let logo: Layer | null = null
   for (const c of pagina.layers) {
     if (c.visible === false) continue
@@ -153,7 +162,13 @@ export function compilarReferencia(pagina: PaginaParaReferencia, args: { pageVer
       if (atual) {
         return recusa('REFERENCIA_PAPEL_REPETIDO', `O papel ${papel} aparece em mais de uma camada ("${atual.camadas[0].name ?? atual.camadas[0].id}" e "${c.name ?? c.id}"${lido === 'headline2' ? ', a segunda voz conta como manchete' : ''}): a F1 compila UMA camada por papel. Junte o texto numa camada só ou tire a repetida.`, { papel, camadas: [...atual.camadas.map((x) => x.id), c.id] })
       }
-      porPapel.set(papel, { camadas: [c], caixa: r, linhas: linhasDe(c) })
+      // F2c: o corpo desenhado — inteiro, do mínimo que a materialização desenha até a altura da página. Fora disso recusa
+      // (nunca arredonda nem aproxima): é o teto da escada da peça, e tem de ser o que a página mostra.
+      const corpo = (c.style as { fontSize?: unknown } | undefined)?.fontSize
+      if (!Number.isInteger(corpo) || (corpo as number) < CORPO_MINIMO_DA_REFERENCIA || (corpo as number) > pagina.height) {
+        return recusa('REFERENCIA_CORPO_INVALIDO', `A camada "${c.name ?? c.id}" (${papel}) tem corpo ${String(corpo)} px: a referência lê o corpo em px inteiros, de ${CORPO_MINIMO_DA_REFERENCIA} até a altura da página (${pagina.height}). Ajuste o tamanho da fonte no editor.`, { camada: c.id, papel, corpo })
+      }
+      porPapel.set(papel, { camadas: [c], caixa: r, linhas: linhasDe(c), corpo: corpo as number })
       continue
     }
     if (c.type === 'logo') {
@@ -178,7 +193,7 @@ export function compilarReferencia(pagina: PaginaParaReferencia, args: { pageVer
   if (!logo) return recusa('REFERENCIA_SEM_LOGO', 'A página não tem a logo (camada do tipo logo): toda referência carrega a logo da marca.', { ignoradas })
 
   // As caixas em frações; a centralizada no eixo da peça é simetrizada (até 8 px de fuga), senão é incoerente.
-  const caixas = new Map<PapelDeTexto, { caixa: Caixa; alinha: Alinhamento; linhas: number; camadas: string[] }>()
+  const caixas = new Map<PapelDeTexto, { caixa: Caixa; alinha: Alinhamento; linhas: number; camadas: string[]; corpo: number }>()
   for (const [papel, p] of porPapel) {
     const ordenadas = [...p.camadas].sort((a, b) => (a.position?.y ?? 0) - (b.position?.y ?? 0))
     const alinha = alinhamentoDe(ordenadas[0])
@@ -190,7 +205,7 @@ export function compilarReferencia(pagina: PaginaParaReferencia, args: { pageVer
       }
       caixa = simetrizar(caixa)
     }
-    caixas.set(papel, { caixa, alinha, linhas: Math.max(1, p.linhas), camadas: ordenadas.map((c) => c.id) })
+    caixas.set(papel, { caixa, alinha, linhas: Math.max(1, p.linhas), camadas: ordenadas.map((c) => c.id), corpo: p.corpo })
   }
   // A âncora é a faixa em que a manchete INTEIRA cai (as mesmas do validador); rodapé e topo antes do meio, que as
   // sobrepõe.
@@ -242,9 +257,11 @@ export function compilarReferencia(pagina: PaginaParaReferencia, args: { pageVer
 
   const posicoes: Partial<Record<PapelDeTexto | 'logo', PosicaoDoPapel>> = {}
   const limitesDeTexto: Partial<Record<PapelDeTexto, { linhasMax: number }>> = {}
+  const corpos: Partial<Record<PapelDeTexto, number>> = {}
   for (const [papel, c] of caixas) {
     posicoes[papel] = { referencia: c.caixa, zona: { ...zonaDaCaixa(c.caixa), yMin: zonaDosTextos.yMin, yMax: zonaDosTextos.yMax } }
     limitesDeTexto[papel] = { linhasMax: c.linhas }
+    corpos[papel] = c.corpo
   }
   posicoes.logo = { referencia: caixaDaLogo, zona: zonaDaCaixa(caixaDaLogo) }
 
@@ -255,7 +272,7 @@ export function compilarReferencia(pagina: PaginaParaReferencia, args: { pageVer
     nome: `Referência · ${(pagina.name ?? pagina.id).trim() || pagina.id}`,
     papeis,
     preferencias: { ancora: faixa, alinha: alinhaDaManchete, cantoDaMarca },
-    formatos: { [formato]: { papeis: posicoes, limitesDeTexto } } as unknown as ArquetipoDeLayout['formatos'],
+    formatos: { [formato]: { papeis: posicoes, limitesDeTexto, corpos } } as unknown as ArquetipoDeLayout['formatos'],
     referencia: { pageId: pagina.id, pageVersion: args.pageVersion, formato },
   }
   return {
@@ -265,7 +282,7 @@ export function compilarReferencia(pagina: PaginaParaReferencia, args: { pageVer
       formato,
       foto,
       logo: logo.id,
-      papeis: ordem.map(([papel, c]) => ({ papel, camadas: c.camadas, linhas: c.linhas, caixa: c.caixa, alinha: c.alinha })),
+      papeis: ordem.map(([papel, c]) => ({ papel, camadas: c.camadas, linhas: c.linhas, caixa: c.caixa, alinha: c.alinha, corpo: c.corpo })),
       ignoradas,
     },
   }

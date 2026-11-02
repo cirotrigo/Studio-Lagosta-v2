@@ -1787,3 +1787,65 @@ Rodada 1 do Codex sobre o código (01/11/2026, sete P2, nenhum P1) — o que ela
   a página mostra, não "ilegível → âncora por baixo". Vale até a faixa abaixo de 1 % depois do clamp (`x: 0.995` → 10 px
   de 2000): ela é lida, mas a RECOMPOSIÇÃO dela é recusada (`janelaSchema` exige 0,01 → `SPEC_INVALIDA`) — recusa
   explícita, nunca troca silenciosa pelo central (rodada 3 do Codex).
+
+
+### F2c da direção por referência: o CORPO desenhado na referência é o teto da escada (02/11/2026)
+
+**Pedido do Ciro**: "como eu defino o tamanho da fonte?" — na peça da F1/F2a a manchete saiu nos 58 px da assinatura
+story do Empório, e a página do Brunch a desenha em 85. Plano (v1→v4, APTO na 4ª rodada do Codex) e revisões em
+`human-output/relatorios/editor-madrugada-2026-10-24/direcao-por-referencia-2026-10-30/f2c-corpo/`.
+
+**O que existe:**
+
+- **O compilador lê o corpo** (`referencia.ts`): `style.fontSize` de cada camada de papel → `formatos[f].corpos[papel]`
+  (px no canvas canônico). Domínio: inteiro, de `CORPO_MINIMO_DA_REFERENCIA` (8, o mínimo que `camadaDoPapel` desenha)
+  até a altura da página — fora disso `REFERENCIA_CORPO_INVALIDO` (nunca arredonda). **A página precisa estar no canvas
+  canônico do formato** (`DIMENSOES`): 2160×3840 ou tag trocada é `REFERENCIA_DIMENSOES_INCOMPATIVEIS` — só na
+  compilação (aprovação e reaprovação); a reprodução pela revisão persistida não revalida. A `leitura.papeis` diz o corpo.
+- **Tipo e validador**: `GeometriaDoArquetipo.corpos?` — só em definição com `referencia` (no catálogo "escala é relação,
+  nunca corpo"); chaves só de papéis de texto presentes; presente, todo papel de texto presente tem o seu.
+- **A escada parte do corpo desenhado, bloco a bloco, sobre o estilo EFETIVO** (`preparar-blocos.ts`): o fator de cada
+  bloco é `corpoRef / (estiloEfetivo.fontSize × escalaDoFormato)` — assinatura 58, arranjo 72, referência 85 → 85 px,
+  nunca 106. **Teto ABSOLUTO por papel**: a manchete e a segunda voz partem ambas de `corpos.headline`; cada parte do
+  serviço, de `corpos.servico`. Não há "bloco principal" nem proporção da segunda voz (a referência desenha UMA camada
+  por papel; a hierarquia pode inverter — manchete longa em 64, segunda voz curta em 80 —, dito).
+- **Piso materializado** `pisoDoCorpoDaReferencia(corpo) = max(8, round(0,8 × corpo))` (39 → 31, "79 %", não "80 %"):
+  `montarBloco` recebe `pisoDeEscala`, tenta o piso exato como último degrau e nunca acrescenta um piso ACIMA do teto.
+- **A escada da UNIDADE numa régua comum** (`prepararNoArquetipo`): o teto de cada papel em px do corpo da referência,
+  descendo até o piso quando a pilha não cabe — o próximo teto é o de baixo do MAIOR corpo EFETIVO entre os blocos do
+  papel (compara corpos em px, nunca fatores); já no piso, a materialização recusa com o orçamento. A independência é só
+  do teto inicial: se a unidade precisa descer, o bloco curto também desce; tirar uma linha libera altura e o corpo
+  final volta ao teto. O legado (definição sem `corpos`: catálogo, `dominante`, listas, revisões F1) segue a escada de
+  0,04 sobre a assinatura, byte a byte.
+- **Diagnóstico e medição**: `diagnostico.arquetipo.corpos[]` (por bloco: referência, teto, piso, efetivo, redução) e o
+  aviso "coube em 74 px, não nos 85 px da referência (−13 %): encurte a copy"; no medir-copy, `bloco.corpo` com os mesmos
+  campos, `cabe-reduzido` contra o DESENHADO (85 → 74 é reduzido; 40 pedidos e 40 obtidos é `cabe`), as recusas dizem "no
+  piso da referência (68 px, 80 % dos 85 px desenhados)" e `arquetipo.papeis[papel].corpo.caracteresPorLinha` é medido
+  no corpo da referência. `escala` continua técnica (relativa ao estilo-base; pode passar de 1).
+- **Reaprovação**: `aprovarReferencia` compara a impressão compilada com a revisão vigente normalizada para a versão
+  seguinte — o compilador novo produz outra impressão para a MESMA página e grava a revisão 2 (com `corpos`); a
+  aprovação equivalente reaproveita. A revisão antiga é imutável: a peça nascida nela reproduz como nasceu.
+  **A Brunch precisa ser reaprovada (pelo Ciro, com `versaoEsperada`) para ganhar o corpo.** `listar-referencias`
+  devolve `corpos` da revisão persistida (null nas revisões de antes).
+
+**O que NÃO muda**: fonte e cor continuam da assinatura (o Brunch desenha TrajanPro Regular branca; a peça sai Bold
+dourada — F2d, se o Ciro quiser); o `letterSpacing` e os ornamentos presos ao texto escalam com o fator, como sempre
+(passam a acompanhar o teto; podem provocar recusa geométrica, dita); listas não entram (o compilador da referência não
+emite `lista: true`).
+
+**Prova**: `referencia.test` (corpos da Brunch 85/39; domínio; dimensões; a revisão F1 CONGELADA em
+`emporio-ref02-brunch-v1-congelada.json` continua válida com a impressão gravada e a mesma geometria),
+`medir-copy-referencia.test` (85/39 com assinatura 70/25; copy longa desce dita; congelada mede 70; segunda voz no mesmo
+teto 80 e a unidade de 3 linhas desce na régua comum até 73), `referencias-service.test` (congelada vigente + mesma página
+→ revisão 2 com corpos), `f2c-corpo.test` (compositor real sintético: 85/39 contra assinatura 90/40, paridade com o
+medir-copy; 100 px em duas linhas desce até ≥ 80 e avisa; congelada compõe em 90).
+
+**Armadilhas:**
+- 🔴 O fator sobre a ASSINATURA errava o teto quando o estilo efetivo vinha de um arranjo (72 → 106 px): o teto é px e a
+  conversão é por bloco, onde o estilo efetivo já está resolvido.
+- 🔴 `linhasMax` da referência é o número de linhas DESENHADAS: uma manchete de uma linha recusa copy de duas antes de
+  qualquer escada (não é a F2c; é a F1). Nos testes, a página de três linhas.
+- O medidor sintético dos testes mede a linha mais alta que a TrajanPro real: nos 97 px da Brunch a manchete de 85
+  invade o apoio (ORDEM_DE_LEITURA) — os testes de composição usam a caixa de 220 px; a geometria real fica para a prova
+  real pelo compositor.
+- `definicaoV1` compilada pelo compilador corrente não prova compatibilidade com a F1: a prova é a fixture congelada.

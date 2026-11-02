@@ -77,6 +77,17 @@ export interface BlocoPreparado extends BlocoMontado {
   coluna: number
   /** As posições, no bloco do AUTOR, das linhas que este texto desenha — a ordem de leitura da copy. */
   indicesDoBloco: number[]
+  /** F2c: na peça por referência com `corpos` — o corpo desenhado (px), o teto e o piso deste bloco (px) e o corpo efetivo. */
+  corpo?: CorpoDoBloco
+}
+
+/** F2c: o corpo da referência como este bloco o viu — todos em px do canvas. */
+export interface CorpoDoBloco {
+  referencia: number
+  teto: number
+  piso: number
+  /** O corpo com que o bloco saiu (`layer.style.fontSize`); ausente na recusa. */
+  efetivo?: number
 }
 
 export interface RecusaPreparada {
@@ -97,6 +108,8 @@ export interface RecusaPreparada {
   altura?: RecusaDeBloco['altura']
   /** Com arquétipo: as linhas que se desenham em mais de uma linha na coluna (ver `RecusaDeBloco.quebras`). */
   quebras?: RecusaDeBloco['quebras']
+  /** F2c: o corpo da referência com que o bloco foi medido (a recusa diz o piso em px, não "80 %"). */
+  corpo?: CorpoDoBloco
 }
 
 export interface BlocosPreparados {
@@ -142,6 +155,12 @@ export function prepararBlocos(args: {
   caixaDoPapel?: (papel: Papel) => { largura: number; altura: number } | undefined
   /** Com arquétipo: o fator (≤ 1) em que a escada de cada papel começa — a escada da unidade (`no-compositor.ts`). */
   escalaMaximaDoPapel?: (papel: Papel) => number | undefined
+  /**
+   * F2c: na peça por referência com `corpos`, o teto e o piso do papel em PX (a régua comum da unidade). Convertidos AQUI
+   * ao estilo EFETIVO de cada bloco (o do arranjo ou o da assinatura): assinatura 58, arranjo 72, referência 85 → o bloco
+   * parte de 85 px, nunca de 106. Vence `escalaMaximaDoPapel`.
+   */
+  corpoDoPapel?: (papel: Papel) => { referencia: number; teto: number; piso: number } | undefined
   /**
    * Com arquétipo de LISTA (#15): o papel cujo bloco vira um ITEM por linha autoral — uma camada por linha, do MESMO
    * bloco (`origem.linhas` = a linha dela), na ordem do autor. O item que quebra em duas linhas visuais segue uma camada.
@@ -334,6 +353,10 @@ export function prepararBlocos(args: {
       const estiloMedido = caixa ? { ...estilo, larguraMaxima: undefined } : estilo
       const colunaDoBloco = caixa ? colunaDaCaixa(caixa.largura) : colunaUtil
       const coluna = Math.floor(colunaDoBloco * (estiloMedido.larguraMaxima ?? 1))
+      // F2c: o teto/piso em px do papel geométrico, convertidos ao estilo efetivo deste bloco (fator sobre `escalaDoFormato`).
+      const corpoDaRef = caixa ? args.corpoDoPapel?.(p.papel === 'headline2' ? 'headline' : p.papel) : undefined
+      const baseDoBloco = estiloMedido.fontSize * escalaDoFormato
+      const escalaMaxima = corpoDaRef ? corpoDaRef.teto / baseDoBloco : caixa ? args.escalaMaximaDoPapel?.(p.papel === 'headline2' ? 'headline' : p.papel) : undefined
       const r = montarBloco({
         papel: p.papel,
         id,
@@ -342,9 +365,8 @@ export function prepararBlocos(args: {
         escalaDoFormato,
         colunaUtil: colunaDoBloco,
         ...(caixa ? { alturaMaxima: caixa.altura } : {}),
-        ...(caixa && args.escalaMaximaDoPapel?.(p.papel === 'headline2' ? 'headline' : p.papel) !== undefined
-          ? { escalaMaxima: args.escalaMaximaDoPapel(p.papel === 'headline2' ? 'headline' : p.papel) }
-          : {}),
+        ...(escalaMaxima !== undefined ? { escalaMaxima } : {}),
+        ...(corpoDaRef ? { pisoDeEscala: corpoDaRef.piso / baseDoBloco } : {}),
         textAlign: 'left',
         groupId: `grupo-${hashDe(chaveDoGrupoAtual) % 99991}`,
         corDaMancha: mancha,
@@ -363,10 +385,14 @@ export function prepararBlocos(args: {
       })
       avisos.push(...r.avisos)
       if (r.recusa) {
-        recusas.push({ papel: r.recusa.papel, funcao, ...(p.extra ? { extra: p.extra } : {}), id, linhasDaCopy: p.linhas, estilo, familiasMedidas: r.recusa.familiasMedidas, destaque, orcamento: r.recusa.orcamento, coluna, ...(r.recusa.altura ? { altura: r.recusa.altura } : {}), ...(r.recusa.quebras ? { quebras: r.recusa.quebras } : {}) })
+        recusas.push({ papel: r.recusa.papel, funcao, ...(p.extra ? { extra: p.extra } : {}), id, linhasDaCopy: p.linhas, estilo, familiasMedidas: r.recusa.familiasMedidas, destaque, orcamento: r.recusa.orcamento, coluna, ...(r.recusa.altura ? { altura: r.recusa.altura } : {}), ...(r.recusa.quebras ? { quebras: r.recusa.quebras } : {}), ...(corpoDaRef ? { corpo: corpoDaRef } : {}) })
         continue
       }
-      if (r.bloco.escala < 1) avisos.push(`${p.papel}: fonte reduzida a ${Math.round(r.bloco.escala * 100)}% para caber na coluna`)
+      const corpoEfetivo = Number(r.bloco.layer.style?.fontSize ?? 0)
+      // F2c: a redução que importa é contra o corpo DESENHADO, não contra a assinatura (a escala técnica pode estar acima de 1).
+      if (corpoDaRef) {
+        if (corpoEfetivo < corpoDaRef.referencia) avisos.push(`${p.papel}: corpo ${corpoEfetivo} px, abaixo dos ${corpoDaRef.referencia} px da referência (−${Math.round((1 - corpoEfetivo / corpoDaRef.referencia) * 100)} %) para caber`)
+      } else if (r.bloco.escala < 1) avisos.push(`${p.papel}: fonte reduzida a ${Math.round(r.bloco.escala * 100)}% para caber na coluna`)
       const escalaDosElementos = escalaDoFormato * r.bloco.escala
       if (p.texto && p.texto.elementos.length > 0) elementosPorTexto.set(r.bloco.layer.id, { elementos: p.texto.elementos, escala: escalaDosElementos })
       const vaoAntes = p.texto && p.texto.vaoAntes !== null ? Math.round(p.texto.vaoAntes * escalaDoFormato) : null
@@ -394,6 +420,7 @@ export function prepararBlocos(args: {
         ...(vaoAntes !== null ? { vaoAntes } : {}),
         ...(p.texto?.recuo ? { recuo: Math.round(p.texto.recuo * escalaDoFormato) } : {}),
         ...(p.texto && p.texto.elementos.length > 0 ? { elementos: p.texto.elementos, escalaDosElementos } : {}),
+        ...(corpoDaRef ? { corpo: { ...corpoDaRef, efetivo: corpoEfetivo } } : {}),
       })
     }
   }
