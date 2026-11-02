@@ -235,7 +235,7 @@ const REFEICAO_NA_FAIXA = new RegExp(`(?<!(?:\\dh|\\d:\\d\\d).*|(?:antes|depois)
  * Só é misto o título que lista outro serviço ao lado do happy hour ("Horário de funcionamento e happy hour").
  * "Happy Hour no fim do expediente" e "Happy Hour: horários e condições" seguem exclusivos: sem lista, vale o exclusivo.
  */
-const TITULO_MISTO = /(?:^|,\s*|\s[—–-]\s|\se\s)(?:horarios?\s+(?:d[eoa]\s+)?)?(?:funcionamento|expediente|almoco|jantar)\b(?!\s+d[oe]\s+(?:\S+\s+)?happy)|\bhorarios?\s+(?:da casa|e\s+happy)|happy[ -]?hour\s+e\s+horarios?\b/
+const TITULO_MISTO = /(?:^|,\s*|\s[—–-]\s|\se\s)(?:horarios?\s+(?:d[eoa]\s+)?)?(?:funcionamento|expediente|almoco|jantar|delivery|brunch)\b(?!\s+d[oe]\s+(?:\S+\s+)?happy)|\bhorarios?\s+(?:da casa|e\s+happy)|happy[ -]?hour\s+e\s+horarios?\b/
 /** Linha que fala de uma data ou de feriado é exceção: fica preservada e não se compara com o horário habitual. */
 const DATADA = /\b\d{1,2}\/\d{1,2}\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2} de (?:janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b|feriado|vespera|natal|reveillon|carnaval|pascoa|excepcional/
 /** "habitual" sozinho não serve: "no lugar do horário habitual" é justamente a exceção. */
@@ -309,7 +309,7 @@ function fatosDoTexto(titulo: string, texto: string): FatoDoTexto[] {
   const fatos: FatoDoTexto[] = []
   const tituloNormal = semAcento(titulo)
   // Só a entrada exclusiva empresta o assunto à frase sem sujeito ("Terça a sexta, das 16h às 19h.").
-  const soDeHappyHour = HAPPY_HOUR.test(tituloNormal) && !TITULO_MISTO.test(tituloNormal) && !OUTRO_SERVICO.test(tituloNormal)
+  const soDeHappyHour = HAPPY_HOUR.test(tituloNormal) && !TITULO_MISTO.test(tituloNormal)
   for (const linha of texto.split(/\n+/)) {
     for (const { clausula: trecho, datada } of clausulasDaLinha(linha)) {
       if (datada) continue
