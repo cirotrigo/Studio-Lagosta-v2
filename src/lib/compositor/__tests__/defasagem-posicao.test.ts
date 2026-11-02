@@ -72,7 +72,10 @@ describe('escolha espacial na recomposição (CP2B)', () => {
     const janela = { x: 0.177, y: 0.058, width: 0.624, height: 0.742 }
     expect(escolhaEspacialOriginal(daBusca({ ...escolha, corte: 'janela', janela }), comArquetipo)).toMatchObject({ modo: 'busca-espacial-v1', corte: 'janela', janela })
     expect(codigo(() => escolhaEspacialOriginal(daBusca({ ...escolha, corte: 'janela' }), comArquetipo))).toBe('ARQUETIPO_ESCOLHA_ILEGIVEL')
-    expect(codigo(() => escolhaEspacialOriginal(daBusca({ ...escolha, corte: 'janela', janela: { x: 0.9, y: 0, width: 0.5, height: 0.5 } }), comArquetipo))).toBe('ARQUETIPO_ESCOLHA_ILEGIVEL')
+    // A janela gravada fora de faixa é RESOLVIDA como o desenho (o clamp), nunca ignorada (Codex, F2a rodada 1, P2 #7)…
+    expect(escolhaEspacialOriginal(daBusca({ ...escolha, corte: 'janela', janela: { x: 0.9, y: 0, width: 0.5, height: 0.5 } }), comArquetipo)).toMatchObject({ corte: 'janela', janela: { x: 0.9, y: 0, width: 1 - 0.9, height: 0.5 } })
+    // …e só a que o desenho também não aceita (nada sobra depois do clamp) é ilegível.
+    expect(codigo(() => escolhaEspacialOriginal(daBusca({ ...escolha, corte: 'janela', janela: { x: 1, y: 0, width: 0.5, height: 0.5 } }), comArquetipo))).toBe('ARQUETIPO_ESCOLHA_ILEGIVEL')
   })
 
   it('sem arquétipo, null — nem lê o diagnóstico', () => {

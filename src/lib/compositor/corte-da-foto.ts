@@ -37,14 +37,21 @@ export type RotuloDoCorte = CropPosition | typeof ROTULO_DA_JANELA
 
 const finito = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
 
-/** Lê uma janela de um valor qualquer (`style.crop`, a spec, o diagnóstico): `null` fora do contrato. */
+/**
+ * Lê uma janela de um valor qualquer (`style.crop`, a spec, o diagnóstico) e a RESOLVE como o desenho (o clamp de
+ * `resolveImageSourceRect`): o estado existente que o renderer aceita nunca é ignorado — ignorá-lo faria a recomposição
+ * trocar o enquadramento visível e o revisor medir o corte errado (Codex, F2a rodada 1, P2 #7). `null` só no que o
+ * renderer também não desenha por ela (não é objeto, lado não finito ou ≤ 0, nada sobra depois do clamp). A forma de um
+ * PEDIDO novo é a `janelaSchema` da spec, estrita.
+ */
 export function lerJanela(valor: unknown): Janela | null {
   if (!valor || typeof valor !== 'object' || Array.isArray(valor)) return null
   const j = valor as Record<string, unknown>
   if (![j.x, j.y, j.width, j.height].every(finito)) return null
-  const { x, y, width, height } = j as unknown as Janela
-  if (x < 0 || y < 0 || width < JANELA_MINIMA || height < JANELA_MINIMA || x + width > 1 + 1e-9 || y + height > 1 + 1e-9) return null
-  return { x, y, width, height }
+  const { width, height } = j as unknown as Janela
+  if (!(width > 0 && height > 0)) return null
+  const e = janelaEfetiva(j as unknown as Janela)
+  return e.width >= JANELA_MINIMA && e.height >= JANELA_MINIMA ? e : null
 }
 
 /** A janela como `resolveImageSourceRect` a desenha (clamp): é esta que a medida usa — nunca a crua. */

@@ -304,6 +304,8 @@ describe.skipIf(!fontesNoDisco())('#8 · recomposição real da Generation', () 
     banco.pngs = []
     banco.rerenders = []
     await nascerEEditar((l) => (l.id === 'bg-foto' ? { ...l, style: { ...l.style, cropPosition: 'center-top' } } : l))
+    // O assunto catalogado passa a caber no corte adotado (a âncora da página que PERDE o assunto recusa: G-R6e).
+    cenario.atual = { ...cenario.atual!, catalogo: { driveFileId: 'drive-8', assunto: { x0: 0.34, y0: 0.02, x1: 0.66, y1: 0.15 } } }
     const r = await recomporPaginaDefasada({ pageId: 'p9' })
     expect(r.recomposta).toBe(true)
     expect(r.avisos.join(' ')).not.toMatch(/ajustada à mão/)
@@ -314,6 +316,59 @@ describe.skipIf(!fontesNoDisco())('#8 · recomposição real da Generation', () 
     const patch = banco.sql.map((v) => (typeof v[0] === 'string' ? JSON.parse(v[0]) : null)).find((j) => j?.spec && j?.composicao)
     expect(patch.spec.foto).toMatchObject({ driveFileId: 'drive-8', corte: 'center-top' })
     expect(patch.composicao.arquetipo.buscaEspacial.escolha.corte).toBe('center-top')
+  }, 120_000)
+
+  it('G-R6c (F2a, Codex rodada 1 #1): "Remover" o enquadramento (fundo sem crop NEM âncora) → a recomposição adota o cover CENTRAL da página, não ressuscita o corte gravado', async () => {
+    await montar()
+    await nascerEEditar((l) => (l.id === 'bg-foto' ? { ...l, style: { objectFit: 'cover', ...((l.style as any)?.mask ? { mask: (l.style as any).mask } : {}) } } : l))
+    // O assunto passa a caber no central (no cenário ele fica embaixo e a peça nasce em center-bottom).
+    cenario.atual = { ...cenario.atual!, catalogo: { driveFileId: 'drive-8', assunto: { x0: 0.34, y0: 0.45, x1: 0.66, y1: 0.6 } } }
+    const r = await recomporPaginaDefasada({ pageId: 'p9' })
+    expect(r.recomposta).toBe(true)
+    expect(r.avisos.join(' ')).not.toMatch(/ajustada à mão/)
+    const fundo = porId(banco.pagina!.layers as Layer[], 'bg-foto')
+    expect(fundo.style?.cropPosition).toBe('center-middle')
+    expect(fundo.style?.crop).toBeUndefined()
+    const patch = banco.sql.map((v) => (typeof v[0] === 'string' ? JSON.parse(v[0]) : null)).find((j) => j?.spec && j?.composicao)
+    expect(patch.spec.foto).toEqual({ driveFileId: 'drive-8', corte: 'center-middle' })
+    expect(patch.composicao.arquetipo.buscaEspacial.escolha).toMatchObject({ corte: 'center-middle' })
+    expect(patch.composicao.arquetipo.buscaEspacial.escolha.janela).toBeUndefined()
+  }, 120_000)
+
+  it('G-R6d (F2a, Codex rodada 1 #2): a janela APROVADA na página fora da proporção da caixa é reproduzida VERBATIM numa edição de texto — nem JANELA_NAO_CABE, nem ajuste', async () => {
+    await montar()
+    const janela = { x: 0, y: 0, width: 1, height: 0.2 }
+    await nascerEEditar((l) => (l.id === 'bg-foto' ? { ...l, style: { ...l.style, crop: janela } } : l))
+    // O assunto dentro da janela (a página mostra só o topo da foto).
+    cenario.atual = { ...cenario.atual!, catalogo: { driveFileId: 'drive-8', assunto: { x0: 0.34, y0: 0.02, x1: 0.66, y1: 0.15 } } }
+    const r = await recomporPaginaDefasada({ pageId: 'p9' })
+    expect(r.recomposta).toBe(true)
+    expect(r.avisos.join(' ')).not.toMatch(/não estava na proporção|ajustada à mão/)
+    const fundo = porId(banco.pagina!.layers as Layer[], 'bg-foto')
+    expect(fundo.style?.crop).toEqual(janela)
+    expect(fundo.style?.cropPosition).toBeUndefined()
+    const patch = banco.sql.map((v) => (typeof v[0] === 'string' ? JSON.parse(v[0]) : null)).find((j) => j?.spec && j?.composicao)
+    expect(patch.spec.foto).toEqual({ driveFileId: 'drive-8', janela })
+    expect(patch.composicao.arquetipo.buscaEspacial.escolha).toMatchObject({ corte: 'janela', janela })
+    expect(patch.composicao.posicao).toMatchObject({ crop: 'janela', janela })
+    expect(patch.composicao.posicao.janelaPedida).toBeUndefined()
+    // A segunda edição de texto (a spec gravada já leva a janela) reproduz o MESMO retângulo, de novo sem normalizar.
+    const editadas2 = (banco.pagina!.layers as Layer[]).map((l) => (l.id === 'apoio' ? { ...l, content: 'Menu executivo' } : l))
+    const revisao2 = revisaoDaPaginaComCamadas(lerCopyAutoral(banco.pagina!.copyAutoral).copy!, editadas2, { autor: 'equipe', motivo: 'edição', superficie: 'editor' })
+    banco.pagina = { ...banco.pagina!, layers: editadas2, copyAutoral: revisao2.copy, updatedAt: new Date(6_000) }
+    // O que o banco real grava e o dublê não: a arte passa a apontar para o PNG novo (o slide já aponta).
+    banco.generations[0] = { ...banco.generations[0], resultUrl: r.url, fieldValues: { ...banco.generations[0].fieldValues, ...patch } }
+    banco.sql = []
+    const r2 = await recomporPaginaDefasada({ pageId: 'p9' })
+    expect(r2.recomposta).toBe(true)
+    expect(porId(banco.pagina!.layers as Layer[], 'bg-foto').style?.crop).toEqual(janela)
+  }, 120_000)
+
+  it('G-R6e (F2a, Codex rodada 1 #4): a janela da página que PERDE o assunto catalogado → na reprodução recusa (ARQUETIPO_CORTE_CONGELADO_PERDE_O_ASSUNTO), nada escrito — a spec não relaxa a proteção', async () => {
+    await montar()
+    await nascerEEditar((l) => (l.id === 'bg-foto' ? { ...l, style: { ...l.style, crop: { x: 0, y: 0, width: 1, height: 0.2 } } } : l))
+    const e = await recusaSemEscrever(recomporPaginaDefasada({ pageId: 'p9' }))
+    expect([e.code, e.status, e.details!.escolha.corte], e.message).toEqual(['ARQUETIPO_CORTE_CONGELADO_PERDE_O_ASSUNTO', 422, 'janela'])
   }, 120_000)
 
   it('G-R7: Page.background editado (não é ajuste manual): o papel que atende vale e a peça sai nele; o que não atende recusa, nada escrito', async () => {

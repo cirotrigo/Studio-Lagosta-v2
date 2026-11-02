@@ -12,12 +12,16 @@ vi.mock('@/lib/creatives/server-text-measurer', async () => (await import('./sup
 vi.mock('@/lib/creatives/text-autofix', async () => (await import('./suporte/compositor')).mockDoAutofix())
 vi.mock('@/lib/creatives/uso-de-foto', async () => (await import('./suporte/compositor')).mockDoUsoDeFoto())
 vi.mock('@/lib/creatives/acervo', async () => (await import('./suporte/compositor')).mockDoAcervo())
+// O caso "foto indisponível" compõe de verdade (sem `somenteAvaliar`): a pasta e o carimbo da voz são dublês.
+vi.mock('@/lib/compositor/pastas', () => ({ garantirPasta: async () => ({ id: 77, name: 'Semana' }), ordemNaPasta: async () => ({ ordem: 1, repeticao: 0 }) }))
+vi.mock('@/lib/brand/voz-service', () => ({ carimboDaVozAgora: async () => null }))
 vi.mock('@/lib/assets/gradients-library', async (original) => ({
   ...(await original<typeof import('@/lib/assets/gradients-library')>()),
   gradientesDoProjeto: (await import('./suporte/compositor')).gradientesDoCenario,
 }))
 
 import { comporPeca } from '@/lib/compositor/compor'
+import { medirCopyDoProjeto } from '@/lib/compositor/medir-copy-service'
 import { chaveDoCorte } from '@/lib/compositor/corte-da-foto'
 import { CreativeError } from '@/lib/creatives/errors'
 import { lerFotoComoCover } from '@/lib/creatives/halo/halo-medicao'
@@ -115,6 +119,46 @@ describe('F2a · a janela na composição', () => {
     expect(semFoto!.code).toBe('SPEC_INVALIDA')
     const asDuas = await erro(comporPeca({ ...specSintetica({ pagina: 'f2a', blocos: BLOCOS }), foto: { driveFileId: 'foto-sintetica', janela: JANELA, corte: 'center-top' } }, { somenteAvaliar: true }))
     expect(asDuas!.code).toBe('SPEC_INVALIDA')
+  }, 60_000)
+
+  it('foto pedida com janela e indisponível: FOTO_INDISPONIVEL também SEM arquétipo — a peça não sai sem a foto nem ignora a janela (Codex rodada 1 #5)', async () => {
+    await montar()
+    cenario.atual = { ...cenario.atual!, foto: null }
+    // Sem `somenteAvaliar` (que já recusava por conta própria): é o fluxo normal, o que o Codex apontou.
+    const e = await erro(comporPeca({ ...specSintetica({ pagina: 'f2a', blocos: BLOCOS }), foto: { driveFileId: 'foto-sintetica', janela: JANELA } }))
+    expect([e?.code, e?.status]).toEqual(['FOTO_INDISPONIVEL', 503])
+    const comCorte = await erro(comporPeca({ ...specSintetica({ pagina: 'f2a', blocos: BLOCOS }), foto: { driveFileId: 'foto-sintetica', corte: 'center-top' } }))
+    expect(comCorte?.code).toBe('FOTO_INDISPONIVEL')
+    // Sem janela nem corte, o caminho sem arquétipo segue como sempre (sem foto, dito).
+    const semJanela = await comporPeca({ ...specSintetica({ pagina: 'f2a', blocos: BLOCOS }), foto: { driveFileId: 'foto-sintetica' } }, { provar: true })
+    expect(semJanela.layers.find((l) => l.id === 'bg-foto')).toBeUndefined()
+  }, 60_000)
+
+  it('medir-copy com fotoJanela e sem foto: SPEC_INVALIDA na validação comum, nunca medido sem a janela (Codex rodada 1 #6)', async () => {
+    await montar()
+    const e = await erro(medirCopyDoProjeto({ projectId: 9002, formato: 'story', blocos: BLOCOS, fotoJanela: JANELA } as never))
+    expect(e?.code).toBe('SPEC_INVALIDA')
+    expect(e?.message).toMatch(/janela.*precisa da foto/)
+  }, 60_000)
+
+  it('REPRODUÇÃO sem arquétipo: a janela da spec (a da página) é reproduzida verbatim — fora da proporção da caixa, nem ajuste nem JANELA_NAO_CABE (Codex rodada 1 #2)', async () => {
+    await montar((_x, y) => (y < 960 ? 40 : 210), { width: 1920, height: 1920 })
+    const faixa = { x: 0, y: 0, width: 1, height: 0.2 }
+    const r = await comporPeca({ ...specSintetica({ pagina: 'f2a', blocos: BLOCOS }), foto: { driveFileId: 'foto-sintetica', janela: faixa } }, { somenteAvaliar: true, reproducao: true })
+    expect(r.layers.find((l) => l.id === 'bg-foto')!.style?.crop).toEqual(faixa)
+    expect(r.diagnostico.posicao).toMatchObject({ crop: 'janela', janela: faixa })
+    expect(r.diagnostico.posicao.janelaPedida).toBeUndefined()
+    expect(r.diagnostico.avisos.join(' ')).not.toMatch(/não estava na proporção/)
+  }, 60_000)
+
+  it('REPRODUÇÃO da peça do T1a com a âncora da página na spec: a leitura e a escolha reproduzida são do MESMO corte (center-top), não de um central fixo (Codex rodada 1 #3)', async () => {
+    await montar()
+    const r = await comporPeca({ ...specSintetica({ pagina: 'f2a', blocos: BLOCOS }), foto: { driveFileId: 'foto-sintetica', corte: 'center-top' }, arquetipo: { id: 'minimal-fb-topo-esquerda' } }, { somenteAvaliar: true, reproducao: true, escolhaEspacial: { modo: 'referencia' } })
+    // A peça do T1a não grava busca; a prova de que a leitura casou com a escolha reproduzida é a própria composição —
+    // com a leitura obrigatória ausente (`ARQUETIPO_LEITURA_DO_CORTE_AUSENTE`) ela não sairia.
+    expect(r.diagnostico.arquetipo!.modo).toBe('referencia')
+    expect(r.diagnostico.posicao.crop).toBe('center-top')
+    expect(r.layers.find((l) => l.id === 'bg-foto')!.style?.cropPosition).toBe('center-top')
   }, 60_000)
 
   it('a âncora efetiva da página (`foto.corte`) vale como o corte único, gravando cropPosition como sempre', async () => {

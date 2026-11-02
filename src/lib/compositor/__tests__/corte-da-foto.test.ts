@@ -56,11 +56,20 @@ describe('igualdade por valor e leitura', () => {
     expect(chaveDaEscolha({ corte: 'center-middle' })).toBe('center-middle')
   })
 
-  it('lerJanela recusa fora do contrato (mínimo 0,01, dentro de 0..1, finitos, array)', () => {
+  it('lerJanela RESOLVE o estado existente como o desenho (o clamp de resolveImageSourceRect); null só no que ele também não desenha', () => {
     expect(lerJanela({ x: 0.2, y: 0.1, width: 0.5, height: 0.6 })).toEqual({ x: 0.2, y: 0.1, width: 0.5, height: 0.6 })
-    expect(lerJanela({ x: 0.2, y: 0.1, width: 0.005, height: 0.6 })).toBeNull()
-    expect(lerJanela({ x: 0.6, y: 0.1, width: 0.5, height: 0.6 })).toBeNull()
-    expect(lerJanela({ x: -0.1, y: 0.1, width: 0.5, height: 0.6 })).toBeNull()
+    // O crop que o renderer aceita por clamp (Codex, rodada 1, P2 #7): a MESMA faixa que ele mostra, nunca ignorado.
+    const foto = { width: 2000, height: 1000 }
+    const caixa = { width: 500, height: 500 }
+    for (const cru of [{ x: 0.9, y: 0, width: 0.5, height: 0.5 }, { x: 0.2, y: 0.1, width: 0.005, height: 0.6 }, { x: -0.1, y: 0.1, width: 0.5, height: 0.6 }]) {
+      const lida = lerJanela(cru)!
+      expect(lida).not.toBeNull()
+      expect(janelaEmPx(lida, foto)).toEqual(resolveImageSourceRect(foto, caixa, { objectFit: 'cover', crop: cru }))
+    }
+    expect(lerJanela({ x: 0.9, y: 0, width: 0.5, height: 0.5 })).toEqual({ x: 0.9, y: 0, width: 1 - 0.9, height: 0.5 })
+    // Nada sobra depois do clamp (x = 1), lado zero ou negativo: o renderer cai na âncora — aqui, null.
+    expect(lerJanela({ x: 1, y: 0.1, width: 0.5, height: 0.6 })).toBeNull()
+    expect(lerJanela({ x: 0.2, y: 0.1, width: 0, height: 0.6 })).toBeNull()
     expect(lerJanela({ x: NaN, y: 0.1, width: 0.5, height: 0.6 })).toBeNull()
     expect(lerJanela([0.2, 0.1, 0.5, 0.6])).toBeNull()
     expect(lerJanela('center-middle')).toBeNull()

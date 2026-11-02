@@ -238,10 +238,14 @@ export function camadaDeFundo(camadas: unknown): Layer | null {
 export function enquadramentoDaPagina(camadas: unknown): { janela: Janela } | { corte: CropPosition } | null {
   const fundo = camadaDeFundo(camadas)
   if (!fundo) return null
-  const estilo = (fundo.style ?? {}) as { crop?: unknown; cropPosition?: unknown }
+  const estilo = (fundo.style ?? {}) as { crop?: unknown; cropPosition?: unknown; objectFit?: unknown }
   const janela = lerJanela(estilo.crop)
   if (janela) return { janela }
   if (typeof estilo.cropPosition === 'string' && Object.prototype.hasOwnProperty.call(CORTES, estilo.cropPosition)) return { corte: estilo.cropPosition as CropPosition }
+  // "Remover" o crop apaga só `style.crop` (a peça por janela nasce SEM `cropPosition`): o que a página mostra então é o
+  // cover central (`resolveImageSourceRect` sem âncora). É esse o enquadramento efetivo — não `null`, que deixaria a
+  // recomposição ressuscitar a janela gravada (Codex, F2a rodada 1, P2 #1).
+  if (estilo.objectFit === 'cover') return { corte: 'center-middle' }
   return null
 }
 

@@ -132,7 +132,9 @@ function specDe(args: Record<string, unknown>) {
   return {
     projectId: args.projectId,
     formato: args.formato,
-    ...(args.fotoDriveId || args.fotoUrl ? { foto: { ...(args.fotoDriveId ? { driveFileId: args.fotoDriveId } : {}), ...(args.fotoUrl ? { url: args.fotoUrl } : {}), ...(args.fotoJanela && typeof args.fotoJanela === 'object' ? { janela: args.fotoJanela } : {}) } } : {}),
+    // `fotoJanela` sem foto segue para a validação comum, que a recusa (SPEC_INVALIDA) — descartá-la aqui compunha sem foto
+    // e sem a janela, em silêncio (Codex, F2a rodada 1, P2 #6).
+    ...(args.fotoDriveId || args.fotoUrl || args.fotoJanela ? { foto: { ...(args.fotoDriveId ? { driveFileId: args.fotoDriveId } : {}), ...(args.fotoUrl ? { url: args.fotoUrl } : {}), ...(args.fotoJanela && typeof args.fotoJanela === 'object' ? { janela: args.fotoJanela } : {}) } } : {}),
     fotosCandidatas: args.fotosCandidatas,
     selecaoExperimental: args.selecaoExperimental,
     blocos: args.blocos,

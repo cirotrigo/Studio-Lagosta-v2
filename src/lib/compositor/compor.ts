@@ -840,12 +840,15 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   const { foto, aviso: avisoDaFoto } = fotoCarregada
   // CP2B: com arquétipo a posição é escolhida PELA foto e a região protegida dela é obrigatória — a peça não sai sem
   // a foto pedida (Codex R3). Transitório (o Drive fora do ar): a fila tenta de novo.
-  if (!foto && (spec.foto?.url || spec.foto?.driveFileId) && arq) {
+  // F2a: a janela (ou o corte) pedida é DESTA foto — sem ela a peça sairia sem foto e sem a janela, em silêncio, no caminho
+  // sem arquétipo (Codex, F2a rodada 1, P2 #5).
+  const enquadramentoPedido = !!spec.foto?.janela || !!spec.foto?.corte
+  if (!foto && (spec.foto?.url || spec.foto?.driveFileId) && (arq || enquadramentoPedido)) {
     throw new CreativeError(
       'FOTO_INDISPONIVEL',
-      `${avisoDaFoto ?? 'A foto não pôde ser carregada.'} Com arquétipo, a posição é escolhida pela foto e a região protegida dela é obrigatória: a peça não sai sem a foto. Tente de novo em instantes.`,
+      `${avisoDaFoto ?? 'A foto não pôde ser carregada.'} ${arq ? 'Com arquétipo, a posição é escolhida pela foto e a região protegida dela é obrigatória' : 'A janela (ou o corte) pedida é desta foto'}: a peça não sai sem a foto. Tente de novo em instantes.`,
       503,
-      { arquetipo: chaveDoArquetipo(arq.definicao) },
+      { ...(arq ? { arquetipo: chaveDoArquetipo(arq.definicao) } : {}), ...(enquadramentoPedido ? { foto: spec.foto } : {}) },
     )
   }
   if (!foto && spec.foto && (opcoes.somenteAvaliar || opcoes.selecao)) {
@@ -1307,17 +1310,30 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   const mascaraDoFormato = caixaFoto ? arq!.definicao.formatos[arq!.formato].mascaraDaFoto : undefined
   const mascara: ReceitaDaMascara | null = mascaraDoFormato ? opcoes.mascaraCongelada ?? receitaDaMascara(arq!, caixaFoto!, mascaraDoFormato.raio) : null
   if (mascara) conferirPathDaMascara(mascara.path, chaveDoArquetipo(arq!.definicao))
-  // F2a: o CORTE é uma janela (frações da foto); o rótulo fica quando veio de uma âncora. Precedência: a janela da spec
-  // (explícita, ou a da PÁGINA que a recomposição leva) > o rótulo efetivo da página (`foto.corte`) > a escolha gravada
-  // (reprodução) > os candidatos de sempre. A janela é conferida na proporção da CAIXA, em px: ajuste mínimo dito; fora
-  // da foto, recusa. Sem foto, o corte central inteiro (nada a recortar).
+  // F2a: o CORTE é uma janela (frações da foto); o rótulo fica quando veio de uma âncora.
+  // Pedido NOVO — precedência: a janela da spec > o rótulo efetivo da página (`foto.corte`) > os candidatos de sempre. A
+  // janela é conferida na proporção da CAIXA, em px: ajuste mínimo dito; fora da foto, recusa.
+  // REPRODUÇÃO (`opcoes.reproducao`, a recomposição) — o corte VEIO dado e é reproduzido VERBATIM, sem normalizar: a escolha
+  // gravada (que a recomposição já atualizou com o enquadramento da página), ou, na peça do T1a, a janela/âncora da página
+  // que a spec recomposta leva. A janela aprovada na página fora da proporção da caixa é o que a página MOSTRA — normalizá-la
+  // trocava o enquadramento numa edição de texto, ou a recusava (JANELA_NAO_CABE) (Codex, F2a rodada 1, P2 #2).
+  // Sem foto, o corte central inteiro (nada a recortar).
   const caixaDoCorte = caixaFoto ?? canvas
   const dimsDaFoto = foto ? { width: foto.largura, height: foto.altura } : null
+  const reproduzindo = opcoes.reproducao === true
   let janelaPedida: Janela | null = null
   // `z.infer` com strict:false marca os campos opcionais; a spec validada já conferiu a forma — `lerJanela` só a tipa.
   const janelaDaSpec = lerJanela(spec.foto?.janela)
   const cortes: Corte[] = (() => {
     if (!foto || !dimsDaFoto) return [{ rotulo: 'center-middle' as const, janela: { x: 0, y: 0, width: 1, height: 1 } }]
+    if (arq && reproducao?.modo === MODO_BUSCA_ESPACIAL) {
+      const c = corteDaEscolha(reproducao, dimsDaFoto, caixaDoCorte)
+      if (!c) {
+        throw new CreativeError('ARQUETIPO_ESCOLHA_ILEGIVEL', 'A escolha gravada desta arte diz corte por janela, mas a janela não é legível; a recomposição não refaz a escolha às cegas — peça uma nova composição da peça.', 422, { escolha: reproducao })
+      }
+      return [c]
+    }
+    if (janelaDaSpec && reproduzindo) return [corteDaJanela(janelaDaSpec)]
     if (janelaDaSpec) {
       janelaPedida = janelaDaSpec
       const r = janelaNaProporcao(janelaDaSpec, dimsDaFoto, caixaDoCorte)
@@ -1333,14 +1349,8 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       return [corteDaJanela(r.janela)]
     }
     if (spec.foto?.corte) return [corteDoRotulo(dimsDaFoto, caixaDoCorte, spec.foto.corte)]
-    if (arq && reproducao) {
-      if (reproducao.modo === 'referencia') return [corteDoRotulo(dimsDaFoto, caixaDoCorte, 'center-middle')]
-      const c = corteDaEscolha(reproducao, dimsDaFoto, caixaDoCorte)
-      if (!c) {
-        throw new CreativeError('ARQUETIPO_ESCOLHA_ILEGIVEL', 'A escolha gravada desta arte diz corte por janela, mas a janela não é legível; a recomposição não refaz a escolha às cegas — peça uma nova composição da peça.', 422, { escolha: reproducao })
-      }
-      return [c]
-    }
+    // A peça do T1a (na referência): o corte central, salvo o enquadramento da página acima.
+    if (arq && reproducao?.modo === 'referencia') return [corteDoRotulo(dimsDaFoto, caixaDoCorte, 'center-middle')]
     return cortesCandidatos(foto, caixaDoCorte, spec.preferencias?.enquadramento === 'fixo').map((r) => corteDoRotulo(dimsDaFoto!, caixaDoCorte, r))
   })()
   // O arquivo do catálogo da foto desenhada: o `driveFileId` — ou, com arquétipo, o id que uma URL do Drive carrega (o
@@ -1420,13 +1430,15 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     // F2a: o assunto projetado nas coordenadas da CAIXA pela janela do corte (âncora ou explícita), e só então medido.
     const visivel = (c: Corte) => (assuntoDoCatalogo ? fracao(assuntoEmPixels(assuntoDoCatalogo, dimsDaFoto, caixaFoto, c.rotulo ?? c.janela)) : null)
     const perde = (v: number | null) => v !== null && v < 0.75
-    const cortePedido = !!spec.foto?.janela || !!spec.foto?.corte
-    if (reproducao || cortePedido) {
+    // Só o pedido NOVO relaxa a proteção do assunto em aviso: na reprodução o `foto.janela`/`foto.corte` da spec é o que a
+    // página mostra (ou o que uma recomposição anterior gravou), não autorização de quem pediu (Codex, F2a rodada 1, P2 #4).
+    const cortePedido = !reproduzindo && (!!spec.foto?.janela || !!spec.foto?.corte)
+    if (reproducao || spec.foto?.janela || spec.foto?.corte) {
       // O corte VEIO dado: gravado (reprodução) ou pedido na spec (a janela/âncora). Nada a escolher: o gravado que agora
       // perde o assunto recusa sem mover; o pedido que o perde é dito (quem pediu decide).
       const corte = cortes[0]
       const v = visivel(corte)
-      if (reproducao?.modo === MODO_BUSCA_ESPACIAL && !cortePedido && perde(v)) {
+      if (reproduzindo && reproducao?.modo !== 'referencia' && perde(v)) {
         throw new CreativeError(
           'ARQUETIPO_CORTE_CONGELADO_PERDE_O_ASSUNTO',
           `${chaveDoArquetipo(arq.definicao)}: o corte congelado da foto em caixa (${rotuloDoCorte(corte)}) agora mostra ${Math.round(v! * 100)}% do assunto que o catálogo marca (mínimo 75%). Nada foi movido: peça uma nova composição da peça.`,
@@ -1434,7 +1446,8 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
           { arquetipo: chaveDoArquetipo(arq.definicao), formato: arq.formato, escolha: reproducao, assuntoVisivel: v },
         )
       }
-      if (cortePedido && perde(v)) avisos.push(`O corte pedido da foto em caixa mostra ${Math.round(v! * 100)}% do assunto que o catálogo marca (mínimo 75%): confira a foto na caixa.`)
+      // O pedido que perde o assunto é dito; a peça do T1a nasceu assim COM o aviso — a edição de texto dela o repete, sem recusar.
+      if (perde(v)) avisos.push(`O corte ${cortePedido ? 'pedido ' : ''}da foto em caixa (${rotuloDoCorte(corte)}) mostra ${Math.round(v! * 100)}% do assunto que o catálogo marca (mínimo 75%): confira a foto na caixa.`)
       corteDaCaixa = { corte, assuntoVisivel: v }
     } else if (!assuntoDoCatalogo) {
       corteDaCaixa = { corte: cortes.find((c) => c.rotulo === 'center-middle') ?? cortes[0], assuntoVisivel: null }
@@ -1493,7 +1506,9 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
         planejamento,
         foto: chaveDaFotoDaPeca,
         // A peça do T1a (`referencia`) reproduz a referência no corte central; se ela não cabe mais, é recusa.
-        reproduzir: reproducao && reproducao.modo === MODO_BUSCA_ESPACIAL ? reproducao : reproducao ? { modo: MODO_BUSCA_ESPACIAL, foto: chaveDaFotoDaPeca, corte: 'center-middle', deslocamentos: {} } : null,
+        // F2a: no corte que a peça DESENHA (`cortes[0]`: o central, ou o enquadramento da página) — um 'center-middle' fixo
+        // deixava a leitura (feita no corte da página) sem par na reprodução (Codex, F2a rodada 1, P2 #3).
+        reproduzir: reproducao && reproducao.modo === MODO_BUSCA_ESPACIAL ? reproducao : reproducao ? { modo: MODO_BUSCA_ESPACIAL, foto: chaveDaFotoDaPeca, corte: rotuloDoCorte(cortes[0]), ...(cortes[0].rotulo ? {} : { janela: cortes[0].janela }), deslocamentos: {} } : null,
         reproduzirReferencia: reproducao?.modo === 'referencia',
         ...(corteDaCaixa ? { corteSemLeitura: { crop: rotuloDoCorte(corteDaCaixa.corte), ...(corteDaCaixa.corte.rotulo ? {} : { janela: corteDaCaixa.corte.janela }) } } : {}),
       })

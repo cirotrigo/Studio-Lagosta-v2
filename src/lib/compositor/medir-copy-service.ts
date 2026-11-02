@@ -94,7 +94,7 @@ export async function medirCopyDoProjeto(pedido: PedidoDeMedicao): Promise<Resul
     blocos: pedido.blocos,
     ...(pedido.camadasExtras ? { camadasExtras: pedido.camadasExtras } : {}),
     copyAutoral: pedido.copyAutoral,
-    ...(pedido.fotoDriveId || pedido.fotoUrl ? { foto: { ...(pedido.fotoDriveId ? { driveFileId: pedido.fotoDriveId } : {}), ...(pedido.fotoUrl ? { url: pedido.fotoUrl } : {}), ...(pedido.fotoJanela ? { janela: pedido.fotoJanela } : {}) } } : {}),
+    ...(pedido.fotoDriveId || pedido.fotoUrl || pedido.fotoJanela ? { foto: { ...(pedido.fotoDriveId ? { driveFileId: pedido.fotoDriveId } : {}), ...(pedido.fotoUrl ? { url: pedido.fotoUrl } : {}), ...(pedido.fotoJanela ? { janela: pedido.fotoJanela } : {}) } } : {}),
     ...(pedido.nome ? { nome: pedido.nome } : {}),
     ...(pedido.tema ? { tema: pedido.tema } : {}),
     ...(pedido.variante || pedido.preferencias?.arranjos ? { preferencias: { ...(pedido.variante ? { variante: pedido.variante } : {}), ...(pedido.preferencias?.arranjos ? { arranjos: pedido.preferencias.arranjos } : {}) } } : {}),

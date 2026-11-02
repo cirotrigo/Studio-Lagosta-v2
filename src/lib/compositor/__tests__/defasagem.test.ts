@@ -369,10 +369,14 @@ describe('F2a — o enquadramento efetivo da página na recomposição', () => {
     expect(r.spec.foto).toEqual({ url: trocada.fileUrl, corte: 'center-top' })
   })
 
-  it('enquadramentoDaPagina: a janela vence a âncora; sem nenhum dos dois, null; janela fora do contrato é ignorada', () => {
+  it('enquadramentoDaPagina: a janela vence a âncora; cover sem nenhum dos dois é o CENTRAL (o que "Remover" deixa); o crop clampado é lido como o desenho; esticado, null', () => {
     expect(enquadramentoDaPagina([{ ...foto, style: { objectFit: 'cover', cropPosition: 'center-top', crop: { x: 0.1, y: 0.1, width: 0.5, height: 0.6 } } } as Camada])).toEqual({ janela: { x: 0.1, y: 0.1, width: 0.5, height: 0.6 } })
-    expect(enquadramentoDaPagina([{ ...foto, style: { objectFit: 'cover' } } as Camada])).toBeNull()
-    expect(enquadramentoDaPagina([{ ...foto, style: { objectFit: 'cover', cropPosition: 'center-top', crop: { x: 0.9, y: 0, width: 0.5, height: 0.5 } } } as Camada])).toEqual({ corte: 'center-top' })
+    // Codex (rodada 1, P2 #1): a peça por janela nasce sem `cropPosition`; "Remover" apaga só o crop → cover central.
+    expect(enquadramentoDaPagina([{ ...foto, style: { objectFit: 'cover' } } as Camada])).toEqual({ corte: 'center-middle' })
+    expect(enquadramentoDaPagina([{ ...foto, style: {} } as Camada])).toBeNull()
+    // Codex (rodada 1, P2 #7): o crop que o renderer clampa é a faixa que ele mostra — nunca a âncora por baixo.
+    expect(enquadramentoDaPagina([{ ...foto, style: { objectFit: 'cover', cropPosition: 'center-top', crop: { x: 0.9, y: 0, width: 0.5, height: 0.5 } } } as Camada])).toEqual({ janela: { x: 0.9, y: 0, width: 1 - 0.9, height: 0.5 } })
+    expect(enquadramentoDaPagina([{ ...foto, style: { objectFit: 'cover', cropPosition: 'center-top', crop: { x: 1, y: 0, width: 0.5, height: 0.5 } } } as Camada])).toEqual({ corte: 'center-top' })
     expect(enquadramentoDaPagina([texto('headline', 'a')])).toBeNull()
   })
 })

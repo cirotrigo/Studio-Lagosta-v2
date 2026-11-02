@@ -399,6 +399,17 @@ export function selecionarNoArquetipo(args: ArgsDaSelecao): SelecaoNoArquetipo {
     const combinacao = combinacaoDosDeslocamentos(faixas, deslocamentos)
     // F2a: igualdade por VALOR (a janela explícita não tem rótulo): a mesma régua de `chaveDoCorte`.
     const corte = args.cortes.find((c) => chaveDaEscolha({ corte: c.crop, janela: c.janela }) === chaveDaEscolha(fixa))
+    // A leitura do corte gravado é OBRIGATÓRIA quando a foto foi lida: sem ela a avaliação sairia sem eliminações (nem
+    // assunto, nem texto sobre a foto) e o diagnóstico discordaria do corte desenhado. Só o texto no liso e a peça sem foto
+    // (sem leituras) seguem sem (Codex, F2a rodada 1, P2 #3).
+    if (!corte && args.cortes.length > 0) {
+      throw new CreativeError(
+        'ARQUETIPO_LEITURA_DO_CORTE_AUSENTE',
+        `${chaveDoArquetipo(args.arquetipo)}: ${origem} (corte ${chaveDaEscolha(fixa)}), mas a foto não foi lida nesse corte (lida em: ${args.cortes.map((c) => chaveDaEscolha({ corte: c.crop, janela: c.janela })).join(', ')}). Nada foi movido: peça uma nova composição da peça.`,
+        422,
+        { arquetipo: chaveDoArquetipo(args.arquetipo), formato: args.formato, escolha: gravada, lidos: args.cortes.map((c) => c.crop) },
+      )
+    }
     const unidades = unidadesDaCombinacao({ unidades: args.unidades, materializacao: m, arquetipo: args.arquetipo, deslocamentos, faixas, H })
     const avaliacao: AvaliacaoDaCombinacao = corte
       ? avaliarCombinacao({ corte, energiaDeReferencia: Math.max(1, corte.mapa.energiaMaxima), materializada: { combinacao, unidades, logo: m.papeis.logo?.posicao }, faixas, planejamento: args.planejamento, canvas: args.canvas })
