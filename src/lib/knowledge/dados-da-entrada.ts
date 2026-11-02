@@ -221,10 +221,10 @@ const FAIXA = new RegExp(`\\bdas?\\s+(${HORA_RE})${ATE_RE}(${HORA_RE})`, 'g')
 /** Serviço com horário próprio na mesma linha: não é o funcionamento da casa. */
 const OUTRO_SERVICO = /executivo|delivery|entrega|ifood|retirada|cozinha|brunch/
 const HAPPY_HOUR = /happy[ -]?hour/
-/** A frase ou o título fala da casa ou de outra refeição: não é horário do happy hour nem com "Happy Hour" no título. */
-const OUTRO_ASSUNTO = /\b(?:funciona|abre|abrem|abert[ao]|fecha|expediente|atendimento|almoco|jantar)/
-/** Só no título: "Dias e horários: terça a sexta, das 16h às 19h" é o happy hour falando dos horários dele. */
-const TITULO_MISTO = /\bhorarios?\s+e\b|\be\s+horarios?\b/
+/** Antes da faixa, ou no título, fala da casa ou de outra refeição: "aberta" fica de fora porque "varanda aberta" é ambiente. */
+const OUTRO_ASSUNTO = /\b(?:funciona|abre|abrem|fecha|expediente|atendimento|almoco|jantar)/
+/** Só o par com o happy hour: "Happy Hour — dias e horários" segue exclusivo. */
+const TITULO_MISTO = /\bhorarios?\s+e\s+happy|happy[ -]?hour\s+e\s+horarios?\b/
 /** Linha que fala de uma data ou de feriado é exceção: fica preservada e não se compara com o horário habitual. */
 const DATADA = /\b\d{1,2}\/\d{1,2}\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2} de (?:janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b|feriado|vespera|natal|reveillon|carnaval|pascoa|excepcional/
 /** "habitual" sozinho não serve: "no lugar do horário habitual" é justamente a exceção. */
@@ -305,20 +305,24 @@ function fatosDoTexto(titulo: string, texto: string): FatoDoTexto[] {
       const c = semAcento(trecho)
       const citacao = c.search(HAPPY_HOUR)
       let doResto = c
-      if (citacao >= 0 || (soDeHappyHour && !OUTRO_ASSUNTO.test(c) && !OUTRO_SERVICO.test(c))) {
+      let faixaDoHappy: string | null = null
+      if (citacao >= 0 || (soDeHappyHour && !OUTRO_ASSUNTO.test(c.slice(0, c.search(FAIXA))) && !OUTRO_SERVICO.test(c))) {
         // Só a faixa depois de "happy hour" e as coladas nela: "e delivery das 20h às 23h" é de outro serviço.
         const doHappy = c.slice(Math.max(citacao, 0))
         const [m] = doHappy.matchAll(FAIXA)
         if (!m) continue
-        fatos.push({ dias: null, faixa: turnosDesde(doHappy, m), fim: null, trecho })
+        faixaDoHappy = turnosDesde(doHappy, m)
+        fatos.push({ dias: null, faixa: faixaDoHappy, fim: null, trecho })
         // Com faixa própria, o que veio antes da citação fala de outra coisa e ainda se compara.
         if (citacao <= 0) continue
         doResto = c.slice(0, citacao)
       }
       if (OUTRO_SERVICO.test(doResto) || OUTRO_SERVICO.test(tituloNormal)) continue
       for (const m of doResto.matchAll(FAIXA_DO_DIA)) {
-        if (/almoco/.test(doResto.slice(0, m.index))) continue
-        fatos.push({ dias: diasDe(m[1]), faixa: turnosDesde(doResto, m), fim: null, trecho })
+        if (/almoco|jantar/.test(doResto.slice(0, m.index))) continue
+        const faixa = turnosDesde(doResto, m)
+        // A mesma faixa antes da citação é o happy hour se apresentando, não o funcionamento.
+        if (faixa !== faixaDoHappy) fatos.push({ dias: diasDe(m[1]), faixa, fim: null, trecho })
       }
       for (const m of doResto.matchAll(FECHA_DO_DIA)) fatos.push({ dias: diasDe(m[1]), faixa: null, fim: horaDe(m[2], true), trecho })
     }

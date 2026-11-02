@@ -372,6 +372,24 @@ describe('o serviço de cada frase, em entrada que fala de happy hour', () => {
     expect(achado(CERTO, 'Almoço de terça a sexta das 11h às 15h e happy hour das 16h às 19h.', MISTO)).toEqual([])
     expect(achado({ ...CERTO, happy_hour: HAPPY }, 'Almoço de terça a sexta das 11h às 15h e happy hour das 16h às 19h.', MISTO)).toEqual([['happy_hour.time', '16:00-19:00']])
   })
+  it('título exclusivo que fala de horários segue exclusivo', () => {
+    expect(achado({ happy_hour: HAPPY, hours: HOURS }, 'Terça a sexta, das 16h às 19h.', 'Happy Hour — dias e horários')).toEqual([['happy_hour.time', '16:00-19:00']])
+  })
+  it('o que vem depois da faixa não muda de quem ela é', () => {
+    for (const frase of ['Terça a sexta, das 16h às 19h, na varanda aberta.', 'Terça a sexta, das 16h às 19h, antes do jantar.', 'Terça a sexta, das 16h às 19h, com atendimento no salão.']) {
+      expect(achado({ happy_hour: HAPPY, hours: HOURS }, frase, SO_HAPPY)).toEqual([['happy_hour.time', '16:00-19:00']])
+    }
+  })
+  it('jantar com dia antes do happy hour não vira funcionamento', () => {
+    const frase = 'Jantar de terça a sexta das 19h às 23h e happy hour das 16h às 19h.'
+    expect(achado(CERTO, frase, 'Ficha')).toEqual([])
+    expect(achado(CERTO, 'Jantar de terça a sexta das 19h às 23h.', 'Ficha')).toEqual([])
+  })
+  it('a mesma faixa antes da citação é o happy hour se apresentando', () => {
+    const frase = 'Terça a sexta das 16h às 19h: nosso happy hour tem chope em dobro das 16h às 19h.'
+    expect(achado(CERTO, frase, SO_HAPPY)).toEqual([])
+    expect(achado({ ...CERTO, happy_hour: HAPPY }, frase, SO_HAPPY)).toEqual([['happy_hour.time', '16:00-19:00']])
+  })
   it('sem faixa própria o happy hour não leva a frase junto', () => {
     expect(achado(CERTO, 'Terça a sexta, das 16h às 19h, tem happy hour.', 'Ficha')).toEqual([])
   })
