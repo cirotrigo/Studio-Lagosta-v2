@@ -293,7 +293,7 @@ describe('F2d · o estilo desenhado na referência (02/11/2026)', () => {
     expect(recusaDe(comCamada('titulo', (l) => ({ ...l, style: { ...l.style, fontWeight: '950' } } as Layer))).codigo).toBe('REFERENCIA_ESTILO_INVALIDO')
     expect(recusaDe(comCamada('titulo', (l) => ({ ...l, style: { ...l.style, color: undefined } } as Layer))).codigo).toBe('REFERENCIA_ESTILO_INVALIDO')
     expect(recusaDe(comCamada('apoio', (l) => ({ ...l, style: { ...l.style, color: 'rgba(255,255,255,0.9)' } } as Layer))).codigo).toBe('REFERENCIA_ESTILO_INVALIDO')
-    expect(recusaDe(comCamada('titulo', (l) => ({ ...l, style: { ...l.style, textTransform: 'small-caps' } } as Layer))).codigo).toBe('REFERENCIA_ESTILO_INVALIDO')
+    expect(recusaDe(comCamada('titulo', (l) => ({ ...l, style: { ...l.style, textTransform: 'small-caps' } } as unknown as Layer))).codigo).toBe('REFERENCIA_ESTILO_INVALIDO')
   })
 
   it('o que a F2d não representa é recusado DITO (REFERENCIA_ESTILO_NAO_SUPORTADO): rich-text, itálico, decoração, contorno, sombra com deslocamento horizontal', () => {
