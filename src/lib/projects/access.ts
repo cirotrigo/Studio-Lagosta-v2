@@ -132,6 +132,7 @@ export async function fetchProjectWithShares(projectId: number) {
         where: {
           isProjectLogo: true,
         },
+        orderBy: { id: 'asc' },
         select: {
           id: true,
           fileUrl: true,

@@ -33,7 +33,7 @@ import { estiloDaRecusa, estiloDeDestaqueDoPapel, prepararBlocos, type PecaParaB
 import { DIMENSOES, type Formato, type Papel } from './spec'
 import { colunaDaCaixa } from './blocos'
 import { conferirLogo, excessosDeLinhas, type ArquetipoPreparado } from './arquetipos/na-spec'
-import { alinhaDoPapel, caixasMaximas, type Materializacao, type PapelMaterializado, type ProblemaDeMaterializacao } from './arquetipos/materializar'
+import { alinhaDoPapel, caixasMaximas, GAP_DA_PILHA, type Materializacao, type PapelMaterializado, type ProblemaDeMaterializacao } from './arquetipos/materializar'
 import { ajusteFinalNecessario, caixasDosItens, camadasNaReferencia, papeisDeLista, papelGeometrico, prepararNoArquetipo, type CorpoDoPapel } from './arquetipos/no-compositor'
 import { partidaNoArquetipo } from './arquetipos/candidatos-espaciais'
 import { obstaculosDosAcentos, posicionarAcentos, receitasDoArquetipo, type ProblemaDoAcento } from './arquetipos/acentos'
@@ -481,8 +481,9 @@ export function medirCopy(args: {
       geometria: piso,
       unidades,
       logo: args.assinatura.logo ? { razao: args.assinatura.logo.razao } : null,
-      // A pilha da faixa, como no compor: a peça por REFERÊNCIA não empilha (sem `gap`, cada papel na própria caixa).
-      ...(margemArq ? { gap: args.assinatura.numeros.geometria[args.formato].gapEntreBlocos, margem: margemArq } : {}),
+      // A pilha da faixa, como no compor: a peça por REFERÊNCIA não empilha (sem `gap`, cada papel na própria caixa);
+      // a do catálogo empilha com o vão da pilha (0, 30/10/2026).
+      ...(margemArq ? { gap: GAP_DA_PILHA, margem: margemArq } : {}),
     })
     const m: Materializacao = 'problemas' in partida ? { ok: false, problemas: partida.problemas } : partida.materializacao
     for (const r of 'resgatados' in partida ? partida.resgatados : []) {

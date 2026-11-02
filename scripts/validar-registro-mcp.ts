@@ -1470,6 +1470,107 @@ for (const [nome, literal] of Object.entries(LITERAIS_AVALIACOES)) {
   comparaSchemas(nome, CATALOGO.get(nome)?.schemaJson, literal)
 }
 
+// Tools NOVAS (02/11/2026, campos estruturados da base). O fixture nasce com
+// elas: mudança de schema daqui para a frente é deliberada ou o snapshot acusa.
+const LITERAIS_OPERACAO_DA_BASE: Record<string, unknown> = {
+  "atualizar-dados-entrada-base": {
+    "type": "object",
+    "properties": {
+      "projectId": {
+        "type": "number",
+        "description": "ID do cliente."
+      },
+      "entradaId": {
+        "type": "string",
+        "description": "Id da entrada (de consultar-base)."
+      },
+      "versaoEsperada": {
+        "type": "string",
+        "description": "O campo `versao` da entrada em consultar-base. Se a entrada mudou, nada é gravado."
+      },
+      "operacaoId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{8,64}$",
+        "description": "Id desta operação, gerado por você (8 a 64 letras, números, _ ou -). O mesmo id com o mesmo pedido nunca grava duas vezes."
+      },
+      "alteracoes": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "campo": {
+              "type": "string"
+            },
+            "valor": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "campo",
+            "valor"
+          ],
+          "additionalProperties": false
+        },
+        "description": "Campos a alterar, cada um pelo caminho (ex: {\"campo\":\"hours.monday\",\"valor\":\"11:00-17:00\"})."
+      },
+      "content": {
+        "type": "string",
+        "description": "Novo texto completo da entrada (opcional): substitui o texto inteiro e exige reindexar."
+      },
+      "reverterOperacaoId": {
+        "type": "string",
+        "description": "Restaura exatamente o estado anterior a esta operação. Não combina com alteracoes nem content."
+      },
+      "aceitarDivergencias": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Campos cuja contradição com os textos a pessoa aceitou, e \"texto.excecoes\" para remover linha datada do texto."
+      },
+      "autorizarIndexacao": {
+        "type": "boolean",
+        "description": "Obrigatório quando a proposta traz indexacao.necessaria: true, com o custo mostrado à pessoa."
+      },
+      "confirmado": {
+        "type": "boolean",
+        "description": "Só grava com true. Sem isto devolve a proposta."
+      }
+    },
+    "required": [
+      "projectId",
+      "entradaId",
+      "versaoEsperada",
+      "operacaoId"
+    ],
+    "additionalProperties": false
+  },
+  "consultar-operacao-base": {
+    "type": "object",
+    "properties": {
+      "projectId": {
+        "type": "number",
+        "description": "ID do cliente."
+      },
+      "operacaoId": {
+        "type": "string",
+        "description": "O operacaoId usado na escrita."
+      },
+      "entradaId": {
+        "type": "string",
+        "description": "Id da entrada, para ver a trilha dela."
+      }
+    },
+    "required": [
+      "projectId"
+    ],
+    "additionalProperties": false
+  }
+}
+for (const [nome, literal] of Object.entries(LITERAIS_OPERACAO_DA_BASE)) {
+  comparaSchemas(nome, CATALOGO.get(nome)?.schemaJson, literal)
+}
+
 // Tools NOVAS (02/09/2026, F1/F3 do editor-como-usina — o compositor). O
 // fixture nasce com elas, como manda a regra do registro: mudança de schema
 // daqui para a frente é deliberada ou o snapshot acusa.

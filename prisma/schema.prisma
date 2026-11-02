@@ -1300,6 +1300,32 @@ model KnowledgeBaseEntry {
   @@map("knowledge_base_entries")
 }
 
+/// A trilha das operações pelo MCP (`atualizar-dados-entrada-base`): gravada no MESMO commit da edição, é o backup, a
+/// auditoria e a idempotência. O unique por projeto isola os clientes; sem FK, sobrevive à entrada apagada.
+model OperacaoDaBase {
+  id            String   @id @default(cuid())
+  projectId     Int
+  entryId       String
+  operacaoId    String
+  hashDoPedido  String
+  tipo          String
+  status        String
+  erroIndexacao String?
+  autor         String
+  ator          Json
+  pedido        Json
+  versaoAntes   String
+  versaoDepois  String
+  antes         Json
+  depois        Json
+  diff          Json
+  criadaEm      DateTime @default(now())
+  atualizadaEm  DateTime @updatedAt
+
+  @@unique([projectId, operacaoId])
+  @@index([entryId, criadaEm])
+}
+
 model KnowledgeChunk {
   id        String             @id @default(cuid())
   entryId   String

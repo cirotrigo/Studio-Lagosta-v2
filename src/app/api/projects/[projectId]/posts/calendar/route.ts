@@ -129,6 +129,7 @@ export async function GET(
               where: {
                 isProjectLogo: true,
               },
+              orderBy: { id: 'asc' },
               select: {
                 fileUrl: true,
               },
@@ -204,6 +205,7 @@ export async function GET(
               where: {
                 isProjectLogo: true,
               },
+              orderBy: { id: 'asc' },
               select: {
                 fileUrl: true,
               },

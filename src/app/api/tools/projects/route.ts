@@ -29,6 +29,7 @@ export async function GET() {
         zapierWebhookUrl: true,
         Logo: {
           where: { isProjectLogo: true },
+          orderBy: { id: 'asc' },
           take: 1,
           select: { fileUrl: true },
         },
