@@ -229,8 +229,8 @@ const HAPPY_HOUR = /happy[ -]?hour/
  */
 const CASA_NA_FAIXA = new RegExp(`(?:\\b${DIAS_RE}[\\s:,–—-]*${VERBO_DA_CASA}\\s+(?:${ADVERBIO_RE}\\s+)*|(?:a casa\\s+(?:funciona|abre)(?:\\s+${ADVERBIO_RE})?|funcionamento(?:\\s+habitual)?)[\\s:]+(?:(?:de\\s+)?${DIAS_RE}[\\s:,–—-]*)?)das?\\s+${HORA_RE}`)
 /** "Terça a sexta das 16h às 19h, jantar das 19h às 23h": cada faixa se julga no seu trecho, um sujeito não leva a vizinha. */
-const SUJEITO_SEGUINTE = new RegExp(`(?<=(?:\\dh|\\d:\\d\\d|noite|dia).*(?:[,:]|\\se)\\s+(?:e\\s+)?)(?:${DIAS_RE}[\\s:,–—-]*${VERBO_DA_CASA}\\s|a casa\\s+(?:funciona|abre)|funcionamento|(?:o\\s+)?(?:almoco|jantar)\\b)`, 'g')
-const REFEICAO_NA_FAIXA = new RegExp(`(?<!(?:antes|depois) d[oe] |(?:apos|ate) o |(?:pos|pre)[ -])\\b(?:almoco|jantar)\\b:?[^,;:]*?\\bdas?\\s+${HORA_RE}`)
+const SUJEITO_SEGUINTE = new RegExp(`(?<=(?:\\dh|\\d:\\d\\d|noite|dia).*(?:[,:(]\\s*|\\s[—–-]\\s*|\\se\\s)(?:e\\s+)?(?:[oa]\\s+)?)(?:${DIAS_RE}[\\s:,–—-]*${VERBO_DA_CASA}\\s|casa\\s+(?:funciona|abre)|funcionamento|almoco\\b|jantar\\b)`, 'g')
+const REFEICAO_NA_FAIXA = new RegExp(`(?<!(?:\\dh|\\d:\\d\\d).*|(?:antes|depois) d[oe] |(?:apos|ate) o |(?:pos|pre)[ -])\\b(?:almoco|jantar)\\b:?[^,;:]*?\\bdas?\\s+${HORA_RE}`)
 /**
  * Só é misto o título que lista outro serviço ao lado do happy hour ("Horário de funcionamento e happy hour").
  * "Happy Hour no fim do expediente" e "Happy Hour: horários e condições" seguem exclusivos: sem lista, vale o exclusivo.
@@ -313,10 +313,10 @@ function fatosDoTexto(titulo: string, texto: string): FatoDoTexto[] {
   for (const linha of texto.split(/\n+/)) {
     for (const { clausula: trecho, datada } of clausulasDaLinha(linha)) {
       if (datada) continue
-      for (const c of semAcento(trecho).replace(SUJEITO_SEGUINTE, '\n$&').split('\n')) {
+      for (const [parte, c] of semAcento(trecho).replace(SUJEITO_SEGUINTE, '\n$&').split('\n').entries()) {
         const citacao = c.search(HAPPY_HOUR)
         let doResto = c
-        if (citacao >= 0 || (soDeHappyHour && !CASA_NA_FAIXA.test(c) && !REFEICAO_NA_FAIXA.test(c) && !OUTRO_SERVICO.test(c))) {
+        if (citacao >= 0 || (soDeHappyHour && parte === 0 && !CASA_NA_FAIXA.test(c) && !REFEICAO_NA_FAIXA.test(c) && !OUTRO_SERVICO.test(c))) {
           // Só a faixa depois de "happy hour" e as coladas nela: "e delivery das 20h às 23h" é de outro serviço.
           const doHappy = c.slice(Math.max(citacao, 0))
           const [m] = doHappy.matchAll(FAIXA)
