@@ -204,7 +204,7 @@ async function passoArrendado<T>(
  * mudaram por baixo (escrita que não passou por `editarEntradaCoordenada`),
  * `IndexacaoSuperada` antes de publicar a versão antiga (PR13-42).
  */
-export async function reindexEntry(entryId: string, tenant: TenantKey, opcoes: { signal?: AbortSignal; ciclo?: string } = {}) {
+export async function reindexEntry(entryId: string, tenant: TenantKey, opcoes: { signal?: AbortSignal; ciclo?: string; conteudoEsperado?: string } = {}) {
   const { signal } = opcoes
   const ciclo = opcoes.ciclo ?? randomUUID()
   // Get entry
@@ -231,7 +231,7 @@ export async function reindexEntry(entryId: string, tenant: TenantKey, opcoes: {
   // vetores da vencedora (PR13-41). Por isso o ciclo inteiro é ARRENDADO: ninguém adquire enquanto ele vale, e
   // cada passo abaixo renova com o próprio token antes de escrever.
   lancarSeAbortado(signal, 'invalidar a marca de indexado')
-  const arrendamento = await adquirirArrendamento(entryId, ciclo)
+  const arrendamento = await adquirirArrendamento(entryId, ciclo, opcoes.conteudoEsperado)
   const controle = { emVoo: false }
 
   try {

@@ -214,6 +214,7 @@ const HORA_RE = `(?:\\d{1,2}(?:h\\d{0,2}|:\\d{2})|meia[- ]noite|meio[- ]dia)`
 const ATE_RE = `\\s*(?:as?|ate|–|—|-)\\s*`
 // Exige "das": "qui só à tarde 15–18h" é medição de engajamento e "ter–sex, 16h–19h" é mecânica, não funcionamento.
 const FAIXA_DO_DIA = new RegExp(`\\b(${DIAS_RE})[\\s:,–—-]*(?:funcionam?\\s+|abrem?\\s+|habitualmente\\s+)*das?\\s+(${HORA_RE})${ATE_RE}(${HORA_RE})`, 'g')
+const TURNO_SEGUINTE = new RegExp(`^\\s*(?:,|e)\\s*das?\\s+(${HORA_RE})${ATE_RE}(${HORA_RE})`)
 const FECHA_DO_DIA = new RegExp(`\\b(${DIAS_RE})\\s+(?:a casa\\s+)?fecha\\s+as\\s+(${HORA_RE})`, 'g')
 const FAIXA = new RegExp(`\\bdas?\\s+(${HORA_RE})${ATE_RE}(${HORA_RE})`, 'g')
 
@@ -293,7 +294,14 @@ function fatosDoTexto(titulo: string, texto: string): FatoDoTexto[] {
       if (OUTRO_SERVICO.test(c) || OUTRO_SERVICO.test(tituloNormal)) continue
       for (const m of c.matchAll(FAIXA_DO_DIA)) {
         if (/almoco/.test(c.slice(0, m.index))) continue
-        fatos.push({ dias: diasDe(m[1]), faixa: `${horaDe(m[2], false)}-${horaDe(m[3], true)}`, fim: null, trecho })
+        const turnos = [`${horaDe(m[2], false)}-${horaDe(m[3], true)}`]
+        // "Segunda das 11h às 15h e das 18h às 23h": os turnos seguintes herdam o dia.
+        let resto = c.slice(m.index + m[0].length)
+        for (let t = TURNO_SEGUINTE.exec(resto); t; t = TURNO_SEGUINTE.exec(resto)) {
+          turnos.push(`${horaDe(t[1], false)}-${horaDe(t[2], true)}`)
+          resto = resto.slice(t[0].length)
+        }
+        fatos.push({ dias: diasDe(m[1]), faixa: turnos.join(', '), fim: null, trecho })
       }
       for (const m of c.matchAll(FECHA_DO_DIA)) fatos.push({ dias: diasDe(m[1]), faixa: null, fim: horaDe(m[2], true), trecho })
     }
@@ -349,7 +357,7 @@ export function divergenciasDe(dados: Record<string, unknown>, textos: LinhaDaBa
         if (!mesmoAlvo) continue
         const valorNoDado = faixaNormal(h.valor)
         const valorNoTexto = fato.faixa ?? `fecha ${fato.fim}`
-        if (fato.faixa ? valorNoDado.split(', ').includes(fato.faixa) : valorNoDado.endsWith(`-${fato.fim}`)) continue
+        if (fato.faixa ? valorNoDado === fato.faixa : valorNoDado.endsWith(`-${fato.fim}`)) continue
         achadas.set(`${h.campo}|${valorNoTexto}|${linha.id}`, {
           campo: h.campo,
           valorNosDados: h.valor,

@@ -257,8 +257,14 @@ describe('coerência com os textos', () => {
     expect(linhasDatadas('Segunda funciona habitualmente das 11h às 17h; dia 20/11 abrimos das 11h às 15h.')).toEqual(['dia 20/11 abrimos das 11h às 15h.'])
     expect(divergenciasDe({ hours: HOURS }, [texto('Natal: terça das 11h às 14h; quarta das 11h às 15h.')])).toEqual([])
   })
-  it('dois turnos no dado aceitam o turno do texto', () => {
-    expect(divergenciasDe({ hours: { ...HOURS, monday: '11:00-15:00, 18:00-23:00' } }, [texto('Segunda das 11h às 15h e das 18h às 23h.')])).toEqual([])
+  it('compara todos os turnos do dia: o segundo herda o dia', () => {
+    const segunda = (monday: string) => divergenciasDe({ hours: { ...HOURS, monday } }, [texto('Segunda das 11h às 15h e das 18h às 23h.')])
+    expect(segunda('11:00-15:00, 18:00-23:00')).toEqual([])
+    expect(segunda('11:00-15:00, 18:00-22:00')).toMatchObject([{ campo: 'hours.monday', valorNoTexto: '11:00-15:00, 18:00-23:00' }])
+  })
+  it('os dados de campanha não vigiam o horário habitual', () => {
+    const campanha = texto('Ceia de Natal por encomenda.', { id: 'natal', expiresAt: new Date('2026-12-26'), metadata: { hours: { monday: '11:00-14:00' } } })
+    expect(divergenciasDaBase([campanha, texto('Segunda das 11h às 17h.')])).toEqual([])
   })
   it('entende os outros vocabulários: intervalo, todos os dias e 00:00', () => {
     const d = divergenciasDe({ horarios: { domingo: '11:30-16:00', segunda: '18:30-23:30', 'terca-sabado': '11:30-23:30' } }, [texto('Todos os dias das 11h30 às 23h30 (vigente desde 15/10/2026).')])
@@ -281,6 +287,13 @@ describe('coerência com os textos', () => {
     expect(r.estado).toBe('concluida')
     expect(r.divergencias.map((d) => d.campo)).toEqual(['happy_hour.time'])
     expect((linha().metadata as typeof META).happy_hour.time).toBe('17:00-19:00')
+  })
+  it('tirar a data de perto do trecho conta como remover a exceção', async () => {
+    const comExcecao = `${TEXTO}\nNatal: terça das 11h às 14h; quarta das 11h às 15h.`
+    linha().content = comExcecao
+    const semContexto = `${TEXTO}\nNatal: terça das 11h às 14h.\nquarta das 11h às 15h.`
+    await expect(executarOperacaoDaBase(pedido({ alteracoes: undefined, content: semContexto, autorizarIndexacao: true, aceitarDivergencias: ['hours.monday', 'hours.wednesday'] }))).rejects.toMatchObject({ code: 'DIVERGENCIA_NAO_RESOLVIDA', details: { excecoesRemovidas: ['quarta das 11h às 15h.'] } })
+    expect(linha().content).toBe(comExcecao)
   })
   it('texto novo que contradiz os dados de OUTRA entrada bloqueia', async () => {
     base.entradas.set('dados', { ...structuredClone(linha()), id: 'dados', title: 'Ficha', content: 'Ficha de horários sem frase de dia.', metadata: { hours: { ...HOURS, monday: '11:00-17:00' } } })
@@ -355,6 +368,18 @@ describe('indexação', () => {
     expect(await executarOperacaoDaBase(pedido({ versaoEsperada: versaoLida, content: NOVO, autorizarIndexacao: true }))).toMatchObject({ estado: 'superada', gravado: true })
     expect(embeddings).not.toHaveBeenCalled()
     expect(await executarOperacaoDaBase(pedido({ operacaoId: 'operacao-seguinte', alteracoes: [{ campo: 'address', valor: 'Rua Nova' }], autorizarIndexacao: true }))).toMatchObject({ gravado: true })
+  })
+  it('o texto muda entre a repetição e a aquisição: nada se apaga e a operação vira superada', async () => {
+    embeddings.mockRejectedValueOnce(new Error('embeddings fora do ar'))
+    const versaoLida = versao()
+    await executarOperacaoDaBase(pedido({ content: NOVO, autorizarIndexacao: true }))
+    linha().content = `${NOVO}\nmudou no último instante`
+    const [chunks, vetores] = [structuredClone(base.chunks), base.vetores.size]
+    embeddings.mockClear()
+    expect(await executarOperacaoDaBase(pedido({ versaoEsperada: versaoLida, content: NOVO, autorizarIndexacao: true }))).toMatchObject({ estado: 'superada' })
+    expect(embeddings).not.toHaveBeenCalled()
+    expect(base.chunks).toEqual(chunks)
+    expect(base.vetores.size).toBe(vetores)
   })
   it('a tentativa antiga não publica o resultado por cima da mais nova', async () => {
     embeddings.mockRejectedValueOnce(new Error('embeddings fora do ar'))

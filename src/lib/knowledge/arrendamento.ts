@@ -96,11 +96,14 @@ export interface ArrendamentoDaEntrada {
  * Adquire a entrada para um ciclo de indexação. Arrendamento vigente de outro
  * token (ou do mesmo, usado duas vezes) → `IndexacaoEmAndamento`, sem escrita.
  * Adquirir invalida a marca de indexado (PR13-36) na mesma escrita.
+ * `conteudoEsperado`: quem só pode indexar um texto (a autorização cobre aquele) confere na leitura do compare-and-set;
+ * outro texto → `IndexacaoSuperada`, sem escrita.
  */
-export async function adquirirArrendamento(entryId: string, ciclo: string): Promise<ArrendamentoDaEntrada> {
+export async function adquirirArrendamento(entryId: string, ciclo: string, conteudoEsperado?: string): Promise<ArrendamentoDaEntrada> {
   for (let i = 0; i < TENTATIVAS; i++) {
     const lida = await ler(entryId)
     if (!lida) throw new Error('Entry not found')
+    if (conteudoEsperado !== undefined && lida.content !== conteudoEsperado) throw new IndexacaoSuperada(entryId, 'adquirir a entrada')
     const agora = Date.now()
     if (arrendamentoVigenteDe(lida.metadata, agora)) throw new IndexacaoEmAndamento(entryId, expiracaoDe(lida.metadata))
     if (await gravarSeNaoMudou(entryId, lida, comArrendamento(lida.metadata, ciclo, agora + DURACAO_DO_ARRENDAMENTO_MS), cicloDeIndexacaoDe(lida.metadata))) {

@@ -14,7 +14,7 @@ import { vetoresAusentes } from './vector-client'
 import { invalidateProjectCache } from './cache'
 import { reindexEntry } from './indexer'
 import { editarEntradaCoordenada, type Lida } from './arrendamento'
-import { ehIndexacaoEmAndamento, indexacaoPendenteDe, metadataComoObjeto, metadataDaPessoa } from './marca-de-indexado'
+import { IndexacaoSuperada, ehIndexacaoEmAndamento, indexacaoPendenteDe, metadataComoObjeto, metadataDaPessoa } from './marca-de-indexado'
 import {
   CAMPOS_PERMITIDOS,
   aplicarAlteracoes,
@@ -78,7 +78,7 @@ export async function linhasDaBase(projectId: number): Promise<LinhaDaBase[]> {
 /** O que os textos do cliente contradizem nos dados de qualquer entrada: é o aviso de quem edita só o texto. */
 export function divergenciasDaBase(linhas: LinhaDaBase[]): Divergencia[] {
   return linhas
-    .filter((l) => temHorarioNosDados(l.metadata))
+    .filter((l) => !l.expiresAt && temHorarioNosDados(l.metadata))
     .flatMap((l) => divergenciasDe(metadataComoObjeto(l.metadata), linhas).map((d) => ({ ...d, entradaDosDados: l.id })))
 }
 
@@ -138,12 +138,13 @@ async function indexar(op: OperacaoDaBase): Promise<OperacaoDaBase> {
   let status = 'CONCLUIDA'
   let erroIndexacao: string | null = null
   try {
-    await reindexEntry(op.entryId, { projectId: op.projectId, userId: op.autor })
+    // A autorização cobre o texto desta operação: outro texto na linha não se indexa por conta dela.
+    await reindexEntry(op.entryId, { projectId: op.projectId, userId: op.autor }, { conteudoEsperado: (op.depois as unknown as Foto).content })
   } catch (erro) {
     console.error(`[knowledge] operação ${op.operacaoId}: a reindexação da entrada ${op.entryId} não terminou:`, erro)
     const pendente = indexacaoPendenteDe(erro)
-    status = pendente ? 'INDEXACAO_PENDENTE' : 'INDEXACAO_FALHOU'
-    erroIndexacao = pendente?.aviso ?? (erro instanceof Error ? erro.message : String(erro))
+    status = erro instanceof IndexacaoSuperada ? 'SUPERADA' : pendente ? 'INDEXACAO_PENDENTE' : 'INDEXACAO_FALHOU'
+    erroIndexacao = status === 'SUPERADA' ? null : (pendente?.aviso ?? (erro instanceof Error ? erro.message : String(erro)))
   }
   await invalidateProjectCache(op.projectId).catch((e) => console.error('[knowledge] invalidateProjectCache falhou:', e))
   await db.operacaoDaBase.updateMany({ where: { id: op.id, atualizadaEm: tentativa }, data: { status, erroIndexacao } })
@@ -159,13 +160,7 @@ async function repetir(op: OperacaoDaBase, hash: string, confirmado: boolean) {
       409,
     )
   }
-  if (!confirmado || !DEVE_INDEXACAO.includes(op.status)) return resultado(op, { repetida: true })
-  const entrada = await db.knowledgeBaseEntry.findUnique({ where: { id: op.entryId }, select: { content: true } })
-  // A autorização cobre o texto desta operação: outro texto na linha não se indexa por conta dela.
-  if (entrada?.content !== (op.depois as unknown as Foto).content) {
-    return resultado(await db.operacaoDaBase.update({ where: { id: op.id }, data: { status: 'SUPERADA', erroIndexacao: null } }), { repetida: true })
-  }
-  return resultado(await indexar(op), { repetida: true })
+  return resultado(confirmado && DEVE_INDEXACAO.includes(op.status) ? await indexar(op) : op, { repetida: true })
 }
 
 export async function executarOperacaoDaBase(pedido: PedidoDeOperacao) {
@@ -255,12 +250,15 @@ export async function executarOperacaoDaBase(pedido: PedidoDeOperacao) {
   const aceitas = new Set(pedido.aceitarDivergencias ?? [])
   // Numa reversão nada se decide de novo: ela devolve um estado que já existiu, e as divergências só são relatadas.
   const bloqueiam = reversao ? [] : divergencias.filter((d) => ((d.entradaDosDados === entradaId && tocados.has(d.campo)) || (mudouTexto && d.origem.entradaId === entradaId)) && !aceitas.has(d.campo))
-  const excecoesRemovidas = reversao ? [] : linhasDatadas(antes.content).filter((l) => !depois.content.includes(l))
+  // Compara com as exceções de DEPOIS, não com o texto: o trecho pode seguir lá e ter perdido a data que o fazia exceção.
+  const excecoesDepois = linhasDatadas(depois.content)
+  const semPonto = (l: string) => l.replace(/[.!?]+$/, '')
+  const excecoesRemovidas = reversao ? [] : linhasDatadas(antes.content).filter((l) => !excecoesDepois.map(semPonto).includes(semPonto(l)))
   const excecoesBloqueiam = excecoesRemovidas.length > 0 && !aceitas.has(ACEITE_DE_EXCECOES)
   const indexacao = { necessaria: !indice.confere, motivo: indice.motivo, trechos: indice.trechos, tokens: indice.tokens, tetoDeTokens: TETO_DE_TOKENS_DA_ENTRADA }
   const acimaDoTeto = !reversao && mudouTexto && indice.tokens > TETO_DE_TOKENS_DA_ENTRADA
 
-  const analise = { versaoAtual, diff, mudouTexto, divergencias, camposSemConferencia: camposSemConferencia(depois.dados, [...tocados]), excecoesPreservadas: linhasDatadas(depois.content), excecoesRemovidas, indexacao, origemDosDados: { atualizadaEm: entrada.updatedAt.toISOString(), atualizadaPor: entrada.updatedBy ?? entrada.createdBy } }
+  const analise = { versaoAtual, diff, mudouTexto, divergencias, camposSemConferencia: camposSemConferencia(depois.dados, [...tocados]), excecoesPreservadas: excecoesDepois, excecoesRemovidas, indexacao, origemDosDados: { atualizadaEm: entrada.updatedAt.toISOString(), atualizadaPor: entrada.updatedBy ?? entrada.createdBy } }
 
   if (!confirmado) {
     return {
