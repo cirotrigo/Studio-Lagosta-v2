@@ -433,7 +433,7 @@ function LogoSection({
                     disabled={updateLogoStatus.isPending}
                   />
                   <label htmlFor={`logo-${logo.id}`} className="text-muted-foreground cursor-pointer">
-                    Logo principal do projeto
+                    Logo principal (o compositor escolhe, entre as principais, a que lê sobre a foto)
                   </label>
                 </div>
               </div>
