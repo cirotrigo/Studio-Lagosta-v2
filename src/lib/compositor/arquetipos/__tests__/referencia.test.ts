@@ -263,9 +263,75 @@ describe('F2c · o corpo desenhado na referência (02/11/2026)', () => {
     expect(validarArquetipo(v1, { formatos: ['story'], areaSegura })).toEqual([])
     const hoje = compilada().definicao
     expect(impressaoDoArquetipo(hoje)).not.toBe(congelada.impressao)
-    const { corpos: _c, ...geometriaDeHoje } = hoje.formatos.story
+    // F2c acrescentou `corpos`; F2d, `estilos` — a geometria por baixo é a mesma.
+    const { corpos: _c, estilos: _e, ...geometriaDeHoje } = hoje.formatos.story
     expect(geometriaDeHoje).toEqual(v1.formatos.story)
     // A materialização da congelada é a de sempre (as mesmas caixas): a F2c não toca a definição antiga.
     expect(materializada(v1).papeis.headline!.posicao).toEqual(materializada(hoje).papeis.headline!.posicao)
+  })
+})
+
+describe('F2d · o estilo desenhado na referência (02/11/2026)', () => {
+  const ESTILO_TITULO = { fontFamily: 'TrajanPro Regular', fontWeight: null, lineHeight: 1, letterSpacing: 0, textTransform: 'uppercase', color: '#F8F8F8' }
+  const comCamada = (id: string, muda: (l: Layer) => Layer) => ({ ...BRUNCH, layers: BRUNCH.layers.map((l) => (l.id === id ? muda(l) : l)) })
+  const recusaDe = (pagina: typeof BRUNCH) => compilarReferencia(pagina, { pageVersion: 'v', versao: 1 }) as Recusa
+  const comEstilos = (estilos: Record<string, unknown>) => {
+    const { definicao } = compilada()
+    return { ...definicao, formatos: { story: { ...definicao.formatos.story, estilos } } } as unknown as Ok['definicao']
+  }
+  const problemas = (d: Ok['definicao']) => validarArquetipo(d, { formatos: ['story'], areaSegura }).map((p) => `${p.codigo} ${p.campo}`)
+
+  it('a Brunch compila `estilos` (TrajanPro Regular, peso normal, entrelinha 1, caixa alta, #F8F8F8; apoio com espaçamento 3), a leitura diz o estilo, e o validador aceita', () => {
+    const r = compilada()
+    expect(r.definicao.formatos.story.estilos).toEqual({ headline: ESTILO_TITULO, apoio: { ...ESTILO_TITULO, letterSpacing: 3 } })
+    expect(r.leitura.papeis.map((p) => [p.papel, p.estilo.fontFamily, p.estilo.letterSpacing])).toEqual([['headline', 'TrajanPro Regular', 0], ['apoio', 'TrajanPro Regular', 3]])
+    expect(validarArquetipo(r.definicao, { formatos: ['story'], areaSegura })).toEqual([])
+  })
+
+  it('o leitor é próprio: peso "bold" vira 700, "950" recusa; cor ausente ou fora de #rrggbb recusa (nunca o branco por fallback); caixa desconhecida recusa', () => {
+    expect((compilarReferencia(comCamada('titulo', (l) => ({ ...l, style: { ...l.style, fontWeight: 'bold' } } as Layer)), { pageVersion: 'v', versao: 1 }) as Ok).definicao.formatos.story.estilos!.headline!.fontWeight).toBe(700)
+    expect(recusaDe(comCamada('titulo', (l) => ({ ...l, style: { ...l.style, fontWeight: '950' } } as Layer))).codigo).toBe('REFERENCIA_ESTILO_INVALIDO')
+    expect(recusaDe(comCamada('titulo', (l) => ({ ...l, style: { ...l.style, color: undefined } } as Layer))).codigo).toBe('REFERENCIA_ESTILO_INVALIDO')
+    expect(recusaDe(comCamada('apoio', (l) => ({ ...l, style: { ...l.style, color: 'rgba(255,255,255,0.9)' } } as Layer))).codigo).toBe('REFERENCIA_ESTILO_INVALIDO')
+    expect(recusaDe(comCamada('titulo', (l) => ({ ...l, style: { ...l.style, textTransform: 'small-caps' } } as Layer))).codigo).toBe('REFERENCIA_ESTILO_INVALIDO')
+  })
+
+  it('o que a F2d não representa é recusado DITO (REFERENCIA_ESTILO_NAO_SUPORTADO): rich-text, itálico, decoração, contorno, sombra com deslocamento horizontal', () => {
+    expect(recusaDe(comCamada('titulo', (l) => ({ ...l, type: 'rich-text' } as Layer))).codigo).toBe('REFERENCIA_ESTILO_NAO_SUPORTADO')
+    expect(recusaDe(comCamada('titulo', (l) => ({ ...l, style: { ...l.style, fontStyle: 'italic' } } as Layer))).codigo).toBe('REFERENCIA_ESTILO_NAO_SUPORTADO')
+    expect(recusaDe(comCamada('titulo', (l) => ({ ...l, style: { ...l.style, textDecoration: 'underline' } } as Layer))).codigo).toBe('REFERENCIA_ESTILO_NAO_SUPORTADO')
+    expect(recusaDe(comCamada('apoio', (l) => ({ ...l, effects: { stroke: { enabled: true, strokeColor: '#000000', strokeWidth: 2 } } } as Layer))).codigo).toBe('REFERENCIA_ESTILO_NAO_SUPORTADO')
+    expect(recusaDe(comCamada('apoio', (l) => ({ ...l, effects: { shadow: { enabled: true, shadowColor: '#000000', shadowBlur: 4, shadowOffsetX: 2, shadowOffsetY: 2, shadowOpacity: 0.5 } } } as Layer))).codigo).toBe('REFERENCIA_ESTILO_NAO_SUPORTADO')
+    // A sombra VERTICAL da página entra no estilo.
+    const comSombra = compilarReferencia(comCamada('apoio', (l) => ({ ...l, effects: { shadow: { enabled: true, shadowColor: '#000000', shadowBlur: 4, shadowOffsetX: 0, shadowOffsetY: 2, shadowOpacity: 0.5 } } } as Layer)), { pageVersion: 'v', versao: 1 }) as Ok
+    expect(comSombra.definicao.formatos.story.estilos!.apoio!.sombra).toEqual({ color: '#000000', blur: 4, offsetY: 2, opacity: 0.5 })
+    expect(validarArquetipo(comSombra.definicao, { formatos: ['story'], areaSegura })).toEqual([])
+  })
+
+  it('a cerca do validador abre por CAMINHO EXATO: fontFamily/color só em estilos.<papel>; fontSize, svg ou projectId dentro de estilos recusam; cor fora de estilos recusa; estilos sem referência recusa', () => {
+    const { definicao } = compilada()
+    const { referencia: _r, ...semReferencia } = definicao as unknown as Record<string, unknown>
+    expect(problemas(semReferencia as unknown as Ok['definicao'])).toEqual(expect.arrayContaining([expect.stringContaining('CAMPO_INVALIDO formatos.story.corpos'), expect.stringContaining('formatos.story.estilos')]))
+    // Contrabando dentro de estilos: proibido continua proibido (e desconhecido continua desconhecido).
+    const contrabando = comEstilos({ headline: { ...ESTILO_TITULO, fontSize: 85 }, apoio: { ...ESTILO_TITULO, svg: '<svg/>', projectId: 12 } })
+    expect(problemas(contrabando)).toEqual(expect.arrayContaining(['CAMPO_PROIBIDO formatos.story.estilos.headline.fontSize', 'CAMPO_PROIBIDO formatos.story.estilos.apoio.svg', 'CAMPO_PROIBIDO formatos.story.estilos.apoio.projectId']))
+    // Cor literal fora de estilos: recusada como sempre.
+    const corFora = { ...definicao, papeis: definicao.papeis.map((p, i) => (i === 0 ? { ...p, color: '#ffffff' } : p)) } as unknown as Ok['definicao']
+    expect(problemas(corFora)).toEqual(expect.arrayContaining(['CAMPO_PROIBIDO papeis.0.color']))
+    // Forma fechada e domínio.
+    expect(problemas(comEstilos({ headline: { ...ESTILO_TITULO, textTransform: 'small-caps' }, apoio: ESTILO_TITULO }))).toEqual(expect.arrayContaining(['CAMPO_INVALIDO formatos.story.estilos.headline.textTransform']))
+    expect(problemas(comEstilos({ headline: ESTILO_TITULO }))).toEqual(expect.arrayContaining(['CAMPO_INVALIDO formatos.story.estilos.apoio']))
+    expect(problemas(comEstilos({ headline: { ...ESTILO_TITULO, sombra: { color: '#000000', blur: 2, offsetY: 1, opacity: 0.5, offsetX: 1 } }, apoio: ESTILO_TITULO }))).toEqual(expect.arrayContaining(['CAMPO_DESCONHECIDO formatos.story.estilos.headline.sombra.offsetX']))
+    expect(problemas(comEstilos({ headline: { ...ESTILO_TITULO, fontWeight: 950 }, apoio: { ...ESTILO_TITULO, color: 'white' } }))).toEqual(expect.arrayContaining(['CAMPO_INVALIDO formatos.story.estilos.headline.fontWeight', 'CAMPO_INVALIDO formatos.story.estilos.apoio.color']))
+  })
+
+  it('as revisões de ANTES (a F1 congelada; uma só com corpos) continuam válidas com a impressão gravada — a F2d não as toca', () => {
+    const v1 = congelada.definicao as unknown as Ok['definicao']
+    expect(v1.formatos.story.estilos).toBeUndefined()
+    expect(impressaoDoArquetipo(v1)).toBe(congelada.impressao)
+    expect(validarArquetipo(v1, { formatos: ['story'], areaSegura })).toEqual([])
+    const { estilos: _e, ...soCorpos } = compilada().definicao.formatos.story
+    const v2 = { ...compilada().definicao, formatos: { story: soCorpos } } as unknown as Ok['definicao']
+    expect(validarArquetipo(v2, { formatos: ['story'], areaSegura })).toEqual([])
   })
 })

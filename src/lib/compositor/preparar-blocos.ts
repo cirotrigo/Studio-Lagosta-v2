@@ -22,6 +22,8 @@ import { arranjosDaPagina, distribuirLinhas, escolherArranjo, type ArranjoDeGrup
 import { destaqueDoPapel, type EstiloDeDestaque } from './destaques'
 import { dividirManchete } from './segunda-voz'
 import type { GrupoVisual, Papel } from './spec'
+import type { EstiloDaReferencia } from './arquetipos/tipos'
+import { vestirEstiloDaReferencia, type EstiloVestido } from './arquetipos/estilo-da-referencia'
 import { chaveDoGrupoExtra, estiloHerdado, resolverCamadasExtras, type BlocoResolvido, type CamadaExtraDaSpec, type IdentidadeDoExtra, type FalhaDeResolucao } from './camadas-extras'
 
 export function hashDe(texto: string): number {
@@ -79,6 +81,8 @@ export interface BlocoPreparado extends BlocoMontado {
   indicesDoBloco: number[]
   /** F2c: na peça por referência com `corpos` — o corpo desenhado (px), o teto e o piso deste bloco (px) e o corpo efetivo. */
   corpo?: CorpoDoBloco
+  /** F2d: na peça por referência com `estilos` — a origem de cada campo do estilo efetivo (referência, assinatura ou arranjo). */
+  estiloDaReferencia?: EstiloVestido['origem']
 }
 
 /** F2c: o corpo da referência como este bloco o viu — todos em px do canvas. */
@@ -110,6 +114,8 @@ export interface RecusaPreparada {
   quebras?: RecusaDeBloco['quebras']
   /** F2c: o corpo da referência com que o bloco foi medido (a recusa diz o piso em px, não "80 %"). */
   corpo?: CorpoDoBloco
+  /** F2d: a origem de cada campo do estilo com que a recusa foi medida. */
+  estiloDaReferencia?: EstiloVestido['origem']
 }
 
 export interface BlocosPreparados {
@@ -161,6 +167,11 @@ export function prepararBlocos(args: {
    * parte de 85 px, nunca de 106. Vence `escalaMaximaDoPapel`.
    */
   corpoDoPapel?: (papel: Papel) => { referencia: number; teto: number; piso: number } | undefined
+  /**
+   * F2d: na peça por referência com `estilos`, o estilo desenhado do papel e o corpo desenhado (a régua do espaçamento).
+   * Vestido sobre o estilo-base EFETIVO de cada bloco (`vestirEstiloDaReferencia`); a segunda voz toma só a cor.
+   */
+  estiloDoPapel?: (papel: Papel) => { estilo: EstiloDaReferencia; corpo: number } | undefined
   /**
    * Com arquétipo de LISTA (#15): o papel cujo bloco vira um ITEM por linha autoral — uma camada por linha, do MESMO
    * bloco (`origem.linhas` = a linha dela), na ordem do autor. O item que quebra em duas linhas visuais segue uma camada.
@@ -338,8 +349,13 @@ export function prepararBlocos(args: {
     )
     for (const p of porItem) {
       // O extra veste o estilo do papel de origem SEM a posição dele.
-      const estiloBase = p.texto?.estilo ?? assinatura.papeis[p.papel]
-      if (!estiloBase) continue
+      const estiloBase0 = p.texto?.estilo ?? assinatura.papeis[p.papel]
+      if (!estiloBase0) continue
+      // F2d: o estilo da referência vestido sobre o estilo-base EFETIVO (o do arranjo ou o da assinatura), campo a campo; a
+      // segunda voz toma só a cor. O arranjo salvo não é mutado: a sobreposição vive só neste bloco.
+      const daRef = args.estiloDoPapel?.(p.papel === 'headline2' ? 'headline' : p.papel)
+      const vestido = daRef ? vestirEstiloDaReferencia({ base: estiloBase0, origemDaBase: p.texto ? 'arranjo' : 'assinatura', estilo: daRef.estilo, corpo: daRef.corpo, apenasCor: p.papel === 'headline2' }) : null
+      const estiloBase = vestido ? vestido.estilo : estiloBase0
       const estilo = p.extra ? estiloHerdado(estiloBase) : estiloBase
       const n = p.extra ? 0 : (repeticoes.get(p.papel) ?? 0) + 1
       if (!p.extra) repeticoes.set(p.papel, n)
@@ -348,6 +364,9 @@ export function prepararBlocos(args: {
       const id = p.extra ? p.extra.id : n > 1 ? `${p.papel}-${n}` : p.papel
       const funcao = p.extra ? p.extra.funcao : p.papel
       const destaque = estiloDeDestaqueDoPapel(estilo, assinatura.numeros.destaque, familias)
+      // F2d: a família da referência e a do destaque RESOLVIDO sobre ela entram na conferência de fontes (a coleta de cima
+      // é anterior ao vestir).
+      if (vestido) for (const f of [estilo.fontFamily, destaque?.fontFamily]) if (typeof f === 'string' && f.trim()) familiasCandidatas.add(f)
       // Com arquétipo a largura é a da REFERÊNCIA: a `larguraMaxima` da assinatura é geometria e sai da conta.
       const caixa = args.caixaDoPapel?.(p.papel === 'headline2' ? 'headline' : p.papel)
       const estiloMedido = caixa ? { ...estilo, larguraMaxima: undefined } : estilo
@@ -385,7 +404,7 @@ export function prepararBlocos(args: {
       })
       avisos.push(...r.avisos)
       if (r.recusa) {
-        recusas.push({ papel: r.recusa.papel, funcao, ...(p.extra ? { extra: p.extra } : {}), id, linhasDaCopy: p.linhas, estilo, familiasMedidas: r.recusa.familiasMedidas, destaque, orcamento: r.recusa.orcamento, coluna, ...(r.recusa.altura ? { altura: r.recusa.altura } : {}), ...(r.recusa.quebras ? { quebras: r.recusa.quebras } : {}), ...(corpoDaRef ? { corpo: corpoDaRef } : {}) })
+        recusas.push({ papel: r.recusa.papel, funcao, ...(p.extra ? { extra: p.extra } : {}), id, linhasDaCopy: p.linhas, estilo, familiasMedidas: r.recusa.familiasMedidas, destaque, orcamento: r.recusa.orcamento, coluna, ...(r.recusa.altura ? { altura: r.recusa.altura } : {}), ...(r.recusa.quebras ? { quebras: r.recusa.quebras } : {}), ...(corpoDaRef ? { corpo: corpoDaRef } : {}), ...(vestido ? { estiloDaReferencia: vestido.origem } : {}) })
         continue
       }
       const corpoEfetivo = Number(r.bloco.layer.style?.fontSize ?? 0)
@@ -421,6 +440,7 @@ export function prepararBlocos(args: {
         ...(p.texto?.recuo ? { recuo: Math.round(p.texto.recuo * escalaDoFormato) } : {}),
         ...(p.texto && p.texto.elementos.length > 0 ? { elementos: p.texto.elementos, escalaDosElementos } : {}),
         ...(corpoDaRef ? { corpo: { ...corpoDaRef, efetivo: corpoEfetivo } } : {}),
+        ...(vestido ? { estiloDaReferencia: vestido.origem } : {}),
       })
     }
   }

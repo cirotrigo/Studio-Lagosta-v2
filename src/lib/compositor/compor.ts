@@ -124,6 +124,7 @@ import {
   type PreparoNoArquetipo,
   type UnidadeDoArquetipo, type CorpoDoPapel } from './arquetipos/no-compositor'
 import { chaveDoArquetipo, ehReferencia, type CantoDaLogo } from './arquetipos/tipos'
+import { estiloDoPapelDaReferencia } from './arquetipos/estilo-da-referencia'
 import { resolucaoParaASpec } from './referencias'
 import { caixaDaFoto, fundoDaPeca, luzParaAVariante, papelDoBloco, tintasAtivas, type FolgaDoCandidato, type PapelDoFundo, type TintaAtiva } from './arquetipos/fundo'
 import { camadaDoAcento, idDoAcento, incoerenciaDosEnvolventesCongelados, obstaculosDosAcentos, ocupacaoDoAcento, posicionarAcentos, receitasDoArquetipo, type AcentoCongelado, type ProblemaDoAcento, type ReceitaDoAcento } from './arquetipos/acentos'
@@ -304,6 +305,11 @@ export interface DiagnosticoDoArquetipo {
    * unidade parou, o piso materializado, o corpo efetivo e a redução (fração, 0 = no corpo desenhado). Ausente sem `corpos`.
    */
   corpos?: Array<{ camada: string; papel: string; referencia: number; teto: number; piso: number; efetivo: number; reducao: number; observacao?: string }>
+  /**
+   * F2d: na peça por referência com `estilos` — por bloco, o estilo EFETIVO da camada (família, peso, caixa, espaçamento,
+   * cor) e a origem de cada campo (referência / assinatura / arranjo; a segunda voz leva só a cor da referência).
+   */
+  estilos?: Array<{ camada: string; papel: string; fontFamily: string; fontWeight: number | null; textTransform: string | null; letterSpacing: number; color: string; origem: Record<string, string> }>
   /**
    * #9: a RECEITA da máscara desenhada na `bg-foto` (`{ tipo, versao, raio, caixa, path }`) — a única fonte do desenho
    * na recomposição (`mascaraCongelada`). `caixa` = w/h de `composicao.foto.caixa`. Ausente sem máscara.
@@ -949,6 +955,8 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   // compor nunca podem divergir.
   const combinacoesSalvas = await arranjosDasCombinacoes(spec.projectId, medir)
   const familias = await familiasDoProjeto(spec.projectId)
+  // F2d: o estilo desenhado na referência, por papel geométrico, com o corpo desenhado (a régua do espaçamento).
+  const estiloDoPapelArq = arq ? estiloDoPapelDaReferencia(arq.definicao, arq.formato) : null
   const preparar = (escalaMaximaDoPapel?: (p: Papel) => number | undefined, corpoDoPapel?: (p: Papel) => CorpoDoPapel | undefined) =>
     prepararBlocos({
       spec,
@@ -959,7 +967,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       medir,
       familias,
       combinacoesSalvas,
-      ...(caixasArq ? { caixaDoPapel: (p: Papel) => caixasArq[papelGeometrico(p)], ...(escalaMaximaDoPapel ? { escalaMaximaDoPapel } : {}), ...(corpoDoPapel ? { corpoDoPapel } : {}) } : {}),
+      ...(caixasArq ? { caixaDoPapel: (p: Papel) => caixasArq[papelGeometrico(p)], ...(escalaMaximaDoPapel ? { escalaMaximaDoPapel } : {}), ...(corpoDoPapel ? { corpoDoPapel } : {}), ...(estiloDoPapelArq ? { estiloDoPapel: estiloDoPapelArq } : {}) } : {}),
       ...(listasArq?.size ? { listaDoPapel: (p: Papel) => listasArq.has(papelGeometrico(p)) } : {}),
     })
   // Com arquétipo, a preparação passa pela escada da UNIDADE (a mesma do medir-copy) — e a logo dos arranjos sai
@@ -2402,6 +2410,13 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
                   corpos: montados
                     .filter((b) => b.corpo?.efetivo !== undefined)
                     .map((b) => ({ camada: b.layer.id, papel: b.papel, referencia: b.corpo!.referencia, teto: b.corpo!.teto, piso: b.corpo!.piso, efetivo: b.corpo!.efetivo!, reducao: Math.round((1 - b.corpo!.efetivo! / b.corpo!.referencia) * 1000) / 1000, ...(observacaoDoTeto(b) ? { observacao: observacaoDoTeto(b)! } : {}) })),
+                }
+              : {}),
+            ...(montados.some((b) => b.estiloDaReferencia)
+              ? {
+                  estilos: montados
+                    .filter((b) => b.estiloDaReferencia)
+                    .map((b) => ({ camada: b.layer.id, papel: b.papel, fontFamily: String(b.layer.style?.fontFamily ?? ''), fontWeight: typeof b.layer.style?.fontWeight === 'number' ? b.layer.style.fontWeight : null, textTransform: (b.layer.style?.textTransform as string | undefined) ?? null, letterSpacing: Number(b.layer.style?.letterSpacing ?? 0), color: String(b.layer.style?.color ?? ''), origem: b.estiloDaReferencia! })),
                 }
               : {}),
             ...(mascara ? { foto: { mascara } } : {}),

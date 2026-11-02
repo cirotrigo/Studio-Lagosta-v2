@@ -126,6 +126,14 @@ export interface GeometriaDoArquetipo {
    */
   readonly corpos?: Readonly<Partial<Record<PapelDeTexto, number>>>
   /**
+   * F2d (02/11/2026): o ESTILO do texto desenhado na página de referência, por papel — família, peso, entrelinha,
+   * espaçamento (px NO corpo desenhado), caixa, cor e sombra. Só na definição compilada de uma referência (no catálogo
+   * fonte e cor são da assinatura/DNA: é a cerca de `procurarCamposProibidos`, aberta por caminho exato só aqui).
+   * Obrigatório para todo papel de texto declarado quando presente. A peça veste esse estilo sobre o estilo-base
+   * efetivo do bloco (`vestirEstiloDaReferencia`); `fontSize` continua em `corpos`.
+   */
+  readonly estilos?: Readonly<Partial<Record<PapelDeTexto, EstiloDaReferencia>>>
+  /**
    * Só no fundo `foto-em-caixa` (#8, 24/10/2026), e nele obrigatória: a CAIXA da foto, em frações. A foto pousa nela em
    * cover; nenhuma zona de papel nem caixa de elemento a toca (o texto fica no liso).
    */
@@ -257,6 +265,21 @@ export interface ArquetipoDeLayout {
   /** Só na definição compilada de uma página de referência (F1). Ausente = arquétipo do catálogo. */
   readonly referencia?: ReferenciaDaDefinicao
 }
+
+/** F2d: o estilo desenhado de um papel na página de referência. `fontWeight: null` = peso normal; `textTransform: 'none'` explícito. */
+export interface EstiloDaReferencia {
+  readonly fontFamily: string
+  readonly fontWeight: number | null
+  readonly lineHeight: number
+  /** px no corpo desenhado (`corpos[papel]`): a camada sai com `spacing × corpoEfetivo / corpo`. */
+  readonly letterSpacing: number
+  readonly textTransform: 'uppercase' | 'lowercase' | 'capitalize' | 'none'
+  /** `#rrggbb`. */
+  readonly color: string
+  readonly sombra?: { readonly color: string; readonly blur: number; readonly offsetY: number; readonly opacity: number }
+}
+export const TRANSFORMACOES_DO_ESTILO = ['uppercase', 'lowercase', 'capitalize', 'none'] as const
+export const COR_HEX = /^#[0-9a-f]{6}$/i
 
 /** F2c: o menor corpo que a materialização desenha (`camadaDoPapel`: `max(8, …)`) — o domínio de `corpos` começa nele. */
 export const CORPO_MINIMO_DA_REFERENCIA = 8

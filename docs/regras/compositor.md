@@ -1856,3 +1856,61 @@ compor/medir; a congelada intacta medida com versão e impressão fixadas, e com
   EFETIVO de cada bloco do papel (`medidoCom`), não só com o da assinatura; `ver-assinatura` lista as referências
   aprovadas no formato com os corpos; a política do teto absoluto é dita no diagnóstico (`corpos[].observacao`) e no
   bloco do medir-copy quando o papel tem mais de um bloco.
+
+
+### F2d da direção por referência: a FONTE e a COR desenhadas na referência valem na peça (02/11/2026)
+
+**Pedido do Ciro**: a peça do Brunch saía TrajanPro Bold dourada (a assinatura) e a página desenha TrajanPro Regular, caixa
+alta, branca. Plano (v1→v3, APTO na 3ª rodada do Codex) e revisões em `human-output/relatorios/
+editor-madrugada-2026-10-24/direcao-por-referencia-2026-10-30/f2d-estilo/`.
+
+**O que existe:**
+
+- **O compilador lê o ESTILO** de cada papel (`referencia.ts`, leitor PRÓPRIO `estiloDaReferencia` — o da assinatura
+  troca cor ausente por branco; aqui a cor é validada antes de qualquer fallback): `formatos[f].estilos[papel] =
+  { fontFamily, fontWeight (null = normal), lineHeight, letterSpacing (px NO corpo desenhado), textTransform ('none'
+  explícito), color (#rrggbb), sombra? }`. Recusa `REFERENCIA_ESTILO_INVALIDO` (sem família, cor fora de #rrggbb, peso
+  fora de 100–900, caixa desconhecida) e `REFERENCIA_ESTILO_NAO_SUPORTADO` para o que a F2d não representa — rich-text
+  (runs), itálico, decoração, contorno, sombra com deslocamento horizontal — DITO, nunca descartado.
+- **Tipo e validador**: `GeometriaDoArquetipo.estilos?` só com `referencia`; forma fechada (`CHAVES.estilo`,
+  `CHAVES.sombra`) e domínio. **A cerca contra fonte e cor (`procurarCamposProibidos`) abre por CAMINHO EXATO**:
+  `formatos.<f>.estilos.<papel>.{fontFamily, fontWeight, color, sombra.color}`, só com `referencia`; `fontSize`, `svg`,
+  `projectId` dentro de `estilos` continuam proibidos; cor fora de `estilos` idem.
+- **Vestir** (`arquetipos/estilo-da-referencia.ts`, puro): `vestirEstiloDaReferencia({ base, origemDaBase, estilo, corpo,
+  apenasCor })` — a referência vence campo a campo, INCLUSIVE as ausências (sem peso declarado limpa o 700 herdado; `none`
+  limpa a caixa alta); ficam da base `fontSize` (a escada da F2c), `prefixo`, `larguraMaxima`, `destaque` e a sombra quando
+  a referência não tem (`null` da base = sem sombra; `undefined` = default — nunca espalhados). A segunda voz
+  (`headline2`) toma SÓ a cor (é outra voz por contrato). A sobreposição vive no bloco preparado: o arranjo salvo não é
+  mutado. `estiloDoPapelDaReferencia(definicao, formato)` é o resolvedor que compor e medir-copy passam à preparação.
+- **Espaçamento = CONTRATO** (`EstiloDePapel.espacamentoDaReferencia { spacing, corpo }`): `camadaDoPapel` o resolve
+  DEPOIS de arredondar o corpo (`round2(spacing × fontSize / corpo)`) — o mesmo 31 px dá 2,38 em qualquer degrau,
+  com `escalaDoFormato` ≠ 1 inclusive (o corpo materializado já o contém). Sem o contrato, a conta de sempre, byte a byte.
+- **Medição**: o bloco MONTADO é medido com a camada preparada (corpo e espaçamento materializados), não reconstruído por
+  uma escala com três casas; a recusa reconstrói no piso pelo mesmo contrato; o orçamento do papel sem bloco veste a
+  assinatura com a referência (`medidoCom` na família certa). `MedidaDeBloco.estilo` e `diagnostico.arquetipo.estilos[]`
+  dizem família, peso, caixa, espaçamento, cor e a ORIGEM por campo (referência / assinatura / arranjo).
+- **Fontes e destaque**: a família da referência e a do destaque RESOLVIDO sobre ela entram em `familiasCandidatas`
+  (família não carregada → `naoMedido`, como sempre: a medida em fallback nunca é apresentada como válida). O destaque
+  entre [colchetes] mantém a precedência de hoje (destaque da página de assinatura > `padrao.fontFamily` > família pesada
+  automática, procurada a partir da família da referência).
+- **Portas**: `listar-referencias` e `ver-assinatura` devolvem `estilos` da revisão persistida (null nas revisões de antes).
+
+**O que NÃO muda**: a cor é FIXA — sem recoloração silenciosa; o gradiente de leitura e a régua (p98 para texto claro, p02
+para escuro) medem contra ela e o aviso de leitura diz; a variante clara/escura segue escolhida pela luz para o resto da
+peça; a logo pela legibilidade (CP3). Revisões sem `estilos` (F1 congelada, @2 da F2c) vestem a assinatura, como antes;
+a Brunch ganha `estilos` na revisão seguinte (`última + 1`) quando reaprovada depois do deploy.
+
+**Prova**: `referencia.test` (estilos da Brunch; leitor próprio; recusas ditas; a cerca por caminho exato com
+contrabando dentro de `estilos`; revisões de antes válidas), `medir-copy-referencia.test` (família/cor/caixa/espaçamento
+e origem; ausências limpam peso e caixa; 39 → 3,00 e 31 → 2,38; feed 0,875 com base 38 e degrau intermediário; voz 2
+só a cor; família não carregada → `naoMedido`; orçamento do papel sem bloco na família da referência), `f2d-estilo.test`
+(compositor sintético: a camada nasce no estilo desenhado com o corpo da F2c, `null` da sombra preservado, origem no
+diagnóstico, paridade com o medir; a revisão só com `corpos` compõe na assinatura).
+
+**Armadilhas:**
+- 🔴 `chavesFechadas` presume que a chave proibida já foi recusada antes: abrir `estilos` por subárvore deixaria
+  `fontSize`/`svg` passarem — a abertura é por caminho exato, e o fechamento continua para o resto.
+- 🔴 O espaçamento escalado pela escala CONTÍNUA diverge do corpo inteiro gravado (31,4 → 31 px dava 2,42, não 2,38): o
+  contrato resolve depois do arredondamento, e a medição usa a camada preparada.
+- A assinatura sintética dos testes está SEM sombra (`null`): a peça por referência sem sombra sai sem sombra — é a
+  preservação do `null`, não um defeito.

@@ -35,6 +35,12 @@ export interface EstiloDePapel {
   lineHeight: number
   /** px. */
   letterSpacing: number
+  /**
+   * F2d: o espaçamento como CONTRATO da referência — `spacing` px no corpo desenhado `corpo`. `camadaDoPapel` o resolve
+   * DEPOIS de arredondar o corpo (`round2(spacing × fontSize / corpo)`); `letterSpacing` acima é a reserva contínua.
+   * Ausente = a conta de sempre (`letterSpacing × escala`).
+   */
+  espacamentoDaReferencia?: { spacing: number; corpo: number }
   textTransform?: 'uppercase' | 'lowercase' | 'capitalize' | 'none'
   color: string
   /** Prefixo desenhado antes da primeira linha (o "→ " do CTA). */

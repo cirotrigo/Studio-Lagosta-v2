@@ -334,3 +334,10 @@ antes da F2c (a escada delas parte da assinatura). `ver-assinatura` também devo
 com `corpos`) e `avisoDasReferencias`: com referência aprovada, o catálogo listado não vale para o cliente. `aprovar-referencia` mostra o corpo em `leitura.papeis[].corpo`; a
 mesma página reaprovada depois da F2c ganha a revisão seguinte com os corpos (a anterior é imutável). Detalhe em
 `docs/regras/compositor.md`, "F2c".
+
+
+### F2d (02/11/2026): `listar-referencias` e `ver-assinatura` devolvem `estilos`
+
+Por papel: família, peso (`null` = normal), entrelinha, espaçamento (px no corpo desenhado), caixa (`none` explícito),
+cor e sombra — da REVISÃO PERSISTIDA; `null` nas revisões de antes da F2d (a peça veste a assinatura). A segunda voz da
+peça toma só a cor; destaque e prefixo continuam da assinatura. Detalhe em `docs/regras/compositor.md`, "F2d".
