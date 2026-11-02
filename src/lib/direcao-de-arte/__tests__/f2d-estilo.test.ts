@@ -75,7 +75,7 @@ describe('F2d · o estilo da referência no compositor', () => {
     for (const id of ['headline', 'apoio']) {
       const b = m.medicao.blocos.find((x) => x.id === id)!
       const l = camada(r.layers, id)
-      expect([id, b.fontSize, b.estilo?.fontFamily, b.estilo?.letterSpacing, b.estilo?.color]).toEqual([id, l.style?.fontSize, l.style?.fontFamily, l.style?.letterSpacing, l.style?.color])
+      expect([id, b.fontSize, b.estilo?.fontFamily, b.estilo?.letterSpacing, b.estilo?.color, b.width, b.height]).toEqual([id, l.style?.fontSize, l.style?.fontFamily, l.style?.letterSpacing, l.style?.color, l.size.width, l.size.height])
     }
   }, 60_000)
 

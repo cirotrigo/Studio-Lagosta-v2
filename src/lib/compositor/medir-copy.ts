@@ -354,8 +354,13 @@ export function medirCopy(args: {
     const limpas = lidas.map((l) => l.texto)
     // F2d: o bloco MONTADO é medido com a camada preparada (o corpo e o espaçamento materializados), não reconstruído por
     // uma escala com três casas — a largura medida é a da montagem. A recusa reconstrói pelo mesmo contrato, no piso.
+    // A camada preparada com [colchetes] é `rich-text` e o medidor do servidor só mede `text` (devolve null): a base é a
+    // camada SIMPLES com os mesmos valores materializados; o acréscimo do destaque entra pela conta de sempre, abaixo.
     const base = camadaPreparada
-      ? { ...camadaPreparada, content: limpas.join('\n'), size: { ...camadaPreparada.size, width: coluna } }
+      ? (() => {
+          const { richTextStyles: _r, ...simples } = camadaPreparada as Layer & { richTextStyles?: unknown }
+          return { ...simples, type: 'text' as const, content: limpas.join('\n'), size: { ...camadaPreparada.size, width: coluna } } as Layer
+        })()
       : camadaDoPapel({ papel, linhas: limpas, estilo, escala, width: coluna, textAlign: 'left', groupId: 'medicao', corDaMancha: args.assinatura.numeros.mancha })
     // A linha EFETIVA leva o prefixo da assinatura (o "→ " do CTA) como a
     // montagem a mede; `linha` continua sendo a string do autor (R06).
@@ -445,6 +450,13 @@ export function medirCopy(args: {
       linhasMedidas: medirLinhas(r.papel, r.estilo, r.linhasDaCopy, naoMedido, r.destaque, r.coluna, r.corpo ? r.corpo.piso / r.estilo.fontSize : undefined),
       orcamento: r.orcamento,
       ...(r.corpo ? { corpo: { referencia: r.corpo.referencia, teto: r.corpo.teto, efetivo: null, piso: r.corpo.piso, reducao: null } } : {}),
+      // F2d: o estilo com que a recusa foi medida (no piso), com a origem por campo — quem diagnostica a recusa vê a fonte certa.
+      ...(r.estiloDaReferencia
+        ? (() => {
+            const noPiso = camadaDoPapel({ papel: r.papel, linhas: r.linhasDaCopy, estilo: r.estilo, escala: r.corpo ? r.corpo.piso / r.estilo.fontSize : area.escalaDoFormato, width: r.coluna, textAlign: 'left', groupId: 'medicao', corDaMancha: args.assinatura.numeros.mancha })
+            return { estilo: { fontFamily: String(noPiso.style?.fontFamily ?? r.estilo.fontFamily), fontWeight: typeof noPiso.style?.fontWeight === 'number' ? noPiso.style.fontWeight : null, textTransform: (noPiso.style?.textTransform as string | undefined) ?? null, letterSpacing: Number(noPiso.style?.letterSpacing ?? 0), color: String(noPiso.style?.color ?? r.estilo.color), origem: r.estiloDaReferencia } }
+          })()
+        : {}),
       avisos: [
         ...avisosDoPapel(r.papel),
         naoMedido

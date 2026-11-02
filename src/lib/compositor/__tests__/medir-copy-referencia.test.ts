@@ -13,6 +13,8 @@ import congelada from '../arquetipos/__tests__/suporte/emporio-ref02-brunch-v1-c
 
 const PAGINA = brunch as unknown as { id: string; name: string; width: number; height: number; tags: string[]; layers: Layer[] }
 const medirFalso = (layer: Layer) => {
+  // Como o medidor do servidor (`render-engine.ts`): só camada `text`; rich-text devolve null.
+  if (layer.type !== 'text') return null
   const fontSize = Number(layer.style?.fontSize ?? 16)
   const linhas = (layer.content ?? '').split('\n')
   const largura = Math.max(...linhas.map((l) => l.length * fontSize * 0.55))
@@ -285,5 +287,66 @@ describe('F2d · o estilo da referência no medir-copy', () => {
   it('o orçamento do papel SEM bloco nesta copy sai na família da referência (a assinatura vestida), não na da assinatura crua', () => {
     const m = medirPor(compilar(), [{ papel: 'headline', linhas: ['Café'] }], assinaturaPesada)
     expect(m.arquetipo!.papeis.apoio!.corpo!.medidoCom).toEqual([{ bloco: 'apoio', fonte: 'TrajanPro Regular', caracteresPorLinha: expect.any(Number) }])
+  })
+})
+
+/** Um medidor que CONTA o espaçamento (o `medirFalso` o ignora): largura = n × corpo × 0,55 + (n − 1) × letterSpacing. */
+const medirComEspaco = (layer: Layer) => {
+  if (layer.type !== 'text') return null
+  const fontSize = Number(layer.style?.fontSize ?? 16)
+  const ls = Number(layer.style?.letterSpacing ?? 0)
+  const linhas = (layer.content ?? '').split('\n')
+  const larguraDe = (l: string) => l.length * fontSize * 0.55 + Math.max(0, l.length - 1) * ls
+  const largura = Math.max(...linhas.map(larguraDe))
+  const height = linhas.length * fontSize * Number(layer.style?.lineHeight ?? 1.1)
+  return { height, maxLineWidth: largura, lineCount: linhas.length, linhas: linhas.map((l) => ({ texto: l, largura: larguraDe(l) })) }
+}
+
+describe('F2d · rodada 1 do Codex: destaque, larguras e origem nas recusas', () => {
+  const familias = ['Montserrat', 'TrajanPro Regular', 'TrajanPro Bold']
+  const medirCom = (fonteCarregada: (f: string) => boolean, linhas: string[], medir = medirFalso) => {
+    const d = compilar()
+    const spec = { projectId: 12, formato: 'story' as const, foto: { driveFileId: 'x' }, arquetipo: { id: d.id }, blocos: [{ papel: 'headline' as const, linhas }, { papel: 'apoio' as const, linhas: ['Sabores'] }] }
+    return medirCopy({ assinatura: assinaturaPesada, medir, familias, fonteCarregada, formato: 'story', spec, arquetipo: prepararArquetipo(spec, { definicoes: [d] })! })
+  }
+
+  it('[colchetes] na copy: a camada preparada é rich-text, mas a remedição mede pela camada SIMPLES com os valores materializados (o medidor só mede text) — largura, cabe e caracteres continuam vindo; a família pesada é derivada da referência', () => {
+    const m = medirCom(() => true, ['Café [da manhã]'])
+    const h = bloco(m, 'headline')
+    expect(h.aproximado).toBe(true)
+    expect(h.naoMedido).toBe(false)
+    expect(h.linhasMedidas[0].largura).not.toBeNull()
+    expect(h.linhasMedidas[0].cabe).toBe(true)
+    expect(h.linhasMedidas[0].caracteresQueCabem).toBeGreaterThan(10)
+    expect(estiloDe(m, 'headline').fontFamily).toBe('TrajanPro Regular')
+  })
+
+  it('o destaque derivado da referência (TrajanPro Bold) que não carregou deixa o bloco naoMedido e consta em fontesNaoCarregadas', () => {
+    const m = medirCom((f) => f !== 'TrajanPro Bold', ['Café [da manhã]'])
+    expect(bloco(m, 'headline').naoMedido).toBe(true)
+    expect(m.fontesNaoCarregadas).toContain('TrajanPro Bold')
+  })
+
+  it('a largura medida usa o espaçamento MATERIALIZADO (2,38 no piso 31), não o da escala contínua', () => {
+    const m = medirCom(() => true, ['Café'], medirComEspaco)
+    // O apoio curto ('Sabores', 7 letras) a 39 px com 3 px de espaçamento: 7 × 39 × 0,55 + 6 × 3 = 150,15 + 18.
+    expect(bloco(m, 'apoio').linhasMedidas[0].largura).toBe(Math.round(7 * 39 * 0.55 + 6 * 3))
+    const d = compilar()
+    // 48 caracteres cabem só a 31 px CONTANDO o espaçamento (48 × 17,05 + 47 × 2,38 = 930 ≤ 937; a 32: 960): o encaixe
+    // da escada e a remedição usam a mesma largura, com o espaçamento materializado.
+    const spec = { projectId: 12, formato: 'story' as const, foto: { driveFileId: 'x' }, arquetipo: { id: d.id }, blocos: [{ papel: 'headline' as const, linhas: ['Café'] }, { papel: 'apoio' as const, linhas: ['a'.repeat(48)] }] }
+    const m2 = medirCopy({ assinatura: assinaturaPesada, medir: medirComEspaco, familias, fonteCarregada: () => true, formato: 'story', spec, arquetipo: prepararArquetipo(spec, { definicoes: [d] })! })
+    const a = bloco(m2, 'apoio')
+    expect(a.fontSize).toBe(31)
+    expect(estiloDe(m2, 'apoio').letterSpacing).toBe(2.38)
+    expect(a.linhasMedidas[0].largura).toBe(Math.round(48 * 31 * 0.55 + 47 * 2.38))
+  })
+
+  it('a RECUSA publica o estilo com que foi medida (no piso) e a origem por campo', () => {
+    const m = medirPor(compilar(), [{ papel: 'headline', linhas: ['Café'] }, { papel: 'apoio', linhas: ['a'.repeat(55)] }], assinaturaPesada)
+    const a = bloco(m, 'apoio')
+    expect(a.situacao).toBe('nao-cabe')
+    expect(a.estilo).toMatchObject({ fontFamily: 'TrajanPro Regular', letterSpacing: 2.38, color: '#F8F8F8' })
+    expect(a.estilo!.origem.fontFamily).toBe('referencia')
   })
 })

@@ -442,6 +442,7 @@ export function validarArquetipo(arquetipo: ArquetipoDeLayout, opcoes: OpcoesDaV
       const campoEstilos = `${base}.estilos`
       if (!ehObjeto(g.estilos)) recusar('CAMPO_INVALIDO', campoEstilos, 'estilos é um objeto')
       else if (!ehObjeto(a.referencia)) recusar('CAMPO_INVALIDO', campoEstilos, 'estilos só existe na definição compilada de uma referência (no catálogo fonte e cor são da assinatura)')
+      else if (g.corpos === undefined) recusar('CAMPO_INVALIDO', `${base}.corpos`, 'estilos exige corpos no mesmo formato (o corpo desenhado é a régua do espaçamento e a base da escada): sem ele o estilo seria ignorado em silêncio')
       else {
         for (const [papel, e] of Object.entries(g.estilos as Record<string, unknown>)) {
           const campo = `${campoEstilos}.${papel}`
