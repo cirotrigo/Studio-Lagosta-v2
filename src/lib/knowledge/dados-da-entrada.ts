@@ -221,6 +221,10 @@ const FAIXA = new RegExp(`\\bdas?\\s+(${HORA_RE})${ATE_RE}(${HORA_RE})`, 'g')
 /** Serviço com horário próprio na mesma linha: não é o funcionamento da casa. */
 const OUTRO_SERVICO = /executivo|delivery|entrega|ifood|retirada|cozinha|brunch/
 const HAPPY_HOUR = /happy[ -]?hour/
+/** A frase ou o título fala da casa ou de outra refeição: não é horário do happy hour nem com "Happy Hour" no título. */
+const OUTRO_ASSUNTO = /\b(?:funciona|abre|abrem|abert[ao]|fecha|expediente|atendimento|almoco|jantar)/
+/** Só no título: "Dias e horários: terça a sexta, das 16h às 19h" é o happy hour falando dos horários dele. */
+const TITULO_MISTO = /\bhorarios?\s+e\b|\be\s+horarios?\b/
 /** Linha que fala de uma data ou de feriado é exceção: fica preservada e não se compara com o horário habitual. */
 const DATADA = /\b\d{1,2}\/\d{1,2}\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2} de (?:janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b|feriado|vespera|natal|reveillon|carnaval|pascoa|excepcional/
 /** "habitual" sozinho não serve: "no lugar do horário habitual" é justamente a exceção. */
@@ -293,24 +297,30 @@ interface FatoDoTexto {
 function fatosDoTexto(titulo: string, texto: string): FatoDoTexto[] {
   const fatos: FatoDoTexto[] = []
   const tituloNormal = semAcento(titulo)
+  // Só a entrada exclusiva empresta o assunto à frase sem sujeito ("Terça a sexta, das 16h às 19h.").
+  const soDeHappyHour = HAPPY_HOUR.test(tituloNormal) && ![OUTRO_ASSUNTO, TITULO_MISTO, OUTRO_SERVICO].some((r) => r.test(tituloNormal))
   for (const linha of texto.split(/\n+/)) {
     for (const { clausula: trecho, datada } of clausulasDaLinha(linha)) {
       if (datada) continue
       const c = semAcento(trecho)
-      const happy = HAPPY_HOUR.test(c) || (HAPPY_HOUR.test(tituloNormal) && !OUTRO_SERVICO.test(c))
-      if (happy) {
+      const citacao = c.search(HAPPY_HOUR)
+      let doResto = c
+      if (citacao >= 0 || (soDeHappyHour && !OUTRO_ASSUNTO.test(c) && !OUTRO_SERVICO.test(c))) {
         // Só a faixa depois de "happy hour" e as coladas nela: "e delivery das 20h às 23h" é de outro serviço.
-        const doHappy = c.slice(Math.max(c.search(HAPPY_HOUR), 0))
+        const doHappy = c.slice(Math.max(citacao, 0))
         const [m] = doHappy.matchAll(FAIXA)
-        if (m) fatos.push({ dias: null, faixa: turnosDesde(doHappy, m), fim: null, trecho })
-        continue
+        if (!m) continue
+        fatos.push({ dias: null, faixa: turnosDesde(doHappy, m), fim: null, trecho })
+        // Com faixa própria, o que veio antes da citação fala de outra coisa e ainda se compara.
+        if (citacao <= 0) continue
+        doResto = c.slice(0, citacao)
       }
-      if (OUTRO_SERVICO.test(c) || OUTRO_SERVICO.test(tituloNormal)) continue
-      for (const m of c.matchAll(FAIXA_DO_DIA)) {
-        if (/almoco/.test(c.slice(0, m.index))) continue
-        fatos.push({ dias: diasDe(m[1]), faixa: turnosDesde(c, m), fim: null, trecho })
+      if (OUTRO_SERVICO.test(doResto) || OUTRO_SERVICO.test(tituloNormal)) continue
+      for (const m of doResto.matchAll(FAIXA_DO_DIA)) {
+        if (/almoco/.test(doResto.slice(0, m.index))) continue
+        fatos.push({ dias: diasDe(m[1]), faixa: turnosDesde(doResto, m), fim: null, trecho })
       }
-      for (const m of c.matchAll(FECHA_DO_DIA)) fatos.push({ dias: diasDe(m[1]), faixa: null, fim: horaDe(m[2], true), trecho })
+      for (const m of doResto.matchAll(FECHA_DO_DIA)) fatos.push({ dias: diasDe(m[1]), faixa: null, fim: horaDe(m[2], true), trecho })
     }
   }
   return fatos

@@ -332,6 +332,61 @@ describe('coerência com os textos', () => {
   })
 })
 
+describe('o serviço de cada frase, em entrada que fala de happy hour', () => {
+  const texto = (content: string, title: string): LinhaDaBase => ({ id: 'e', title, content, updatedAt: new Date('2026-11-01T00:00:00Z'), expiresAt: null, metadata: null })
+  const SO_HAPPY = 'Happy Hour — Quintal (terça a sexta)'
+  const MISTO = 'Horário de funcionamento e happy hour — Quintal'
+  const LINHA_DO_CIRO = 'Atualização de funcionamento — Ciro, chamada de voz de 02/11/2026: segunda-feira e domingo funcionam habitualmente das 11h às 17h; não é exceção de feriado. Demais dias e horários de almoço executivo e happy hour permanecem inalterados.'
+  const CERTO = { hours: { ...HOURS, monday: '11:00-17:00' }, happy_hour: { ...HAPPY, time: '16:00-19:00' } }
+  const achado = (dados: Record<string, unknown>, content: string, title: string) => divergenciasDe(dados, [texto(content, title)]).map((d) => [d.campo, d.valorNoTexto])
+
+  it('título misto: cada linha vale para o seu serviço', () => {
+    const conteudo = 'Segunda das 11h às 17h.\nHappy hour das 16h às 19h.'
+    expect(achado(CERTO, conteudo, MISTO)).toEqual([])
+    expect(achado({ ...CERTO, hours: HOURS }, conteudo, MISTO)).toEqual([['hours.monday', '11:00-17:00']])
+    expect(achado({ ...CERTO, happy_hour: HAPPY }, conteudo, MISTO)).toEqual([['happy_hour.time', '16:00-19:00']])
+    expect(achado(CERTO, 'Segunda das 11h às 17h.', 'Horários e happy hour — Quintal')).toEqual([])
+  })
+  it('a linha de funcionamento numa entrada de happy hour não é happy hour', () => {
+    expect(achado(CERTO, LINHA_DO_CIRO, SO_HAPPY)).toEqual([])
+    // Continua sendo fato: acusa o funcionamento, que é o assunto dela.
+    expect(achado({ ...CERTO, hours: HOURS }, LINHA_DO_CIRO, SO_HAPPY)).toEqual([['hours.monday', '11:00-17:00']])
+  })
+  it('funcionamento e happy hour na mesma frase: um não apaga nem contamina o outro', () => {
+    const frase = 'Segunda e domingo das 11h às 17h, happy hour das 16h às 19h.'
+    expect(achado(CERTO, frase, 'Ficha')).toEqual([])
+    expect(achado({ ...CERTO, hours: HOURS }, frase, 'Ficha')).toEqual([['hours.monday', '11:00-17:00']])
+    expect(achado({ ...CERTO, happy_hour: HAPPY }, frase, 'Ficha')).toEqual([['happy_hour.time', '16:00-19:00']])
+    expect(achado(CERTO, frase, SO_HAPPY)).toEqual([])
+  })
+  it('o horário sem sujeito segue sendo do happy hour na entrada exclusiva', () => {
+    expect(achado({ happy_hour: HAPPY }, 'Terça a sexta, das 16h às 19h.', SO_HAPPY)).toEqual([['happy_hour.time', '16:00-19:00']])
+    expect(achado({ happy_hour: { time: '16:00-19:00' } }, 'Terça a sexta, das 16h às 19h.', SO_HAPPY)).toEqual([])
+    expect(achado({ hours: HOURS }, 'Terça a sexta, das 16h às 19h.', SO_HAPPY)).toEqual([])
+    expect(achado({ hours: HOURS }, 'Dias e horários: terça a sexta, das 16h às 19h.', SO_HAPPY)).toEqual([])
+    expect(achado({ happy_hour: HAPPY }, 'Dias e horários: terça a sexta, das 16h às 19h.', SO_HAPPY)).toEqual([['happy_hour.time', '16:00-19:00']])
+  })
+  it('exceção datada e almoço não se misturam com o happy hour', () => {
+    const ruido = ['Natal: das 11h às 15h.', 'Feriado: happy hour das 18h às 20h.', 'Em 24/12, happy hour das 12h às 14h.', 'Almoço das 11h às 15h.', 'Almoço executivo das 11h às 16h.', 'Jantar das 19h às 23h.']
+    for (const r of ruido) expect(achado(CERTO, r, SO_HAPPY)).toEqual([])
+    expect(achado(CERTO, 'Almoço de terça a sexta das 11h às 15h e happy hour das 16h às 19h.', MISTO)).toEqual([])
+    expect(achado({ ...CERTO, happy_hour: HAPPY }, 'Almoço de terça a sexta das 11h às 15h e happy hour das 16h às 19h.', MISTO)).toEqual([['happy_hour.time', '16:00-19:00']])
+  })
+  it('sem faixa própria o happy hour não leva a frase junto', () => {
+    expect(achado(CERTO, 'Terça a sexta, das 16h às 19h, tem happy hour.', 'Ficha')).toEqual([])
+  })
+  it('alterar o happy hour: a linha de funcionamento não bloqueia e o conflito verdadeiro bloqueia', async () => {
+    const entrada = (content: string) => base.entradas.set('hh', { ...structuredClone(linha()), id: 'hh', title: SO_HAPPY, content, metadata: null })
+    linha().metadata = { ...structuredClone(META), hours: { ...HOURS, monday: '11:00-17:00' } }
+    entrada(`Terça a sexta, das 16h às 19h.\n\n${LINHA_DO_CIRO}`)
+    const alteracoes = [{ campo: 'happy_hour.time', valor: '16:00-19:00' }]
+    expect(await executarOperacaoDaBase(pedido({ alteracoes, confirmado: false }))).toMatchObject({ estado: 'proposta', bloqueiam: [] })
+    const errado = [{ campo: 'happy_hour.time', valor: '18:00-19:00' }]
+    await expect(executarOperacaoDaBase(pedido({ alteracoes: errado }))).rejects.toMatchObject({ code: 'DIVERGENCIA_NAO_RESOLVIDA' })
+    expect((linha().metadata as typeof META).happy_hour.time).toBe('17:00-19:00')
+  })
+})
+
 describe('indexação', () => {
   const NOVO = TEXTO.replace('Domingo: das 11h às 17h.', 'Domingo: das 11h às 17h, sempre.')
 
