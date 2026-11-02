@@ -133,6 +133,29 @@ describe('F2c · o corpo da referência no medir-copy', () => {
     expect(bloco(longa, 'apoio')).toMatchObject({ situacao: 'nao-cabe', corpo: { referencia: 8, piso: 8 } })
   })
 
+  it('independência DENTRO do papel: a manchete longa encolhe pela largura e a segunda voz curta fica no teto (80), com a pilha cabendo', () => {
+    // 'Café da manhã servido cedo' (26 chars) não cabe a 80 na coluna de 940 (26 × 80 × 0,55 = 1144): desce; 'já' cabe em 80.
+    const m = medirPor(compilar(brunchAlto), [{ papel: 'headline', linhas: ['Café da manhã servido cedo', 'já'] }, { papel: 'apoio', linhas: ['Sabores'] }], assinaturaComVoz2)
+    const h = bloco(m, 'headline')
+    const v2 = bloco(m, 'headline2')
+    expect(h.fontSize!).toBeLessThan(80)
+    expect(h.fontSize!).toBeGreaterThanOrEqual(64)
+    expect(v2).toMatchObject({ fontSize: 80, situacao: 'cabe', corpo: { referencia: 80, teto: 80, efetivo: 80, reducao: 0 } })
+    expect(h.corpo).toMatchObject({ referencia: 80, teto: 80, efetivo: h.fontSize })
+    expect(m.cabeTudo).toBe(true)
+  })
+
+  it('manchete INTEIRA na segunda voz pelo contrato (`linhasNaVoz2: [0]`): só headline2, partindo de corpos.headline (80) — sem "bloco principal"', () => {
+    const copyAutoral = { blocos: [{ id: 'h', funcao: 'headline', ordem: 0, linhas: ['Café da manhã'], estilo: { linhasNaVoz2: [0] } }, { id: 'a', funcao: 'apoio', ordem: 1, linhas: ['Sabores'] }] }
+    const spec = { projectId: 12, formato: 'story' as const, foto: { driveFileId: 'x' }, arquetipo: { id: compilar(brunchAlto).id }, blocos: [{ papel: 'headline' as const, linhas: ['Café da manhã'] }, { papel: 'apoio' as const, linhas: ['Sabores'] }], copyAutoral }
+    const arq = prepararArquetipo(spec, { definicoes: [compilar(brunchAlto)] })!
+    const m = medirCopy({ assinatura: assinaturaComVoz2, medir: medirFalso, familias: ['Montserrat'], fonteCarregada: () => true, formato: 'story', spec: spec as never, arquetipo: arq })
+    expect(m.blocos.find((b) => b.id === 'headline')).toBeUndefined()
+    expect(bloco(m, 'headline2')).toMatchObject({ fontSize: 80, situacao: 'cabe', corpo: { referencia: 80, efetivo: 80, piso: 64, reducao: 0 } })
+    expect(bloco(m, 'headline2').avisos.join(' ')).not.toMatch(/MESMO teto/)
+    expect(m.arquetipo!.papeis.headline!.corpo!.medidoCom.map((x) => x.bloco)).toEqual(['headline2'])
+  })
+
   it('a recusa por ALTURA no piso da referência: duas linhas de manchete numa caixa de 100 px (linhasMax 3) não cabem nem a 64', () => {
     const baixa = { ...PAGINA, layers: PAGINA.layers.map((l) => (l.id === 'titulo' ? ({ ...l, content: 'Brunch\nEmpório\nFonseca', position: { ...l.position, y: 1600 }, size: { ...l.size, height: 100 }, style: { ...l.style, fontSize: 80 } } as Layer) : l)) }
     const m = medirPor(compilar(baixa), [{ papel: 'headline', linhas: ['Café', 'da manhã'] }, { papel: 'apoio', linhas: ['Sabores'] }])

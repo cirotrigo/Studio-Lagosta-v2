@@ -34,11 +34,11 @@ import { cenarioSintetico, fotoSintetica, logoSintetica, paginaSintetica, specSi
 type Pagina = { id: string; name: string; width: number; height: number; tags: string[]; layers: Layer[] }
 const PAGINA = brunch as unknown as Pagina
 /**
- * A Brunch com a caixa da manchete mais alta (y 1480, 220 px): o medidor sintético mede a linha mais alta que a TrajanPro
+ * A Brunch com a caixa da manchete mais alta (y 1440, 260 px): o medidor sintético mede a linha mais alta que a TrajanPro
  * real, e nos 97 px da página a manchete de 85 invadiria o apoio (ORDEM_DE_LEITURA); e três linhas desenhadas dão
  * `linhasMax: 3` (a página real tem uma). A geometria é a do teste; o corpo (85/39) é o da página real.
  */
-const ALTA: Pagina = { ...PAGINA, layers: PAGINA.layers.map((l) => (l.id === 'titulo' ? ({ ...l, content: 'Brunch\nEmpório\nFonseca', position: { ...l.position, y: 1480 }, size: { ...l.size, height: 220 } } as Layer) : l)) }
+const ALTA: Pagina = { ...PAGINA, layers: PAGINA.layers.map((l) => (l.id === 'titulo' ? ({ ...l, content: 'Brunch\nEmpório\nFonseca', position: { ...l.position, y: 1440 }, size: { ...l.size, height: 260 } } as Layer) : l)) }
 const compilar = (pagina: Pagina = ALTA) => {
   const c = compilarReferencia(pagina, { pageVersion: 'v', versao: 1 })
   if (!c.ok) throw new Error(`${(c as { codigo: string }).codigo}: ${(c as { mensagem: string }).mensagem}`)
@@ -51,10 +51,15 @@ const BLOCOS = [
 /** Topo escuro, base clara: o texto da Brunch pousa no rodapé (claro), a logo no topo. */
 const LUZ = (_x: number, y: number) => (y < 960 ? 40 : 200)
 
-async function montar() {
+async function montar(opcoes: { segundaVoz?: boolean } = {}) {
   const foto = await fotoSintetica(LUZ)
   // A assinatura sintética desenha a manchete em 90 px e o apoio em 40 (ver `paginaSintetica`): a referência pede 85/39.
-  const pagina = paginaSintetica({ id: 'f2c', headline: { cor: '#F5F5F5' }, apoio: { cor: '#F5F5F5' }, logoUrl: dataUrl(await logoSintetica('#808080')), fundoUrl: dataUrl(foto) })
+  const base0 = paginaSintetica({ id: 'f2c', headline: { cor: '#F5F5F5' }, apoio: { cor: '#F5F5F5' }, logoUrl: dataUrl(await logoSintetica('#808080')), fundoUrl: dataUrl(foto) })
+  // A segunda voz na assinatura (45 px, metade da manchete): a regra legada manda a última linha da manchete para ela.
+  const manchete = base0.layers.find((l) => l.name === 'headline')!
+  const pagina = opcoes.segundaVoz
+    ? { ...base0, layers: [...base0.layers, { ...manchete, id: 'headline2-pagina', name: 'headline2', position: { x: 92, y: 410 }, size: { width: 896, height: 54 }, style: { ...manchete.style, fontSize: 45 } } as Layer] }
+    : base0
   const base = await cenarioSintetico({ pagina, foto, candidatasDoVeu: [], logosDoProjeto: await variantesClaraEEscura() })
   cenario.atual = { ...base, projeto: { ...base.projeto, assinatura: { mancha: VEU_ESCURO, gradiente: { cor: VEU_CLARO } } } }
 }
@@ -77,25 +82,52 @@ describe('F2c · o corpo da referência no compositor', () => {
     expect(m.medicao.blocos.map((b) => [b.id, b.fontSize, b.situacao])).toEqual([['headline', 85, 'cabe'], ['apoio', 39, 'cabe']])
   }, 60_000)
 
-  it('a referência MAIOR do que a caixa comporta (120 px, duas linhas numa caixa de 220) desce pela régua comum até caber — nunca abaixo do piso 96 — e a peça DIZ quanto encolheu', async () => {
+  it('a referência MAIOR do que a caixa comporta (150 px, duas linhas numa caixa de 260) desce pela régua comum até caber — nunca abaixo do piso 120 — e a peça DIZ quanto encolheu', async () => {
     await montar()
     const base = compilar()
-    const def = { ...base, formatos: { story: { ...base.formatos.story, corpos: { headline: 120, apoio: 39 } } } } as typeof base
+    const def = { ...base, formatos: { story: { ...base.formatos.story, corpos: { headline: 150, apoio: 39 } } } } as typeof base
     definicoes.atual = [def]
-    // Duas linhas a 120 px passam dos 220 px da caixa: a escada desce até caber, nunca abaixo de 96.
+    // Duas linhas a 150 px passam dos 260 px da caixa: a escada desce até caber, nunca abaixo de 120.
     const r = await comporPeca(spec(def.id, [{ papel: 'headline', linhas: ['Café da manhã', 'servido cedo'] }, { papel: 'apoio', linhas: ['Sabores da manhã'] }]), { somenteAvaliar: true })
     const corpo = Number(camada(r.layers, 'headline').style?.fontSize)
-    expect(corpo).toBeLessThan(120)
-    expect(corpo).toBeGreaterThanOrEqual(96)
+    expect(corpo).toBeLessThan(150)
+    expect(corpo).toBeGreaterThanOrEqual(120)
     const diag = r.diagnostico.arquetipo!.corpos!.find((c) => c.camada === 'headline')!
-    expect(diag).toMatchObject({ referencia: 120, piso: 96, efetivo: corpo })
+    expect(diag).toMatchObject({ referencia: 150, piso: 120, efetivo: corpo })
     expect(diag.reducao).toBeGreaterThan(0)
-    expect(r.diagnostico.avisos.join(' ')).toMatch(new RegExp(`headline: coube em ${corpo} px, não nos 120 px da referência`))
+    expect(r.diagnostico.avisos.join(' ')).toMatch(new RegExp(`headline: coube em ${corpo} px, não nos 150 px da referência`))
     // O medir-copy dá o MESMO corpo (paridade) e o diz como reduzido contra a referência.
     const m = await medirCopyDoProjeto({ projectId: 9002, formato: 'story', blocos: [{ papel: 'headline', linhas: ['Café da manhã', 'servido cedo'] }, { papel: 'apoio', linhas: ['Sabores da manhã'] }], arquetipo: { id: def.id } } as never)
     const h = m.medicao.blocos.find((b) => b.id === 'headline')!
     expect([h.fontSize, h.situacao]).toEqual([corpo, 'cabe-reduzido'])
-    expect(h.corpo).toMatchObject({ referencia: 120, piso: 96, efetivo: corpo })
+    expect(h.corpo).toMatchObject({ referencia: 150, piso: 120, efetivo: corpo })
+  }, 60_000)
+
+  it('redução CONJUNTA com paridade compor/medir: manchete + segunda voz partem do mesmo teto (85), a pilha que não cabe desce em px até caber nos dois; uma linha só volta ao teto', async () => {
+    await montar({ segundaVoz: true })
+    const def = compilar()
+    definicoes.atual = [def]
+    // Três linhas (voz 1 com duas, voz 2 com a última) a 85 passam dos 260 px: a unidade desce em px até caber nas duas vozes.
+    const duasVozes = [{ papel: 'headline', linhas: ['Café da manhã', 'servido', 'cedo'] }, { papel: 'apoio', linhas: ['Sabores da manhã'] }]
+    const r = await comporPeca(spec(def.id, duasVozes), { somenteAvaliar: true })
+    const h = camada(r.layers, 'headline')
+    const v2 = camada(r.layers, 'headline2')
+    expect(h.style?.fontSize).toBe(v2.style?.fontSize)
+    expect(Number(h.style?.fontSize)).toBeLessThan(85)
+    expect(Number(h.style?.fontSize)).toBeGreaterThanOrEqual(68)
+    const corpos = r.diagnostico.arquetipo!.corpos!
+    expect(corpos.map((c) => [c.camada, c.efetivo, c.teto])).toEqual([['headline', h.style?.fontSize, h.style?.fontSize], ['headline2', v2.style?.fontSize, h.style?.fontSize], ['apoio', 39, 39]])
+    expect(corpos[1].observacao).toMatch(/partem do MESMO teto de 85 px/)
+    // Paridade: o medir-copy dá o mesmo corpo, a mesma caixa e a mesma classificação por bloco.
+    const m = await medirCopyDoProjeto({ projectId: 9002, formato: 'story', blocos: duasVozes, arquetipo: { id: def.id } } as never)
+    for (const id of ['headline', 'headline2', 'apoio']) {
+      const b = m.medicao.blocos.find((x) => x.id === id)!
+      const l = camada(r.layers, id)
+      expect([id, b.fontSize, b.width, b.height, b.situacao]).toEqual([id, l.style?.fontSize, l.size.width, l.size.height, id === 'apoio' ? 'cabe' : 'cabe-reduzido'])
+    }
+    // Uma linha só (sem segunda voz): a manchete volta ao teto de 85.
+    const r1 = await comporPeca(spec(def.id), { somenteAvaliar: true })
+    expect(camada(r1.layers, 'headline').style?.fontSize).toBe(85)
   }, 60_000)
 
   it('a revisão F1 CONGELADA (sem corpos), com a GEOMETRIA e a IMPRESSÃO intactas: o medir-copy mede como antes (90 px da assinatura, sem corpo) e a composição pelo caminho sem corpos sai em 90', async () => {
