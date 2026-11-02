@@ -230,9 +230,11 @@ const HAPPY_HOUR = /happy[ -]?hour/
 const CASA_NA_FAIXA = new RegExp(`(?:\\b${DIAS_RE}[\\s:,–—-]*${VERBO_DA_CASA}\\s+(?:${ADVERBIO_RE}\\s+)*|(?:a casa\\s+(?:funciona|abre)|funcionamento(?:\\s+habitual)?)[\\s:]+(?:(?:de\\s+)?${DIAS_RE}[\\s:,–—-]*)?)das?\\s+${HORA_RE}`)
 /** "Terça a sexta das 16h às 19h, jantar das 19h às 23h": cada faixa se julga no seu trecho, um sujeito não leva a vizinha. */
 const ANTES_DO_SUJEITO = new RegExp(`(?<=\\d|\\dh|noite|dia)(?:[,:](?:\\s+e)?|\\se)\\s+(?=(?:${DIAS_RE}[\\s:,–—-]*${VERBO_DA_CASA}\\s|a casa\\s+(?:funciona|abre)|funcionamento|(?:o\\s+)?(?:almoco|jantar)\\b))`)
-const REFEICAO_NA_FAIXA = new RegExp(`(?<!(?:antes|depois) d[oe] |apos o )\\b(?:almoco|jantar)\\b:?[^,;:]*?\\bdas?\\s+${HORA_RE}`)
+/** "Antes do jantar", "pós-expediente": a refeição e o expediente são referência de hora, não o serviço. */
+const SO_REFERENCIA = '(?<!(?:antes|depois) d[oe] |(?:apos|ate) o |(?:pos|pre)[ -])'
+const REFEICAO_NA_FAIXA = new RegExp(`${SO_REFERENCIA}\\b(?:almoco|jantar)\\b:?[^,;:]*?\\bdas?\\s+${HORA_RE}`)
 /** "Horário de funcionamento e happy hour" não empresta assunto. "Happy Hour: horários e condições" empresta: sem sinal claro, vale o exclusivo. */
-const TITULO_MISTO = /(?:funcionamento|expediente)(?!\s+d[oe]\s+happy)|almoco|jantar|\bhorarios?\s+(?:da casa|e\s+happy)|happy[ -]?hour\s+e\s+horarios?\b/
+const TITULO_MISTO = new RegExp(`${SO_REFERENCIA}(?:funcionamento|expediente|almoco|jantar)(?!\\s+d[oe]\\s+happy)|\\bhorarios?\\s+(?:da casa|e\\s+happy)|happy[ -]?hour\\s+e\\s+horarios?\\b`)
 /** Linha que fala de uma data ou de feriado é exceção: fica preservada e não se compara com o horário habitual. */
 const DATADA = /\b\d{1,2}\/\d{1,2}\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2} de (?:janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b|feriado|vespera|natal|reveillon|carnaval|pascoa|excepcional/
 /** "habitual" sozinho não serve: "no lugar do horário habitual" é justamente a exceção. */
