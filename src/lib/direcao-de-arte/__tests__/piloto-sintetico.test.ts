@@ -61,7 +61,13 @@ vi.mock('@/lib/creatives/revisao/revisar-arte', async (original) => {
     },
   }
 })
-vi.mock('@/lib/creatives/acervo', () => ({ lerCatalogoDoProjeto: async () => ({ catalogo: null, todas: [...espioes.catalogo.entries()].map(([driveFileId, assunto]) => ({ driveFileId, assunto })) }) }))
+vi.mock('@/lib/creatives/acervo', async () => {
+  const { assuntoEfetivoDaFoto } = await import('@/lib/creatives/assunto-da-foto-efetivo')
+  return {
+    lerCatalogoDoProjeto: async () => ({ catalogo: null, todas: [...espioes.catalogo.entries()].map(([driveFileId, assunto]) => ({ driveFileId, assunto })) }),
+    assuntosEfetivosDoProjeto: async (_p: number, ids: string[]) => new Map(ids.map((id) => [id, assuntoEfetivoDaFoto({ caixaDoAssunto: espioes.catalogo.get(id), caixaAnalisadaEm: 'piloto' }, null)])),
+  }
+})
 vi.mock('@/lib/assets/gradients-library', async (original) => {
   return {
     ...(await original<typeof import('@/lib/assets/gradients-library')>()),

@@ -19,7 +19,6 @@ import type { CanalDaArte } from '@/lib/creatives/canal'
 import { db } from '@/lib/db'
 import type { Layer } from '@/types/template'
 import { CreativeError } from '@/lib/creatives/errors'
-import { extractDriveFileId } from '@/lib/ai/fetch-image-source'
 import { persistAndRenderCreative, resolveImageUrl, type PersistCreativeResult } from '@/lib/creatives/persist'
 import { registerProjectFonts, fetchBuffer, familiasNaoCarregadas } from '@/lib/posts/register-project-fonts'
 import { dividirManchete } from './segunda-voz'
@@ -36,7 +35,8 @@ import { registrarUsoDeFoto } from '@/lib/creatives/uso-de-foto'
 import { blocosDeServico } from '@/lib/ai/blocos-de-servico'
 
 import { avaliarCombinacao, type DiagnosticoDaSelecao } from './selecionar-combinacao'
-import { lerCaixaDoAssunto, assuntoEmPixels, fracaoVisivelDoAssunto, type AssuntoNormalizado } from './assunto-da-foto'
+import { assuntoEmPixels, fracaoVisivelDoAssunto, fonteDaFoto } from './assunto-da-foto'
+import { ASSUNTO_NAO_ANALISADO, assuntosOuRecusa, descreverCaixaDoAssunto, type AssuntoEfetivo } from '@/lib/creatives/assunto-da-foto-efetivo'
 import { garantirPasta, ordemNaPasta } from './pastas'
 import { entradaDePersistencia } from './persistencia'
 import { avisoDeMinutoOcupado, nomeDaPagina } from './pasta-da-semana'
@@ -111,7 +111,7 @@ import { alinhaDoPapel, caixasMaximas, type MargemDaPeca, referenciaDoPapel, typ
 import { MODO_BUSCA_ESPACIAL, MOTIVOS_DE_ELIMINACAO, type DiagnosticoDaBuscaEspacial, type EscolhaParaReproduzir, type LeituraDoCorte, type PlanejamentoDoTratamento } from './arquetipos/busca-espacial-tipos'
 import { chaveDaFoto as impressaoDaFoto, contarRecusas, exemplosDeRecusa, motivoDaFalta, selecionarNoArquetipo, type SelecaoNoArquetipo } from './arquetipos/busca-espacial'
 import { partidaNoArquetipo, type PartidaNoArquetipo } from './arquetipos/candidatos-espaciais'
-import { regioesProtegidas } from './arquetipos/pontuacao-espacial'
+import { ASSUNTO_VISIVEL_MINIMO, regioesProtegidas } from './arquetipos/pontuacao-espacial'
 import {
   ajusteFinalNecessario,
   camadasNaReferencia,
@@ -210,7 +210,7 @@ export interface DiagnosticoDaComposicao {
    * #8 (foto em caixa): a caixa da foto em px, a escala do cover (> 1 = ampliada), o corte escolhido pela CAIXA e a fração
    * visível do assunto catalogado nele. Ausente nos outros fundos.
    */
-  foto?: { caixa: { x: number; y: number; width: number; height: number }; escala: number | null; corte: RotuloDoCorte; janela?: Janela; assuntoVisivel: number | null }
+  foto?: { caixa?: { x: number; y: number; width: number; height: number }; escala?: number | null; corte?: RotuloDoCorte; janela?: Janela; assuntoVisivel?: number | null; /** F2b: de onde veio a caixa do assunto (o MESMO snapshot que a composição usou): com arquétipo, em todo fundo com foto do pedido. */ assuntoDoCatalogo?: Pick<AssuntoEfetivo, 'origem' | 'estado' | 'motivo'> }
   /** #8: o papel do liso que o contraste com as tintas da peça escolheu (`papelDoBloco`): as tintas medidas e as folgas de cada candidato. */
   papelDoFundo?: { papel: PapelDoFundo; cor: string; tintas: TintaAtiva[]; folgas: FolgaDoCandidato[] }
   /** LEGADO — sempre vazio desde 11/09/2026: o compositor não desenha mais halo. */
@@ -330,7 +330,7 @@ export interface OpcoesDeComposicao {
   selecao?: DiagnosticoDaSelecao
   avisosDaSelecao?: string[]
   /** Cache local à seleção: evita baixar/decodificar a mesma foto por variante. */
-  assuntosDoCatalogo?: Map<string, AssuntoNormalizado | null>
+  assuntosDoCatalogo?: Map<string, AssuntoEfetivo>
   cacheDeFotos?: Map<string, Awaited<ReturnType<typeof carregarFoto>>>
   /** Cache local à seleção (CP3): os arquivos das variantes da logo, baixados uma vez por seleção. */
   cacheDeLogos?: CacheDeLogos
@@ -1385,15 +1385,15 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     if (arq && reproducao?.modo === 'referencia') return [corteDoRotulo(dimsDaFoto, caixaDoCorte, 'center-middle')]
     return cortesCandidatos(foto, caixaDoCorte, spec.preferencias?.enquadramento === 'fixo').map((r) => corteDoRotulo(dimsDaFoto!, caixaDoCorte, r))
   })()
-  // O arquivo do catálogo da foto desenhada: o `driveFileId` — ou, com arquétipo, o id que uma URL do Drive carrega (o
-  // resolvedor a desenha reconhecendo esse mesmo id; sem isto a região anotada ficava de fora, Codex R4). Sem
-  // arquétipo, só o `driveFileId`, como sempre.
-  const idDoCatalogo = spec.foto?.driveFileId ?? (arq && spec.foto?.url ? extractDriveFileId(spec.foto.url) : null)
-  const assuntoDoCatalogo = foto && idDoCatalogo
-    ? opcoes.assuntosDoCatalogo?.has(idDoCatalogo)
-      ? opcoes.assuntosDoCatalogo.get(idDoCatalogo) ?? null
-      : await assuntoDoCatalogoDaFoto(spec.projectId, idDoCatalogo, !!arq)
-    : null
+  // F2b: o arquivo do catálogo sai SÓ de `fonteDaFoto`: a caixa vale sobre a imagem que o Drive renderiza, e a fonte
+  // desenhada segue a precedência do carregamento. Fonte não coerente: nada a ler, a caixa fica de fora, dito no diagnóstico.
+  const fonteDoCatalogo = foto && spec.foto ? fonteDaFoto(spec.foto) : null
+  const efetivoDoCatalogo: AssuntoEfetivo | null = !fonteDoCatalogo
+    ? null
+    : !fonteDoCatalogo.coerente || !fonteDoCatalogo.id
+      ? { caixa: null, origem: 'nenhuma', estado: 'fonte-nao-coerente', motivo: fonteDoCatalogo.motivo }
+      : opcoes.assuntosDoCatalogo?.get(fonteDoCatalogo.id) ?? (await assuntoDoCatalogoDaFoto(spec.projectId, fonteDoCatalogo.id, !!arq))
+  const assuntoDoCatalogo = efetivoDoCatalogo?.caixa ?? null
 
   let melhor: { chave: string; crop: RotuloDoCorte; raster: FotoCinza | null; mapa: MapaDeCalma | null; assunto: Rect | null; escolhido: PontuacaoDePosicao<RotuloDePosicao>; todos: PontuacaoDePosicao<RotuloDePosicao>[] } | null = null
   const cores = montados.map((b) => b.cor)
@@ -1437,7 +1437,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     const pontuados = mapa
       ? pontuarCandidatos({ mapa, candidatos, coresDoTexto: cores, corDaMancha: corDaPontuacao, assunto })
       : candidatos.map((c) => ({ ...c, pontuacao: c.preferencia, calma: 1, tintaNecessaria: 0, cobreAssunto: 0, descartado: false, motivo: 'sem foto: vale a preferência' }))
-    if (assuntoDoCatalogo && assunto && fracaoVisivelDoAssunto(assunto, canvas) < 0.75) {
+    if (assuntoDoCatalogo && assunto && fracaoVisivelDoAssunto(assunto, canvas) < ASSUNTO_VISIVEL_MINIMO) {
       for (const candidato of pontuados) {
         candidato.descartado = true
         candidato.motivo = 'O corte preserva menos de 75% da caixa do assunto catalogado.'
@@ -1462,7 +1462,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     const fracao = (ret: Rect) => (mascara ? fracaoVisivelNoArco(ret, mascara.caixa, mascara.raio) : fracaoVisivelDoAssunto(ret, caixaFoto))
     // F2a: o assunto projetado nas coordenadas da CAIXA pela janela do corte (âncora ou explícita), e só então medido.
     const visivel = (c: Corte) => (assuntoDoCatalogo ? fracao(assuntoEmPixels(assuntoDoCatalogo, dimsDaFoto, caixaFoto, c.rotulo ?? c.janela)) : null)
-    const perde = (v: number | null) => v !== null && v < 0.75
+    const perde = (v: number | null) => v !== null && v < ASSUNTO_VISIVEL_MINIMO
     // Só o pedido NOVO relaxa a proteção do assunto em aviso: na reprodução o `foto.janela`/`foto.corte` da spec é o que a
     // página mostra (ou o que uma recomposição anterior gravou), não autorização de quem pediu (Codex, F2a rodada 1, P2 #4).
     const cortePedido = !reproduzindo && (!!spec.foto?.janela || !!spec.foto?.corte)
@@ -1474,7 +1474,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       if (reproduzindo && reproducao?.modo !== 'referencia' && perde(v)) {
         throw new CreativeError(
           'ARQUETIPO_CORTE_CONGELADO_PERDE_O_ASSUNTO',
-          `${chaveDoArquetipo(arq.definicao)}: o corte congelado da foto em caixa (${rotuloDoCorte(corte)}) agora mostra ${Math.round(v! * 100)}% do assunto que o catálogo marca (mínimo 75%). Nada foi movido: peça uma nova composição da peça.`,
+          `${chaveDoArquetipo(arq.definicao)}: o corte congelado da foto em caixa (${rotuloDoCorte(corte)}) agora mostra ${Math.round(v! * 100)}% do assunto que o catálogo marca (mínimo 75%). Nada foi movido (a caixa do assunto foi anotada depois desta peça): peça uma nova composição da peça.`,
           422,
           { arquetipo: chaveDoArquetipo(arq.definicao), formato: arq.formato, escolha: reproducao, assuntoVisivel: v },
         )
@@ -1591,17 +1591,19 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       const contagem = contarRecusas(sel.resultado.ordenadas)
       // O motivo de TODOS os cortes avaliados (os do enquadramento fixo juntados acima entram na conta).
       const motivo = motivoDaFalta(sel.resultado.ordenadas)
-      const saida =
+      const saidaDoMotivo =
         motivo === MOTIVOS_DE_ELIMINACAO.corteSemOAssunto
           ? 'Nenhum corte da foto neste formato mostra 75% do assunto que o catálogo marca: troque a foto, ou peça outro formato.'
           : motivo === MOTIVOS_DO_TRATAMENTO.polaridadeIncompativel || motivo === MOTIVOS_DO_TRATAMENTO.piorou
             ? 'Troque a foto, ou a variante (as cores dos textos que dividem a borda), ou o arquétipo.'
             : 'Troque a foto, ou o arquétipo.'
+      const peloCatalogo = efetivoDoCatalogo?.caixa && (motivo === MOTIVOS_DE_ELIMINACAO.corteSemOAssunto || motivo === MOTIVOS_DE_ELIMINACAO.invadeRegiaoProtegida)
+      const saida = peloCatalogo ? `${saidaDoMotivo} ${descreverCaixaDoAssunto(efetivoDoCatalogo)}` : saidaDoMotivo
       throw new CreativeError(
         'SEM_COMBINACAO',
         `${chaveDoArquetipo(arq.definicao)}: nenhuma combinação de corte e posição dentro das zonas serve a esta foto e a esta copy (${sel.resultado.avaliadas} avaliadas; ${Object.entries(contagem).map(([m, n]) => `${m} ×${n}`).join(', ')}). ${saida}`,
         422,
-        { motivo, arquetipo: chaveDoArquetipo(arq.definicao), formato: arq.formato, cortesAvaliados: cortes.map(rotuloDoCorte), combinacoesAvaliadas: sel.resultado.avaliadas, recusas: contagem, exemplos: exemplosDeRecusa(sel.resultado.ordenadas) },
+        { motivo, arquetipo: chaveDoArquetipo(arq.definicao), formato: arq.formato, cortesAvaliados: cortes.map(rotuloDoCorte), combinacoesAvaliadas: sel.resultado.avaliadas, recusas: contagem, exemplos: exemplosDeRecusa(sel.resultado.ordenadas), ...(efetivoDoCatalogo ? { assuntoDoCatalogo: resumoDoAssunto(efetivoDoCatalogo) } : {}) },
       )
     }
     materializacao = sel.materializacao
@@ -1609,7 +1611,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     // F2b: por VALOR — o rótulo `'janela'` devolveria a primeira janela, não a vencedora.
     const corteSel = cortes.find((c) => chaveDoCorte(c) === sel.chave) ?? cortes[0]
     const f = fotoPorCorte.get(chaveDoCorte(corteSel)) ?? { raster: null, mapa: null, assunto: null }
-    if (assuntoDoCatalogo && f.assunto && fracaoVisivelDoAssunto(f.assunto, canvas) < 0.75) avisos.push(`O corte ${sel.crop} preserva menos de 75% da caixa do assunto catalogado.`)
+    if (assuntoDoCatalogo && f.assunto && fracaoVisivelDoAssunto(f.assunto, canvas) < ASSUNTO_VISIVEL_MINIMO) avisos.push(`O corte ${sel.crop} preserva menos de 75% da caixa do assunto catalogado.`)
     buscaDoArquetipo = reproducao?.modo === 'referencia' ? null : sel.diagnostico
     escolhaDoArquetipo = sel.escolha
     melhor = {
@@ -1634,6 +1636,9 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   }
   if (!melhor) throw new CreativeError('SEM_POSICAO', 'Nenhuma posição candidata', 500)
   if (melhor.escolhido.descartado) avisos.push(`Toda posição cobre o assunto da foto; ficou a melhor delas (${melhor.escolhido.motivo}).`)
+  // F2b: toda peça que sai perdendo a caixa (as exceções ditas: sem arquétipo, o corte pedido, o T1a reproduzido) diz de onde ela veio.
+  const visivelNaPeca = corteDaCaixa?.assuntoVisivel ?? (assuntoDoCatalogo && melhor.assunto ? fracaoVisivelDoAssunto(melhor.assunto, canvas) : null)
+  if (efetivoDoCatalogo && visivelNaPeca !== null && visivelNaPeca < ASSUNTO_VISIVEL_MINIMO) avisos.push(descreverCaixaDoAssunto(efetivoDoCatalogo))
 
   const { ancora, alinha, crop } = melhor.escolhido.rotulo
   // F2a: o CORTE escolhido, inteiro (a janela com que a foto é desenhada e gravada). F2b: por chave, como o resto da busca.
@@ -2338,6 +2343,8 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     }
   }
 
+  // F2b: sem arquétipo a peça é a de sempre (o baseline congela até as chaves do diagnóstico); só a fonte recusada é dita.
+  const assuntoNoDiagnostico = efetivoDoCatalogo && (arq || efetivoDoCatalogo.estado === 'fonte-nao-coerente') ? resumoDoAssunto(efetivoDoCatalogo) : null
   const diagnostico: DiagnosticoDaComposicao = {
     ...(opcoes.selecao ? { selecao: opcoes.selecao } : {}),
     ...(intervencaoDeTexto ? { intervencaoDeTexto } : {}),
@@ -2370,8 +2377,10 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     ...(tratamentoPiorou ? { tratamentoPiorou } : {}),
     ...(foto && !emCaixa && gruposDeTexto.length > 0 ? { tratamentoDeLeitura: tratamentoPorBorda() } : {}),
     ...(caixaFoto && corteDaCaixa
-      ? { foto: { caixa: caixaFoto, escala: escalaDaFoto, corte: rotuloDoCorte(corteDaCaixa.corte), ...(corteDaCaixa.corte.rotulo ? {} : { janela: corteDaCaixa.corte.janela }), assuntoVisivel: corteDaCaixa.assuntoVisivel } }
-      : {}),
+      ? { foto: { caixa: caixaFoto, escala: escalaDaFoto, corte: rotuloDoCorte(corteDaCaixa.corte), ...(corteDaCaixa.corte.rotulo ? {} : { janela: corteDaCaixa.corte.janela }), assuntoVisivel: corteDaCaixa.assuntoVisivel, ...(assuntoNoDiagnostico ? { assuntoDoCatalogo: assuntoNoDiagnostico } : {}) } }
+      : assuntoNoDiagnostico
+        ? { foto: { assuntoDoCatalogo: assuntoNoDiagnostico } }
+        : {}),
     ...(papelDoFundo ? { papelDoFundo: { papel: papelDoFundo.papel, cor: papelDoFundo.fundo, tintas: tintasDaPeca!, folgas: papelDoFundo.folgas } } : {}),
     logo: logoDiag,
     blocos: montados.map((b) => ({ id: b.layer.id, papel: b.papel, escala: b.escala, width: b.width, height: b.height, destacado: b.destacado, ...(familiasDaCamada(b.layer as Layer).some((f) => fontesNaoCarregadas.has(f)) ? { naoMedido: true } : {}) })),
@@ -2520,25 +2529,14 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
 
 // ─── Assunto pelo catálogo ─────────────────────────────────────────────────
 
-/**
- * A caixa do assunto gravada no catálogo (frações 0..1), quando a análise a deu. `SEM_CATALOGO` (projeto sem catálogo,
- * ou vazio) é "a foto não tem anotação": `null`. Qualquer outro erro é o catálogo INDISPONÍVEL: sem arquétipo, segue
- * sem a caixa, como sempre; com arquétipo (`exigir`), a região protegida do catálogo é hard constraint e a posição não
- * é escolhida — nem reproduzida — sem ela (CP2B, Codex R2): recusa transitória, a fila tenta de novo.
- */
-async function assuntoDoCatalogoDaFoto(projectId: number, driveFileId: string, exigir = false): Promise<AssuntoNormalizado | null> {
-  try {
-    const { lerCatalogoDoProjeto } = await import('@/lib/creatives/acervo')
-    const catalogo = await lerCatalogoDoProjeto(projectId)
-    const entrada = catalogo?.todas?.find((i) => i.driveFileId === driveFileId) as unknown as (Record<string, unknown> | undefined)
-    return lerCaixaDoAssunto(entrada?.assunto)
-  } catch (erro) {
-    if (!exigir || (erro instanceof CreativeError && erro.code === 'SEM_CATALOGO')) return null
-    throw new CreativeError(
-      'CATALOGO_INDISPONIVEL',
-      'Não deu para ler o catálogo de fotos do projeto agora. Com arquétipo, a região protegida da foto (o que o catálogo marcou) é obrigatória: a posição não é escolhida sem ela. Tente de novo em instantes.',
-      503,
-      { driveFileId, causa: erro instanceof Error ? erro.message : String(erro) },
-    )
-  }
+/** O assunto efetivo da foto (F2b): a caixa da visão ou a decisão humana, pelo resolvedor único; a falha, em `assuntosOuRecusa`. */
+async function assuntoDoCatalogoDaFoto(projectId: number, driveFileId: string, exigir: boolean): Promise<AssuntoEfetivo> {
+  const { assuntosEfetivosDoProjeto } = await import('@/lib/creatives/acervo')
+  const assuntos = await assuntosOuRecusa(() => assuntosEfetivosDoProjeto(projectId, [driveFileId]), [driveFileId], exigir)
+  return assuntos.get(driveFileId) ?? ASSUNTO_NAO_ANALISADO
+}
+
+/** O que o diagnóstico guarda: a origem e o estado, sem a caixa (ela já está em `assunto`, projetada). */
+function resumoDoAssunto({ origem, estado, motivo }: AssuntoEfetivo) {
+  return { origem, estado, ...(motivo ? { motivo } : {}) }
 }

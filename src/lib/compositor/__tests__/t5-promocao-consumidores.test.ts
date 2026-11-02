@@ -11,7 +11,7 @@ const MARCA = 'fora-do-rodizio'
 const mocks = vi.hoisted(() => ({ compor: vi.fn(), paginas: vi.fn(), catalogo: vi.fn(), carregar: vi.fn(), descrever: vi.fn() }))
 vi.mock('@/lib/compositor/compor', () => ({ comporPeca: mocks.compor, paginasDeAssinatura: mocks.paginas, carregarAssinatura: mocks.carregar }))
 vi.mock('@/lib/compositor/medir-copy-service', () => ({ descreverVariantes: mocks.descrever }))
-vi.mock('@/lib/creatives/acervo', () => ({ lerCatalogoDoProjeto: mocks.catalogo }))
+vi.mock('@/lib/creatives/acervo', () => ({ lerCatalogoDoProjeto: mocks.catalogo, assuntosEfetivosDoProjeto: async () => new Map() }))
 vi.mock('@/lib/creatives/persist', () => ({ getPublicAppUrl: () => 'https://studio.test' }))
 // F2c: ver-assinatura lista as referências do cliente (nenhuma aqui).
 vi.mock('@/lib/db', () => ({ db: { page: { findMany: async () => [] }, referenciaDeLayout: { findMany: async () => [] } } }))

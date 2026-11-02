@@ -1,7 +1,8 @@
 /** Seleção opt-in sobre uma lista já curada pelo ranking do acervo. */
 import { CreativeError } from '@/lib/creatives/errors'
 import { compararComBaseline, leituraComparavel, type LeituraComparavel } from './comparar-baseline'
-import { lerCaixaDoAssunto } from './assunto-da-foto'
+import { fonteDaFoto } from './assunto-da-foto'
+import { assuntosOuRecusa } from '@/lib/creatives/assunto-da-foto-efetivo'
 import { entraNoRodizio } from './fora-do-rodizio'
 import type { SpecDePeca } from './spec'
 import type { ResultadoDaComposicao, OpcoesDeComposicao } from './compor'
@@ -51,7 +52,7 @@ export function avaliarCombinacao(r: ResultadoDaComposicao) {
 
 export async function selecionarCombinacao(spec: SpecDePeca) {
   const { comporPeca, paginasDeAssinatura } = await import('./compor')
-  const { lerCatalogoDoProjeto } = await import('@/lib/creatives/acervo')
+  const { lerCatalogoDoProjeto, assuntosEfetivosDoProjeto } = await import('@/lib/creatives/acervo')
   const inicio = Date.now()
   const cacheDeFotos: NonNullable<OpcoesDeComposicao['cacheDeFotos']> = new Map()
   const cacheDeLogos: NonNullable<OpcoesDeComposicao['cacheDeLogos']> = new Map()
@@ -68,8 +69,9 @@ export async function selecionarCombinacao(spec: SpecDePeca) {
   try { catalogo = await lerCatalogoDoProjeto(spec.projectId) } catch {
     avisos.push('Catálogo indisponível: conteúdo, unidade e campanha exigem revisão.')
   }
-  const assuntosDoCatalogo = new Map(fotos.flatMap((foto) => foto.driveFileId
-    ? [[foto.driveFileId, lerCaixaDoAssunto(catalogo?.todas.find((i) => i.driveFileId === foto.driveFileId)?.assunto)] as const] : []))
+  // F2b: fora do `tentar`, que engoliria a recusa — com arquétipo, a seleção não contorna a leitura obrigatória.
+  const idsDasFotos = [...new Set(fotos.map((f) => fonteDaFoto(f)).flatMap((f) => (f.coerente && f.id ? [f.id] : [])))]
+  const assuntosDoCatalogo = await assuntosOuRecusa(() => assuntosEfetivosDoProjeto(spec.projectId, idsDasFotos), idsDasFotos, !!spec.arquetipo)
   type Registro = DiagnosticoDaSelecao['combinacoes'][number]
   type Avaliada = { spec: SpecDePeca; registro: Registro; leitura: LeituraComparavel }
   const diagnosticos: Registro[] = []

@@ -38,7 +38,7 @@ import {
 } from './busca-espacial-tipos'
 
 /** Abaixo desta fração visível da caixa do catálogo, o corte perdeu o assunto. */
-const ASSUNTO_VISIVEL_MINIMO = 0.75
+export const ASSUNTO_VISIVEL_MINIMO = 0.75
 /** px de folga na ordem de leitura: a seguinte pode começar até aqui antes de a anterior terminar (antialias, arredondamento). */
 const FOLGA_DA_ORDEM_PX = 2
 /** Margem de leitura (níveis 0–255) que já vale contraste natural pleno. */
