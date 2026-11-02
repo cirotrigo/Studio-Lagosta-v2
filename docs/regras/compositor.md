@@ -1857,6 +1857,38 @@ compor/medir; a congelada intacta medida com versão e impressão fixadas, e com
   aprovadas no formato com os corpos; a política do teto absoluto é dita no diagnóstico (`corpos[].observacao`) e no
   bloco do medir-copy quando o papel tem mais de um bloco.
 
+## O rodapé pela base e a pilha fechada (30/10/2026)
+
+Medidos nos ajustes manuais do Ciro sobre a leva de 12 peças compostas com a cadeia #269–#279
+(`human-output/relatorios/editor-madrugada-2026-10-24/integracao-da-cadeia-2026-10-30/ajustes-do-ciro.json`; logo e
+pré ele não mexeu):
+
+- **R1 — o papel do rodapé pousa com a BASE na margem, em todo arquétipo.** `baseNaFaixaDaMargem` (materializar.ts):
+  a referência do catálogo cuja base está até `FAIXA_DA_MARGEM.vertical` além do quadro de baixo (o serviço dos
+  layouts de topo, o serviço do base-esquerda) pousa com a base em `H − safeRodape`, sem guardar o recuo do catálogo —
+  antes só o arquétipo de âncora rodapé pousava pela base (e pela base da referência mapeada, com o recuo: 1265 no
+  base-esquerda Feed). O Ciro pôs a base na margem em 11/12 (faltavam 31–83 px nos layouts de topo).
+- **R2 — a pilha fecha: `GAP_DA_PILHA = 0` ENTRE os papéis da faixa** (o `gap` da partida e da seleção, no compor e
+  no medir-copy), em vez do `gapEntreBlocos` da marca (14): as caixas já carregam entrelinha e padding; o Ciro levou o
+  vão a 0 em toda a Real e a 0–18 na Wine. O vão INTERNO da unidade (as camadas de um mesmo papel, `gap × 1,6` = 22)
+  continua o da marca — `prepararNoArquetipo` recebe `g.gap`, nunca o zero. A peça grava a pilha com que nasceu: a de
+  antes reproduz com 14.
+- **Peça existente com `margem: 'marca'`** (composta entre a margem da marca e esta regra) recebe R1 na recomposição:
+  o serviço desce para a base. `pilha` gravada preserva o vão, não o pouso — a identidade pela base não é congelada.
+- **O fio fica como estava** (o vão do catálogo a partir da caixa, reservado na pilha). Tentei pousá-lo pela tinta
+  (padding + meia-entrelinha) e desfiz: nos ajustes do Ciro a Real pôs o fio DENTRO da caixa (base −6..0) e a Wine 10 px
+  abaixo dela — a média dos dois cai em cima da conta atual (apoio ≈ 12 px abaixo da manchete), e a versão pela tinta
+  ainda dependia do arredondamento do fio contra a caixa do apoio. Dois pontos de dado não sustentam outra regra.
+- Rodada 1 do Codex (30/10, NÃO APTO → corrigido): (1) o vão INTERNO da unidade (horário e endereço em duas camadas,
+  `gap × 1,6` = 22) continua o da marca — `GAP_DA_PILHA` só vale ENTRE papéis (`prepararNoArquetipo` recebe `g.gap`);
+  (2) o papel que pousa pela base NÃO entra numa pilha de âncora topo — nos modelos de coluna #10 ela puxava o serviço
+  para baixo do apoio (`naBase` na entrada; `empilharNasFaixas` o deixa de fora); (3) a reserva do fio na pilha usa as
+  receitas que a peça VAI desenhar (`receitasDaPeca`: as congeladas da recomposição, senão as do catálogo), passadas
+  de `compor` a `partidaNoArquetipo`/`selecionarNoArquetipo`/`materializarUnidades` — traço congelado 9 contra 2 vivo
+  reservava 2 e omitia o fio.
+- Fora desta fase, decisão do Ciro: R3 (o título-gigante sem escala dominante, apoio no rodapé) e R4 (gradiente de
+  leitura mais longo na base).
+
 
 ### F2d da direção por referência: a FONTE e a COR desenhadas na referência valem na peça (02/11/2026)
 

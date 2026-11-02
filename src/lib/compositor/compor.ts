@@ -107,7 +107,7 @@ import {
 } from './regua'
 import { candidatasDistintas, gradientesARecusar, MOTIVOS_DO_TRATAMENTO, planejarTratamentoDaBorda, type PlanoDaBorda } from './tratamento-de-leitura'
 import { conferirLinhas, conferirLogo, prepararArquetipo, type ArquetipoPreparado } from './arquetipos/na-spec'
-import { alinhaDoPapel, caixasMaximas, type MargemDaPeca, referenciaDoPapel, type Materializacao, type RetanguloPx } from './arquetipos/materializar'
+import { alinhaDoPapel, caixasMaximas, GAP_DA_PILHA, type MargemDaPeca, referenciaDoPapel, type Materializacao, type RetanguloPx } from './arquetipos/materializar'
 import { MODO_BUSCA_ESPACIAL, MOTIVOS_DE_ELIMINACAO, type DiagnosticoDaBuscaEspacial, type EscolhaParaReproduzir, type LeituraDoCorte, type PlanejamentoDoTratamento } from './arquetipos/busca-espacial-tipos'
 import { chaveDaFoto as impressaoDaFoto, contarRecusas, exemplosDeRecusa, motivoDaFalta, selecionarNoArquetipo, type SelecaoNoArquetipo } from './arquetipos/busca-espacial'
 import { partidaNoArquetipo, type PartidaNoArquetipo } from './arquetipos/candidatos-espaciais'
@@ -1283,10 +1283,13 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   // A PILHA da faixa (29/10/2026): a peça nova empilha com o gap da marca e grava `pilha` na escolha; a reprodução usa o
   // que a peça gravou — a de antes da regra (sem `pilha`) não empilha, como nasceu. `pedidoDeReproducao` é o pedido
   // bruto (a foto ainda não foi conferida): a identidade da pilha é da peça, não da foto.
+  // As receitas dos acentos que a peça VAI desenhar (as congeladas na recomposição, senão as do catálogo): a reserva do
+  // fio na pilha (`extensoesDosAcentosPresos`) tem de ser a do desenho — não a da biblioteca de hoje (Codex, P2).
+  const receitasDaPeca = arq ? opcoes.acentosCongelados ?? receitasDoArquetipo(arq.definicao, { formato: arq.formato, canvas, geometria: pisoArq!, ...(margemDaPeca ? { margem: margemDaPeca } : {}) }).receitas : null
   const pedidoDeReproducao = arq ? opcoes.escolhaEspacial ?? null : null
   // F1: a peça por REFERÊNCIA não empilha — o espaçamento entre as caixas aprovadas é o do Ciro, não o gap da marca.
   const gapDaPilha =
-    opcoes.pilhaDaPeca !== undefined ? (opcoes.pilhaDaPeca ?? undefined) : pedidoDeReproducao ? (pedidoDeReproducao.modo === MODO_BUSCA_ESPACIAL ? pedidoDeReproducao.pilha : undefined) : arq && ehReferencia(arq.definicao) ? undefined : g.gap
+    opcoes.pilhaDaPeca !== undefined ? (opcoes.pilhaDaPeca ?? undefined) : pedidoDeReproducao ? (pedidoDeReproducao.modo === MODO_BUSCA_ESPACIAL ? pedidoDeReproducao.pilha : undefined) : arq && ehReferencia(arq.definicao) ? undefined : GAP_DA_PILHA
   if (arq && unidadesArq && pisoArq) {
     const p = partidaNoArquetipo({
       arquetipo: arq.definicao,
@@ -1297,6 +1300,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       logo: assinatura.logo ? { razao: assinatura.logo.razao } : null,
       ...(gapDaPilha !== undefined ? { gap: gapDaPilha } : {}),
       ...(margemDaPeca ? { margem: margemDaPeca } : {}),
+      ...(receitasDaPeca ? { receitas: receitasDaPeca } : {}),
     })
     if ('problemas' in p) {
       const m = p
@@ -1533,6 +1537,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
         logo: assinatura.logo ? { razao: assinatura.logo.razao } : null,
         ...(gapDaPilha !== undefined ? { gap: gapDaPilha } : {}),
         ...(margemDaPeca ? { margem: margemDaPeca } : {}),
+        ...(receitasDaPeca ? { receitas: receitasDaPeca } : {}),
         partida: partidaArq,
         cortes: leituras,
         planejamento,
@@ -1962,7 +1967,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   const acentosDesenhados: NonNullable<DiagnosticoDoArquetipo['acentos']> = []
   let acentosOmitidos: ProblemaDoAcento[] = []
   if (arq && materializacao && unidadesArq && pisoArq) {
-    const receitas = opcoes.acentosCongelados ?? receitasDoArquetipo(arq.definicao, { formato: arq.formato, canvas, geometria: pisoArq, ...(margemDaPeca ? { margem: margemDaPeca } : {}) }).receitas
+    const receitas = receitasDaPeca!
     // #15: a caixa de cada item da lista, onde a unidade pousou — o fio de cada item se prende a ela.
     const itensArq = caixasDosItens(arq.definicao, unidadesArq, materializacao.papeis)
     const pos = posicionarAcentos({

@@ -115,6 +115,14 @@ export const QUADRO_DO_CATALOGO = {
  */
 export const FAIXA_DA_MARGEM = { lateral: 24, vertical: 60 } as const
 const EPSILON = 1e-6
+/**
+ * O VÃO DA PILHA (30/10/2026): 0. Medido nos ajustes manuais do Ciro sobre a leva de 12 peças compostas com a cadeia
+ * (`integracao-da-cadeia-2026-10-30/ajustes-do-ciro.json`): o gap da marca (14) entre as caixas de pré, manchete, apoio
+ * e serviço virou 0 em todas as peças da Real e 0–18 na Wine — as caixas já carregam a entrelinha e o padding de
+ * desenho; com 14 o vão visível ficava largo. A peça grava a pilha com que nasceu (`EscolhaEspacial.pilha`): a de
+ * antes reproduz com o 14 dela.
+ */
+export const GAP_DA_PILHA = 0
 /** O modo da margem da peça: `'marca'` = a margem da marca É a margem (29/10/2026). Ausente = opção A (só recolhe). */
 export type MargemDaPeca = 'marca'
 
@@ -150,6 +158,17 @@ export function naMargemDaMarca(r: RetanguloPx, formato: FormatoDoArquetipo, can
   const [x0, x1] = eixo(r.x, r.x + r.width, canvas.width, q.lateral * canvas.width, q.lateral * canvas.width, geometria.margemH, geometria.margemH, FAIXA_DA_MARGEM.lateral, modo === 'logo')
   const [y0, y1] = eixo(r.y, r.y + r.height, canvas.height, q.topo * canvas.height, q.base * canvas.height, geometria.safeTopo, geometria.safeRodape, FAIXA_DA_MARGEM.vertical, modo !== 'caixa')
   return x0 === r.x && y0 === r.y && x1 === r.x + r.width && y1 === r.y + r.height ? r : { x: x0, y: y0, width: x1 - x0, height: y1 - y0 }
+}
+
+/**
+ * A BASE desta referência do catálogo está na faixa da margem (até `FAIXA_DA_MARGEM.vertical` além do quadro de baixo)?
+ * É o papel do rodapé: o serviço (e a logo) dos layouts de topo, o serviço do base-esquerda. Na margem da marca ele
+ * pousa pela base do PISO, sem o recuo do catálogo (ver `materializarArquetipo`).
+ */
+export function baseNaFaixaDaMargem(referencia: Caixa, formato: FormatoDoArquetipo, canvas: { width: number; height: number }): boolean {
+  const q = QUADRO_DO_CATALOGO[formato]
+  const distancia = (1 - (referencia.y + referencia.h)) * canvas.height
+  return distancia <= q.base * canvas.height + FAIXA_DA_MARGEM.vertical
 }
 
 /** A referência de um papel em px: a do catálogo, na margem da marca (modo `'marca'`) ou não (opção A). */
@@ -274,7 +293,7 @@ export function materializarArquetipo(args: {
   const dominante = papelDominante(arquetipo)
 
   // 1ª passada: referência efetiva, zona, capacidade e o pouso de cada papel na própria referência (com o dy).
-  type Entrada = { papel: PapelDeTexto | 'logo'; referencia: RetanguloPx; zona: RetanguloPx; medida: { width: number; height: number }; posicao: RetanguloPx; onde: string; dy: number }
+  type Entrada = { papel: PapelDeTexto | 'logo'; referencia: RetanguloPx; zona: RetanguloPx; medida: { width: number; height: number }; posicao: RetanguloPx; onde: string; dy: number; naBase: boolean }
   const entradas: Entrada[] = []
   for (const [papel, pos] of Object.entries(arquetipo.formatos[formato].papeis) as Array<[PapelDeTexto | 'logo', NonNullable<ArquetipoDeLayout['formatos']['story']['papeis']['headline']>]>) {
     if ('automatica' in pos) {
@@ -290,7 +309,19 @@ export function materializarArquetipo(args: {
     // da marca, o texto de um arquétipo ancorado no RODAPÉ pousa pela BASE da referência (a caixa real é mais baixa que
     // a capacidade): é a base que está na margem, e a pilha sobe a partir dela.
     const pelaBase = Boolean(args.margem) && papel !== 'logo' && arquetipo.preferencias.ancora === 'rodape'
-    const y0 = (pelaBase && args.medidas[papel] ? referencia.y + referencia.height - args.medidas[papel]!.height : referencia.y) + dy
+    // O PAPEL DO RODAPÉ pousa com a base NA margem, em qualquer arquétipo (30/10/2026, medido nos ajustes do Ciro: o
+    // serviço dos layouts de topo ficava 31–83 px acima da margem; ele pôs a base na margem em 11 das 12 peças, e no
+    // base-esquerda Feed tirou também os 13,5 px de recuo do catálogo). É a base do piso, não a da referência mapeada.
+    const naBase = Boolean(args.margem) && papel !== 'logo' && baseNaFaixaDaMargem(pos.referencia, formato, canvas)
+    // O que o papel ocupa ABAIXO da caixa (o envoltório da pílula do #5, o ornamento do arranjo) também fica dentro da
+    // margem: é a base do conjunto que pousa nela.
+    const abaixoDaCaixa = papel === 'logo' ? 0 : (args.envoltorios?.[papel]?.y ?? 0) + (args.ornamentos?.[papel]?.base ?? 0)
+    const y0 =
+      (args.medidas[papel] && naBase
+        ? canvas.height - geometria.safeRodape - abaixoDaCaixa - args.medidas[papel]!.height
+        : pelaBase && args.medidas[papel]
+          ? referencia.y + referencia.height - args.medidas[papel]!.height
+          : referencia.y) + dy
     const onde = dy ? `na posição candidata (dy=${dy}px)` : 'na referência'
 
     let medida: { width: number; height: number } | null
@@ -365,7 +396,7 @@ export function materializarArquetipo(args: {
       })
       continue
     }
-    entradas.push({ papel, referencia, zona, medida, posicao, onde, dy })
+    entradas.push({ papel, referencia, zona, medida, posicao, onde, dy , naBase })
   }
 
   // A pilha da faixa (29/10/2026): só muda o y dos papéis que seguem a âncora; referência, zona e capacidade ficam.
@@ -433,7 +464,7 @@ export function materializarArquetipo(args: {
 function empilharNasFaixas(
   arquetipo: ArquetipoDeLayout,
   formato: FormatoDoArquetipo,
-  entradas: Array<{ papel: PapelDeTexto | 'logo'; referencia: RetanguloPx; zona: RetanguloPx; posicao: RetanguloPx }>,
+  entradas: Array<{ papel: PapelDeTexto | 'logo'; referencia: RetanguloPx; zona: RetanguloPx; posicao: RetanguloPx; naBase?: boolean }>,
   gap: number,
   ornamentos?: Partial<Record<PapelDeTexto, { esquerda: number; direita: number; topo: number; base: number }>>,
   envoltorios?: Partial<Record<PapelDeTexto, { x: number; y: number }>>,
@@ -452,10 +483,13 @@ function empilharNasFaixas(
   // não se empilham.
   const mesmaColuna = (a: E, b: E) => a.posicao.x < b.posicao.x + b.posicao.width && b.posicao.x < a.posicao.x + a.posicao.width
   for (const faixa of faixasDoArquetipo(arquetipo, formato)) {
+    // O papel que pousa pela BASE da margem (30/10/2026, `naBase`) não entra numa pilha de âncora topo: ela o puxaria
+    // para baixo do apoio (nos modelos de coluna #10 o serviço acabava 420 px acima da margem). Com âncora rodapé ele
+    // é o último da pilha, e é dele que os outros sobem.
     const membros = faixa
       .filter((m): m is PapelDeTexto => m !== 'logo')
       .map((m) => entradas.find((e) => e.papel === m))
-      .filter((e): e is NonNullable<typeof e> => Boolean(e))
+      .filter((e): e is NonNullable<typeof e> => Boolean(e) && !(ancora === 'topo' && e!.naBase))
       .sort((a, b) => a.referencia.y - b.referencia.y)
     // As PILHAS da faixa: membros consecutivos na mesma coluna.
     const pilhas: E[][] = []
