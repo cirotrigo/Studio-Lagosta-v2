@@ -29,7 +29,7 @@ import { estiloDaCamada, papeisQueFaltam, papelDoNome, type AssinaturaDaMarca, t
 import { aplicarPrefixo, camadaDoPapel, larguraExtraDoDestaque, medirLinha, PISO_DE_ESCALA, type OrcamentoDeLinha } from './blocos'
 import type { ArranjoDeGrupo } from './combinacoes'
 import { lerDestaques, type EstiloDeDestaque } from './destaques'
-import { estiloDeDestaqueDoPapel, prepararBlocos, type PecaParaBlocos } from './preparar-blocos'
+import { estiloDaRecusa, estiloDeDestaqueDoPapel, prepararBlocos, type PecaParaBlocos } from './preparar-blocos'
 import { DIMENSOES, type Formato, type Papel } from './spec'
 import { colunaDaCaixa } from './blocos'
 import { conferirLogo, excessosDeLinhas, type ArquetipoPreparado } from './arquetipos/na-spec'
@@ -451,12 +451,7 @@ export function medirCopy(args: {
       orcamento: r.orcamento,
       ...(r.corpo ? { corpo: { referencia: r.corpo.referencia, teto: r.corpo.teto, efetivo: null, piso: r.corpo.piso, reducao: null } } : {}),
       // F2d: o estilo com que a recusa foi medida (no piso), com a origem por campo — quem diagnostica a recusa vê a fonte certa.
-      ...(r.estiloDaReferencia
-        ? (() => {
-            const noPiso = camadaDoPapel({ papel: r.papel, linhas: r.linhasDaCopy, estilo: r.estilo, escala: r.corpo ? r.corpo.piso / r.estilo.fontSize : area.escalaDoFormato, width: r.coluna, textAlign: 'left', groupId: 'medicao', corDaMancha: args.assinatura.numeros.mancha })
-            return { estilo: { fontFamily: String(noPiso.style?.fontFamily ?? r.estilo.fontFamily), fontWeight: typeof noPiso.style?.fontWeight === 'number' ? noPiso.style.fontWeight : null, textTransform: (noPiso.style?.textTransform as string | undefined) ?? null, letterSpacing: Number(noPiso.style?.letterSpacing ?? 0), color: String(noPiso.style?.color ?? r.estilo.color), origem: r.estiloDaReferencia } }
-          })()
-        : {}),
+      ...(estiloDaRecusa(r, area.escalaDoFormato, args.assinatura.numeros.mancha) ? { estilo: estiloDaRecusa(r, area.escalaDoFormato, args.assinatura.numeros.mancha)! } : {}),
       avisos: [
         ...avisosDoPapel(r.papel),
         naoMedido

@@ -17,7 +17,7 @@ import type { Layer } from '@/types/template'
 import type { MeasureTextBox } from '@/lib/creatives/text-geometry'
 import { blocosDeServico } from '@/lib/ai/blocos-de-servico'
 import type { AssinaturaDaMarca, EstiloDePapel, NumerosDaAssinatura } from './assinatura'
-import { colunaDaCaixa, montarBloco, type BlocoMontado, type OrcamentoDeLinha, type RecusaDeBloco } from './blocos'
+import { camadaDoPapel, colunaDaCaixa, montarBloco, type BlocoMontado, type OrcamentoDeLinha, type RecusaDeBloco } from './blocos'
 import { arranjosDaPagina, distribuirLinhas, escolherArranjo, type ArranjoDeGrupo, type ElementoDoArranjo } from './combinacoes'
 import { destaqueDoPapel, type EstiloDeDestaque } from './destaques'
 import { dividirManchete } from './segunda-voz'
@@ -116,6 +116,25 @@ export interface RecusaPreparada {
   corpo?: CorpoDoBloco
   /** F2d: a origem de cada campo do estilo com que a recusa foi medida. */
   estiloDaReferencia?: EstiloVestido['origem']
+}
+
+/**
+ * F2d: o estilo com que a recusa foi MEDIDA, materializado no piso por `camadaDoPapel` — o mesmo objeto no `compor` e no
+ * `medir-copy`. É a camada quem resolve o espaçamento: pelo contrato da referência quando há (`2,38` em 31 px), e pela
+ * escala de sempre quando não há — a segunda voz, que só recebe a cor, publica `letterSpacing × piso/base`, não a reserva
+ * da base (Codex F2d R3).
+ */
+export function estiloDaRecusa(r: RecusaPreparada, escalaDoFormato: number, corDaMancha: string): { fontFamily: string; fontWeight: number | null; textTransform: string | null; letterSpacing: number; color: string; origem: EstiloVestido['origem'] } | null {
+  if (!r.estiloDaReferencia) return null
+  const noPiso = camadaDoPapel({ papel: r.papel, linhas: r.linhasDaCopy, estilo: r.estilo, escala: r.corpo ? r.corpo.piso / r.estilo.fontSize : escalaDoFormato, width: r.coluna, textAlign: 'left', groupId: 'medicao', corDaMancha })
+  return {
+    fontFamily: String(noPiso.style?.fontFamily ?? r.estilo.fontFamily),
+    fontWeight: typeof noPiso.style?.fontWeight === 'number' ? noPiso.style.fontWeight : null,
+    textTransform: (noPiso.style?.textTransform as string | undefined) ?? null,
+    letterSpacing: Number(noPiso.style?.letterSpacing ?? 0),
+    color: String(noPiso.style?.color ?? r.estilo.color),
+    origem: r.estiloDaReferencia,
+  }
 }
 
 export interface BlocosPreparados {

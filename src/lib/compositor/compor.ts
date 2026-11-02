@@ -52,7 +52,7 @@ import {
   type NumerosDaAssinatura,
 } from './assinatura'
 import { empilhar, type BlocoMontado } from './blocos'
-import { prepararBlocos, chaveDaPeca } from './preparar-blocos'
+import { estiloDaRecusa, prepararBlocos, chaveDaPeca } from './preparar-blocos'
 import { resolverCamadasExtras, idsDeCamadaRepetidos } from './camadas-extras'
 import {
   arranjoDaCombinacao,
@@ -1038,10 +1038,8 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       return {
         codigo: 'ARQUETIPO_TEXTO_NAO_CABE' as const,
         papel: r.papel,
-        // F2d: a fonte com que a recusa foi medida e a origem por campo (a referência, a assinatura ou o arranjo).
-        ...(r.estiloDaReferencia
-          ? { estilo: { fontFamily: r.estilo.fontFamily, fontWeight: r.estilo.fontWeight ?? null, textTransform: r.estilo.textTransform ?? null, letterSpacing: r.estilo.espacamentoDaReferencia && r.corpo ? Math.round((r.estilo.espacamentoDaReferencia.spacing * r.corpo.piso) / r.estilo.espacamentoDaReferencia.corpo * 100) / 100 : r.estilo.letterSpacing, color: r.estilo.color, origem: r.estiloDaReferencia } }
-          : {}),
+        // F2d: a fonte com que a recusa foi medida, materializada no piso, e a origem por campo — o MESMO objeto do medir-copy.
+        ...(estiloDaRecusa(r, escalaDoFormato, mancha) ? { estilo: estiloDaRecusa(r, escalaDoFormato, mancha)! } : {}),
         ...(referenciaDoPapel(arq.definicao, arq.formato, canvas, pisoArq!, papelGeometrico(r.papel), margemDaPeca) ?? {}),
         coluna: r.coluna,
         ...(r.altura
