@@ -376,7 +376,7 @@ describe('o serviço de cada frase, em entrada que fala de happy hour', () => {
     expect(achado({ ...CERTO, happy_hour: HAPPY }, 'Almoço de terça a sexta das 11h às 15h e happy hour das 16h às 19h.', MISTO)).toEqual([['happy_hour.time', '16:00-19:00']])
   })
   it('título exclusivo que fala de horários segue exclusivo', () => {
-    for (const titulo of ['Happy Hour — dias e horários', 'Horários do happy hour — Quintal', 'Quintal — Happy Hour', 'Happy Hour: horários e condições — Quintal', 'Happy Hour: como funciona — Quintal', 'Funcionamento do happy hour — Quintal', 'Happy Hour após o expediente — Quintal', 'Happy Hour antes do jantar — Quintal', 'Happy Hour pós-expediente — Quintal', 'Happy Hour no fim do expediente — Quintal']) {
+    for (const titulo of ['Happy Hour — dias e horários', 'Horários do happy hour — Quintal', 'Quintal — Happy Hour', 'Happy Hour: horários e condições — Quintal', 'Happy Hour: como funciona — Quintal', 'Funcionamento do happy hour — Quintal', 'Happy Hour após o expediente — Quintal', 'Happy Hour antes do jantar — Quintal', 'Happy Hour pós-expediente — Quintal', 'Happy Hour no fim do expediente — Quintal', 'Horário de funcionamento do nosso happy hour — Quintal']) {
       expect(achado({ happy_hour: HAPPY, hours: HOURS }, 'Terça a sexta, das 16h às 19h.', titulo)).toEqual([['happy_hour.time', '16:00-19:00']])
     }
   })
@@ -415,6 +415,8 @@ describe('o serviço de cada frase, em entrada que fala de happy hour', () => {
     expect(achado(CERTO, 'Happy hour das 16h às 19h, a casa funciona das 11h às 23h.', SO_HAPPY)).toEqual([])
     expect(achado({ ...CERTO, happy_hour: HAPPY }, 'Terça a sexta das 16h às 19h no salão, jantar das 19h às 23h.', SO_HAPPY)).toEqual([['happy_hour.time', '16:00-19:00']])
     expect(achado({ ...CERTO, happy_hour: HAPPY }, 'Terça a sexta das 16h às 19h no salão, segunda funciona das 11h às 17h.', SO_HAPPY)).toEqual([['happy_hour.time', '16:00-19:00']])
+    expect(achado({ ...CERTO, hours: HOURS }, 'Terça a sábado das 11h às 24h, segunda e domingo funcionam das 11h às 17h.', 'Horário de funcionamento — Quintal')).toEqual([['hours.monday', '11:00-17:00']])
+    expect(achado(CERTO, 'Terça a sexta das 16h às 19h, a casa funciona normalmente das 11h às 23h.', SO_HAPPY)).toEqual([])
     // Lista de dias com o verbo no fim não se parte: a segunda é do mesmo sujeito que o domingo.
     expect(achado({ hours: HOURS }, 'Segunda, sexta e domingo funcionam das 11h às 17h.', 'Ficha').map(([campo]) => campo)).toEqual(['hours.monday', 'hours.friday'])
   })
