@@ -38,6 +38,7 @@ import { formatoDaPagina } from '@/lib/compositor/assinatura'
 import { papelDoNome } from '@/lib/compositor/papel-do-nome'
 import { papelDaCamada } from '@/lib/compositor/defasagem'
 import { lerFotoComoCover } from '@/lib/creatives/halo/halo-medicao'
+import { chaveDaEscolha, lerJanela } from '@/lib/compositor/corte-da-foto'
 import { estimarAssunto, mapaDeCalma } from '@/lib/compositor/mapa-de-calma'
 import type { Rect } from '@/lib/creatives/halo/halo'
 import type { RelatorioDaRevisao } from './contrato'
@@ -294,10 +295,15 @@ async function assuntoDaPeca(
   const fundo = fotoDeFundo(camadas, canvas)
   if (!fundo?.fileUrl) return { assunto: null, motivoSemAssunto: 'a peça não tem foto de fundo: não há assunto a proteger', assuntoNaoSeAplica: true }
   const composicao = fieldValues?.composicao
+  // F2a: a JANELA (`style.crop`, o recorte do editor) vence a âncora — a mesma régua do desenho e do compositor.
+  const janela = lerJanela(fundo.style?.crop)
   const corte = fundo.style?.cropPosition ?? null
+  const chaveDaPagina = janela ? chaveDaEscolha({ corte: 'janela', janela }) : corte
+  const janelaGravada = composicao?.posicao?.crop === 'janela' ? lerJanela(composicao.posicao.janela) : null
+  const chaveGravada = composicao?.posicao?.crop === 'janela' ? (janelaGravada ? chaveDaEscolha({ corte: 'janela', janela: janelaGravada }) : null) : (composicao?.posicao?.crop ?? null)
   const mesmaComposicao =
-    // O retângulo gravado é da peça COMPOSTA: outro formato é outro cover.
-    composicao?.formato === formato && fieldValues?.imageUrl === fundo.fileUrl && (composicao.posicao?.crop ?? null) === corte
+    // O retângulo gravado é da peça COMPOSTA: outro formato é outro cover; outro corte (âncora ou janela) é outra projeção.
+    composicao?.formato === formato && fieldValues?.imageUrl === fundo.fileUrl && chaveGravada === chaveDaPagina
   if (mesmaComposicao && composicao.assunto && composicao.assuntoOrigem && composicao.assuntoOrigem !== 'nenhum') {
     return { assunto: { rect: composicao.assunto as Rect, origem: composicao.assuntoOrigem === 'catalogo' ? 'catalogo' : 'estimado' } }
   }
@@ -306,7 +312,7 @@ async function assuntoDaPeca(
   }
   try {
     const bytes = await fetchBuffer(fundo.fileUrl, download)
-    const foto = await lerFotoComoCover(bytes, canvas, corte ? { cropPosition: corte } : {})
+    const foto = await lerFotoComoCover(bytes, canvas, janela ? { janela } : corte ? { cropPosition: corte } : {})
     const rect = estimarAssunto(mapaDeCalma(foto))
     return rect
       ? { assunto: { rect, origem: 'estimado' } }

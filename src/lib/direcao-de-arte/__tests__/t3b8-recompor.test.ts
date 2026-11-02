@@ -285,20 +285,35 @@ describe.skipIf(!fontesNoDisco())('#8 · recomposição real da Generation', () 
     expect([regravada.modo, regravada.pilha, regravada.margem]).toEqual(['busca-espacial-v1', undefined, undefined])
   }, 120_000)
 
-  it('G-R6: a caixa da foto movida ou o enquadramento mudado à mão → ajuste manual detectado, re-render como está, sem recompor', async () => {
-    for (const mexer of [(l: Layer): Layer => ({ ...l, position: { x: 0, y: 40 } }), (l: Layer): Layer => ({ ...l, style: { ...l.style, cropPosition: 'center-top' } })]) {
-      await montar()
-      banco.pngs = []
-      banco.rerenders = []
-      await nascerEEditar((l) => (l.id === 'bg-foto' ? mexer(l) : l))
-      const antes = structuredClone(banco.pagina!.layers)
-      const r = await recomporPaginaDefasada({ pageId: 'p9' })
-      expect(r.recomposta).toBe(false)
-      expect(banco.rerenders).toHaveLength(1)
-      expect(banco.entradas.length).toBe(1)
-      expect(r.avisos.join(' ')).toMatch(/ajustada à mão/)
-      expect(banco.pagina!.layers).toEqual(antes)
-    }
+  it('G-R6: a caixa da foto movida à mão → ajuste manual detectado, re-render como está, sem recompor', async () => {
+    await montar()
+    banco.pngs = []
+    banco.rerenders = []
+    await nascerEEditar((l) => (l.id === 'bg-foto' ? { ...l, position: { x: 0, y: 40 } } : l))
+    const antes = structuredClone(banco.pagina!.layers)
+    const r = await recomporPaginaDefasada({ pageId: 'p9' })
+    expect(r.recomposta).toBe(false)
+    expect(banco.rerenders).toHaveLength(1)
+    expect(banco.entradas.length).toBe(1)
+    expect(r.avisos.join(' ')).toMatch(/ajustada à mão/)
+    expect(banco.pagina!.layers).toEqual(antes)
+  }, 120_000)
+
+  it('G-R6b (F2a): o enquadramento da foto mudado à mão → a recomposição ADOTA o corte da página (a âncora nova fica na camada), sem "ajuste manual"', async () => {
+    await montar()
+    banco.pngs = []
+    banco.rerenders = []
+    await nascerEEditar((l) => (l.id === 'bg-foto' ? { ...l, style: { ...l.style, cropPosition: 'center-top' } } : l))
+    const r = await recomporPaginaDefasada({ pageId: 'p9' })
+    expect(r.recomposta).toBe(true)
+    expect(r.avisos.join(' ')).not.toMatch(/ajustada à mão/)
+    const fundo = (banco.pagina!.layers as Layer[]).find((l) => l.id === 'bg-foto')!
+    expect(fundo.style?.cropPosition).toBe('center-top')
+    expect(fundo.style?.crop).toBeUndefined()
+    // O que a recomposição GRAVOU (o merge em fieldValues): a spec leva a âncora da página, e a escolha também.
+    const patch = banco.sql.map((v) => (typeof v[0] === 'string' ? JSON.parse(v[0]) : null)).find((j) => j?.spec && j?.composicao)
+    expect(patch.spec.foto).toMatchObject({ driveFileId: 'drive-8', corte: 'center-top' })
+    expect(patch.composicao.arquetipo.buscaEspacial.escolha.corte).toBe('center-top')
   }, 120_000)
 
   it('G-R7: Page.background editado (não é ajuste manual): o papel que atende vale e a peça sai nele; o que não atende recusa, nada escrito', async () => {

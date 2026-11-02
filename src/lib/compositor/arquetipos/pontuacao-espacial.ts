@@ -243,7 +243,8 @@ export function avaliarCombinacao(args: {
     contrasteNatural: arred(contrasteNatural),
     assunto: arred(assunto),
     referencia: arred(referencia),
-    corte: corte.crop === 'center-middle' ? 1 : 0,
+    // F2a: a janela explícita é o único corte avaliado — vale como o central (não há o que preferir).
+    corte: corte.crop === 'center-middle' || corte.crop === 'janela' ? 1 : 0,
   }
   const pontuacao = arred(CHAVES_DA_PONTUACAO.reduce((s, k) => s + PESOS_DA_PONTUACAO[k] * componentes[k], 0))
   return { ...base, componentes, pontuacao }

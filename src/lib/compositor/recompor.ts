@@ -66,6 +66,7 @@ import { specTemExtra } from './camadas-extras'
 import {
   edicaoDuranteOJob,
   acentosCongelados,
+  enquadramentoDaPagina,
   escolhaEspacialOriginal,
   mascaraCongelada,
   medirDefasagem,
@@ -80,6 +81,7 @@ import {
 import { DIMENSOES, validarSpec, type SpecDePeca } from './spec'
 import { contratoLidoParaRecompor, specDaRecomposicao } from './spec-da-recomposicao'
 import { resolverArquetipo, type ArquetipoDaSpec } from './arquetipos/na-spec'
+import { MODO_BUSCA_ESPACIAL } from './arquetipos/busca-espacial-tipos'
 import { resolucaoParaASpec } from './referencias'
 import { verArquetipo } from './arquetipos/catalogo'
 import { caixaDaFoto, textoNoLiso } from './arquetipos/fundo'
@@ -419,7 +421,17 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
   const resolvida = candidataARecompor && arte.spec!.arquetipo ? resolverArquetipo(arte.spec!.arquetipo as ArquetipoDaSpec, { persistida: true, ...resolucao }) : null
   // CP2B: a ESCOLHA ESPACIAL gravada (corte e deslocamentos) é reproduzida, nunca refeita — a busca pela foto não roda
   // de novo numa edição de texto. Ilegível recusa AQUI, antes de qualquer escrita (ver `escolhaEspacialOriginal`).
-  const lida = candidataARecompor && arte.spec!.arquetipo ? escolhaEspacialOriginal(arte.fieldValues, arte.spec!) : null
+  const lidaGravada = candidataARecompor && arte.spec!.arquetipo ? escolhaEspacialOriginal(arte.fieldValues, arte.spec!) : null
+  // F2a: o ENQUADRAMENTO EFETIVO da página vence a escolha gravada: a janela (`style.crop`) sempre que a página a tem;
+  // a âncora só quando o enquadramento foi MUDADO no editor (inclusive "Remover") — senão a escolha gravada reproduz
+  // como sempre, e a foto trocada sem crop busca o corte de novo. A escolha segue com os deslocamentos, a logo, a pilha
+  // e a margem de antes; a spec recomposta leva o mesmo (`specComACopyDaPagina`), para a leitura e a escolha terem um corte só.
+  const lidoDaPagina = candidataARecompor ? enquadramentoDaPagina(page.layers) : null
+  const enquadramentoDaPaginaAgora = lidoDaPagina && ('janela' in lidoDaPagina || defasagem.enquadramentoAlterado === true) ? lidoDaPagina : null
+  const lida =
+    lidaGravada && lidaGravada.modo === MODO_BUSCA_ESPACIAL && enquadramentoDaPaginaAgora
+      ? ('janela' in enquadramentoDaPaginaAgora ? { ...lidaGravada, corte: 'janela' as const, janela: enquadramentoDaPaginaAgora.janela } : { ...lidaGravada, corte: enquadramentoDaPaginaAgora.corte, janela: undefined })
+      : lidaGravada
   // Foto trocada numa peça do T1a (na referência, sem escolha pela foto): a busca roda pela foto nova, DITO. (A peça do
   // CP2B traz a foto na escolha: o compositor percebe a troca e avisa sozinho.)
   // CP3: a variante da logo gravada é preferência e não depende da foto — segue na busca nova (a conferência mede).
@@ -486,7 +498,7 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
   // A spec reconstruída pela página (foto, posição original) sai ANTES da decisão: com o histórico cheio é ela que
   // precisa passar em `validarSpec` para a recomposição seguir (PR10-04). Os avisos dela só valem se recompuser.
   const fotoDesenhada = (arte.fieldValues as { imageUrl?: unknown } | undefined)?.imageUrl
-  const reconstruida = candidataARecompor ? specComACopyDaPagina(arte.spec!, page.layers, { fotoDesenhada: typeof fotoDesenhada === 'string' ? fotoDesenhada : null }) : null
+  const reconstruida = candidataARecompor ? specComACopyDaPagina(arte.spec!, page.layers, { fotoDesenhada: typeof fotoDesenhada === 'string' ? fotoDesenhada : null, enquadramento: enquadramentoDaPaginaAgora }) : null
   const specPosicionada = reconstruida ? specComAPosicaoOriginal(reconstruida.spec, arte.fieldValues) : null
   if (candidataARecompor) {
     const contratoDaPagina = page.copyAutoral == null ? null : lerCopyAutoral(page.copyAutoral).copy

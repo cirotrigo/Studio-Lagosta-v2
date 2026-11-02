@@ -39,6 +39,7 @@ import { ehClipe } from '@/lib/video/camadas-de-video'
 import { temGradeVisivel, vinculadaAGrade } from '@/lib/grades/presenca'
 
 import type { CropPosition } from '@/lib/image-crop-utils'
+import { lerJanela, type Janela, type RotuloDoCorte } from './corte-da-foto'
 import { CreativeError } from '@/lib/creatives/errors'
 import type { VarianteDaLogo } from './legibilidade-da-logo'
 
@@ -221,11 +222,39 @@ export function fotoDaPagina(camadas: unknown): string | null {
   return daCamada || (typeof doEstilo === 'string' ? doEstilo : '') || null
 }
 
+/** A camada de FUNDO da página (a mesma régua de `fotoDaPagina`): `bg-foto`, ou a primeira imagem. */
+export function camadaDeFundo(camadas: unknown): Layer | null {
+  const { camadas: lidas, legivel } = lerCamadas(camadas)
+  if (!legivel) return null
+  const imagens = (lidas as Layer[]).filter((c) => c?.type === 'image')
+  return imagens.find((c) => c.id === 'bg-foto') ?? imagens[0] ?? null
+}
+
+/**
+ * F2a (01/11/2026): o ENQUADRAMENTO EFETIVO da página — a janela (`style.crop`, o recorte feito no editor) ou a âncora
+ * (`cropPosition`, inclusive depois de "Remover" o crop). É o que a recomposição ADOTA para a foto que a página mostra,
+ * a mesma ou a trocada; a escolha gravada só vale no que ele não diz. `null` sem fundo ou sem nenhum dos dois.
+ */
+export function enquadramentoDaPagina(camadas: unknown): { janela: Janela } | { corte: CropPosition } | null {
+  const fundo = camadaDeFundo(camadas)
+  if (!fundo) return null
+  const estilo = (fundo.style ?? {}) as { crop?: unknown; cropPosition?: unknown }
+  const janela = lerJanela(estilo.crop)
+  if (janela) return { janela }
+  if (typeof estilo.cropPosition === 'string' && Object.prototype.hasOwnProperty.call(CORTES, estilo.cropPosition)) return { corte: estilo.cropPosition as CropPosition }
+  return null
+}
+
 export interface Defasagem {
   /** Não deu para ler um dos lados — nunca vira "não mudou nada". */
   ilegivel: boolean
-  /** O texto — ou a FOTO — da página não é mais o com que a arte foi feita. */
+  /** O texto — ou a FOTO, ou o ENQUADRAMENTO dela — da página não é mais o com que a arte foi feita. */
   defasada: boolean
+  /**
+   * F2a: o enquadramento da foto de FUNDO (crop/âncora) foi mudado no editor. Não é "mexido na mão": a recomposição
+   * adota o enquadramento da página (`enquadramentoDaPagina`) e reflui o texto nele. `defasada` já o inclui.
+   */
+  enquadramentoAlterado?: boolean
   /**
    * A foto de fundo da página não é a da arte (PR 10): trocada no editor. Até
    * aqui só o texto contava, e a foto trocada num slide de carrossel nunca
@@ -326,23 +355,34 @@ function mudancasDeTipo(antes: unknown, depois: unknown): string[] {
  * chaves (a ordem não importa; ausência = ausência), sem validar nem normalizar
  * o SVG.
  */
-function mudancasDeEnquadramento(antes: unknown, depois: unknown): string[] {
+function mudancasDeEnquadramento(antes: unknown, depois: unknown): { motivos: string[]; fundoAlterado: boolean } {
   const a = lerCamadas(antes)
   const d = lerCamadas(depois)
-  if (!a.legivel || !d.legivel) return []
-  const enquadramento = (c: Layer) => {
-    const estilo = (c.style ?? {}) as { crop?: unknown; cropPosition?: unknown; objectFit?: unknown; mask?: unknown }
+  if (!a.legivel || !d.legivel) return { motivos: [], fundoAlterado: false }
+  const corte = (c: Layer) => {
+    const estilo = (c.style ?? {}) as { crop?: unknown; cropPosition?: unknown }
+    return JSON.stringify([estilo.crop ?? null, estilo.cropPosition ?? null])
+  }
+  const resto = (c: Layer) => {
+    const estilo = (c.style ?? {}) as { objectFit?: unknown; mask?: unknown }
     const mascara = ehObjeto(estilo.mask) ? [estilo.mask.shapeId ?? null, estilo.mask.path ?? null] : [null, null]
-    return JSON.stringify([estilo.crop ?? null, estilo.cropPosition ?? null, estilo.objectFit ?? null, ...mascara])
+    return JSON.stringify([estilo.objectFit ?? null, ...mascara])
   }
   const imagensAntes = new Map((a.camadas as Layer[]).filter((c) => c?.type === 'image').map((c) => [c.id, c]))
+  const fundo = camadaDeFundo(depois)
   const motivos: string[] = []
+  let fundoAlterado = false
   for (const camada of d.camadas as Layer[]) {
     if (camada?.type !== 'image') continue
     const anterior = imagensAntes.get(camada.id)
-    if (anterior && enquadramento(anterior) !== enquadramento(camada)) motivos.push(`o enquadramento da imagem "${camada.id}" foi ajustado à mão`)
+    if (!anterior) continue
+    // F2a: o crop/âncora da foto de FUNDO é sinal próprio (a recomposição o adota); objectFit e máscara, e qualquer
+    // imagem que não é o fundo, continuam "mexido na mão".
+    if (fundo && camada.id === fundo.id && corte(anterior) !== corte(camada)) fundoAlterado = true
+    else if (corte(anterior) !== corte(camada)) motivos.push(`o enquadramento da imagem "${camada.id}" foi ajustado à mão`)
+    if (resto(anterior) !== resto(camada)) motivos.push(`o enquadramento da imagem "${camada.id}" foi ajustado à mão`)
   }
-  return motivos
+  return { motivos, fundoAlterado }
 }
 
 /**
@@ -399,12 +439,13 @@ export function medirDefasagem(camadasDaPagina: unknown, snapshot: unknown): Def
     const extra = l && typeof l.id === 'string' ? idDoExtraDaCamada(l) : null
     if (extra) extraDaCamada.set(l.id, extra)
   }
+  const enquadramento = diff.ilegivel ? { motivos: [], fundoAlterado: false } : mudancasDeEnquadramento(snapshot, camadasDaPagina)
   const motivos = diff.ilegivel
     ? ['não deu para comparar a geometria da página com a da arte']
     : [
         ...mexeuNaMao(diff, extraDaCamada),
         ...mudancasDeTipo(snapshot, camadasDaPagina),
-        ...mudancasDeEnquadramento(snapshot, camadasDaPagina),
+        ...enquadramento.motivos,
         ...clipesDaLinhaDoTempo(camadasDaPagina),
         ...fotosDaGradeTrocadas(snapshot, camadasDaPagina),
       ]
@@ -418,8 +459,9 @@ export function medirDefasagem(camadasDaPagina: unknown, snapshot: unknown): Def
 
   return {
     ilegivel: false,
-    defasada: papeis.length > 0 || fotoTrocada,
+    defasada: papeis.length > 0 || fotoTrocada || enquadramento.fundoAlterado,
     fotoTrocada,
+    enquadramentoAlterado: enquadramento.fundoAlterado,
     papeis,
     // G4.5: grade de fotos é composição manual — recompor pela spec a desmontaria em UMA foto. A peça com grade (de um
     // lado ou do outro) só é re-renderizada como está; nada entra em `mexidoNaMao`, que não acusa mudança sem mudança.
@@ -488,7 +530,16 @@ export function specComACopyDaPagina(
    * CP2B: a URL da foto que a arte DESENHOU (`fieldValues.imageUrl`). Com arquétipo, a página que mostra essa mesma foto
    * não troca o `driveFileId` pela URL — senão o assunto do catálogo (a região protegida) se perderia na recomposição.
    */
-  opcoes: { fotoDesenhada?: string | null } = {},
+  opcoes: {
+    fotoDesenhada?: string | null
+    /**
+     * F2a: o ENQUADRAMENTO EFETIVO da página que a spec recomposta leva (`enquadramentoDaPagina`): a janela
+     * (`style.crop`) sempre que existe; a âncora só quando o enquadramento foi mudado no editor (`enquadramentoAlterado`)
+     * — senão a escolha gravada reproduz como sempre, e a foto trocada sem crop busca o corte de novo. Quem decide é a
+     * recomposição, que conhece o snapshot; `null`/ausente = nada a levar.
+     */
+    enquadramento?: { janela: Janela } | { corte: CropPosition } | null
+  } = {},
 ): SpecRecomposta {
   const avisos: string[] = []
   // Com os [colchetes] de volta: o destaque da página sobrevive à recomposição.
@@ -576,9 +627,15 @@ export function specComACopyDaPagina(
     foto = { url }
   }
 
-  const { camadasExtras: _extrasDaSpec, ...semExtras } = spec
+  // F2a: o ENQUADRAMENTO EFETIVO da página vence (o recorte feito no editor, ou a âncora depois de "Remover"), para a
+  // foto que a página mostra; com ele, a seleção de fotos sai da spec recomposta (a foto está fixada).
+  const enquadramento = foto && opcoes.enquadramento ? opcoes.enquadramento : null
+  const { janela: _janelaAntiga, corte: _corteAntigo, ...fotoSemEnquadramento } = foto ?? {}
+  const fotoEfetiva = foto ? (enquadramento ? { ...fotoSemEnquadramento, ...enquadramento } : foto) : null
+  const { camadasExtras: _extrasDaSpec, fotosCandidatas, selecaoExperimental, ...semExtras } = spec
+  const selecao = enquadramento ? {} : { ...(fotosCandidatas !== undefined ? { fotosCandidatas } : {}), ...(selecaoExperimental !== undefined ? { selecaoExperimental } : {}) }
   return {
-    spec: { ...semExtras, blocos, ...(camadasExtras.length > 0 ? { camadasExtras } : {}), ...(foto ? { foto } : {}) } as SpecDePeca,
+    spec: { ...semExtras, ...selecao, blocos, ...(camadasExtras.length > 0 ? { camadasExtras } : {}), ...(fotoEfetiva ? { foto: fotoEfetiva } : {}) } as SpecDePeca,
     avisos,
   }
 }
@@ -677,7 +734,10 @@ export function escolhaEspacialOriginal(fieldValues: unknown, spec: SpecDePeca):
   const escolha = ehObjeto(gravado.buscaEspacial) && ehObjeto(gravado.buscaEspacial.escolha) ? gravado.buscaEspacial.escolha : null
   if (!escolha || escolha.modo !== MODO_BUSCA_ESPACIAL) return recusar('a busca não gravou a escolha')
   if (escolha.foto !== null && typeof escolha.foto !== 'string') return recusar('a foto da escolha não é texto')
-  if (typeof escolha.corte !== 'string' || !Object.prototype.hasOwnProperty.call(CORTES, escolha.corte)) return recusar(`corte inválido: ${String(escolha.corte)}`)
+  // F2a: o corte é uma âncora, ou `'janela'` com a janela gravada (frações legíveis) — sem ela, ilegível.
+  if (typeof escolha.corte !== 'string' || !(Object.prototype.hasOwnProperty.call(CORTES, escolha.corte) || escolha.corte === 'janela')) return recusar(`corte inválido: ${String(escolha.corte)}`)
+  const janelaGravada = escolha.corte === 'janela' ? lerJanela(escolha.janela) : null
+  if (escolha.corte === 'janela' && !janelaGravada) return recusar('o corte é por janela, mas a janela gravada não é legível')
   if (!ehObjeto(escolha.deslocamentos)) return recusar('a escolha não tem os deslocamentos')
   const deslocamentos: Partial<Record<MembroDaFaixa, number>> = {}
   for (const [membro, dy] of Object.entries(escolha.deslocamentos)) {
@@ -688,7 +748,7 @@ export function escolhaEspacialOriginal(fieldValues: unknown, spec: SpecDePeca):
   const canto = escolha.cantoDaLogo
   if (canto !== undefined && canto !== null && !(CANTOS as readonly unknown[]).includes(canto)) return recusar(`canto da logo inválido: ${String(canto)}`)
 
-  const limpa: EscolhaEspacial & { buscaOriginal?: ResumoDaBuscaOriginal } = { modo: MODO_BUSCA_ESPACIAL, foto: escolha.foto as string | null, corte: escolha.corte as CropPosition, deslocamentos }
+  const limpa: EscolhaEspacial & { buscaOriginal?: ResumoDaBuscaOriginal } = { modo: MODO_BUSCA_ESPACIAL, foto: escolha.foto as string | null, corte: escolha.corte as RotuloDoCorte, ...(janelaGravada ? { janela: janelaGravada } : {}), deslocamentos }
   if (canto !== undefined) limpa.cantoDaLogo = canto as Canto | null
   // A pilha da faixa (29/10/2026): ausente na peça de antes (reproduz sem empilhar); presente e malformada é ilegível.
   if (escolha.pilha !== undefined) {

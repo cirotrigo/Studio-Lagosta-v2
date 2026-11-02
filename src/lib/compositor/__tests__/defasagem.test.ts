@@ -14,6 +14,7 @@ import {
   precisaRefazer,
   slidesDaPagina,
   specComACopyDaPagina,
+  enquadramentoDaPagina,
 } from '../defasagem'
 import type { SpecDePeca } from '../spec'
 
@@ -340,5 +341,38 @@ describe('alcancadoPelaInvalidacao', () => {
     expect(alcancadoPelaInvalidacao({ id: 'p', pageId: 'pag123', renderStatus: 'PENDING' }, 'pag123')).toBe(true)
     expect(alcancadoPelaInvalidacao({ id: 'p', pageId: 'outra', renderStatus: 'RENDERED' }, 'pag123')).toBe(false)
     expect(alcancadoPelaInvalidacao({ id: 'p', pageId: null, renderStatus: 'RENDERED' }, 'pag123')).toBe(false)
+  })
+})
+
+describe('F2a — o enquadramento efetivo da página na recomposição', () => {
+  const fotoComCrop = { ...foto, style: { objectFit: 'cover', crop: { x: 0.177, y: 0.058, width: 0.624, height: 0.742 } } } as Camada
+  const fotoComAncora = { ...foto, style: { objectFit: 'cover', cropPosition: 'center-top' } } as Camada
+  // Com arquétipo: a página que mostra a MESMA foto desenhada mantém o driveFileId (CP2B) — é o caso da recomposição.
+  const specComFoto = { ...spec, foto: { driveFileId: 'abc' }, arquetipo: { id: 'minimal-fb-topo-esquerda', versao: 1, impressao: 'arq1-00000000000001' } } as SpecDePeca
+
+  it('sem a opção `enquadramento`, a spec não ganha janela nem corte (a escolha gravada reproduz como sempre)', () => {
+    const r = specComACopyDaPagina(specComFoto, [fotoComCrop, texto('headline', 'a')], { fotoDesenhada: foto.fileUrl as string })
+    expect(r.spec.foto).toEqual({ driveFileId: 'abc' })
+  })
+
+  it('com a janela da página, a spec leva `foto.janela` e perde a seleção de fotos (a foto está fixada)', () => {
+    const r = specComACopyDaPagina({ ...specComFoto, fotosCandidatas: ['x', 'y'], selecaoExperimental: true } as SpecDePeca, [fotoComCrop, texto('headline', 'a')], { fotoDesenhada: foto.fileUrl as string, enquadramento: enquadramentoDaPagina([fotoComCrop]) })
+    expect(r.spec.foto).toEqual({ driveFileId: 'abc', janela: { x: 0.177, y: 0.058, width: 0.624, height: 0.742 } })
+    expect(r.spec.fotosCandidatas).toBeUndefined()
+    expect(r.spec.selecaoExperimental).toBeUndefined()
+  })
+
+  it('com a âncora da página (depois de "Remover" o crop), a spec leva `foto.corte` — também na foto trocada', () => {
+    expect(enquadramentoDaPagina([fotoComAncora])).toEqual({ corte: 'center-top' })
+    const trocada = { ...fotoComAncora, fileUrl: 'https://x.public.blob.vercel-storage.com/uploads/outra.jpg' } as Camada
+    const r = specComACopyDaPagina(specComFoto, [trocada, texto('headline', 'a')], { enquadramento: enquadramentoDaPagina([trocada]) })
+    expect(r.spec.foto).toEqual({ url: trocada.fileUrl, corte: 'center-top' })
+  })
+
+  it('enquadramentoDaPagina: a janela vence a âncora; sem nenhum dos dois, null; janela fora do contrato é ignorada', () => {
+    expect(enquadramentoDaPagina([{ ...foto, style: { objectFit: 'cover', cropPosition: 'center-top', crop: { x: 0.1, y: 0.1, width: 0.5, height: 0.6 } } } as Camada])).toEqual({ janela: { x: 0.1, y: 0.1, width: 0.5, height: 0.6 } })
+    expect(enquadramentoDaPagina([{ ...foto, style: { objectFit: 'cover' } } as Camada])).toBeNull()
+    expect(enquadramentoDaPagina([{ ...foto, style: { objectFit: 'cover', cropPosition: 'center-top', crop: { x: 0.9, y: 0, width: 0.5, height: 0.5 } } } as Camada])).toEqual({ corte: 'center-top' })
+    expect(enquadramentoDaPagina([texto('headline', 'a')])).toBeNull()
   })
 })

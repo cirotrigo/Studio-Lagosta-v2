@@ -1561,6 +1561,39 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
         "type": "string",
         "description": "URL pública da foto, quando ela não está no acervo (ex.: fotoUrl de ver-foto-enviada)."
       },
+      "fotoJanela": {
+        "type": "object",
+        "properties": {
+          "x": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "y": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "width": {
+            "type": "number",
+            "minimum": 0.01,
+            "maximum": 1
+          },
+          "height": {
+            "type": "number",
+            "minimum": 0.01,
+            "maximum": 1
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "width",
+          "height"
+        ],
+        "additionalProperties": false,
+        "description": "O CORTE da foto, explícito (F2a): o retângulo da foto original que a peça mostra, em frações 0..1 (x, y, width, height) — o mesmo crop que o editor grava. O compositor confere a proporção contra a caixa (ajuste mínimo dito; fora da foto, JANELA_NAO_CABE), lê a foto, protege o assunto e grava a janela na camada da foto (style.crop), que o editor abre igual. Sem ela, o compositor escolhe o enquadramento como sempre. Só com UMA foto (fotoDriveId ou fotoUrl); não combina com fotosCandidatas nem selecaoExperimental."
+      },
       "blocos": {
         "type": "array",
         "items": {
@@ -1919,6 +1952,39 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
             "fotoUrl": {
               "type": "string",
               "description": "URL pública da foto, quando ela não está no acervo (ex.: fotoUrl de ver-foto-enviada)."
+            },
+            "fotoJanela": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "y": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "width": {
+                  "type": "number",
+                  "minimum": 0.01,
+                  "maximum": 1
+                },
+                "height": {
+                  "type": "number",
+                  "minimum": 0.01,
+                  "maximum": 1
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "width",
+                "height"
+              ],
+              "additionalProperties": false,
+              "description": "O CORTE da foto, explícito (F2a): o retângulo da foto original que a peça mostra, em frações 0..1 (x, y, width, height) — o mesmo crop que o editor grava. O compositor confere a proporção contra a caixa (ajuste mínimo dito; fora da foto, JANELA_NAO_CABE), lê a foto, protege o assunto e grava a janela na camada da foto (style.crop), que o editor abre igual. Sem ela, o compositor escolhe o enquadramento como sempre. Só com UMA foto (fotoDriveId ou fotoUrl); não combina com fotosCandidatas nem selecaoExperimental."
             },
             "fotosCandidatas": {
               "type": "array",

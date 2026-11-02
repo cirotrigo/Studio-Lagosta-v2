@@ -318,3 +318,10 @@ de outro cliente ou revogada não resolve (`ARQUETIPO_DESCONHECIDO`), e **o clie
 perde o catálogo** (`ARQUETIPO_NAO_APROVADO`, com as que valem). O
 detalhe (precedência, recusas, o que fica em `leitura.ignoradas`) está em `docs/regras/compositor.md`, seção "F1 da
 direção por referência".
+
+### `fotoJanela`: o corte explícito da foto em `compor-arte`, `compor-leva` e `medir-copy` (F2a, 01/11/2026)
+
+`fotoJanela = { x, y, width, height }` em frações 0..1 da foto original — o mesmo crop que o editor grava. Só com UMA
+foto (`fotoDriveId`/`fotoUrl`); com `fotosCandidatas` ou `selecaoExperimental` é `SPEC_INVALIDA`. O compositor confere
+a proporção contra a caixa (ajuste mínimo dito nos avisos; fora da foto, `JANELA_NAO_CABE`) e grava a janela na camada
+da foto (`style.crop`). Detalhe em `docs/regras/compositor.md`, seção F2a.

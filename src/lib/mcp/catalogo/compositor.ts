@@ -93,6 +93,11 @@ const spec = {
   selecaoExperimental: z.boolean().optional().describe('Opt-in explícito para comparar variantes com o baseline. Default false: candidatas presentes não ativam seleção nem alteram o layout. Comparação técnica, sem aprovação estética automática.'),
   fotosCandidatas: z.array(z.string().min(1)).min(1).max(3).optional().describe('Só com selecaoExperimental: true. Até 3 driveFileIds já curados por buscar-fotos, em ordem de relevância. Avalia até 6 combinações com variantes, sem geração paga. Foto explícita prevalece. Sem combinação utilizável retorna diagnóstico; não remove copy.'),
   fotoUrl: z.string().optional().describe('URL pública da foto, quando ela não está no acervo (ex.: fotoUrl de ver-foto-enviada).'),
+  fotoJanela: z
+    .object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1), width: z.number().min(0.01).max(1), height: z.number().min(0.01).max(1) })
+    .strict()
+    .optional()
+    .describe('O CORTE da foto, explícito (F2a): o retângulo da foto original que a peça mostra, em frações 0..1 (x, y, width, height) — o mesmo crop que o editor grava. O compositor confere a proporção contra a caixa (ajuste mínimo dito; fora da foto, JANELA_NAO_CABE), lê a foto, protege o assunto e grava a janela na camada da foto (style.crop), que o editor abre igual. Sem ela, o compositor escolhe o enquadramento como sempre. Só com UMA foto (fotoDriveId ou fotoUrl); não combina com fotosCandidatas nem selecaoExperimental.'),
   blocos: z
     .array(bloco)
     .max(40)
@@ -127,7 +132,7 @@ function specDe(args: Record<string, unknown>) {
   return {
     projectId: args.projectId,
     formato: args.formato,
-    ...(args.fotoDriveId || args.fotoUrl ? { foto: { ...(args.fotoDriveId ? { driveFileId: args.fotoDriveId } : {}), ...(args.fotoUrl ? { url: args.fotoUrl } : {}) } } : {}),
+    ...(args.fotoDriveId || args.fotoUrl ? { foto: { ...(args.fotoDriveId ? { driveFileId: args.fotoDriveId } : {}), ...(args.fotoUrl ? { url: args.fotoUrl } : {}), ...(args.fotoJanela && typeof args.fotoJanela === 'object' ? { janela: args.fotoJanela } : {}) } } : {}),
     fotosCandidatas: args.fotosCandidatas,
     selecaoExperimental: args.selecaoExperimental,
     blocos: args.blocos,
@@ -300,6 +305,7 @@ export const toolsDoCompositor = [
       nome: spec.nome,
       fotoDriveId: spec.fotoDriveId,
       fotoUrl: spec.fotoUrl,
+      fotoJanela: spec.fotoJanela,
       arquetipo: spec.arquetipo,
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -318,6 +324,7 @@ export const toolsDoCompositor = [
         nome: typeof args.nome === 'string' ? args.nome : null,
         fotoDriveId: typeof args.fotoDriveId === 'string' ? args.fotoDriveId : null,
         fotoUrl: typeof args.fotoUrl === 'string' ? args.fotoUrl : null,
+        ...(args.fotoJanela && typeof args.fotoJanela === 'object' ? { fotoJanela: args.fotoJanela as { x: number; y: number; width: number; height: number } } : {}),
         ...(args.arquetipo && typeof args.arquetipo === 'object' ? { arquetipo: args.arquetipo as { id: string; versao?: number; impressao?: string } } : {}),
       })
       const m = r.medicao
@@ -537,6 +544,7 @@ export const toolsDoCompositor = [
             formato: spec.formato,
             fotoDriveId: spec.fotoDriveId,
             fotoUrl: spec.fotoUrl,
+            fotoJanela: spec.fotoJanela,
             fotosCandidatas: spec.fotosCandidatas,
             selecaoExperimental: spec.selecaoExperimental,
             blocos: spec.blocos,

@@ -31,6 +31,7 @@ import { lerFotoComoCover, luzNoRect, type FotoCinza } from '@/lib/creatives/hal
 import { alvoPorContraste, calibrarHalo, uniao, type Rect } from '@/lib/creatives/halo/halo'
 import { gradientesDoProjeto } from '@/lib/assets/gradients-library'
 import type { CropPosition } from '@/lib/image-crop-utils'
+import { chaveDoCorte, corteDaEscolha, corteDaJanela, corteDoRotulo, escalaDaJanela, janelaNaProporcao, lerJanela, rotuloDoCorte, type Corte, type Janela, type RotuloDoCorte } from './corte-da-foto'
 import { registrarUsoDeFoto } from '@/lib/creatives/uso-de-foto'
 import { blocosDeServico } from '@/lib/ai/blocos-de-servico'
 
@@ -187,7 +188,12 @@ export { TAG_DA_PECA_COMPOSTA } from './persistencia'
 export interface RotuloDePosicao {
   ancora: Ancora
   alinha: Alinhamento
-  crop: CropPosition
+  /** A âncora do corte, ou `'janela'` (F2a: corte explícito, em `janela`). */
+  crop: RotuloDoCorte
+  /** F2a: a janela da foto (frações) que a peça mostra, quando o corte é explícito. */
+  janela?: Janela
+  /** F2a: a janela PEDIDA, quando a efetiva foi ajustada à proporção da caixa (dito nos avisos). */
+  janelaPedida?: Janela
 }
 
 export interface DiagnosticoDaComposicao {
@@ -204,7 +210,7 @@ export interface DiagnosticoDaComposicao {
    * #8 (foto em caixa): a caixa da foto em px, a escala do cover (> 1 = ampliada), o corte escolhido pela CAIXA e a fração
    * visível do assunto catalogado nele. Ausente nos outros fundos.
    */
-  foto?: { caixa: { x: number; y: number; width: number; height: number }; escala: number | null; corte: CropPosition; assuntoVisivel: number | null }
+  foto?: { caixa: { x: number; y: number; width: number; height: number }; escala: number | null; corte: RotuloDoCorte; janela?: Janela; assuntoVisivel: number | null }
   /** #8: o papel do liso que o contraste com as tintas da peça escolheu (`papelDoBloco`): as tintas medidas e as folgas de cada candidato. */
   papelDoFundo?: { papel: PapelDoFundo; cor: string; tintas: TintaAtiva[]; folgas: FolgaDoCandidato[] }
   /** LEGADO — sempre vazio desde 11/09/2026: o compositor não desenha mais halo. */
@@ -576,6 +582,8 @@ function conferirPathDaMascara(path: string, arquetipo: string): void {
   }
 }
 
+const descreverJanela = (j: Janela) => `x ${j.x.toFixed(3)}, y ${j.y.toFixed(3)}, ${j.width.toFixed(3)}×${j.height.toFixed(3)}`
+
 /** Os cortes que abrem área livre: só faz sentido variar no eixo em que a foto SOBRA. */
 function cortesCandidatos(foto: FotoDaPeca | null, canvas: { width: number; height: number }, fixo: boolean): CropPosition[] {
   if (!foto || fixo || !foto.largura || !foto.altura) return ['center-middle']
@@ -636,7 +644,7 @@ function candidatosDePosicao(
   g: GeometriaDaPeca,
   spec: SpecDePeca,
   bloco: { width: number; height: number },
-  crop: CropPosition,
+  crop: RotuloDoCorte,
   extra: {
     reservaNoRodape?: number
     reservaNoTopo?: number
@@ -1299,8 +1307,42 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   const mascaraDoFormato = caixaFoto ? arq!.definicao.formatos[arq!.formato].mascaraDaFoto : undefined
   const mascara: ReceitaDaMascara | null = mascaraDoFormato ? opcoes.mascaraCongelada ?? receitaDaMascara(arq!, caixaFoto!, mascaraDoFormato.raio) : null
   if (mascara) conferirPathDaMascara(mascara.path, chaveDoArquetipo(arq!.definicao))
-  const cortes: CropPosition[] =
-    arq && reproducao ? [reproducao.modo === 'referencia' ? 'center-middle' : reproducao.corte] : cortesCandidatos(foto, caixaFoto ?? canvas, spec.preferencias?.enquadramento === 'fixo')
+  // F2a: o CORTE é uma janela (frações da foto); o rótulo fica quando veio de uma âncora. Precedência: a janela da spec
+  // (explícita, ou a da PÁGINA que a recomposição leva) > o rótulo efetivo da página (`foto.corte`) > a escolha gravada
+  // (reprodução) > os candidatos de sempre. A janela é conferida na proporção da CAIXA, em px: ajuste mínimo dito; fora
+  // da foto, recusa. Sem foto, o corte central inteiro (nada a recortar).
+  const caixaDoCorte = caixaFoto ?? canvas
+  const dimsDaFoto = foto ? { width: foto.largura, height: foto.altura } : null
+  let janelaPedida: Janela | null = null
+  // `z.infer` com strict:false marca os campos opcionais; a spec validada já conferiu a forma — `lerJanela` só a tipa.
+  const janelaDaSpec = lerJanela(spec.foto?.janela)
+  const cortes: Corte[] = (() => {
+    if (!foto || !dimsDaFoto) return [{ rotulo: 'center-middle' as const, janela: { x: 0, y: 0, width: 1, height: 1 } }]
+    if (janelaDaSpec) {
+      janelaPedida = janelaDaSpec
+      const r = janelaNaProporcao(janelaDaSpec, dimsDaFoto, caixaDoCorte)
+      if (!r) {
+        throw new CreativeError(
+          'JANELA_NAO_CABE',
+          `A janela pedida da foto (${descreverJanela(janelaDaSpec)}) não cabe na foto na proporção da caixa (${caixaDoCorte.width}×${caixaDoCorte.height}): ajustá-la sairia da foto. Peça uma janela menor, ou já na proporção da caixa. Nada foi composto.`,
+          422,
+          { janela: janelaDaSpec, foto: dimsDaFoto, caixa: caixaDoCorte },
+        )
+      }
+      if (r.ajustada) avisos.push(`A janela pedida (${descreverJanela(janelaDaSpec)}) não estava na proporção da caixa: foi expandida ao mínimo, centrada, para ${descreverJanela(r.janela)} — a caixa mostra MAIS foto, nunca menos.`)
+      return [corteDaJanela(r.janela)]
+    }
+    if (spec.foto?.corte) return [corteDoRotulo(dimsDaFoto, caixaDoCorte, spec.foto.corte)]
+    if (arq && reproducao) {
+      if (reproducao.modo === 'referencia') return [corteDoRotulo(dimsDaFoto, caixaDoCorte, 'center-middle')]
+      const c = corteDaEscolha(reproducao, dimsDaFoto, caixaDoCorte)
+      if (!c) {
+        throw new CreativeError('ARQUETIPO_ESCOLHA_ILEGIVEL', 'A escolha gravada desta arte diz corte por janela, mas a janela não é legível; a recomposição não refaz a escolha às cegas — peça uma nova composição da peça.', 422, { escolha: reproducao })
+      }
+      return [c]
+    }
+    return cortesCandidatos(foto, caixaDoCorte, spec.preferencias?.enquadramento === 'fixo').map((r) => corteDoRotulo(dimsDaFoto!, caixaDoCorte, r))
+  })()
   // O arquivo do catálogo da foto desenhada: o `driveFileId` — ou, com arquétipo, o id que uma URL do Drive carrega (o
   // resolvedor a desenha reconhecendo esse mesmo id; sem isto a região anotada ficava de fora, Codex R4). Sem
   // arquétipo, só o `driveFileId`, como sempre.
@@ -1311,14 +1353,16 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       : await assuntoDoCatalogoDaFoto(spec.projectId, idDoCatalogo, !!arq)
     : null
 
-  let melhor: { crop: CropPosition; raster: FotoCinza | null; mapa: MapaDeCalma | null; assunto: Rect | null; escolhido: PontuacaoDePosicao<RotuloDePosicao>; todos: PontuacaoDePosicao<RotuloDePosicao>[] } | null = null
+  let melhor: { crop: RotuloDoCorte; raster: FotoCinza | null; mapa: MapaDeCalma | null; assunto: Rect | null; escolhido: PontuacaoDePosicao<RotuloDePosicao>; todos: PontuacaoDePosicao<RotuloDePosicao>[] } | null = null
   const cores = montados.map((b) => b.cor)
   // CP2B: a foto em cada corte, para a busca espacial do arquétipo (depois do laço).
-  const fotoPorCorte = new Map<CropPosition, { raster: FotoCinza | null; mapa: MapaDeCalma | null; assunto: Rect | null }>()
-  const leiturasDoCorte = (crop: CropPosition, raster: FotoCinza | null, mapa: MapaDeCalma | null, assunto: Rect | null): LeituraDoCorte | null =>
+  // F2a: a chave do mapa é a do corte por VALOR (`chaveDoCorte`): a janela explícita não tem rótulo.
+  const fotoPorCorte = new Map<string, { raster: FotoCinza | null; mapa: MapaDeCalma | null; assunto: Rect | null }>()
+  const leiturasDoCorte = (corte: Corte, raster: FotoCinza | null, mapa: MapaDeCalma | null, assunto: Rect | null): LeituraDoCorte | null =>
     raster && mapa
       ? {
-          crop,
+          crop: rotuloDoCorte(corte),
+          janela: corte.janela,
           raster,
           mapa,
           regioes: regioesProtegidas({ catalogo: assuntoDoCatalogo ? assunto : null, estimado: assuntoDoCatalogo ? null : assunto }),
@@ -1329,12 +1373,14 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
         }
       : null
   // #8: o texto não pousa na foto — nada de mapa de calma nem de raster pela tela (o corte é da caixa, abaixo).
-  for (const crop of emCaixa ? [] : cortes) {
-    const raster = foto ? await lerFotoComoCover(foto.bytes, canvas, { cropPosition: crop }) : null
+  for (const corte of emCaixa ? [] : cortes) {
+    const crop = rotuloDoCorte(corte)
+    // O raster e a projeção do assunto pela MESMA janela que o desenho usa (a âncora, quando há, continua byte a byte).
+    const raster = foto ? await lerFotoComoCover(foto.bytes, canvas, corte.rotulo ? { cropPosition: corte.rotulo } : { janela: corte.janela }) : null
     const mapa = raster ? mapaDeCalma(raster) : null
-    const assunto = assuntoDoCatalogo ? assuntoEmPixels(assuntoDoCatalogo, { width: foto!.largura, height: foto!.altura }, canvas, crop) : mapa ? estimarAssunto(mapa) : null
+    const assunto = assuntoDoCatalogo ? assuntoEmPixels(assuntoDoCatalogo, { width: foto!.largura, height: foto!.altura }, canvas, corte.rotulo ?? corte.janela) : mapa ? estimarAssunto(mapa) : null
     if (arq && materializacao) {
-      fotoPorCorte.set(crop, { raster, mapa, assunto })
+      fotoPorCorte.set(chaveDoCorte(corte), { raster, mapa, assunto })
       continue
     }
     const candidatos = candidatosDePosicao(g, spec, pilha, crop, {
@@ -1367,54 +1413,60 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   // #8: o CORTE da foto em caixa, pela caixa. Com assunto catalogado, o de maior fração visível (≥ 0,75, a regra de
   // sempre; nenhum → SEM_COMBINACAO); sem catálogo ou com enquadramento fixo, o central. Na reprodução, o gravado — e o
   // que agora perde o assunto recusa sem mover. O texto fica na partida (a busca não lê a foto: `corteSemLeitura`).
-  let corteDaCaixa: { corte: CropPosition; assuntoVisivel: number | null } | null = null
-  if (arq && emCaixa && caixaFoto && foto) {
+  let corteDaCaixa: { corte: Corte; assuntoVisivel: number | null } | null = null
+  if (arq && emCaixa && caixaFoto && foto && dimsDaFoto) {
     // #9 (D5): com a máscara, a fração é a que o ARCO mostra (com o raio/caixa da receita — na recomposição, a gravada).
     const fracao = (ret: Rect) => (mascara ? fracaoVisivelNoArco(ret, mascara.caixa, mascara.raio) : fracaoVisivelDoAssunto(ret, caixaFoto))
-    const visivel = (crop: CropPosition) => (assuntoDoCatalogo ? fracao(assuntoEmPixels(assuntoDoCatalogo, { width: foto.largura, height: foto.altura }, caixaFoto, crop)) : null)
+    // F2a: o assunto projetado nas coordenadas da CAIXA pela janela do corte (âncora ou explícita), e só então medido.
+    const visivel = (c: Corte) => (assuntoDoCatalogo ? fracao(assuntoEmPixels(assuntoDoCatalogo, dimsDaFoto, caixaFoto, c.rotulo ?? c.janela)) : null)
     const perde = (v: number | null) => v !== null && v < 0.75
-    if (reproducao) {
+    const cortePedido = !!spec.foto?.janela || !!spec.foto?.corte
+    if (reproducao || cortePedido) {
+      // O corte VEIO dado: gravado (reprodução) ou pedido na spec (a janela/âncora). Nada a escolher: o gravado que agora
+      // perde o assunto recusa sem mover; o pedido que o perde é dito (quem pediu decide).
       const corte = cortes[0]
       const v = visivel(corte)
-      if (reproducao.modo === MODO_BUSCA_ESPACIAL && perde(v)) {
+      if (reproducao?.modo === MODO_BUSCA_ESPACIAL && !cortePedido && perde(v)) {
         throw new CreativeError(
           'ARQUETIPO_CORTE_CONGELADO_PERDE_O_ASSUNTO',
-          `${chaveDoArquetipo(arq.definicao)}: o corte congelado da foto em caixa (${corte}) agora mostra ${Math.round(v! * 100)}% do assunto que o catálogo marca (mínimo 75%). Nada foi movido: peça uma nova composição da peça.`,
+          `${chaveDoArquetipo(arq.definicao)}: o corte congelado da foto em caixa (${rotuloDoCorte(corte)}) agora mostra ${Math.round(v! * 100)}% do assunto que o catálogo marca (mínimo 75%). Nada foi movido: peça uma nova composição da peça.`,
           422,
           { arquetipo: chaveDoArquetipo(arq.definicao), formato: arq.formato, escolha: reproducao, assuntoVisivel: v },
         )
       }
+      if (cortePedido && perde(v)) avisos.push(`O corte pedido da foto em caixa mostra ${Math.round(v! * 100)}% do assunto que o catálogo marca (mínimo 75%): confira a foto na caixa.`)
       corteDaCaixa = { corte, assuntoVisivel: v }
     } else if (!assuntoDoCatalogo) {
-      corteDaCaixa = { corte: 'center-middle', assuntoVisivel: null }
+      corteDaCaixa = { corte: cortes.find((c) => c.rotulo === 'center-middle') ?? cortes[0], assuntoVisivel: null }
     } else {
       // Empate: vale o central (a ordem de avaliação começa nele).
-      const avaliar = (lista: CropPosition[]) => [...lista].sort((a, b) => Number(b === 'center-middle') - Number(a === 'center-middle')).map((corte) => ({ corte, assuntoVisivel: visivel(corte)! }))
-      const melhorDe = (lista: Array<{ corte: CropPosition; assuntoVisivel: number }>) => lista.reduce((m, a) => (a.assuntoVisivel > m.assuntoVisivel ? a : m))
+      const avaliar = (lista: Corte[]) => [...lista].sort((a, b) => Number(b.rotulo === 'center-middle') - Number(a.rotulo === 'center-middle')).map((corte) => ({ corte, assuntoVisivel: visivel(corte)! }))
+      const melhorDe = (lista: Array<{ corte: Corte; assuntoVisivel: number }>) => lista.reduce((m, a) => (a.assuntoVisivel > m.assuntoVisivel ? a : m))
       const escolhido = melhorDe(avaliar(cortes))
       if (perde(escolhido.assuntoVisivel)) {
-        const outros = spec.preferencias?.enquadramento === 'fixo' ? avaliar(cortesCandidatos(foto, caixaFoto, false).filter((c) => !cortes.includes(c))) : []
+        const outros = spec.preferencias?.enquadramento === 'fixo' ? avaliar(cortesCandidatos(foto, caixaFoto, false).filter((r) => !cortes.some((c) => c.rotulo === r)).map((r) => corteDoRotulo(dimsDaFoto, caixaFoto, r))) : []
         const alternativa = outros.length > 0 ? melhorDe(outros) : null
         if (alternativa && !perde(alternativa.assuntoVisivel)) {
           throw new CreativeError(
             'PREFERENCIA_INVIAVEL',
-            `${chaveDoArquetipo(arq.definicao)}: com o enquadramento fixo (corte central) a caixa da foto mostra ${Math.round(escolhido.assuntoVisivel * 100)}% do assunto catalogado (mínimo 75%), e o corte ${alternativa.corte} mostra ${Math.round(alternativa.assuntoVisivel * 100)}%. Peça sem enquadramento fixo, ou troque a foto.`,
+            `${chaveDoArquetipo(arq.definicao)}: com o enquadramento fixo (corte central) a caixa da foto mostra ${Math.round(escolhido.assuntoVisivel * 100)}% do assunto catalogado (mínimo 75%), e o corte ${rotuloDoCorte(alternativa.corte)} mostra ${Math.round(alternativa.assuntoVisivel * 100)}%. Peça sem enquadramento fixo, ou troque a foto.`,
             422,
-            { preferencia: 'enquadramento', pedido: 'fixo', motivo: MOTIVOS_DE_ELIMINACAO.corteSemOAssunto, arquetipo: chaveDoArquetipo(arq.definicao), formato: arq.formato, alternativa },
+            { preferencia: 'enquadramento', pedido: 'fixo', motivo: MOTIVOS_DE_ELIMINACAO.corteSemOAssunto, arquetipo: chaveDoArquetipo(arq.definicao), formato: arq.formato, alternativa: { corte: rotuloDoCorte(alternativa.corte), assuntoVisivel: alternativa.assuntoVisivel } },
           )
         }
         throw new CreativeError(
           'SEM_COMBINACAO',
-          `${chaveDoArquetipo(arq.definicao)}: nenhum corte da foto na caixa do ${arq.formato} mostra 75% do assunto que o catálogo marca (o melhor, ${escolhido.corte}, mostra ${Math.round(escolhido.assuntoVisivel * 100)}%). Troque a foto, ou peça outro formato.`,
+          `${chaveDoArquetipo(arq.definicao)}: nenhum corte da foto na caixa do ${arq.formato} mostra 75% do assunto que o catálogo marca (o melhor, ${rotuloDoCorte(escolhido.corte)}, mostra ${Math.round(escolhido.assuntoVisivel * 100)}%). Troque a foto, ou peça outro formato.`,
           422,
-          { motivo: MOTIVOS_DE_ELIMINACAO.corteSemOAssunto, arquetipo: chaveDoArquetipo(arq.definicao), formato: arq.formato, cortesAvaliados: [...cortes, ...outros.map((o) => o.corte)], caixaDaFoto: caixaFoto },
+          { motivo: MOTIVOS_DE_ELIMINACAO.corteSemOAssunto, arquetipo: chaveDoArquetipo(arq.definicao), formato: arq.formato, cortesAvaliados: [...cortes.map(rotuloDoCorte), ...outros.map((o) => rotuloDoCorte(o.corte))], caixaDaFoto: caixaFoto },
         )
       }
       corteDaCaixa = escolhido
     }
   }
   // #8 (D4): a foto AMPLIADA na caixa (cover acima de 1,0×) é dita com o fator — aviso, nunca veto.
-  const escalaDaFoto = caixaFoto && foto?.largura && foto.altura ? Number(Math.max(caixaFoto.width / foto.largura, caixaFoto.height / foto.altura).toFixed(4)) : null
+  // F2a: a ampliação conta a JANELA-fonte (a âncora dá a mesma conta do cover de sempre).
+  const escalaDaFoto = caixaFoto && dimsDaFoto ? Number((corteDaCaixa ? escalaDaJanela(corteDaCaixa.corte.janela, dimsDaFoto, caixaFoto) : Math.max(caixaFoto.width / dimsDaFoto.width, caixaFoto.height / dimsDaFoto.height)).toFixed(4)) : null
   if (caixaFoto && escalaDaFoto !== null && escalaDaFoto > 1) {
     avisos.push(`A foto (${foto!.largura}×${foto!.altura} px) entra AMPLIADA ${escalaDaFoto.toFixed(2).replace('.', ',')}× na caixa de ${caixaFoto.width}×${caixaFoto.height} px: confira a nitidez, ou use uma foto maior.`)
   }
@@ -1443,25 +1495,26 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
         // A peça do T1a (`referencia`) reproduz a referência no corte central; se ela não cabe mais, é recusa.
         reproduzir: reproducao && reproducao.modo === MODO_BUSCA_ESPACIAL ? reproducao : reproducao ? { modo: MODO_BUSCA_ESPACIAL, foto: chaveDaFotoDaPeca, corte: 'center-middle', deslocamentos: {} } : null,
         reproduzirReferencia: reproducao?.modo === 'referencia',
-        ...(corteDaCaixa ? { corteSemLeitura: corteDaCaixa.corte } : {}),
+        ...(corteDaCaixa ? { corteSemLeitura: { crop: rotuloDoCorte(corteDaCaixa.corte), ...(corteDaCaixa.corte.rotulo ? {} : { janela: corteDaCaixa.corte.janela }) } } : {}),
       })
     // #8: sem leitura da foto (o texto não pousa nela) — a partida, com o corte da caixa.
-    const leituras = emCaixa ? [] : cortes.flatMap((crop) => {
-      const f = fotoPorCorte.get(crop)
-      const l = f ? leiturasDoCorte(crop, f.raster, f.mapa, f.assunto) : null
+    const leituras = emCaixa ? [] : cortes.flatMap((corte) => {
+      const f = fotoPorCorte.get(chaveDoCorte(corte))
+      const l = f ? leiturasDoCorte(corte, f.raster, f.mapa, f.assunto) : null
       return l ? [l] : []
     })
     const sel = selecionar(leituras)
     if ('resultado' in sel) {
       // O enquadramento FIXO é preferência não essencial: se outro corte resolve, a recusa diz isso.
-      if (spec.preferencias?.enquadramento === 'fixo' && !reproducao) {
-        const outros = cortesCandidatos(foto, canvas, false).filter((c) => !cortes.includes(c))
+      // F2a: com a janela (ou a âncora) pedida não há "outro corte" a oferecer — o corte é o pedido.
+      if (spec.preferencias?.enquadramento === 'fixo' && !reproducao && !spec.foto?.janela && !spec.foto?.corte && dimsDaFoto) {
+        const outros = cortesCandidatos(foto, canvas, false).filter((r) => !cortes.some((c) => c.rotulo === r)).map((r) => corteDoRotulo(dimsDaFoto, canvas, r))
         const extras: LeituraDoCorte[] = []
-        for (const crop of outros) {
-          const raster = foto ? await lerFotoComoCover(foto.bytes, canvas, { cropPosition: crop }) : null
+        for (const corte of outros) {
+          const raster = foto ? await lerFotoComoCover(foto.bytes, canvas, { cropPosition: corte.rotulo }) : null
           const mapa = raster ? mapaDeCalma(raster) : null
-          const assunto = assuntoDoCatalogo ? assuntoEmPixels(assuntoDoCatalogo, { width: foto!.largura, height: foto!.altura }, canvas, crop) : mapa ? estimarAssunto(mapa) : null
-          const l = leiturasDoCorte(crop, raster, mapa, assunto)
+          const assunto = assuntoDoCatalogo ? assuntoEmPixels(assuntoDoCatalogo, { width: foto!.largura, height: foto!.altura }, canvas, corte.rotulo!) : mapa ? estimarAssunto(mapa) : null
+          const l = leiturasDoCorte(corte, raster, mapa, assunto)
           if (l) extras.push(l)
         }
         const alternativa = extras.length > 0 ? selecionar(extras) : null
@@ -1484,7 +1537,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
         if (alternativa && 'resultado' in alternativa) {
           sel.resultado.ordenadas.push(...alternativa.resultado.ordenadas)
           sel.resultado.avaliadas += alternativa.resultado.avaliadas
-          cortes.push(...extras.map((l) => l.crop))
+          cortes.push(...outros.filter((c) => extras.some((l) => l.crop === c.rotulo)))
         }
       }
       const contagem = contarRecusas(sel.resultado.ordenadas)
@@ -1500,12 +1553,13 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
         'SEM_COMBINACAO',
         `${chaveDoArquetipo(arq.definicao)}: nenhuma combinação de corte e posição dentro das zonas serve a esta foto e a esta copy (${sel.resultado.avaliadas} avaliadas; ${Object.entries(contagem).map(([m, n]) => `${m} ×${n}`).join(', ')}). ${saida}`,
         422,
-        { motivo, arquetipo: chaveDoArquetipo(arq.definicao), formato: arq.formato, cortesAvaliados: cortes, combinacoesAvaliadas: sel.resultado.avaliadas, recusas: contagem, exemplos: exemplosDeRecusa(sel.resultado.ordenadas) },
+        { motivo, arquetipo: chaveDoArquetipo(arq.definicao), formato: arq.formato, cortesAvaliados: cortes.map(rotuloDoCorte), combinacoesAvaliadas: sel.resultado.avaliadas, recusas: contagem, exemplos: exemplosDeRecusa(sel.resultado.ordenadas) },
       )
     }
     materializacao = sel.materializacao
     avisos.push(...sel.avisos)
-    const f = fotoPorCorte.get(sel.crop) ?? { raster: null, mapa: null, assunto: null }
+    const corteSel = cortes.find((c) => rotuloDoCorte(c) === sel.crop) ?? cortes[0]
+    const f = fotoPorCorte.get(chaveDoCorte(corteSel)) ?? { raster: null, mapa: null, assunto: null }
     if (assuntoDoCatalogo && f.assunto && fracaoVisivelDoAssunto(f.assunto, canvas) < 0.75) avisos.push(`O corte ${sel.crop} preserva menos de 75% da caixa do assunto catalogado.`)
     buscaDoArquetipo = reproducao?.modo === 'referencia' ? null : sel.diagnostico
     escolhaDoArquetipo = sel.escolha
@@ -1532,6 +1586,8 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   if (melhor.escolhido.descartado) avisos.push(`Toda posição cobre o assunto da foto; ficou a melhor delas (${melhor.escolhido.motivo}).`)
 
   const { ancora, alinha, crop } = melhor.escolhido.rotulo
+  // F2a: o CORTE escolhido, inteiro (a janela com que a foto é desenhada e gravada).
+  const corteFinal: Corte = cortes.find((c) => rotuloDoCorte(c) === crop) ?? cortes[0]
   const rectPrincipal = melhor.escolhido.rect
 
   // 3. Posicionar cada bloco: o principal na caixa que o mapa escolheu; os
@@ -1745,7 +1801,8 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
           rotation: 0,
           fileUrl: foto.url,
           // #9: a máscara pela `style.mask` que os dois renderizadores já desenham (path 0–100 escalado para a caixa).
-          style: { objectFit: 'cover', cropPosition: crop, ...(mascara ? { mask: { shapeId: mascara.tipo, path: mascara.path } } : {}) },
+          // F2a: a âncora grava `cropPosition` como sempre; a janela explícita grava `style.crop` (o editor abre o mesmo recorte).
+          style: { objectFit: 'cover', ...(corteFinal.rotulo ? { cropPosition: corteFinal.rotulo } : { crop: corteFinal.janela }), ...(mascara ? { mask: { shapeId: mascara.tipo, path: mascara.path } } : {}) },
         },
       ]
     : []
@@ -2236,7 +2293,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     ...(intervencaoDeTexto ? { intervencaoDeTexto } : {}),
     tratamentoDeTexto: 'gradiente-de-leitura',
     formato: spec.formato,
-    posicao: { ancora, alinha, crop, pontuacao: Number(melhor.escolhido.pontuacao.toFixed(3)), motivo: melhor.escolhido.motivo },
+    posicao: { ancora, alinha, crop, ...(corteFinal.rotulo ? {} : { janela: corteFinal.janela }), ...(janelaPedida && !corteFinal.rotulo && chaveDoCorte({ janela: janelaPedida }) !== chaveDoCorte(corteFinal) ? { janelaPedida } : {}), pontuacao: Number(melhor.escolhido.pontuacao.toFixed(3)), motivo: melhor.escolhido.motivo },
     candidatos: melhor.todos.map((c) => ({ ...c.rotulo, pontuacao: Number(c.pontuacao.toFixed(3)), descartado: c.descartado, motivo: c.motivo })),
     assunto: melhor.assunto,
     assuntoOrigem: assuntoDoCatalogo ? 'catalogo' : melhor.assunto ? 'estimado' : 'nenhum',
@@ -2263,7 +2320,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     ...(tratamentoPiorou ? { tratamentoPiorou } : {}),
     ...(foto && !emCaixa && gruposDeTexto.length > 0 ? { tratamentoDeLeitura: tratamentoPorBorda() } : {}),
     ...(caixaFoto && corteDaCaixa
-      ? { foto: { caixa: caixaFoto, escala: escalaDaFoto, corte: corteDaCaixa.corte, assuntoVisivel: corteDaCaixa.assuntoVisivel } }
+      ? { foto: { caixa: caixaFoto, escala: escalaDaFoto, corte: rotuloDoCorte(corteDaCaixa.corte), ...(corteDaCaixa.corte.rotulo ? {} : { janela: corteDaCaixa.corte.janela }), assuntoVisivel: corteDaCaixa.assuntoVisivel } }
       : {}),
     ...(papelDoFundo ? { papelDoFundo: { papel: papelDoFundo.papel, cor: papelDoFundo.fundo, tintas: tintasDaPeca!, folgas: papelDoFundo.folgas } } : {}),
     logo: logoDiag,

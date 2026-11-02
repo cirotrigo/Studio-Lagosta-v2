@@ -68,6 +68,13 @@ describe('escolha espacial na recomposição (CP2B)', () => {
     }
   }
 
+  it('F2a: a escolha com corte "janela" volta com a janela lida; sem janela legível, ilegível (nunca "center-middle" por cima)', () => {
+    const janela = { x: 0.177, y: 0.058, width: 0.624, height: 0.742 }
+    expect(escolhaEspacialOriginal(daBusca({ ...escolha, corte: 'janela', janela }), comArquetipo)).toMatchObject({ modo: 'busca-espacial-v1', corte: 'janela', janela })
+    expect(codigo(() => escolhaEspacialOriginal(daBusca({ ...escolha, corte: 'janela' }), comArquetipo))).toBe('ARQUETIPO_ESCOLHA_ILEGIVEL')
+    expect(codigo(() => escolhaEspacialOriginal(daBusca({ ...escolha, corte: 'janela', janela: { x: 0.9, y: 0, width: 0.5, height: 0.5 } }), comArquetipo))).toBe('ARQUETIPO_ESCOLHA_ILEGIVEL')
+  })
+
   it('sem arquétipo, null — nem lê o diagnóstico', () => {
     expect(escolhaEspacialOriginal(null, spec())).toBeNull()
     expect(escolhaEspacialOriginal(daBusca(escolha), spec())).toBeNull()
