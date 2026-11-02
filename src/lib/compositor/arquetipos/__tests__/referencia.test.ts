@@ -19,6 +19,7 @@ import { ehReferencia } from '../tipos'
 import { validarArquetipo } from '../validar'
 import brunch from './suporte/emporio-ref02-brunch.json'
 import restaurantWeek from './suporte/emporio-ref01-restaurant-week.json'
+import congelada from './suporte/emporio-ref02-brunch-v1-congelada.json'
 
 type Pagina = { id: string; name: string; width: number; height: number; tags: string[]; layers: Layer[] }
 const BRUNCH = brunch as unknown as Pagina
@@ -212,5 +213,59 @@ describe('F1 · a referência na spec (gate por cliente, versão e impressão)',
   it('papel que a referência não tem (serviço) é recusado — a referência decide os papéis', () => {
     const { definicao } = compilada()
     expect(codigo(() => prepararArquetipo(spec({ blocos: [{ papel: 'headline', linhas: ['Café'] }, { papel: 'servico', linhas: ['9h às 12h'] }] }), { definicoes: [definicao] }))).toBe('ARQUETIPO_PAPEIS_INCOMPATIVEIS')
+  })
+})
+
+describe('F2c · o corpo desenhado na referência (02/11/2026)', () => {
+  const comCorpos = (corpos: Record<string, unknown>) => {
+    const { definicao } = compilada()
+    return { ...definicao, formatos: { story: { ...definicao.formatos.story, corpos } } } as unknown as Ok['definicao']
+  }
+  const campos = (d: Ok['definicao']) => validarArquetipo(d, { formatos: ['story'], areaSegura }).map((p) => p.campo)
+
+  it('a Brunch compila `corpos: { headline: 85, apoio: 39 }` (o fontSize desenhado), a leitura diz o corpo por papel, e o validador aceita', () => {
+    const r = compilada()
+    expect(r.definicao.formatos.story.corpos).toEqual({ headline: 85, apoio: 39 })
+    expect(r.leitura.papeis.map((p) => [p.papel, p.corpo])).toEqual([['headline', 85], ['apoio', 39]])
+    expect(validarArquetipo(r.definicao, { formatos: ['story'], areaSegura })).toEqual([])
+  })
+
+  it('corpos só em REFERÊNCIA (no catálogo a escala é relação); inteiro de 8 até a altura; todo papel de texto presente tem o seu; papel estranho recusa', () => {
+    const { definicao } = compilada()
+    const { referencia: _r, ...semReferencia } = definicao as unknown as Record<string, unknown>
+    expect(campos(semReferencia as unknown as Ok['definicao'])).toContain('formatos.story.corpos')
+    expect(campos(comCorpos({ headline: 85.5, apoio: 39 }))).toContain('formatos.story.corpos.headline')
+    expect(campos(comCorpos({ headline: 7, apoio: 39 }))).toContain('formatos.story.corpos.headline')
+    expect(campos(comCorpos({ headline: 1921, apoio: 39 }))).toContain('formatos.story.corpos.headline')
+    expect(campos(comCorpos({ headline: 85 }))).toContain('formatos.story.corpos.apoio')
+    expect(campos(comCorpos({ headline: 85, apoio: 39, servico: 30 }))).toContain('formatos.story.corpos.servico')
+    expect(campos(comCorpos({ headline: 8, apoio: 1920 }))).toEqual([])
+  })
+
+  it('a camada com corpo fora do domínio recusa REFERENCIA_CORPO_INVALIDO; a página fora do canvas canônico recusa REFERENCIA_DIMENSOES_INCOMPATIVEIS (pixels literais)', () => {
+    const quebrada = { ...BRUNCH, layers: BRUNCH.layers.map((l) => (l.id === 'titulo' ? ({ ...l, style: { ...l.style, fontSize: 85.5 } } as Layer) : l)) }
+    const r1 = compilarReferencia(quebrada, { pageVersion: 'v', versao: 1 }) as Recusa
+    expect([r1.ok, r1.codigo]).toEqual([false, 'REFERENCIA_CORPO_INVALIDO'])
+    expect(r1.mensagem).toMatch(/Título.*85\.5/)
+    const semCorpo = { ...BRUNCH, layers: BRUNCH.layers.map((l) => (l.id === 'apoio' ? ({ ...l, style: { ...l.style, fontSize: undefined } } as Layer) : l)) }
+    expect((compilarReferencia(semCorpo, { pageVersion: 'v', versao: 1 }) as Recusa).codigo).toBe('REFERENCIA_CORPO_INVALIDO')
+    // 2160×3840 é story pela proporção (e pela tag), mas o corpo em px não é o do canvas canônico: recusa dita.
+    const grande = { ...BRUNCH, width: 2160, height: 3840 }
+    const r2 = compilarReferencia(grande, { pageVersion: 'v', versao: 1 }) as Recusa
+    expect([r2.ok, r2.codigo]).toEqual([false, 'REFERENCIA_DIMENSOES_INCOMPATIVEIS'])
+    expect(r2.mensagem).toMatch(/2160×3840.*1080×1920/)
+  })
+
+  it('a revisão F1 CONGELADA (compilada antes da F2c, sem corpos) continua válida com a impressão gravada; a recompilação de hoje é OUTRA impressão com a MESMA geometria', () => {
+    const v1 = congelada.definicao as unknown as Ok['definicao']
+    expect(v1.formatos.story.corpos).toBeUndefined()
+    expect(impressaoDoArquetipo(v1)).toBe(congelada.impressao)
+    expect(validarArquetipo(v1, { formatos: ['story'], areaSegura })).toEqual([])
+    const hoje = compilada().definicao
+    expect(impressaoDoArquetipo(hoje)).not.toBe(congelada.impressao)
+    const { corpos: _c, ...geometriaDeHoje } = hoje.formatos.story
+    expect(geometriaDeHoje).toEqual(v1.formatos.story)
+    // A materialização da congelada é a de sempre (as mesmas caixas): a F2c não toca a definição antiga.
+    expect(materializada(v1).papeis.headline!.posicao).toEqual(materializada(hoje).papeis.headline!.posicao)
   })
 })

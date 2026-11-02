@@ -122,8 +122,7 @@ import {
   papeisDeLista,
   prepararNoArquetipo,
   type PreparoNoArquetipo,
-  type UnidadeDoArquetipo,
-} from './arquetipos/no-compositor'
+  type UnidadeDoArquetipo, type CorpoDoPapel } from './arquetipos/no-compositor'
 import { chaveDoArquetipo, ehReferencia, type CantoDaLogo } from './arquetipos/tipos'
 import { resolucaoParaASpec } from './referencias'
 import { caixaDaFoto, fundoDaPeca, luzParaAVariante, papelDoBloco, tintasAtivas, type FolgaDoCandidato, type PapelDoFundo, type TintaAtiva } from './arquetipos/fundo'
@@ -300,6 +299,11 @@ export interface DiagnosticoDoArquetipo {
   acentosOmitidos?: ProblemaDoAcento[]
   /** Textos cujo arranjo trazia a logo: ela saiu do arranjo e ficou só onde o arquétipo manda. */
   logoDoArranjoRetirada?: string[]
+  /**
+   * F2c: na peça por referência com `corpos` — por bloco, o corpo desenhado na referência, o teto em que a escada da
+   * unidade parou, o piso materializado, o corpo efetivo e a redução (fração, 0 = no corpo desenhado). Ausente sem `corpos`.
+   */
+  corpos?: Array<{ camada: string; papel: string; referencia: number; teto: number; piso: number; efetivo: number; reducao: number; observacao?: string }>
   /**
    * #9: a RECEITA da máscara desenhada na `bg-foto` (`{ tipo, versao, raio, caixa, path }`) — a única fonte do desenho
    * na recomposição (`mascaraCongelada`). `caixa` = w/h de `composicao.foto.caixa`. Ausente sem máscara.
@@ -945,7 +949,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   // compor nunca podem divergir.
   const combinacoesSalvas = await arranjosDasCombinacoes(spec.projectId, medir)
   const familias = await familiasDoProjeto(spec.projectId)
-  const preparar = (escalaMaximaDoPapel?: (p: Papel) => number | undefined) =>
+  const preparar = (escalaMaximaDoPapel?: (p: Papel) => number | undefined, corpoDoPapel?: (p: Papel) => CorpoDoPapel | undefined) =>
     prepararBlocos({
       spec,
       assinatura,
@@ -955,7 +959,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       medir,
       familias,
       combinacoesSalvas,
-      ...(caixasArq ? { caixaDoPapel: (p: Papel) => caixasArq[papelGeometrico(p)], ...(escalaMaximaDoPapel ? { escalaMaximaDoPapel } : {}) } : {}),
+      ...(caixasArq ? { caixaDoPapel: (p: Papel) => caixasArq[papelGeometrico(p)], ...(escalaMaximaDoPapel ? { escalaMaximaDoPapel } : {}), ...(corpoDoPapel ? { corpoDoPapel } : {}) } : {}),
       ...(listasArq?.size ? { listaDoPapel: (p: Papel) => listasArq.has(papelGeometrico(p)) } : {}),
     })
   // Com arquétipo, a preparação passa pela escada da UNIDADE (a mesma do medir-copy) — e a logo dos arranjos sai
@@ -972,6 +976,22 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     if (elementos.length > 0) elementosPorTexto.set(id, { ...presos, elementos })
     else elementosPorTexto.delete(id)
     avisos.push(`${id}: a logo presa ao arranjo saiu dele — com arquétipo a logo fica só onde o arquétipo manda.`)
+  }
+  // F2c: a peça por referência que não saiu no corpo DESENHADO diz quanto encolheu e por quê (a copy; nunca a assinatura).
+  for (const b of montados) {
+    if (b.corpo?.efetivo !== undefined && b.corpo.efetivo < b.corpo.referencia) {
+      avisos.push(`${b.layer.id}: coube em ${b.corpo.efetivo} px, não nos ${b.corpo.referencia} px da referência (−${Math.round((1 - b.corpo.efetivo / b.corpo.referencia) * 100)} %): encurte a copy para sair no corpo desenhado.`)
+    }
+  }
+  // F2c: o teto é ABSOLUTO por papel — quando o papel tem mais de um bloco (segunda voz, serviço repartido), a política é dita.
+  const blocosComCorpoPorPapel = new Map<string, string[]>()
+  for (const b of montados) if (b.corpo) blocosComCorpoPorPapel.set(papelGeometrico(b.papel), [...(blocosComCorpoPorPapel.get(papelGeometrico(b.papel)) ?? []), b.layer.id])
+  const observacaoDoTeto = (b: (typeof montados)[number]) => {
+    const irmaos = b.corpo ? blocosComCorpoPorPapel.get(papelGeometrico(b.papel)) ?? [] : []
+    return irmaos.length > 1 ? `os ${irmaos.length} blocos de ${papelGeometrico(b.papel)} (${irmaos.join(', ')}) partem do MESMO teto de ${b.corpo!.referencia} px: a referência desenha uma camada por papel e não dá proporção entre eles — a hierarquia pode inverter (a manchete longa encolhe, a segunda voz curta não)` : null
+  }
+  for (const [papel, irmaos] of blocosComCorpoPorPapel) {
+    if (irmaos.length > 1) avisos.push(`${papel}: ${observacaoDoTeto(montados.find((b) => b.layer.id === irmaos[0])!)}.`)
   }
   // #8: o papel do liso pelas tintas que a preparação REAL desenha (voz 2 criada, estilo do arranjo, destaque efetivo) —
   // a MESMA preparação para os dois papéis, sem preparar de novo nem trocar de variante. Na recomposição, o fundo da
@@ -1032,13 +1052,15 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     throw new CreativeError(
       'ARQUETIPO_TEXTO_NAO_CABE',
       `${chaveDoArquetipo(arq.definicao)}: ${preparados.recusas
-        .map((r) =>
-          r.altura
-            ? `${r.papel} tem ${r.altura.medida}px de altura e a referência comporta ${r.altura.capacidade}px mesmo a ${Math.round(0.8 * 100)}% da fonte`
+        .map((r) => {
+          // F2c: na peça por referência com `corpos` o piso é o da REFERÊNCIA (px), nunca "80 % da fonte" da assinatura.
+          const piso = r.corpo ? `no piso da referência (${r.corpo.piso} px, ${Math.round((r.corpo.piso / r.corpo.referencia) * 100)} % dos ${r.corpo.referencia} px desenhados)` : `a ${Math.round(0.8 * 100)}% da fonte`
+          return r.altura
+            ? `${r.papel} tem ${r.altura.medida}px de altura e a referência comporta ${r.altura.capacidade}px mesmo ${piso}`
             : r.orcamento.length === 0 && r.quebras?.length
               ? `${r.papel} tem linha que se desenha em mais de uma na coluna da referência (${r.coluna}px) — há quebra dentro do item`
-              : `${r.papel} tem linha maior que a coluna da referência (${r.coluna}px) mesmo a ${Math.round(0.8 * 100)}% da fonte`,
-        )
+              : `${r.papel} tem linha maior que a coluna da referência (${r.coluna}px) mesmo ${piso}`
+        })
         .join('; ')}. Reescreva com o orçamento devolvido${fontes.length > 0 ? ` (a fonte ${fontes.map((f) => `"${f}"`).join(', ')} não carregou: sem orçamento para esses papéis)` : ''}.`,
       422,
       { arquetipo: chaveDoArquetipo(arq.definicao), formato: arq.formato, problemas: detalhe, orcamento: detalhe, ...(fontes.length > 0 ? { fontesNaoCarregadas: fontes } : {}) },
@@ -2375,6 +2397,13 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
             acentos: acentosDesenhados,
             ...(acentosOmitidos.length > 0 ? { acentosOmitidos } : {}),
             ...(noArquetipo?.retiradas.length ? { logoDoArranjoRetirada: noArquetipo.retiradas } : {}),
+            ...(noArquetipo?.corpos
+              ? {
+                  corpos: montados
+                    .filter((b) => b.corpo?.efetivo !== undefined)
+                    .map((b) => ({ camada: b.layer.id, papel: b.papel, referencia: b.corpo!.referencia, teto: b.corpo!.teto, piso: b.corpo!.piso, efetivo: b.corpo!.efetivo!, reducao: Math.round((1 - b.corpo!.efetivo! / b.corpo!.referencia) * 1000) / 1000, ...(observacaoDoTeto(b) ? { observacao: observacaoDoTeto(b)! } : {}) })),
+                }
+              : {}),
             ...(mascara ? { foto: { mascara } } : {}),
           },
         }

@@ -93,15 +93,21 @@ export async function referenciasDoProjeto(projectId: number, opcoes: { formato?
   })
 }
 
-export async function listarReferencias(projectId: number): Promise<Array<RevisaoDeReferencia & { pagina: string | null }>> {
+export async function listarReferencias(projectId: number): Promise<Array<RevisaoDeReferencia & { pagina: string | null; corpos: Partial<Record<string, number>> | null }>> {
   const linhas = await db.referenciaDeLayout.findMany({
     where: { projectId },
-    select: { id: true, pageId: true, arquetipoId: true, versao: true, formato: true, impressao: true, pageVersion: true, aprovadaEm: true, revogadaEm: true },
+    select: { id: true, pageId: true, arquetipoId: true, versao: true, formato: true, impressao: true, pageVersion: true, aprovadaEm: true, revogadaEm: true, definicao: true },
     orderBy: [{ arquetipoId: 'asc' }, { versao: 'desc' }],
   })
   const paginas = await db.page.findMany({ where: { id: { in: [...new Set(linhas.map((l) => l.pageId))] } }, select: { id: true, name: true } })
   const nome = new Map(paginas.map((p) => [p.id, p.name]))
-  return linhas.map((l) => ({ ...l, pagina: nome.get(l.pageId) ?? null }))
+  // F2c: os corpos aprovados saem da REVISÃO PERSISTIDA (a definição gravada, no formato dela) — nunca recompilados.
+  const corposDe = (definicao: unknown, formato: string): Partial<Record<string, number>> | null => {
+    const d = definicao as { formatos?: Record<string, { corpos?: Partial<Record<string, number>> }> } | null
+    const c = d?.formatos?.[formato]?.corpos
+    return c && typeof c === 'object' ? c : null
+  }
+  return linhas.map(({ definicao, ...l }) => ({ ...l, pagina: nome.get(l.pageId) ?? null, corpos: corposDe(definicao, l.formato) }))
 }
 
 export interface AprovacaoDeReferencia {

@@ -325,3 +325,12 @@ direção por referência".
 foto (`fotoDriveId`/`fotoUrl`); com `fotosCandidatas` ou `selecaoExperimental` é `SPEC_INVALIDA`. O compositor confere
 a proporção contra a caixa (ajuste mínimo dito nos avisos; fora da foto, `JANELA_NAO_CABE`) e grava a janela na camada
 da foto (`style.crop`). Detalhe em `docs/regras/compositor.md`, seção F2a.
+
+
+### F2c (02/11/2026): `listar-referencias` devolve `corpos`
+
+Cada referência traz `corpos` (o corpo desenhado por papel, px) lido da REVISÃO PERSISTIDA — `null` nas revisões de
+antes da F2c (a escada delas parte da assinatura). `ver-assinatura` também devolve `referencias` (as vigentes no formato,
+com `corpos`) e `avisoDasReferencias`: com referência aprovada, o catálogo listado não vale para o cliente. `aprovar-referencia` mostra o corpo em `leitura.papeis[].corpo`; a
+mesma página reaprovada depois da F2c ganha a revisão seguinte com os corpos (a anterior é imutável). Detalhe em
+`docs/regras/compositor.md`, "F2c".

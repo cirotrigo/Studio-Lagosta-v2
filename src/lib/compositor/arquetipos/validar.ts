@@ -13,6 +13,7 @@
 import { NUMEROS_PADRAO } from '../assinatura'
 import { ALINHAMENTOS, ANCORAS, CANTOS, DIMENSOES } from '../spec'
 import {
+  CORPO_MINIMO_DA_REFERENCIA,
   chaveDoArquetipo,
   CODIGOS_TAXONOMICOS,
   ELEMENTOS_DO_ARQUETIPO,
@@ -128,7 +129,7 @@ const CHAVES = {
   elemento: ['id', 'tipo', 'opcional', 'corPorPapel', 'presoA', 'canto', 'porItem', 'braco'],
   preferencias: ['ancora', 'alinha', 'cantoDaMarca'],
   fotoIdeal: ['areaCalma', 'assunto', 'descricao', 'referencias'],
-  geometria: ['papeis', 'elementos', 'limitesDeTexto', 'itens', 'foto', 'mascaraDaFoto'],
+  geometria: ['papeis', 'elementos', 'limitesDeTexto', 'itens', 'foto', 'mascaraDaFoto', 'corpos'],
   mascara: ['tipo', 'raio'],
   itens: ['vao'],
   posicao: ['referencia', 'zona'],
@@ -396,6 +397,29 @@ export function validarArquetipo(arquetipo: ArquetipoDeLayout, opcoes: OpcoesDaV
       if (!Number.isInteger(limite?.linhasMax) || (limite.linhasMax as number) < 1) recusar('CAMPO_INVALIDO', `${campo}.linhasMax`, 'linhasMax é um inteiro ≥ 1')
       if (limite?.caracteresPorLinha !== undefined && (!Number.isInteger(limite.caracteresPorLinha) || (limite.caracteresPorLinha as number) < 1)) {
         recusar('CAMPO_INVALIDO', `${campo}.caracteresPorLinha`, 'caracteresPorLinha é um inteiro ≥ 1')
+      }
+    }
+    // F2c: `corpos` (o corpo desenhado por papel, px) só na definição de uma REFERÊNCIA — no catálogo "escala é relação,
+    // nunca corpo". Inteiro de 8 até a altura do canvas do formato; só papéis de texto presentes; e, presente, TODO papel
+    // de texto presente tem o seu (o teto não é por amostragem).
+    if (g.corpos !== undefined) {
+      const campoCorpos = `${base}.corpos`
+      if (!ehObjeto(g.corpos)) recusar('CAMPO_INVALIDO', campoCorpos, 'corpos é um objeto')
+      else if (!ehObjeto(a.referencia)) recusar('CAMPO_INVALIDO', campoCorpos, 'corpos só existe na definição compilada de uma referência (no catálogo a escala é relação, nunca corpo)')
+      else {
+        const alturaDoCanvas = DIMENSOES[f].height
+        for (const [papel, corpo] of Object.entries(g.corpos)) {
+          if (!papeis.has(papel) || papel === 'logo') {
+            recusar('PAPEL_FORA_DO_CONTRATO', `${campoCorpos}.${papel}`, `"${papel}" não é papel de texto deste arquétipo`)
+            continue
+          }
+          if (!Number.isInteger(corpo) || (corpo as number) < CORPO_MINIMO_DA_REFERENCIA || (corpo as number) > alturaDoCanvas) {
+            recusar('CAMPO_INVALIDO', `${campoCorpos}.${papel}`, `o corpo é um inteiro em px, de ${CORPO_MINIMO_DA_REFERENCIA} até ${alturaDoCanvas}`)
+          }
+        }
+        for (const papel of papeis) {
+          if (papel !== 'logo' && (g.corpos as Record<string, unknown>)[papel] === undefined) recusar('CAMPO_INVALIDO', `${campoCorpos}.${papel}`, `o papel de texto "${papel}" não tem corpo no ${f} (com corpos, todo papel de texto tem o seu)`)
+        }
       }
     }
 

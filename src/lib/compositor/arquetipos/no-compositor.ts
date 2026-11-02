@@ -18,7 +18,7 @@ import type { BlocoPreparado, BlocosPreparados } from '../preparar-blocos'
 import type { Alinhamento, Papel } from '../spec'
 import { envoltoriosDoArquetipo, extensoesDosAcentosPresos } from './acentos'
 import { alinhaDoPapel, caixasMaximas, excedeAlturaDaReferencia, materializarArquetipo, papelDominante, type MargemDaPeca, type GeometriaEfetiva, type Materializacao, type RetanguloPx } from './materializar'
-import type { ArquetipoDeLayout, FormatoDoArquetipo, PapelDeTexto } from './tipos'
+import { pisoDoCorpoDaReferencia, type ArquetipoDeLayout, type FormatoDoArquetipo, type PapelDeTexto } from './tipos'
 
 /** O papel do arquétipo que posiciona um bloco: a segunda voz vai com a manchete. */
 export const papelGeometrico = (papel: Papel): PapelDeTexto => (papel === 'headline2' ? 'headline' : papel) as PapelDeTexto
@@ -187,6 +187,18 @@ export interface PreparoNoArquetipo {
   unidades: UnidadeDoArquetipo[]
   /** O fator em que a escada de cada unidade começou (ausente = no tamanho da assinatura). */
   fatores: Partial<Record<PapelDeTexto, number>>
+  /**
+   * F2c: nas revisões com `corpos`, por papel — o corpo DESENHADO na referência, o teto em que a escada da unidade parou
+   * (px do corpo da referência) e o piso materializado. Ausente sem `corpos`.
+   */
+  corpos?: Partial<Record<PapelDeTexto, { referencia: number; teto: number; piso: number }>>
+}
+
+/** F2c: o teto e o piso de um bloco, em PX — a preparação converte para o estilo efetivo do bloco. */
+export interface CorpoDoPapel {
+  referencia: number
+  teto: number
+  piso: number
 }
 
 /**
@@ -207,15 +219,29 @@ export function prepararNoArquetipo(args: {
   gap: number
   /** `'marca'`: a margem da marca é a margem (29/10/2026) — a coluna de cada papel cresce até ela. Ausente = opção A. */
   margem?: MargemDaPeca
-  /** Roda `prepararBlocos` com a caixa de cada papel e o fator de início da escada de cada papel. */
-  preparar: (escalaMaximaDoPapel: (papel: Papel) => number | undefined) => BlocosPreparados
+  /**
+   * Roda `prepararBlocos` com a caixa de cada papel e o fator de início da escada de cada papel — e, nas revisões com
+   * `corpos` (F2c), o teto e o piso em px de cada papel, que a preparação converte ao estilo efetivo de cada bloco.
+   */
+  preparar: (escalaMaximaDoPapel: (papel: Papel) => number | undefined, corpoDoPapel?: (papel: Papel) => CorpoDoPapel | undefined) => BlocosPreparados
 }): PreparoNoArquetipo {
   const caixas = caixasMaximas(args.arquetipo, args.formato, args.canvas, args.geometria, args.margem)
   const dominante = papelDominante(args.arquetipo)
   const listas = papeisDeLista(args.arquetipo)
   const fatores: Partial<Record<PapelDeTexto, number>> = dominante ? { [dominante]: TETO_DA_ESCALA_DOMINANTE } : {}
+  // F2c: a RÉGUA COMUM da peça por referência — o teto de cada papel em px do corpo desenhado (começa nele), descendo 1 px
+  // por rodada até o piso materializado. Cada bloco converte ao estilo efetivo DELE (`preparar-blocos.ts`); aqui só px.
+  const corposDaRef = args.arquetipo.formatos[args.formato].corpos
+  const tetos: Partial<Record<PapelDeTexto, number>> = corposDaRef ? { ...corposDaRef } : {}
+  const corpoDoPapel = corposDaRef
+    ? (p: Papel): CorpoDoPapel | undefined => {
+        const g = papelGeometrico(p)
+        const referencia = corposDaRef[g]
+        return referencia === undefined ? undefined : { referencia, teto: tetos[g] ?? referencia, piso: pisoDoCorpoDaReferencia(referencia) }
+      }
+    : undefined
   for (;;) {
-    const preparados = args.preparar((p) => fatores[papelGeometrico(p)])
+    const preparados = args.preparar((p) => fatores[papelGeometrico(p)], corpoDoPapel)
     const { montados, retiradas } = semLogoDosArranjos(preparados.montados)
     const unidades = unidadesDoArquetipo(args.arquetipo, montados, args.gap, vaosDaLista(args.arquetipo, args.formato, args.canvas))
     let desceu = false
@@ -236,6 +262,19 @@ export function prepararNoArquetipo(args: {
       const pos = args.arquetipo.formatos[args.formato].papeis[u.papel]
       const fisicaExcede = Boolean(pos && 'referencia' in pos && excedeAlturaDaReferencia(u.pilha.height, pos.referencia, args.canvas))
       if (!caixa || ((u.alturaDoOrcamento ?? u.pilha.height) <= caixa.altura + 0.5 && u.pilha.width <= caixa.largura + 0.5 && !fisicaExcede)) continue
+      // F2c: com o corpo da referência, a unidade desce na régua comum (px do corpo desenhado): o próximo teto é o de baixo
+      // do MAIOR corpo EFETIVO entre os blocos do papel (compara corpos, nunca fatores), nunca abaixo do piso materializado
+      // — o piso exato é tentado uma vez; já nele, a materialização recusa com o orçamento. O legado segue abaixo, intacto.
+      const referencia = corposDaRef?.[u.papel]
+      if (referencia !== undefined) {
+        const teto = tetos[u.papel] ?? referencia
+        const piso = pisoDoCorpoDaReferencia(referencia)
+        if (teto <= piso) continue
+        const maiorEfetivo = Math.max(...u.blocos.map((b) => Number(b.layer.style?.fontSize ?? teto)))
+        tetos[u.papel] = Math.max(piso, Math.min(teto - 1, maiorEfetivo - 1))
+        desceu = true
+        continue
+      }
       // No dominante, a escada do bloco já desceu do teto: o próximo degrau é o de baixo do MAIOR corpo real da unidade
       // (todo teto acima dele dá a mesma peça; abaixo, encolhe ao menos esse bloco). Nunca pelo menor: a manchete
       // curta a 4,8× com a segunda voz já no piso pularia direto para o piso e recusaria uma unidade que cabe.
@@ -245,7 +284,12 @@ export function prepararNoArquetipo(args: {
       fatores[u.papel] = Number((atual - PASSO_DA_UNIDADE).toFixed(2))
       desceu = true
     }
-    if (!desceu) return { preparados, montados, retiradas, unidades, fatores }
+    if (!desceu) {
+      const corpos = corposDaRef
+        ? Object.fromEntries((Object.entries(corposDaRef) as Array<[PapelDeTexto, number]>).map(([papel, referencia]) => [papel, { referencia, teto: tetos[papel] ?? referencia, piso: pisoDoCorpoDaReferencia(referencia) }]))
+        : undefined
+      return { preparados, montados, retiradas, unidades, fatores, ...(corpos ? { corpos } : {}) }
+    }
   }
 }
 

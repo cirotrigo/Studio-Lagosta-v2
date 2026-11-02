@@ -324,6 +324,12 @@ export function montarBloco(args: {
    * no teto e desce até o maior corpo que cabe na referência.
    */
   escalaMaxima?: number
+  /**
+   * F2c: o PISO da escada deste bloco como fator sobre `escalaDoFormato` (como `escalaMaxima`), no lugar dos 80 % da
+   * assinatura — a peça por referência desce até o piso materializado do corpo desenhado. O piso exato é sempre o último
+   * degrau, e nunca entra um piso ACIMA do teto.
+   */
+  pisoDeEscala?: number
   /** F3: a camada extra que este bloco é (vai à camada, não muda a medida). */
   extra?: { id: string; funcao: string; herdaDe: string; grupoVisual: string; grupoDeLeitura?: string; ordem?: number } | null
 }): ResultadoDoBloco {
@@ -358,10 +364,14 @@ export function montarBloco(args: {
   // `alturaMaxima`), o PISO exato entra como último degrau: com `escalaDoFormato` ≠ 1 (feed a partir de página de
   // story, 0,875) os passos absolutos paravam em 81,7% e a recusa dizia "mesmo a 80%" sem ter medido 80%. Sem
   // arquétipo, a sequência é exatamente a de antes.
-  const piso = args.escalaDoFormato * PISO_DE_ESCALA
+  const piso = args.escalaDoFormato * (args.pisoDeEscala ?? PISO_DE_ESCALA)
+  const teto = args.escalaDoFormato * (args.escalaMaxima ?? 1)
   const degraus: number[] = []
-  for (let escala = args.escalaDoFormato * (args.escalaMaxima ?? 1); escala >= piso - 1e-9; escala -= PASSO_DE_ESCALA) degraus.push(escala)
-  if (args.alturaMaxima !== undefined && (degraus.length === 0 || degraus[degraus.length - 1] > piso + 1e-9)) degraus.push(piso)
+  if (args.pisoDeEscala !== undefined && teto < piso - 1e-9) degraus.push(teto)
+  else {
+    for (let escala = teto; escala >= piso - 1e-9; escala -= PASSO_DE_ESCALA) degraus.push(escala)
+    if ((args.alturaMaxima !== undefined || args.pisoDeEscala !== undefined) && (degraus.length === 0 || degraus[degraus.length - 1] > piso + 1e-9)) degraus.push(piso)
+  }
 
   for (const escala of degraus) {
     const base = camadaDoPapel({ ...semDestaque, escala, width: coluna + PADDING_DE_DESENHO * 2 })
@@ -409,10 +419,12 @@ export function montarBloco(args: {
     }
   }
 
-  // Nada coube nem a 80%: devolve o orçamento medido no tamanho de assinatura.
-  const base = camadaDoPapel({ ...semDestaque, escala: args.escalaDoFormato, width: coluna + PADDING_DE_DESENHO * 2 })
+  // Nada coube nem no piso: devolve o orçamento medido no tamanho de assinatura — ou, com o piso da REFERÊNCIA (F2c),
+  // no próprio piso: é nele que a linha tem de caber, e medir na assinatura (58) deixava o orçamento vazio para a linha
+  // que só estoura a 68 (Codex, F2c rodada 1, P2).
+  const noPiso = camadaDoPapel({ ...semDestaque, escala: piso, width: coluna + PADDING_DE_DESENHO * 2 })
+  const base = args.pisoDeEscala !== undefined ? noPiso : camadaDoPapel({ ...semDestaque, escala: args.escalaDoFormato, width: coluna + PADDING_DE_DESENHO * 2 })
   // Com arquétipo, também as linhas que quebram por dentro (no piso, onde a escada parou).
-  const noPiso = camadaDoPapel({ ...semDestaque, escala: args.escalaDoFormato * PISO_DE_ESCALA, width: coluna + PADDING_DE_DESENHO * 2 })
   const quebras =
     args.alturaMaxima !== undefined
       ? linhas.flatMap((linha) => {

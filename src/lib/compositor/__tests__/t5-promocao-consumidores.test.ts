@@ -13,7 +13,8 @@ vi.mock('@/lib/compositor/compor', () => ({ comporPeca: mocks.compor, paginasDeA
 vi.mock('@/lib/compositor/medir-copy-service', () => ({ descreverVariantes: mocks.descrever }))
 vi.mock('@/lib/creatives/acervo', () => ({ lerCatalogoDoProjeto: mocks.catalogo }))
 vi.mock('@/lib/creatives/persist', () => ({ getPublicAppUrl: () => 'https://studio.test' }))
-vi.mock('@/lib/db', () => ({ db: { page: { findMany: async () => [] } } }))
+// F2c: ver-assinatura lista as referências do cliente (nenhuma aqui).
+vi.mock('@/lib/db', () => ({ db: { page: { findMany: async () => [] }, referenciaDeLayout: { findMany: async () => [] } } }))
 
 import { selecionarCombinacao } from '../selecionar-combinacao'
 import { montarSpecDoItem } from '@/lib/planos/spec-do-item'

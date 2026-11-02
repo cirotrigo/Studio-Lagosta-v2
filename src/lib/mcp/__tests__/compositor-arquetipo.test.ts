@@ -22,6 +22,8 @@ vi.mock('@/lib/compositor/fila', () => ({ enfileirarPeca: mocks.enfileirarPeca }
 vi.mock('@/lib/compositor/medir-copy-service', () => ({ medirCopyDoProjeto: mocks.medirCopyDoProjeto, descreverVariantes: vi.fn(async () => ({ templateId: 3, variantes: [] })) }))
 vi.mock('@/lib/creatives/persist', () => ({ getPublicAppUrl: () => 'https://studio.test' }))
 vi.mock('@/lib/mcp/tools', () => ({ quemDecidiu: vi.fn(async () => 'u1'), canalDoPrincipal: vi.fn(() => 'claude-ai') }))
+// F2c: ver-assinatura lista as referências do cliente pela camada de serviço (nenhuma aqui; o banco não entra).
+vi.mock('@/lib/compositor/referencias', () => ({ listarReferencias: vi.fn(async () => []) }))
 
 import { zodToJsonSchema } from 'zod-to-json-schema'
 import { specSchema } from '@/lib/compositor/spec'

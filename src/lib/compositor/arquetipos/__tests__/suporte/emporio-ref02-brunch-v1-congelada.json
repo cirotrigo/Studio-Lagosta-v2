@@ -1,0 +1,95 @@
+{
+  "congeladaEm": "2026-11-02",
+  "compilador": "F1 (main 5b96d3d87, antes da F2c)",
+  "pageVersion": "v1:ad04e91438921b43d0bd",
+  "impressao": "arq1-164c402c35ac29",
+  "definicao": {
+    "id": "ref-cmvvab24y0003sw7cwiaizw9d",
+    "versao": 1,
+    "codigoTaxonomico": "REF-01",
+    "nome": "Referência · Ref 02 · Brunch Empório",
+    "papeis": [
+      {
+        "papel": "headline",
+        "obrigatorio": true,
+        "ordemDeLeitura": 0
+      },
+      {
+        "papel": "apoio",
+        "obrigatorio": false,
+        "ordemDeLeitura": 1
+      },
+      {
+        "papel": "logo",
+        "obrigatorio": true,
+        "ordemDeLeitura": 2
+      }
+    ],
+    "preferencias": {
+      "ancora": "rodape",
+      "alinha": "centro",
+      "cantoDaMarca": "superior-direito"
+    },
+    "formatos": {
+      "story": {
+        "papeis": {
+          "headline": {
+            "referencia": {
+              "x": 0.0592,
+              "y": 0.8427,
+              "w": 0.8816,
+              "h": 0.0505
+            },
+            "zona": {
+              "xMin": 0.0592,
+              "xMax": 0.9408,
+              "yMin": 0.8427,
+              "yMax": 0.9157
+            }
+          },
+          "apoio": {
+            "referencia": {
+              "x": 0.0593,
+              "y": 0.8891,
+              "w": 0.8814,
+              "h": 0.0266
+            },
+            "zona": {
+              "xMin": 0.0593,
+              "xMax": 0.9407,
+              "yMin": 0.8427,
+              "yMax": 0.9157
+            }
+          },
+          "logo": {
+            "referencia": {
+              "x": 0.7556,
+              "y": 0.0833,
+              "w": 0.1852,
+              "h": 0.0339
+            },
+            "zona": {
+              "xMin": 0.7556,
+              "xMax": 0.9408,
+              "yMin": 0.0833,
+              "yMax": 0.1172
+            }
+          }
+        },
+        "limitesDeTexto": {
+          "headline": {
+            "linhasMax": 1
+          },
+          "apoio": {
+            "linhasMax": 1
+          }
+        }
+      }
+    },
+    "referencia": {
+      "pageId": "cmvvab24y0003sw7cwiaizw9d",
+      "pageVersion": "v1:ad04e91438921b43d0bd",
+      "formato": "story"
+    }
+  }
+}
