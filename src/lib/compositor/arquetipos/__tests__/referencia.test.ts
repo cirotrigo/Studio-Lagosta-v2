@@ -323,6 +323,9 @@ describe('F2d · o estilo desenhado na referência (02/11/2026)', () => {
     expect(problemas(comEstilos({ headline: ESTILO_TITULO }))).toEqual(expect.arrayContaining(['CAMPO_INVALIDO formatos.story.estilos.apoio']))
     expect(problemas(comEstilos({ headline: { ...ESTILO_TITULO, sombra: { color: '#000000', blur: 2, offsetY: 1, opacity: 0.5, offsetX: 1 } }, apoio: ESTILO_TITULO }))).toEqual(expect.arrayContaining(['CAMPO_DESCONHECIDO formatos.story.estilos.headline.sombra.offsetX']))
     expect(problemas(comEstilos({ headline: { ...ESTILO_TITULO, fontWeight: 950 }, apoio: { ...ESTILO_TITULO, color: 'white' } }))).toEqual(expect.arrayContaining(['CAMPO_INVALIDO formatos.story.estilos.headline.fontWeight', 'CAMPO_INVALIDO formatos.story.estilos.apoio.color']))
+    // `estilos` sem `corpos` no mesmo formato: o estilo seria ignorado em silêncio — recusa dita.
+    const { corpos: _corpos, ...semCorpos } = definicao.formatos.story
+    expect(problemas({ ...definicao, formatos: { story: semCorpos } } as unknown as Ok['definicao'])).toEqual(expect.arrayContaining(['CAMPO_INVALIDO formatos.story.corpos']))
   })
 
   it('as revisões de ANTES (a F1 congelada; uma só com corpos) continuam válidas com a impressão gravada — a F2d não as toca', () => {

@@ -350,3 +350,18 @@ describe('F2d · rodada 1 do Codex: destaque, larguras e origem nas recusas', ()
     expect(a.estilo!.origem.fontFamily).toBe('referencia')
   })
 })
+
+describe('F2d · rodada 2 do Codex: a largura no FEED (0,875) com o espaçamento materializado', () => {
+  it('base 38 ≠ referência 39, degrau 31,4 → 31 px: a largura medida conta 2,38 por caractere e a escada encaixa pela mesma largura', () => {
+    const feed = { ...PAGINA, width: 1080, height: 1350, tags: ['feed'], layers: PAGINA.layers.map((l) => (l.id === 'titulo' ? ({ ...l, position: { ...l.position, y: 1100 } } as Layer) : l.id === 'apoio' ? ({ ...l, position: { ...l.position, y: 1190 } } as Layer) : l.type === 'image' ? ({ ...l, size: { width: 1080, height: 1350 } } as Layer) : l)) }
+    const d = compilar(feed as typeof PAGINA)
+    // 48 caracteres cabem só a 31 px contando o espaçamento (930 ≤ 937; a 32 px: 960).
+    const spec = { projectId: 12, formato: 'feed' as const, foto: { driveFileId: 'x' }, arquetipo: { id: d.id }, blocos: [{ papel: 'headline' as const, linhas: ['Café'] }, { papel: 'apoio' as const, linhas: ['a'.repeat(48)] }] }
+    const m = medirCopy({ assinatura: assinaturaPesada, medir: medirComEspaco, familias: ['Montserrat', 'TrajanPro Regular', 'TrajanPro Bold'], fonteCarregada: () => true, formato: 'feed', spec, arquetipo: prepararArquetipo(spec, { definicoes: [d] })! })
+    expect(m.areaUtil.escalaDoFormato).toBe(0.875)
+    const a = bloco(m, 'apoio')
+    expect([a.fontSize, estiloDe(m, 'apoio').letterSpacing, a.situacao]).toEqual([31, 2.38, 'cabe-reduzido'])
+    expect(a.linhasMedidas[0].largura).toBe(Math.round(48 * 31 * 0.55 + 47 * 2.38))
+    expect(a.width).toBe(Math.min(937, Math.ceil(48 * 31 * 0.55 + 47 * 2.38)) + 14)
+  })
+})

@@ -13,7 +13,7 @@ const ref = { fontFamily: 'TrajanPro Regular', fontWeight: null, lineHeight: 1, 
 const camada = (estilo: EstiloDePapel, escala: number) => camadaDoPapel({ papel: 'apoio', linhas: ['Sabores'], estilo, escala, width: 900, textAlign: 'left', groupId: 'g', corDaMancha: '#000000' })
 
 describe('camadaDoPapel · o contrato do espaçamento', () => {
-  it('31,4 → 31 px: com o contrato (3 px em 39) o espaçamento é 2,38 (do corpo materializado); sem ele, 2,42 (da escala contínua)', () => {
+  it('31,4 → 31 px: com o contrato (3 px em 39) o espaçamento é 2,38 (do corpo materializado); sem ele, 2,41 (da escala contínua sobre a reserva 2,92)', () => {
     const escala = 31.4 / 38
     const semContrato = camada(base, escala)
     expect(semContrato.style?.fontSize).toBe(31)
