@@ -336,7 +336,7 @@ function avaliarPuro(unidades: UnidadeDaCombinacao[], indice: number) {
     return u.rect.y - u.rectNaReferencia.y
   }
   return avaliarCombinacao({
-    corte: { crop: 'center-middle', raster, mapa, regioes: [], assuntoVisivel: null },
+    corte: { crop: 'center-middle', chave: 'center-middle', raster, mapa, regioes: [], assuntoVisivel: null },
     energiaDeReferencia: Math.max(1, mapa.energiaMaxima),
     materializada: {
       combinacao: {

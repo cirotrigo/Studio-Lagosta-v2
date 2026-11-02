@@ -1395,7 +1395,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       : await assuntoDoCatalogoDaFoto(spec.projectId, idDoCatalogo, !!arq)
     : null
 
-  let melhor: { crop: RotuloDoCorte; raster: FotoCinza | null; mapa: MapaDeCalma | null; assunto: Rect | null; escolhido: PontuacaoDePosicao<RotuloDePosicao>; todos: PontuacaoDePosicao<RotuloDePosicao>[] } | null = null
+  let melhor: { chave: string; crop: RotuloDoCorte; raster: FotoCinza | null; mapa: MapaDeCalma | null; assunto: Rect | null; escolhido: PontuacaoDePosicao<RotuloDePosicao>; todos: PontuacaoDePosicao<RotuloDePosicao>[] } | null = null
   const cores = montados.map((b) => b.cor)
   // CP2B: a foto em cada corte, para a busca espacial do arquétipo (depois do laço).
   // F2a: a chave do mapa é a do corte por VALOR (`chaveDoCorte`): a janela explícita não tem rótulo.
@@ -1404,6 +1404,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     raster && mapa
       ? {
           crop: rotuloDoCorte(corte),
+          chave: chaveDoCorte(corte),
           janela: corte.janela,
           raster,
           mapa,
@@ -1444,7 +1445,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     }
     const escolhido = pontuados[0]
     if (!melhor || (escolhido && (Number(!escolhido.descartado) * 10 + escolhido.pontuacao) > (Number(!melhor.escolhido.descartado) * 10 + melhor.escolhido.pontuacao))) {
-      melhor = { crop, raster, mapa, assunto, escolhido, todos: pontuados }
+      melhor = { chave: chaveDoCorte(corte), crop, raster, mapa, assunto, escolhido, todos: pontuados }
     }
   }
   // CP2B: a posição do arquétipo pela foto — a busca pequena (faixas × candidatos × cortes), ou a escolha gravada
@@ -1584,7 +1585,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
         if (alternativa && 'resultado' in alternativa) {
           sel.resultado.ordenadas.push(...alternativa.resultado.ordenadas)
           sel.resultado.avaliadas += alternativa.resultado.avaliadas
-          cortes.push(...outros.filter((c) => extras.some((l) => l.crop === c.rotulo)))
+          cortes.push(...outros.filter((c) => extras.some((l) => l.chave === chaveDoCorte(c))))
         }
       }
       const contagem = contarRecusas(sel.resultado.ordenadas)
@@ -1605,12 +1606,14 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     }
     materializacao = sel.materializacao
     avisos.push(...sel.avisos)
-    const corteSel = cortes.find((c) => rotuloDoCorte(c) === sel.crop) ?? cortes[0]
+    // F2b: por VALOR — o rótulo `'janela'` devolveria a primeira janela, não a vencedora.
+    const corteSel = cortes.find((c) => chaveDoCorte(c) === sel.chave) ?? cortes[0]
     const f = fotoPorCorte.get(chaveDoCorte(corteSel)) ?? { raster: null, mapa: null, assunto: null }
     if (assuntoDoCatalogo && f.assunto && fracaoVisivelDoAssunto(f.assunto, canvas) < 0.75) avisos.push(`O corte ${sel.crop} preserva menos de 75% da caixa do assunto catalogado.`)
     buscaDoArquetipo = reproducao?.modo === 'referencia' ? null : sel.diagnostico
     escolhaDoArquetipo = sel.escolha
     melhor = {
+      chave: sel.chave,
       crop: sel.crop,
       raster: f.raster,
       mapa: f.mapa,
@@ -1633,8 +1636,8 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   if (melhor.escolhido.descartado) avisos.push(`Toda posição cobre o assunto da foto; ficou a melhor delas (${melhor.escolhido.motivo}).`)
 
   const { ancora, alinha, crop } = melhor.escolhido.rotulo
-  // F2a: o CORTE escolhido, inteiro (a janela com que a foto é desenhada e gravada).
-  const corteFinal: Corte = cortes.find((c) => rotuloDoCorte(c) === crop) ?? cortes[0]
+  // F2a: o CORTE escolhido, inteiro (a janela com que a foto é desenhada e gravada). F2b: por chave, como o resto da busca.
+  const corteFinal: Corte = cortes.find((c) => chaveDoCorte(c) === melhor.chave) ?? cortes[0]
   const rectPrincipal = melhor.escolhido.rect
 
   // 3. Posicionar cada bloco: o principal na caixa que o mapa escolheu; os
