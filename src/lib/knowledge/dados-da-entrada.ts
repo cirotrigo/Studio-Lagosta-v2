@@ -1,0 +1,343 @@
+/**
+ * Os `dados` estruturados de uma entrada da base: o que a pessoa pode alterar pelo MCP, a versão que evita sobrescrita
+ * e a coerência com os textos do cliente. `dados` é a parte da PESSOA em `metadata` (ver `marca-de-indexado.ts`).
+ *
+ * Módulo PURO, sem Prisma: `operacao-da-base.ts` lê e grava; aqui só se decide.
+ *
+ * Não existe formato único (35 chaves distintas em 12 clientes, levantadas em 02/11/2026): a lista fechada
+ * abaixo cobre os vocabulários REAIS de horário, endereço e happy hour. Cardápio e promoções ficam de fora de propósito.
+ */
+import { createHash } from 'node:crypto'
+import { metadataComoObjeto, metadataDaPessoa } from './marca-de-indexado'
+
+const DIAS_EN = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const
+const DIAS_PT = ['segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado', 'domingo'] as const
+const DIAS_CURTOS = ['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom'] as const
+const TODOS_OS_DIAS = [0, 1, 2, 3, 4, 5, 6]
+
+type TipoDoValor = 'faixas' | 'dias' | 'texto'
+interface CampoPermitido {
+  padrao: RegExp
+  tipo: TipoDoValor
+  exemplo: string
+  /** Só altera chave que já existe: intervalos livres como "terca-sabado" não podem nascer por pedido. */
+  soExistente?: boolean
+}
+
+const CAMPOS: CampoPermitido[] = [
+  { padrao: new RegExp(`^hours\\.(${DIAS_EN.join('|')})$`), tipo: 'faixas', exemplo: 'hours.monday' },
+  { padrao: new RegExp(`^horarios\\.(${DIAS_PT.join('|')})$`), tipo: 'faixas', exemplo: 'horarios.segunda' },
+  { padrao: /^horarios\.[a-z]+-[a-z]+$/, tipo: 'faixas', exemplo: 'horarios.terca-sabado', soExistente: true },
+  { padrao: /^horarios_funcionamento\.[a-z_]+$/, tipo: 'faixas', exemplo: 'horarios_funcionamento.todos_os_dias', soExistente: true },
+  { padrao: /^delivery\.[a-z_]+$/, tipo: 'faixas', exemplo: 'delivery.segunda_a_quinta', soExistente: true },
+  { padrao: /^happy_hour\.(time|horario)$/, tipo: 'faixas', exemplo: 'happy_hour.time' },
+  { padrao: /^happy_hour\.(days|dias)$/, tipo: 'dias', exemplo: 'happy_hour.days', soExistente: true },
+  { padrao: /^happy_hour\.(offer|desconto)$/, tipo: 'texto', exemplo: 'happy_hour.offer', soExistente: true },
+  { padrao: /^(address|endereco)$/, tipo: 'texto', exemplo: 'address' },
+]
+export const CAMPOS_PERMITIDOS = CAMPOS.map((c) => c.exemplo)
+
+export interface Alteracao {
+  campo: string
+  valor: string
+}
+export interface ProblemaDeCampo {
+  campo: string
+  motivo: string
+}
+export interface MudancaDeCampo {
+  campo: string
+  antes: unknown
+  depois: unknown
+}
+
+function minutos(hora: string): number {
+  return Number(hora.slice(0, 2)) * 60 + Number(hora.slice(3, 5))
+}
+
+/** Cada faixa "HH:MM-HH:MM"; turnos separados por ", ". Fim 24:00 ou 00:00 é meia-noite; fim antes do início atravessa a madrugada. */
+function problemaDasFaixas(valor: string): string | null {
+  const faixas = valor.split(', ')
+  let fimAnterior = 0
+  for (const [i, faixa] of faixas.entries()) {
+    const m = /^(\d{2}:\d{2})-(\d{2}:\d{2})$/.exec(faixa)
+    if (!m) return `"${faixa}" não está no formato HH:MM-HH:MM`
+    const [inicio, fim] = [minutos(m[1]), minutos(m[2])]
+    if (inicio > 23 * 60 + 59 || Number(m[1].slice(3)) > 59) return `início inválido em "${faixa}"`
+    if (fim > 24 * 60 || Number(m[2].slice(3)) > 59) return `fim inválido em "${faixa}"`
+    if (inicio === fim % (24 * 60)) return `início e fim iguais em "${faixa}"`
+    if (i > 0 && inicio < fimAnterior) return `os turnos se sobrepõem em "${valor}"`
+    fimAnterior = fim === 0 ? 24 * 60 : fim
+  }
+  return null
+}
+
+function problemaDosDias(campo: string, valor: string): string | null {
+  const dias: readonly string[] = campo.endsWith('.days') ? DIAS_EN : DIAS_PT
+  if (!campo.endsWith('.days') && valor === 'todos_os_dias') return null
+  const partes = valor.split('-')
+  return partes.length <= 2 && partes.every((p) => dias.includes(p)) ? null : `use um dia ou intervalo como "${dias[1]}-${dias[4]}"`
+}
+
+function problemaDoTexto(valor: string): string | null {
+  if (!valor.trim()) return 'não pode ficar vazio'
+  if (valor.length > 300 || /\n/.test(valor)) return 'deve ser uma linha de até 300 caracteres'
+  return null
+}
+
+function folhaDe(dados: Record<string, unknown>, campo: string): { pai: Record<string, unknown> | null; chave: string } {
+  const partes = campo.split('.')
+  const chave = partes.pop() as string
+  if (partes.length === 0) return { pai: dados, chave }
+  const pai = Object.hasOwn(dados, partes[0]) ? dados[partes[0]] : undefined
+  return { pai: pai && typeof pai === 'object' && !Array.isArray(pai) ? (pai as Record<string, unknown>) : null, chave }
+}
+
+/** Confere o pedido contra a lista fechada e contra o que a entrada já tem. Lista vazia = pode aplicar. */
+export function problemasDasAlteracoes(dados: Record<string, unknown>, alteracoes: Alteracao[]): ProblemaDeCampo[] {
+  const problemas: ProblemaDeCampo[] = []
+  const vistos = new Set<string>()
+  for (const { campo, valor } of alteracoes) {
+    const regra = CAMPOS.find((c) => c.padrao.test(campo))
+    if (vistos.has(campo)) problemas.push({ campo, motivo: 'campo repetido no mesmo pedido' })
+    vistos.add(campo)
+    if (!regra) {
+      problemas.push({ campo, motivo: 'campo fora da lista permitida' })
+      continue
+    }
+    const { pai, chave } = folhaDe(dados, campo)
+    // Sem o objeto pai a entrada usa OUTRO vocabulário: criar `hours` ao lado de `horarios` daria duas verdades na mesma linha.
+    if (!pai) {
+      problemas.push({ campo, motivo: `esta entrada não tem "${campo.split('.')[0]}" como objeto` })
+      continue
+    }
+    if (regra.soExistente && !Object.hasOwn(pai, chave)) {
+      problemas.push({ campo, motivo: 'só altera chave que já existe nesta entrada' })
+      continue
+    }
+    const motivo = regra.tipo === 'faixas' ? problemaDasFaixas(valor) : regra.tipo === 'dias' ? problemaDosDias(campo, valor) : problemaDoTexto(valor)
+    if (motivo) problemas.push({ campo, motivo })
+  }
+  return problemas
+}
+
+/** Aplica sobre uma cópia: o que não foi pedido fica como estava, inclusive chave que ninguém conhece. */
+export function aplicarAlteracoes(dados: Record<string, unknown>, alteracoes: Alteracao[]): Record<string, unknown> {
+  const novo = structuredClone(dados)
+  for (const { campo, valor } of alteracoes) {
+    const { pai, chave } = folhaDe(novo, campo)
+    if (pai) pai[chave] = valor
+  }
+  return novo
+}
+
+function folhas(valor: unknown, prefixo: string, saida: Map<string, unknown>): void {
+  if (valor && typeof valor === 'object' && !Array.isArray(valor)) {
+    for (const [k, v] of Object.entries(valor)) folhas(v, prefixo ? `${prefixo}.${k}` : k, saida)
+  } else if (prefixo) {
+    saida.set(prefixo, valor)
+  }
+}
+
+export function diffDeDados(antes: Record<string, unknown>, depois: Record<string, unknown>): MudancaDeCampo[] {
+  const [a, d] = [new Map<string, unknown>(), new Map<string, unknown>()]
+  folhas(antes, '', a)
+  folhas(depois, '', d)
+  return [...new Set([...a.keys(), ...d.keys()])]
+    .filter((campo) => JSON.stringify(a.get(campo)) !== JSON.stringify(d.get(campo)))
+    .sort()
+    .map((campo) => ({ campo, antes: a.get(campo) ?? null, depois: d.get(campo) ?? null }))
+}
+
+function canonico(valor: unknown): unknown {
+  if (Array.isArray(valor)) return valor.map(canonico)
+  if (valor && typeof valor === 'object' && !(valor instanceof Date)) {
+    return Object.fromEntries(Object.entries(valor).sort(([x], [y]) => (x < y ? -1 : 1)).map(([k, v]) => [k, canonico(v)]))
+  }
+  return valor
+}
+function hash(valor: unknown): string {
+  return createHash('sha256').update(JSON.stringify(canonico(valor))).digest('hex').slice(0, 16)
+}
+
+export interface CamposDaVersao {
+  title: string
+  content: string
+  category: string
+  status: string
+  tags: string[]
+  expiresAt: Date | null
+  metadata: unknown
+}
+/**
+ * A versão esperada. Hash, e não `updatedAt`: cada renovação do arrendamento da indexação avança o `updatedAt`, e a
+ * operação tomaria conflito sem ninguém ter mudado nada. Só entra o que a pessoa controla.
+ */
+export function versaoDaEntrada(linha: CamposDaVersao): string {
+  return hash([linha.title, linha.content, linha.category, linha.status, linha.tags, linha.expiresAt, metadataDaPessoa(linha.metadata)])
+}
+/** Identifica o PEDIDO: o mesmo `operacaoId` com outro conteúdo é reuso indevido, nunca repetição. */
+export function hashDoPedido(pedido: unknown): string {
+  return hash(pedido)
+}
+
+/** O que `consultar-base` mostra: `origem`/`revisao` são carimbos de quem gravou, e as chaves do sistema nunca são fato do cliente. */
+export function dadosVisiveis(metadata: unknown): Record<string, unknown> | undefined {
+  const { origem: _o, revisao: _r, ...resto } = metadataDaPessoa(metadata)
+  return Object.keys(resto).length > 0 ? resto : undefined
+}
+
+// ── Coerência entre dados e textos ──────────────────────────────────────────
+
+export interface LinhaDaBase {
+  id: string
+  title: string
+  content: string
+  updatedAt: Date
+  expiresAt: Date | null
+  metadata: unknown
+}
+export interface Divergencia {
+  campo: string
+  valorNosDados: string
+  valorNoTexto: string
+  trecho: string
+  origem: { entradaId: string; titulo: string; atualizadaEm: string }
+}
+
+const semAcento = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
+
+const DIA_RE = `(?:${DIAS_PT.map((d) => (d === 'sabado' || d === 'domingo' ? d : `${d}(?:-feira)?`)).join('|')}|${DIAS_CURTOS.join('|')})\\b`
+const DIAS_RE = `(?:todos os dias|${DIA_RE}(?:\\s*(?:,|e|a|–|—|-)\\s*${DIA_RE})*)`
+const HORA_RE = `(?:\\d{1,2}(?:h\\d{0,2}|:\\d{2})|meia[- ]noite|meio[- ]dia)`
+const ATE_RE = `\\s*(?:as?|ate|–|—|-)\\s*`
+// Exige "das": "qui só à tarde 15–18h" é medição de engajamento e "ter–sex, 16h–19h" é mecânica, não funcionamento.
+const FAIXA_DO_DIA = new RegExp(`\\b(${DIAS_RE})[\\s:,–—-]*(?:funcionam?\\s+|abrem?\\s+|habitualmente\\s+)*das?\\s+(${HORA_RE})${ATE_RE}(${HORA_RE})`, 'g')
+const FECHA_DO_DIA = new RegExp(`\\b(${DIAS_RE})\\s+(?:a casa\\s+)?fecha\\s+as\\s+(${HORA_RE})`, 'g')
+const FAIXA = new RegExp(`\\bdas?\\s+(${HORA_RE})${ATE_RE}(${HORA_RE})`, 'g')
+
+/** Serviço com horário próprio na mesma linha: não é o funcionamento da casa. */
+const OUTRO_SERVICO = /executivo|delivery|entrega|ifood|retirada|cozinha|brunch/
+const HAPPY_HOUR = /happy[ -]?hour/
+/** Linha que fala de uma data ou de feriado é exceção: fica preservada e não se compara com o horário habitual. */
+const DATADA = /\b\d{1,2}\/\d{1,2}\b|feriado|vespera|natal|reveillon|carnaval|pascoa|excepcional/
+const VALE_SEMPRE = /habitual|vigente desde/
+
+function horaDe(token: string, comoFim: boolean): string {
+  if (token.startsWith('meia')) return '24:00'
+  if (token.startsWith('meio')) return '12:00'
+  const [h, m = ''] = token.split(/[h:]/)
+  const hora = `${h.padStart(2, '0')}:${m.padEnd(2, '0')}`
+  return comoFim && hora === '00:00' ? '24:00' : hora
+}
+
+function diasDe(expressao: string): number[] {
+  if (expressao.startsWith('todos')) return TODOS_OS_DIAS
+  const dias: number[] = []
+  const re = new RegExp(`(${DIA_RE})|(a|–|—|-)`, 'g')
+  let intervalo = false
+  for (const m of expressao.matchAll(re)) {
+    if (m[2]) {
+      intervalo = true
+      continue
+    }
+    const dia = DIAS_CURTOS.indexOf(m[1].slice(0, 3) as (typeof DIAS_CURTOS)[number])
+    if (intervalo) for (let d = (dias[dias.length - 1] + 1) % 7; d !== dia; d = (d + 1) % 7) dias.push(d)
+    dias.push(dia)
+    intervalo = false
+  }
+  return dias
+}
+
+const faixaNormal = (valor: string) => valor.split(', ').map((f) => f.replace(/-00:00$/, '-24:00')).join(', ')
+
+/** As linhas do texto que são exceção datada. É o que uma troca de texto não pode apagar sem dizer. */
+export function linhasDatadas(texto: string): string[] {
+  return texto.split(/\n+/).map((l) => l.trim()).filter((l) => l && DATADA.test(semAcento(l)) && !VALE_SEMPRE.test(semAcento(l)))
+}
+
+interface FatoDoTexto {
+  dias: number[] | null
+  faixa: string | null
+  fim: string | null
+  trecho: string
+}
+function fatosDoTexto(titulo: string, texto: string): FatoDoTexto[] {
+  const fatos: FatoDoTexto[] = []
+  const tituloNormal = semAcento(titulo)
+  for (const linha of texto.split(/\n+/)) {
+    if (linhasDatadas(linha).length > 0) continue
+    for (const clausula of linha.split(/\s·\s|;\s*|(?<=[.!?])\s+/)) {
+      const c = semAcento(clausula)
+      const trecho = clausula.trim()
+      const happy = HAPPY_HOUR.test(c) || (HAPPY_HOUR.test(tituloNormal) && !OUTRO_SERVICO.test(c))
+      if (happy) {
+        for (const m of c.matchAll(FAIXA)) fatos.push({ dias: null, faixa: `${horaDe(m[1], false)}-${horaDe(m[2], true)}`, fim: null, trecho })
+        continue
+      }
+      if (OUTRO_SERVICO.test(c) || OUTRO_SERVICO.test(tituloNormal)) continue
+      for (const m of c.matchAll(FAIXA_DO_DIA)) {
+        if (/almoco/.test(c.slice(0, m.index))) continue
+        fatos.push({ dias: diasDe(m[1]), faixa: `${horaDe(m[2], false)}-${horaDe(m[3], true)}`, fim: null, trecho })
+      }
+      for (const m of c.matchAll(FECHA_DO_DIA)) fatos.push({ dias: diasDe(m[1]), faixa: null, fim: horaDe(m[2], true), trecho })
+    }
+  }
+  return fatos
+}
+
+interface HorarioNosDados {
+  dias: number[] | null
+  campo: string
+  valor: string
+}
+/** Os horários dos `dados` nos vocabulários conhecidos: `dias: null` é o happy hour, que não é o funcionamento de um dia. */
+function horariosNosDados(dados: Record<string, unknown>): HorarioNosDados[] {
+  const saida: HorarioNosDados[] = []
+  const objeto = (chave: string) => (dados[chave] && typeof dados[chave] === 'object' ? (dados[chave] as Record<string, unknown>) : {})
+  const anotar = (dias: number[] | null, campo: string, valor: unknown) => {
+    if (typeof valor === 'string' && !problemaDasFaixas(valor)) saida.push({ dias, campo, valor })
+  }
+  for (const [i, dia] of DIAS_EN.entries()) anotar([i], `hours.${dia}`, objeto('hours')[dia])
+  for (const [chave, valor] of Object.entries(objeto('horarios'))) {
+    const [a, b] = chave.split('-').map((d) => DIAS_PT.indexOf(d as (typeof DIAS_PT)[number]))
+    if (a < 0 || b < 0) continue
+    anotar(b === undefined ? [a] : diasDe(`${DIAS_CURTOS[a]} a ${DIAS_CURTOS[b]}`), `horarios.${chave}`, valor)
+  }
+  anotar(TODOS_OS_DIAS, 'horarios_funcionamento.todos_os_dias', objeto('horarios_funcionamento').todos_os_dias)
+  for (const chave of ['time', 'horario']) anotar(null, `happy_hour.${chave}`, objeto('happy_hour')[chave])
+  return saida
+}
+
+export function temHorarioNosDados(metadata: unknown): boolean {
+  return horariosNosDados(metadataComoObjeto(metadata)).length > 0
+}
+
+/**
+ * Compara os `dados` dados com o que TODOS os textos ativos do cliente afirmam. Só aponta: quem decide é a pessoa.
+ * Entrada com validade é campanha, logo exceção por natureza, e não entra.
+ */
+export function divergenciasDe(dados: Record<string, unknown>, textos: LinhaDaBase[]): Divergencia[] {
+  const noDados = horariosNosDados(dados)
+  const achadas = new Map<string, Divergencia>()
+  for (const linha of textos) {
+    if (linha.expiresAt) continue
+    for (const fato of fatosDoTexto(linha.title, linha.content)) {
+      for (const h of noDados) {
+        const mesmoAlvo = fato.dias === null ? h.dias === null : h.dias !== null && fato.dias.some((d) => h.dias?.includes(d))
+        if (!mesmoAlvo) continue
+        const valorNoDado = faixaNormal(h.valor)
+        const valorNoTexto = fato.faixa ?? `fecha ${fato.fim}`
+        if (fato.faixa ? valorNoDado === fato.faixa : valorNoDado.endsWith(`-${fato.fim}`)) continue
+        achadas.set(`${h.campo}|${valorNoTexto}|${linha.id}`, {
+          campo: h.campo,
+          valorNosDados: h.valor,
+          valorNoTexto,
+          trecho: fato.trecho,
+          origem: { entradaId: linha.id, titulo: linha.title, atualizadaEm: linha.updatedAt.toISOString() },
+        })
+      }
+    }
+  }
+  return [...achadas.values()]
+}

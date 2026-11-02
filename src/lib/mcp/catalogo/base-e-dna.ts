@@ -42,7 +42,7 @@ export const toolsDeBaseEDna = [
     nome: 'consultar-base',
     apelidos: ['get-knowledge'],
     descricao:
-      'Base de conhecimento do cliente: horário de funcionamento, cardápio, diferenciais, campanhas e políticas — os FATOS. CONSULTE SEMPRE antes de escrever qualquer texto — é o que evita prometer horário errado ou inventar preço. Se achar informação conflitante, aponte para a pessoa em vez de escolher sozinho.\n\nPasse `em` com a DATA EM QUE A PEÇA VAI AO AR: só entra o que ainda vale naquele dia (campanha que vence antes fica de fora), e a resposta diz a data de referência. Sem `em`, vale hoje. Cada entrada traz `validade` quando tem prazo, e `dados` com o que foi gravado estruturado (preços, horários, produto, unidade) quando há.\n\nTrês horários que não se confundem: o HORÁRIO DE PUBLICAÇÃO é a grade (sugerir-posts); o HORÁRIO DO SERVIÇO é o funcionamento/happy hour que vai na copy (categoria HORARIOS); a VIGÊNCIA é até quando a oferta vale (`validade`). A identidade de texto (tom de voz) NÃO mora aqui: é consultar-dna / consultar-voz.',
+      'Base de conhecimento do cliente: horário de funcionamento, cardápio, diferenciais, campanhas e políticas — os FATOS. CONSULTE SEMPRE antes de escrever qualquer texto — é o que evita prometer horário errado ou inventar preço. Se achar informação conflitante, aponte para a pessoa em vez de escolher sozinho.\n\nPasse `em` com a DATA EM QUE A PEÇA VAI AO AR: só entra o que ainda vale naquele dia (campanha que vence antes fica de fora), e a resposta diz a data de referência. Sem `em`, vale hoje. Cada entrada traz `validade` quando tem prazo, `dados` com o que foi gravado estruturado (preços, horários, produto, unidade) quando há, e `versao`, que é a versão esperada de atualizar-dados-entrada-base.\n\nTrês horários que não se confundem: o HORÁRIO DE PUBLICAÇÃO é a grade (sugerir-posts); o HORÁRIO DO SERVIÇO é o funcionamento/happy hour que vai na copy (categoria HORARIOS); a VIGÊNCIA é até quando a oferta vale (`validade`). A identidade de texto (tom de voz) NÃO mora aqui: é consultar-dna / consultar-voz.',
     schema: z.object({
       projectId: z.number().describe('ID do projeto.'),
       category: z.enum(CATEGORIAS_DA_BASE).optional().describe('Filtra por categoria. Omita para trazer tudo.'),
@@ -52,9 +52,10 @@ export const toolsDeBaseEDna = [
     acesso: { tipo: 'projeto' },
     superficies: ['remoto', 'local'],
     handler: async (args, _principal) => {
-      const [{ db }, { vigenteEm, formatarValidade }] = await Promise.all([
+      const [{ db }, { vigenteEm, formatarValidade }, { dadosVisiveis, versaoDaEntrada }] = await Promise.all([
         import('../../db'),
         import('../../knowledge/vigencia'),
+        import('../../knowledge/dados-da-entrada'),
       ])
       const projectId = args.projectId as number
       const category = typeof args.category === 'string' ? args.category : undefined
@@ -95,23 +96,23 @@ export const toolsDeBaseEDna = [
           updatedAt: true,
           expiresAt: true,
           metadata: true,
+          status: true,
         },
         orderBy: { category: 'asc' },
       })
-      const dadosDe = (metadata: unknown): Record<string, unknown> | undefined => {
-        if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return undefined
-        // `origem`/`revisao` são carimbos de quem gravou, não fato do cliente.
-        const { origem: _o, revisao: _r, ...resto } = metadata as Record<string, unknown>
-        return Object.keys(resto).length > 0 ? resto : undefined
-      }
       return {
         referencia: new Date(referencia.getTime() - 3 * 3600_000).toISOString().slice(0, 10),
         count: entries.length,
-        entries: entries.map(({ expiresAt, metadata, ...resto }) => ({
-          ...resto,
-          validade: expiresAt ? formatarValidade(expiresAt) : null,
-          ...(dadosDe(metadata) ? { dados: dadosDe(metadata) } : {}),
-        })),
+        entries: entries.map((entrada) => {
+          const { expiresAt, metadata, status: _status, ...resto } = entrada
+          const dados = dadosVisiveis(metadata)
+          return {
+            ...resto,
+            versao: versaoDaEntrada(entrada),
+            validade: expiresAt ? formatarValidade(expiresAt) : null,
+            ...(dados ? { dados } : {}),
+          }
+        }),
       }
     },
   }),
@@ -438,7 +439,7 @@ export const toolsDeBaseEDna = [
   definirTool({
     nome: 'atualizar-entrada-base',
     descricao:
-      'Atualiza uma entrada existente da base de conhecimento (o entradaId vem de consultar-base). É assim que preço, horário ou regra desatualizada se corrige — a mudança vale para TODOS os textos futuros, deste chat e do Claudinho.\n\n⏳ Campanha que ganhou ou mudou data de fim: mande `validade`. Prorrogou, é a data nova; virou permanente, mande null.\n\nFluxo obrigatório: consultar-base → mostrar à pessoa o texto ATUAL e o texto NOVO lado a lado → só gravar com o OK explícito. Campos não enviados ficam como estão.',
+      'Atualiza uma entrada existente da base de conhecimento (o entradaId vem de consultar-base). É assim que preço, horário ou regra desatualizada se corrige — a mudança vale para TODOS os textos futuros, deste chat e do Claudinho.\n\n⏳ Campanha que ganhou ou mudou data de fim: mande `validade`. Prorrogou, é a data nova; virou permanente, mande null.\n\nFluxo obrigatório: consultar-base → mostrar à pessoa o texto ATUAL e o texto NOVO lado a lado → só gravar com o OK explícito. Campos não enviados ficam como estão.\n\nEsta tool só altera o texto. Para os `dados` estruturados use atualizar-dados-entrada-base. A resposta traz `divergencias` quando os textos do cliente contradizem os dados: mostre à pessoa, não escolha sozinho.',
     schema: z.object({
       projectId: z.number().describe('ID do cliente.'),
       entradaId: z.string().describe('Id da entrada (de consultar-base).'),
@@ -470,6 +471,7 @@ export const toolsDeBaseEDna = [
         { resolverAutor },
         { editarEntradaCoordenada },
         { ehIndexacaoEmAndamento },
+        { divergenciasDaBase, linhasDaBase },
       ] = await Promise.all([
         import('../../db'),
         import('../../creatives/errors'),
@@ -479,6 +481,7 @@ export const toolsDeBaseEDna = [
         import('../tools'),
         import('../../knowledge/arrendamento'),
         import('../../knowledge/marca-de-indexado'),
+        import('../../knowledge/operacao-da-base'),
       ])
       const projectId = args.projectId as number
       const entradaId = args.entradaId as string
@@ -582,6 +585,11 @@ export const toolsDeBaseEDna = [
       // a cutucada.
       const validadeFinal = expiresAt !== undefined ? expiresAt : existente.expiresAt
       const aviso = avisoValidadeAusente((category ?? existente.category) as never, validadeFinal)
+      // Foi assim que `dados.hours.monday` ficou para trás com os textos corrigidos: nada avisava. Aviso, nunca veto.
+      const divergencias = await linhasDaBase(projectId).then(divergenciasDaBase).catch((e) => {
+        console.error('[mcp] não deu para conferir os dados contra os textos:', e)
+        return []
+      })
 
       return {
         atualizada: true,
@@ -593,7 +601,81 @@ export const toolsDeBaseEDna = [
         mensagem: `Entrada "${title ?? existente.title}" atualizada. Já vale para os próximos textos.`,
         ...(avisoBusca ? { avisoBusca } : {}),
         ...(aviso ? { aviso } : {}),
+        ...(divergencias.length > 0 ? { divergencias } : {}),
       }
+    },
+  }),
+
+  definirTool({
+    nome: 'atualizar-dados-entrada-base',
+    descricao:
+      'Altera os `dados` estruturados de uma entrada da base (horário, endereço, happy hour) e, junto, o texto se preciso: é a correção que atualizar-entrada-base não faz. Sem site e sem escrita livre: só os campos da lista fechada, e o que não foi pedido fica intacto.\n\nCampos: hours.<monday…sunday>, horarios.<segunda…domingo> e intervalos que já existam (horarios.terca-sabado), horarios_funcionamento.*, delivery.*, happy_hour.time/horario/days/dias/offer/desconto, address, endereco. Vale o vocabulário que a entrada já usa: campo de outro vocabulário é recusado. Horário é "HH:MM-HH:MM"; turnos com ", "; meia-noite é 24:00 ou 00:00.\n\nFluxo obrigatório: (1) consultar-base dá `versao`; (2) gere um `operacaoId` novo e chame SEM `confirmado`: volta a proposta (diff, `divergencias` com trecho e origem, exceções datadas, custo de indexação) e nada é gravado; (3) mostre tudo à pessoa; (4) com o OK dela repita o MESMO pedido com `confirmado: true`.\n\nContradição com os textos em campo alterado bloqueia: ajuste o texto em `content` ou aceite o campo em `aceitarDivergencias`, sempre por decisão da pessoa. Divergência em campo não alterado é só relatada. Exceção de data ou feriado não é horário habitual.\n\n`estado` da resposta: `proposta`, `concluida`, `indexacao_pendente` ou `indexacao_falhou`. Nos dois últimos os dados JÁ foram gravados: nunca diga que concluiu. Timeout ou resposta perdida: use consultar-operacao-base; repetir o mesmo `operacaoId` nunca grava duas vezes e retoma a indexação. Para desfazer: `reverterOperacaoId`, com a versão atual e um operacaoId novo.',
+    schema: z.object({
+      projectId: z.number().describe('ID do cliente.'),
+      entradaId: z.string().describe('Id da entrada (de consultar-base).'),
+      versaoEsperada: z.string().describe('O campo `versao` da entrada em consultar-base. Se a entrada mudou, nada é gravado.'),
+      operacaoId: z
+        .string()
+        .regex(/^[A-Za-z0-9_-]{8,64}$/)
+        .describe('Id desta operação, gerado por você (8 a 64 letras, números, _ ou -). O mesmo id com o mesmo pedido nunca grava duas vezes.'),
+      alteracoes: z
+        .array(z.object({ campo: z.string(), valor: z.string() }).strict())
+        .optional()
+        .describe('Campos a alterar, cada um pelo caminho (ex: {"campo":"hours.monday","valor":"11:00-17:00"}).'),
+      content: z.string().optional().describe('Novo texto completo da entrada (opcional): substitui o texto inteiro e exige reindexar.'),
+      reverterOperacaoId: z.string().optional().describe('Restaura exatamente o estado anterior a esta operação. Não combina com alteracoes nem content.'),
+      aceitarDivergencias: z
+        .array(z.string())
+        .optional()
+        .describe('Campos cuja contradição com os textos a pessoa aceitou, e "texto.excecoes" para remover linha datada do texto.'),
+      autorizarIndexacao: z.boolean().optional().describe('Obrigatório quando a proposta traz indexacao.necessaria: true, com o custo mostrado à pessoa.'),
+      confirmado: z.boolean().optional().describe('Só grava com true. Sem isto devolve a proposta.'),
+    }),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    acesso: { tipo: 'projeto' },
+    superficies: ['remoto', 'local'],
+    handler: async (args, principal) => {
+      const [{ executarOperacaoDaBase }, { resolverAutor }] = await Promise.all([
+        import('../../knowledge/operacao-da-base'),
+        import('../tools'),
+      ])
+      const projectId = args.projectId as number
+      return executarOperacaoDaBase({
+        projectId,
+        entradaId: args.entradaId as string,
+        versaoEsperada: args.versaoEsperada as string,
+        operacaoId: args.operacaoId as string,
+        alteracoes: args.alteracoes as { campo: string; valor: string }[] | undefined,
+        content: args.content as string | undefined,
+        reverterOperacaoId: args.reverterOperacaoId as string | undefined,
+        aceitarDivergencias: args.aceitarDivergencias as string[] | undefined,
+        autorizarIndexacao: args.autorizarIndexacao === true,
+        confirmado: args.confirmado === true,
+        autor: await resolverAutor(projectId, principal),
+        ator: { kind: principal.kind, userId: principal.userId ?? null, clientId: principal.clientId ?? null },
+      })
+    },
+  }),
+
+  definirTool({
+    nome: 'consultar-operacao-base',
+    descricao:
+      'Diz o que aconteceu com uma operação de atualizar-dados-entrada-base, sem escrever nada. Com `operacaoId`: `estado` (concluida, indexacao_pendente, indexacao_falhou ou nao_encontrada), backup de antes e depois, quem fez, versão atual e se o índice confere. `nao_encontrada` significa que nada foi gravado até agora. Use SEMPRE depois de um timeout ou resposta perdida, antes de tentar de novo. Com `entradaId`: a trilha das últimas 20 operações da entrada.',
+    schema: z.object({
+      projectId: z.number().describe('ID do cliente.'),
+      operacaoId: z.string().optional().describe('O operacaoId usado na escrita.'),
+      entradaId: z.string().optional().describe('Id da entrada, para ver a trilha dela.'),
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    acesso: { tipo: 'projeto' },
+    superficies: ['remoto', 'local'],
+    handler: async (args) => {
+      const { consultarOperacaoDaBase } = await import('../../knowledge/operacao-da-base')
+      return consultarOperacaoDaBase({
+        projectId: args.projectId as number,
+        operacaoId: args.operacaoId as string | undefined,
+        entradaId: args.entradaId as string | undefined,
+      })
     },
   }),
 

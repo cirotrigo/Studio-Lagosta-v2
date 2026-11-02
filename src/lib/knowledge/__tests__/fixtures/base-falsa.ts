@@ -48,7 +48,10 @@ export const base = {
   chamadas: { query: 0, delete: [] as string[][], upsert: 0 },
   /** O DNA de texto do projeto que a migração lê (PR13-47). */
   dna: null as null | { toneOfVoice: string | null; contentRules: string | null; updatedAt: Date },
+  /** A trilha `OperacaoDaBase`; `$transaction` a desfaz junto com as entradas. */
+  operacoes: [] as Record<string, unknown>[],
   reset() {
+    this.operacoes = []
     this.entradas.clear()
     this.chunks = []
     this.vetores.clear()
@@ -89,7 +92,48 @@ function aplicar(l: LinhaFalsa, data: Record<string, unknown>) {
 }
 
 export const dbFalso = {
+  /** Sem isolamento, só o desfazer: o que uma falha dentro da transação tem de reverter. */
+  $transaction: vi.fn(async <T>(fn: (tx: unknown) => Promise<T>): Promise<T> => {
+    const entradas = clonar(base.entradas)
+    const operacoes = clonar(base.operacoes)
+    try {
+      return await fn(dbFalso)
+    } catch (erro) {
+      base.entradas = entradas
+      base.operacoes = operacoes
+      throw erro
+    }
+  }),
+  operacaoDaBase: {
+    findUnique: vi.fn(async ({ where }: { where: { projectId_operacaoId: { projectId: number; operacaoId: string } } }) => {
+      const { projectId, operacaoId } = where.projectId_operacaoId
+      const op = base.operacoes.find((o) => o.projectId === projectId && o.operacaoId === operacaoId)
+      return op ? clonar(op) : null
+    }),
+    findFirst: vi.fn(async ({ where }: { where: { projectId: number; entryId: string; status: { not: string } } }) => {
+      const op = base.operacoes.find((o) => o.projectId === where.projectId && o.entryId === where.entryId && o.status !== where.status.not)
+      return op ? clonar(op) : null
+    }),
+    findMany: vi.fn(async ({ where }: { where: { projectId: number; entryId: string } }) =>
+      base.operacoes.filter((o) => o.projectId === where.projectId && o.entryId === where.entryId).reverse().map(clonar),
+    ),
+    create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+      if (base.operacoes.some((o) => o.projectId === data.projectId && o.operacaoId === data.operacaoId)) throw new Error('Unique constraint failed on (projectId, operacaoId)')
+      const op = { id: `op-${++base.seq}`, erroIndexacao: null, criadaEm: new Date(), ...clonar(data) }
+      base.operacoes.push(op)
+      return clonar(op)
+    }),
+    update: vi.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+      const op = base.operacoes.find((o) => o.id === where.id)
+      if (!op) throw new Error('operação não existe')
+      Object.assign(op, clonar(data))
+      return clonar(op)
+    }),
+  },
   knowledgeBaseEntry: {
+    findMany: vi.fn(async ({ where, select }: { where: { projectId: number; status: string }; select?: Record<string, boolean> }) =>
+      [...base.entradas.values()].filter((e) => e.projectId === where.projectId && e.status === where.status).map((e) => projetar(e, select)),
+    ),
     create: vi.fn(async ({ data, select }: { data: Record<string, unknown>; select?: Record<string, boolean> }) => {
       const id = `e-nova-${++base.seq}`
       const l: LinhaFalsa = {
@@ -160,6 +204,9 @@ export const dbFalso = {
   },
   $queryRaw: vi.fn(async () => [{ existe: null }]),
   knowledgeChunk: {
+    findMany: vi.fn(async ({ where }: { where: { entryId: string } }) =>
+      base.chunks.filter((c) => c.entryId === where.entryId).sort((a, b) => a.ordinal - b.ordinal).map(clonar),
+    ),
     deleteMany: vi.fn(async ({ where }: { where: { entryId: string; entry?: { metadata?: FiltroDeCaminho } } }) => {
       const l = base.entradas.get(where.entryId)
       if (where.entry && (!l || !casaMetadata(l.metadata, where.entry.metadata))) return { count: 0 }

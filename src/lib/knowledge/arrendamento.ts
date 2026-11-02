@@ -46,12 +46,12 @@ import {
 
 const TENTATIVAS = 5
 
-type Lida = CamposIndexados & { metadata: unknown; updatedAt: Date; title: string }
+export type Lida = CamposIndexados & { metadata: unknown; updatedAt: Date; title: string; tags: string[]; expiresAt: Date | null }
 
 async function ler(entryId: string): Promise<Lida | null> {
   return db.knowledgeBaseEntry.findUnique({
     where: { id: entryId },
-    select: { metadata: true, updatedAt: true, content: true, title: true, category: true, status: true },
+    select: { metadata: true, updatedAt: true, content: true, title: true, category: true, status: true, tags: true, expiresAt: true },
   }) as Promise<Lida | null>
 }
 
@@ -172,20 +172,37 @@ export interface EdicaoDaEntrada {
  *   `updatedAt`, a edição relê e é recusada; e a aquisição que perde para a edição relê o conteúdo novo;
  * - as chaves do sistema (marca, token, prazo) vêm da linha lida, e saem quando o índice muda (`metadataDaEdicao`).
  * Edição só de campo não indexado (tags, validade, metadata da pessoa) segue valendo durante o arrendamento.
+ *
+ * `edicao` pode ser uma FUNÇÃO da linha lida: é como uma alteração parcial se funde ao que a linha tem AGORA, e como
+ * se confere a versão na mesma leitura do compare-and-set (lançar ali recusa antes de qualquer escrita). `noMesmoCommit`
+ * grava junto da edição, numa transação: ou as duas valem ou nenhuma.
  */
-export async function editarEntradaCoordenada(entryId: string, edicao: EdicaoDaEntrada): Promise<{ antes: Lida; mudouIndice: boolean }> {
-  const { metadata: metadataPedido, ...campos } = edicao
-  const camposDefinidos = Object.fromEntries(Object.entries(campos).filter(([, v]) => v !== undefined))
+export async function editarEntradaCoordenada(
+  entryId: string,
+  edicao: EdicaoDaEntrada | ((lida: Lida) => EdicaoDaEntrada),
+  opcoes: { noMesmoCommit?: (tx: Prisma.TransactionClient, lida: Lida) => Promise<unknown> } = {},
+): Promise<{ antes: Lida; mudouIndice: boolean }> {
   for (let i = 0; i < TENTATIVAS; i++) {
     const lida = await ler(entryId)
     if (!lida) throw new Error('Entry not found')
-    const mudouIndice = edicaoMudaIndice(lida, edicao)
+    const { metadata: metadataPedido, ...campos } = typeof edicao === 'function' ? edicao(lida) : edicao
+    const camposDefinidos = Object.fromEntries(Object.entries(campos).filter(([, v]) => v !== undefined))
+    const mudouIndice = edicaoMudaIndice(lida, campos)
     if (mudouIndice && arrendamentoVigenteDe(lida.metadata, Date.now())) throw new IndexacaoEmAndamento(entryId, expiracaoDe(lida.metadata))
     const metadata = metadataDaEdicao(lida.metadata, metadataPedido, mudouIndice)
-    const r = await db.knowledgeBaseEntry.updateMany({
-      where: { id: entryId, updatedAt: lida.updatedAt },
-      data: { ...camposDefinidos, ...(metadata !== undefined ? { metadata } : {}), updatedAt: carimboSeguinte(lida) } as Prisma.KnowledgeBaseEntryUpdateManyMutationInput,
-    })
+    const gravar = (cliente: Pick<Prisma.TransactionClient, 'knowledgeBaseEntry'>) =>
+      cliente.knowledgeBaseEntry.updateMany({
+        where: { id: entryId, updatedAt: lida.updatedAt },
+        data: { ...camposDefinidos, ...(metadata !== undefined ? { metadata } : {}), updatedAt: carimboSeguinte(lida) } as Prisma.KnowledgeBaseEntryUpdateManyMutationInput,
+      })
+    const { noMesmoCommit } = opcoes
+    const r = noMesmoCommit
+      ? await db.$transaction(async (tx) => {
+          const gravado = await gravar(tx)
+          if (gravado.count === 1) await noMesmoCommit(tx, lida)
+          return gravado
+        })
+      : await gravar(db)
     if (r.count === 1) return { antes: lida, mudouIndice }
   }
   throw new Error(`a entrada ${entryId} mudou ${TENTATIVAS} vezes seguidas enquanto a edição era gravada: nada foi salvo, tente de novo`)
