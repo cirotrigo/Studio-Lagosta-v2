@@ -51,6 +51,7 @@ export async function GET() {
                   name: true,
                   Logo: {
                     where: { isProjectLogo: true },
+                    orderBy: { id: 'asc' },
                     take: 1,
                     select: {
                       fileUrl: true,
@@ -112,6 +113,7 @@ export async function GET() {
                       name: true,
                       Logo: {
                         where: { isProjectLogo: true },
+                        orderBy: { id: 'asc' },
                         take: 1,
                         select: {
                           fileUrl: true,
