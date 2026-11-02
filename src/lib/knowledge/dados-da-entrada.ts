@@ -228,8 +228,8 @@ const HAPPY_HOUR = /happy[ -]?hour/
  * Palavra solta não muda de quem ela é ("na varanda aberta", "antes do jantar"): sem sujeito, vale o happy hour.
  */
 const CASA_NA_FAIXA = new RegExp(`(?:\\b${DIAS_RE}[\\s:,–—-]*${VERBO_DA_CASA}\\s+(?:${ADVERBIO_RE}\\s+)*|(?:a casa\\s+(?:funciona|abre)|funcionamento(?:\\s+habitual)?)[\\s:]+(?:de\\s+)?${DIAS_RE}[\\s:,–—-]*)das?\\s+${HORA_RE}`)
-/** "Terça a sexta das 16h às 19h, segunda funciona das 11h às 17h": cada faixa se julga no seu trecho, um sujeito não leva a vizinha. */
-const ANTES_DA_CASA = new RegExp(`(?<=\\d|\\dh|noite|dia)(?:[,:]|\\se)\\s+(?=${DIAS_RE}[\\s:,–—-]*${VERBO_DA_CASA}\\s)`)
+/** "Terça a sexta das 16h às 19h, jantar das 19h às 23h": cada faixa se julga no seu trecho, um sujeito não leva a vizinha. */
+const ANTES_DO_SUJEITO = new RegExp(`(?<=\\d|\\dh|noite|dia)(?:[,:]|\\se)\\s+(?=(?:${DIAS_RE}[\\s:,–—-]*${VERBO_DA_CASA}\\s|a casa\\s+(?:funciona|abre)|funcionamento|(?:o\\s+)?(?:almoco|jantar)\\b))`)
 const REFEICAO_NA_FAIXA = new RegExp(`(?<!(?:antes|depois) d[oe] |apos o )\\b(?:almoco|jantar)\\b:?[^,;:]*?\\bdas?\\s+${HORA_RE}`)
 /** "Horário de funcionamento e happy hour" não empresta assunto. "Happy Hour: horários e condições" empresta: sem sinal claro, vale o exclusivo. */
 const TITULO_MISTO = /funcionamento|expediente|almoco|jantar|\bhorarios?\s+(?:da casa|e\s+happy)|happy[ -]?hour\s+e\s+horarios?\b/
@@ -306,12 +306,11 @@ function fatosDoTexto(titulo: string, texto: string): FatoDoTexto[] {
   const fatos: FatoDoTexto[] = []
   const tituloNormal = semAcento(titulo)
   // Só a entrada exclusiva empresta o assunto à frase sem sujeito ("Terça a sexta, das 16h às 19h.").
-  const parteDoHappy = tituloNormal.split(/\s[—–-]\s/).find((p) => HAPPY_HOUR.test(p))
-  const soDeHappyHour = parteDoHappy !== undefined && !TITULO_MISTO.test(parteDoHappy) && !OUTRO_SERVICO.test(tituloNormal)
+  const soDeHappyHour = HAPPY_HOUR.test(tituloNormal) && !TITULO_MISTO.test(tituloNormal) && !OUTRO_SERVICO.test(tituloNormal)
   for (const linha of texto.split(/\n+/)) {
     for (const { clausula: trecho, datada } of clausulasDaLinha(linha)) {
       if (datada) continue
-      for (const c of semAcento(trecho).split(ANTES_DA_CASA)) {
+      for (const c of semAcento(trecho).split(ANTES_DO_SUJEITO)) {
         const citacao = c.search(HAPPY_HOUR)
         let doResto = c
         if (citacao >= 0 || (soDeHappyHour && !CASA_NA_FAIXA.test(c) && !REFEICAO_NA_FAIXA.test(c) && !OUTRO_SERVICO.test(c))) {

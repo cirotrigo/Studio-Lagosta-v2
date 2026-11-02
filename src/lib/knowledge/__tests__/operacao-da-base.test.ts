@@ -408,6 +408,9 @@ describe('o serviço de cada frase, em entrada que fala de happy hour', () => {
     expect(achado({ ...CERTO, happy_hour: HAPPY }, vizinha, SO_HAPPY)).toEqual([['happy_hour.time', '16:00-19:00']])
     expect(achado({ ...CERTO, hours: HOURS }, vizinha, SO_HAPPY)).toEqual([['hours.monday', '11:00-17:00']])
     expect(achado(CERTO, 'Jantar de terça a sexta das 19h às 23h, domingo funciona das 11h às 17h e happy hour das 16h às 19h.', 'Ficha')).toEqual([])
+    expect(achado({ ...CERTO, happy_hour: HAPPY }, 'Terça a sexta das 16h às 19h, jantar das 19h às 23h.', SO_HAPPY)).toEqual([['happy_hour.time', '16:00-19:00']])
+    expect(achado({ ...CERTO, happy_hour: HAPPY }, 'Terça a sexta das 16h às 19h, funcionamento habitual de segunda e domingo das 11h às 17h.', SO_HAPPY)).toEqual([['happy_hour.time', '16:00-19:00']])
+    expect(achado(CERTO, 'Segunda e domingo das 11h às 17h. Happy hour das 16h às 19h.', 'Horário de funcionamento — Happy hour — Quintal')).toEqual([])
     // Lista de dias com o verbo no fim não se parte: a segunda é do mesmo sujeito que o domingo.
     expect(achado({ hours: HOURS }, 'Segunda, sexta e domingo funcionam das 11h às 17h.', 'Ficha').map(([campo]) => campo)).toEqual(['hours.monday', 'hours.friday'])
   })
