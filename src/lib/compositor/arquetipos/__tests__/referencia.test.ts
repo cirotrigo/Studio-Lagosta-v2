@@ -211,6 +211,8 @@ describe('F2b · o assunto da foto no quadro', () => {
     ['girada', { rotation: 5 }],
     ['espelhada', estilo(inteira, { flipH: true })],
     ['espelhada na vertical', estilo(inteira, { flipV: true })],
+    ['com máscara', estilo(inteira, { mask: { shapeId: 'metade', path: 'M50 0H100V100H50Z' } })],
+    ['com canto arredondado', estilo(inteira, { border: { width: 0, color: '#000000', radius: 40 } })],
   ] as Array<[string, Partial<Layer>]>)('%s → transformacao-nao-representada', (_nome, camada) => {
     expect(compilar(insumo, comFoto(camada)).leitura.assunto).toEqual({ ausente: 'transformacao-nao-representada' })
   })
@@ -222,6 +224,14 @@ describe('F2b · o assunto da foto no quadro', () => {
     expect(assunto.visivel).toBe(1)
     expect(assunto.caixa.x).toBeCloseTo((1536 - 1380) / 1080, 3)
     expect(assunto.caixa.w).toBeCloseTo(768 / 1080, 3)
+  })
+
+  it('a âncora vai direto à projeção: o cover não tem o mínimo de 1% do crop manual (panorama 100000×1000)', () => {
+    const r = compilar({ caixa: { x0: 0.499, y0: 0.2, x1: 0.501, y1: 0.8 }, dimensoes: { width: 100000, height: 1000 } }, comFoto({ style: { objectFit: 'cover' } } as unknown as Partial<Layer>))
+    const assunto = r.leitura.assunto as { caixa: { x: number; w: number } }
+    // Cover central: janela de 562,5 px da foto (a 1% viraria 1000 px); o assunto (200 px) sai a 348 px, com 384 de largura.
+    expect(assunto.caixa.x).toBeCloseTo(348 / 1080, 3)
+    expect(assunto.caixa.w).toBeCloseTo(384 / 1080, 3)
   })
 
   it('caixa fora do quadro, ou interseção que some ao arredondar → fora-do-quadro', () => {

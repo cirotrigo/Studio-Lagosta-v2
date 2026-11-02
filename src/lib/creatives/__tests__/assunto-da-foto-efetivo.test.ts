@@ -35,7 +35,7 @@ vi.mock('@/lib/creatives/embeddings-de-foto', () => ({}))
 
 import { ASSUNTO_NAO_ANALISADO, assuntoEfetivoDaFoto } from '../assunto-da-foto-efetivo'
 import { assuntosEfetivosDoProjeto, buscarNoAcervo, marcarAssuntoDaFoto } from '../acervo'
-import { escreverCatalogoPreservandoCaixas } from '../reconciliar-catalogo'
+import { escreverCatalogoPreservandoCaixas, salvadorDoCatalogo } from '../reconciliar-catalogo'
 import { fonteDaFoto } from '@/lib/compositor/assunto-da-foto'
 
 const CAIXA = { x0: 0.1, y0: 0.2, x1: 0.5, y1: 0.6 }
@@ -181,7 +181,55 @@ describe('escreverCatalogoPreservandoCaixas', () => {
     expect(cron).toContain('await escreverCatalogoPreservandoCaixas(')
     const enriquecer = fonte('scripts/enriquecer-catalogo.ts')
     expect(enriquecer).not.toContain('files.update')
-    expect(enriquecer).toContain('escreverCatalogoPreservandoCaixas(catalog.catalogFileId!')
+    expect(enriquecer).toContain('savesDoCatalogo.salvar(catalog.catalogFileId!')
+    expect(enriquecer).not.toContain('escreverCatalogoPreservandoCaixas')
+  })
+})
+
+describe('salvadorDoCatalogo (o enriquecedor: vários saves, workers em paralelo)', () => {
+  const entrada = (id: string, extra: Record<string, unknown> = {}) => ({ driveFileId: id, description: `foto ${id}`, ...extra })
+
+  beforeEach(() => {
+    drive.readFileAsJson.mockReset().mockImplementation(async () => structuredClone(drive.catalogo))
+    drive.writeFileAsJson.mockReset().mockImplementation(async (_id: string, documento: { images: Array<Record<string, unknown>> }) => {
+      await new Promise((r) => setTimeout(r, 1))
+      drive.catalogo = structuredClone(documento)
+    })
+  })
+
+  it('a caixa que outro escritor regravou entre dois saves sobrevive: `alteradas` é por save', async () => {
+    drive.catalogo = { images: [entrada('a')] }
+    const documento = { images: [entrada('a', { caixaDoAssunto: CAIXA, caixaAnalisadaEm: ANALISADA })] }
+    const saves = salvadorDoCatalogo()
+    saves.alteradas.add('a')
+    await saves.salvar('c', documento)
+    expect(drive.catalogo.images[0]).toMatchObject({ caixaDoAssunto: CAIXA })
+    drive.catalogo.images[0] = entrada('a', { caixaDoAssunto: CAIXA_HUMANA, caixaAnalisadaEm: 'do outro' })
+    await saves.salvar('c', documento)
+    expect(drive.catalogo.images[0]).toMatchObject({ caixaDoAssunto: CAIXA_HUMANA, caixaAnalisadaEm: 'do outro' })
+  })
+
+  it('dois workers salvando juntos: um save por vez, a caixa do primeiro não some no segundo', async () => {
+    drive.catalogo = { images: [entrada('a'), entrada('b')] }
+    const documento = { images: [entrada('a', { caixaDoAssunto: CAIXA, caixaAnalisadaEm: ANALISADA }), entrada('b')] }
+    const saves = salvadorDoCatalogo()
+    saves.alteradas.add('a')
+    const primeiro = saves.salvar('c', documento)
+    documento.images[1] = entrada('b', { caixaDoAssunto: CAIXA_HUMANA, caixaAnalisadaEm: ANALISADA })
+    saves.alteradas.add('b')
+    await Promise.all([primeiro, saves.salvar('c', documento)])
+    expect(drive.catalogo.images).toEqual(documento.images)
+  })
+
+  it('o save que falha devolve o lote: a caixa vai no próximo', async () => {
+    drive.catalogo = { images: [entrada('a', { caixaDoAssunto: CAIXA_HUMANA, caixaAnalisadaEm: 'velha' })] }
+    const documento = { images: [entrada('a', { caixaDoAssunto: CAIXA, caixaAnalisadaEm: ANALISADA })] }
+    const saves = salvadorDoCatalogo()
+    saves.alteradas.add('a')
+    drive.writeFileAsJson.mockRejectedValueOnce(new Error('503'))
+    await expect(saves.salvar('c', documento)).rejects.toThrow('503')
+    await saves.salvar('c', documento)
+    expect(drive.catalogo.images[0]).toMatchObject({ caixaDoAssunto: CAIXA, caixaAnalisadaEm: ANALISADA })
   })
 })
 

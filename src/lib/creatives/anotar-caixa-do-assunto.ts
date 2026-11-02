@@ -38,21 +38,26 @@ export async function anotarCaixas(input: AnotarCaixasInput) {
   const inicial = await lerDocumento()
   const pendentes = (inicial.images ?? []).filter((e) => !e.caixaAnalisadaEm && (!driveFileId || e.driveFileId === driveFileId)).slice(0, limit)
 
-  const patches = new Map<string, { caixaDoAssunto: unknown; caixaAnalisadaEm: string }>()
+  const lote = new Map<string, { caixaDoAssunto: unknown; caixaAnalisadaEm: string }>()
   let copiaGuardada = false
+  let anotadas = 0
   let invalidas = 0
   let erros = 0
 
-  /** Parte do FRESCO, para a entrada que o cron acrescentou durante a rodada sobreviver. Os patches são cumulativos. */
+  /**
+   * Parte do FRESCO, para a entrada que o cron acrescentou durante a rodada sobreviver. O lote esvazia depois do save: a
+   * caixa já gravada não volta nos saves seguintes por cima da de quem a reanalisou no meio da rodada.
+   */
   const gravar = async () => {
-    if (dryRun || patches.size === 0) return
+    if (dryRun || lote.size === 0) return
     if (!copiaGuardada) {
       await backup(inicial)
       copiaGuardada = true
     }
     const fresco = await lerDocumento()
-    const images = fresco.images.map((e) => ({ ...e, ...patches.get(e.driveFileId) }))
-    await salvar({ ...fresco, images, lastUpdated: new Date().toISOString() }, new Set(patches.keys()))
+    const images = fresco.images.map((e) => ({ ...e, ...lote.get(e.driveFileId) }))
+    await salvar({ ...fresco, images, lastUpdated: new Date().toISOString() }, new Set(lote.keys()))
+    lote.clear()
   }
 
   // ponytail: uma foto por vez; paralelizar se um acervo inteiro virar pedido (hoje é `--limit` por cliente).
@@ -65,7 +70,8 @@ export async function anotarCaixas(input: AnotarCaixasInput) {
         aoAnotar?.(entrada, 'invalida')
         continue
       }
-      patches.set(entrada.driveFileId, { caixaDoAssunto: lida.caixa, caixaAnalisadaEm: new Date().toISOString() })
+      lote.set(entrada.driveFileId, { caixaDoAssunto: lida.caixa, caixaAnalisadaEm: new Date().toISOString() })
+      anotadas++
       aoAnotar?.(entrada, 'anotada')
       desdeOUltimoSave++
     } catch (erro) {
@@ -80,5 +86,5 @@ export async function anotarCaixas(input: AnotarCaixasInput) {
   }
   if (desdeOUltimoSave > 0) await gravar()
 
-  return { pendentes: pendentes.length, anotadas: patches.size, invalidas, erros }
+  return { pendentes: pendentes.length, anotadas, invalidas, erros }
 }

@@ -1975,7 +1975,10 @@ assistência leva o assunto novo INTEIRO para a caixa visível (`assistencia.ref
   sobre a imagem renderizada.
 - Ausências ditas em `leitura.assunto`: `foto-sem-id`, `fonte-nao-coerente`, `nao-analisada`, `sem-assunto`,
   `sem-dimensoes`, `transformacao-nao-representada` (`objectFit` não `cover`, flip em `style.flipH/flipV`, rotação da
-  camada), `fora-do-quadro`, `catalogo-indisponivel`. A referência compila sem o assunto em todos esses casos.
+  camada, `style.mask`, `style.border.radius`: o que o retângulo da camada não representa), `fora-do-quadro`,
+  `catalogo-indisponivel`. A referência compila sem o assunto em todos esses casos.
+- A âncora vai DIRETO a `assuntoEmPixels`, sem virar janela: o mínimo de 1% é do crop manual, e o cover não o tem (no
+  panorama 100000×1000 a conversão gravava o assunto no lugar errado; Codex, F2b rodada 1).
 - **Falha transitória** (catálogo, tabela ou Drive lançando): se a ÚLTIMA revisão tem `assunto`, recusa com
   `CATALOGO_INDISPONIVEL` e nada grava, em vez de degradar; se não tem, compila com `catalogo-indisponivel`, dito.
 - Mesma página + mesma caixa reaproveita; caixa alterada dá a versão seguinte (é o que se quer).
@@ -1997,6 +2000,12 @@ alvo inalcançável não é erro: fica o mais perto possível, com `ajustes` e `
   segue pelos cortes de hoje, sujeitos ao 0,75.
 - `diagnostico.posicao.assistencia` diz o estado em toda peça com arquétipo. Aviso novo quando a janela vencedora amplia a
   foto no canvas (`escala > 1`): "confira a nitidez". Aviso, nunca veto.
+
+**A janela assistida não é pedido.** Ela foi calculada para AQUELA foto. Na recomposição, a janela da página só vira
+`spec.foto.janela` se a spec já a pedia ou se foi editada (`enquadramentoAlterado`, ou diverge da escolha gravada): a
+assistida fica só na escolha, que a reproduz enquanto a foto for a mesma. Foto trocada invalida a escolha e a busca roda
+com assistência; a janela editada segue para a foto nova, como na F2a. Gravá-la na spec numa edição de texto a faria passar
+por pedida na troca de foto seguinte: é o que `f2b-recompor.test.ts` prova, pela recomposição real.
 
 **Identidade por valor.** Com várias janelas o rótulo `'janela'` é o mesmo em todas: `LeituraDoCorte`, avaliação e resumo
 carregam `chave` (= `chaveDoCorte`), e `corteSel`, `corteFinal` e o vencedor da busca se acham por ela. Quem acrescentar

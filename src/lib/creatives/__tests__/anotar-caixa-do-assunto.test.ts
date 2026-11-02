@@ -7,6 +7,9 @@ function dubles(images: DocumentoDoCatalogo['images'], respostas: Record<string,
   return {
     ordem,
     documento: () => drive,
+    substituir: (id: string, campos: Record<string, unknown>) => {
+      drive = { images: drive.images.map((e) => (e.driveFileId === id ? { ...e, ...campos } : e)) }
+    },
     injetar: (entrada: DocumentoDoCatalogo['images'][number]) => {
       drive = { images: [...drive.images, entrada] }
     },
@@ -56,6 +59,19 @@ describe('anotarCaixas', () => {
     const d = dubles([antiga('a'), antiga('b'), antiga('c')], { a: [0, 0, 9, 9], b: [0, 0, 9, 9], c: [0, 0, 9, 9] })
     await anotarCaixas({ ...d.input, salvarACada: 1 })
     expect(d.ordem).toEqual(['backup', 'salvar', 'salvar', 'salvar'])
+  })
+
+  it('a caixa que outro escritor regravou entre dois saves não é sobrescrita: o lote é por save', async () => {
+    const d = dubles([antiga('a'), antiga('b')], { a: [0, 0, 500, 500], b: [0, 0, 250, 250] })
+    const doOutro = { x0: 0.1, y0: 0.1, x1: 0.2, y1: 0.2 }
+    d.input.pedirCaixa.mockImplementationOnce(async () => [0, 0, 500, 500]).mockImplementationOnce(async () => {
+      d.substituir('a', { caixaDoAssunto: doOutro, caixaAnalisadaEm: 'do outro' })
+      return [0, 0, 250, 250]
+    })
+    const r = await anotarCaixas({ ...d.input, salvarACada: 1 })
+    expect(r.anotadas).toBe(2)
+    expect(d.input.salvar.mock.calls.map((c) => [...(c[1 as 0] as unknown as Set<string>)])).toEqual([['a'], ['b']])
+    expect(d.documento().images[0]).toMatchObject({ caixaDoAssunto: doOutro, caixaAnalisadaEm: 'do outro' })
   })
 
   it('--dry-run consulta a visão e não escreve nada', async () => {

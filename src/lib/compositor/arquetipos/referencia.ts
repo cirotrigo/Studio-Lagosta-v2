@@ -20,7 +20,6 @@
 import type { Layer } from '@/types/template'
 import { papelDoTexto } from '@/lib/font-combinations-capture'
 import { assuntoEmPixels, type AssuntoNormalizado } from '../assunto-da-foto'
-import { janelaDoRotulo } from '../corte-da-foto'
 import { enquadramentoDaPagina } from '../defasagem'
 import { formatoDaPaginaGravada } from '../formato'
 import { DIMENSOES, type Alinhamento, type Papel } from '../spec'
@@ -160,20 +159,20 @@ function estiloDaReferencia(c: Layer): { ok: true; estilo: EstiloDaReferencia } 
 }
 
 /**
- * F2b: o assunto da foto projetado no quadro pelo retângulo-fonte DESENHADO (a janela de `style.crop`, ou a da âncora):
- * sem `janelaNaProporcao` — se a janela deforma a imagem, a projeção deforma igual. Recorta à camada, translada por
- * `position`, recorta à página. O que `resolveImageSourceRect` não representa não é projetado.
+ * F2b: o assunto da foto projetado no quadro pelo retângulo-fonte DESENHADO (a janela de `style.crop`, ou a âncora, sem
+ * virar janela: o cover não tem o mínimo de 1% do crop manual): sem `janelaNaProporcao` — se a janela deforma a imagem, a
+ * projeção deforma igual. Recorta à camada, translada por `position`, recorta à página. O que `resolveImageSourceRect` e
+ * o retângulo da camada não representam (espelho, giro, máscara, canto arredondado) não é projetado.
  */
 function assuntoNoQuadro(insumo: InsumoDoAssunto, camada: Layer, pagina: { width: number; height: number }): AssuntoNoQuadro | { ausente: MotivoDaAusencia } {
   if ('ausente' in insumo) return insumo
-  const estilo = (camada.style ?? {}) as { objectFit?: unknown; flipH?: unknown; flipV?: unknown }
+  const estilo = (camada.style ?? {}) as { objectFit?: unknown; flipH?: unknown; flipV?: unknown; mask?: { path?: unknown }; border?: { radius?: number } }
   const caixaDaCamada = { width: camada.size?.width ?? 0, height: camada.size?.height ?? 0 }
   const enquadramento = enquadramentoDaPagina([camada])
-  if (estilo.objectFit !== 'cover' || estilo.flipH || estilo.flipV || (camada.rotation && Math.abs(camada.rotation) > EPS) || !enquadramento || !(caixaDaCamada.width > 0 && caixaDaCamada.height > 0)) {
+  if (estilo.objectFit !== 'cover' || estilo.flipH || estilo.flipV || estilo.mask?.path || estilo.border?.radius || (camada.rotation && Math.abs(camada.rotation) > EPS) || !enquadramento || !(caixaDaCamada.width > 0 && caixaDaCamada.height > 0)) {
     return { ausente: 'transformacao-nao-representada' }
   }
-  const janela = 'janela' in enquadramento ? enquadramento.janela : janelaDoRotulo(insumo.dimensoes, caixaDaCamada, enquadramento.corte)
-  const p = assuntoEmPixels(insumo.caixa, insumo.dimensoes, caixaDaCamada, janela)
+  const p = assuntoEmPixels(insumo.caixa, insumo.dimensoes, caixaDaCamada, 'janela' in enquadramento ? enquadramento.janela : enquadramento.corte)
   const noRetangulo = (r: Ret, x0: number, y0: number, x1: number, y1: number): Ret => {
     const ex = Math.max(r.x, x0), ey = Math.max(r.y, y0)
     return { x: ex, y: ey, w: Math.min(r.x + r.w, x1) - ex, h: Math.min(r.y + r.h, y1) - ey }

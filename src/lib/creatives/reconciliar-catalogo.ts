@@ -151,6 +151,31 @@ export async function escreverCatalogoPreservandoCaixas<D extends { images: Arra
   await googleDriveService.writeFileAsJson(catalogoId, { ...documento, images })
 }
 
+/**
+ * Os saves de quem grava várias vezes na rodada e com workers em paralelo (`enriquecer-catalogo.ts`). Um de cada vez, senão
+ * dois leem o mesmo fresco e o segundo desfaz a caixa do primeiro; e `alteradas` é POR SAVE: o id acumulado reaplicaria a
+ * caixa desta rodada por cima da de quem a reanalisou depois. O save que falha devolve o lote ao próximo.
+ */
+export function salvadorDoCatalogo() {
+  const alteradas = new Set<string>()
+  let fila: Promise<unknown> = Promise.resolve()
+  const salvar = (catalogoId: string, documento: { images: Array<{ driveFileId: string }> }) => {
+    const vez = fila.then(async () => {
+      const lote = new Set(alteradas)
+      alteradas.clear()
+      try {
+        await escreverCatalogoPreservandoCaixas(catalogoId, documento, { alteradas: lote })
+      } catch (erro) {
+        lote.forEach((id) => alteradas.add(id))
+        throw erro
+      }
+    })
+    fila = vez.catch(() => undefined)
+    return vez
+  }
+  return { alteradas, salvar }
+}
+
 export async function reconciliarCatalogo({
   projectId,
   prazoEm = Number.POSITIVE_INFINITY,

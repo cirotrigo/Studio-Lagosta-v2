@@ -269,6 +269,10 @@ pede `[ymin, xmin, ymax, xmax]` em 0–1000 e `lerCaixaDaVisao` converte; respos
   relê o documento atual e aplica só as entradas de `alteradas`. Sem isso, o cron com snapshot velho apagaria as caixas que
   o backfill acabou de gravar, e o backfill apagaria a foto que o cron acabou de catalogar. Teste: `writeFileAsJson` só é
   chamado por ela.
+- 🔴 **`alteradas` é POR SAVE, nunca acumulado na rodada**: o id que fica no conjunto reaplica a caixa desta rodada por cima
+  da de quem reanalisou a foto depois, em todo save seguinte. O backfill esvazia o lote após cada save; o enriquecedor usa
+  `salvadorDoCatalogo`, que também põe os saves dos workers em fila (dois lendo o mesmo fresco, o segundo desfaria a caixa
+  do primeiro) e devolve o lote se o save falha.
 - **Os scripts legados `analyze-*.ts` não passam por ela: não use.** Escritor fora do repositório também não; rodar um
   deles depois do backfill pode apagar as caixas.
 - **Backfill**: `scripts/anotar-caixa-do-assunto.ts --projeto <nome> [--drive-file-id <id>] [--limit N] [--dry-run]`.

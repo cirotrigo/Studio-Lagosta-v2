@@ -45,7 +45,7 @@ import {
   type AnaliseNormalizada,
   type VocabularioDeTags,
 } from '../src/lib/creatives/catalogo-de-fotos'
-import { escreverCatalogoPreservandoCaixas } from '../src/lib/creatives/reconciliar-catalogo'
+import { salvadorDoCatalogo } from '../src/lib/creatives/reconciliar-catalogo'
 import * as google from 'googleapis/build/src/apis/drive'
 import { PrismaClient } from '../prisma/generated/client'
 import * as https from 'https'
@@ -284,11 +284,11 @@ async function readCatalog(fileId: string): Promise<ImageCatalog> {
   return res.data as unknown as ImageCatalog
 }
 
-/** As fotos com caixa válida ou `null` explícito nesta rodada: as demais preservam a caixa fresca (F2b). */
-const comCaixaNestaRodada = new Set<string>()
+/** Só as fotos com caixa válida ou `null` explícito desde o último save gravam a caixa: as demais preservam a fresca (F2b). */
+const savesDoCatalogo = salvadorDoCatalogo()
 
 function saveCatalog(catalog: ImageCatalog) {
-  return escreverCatalogoPreservandoCaixas(catalog.catalogFileId!, catalog, { alteradas: comCaixaNestaRodada })
+  return savesDoCatalogo.salvar(catalog.catalogFileId!, catalog)
 }
 
 // ─── Contexto da marca, montado por cliente ──────────────────────────
@@ -535,7 +535,7 @@ async function main() {
         // A análise v3 inteira entra na entrada; o que é da FOTO (md5,
         // catalogadaEm, usageHistory) e da identidade (ids, pasta) fica.
         Object.assign(img, r)
-        if (r.caixaAnalisadaEm) comCaixaNestaRodada.add(img.driveFileId)
+        if (r.caixaAnalisadaEm) savesDoCatalogo.alteradas.add(img.driveFileId)
         img.usageHistory = img.usageHistory ?? []
         if (r.precoLegivel === undefined) delete img.precoLegivel
         if (r.marcaDeTerceiro === undefined) delete img.marcaDeTerceiro
