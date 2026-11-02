@@ -213,7 +213,9 @@ const DIAS_RE = `(?:todos os dias|${DIA_RE}(?:\\s*(?:,|e|a|–|—|-)\\s*${DIA_R
 const HORA_RE = `(?:\\d{1,2}(?:h\\d{0,2}|:\\d{2})|meia[- ]noite|meio[- ]dia)`
 const ATE_RE = `\\s*(?:as?|ate|–|—|-)\\s*`
 // Exige "das": "qui só à tarde 15–18h" é medição de engajamento e "ter–sex, 16h–19h" é mecânica, não funcionamento.
-const FAIXA_DO_DIA = new RegExp(`\\b(${DIAS_RE})[\\s:,–—-]*(?:funcionam?\\s+|abrem?\\s+|habitualmente\\s+)*das?\\s+(${HORA_RE})${ATE_RE}(${HORA_RE})`, 'g')
+const VERBO_DA_CASA = '(?:funcionam?|funcionamos|abrem?|abrimos|(?:estamos|ficamos|esta|fica)\\s+abert[ao]s?)'
+const ADVERBIO_RE = '(?:habitualmente|normalmente)'
+const FAIXA_DO_DIA = new RegExp(`\\b(${DIAS_RE})[\\s:,–—-]*(?:${VERBO_DA_CASA}\\s+|${ADVERBIO_RE}\\s+)*das?\\s+(${HORA_RE})${ATE_RE}(${HORA_RE})`, 'g')
 const TURNO_SEGUINTE = new RegExp(`^\\s*(?:,|e)\\s*das?\\s+(${HORA_RE})${ATE_RE}(${HORA_RE})`)
 const FECHA_DO_DIA = new RegExp(`\\b(${DIAS_RE})\\s+(?:a casa\\s+)?fecha\\s+as\\s+(${HORA_RE})`, 'g')
 const FAIXA = new RegExp(`\\bdas?\\s+(${HORA_RE})${ATE_RE}(${HORA_RE})`, 'g')
@@ -221,6 +223,19 @@ const FAIXA = new RegExp(`\\bdas?\\s+(${HORA_RE})${ATE_RE}(${HORA_RE})`, 'g')
 /** Serviço com horário próprio na mesma linha: não é o funcionamento da casa. */
 const OUTRO_SERVICO = /executivo|delivery|entrega|ifood|retirada|cozinha|brunch/
 const HAPPY_HOUR = /happy[ -]?hour/
+/**
+ * A faixa é de outro assunto só com sujeito colado nela: "segunda e domingo funcionam das 11h às 17h", "Almoço das 11h".
+ * Palavra solta não muda de quem ela é ("na varanda aberta", "antes do jantar"): sem sujeito, vale o happy hour.
+ */
+const CASA_NA_FAIXA = new RegExp(`(?:\\b${DIAS_RE}[\\s:,–—-]*${VERBO_DA_CASA}\\s+(?:${ADVERBIO_RE}\\s+)*|(?:a casa\\s+(?:funciona|abre)(?:\\s+${ADVERBIO_RE})?|funcionamento(?:\\s+habitual)?)[\\s:]+(?:(?:de\\s+)?${DIAS_RE}[\\s:,–—-]*)?)das?\\s+${HORA_RE}`)
+/** "Terça a sexta das 16h às 19h, jantar das 19h às 23h": cada faixa se julga no seu trecho, um sujeito não leva a vizinha. */
+const SUJEITO_SEGUINTE = new RegExp(`(?<=(?:\\dh|\\d:\\d\\d|noite|dia).*(?:[,:(]\\s*|\\s[—–-]\\s*|\\se\\s)(?:e\\s+)?(?:[oa]\\s+)?)(?:${DIAS_RE}[\\s:,–—-]*${VERBO_DA_CASA}\\s|casa\\s+(?:funciona|abre)|funcionamento|almoco\\b|jantar\\b)`, 'g')
+const REFEICAO_NA_FAIXA = new RegExp(`(?<!(?:\\dh|\\d:\\d\\d).*|(?:antes|depois) d[oe] |(?:apos|ate) o |(?:pos|pre)[ -])\\b(?:almoco|jantar)\\b:?[^,;:]*?\\bdas?\\s+${HORA_RE}`)
+/**
+ * Só é misto o título que lista outro serviço ao lado do happy hour ("Horário de funcionamento e happy hour").
+ * "Happy Hour no fim do expediente" e "Happy Hour: horários e condições" seguem exclusivos: sem lista, vale o exclusivo.
+ */
+const TITULO_MISTO = /(?:^|,\s*|\s[—–-]\s|\se\s)(?:horarios?\s+(?:d[eoa]\s+)?)?(?:funcionamento|expediente|almoco|jantar|delivery|brunch)\b(?!\s+d[oe]\s+(?:\S+\s+)?happy)|\bhorarios?\s+(?:da casa|e\s+happy)|happy[ -]?hour\s+e\s+horarios?\b/
 /** Linha que fala de uma data ou de feriado é exceção: fica preservada e não se compara com o horário habitual. */
 const DATADA = /\b\d{1,2}\/\d{1,2}\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2} de (?:janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b|feriado|vespera|natal|reveillon|carnaval|pascoa|excepcional/
 /** "habitual" sozinho não serve: "no lugar do horário habitual" é justamente a exceção. */
@@ -293,24 +308,30 @@ interface FatoDoTexto {
 function fatosDoTexto(titulo: string, texto: string): FatoDoTexto[] {
   const fatos: FatoDoTexto[] = []
   const tituloNormal = semAcento(titulo)
+  // Só a entrada exclusiva empresta o assunto à frase sem sujeito ("Terça a sexta, das 16h às 19h.").
+  const soDeHappyHour = HAPPY_HOUR.test(tituloNormal) && !TITULO_MISTO.test(tituloNormal)
   for (const linha of texto.split(/\n+/)) {
     for (const { clausula: trecho, datada } of clausulasDaLinha(linha)) {
       if (datada) continue
-      const c = semAcento(trecho)
-      const happy = HAPPY_HOUR.test(c) || (HAPPY_HOUR.test(tituloNormal) && !OUTRO_SERVICO.test(c))
-      if (happy) {
-        // Só a faixa depois de "happy hour" e as coladas nela: "e delivery das 20h às 23h" é de outro serviço.
-        const doHappy = c.slice(Math.max(c.search(HAPPY_HOUR), 0))
-        const [m] = doHappy.matchAll(FAIXA)
-        if (m) fatos.push({ dias: null, faixa: turnosDesde(doHappy, m), fim: null, trecho })
-        continue
+      for (const [parte, c] of semAcento(trecho).replace(SUJEITO_SEGUINTE, '\n$&').split('\n').entries()) {
+        const citacao = c.search(HAPPY_HOUR)
+        let doResto = c
+        if (citacao >= 0 || (soDeHappyHour && parte === 0 && !CASA_NA_FAIXA.test(c) && !REFEICAO_NA_FAIXA.test(c) && !OUTRO_SERVICO.test(c))) {
+          // Só a faixa depois de "happy hour" e as coladas nela: "e delivery das 20h às 23h" é de outro serviço.
+          const doHappy = c.slice(Math.max(citacao, 0))
+          const [m] = doHappy.matchAll(FAIXA)
+          if (m) fatos.push({ dias: null, faixa: turnosDesde(doHappy, m), fim: null, trecho })
+          // O que vem antes da citação só se compara se disser que é da casa: pode ser o próprio happy hour se apresentando.
+          if (!m || citacao <= 0 || !CASA_NA_FAIXA.test(c.slice(0, citacao))) continue
+          doResto = c.slice(0, citacao)
+        }
+        if (OUTRO_SERVICO.test(doResto) || OUTRO_SERVICO.test(tituloNormal) || ((REFEICAO_NA_FAIXA.test(doResto) || /^(?:almoco|jantar)\b/.test(doResto)) && !CASA_NA_FAIXA.test(doResto))) continue
+        for (const m of doResto.matchAll(FAIXA_DO_DIA)) {
+          if (/almoco/.test(doResto.slice(0, m.index))) continue
+          fatos.push({ dias: diasDe(m[1]), faixa: turnosDesde(doResto, m), fim: null, trecho })
+        }
+        for (const m of doResto.matchAll(FECHA_DO_DIA)) fatos.push({ dias: diasDe(m[1]), faixa: null, fim: horaDe(m[2], true), trecho })
       }
-      if (OUTRO_SERVICO.test(c) || OUTRO_SERVICO.test(tituloNormal)) continue
-      for (const m of c.matchAll(FAIXA_DO_DIA)) {
-        if (/almoco/.test(c.slice(0, m.index))) continue
-        fatos.push({ dias: diasDe(m[1]), faixa: turnosDesde(c, m), fim: null, trecho })
-      }
-      for (const m of c.matchAll(FECHA_DO_DIA)) fatos.push({ dias: diasDe(m[1]), faixa: null, fim: horaDe(m[2], true), trecho })
     }
   }
   return fatos
