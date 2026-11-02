@@ -383,6 +383,25 @@ model PhotoDestaque {
   @@unique([projectId, driveFileId])
 }
 
+/// F2b: a decisão HUMANA sobre o assunto da foto (`marcar-assunto`). Fora do JSON do catálogo, que tem escritores
+/// concorrentes; a caixa da visão fica lá. Vence a visão em `assuntoEfetivoDaFoto`. Sem md5: a reconciliação não atualiza
+/// o hash de entrada existente, então arquivo trocado sob o mesmo id não é detectado (limite dito).
+model PhotoAssunto {
+  id          String    @id @default(cuid())
+  projectId   Int
+  driveFileId String
+  /// 'caixa' | 'sem-assunto'. TEXT, como `PhotoDestaque.origem`.
+  decisao     String
+  /// Frações da foto como o Drive a renderiza; null em 'sem-assunto'.
+  caixa       Json?
+  /// User.id INTERNO (nunca clerkId), nullable: auditoria, não gate.
+  decididoPor String?
+  criadoEm    DateTime  @default(now())
+  revogadoEm  DateTime?
+
+  @@unique([projectId, driveFileId])
+}
+
 model LearningSignal {
   id           String    @id @default(cuid())
   projectId    Int

@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
+  EntradaDoCatalogoSchema,
+  lerCaixaDaVisao,
   lerEntradasDoCatalogo,
+  montarPromptDaCaixa,
   montarPromptDeAnalise,
   montarVocabularioDeTags,
   normalizarAnalise,
@@ -95,5 +98,44 @@ describe('montarPromptDeAnalise', () => {
     expect(p).toContain('sabores-real')
     expect(p).toContain('Crepe de Nutella')
     for (const campo of ['"assunto"', '"elementos"', '"enquadramento"', '"momento"', '"lotacao"', '"pessoas"', '"tagsLivres"']) expect(p).toContain(campo)
+  })
+})
+
+describe('F2b · a caixa do assunto', () => {
+  it('lerCaixaDaVisao: [ymin, xmin, ymax, xmax] em 0–1000 vira frações; null é decisão; o resto não carimba', () => {
+    expect(lerCaixaDaVisao([100, 250, 900, 750])).toEqual({ caixa: { x0: 0.25, y0: 0.1, x1: 0.75, y1: 0.9 } })
+    expect(lerCaixaDaVisao(null)).toEqual({ caixa: null })
+    for (const invalida of [undefined, 'prato', [1, 2, 3], [0, 0, 1001, 10], [-1, 0, 10, 10], [500, 0, 400, 10], [0, 500, 10, 400], [0, 0, 0, 10], [1.5, 0, 10, 10], ['0', 0, 10, 10]]) {
+      expect(lerCaixaDaVisao(invalida)).toBeUndefined()
+    }
+  })
+
+  it('normalizarAnalise carimba só com caixa válida ou null explícito', () => {
+    const comCaixa = normalizarAnalise({ caixaDoAssunto: [0, 0, 500, 500] }, vocab, { pasta: 'x' })
+    expect(comCaixa.caixaDoAssunto).toEqual({ x0: 0, y0: 0, x1: 0.5, y1: 0.5 })
+    expect(comCaixa.caixaAnalisadaEm).toEqual(expect.any(String))
+    const nula = normalizarAnalise({ caixaDoAssunto: null }, vocab, { pasta: 'x' })
+    expect(nula.caixaDoAssunto).toBeNull()
+    expect(nula.caixaAnalisadaEm).toEqual(expect.any(String))
+    for (const bruto of [{}, { caixaDoAssunto: [1, 2, 3] }]) {
+      const a = normalizarAnalise(bruto, vocab, { pasta: 'x' })
+      expect(a).not.toHaveProperty('caixaDoAssunto')
+      expect(a).not.toHaveProperty('caixaAnalisadaEm')
+    }
+  })
+
+  it('os dois prompts pedem a caixa; o texto de `assunto` segue sendo texto', () => {
+    const prompt = montarPromptDeAnalise({ projectName: 'X', pasta: 'p', cardapio: '', contextoDaMarca: '', vocabulario: vocab })
+    expect(prompt).toContain('"caixaDoAssunto": [ymin, xmin, ymax, xmax]')
+    expect(prompt).toContain('"assunto": "o item PRINCIPAL')
+    expect(montarPromptDaCaixa({ assunto: 'croissant' })).toContain('"croissant"')
+    expect(montarPromptDaCaixa({ assunto: null })).toContain('[ymin, xmin, ymax, xmax]')
+  })
+
+  it('o schema aceita a entrada antiga sem os campos e não derruba a torta', () => {
+    expect(EntradaDoCatalogoSchema.parse({ driveFileId: 'a', fileName: 'a', folder: '' })).not.toHaveProperty('caixaDoAssunto')
+    const torta = EntradaDoCatalogoSchema.parse({ driveFileId: 'a', fileName: 'a', folder: '', caixaDoAssunto: 'prato', caixaAnalisadaEm: 7 })
+    expect(torta.caixaDoAssunto).toBeUndefined()
+    expect(torta.caixaAnalisadaEm).toBeUndefined()
   })
 })
