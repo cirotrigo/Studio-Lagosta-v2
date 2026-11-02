@@ -72,6 +72,10 @@ describe('escolha espacial na recomposição (CP2B)', () => {
     const janela = { x: 0.177, y: 0.058, width: 0.624, height: 0.742 }
     expect(escolhaEspacialOriginal(daBusca({ ...escolha, corte: 'janela', janela }), comArquetipo)).toMatchObject({ modo: 'busca-espacial-v1', corte: 'janela', janela })
     expect(codigo(() => escolhaEspacialOriginal(daBusca({ ...escolha, corte: 'janela' }), comArquetipo))).toBe('ARQUETIPO_ESCOLHA_ILEGIVEL')
+    // O histórico da busca guarda o corte 'janela' avaliado (Codex, rodada 2, P3).
+    const comHistorico = daBusca({ ...escolha, corte: 'janela', janela })
+    ;(comHistorico.composicao.arquetipo as Record<string, any>).buscaEspacial = { ...(comHistorico.composicao.arquetipo as Record<string, any>).buscaEspacial, motivo: 'ok', combinacoesAvaliadas: 1, cortesAvaliados: ['janela'] }
+    expect(escolhaEspacialOriginal(comHistorico, comArquetipo)).toMatchObject({ buscaOriginal: { cortesAvaliados: ['janela'] } })
     // A janela gravada fora de faixa é RESOLVIDA como o desenho (o clamp), nunca ignorada (Codex, F2a rodada 1, P2 #7)…
     expect(escolhaEspacialOriginal(daBusca({ ...escolha, corte: 'janela', janela: { x: 0.9, y: 0, width: 0.5, height: 0.5 } }), comArquetipo)).toMatchObject({ corte: 'janela', janela: { x: 0.9, y: 0, width: 1 - 0.9, height: 0.5 } })
     // …e só a que o desenho também não aceita (nada sobra depois do clamp) é ilegível.

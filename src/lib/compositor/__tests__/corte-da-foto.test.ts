@@ -61,7 +61,8 @@ describe('igualdade por valor e leitura', () => {
     // O crop que o renderer aceita por clamp (Codex, rodada 1, P2 #7): a MESMA faixa que ele mostra, nunca ignorado.
     const foto = { width: 2000, height: 1000 }
     const caixa = { width: 500, height: 500 }
-    for (const cru of [{ x: 0.9, y: 0, width: 0.5, height: 0.5 }, { x: 0.2, y: 0.1, width: 0.005, height: 0.6 }, { x: -0.1, y: 0.1, width: 0.5, height: 0.6 }]) {
+    // Inclusive a faixa na borda abaixo de 1 % depois do clamp (Codex, rodada 2: 10 px de 2000), nos dois eixos.
+    for (const cru of [{ x: 0.9, y: 0, width: 0.5, height: 0.5 }, { x: 0.995, y: 0, width: 0.5, height: 0.5 }, { x: 0, y: 0.998, width: 0.5, height: 0.5 }, { x: 0.2, y: 0.1, width: 0.005, height: 0.6 }, { x: -0.1, y: 0.1, width: 0.5, height: 0.6 }]) {
       const lida = lerJanela(cru)!
       expect(lida).not.toBeNull()
       expect(janelaEmPx(lida, foto)).toEqual(resolveImageSourceRect(foto, caixa, { objectFit: 'cover', crop: cru }))

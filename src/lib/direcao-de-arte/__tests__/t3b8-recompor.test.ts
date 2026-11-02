@@ -133,9 +133,9 @@ const trocarApoio = (l: Layer): Layer => (l.id === 'apoio' ? { ...l, content: 'M
 const specRecompor = (extra: Record<string, unknown> = {}) => spec8('d8-recompor', { foto: { driveFileId: 'drive-8' }, ...extra })
 
 /** Compõe a peça (persistência capturada), grava a página como o persist gravaria e aplica a edição pedida. */
-async function nascerEEditar(editar: (l: Layer) => Layer = trocarApoio, pagina: Record<string, unknown> = {}) {
+async function nascerEEditar(editar: (l: Layer) => Layer = trocarApoio, pagina: Record<string, unknown> = {}, specExtra: Record<string, unknown> = {}) {
   banco.entradas = []
-  await comporPeca(specRecompor(), { autor: 'u-fixture' })
+  await comporPeca(specRecompor(specExtra), { autor: 'u-fixture' })
   const entrada = banco.entradas.at(-1)!
   const editadas = (entrada.layers as Layer[]).map(editar)
   const revisao = revisaoDaPaginaComCamadas(lerCopyAutoral(entrada.copyAutoral).copy!, editadas, { autor: 'equipe', motivo: 'edição', superficie: 'editor' })
@@ -318,9 +318,15 @@ describe.skipIf(!fontesNoDisco())('#8 · recomposição real da Generation', () 
     expect(patch.composicao.arquetipo.buscaEspacial.escolha.corte).toBe('center-top')
   }, 120_000)
 
-  it('G-R6c (F2a, Codex rodada 1 #1): "Remover" o enquadramento (fundo sem crop NEM âncora) → a recomposição adota o cover CENTRAL da página, não ressuscita o corte gravado', async () => {
+  it('G-R6c (F2a, Codex rodada 1 #1): a peça nasce POR JANELA (sem âncora); "Remover" (fundo sem crop NEM âncora) → a recomposição adota o cover CENTRAL da página, não ressuscita a janela gravada', async () => {
     await montar()
-    await nascerEEditar((l) => (l.id === 'bg-foto' ? { ...l, style: { objectFit: 'cover', ...((l.style as any)?.mask ? { mask: (l.style as any).mask } : {}) } } : l))
+    // A janela de baixo na proporção da caixa (1080×1152 numa foto 1080×1350): o assunto embaixo fica inteiro nela.
+    const janela = { x: 0, y: 1 - 1152 / 1350, width: 1, height: 1152 / 1350 }
+    const entrada = await nascerEEditar((l) => (l.id === 'bg-foto' ? { ...l, style: { objectFit: 'cover', ...((l.style as any)?.mask ? { mask: (l.style as any).mask } : {}) } } : l), {}, { foto: { driveFileId: 'drive-8', janela } })
+    const nascida = (entrada.layers as Layer[]).find((l) => l.id === 'bg-foto')!
+    expect(nascida.style?.crop).toEqual(janela)
+    expect(nascida.style?.cropPosition).toBeUndefined()
+    expect(entrada.fieldValues.composicao.arquetipo.buscaEspacial.escolha).toMatchObject({ corte: 'janela', janela })
     // O assunto passa a caber no central (no cenário ele fica embaixo e a peça nasce em center-bottom).
     cenario.atual = { ...cenario.atual!, catalogo: { driveFileId: 'drive-8', assunto: { x0: 0.34, y0: 0.45, x1: 0.66, y1: 0.6 } } }
     const r = await recomporPaginaDefasada({ pageId: 'p9' })

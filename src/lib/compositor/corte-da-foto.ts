@@ -42,7 +42,8 @@ const finito = (v: unknown): v is number => typeof v === 'number' && Number.isFi
  * `resolveImageSourceRect`): o estado existente que o renderer aceita nunca é ignorado — ignorá-lo faria a recomposição
  * trocar o enquadramento visível e o revisor medir o corte errado (Codex, F2a rodada 1, P2 #7). `null` só no que o
  * renderer também não desenha por ela (não é objeto, lado não finito ou ≤ 0, nada sobra depois do clamp). A forma de um
- * PEDIDO novo é a `janelaSchema` da spec, estrita.
+ * PEDIDO novo é a `janelaSchema` da spec, estrita. A faixa na borda que fica abaixo de 1 % DEPOIS do clamp (`x: 0.995,
+ * width: 0.5` → 0,5 % da largura) é o que o renderer desenha — fica (Codex, rodada 2); só o lado que chega a zero (x ≥ 1) é null.
  */
 export function lerJanela(valor: unknown): Janela | null {
   if (!valor || typeof valor !== 'object' || Array.isArray(valor)) return null
@@ -51,7 +52,7 @@ export function lerJanela(valor: unknown): Janela | null {
   const { width, height } = j as unknown as Janela
   if (!(width > 0 && height > 0)) return null
   const e = janelaEfetiva(j as unknown as Janela)
-  return e.width >= JANELA_MINIMA && e.height >= JANELA_MINIMA ? e : null
+  return e.width > 0 && e.height > 0 ? e : null
 }
 
 /** A janela como `resolveImageSourceRect` a desenha (clamp): é esta que a medida usa — nunca a crua. */

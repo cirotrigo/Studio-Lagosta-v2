@@ -15,6 +15,7 @@ import {
   slidesDaPagina,
   specComACopyDaPagina,
   enquadramentoDaPagina,
+  paginaMudouDesde,
 } from '../defasagem'
 import type { SpecDePeca } from '../spec'
 
@@ -350,6 +351,16 @@ describe('F2a — o enquadramento efetivo da página na recomposição', () => {
   // Com arquétipo: a página que mostra a MESMA foto desenhada mantém o driveFileId (CP2B) — é o caso da recomposição.
   const specComFoto = { ...spec, foto: { driveFileId: 'abc' }, arquetipo: { id: 'minimal-fb-topo-esquerda', versao: 1, impressao: 'arq1-00000000000001' } } as SpecDePeca
 
+  it('paginaMudouDesde (a conferência do FIM do job) enxerga o crop da foto de fundo, a âncora e a máscara mudados durante a recomposição — o job volta à fila', () => {
+    const antes = [{ ...foto, style: { objectFit: 'cover' } } as Camada, texto('headline', 'a')]
+    expect(paginaMudouDesde(antes, antes)).toBe(false)
+    expect(paginaMudouDesde(antes, [fotoComCrop, texto('headline', 'a')])).toBe(true)
+    expect(paginaMudouDesde(antes, [fotoComAncora, texto('headline', 'a')])).toBe(true)
+    expect(paginaMudouDesde(antes, [{ ...foto, style: { objectFit: 'cover', mask: { shapeId: 'arco', path: 'M0 0 L100 100' } } } as Camada, texto('headline', 'a')])).toBe(true)
+    // E "Remover" durante o job (a janela que o job leu já não está na página).
+    expect(paginaMudouDesde([fotoComCrop, texto('headline', 'a')], antes)).toBe(true)
+  })
+
   it('sem a opção `enquadramento`, a spec não ganha janela nem corte (a escolha gravada reproduz como sempre)', () => {
     const r = specComACopyDaPagina(specComFoto, [fotoComCrop, texto('headline', 'a')], { fotoDesenhada: foto.fileUrl as string })
     expect(r.spec.foto).toEqual({ driveFileId: 'abc' })
@@ -376,6 +387,7 @@ describe('F2a — o enquadramento efetivo da página na recomposição', () => {
     expect(enquadramentoDaPagina([{ ...foto, style: {} } as Camada])).toBeNull()
     // Codex (rodada 1, P2 #7): o crop que o renderer clampa é a faixa que ele mostra — nunca a âncora por baixo.
     expect(enquadramentoDaPagina([{ ...foto, style: { objectFit: 'cover', cropPosition: 'center-top', crop: { x: 0.9, y: 0, width: 0.5, height: 0.5 } } } as Camada])).toEqual({ janela: { x: 0.9, y: 0, width: 1 - 0.9, height: 0.5 } })
+    expect(enquadramentoDaPagina([{ ...foto, style: { objectFit: 'cover', cropPosition: 'center-top', crop: { x: 0.995, y: 0, width: 0.5, height: 0.5 } } } as Camada])).toEqual({ janela: { x: 0.995, y: 0, width: 1 - 0.995, height: 0.5 } })
     expect(enquadramentoDaPagina([{ ...foto, style: { objectFit: 'cover', cropPosition: 'center-top', crop: { x: 1, y: 0, width: 0.5, height: 0.5 } } } as Camada])).toEqual({ corte: 'center-top' })
     expect(enquadramentoDaPagina([texto('headline', 'a')])).toBeNull()
   })

@@ -845,7 +845,8 @@ function resumoDaBuscaOriginal(busca: unknown): ResumoDaBuscaOriginal | null {
   const fonte = reproduzida ?? busca
   if (typeof fonte.id !== 'string' || typeof fonte.motivo !== 'string' || typeof fonte.combinacoesAvaliadas !== 'number') return null
   const recusas = ehObjeto(fonte.recusas) ? Object.fromEntries(Object.entries(fonte.recusas).filter(([, n]) => Number.isInteger(n))) : {}
-  const cortes = Array.isArray(fonte.cortesAvaliados) ? fonte.cortesAvaliados.filter((c): c is CropPosition => typeof c === 'string' && Object.prototype.hasOwnProperty.call(CORTES, c)) : []
+  // F2a: o corte 'janela' é um rótulo avaliado como os outros (Codex, rodada 2, P3: filtrá-lo apagava a procedência).
+  const cortes = Array.isArray(fonte.cortesAvaliados) ? fonte.cortesAvaliados.filter((c): c is RotuloDoCorte => typeof c === 'string' && (Object.prototype.hasOwnProperty.call(CORTES, c) || c === 'janela')) : []
   return { id: fonte.id, motivo: fonte.motivo, recusas, combinacoesAvaliadas: fonte.combinacoesAvaliadas, cortesAvaliados: cortes }
 }
 
