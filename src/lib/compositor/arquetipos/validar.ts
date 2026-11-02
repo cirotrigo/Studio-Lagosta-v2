@@ -13,7 +13,9 @@
 import { NUMEROS_PADRAO } from '../assinatura'
 import { ALINHAMENTOS, ANCORAS, CANTOS, DIMENSOES } from '../spec'
 import {
+  COR_HEX,
   CORPO_MINIMO_DA_REFERENCIA,
+  TRANSFORMACOES_DO_ESTILO,
   chaveDoArquetipo,
   CODIGOS_TAXONOMICOS,
   ELEMENTOS_DO_ARQUETIPO,
@@ -129,7 +131,9 @@ const CHAVES = {
   elemento: ['id', 'tipo', 'opcional', 'corPorPapel', 'presoA', 'canto', 'porItem', 'braco'],
   preferencias: ['ancora', 'alinha', 'cantoDaMarca'],
   fotoIdeal: ['areaCalma', 'assunto', 'descricao', 'referencias'],
-  geometria: ['papeis', 'elementos', 'limitesDeTexto', 'itens', 'foto', 'mascaraDaFoto', 'corpos'],
+  geometria: ['papeis', 'elementos', 'limitesDeTexto', 'itens', 'foto', 'mascaraDaFoto', 'corpos', 'estilos'],
+  estilo: ['fontFamily', 'fontWeight', 'lineHeight', 'letterSpacing', 'textTransform', 'color', 'sombra'],
+  sombra: ['color', 'blur', 'offsetY', 'opacity'],
   mascara: ['tipo', 'raio'],
   itens: ['vao'],
   posicao: ['referencia', 'zona'],
@@ -156,7 +160,16 @@ export function validarArquetipo(arquetipo: ArquetipoDeLayout, opcoes: OpcoesDaV
   if (!Number.isInteger(a.versao) || a.versao < 1) recusar('VERSAO_INVALIDA', 'versao', 'a versão é um inteiro ≥ 1')
   if (!contem(CODIGOS_TAXONOMICOS, a.codigoTaxonomico)) recusar('CAMPO_INVALIDO', 'codigoTaxonomico', `código taxonômico fora de ${CODIGOS_TAXONOMICOS.join(', ')}`)
   if (typeof a.nome !== 'string' || !a.nome.trim()) recusar('CAMPO_INVALIDO', 'nome', 'o arquétipo tem nome')
-  procurarCamposProibidos(a, '', recusar)
+  // F2d: a cerca contra fonte e cor abre por CAMINHO EXATO, só na definição de uma referência: `formatos.<f>.estilos.<papel>.
+  // {fontFamily, fontWeight, color, sombra.color}`. Tudo o mais em `estilos` segue inspecionado (nome proibido E cor literal).
+  const liberados = new Set<string>()
+  if (ehObjeto(a.referencia) && ehObjeto(a.formatos)) {
+    for (const [f, g] of Object.entries(a.formatos as Record<string, unknown>)) {
+      const estilos = ehObjeto(g) && ehObjeto((g as Record<string, unknown>).estilos) ? ((g as Record<string, unknown>).estilos as Record<string, unknown>) : null
+      for (const papel of Object.keys(estilos ?? {})) for (const campo of ['fontFamily', 'fontWeight', 'color', 'sombra.color']) liberados.add(`formatos.${f}.estilos.${papel}.${campo}`)
+    }
+  }
+  procurarCamposProibidos(a, '', recusar, liberados)
   const fechado = (valor: unknown, permitidas: readonly string[], campo: string) => chavesFechadas(valor, permitidas, campo, recusar)
   fechado(a, CHAVES.raiz, '')
 
@@ -422,6 +435,49 @@ export function validarArquetipo(arquetipo: ArquetipoDeLayout, opcoes: OpcoesDaV
         }
       }
     }
+    // F2d: `estilos` (o estilo desenhado por papel) só em REFERÊNCIA; só papéis de texto presentes; presente, todo papel
+    // de texto tem o seu; forma fechada e valores no domínio (família, peso 100–900 ou null, entrelinha > 0, espaçamento
+    // finito, caixa do vocabulário, cor #rrggbb, sombra fechada).
+    if (g.estilos !== undefined) {
+      const campoEstilos = `${base}.estilos`
+      if (!ehObjeto(g.estilos)) recusar('CAMPO_INVALIDO', campoEstilos, 'estilos é um objeto')
+      else if (!ehObjeto(a.referencia)) recusar('CAMPO_INVALIDO', campoEstilos, 'estilos só existe na definição compilada de uma referência (no catálogo fonte e cor são da assinatura)')
+      else if (g.corpos === undefined) recusar('CAMPO_INVALIDO', `${base}.corpos`, 'estilos exige corpos no mesmo formato (o corpo desenhado é a régua do espaçamento e a base da escada): sem ele o estilo seria ignorado em silêncio')
+      else {
+        for (const [papel, e] of Object.entries(g.estilos as Record<string, unknown>)) {
+          const campo = `${campoEstilos}.${papel}`
+          if (!papeis.has(papel) || papel === 'logo') {
+            recusar('PAPEL_FORA_DO_CONTRATO', campo, `"${papel}" não é papel de texto deste arquétipo`)
+            continue
+          }
+          if (!ehObjeto(e)) {
+            recusar('CAMPO_INVALIDO', campo, 'o estilo é um objeto')
+            continue
+          }
+          fechado(e, CHAVES.estilo, campo)
+          if (typeof e.fontFamily !== 'string' || !e.fontFamily.trim()) recusar('CAMPO_INVALIDO', `${campo}.fontFamily`, 'a família da fonte é um texto não vazio')
+          if (e.fontWeight !== null && (!Number.isInteger(e.fontWeight) || (e.fontWeight as number) < 100 || (e.fontWeight as number) > 900)) recusar('CAMPO_INVALIDO', `${campo}.fontWeight`, 'o peso é null (normal) ou um inteiro de 100 a 900')
+          if (!ehNumero(e.lineHeight) || e.lineHeight <= 0) recusar('CAMPO_INVALIDO', `${campo}.lineHeight`, 'a entrelinha é um número > 0')
+          if (!ehNumero(e.letterSpacing)) recusar('CAMPO_INVALIDO', `${campo}.letterSpacing`, 'o espaçamento é um número (px no corpo desenhado)')
+          if (!contem(TRANSFORMACOES_DO_ESTILO, e.textTransform)) recusar('CAMPO_INVALIDO', `${campo}.textTransform`, `a caixa é uma de ${TRANSFORMACOES_DO_ESTILO.join(', ')} (none explícito)`)
+          if (typeof e.color !== 'string' || !COR_HEX.test(e.color)) recusar('CAMPO_INVALIDO', `${campo}.color`, 'a cor é #rrggbb')
+          if (e.sombra !== undefined) {
+            if (!ehObjeto(e.sombra)) recusar('CAMPO_INVALIDO', `${campo}.sombra`, 'a sombra é um objeto')
+            else {
+              fechado(e.sombra, CHAVES.sombra, `${campo}.sombra`)
+              const s = e.sombra as Record<string, unknown>
+              if (typeof s.color !== 'string' || !COR_HEX.test(s.color)) recusar('CAMPO_INVALIDO', `${campo}.sombra.color`, 'a cor da sombra é #rrggbb')
+              if (!ehNumero(s.blur) || s.blur < 0) recusar('CAMPO_INVALIDO', `${campo}.sombra.blur`, 'blur ≥ 0')
+              if (!ehNumero(s.offsetY)) recusar('CAMPO_INVALIDO', `${campo}.sombra.offsetY`, 'offsetY é um número')
+              if (!ehNumero(s.opacity) || s.opacity < 0 || s.opacity > 1) recusar('CAMPO_INVALIDO', `${campo}.sombra.opacity`, 'opacidade 0..1')
+            }
+          }
+        }
+        for (const papel of papeis) {
+          if (papel !== 'logo' && (g.estilos as Record<string, unknown>)[papel] === undefined) recusar('CAMPO_INVALIDO', `${campoEstilos}.${papel}`, `o papel de texto "${papel}" não tem estilo no ${f} (com estilos, todo papel de texto tem o seu)`)
+        }
+      }
+    }
 
     // #5: o envolvente (a pílula) abraça UMA linha; a caixa dele contém a referência do papel com margens simétricas de
     // ≥ 8 px (a folga, da definição) e fica na zona do papel.
@@ -600,21 +656,22 @@ function recorteComporta(z: Zona, c: Caixa, a: AreaSegura): boolean {
 function chavesFechadas(valor: unknown, permitidas: readonly string[], campo: string, recusar: Recusar): void {
   if (!ehObjeto(valor)) return
   for (const k of Object.keys(valor)) {
-    // A chave proibida já foi recusada com o motivo certo (CAMPO_PROIBIDO).
+    // A chave proibida já foi recusada com o motivo certo (CAMPO_PROIBIDO) — salvo a liberada por caminho (F2d), que é
+    // conferida aqui como qualquer outra: `fontFamily` em `estilos.<papel>` é permitida; em outro lugar, recusada antes.
     if (!permitidas.includes(k) && !CHAVES_PROIBIDAS.has(k)) recusar('CAMPO_DESCONHECIDO', campo ? `${campo}.${k}` : k, `"${k}" não faz parte do contrato do arquétipo`)
   }
 }
 
-/** Fonte, peso, cor e cliente moram na assinatura/DNA: aqui são recusados em qualquer nível. */
-function procurarCamposProibidos(valor: unknown, caminho: string, recusar: Recusar): void {
+/** Fonte, peso, cor e cliente moram na assinatura/DNA: aqui são recusados em qualquer nível — salvo os caminhos EXATOS liberados (F2d, só em referência). */
+function procurarCamposProibidos(valor: unknown, caminho: string, recusar: Recusar, liberados: ReadonlySet<string> = new Set()): void {
   if (typeof valor === 'string') {
-    if (VALOR_DE_COR.test(valor)) recusar('CAMPO_PROIBIDO', caminho || '(raiz)', 'cor literal no arquétipo: a cor é um papel da assinatura')
+    if (VALOR_DE_COR.test(valor) && !liberados.has(caminho)) recusar('CAMPO_PROIBIDO', caminho || '(raiz)', 'cor literal no arquétipo: a cor é um papel da assinatura')
     return
   }
   if (!valor || typeof valor !== 'object') return
   for (const [k, v] of Object.entries(valor)) {
     const campo = caminho ? `${caminho}.${k}` : k
-    if (CHAVES_PROIBIDAS.has(k)) recusar('CAMPO_PROIBIDO', campo, `"${k}" é da assinatura/DNA ou do cliente, não do arquétipo`)
-    procurarCamposProibidos(v, campo, recusar)
+    if (CHAVES_PROIBIDAS.has(k) && !liberados.has(campo)) recusar('CAMPO_PROIBIDO', campo, `"${k}" é da assinatura/DNA ou do cliente, não do arquétipo`)
+    procurarCamposProibidos(v, campo, recusar, liberados)
   }
 }

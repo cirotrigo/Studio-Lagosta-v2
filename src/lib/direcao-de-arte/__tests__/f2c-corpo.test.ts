@@ -80,8 +80,8 @@ describe('F2c · o corpo da referência no compositor', () => {
       { camada: 'apoio', papel: 'apoio', referencia: 39, teto: 39, piso: 31, efetivo: 39, reducao: 0 },
     ])
     expect(r.diagnostico.avisos.join(' ')).not.toMatch(/não nos 85 px/)
-    // O letterSpacing da assinatura (2 px em 90) escala com o fator do bloco (85/90): 1,89 — efeito existente, dito.
-    expect(camada(r.layers, 'headline').style?.letterSpacing).toBeCloseTo(2 * (85 / 90), 2)
+    // F2d: o espaçamento passou a ser o DESENHADO na referência (a Brunch tem 0 na manchete), não o da assinatura escalado.
+    expect(camada(r.layers, 'headline').style?.letterSpacing).toBe(0)
     const m = await medirCopyDoProjeto({ projectId: 9002, formato: 'story', blocos: BLOCOS, arquetipo: { id: def.id } } as never)
     expect(m.medicao.blocos.map((b) => [b.id, b.fontSize, b.situacao])).toEqual([['headline', 85, 'cabe'], ['apoio', 39, 'cabe']])
   }, 60_000)
