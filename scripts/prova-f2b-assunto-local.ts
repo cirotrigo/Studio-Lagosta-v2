@@ -1,14 +1,14 @@
 /**
  * PROVA LOCAL da F2b (02/11/2026), ZERO ESCRITA: compõe a referência do Brunch com outras fotos, em memória, e mostra a
- * janela assistida. Só LÊ: a página e a assinatura no banco, metadados e miniaturas no Drive, as fotos por URL lh3. Paga
+ * janela assistida. Só LÊ: a página e a assinatura no banco, catálogo, metadados e miniaturas no Drive, as fotos por URL lh3. Paga
  * uma chamada de visão por foto. Não importa `aprovarReferencia` nem `persist`; as caixas vêm da visão NA HORA e NÃO são
  * gravadas; `provar: true` devolve o PNG antes da pasta e da persistência (`persistido: null`, conferido abaixo).
  *
  * Fotos por `url` lh3, nunca `driveFileId`: `carregarFoto` por id pode escrever o cache do Blob.
  *
  * USO (no terminal do Ciro, no worktree):
- *   npx tsx --env-file=.env scripts/prova-f2b-assunto-local.ts --fotos id1,id2,id3
- * Saída em SAIDA (abaixo): um PNG por peça, `prova-f2b-lado-a-lado.png` e `prova-f2b.md`.
+ *   npx tsx --env-file=.env scripts/prova-f2b-assunto-local.ts --fotos id1,id2,id3 [--saida pasta]
+ * Saída em SAIDA (abaixo) ou em `--saida`: um PNG por peça, `prova-f2b-lado-a-lado.png` e `prova-f2b.md`.
  */
 import { existsSync, mkdirSync, writeFileSync } from 'fs'
 import { homedir } from 'os'
@@ -24,6 +24,8 @@ import { fonteDaFoto, fracaoVisivelDoAssunto } from '../src/lib/compositor/assun
 import { pisoDoProjetoDe } from '../src/lib/compositor/geometria'
 import type { LeitorDeReferencias } from '../src/lib/compositor/referencias'
 import { assuntoEfetivoDaFoto, type AssuntoEfetivo } from '../src/lib/creatives/assunto-da-foto-efetivo'
+import { CreativeError } from '../src/lib/creatives/errors'
+import type { DocumentoDoCatalogo } from '../src/lib/creatives/anotar-caixa-do-assunto'
 import { lerCaixaDaVisao, montarPromptDaCaixa } from '../src/lib/creatives/catalogo-de-fotos'
 import { baixarMiniatura } from '../src/lib/creatives/reconciliar-catalogo'
 import { versaoDaPagina } from '../src/lib/creatives/revisao/versao'
@@ -34,7 +36,8 @@ import type { Layer } from '../src/types/template'
 const PROJETO = 12
 const PAGINA = 'cmvvab24y0003sw7cwiaizw9d' // Ref 02 · Brunch Empório
 const FOTO_PADRAO = '1NBT2gX-L2CAIyuUxbw-jVI55OV57SkkE' // Cafeteria-dsc00545.jpg (a da prova F1)
-const SAIDA = resolve(homedir(), 'Documents/Studio-Lagosta-v2/human-output/relatorios/editor-madrugada-2026-10-24/direcao-por-referencia-2026-10-30/f2b-assunto')
+const PASTA_DO_PLANO = resolve(homedir(), 'Documents/Studio-Lagosta-v2/human-output/relatorios/editor-madrugada-2026-10-24/direcao-por-referencia-2026-10-30/f2b-assunto')
+const SAIDA = resolve(argumento('saida') ?? PASTA_DO_PLANO)
 const BLOCOS = [
   { papel: 'headline', linhas: ['Brunch de domingo'] },
   { papel: 'apoio', linhas: ['Das 9h às 13h, com café coado'] },
@@ -59,9 +62,14 @@ async function main() {
   mkdirSync(SAIDA, { recursive: true })
   const [page, projeto] = await Promise.all([
     db.page.findUnique({ where: { id: PAGINA }, select: { id: true, name: true, width: true, height: true, tags: true, layers: true, background: true } }),
-    db.project.findUnique({ where: { id: PROJETO }, select: { assinatura: true } }),
+    db.project.findUnique({ where: { id: PROJETO }, select: { assinatura: true, googleDriveImagesFolderId: true, googleDriveFolderId: true } }),
   ])
   if (!page || !projeto) throw new Error('página ou projeto não encontrados')
+  // O catálogo só é lido: o prompt leva o assunto catalogado, como no backfill, senão a caixa da prova não é a que ele gravaria.
+  const catalogoId = await googleDriveService.findFileInFolder((projeto.googleDriveImagesFolderId ?? projeto.googleDriveFolderId)!, '_image-catalog.json')
+  if (!catalogoId) throw new Error('o projeto não tem catálogo de imagens')
+  const catalogo = await googleDriveService.readFileAsJson<DocumentoDoCatalogo>(catalogoId)
+  const assuntoDe = (id: string) => catalogo.images.find((e) => e.driveFileId === id)?.assunto
   const camadas = parsePageLayers(page.layers) as unknown as Layer[]
   const pageVersion = versaoDaPagina(page)
   if (!pageVersion) throw new Error('camadas ilegíveis')
@@ -75,7 +83,7 @@ async function main() {
   })
   const caixaDe = async (id: string) => {
     const miniatura = await baixarMiniatura(id, 512)
-    const resposta = await visao.generateContent([montarPromptDaCaixa({}), { inlineData: { mimeType: 'image/jpeg', data: miniatura.toString('base64') } }])
+    const resposta = await visao.generateContent([montarPromptDaCaixa({ assunto: assuntoDe(id) }), { inlineData: { mimeType: 'image/jpeg', data: miniatura.toString('base64') } }])
     const lida = lerCaixaDaVisao(JSON.parse(resposta.response.text()).caixaDoAssunto)
     if (lida === undefined) throw new Error(`${id}: a visão devolveu uma caixa inválida`)
     return { caixa: lida.caixa, miniatura }
@@ -105,8 +113,20 @@ async function main() {
 
   const leitor = { referenciaDeLayout: { findMany: async () => [{ arquetipoId: definicao.id, versao: definicao.versao, impressao, definicao }] } } as unknown as LeitorDeReferencias
   const pngs: Buffer[] = []
+  const recusas: string[] = []
   for (const id of ids) {
-    const c = await comporPeca({ projectId: PROJETO, formato: 'story', foto: { url: lh3(id) }, arquetipo: { id: definicao.id }, blocos: BLOCOS, nome: 'Prova F2b', tema: 'brunch' }, { canal: 'claude-code', provar: true, assuntosDoCatalogo: mapa, leitorDeReferencias: leitor })
+    const c = await comporPeca({ projectId: PROJETO, formato: 'story', foto: { url: lh3(id) }, arquetipo: { id: definicao.id }, blocos: BLOCOS, nome: 'Prova F2b', tema: 'brunch' }, { canal: 'claude-code', provar: true, assuntosDoCatalogo: mapa, leitorDeReferencias: leitor }).catch((e) => {
+      if (!(e instanceof CreativeError)) throw e
+      return e
+    })
+    // Recusa é resultado da prova, não falha dela: entra na tabela e as outras fotos seguem.
+    if (c instanceof CreativeError) {
+      const detalhe = JSON.stringify(c.details ?? null)
+      recusas.push(`### \`${id}\`: ${c.code}\n\n${c.message}\n\n\`\`\`json\n${detalhe}\n\`\`\`\n`)
+      linhas.push(`| \`${id}\` | RECUSADA: ${c.code} | — | — | — | — | — | — | — |`)
+      console.log(id, 'RECUSADA', c.code, c.message, detalhe)
+      continue
+    }
     if (c.persistido !== null || !c.prova) throw new Error('a prova teria gravado: parando')
     writeFileSync(resolve(SAIDA, `prova-f2b-${id}.png`), c.prova)
     pngs.push(c.prova)
@@ -118,14 +138,14 @@ async function main() {
   }
 
   // O aceite visual: o render aprovado da Brunch (relatório da F0) ao lado das peças.
-  const brunch = resolve(SAIDA, '../f0-emporio-fonseca/ajustada-B-brunch-v2.jpg')
+  const brunch = resolve(PASTA_DO_PLANO, '../f0-emporio-fonseca/ajustada-B-brunch-v2.jpg')
   const alturas = await Promise.all([...(existsSync(brunch) ? [brunch] : []), ...pngs].map((p) => sharp(p).resize({ width: 540, height: 960, fit: 'fill' }).png().toBuffer()))
   const largura = 540 * alturas.length + 20 * (alturas.length - 1)
   await sharp({ create: { width: largura, height: 960, channels: 3, background: '#ffffff' } })
     .composite(alturas.map((input, i) => ({ input, left: i * 560, top: 0 })))
     .png()
     .toFile(resolve(SAIDA, 'prova-f2b-lado-a-lado.png'))
-  writeFileSync(resolve(SAIDA, 'prova-f2b.md'), `${linhas.join('\n')}\n`)
+  writeFileSync(resolve(SAIDA, 'prova-f2b.md'), `${[...linhas, ...(recusas.length ? ['', '## Recusas', '', ...recusas] : [])].join('\n')}\n`)
   console.log(`Saída em ${SAIDA}`)
   await db.$disconnect()
 }
