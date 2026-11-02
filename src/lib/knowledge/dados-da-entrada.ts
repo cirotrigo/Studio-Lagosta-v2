@@ -273,6 +273,17 @@ export function linhasDatadas(texto: string): string[] {
   return texto.split(/\n+/).flatMap((l) => clausulasDaLinha(l).filter((c) => c.datada).map((c) => c.clausula))
 }
 
+/** A faixa achada e os turnos colados nela ("das 11h às 15h e das 18h às 23h"): início e fim são os dois últimos grupos de `m`. */
+function turnosDesde(texto: string, m: RegExpMatchArray): string {
+  const turnos = [`${horaDe(m[m.length - 2], false)}-${horaDe(m[m.length - 1], true)}`]
+  let resto = texto.slice((m.index as number) + m[0].length)
+  for (let t = TURNO_SEGUINTE.exec(resto); t; t = TURNO_SEGUINTE.exec(resto)) {
+    turnos.push(`${horaDe(t[1], false)}-${horaDe(t[2], true)}`)
+    resto = resto.slice(t[0].length)
+  }
+  return turnos.join(', ')
+}
+
 interface FatoDoTexto {
   dias: number[] | null
   faixa: string | null
@@ -288,21 +299,16 @@ function fatosDoTexto(titulo: string, texto: string): FatoDoTexto[] {
       const c = semAcento(trecho)
       const happy = HAPPY_HOUR.test(c) || (HAPPY_HOUR.test(tituloNormal) && !OUTRO_SERVICO.test(c))
       if (happy) {
-        const turnos = [...c.matchAll(FAIXA)].map((m) => `${horaDe(m[1], false)}-${horaDe(m[2], true)}`)
-        if (turnos.length > 0) fatos.push({ dias: null, faixa: turnos.join(', '), fim: null, trecho })
+        // Só a faixa depois de "happy hour" e as coladas nela: "e delivery das 20h às 23h" é de outro serviço.
+        const doHappy = c.slice(Math.max(c.search(HAPPY_HOUR), 0))
+        const [m] = doHappy.matchAll(FAIXA)
+        if (m) fatos.push({ dias: null, faixa: turnosDesde(doHappy, m), fim: null, trecho })
         continue
       }
       if (OUTRO_SERVICO.test(c) || OUTRO_SERVICO.test(tituloNormal)) continue
       for (const m of c.matchAll(FAIXA_DO_DIA)) {
         if (/almoco/.test(c.slice(0, m.index))) continue
-        const turnos = [`${horaDe(m[2], false)}-${horaDe(m[3], true)}`]
-        // "Segunda das 11h às 15h e das 18h às 23h": os turnos seguintes herdam o dia.
-        let resto = c.slice(m.index + m[0].length)
-        for (let t = TURNO_SEGUINTE.exec(resto); t; t = TURNO_SEGUINTE.exec(resto)) {
-          turnos.push(`${horaDe(t[1], false)}-${horaDe(t[2], true)}`)
-          resto = resto.slice(t[0].length)
-        }
-        fatos.push({ dias: diasDe(m[1]), faixa: turnos.join(', '), fim: null, trecho })
+        fatos.push({ dias: diasDe(m[1]), faixa: turnosDesde(c, m), fim: null, trecho })
       }
       for (const m of c.matchAll(FECHA_DO_DIA)) fatos.push({ dias: diasDe(m[1]), faixa: null, fim: horaDe(m[2], true), trecho })
     }
