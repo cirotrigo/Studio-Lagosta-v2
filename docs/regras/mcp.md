@@ -341,3 +341,15 @@ mesma página reaprovada depois da F2c ganha a revisão seguinte com os corpos (
 Por papel: família, peso (`null` = normal), entrelinha, espaçamento (px no corpo desenhado), caixa (`none` explícito),
 cor e sombra — da REVISÃO PERSISTIDA; `null` nas revisões de antes da F2d (a peça veste a assinatura). A segunda voz da
 peça toma só a cor; destaque e prefixo continuam da assinatura. Detalhe em `docs/regras/compositor.md`, "F2d".
+
+### F2b (02/11/2026): `marcar-assunto`, e `assunto` em `listar-referencias` e `ver-assinatura`
+
+`marcar-assunto` (curador) corrige a caixa do assunto de uma foto: `caixa`, `sem-assunto` ou `automatico` (revoga e a
+visão volta). Grava em `PhotoAssunto`, nunca no JSON do catálogo, e devolve o efetivo e o anterior. É a resposta certa ao
+aviso que diz a origem da caixa: a correção não é a copy.
+
+`listar-referencias` e `ver-assinatura` devolvem `assunto` (`{ caixa, visivel }`, da REVISÃO PERSISTIDA; `null` nas
+revisões antigas); `aprovar-referencia` devolve `leitura.assunto`, com o motivo quando faltou. A mesma página reaprovada
+com a caixa nova ganha a revisão seguinte. `buscar-fotos` traz o `assuntoEfetivo` de cada foto. O diagnóstico de
+`compor-arte` traz `posicao.assistencia`. O gancho `leitorDeReferencias` é só de prova e o adaptador não o conhece. Detalhe
+em `docs/regras/compositor.md`, "F2b", e `docs/regras/acervo-de-fotos.md`, "A caixa do assunto".
