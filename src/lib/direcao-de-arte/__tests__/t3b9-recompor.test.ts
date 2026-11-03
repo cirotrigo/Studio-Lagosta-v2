@@ -105,7 +105,7 @@ vi.mock('@/lib/creatives/text-autofix', async () => (await import('./suporte/com
 vi.mock('@/lib/creatives/uso-de-foto', () => ({ registrarUsoDeFoto: async () => void banco.consultas.usoDeFoto++ }))
 vi.mock('@/lib/creatives/acervo', async () => {
   const m = (await import('./suporte/compositor')).mockDoAcervo()
-  return { lerCatalogoDoProjeto: async () => (banco.consultas.acervo++, m.lerCatalogoDoProjeto()) }
+  return { ...m, assuntosEfetivosDoProjeto: async (p: number, ids: string[]) => (banco.consultas.acervo++, m.assuntosEfetivosDoProjeto(p, ids)) }
 })
 vi.mock('@/lib/assets/gradients-library', async (original) => ({
   ...(await original<typeof import('@/lib/assets/gradients-library')>()),

@@ -7,6 +7,23 @@
 
 import { z } from 'zod'
 import { definirTool } from '../registro/definir'
+import type { McpPrincipal } from '../oauth'
+
+/**
+ * Auditoria, não gate: o User INTERNO do portador, SÓ por leitura — não achou, fica null. Criar User a partir daqui é
+ * como nascem os fantasmas (regra da casa), e falhar na resolução não pode derrubar a marcação.
+ */
+async function quemMarcou(principal: McpPrincipal): Promise<string | null> {
+  if (principal.kind !== 'user' || !principal.userId) return null
+  try {
+    const { db } = await import('../../db')
+    const usuario = await db.user.findUnique({ where: { clerkId: principal.userId }, select: { id: true } })
+    return usuario?.id ?? null
+  } catch (error) {
+    console.error('[mcp] não deu para resolver quem marcou:', error)
+    return null
+  }
+}
 
 export const toolsDeFotos = [
   definirTool({
@@ -157,23 +174,7 @@ export const toolsDeFotos = [
         throw new Error('Informe a foto em driveFileId (o id que buscar-fotos devolve).')
       }
       const destaque = args.destaque !== false
-
-      // Auditoria, não gate: o User INTERNO do portador, SÓ por leitura —
-      // não achou, fica null. Criar User a partir daqui é como nascem os
-      // fantasmas (regra da casa); e falhar na resolução não pode derrubar
-      // a marcação.
-      let decididoPor: string | null = null
-      if (principal.kind === 'user' && principal.userId) {
-        try {
-          const usuario = await db.user.findUnique({
-            where: { clerkId: principal.userId },
-            select: { id: true },
-          })
-          decididoPor = usuario?.id ?? null
-        } catch (error) {
-          console.error('[mcp] não deu para resolver quem decidiu o destaque:', error)
-        }
-      }
+      const decididoPor = await quemMarcou(principal)
 
       if (destaque) {
         await db.photoDestaque.upsert({
@@ -201,6 +202,39 @@ export const toolsDeFotos = [
         destaque: false,
         mensagem: count > 0 ? 'Tirei o destaque da foto.' : 'Essa foto já não era destaque — nada mudou.',
       }
+    },
+  }),
+
+  definirTool({
+    nome: 'marcar-assunto',
+    descricao:
+      'Corrige ONDE está o assunto de uma foto: a caixa que protege o prato do texto e enquadra a foto nas peças feitas por referência. Use quando a visão errou a caixa (`assuntoEfetivo` em buscar-fotos, ou o aviso da composição que perdeu o assunto). `caixa` grava a caixa certa (frações da foto, 0 a 1); `sem-assunto` diz que a foto não tem assunto localizável (ambiente inteiro) e a visão não a refaz; `automatico` revoga a decisão e a foto volta ao que o catálogo diz. Vale para todas as peças novas deste cliente; peça já composta com esta foto pode passar a recusar na recomposição se a caixa nova não couber no corte dela. Devolve o estado efetivo e o anterior.',
+    schema: z.object({
+      projectId: z.number().describe('ID do cliente.'),
+      driveFileId: z.string().describe('A foto (o driveFileId que buscar-fotos devolve).'),
+      decisao: z.enum(['caixa', 'sem-assunto', 'automatico']).describe('caixa grava a caixa; sem-assunto grava a negativa; automatico revoga a decisão.'),
+      caixa: z
+        .object({ x0: z.number(), y0: z.number(), x1: z.number(), y1: z.number() })
+        .optional()
+        .describe('Só com decisao "caixa": frações da foto como o Drive a mostra, com x1 > x0 e y1 > y0.'),
+    }),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    // Curadoria, como marcar-foto-destaque: a caixa muda a composição de todos que produzem para este cliente.
+    acesso: { tipo: 'curador' },
+    superficies: ['remoto', 'local'],
+    handler: async (args, principal) => {
+      const { marcarAssuntoDaFoto } = await import('../../creatives/acervo')
+      const driveFileId = typeof args.driveFileId === 'string' ? args.driveFileId.trim() : ''
+      if (!driveFileId) {
+        throw new Error('Informe a foto em driveFileId (o id que buscar-fotos devolve).')
+      }
+      return marcarAssuntoDaFoto({
+        projectId: args.projectId as number,
+        driveFileId,
+        decisao: args.decisao as 'caixa' | 'sem-assunto' | 'automatico',
+        caixa: args.caixa,
+        decididoPor: await quemMarcou(principal),
+      })
     },
   }),
 

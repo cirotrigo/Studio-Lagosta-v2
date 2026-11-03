@@ -62,6 +62,7 @@ import { descreverAvisoDeSlot, transportarSlots } from '@/lib/semantica/transpor
 import { PostLogEvent, type Prisma } from '../../../prisma/generated/client'
 
 import { comporPeca } from './compor'
+import { chaveDoCorte } from './corte-da-foto'
 import { specTemExtra } from './camadas-extras'
 import {
   edicaoDuranteOJob,
@@ -427,7 +428,12 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
   // como sempre, e a foto trocada sem crop busca o corte de novo. A escolha segue com os deslocamentos, a logo, a pilha
   // e a margem de antes; a spec recomposta leva o mesmo (`specComACopyDaPagina`), para a leitura e a escolha terem um corte só.
   const lidoDaPagina = candidataARecompor ? enquadramentoDaPagina(page.layers) : null
-  const enquadramentoDaPaginaAgora = lidoDaPagina && ('janela' in lidoDaPagina || defasagem.enquadramentoAlterado === true) ? lidoDaPagina : null
+  // F2b: a janela ASSISTIDA (a spec não a pediu, é a da escolha gravada, ninguém a mudou) foi calculada para AQUELA foto:
+  // não vira pedido na spec. A escolha a reproduz enquanto a foto for a mesma; foto trocada → busca nova, com assistência.
+  // Nem na edição de texto: gravada na spec, ela passaria por janela pedida na troca de foto seguinte.
+  const janelaAssistida =
+    !!lidoDaPagina && 'janela' in lidoDaPagina && defasagem.enquadramentoAlterado !== true && !arte.spec!.foto?.janela && lidaGravada?.modo === MODO_BUSCA_ESPACIAL && lidaGravada.corte === 'janela' && !!lidaGravada.janela && chaveDoCorte({ janela: lidaGravada.janela }) === chaveDoCorte({ janela: lidoDaPagina.janela })
+  const enquadramentoDaPaginaAgora = lidoDaPagina && !janelaAssistida && ('janela' in lidoDaPagina || defasagem.enquadramentoAlterado === true) ? lidoDaPagina : null
   const lida =
     lidaGravada && lidaGravada.modo === MODO_BUSCA_ESPACIAL && enquadramentoDaPaginaAgora
       ? ('janela' in enquadramentoDaPaginaAgora ? { ...lidaGravada, corte: 'janela' as const, janela: enquadramentoDaPaginaAgora.janela } : { ...lidaGravada, corte: enquadramentoDaPaginaAgora.corte, janela: undefined })

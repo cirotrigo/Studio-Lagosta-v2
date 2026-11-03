@@ -117,8 +117,12 @@ export interface RegiaoProtegida {
 
 /** A foto num corte: o raster (cover, 540 px, b-w — a escala da régua), o mapa de calma e as regiões, nesse corte. */
 export interface LeituraDoCorte {
-  /** O rótulo (âncora), ou `'janela'` (F2a: corte explícito). */
+  /** O rótulo (âncora), ou `'janela'` (F2a: corte explícito). Só para o diagnóstico: quem IDENTIFICA o corte é a `chave`. */
   crop: RotuloDoCorte
+  /** F2b: a identidade do corte por VALOR (`chaveDoCorte`) — duas janelas têm o mesmo `crop` e chaves diferentes. */
+  chave: string
+  /** F2b: o prior do componente `corte`. Ausente = a regra de sempre (central e janela explícita 1, âncoras 0). */
+  prior?: number
   /** A janela do corte em frações da foto — a mesma conta do desenho; é por ela (`chaveDoCorte`) que os cortes se igualam. Ausente só em leitura sintética (teste). */
   janela?: Janela
   raster: FotoCinza
@@ -270,6 +274,8 @@ export interface TratamentoEstimado {
 
 export interface AvaliacaoDaCombinacao {
   crop: RotuloDoCorte
+  /** F2b: o corte avaliado, por valor (`LeituraDoCorte.chave`). */
+  chave: string
   combinacao: Combinacao
   /** Vazio = válida. */
   eliminada: Eliminacao[]
@@ -337,6 +343,7 @@ export type EscolhaParaReproduzir = (EscolhaEspacial & { buscaOriginal?: ResumoD
 /** Uma avaliação no diagnóstico: compacta (sem as camadas). */
 export interface ResumoDaAvaliacao {
   crop: RotuloDoCorte
+  chave: string
   escolhas: Combinacao['escolhas']
   pontuacao: number | null
   componentes: ComponentesDaPontuacao | null
@@ -365,7 +372,7 @@ export interface DiagnosticoDaBuscaEspacial {
   alternativas: ResumoDaAvaliacao[]
   recusas: Partial<Record<MotivoDeEliminacao, number>>
   /** Até 6 exemplos de recusa (um por motivo, primeiro). */
-  exemplosDeRecusa: Array<{ crop: RotuloDoCorte; escolhas: Combinacao['escolhas']; eliminada: Eliminacao[] }>
+  exemplosDeRecusa: Array<{ crop: RotuloDoCorte; chave: string; escolhas: Combinacao['escolhas']; eliminada: Eliminacao[] }>
   /** Por que o vencedor venceu, em uma frase (o critério que decidiu). */
   motivo: string
   /**

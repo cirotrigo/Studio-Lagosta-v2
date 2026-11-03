@@ -19,10 +19,12 @@
  */
 import type { Layer } from '@/types/template'
 import { papelDoTexto } from '@/lib/font-combinations-capture'
+import { assuntoEmPixels, type AssuntoNormalizado } from '../assunto-da-foto'
+import { enquadramentoDaPagina } from '../defasagem'
 import { formatoDaPaginaGravada } from '../formato'
 import { DIMENSOES, type Alinhamento, type Papel } from '../spec'
-import { fotoDaPaginaParaLayout } from './da-pagina'
-import { COR_HEX, CORPO_MINIMO_DA_REFERENCIA, FORMATOS_DO_ARQUETIPO, TRANSFORMACOES_DO_ESTILO, type ArquetipoDeLayout, type EstiloDaReferencia, type Caixa, type CantoDaLogo, type FormatoDoArquetipo, type PapelDeTexto, type PapelNoArquetipo, type PosicaoDoPapel, type Zona } from './tipos'
+import { camadaDaFotoDaPagina } from './da-pagina'
+import { COR_HEX, CORPO_MINIMO_DA_REFERENCIA, FORMATOS_DO_ARQUETIPO, TRANSFORMACOES_DO_ESTILO, type ArquetipoDeLayout, type AssuntoNoQuadro, type EstiloDaReferencia, type Caixa, type CantoDaLogo, type FormatoDoArquetipo, type PapelDeTexto, type PapelNoArquetipo, type PosicaoDoPapel, type Zona } from './tipos'
 
 /** O id da definição de uma página: `ref-<pageId>` (o cuid é a-z0-9, kebab-case válido). */
 export const idDaReferencia = (pageId: string) => `ref-${pageId.toLowerCase()}`
@@ -60,7 +62,15 @@ export interface LeituraDaReferencia {
   /** F2c: `corpo` = o tamanho da fonte desenhado na camada (px), o teto da escada da peça por esta referência. F2d: `estilo`. */
   papeis: Array<{ papel: PapelDeTexto; camadas: string[]; linhas: number; caixa: Caixa; alinha: Alinhamento; corpo: number; estilo: EstiloDaReferencia }>
   ignoradas: CamadaIgnorada[]
+  /** F2b: o assunto no quadro, ou por que a revisão ficou sem ele. Ausente quando quem compilou não trouxe o insumo. */
+  assunto?: AssuntoNoQuadro | { ausente: MotivoDaAusencia }
 }
+
+/** Por que uma referência válida fica sem o assunto (e a peça por ela, sem assistência). */
+export type MotivoDaAusencia = 'catalogo-indisponivel' | 'foto-sem-id' | 'fonte-nao-coerente' | 'nao-analisada' | 'sem-assunto' | 'sem-dimensoes' | 'transformacao-nao-representada' | 'fora-do-quadro'
+
+/** O que a camada de serviço leu: a caixa na foto + as dimensões RENDERIZADAS pelo Drive, ou o motivo de não ter. */
+export type InsumoDoAssunto = { caixa: AssuntoNormalizado; dimensoes: { width: number; height: number } } | { ausente: MotivoDaAusencia }
 
 export type CompilacaoDaReferencia =
   | { ok: true; definicao: ArquetipoDeLayout; leitura: LeituraDaReferencia }
@@ -148,13 +158,40 @@ function estiloDaReferencia(c: Layer): { ok: true; estilo: EstiloDaReferencia } 
   return { ok: true, estilo: { fontFamily, fontWeight, lineHeight, letterSpacing, textTransform, color, ...(sombra ? { sombra } : {}) } }
 }
 
+/**
+ * F2b: o assunto da foto projetado no quadro pelo retângulo-fonte DESENHADO (a janela de `style.crop`, ou a âncora, sem
+ * virar janela: o cover não tem o mínimo de 1% do crop manual): sem `janelaNaProporcao` — se a janela deforma a imagem, a
+ * projeção deforma igual. Recorta à camada, translada por `position`, recorta à página. O que `resolveImageSourceRect` e
+ * o retângulo da camada não representam (espelho, giro, máscara, canto arredondado) não é projetado.
+ */
+function assuntoNoQuadro(insumo: InsumoDoAssunto, camada: Layer, pagina: { width: number; height: number }): AssuntoNoQuadro | { ausente: MotivoDaAusencia } {
+  if ('ausente' in insumo) return insumo
+  const estilo = (camada.style ?? {}) as { objectFit?: unknown; flipH?: unknown; flipV?: unknown; mask?: { path?: unknown }; border?: { radius?: number } }
+  const caixaDaCamada = { width: camada.size?.width ?? 0, height: camada.size?.height ?? 0 }
+  const enquadramento = enquadramentoDaPagina([camada])
+  if (estilo.objectFit !== 'cover' || estilo.flipH || estilo.flipV || estilo.mask?.path || estilo.border?.radius || (camada.rotation && Math.abs(camada.rotation) > EPS) || !enquadramento || !(caixaDaCamada.width > 0 && caixaDaCamada.height > 0)) {
+    return { ausente: 'transformacao-nao-representada' }
+  }
+  const p = assuntoEmPixels(insumo.caixa, insumo.dimensoes, caixaDaCamada, 'janela' in enquadramento ? enquadramento.janela : enquadramento.corte)
+  const noRetangulo = (r: Ret, x0: number, y0: number, x1: number, y1: number): Ret => {
+    const ex = Math.max(r.x, x0), ey = Math.max(r.y, y0)
+    return { x: ex, y: ey, w: Math.min(r.x + r.w, x1) - ex, h: Math.min(r.y + r.h, y1) - ey }
+  }
+  const naCamada = noRetangulo({ x: p.x, y: p.y, w: p.width, h: p.height }, 0, 0, caixaDaCamada.width, caixaDaCamada.height)
+  const naPagina = noRetangulo({ ...naCamada, x: naCamada.x + (camada.position?.x ?? 0), y: naCamada.y + (camada.position?.y ?? 0) }, 0, 0, pagina.width, pagina.height)
+  const areaProjetada = p.width * p.height
+  const visivel = naCamada.w > 0 && naCamada.h > 0 && naPagina.w > 0 && naPagina.h > 0 && areaProjetada > 0 ? arredondar((naPagina.w * naPagina.h) / areaProjetada) : 0
+  const caixa = emFracoes(naPagina, pagina)
+  return caixa.w > 0 && caixa.h > 0 && visivel > 0 ? { caixa, visivel } : { ausente: 'fora-do-quadro' }
+}
+
 /** A caixa de um texto CENTRALIZADO simetrizada no eixo da peça (o validador exige o centro exato em 0,5). */
 function simetrizar(c: Caixa): Caixa {
   const meia = Math.max(c.x + c.w - 0.5, 0.5 - c.x)
   return { x: arredondar(0.5 - meia), y: c.y, w: arredondar(2 * meia), h: c.h }
 }
 
-export function compilarReferencia(pagina: PaginaParaReferencia, args: { pageVersion: string; versao: number; piso?: PisoDaReferencia }): CompilacaoDaReferencia {
+export function compilarReferencia(pagina: PaginaParaReferencia, args: { pageVersion: string; versao: number; piso?: PisoDaReferencia; assunto?: InsumoDoAssunto }): CompilacaoDaReferencia {
   const recusa = (codigo: CodigoDaCompilacao, mensagem: string, detalhes?: Record<string, unknown>): CompilacaoDaReferencia => ({ ok: false, codigo, mensagem, ...(detalhes ? { detalhes } : {}) })
   if (!Array.isArray(pagina.layers) || !(pagina.width > 0) || !(pagina.height > 0)) return recusa('REFERENCIA_PAGINA_ILEGIVEL', 'A página não tem camadas legíveis ou tamanho.')
   const formatoLido = formatoDaPaginaGravada(pagina)
@@ -171,7 +208,8 @@ export function compilarReferencia(pagina: PaginaParaReferencia, args: { pageVer
   const ignoradas: CamadaIgnorada[] = []
   const ignorar = (c: Layer, motivo: CamadaIgnorada['motivo']) => ignoradas.push({ camada: c.id, nome: c.name ?? c.id, tipo: c.type, motivo })
 
-  const foto = fotoDaPaginaParaLayout(pagina.layers, pagina)
+  const camadaDaFoto = camadaDaFotoDaPagina(pagina.layers, pagina)
+  const foto = camadaDaFoto?.fileUrl
   if (!foto) {
     return recusa('REFERENCIA_SEM_FOTO', 'A página não tem foto de fundo (camada bg-foto ou imagem cobrindo ≥ 90% da peça): a F1 só compila referência de foto inteira. Páginas de várias fotos ou de fundo liso ficam para a F2.', {
       imagens: pagina.layers.filter((c) => c.type === 'image' && c.visible !== false).map((c) => ({ camada: c.id, nome: c.name })),
@@ -223,7 +261,7 @@ export function compilarReferencia(pagina: PaginaParaReferencia, args: { pageVer
       continue
     }
     if (c.type === 'image') {
-      if (c.fileUrl !== foto) ignorar(c, 'foto-extra')
+      if (c !== camadaDaFoto) ignorar(c, 'foto-extra')
       continue
     }
     if (c.type === 'shape') ignorar(c, 'forma')
@@ -310,6 +348,7 @@ export function compilarReferencia(pagina: PaginaParaReferencia, args: { pageVer
   }
   posicoes.logo = { referencia: caixaDaLogo, zona: zonaDaCaixa(caixaDaLogo) }
 
+  const assunto = args.assunto ? assuntoNoQuadro(args.assunto, camadaDaFoto!, pagina) : undefined
   const definicao: ArquetipoDeLayout = {
     id: idDaReferencia(pagina.id),
     versao: args.versao,
@@ -317,7 +356,7 @@ export function compilarReferencia(pagina: PaginaParaReferencia, args: { pageVer
     nome: `Referência · ${(pagina.name ?? pagina.id).trim() || pagina.id}`,
     papeis,
     preferencias: { ancora: faixa, alinha: alinhaDaManchete, cantoDaMarca },
-    formatos: { [formato]: { papeis: posicoes, limitesDeTexto, corpos, estilos } } as unknown as ArquetipoDeLayout['formatos'],
+    formatos: { [formato]: { papeis: posicoes, limitesDeTexto, corpos, estilos, ...(assunto && 'caixa' in assunto ? { assunto } : {}) } } as unknown as ArquetipoDeLayout['formatos'],
     referencia: { pageId: pagina.id, pageVersion: args.pageVersion, formato },
   }
   return {
@@ -329,6 +368,7 @@ export function compilarReferencia(pagina: PaginaParaReferencia, args: { pageVer
       logo: logo.id,
       papeis: ordem.map(([papel, c]) => ({ papel, camadas: c.camadas, linhas: c.linhas, caixa: c.caixa, alinha: c.alinha, corpo: c.corpo, estilo: c.estilo })),
       ignoradas,
+      ...(assunto ? { assunto } : {}),
     },
   }
 }

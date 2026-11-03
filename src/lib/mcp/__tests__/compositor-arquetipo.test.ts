@@ -28,6 +28,8 @@ vi.mock('@/lib/compositor/referencias', () => ({ listarReferencias: vi.fn(async 
 import { zodToJsonSchema } from 'zod-to-json-schema'
 import { specSchema } from '@/lib/compositor/spec'
 import { toolsDoCompositor } from '../catalogo/compositor'
+import { toolsDeReferencias } from '../catalogo/referencias'
+import { listarReferencias } from '@/lib/compositor/referencias'
 
 const tool = (nome: string) => toolsDoCompositor.find((t) => t.nome === nome)!
 const blocos = [
@@ -142,5 +144,15 @@ describe('T1a · arquetipo nas portas MCP', () => {
     expect(porId['minimal-divisao-cor-topo-arco']).toMatchObject({ versao: 1, codigoTaxonomico: 'MIN-04', fundo: 'foto-em-caixa', disponibilidade: 'disponivel', mascaraDaFoto: { story: { tipo: 'arco-janela', raio: 0.62 }, feed: { tipo: 'arco-janela', raio: 0.62 } } })
     // O #4 guardado fora da vitrine (25/10): o agente não o lê no ver-assinatura (segue resolvível pelo id).
     expect(porId['minimal-fb-base-centro']).toBeUndefined()
+  })
+
+  it('F2b: ver-assinatura e listar-referencias mostram o assunto da revisão persistida; null na revisão antiga', async () => {
+    const assunto = { caixa: { x: 0.2, y: 0.1, w: 0.4, h: 0.3 }, visivel: 1 }
+    const linha = { arquetipoId: 'ref-p1', versao: 2, pagina: 'P', formato: 'story', revogadaEm: null, corpos: null, estilos: null }
+    vi.mocked(listarReferencias).mockResolvedValue([{ ...linha, assunto }, { ...linha, arquetipoId: 'ref-p2', assunto: null }] as never)
+    const assinatura = (await tool('ver-assinatura').handler({ projectId: 8 }, { kind: 'user' } as never)) as Record<string, any>
+    const listadas = (await toolsDeReferencias.find((t) => t.nome === 'listar-referencias')!.handler({ projectId: 8 }, { kind: 'user' } as never)) as Record<string, any>
+    vi.mocked(listarReferencias).mockResolvedValue([])
+    for (const r of [assinatura, listadas]) expect(r.referencias.map((l: Record<string, unknown>) => l.assunto)).toEqual([assunto, null])
   })
 })

@@ -13,6 +13,7 @@
  */
 import type { Layer } from '@/types/template'
 import type { MeasureTextBox } from '@/lib/creatives/text-geometry'
+import { assuntoEfetivoDaFoto } from '@/lib/creatives/assunto-da-foto-efetivo'
 import { PADDING_DE_DESENHO } from '@/lib/creatives/halo/fundo-de-texto'
 
 export interface PaginaDeAssinatura {
@@ -122,7 +123,12 @@ export function mockDoUsoDeFoto() {
 }
 
 export function mockDoAcervo() {
-  return { lerCatalogoDoProjeto: async () => ({ catalogo: null, todas: atual().catalogo ? [atual().catalogo] : [] }) }
+  return {
+    lerCatalogoDoProjeto: async () => ({ catalogo: null, todas: atual().catalogo ? [atual().catalogo] : [] }),
+    // F2b: a caixa do cenário entra como a da VISÃO, pelo resolvedor de verdade.
+    assuntosEfetivosDoProjeto: async (_projectId: number, ids: string[]) =>
+      new Map(ids.map((id) => [id, assuntoEfetivoDaFoto(atual().catalogo?.driveFileId === id ? { caixaDoAssunto: atual().catalogo!.assunto, caixaAnalisadaEm: 'cenario' } : null, null)])),
+  }
 }
 
 export function gradientesDoCenario() {

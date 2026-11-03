@@ -45,7 +45,7 @@ function ruido(seed = 7): () => number {
 }
 
 function leituraDoCorte(f: FotoCinza, extra: Partial<LeituraDoCorte> = {}): LeituraDoCorte {
-  return { crop: 'center-middle', raster: f, mapa: mapaDeCalma(f), regioes: [], assuntoVisivel: null, ...extra }
+  return { crop: 'center-middle', chave: 'center-middle', raster: f, mapa: mapaDeCalma(f), regioes: [], assuntoVisivel: null, ...extra }
 }
 
 /** O planejamento com a função REAL do CP2A: véu escuro e véu claro da marca, a curva e a faixa padrão. */
@@ -269,7 +269,7 @@ describe('ordenarAvaliacoes — filtro sequencial', () => {
   function aval(indice: number, c: Partial<ComponentesDaPontuacao> = {}, crop: CropPosition = 'center-middle', eliminada: AvaliacaoDaCombinacao['eliminada'] = []): AvaliacaoDaCombinacao {
     const componentes = { ...COMPONENTES, corte: crop === 'center-middle' ? 1 : 0, ...c }
     const pontuacao = (Object.keys(PESOS_DA_PONTUACAO) as Array<keyof typeof PESOS_DA_PONTUACAO>).reduce((s, k) => s + PESOS_DA_PONTUACAO[k] * componentes[k], 0)
-    const base = { crop, combinacao: { indice, escolhas: [{ faixa: 0, rotulo: 'referencia' as const, dy: 0 }], deslocamentos: {} }, eliminada }
+    const base = { crop, chave: crop, combinacao: { indice, escolhas: [{ faixa: 0, rotulo: 'referencia' as const, dy: 0 }], deslocamentos: {} }, eliminada }
     return eliminada.length > 0 ? base : { ...base, componentes, pontuacao }
   }
 
@@ -315,7 +315,7 @@ describe('ordenarAvaliacoes — filtro sequencial', () => {
     const unica = aval(0)
     expect(motivoDaVitoria(unica)).toBe('única combinação válida')
     expect(motivoDaVitoria(unica, e1)).toBe('única combinação válida')
-    expect(resumirAvaliacao(e1)).toEqual({ crop: 'center-middle', escolhas: e1.combinacao.escolhas, pontuacao: null, componentes: null, tratamento: [], textos: [], eliminada: e1.eliminada })
+    expect(resumirAvaliacao(e1)).toEqual({ crop: 'center-middle', chave: 'center-middle', escolhas: e1.combinacao.escolhas, pontuacao: null, componentes: null, tratamento: [], textos: [], eliminada: e1.eliminada })
   })
 })
 

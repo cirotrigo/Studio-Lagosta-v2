@@ -131,7 +131,8 @@ const CHAVES = {
   elemento: ['id', 'tipo', 'opcional', 'corPorPapel', 'presoA', 'canto', 'porItem', 'braco'],
   preferencias: ['ancora', 'alinha', 'cantoDaMarca'],
   fotoIdeal: ['areaCalma', 'assunto', 'descricao', 'referencias'],
-  geometria: ['papeis', 'elementos', 'limitesDeTexto', 'itens', 'foto', 'mascaraDaFoto', 'corpos', 'estilos'],
+  geometria: ['papeis', 'elementos', 'limitesDeTexto', 'itens', 'foto', 'mascaraDaFoto', 'corpos', 'estilos', 'assunto'],
+  assunto: ['caixa', 'visivel'],
   estilo: ['fontFamily', 'fontWeight', 'lineHeight', 'letterSpacing', 'textTransform', 'color', 'sombra'],
   sombra: ['color', 'blur', 'offsetY', 'opacity'],
   mascara: ['tipo', 'raio'],
@@ -410,6 +411,19 @@ export function validarArquetipo(arquetipo: ArquetipoDeLayout, opcoes: OpcoesDaV
       if (!Number.isInteger(limite?.linhasMax) || (limite.linhasMax as number) < 1) recusar('CAMPO_INVALIDO', `${campo}.linhasMax`, 'linhasMax é um inteiro ≥ 1')
       if (limite?.caracteresPorLinha !== undefined && (!Number.isInteger(limite.caracteresPorLinha) || (limite.caracteresPorLinha as number) < 1)) {
         recusar('CAMPO_INVALIDO', `${campo}.caracteresPorLinha`, 'caracteresPorLinha é um inteiro ≥ 1')
+      }
+    }
+    // F2b: `assunto` (o assunto da foto da referência no quadro) só na definição de uma REFERÊNCIA.
+    if (g.assunto !== undefined) {
+      const campo = `${base}.assunto`
+      if (!ehObjeto(g.assunto)) recusar('CAMPO_INVALIDO', campo, 'assunto é um objeto')
+      else if (!ehObjeto(a.referencia)) recusar('CAMPO_INVALIDO', campo, 'assunto só existe na definição compilada de uma referência')
+      else {
+        fechado(g.assunto, CHAVES.assunto, campo)
+        fechado(g.assunto.caixa, CHAVES.caixa, `${campo}.caixa`)
+        conferirCaixa(g.assunto.caixa, `${campo}.caixa`, recusar)
+        const { visivel } = g.assunto
+        if (!ehNumero(visivel) || visivel <= 0 || visivel > 1) recusar('CAMPO_INVALIDO', `${campo}.visivel`, 'visivel é uma fração em (0, 1]')
       }
     }
     // F2c: `corpos` (o corpo desenhado por papel, px) só na definição de uma REFERÊNCIA — no catálogo "escala é relação,

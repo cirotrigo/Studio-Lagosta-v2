@@ -340,7 +340,7 @@ function avaliarPuro(unidades: UnidadeDaCombinacao[], indice: number) {
     return u.rect.y - u.rectNaReferencia.y
   }
   return avaliarCombinacao({
-    corte: { crop: 'center-middle', raster, mapa, regioes: [], assuntoVisivel: null },
+    corte: { crop: 'center-middle', chave: 'center-middle', raster, mapa, regioes: [], assuntoVisivel: null },
     energiaDeReferencia: Math.max(1, mapa.energiaMaxima),
     materializada: {
       combinacao: {
@@ -863,6 +863,8 @@ describe('CP2B · correções da revisão adversarial', () => {
     // Todas as combinações de todos os cortes caem nele: a foto não serve a este formato.
     expect(d.recusas.CORTE_PERDE_O_ASSUNTO).toBe(d.combinacoesAvaliadas)
     expect((e as CreativeError).message).toMatch(/Nenhum corte da foto neste formato mostra 75% do assunto que o catálogo marca: troque a foto, ou peça outro formato/)
+    expect((e as CreativeError).message).toMatch(/origem visao, estado localizada/)
+    expect((e as CreativeError).details).toMatchObject({ assuntoDoCatalogo: { origem: 'visao', estado: 'localizada' } })
     expect(cap.entradas.length).toBe(antes)
   }, 60_000)
 
@@ -947,7 +949,7 @@ describe('CP2B · correções da revisão adversarial', () => {
   }, 60_000)
 
   it('catálogo INDISPONÍVEL com arquétipo recusa (CATALOGO_INDISPONIVEL); sem catálogo, a região é a estimada, dito; sem arquétipo, nada muda', async () => {
-    const lerCatalogo = vi.spyOn(acervo, 'lerCatalogoDoProjeto')
+    const lerCatalogo = vi.spyOn(acervo, 'assuntosEfetivosDoProjeto')
     try {
       // Com a anotação lida, o diagnóstico diz que a região protegida é a do catálogo.
       expect(busca((await peca(CENAS.regiao)).r).regiaoProtegida).toBe('catalogo')
@@ -957,7 +959,7 @@ describe('CP2B · correções da revisão adversarial', () => {
       expect(e.status).toBe(503)
       // SEM_CATALOGO é "a foto não tem anotação": compõe sem a caixa. Nesta foto a textura não dá região estimada
       // nenhuma (DIAGNÓSTICO 4: foto sem região estimável) — o campo some, como `assuntoOrigem: 'nenhum'`.
-      lerCatalogo.mockRejectedValueOnce(new CreativeError('SEM_CATALOGO', 'sem catálogo', 404))
+      lerCatalogo.mockResolvedValueOnce(new Map())
       const { r } = await compor(CENAS.regiao, { somenteAvaliar: true })
       expect(r.diagnostico.assuntoOrigem).toBe('nenhum')
       expect(busca(r)).not.toHaveProperty('regiaoProtegida')
@@ -989,6 +991,9 @@ describe('CP2B · correções da revisão adversarial', () => {
     const t1a = await comporPeca(specDe(lateral), { somenteAvaliar: true, escolhaEspacial: { modo: 'referencia' } })
     expect(t1a.diagnostico.posicao.crop).toBe('center-middle')
     expect(t1a.diagnostico.avisos).toContain('O corte center-middle preserva menos de 75% da caixa do assunto catalogado.')
+    // F2b: o aviso diz de onde veio a caixa, e o diagnóstico guarda o snapshot que a composição usou.
+    expect(t1a.diagnostico.avisos).toContainEqual(expect.stringMatching(/origem visao, estado localizada.*`marcar-assunto`/))
+    expect(t1a.diagnostico.foto).toEqual({ assuntoDoCatalogo: { origem: 'visao', estado: 'localizada' } })
   }, 60_000)
 
   it('CROP E. peça do CP2B congelada cuja anotação mudou e que NENHUM corte preservaria: ARQUETIPO_CORTE_CONGELADO_PERDE_O_ASSUNTO, nada se move', async () => {
@@ -999,6 +1004,7 @@ describe('CP2B · correções da revisão adversarial', () => {
     const e = await recusa({ ...LARGO, id: 'cp2b-crop-e' }, { escolhaEspacial: escolha })
     expect(e.code).toBe('ARQUETIPO_CORTE_CONGELADO_PERDE_O_ASSUNTO')
     expect(e.message).toMatch(new RegExp(`corte ${escolha.corte}.*perde o assunto que o catálogo marca`))
+    expect(e.message).toMatch(/a caixa do assunto foi anotada depois desta peça/)
   }, 60_000)
 
   it('foto pedida que NÃO carregou: com arquétipo recusa (FOTO_INDISPONIVEL, transitório); sem arquétipo compõe com aviso, como sempre', async () => {
@@ -1033,10 +1039,15 @@ describe('CP2B · correções da revisão adversarial', () => {
     const porId = busca((await peca(CENAS.regiao)).r)
     expect(porId.recusas.INVADE_REGIAO_PROTEGIDA ?? 0).toBeGreaterThan(0)
     await montar(CENAS.regiao)
-    const r = await comporPeca({ ...specDe(CENAS.regiao), foto: { url: 'https://drive.google.com/file/d/foto-sintetica/view' } }, { somenteAvaliar: true })
+    const r = await comporPeca({ ...specDe(CENAS.regiao), foto: { url: 'https://lh3.googleusercontent.com/d/foto-sintetica=w1920' } }, { somenteAvaliar: true })
     expect(busca(r).regiaoProtegida).toBe('catalogo')
     expect(busca(r).recusas).toEqual(porId.recusas)
     expect(busca(r).escolha.deslocamentos).toEqual(porId.escolha.deslocamentos)
+    expect(r.diagnostico.foto?.assuntoDoCatalogo).toEqual({ origem: 'visao', estado: 'localizada' })
+    // F2b: só a lh3 é comprovadamente a imagem que o Drive renderiza; a caixa não vale sobre outra URL, mesmo com o id nela.
+    const outra = await comporPeca({ ...specDe(CENAS.regiao), foto: { url: 'https://drive.google.com/file/d/foto-sintetica/view' } }, { somenteAvaliar: true })
+    expect(busca(outra).regiaoProtegida).not.toBe('catalogo')
+    expect(outra.diagnostico.foto?.assuntoDoCatalogo).toEqual({ origem: 'nenhuma', estado: 'fonte-nao-coerente', motivo: 'url-nao-renderizada-pelo-drive' })
   }, 60_000)
 
   it('foto: {} (nenhuma foto pedida) com arquétipo compõe pela partida — não é FOTO_INDISPONIVEL', async () => {

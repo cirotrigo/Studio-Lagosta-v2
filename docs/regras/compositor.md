@@ -1949,3 +1949,73 @@ diagnóstico, paridade com o medir; a revisão só com `corpos` compõe na assin
   contrato resolve depois do arredondamento, e a medição usa a camada preparada.
 - A assinatura sintética dos testes está SEM sombra (`null`): a peça por referência sem sombra sai sem sombra — é a
   preservação do `null`, não um defeito.
+
+### F2b da direção por referência: a caixa do ASSUNTO e a janela assistida (02/11/2026)
+
+A F2a deu a janela; a referência continuava sem saber ONDE o assunto da foto dela estava. Com outra foto, o corte era o
+de sempre (até 3 âncoras) e o prato caía em qualquer lugar. A F2b fecha o laço em três partes: a caixa no catálogo (ver
+`acervo-de-fotos.md`), o `assunto` gravado na revisão da referência e a janela calculada para a foto nova.
+
+**A caixa efetiva.** O compositor e a seleção leem por `assuntosEfetivosDoProjeto` (`AssuntoEfetivo`: `caixa`, `origem`
+`humano | visao | nenhuma`, `estado` `localizada | sem-assunto | nao-analisada | fonte-nao-coerente`), nunca
+`lerCaixaDoAssunto(entrada.assunto)`: `assunto` é TEXTO. O arquivo sai SÓ de `fonteDaFoto`: a caixa vale sobre a imagem que
+o Drive renderiza (`driveFileId`, ou lh3 `/d/<id>`); proxy e Blob com id ficam `fonte-nao-coerente`, e a peça que entra
+por eles não ganha proteção nem assistência, dito em `diagnostico.foto.assuntoDoCatalogo`. Catálogo lançando com arquétipo
+recusa com `CATALOGO_INDISPONIVEL` (503, `assuntosOuRecusa`); sem arquétipo, nada muda. Toda peça que sai perdendo a caixa
+ganha o aviso com a origem (`descreverCaixaDoAssunto`), porque a correção é `marcar-assunto`, não a copy.
+
+**O `assunto` da revisão.** `GeometriaDoArquetipo.assunto = { caixa, visivel }`: a caixa projetada no CANVAS (frações, 4
+casas), só em definição de referência (`CAMPO_INVALIDO` fora dela), e entra na impressão. `visivel` é a área final sobre a
+área projetada, depois dos dois recortes (camada e página); quando `< 1`, o Ciro cortou o assunto de propósito e a
+assistência leva o assunto novo INTEIRO para a caixa visível (`assistencia.referenciaCortaOAssunto`). A camada sai de
+`camadaDaFotoDaPagina`, compartilhada com `fotoDaPaginaParaLayout`.
+
+- `aprovarReferencia` tira um SNAPSHOT dos insumos antes de compilar, e a concorrência decide pelo mesmo snapshot.
+  Dimensões pelo Drive (`imageMediaMetadata(width,height,rotation)`): `rotation` ímpar troca os eixos, porque a caixa vale
+  sobre a imagem renderizada.
+- Ausências ditas em `leitura.assunto`: `foto-sem-id`, `fonte-nao-coerente`, `nao-analisada`, `sem-assunto`,
+  `sem-dimensoes`, `transformacao-nao-representada` (`objectFit` não `cover`, flip em `style.flipH/flipV`, rotação da
+  camada, `style.mask`, `style.border.radius`: o que o retângulo da camada não representa), `fora-do-quadro`,
+  `catalogo-indisponivel`. A referência compila sem o assunto em todos esses casos.
+- A âncora vai DIRETO a `assuntoEmPixels`, sem virar janela: o mínimo de 1% é do crop manual, e o cover não o tem (no
+  panorama 100000×1000 a conversão gravava o assunto no lugar errado; Codex, F2b rodada 1).
+- **Falha transitória** (catálogo, tabela ou Drive lançando): se a ÚLTIMA revisão tem `assunto`, recusa com
+  `CATALOGO_INDISPONIVEL` e nada grava, em vez de degradar; se não tem, compila com `catalogo-indisponivel`, dito.
+- Mesma página + mesma caixa reaproveita; caixa alterada dá a versão seguinte (é o que se quer).
+
+**A janela assistida** (`arquetipos/janela-do-assunto.ts`, puro). Alvo: posição E ocupação do assunto da referência. A
+conta é em px da foto, com quatro limites: o assunto inteiro na janela, a janela dentro da foto, zoom até
+`ZOOM_MAXIMO_DA_ASSISTENCIA` (1,6 sobre o cover) e o mínimo do renderer por eixo. Sai canonicalizada por `janelaEfetiva`. O
+alvo inalcançável não é erro: fica o mais perto possível, com `ajustes` e `erro` ditos. Até 3 candidatas (`fatorDosLados`
+1, 0,85, 1,15, LINEAR nos lados), sem repetição por `chaveDoCorte`. Só "favorece a ideal" é prometido (`prior` 1 contra
+0,9); entre as variações decide a pontuação da busca.
+
+- **Precedência em `compor.ts`**: escolha reproduzida > `foto.janela` / `foto.corte` > peça do T1a > assistência >
+  `cortesCandidatos`. Vale a ESCOLHA `reproducao`, não o booleano `opcoes.reproducao`: a recomposição com a foto trocada
+  invalida a escolha e faz busca nova, com assistência.
+- Os candidatos passam pelo laço de sempre (raster pela janela, 0,75 do assunto, região protegida com o teto, calma, busca
+  espacial). A referência mantém `dy = 0`: a busca pode escolher outro corte ou recusar, nunca outra faixa. Todos caem:
+  `SEM_COMBINACAO` com o motivo e `details.assistencia`, sem queda silenciosa.
+- Geometria inviável nas três (`assunto-nao-cabe-no-cover`, `minimo-do-renderer`): `estado: 'inviavel'` + motivo, e a peça
+  segue pelos cortes de hoje, sujeitos ao 0,75.
+- `diagnostico.posicao.assistencia` diz o estado em toda peça com arquétipo. Aviso novo quando a janela vencedora amplia a
+  foto no canvas (`escala > 1`): "confira a nitidez". Aviso, nunca veto.
+
+**A janela assistida não é pedido.** Ela foi calculada para AQUELA foto. Na recomposição, a janela da página só vira
+`spec.foto.janela` se a spec já a pedia ou se foi editada (`enquadramentoAlterado`, ou diverge da escolha gravada): a
+assistida fica só na escolha, que a reproduz enquanto a foto for a mesma. Foto trocada invalida a escolha e a busca roda
+com assistência; a janela editada segue para a foto nova, como na F2a. Gravá-la na spec numa edição de texto a faria passar
+por pedida na troca de foto seguinte: é o que `f2b-recompor.test.ts` prova, pela recomposição real.
+
+**Identidade por valor.** Com várias janelas o rótulo `'janela'` é o mesmo em todas: `LeituraDoCorte`, avaliação e resumo
+carregam `chave` (= `chaveDoCorte`), e `corteSel`, `corteFinal` e o vencedor da busca se acham por ela. Quem acrescentar
+candidato de corte nunca compara por `crop`.
+
+**Limites ditos.** `medir-copy` não mede a viabilidade espacial da janela assistida. A recomposição revalida a caixa ATUAL
+e pode recusar uma peça antes válida (`ARQUETIPO_CORTE_CONGELADO_PERDE_O_ASSUNTO`). O revisor reaproveita
+`composicao.assunto` só quando foto, formato e corte coincidem. Foto em caixa (#8/#9) não ganha assistência. Referência com
+foto no Blob fica `foto-sem-id`. Arquivo substituído no Drive mantendo o id não é detectado: o remédio é `marcar-assunto`.
+
+**Gancho de prova.** `opcoes.leitorDeReferencias` só com `provar` ou `somenteAvaliar` (senão `OPCAO_SO_DE_PROVA`, 400, antes
+de qualquer efeito); nunca exposto pelo MCP. É por ele que `scripts/prova-f2b-assunto-local.ts` injeta a referência
+compilada em memória, sem escrever nada.

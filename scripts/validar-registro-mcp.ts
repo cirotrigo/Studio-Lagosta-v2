@@ -1307,6 +1307,28 @@ const LITERAIS_RESTANTE: Record<string, unknown> = {
     required: ['projectId', 'driveFileId'],
     additionalProperties: false,
   },
+  // Tool NOVA (02/11, F2b): o fixture nasce com ela.
+  'marcar-assunto': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      driveFileId: { type: 'string', description: 'A foto (o driveFileId que buscar-fotos devolve).' },
+      decisao: {
+        type: 'string',
+        enum: ['caixa', 'sem-assunto', 'automatico'],
+        description: 'caixa grava a caixa; sem-assunto grava a negativa; automatico revoga a decisão.',
+      },
+      caixa: {
+        type: 'object',
+        properties: { x0: { type: 'number' }, y0: { type: 'number' }, x1: { type: 'number' }, y1: { type: 'number' } },
+        required: ['x0', 'y0', 'x1', 'y1'],
+        additionalProperties: false,
+        description: 'Só com decisao "caixa": frações da foto como o Drive a mostra, com x1 > x0 e y1 > y0.',
+      },
+    },
+    required: ['projectId', 'driveFileId', 'decisao'],
+    additionalProperties: false,
+  },
   'pedir-foto': {
     type: 'object',
     properties: {

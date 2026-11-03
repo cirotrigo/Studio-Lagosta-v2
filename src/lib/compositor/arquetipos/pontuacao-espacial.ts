@@ -38,7 +38,7 @@ import {
 } from './busca-espacial-tipos'
 
 /** Abaixo desta fração visível da caixa do catálogo, o corte perdeu o assunto. */
-const ASSUNTO_VISIVEL_MINIMO = 0.75
+export const ASSUNTO_VISIVEL_MINIMO = 0.75
 /** px de folga na ordem de leitura: a seguinte pode começar até aqui antes de a anterior terminar (antialias, arredondamento). */
 const FOLGA_DA_ORDEM_PX = 2
 /** Margem de leitura (níveis 0–255) que já vale contraste natural pleno. */
@@ -85,7 +85,7 @@ export function avaliarCombinacao(args: {
 }): AvaliacaoDaCombinacao {
   const { corte, materializada, planejamento, canvas } = args
   const { combinacao, unidades } = materializada
-  if (!unidades) return { crop: corte.crop, combinacao, eliminada: materializada.eliminada }
+  if (!unidades) return { crop: corte.crop, chave: corte.chave, combinacao, eliminada: materializada.eliminada }
   const eliminada: Eliminacao[] = []
 
   // a. O corte que perde o assunto do catálogo.
@@ -209,7 +209,7 @@ export function avaliarCombinacao(args: {
     }
   }
 
-  const base = { crop: corte.crop, combinacao, eliminada, tratamento, textos, ...(regiaoEstimada ? { regiaoEstimada } : {}) }
+  const base = { crop: corte.crop, chave: corte.chave, combinacao, eliminada, tratamento, textos, ...(regiaoEstimada ? { regiaoEstimada } : {}) }
   if (eliminada.length > 0) return base
 
   // g. Os componentes (definições no contrato).
@@ -243,8 +243,8 @@ export function avaliarCombinacao(args: {
     contrasteNatural: arred(contrasteNatural),
     assunto: arred(assunto),
     referencia: arred(referencia),
-    // F2a: a janela explícita é o único corte avaliado — vale como o central (não há o que preferir).
-    corte: corte.crop === 'center-middle' || corte.crop === 'janela' ? 1 : 0,
+    // F2a: a janela explícita é o único corte avaliado — vale como o central (não há o que preferir). F2b: o prior da leitura, quando há.
+    corte: corte.prior ?? (corte.crop === 'center-middle' || corte.crop === 'janela' ? 1 : 0),
   }
   const pontuacao = arred(CHAVES_DA_PONTUACAO.reduce((s, k) => s + PESOS_DA_PONTUACAO[k] * componentes[k], 0))
   return { ...base, componentes, pontuacao }
@@ -301,6 +301,7 @@ export function ordenarAvaliacoes(avaliacoes: AvaliacaoDaCombinacao[]): Avaliaca
 export function resumirAvaliacao(a: AvaliacaoDaCombinacao): ResumoDaAvaliacao {
   return {
     crop: a.crop,
+    chave: a.chave,
     escolhas: a.combinacao.escolhas,
     pontuacao: a.pontuacao ?? null,
     componentes: a.componentes ?? null,
@@ -358,6 +359,6 @@ export function motivoDaVitoria(vencedora: AvaliacaoDaCombinacao, segunda?: Aval
     return `mesmo custo de tratamento e ${COMPONENTE_QUE_DECIDIU[decisivo]} (${num(a[decisivo])} contra ${num(b[decisivo])})`
   }
   if (a.referencia > b.referencia) return `a foto não distingue: ficou a mais perto da referência (${num(a.referencia)} contra ${num(b.referencia)})`
-  if (a.corte > b.corte) return `a foto não distingue: ficou ${a.referencia === 1 ? 'a referência' : 'a posição'} no corte central`
+  if (a.corte > b.corte) return `a foto não distingue: ficou ${a.referencia === 1 ? 'a referência' : 'a posição'} ${vencedora.crop === 'janela' ? 'na janela ideal' : 'no corte central'}`
   return `a foto não distingue: ficou a primeira na ordem fixa (combinação ${vencedora.combinacao.indice} contra ${segunda.combinacao.indice})`
 }
