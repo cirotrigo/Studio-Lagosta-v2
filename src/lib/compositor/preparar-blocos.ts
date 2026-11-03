@@ -196,6 +196,8 @@ export function prepararBlocos(args: {
    * bloco (`origem.linhas` = a linha dela), na ordem do autor. O item que quebra em duas linhas visuais segue uma camada.
    */
   listaDoPapel?: (papel: Papel) => boolean
+  /** Com arquétipo: o teto de linhas do papel (`limitesDeTexto`) — a linha única que não cabe no teto é distribuída (`montarBloco`). */
+  linhasMaxDoPapel?: (papel: Papel) => number | undefined
 }): BlocosPreparados {
   const { spec, assinatura, colunaUtil, escalaDoFormato, mancha, medir, familias, combinacoesSalvas } = args
   const avisos: string[] = []
@@ -395,6 +397,8 @@ export function prepararBlocos(args: {
       const corpoDaRef = caixa ? args.corpoDoPapel?.(p.papel === 'headline2' ? 'headline' : p.papel) : undefined
       const baseDoBloco = estiloMedido.fontSize * escalaDoFormato
       const escalaMaxima = corpoDaRef ? corpoDaRef.teto / baseDoBloco : caixa ? args.escalaMaximaDoPapel?.(p.papel === 'headline2' ? 'headline' : p.papel) : undefined
+      // A distribuição vale para o texto comum do papel: a lista é um item por linha, o extra e a segunda voz têm as suas.
+      const linhasMax = caixa && !p.extra && p.papel !== 'headline2' && !args.listaDoPapel?.(p.papel) ? args.linhasMaxDoPapel?.(p.papel) : undefined
       const r = montarBloco({
         papel: p.papel,
         id,
@@ -405,6 +409,7 @@ export function prepararBlocos(args: {
         ...(caixa ? { alturaMaxima: caixa.altura } : {}),
         ...(escalaMaxima !== undefined ? { escalaMaxima } : {}),
         ...(corpoDaRef ? { pisoDeEscala: corpoDaRef.piso / baseDoBloco } : {}),
+        ...(linhasMax !== undefined ? { linhasMax } : {}),
         textAlign: 'left',
         groupId: `grupo-${hashDe(chaveDoGrupoAtual) % 99991}`,
         corDaMancha: mancha,
@@ -448,7 +453,8 @@ export function prepararBlocos(args: {
         ...r.bloco,
         layer,
         chave: chaveDoGrupoAtual,
-        linhasDaCopy: p.linhas,
+        // O que a camada DESENHA (a linha distribuída pelo compositor conta como as linhas dela): é isso que o medir mede.
+        linhasDaCopy: r.bloco.distribuida ?? p.linhas,
         estilo,
         destaque,
         funcao,

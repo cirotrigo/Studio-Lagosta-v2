@@ -136,8 +136,9 @@ describe('F2c · o corpo da referência no medir-copy', () => {
   })
 
   it('independência DENTRO do papel: a manchete longa encolhe pela largura e a segunda voz curta fica no teto (80), com a pilha cabendo', () => {
-    // 'Café da manhã servido cedo' (26 chars) não cabe a 80 na coluna de 940 (26 × 80 × 0,55 = 1144): desce; 'já' cabe em 80.
-    const m = medirPor(compilar(brunchAlto), [{ papel: 'headline', linhas: ['Café da manhã servido cedo', 'já'] }, { papel: 'apoio', linhas: ['Sabores'] }], assinaturaComVoz2)
+    // 'Cafédamanhãservidocedo' (22 chars, SEM espaço: não há onde distribuir) não cabe a 80 na coluna de 940 (22 × 80 × 0,55 = 968):
+    // desce pela largura; 'já' cabe em 80. (Com espaços a linha seria distribuída em 2 no teto — ver o teste seguinte.)
+    const m = medirPor(compilar(brunchAlto), [{ papel: 'headline', linhas: ['Cafédamanhãservidocedo', 'já'] }, { papel: 'apoio', linhas: ['Sabores'] }], assinaturaComVoz2)
     const h = bloco(m, 'headline')
     const v2 = bloco(m, 'headline2')
     expect(h.fontSize!).toBeLessThan(80)
@@ -145,6 +146,19 @@ describe('F2c · o corpo da referência no medir-copy', () => {
     expect(v2).toMatchObject({ fontSize: 80, situacao: 'cabe', corpo: { referencia: 80, teto: 80, efetivo: 80, reducao: 0 } })
     expect(h.corpo).toMatchObject({ referencia: 80, teto: 80, efetivo: h.fontSize })
     expect(m.cabeTudo).toBe(true)
+  })
+
+  it('a linha única que não cabe no teto é DISTRIBUÍDA em linhas equilibradas no corpo desenhado (03/11/2026), não encolhida', () => {
+    // 'Café da manhã servido cedo' (26 chars) não cabe a 80 na coluna de 940 (1144 px); a referência desenha 3 linhas, e a
+    // quebra mais equilibrada em 2 ('Café da manhã' / 'servido cedo', 13 / 12) cabe folgada em 80: sai em 2 linhas cheias.
+    const m = medirPor(compilar(brunchAlto), [{ papel: 'headline', linhas: ['Café da manhã servido cedo'] }, { papel: 'apoio', linhas: ['Sabores'] }])
+    const h = bloco(m, 'headline')
+    expect(h).toMatchObject({ fontSize: 80, situacao: 'cabe', linhas: 2, corpo: { referencia: 80, efetivo: 80, reducao: 0 } })
+    expect(h.linhasMedidas.map((l) => l.linha)).toEqual(['Café da manhã', 'servido cedo'])
+    expect(h.avisos.join(' ')).toMatch(/headline: "Café da manhã servido cedo" distribuída em 2 linhas pelo compositor/)
+    expect(m.cabeTudo).toBe(true)
+    // O que cabe em uma linha fica em uma.
+    expect(bloco(medirPor(compilar(brunchAlto), [{ papel: 'headline', linhas: ['Café da manhã'] }, { papel: 'apoio', linhas: ['Sabores'] }]), 'headline')).toMatchObject({ fontSize: 80, linhas: 1 })
   })
 
   it('manchete INTEIRA na segunda voz pelo contrato (`linhasNaVoz2: [0]`): só headline2, partindo de corpos.headline (80) — sem "bloco principal"', () => {

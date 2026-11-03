@@ -106,7 +106,7 @@ import {
   type PioraDeTratamento,
 } from './regua'
 import { candidatasDistintas, gradientesARecusar, MOTIVOS_DO_TRATAMENTO, planejarTratamentoDaBorda, type PlanoDaBorda } from './tratamento-de-leitura'
-import { conferirLinhas, conferirLogo, prepararArquetipo, type ArquetipoPreparado } from './arquetipos/na-spec'
+import { conferirLinhas, conferirLogo, linhasMaxDoPapel, prepararArquetipo, type ArquetipoPreparado } from './arquetipos/na-spec'
 import { alinhaDoPapel, caixasMaximas, GAP_DA_PILHA, type MargemDaPeca, referenciaDoPapel, type Materializacao, type RetanguloPx } from './arquetipos/materializar'
 import { MODO_BUSCA_ESPACIAL, MOTIVOS_DE_ELIMINACAO, type DiagnosticoDaBuscaEspacial, type EscolhaParaReproduzir, type LeituraDoCorte, type PlanejamentoDoTratamento } from './arquetipos/busca-espacial-tipos'
 import { chaveDaFoto as impressaoDaFoto, contarRecusas, exemplosDeRecusa, motivoDaFalta, selecionarNoArquetipo, type SelecaoNoArquetipo } from './arquetipos/busca-espacial'
@@ -984,6 +984,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       combinacoesSalvas,
       ...(caixasArq ? { caixaDoPapel: (p: Papel) => caixasArq[papelGeometrico(p)], ...(escalaMaximaDoPapel ? { escalaMaximaDoPapel } : {}), ...(corpoDoPapel ? { corpoDoPapel } : {}), ...(estiloDoPapelArq ? { estiloDoPapel: estiloDoPapelArq } : {}) } : {}),
       ...(listasArq?.size ? { listaDoPapel: (p: Papel) => listasArq.has(papelGeometrico(p)) } : {}),
+      ...(arq ? { linhasMaxDoPapel: (p: Papel) => linhasMaxDoPapel(arq.definicao, arq.formato)(papelGeometrico(p)) } : {}),
     })
   // Com arquétipo, a preparação passa pela escada da UNIDADE (a mesma do medir-copy) — e a logo dos arranjos sai
   // deles: com arquétipo a logo é do arquétipo (senão a marca sairia duas vezes).
