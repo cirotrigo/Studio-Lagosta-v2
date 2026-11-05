@@ -1057,8 +1057,10 @@ Story, a faixa da interface — as duas de `margensDoEditor` (L0), nada copiado.
 
 - **`useMargensDoEditor(projectId, canvas)`** (`src/hooks/use-margens-do-editor.ts`): lê `Project.assinatura` pelo
   `useProject` que o editor já carrega e devolve `margensDoEditor(...)` para o formato que o tamanho do canvas diz
-  (`formatoDaPaginaGravada`). Enquanto o projeto não chegou vale o padrão; `origem` diz qual está valendo (o rótulo
-  do overlay mostra "Margem da marca" ou "Margem padrão").
+  (`formatoDaPaginaGravada`). Enquanto o projeto não chegou vale o padrão; `origem` diz qual está valendo. **O overlay
+  não escreve rótulo nenhum no canvas** (30/10/2026, pedido do Ciro: "Margem da marca" e "Interface do Instagram" em
+  cima da arte atrapalhavam a visualização) — a linha azul e a faixa hachurada bastam; o nome das camadas fica no
+  menu Exibir.
 - **`src/lib/margens-no-editor.ts`** (puro): `retangulosDeEncaixe` (os quatro objetos invisíveis do encaixe ao
   arrastar), `paradasDeEncaixe` (o snap do redimensionar), `linhasDaMarca` (as azuis), `faixasDaInterface` (as
   hachuradas, só Story) e `margensDoEixo` (as distâncias do "alinhar"). Uma conversão só para stage, transformer e

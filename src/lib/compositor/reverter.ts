@@ -32,7 +32,7 @@ export async function reverterCamadasDaArte(generationId: string, opts: { projec
   const fv = (gen.fieldValues && typeof gen.fieldValues === 'object' ? gen.fieldValues : {}) as Record<string, unknown>
   const pageId = typeof fv.pageId === 'string' ? fv.pageId : null
   if (!pageId) throw new CreativeError('SEM_PAGINA', 'Esta arte não tem página editável para reverter', 422)
-  const v = validarCamadas(fv.layersSnapshot)
+  const v = validarCamadas(fv.layersSnapshot ?? [])
   if (v.camadas.length === 0) throw new CreativeError('SEM_SNAPSHOT', 'Esta arte não guardou o snapshot das camadas (só peças do compositor guardam)', 422)
 
   const page = await db.page.findUnique({ where: { id: pageId }, select: { id: true, isTemplate: true } })
@@ -42,12 +42,17 @@ export async function reverterCamadasDaArte(generationId: string, opts: { projec
    * CP-X2c (R1): forma vetorial inválida no snapshot recusa a reversão INTEIRA, antes da transação — nada é gravado,
    * invalidado nem recomposto. Conferido no snapshot CRU (`lerCamadas`), não só em `v.camadas`: uma camada vetorial
    * que o schema descartasse sairia da restauração em silêncio. Sem presumir o PR #225 (os outros `v.problemas`
-   * seguem como hoje).
+   * seguem abaixo, no #225).
    */
   const vetores = problemasDosVetores(lerCamadas(fv.layersSnapshot).camadas)
   if (vetores.length > 0) {
     const resumo = vetores.map((c) => `${c.id}: ${c.motivos.map((m) => m.codigo).join(', ')}`).join('; ')
     throw new CreativeError('VETOR_INVALIDO', `O snapshot desta arte tem forma vetorial inválida — nada foi revertido (${resumo}).`, 422, { camadas: vetores })
+  }
+  // #225: o resto dos `v.problemas` também recusa INTEIRO — `v.camadas` são só as válidas, e gravar sem as recusadas
+  // seria reverter pela metade, em silêncio. Vem depois do vetor (CP-X2c tem código próprio) e da precedência de hoje.
+  if (v.problemas.length > 0) {
+    throw new CreativeError('SNAPSHOT_COM_CAMADAS_INVALIDAS', `Snapshot com camadas fora do contrato; reverter gravaria a página sem elas, então nada foi alterado — ${v.problemas.join('; ')}`, 422, { problemas: v.problemas })
   }
 
   // F1: o contrato da página acompanha as camadas restauradas — a reversão é

@@ -2020,6 +2020,35 @@ foto no Blob fica `foto-sem-id`. Arquivo substituído no Drive mantendo o id nã
 de qualquer efeito); nunca exposto pelo MCP. É por ele que `scripts/prova-f2b-assunto-local.ts` injeta a referência
 compilada em memória, sem escrever nada.
 
+### 🔴 `reverter-arte` recusa snapshot com camada fora do contrato (14/10/2026)
+
+`reverterCamadasDaArte` validava o snapshot com `validarCamadas` e só olhava
+`v.camadas.length === 0`: a camada que o contrato recusa (`type` fora de
+`TIPOS_DE_CAMADA`, clipe com duração fora do intervalo em
+`problemasDosClipes`) ia para `v.problemas`, ninguém lia, e a página era
+gravada SEM ela. `ValidacaoDeCamadas.problemas` promete que a validação nunca
+descarta em silêncio; quem lia o resultado descartava.
+
+- 🔴 **Quem chama `validarCamadas` trata `problemas`, nunca só `camadas`**:
+  `v.camadas` são só as válidas, e gravar só elas é gravar metade da peça.
+  Porta de escrita de `Page.layers` vinda de fora do editor continua sendo
+  `prepararCamadasParaGravar` (valida, normaliza e lança); o reverter só
+  valida, porque restaura o snapshot como está.
+- **O reverter recusa com `SNAPSHOT_COM_CAMADAS_INVALIDAS` (422) e não grava
+  nada** — a página fica como estava e nenhum post volta à fila. A lista vai em
+  `details.problemas` e também na mensagem, porque a rota
+  `/api/generations/[id]/reverter-camadas` devolve só a mensagem (a tool
+  `reverter-arte` devolve as duas pelo `toJSON`).
+- **Snapshot ausente continua `SEM_SNAPSHOT`**: o reverter valida
+  `layersSnapshot ?? []`, porque `lerCamadas(undefined)` é "ilegível" e cairia
+  na recusa nova.
+- **Ordem, integrada ao CP-X2c em 05/11/2026**: `SEM_SNAPSHOT` quando nenhuma
+  camada sobra (ausente, ilegível ou todas recusadas: a precedência que o
+  `x2c-reverter-vetor-invalido.test.ts` fixa) → `PAGE_NOT_FOUND` /
+  `PAGINA_E_MODELO` → `VETOR_INVALIDO` (forma vetorial, código próprio) → só
+  então `SNAPSHOT_COM_CAMADAS_INVALIDAS` para o resto dos `v.problemas`.
+- Teste: `src/lib/compositor/__tests__/reverter-snapshot-invalido.test.ts`.
+
 ## Destaque por marcação: `text` com `destaques` + `destaque` (T2, 05/11/2026)
 
 - O compositor não emite mais `rich-text` para o destaque da copy: emite `type: 'text'` com `content` LIMPO (sem
