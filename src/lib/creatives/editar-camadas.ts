@@ -540,17 +540,23 @@ export function marcarDestaquesNoTexto(camada: Layer, destaqueDaMarca?: (c: Laye
   }
   const lida = lerDestaques(camada.content)
   const marcada = { ...semTrechos, content: lida.texto } as Layer
+  const estilizada = comEstiloDoDestaque(lida.trechos.length > 0 ? { ...marcada, destaques: lida.trechos } : marcada, destaqueDaMarca)
   return {
-    camada: comEstiloDoDestaque(lida.trechos.length > 0 ? { ...marcada, destaques: lida.trechos } : marcada, destaqueDaMarca),
-    aviso: lida.problema ? `"${camada.name ?? camada.id}": ${lida.problema} — o trecho saiu sem destaque` : null,
+    camada: estilizada.camada,
+    aviso: lida.problema ? `"${camada.name ?? camada.id}": ${lida.problema} — o trecho saiu sem destaque` : estilizada.aviso,
   }
 }
 
-/** Camada que destaca e não tem estilo próprio ganha o da marca (sem ele, o render desenha só o peso forte). */
-function comEstiloDoDestaque(camada: Layer, destaqueDaMarca?: (c: Layer) => EstiloDeDestaque | null): Layer {
-  if (!camada.destaques?.length || camada.destaque) return camada
+/**
+ * Camada que destaca e não tem estilo próprio ganha o da marca. Sem estilo da marca, a MESMA regra do compositor
+ * (`montarBloco`): os trechos não são gravados e o aviso diz por quê (revisão M5 do PR #298).
+ */
+function comEstiloDoDestaque(camada: Layer, destaqueDaMarca?: (c: Layer) => EstiloDeDestaque | null): { camada: Layer; aviso: string | null } {
+  if (!camada.destaques?.length || camada.destaque) return { camada, aviso: null }
   const daMarca = destaqueDaMarca?.(camada)
-  return daMarca ? { ...camada, destaque: { ...daMarca } } : camada
+  if (daMarca && Object.values(daMarca).some(Boolean)) return { camada: { ...camada, destaque: { ...daMarca } }, aviso: null }
+  const { destaques: _d, ...sem } = camada
+  return { camada: sem as Layer, aviso: `"${camada.name ?? camada.id}": o texto marcou destaque, mas a marca não tem estilo de destaque (página de assinatura ou Project.assinatura.destaque) — saiu sem destaque` }
 }
 
 function semIndefinidos<T extends object>(o: T): Partial<T> {
@@ -674,7 +680,11 @@ export function aplicarOperacoesDeCamadas(entrada: Layer[], operacoes: OperacaoD
       if (r.aviso) avisos.push(r.aviso)
       return r.camada
     }
-    return comEstiloDoDestaque(l, ctx.destaqueDaMarca)
+    // Só quem TROUXE trechos pede o estilo: editar a cor de uma camada que já destacava não mexe nos trechos dela.
+    if (!campos?.destaques?.length) return l
+    const r = comEstiloDoDestaque(l, ctx.destaqueDaMarca)
+    if (r.aviso) avisos.push(r.aviso)
+    return r.camada
   }
 
   operacoes.forEach((o, indice) => {

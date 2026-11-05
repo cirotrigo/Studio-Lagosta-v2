@@ -315,11 +315,18 @@ describe('destaque por marcação (05/11/2026)', () => {
     expect(operacaoDeCamadaSchema.safeParse({ op: 'definir', camada: 'x', campos: { destaque: { shadow: {} } } }).success).toBe(false)
   })
 
-  it('sem estilo da marca, os trechos ficam sem destaque (o render desenha só o peso forte)', () => {
+  it('sem estilo da marca: como o compositor, os trechos NÃO são gravados e o aviso diz por quê (revisão M5)', () => {
     const r = aplicarOperacoesDeCamadas(pagina(), [definir('headline', { content: '[Picanha] hoje' })], ctx)
     const h = r.camadas.find((l) => l.id === 'headline')!
-    expect(h.destaques).toEqual([{ inicio: 0, fim: 7 }])
+    expect(h.content).toBe('Picanha hoje')
+    expect(h.destaques).toBeUndefined()
     expect(h.destaque).toBeUndefined()
+    expect(r.avisos).toEqual([expect.stringMatching(/marca não tem estilo de destaque.*saiu sem destaque/)])
+    // destaques explícitos, idem; com destaque explícito na mesma op, gravam.
+    expect(aplicarOperacoesDeCamadas(pagina(), [definir('headline', { destaques: [{ inicio: 0, fim: 4 }] })], ctx).camadas.find((l) => l.id === 'headline')!.destaques).toBeUndefined()
+    const comEstilo = aplicarOperacoesDeCamadas(pagina(), [definir('headline', { destaques: [{ inicio: 0, fim: 4 }], destaque: { fill: '#123456' } })], ctx)
+    expect(comEstilo.camadas.find((l) => l.id === 'headline')).toMatchObject({ destaques: [{ inicio: 0, fim: 4 }], destaque: { fill: '#123456' } })
+    expect(comEstilo.avisos).toEqual([])
   })
 
   it('camadaParaLeitura: texto com destaques devolve conteudoMarcado ao lado do content limpo', () => {
