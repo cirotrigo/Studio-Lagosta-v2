@@ -386,7 +386,7 @@ Página-modelo e página com vídeo saem com `avisos` e `comoAjustar: null`.
 | `op` | campos da operação | o que faz |
 |---|---|---|
 | `definir` | `camada` (id ou nome), `campos` | muda só os campos enviados; `position`/`size` parciais fundem; `style` funde; `effects.<x>` substitui o efeito; `lineHeight` grava nos DOIS campos (`patchLineHeight`); `campos.order` move na pilha |
-| `adicionar` | `tipo` (texto, imagem, logo, forma, icone, gradiente), `id?`, `ordem?`, `campos?` | camada nova com os defaults do SERVIDOR (os de `createArteLivre`: fonte do corpo da marca, branco, centrado; logo = a principal do cliente; imagem por `driveImageId`; forma retângulo preta; gradiente de leitura inferior) e `campos` por cima |
+| `adicionar` | `tipo` (texto, imagem, logo, forma, icone, gradiente), `id?`, `ordem?` (nunca `campos.order`), `campos?` (`fileUrl`/`driveImageId` só em imagem e logo) | camada nova com os defaults do SERVIDOR (os de `createArteLivre`: fonte do corpo da marca, branco, centrado; logo = a principal do cliente; imagem por `driveImageId`; forma retângulo preta; gradiente de leitura inferior) e `campos` por cima |
 | `remover` | `camada` | tira e renumera |
 | `reordenar` | `camada`, `ordem` (0 = fundo) | move na pilha e renumera |
 
@@ -408,18 +408,22 @@ gradientCenter X/Y, gradientRadiusScale 0,1..5, opacity}`; `rich-text`: só os c
 `details.erros[]` com `indice`, `op`, `camada`, `codigo`, `motivo`, `campos`; `indice: -1` é o bloco `pagina`):
 `OPERACAO_INCOMPLETA`, `CAMADA_INEXISTENTE`, `CAMADA_AMBIGUA` (nome repetido: use o id), `ID_JA_EXISTE`,
 `CAMPO_NAO_PERMITIDO`, `VALOR_FORA_DA_FAIXA` (faixa, cor ilegível, URL que não é http(s)), `TIPO_NAO_EDITAVEL`
-(vídeo; célula de grade; `remover`/`reordenar` em camada de grupo), `URL_EXTERNA_RECUSADA` (draft-only: qualquer
+(vídeo; célula de grade; `remover`/`reordenar` — e `definir` com `order` — em camada de grupo), `URL_EXTERNA_RECUSADA` (draft-only: qualquer
 `fileUrl`, como no `slotValues`; foto só por `driveImageId`), `CONTEUDO_NAO_PODE_SER_REMOVIDO` (draft-only: esconder,
-esvaziar ou remover texto com conteúdo — `temTextoSubstantivo`; no perfil humano é permitido), `VERSAO_OBRIGATORIA`
+esvaziar ou remover texto com conteúdo — `temTextoSubstantivo` —, e também fazê-lo SUMIR pelos campos da operação:
+`style.opacity` < 0,2, `size` abaixo de 20×8 ou caixa inteira fora da página; no perfil humano é permitido), `VERSAO_OBRIGATORIA`
 (camadas/pagina sem `versaoEsperada`), e os de sempre: `VERSAO_DIVERGENTE`, `PAGINA_E_MODELO`, `PAGINA_COM_VIDEO`,
 `CLIPES_INVALIDOS` (`problemasDosClipes`), `VETOR_INVALIDO` (`problemasDosVetores`), `TEXTO_NAO_CABE` (o texto
 criado ou mexido passa pela escada do autofix), `REVISAO_HUMANA_NECESSARIA` (gate CP5d no draft-only).
 
 **Onde entra na cadeia** (`ajustarArte`): FASE 1 (forma, faixa, cor, URL) no handler E no serviço, antes do banco →
-leitura da página e `aplicarPagina` → `slotValues`/foto (bake) → **camadas** (`driveImageId` resolvido pelo
-`resolveImageUrl`, logo e fontes do projeto lidas só quando um `adicionar` precisa) → `problemasDosClipes` →
-`problemasDosVetores` → `canonicalizeLayersForPersistence` → reflow (NÃO roda quando só há camadas/ajustes:
-desfaria a posição definida) → autofix (os textos tocados entram em `changedLayerIds`) → `ajustes` do revisor →
+leitura da página e `aplicarPagina` → `slotValues`/foto (bake) → reflow dos textos trocados (ANTES das camadas, para
+não mover grupos por cima da posição definida; não roda quando só há camadas/ajustes) → **camadas** (`driveImageId`
+resolvido pelo `resolveImageUrl` num mapa `urlsDoAcervo` que o módulo troca pela URL — a guarda de URL de fora vale
+só para `fileUrl` enviado; logo e fontes do projeto lidas só quando um `adicionar` precisa) → sobre o RESULTADO das
+camadas, antes do autofix e dos ajustes (nada abaixo cria clipe nem vetor): `problemasDosClipes` →
+`problemasDosVetores` → `canonicalizeLayersForPersistence` → autofix (os textos tocados entram em
+`changedLayerIds`) → `ajustes` do revisor →
 revisão do contrato da copy → transação (gate CP5d no draft-only, compare-and-set por `versaoEsperada`, trava da
 recomposição — camadas editadas e página mudada TRAVAM a recomposição como os ajustes) → `renderPageAndRegister` →
 `invalidateScheduledRenders` + `pedirRecomposicaoDaArteCongelada`. Resposta: a de sempre (`url`, `editUrl`,

@@ -185,6 +185,11 @@ export interface ContextoDeEdicao {
   canvas: { width: number; height: number }
   /** Perfil draft-only: URL de fora recusada e copy nunca apagada. */
   apenasRascunho: boolean
+  /**
+   * `driveImageId` → URL do Blob, resolvido pelo SERVIÇO antes (o acervo é banco + Drive). O módulo troca o
+   * `driveImageId` pela URL daqui; `fileUrl` enviado pelo chamador continua sendo a URL de fora (recusada no draft-only).
+   */
+  urlsDoAcervo?: ReadonlyMap<string, string>
   /** A logo principal do cliente, para `adicionar logo` sem fileUrl. */
   logoUrl?: string | null
   /** As fontes da marca, para `adicionar texto` sem fontFamily. */
@@ -336,6 +341,10 @@ export function validarFormatoDasOperacoes(operacoes: OperacaoDeCamada[], ctx: P
     if ((o.op === 'remover' || o.op === 'reordenar') && o.campos) recusa('CAMPO_NAO_PERMITIDO', `${o.op} não usa "campos"`, ['campos'])
     if (o.op !== 'adicionar' && (o.tipo || o.id)) recusa('CAMPO_NAO_PERMITIDO', `${o.op} não usa "tipo" nem "id"`, ['tipo', 'id'].filter((k) => (o as Objeto)[k] !== undefined))
     if (o.op === 'definir' && o.ordem !== undefined) recusa('CAMPO_NAO_PERMITIDO', 'definir usa campos.order, não "ordem"', ['ordem'])
+    if (o.op === 'adicionar' && o.campos?.order !== undefined) recusa('CAMPO_NAO_PERMITIDO', 'adicionar usa "ordem" (a posição na pilha), não campos.order', ['campos.order'])
+    if (o.op === 'adicionar' && o.tipo && o.tipo !== 'imagem' && o.tipo !== 'logo') {
+      for (const k of ['fileUrl', 'driveImageId'] as const) if (o.campos?.[k] !== undefined) recusa('CAMPO_NAO_PERMITIDO', `adicionar ${o.tipo} não aceita ${k} (só imagem e logo)`, [k])
+    }
     if (o.id !== undefined && !/^[A-Za-z0-9_-]{1,64}$/.test(o.id)) recusa('VALOR_FORA_DA_FAIXA', 'id da camada nova: letras, números, _ e - (até 64)', ['id'])
     if (o.op === 'adicionar' && o.tipo === 'texto' && !temTextoSubstantivo(o.campos?.content)) recusa('OPERACAO_INCOMPLETA', 'adicionar texto precisa de campos.content com conteúdo', ['campos.content'])
     if (o.op === 'adicionar' && o.tipo === 'icone' && !o.campos?.style?.iconId) recusa('OPERACAO_INCOMPLETA', 'adicionar icone precisa de campos.style.iconId', ['campos.style.iconId'])
@@ -423,6 +432,27 @@ function mover(camadas: Layer[], id: string, ordem: number): Layer[] {
   const [camada] = pilha.splice(de, 1)
   pilha.splice(Math.max(0, Math.min(ordem, pilha.length)), 0, camada)
   return pilha.map((l, order) => ({ ...l, order }))
+}
+
+/** `driveImageId` vira a URL que o serviço resolveu do acervo; sem entrada no mapa, a foto não existe para esta chamada. */
+function comFotoDoAcervo(campos: CamposDaCamada, ctx: ContextoDeEdicao): { campos: CamposDaCamada } | { codigo: CodigoDaRecusaDeCamada; motivo: string; campos: string[] } {
+  if (campos.driveImageId === undefined) return { campos }
+  const url = ctx.urlsDoAcervo?.get(campos.driveImageId)
+  if (!url) return { codigo: 'VALOR_FORA_DA_FAIXA', motivo: `a foto ${campos.driveImageId} não foi resolvida no acervo`, campos: ['driveImageId'] }
+  const { driveImageId: _d, ...resto } = campos
+  return { campos: { ...resto, fileUrl: url } }
+}
+
+/** Texto com conteúdo que ficaria invisível, minúsculo ou fora da página — só pelos campos que ESTA operação mexeu. */
+function copySumida(nova: Layer, campos: CamposDaCamada, canvas: { width: number; height: number }): { motivo: string; campos: string[] } | null {
+  if (campos.style?.opacity !== undefined && (nova.style?.opacity ?? 1) < 0.2) return { motivo: `ficaria invisível (opacidade ${nova.style?.opacity})`, campos: ['style.opacity'] }
+  if (campos.size && (nova.size.width < 20 || nova.size.height < 8)) return { motivo: `ficaria minúsculo (${nova.size.width}×${nova.size.height})`, campos: ['size'] }
+  if (campos.position || campos.size) {
+    const { x, y } = nova.position
+    const { width: w, height: h } = nova.size
+    if (x + w <= 0 || y + h <= 0 || x >= canvas.width || y >= canvas.height) return { motivo: `sairia da página (${x}, ${y})`, campos: ['position'] }
+  }
+  return null
 }
 
 function fundirDefinir(layer: Layer, campos: CamposDaCamada): Layer {
@@ -583,7 +613,9 @@ export function aplicarOperacoesDeCamadas(entrada: Layer[], operacoes: OperacaoD
         const { fora } = camposForaDoTipo(tipoDaCamada, resto)
         if (fora.length > 0) return recusa('CAMPO_NAO_PERMITIDO', `${o.tipo} não aceita ${fora.join(', ')}`, fora)
       }
-      const fabricada = fabricar(o, ctx, camadas)
+      const comFoto = comFotoDoAcervo(o.campos ?? {}, ctx)
+      if ('codigo' in comFoto) return recusa(comFoto.codigo, comFoto.motivo, comFoto.campos)
+      const fabricada = fabricar({ ...o, campos: comFoto.campos }, ctx, camadas)
       if (fabricada.ok === false) return recusa(fabricada.codigo, fabricada.motivo, fabricada.campos)
       const nova = fabricada.layer
       camadas = o.ordem !== undefined ? mover([...camadas, nova], nova.id, o.ordem) : renumerar([...camadas, nova])
@@ -595,7 +627,7 @@ export function aplicarOperacoesDeCamadas(entrada: Layer[], operacoes: OperacaoD
     const achada = achar(camadas, o.camada!)
     if ('codigo' in achada) return recusa(achada.codigo, achada.motivo, ['camada'])
     const { layer } = achada
-    const travada = tipoNaoEditavel(layer, o.op)
+    const travada = tipoNaoEditavel(layer, o.op === 'definir' && o.campos?.order !== undefined ? 'reordenar' : o.op)
     if (travada) return recusa('TIPO_NAO_EDITAVEL', `${layer.id}: ${travada}`)
 
     if (o.op === 'remover') {
@@ -620,7 +652,14 @@ export function aplicarOperacoesDeCamadas(entrada: Layer[], operacoes: OperacaoD
       if (campos.content !== undefined && !temTextoSubstantivo(campos.content)) return recusa('CONTEUDO_NAO_PODE_SER_REMOVIDO', `"${layer.name}" ficaria sem conteúdo: troque o texto por outro texto`, ['content'])
     }
     const { order, ...semOrdem } = campos
-    let nova = fundirDefinir(layer, semOrdem)
+    const comFoto = comFotoDoAcervo(semOrdem, ctx)
+    if ('codigo' in comFoto) return recusa(comFoto.codigo, comFoto.motivo, comFoto.campos)
+    let nova = fundirDefinir(layer, comFoto.campos)
+    // Copy que SOME sem ser escondida (revisão do PR #294): invisível, minúscula ou fora da página é apagar copy.
+    if (ctx.apenasRascunho && ehTexto(nova) && temTextoSubstantivo(nova.content)) {
+      const sumida = copySumida(nova, campos, ctx.canvas)
+      if (sumida) return recusa('CONTEUDO_NAO_PODE_SER_REMOVIDO', `"${layer.name}" ${sumida.motivo}: este perfil não apaga copy`, sumida.campos)
+    }
     camadas = camadas.map((l) => (l.id === layer.id ? nova : l))
     if (order !== undefined) {
       camadas = mover(camadas, layer.id, order)

@@ -59,7 +59,8 @@ vi.mock('@/lib/creatives/persist', async (original) => {
   return {
     ...real,
     getPublicAppUrl: () => 'https://studio.test',
-    resolveImageUrl: async () => ({ url: null }),
+    // T1: `driveImageId` resolve para uma URL do Blob (o acervo); sem id, como antes.
+    resolveImageUrl: async (_url: string | undefined, driveImageId: string | null | undefined) => ({ url: driveImageId ? `https://blob.test/acervo/${driveImageId}.jpg` : null }),
     renderPageAndRegister: async (input: { page: { id: string; name: string; width: number; height: number }; generationId?: string | null; versaoEsperada?: string; fieldValues: Record<string, unknown>; templateId: number; templateName: string }) => {
       render.chamadas.push({ generationId: input.generationId ?? undefined, versaoEsperada: input.versaoEsperada })
       if (render.modo === 'falha') throw new Error('o Blob caiu')
@@ -82,7 +83,7 @@ vi.mock('@/lib/creatives/persist', async (original) => {
 // A medição do gate: trocável; registra pelo que leu (cliente, camadas, Generation de origem).
 vi.mock('@/lib/creatives/revisao/revisar-arte', async (importOriginal) => {
   const real = await importOriginal<typeof import('@/lib/creatives/revisao/revisar-arte')>()
-  const { medida, metrica } = await import('../revisao/__tests__/suporte/corpus-do-gate')
+  const { medida, metrica, leitura, medidaDaLogo } = await import('../revisao/__tests__/suporte/corpus-do-gate')
   const { formatoDaPaginaGravada } = await import('@/lib/compositor/formato')
   const SEM_FUNDO = { assunto: null, assuntoNaoSeAplica: true as const, motivoSemAssunto: 'a peça não tem foto de fundo: não há assunto a proteger' }
   type Camada = { id: string; type: string; visible?: boolean }
@@ -113,7 +114,8 @@ vi.mock('@/lib/creatives/revisao/revisar-arte', async (importOriginal) => {
         camadas: camadas as never,
         metricas: textos.map((l) => metrica(l as never)),
         referencias: ctx.referencias as never,
-        leituraDaLogo: [],
+        // T1: a logo da peça (quando há) é lida como no corpus — legível; sem logo, lista vazia (como sempre foi).
+        leituraDaLogo: camadas.filter((l) => l.type === 'logo' && l.visible !== false).map((l) => leitura(l.id, medidaDaLogo())),
         ...SEM_FUNDO,
         ...(medicao.modo === 'reprovada' ? { geometria: [{ tipo: 'colisao', camadas: ['headline', 'apoio'], layerIds: ['headline', 'apoio'], px: 60, detalhe: 'sobrepõem' } as never] } : {}),
       })
@@ -237,6 +239,39 @@ describe('A1/A3/A4 — draft-only, ajuste aceito pelo CP4, candidata APTA', () =
     expect(banco.generations.get(nova.id)).toMatchObject({ status: 'COMPLETED', fieldValues: { source: 'ajuste-arte', gateDaArte: expect.any(Object) } })
     expect(espioes.invalidar).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ pageIds: ['p1'], apenasRascunho: true }))
     expect(banco.generations.get('g-comp')!.fieldValues.somenteReRender).toBeTruthy()
+  })
+})
+
+describe('T1 — camadas pelos dados no draft-only (revisão do PR #294)', () => {
+  // Uma LOGO (não uma foto de fundo: com foto o corpus do gate passa a proteger o assunto, que não é o que se prova aqui).
+  const foto = (): Layer => ({ id: 'bg', name: 'Logo', type: 'logo', visible: true, locked: false, order: 0, position: { x: 799, y: 1500 }, size: { width: 189, height: 95 }, fileUrl: 'https://blob.test/antiga.png', style: { objectFit: 'contain' } }) as Layer
+
+  it('driveImageId em `camadas` no draft-only: resolvido pelo serviço e GRAVADO como a URL do Blob (sem URL_EXTERNA_RECUSADA); camadasAplicadas no retorno; trava de recomposição', async () => {
+    pagina('p1', { layers: [foto(), ...camadasLimpas()] })
+    geracaoDoCompositor('g-comp', 'p1')
+    const r = await ajustar({ ajustes: undefined, camadas: [{ op: 'definir', camada: 'bg', campos: { driveImageId: 'drive-1' } }, { op: 'definir', camada: 'headline', campos: { position: { x: 140 }, style: { color: '#FDC700' } } }] })
+    expect(r).toMatchObject({ ajustada: true, camadasRecusadas: [], camadasAplicadas: [expect.objectContaining({ indice: 0, op: 'definir', camada: 'bg' }), expect.objectContaining({ indice: 1, camada: 'headline' })] })
+    const gravada = banco.pages.get('p1')!
+    expect(gravada.layers.find((l: Layer) => l.id === 'bg').fileUrl).toBe('https://blob.test/acervo/drive-1.jpg')
+    expect(gravada.layers.find((l: Layer) => l.id === 'bg')).not.toHaveProperty('driveImageId')
+    expect(gravada.layers.find((l: Layer) => l.id === 'headline')).toMatchObject({ position: { x: 140, y: 400 }, style: { color: '#FDC700', fontSize: 84 } })
+    expect((medicao.chamadas[0].camadas as Layer[]).find((l) => l.id === 'headline')!.style!.color).toBe('#FDC700')
+    expect(banco.generations.get('g-comp')!.fieldValues.somenteReRender).toBeTruthy()
+    expect(novas()[0].fieldValues.camadas).toMatchObject({ aplicadas: [expect.objectContaining({ camada: 'bg' }), expect.objectContaining({ camada: 'headline' })] })
+  })
+
+  it('fileUrl enviado em `camadas` no draft-only: URL_EXTERNA_RECUSADA antes do banco; pedido misto (camada inexistente) recusado inteiro, nada gravado', async () => {
+    await expect(ajustar({ ajustes: undefined, camadas: [{ op: 'definir', camada: 'headline', campos: { position: { x: 1 } } }, { op: 'definir', camada: 'bg', campos: { fileUrl: 'https://fora.test/x.jpg' } }] })).rejects.toMatchObject({ code: 'URL_EXTERNA_RECUSADA', details: { erros: [expect.objectContaining({ indice: 1 })] } })
+    const erro = (await erroDe(ajustar({ ajustes: undefined, camadas: [{ op: 'definir', camada: 'headline', campos: { position: { x: 1 } } }, { op: 'definir', camada: 'nao-existe', campos: { visible: false } }] }))) as CreativeError
+    expect(erro).toMatchObject({ code: 'CAMADA_INEXISTENTE', status: 422, details: { ajusteGravado: false } })
+    expect(banco.pages.get('p1')!.layers.find((l: Layer) => l.id === 'headline').position.x).toBe(100)
+    expect(novas()).toHaveLength(0)
+    expect(render.chamadas).toEqual([])
+  })
+
+  it('esconder a manchete por opacidade zero no draft-only: CONTEUDO_NAO_PODE_SER_REMOVIDO, nada gravado', async () => {
+    await expect(ajustar({ ajustes: undefined, camadas: [{ op: 'definir', camada: 'headline', campos: { style: { opacity: 0 } } }] })).rejects.toMatchObject({ code: 'CONTEUDO_NAO_PODE_SER_REMOVIDO' })
+    expect(novas()).toHaveLength(0)
   })
 })
 

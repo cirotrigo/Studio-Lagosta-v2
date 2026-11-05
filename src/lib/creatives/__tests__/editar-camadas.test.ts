@@ -144,6 +144,10 @@ describe('adicionar, remover, reordenar', () => {
     expect(aplicarOperacoesDeCamadas(pagina(), [{ op: 'adicionar', tipo: 'texto', campos: { content: '...' } }], ctx).recusadas[0]).toMatchObject({ codigo: 'OPERACAO_INCOMPLETA', campos: ['campos.content'] })
     expect(aplicarOperacoesDeCamadas(pagina(), [{ op: 'adicionar', tipo: 'icone' }], ctx).recusadas[0]).toMatchObject({ codigo: 'OPERACAO_INCOMPLETA' })
     expect(aplicarOperacoesDeCamadas(pagina(), [{ op: 'adicionar', tipo: 'forma', campos: { style: { fontSize: 30 } } }], ctx).recusadas[0]).toMatchObject({ codigo: 'CAMPO_NAO_PERMITIDO', campos: ['style.fontSize'] })
+    // revisão #294 (baixo): campos.order em adicionar e foto em tipo que não é imagem/logo são recusados, nunca ignorados
+    expect(validarFormatoDasOperacoes([{ op: 'adicionar', tipo: 'forma', campos: { order: 1 } }], ctx)[0]).toMatchObject({ codigo: 'CAMPO_NAO_PERMITIDO', campos: ['campos.order'] })
+    expect(validarFormatoDasOperacoes([{ op: 'adicionar', tipo: 'texto', campos: { content: 'Oi', driveImageId: 'drive-1' } }], ctx)[0]).toMatchObject({ codigo: 'CAMPO_NAO_PERMITIDO', campos: ['driveImageId'] })
+    expect(aplicarOperacoesDeCamadas(pagina(), [definir('headline', { driveImageId: 'drive-1' })], ctx).recusadas[0]).toMatchObject({ codigo: 'CAMPO_NAO_PERMITIDO', campos: ['driveImageId'] })
   })
 
   it('remover tira a camada e renumera; reordenar move pela pilha (0 = fundo)', () => {
@@ -153,9 +157,10 @@ describe('adicionar, remover, reordenar', () => {
     expect(r.aplicadas.map((a) => a.op)).toEqual(['remover', 'reordenar'])
   })
 
-  it('camada de grupo: definir vale, remover e reordenar são TIPO_NAO_EDITAVEL', () => {
+  it('camada de grupo: definir vale, remover, reordenar e definir com order são TIPO_NAO_EDITAVEL', () => {
     const comGrupo = pagina().map((l) => (l.id === 'apoio' ? { ...l, metadata: { groupId: 'combo-1' } } : l))
     expect(aplicarOperacoesDeCamadas(comGrupo, [definir('apoio', { position: { y: 10 } })], ctx).recusadas).toEqual([])
+    expect(aplicarOperacoesDeCamadas(comGrupo, [definir('apoio', { order: 0 })], ctx).recusadas[0]).toMatchObject({ codigo: 'TIPO_NAO_EDITAVEL' })
     expect(aplicarOperacoesDeCamadas(comGrupo, [{ op: 'remover', camada: 'apoio' }], ctx).recusadas[0]).toMatchObject({ codigo: 'TIPO_NAO_EDITAVEL' })
     expect(aplicarOperacoesDeCamadas(comGrupo, [{ op: 'reordenar', camada: 'apoio', ordem: 0 }], ctx).recusadas[0]).toMatchObject({ codigo: 'TIPO_NAO_EDITAVEL' })
   })
@@ -171,6 +176,28 @@ describe('perfil draft-only', () => {
   it('URL_EXTERNA_RECUSADA em qualquer fileUrl; driveImageId segue', () => {
     expect(validarFormatoDasOperacoes([definir('bg', { fileUrl: 'https://x.test/a.jpg' })], rascunho)[0]).toMatchObject({ codigo: 'URL_EXTERNA_RECUSADA', campos: ['fileUrl'] })
     expect(validarFormatoDasOperacoes([definir('bg', { driveImageId: 'drive-1' })], rascunho)).toEqual([])
+  })
+  it('revisão #294 (grave): driveImageId resolvido pelo serviço (urlsDoAcervo) GRAVA a URL do Blob no draft-only — a guarda de URL vale só para fileUrl enviado', () => {
+    const urlsDoAcervo = new Map([['drive-1', 'https://blob.test/acervo/drive-1.jpg']])
+    const r = aplicarOperacoesDeCamadas(pagina(), [definir('bg', { driveImageId: 'drive-1' }), { op: 'adicionar', tipo: 'imagem', id: 'foto2', campos: { driveImageId: 'drive-1' } }], { ...rascunho, urlsDoAcervo })
+    expect(r.recusadas).toEqual([])
+    expect(r.camadas.find((l) => l.id === 'bg')!.fileUrl).toBe('https://blob.test/acervo/drive-1.jpg')
+    expect(r.camadas.find((l) => l.id === 'foto2')!.fileUrl).toBe('https://blob.test/acervo/drive-1.jpg')
+    expect(r.camadas.find((l) => l.id === 'bg')).not.toHaveProperty('driveImageId')
+    // sem entrada no mapa a foto não existe para esta chamada
+    expect(aplicarOperacoesDeCamadas(pagina(), [definir('bg', { driveImageId: 'drive-2' })], { ...rascunho, urlsDoAcervo }).recusadas[0]).toMatchObject({ codigo: 'VALOR_FORA_DA_FAIXA', campos: ['driveImageId'] })
+    // e fileUrl enviado continua recusado mesmo com o mapa
+    expect(aplicarOperacoesDeCamadas(pagina(), [definir('bg', { fileUrl: 'https://x.test/a.jpg' })], { ...rascunho, urlsDoAcervo }).recusadas[0]).toMatchObject({ codigo: 'URL_EXTERNA_RECUSADA' })
+  })
+  it('revisão #294 (médio): copy que SOME por opacidade, tamanho ou posição fora da página é CONTEUDO_NAO_PODE_SER_REMOVIDO', () => {
+    expect(aplicarOperacoesDeCamadas(pagina(), [definir('headline', { style: { opacity: 0 } })], rascunho).recusadas[0]).toMatchObject({ codigo: 'CONTEUDO_NAO_PODE_SER_REMOVIDO', campos: ['style.opacity'] })
+    expect(aplicarOperacoesDeCamadas(pagina(), [definir('headline', { size: { width: 1, height: 1 } })], rascunho).recusadas[0]).toMatchObject({ codigo: 'CONTEUDO_NAO_PODE_SER_REMOVIDO', campos: ['size'] })
+    expect(aplicarOperacoesDeCamadas(pagina(), [definir('headline', { position: { x: -9000 } })], rascunho).recusadas[0]).toMatchObject({ codigo: 'CONTEUDO_NAO_PODE_SER_REMOVIDO', campos: ['position'] })
+    expect(aplicarOperacoesDeCamadas(pagina(), [definir('headline', { position: { y: 1920 } })], rascunho).recusadas[0]).toMatchObject({ codigo: 'CONTEUDO_NAO_PODE_SER_REMOVIDO' })
+    // parcialmente dentro, opacidade legível e caixa normal: vale
+    expect(aplicarOperacoesDeCamadas(pagina(), [definir('headline', { position: { x: -400, y: 1800 }, style: { opacity: 0.5 }, size: { width: 600 } })], rascunho).recusadas).toEqual([])
+    // no perfil humano nada disso é recusado
+    expect(aplicarOperacoesDeCamadas(pagina(), [definir('headline', { style: { opacity: 0 }, position: { x: -9000 } })], ctx).recusadas).toEqual([])
   })
   it('CONTEUDO_NAO_PODE_SER_REMOVIDO: esconder, esvaziar ou remover texto com conteúdo; trocar por outro texto vale', () => {
     expect(aplicarOperacoesDeCamadas(pagina(), [definir('headline', { visible: false })], rascunho).recusadas[0]).toMatchObject({ codigo: 'CONTEUDO_NAO_PODE_SER_REMOVIDO', campos: ['visible'] })

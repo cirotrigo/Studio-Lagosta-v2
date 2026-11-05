@@ -1421,29 +1421,39 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
     }
   }
 
+  await registerProjectFonts(projectId)
+  const measure = await createServerTextMeasurer()
+  // Com ajustes do revisor (ou camadas editadas pelos dados) e nenhum texto trocado, não há preenchimento para
+  // refluir: normalizar a pilha antes deslocaria a base do grupo que o executor precisa preservar. O reflow dos
+  // textos trocados roda ANTES das camadas: depois, moveria os grupos por cima da posição que `definir` gravou.
+  const reflowed =
+    changedTextIds.length > 0 || (ajustes.length === 0 && operacoes.length === 0)
+      ? reflowLayersAfterFill(bakedLayers as Layer[], changedTextIds, measure)
+      : (bakedLayers as Layer[])
+
   /**
-   * T1 — as CAMADAS, depois dos textos/foto e antes dos ajustes do revisor: `driveImageId` vira a URL do Blob
-   * (o caminho do acervo, o único do draft-only), a logo da marca e as fontes do projeto entram como defaults do
-   * servidor, e o módulo puro aplica tudo ou nada. Depois: clipes (`problemasDosClipes`), vetores
-   * (`problemasDosVetores`) e a canonização de forma — as mesmas guardas das portas do editor.
+   * T1 — as CAMADAS, depois dos textos/foto (já refluídos) e antes dos ajustes do revisor: `driveImageId` vira a
+   * URL do Blob (o caminho do acervo, o único do draft-only — o módulo troca pelo mapa, e a guarda de URL de fora
+   * continua valendo para `fileUrl` enviado), a logo da marca e as fontes do projeto entram como defaults do
+   * servidor, e o módulo puro aplica tudo ou nada. Logo depois, sobre o resultado: clipes (`problemasDosClipes`),
+   * vetores (`problemasDosVetores`) e a canonização de forma — as mesmas guardas das portas do editor (nada abaixo
+   * — autofix, ajustes — cria clipe nem vetor).
    */
   let edicao: ReturnType<typeof aplicarOperacoesDeCamadas> | null = null
-  let camadasEditadas = bakedLayers as Layer[]
+  let camadasEditadas = reflowed
   if (operacoes.length > 0) {
-    const resolvidas: OperacaoDeCamada[] = []
-    for (const o of operacoes) {
-      if (o.campos?.driveImageId) {
-        const { driveImageId: id, ...campos } = o.campos
-        const foto = await resolveImageUrl(undefined, id, projectId)
-        if (!foto.url) throw new CreativeError('FOTO_NAO_RESOLVIDA', `A foto ${id} não pôde ser lida do acervo${foto.warning ? `: ${foto.warning}` : ''}.`, 422, { driveImageId: id, ajusteGravado: false })
-        resolvidas.push({ ...o, campos: { ...campos, fileUrl: foto.url } })
-      } else resolvidas.push(o)
+    const urlsDoAcervo = new Map<string, string>()
+    for (const id of new Set(operacoes.map((o) => o.campos?.driveImageId).filter((d): d is string => !!d))) {
+      const foto = await resolveImageUrl(undefined, id, projectId)
+      if (!foto.url) throw new CreativeError('FOTO_NAO_RESOLVIDA', `A foto ${id} não pôde ser lida do acervo${foto.warning ? `: ${foto.warning}` : ''}.`, 422, { driveImageId: id, ajusteGravado: false })
+      urlsDoAcervo.set(id, foto.url)
     }
-    const precisaDaLogo = resolvidas.some((o) => o.op === 'adicionar' && o.tipo === 'logo' && !o.campos?.fileUrl)
+    const precisaDaLogo = operacoes.some((o) => o.op === 'adicionar' && o.tipo === 'logo' && !o.campos?.fileUrl)
     const logo = precisaDaLogo ? await db.logo.findFirst({ where: { projectId }, orderBy: [{ isProjectLogo: 'desc' }, { id: 'asc' }], select: { fileUrl: true } }) : null
-    edicao = aplicarOperacoesDeCamadas(camadasEditadas, resolvidas, {
+    edicao = aplicarOperacoesDeCamadas(camadasEditadas, operacoes, {
       canvas: { width: dims.width, height: dims.height },
       apenasRascunho: input.apenasRascunho === true,
+      urlsDoAcervo,
       logoUrl: logo?.fileUrl ?? null,
       fontes: { titulo: project.titleFontFamily, corpo: project.bodyFontFamily },
     })
@@ -1455,19 +1465,9 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
     camadasEditadas = canonicalizeLayersForPersistence(edicao.camadas) as Layer[]
   }
 
-  await registerProjectFonts(projectId)
-  const measure = await createServerTextMeasurer()
-  // Com ajustes do revisor (ou camadas editadas pelos dados) e nenhum texto trocado, não há preenchimento para
-  // refluir: normalizar a pilha antes deslocaria a base do grupo que o executor precisa preservar — e desfaria a
-  // posição que a edição acabou de definir. Sem ajustes nem camadas, o comportamento de sempre.
-  const reflowed =
-    changedTextIds.length > 0 || (ajustes.length === 0 && operacoes.length === 0)
-      ? reflowLayersAfterFill(camadasEditadas, changedTextIds, measure)
-      : camadasEditadas
-
   // ANTES de medir qualquer coisa: o render de servidor é imagem e recusa página com vídeo — medir 30 ajustes para
   // recusar no fim seria custo à toa (revisor E).
-  if (videoNaPagina(reflowed as Layer[]) === 'tem-video') {
+  if (videoNaPagina(camadasEditadas as Layer[]) === 'tem-video') {
     throw new CreativeError('PAGINA_COM_VIDEO', MENSAGEM_PAGINA_COM_VIDEO, 422, { pageId: page.id, ajusteGravado: false })
   }
 
@@ -1483,7 +1483,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
    */
   const fixDaBase = await aplicarAutofixOuFalhar({
     projectId,
-    layers: reflowed,
+    layers: camadasEditadas,
     canvas: { width: dims.width, height: dims.height },
     // T1: o texto criado ou mexido pelas camadas também passa pela escada (TEXTO_NAO_CABE em vez de texto cortado).
     changedLayerIds: [...changedTextIds, ...(edicao?.tocadas ?? [])],
