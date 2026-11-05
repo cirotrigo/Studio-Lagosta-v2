@@ -2037,4 +2037,5 @@ compilada em memória, sem escrever nada.
 - O gate classifica `destaques.*` e `destaque.*` como `inerte` → **`VERSAO_DO_GATE` = `gate-v6`**
   (`revisor-da-arte.md`). ponytail: a fonte do destaque como `inerte` vale enquanto o render do T1 não mostrar tinta
   fora da caixa; se mostrar, vira `expansora`.
-- Rendering: até o T1 entrar, `render-engine.ts` desenha o `text` com `destaques` SEM o destaque.
+- 🔴 **ORDEM DE MERGE: o #297 (render do T1) entra ANTES do #298.** Sem o render, o compositor emitindo `text` +
+  `destaques` faz toda peça nova sair SEM destaque no PNG — o gate diz APTO e a arte vai para a agenda sem a palavra marcada.
