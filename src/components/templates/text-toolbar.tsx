@@ -713,7 +713,8 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
                       variant="ghost"
                       size="sm"
                       className="h-8 w-8 p-0"
-                      onClick={() => gravarDestaque({})}
+                      // Grava o valor RESOLVIDO da marca: sem `destaque` a camada desenharia sem destaque nenhum
+                      onClick={() => gravarDestaque(destaqueDaMarca(selectedLayer) ?? {})}
                       title="Voltar ao destaque da marca"
                     >
                       <RotateCcw className="h-4 w-4" />
