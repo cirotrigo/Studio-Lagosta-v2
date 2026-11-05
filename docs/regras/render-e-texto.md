@@ -427,6 +427,11 @@ a causa em todos os `encode` (inclusive o JPEG do revisor) sem mudar o caminho d
 - 🔴 **Worker do vitest que morre com SIGSEGV no skia é lifetime de objeto nativo, não teste quebrado.** Olhe o
   `.ips` antes de mexer no teste: thread `libuv-worker` + `ThreadPoolWork` = chamada assíncrona nativa com o objeto
   JS já coletado.
+- 🔴 **Quem mede ou desenha texto com `createCanvas` direto chama `garantirFontesPadrao()` antes**: sem o alias, família
+  não registrada cai numa fonte sem glifos e mede caixas. O medidor do servidor (`server-text-measurer.ts`) não chamava, e
+  o piloto ponta a ponta media "Texto headline" acima de 880 px no CI, conforme a ordem dos testes no processo (o alias é
+  global; ele só existia se outro teste tivesse criado um `CanvasRenderer` antes). **Dublê de `GlobalFonts` feito como
+  objeto próprio repassa `setAlias`**; o feito com `Proxy` já repassa (05/11/2026).
 - **Não troque `encode` por `toBuffer` para "estabilizar"**: é o event loop de produção que paga.
 - **`--maxWorkers=4` "passar" não é evidência**: só muda o ritmo do GC. A correção é a versão com refcount.
 - **Subida do `@napi-rs/canvas` é mudança de render**: meça sombra, família genérica e o retorno das APIs de
