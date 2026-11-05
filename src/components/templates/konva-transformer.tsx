@@ -4,16 +4,26 @@ import * as React from 'react'
 import Konva from 'konva'
 import { Transformer } from 'react-konva'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
-import { CANVAS_MARGIN } from '@/lib/canvas-margin'
+import { CANVAS_MARGIN, type LinhasDaMarca } from '@/lib/canvas-margin'
+import { alcaDeCanto, encaixeProporcional, paradasDeEncaixe } from '@/lib/margens-no-editor'
 import type { GuideLine } from '@/lib/konva-smart-guides'
+import { travaDeProporcao } from '@/lib/konva/trava-de-proporcao'
+import { useAjustarGrade } from '@/hooks/use-ajustar-grade'
+import { caixaPeloTransformer, modoDaSelecao } from '@/lib/grades/ajustes'
+import { metadadoDeGrade } from '@/lib/grades/conferir'
+import { membrosDaGrade } from '@/lib/grades/preenchimento'
 
 interface KonvaSelectionTransformerProps {
   selectedLayerIds: string[]
   stageRef: React.RefObject<Konva.Stage | null>
   /** Snap das bordas durante o resize (mesmas guias do drag) */
   snapEnabled?: boolean
-  /** Incluir as margens de segurança (CANVAS_MARGIN) como alvo de snap */
+  /** Incluir a margem da marca como alvo de snap */
   snapToMargins?: boolean
+  /** As linhas da margem da MARCA da página aberta (`margensDoEditor(...).marca`); sem elas, o padrão do Story. */
+  margens?: LinhasDaMarca
+  /** As guias manuais da página (L4) como paradas do encaixe; ausente = sem guias. */
+  guias?: { v: number[]; h: number[] }
   /** Recebe as guias a desenhar durante o resize (mesma layer de guias do drag) */
   onSnapGuides?: (guides: GuideLine[]) => void
 }
@@ -23,11 +33,51 @@ export function KonvaSelectionTransformer({
   stageRef,
   snapEnabled = true,
   snapToMargins = true,
+  margens,
+  guias,
   onSnapGuides,
 }: KonvaSelectionTransformerProps) {
   const transformerRef = React.useRef<Konva.Transformer | null>(null)
   const { design } = useTemplateEditor()
   const [isShiftPressed, setIsShiftPressed] = React.useState(false)
+
+  // G3: grade inteira redimensiona como UMA caixa (sem girar); célula, subconjunto ou seleção mista com grade não tem
+  // alça nenhuma — senão o Konva escalaria calhas e células uma a uma
+  const { ajustar } = useAjustarGrade()
+  const grade = React.useMemo(() => modoDaSelecao(design.layers, selectedLayerIds), [design.layers, selectedLayerIds])
+  const gradeRef = React.useRef({ grade, layers: design.layers, ajustar })
+  gradeRef.current = { grade, layers: design.layers, ajustar }
+
+  // Fim do gesto na grade inteira: o Konva já escalou e moveu os nós; eles voltam NA HORA (escala 1, lugar do estado),
+  // com ou sem recusa, e a grade é refeita UMA vez pela caixa nova (calhas fixas em px) num desfazer
+  React.useEffect(() => {
+    const transformer = transformerRef.current
+    if (!transformer) return
+    transformer.on('transformend.grade', () => {
+      const { grade: sel, layers, ajustar: refazer } = gradeRef.current
+      if (sel.modo !== 'inteira' || !sel.gradeId) return
+      const membros = membrosDaGrade(layers, sel.gradeId)
+      const nos = transformer.nodes()
+      // `antes`: onde o nó estava no estado (a margem da grade quadrada entre caixa e nós escala junto)
+      const medidos = nos.map((n) => ({ x: n.x(), y: n.y(), scaleX: n.scaleX(), scaleY: n.scaleY(), antes: membros.find((m) => m.id === n.id())?.position }))
+      for (const n of nos) {
+        const camada = membros.find((m) => m.id === n.id())
+        n.scaleX(1)
+        n.scaleY(1)
+        if (camada) {
+          n.position({ x: camada.position.x, y: camada.position.y })
+          n.rotation(camada.rotation ?? 0)
+        }
+      }
+      transformer.getLayer()?.batchDraw()
+      const meta = membros[0] ? metadadoDeGrade(membros[0]) : undefined
+      const caixa = meta ? caixaPeloTransformer(meta.caixa, medidos) : undefined
+      if (caixa) void refazer(sel.gradeId, { caixa })
+    })
+    return () => {
+      transformer.off('transformend.grade')
+    }
+  }, [])
 
   // Refs para o boundBoxFunc (callback vive fora do ciclo de render)
   const snapDataRef = React.useRef({
@@ -38,9 +88,13 @@ export function KonvaSelectionTransformer({
     layers: design.layers,
     selectedIds: selectedLayerIds,
     keepRatio: false,
+    margensDaMarca: margens,
+    guias,
   })
   snapDataRef.current.enabled = snapEnabled
   snapDataRef.current.margins = snapToMargins
+  snapDataRef.current.margensDaMarca = margens
+  snapDataRef.current.guias = guias
   snapDataRef.current.canvasWidth = design.canvas.width
   snapDataRef.current.canvasHeight = design.canvas.height
   snapDataRef.current.layers = design.layers
@@ -117,26 +171,20 @@ export function KonvaSelectionTransformer({
     }
   }, [isShiftPressed])
 
-  // Atualizar keepRatio do transformer (Konva best practice: images always keep ratio)
+  // keepRatio e alças pela seleção (src/lib/konva/trava-de-proporcao): imagem sempre
+  // proporcional; forma com style.manterProporcao proporcional e só pelos cantos;
+  // o resto só com Shift
+  const trava = React.useMemo(
+    () => travaDeProporcao(design.layers, selectedLayerIds, isShiftPressed),
+    [design.layers, selectedLayerIds, isShiftPressed],
+  )
   React.useEffect(() => {
     const transformer = transformerRef.current
     if (!transformer) return
-
-    // Check if any selected node is an image type
-    const nodes = transformer.nodes()
-    const hasImageNode = nodes.some((node) => {
-      const layerId = node.id()
-      const layer = design.layers.find((l) => l.id === layerId)
-      return layer && (layer.type === 'image' || layer.type === 'logo' || layer.type === 'element')
-    })
-
-    // Images ALWAYS keep aspect ratio (Konva best practice)
-    // Other elements only when Shift is pressed
-    const keepRatio = hasImageNode || isShiftPressed
-    transformer.keepRatio(keepRatio)
-    snapDataRef.current.keepRatio = keepRatio
+    transformer.keepRatio(trava.keepRatio)
+    snapDataRef.current.keepRatio = trava.keepRatio
     transformer.getLayer()?.batchDraw()
-  }, [isShiftPressed, design.layers, selectedLayerIds])
+  }, [trava])
 
   const boundBoxFunc = React.useCallback(
     (oldBox: { x: number; y: number; width: number; height: number; rotation: number }, newBox: { x: number; y: number; width: number; height: number; rotation: number }) => {
@@ -145,14 +193,9 @@ export function KonvaSelectionTransformer({
       }
 
       const snap = snapDataRef.current
-      // Snap de resize: só para caixas sem rotação e sem keepRatio (snapar uma
-      // borda de um node keepRatio quebraria a proporção que o Konva calculou)
-      if (
-        !snap.enabled ||
-        snap.keepRatio ||
-        Math.abs(newBox.rotation) > 0.001 ||
-        Math.abs(oldBox.rotation) > 0.001
-      ) {
+      // Snap de resize: só para caixas sem rotação. Com keepRatio (foto, logo, elemento) o canto arrastado encaixa
+      // no eixo que mais anda e o outro segue a proporção (L3 das linhas-guia; antes não encaixava)
+      if (!snap.enabled || Math.abs(newBox.rotation) > 0.001 || Math.abs(oldBox.rotation) > 0.001) {
         onSnapGuidesRef.current?.([])
         return newBox
       }
@@ -188,11 +231,18 @@ export function KonvaSelectionTransformer({
       const vStops: number[] = [0, snap.canvasWidth / 2, snap.canvasWidth]
       const hStops: number[] = [0, snap.canvasHeight / 2, snap.canvasHeight]
       if (snap.margins) {
-        vStops.push(CANVAS_MARGIN.left, snap.canvasWidth - CANVAS_MARGIN.right)
-        hStops.push(CANVAS_MARGIN.top, snap.canvasHeight - CANVAS_MARGIN.bottom)
+        const paradas = paradasDeEncaixe(
+          snap.margensDaMarca ?? { topo: CANVAS_MARGIN.top, base: snap.canvasHeight - CANVAS_MARGIN.bottom, esquerda: CANVAS_MARGIN.left, direita: snap.canvasWidth - CANVAS_MARGIN.right },
+        )
+        vStops.push(...paradas.v)
+        hStops.push(...paradas.h)
+      }
+      if (snap.guias) {
+        vStops.push(...snap.guias.v)
+        hStops.push(...snap.guias.h)
       }
       for (const layer of snap.layers) {
-        if (snap.selectedIds.includes(layer.id)) continue
+        if (snap.selectedIds.includes(layer.id) || layer.visible === false) continue
         const x = layer.position?.x ?? 0
         const y = layer.position?.y ?? 0
         const w = Math.max(1, layer.size?.width ?? 0)
@@ -215,6 +265,16 @@ export function KonvaSelectionTransformer({
       }
 
       const guides: GuideLine[] = []
+
+      // Com proporção travada só a alça de CANTO muda os dois eixos; a lateral muda um só (recorte da janela da
+      // foto) e segue o encaixe de borda de sempre (Codex R1 do L3)
+      if (snap.keepRatio && alcaDeCanto(transformerRef.current?.getActiveAnchor())) {
+        const r = encaixeProporcional(old, box, { v: vStops, h: hStops }, threshold, eps)
+        onSnapGuidesRef.current?.(r ? [r.guia] : [])
+        const c = r?.caixa ?? box
+        if (c.width * scale < 5 || c.height * scale < 5) return oldBox
+        return { x: c.x * scale + stageX, y: c.y * scale + stageY, width: c.width * scale, height: c.height * scale, rotation: newBox.rotation }
+      }
 
       // Detectar quais bordas o gesto está movendo e snapar só essas,
       // mantendo a borda oposta fixa
@@ -275,7 +335,7 @@ export function KonvaSelectionTransformer({
   return (
     <Transformer
       ref={transformerRef}
-      rotateEnabled
+      rotateEnabled={grade.modo === 'nenhuma'}
       keepRatio={false} // Será controlado dinamicamente via effect
       borderStroke="hsl(var(--primary))"
       borderStrokeWidth={2}
@@ -283,7 +343,7 @@ export function KonvaSelectionTransformer({
       anchorFill="#ffffff"
       anchorSize={10}
       anchorCornerRadius={4}
-      enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right', 'top-center', 'bottom-center']}
+      enabledAnchors={grade.modo === 'parcial' ? [] : trava.ancoras}
       rotateAnchorOffset={30}
       boundBoxFunc={boundBoxFunc}
     />

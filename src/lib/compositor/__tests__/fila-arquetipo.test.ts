@@ -11,6 +11,8 @@ const banco = vi.hoisted(() => ({ generations: [] as Array<Record<string, any>>,
 vi.mock('@/lib/db', () => ({
   db: {
     project: { findUnique: async () => ({ id: 6, name: 'Projeto', userId: 'dono-interno' }) },
+    // F1: o pedido novo consulta as referências do cliente (nenhuma aqui → o catálogo segue aberto).
+    referenciaDeLayout: { findMany: async () => [] },
     generation: {
       create: async ({ data }: { data: Record<string, any> }) => {
         banco.generations.push(data)
@@ -64,9 +66,14 @@ describe('T1a · a fila', () => {
     expect('arquetipo' in banco.jobs[0].spec).toBe(false)
   })
 
+  it('T1b: o modelo com a moldura obrigatória entra na fila (deixou de ser indisponível), com a versão exata', async () => {
+    const BASE = 'minimal-fb-base-esquerda'
+    const r = await enfileirarPeca(spec({ arquetipo: { id: BASE }, blocos: [{ papel: 'headline', linhas: ['x'] }, { papel: 'apoio', linhas: ['y'] }, { papel: 'servico', linhas: ['z'] }] }))
+    expect(r.spec.arquetipo).toEqual({ id: BASE, versao: 1, impressao: impressaoDoArquetipo(verArquetipo(BASE, 1)!) })
+  })
+
   it('as recusas do arquétipo saem na hora, sem criar Generation nem job', async () => {
     for (const [extra, codigo] of [
-      [{ arquetipo: { id: 'minimal-fb-base-esquerda' }, blocos: [{ papel: 'headline', linhas: ['x'] }, { papel: 'apoio', linhas: ['y'] }, { papel: 'servico', linhas: ['z'] }] }, 'ARQUETIPO_INDISPONIVEL'],
       [{ arquetipo: { id: TOPO }, formato: 'quadrado' }, 'ARQUETIPO_FORMATO_NAO_SUPORTADO'],
       [{ arquetipo: { id: TOPO }, blocos: [{ papel: 'headline', linhas: ['um', 'dois', 'três'] }, { papel: 'servico', linhas: ['z'] }] }, 'ARQUETIPO_LINHAS_EXCEDIDAS'],
       [{ arquetipo: { id: TOPO, versao: 1, impressao: 'arq1-00000000000000' } }, 'ARQUETIPO_IMPRESSAO_DIVERGENTE'],

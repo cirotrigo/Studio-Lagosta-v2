@@ -510,8 +510,374 @@ Detalhe em `docs/regras/compositor.md`, seção "Legibilidade da logo (CP3)".
     - como a assinatura cede a posição sem duas fontes;
     - o que fazer com um bloco `cta` e com o formato `quadrado` sob arquétipo (hoje, fora do
       vocabulário: recusar ou mapear).
-- **T1b — elementos.**
+- **T1b — elementos.** Feito localmente em 24/10/2026 (ver a seção "T1b — os acentos" abaixo); o que segue
+  é o plano original.
   - Materializar `fio-fino`, `moldura-aberta` (com o canto) e `spark-4`.
   - O SVG nasce ali, não aqui, com espessura e proporção próprias.
   - Fica para lá também como o elemento acompanha o papel a que está preso.
 - **CP2B — posição pela foto.** Feito em 14/10/2026 (ver a seção CP2B acima).
+
+## T1b — os acentos (24/10/2026)
+
+Os elementos declarados viram camadas `shape` com o desenho do asset V2 de mesmo id (`SHAPES_LIBRARY`):
+
+| Elemento | Forma | Canal | Cor | Como acompanha a headline |
+|---|---|---|---|---|
+| `fio-fino` (topo-esquerda, opcional) | `line`, traço 2 | preenchimento | a da manchete | o vão declarado (.003 da altura) abaixo do FIM da caixa real; rente à tinta |
+| `moldura-aberta` ┌ (base-esquerda, obrigatória) | `svg-path` `M0 100 L0 0 L100 0`, traço 2 | contorno | a da manchete | braço de cima parado em `y`; fim do vertical o vão declarado (3–4 unidades) acima do topo real |
+| `spark-4` (centro-óptico, opcional) | `svg-path`, travado | preenchimento | o destaque da manchete (sem destaque de cor: a dela) | o vão declarado acima do topo real, centrado na caixa real |
+
+Com a manchete na referência, cada acento pousa na caixa declarada (os testes conferem os 3 × story/feed).
+Opcional que não cabe (área segura do projeto, encosta em texto ou logo) sai, dito; obrigatório recusa
+(`ARQUETIPO_ELEMENTO_NAO_CABE`). A receita e a cor resolvida ficam em `composicao.arquetipo.acentos` e a
+recomposição só desenha por elas (sem depender do catálogo de elementos vivo); a logo do CP3 desvia dos acentos;
+`elementosMaterializados` lista os desenhados. Regras e lacunas em `docs/regras/compositor.md`,
+seção "Acentos do arquétipo presos ao texto (T1b)".
+
+## T4-A — o título gigante (24/10/2026)
+
+### `minimal-titulo-gigante@1` — `codigoTaxonomico: MIN-10`
+
+A palavra é a imagem: a headline ocupa a largura útil no topo; o apoio pequeno faz contraponto alinhado à direita;
+serviço e logo fecham a faixa de baixo.
+
+**Preferências e escala**
+
+- `ancora: topo` · `alinha: esquerda` · `cantoDaMarca: inferior-direito`.
+- Papéis: `headline` (obrigatória, **`escala: 'dominante'`**) → `apoio` (opcional, **`alinha: 'direita'`**) → `servico` → `logo`.
+- Sem elemento declarado.
+
+**Foto ideal**: metade de cima lisa ou escura; o assunto no meio ou na base. Referências: S025, F014, F018.
+
+**Story**
+
+| Papel | Referência | Zona | Linhas máx. (≈ caracteres por linha) |
+|---|---|---|---|
+| headline | .085 .12 .83 .26 | [.085, .915] × [.098, .397] | 2 (≈10) |
+| apoio | .55 .70 .365 .07 | [.50, .915] × [.64, .82] | 2 (≈20) |
+| servico | .085 .84 .55 .043 | [.085, .635] × [.78, .883] | 1 (≈30) |
+| logo | .74 .82 .175 .063 | [.65, .915] × [.78, .883] | — |
+
+**Feed**
+
+| Papel | Referência | Zona | Linhas máx. (≈ caracteres por linha) |
+|---|---|---|---|
+| headline | .085 .11 .83 .27 | [.085, .915] × [.089, .388] | 2 (≈10) |
+| apoio | .55 .68 .365 .08 | [.50, .915] × [.62, .80] | 2 (≈20) |
+| servico | .085 .86 .55 .062 | [.085, .635] × [.76, .922] | 1 (≈30) |
+| logo | .74 .85 .175 .072 | [.65, .915] × [.76, .922] | — |
+
+**A escala dominante.** `escala` é uma relação do papel, não um corpo (o contrato continua recusando `fontSize`). Sem
+ela, a escada só desce a partir do corpo da assinatura (até 80%). Com ela, a escada da headline começa em 8× o corpo
+da assinatura e desce até o maior corpo em que a copy cabe na referência (a escada da unidade, com segunda voz, desce
+pelo MAIOR corpo dela, para não pular um teto que ainda encolheria a primeira voz); a materialização confere que a caixa real
+chega a 80% da largura **ou** 22% da altura da peça, e recusa com `ARQUETIPO_ESCALA_NAO_DOMINANTE` quando não chega.
+Copy que não cabe nem no piso continua `ARQUETIPO_TEXTO_NAO_CABE`, nada é cortado. A faixa da headline coincide com a
+do topo-esquerda: o que distingue os dois modelos é a escala, não a zona.
+
+**O alinhamento próprio do papel** (`PapelNoArquetipo.alinha`, opcional; rodada 1 do T4-A). Sem ele, o papel segue
+`preferencias.alinha`, como sempre (os três do T0 não o têm, e as impressões deles não mudaram). Só em papel de texto que
+não é a headline (a dela é o do arquétipo: uma fonte só) e nunca na logo (canto). O validador exige que a referência
+encoste na borda da zona do lado dele (ou no eixo, no centro) — `PREFERENCIA_INCOERENTE` se não. A materialização pousa
+a caixa por ele, e as camadas saem com o `textAlign` dele (`alinhaDoPapel`), igual no compor, no medir-copy e na busca.
+
+**Desvios da pesquisa**: a zona da headline vai até .397/.388 (não "topo 10–48": a âncora topo pede a zona até 40% e
+nenhuma zona de texto passa de 30% da altura); a zona do apoio encosta na do serviço (a busca espacial tem duas faixas);
+a logo, que a pesquisa não posiciona, fica no canto inferior direito. Sem sangria no v1.
+
+**Fora desta entrega**: #4 `minimal-fb-base-centro` e #5 `minimal-fb-topo-centro` (logo topo-centro) e #6
+`minimal-marca-heroi` (gate de logo) esperam o CP1 (decisão d09).
+
+## T4-E e #15 — o modelo sem foto e a lista tipográfica (24/10/2026)
+
+Registro do contrato que já está no código (a lacuna de documentação foi apontada na revisão do preflight do #16).
+
+- **`fundo: 'liso-claro'`** (família E, MIN-09): a peça não tem foto; o fundo é o `numeros.fundoClaro` da marca
+  (`Project.assinatura.fundoClaro`), resolvido por `fundoDaPeca` (`arquetipos/fundo.ts`) — a mesma conta no compor, no
+  medir-copy e na página que a aba Layouts grava. Marca sem claro, ou com um que não é claro (luminância < 0,5), recusa
+  `ARQUETIPO_FUNDO_INDISPONIVEL`; foto pedida recusa `ARQUETIPO_FOTO_NAO_SUPORTADA`. Ausente = `foto`, como sempre.
+- **Recomposição**: o `Page.background` congelado vence a marca de hoje (a troca de paleta não se propaga); página sem
+  fundo representável recusa antes de subir PNG ou gravar.
+- **Sem foto, sem busca**: cada faixa fica na partida (1 combinação, 0 avaliações), com teto de **3** faixas
+  (`faixasSemFoto`); com foto o teto de 2 não mudou. Sem foto ideal; logo sempre fixa (`auto` recusa).
+- **`cta` entrou nos papéis do arquétipo** (aditivo): quem não o declara continua recusando o bloco cta.
+
+### `minimal-tipografico-lista@1` — `codigoTaxonomico: MIN-09`
+
+Manchete de até 3 linhas no topo à esquerda; a lista do apoio (`lista: true`, um item por linha autoral, até 3) com um
+fio fino obrigatório ACIMA de cada item (`porItem`, no vão `itens.apoio.vao`); rodapé em duas colunas (cta | serviço);
+logo no canto superior direito (decisão do owner). Geometria e desvios da S055 no comentário de `catalogo.ts`.
+
+## #16 — o convite tipográfico (24/10/2026)
+
+### `minimal-tipografico-convite@1` — `codigoTaxonomico: MIN-09`
+
+Sem foto, fundo claro da marca, tudo centrado: logo no topo-centro, pré, manchete de 2 linhas, apoio com um fio fino
+acima, serviço e, na base, a linha final (o papel `cta`). Cantoneiras emolduram a peça. Referência: F036 (grid-06; só
+existe em Feed — o Story é adaptação). Decisões do owner (24/10): d09 liberado **só** para a logo fixa topo-centro deste
+modelo, em escala normal, sem tratamento novo (não libera #4, #5, #6 nem marca-herói); fundo F1 claro.
+
+**Preferências**: `ancora: meio` · `alinha: centro` · `cantoDaMarca: superior-centro` · `fundo: liso-claro`.
+Papéis na ordem: `logo` → `pre` → `headline` → `apoio` → `servico` → `cta`, todos obrigatórios.
+Elementos: `cantoneiras` (obrigatória, presa à PEÇA, `destaque`) e `fio` (`fio-fino`, obrigatório, `presoA: apoio`, acima).
+
+**Story**
+
+| Papel | Referência | Zona | Linhas máx. (≈ caracteres) |
+|---|---|---|---|
+| logo | .41 .13 .18 .04 | [.30, .70] × [.098, .20] | — |
+| pre | .30 .30 .40 .035 | [.15, .85] × [.27, .36] | 1 (≈18) |
+| headline | .14 .36 .72 .10 | [.10, .90] × [.34, .52] | 2 (≈14) |
+| apoio | .25 .53 .50 .035 | [.15, .85] × [.50, .62] | 1 (≈26) |
+| servico | .25 .62 .50 .04 | [.15, .85] × [.58, .70] | 1 (≈30) |
+| cta | .32 .80 .36 .035 | [.22, .78] × [.76, .86] | 1 (≈26) |
+| fio | .36 .497 .28 .002 | — | — |
+| cantoneiras | .085 .10 .83 .78 | — | — |
+
+**Feed**
+
+| Papel | Referência | Zona | Linhas máx. (≈ caracteres) |
+|---|---|---|---|
+| logo | .41 .125 .18 .045 | [.30, .70] × [.089, .20] | — |
+| pre | .30 .32 .40 .04 | [.15, .85] × [.29, .40] | 1 (≈18) |
+| headline | .14 .375 .72 .12 | [.10, .90] × [.34, .56] | 2 (≈14) |
+| apoio | .25 .56 .50 .04 | [.15, .85] × [.52, .64] | 1 (≈26) |
+| servico | .25 .655 .50 .045 | [.15, .85] × [.62, .74] | 1 (≈30) |
+| cta | .32 .82 .36 .04 | [.22, .78] × [.78, .90] | 1 (≈26) |
+| fio | .36 .537 .28 .003 | — | — |
+| cantoneiras | .085 .09 .83 .83 | — | — |
+
+Três faixas por formato: {logo} · {pre, headline, apoio, servico} · {cta}.
+
+**Extensões do contrato** (só no arquétipo; a spec pública e `CANTOS` não mudam):
+
+- **Logo `superior-centro`**: `CantoDaLogo = Canto | 'superior-centro'`. O validador exige a logo fixa (nunca
+  automática) com referência e zona no eixo da peça, na metade de cima. A materialização e a caixa de variante do CP3
+  (`caixaDaVariante`) centram o contain na referência; a troca de variante autorizada fica no mesmo centro, sem cair num
+  canto. O critério do CP3 é o de sempre (p10 ≥ 45 nos pixels alfa ≥ 128 contra o fundo efetivo, só a variante da
+  assinatura e `Logo.isProjectLogo`); nenhum canto entra na escolha gravada da logo fixa.
+- **Acento preso à PEÇA**: `cantoneiras` é o único elemento sem `presoA` (o validador o proíbe nele e o exige nos
+  outros). Pousa na caixa declarada, sem seguir texto, e **ocupa só os quatro braços** (`ocupacaoDoAcento`: a caixa de
+  cada subpath do path em uso, mais meio traço) — o miolo, onde textos e logo moram, não é obstáculo. A mesma função no
+  compor, no medir-copy, no CP3 (`livre`) e na reconciliação da logo; na recomposição, sempre do path CONGELADO.
+- **A cor das cantoneiras** é o destaque da MANCHETE (sem destaque de cor, a cor dela), com `fonteDaCor`
+  `destaque-da-manchete (cantoneiras)`, congelada como nos outros acentos.
+
+**Desvios da F036**: fundo claro da marca, não o cetim escuro texturizado; um fio só (o segundo, abaixo do apoio, fica
+de fora); sem os sparks que ladeiam o apoio; a marca de texto vira a logo em contain; o braço da cantoneira é o do asset
+(25% da caixa em cada eixo — no Story, mais longo na vertical: aceite visual pendente do owner); a linha da URL é o `cta`
+escrito pelo autor, com o estilo inteiro da assinatura (inclusive o prefixo). Ajuste da execução sobre o preflight: a
+referência da manchete no Feed tem h .12 (não .11), a mesma folga proporcional do Story.
+
+## #16 @2 — cantoneiras de braço igual e margens (24/10/2026)
+
+O owner recusou esteticamente o C1 (braço de 25% da caixa por eixo: 224 × 374,5 px no Story) e escolheu o C2. Publicado
+`minimal-tipografico-convite@2` (impressão `arq1-01570f16b5b8cb`) **ao lado** do `@1`, que não mudou um byte
+(`arq1-1cdd408f7eeb8d`). O asset global `cantoneiras@1`, as áreas seguras e os renderizadores não mudaram.
+
+- **Braço igual**: o elemento `cantoneiras` declara `braco: 0.12` (fração da LARGURA, igual nos dois eixos): round(0,12 ×
+  1080) = **130 px** em Story e Feed. A peça nova deriva o path (`pathDasCantoneiras`, mesma ordem de subpaths do asset;
+  25/25 reproduz o asset byte a byte) e o congela na receita com `derivacao: { regra: 'bracos-iguais', bracoPx: 130 }`,
+  também em `metadata.compositor.acento`. Uma camada, quatro Ls; ocupação de 4 caixas 132 × 132.
+- **Guarda do desenho** (`incoerenciaDoDesenho`, em `posicionarAcentos`): confere o PATH congelado no retângulo final
+  (4 subpaths M/L de 3 pontos, cada L num canto distinto ±0,5 px, braços H e V = `bracoPx` ±0,5 px para dentro) e a
+  derivação contra o elemento. Incoerente: `ARQUETIPO_ELEMENTO_NAO_CABE` 422. Estrutura de `derivacao` malformada:
+  `ARQUETIPO_ESCOLHA_ILEGIVEL` 422. A receita sem contexto (inspeção) não tem derivação e é recusada se for usada para
+  desenhar o `@2` — não há desenho C1 de reserva. O C1 legado sem derivação segue aceito.
+- **Margens**: a caixa da moldura é a do `@1` (já encosta no HARD). Logo e chamada vão para a altura do meio dos Ls,
+  conjunto central aberto, manchete com h .11 (Story) e .13 (Feed); toda zona de papel fora da ocupação. Zona do serviço
+  no Story **.61–.74** (com .62 só tocava a do apoio: 4 faixas, acima do teto 3 sem foto).
+
+| Story `@2` | referência (x y w h) | zona | | Feed `@2` | referência | zona |
+|---|---|---|---|---|---|---|
+| logo | .41 .114 .18 .04 | [.30,.70] × [.098,.20] | | logo | .41 .116 .18 .045 | [.30,.70] × [.089,.20] |
+| pre | .30 .28 .40 .035 | [.15,.85] × [.27,.36] | | pre | .30 .284 .40 .04 | [.15,.85] × [.27,.40] |
+| headline | .14 .352 .72 .11 | [.10,.90] × [.34,.52] | | headline | .14 .35 .72 .13 | [.10,.90] × [.34,.56] |
+| apoio | .25 .556 .50 .035 | [.15,.85] × [.50,.62] | | apoio | .25 .572 .50 .04 | [.15,.85] × [.52,.64] |
+| servico | .25 .664 .50 .04 | [.15,.85] × [.61,.74] | | servico | .25 .686 .50 .045 | [.15,.85] × [.62,.74] |
+| cta | .32 .829 .36 .035 | [.22,.78] × [.76,.875] | | cta | .32 .853 .36 .04 | [.22,.78] × [.78,.90] |
+| fio | .36 .523 .28 .002 | — | | fio | .36 .549 .28 .003 | — |
+
+- **Vitrine**: uma versão por id (a mais recente) no Layouts e no `ver-assinatura`; `{ id, versao: 1 }` continua
+  resolvível e a recomposição de peça `@1` continua C1.
+- **Limites ditos**: a tinta da vertical pinta 1 px fora do `margemH` (colunas de pixel 91 e 988), herdado do C1 — o
+  contrato confere a caixa, não a tinta. A folga da manchete no Feed medida é 7,5 px (o preflight previa ≥ 12 supondo o
+  corpo do C1; com a referência .13 o corpo sobe de 81 para 84 px). Aceite visual (G-H1) e marcas reais pendentes.
+
+## #8 — divisão com a foto no alto (`minimal-divisao-foto-topo@1`, 24/10/2026)
+
+Publicado ao lado das sete versões (impressão `arq1-03ccaf6af70501`). Fundo novo do arquétipo, **`foto-em-caixa`**: a
+foto pousa numa caixa declarada por formato (`formatos.<f>.foto`, em frações) e o texto fica no liso, no **papel** da
+marca (escuro `numeros.fundo` ou claro `numeros.fundoClaro`) que atende, pela régua, as tintas que a peça desenha.
+Renderizadores, `image-fit`, `NUMEROS_PADRAO`, schema e as sete impressões antigas não mudaram.
+
+| Story | referência (x y w h) | zona | | Feed | referência | zona |
+|---|---|---|---|---|---|---|
+| foto | 0 0 1 .60 (1080×1152) | — | | foto | 0 0 1 .58 (1080×783) | — |
+| headline | .085 .65 .70 .11 | [.085,.835] × [.63,.77] | | headline | .085 .63 .70 .13 | [.085,.835] × [.61,.775] |
+| apoio | .085 .775 .70 .05 | [.085,.835] × [.765,.835] | | apoio | .085 .78 .70 .06 | [.085,.835] × [.765,.85] |
+| servico | .085 .84 .60 .04 | [.085,.685] × [.83,.883] | | servico | .085 .86 .60 .05 | [.085,.685] × [.845,.922] |
+| logo | .74 .83 .175 .05 | [.70,.915] × [.82,.883] | | logo | .74 .85 .175 .06 | [.70,.915] × [.84,.922] |
+
+Papéis: headline obrigatória (2 linhas, com a voz 2), apoio opcional (2), serviço obrigatório (1), logo obrigatória;
+`pre` e `cta` recusados no `@1`. Uma faixa por formato, só a partida. Referências = as literais do catálogo candidato;
+zonas do preflight T3-B (HARD, abaixo da junção).
+
+Decisões (D1–D8, preflight T3-B):
+
+- **D1** fundo `foto-em-caixa` + caixa por formato; zonas e elementos disjuntos da caixa (`ZONA_SOBRE_A_FOTO`); logo fixa.
+- **D2** papel por contraste real, depois da preparação, sobre as tintas ATIVAS (`tintasAtivas` + `papelDoBloco`); no
+  medir-copy, por variante.
+- **D3** régua pós-render não-ok no liso = aviso (a escolha já usa o mesmo critério).
+- **D4** ampliação acima de 1,0× = aviso com o fator (`diagnostico.foto.escala`), sem veto.
+- **D5** `pre`/`cta` recusados no `@1`; nos Layouts, recorte autoral pelo histórico do contrato da página nova.
+- **D6** sem foto: recusa só no compor (`ARQUETIPO_FOTO_AUSENTE`); medir sem foto é provisório pela falta da identidade.
+- **D7** sem `variante.ts`: a síntese em memória do T1a já é a variante do arquétipo.
+- **D8** gate de autonomia e revisor inalterados, *fail-closed* para a foto em caixa (R1): toda peça #8 em leva
+  autônoma vai para revisão humana até o revisor aprender a foto em caixa.
+
+Limites ditos: elementos do arranjo (ícone, filete, selo) e sombra ficam fora da conta do papel, como na régua; o aceite
+visual (G-H1) é do owner depois das provas; marcas reais, Drive e Blob reais não foram exercitados.
+
+## #4 — base centrada com a logo no topo-centro (`minimal-fb-base-centro@1`, 24/10/2026)
+
+**Status (25/10/2026):** guardado para avaliação — fora da vitrine (aba Layouts e `ver-assinatura`), ainda no catálogo e resolvível por id e versão (pedido explícito e replay); o aceite visual G-H1 segue adiado pelo owner.
+
+Publicado ao lado das oito versões (impressão `arq1-15c914b2112ca8`; as oito antigas não mudaram um byte). MIN-01, foto
+**inteira** (sem `fundo`), sem elementos. A manchete centrada na base, o serviço logo abaixo e a logo **fixa** no
+topo-centro (`cantoDaMarca: 'superior-centro'`), em contain e escala normal. O delta de produto é só a definição no
+`catalogo.ts`: `tipos`, `validar`, `materializar`, busca, compor, CP3, medir-copy, Layouts, gate e revisor já tratavam o
+`superior-centro` sobre foto (preflight cp-t4-a-4, §2).
+
+| Story | referência (x y w h) | zona | | Feed | referência | zona |
+|---|---|---|---|---|---|---|
+| logo | .41 .105 .18 .045 | [.30,.70] × [.098,.20] | | logo | .41 .105 .18 .045 | [.30,.70] × [.089,.20] |
+| headline | .12 .66 .76 .12 | [.10,.90] × [.63,.79] | | headline | .12 .64 .76 .12 | [.10,.90] × [.61,.775] |
+| servico | .20 .80 .60 .08 | [.15,.85] × [.785,.883] | | servico | .20 .80 .60 .08 | [.15,.85] × [.77,.922] |
+
+Limites de texto nos dois formatos: headline 2 linhas (≈16 caracteres, a voz 2 conta), serviço 2 linhas (≈30). Duas
+faixas por formato: `[headline, servico]` e `[logo]` — o teto com foto.
+
+**Superação do "Fora desta entrega" do T4-A** (seção "T4-A", acima): o d09 de 24/10 ("#4 e #5") liberou o #4 com a logo
+fixa no topo-centro, escala normal, sem tratamento novo. O texto histórico fica como estava; o #5 (pílula) e o #6
+(marca-herói, CP1) continuam fora.
+
+**Desvios do catálogo candidato**: o catálogo não dá x/w, e as larguras são as da prévia que o owner viu no d09 (logo
+41/18, manchete 12/76, serviço 20/60); a zona do serviço sobe até tocar a da manchete (.785 / .77) para as duas formarem
+UMA faixa (separadas seriam 3, acima do teto com foto: `ARQUETIPO_LIMITE_DA_BUSCA`); a logo é a mesma fração nos dois
+formatos (o catálogo dá a mesma faixa), e a identidade Story × Feed fica na manchete (.66 contra .64).
+
+Decisões (preflight cp-t4-a-4, D2–D5):
+
+- **D2 papéis**: headline e serviço obrigatórios, logo obrigatória. `pre`, `apoio` e `cta` recusam no `@1`
+  (`ARQUETIPO_PAPEIS_INCOMPATIVEIS`, no compor e no medir-copy); nos Layouts saem em `foraDoLayout`, com a revisão do
+  sistema no histórico do contrato da página nova. Apoio opcional fica como candidato a `@2`, se o owner pedir.
+- **D3 logo fixa**: contain centrado na referência, nunca automática nem num canto. A faixa só da logo fica no `dy` 0
+  e só sai dele quando a posição 0 é eliminada (região protegida do catálogo ou colisão) — e então só na vertical,
+  dentro da zona, no eixo. Sem posição livre na zona: `SEM_COMBINACAO`.
+- **D4 tratamento = o da família A** (aprovado na rodada 1 do preflight como preservação, sem pergunta nova ao
+  owner): o CP2A trata o rodapé dos textos; no topo, a borda só da logo, vale a regra antiga de 02/09/2026 — o véu fraco
+  automático da logo (metade da necessidade) entra se a necessidade passar de 0,5, FICA quando salva a logo e SAI quando
+  não salva (o CP3 mede as variantes sem ele). Nenhum véu novo, nenhum ramo novo, nenhum CP1.
+- **D5 CP3 sem mudança**: só variantes cadastradas (`isProjectLogo`), na mesma caixa centrada; sem variante legível,
+  `LOGO_SEM_VARIANTE_LEGIVEL`; asset que não carrega, `LOGO_INDISPONIVEL`. A variante escolhida é gravada e reproduzida.
+
+Medido na implementação local (cp-t4-a-4, marca/fotos/logo sintéticas, fontes reais): o véu da logo entra no alto
+uniforme ≥ 225 (Story) / ≥ 200 (Feed) e salva a logo clara; no Feed com o alto texturizado em 175 entra e não salva a
+escura, e sai. O `tratamentoDeLeitura` do diagnóstico só lista bordas COM texto: o véu da logo no topo do #4 aparece como
+camada (`gradiente-leitura-topo`) e, quando sai, em `legibilidade.veusRemovidos` — não em `veuDaLogo`.
+
+Limites ditos:
+
+- **R2**: a posição da logo não é escolhida pela foto; um alto ocupado sem região anotada não a move. A leitura é do
+  CP3 (variante) ou recusa.
+- **R3**: com a manchete de 1 linha, o vão manchete → serviço na referência cresce (≈163 px no Story, ≈142 no Feed); é
+  limite visual para o G-H1, não falha.
+- **R4**: o medir-copy não prevê o CP3 — a copy que mede OK pode recusar no compor pela logo, como no #2 e no #16.
+
+O aceite visual (G-H1 do #4) é do owner, depois das provas; marcas reais, Drive e Blob reais não foram exercitados.
+
+## #5 — topo centrado com o serviço em pílula (`minimal-fb-topo-centro@1`, 24/10/2026)
+
+Publicado ao lado das nove versões (impressão `arq1-023d4c649e2482`; as nove antigas não mudaram um byte). MIN-01, foto
+**inteira** (sem `fundo`). A logo **fixa** no topo-centro (`cantoDaMarca: 'superior-centro'`, contain, escala normal, CP3
+sem mudança), a manchete e o apoio opcional centrados logo abaixo, e na base o serviço de **uma linha** envolvido pela
+**pílula de contorno** (`elementos: [{ id: 'pilula', tipo: 'pilula-contorno', opcional: false, corPorPapel: 'texto',
+presoA: 'servico' }]`). Preflight e plano: cp-t4-a-5-preflight (rodada 1).
+
+| Story | referência (x y w h) | zona | | Feed | referência | zona |
+|---|---|---|---|---|---|---|
+| logo | .41 .105 .18 .035 | [.30,.70] × [.098,.17] | | logo | .41 .105 .18 .035 | [.30,.70] × [.089,.17] |
+| headline | .12 .155 .76 .12 | [.10,.90] × [.15,.30] | | headline | .12 .16 .76 .12 | [.10,.90] × [.15,.32] |
+| apoio | .20 .29 .60 .06 | [.15,.85] × [.27,.40] | | apoio | .20 .30 .60 .07 | [.15,.85] × [.28,.42] |
+| servico | .20 .825 .60 .045 | [.15,.85] × [.79,.883] | | servico | .20 .83 .60 .06 | [.15,.85] × [.78,.922] |
+| pílula (E) | .17 .815 .66 .065 | — | | pílula (E) | .17 .818 .66 .084 | — |
+
+Limites de texto nos dois formatos: headline 2 linhas (≈16), apoio 2 (≈28), serviço **1** (≈30). Duas faixas por
+formato: `[headline, apoio, logo]` (as zonas se tocam) e `[servico]` — o teto com foto; a logo acompanha o `dy` da faixa de
+cima dentro da própria zona. Com texto na borda de cima, o véu fraco automático da logo não nasce; a leitura dela é do CP3.
+
+**A pílula** (o acento `pilula-contorno`, o primeiro que ENVOLVE):
+
+- desenho = o asset `pilula-contorno@1` (`rounded-rectangle`, traço 2, raio 9999, contorno), copiado na receita e
+  congelado na peça com a cor do serviço (`fonteDaCor: 'texto-do-papel'`); a recomposição desenha pela receita, nunca pelo
+  asset vivo;
+- medida pela caixa REAL do serviço: borda externa = caixa ⊕ folga da definição (32 × 19 px Story, 32 × 16 Feed), camada
+  = borda externa ⊖ 1; acompanha o comprimento do serviço (curto = cápsula curta);
+- interior permitido = o contorno CURVO desenhado (os quatro cantos do serviço ≥ 1 px dentro da borda interna do traço);
+  medido nas provas sintéticas (serviço 73 × 48 e 395 × 48 px): sobra de 13,6 px no Story e 11,7 no Feed com traço 2;
+- a folga conta na zona e na faixa (a busca não tira a pílula da área segura); fora dela, ou encostando noutro texto ou na
+  logo, ou cápsula vertical (w < h): `ARQUETIPO_ELEMENTO_NAO_CABE`; abaixo dos textos, fora do piso e da oclusão do gate.
+
+**Desvios do catálogo candidato e do preflight**: a pílula de contorno única é adaptação da casa (S005 tem duas
+preenchidas, F010 nenhuma); o catálogo não dá x/w (família do d09/#4); a pílula vai a .815–.88 no Story; **na execução, a
+manchete do Feed desceu de .155 para .16** (o literal do catálogo) porque o CP3 exige 24 px entre a logo e os textos e o
+vão do preflight era 20 px — com .16 o vão é 27 px (Story: 29 px). A caixa real do serviço (corpo 30, Montserrat 600) mediu
+48 px de altura contra 51 estimados no preflight.
+
+Limites ditos: a busca não pontua a calma sob o contorno (L1); acentos não colidem entre si (L2, um só aqui); o asset não é
+fixado em versão — peça nova copia o desenho vigente (L3); o medir-copy não prevê o CP3 (L4). O aceite visual (G-H1 do #5)
+é do owner, depois das provas; marcas reais, Drive e Blob reais não foram exercitados.
+
+## #9 — divisão com o topo da foto em arco (`minimal-divisao-cor-topo-arco@1`, técnico por fixture, 25/10/2026)
+
+Texto no liso em cima, à esquerda (pré opcional, manchete, apoio opcional), logo FIXA no canto superior direito, foto numa
+caixa embaixo (Story y .42 × h .58 = 806,4 · 1080×1114; Feed y .44 × h .56 = 594 · 1080×756) com o topo em ARCO: a
+máscara `arco-janela`, raio 0,62 × a largura da caixa (o arco B das amostras aprovadas, "Aprovar B como está"). Sem
+serviço nem cta no `@1` (`ARQUETIPO_PAPEIS_INCOMPATIVEIS`); sem o anel claro da referência S024.
+
+- **O que o arquétipo declara**: `mascaraDaFoto: { tipo, raio }` por formato — nunca path. O path é derivado da caixa em
+  px na composição, conferido pelos dois parsers e congelado na peça; a recomposição desenha o gravado.
+- **Por que derivado e não fixo**: um path fixo 0–100 vira elipse numa caixa não quadrada e muda de forma entre Story e
+  Feed. Derivado da caixa real, o alfa é um círculo de raio 0,62 L nos dois formatos (paridade editor × servidor medida
+  no Node: 0 px acima de 32 níveis; borda a ≤ 0,4 px do círculo).
+- **O assunto conta no arco**: os cantos de cima da caixa ficam no liso; um assunto catalogado escondido ali reprova o
+  corte como no #8.
+- **A definição final** (adotada na R1 da I9): as referências das amostras, salvo as de TEXTO com w .602 (650 px, a
+  coluna justa de 636 que a manchete de 87 px precisa) nos dois formatos e a da logo do Feed com h .0348 (a logo 94×47
+  sem passar da área segura pelo arredondamento). Com ela a peça composta tem as quatro tintas iguais às amostras e o
+  PNG do Feed byte a byte igual; o Story só difere pela foto em y 806,4.
+- **Estado**: só fixture de teste (I técnica). Publicação no catálogo, card do Layouts com o arco, vitrine, MCP e
+  candidatos ficam para a habilitação, com essa definição.
+- **Limite**: redimensionar a foto à mão estica o arco; o editor não ganha a máscara na barra de imagem
+  (`MASCARAS_DE_IMAGEM` não muda).
+- **Adendo H9 (25/10/2026)**: publicado no catálogo com essa definição (impressão `arq1-04603bcf9d7623`); a vitrine
+  leva a máscara (`mascaraDaFoto` com o path derivado da caixa, igual ao da peça) e o card do Layouts desenha o arco,
+  com a legenda "Foto embaixo com o topo em arco · fundo da marca em cima". Fica em 1º na ordem por id (Layouts,
+  candidatos, `ver-assinatura`). A máscara segue fora da barra de imagem, e criar Layouts a partir de uma página #9 pede
+  foto (409, como no #8).
+
+## #10 — coluna de foto (`minimal-coluna-foto@1` e `minimal-coluna-foto-esquerda@1`, IH 25/10/2026)
+
+Foto numa coluna de altura inteira, 42,5% da largura, sangrando em cima, embaixo e no lado de fora; texto numa coluna
+estreita no liso do outro lado (manchete curta em até 3 linhas, fio fino opcional sob ela, apoio e serviço embaixo); logo
+FIXA no canto de cima do lado do texto. Dois ids, um por lado (S050 com a foto à direita, S014 com ela à esquerda), sem
+parâmetro de espelho. MIN-05, `foto-em-caixa`; pré e cta fora do `@1`.
+
+- **A definição**: as referências das amostras v2 aprovadas no G-A10 ("dois lados, com o fio"), salvo as de TEXTO com
+  w .436 (coluna 456, a manchete de 80 px inteira) e a logo em x .086 (D) / .739 (E), que não passa da zona pelo
+  arredondamento para nenhuma proporção. O texto E fica em x .479.
+- **O que a IH mediu**: corpos 80/40/30, conteúdo e quebras iguais, foto na caixa exata, tinta dos textos, da logo e do
+  fio a ±2 px das 5 peças aceitas; a largura da caixa do texto pela regra justa (470/427/351).
+- **Limites**: a coluna estreita depende da quebra do autor; o card do Layouts desenha a coluna como retângulo; a marca
+  das amostras é sintética (não valida marca real).

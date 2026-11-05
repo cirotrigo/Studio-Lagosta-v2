@@ -62,10 +62,14 @@ import { descreverAvisoDeSlot, transportarSlots } from '@/lib/semantica/transpor
 import { PostLogEvent, type Prisma } from '../../../prisma/generated/client'
 
 import { comporPeca } from './compor'
+import { chaveDoCorte } from './corte-da-foto'
 import { specTemExtra } from './camadas-extras'
 import {
   edicaoDuranteOJob,
+  acentosCongelados,
+  enquadramentoDaPagina,
   escolhaEspacialOriginal,
+  mascaraCongelada,
   medirDefasagem,
   paginaMudouDesde,
   precisaRefazer,
@@ -75,9 +79,14 @@ import {
   type Defasagem,
   type SlideDefasado,
 } from './defasagem'
-import { validarSpec, type SpecDePeca } from './spec'
+import { DIMENSOES, validarSpec, type SpecDePeca } from './spec'
 import { contratoLidoParaRecompor, specDaRecomposicao } from './spec-da-recomposicao'
 import { resolverArquetipo, type ArquetipoDaSpec } from './arquetipos/na-spec'
+import { MODO_BUSCA_ESPACIAL } from './arquetipos/busca-espacial-tipos'
+import { resolucaoParaASpec } from './referencias'
+import { verArquetipo } from './arquetipos/catalogo'
+import { caixaDaFoto, textoNoLiso } from './arquetipos/fundo'
+import type { ArquetipoDeLayout, FormatoDoArquetipo } from './arquetipos/tipos'
 
 /** As situações de post que a recomposição alcança — as mesmas da invalidação. */
 const SITUACOES_ALCANCADAS = ['DRAFT', 'SCHEDULED'] as const
@@ -407,15 +416,46 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
   // T1a: a spec gravada com ARQUÉTIPO recompõe na MESMA definição — id + versão + impressão conferidos contra o
   // catálogo, nunca "a mais recente" (versão ausente é recusada). Impressão divergente recusa ANTES de qualquer
   // escrita: a peça não finge que a definição com que nasceu ainda é a mesma.
-  if (candidataARecompor && arte.spec!.arquetipo) resolverArquetipo(arte.spec!.arquetipo as ArquetipoDaSpec, { persistida: true })
+  // F1: a peça que nasceu de uma REFERÊNCIA do cliente resolve a revisão exata gravada (com as revogadas: revogar
+  // vale para pedidos novos, nunca apaga a definição com que a peça nasceu).
+  const resolucao = candidataARecompor && arte.spec!.arquetipo ? await resolucaoParaASpec({ projectId: levantamento.projectId, arquetipo: arte.spec!.arquetipo }, { reproducao: true }) : {}
+  const resolvida = candidataARecompor && arte.spec!.arquetipo ? resolverArquetipo(arte.spec!.arquetipo as ArquetipoDaSpec, { persistida: true, ...resolucao }) : null
   // CP2B: a ESCOLHA ESPACIAL gravada (corte e deslocamentos) é reproduzida, nunca refeita — a busca pela foto não roda
   // de novo numa edição de texto. Ilegível recusa AQUI, antes de qualquer escrita (ver `escolhaEspacialOriginal`).
-  const lida = candidataARecompor && arte.spec!.arquetipo ? escolhaEspacialOriginal(arte.fieldValues, arte.spec!) : null
+  const lidaGravada = candidataARecompor && arte.spec!.arquetipo ? escolhaEspacialOriginal(arte.fieldValues, arte.spec!) : null
+  // F2a: o ENQUADRAMENTO EFETIVO da página vence a escolha gravada: a janela (`style.crop`) sempre que a página a tem;
+  // a âncora só quando o enquadramento foi MUDADO no editor (inclusive "Remover") — senão a escolha gravada reproduz
+  // como sempre, e a foto trocada sem crop busca o corte de novo. A escolha segue com os deslocamentos, a logo, a pilha
+  // e a margem de antes; a spec recomposta leva o mesmo (`specComACopyDaPagina`), para a leitura e a escolha terem um corte só.
+  const lidoDaPagina = candidataARecompor ? enquadramentoDaPagina(page.layers) : null
+  // F2b: a janela ASSISTIDA (a spec não a pediu, é a da escolha gravada, ninguém a mudou) foi calculada para AQUELA foto:
+  // não vira pedido na spec. A escolha a reproduz enquanto a foto for a mesma; foto trocada → busca nova, com assistência.
+  // Nem na edição de texto: gravada na spec, ela passaria por janela pedida na troca de foto seguinte.
+  const janelaAssistida =
+    !!lidoDaPagina && 'janela' in lidoDaPagina && defasagem.enquadramentoAlterado !== true && !arte.spec!.foto?.janela && lidaGravada?.modo === MODO_BUSCA_ESPACIAL && lidaGravada.corte === 'janela' && !!lidaGravada.janela && chaveDoCorte({ janela: lidaGravada.janela }) === chaveDoCorte({ janela: lidoDaPagina.janela })
+  const enquadramentoDaPaginaAgora = lidoDaPagina && !janelaAssistida && ('janela' in lidoDaPagina || defasagem.enquadramentoAlterado === true) ? lidoDaPagina : null
+  const lida =
+    lidaGravada && lidaGravada.modo === MODO_BUSCA_ESPACIAL && enquadramentoDaPaginaAgora
+      ? ('janela' in enquadramentoDaPaginaAgora ? { ...lidaGravada, corte: 'janela' as const, janela: enquadramentoDaPaginaAgora.janela } : { ...lidaGravada, corte: enquadramentoDaPaginaAgora.corte, janela: undefined })
+      : lidaGravada
   // Foto trocada numa peça do T1a (na referência, sem escolha pela foto): a busca roda pela foto nova, DITO. (A peça do
   // CP2B traz a foto na escolha: o compositor percebe a troca e avisa sozinho.)
   // CP3: a variante da logo gravada é preferência e não depende da foto — segue na busca nova (a conferência mede).
   const escolhaEspacial = lida?.modo === 'referencia' && defasagem.fotoTrocada ? (lida.logo ? { modo: 'referencia' as const, logo: lida.logo } : null) : lida
   if (lida?.modo === 'referencia' && defasagem.fotoTrocada) avisos.push('A foto da peça mudou: a posição foi escolhida de novo pela foto nova (a peça estava na referência do arquétipo).')
+  // A margem com que a peça EXISTENTE foi composta (30/10/2026): `'marca'` só se a escolha gravada diz; senão `null`
+  // (opção A, como nasceu). Vai à parte da escolha, porque a foto trocada no T1a anula a escolha mas não a identidade
+  // geométrica da peça — sem isto a troca de foto migrava a peça antiga para a margem nova (revisão do Codex, P2).
+  const margemDaPeca = candidataARecompor && arte.spec!.arquetipo ? (lida && 'margem' in lida && lida.margem === 'marca' ? ('marca' as const) : null) : undefined
+  // A pilha com que a peça EXISTENTE foi composta (30/10/2026), pelo mesmo motivo: o gap gravado na escolha, senão `null`
+  // (não empilha, como nasceu). Sem isto a foto trocada no T1a empilhava a peça antiga com o gap da marca (furo deixado
+  // na fase da margem, dito no relatório dela).
+  const pilhaDaPeca = candidataARecompor && arte.spec!.arquetipo ? (lida && 'pilha' in lida && lida.pilha !== undefined ? lida.pilha : null) : undefined
+  // T1b: os acentos da peça pela receita CONGELADA (a de antes do T1b, `[]`: continua sem) — com foto trocada também.
+  const acentos = candidataARecompor && arte.spec!.arquetipo ? acentosCongelados(arte.fieldValues, arte.spec!) : null
+  // #9: a máscara pela receita CONGELADA, conferida contra ela mesma e contra a definição EXATA resolvida acima (nunca a
+  // mais recente). Ilegível ou incoerente recusa AQUI, antes do `comporPeca` (que carrega a foto e consulta o acervo).
+  const mascara = resolvida ? mascaraCongelada(arte.fieldValues, arte.spec!, mascaraEsperada(resolvida.definicao, arte.spec!.formato)) : null
   /**
    * F1: a spec da recomposição leva o CONTRATO da página como ele está —
    * lido das camadas atuais sobre o contrato gravado (o que já foi revisado
@@ -464,7 +504,7 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
   // A spec reconstruída pela página (foto, posição original) sai ANTES da decisão: com o histórico cheio é ela que
   // precisa passar em `validarSpec` para a recomposição seguir (PR10-04). Os avisos dela só valem se recompuser.
   const fotoDesenhada = (arte.fieldValues as { imageUrl?: unknown } | undefined)?.imageUrl
-  const reconstruida = candidataARecompor ? specComACopyDaPagina(arte.spec!, page.layers, { fotoDesenhada: typeof fotoDesenhada === 'string' ? fotoDesenhada : null }) : null
+  const reconstruida = candidataARecompor ? specComACopyDaPagina(arte.spec!, page.layers, { fotoDesenhada: typeof fotoDesenhada === 'string' ? fotoDesenhada : null, enquadramento: enquadramentoDaPaginaAgora }) : null
   const specPosicionada = reconstruida ? specComAPosicaoOriginal(reconstruida.spec, arte.fieldValues) : null
   if (candidataARecompor) {
     const contratoDaPagina = page.copyAutoral == null ? null : lerCopyAutoral(page.copyAutoral).copy
@@ -523,7 +563,11 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
      * semana, ordem na pasta, `registrarUsoDeFoto` e a transição do item do
      * plano. Recompor é refazer A MESMA peça, não criar outra.
      */
-    const composicao = await comporPeca(spec, { provar: true, ...(escolhaEspacial ? { escolhaEspacial } : {}) })
+    // T4-E (rodada 1): o fundo da peça sem foto é o da PÁGINA gravada — o mesmo com que a versão abaixo é calculada.
+    // Só no texto no liso (a peça E e, desde o #8, a foto em caixa — onde o fundo da página é CONFERIDO contra as tintas):
+    // com foto de fundo ou sem arquétipo, as opções ficam as de sempre.
+    const textoNoLisoNaPeca = !!spec.arquetipo && textoNoLiso(resolvida?.definicao ?? verArquetipo(spec.arquetipo.id, spec.arquetipo.versao))
+    const composicao = await comporPeca(spec, { provar: true, reproducao: true, ...(escolhaEspacial ? { escolhaEspacial } : {}), ...(margemDaPeca !== undefined ? { margemDaPeca } : {}), ...(pilhaDaPeca !== undefined ? { pilhaDaPeca } : {}), ...(acentos ? { acentosCongelados: acentos } : {}), ...(mascara ? { mascaraCongelada: mascara } : {}), ...(textoNoLisoNaPeca ? { fundoCongelado: page.background ?? null } : {}) })
     avisos.push(...composicao.diagnostico.avisos)
     if (!composicao.prova) throw new CreativeError('RENDER_VAZIO', 'A composição não devolveu imagem.', 500)
 
@@ -769,21 +813,17 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
  * FINAL do Codex, 12/09/2026). A proteção nasce junto da gravação do ajuste,
  * não do desfecho do render. Idempotente; nunca lança para quem chama.
  */
-export async function travarRecomposicaoDaArte(
+/**
+ * CP5d § 4: o ALVO da trava de recomposição — a arte mais recente da página com `resultUrl` (a que `levantarPagina`
+ * escolhe para recompor), pela MESMA seleção de sempre (20 mais recentes, a primeira aceita por `ehArteDaPagina`).
+ * Extraída para a transação do gate do `ajustar-arte` travar `FOR UPDATE` exatamente a linha que
+ * `travarRecomposicaoDaArte` vai escrever. Devolve `null` quando a página não tem arte.
+ */
+export async function alvoDaRecomposicao(
+  client: Prisma.TransactionClient | typeof db,
   pageId: string,
-  motivo: string,
-  opcoes: { projectId?: number; client?: Prisma.TransactionClient | typeof db } = {},
-): Promise<boolean> {
-  // `client` é a TRANSAÇÃO de quem grava a página: página ajustada e trava
-  // aparecem JUNTAS para qualquer leitor, ou nenhuma das duas (REV-D01 da
-  // revisão do Codex, 12/09/2026 — fora da transação um worker lia a página
-  // já ajustada com a arte ainda sem trava e recompunha por cima).
-  // 🔴 DENTRO da transação NADA pode usar `db`: no pool do dev (medido em
-  // 12/09/2026) uma leitura pelo cliente raiz com a transação aberta fica
-  // presa até o timeout dela (P2028 aos 20s) — por isso o `projectId` entra
-  // no filtro (a busca por JSON path sem ele varria a tabela inteira: 1,9s
-  // contra 0,75s com o índice do projeto) e tudo aqui passa por `client`.
-  const client = opcoes.client ?? db
+  opcoes: { projectId?: number } = {},
+): Promise<{ id: string; fieldValues: unknown } | null> {
   const geracoes = await client.generation.findMany({
     where: {
       ...(opcoes.projectId ? { projectId: opcoes.projectId } : {}),
@@ -795,6 +835,29 @@ export async function travarRecomposicaoDaArte(
     take: 20,
   })
   const primeira = geracoes.find((g) => ehArteDaPagina(g))
+  return primeira ? { id: primeira.id, fieldValues: primeira.fieldValues } : null
+}
+
+export async function travarRecomposicaoDaArte(
+  pageId: string,
+  motivo: string,
+  opcoes: { projectId?: number; client?: Prisma.TransactionClient | typeof db; alvo?: string } = {},
+): Promise<boolean> {
+  // `client` é a TRANSAÇÃO de quem grava a página: página ajustada e trava
+  // aparecem JUNTAS para qualquer leitor, ou nenhuma das duas (REV-D01 da
+  // revisão do Codex, 12/09/2026 — fora da transação um worker lia a página
+  // já ajustada com a arte ainda sem trava e recompunha por cima).
+  // 🔴 DENTRO da transação NADA pode usar `db`: no pool do dev (medido em
+  // 12/09/2026) uma leitura pelo cliente raiz com a transação aberta fica
+  // presa até o timeout dela (P2028 aos 20s) — por isso o `projectId` entra
+  // no filtro (a busca por JSON path sem ele varria a tabela inteira: 1,9s
+  // contra 0,75s com o índice do projeto) e tudo aqui passa por `client`.
+  const client = opcoes.client ?? db
+  // CP5d: com `alvo` (o id que a transação do gate já resolveu por `alvoDaRecomposicao` e travou), a linha é LIDA, não
+  // procurada de novo — a checagem da marca já gravada é a mesma. Sem `alvo`, a busca de sempre.
+  const primeira = opcoes.alvo
+    ? await client.generation.findUnique({ where: { id: opcoes.alvo }, select: { id: true, fieldValues: true } })
+    : await alvoDaRecomposicao(client, pageId, { projectId: opcoes.projectId })
   if (!primeira) return false
   const fv =
     primeira.fieldValues && typeof primeira.fieldValues === 'object' && !Array.isArray(primeira.fieldValues)
@@ -1268,4 +1331,11 @@ export async function registrarRecusa(args: {
       metadata: { pageId: args.pageId, errorCode: code, detalhes: detalhes ?? null },
     })
   }
+}
+
+/** #9: o raio e a caixa (px) que a definição EXATA da peça dá à máscara; `null` quando ela não declara máscara. */
+function mascaraEsperada(definicao: ArquetipoDeLayout, formato: SpecDePeca['formato']) {
+  const m = definicao.formatos[formato as FormatoDoArquetipo]?.mascaraDaFoto
+  const caixa = m ? caixaDaFoto(definicao, formato as FormatoDoArquetipo, DIMENSOES[formato]) : null
+  return m && caixa ? { raio: m.raio, caixa: { w: caixa.width, h: caixa.height } } : null
 }

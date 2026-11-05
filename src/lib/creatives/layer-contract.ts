@@ -26,6 +26,7 @@ import { z } from 'zod'
 import type { Layer } from '@/types/template'
 import { lerCamadas } from '@/lib/posts/page-layers'
 import { problemasDosClipes } from '@/lib/video/linha-do-tempo'
+import { problemasDosVetores } from '@/lib/vetor/validar-camada'
 
 export const TIPOS_DE_CAMADA = [
   'text',
@@ -211,11 +212,20 @@ export function normalizarCamadas(entrada: Layer[]): NormalizacaoDeCamadas {
  * Validação + normalização numa chamada — o que toda porta de escrita de
  * `Page.layers` vinda de fora do editor deve usar. Lança quando alguma
  * camada é inválida: gravar metade das camadas é pior que recusar.
+ *
+ * CP-X2c (P7): a forma vetorial inválida (`svg-path`, ver `src/lib/vetor/validar-camada.ts`) entra como problema
+ * AVULSO, com `VETOR_INVALIDO` no texto — a camada não sai de `camadas` e o `camadaSchema` não muda (o `reverter`
+ * usa o schema e restauraria o snapshot SEM a camada, em silêncio). `validarCamadas` não muda: só quem grava recusa.
  */
 export function prepararCamadasParaGravar(entrada: unknown): NormalizacaoDeCamadas {
   const v = validarCamadas(entrada)
-  if (v.problemas.length > 0) {
-    throw new Error(`camadas inválidas — ${v.problemas.join(' | ')}`)
+  // Sobre os candidatos CRUS: a camada que o schema recusa e que também tem vetor inválido aparece com os dois motivos.
+  const vetores = problemasDosVetores(lerCamadas(entrada).camadas).map(
+    (c) => `camada ${c.id}: VETOR_INVALIDO (${c.motivos.map((m) => m.codigo).join(', ')})`,
+  )
+  const problemas = [...v.problemas, ...vetores]
+  if (problemas.length > 0) {
+    throw new Error(`camadas inválidas — ${problemas.join(' | ')}`)
   }
   return normalizarCamadas(v.camadas)
 }

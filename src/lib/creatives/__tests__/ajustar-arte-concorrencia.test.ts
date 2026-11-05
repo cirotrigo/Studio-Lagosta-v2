@@ -54,12 +54,34 @@ vi.mock('@/lib/db', () => {
         banco.generations.push({ id, createdAt: new Date(++banco.relogio), ...data })
         return { id }
       },
-      findFirst: async () => banco.generations.at(-1) ?? null,
+      // CP5d: a busca da Generation de ORIGEM (`source: compositor`) honra o where — este harness não tem arte do compositor
+      // (a peça nasceu no chat), então a origem é nula e a medição corre sem referências; as demais buscas devolvem a última.
+      findFirst: async ({ where }: { where?: Record<string, unknown> } = {}) =>
+        JSON.stringify(where ?? {}).includes('"compositor"') ? (banco.generations.find((g) => (g.fieldValues as Record<string, unknown> | undefined)?.source === 'compositor') ?? null) : (banco.generations.at(-1) ?? null),
+      findUnique: async ({ where }: { where: { id: string } }) => banco.generations.find((g) => g.id === where.id) ?? null,
+      // CP5d: o render FECHA a Generation PROCESSING criada na transação do ajuste (draft-only).
+      update: async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+        const i = banco.generations.findIndex((g) => g.id === where.id)
+        if (i < 0) throw new Error('generation not found')
+        banco.generations[i] = { ...banco.generations[i], ...data }
+        return { id: where.id }
+      },
     },
     knowledgeBaseEntry: { findFirst: async () => null },
     $queryRaw: async () => [],
     $executeRaw: async () => 1,
-    $transaction: async (arg: unknown) => (typeof arg === 'function' ? (arg as (tx: unknown) => unknown)(db) : Promise.all(arg as unknown[])),
+    // CP5d: a transação que lança desfaz o que escreveu (a Generation PROCESSING do gate inclusive), como no Postgres.
+    $transaction: async (arg: unknown) => {
+      if (typeof arg !== 'function') return Promise.all(arg as unknown[])
+      const antes = { pagina: banco.pagina, generations: [...banco.generations] }
+      try {
+        return await (arg as (tx: unknown) => unknown)(db)
+      } catch (erro) {
+        banco.pagina = antes.pagina
+        banco.generations = antes.generations
+        throw erro
+      }
+    },
   }
   return { db }
 })
@@ -110,7 +132,28 @@ vi.mock('@/lib/posts/invalidate-renders', () => ({ invalidateScheduledRenders: a
 vi.mock('@/lib/compositor/recompor', () => ({
   travarRecomposicaoDaArte: vi.fn(async () => undefined),
   pedirRecomposicaoDaArteCongelada: vi.fn(async () => null),
+  // CP5d: a transação do gate resolve o alvo da recomposição pela própria função; aqui a página não tem arte com resultUrl.
+  alvoDaRecomposicao: vi.fn(async () => null),
 }))
+/**
+ * CP5d: no perfil draft-only o ajuste MEDE a versão final antes de gravar. A medição não é o objeto deste harness (a
+ * corrida e a escrita são) — a página mede LIMPA (a medida da peça limpa do gate, com as camadas reais); o gate decide
+ * sobre ela e grava o registro na Generation do ajuste. A medição real está em `piloto-ciclo.test.ts` e no gate.
+ */
+vi.mock('@/lib/creatives/revisao/revisar-arte', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/creatives/revisao/revisar-arte')>()
+  const { medida, metrica } = await import('../revisao/__tests__/suporte/corpus-do-gate')
+  const SEM_FUNDO = { assunto: null, assuntoNaoSeAplica: true as const, motivoSemAssunto: 'a peça não tem foto de fundo: não há assunto a proteger' }
+  return {
+    ...real,
+    contextoDaMedicao: async (args: Parameters<typeof real.contextoDaMedicao>[0]) => ({
+      projectId: args.projectId, canvas: { width: args.page.width, height: args.page.height }, formato: 'story' as const, background: '#101010', faixa: [0.45, 0.9] as [number, number],
+      referencias: { headline: { fontSize1080: 80, entrelinha: null, origem: 'assinatura' } }, referencia: 'assinatura', ...SEM_FUNDO, origensDaLogo: new Map(), cacheDeLogos: new Map(),
+    }),
+    medirCamadasDaPeca: async (camadas: Array<{ id: string; type: string; visible?: boolean }>, ctx: Parameters<typeof real.medirCamadasDaPeca>[1]) =>
+      medida({ canvas: ctx.canvas, formato: ctx.formato, camadas: camadas as never, metricas: camadas.filter((l) => l.type === 'text' && l.visible !== false).map((l) => metrica(l as never)), referencias: ctx.referencias as never, leituraDaLogo: [], ...SEM_FUNDO }),
+  }
+})
 vi.mock('@/lib/aprendizado/captura', () => ({ registrarDecisaoSemSugestao: vi.fn(async () => null) }))
 
 import { ajustarArte } from '../arte-rapida'
@@ -144,7 +187,9 @@ function paginaInicial(comContrato = true) {
     templateId: 77,
     thumbnail: 'https://blob.test/render-anterior.png',
     updatedAt: new Date(banco.relogio),
-    layers: [texto('headline', 1500, 'Almoço executivo'), texto('cta', 1650, 'Reserve pelo direct')],
+    // CP5d: no draft-only a versão final passa pelo gate, que mede o piso de interface do story (rodapé 224 px): os textos
+    // ficam ACIMA dele, senão toda escrita draft-only deste harness seria recusada pela peça, não pelo que se prova aqui.
+    layers: [texto('headline', 1200, 'Almoço executivo'), texto('cta', 1350, 'Reserve pelo direct')],
     copyAutoral: comContrato ? serializarCopyAutoral(contratoX) : null,
   }
 }
@@ -255,7 +300,7 @@ describe('C3-12 — a página promovida a MODELO durante o ajuste não é gravad
     expect(banco.pagina.isTemplate).toBe(true)
     expect(banco.pagina.name).toBe('Peça do chat')
     expect(banco.pagina.thumbnail).toBe('https://blob.test/render-anterior.png')
-    expect((banco.pagina.layers as Array<Record<string, any>>).find((l) => l.id === 'headline')!.position.y).toBe(1500)
+    expect((banco.pagina.layers as Array<Record<string, any>>).find((l) => l.id === 'headline')!.position.y).toBe(1200)
     expect(banco.generations).toHaveLength(0)
   }
 
@@ -516,12 +561,21 @@ describe('CP4.1 — o agente autônomo (draft-only) não apaga copy pelo slotVal
     expect(r.copyRemovida).toBeUndefined()
     expect((banco.generations.at(-1)!.fieldValues as Record<string, unknown>).copyRemovida).toBeUndefined()
   })
-  it('7. draft-only: esconder um slot de texto que JÁ estava vazio → segue o contrato de sempre (entra)', async () => {
+  // CP5d: no draft-only o CP4.1 continua deixando passar (não é copy com conteúdo), mas a versão final passa pelo GATE,
+  // e esconder um texto fora do contrato deixa no contrato reconciliado um bloco que "não foi desenhado": copy-completa
+  // não comprovada → REVISAO_HUMANA_NECESSARIA, nada gravado. Antes do CP5d esta chamada gravava.
+  it('7. draft-only: esconder um slot de texto que JÁ estava vazio → o CP4.1 deixa passar (sem copyRemovida); o gate do CP5d recusa por copy-completa e nada é gravado', async () => {
     banco.pagina = { ...banco.pagina, layers: [...(banco.pagina.layers as Array<Record<string, any>>), texto('badge', 200, '   ')] }
-    const r = await ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { badge: { hidden: true } } })
-    expect(r.ajustada).toBe(true)
-    expect((banco.pagina.layers as Array<Record<string, any>>).find((l) => l.id === 'badge')!.visible).toBe(false)
-    expect(r.copyRemovida).toBeUndefined()
+    const antes = banco.pagina.updatedAt.getTime()
+    const erro = (await erroDe(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { badge: { hidden: true } } }))) as CreativeError
+    expect(erro).toBeInstanceOf(CreativeError)
+    expect(erro.code).toBe('REVISAO_HUMANA_NECESSARIA')
+    expect(erro.details).toMatchObject({ ajusteGravado: false, revisao: { tipo: 'medida', resultado: 'REVISAO_HUMANA_NECESSARIA' } })
+    expect((erro.details as { motivos: Array<{ regra: string }> }).motivos.map((m) => m.regra)).toContain('copy-completa')
+    expect((erro.details as Record<string, unknown>).copyRemovida).toBeUndefined()
+    expect(banco.pagina.updatedAt.getTime()).toBe(antes)
+    expect((banco.pagina.layers as Array<Record<string, any>>).find((l) => l.id === 'badge')!.visible).not.toBe(false)
+    expect(banco.generations).toHaveLength(0)
   })
   it('8/10. humano: `hidden: true` em texto com conteúdo continua permitido — e a procedência registra "escondido" (retorno e Generation)', async () => {
     const r = await ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { cta: { hidden: true } } })
@@ -562,9 +616,13 @@ describe('CP4.1 — o agente autônomo (draft-only) não apaga copy pelo slotVal
       banco.pagina = { ...banco.pagina, layers: (banco.pagina.layers as Array<Record<string, any>>).map((l) => (l.id === 'cta' ? { ...l, content: 'Reserve pelo direct' } : l)) }
     }
   })
-  it('S10. origem que JÁ era só pontuação ("-", placeholder decorativo) não vira copy protegida: esconder, esvaziar ou trocar por "." entra', async () => {
+  it('S10. origem que JÁ era só pontuação ("-", placeholder decorativo) não vira copy protegida: esvaziar ou trocar por "." entra; esconder cai no gate do CP5d (copy-completa), não no CP4.1', async () => {
     banco.pagina = { ...banco.pagina, layers: [...(banco.pagina.layers as Array<Record<string, any>>), texto('traco', 200, '-')] }
-    for (const valor of [{ hidden: true }, '', '.']) {
+    const escondido = (await erroDe(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { traco: { hidden: true } } }))) as CreativeError
+    expect(escondido.code).toBe('REVISAO_HUMANA_NECESSARIA')
+    expect((escondido.details as { motivos: Array<{ regra: string }> }).motivos.map((m) => m.regra)).toContain('copy-completa')
+    expect((escondido.details as Record<string, unknown>).copyRemovida).toBeUndefined()
+    for (const valor of ['', '.']) {
       const r = await ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { traco: valor } })
       expect(r.ajustada).toBe(true)
       expect(r.copyRemovida).toBeUndefined()
@@ -671,5 +729,52 @@ describe('CP4.2b — slotValues inválido é recusado ANTES de qualquer escrita 
     expect(porId.get('cta')).toBe('Pelo id e pelo nome')
     expect(porId.get('outra')).toBe('Pelo id e pelo nome')
     expect(porId.get('rodape')).toBe('Rodapé novo')
+  })
+})
+
+/**
+ * G4.5 (27/10/2026) — célula de grade de fotos no `ajustarArte`: a foto genérica nunca cai numa célula (nem pelo
+ * atalho da "primeira imagem"), e a foto pedida para uma célula entra só por `preencherCelula` ou é recusada (422).
+ */
+describe('G4.5 — grade de fotos no ajustarArte', () => {
+  const BLOB = 'https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com'
+  const g = { id: 'g1', layout: '2-colunas', versao: 1, espacamento: 10, raio: 0, caixa: { x: 0, y: 0, w: 1080, h: 1100 } }
+  const cel = (id: string, i: number, fileUrl: string) => ({
+    id, name: `Grade · foto ${i + 1}`, type: 'image', visible: true, locked: false, order: i, rotation: 0,
+    position: { x: i === 0 ? 0 : 545, y: 0 }, size: { width: 535, height: 1100 }, fileUrl,
+    style: { objectFit: 'cover', border: { radius: 0 }, crop: { x: 0.1, y: 0, width: 0.5, height: 1 } }, metadata: { grade: { ...g, celula: i }, groupId: 'g1' },
+  })
+  const comGrade = () => {
+    banco.pagina = { ...banco.pagina, layers: [cel('c0', 0, `${BLOB}/a.jpg`), cel('c1', 1, `${BLOB}/b.jpg`), ...(banco.pagina.layers as unknown[])] }
+  }
+  const camada = (id: string) => (banco.pagina.layers as Array<Record<string, any>>).find((l) => l.id === id)!
+
+  it('foto genérica numa página cuja primeira imagem é célula: as células ficam, imageApplied false e aviso', async () => {
+    comGrade()
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', imageUrl: 'https://blob.test/generica.jpg' })
+    expect([camada('c0').fileUrl, camada('c1').fileUrl]).toEqual([`${BLOB}/a.jpg`, `${BLOB}/b.jpg`])
+    expect(camada('c0').style.crop).toEqual({ x: 0.1, y: 0, width: 0.5, height: 1 })
+    expect(r.imageApplied).toBe(false)
+    expect(r.imageWarning).toBeTruthy()
+  })
+
+  it('foto pedida para a célula de host alheio: 422 FOTO_DA_GRADE_RECUSADA, nada gravado', async () => {
+    comGrade()
+    const antes = banco.pagina.updatedAt.getTime()
+    const erro = await erroDe(ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { c1: { fileUrl: 'https://blob.test/de-fora.jpg' } } }))
+    expect((erro as CreativeError).code).toBe('FOTO_DA_GRADE_RECUSADA')
+    expect((erro as CreativeError).status).toBe(422)
+    expect(banco.pagina.updatedAt.getTime()).toBe(antes)
+    expect(banco.generations).toHaveLength(0)
+    expect(banco.putSeq).toBe(0)
+  })
+
+  it('foto pedida para a célula do Blob próprio: entra por preencherCelula (recorte limpo, cover)', async () => {
+    comGrade()
+    await ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { c1: { fileUrl: `${BLOB}/nova.jpg` } } })
+    expect(camada('c1').fileUrl).toBe(`${BLOB}/nova.jpg`)
+    expect(camada('c1').style.crop).toBeUndefined()
+    expect(camada('c1').style.objectFit).toBe('cover')
+    expect(camada('c0').style.crop).toEqual({ x: 0.1, y: 0, width: 0.5, height: 1 })
   })
 })

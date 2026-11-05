@@ -687,33 +687,16 @@ export async function recuperarJobsPerdidos(
 /**
  * Marca a Generation como falha PRESERVANDO o fieldValues — ele é o registro
  * atômico da run (prompt, refs, params) e é o que permite entender depois o
- * que aconteceu.
+ * que aconteceu. CP5d: por UMA instrução condicionada a `PROCESSING`
+ * (`fecharGenerationComoFalha`, merge no banco — regra 🔴 do `AGENTS.md`): o
+ * `{ ...lido, error }` de antes apagava o que outro escritor gravou entre a
+ * leitura e a escrita (o registro do gate do `ajustar-arte`, por exemplo), e
+ * um fechamento concorrente podia ter o motivo sobrescrito. 0 linhas = outro
+ * fechou antes; nada a fazer.
  */
 async function marcarGenerationFalha(generationId: string, motivo: string): Promise<void> {
-  const gen = await db.generation.findUnique({
-    where: { id: generationId },
-    select: { fieldValues: true, status: true },
+  const { fecharGenerationComoFalha } = await import('@/lib/creatives/mesclar-field-values')
+  await fecharGenerationComoFalha(db, generationId, { error: motivo, failedAt: new Date().toISOString(), recuperadaPelaFila: true }).catch((erro) => {
+    console.error(`[fila-arte] falha ao marcar Generation ${generationId} como FAILED:`, erro)
   })
-  if (!gen || gen.status !== 'PROCESSING') return
-  const anterior =
-    gen.fieldValues && typeof gen.fieldValues === 'object' && !Array.isArray(gen.fieldValues)
-      ? (gen.fieldValues as Record<string, unknown>)
-      : {}
-  await db.generation
-    .updateMany({
-      where: { id: generationId, status: 'PROCESSING' },
-      data: {
-        status: 'FAILED',
-        completedAt: new Date(),
-        fieldValues: {
-          ...anterior,
-          error: motivo,
-          failedAt: new Date().toISOString(),
-          recuperadaPelaFila: true,
-        } as never,
-      },
-    })
-    .catch((erro) => {
-      console.error(`[fila-arte] falha ao marcar Generation ${generationId} como FAILED:`, erro)
-    })
 }

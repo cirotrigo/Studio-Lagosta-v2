@@ -10,6 +10,11 @@ import { semPrefixoHerdado } from '@/lib/copy-autoral'
 import { ocultaPeloRevisor, semMarcaDoRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
 import { temTextoSubstantivo, temTextoVisivel } from '@/lib/creatives/revisao/texto-visivel'
 import type { OrigemDoValor, ValorResolvido } from '@/lib/semantica/resolver-valores'
+import type { Layer } from '@/types/template'
+import { CreativeError } from '@/lib/creatives/errors'
+import { celulaVazia } from '@/lib/grades/conferir'
+import { preencherCelula } from '@/lib/grades/operacoes'
+import { vinculadaAGrade } from '@/lib/grades/presenca'
 
 /**
  * Um texto com conteúdo SUBSTANTIVO (letra, número ou pictograma) que o bake ESCONDEU, ESVAZIOU ou reduziu a
@@ -118,7 +123,26 @@ export function bakeLayers(
         if (layer.type === 'text') changedTextIds.push(layer.id)
       }
       if (typeof slotObj.fileUrl === 'string') {
-        updated.fileUrl = slotObj.fileUrl
+        if (vinculadaAGrade(layer)) {
+          // G4.5: foto para célula de grade só por `preencherCelula` (host próprio, cover, recorte da foto anterior
+          // limpo); `''` esvazia a célula. Pedido que não serve é RECUSADO inteiro (422), nunca descartado em silêncio.
+          if (celulaVazia(slotObj.fileUrl)) {
+            updated.fileUrl = ''
+            if (updated.style?.crop) updated.style = Object.fromEntries(Object.entries(updated.style).filter(([k]) => k !== 'crop'))
+          } else {
+            const r = preencherCelula(updated as Layer, slotObj.fileUrl)
+            if (!r.ok) {
+              throw new CreativeError(
+                'FOTO_DA_GRADE_RECUSADA',
+                `A foto pedida para "${layer.name ?? layer.id}" não entra na grade de fotos: ${r.diagnosticos[0]?.mensagem ?? 'célula incoerente'}`,
+                422,
+                { camada: layer.id },
+              )
+            }
+            updated.fileUrl = r.valor.fileUrl
+            updated.style = r.valor.style
+          }
+        } else updated.fileUrl = slotObj.fileUrl
         explicitFileUrl.add(layer.id)
         if (semantico != null) fileUrlSemantico.add(i)
       }
@@ -149,15 +173,16 @@ export function bakeLayers(
    * explícito — recebeu `fileUrl` por _slots/_papeis, a foto genérica não escorre para outra imagem. O legado por
    * id/nome segue tolerante: a foto cai na próxima vaga dinâmica, como sempre.
    */
-  const vaga = (layer: any) => layer.type === 'image' && (layer.isDynamic || layer.id === 'bg-img')
+  // G4.5: célula de grade nunca é "a" foto da arte (grade é composição manual): a foto genérica não entra nela nem
+  // substitui uma foto dela — sem outra vaga, `imageApplied: false` e quem chama avisa
+  const vaga = (layer: any) => layer.type === 'image' && (layer.isDynamic || layer.id === 'bg-img') && !vinculadaAGrade(layer)
   const vazia = sourceLayers.findIndex((l: any) => vaga(l) && !l.fileUrl)
   const natural = vazia !== -1 ? vazia : sourceLayers.findIndex(vaga)
   if (natural !== -1 && fileUrlSemantico.has(natural)) {
     return { layers, imageApplied: false, changedTextIds, explicitFileUrlIds, imageBloqueadaPeloSemantico: true }
   }
 
-  const isImageTarget = (layer: any) =>
-    layer.type === 'image' && (layer.isDynamic || layer.id === 'bg-img') && !explicitFileUrl.has(layer.id)
+  const isImageTarget = (layer: any) => vaga(layer) && !explicitFileUrl.has(layer.id)
 
   const target =
     layers.find((l: any) => isImageTarget(l) && !l.fileUrl) ?? layers.find(isImageTarget)

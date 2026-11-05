@@ -81,3 +81,15 @@ describe('CP2B · as unidades deslocadas', () => {
     expect('problemas' in fora ? fora.problemas.map((p) => [p.codigo, p.papel, p.motivo.startsWith('na posição candidata (dy=200px)')]) : []).toEqual([['ARQUETIPO_FORA_DA_ZONA', 'headline', true]])
   })
 })
+
+describe('o vão INTERNO da unidade é o gap da marca, não o da pilha (30/10/2026, revisão do Codex P2)', () => {
+  it('serviço repartido em duas camadas: o segundo bloco fica a `gap × 1,6` do primeiro; GAP_DA_PILHA (0) só vale ENTRE papéis', () => {
+    const dois = [bloco('headline', 0), bloco('servico', 1), bloco('servico', 2, { layer: { ...bloco('servico', 2).layer, id: 'servico-2' } })]
+    const com14 = unidadesDoArquetipo(TOPO, dois, 14).find((u) => u.papel === 'servico')!
+    const com0 = unidadesDoArquetipo(TOPO, dois, 0).find((u) => u.papel === 'servico')!
+    expect(com14.blocos).toHaveLength(2)
+    // O vão interno é o ritmo da casa (`gap × 1,6`, como entre grupos): 22 com o gap 14 — o que o Codex mediu.
+    expect(com14.pilha.offsets[1] - com14.pilha.offsets[0]).toBe(104 + Math.round(14 * 1.6))
+    expect(com0.pilha.offsets[1] - com0.pilha.offsets[0]).toBe(104)
+  })
+})

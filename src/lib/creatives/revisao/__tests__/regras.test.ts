@@ -382,7 +382,8 @@ describe('geometria', () => {
     } as Layer
     const r = avaliarPeca(entrada({ camadas: [titulo, logo], metricas: [metrica(titulo, { maxLineWidth: 480 })] }))
     const achado = r.achados.find((a) => a.regra === 'logo-sobre-texto')!
-    expect(r.ajustes[achado.ajustes[0]]).toEqual({ tipo: 'mover', camadas: ['logo'], dx: -10, dy: 1500, achado: achado.id })
+    // 29/10: margem 64/160/160 → canto livre em x 896 (1016 − 120) e y 1640 (1760 − 120); era dx −10, dy 1500 com 70/120/100.
+    expect(r.ajustes[achado.ajustes[0]]).toEqual({ tipo: 'mover', camadas: ['logo'], dx: -4, dy: 1490, achado: achado.id })
   })
 
   it('a cedilha além da caixa é aviso sem ajuste: o conserto é no editor', () => {

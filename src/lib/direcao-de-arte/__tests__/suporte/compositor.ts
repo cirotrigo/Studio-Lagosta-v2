@@ -13,6 +13,7 @@
  */
 import type { Layer } from '@/types/template'
 import type { MeasureTextBox } from '@/lib/creatives/text-geometry'
+import { assuntoEfetivoDaFoto } from '@/lib/creatives/assunto-da-foto-efetivo'
 import { PADDING_DE_DESENHO } from '@/lib/creatives/halo/fundo-de-texto'
 
 export interface PaginaDeAssinatura {
@@ -44,6 +45,20 @@ export interface CenarioDoCompositor {
 
 export const cenario: { atual: CenarioDoCompositor | null } = { atual: null }
 
+/**
+ * O PISO DE 13/10/2026 (Story 92/188/224, Feed 92/120/104), fixado como geometria do PROJETO nos cenários sintéticos
+ * cujas caracterizações nasceram nele. Desde 29/10 o padrão da casa é 64/160/160 e 64/72/72 (#276, `GEOMETRIA_PADRAO`):
+ * com ele estas mesmas peças pousam na margem nova — o que o piloto, o t1a-baseline e a prova com as marcas reais cobrem.
+ * Aqui o piso explícito mantém legíveis as caracterizações da cadeia (opção A, pilha da faixa, margem da marca), que
+ * medem a REGRA e não o número da casa. Chave explícita do cenário vence, formato a formato (como `mesclarGeometria`).
+ */
+export const PISO_13_10 = { story: { margemH: 92, safeTopo: 188, safeRodape: 224 }, feed: { margemH: 92, safeTopo: 120, safeRodape: 104 } } as const
+export function noPisoDe1310<T extends Record<string, unknown> | undefined>(assinatura: T): Record<string, unknown> {
+  const g = ((assinatura as Record<string, unknown> | undefined)?.geometria ?? {}) as Record<string, Record<string, unknown> | undefined>
+  return { ...(assinatura ?? {}), geometria: { ...g, story: { ...PISO_13_10.story, ...(g.story ?? {}) }, feed: { ...PISO_13_10.feed, ...(g.feed ?? {}) } } }
+}
+
+
 function atual(): CenarioDoCompositor {
   if (!cenario.atual) throw new Error('cenário do compositor não montado (cenario.atual)')
   return cenario.atual
@@ -52,6 +67,8 @@ function atual(): CenarioDoCompositor {
 export function mockDoBanco() {
   return {
     db: {
+      // F1 (01/11/2026): o pedido novo consulta as referências de layout do cliente — nenhuma aqui, o catálogo segue aberto.
+      referenciaDeLayout: { findMany: async () => [] },
       project: {
         findUnique: async (args?: { select?: { Logo?: { where?: { isProjectLogo?: boolean } } } }) => {
           const p = atual().projeto
@@ -106,7 +123,12 @@ export function mockDoUsoDeFoto() {
 }
 
 export function mockDoAcervo() {
-  return { lerCatalogoDoProjeto: async () => ({ catalogo: null, todas: atual().catalogo ? [atual().catalogo] : [] }) }
+  return {
+    lerCatalogoDoProjeto: async () => ({ catalogo: null, todas: atual().catalogo ? [atual().catalogo] : [] }),
+    // F2b: a caixa do cenário entra como a da VISÃO, pelo resolvedor de verdade.
+    assuntosEfetivosDoProjeto: async (_projectId: number, ids: string[]) =>
+      new Map(ids.map((id) => [id, assuntoEfetivoDaFoto(atual().catalogo?.driveFileId === id ? { caixaDoAssunto: atual().catalogo!.assunto, caixaAnalisadaEm: 'cenario' } : null, null)])),
+  }
 }
 
 export function gradientesDoCenario() {

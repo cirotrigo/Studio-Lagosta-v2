@@ -115,7 +115,8 @@ export class CanvasRenderer {
         imageLoader: this.nodeImageLoader.bind(this),
         imageCache: this.imageCache as unknown as Map<string, CanvasImageSource>,
         fontChecker: this.nodeFontChecker.bind(this),
-        // Máscaras, formas svg-path e ícones precisam de Path2D — no Node é o
+        // Máscaras e ícones precisam de Path2D (o svg-path usa o traçado de
+        // src/lib/vetor, sem Path2D) — no Node é o
         // do @napi-rs/canvas (não existe global)
         createPath2D: (d: string) => new NapiPath2D(d) as unknown as Path2D,
         // Filtros de imagem e blur de texto rodam num canvas offscreen —
@@ -124,8 +125,13 @@ export class CanvasRenderer {
       },
     )
 
-    // Retornar buffer PNG
-    return this.canvas.encode('png')
+    // Retornar buffer PNG. O canvas é lido de novo DEPOIS do encode: o encode roda numa thread do libuv com um
+    // ponteiro cru da superfície do skia (até a 1.0.5 do @napi-rs/canvas), e no padrão
+    // `await new CanvasRenderer(...).renderDesign(...)` o GC coletava o Canvas no meio do PNG → SIGSEGV
+    // (reproduzido 3/3 na 0.1.84, 21/10/2026). Ler `this.canvas` após o await o mantém alcançável até o fim.
+    const png = await this.canvas.encode('png')
+    void this.canvas.width
+    return png
   }
 
   /**

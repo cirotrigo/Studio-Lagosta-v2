@@ -57,6 +57,13 @@ export interface BlocoMontado {
   escalaDosElementos?: number
   /** As famílias que ENTRARAM na medição (ver `RecusaDeBloco.familiasMedidas`). */
   familiasMedidas: string[]
+  /**
+   * A altura com que a ESCALA foi decidida — `round(naturalHeight)` do medidor (a quantidade de antes da caixa
+   * `ceil`), ou `height` quando o medidor não dá a fração. Transitório: nunca entra no `Layer` nem na persistência.
+   */
+  orcamentoDeAltura?: number
+  /** A linha ÚNICA do autor distribuída pelo compositor em linhas equilibradas (`distribuirLinha`): o que a camada desenha. */
+  distribuida?: string[]
 }
 
 export interface OrcamentoDeLinha {
@@ -185,7 +192,11 @@ export function camadaDoPapel(args: {
       ...(estilo.fontWeight ? { fontWeight: estilo.fontWeight } : {}),
       fontSize,
       lineHeight: estilo.lineHeight,
-      letterSpacing: Math.round(estilo.letterSpacing * args.escala * 100) / 100,
+      // F2d: com o contrato da referência, o espaçamento é derivado do corpo MATERIALIZADO (o mesmo 31 px dá o mesmo
+      // 2,38 em qualquer degrau); sem ele, a conta de sempre, byte a byte.
+      letterSpacing: estilo.espacamentoDaReferencia
+        ? Math.round(((estilo.espacamentoDaReferencia.spacing * fontSize) / estilo.espacamentoDaReferencia.corpo) * 100) / 100
+        : Math.round(estilo.letterSpacing * args.escala * 100) / 100,
       ...(estilo.textTransform ? { textTransform: estilo.textTransform } : {}),
       color: estilo.color,
       textAlign: args.textAlign,
@@ -285,6 +296,42 @@ export function larguraExtraDoDestaque(medir: MeasureTextBox, base: Layer, linha
 }
 
 /**
+ * A linha única do autor em `n ≤ linhasMax` linhas EQUILIBRADAS, por palavra: entre todas as quebras, a que deixa a
+ * linha mais larga o mais estreita possível, no menor `n` em que ela cabe na coluna. `null` quando já cabe em uma
+ * linha (ou não há onde quebrar). Nada cabendo nem em `linhasMax`, devolve a melhor quebra mesmo assim: a escada
+ * desce sobre ela, e a recusa mede linha a linha. Pedido do Ciro (03/11/2026): a referência que desenha 2 linhas sai
+ * com 2 linhas cheias, não com 1 linha miúda; o que cabe em 1 fica em 1.
+ */
+export function distribuirLinha(medir: MeasureTextBox, base: Layer, linha: string, coluna: number, linhasMax: number): string[] | null {
+  // Só o espaço comum é vão: NBSP é o autor proibindo a quebra, e \n dentro do item é problema dele (diagnóstico próprio).
+  const palavras = linha.split(' ')
+  if (palavras.length < 2 || palavras.some((p) => p === '') || linha.includes('\n')) return null
+  const inteira = medirLinha(medir, base, linha, coluna)
+  if (!inteira || (inteira.largura <= coluna && inteira.linhas <= 1)) return null
+  const medidas = new Map<string, number>()
+  const largura = (l: string) => {
+    if (!medidas.has(l)) medidas.set(l, medirLinha(medir, base, l, coluna)?.largura ?? 0)
+    return medidas.get(l)!
+  }
+  // ponytail: todas as quebras de n−1 cortes nos k−1 vãos; a manchete tem poucas palavras e `n` para em `linhasMax`.
+  const cortes = (inicio: number, restantes: number, atual: string[]): string[][] => {
+    if (restantes === 0) return [[...atual, palavras.slice(inicio).join(' ')]]
+    const saida: string[][] = []
+    for (let i = inicio + 1; i <= palavras.length - restantes; i++) saida.push(...cortes(i, restantes - 1, [...atual, palavras.slice(inicio, i).join(' ')]))
+    return saida
+  }
+  let melhor: { linhas: string[]; maior: number } | null = null
+  for (let n = 2; n <= Math.min(linhasMax, palavras.length); n++) {
+    for (const candidata of cortes(0, n - 1, [])) {
+      const maior = Math.max(...candidata.map(largura))
+      if (!melhor || maior < melhor.maior) melhor = { linhas: candidata, maior }
+    }
+    if (melhor && melhor.maior <= coluna) break
+  }
+  return melhor?.linhas ?? null
+}
+
+/**
  * Monta o bloco de um papel. `colunaUtil` é a largura entre as margens
  * (menos a largura máxima do papel, quando a assinatura a limita).
  */
@@ -315,8 +362,22 @@ export function montarBloco(args: {
    * Só com arquétipo (T1a): a escada da UNIDADE (manchete + segunda voz, texto +
    * elementos) começa abaixo do tamanho de assinatura — este fator (≤ 1) sobre
    * `escalaDoFormato`. O piso continua o mesmo (80% da assinatura).
+   * Acima de 1 só no papel de escala DOMINANTE (T4-A, MIN-10): a escada começa
+   * no teto e desce até o maior corpo que cabe na referência.
    */
   escalaMaxima?: number
+  /**
+   * F2c: o PISO da escada deste bloco como fator sobre `escalaDoFormato` (como `escalaMaxima`), no lugar dos 80 % da
+   * assinatura — a peça por referência desce até o piso materializado do corpo desenhado. O piso exato é sempre o último
+   * degrau, e nunca entra um piso ACIMA do teto.
+   */
+  pisoDeEscala?: number
+  /**
+   * Com arquétipo: o teto de linhas do papel. A linha ÚNICA do autor que não cabe na coluna no TETO da escada é
+   * distribuída em até `linhasMax` linhas equilibradas (`distribuirLinha`) ANTES de descer o corpo. Ausente = cada
+   * linha da copy é uma linha, como sempre.
+   */
+  linhasMax?: number
   /** F3: a camada extra que este bloco é (vai à camada, não muda a medida). */
   extra?: { id: string; funcao: string; herdaDe: string; grupoVisual: string; grupoDeLeitura?: string; ordem?: number } | null
 }): ResultadoDoBloco {
@@ -342,8 +403,16 @@ export function montarBloco(args: {
   )
 
   const coluna = Math.floor(args.colunaUtil * (args.estilo.larguraMaxima ?? 1))
-  const linhas = aplicarPrefixo(linhasLimpas, args.estilo.prefixo)
-  const semDestaque = { ...args, linhas: linhasLimpas, destaque: null }
+  const teto = args.escalaDoFormato * (args.escalaMaxima ?? 1)
+  // A linha única que não cabe no teto vira linhas equilibradas — sem destaque: o [colchete] não atravessa a quebra.
+  const distribuida =
+    args.linhasMax !== undefined && args.linhasMax >= 2 && linhasLimpas.length === 1 && !pediuDestaque
+      ? distribuirLinha(args.medir, camadaDoPapel({ ...args, linhas: linhasLimpas, destaque: null, escala: teto, width: coluna + PADDING_DE_DESENHO * 2 }), linhasLimpas[0], coluna, args.linhasMax)
+      : null
+  if (distribuida) avisos.push(`${args.papel}: "${linhasLimpas[0]}" distribuída em ${distribuida.length} linhas pelo compositor`)
+  const linhasDesenhadas = distribuida ?? linhasLimpas
+  const linhas = aplicarPrefixo(linhasDesenhadas, args.estilo.prefixo)
+  const semDestaque = { ...args, linhas: linhasDesenhadas, destaque: null }
   // A altura da caixa na MENOR escala em que a largura coube (o piso) — a medida da recusa por altura.
   let alturaQueNaoCoube: number | null = null
 
@@ -351,10 +420,13 @@ export function montarBloco(args: {
   // `alturaMaxima`), o PISO exato entra como último degrau: com `escalaDoFormato` ≠ 1 (feed a partir de página de
   // story, 0,875) os passos absolutos paravam em 81,7% e a recusa dizia "mesmo a 80%" sem ter medido 80%. Sem
   // arquétipo, a sequência é exatamente a de antes.
-  const piso = args.escalaDoFormato * PISO_DE_ESCALA
+  const piso = args.escalaDoFormato * (args.pisoDeEscala ?? PISO_DE_ESCALA)
   const degraus: number[] = []
-  for (let escala = args.escalaDoFormato * Math.min(1, args.escalaMaxima ?? 1); escala >= piso - 1e-9; escala -= PASSO_DE_ESCALA) degraus.push(escala)
-  if (args.alturaMaxima !== undefined && (degraus.length === 0 || degraus[degraus.length - 1] > piso + 1e-9)) degraus.push(piso)
+  if (args.pisoDeEscala !== undefined && teto < piso - 1e-9) degraus.push(teto)
+  else {
+    for (let escala = teto; escala >= piso - 1e-9; escala -= PASSO_DE_ESCALA) degraus.push(escala)
+    if ((args.alturaMaxima !== undefined || args.pisoDeEscala !== undefined) && (degraus.length === 0 || degraus[degraus.length - 1] > piso + 1e-9)) degraus.push(piso)
+  }
 
   for (const escala of degraus) {
     const base = camadaDoPapel({ ...semDestaque, escala, width: coluna + PADDING_DE_DESENHO * 2 })
@@ -378,31 +450,40 @@ export function montarBloco(args: {
     // A caixa gravada é a altura MEDIDA (ceil, nunca round — o Konva descarta
     // a linha inteira que não cabe por fração de pixel).
     const height = medida ? Math.ceil(medida.height) : simples.size.height * linhas.length
-    if (args.alturaMaxima !== undefined && height > args.alturaMaxima) {
+    // A decisão do degrau usa o orçamento (round da altura natural); a caixa gravada continua `height` (ceil).
+    const orcamentoDeAltura = medida && Number.isFinite(medida.naturalHeight) ? Math.round(medida.naturalHeight as number) : height
+    if (args.alturaMaxima !== undefined && orcamentoDeAltura > args.alturaMaxima) {
       alturaQueNaoCoube = height
       continue
     }
-    const layer = destaque ? camadaDoPapel({ ...args, linhas: linhasLimpas, escala, width, destaque }) : simples
+    const layer0 = destaque ? camadaDoPapel({ ...args, linhas: linhasLimpas, escala, width, destaque }) : simples
+    // A quebra do compositor fica DECLARADA na camada (`distribuida`: quantas linhas): quem lê a copy efetiva junta as
+    // linhas de volta na linha única do autor — é desenho, não revisão do texto.
+    const layer = distribuida ? { ...layer0, metadata: { ...layer0.metadata, compositor: { ...(layer0.metadata?.compositor as Record<string, unknown>), distribuida: distribuida.length } } } : layer0
     return {
       bloco: {
         papel: args.papel,
         layer: { ...layer, size: { width, height } },
+        ...(distribuida ? { distribuida } : {}),
         width,
         height,
         escala: Number((escala / args.escalaDoFormato).toFixed(3)),
         cor: args.estilo.color,
         destacado: Boolean(destaque),
         familiasMedidas,
+        orcamentoDeAltura,
       },
       recusa: null,
       avisos,
     }
   }
 
-  // Nada coube nem a 80%: devolve o orçamento medido no tamanho de assinatura.
-  const base = camadaDoPapel({ ...semDestaque, escala: args.escalaDoFormato, width: coluna + PADDING_DE_DESENHO * 2 })
+  // Nada coube nem no piso: devolve o orçamento medido no tamanho de assinatura — ou, com o piso da REFERÊNCIA (F2c),
+  // no próprio piso: é nele que a linha tem de caber, e medir na assinatura (58) deixava o orçamento vazio para a linha
+  // que só estoura a 68 (Codex, F2c rodada 1, P2).
+  const noPiso = camadaDoPapel({ ...semDestaque, escala: piso, width: coluna + PADDING_DE_DESENHO * 2 })
+  const base = args.pisoDeEscala !== undefined ? noPiso : camadaDoPapel({ ...semDestaque, escala: args.escalaDoFormato, width: coluna + PADDING_DE_DESENHO * 2 })
   // Com arquétipo, também as linhas que quebram por dentro (no piso, onde a escada parou).
-  const noPiso = camadaDoPapel({ ...semDestaque, escala: args.escalaDoFormato * PISO_DE_ESCALA, width: coluna + PADDING_DE_DESENHO * 2 })
   const quebras =
     args.alturaMaxima !== undefined
       ? linhas.flatMap((linha) => {

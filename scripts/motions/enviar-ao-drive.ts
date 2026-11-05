@@ -41,7 +41,7 @@ async function main() {
   }
 
   // `uploadFileToFolder` renomeia com carimbo e sufixo; aqui o nome é o que a equipe lê na aba Vídeos.
-  const drive = (googleDriveService as unknown as { drive: import('googleapis').drive_v3.Drive }).drive
+  const drive = (googleDriveService as unknown as { drive: import('googleapis/build/src/apis/drive').drive_v3.Drive }).drive
   for (const nome of fs.readdirSync(pasta).filter((f) => f.endsWith('.webm')).sort()) {
     const antigo = jaLa.get(nome)
     if (antigo && !SUBSTITUIR) { console.log(`já está lá  ${nome}`); continue }

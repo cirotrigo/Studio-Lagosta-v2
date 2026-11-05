@@ -16,8 +16,9 @@ import { empilhar, PISO_DE_ESCALA, type PilhaDeBlocos } from '../blocos'
 import { extensoesDosElementos } from '../combinacoes'
 import type { BlocoPreparado, BlocosPreparados } from '../preparar-blocos'
 import type { Alinhamento, Papel } from '../spec'
-import { caixasMaximas, materializarArquetipo, type GeometriaEfetiva, type Materializacao } from './materializar'
-import type { ArquetipoDeLayout, FormatoDoArquetipo, PapelDeTexto } from './tipos'
+import { envoltoriosDoArquetipo, extensoesDosAcentosPresos, type ReceitaDoAcento } from './acentos'
+import { alinhaDoPapel, caixasMaximas, excedeAlturaDaReferencia, materializarArquetipo, papelDominante, type MargemDaPeca, type GeometriaEfetiva, type Materializacao, type RetanguloPx } from './materializar'
+import { pisoDoCorpoDaReferencia, type ArquetipoDeLayout, type FormatoDoArquetipo, type PapelDeTexto } from './tipos'
 
 /** O papel do arquétipo que posiciona um bloco: a segunda voz vai com a manchete. */
 export const papelGeometrico = (papel: Papel): PapelDeTexto => (papel === 'headline2' ? 'headline' : papel) as PapelDeTexto
@@ -27,8 +28,18 @@ export interface UnidadeDoArquetipo {
   blocos: BlocoPreparado[]
   /** A pilha dos TEXTOS: é ela que pousa na referência (os ornamentos não deslocam a âncora). */
   pilha: PilhaDeBlocos
+  /**
+   * A altura da MESMA pilha com o orçamento de cada bloco (`orcamentoDeAltura`), só para decidir descer a escala.
+   * Ausente (unidade montada fora de `unidadesDoArquetipo`) = a pilha física, como antes.
+   */
+  alturaDoOrcamento?: number
   /** Quanto os ornamentos presos aos textos (ícone, filete, selo do arranjo) passam da pilha, de cada lado (px). */
   ornamentos: { esquerda: number; direita: number; topo: number; base: number }
+  /**
+   * Quanto os ornamentos de CADA texto passam da caixa DELE (px), na ordem de `blocos`. O envelope acima só diz o que sai
+   * da pilha inteira: o filete sob o 1º item da lista que desce para o vão interno não sai da pilha e somia (#15, rodada 1).
+   */
+  ornamentosPorBloco: Array<{ esquerda: number; direita: number; topo: number; base: number }>
 }
 
 /** O `groupId` da unidade: a régua e o autofix agrupam por ele — papéis diferentes nunca no mesmo. */
@@ -67,7 +78,13 @@ export function semLogoDosArranjos(montados: BlocoPreparado[]): { montados: Bloc
  * encaixe): esse sai da posição dos textos na página, e com arquétipo a página
  * não decide geometria nenhuma — nem dentro da referência.
  */
-export function unidadesDoArquetipo(arquetipo: ArquetipoDeLayout, montados: BlocoPreparado[], gap: number): UnidadeDoArquetipo[] {
+export function unidadesDoArquetipo(
+  arquetipo: ArquetipoDeLayout,
+  montados: BlocoPreparado[],
+  gap: number,
+  /** O vão entre os ITENS de cada papel de lista, em px (#15): vale no lugar do ritmo da casa, só dentro da lista. */
+  vaoDaLista: Partial<Record<PapelDeTexto, number>> = {},
+): UnidadeDoArquetipo[] {
   const ordem = new Map(arquetipo.papeis.map((p) => [p.papel, p.ordemDeLeitura]))
   const porPapel = new Map<PapelDeTexto, BlocoPreparado[]>()
   for (const b of montados) {
@@ -92,26 +109,74 @@ export function unidadesDoArquetipo(arquetipo: ArquetipoDeLayout, montados: Bloc
       })
       const pilha = empilhar(
         blocos.map(({ elementos: _e, escalaDosElementos: _s, ...soTexto }) => soTexto),
-        gap,
+        vaoDaLista[papel] ?? gap,
       )
+      const alturaDoOrcamento = empilhar(
+        blocos.map(({ elementos: _e, escalaDosElementos: _s, ...soTexto }) => ({ ...soTexto, height: soTexto.orcamentoDeAltura ?? soTexto.height })),
+        vaoDaLista[papel] ?? gap,
+      ).height
       // O quanto os ornamentos passam da pilha: a união das extensões de TODO texto (também o do meio — o filete sob
       // a manchete que desce além da segunda voz), cada uma na altura em que o texto dela pousa. A mesma conta de
       // extensão da `empilhar`.
       const ornamentos = { esquerda: 0, direita: 0, topo: 0, base: 0 }
+      const ornamentosPorBloco = blocos.map(() => ({ esquerda: 0, direita: 0, topo: 0, base: 0 }))
       blocos.forEach((b, i) => {
         if (!b.elementos?.length) return
         const ext = extensoesDosElementos(b.elementos, { width: Math.max(1, b.width - 2 * PADDING_DE_DESENHO - 2), height: b.height }, b.escalaDosElementos ?? 1)
+        ornamentosPorBloco[i] = { esquerda: Math.ceil(ext.esquerda), direita: Math.ceil(ext.direita), topo: Math.ceil(ext.topo), base: Math.ceil(ext.base) }
         ornamentos.esquerda = Math.max(ornamentos.esquerda, Math.ceil(ext.esquerda))
         ornamentos.direita = Math.max(ornamentos.direita, Math.ceil(ext.direita))
         ornamentos.topo = Math.max(ornamentos.topo, Math.ceil(ext.topo - pilha.offsets[i]))
         ornamentos.base = Math.max(ornamentos.base, Math.ceil(pilha.offsets[i] + b.height + ext.base - pilha.height))
       })
-      return { papel, blocos, pilha, ornamentos }
+      return { papel, blocos, pilha, alturaDoOrcamento, ornamentos, ornamentosPorBloco }
     })
+}
+
+/** O vão entre os itens de cada papel de lista do arquétipo, em px do formato (`itens.<papel>.vao` × altura). */
+export function vaosDaLista(arquetipo: ArquetipoDeLayout, formato: FormatoDoArquetipo, canvas: { height: number }): Partial<Record<PapelDeTexto, number>> {
+  const itens = arquetipo.formatos[formato].itens ?? {}
+  return Object.fromEntries(
+    arquetipo.papeis.filter((p) => p.lista && itens[p.papel as PapelDeTexto]).map((p) => [p.papel, Math.round(itens[p.papel as PapelDeTexto]!.vao * canvas.height)]),
+  )
+}
+
+/** Os papéis de lista do arquétipo (#15): um item por linha autoral com texto. */
+export const papeisDeLista = (arquetipo: ArquetipoDeLayout): Set<PapelDeTexto> => new Set(arquetipo.papeis.filter((p) => p.lista).map((p) => p.papel as PapelDeTexto))
+
+/**
+ * A caixa de cada ITEM de cada lista, onde a unidade pousou: o x pelo alinhamento do papel (a mesma conta de
+ * `camadasNaReferencia`), o y pela pilha. É por ela que o fio de cada item se prende — e o que ele não pode tocar.
+ */
+export function caixasDosItens(
+  arquetipo: ArquetipoDeLayout,
+  unidades: ReadonlyArray<UnidadeDoArquetipo>,
+  papeis: Partial<Record<PapelDeTexto, { posicao: RetanguloPx }>>,
+): Partial<Record<PapelDeTexto, RetanguloPx[]>> {
+  const listas = papeisDeLista(arquetipo)
+  const saida: Partial<Record<PapelDeTexto, RetanguloPx[]>> = {}
+  for (const u of unidades) {
+    const pos = papeis[u.papel]?.posicao
+    if (!listas.has(u.papel) || !pos) continue
+    const alinha = alinhaDoPapel(arquetipo, u.papel)
+    saida[u.papel] = u.blocos.map((b, i) => ({
+      x: Math.round(alinha === 'esquerda' ? pos.x : alinha === 'direita' ? pos.x + pos.width - b.width : pos.x + (pos.width - b.width) / 2),
+      y: Math.round(pos.y + u.pilha.offsets[i]),
+      width: Math.round(b.width),
+      height: Math.round(b.height),
+    }))
+  }
+  return saida
 }
 
 /** O passo da escada da unidade — o mesmo da escada do bloco (`montarBloco`). */
 const PASSO_DA_UNIDADE = 0.04
+/**
+ * Onde a escada do papel de escala DOMINANTE começa (T4-A): 8× o corpo da assinatura. Alto o bastante para nenhuma
+ * copy caber nele numa referência do catálogo; a escada desce até o maior corpo que cabe. Uma assinatura com corpo
+ * menor que 1/8 do que a referência pede não chega à dominância — e a materialização recusa, dita.
+ */
+export const TETO_DA_ESCALA_DOMINANTE = 8
 
 export interface PreparoNoArquetipo {
   preparados: BlocosPreparados
@@ -122,6 +187,18 @@ export interface PreparoNoArquetipo {
   unidades: UnidadeDoArquetipo[]
   /** O fator em que a escada de cada unidade começou (ausente = no tamanho da assinatura). */
   fatores: Partial<Record<PapelDeTexto, number>>
+  /**
+   * F2c: nas revisões com `corpos`, por papel — o corpo DESENHADO na referência, o teto em que a escada da unidade parou
+   * (px do corpo da referência) e o piso materializado. Ausente sem `corpos`.
+   */
+  corpos?: Partial<Record<PapelDeTexto, { referencia: number; teto: number; piso: number }>>
+}
+
+/** F2c: o teto e o piso de um bloco, em PX — a preparação converte para o estilo efetivo do bloco. */
+export interface CorpoDoPapel {
+  referencia: number
+  teto: number
+  piso: number
 }
 
 /**
@@ -137,26 +214,82 @@ export function prepararNoArquetipo(args: {
   arquetipo: ArquetipoDeLayout
   formato: FormatoDoArquetipo
   canvas: { width: number; height: number }
+  /** O piso do projeto (`pisoDoProjeto[formato]`): a coluna de cada papel é a da referência efetiva (opção A). */
+  geometria: GeometriaEfetiva
   gap: number
-  /** Roda `prepararBlocos` com a caixa de cada papel e o fator de início da escada de cada papel. */
-  preparar: (escalaMaximaDoPapel: (papel: Papel) => number | undefined) => BlocosPreparados
+  /** `'marca'`: a margem da marca é a margem (29/10/2026) — a coluna de cada papel cresce até ela. Ausente = opção A. */
+  margem?: MargemDaPeca
+  /**
+   * Roda `prepararBlocos` com a caixa de cada papel e o fator de início da escada de cada papel — e, nas revisões com
+   * `corpos` (F2c), o teto e o piso em px de cada papel, que a preparação converte ao estilo efetivo de cada bloco.
+   */
+  preparar: (escalaMaximaDoPapel: (papel: Papel) => number | undefined, corpoDoPapel?: (papel: Papel) => CorpoDoPapel | undefined) => BlocosPreparados
 }): PreparoNoArquetipo {
-  const caixas = caixasMaximas(args.arquetipo, args.formato, args.canvas)
-  const fatores: Partial<Record<PapelDeTexto, number>> = {}
+  const caixas = caixasMaximas(args.arquetipo, args.formato, args.canvas, args.geometria, args.margem)
+  const dominante = papelDominante(args.arquetipo)
+  const listas = papeisDeLista(args.arquetipo)
+  const fatores: Partial<Record<PapelDeTexto, number>> = dominante ? { [dominante]: TETO_DA_ESCALA_DOMINANTE } : {}
+  // F2c: a RÉGUA COMUM da peça por referência — o teto de cada papel em px do corpo desenhado (começa nele), descendo 1 px
+  // por rodada até o piso materializado. Cada bloco converte ao estilo efetivo DELE (`preparar-blocos.ts`); aqui só px.
+  const corposDaRef = args.arquetipo.formatos[args.formato].corpos
+  const tetos: Partial<Record<PapelDeTexto, number>> = corposDaRef ? { ...corposDaRef } : {}
+  const corpoDoPapel = corposDaRef
+    ? (p: Papel): CorpoDoPapel | undefined => {
+        const g = papelGeometrico(p)
+        const referencia = corposDaRef[g]
+        return referencia === undefined ? undefined : { referencia, teto: tetos[g] ?? referencia, piso: pisoDoCorpoDaReferencia(referencia) }
+      }
+    : undefined
   for (;;) {
-    const preparados = args.preparar((p) => fatores[papelGeometrico(p)])
+    const preparados = args.preparar((p) => fatores[papelGeometrico(p)], corpoDoPapel)
     const { montados, retiradas } = semLogoDosArranjos(preparados.montados)
-    const unidades = unidadesDoArquetipo(args.arquetipo, montados, args.gap)
+    const unidades = unidadesDoArquetipo(args.arquetipo, montados, args.gap, vaosDaLista(args.arquetipo, args.formato, args.canvas))
     let desceu = false
     for (const u of unidades) {
+      // A LISTA (#15) tem UM corpo: o item que a escada do bloco encolheu puxa os outros para a mesma escala (uma lista
+      // com itens de corpos diferentes não é a lista do modelo). Converge: o menor só desce.
+      if (listas.has(u.papel) && u.blocos.length > 1) {
+        const menor = Math.min(...u.blocos.map((b) => b.escala))
+        if (u.blocos.some((b) => b.escala > menor + 1e-9) && (fatores[u.papel] ?? 1) > menor + 1e-9) {
+          fatores[u.papel] = menor
+          desceu = true
+          continue
+        }
+      }
       const caixa = caixas[u.papel]
-      if (!caixa || (u.pilha.height <= caixa.altura + 0.5 && u.pilha.width <= caixa.largura + 0.5)) continue
-      const atual = fatores[u.papel] ?? 1
+      // O orçamento legado escolhe o degrau; a descida só para quando a pilha FÍSICA (ceil) também cabe na régua
+      // final exata da referência (a mesma da materialização).
+      const pos = args.arquetipo.formatos[args.formato].papeis[u.papel]
+      const fisicaExcede = Boolean(pos && 'referencia' in pos && excedeAlturaDaReferencia(u.pilha.height, pos.referencia, args.canvas))
+      if (!caixa || ((u.alturaDoOrcamento ?? u.pilha.height) <= caixa.altura + 0.5 && u.pilha.width <= caixa.largura + 0.5 && !fisicaExcede)) continue
+      // F2c: com o corpo da referência, a unidade desce na régua comum (px do corpo desenhado): o próximo teto é o de baixo
+      // do MAIOR corpo EFETIVO entre os blocos do papel (compara corpos, nunca fatores), nunca abaixo do piso materializado
+      // — o piso exato é tentado uma vez; já nele, a materialização recusa com o orçamento. O legado segue abaixo, intacto.
+      const referencia = corposDaRef?.[u.papel]
+      if (referencia !== undefined) {
+        const teto = tetos[u.papel] ?? referencia
+        const piso = pisoDoCorpoDaReferencia(referencia)
+        if (teto <= piso) continue
+        const maiorEfetivo = Math.max(...u.blocos.map((b) => Number(b.layer.style?.fontSize ?? teto)))
+        tetos[u.papel] = Math.max(piso, Math.min(teto - 1, maiorEfetivo - 1))
+        desceu = true
+        continue
+      }
+      // No dominante, a escada do bloco já desceu do teto: o próximo degrau é o de baixo do MAIOR corpo real da unidade
+      // (todo teto acima dele dá a mesma peça; abaixo, encolhe ao menos esse bloco). Nunca pelo menor: a manchete
+      // curta a 4,8× com a segunda voz já no piso pularia direto para o piso e recusaria uma unidade que cabe.
+      // Nos outros papéis, exatamente como antes.
+      const atual = u.papel === dominante ? Math.min(fatores[u.papel] ?? 1, Math.max(...u.blocos.map((b) => b.escala))) : (fatores[u.papel] ?? 1)
       if (atual - PASSO_DA_UNIDADE < PISO_DE_ESCALA - 1e-9) continue
       fatores[u.papel] = Number((atual - PASSO_DA_UNIDADE).toFixed(2))
       desceu = true
     }
-    if (!desceu) return { preparados, montados, retiradas, unidades, fatores }
+    if (!desceu) {
+      const corpos = corposDaRef
+        ? Object.fromEntries((Object.entries(corposDaRef) as Array<[PapelDeTexto, number]>).map(([papel, referencia]) => [papel, { referencia, teto: tetos[papel] ?? referencia, piso: pisoDoCorpoDaReferencia(referencia) }]))
+        : undefined
+      return { preparados, montados, retiradas, unidades, fatores, ...(corpos ? { corpos } : {}) }
+    }
   }
 }
 
@@ -169,12 +302,14 @@ export function prepararNoArquetipo(args: {
 export function camadasNaReferencia(
   unidades: UnidadeDoArquetipo[],
   papeis: Partial<Record<PapelDeTexto, { posicao: { x: number; y: number; width: number; height: number } }>>,
-  alinha: Alinhamento,
+  /** O do arquétipo, ou o de cada papel (`alinhaDoPapel`, T4-A). */
+  alinhamento: Alinhamento | ((papel: PapelDeTexto) => Alinhamento),
 ): Array<{ unidade: UnidadeDoArquetipo; rect: { x: number; y: number; width: number; height: number }; camadas: Layer[] }> {
-  const textAlign = alinha === 'esquerda' ? 'left' : alinha === 'direita' ? 'right' : 'center'
   return unidades.flatMap((u) => {
     const pos = papeis[u.papel]?.posicao
     if (!pos) return []
+    const alinha = typeof alinhamento === 'function' ? alinhamento(u.papel) : alinhamento
+    const textAlign = alinha === 'esquerda' ? 'left' : alinha === 'direita' ? 'right' : 'center'
     const camadas = u.blocos.map((b, i) => {
       const x = alinha === 'esquerda' ? pos.x : alinha === 'direita' ? pos.x + pos.width - b.width : pos.x + (pos.width - b.width) / 2
       return { ...b.layer, position: { x: Math.round(x), y: Math.round(pos.y + u.pilha.offsets[i]) }, style: { ...b.layer.style, textAlign } } as Layer
@@ -204,6 +339,12 @@ export function materializarUnidades(args: {
   logo: { razao: number } | null
   deslocamentos?: Partial<Record<PapelDeTexto | 'logo', number>>
   conferirZona?: boolean
+  /** O gap da marca (`gapEntreBlocos`): com ele, os papéis de cada faixa empilham (29/10/2026); sem ele, cada um na própria referência. */
+  gap?: number
+  /** `'marca'`: a margem da marca é a margem (29/10/2026). Ausente = opção A. */
+  margem?: MargemDaPeca
+  /** As receitas dos acentos que a peça VAI desenhar (as congeladas, senão as do catálogo): a reserva do fio na pilha é a delas. */
+  receitas?: ReadonlyArray<ReceitaDoAcento>
 }): Materializacao {
   const medidas: Partial<Record<PapelDeTexto, { width: number; height: number }>> = {}
   const ornamentos: Partial<Record<PapelDeTexto, UnidadeDoArquetipo['ornamentos']>> = {}
@@ -211,10 +352,12 @@ export function materializarUnidades(args: {
     medidas[u.papel] = { width: u.pilha.width, height: u.pilha.height }
     ornamentos[u.papel] = u.ornamentos
   }
-  const m = materializarArquetipo({ arquetipo: args.arquetipo, formato: args.formato, canvas: args.canvas, geometria: args.geometria, medidas, ornamentos, logo: args.logo, deslocamentos: args.deslocamentos, ...(args.conferirZona === false ? { conferirZona: false } : {}) })
+  // #5: a folga da pílula conta na zona (vazio sem envolvente: a materialização de sempre).
+  const envoltorios = envoltoriosDoArquetipo(args.arquetipo, args.formato, args.canvas)
+  const m = materializarArquetipo({ arquetipo: args.arquetipo, formato: args.formato, canvas: args.canvas, geometria: args.geometria, medidas, ornamentos, logo: args.logo, deslocamentos: args.deslocamentos, ...(args.margem ? { margem: args.margem } : {}), ...(Object.keys(envoltorios).length > 0 ? { envoltorios } : {}), ...(args.conferirZona === false ? { conferirZona: false } : {}), ...(args.gap !== undefined ? { empilhar: { gap: args.gap }, acentosPresos: extensoesDosAcentosPresos(args.arquetipo, args.formato, args.canvas, args.receitas) } : {}) })
   if (!('problemas' in m)) return m
   // A recusa por capacidade leva o orçamento da unidade: a caixa, a escala em que a escada parou e cada bloco.
-  const caixas = caixasMaximas(args.arquetipo, args.formato, args.canvas)
+  const caixas = caixasMaximas(args.arquetipo, args.formato, args.canvas, args.geometria, args.margem)
   for (const p of m.problemas) {
     const u = args.unidades.find((x) => x.papel === p.papel)
     const caixa = caixas[p.papel as PapelDeTexto]

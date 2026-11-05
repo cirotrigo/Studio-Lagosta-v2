@@ -46,3 +46,7 @@ jobs:
       # Mesma regra: oauth-regras.ts é puro e carrega sem env.
       - name: OAuth MCP (audiência, PKCE, prazos)
         run: npx tsx scripts/validar-oauth-mcp.ts
+
+      # CP5b: o JSON da impressão digital de uma versão já na main é imutável; versão nova exige arquivo novo.
+      - name: Impressão digital das regras (imutável por versão)
+        run: npx tsx scripts/validar-impressao-digital.ts

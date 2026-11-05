@@ -11,7 +11,7 @@
  *   npx tsx scripts/apply-reorg-seu-quinto.ts --manifest <path> --rollback <path> [--dry-run] [--limit N]
  */
 
-import { google } from 'googleapis'
+import * as google from 'googleapis/build/src/apis/drive'
 import * as fs from 'fs'
 import 'dotenv/config'
 

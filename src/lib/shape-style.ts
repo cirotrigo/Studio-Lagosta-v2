@@ -1,4 +1,5 @@
 import type { Layer, LayerStyle } from '@/types/template'
+import { ehMulticor } from '@/lib/vetor/partes'
 
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value))
@@ -129,10 +130,85 @@ export function applyOpacityToEditableColor(
   return baseColor
 }
 
+/**
+ * O que o campo de TEXTO da cor grava quando a pessoa confirma (Enter ou sair do campo): a cor com
+ * a transparência atual, ou `null` se o texto não for uma cor completa. Nunca chamar por tecla:
+ * `#111` é cor completa no meio de `#111827`, virava `rgba(17, 17, 17, 1)` e o resto da digitação
+ * colava atrás (`rgba(17, 17, 17, 1)827` gravado no banco, smoke do CP-V1 em 21/10/2026).
+ * Aceita os formatos que `applyOpacityToEditableColor` sabe tratar, com números de verdade: hex de
+ * 3/4/6/8 dígitos, `rgb()`/`rgba()`/`hsl()`/`hsla()` e nome CSS (`red`, `transparent`), que segue
+ * gravado como digitado, sem a transparência do slider. A sintaxe moderna com espaços (`rgb(1 2 3)`,
+ * `hsl(10 50% 50% / .5)`) vira a de vírgulas ANTES: o helper só entende espaços quando há `/`, e
+ * `rgb(1 2 3)` saía `rgba(1 2 3, 1)`. Entrada E saída têm de passar em `ehCorCss` — no navegador,
+ * `CSS.supports('color', …)`, que recusa `banana`; sem ele, nada grava.
+ */
+export function corDigitadaParaGravar(
+  texto: string,
+  opacity: number,
+  fallback: string,
+  ehCorCss: (cor: string) => boolean,
+): string | null {
+  let cor = texto.trim()
+  const n = String.raw`[+-]?(?:\d+(?:\.\d+)?|\.\d+)`
+  const c = String.raw`${n}%?`
+  const h = String.raw`${n}(?:deg|rad|grad|turn)?`
+  const p = String.raw`${n}%`
+  const virgulas = (a: string, b: string, d: string) => String.raw`\(\s*${a}\s*,\s*${b}\s*,\s*${d}\s*(?:,\s*${c}\s*)?\)`
+  const espacos = (a: string, b: string, d: string) => String.raw`\(\s*${a}\s+${b}\s+${d}\s*(?:\/\s*${c}\s*)?\)`
+  const formatos = [
+    /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i,
+    new RegExp(`^rgba?(?:${virgulas(c, c, c)}|${espacos(c, c, c)})$`, 'i'),
+    new RegExp(`^hsla?(?:${virgulas(h, p, p)}|${espacos(h, p, p)})$`, 'i'),
+    /^[a-z]+$/i,
+  ]
+  if (!formatos.some((formato) => formato.test(cor)) || !ehCorCss(cor)) return null
+  const moderna = cor.match(/^(rgba?|hsla?)\(([^,()]+)\)$/i)
+  if (moderna) {
+    const [base, alfa] = moderna[2].split('/').map((parte) => parte.trim())
+    cor = `${moderna[1]}(${[...base.split(/\s+/), ...(alfa ? [alfa] : [])].join(', ')})`
+  }
+  const saida = applyOpacityToEditableColor(cor, opacity, fallback)
+  return ehCorCss(saida) ? saida : null
+}
+
+/**
+ * Opacidade da forma como a pessoa a vê: o maior alfa entre o preenchimento e o contorno presentes. Na forma, a
+ * canonização embute a opacidade no alfa de cada cor e zera `style.opacity` para 1 — ler só `style.opacity` mostraria
+ * 100% sempre. Painel e toolbar leem por aqui.
+ * Sem tinta é alfa 0: o `transparent` literal (preenchimento dos itens de contorno do catálogo — moldura, pílula, onda)
+ * contava como 100% pelo fallback do `parseColorOpacity`, e o contorno sem espessura não aparece, então não entra.
+ */
+export function opacidadeDaForma(style: LayerStyle | undefined): number {
+  // multicor (CP-V5): a opacidade é a da CAMADA (`style.opacity`, que a canonização preserva); o alfa de cada slot é dele
+  if (ehMulticor(style)) return normalizeOpacityValue(style?.opacity) ?? 1
+  const tintas = [style?.fill, (style?.strokeWidth ?? 0) > 0 ? style?.strokeColor : undefined]
+  const alfas = tintas
+    .filter((cor): cor is string => typeof cor === 'string' && cor.trim() !== '')
+    .map((cor) => (cor.trim().toLowerCase() === 'transparent' ? 0 : parseColorOpacity(cor, 1)))
+    .filter((a) => !Number.isNaN(a))
+  return alfas.length ? Math.max(...alfas) : normalizeOpacityValue(style?.opacity) ?? 1
+}
+
+/** A escrita da opacidade da forma: o alfa ABSOLUTO nos dois canais (nunca multiplica o atual). */
+export function estiloComOpacidadeDaForma(style: LayerStyle | undefined, opacidade: number): Partial<LayerStyle> {
+  // multicor: absoluta em `style.opacity`, sem tocar a cor de slot nenhum (o renderer aplica uma vez)
+  if (ehMulticor(style)) return { opacity: Math.max(0, Math.min(1, opacidade)) }
+  return {
+    fill: applyOpacityToEditableColor(style?.fill, opacidade, '#2563eb'),
+    strokeColor: style?.strokeColor ? applyOpacityToEditableColor(style.strokeColor, opacidade, '#1e3a8a') : style?.strokeColor,
+    opacity: 1,
+    fillOpacity: 1,
+    strokeOpacity: 1,
+  }
+}
+
 export function canonicalizeShapeStyleForPersistence(style: LayerStyle | undefined): LayerStyle | undefined {
   if (!style) return style
 
-  const globalOpacity = normalizeOpacityValue(style.opacity) ?? 1
+  // Multicor (CP-V5): a opacidade da camada fica em `style.opacity` para o renderer aplicar UMA vez (nó Konva /
+  // `renderLayer`); só os multiplicadores de canal dobram, e só na silhueta. `vetor.cores` não muda (alfa do slot).
+  const multicor = ehMulticor(style)
+  const globalOpacity = multicor ? 1 : normalizeOpacityValue(style.opacity) ?? 1
   const fillOpacity = normalizeOpacityValue(style.fillOpacity) ?? 1
   const borderStyle = style.border as unknown as Record<string, unknown> | undefined
   const strokeOpacity = normalizeOpacityValue(
@@ -141,7 +217,7 @@ export function canonicalizeShapeStyleForPersistence(style: LayerStyle | undefin
 
   const nextStyle: LayerStyle = {
     ...style,
-    opacity: 1,
+    opacity: multicor ? normalizeOpacityValue(style.opacity) ?? 1 : 1,
     fillOpacity: 1,
     strokeOpacity: 1,
   }

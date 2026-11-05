@@ -21,6 +21,8 @@ import { vitrineDeArquetipos } from '../../compositor/arquetipos/na-spec'
  * que ficam literais (40 blocos, 3 candidatas, 20 slides, 8 arranjos) têm teste
  * de paridade com a spec.
  */
+const DICA_FORA_DO_RODIZIO =
+  ' Variante com foraDoRodizio true é uma página promovida: fica fora do rodízio e só entra numa peça quando a pessoa pede por ela (preferencias.variante com o id ou o nome) — não a escolha por conta própria.'
 const papelDaAssinatura = z.enum(PAPEIS)
 const linhasDoBloco = blocoSchema.shape.linhas.describe(
   `As linhas do bloco, JÁ quebradas como devem aparecer (uma string por linha). Headline em 1-2 linhas curtas; apoio em 1-2 linhas. Linha vazia ("") é respiro e fica onde está; até ${MAX_LINHAS} linhas. Palavra-chave entre [colchetes] sai DESTACADA na cor e no peso de destaque da marca (ex.: "Seu milk-shake vem [em dobro]") — marque 1 ou 2 por peça, só o que decide a leitura (preço, dia, a oferta); sem colchetes, sem destaque.`,
@@ -81,7 +83,7 @@ const preferencias = z
 
 /** O schema da SPEC (T1a), com a descrição pública — o mesmo nas três portas que constroem a peça. */
 const arquetipo = arquetipoDaSpecSchema.describe(
-  'O ARQUÉTIPO de layout, opt-in: { id } ou { id, versao } — os disponíveis estão em ver-assinatura (campo arquetipos, com a disponibilidade de cada um). Com ele, a GEOMETRIA vem do arquétipo: a foto escolhe, DENTRO das zonas dele, o enquadramento e a posição de cada faixa (partindo da referência, só na vertical, poucas alternativas; o tratamento de leitura conta como custo, nunca como atalho), e a assinatura dá só o estilo (fonte, corpo, cor, destaque, logo, gradiente). Sem versão, vale a mais recente — e a peça grava a versão exata, a impressão e a escolha espacial, que a recomposição mantém (copy editada não move a peça: se não couber na posição congelada, é recusada). Para reproduzir uma medição, mande a fixacao.arquetipo do medir-copy (id + versao + impressao). Recusado ANTES de compor, com o motivo: papel que o arquétipo não tem (cta, por exemplo), papel obrigatório ausente, camada extra ou herdaDe, formato quadrado, linhas acima do máximo, preferência de âncora/alinhamento/canto diferente da dele, ou caixa que não cabe na referência — nada some. Sem posição válida na foto (zona, região protegida, leitura), SEM_COMBINACAO; com o enquadramento fixo impedindo o corte que resolveria, PREFERENCIA_INVIAVEL. Em leva com loteId, mande { id, versao } (ou a fixacao) para a retentativa continuar a mesma peça depois de uma versão nova publicada. Sem arquétipo, a composição é a de sempre.',
+  'O ARQUÉTIPO de layout, opt-in: { id } ou { id, versao } — os disponíveis estão em ver-assinatura (campo arquetipos, com a disponibilidade de cada um). Com ele, a GEOMETRIA vem do arquétipo: a foto escolhe, DENTRO das zonas dele, o enquadramento e a posição de cada faixa (partindo da referência, só na vertical, poucas alternativas; o tratamento de leitura conta como custo, nunca como atalho), e a assinatura dá só o estilo (fonte, corpo, cor, destaque, logo, gradiente). No arquétipo de foto em caixa (fundo foto-em-caixa; ver-assinatura, campo caixaDaFoto — e mascaraDaFoto quando a caixa tem o topo em arco: o arco é do modelo, a peça o desenha e o congela, e o assunto conta só o que o arco mostra), a foto fica numa caixa e escolhe só o enquadramento: o texto fica na posição do modelo, no fundo da marca escolhido pelo contraste com as cores dos textos (nenhum papel serve: ARQUETIPO_FUNDO_INDISPONIVEL); sem foto, recusa (ARQUETIPO_FOTO_AUSENTE). Sem versão, vale a mais recente — e a peça grava a versão exata, a impressão e a escolha espacial, que a recomposição mantém (copy editada não move a peça: se não couber na posição congelada, é recusada). Para reproduzir uma medição, mande a fixacao.arquetipo do medir-copy (id + versao + impressao). Recusado ANTES de compor, com o motivo: papel que o arquétipo não tem (cta, por exemplo), papel obrigatório ausente, camada extra ou herdaDe, formato quadrado, linhas acima do máximo, preferência de âncora/alinhamento/canto diferente da dele, ou caixa que não cabe na referência — nada some. Os ACENTOS do arquétipo (fio fino, moldura aberta em L, brilho de 4 pontas, cantoneiras — ver-assinatura, campo elementos de cada arquétipo) entram presos ao texto (presoA), depois da posição escolhida pela foto, na cor desse texto (ou do destaque dele) — as cantoneiras (ancoradoA: peca) ficam nos cantos da peça, na cor do destaque da manchete, e só os braços contam como ocupados: o opcional que não cabe sai, dito em avisos e acentosOmitidos; o obrigatório que não cabe recusa (ARQUETIPO_ELEMENTO_NAO_CABE); a recomposição redesenha o acento gravado na peça (peça de antes deles continua sem). Sem posição válida na foto (zona, região protegida, leitura), SEM_COMBINACAO; com o enquadramento fixo impedindo o corte que resolveria, PREFERENCIA_INVIAVEL. Em leva com loteId, mande { id, versao } (ou a fixacao) para a retentativa continuar a mesma peça depois de uma versão nova publicada. Sem arquétipo, a composição é a de sempre.',
 )
 
 const spec = {
@@ -91,6 +93,11 @@ const spec = {
   selecaoExperimental: z.boolean().optional().describe('Opt-in explícito para comparar variantes com o baseline. Default false: candidatas presentes não ativam seleção nem alteram o layout. Comparação técnica, sem aprovação estética automática.'),
   fotosCandidatas: z.array(z.string().min(1)).min(1).max(3).optional().describe('Só com selecaoExperimental: true. Até 3 driveFileIds já curados por buscar-fotos, em ordem de relevância. Avalia até 6 combinações com variantes, sem geração paga. Foto explícita prevalece. Sem combinação utilizável retorna diagnóstico; não remove copy.'),
   fotoUrl: z.string().optional().describe('URL pública da foto, quando ela não está no acervo (ex.: fotoUrl de ver-foto-enviada).'),
+  fotoJanela: z
+    .object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1), width: z.number().min(0.01).max(1), height: z.number().min(0.01).max(1) })
+    .strict()
+    .optional()
+    .describe('O CORTE da foto, explícito (F2a): o retângulo da foto original que a peça mostra, em frações 0..1 (x, y, width, height) — o mesmo crop que o editor grava. O compositor confere a proporção contra a caixa (ajuste mínimo dito; fora da foto, JANELA_NAO_CABE), lê a foto, protege o assunto e grava a janela na camada da foto (style.crop), que o editor abre igual. Sem ela, o compositor escolhe o enquadramento como sempre. Só com UMA foto (fotoDriveId ou fotoUrl); não combina com fotosCandidatas nem selecaoExperimental.'),
   blocos: z
     .array(bloco)
     .max(40)
@@ -125,7 +132,9 @@ function specDe(args: Record<string, unknown>) {
   return {
     projectId: args.projectId,
     formato: args.formato,
-    ...(args.fotoDriveId || args.fotoUrl ? { foto: { ...(args.fotoDriveId ? { driveFileId: args.fotoDriveId } : {}), ...(args.fotoUrl ? { url: args.fotoUrl } : {}) } } : {}),
+    // `fotoJanela` sem foto segue para a validação comum, que a recusa (SPEC_INVALIDA) — descartá-la aqui compunha sem foto
+    // e sem a janela, em silêncio (Codex, F2a rodada 1, P2 #6).
+    ...(args.fotoDriveId || args.fotoUrl || args.fotoJanela ? { foto: { ...(args.fotoDriveId ? { driveFileId: args.fotoDriveId } : {}), ...(args.fotoUrl ? { url: args.fotoUrl } : {}), ...(args.fotoJanela && typeof args.fotoJanela === 'object' ? { janela: args.fotoJanela } : {}) } } : {}),
     fotosCandidatas: args.fotosCandidatas,
     selecaoExperimental: args.selecaoExperimental,
     blocos: args.blocos,
@@ -246,6 +255,10 @@ export const toolsDoCompositor = [
       // Cada variante com os PRÓPRIOS estilos, a fonte disponível no servidor,
       // a área útil do formato pedido e o orçamento por papel (PR 8).
       const { templateId, variantes } = await descreverVariantes(projectId, formato)
+      // F2c: as REFERÊNCIAS aprovadas do cliente neste formato, com o corpo desenhado por papel (da revisão persistida) —
+      // com uma delas, o catálogo abaixo não vale para o cliente e a peça parte do corpo da referência, não do da assinatura.
+      const { listarReferencias } = await import('../../compositor/referencias')
+      const referencias = (await listarReferencias(projectId)).filter((l) => !l.revogadaEm && l.formato === formato).map((l) => ({ arquetipoId: l.arquetipoId, versao: l.versao, pagina: l.pagina, corpos: l.corpos, estilos: l.estilos, assunto: l.assunto }))
       const template = templateId ? { id: templateId } : null
       return {
         temAssinatura: Boolean(a.origem.pageId),
@@ -269,11 +282,17 @@ export const toolsDoCompositor = [
         gradiente: { ...a.numeros.gradiente, ...(a.gradienteDaPagina ? { daPagina: a.gradienteDaPagina } : {}) },
         logo: a.logo ? { largura: a.logo.largura } : null,
         numeros: a.numeros,
-        // T1a: os arquétipos de layout (só leitura) — o agente pede pelo id, sem decorar; a disponibilidade diz o que já compõe.
+        // T1a: os arquétipos de layout (só leitura) — o agente pede pelo id, sem decorar; a disponibilidade diz o que já compõe
+        // e `elementos` os acentos que a peça ganha (T1b).
         arquetipos: vitrineDeArquetipos(),
+        referencias,
+        ...(referencias.length > 0 ? { avisoDasReferencias: `O cliente tem ${referencias.length} referência(s) aprovada(s) no ${formato}: o catálogo acima não vale para ele (ARQUETIPO_NAO_APROVADO) e a peça por referência parte do corpo desenhado nela (\`corpos\`; null = revisão de antes, que parte da assinatura). Peça uma em arquetipo.id.` } : {}),
         editorUrl: template ? `${getPublicAppUrl()}/templates/${template.id}/editor` : null,
+        // T5: a variante promovida (foraDoRodizio) só entra numa peça quando a pessoa pede por ela.
         dica: a.origem.pageId
-          ? 'A equipe ajusta fonte, tamanho, cor e destaque de cada papel abrindo a página de assinatura no editor; uma camada de gradiente na página manda na cor e na curva do gradiente de leitura. O próximo lote sai com a mudança. Cada variante traz o orçamento por papel (caracteres por linha, aproximado) e a fonte disponível: papel com fonteDisponivel false sai na fonte de fallback e a medida não vale. Antes de compor, medir-copy mede a copy escrita contra a variante.'
+          ? `A equipe ajusta fonte, tamanho, cor e destaque de cada papel abrindo a página de assinatura no editor; uma camada de gradiente na página manda na cor e na curva do gradiente de leitura. O próximo lote sai com a mudança. Cada variante traz o orçamento por papel (caracteres por linha, aproximado) e a fonte disponível: papel com fonteDisponivel false sai na fonte de fallback e a medida não vale. Antes de compor, medir-copy mede a copy escrita contra a variante.${variantes.some((v) => v.foraDoRodizio) ? DICA_FORA_DO_RODIZIO : ''}`
+          : variantes.some((v) => v.foraDoRodizio)
+          ? `Neste formato o cliente só tem variantes fora do rodízio: nenhuma entra sozinha numa peça.${DICA_FORA_DO_RODIZIO}`
           : 'Este cliente ainda não tem página de assinatura. Peça para a equipe criar (template "Assinatura", uma página por formato com camadas de texto chamadas pre, headline, apoio, cta, servico).',
       }
     },
@@ -294,6 +313,7 @@ export const toolsDoCompositor = [
       nome: spec.nome,
       fotoDriveId: spec.fotoDriveId,
       fotoUrl: spec.fotoUrl,
+      fotoJanela: spec.fotoJanela,
       arquetipo: spec.arquetipo,
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -312,6 +332,7 @@ export const toolsDoCompositor = [
         nome: typeof args.nome === 'string' ? args.nome : null,
         fotoDriveId: typeof args.fotoDriveId === 'string' ? args.fotoDriveId : null,
         fotoUrl: typeof args.fotoUrl === 'string' ? args.fotoUrl : null,
+        ...(args.fotoJanela && typeof args.fotoJanela === 'object' ? { fotoJanela: args.fotoJanela as { x: number; y: number; width: number; height: number } } : {}),
         ...(args.arquetipo && typeof args.arquetipo === 'object' ? { arquetipo: args.arquetipo as { id: string; versao?: number; impressao?: string } } : {}),
       })
       const m = r.medicao
@@ -369,7 +390,7 @@ export const toolsDoCompositor = [
   definirTool({
     nome: 'revisar-arte',
     descricao:
-      'Revisa uma arte feita no EDITOR — peça do compositor, arte de modelo ou página editada — ANTES de ela ir para a agenda, e devolve o que está errado COM A MEDIDA e os AJUSTES prontos para aplicar. Não grava nada.\n\nDuas camadas. O código mede: texto cortado, fonte não cadastrada, colisão, texto fora da margem de segurança, logo sobre texto, logo sem leitura (o contraste da logo medido pixel a pixel contra o fundo real — CP3), texto sem leitura sobre a foto (a régua de contraste — o "horário não deu leitura"), gradiente mais forte do que o texto precisa, título grande demais para a peça ou maior que o modelo, entrelinha grande, texto pequeno, palavra sozinha na última linha e texto sobre o assunto da foto. A visão olha a peça renderizada, com cada bloco marcado (T1, T2… e L1 para a logo), e aponta o que a medida não vê — bloco mal colocado, gradiente pesando na foto, respiro desequilibrado. A resposta traz a miniatura com as marcas para você conferir.\n\nCada achado tem severidade (problema, aviso, sugestão), a evidência e os índices dos ajustes que o corrigem; o número de todo ajuste é calculado pelas medidas. Para corrigir: ajustar-arte com o pageId, versaoEsperada = a `versao` desta revisão e os ajustes que decidir aplicar — todos, ou só os que concordar (sugestão é gosto; achado de confiança média, confira na miniatura) — e revise de novo. No máximo DUAS rodadas por peça; o que sobrar vira observação para a pessoa. A revisão nunca bloqueia: peça com pendência vai para a agenda como rascunho do mesmo jeito, com a pendência dita. Achado sem ajuste é decisão de gente (trocar a foto, reescrever, mudar o bloco de borda) — proponha em vez de insistir.\n\nNa leva (compor-leva), revise pelo generationId assim que a peça aparecer pronta em ver-geracao. Com a visão leva ~20 a 40 segundos por peça; visao: false devolve só as medidas em poucos segundos.',
+      'Revisa uma arte feita no EDITOR — peça do compositor, arte de modelo ou página editada — ANTES de ela ir para a agenda, e devolve o que está errado COM A MEDIDA e os AJUSTES prontos para aplicar. Não grava nada.\n\nDuas camadas. O código mede: texto cortado, fonte não cadastrada, colisão, texto fora da margem de segurança, logo sobre texto, logo sem leitura (o contraste da logo medido pixel a pixel contra o fundo real — CP3), texto sem leitura sobre a foto (a régua de contraste — o "horário não deu leitura"), gradiente mais forte do que o texto precisa, título grande demais para a peça ou maior que o modelo, entrelinha grande, texto pequeno, palavra sozinha na última linha e texto sobre o assunto da foto. A visão olha a peça renderizada, com cada bloco marcado (T1, T2… e L1 para a logo), e aponta o que a medida não vê — bloco mal colocado, gradiente pesando na foto, respiro desequilibrado. A resposta traz a miniatura com as marcas para você conferir.\n\nCada achado tem severidade (problema, aviso, sugestão), a evidência e os índices dos ajustes que o corrigem; o número de todo ajuste é calculado pelas medidas. Para corrigir: ajustar-arte com o pageId, versaoEsperada = a `versao` desta revisão e os ajustes que decidir aplicar — todos, ou só os que concordar (sugestão é gosto; achado de confiança média, confira na miniatura) — e revise de novo. No máximo DUAS rodadas por peça; o que sobrar vira observação para a pessoa. A revisão nunca bloqueia: peça com pendência vai para a agenda como rascunho do mesmo jeito, com a pendência dita. Achado sem ajuste é decisão de gente (trocar a foto, reescrever, mudar o bloco de borda) — proponha em vez de insistir.\n\nNa leva (compor-leva), revise pelo generationId assim que a peça aparecer pronta em ver-geracao. Com a visão leva ~20 a 40 segundos por peça; visao: false devolve só as medidas em poucos segundos.\n\nGATE (informação): a resposta traz `gate` — o veredito que o gate de autonomia daria à página COMO ESTAVA nesta leitura (APTO ou REVISAO_HUMANA_NECESSARIA, com motivos e o que não foi medido), medido de novo sem a correção hipotética da régua. É INFORMAÇÃO: não autoriza, não grava e pode envelhecer — o veredito que vale é o medido na hora, sob trava, por agendar-leva e ajustar-arte. `gate.tipo` sem-vinculo = página sem arte ou página-modelo (nada a decidir); nao-medida = a decisão falhou. Se o gate recusa e não há ajuste a propor, leve à pessoa. Com pageId E generationId, a arte precisa ser desta página (GERACAO_DE_OUTRA_PAGINA).',
     schema: z.object({
       projectId: z.number().describe('ID do cliente.'),
       pageId: z.string().optional().describe('A peça (pageId de compor-arte, criar-arte, ajustar-arte ou do post).'),
@@ -402,12 +423,16 @@ export const toolsDoCompositor = [
         achados: r.relatorio.achados,
         ajustes: r.relatorio.ajustes,
         cobertura: r.relatorio.cobertura,
+        // CP5e § 1: o veredito do gate como INFORMAÇÃO (não autoriza, não grava; o que vale é o medido na hora, sob trava).
+        gate: r.gate,
         visao: r.visao,
         ...(r.referencia ? { referencia: r.referencia } : {}),
         comoAplicar:
           r.aplicavel && r.relatorio.ajustes.length > 0
             ? `ajustar-arte com projectId ${projectId}, pageId "${r.pageId}", versaoEsperada "${r.versao}" e os ajustes escolhidos (a lista inteira ou só os que fizerem sentido). Depois, revisar-arte de novo.`
-            : null,
+            : r.gate.tipo === 'medida' && r.gate.resultado === 'REVISAO_HUMANA_NECESSARIA'
+              ? 'leve à pessoa: o gate não aprovaria esta versão e o revisor não tem ajuste a propor (os motivos estão em gate.motivos).'
+              : null,
       }
       if (!r.previa) return corpo
       return {
@@ -527,6 +552,7 @@ export const toolsDoCompositor = [
             formato: spec.formato,
             fotoDriveId: spec.fotoDriveId,
             fotoUrl: spec.fotoUrl,
+            fotoJanela: spec.fotoJanela,
             fotosCandidatas: spec.fotosCandidatas,
             selecaoExperimental: spec.selecaoExperimental,
             blocos: spec.blocos,
@@ -679,7 +705,7 @@ export const toolsDoCompositor = [
   definirTool({
     nome: 'agendar-leva',
     descricao:
-      'Põe na agenda, como RASCUNHO, as peças de uma leva composta por compor-leva — pela PÁGINA de cada peça (é o que dá "Editar Template" na agenda e faz a arte acompanhar o que a equipe mexer), no horário que a composição previu ou no quando do item. Use quando as peças aparecerem prontas em ver-geracao, com o MESMO loteId e os MESMOS itemId de compor-leva.\n\nIDEMPOTENTE: repetir a chamada (timeout, erro no meio) devolve os rascunhos que já existem e cria só os que faltaram — nunca duplica. Rascunho que a equipe remarcou ou editou depois fica como a equipe deixou. Outro pedido sob o mesmo itemId (horário, tipo, legenda, lembrete, escopo ou campanha diferentes) volta como conflito, sem alterar nada — mude o post na agenda. Uma peça que estava pendente e ficou pronta entra na repetição — é o que faltava, não duplicata.\n\nPLANO: peça que nasceu de item de plano só entra se o item aponta esta arte e está pronto. Item reprovado, reaberto ou refeito volta como PECA_SUPERADA_NO_PLANO, sem criar nada. Quando o item já tem arte mais recente, a resposta traz arteAtualDoItem: conte à pessoa qual é e quando foi feita e pergunte se ela quer manter essa arte (agendá-la pela página dela quando estiver pronta) ou refazer com o conteúdo atual do item (ver-plano, compor-leva com outro itemId e a itemRevisao atual). Não agende nem refaça sem ela pedir.\n\nRASCUNHO APAGADO PELA EQUIPE: não volta sozinho. O item vem como falhou (POST_REMOVIDO) com rascunhoApagado (dia e horário do pedido original — nulo quando esta chamada pede outro —, tema, manchete): conte à pessoa qual era e pergunte se ela quer de volta. Só com a confirmação dela repita a chamada com recriarRascunhoApagado: true NAQUELE item — o rascunho volta com a mesma arte da leva (desfecho recriado), e repetir a confirmação não cria outro.\n\nAntes, chame com simular: true e mostre a conta à pessoa (quantos entram, quantos ainda estão sendo compostos, quais falharam e por quê); só então chame sem simular. Cada item volta concluido (desfecho criado, adotado — a peça já tinha post na agenda, rascunho ou agendado —, reaproveitado ou recriado, e estadoDoPost diz o que o post é agora: só rascunho espera aprovar-rascunhos), pendente (peça ainda na fila: repita em alguns minutos) ou falhou (codigo e motivo). Nunca publica: virar publicação é aprovar-rascunhos, com confirmação.',
+      'Põe na agenda, como RASCUNHO, as peças de uma leva composta por compor-leva — pela PÁGINA de cada peça (é o que dá "Editar Template" na agenda e faz a arte acompanhar o que a equipe mexer), no horário que a composição previu ou no quando do item. Use quando as peças aparecerem prontas em ver-geracao, com o MESMO loteId e os MESMOS itemId de compor-leva.\n\nIDEMPOTENTE: repetir a chamada (timeout, erro no meio) devolve os rascunhos que já existem e cria só os que faltaram — nunca duplica. Rascunho que a equipe remarcou ou editou depois fica como a equipe deixou. Outro pedido sob o mesmo itemId (horário, tipo, legenda, lembrete, escopo ou campanha diferentes) volta como conflito, sem alterar nada — mude o post na agenda. Uma peça que estava pendente e ficou pronta entra na repetição — é o que faltava, não duplicata.\n\nPLANO: peça que nasceu de item de plano só entra se o item aponta esta arte e está pronto. Item reprovado, reaberto ou refeito volta como PECA_SUPERADA_NO_PLANO, sem criar nada. Quando o item já tem arte mais recente, a resposta traz arteAtualDoItem: conte à pessoa qual é e quando foi feita e pergunte se ela quer manter essa arte (agendá-la pela página dela quando estiver pronta) ou refazer com o conteúdo atual do item (ver-plano, compor-leva com outro itemId e a itemRevisao atual). Não agende nem refaça sem ela pedir.\n\nRASCUNHO APAGADO PELA EQUIPE: não volta sozinho. O item vem como falhou (POST_REMOVIDO) com rascunhoApagado (dia e horário do pedido original — nulo quando esta chamada pede outro —, tema, manchete): conte à pessoa qual era e pergunte se ela quer de volta. Só com a confirmação dela repita a chamada com recriarRascunhoApagado: true NAQUELE item — o rascunho volta com a mesma arte da leva (desfecho recriado), e repetir a confirmação não cria outro.\n\nAntes, chame com simular: true e mostre a conta à pessoa (quantos entram, quantos ainda estão sendo compostos, quais falharam e por quê); só então chame sem simular. Cada item volta concluido (desfecho criado, adotado — a peça já tinha post na agenda, rascunho ou agendado —, reaproveitado ou recriado, e estadoDoPost diz o que o post é agora: só rascunho espera aprovar-rascunhos), pendente (peça ainda na fila: repita em alguns minutos) ou falhou (codigo e motivo). Nunca publica: virar publicação é aprovar-rascunhos, com confirmação.\n\nGATE DE AUTONOMIA (perfil draft-only): o rascunho só nasce ou é adotado depois de a página ser MEDIDA na hora, dentro da transação que grava (geometria, leitura dos textos, logo, área segura, piso de interface, copy completa, identidade), e aceita pelo gate — o veredito (APTO ou não) fica registrado na arte e aparece em ver-geracao como auditoria, nunca como autoridade. Peça não apta volta falhou com REVISAO_HUMANA_NECESSARIA, generationId, pageId, editUrl e revisao (achados e motivos quando medida; sem-vinculo; nao-medida — vídeo/música, prazo, erro): conserte com ajustar-arte ou leve à pessoa; repetir igual não muda o veredito. Nesse perfil os efeitos pós-commit (pasta da semana, catálogo) não rodam: uma pessoa os completa repetindo o mesmo pedido. simular: true mede e decide igual, sem gravar nada.',
     schema: z.object({
       projectId: z.number().describe('ID do cliente.'),
       loteId: z.string().min(1).max(120).describe('O MESMO loteId usado em compor-leva.'),
@@ -731,6 +757,8 @@ export const toolsDoCompositor = [
       const decididoPor = await quemDecidiu(projectId, principal)
       const r = await agendarItensDoLote({
         apenasRascunho,
+        // CP5c: quem pediu vai no registro do gate (auditoria); o perfil é decidido acima, pelo mesmo helper.
+        principal: { tipo: principal.kind, id: principal.userId ?? principal.clientId ?? 'servico' },
         projectId,
         loteId: args.loteId as string,
         itens: args.itens as unknown[],

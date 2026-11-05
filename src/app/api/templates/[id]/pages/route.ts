@@ -3,6 +3,8 @@ import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
 import { hasProjectReadAccess, hasProjectWriteAccess, withProjectOwner } from '@/lib/projects/access'
+import { VetorInvalido } from '@/lib/vetor/validar-camada'
+import { corpoDoVetorInvalido, exigirVetoresValidos } from '@/lib/vetor/guarda-de-porta'
 
 const createPageSchema = z.object({
   name: z.string().min(1, 'Nome é obrigatório'),
@@ -130,6 +132,10 @@ export async function POST(
 
     console.log('[API] Validated data:', validatedData)
 
+    // CP-X2b: forma vetorial inválida não vira página (422 `VETOR_INVALIDO`, nenhuma escrita). Sem canonização
+    // nesta porta: a checagem do payload é ao mesmo tempo a do estado final.
+    exigirVetoresValidos(validatedData.layers)
+
     // Criar página
     const page = await db.page.create({
       data: {
@@ -153,6 +159,9 @@ export async function POST(
         { error: 'Invalid data', details: error.errors },
         { status: 400 }
       )
+    }
+    if (error instanceof VetorInvalido) {
+      return NextResponse.json(corpoDoVetorInvalido(error), { status: 422 })
     }
 
     console.error('Error creating page:', error)

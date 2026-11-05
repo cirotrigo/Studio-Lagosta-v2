@@ -1,4 +1,4 @@
-import { google } from 'googleapis';
+import * as google from 'googleapis/build/src/apis/drive';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as dotenv from 'dotenv';

@@ -1,0 +1,190 @@
+{
+ "id": "cmvvab24y0003sw7cwiaizw9d",
+ "name": "Ref 02 · Brunch Empório",
+ "width": 1080,
+ "height": 1920,
+ "background": "#0B1220",
+ "isTemplate": false,
+ "tags": [
+  "referencia",
+  "brunch",
+  "cafeteria"
+ ],
+ "order": 1,
+ "layerCount": 5,
+ "layers": [
+  {
+   "id": "foto-fundo",
+   "type": "image",
+   "name": "Foto de fundo",
+   "visible": true,
+   "locked": false,
+   "order": 0,
+   "position": {
+    "x": 0,
+    "y": 0
+   },
+   "size": {
+    "width": 1080,
+    "height": 1920
+   },
+   "rotation": 0,
+   "isDynamic": true,
+   "fileUrl": "https://lh3.googleusercontent.com/d/1McWbzH94dsSMhZa5By-r2Q-ROvSOq17a=w2000",
+   "style": {
+    "objectFit": "cover",
+    "cropPosition": "center-middle",
+    "crop": {
+     "x": 0.17716902669010282,
+     "y": 0.057728836551201125,
+     "width": 0.6236960200742915,
+     "height": 0.7415423268975977
+    }
+   }
+  },
+  {
+   "id": "gradiente-leitura-rodape",
+   "type": "gradient",
+   "name": "Gradiente de leitura (rodapé)",
+   "visible": true,
+   "locked": false,
+   "order": 1,
+   "position": {
+    "x": 0,
+    "y": 1160
+   },
+   "size": {
+    "width": 1080,
+    "height": 760
+   },
+   "rotation": 0,
+   "style": {
+    "gradientType": "linear",
+    "gradientStartX": 0,
+    "gradientStartY": 1,
+    "gradientEndX": 0,
+    "gradientEndY": 0,
+    "gradientStops": [
+     {
+      "id": "leitura-0",
+      "position": 0,
+      "color": "#0B1220",
+      "opacity": 0.85
+     },
+     {
+      "id": "leitura-1",
+      "position": 0.55,
+      "color": "#0B1220",
+      "opacity": 0.4
+     },
+     {
+      "id": "leitura-2",
+      "position": 1,
+      "color": "#0B1220",
+      "opacity": 0
+     }
+    ]
+   }
+  },
+  {
+   "id": "titulo",
+   "type": "text",
+   "name": "Título",
+   "visible": true,
+   "locked": false,
+   "order": 2,
+   "position": {
+    "x": 64,
+    "y": 1618
+   },
+   "size": {
+    "width": 952,
+    "height": 97
+   },
+   "rotation": 0,
+   "content": "Brunch Empório",
+   "isDynamic": true,
+   "style": {
+    "fontFamily": "TrajanPro Regular",
+    "fontSize": 85,
+    "lineHeight": 1,
+    "letterSpacing": 0,
+    "textTransform": "uppercase",
+    "color": "#F8F8F8",
+    "textAlign": "center"
+   },
+   "textboxConfig": {
+    "anchor": "top",
+    "autoWrap": {
+     "lineHeight": 1,
+     "breakMode": "word",
+     "autoExpand": true
+    }
+   }
+  },
+  {
+   "id": "apoio",
+   "type": "text",
+   "name": "Apoio",
+   "visible": true,
+   "locked": false,
+   "order": 3,
+   "position": {
+    "x": 64,
+    "y": 1707
+   },
+   "size": {
+    "width": 951,
+    "height": 51
+   },
+   "rotation": 0,
+   "content": "Sabores que elevam sua tarde",
+   "isDynamic": true,
+   "style": {
+    "fontFamily": "TrajanPro Regular",
+    "fontSize": 39,
+    "lineHeight": 1,
+    "letterSpacing": 3,
+    "textTransform": "uppercase",
+    "color": "#F8F8F8",
+    "textAlign": "center"
+   },
+   "textboxConfig": {
+    "anchor": "top",
+    "autoWrap": {
+     "lineHeight": 1,
+     "breakMode": "word",
+     "autoExpand": true
+    }
+   }
+  },
+  {
+   "id": "faa200e2-dd3e-4b68-9efa-cd0b007565da",
+   "type": "logo",
+   "name": "Logo - Ativo 3icones.png",
+   "visible": true,
+   "locked": false,
+   "order": 4,
+   "position": {
+    "x": 816,
+    "y": 160
+   },
+   "size": {
+    "width": 200,
+    "height": 65
+   },
+   "style": {
+    "objectFit": "cover",
+    "border": {
+     "width": 0,
+     "color": "#000000",
+     "radius": 0
+    },
+    "blur": 0,
+    "brightness": 0,
+    "contrast": 0
+   },
+   "fileUrl": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/12/logos/1771683216923-Ativo_3icones.png"
+  }
+ ]
+}

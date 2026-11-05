@@ -41,6 +41,7 @@
 import type { Layer } from '@/types/template'
 import type { Rect } from '@/lib/creatives/halo/halo'
 import { CreativeError } from '@/lib/creatives/errors'
+import type { CantoDaLogo } from './arquetipos/tipos'
 import type { Canto } from './spec'
 
 // ─── Contrato ───────────────────────────────────────────────────────────────
@@ -204,7 +205,8 @@ export interface VarianteCarregada {
 
 export interface AvaliacaoDaLogo {
   variante: VarianteDaLogo
-  canto: Canto
+  /** O canto alternativo é sempre um dos quatro; o `superior-centro` é só o da logo fixa do #16. */
+  canto: CantoDaLogo
   posicao: Rect
   medida: MedidaDaLogo | null
   estado: 'legivel' | 'ilegivel' | 'sem-pixels' | 'indisponivel' | 'fora-da-area'

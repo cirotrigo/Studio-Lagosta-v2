@@ -18,9 +18,12 @@ import {
   type MembroDaFaixa,
 } from './busca-espacial-tipos'
 import { CreativeError } from '@/lib/creatives/errors'
+import { envoltoriosDoArquetipo, type ReceitaDoAcento } from './acentos'
+import { faixasDoArquetipo } from './faixas'
+import { textoNoLiso } from './fundo'
 import { materializarUnidades, type UnidadeDoArquetipo } from './no-compositor'
-import type { GeometriaEfetiva, Materializacao, PapelMaterializado, ProblemaDeMaterializacao } from './materializar'
-import type { ArquetipoDeLayout, FormatoDoArquetipo, PapelDeTexto, Zona } from './tipos'
+import type { GeometriaEfetiva, MargemDaPeca, Materializacao, PapelMaterializado, ProblemaDeMaterializacao } from './materializar'
+import { ehReferencia, type ArquetipoDeLayout, type FormatoDoArquetipo, type PapelDeTexto, type Zona } from './tipos'
 
 type Ornamentos = { esquerda: number; direita: number; topo: number; base: number }
 
@@ -33,29 +36,21 @@ type Ornamentos = { esquerda: number; direita: number; topo: number; base: numbe
  */
 const FOLGA_DO_TOPO = 0.5
 const FOLGA_DA_BASE = 1.5
-/** A tolerância da materialização (½ px), na conferência horizontal. */
-const TOLERANCIA_HORIZONTAL = 0.5
-
 /**
- * As FAIXAS do arquétipo num formato: os papéis com referência e zona (a logo automática fica fora) cujas ZONAS se
- * sobrepõem na vertical, por fecho transitivo. Faixas na ordem do primeiro membro na leitura; membros na leitura.
+ * A tolerância da materialização (½ px) na conferência horizontal, MAIS a folga do arredondamento (A-I2, 29/10/2026).
+ * Caixa e zona chegam INTEIRAS, x e largura arredondados separados (`arredondado`), e a conferência exata já admitiu
+ * ½ px. À esquerda comparam-se dois x: dois erros de até ½ px, excesso inteiro < 1,5 → no máximo 1 px. À direita
+ * comparam-se x + largura de cada lado: quatro erros de até ½ px, excesso inteiro < 2,5 → no máximo 2 px. Sem a
+ * folga, a logo de 94,5 px em x 893,7 (direita real 988,2, aceita pela conferência exata contra a zona em 988 =
+ * 1080 − 92) saía arredondada como 894 + 95 = 989 contra 988 e a composição recusava o que a materialização aceitara.
+ * Limite conhecido: a conferência final do compor (`compor.ts`, o `foraDaZona` da unidade final, +1 px) é mais estreita que
+ * os 2 px daqui — uma caixa no extremo teórico passa aqui e cai lá; o A-I2 real (+1) passa nas duas.
  */
-export function faixasDoArquetipo(arquetipo: ArquetipoDeLayout, formato: FormatoDoArquetipo): MembroDaFaixa[][] {
-  const ordem = new Map(arquetipo.papeis.map((p) => [p.papel, p.ordemDeLeitura]))
-  const porOrdem = (a: MembroDaFaixa, b: MembroDaFaixa) => (ordem.get(a) ?? 99) - (ordem.get(b) ?? 99)
-  const zonas = new Map<MembroDaFaixa, Zona>()
-  for (const [papel, pos] of Object.entries(arquetipo.formatos[formato].papeis)) {
-    if (pos && 'zona' in pos) zonas.set(papel as MembroDaFaixa, pos.zona)
-  }
-  const sobrepoem = (a: MembroDaFaixa, b: MembroDaFaixa) => zonas.get(a)!.yMin < zonas.get(b)!.yMax && zonas.get(b)!.yMin < zonas.get(a)!.yMax
-  let faixas: MembroDaFaixa[][] = []
-  // União incremental: cada membro funde todas as faixas que toca (o fecho transitivo).
-  for (const m of [...zonas.keys()].sort(porOrdem)) {
-    const tocadas = faixas.filter((f) => f.some((o) => sobrepoem(o, m)))
-    faixas = [...faixas.filter((f) => !tocadas.includes(f)), [...tocadas.flat(), m].sort(porOrdem)]
-  }
-  return faixas.sort((a, b) => porOrdem(a[0], b[0]))
-}
+const TOLERANCIA_HORIZONTAL = 0.5
+const TOLERANCIA_DA_ESQUERDA = TOLERANCIA_HORIZONTAL + FOLGA_DO_TOPO
+const TOLERANCIA_DA_DIREITA = TOLERANCIA_HORIZONTAL + FOLGA_DA_BASE
+
+export { faixasDoArquetipo } from './faixas'
 
 /**
  * As faixas de busca de uma peça medida na REFERÊNCIA: só os membros presentes (texto na peça; logo de referência
@@ -78,7 +73,11 @@ export function candidatosDasFaixas(args: {
   const presentes = faixasDoArquetipo(args.arquetipo, args.formato)
     .map((f) => f.filter((m) => args.papeis[m]))
     .filter((f) => f.length > 0)
-  if (presentes.length > LIMITES_DA_BUSCA.faixas) throw limiteDaBusca(`${presentes.length} faixas passam do limite de ${LIMITES_DA_BUSCA.faixas}`)
+  // Sem foto — ou com a foto numa caixa, longe do texto (#8) —, a faixa não tem alternativa a avaliar (nada a ler): só a
+  // partida, e por isso cabem 3 faixas.
+  const soPartida = textoNoLiso(args.arquetipo)
+  const teto = soPartida ? LIMITES_DA_BUSCA.faixasSemFoto : LIMITES_DA_BUSCA.faixas
+  if (presentes.length > teto) throw limiteDaBusca(`${presentes.length} faixas passam do limite de ${teto}`)
 
   return presentes.map((membros, indice) => {
     let maxLo = -Infinity
@@ -90,7 +89,7 @@ export function candidatosDasFaixas(args: {
       maxLo = Math.max(maxLo, z.y - (p.y - o.topo))
       minHi = Math.min(minHi, z.y + z.height - (p.y + p.height + o.base))
       // Na horizontal o x é do alinhamento: caixa que passa da zona de lado não tem conserto vertical.
-      if (!semPosicao && (p.x - o.esquerda < z.x - TOLERANCIA_HORIZONTAL || p.x + p.width + o.direita > z.x + z.width + TOLERANCIA_HORIZONTAL)) {
+      if (!semPosicao && (p.x - o.esquerda < z.x - TOLERANCIA_DA_ESQUERDA || p.x + p.width + o.direita > z.x + z.width + TOLERANCIA_DA_DIREITA)) {
         semPosicao = { membro: m, motivo: `a caixa de ${m} (x ${Math.round(p.x - o.esquerda)}–${Math.round(p.x + p.width + o.direita)}) passa da zona efetiva na horizontal (x ${Math.round(z.x)}–${Math.round(z.x + z.width)}); o alinhamento fixa o x e a busca só move na vertical` }
       }
     }
@@ -103,6 +102,12 @@ export function candidatosDasFaixas(args: {
       semPosicao = { membro: membros[0], motivo: `nenhuma posição vertical da faixa (${membros.join(', ')}) cabe na zona efetiva: o espaço que a zona dá é menor que a caixa real` }
     }
     if (semPosicao) return { indice, membros, intervalo, referenciaValida, candidatos: [], semPosicao }
+    // F1: a peça por REFERÊNCIA não se desloca — a posição aprovada é a única, qualquer que seja a altura medida do
+    // texto ou o papel opcional ausente (o intervalo pela caixa real abriria 24–68 px). Só o resgate pelo piso (acima)
+    // continua, dito.
+    if (ehReferencia(args.arquetipo) && referenciaValida) {
+      return { indice, membros, intervalo: { min: 0, max: 0 }, referenciaValida, candidatos: [{ rotulo: 'referencia', dy: 0 }] }
+    }
 
     // Os rótulos dizem ONDE no intervalo: o topo, o meio do caminho para cima, o meio do caminho para baixo e a base.
     // Com a referência válida, o "meio" é rumo à referência (0); sem ela, o meio do intervalo.
@@ -122,7 +127,7 @@ export function candidatosDasFaixas(args: {
         : { rotulo: 'abaixo', dy: intervalo.max }
     // Os 5 rótulos são o teto de `candidatosPorFaixa`; passo pequeno e repetido não são alternativa.
     const candidatos: CandidatoDaFaixa[] = [partida]
-    for (const rotulo of ROTULOS_DO_DESLOCAMENTO) {
+    for (const rotulo of soPartida ? [] : ROTULOS_DO_DESLOCAMENTO) {
       const dy = dys[rotulo]
       if (dy === null || candidatos.some((c) => Math.abs(c.dy - dy) < PASSO_MINIMO_PX)) continue
       candidatos.push({ rotulo, dy })
@@ -181,14 +186,27 @@ export function partidaNoArquetipo(args: {
   geometria: GeometriaEfetiva
   unidades: UnidadeDoArquetipo[]
   logo: { razao: number } | null
+  /** O gap da marca: os papéis de cada faixa empilham (29/10/2026). */
+  gap?: number
+  /** `'marca'`: a margem da marca é a margem (29/10/2026). Ausente = opção A. */
+  margem?: MargemDaPeca
+  /** As receitas dos acentos que a peça vai desenhar (a reserva do fio na pilha). */
+  receitas?: ReadonlyArray<ReceitaDoAcento>
 }): PartidaNoArquetipo {
-  const base = { arquetipo: args.arquetipo, formato: args.formato, canvas: args.canvas, geometria: args.geometria, unidades: args.unidades, logo: args.logo }
+  const base = { arquetipo: args.arquetipo, formato: args.formato, canvas: args.canvas, geometria: args.geometria, unidades: args.unidades, logo: args.logo, ...(args.gap !== undefined ? { gap: args.gap } : {}), ...(args.margem ? { margem: args.margem } : {}), ...(args.receitas ? { receitas: args.receitas } : {}) }
   const naReferencia = materializarUnidades({ ...base, conferirZona: false })
   if ('problemas' in naReferencia) return { ok: false, problemas: naReferencia.problemas }
   const conferida = materializarUnidades(base)
   const problemasDeZona = 'problemas' in conferida ? conferida.problemas : []
   const foraDaZona = new Set(problemasDeZona.map((p) => p.papel as MembroDaFaixa))
-  const ornamentos = Object.fromEntries(args.unidades.map((u) => [u.papel, u.ornamentos]))
+  // #5: a faixa conta a folga da pílula ao lado dos ornamentos (a busca não oferece um dy que a tire da zona).
+  const envoltorios = envoltoriosDoArquetipo(args.arquetipo, args.formato, args.canvas)
+  const ornamentos = Object.fromEntries(
+    args.unidades.map((u) => {
+      const e = envoltorios[u.papel]
+      return [u.papel, e ? { esquerda: u.ornamentos.esquerda + e.x, direita: u.ornamentos.direita + e.x, topo: u.ornamentos.topo + e.y, base: u.ornamentos.base + e.y } : u.ornamentos]
+    }),
+  )
   const faixas = candidatosDasFaixas({ arquetipo: args.arquetipo, formato: args.formato, papeis: naReferencia.papeis, ornamentos, foraDaZona })
   const semPosicao = faixas.filter((f) => f.candidatos.length === 0)
   if (semPosicao.length > 0) {

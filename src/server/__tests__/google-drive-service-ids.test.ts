@@ -7,7 +7,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const m = vi.hoisted(() => ({ chamadas: 0 }))
 
-vi.mock('googleapis', () => {
+vi.mock('googleapis/build/src/apis/drive', () => {
   const resposta = async () => {
     m.chamadas++
     return { data: { files: [], id: 'novo', parents: [], name: 'x', mimeType: 'image/jpeg' } }
@@ -16,7 +16,7 @@ vi.mock('googleapis', () => {
   class OAuth2 {
     setCredentials() {}
   }
-  return { google: { auth: { OAuth2 }, drive: () => ({ files, permissions: { create: resposta } }) } }
+  return { auth: { OAuth2 }, drive: () => ({ files, permissions: { create: resposta } }) }
 })
 
 let servico: typeof import('../google-drive-service').googleDriveService

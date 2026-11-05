@@ -28,7 +28,9 @@
 import type { Layer } from '@/types/template'
 import { temTextoVisivel } from './texto-visivel'
 import { TEXT_DRAW_PADDING, type TextGeometryIssue, type TextLayerMetrics } from '@/lib/creatives/text-geometry'
-import { CANVAS_MARGIN } from '@/lib/canvas-margin'
+import { margensDoEditor } from '@/lib/canvas-margin'
+import { formatoDaPaginaGravada } from '@/lib/compositor/formato'
+import { ajusteParaDentro } from './para-dentro'
 import { textosForaDaPiora, tratamentosQuePioraramALeitura, type ContrasteMedido, type PioraDeTratamento } from '@/lib/compositor/regua'
 import { papelDaCamada } from '@/lib/compositor/defasagem'
 import { alcanceDoGrupo, alturaDaFaixa, bordaDoGrupo, ehGradienteDeLeitura, forcaDaCamada, GRADIENTE_PADRAO, type Borda } from '@/lib/compositor/gradiente-de-leitura'
@@ -375,15 +377,13 @@ function expandir(r: Rect, d: number): Rect {
   return { x: r.x - d, y: r.y - d, width: r.width + 2 * d, height: r.height + 2 * d }
 }
 
-/** As margens de segurança do editor (as guias azuis), na escala da peça. */
+/**
+ * As margens de segurança do editor (as guias azuis), na escala da peça — a MARGEM DA MARCA padrão de
+ * `margensDoEditor` (29/10/2026: Story 64/160/160, Feed 64/72/72), pelo formato que o tamanho do canvas diz. Eram
+ * 70/120/100 fixos (até o L5 da instrução das linhas-guia, antecipado no PR das margens de 29/10).
+ */
 export function limitesDoEditor(canvas: { width: number; height: number }) {
-  const s = canvas.width / 1080
-  return {
-    topo: CANVAS_MARGIN.top * s,
-    base: canvas.height - CANVAS_MARGIN.bottom * s,
-    esquerda: CANVAS_MARGIN.left * s,
-    direita: canvas.width - CANVAS_MARGIN.right * s,
-  }
+  return margensDoEditor({ formato: formatoDaPaginaGravada(canvas), assinatura: null, largura: canvas.width, altura: canvas.height }).marca
 }
 
 /** A TINTA do texto na peça: vertical pelos glifos, horizontal pela linha mais larga no alinhamento. */
@@ -801,24 +801,11 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
       marcarParcial('fora-da-area-segura', 'bloco com fonte não cadastrada')
       continue
     }
-    const t = b.tinta
-    const sobra = {
-      topo: lim.topo - t.y,
-      base: t.y + t.height - lim.base,
-      esquerda: lim.esquerda - t.x,
-      direita: t.x + t.width - lim.direita,
-    }
-    const lados = (Object.keys(sobra) as Array<keyof typeof sobra>).filter((k) => sobra[k] > 2)
+    // A conta mora em `para-dentro.ts` (L3 das linhas-guia): o editor usa a MESMA para o "Trazer para dentro"
+    const { lados, dx, dy, maior, vertical, horizontal } = ajusteParaDentro(b.tinta, lim)
     if (lados.length === 0) continue
-    let dy = 0
-    let dx = 0
-    const vertical = sobra.topo > 2 && sobra.base > 2
-    const horizontal = sobra.esquerda > 2 && sobra.direita > 2
-    if (!vertical) dy = sobra.topo > 2 ? Math.ceil(sobra.topo + 2) : sobra.base > 2 ? -Math.ceil(sobra.base + 2) : 0
-    if (!horizontal) dx = sobra.esquerda > 2 ? Math.ceil(sobra.esquerda + 2) : sobra.direita > 2 ? -Math.ceil(sobra.direita + 2) : 0
     const ids = b.textos.map((x) => x.camada.id)
     const nomes = b.textos.map((x) => nomeDaCamada(x.camada)).join(' + ')
-    const maior = Math.max(...lados.map((k) => sobra[k]))
     adicionar(
       {
         regra: 'fora-da-area-segura',

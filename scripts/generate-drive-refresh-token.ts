@@ -19,7 +19,7 @@
  *   GOOGLE_DRIVE_REFRESH_TOKEN=<new-token>
  */
 
-import { google } from 'googleapis'
+import * as google from 'googleapis/build/src/apis/drive'
 import * as http from 'http'
 import { randomBytes } from 'crypto'
 import 'dotenv/config'

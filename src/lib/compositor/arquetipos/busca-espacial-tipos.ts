@@ -18,7 +18,7 @@
  * SÓ VERTICAL no v1: o alinhamento estrutural ancora uma LINHA (a margem esquerda no topo-esquerda, o eixo central
  * no centro-óptico); deslocar na horizontal moveria essa linha — a busca não reinventa o modelo.
  */
-import type { CropPosition } from '@/lib/image-crop-utils'
+import type { Janela, RotuloDoCorte } from '../corte-da-foto'
 import type { VarianteDaLogo } from '../legibilidade-da-logo'
 import type { Rect } from '@/lib/creatives/halo/halo'
 import type { FotoCinza } from '@/lib/creatives/halo/halo-medicao'
@@ -39,6 +39,11 @@ export const LIMITES_DA_BUSCA = {
   cortes: 3,
   /** 2 × 5 candidatos = 25 por corte: os limites fecham entre si (3 faixas passariam das 25 combinações). */
   faixas: 2,
+  /**
+   * Sem foto (`liso-claro`, #15) não há busca: cada faixa tem UM candidato, a partida — 3 × 1 = 1 combinação por corte e
+   * nenhuma avaliação (não há corte). Os tetos acima continuam valendo para toda peça com foto.
+   */
+  faixasSemFoto: 3,
   candidatosPorFaixa: 5,
   combinacoesPorCorte: 25,
   avaliacoes: 75,
@@ -112,7 +117,14 @@ export interface RegiaoProtegida {
 
 /** A foto num corte: o raster (cover, 540 px, b-w — a escala da régua), o mapa de calma e as regiões, nesse corte. */
 export interface LeituraDoCorte {
-  crop: CropPosition
+  /** O rótulo (âncora), ou `'janela'` (F2a: corte explícito). Só para o diagnóstico: quem IDENTIFICA o corte é a `chave`. */
+  crop: RotuloDoCorte
+  /** F2b: a identidade do corte por VALOR (`chaveDoCorte`) — duas janelas têm o mesmo `crop` e chaves diferentes. */
+  chave: string
+  /** F2b: o prior do componente `corte`. Ausente = a regra de sempre (central e janela explícita 1, âncoras 0). */
+  prior?: number
+  /** A janela do corte em frações da foto — a mesma conta do desenho; é por ela (`chaveDoCorte`) que os cortes se igualam. Ausente só em leitura sintética (teste). */
+  janela?: Janela
   raster: FotoCinza
   mapa: MapaDeCalma
   regioes: RegiaoProtegida[]
@@ -261,7 +273,9 @@ export interface TratamentoEstimado {
 }
 
 export interface AvaliacaoDaCombinacao {
-  crop: CropPosition
+  crop: RotuloDoCorte
+  /** F2b: o corte avaliado, por valor (`LeituraDoCorte.chave`). */
+  chave: string
   combinacao: Combinacao
   /** Vazio = válida. */
   eliminada: Eliminacao[]
@@ -288,7 +302,9 @@ export interface EscolhaEspacial {
    * `data:` gravaria a imagem inteira no diagnóstico. `null` sem foto.
    */
   foto: string | null
-  corte: CropPosition
+  corte: RotuloDoCorte
+  /** F2a: a janela (frações da foto) quando `corte` é `'janela'` — a peça grava `style.crop`, e a recomposição a reproduz. */
+  janela?: Janela
   deslocamentos: Partial<Record<MembroDaFaixa, number>>
   /** O canto da logo AUTOMÁTICA (centro-óptico), congelado com a posição. */
   cantoDaLogo?: Canto | null
@@ -297,6 +313,16 @@ export interface EscolhaEspacial {
    * ela continua a ler; trocar é dito, nunca silencioso. Ausente nas peças anteriores ao CP3 (a explícita vale).
    */
   logo?: VarianteDaLogo
+  /**
+   * O gap da PILHA da faixa com que a peça foi composta (29/10/2026, `gapEntreBlocos`). A recomposição reproduz a mesma
+   * pilha. Ausente = peça de antes da regra: cada papel na própria referência, como nasceu — editar só o texto não a move.
+   */
+  pilha?: number
+  /**
+   * A MARGEM com que a peça foi composta (29/10/2026): `'marca'` = a margem da marca é a margem (referências e zonas de
+   * borda seguem o piso do projeto). Ausente = peça de antes da regra: só a opção A (o piso recolhe), como nasceu.
+   */
+  margem?: 'marca'
 }
 
 /** O resumo da busca que ESCOLHEU a posição — a recomposição o carrega adiante, para a explicação não se perder. */
@@ -305,7 +331,7 @@ export interface ResumoDaBuscaOriginal {
   motivo: string
   recusas: Partial<Record<MotivoDeEliminacao, number>>
   combinacoesAvaliadas: number
-  cortesAvaliados: CropPosition[]
+  cortesAvaliados: RotuloDoCorte[]
 }
 
 /**
@@ -316,7 +342,8 @@ export type EscolhaParaReproduzir = (EscolhaEspacial & { buscaOriginal?: ResumoD
 
 /** Uma avaliação no diagnóstico: compacta (sem as camadas). */
 export interface ResumoDaAvaliacao {
-  crop: CropPosition
+  crop: RotuloDoCorte
+  chave: string
   escolhas: Combinacao['escolhas']
   pontuacao: number | null
   componentes: ComponentesDaPontuacao | null
@@ -337,7 +364,7 @@ export interface DiagnosticoDaBuscaEspacial {
   escolha: EscolhaEspacial
   /** Presente quando a posição veio da escolha gravada (recomposição), não de uma busca nova — com o resumo da busca original. */
   reproduzida?: { de: string; original?: ResumoDaBuscaOriginal }
-  cortesAvaliados: CropPosition[]
+  cortesAvaliados: RotuloDoCorte[]
   combinacoesAvaliadas: number
   limite: number
   faixas: Array<{ membros: MembroDaFaixa[]; intervalo: { min: number; max: number }; candidatos: CandidatoDaFaixa[] }>
@@ -345,7 +372,7 @@ export interface DiagnosticoDaBuscaEspacial {
   alternativas: ResumoDaAvaliacao[]
   recusas: Partial<Record<MotivoDeEliminacao, number>>
   /** Até 6 exemplos de recusa (um por motivo, primeiro). */
-  exemplosDeRecusa: Array<{ crop: CropPosition; escolhas: Combinacao['escolhas']; eliminada: Eliminacao[] }>
+  exemplosDeRecusa: Array<{ crop: RotuloDoCorte; chave: string; escolhas: Combinacao['escolhas']; eliminada: Eliminacao[] }>
   /** Por que o vencedor venceu, em uma frase (o critério que decidiu). */
   motivo: string
   /**

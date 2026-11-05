@@ -134,6 +134,25 @@ vi.mock('@/lib/db', () => {
     if (naTransacao && banco.travaConsultiva && banco.transacoesPendentes > 1) return b.soltar()
     await b.solta
   }
+  /** CP5c: o `SELECT … FROM "SocialPost" WHERE "pageId" = $1 ORDER BY "id" FOR UPDATE` do gate devolve os posts da página, em ordem de id. */
+  const linhasTravadas = (sql: string, valores: unknown[]) => {
+    if (!sql.includes('FROM "SocialPost"')) return []
+    return [...banco.posts.values()]
+      .filter((p) => p.pageId === valores[0])
+      .sort((a, b) => String(a.id).localeCompare(String(b.id)))
+      .map((p) => ({ id: p.id, status: p.status, laterPostId: p.laterPostId ?? null, postType: p.postType, generationId: p.generationId ?? null, projectId: p.projectId, pageId: p.pageId }))
+  }
+  /** CP5c: o merge do registro do gate (`mesclarFieldValuesDaArte` com `somenteSe`): só com o vínculo (projeto, página, página do projeto). */
+  const executarRaw = (naTransacao: boolean) => async (partes: TemplateStringsArray, ...valores: unknown[]) => {
+    const sql = partes.join('?')
+    if (!sql.startsWith('UPDATE "Generation"')) throw new Error(`SQL inesperado no banco falso: ${sql.slice(0, 60)}`)
+    const [patch, id, projectId, pageId] = valores as [string, string, number, string]
+    const g = banco.generations.get(id)
+    if (!g || g.projectId !== projectId || (g.fieldValues as Record<string, unknown> | null)?.pageId !== pageId || !banco.pages.has(pageId)) return 0
+    gravar('generations', id, { ...g, fieldValues: { ...(g.fieldValues as object), ...JSON.parse(patch) } }, naTransacao)
+    banco.eventos.push('gate:gravado')
+    return 1
+  }
   const atualizarMuitos = (tabela: Tabela, naTransacao: boolean) => async ({ where, data }: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
     let count = 0
     for (const [id, linha] of banco[tabela]) {
@@ -147,6 +166,7 @@ vi.mock('@/lib/db', () => {
 
   const delegados = (naTransacao: boolean) => ({
     project: { findUnique: async ({ where }: { where: { id: number } }) => (where.id === 404 ? null : { id: where.id, name: 'Espeto Gaúcho', userId: 'dono-interno', instagramAccountId: null }) },
+    customFont: { findMany: async () => [] },
     knowledgeBaseEntry: { findFirst: async () => null },
     learningSignal: {
       upsert: async ({ where, create }: { where: { chave: string }; create: Record<string, unknown> }) => {
@@ -311,8 +331,9 @@ vi.mock('@/lib/db', () => {
           const gancho = banco.aoTravar
           banco.aoTravar = null
           gancho?.()
-          return []
+          return linhasTravadas(partes.join(''), valores)
         },
+        $executeRaw: executarRaw(true),
       })
     } catch (erro) {
       Object.assign(banco, foto)
@@ -344,8 +365,9 @@ vi.mock('@/lib/db', () => {
             liberacoes.push(soltar)
             return [{ ok: 1 }]
           }
-          return []
+          return linhasTravadas(partes.join(''), valores)
         },
+        $executeRaw: executarRaw(true),
       })
     } finally {
       for (const soltar of liberacoes) soltar()
@@ -377,6 +399,47 @@ vi.mock('@/lib/db', () => {
 })
 
 vi.mock('@/lib/creatives/persist', () => ({ getPublicAppUrl: () => 'https://studio.test' }))
+/**
+ * CP5c: no perfil draft-only o agendamento MEDE a página antes de criar o rascunho. A medição em si não é o objeto
+ * deste harness (P11 a faz de verdade sobre a fixture; `agendar-itens-gate.test.ts` prova a transação): aqui toda
+ * página mede LIMPA (a medida da peça limpa do gate, com as camadas reais da página), e o que se prova é o resto —
+ * horário, adoção, idempotência, efeitos.
+ */
+vi.mock('@/lib/creatives/revisao/revisar-arte', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/creatives/revisao/revisar-arte')>()
+  const { medida, metrica } = await import('../../creatives/revisao/__tests__/suporte/corpus-do-gate')
+  type Camada = { id: string; type: string; visible?: boolean }
+  const formatoDe = (tags: string[]) => (tags.includes('feed') ? 'feed' : tags.includes('quadrado') ? 'quadrado' : 'story')
+  return {
+    ...real,
+    contextoDaMedicao: async (args: { projectId: number; page: { width: number; height: number; tags: string[] } }) => ({
+      projectId: args.projectId,
+      canvas: { width: args.page.width, height: args.page.height },
+      formato: formatoDe(args.page.tags),
+      background: '#000000',
+      faixa: [0.45, 0.9],
+      referencias: { headline: { fontSize1080: 84, entrelinha: null, origem: 'assinatura' } },
+      referencia: 'assinatura',
+      assunto: null,
+      assuntoNaoSeAplica: true,
+      motivoSemAssunto: 'a peça não tem foto de fundo: não há assunto a proteger',
+      origensDaLogo: new Map(),
+      cacheDeLogos: new Map(),
+    }),
+    medirCamadasDaPeca: async (camadas: Camada[], ctx: { canvas: { width: number; height: number }; formato: 'story' | 'feed' | 'quadrado'; referencias: Record<string, unknown> }) =>
+      medida({
+        canvas: ctx.canvas,
+        formato: ctx.formato,
+        camadas: camadas as never,
+        metricas: camadas.filter((l) => l.type === 'text' && l.visible !== false).map((l) => metrica(l as never)),
+        referencias: ctx.referencias as never,
+        leituraDaLogo: [],
+        assunto: null,
+        assuntoNaoSeAplica: true,
+        motivoSemAssunto: 'a peça não tem foto de fundo: não há assunto a proteger',
+      }),
+  }
+})
 vi.mock('@/lib/creatives/ingerir-midia', () => ({ ingerirMidiaExterna: vi.fn(async (urls: string[]) => ({ urls, falhas: [], importadas: 0 })) }))
 
 // Os sinais são upsert por chave no código de produção: aqui também — a segunda escrita da mesma chave não muda nada.
@@ -460,7 +523,9 @@ const BLOB = 'https://loja.public.blob.vercel-storage.com'
 
 function criarPeca(n: number, opcoes: { status?: string; formato?: 'story' | 'feed'; quando?: string | null; slide?: boolean; itemDoPlano?: { status: string; generationId?: string | null; postId?: string | null; pageId?: string } | 'ausente' } = {}) {
   const formato = opcoes.formato ?? 'story'
-  const camadas = [{ id: 'headline', type: 'text', content: `Manchete ${n}`, position: { x: 10, y: 20 } }]
+  // CP5c: a camada tem caixa, corpo e papel (o gate mede geometria, piso de interface e copy), e a página tem o contrato da copy.
+  const camadas = [{ id: 'headline', name: 'headline', type: 'text', visible: true, content: `Manchete ${n}`, position: { x: 100, y: 300 }, size: { width: 880, height: 120 }, style: { fontSize: 84, lineHeight: 1.2, color: '#FFFFFF' }, metadata: { compositor: { papel: 'headline' } } }]
+  const copyAutoral = { versao: 'copy-autoral-v1', origem: { autor: 'claude', superficie: 'chat' }, revisoes: [], blocos: [{ id: 'headline', funcao: 'headline', ordem: 0, linhas: [`Manchete ${n}`] }] }
   const url = `${BLOB}/page-${n}-1757700000000.png`
   const status = opcoes.status ?? 'COMPLETED'
   banco.pages.set(`page-${n}`, {
@@ -470,6 +535,11 @@ function criarPeca(n: number, opcoes: { status?: string; formato?: 'story' | 'fe
     width: 1080,
     height: formato === 'story' ? 1920 : 1350,
     tags: ['compositor', formato],
+    name: `Página ${n}`,
+    background: null,
+    audio: null,
+    copyAutoral,
+    updatedAt: new Date('2026-09-10T12:00:00.000Z'),
     thumbnail: status === 'COMPLETED' ? url : null,
     layers: camadas,
     Template: { projectId: PROJETO },

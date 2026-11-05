@@ -40,7 +40,7 @@ import { validarSpec, type SpecDePeca } from '@/lib/compositor/spec'
 import { verArquetipo } from '@/lib/compositor/arquetipos/catalogo'
 import { impressaoDoArquetipo } from '@/lib/compositor/arquetipos/impressao'
 import { resolverArquetipo } from '@/lib/compositor/arquetipos/na-spec'
-import { cenario } from './suporte/compositor'
+import { cenario, noPisoDe1310 } from './suporte/compositor'
 import { dataUrl } from './suporte/fixture'
 import { cenarioSintetico, fotoSintetica, logoSintetica, paginaSintetica, specSintetica, variantesClaraEEscura, VEU_CLARO, VEU_ESCURO } from './suporte/sinteticos'
 
@@ -53,7 +53,7 @@ describe('T1a · ciclo medir-copy → fixação → compor → persistência →
     const fotoUrl = dataUrl(foto)
     const pagina = paginaSintetica({ id: 't1a-ciclo', headline: { cor: '#F5F5F5' }, servico: { cor: '#F5F5F5' }, logoUrl: dataUrl(await logoSintetica('#808080')), fundoUrl: fotoUrl })
     const base = await cenarioSintetico({ pagina, foto, candidatasDoVeu: [], logosDoProjeto: await variantesClaraEEscura() })
-    cenario.atual = { ...base, projeto: { ...base.projeto, assinatura: { mancha: VEU_ESCURO, gradiente: { cor: VEU_CLARO } } } }
+    cenario.atual = { ...base, projeto: { ...base.projeto, assinatura: noPisoDe1310({ mancha: VEU_ESCURO, gradiente: { cor: VEU_CLARO } }) } }
     const blocos = [
       { papel: 'headline' as const, linhas: ['Almoço', 'de domingo'] },
       { papel: 'servico' as const, linhas: ['Dom · 12h às 16h'] },

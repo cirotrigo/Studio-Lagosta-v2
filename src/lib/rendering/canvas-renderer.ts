@@ -40,7 +40,7 @@ export async function renderDesignToPNG(
     imageCache: options.imageCache,
     backgroundColor: options.backgroundColor,
     // Mesmas injeções do caminho story-renderer (lib/canvas-renderer.ts):
-    // máscara/svg-path precisam de Path2D e os filtros de imagem/blur de
+    // máscara e ícone precisam de Path2D e os filtros de imagem/blur de
     // texto precisam de canvas offscreen — sem isso este caminho
     // (generate-creatives) divergiria do outro
     createPath2D: (d: string) => new NapiPath2D(d) as unknown as Path2D,

@@ -984,9 +984,12 @@ export class LaterPostScheduler {
               failedAt: new Date(),
               processingStartedAt: null,
             }
-          : newStatus !== PostStatus.POSTING
-            ? { processingStartedAt: null }
-            : {}
+          : {
+              // O Zernio aceitou: o erro de uma tentativa anterior não vale mais.
+              errorMessage: null,
+              failedAt: null,
+              ...(newStatus !== PostStatus.POSTING ? { processingStartedAt: null } : {}),
+            }
 
       try {
         const updatedPost = await db.socialPost.update({

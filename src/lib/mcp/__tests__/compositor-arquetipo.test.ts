@@ -22,10 +22,14 @@ vi.mock('@/lib/compositor/fila', () => ({ enfileirarPeca: mocks.enfileirarPeca }
 vi.mock('@/lib/compositor/medir-copy-service', () => ({ medirCopyDoProjeto: mocks.medirCopyDoProjeto, descreverVariantes: vi.fn(async () => ({ templateId: 3, variantes: [] })) }))
 vi.mock('@/lib/creatives/persist', () => ({ getPublicAppUrl: () => 'https://studio.test' }))
 vi.mock('@/lib/mcp/tools', () => ({ quemDecidiu: vi.fn(async () => 'u1'), canalDoPrincipal: vi.fn(() => 'claude-ai') }))
+// F2c: ver-assinatura lista as referências do cliente pela camada de serviço (nenhuma aqui; o banco não entra).
+vi.mock('@/lib/compositor/referencias', () => ({ listarReferencias: vi.fn(async () => []) }))
 
 import { zodToJsonSchema } from 'zod-to-json-schema'
 import { specSchema } from '@/lib/compositor/spec'
 import { toolsDoCompositor } from '../catalogo/compositor'
+import { toolsDeReferencias } from '../catalogo/referencias'
+import { listarReferencias } from '@/lib/compositor/referencias'
 
 const tool = (nome: string) => toolsDoCompositor.find((t) => t.nome === nome)!
 const blocos = [
@@ -132,7 +136,23 @@ describe('T1a · arquetipo nas portas MCP', () => {
     const r = (await tool('ver-assinatura').handler({ projectId: 8 }, { kind: 'user' } as never)) as Record<string, any>
     const porId = Object.fromEntries(r.arquetipos.map((a: Record<string, unknown>) => [a.id, a]))
     expect(porId['minimal-fb-topo-esquerda']).toMatchObject({ versao: 1, codigoTaxonomico: 'MIN-01', formatos: ['story', 'feed'], disponibilidade: 'disponivel' })
-    expect(porId['minimal-fb-centro-optico']).toMatchObject({ disponibilidade: 'disponivel' })
-    expect(porId['minimal-fb-base-esquerda']).toMatchObject({ disponibilidade: 'aguarda-t1b' })
+    // O #3 guardado fora da vitrine (26/10): sem texto central sobre foto nas próximas provas (segue resolvível pelo id).
+    expect(porId['minimal-fb-centro-optico']).toBeUndefined()
+    // T1b: o modelo da moldura compõe, e cada arquétipo diz os acentos que a peça ganha.
+    expect(porId['minimal-fb-base-esquerda']).toMatchObject({ disponibilidade: 'disponivel', elementos: [{ id: 'moldura', tipo: 'moldura-aberta', opcional: false, corPorPapel: 'texto', presoA: 'headline' }] })
+    // H9: o #9 publicado, com a máscara da caixa (o topo em arco) por formato.
+    expect(porId['minimal-divisao-cor-topo-arco']).toMatchObject({ versao: 1, codigoTaxonomico: 'MIN-04', fundo: 'foto-em-caixa', disponibilidade: 'disponivel', mascaraDaFoto: { story: { tipo: 'arco-janela', raio: 0.62 }, feed: { tipo: 'arco-janela', raio: 0.62 } } })
+    // O #4 guardado fora da vitrine (25/10): o agente não o lê no ver-assinatura (segue resolvível pelo id).
+    expect(porId['minimal-fb-base-centro']).toBeUndefined()
+  })
+
+  it('F2b: ver-assinatura e listar-referencias mostram o assunto da revisão persistida; null na revisão antiga', async () => {
+    const assunto = { caixa: { x: 0.2, y: 0.1, w: 0.4, h: 0.3 }, visivel: 1 }
+    const linha = { arquetipoId: 'ref-p1', versao: 2, pagina: 'P', formato: 'story', revogadaEm: null, corpos: null, estilos: null }
+    vi.mocked(listarReferencias).mockResolvedValue([{ ...linha, assunto }, { ...linha, arquetipoId: 'ref-p2', assunto: null }] as never)
+    const assinatura = (await tool('ver-assinatura').handler({ projectId: 8 }, { kind: 'user' } as never)) as Record<string, any>
+    const listadas = (await toolsDeReferencias.find((t) => t.nome === 'listar-referencias')!.handler({ projectId: 8 }, { kind: 'user' } as never)) as Record<string, any>
+    vi.mocked(listarReferencias).mockResolvedValue([])
+    for (const r of [assinatura, listadas]) expect(r.referencias.map((l: Record<string, unknown>) => l.assunto)).toEqual([assunto, null])
   })
 })

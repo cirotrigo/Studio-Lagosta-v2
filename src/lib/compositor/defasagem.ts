@@ -36,14 +36,18 @@ import { diffDeGeometria, type DiffDeGeometria } from '@/lib/aprendizado/diff-ge
 import { lerCamadas } from '@/lib/posts/page-layers'
 import { renderDaPaginaCobreAMidia } from '@/lib/posts/render-da-pagina'
 import { ehClipe } from '@/lib/video/camadas-de-video'
+import { temGradeVisivel, vinculadaAGrade } from '@/lib/grades/presenca'
 
 import type { CropPosition } from '@/lib/image-crop-utils'
+import { lerJanela, type Janela, type RotuloDoCorte } from './corte-da-foto'
 import { CreativeError } from '@/lib/creatives/errors'
 import type { VarianteDaLogo } from './legibilidade-da-logo'
 
 import { linhasComColchetes } from './destaques'
 import { CANTOS, PAPEIS, type Canto, type Papel, type SpecDePeca } from './spec'
 import { PAPEIS_DO_ARQUETIPO } from './arquetipos/tipos'
+import { lerAcentosGravados, type AcentoCongelado } from './arquetipos/acentos'
+import { lerReceitaDaMascara, type CaixaDaMascara, type ReceitaDaMascara } from './arquetipos/mascara'
 import { MODO_BUSCA_ESPACIAL, type EscolhaEspacial, type EscolhaParaReproduzir, type MembroDaFaixa, type ResumoDaBuscaOriginal } from './arquetipos/busca-espacial-tipos'
 
 /**
@@ -218,11 +222,43 @@ export function fotoDaPagina(camadas: unknown): string | null {
   return daCamada || (typeof doEstilo === 'string' ? doEstilo : '') || null
 }
 
+/** A camada de FUNDO da página (a mesma régua de `fotoDaPagina`): `bg-foto`, ou a primeira imagem. */
+export function camadaDeFundo(camadas: unknown): Layer | null {
+  const { camadas: lidas, legivel } = lerCamadas(camadas)
+  if (!legivel) return null
+  const imagens = (lidas as Layer[]).filter((c) => c?.type === 'image')
+  return imagens.find((c) => c.id === 'bg-foto') ?? imagens[0] ?? null
+}
+
+/**
+ * F2a (01/11/2026): o ENQUADRAMENTO EFETIVO da página — a janela (`style.crop`, o recorte feito no editor) ou a âncora
+ * (`cropPosition`, inclusive depois de "Remover" o crop). É o que a recomposição ADOTA para a foto que a página mostra,
+ * a mesma ou a trocada; a escolha gravada só vale no que ele não diz. `null` sem fundo ou sem nenhum dos dois.
+ */
+export function enquadramentoDaPagina(camadas: unknown): { janela: Janela } | { corte: CropPosition } | null {
+  const fundo = camadaDeFundo(camadas)
+  if (!fundo) return null
+  const estilo = (fundo.style ?? {}) as { crop?: unknown; cropPosition?: unknown; objectFit?: unknown }
+  const janela = lerJanela(estilo.crop)
+  if (janela) return { janela }
+  if (typeof estilo.cropPosition === 'string' && Object.prototype.hasOwnProperty.call(CORTES, estilo.cropPosition)) return { corte: estilo.cropPosition as CropPosition }
+  // "Remover" o crop apaga só `style.crop` (a peça por janela nasce SEM `cropPosition`): o que a página mostra então é o
+  // cover central (`resolveImageSourceRect` sem âncora). É esse o enquadramento efetivo — não `null`, que deixaria a
+  // recomposição ressuscitar a janela gravada (Codex, F2a rodada 1, P2 #1).
+  if (estilo.objectFit === 'cover') return { corte: 'center-middle' }
+  return null
+}
+
 export interface Defasagem {
   /** Não deu para ler um dos lados — nunca vira "não mudou nada". */
   ilegivel: boolean
-  /** O texto — ou a FOTO — da página não é mais o com que a arte foi feita. */
+  /** O texto — ou a FOTO, ou o ENQUADRAMENTO dela — da página não é mais o com que a arte foi feita. */
   defasada: boolean
+  /**
+   * F2a: o enquadramento da foto de FUNDO (crop/âncora) foi mudado no editor. Não é "mexido na mão": a recomposição
+   * adota o enquadramento da página (`enquadramentoDaPagina`) e reflui o texto nele. `defasada` já o inclui.
+   */
+  enquadramentoAlterado?: boolean
   /**
    * A foto de fundo da página não é a da arte (PR 10): trocada no editor. Até
    * aqui só o texto contava, e a foto trocada num slide de carrossel nunca
@@ -316,23 +352,41 @@ function mudancasDeTipo(antes: unknown, depois: unknown): string[] {
  * caixa, fonte, alinhamento e visibilidade). Recompor escolhe o corte de novo
  * pelo mapa de calma e jogaria fora o que a pessoa acertou — conta como ajuste
  * manual, e a arte é só re-renderizada como está.
+ *
+ * A MÁSCARA também (#9, A-07, 25/10/2026): acrescentada, removida ou trocada
+ * (`shapeId` ou `path`) pela barra de imagem, a recomposição a redesenharia pela
+ * receita — ou a apagaria, no legado — em silêncio. Comparada por VALOR das duas
+ * chaves (a ordem não importa; ausência = ausência), sem validar nem normalizar
+ * o SVG.
  */
-function mudancasDeEnquadramento(antes: unknown, depois: unknown): string[] {
+function mudancasDeEnquadramento(antes: unknown, depois: unknown): { motivos: string[]; fundoAlterado: boolean } {
   const a = lerCamadas(antes)
   const d = lerCamadas(depois)
-  if (!a.legivel || !d.legivel) return []
-  const enquadramento = (c: Layer) => {
-    const estilo = (c.style ?? {}) as { crop?: unknown; cropPosition?: unknown; objectFit?: unknown }
-    return JSON.stringify([estilo.crop ?? null, estilo.cropPosition ?? null, estilo.objectFit ?? null])
+  if (!a.legivel || !d.legivel) return { motivos: [], fundoAlterado: false }
+  const corte = (c: Layer) => {
+    const estilo = (c.style ?? {}) as { crop?: unknown; cropPosition?: unknown }
+    return JSON.stringify([estilo.crop ?? null, estilo.cropPosition ?? null])
+  }
+  const resto = (c: Layer) => {
+    const estilo = (c.style ?? {}) as { objectFit?: unknown; mask?: unknown }
+    const mascara = ehObjeto(estilo.mask) ? [estilo.mask.shapeId ?? null, estilo.mask.path ?? null] : [null, null]
+    return JSON.stringify([estilo.objectFit ?? null, ...mascara])
   }
   const imagensAntes = new Map((a.camadas as Layer[]).filter((c) => c?.type === 'image').map((c) => [c.id, c]))
+  const fundo = camadaDeFundo(depois)
   const motivos: string[] = []
+  let fundoAlterado = false
   for (const camada of d.camadas as Layer[]) {
     if (camada?.type !== 'image') continue
     const anterior = imagensAntes.get(camada.id)
-    if (anterior && enquadramento(anterior) !== enquadramento(camada)) motivos.push(`o enquadramento da imagem "${camada.id}" foi ajustado à mão`)
+    if (!anterior) continue
+    // F2a: o crop/âncora da foto de FUNDO é sinal próprio (a recomposição o adota); objectFit e máscara, e qualquer
+    // imagem que não é o fundo, continuam "mexido na mão".
+    if (fundo && camada.id === fundo.id && corte(anterior) !== corte(camada)) fundoAlterado = true
+    else if (corte(anterior) !== corte(camada)) motivos.push(`o enquadramento da imagem "${camada.id}" foi ajustado à mão`)
+    if (resto(anterior) !== resto(camada)) motivos.push(`o enquadramento da imagem "${camada.id}" foi ajustado à mão`)
   }
-  return motivos
+  return { motivos, fundoAlterado }
 }
 
 /**
@@ -344,6 +398,26 @@ function clipesDaLinhaDoTempo(camadasDaPagina: unknown): string[] {
   const d = lerCamadas(camadasDaPagina)
   if (!d.legivel) return []
   return (d.camadas as Layer[]).some((c) => ehClipe(c)) ? ['a página tem clipes na linha do tempo'] : []
+}
+
+/**
+ * G4.5 (27/10/2026): foto trocada numa célula de GRADE, qualquer uma — `fotoDaPagina` só olha a primeira imagem, e a
+ * troca da segunda foto da grade deixava o slide publicando a anterior. Comparada por id nos dois lados (`''` e
+ * ausente são a mesma célula vazia).
+ */
+function fotosDaGradeTrocadas(antes: unknown, depois: unknown): string[] {
+  const a = lerCamadas(antes)
+  const d = lerCamadas(depois)
+  if (!a.legivel || !d.legivel) return []
+  const url = (c: Layer | undefined) => (typeof c?.fileUrl === 'string' ? c.fileUrl : '')
+  const daArte = new Map((a.camadas as Layer[]).filter((c) => c && vinculadaAGrade(c)).map((c) => [c.id, c]))
+  const motivos: string[] = []
+  for (const c of d.camadas as Layer[]) {
+    if (!c || !vinculadaAGrade(c)) continue
+    const anterior = daArte.get(c.id)
+    if (anterior && url(anterior) !== url(c)) motivos.push(`a foto da célula "${c.id}" da grade foi trocada`)
+  }
+  return motivos
 }
 
 /**
@@ -369,13 +443,15 @@ export function medirDefasagem(camadasDaPagina: unknown, snapshot: unknown): Def
     const extra = l && typeof l.id === 'string' ? idDoExtraDaCamada(l) : null
     if (extra) extraDaCamada.set(l.id, extra)
   }
+  const enquadramento = diff.ilegivel ? { motivos: [], fundoAlterado: false } : mudancasDeEnquadramento(snapshot, camadasDaPagina)
   const motivos = diff.ilegivel
     ? ['não deu para comparar a geometria da página com a da arte']
     : [
         ...mexeuNaMao(diff, extraDaCamada),
         ...mudancasDeTipo(snapshot, camadasDaPagina),
-        ...mudancasDeEnquadramento(snapshot, camadasDaPagina),
+        ...enquadramento.motivos,
         ...clipesDaLinhaDoTempo(camadasDaPagina),
+        ...fotosDaGradeTrocadas(snapshot, camadasDaPagina),
       ]
 
   // A foto trocada é defasagem como o texto editado (PR 10). Só conta quando a
@@ -383,14 +459,17 @@ export function medirDefasagem(camadasDaPagina: unknown, snapshot: unknown): Def
   // aparece no diff de geometria como ajuste manual.
   const fotoAntes = fotoDaPagina(snapshot)
   const fotoAgora = fotoDaPagina(camadasDaPagina)
-  const fotoTrocada = !!fotoAntes && !!fotoAgora && fotoAntes !== fotoAgora
+  const fotoTrocada = (!!fotoAntes && !!fotoAgora && fotoAntes !== fotoAgora) || fotosDaGradeTrocadas(snapshot, camadasDaPagina).length > 0
 
   return {
     ilegivel: false,
-    defasada: papeis.length > 0 || fotoTrocada,
+    defasada: papeis.length > 0 || fotoTrocada || enquadramento.fundoAlterado,
     fotoTrocada,
+    enquadramentoAlterado: enquadramento.fundoAlterado,
     papeis,
-    soTexto: motivos.length === 0,
+    // G4.5: grade de fotos é composição manual — recompor pela spec a desmontaria em UMA foto. A peça com grade (de um
+    // lado ou do outro) só é re-renderizada como está; nada entra em `mexidoNaMao`, que não acusa mudança sem mudança.
+    soTexto: motivos.length === 0 && !temGradeVisivel(camadasDaPagina) && !temGradeVisivel(snapshot),
     mexidoNaMao: motivos,
   }
 }
@@ -455,7 +534,16 @@ export function specComACopyDaPagina(
    * CP2B: a URL da foto que a arte DESENHOU (`fieldValues.imageUrl`). Com arquétipo, a página que mostra essa mesma foto
    * não troca o `driveFileId` pela URL — senão o assunto do catálogo (a região protegida) se perderia na recomposição.
    */
-  opcoes: { fotoDesenhada?: string | null } = {},
+  opcoes: {
+    fotoDesenhada?: string | null
+    /**
+     * F2a: o ENQUADRAMENTO EFETIVO da página que a spec recomposta leva (`enquadramentoDaPagina`): a janela
+     * (`style.crop`) sempre que existe; a âncora só quando o enquadramento foi mudado no editor (`enquadramentoAlterado`)
+     * — senão a escolha gravada reproduz como sempre, e a foto trocada sem crop busca o corte de novo. Quem decide é a
+     * recomposição, que conhece o snapshot; `null`/ausente = nada a levar.
+     */
+    enquadramento?: { janela: Janela } | { corte: CropPosition } | null
+  } = {},
 ): SpecRecomposta {
   const avisos: string[] = []
   // Com os [colchetes] de volta: o destaque da página sobrevive à recomposição.
@@ -543,9 +631,15 @@ export function specComACopyDaPagina(
     foto = { url }
   }
 
-  const { camadasExtras: _extrasDaSpec, ...semExtras } = spec
+  // F2a: o ENQUADRAMENTO EFETIVO da página vence (o recorte feito no editor, ou a âncora depois de "Remover"), para a
+  // foto que a página mostra; com ele, a seleção de fotos sai da spec recomposta (a foto está fixada).
+  const enquadramento = foto && opcoes.enquadramento ? opcoes.enquadramento : null
+  const { janela: _janelaAntiga, corte: _corteAntigo, ...fotoSemEnquadramento } = foto ?? {}
+  const fotoEfetiva = foto ? (enquadramento ? { ...fotoSemEnquadramento, ...enquadramento } : foto) : null
+  const { camadasExtras: _extrasDaSpec, fotosCandidatas, selecaoExperimental, ...semExtras } = spec
+  const selecao = enquadramento ? {} : { ...(fotosCandidatas !== undefined ? { fotosCandidatas } : {}), ...(selecaoExperimental !== undefined ? { selecaoExperimental } : {}) }
   return {
-    spec: { ...semExtras, blocos, ...(camadasExtras.length > 0 ? { camadasExtras } : {}), ...(foto ? { foto } : {}) } as SpecDePeca,
+    spec: { ...semExtras, ...selecao, blocos, ...(camadasExtras.length > 0 ? { camadasExtras } : {}), ...(fotoEfetiva ? { foto: fotoEfetiva } : {}) } as SpecDePeca,
     avisos,
   }
 }
@@ -644,7 +738,10 @@ export function escolhaEspacialOriginal(fieldValues: unknown, spec: SpecDePeca):
   const escolha = ehObjeto(gravado.buscaEspacial) && ehObjeto(gravado.buscaEspacial.escolha) ? gravado.buscaEspacial.escolha : null
   if (!escolha || escolha.modo !== MODO_BUSCA_ESPACIAL) return recusar('a busca não gravou a escolha')
   if (escolha.foto !== null && typeof escolha.foto !== 'string') return recusar('a foto da escolha não é texto')
-  if (typeof escolha.corte !== 'string' || !Object.prototype.hasOwnProperty.call(CORTES, escolha.corte)) return recusar(`corte inválido: ${String(escolha.corte)}`)
+  // F2a: o corte é uma âncora, ou `'janela'` com a janela gravada (frações legíveis) — sem ela, ilegível.
+  if (typeof escolha.corte !== 'string' || !(Object.prototype.hasOwnProperty.call(CORTES, escolha.corte) || escolha.corte === 'janela')) return recusar(`corte inválido: ${String(escolha.corte)}`)
+  const janelaGravada = escolha.corte === 'janela' ? lerJanela(escolha.janela) : null
+  if (escolha.corte === 'janela' && !janelaGravada) return recusar('o corte é por janela, mas a janela gravada não é legível')
   if (!ehObjeto(escolha.deslocamentos)) return recusar('a escolha não tem os deslocamentos')
   const deslocamentos: Partial<Record<MembroDaFaixa, number>> = {}
   for (const [membro, dy] of Object.entries(escolha.deslocamentos)) {
@@ -655,8 +752,18 @@ export function escolhaEspacialOriginal(fieldValues: unknown, spec: SpecDePeca):
   const canto = escolha.cantoDaLogo
   if (canto !== undefined && canto !== null && !(CANTOS as readonly unknown[]).includes(canto)) return recusar(`canto da logo inválido: ${String(canto)}`)
 
-  const limpa: EscolhaEspacial & { buscaOriginal?: ResumoDaBuscaOriginal } = { modo: MODO_BUSCA_ESPACIAL, foto: escolha.foto as string | null, corte: escolha.corte as CropPosition, deslocamentos }
+  const limpa: EscolhaEspacial & { buscaOriginal?: ResumoDaBuscaOriginal } = { modo: MODO_BUSCA_ESPACIAL, foto: escolha.foto as string | null, corte: escolha.corte as RotuloDoCorte, ...(janelaGravada ? { janela: janelaGravada } : {}), deslocamentos }
   if (canto !== undefined) limpa.cantoDaLogo = canto as Canto | null
+  // A pilha da faixa (29/10/2026): ausente na peça de antes (reproduz sem empilhar); presente e malformada é ilegível.
+  if (escolha.pilha !== undefined) {
+    if (!(Number.isInteger(escolha.pilha) && (escolha.pilha as number) >= 0)) return recusar(`pilha inválida: ${String(escolha.pilha)}`)
+    limpa.pilha = escolha.pilha as number
+  }
+  // A margem da marca (29/10/2026): ausente na peça de antes (só a opção A); presente, só `'marca'` é legível.
+  if (escolha.margem !== undefined) {
+    if (escolha.margem !== 'marca') return recusar(`margem inválida: ${String(escolha.margem)}`)
+    limpa.margem = 'marca'
+  }
   // CP3: a variante da logo desenhada. Ausente nas peças de antes; presente e malformada é escolha ilegível.
   const varianteDaLogo = varianteGravada(escolha.logo, recusar)
   if (varianteDaLogo) limpa.logo = varianteDaLogo
@@ -664,6 +771,63 @@ export function escolhaEspacialOriginal(fieldValues: unknown, spec: SpecDePeca):
   const original = resumoDaBuscaOriginal(gravado.buscaEspacial)
   if (original) limpa.buscaOriginal = original
   return limpa
+}
+
+/**
+ * T1b: os ACENTOS que a peça gravou (`composicao.arquetipo.acentos`) — a receita congelada que a recomposição desenha,
+ * nunca o catálogo de elementos de hoje. A peça de antes do T1b (sem o campo) nasceu sem acento e continua sem (`[]`);
+ * campo malformado recusa como a escolha ilegível, antes de qualquer escrita. Sem arquétipo, `null`.
+ */
+export function acentosCongelados(fieldValues: unknown, spec: SpecDePeca): AcentoCongelado[] | null {
+  if (!spec.arquetipo) return null
+  const composicao = ehObjeto(fieldValues) && ehObjeto(fieldValues.composicao) ? fieldValues.composicao : null
+  const gravado = composicao && ehObjeto(composicao.arquetipo) ? composicao.arquetipo : null
+  const lidos = lerAcentosGravados(gravado?.acentos)
+  if (!('problema' in lidos)) return lidos
+  throw new CreativeError(
+    'ARQUETIPO_ESCOLHA_ILEGIVEL',
+    `Os acentos gravados desta arte não puderam ser lidos (${lidos.problema}); a recomposição não os redesenha pelo catálogo de hoje — peça uma nova composição da peça.`,
+    422,
+    { arquetipo: spec.arquetipo, problema: lidos.problema },
+  )
+}
+
+/** O que a definição EXATA da peça (id/versão/impressão já resolvidos) espera da máscara: o raio e a caixa em px. */
+export interface MascaraEsperada {
+  raio: number
+  caixa: CaixaDaMascara
+}
+
+/**
+ * #9: a MÁSCARA que a peça gravou (`composicao.arquetipo.foto.mascara`) — a receita congelada que a recomposição desenha,
+ * nunca a derivação do catálogo de hoje. Leitura FECHADA e conferida ANTES de qualquer consulta nova, medição, render ou
+ * escrita: 1º a forma e a coerência v1 contra o PRÓPRIO raio/caixa (`lerReceitaDaMascara`, MK-16); 2º raio e caixa iguais
+ * aos da definição exata que a recomposição já resolveu (`esperada`, A-09) — nunca a mais recente nem o catálogo vivo de
+ * elementos. Passou: o path GRAVADO é o desenho. Arquétipo que declara máscara e peça sem receita = ilegível (não há
+ * desenho de reserva); receita numa definição sem máscara também. Sem arquétipo, ou sem máscara dos dois lados, `null`.
+ */
+export function mascaraCongelada(fieldValues: unknown, spec: SpecDePeca, esperada: MascaraEsperada | null): ReceitaDaMascara | null {
+  if (!spec.arquetipo) return null
+  const recusar = (problema: string): never => {
+    throw new CreativeError(
+      'ARQUETIPO_ESCOLHA_ILEGIVEL',
+      `A máscara gravada desta arte não pôde ser lida (${problema}); a recomposição não a redesenha pelo catálogo de hoje — peça uma nova composição da peça.`,
+      422,
+      { arquetipo: spec.arquetipo, problema },
+    )
+  }
+  const composicao = ehObjeto(fieldValues) && ehObjeto(fieldValues.composicao) ? fieldValues.composicao : null
+  const gravado = composicao && ehObjeto(composicao.arquetipo) ? composicao.arquetipo : null
+  const foto = gravado?.foto
+  if (!esperada) return foto === undefined ? null : recusar('a arte guardou uma máscara, mas a definição exata do arquétipo não declara máscara')
+  if (foto === undefined || (ehObjeto(foto) && foto.mascara === undefined)) return recusar('a arte não guardou a máscara que o arquétipo declara')
+  const lida = lerReceitaDaMascara(ehObjeto(foto) ? foto.mascara : foto)
+  if ('problema' in lida) return recusar(lida.problema)
+  if (lida.caixa.w !== esperada.caixa.w || lida.caixa.h !== esperada.caixa.h) {
+    return recusar(`a caixa da máscara (${lida.caixa.w}×${lida.caixa.h}) não é a da foto da peça (${esperada.caixa.w}×${esperada.caixa.h})`)
+  }
+  if (lida.raio !== esperada.raio) return recusar(`o raio gravado (${lida.raio}) não é o da definição exata da peça (${esperada.raio})`)
+  return lida
 }
 
 /** A variante da logo gravada (CP3): `undefined` = peça de antes do CP3; forma estranha = ilegível. */
@@ -681,7 +845,8 @@ function resumoDaBuscaOriginal(busca: unknown): ResumoDaBuscaOriginal | null {
   const fonte = reproduzida ?? busca
   if (typeof fonte.id !== 'string' || typeof fonte.motivo !== 'string' || typeof fonte.combinacoesAvaliadas !== 'number') return null
   const recusas = ehObjeto(fonte.recusas) ? Object.fromEntries(Object.entries(fonte.recusas).filter(([, n]) => Number.isInteger(n))) : {}
-  const cortes = Array.isArray(fonte.cortesAvaliados) ? fonte.cortesAvaliados.filter((c): c is CropPosition => typeof c === 'string' && Object.prototype.hasOwnProperty.call(CORTES, c)) : []
+  // F2a: o corte 'janela' é um rótulo avaliado como os outros (Codex, rodada 2, P3: filtrá-lo apagava a procedência).
+  const cortes = Array.isArray(fonte.cortesAvaliados) ? fonte.cortesAvaliados.filter((c): c is RotuloDoCorte => typeof c === 'string' && (Object.prototype.hasOwnProperty.call(CORTES, c) || c === 'janela')) : []
   return { id: fonte.id, motivo: fonte.motivo, recusas, combinacoesAvaliadas: fonte.combinacoesAvaliadas, cortesAvaliados: cortes }
 }
 

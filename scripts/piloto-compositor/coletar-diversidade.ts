@@ -2,7 +2,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { parse } from 'dotenv'
-import { google } from 'googleapis'
+import * as google from 'googleapis/build/src/apis/drive'
 import { createHash } from 'node:crypto'
 async function main() {
   const source = process.argv[2]

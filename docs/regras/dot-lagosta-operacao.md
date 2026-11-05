@@ -1,4 +1,4 @@
-# Dot Lagosta: Constituição Operacional (`dot-operacao-v4`)
+# Dot Lagosta: Constituição Operacional (`dot-operacao-v8`)
 
 Criada em 13/10/2026 (H3 do Dot; o mapa e as decisões estão em
 `docs/PLANO-2026-10-13-DOT-OPERACAO-H1.md`).
@@ -319,3 +319,53 @@ e Drive.
     relatar, não criar e não remover. Só informa, não bloqueia ninguém.
   - Regra operacional: não rodar `plan-week` do stdio, sem a flag, no mesmo
     cliente e semana em que o agente opera.
+
+## O bloco `gate` de `ver-geracao` é auditoria, nunca autoridade (`dot-operacao-v5`, 16/10/2026)
+
+O CP5b passou a gravar em `Generation.fieldValues.gateDaArte` o último veredito do gate de autonomia (CP5a), com a
+identidade da peça medida, a política e as versões. `ver-geracao` o expõe no bloco `gate`, rotulado `coincidente`
+(os metadados batem com a peça de hoje), `historico` (algo mudou: página, copy, formato, regras, política,
+vínculo) ou `ilegivel`, sempre com o aviso fixo "último veredito gravado; não é o veredito atual da arte". Regra
+nova do manual: **o agente operacional nunca agenda por esse bloco** — a peça aceita é a que `agendar-leva` mede na
+hora (CP5c). O registro não é consultado para decidir, nem como sinal positivo nem negativo.
+
+## `agendar-leva` só cria rascunho com veredito APTO medido na hora (`dot-operacao-v6`, CP5c, 16/10/2026)
+
+No perfil draft-only, `agendar-leva` (`src/lib/lotes/agendar-itens.ts`) passou a MEDIR a página dentro da transação
+que grava — sob as travas do projeto, das fontes, do item, dos posts da página, da página e da Generation — e a
+decidir com o gate de autonomia (CP5a/CP5b) antes de qualquer rascunho nascer ou ser adotado. O veredito, APTO ou
+não, fica registrado na arte (`ver-geracao` → bloco `gate`, auditoria). Peça não apta volta `falhou` com
+`REVISAO_HUMANA_NECESSARIA`, `generationId`, `pageId`, `editUrl` e `revisao` (`medida` com `achados` e `motivos`;
+`sem-vinculo`; `nao-medida` — vídeo/música, prazo de 8 s, erro). Regra do manual (`src/lib/mcp/operacao-dot.ts`):
+ajustar com `ajustar-arte` ou relatar — repetir a mesma chamada não muda o veredito. Nesse perfil os efeitos
+pós-commit (pasta da semana, catálogo) NÃO rodam: uma pessoa os completa repetindo o mesmo pedido; a aprovação não os
+executa. `simular: true` mede e decide igual, sem gravar nada. Contrato e decisões pendentes do owner (política do
+assunto, efeitos, prazos): `docs/PLANO-2026-10-16-CP5C-CONTRATO.md` § 8.
+
+## `ajustar-arte` só grava versão APTA (`dot-operacao-v8`, CP5d, 17/10/2026)
+
+No perfil draft-only, `ajustar-arte` (`src/lib/creatives/arte-rapida.ts`) passou a MEDIR, dentro da transação que
+grava e sob as travas (agenda, fontes, posts da página, página, as Generations de origem e do alvo da recomposição,
+e `FOR SHARE` em projeto/assinatura/modelo/fontes), a versão FINAL que seria gravada — os ajustes aceitos pelo CP4 mais
+os textos/foto/nome da chamada — e só a grava com veredito APTO do gate (CP5a/CP5b). O veredito fica registrado na
+Generation que o render desta versão fecha (`ver-geracao` → bloco `gate`). Não APTO → `REVISAO_HUMANA_NECESSARIA` com
+`revisao`, `achados`, `motivos`, `ajusteGravado: false`: página intacta, nenhuma Generation, render não reaberto.
+Quando TODOS os ajustes caem no CP4 (nada novo para medir), o código da chamada também é `REVISAO_HUMANA_NECESSARIA`,
+com a causa do CP4 em `details.causa`. Regra do manual (`src/lib/mcp/operacao-dot.ts`): relatar — repetir a mesma
+chamada não muda o veredito. "Não piorou" (CP4) continua necessário e deixou de ser suficiente para o agente gravar.
+Contrato e decisões do owner (P1 × P2 de preservação, etc.): `docs/PLANO-2026-10-17-CP5D-CONTRATO.md` § 8.
+
+## `revisar-arte` devolve o gate como INFORMAÇÃO; `auditar-operacao` conta o registro (`dot-operacao-v8`, CP5e, 17/10/2026)
+
+- `revisar-arte` passou a trazer `gate`: o veredito que o gate de autonomia daria à página COMO ESTAVA nesta leitura
+  (`tipo: medida` com `resultado`, `motivos`, `naoMedidos`, `pageVersion`, `vinculo`; `sem-vinculo` para página sem arte ou
+  página-modelo; `nao-medida` quando a decisão falhou). É medido de novo sem a correção hipotética da régua (`corrigir: false`,
+  a mesma medida dos produtores). **Informação, nunca autorização**: não grava, pode envelhecer; o veredito que vale é o
+  medido na hora, sob trava, por `agendar-leva`/`ajustar-arte`. Se o gate recusa e o revisor não tem ajuste a propor, o
+  `comoAplicar` manda levar à pessoa — é a saída tipada do "em até 2 ciclos" do piloto.
+- `auditar-operacao` ganhou `gate` por cliente e na raiz: contagem dos posts da janela pelo último veredito GRAVADO
+  (`coincidente` APTO × REVISAO_HUMANA_NECESSARIA com `naoConferido`, `historico`, `ilegivel`, `semRegistro`,
+  `registroInvalido`), só leitura, teto de 200 posts por chamada. Auditoria do passado, nunca o veredito atual.
+- Regra do manual (v8, funde a do v7): "agendar-leva e ajustar-arte só gravam versão APTA medida na hora
+  (REVISAO_HUMANA_NECESSARIA: relate, repetir não muda); gate de revisar-arte é informação, de ver-geracao/auditar-operacao
+  é auditoria, nunca autorização".

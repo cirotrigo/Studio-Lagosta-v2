@@ -813,3 +813,594 @@ está implementado:
   inválido sem `put`; formato antes da foto; caminho válido com a mesma escolha de layout, `put` único e URL final no
   halo; URL direta), `foto-do-drive-no-projeto.test.ts` (ler × persistir, autorização),
   `criar-arte-de-modelo-copy-crua.test.ts` (V17, porta preserva o erro).
+
+### CP5a — o veredito puro (`gate.ts`), 16/10/2026
+
+Contrato aprovado pelo owner: `docs/PLANO-2026-10-15-CP5A-CONTRATO.md` (PR #236, HEAD 08a44af5). Nada de produção chama o
+gate: `agendar-leva` continua criando DRAFT sem veredito (CP5c), `ajustar-arte` continua só com a não-piora (CP5d),
+nada é persistido (CP5b). O que existe:
+
+- **`src/lib/creatives/revisao/gate.ts`** (puro, sem banco nem render): `gateDaMedida({ medida, identidade, copy?,
+  politicaDoAssunto })` → `{ gate: GateDaArte, relatorio }`. A medida (`MedidaDaPeca`, o que `medirCamadasDaPeca` devolve)
+  é a FONTE ÚNICA — camadas, canvas e formato saem dela, e o relatório é calculado dentro por `avaliarPeca`. Saída
+  `APTO | REVISAO_HUMANA_NECESSARIA` com `cobertura` por regra crítica E por conferência (`copy-completa`,
+  `piso-de-interface`, `oclusao`, `identidade`), `motivos` em ordem determinística, `achados` (com `certeza`),
+  `naoMedidos` e `avisos`. **APTO ⇔ zero motivos**: as 11 críticas (`REGRAS_CRITICAS`, conjunto fechado por teste
+  contra `REGRAS_DA_REVISAO`) comprovadas ou inaplicáveis, copy `sem-mudanca` sem lacunas, `pageVersion` legível,
+  piso de interface satisfeito (só story) e nenhum cenário de oclusão.
+- **Decisões adotadas pelo owner (16/10)**: oclusão (B) conservadora; copy sem contrato exige humano; ausência de
+  logo solta gera aviso (comprovada); `texto-pequeno` é crítica; a tolerância texto × texto reutiliza EXATAMENTE a
+  de `colisao` (`toleranciaDeColisao`, extraída de `text-geometry.ts` sem mudar o número; `colisao` passa a chamá-la);
+  a política do assunto é parâmetro OBRIGATÓRIO (`POLITICA_DO_ASSUNTO_RECOMENDADA` = `estimado: 'humano'`, foto lida
+  sem assunto → `nao-se-aplica`, é proposta nomeada, sem padrão silencioso); versionamento fica no CP5b (o gate copia
+  `relatorio.versaoDasRegras`).
+- **Assunto da foto** (casos A–E + C'): catálogo comprova/reprova; estimado → humano (ou, com `'comprova'`, o achado
+  ESTIMADO reprova — a única exceção ao predicado `certeza === 'medida'`, declarada); foto LIDA sem assunto com
+  arquivo → não se aplica + aviso; camada de foto SEM `fileUrl` → não comprovada; falha ao analisar → não comprovada
+  sempre; sem foto → não se aplica sempre.
+- **Oclusão por detecção do cenário** (`cenariosNaoMedidos(medida, cobertura)`): toda camada visível com `order >=`
+  ao de um texto visível cujos limites intersectam os dele. **Só mede pela caixa o que a paridade com o render REAL
+  prova contido** (`gate.test.ts` G21c/G21e, GERADA de `CHAVES_CLASSIFICADAS`: toda folha aceita tem `valorDeProva`):
+  retângulos, formas centradas (`circle`/`triangle`/`star` em torno de `position`, como o Konva), imagem/logo/elemento,
+  gradientes e texto simples COM métrica; expansões por traço (`strokeWidth`/`border.width`; no texto `effects.stroke`
+  com fallback `style.border`), desfoque (`folgaDoBlur`), sombra (`effects.shadow` ou `style.shadow`); rotação pelos
+  quatro cantos em torno da ORIGEM `position` (o pivô do render, `render-engine.ts:199-205`) — nos dois lados do par
+  (`limitesDe` para a camada de cima, `limitesDoTexto` para o texto protegido: caixa ∪ glifos da métrica, que é medida
+  sem rotação). Tudo o mais acima de um texto é `transformacao-nao-suportada` → `NAO_MEDIDO`: `svg-path`, `icon`,
+  `line`/`arrow`, `video`, `style.filter`, `rich-text`, texto com `effects.background` ou `effects.curved`, texto sem
+  métrica, chave fora da árvore (fail-closed em execução; G23b lê as chaves declaradas em `template.ts` com chaves
+  balanceadas e exige classificação). Duas exceções com prova positiva: texto × texto (ambos simples, sem rotação,
+  com métrica, sem folha expansora, `colisao` avaliada, interseção de glifos DENTRO da tolerância de `colisao` —
+  política 9.7, não medição) e logo solta × texto (ambos sem rotação, sem filtro, sem folha expansora, texto com
+  métrica, `logo-sobre-texto` avaliada — a regra usa `tintaDoTexto` sem contorno/sombra/desfoque, por isso o texto
+  com efeito perde a exceção). A mancha de `effects.background` do texto PROTEGIDO fica fora dos limites (é mancha,
+  não glifo; a leitura já é medida pela régua com todas as camadas).
+- **Desvios do contrato, ditos** (ver também o relatório): (1) `FOLGA_DE_ANTIALIAS = 1` px somada a todo limite — o
+  render suaviza bordas 1 px além da geometria; sem a folga a paridade falha por 1 px (o contrato não a previa; RATIFICADA pelo owner em 16/10 e incorporada ao contrato em adffff17). (2)
+  Triângulo e estrela com traço: a junção em MITRA estende o traço até `miterLimit × lineWidth / 2` além do vértice
+  (padrão do canvas 10) — a expansão usa `5 × strokeWidth` para essas formas (G21c pegou a estrela: a ponta saía
+  19 px com traço 12; o contrato dizia `+ strokeWidth`). (3) `effects.curved` (texto curvo) classificado como não
+  suportado — o contrato não o listava (G23b o achou no tipo). (4) `foraDaInterface` (a função que o oráculo dos
+  testes do CP0 importa) usa a própria caixa como métrica sintética para texto sem métrica — SÓ para o oráculo; o
+  gate (`pisoDeInterface` dentro de `gateDaMedida`) exige a métrica real e deixa a camada não comprovada. (5) Um
+  texto com mancha ACIMA (por `order`) de outro texto é ocluidora não suportada mesmo sem interseção, porque a
+  classificação vem antes do teste de caixa (6.2 do contrato) — dito aqui porque bloqueia peças do compositor em que
+  o serviço com mancha fica acima da headline na ordem das camadas. (6) `video` VISÍVEL em qualquer ordem derruba as
+  4 regras que leem pixels (texto-sem-leitura, tratamento-piorou-leitura, logo-sem-leitura, texto-sobre-assunto) — o
+  contrato original (§6) só previa vídeo ACIMA do texto como não medido; abaixo, o render parado não o desenha e a
+  publicação (MP4) sim (Codex, rodada 10). Incorporado ao contrato em adffff17 (16/10). (7) Camada com `movimento` idem — a página com áudio publica o quadro do movimento;
+  ratificado pelo owner em 16/10 (revisão humana para movimento/vídeo na cobertura atual do CP5a).
+- **Revisão final adversarial (owner + Codex, 16/10)** — quatro falsos APTO fechados, todos fail-closed: (1) `order`,
+  `position`, `size` e os valores dos efeitos (traço, sombra, desfoque, borda) têm de ser NÚMEROS finitos — `order: 'z'`,
+  `position.x: 'abc'`, `shadowOffsetX: 'muito'` viravam NaN, a interseção falhava e a camada passava como se estivesse
+  abaixo; agora `order` não numérica é "acima de todo texto" e geometria/efeito não numérico é `contido: false`
+  (`order` ausente/`null` continua 0, como `a.order ?? 0` no render); (2) `contraste: []` com textos visíveis não
+  comprova a leitura — cada texto medido precisa da sua leitura na régua (`textos[].camada`/`camadas`), senão
+  `texto-sem-leitura` e `tratamento-piorou-leitura` ficam não comprovadas (o contrato dizia só `!== null`; a regra
+  é mais estrita); (3) toda logo SOLTA (`logosDaPeca`) precisa de entrada em `leituraDaLogo` — `[]` com logo na peça é
+  não comprovada, e o aviso "sem logo solta" só sai quando não há logo; (4) a métrica só prova o par das exceções quando
+  é ÚNICA por id e descreve a MESMA caixa da camada (métrica duplicada ou de outra caixa → sem métrica → oclusão).
+  Rodada 2: (5) o retângulo CALCULADO tem de ser finito (`rotation: 1e308` → radianos Infinity → sin/cos NaN →
+  `contido: false`); (6) a leitura da régua é por TEXTO: só `textos[].camada` conta — `camadas` do grupo sem `textos`
+  (medida antiga, leitura de um representante) não prova a leitura de cada texto. Rodada 4 (esforço máximo): (7) a
+  leitura da logo do CP3 lê o ARQUIVO — logo solta com `invert`, `flipH`/`flipV`, `mask`, `filter`, `grayscale`,
+  `sepia`, `exposure`/`brightness`, `contrast`, `highlights`, `shadows`, `whites`, `blacks`, `saturation`, `vignette`
+  ou `blur` de estilo é desenhada diferente do que foi medido → `logo-sem-leitura` não comprovada mesmo com estado
+  `medida`; logo solta que não é `logo`/`image` (uma `shape` com id "logo") idem; (8) a exceção logo × texto só vale
+  para `logo`/`image` — a regra `logo-sobre-texto` compara a caixa de CANTO, e uma `shape` circular com id "logo" é
+  desenhada centrada em `position`, fora dessa caixa. Rodada 5 (esforço máximo): (9) `border.radius` RECORTA os cantos
+  da imagem no render (`render-engine.ts` :1681-1683), `border.width` pinta tinta sobre ela e sombra/desfoque/traço
+  (`style.shadow`, qualquer `effects.*` ligado) mudam a composição — logo solta com qualquer um deles → `logo-sem-leitura`
+  não comprovada (o controle anterior que dizia "radius é inerte" estava ERRADO e foi invertido); os `naoMedidos` dessa
+  recusa levam o id da logo; (10) `texto-sobre-assunto`: `assuntoDaPeca` (revisar-arte.ts) reaproveita o assunto
+  gravado por arquivo + formato + `cropPosition`, e a estimativa lê só `cropPosition`, enquanto o render prioriza
+  `style.crop` (`image-fit.ts`) — um recorte manual deslocado deixava o retângulo velho com estado `medida` e o gate
+  aceitava. Fail-closed no gate: foto de fundo com `style.crop`, `flipH`/`flipV`/`flipX`/`flipY`, `mask`, `filter`,
+  `blur` ou `rotation` efetivos → assunto não comprovada com as 4 políticas (o conserto de `mesmaComposicao` fica para
+  o revisor, fora do CP5a). Regressões: G12 (5 estilos de logo) e G13b. Rodada 6 (esforço máximo): (11) a medida do
+  assunto lê a foto como UM cover do canvas inteiro (`lerFotoComoCover(bytes, canvas, …)`; o retângulo gravado é da
+  peça composta) e `mesmaComposicao` não compara `objectFit`, `position` nem `size` — fundo com `objectFit` ≠ `cover`
+  (o render ESTICA a imagem inteira, `image-fit.ts`), caixa diferente de (0,0,canvas), filtro de pixel
+  (`exposure`/`contrast`/… de `konva/filters/apply.ts`) ou uma SEGUNDA foto visível que não é logo solta (o revisor só
+  olha `bg-foto`, `fotoDeFundo` em regras.ts) → `texto-sobre-assunto` não comprovada com as 4 políticas, e os ids vão em
+  `camadas`; (12) valores JSON fora do tipo: o render liga efeito por verdade JS (`enabled: 1`, `'true'`) e coage
+  `opacity: '0.5'`, e o CP3 só recusa NÚMERO abaixo de 1 — na logo, `enabled` efetivo (não `=== true`) e `opacity`
+  que não seja número finito igual a 1 → não comprovada; (13) invariante 2.3 do contrato imposto na estrutura: o que
+  entra em `naoMedidos` sem motivo vira NAO_MEDIDO e `resultado` exige motivos E naoMedidos vazios — o helper `gate()`
+  dos testes confere `APTO ⇔ motivos vazio ∧ naoMedidos vazio` em TODA chamada. Regressões: G12 (`enabled: 1`/`'true'`,
+  `opacity` string/0,5/NaN, controle `opacity: 1` + `enabled: 0`/`false`), G13c, G30. Decisão que sobe ao owner
+  (Codex R6): a prova de `texto-sobre-assunto` no CP5a exige UM fundo `cover` cobrindo o canvas na posição original e
+  recusa o resto (fail-closed); medir o assunto a partir da composição renderizada é trabalho do revisor (CP5b+).
+  Rodada 7 (esforço máximo): (14) `opacity: null` na logo — o render aplica opacidade sempre que a chave EXISTE
+  (`!== undefined`) e `Math.min(1, null)` é 0: a logo some; a guarda aceita só número finito igual a 1 (null recusa);
+  (15) "valor efetivo" é a VERDADE JS do render: `' '` (string só de espaços) liga `flipH`/`enabled` no render e
+  `valorEfetivo` passou a devolver `v !== ''` em vez de `trim()`; (16) `element` é desenhado pelo mesmo `renderImage`
+  que `image` — conta como segunda foto; (17) G30 passou a alcançar o ramo residual (peça só com logo, sem fundo e sem
+  texto visível + id residual em `textosSemMetrica` → único motivo NAO_MEDIDO; sem o id → APTO).
+  Rodada 8 (esforço máximo): (18) `valorEfetivo` É a verdade JS do render (`Boolean(v)`, número `!== 0`, NaN conta como
+  efetivo): `[]` e `{}` ligam `flipH`/`enabled`/`invert` no render e eram inertes; (19) `rotation` em string na logo
+  (`'90'` gira por coerção; o CP3 só recusa número; abaixo dos textos nem a oclusão olha a logo) → recusa qualquer
+  `rotation` efetiva; (20) `cropPosition` do fundo só com os nove valores `(left|center|right)-(top|middle|bottom)` — o
+  medidor omite `''` (centro) e o render passa `''` ao recorte (esquerda/topo); (21) foto de fundo com `movimento`: o
+  revisor lê um cover parado e a página com áudio sai no quadro do movimento (`persist.ts`; `afastar` começa em 1,15×)
+  → não comprovada (humano) até o owner decidir a política (excluir páginas com foto em movimento do gate autônomo ou
+  medir o quadro publicado — ratificado 16/10: humano). A folga de antialias de 1 px (desvio 1) foi RATIFICADA pelo
+  owner em 16/10, preservando os pisos 188/224: no topo y=188 reprova e 189 passa; no rodapé base em H−224 reprova e
+  H−225 passa (G26 testa os dois lados, texto e logo; o contrato #236 diz o mesmo). Regressões em G12, G13b, G13c.
+  Rodada 9 (esforço máximo): (22) a guarda de movimento sai da foto de fundo e vira UMA regra em `decidirCritica`:
+  QUALQUER camada visível com `movimento` efetivo (fundo, logo-imagem, imagem solta sob a logo sem foto de fundo
+  escolhida — `camadasNoInstante` anima qualquer `image`) derruba as 4 regras que leem PIXELS do quadro parado
+  (`texto-sem-leitura`, `tratamento-piorou-leitura`, `logo-sem-leitura`, `texto-sobre-assunto`); invisível não conta;
+  (23) `interfaceDoStory` com configuração não finita (`NaN`, `Infinity`, string) nunca afrouxa: só número finito acima
+  do piso aperta. Regressões: G31 e G26.
+  Rodada 10 (esforço máximo): (24) o assunto de CATÁLOGO é o retângulo da peça COMPOSTA, no canvas canônico do formato
+  (`DIMENSOES` de `compositor/spec.ts`), e `mesmaComposicao` não compara largura/altura — fora do canônico (página
+  redimensionada, ou sem formato) o retângulo não vale → não comprovada; o estimado é feito para o canvas atual e não é
+  afetado; (25) `video` conta como movimento: o render parado NÃO desenha `video` (cai no `default`), mas a página com
+  vídeo é publicada como MP4 com ele — abaixo do texto a oclusão não o examina e a régua foi medida sem ele; desvio
+  conservador do contrato original (§6 só previa vídeo ACIMA), hoje incorporado ao contrato (adffff17); (26) a guarda
+  da foto de fundo passa a usar a MESMA lista da logo (`chavesQueALeituraDoArquivoNaoVe`: filtros de pixel, borda,
+  `style.shadow`, `effects.*` ligados, opacidade ≠ 1, rotação) — um PNG com sujeito e sombra deslocada publica uma
+  segunda silhueta que o assunto não conhece. Regressões: G13b, G13c, G13d, G31; G29 ganhou o canvas canônico do feed.
+  Rodada 11 (esforço máximo): (27) o canvas canônico vale para TODA origem do assunto — `assuntoDaPeca` reaproveita o
+  cache da composição (catálogo, ESTIMADO e "nenhum") por arquivo + formato + `cropPosition`, sem largura/altura — e a
+  guarda subiu para antes do `if (medida.assunto)`; (28) o piso do story (188/224) é em px do canônico: story
+  2160×3840 com texto em y=250 passaria e, exibido em 1080, cai em y=125 — fora do canônico, `piso-de-interface` não
+  comprovada; (29) foto visível que `fotoDeFundo` NÃO reconhece (`element` de tela inteira, `image` < 90%) sem
+  `bg-foto` → `texto-sobre-assunto` não comprovada em vez de "não se aplica" (o assunto dela ninguém mediu).
+  Regressões: G13d (estimado/nenhum/piso no canvas grande) e G13e. Fechamento 16/10 (owner): ratificados a folga de
+  1 px, a revisão humana para movimento/vídeo, foto sem fundo reconhecido e assunto não comprovado pelo cover
+  canônico; a política do assunto segue parâmetro obrigatório sem padrão (9.1), e o comentário de `gate.ts` que
+  dizia "adotada pelo owner" foi corrigido. A correção do crash nativo do @napi-rs/canvas fica FORA deste PR.
+  Regressões em G9, G12, G21 e no bloco G21f (valores não numéricos, chave no topo, tipo novo, `effects.curved`,
+  `textboxConfig` desconhecido, opacidade 0/parcial, `filter` vazio, `visible` 0/"false", efeitos combinados com
+  paridade no render real — forma e imagem com máscara + flip + recorte + sombra + desfoque).
+- **Provas** (`gate.test.ts`, 56 testes): G1–G29 e subcasos; G21c (paridade do lado de cima, >100 renders reais) e
+  G21e (lado protegido, métrica real do medidor); oclusão EFETIVA comprovada pelo renderer (texto a 90° sob forma sem
+  rotação: os pixels do texto somem no render e o gate acusa; controle com a forma abaixo → comprovada); logo limpa
+  sobre a expansão do texto por contorno/sombra/desfoque/borda → oclusão, e o controle sem efeitos preserva a exceção.
+
+### CP5b — o registro do gate: persistência, identidade e `rulesVersion` (16/10/2026)
+
+Contrato: `docs/PLANO-2026-10-16-CP5B-CONTRATO.md` (PR #239, 17 rodadas do Codex). O veredito do CP5a passa a ser
+GRAVADO como auditoria em `Generation.fieldValues.gateDaArte` — e **nenhum caminho de produção o consulta para
+decidir, nem como sinal positivo nem negativo**: toda decisão autônoma é fresca (CP5c mede e decide sempre).
+
+- **`decidirEMontarRegistro`** (`revisao/gate-registro.ts`, puro): o registro nasce da MESMA chamada que decide.
+  Antes de chamar `gateDaMedida`, confere o VÍNCULO da entrada com a página: `estavel(medida.camadas)` ≡ camadas da
+  página; identidade da entrada ≡ `identidadeDaPagina(page)`; formato e canvas da medida = os da página;
+  `TIPO_DO_POST_POR_FORMATO[formato] === vinculo.postType`; e os DOIS classificadores de formato concordam
+  (`assinatura.ts` por nome/tags/tamanho, o do revisor; `compositor/formato.ts` `formatoDaPaginaGravada`, extraída de
+  `pastas.ts`, por tags/tamanho — trocar só as tags muda este sem mudar o hash). Falhou → `{ decisao: 'sem-vinculo' }`
+  SEM gate: nenhum APTO existe para o produtor usar. A copy é reconciliada DENTRO (`revisaoDaPaginaComCamadas` da
+  mesma `page.copyAutoral`/`page.layers`); `copy` nos args é ignorada. O registro sai SELADO (tipo com `unique symbol`
+  não exportado), congelado em profundidade e num `WeakSet` privado.
+- **Identidade** (`versao.ts` `identidadeDaPagina`): `pageVersion` = `versaoDaPagina(page)` SEM áudio (a chamada do
+  revisor), `copyVersion` = `copyVersionDe(Page.copyAutoral)`, `formato` e `formatoDoCompositor`. O que ela NÃO
+  cobre (bytes de assets e fontes, assinatura, gradiente, o que a medição lê fora da página) é dito em
+  `NAO_CONFERIDO_PELA_IDENTIDADE` e sai em todo `coincidente` — por isso **não existe "vigente"**.
+- **Escrita** (`gate-persistido.ts` `gravarGateDaArte`): só por `mesclarFieldValuesDaArte` com `somenteSe`
+  (`WHERE id AND projectId AND fieldValues->>'pageId' AND EXISTS (Page → Template.projectId)`), a chave inteira;
+  registro sem proveniência (clone, objeto à mão) → `'sem-proveniencia'` sem SQL; 0 linhas → `'sem-vinculo'`;
+  exceção PROPAGA (o CP5c decide o rollback). `mesclarFieldValuesDaArte` ganhou a opção sem mudar o SQL dos
+  chamadores atuais (quatro formas testadas).
+- **Leitura** (`lerGateDaArte`): `ausente` / `invalido` / `ok`. Schema estrito + invariante 2.3 do CP5a + o que o CP5a
+  só produz para ESTA página (APTO exige `pageVersion` não nulo; piso de interface `nao-se-aplica` ⇔ formato ≠ story —
+  Codex R1 do PR #240); um JSON rejeitado não expõe nada além do caminho do campo, de um texto FIXO da invariante e
+  das versões gravadas (só quando casam com `/^[a-z0-9][a-z0-9.-]{0,31}$/`). Bump de `VERSAO_DO_GATE` torna os registros anteriores `invalido` (decisão 9.13).
+- **Validade** (`validadeDoGate`): `coincidente` (vínculo, os dois formatos, 4 versões e política iguais) /
+  `historico` (com a lista) / `ilegivel`. Nunca devolve `resultado`.
+- **`rulesVersion`**: bump manual cobrado por DUAS impressões digitais (`impressao-digital.ts`): a do revisor
+  (`REGRAS_DA_REVISAO` + medida e `avaliarPeca` de cada peça do corpus) e a do gate (tabelas + medida e saída de
+  `gateDaMedida` sem as três cópias, com as 4 políticas), serializadas com `serializarParaImpressao` (preserva
+  `NaN`/`Infinity`/`-0`). Arquivos em `__tests__/impressao-digital/`; `scripts/validar-impressao-digital.ts` (CI) torna
+  imutável o de uma versão já na `main`. Corpus (`__tests__/suporte/corpus-do-gate.ts`): 166 peças (as fixtures de `gate.test.ts` com as suas variantes +
+  piloto v1/v2), ainda AMOSTRAL —
+  regra que nenhuma peça toca muda em silêncio (decisão 9.6); PR em `regras.ts`/`gate.ts` responde "o corpus cobre?".
+- **Barreira**: `no-restricted-imports` em `eslint.config.mjs` — `gateDaMedida` só em `gate-registro.ts` e testes;
+  `lerGateDaArte`/`validadeDoGate`/`decidirEMontarRegistro` só em `gate-persistido.ts`, `ver-geracao-retorno.ts`,
+  `arte-ia.ts`, o produtor do CP5c e testes. O que o lint não vê (import dinâmico, require, reexportação, a string
+  `gateDaArte`) é o inventário `inventario-gate-da-arte.test.ts`.
+- **Consumidor**: `ver-geracao` traz o bloco `gate` (só leitura; `null` sem registro; nunca inventa APTO). Manual do
+  Dot `dot-operacao-v5`: "nunca agende por ele". `auditar-operacao` fica para o CP5c.
+- **Fora**: nenhum produtor em produção (o primeiro é o CP5c — seção 12 do contrato lista o que ele herda);
+  oclusão por pixels; histórico de vereditos; migration.
+
+### CP5c — o gate em `agendar-leva` (perfil draft-only): medir e decidir SOB AS TRAVAS (16/10/2026)
+
+Contrato: `docs/PLANO-2026-10-16-CP5C-CONTRATO.md` (PR #241, 9 rodadas do Codex; APTO na rodada 9). O primeiro
+PRODUTOR do registro do CP5b. Só vale com `apenasRascunho` (o perfil é decidido pela tool, por `perfilDoPrincipal`);
+o fluxo humano é byte a byte o de antes (C7).
+
+- **Onde a medição acontece**: DENTRO da transação de `agendarItem`, depois das travas e antes de qualquer escrita de
+  post — por isso não existe "identidade medida × identidade relida": é a mesma leitura. Ordem comum das travas
+  (`inventario-gate-agendar-leva.test.ts`, C13): `pg_advisory_xact_lock(agenda)` → `pg_advisory_xact_lock(fontes)`
+  (chave nova `chaveDasFontes`, também tomada pelas rotas que criam/apagam `CustomFont` — `FOR SHARE` não impede a
+  linha nova) → `ItemDeLote` → `ItemDePlano` → posts da página (`ORDER BY "id" FOR UPDATE`; `ajustar-arte` ganhou o
+  mesmo `ORDER BY`) → `Page` → `Generation` da peça → `FOR SHARE` em `Project`, página de assinatura e página-modelo
+  apontadas pela Generation da peça, e `CustomFont` do projeto.
+- **`medirEDecidir(cliente, …)`** (`agendar-itens.ts`): `recusaComoImagem` → `lerCamadas` → `contextoDaMedicao` +
+  `medirCamadasDaPeca(…, { corrigir: false })` (a MESMA medição do revisor e do CP4; `contextoDaMedicao` ganhou
+  `cliente`, `sinal`, `prazoPorDownloadMs`, `composicaoReaproveitavel`, `generationDaPeca` — sem mudar o revisor) →
+  `decidirEMontarRegistro` (origem `agendar-leva`, `principal` do MCP). A cadeia inteira corre numa `Promise.race`
+  com `PRAZO_DA_MEDICAO_MS` (8 s); `fetchBuffer` aceita `{ signal, timeoutMs }` (`PRAZO_POR_DOWNLOAD_MS` 4 s): fonte e
+  foto do assunto são abortadas de verdade, render da régua e logo são cobertos pelo race (C21: fonte, assunto, logo,
+  régua presos → `nao-medida`, nenhum post, travas liberadas; `fetch-buffer-sinal.test.ts`: laço de redirecionamento).
+  Toda exceção vira `nao-medida` (fail-closed, nunca `ERRO`).
+- **Coerência página × Generation** (§ 4.3): a `composicao` gravada só é cache quando
+  `fieldValues.versaoRenderizada === versaoDaPagina(page, { audio })`; senão o assunto é estimado de novo e a
+  variante da logo vem da página — a assinatura e a página-modelo continuam sendo a referência (C20; a v2 do piloto é
+  MEDIDA, não recusada sem medir). A medição lê SÓ a Generation da peça (travada), nunca "a mais recente" (C22).
+- **Resultado**: `medida` APTO → `gravarGateDaArte(tx)` ANTES de `criarPostDoAgendamento`/adoção (`sem-vinculo`/
+  `sem-proveniencia` → rollback, `REVISAO_HUMANA_NECESSARIA`); não APTO → o registro reprovado é gravado e a transação
+  COMMITA só com ele (decisão 8.3, proposta), item `falhou` `REVISAO_HUMANA_NECESSARIA` com `generationId`, `pageId`,
+  `editUrl` (template atual) e `revisao` (`medida` com `achados`/`motivos`; `sem-vinculo`; `nao-medida`); exceção na
+  gravação ou timeout da transação → rollback e o mesmo código (C10/C18); deadlock (`40P01`/`P2034`) →
+  `LOTE_AGENDAMENTO_CONCORRENTE` (C13). Adoção (§ 4.6): o post tem de estar entre os travados, `DRAFT` sem
+  `laterPostId`, da página e do projeto, com `generationId === peca.id` (decisão 8.5, proposta: outro ou nulo →
+  revisão humana); ação ou post que mudou entre as duas decisões → `LOTE_AGENDAMENTO_CONCORRENTE` (C19).
+- **Efeitos pós-commit NÃO rodam no draft-only** (decisão 8.7, proposta B): depois do commit nenhuma escrita acontece
+  por conta de `agendar-leva` (C6); o item traz `AVISO_EFEITOS_NAO_RODAM_NO_DRAFT_ONLY`; a repetição HUMANA do mesmo
+  pedido completa; `reaproveitar` devolve `revisao` `nao-medida` (`MOTIVO_RASCUNHO_JA_EXISTENTE`), nunca um APTO que a
+  chamada não mediu. `simular: true` mede e decide pelo leitor, sem gravar nada (C8).
+- **Decisões do owner implementadas como PROPOSTA nomeada** (trocáveis numa linha, nenhuma "aprovada"): 8.1
+  `POLITICA_DO_ASSUNTO_DO_AGENDAR_LEVA = POLITICA_DO_ASSUNTO_RECOMENDADA` (`lotes/agendamento.ts`; `ver-geracao`
+  compara com ela); 8.2 concorrência = `LOTE_AGENDAMENTO_CONCORRENTE`; 8.3 gravar o reprovado; 8.5 não adotar sem a
+  arte; 8.7 B; 8.8 medir dentro da transação; 8.9 8 s / 4 s. 8.4 (`auditar-operacao`) e 8.6 (bytes por URL) ficam
+  fora, como o contrato diz.
+- **Testes**: `lotes/__tests__/agendar-itens-gate.test.ts` (C1–C22, banco falso com travas de linha e eventos
+  ordenados; C18 sintético mede a medição REAL em ~0,4 s por página sintética, no ambiente de teste),
+  `inventario-gate-agendar-leva.test.ts` (C9, C11, C13 por código-fonte), `fetch-buffer-sinal.test.ts`,
+  `piloto-portao.test.ts` (P11: os 8 `hojeViola` viraram `it()`, com a medição REAL sobre a fixture — v1 e v2
+  recusadas com os achados do serviço, controle limpo aprovado), harness de `agendar-itens.test.ts` (mede limpo; o
+  resto do serviço igual), `c9-allowlist-comportamental.test.ts` (cada tool MUTANTE da allowlist executada com banco
+  falso que registra criação de post e gravação do veredito + o fecho de imports de cada handler). Limites ditos (Codex
+  R1 do PR #242): bytes de assets/fontes por URL não protegidos (CP5b § 4.2); `scripts/` que gravem `CustomFont` fora
+  das rotas ficam fora da garantia da trava das fontes; `Template.projectId` é lido para conferir a posse sem trava
+  própria — a garantia supõe que um Template não muda de projeto (nenhuma rota faz isso hoje); páginas de referência
+  (assinatura/modelo) de projetos diferentes podem formar ciclo entre travas de `Page` — o deadlock é mapeado para
+  `LOTE_AGENDAMENTO_CONCORRENTE` ("repita"); o "benchmark sintético do CP3" do contrato não existe como harness no
+  repositório — C18 usa as páginas sintéticas de `sinteticos.ts` (CP0/CP2); C7 prova um cenário do fluxo humano, não
+  igualdade byte a byte (o diff do fluxo humano é só o `ORDER BY "id"` em `ajustar-arte`); o inventário por regex não
+  vê SQL montado em variável.
+
+### CP5d — o gate em `ajustar-arte` (perfil draft-only): a versão final medida sob as travas (17/10/2026)
+
+Contrato: `docs/PLANO-2026-10-17-CP5D-CONTRATO.md` (PR #243, 6 rodadas do Codex; APTO na rodada 6). Só vale com
+`apenasRascunho`; o fluxo humano é byte a byte o de antes (A6).
+
+- **Onde**: dentro de `db.$transaction` de `ajustarArte`, depois do executor do CP4 (que continua FORA, medindo as N
+  candidatas como hoje) e ANTES de qualquer escrita. Ordem comum (a do CP5c): `pg_advisory_xact_lock(agenda)` →
+  `pg_advisory_xact_lock(fontes)` → posts da página `ORDER BY "id" FOR UPDATE` → `Page FOR UPDATE` → **Generations de
+  ORIGEM (a do compositor da página) e do ALVO da recomposição** (`alvoDaRecomposicao`, extraída de
+  `travarRecomposicaoDaArte` — a mesma seleção: 20 mais recentes com `resultUrl`, a primeira por `ehArteDaPagina`)
+  numa instrução `IN (…) ORDER BY "id" FOR UPDATE` → `FOR SHARE` em `Project`, assinatura/modelo apontadas pela origem
+  e `CustomFont`.
+- **Conferência sob trava** (§ 4.2): versão visual (`versaoDaPagina`), contrato (`copyAutoral`) E áudio da página
+  relida iguais aos lidos antes — senão `VERSAO_DIVERGENTE` / `PAGINA_MUDOU_DURANTE_O_AJUSTE`, sem medir.
+- **Generation PROCESSING** criada na transação (`source: 'ajuste-arte'`, `pageId`, `sourcePageId`): é dela o
+  `generationId` do registro; o render depois do commit a FECHA (`renderPageAndRegister({ generationId })`). Render que
+  falha ou `PAGINA_MUDOU_DURANTE` → `fecharGenerationComoFalha(db, id, { error })` — UMA `UPDATE` condicionada a
+  `PROCESSING` (status, `completedAt`, `fieldValues || patch`); o cron de órfãs (`generation-queue.ts`,
+  `marcarGenerationFalha`) passou a usar a mesma (antes gravava `{ ...lido, error }`, violando a regra 🔴 do
+  `AGENTS.md` e apagando o que outro escritor gravou). Quem fecha primeiro vence; o segundo escreve 0 linhas.
+- **`medirEDecidirAjuste(tx, …)`**: `recusaComoImagem(candidata, audio travado)` → `contextoDaMedicao({ cliente: tx,
+  sinal, prazoPorDownloadMs, composicaoReaproveitavel: false, generationDaPeca: origem })` + `medirCamadasDaPeca(…, {
+  corrigir: false })` → `decidirEMontarRegistro` sobre a PÁGINA FUTURA (camadas finais, nome e contrato revisado;
+  `vinculo.postType` pelo formato; origem `ajustar-arte`). Race de 8 s. Sem Generation do compositor (arte livre) →
+  sem referências → recusa dita. APTO → `gravarGateDaArte(tx)` ANTES da escrita da página (CAS como hoje) e de
+  `travarRecomposicaoDaArte(…, { alvo })` (que agora respeita a linha já travada e a marca já gravada). Não APTO →
+  `RecusaDoGate` → rollback inteiro → `CreativeError('REVISAO_HUMANA_NECESSARIA', 422, { ajusteGravado: false,
+  pageId, versao, editUrl, revisao, achados?, motivos?, ajustesAplicados?, ajustesRecusados? })`; exceção na
+  gravação / timeout → o mesmo código com `revisao` `nao-medida`; deadlock → `AJUSTE_CONCORRENTE` ("repita").
+- **Recusa TOTAL do CP4 no draft-only** (decisão 8.8, proposta): código `REVISAO_HUMANA_NECESSARIA` com
+  `details.causa` = o código do CP4 (`AJUSTE_PIOROU_ARTE`…), `details.recusados` iguais, `revisao` `nao-medida`
+  ("nenhuma versão nova para medir"). No perfil normal o código do CP4 continua.
+- **Política de preservação (decisão 8.2, proposta P1)**: o agente só grava versão APTA — não existe versão
+  intermediária não apta gravada pelo agente; o progresso incremental sobre uma peça reprovada fica para o humano (ou
+  P2, documentada no contrato).
+- **Decisões do owner implementadas como PROPOSTA nomeada**: 8.1 `POLITICA_DO_ASSUNTO_DO_GATE` (a do CP5c, renomeada;
+  `POLITICA_DO_ASSUNTO_DO_AGENDAR_LEVA` reexportada), 8.2 P1, 8.3 reprovado não gravado, 8.4 trava da agenda tomada,
+  8.5 `AJUSTE_CONCORRENTE`, 8.7 prazos do CP5c (`revisao/gate-no-fluxo.ts`, compartilhados), 8.8 acima. 8.6 (P11
+  humano) fica para o CP5e.
+- **Módulo compartilhado** `revisao/gate-no-fluxo.ts` (puro): `RevisaoDoItem`, prazos, `revisaoDe`,
+  `paginasDeReferencia`, `ehDeadlock`/`ehTimeoutDaTransacao` — usados pelos dois produtores (`agendar-itens.ts` reexporta
+  os nomes antigos). O nome do contrato (`revisao-do-item.ts`) colidia com `planos/revisao-do-item.ts`.
+- **Testes**: `creatives/__tests__/ajustar-arte-gate.test.ts` (A1–A18 com banco falso de travas e eventos),
+  `piloto-ciclo.test.ts` (P11 draft-only vira `it()`, com rollback real no harness; o ajuste ACEITO pelo CP4 numa
+  página não apta agora é recusado — a caracterização antiga foi invertida), `ajustar-arte-concorrencia.test.ts` (mede
+  limpo: a corrida e a escrita são o objeto), inventários do CP5c estendidos a `arte-rapida.ts`.
+
+**Revisão do Codex da implementação (R1, 17/10/2026) — dois bloqueadores fechados**: (1) a Generation de ORIGEM era
+lida ANTES do `FOR UPDATE` e esse objeto alimentava referências e medida; agora a busca só ESCOLHE a linha, e o que a
+medição lê (composição, páginas de referência em `FOR SHARE`) é a RELEITURA pela `tx` depois da trava — se a linha
+travada já não é a arte do compositor desta página, `AJUSTE_CONCORRENTE` ("repita"), nada gravado; (2) `versaoDaPagina`
+não cobre nome nem TAGS, e as tags decidem o formato que o gate mede (`formatoDaPaginaGravada`): a conferência sob trava
+passou a comparar `name` e `tags` com a leitura inicial (mudou → `VERSAO_DIVERGENTE`/`PAGINA_MUDOU_DURANTE_O_AJUSTE`,
+sem medir) e `paginaFutura` nasce das tags lidas sob trava. Harness: `FOR UPDATE` falso devolve a linha DEPOIS da trava
+(o publicador que segurava o DRAFT e o entregou ao Zernio é visto); a matriz ganhou as intercalações A13 (worker segurando
+a origem, ordem inversa com `agendar-leva`, rota de fontes, `later-scheduler`) e as demais causas de A7; o harness de
+P11 tem fila por trava e um controle POSITIVO com medição real (a peça limpa, `suporte/peca-limpa.ts`). **R3**: o CAS
+da escrita no draft-only usa o carimbo `updatedAt` lido SOB TRAVA (a conferência sob trava é a prova de versão) — o render
+condicionado de outra chamada move o `@updatedAt` ao gravar só a miniatura, e com o carimbo de antes da espera o ajuste
+recusaria `VERSAO_DIVERGENTE` numa página igual (A13e; o banco falso move o carimbo em toda escrita de Page, como o Prisma).
+
+## CP5e — provas de autonomia: o gate como informação, o resumo do registro e a prova ponta a ponta (17/10/2026)
+
+Contrato: `docs/PLANO-2026-10-17-CP5E-CONTRATO.md` (Codex APTO na rodada 5). O que entrou:
+
+- **`revisarArte` devolve `gate`** (`GateInformativo`: `medida` | `sem-vinculo` | `nao-medida`, sempre com a frase fixa
+  `INFORMACAO_DO_GATE_DO_REVISOR`). A medida do revisor é CORRIGIDA em memória pela régua (`corrigir: true`: o `ok` da força
+  PROPOSTA); o gate decide sobre uma SEGUNDA medida fiel (`corrigir: false`, a dos produtores) sobre o mesmo contexto —
+  custo: dois renders do fundo a mais por chamada. `decidirEMontarRegistro` com origem `revisar-arte`, SEM gravar. A
+  Generation da peça é escolhida UMA vez e relida com `sourcePageId` (pedida → compositor → última arte → nenhuma) e passada
+  ao contexto; a composição só é reaproveitada quando a arte é desta versão (regra do CP5c) — numa página editada depois da
+  arte, o assunto é estimado de novo. Página-modelo → `sem-vinculo` (decisão 5.2, proposta).
+- **O "em até 2 ciclos" virou `it()` tipado** (`piloto-ciclo.test.ts`): apta ⇔ gate APTO + regras duras mediram + sem
+  problema aberto; escalada ⇔ gate REVISAO_HUMANA_NECESSARIA com motivos ou `ajustar-arte` com `details.revisao`. Dois
+  casos: a fixture (escala — CP2 fica) e a peça limpa com o apoio fora da margem (mover → APTO). "Não há" conta como medido
+  (`naoSeAplica`), só a falha de leitura não.
+- **`auditar-operacao`**: bloco `gate` por `gate-resumo.ts` (puro; `lerGateDaArte` + `validadeDoGate`; fail-closed no vínculo
+  post → Generation → `fieldValues.pageId` → `Template.projectId`; rótulos `coincidente`/`historico`/`ilegivel`/`semRegistro`/
+  `registroInvalido`; teto 200 e `parcial`). Nada medido, nada escrito.
+- **Barreira de lint por NOME** (`eslint.config.mjs`): leitores nunca decidem, produtores nunca leem/validam; o inventário
+  cobre os dois lados.
+- **Prova ponta a ponta** (`piloto-ponta-a-ponta.test.ts`, banco falso com travas em `suporte/banco-com-travas.ts` +
+  medição real): E0 compõe com o compositor REAL no banco falso — com uma assinatura SINTÉTICA limpa (posições/cores da peça
+  limpa como variante, fontes declaradas presentes) a peça sai APTA e é dela que E1–E10 partem; **medido** (E0-legado): com
+  a assinatura da FIXTURE a composição legada (250/350) cai no piso de interface 188/224 e em `texto-sem-leitura` (headline
+  escuro sobre fundo escuro) → REVISAO_HUMANA_NECESSARIA (P6, trilha de design, não defeito do gate). E1 APTO → DRAFT (registro, `coincidente`, resumo); E2 não APTO (margem de segurança, que revisor e gate veem) → nenhum
+  DRAFT; E2b o piso de interface (só o gate vê; o revisor não tem ajuste → "leve à pessoa"); E3 = E2 corrigido pelo mover do
+  revisor → APTO → DRAFT (dois registros, mesma `pageVersion`); E-div (véu escuro com folga: a medida corrigida dá `ok` no serviço, a fiel não; os motivos
+  do gate informativo = os do `agendar-leva`); E4 edição concorrente → `VERSAO_DIVERGENTE`; E5 DRAFT bom preservado; E6 post
+  aprovado intocável e `agendar-leva` reaproveita; E7 conferência de fontes falha → não comprovada → humano; E7b fonte
+  ausente → crítico → humano; E8 nenhum efeito pós-commit em caso algum; E10 página editada → `historico` nos dois leitores.
+  **Não prova**: travas/SQL reais, Blob, autorização MCP, comportamento do chat, custo/repetibilidade (§ 4.8).
+
+## Piloto sintético de autonomia (17/10/2026)
+
+Contrato: `docs/PLANO-2026-10-17-PILOTO-SINTETICO-CONTRATO.md` (Codex APTO R4). Runner:
+`src/lib/direcao-de-arte/__tests__/piloto-sintetico.test.ts`, desligado por padrão
+(`describe.skipIf(!process.env.PILOTO_SINTETICO)`); roda por `npm run piloto:sintetico [--completo | --calibracao N |
+--cliente <id> | --sem-repeticao | --so <trecho-da-chave>]` (qualquer filtro = rodada EXPLORATÓRIA). Tudo em banco falso com travas (`suporte/banco-com-travas.ts`), Blob falso e efeitos
+espionados: **nenhum cliente real, DRAFT real, agenda, mensagem ou banco de produção** — o `agendar-leva` do piloto cria
+DRAFTs no banco falso. O relatório integral (JSON + PNGs) vai para `human-output/relatorios/piloto-sintetico/<data>-<rodada>/`
+(fora do versionamento, `.gitignore`); o **resumo** de cada rodada oficial é versionado em `docs/piloto-sintetico/`.
+
+**O que o lote é** (§ 1 do contrato): lote CONTROLADO, não representativo. Fotos sintéticas com verdade conhecida (A1 assunto
+forte, A2 assunto de contraste baixo, B difusa, C clara, D escura, E gradiente, F ruído), a foto real anonimizada da fixture
+de 13/10 (a verdade dela é a REGIÃO PROTEGIDA da vitrine, do catálogo — não "o assunto"), e sem-foto; copies curta / média
+(com pré-título) / longa; os dois arquétipos do T1a e a via sem arquétipo; dois clientes: `cliente-00` (assinatura sintética
+limpa, logo sintética toda branca) e `cliente-fixture` (a assinatura anonimizada de 13/10). Fixtures de clientes reais
+pseudonimizados **não existem ainda**: os scripts estão escritos e **não foram executados** — a lista é a decisão 5.2 do
+owner (`fixtures/piloto-sintetico/LEIAME.md`). O exportador (`scripts/fixtures/exportar-piloto-sintetico.ts`) conecta SÓ pelo
+`.env.development.local`, lê o `.env` SÓ para a identidade da produção e é **fail-closed** (`guarda-do-exportador.ts`,
+testada: produção pooled, direta, em maiúsculas e referência ausente → recusa), tudo numa transação `READ ONLY`, e baixa as
+logos para a pasta do export; o gerador (`gerar-fixtures-do-piloto-sintetico.ts`) é offline, re-codifica cada PNG com o sharp (sem metadado) e
+pseudonimiza por PROJEÇÃO DE ESQUEMA (`pseudonimizar.ts`, testado): só sobrevive o que o esquema conhece — números,
+booleanos, cores, enums sob chaves de enum, nomes de fonte; `content` vira copy sintética pelo papel, `name`/`id` viram o papel
+ou `camada-N`, `groupId` vira `grupo-N`, `fileUrl` vira token SÓ no topo da camada e EXIGE os bytes (aninhado é descartado); `tags` só
+das conhecidas (assinatura, story, feed, quadrado, clara, escura, modelo, conteudo); toda string sob chave fora do esquema
+é DESCARTADA e listada (`descartados`), número e booleano só sob chave numérica PREVISTA (`telefone: 55119…` cai), e a
+CHAVE também é dado (`{ "Acme Corp": 12 }` cai com o valor; chave fora da forma de identificador idem) — nenhum FRAGMENTO
+do nome do cliente (o nome inteiro normalizado, mesmo curto como "Zé", e cada palavra com 3+ letras) sobrevive em string
+nem em chave; só a entrada de `layers[]` é camada (um objeto aninhado com `type`+`position` não ganha token); a conferência final recusa URL, fragmento do nome, identificador externo, texto sob chave não prevista, chave
+que identifica e PNG com metadado. Descartar um campo TIPADO do `Layer` fora do descarte previsto (nome, arquivo, ids de
+linha, datas, metadata) RECUSA a geração: a assinatura mudaria em silêncio (`cropPosition`, `pathViewBox`, `pathData` e `mask.path` na
+gramática SVG, `mask.shapeId`, `blurRadius`… sobrevivem — as chaves do tipo incluem as dos tipos inline; referências `groupId`/`layerId`/`parentId` são renumeradas). Cada `cliente-NN` entra no piloto com os PRÓPRIOS ativos
+(`suporte/fixtures-de-clientes.ts`, testado), não com os da fixture de 13/10.
+
+**Como o piloto julga**: matriz regra → juiz (`suporte/oraculos-do-piloto.ts`). `texto-sobre-assunto` é a única regra
+COBERTA (juiz = a verdade da foto); piso, logo, contraste e tratamento são cobertas-PARCIAIS por juízes independentes
+(`foraDoPiso`, luminância do p10 sob a logo, luminância sob o texto); colisão, tinta fora da caixa e texto cortado são
+"mesma medida" (repetir `checkTextGeometry` não é juiz); texto-pequeno, copy-completa, identidade, oclusão e fonte são
+não cobertas. **Falso APTO** (gate APTO ∧ juiz coberto acusa) só se conta nas regras cobertas; **candidato a falso
+bloqueio** (gate recusa ∧ nenhum juiz coberto acusa) é lista para inspeção humana, não veredito.
+
+**Resultados da rodada `--completo` de 17/10** (126 peças, com repetição, ~5 min nesta máquina; o resumo versionado traz os
+hashes): 126 elegíveis → 54 compostas (72 recusas estruturais, 0 erros) → 50 MEDIDAS (4 da foto real ficaram fora das
+janelas fiéis) → 24 APTAS → 24 DRAFTs; os desfechos BRUTOS do fluxo (com as não medidas) são 54 → 26 → 26 e saem numa
+linha própria. Toda taxa e tabela do resumo é sobre peças MEDIDAS; a linha D da decisão 1 é o gate DEPOIS da falha injetada. Repetibilidade 100 %
+(126/126: nas compostas a IMPRESSÃO COMPLETA do gate final — `serializarParaImpressao` sem `medidoEm`: resultado, motivos, não
+medidos, rulesVersion, versão do gate, pageVersion, copyVersion, política, vínculo —, camadas normalizadas e hash do PNG iguais;
+nas recusas estruturais o mesmo código); estabilidade 0 exceções / 0 não-medidas / 0
+sem-vínculo. Custo mediano por peça: compor 3 renders, revisar 4, agendar 2 (os juízes e o PNG do piloto, 3). O que ele
+achou:
+
+- 🔴 **Falso APTO nas peças MEDIDAS = 0; mas 2 peças APTAS com o juiz acusando ficaram NÃO MEDIDAS → INCONCLUSIVO sobre
+  `texto-sobre-assunto` na foto real.** As duas são a foto REAL da fixture sem catálogo (`cliente-00|story|real|{curta,longa}|sem`):
+  o estimador não localizou assunto na foto anonimizada (origem `nenhum`), a política RECOMENDADA trata "foto lida sem
+  assunto localizável" como **não se aplica** (caso C de `PoliticaDoAssunto`, que o owner NÃO fixou — decisão 9.1 do CP5a),
+  o gate deu APTO e a CAIXA do `servico` ficou 100 % dentro da vitrine que o catálogo protege. Só que todas as caixas dessas
+  peças (headline, serviço, logo) caem FORA das janelas fiéis da fixture (§ 1.2 do contrato: medida fora delas é "não
+  medida", nunca contada) — a imagem ali é a grade anonimizada, não os pixels da foto, e o estimador leu essa grade. Por isso
+  o resumo as lista em § 3b como INDÍCIO, não como falso APTO, e o juiz mede CAIXAS (100 % da caixa, não da tinta). O que o
+  indício diz: **"não se aplica" por estimativa é um APTO silencioso quando a foto não está no catálogo** — com
+  `semAssuntoLocalizavel: 'humano'` as duas iriam ao humano (e com elas as 30 peças do caso C da rodada completa, as sintéticas difusas); a
+  alternativa é fechar a porta do catálogo (foto com região protegida no catálogo nunca chega ao gate sem ela). Para virar
+  medida, as janelas da fixture têm de cobrir as caixas que o compositor produz nessa assinatura — e isso é regenerar a fixture
+  a partir da foto original (`scripts/fixtures/gerar-fixture-piloto-direcao-de-arte.ts`), revelando mais pixels do cliente:
+  anonimização × fidelidade é decisão do owner, não do piloto.
+- **Caso B (assunto só estimado) bloqueia tudo**: 6 peças A1/A2 sem catálogo, todas `NAO_COMPROVADA`, todas aprovadas pela
+  verdade (o texto não tocava o assunto). IoU estimado × verdade 0,30. É o custo da política `estimado: 'humano'`: 100 % de
+  revisão humana em foto sem catálogo. Modo G (leitura da foto falha depois de composta, caso D; em peças A1 E em peças B, que a principal aprovaria): toda leitura
+  válida é recusada pelo REVISOR e pelo PRODUTOR — o `agendar-leva` é chamado com o item DESLIGADO e sem DRAFT na página (o do
+  fluxo principal é apagado do banco falso), responde `REVISAO_HUMANA_NECESSARIA` por `texto-sobre-assunto` e não cria post;
+  um `reaproveitado` não conta como recusa. **Oclusão injetada** (decisão 2, § 4.3): numa peça APTA sem foto ou de foto
+  difusa, uma shape opaca sobre metade da headline → 100 % recusadas pelo gate (`oclusao:NAO_MEDIDO`, transformação não
+  suportada acima de texto é fail-closed); peças produzidas com camada não-texto acima de texto: 0.
+- 🔴 **A assinatura da fixture de 13/10 não passa no piso de interface em NENHUMA peça**: 18 de 18 compostas com
+  `piso-de-interface` (headline no topo < 188 px, logo e serviço no rodapé > 1696 px), 9 também com `tinta-fora-da-caixa`
+  (fonte da marca ausente → fonte de reserva mais larga; limite conhecido do piloto). Se a fixture reflete a assinatura real
+  (margens 100/90 do cliente de origem), **todo story desse cliente vai ao humano com o gate ligado** — conflito entre a
+  régua do piso (CP3) e a assinatura, a decidir pelo owner (mover a assinatura ou excetuar a logo/rodapé da assinatura no
+  piso). Não é defeito do gate: o juiz independente do piso concorda nas 18.
+- **A via dos arquétipos quase não foi medida**: 2 de 48 peças com arquétipo compuseram (`ARQUETIPO_FORA_DA_ZONA` 16,
+  `ARQUETIPO_LINHAS_EXCEDIDAS` 8, `ARQUETIPO_PAPEIS_INCOMPATIVEIS` 8, `PAPEIS_INCOMPATIVEIS` 8, `SEM_COMBINACAO` 6) — a caixa
+  do assunto sintético (40 % × 25 % em x 50 % / y 58 %) e as copies do lote não cabem nas zonas do T1a. E a copy `media`
+  (com pré-título) sem arquétipo caiu 26 vezes em `PAPEIS_INCOMPATIVEIS`: as duas assinaturas do lote não têm combinação
+  com pré-título. São limites do LOTE, a corrigir na próxima rodada (copies por arquétipo; assinatura sintética com pré-título),
+  não achados sobre o gate.
+- `texto-sem-leitura` 4 (headline branco sobre a faixa clara da foto C e E) — o gate mediu, o juiz de luminância concorda.
+  Nenhum falso bloqueio com `ACHADO_CRITICO`: em toda recusa medida o juiz independente concordou.
+
+**O que o piloto NÃO prova** (sempre ao lado do veredito): fontes da marca (declaradas presentes; render com fonte de
+reserva), a visão (gpt-5.2 não roda), fotos reais dos clientes (decisão 5.1), travas/SQL reais e Blob, custo na Vercel,
+MCP e chat. **§ 6 do contrato: o piloto controlado não autoriza MCP-M0** — e um piloto INCONCLUSIVO sobre a regra coberta, com indícios
+de APTO silencioso, menos ainda. Caminho: decisão do owner sobre o caso C (política ou porta do catálogo) e sobre as
+janelas da fixture (anonimização × fidelidade) → rodada nova → falso APTO = 0 SEM peça não medida → aí a conversa do 5.1
+(fotos reais) e do § 4.8.
+
+**Regras do runner que custaram uma rodada cada**: a amostra padrão (1/6) tem de garantir o PAR foto-com-assunto ×
+sem-arquétipo (a cobertura por eixo não garante — sem ele a decisão 1 e o modo G saem vazios); o modo G roda em TODA peça
+A1 sem arquétipo (`i % 3` deixava a amostra sem nenhuma); a logo sintética é toda branca (um miolo escuro contava como
+`logo-sem-leitura` sobre fundo escuro por construção); os renders dos juízes, do PNG, da leitura pareada, da repetição, do modo G e da injeção saem do CONTADOR do renderer e o
+resumo diz a soma e o contador (têm de bater); a rodada CAI (`violacoesDoPiloto`, puro e testado) com erro de execução,
+exceção, timeout, cobertura vazia, falso APTO em peça medida, repetibilidade < 100 %, modo G inválido ou não recusado e
+oclusão injetada não recusada — e a rodada OFICIAL (padrão ou `--completo` sem `PILOTO_CALIBRACAO`/`PILOTO_CLIENTE`/
+`PILOTO_SEM_REPETICAO`/`PILOTO_SO`) exige ainda toda spec repetida, modo G > 0 e oclusão injetada > 0 (0/0 não é prova); com filtro
+a rodada é EXPLORATÓRIA e o resumo diz isso na primeira linha de limites; a repetição cobre também as recusas estruturais; o `loteId` é hash dos INSUMOS
+(copies, fotos, arquétipos, versão de cada cliente), não só das chaves; os caminhos no resumo são relativos à raiz e o HEAD
+vem marcado `(árvore SUJA)` quando o código que rodou não é o do commit.
+
+## Caso C da política do assunto DECIDIDO: foto lida sem assunto localizável vai ao HUMANO (17/10/2026)
+
+Decisão do owner (verbatim no contrato `docs/PLANO-2026-10-17-CASO-C-HUMANO-CONTRATO.md` § 0; Codex APTO na rodada 2 do
+contrato): `POLITICA_DO_ASSUNTO_DO_GATE` (`src/lib/lotes/agendamento.ts`, a FONTE ÚNICA de agendar-leva, ajustar-arte,
+revisar-arte informativo, ver-geracao, auditar-operacao e impressão digital) passa a
+`{ estimado: 'humano' (continua a PROPOSTA do CP5a — caso B NÃO decidido), semAssuntoLocalizavel: 'humano' (DECIDIDO) }`.
+`gate.ts` não muda: `PoliticaDoAssunto` mantém as duas opções; `POLITICA_DO_ASSUNTO_RECOMENDADA` fica como a proposta histórica.
+O que motivou: o piloto sintético (PR #249, § 3b do resumo) mostrou que "não se aplica" por estimativa era um APTO silencioso
+sem catálogo. Consequências ditas no contrato: (1) `VERSAO_DO_GATE`/`VERSAO_DAS_REGRAS` NÃO sobem — a política é parte da
+identidade do registro e a divergência `politica` de `validadeDoGate` torna `historico` todo registro gravado com a política
+antiga, re-medido no próximo agendar/ajustar/revisar; a troca não migra nem apaga registro, posts e artes aprovadas e
+`laterPostId` ficam intactos, mas uma reavaliação sem APTO grava o veredito novo na mesma chave `gateDaArte`; (2) caso E
+(sem foto de fundo) é decidido ANTES da política e continua não se aplicando; (3) em produção a DIREÇÃO do efeito é certa
+(mais revisão humana: toda foto lida sem catálogo e sem assunto localizável) e a MAGNITUDE não foi medida — o lote do piloto
+é controlado. Testes: as fixtures que carregavam a política antiga passaram à efetiva (`pagina-limpa.ts`, `ver-geracao-retorno`,
+`gate-registro` leitor e H5), o mock de `agendar-itens-gate` ficou coerente com a página (contexto E medida; catálogo
+em y 900–1400, longe dos textos) e ganhou a prova do caminho efetivo (foto lida sem assunto → `REVISAO_HUMANA_NECESSARIA` por
+`texto-sobre-assunto:NAO_COMPROVADA`, nenhum DRAFT; com catálogo cria; sem foto cria). Rodada nova do piloto com
+`PILOTO_ROTULO=caso-c-humano` (rótulo, não filtro): resumo em `docs/piloto-sintetico/2026-10-17-*-caso-c-humano-resumo.md`.
+
+## Adendo do piloto: anotação rastreada, par real, cenário H, arquétipos que compõem, variante de teste da assinatura (17/10/2026)
+
+Pedido do owner depois de conferir o caso C (verbatim no adendo `docs/PLANO-2026-10-17-PILOTO-ADENDO-DIAGNOSTICO.md`; Codex R1–R5
+NÃO APTO → R6 APTO para implementar). Só lote, harness e documento — política, gate, compositor, assinatura real e produção
+intocados; **MCP-M0 continua bloqueado**. Resumos oficiais: `docs/piloto-sintetico/2026-10-17-{padrao,completo}-adendo-resumo.md`.
+
+**O que entrou no harness** (`piloto-sintetico.test.ts`, `suporte/*`): foto **A3** (assunto colado à borda SUPERIOR, fundo
+escuro — o "assunto deslocado" dos arquétipos de centro); clientes de teste **`cliente-00-m90`** (a assinatura sintética com
+margem 90) e **`cliente-fixture-piso`** (a assinatura de 13/10 com as caixas dentro do piso com folga e inteiras na área
+segura — variante EXCLUSIVAMENTE de teste; `cliente-fixture` fica como regressão); `compor.motivo` no registro; rastro
+**`anotacao`** por peça com captura no harness (`estimarAssunto` embrulhado conta as estimativas por `revisarArte`;
+`contextoDaMedicao` embrulhado guarda o assunto que o PRODUTOR usou sob trava); **par** catálogo presente × ausente só com duas
+leituras efetivas dos mesmos bytes e do mesmo corte CONHECIDO (peça com arquétipo nasce com catálogo: o estimado é calculado
+pelo harness no mesmo recorte e rotulado); **cenário H** (corte da `bg-foto` trocado numa peça APTA do caso A → o cache da
+composição cai → nova medida e decisão, tipo registrado; produtor com item desligado e sem DRAFT); oclusão injetada também em
+caso A; invariantes novos (`violacoesDoPiloto`: cenário H > 0 na oficial e 100 % ao humano; corte divergente derruba).
+
+**Rodada oficial `--completo` (HEAD 61a6d4a0; 306 specs em 4 clientes, 174 recusas estruturais, 132 compostas, 124 medidas,
+24 APTAS, repetibilidade 306/306, 0 exceções, 3.756 renders = contador):**
+
+- **Arquétipos compõem e passam**: 16/16 APTAS (8 `minimal-fb-centro-optico` com A3; 8 `minimal-fb-topo-esquerda` em
+  `cliente-00-m90`). Diagnóstico confirmado: `topo-esquerda` recusa por construção com margem 96 (`ARQUETIPO_FORA_DA_ZONA`:
+  referência x 0,085 × 1080 = 92 px dentro da margem do projeto) — achado do compositor/T1a para o owner, não consertado aqui;
+  `centro-optico` recusa assunto centrado (`SEM_COMBINACAO`, invade a região protegida) e compõe com assunto na borda. As recusas
+  existentes seguem no lote, com o motivo gravado.
+- **Anotação preservada 16/16** no caso A: compositor gravou catálogo → revisor reaproveitou (0 estimativas) e avaliou → produtor
+  usou catálogo com a MESMA caixa. **Cenário H 16/16 ao humano** (revisor E produtor; 8 reestimadas com assunto, 8 sem assunto):
+  hoje o revisor NÃO relê o catálogo quando o cache da composição cai — comportamento medido; mudar é decisão do owner (H no § 7
+  do adendo).
+- **Par**: 60 pares reais (0 corte divergente; 138 não pareadas por recusa de um lado). O estimador localizou caixa em 32/60 —
+  todas A1/A2 (IoU com o catálogo 0,30) — e em **0/20 de A3**: assunto colado à borda superior não é localizado pela
+  estimativa (`mapaDeCalma` → `estimarAssunto`), medido sobre pixels sintéticos fiéis, não defeito comprovado nas fotos dos
+  clientes; sem catálogo essa foto cai no caso C (humano) — 8 dessas peças a verdade aprovaria.
+- **Variante de teste `cliente-fixture-piso`**: `piso-de-interface` **0** (contra 18 na fixture histórica) — a
+  variante faz o que promete; continua 0/18 APTAS por texto-sem-leitura 4, texto-sobre-assunto 16, tinta-fora-da-caixa 9 (fonte de reserva e a política do caso C
+  nas fotos), e as peças com a foto REAL seguem não medidas (fora das janelas).
+- Falso APTO em peça medida: 0. Modo G 24/24; oclusão injetada 24/24 (agora também em caso A).
+
+**Decisões do owner que o adendo deixa abertas**: caso B; janelas da fixture (ou a etapa representativa no lugar); assinatura
+real × piso; referência x dos arquétipos de canto × margem do projeto (T1a); se o revisor deve reler o catálogo quando o cache
+cai (H); e a etapa representativa (§ 4 do adendo: clientes, cota, seleção por `PostRenderProof`, origem por fluxo, janelas
+conferidas por `exigirMedidaFiel`, quais pixels podem ser versionados) — **nada disso foi executado**.
+
+## Exportador `--fotos` da etapa representativa (P1, 17/10/2026)
+
+Contrato: `docs/PLANO-2026-10-17-CONTINUIDADE-E-CONTRATO-FOTOS.md` (§ 3–4, Codex APTO R9/R10; D1 autorizada pelo owner).
+Seleção PURA em `scripts/fixtures/selecao-de-fotos.ts` (E1–E9, classe de origem como INDÍCIO, download com guarda de host
+EXATO e redirecionamento revalidado, canvas pelo IHDR da mídia da prova, reposição determinística); SQL só de leitura em
+`scripts/fixtures/fotos-do-banco.ts` (`SET TRANSACTION READ ONLY` primeiro); casca em `exportar-piloto-sintetico.ts --fotos`.
+
+- 🔴 **Escrito e NÃO executado.** Contar (P2) ou exportar (P4) contra o branch de dev exige autorização própria do owner.
+- 🔴 **`IMUTABILIDADE_DO_BLOB_COMPROVADA = false`**: sem prova de que a URL de hoje tem os bytes do dia do render, todo
+  fundo sai `imutabilidade-nao-comprovada`. Virar `true` é decisão (D9), nunca conveniência para "dar número".
+- 🔴 **Escritor novo com `allowOverwrite: true`** (em `src/` ou `scripts/`) tem de entrar em `INVENTARIO_DE_SOBRESCRITA`
+  — o teste varre o repositório e falha.
+- O que a seleção NÃO prova: que a mídia registrada é a do publicador; que a foto ficou visível (oclusão). Os rótulos do
+  manifesto dizem isso; não os apague.
+
+
+## Margens de 29/10/2026: piso da interface 160/160 e revisor pela fonte única (PR aberto, sem release)
+
+Decisão do owner (29/10/2026): as margens da casa passam a ser Story laterais 64 · topo 160 · base 160 e Feed 4:5
+laterais 64 · topo 72 · base 72 (eram 92/188/224 e 92/120/104 no compositor; 70/120/100 no editor e no revisor). São
+estimativas da pesquisa das linhas-guia (a interface cobre ~150–160 px no topo; nos celulares altos a caixa "Enviar
+mensagem" fica abaixo da arte; a equipe trabalha a 94–153 px da base), não medição oficial — o Ciro tem duas artes
+de régua em `docs/research/canva-guias-e-margens-2026-10/teste-de-regua/` e pode ajustar com prints.
+
+- 🔴 **`PISO_DE_INTERFACE_DO_STORY` é 160/160** (`revisao/interface-do-story.ts`, único lugar com o número). O G26
+  passou a ser: no topo y = 160 reprova e 161 passa; no rodapé base em H−160 reprova e H−161 passa. A configuração
+  do cliente continua só apertando. Fora do canônico o piso segue "não comprovado" (Codex R11).
+- 🔴 **`limitesDoEditor` (regra `fora-da-area-segura`), `limitesDaAreaSegura` do `text-geometry` e o autofix leem
+  `margensDoEditor`** — o L5 da instrução das linhas-guia, antecipado neste PR porque a geometria nova do Feed (72) e
+  a lateral 64 ficam ABAIXO da margem antiga do revisor (120/100/70): sem isso o compositor pousaria texto onde o
+  próprio gate acusa (a armadilha de `compositor.md`, "pre invade a margem em toda peça de feed"). O formato sai do
+  tamanho do canvas (`formatoDaPaginaGravada`); a margem é a PADRÃO da casa, não a da marca (a da marca entra no
+  revisor numa fase posterior, se o Ciro quiser).
+- **Antes de integrar, medir**: `scripts/medir-margens-2026-10-29.ts` (só leitura; roda em produção só com o ok do
+  Ciro no chat) mede os textos uma vez e confere as mesmas métricas, pela MESMA regra do revisor (a tinta de cada
+  bloco, `blocosDeTexto` — não a caixa do `text-geometry`, Codex R1), contra as margens antigas e as novas, contando
+  quantas artes agendadas e dos últimos 30 dias mudam de aviso em `fora-da-area-segura` e de veredito no piso. O que
+  não dá para medir (camadas ilegíveis, fontes do projeto sem registro, texto que o medidor omitiu) sai contado à
+  parte, nunca como "sem impacto"; rich text é aproximação, dita. Post com `laterPostId` é só contado — intocável.
+  `foraDaAreaSegura(metricas, limites)` foi separado de `checkTextGeometry` (o `text-geometry` usa a caixa).
+- **Medido em produção em 29/10 (ok do Ciro no chat)**: 729 páginas (8 de posts agendados, 721 dos últimos 30 dias,
+  0 com `laterPostId`); 647 medidas, 71 aproximadas (rich text), 0 não medidas, 0 falhas. `fora-da-area-segura`:
+  32 ganham aviso (serviço/CTA no rodapé e pré/headline no topo de stories — Real 12, Empório Fonseca 6, TERO 5,
+  By Rock 3, Wine Vix 3, Seu Quinto 2, Quintal 1) e 2 perdem (feeds do By Rock, 120 → 72). Piso da interface: 16
+  passam a aceitar (Quintal 11, Seu Quinto 3, TERO 1, Wine Vix 1), nenhuma passa a reprovar. Aviso nunca bloqueia e
+  nada é re-renderizado: o efeito fica no revisor/gate de quem abrir essas páginas. Log fora do git em
+  `human-output/relatorios/editor-madrugada-2026-10-24/margens-2026-10-29/medicao-2026-10-29.log`.
+- **Reconciliar `Project.assinatura`** (`scripts/reconciliar-assinatura-2026-10-29.ts`): simulação por padrão; com
+  `--gravar` a escrita é ATÔMICA (`updateMany` com `assinatura: { equals: <o que foi lido> }`) — uma edição no meio
+  aborta aquele projeto em vez de apagá-la. Os kits de `scripts/lib/kits-de-assinatura.ts` (o padrão da casa) e a logo
+  de `criar-pagina-de-assinatura.ts` passaram a ler `GEOMETRIA_PADRAO`: rodar o script de novo não regrava 92/188/224.
+  Os kits POR MARCA (Real 96/250/350, Quintal 92/200/172…) foram reconciliados em 29/10 (10 projetos, ok do Ciro no chat).
+- **Limite do classificador sem tags** (Codex): um Story gravado como 1080×1600 (razão 1,48 < 1,6) recebe os limites
+  do Feed no revisor. O gate já recusa comprovar o piso fora do canônico; avisos e propostas do revisor é que mudam.
+- **Cobertura que mudou de natureza**: E5 passou a provar a barreira do CP4 (a recusa transacional do gate sobre um
+  DRAFT existente ficou sem caso — substituto pendente); P9 voltou a rodar em 29/10 com a fixture regenerada (abaixo).
+- 🔴 **`VERSAO_DAS_REGRAS` subiu para `revisao-v2` e `VERSAO_DO_GATE` para `gate-v5`** (a impressão digital das regras
+  mudou com os números): `revisao-revisao-v2.json` e `gate-gate-v5.json` gerados com `IMPRESSAO_DIGITAL=gravar`; os da
+  v1/v4 continuam imutáveis (`scripts/validar-impressao-digital.ts`). Consequência da decisão 9.13: **os registros de
+  gate gravados nas Generations com `gate-v4` passam a `invalido`** — a peça volta a ser revisada antes de agendar.
+- **Re-caracterização do piloto (ok do Ciro em 29/10)**: a v1 da fixture (Real, headline em y = 148, tinta ≈ 154) já
+  toca a margem de 160 do topo. `ACEITO_TOPO` dos testes do CP4 deixou de ser "subir 20" (piora a margem) e não pode
+  ser "descer 20" (piora o contraste do apoio, 122 → 112): é "8 px para a direita". Os casos de piso da fonte
+  (CP4.2a) descem o bloco 24 px antes, para a margem não decidir por eles. E2b: o revisor agora também acusa o apoio
+  no piso e propõe o `mover` (margem = piso). E5: a barreira que preserva o DRAFT passou a ser o CP4
+  (`fora-da-area-segura`), não o gate. t1b: a logo sintética "alta" cresceu de 625 para 656 px para seguir alcançando
+  o spark com o topo em 160. **P9**: o `mover` do serviço proposto pelo revisor tirava a caixa da janela fiel
+  `servico-v1` da fixture (ficou `it.skip` até a fixture ser regenerada — abaixo).
+- **Fixture do piloto regenerada em 29/10 (ok do Ciro)**: os exports de 13/10 não existiam mais em disco; os mesmos
+  registros (Generations v1/v2, Page, página de assinatura) e a foto e as logos foram lidos de novo em produção, só
+  leitura — a Page não mudou desde 13/10 e a assinatura desde 03/09; `Project.assinatura` entrou como o snapshot de
+  13/10 da própria fixture, não o reconciliado. O gerador reproduziu `peca.json`, `assinatura.json` e `marca.json`
+  byte a byte (o monograma é a cópia `isProjectLogo`, 400×398 — as outras cópias do Blob têm 2645×2626 e tinta
+  escura). Só `foto.json` mudou: a janela `servico-v1` cresceu 80 px para cima (1712–1837 → 1632–1837), conferida a
+  olho (balcão e um frasco, nenhum rosto). A área das janelas foi de 18,2 % para 20,0 % da foto e o teto do guarda de
+  anonimização (`piloto-fixture.test.ts`) subiu de 19 % para 21 %. P9 voltou a `it()` e passa (41 verdes no
+  `piloto-ciclo`; o pulado restante é o `hojeViola` do CP2). `piloto-fixture`, `piloto-compositor` e `piloto-portao` verdes.
+- **Quadrado decidido em 29/10 (Ciro no chat: "Manter 92/120/104")**: fica como está em `GEOMETRIA_PADRAO.quadrado`; nenhum projeto tem geometria própria de quadrado reconciliada, e a reconciliação de 29/10 não o tocou de propósito.

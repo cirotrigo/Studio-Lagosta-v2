@@ -28,6 +28,7 @@ vi.mock('@/lib/assets/gradients-library', async (original) => ({
 }))
 
 import type { Layer } from '@/types/template'
+import { escolhaEspacialOriginal } from '@/lib/compositor/defasagem'
 import { comporPeca, type ResultadoDaComposicao } from '@/lib/compositor/compor'
 import { montarAssinatura } from '@/lib/compositor/assinatura'
 import { medirCopy } from '@/lib/compositor/medir-copy'
@@ -36,14 +37,13 @@ import { verArquetipo } from '@/lib/compositor/arquetipos/catalogo'
 import { impressaoDoArquetipo } from '@/lib/compositor/arquetipos/impressao'
 import { prepararArquetipo } from '@/lib/compositor/arquetipos/na-spec'
 import { CreativeError } from '@/lib/creatives/errors'
-import { cenario, medidorCalibrado, type PaginaDeAssinatura } from './suporte/compositor'
+import { cenario, medidorCalibrado, type PaginaDeAssinatura, noPisoDe1310 } from './suporte/compositor'
 import { dataUrl } from './suporte/fixture'
 import { leiturasDosTextos, tratamentosQuePioram } from './suporte/propriedades'
 import { cenarioSintetico, fotoSintetica, logoSintetica, paginaSintetica, specSintetica, variantesClaraEEscura, VEU_CLARO, VEU_ESCURO } from './suporte/sinteticos'
 
 const TOPO = 'minimal-fb-topo-esquerda'
 const CENTRO = 'minimal-fb-centro-optico'
-const BASE = 'minimal-fb-base-esquerda'
 const ASSINATURA = { mancha: VEU_ESCURO, gradiente: { cor: VEU_CLARO } }
 const CLARO = '#F5F5F5'
 
@@ -74,7 +74,7 @@ async function montar(m: Montagem) {
   })
   if (m.pre) pagina = comPre(pagina)
   const base = await cenarioSintetico({ pagina, foto, candidatasDoVeu: [], logosDoProjeto: await variantesClaraEEscura() })
-  cenario.atual = { ...base, projeto: { ...base.projeto, assinatura: m.assinatura ?? ASSINATURA } }
+  cenario.atual = { ...base, projeto: { ...base.projeto, assinatura: noPisoDe1310(m.assinatura ?? ASSINATURA) } }
   return pagina
 }
 
@@ -107,39 +107,45 @@ describe('T1a · minimal-fb-topo-esquerda no compositor real', () => {
     await montar({ id: 't1a-13', apoio: true })
     const { r, entrada } = await compor(spec('t1a-13', [HEADLINE, APOIO, SERVICO], { arquetipo: { id: TOPO } }))
     expect(camada(r, 'headline').position).toEqual({ x: 92, y: 298 })
-    expect(camada(r, 'apoio').position).toEqual({ x: 92, y: 547 })
-    expect(camada(r, 'servico').position).toEqual({ x: 92, y: 1555 })
+    // Pilha fechada (30/10/2026): vão 0 entre as caixas; o fio continua reservado pela pilha (`extensoesDosAcentosPresos`:
+    // 5,8 de vão + 5,8 de altura) e o apoio encosta nele — manchete 298 + 194 + 11,5 ≈ 504, não os 517 do gap 14 nem a
+    // referência solta (547). A camada do fio é arredondada ao pixel, por isso a diferença de até 1 px.
+    const fio = camada(r, 'acento-fio')
+    expect(Math.abs(camada(r, 'apoio').position.y - (fio.position.y + fio.size.height))).toBeLessThanOrEqual(1)
+    expect(camada(r, 'apoio').position).toEqual({ x: 92, y: 504 })
+    // O serviço pousa com a BASE na margem (30/10/2026): 1696 − 39 = 1657 (até 29/10 era o topo da referência mapeada, 1562).
+    expect(camada(r, 'servico').position).toEqual({ x: 92, y: 1657 })
     for (const id of ['headline', 'apoio', 'servico']) expect(camada(r, id).style?.textAlign).toBe('left')
-    // A logo do arquivo (160×80, razão 0,5) em contain na referência (799,1555 189×134): a maior caixa com a proporção.
+    // A logo do arquivo (160×80, razão 0,5) em contain na referência (799,1562 189×134): a maior caixa com a proporção.
     const logo = camada(r, 'logo')
-    expect(logo.position).toEqual({ x: 799, y: 1575 })
+    expect(logo.position).toEqual({ x: 799, y: 1582 })
     expect(logo.size).toEqual({ width: 189, height: 95 })
     expect(logo.style?.objectFit).toBe('contain')
     // O estilo é da assinatura: a fonte e a cor da página.
     expect(camada(r, 'headline').style).toMatchObject({ fontFamily: 'Sintetica Display', color: CLARO })
     // A procedência fica no diagnóstico e a spec gravada traz a versão exata — nunca "a mais recente".
     const d = r.diagnostico.arquetipo!
-    expect(d).toMatchObject({ id: TOPO, versao: 1, impressao: impressaoDe(TOPO), codigoTaxonomico: 'MIN-01', formato: 'story', modo: 'busca-espacial-v1', elementosMaterializados: [] })
+    expect(d).toMatchObject({ id: TOPO, versao: 1, impressao: impressaoDe(TOPO), codigoTaxonomico: 'MIN-01', formato: 'story', modo: 'busca-espacial-v1', elementosMaterializados: ['fio'] })
     expect(d.elementosDeclarados).toEqual([{ id: 'fio', tipo: 'fio-fino', opcional: true }])
     expect(d.papeis.map((p) => [p.papel, p.posicao.x, p.posicao.y])).toEqual([
       ['headline', 92, 298],
-      ['apoio', 92, 547],
-      ['servico', 92, 1555],
+      ['apoio', 92, 504],
+      ['servico', 92, 1657],
     ])
     expect(d.logo).toMatchObject({ modo: 'referencia', canto: 'inferior-direito' })
     expect(r.diagnostico.posicao).toMatchObject({ ancora: 'topo', alinha: 'esquerda', crop: 'center-middle' })
     expect(r.diagnostico.candidatos).toEqual([])
     expect(entrada!.fieldValues.spec.arquetipo).toEqual({ id: TOPO, versao: 1, impressao: impressaoDe(TOPO) })
     expect(entrada!.fieldValues.composicao.arquetipo.impressao).toBe(impressaoDe(TOPO))
-    // A Page é Layer[] normal: nenhum tipo novo de camada.
-    expect(new Set(entrada!.layers.map((l: Layer) => l.type))).toEqual(new Set(['image', 'text', 'logo', 'gradient']))
+    // A Page é Layer[] normal: nenhum tipo novo de camada (o fio do T1b é um `shape`, tipo que o editor e o render já têm).
+    expect(new Set(entrada!.layers.map((l: Layer) => l.type))).toEqual(new Set(['image', 'text', 'logo', 'gradient', 'shape']))
   }, 60_000)
 
   it('14. feed: a geometria própria do feed (não a do story escalada)', async () => {
     await montar({ id: 't1a-14' })
     const { r } = await compor(spec('t1a-14', [HEADLINE, SERVICO], { formato: 'feed', arquetipo: { id: TOPO } }))
     expect(camada(r, 'headline').position).toEqual({ x: 92, y: 209 })
-    expect(camada(r, 'servico').position).toEqual({ x: 92, y: 1134 })
+    expect(camada(r, 'servico').position).toEqual({ x: 92, y: 1211 })
     expect(r.diagnostico.arquetipo!.formato).toBe('feed')
   }, 60_000)
 
@@ -149,36 +155,58 @@ describe('T1a · minimal-fb-topo-esquerda no compositor real', () => {
     const grupo = (id: string) => (camada(r, id).metadata as { groupId?: string }).groupId
     expect([grupo('headline'), grupo('apoio'), grupo('servico')]).toEqual(['grupo-arq-headline', 'grupo-arq-apoio', 'grupo-arq-servico'])
     expect(r.diagnostico.arquetipo!.papeis.map((p) => p.papel)).toEqual(['headline', 'apoio', 'servico'])
-    // Na página os dois moram juntos no topo; na peça, cada um na referência dele.
-    expect(camada(r, 'apoio').position.y - camada(r, 'headline').position.y).toBe(249)
+    // Na página os dois moram juntos no topo; na peça, empilhados com vão 0 (30/10/2026: 194 + fio 11,5 = 205,5 → 206, não os 249 das referências soltas nem os 219 do gap 14).
+    expect(camada(r, 'apoio').position.y - camada(r, 'headline').position.y).toBe(206)
   }, 60_000)
 
-  it('as margens da PÁGINA não competem: o pré-título pousa em 230 mesmo com o primeiro texto da página em 230/300', async () => {
+  it('as margens da PÁGINA não competem: o pré-título pousa na margem da marca (o piso padrão, 188) mesmo com o primeiro texto da página em 230/300', async () => {
     await montar({ id: 't1a-margem', pre: true })
     const { r } = await compor(spec('t1a-margem', [{ papel: 'pre', linhas: ['hoje'] }, HEADLINE, SERVICO], { arquetipo: { id: TOPO } }))
-    expect(camada(r, 'pre').position).toEqual({ x: 92, y: 230 })
+    // 29/10/2026: a referência de borda do catálogo (230,4) segue o piso do projeto — 188 no padrão; a página não entra.
+    expect(camada(r, 'pre').position).toEqual({ x: 92, y: 188 })
   }, 60_000)
 
-  it('16. referência fora da área segura EFETIVA do projeto: desde o CP2B a faixa é RESGATADA na vertical (a referência é preferência), dito no aviso — e o medir-copy parte do mesmo lugar', async () => {
+  it('16. piso do projeto mais apertado (safeTopo 250): a referência de borda SEGUE a margem da marca (29/10/2026) — nada a resgatar, e o medir-copy parte do mesmo lugar', async () => {
     const pagina = await montar({ id: 't1a-16', pre: true, luz: 60, assinatura: { ...ASSINATURA, geometria: { story: { safeTopo: 250 } } } })
     const blocos = [{ papel: 'pre', linhas: ['hoje'] }, HEADLINE, SERVICO]
     const { r } = await compor(spec('t1a-16', blocos, { arquetipo: { id: TOPO } }))
     const d = r.diagnostico.arquetipo!
     const pre = d.papeis.find((p) => p.papel === 'pre')!
-    // A referência (y 230) fica acima do piso de 250: a faixa {pre, headline} desce o mínimo para caber.
-    expect(pre.referencia).toEqual({ x: 92, y: 230, width: 540, height: 58 })
+    // A referência do catálogo (y 230) está na faixa da margem: na margem da marca ela É o piso (250) — a faixa não
+    // precisa do resgate por dy (até 29/10 a referência ficava em 230 e a busca descia a faixa o mínimo).
+    expect(pre.referencia).toEqual({ x: 92, y: 250, width: 540, height: 58 })
     expect(pre.zonaEfetiva.y).toBe(250)
-    expect(pre.posicao.y).toBeGreaterThanOrEqual(250)
-    const dy = pre.posicao.y - 230
-    expect(d.papeis.find((p) => p.papel === 'headline')!.posicao.y).toBe(298 + dy)
-    expect(r.diagnostico.avisos.some((a) => /pre: a referência do arquétipo sai da zona efetiva/.test(a))).toBe(true)
-    // O medir-copy mede na MESMA partida (o resgate), e diz que cabe.
-    const assinatura = montarAssinatura({ pagina, formatoDaPagina: 'story', numerosDoProjeto: { ...ASSINATURA, geometria: { story: { safeTopo: 250 } } }, logoDoProjeto: null })
+    expect(pre.posicao.y).toBe(250)
+    // A manchete empilha sob o pré (30/10/2026, vão 0): pré + altura, não a referência 298 + dy.
+    expect(d.papeis.find((p) => p.papel === 'headline')!.posicao.y).toBe(pre.posicao.y + pre.posicao.height)
+    expect(r.diagnostico.avisos.some((a) => /pre: a referência do arquétipo sai da zona efetiva/.test(a))).toBe(false)
+    // O medir-copy mede na MESMA partida (a margem da marca), e diz que cabe.
+    const assinatura = montarAssinatura({ pagina, formatoDaPagina: 'story', numerosDoProjeto: noPisoDe1310({ ...ASSINATURA, geometria: { story: { safeTopo: 250 } } }), logoDoProjeto: null })
     const v = validarSpec(spec('t1a-16', blocos, { arquetipo: { id: TOPO } }))
     const m = medirCopy({ spec: v.spec!, assinatura, formato: 'story', medir: medidorCalibrado(), familias: [], fonteCarregada: () => true, combinacoesSalvas: [], arquetipo: prepararArquetipo(v.spec!) })
     expect(m.cabeTudo).toBe(true)
     expect(m.arquetipo!.posicoes!.pre!.posicao.y).toBe(pre.posicao.y)
     expect(m.arquetipo!.avaliacaoEspacial).toBe('nao-executada')
+  }, 60_000)
+
+  it('20. a pilha é GAP_DA_PILHA (0) mesmo com gapEntreBlocos 9 na marca: o fio fica, o apoio encosta nele; a peça grava pilha 0; a de ANTES da regra reproduz sem empilhar', async () => {
+    await montar({ id: 't1a-20', apoio: true, assinatura: { ...ASSINATURA, geometria: { story: { gapEntreBlocos: 9 } } } })
+    const { r, entrada } = await compor(spec('t1a-20', [HEADLINE, APOIO, SERVICO], { arquetipo: { id: TOPO } }))
+    const fio = camada(r, 'acento-fio')
+    expect(fio).toBeTruthy()
+    expect(Math.abs(camada(r, 'apoio').position.y - (fio.position.y + fio.size.height))).toBeLessThanOrEqual(1)
+    // A peça nova grava a pilha na escolha; reproduzida, sai igual.
+    const gravada = validarSpec(entrada!.fieldValues.spec).spec!
+    const escolha = escolhaEspacialOriginal(entrada!.fieldValues, gravada)!
+    expect((escolha as { pilha?: number }).pilha).toBe(0)
+    await montar({ id: 't1a-20', apoio: true, assinatura: { ...ASSINATURA, geometria: { story: { gapEntreBlocos: 9 } } } })
+    const r2 = await comporPeca(spec('t1a-20', [HEADLINE, APOIO, SERVICO], { arquetipo: { id: TOPO } }), { somenteAvaliar: true, escolhaEspacial: escolha })
+    expect(camada(r2, 'apoio').position.y).toBe(camada(r, 'apoio').position.y)
+    // A peça de antes (escolha sem `pilha`): cada papel na própria referência, como nasceu — o apoio em 547.
+    const { pilha: _semPilha, ...antiga } = escolha as { pilha?: number } & Record<string, unknown>
+    await montar({ id: 't1a-20', apoio: true, assinatura: { ...ASSINATURA, geometria: { story: { gapEntreBlocos: 9 } } } })
+    const r3 = await comporPeca(spec('t1a-20', [HEADLINE, APOIO, SERVICO], { arquetipo: { id: TOPO } }), { somenteAvaliar: true, escolhaEspacial: antiga as never })
+    expect(camada(r3, 'apoio').position).toEqual({ x: 92, y: 547 })
   }, 60_000)
 
   it('18. linhasMax é HARD: três linhas de manchete são recusadas antes de medir', async () => {
@@ -208,20 +236,20 @@ describe('T1a · minimal-fb-centro-optico no compositor real', () => {
     expect(h.style?.textAlign).toBe('center')
     expect(h.position.y).toBe(854)
     expect(Math.abs(h.position.x + h.size.width / 2 - 540)).toBeLessThanOrEqual(1)
-    expect(camada(r, 'servico').position.y).toBe(1613)
+    expect(camada(r, 'servico').position.y).toBe(1657)
     const d = r.diagnostico.arquetipo!
     expect(d.logo.modo).toBe('automatica')
     expect(['inferior-esquerdo', 'inferior-direito', 'superior-esquerdo', 'superior-direito']).toContain(d.logo.canto)
     expect(camada(r, 'logo').metadata).toMatchObject({ compositor: { canto: d.logo.canto } })
     expect(d.elementosDeclarados).toEqual([{ id: 'spark', tipo: 'spark-4', opcional: true }])
-    expect(d.elementosMaterializados).toEqual([])
+    // T1b: o spark opcional é desenhado, preso à manchete (o detalhe está em t1b-acentos.test.ts).
+    expect(d.elementosMaterializados).toEqual(['spark'])
   }, 60_000)
 })
 
 describe('T1a · recusas estruturadas no compositor', () => {
-  it('12. o modelo 2 é recusado até o T1b (nunca sai sem o L); 8. quadrado; 9. CTA', async () => {
+  it('8. quadrado; 9. CTA (o 12 — o modelo 2 recusado até o T1b — compõe desde o T1b: t1b-acentos.test.ts)', async () => {
     await montar({ id: 't1a-rec', apoio: true })
-    expect((await recusa(spec('t1a-rec', [HEADLINE, APOIO, SERVICO], { arquetipo: { id: BASE } }))).code).toBe('ARQUETIPO_INDISPONIVEL')
     expect((await recusa(spec('t1a-rec', [HEADLINE, SERVICO], { formato: 'quadrado', arquetipo: { id: TOPO } }))).code).toBe('ARQUETIPO_FORMATO_NAO_SUPORTADO')
     const cta = await recusa(spec('t1a-rec', [HEADLINE, SERVICO, { papel: 'cta', linhas: ['Reserve'] }], { arquetipo: { id: TOPO } }))
     expect(cta.code).toBe('ARQUETIPO_PAPEIS_INCOMPATIVEIS')
@@ -259,7 +287,7 @@ describe('T1a · a escada da UNIDADE (manchete + segunda voz)', () => {
     return cenario.atual.paginasDeAssinatura[0]
   }
   const medirCom = (pagina: PaginaDeAssinatura, blocos: Array<{ papel: string; linhas: string[] }>) => {
-    const assinatura = montarAssinatura({ pagina, formatoDaPagina: 'story', numerosDoProjeto: ASSINATURA, logoDoProjeto: null })
+    const assinatura = montarAssinatura({ pagina, formatoDaPagina: 'story', numerosDoProjeto: noPisoDe1310(ASSINATURA), logoDoProjeto: null })
     assinatura.camadasDaPagina = pagina.layers
     const v = validarSpec(spec(pagina.id, blocos, { arquetipo: { id: TOPO } }))
     return medirCopy({ spec: v.spec!, assinatura, formato: 'story', medir: medidorCalibrado(), familias: [], fonteCarregada: () => true, combinacoesSalvas: [], arquetipo: prepararArquetipo(v.spec!) })
@@ -345,11 +373,11 @@ describe('T1a · a página não decide geometria por outra via', () => {
     expect(camada(r, 'headline2').position.y).toBeGreaterThan(camada(r, 'headline').position.y)
   }, 60_000)
 
-  it('o ornamento do arranjo não desloca o texto: com o ícone DEPOIS, o serviço pousa exatamente na referência', async () => {
+  it('o ornamento do arranjo não desloca o texto: com o ícone DEPOIS, o serviço pousa pela base da margem, e o ícone (2 px abaixo) fica dentro dela', async () => {
     const pagina = await montar({ id: 't1a-orn-depois' })
     cenario.atual = { ...cenario.atual!, paginasDeAssinatura: [await comIcone(pagina, 'depois')] }
     const { r } = await compor(spec('t1a-orn-depois', [HEADLINE, SERVICO], { arquetipo: { id: TOPO } }))
-    expect(camada(r, 'servico').position).toEqual({ x: 92, y: 1555 })
+    expect(camada(r, 'servico').position).toEqual({ x: 92, y: 1655 })
     expect(r.layers.some((l) => (l.metadata as { compositor?: { elementoDe?: string } } | undefined)?.compositor?.elementoDe === 'servico')).toBe(true)
   }, 60_000)
 
@@ -361,7 +389,7 @@ describe('T1a · a página não decide geometria por outra via', () => {
     const problema = (e.details as { problemas: Array<{ papel: string; motivo: string }> }).problemas[0]
     expect(problema.papel).toBe('servico')
     expect(problema.motivo).toMatch(/ornamentos/)
-    const assinatura = montarAssinatura({ pagina, formatoDaPagina: 'story', numerosDoProjeto: ASSINATURA, logoDoProjeto: null })
+    const assinatura = montarAssinatura({ pagina, formatoDaPagina: 'story', numerosDoProjeto: noPisoDe1310(ASSINATURA), logoDoProjeto: null })
     assinatura.camadasDaPagina = pagina.layers
     const v = validarSpec(spec('t1a-orn-antes', [HEADLINE, SERVICO], { arquetipo: { id: TOPO } }))
     const m = medirCopy({ spec: v.spec!, assinatura, formato: 'story', medir: medidorCalibrado(), familias: [], fonteCarregada: () => true, combinacoesSalvas: [], arquetipo: prepararArquetipo(v.spec!) })
@@ -373,7 +401,7 @@ describe('T1a · a página não decide geometria por outra via', () => {
 describe('T1a · medir-copy e compositor concordam', () => {
   async function medir(paginaId: string, blocos: Array<{ papel: string; linhas: string[] }>, arquetipo: Record<string, unknown>) {
     const pagina = cenario.atual!.paginasDeAssinatura[0]
-    const assinatura = montarAssinatura({ pagina: { ...pagina, layers: pagina.layers }, formatoDaPagina: 'story', numerosDoProjeto: ASSINATURA, logoDoProjeto: null })
+    const assinatura = montarAssinatura({ pagina: { ...pagina, layers: pagina.layers }, formatoDaPagina: 'story', numerosDoProjeto: noPisoDe1310(ASSINATURA), logoDoProjeto: null })
     assinatura.camadasDaPagina = pagina.layers
     const v = validarSpec(spec(paginaId, blocos, { arquetipo }))
     const arq = prepararArquetipo(v.spec!)
@@ -397,7 +425,8 @@ describe('T1a · medir-copy e compositor concordam', () => {
 
   it('17. copy larga demais: o medir-copy diz "não cabe" na coluna da referência e o compositor recusa com a MESMA coluna', async () => {
     await montar({ id: 't1a-17b' })
-    const larga = [{ papel: 'headline', linhas: ['Uma manchete longa demais de verdade'] }, SERVICO]
+    // NBSP: o autor proíbe a quebra, então o compositor não distribui (03/11/2026) e a recusa é a de sempre.
+    const larga = [{ papel: 'headline', linhas: ['Uma\u00A0manchete\u00A0longa\u00A0demais\u00A0de\u00A0verdade'] }, SERVICO]
     const m = await medir('t1a-17b', larga, { id: TOPO })
     expect(m.cabeTudo).toBe(false)
     const h = m.blocos.find((b) => b.id === 'headline')!
@@ -421,10 +450,11 @@ describe('T1a · medir-copy e compositor concordam', () => {
     // Manchete de 100 px na página: no feed, 87,5 px; a linha de 21 letras só cabe na coluna (742) a 70 px — 80% exatos.
     const comCorpo = { ...pagina, layers: pagina.layers.map((l) => (l.name === 'headline' ? { ...l, style: { ...l.style, fontSize: 100 } } : l)) }
     cenario.atual = { ...cenario.atual!, paginasDeAssinatura: [comCorpo] }
-    const blocos = [{ papel: 'headline', linhas: ['Almoço especial sexta'] }, SERVICO]
+    // NBSP: sem vão para distribuir (03/11/2026), a linha desce pela escada como antes; a largura é a mesma do espaço.
+    const blocos = [{ papel: 'headline', linhas: ['Almoço\u00A0especial\u00A0sexta'] }, SERVICO]
     const { r } = await compor(spec('t1a-piso', blocos, { formato: 'feed', arquetipo: { id: TOPO } }))
     expect(r.diagnostico.blocos.find((b) => b.id === 'headline')!.escala).toBe(0.8)
-    const assinatura = montarAssinatura({ pagina: comCorpo, formatoDaPagina: 'story', numerosDoProjeto: ASSINATURA, logoDoProjeto: null })
+    const assinatura = montarAssinatura({ pagina: comCorpo, formatoDaPagina: 'story', numerosDoProjeto: noPisoDe1310(ASSINATURA), logoDoProjeto: null })
     assinatura.camadasDaPagina = comCorpo.layers
     const v = validarSpec(spec('t1a-piso', blocos, { formato: 'feed', arquetipo: { id: TOPO } }))
     const m = medirCopy({ spec: v.spec!, assinatura, formato: 'feed', medir: medidorCalibrado(), familias: [], fonteCarregada: () => true, combinacoesSalvas: [], arquetipo: prepararArquetipo(v.spec!) })

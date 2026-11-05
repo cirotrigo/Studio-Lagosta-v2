@@ -8,6 +8,7 @@ import type { Layer } from '@/types/template'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { FundoDoTexto } from './konva-text-background'
 import { ajusteDeAlturaMedida } from '@/lib/texto-altura-automatica'
+import { irmaosQueAcompanham } from '@/lib/combo-stack-reflow'
 
 /**
  * KonvaEditableText - Componente de texto editável para Konva.js
@@ -404,15 +405,9 @@ export function KonvaEditableText({
     // bottom original desta caixa) descem/sobem pelo mesmo delta. Colunas na
     // mesma faixa de y não se movem — mesma regra do combo-stack-reflow do
     // servidor. Só com âncora no topo: nas outras, quem se move é esta caixa.
-    const groupId = typeof layer.metadata?.groupId === 'string' ? layer.metadata.groupId : null
-    if (groupId && anchor === 'top') {
-      const bottomOriginal = y + atual
-      const irmaos = editorRef.current.design.layers.filter(
-        (outro) =>
-          outro.id !== layer.id &&
-          outro.metadata?.groupId === groupId &&
-          (outro.position?.y ?? 0) + 0.5 >= bottomOriginal,
-      )
+    // G4.4: célula de grade nunca é empurrada (`irmaosQueAcompanham`, a mesma regra do reflow do servidor)
+    if (anchor === 'top') {
+      const irmaos = irmaosQueAcompanham(editorRef.current.design.layers, layer, y + atual)
       for (const irmao of irmaos) {
         editorRef.current.updateLayer(
           irmao.id,

@@ -28,6 +28,8 @@ const banco = vi.hoisted(() => ({
   geracaoDoCompositor: null as any,
   /** A página de assinatura (o revisor compara corpo e entrelinha com ela). */
   assinatura: null as any,
+  /** CP5d: a fila por chave das travas (§ 9); a posse é do cliente de cada transação. */
+  filas: new Map<string, Promise<void>>(),
 }))
 
 vi.mock('@/lib/db', () => {
@@ -61,14 +63,66 @@ vi.mock('@/lib/db', () => {
         banco.generations.push({ id, createdAt: new Date(++banco.relogio), ...data })
         return { id }
       },
-      findFirst: async () => banco.generations.at(-1) ?? null,
+      // CP5d: a busca da Generation de ORIGEM (`source: compositor` da página) acha a do compositor; as demais buscas, a última.
+      findFirst: async ({ where }: { where?: Record<string, any> } = {}) =>
+        JSON.stringify(where ?? {}).includes('"compositor"') ? (banco.geracaoDoCompositor ?? null) : (banco.generations.at(-1) ?? null),
+      findUnique: async ({ where }: { where: { id: string } }) =>
+        banco.generations.find((g) => g.id === where.id) ?? (banco.geracaoDoCompositor?.id === where.id ? banco.geracaoDoCompositor : null),
+      update: async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+        const g = banco.generations.find((x) => x.id === where.id)
+        if (!g) throw new Error(`generation ${where.id} não existe`)
+        Object.assign(g, data)
+        return g
+      },
       // Mais recentes primeiro, como no `orderBy: createdAt desc` do revisor.
       findMany: async () => [...banco.generations].reverse().concat(banco.geracaoDoCompositor ? [banco.geracaoDoCompositor] : []),
     },
     knowledgeBaseEntry: { findFirst: async () => null },
-    $queryRaw: async () => [],
+    // Fora de transação, uma trava de linha dura só a instrução: pede, obtém e solta.
+    $queryRaw: async (partes: TemplateStringsArray, ...valores: unknown[]) => {
+      const travas = new Map<string, () => void>()
+      const linhas = await queryRawDaTransacao(travas)(partes, ...valores)
+      for (const soltar of travas.values()) soltar()
+      return linhas
+    },
     $executeRaw: async () => 1,
-    $transaction: async (arg: unknown) => (typeof arg === 'function' ? (arg as (tx: unknown) => unknown)(db) : Promise.all(arg as unknown[])),
+    // CP5d: a transação que LANÇA volta atrás — a página e as Generations ficam como estavam (P11 "página intacta" só
+    // significa alguma coisa se o rollback for de verdade, não um acidente do mock). As travas (§ 9: fila por chave, posse
+    // POR transação — Codex R2) são do cliente da transação e só as dela são soltas no fim.
+    $transaction: async (arg: unknown) => {
+      if (typeof arg !== 'function') return Promise.all(arg as unknown[])
+      const foto = { pagina: structuredClone(banco.pagina), generations: structuredClone(banco.generations), escritas: banco.escritas, relogio: banco.relogio }
+      const travas = new Map<string, () => void>()
+      const cliente = { ...db, $queryRaw: queryRawDaTransacao(travas) }
+      try {
+        return await (arg as (tx: unknown) => unknown)(cliente)
+      } catch (erro) {
+        Object.assign(banco, foto)
+        throw erro
+      } finally {
+        for (const soltar of travas.values()) soltar()
+      }
+    },
+  }
+  /**
+   * CP5d (contrato § 9, P11): toda trava de linha/consultiva tem FILA por chave — quem pede a chave que OUTRA transação
+   * segura espera ela soltar (no fim daquela transação); a própria transação re-pede a chave sem esperar.
+   */
+  function queryRawDaTransacao(travas: Map<string, () => void>) {
+    return async (partes: TemplateStringsArray, ...valores: unknown[]) => {
+      const sql = partes.join('?')
+      const chave = sql.includes('pg_advisory_xact_lock') ? `adv:${String(valores[0])}` : `${/FROM "(\w+)"/.exec(sql)?.[1] ?? '?'}:${String(valores[0])}`
+      if (!travas.has(chave)) {
+        const anterior = banco.filas.get(chave) ?? Promise.resolve()
+        let soltar!: () => void
+        const minha = new Promise<void>((r) => (soltar = r))
+        banco.filas.set(chave, anterior.then(() => minha))
+        await anterior
+        travas.set(chave, soltar)
+      }
+      // A página não tem post nem fonte própria neste harness: as travas de SocialPost/CustomFont não devolvem linhas.
+      return /FROM "(SocialPost|CustomFont)"/.test(sql) ? [] : [{ id: String(valores[0]) }]
+    }
   }
   return { db }
 })
@@ -108,7 +162,7 @@ vi.mock('@napi-rs/canvas', async (original) => {
   return { ...m, GlobalFonts }
 })
 vi.mock('@/lib/posts/invalidate-renders', () => ({ invalidateScheduledRenders: espioes.invalidar }))
-vi.mock('@/lib/compositor/recompor', () => ({ travarRecomposicaoDaArte: vi.fn(async () => undefined), pedirRecomposicaoDaArteCongelada: vi.fn(async () => null) }))
+vi.mock('@/lib/compositor/recompor', () => ({ travarRecomposicaoDaArte: vi.fn(async () => undefined), pedirRecomposicaoDaArteCongelada: vi.fn(async () => null), alvoDaRecomposicao: vi.fn(async () => null) }))
 vi.mock('@/lib/aprendizado/captura', () => ({ registrarDecisaoSemSugestao: vi.fn(async () => null) }))
 // O espião da MEDIDA: cada chamada de `medirCamadasDaPeca` grava as camadas que mediu (prova da ordem do lote, CP4).
 const medidas = vi.hoisted(() => ({ chamadas: [] as Array<{ camadas: unknown[]; corrigir: boolean | undefined }> }))
@@ -138,6 +192,7 @@ import sharp from 'sharp'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { exigir, hojeViola } from './suporte/hoje-viola'
+import { PECA_LIMPA } from './suporte/peca-limpa'
 import { CODIGOS, leituraDentroDoAlvo, leiturasDosTextos, textosQueInvadem, TOLERANCIA_DE_PIORA, type LeituraDoTexto } from './suporte/propriedades'
 
 const CANVAS = { width: 1080, height: 1920 }
@@ -157,6 +212,7 @@ beforeEach(() => {
   banco.putSeq = 0
   banco.escritas = 0
   banco.fotoIlegivel = null
+  banco.filas.clear()
   medidas.chamadas.length = 0
   banco.projeto = { id: Number(peca.spec.projectId), name: 'Projeto da fixture', userId: 'dono-interno', instagramAccountId: null, assinatura: fixture.assinatura().numerosDoProjeto }
   banco.assinatura = fixture.assinatura().pagina
@@ -184,6 +240,9 @@ beforeEach(() => {
     updatedAt: new Date(banco.relogio),
     layers: comArquivos(peca.v1.layers, arquivos),
   }
+  // CP5e: como na produção, a arte do compositor É desta versão da página (`versaoRenderizada`) — é o que deixa o revisor
+  // reaproveitar a composição gravada (assunto, variante da logo); depois de um ajuste a versão muda e o cache cai (CP5c).
+  banco.geracaoDoCompositor.fieldValues.versaoRenderizada = versaoDaPagina(banco.pagina)
 })
 
 const projectId = () => Number(fixture.peca().spec.projectId)
@@ -196,7 +255,10 @@ const camada = (ls: Layer[], id: string) => ls.find((l) => l.id === id)!
  */
 function regraMediu(r: Awaited<ReturnType<typeof revisar>>, regra: string): boolean {
   const c = r.relatorio.cobertura[regra as keyof typeof r.relatorio.cobertura]
-  return !!c && (c.estado === 'avaliada' || (c.estado === 'parcial' && /fonte não cadastrada/.test(c.motivo ?? '')))
+  // "Não há" não é "não medimos" (plano-mestre § 2): a foto LIDA sem assunto localizável, ou a peça sem foto, é uma medida
+  // que terminou — só a falha de leitura (sem a marca `naoSeAplica`) conta como não medida.
+  const naoSeAplica = c?.estado === 'nao-avaliada' && (c as { naoSeAplica?: boolean }).naoSeAplica === true
+  return !!c && (c.estado === 'avaliada' || naoSeAplica || (c.estado === 'parcial' && /fonte não cadastrada/.test(c.motivo ?? '')))
 }
 /** Problemas abertos de verdade: `fonte-nao-carregada` é do ambiente de teste (as fontes da marca não estão aqui). */
 const problemasAbertos = (r: Awaited<ReturnType<typeof revisar>>) => r.relatorio.achados.filter((a) => a.severidade === 'problema' && a.regra !== 'fonte-nao-carregada')
@@ -256,8 +318,10 @@ describe('caracterização: o caminho real hoje', () => {
 
 /** Ajustes que o piloto ACEITA e RECUSA pela não-piora (medidos em 15/10/2026, a v1 da fixture). */
 const ACEITO_APOIO = { tipo: 'mover', dy: -6, camadas: ['apoio'] } as const
-// −60 invadia a margem de segurança do topo em 26 px (recusado pela não-piora desde que as fontes contam): −20 fica dentro.
-const ACEITO_TOPO = { tipo: 'mover', dy: -20, camadas: ['headline', 'apoio'] } as const
+// Até 29/10/2026 (margem do revisor 120 no topo): −60 invadia a margem em 26 px e −20 ficava dentro. Com as margens
+// de 29/10 (160) a tinta do bloco da v1 já toca a margem (≈154): SUBIR piora a margem e DESCER piora o contraste do
+// apoio (122 → 112 com +20, alvo 130). O que entra é andar 8 px para a direita (x 70 → 78, dentro da lateral 64).
+const ACEITO_TOPO = { tipo: 'mover', dx: 8, dy: 0, camadas: ['headline', 'apoio'] } as const
 const PIORA_SERVICO = { tipo: 'mover', dy: -230, camadas: ['servico'] } as const
 const PIORA_GRADIENTE = { tipo: 'gradiente', borda: 'rodape', forca: 0.95, altura: 730 } as const
 
@@ -272,6 +336,9 @@ describe('CP4 — medir antes, aplicar em memória, medir depois; UMA escrita no
     const v1 = fixture.peca().v1.layers
     expect(camada(persistidas, 'apoio').position.y).toBe(camada(v1, 'apoio').position.y + ACEITO_APOIO.dy + ACEITO_TOPO.dy)
     expect(camada(persistidas, 'headline').position.y).toBe(camada(v1, 'headline').position.y + ACEITO_TOPO.dy)
+    // O 3º ajuste anda em X (29/10): as duas camadas andaram os 8 px; o serviço não (Codex R1)
+    expect(camada(persistidas, 'apoio').position.x).toBe(camada(v1, 'apoio').position.x + ACEITO_TOPO.dx)
+    expect(camada(persistidas, 'headline').position.x).toBe(camada(v1, 'headline').position.x + ACEITO_TOPO.dx)
     expect(camada(persistidas, 'servico').position).toEqual(camada(v1, 'servico').position)
     expect({ escritas: banco.escritas, generations: banco.generations.length }).toEqual({ escritas: 1, generations: 1 })
     // O que ficou gravado na Generation diz o mesmo que a resposta (nada em silêncio).
@@ -407,12 +474,15 @@ describe('CP4 — medir antes, aplicar em memória, medir depois; UMA escrita no
     await ajustar([ACEITO_APOIO, PIORA_SERVICO, ACEITO_TOPO] as unknown as Ajuste[])
     const v1 = fixture.peca().v1.layers
     const y = (chamada: number, id: string) => camada(medidas.chamadas[chamada].camadas as Layer[], id).position.y
-    // 0: a entrada; 1: candidata com apoio −6; 2: a candidata do serviço (sobre o estado COM o 1º); 3: a do 3º (topo −20), SEM o serviço movido.
+    const x = (chamada: number, id: string) => camada(medidas.chamadas[chamada].camadas as Layer[], id).position.x
+    // 0: a entrada; 1: candidata com apoio −6; 2: a candidata do serviço (sobre o estado COM o 1º); 3: a do 3º (topo +8 em x), SEM o serviço movido.
     expect(medidas.chamadas.map((c) => c.corrigir)).toEqual([false, false, false, false])
     expect([y(0, 'apoio'), y(0, 'servico')]).toEqual([camada(v1, 'apoio').position.y, camada(v1, 'servico').position.y])
     expect([y(1, 'apoio'), y(1, 'servico')]).toEqual([camada(v1, 'apoio').position.y - 6, camada(v1, 'servico').position.y])
     expect([y(2, 'apoio'), y(2, 'servico')]).toEqual([camada(v1, 'apoio').position.y - 6, camada(v1, 'servico').position.y - 230])
     expect([y(3, 'apoio'), y(3, 'headline'), y(3, 'servico')]).toEqual([camada(v1, 'apoio').position.y + ACEITO_APOIO.dy + ACEITO_TOPO.dy, camada(v1, 'headline').position.y + ACEITO_TOPO.dy, camada(v1, 'servico').position.y])
+    // A candidata do 3º ajuste anda em X (29/10): headline e apoio +8; as anteriores e o serviço não (Codex R1)
+    expect([x(2, 'apoio'), x(3, 'apoio'), x(3, 'headline'), x(3, 'servico')]).toEqual([camada(v1, 'apoio').position.x, camada(v1, 'apoio').position.x + ACEITO_TOPO.dx, camada(v1, 'headline').position.x + ACEITO_TOPO.dx, camada(v1, 'servico').position.x])
   }, 180_000)
 
   it('a régua do executor NÃO aplica a correção hipotética: com véu escuro e folga de força, mover o serviço para a área clara é piora REAL, não "ok" corrigido (revisores A e B)', async () => {
@@ -503,6 +573,12 @@ describe('CP4.1 — `texto-pequeno` entra na não-piora (a regra do revisor: cor
 })
 
 describe('CP4.2a — o piso da MANCHETE no renderer real (fixture: headline 84 = referência 84 da assinatura; apoio 40; serviço 32 → pisos modelo 67, hierarquia 40, celular 24)', () => {
+  // 29/10/2026: com a margem do revisor em 160 no topo, o bloco da v1 (tinta ≈ 154) já toca a margem e QUALQUER
+  // redução de fonte sobe a tinta da primeira linha (piora `fora-da-area-segura`). Estes casos medem o PISO da
+  // fonte, não a margem: o bloco desce 24 px antes, para a margem não decidir por eles.
+  beforeEach(() => {
+    banco.pagina = { ...banco.pagina, layers: (banco.pagina.layers as Layer[]).map((l) => (l.id === 'headline' || l.id === 'apoio' ? { ...l, position: { ...l.position, y: l.position.y + 24 } } : l)) }
+  })
   const comCorpo = (id: string, fontSize: number) => {
     banco.pagina = { ...banco.pagina, layers: (banco.pagina.layers as Layer[]).map((l) => (l.id === id ? { ...l, style: { ...(l.style ?? {}), fontSize } } : l)) }
   }
@@ -739,27 +815,82 @@ describe('P9 — recuperação', () => {
     expect(piorou, JSON.stringify(piorou)).toEqual({ leitura: [], assunto: [] })
   }, 240_000)
 
-  hojeViola('em até 2 ciclos com os ajustes do próprio revisor, a peça termina apta ou com REVISAO_HUMANA_NECESSARIA', async () => {
-    exigirMedidaFiel(banco.pagina.layers)
+  /**
+   * CP5e § 1.4 — era `hojeViola`. As duas saídas são TIPADAS (nada de procurar texto em JSON): apta ⇔ a última revisão
+   * traz `gate.tipo = 'medida'` APTO, as regras duras mediram e não há problema aberto (fora `fonte-nao-carregada`, artefato
+   * do ambiente); escalada ⇔ a última revisão traz o gate REVISAO_HUMANA_NECESSARIA com motivos, ou o último ajuste humano
+   * lançou REVISAO_HUMANA_NECESSARIA com `details.revisao` tipado. `sem-vinculo`/`nao-medida` na última revisão = FALHA.
+   * O que isto prova: o fluxo HUMANO termina numa das duas saídas em ≤ 2 ciclos — não que o chat escalou (decisão 5.4).
+   */
+  const TIPOS_DE_REVISAO = new Set(['medida', 'sem-vinculo', 'nao-medida'])
+  const ciclos = async (opcoes: { medidorCalibrado?: boolean; apenasRascunho?: boolean; ajustesDoCiclo?: (r: Awaited<ReturnType<typeof revisar>>) => Ajuste[] } = {}) => {
     let revisao = await revisar()
-    let ultimoAjuste: unknown = null
-    for (let ciclo = 0; ciclo < 2 && problemasAbertos(revisao).length > 0 && revisao.relatorio.ajustes.length > 0; ciclo++) {
+    let ultimoAjuste: { code: string; details: unknown } | null = null
+    const ajustesDe = opcoes.ajustesDoCiclo ?? ((r: Awaited<ReturnType<typeof revisar>>) => r.relatorio.ajustes)
+    for (let ciclo = 0; ciclo < 2 && !(revisao.gate.tipo === 'medida' && revisao.gate.resultado === 'APTO') && ajustesDe(revisao).length > 0; ciclo++) {
       try {
-        ultimoAjuste = await ajustarArte({ projectId: projectId(), pageId: PAGINA, versaoEsperada: revisao.versao, ajustes: revisao.relatorio.ajustes })
+        await ajustarArte({ projectId: projectId(), pageId: PAGINA, versaoEsperada: revisao.versao!, ajustes: ajustesDe(revisao), ...(opcoes.apenasRascunho ? { apenasRascunho: true, principal: { tipo: 'user', id: 'piloto' } } : {}) })
+        ultimoAjuste = null
       } catch (e) {
         // A recusa de qualidade do CP4 é um desfecho do ciclo (a peça fica como estava), não erro de setup.
         if (!(e instanceof CreativeError) || RECUSAS_DE_SETUP.has(e.code)) throw e
         ultimoAjuste = { code: e.code, details: e.details }
       }
-      exigirMedidaFiel(banco.pagina.layers)
+      // O medidor calibrado é da FIXTURE; a peça limpa usa o medidor real (como o controle positivo do CP5d).
+      if (opcoes.medidorCalibrado !== false) exigirMedidaFiel(banco.pagina.layers)
       revisao = await revisar()
     }
-    // Guarda contra o passe falso: as regras duras precisam ter medido (render quebrado vira "não avaliada").
     for (const regra of REGRAS_DURAS) exigir(regraMediu(revisao, regra), `a regra ${regra} mediu (${JSON.stringify(revisao.relatorio.cobertura[regra])})`)
-    const apta = problemasAbertos(revisao).length === 0
-    // A escalada vale para a VERSÃO FINAL: a última revisão ou o ajuste que a produziu.
-    const escalada = JSON.stringify([revisao, ultimoAjuste]).includes(CODIGOS.revisaoHumana)
-    expect(apta || escalada, JSON.stringify(problemasAbertos(revisao).map((a) => `${a.regra}:${a.camadas.join(',')}`))).toBe(true)
+    exigir(revisao.gate.tipo === 'medida', `o gate da última revisão é medido (${JSON.stringify(revisao.gate)})`)
+    const gate = revisao.gate as Extract<typeof revisao.gate, { tipo: 'medida' }>
+    const apta = gate.resultado === 'APTO' && problemasAbertos(revisao).length === 0
+    const escaladaPelaRevisao = gate.resultado === CODIGOS.revisaoHumana && gate.motivos.length > 0
+    // Só o draft-only devolve REVISAO_HUMANA_NECESSARIA em `ajustar-arte` (CP5d); o `revisao` tipado é a prova de que foi o gate.
+    const escaladaPeloAjuste = ultimoAjuste?.code === CODIGOS.revisaoHumana && TIPOS_DE_REVISAO.has(String((ultimoAjuste.details as { revisao?: { tipo?: string } } | undefined)?.revisao?.tipo))
+    const escalada = escaladaPelaRevisao || escaladaPeloAjuste
+    return { revisao, gate, apta, escalada, escaladaPelaRevisao, escaladaPeloAjuste, ultimoAjuste }
+  }
+
+  // 29/10/2026: com a margem do revisor em 160 na base, o revisor passa a propor `mover` o serviço (1728–1820) para
+  // cima de ≈ 62 px. A janela fiel `servico-v1` da fixture foi ampliada para 1632–1837 (fixture regenerada em 29/10 a
+  // partir dos registros e da foto lidos em produção, com o ok do Ciro) para o 2º ciclo ser medido.
+  it('em até 2 ciclos com os ajustes do próprio revisor, a peça termina apta ou com REVISAO_HUMANA_NECESSARIA — a fixture do piloto: escalada tipada (o serviço sem leitura não tem correção executável)', async () => {
+    exigirMedidaFiel(banco.pagina.layers)
+    const r = await ciclos()
+    expect(r.apta || r.escalada, JSON.stringify({ gate: r.gate.resultado, motivos: r.gate.motivos.map((m) => `${m.regra}:${m.codigo}`) })).toBe(true)
+    // Hoje a fixture ESCALA (CP2 fica): o motivo está no gate, tipado, e a informação é dita.
+    expect(r.escalada).toBe(true)
+    expect(r.gate.informacao).toMatch(/não autoriza, não grava/)
+  }, 240_000)
+
+  // A fixture não tem ajuste executável (CP2): o ciclo draft-only usa o ajuste que o CP4 ACEITA (ACEITO_TOPO, como o P11) — é o
+  // gate, na transação do ajustar-arte, que recusa a versão ajustada e produz a escalada tipada pelo último ajuste.
+  it('…e no DRAFT-ONLY a escalada vem do último ajustar-arte: o gate recusa a versão ajustada (REVISAO_HUMANA_NECESSARIA com `details.revisao` tipado) e a página fica como estava', async () => {
+    exigirMedidaFiel(banco.pagina.layers)
+    const antes = JSON.stringify(banco.pagina.layers)
+    const r = await ciclos({ apenasRascunho: true, ajustesDoCiclo: () => [ACEITO_TOPO] as unknown as Ajuste[] })
+    // O lado do ÚLTIMO AJUSTE é verdadeiro por si (a escalada não depende da revisão seguinte): é ele que este caso prova.
+    expect(r.escaladaPeloAjuste).toBe(true)
+    expect(r.escalada).toBe(true)
+    expect(r.ultimoAjuste).toMatchObject({ code: CODIGOS.revisaoHumana, details: { ajusteGravado: false, revisao: { tipo: expect.stringMatching(/^(medida|nao-medida|sem-vinculo)$/) } } })
+    expect(JSON.stringify(banco.pagina.layers)).toBe(antes)
+  }, 240_000)
+
+  it('…e termina APTA em ≤ 2 ciclos quando o defeito é corrigível pelo revisor: a peça limpa com o apoio invadindo a margem de segurança (fora-da-area-segura → mover → APTO)', async () => {
+    banco.pagina = {
+      ...banco.pagina,
+      background: PECA_LIMPA.background,
+      copyAutoral: PECA_LIMPA.copy,
+      layers: structuredClone(PECA_LIMPA.layers).map((l) => (l.id === 'apoio' ? { ...l, position: { ...l.position, x: 820 }, size: { ...l.size, width: 300 } } : l)),
+    }
+    banco.geracaoDoCompositor = { ...banco.geracaoDoCompositor, fieldValues: { pageId: PAGINA, source: 'compositor', composicao: { assinatura: { pageId: banco.assinatura.id } } } }
+    const antes = await revisar()
+    expect(antes.gate).toMatchObject({ tipo: 'medida', resultado: CODIGOS.revisaoHumana })
+    expect((antes.gate as Extract<typeof antes.gate, { tipo: 'medida' }>).motivos.map((m) => m.regra)).toContain('fora-da-area-segura')
+    expect(antes.relatorio.ajustes.some((a) => a.tipo === 'mover')).toBe(true)
+    const r = await ciclos({ medidorCalibrado: false })
+    expect(r.apta, JSON.stringify({ gate: r.gate.resultado, motivos: r.gate.motivos })).toBe(true)
+    expect(camada(banco.pagina.layers as Layer[], 'apoio').position.x).toBeLessThan(820)
   }, 240_000)
 })
 
@@ -792,15 +923,39 @@ describe('o revisor (só medida) sobre a v1', () => {
   }, 120_000)
 })
 
-describe('P11 — o re-render de rascunho pelo ajustar-arte no draft-only', () => {
-  it('caracterização: o ajuste ACEITO no perfil draft-only reabre o render dos rascunhos da página (os ajustes do agente já não entram: CP4)', async () => {
-    await ajustarArte({ projectId: projectId(), pageId: PAGINA, versaoEsperada: versaoDaPagina(banco.pagina)!, ajustes: [ACEITO_TOPO] as unknown as Ajuste[], apenasRascunho: true })
-    expect(espioes.invalidar).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ pageIds: [PAGINA], apenasRascunho: true }))
+describe('P11 — o re-render de rascunho pelo ajustar-arte no draft-only (CP5d)', () => {
+  // Codex R1 (IMPORTANTE): o caminho POSITIVO com medição real — a peça limpa (o controle do piloto do agendar-leva),
+  // composta com a assinatura da fixture como referência do título, ajustada no draft-only: o gate aprova e grava.
+  it('CP5d (controle positivo, medição real): um ajuste aceito pelo CP4 numa peça que o gate aprova é GRAVADO, o render fecha a Generation desta versão e a resposta traz revisao APTO', async () => {
+    banco.pagina = { ...banco.pagina, layers: structuredClone(PECA_LIMPA.layers), background: PECA_LIMPA.background, copyAutoral: PECA_LIMPA.copy }
+    banco.geracaoDoCompositor = { ...banco.geracaoDoCompositor, fieldValues: { pageId: PAGINA, source: 'compositor', composicao: { assinatura: { pageId: banco.assinatura.id } } } }
+    const r = await ajustarArte({ projectId: projectId(), pageId: PAGINA, versaoEsperada: versaoDaPagina(banco.pagina)!, ajustes: [{ tipo: 'mover', dy: -20, camadas: ['apoio'] }] as unknown as Ajuste[], apenasRascunho: true, principal: { tipo: 'user', id: 'piloto' } })
+    expect(r.ajustada).toBe(true)
+    expect(r.revisao).toMatchObject({ tipo: 'medida', resultado: 'APTO', generationId: r.generationId })
+    expect(camada(banco.pagina.layers as Layer[], 'apoio').position.y).toBe(540)
+    expect(banco.generations.find((g) => g.id === r.generationId)).toMatchObject({ status: 'COMPLETED', fieldValues: { source: 'ajuste-arte' } })
+    expect(banco.escritas).toBe(1)
+  }, 120_000)
+
+  it('CP5d: o ajuste ACEITO pelo CP4 numa versão que o gate NÃO aprova (o serviço sem leitura continua) não grava, não reabre o render e volta REVISAO_HUMANA_NECESSARIA com os achados medidos', async () => {
+    const antes = structuredClone(banco.pagina.layers)
+    const erro = await ajustarArte({ projectId: projectId(), pageId: PAGINA, versaoEsperada: versaoDaPagina(banco.pagina)!, ajustes: [ACEITO_TOPO] as unknown as Ajuste[], apenasRascunho: true }).then(
+      () => null,
+      (e: unknown) => e,
+    )
+    expect(erro).toBeInstanceOf(CreativeError)
+    const e = erro as CreativeError
+    expect(e.code).toBe(CODIGOS.revisaoHumana)
+    expect(e.details).toMatchObject({ ajusteGravado: false, pageId: PAGINA, revisao: { tipo: 'medida', resultado: CODIGOS.revisaoHumana } })
+    expect(((e.details as { achados?: Array<{ regra: string; camadas: string[] }> }).achados ?? []).some((a) => a.camadas.includes('servico'))).toBe(true)
+    expect(JSON.stringify(banco.pagina.layers)).toBe(JSON.stringify(antes))
+    expect(banco.generations.filter((g) => g.status === 'PROCESSING' || g.status === 'COMPLETED')).toEqual([])
+    expect(espioes.invalidar).not.toHaveBeenCalled()
   }, 120_000)
 
   // Contrato alvo da V1 (owner, 13/10/2026): no draft-only, ajuste que piora, deixa blocker aberto ou não tem
-  // veredito válido para a versão nova é recusado/revertido ANTES de substituir a versão do rascunho.
-  hojeViola('o ajuste que piora é recusado ANTES de substituir a versão do rascunho: página intacta, render não reaberto, REVISAO_HUMANA_NECESSARIA', async () => {
+  // veredito válido para a versão nova é recusado/revertido ANTES de substituir a versão do rascunho. CP5d: `it()`.
+  it('o ajuste que piora é recusado ANTES de substituir a versão do rascunho: página intacta, render não reaberto, REVISAO_HUMANA_NECESSARIA', async () => {
     const antes = structuredClone(banco.pagina.layers)
     let resposta: unknown
     try {
@@ -814,5 +969,7 @@ describe('P11 — o re-render de rascunho pelo ajustar-arte no draft-only', () =
       renderReaberto: espioes.invalidar.mock.calls.length > 0,
       revisaoHumana: JSON.stringify(resposta).includes(CODIGOS.revisaoHumana),
     }).toEqual({ paginaIntacta: true, renderReaberto: false, revisaoHumana: true })
+    // CP5d (decisão 8.8): o CÓDIGO da chamada é REVISAO_HUMANA_NECESSARIA e a CAUSA é a recusa do CP4 (a peça não foi medida pelo gate: nada novo a medir).
+    expect(resposta).toMatchObject({ code: CODIGOS.revisaoHumana, details: { causa: 'AJUSTE_PIOROU_ARTE', ajusteGravado: false, revisao: { tipo: 'nao-medida' } } })
   }, 120_000)
 })

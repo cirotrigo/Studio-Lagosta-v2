@@ -5,8 +5,12 @@
 import { describe, expect, it } from 'vitest'
 import { NUMEROS_PADRAO } from '../../assinatura'
 import { DIMENSOES } from '../../spec'
-import { verArquetipo } from '../catalogo'
-import { caixasMaximas, materializarArquetipo, zonaEfetiva, type Materializacao, type ProblemaDeMaterializacao } from '../materializar'
+import { listarArquetipos, verArquetipo } from '../catalogo'
+import { baseNaFaixaDaMargem, caixasMaximas, excedeAlturaDaReferencia, GAP_DA_PILHA, materializarArquetipo, naMargemDaMarca, referenciaDoPapel, referenciaEfetiva, zonaEfetiva, type Materializacao, type ProblemaDeMaterializacao } from '../materializar'
+import { materializarUnidades, unidadesDoArquetipo } from '../no-compositor'
+import { montarBloco } from '../../blocos'
+import type { BlocoPreparado } from '../../preparar-blocos'
+import type { MeasureTextBox } from '@/lib/creatives/text-geometry'
 
 const TOPO = verArquetipo('minimal-fb-topo-esquerda', 1)!
 const CENTRO = verArquetipo('minimal-fb-centro-optico', 1)!
@@ -105,6 +109,126 @@ describe('T1a · materialização', () => {
     expect(zonaEfetiva(zonaDoPre, DIMENSOES.story, { ...geo('story'), safeTopo: 250 })!.y).toBe(250)
   })
 
+  it('17. o piso da marca vence na horizontal (opção A, 29/10/2026): margem 96 contra a referência do catálogo em x 92 recolhe a caixa para dentro do piso, dos dois lados', () => {
+    // O caso das 19 páginas "[Rever margem]" de 28/10: `Project.assinatura` com margemH 96 (o catálogo põe a referência em
+    // x .085 = 91,8 px). Antes, recusa de todo papel ("a área segura do projeto corta a referência"); agora a referência
+    // efetiva é a do catálogo ∩ o piso: o texto à esquerda pousa em 96 e a logo, rente à direita, recolhe para 984.
+    const medidas = { pre: { width: 300, height: 50 }, headline: { width: 600, height: 200 }, servico: { width: 300, height: 60 } }
+    const geo96 = { ...geo('story'), margemH: 96 }
+    const m = materializarArquetipo({ arquetipo: TOPO, formato: 'story', canvas: DIMENSOES.story, geometria: geo96, medidas, logo: { razao: 0.5 } })
+    expect(m.ok).toBe(true)
+    if (!m.ok) return
+    expect(m.papeis.pre!.posicao).toEqual({ x: 96, y: 230, width: 300, height: 50 })
+    expect(m.papeis.headline!.posicao).toEqual({ x: 96, y: 298, width: 600, height: 200 })
+    expect(m.papeis.servico!.posicao.x).toBe(96)
+    // A referência efetiva perde só o lado cortado: 91,8 + 756 → 96 … 847,8 (largura 751,8 → 752 ao pixel).
+    expect(m.papeis.headline!.referencia).toEqual({ x: 96, y: 298, width: 752, height: 230 })
+    // A logo em contain na referência efetiva (799,2 … 984): 184,8 × 92,4, rente à direita do piso.
+    expect(m.papeis.logo!.posicao).toEqual({ x: 799, y: 1576, width: 185, height: 92 })
+    // A coluna do medidor é a MESMA caixa: 751 contra 756 do catálogo.
+    expect(caixasMaximas(TOPO, 'story', DIMENSOES.story, geo96).headline).toEqual({ largura: 751, altura: 230 })
+    expect(caixasMaximas(TOPO, 'story', DIMENSOES.story).headline).toEqual({ largura: 756, altura: 230 })
+    // Piso que engole a referência não inventa posição: com margem 300 a coluna efetiva da manchete é 480 (300 … 780)
+    // e a caixa de 600 não cabe — recusa por capacidade, como a escada do medidor também veria.
+    const longe = materializarArquetipo({ arquetipo: TOPO, formato: 'story', canvas: DIMENSOES.story, geometria: { ...geo('story'), margemH: 300 }, medidas, logo: null })
+    expect(longe.ok).toBe(false)
+    expect(problemas(longe).find((p) => p.papel === 'headline')).toMatchObject({ codigo: 'ARQUETIPO_TEXTO_NAO_CABE', referencia: { x: 300, width: 480 } })
+  })
+
+  it('17b. no piso padrão (92) a referência efetiva É a do catálogo: coluna e caixas byte a byte iguais, em todo o catálogo', () => {
+    // 91,8 contra 92 está dentro da tolerância de ½ px: nada é recolhido (a prova pedida pelo Codex na triagem de 29/10).
+    for (const a of listarArquetipos()) {
+      for (const f of ['story', 'feed'] as const) {
+        expect(caixasMaximas(a, f, DIMENSOES[f], geo(f))).toEqual(caixasMaximas(a, f, DIMENSOES[f]))
+      }
+    }
+    expect(referenciaEfetiva({ x: 91.8, y: 0, width: 756, height: 10 }, { x: 92, y: 0, width: 896, height: 10 })).toEqual({ x: 91.8, y: 0, width: 756, height: 10 })
+    const esq = referenciaEfetiva({ x: 91.8, y: 0, width: 756, height: 10 }, { x: 96, y: 0, width: 888, height: 10 })
+    expect([esq.x, esq.y, esq.height]).toEqual([96, 0, 10])
+    expect(esq.width).toBeCloseTo(751.8, 9)
+    const dir = referenciaEfetiva({ x: 799.2, y: 0, width: 189, height: 10 }, { x: 670, y: 0, width: 314, height: 10 })
+    expect([dir.x, dir.y, dir.height]).toEqual([799.2, 0, 10])
+    expect(dir.width).toBeCloseTo(184.8, 9)
+  })
+
+  it('17c. no piso padrão a referência de TODO papel (logo fixa incluída) é a do catálogo ao pixel, em todo o catálogo', () => {
+    // Pedido da revisão do Codex (29/10): a prova de posição, não só de coluna — nenhum x/largura é recolhido no padrão.
+    for (const a of listarArquetipos()) {
+      for (const f of ['story', 'feed'] as const) {
+        const canvas = DIMENSOES[f]
+        for (const [papel, pos] of Object.entries(a.formatos[f].papeis)) {
+          if (!pos || !('referencia' in pos)) continue
+          const r = pos.referencia
+          const esperada = { x: Math.round(r.x * canvas.width), y: Math.round(r.y * canvas.height), width: Math.round(r.w * canvas.width), height: Math.round(r.h * canvas.height) }
+          expect(referenciaDoPapel(a, f, canvas, geo(f), papel as 'logo' | 'headline')?.referencia, `${a.id}@${a.versao} ${f} ${papel}`).toEqual(esperada)
+        }
+      }
+    }
+  })
+
+  it('18. empilhar como a assinatura (29/10/2026): na faixa do topo, pré, manchete e apoio encostam com o gap da marca; serviço e logo ficam', () => {
+    const medidas = { pre: { width: 300, height: 48 }, headline: { width: 600, height: 164 }, apoio: { width: 500, height: 48 }, servico: { width: 300, height: 52 } }
+    const solto = materializarArquetipo({ arquetipo: TOPO, formato: 'story', canvas: DIMENSOES.story, geometria: geo('story'), medidas, logo: { razao: 0.5 } })
+    const pilha = materializarArquetipo({ arquetipo: TOPO, formato: 'story', canvas: DIMENSOES.story, geometria: geo('story'), medidas, logo: { razao: 0.5 }, empilhar: { gap: 14 } })
+    expect(solto.ok && pilha.ok).toBe(true)
+    if (!solto.ok || !pilha.ok) return
+    // Solto (a saída de sempre): cada papel na própria referência — 230, 298 e 547, com 20 e 85 px de vão.
+    expect([solto.papeis.pre!.posicao.y, solto.papeis.headline!.posicao.y, solto.papeis.apoio!.posicao.y]).toEqual([230, 298, 547])
+    // Pilha: o pré (âncora topo) fica em 230; a manchete em 230 + 48 + 14 = 292; o apoio em 292 + 164 + 14 = 470.
+    expect([pilha.papeis.pre!.posicao.y, pilha.papeis.headline!.posicao.y, pilha.papeis.apoio!.posicao.y]).toEqual([230, 292, 470])
+    // Só o y muda: x, largura e referência são os mesmos; a outra faixa (serviço + logo) e a logo não se mexem.
+    for (const p of ['pre', 'headline', 'apoio'] as const) {
+      expect([pilha.papeis[p]!.posicao.x, pilha.papeis[p]!.posicao.width, pilha.papeis[p]!.referencia]).toEqual([solto.papeis[p]!.posicao.x, solto.papeis[p]!.posicao.width, solto.papeis[p]!.referencia])
+    }
+    // A âncora (o pré) guarda a própria zona — é ela que segura a identidade na busca; os que a seguem ganham o CASCO
+    // das zonas da faixa na vertical (as zonas por papel foram desenhadas em volta das referências soltas e brigariam
+    // com a pilha); a horizontal segue a de cada papel.
+    expect(pilha.papeis.pre!.zonaEfetiva).toEqual(solto.papeis.pre!.zonaEfetiva)
+    const casco = { y: Math.min(...['pre', 'headline', 'apoio'].map((p) => solto.papeis[p as 'pre']!.zonaEfetiva.y)), base: Math.max(...['pre', 'headline', 'apoio'].map((p) => solto.papeis[p as 'pre']!.zonaEfetiva.y + solto.papeis[p as 'pre']!.zonaEfetiva.height)) }
+    for (const p of ['headline', 'apoio'] as const) {
+      const z = pilha.papeis[p]!.zonaEfetiva
+      expect([z.x, z.width, z.y, z.y + z.height]).toEqual([solto.papeis[p]!.zonaEfetiva.x, solto.papeis[p]!.zonaEfetiva.width, casco.y, casco.base])
+    }
+    expect([pilha.papeis.servico, pilha.papeis.logo]).toEqual([solto.papeis.servico, solto.papeis.logo])
+    // O ornamento preso à manchete (o fio, 24 px abaixo) e o dy da busca contam na pilha.
+    const comFio = materializarArquetipo({ arquetipo: TOPO, formato: 'story', canvas: DIMENSOES.story, geometria: geo('story'), medidas, logo: { razao: 0.5 }, empilhar: { gap: 14 }, ornamentos: { headline: { esquerda: 0, direita: 0, topo: 0, base: 24 } }, deslocamentos: { pre: -10, headline: -10, apoio: -10 } })
+    expect(comFio.ok).toBe(true)
+    if (!comFio.ok) return
+    expect([comFio.papeis.pre!.posicao.y, comFio.papeis.headline!.posicao.y, comFio.papeis.apoio!.posicao.y]).toEqual([220, 282, 484])
+  })
+
+  it('18b. âncora no rodapé: o último papel fica na referência e os outros sobem; âncora no meio e lista não empilham', () => {
+    const BASE = verArquetipo('minimal-fb-base-esquerda', 1)!
+    const medidas = { headline: { width: 600, height: 164 }, apoio: { width: 500, height: 48 }, servico: { width: 300, height: 52 } }
+    const solto = materializarArquetipo({ arquetipo: BASE, formato: 'story', canvas: DIMENSOES.story, geometria: geo('story'), medidas, logo: { razao: 0.5 } })
+    const pilha = materializarArquetipo({ arquetipo: BASE, formato: 'story', canvas: DIMENSOES.story, geometria: geo('story'), medidas, logo: { razao: 0.5 }, empilhar: { gap: 14 } })
+    expect(solto.ok && pilha.ok).toBe(true)
+    if (!solto.ok || !pilha.ok) return
+    const s = solto.papeis.servico!.posicao
+    expect(pilha.papeis.servico!.posicao).toEqual(s)
+    expect(pilha.papeis.apoio!.posicao.y).toBe(s.y - 14 - 48)
+    expect(pilha.papeis.headline!.posicao.y).toBe(s.y - 14 - 48 - 14 - 164)
+    expect(pilha.papeis.logo).toEqual(solto.papeis.logo)
+    // #16 (âncora meio) e #15 (lista) saem iguais com ou sem o gap: os vãos são da receita.
+    for (const [id, versao] of [['minimal-tipografico-convite', 2], ['minimal-tipografico-lista', 1]] as const) {
+      const a = verArquetipo(id, versao)!
+      const m = Object.fromEntries(a.papeis.filter((p) => p.papel !== 'logo').map((p) => [p.papel, { width: 300, height: 40 }]))
+      const x = materializarArquetipo({ arquetipo: a, formato: 'story', canvas: DIMENSOES.story, geometria: geo('story'), medidas: m, logo: { razao: 0.5 } })
+      const y = materializarArquetipo({ arquetipo: a, formato: 'story', canvas: DIMENSOES.story, geometria: geo('story'), medidas: m, logo: { razao: 0.5 }, empilhar: { gap: 14 } })
+      expect(y, id).toEqual(x)
+    }
+  })
+
+  it('18c. só empilha na mesma coluna: no título-gigante o apoio (direita) não desce sobre o serviço (esquerda), mesmo na mesma faixa pela logo', () => {
+    const GIGANTE = verArquetipo('minimal-titulo-gigante', 1)!
+    const medidas = { headline: { width: 880, height: 300 }, apoio: { width: 320, height: 86 }, servico: { width: 440, height: 49 } }
+    const solto = materializarArquetipo({ arquetipo: GIGANTE, formato: 'story', canvas: DIMENSOES.story, geometria: geo('story'), medidas, logo: { razao: 0.5 } })
+    const pilha = materializarArquetipo({ arquetipo: GIGANTE, formato: 'story', canvas: DIMENSOES.story, geometria: geo('story'), medidas, logo: { razao: 0.5 }, empilhar: { gap: 14 } })
+    expect(solto.ok && pilha.ok).toBe(true)
+    if (!solto.ok || !pilha.ok) return
+    expect(pilha.papeis).toEqual(solto.papeis)
+  })
+
   it('caixa maior que a capacidade da referência: recusa com a medida (sem esmagar fonte, sem empurrar)', () => {
     const m = materializarArquetipo({
       arquetipo: TOPO,
@@ -200,5 +324,186 @@ describe('CP2B · materialização deslocada (dy da busca espacial)', () => {
       expect(JSON.stringify(materializarArquetipo({ ...args, deslocamentos: zeros }))).toBe(hoje)
     }
     expect(problemas(materializarArquetipo({ ...casos[1], deslocamentos: zeros }))[0].motivo).toMatch(/^na referência, .* — a área segura do projeto corta a referência$/)
+  })
+})
+
+describe('régua física de altura e orçamento transitório', () => {
+  // Medidores injetados: com a fração (altura natural 175,3 → caixa ceil 176) e o contrato antigo (só `height`).
+  const comFracao: MeasureTextBox = () => ({ height: 176, naturalHeight: 175.3, maxLineWidth: 300, lineCount: 1, linhas: [{ texto: 'Linha', largura: 300 }] })
+  const semFracao: MeasureTextBox = () => ({ height: 176, maxLineWidth: 300, lineCount: 1, linhas: [{ texto: 'Linha', largura: 300 }] })
+  const ESTILO = { fontFamily: 'Inter', fontSize: 80, lineHeight: 1, color: '#000000', fontWeight: '700' } as never
+  const argsDoBloco = (medir: MeasureTextBox) => ({ papel: 'headline' as const, linhas: ['Linha'], estilo: ESTILO, escalaDoFormato: 1, colunaUtil: 800, textAlign: 'left' as const, groupId: 'g', corDaMancha: '#fff', medir, alturaMaxima: 175 })
+  const bloco = (h: number, orcamento: number) =>
+    ({ papel: 'headline', layer: { id: 'headline', name: 'headline', type: 'text', content: 'x', position: { x: 0, y: 0 }, size: { width: 600, height: h }, style: { fontSize: 90, lineHeight: 1 }, metadata: { groupId: 'g' } }, width: 600, height: h, escala: 1, cor: '#fff', chave: 'g', linhasDaCopy: ['x'], indicesDoBloco: [0], familiasMedidas: [], orcamentoDeAltura: orcamento }) as unknown as BlocoPreparado
+  const topoComReferencia = (h: number) => {
+    const a = structuredClone(TOPO) as any
+    a.formatos.story.papeis.headline.referencia.h = h / DIMENSOES.story.height
+    return a
+  }
+  const materializa = (arquetipo: any, blocos: BlocoPreparado[]) => {
+    const unidades = unidadesDoArquetipo(arquetipo, blocos, 14)
+    return { unidades, m: materializarUnidades({ arquetipo, formato: 'story', canvas: DIMENSOES.story, geometria: geo('story'), unidades, logo: null }) }
+  }
+
+  it('referência 175,49/176 recusa, 175,5/176 aceita, 177 recusa', () => {
+    const casos: Array<[number, number]> = [[175.49, 176], [175.5, 176], [175.5, 177]]
+    const vistos = casos.map(([ref, alt]) => {
+      const a = topoComReferencia(ref)
+      const { m } = materializa(a, [bloco(alt, Math.min(alt, Math.floor(ref)))])
+      return ['problemas' in m, excedeAlturaDaReferencia(alt, a.formatos.story.papeis.headline.referencia, DIMENSOES.story)]
+    })
+    expect(vistos).toEqual([[true, true], [false, false], [true, true]])
+  })
+
+  it('orçamento menor não autoriza altura física excessiva', () => {
+    const { unidades, m } = materializa(topoComReferencia(175.49), [bloco(176, 175)])
+    expect([unidades[0].pilha.height, unidades[0].alturaDoOrcamento]).toEqual([176, 175])
+    expect('problemas' in m).toBe(true)
+    // Duas vozes ceil somam +2 na pilha física; o orçamento só decide a escala.
+    const b2 = { ...bloco(85, 84), papel: 'headline2', layer: { ...bloco(85, 84).layer, id: 'headline2' }, indicesDoBloco: [1] } as unknown as BlocoPreparado
+    const [u] = unidadesDoArquetipo(TOPO, [bloco(85, 84), b2], 14)
+    expect(u.pilha.height).toBe(u.pilha.offsets[1] + 85)
+    expect(u.pilha.height - u.alturaDoOrcamento).toBe(2)
+  })
+
+  it('medidor sem naturalHeight mantém o contrato (recusa sem fração)', () => {
+    expect(montarBloco(argsDoBloco(semFracao)).bloco).toBeNull()
+  })
+
+  it('orçamento decide o degrau e fica fora do Layer', () => {
+    const { bloco: b } = montarBloco(argsDoBloco(comFracao))
+    expect(b && [b.height, b.layer.size.height, b.orcamentoDeAltura, 'orcamentoDeAltura' in b.layer]).toEqual([176, 176, 175, false])
+  })
+})
+
+describe('a margem da marca é a margem (29/10/2026)', () => {
+  const S = DIMENSOES.story
+  const BASE = verArquetipo('minimal-fb-base-esquerda', 1)!
+  const medidas = { pre: { width: 300, height: 48 }, headline: { width: 600, height: 164 }, apoio: { width: 500, height: 48 }, servico: { width: 300, height: 51 } }
+
+  const r6 = (r: { x: number; y: number; width: number; height: number }) => ({ x: +r.x.toFixed(6), y: +r.y.toFixed(6), width: +r.width.toFixed(6), height: +r.height.toFixed(6) })
+
+  it('19. a borda na faixa da margem vira a borda do piso; o recuo além do quadro fica; o miolo não mexe', () => {
+    const g = { margemH: 64, safeTopo: 160, safeRodape: 160 }
+    // Texto do topo-esquerda (91,8 / 230,4 … 847,8 / 288): a esquerda e o topo vão para 64 e 160; a direita (847,8) e a base ficam.
+    expect(r6(naMargemDaMarca({ x: 91.8, y: 230.4, width: 540, height: 57.6 }, 'story', S, g, 'texto'))).toEqual({ x: 64, y: 160, width: 567.8, height: 57.6 })
+    // O serviço do rodapé (1555,2 … 1689,6): a base está na margem → a caixa translada inteira para a base 1760.
+    const servico = naMargemDaMarca({ x: 91.8, y: 1555.2, width: 594, height: 134.4 }, 'story', S, g, 'texto')
+    expect([+(servico.y + servico.height).toFixed(6), +servico.height.toFixed(6), servico.x]).toEqual([1760, 134.4, 64])
+    // A logo (799,2 … 988,2 × 1555,2 … 1689,6): translada nos dois eixos, tamanho do catálogo.
+    expect(r6(naMargemDaMarca({ x: 799.2, y: 1555.2, width: 189, height: 134.4 }, 'story', S, g, 'logo'))).toEqual({ x: 827, y: 1625.6, width: 189, height: 134.4 })
+    // A logo do convite v1 (249,6) guarda os 19,2 px além do quadro (230,4): 160 + 19,2.
+    expect(naMargemDaMarca({ x: 442.8, y: 249.6, width: 194.4, height: 76.8 }, 'story', S, g, 'logo').y).toBeCloseTo(179.2, 9)
+    // A zona (caixa) abre borda a borda: 92 … 988 × 188 … 1695 → 64,2 … 1015,8 × 160 … 1760 (a zona do catálogo está em
+    // 92, 0,2 px além do quadro de 91,8, e guarda esse recuo — dentro da tolerância de ½ px da zona).
+    const z = naMargemDaMarca({ x: 92, y: 188, width: 896, height: 1507 }, 'story', S, g, 'caixa')
+    expect([z.x, z.y, z.x + z.width, z.y + z.height].map((v) => +v.toFixed(6))).toEqual([64.2, 160, 1015.8, 1760])
+    // O miolo (a manchete centrada do centro-óptico, 216 … 864 × 854 … 1046) não mexe.
+    const miolo = { x: 216, y: 854.4, width: 648, height: 192 }
+    expect(naMargemDaMarca(miolo, 'story', S, g, 'texto')).toBe(miolo)
+    // Piso mais apertado recolhe (o que a opção A fazia): margem 96 → 96; topo 250 → 250.
+    expect(r6(naMargemDaMarca({ x: 91.8, y: 230.4, width: 540, height: 57.6 }, 'story', S, { margemH: 96, safeTopo: 250, safeRodape: 224 }, 'texto'))).toEqual({ x: 96, y: 250, width: 535.8, height: 57.6 })
+    // No piso de 13/10 (92/188/224) a lateral é identidade (91,8 contra 92: meio pixel) e a vertical vai para a área
+    // segura (188 / 1696). O PADRÃO desde 29/10 (#276) é 64/160/160 — o caso da primeira linha deste teste.
+    expect(r6(naMargemDaMarca({ x: 91.8, y: 230.4, width: 540, height: 57.6 }, 'story', S, { margemH: 92, safeTopo: 188, safeRodape: 224 }, 'texto'))).toEqual({ x: 91.8, y: 188, width: 540, height: 57.6 })
+    expect(r6(naMargemDaMarca({ x: 91.8, y: 230.4, width: 540, height: 57.6 }, 'story', S, geo('story'), 'texto'))).toEqual({ x: 64, y: 160, width: 567.8, height: 57.6 })
+  })
+
+  it('19b. com `margem: "marca"` o topo-esquerda pousa na margem do projeto; sem ela, a saída é a de antes, byte a byte', () => {
+    const g = { margemH: 64, safeTopo: 160, safeRodape: 160 }
+    const com = materializarArquetipo({ arquetipo: TOPO, formato: 'story', canvas: S, geometria: g, medidas, logo: { razao: 0.5 }, margem: 'marca', empilhar: { gap: 14 } })
+    expect(com.ok).toBe(true)
+    if (!com.ok) return
+    expect(com.papeis.pre!.posicao).toEqual({ x: 64, y: 160, width: 300, height: 48 })
+    expect(com.papeis.headline!.posicao).toEqual({ x: 64, y: 222, width: 600, height: 164 })
+    expect(com.papeis.logo!.posicao).toEqual({ x: 827, y: 1646, width: 189, height: 95 })
+    // A coluna do medidor cresce até a margem: 756 + 27,8 → 783.
+    expect(caixasMaximas(TOPO, 'story', S, g, 'marca').headline).toEqual({ largura: 783, altura: 230 })
+    const sem = materializarArquetipo({ arquetipo: TOPO, formato: 'story', canvas: S, geometria: g, medidas, logo: { razao: 0.5 }, empilhar: { gap: 14 } })
+    const antes = materializarArquetipo({ arquetipo: TOPO, formato: 'story', canvas: S, geometria: geo('story'), medidas, logo: { razao: 0.5 }, empilhar: { gap: 14 } })
+    expect(sem.ok && antes.ok).toBe(true)
+    if (!sem.ok || !antes.ok) return
+    // Piso 64 mais folgado que o catálogo (92): sem o modo nada recolhe — cada papel pousa onde pousa no padrão (a zona
+    // efetiva da logo difere 1 px no arredondamento, porque o padrão a recorta em 988 e o piso 64 não).
+    for (const papel of Object.keys(antes.papeis) as Array<keyof typeof antes.papeis>) expect(sem.papeis[papel]!.posicao, String(papel)).toEqual(antes.papeis[papel]!.posicao)
+    expect(caixasMaximas(TOPO, 'story', S, g)).toEqual(caixasMaximas(TOPO, 'story', S))
+  })
+
+  it('19c. âncora no rodapé: na margem da marca o texto pousa pela BASE da referência e a pilha sobe dele', () => {
+    const g = { margemH: 64, safeTopo: 160, safeRodape: 160 }
+    const m = materializarArquetipo({ arquetipo: BASE, formato: 'story', canvas: S, geometria: g, medidas: { headline: medidas.headline, apoio: medidas.apoio, servico: medidas.servico }, logo: { razao: 0.5 }, margem: 'marca', empilhar: { gap: 14 } })
+    expect(m.ok).toBe(true)
+    if (!m.ok) return
+    const s = m.papeis.servico!.posicao
+    expect(s.y + s.height).toBe(1760)
+    expect(m.papeis.apoio!.posicao.y + m.papeis.apoio!.posicao.height + 14).toBe(s.y)
+    expect(m.papeis.headline!.posicao.y + m.papeis.headline!.posicao.height + 14).toBe(m.papeis.apoio!.posicao.y)
+    // A logo do alto à direita: 1016 rente, topo em 160 + o centro do contain.
+    expect(m.papeis.logo!.posicao.x + m.papeis.logo!.posicao.width).toBe(1016)
+    expect(m.papeis.logo!.referencia.y).toBe(160)
+    // Sem o modo, o serviço pousa pelo topo da referência (como antes).
+    const sem = materializarArquetipo({ arquetipo: BASE, formato: 'story', canvas: S, geometria: g, medidas: { headline: medidas.headline, apoio: medidas.apoio, servico: medidas.servico }, logo: { razao: 0.5 }, empilhar: { gap: 14 } })
+    expect(sem.ok && sem.papeis.servico!.posicao.y).toBe(1603)
+  })
+})
+
+describe('o rodapé pela base e o vão da pilha (30/10/2026, medidos nos ajustes do Ciro)', () => {
+  const G = { story: { margemH: 64, safeTopo: 160, safeRodape: 160 }, feed: { margemH: 64, safeTopo: 72, safeRodape: 72 } } as const
+  const BASE = verArquetipo('minimal-fb-base-esquerda', 1)!
+  const GIGANTE = verArquetipo('minimal-titulo-gigante', 1)!
+  const medidas = { pre: { width: 300, height: 48 }, headline: { width: 600, height: 164 }, apoio: { width: 500, height: 48 }, servico: { width: 300, height: 52 } }
+  const na = (a: typeof TOPO, f: 'story' | 'feed', papel: string) => baseNaFaixaDaMargem((a.formatos[f].papeis as Record<string, { referencia: { x: number; y: number; w: number; h: number } }>)[papel].referencia, f, DIMENSOES[f])
+
+  it('20. baseNaFaixaDaMargem: o serviço (e a logo) dos layouts de topo e o serviço do base-esquerda estão na faixa; pré, manchete e apoio não', () => {
+    expect([na(TOPO, 'story', 'servico'), na(TOPO, 'story', 'logo'), na(TOPO, 'feed', 'servico'), na(BASE, 'story', 'servico'), na(BASE, 'feed', 'servico'), na(GIGANTE, 'story', 'servico'), na(GIGANTE, 'feed', 'servico')]).toEqual([true, true, true, true, true, true, true])
+    expect([na(TOPO, 'story', 'pre'), na(TOPO, 'story', 'headline'), na(TOPO, 'story', 'apoio'), na(BASE, 'story', 'headline'), na(BASE, 'story', 'apoio')]).toEqual([false, false, false, false, false])
+  })
+
+  it('20b. na margem da marca o serviço dos layouts de TOPO pousa com a BASE na margem (1760 / 1278); sem o modo, no topo da referência, como antes', () => {
+    for (const [f, base] of [['story', 1760], ['feed', 1278]] as const) {
+      const m = materializarArquetipo({ arquetipo: TOPO, formato: f, canvas: DIMENSOES[f], geometria: G[f], medidas, logo: { razao: 0.5 }, margem: 'marca', empilhar: { gap: GAP_DA_PILHA } })
+      expect(m.ok, f).toBe(true)
+      if (!m.ok) return
+      const s = m.papeis.servico!.posicao
+      expect(s.y + s.height, f).toBe(base)
+      // A logo não entra: translada com o catálogo (a base da referência dela guarda o recuo de sempre).
+      expect(m.papeis.logo!.posicao.x + m.papeis.logo!.posicao.width, f).toBe(1016)
+      const sem = materializarArquetipo({ arquetipo: TOPO, formato: f, canvas: DIMENSOES[f], geometria: G[f], medidas, logo: { razao: 0.5 }, empilhar: { gap: GAP_DA_PILHA } })
+      expect(sem.ok && sem.papeis.servico!.posicao.y, f).toBe(sem.ok && sem.papeis.servico!.referencia.y)
+    }
+  })
+
+  it('20c. base-esquerda no Feed: o serviço pousa em 1278, sem os 13,5 px de recuo do catálogo (a referência termina em 0,91)', () => {
+    const m = materializarArquetipo({ arquetipo: BASE, formato: 'feed', canvas: DIMENSOES.feed, geometria: G.feed, medidas: { headline: { width: 600, height: 150 }, apoio: medidas.apoio, servico: medidas.servico }, logo: { razao: 0.5 }, margem: 'marca', empilhar: { gap: GAP_DA_PILHA } })
+    expect(m.ok).toBe(true)
+    if (!m.ok) return
+    const s = m.papeis.servico!.posicao
+    expect(s.y + s.height).toBe(1278)
+    // A pilha sobe dele com vão 0: o apoio termina onde o serviço começa, a manchete onde o apoio começa.
+    expect(m.papeis.apoio!.posicao.y + m.papeis.apoio!.posicao.height).toBe(s.y)
+    expect(m.papeis.headline!.posicao.y + m.papeis.headline!.posicao.height).toBe(m.papeis.apoio!.posicao.y)
+  })
+
+  it('20e. modelo de coluna (#10): o serviço pela base NÃO entra na pilha de âncora topo — a pilha o puxaria para baixo do apoio (revisão do Codex, P2)', () => {
+    const COLUNA = verArquetipo('minimal-coluna-foto', 1)!
+    const m = materializarArquetipo({ arquetipo: COLUNA, formato: 'story', canvas: DIMENSOES.story, geometria: G.story, medidas: { headline: { width: 450, height: 240 }, apoio: { width: 400, height: 108 }, servico: { width: 300, height: 48 } }, logo: { razao: 0.5 }, margem: 'marca', empilhar: { gap: GAP_DA_PILHA } })
+    expect(m.ok).toBe(true)
+    if (!m.ok) return
+    expect(m.papeis.servico!.posicao.y + m.papeis.servico!.posicao.height).toBe(1760)
+    // O apoio fica na própria referência (a faixa dele era só com o serviço, que saiu da pilha): nada o puxa.
+    expect(m.papeis.apoio!.posicao.y).toBe(m.papeis.apoio!.referencia.y)
+    expect(m.papeis.apoio!.posicao.y + m.papeis.apoio!.posicao.height).toBeLessThan(m.papeis.servico!.posicao.y)
+    const f = materializarArquetipo({ arquetipo: COLUNA, formato: 'feed', canvas: DIMENSOES.feed, geometria: G.feed, medidas: { headline: { width: 450, height: 150 }, apoio: { width: 400, height: 50 }, servico: { width: 300, height: 48 } }, logo: { razao: 0.5 }, margem: 'marca', empilhar: { gap: GAP_DA_PILHA } })
+    expect(f.ok && f.papeis.servico!.posicao.y + f.papeis.servico!.posicao.height).toBe(1278)
+  })
+
+  it('20d. GAP_DA_PILHA é 0: na faixa do topo, pré, manchete e apoio encostam caixa com caixa', () => {
+    expect(GAP_DA_PILHA).toBe(0)
+    const m = materializarArquetipo({ arquetipo: TOPO, formato: 'story', canvas: DIMENSOES.story, geometria: G.story, medidas, logo: { razao: 0.5 }, margem: 'marca', empilhar: { gap: GAP_DA_PILHA } })
+    expect(m.ok).toBe(true)
+    if (!m.ok) return
+    expect(m.papeis.pre!.posicao.y).toBe(160)
+    expect(m.papeis.headline!.posicao.y).toBe(160 + 48)
+    expect(m.papeis.apoio!.posicao.y).toBe(160 + 48 + 164)
   })
 })

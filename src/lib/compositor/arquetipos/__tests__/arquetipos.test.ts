@@ -7,18 +7,40 @@ import { NUMEROS_PADRAO } from '../../assinatura'
 import { DIMENSOES } from '../../spec'
 import { listarArquetipos, resolverArquetipo, verArquetipo } from '../catalogo'
 import { impressaoDoArquetipo, jsonCanonico } from '../impressao'
-import { chaveDoArquetipo, FORMATOS_DO_ARQUETIPO, type ArquetipoDeLayout, type Caixa, type PosicaoDoPapel, type Zona } from '../tipos'
+import { chaveDoArquetipo, ELEMENTOS_QUE_ENVOLVEM, FORMATOS_DO_ARQUETIPO, type ArquetipoDeLayout, type Caixa, type PosicaoDoPapel, type Zona } from '../tipos'
 import { areaSeguraPadrao, validarArquetipo, validarCatalogo } from '../validar'
+import { ocupacaoDoAcento, receitasDoArquetipo } from '../acentos'
+import { SHAPES_LIBRARY } from '@/lib/assets/shapes-library'
 
 const TOPO = 'minimal-fb-topo-esquerda'
 const BASE = 'minimal-fb-base-esquerda'
 const CENTRO = 'minimal-fb-centro-optico'
+const GIGANTE = 'minimal-titulo-gigante'
+const LISTA = 'minimal-tipografico-lista'
+const CONVITE = 'minimal-tipografico-convite'
+const DIVISAO = 'minimal-divisao-foto-topo'
+const BASE_CENTRO = 'minimal-fb-base-centro'
+const TOPO_CENTRO = 'minimal-fb-topo-centro'
+const ARCO = 'minimal-divisao-cor-topo-arco'
+const COLUNA = 'minimal-coluna-foto'
+const COLUNA_E = 'minimal-coluna-foto-esquerda'
 
 /** A impressão de cada versão publicada. Mudou? Publique `id@versao+1`, não edite a antiga. */
 const IMPRESSOES_PUBLICADAS: Record<string, string> = {
   'minimal-fb-base-esquerda@1': 'arq1-0c6796f14d6787',
   'minimal-fb-centro-optico@1': 'arq1-05eebd2c041304',
   'minimal-fb-topo-esquerda@1': 'arq1-1f4ab8c4a215f2',
+  'minimal-titulo-gigante@1': 'arq1-1025df9d49631a',
+  'minimal-tipografico-lista@1': 'arq1-023b3e4602f2d9',
+  'minimal-tipografico-convite@1': 'arq1-1cdd408f7eeb8d',
+  'minimal-tipografico-convite@2': 'arq1-01570f16b5b8cb',
+  'minimal-divisao-foto-topo@1': 'arq1-03ccaf6af70501',
+  'minimal-fb-base-centro@1': 'arq1-15c914b2112ca8',
+  'minimal-fb-topo-centro@1': 'arq1-023d4c649e2482',
+  'minimal-divisao-cor-topo-arco@1': 'arq1-04603bcf9d7623',
+  // IH #10 (25/10/2026): os 2 ids da coluna de foto, calculados e travados; as 11 de cima byte a byte.
+  'minimal-coluna-foto@1': 'arq1-17a4b00f7ab1d1',
+  'minimal-coluna-foto-esquerda@1': 'arq1-15df4b7aedca7d',
 }
 
 const ver = (id: string) => verArquetipo(id) as ArquetipoDeLayout
@@ -33,9 +55,21 @@ const fundo = (c: Caixa) => c.y + c.h
 const sobrepoe = (a: Caixa, b: Caixa) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
 
 describe('T0 · contrato e catálogo', () => {
-  it('1. o catálogo tem exatamente os 3 modelos', () => {
-    // Conta MODELOS (ids), não versões: publicar uma v2 ao lado não muda isto.
-    expect([...new Set(listarArquetipos().map((a) => a.id))].sort()).toEqual([BASE, CENTRO, TOPO])
+  it('1. o catálogo tem exatamente os 12 modelos (os 3 do T0 + o título gigante do T4-A + a lista do #15 + o convite do #16 + a divisão do #8 + a base centrada do #4 + o topo centrado do #5 + o arco do #9 + os 2 lados da coluna do #10)', () => {
+    // Conta MODELOS (ids), não versões: publicar uma v2 ao lado não muda isto. H9: o #9@1 publicado. IH #10: os 2 ids da coluna.
+    expect([...new Set(listarArquetipos().map((a) => a.id))].sort()).toEqual([COLUNA, COLUNA_E, ARCO, DIVISAO, BASE_CENTRO, BASE, CENTRO, TOPO_CENTRO, TOPO, CONVITE, LISTA, GIGANTE])
+  })
+
+  it('A-1/A-2 (#16@2): 13 versões e 12 ids (com o #8@1, o #4@1, o #5@1, o #9@1 da H9 e os 2 do #10 da IH); sem versão → @2, versão 1 → @1; o asset cantoneiras@1 é o literal de hoje', () => {
+    expect(listarArquetipos().map(chaveDoArquetipo)).toHaveLength(13)
+    expect(new Set(listarArquetipos().map((a) => a.id)).size).toBe(12)
+    expect(listarArquetipos().filter((a) => a.id === CONVITE).map((a) => a.versao)).toEqual([1, 2])
+    expect(ver(CONVITE).versao).toBe(2)
+    expect(impressaoDoArquetipo(ver(CONVITE))).toBe(IMPRESSOES_PUBLICADAS[`${CONVITE}@2`])
+    expect(impressaoDoArquetipo(verArquetipo(CONVITE, 1)!)).toBe('arq1-1cdd408f7eeb8d')
+    expect(ver(CONVITE).elementos!.find((e) => e.id === 'cantoneiras')!.braco).toBe(0.12)
+    expect(verArquetipo(CONVITE, 1)!.elementos!.find((e) => e.id === 'cantoneiras')!.braco).toBeUndefined()
+    expect(SHAPES_LIBRARY.find((x) => x.id === 'cantoneiras')).toMatchObject({ versao: 1, pathData: 'M0 25 L0 0 L25 0 M75 0 L100 0 L100 25 M100 75 L100 100 L75 100 M25 100 L0 100 L0 75' })
   })
 
   it('2. ids únicos — e o validador recusa id@versao repetido e id fora do formato', () => {
@@ -153,7 +187,8 @@ describe('T0 · contrato e catálogo', () => {
     duplicado.papeis.push({ papel: 'servico', obrigatorio: true, ordemDeLeitura: 9 })
     expect(codigos(duplicado)).toContain('PAPEL_DUPLICADO')
     const estranho = rascunho()
-    estranho.papeis.push({ papel: 'cta', obrigatorio: false, ordemDeLeitura: 9 })
+    // O cta entrou no contrato no #15 (coluna do rodapé); a segunda voz continua fora (ela é a manchete).
+    estranho.papeis.push({ papel: 'headline2', obrigatorio: false, ordemDeLeitura: 9 })
     expect(codigos(estranho)).toContain('PAPEL_FORA_DO_CONTRATO')
     const posicaoSobrando = rascunho(BASE)
     posicaoSobrando.formatos.story.papeis.pre = { referencia: { x: 0.085, y: 0.6, w: 0.3, h: 0.03 }, zona: { xMin: 0.085, xMax: 0.5, yMin: 0.55, yMax: 0.65 } }
@@ -215,7 +250,7 @@ describe('T0 · contrato e catálogo', () => {
   it('9. elementos: só tipos conhecidos, declarados e com posição — referência semântica, sem desenho', () => {
     for (const a of listarArquetipos()) {
       for (const e of a.elementos ?? []) {
-        expect(Object.keys(e).every((k) => ['id', 'tipo', 'opcional', 'corPorPapel', 'presoA', 'canto'].includes(k))).toBe(true)
+        expect(Object.keys(e).every((k) => ['id', 'tipo', 'opcional', 'corPorPapel', 'presoA', 'canto', 'porItem', 'braco'].includes(k))).toBe(true)
         for (const f of FORMATOS_DO_ARQUETIPO) expect(Object.keys(a.formatos[f].elementos?.[e.id] ?? {}).sort()).toEqual(['h', 'w', 'x', 'y'])
       }
     }
@@ -269,7 +304,7 @@ describe('T0 · contrato e catálogo', () => {
 
   it('código taxonômico: MIN-XX é o agrupamento conceitual, não a família macro (que o T0 não modela)', () => {
     const codigos_ = Object.fromEntries(listarArquetipos().map((a) => [a.id, a.codigoTaxonomico]))
-    expect(codigos_).toEqual({ [TOPO]: 'MIN-01', [BASE]: 'MIN-01', [CENTRO]: 'MIN-02' })
+    expect(codigos_).toEqual({ [TOPO]: 'MIN-01', [BASE]: 'MIN-01', [CENTRO]: 'MIN-02', [GIGANTE]: 'MIN-10', [LISTA]: 'MIN-09', [CONVITE]: 'MIN-09', [DIVISAO]: 'MIN-04', [BASE_CENTRO]: 'MIN-01', [TOPO_CENTRO]: 'MIN-01', [ARCO]: 'MIN-04', [COLUNA]: 'MIN-05', [COLUNA_E]: 'MIN-05' })
     // Enquanto a família macro A–E não fizer parte do contrato, nenhuma definição publicada tem a chave `familia`.
     const temChave = (valor: unknown, chave: string): boolean =>
       !!valor && typeof valor === 'object' && Object.entries(valor).some(([k, v]) => k === chave || temChave(v, chave))
@@ -416,7 +451,22 @@ describe('T0 · contrato e catálogo', () => {
       for (const f of FORMATOS_DO_ARQUETIPO) {
         const caixas = posicoes(a, f).map(([papel, p]) => [papel, p.referencia] as const)
         for (let i = 0; i < caixas.length; i++) for (let j = i + 1; j < caixas.length; j++) expect(sobrepoe(caixas[i][1], caixas[j][1]), `${a.id} ${f} ${caixas[i][0]}×${caixas[j][0]}`).toBe(false)
-        for (const [id, c] of Object.entries(a.formatos[f].elementos ?? {})) for (const [papel, t] of caixas) expect(sobrepoe(c, t), `${a.id} ${f} ${id}×${papel}`).toBe(false)
+        // O elemento preso à PEÇA (as cantoneiras, #16) conta pelo que OCUPA — os braços —, a mesma função do compor.
+        for (const [id, c] of Object.entries(a.formatos[f].elementos ?? {})) {
+          const e = a.elementos!.find((x) => x.id === id)!
+          // O desenho que a peça desenharia (#16@2: o path derivado do formato; os demais, o do asset).
+          const receita = receitasDoArquetipo(a, { formato: f, canvas: DIMENSOES[f] }).receitas.find((r) => r.elemento === id)!
+          const ocupa = ocupacaoDoAcento(receita, { x: c.x, y: c.y, width: c.w, height: c.h }, 0).map((r) => ({ x: r.x, y: r.y, w: r.width, h: r.height }))
+          if (!e.presoA) expect(ocupa, `${a.id} ${f} ${id}: os quatro braços`).toHaveLength(4)
+          for (const [papel, t] of caixas) {
+            // #5: o ENVOLVENTE abraça o papel dele (a caixa contém a referência); os outros textos ele não toca.
+            if (ELEMENTOS_QUE_ENVOLVEM.includes(e.tipo) && e.presoA === papel) {
+              expect(c.x < t.x && c.y < t.y && c.x + c.w > t.x + t.w && c.y + c.h > t.y + t.h, `${a.id} ${f} ${id} envolve ${papel}`).toBe(true)
+              continue
+            }
+            expect(ocupa.some((o) => sobrepoe(o, t)), `${a.id} ${f} ${id}×${papel}`).toBe(false)
+          }
+        }
       }
     }
   })
@@ -435,7 +485,10 @@ describe('T0 · contrato e catálogo', () => {
 
   it('as faixas da headline dos três modelos não se sobrepõem: a zona sozinha já distingue o modelo', () => {
     for (const f of FORMATOS_DO_ARQUETIPO) {
+      // Só os três que o teste nomeia: o título gigante (T4-A) divide a faixa do topo-esquerda e se distingue pela
+      // escala dominante (ver 'T4-A · título gigante').
       const faixas = listarArquetipos()
+        .filter((a) => [TOPO, BASE, CENTRO].includes(a.id))
         .map((a) => (a.formatos[f].papeis.headline as { zona: Zona }).zona)
         .sort((x, y) => x.yMin - y.yMin)
       for (let i = 1; i < faixas.length; i++) expect(faixas[i].yMin, f).toBeGreaterThan(faixas[i - 1].yMax)
@@ -509,5 +562,84 @@ describe('T0 · os três modelos', () => {
       expect(spark.x * 2 + spark.w).toBeCloseTo(1, 9)
       expect(fundo(spark)).toBeLessThanOrEqual(p.headline.referencia.y)
     }
+  })
+})
+
+describe('T4-A · título gigante (MIN-10)', () => {
+  it('a escala dominante é a identidade: só a headline do título gigante a tem; os três do T0 continuam sem a chave', () => {
+    const a = ver(GIGANTE)
+    expect(a.codigoTaxonomico).toBe('MIN-10')
+    expect(a.papeis).toEqual([
+      { papel: 'headline', obrigatorio: true, ordemDeLeitura: 0, escala: 'dominante' },
+      { papel: 'apoio', obrigatorio: false, ordemDeLeitura: 1, alinha: 'direita' },
+      { papel: 'servico', obrigatorio: true, ordemDeLeitura: 2 },
+      { papel: 'logo', obrigatorio: true, ordemDeLeitura: 3 },
+    ])
+    expect(a.elementos).toBeUndefined()
+    expect(a.preferencias).toEqual({ ancora: 'topo', alinha: 'esquerda', cantoDaMarca: 'inferior-direito' })
+    expect(a.fotoIdeal?.referencias).toEqual(['S025', 'F014', 'F018'])
+    for (const id of [TOPO, BASE, CENTRO]) for (const p of ver(id).papeis) expect(['escala' in p, 'alinha' in p], `${id} ${p.papel}`).toEqual([false, false])
+    expect(validarArquetipo(a)).toEqual([])
+  })
+
+  it('a headline ocupa largura 80–100 e altura 22–38 da peça, sem sangrar a margem; apoio na coluna da direita; serviço 84–88', () => {
+    const a = ver(GIGANTE)
+    for (const f of FORMATOS_DO_ARQUETIPO) {
+      const p = a.formatos[f].papeis as Record<string, { referencia: Caixa; zona: Zona }>
+      const area = areaSeguraPadrao(f)
+      expect(p.headline.referencia.w).toBeGreaterThanOrEqual(0.8)
+      expect(p.headline.referencia.x * area.largura).toBeGreaterThanOrEqual(area.margemH - 0.5)
+      expect((p.headline.referencia.x + p.headline.referencia.w) * area.largura).toBeLessThanOrEqual(area.largura - area.margemH + 0.5)
+      expect(p.headline.referencia.h).toBeGreaterThanOrEqual(0.22)
+      expect(p.headline.referencia.h).toBeLessThanOrEqual(0.38)
+      expect(p.apoio.referencia.x).toBeGreaterThanOrEqual(0.5)
+      expect(p.apoio.referencia.y).toBeGreaterThanOrEqual(0.66)
+      expect(fundo(p.apoio.referencia)).toBeLessThanOrEqual(0.8)
+      expect(p.servico.referencia.y).toBeGreaterThanOrEqual(0.84)
+    }
+    // Story e feed são definições próprias (o teste genérico confere que diferem).
+    expect(JSON.stringify(a.formatos.story)).not.toBe(JSON.stringify(a.formatos.feed))
+  })
+
+  it('sem a escala, o título gigante seria o topo-esquerda com outra caixa: a escala é o que o distingue, não a faixa', () => {
+    const g = ver(GIGANTE).formatos.story.papeis.headline as { zona: Zona }
+    const t = ver(TOPO).formatos.story.papeis.headline as { zona: Zona }
+    expect(g.zona.yMin < t.zona.yMax && t.zona.yMin < g.zona.yMax).toBe(true)
+    expect(ver(GIGANTE).preferencias).toEqual(ver(TOPO).preferencias)
+  })
+
+  it('o validador recusa a escala fora da headline e valor fora do vocabulário (CAMPO_INVALIDO), e a chave a mais segue fechada', () => {
+    const noApoio = rascunho(GIGANTE)
+    noApoio.papeis[1].escala = 'dominante'
+    expect(codigos(noApoio)).toEqual(['CAMPO_INVALIDO'])
+    const valor = rascunho(GIGANTE)
+    valor.papeis[0].escala = 'enorme'
+    expect(codigos(valor)).toEqual(['CAMPO_INVALIDO'])
+    const corpo = rascunho(GIGANTE)
+    corpo.papeis[0].fontSize = 400
+    expect(codigos(corpo)).toEqual(['CAMPO_PROIBIDO'])
+    const outra = rascunho(GIGANTE)
+    outra.papeis[0].tamanho = 'gigante'
+    expect(codigos(outra)).toEqual(['CAMPO_DESCONHECIDO'])
+  })
+
+  it('alinhamento próprio (rodada 1): só em papel de texto que não é a headline; a referência tem de encostar na borda da zona', () => {
+    const naHeadline = rascunho(GIGANTE)
+    naHeadline.papeis[0].alinha = 'direita'
+    expect(codigos(naHeadline)).toEqual(['CAMPO_INVALIDO'])
+    const naLogo = rascunho(GIGANTE)
+    naLogo.papeis[3].alinha = 'direita'
+    expect(codigos(naLogo)).toEqual(['CAMPO_INVALIDO'])
+    const valor = rascunho(GIGANTE)
+    valor.papeis[1].alinha = 'justificado'
+    expect(codigos(valor)).toEqual(['CAMPO_INVALIDO'])
+    // À direita com a referência longe da borda direita da zona: duas fontes de posição, recusado nos dois formatos.
+    const solto = rascunho(GIGANTE)
+    for (const f of FORMATOS_DO_ARQUETIPO) solto.formatos[f].papeis.apoio.referencia.x = 0.5
+    expect(codigos(solto)).toEqual(['PREFERENCIA_INCOERENTE', 'PREFERENCIA_INCOERENTE'])
+    // À esquerda exigiria a referência na borda esquerda da zona (.50): o .55 de hoje é incoerente com ela.
+    const esquerda = rascunho(GIGANTE)
+    esquerda.papeis[1].alinha = 'esquerda'
+    expect(codigos(esquerda)).toEqual(['PREFERENCIA_INCOERENTE', 'PREFERENCIA_INCOERENTE'])
   })
 })

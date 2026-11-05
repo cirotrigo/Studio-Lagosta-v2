@@ -62,6 +62,15 @@ describe('portões de ajustarArte', () => {
     expect(mocks.findProject).not.toHaveBeenCalled()
   })
 
+  it('T1: camadas ou pagina sem versaoEsperada: VERSAO_OBRIGATORIA; forma inválida recusa inteira antes do banco', async () => {
+    await expect(ajustarArte({ projectId: 8, pageId: 'p1', camadas: [{ op: 'definir', camada: 'logo', campos: { position: { x: 1 } } }] })).rejects.toMatchObject({ code: 'VERSAO_OBRIGATORIA', status: 400 })
+    await expect(ajustarArte({ projectId: 8, pageId: 'p1', pagina: { background: '#000000' } })).rejects.toMatchObject({ code: 'VERSAO_OBRIGATORIA', status: 400 })
+    await expect(
+      ajustarArte({ projectId: 8, pageId: 'p1', versaoEsperada: 'v1:abc', camadas: [{ op: 'definir', camada: 'logo', campos: { position: { x: 1 } } }, { op: 'definir', camada: 'h', campos: { style: { fontSize: 1 } } }] }),
+    ).rejects.toMatchObject({ code: 'VALOR_FORA_DA_FAIXA', status: 400, details: { ajusteGravado: false, erros: [expect.objectContaining({ indice: 1, campos: ['style.fontSize'] })] } })
+    expect(mocks.findProject).not.toHaveBeenCalled()
+  })
+
   it('texto, foto ou nome sem ajustes continuam sem exigir versão (chegam ao banco)', async () => {
     await codigoDe(ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { headline: 'Novo' } }))
     expect(mocks.findProject).toHaveBeenCalledTimes(1)

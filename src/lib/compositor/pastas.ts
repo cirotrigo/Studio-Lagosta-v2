@@ -13,6 +13,7 @@ import { db } from '@/lib/db'
 import { comTravaPorChave } from '@/lib/trava-por-chave'
 
 import type { Formato } from './spec'
+import { formatoDaPaginaGravada as formatoDaPagina } from './formato'
 import {
   CATEGORIA_AVULSAS,
   CATEGORIA_PROGRAMACAO,
@@ -122,15 +123,8 @@ export async function ordemNaPasta(templateId: number, quando: string | Date | n
   return { ordem, repeticao: ordem - base }
 }
 
-/** O formato de uma página já gravada: a tag que o compositor escreveu, ou o tamanho. */
-export function formatoDaPagina(page: { tags?: string[] | null; width: number; height: number }): Formato {
-  const tags = page.tags ?? []
-  if (tags.includes('story')) return 'story'
-  if (tags.includes('feed')) return 'feed'
-  if (tags.includes('quadrado')) return 'quadrado'
-  if (page.width === page.height) return 'quadrado'
-  return page.height > page.width * 1.6 ? 'story' : 'feed'
-}
+/** O formato de uma página já gravada: a tag que o compositor escreveu, ou o tamanho (CP5b: mora em `./formato`, puro; reexportado aqui com o nome de sempre). */
+export { formatoDaPagina }
 
 export interface Movimentacao {
   moveu: boolean

@@ -284,6 +284,17 @@ que os 4 `hojeViola` de P11 em `piloto-portao.test.ts` (duas versões) viram `it
 
 Reusar `perfilDoPrincipal`, `TOOLS_DRAFT_ONLY`, `guardas-draft-only.ts` (`assertPaginaSoEmRascunho`,
 `postAprovado`), `decidirPostsDaPagina({ apenasRascunho })`, `horarioOcupado`. **Não reconstruir o H4.**
+
+> **Estado em 16/10/2026 (noite)** — contrato `docs/PLANO-2026-10-16-CP5C-CONTRATO.md` (PR #241, Codex APTO na
+> rodada 9) e implementação no PR #242. O desenho MUDOU em relação ao parágrafo acima, pela revisão do Codex (R2/R3
+> do contrato): a medição acontece **DENTRO** da transação, sob as travas (agenda → fontes → ItemDeLote →
+> ItemDePlano → posts da página `ORDER BY id` → Page → Generation da peça → FOR SHARE Project/assinatura/modelo/
+> CustomFont) — não existe "reler identidade sob trava", porque medir e escrever são a mesma leitura; o registro
+> (APTO ou não) é gravado na mesma transação; os efeitos pós-commit NÃO rodam no draft-only (proposta 8.7 B, do
+> owner); `reaproveitar` não declara veredito. Os 8 `hojeViola` de P11 viraram `it()` com a medição real. As
+> decisões 8.1–8.9 do contrato seguem do owner, implementadas como PROPOSTA nomeada. A tabela de reforços acima:
+> 1, 2, 6, 8 fixados por teste (C11, inventário, C12); 3 e 4 resolvidos por trava (C5b, C19); 5 deixou de existir
+> (no draft-only não há worker pós-commit do agendamento); 7 virou o inventário C9 (por código-fonte).
 Limite a dizer ao owner (fora do CP5): um cliente OAuth novo nasce `normal`, e o `clientId` do ChatGPT é
 compartilhado com humanos — o gate fail-closed só vale onde o perfil é draft-only.
 

@@ -13,6 +13,7 @@ export async function loadBrandAssets(projectId: number): Promise<BrandAssets> {
       projectId,
       isProjectLogo: true,
     },
+    orderBy: { id: 'asc' },
     select: {
       fileUrl: true,
       name: true,

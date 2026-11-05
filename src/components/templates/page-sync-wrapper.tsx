@@ -8,6 +8,7 @@ import { useTemplateEditor } from '@/contexts/template-editor-context'
 import type { Layer, Page } from '@/types/template'
 import { canonicalizeLayersForPersistence } from '@/lib/shape-style'
 import { criarAutosave, criarFila, type Autosave } from '@/lib/editor/fila-de-gravacao'
+import { criarRecusas, ehRecusaDoVetor, type RecusaDoVetor } from '@/lib/editor/recusa-do-vetor'
 
 interface PageSyncControle {
   /**
@@ -29,9 +30,14 @@ interface PendenteDaPagina {
   layersString: string
   canvasString: string
   audioString: string
+  /** CP-X2b: de qual carga da página o pendente descende, e a ordem de captura (ver `recusa-do-vetor.ts`). */
+  linhagem: number
+  seq: number
 }
 
 const PageSyncContext = React.createContext<PageSyncControle | null>(null)
+
+const mensagemDoErro = (erro: unknown) => (erro instanceof Error ? erro.message : String(erro))
 
 /** O controle do autosave da página — `null` fora do editor. */
 export function usePageSync(): PageSyncControle | null {
@@ -45,7 +51,7 @@ export function usePageSync(): PageSyncControle | null {
  *   sempre num PATCH único (dois writers na mesma página competiriam entre si)
  */
 export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
-  const { currentPage, currentPageId, savePageState, updatePageThumbnail } = useMultiPage()
+  const { pages, currentPage, currentPageId, savePageState, updatePageThumbnail } = useMultiPage()
   const { design, loadTemplate, generateThumbnail } = useTemplateEditor()
 
   const lastPageIdRef = React.useRef<string | null>(null)
@@ -69,6 +75,24 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
    * próxima edição. Ela é refeita quando o relógio volta ao quadro de 0.
    */
   const miniaturaPendenteRef = React.useRef<string | null>(null)
+  /**
+   * CP-X2b: autosave recusado com 422 `VETOR_INVALIDO`, por página, com o pendente inteiro. Sobrevive à troca de
+   * página (o design é trocado pelo da próxima e o `lastSaved` volta ao do banco) e só sai quando a CORREÇÃO da
+   * edição recusada é gravada (mesma linhagem, depois de restaurar ou continuando a editar) ou com o descarte
+   * explícito — nunca por uma gravação não relacionada. O mesmo conteúdo recusado não é reenviado (sem laço de 422).
+   */
+  const recusasRef = React.useRef(criarRecusas<PendenteDaPagina>())
+  const recusas = React.useSyncExternalStore(recusasRef.current.assinar, recusasRef.current.todas, recusasRef.current.todas)
+  /** O pendente com a origem: a linhagem do design na tela e a ordem de captura. */
+  const comOrigem = React.useCallback(
+    (pageId: string, pending: Omit<PendenteDaPagina, 'pageId' | 'linhagem' | 'seq'>): PendenteDaPagina => ({
+      pageId,
+      ...pending,
+      linhagem: recusasRef.current.linhagem(pageId),
+      seq: recusasRef.current.proximaSeq(),
+    }),
+    [],
+  )
 
   // Trilha da página (aba Músicas). null e undefined são o mesmo estado ("sem
   // trilha") — normalizar para não gerar PATCH por falso diff.
@@ -166,10 +190,19 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
         // carregou por último — senão o par (página, design) está desalinhado
         if (!pageId || isSyncingRef.current || lastPageIdRef.current !== pageId) return null
         const pending = montar()
-        return pending ? { pageId, ...pending } : null
+        const p = pending ? comOrigem(pageId, pending) : null
+        return p && !recusasRef.current.jaRecusado(p) ? p : null
       },
-      enviar: (p) => atuaisRef.current.savePageState(p.pageId, p.patch),
+      enviar: async (p) => {
+        try {
+          await atuaisRef.current.savePageState(p.pageId, p.patch)
+        } catch (erro) {
+          if (ehRecusaDoVetor(erro)) recusasRef.current.registrar(p, mensagemDoErro(erro))
+          throw erro
+        }
+      },
       confirmar: (p) => {
+        recusasRef.current.confirmado(p)
         // Se trocou de página durante o voo, os refs já pertencem à nova página
         if (lastPageIdRef.current !== p.pageId) return
         lastSavedLayersRef.current = p.layersString
@@ -206,6 +239,9 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
 
   const descarregar = React.useCallback(async () => {
     await autosaveRef.current!.salvar()
+    // Edição recusada (desta ou de outra página) não foi gravada: quem sai do editor não pode achar que foi.
+    const recusada = recusasRef.current.todas()[0]
+    if (recusada) throw new Error(recusada.mensagem)
   }, [])
 
   // O controle é estável e sempre chama a versão mais nova: trocar o valor do
@@ -237,10 +273,14 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
         // mas o envio entra na fila: um PATCH em voo da página que sai, com o
         // estado mais velho, não pode chegar ao servidor depois deste.
         const pending = buildPendingPatch()
-        if (pending) {
+        const saindo = pending ? comOrigem(previousPageId, pending) : null
+        if (saindo && !recusasRef.current.jaRecusado(saindo)) {
           void filaRef.current
-            .enfileirar(() => savePageState(previousPageId, pending.patch))
+            .enfileirar(() => savePageState(previousPageId, saindo.patch))
+            .then(() => recusasRef.current.confirmado(saindo))
             .catch((error) => {
+              // CP-X2b: o design desta página vai ser trocado logo abaixo; a recusa guarda o que ela tinha.
+              if (ehRecusaDoVetor(error)) recusasRef.current.registrar(saindo, mensagemDoErro(error))
               console.error('[PageSync] Erro ao salvar página anterior:', error)
             })
         }
@@ -271,6 +311,8 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
       lastSavedAudioRef.current = serializeAudio(currentPage.audio)
 
       lastPageIdRef.current = currentPageId
+      // A tela agora mostra a versão do banco: o que for editado daqui não descende de nenhuma edição recusada.
+      if (currentPageId) recusasRef.current.novaLinhagem(currentPageId)
 
       // Reset flag após um frame
       requestAnimationFrame(() => {
@@ -375,5 +417,104 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
     }
   }, [flushPendingSave])
 
-  return <PageSyncContext.Provider value={controle}>{children}</PageSyncContext.Provider>
+  const restaurar = (recusa: RecusaDoVetor<PendenteDaPagina>) => {
+    const { patch } = recusa.pendente
+    recusasRef.current.retomar(recusa)
+    loadTemplate({
+      designData: {
+        canvas: {
+          width: patch.width ?? design.canvas.width,
+          height: patch.height ?? design.canvas.height,
+          backgroundColor: patch.background ?? design.canvas.backgroundColor,
+        },
+        layers: (patch.layers as Layer[] | undefined) ?? design.layers,
+        audio: patch.audio !== undefined ? patch.audio : design.audio ?? null,
+      },
+      markDirty: true,
+      historyKey: recusa.pageId,
+    })
+  }
+  const descartar = (recusa: RecusaDoVetor<PendenteDaPagina>, naTela: boolean) => {
+    recusasRef.current.descartar(recusa.pageId)
+    // A tela ainda mostra o que foi recusado: volta ao que está gravado (linhagem nova).
+    if (naTela && currentPage) {
+      recusasRef.current.novaLinhagem(recusa.pageId)
+      loadTemplate({
+        designData: {
+          canvas: { width: currentPage.width, height: currentPage.height, backgroundColor: currentPage.background },
+          layers: (currentPage.layers as Layer[]) || [],
+          audio: currentPage.audio ?? null,
+        },
+        markDirty: false,
+        historyKey: recusa.pageId,
+      })
+    }
+  }
+
+  return (
+    <PageSyncContext.Provider value={controle}>
+      {children}
+      {recusas.length > 0 && (
+        <AvisoDoVetorRecusado
+          recusas={recusas}
+          paginaAtual={lastPageIdRef.current === currentPageId ? currentPageId : null}
+          nomeDaPagina={(pageId) => pages.find((p) => p.id === pageId)?.name ?? 'outra página'}
+          naTela={(recusa) => serializeLayersForPersistence(design.layers) === recusa.pendente.layersString}
+          aoRestaurar={restaurar}
+          aoDescartar={descartar}
+        />
+      )}
+    </PageSyncContext.Provider>
+  )
+}
+
+/**
+ * CP-X2b: o aviso VISÍVEL do autosave recusado. Fica até a página ser gravada ou a pessoa descartar. Na página
+ * atual: se a tela ainda mostra a edição recusada, é só corrigir a forma (a próxima edição é enviada de novo);
+ * se a tela já mostra o que está gravado (trocou de página e voltou), a edição recusada pode ser restaurada.
+ */
+function AvisoDoVetorRecusado({ recusas, paginaAtual, nomeDaPagina, naTela, aoRestaurar, aoDescartar }: {
+  recusas: RecusaDoVetor<PendenteDaPagina>[]
+  paginaAtual: string | null
+  nomeDaPagina: (pageId: string) => string
+  naTela: (recusa: RecusaDoVetor<PendenteDaPagina>) => boolean
+  aoRestaurar: (recusa: RecusaDoVetor<PendenteDaPagina>) => void
+  aoDescartar: (recusa: RecusaDoVetor<PendenteDaPagina>, naTela: boolean) => void
+}) {
+  return (
+    <div role="alert" data-aviso="vetor-recusado" className="fixed bottom-4 left-1/2 z-50 w-[min(560px,calc(100vw-2rem))] -translate-x-1/2 space-y-2 rounded-md border border-red-300 bg-red-50 p-3 text-xs text-red-900 shadow-lg">
+      {recusas.map((recusa) => {
+        const atual = recusa.pageId === paginaAtual
+        const mostrando = atual && naTela(recusa)
+        return (
+          <div key={recusa.pageId} data-pagina={recusa.pageId} className="space-y-1">
+            <p className="font-medium">
+              {atual ? 'Esta página NÃO foi salva' : `${nomeDaPagina(recusa.pageId)}: a última edição NÃO foi salva`}
+              {': o servidor recusou uma forma vetorial inválida.'}
+            </p>
+            <p className="break-all opacity-80">{recusa.mensagem}</p>
+            <p>
+              {mostrando
+                ? 'Corrija ou remova a forma: a próxima edição é enviada de novo.'
+                : atual
+                  ? 'A tela mostra o que está gravado. A edição recusada continua guardada.'
+                  : 'Abra a página para restaurar a edição recusada.'}
+            </p>
+            {atual && (
+              <div className="flex gap-2">
+                {!mostrando && (
+                  <button type="button" className="rounded border border-red-400 bg-white px-2 py-1" onClick={() => aoRestaurar(recusa)}>
+                    Restaurar a edição recusada
+                  </button>
+                )}
+                <button type="button" className="rounded border border-red-400 bg-white px-2 py-1" onClick={() => aoDescartar(recusa, mostrando)}>
+                  Descartar a edição recusada
+                </button>
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
 }

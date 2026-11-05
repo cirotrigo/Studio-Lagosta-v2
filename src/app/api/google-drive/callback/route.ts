@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
-import { google } from 'googleapis'
+import * as google from 'googleapis/build/src/apis/drive'
 import { z } from 'zod'
 import { auth } from '@clerk/nextjs/server'
 import { isAdmin } from '@/lib/admin-utils'
