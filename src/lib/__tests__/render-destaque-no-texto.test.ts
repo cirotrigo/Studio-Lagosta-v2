@@ -59,3 +59,37 @@ describe('render-engine — destaque por marcação na camada text', () => {
     expect(contar(dados, [0, 0, 0])).toBeGreaterThan(50)
   })
 })
+
+describe('render-engine — texto com destaques passa pelo MESMO caminho do texto comum', () => {
+  /** A primeira linha (de cima) com tinta não branca. */
+  function primeiraLinhaComTinta(dados: Uint8ClampedArray, largura: number) {
+    for (let i = 0; i < dados.length; i += 4) {
+      if (dados[i] < 200 || dados[i + 1] < 200 || dados[i + 2] < 200) return Math.floor(i / 4 / largura)
+    }
+    return -1
+  }
+
+  it('âncora embaixo: o bloco fica onde o texto comum fica', async () => {
+    const base = { textboxConfig: { textMode: 'auto-wrap-fixed' as const, anchor: 'bottom' as const } }
+    const sem = await pixelsDe([camada(base)])
+    const com = await pixelsDe([camada({ ...base, destaques: [{ inicio: 5, fim: 9 }], destaque: { fill: '#e63946' } })])
+    const ySem = primeiraLinhaComTinta(sem, 400)
+    const yCom = primeiraLinhaComTinta(com, 400)
+    expect(ySem).toBeGreaterThan(40) // está embaixo, não no topo
+    expect(Math.abs(yCom - ySem)).toBeLessThanOrEqual(2)
+  })
+
+  it('contorno da camada vale para o texto com destaques', async () => {
+    const dados = await pixelsDe([
+      camada({ destaques: [{ inicio: 5, fim: 9 }], destaque: { fill: '#000000' }, effects: { stroke: { enabled: true, strokeColor: '#e63946', strokeWidth: 4 } } }),
+    ])
+    expect(contar(dados, VERMELHO)).toBeGreaterThan(50)
+  })
+
+  it('mancha justa ao texto (fit: texto) continua atrás do texto com destaques', async () => {
+    const dados = await pixelsDe([
+      camada({ destaques: [{ inicio: 5, fim: 9 }], destaque: { fill: '#ffffff' }, effects: { background: { enabled: true, backgroundColor: '#1d4ed8', padding: 8, fit: 'texto' } } }),
+    ])
+    expect(contar(dados, [29, 78, 216])).toBeGreaterThan(500)
+  })
+})
