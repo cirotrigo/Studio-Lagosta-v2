@@ -38,7 +38,7 @@ export const toolsDeAgenda = [
     acesso: { tipo: 'projeto' },
     superficies: ['remoto', 'local'],
     handler: async (args, _principal) => {
-      const [{ db }, { avisosDeCampanhaVencida }, { formatarBRT }, { descreverJanela }, { escopoEmPortugues }, { textosDaPeca, arteEntregue, arteDosFieldValues }] =
+      const [{ db }, { avisosDeCampanhaVencida }, { formatarBRT }, { descreverJanela }, { escopoEmPortugues }, { textosDaPeca, arteEntregue, arteDosFieldValues }, { temContratoSemantico }] =
         await Promise.all([
           import('../../db'),
           import('../../posts/campanha-vigencia'),
@@ -46,6 +46,7 @@ export const toolsDeAgenda = [
           import('../../posts/freeze-window'),
           import('../../posts/learning-scope'),
           import('../../posts/textos-da-peca'),
+          import('../../posts/copy-segue-a-pagina'),
         ])
       const projectId = args.projectId as number
 
@@ -160,6 +161,18 @@ export const toolsDeAgenda = [
       // Página MODELO: é o que decide se o render aplica os slots do post por cima dela (#142). Em página de
       // CONTEÚDO a página é a peça e manda — ler com os slots aplicados mostraria texto que a arte não tem.
       const modeloPorPagina = new Map(paginas.map((p) => [p.id, p.isTemplate]))
+      /**
+       * B1d (checkpoint e): a PROVA do render da mídia do post semântico, casada por post + URL atual
+       * (`PostRenderProof`) — é ela, e não a Generation casada pela URL, que diz o texto de uma peça entregue.
+       */
+      const comContrato = posts.filter((p) => temContratoSemantico(p.slotValues) && (p.mediaUrls ?? []).length === 1)
+      const provas = comContrato.length
+        ? await db.postRenderProof.findMany({
+            where: { OR: comContrato.map((p) => ({ postId: p.id, mediaUrl: p.mediaUrls[0] })) },
+            select: { postId: true, mediaUrl: true, layersSnapshot: true },
+          })
+        : []
+      const provaDe = (post: (typeof posts)[number]) => provas.find((p) => p.postId === post.id && p.mediaUrl === post.mediaUrls?.[0]) ?? null
       const textosDe = (post: (typeof posts)[number]) =>
         textosDaPeca(
           { pageId: post.pageId, slotValues: post.slotValues, status: post.status, laterPostId: post.laterPostId, mediaUrls: post.mediaUrls ?? [], generationId: post.generationId, renderStatus: post.renderStatus },
@@ -167,6 +180,7 @@ export const toolsDeAgenda = [
             ...(post.pageId && camadasPorPagina.has(post.pageId)
               ? { camadas: camadasPorPagina.get(post.pageId), paginaEhModelo: modeloPorPagina.get(post.pageId) === true }
               : {}),
+            provaDaMidia: provaDe(post),
             slides: (post.mediaUrls ?? []).map((url) => {
               const arte = arteDoSlide(post, url)
               return {
@@ -499,7 +513,7 @@ export const toolsDeAgenda = [
         .array(z.string())
         .describe('Ids dos posts a aprovar (de ver-agenda ou do retorno de colocar-na-agenda).'),
     }),
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     acesso: { tipo: 'projeto' },
     superficies: ['remoto', 'local'],
     handler: async (args, principal) => {
@@ -646,6 +660,43 @@ export const toolsDeAgenda = [
     handler: async (args, _principal) => {
       const { cancelarPost } = await import('../../posts/agenda-acoes')
       return cancelarPost({ projectId: args.projectId as number, postId: args.postId as string })
+    },
+  }),
+
+  definirTool({
+    nome: 'auditar-operacao',
+    descricao:
+      'Audita a CARTEIRA INTEIRA numa chamada: para cada cliente ativo que você enxerga, diz se HOJE, AMANHÃ e DEPOIS DE AMANHÃ estão cobertos, quantos dias à frente estão prontos (diasAdiantados, contados a partir de amanhã; o alvo é 2), os buracos, as falhas e a ação recomendada. Só leitura: não registra sugestão nem sinal de aprendizado. Comece a rodada da operação por aqui.\n\nGATE (registro, só leitura): `gate` por cliente e na raiz conta os posts da janela pelo último veredito GRAVADO do gate de autonomia — `coincidente` (metadados iguais aos da página de hoje; APTO × REVISAO_HUMANA_NECESSARIA, com `naoConferido`), `historico` (a página mudou depois), `ilegivel`, `semRegistro` (post sem arte ou arte sem veredito) e `registroInvalido` (vínculo post → arte → página → projeto não fecha). É auditoria do passado, nunca o veredito atual nem autorização: quem precisa do veredito mede de novo (revisar-arte informa; agendar-leva e ajustar-arte decidem na hora). Teto de 200 posts por chamada (`parcial`, `naoLidos`).\n\nO esperado de cada dia vem da grade aprovada na base mais a cadência do que o cliente publicou (a mesma conta de sugerir-posts). Cada horário esperado fica COBERTO (agendado, publicando, publicado, ou rascunho com arte pronta e sem render em curso), PENDENTE (há post no horário, mas ele não resolve: rascunho sem arte ou com render pendente, render que falhou, campanha vencida, post que falhou; conserte o post existente, não crie outro por cima) ou VAZIO (nada no horário; é o único que pede produção nova). Falha é relatada, nunca substituída: a recuperação já tem rotina própria. Cliente sem grade e sem histórico vem como sem-rotina, nunca como coberto. acao.codigo é NENHUMA, COMPOR, CONSERTO_PENDENTE, RELATAR_FALHA, CONFLITO_DE_HORARIO, SEM_ROTINA ou SEM_ASSINATURA (sem página de assinatura não há produção automática). conflitosDeHorario lista os horários esperados com dois ou mais posts: relate, não crie outro nem remova. Os clientes vêm do mais urgente para o mais saudável. A auditoria envelhece: antes de escrever, confira de novo o horário com ver-agenda. A resposta traz `manual`, o contrato do agente operacional (versão em manual.versao): quem opera a carteira sozinho segue o manual. `seguranca.perfilEfetivo` diz se o servidor está restringindo ESTA conexão a rascunho (draft-only) ou não (normal).',
+    schema: z.object({}),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    acesso: { tipo: 'autenticado' },
+    superficies: ['remoto', 'local'],
+    handler: async (_args, principal) => {
+      const [{ projetosVisiveis }, { auditarOperacao }, { MANUAL_DO_DOT }, { perfilDoPrincipal }] = await Promise.all([
+        import('../tools'),
+        import('../../posts/auditar-operacao'),
+        import('../operacao-dot'),
+        import('../registro/perfil'),
+      ])
+      // O escopo é o de listar-clientes: só o que o principal enxerga.
+      const permitidos = await projetosVisiveis(principal)
+      // O manual é a fonte canônica (operacao-dot.ts): vai inteiro, nunca reescrito aqui.
+      // `manual.modo` é o CONTRATO do agente; `seguranca.perfilEfetivo` é a proteção MECÂNICA desta chamada,
+      // decidida pelo MESMO helper que a porta usa (perfilDoPrincipal). Se o cliente OAuth trocar de id e sair
+      // da env, o agente vê "normal" aqui e não escreve. Nada de clientId, userId, token ou env na resposta.
+      const auditoria = {
+        ...(await auditarOperacao({ permitidos })),
+        manual: MANUAL_DO_DOT,
+        seguranca: { perfilEfetivo: perfilDoPrincipal(principal) },
+      }
+      if (permitidos && permitidos.length === 0) {
+        // Sem identificar a conta (nem e-mail nem id): a resposta da auditoria não carrega identidade.
+        return {
+          ...auditoria,
+          aviso: 'Nenhum cliente visível: a conta desta conexão não é dona de nenhum projeto nem participa de uma organização que tenha algum. Reconecte com a conta da agência.',
+        }
+      }
+      return auditoria
     },
   }),
 ]

@@ -4,7 +4,11 @@ import { z } from 'zod'
 import { db } from '@/lib/db'
 import { put } from '@vercel/blob'
 import { registrarUsoDeModelo } from '@/lib/aprendizado/uso-de-modelo'
+import { fetchProjectWithShares, hasProjectWriteAccess } from '@/lib/projects/access'
 import type { Layer } from '@/types/template'
+import { VERSAO_DA_PREVIA, temVetorDesenhado, vetoresComProblema } from '@/lib/gerar-criativo/previa-do-vetor'
+import { VERSAO_DA_PREVIA_DE_IMAGEM, imagensQueExigemAPrevia } from '@/lib/gerar-criativo/previa-da-imagem'
+import { conferirGrade } from '@/lib/grades/conferir'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120
@@ -32,25 +36,31 @@ const finalizeSchema = z.object({
   texts: z.record(z.string()),
   layers: z.array(layerSchema),
   hiddenLayerIds: z.array(z.string()).default([]),
+  // Compatibilidade do cliente que desenha svg-path (CP-X1). Não é prova de
+  // pixel: o PNG continua sendo o do cliente; serve para recusar a aba antiga.
+  previa: z.literal(VERSAO_DA_PREVIA).optional(),
+  // G4.2: compatibilidade do cliente que desenha recorte manual e grade de fotos (não é prova de pixel).
+  previaDeImagem: z.literal(VERSAO_DA_PREVIA_DE_IMAGEM).optional(),
 })
 
 export async function POST(request: Request) {
-  const { userId } = await auth()
+  const { userId, orgId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
     const body = await request.json()
-    const { templateId, templatePageId, dataUrl, images, texts, layers, hiddenLayerIds } = finalizeSchema.parse(body)
+    const { templateId, templatePageId, dataUrl, images, texts, layers, hiddenLayerIds, previa, previaDeImagem } = finalizeSchema.parse(body)
 
     console.log('[Gerar Criativo Finalize] Processing for user:', userId)
     console.log('[Gerar Criativo Finalize] Has dataUrl:', !!dataUrl)
     console.log('[Gerar Criativo Finalize] Input layers count:', layers.length)
 
-    // 1. Fetch model page and template with project
+    // 1. Fetch model page and template with project — a página tem de ser do
+    // template informado, que é onde a página nova vai ser criada.
     const templatePage = await db.page.findFirst({
-      where: { id: templatePageId, isTemplate: true },
+      where: { id: templatePageId, templateId, isTemplate: true },
       include: {
         Template: {
           include: {
@@ -60,8 +70,41 @@ export async function POST(request: Request) {
       },
     })
 
-    if (!templatePage) {
+    // Grava página e arte no projeto do template: exige escrita nele. Sem ela,
+    // responde como página inexistente.
+    const project = templatePage ? await fetchProjectWithShares(templatePage.Template.projectId) : null
+    if (!templatePage || !hasProjectWriteAccess(project, { userId, orgId })) {
       return NextResponse.json({ error: 'Template page not found' }, { status: 404 })
+    }
+
+    // Guardas do svg-path (CP-X1), DEPOIS do acesso e ANTES de qualquer escrita
+    // (Blob, Page, Generation, AICreativeGeneration, contador de uso). Vale para
+    // o vetor desenhado: fora de hiddenLayerIds e com visible !== false.
+    const ocultas = new Set(hiddenLayerIds)
+    const camadas = layers as unknown as Layer[]
+    // 422 primeiro: dado ou efeito que a prévia não desenha igual ao servidor,
+    // venha de onde vier (com ou sem a marca)
+    const problemas = vetoresComProblema(camadas, ocultas)
+    if (problemas.length > 0) {
+      return NextResponse.json(
+        {
+          error: 'O assistente não desenha este vetor igual à arte publicada',
+          codigo: 'VETOR_SEM_SUPORTE_NA_PREVIA',
+          camadas: problemas.map(({ id, motivos }) => ({ id, motivos })),
+        },
+        { status: 422 },
+      )
+    }
+    // 409: vetor desenhado vindo de cliente sem a marca (aba anterior ao CP-X1,
+    // que desenhava retângulo). A marca não prova o PNG — só a compatibilidade.
+    if (previa !== VERSAO_DA_PREVIA && temVetorDesenhado(camadas, ocultas)) {
+      return NextResponse.json(
+        {
+          error: 'Esta página do assistente está desatualizada. Recarregue a página e gere de novo.',
+          codigo: 'PREVIA_DESATUALIZADA',
+        },
+        { status: 409 },
+      )
     }
 
     // 2. Process layers for storage (apply overrides)
@@ -89,6 +132,33 @@ export async function POST(request: Request) {
 
       return newLayer
     }) as Layer[]
+
+    // G4.2: guardas da imagem e da grade sobre as camadas EFETIVAS (a foto trocada acima pode introduzir o recorte ou
+    // preencher a célula), ainda antes de qualquer escrita. Dado antes de versão, como no vetor.
+    // 422: grade que a página nova gravaria quebrada (foto de host alheio, célula oculta, geometria) — com ou sem a marca.
+    const diagnosticosDaGrade = conferirGrade(processedLayers)
+    if (diagnosticosDaGrade.length > 0) {
+      return NextResponse.json(
+        {
+          error: `A grade de fotos não pode ser gravada assim: ${diagnosticosDaGrade[0].mensagem}`,
+          codigo: 'GRADE_INCOERENTE',
+          diagnosticos: diagnosticosDaGrade,
+        },
+        { status: 422 },
+      )
+    }
+    // 409: célula de grade ou foto com recorte manual vinda de cliente sem a marca (a prévia antiga não os desenhava).
+    const exigemAPreviaNova = imagensQueExigemAPrevia(processedLayers)
+    if (previaDeImagem !== VERSAO_DA_PREVIA_DE_IMAGEM && exigemAPreviaNova.length > 0) {
+      return NextResponse.json(
+        {
+          error: 'Esta página do assistente está desatualizada. Recarregue a página e gere de novo.',
+          codigo: 'PREVIA_DESATUALIZADA',
+          camadas: exigemAPreviaNova,
+        },
+        { status: 409 },
+      )
+    }
 
     // 3. Convert dataURL to buffer and upload to Vercel Blob
     console.log('[Gerar Criativo Finalize] Uploading to Blob...')

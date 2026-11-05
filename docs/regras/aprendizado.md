@@ -1048,3 +1048,84 @@ este bloco o SUPERA; o bullet fica como registro.
   arte (3 testes caem), sem a busca da criação (1), `ajuste-arte` como produtor
   de criação (4), sem o aviso (1), sem a regra da janela (4), o agregado sem a
   contagem do tempo (1), o bloco sem dizê-la (1), a medida sem marcá-la (1).
+
+## Piloto sintético e o aprendizado (17/10/2026)
+
+O piloto sintético de autonomia (`revisor-da-arte.md`, § "Piloto sintético de autonomia") roda inteiro em banco falso: as
+peças, os DRAFTs e os registros do gate que ele produz **não existem** no banco de verdade e **nada dele entra no
+aprendizado** — nem `LearningSignal`, nem feedback de arte, nem destilação. Isso é por desenho (contrato § 1: nenhum
+cliente real, nenhum banco de produção como teste), e vale para qualquer rodada futura com fixtures de clientes reais
+pseudonimizados: fixture é insumo do piloto, não evidência de uso. O que o piloto ensina vai para `docs/piloto-sintetico/`
+(resumo versionado por rodada) e para a decisão do owner, não para a base de conhecimento dos clientes.
+
+## Registro do que a equipe muda à mão no editor — sinal `camada` (05/11/2026)
+
+Fecha a lacuna L4 do plano "artes de ponta a ponta pelo MCP": medir o que a pessoa corrige depois que
+o MCP (ou o compositor, ou outra pessoa) entrega a peça. **Sem migration**: é uma linha de `LearningSignal`.
+
+- **O que é gravado**: a partir de toda escrita EFETIVA das camadas (autosave idêntico não grava nada), em
+  qualquer página — peça ou modelo. Modelo também conta porque corrigir o modelo é corrigir toda peça que
+  nasce dele; `escolhido.modelo` separa os dois.
+- **Balde de 10 minutos por página**, como `copy` e `geometria` (`chave =
+  camada:editor:<pageId>:<floor(agora/600000)>`, a MESMA nas duas rotas): o autosave (800 ms na página, 2 s
+  na camada) não vira dezenas de linhas quase iguais. Diferente da copy, que guarda a PRIMEIRA edição do
+  balde, aqui a linha é **fundida** a cada escrita (`fundirDiffsDeCamadas`): caminhos se somam, criada e
+  depois apagada some, criada e depois alterada continua criada. A linha descreve a janela inteira, e
+  `decididoEm`/`decididoPor` são os da última escrita. Leitura-fusão-gravação sem trava: dois autosaves
+  simultâneos da mesma página podem perder os caminhos de um deles (aceito; o autosave é sequencial por aba).
+- **Onde**: no `after()` de `PATCH /api/templates/[id]/pages/[pageId]` (quando `layersChanged`, contra a
+  base que o compare-and-set de fato substituiu) e de `PATCH /api/pages/[pageId]/layers/[layerId]` (quando
+  `layerChanged`, só a camada editada). Falha no registro é capturada e logada; o save nunca cai por ela.
+- **Colunas**: `tipo 'camada'`, `superficie 'editor'`, `desfecho 'editada'`, `servico 'diff-camadas'`,
+  `versao 'diff-camadas-v1'`, `decididoEm` agora, `decididoPor` = `User.id` INTERNO por
+  `findUnique({ where: { clerkId } })` (usuário ausente → `null`; nunca `getUserFromClerkId`), `pageId`,
+  `escolhido = { modelo, templateId, rota: 'pagina' | 'camada' }`. A tabela não tem coluna de template:
+  ele vai no `escolhido`.
+- ⚠️ **`editada` sem sugestão é exceção consciente** à regra de que linha sem `sugeridoEm` é
+  `escolha-propria` (`registrarEdicaoSemSugestao`, em `captura.ts`). O funil do KPI não é afetado (ele só
+  lê linhas com `sugeridoEm`), e o contador de "decisões sem sugestão" de `scripts/kpi-aprendizado.ts`
+  exclui `tipo = 'camada'` (é registro de edição, não decisão por peça). **Contador novo sobre linhas sem
+  sugestão precisa do mesmo filtro.**
+- **Formato do `diff`** (`src/lib/aprendizado/diff-camadas.ts`, puro, testado em
+  `__tests__/diff-camadas.test.ts`):
+  ```json
+  { "ilegivel": false,
+    "reordenou": false,
+    "camadas": [
+      { "id": "t1", "tipo": "text", "nome": "Título", "situacao": "alterada",
+        "caminhos": ["content", "position.x", "style.fontSize"] },
+      { "id": "n1", "tipo": "shape", "nome": "Faixa", "situacao": "criada" },
+      { "id": "f1", "tipo": "image", "nome": "Foto", "situacao": "apagada" } ] }
+  ```
+  Compara pelo `id`. Objeto simples desce no caminho; array e valor primitivo são folha (`style.richText`,
+  `content`, `fileUrl`) — **nenhum valor é gravado**, nem texto do cliente nem URL. Até 40 caminhos por
+  camada. `order` **não** é caminho por camada: apagar uma camada no meio de 12 renumeraria as outras 11 e a
+  consulta sairia com `order` no topo. O que se registra é `reordenou`: a ordem RELATIVA das camadas
+  presentes nos dois lados mudou. `text` é espelho de `content` na rota de camada: quando os dois mudam, fica
+  só `content` (igual à rota da página). Id repetido no lado "depois": vale a primeira ocorrência.
+  Lado ilegível, ou nenhuma camada diferente e nada reordenado → nada é gravado.
+- **Não substitui** `geometria` (deltas numéricos com tolerância, só peça do compositor) nem `copy` (o
+  diff do texto): os três podem sair da mesma escrita.
+
+Consulta de exemplo — campos mais alterados por tipo de camada nos últimos 30 dias (SQL, não filtro Json
+do Prisma, que descarta a linha sem o campo; `COALESCE` cobre camada sem `tipo` e linha sem `modelo`):
+
+```sql
+select coalesce(c->>'tipo', '?') as tipo_da_camada,
+       caminho,
+       count(distinct s."pageId") as paginas,
+       count(*) as janelas_de_10_min
+from "LearningSignal" s
+cross join lateral jsonb_array_elements(coalesce(s.diff->'camadas', '[]'::jsonb)) c
+cross join lateral jsonb_array_elements_text(coalesce(c->'caminhos', '[]'::jsonb)) caminho
+where s.tipo = 'camada'
+  and s."createdAt" >= now() - interval '30 days'
+  and coalesce((s.escolhido->>'modelo')::boolean, false) = false   -- só peças; tire para incluir modelos
+group by 1, 2
+order by paginas desc, janelas_de_10_min desc
+limit 50;
+```
+
+Criadas e apagadas por tipo: troque o segundo `lateral` por `group by c->>'tipo', c->>'situacao'` com
+`where c->>'situacao' in ('criada', 'apagada')`. Reordenação: `count(distinct "pageId") filter (where
+(diff->>'reordenou')::boolean)` sobre `tipo = 'camada'`.

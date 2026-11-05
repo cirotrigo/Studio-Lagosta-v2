@@ -94,34 +94,16 @@ export function PublicHeader() {
                     </Link>
                   </Button>
                 ) : (
-                  // Show Login/Signup buttons for guests
-                  <>
-                    <Button
-                      asChild
-                      variant="outline"
-                      size="sm"
-                      className={cn(isScrolled && 'lg:hidden')}>
-                      <Link href="/sign-in">
-                        <span>Entrar</span>
-                      </Link>
-                    </Button>
-                    <Button
-                      asChild
-                      size="sm"
-                      className={cn(isScrolled && 'lg:hidden')}>
-                      <Link href="/sign-up">
-                        <span>Cadastre-se</span>
-                      </Link>
-                    </Button>
-                    <Button
-                      asChild
-                      size="sm"
-                      className={cn(isScrolled ? 'lg:inline-flex' : 'hidden')}>
-                      <Link href="/sign-up">
-                        <span>Comece Agora</span>
-                      </Link>
-                    </Button>
-                  </>
+                  // Visitante: só "Entrar". O acesso é por convite (o convite
+                  // leva a /sign-up), então não há "Cadastre-se"/"Comece Agora".
+                  <Button
+                    asChild
+                    variant="outline"
+                    size="sm">
+                    <Link href="/sign-in">
+                      <span>Entrar</span>
+                    </Link>
+                  </Button>
                 )}
               </div>
             </div>

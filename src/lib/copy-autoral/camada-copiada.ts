@@ -36,6 +36,8 @@
 
 import type { Layer } from '@/types/template'
 import { semMarcaDoCompositor } from '@/lib/compositor/marca-do-compositor'
+import { metadadoDeGrade } from '@/lib/grades/conferir'
+import { celulaDaGradeCopiada, gradesInteirasEm, semVinculoDeGrade } from '@/lib/grades/no-editor'
 
 export interface OpcoesDaCopia {
   /** A página em que a cópia nasce tem contrato da copy (`Page.copyAutoral`)? Só então o `papel` sai. */
@@ -59,10 +61,26 @@ export function semIdentidadeAutoral<T extends Pick<Layer, 'metadata'>>(camada: 
   return { ...limpa, metadata: { ...(limpa.metadata ?? {}), compositor: { papel } } }
 }
 
-/** `duplicateLayer`: id novo, nome "Copy", 16px abaixo e à direita, destravada — sem a identidade da original. */
+/**
+ * A cópia é uma NOVA ocorrência lógica: nasce sem o slot da original
+ * (`metadata.slot`, a identidade lógica que a fundação semântica lê) — e sem
+ * slot novo gerado; fica sem identidade de slot até alguém marcá-la. Mantido o
+ * slot, a página teria dois slots iguais e nenhum endereçável. O oposto da
+ * recomposição e da reversão, que mantêm a MESMA ocorrência e transportam o
+ * slot (`semantica/transportar-slots.ts`). Separado de `semIdentidadeAutoral`
+ * de propósito: aquela é a autoria da copy; esta, a identidade do slot.
+ */
+function semIdentidadeDeSlot<T extends Pick<Layer, 'metadata'>>(camada: T): T {
+  const meta = camada.metadata as Record<string, unknown> | undefined
+  if (!meta || !('slot' in meta)) return camada
+  const { slot: _slot, ...resto } = meta
+  return { ...camada, metadata: resto }
+}
+
+/** `duplicateLayer`: id novo, nome "Copy", 16px abaixo e à direita, destravada — sem a identidade da original nem o slot dela. */
 export function camadaDuplicadaNoEditor(origem: Layer, opcoes: OpcoesDaCopia & { novoId: string }): Layer {
   return {
-    ...semIdentidadeAutoral(origem, opcoes),
+    ...semIdentidadeDeSlot(semIdentidadeAutoral(origem, opcoes)),
     id: opcoes.novoId,
     name: `${origem.name} Copy`,
     position: {
@@ -81,16 +99,33 @@ function clonar(layer: Layer): Layer {
   }
 }
 
-/** `pasteLayers`: clone profundo de cada camada do clipboard, com id novo, "Copy", em cascata de 24px + 12px por item. */
+/**
+ * `pasteLayers`: clone profundo de cada camada do clipboard, com id novo, "Copy", em cascata de 24px + 12px por item.
+ *
+ * G4.3 (grade de fotos, §4 do plano): a grade copiada INTEIRA volta como grade NOVA — `grade.id`/`groupId` novos,
+ * id novo por célula e UM deslocamento para a grade toda (o da 1ª célula dela no clipboard), caixa junto e sem
+ * arredondar a geometria. Célula copiada sem as irmãs volta foto AVULSA (sem `grade` e sem o `groupId` da grade).
+ */
 export function camadasColadasNoEditor(clipboard: Layer[], opcoes: OpcoesDaCopia & { novoId: () => string }): Layer[] {
+  const inteiras = gradesInteirasEm(clipboard)
+  const gradesNovas = new Map<string, { id: string; d: number }>()
   return clipboard.map((layer, index) => {
     const cloned = clonar(layer)
-    return {
-      ...semIdentidadeAutoral(cloned, opcoes),
+    const limpa = {
+      ...semIdentidadeDeSlot(semIdentidadeAutoral(cloned, opcoes)),
       id: opcoes.novoId(),
       name: `${cloned.name ?? cloned.type} Copy`,
       locked: false,
       order: 0,
+    }
+    const gradeId = metadadoDeGrade(cloned)?.id
+    if (typeof gradeId === 'string' && inteiras.has(gradeId)) {
+      let nova = gradesNovas.get(gradeId)
+      if (!nova) gradesNovas.set(gradeId, (nova = { id: `grade-${opcoes.novoId()}`, d: 24 + index * 12 }))
+      return celulaDaGradeCopiada(limpa, { idDaCelula: limpa.id, idDaGrade: nova.id }, nova.d, nova.d)
+    }
+    return {
+      ...semVinculoDeGrade(limpa),
       position: {
         x: Math.round((cloned.position?.x ?? 0) + 24 + index * 12),
         y: Math.round((cloned.position?.y ?? 0) + 24 + index * 12),

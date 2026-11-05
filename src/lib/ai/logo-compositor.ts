@@ -29,6 +29,7 @@
  */
 
 import sharp from 'sharp'
+import { ALFA_VISIVEL_DA_LOGO, LIMIAR_DE_CONTRASTE_DA_LOGO } from '@/lib/compositor/legibilidade-da-logo'
 
 /** Cantos candidatos, na ordem de preferência quando houver empate. */
 export type LogoCorner = 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left'
@@ -146,7 +147,8 @@ const RESERVED_BONUS = 0.8
  * se destacar a olho nu na miniatura do feed. Não é WCAG — logo não é texto de
  * corpo, e exigir contraste de leitura descartaria canto bom.
  */
-const CONTRASTE_MINIMO = 45
+// Desde o CP3 (15/10/2026) o número mora em `legibilidade-da-logo.ts`, a fonte única do compositor e do revisor.
+const CONTRASTE_MINIMO = LIMIAR_DE_CONTRASTE_DA_LOGO
 
 /**
  * Peso do contraste no score. A calma continua mandando (é ela que faz a logo
@@ -174,7 +176,7 @@ async function luminanciaDaLogo(logoPng: Buffer): Promise<number | null> {
     let soma = 0
     let n = 0
     for (let p = 0; p < data.length; p += info.channels) {
-      if (data[p + 3] < 128) continue
+      if (data[p + 3] < ALFA_VISIVEL_DA_LOGO) continue
       soma += 0.2126 * data[p] + 0.7152 * data[p + 1] + 0.0722 * data[p + 2]
       n++
     }
@@ -443,13 +445,13 @@ export async function comporLogo(
   }
 }
 
-/** Fração dos pixels do PNG que são visíveis (alpha ≥ 128). */
+/** Fração dos pixels do PNG que são visíveis (alpha ≥ ALFA_VISIVEL_DA_LOGO). */
 async function coberturaDoAlpha(logoPng: Buffer): Promise<number> {
   try {
     const { data, info } = await sharp(logoPng).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
     let visiveis = 0
     const total = data.length / info.channels
-    for (let p = 3; p < data.length; p += info.channels) if (data[p] >= 128) visiveis++
+    for (let p = 3; p < data.length; p += info.channels) if (data[p] >= ALFA_VISIVEL_DA_LOGO) visiveis++
     return total > 0 ? visiveis / total : 0
   } catch {
     // Sem a medida, o caminho conservador: tratar como recorte (knockout

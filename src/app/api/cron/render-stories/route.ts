@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { renderPostArt } from '@/lib/posts/render-post-art'
+import { recuperarRendersInterrompidos, renderPostArt } from '@/lib/posts/render-post-art'
 import { PRIORIDADE_RENDER_MS } from '@/lib/posts/freeze-window'
 import { PostStatus, RenderStatus } from '../../../../../prisma/generated/client'
 
@@ -15,6 +15,12 @@ export async function GET(req: NextRequest) {
 
     const now = new Date()
 
+    // Antes de montar a fila: a reserva órfã (execução morta em RENDERING) volta como PENDING e já entra nesta rodada.
+    const orfaos = await recuperarRendersInterrompidos(now)
+    if (orfaos.devolvidos + orfaos.falharam > 0) {
+      console.warn(`[render-stories] reservas órfãs: ${orfaos.devolvidos} devolvida(s) à fila, ${orfaos.falharam} esgotada(s)`)
+    }
+
     // Find posts that need rendering.
     //
     // DRAFT entra junto com SCHEDULED: a agenda mostra a arte do rascunho, e
@@ -28,6 +34,9 @@ export async function GET(req: NextRequest) {
       renderAttempts: { lt: 3 },
       status: { in: [PostStatus.SCHEDULED, PostStatus.DRAFT] },
       pageId: { not: null },
+      // Post entregue ao publicador é intocável: `renderPostArt` recusa reservá-lo ("ocupado") e não conta
+      // tentativa, então PENDING com `laterPostId` ocuparia uma das 5 vagas de cada rodada para sempre (L1 do H4).
+      laterPostId: null,
     }
 
     /**
@@ -44,7 +53,6 @@ export async function GET(req: NextRequest) {
       where: {
         ...filaBase,
         status: PostStatus.SCHEDULED,
-        laterPostId: null,
         scheduledDatetime: {
           gt: now,
           lte: new Date(now.getTime() + PRIORIDADE_RENDER_MS),
@@ -92,6 +100,10 @@ export async function GET(req: NextRequest) {
 
       if (result.motivo === 'falhou' || result.motivo === 'video-removido') {
         console.error(`[render-stories] ✗ ${post.id} failed:`, result.erro)
+        failed++
+      } else if (result.motivo === 'falha-semantica') {
+        // B1d (checkpoint d): terminal — RENDER_FAILED já gravado; não volta à fila. A arte precisa de correção.
+        console.error(`[render-stories] ✗ ${post.id} recusa semântica (terminal):`, result.erro)
         failed++
       } else {
         console.log(`[render-stories] ↩ ${post.id} ${result.motivo} — será renderizado no próximo ciclo`)

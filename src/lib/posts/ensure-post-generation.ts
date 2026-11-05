@@ -34,7 +34,9 @@ import { db } from '@/lib/db'
  */
 import { textosDaPagina } from '@/lib/posts/page-layers'
 import { comTravaPorChave } from '@/lib/trava-por-chave'
-import type { Prisma } from '../../../prisma/generated/client'
+import { temContratoSemantico } from '@/lib/posts/copy-segue-a-pagina'
+import { copyVisualDasCamadas } from '@/lib/creatives/procedencia-da-copy'
+import { RenderStatus, type Prisma } from '../../../prisma/generated/client'
 
 /**
  * A chave da trava das artes de UM post (R12-09) — a mesma para quem cria a
@@ -49,7 +51,14 @@ export const chaveDasArtesDoPost = (postId: string) => `catalogo-do-post:${postI
  * quando faltar. Nunca lança: se falhar, o post segue sem o vínculo (o botão
  * some, mas a publicação não pode quebrar por causa disso).
  */
-export async function ensurePostGeneration(postId: string): Promise<string | null> {
+/**
+ * `midiaEsperada` (B1d checkpoint d, Codex rodada 9): o render passa a URL que ESTA execução confirmou. O vínculo só
+ * acontece se o post ainda aponta para ela E ainda está RENDERED — o CAS exige `mediaUrls = [url]`,
+ * `renderedImageUrl = url` e `renderStatus = RENDERED`, nos dois ramos (voltar a rascunho mantém a URL e só troca
+ * o status, Codex rodada 10). Sem isso, uma execução vencida (a arte foi invalidada e outra reservou) gravava o `generationId` da arte
+ * antiga, e o render seguinte não o corrigia. Os outros chamadores não passam nada: comportamento de sempre.
+ */
+export async function ensurePostGeneration(postId: string, opcoes: { midiaEsperada?: string } = {}): Promise<string | null> {
   try {
     // O post que já tem vínculo não espera ninguém: um vínculo não é desfeito por quem cria.
     const previa = await db.socialPost.findUnique({ where: { id: postId }, select: { generationId: true } })
@@ -62,8 +71,10 @@ export async function ensurePostGeneration(postId: string): Promise<string | nul
      * ficava órfã na galeria. Sob a trava do post, quem chega depois relê e
      * encontra o vínculo que a primeira gravou.
      */
-    return await comTravaPorChave(chaveDasArtesDoPost(postId), (tx) => vincularSobATrava(tx, postId))
+    return await comTravaPorChave(chaveDasArtesDoPost(postId), (tx) => vincularSobATrava(tx, postId, opcoes.midiaEsperada))
   } catch (error) {
+    // A arte mudou no meio do vínculo: a transação desfez a Generation criada — não é falha.
+    if (error === ARTE_MUDOU) return null
     // Nunca derruba quem chamou: agendar e publicar são mais importantes que
     // o vínculo que habilita a melhoria.
     console.error(`[ensure-post-generation] falhou para o post ${postId}:`, error)
@@ -71,8 +82,11 @@ export async function ensurePostGeneration(postId: string): Promise<string | nul
   }
 }
 
+/** Lançado dentro da transação para desfazer a Generation recém-criada quando o CAS do vínculo falha pela mídia. */
+const ARTE_MUDOU = Symbol('arte-mudou')
+
 /** O vínculo, com todas as leituras e escritas pela transação que segura a trava do post. */
-async function vincularSobATrava(tx: Prisma.TransactionClient, postId: string): Promise<string | null> {
+async function vincularSobATrava(tx: Prisma.TransactionClient, postId: string, midiaEsperada?: string): Promise<string | null> {
   const post = await tx.socialPost.findUnique({
     where: { id: postId },
     select: {
@@ -83,6 +97,7 @@ async function vincularSobATrava(tx: Prisma.TransactionClient, postId: string): 
       generationId: true,
       mediaUrls: true,
       renderedImageUrl: true,
+      renderStatus: true,
       slotValues: true,
       Project: { select: { userId: true, name: true } },
     },
@@ -91,7 +106,10 @@ async function vincularSobATrava(tx: Prisma.TransactionClient, postId: string): 
   if (!post) return null
   if (post.generationId) return post.generationId
 
+  // Checagem antecipada só poupa trabalho; quem garante é o CAS do vínculo, abaixo.
+  if (midiaEsperada && !(post.mediaUrls?.length === 1 && post.mediaUrls[0] === midiaEsperada && post.renderedImageUrl === midiaEsperada && post.renderStatus === RenderStatus.RENDERED)) return null
   const arte = post.mediaUrls?.[0] ?? post.renderedImageUrl
+  const doVinculo = { id: post.id, generationId: null, ...(midiaEsperada ? { mediaUrls: { equals: [midiaEsperada] }, renderedImageUrl: midiaEsperada, renderStatus: RenderStatus.RENDERED } : {}) }
   // Sem arte não há o que registrar. Post de página nasce assim e volta aqui
   // depois do render (renderPostArt chama de novo).
   if (!arte) return null
@@ -120,15 +138,30 @@ async function vincularSobATrava(tx: Prisma.TransactionClient, postId: string): 
   })
 
   if (existente) {
-    await tx.socialPost.updateMany({
-      where: { id: post.id, generationId: null },
-      data: { generationId: existente.id },
-    })
+    const vinculado = await tx.socialPost.updateMany({ where: doVinculo, data: { generationId: existente.id } })
+    if (vinculado.count === 0 && midiaEsperada) return null
     return existente.id
   }
 
-  const slotValues =
-    post.slotValues && typeof post.slotValues === 'object' && Object.keys(post.slotValues).length > 0
+  /**
+   * B1d: `_slots`/`_papeis` são o PEDIDO, não o texto da arte — nunca entram em `slotValues` (a COPY VISUAL que
+   * a melhoria, o agendamento por Generation e a troca de arte leem). Nem o texto da página: num post semântico a
+   * página é o MODELO, e o texto cru dele não é o desta mídia.
+   *
+   * Checkpoint g: a copy visual sai das camadas que PRODUZIRAM esta mídia — a prova do render da URL (`PostRenderProof`,
+   * casada por post + URL, no formato da arte-rápida/recomposição: `copyVisualDasCamadas`). Sem prova dessa URL, nada
+   * se afirma (sem `slotValues`): melhor "não sei" do que o pedido no campo errado. O pedido fica em
+   * `slotValuesRecebidos`, só como auditoria.
+   */
+  const semantico = temContratoSemantico(post.slotValues)
+  const prova = semantico
+    ? await tx.postRenderProof.findUnique({ where: { postId_mediaUrl: { postId: post.id, mediaUrl: arte } }, select: { layersSnapshot: true } })
+    : null
+  const copyVisual = semantico
+    ? prova
+      ? copyVisualDasCamadas(prova.layersSnapshot)
+      : null
+    : post.slotValues && typeof post.slotValues === 'object' && Object.keys(post.slotValues).length > 0
       ? (post.slotValues as Record<string, unknown>)
       : textosDaPagina(page.layers)
 
@@ -142,7 +175,8 @@ async function vincularSobATrava(tx: Prisma.TransactionClient, postId: string): 
         // pageId sempre: é como conferir-arte localiza as camadas para o
         // diagnóstico geométrico (sobreposição vs texto faltando).
         pageId: page.id,
-        slotValues,
+        ...(copyVisual ? { slotValues: copyVisual } : {}),
+        ...(semantico ? { slotValuesRecebidos: post.slotValues } : {}),
       } as never,
       resultUrl: arte,
       projectId: post.projectId,
@@ -159,11 +193,12 @@ async function vincularSobATrava(tx: Prisma.TransactionClient, postId: string): 
   // cria não acontece mais, mas outro escritor do vínculo (trocar-arte, a
   // melhoria) não passa por ela — o vínculo dele vale.
   const vinculado = await tx.socialPost.updateMany({
-    where: { id: post.id, generationId: null },
+    where: doVinculo,
     data: { generationId: generation.id },
   })
 
   if (vinculado.count === 0) {
+    if (midiaEsperada) throw ARTE_MUDOU
     const atual = await tx.socialPost.findUnique({
       where: { id: post.id },
       select: { generationId: true },

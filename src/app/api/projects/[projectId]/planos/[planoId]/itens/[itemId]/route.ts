@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
-import { fetchProjectWithShares, hasProjectWriteAccess } from '@/lib/projects/access'
+import { fetchProjectWithShares, hasProjectReadAccess, hasProjectWriteAccess } from '@/lib/projects/access'
 import { CreativeError } from '@/lib/creatives/errors'
 import { atualizarItem, removerItem, transicionarItem } from '@/lib/planos/plano-service'
 import { MAX_CARACTERES_DO_ESPELHO, MAX_ITENS_DO_ESPELHO } from '@/lib/planos/copy-do-item'
@@ -114,6 +114,13 @@ export async function PATCH(
         { error: 'Pedido inválido', details: parsed.error.flatten() },
         { status: 400 },
       )
+    }
+
+    // O cliente citado também tem de estar no alcance de quem edita; sem
+    // leitura nele, responde como inexistente. Limpar (null) não confere.
+    const citado = parsed.data.clienteProjectId
+    if (citado && !hasProjectReadAccess(await fetchProjectWithShares(citado), { userId, orgId })) {
+      return NextResponse.json({ error: 'Cliente citado não encontrado' }, { status: 404 })
     }
 
     /**

@@ -20,6 +20,7 @@ describe('normalização do vocabulário', () => {
     // 'legenda' era o exemplo de desconhecido até virar tipo de verdade em
     // d3d6295b (a LEGENDA entrou no corpus) — a fixture ficou para trás.
     expect(normalizarTipo('legenda')).toBe('legenda')
+    expect(normalizarTipo('Camada')).toBe('camada')
     expect(normalizarTipo('rodape-magico')).toBeUndefined()
     expect(normalizarDesfecho('mais ou menos')).toBeUndefined()
     expect(normalizarSuperficie(42)).toBeUndefined()

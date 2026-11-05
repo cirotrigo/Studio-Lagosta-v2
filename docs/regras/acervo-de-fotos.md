@@ -254,6 +254,34 @@ Medição em `scripts/medir-busca-de-fotos.ts` (leitura; NUNCA chama
   `reconciliar-catalogos`, que indexa a foto NOVA no mesmo passo em que a
   cataloga.
 
+### A caixa do assunto no catálogo (F2b, 02/11/2026)
+
+`assunto` na entrada do catálogo é TEXTO. A caixa mora ao lado: `caixaDoAssunto` (`{x0,y0,x1,y1}` em frações, ou `null` =
+a visão olhou e não há assunto localizável) e `caixaAnalisadaEm` (o carimbo: sem ele, a foto não foi analisada). O prompt
+pede `[ymin, xmin, ymax, xmax]` em 0–1000 e `lerCaixaDaVisao` converte; resposta inválida não grava nem carimba.
+
+- **A decisão humana mora em `PhotoAssunto`** (tabela, `@@unique([projectId, driveFileId])`), não no JSON: a reanálise por
+  `--force` do `enriquecer-catalogo.ts` reescreve a visão e não toca nela. `assuntoEfetivoDaFoto` mescla na leitura: humana vence a visão; `sem-assunto`
+  humano é `null` com estado; `automatico` revoga e a visão volta. A correção é a tool `marcar-assunto`.
+- **Três estados, nunca inferidos**: `localizada`, `sem-assunto`, `nao-analisada`. Foto antiga sem carimbo segue como hoje
+  (assunto estimado).
+- 🔴 **Todo escritor do `_image-catalog.json` passa por `escreverCatalogoPreservandoCaixas`** (`reconciliar-catalogo.ts`):
+  relê o documento atual e aplica só as entradas de `alteradas`. Sem isso, o cron com snapshot velho apagaria as caixas que
+  o backfill acabou de gravar, e o backfill apagaria a foto que o cron acabou de catalogar. Teste: `writeFileAsJson` só é
+  chamado por ela.
+- 🔴 **`alteradas` é POR SAVE, nunca acumulado na rodada**: o id que fica no conjunto reaplica a caixa desta rodada por cima
+  da de quem reanalisou a foto depois, em todo save seguinte. O backfill esvazia o lote após cada save; o enriquecedor usa
+  `salvadorDoCatalogo`, que também põe os saves dos workers em fila (dois lendo o mesmo fresco, o segundo desfaria a caixa
+  do primeiro) e devolve o lote se o save falha.
+- **Os scripts legados `analyze-*.ts` não passam por ela: não use.** Escritor fora do repositório também não; rodar um
+  deles depois do backfill pode apagar as caixas.
+- **Backfill**: `scripts/anotar-caixa-do-assunto.ts --projeto <nome> [--drive-file-id <id>] [--limit N] [--dry-run]`.
+  Seleciona só as sem `caixaAnalisadaEm`, grava só os dois campos, e faz o backup local antes do primeiro save. Uma chamada
+  de visão por foto: por cliente, com `--limit`, quando o Ciro pedir.
+- **Orientação**: a caixa vale sobre a imagem que o Drive renderiza, com o EXIF já aplicado. A miniatura `=s512` dá precisão
+  de ~0,2 % da foto, o bastante para a proteção.
+- A reconciliação não reanalisa entrada existente: arquivo trocado no Drive mantendo o id não é detectado.
+
 ### O acervo se lista por NÍVEL, em todas as subpastas (13/09/2026)
 
 As duas listagens cruas do Drive — `list-drive-images` (servidor MCP local) e

@@ -11,7 +11,7 @@ import 'dotenv/config'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
-import { google } from 'googleapis'
+import * as google from 'googleapis/build/src/apis/drive'
 import { PrismaClient } from '../prisma/generated/client'
 // Caminho relativo de propósito: este servidor roda fora do bundle do Next,
 // onde o alias `@/` pode não resolver. O módulo não tem dependência nenhuma.
@@ -35,6 +35,7 @@ import {
   consultasDeFilhos,
   varrerArvoreDePastas,
 } from '../src/lib/creatives/varredura-de-pastas'
+import { modoSoRascunhoLocal, registrarNoStdio } from '../src/lib/mcp/registro/perfil'
 
 // ─── Clients ─────────────────────────────────────────────────────────
 
@@ -320,6 +321,8 @@ function toolEstrita<S extends z.ZodRawShape>(
   shape: S,
   handler: (args: z.infer<z.ZodObject<S>>, extra: unknown) => unknown,
 ) {
+  // STUDIO_SO_RASCUNHO=1 (H4): só as inglesas de LEITURA existem (allowlist em registro/perfil.ts).
+  if (!registrarNoStdio(name, 'inglesa')) return
   return server.registerTool(
     name,
     { description, inputSchema: z.object(shape).strict() as never },
@@ -737,6 +740,13 @@ toolEstrita(
       }
 
       const parsedSlotValues = slotValues ? JSON.parse(slotValues) : undefined
+      // B1d (checkpoint c): o MESMO portão do createPost para o contrato semântico novo (_slots/_papeis).
+      const { admitirPedidoSemantico } = await import('../src/lib/posts/admitir-pedido-semantico')
+      try {
+        await admitirPedidoSemantico(prisma, { projectId, postType, pageId, mediaUrls: mediaUrls ?? [], slotValues: parsedSlotValues })
+      } catch (erro) {
+        return { content: [{ type: 'text' as const, text: `Error: ${(erro as Error).message} Nada foi criado.` }], isError: true }
+      }
       const postStatus = status ?? 'DRAFT'
       const hasPage = !!pageId
 
@@ -849,11 +859,46 @@ toolEstrita(
         }
       }
 
-      const updated = await prisma.socialPost.update({
-        where: { id: postId },
-        data,
-        select: { id: true, status: true, renderStatus: true, scheduledDatetime: true, caption: true, laterPostId: true },
-      })
+      const selecao = { id: true, status: true, renderStatus: true, scheduledDatetime: true, caption: true, laterPostId: true } as const
+      let updated
+      if (slotValues !== undefined || pageId !== undefined || mediaUrls !== undefined) {
+        // B1d (checkpoint c): o contrato semântico novo passa pela mesma admissão do createPost, com a linha
+        // travada (SELECT … FOR UPDATE) na transação que grava. Legado: a mesma escrita de sempre.
+        const { prepararEdicaoSemantica } = await import('../src/lib/posts/edicao-semantica-do-post')
+        try {
+          updated = await prisma.$transaction(async (tx) => {
+            const edicao = await prepararEdicaoSemantica(tx as any, postId, {
+              pageId,
+              slotValues: data.slotValues,
+              mediaUrls,
+              // checkpoint f: os gates da recuperação olham o status e a data que ESTA escrita grava
+              status: data.status,
+              scheduledDatetime: data.scheduledDatetime,
+            })
+            return tx.socialPost.update({ where: { id: postId }, data: edicao.semantico ? { ...data, ...edicao.data } : data, select: selecao })
+          })
+        } catch (erro) {
+          const nome = (erro as Error).name
+          if (nome === 'ErroAdmissaoSemantica' || nome === 'ErroEdicaoSemantica') {
+            return { content: [{ type: 'text' as const, text: `Error: ${(erro as Error).message} Nada foi alterado.` }], isError: true }
+          }
+          throw erro
+        }
+      } else {
+        // B1d (checkpoint f): promover a SCHEDULED (com ou sem mídia, repondo o render ou não) não agenda um post com
+        // falha SEMÂNTICA de render — o executor o marcaria FAILED na hora, sem passar pela recuperação. Status e
+        // reposição numa ÚNICA escrita, condicional à linha corrente.
+        if (data.status === 'SCHEDULED') {
+          const { NAO_E_FALHA_SEMANTICA } = await import('../src/lib/posts/erro-render-semantico')
+          const agendado = await prisma.socialPost.updateMany({ where: { id: postId, ...NAO_E_FALHA_SEMANTICA }, data })
+          if (agendado.count === 0) {
+            return { content: [{ type: 'text' as const, text: 'Error: a arte deste post falhou no contrato semântico (_slots/_papeis não casam com a página). Corrija a página ou o pedido (update-post com slotValues) — a arte volta a ser gerada sozinha — e agende depois. Nada foi alterado.' }], isError: true }
+          }
+          updated = await prisma.socialPost.findUnique({ where: { id: postId }, select: selecao })
+        } else {
+          updated = await prisma.socialPost.update({ where: { id: postId }, data, select: selecao })
+        }
+      }
 
       // Remarcou? As páginas da arte seguem para a semana nova (pasta, nome e
       // ordem) — senão a pasta e o nome da página guardam a data velha, e é
@@ -1159,7 +1204,17 @@ toolEstrita(
       if (mappedStatus !== 'POSTING') patch.processingStartedAt = null
       if (mappedStatus === 'POSTED') {
         patch.sentAt = post.sentAt || new Date()
-        if (zRaw.publishedAt) patch.latePublishedAt = new Date(zRaw.publishedAt)
+        patch.errorMessage = null
+        patch.failedAt = null
+        // O link e a data moram na plataforma, não na raiz do post do Zernio.
+        const instagram = zRaw.platforms?.find((p: any) => p.platform === 'instagram')
+        const publicadoEm = instagram?.publishedAt || zRaw.publishedAt
+        if (publicadoEm) patch.latePublishedAt = new Date(publicadoEm)
+        if (instagram?.platformPostUrl) {
+          patch.publishedUrl = instagram.platformPostUrl
+          patch.latePlatformUrl = instagram.platformPostUrl
+        }
+        if (instagram?.platformPostId) patch.instagramMediaId = instagram.platformPostId
       }
       if (mappedStatus === 'DRAFT' || mappedStatus === 'SCHEDULED') {
         patch.errorMessage = null
@@ -1280,6 +1335,9 @@ toolEstrita(
     postId: z.string().describe('Post ID to render'),
   },
   async ({ postId }) => {
+    // Gravações do render só desta reserva (ver fichaDeReserva) — fora do try: o catch também a exige.
+    const { fichaDeReserva } = await import('../src/lib/posts/ficha-de-reserva')
+    const ficha = fichaDeReserva()
     try {
       // 1. Fetch post
       const post = await prisma.socialPost.findUnique({
@@ -1288,6 +1346,13 @@ toolEstrita(
       })
       if (!post) return { content: [{ type: 'text' as const, text: 'Error: Post not found' }], isError: true }
       if (!post.pageId) return { content: [{ type: 'text' as const, text: 'Error: Post has no pageId (not template-based)' }], isError: true }
+      // B1d (checkpoint d): este é um SEGUNDO renderer, com aplicador próprio (só o legado). Post com o contrato
+      // semântico novo (_slots/_papeis) não passa por ele — seria desenhado ignorando o contrato. Recusa antes
+      // de qualquer escrita; o caminho é o render canônico (cron render-stories / renderPostArt).
+      const { temContratoSemantico } = await import('../src/lib/posts/copy-segue-a-pagina')
+      if (temContratoSemantico(post.slotValues)) {
+        return { content: [{ type: 'text' as const, text: 'Error: este post usa o contrato semântico (_slots/_papeis) e só é renderizado pelo pipeline canônico (cron render-stories). Para renderizar de novo, volte o post para PENDING (update-post com o pedido) e deixe o cron renderizar. Nada foi alterado.' }], isError: true }
+      }
       // Post de vídeo nunca é redesenhado como imagem — nem com a mídia limpa.
       const { postDeVideo, MOTIVO_VIDEO_REMOVIDO } = await import('../src/lib/posts/post-de-video')
       if (postDeVideo(post)) {
@@ -1313,11 +1378,46 @@ toolEstrita(
       const recusaDaPagina = recusaPorCamadas(page.layers)
       if (recusaDaPagina) return { content: [{ type: 'text' as const, text: `Error: ${recusaDaPagina.mensagem} Nada foi alterado.` }], isError: true }
 
-      // 3. Lock the post
-      await prisma.socialPost.update({
-        where: { id: postId },
-        data: { renderStatus: 'RENDERING' },
-      })
+      // 3. Lock the post — atômico com a recusa do contrato semântico (Codex, B1d checkpoint d): um
+      // update-post que acrescente _slots/_papeis depois da leitura acima não é desenhado por este renderer
+      // legado. A edição semântica volta a linha a PENDING, e as gravações abaixo exigem RENDERING.
+      // Também não toma a reserva VIVA de outra execução (o cron): só a presa há mais de 10 min (o render do cron
+      // tem teto de 120 s), para forçar continuar destravando post preso.
+      // 10 min é lease de recuperação do renderer manual legado; execução antiga perde a ficha e não pode gravar.
+      // (OWNER_ACCEPTED_KNOWN_LIMITATION: dois forces manuais com o 1º > 10 min — trabalho duplicado, nunca arte errada.)
+      const agora = new Date()
+      const reservaPresaAntesDe = new Date(agora.getTime() - 10 * 60_000)
+      const travado = await prisma.$executeRaw`
+        UPDATE "SocialPost" SET "renderStatus" = 'RENDERING'::"RenderStatus", "nextRenderAt" = ${ficha}, "updatedAt" = ${agora}
+        WHERE "id" = ${postId}
+          AND ("renderStatus" <> 'RENDERING'::"RenderStatus" OR "updatedAt" < ${reservaPresaAntesDe})
+          AND (
+            jsonb_typeof("slotValues") IS DISTINCT FROM 'object'
+            OR (NOT jsonb_exists("slotValues", '_slots') AND NOT jsonb_exists("slotValues", '_papeis'))
+          )`
+      if (travado === 0) {
+        return { content: [{ type: 'text' as const, text: 'Error: o post não pôde ser travado para o render: outro render está em andamento, ou o post passou a usar o contrato semântico, ou sumiu. Nada foi alterado.' }], isError: true }
+      }
+      // O pedido E a página desenhados têm de ser os de DEPOIS da trava (Codex, B1d checkpoint d): editados (e
+      // invalidados) entre a leitura lá de cima e a trava, o PNG seria do antigo — e a trava teria passado por cima
+      // da invalidação. Devolve à fila — só a própria reserva — e o cron desenha o novo. Edição DEPOIS da trava
+      // invalida a linha, e a gravação final (ficha) não a alcança.
+      const reservado = await prisma.socialPost.findUnique({ where: { id: postId }, select: { pageId: true, slotValues: true } })
+      const assinaturaDaPagina = (p: { layers: unknown; background: unknown; width: unknown; height: unknown; audio: unknown; isTemplate: unknown } | null) =>
+        p && JSON.stringify([p.layers, p.background, p.width, p.height, p.audio, p.isTemplate])
+      const paginaReservada = await prisma.page.findUnique({ where: { id: post.pageId }, select: { layers: true, background: true, width: true, height: true, audio: true, isTemplate: true } })
+      if (
+        !reservado ||
+        reservado.pageId !== post.pageId ||
+        JSON.stringify(reservado.slotValues) !== JSON.stringify(post.slotValues) ||
+        assinaturaDaPagina(paginaReservada) !== assinaturaDaPagina(page)
+      ) {
+        await prisma.socialPost.updateMany({
+          where: { id: postId, renderStatus: 'RENDERING', nextRenderAt: ficha },
+          data: { renderStatus: 'PENDING', nextRenderAt: new Date() },
+        })
+        return { content: [{ type: 'text' as const, text: 'Error: o pedido do post (ou a página) mudou antes do render. Nada foi desenhado; o post voltou à fila do render (cron render-stories).' }], isError: true }
+      }
 
       // 4. Convert Page → DesignData
       const { convertPageToDesignData, applySlotValues } = await import('../src/lib/posts/page-to-design-data')
@@ -1404,7 +1504,7 @@ toolEstrita(
       // 9. Update post — só se a mídia ainda é a que a guarda leu: trocada no
       // meio do render (por um vídeo, por exemplo), o PNG não entra por cima.
       const gravado = await prisma.socialPost.updateMany({
-        where: { id: postId, mediaUrls: { equals: post.mediaUrls } },
+        where: { id: postId, renderStatus: 'RENDERING', nextRenderAt: ficha, mediaUrls: { equals: post.mediaUrls } },
         data: {
           renderStatus: 'RENDERED',
           renderedImageUrl: blob.url,
@@ -1414,11 +1514,13 @@ toolEstrita(
         },
       })
       if (gravado.count === 0) {
+        // Volta à fila, nunca ao status lido ANTES da trava (podia ser um RENDERING velho, e o post ficaria preso):
+        // estado anterior à ficha é histórico, não autoridade. O render canônico decide o próximo (ex.: NOT_NEEDED).
         await prisma.socialPost.updateMany({
-          where: { id: postId, renderStatus: 'RENDERING' },
-          data: { renderStatus: post.renderStatus },
+          where: { id: postId, renderStatus: 'RENDERING', nextRenderAt: ficha },
+          data: { renderStatus: 'PENDING', nextRenderAt: new Date() },
         })
-        return { content: [{ type: 'text' as const, text: 'Error: a mídia do post mudou durante o render. Nada foi alterado; confira o post e renderize de novo se ainda fizer sentido.' }], isError: true }
+        return { content: [{ type: 'text' as const, text: 'Error: o post mudou durante o render (mídia ou pedido). Nada foi alterado; confira o post e renderize de novo se ainda fizer sentido.' }], isError: true }
       }
 
       // Build a clickable admin URL for editing this specific post.
@@ -1443,10 +1545,10 @@ toolEstrita(
         }],
       }
     } catch (error: any) {
-      // Reset render status on failure
+      // Reset render status on failure — só a linha que ESTE render travou (uma edição no meio já a devolveu à fila)
       try {
-        await prisma.socialPost.update({
-          where: { id: postId },
+        await prisma.socialPost.updateMany({
+          where: { id: postId, renderStatus: 'RENDERING', nextRenderAt: ficha },
           data: { renderStatus: 'RENDER_FAILED', renderError: error.message },
         })
       } catch { /* ignore */ }
@@ -2197,15 +2299,16 @@ toolEstrita(
     theme: z.string().describe('Theme of the creative (e.g., "almo\u00e7o executivo", "happy hour", "delivery")'),
     day: z.string().optional().describe('Optional day of week in PT (e.g., "sexta", "sabado", "sexta-feira")'),
   },
-  async ({ projectHint, projectId, theme, day }) => {
-    try {
-      const { prepareCreative } = await import('../src/lib/creatives/arte-rapida')
-      const result = await prepareCreative({ projectHint, projectId, theme, day })
-      return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] }
-    } catch (error: any) {
-      return { content: [{ type: 'text' as const, text: formatCreativeError(error) }], isError: true }
-    }
-  },
+  // Mesmo contrato do `escolher-modelo` do catálogo, então delega para a porta
+  // dele com o MESMO principal das tools PT: com STUDIO_AUTOR é a pessoa do
+  // Mac (só os clientes dela, gate no id), sem ele é o serviço (tudo). Antes
+  // chamava prepareCreative direto, sem escopo nem gate (pós-merge do #202).
+  async ({ projectHint, projectId, theme, day }) =>
+    executarToolLocal(
+      'escolher-modelo',
+      Object.fromEntries(Object.entries({ projectHint, projectId, theme, day }).filter(([, v]) => v !== undefined)),
+      principalLocal(AUTOR_LOCAL),
+    ) as never,
 )
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -2616,8 +2719,8 @@ toolEstrita(
 //
 // As 48 tools PT do conector remoto passam a existir AQUI também, vindas do
 // MESMO catálogo (src/lib/mcp/catalogo) — declaração única, validação única
-// (a porta executarToolLocal), gates com principal de serviço (a máquina do
-// dono tem o mesmo poder de sempre).
+// (a porta executarToolLocal), gates com o principal local — a pessoa do Mac
+// quando STUDIO_AUTOR a declara, senão o serviço (ver autor-local.ts).
 //
 // ⚠️ As 6 tools inglesas acima que PARECEM duplicatas (list-projects,
 // list-posts, list-drive-images, get-knowledge, prepare-creative,
@@ -2628,14 +2731,19 @@ toolEstrita(
 // schedule-content, plan-week) consomem ESSAS formas. Elas ficam como camada
 // de compatibilidade explícita; os nomes PT do catálogo são os canônicos.
 // Migrar as skills para os nomes PT aposenta a camada — decisão futura.
+// Exceção: prepare-creative TEM o mesmo contrato do escolher-modelo e, desde
+// 13/10/2026, delega para a porta dele (escopo e gate do principal local). As
+// outras seguem sem gate por principal — dívida registrada no PR do hardening.
 
 // Quem está sentado neste Mac (STUDIO_AUTOR, ver src/lib/mcp/autor-local.ts).
 // Resolvido em main(), antes de o transporte abrir; até lá, o serviço.
 let AUTOR_LOCAL: AutorLocal | null = null
 
 {
+  if (modoSoRascunhoLocal()) console.error('[studio-lagosta-mcp] STUDIO_SO_RASCUNHO=1: só leitura e produção até rascunho (allowlist do perfil draft-only)')
   for (const tool of CATALOGO.values()) {
     if (!tool.superficies.includes('local')) continue
+    if (!registrarNoStdio(tool.nome, 'catalogo')) continue
     server.registerTool(
       tool.nome,
       // O SDK valida com o MESMO zod estrito e deriva o schema da listagem

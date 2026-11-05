@@ -1,0 +1,222 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`sugerirPosts — paridade da extração da expectativa > a saída é a mesma de antes da extração (snapshot gravado no código anterior) 1`] = `
+{
+  "avisos": [
+    "6 publicação(ões) de campanha já encerrada ficaram fora da conta de cadência.",
+    "Grade aprovada do cliente encontrada na base (1 horário(s) fixo(s), 5 dia(s) da semana) — ela substitui os horários de story do histórico nos dias que cobre; a cadência de feed continua.",
+  ],
+  "cadencia": [
+    {
+      "diaSemana": "domingo",
+      "horariosTipicos": [
+        "11:00",
+      ],
+      "postsPorSemana": 1,
+    },
+    {
+      "diaSemana": "segunda",
+      "horariosTipicos": [
+        "18:00",
+      ],
+      "postsPorSemana": 1,
+    },
+    {
+      "diaSemana": "quarta",
+      "horariosTipicos": [
+        "18:00",
+      ],
+      "postsPorSemana": 1,
+    },
+    {
+      "diaSemana": "quinta",
+      "horariosTipicos": [
+        "12:00",
+      ],
+      "postsPorSemana": 1,
+    },
+    {
+      "diaSemana": "sexta",
+      "horariosTipicos": [
+        "19:30",
+      ],
+      "postsPorSemana": 1,
+    },
+  ],
+  "excecoes": [
+    "sábado",
+  ],
+  "grade": [
+    {
+      "dia": 0,
+      "diaSemana": "domingo",
+      "horarios": [
+        {
+          "evidenciaFraca": false,
+          "formato": "story",
+          "hora": "11:00",
+          "motivo": "costuma postar domingo por volta das 11:00 (6x em 6 ocasiões)",
+          "origem": "historico",
+        },
+      ],
+    },
+    {
+      "dia": 1,
+      "diaSemana": "segunda",
+      "horarios": [
+        {
+          "evidenciaFraca": false,
+          "formato": "story",
+          "hora": "10:00",
+          "motivo": "grade aprovada do cliente: SLOT 1 — 10h, de segunda a sexta",
+          "origem": "combinado",
+        },
+      ],
+    },
+    {
+      "dia": 2,
+      "diaSemana": "terça",
+      "horarios": [
+        {
+          "evidenciaFraca": false,
+          "formato": "story",
+          "hora": "10:00",
+          "motivo": "grade aprovada do cliente: SLOT 1 — 10h, de segunda a sexta",
+          "origem": "combinado",
+        },
+      ],
+    },
+    {
+      "dia": 3,
+      "diaSemana": "quarta",
+      "horarios": [
+        {
+          "evidenciaFraca": false,
+          "formato": "story",
+          "hora": "10:00",
+          "motivo": "grade aprovada do cliente: SLOT 1 — 10h, de segunda a sexta",
+          "origem": "combinado",
+        },
+      ],
+    },
+    {
+      "dia": 4,
+      "diaSemana": "quinta",
+      "horarios": [
+        {
+          "evidenciaFraca": false,
+          "formato": "story",
+          "hora": "10:00",
+          "motivo": "grade aprovada do cliente: SLOT 1 — 10h, de segunda a sexta",
+          "origem": "combinado",
+        },
+        {
+          "evidenciaFraca": false,
+          "formato": "feed",
+          "hora": "12:00",
+          "motivo": "costuma postar quinta por volta das 12:00 (6x em 6 ocasiões)",
+          "origem": "historico",
+        },
+      ],
+    },
+    {
+      "dia": 5,
+      "diaSemana": "sexta",
+      "horarios": [
+        {
+          "evidenciaFraca": false,
+          "formato": "story",
+          "hora": "10:00",
+          "motivo": "grade aprovada do cliente: SLOT 1 — 10h, de segunda a sexta",
+          "origem": "combinado",
+        },
+      ],
+    },
+    {
+      "dia": 6,
+      "diaSemana": "sábado",
+      "horarios": [],
+    },
+  ],
+  "jaNaAgenda": 2,
+  "janela": {
+    "dias": 7,
+    "fim": "2026-10-19",
+    "inicio": "2026-10-13",
+  },
+  "ocupacao": [
+    {
+      "data": "2026-10-14",
+      "formato": "story",
+      "hora": "09:50",
+      "postId": "p-qua",
+      "quandoBRT": "14/10/2026, 09:50",
+      "situacao": "rascunho",
+      "tipo": "story",
+    },
+    {
+      "data": "2026-10-15",
+      "formato": "feed",
+      "hora": "12:20",
+      "postId": "p-qui",
+      "quandoBRT": "15/10/2026, 12:20",
+      "situacao": "agendado",
+      "tipo": "post",
+    },
+  ],
+  "postsNoHistorico": 36,
+  "sinaisRegistrados": false,
+  "sugestoes": [
+    {
+      "data": "2026-10-13",
+      "diaSemana": "terça",
+      "formato": "story",
+      "hora": "10:00",
+      "motivo": "grade aprovada do cliente: SLOT 1 — 10h, de segunda a sexta",
+      "origem": "grade",
+      "quandoBRT": "13/10/2026, 10:00",
+      "scheduledDatetime": "2026-10-13 10:00",
+    },
+    {
+      "data": "2026-10-15",
+      "diaSemana": "quinta",
+      "formato": "story",
+      "hora": "10:00",
+      "motivo": "grade aprovada do cliente: SLOT 1 — 10h, de segunda a sexta",
+      "origem": "grade",
+      "quandoBRT": "15/10/2026, 10:00",
+      "scheduledDatetime": "2026-10-15 10:00",
+    },
+    {
+      "data": "2026-10-16",
+      "diaSemana": "sexta",
+      "formato": "story",
+      "hora": "10:00",
+      "motivo": "grade aprovada do cliente: SLOT 1 — 10h, de segunda a sexta",
+      "origem": "grade",
+      "quandoBRT": "16/10/2026, 10:00",
+      "scheduledDatetime": "2026-10-16 10:00",
+    },
+    {
+      "data": "2026-10-18",
+      "diaSemana": "domingo",
+      "formato": "story",
+      "hora": "11:00",
+      "motivo": "costuma postar domingo por volta das 11:00 (6x em 6 ocasiões)",
+      "origem": "cadencia",
+      "quandoBRT": "18/10/2026, 11:00",
+      "scheduledDatetime": "2026-10-18 11:00",
+    },
+    {
+      "data": "2026-10-19",
+      "diaSemana": "segunda",
+      "formato": "story",
+      "hora": "10:00",
+      "motivo": "grade aprovada do cliente: SLOT 1 — 10h, de segunda a sexta",
+      "origem": "grade",
+      "quandoBRT": "19/10/2026, 10:00",
+      "scheduledDatetime": "2026-10-19 10:00",
+    },
+  ],
+}
+`;

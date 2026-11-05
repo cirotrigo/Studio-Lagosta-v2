@@ -35,6 +35,8 @@ export async function POST(req: NextRequest) {
     const result = await prepareCreative({
       projectId: input.projectId,
       projectHint: input.projectHint,
+      // Token de serviço (EXTERNAL_API_SECRET): acesso global declarado.
+      projetosVisiveis: 'todos',
       theme: input.theme,
       day: input.day,
     })

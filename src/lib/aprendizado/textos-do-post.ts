@@ -20,6 +20,8 @@
  * Módulo PURO: quem carrega as linhas do banco é o serviço.
  */
 
+import { temContratoSemantico } from '@/lib/posts/copy-segue-a-pagina'
+
 /** A TAG de verificação de story (`SL-abc123-DEAD`) — não é conteúdo. */
 const TAG_VERIFICACAO = /\bSL-[A-Za-z0-9]{4,10}-[A-Za-z0-9]{3,6}\b/g
 const HASHTAG = /(^|\s)#[\p{L}\p{N}_]+/gu
@@ -116,7 +118,9 @@ export function textoDoPost(post: PostParaTexto): TextoDoPost {
   }
 
   acrescentar('caption', [post.caption ?? ''])
-  acrescentar('slotValues', textosDeObjeto(post.slotValues))
+  // B1d (checkpoint g): com `_slots`/`_papeis`, `SocialPost.slotValues` é o PEDIDO semântico (inclusive as chaves legadas
+  // de um post misto) — não é texto da peça. O que a arte mostra vem da copy visual da Generation, logo abaixo.
+  if (!temContratoSemantico(post.slotValues)) acrescentar('slotValues', textosDeObjeto(post.slotValues))
   acrescentar('pagina', textosDeObjeto(post.textosDaPagina))
 
   const fv = (post.fieldValues ?? null) as Record<string, unknown> | null

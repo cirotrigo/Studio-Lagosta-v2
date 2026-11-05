@@ -49,6 +49,8 @@ export interface ImportarElementoResult {
   name: string
   category: string | null
   fileUrl: string
+  /** Do registro gravado: o leitor estrito do editor (lerElementoCriado) confirma o envio por ele */
+  projectId: number
   width: number | null
   height: number | null
 }
@@ -129,7 +131,7 @@ export async function importarElemento(
       projectId,
       uploadedBy,
     },
-    select: { id: true, name: true, category: true, fileUrl: true },
+    select: { id: true, name: true, category: true, fileUrl: true, projectId: true },
   })
 
   return { ...element, width, height }

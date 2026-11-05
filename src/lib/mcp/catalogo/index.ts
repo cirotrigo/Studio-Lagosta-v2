@@ -19,11 +19,15 @@ import { toolsDoCompositor } from './compositor'
 import { toolsDeFeedback } from './feedback'
 import { toolsDeFotos } from './fotos'
 import { toolsDeModelos } from './modelos'
+import { toolsDePagina } from './pagina'
 import { toolsDePlanos } from './planos'
+import { toolsDeReferencias } from './referencias'
 
 const TODAS: ToolPronta[] = [
   ...toolsDeClientes,
   ...toolsDeModelos,
+  ...toolsDePagina,
+  ...toolsDeReferencias,
   ...toolsDeAgenda,
   ...toolsDePlanos,
   ...toolsDeArteIA,

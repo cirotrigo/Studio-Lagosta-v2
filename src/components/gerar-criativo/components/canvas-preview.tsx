@@ -1,13 +1,27 @@
 'use client'
 
 import { useEffect, useRef, useState, forwardRef, useImperativeHandle, useCallback, useMemo } from 'react'
-import { Stage, Layer as KonvaLayer, Image, Text, Rect, Line, Transformer } from 'react-konva'
+import { Stage, Layer as KonvaLayer, Image, Text, Rect, Line, Shape, Transformer, Group } from 'react-konva'
 import { useImage } from 'react-konva-utils'
 import type Konva from 'konva'
 import type { Layer } from '@/types/template'
 import type { ImageSource } from '@/lib/ai-creative-generator/layout-types'
 import { getFontManager } from '@/lib/font-manager'
-import { calculateImageCrop } from '@/lib/image-crop-utils'
+import { dimensoesDaFotoCarregada } from '@/lib/image-fit'
+import { desenhoDaImagemNaPrevia, fotosPendentes } from '@/lib/gerar-criativo/previa-da-imagem'
+import { celulaVinculada, ladoMinimoNoEditor } from '@/lib/grades/ajustes'
+import { applyOpacityToColor, getShapeChannelOpacity } from '@/lib/gerar-criativo/opacidade-da-previa'
+import {
+  configDoSvgPathNaPrevia,
+  diagnosticoDoVetor,
+  ehCandidatoVetorial,
+  resumoDosProblemas,
+  travaDaPrevia,
+  vetoresComProblema,
+} from '@/lib/gerar-criativo/previa-do-vetor'
+
+/** Nós da UI de edição (realce de seleção, guias): nunca entram no PNG. */
+const NOME_DA_UI = '__ui-da-previa'
 
 interface ProjectFont {
   id: number
@@ -18,6 +32,21 @@ interface ProjectFont {
 
 // Snap threshold in pixels (larger value = easier to snap, especially on mobile)
 const SNAP_THRESHOLD = 25
+
+/** Quanto o export espera a foto da URL atual carregar (passos de 100 ms) antes de recusar */
+const ESPERA_DA_FOTO_PASSOS = 30
+
+/** O que define a ARTE exportada (a seleção e a UI de edição ficam de fora): igual na entrada e na captura, ou recusa */
+interface EntradasDaArte {
+  layers: Layer[]
+  imageValues: Record<string, ImageSource>
+  textValues: Record<string, string>
+  hiddenLayerIds: Set<string>
+  templateWidth: number
+  templateHeight: number
+}
+const assinaturaDaArte = (e: EntradasDaArte) =>
+  JSON.stringify([e.layers, e.imageValues, e.textValues, [...e.hiddenLayerIds].sort(), e.templateWidth, e.templateHeight])
 
 export interface CanvasPreviewHandle {
   exportToDataUrl: (format?: 'png' | 'jpeg', quality?: number) => Promise<string>
@@ -45,13 +74,13 @@ interface SnapGuides {
 
 function ImageLayer({
   layer,
-  isSelected,
   onSelect,
   imageUrl,
   onDragEnd,
   onDragMove,
   onDragStart,
   shapeRef,
+  aoConferirFoto,
 }: {
   layer: Layer
   isSelected: boolean
@@ -61,59 +90,65 @@ function ImageLayer({
   onDragMove?: (e: Konva.KonvaEventObject<DragEvent>, width: number, height: number) => void
   onDragStart?: () => void
   shapeRef?: React.RefObject<Konva.Image>
+  /** Rodada 1: avisa a prévia qual URL esta camada tem PRONTA (conferida); `null` = nenhuma */
+  aoConferirFoto?: (layerId: string, src: string | null) => void
 }) {
   const src = imageUrl || layer.fileUrl || ''
-  const [image] = useImage(src, src.startsWith('http') ? 'anonymous' : undefined)
-  const width = Math.max(20, layer.size?.width ?? 100)
-  const height = Math.max(20, layer.size?.height ?? 100)
-
-  // Calculate crop for objectFit: cover (match editor behavior)
-  const crop = useMemo(() => {
-    if (!image) return undefined
-
-    // Use objectFit: cover by default to match editor behavior
-    const objectFit = layer.style?.objectFit ?? 'cover'
-    if (objectFit === 'cover') {
-      return calculateImageCrop(
-        { width: image.width, height: image.height },
-        { width, height },
-        'center-middle'
-      )
-    }
-
-    return undefined
-  }, [image, width, height, layer.style?.objectFit])
+  const [carregada] = useImage(src, src.startsWith('http') ? 'anonymous' : undefined)
+  // G4.2: só a foto que esta camada pede (o use-image entrega a anterior numa troca rápida) — medida e desenho
+  // saem da MESMA foto; outra URL não é desenhada
+  const natural = useMemo(
+    () => dimensoesDaFotoCarregada(carregada, src, typeof window === 'undefined' ? undefined : window.location.href),
+    [carregada, src],
+  )
+  const image = natural ? carregada : undefined
+  useEffect(() => {
+    aoConferirFoto?.(layer.id, natural ? src : null)
+    return () => aoConferirFoto?.(layer.id, null)
+  }, [aoConferirFoto, layer.id, natural, src])
+  // Recorte manual, cover, raio, espelhos e o piso do editor (8 px na célula) pelo helper único do servidor
+  const desenho = useMemo(() => desenhoDaImagemNaPrevia(layer, natural), [layer, natural])
+  const { largura: width, altura: height, crop, cornerRadius, espelho } = desenho
 
   const borderColor = layer.style?.border?.color ?? '#000000'
   const borderWidth = layer.style?.border?.width ?? 0
-  const borderRadius = layer.style?.border?.radius ?? 0
 
+  const visual = {
+    image,
+    width,
+    height,
+    crop,
+    cornerRadius,
+    // a seleção é desenhada pelo RealceDeSelecao, nunca no contorno da camada
+    stroke: borderWidth > 0 ? borderColor : undefined,
+    strokeWidth: borderWidth > 0 ? borderWidth : 0,
+  }
+  const no = {
+    name: layer.id,
+    x: layer.position?.x || 0,
+    y: layer.position?.y || 0,
+    rotation: layer.rotation || 0,
+    opacity: layer.style?.opacity ?? 1,
+    onClick: onSelect,
+    onTap: onSelect,
+    draggable: !!onDragEnd,
+    onDragStart,
+    onDragMove: (e: Konva.KonvaEventObject<DragEvent>) => onDragMove?.(e, width, height),
+    onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => {
+      if (onDragEnd) {
+        onDragEnd({ x: e.target.x(), y: e.target.y() })
+      }
+    },
+  }
+
+  // Espelho como no editor: escala negativa na imagem DENTRO de um grupo — o nó que arrasta e redimensiona fica com
+  // escala positiva
+  const imagem = <Image ref={espelho ? undefined : shapeRef} {...(espelho ?? no)} {...visual} />
+  if (!espelho) return imagem
   return (
-    <Image
-      ref={shapeRef}
-      name={layer.id}
-      image={image}
-      x={layer.position?.x || 0}
-      y={layer.position?.y || 0}
-      width={width}
-      height={height}
-      {...crop}
-      rotation={layer.rotation || 0}
-      opacity={layer.style?.opacity ?? 1}
-      cornerRadius={borderRadius}
-      stroke={isSelected ? '#3b82f6' : (borderWidth > 0 ? borderColor : undefined)}
-      strokeWidth={isSelected ? 4 : (borderWidth > 0 ? borderWidth : 0)}
-      onClick={onSelect}
-      onTap={onSelect}
-      draggable={!!onDragEnd}
-      onDragStart={onDragStart}
-      onDragMove={(e) => onDragMove?.(e, width, height)}
-      onDragEnd={(e) => {
-        if (onDragEnd) {
-          onDragEnd({ x: e.target.x(), y: e.target.y() })
-        }
-      }}
-    />
+    <Group {...no} ref={shapeRef as unknown as React.RefObject<Konva.Group>}>
+      {imagem}
+    </Group>
   )
 }
 
@@ -212,35 +247,6 @@ function TextLayer({
   )
 }
 
-function normalizeOpacityValue(value: unknown): number | undefined {
-  const numeric = typeof value === 'string'
-    ? (value.trim().endsWith('%') ? Number.parseFloat(value) / 100 : Number(value))
-    : value
-  if (typeof numeric !== 'number' || Number.isNaN(numeric)) return undefined
-  if (numeric > 1 && numeric <= 100) return Math.max(0, Math.min(1, numeric / 100))
-  return Math.max(0, Math.min(1, numeric))
-}
-
-function getShapeChannelOpacity(
-  layer: Layer,
-  channel: 'fill' | 'stroke',
-): number {
-  const style = layer.style as Record<string, unknown> | undefined
-  const border = (layer.style?.border ?? {}) as Record<string, unknown>
-  const keys = channel === 'fill'
-    ? ['fillOpacity', 'fillAlpha']
-    : ['strokeOpacity', 'strokeAlpha', 'borderOpacity', 'borderAlpha']
-
-  for (const key of keys) {
-    const fromStyle = normalizeOpacityValue(style?.[key])
-    if (fromStyle !== undefined) return fromStyle
-    const fromBorder = normalizeOpacityValue(border[key])
-    if (fromBorder !== undefined) return fromBorder
-  }
-
-  return 1
-}
-
 function ShapeLayer({
   layer,
   isSelected,
@@ -256,8 +262,33 @@ function ShapeLayer({
   onDragEnd?: (position: { x: number; y: number }) => void
   onDragMove?: (e: Konva.KonvaEventObject<DragEvent>, width: number, height: number) => void
   onDragStart?: () => void
-  shapeRef?: React.RefObject<Konva.Rect>
+  shapeRef?: React.RefObject<Konva.Shape>
 }) {
+  // svg-path: o adaptador do editor (traçado único do CP-V0, pintura pelo
+  // fillStrokeShape, que também desenha o canvas de clique com o fillRule).
+  // Vetor que a prévia não desenha igual ao servidor não vira retângulo: não é
+  // desenhado, e a tela e o export bloqueiam a geração (diagnosticoDoVetor).
+  if (ehCandidatoVetorial(layer)) {
+    if (diagnosticoDoVetor(layer).length > 0) return null
+    const config = configDoSvgPathNaPrevia(layer)
+    return (
+      <Shape
+        ref={shapeRef}
+        {...config}
+        onClick={onSelect}
+        onTap={onSelect}
+        draggable={!!onDragEnd}
+        onDragStart={onDragStart}
+        onDragMove={(e) => onDragMove?.(e, config.width as number, config.height as number)}
+        onDragEnd={(e) => {
+          if (onDragEnd) {
+            onDragEnd({ x: e.target.x(), y: e.target.y() })
+          }
+        }}
+      />
+    )
+  }
+
   const width = Math.max(10, layer.size?.width ?? 100)
   const height = Math.max(10, layer.size?.height ?? 100)
   const fill = layer.style?.fill ?? '#2563eb'
@@ -272,7 +303,7 @@ function ShapeLayer({
 
   return (
     <Rect
-      ref={shapeRef}
+      ref={shapeRef as React.RefObject<Konva.Rect>}
       name={layer.id}
       x={layer.position?.x || 0}
       y={layer.position?.y || 0}
@@ -323,93 +354,6 @@ function calculateGradientFromAngle(
     start: { x: cx - halfx, y: cy - halfy },
     end: { x: cx + halfx, y: cy + halfy },
   }
-}
-
-/**
- * Convert hex color to rgba string
- */
-function hexToRgba(hex: string, opacity: number): string {
-  const normalized = hex.replace('#', '')
-
-  if (normalized.length === 8) {
-    const r = parseInt(normalized.slice(0, 2), 16)
-    const g = parseInt(normalized.slice(2, 4), 16)
-    const b = parseInt(normalized.slice(4, 6), 16)
-    const a = parseInt(normalized.slice(6, 8), 16) / 255
-    return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, a * opacity))})`
-  }
-
-  if (normalized.length === 4) {
-    const r = parseInt(`${normalized[0]}${normalized[0]}`, 16)
-    const g = parseInt(`${normalized[1]}${normalized[1]}`, 16)
-    const b = parseInt(`${normalized[2]}${normalized[2]}`, 16)
-    const a = parseInt(`${normalized[3]}${normalized[3]}`, 16) / 255
-    return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, a * opacity))})`
-  }
-
-  const expanded = normalized.length === 3
-    ? `${normalized[0]}${normalized[0]}${normalized[1]}${normalized[1]}${normalized[2]}${normalized[2]}`
-    : normalized
-
-  const r = parseInt(expanded.slice(0, 2), 16)
-  const g = parseInt(expanded.slice(2, 4), 16)
-  const b = parseInt(expanded.slice(4, 6), 16)
-  return `rgba(${r}, ${g}, ${b}, ${opacity})`
-}
-
-function parseAlphaValue(value: string): number {
-  const normalized = value.trim()
-  if (normalized.endsWith('%')) {
-    return Number.parseFloat(normalized) / 100
-  }
-  return Number(normalized)
-}
-
-function withAdjustedFunctionalColor(
-  family: 'rgb' | 'hsl',
-  content: string,
-  opacity: number,
-): string {
-  const normalized = content.trim()
-
-  if (normalized.includes('/')) {
-    const [base, alphaValue = '1'] = normalized.split('/').map((part) => part.trim())
-    const alpha = Math.max(0, Math.min(1, parseAlphaValue(alphaValue) * opacity))
-    return `${family}(${base} / ${alpha})`
-  }
-
-  const commaParts = normalized.split(',').map((part) => part.trim())
-  if (commaParts.length >= 4) {
-    const base = commaParts.slice(0, 3).join(', ')
-    const alpha = Math.max(0, Math.min(1, parseAlphaValue(commaParts[3]) * opacity))
-    return `${family}a(${base}, ${alpha})`
-  }
-
-  if (commaParts.length === 3) {
-    return `${family}a(${commaParts.join(', ')}, ${opacity})`
-  }
-
-  return `${family}(${normalized} / ${opacity})`
-}
-
-function applyOpacityToColor(color: string, opacity: number): string {
-  const normalizedOpacity = Math.max(0, Math.min(1, opacity))
-
-  if (color.startsWith('#') && [4, 5, 7, 9].includes(color.length)) {
-    return hexToRgba(color, normalizedOpacity)
-  }
-
-  const rgbMatch = color.match(/rgba?\(([^)]+)\)/i)
-  if (rgbMatch) {
-    return withAdjustedFunctionalColor('rgb', rgbMatch[1], normalizedOpacity)
-  }
-
-  const hslMatch = color.match(/hsla?\(([^)]+)\)/i)
-  if (hslMatch) {
-    return withAdjustedFunctionalColor('hsl', hslMatch[1], normalizedOpacity)
-  }
-
-  return color
 }
 
 function GradientLayer({
@@ -534,11 +478,13 @@ function LayerRenderer({
   onDragMove,
   onDragStart,
   shapeRef,
+  aoConferirFoto,
 }: {
   layer: Layer
   isSelected: boolean
   onSelect: () => void
   imageUrl?: string
+  aoConferirFoto?: (layerId: string, src: string | null) => void
   textOverride?: string
   onDragEnd?: (position: { x: number; y: number }) => void
   onDragMove?: (e: Konva.KonvaEventObject<DragEvent>, width: number, height: number) => void
@@ -556,6 +502,7 @@ function LayerRenderer({
         onDragMove={onDragMove}
         onDragStart={onDragStart}
         shapeRef={shapeRef as React.RefObject<Konva.Image>}
+        aoConferirFoto={aoConferirFoto}
       />
     )
   }
@@ -598,7 +545,7 @@ function LayerRenderer({
         onDragEnd={onDragEnd}
         onDragMove={onDragMove}
         onDragStart={onDragStart}
-        shapeRef={shapeRef as React.RefObject<Konva.Rect>}
+        shapeRef={shapeRef}
       />
     )
   }
@@ -630,6 +577,15 @@ export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>
     const [scale, setScale] = useState(1)
     const [snapGuides, setSnapGuides] = useState<SnapGuides>({ vertical: false, horizontal: false })
     const [fontsLoaded, setFontsLoaded] = useState(false)
+    // Rodada 1: camada → URL cuja foto está desenhada e conferida (o export espera a da URL ATUAL)
+    const fotosProntasRef = useRef(new Map<string, string | null>())
+    const aoConferirFoto = useCallback((layerId: string, src: string | null) => {
+      fotosProntasRef.current.set(layerId, src)
+    }, [])
+    // Residual da rodada 1: as entradas ATUAIS da arte (a closure do export guarda as do clique; trocar ou ocultar uma
+    // foto durante as esperas muda o Stage, e o finalize gravaria camadas e fotos do clique com o PNG de outra arte)
+    const entradasDaArteRef = useRef<EntradasDaArte>({ layers, imageValues, textValues, hiddenLayerIds, templateWidth, templateHeight })
+    entradasDaArteRef.current = { layers, imageValues, textValues, hiddenLayerIds, templateWidth, templateHeight }
 
     // Center coordinates
     const centerX = templateWidth / 2
@@ -688,7 +644,9 @@ export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>
       const stage = stageRef.current
       if (!transformer || !stage) return
 
-      if (selectedLayerId && onLayerResize) {
+      // G4.2: célula de grade não tem alças (a geometria dela é da grade; mudar a caixa a quebraria)
+      const selecionada = layers.find((l) => l.id === selectedLayerId)
+      if (selectedLayerId && onLayerResize && !(selecionada && celulaVinculada(selecionada))) {
         // Find the selected node by name in the stage
         const selectedNode = stage.findOne(`.${selectedLayerId}`)
         if (selectedNode) {
@@ -709,11 +667,12 @@ export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>
         const layerId = node.name()
         if (!layerId || !onLayerResize) return
 
-        // Get the new size after transform
+        // Get the new size after transform (a foto espelhada é um grupo, sem largura própria: vale a da camada)
+        const camada = layers.find((l) => l.id === layerId)
         const scaleX = node.scaleX()
         const scaleY = node.scaleY()
-        const newWidth = Math.max(5, node.width() * scaleX)
-        const newHeight = Math.max(5, node.height() * scaleY)
+        const newWidth = Math.max(5, (node.width() || camada?.size?.width || 0) * scaleX)
+        const newHeight = Math.max(5, (node.height() || camada?.size?.height || 0) * scaleY)
 
         // Reset scale to 1 (we apply scale to width/height instead)
         node.scaleX(1)
@@ -725,7 +684,7 @@ export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>
           { x: node.x(), y: node.y() }
         )
       },
-      [onLayerResize]
+      [onLayerResize, layers]
     )
 
     // Handle drag move with snapping
@@ -779,6 +738,8 @@ export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>
     useImperativeHandle(ref, () => ({
       exportToDataUrl: async (format: 'png' | 'jpeg' = 'png', quality = 0.9) => {
         console.log('[CanvasPreview] Starting export...')
+        // A arte que o clique pediu (a mesma que o finalize vai gravar): conferida de novo logo antes da captura
+        const assinaturaDoPedido = assinaturaDaArte(entradasDaArteRef.current)
         const stage = stageRef.current
         const transformer = transformerRef.current
         if (!stage) {
@@ -797,35 +758,44 @@ export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>
           console.log('[CanvasPreview] Fonts loaded:', fontsLoaded)
         }
 
+        // Vetor que a prévia não desenha igual ao servidor: interrompe antes do
+        // PNG (a tela já bloqueia o botão; esta é a segunda linha de defesa)
+        const problemas = vetoresComProblema(layers, hiddenLayerIds)
+        if (problemas.length > 0) {
+          throw new Error(`Vetor que o assistente não desenha: ${resumoDosProblemas(problemas)}`)
+        }
+
+        // Rodada 1: foto pendente, com erro ou ainda da URL anterior sairia como buraco no PNG gravado — espera a da
+        // URL atual (com teto) e, se não vier, não exporta (o finalize nem é chamado). Célula vazia não espera.
+        const pendentes = () => {
+          const e = entradasDaArteRef.current
+          return fotosPendentes(e.layers, e.hiddenLayerIds, e.imageValues, fotosProntasRef.current)
+        }
+        for (let i = 0; i < ESPERA_DA_FOTO_PASSOS && pendentes().length > 0; i++) {
+          await new Promise((resolve) => setTimeout(resolve, 100))
+        }
+        const faltam = pendentes()
+        if (faltam.length > 0) {
+          throw new Error(`A foto ainda não carregou na prévia (${faltam.map((l) => l.name || l.id).join(', ')}). Espere a imagem aparecer e gere de novo.`)
+        }
+
         // Save current state
         const previousScale = { x: stage.scaleX(), y: stage.scaleY() }
         const previousPosition = { x: stage.x(), y: stage.y() }
 
-        // Hide guides and transformer during export
-        setSnapGuides({ vertical: false, horizontal: false })
-
-        // Hide transformer during export
-        const transformerWasVisible = transformer?.visible() ?? false
-        if (transformer) {
-          transformer.visible(false)
-        }
-
-        // Hide selection stroke on selected layer during export
-        let selectedShape: Konva.Shape | null = null
-        let prevStroke: string | CanvasGradient | undefined
-        let prevStrokeWidth: number | undefined
-        if (selectedLayerId) {
-          const node = stage.findOne(`.${selectedLayerId}`)
-          if (node && 'stroke' in node) {
-            selectedShape = node as Konva.Shape
-            prevStroke = selectedShape.stroke()
-            prevStrokeWidth = selectedShape.strokeWidth()
-            selectedShape.stroke('')
-            selectedShape.strokeWidth(0)
-          }
-        }
+        // A UI de edição (Transformer, realce de seleção, guias) sai do PNG por
+        // visibilidade. Nenhuma camada da arte é tocada: zerar o contorno do nó
+        // selecionado apagava o contorno legítimo de forma, texto e gradiente.
+        // As guias também saem só por visibilidade: mudar o estado de snap aqui
+        // desmontaria os nós no meio do export e eles não voltariam no finally.
+        const uiDeEdicao: Konva.Node[] = [
+          ...(transformer ? [transformer] : []),
+          ...stage.find(`.${NOME_DA_UI}`),
+        ]
+        const visibilidadeAntes = uiDeEdicao.map((node) => node.visible())
 
         try {
+          uiDeEdicao.forEach((node) => node.visible(false))
           // Reset to 1:1 scale for export
           stage.scale({ x: 1, y: 1 })
           stage.position({ x: 0, y: 0 })
@@ -835,6 +805,17 @@ export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>
           await new Promise((resolve) => requestAnimationFrame(resolve))
           // Extra wait for font rendering
           await new Promise((resolve) => setTimeout(resolve, 200))
+
+          // Residual da rodada 1 — depois de TODAS as esperas e imediatamente antes da captura: a arte ainda é a do
+          // pedido (camadas, fotos, textos, ocultas, tamanho) e toda foto está pronta NA URL ATUAL. Senão, nada de PNG
+          // (e o finalize nem é chamado); o finally devolve escala, posição e UI
+          if (assinaturaDaArte(entradasDaArteRef.current) !== assinaturaDoPedido) {
+            throw new Error('A arte mudou durante a exportação (foto, texto ou camada). Nada foi gerado: gere de novo.')
+          }
+          const faltamAgora = pendentes()
+          if (faltamAgora.length > 0) {
+            throw new Error(`A foto ainda não carregou na prévia (${faltamAgora.map((l) => l.name || l.id).join(', ')}). Espere a imagem aparecer e gere de novo.`)
+          }
 
           console.log('[CanvasPreview] Exporting canvas...')
           console.log('[CanvasPreview] Stage dimensions:', templateWidth, 'x', templateHeight)
@@ -856,27 +837,18 @@ export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>
           console.error('[CanvasPreview] Export error:', exportError)
           throw exportError
         } finally {
-          // Restore previous state
+          // Restore previous state (também quando o export falha)
           stage.scale(previousScale)
           stage.position(previousPosition)
-
-          // Restore transformer visibility
-          if (transformer && transformerWasVisible) {
-            transformer.visible(true)
-          }
-
-          // Restore selection stroke
-          if (selectedShape) {
-            selectedShape.stroke(prevStroke)
-            selectedShape.strokeWidth(prevStrokeWidth)
-          }
-
+          uiDeEdicao.forEach((node, i) => node.visible(visibilidadeAntes[i]))
           stage.batchDraw()
         }
       },
-    }), [fontsLoaded, projectFonts.length, templateWidth, templateHeight, selectedLayerId])
+    }), [fontsLoaded, projectFonts.length, templateWidth, templateHeight, layers, hiddenLayerIds, imageValues])
 
     const visibleLayers = layers.filter((l) => !hiddenLayerIds.has(l.id) && l.visible !== false)
+    const selectedLayer = visibleLayers.find((l) => l.id === selectedLayerId)
+    const trava = travaDaPrevia(selectedLayer)
 
     return (
       <div ref={containerRef} className="w-full">
@@ -906,12 +878,30 @@ export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>
                 isSelected={layer.id === selectedLayerId}
                 onSelect={() => onSelectLayer(layer.id)}
                 imageUrl={imageValues[layer.id]?.url}
+                aoConferirFoto={aoConferirFoto}
                 textOverride={textValues[layer.id]}
                 onDragStart={handleDragStart}
-                onDragMove={onLayerDrag ? handleDragMove : undefined}
-                onDragEnd={onLayerDrag ? (pos) => handleDragEnd(layer.id, pos) : undefined}
+                // G4.2: célula de grade não arrasta sozinha (a grade se move inteira, no editor)
+                onDragMove={onLayerDrag && !celulaVinculada(layer) ? handleDragMove : undefined}
+                onDragEnd={onLayerDrag && !celulaVinculada(layer) ? (pos) => handleDragEnd(layer.id, pos) : undefined}
               />
             ))}
+
+            {/* Realce de seleção da imagem: nó da UI, fora da camada (o export o esconde) */}
+            {selectedLayer && ['image', 'logo', 'element'].includes(selectedLayer.type) && (
+              <Rect
+                name={NOME_DA_UI}
+                x={selectedLayer.position?.x || 0}
+                y={selectedLayer.position?.y || 0}
+                width={Math.max(ladoMinimoNoEditor(selectedLayer), selectedLayer.size?.width ?? 100)}
+                height={Math.max(ladoMinimoNoEditor(selectedLayer), selectedLayer.size?.height ?? 100)}
+                rotation={selectedLayer.rotation || 0}
+                cornerRadius={selectedLayer.style?.border?.radius ?? 0}
+                stroke="#3b82f6"
+                strokeWidth={4}
+                listening={false}
+              />
+            )}
 
             {/* Transformer for resize - only show when onLayerResize is provided */}
             {onLayerResize && (
@@ -936,16 +926,17 @@ export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>
                 borderDash={[6, 3]}
                 // Enable rotation
                 rotateEnabled={false}
-                // Keep aspect ratio when pressing shift
-                keepRatio={false}
+                // Forma com manterProporcao: keepRatio e só os cantos (como no editor)
+                keepRatio={trava.keepRatio}
                 // Enable all anchors for touch
-                enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right', 'top-center', 'bottom-center']}
+                enabledAnchors={trava.ancoras}
               />
             )}
 
             {/* Snap guide lines */}
             {snapGuides.vertical && (
               <Line
+                name={NOME_DA_UI}
                 points={[centerX, 0, centerX, templateHeight]}
                 stroke="#3b82f6"
                 strokeWidth={2}
@@ -955,6 +946,7 @@ export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>
             )}
             {snapGuides.horizontal && (
               <Line
+                name={NOME_DA_UI}
                 points={[0, centerY, templateWidth, centerY]}
                 stroke="#3b82f6"
                 strokeWidth={2}

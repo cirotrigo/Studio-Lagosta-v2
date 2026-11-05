@@ -27,6 +27,24 @@
 import { db } from '@/lib/db'
 import type { Prisma } from '../../prisma/generated/client'
 
+/**
+ * A chave da AGENDA de um cliente (H4): quem cria post para o projeto a pega, e a guarda HORARIO_OCUPADO do
+ * agendar-leva rechecha o horário sob ela. Por projeto, nunca global.
+ */
+export function chaveDaAgenda(projectId: number): string {
+  return `agenda-slot:${projectId}`
+}
+
+/**
+ * A chave das FONTES de um cliente (CP5c § 4): as rotas que criam e apagam `CustomFont` a pegam, e o gate do
+ * `agendar-leva` (draft-only) a pega depois da chave da agenda e antes das travas de linha — `FOR SHARE` não
+ * impede a linha NOVA, e é esta trava que serializa a inserção de fonte com a medição. Quem só pega esta não pega a
+ * da agenda, então não há ciclo.
+ */
+export function chaveDasFontes(projectId: number): string {
+  return `fontes:${projectId}`
+}
+
 export async function comTravaPorChave<T>(chave: string, fazer: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
   return db.$transaction(
     async (tx) => {

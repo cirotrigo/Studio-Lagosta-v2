@@ -23,6 +23,7 @@
  */
 
 import { z } from 'zod'
+import type { AssuntoNormalizado } from '@/lib/compositor/assunto-da-foto'
 
 // ── Vocabulários fechados ──────────────────────────────────────────────────
 
@@ -101,6 +102,12 @@ export const EntradaDoCatalogoSchema = z.object({
   zona: texto.nullable().optional(),
   clienteIdentificavel: z.boolean().optional(),
 
+  // F2b (02/11/2026) — a caixa ESPACIAL do assunto, separada do texto `assunto` (busca, embedding e tags seguem nele).
+  /** Frações da foto como o Drive a RENDERIZA (orientação aplicada). `null` = a visão olhou e não há assunto localizado; ausente = nunca analisada. */
+  caixaDoAssunto: z.object({ x0: z.number(), y0: z.number(), x1: z.number(), y1: z.number() }).nullable().optional().catch(undefined),
+  /** ISO: carimbada SÓ com caixa válida ou `null` explícito; resposta inválida não carimba e o backfill tenta de novo. */
+  caixaAnalisadaEm: z.string().optional().catch(undefined),
+
   analiseBloqueada: z.literal(true).optional(),
   precoLegivel: z.boolean().optional(),
   marcaDeTerceiro: texto.nullable().optional(),
@@ -178,6 +185,15 @@ export interface InsumosDoPrompt {
 
 export const VERSAO_DA_ANALISE = 'v3'
 
+const INSTRUCAO_DA_CAIXA = `[ymin, xmin, ymax, xmax] em inteiros de 0 a 1000: a caixa JUSTA do assunto que você nomeou, na imagem inteira; null quando o assunto é o ambiente inteiro e não dá para localizá-lo numa caixa`
+
+/** O pedido SÓ da caixa, para o backfill das fotos já catalogadas (`anotar-caixa-do-assunto`): nada mais da análise é refeito. */
+export function montarPromptDaCaixa({ assunto }: { assunto?: string | null }): string {
+  return `Esta foto é do acervo de um restaurante.${assunto ? ` O assunto dela, já catalogado, é "${assunto}".` : ' Localize o item principal do quadro.'}
+Retorne APENAS um JSON, sem markdown:
+{ "caixaDoAssunto": ${INSTRUCAO_DA_CAIXA} }`
+}
+
 /**
  * O prompt ÚNICO de análise de foto (cron e script). Herdou do enriquecer o
  * contexto do DNA e o vocabulário; do cron, o cardápio exato e as duas
@@ -204,6 +220,7 @@ ${linhasVocab.join('\n')}
 Retorne APENAS um JSON, sem markdown:
 {
   "assunto": "o item PRINCIPAL do quadro, em uma ou duas palavras minúsculas: o prato, a bebida, 'salao', 'fachada', 'vitrine', 'equipe'… Nunca uma frase",
+  "caixaDoAssunto": ${INSTRUCAO_DA_CAIXA},
   "menuItem": "nome EXATO do item do cardápio, copiado letra por letra; null se não for comida/bebida ou se não der para identificar com segurança",
   "menuCategory": "${CATEGORIAS_DE_MENU.join(' | ')} | null",
   "description": "1 a 2 frases em português descrevendo CONCRETAMENTE o que aparece — o prato, o que o acompanha, onde está, quem está. Seja específico, nunca genérico. Não repita a pasta.",
@@ -253,8 +270,24 @@ function listaDeStrings(bruto: unknown, teto = 20): string[] {
     .slice(0, teto)
 }
 
+/**
+ * A caixa como a visão a devolve (`[ymin, xmin, ymax, xmax]`, inteiros 0–1000, a convenção do Gemini), em frações de 4
+ * casas. `{ caixa: null }` = `null` explícito; `undefined` = resposta inválida ou ausente, que NÃO carimba.
+ */
+export function lerCaixaDaVisao(bruto: unknown): { caixa: AssuntoNormalizado | null } | undefined {
+  if (bruto === null) return { caixa: null }
+  if (!Array.isArray(bruto) || bruto.length !== 4) return undefined
+  if (!bruto.every((n) => Number.isInteger(n) && n >= 0 && n <= 1000)) return undefined
+  const [ymin, xmin, ymax, xmax] = bruto as number[]
+  if (ymax <= ymin || xmax <= xmin) return undefined
+  return { caixa: { x0: xmin / 1000, y0: ymin / 1000, x1: xmax / 1000, y1: ymax / 1000 } }
+}
+
 export interface AnaliseNormalizada {
   assunto: string | null
+  /** F2b: só quando a visão devolveu caixa válida ou `null` explícito. */
+  caixaDoAssunto?: AssuntoNormalizado | null
+  caixaAnalisadaEm?: string
   menuItem: string | null
   menuCategory: string | null
   description: string
@@ -311,9 +344,11 @@ export function normalizarAnalise(bruto: unknown, vocabulario: VocabularioDeTags
   }
 
   const description = str(b.description, 600) ?? `Foto do restaurante (pasta: ${opcoes.pasta})`
+  const lida = lerCaixaDaVisao(b.caixaDoAssunto)
 
   return {
     assunto,
+    ...(lida ? { caixaDoAssunto: lida.caixa, caixaAnalisadaEm: new Date().toISOString() } : {}),
     menuItem: str(b.menuItem, 120),
     menuCategory: enumOu(CATEGORIAS_DE_MENU, typeof b.menuCategory === 'string' ? b.menuCategory.toUpperCase() : null)
       ? (String(b.menuCategory).toUpperCase() as (typeof CATEGORIAS_DE_MENU)[number])

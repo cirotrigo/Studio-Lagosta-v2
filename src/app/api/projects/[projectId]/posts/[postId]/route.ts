@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { desfazerUsoDeFotoDoPost } from '@/lib/creatives/uso-de-foto'
-import { PostType, ScheduleType, PostStatus, PublishType, Prisma } from '../../../../../../../prisma/generated/client'
+import { PostType, ScheduleType, PostStatus, PublishType, Prisma, RenderStatus } from '../../../../../../../prisma/generated/client'
 import { PostScheduler } from '@/lib/posts/scheduler'
 import { hasProjectReadAccess, hasProjectWriteAccess, withProjectOwner } from '@/lib/projects/access'
 import { getLaterClient } from '@/lib/later'
@@ -13,6 +13,12 @@ import { refilarPaginasDoPost } from '@/lib/compositor/pastas'
 import { comTemplateDaPagina } from '@/lib/posts/template-do-post'
 import { postDeVideo } from '@/lib/posts/post-de-video'
 import { estadoDoVideoDosPosts } from '@/lib/video/estado-do-video-do-post'
+import { ErroAdmissaoSemantica } from '@/lib/posts/admitir-pedido-semantico'
+import { temContratoSemantico } from '@/lib/posts/copy-segue-a-pagina'
+import { renderDaPaginaCobreAMidia } from '@/lib/posts/render-da-pagina'
+
+// "Postar agora" espera o Zernio dentro desta função: carrossel leva quase 2 minutos.
+export const maxDuration = 300
 
 const areStringArraysEqual = (left?: string[] | null, right?: string[] | null) => {
   const leftValue = left ?? []
@@ -208,6 +214,7 @@ export async function PUT(
       ...(blobPathnames !== undefined && { blobPathnames }),
     }
 
+
     // If changing to IMMEDIATE, clear error fields (status will be set by sender)
     if (scheduleType === 'IMMEDIATE') {
       updateData.errorMessage = null
@@ -244,18 +251,47 @@ export async function PUT(
     }
 
     // Update post
-    const updatedPost = await db.socialPost.update({
-      where: { id: postId },
-      data: updateData,
-      include: {
-        Generation: true,
-        Project: {
-          select: {
-            laterAccountId: true,
+    const atualizar = (cliente: Pick<typeof db, 'socialPost'>) =>
+      cliente.socialPost.update({
+        where: { id: postId },
+        data: updateData,
+        include: {
+          Generation: true,
+          Project: {
+            select: {
+              laterAccountId: true,
+            },
           },
         },
-      },
-    })
+      })
+    /**
+     * B1d (checkpoint e): a mídia de um post com o contrato semântico é a que o render canônico produziu e PROVOU.
+     * Trocá-la por outra — inclusive depois da entrega, quando este PUT sincroniza a mídia nova com o Zernio —
+     * publicaria e faria a agenda ler uma mídia sem prova. A decisão vale para a linha que será gravada: travada
+     * com FOR UPDATE na mesma transação, e a mídia pedida é comparada com a da linha TRAVADA (não com a leitura lá
+     * de cima: o render pode ter confirmado a mídia provada no meio). Sem mídia no body: a escrita de sempre.
+     */
+    const updatedPost = Array.isArray(mediaUrls)
+      ? await db.$transaction(async (tx) => {
+          const [linha] = await tx.$queryRaw<Array<{ slotValues: unknown; mediaUrls: string[]; laterPostId: string | null }>>`SELECT "slotValues", "mediaUrls", "laterPostId" FROM "SocialPost" WHERE "id" = ${postId} FOR UPDATE`
+          if (temContratoSemantico(linha?.slotValues) && !areStringArraysEqual(mediaUrls, linha?.mediaUrls)) {
+            throw new ErroAdmissaoSemantica('CONTRATO_COM_MIDIA_PRONTA')
+          }
+          /**
+           * #220: mídia própria que o render da página não cobre (vídeo, várias mídias) tira o post da fila de render
+           * AQUI, como `renderPostArt` faz quando o cron chega nele. Sem isto o post seguia PENDING (ou RENDERING) com
+           * mídia pronta, e a cobertura da agenda o lia como pendente. Decidido contra a linha TRAVADA (Codex): só
+           * quando a mídia MUDOU (a interface reenvia a mesma lista ao trocar a legenda, e isso não pode apagar um
+           * RENDER_FAILED) e nunca em post entregue ao publicador (`laterPostId` gravado no meio também conta).
+           * Render em voo não volta por cima: as gravações dele exigem RENDERING + a ficha da reserva.
+           */
+          if (linha && !areStringArraysEqual(mediaUrls, linha.mediaUrls) && !linha.laterPostId && !renderDaPaginaCobreAMidia(mediaUrls)) {
+            updateData.renderStatus = RenderStatus.NOT_NEEDED
+            updateData.renderError = null
+          }
+          return atualizar(tx)
+        })
+      : await atualizar(db)
 
     // Remarcou? As páginas da arte seguem para a semana nova — pasta, nome e
     // ordem. Sem isto a pasta da semana e o nome da página passam a mentir a
@@ -461,14 +497,23 @@ export async function PUT(
         }
       } else {
         console.log('[PUT /posts] Sending post immediately via Late API')
-        scheduler.sendToLater(postId).catch((error) => {
-          console.error('Error sending immediate post via Late API:', error)
+        // `after()`, não promessa solta: sem ele a função congela ao responder e o
+        // post fica em POSTING sem chegar ao Zernio até a varredura de travados.
+        after(async () => {
+          try {
+            await scheduler.sendToLater(postId)
+          } catch (error) {
+            console.error('Error sending immediate post via Late API:', error)
+          }
         })
       }
     }
 
     return NextResponse.json(updatedPost)
   } catch (error) {
+    if (error instanceof ErroAdmissaoSemantica) {
+      return NextResponse.json({ error: error.codigo, message: error.message, erros: error.erros }, { status: 422 })
+    }
     console.error('Error updating post:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }

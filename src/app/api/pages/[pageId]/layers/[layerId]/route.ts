@@ -9,7 +9,17 @@ import {
 import { canonicalizeShapeLayerForPersistence } from '@/lib/shape-style'
 import { lerCamadas } from '@/lib/posts/page-layers'
 import { gravarCamadasComRevisao } from '@/lib/copy-autoral/persistir'
+import { registrarEdicaoSemSugestao } from '@/lib/aprendizado/captura'
+import {
+  VERSAO_DIFF_CAMADAS,
+  diffDeCamadas,
+  diffVazio,
+  fundirDiffsDeCamadas,
+  type DiffDeCamadas,
+} from '@/lib/aprendizado/diff-camadas'
 import { CreativeError } from '@/lib/creatives/errors'
+import { VetorInvalido } from '@/lib/vetor/validar-camada'
+import { corpoDoVetorInvalido, exigirVetoresValidos } from '@/lib/vetor/guarda-de-porta'
 
 class CamadaNaoEncontrada extends Error {}
 
@@ -52,8 +62,8 @@ export async function PATCH(
     const updates = await request.json()
 
     /** A camada editada fundida numa lista de camadas (a da página COMO ESTÁ no banco). */
-    const fundir = (camada: Record<string, unknown>) =>
-      canonicalizeShapeLayerForPersistence({
+    const fundir = (camada: Record<string, unknown>) => {
+      const crua = {
         ...camada,
         ...updates,
         // Manter text e content sincronizados para layers de texto
@@ -65,7 +75,11 @@ export async function PATCH(
           text: updates.text,
           content: updates.text,
         }),
-      })
+      }
+      // CP-X2b (a): a camada fundida é conferida CRUA, antes da canonização (que lançaria 500 com cor não-texto).
+      exigirVetoresValidos([crua])
+      return canonicalizeShapeLayerForPersistence(crua)
+    }
 
     /**
      * 🔴 A camada é fundida na página RELIDA e gravada COM a revisão do
@@ -76,6 +90,8 @@ export async function PATCH(
      * e a próxima edição no editor assinava a mudança com a autoria errada.
      */
     let updatedLayer: Record<string, unknown> | null = null
+    /** A camada como estava na leitura que a escrita substituiu — o lado "antes" do registro da edição. */
+    let camadaAntes: Record<string, unknown> | null = null
     let layerChanged = false
     let avisoDaCopy: string | null = null
     const { updatedPage, invalidated, congelados } = await db.$transaction(async (tx) => {
@@ -89,11 +105,16 @@ export async function PATCH(
           const layers = lidas.camadas as Array<Record<string, unknown>>
           const i = layers.findIndex((layer) => layer.id === layerId)
           if (i === -1) throw new CamadaNaoEncontrada()
+          camadaAntes = layers[i]
           updatedLayer = fundir(layers[i])
           // Mudança real? O mesmo endpoint recebe autosave; layer idêntica não pode
           // invalidar o render dos posts agendados desta página
           layerChanged = JSON.stringify(layers[i]) !== JSON.stringify(updatedLayer)
-          return JSON.stringify(layers.map((l, j) => (j === i ? updatedLayer : l)))
+          const finais = layers.map((l, j) => (j === i ? updatedLayer : l))
+          // CP-X2b (b): o estado final da página, nesta volta do compare-and-set, precisa ser válido. A recusa
+          // lança de dentro da transação: nada é gravado nem invalidado.
+          exigirVetoresValidos(finais)
+          return JSON.stringify(finais)
         },
       })
       if (!g) throw new CamadaNaoEncontrada()
@@ -128,6 +149,40 @@ export async function PATCH(
       })
     }
 
+    /**
+     * T2 (05/11/2026): o que a equipe mudou à mão nesta camada, só os caminhos
+     * (`diff-camadas.ts`) — o mesmo registro do PATCH da página. Fora da
+     * resposta; falha aqui nunca derruba o save.
+     */
+    if (layerChanged && camadaAntes && updatedLayer) {
+      const projectId = template!.Project.id
+      const antes = [camadaAntes]
+      const depois = [updatedLayer]
+      after(async () => {
+        try {
+          const diff = diffDeCamadas(antes, depois)
+          if (diffVazio(diff)) return
+          const dbUser = await db.user.findUnique({ where: { clerkId: userId }, select: { id: true } })
+          await registrarEdicaoSemSugestao({
+            projectId,
+            tipo: 'camada',
+            escolhido: { modelo: page.isTemplate, templateId: page.templateId, rota: 'camada' },
+            diff,
+            pageId,
+            decididoPor: dbUser?.id ?? null,
+            superficie: 'editor',
+            servico: 'diff-camadas',
+            versao: VERSAO_DIFF_CAMADAS,
+            // Balde de 10 min por página, como `copy` e `geometria`: o autosave não vira dezenas de linhas.
+            // Aqui a linha do balde é FUNDIDA a cada escrita, então descreve a janela inteira.
+            chave: `camada:editor:${pageId}:${Math.floor(Date.now() / 600_000)}`,
+          }, (anterior, novo) => fundirDiffsDeCamadas(anterior as DiffDeCamadas, novo as DiffDeCamadas))
+        } catch (erro) {
+          console.error('[aprendizado] falha ao registrar edição de camada (seguindo sem ela):', erro)
+        }
+      })
+    }
+
     return NextResponse.json({
       success: true,
       layer: updatedLayer,
@@ -142,6 +197,9 @@ export async function PATCH(
   } catch (error) {
     if (error instanceof CamadaNaoEncontrada) {
       return NextResponse.json({ error: 'Layer not found' }, { status: 404 })
+    }
+    if (error instanceof VetorInvalido) {
+      return NextResponse.json(corpoDoVetorInvalido(error), { status: 422 })
     }
     if (error instanceof CreativeError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: error.status })

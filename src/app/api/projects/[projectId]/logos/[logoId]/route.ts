@@ -47,14 +47,12 @@ export async function PATCH(
     return NextResponse.json({ error: 'Campo isProjectLogo inválido' }, { status: 400 })
   }
 
-  // Se está marcando como logo principal, desmarcar todos os outros logos do projeto
-  if (isProjectLogo) {
-    await db.logo.updateMany({
-      where: { projectId: projectIdNum, id: { not: logoIdNum } },
-      data: { isProjectLogo: false },
-    })
-  }
-
+  // Várias logos podem ser principais (02/11/2026): o compositor autoriza como VARIANTES da marca a logo da página de
+  // assinatura mais todas as linhas `isProjectLogo` (CP3, `variantesAutorizadasDaLogo`) e escolhe a que lê sobre a
+  // foto — a dourada, a branca, a azul. Até aqui marcar uma desmarcava as outras, e o compositor nunca tinha mais de
+  // duas candidatas (foto clara recusava com LOGO_SEM_VARIANTE_LEGIVEL). Quem precisa de UMA logo representante (lista
+  // de projetos, agenda, ferramentas, acesso) pega a principal de MENOR id (`orderBy: { id: 'asc' }, take: 1`) — a mesma
+  // em toda tela, e hoje a que já era a única principal (revisão do Codex, P3: `take: 1` sem ordem variava por tela).
   const updatedLogo = await db.logo.update({
     where: { id: logoIdNum },
     data: { isProjectLogo },

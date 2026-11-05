@@ -2,8 +2,11 @@ import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { z } from 'zod'
 import { googleDriveService } from '@/server/google-drive-service'
+import { idsDoDriveNaRotaDoProjeto } from '@/lib/google-drive/escopo'
 import { PermissionError, requireProjectAccess } from '@/lib/permissions'
 import { db } from '@/lib/db'
+
+const naoEncontrado = () => NextResponse.json({ error: 'Não encontrado' }, { status: 404 })
 
 const bodySchema = z.object({
   fileIds: z.array(z.string().trim().min(1)).min(1, 'Selecione ao menos um arquivo'),
@@ -31,6 +34,14 @@ export async function POST(req: Request) {
     const { fileIds, targetFolderId, projectId } = parsed.data
     await requireProjectAccess(projectId, { userId, orgId, write: true })
 
+    // Arquivos e destino sob as pastas deste projeto, ou nada; o destino é
+    // pasta de verdade (não atalho). Move-se o item pedido, nunca o destino
+    // de um atalho.
+    const permitidos = await idsDoDriveNaRotaDoProjeto(userId, projectId, [...fileIds, targetFolderId])
+    if (!permitidos || permitidos[permitidos.length - 1] !== targetFolderId) {
+      return naoEncontrado()
+    }
+
     await googleDriveService.moveFiles(fileIds, targetFolderId)
 
     try {
@@ -47,8 +58,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ moved: fileIds.length })
   } catch (error) {
+    // Projeto inexistente, sem acesso e pasta fora do projeto: a mesma resposta.
     if (error instanceof PermissionError) {
-      return NextResponse.json({ error: error.message }, { status: error.status })
+      return naoEncontrado()
     }
 
     console.error('[Drive API] Failed to move files', error)

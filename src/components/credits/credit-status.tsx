@@ -23,12 +23,16 @@ interface CreditStatusProps {
 export function CreditStatus({ className, showUpgradeButton = true }: CreditStatusProps) {
   const { user, isLoaded } = useUser();
   const { organization, membership, isLoaded: isOrgLoaded } = useOrganization();
-  const { credits: personalCredits, isLoading: isPersonalCreditsLoading } = useCredits();
+  const { credits: personalCredits, isLoading: isPersonalCreditsLoading, creditosAplicados } = useCredits();
   const isOrganizationContext = Boolean(organization);
   const {
     data: organizationCredits,
     isLoading: isOrganizationCreditsLoading,
   } = useOrganizationCredits(isOrganizationContext ? organization!.id : null);
+
+  // Modo interno (cobrança desligada): saldo e "Gerenciar créditos" somem.
+  // Ligar CREDITOS_APLICADOS de novo traz tudo de volta.
+  if (creditosAplicados !== true) return null;
 
   if ((isOrganizationContext && (!isOrgLoaded || isOrganizationCreditsLoading)) || (!isOrganizationContext && (!isLoaded || isPersonalCreditsLoading))) {
     return <Skeleton className={cn("h-8 w-24", className)} />;

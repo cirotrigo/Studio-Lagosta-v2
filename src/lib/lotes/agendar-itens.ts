@@ -51,6 +51,18 @@ import { formatoDaPagina, refilarPaginasDoPost } from '@/lib/compositor/pastas'
 import { normalizarStatusDoItem, transicaoPermitida } from '@/lib/planos/vocabulario'
 import { classificarPecaDoItem, descreverArteAtualDoItem, type ArteAtualDoItem } from '@/lib/planos/decisao-do-item'
 import type { Superficie } from '@/lib/aprendizado/vocabulario'
+import { formatoDoTipo, ocupaOSlot } from '@/lib/posts/contexto-da-semana'
+import { TOLERANCIA_SLOT_MIN } from '@/lib/posts/cobertura'
+import { chaveDaAgenda, chaveDasFontes } from '@/lib/trava-por-chave'
+import type { Layer } from '@/types/template'
+import { lerCamadas } from '@/lib/posts/page-layers'
+import type { GateDaArte } from '@/lib/creatives/revisao/gate'
+// CP5c: o PRODUTOR do registro do gate (regra de lint do CP5b: só este arquivo, fora dos consumidores nomeados, importa daqui).
+import { decidirEMontarRegistro, type RegistroSelado } from '@/lib/creatives/revisao/gate-registro'
+import { gravarGateDaArte } from '@/lib/creatives/revisao/gate-persistido'
+import { contextoDaMedicao, medirCamadasDaPeca } from '@/lib/creatives/revisao/revisar-arte'
+import { identidadeDaPagina, versaoDaPagina } from '@/lib/creatives/revisao/versao'
+import { PRAZO_DA_MEDICAO_MS, PRAZO_POR_DOWNLOAD_MS, ehDeadlock, ehTimeoutDaTransacao, paginasDeReferencia, revisaoDe, type ResultadoDaMedicao, type RevisaoDoItem } from '@/lib/creatives/revisao/gate-no-fluxo'
 import type { Prisma } from '../../../prisma/generated/client'
 import {
   decidirAgendamento,
@@ -61,8 +73,10 @@ import {
   estadoDoPost,
   hashDoAgendamento,
   mancheteDaSpec,
+  MOTIVO_POST_APROVADO_INTOCAVEL,
   MOTIVO_RECRIAR_COM_OUTRO_PEDIDO,
   pedidoDoAgendamento,
+  POLITICA_DO_ASSUNTO_DO_AGENDAR_LEVA,
   resumirAgendamento,
   superadaNoPlanoSemPeca,
   thumbnailEhAtual,
@@ -75,6 +89,7 @@ import {
   type PedidoDeAgendamento,
   type RascunhoApagado,
   type SituacaoDoItemAgendado,
+  type TipoDoPostDoLote,
 } from './agendamento'
 
 export interface EntradaDoAgendamentoDoLote {
@@ -93,7 +108,18 @@ export interface EntradaDoAgendamentoDoLote {
   /** `User.id` INTERNO (cuid), NUNCA o clerkId. */
   decididoPor?: string | null
   superficie?: Superficie
+  /**
+   * Perfil draft-only (H4): não adota nem mexe em volta de post aprovado ou
+   * entregue ao publicador, e não roda efeitos pendentes num post que foi
+   * aprovado depois de ligado. Quem decide é a tool, pelo perfil do principal.
+   */
+  apenasRascunho?: boolean
+  /** CP5c: quem pediu (tipo e id do principal MCP) — vai no registro do gate como auditoria; nunca decide nada. */
+  principal?: { tipo: string; id: string } | null
 }
+
+/** CP5c § 6 — o tipo mora em `revisao/gate-no-fluxo.ts` (CP5d: `ajustar-arte` também o devolve); reexportado para os chamadores de hoje. */
+export type { RevisaoDoItem } from '@/lib/creatives/revisao/gate-no-fluxo'
 
 export interface ItemAgendadoDoLote {
   itemId: string
@@ -118,6 +144,10 @@ export interface ItemAgendadoDoLote {
   rascunhoApagado?: RascunhoApagado
   /** Com `PECA_SUPERADA_NO_PLANO`: a arte que o item do plano aponta agora (Ciro, 13/09/2026). */
   arteAtualDoItem?: ArteAtualDoItem
+  /** CP5c (draft-only): os achados e os motivos do gate — só no tipo `medida`, nunca fabricados. */
+  achados?: GateDaArte['achados']
+  motivos?: GateDaArte['motivos']
+  revisao?: RevisaoDoItem
 }
 
 export interface ResultadoDoAgendamentoDoLote {
@@ -127,7 +157,7 @@ export interface ResultadoDoAgendamentoDoLote {
   itens: ItemAgendadoDoLote[]
 }
 
-type Cliente = Pick<Prisma.TransactionClient, 'project' | 'generation' | 'generationJob' | 'page' | 'socialPost' | 'itemDeLote' | 'itemDePlano'>
+type Cliente = Pick<Prisma.TransactionClient, 'project' | 'generation' | 'generationJob' | 'page' | 'socialPost' | 'itemDeLote' | 'itemDePlano' | 'customFont'>
 
 const SELECAO_DA_LINHA = { id: true, generationId: true, postId: true, hashDoAgendamento: true, efeitosDoAgendamentoEm: true } as const
 const SELECAO_DO_POST = {
@@ -279,7 +309,7 @@ function comAvisos(avisos: string[]): { avisos?: string[] } {
  * ANTERIOR — onde o editor não acha o `pageId` e abre outra página. Página que
  * não existe mais fica sem link. O post não é reescrito: é a frente da agenda.
  */
-async function concluido(ctx: Contexto, itemId: string, desfecho: DesfechoDoItemAgendado, post: Post, peca: Peca | null, pagina: Pagina | null, avisos: string[]): Promise<ItemAgendadoDoLote> {
+async function concluido(ctx: Contexto, itemId: string, desfecho: DesfechoDoItemAgendado, post: Post, peca: Peca | null, pagina: Pagina | null, avisos: string[], extra: Partial<ItemAgendadoDoLote> = {}): Promise<ItemAgendadoDoLote> {
   const pageId = post.pageId ?? pagina?.id ?? peca?.pageId ?? undefined
   const atual = pageId ? await lerPagina(ctx.leitor, pageId, ctx.projectId) : null
   const editUrl = editUrlDe(atual?.templateId, pageId)
@@ -297,6 +327,7 @@ async function concluido(ctx: Contexto, itemId: string, desfecho: DesfechoDoItem
     ...(post.laterPostId && post.status !== 'DRAFT' ? { entregueParaPublicar: true as const } : {}),
     ...(editUrl ? { editUrl } : {}),
     ...comAvisos(avisos),
+    ...extra,
   }
 }
 
@@ -326,6 +357,8 @@ interface Contexto {
   leitor: Cliente
   decididoPor: string | null
   superficie: Superficie
+  apenasRascunho: boolean
+  principal: { tipo: string; id: string } | null
 }
 
 type Escrita =
@@ -371,11 +404,11 @@ async function decidirEscrita(cliente: Cliente, ctx: Contexto, itemId: string, l
     if (midia) return { acao: 'recusar', resposta: falhou(itemId, midia, { postId: midia.postId, ...vinculos }) }
   }
 
-  const posts = (await cliente.socialPost.findMany({ where: { projectId, pageId }, select: { id: true, status: true }, orderBy: { createdAt: 'asc' } })) as Array<{ id: string; status: string }>
+  const posts = (await cliente.socialPost.findMany({ where: { projectId, pageId }, select: { id: true, status: true, laterPostId: true }, orderBy: { createdAt: 'asc' } })) as Array<{ id: string; status: string; laterPostId: string | null }>
   const ligados = posts.length
     ? ((await cliente.itemDeLote.findMany({ where: { postId: { in: posts.map((p) => p.id) }, NOT: { id: linha.id } }, select: { postId: true } })) as Array<{ postId: string | null }>)
     : []
-  const daPagina = decidirPostsDaPagina(posts, new Set(ligados.map((l) => l.postId).filter((p): p is string => !!p)))
+  const daPagina = decidirPostsDaPagina(posts, new Set(ligados.map((l) => l.postId).filter((p): p is string => !!p)), { apenasRascunho: ctx.apenasRascunho })
   if (daPagina.acao === 'falhar') return { acao: 'recusar', resposta: falhou(itemId, daPagina, { postId: daPagina.postId, ...vinculos }) }
 
   const itemDoPlano = await lerItemDoPlano(cliente, peca, projectId)
@@ -488,12 +521,185 @@ async function executarEfeitos(ctx: Contexto, linhaId: string, post: Post, peca:
   return avisos
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// CP5c — o GATE do perfil draft-only (docs/PLANO-2026-10-16-CP5C-CONTRATO.md)
+// ─────────────────────────────────────────────────────────────────────────
+
+/** § 8.9 (proposta): os prazos moram em `revisao/gate-no-fluxo.ts` (compartilhados com o CP5d); reexportados. */
+export { PRAZO_DA_MEDICAO_MS, PRAZO_POR_DOWNLOAD_MS } from '@/lib/creatives/revisao/gate-no-fluxo'
+export const MOTIVO_RASCUNHO_JA_EXISTENTE = 'rascunho já existente; nada foi criado nem ligado nesta chamada'
+/** § 5 (decisão 8.7, proposta B): no draft-only os efeitos pós-commit não rodam — só a repetição HUMANA do mesmo pedido os completa. */
+export const AVISO_EFEITOS_NAO_RODAM_NO_DRAFT_ONLY =
+  'Rascunho na agenda; pasta da semana e catálogo completam quando uma pessoa repetir agendar-leva com o MESMO pedido (mesmo lote, item e horário) — a aprovação não os executa.'
+
+interface PaginaCompleta {
+  id: string
+  templateId: number
+  isTemplate: boolean
+  name: string
+  tags: string[]
+  width: number
+  height: number
+  background: string | null
+  layers: unknown
+  copyAutoral: unknown
+  audio: unknown
+  updatedAt: Date
+}
+
+/** A página COMPLETA (o que a medição e a identidade leem), pelo cliente dado — sob trava, é a leitura que vale. */
+async function lerPaginaCompleta(cliente: Cliente, pageId: string, projectId: number): Promise<PaginaCompleta | null> {
+  const p = await cliente.page.findUnique({
+    where: { id: pageId },
+    select: { id: true, templateId: true, isTemplate: true, name: true, tags: true, width: true, height: true, background: true, layers: true, copyAutoral: true, audio: true, updatedAt: true, Template: { select: { projectId: true } } },
+  })
+  if (!p || p.Template.projectId !== projectId) return null
+  const { Template: _template, ...pagina } = p
+  return pagina as PaginaCompleta
+}
+
+type GeracaoDaPeca = { id: string; fieldValues: unknown; sourcePageId: string | null }
+
+/** A Generation DA PEÇA (travada `FOR UPDATE` antes): a medição lê `composicao`, `sourcePageId` e a variante da logo SÓ dela (§ 4.3). */
+async function lerGeracaoDaPeca(cliente: Cliente, generationId: string, projectId: number): Promise<GeracaoDaPeca | null> {
+  return (await cliente.generation.findFirst({ where: { id: generationId, projectId }, select: { id: true, fieldValues: true, sourcePageId: true } })) as GeracaoDaPeca | null
+}
+
+// `paginasDeReferencia`, `revisaoDe`, `ehDeadlock`, `ehTimeoutDaTransacao` e `ResultadoDaMedicao` moram em
+// `revisao/gate-no-fluxo.ts` (compartilhados com o CP5d).
+
+/**
+ * § 3 — mede a página e decide com `decidirEMontarRegistro` (CP5b), lendo TUDO pelo `cliente` que recebe: a
+ * transação (sob as travas) na chamada de verdade, o leitor na simulação. PURA quanto a travas. A cadeia inteira
+ * corre numa `Promise.race` com `PRAZO_DA_MEDICAO_MS`: venceu o prazo → `nao-medida` (o download órfão termina
+ * sozinho e o resultado é descartado; nada é gravado com ele). Toda exceção vira `nao-medida` (fail-closed, nunca
+ * `ERRO`). O registro gravado NUNCA é lido aqui.
+ */
+async function medirEDecidir(cliente: Cliente, ctx: Contexto, args: { peca: Peca; page: PaginaCompleta; postType: TipoDoPostDoLote; generation: GeracaoDaPeca | null }): Promise<ResultadoDaMedicao> {
+  const { peca, page, postType } = args
+  const { projectId } = ctx
+  const controle = new AbortController()
+  let temporizador: ReturnType<typeof setTimeout> | undefined
+  const prazo = new Promise<ResultadoDaMedicao>((resolve) => {
+    temporizador = setTimeout(() => {
+      controle.abort(new Error('a medição não coube no prazo'))
+      resolve({ tipo: 'nao-medida', motivo: `a medição não coube no prazo de ${PRAZO_DA_MEDICAO_MS / 1000} s; repita` })
+    }, PRAZO_DA_MEDICAO_MS)
+  })
+  const medir = async (): Promise<ResultadoDaMedicao> => {
+    try {
+      // 1. Vídeo ou música: o CP5a manda ao humano (a mesma recusa de `resolverAgendamento`).
+      const recusa = recusaComoImagem(page.layers, page.audio)
+      if (recusa) return { tipo: 'nao-medida', motivo: recusa.mensagem }
+      // 2. A MESMA leitura das camadas que entra na identidade e no vínculo.
+      const lidas = lerCamadas(page.layers)
+      if (!lidas.legivel) return { tipo: 'nao-medida', motivo: 'as camadas da página são ilegíveis' }
+      const camadas = lidas.camadas as unknown as Layer[]
+      // § 4.3: a composição gravada só é cache quando a arte É desta versão da página (a conferência de `thumbnailEhAtual`).
+      const composicaoReaproveitavel = peca.versaoRenderizada === versaoDaPagina(page, { audio: page.audio })
+      // 3. A mesma medição do revisor e do executor do CP4; `corrigir: false` = a peça COMO VAI SER GRAVADA.
+      const contexto = await contextoDaMedicao({
+        projectId,
+        page: { id: page.id, name: page.name, width: page.width, height: page.height, tags: page.tags, background: page.background, layers: page.layers },
+        camadas,
+        cliente,
+        sinal: controle.signal,
+        prazoPorDownloadMs: PRAZO_POR_DOWNLOAD_MS,
+        composicaoReaproveitavel,
+        generationDaPeca: args.generation,
+      })
+      const medida = await medirCamadasDaPeca(camadas, contexto, { corrigir: false })
+      // 4. A decisão (o vínculo com a página é conferido lá dentro; a copy é reconciliada lá dentro).
+      const identidade = identidadeDaPagina(page)
+      const decisao = decidirEMontarRegistro({
+        entrada: { medida, identidade: { pageVersion: identidade.pageVersion, copyVersion: identidade.copyVersion }, politicaDoAssunto: POLITICA_DO_ASSUNTO_DO_AGENDAR_LEVA },
+        page,
+        vinculo: { projectId, generationId: peca.id, postType },
+        origem: 'agendar-leva',
+        ...(ctx.principal ? { principal: ctx.principal } : {}),
+        agora: () => new Date(),
+      })
+      if (decisao.decisao === 'sem-vinculo') return { tipo: 'sem-vinculo', motivo: decisao.motivo }
+      void identidade
+      return { tipo: 'medida', registro: decisao.registro, gate: decisao.gate }
+    } catch (erro) {
+      return { tipo: 'nao-medida', motivo: `a medição falhou: ${(erro instanceof Error ? erro.message : String(erro)).slice(0, 200)}` }
+    }
+  }
+  try {
+    return await Promise.race([medir(), prazo])
+  } finally {
+    clearTimeout(temporizador)
+  }
+}
+
+/** § 4.6 — por que um rascunho travado NÃO pode ser adotado pelo draft-only; `null` = pode. Nada é escrito no post. */
+function motivoParaNaoAdotar(
+  post: { status: string; laterPostId: string | null; projectId: number | null; pageId: string | null; generationId: string | null },
+  alvo: { projectId: number; pageId: string; pecaId: string },
+): FalhaDoItem | null {
+  if (post.status !== 'DRAFT' || post.laterPostId) return { codigo: 'POST_APROVADO_INTOCAVEL', motivo: MOTIVO_POST_APROVADO_INTOCAVEL }
+  if (post.projectId !== alvo.projectId || post.pageId !== alvo.pageId) {
+    return { codigo: 'REVISAO_HUMANA_NECESSARIA', motivo: 'O rascunho a adotar não é desta página deste cliente; confira na agenda. Nada foi agendado.' }
+  }
+  // Decisão 8.5 (proposta): rascunho humano sem arte ligada, ou com OUTRA arte, não é adotado pelo agente.
+  if (post.generationId !== alvo.pecaId) return { codigo: 'REVISAO_HUMANA_NECESSARIA', motivo: 'O rascunho desta página aponta outra arte (ou nenhuma); confira na agenda. Nada foi agendado.' }
+  return null
+}
+
+/** § 6 — a recusa do gate: SEMPRE com as referências para a intervenção (generationId, pageId, editUrl do template atual, revisao). */
+function recusaDoGate(itemId: string, peca: { generationId: string; pageId: string; templateId: number }, r: ResultadoDaMedicao, extra: Partial<ItemAgendadoDoLote> = {}): ItemAgendadoDoLote {
+  const motivo =
+    r.tipo === 'medida'
+      ? `A peça não passou no gate de autonomia (${r.gate.motivos.map((m) => m.regra).join(', ') || 'sem motivo listado'}): revise no editor ou com revisar-arte e ajustar-arte. Nada foi agendado.`
+      : r.tipo === 'sem-vinculo'
+        ? `A medida não pôde ser vinculada à página (${r.motivo}). Nada foi agendado; revisão humana necessária.`
+        : `A peça não pôde ser medida (${r.motivo}). Nada foi agendado; revisão humana necessária.`
+  const editUrl = editUrlDe(peca.templateId, peca.pageId)
+  return falhou(itemId, { codigo: 'REVISAO_HUMANA_NECESSARIA', motivo }, { generationId: peca.generationId, pageId: peca.pageId, ...(editUrl ? { editUrl } : {}), ...revisaoDe(r), ...extra })
+}
+
+/** § 4.7 — exceção nascida na GRAVAÇÃO do registro: o `catch` em volta da transação a mapeia para REVISAO_HUMANA_NECESSARIA (rollback). */
+class ErroDoGate extends Error {
+  constructor(readonly causa: unknown) {
+    super(causa instanceof Error ? causa.message : String(causa))
+  }
+}
+const gravarOuLancar = (tx: Prisma.TransactionClient, registro: RegistroSelado) =>
+  gravarGateDaArte(tx, registro).catch((erro: unknown) => {
+    throw new ErroDoGate(erro)
+  })
+
+type PostTravado = { id: string; status: string; laterPostId: string | null; postType: string; generationId: string | null; projectId: number; pageId: string | null }
+
 function instanteDe(texto: string): number | null {
   try {
     return parseBRT(texto).getTime()
   } catch {
     return null
   }
+}
+
+export const MOTIVO_HORARIO_OCUPADO = 'O horário já foi ocupado por outro post. Audite novamente antes de produzir.'
+
+/**
+ * Outro post do projeto no mesmo formato a até 45 min do horário pedido. Vale
+ * QUALQUER situação: rascunho, agendado, publicando, publicado, falhou (a
+ * recuperação é do sistema) e campanha vencida. Pendente também ocupa. É a
+ * MESMA regra de ocupação da auditoria e da sugestão (`ocupaOSlot`,
+ * `formatoDoTipo`, `TOLERANCIA_SLOT_MIN`). Não devolve nada do outro post.
+ */
+async function horarioOcupado(cliente: Cliente, projectId: number, quando: string, postType: string): Promise<FalhaDoItem | null> {
+  const t = new Date(quando).getTime()
+  if (!Number.isFinite(t)) return null
+  const folga = TOLERANCIA_SLOT_MIN * 60_000
+  const vizinhos = (await cliente.socialPost.findMany({
+    where: { projectId, scheduledDatetime: { gte: new Date(t - folga), lte: new Date(t + folga) } },
+    select: { postType: true, scheduledDatetime: true },
+  })) as Array<{ postType: string; scheduledDatetime: Date | null }>
+  const formato = formatoDoTipo(postType)
+  const ocupa = vizinhos.some((p) => p.scheduledDatetime && ocupaOSlot({ t: p.scheduledDatetime.getTime(), formato: formatoDoTipo(p.postType) }, t, formato, TOLERANCIA_SLOT_MIN))
+  return ocupa ? { codigo: 'HORARIO_OCUPADO', motivo: MOTIVO_HORARIO_OCUPADO } : null
 }
 
 async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<ItemAgendadoDoLote> {
@@ -533,6 +739,12 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
       return falhou(itemId, { codigo: falha.codigo, motivo }, { postId: atual.postId!, ...(peca ? { generationId: peca.id } : {}), ...(peca?.pageId ? { pageId: peca.pageId } : {}), ...apagado })
     }
     const avisos = [...avisosDoPedido]
+    // Draft-only (CP5c § 5/§ 6): a linha já ligada volta como está — sem efeitos (nenhuma escrita) e SEM veredito
+    // desta chamada (`revisao` nao-medida: nada foi criado nem ligado aqui). Cobre o post aprovado depois (H4).
+    if (ctx.apenasRascunho) {
+      if (decisao.efeitosPendentes) avisos.push(AVISO_EFEITOS_NAO_RODAM_NO_DRAFT_ONLY)
+      return concluido(ctx, itemId, 'reaproveitado', post!, peca, pagina, avisos, { revisao: { tipo: 'nao-medida', motivo: MOTIVO_RASCUNHO_JA_EXISTENTE } })
+    }
     if (decisao.efeitosPendentes) {
       if (ctx.simular) avisos.push('O registro do agendamento deste item ficou incompleto; a chamada de verdade o completa.')
       else if (peca && pedido) avisos.push(...(await executarEfeitos(ctx, atual.id, post!, peca, entradaDoPost(projectId, peca, pedido, ctx), null)))
@@ -563,9 +775,36 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
 
   if (ctx.simular) {
     const avisos = [...avisosDoPedido, 'Simulação: nada foi gravado.']
+    // Simulação só AVISA; quem garante é a transação, sob a trava do projeto.
+    if (ctx.apenasRascunho && antes.acao === 'criar') {
+      const ocupado = await horarioOcupado(ctx.leitor, projectId, pedidoValido.quando, pedidoValido.postType)
+      if (ocupado) return falhou(itemId, ocupado, { generationId: antes.peca.id, pageId })
+    }
+    // CP5c § 4 (simulação): mede e decide pelo LEITOR, sem travas e sem gravar nada (nem o registro). A conta pode
+    // diferir da chamada de verdade se a página mudar no meio — como já diz o contrato da simulação.
+    let daRevisao: Partial<ItemAgendadoDoLote> = {}
+    if (ctx.apenasRascunho) {
+      const pagina = await lerPaginaCompleta(ctx.leitor, pageId, projectId)
+      if (!pagina) return falhou(itemId, { codigo: 'LOTE_AGENDAMENTO_CONCORRENTE', motivo: 'A página da peça mudou durante a simulação; repita a chamada.' }, { generationId: antes.peca.id, pageId })
+      let postType: TipoDoPostDoLote = pedidoValido.postType
+      if (antes.acao === 'adotar') {
+        const alvo = (await ctx.leitor.socialPost.findUnique({ where: { id: antes.postId }, select: { id: true, status: true, laterPostId: true, postType: true, generationId: true, projectId: true, pageId: true } })) as PostTravado | null
+        const motivo = alvo
+          ? motivoParaNaoAdotar(alvo, { projectId, pageId, pecaId: antes.peca.id })
+          : { codigo: 'LOTE_AGENDAMENTO_CONCORRENTE', motivo: 'O rascunho a adotar sumiu durante a simulação; repita a chamada.' }
+        if (motivo) {
+          const editUrl = editUrlDe(pagina.templateId, pageId)
+          return falhou(itemId, motivo, { postId: antes.postId, generationId: antes.peca.id, pageId, ...(editUrl ? { editUrl } : {}), avisos, revisao: { tipo: 'nao-medida', motivo: motivo.motivo } })
+        }
+        postType = alvo!.postType as TipoDoPostDoLote
+      }
+      const gate = await medirEDecidir(ctx.leitor, ctx, { peca: antes.peca, page: pagina, postType, generation: await lerGeracaoDaPeca(ctx.leitor, antes.peca.id, projectId) })
+      if (gate.tipo !== 'medida' || gate.gate.resultado !== 'APTO') return recusaDoGate(itemId, { generationId: antes.peca.id, pageId, templateId: pagina.templateId }, gate, { avisos })
+      daRevisao = revisaoDe(gate)
+    }
     if (antes.acao === 'adotar') {
       const existente = (await ctx.leitor.socialPost.findUnique({ where: { id: antes.postId }, select: SELECAO_DO_POST })) as Post | null
-      if (existente) return concluido(ctx, itemId, 'adotado', existente, antes.peca, antes.pagina, avisos)
+      if (existente) return concluido(ctx, itemId, 'adotado', existente, antes.peca, antes.pagina, avisos, daRevisao)
     }
     const paginaCrua = await ctx.leitor.page.findUnique({ where: { id: pageId }, select: { thumbnail: true, layers: true, audio: true, width: true, height: true, background: true } })
     // A chamada de verdade recusa página com vídeo ou música em resolverAgendamento; a
@@ -585,6 +824,7 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
       estadoDoPost: 'rascunho',
       ...(editUrlDe(antes.pagina.templateId, pageId) ? { editUrl: editUrlDe(antes.pagina.templateId, pageId) } : {}),
       avisos,
+      ...daRevisao,
     }
   }
 
@@ -592,15 +832,37 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
   type Escrito =
     | { tipo: 'ja-ligado'; linha: Linha }
     | { tipo: 'recusado'; resposta: ItemAgendadoDoLote }
-    | { tipo: 'ligado'; postId: string; desfecho: DesfechoDoItemAgendado; resolucao: AgendamentoResolvido | null; peca: Peca; pagina: Pagina; pedido: PedidoDeAgendamento; avisos: string[]; input: AgendarPostInput }
+    | { tipo: 'ligado'; postId: string; desfecho: DesfechoDoItemAgendado; resolucao: AgendamentoResolvido | null; peca: Peca; pagina: Pagina; pedido: PedidoDeAgendamento; avisos: string[]; input: AgendarPostInput; gate: ResultadoDaMedicao | null }
   let escrita: Escrito
   try {
   escrita = await db.$transaction(async (tx): Promise<Escrito> => {
+      // HORARIO_OCUPADO (H4): a trava consultiva do PROJETO vem primeiro. As
+      // travas de linha abaixo são do item e da página, e dois itens diferentes
+      // no mesmo horário não se esperariam: em READ COMMITTED os dois liam
+      // "livre" e os dois criavam. Com esta, o segundo espera o commit do
+      // primeiro e a rechecagem dele vê o post novo. Não é global: só serializa
+      // agendamentos do mesmo cliente. Ninguém mais pega esta chave antes das
+      // travas de linha, então a ordem não forma ciclo.
+      await tx.$queryRaw`SELECT 1 AS ok FROM pg_advisory_xact_lock(hashtext(${chaveDaAgenda(projectId)}))`
+      if (ctx.apenasRascunho) {
+        // CP5c § 4: a trava das FONTES logo depois da agenda — a rota que cria/apaga CustomFont pega SÓ esta, então
+        // a inserção de fonte é serializada com a medição (FOR SHARE não impede a linha nova) e não há ciclo.
+        await tx.$queryRaw`SELECT 1 AS ok FROM pg_advisory_xact_lock(hashtext(${chaveDasFontes(projectId)}))`
+      }
       await tx.$queryRaw`SELECT id FROM "ItemDeLote" WHERE id = ${linha.id} FOR UPDATE`
       if (antes.peca.itemDePlanoId) {
         await tx.$queryRaw`SELECT id FROM "ItemDePlano" WHERE id = ${antes.peca.itemDePlanoId} AND "projectId" = ${projectId} FOR UPDATE`
       }
+      // CP5c § 4.1: os POSTS DA PÁGINA antes da página, em `ORDER BY id` (a mesma ordem de `ajustar-arte`): a adoção
+      // escolhe entre os travados, e uma aprovação concorrente espera este commit.
+      const postsTravados: PostTravado[] = ctx.apenasRascunho
+        ? ((await tx.$queryRaw`SELECT "id", "status"::text AS "status", "laterPostId", "postType"::text AS "postType", "generationId", "projectId", "pageId" FROM "SocialPost" WHERE "pageId" = ${pageId} ORDER BY "id" FOR UPDATE`) as PostTravado[])
+        : []
       await tx.$queryRaw`SELECT id FROM "Page" WHERE id = ${pageId} FOR UPDATE`
+      if (ctx.apenasRascunho) {
+        // CP5c § 4: a Generation DA PEÇA — a medição lê `composicao` só dela (§ 4.3), e `recompor`/`persist` a escrevem.
+        await tx.$queryRaw`SELECT id FROM "Generation" WHERE id = ${antes.peca.id} AND "projectId" = ${projectId} FOR UPDATE`
+      }
       const atual = (await tx.itemDeLote.findUnique({ where: { id: linha.id }, select: SELECAO_DA_LINHA })) as Linha | null
       if (!atual) {
         throw new CreativeError('LOTE_ITEM_SUMIU', `O item "${itemId}" do lote "${loteId}" foi apagado durante o agendamento. Repita a chamada.`, 409, { loteId, itemId })
@@ -631,6 +893,50 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
       }
       const input = entradaDoPost(projectId, sob.peca, pedidoSob.pedido, ctx)
 
+      // ── CP5c: o GATE do draft-only, DENTRO da transação, sob as travas (§ 4, passos 2–7) ──
+      let gate: ResultadoDaMedicao | null = null
+      if (ctx.apenasRascunho) {
+        // § 4.2 (decisão 8.2): a ação ou o post a adotar mudou entre as duas decisões → concorrente ("repita").
+        if (sob.acao !== antes.acao || (sob.acao === 'adotar' && antes.acao === 'adotar' && sob.postId !== antes.postId)) {
+          return { tipo: 'recusado', resposta: falhou(itemId, { codigo: 'LOTE_AGENDAMENTO_CONCORRENTE', motivo: 'O item mudou durante o agendamento; repita a chamada.' }, { generationId: sob.peca.id, pageId }) }
+        }
+        // § 4.3: a página COMPLETA e a Generation da peça relidas PELA TRANSAÇÃO; `FOR SHARE` no que a medição lê
+        // (projeto, página de assinatura e página-modelo apontadas pela Generation da peça, fontes do projeto).
+        // Não se compara, trava-se: nenhuma dessas linhas muda até o commit.
+        const pagina = await lerPaginaCompleta(tx, pageId, projectId)
+        if (!pagina) return { tipo: 'recusado', resposta: falhou(itemId, { codigo: 'LOTE_AGENDAMENTO_CONCORRENTE', motivo: 'A página da peça mudou durante o agendamento; repita a chamada.' }, { generationId: sob.peca.id, pageId }) }
+        const geracao = await lerGeracaoDaPeca(tx, sob.peca.id, projectId)
+        await tx.$queryRaw`SELECT id FROM "Project" WHERE id = ${projectId} FOR SHARE`
+        for (const referencia of paginasDeReferencia(geracao)) await tx.$queryRaw`SELECT id FROM "Page" WHERE id = ${referencia} FOR SHARE`
+        await tx.$queryRaw`SELECT id FROM "CustomFont" WHERE "projectId" = ${projectId} FOR SHARE`
+        // § 4.5/4.6: o tipo do post — do pedido (criar) ou do post TRAVADO (adotar, que tem de ser um dos travados).
+        let postType: TipoDoPostDoLote = pedidoSob.pedido.postType
+        if (sob.acao === 'adotar') {
+          const alvo = postsTravados.find((p) => p.id === sob.postId)
+          const motivo = alvo
+            ? motivoParaNaoAdotar(alvo, { projectId, pageId, pecaId: sob.peca.id })
+            : { codigo: 'LOTE_AGENDAMENTO_CONCORRENTE', motivo: 'O rascunho a adotar apareceu depois das travas; repita a chamada.' }
+          if (motivo) {
+            const editUrl = editUrlDe(pagina.templateId, pageId)
+            return { tipo: 'recusado', resposta: falhou(itemId, motivo, { postId: sob.postId, generationId: sob.peca.id, pageId, ...(editUrl ? { editUrl } : {}), revisao: { tipo: 'nao-medida', motivo: motivo.motivo } }) }
+          }
+          postType = alvo!.postType as TipoDoPostDoLote
+        }
+        // § 4.4: a medição e a decisão, AQUI.
+        gate = await medirEDecidir(tx, ctx, { peca: sob.peca, page: pagina, postType, generation: geracao })
+        if (gate.tipo !== 'medida' || gate.gate.resultado !== 'APTO') {
+          // § 4.7 / decisão 8.3: o veredito reprovado é GRAVADO e a transação commita só com ele (devolver, não lançar).
+          const gravacao = gate.tipo === 'medida' ? await gravarOuLancar(tx, gate.registro) : null
+          const avisos = gravacao && gravacao !== 'gravado' ? [`O veredito reprovado não pôde ser registrado na arte (${gravacao}).`] : []
+          return { tipo: 'recusado', resposta: recusaDoGate(itemId, { generationId: sob.peca.id, pageId, templateId: pagina.templateId }, gate, comAvisos(avisos)) }
+        }
+        // APTO: o registro ANTES de qualquer post nascer ou ser ligado; sem vínculo/proveniência → nada é agendado (rollback).
+        const gravado = await gravarOuLancar(tx, gate.registro)
+        if (gravado !== 'gravado') {
+          throw new RecusaSobTrava({ codigo: 'REVISAO_HUMANA_NECESSARIA', motivo: `O veredito do gate não pôde ser registrado na arte (${gravado}); nada foi agendado. Revisão humana necessária.` })
+        }
+      }
+
       let postId: string
       let desfecho: DesfechoDoItemAgendado
       let resolucao: AgendamentoResolvido | null = null
@@ -638,6 +944,11 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
         postId = sob.postId
         desfecho = 'adotado'
       } else {
+        // Sob a trava do projeto: só agora a resposta "livre" vale. Adotar não
+        // passa aqui, porque o post adotado já é o ocupante do próprio horário.
+        // Só o perfil draft-only: a pessoa pode pôr dois stories no mesmo horário de propósito (sem regressão no normal).
+        const ocupado = ctx.apenasRascunho ? await horarioOcupado(tx, projectId, pedidoSob.pedido.quando, pedidoSob.pedido.postType) : null
+        if (ocupado) return { tipo: 'recusado', resposta: falhou(itemId, ocupado, { generationId: sob.peca.id, pageId }) }
         resolucao = await resolverAgendamento(input, {
           leitor: tx,
           ingerir: false,
@@ -688,11 +999,32 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
           throw new RecusaSobTrava({ codigo: 'PECA_SUPERADA_NO_PLANO', motivo: 'O item do plano mudou enquanto o rascunho apagado voltava para a agenda — nada foi criado. Confira o plano e repita.' })
         }
       }
-      return { tipo: 'ligado', postId, desfecho, resolucao, peca: sob.peca, pagina: sob.pagina, pedido: pedidoSob.pedido, avisos: pedidoSob.avisos, input }
-  }, { maxWait: 10_000, timeout: 20_000 })
+      return { tipo: 'ligado', postId, desfecho, resolucao, peca: sob.peca, pagina: sob.pagina, pedido: pedidoSob.pedido, avisos: pedidoSob.avisos, input, gate }
+  }, { isolationLevel: 'ReadCommitted', maxWait: 10_000, timeout: 20_000 })
   } catch (erro) {
-    if (!(erro instanceof RecusaSobTrava)) throw erro
-    escrita = { tipo: 'recusado', resposta: falhou(itemId, erro.falha, { generationId: antes.peca.id, pageId }) }
+    // CP5c § 6: no draft-only toda recusa leva as referências da intervenção (generationId, pageId, editUrl do template
+    // ATUAL — relido depois do rollback, porque a página pode ter mudado de pasta enquanto a chamada esperava a trava).
+    // A releitura é melhor esforço: se o banco ainda estiver caído, o link vem da leitura de antes das travas (dito);
+    // se a página não existir mais (ou não for mais do projeto), não há template ATUAL confirmado e o link é omitido.
+    const paginaAtual = ctx.apenasRascunho ? await lerPagina(db, pageId, projectId).then((p) => ({ ok: true as const, p })).catch(() => ({ ok: false as const })) : null
+    const templateAtual = paginaAtual === null ? null : paginaAtual.ok ? (paginaAtual.p?.templateId ?? null) : antes.pagina.templateId
+    const editUrl = templateAtual !== null ? editUrlDe(templateAtual, pageId) : undefined
+    const referencias = { generationId: antes.peca.id, pageId, ...(editUrl ? { editUrl } : {}) }
+    if (erro instanceof RecusaSobTrava) {
+      // A recusa do gate (registro APTO que não gravou) diz que esta chamada não deixou veredito; as outras recusas sob trava são as de sempre.
+      const doGate = ctx.apenasRascunho && erro.falha.codigo === 'REVISAO_HUMANA_NECESSARIA' ? { revisao: { tipo: 'nao-medida' as const, motivo: erro.falha.motivo } } : {}
+      escrita = { tipo: 'recusado', resposta: falhou(itemId, erro.falha, { ...referencias, ...doGate }) }
+    } else if (ctx.apenasRascunho && ehDeadlock(erro)) {
+      // CP5c § 4.1: deadlock detectado pelo Postgres entre as travas novas → "repita", nunca `ERRO`.
+      escrita = { tipo: 'recusado', resposta: falhou(itemId, { codigo: 'LOTE_AGENDAMENTO_CONCORRENTE', motivo: 'Outra escrita concorreu com o agendamento (travas em conflito). Repita a chamada.' }, referencias) }
+    } else if (ctx.apenasRascunho && (erro instanceof ErroDoGate || ehTimeoutDaTransacao(erro))) {
+      // CP5c § 4.7: exceção na gravação do registro ou timeout da transação → rollback, revisão humana, nunca `ERRO`.
+      const motivo = erro instanceof ErroDoGate ? `o registro do veredito falhou: ${erro.message}` : 'a transação do agendamento estourou o prazo'
+      escrita = {
+        tipo: 'recusado',
+        resposta: falhou(itemId, { codigo: 'REVISAO_HUMANA_NECESSARIA', motivo: `A peça não foi agendada (${motivo}); nada foi gravado. Repita ou peça revisão humana.` }, { ...referencias, revisao: { tipo: 'nao-medida', motivo } }),
+      }
+    } else throw erro
   }
 
   if (escrita.tipo === 'ja-ligado') return responderJaLigado(escrita.linha)
@@ -701,15 +1033,18 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
   // 3. Efeitos depois do commit.
   const post = (await db.socialPost.findUnique({ where: { id: escrita.postId }, select: SELECAO_DO_POST })) as Post
   const avisos = [...escrita.avisos, ...(escrita.resolucao?.avisos ?? [])]
-  avisos.push(...(await executarEfeitos(ctx, linha.id, post, escrita.peca, escrita.input, escrita.resolucao)))
-  const fresco = ((await db.socialPost.findUnique({ where: { id: post.id }, select: SELECAO_DO_POST })) as Post | null) ?? post
+  // CP5c § 5 (decisão 8.7, proposta B): no draft-only os efeitos pós-commit NÃO rodam — depois do commit, nenhuma
+  // escrita por conta de agendar-leva; a repetição HUMANA do mesmo pedido os completa.
+  if (ctx.apenasRascunho) avisos.push(AVISO_EFEITOS_NAO_RODAM_NO_DRAFT_ONLY)
+  else avisos.push(...(await executarEfeitos(ctx, linha.id, post, escrita.peca, escrita.input, escrita.resolucao)))
+  const fresco = ctx.apenasRascunho ? post : (((await db.socialPost.findUnique({ where: { id: post.id }, select: SELECAO_DO_POST })) as Post | null) ?? post)
   if (escrita.desfecho === 'recriado') {
     avisos.push('O rascunho que a equipe tinha apagado voltou para a agenda, com a mesma arte da leva, porque a pessoa confirmou.')
   }
   if (escrita.desfecho === 'adotado' && fresco.scheduledDatetime && fresco.scheduledDatetime.toISOString() !== escrita.pedido.quando) {
     avisos.push(`Já havia ${fresco.status === 'DRAFT' ? 'um rascunho' : 'um post agendado'} desta peça em ${formatarBRT(fresco.scheduledDatetime)} — adotei esse, sem mudar o horário.`)
   }
-  return concluido(ctx, itemId, escrita.desfecho, fresco, escrita.peca, escrita.pagina, avisos)
+  return concluido(ctx, itemId, escrita.desfecho, fresco, escrita.peca, escrita.pagina, avisos, escrita.gate ? revisaoDe(escrita.gate) : {})
 }
 
 /**
@@ -753,6 +1088,8 @@ export async function agendarItensDoLote(entrada: EntradaDoAgendamentoDoLote): P
     leitor,
     decididoPor: entrada.decididoPor ?? null,
     superficie: entrada.superficie ?? 'chat',
+    apenasRascunho: entrada.apenasRascunho === true,
+    principal: entrada.principal ?? null,
   }
   const itens: ItemAgendadoDoLote[] = []
   for (const { item, falha } of v.itens) {

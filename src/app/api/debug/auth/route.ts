@@ -1,9 +1,17 @@
 import { NextResponse } from 'next/server'
 import { auth, currentUser } from '@clerk/nextjs/server'
+import { isAdmin } from '@/lib/admin-utils'
 
 export async function GET() {
   try {
     const authData = await auth()
+    const { userId } = authData
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    if (!(await isAdmin(userId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
     const user = await currentUser()
 
     return NextResponse.json({

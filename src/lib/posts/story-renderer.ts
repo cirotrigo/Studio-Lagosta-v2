@@ -9,7 +9,9 @@ import { put } from '@vercel/blob'
 import { db } from '@/lib/db'
 import { convertPageToDesignData, applySlotValues } from './page-to-design-data'
 import { registerProjectFonts } from './register-project-fonts'
-import { slotValuesParaRender } from './copy-segue-a-pagina'
+import { slotValuesParaRender, temContratoSemantico } from './copy-segue-a-pagina'
+import { aplicarValoresDoPost } from './aplicar-valores-do-post'
+import { ErroRenderSemantico } from './erro-render-semantico'
 import { textosDaPagina } from './page-layers'
 import { reflowLayersAfterFill } from '@/lib/combo-stack-reflow'
 import { createServerTextMeasurer } from '@/lib/creatives/server-text-measurer'
@@ -33,6 +35,12 @@ export interface RenderStoryResult {
    * desenhado. A decisão mora num lugar só: `slotValuesParaRender`.
    */
   aplicouSlots: boolean
+  /**
+   * B1d (checkpoint e): as camadas EXATAMENTE como foram entregues ao `CanvasRenderer.renderDesign` — depois da
+   * aplicação de valores (legado ou semântico), de `camadasNoInstante` e do reflow. É a matéria da prova
+   * (`PostRenderProof.layersSnapshot`), nunca `Page.layers` bruto. Cópia serializada, tirada antes do desenho.
+   */
+  camadasEfetivas: unknown[]
 }
 
 /**
@@ -74,9 +82,24 @@ export async function renderStoryImage(
   // é a peça e manda: o que está em `slotValues` é cópia do texto dela, e era
   // ela que desfazia, no re-render, toda edição feita no editor. Ver
   // copy-segue-a-pagina.ts.
-  const slots = slotValuesParaRender(slotValues, page.isTemplate)
-  if (slots) {
-    designData = applySlotValues(designData, slots)
+  //
+  // B1d (checkpoint d): o contrato semântico NOVO (_slots/_papeis) não passa por slotValuesParaRender — ali ele
+  // seria descartado em silêncio. É conferido de novo contra a página ATUAL (ela pode ter mudado depois do
+  // agendamento) e aplicado por índice no array convertido, ANTES de fontes, canvas e upload. Não casar é falha
+  // DETERMINÍSTICA (ErroRenderSemantico), que renderPostArt torna terminal; página de conteúdo recusa.
+  let slots: Record<string, unknown> | undefined
+  let textosSemanticos: string[] | undefined
+  if (temContratoSemantico(slotValues)) {
+    if (!page.isTemplate) throw new ErroRenderSemantico('PAGINA_DE_CONTEUDO', page.id)
+    const aplicado = aplicarValoresDoPost(designData.layers, slotValues as Record<string, unknown>)
+    if (aplicado.erros.length > 0) throw new ErroRenderSemantico('CONTRATO_INVALIDO', page.id, aplicado.erros)
+    designData = { ...designData, layers: aplicado.camadas }
+    textosSemanticos = aplicado.changedTextIds ?? []
+  } else {
+    slots = slotValuesParaRender(slotValues, page.isTemplate)
+    if (slots) {
+      designData = applySlotValues(designData, slots)
+    }
   }
 
   // Guard: o render server-side é imagem estática. Camada de vídeo sairia como
@@ -100,10 +123,14 @@ export async function renderStoryImage(
   // pilhas de combinação e crescer caixas soltas — DEPOIS das fontes, porque
   // medir com fallback dá altura errada. Sem slots não há o que refluir, e a
   // página desenhada como está mantém o espaçamento que alguém acertou à mão.
-  if (slots) {
-    const changedTextIds = designData.layers
-      .filter((layer) => layer.type === 'text' && (slots[layer.id] ?? slots[layer.name]) !== undefined)
-      .map((layer) => layer.id)
+  // O texto do contrato novo entra pelo que a APLICAÇÃO registrou (nunca relendo _slots/_papeis); o legado
+  // mantém o cálculo de sempre.
+  if (slots || textosSemanticos) {
+    const changedTextIds =
+      textosSemanticos ??
+      designData.layers
+        .filter((layer) => layer.type === 'text' && (slots![layer.id] ?? slots![layer.name]) !== undefined)
+        .map((layer) => layer.id)
     const measure = await createServerTextMeasurer()
     designData = { ...designData, layers: reflowLayersAfterFill(designData.layers, changedTextIds, measure) }
   }
@@ -112,6 +139,7 @@ export async function renderStoryImage(
   console.log(`[story-renderer] Rendering page ${pageId} (${page.width}×${page.height})...`)
   const { CanvasRenderer } = await import('@/lib/canvas-renderer')
   const renderer = new CanvasRenderer(designData.canvas.width, designData.canvas.height)
+  const camadasEfetivas = JSON.parse(JSON.stringify(designData.layers)) as unknown[]
   const buffer = await renderer.renderDesign(designData, {})
   console.log(`[story-renderer] Rendered: ${(buffer.length / 1024).toFixed(0)} KB`)
 
@@ -132,6 +160,7 @@ export async function renderStoryImage(
     width: designData.canvas.width,
     height: designData.canvas.height,
     copyDaPagina: textosDaPagina(page.layers),
-    aplicouSlots: Boolean(slots),
+    aplicouSlots: Boolean(slots) || textosSemanticos !== undefined,
+    camadasEfetivas,
   }
 }

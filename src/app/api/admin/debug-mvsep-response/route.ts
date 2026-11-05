@@ -4,8 +4,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { chaveDaMvsep } from '@/lib/mvsep/chave'
 
-const MVSEP_API_KEY = process.env.MVSEP_API_KEY || 'BrIkx8zYQbvc4TggAZbsL96Mag9WN5'
 const MVSEP_API_URL = 'https://mvsep.com/api'
 
 export async function GET(req: NextRequest) {
@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
     console.log('[DEBUG] Fetching MVSEP status for hash:', hash)
 
     const response = await fetch(
-      `${MVSEP_API_URL}/separation/get?api_token=${MVSEP_API_KEY}&hash=${hash}`
+      `${MVSEP_API_URL}/separation/get?api_token=${chaveDaMvsep()}&hash=${hash}`
     )
 
     const responseText = await response.text()

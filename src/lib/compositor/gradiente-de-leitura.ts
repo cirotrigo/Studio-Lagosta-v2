@@ -93,6 +93,18 @@ export function opacidadeNaCurva(curva: CurvaDoGradiente, t: number): number {
   return pontos[pontos.length - 1][1]
 }
 
+/**
+ * A menor e a maior opacidade relativa da curva num trecho [ta, tb] da faixa
+ * (0 = borda, 1 = onde some; além de 1, zero). A curva é linear por partes:
+ * os extremos estão nas pontas ou nos vértices de dentro do trecho.
+ */
+export function faixaDeOpacidade(curva: CurvaDoGradiente, ta: number, tb: number): { min: number; max: number } {
+  const a = Math.max(0, Math.min(ta, tb))
+  const b = Math.max(ta, tb)
+  const valores = [a, b, ...curva.map(([p]) => p).filter((p) => p > a && p < b)].map((t) => (t > 1 ? 0 : opacidadeNaCurva(curva, t)))
+  return { min: Math.min(...valores), max: Math.max(...valores) }
+}
+
 /** De que borda o gradiente de um grupo nasce: a âncora manda; sem ela, o lado do centro do texto. */
 export function bordaDoGrupo(rect: Rect, ancora: Ancora | null | undefined, H: number): Borda {
   if (ancora === 'topo') return 'topo'
@@ -206,6 +218,60 @@ export function ehGradienteDeLeitura(l: Pick<Layer, 'metadata'>): boolean {
   return TRATAMENTOS_DE_GRADIENTE.includes(String(l.metadata?.tratamentoDeTexto ?? ''))
 }
 
+/**
+ * Um gradiente desenhado numa PÁGINA (a de assinatura) é tratamento de
+ * LEITURA — e só então dá cor, curva e força ao gradiente de leitura da peça
+ * — quando tem a forma de um: marcado como tal, ou linear, de eixo quase
+ * vertical (até 30°), sem rotação, cobrindo a largura da página, preso à sua
+ * borda FORTE — de opacidade ABSOLUTA de pelo menos 0.3 ali e perto da máxima
+ * da camada — e transparente (≤ 0.05) na ponta oposta. O
+ * resto é DECORATIVO — radial, lateral ou diagonal, faixa parcial, tinta
+ * uniforme, faixa solta no meio — e não vira tratamento (CP2A, 14/10/2026:
+ * antes, a primeira camada de gradiente da página, fosse qual fosse, mandava
+ * na cor do véu da peça inteira). Medido em 14/10/2026: todos os gradientes
+ * das páginas de assinatura em produção (Quintal, TERO, Wine Vix e mais um)
+ * têm a forma de leitura.
+ */
+export function ehGradienteDeLeituraDaPagina(camada: Layer, pagina: { width: number; height: number }): boolean {
+  if ((camada.type !== 'gradient' && camada.type !== 'gradient2') || camada.visible === false) return false
+  if (ehGradienteDeLeitura(camada)) return true
+  const estilo = (camada.style ?? {}) as { gradientType?: unknown; gradientAngle?: unknown }
+  if (estilo.gradientType !== undefined && estilo.gradientType !== 'linear') return false
+  const rotacao = ((((typeof camada.rotation === 'number' ? camada.rotation : 0) % 360) + 360) % 360)
+  if (rotacao > 1 && rotacao < 359) return false
+  const { x = 0, y = 0 } = camada.position ?? {}
+  const { width = 0, height = 0 } = camada.size ?? {}
+  const segmento = segmentoDe(camada)
+  const eixoVertical = segmento
+    ? Math.abs(segmento.fimY - segmento.inicioY) * height >= 2 * Math.abs(segmento.fimX - segmento.inicioX) * width && segmento.fimY !== segmento.inicioY
+    : Math.abs(Math.cos(((typeof estilo.gradientAngle === 'number' ? estilo.gradientAngle : 0) * Math.PI) / 180)) >= Math.cos(Math.PI / 6)
+  if (!eixoVertical) return false
+  if (x > pagina.width * 0.05 || x + width < pagina.width * 0.95) return false
+  const borda = bordaDaCamadaDeGradiente(camada)
+  const folga = pagina.height * 0.02
+  const presaABorda = borda === 'topo' ? y <= folga : borda === 'rodape' ? y + height >= pagina.height - folga : false
+  if (!presaABorda || !configDaCamada(camada)) return false
+  // Opacidade ABSOLUTA nas pontas (a curva de `configDaCamada` é relativa à máxima da própria camada: uma
+  // faixa de 0.2 passaria). Forte na borda, transparente na ponta oposta — a faixa que zera no meio e volta
+  // a ficar opaca no fim não é de leitura. Em produção (14/10/2026) a borda forte mais fraca é 0.55 (TERO).
+  const paradas = paradasDe(camada)
+    .filter((s) => typeof s.position === 'number')
+    .sort((a, b) => (a.position as number) - (b.position as number))
+    .map((s) => (typeof s.opacity === 'number' ? s.opacity : 1))
+  const [primeira, ultima] = [paradas[0], paradas[paradas.length - 1]]
+  const forte = Math.max(primeira, ultima)
+  const fraca = Math.min(primeira, ultima)
+  return forte >= 0.3 && forte >= 0.8 * Math.max(...paradas) && fraca <= 0.05
+}
+
+/** O segmento explícito do gradiente (relativo à caixa) — só com os QUATRO números, como o render exige. */
+function segmentoDe(camada: Layer): { inicioX: number; inicioY: number; fimX: number; fimY: number } | null {
+  const s = (camada.style ?? {}) as { gradientStartX?: unknown; gradientStartY?: unknown; gradientEndX?: unknown; gradientEndY?: unknown }
+  return typeof s.gradientStartX === 'number' && typeof s.gradientStartY === 'number' && typeof s.gradientEndX === 'number' && typeof s.gradientEndY === 'number'
+    ? { inicioX: s.gradientStartX, inicioY: s.gradientStartY, fimX: s.gradientEndX, fimY: s.gradientEndY }
+    : null
+}
+
 interface ParadaLida {
   position?: number
   opacity?: number
@@ -270,8 +336,10 @@ export function configDaCamada(camada: Layer): AjustesDoGradiente | null {
 
 /**
  * A borda FORTE de uma camada de gradiente desenhada no editor: pelo segmento
- * explícito (início e fim), quando existe, ou pelo ângulo — nos gradientes da
- * marca, 169° é o topo e 11° o rodapé. Sem paradas legíveis, null.
+ * explícito (início e fim, os quatro números — como o render), quando existe,
+ * ou pelo ângulo — nos gradientes da marca, 169° é o topo e 11° o rodapé; sem
+ * ângulo, 0° (o default do render e do editor: começa embaixo). Sem paradas
+ * legíveis, null.
  */
 export function bordaDaCamadaDeGradiente(camada: Layer): Borda | null {
   if (camada.type !== 'gradient' && camada.type !== 'gradient2') return null
@@ -281,11 +349,12 @@ export function bordaDaCamadaDeGradiente(camada: Layer): Borda | null {
   if (paradas.length < 2) return null
   const opacidade = (s: ParadaLida) => (typeof s.opacity === 'number' ? s.opacity : 1)
   const forteNoInicio = opacidade(paradas[0]) >= opacidade(paradas[paradas.length - 1])
-  const s = (camada.style ?? {}) as { gradientStartY?: unknown; gradientEndY?: unknown; gradientAngle?: unknown }
-  if (typeof s.gradientStartY === 'number' && typeof s.gradientEndY === 'number' && s.gradientStartY !== s.gradientEndY) {
-    return forteNoInicio === s.gradientStartY < s.gradientEndY ? 'topo' : 'rodape'
+  const s = (camada.style ?? {}) as { gradientAngle?: unknown }
+  const segmento = segmentoDe(camada)
+  if (segmento && segmento.inicioY !== segmento.fimY) {
+    return forteNoInicio === segmento.inicioY < segmento.fimY ? 'topo' : 'rodape'
   }
-  const angulo = (((typeof s.gradientAngle === 'number' ? s.gradientAngle : 180) % 360) + 360) % 360
+  const angulo = (((typeof s.gradientAngle === 'number' ? s.gradientAngle : 0) % 360) + 360) % 360
   const inicioEmCima = angulo > 90 && angulo < 270
   return forteNoInicio === inicioEmCima ? 'topo' : 'rodape'
 }

@@ -28,6 +28,8 @@ vi.mock('@/lib/creatives/server-text-measurer', () => ({
 vi.mock('@/lib/posts/register-project-fonts', () => ({ registerProjectFonts: vi.fn(async () => undefined), familiasNaoCarregadas: mocks.naoCarregadas, fetchBuffer: mocks.fetch }))
 vi.mock('../compor', () => ({ arranjosDasCombinacoes: vi.fn(async () => []), carregarAssinatura: mocks.carregarAssinatura, carregarFoto: mocks.carregarFoto, familiasDoProjeto: mocks.familias, luzMediaDaFoto: mocks.luz }))
 vi.mock('@/server/google-drive-service', () => ({ googleDriveService: { isEnabled: () => true, getFileMetadata: mocks.driveMeta } }))
+// A foto do Drive das specs é do projeto delas (o escopo tem teste próprio).
+vi.mock('@/lib/google-drive/escopo', () => ({ assertDriveDoProjeto: async (_projeto: number, id: string) => id }))
 vi.mock('@vercel/blob', () => ({ put: mocks.put, del: vi.fn() }))
 
 import { montarAssinatura } from '../assinatura'

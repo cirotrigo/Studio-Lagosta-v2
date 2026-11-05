@@ -264,12 +264,14 @@ export async function cleanupGenerations(): Promise<GenerationCleanupStats> {
           agenda; com repost, URL morta entregue ao Zernio). Se o `del` falhar
           depois disto, o post já aponta para o Drive, que é válido.
         */
+        let podeApagarBlob = true
         if (gen.resultUrl && gen.googleDriveBackupUrl) {
           const r = await reapontarMidiasDosPosts(gen.resultUrl, gen.googleDriveBackupUrl)
           stats.postsReapontados += r.posts
+          podeApagarBlob = r.podeApagarBlob // B1d: a URL provada de um post semântico não morre
         }
         const pathname = gen.fileName ?? extractBlobPathname(gen.resultUrl)
-        if (pathname) {
+        if (pathname && podeApagarBlob) {
           try {
             await del(pathname)
             stats.blobsDeleted++
@@ -343,12 +345,14 @@ export async function cleanupGenerations(): Promise<GenerationCleanupStats> {
                 gen.Project.name,
               )
               // Mesma regra do Pass A: os posts antes do blob.
+              let podeApagarBlob = true
               if (gen.resultUrl) {
                 const r = await reapontarMidiasDosPosts(gen.resultUrl, backup.publicUrl)
                 stats.postsReapontados += r.posts
+                podeApagarBlob = r.podeApagarBlob // B1d: a URL provada de um post semântico não morre
               }
               const pathname = gen.fileName ?? extractBlobPathname(gen.resultUrl)
-              if (pathname) {
+              if (pathname && podeApagarBlob) {
                 try {
                   await del(pathname)
                   stats.blobsDeleted++
@@ -430,11 +434,12 @@ export async function cleanupGenerationBlobs(): Promise<{
   for (const gen of candidates) {
     try {
       // Os posts antes do blob — ver o Pass A de `cleanupGenerations`.
+      let podeApagarBlob = true
       if (gen.resultUrl && gen.googleDriveBackupUrl) {
-        await reapontarMidiasDosPosts(gen.resultUrl, gen.googleDriveBackupUrl)
+        podeApagarBlob = (await reapontarMidiasDosPosts(gen.resultUrl, gen.googleDriveBackupUrl)).podeApagarBlob // B1d
       }
       const pathname = gen.fileName ?? extractBlobPathname(gen.resultUrl)
-      if (pathname) {
+      if (pathname && podeApagarBlob) {
         try {
           await del(pathname)
           stats.blobsDeleted++

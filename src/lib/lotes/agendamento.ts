@@ -28,6 +28,7 @@
 
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
+import { POLITICA_DO_ASSUNTO_RECOMENDADA, type PoliticaDoAssunto } from '@/lib/creatives/revisao/gate'
 import { canonico } from '@/lib/copy-autoral/revisao'
 import { formatarBRT, parseBRT } from '@/lib/creatives/data-brt'
 import { ESCOPO_PADRAO, normalizarEscopo, type EscopoAprendizado } from '@/lib/posts/learning-scope'
@@ -39,6 +40,20 @@ import { validarIdentidadeDeLote } from './identidade'
 
 /** Mudou a normalização do pedido? Suba a versão — e trate o hash antigo como o PR 11 trata o dele. */
 export const VERSAO_DO_AGENDAMENTO = 'agendamento-v1'
+
+/**
+ * CP5c § 8.1 — a política EFETIVA do assunto no gate (agendar-leva, ajustar-arte, revisar-arte informativo, ver-geracao,
+ * auditar-operacao, impressão digital): a FONTE ÚNICA; `ver-geracao` compara o registro gravado com ESTA constante e todo
+ * registro gravado com outra política vira `historico` (divergência `politica` de `validadeDoGate`) e é re-medido.
+ *
+ * - `semAssuntoLocalizavel: 'humano'` — DECIDIDO pelo owner em 17/10/2026 (contrato `docs/PLANO-2026-10-17-CASO-C-HUMANO-
+ *   CONTRATO.md` § 0): foto LIDA sem assunto localizável vai ao humano. O piloto sintético (PR #249, § 3b do resumo) mostrou
+ *   que "não se aplica" por estimativa era um APTO silencioso sem catálogo.
+ * - `estimado: 'humano'` — continua a PROPOSTA do CP5a (`POLITICA_DO_ASSUNTO_RECOMENDADA`): o owner NÃO decidiu o caso B.
+ */
+export const POLITICA_DO_ASSUNTO_DO_GATE: PoliticaDoAssunto = { estimado: POLITICA_DO_ASSUNTO_RECOMENDADA.estimado, semAssuntoLocalizavel: 'humano' }
+/** O nome do CP5c; o CP5d usa a MESMA constante (um gate, uma política — decisão 8.1 do CP5d). */
+export const POLITICA_DO_ASSUNTO_DO_AGENDAR_LEVA = POLITICA_DO_ASSUNTO_DO_GATE
 export const MAX_ITENS_DO_AGENDAMENTO = 60
 
 export type FormatoDaPeca = 'story' | 'feed' | 'quadrado'
@@ -353,12 +368,27 @@ export function decidirMidiaEmOutroPost(posts: Array<{ id: string; mediaUrls: st
 
 const ADOTAVEIS = new Set(['DRAFT', 'SCHEDULED'])
 
-/** Os posts que já têm a página da peça: adota, cria ou recusa. */
+export const MOTIVO_POST_APROVADO_INTOCAVEL =
+  'A página desta peça já está num post aprovado (agendado, publicando, publicado ou entregue ao publicador). Este perfil só trabalha em rascunho: nada foi alterado.'
+
+/**
+ * Os posts que já têm a página da peça: adota, cria ou recusa.
+ *
+ * `apenasRascunho` (perfil draft-only, H4): post da página que NÃO é rascunho,
+ * ou que já foi entregue ao publicador, recusa o item inteiro. Adotar um
+ * agendado não muda o status, mas os efeitos depois do commit escrevem em
+ * volta dele: vínculo da arte, pasta e nome da página, item do plano.
+ */
 export function decidirPostsDaPagina(
-  posts: Array<{ id: string; status: string }>,
+  posts: Array<{ id: string; status: string; laterPostId?: string | null }>,
   ligadosAOutroItem: ReadonlySet<string>,
+  opcoes: { apenasRascunho?: boolean } = {},
 ): { acao: 'adotar'; postId: string } | { acao: 'criar' } | ({ acao: 'falhar'; postId: string } & FalhaDoItem) {
   if (posts.length === 0) return { acao: 'criar' }
+  if (opcoes.apenasRascunho) {
+    const aprovado = posts.find((p) => p.status !== 'DRAFT' || !!p.laterPostId)
+    if (aprovado) return { acao: 'falhar', postId: aprovado.id, codigo: 'POST_APROVADO_INTOCAVEL', motivo: MOTIVO_POST_APROVADO_INTOCAVEL }
+  }
   const livre = posts.find((p) => ADOTAVEIS.has(p.status) && !ligadosAOutroItem.has(p.id))
   if (livre) return { acao: 'adotar', postId: livre.id }
   const deOutro = posts.find((p) => ADOTAVEIS.has(p.status))

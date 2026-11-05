@@ -25,7 +25,6 @@
 
 import { db } from '@/lib/db'
 import { lerCopyAutoral } from '@/lib/copy-autoral'
-import { papelDaCamada } from '@/lib/compositor/defasagem'
 import { CreativeError } from '@/lib/creatives/errors'
 import { getFeatureCost } from '@/lib/credits/settings'
 import { createArteRapida } from '@/lib/creatives/arte-rapida'
@@ -40,17 +39,15 @@ import {
   cabeMaisUmRender,
   caminhoAte,
   calcularConta,
+  camposDeTextoDasCamadas,
   decidirGeracao,
-  mapearContratoParaCampos,
   ehRecusa,
   itemExecutavel,
-  mapearCopyParaSlots,
   motivoDeNaoExecutar,
   type CampoDeTexto,
   type ContaDaExecucao,
 } from '@/lib/planos/execucao'
 import { montarSpecDoItem } from './spec-do-item'
-import { semColchetes } from '@/lib/compositor/destaques'
 
 export interface ExecutarPlanoInput {
   /** Piloto explícito apenas para a via compor. Não decorre das candidatas do card. */
@@ -548,22 +545,11 @@ async function renderizarItemDeModelo(
     avisoDeRotacao = `Modelo escolhido pela rotação (o menos usado do formato): "${rotacao.name}".`
   }
 
-  const campos = await camposDeTextoDoModelo(sourcePageId)
-  // F1 (PR 5): com o CONTRATO da copy no item, o casamento é por PAPEL e o
-  // contrato viaja até a página e a arte (createArteRapida grava original e
-  // efetiva). Sem contrato, o caminho posicional de sempre — o modelo
-  // desenha texto simples: os [colchetes] do destaque (marcação do compositor) saem.
+  // F1 (PR 5): com o CONTRATO da copy no item, o casamento é por PAPEL; sem ele, posicional. B1c: a
+  // copy vai CRUA — `createArteRapida` casa contra a página EFETIVA (a foto pode trocar de irmã),
+  // oculta o campo que ela não cobriu e recusa o bloco sem campo (COPY_NAO_CASA_COM_O_MODELO).
   const contrato = item.copyAutoral == null ? null : lerCopyAutoral(item.copyAutoral).copy
-  const { slotValues, ocultar, avisos } = contrato
-    ? mapearContratoParaCampos(campos, contrato)
-    : mapearCopyParaSlots(campos, (item.copyProposta ?? []).map((b) => semColchetes(b)))
-
-  const valores: Record<string, unknown> = { ...slotValues }
-  // Campo de texto que a copy não cobriu sai OCULTO: o texto do modelo é
-  // placeholder, e publicá-lo mentia na peça ("TERÇA A SEXTA…" numa arte que
-  // nem fala de horário). A camada continua na página, invisível — quem abrir
-  // no editor consegue religar.
-  for (const layerId of ocultar) valores[layerId] = { hidden: true }
+  const valores: Record<string, unknown> = {}
   if (item.fotoDriveId?.trim()) valores._driveImageId = item.fotoDriveId.trim()
 
   const arte = await createArteRapida({
@@ -576,7 +562,7 @@ async function renderizarItemDeModelo(
     // fecha o sinal de foto como aceitação, mesmo fora do topo da busca.
     fotoDoCard: item.fotoDriveId?.trim() || null,
     decididoPor: input.decididoPor ?? null,
-    ...(contrato ? { copyAutoral: contrato } : {}),
+    ...(contrato ? { copyAutoral: contrato } : { copyPosicional: item.copyProposta ?? [] }),
   })
 
   const situacao = await mover(input, item, 'pronto', {
@@ -586,7 +572,6 @@ async function renderizarItemDeModelo(
 
   const todos = [
     ...(avisoDeRotacao ? [avisoDeRotacao] : []),
-    ...avisos,
     ...(arte.imageWarning ? [arte.imageWarning] : []),
     ...(arte.avisos ?? []),
   ]
@@ -725,8 +710,5 @@ async function camposDeTextoDoModelo(pageId: string): Promise<CampoDeTexto[]> {
       422,
     )
   }
-  return camadas
-    .filter((c) => c?.type === 'text')
-    .map((c) => ({ layerId: String(c.id ?? ''), name: typeof c.name === 'string' ? c.name : null, papel: papelDaCamada(c as never) }))
-    .filter((c) => !!c.layerId)
+  return camposDeTextoDasCamadas(camadas)
 }

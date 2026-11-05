@@ -34,6 +34,7 @@ export function LayersPanelAdvanced() {
     toggleLayerVisibility,
     toggleLayerLock,
     removeLayer,
+    removeLayers,
     duplicateLayer,
     reorderLayers,
     updateLayer,
@@ -144,7 +145,8 @@ export function LayersPanelAdvanced() {
       if ((event.key === 'Delete' || event.key === 'Backspace') && selectedLayerIds.length > 0) {
         event.preventDefault()
         if (confirm(`Deletar ${selectedLayerIds.length} camada(s)?`)) {
-          selectedLayerIds.forEach((id) => removeLayer(id))
+          // G4.3: a seleção sai numa operação só, um desfazer
+          removeLayers(selectedLayerIds)
         }
         return
       }
@@ -172,7 +174,7 @@ export function LayersPanelAdvanced() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedLayerIds, clearLayerSelection, duplicateLayer, removeLayer, handleSelectAll])
+  }, [selectedLayerIds, clearLayerSelection, duplicateLayer, removeLayers, handleSelectAll])
 
   return (
     <div className="flex h-full flex-col">

@@ -71,6 +71,7 @@ import type { CopyAutoral, RevisaoDaCopy } from '@/lib/copy-autoral/contrato'
 import { lerCopyAutoral } from '@/lib/copy-autoral/serializar'
 import { blocosEmOrdem } from '@/lib/copy-autoral/validar'
 import { lerCamadas } from '@/lib/posts/page-layers'
+import { ehChaveReservada } from '@/lib/creatives/slot-fields'
 import { lerCarimboDaVoz, type CarimboDaVoz, type FonteDaVoz } from '@/lib/brand/voz-na-escrita'
 import { ocultaPeloRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
 
@@ -415,8 +416,24 @@ export interface PecaParaMedir {
   voz: CarimboDaVoz | null
 }
 
+/**
+ * O ajuste trocou TEXTO? `ajustes` é o pedido cru do ajustarArte: as chaves RESERVADAS de controle (`_imageUrl`, `_driveImageId`) e
+ * endereçamento só de imagem (`_slots: { foto: { fileUrl } }`) não são texto; texto por `_slots`/`_papeis` (string ou
+ * `{ content }`) é (B1d, checkpoint g).
+ */
+export function ajusteTemTexto(ajustes: unknown): boolean {
+  const a = objeto(ajustes)
+  if (!a) return false
+  const ehTexto = (v: unknown) => typeof v === 'string' || (!!objeto(v) && (v as Record<string, unknown>).content !== undefined)
+  // Pedido semântico MISTO: a chave legada também é pedido — só conta se for texto. Sem contrato, o critério de sempre.
+  const semantico = '_slots' in a || '_papeis' in a
+  return Object.entries(a).some(([k, v]) =>
+    k === '_slots' || k === '_papeis' ? Object.values(objeto(v) ?? {}).some(ehTexto) : !ehChaveReservada(k) && (!semantico || ehTexto(v)),
+  )
+}
+
 /** A arte de um ajuste SÓ do revisor: a chamada gravou `revisao` e nenhum texto em `ajustes`. */
-const ajusteSoDoRevisor = (a: ArteLida): boolean => a.source === 'ajuste-arte' && !!objeto(a.revisao) && Object.keys(objeto(a.ajustes) ?? {}).length === 0
+const ajusteSoDoRevisor = (a: ArteLida): boolean => a.source === 'ajuste-arte' && !!objeto(a.revisao) && !ajusteTemTexto(a.ajustes)
 
 function origemNoEstado(e: EstadoDaCopy, id: string): OrigemDaMudanca {
   return typeof e.origem === 'string' ? e.origem : (e.origem[id] ?? 'autor')
@@ -692,7 +709,7 @@ export function montarPecas(l: LeituraDaSemana): PecaParaMedir[] {
 
     const ajustesDoRevisor: AjusteDoRevisor[] = artes
       .filter((a) => a.source === 'ajuste-arte' && objeto(a.revisao))
-      .map((a) => ({ em: a.createdAt, soDiagramacao: !objeto(a.ajustes) || Object.keys(objeto(a.ajustes)!).length === 0 }))
+      .map((a) => ({ em: a.createdAt, soDiagramacao: !ajusteTemTexto(a.ajustes) }))
     const visibilidade = pagina && corte == null ? desfechosDaVisibilidade(ajustesDeVisibilidade(artes), pagina.layers) : []
 
     // A linha do tempo: o original, as efetivas das artes, e a página hoje.

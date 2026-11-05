@@ -21,6 +21,7 @@
 import { z } from 'zod'
 import { CATALOGO, INDICE_DO_CATALOGO } from '../src/lib/mcp/catalogo/index'
 import { INSTRUCOES } from '../src/lib/mcp/instrucoes'
+import { DOT_OPERACAO_VERSAO, MANUAL_DO_DOT } from '../src/lib/mcp/operacao-dot'
 import { definirTool } from '../src/lib/mcp/registro/definir'
 import { executarTool } from '../src/lib/mcp/registro/porta'
 import { ErroDeTool, type ToolPronta } from '../src/lib/mcp/registro/tipos'
@@ -152,8 +153,9 @@ const LITERAL_CRIAR_ARTE_DE_MODELO = {
     sourcePageId: { type: 'string', description: 'ID da página de template (prepare-creative.page.id).' },
     slotValues: {
       type: 'object',
+      // CP4.2b (15/10/2026): formato do slotValues validado — mudança DELIBERADA da descrição.
       description:
-        'Valores por slot, com as chaves do template (layerId ou nome da camada). String define texto; objeto aceita {content, fileUrl}. Chaves reservadas: _driveImageId, _imageUrl.',
+        'Valores por slot, com as chaves do template (layerId ou nome da camada). String define texto; objeto aceita só {content, fileUrl, hidden: true, papel, bloco} — outro formato é VALOR_INVALIDO (400) e chave sem camada no modelo efetivo é CHAVE_DESCONHECIDA (422), antes de criar qualquer coisa. Chaves reservadas: _driveImageId, _imageUrl, _slots ({slotId: valor}) e _papeis ({papel declarado: valor}) — use só o que escolher-modelo marcou em addressableBy; texto (string ou {content}) só em camada de texto, {fileUrl} só em imagem. Com copyAutoral, só chaves reservadas, e o texto vem da copy: na prática só os endereços de IMAGEM servem (camada oculta não é endereço).',
       additionalProperties: true,
     },
     name: { type: 'string', description: 'Nome da página gerada (opcional).' },
@@ -162,7 +164,7 @@ const LITERAL_CRIAR_ARTE_DE_MODELO = {
     copyAutoral: {
       type: 'object',
       description:
-        'O CONTRATO da copy autoral (F1), como em compor-arte: {versao: "copy-autoral-v1", origem: {autor: "claude", superficie: "chat"}, blocos: [{id, funcao (pre|headline|apoio|cta|servico), ordem, linhas EXATAS}], revisoes: []}. Com ele, os campos do modelo são casados por PAPEL (não por posição) — mande também os slotValues das chaves reservadas (_driveImageId/_imageUrl) e nada de texto; o bloco sem campo no modelo é AVISADO, nunca perdido, e a arte grava a copy escrita × desenhada (ver-geracao).',
+        'O CONTRATO da copy autoral (F1), como em compor-arte: {versao: "copy-autoral-v1", origem: {autor: "claude", superficie: "chat"}, blocos: [{id, funcao (pre|headline|apoio|cta|servico), ordem, linhas EXATAS}], revisoes: []}. Com ele, os campos do modelo são casados por PAPEL (não por posição) — mande nos slotValues só chaves reservadas (_driveImageId/_imageUrl/_slots/_papeis), nunca texto por layerId ou nome (recusado: COPY_COM_CHAVES_LEGADAS). O casamento é feito contra a página que a arte usa de fato; campo de texto que a copy não cobriu sai oculto, e bloco sem campo no modelo RECUSA a arte (COPY_NAO_CASA_COM_O_MODELO) em vez de sumir. A arte grava a copy escrita × desenhada (ver-geracao).',
       additionalProperties: {},
     },
   },
@@ -862,7 +864,7 @@ const LITERAIS_ARTE_IA: Record<string, unknown> = {
       pageId: { type: 'string', description: 'A arte a ajustar (pageId devolvido por criar-arte ou criar-arte-de-modelo).' },
       slotValues: {
         type: 'object',
-        description: 'Só o que muda: chave = id ou nome da camada, valor = novo texto (string) ou {content, fileUrl}.',
+        description: 'Só o que muda: chave = id ou nome da camada, valor = novo texto (string) ou objeto só com {content, fileUrl, hidden: true, papel, bloco} — qualquer outro formato é VALOR_INVALIDO e chave sem camada é CHAVE_DESCONHECIDA (nada é gravado). Também _slots ({slotId: valor}) e _papeis ({papel declarado: valor}), resolvidos nesta página; texto só em camada de texto, {fileUrl} só em imagem.',
         additionalProperties: true,
       },
       imageUrl: { type: 'string', description: 'Nova foto de fundo (URL pública).' },
@@ -893,7 +895,7 @@ const LITERAIS_ARTE_IA: Record<string, unknown> = {
             borda: { type: 'string', enum: ['topo', 'rodape'], description: 'gradiente: a borda do gradiente de leitura.' },
             forca: { type: 'number', minimum: 0, maximum: 1, description: 'gradiente: força nova (opacidade na borda, 0 a 1).' },
             altura: { type: 'number', minimum: 40, maximum: 4000, description: 'gradiente: altura nova da faixa em px.' },
-            cor: { type: 'string', pattern: '^#[0-9a-fA-F]{6}$', description: 'gradiente: cor (#RRGGBB), só usada quando a borda ainda não tem gradiente.' },
+            cor: { type: 'string', pattern: '^#[0-9a-fA-F]{6}$', description: 'gradiente: cor (#RRGGBB) do gradiente CRIADO numa borda sem gradiente. Sobre um gradiente que já existe, cor diferente da dele é RECUSADA (trocar a cor não é suportado por este ajuste).' },
             visivel: { type: 'boolean', description: 'visibilidade: true mostra, false esconde.' },
             largura: { type: 'number', minimum: 20, maximum: 4000, description: 'caixa: largura nova da caixa de texto em px (o alinhamento do texto é preservado).' },
             alturaAutomatica: { type: 'boolean', description: 'caixa: true liga a altura automática (a caixa cresce até caber o texto).' },
@@ -905,9 +907,570 @@ const LITERAIS_ARTE_IA: Record<string, unknown> = {
         maxItems: 30,
         description: 'Ajustes de diagramação — a lista `ajustes` que revisar-arte devolve (mande todos ou só os que decidir aplicar). Aplicados depois dos textos e da foto.',
       },
-      versaoEsperada: {
-        type: 'string',
-        description: 'A `versao` que revisar-arte devolveu. OBRIGATÓRIA quando vierem `ajustes` (VERSAO_OBRIGATORIA sem ela). Se a página mudou desde a revisão, nada é aplicado (VERSAO_DIVERGENTE) — revise de novo.',
+      // T1 (05/11/2026): `camadas` e `pagina` — mudança DELIBERADA do schema; `versaoEsperada` passa a cobrir os dois.
+      "versaoEsperada": {
+        "type": "string",
+        "description": "A `versao` que ver-pagina ou revisar-arte devolveu. OBRIGATÓRIA quando vierem `ajustes`, `camadas` ou `pagina` (VERSAO_OBRIGATORIA sem ela). Se a página mudou desde a leitura, nada é aplicado (VERSAO_DIVERGENTE) — leia de novo."
+      },
+      "camadas": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "enum": [
+                "definir",
+                "adicionar",
+                "remover",
+                "reordenar"
+              ],
+              "description": "definir (campos de uma camada), adicionar (camada nova), remover, reordenar."
+            },
+            "camada": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "description": "definir/remover/reordenar: id OU nome da camada (ver-pagina lista os dois)."
+            },
+            "tipo": {
+              "type": "string",
+              "enum": [
+                "texto",
+                "imagem",
+                "logo",
+                "forma",
+                "icone",
+                "gradiente"
+              ],
+              "description": "adicionar: texto, imagem, logo, forma, icone ou gradiente."
+            },
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "description": "adicionar: id desejado para a camada nova (letras, números, _ e -); sem ele o servidor gera um."
+            },
+            "ordem": {
+              "type": "integer",
+              "description": "reordenar: a posição na pilha (0 = fundo, última = frente); adicionar: onde entra (default: na frente)."
+            },
+            "campos": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                },
+                "visible": {
+                  "type": "boolean"
+                },
+                "locked": {
+                  "type": "boolean"
+                },
+                "order": {
+                  "type": "integer",
+                  "description": "posição na pilha, 0 = fundo (o mesmo que reordenar)."
+                },
+                "rotation": {
+                  "type": "number",
+                  "description": "graus, -360 a 360."
+                },
+                "position": {
+                  "type": "object",
+                  "properties": {
+                    "x": {
+                      "type": "number"
+                    },
+                    "y": {
+                      "type": "number"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "description": "posição ABSOLUTA em px da página (canto superior esquerdo)."
+                },
+                "size": {
+                  "type": "object",
+                  "properties": {
+                    "width": {
+                      "type": "number"
+                    },
+                    "height": {
+                      "type": "number"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "description": "caixa em px (1 a 10000)."
+                },
+                "content": {
+                  "type": "string",
+                  "maxLength": 2000,
+                  "description": "texto: o conteúdo (\\n quebra linha)."
+                },
+                "fileUrl": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2048,
+                  "description": "imagem/logo: URL da imagem (no perfil de rascunho é recusada: use driveImageId)."
+                },
+                "driveImageId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200,
+                  "description": "imagem: a foto do acervo (de buscar-fotos) — resolvida para a URL do Studio."
+                },
+                "style": {
+                  "type": "object",
+                  "properties": {
+                    "fontFamily": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 120,
+                      "description": "texto: família da fonte (cadastrada no projeto)."
+                    },
+                    "fontWeight": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 20
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ],
+                      "description": "texto: peso (\"400\", \"700\", 700)."
+                    },
+                    "fontSize": {
+                      "type": "number",
+                      "description": "texto: corpo em px (8 a 600)."
+                    },
+                    "color": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64,
+                      "description": "texto/ícone: cor (#RRGGBB, rgba(), nome CSS)."
+                    },
+                    "textAlign": {
+                      "type": "string",
+                      "enum": [
+                        "left",
+                        "center",
+                        "right"
+                      ]
+                    },
+                    "textTransform": {
+                      "type": "string",
+                      "enum": [
+                        "none",
+                        "uppercase",
+                        "lowercase",
+                        "capitalize"
+                      ]
+                    },
+                    "letterSpacing": {
+                      "type": "number",
+                      "description": "texto: espaçamento entre letras em px (-100 a 100)."
+                    },
+                    "lineHeight": {
+                      "type": "number",
+                      "description": "texto: entrelinha, multiplicador do corpo (0.5 a 3) — gravada nos dois campos que o render lê."
+                    },
+                    "fontStyle": {
+                      "type": "string",
+                      "enum": [
+                        "normal",
+                        "italic"
+                      ]
+                    },
+                    "opacity": {
+                      "type": "number",
+                      "description": "qualquer camada visual: opacidade 0 a 1."
+                    },
+                    "crop": {
+                      "type": "object",
+                      "properties": {
+                        "x": {
+                          "type": "number"
+                        },
+                        "y": {
+                          "type": "number"
+                        },
+                        "width": {
+                          "type": "number"
+                        },
+                        "height": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "x",
+                        "y",
+                        "width",
+                        "height"
+                      ],
+                      "additionalProperties": false,
+                      "description": "imagem/logo: recorte em frações 0..1 da imagem original (vence objectFit/cropPosition)."
+                    },
+                    "objectFit": {
+                      "type": "string",
+                      "enum": [
+                        "contain",
+                        "cover",
+                        "fill"
+                      ]
+                    },
+                    "cropPosition": {
+                      "type": "string",
+                      "enum": [
+                        "left-top",
+                        "center-top",
+                        "right-top",
+                        "left-middle",
+                        "center-middle",
+                        "right-middle",
+                        "left-bottom",
+                        "center-bottom",
+                        "right-bottom"
+                      ]
+                    },
+                    "flipH": {
+                      "type": "boolean"
+                    },
+                    "flipV": {
+                      "type": "boolean"
+                    },
+                    "blur": {
+                      "type": "number",
+                      "description": "imagem: desfoque 0 a 100."
+                    },
+                    "exposure": {
+                      "type": "number",
+                      "description": "imagem: -1 a 1."
+                    },
+                    "contrast": {
+                      "type": "number",
+                      "description": "imagem: -100 a 100."
+                    },
+                    "highlights": {
+                      "type": "number",
+                      "description": "imagem: -100 a 100."
+                    },
+                    "shadows": {
+                      "type": "number",
+                      "description": "imagem: -100 a 100."
+                    },
+                    "whites": {
+                      "type": "number",
+                      "description": "imagem: -100 a 100."
+                    },
+                    "blacks": {
+                      "type": "number",
+                      "description": "imagem: -100 a 100."
+                    },
+                    "saturation": {
+                      "type": "number",
+                      "description": "imagem: -2 a 2."
+                    },
+                    "vignette": {
+                      "type": "number",
+                      "description": "imagem: 0 a 1."
+                    },
+                    "fill": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64,
+                      "description": "forma/ícone: cor de preenchimento."
+                    },
+                    "strokeColor": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64,
+                      "description": "forma/ícone: cor do contorno."
+                    },
+                    "strokeWidth": {
+                      "type": "number",
+                      "description": "forma/ícone: espessura do contorno em px (0 a 200)."
+                    },
+                    "shapeType": {
+                      "type": "string",
+                      "enum": [
+                        "rectangle",
+                        "rounded-rectangle",
+                        "circle",
+                        "triangle",
+                        "star",
+                        "arrow",
+                        "line"
+                      ],
+                      "description": "forma: o desenho (svg-path não entra por aqui)."
+                    },
+                    "iconId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 120,
+                      "description": "ícone: qual ícone."
+                    },
+                    "gradientType": {
+                      "type": "string",
+                      "enum": [
+                        "linear",
+                        "radial"
+                      ]
+                    },
+                    "gradientAngle": {
+                      "type": "number",
+                      "description": "gradiente: 0 a 360."
+                    },
+                    "gradientStops": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "maxLength": 64
+                          },
+                          "color": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 64
+                          },
+                          "position": {
+                            "type": "number"
+                          },
+                          "opacity": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "color",
+                          "position",
+                          "opacity"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "minItems": 1,
+                      "maxItems": 8,
+                      "description": "gradiente: paradas {color, position 0..1, opacity 0..1}."
+                    },
+                    "gradientStartX": {
+                      "type": "number"
+                    },
+                    "gradientStartY": {
+                      "type": "number"
+                    },
+                    "gradientEndX": {
+                      "type": "number"
+                    },
+                    "gradientEndY": {
+                      "type": "number"
+                    },
+                    "gradientCenterX": {
+                      "type": "number"
+                    },
+                    "gradientCenterY": {
+                      "type": "number"
+                    },
+                    "gradientRadiusScale": {
+                      "type": "number",
+                      "description": "gradiente radial: 0.1 a 5."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "textboxConfig": {
+                  "type": "object",
+                  "properties": {
+                    "anchor": {
+                      "type": "string",
+                      "enum": [
+                        "top",
+                        "middle",
+                        "bottom"
+                      ]
+                    },
+                    "autoWrap": {
+                      "type": "object",
+                      "properties": {
+                        "breakMode": {
+                          "type": "string",
+                          "enum": [
+                            "word",
+                            "char",
+                            "hybrid"
+                          ]
+                        },
+                        "autoExpand": {
+                          "type": "boolean"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "effects": {
+                  "type": "object",
+                  "properties": {
+                    "stroke": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "strokeColor": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 64
+                        },
+                        "strokeWidth": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "strokeColor",
+                        "strokeWidth"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "shadow": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "shadowColor": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 64
+                        },
+                        "shadowBlur": {
+                          "type": "number"
+                        },
+                        "shadowOffsetX": {
+                          "type": "number"
+                        },
+                        "shadowOffsetY": {
+                          "type": "number"
+                        },
+                        "shadowOpacity": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "shadowColor",
+                        "shadowBlur",
+                        "shadowOffsetX",
+                        "shadowOffsetY",
+                        "shadowOpacity"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "blur": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "blurRadius": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "blurRadius"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "background": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "backgroundColor": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 64
+                        },
+                        "padding": {
+                          "type": "number"
+                        },
+                        "fit": {
+                          "type": "string",
+                          "enum": [
+                            "caixa",
+                            "texto"
+                          ]
+                        },
+                        "opacity": {
+                          "type": "number"
+                        },
+                        "borderRadius": {
+                          "type": "number"
+                        },
+                        "blur": {
+                          "type": "number"
+                        },
+                        "offsetX": {
+                          "type": "number"
+                        },
+                        "offsetY": {
+                          "type": "number"
+                        },
+                        "paddingX": {
+                          "type": "number"
+                        },
+                        "paddingY": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "backgroundColor",
+                        "padding"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false,
+              "description": "definir: o que muda (só os campos enviados); adicionar: o que difere dos defaults do servidor."
+            }
+          },
+          "required": [
+            "op"
+          ],
+          "additionalProperties": false
+        },
+        "maxItems": 40,
+        "description": "Edição de camadas pelos dados (ver a descrição): lista de operações {op: definir|adicionar|remover|reordenar, camada (id ou nome), tipo, id, ordem, campos}. Exige versaoEsperada. Tudo ou nada."
+      },
+      "pagina": {
+        "type": "object",
+        "properties": {
+          "background": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "cor de fundo da página (#RRGGBB, rgba(), nome CSS)."
+          },
+          "width": {
+            "type": "integer",
+            "description": "largura em px (200 a 8000)."
+          },
+          "height": {
+            "type": "integer",
+            "description": "altura em px (200 a 8000)."
+          }
+        },
+        "additionalProperties": false,
+        "description": "A página: {background, width, height}. Exige versaoEsperada."
       },
     },
     required: ['projectId', 'pageId'],
@@ -947,6 +1510,28 @@ const LITERAIS_ARTE_IA: Record<string, unknown> = {
     },
     required: ['projectId', 'generationId'],
     additionalProperties: false,
+  },
+  // Tool NOVA (05/11/2026, T1 do plano "artes pelo MCP"): o fixture nasce com ela.
+  'ver-pagina': {
+    "type": "object",
+    "properties": {
+      "projectId": {
+        "type": "number",
+        "description": "ID do cliente."
+      },
+      "pageId": {
+        "type": "string",
+        "description": "A página (pageId de compor-arte, criar-arte, criar-arte-de-modelo, ajustar-arte, ver-geracao ou do post)."
+      },
+      "generationId": {
+        "type": "string",
+        "description": "Alternativa ao pageId: o id da arte; a página é a gravada nela."
+      }
+    },
+    "required": [
+      "projectId"
+    ],
+    "additionalProperties": false
   },
   'ver-geracao': {
     type: 'object',
@@ -1305,6 +1890,28 @@ const LITERAIS_RESTANTE: Record<string, unknown> = {
     required: ['projectId', 'driveFileId'],
     additionalProperties: false,
   },
+  // Tool NOVA (02/11, F2b): o fixture nasce com ela.
+  'marcar-assunto': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      driveFileId: { type: 'string', description: 'A foto (o driveFileId que buscar-fotos devolve).' },
+      decisao: {
+        type: 'string',
+        enum: ['caixa', 'sem-assunto', 'automatico'],
+        description: 'caixa grava a caixa; sem-assunto grava a negativa; automatico revoga a decisão.',
+      },
+      caixa: {
+        type: 'object',
+        properties: { x0: { type: 'number' }, y0: { type: 'number' }, x1: { type: 'number' }, y1: { type: 'number' } },
+        required: ['x0', 'y0', 'x1', 'y1'],
+        additionalProperties: false,
+        description: 'Só com decisao "caixa": frações da foto como o Drive a mostra, com x1 > x0 e y1 > y0.',
+      },
+    },
+    required: ['projectId', 'driveFileId', 'decisao'],
+    additionalProperties: false,
+  },
   'pedir-foto': {
     type: 'object',
     properties: {
@@ -1446,6 +2053,107 @@ for (const [nome, literal] of Object.entries(LITERAIS_AVALIACOES)) {
   comparaSchemas(nome, CATALOGO.get(nome)?.schemaJson, literal)
 }
 
+// Tools NOVAS (02/11/2026, campos estruturados da base). O fixture nasce com
+// elas: mudança de schema daqui para a frente é deliberada ou o snapshot acusa.
+const LITERAIS_OPERACAO_DA_BASE: Record<string, unknown> = {
+  "atualizar-dados-entrada-base": {
+    "type": "object",
+    "properties": {
+      "projectId": {
+        "type": "number",
+        "description": "ID do cliente."
+      },
+      "entradaId": {
+        "type": "string",
+        "description": "Id da entrada (de consultar-base)."
+      },
+      "versaoEsperada": {
+        "type": "string",
+        "description": "O campo `versao` da entrada em consultar-base. Se a entrada mudou, nada é gravado."
+      },
+      "operacaoId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{8,64}$",
+        "description": "Id desta operação, gerado por você (8 a 64 letras, números, _ ou -). O mesmo id com o mesmo pedido nunca grava duas vezes."
+      },
+      "alteracoes": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "campo": {
+              "type": "string"
+            },
+            "valor": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "campo",
+            "valor"
+          ],
+          "additionalProperties": false
+        },
+        "description": "Campos a alterar, cada um pelo caminho (ex: {\"campo\":\"hours.monday\",\"valor\":\"11:00-17:00\"})."
+      },
+      "content": {
+        "type": "string",
+        "description": "Novo texto completo da entrada (opcional): substitui o texto inteiro e exige reindexar."
+      },
+      "reverterOperacaoId": {
+        "type": "string",
+        "description": "Restaura exatamente o estado anterior a esta operação. Não combina com alteracoes nem content."
+      },
+      "aceitarDivergencias": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Campos cuja contradição com os textos a pessoa aceitou, e \"texto.excecoes\" para remover linha datada do texto."
+      },
+      "autorizarIndexacao": {
+        "type": "boolean",
+        "description": "Obrigatório quando a proposta traz indexacao.necessaria: true, com o custo mostrado à pessoa."
+      },
+      "confirmado": {
+        "type": "boolean",
+        "description": "Só grava com true. Sem isto devolve a proposta."
+      }
+    },
+    "required": [
+      "projectId",
+      "entradaId",
+      "versaoEsperada",
+      "operacaoId"
+    ],
+    "additionalProperties": false
+  },
+  "consultar-operacao-base": {
+    "type": "object",
+    "properties": {
+      "projectId": {
+        "type": "number",
+        "description": "ID do cliente."
+      },
+      "operacaoId": {
+        "type": "string",
+        "description": "O operacaoId usado na escrita."
+      },
+      "entradaId": {
+        "type": "string",
+        "description": "Id da entrada, para ver a trilha dela."
+      }
+    },
+    "required": [
+      "projectId"
+    ],
+    "additionalProperties": false
+  }
+}
+for (const [nome, literal] of Object.entries(LITERAIS_OPERACAO_DA_BASE)) {
+  comparaSchemas(nome, CATALOGO.get(nome)?.schemaJson, literal)
+}
+
 // Tools NOVAS (02/09/2026, F1/F3 do editor-como-usina — o compositor). O
 // fixture nasce com elas, como manda a regra do registro: mudança de schema
 // daqui para a frente é deliberada ou o snapshot acusa.
@@ -1558,6 +2266,39 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
       "fotoUrl": {
         "type": "string",
         "description": "URL pública da foto, quando ela não está no acervo (ex.: fotoUrl de ver-foto-enviada)."
+      },
+      "fotoJanela": {
+        "type": "object",
+        "properties": {
+          "x": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "y": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "width": {
+            "type": "number",
+            "minimum": 0.01,
+            "maximum": 1
+          },
+          "height": {
+            "type": "number",
+            "minimum": 0.01,
+            "maximum": 1
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "width",
+          "height"
+        ],
+        "additionalProperties": false,
+        "description": "O CORTE da foto, explícito (F2a): o retângulo da foto original que a peça mostra, em frações 0..1 (x, y, width, height) — o mesmo crop que o editor grava. O compositor confere a proporção contra a caixa (ajuste mínimo dito; fora da foto, JANELA_NAO_CABE), lê a foto, protege o assunto e grava a janela na camada da foto (style.crop), que o editor abre igual. Sem ela, o compositor escolhe o enquadramento como sempre. Só com UMA foto (fotoDriveId ou fotoUrl); não combina com fotosCandidatas nem selecaoExperimental."
       },
       "blocos": {
         "type": "array",
@@ -1703,6 +2444,31 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
         "type": "object",
         "additionalProperties": {},
         "description": "O CONTRATO da copy autoral (F1): a copy inteira como você a escreveu — {versao: \"copy-autoral-v1\", origem: {autor: \"claude\", superficie: \"chat\"}, blocos: [{id, funcao (pre|headline|apoio|cta|servico|livre), grupoDeLeitura?, ordem, linhas (EXATAS: caixa, acento e [colchetes] como escritos), fatos?: [{entradaId, trecho}], estilo?: {herdaDe?, grupoVisual?, linhasNaVoz2?: [índices]}}], revisoes: []}. Com ele, `blocos` e `camadasExtras` são dispensáveis (saem do contrato, sem transformar texto). CAMADA EXTRA no contrato: bloco com estilo.herdaDe (o papel de que veste o estilo) e estilo.grupoVisual (principal|topo|rodape) — um bloco com função que a variante não tem (funcao \"servico\", herdaDe \"apoio\") ou um texto sem papel (funcao \"livre\", que EXIGE herdaDe). É o que deixa a copy inteira ser comparada com a arte depois (ver-geracao). O contrato é gravado ANTES de qualquer adaptação (página, arte e item)."
+      },
+      "arquetipo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          },
+          "versao": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "impressao": {
+            "type": "string",
+            "pattern": "^arq1-[0-9a-f]{14}$"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false,
+        // Mudança DELIBERADA (#16, 24/10/2026): a descrição do arquétipo passa a ter a frase dos acentos (T1b) com as cantoneiras presas à peça (ancoradoA: peca).
+        "description": "O ARQUÉTIPO de layout, opt-in: { id } ou { id, versao } — os disponíveis estão em ver-assinatura (campo arquetipos, com a disponibilidade de cada um). Com ele, a GEOMETRIA vem do arquétipo: a foto escolhe, DENTRO das zonas dele, o enquadramento e a posição de cada faixa (partindo da referência, só na vertical, poucas alternativas; o tratamento de leitura conta como custo, nunca como atalho), e a assinatura dá só o estilo (fonte, corpo, cor, destaque, logo, gradiente). No arquétipo de foto em caixa (fundo foto-em-caixa; ver-assinatura, campo caixaDaFoto — e mascaraDaFoto quando a caixa tem o topo em arco: o arco é do modelo, a peça o desenha e o congela, e o assunto conta só o que o arco mostra), a foto fica numa caixa e escolhe só o enquadramento: o texto fica na posição do modelo, no fundo da marca escolhido pelo contraste com as cores dos textos (nenhum papel serve: ARQUETIPO_FUNDO_INDISPONIVEL); sem foto, recusa (ARQUETIPO_FOTO_AUSENTE). Sem versão, vale a mais recente — e a peça grava a versão exata, a impressão e a escolha espacial, que a recomposição mantém (copy editada não move a peça: se não couber na posição congelada, é recusada). Para reproduzir uma medição, mande a fixacao.arquetipo do medir-copy (id + versao + impressao). Recusado ANTES de compor, com o motivo: papel que o arquétipo não tem (cta, por exemplo), papel obrigatório ausente, camada extra ou herdaDe, formato quadrado, linhas acima do máximo, preferência de âncora/alinhamento/canto diferente da dele, ou caixa que não cabe na referência — nada some. Os ACENTOS do arquétipo (fio fino, moldura aberta em L, brilho de 4 pontas, cantoneiras — ver-assinatura, campo elementos de cada arquétipo) entram presos ao texto (presoA), depois da posição escolhida pela foto, na cor desse texto (ou do destaque dele) — as cantoneiras (ancoradoA: peca) ficam nos cantos da peça, na cor do destaque da manchete, e só os braços contam como ocupados: o opcional que não cabe sai, dito em avisos e acentosOmitidos; o obrigatório que não cabe recusa (ARQUETIPO_ELEMENTO_NAO_CABE); a recomposição redesenha o acento gravado na peça (peça de antes deles continua sem). Sem posição válida na foto (zona, região protegida, leitura), SEM_COMBINACAO; com o enquadramento fixo impedindo o corte que resolveria, PREFERENCIA_INVIAVEL. Em leva com loteId, mande { id, versao } (ou a fixacao) para a retentativa continuar a mesma peça depois de uma versão nova publicada. Sem arquétipo, a composição é a de sempre."
       },
       "preferencias": {
         "type": "object",
@@ -1893,6 +2659,39 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
               "type": "string",
               "description": "URL pública da foto, quando ela não está no acervo (ex.: fotoUrl de ver-foto-enviada)."
             },
+            "fotoJanela": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "y": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "width": {
+                  "type": "number",
+                  "minimum": 0.01,
+                  "maximum": 1
+                },
+                "height": {
+                  "type": "number",
+                  "minimum": 0.01,
+                  "maximum": 1
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "width",
+                "height"
+              ],
+              "additionalProperties": false,
+              "description": "O CORTE da foto, explícito (F2a): o retângulo da foto original que a peça mostra, em frações 0..1 (x, y, width, height) — o mesmo crop que o editor grava. O compositor confere a proporção contra a caixa (ajuste mínimo dito; fora da foto, JANELA_NAO_CABE), lê a foto, protege o assunto e grava a janela na camada da foto (style.crop), que o editor abre igual. Sem ela, o compositor escolhe o enquadramento como sempre. Só com UMA foto (fotoDriveId ou fotoUrl); não combina com fotosCandidatas nem selecaoExperimental."
+            },
             "fotosCandidatas": {
               "type": "array",
               "items": {
@@ -2051,6 +2850,31 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
               "type": "object",
               "additionalProperties": {},
               "description": "O CONTRATO da copy autoral (F1): a copy inteira como você a escreveu — {versao: \"copy-autoral-v1\", origem: {autor: \"claude\", superficie: \"chat\"}, blocos: [{id, funcao (pre|headline|apoio|cta|servico|livre), grupoDeLeitura?, ordem, linhas (EXATAS: caixa, acento e [colchetes] como escritos), fatos?: [{entradaId, trecho}], estilo?: {herdaDe?, grupoVisual?, linhasNaVoz2?: [índices]}}], revisoes: []}. Com ele, `blocos` e `camadasExtras` são dispensáveis (saem do contrato, sem transformar texto). CAMADA EXTRA no contrato: bloco com estilo.herdaDe (o papel de que veste o estilo) e estilo.grupoVisual (principal|topo|rodape) — um bloco com função que a variante não tem (funcao \"servico\", herdaDe \"apoio\") ou um texto sem papel (funcao \"livre\", que EXIGE herdaDe). É o que deixa a copy inteira ser comparada com a arte depois (ver-geracao). O contrato é gravado ANTES de qualquer adaptação (página, arte e item)."
+            },
+            "arquetipo": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80,
+                  "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+                },
+                "versao": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "impressao": {
+                  "type": "string",
+                  "pattern": "^arq1-[0-9a-f]{14}$"
+                }
+              },
+              "required": [
+                "id"
+              ],
+              "additionalProperties": false,
+              // Mudança DELIBERADA (#16, 24/10/2026): a descrição do arquétipo passa a ter a frase dos acentos (T1b) com as cantoneiras presas à peça (ancoradoA: peca).
+              "description": "O ARQUÉTIPO de layout, opt-in: { id } ou { id, versao } — os disponíveis estão em ver-assinatura (campo arquetipos, com a disponibilidade de cada um). Com ele, a GEOMETRIA vem do arquétipo: a foto escolhe, DENTRO das zonas dele, o enquadramento e a posição de cada faixa (partindo da referência, só na vertical, poucas alternativas; o tratamento de leitura conta como custo, nunca como atalho), e a assinatura dá só o estilo (fonte, corpo, cor, destaque, logo, gradiente). No arquétipo de foto em caixa (fundo foto-em-caixa; ver-assinatura, campo caixaDaFoto — e mascaraDaFoto quando a caixa tem o topo em arco: o arco é do modelo, a peça o desenha e o congela, e o assunto conta só o que o arco mostra), a foto fica numa caixa e escolhe só o enquadramento: o texto fica na posição do modelo, no fundo da marca escolhido pelo contraste com as cores dos textos (nenhum papel serve: ARQUETIPO_FUNDO_INDISPONIVEL); sem foto, recusa (ARQUETIPO_FOTO_AUSENTE). Sem versão, vale a mais recente — e a peça grava a versão exata, a impressão e a escolha espacial, que a recomposição mantém (copy editada não move a peça: se não couber na posição congelada, é recusada). Para reproduzir uma medição, mande a fixacao.arquetipo do medir-copy (id + versao + impressao). Recusado ANTES de compor, com o motivo: papel que o arquétipo não tem (cta, por exemplo), papel obrigatório ausente, camada extra ou herdaDe, formato quadrado, linhas acima do máximo, preferência de âncora/alinhamento/canto diferente da dele, ou caixa que não cabe na referência — nada some. Os ACENTOS do arquétipo (fio fino, moldura aberta em L, brilho de 4 pontas, cantoneiras — ver-assinatura, campo elementos de cada arquétipo) entram presos ao texto (presoA), depois da posição escolhida pela foto, na cor desse texto (ou do destaque dele) — as cantoneiras (ancoradoA: peca) ficam nos cantos da peça, na cor do destaque da manchete, e só os braços contam como ocupados: o opcional que não cabe sai, dito em avisos e acentosOmitidos; o obrigatório que não cabe recusa (ARQUETIPO_ELEMENTO_NAO_CABE); a recomposição redesenha o acento gravado na peça (peça de antes deles continua sem). Sem posição válida na foto (zona, região protegida, leitura), SEM_COMBINACAO; com o enquadramento fixo impedindo o corte que resolveria, PREFERENCIA_INVIAVEL. Em leva com loteId, mande { id, versao } (ou a fixacao) para a retentativa continuar a mesma peça depois de uma versão nova publicada. Sem arquétipo, a composição é a de sempre."
             },
             "preferencias": {
               "type": "object",
@@ -2518,6 +3342,25 @@ const PALAVRAS_PERMITIDAS = new Set<string>([
     desconhecidos.length === 0,
     `desconhecidos: ${desconhecidos.join(', ')}`,
   )
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// E. O manual do agente operacional só cita tools que existem
+// ─────────────────────────────────────────────────────────────────────────
+
+console.log('\nE. Referências de tools no MANUAL do agente operacional')
+
+{
+  // Palavras hifenizadas do manual que não são tool: a versão e o valor do perfil efetivo.
+  const permitidas = new Set<string>([DOT_OPERACAO_VERSAO, 'draft-only'])
+  const tokens = JSON.stringify(MANUAL_DO_DOT).match(/\b[a-z][a-z0-9]*(?:-[a-z0-9]+)+\b/g) ?? []
+  const desconhecidos = Array.from(new Set(tokens)).filter((t) => !INDICE_DO_CATALOGO.has(t) && !permitidas.has(t))
+  confere(
+    'todo nome hifenizado do MANUAL do agente é tool do catálogo (ou a versão)',
+    desconhecidos.length === 0,
+    `desconhecidos: ${desconhecidos.join(', ')}`,
+  )
+  confere('auditar-operacao existe e é a primeira etapa do manual', INDICE_DO_CATALOGO.has('auditar-operacao') && MANUAL_DO_DOT.ordem[0].startsWith('auditar-operacao'))
 }
 
 secaoC()

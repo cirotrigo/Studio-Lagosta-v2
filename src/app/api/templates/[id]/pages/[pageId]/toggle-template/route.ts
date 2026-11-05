@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
+import { invalidateScheduledRenders } from '@/lib/posts/invalidate-renders'
 import { z } from 'zod'
 import {
   fetchTemplateWithProject,
@@ -71,13 +72,19 @@ export async function PATCH(
     const body = await request.json()
     const validatedData = toggleTemplateSchema.parse(body)
 
-    // Atualizar página
-    const page = await db.page.update({
-      where: { id: pageId },
-      data: {
-        isTemplate: validatedData.isTemplate,
-      },
-    })
+    /**
+     * Atualizar página. B1d (checkpoint f): trocar `isTemplate` muda o que o render desenha (modelo aplica os slots
+     * do post; o contrato semântico só vale em modelo) — os renders da página voltam à fila na MESMA transação, e uma
+     * falha semântica `PAGINA_DE_CONTEUDO` se recupera quando a página vira modelo. Sem mudança, nada a invalidar.
+     */
+    const page =
+      existingPage.isTemplate !== validatedData.isTemplate
+        ? await db.$transaction(async (tx) => {
+            const atualizada = await tx.page.update({ where: { id: pageId }, data: { isTemplate: validatedData.isTemplate } })
+            await invalidateScheduledRenders(tx, { pageIds: [pageId] })
+            return atualizada
+          })
+        : await db.page.update({ where: { id: pageId }, data: { isTemplate: validatedData.isTemplate } })
 
     // Deserializar layers na resposta
     const pageWithParsedLayers = {

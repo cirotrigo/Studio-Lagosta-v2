@@ -4,9 +4,12 @@ import { z } from 'zod'
 import { googleDriveService } from '@/server/google-drive-service'
 import { assertRateLimit, RateLimitError } from '@/lib/rate-limit'
 import { db } from '@/lib/db'
+import { DriveIndisponivelError, filtrarAtalhosDoEscopo, idsDoDriveNaRotaDoProjeto, raizesNaRotaDoProjeto } from '@/lib/google-drive/escopo'
 import { PermissionError, requireProjectAccess } from '@/lib/permissions'
 import type { DriveFolderType } from '@/types/drive'
 import type { GoogleDriveItem } from '@/types/google-drive'
+
+const naoEncontrado = () => NextResponse.json({ error: 'Não encontrado' }, { status: 404 })
 
 const querySchema = z.object({
   projectId: z.coerce.number().int().positive(),
@@ -86,6 +89,9 @@ function getCachedDriveListPayload(cacheKey: string) {
 
 export async function GET(req: Request) {
   let cacheKey: string | null = null
+  // O cache guarda a listagem, nunca a decisão: toda resposta (cache
+  // inclusive) reconfere os atalhos contra as pastas do projeto de AGORA.
+  let reconferir = async (p: DriveListRoutePayload) => p
   try {
     const { userId, orgId } = await auth()
     if (!userId) {
@@ -121,13 +127,23 @@ export async function GET(req: Request) {
         ? project.googleDriveVideosFolderId ?? project.googleDriveFolderId
         : project.googleDriveImagesFolderId ?? project.googleDriveFolderId
 
-    const effectiveFolderId = folderId ?? defaultFolderId
-
-    if (!effectiveFolderId) {
+    if (!folderId && !defaultFolderId) {
       return NextResponse.json({
         error: 'Projeto não possui pasta configurada para este tipo',
       }, { status: 400 })
     }
+
+    // Pasta pedida ou a padrão do projeto: só sob as pastas deste projeto
+    // (admin: Drive inteiro), e sempre no formato do Drive.
+    const permitidos = await idsDoDriveNaRotaDoProjeto(userId, projectId, [folderId ?? defaultFolderId])
+    if (!permitidos) {
+      return naoEncontrado()
+    }
+    const effectiveFolderId = permitidos[0]
+    // A pasta foi conferida, os filhos não: atalho para fora do projeto sai
+    // (admin: Drive inteiro).
+    const raizes = await raizesNaRotaDoProjeto(userId, projectId)
+    if (raizes) reconferir = async (p) => ({ ...p, items: await filtrarAtalhosDoEscopo(p.items, raizes) })
 
     cacheKey = getDriveListCacheKey({
       userId,
@@ -140,7 +156,7 @@ export async function GET(req: Request) {
 
     const cachedPayload = getCachedDriveListPayload(cacheKey)
     if (cachedPayload) {
-      return NextResponse.json(cachedPayload, {
+      return NextResponse.json(await reconferir(cachedPayload), {
         headers: { 'X-Drive-Cache': 'HIT' },
       })
     }
@@ -150,12 +166,13 @@ export async function GET(req: Request) {
       limit: DRIVE_LIST_RATE_LIMIT,
     })
 
-    const listResponse = await googleDriveService.listFiles({
+    const listado = await googleDriveService.listFiles({
       folderId: effectiveFolderId,
       search: normalizedSearch,
       pageToken,
       mode: resolvedFolderType === 'videos' ? 'videos' : 'images',
     })
+    const listResponse = raizes ? { ...listado, items: await filtrarAtalhosDoEscopo(listado.items, raizes) } : listado
 
     // Cache file metadata for faster future loads
     try {
@@ -217,15 +234,19 @@ export async function GET(req: Request) {
 
     return NextResponse.json(payload)
   } catch (error) {
+    if (error instanceof DriveIndisponivelError) {
+      return NextResponse.json({ error: 'Google Drive indisponível, tente de novo' }, { status: 503 })
+    }
+    // Projeto inexistente, sem acesso e pasta fora do projeto: a mesma resposta.
     if (error instanceof PermissionError) {
-      return NextResponse.json({ error: error.message }, { status: error.status })
+      return naoEncontrado()
     }
 
     if (error instanceof RateLimitError) {
       if (cacheKey) {
         const cachedPayload = getCachedDriveListPayload(cacheKey)
         if (cachedPayload) {
-          return NextResponse.json(cachedPayload, {
+          return NextResponse.json(await reconferir(cachedPayload), {
             headers: {
               'Retry-After': String(error.retryAfter),
               'X-Drive-Cache': 'STALE',

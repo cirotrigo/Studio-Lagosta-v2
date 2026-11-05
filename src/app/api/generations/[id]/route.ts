@@ -93,7 +93,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
     }
 
-    const result = await definirReferenciaDeEstilo(id, body.styleRef)
+    const result = await definirReferenciaDeEstilo(id, body.styleRef, generation.projectId)
     return NextResponse.json(result)
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Erro ao marcar a referência'

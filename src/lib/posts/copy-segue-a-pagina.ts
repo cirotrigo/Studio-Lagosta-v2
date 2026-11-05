@@ -35,6 +35,32 @@
 /** Chave de controle: este `slotValues` é uma cópia do texto da página, não copy própria do post. */
 export const COPIA_DA_PAGINA = '_copiaDaPagina'
 
+/** As chaves que identificam o contrato semântico NOVO num `SocialPost.slotValues` (B1d). */
+export const CHAVES_DO_CONTRATO_SEMANTICO = ['_slots', '_papeis'] as const
+
+/**
+ * O post usa o contrato semântico NOVO (`_slots`/`_papeis`)? Só IDENTIDADE: a presença PRÓPRIA da chave, com
+ * qualquer valor (`{ _slots: null }` conta). Não valida forma, não resolve alvo, não aplica nada — isso é de
+ * `resolverValoresSemanticos`, nos checkpoints seguintes do B1d. Leia sempre o valor PERSISTIDO: uma chave com
+ * `undefined` não sobrevive ao JSON do banco.
+ */
+export function temContratoSemantico(slotValues: unknown): boolean {
+  if (!slotValues || typeof slotValues !== 'object' || Array.isArray(slotValues)) return false
+  return CHAVES_DO_CONTRATO_SEMANTICO.some((chave) => Object.prototype.hasOwnProperty.call(slotValues, chave))
+}
+
+
+/**
+ * A cópia dos textos da PÁGINA pronta para o post: marcada e sem as chaves do contrato semântico novo. A cópia
+ * tem o nome da camada como chave, e uma camada chamada `_slots`/`_papeis` não é pedido — gravada assim, viraria
+ * contrato novo por acidente e a guarda de envio bloquearia um post legado (B1d, checkpoint c). Os leitores já
+ * ignoram toda chave `_…`, então nada visível se perde. É a forma que os escritores de cópia da página usam.
+ */
+export function copiaDaPagina(copy: Record<string, unknown>): Record<string, unknown> {
+  const semContrato = Object.fromEntries(Object.entries(copy).filter(([k]) => !(CHAVES_DO_CONTRATO_SEMANTICO as readonly string[]).includes(k)))
+  return comoCopiaDaPagina(semContrato)
+}
+
 /** A copy da página, marcada como cópia — o formato que o agendamento grava. */
 export function comoCopiaDaPagina(copy: Record<string, unknown>): Record<string, unknown> {
   return { ...copy, [COPIA_DA_PAGINA]: true }
@@ -159,5 +185,7 @@ export function slotValuesSeguindo(
       if (!ehTexto) base[k] = v
     }
   }
-  return { ...base, ...copyDepois }
+  // Texto de camada não cria nem sobrescreve o contrato semântico (B1d, checkpoint c): ver `copiaDaPagina`.
+  const textos = Object.fromEntries(Object.entries(copyDepois).filter(([k]) => !(CHAVES_DO_CONTRATO_SEMANTICO as readonly string[]).includes(k)))
+  return { ...base, ...textos }
 }

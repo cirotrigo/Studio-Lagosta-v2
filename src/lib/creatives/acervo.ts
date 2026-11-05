@@ -8,6 +8,8 @@
  */
 
 import { db } from '@/lib/db'
+import { idDoDriveValido } from '@/lib/google-drive/id'
+import { filtrarAtalhosDoEscopo, raizesDoProjeto } from '@/lib/google-drive/escopo'
 import { CreativeError } from '@/lib/creatives/errors'
 import { lerUsosDeFotoComEstado, mesclarUsos, type UsoDaFoto } from '@/lib/creatives/uso-de-foto'
 import {
@@ -32,6 +34,9 @@ import {
 import { registrarSugestao } from '@/lib/aprendizado/captura'
 import { chaveDeSugestao, diaBRT, resumoEstavel } from '@/lib/aprendizado/chaves'
 import { buscarSemelhantes, embedarConsulta, normalizarPorRank } from '@/lib/creatives/embeddings-de-foto'
+import { lerCaixaDoAssunto, type AssuntoNormalizado } from '@/lib/compositor/assunto-da-foto'
+import { assuntoEfetivoDaFoto, type AssuntoEfetivo, type DecisaoHumanaDoAssunto } from '@/lib/creatives/assunto-da-foto-efetivo'
+import { Prisma } from '../../../prisma/generated/client'
 
 const CATALOG_FILE = '_image-catalog.json'
 
@@ -95,6 +100,9 @@ export interface ImagemCatalogo {
   pessoas?: string | null
   tagsLivres?: string[]
   analiseVersao?: string
+  /** F2b — a caixa espacial do assunto (`catalogo-de-fotos.ts`): `null` = analisada, sem assunto localizado. */
+  caixaDoAssunto?: AssuntoNormalizado | null
+  caixaAnalisadaEm?: string
 }
 
 export interface Catalogo {
@@ -115,7 +123,8 @@ async function pastaDeImagens(projectId: number): Promise<string> {
     throw new CreativeError('PROJECT_NOT_FOUND', `Projeto não encontrado: ${projectId}`, 404)
   }
   const folderId = project.googleDriveImagesFolderId ?? project.googleDriveFolderId
-  if (!folderId) {
+  // Pasta mal configurada (`root`, id malformado) conta como sem pasta.
+  if (!idDoDriveValido(folderId)) {
     throw new CreativeError('SEM_PASTA_DRIVE', 'Este projeto não tem pasta de imagens no Drive.', 400)
   }
   return folderId
@@ -229,6 +238,69 @@ export async function lerCatalogoDoProjeto(
   }
 
   return { catalogo, todas }
+}
+
+/** `SEM_CATALOGO` = nenhuma entrada automática (a decisão humana vale sem catálogo); qualquer outra falha LANÇA. */
+async function entradasParaOAssunto(projectId: number): Promise<ImagemCatalogo[]> {
+  try {
+    return (await lerCatalogoDoProjeto(projectId)).todas
+  } catch (erro) {
+    if (erro instanceof CreativeError && erro.code === 'SEM_CATALOGO') return []
+    throw erro
+  }
+}
+
+/** As decisões humanas vigentes (`marcar-assunto`). A falha LANÇA: quem tolera é quem chama. */
+async function lerDecisoesDoAssunto(projectId: number, ids: string[]): Promise<Map<string, DecisaoHumanaDoAssunto>> {
+  const linhas = await db.photoAssunto.findMany({
+    where: { projectId, revogadoEm: null, driveFileId: { in: ids } },
+    select: { driveFileId: true, decisao: true, caixa: true },
+  })
+  return new Map(linhas.map((l) => [l.driveFileId, l]))
+}
+
+/**
+ * O assunto efetivo das fotos (F2b): a entrada do catálogo + a decisão humana, pelo resolvedor comum. É a leitura
+ * ÚNICA da composição, da seleção e da aprovação da referência. Falha do catálogo (fora de `SEM_CATALOGO`) ou da tabela
+ * LANÇA, e quem chama decide: com arquétipo, a região protegida é obrigatória.
+ */
+export async function assuntosEfetivosDoProjeto(projectId: number, ids: string[]): Promise<Map<string, AssuntoEfetivo>> {
+  const [todas, humanas] = await Promise.all([entradasParaOAssunto(projectId), lerDecisoesDoAssunto(projectId, ids)])
+  const porId = new Map(todas.map((i) => [i.driveFileId, i]))
+  return new Map(ids.map((id) => [id, assuntoEfetivoDaFoto(porId.get(id), humanas.get(id))]))
+}
+
+/** A decisão humana sobre o assunto (tool `marcar-assunto`). Só a tabela é escrita: o JSON do Drive não é tocado. */
+export async function marcarAssuntoDaFoto(input: {
+  projectId: number
+  driveFileId: string
+  decisao: 'caixa' | 'sem-assunto' | 'automatico'
+  caixa?: unknown
+  decididoPor: string | null
+}): Promise<{ anterior: AssuntoEfetivo; efetivo: AssuntoEfetivo }> {
+  const { projectId, driveFileId, decisao, decididoPor } = input
+  const caixa = decisao === 'caixa' ? lerCaixaDoAssunto(input.caixa) : null
+  if (decisao === 'caixa' && !caixa) {
+    throw new CreativeError('CAIXA_DO_ASSUNTO_INVALIDA', 'A caixa do assunto vai em frações da foto, de 0 a 1, com x1 > x0 e y1 > y0.', 400)
+  }
+
+  const [todas, humanas] = await Promise.all([entradasParaOAssunto(projectId), lerDecisoesDoAssunto(projectId, [driveFileId])])
+  const entrada = todas.find((i) => i.driveFileId === driveFileId)
+  const anterior = assuntoEfetivoDaFoto(entrada, humanas.get(driveFileId))
+
+  // Voltar ao automático é revogar, nunca excluir: o histórico da decisão fica (como em PhotoDestaque).
+  if (decisao === 'automatico') {
+    await db.photoAssunto.updateMany({ where: { projectId, driveFileId, revogadoEm: null }, data: { revogadoEm: new Date() } })
+    return { anterior, efetivo: assuntoEfetivoDaFoto(entrada, null) }
+  }
+
+  const valor = caixa ? (caixa as unknown as Prisma.InputJsonValue) : Prisma.DbNull
+  await db.photoAssunto.upsert({
+    where: { projectId_driveFileId: { projectId, driveFileId } },
+    create: { projectId, driveFileId, decisao, caixa: valor, decididoPor },
+    update: { decisao, caixa: valor, decididoPor, revogadoEm: null },
+  })
+  return { anterior, efetivo: assuntoEfetivoDaFoto(entrada, { decisao, caixa }) }
 }
 
 /** Destaques ativos (curadoria explícita, F1) — falha devolve Set vazio. */
@@ -453,6 +525,16 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
   const sugestaoId =
     input.registrarSugestao === false ? null : await registrarProposta(input, ranqueadas, ultimoUso, destaques, exclusao.resumo.idsPorUso)
 
+  const pagina = ranqueadas.slice(input.offset ?? 0, (input.offset ?? 0) + (input.limit ?? 20))
+  /** F2b: a tabela da decisão humana é curadoria, como os destaques: a falha nunca derruba a busca, só tira o campo. */
+  let decisoesDoAssunto: Map<string, DecisaoHumanaDoAssunto> | null = null
+  try {
+    decisoesDoAssunto = await lerDecisoesDoAssunto(input.projectId, pagina.map((r) => r.imagem.driveFileId))
+  } catch (erro) {
+    console.warn('[acervo] não consegui ler as decisões de assunto (seguindo sem elas):', erro)
+    avisos.push('não consegui ler as decisões humanas de assunto: `assuntoEfetivo` ficou de fora desta busca.')
+  }
+
   return {
     total: ranqueadas.length,
     ...(exclusao.pedida ? { excluidas: { ...exclusao.resumo, ...(usoIncompleto ? { porUsoIncompleta: true } : {}) } } : {}),
@@ -490,8 +572,7 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
       semTags: todas.filter((i) => !i.tags?.length).length,
     },
     offset: input.offset ?? 0,
-    images: ranqueadas
-      .slice(input.offset ?? 0, (input.offset ?? 0) + (input.limit ?? 20))
+    images: pagina
       .map((r) => {
         const i = r.imagem
         return {
@@ -516,6 +597,7 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
           // analisada com as perguntas (01/09/2026); ausente é ausente.
           ...(i.precoLegivel !== undefined ? { precoLegivel: i.precoLegivel } : {}),
           ...(i.marcaDeTerceiro !== undefined ? { marcaDeTerceiro: i.marcaDeTerceiro } : {}),
+          ...(decisoesDoAssunto ? { assuntoEfetivo: assuntoEfetivoDaFoto(i, decisoesDoAssunto.get(i.driveFileId)) } : {}),
         }
       }),
   }
@@ -624,6 +706,9 @@ async function registrarProposta(
  */
 export async function listarImagensDoDrive(projectId: number, limit = 30, folder?: string) {
   const raiz = await pastaDeImagens(projectId)
+  // Atalho só entra se o destino também for deste projeto (qualquer chamador).
+  const raizes = await raizesDoProjeto(projectId)
+  const memo = new Map()
 
   const varredura = await varrerArvoreDePastas({
     raiz,
@@ -633,10 +718,15 @@ export async function listarImagensDoDrive(projectId: number, limit = 30, folder
     listarSubpastas: (pastas) => googleDriveService.listChildrenOfFolders(pastas, 'folders'),
   })
 
+  // Atalho fora do escopo do projeto sai antes de virar imagem (main, escopo do Drive): uma conferência por
+  // atalho, sobre a varredura inteira; o Drive fora do ar lança DriveIndisponivelError como antes.
+  const permitidos = new Set((await filtrarAtalhosDoEscopo(varredura.arquivos.map((x) => x.arquivo), raizes, { memo })).map((a) => a.id))
+
   // Ordem estável (pasta, nome, id): o "Carregar mais" do seletor pede a mesma
   // lista com um limite maior, e a varredura em lote não devolve ordem nenhuma.
   const comparar = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
   const imagens = varredura.arquivos
+    .filter(({ arquivo }) => permitidos.has(arquivo.id))
     .map(({ arquivo, pasta }) => ({
       driveFileId: arquivo.id,
       fileName: arquivo.name,

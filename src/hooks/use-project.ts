@@ -42,6 +42,12 @@ export interface ProjectResponse {
    *  of an organization the project is shared with. Used to gate "Modelos"
    *  curator actions. Computed server-side, see GET /api/projects/[id]. */
   canCurate?: boolean
+  /**
+   * O JSON CRU de `Project.assinatura` (os números da assinatura), `null` quando nunca foi gravado. Cru de propósito:
+   * `mesclarNumeros` completaria o ausente com `#0B0B0B`. A rota espalha o projeto inteiro, então a chave sempre vem;
+   * sem ela, a inserção pela marca trata como erro (`estadoDaInsercao`).
+   */
+  assinatura?: unknown
 }
 
 export interface ProjectWithLogoResponse extends ProjectResponse {
@@ -73,16 +79,19 @@ export type UpdateProjectSettingsInput = Partial<{
   postingProvider: 'ZAPIER' | 'LATER' | null
 }>
 
+/** Resposta que não é JSON (redirect para /sign-in, HTML 200) chega como TEXTO pelo `api.get`, não como erro. */
+export async function buscarProjeto(projectId: number | null): Promise<ProjectResponse | null> {
+  if (projectId == null || Number.isNaN(projectId)) {
+    return null
+  }
+  return api.get<ProjectResponse>(`/api/projects/${projectId}`)
+}
+
 export function useProject(projectId: number | null) {
   return useQuery<ProjectResponse | null>({
     queryKey: ['project', projectId],
     enabled: typeof projectId === 'number' && !Number.isNaN(projectId),
-    queryFn: async () => {
-      if (projectId == null || Number.isNaN(projectId)) {
-        return null
-      }
-      return api.get<ProjectResponse>(`/api/projects/${projectId}`)
-    },
+    queryFn: () => buscarProjeto(projectId),
   })
 }
 

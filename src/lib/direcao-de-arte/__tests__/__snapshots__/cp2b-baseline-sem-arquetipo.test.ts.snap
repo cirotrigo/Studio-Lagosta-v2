@@ -1,0 +1,2611 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`CP2B · baseline sem arquétipo onde a foto decide (gerado na base 19f87df4) > 1. topo claro e base escura, headline escura e serviço claro (o caso H) 1`] = `
+{
+  "arranjos": [
+    {
+      "grupo": "g-topo",
+      "id": "cp2b-base-h:g-topo",
+      "motivo": "grupo da página",
+      "nome": "Assinatura sintética cp2b-base-h",
+      "origem": "pagina",
+    },
+    {
+      "grupo": "solo:servico",
+      "id": "cp2b-base-h:solo:servico",
+      "motivo": "grupo da página",
+      "nome": "Assinatura sintética cp2b-base-h",
+      "origem": "pagina",
+    },
+  ],
+  "assinatura": {
+    "formatoDaPagina": "story",
+    "motivoDaVariante": "fixada por id",
+    "pageId": "cp2b-base-h",
+    "variante": "Assinatura sintética cp2b-base-h",
+    "versao": "assinatura-v3",
+  },
+  "assuntoOrigem": "nenhum",
+  "avisos": [],
+  "blocos": [
+    {
+      "destacado": false,
+      "escala": 1,
+      "height": 194,
+      "id": "headline",
+      "papel": "headline",
+      "width": 464,
+    },
+    {
+      "destacado": false,
+      "escala": 1,
+      "height": 39,
+      "id": "servico",
+      "papel": "servico",
+      "width": 286,
+    },
+  ],
+  "candidatos": [
+    [
+      "topo",
+      "esquerda",
+      "center-middle",
+      false,
+    ],
+    [
+      "topo",
+      "direita",
+      "center-middle",
+      false,
+    ],
+    [
+      "topo",
+      "centro",
+      "center-middle",
+      false,
+    ],
+  ],
+  "chavesDoDiagnostico": [
+    "arranjos",
+    "assinatura",
+    "assunto",
+    "assuntoOrigem",
+    "avisos",
+    "blocos",
+    "candidatos",
+    "contraste",
+    "formato",
+    "gradientes",
+    "halos",
+    "logo",
+    "medidasFinais",
+    "posicao",
+    "segundaVoz",
+    "tratamentoDeLeitura",
+    "tratamentoDeTexto",
+    "tratamentoPiorou",
+  ],
+  "gradientes": [
+    {
+      "altura": 576,
+      "borda": "topo",
+      "cor": "#F2F2F2",
+      "origemDaCor": "numeros-da-assinatura",
+    },
+  ],
+  "layers": [
+    {
+      "fileUrl": "data:620691f501d8",
+      "id": "bg-foto",
+      "isDynamic": true,
+      "locked": false,
+      "name": "Foto de fundo",
+      "order": 0,
+      "position": {
+        "x": 0,
+        "y": 0,
+      },
+      "rotation": 0,
+      "size": {
+        "height": 1920,
+        "width": 1080,
+      },
+      "style": {
+        "cropPosition": "center-middle",
+        "objectFit": "cover",
+      },
+      "type": "image",
+      "visible": true,
+    },
+    {
+      "borda": "topo",
+      "cor": "#F2F2F2",
+      "id": "gradiente-leitura-topo",
+      "order": 1,
+      "position": {
+        "x": 0,
+        "y": 0,
+      },
+      "size": {
+        "height": 576,
+        "width": 1080,
+      },
+      "type": "gradient",
+    },
+    {
+      "content": "Almoço
+de domingo",
+      "effects": {},
+      "fileUrl": undefined,
+      "id": "headline",
+      "isDynamic": true,
+      "locked": false,
+      "metadata": {
+        "compositor": {
+          "papel": "headline",
+        },
+        "groupId": "grupo-22212",
+      },
+      "name": "headline",
+      "order": 2,
+      "position": {
+        "x": 92,
+        "y": 300,
+      },
+      "rotation": 0,
+      "size": {
+        "height": 194,
+        "width": 464,
+      },
+      "style": {
+        "color": "#1E1E1E",
+        "fontFamily": "Sintetica Display",
+        "fontSize": 90,
+        "letterSpacing": 0,
+        "lineHeight": 1,
+        "textAlign": "left",
+      },
+      "textboxConfig": {
+        "anchor": "top",
+        "autoWrap": {
+          "autoExpand": true,
+          "breakMode": "word",
+          "lineHeight": 1,
+        },
+        "textMode": "auto-wrap-fixed",
+      },
+      "type": "text",
+      "visible": true,
+    },
+    {
+      "content": "Dom · 12h às 16h",
+      "effects": {},
+      "fileUrl": undefined,
+      "id": "servico",
+      "isDynamic": true,
+      "locked": false,
+      "metadata": {
+        "compositor": {
+          "papel": "servico",
+        },
+        "groupId": "grupo-43470",
+      },
+      "name": "servico",
+      "order": 3,
+      "position": {
+        "x": 397,
+        "y": 1642,
+      },
+      "rotation": 0,
+      "size": {
+        "height": 39,
+        "width": 286,
+      },
+      "style": {
+        "color": "#F5F5F5",
+        "fontFamily": "Sintetica Texto",
+        "fontSize": 34,
+        "letterSpacing": 0,
+        "lineHeight": 1,
+        "textAlign": "center",
+      },
+      "textboxConfig": {
+        "anchor": "top",
+        "autoWrap": {
+          "autoExpand": true,
+          "breakMode": "word",
+          "lineHeight": 1,
+        },
+        "textMode": "auto-wrap-fixed",
+      },
+      "type": "text",
+      "visible": true,
+    },
+    {
+      "fileUrl": "data:42c3ede698cb",
+      "id": "logo",
+      "locked": false,
+      "metadata": {
+        "compositor": {
+          "canto": "superior-direito",
+        },
+      },
+      "name": "Logo",
+      "order": 4,
+      "position": {
+        "x": 830,
+        "y": 200,
+      },
+      "rotation": 0,
+      "size": {
+        "height": 80,
+        "width": 160,
+      },
+      "style": {
+        "objectFit": "contain",
+      },
+      "type": "logo",
+      "visible": true,
+    },
+  ],
+  "logo": {
+    "canto": "superior-direito",
+    "tinta": 0,
+  },
+  "medidasFinais": [
+    {
+      "fontFamily": "Sintetica Display",
+      "fontSize": 90,
+      "height": 194,
+      "id": "headline",
+      "lineHeight": 1,
+      "linhas": 2,
+      "naoMedido": false,
+      "papel": "headline",
+      "width": 464,
+    },
+    {
+      "fontFamily": "Sintetica Texto",
+      "fontSize": 34,
+      "height": 39,
+      "id": "servico",
+      "lineHeight": 1,
+      "linhas": 1,
+      "naoMedido": false,
+      "papel": "servico",
+      "width": 286,
+    },
+  ],
+  "persist": {
+    "chaves": [
+      "composicao",
+      "copyAutoral",
+      "driveImageId",
+      "imageUrl",
+      "layersSnapshot",
+      "source",
+      "spec",
+    ],
+    "spec": {
+      "blocos": [
+        {
+          "linhas": [
+            "Almoço",
+            "de domingo",
+          ],
+          "ordem": 0,
+          "papel": "headline",
+        },
+        {
+          "linhas": [
+            "Dom · 12h às 16h",
+          ],
+          "ordem": 1,
+          "papel": "servico",
+        },
+      ],
+      "formato": "story",
+      "foto": {
+        "driveFileId": "foto-sintetica",
+      },
+      "preferencias": {
+        "arranjos": [
+          {
+            "arranjo": "cp2b-base-h:g-topo",
+            "grupo": "g-topo",
+          },
+          {
+            "arranjo": "cp2b-base-h:solo:servico",
+            "grupo": "solo:servico",
+          },
+        ],
+        "variante": "cp2b-base-h",
+      },
+      "projectId": 9002,
+    },
+    "specDaRecomposicao": {
+      "blocos": [
+        {
+          "linhas": [
+            "Almoço",
+            "de domingo",
+          ],
+          "ordem": 0,
+          "papel": "headline",
+        },
+        {
+          "linhas": [
+            "Dom · 12h às 16h",
+          ],
+          "ordem": 1,
+          "papel": "servico",
+        },
+      ],
+      "formato": "story",
+      "foto": {
+        "driveFileId": "foto-sintetica",
+      },
+      "preferencias": {
+        "alinha": "esquerda",
+        "ancora": "topo",
+        "arranjos": [
+          {
+            "arranjo": "cp2b-base-h:g-topo",
+            "grupo": "g-topo",
+          },
+          {
+            "arranjo": "cp2b-base-h:solo:servico",
+            "grupo": "solo:servico",
+          },
+        ],
+        "variante": "cp2b-base-h",
+      },
+      "projectId": 9002,
+    },
+  },
+  "posicao": {
+    "alinha": "esquerda",
+    "ancora": "topo",
+    "crop": "center-middle",
+  },
+  "segundaVoz": "nenhuma",
+  "tratamento": [
+    {
+      "borda": "topo",
+      "cor": "#F2F2F2",
+      "estado": "sem-necessidade",
+      "origemDaCor": "numeros-da-assinatura",
+      "textos": [
+        {
+          "camada": "headline",
+          "polaridade": "escura",
+        },
+      ],
+    },
+    {
+      "borda": "rodape",
+      "cor": undefined,
+      "estado": "sem-necessidade",
+      "origemDaCor": undefined,
+      "textos": [
+        {
+          "camada": "servico",
+          "polaridade": "clara",
+        },
+      ],
+    },
+  ],
+}
+`;
+
+exports[`CP2B · baseline sem arquétipo onde a foto decide (gerado na base 19f87df4) > 2. topo escuro e base clara, headline clara e serviço escuro (o inverso) 1`] = `
+{
+  "arranjos": [
+    {
+      "grupo": "g-topo",
+      "id": "cp2b-base-inverso:g-topo",
+      "motivo": "grupo da página",
+      "nome": "Assinatura sintética cp2b-base-inverso",
+      "origem": "pagina",
+    },
+    {
+      "grupo": "solo:servico",
+      "id": "cp2b-base-inverso:solo:servico",
+      "motivo": "grupo da página",
+      "nome": "Assinatura sintética cp2b-base-inverso",
+      "origem": "pagina",
+    },
+  ],
+  "assinatura": {
+    "formatoDaPagina": "story",
+    "motivoDaVariante": "fixada por id",
+    "pageId": "cp2b-base-inverso",
+    "variante": "Assinatura sintética cp2b-base-inverso",
+    "versao": "assinatura-v3",
+  },
+  "assuntoOrigem": "nenhum",
+  "avisos": [],
+  "blocos": [
+    {
+      "destacado": false,
+      "escala": 1,
+      "height": 194,
+      "id": "headline",
+      "papel": "headline",
+      "width": 464,
+    },
+    {
+      "destacado": false,
+      "escala": 1,
+      "height": 46,
+      "id": "apoio",
+      "papel": "apoio",
+      "width": 374,
+    },
+    {
+      "destacado": false,
+      "escala": 1,
+      "height": 39,
+      "id": "servico",
+      "papel": "servico",
+      "width": 286,
+    },
+  ],
+  "candidatos": [
+    [
+      "topo",
+      "esquerda",
+      "center-middle",
+      false,
+    ],
+    [
+      "topo",
+      "direita",
+      "center-middle",
+      false,
+    ],
+    [
+      "topo",
+      "centro",
+      "center-middle",
+      false,
+    ],
+  ],
+  "chavesDoDiagnostico": [
+    "arranjos",
+    "assinatura",
+    "assunto",
+    "assuntoOrigem",
+    "avisos",
+    "blocos",
+    "candidatos",
+    "contraste",
+    "formato",
+    "gradientes",
+    "halos",
+    "logo",
+    "medidasFinais",
+    "posicao",
+    "segundaVoz",
+    "tratamentoDeLeitura",
+    "tratamentoDeTexto",
+    "tratamentoPiorou",
+  ],
+  "gradientes": [],
+  "layers": [
+    {
+      "fileUrl": "data:6505fa8b44ff",
+      "id": "bg-foto",
+      "isDynamic": true,
+      "locked": false,
+      "name": "Foto de fundo",
+      "order": 0,
+      "position": {
+        "x": 0,
+        "y": 0,
+      },
+      "rotation": 0,
+      "size": {
+        "height": 1920,
+        "width": 1080,
+      },
+      "style": {
+        "cropPosition": "center-middle",
+        "objectFit": "cover",
+      },
+      "type": "image",
+      "visible": true,
+    },
+    {
+      "content": "Almoço
+de domingo",
+      "effects": {},
+      "fileUrl": undefined,
+      "id": "headline",
+      "isDynamic": true,
+      "locked": false,
+      "metadata": {
+        "compositor": {
+          "papel": "headline",
+        },
+        "groupId": "grupo-22212",
+      },
+      "name": "headline",
+      "order": 1,
+      "position": {
+        "x": 92,
+        "y": 300,
+      },
+      "rotation": 0,
+      "size": {
+        "height": 194,
+        "width": 464,
+      },
+      "style": {
+        "color": "#F5F5F5",
+        "fontFamily": "Sintetica Display",
+        "fontSize": 90,
+        "letterSpacing": 0,
+        "lineHeight": 1,
+        "textAlign": "left",
+      },
+      "textboxConfig": {
+        "anchor": "top",
+        "autoWrap": {
+          "autoExpand": true,
+          "breakMode": "word",
+          "lineHeight": 1,
+        },
+        "textMode": "auto-wrap-fixed",
+      },
+      "type": "text",
+      "visible": true,
+    },
+    {
+      "content": "com a família toda",
+      "effects": {},
+      "fileUrl": undefined,
+      "id": "apoio",
+      "isDynamic": true,
+      "locked": false,
+      "metadata": {
+        "compositor": {
+          "papel": "apoio",
+        },
+        "groupId": "grupo-22212",
+      },
+      "name": "apoio",
+      "order": 2,
+      "position": {
+        "x": 92,
+        "y": 510,
+      },
+      "rotation": 0,
+      "size": {
+        "height": 46,
+        "width": 374,
+      },
+      "style": {
+        "color": "#F5F5F5",
+        "fontFamily": "Sintetica Display",
+        "fontSize": 40,
+        "letterSpacing": 0,
+        "lineHeight": 1,
+        "textAlign": "left",
+      },
+      "textboxConfig": {
+        "anchor": "top",
+        "autoWrap": {
+          "autoExpand": true,
+          "breakMode": "word",
+          "lineHeight": 1,
+        },
+        "textMode": "auto-wrap-fixed",
+      },
+      "type": "text",
+      "visible": true,
+    },
+    {
+      "content": "Dom · 12h às 16h",
+      "effects": {},
+      "fileUrl": undefined,
+      "id": "servico",
+      "isDynamic": true,
+      "locked": false,
+      "metadata": {
+        "compositor": {
+          "papel": "servico",
+        },
+        "groupId": "grupo-43470",
+      },
+      "name": "servico",
+      "order": 3,
+      "position": {
+        "x": 397,
+        "y": 1642,
+      },
+      "rotation": 0,
+      "size": {
+        "height": 39,
+        "width": 286,
+      },
+      "style": {
+        "color": "#1E1E1E",
+        "fontFamily": "Sintetica Texto",
+        "fontSize": 34,
+        "letterSpacing": 0,
+        "lineHeight": 1,
+        "textAlign": "center",
+      },
+      "textboxConfig": {
+        "anchor": "top",
+        "autoWrap": {
+          "autoExpand": true,
+          "breakMode": "word",
+          "lineHeight": 1,
+        },
+        "textMode": "auto-wrap-fixed",
+      },
+      "type": "text",
+      "visible": true,
+    },
+    {
+      "fileUrl": "data:42c3ede698cb",
+      "id": "logo",
+      "locked": false,
+      "metadata": {
+        "compositor": {
+          "canto": "superior-direito",
+        },
+      },
+      "name": "Logo",
+      "order": 4,
+      "position": {
+        "x": 830,
+        "y": 200,
+      },
+      "rotation": 0,
+      "size": {
+        "height": 80,
+        "width": 160,
+      },
+      "style": {
+        "objectFit": "contain",
+      },
+      "type": "logo",
+      "visible": true,
+    },
+  ],
+  "logo": {
+    "canto": "superior-direito",
+    "tinta": 0,
+  },
+  "medidasFinais": [
+    {
+      "fontFamily": "Sintetica Display",
+      "fontSize": 90,
+      "height": 194,
+      "id": "headline",
+      "lineHeight": 1,
+      "linhas": 2,
+      "naoMedido": false,
+      "papel": "headline",
+      "width": 464,
+    },
+    {
+      "fontFamily": "Sintetica Display",
+      "fontSize": 40,
+      "height": 46,
+      "id": "apoio",
+      "lineHeight": 1,
+      "linhas": 1,
+      "naoMedido": false,
+      "papel": "apoio",
+      "width": 374,
+    },
+    {
+      "fontFamily": "Sintetica Texto",
+      "fontSize": 34,
+      "height": 39,
+      "id": "servico",
+      "lineHeight": 1,
+      "linhas": 1,
+      "naoMedido": false,
+      "papel": "servico",
+      "width": 286,
+    },
+  ],
+  "persist": {
+    "chaves": [
+      "composicao",
+      "copyAutoral",
+      "driveImageId",
+      "imageUrl",
+      "layersSnapshot",
+      "source",
+      "spec",
+    ],
+    "spec": {
+      "blocos": [
+        {
+          "linhas": [
+            "Almoço",
+            "de domingo",
+          ],
+          "ordem": 0,
+          "papel": "headline",
+        },
+        {
+          "linhas": [
+            "com a família toda",
+          ],
+          "ordem": 1,
+          "papel": "apoio",
+        },
+        {
+          "linhas": [
+            "Dom · 12h às 16h",
+          ],
+          "ordem": 2,
+          "papel": "servico",
+        },
+      ],
+      "formato": "story",
+      "foto": {
+        "driveFileId": "foto-sintetica",
+      },
+      "preferencias": {
+        "arranjos": [
+          {
+            "arranjo": "cp2b-base-inverso:g-topo",
+            "grupo": "g-topo",
+          },
+          {
+            "arranjo": "cp2b-base-inverso:solo:servico",
+            "grupo": "solo:servico",
+          },
+        ],
+        "variante": "cp2b-base-inverso",
+      },
+      "projectId": 9002,
+    },
+    "specDaRecomposicao": {
+      "blocos": [
+        {
+          "linhas": [
+            "Almoço",
+            "de domingo",
+          ],
+          "ordem": 0,
+          "papel": "headline",
+        },
+        {
+          "linhas": [
+            "com a família toda",
+          ],
+          "ordem": 1,
+          "papel": "apoio",
+        },
+        {
+          "linhas": [
+            "Dom · 12h às 16h",
+          ],
+          "ordem": 2,
+          "papel": "servico",
+        },
+      ],
+      "formato": "story",
+      "foto": {
+        "driveFileId": "foto-sintetica",
+      },
+      "preferencias": {
+        "alinha": "esquerda",
+        "ancora": "topo",
+        "arranjos": [
+          {
+            "arranjo": "cp2b-base-inverso:g-topo",
+            "grupo": "g-topo",
+          },
+          {
+            "arranjo": "cp2b-base-inverso:solo:servico",
+            "grupo": "solo:servico",
+          },
+        ],
+        "variante": "cp2b-base-inverso",
+      },
+      "projectId": 9002,
+    },
+  },
+  "posicao": {
+    "alinha": "esquerda",
+    "ancora": "topo",
+    "crop": "center-middle",
+  },
+  "segundaVoz": "nenhuma",
+  "tratamento": [
+    {
+      "borda": "topo",
+      "cor": undefined,
+      "estado": "sem-necessidade",
+      "origemDaCor": undefined,
+      "textos": [
+        {
+          "camada": "headline",
+          "polaridade": "clara",
+        },
+        {
+          "camada": "apoio",
+          "polaridade": "clara",
+        },
+      ],
+    },
+    {
+      "borda": "rodape",
+      "cor": undefined,
+      "estado": "sem-necessidade",
+      "origemDaCor": undefined,
+      "textos": [
+        {
+          "camada": "servico",
+          "polaridade": "escura",
+        },
+      ],
+    },
+  ],
+}
+`;
+
+exports[`CP2B · baseline sem arquétipo onde a foto decide (gerado na base 19f87df4) > 3. faixa escura no meio de foto clara, textos claros 1`] = `
+{
+  "arranjos": [
+    {
+      "grupo": "g-topo",
+      "id": "cp2b-base-faixa:g-topo",
+      "motivo": "grupo da página",
+      "nome": "Assinatura sintética cp2b-base-faixa",
+      "origem": "pagina",
+    },
+    {
+      "grupo": "solo:servico",
+      "id": "cp2b-base-faixa:solo:servico",
+      "motivo": "grupo da página",
+      "nome": "Assinatura sintética cp2b-base-faixa",
+      "origem": "pagina",
+    },
+  ],
+  "assinatura": {
+    "formatoDaPagina": "story",
+    "motivoDaVariante": "fixada por id",
+    "pageId": "cp2b-base-faixa",
+    "variante": "Assinatura sintética cp2b-base-faixa",
+    "versao": "assinatura-v3",
+  },
+  "assuntoOrigem": "nenhum",
+  "avisos": [],
+  "blocos": [
+    {
+      "destacado": false,
+      "escala": 1,
+      "height": 194,
+      "id": "headline",
+      "papel": "headline",
+      "width": 464,
+    },
+    {
+      "destacado": false,
+      "escala": 1,
+      "height": 46,
+      "id": "apoio",
+      "papel": "apoio",
+      "width": 374,
+    },
+    {
+      "destacado": false,
+      "escala": 1,
+      "height": 39,
+      "id": "servico",
+      "papel": "servico",
+      "width": 286,
+    },
+  ],
+  "candidatos": [
+    [
+      "topo",
+      "esquerda",
+      "center-middle",
+      false,
+    ],
+    [
+      "topo",
+      "direita",
+      "center-middle",
+      false,
+    ],
+    [
+      "topo",
+      "centro",
+      "center-middle",
+      false,
+    ],
+  ],
+  "chavesDoDiagnostico": [
+    "arranjos",
+    "assinatura",
+    "assunto",
+    "assuntoOrigem",
+    "avisos",
+    "blocos",
+    "candidatos",
+    "contraste",
+    "formato",
+    "gradientes",
+    "halos",
+    "logo",
+    "medidasFinais",
+    "posicao",
+    "segundaVoz",
+    "tratamentoDeLeitura",
+    "tratamentoDeTexto",
+    "tratamentoPiorou",
+  ],
+  "gradientes": [
+    {
+      "altura": 1056,
+      "borda": "topo",
+      "cor": "#1A1A1A",
+      "origemDaCor": "mancha",
+    },
+    {
+      "altura": 576,
+      "borda": "rodape",
+      "cor": "#1A1A1A",
+      "origemDaCor": "mancha",
+    },
+  ],
+  "layers": [
+    {
+      "fileUrl": "data:84d3a38f449a",
+      "id": "bg-foto",
+      "isDynamic": true,
+      "locked": false,
+      "name": "Foto de fundo",
+      "order": 0,
+      "position": {
+        "x": 0,
+        "y": 0,
+      },
+      "rotation": 0,
+      "size": {
+        "height": 1920,
+        "width": 1080,
+      },
+      "style": {
+        "cropPosition": "center-middle",
+        "objectFit": "cover",
+      },
+      "type": "image",
+      "visible": true,
+    },
+    {
+      "borda": "topo",
+      "cor": "#1A1A1A",
+      "id": "gradiente-leitura-topo",
+      "order": 1,
+      "position": {
+        "x": 0,
+        "y": 0,
+      },
+      "size": {
+        "height": 1056,
+        "width": 1080,
+      },
+      "type": "gradient",
+    },
+    {
+      "borda": "rodape",
+      "cor": "#1A1A1A",
+      "id": "gradiente-leitura-rodape",
+      "order": 2,
+      "position": {
+        "x": 0,
+        "y": 1344,
+      },
+      "size": {
+        "height": 576,
+        "width": 1080,
+      },
+      "type": "gradient",
+    },
+    {
+      "content": "Almoço
+de domingo",
+      "effects": {},
+      "fileUrl": undefined,
+      "id": "headline",
+      "isDynamic": true,
+      "locked": false,
+      "metadata": {
+        "compositor": {
+          "papel": "headline",
+        },
+        "groupId": "grupo-22212",
+      },
+      "name": "headline",
+      "order": 3,
+      "position": {
+        "x": 92,
+        "y": 300,
+      },
+      "rotation": 0,
+      "size": {
+        "height": 194,
+        "width": 464,
+      },
+      "style": {
+        "color": "#F5F5F5",
+        "fontFamily": "Sintetica Display",
+        "fontSize": 90,
+        "letterSpacing": 0,
+        "lineHeight": 1,
+        "textAlign": "left",
+      },
+      "textboxConfig": {
+        "anchor": "top",
+        "autoWrap": {
+          "autoExpand": true,
+          "breakMode": "word",
+          "lineHeight": 1,
+        },
+        "textMode": "auto-wrap-fixed",
+      },
+      "type": "text",
+      "visible": true,
+    },
+    {
+      "content": "com a família toda",
+      "effects": {},
+      "fileUrl": undefined,
+      "id": "apoio",
+      "isDynamic": true,
+      "locked": false,
+      "metadata": {
+        "compositor": {
+          "papel": "apoio",
+        },
+        "groupId": "grupo-22212",
+      },
+      "name": "apoio",
+      "order": 4,
+      "position": {
+        "x": 92,
+        "y": 510,
+      },
+      "rotation": 0,
+      "size": {
+        "height": 46,
+        "width": 374,
+      },
+      "style": {
+        "color": "#F5F5F5",
+        "fontFamily": "Sintetica Display",
+        "fontSize": 40,
+        "letterSpacing": 0,
+        "lineHeight": 1,
+        "textAlign": "left",
+      },
+      "textboxConfig": {
+        "anchor": "top",
+        "autoWrap": {
+          "autoExpand": true,
+          "breakMode": "word",
+          "lineHeight": 1,
+        },
+        "textMode": "auto-wrap-fixed",
+      },
+      "type": "text",
+      "visible": true,
+    },
+    {
+      "content": "Dom · 12h às 16h",
+      "effects": {},
+      "fileUrl": undefined,
+      "id": "servico",
+      "isDynamic": true,
+      "locked": false,
+      "metadata": {
+        "compositor": {
+          "papel": "servico",
+        },
+        "groupId": "grupo-43470",
+      },
+      "name": "servico",
+      "order": 5,
+      "position": {
+        "x": 397,
+        "y": 1642,
+      },
+      "rotation": 0,
+      "size": {
+        "height": 39,
+        "width": 286,
+      },
+      "style": {
+        "color": "#F5F5F5",
+        "fontFamily": "Sintetica Texto",
+        "fontSize": 34,
+        "letterSpacing": 0,
+        "lineHeight": 1,
+        "textAlign": "center",
+      },
+      "textboxConfig": {
+        "anchor": "top",
+        "autoWrap": {
+          "autoExpand": true,
+          "breakMode": "word",
+          "lineHeight": 1,
+        },
+        "textMode": "auto-wrap-fixed",
+      },
+      "type": "text",
+      "visible": true,
+    },
+    {
+      "fileUrl": "data:42c3ede698cb",
+      "id": "logo",
+      "locked": false,
+      "metadata": {
+        "compositor": {
+          "canto": "superior-direito",
+        },
+      },
+      "name": "Logo",
+      "order": 6,
+      "position": {
+        "x": 830,
+        "y": 200,
+      },
+      "rotation": 0,
+      "size": {
+        "height": 80,
+        "width": 160,
+      },
+      "style": {
+        "objectFit": "contain",
+      },
+      "type": "logo",
+      "visible": true,
+    },
+  ],
+  "logo": {
+    "canto": "superior-direito",
+    "tinta": 0,
+  },
+  "medidasFinais": [
+    {
+      "fontFamily": "Sintetica Display",
+      "fontSize": 90,
+      "height": 194,
+      "id": "headline",
+      "lineHeight": 1,
+      "linhas": 2,
+      "naoMedido": false,
+      "papel": "headline",
+      "width": 464,
+    },
+    {
+      "fontFamily": "Sintetica Display",
+      "fontSize": 40,
+      "height": 46,
+      "id": "apoio",
+      "lineHeight": 1,
+      "linhas": 1,
+      "naoMedido": false,
+      "papel": "apoio",
+      "width": 374,
+    },
+    {
+      "fontFamily": "Sintetica Texto",
+      "fontSize": 34,
+      "height": 39,
+      "id": "servico",
+      "lineHeight": 1,
+      "linhas": 1,
+      "naoMedido": false,
+      "papel": "servico",
+      "width": 286,
+    },
+  ],
+  "persist": {
+    "chaves": [
+      "composicao",
+      "copyAutoral",
+      "driveImageId",
+      "imageUrl",
+      "layersSnapshot",
+      "source",
+      "spec",
+    ],
+    "spec": {
+      "blocos": [
+        {
+          "linhas": [
+            "Almoço",
+            "de domingo",
+          ],
+          "ordem": 0,
+          "papel": "headline",
+        },
+        {
+          "linhas": [
+            "com a família toda",
+          ],
+          "ordem": 1,
+          "papel": "apoio",
+        },
+        {
+          "linhas": [
+            "Dom · 12h às 16h",
+          ],
+          "ordem": 2,
+          "papel": "servico",
+        },
+      ],
+      "formato": "story",
+      "foto": {
+        "driveFileId": "foto-sintetica",
+      },
+      "preferencias": {
+        "arranjos": [
+          {
+            "arranjo": "cp2b-base-faixa:g-topo",
+            "grupo": "g-topo",
+          },
+          {
+            "arranjo": "cp2b-base-faixa:solo:servico",
+            "grupo": "solo:servico",
+          },
+        ],
+        "variante": "cp2b-base-faixa",
+      },
+      "projectId": 9002,
+    },
+    "specDaRecomposicao": {
+      "blocos": [
+        {
+          "linhas": [
+            "Almoço",
+            "de domingo",
+          ],
+          "ordem": 0,
+          "papel": "headline",
+        },
+        {
+          "linhas": [
+            "com a família toda",
+          ],
+          "ordem": 1,
+          "papel": "apoio",
+        },
+        {
+          "linhas": [
+            "Dom · 12h às 16h",
+          ],
+          "ordem": 2,
+          "papel": "servico",
+        },
+      ],
+      "formato": "story",
+      "foto": {
+        "driveFileId": "foto-sintetica",
+      },
+      "preferencias": {
+        "alinha": "esquerda",
+        "ancora": "topo",
+        "arranjos": [
+          {
+            "arranjo": "cp2b-base-faixa:g-topo",
+            "grupo": "g-topo",
+          },
+          {
+            "arranjo": "cp2b-base-faixa:solo:servico",
+            "grupo": "solo:servico",
+          },
+        ],
+        "variante": "cp2b-base-faixa",
+      },
+      "projectId": 9002,
+    },
+  },
+  "posicao": {
+    "alinha": "esquerda",
+    "ancora": "topo",
+    "crop": "center-middle",
+  },
+  "segundaVoz": "nenhuma",
+  "tratamento": [
+    {
+      "borda": "topo",
+      "cor": "#1A1A1A",
+      "estado": "tratado",
+      "origemDaCor": "mancha",
+      "textos": [
+        {
+          "camada": "headline",
+          "polaridade": "clara",
+        },
+        {
+          "camada": "apoio",
+          "polaridade": "clara",
+        },
+      ],
+    },
+    {
+      "borda": "rodape",
+      "cor": "#1A1A1A",
+      "estado": "tratado",
+      "origemDaCor": "mancha",
+      "textos": [
+        {
+          "camada": "servico",
+          "polaridade": "clara",
+        },
+      ],
+    },
+  ],
+}
+`;
+
+exports[`CP2B · baseline sem arquétipo onde a foto decide (gerado na base 19f87df4) > 4. região protegida pelo catálogo na metade esquerda do topo 1`] = `
+{
+  "arranjos": [
+    {
+      "grupo": "g-topo",
+      "id": "cp2b-base-regiao:g-topo",
+      "motivo": "grupo da página",
+      "nome": "Assinatura sintética cp2b-base-regiao",
+      "origem": "pagina",
+    },
+    {
+      "grupo": "solo:servico",
+      "id": "cp2b-base-regiao:solo:servico",
+      "motivo": "grupo da página",
+      "nome": "Assinatura sintética cp2b-base-regiao",
+      "origem": "pagina",
+    },
+  ],
+  "assinatura": {
+    "formatoDaPagina": "story",
+    "motivoDaVariante": "fixada por id",
+    "pageId": "cp2b-base-regiao",
+    "variante": "Assinatura sintética cp2b-base-regiao",
+    "versao": "assinatura-v3",
+  },
+  "assuntoOrigem": "catalogo",
+  "avisos": [],
+  "blocos": [
+    {
+      "destacado": false,
+      "escala": 1,
+      "height": 194,
+      "id": "headline",
+      "papel": "headline",
+      "width": 464,
+    },
+    {
+      "destacado": false,
+      "escala": 1,
+      "height": 39,
+      "id": "servico",
+      "papel": "servico",
+      "width": 286,
+    },
+  ],
+  "candidatos": [
+    [
+      "topo",
+      "direita",
+      "center-middle",
+      false,
+    ],
+    [
+      "topo",
+      "esquerda",
+      "center-middle",
+      true,
+    ],
+    [
+      "topo",
+      "centro",
+      "center-middle",
+      true,
+    ],
+  ],
+  "chavesDoDiagnostico": [
+    "arranjos",
+    "assinatura",
+    "assunto",
+    "assuntoOrigem",
+    "avisos",
+    "blocos",
+    "candidatos",
+    "contraste",
+    "formato",
+    "gradientes",
+    "halos",
+    "logo",
+    "medidasFinais",
+    "posicao",
+    "segundaVoz",
+    "tratamentoDeLeitura",
+    "tratamentoDeTexto",
+    "tratamentoPiorou",
+  ],
+  "gradientes": [],
+  "layers": [
+    {
+      "fileUrl": "data:c8bc367839f2",
+      "id": "bg-foto",
+      "isDynamic": true,
+      "locked": false,
+      "name": "Foto de fundo",
+      "order": 0,
+      "position": {
+        "x": 0,
+        "y": 0,
+      },
+      "rotation": 0,
+      "size": {
+        "height": 1920,
+        "width": 1080,
+      },
+      "style": {
+        "cropPosition": "center-middle",
+        "objectFit": "cover",
+      },
+      "type": "image",
+      "visible": true,
+    },
+    {
+      "content": "Almoço
+de domingo",
+      "effects": {},
+      "fileUrl": undefined,
+      "id": "headline",
+      "isDynamic": true,
+      "locked": false,
+      "metadata": {
+        "compositor": {
+          "papel": "headline",
+        },
+        "groupId": "grupo-22212",
+      },
+      "name": "headline",
+      "order": 1,
+      "position": {
+        "x": 524,
+        "y": 300,
+      },
+      "rotation": 0,
+      "size": {
+        "height": 194,
+        "width": 464,
+      },
+      "style": {
+        "color": "#F5F5F5",
+        "fontFamily": "Sintetica Display",
+        "fontSize": 90,
+        "letterSpacing": 0,
+        "lineHeight": 1,
+        "textAlign": "right",
+      },
+      "textboxConfig": {
+        "anchor": "top",
+        "autoWrap": {
+          "autoExpand": true,
+          "breakMode": "word",
+          "lineHeight": 1,
+        },
+        "textMode": "auto-wrap-fixed",
+      },
+      "type": "text",
+      "visible": true,
+    },
+    {
+      "content": "Dom · 12h às 16h",
+      "effects": {},
+      "fileUrl": undefined,
+      "id": "servico",
+      "isDynamic": true,
+      "locked": false,
+      "metadata": {
+        "compositor": {
+          "papel": "servico",
+        },
+        "groupId": "grupo-43470",
+      },
+      "name": "servico",
+      "order": 2,
+      "position": {
+        "x": 397,
+        "y": 1642,
+      },
+      "rotation": 0,
+      "size": {
+        "height": 39,
+        "width": 286,
+      },
+      "style": {
+        "color": "#F5F5F5",
+        "fontFamily": "Sintetica Texto",
+        "fontSize": 34,
+        "letterSpacing": 0,
+        "lineHeight": 1,
+        "textAlign": "center",
+      },
+      "textboxConfig": {
+        "anchor": "top",
+        "autoWrap": {
+          "autoExpand": true,
+          "breakMode": "word",
+          "lineHeight": 1,
+        },
+        "textMode": "auto-wrap-fixed",
+      },
+      "type": "text",
+      "visible": true,
+    },
+    {
+      "fileUrl": "data:42c3ede698cb",
+      "id": "logo",
+      "locked": false,
+      "metadata": {
+        "compositor": {
+          "canto": "inferior-esquerdo",
+        },
+      },
+      "name": "Logo",
+      "order": 3,
+      "position": {
+        "x": 92,
+        "y": 1601,
+      },
+      "rotation": 0,
+      "size": {
+        "height": 80,
+        "width": 160,
+      },
+      "style": {
+        "objectFit": "contain",
+      },
+      "type": "logo",
+      "visible": true,
+    },
+  ],
+  "logo": {
+    "canto": "inferior-esquerdo",
+    "tinta": 0,
+  },
+  "medidasFinais": [
+    {
+      "fontFamily": "Sintetica Display",
+      "fontSize": 90,
+      "height": 194,
+      "id": "headline",
+      "lineHeight": 1,
+      "linhas": 2,
+      "naoMedido": false,
+      "papel": "headline",
+      "width": 464,
+    },
+    {
+      "fontFamily": "Sintetica Texto",
+      "fontSize": 34,
+      "height": 39,
+      "id": "servico",
+      "lineHeight": 1,
+      "linhas": 1,
+      "naoMedido": false,
+      "papel": "servico",
+      "width": 286,
+    },
+  ],
+  "persist": {
+    "chaves": [
+      "composicao",
+      "copyAutoral",
+      "driveImageId",
+      "imageUrl",
+      "layersSnapshot",
+      "source",
+      "spec",
+    ],
+    "spec": {
+      "blocos": [
+        {
+          "linhas": [
+            "Almoço",
+            "de domingo",
+          ],
+          "ordem": 0,
+          "papel": "headline",
+        },
+        {
+          "linhas": [
+            "Dom · 12h às 16h",
+          ],
+          "ordem": 1,
+          "papel": "servico",
+        },
+      ],
+      "formato": "story",
+      "foto": {
+        "driveFileId": "foto-sintetica",
+      },
+      "preferencias": {
+        "arranjos": [
+          {
+            "arranjo": "cp2b-base-regiao:g-topo",
+            "grupo": "g-topo",
+          },
+          {
+            "arranjo": "cp2b-base-regiao:solo:servico",
+            "grupo": "solo:servico",
+          },
+        ],
+        "variante": "cp2b-base-regiao",
+      },
+      "projectId": 9002,
+    },
+    "specDaRecomposicao": {
+      "blocos": [
+        {
+          "linhas": [
+            "Almoço",
+            "de domingo",
+          ],
+          "ordem": 0,
+          "papel": "headline",
+        },
+        {
+          "linhas": [
+            "Dom · 12h às 16h",
+          ],
+          "ordem": 1,
+          "papel": "servico",
+        },
+      ],
+      "formato": "story",
+      "foto": {
+        "driveFileId": "foto-sintetica",
+      },
+      "preferencias": {
+        "alinha": "direita",
+        "ancora": "topo",
+        "arranjos": [
+          {
+            "arranjo": "cp2b-base-regiao:g-topo",
+            "grupo": "g-topo",
+          },
+          {
+            "arranjo": "cp2b-base-regiao:solo:servico",
+            "grupo": "solo:servico",
+          },
+        ],
+        "variante": "cp2b-base-regiao",
+      },
+      "projectId": 9002,
+    },
+  },
+  "posicao": {
+    "alinha": "direita",
+    "ancora": "topo",
+    "crop": "center-middle",
+  },
+  "segundaVoz": "nenhuma",
+  "tratamento": [
+    {
+      "borda": "topo",
+      "cor": undefined,
+      "estado": "sem-necessidade",
+      "origemDaCor": undefined,
+      "textos": [
+        {
+          "camada": "headline",
+          "polaridade": "clara",
+        },
+      ],
+    },
+    {
+      "borda": "rodape",
+      "cor": undefined,
+      "estado": "sem-necessidade",
+      "origemDaCor": undefined,
+      "textos": [
+        {
+          "camada": "servico",
+          "polaridade": "clara",
+        },
+      ],
+    },
+  ],
+}
+`;
+
+exports[`CP2B · baseline sem arquétipo onde a foto decide (gerado na base 19f87df4) > 5. foto larga (1920×1920) em story: 3 cortes horizontais, o lado esquerdo escuro 1`] = `
+{
+  "arranjos": [
+    {
+      "grupo": "g-topo",
+      "id": "cp2b-base-larga:g-topo",
+      "motivo": "grupo da página",
+      "nome": "Assinatura sintética cp2b-base-larga",
+      "origem": "pagina",
+    },
+    {
+      "grupo": "solo:servico",
+      "id": "cp2b-base-larga:solo:servico",
+      "motivo": "grupo da página",
+      "nome": "Assinatura sintética cp2b-base-larga",
+      "origem": "pagina",
+    },
+  ],
+  "assinatura": {
+    "formatoDaPagina": "story",
+    "motivoDaVariante": "fixada por id",
+    "pageId": "cp2b-base-larga",
+    "variante": "Assinatura sintética cp2b-base-larga",
+    "versao": "assinatura-v3",
+  },
+  "assuntoOrigem": "nenhum",
+  "avisos": [
+    "Topo: o véu da logo #F#F#F# piorou a leitura medida (TRATAMENTO_PIOROU_LEITURA) e saiu da peça.",
+  ],
+  "blocos": [
+    {
+      "destacado": false,
+      "escala": 1,
+      "height": 194,
+      "id": "headline",
+      "papel": "headline",
+      "width": 464,
+    },
+    {
+      "destacado": false,
+      "escala": 1,
+      "height": 39,
+      "id": "servico",
+      "papel": "servico",
+      "width": 286,
+    },
+  ],
+  "candidatos": [
+    [
+      "topo",
+      "esquerda",
+      "left-middle",
+      false,
+    ],
+    [
+      "topo",
+      "direita",
+      "left-middle",
+      false,
+    ],
+    [
+      "topo",
+      "centro",
+      "left-middle",
+      false,
+    ],
+  ],
+  "chavesDoDiagnostico": [
+    "arranjos",
+    "assinatura",
+    "assunto",
+    "assuntoOrigem",
+    "avisos",
+    "blocos",
+    "candidatos",
+    "contraste",
+    "formato",
+    "gradientes",
+    "halos",
+    "logo",
+    "medidasFinais",
+    "posicao",
+    "segundaVoz",
+    "tratamentoDeLeitura",
+    "tratamentoDeTexto",
+    "tratamentoPiorou",
+  ],
+  "gradientes": [
+    {
+      "altura": 576,
+      "borda": "rodape",
+      "cor": "#1A1A1A",
+      "origemDaCor": "mancha",
+    },
+  ],
+  "layers": [
+    {
+      "fileUrl": "data:efcf94f61bf2",
+      "id": "bg-foto",
+      "isDynamic": true,
+      "locked": false,
+      "name": "Foto de fundo",
+      "order": 0,
+      "position": {
+        "x": 0,
+        "y": 0,
+      },
+      "rotation": 0,
+      "size": {
+        "height": 1920,
+        "width": 1080,
+      },
+      "style": {
+        "cropPosition": "left-middle",
+        "objectFit": "cover",
+      },
+      "type": "image",
+      "visible": true,
+    },
+    {
+      "borda": "rodape",
+      "cor": "#1A1A1A",
+      "id": "gradiente-leitura-rodape",
+      "order": 2,
+      "position": {
+        "x": 0,
+        "y": 1344,
+      },
+      "size": {
+        "height": 576,
+        "width": 1080,
+      },
+      "type": "gradient",
+    },
+    {
+      "content": "Almoço
+de domingo",
+      "effects": {},
+      "fileUrl": undefined,
+      "id": "headline",
+      "isDynamic": true,
+      "locked": false,
+      "metadata": {
+        "compositor": {
+          "papel": "headline",
+        },
+        "groupId": "grupo-22212",
+      },
+      "name": "headline",
+      "order": 3,
+      "position": {
+        "x": 92,
+        "y": 300,
+      },
+      "rotation": 0,
+      "size": {
+        "height": 194,
+        "width": 464,
+      },
+      "style": {
+        "color": "#F5F5F5",
+        "fontFamily": "Sintetica Display",
+        "fontSize": 90,
+        "letterSpacing": 0,
+        "lineHeight": 1,
+        "textAlign": "left",
+      },
+      "textboxConfig": {
+        "anchor": "top",
+        "autoWrap": {
+          "autoExpand": true,
+          "breakMode": "word",
+          "lineHeight": 1,
+        },
+        "textMode": "auto-wrap-fixed",
+      },
+      "type": "text",
+      "visible": true,
+    },
+    {
+      "content": "Dom · 12h às 16h",
+      "effects": {},
+      "fileUrl": undefined,
+      "id": "servico",
+      "isDynamic": true,
+      "locked": false,
+      "metadata": {
+        "compositor": {
+          "papel": "servico",
+        },
+        "groupId": "grupo-43470",
+      },
+      "name": "servico",
+      "order": 4,
+      "position": {
+        "x": 397,
+        "y": 1642,
+      },
+      "rotation": 0,
+      "size": {
+        "height": 39,
+        "width": 286,
+      },
+      "style": {
+        "color": "#F5F5F5",
+        "fontFamily": "Sintetica Texto",
+        "fontSize": 34,
+        "letterSpacing": 0,
+        "lineHeight": 1,
+        "textAlign": "center",
+      },
+      "textboxConfig": {
+        "anchor": "top",
+        "autoWrap": {
+          "autoExpand": true,
+          "breakMode": "word",
+          "lineHeight": 1,
+        },
+        "textMode": "auto-wrap-fixed",
+      },
+      "type": "text",
+      "visible": true,
+    },
+    {
+      "fileUrl": "data:42c3ede698cb",
+      "id": "logo",
+      "locked": false,
+      "metadata": {
+        "compositor": {
+          "canto": "superior-direito",
+        },
+      },
+      "name": "Logo",
+      "order": 5,
+      "position": {
+        "x": 830,
+        "y": 200,
+      },
+      "rotation": 0,
+      "size": {
+        "height": 80,
+        "width": 160,
+      },
+      "style": {
+        "objectFit": "contain",
+      },
+      "type": "logo",
+      "visible": true,
+    },
+  ],
+  "logo": {
+    "canto": "superior-direito",
+    "tinta": 0,
+  },
+  "medidasFinais": [
+    {
+      "fontFamily": "Sintetica Display",
+      "fontSize": 90,
+      "height": 194,
+      "id": "headline",
+      "lineHeight": 1,
+      "linhas": 2,
+      "naoMedido": false,
+      "papel": "headline",
+      "width": 464,
+    },
+    {
+      "fontFamily": "Sintetica Texto",
+      "fontSize": 34,
+      "height": 39,
+      "id": "servico",
+      "lineHeight": 1,
+      "linhas": 1,
+      "naoMedido": false,
+      "papel": "servico",
+      "width": 286,
+    },
+  ],
+  "persist": {
+    "chaves": [
+      "composicao",
+      "copyAutoral",
+      "driveImageId",
+      "imageUrl",
+      "layersSnapshot",
+      "source",
+      "spec",
+    ],
+    "spec": {
+      "blocos": [
+        {
+          "linhas": [
+            "Almoço",
+            "de domingo",
+          ],
+          "ordem": 0,
+          "papel": "headline",
+        },
+        {
+          "linhas": [
+            "Dom · 12h às 16h",
+          ],
+          "ordem": 1,
+          "papel": "servico",
+        },
+      ],
+      "formato": "story",
+      "foto": {
+        "driveFileId": "foto-sintetica",
+      },
+      "preferencias": {
+        "arranjos": [
+          {
+            "arranjo": "cp2b-base-larga:g-topo",
+            "grupo": "g-topo",
+          },
+          {
+            "arranjo": "cp2b-base-larga:solo:servico",
+            "grupo": "solo:servico",
+          },
+        ],
+        "variante": "cp2b-base-larga",
+      },
+      "projectId": 9002,
+    },
+    "specDaRecomposicao": {
+      "blocos": [
+        {
+          "linhas": [
+            "Almoço",
+            "de domingo",
+          ],
+          "ordem": 0,
+          "papel": "headline",
+        },
+        {
+          "linhas": [
+            "Dom · 12h às 16h",
+          ],
+          "ordem": 1,
+          "papel": "servico",
+        },
+      ],
+      "formato": "story",
+      "foto": {
+        "driveFileId": "foto-sintetica",
+      },
+      "preferencias": {
+        "alinha": "esquerda",
+        "ancora": "topo",
+        "arranjos": [
+          {
+            "arranjo": "cp2b-base-larga:g-topo",
+            "grupo": "g-topo",
+          },
+          {
+            "arranjo": "cp2b-base-larga:solo:servico",
+            "grupo": "solo:servico",
+          },
+        ],
+        "variante": "cp2b-base-larga",
+      },
+      "projectId": 9002,
+    },
+  },
+  "posicao": {
+    "alinha": "esquerda",
+    "ancora": "topo",
+    "crop": "left-middle",
+  },
+  "segundaVoz": "nenhuma",
+  "tratamento": [
+    {
+      "borda": "topo",
+      "cor": undefined,
+      "estado": "sem-necessidade",
+      "origemDaCor": undefined,
+      "textos": [
+        {
+          "camada": "headline",
+          "polaridade": "clara",
+        },
+      ],
+    },
+    {
+      "borda": "rodape",
+      "cor": "#1A1A1A",
+      "estado": "tratado",
+      "origemDaCor": "mancha",
+      "textos": [
+        {
+          "camada": "servico",
+          "polaridade": "clara",
+        },
+      ],
+    },
+  ],
+}
+`;
+
+exports[`CP2B · baseline sem arquétipo onde a foto decide (gerado na base 19f87df4) > 6. feed de foto vertical: 3 cortes verticais, o topo escuro 1`] = `
+{
+  "arranjos": [
+    {
+      "grupo": "g-topo",
+      "id": "cp2b-base-feed:g-topo",
+      "motivo": "grupo da página",
+      "nome": "Assinatura sintética cp2b-base-feed",
+      "origem": "pagina",
+    },
+    {
+      "grupo": "solo:servico",
+      "id": "cp2b-base-feed:solo:servico",
+      "motivo": "grupo da página",
+      "nome": "Assinatura sintética cp2b-base-feed",
+      "origem": "pagina",
+    },
+  ],
+  "assinatura": {
+    "formatoDaPagina": "feed",
+    "motivoDaVariante": "fixada por id",
+    "pageId": "cp2b-base-feed",
+    "variante": "Assinatura sintética cp2b-base-feed",
+    "versao": "assinatura-v3",
+  },
+  "assuntoOrigem": "nenhum",
+  "avisos": [],
+  "blocos": [
+    {
+      "destacado": false,
+      "escala": 1,
+      "height": 194,
+      "id": "headline",
+      "papel": "headline",
+      "width": 464,
+    },
+    {
+      "destacado": false,
+      "escala": 1,
+      "height": 46,
+      "id": "apoio",
+      "papel": "apoio",
+      "width": 374,
+    },
+    {
+      "destacado": false,
+      "escala": 1,
+      "height": 39,
+      "id": "servico",
+      "papel": "servico",
+      "width": 286,
+    },
+  ],
+  "candidatos": [
+    [
+      "topo",
+      "esquerda",
+      "center-top",
+      false,
+    ],
+    [
+      "topo",
+      "direita",
+      "center-top",
+      false,
+    ],
+    [
+      "topo",
+      "centro",
+      "center-top",
+      false,
+    ],
+  ],
+  "chavesDoDiagnostico": [
+    "arranjos",
+    "assinatura",
+    "assunto",
+    "assuntoOrigem",
+    "avisos",
+    "blocos",
+    "candidatos",
+    "contraste",
+    "formato",
+    "gradientes",
+    "halos",
+    "logo",
+    "medidasFinais",
+    "posicao",
+    "segundaVoz",
+    "tratamentoDeLeitura",
+    "tratamentoDeTexto",
+    "tratamentoPiorou",
+  ],
+  "gradientes": [
+    {
+      "altura": 528,
+      "borda": "rodape",
+      "cor": "#1A1A1A",
+      "origemDaCor": "mancha",
+    },
+  ],
+  "layers": [
+    {
+      "fileUrl": "data:19b96e336427",
+      "id": "bg-foto",
+      "isDynamic": true,
+      "locked": false,
+      "name": "Foto de fundo",
+      "order": 0,
+      "position": {
+        "x": 0,
+        "y": 0,
+      },
+      "rotation": 0,
+      "size": {
+        "height": 1350,
+        "width": 1080,
+      },
+      "style": {
+        "cropPosition": "center-top",
+        "objectFit": "cover",
+      },
+      "type": "image",
+      "visible": true,
+    },
+    {
+      "borda": "rodape",
+      "cor": "#1A1A1A",
+      "id": "gradiente-leitura-rodape",
+      "order": 1,
+      "position": {
+        "x": 0,
+        "y": 822,
+      },
+      "size": {
+        "height": 528,
+        "width": 1080,
+      },
+      "type": "gradient",
+    },
+    {
+      "content": "Almoço
+de domingo",
+      "effects": {},
+      "fileUrl": undefined,
+      "id": "headline",
+      "isDynamic": true,
+      "locked": false,
+      "metadata": {
+        "compositor": {
+          "papel": "headline",
+        },
+        "groupId": "grupo-22212",
+      },
+      "name": "headline",
+      "order": 2,
+      "position": {
+        "x": 92,
+        "y": 300,
+      },
+      "rotation": 0,
+      "size": {
+        "height": 194,
+        "width": 464,
+      },
+      "style": {
+        "color": "#F5F5F5",
+        "fontFamily": "Sintetica Display",
+        "fontSize": 90,
+        "letterSpacing": 0,
+        "lineHeight": 1,
+        "textAlign": "left",
+      },
+      "textboxConfig": {
+        "anchor": "top",
+        "autoWrap": {
+          "autoExpand": true,
+          "breakMode": "word",
+          "lineHeight": 1,
+        },
+        "textMode": "auto-wrap-fixed",
+      },
+      "type": "text",
+      "visible": true,
+    },
+    {
+      "content": "com a família toda",
+      "effects": {},
+      "fileUrl": undefined,
+      "id": "apoio",
+      "isDynamic": true,
+      "locked": false,
+      "metadata": {
+        "compositor": {
+          "papel": "apoio",
+        },
+        "groupId": "grupo-22212",
+      },
+      "name": "apoio",
+      "order": 3,
+      "position": {
+        "x": 92,
+        "y": 510,
+      },
+      "rotation": 0,
+      "size": {
+        "height": 46,
+        "width": 374,
+      },
+      "style": {
+        "color": "#F5F5F5",
+        "fontFamily": "Sintetica Display",
+        "fontSize": 40,
+        "letterSpacing": 0,
+        "lineHeight": 1,
+        "textAlign": "left",
+      },
+      "textboxConfig": {
+        "anchor": "top",
+        "autoWrap": {
+          "autoExpand": true,
+          "breakMode": "word",
+          "lineHeight": 1,
+        },
+        "textMode": "auto-wrap-fixed",
+      },
+      "type": "text",
+      "visible": true,
+    },
+    {
+      "content": "Dom · 12h às 16h",
+      "effects": {},
+      "fileUrl": undefined,
+      "id": "servico",
+      "isDynamic": true,
+      "locked": false,
+      "metadata": {
+        "compositor": {
+          "papel": "servico",
+        },
+        "groupId": "grupo-43470",
+      },
+      "name": "servico",
+      "order": 4,
+      "position": {
+        "x": 397,
+        "y": 1072,
+      },
+      "rotation": 0,
+      "size": {
+        "height": 39,
+        "width": 286,
+      },
+      "style": {
+        "color": "#F5F5F5",
+        "fontFamily": "Sintetica Texto",
+        "fontSize": 34,
+        "letterSpacing": 0,
+        "lineHeight": 1,
+        "textAlign": "center",
+      },
+      "textboxConfig": {
+        "anchor": "top",
+        "autoWrap": {
+          "autoExpand": true,
+          "breakMode": "word",
+          "lineHeight": 1,
+        },
+        "textMode": "auto-wrap-fixed",
+      },
+      "type": "text",
+      "visible": true,
+    },
+    {
+      "fileUrl": "data:42c3ede698cb",
+      "id": "logo",
+      "locked": false,
+      "metadata": {
+        "compositor": {
+          "canto": "superior-direito",
+        },
+      },
+      "name": "Logo",
+      "order": 5,
+      "position": {
+        "x": 830,
+        "y": 200,
+      },
+      "rotation": 0,
+      "size": {
+        "height": 80,
+        "width": 160,
+      },
+      "style": {
+        "objectFit": "contain",
+      },
+      "type": "logo",
+      "visible": true,
+    },
+  ],
+  "logo": {
+    "canto": "superior-direito",
+    "tinta": 0,
+  },
+  "medidasFinais": [
+    {
+      "fontFamily": "Sintetica Display",
+      "fontSize": 90,
+      "height": 194,
+      "id": "headline",
+      "lineHeight": 1,
+      "linhas": 2,
+      "naoMedido": false,
+      "papel": "headline",
+      "width": 464,
+    },
+    {
+      "fontFamily": "Sintetica Display",
+      "fontSize": 40,
+      "height": 46,
+      "id": "apoio",
+      "lineHeight": 1,
+      "linhas": 1,
+      "naoMedido": false,
+      "papel": "apoio",
+      "width": 374,
+    },
+    {
+      "fontFamily": "Sintetica Texto",
+      "fontSize": 34,
+      "height": 39,
+      "id": "servico",
+      "lineHeight": 1,
+      "linhas": 1,
+      "naoMedido": false,
+      "papel": "servico",
+      "width": 286,
+    },
+  ],
+  "persist": {
+    "chaves": [
+      "composicao",
+      "copyAutoral",
+      "driveImageId",
+      "imageUrl",
+      "layersSnapshot",
+      "source",
+      "spec",
+    ],
+    "spec": {
+      "blocos": [
+        {
+          "linhas": [
+            "Almoço",
+            "de domingo",
+          ],
+          "ordem": 0,
+          "papel": "headline",
+        },
+        {
+          "linhas": [
+            "com a família toda",
+          ],
+          "ordem": 1,
+          "papel": "apoio",
+        },
+        {
+          "linhas": [
+            "Dom · 12h às 16h",
+          ],
+          "ordem": 2,
+          "papel": "servico",
+        },
+      ],
+      "formato": "feed",
+      "foto": {
+        "driveFileId": "foto-sintetica",
+      },
+      "preferencias": {
+        "arranjos": [
+          {
+            "arranjo": "cp2b-base-feed:g-topo",
+            "grupo": "g-topo",
+          },
+          {
+            "arranjo": "cp2b-base-feed:solo:servico",
+            "grupo": "solo:servico",
+          },
+        ],
+        "variante": "cp2b-base-feed",
+      },
+      "projectId": 9002,
+    },
+    "specDaRecomposicao": {
+      "blocos": [
+        {
+          "linhas": [
+            "Almoço",
+            "de domingo",
+          ],
+          "ordem": 0,
+          "papel": "headline",
+        },
+        {
+          "linhas": [
+            "com a família toda",
+          ],
+          "ordem": 1,
+          "papel": "apoio",
+        },
+        {
+          "linhas": [
+            "Dom · 12h às 16h",
+          ],
+          "ordem": 2,
+          "papel": "servico",
+        },
+      ],
+      "formato": "feed",
+      "foto": {
+        "driveFileId": "foto-sintetica",
+      },
+      "preferencias": {
+        "alinha": "esquerda",
+        "ancora": "topo",
+        "arranjos": [
+          {
+            "arranjo": "cp2b-base-feed:g-topo",
+            "grupo": "g-topo",
+          },
+          {
+            "arranjo": "cp2b-base-feed:solo:servico",
+            "grupo": "solo:servico",
+          },
+        ],
+        "variante": "cp2b-base-feed",
+      },
+      "projectId": 9002,
+    },
+  },
+  "posicao": {
+    "alinha": "esquerda",
+    "ancora": "topo",
+    "crop": "center-top",
+  },
+  "segundaVoz": "nenhuma",
+  "tratamento": [
+    {
+      "borda": "topo",
+      "cor": undefined,
+      "estado": "sem-necessidade",
+      "origemDaCor": undefined,
+      "textos": [
+        {
+          "camada": "headline",
+          "polaridade": "clara",
+        },
+        {
+          "camada": "apoio",
+          "polaridade": "clara",
+        },
+      ],
+    },
+    {
+      "borda": "rodape",
+      "cor": "#1A1A1A",
+      "estado": "tratado",
+      "origemDaCor": "mancha",
+      "textos": [
+        {
+          "camada": "servico",
+          "polaridade": "clara",
+        },
+      ],
+    },
+  ],
+}
+`;

@@ -10,10 +10,18 @@ const banco = vi.hoisted(() => ({
   post: null as Record<string, any> | null,
   generations: [] as Array<Record<string, any>>,
   updates: [] as Array<Record<string, any>>,
+  /** A linha como o SELECT … FOR UPDATE a vê (pode ter mudado depois da leitura inicial). */
+  travada: undefined as Record<string, any> | undefined,
+  sql: [] as string[],
 }))
 
-vi.mock('@/lib/db', () => ({
-  db: {
+vi.mock('@/lib/db', () => {
+  const db: any = {
+    $transaction: async (fazer: (tx: unknown) => Promise<unknown>) => fazer(db),
+    $queryRaw: async (partes: TemplateStringsArray) => {
+      banco.sql.push(partes.join('?'))
+      return [{ slotValues: (banco.travada ?? banco.post)?.slotValues ?? null }]
+    },
     socialPost: {
       findUnique: async () => banco.post,
       updateMany: async ({ data }: { data: Record<string, unknown> }) => {
@@ -26,8 +34,9 @@ vi.mock('@/lib/db', () => ({
         banco.generations.find((g) => g.id === where.id && g.projectId === where.projectId) ?? null,
     },
     postLog: { create: async () => ({}) },
-  },
-}))
+  }
+  return { db }
+})
 vi.mock('@prisma/client', async () => await import('../../../../prisma/generated/client'))
 vi.mock('@/lib/creatives/ingerir-midia', () => ({ ingerirMidiaExterna: async (urls: string[]) => ({ urls, falhas: [] }) }))
 vi.mock('@/lib/creatives/persist', () => ({ getPublicAppUrl: () => 'https://studio.test', renderPageAndRegister: vi.fn() }))
@@ -45,6 +54,8 @@ function arte(id: string, fieldValues: Record<string, unknown>) {
 
 beforeEach(() => {
   banco.updates = []
+  banco.travada = undefined
+  banco.sql = []
   banco.generations = []
   banco.post = {
     id: 'post-1',
@@ -107,5 +118,22 @@ describe('trocarArteDoPost pela galeria — a copy do post segue a procedência 
     const { data } = await trocarPor({ source: 'compositor', layersSnapshot: '[]', recomposicao: { estado: 're-renderizada' } })
     expect(data.slotValues).toBe(Prisma.DbNull)
     expect(JSON.stringify(data)).not.toContain('Copy da arte anterior')
+  })
+})
+
+describe('checkpoint e (Codex): trocar a arte não retira o contrato semântico', () => {
+  it('post com _slots/_papeis: recusa (422), sem gravar nada — a mídia dele só vem do render provado', async () => {
+    banco.post!.slotValues = { _slots: { manchete: 'X' } }
+    banco.generations = [arte('gen-nova', { source: 'post-schedule', slotValues: { headline: 'Copy nova' } })]
+    await expect(trocarArteDoPost({ projectId: 8, postId: 'post-1', generationId: 'gen-nova' })).rejects.toMatchObject({ code: 'CONTRATO_SEMANTICO_SEM_TROCA_DE_ARTE', status: 422 })
+    expect(banco.updates).toEqual([])
+  })
+
+  it('o contrato apareceu DEPOIS da leitura: a decisão é da linha travada (FOR UPDATE), e nada é gravado', async () => {
+    banco.travada = { ...banco.post, slotValues: { _papeis: { headline: 'X' } } }
+    banco.generations = [arte('gen-nova', { source: 'post-schedule', slotValues: { headline: 'Copy nova' } })]
+    await expect(trocarArteDoPost({ projectId: 8, postId: 'post-1', generationId: 'gen-nova' })).rejects.toMatchObject({ code: 'CONTRATO_SEMANTICO_SEM_TROCA_DE_ARTE' })
+    expect(banco.sql.some((q) => /FROM "SocialPost"[\s\S]*FOR UPDATE/.test(q))).toBe(true)
+    expect(banco.updates).toEqual([])
   })
 })

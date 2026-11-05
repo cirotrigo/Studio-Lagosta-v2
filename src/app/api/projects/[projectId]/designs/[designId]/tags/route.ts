@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { fetchProjectWithShares, hasProjectWriteAccess } from '@/lib/projects/access'
+import { tagsComMarcaPreservada, TAG_FORA_DO_RODIZIO } from '@/lib/compositor/fora-do-rodizio'
 
 export const runtime = 'nodejs'
 
@@ -46,8 +47,9 @@ export async function PATCH(
       return NextResponse.json({ error: 'Invalid tag format' }, { status: 400 })
     }
 
-    // Normalize tags (trim whitespace)
-    const normalizedTags = tags.map((tag: string) => tag.trim())
+    // Normalize tags (trim whitespace). T5: a marca `fora-do-rodizio` é do sistema — nunca vem do pedido (nem vira
+    // ProjectTag); a da linha é preservada na gravação.
+    const normalizedTags = tags.map((tag: string) => tag.trim()).filter((tag: string) => tag !== TAG_FORA_DO_RODIZIO)
 
     // Find the page (design) and verify it belongs to this project
     const page = await db.page.findFirst({
@@ -104,7 +106,7 @@ export async function PATCH(
     const updatedPage = await db.page.update({
       where: { id: designId },
       data: {
-        tags: normalizedTags,
+        tags: tagsComMarcaPreservada(page.tags, normalizedTags),
         updatedAt: new Date(),
       },
     })

@@ -24,7 +24,7 @@
 
 import { normalizeForComparison } from '@/lib/ai/text-comparison'
 import { semColchetes } from '@/lib/compositor/destaques'
-import { lerCamadas, textosDaPagina } from '@/lib/posts/page-layers'
+import { lerCamadas, parsePageLayers, textosDaPagina, textosDaPaginaPorCamada } from '@/lib/posts/page-layers'
 import { camadasParaDecisao } from '@/lib/creatives/revisao/oculta-pelo-revisor'
 import type { Desfecho } from './vocabulario'
 
@@ -327,6 +327,86 @@ export function copyParaDecisao(layers: unknown): Record<string, string> | null 
   const { camadas, legivel } = lerCamadas(layers)
   if (!legivel) return null
   return textosDaPagina(camadasParaDecisao(camadas))
+}
+
+/**
+ * Traduz para a chave da PÁGINA (nome da camada, com o sufixo `#2`…) as
+ * chaves da proposta que são o `layerId` de uma camada de texto — e só elas.
+ *
+ * A proposta da via não-semântica guarda a copy pela chave do PEDIDO, que pode
+ * ser o id da camada, enquanto `copyParaDecisao` lê a página por nome. Sem isto
+ * o mesmo texto virava "removido + adicionado" e o agendamento gravava uma
+ * edição que ninguém fez (FALSE_LEARNING_DIFF, caracterizado no B1d; corrigido
+ * em 13/10/2026).
+ *
+ * Chave por NOME, ou que não é id de camada, fica exatamente como veio: o
+ * comportamento de antes. Tentar espalhar o nome pelas camadas repetidas
+ * adivinhava uma procedência que não existe e criava sinal falso novo (rodadas
+ * 3 a 8 do Codex). A tradução é por IDENTIDADE da camada, nunca por conteúdo,
+ * e o id vence o nome, como no bake (`slotValues[layer.id] ?? … ?? slotValues[layer.name]`).
+ * Camada endereçada pelo id que está fora da arte (oculta pela pessoa, vazia)
+ * recebe uma chave que não casa com a página — conta como removida. Camada
+ * oculta pelo REVISOR conta como presente, como em `copyParaDecisao`.
+ *
+ * 🔴 Devolve `null` — "não sei", sem diff e sem sinal — quando uma chave é o id
+ * de uma camada de texto E o nome (ou a chave `#2` na página) de OUTRA: a procedência não diz em que
+ * formato a proposta foi gravada (`copyDeAprendizado ?? slotValues`).
+ *
+ * Use as MESMAS camadas que geraram o lado final do diff (no vídeo, as
+ * gravadas no MP4, não as da página de agora). Página ilegível devolve a
+ * proposta intacta.
+ */
+export function alinharChavesDaProposta(
+  proposta: Record<string, string> | null,
+  layers: unknown,
+): Record<string, string> | null {
+  if (!proposta) return proposta
+  const { camadas, legivel } = lerCamadas(layers)
+  if (!legivel) return proposta
+
+  // Mesmas camadas que `copyParaDecisao` lê — as chaves têm de ser as dela. A
+  // camada é identificada pela POSIÇÃO nesta lista: `id` é opcional no editor.
+  const decisao = parsePageLayers(camadasParaDecisao(camadas))
+  const ehTexto = (c: Record<string, unknown>) => c?.type === 'text' || c?.type === 'rich-text'
+  const textos = (decisao as Array<Record<string, unknown>>).filter(ehTexto)
+  const itens = textosDaPaginaPorCamada(decisao)
+  // Ambígua: a chave é o id de uma camada E o nome — ou a chave na página, com
+  // o `#2` do nome repetido — de OUTRA (rodadas 4 e 9 do Codex).
+  const ambigua = Object.keys(proposta).some((chave) =>
+    textos.some(
+      (x) =>
+        x.id === chave &&
+        (textos.some((y) => y !== x && y.name === chave) ||
+          itens.some((t) => t.chave === chave && decisao[t.indice] !== x)),
+    ),
+  )
+  if (ambigua) return null
+
+  // id de camada de texto → a chave dela na página; fora da arte (oculta pela
+  // pessoa, vazia), uma chave que não casa com a página.
+  const naArte = new Set(itens.map((t) => t.indice))
+  const chaveDoId = new Map<string, string>()
+  for (const t of itens) if (t.id) chaveDoId.set(t.id, t.chave)
+  const ocupadas = new Set(itens.map((t) => t.chave))
+  for (let i = 0; i < decisao.length; i++) {
+    const c = decisao[i] as Record<string, unknown>
+    if (!ehTexto(c) || naArte.has(i) || typeof c.id !== 'string' || chaveDoId.has(c.id)) continue
+    const base = `${typeof c.name === 'string' ? c.name : c.id} (fora da arte)`
+    let chave = base
+    for (let n = 2; ocupadas.has(chave); n++) chave = `${base}#${n}`
+    ocupadas.add(chave)
+    chaveDoId.set(c.id, chave)
+  }
+
+  const out: Record<string, string> = {}
+  // Por nome (e chave desconhecida): como veio — o comportamento de antes.
+  for (const [chave, texto] of Object.entries(proposta)) if (!chaveDoId.has(chave)) out[chave] = texto
+  // Por id: a chave da camada; o id vence o nome, como no bake.
+  for (const [chave, texto] of Object.entries(proposta)) {
+    const destino = chaveDoId.get(chave)
+    if (destino) out[destino] = texto
+  }
+  return out
 }
 
 /**

@@ -22,7 +22,8 @@ export async function fetchImageSource(url: string): Promise<{ buffer: Buffer; c
   return fetchExternal(url)
 }
 
-function extractDriveFileId(url: string): string | null {
+/** O id do Drive numa URL de foto do Drive (proxy interno, lh3, uc/open/download?id= ou /file/d/), ou `null`. */
+export function extractDriveFileId(url: string): string | null {
   // Formato 1: /api/google-drive/image/{fileId} ou /api/drive/thumbnail/{fileId}
   const apiMatch = url.match(/\/api\/(?:google-drive\/image|drive\/thumbnail)\/([^/?]+)/)
   if (apiMatch?.[1]) return apiMatch[1]
@@ -31,11 +32,19 @@ function extractDriveFileId(url: string): string | null {
   const cdnMatch = url.match(/lh3\.googleusercontent\.com\/d\/([a-zA-Z0-9_-]+)/)
   if (cdnMatch?.[1]) return cdnMatch[1]
 
-  // Formato 3 (legacy): drive.google.com/uc?export=view&id={fileId}
-  const ucMatch = url.match(/drive\.google\.com\/uc\?[^"]*[?&]id=([a-zA-Z0-9_-]+)/)
-  if (ucMatch?.[1]) return ucMatch[1]
-
-  return null
+  // Formato 3: hosts do Drive lidos pela URL, não por regex — `uc?id=`,
+  // `uc?export=view&id=`, `open?id=`, `download?id=` e `/file/d/{id}/…`.
+  let u: URL
+  try {
+    u = new URL(url)
+  } catch {
+    return null
+  }
+  const host = u.hostname.toLowerCase()
+  if (host !== 'drive.google.com' && host !== 'docs.google.com' && host !== 'drive.usercontent.google.com') return null
+  const doCaminho = u.pathname.match(/^\/file\/d\/([a-zA-Z0-9_-]+)/)?.[1]
+  const id = doCaminho ?? u.searchParams.get('id')
+  return id && /^[a-zA-Z0-9_-]+$/.test(id) ? id : null
 }
 
 async function fetchFromDriveService(fileId: string): Promise<{ buffer: Buffer; contentType: string }> {

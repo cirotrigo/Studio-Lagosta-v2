@@ -143,6 +143,10 @@ describe('agendar-leva: a porta', () => {
   it('repassa a leva ao serviço com quem decidiu, superfície chat e simular explícito', async () => {
     const r = (await tool.handler({ projectId: 8, loteId: 'semana-2026-09-14', itens: [{ itemId: 'seg' }, { itemId: 'ter', quando: '2026-09-15 12:00' }] }, principal)) as Record<string, unknown>
     expect(mocks.agendarItensDoLote).toHaveBeenCalledWith({
+      // Perfil normal: o agendamento pode adotar como sempre (o draft-only é H4, em guardas-draft-only.test.ts).
+      apenasRascunho: false,
+      // CP5c: quem pediu vai no registro do gate (auditoria); um principal de teste sem ids cai no rótulo 'servico'.
+      principal: { tipo: 'user', id: 'servico' },
       projectId: 8,
       loteId: 'semana-2026-09-14',
       itens: [{ itemId: 'seg' }, { itemId: 'ter', quando: '2026-09-15 12:00' }],

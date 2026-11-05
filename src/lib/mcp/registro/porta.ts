@@ -20,6 +20,7 @@ import { CreativeError } from '../../creatives/errors'
 import { ErroDeTool } from './tipos'
 import type { McpPrincipal } from '../oauth'
 import type { ResultadoMcp, Superficie, ToolPronta } from './tipos'
+import { perfilDoPrincipal, toolNoPerfil } from './perfil'
 
 export interface GatesDaPorta {
   projeto: (projectId: number, principal: McpPrincipal) => Promise<void>
@@ -48,6 +49,14 @@ export async function executarTool(
   // não existe aqui — mesma resposta do nome inexistente, para não vazar o
   // catálogo da outra superfície.
   if (!tool.superficies.includes(superficie)) {
+    return erroDeTexto(`Ferramenta desconhecida: ${nome}`)
+  }
+
+  // Perfil draft-only (H4): fora da allowlist, a tool não existe para este
+  // principal. Mesma resposta, byte a byte, do nome inexistente, e ANTES de
+  // coerção, schema, gate e handler: nada revela que ela existe nem roda. O
+  // teste é pelo nome CANÔNICO, então o apelido de uma tool proibida também cai aqui.
+  if (!toolNoPerfil(perfilDoPrincipal(principal), tool.nome)) {
     return erroDeTexto(`Ferramenta desconhecida: ${nome}`)
   }
 

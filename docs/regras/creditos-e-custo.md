@@ -83,3 +83,73 @@ duas semanas, não dez meses.
   `tools/generate-art` também não deduz. O que falta explicar é por que os dois
   caminhos que DEDUZEM não deixaram linha na janela de retenção — ficou em
   aberto.
+
+### Modo interno: o saldo não bloqueia nem é debitado (13/10/2026)
+
+O Studio virou ferramenta INTERNA: quem decide se uma operação roda é a
+**autorização** (acesso ao projeto), nunca o saldo. A chave é
+`CREDITOS_APLICADOS` (`src/lib/credits/aplicados.ts`), env **só do servidor**,
+lida a cada chamada. **Padrão: desligada** (qualquer valor que não seja `true`).
+
+- **Desligada**: `validateCreditsForFeature` devolve na hora, sem banco e sem
+  `getUserFromClerkId`. `deductCreditsForFeature` não cria nem debita saldo e
+  nunca lança `InsufficientCreditsError`, mas **segue gravando** a
+  `UsageHistory` (mesmo `creditsUsed` de `creditosADebitar`) ou a
+  `OrganizationUsage`, e roda o `noMesmoCommit` na mesma transação — a marca
+  `creditsDeducted` do vídeo continua saindo junto. Débito e estorno usam
+  `getUserFromClerkId` nos dois modos: rodam DEPOIS da autorização e do
+  trabalho, então criar o User ali é o primeiro acesso legítimo — e o uso
+  nunca se perde (com `findUnique`, User ausente sumia com o registro). O
+  CreditBalance pessoal ainda é criado se faltar (FK da `UsageHistory`).
+  `refundCreditsForFeature` grava a linha negativa e não devolve ao saldo.
+- **A interface** lê a flag por `/api/credits/settings` (`creditosAplicados`) —
+  `NEXT_PUBLIC_` seria embutida no build, e o módulo vive ao lado do Prisma.
+  `useCredits().canPerformOperation` decide por `podeExecutar`; as checagens
+  diretas de saldo (painel de imagens, IA do Drive, remover fundo, chat)
+  respeitam a mesma flag. Billing, planos e telas de admin ficaram como estavam.
+- **Endurecimentos que valem com a flag ligada ou desligada**:
+  - `sendToLater` cobra **depois** de gravar `laterPostId`/status. Antes, a
+    cobrança ficava entre o `createPost` do Zernio e esse update, e qualquer
+    erro marcava FAILED um post já publicado, sem `laterPostId` — o retry o
+    reenviaria. Falha da cobrança agora vira `PostLog` SENT com
+    `{ cobrancaFalhou: true, laterPostId }`, nunca falha do post. Falha antes do
+    Zernio segue FAILED + `handlePublishFailure`. Com a flag LIGADA, o saldo é
+    validado antes do `createPost`: insuficiente, o post não sai (FAILED +
+    `handlePublishFailure`, que não retenta crédito) — é o que mantém o "religar
+    a cobrança" honesto, já que a cobrança depois do Zernio nunca falha o post.
+  - Se a gravação do `laterPostId` falhar DEPOIS do `createPost`, o envio é
+    INCERTO, não FAILED: tenta uma gravação mínima só do `laterPostId`
+    (`where laterPostId IS NULL`); se ela também falhar, a linha fica POSTING,
+    sem `handlePublishFailure`, com `PostLog` `{ laterPostId,
+    persistenciaIncerta: true }`, e `sendToLater` devolve `{ success: false,
+    incerto: true }` (o executor não conta sucesso nem agenda nova tentativa).
+    A varredura de travados (`checkStuckPosts`, caso a) procura esse log antes
+    de tratar o POSTING sem id como "nunca enviado": achando, devolve o
+    `laterPostId` à linha (CAS `laterPostId IS NULL`, `lastSyncAt: null`) e o
+    `syncLateStatus` assume — sem FAILED nem reenvio. ⚠️ Se nem o log foi
+    gravado (banco fora), a varredura segue como antes: FAILED + retry, e a
+    proteção contra publicação dupla fica com a deduplicação do Zernio (409,
+    24h, adotado por `tryAdoptExistingPost`).
+  - O job de vídeo com `InsufficientCreditsError` conclui sem cobrar
+    (`creditsDeducted: false`, que agora reflete a cobrança real) e a arte ganha
+    `cobrancaAviso: 'saldo-insuficiente'` por merge no banco, gravado NA HORA da
+    recusa. A recuperação de jobs presos considera o vídeo pronto com MP4 e
+    (`creditsDeducted` OU essa marca), então uma queda depois do MP4 não falha o
+    vídeo. `cobrarUmaVez` manteve o contrato.
+  - `POST /api/video-processing/queue` confere o acesso ao projeto **antes** de
+    `getUserFromClerkId` e da validação de créditos: sem acesso, o mesmo 404 com
+    ou sem saldo, e nenhum User criado.
+  - Sem saldo nada limita as rotas pagas, então elas exigem acesso de ESCRITA
+    ao projeto antes do provedor e do registro de uso: `ai/remove-background`,
+    `ai/improve-caption` e `templates/export` (pelo projeto do template; sem
+    template, o uso não vai para projeto nenhum). Alheio ou inexistente: o
+    mesmo 404.
+- **Religar a cobrança**: `CREDITOS_APLICADOS=true` no env do servidor (Vercel)
+  e redeploy. O comportamento volta ao de antes, com os endurecimentos acima.
+  ⚠️ Residual aceito com a cobrança LIGADA (revisão do Codex, 13/10/2026): a
+  validação de saldo antes do Zernio é leitura, não reserva — dois posts que
+  dividem o último crédito podem passar os dois, publicar, e o segundo ficar
+  sem cobrança (o débito recusado depois do envio não falha o post). Na main
+  anterior o mesmo caso marcava FAILED um post já publicado. Se a cobrança
+  voltar a valer como regra, trocar a validação por reserva atômica antes do
+  Zernio, com estorno idempotente quando o envio falhar de vez.

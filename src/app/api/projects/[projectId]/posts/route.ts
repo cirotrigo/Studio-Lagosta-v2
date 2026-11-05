@@ -7,7 +7,12 @@ import { PostScheduler } from '@/lib/posts/scheduler'
 import { convertPageToDesignData, findUnmatchedSlotKeys } from '@/lib/posts/page-to-design-data'
 import { PostType, ScheduleType, RecurrenceFrequency, PublishType } from '../../../../../../prisma/generated/client'
 import { hasProjectReadAccess, hasProjectWriteAccess, withProjectOwner } from '@/lib/projects/access'
+import { ErroAdmissaoSemantica } from '@/lib/posts/admitir-pedido-semantico'
 import { fecharPropostaDeRepost } from '@/lib/aprendizado/sinal-de-repost'
+import { avisoDeCelulasVazias } from '@/lib/grades/presenca'
+
+// Post IMMEDIATE espera o Zernio dentro desta função: carrossel leva quase 2 minutos.
+export const maxDuration = 300
 
 // Dynamic validation schema based on post type
 const createPostValidationSchema = (postType?: PostType) => {
@@ -164,11 +169,16 @@ export async function POST(
     // Slots endereçados a layers que a página não tem seriam descartados na
     // renderização sem aviso — devolvidos como warning para quem agenda
     const slotWarnings: string[] = []
+    // G4.6: a página também diz se a grade de fotos tem célula vazia (avisa, não bloqueia); só da página deste projeto
+    const page = data.pageId
+      ? await db.page.findUnique({
+          where: { id: data.pageId },
+          select: { id: true, name: true, width: true, height: true, layers: true, background: true, Template: { select: { projectId: true } } },
+        })
+      : null
+    const avisoDaGrade = page && page.Template?.projectId === projectId ? avisoDeCelulasVazias(page.layers) : null
+    if (avisoDaGrade) slotWarnings.push(avisoDaGrade)
     if (data.pageId && data.slotValues && Object.keys(data.slotValues).length > 0) {
-      const page = await db.page.findUnique({
-        where: { id: data.pageId },
-        select: { id: true, name: true, width: true, height: true, layers: true, background: true },
-      })
       if (page) {
         const { layers } = convertPageToDesignData(page)
         const unmatched = findUnmatchedSlotKeys(layers, data.slotValues)
@@ -250,6 +260,11 @@ export async function POST(
         { error: 'Validation error', details: error.errors },
         { status: 400 }
       )
+    }
+
+    // B1d (checkpoint c): pedido semântico (_slots/_papeis) recusado na admissão — erro do pedido, não 500.
+    if (error instanceof ErroAdmissaoSemantica) {
+      return NextResponse.json({ error: error.codigo, message: error.message, erros: error.erros }, { status: 422 })
     }
 
     // Return detailed error message for debugging
