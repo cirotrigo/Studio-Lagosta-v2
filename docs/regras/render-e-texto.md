@@ -311,6 +311,68 @@ nem sinal, então lá é hipótese.
 - Sem troca de versão do pacote e sem `toBuffer` síncrono (o PR238 mediu ~160 ms de event loop bloqueado por
   arte com ele). A atualização para 1.0.x continua sendo a frente do PR238, com os efeitos de fonte e sombra dela.
 
+## Destaque por marcação (05/11/2026)
+
+O grifo de uma palavra deixou de exigir a camada `rich-text` (modal, `richTextStyles[]` por índice). A camada `text`
+comum ganhou dois campos opcionais, e o destaque se edita na própria caixa de texto com a marcação `[...]` que a copy
+já usava. Código: PR #297 (tipos, render, caixa inline, barra), PR #298 (compositor e MCP), este arquivo e
+`scripts/converter-rich-text.ts` (a conversão do legado).
+
+**O contrato dos campos** (`src/types/template.ts`, `layerSchema` em `src/lib/validations/studio.ts`):
+
+```ts
+destaques?: Array<{ inicio: number; fim: number }>   // offsets no `content` LIMPO, sem colchetes
+destaque?:  { fill?; fontFamily?; fontStyle?; textDecoration? }  // o estilo, resolvido na GRAVAÇÃO
+```
+
+- 🔴 **`content` é sempre limpo.** Os colchetes só existem nas bordas: a caixa do editor e o MCP (`slotValues`,
+  `camadas.definir content`, `conteudoMarcado` de `ver-pagina`). Nada dentro da página, do banco ou do render tem `[ ]`.
+- **Ida e volta** (`src/lib/compositor/destaques.ts`): `lerDestaquesDoTexto` (texto de várias linhas com colchetes →
+  `content` limpo + `destaques`; o colchete não atravessa a quebra, colchete sem par vira aviso e o trecho sai sem
+  destaque, nunca erro) e `linhasComColchetes` (a volta). `segmentosDoTexto` deriva os segmentos que o render desenha.
+- **O estilo é da marca, nunca de quem escreve.** Quem grava `destaques` numa camada sem `destaque` resolve o estilo
+  pela assinatura do projeto (página de assinatura → `Project.assinatura.destaque` → só o peso, a família mais pesada
+  da mesma família). Camada que destaca e não acha estilo grava SEM os trechos, com aviso — nunca um destaque invisível.
+- **O que continua `rich-text`**: duas cores (ou dois estilos) na mesma frase, tamanho, espaçamento ou contorno por
+  trecho. O `destaque` é UM por camada. Por isso o conversor classifica e não arredonda (abaixo).
+- **Campo "Destaque" na barra** (`text-toolbar.tsx`, popover "Mais opções de texto", abaixo do contorno): seletor de cor
+  (o `ColorPicker` da paleta), botão **Peso forte** (`familiaMaisPesada` entre as fontes do projeto) e **Voltar ao da
+  marca** (apaga `layer.destaque`). Só em camada `text`; sem `destaques`, avisa "Marque a palavra com [ ] na caixa de texto."
+
+🔴 **Quem grava `content` por fora da caixa do canvas chama `trocarConteudo`** (`destaques.ts`): texto novo com colchetes
+→ `content` limpo + `destaques`; **sem colchetes, os `destaques` antigos são apagados** (offsets de um texto que não
+existe mais pintariam letras ao acaso). É o único parser dos colchetes — painel de propriedades, gerador de criativos,
+`fieldValues`, `slotValues` e o bake passam por ele; o #297 o chamou em cada um desses pontos, o #298 no MCP. Exceção só do MCP (#298): `definir content` passa `mesmoTextoMantem`, então reenviar o MESMO texto limpo mantém os
+`destaques`. Gravar `{ ...camada, content }` à mão é o bug que essa regra existe para impedir. Camada que não é `text`: só o conteúdo.
+
+**Armadilhas registradas nos PRs:**
+
+- 🔴 **O `layerSchema` é um `z.object` e DESCARTA chave desconhecida no PATCH da página.** Campo novo de camada só
+  existe depois de entrar ali; sem isso o editor "salva" e o campo some no servidor, sem erro.
+- **O texto com destaques desenha pelo caminho do rich text** (`renderRichText` alimentado por `segmentosDoTexto`): a
+  âncora vertical, o contorno, o blur e o texto curvo valem como valiam no rich-text (curvo desenha o texto comum). A
+  sombra da camada entra por segmento — `applyShadow` não roda nesse caso.
+- **Offsets são no `content` CRU.** Com `textTransform`, `segmentosNoTextoTransformado` fatia o cru, transforma cada
+  pedaço e soma os comprimentos; transformar o texto inteiro antes de fatiar deslocava os offsets ("ß" → "SS").
+- **No editor** o `Konva.Text` continua sendo o nó da camada (transformer, medição, halo, caixa inline), só com a tinta
+  transparente; os segmentos são desenhados num `Group` irmão que segue o texto pelos eventos de atributo (o mesmo
+  mecanismo do halo).
+- **Gate de autonomia**: `destaques.*` e `destaque.*` são `inerte`; sem a classificação o gate falhava fechado.
+  `VERSAO_DO_GATE` = `gate-v6`; os registros `gate-v5` nas Generations viram histórico e a peça é medida de novo antes
+  de agendar. Texto com destaque é medido como texto comum; o rich-text no mesmo lugar não é.
+- **`ajustar-arte`**: colchetes junto com `destaques` explícito são recusados; `destaques: []` remove; offset além do
+  `content` dá `VALOR_FORA_DA_FAIXA`; `destaque` numa camada sem trechos é recusado (estilo morto).
+
+**A conversão do legado** (`scripts/converter-rich-text.ts`, regra em `src/lib/compositor/converter-rich-text.ts`, com
+teste). Por padrão só LEITURA: lista, por projeto, cada camada `rich-text` como CONVERSÍVEL (todo trecho que difere da
+base tem o MESMO estilo; sombra igual em todo o conteúdo, ou já igual à da camada — o compositor antigo gravava as duas)
+ou NÃO CONVERSÍVEL, com o motivo: `dois-estilos`, `tamanho-por-trecho`, `espacamento-por-trecho`, `contorno-por-trecho`,
+`sombra-so-na-camada` (o rich-text ignora `effects.shadow`; o `text` a desenharia, então a aparência mudaria),
+`sombra-diferente-por-trecho`, `sombra-parcial`, `sombra-da-camada-diferente`, `sem-destaque`, `sem-trechos`.
+`--aplicar` grava a página inteira por `gravarCamadasComRevisao` (a função do PATCH de camada do editor, autor `sistema`)
+e chama `invalidateScheduledRenders` E `pedirRecomposicaoDaArteCongelada`. 🔴 **Só rode `--aplicar` com #297 e #298 na
+`main`**: sem o render novo, a camada `text` com `destaques` sai sem destaque no PNG (e a arte agendada com ela).
+
 ### Workers do vitest morrendo no skia: `encode()` assíncrono × GC do Canvas (15/10/2026)
 
 Na revisão do CP5a os forks do vitest morriam com "[vitest-pool] Worker exited unexpectedly" em ~1 de cada 2–3
