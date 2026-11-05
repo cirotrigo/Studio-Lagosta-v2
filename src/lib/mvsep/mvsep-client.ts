@@ -8,8 +8,8 @@ import { db } from '@/lib/db'
 import { put } from '@vercel/blob'
 import type { MusicStemJob } from '@prisma/client'
 import { classificarStems, getFileName, getFileUrl } from './classificar-stems'
+import { chaveDaMvsep } from './chave'
 
-const MVSEP_API_KEY = process.env.MVSEP_API_KEY || 'BrIkx8zYQbvc4TggAZbsL96Mag9WN5'
 const MVSEP_API_URL = 'https://mvsep.com/api'
 
 interface MvsepCreateResponse {
@@ -64,7 +64,7 @@ export async function startStemSeparation(job: MusicStemJob & { music: any }) {
 
     // Criar FormData para upload multipart
     const formData = new FormData()
-    formData.append('api_token', MVSEP_API_KEY)
+    formData.append('api_token', chaveDaMvsep())
     formData.append('audiofile', audioBlob, 'audio.mp3')
     formData.append('sep_type', '48') // MelBand Roformer (vocals, instrumental)
     formData.append('output_format', '0') // 0 = mp3 320kbps
@@ -144,7 +144,7 @@ export async function checkMvsepJobStatus(job: MusicStemJob) {
     console.log(`[MVSEP] Checking status for job ${job.id}, hash: ${job.mvsepJobHash}`)
 
     const response = await fetch(
-      `${MVSEP_API_URL}/separation/get?api_token=${MVSEP_API_KEY}&hash=${job.mvsepJobHash}`
+      `${MVSEP_API_URL}/separation/get?api_token=${chaveDaMvsep()}&hash=${job.mvsepJobHash}`
     )
 
     const responseText = await response.text()
