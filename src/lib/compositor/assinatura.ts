@@ -309,6 +309,16 @@ function mesclarDestaque(base: NumerosDaAssinatura['destaque'], extra: unknown):
   }
 }
 
+/**
+ * O destaque padrão da marca a partir do JSON cru de `Project.assinatura` — a
+ * MESMA regra do compositor (`mesclarDestaque`), para o editor não ter outra:
+ * cor só de `assinatura.destaque.fill`; sem ela, só o peso.
+ */
+export function destaquePadraoDaAssinatura(numerosDoProjeto: unknown): NumerosDaAssinatura['destaque'] {
+  const cru = numerosDoProjeto && typeof numerosDoProjeto === 'object' ? (numerosDoProjeto as { destaque?: unknown }).destaque : undefined
+  return mesclarDestaque(NUMEROS_PADRAO.destaque, cru)
+}
+
 function mesclarNumeros(base: NumerosDaAssinatura, extra: unknown): NumerosDaAssinatura {
   if (!extra || typeof extra !== 'object') return { ...base, gradiente: { ...base.gradiente }, destaque: { ...base.destaque }, geometria: mesclarGeometria(base.geometria, extra) }
   const e = extra as Partial<NumerosDaAssinatura>
