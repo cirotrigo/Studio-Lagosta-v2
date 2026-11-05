@@ -115,6 +115,18 @@ Adicionar um texto, trazê-lo para perto do fundo da pilha e mudar o fundo da p�
 }
 ```
 
+**Destaque de palavra** (a manchete do compositor é camada `text` com `destaques`, não mais `rich-text`): edita-se pelo
+`content` com `[colchetes]`. `ver-pagina` devolve `conteudoMarcado` nas camadas que destacam; mande esse texto de volta
+em `definir content` com a palavra nova entre colchetes:
+
+```json
+{ "op": "definir", "camada": "headline", "campos": { "content": "Picanha [na brasa]\nhoje" } }
+```
+
+O estilo do destaque (cor, família) é o da marca — não invente cor; para mudar só o estilo, `campos.destaque`. Reenviar
+o **mesmo texto limpo** mantém o destaque; **texto diferente sem colchetes apaga o destaque** e a resposta traz o aviso
+(leia `avisos`). Colchete sem par também vira aviso. Duas cores na mesma frase continua sendo rich-text (seção 4).
+
 `camada` aceita **id ou nome**; nome repetido dá `CAMADA_AMBIGUA` (use o id de `ver-pagina`). `position`/`size`
 podem vir parciais. Faixas e campos permitidos por tipo: seção de `docs/regras/mcp.md` acima.
 

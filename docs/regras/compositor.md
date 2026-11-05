@@ -2019,3 +2019,15 @@ foto no Blob fica `foto-sem-id`. Arquivo substituído no Drive mantendo o id nã
 **Gancho de prova.** `opcoes.leitorDeReferencias` só com `provar` ou `somenteAvaliar` (senão `OPCAO_SO_DE_PROVA`, 400, antes
 de qualquer efeito); nunca exposto pelo MCP. É por ele que `scripts/prova-f2b-assunto-local.ts` injeta a referência
 compilada em memória, sem escrever nada.
+
+## O destaque da manchete é `text` + `destaques` (05/11/2026)
+
+O compositor deixou de emitir `rich-text` para a palavra entre `[colchetes]` da copy: a camada sai `type: 'text'`, com
+`content` limpo, `destaques: [{inicio, fim}]` e `destaque` (o estilo da assinatura da marca, via `destaqueDoPapel`) — o
+formato do PR #298. `medidas.ts`, `regua.ts` (`semTinta`), `medir-copy.ts`, `arquetipos/fundo.ts` (`tintasAtivas`) e
+`revisar-arte.ts` (`fontesQueFaltam`) leem o formato novo; a volta página → spec continua por `linhasComColchetes`, que
+agora lê `destaques`. A F2d recusa uma referência que tenha `destaques`. A recomposição de slide não muda: refaz a peça
+a partir da copy com colchetes e o destaque volta sozinho. Páginas antigas com `rich-text` seguem desenhando como
+sempre até a conversão (`scripts/converter-rich-text.ts`, regras em `render-e-texto.md`, seção "Destaque por
+marcação"). Detalhe que pega: o compositor antigo gravava a sombra na camada E em cada trecho — a conversão aceita as
+duas quando são iguais; sombra só na camada (a feita à mão) mantém a peça `rich-text`.
