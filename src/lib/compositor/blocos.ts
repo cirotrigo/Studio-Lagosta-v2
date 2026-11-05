@@ -62,6 +62,8 @@ export interface BlocoMontado {
    * `ceil`), ou `height` quando o medidor não dá a fração. Transitório: nunca entra no `Layer` nem na persistência.
    */
   orcamentoDeAltura?: number
+  /** A linha ÚNICA do autor distribuída pelo compositor em linhas equilibradas (`distribuirLinha`): o que a camada desenha. */
+  distribuida?: string[]
 }
 
 export interface OrcamentoDeLinha {
@@ -294,6 +296,42 @@ export function larguraExtraDoDestaque(medir: MeasureTextBox, base: Layer, linha
 }
 
 /**
+ * A linha única do autor em `n ≤ linhasMax` linhas EQUILIBRADAS, por palavra: entre todas as quebras, a que deixa a
+ * linha mais larga o mais estreita possível, no menor `n` em que ela cabe na coluna. `null` quando já cabe em uma
+ * linha (ou não há onde quebrar). Nada cabendo nem em `linhasMax`, devolve a melhor quebra mesmo assim: a escada
+ * desce sobre ela, e a recusa mede linha a linha. Pedido do Ciro (03/11/2026): a referência que desenha 2 linhas sai
+ * com 2 linhas cheias, não com 1 linha miúda; o que cabe em 1 fica em 1.
+ */
+export function distribuirLinha(medir: MeasureTextBox, base: Layer, linha: string, coluna: number, linhasMax: number): string[] | null {
+  // Só o espaço comum é vão: NBSP é o autor proibindo a quebra, e \n dentro do item é problema dele (diagnóstico próprio).
+  const palavras = linha.split(' ')
+  if (palavras.length < 2 || palavras.some((p) => p === '') || linha.includes('\n')) return null
+  const inteira = medirLinha(medir, base, linha, coluna)
+  if (!inteira || (inteira.largura <= coluna && inteira.linhas <= 1)) return null
+  const medidas = new Map<string, number>()
+  const largura = (l: string) => {
+    if (!medidas.has(l)) medidas.set(l, medirLinha(medir, base, l, coluna)?.largura ?? 0)
+    return medidas.get(l)!
+  }
+  // ponytail: todas as quebras de n−1 cortes nos k−1 vãos; a manchete tem poucas palavras e `n` para em `linhasMax`.
+  const cortes = (inicio: number, restantes: number, atual: string[]): string[][] => {
+    if (restantes === 0) return [[...atual, palavras.slice(inicio).join(' ')]]
+    const saida: string[][] = []
+    for (let i = inicio + 1; i <= palavras.length - restantes; i++) saida.push(...cortes(i, restantes - 1, [...atual, palavras.slice(inicio, i).join(' ')]))
+    return saida
+  }
+  let melhor: { linhas: string[]; maior: number } | null = null
+  for (let n = 2; n <= Math.min(linhasMax, palavras.length); n++) {
+    for (const candidata of cortes(0, n - 1, [])) {
+      const maior = Math.max(...candidata.map(largura))
+      if (!melhor || maior < melhor.maior) melhor = { linhas: candidata, maior }
+    }
+    if (melhor && melhor.maior <= coluna) break
+  }
+  return melhor?.linhas ?? null
+}
+
+/**
  * Monta o bloco de um papel. `colunaUtil` é a largura entre as margens
  * (menos a largura máxima do papel, quando a assinatura a limita).
  */
@@ -334,6 +372,12 @@ export function montarBloco(args: {
    * degrau, e nunca entra um piso ACIMA do teto.
    */
   pisoDeEscala?: number
+  /**
+   * Com arquétipo: o teto de linhas do papel. A linha ÚNICA do autor que não cabe na coluna no TETO da escada é
+   * distribuída em até `linhasMax` linhas equilibradas (`distribuirLinha`) ANTES de descer o corpo. Ausente = cada
+   * linha da copy é uma linha, como sempre.
+   */
+  linhasMax?: number
   /** F3: a camada extra que este bloco é (vai à camada, não muda a medida). */
   extra?: { id: string; funcao: string; herdaDe: string; grupoVisual: string; grupoDeLeitura?: string; ordem?: number } | null
 }): ResultadoDoBloco {
@@ -359,8 +403,16 @@ export function montarBloco(args: {
   )
 
   const coluna = Math.floor(args.colunaUtil * (args.estilo.larguraMaxima ?? 1))
-  const linhas = aplicarPrefixo(linhasLimpas, args.estilo.prefixo)
-  const semDestaque = { ...args, linhas: linhasLimpas, destaque: null }
+  const teto = args.escalaDoFormato * (args.escalaMaxima ?? 1)
+  // A linha única que não cabe no teto vira linhas equilibradas — sem destaque: o [colchete] não atravessa a quebra.
+  const distribuida =
+    args.linhasMax !== undefined && args.linhasMax >= 2 && linhasLimpas.length === 1 && !pediuDestaque
+      ? distribuirLinha(args.medir, camadaDoPapel({ ...args, linhas: linhasLimpas, destaque: null, escala: teto, width: coluna + PADDING_DE_DESENHO * 2 }), linhasLimpas[0], coluna, args.linhasMax)
+      : null
+  if (distribuida) avisos.push(`${args.papel}: "${linhasLimpas[0]}" distribuída em ${distribuida.length} linhas pelo compositor`)
+  const linhasDesenhadas = distribuida ?? linhasLimpas
+  const linhas = aplicarPrefixo(linhasDesenhadas, args.estilo.prefixo)
+  const semDestaque = { ...args, linhas: linhasDesenhadas, destaque: null }
   // A altura da caixa na MENOR escala em que a largura coube (o piso) — a medida da recusa por altura.
   let alturaQueNaoCoube: number | null = null
 
@@ -369,7 +421,6 @@ export function montarBloco(args: {
   // story, 0,875) os passos absolutos paravam em 81,7% e a recusa dizia "mesmo a 80%" sem ter medido 80%. Sem
   // arquétipo, a sequência é exatamente a de antes.
   const piso = args.escalaDoFormato * (args.pisoDeEscala ?? PISO_DE_ESCALA)
-  const teto = args.escalaDoFormato * (args.escalaMaxima ?? 1)
   const degraus: number[] = []
   if (args.pisoDeEscala !== undefined && teto < piso - 1e-9) degraus.push(teto)
   else {
@@ -405,11 +456,15 @@ export function montarBloco(args: {
       alturaQueNaoCoube = height
       continue
     }
-    const layer = destaque ? camadaDoPapel({ ...args, linhas: linhasLimpas, escala, width, destaque }) : simples
+    const layer0 = destaque ? camadaDoPapel({ ...args, linhas: linhasLimpas, escala, width, destaque }) : simples
+    // A quebra do compositor fica DECLARADA na camada (`distribuida`: quantas linhas): quem lê a copy efetiva junta as
+    // linhas de volta na linha única do autor — é desenho, não revisão do texto.
+    const layer = distribuida ? { ...layer0, metadata: { ...layer0.metadata, compositor: { ...(layer0.metadata?.compositor as Record<string, unknown>), distribuida: distribuida.length } } } : layer0
     return {
       bloco: {
         papel: args.papel,
         layer: { ...layer, size: { width, height } },
+        ...(distribuida ? { distribuida } : {}),
         width,
         height,
         escala: Number((escala / args.escalaDoFormato).toFixed(3)),

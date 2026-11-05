@@ -252,9 +252,13 @@ function linhasDaCamada(l: Layer): string[] {
   // vem DECLARADO pelo compositor em `metadata.compositor.prefixo`: é ornamento
   // da marca, não texto do autor, e sai da comparação. Prefixo NÃO declarado
   // continua contando como diferença — nada é descontado por palpite.
-  const prefixo = (l.metadata as { compositor?: { prefixo?: unknown } } | undefined)?.compositor?.prefixo
-  if (typeof prefixo === 'string' && prefixo && linhas[0]?.startsWith(prefixo)) return [linhas[0].slice(prefixo.length), ...linhas.slice(1)]
-  return linhas
+  const meta = (l.metadata as { compositor?: { prefixo?: unknown; distribuida?: unknown } } | undefined)?.compositor
+  const prefixo = meta?.prefixo
+  const semPrefixo = typeof prefixo === 'string' && prefixo && linhas[0]?.startsWith(prefixo) ? [linhas[0].slice(prefixo.length), ...linhas.slice(1)] : linhas
+  // A quebra EQUILIBRADA do compositor (`distribuida`: em quantas linhas) é desenho, não texto do autor: as linhas
+  // voltam a ser a linha única dele. Contagem que não bate (alguém mexeu na camada) deixa como está — vale a reserva.
+  const distribuida = meta?.distribuida
+  return Number.isInteger(distribuida) && (distribuida as number) >= 2 && semPrefixo.length === distribuida ? [semPrefixo.join(' ')] : semPrefixo
 }
 
 /**

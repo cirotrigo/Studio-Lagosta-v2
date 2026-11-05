@@ -32,7 +32,7 @@ import { lerDestaques, type EstiloDeDestaque } from './destaques'
 import { estiloDaRecusa, estiloDeDestaqueDoPapel, prepararBlocos, type PecaParaBlocos } from './preparar-blocos'
 import { DIMENSOES, type Formato, type Papel } from './spec'
 import { colunaDaCaixa } from './blocos'
-import { conferirLogo, excessosDeLinhas, type ArquetipoPreparado } from './arquetipos/na-spec'
+import { conferirLogo, excessosDeLinhas, linhasMaxDoPapel, type ArquetipoPreparado } from './arquetipos/na-spec'
 import { alinhaDoPapel, caixasMaximas, GAP_DA_PILHA, type Materializacao, type PapelMaterializado, type ProblemaDeMaterializacao } from './arquetipos/materializar'
 import { ajusteFinalNecessario, caixasDosItens, camadasNaReferencia, papeisDeLista, papelGeometrico, prepararNoArquetipo, type CorpoDoPapel } from './arquetipos/no-compositor'
 import { partidaNoArquetipo } from './arquetipos/candidatos-espaciais'
@@ -290,6 +290,7 @@ export function medirCopy(args: {
       combinacoesSalvas: args.combinacoesSalvas ?? [],
       ...(caixasArq ? { caixaDoPapel: (p: Papel) => caixasArq[papelGeometrico(p)], ...(escalaMaximaDoPapel ? { escalaMaximaDoPapel } : {}), ...(corpoDoPapel ? { corpoDoPapel } : {}), ...(estiloDoPapelArq ? { estiloDoPapel: estiloDoPapelArq } : {}) } : {}),
       ...(listasArq?.size ? { listaDoPapel: (p: Papel) => listasArq.has(papelGeometrico(p)) } : {}),
+      ...(arq ? { linhasMaxDoPapel: (p: Papel) => linhasMaxDoPapel(arq.definicao, arq.formato)(papelGeometrico(p)) } : {}),
     })
   // Com arquétipo, a MESMA escada da unidade do compor (`prepararNoArquetipo`).
   const noArquetipo = arq

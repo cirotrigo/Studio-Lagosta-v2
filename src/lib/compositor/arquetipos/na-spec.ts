@@ -284,6 +284,12 @@ export function conferirLista(definicao: ArquetipoDeLayout, copy: CopyParaOArque
   )
 }
 
+/** O teto de linhas de cada papel GEOMÉTRICO no formato (`limitesDeTexto`), para a distribuição da linha única (`montarBloco`). */
+export function linhasMaxDoPapel(definicao: ArquetipoDeLayout, formato: FormatoDoArquetipo): (papel: Papel) => number | undefined {
+  const limites = definicao.formatos[formato].limitesDeTexto
+  return (papel) => limites[papel as PapelDeTexto]?.linhasMax
+}
+
 /** O compositor recusa o excesso de `linhasMax`; o medir-copy só o declara (ver `excessosDeLinhas`). */
 export function conferirLinhas(definicao: ArquetipoDeLayout, formato: FormatoDoArquetipo, copy: CopyParaOArquetipo): void {
   const excedidas = excessosDeLinhas(definicao, formato, copy)
