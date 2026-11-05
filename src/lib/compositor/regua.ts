@@ -350,6 +350,8 @@ export function semTinta(layers: Layer[]): Layer[] {
     if (l.type === 'rich-text' && Array.isArray(l.richTextStyles)) {
       apagada.richTextStyles = l.richTextStyles.map((s) => ({ ...s, fill: TRANSPARENTE, shadow: undefined, stroke: undefined }))
     }
+    // Destaque por marcação: a cor do trecho mora em `destaque.fill`.
+    if (l.destaque) apagada.destaque = { ...l.destaque, fill: TRANSPARENTE }
     return apagada
   })
 }

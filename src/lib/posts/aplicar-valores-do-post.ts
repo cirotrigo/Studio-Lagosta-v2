@@ -15,6 +15,7 @@
  */
 import { CHAVES_DO_CONTRATO_SEMANTICO, temContratoSemantico } from './copy-segue-a-pagina'
 import { aplicarSlotNaCamada, findUnmatchedSlotKeys } from './page-to-design-data'
+import { trocarConteudo } from '@/lib/compositor/destaques'
 import {
   resolverValoresSemanticos,
   validarEntradaSemantica,
@@ -45,10 +46,14 @@ export interface ValoresAplicados<T> {
 }
 
 function aplicarSemantico<T extends CamadaAplicavel>(camada: T, valor: ValorSemantico): T {
-  if (typeof valor === 'string') return { ...camada, content: valor }
+  // Texto novo passa por `trocarConteudo`: [colchetes] viram `destaques`, e os antigos saem com o texto antigo
+  const comTexto = (texto: string): T => {
+    const { content, destaques } = trocarConteudo(camada as { type?: unknown; destaques?: unknown }, texto)
+    return { ...camada, content, destaques }
+  }
+  if (typeof valor === 'string') return comTexto(valor)
   return {
-    ...camada,
-    ...(valor.content !== undefined ? { content: valor.content } : {}),
+    ...(valor.content !== undefined ? comTexto(valor.content) : camada),
     ...(valor.fileUrl !== undefined ? { fileUrl: valor.fileUrl } : {}),
   }
 }
