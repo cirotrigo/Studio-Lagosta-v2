@@ -18,6 +18,7 @@
  */
 
 import type { Layer } from '@/types/template'
+import { aplicarCaixa } from '@/lib/posts/caixa-do-texto'
 import type { MeasureTextBox } from '@/lib/creatives/text-geometry'
 import { PADDING_DE_DESENHO } from '@/lib/creatives/halo/fundo-de-texto'
 
@@ -291,6 +292,37 @@ export function larguraExtraDoDestaque(medir: MeasureTextBox, base: Layer, linha
     if (normal && destacado) extra += Math.max(0, destacado.largura - normal.largura)
   }
   return extra
+}
+
+/**
+ * O medidor que enxerga o destaque (revisão M4 do PR #298, 05/11/2026): `measureTextLayerBox` mede a camada `text`
+ * inteira na família da camada, mas o render desenha os `destaques` na família de `destaque.fontFamily`. Cada linha
+ * quebrada soma a MESMA conta da montagem (`larguraExtraDoDestaque`), e `maxLineWidth` sobe junto — autofix, gate e
+ * revisor passam por `createServerTextBoxMeasurer`, então todos medem o que o PNG desenha.
+ * ponytail: a quebra é a da família da camada (só a largura cresce); se o render quebrar diferente por causa do trecho
+ * pesado, a caixa medida ainda transborda e a escada encolhe — medir a quebra por segmento quando isso aparecer.
+ */
+export function comLarguraDoDestaque(medir: MeasureTextBox): MeasureTextBox {
+  return (layer) => {
+    const m = medir(layer)
+    const familia = layer.destaque?.fontFamily
+    if (!m?.linhas?.length || layer.type !== 'text' || !layer.destaques?.length || !familia || familia === layer.style?.fontFamily) return m
+    const { destaques, destaque: _e, ...base } = layer
+    const conteudo = aplicarCaixa(String(layer.content ?? ''), layer.style?.textTransform)
+    const coluna = layer.size?.width ?? 0
+    let cursor = 0
+    let maior = 0
+    const linhas = m.linhas.map((l) => {
+      const ini = conteudo.indexOf(l.texto, cursor)
+      if (ini < 0) return l
+      cursor = ini + l.texto.length
+      const trechos = destaques.map((t) => ({ inicio: Math.max(t.inicio, ini) - ini, fim: Math.min(t.fim, cursor) - ini })).filter((t) => t.fim > t.inicio)
+      const largura = l.largura + larguraExtraDoDestaque(medir, base as Layer, l.texto, trechos, familia, coluna)
+      maior = Math.max(maior, largura)
+      return { ...l, largura }
+    })
+    return { ...m, maxLineWidth: Math.max(m.maxLineWidth, maior), linhas }
+  }
 }
 
 /**

@@ -2034,8 +2034,12 @@ compilada em memória, sem escrever nada.
   Colchete sem par → aviso e o trecho sai sem destaque. Colchetes + `destaques` explícito na mesma op → recusa.
   `destaques: []` remove. Offset além do content → `VALOR_FORA_DA_FAIXA`. `ver-pagina` devolve `conteudoMarcado`
   (o content com os colchetes de volta) só na camada com destaques; mandá-lo de volta em `definir content` reproduz a camada.
-- O gate classifica `destaques.*` e `destaque.*` como `inerte` → **`VERSAO_DO_GATE` = `gate-v6`**
-  (`revisor-da-arte.md`). ponytail: a fonte do destaque como `inerte` vale enquanto o render do T1 não mostrar tinta
-  fora da caixa; se mostrar, vira `expansora`.
+- O gate classifica `destaques.*` e `destaque.{fill,fontStyle,textDecoration}` como `inerte` e `destaque.fontFamily`
+  como `expansora` → **`VERSAO_DO_GATE` = `gate-v6`** (`revisor-da-arte.md`).
+- 🔴 **A medida enxerga a família do destaque**: `createServerTextBoxMeasurer` embrulha o `measureTextLayerBox` em
+  `comLarguraDoDestaque` (`blocos.ts`), que soma `larguraExtraDoDestaque` (a conta da montagem) em cada linha quebrada.
+  Autofix, gate e revisor passam por ele. Sem isso, uma linha que cabia por 10 px na família fina transbordava no PNG
+  (o trecho desenhado na pesada) e o gate dizia APTO. Quem mede uma camada SEM destaques e soma o extra à mão (a
+  montagem, o `medir-copy`) continua certo: a camada base não leva `destaques`.
 - 🔴 **ORDEM DE MERGE: o #297 (render do T1) entra ANTES do #298.** Sem o render, o compositor emitindo `text` +
   `destaques` faz toda peça nova sair SEM destaque no PNG — o gate diz APTO e a arte vai para a agenda sem a palavra marcada.

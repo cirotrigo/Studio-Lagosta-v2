@@ -207,12 +207,12 @@ export const CHAVES_CLASSIFICADAS: Record<string, ChaveClassificada> = {
   // Destaque por marcação (05/11/2026): trechos do PRÓPRIO texto pintados noutra cor/família, sem efeito por trecho (a
   // sombra e o traço são os da camada, já classificados). Sem estas folhas, todo texto destacado caía fora da árvore e
   // a peça saía NAO_MEDIDO em oclusão e piso de interface.
-  // ponytail: a família do destaque é tratada como `style.fontFamily` (inerte); a largura extra dela é medida pelo
-  // compositor na montagem (`larguraExtraDoDestaque`), não pela métrica do gate — se o render da T1 mostrar tinta fora
-  // da caixa no G21c, passa a `expansora`.
+  // A família do destaque ALARGA o trecho (revisão M4 do PR #298): é `expansora`, e a métrica do gate a mede — o
+  // medidor do servidor soma `larguraExtraDoDestaque` por linha (`comLarguraDoDestaque`), então `texto-cortado` vê a
+  // linha como o render a desenha.
   'destaques.*': inerte([{ inicio: 0, fim: 4 }]),
   'destaque.fill': inerte('#ff0000'),
-  'destaque.fontFamily': inerte('serif'),
+  'destaque.fontFamily': expansora('serif'),
   'destaque.fontStyle': inerte('italic'),
   'destaque.textDecoration': inerte('underline'),
   movimento: inerte('aproximar'),

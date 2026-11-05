@@ -1407,8 +1407,9 @@ de régua em `docs/research/canva-guias-e-margens-2026-10/teste-de-regua/` e pod
 
 ## gate-v6 (05/11/2026): chaves do destaque por marcação
 
-`destaques.*` e `destaque.{fill,fontFamily,fontStyle,textDecoration}` entraram em `CHAVES_CLASSIFICADAS` como
-`inerte` (sem elas o gate falhava fechado: NAO_MEDIDO em toda peça com destaque). A impressão digital mudou, então
+`destaques.*` e `destaque.{fill,fontStyle,textDecoration}` entraram em `CHAVES_CLASSIFICADAS` como `inerte`, e
+`destaque.fontFamily` como `expansora`: a família pesada alarga a linha, e a métrica do gate a mede pelo medidor do
+servidor (`comLarguraDoDestaque`) (sem elas o gate falhava fechado: NAO_MEDIDO em toda peça com destaque). A impressão digital mudou, então
 `VERSAO_DO_GATE` subiu para `gate-v6` (`impressao-digital/gate-gate-v6.json`). Consequência: registros `gate-v5` nas
 Generations viram histórico e a peça é medida de novo antes de agendar. Contrato do destaque: `compositor.md`,
 "Destaque por marcação". Ao juntar com o T1 (que também declara os campos em `template.ts`), fica UMA classificação e UM `gate-v6`.
