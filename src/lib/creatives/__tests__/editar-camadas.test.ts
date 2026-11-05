@@ -260,8 +260,14 @@ describe('destaque por marcação (05/11/2026)', () => {
   it('texto novo SEM colchetes numa camada que destacava perde os destaques (o texto mudou)', () => {
     const base = pagina().map((l) => (l.id === 'headline' ? ({ ...l, content: 'Picanha na brasa', destaques: [{ inicio: 8, fim: 16 }], destaque: marca() } as Layer) : l))
     const h = aplicarOperacoesDeCamadas(base, [definir('headline', { content: 'Costela no fogo' })], comMarca).camadas.find((l) => l.id === 'headline')!
+    const trocado = aplicarOperacoesDeCamadas(base, [definir('headline', { content: 'Costela no fogo' })], comMarca)
     expect(h.content).toBe('Costela no fogo')
     expect(h.destaques).toBeUndefined()
+    expect(trocado.avisos).toEqual(['destaque removido de "Título": o texto mudou sem colchetes'])
+    // O MESMO texto limpo (o content que ver-pagina devolveu) mantém os trechos, sem aviso (revisão M3).
+    const igual = aplicarOperacoesDeCamadas(base, [definir('headline', { content: 'Picanha na brasa' })], comMarca)
+    expect(igual.camadas.find((l) => l.id === 'headline')!.destaques).toEqual([{ inicio: 8, fim: 16 }])
+    expect(igual.avisos).toEqual([])
     // Mexer só na cor não toca nos trechos.
     expect(aplicarOperacoesDeCamadas(base, [definir('headline', { style: { color: '#000000' } })], comMarca).camadas.find((l) => l.id === 'headline')!.destaques).toEqual([{ inicio: 8, fim: 16 }])
   })

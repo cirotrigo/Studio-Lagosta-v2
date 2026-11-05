@@ -1439,7 +1439,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
   const avisosDoDestaque: string[] = []
   const bakedLayers = (baked.layers as Layer[]).map((l) => {
     if (!trocados.has(l.id)) return l
-    const r = marcarDestaquesNoTexto(l, destaqueDaMarca)
+    const r = marcarDestaquesNoTexto(l, destaqueDaMarca, sourceLayers.find((s) => s.id === l.id)?.content)
     if (r.aviso) avisosDoDestaque.push(r.aviso)
     return r.camada
   })

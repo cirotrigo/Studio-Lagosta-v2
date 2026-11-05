@@ -526,14 +526,18 @@ function destaquesForaDoTexto(l: Layer): string | null {
 
 /**
  * DESTAQUE POR MARCAÇÃO (05/11/2026): o `content` que acabou de chegar numa camada `text`. Com [colchetes], grava o
- * texto LIMPO e os trechos em `destaques` (o `content` segue texto para legenda, gate e medição); sem colchetes, o texto
- * mudou e os `destaques` antigos saem. O estilo (`destaque`) da camada fica; sem ele, entra o da marca. Colchete sem par
- * vira aviso, nunca recusa (`lerDestaques`).
+ * texto LIMPO e os trechos em `destaques` (o `content` segue texto para legenda, gate e medição). Sem colchetes: o texto
+ * IGUAL ao `conteudoAnterior` (o agente reenviou o `content` limpo que leu) mantém os `destaques`; texto diferente os
+ * tira, com aviso. O estilo (`destaque`) da camada fica; sem ele, entra o da marca. Colchete sem par vira aviso, nunca
+ * recusa (`lerDestaques`).
  */
-export function marcarDestaquesNoTexto(camada: Layer, destaqueDaMarca?: (c: Layer) => EstiloDeDestaque | null): { camada: Layer; aviso: string | null } {
+export function marcarDestaquesNoTexto(camada: Layer, destaqueDaMarca?: (c: Layer) => EstiloDeDestaque | null, conteudoAnterior?: unknown): { camada: Layer; aviso: string | null } {
   if (camada.type !== 'text' || typeof camada.content !== 'string') return { camada, aviso: null }
-  const { destaques: _antigos, ...semTrechos } = camada
-  if (!temColchetes([camada.content])) return { camada: semTrechos as Layer, aviso: null }
+  const { destaques: antigos, ...semTrechos } = camada
+  if (!temColchetes([camada.content])) {
+    if (!antigos?.length || camada.content === conteudoAnterior) return { camada, aviso: null }
+    return { camada: semTrechos as Layer, aviso: `destaque removido de "${camada.name ?? camada.id}": o texto mudou sem colchetes` }
+  }
   const lida = lerDestaques(camada.content)
   const marcada = { ...semTrechos, content: lida.texto } as Layer
   return {
@@ -662,11 +666,11 @@ export function aplicarOperacoesDeCamadas(entrada: Layer[], operacoes: OperacaoD
   const avisos: string[] = []
   let camadas: Layer[] = entrada.map((l) => ({ ...l }))
   /** O content chegou: colchetes viram `destaques`; com `destaques` enviados, valem eles. Destacando sem estilo, o da marca. */
-  const marcar = (l: Layer, campos: CamposDaCamada | undefined): Layer => {
+  const marcar = (l: Layer, campos: CamposDaCamada | undefined, anterior?: Layer): Layer => {
     if (l.type !== 'text') return l
     // Com `destaques` explícito o content veio sem colchetes (FASE 1): os trechos são os enviados.
     if (campos?.content !== undefined && campos.destaques === undefined) {
-      const r = marcarDestaquesNoTexto(l, ctx.destaqueDaMarca)
+      const r = marcarDestaquesNoTexto(l, ctx.destaqueDaMarca, anterior?.content)
       if (r.aviso) avisos.push(r.aviso)
       return r.camada
     }
@@ -729,7 +733,7 @@ export function aplicarOperacoesDeCamadas(entrada: Layer[], operacoes: OperacaoD
     const { order, ...semOrdem } = campos
     const comFoto = comFotoDoAcervo(semOrdem, ctx)
     if ('codigo' in comFoto) return recusa(comFoto.codigo, comFoto.motivo, comFoto.campos)
-    let nova = marcar(fundirDefinir(layer, comFoto.campos), campos)
+    let nova = marcar(fundirDefinir(layer, comFoto.campos), campos, layer)
     const foraDoTexto = destaquesForaDoTexto(nova)
     if (foraDoTexto) return recusa('VALOR_FORA_DA_FAIXA', `${layer.id}: ${foraDoTexto}`, ['destaques'])
     // Copy que SOME sem ser escondida (revisão do PR #294): invisível, minúscula ou fora da página é apagar copy.

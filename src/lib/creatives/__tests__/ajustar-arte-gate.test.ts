@@ -305,6 +305,15 @@ describe('T1 — camadas pelos dados no draft-only (revisão do PR #294)', () =>
     const servico = camadas.find((l) => l.id === 'servico')!
     expect(servico.content).toBe('Sábado no fogo')
     expect(servico.destaques).toBeUndefined()
+    expect(r.avisos ?? []).toEqual(['destaque removido de "servico": o texto mudou sem colchetes'])
+  })
+
+  it('destaque por marcação (revisão M3): reenviar o content LIMPO que ver-pagina devolveu mantém os destaques, sem aviso', async () => {
+    banco.projects.set(String(PROJETO), { ...banco.projects.get(String(PROJETO))!, Logo: [], assinatura: { destaque: { fill: '#E30613' } } })
+    const comDestaque = camadasLimpas().map((l) => (l.id === 'servico' ? ({ ...l, content: 'Sexta no fogo', destaques: [{ inicio: 0, fim: 5 }], destaque: { fill: '#00FF00' } } as Layer) : l))
+    pagina('p1', { layers: comDestaque })
+    const r = await ajustarArte({ projectId: PROJETO, pageId: 'p1', slotValues: { headline: 'Só [hoje]', servico: 'Sexta no fogo' } })
+    expect((banco.pages.get('p1')!.layers as Layer[]).find((l) => l.id === 'servico')).toMatchObject({ content: 'Sexta no fogo', destaques: [{ inicio: 0, fim: 5 }], destaque: { fill: '#00FF00' } })
     expect(r.avisos ?? []).toEqual([])
   })
 
