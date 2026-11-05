@@ -122,6 +122,16 @@ export const drive = {
     { id: `dentro-de-${folderId}`, name: 'x', mimeType: 'image/jpeg', webContentLink: null },
     ...filhosFalsos(folderId).filter((f) => f.kind !== 'folder'),
   ]),
+  /**
+   * Como a API: a consulta filtra pelo mimeType CRU (`mimeType contains 'image/'` ou pasta), então o atalho — que no
+   * Drive tem tipo próprio — nunca vem na listagem em lote (#128).
+   */
+  listChildrenOfFolders: vi.fn(async (parentIds: string[], mode: 'images' | 'folders') =>
+    Object.entries(ARVORE)
+      .filter(([, no]) => !no.trashed && (no.parents ?? []).some((p) => parentIds.includes(p)))
+      .filter(([, no]) => (mode === 'folders' ? no.mimeType === PASTA : (no.mimeType ?? '').startsWith('image/')))
+      .map(([id, no]) => ({ id, name: no.name ?? id, mimeType: no.mimeType as string, parents: no.parents ?? [] })),
+  ),
   getFolderBreadcrumbs: vi.fn(async (folderId: string) => {
     // Ignora a parada de propósito: a rota precisa cortar sozinha.
     const trilha: Array<{ id: string; name: string }> = []

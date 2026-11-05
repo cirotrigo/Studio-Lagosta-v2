@@ -51,7 +51,7 @@ export function SolutionSection() {
 
             <div className="container px-4 md:px-6 relative z-10">
                 <div className="text-center max-w-3xl mx-auto mb-16">
-                    <h2 className="text-3xl md:text-5xl font-bold mb-6">A Solução Lagosta Criativa</h2>
+                    <h2 className="text-3xl md:text-5xl font-bold mb-6">A Solução Lagosta Criativa para restaurantes do ES</h2>
                     <p className="text-xl text-muted-foreground">
                         Cinco frentes, uma só empresa: a foto gera desejo, a rede gera constância, o atendimento converte a mensagem em reserva, o site fecha o pedido e o tráfego amplia tudo.
                     </p>
