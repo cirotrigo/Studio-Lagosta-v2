@@ -25,7 +25,7 @@ export interface MedidaFinal {
 }
 
 /**
- * As famílias que a camada USA: a do estilo e as dos trechos de rich text — o
+ * As famílias que a camada USA: a do estilo, as dos trechos de rich text e a do `destaque` — o
  * destaque costuma estar na versão pesada da família, e é com ela que a largura
  * extra é medida. Qualquer uma ausente no servidor invalida a medida (R02).
  */
@@ -35,7 +35,9 @@ export function familiasDaCamada(l: Layer): string[] {
   const trechos = (Array.isArray(l.richTextStyles) ? l.richTextStyles : [])
     .map((t) => (t as { fontFamily?: unknown } | null)?.fontFamily)
     .filter((f): f is string => typeof f === 'string' && f.trim().length > 0)
-  return [...new Set([...base, ...trechos])]
+  // Destaque por marcação: a família do `destaque` vale quando há trecho marcado.
+  const doDestaque = Array.isArray(l.destaques) && l.destaques.length > 0 && typeof l.destaque?.fontFamily === 'string' && l.destaque.fontFamily.trim() ? [l.destaque.fontFamily] : []
+  return [...new Set([...base, ...trechos, ...doDestaque])]
 }
 
 function papelDe(l: Layer): string | null {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Layer } from '@/types/template'
 import { dividirManchete } from '../segunda-voz'
 import { familiasDaCamada, medidasFinaisDasCamadas } from '../medidas'
+import { comLarguraDoDestaque } from '../blocos'
 import { escolherVariante } from '../assinatura'
 import { specComAPosicaoOriginal } from '../defasagem'
 import { validarSpec, type SpecDePeca } from '../spec'
@@ -53,6 +54,11 @@ describe('as medidas finais e o prefixo declarado', () => {
     expect(medidasFinaisDasCamadas([rica], new Set(['Lato Bold']))[0].naoMedido).toBe(true)
     expect(medidasFinaisDasCamadas([rica], new Set())[0].naoMedido).toBe(false)
     expect(medidasFinaisDasCamadas([rica], new Set(['Lato']))[0].naoMedido).toBe(true)
+  })
+  it('texto com destaques: a família do destaque entra nas famílias (sem trecho marcado, não)', () => {
+    const marcada = { ...camada('headline', 'headline'), destaques: [{ inicio: 0, fim: 1 }], destaque: { fontFamily: 'Lato Bold' } } as Layer
+    expect(familiasDaCamada(marcada)).toEqual(['Lato', 'Lato Bold'])
+    expect(familiasDaCamada({ ...marcada, destaques: [] } as Layer)).toEqual(['Lato'])
   })
   it('R01: manchete INTEIRA na voz 2 (uma ou várias linhas) é relida como a manchete declarada — id preservado, índices do zero, sem bloco extra, segunda leitura sem revisão', () => {
     for (const linhas of [['Título'], ['Título', 'inteiro']]) {
@@ -108,5 +114,30 @@ describe('a variante fixada por id', () => {
     expect(specComAPosicaoOriginal({ ...spec, preferencias: { variante: 'pg-a' } }, fv).preferencias?.variante).toBe('pg-a')
     expect(specComAPosicaoOriginal(spec, { composicao: { assinatura: { pageId: 'pg-b' } } }).preferencias).toEqual({ varianteOriginal: 'pg-b' })
     expect(validarSpec(specComAPosicaoOriginal(spec, fv)).problemas).toEqual([])
+  })
+})
+
+describe('comLarguraDoDestaque (revisão M4 do PR #298)', () => {
+  // Medidor falso: 10 px por caractere na família da camada, 13 px na pesada; quebra em '\n'.
+  const falso = (l: Layer) => {
+    const px = l.style?.fontFamily === 'Pesada' ? 13 : 10
+    const linhas = String(l.content ?? '').split('\n').map((texto) => ({ texto, largura: texto.length * px }))
+    return { height: linhas.length * 20, maxLineWidth: Math.max(...linhas.map((x) => x.largura)), lineCount: linhas.length, linhas }
+  }
+  const texto = (extra: Partial<Layer>): Layer =>
+    ({ id: 't', type: 'text', name: 'T', visible: true, locked: false, order: 0, position: { x: 0, y: 0 }, size: { width: 200, height: 40 }, content: 'Picanha na brasa\nsó hoje', style: { fontFamily: 'Fina', fontSize: 20 }, ...extra }) as Layer
+
+  it('soma a largura extra da família do destaque só na linha do trecho e sobe o maxLineWidth', () => {
+    const m = comLarguraDoDestaque(falso)(texto({ destaques: [{ inicio: 8, fim: 16 }], destaque: { fontFamily: 'Pesada' } }))!
+    // "na brasa" (8 caracteres): 8 × 3 px a mais na linha 1; a linha 2 não muda.
+    expect(m.linhas).toEqual([{ texto: 'Picanha na brasa', largura: 160 + 24 }, { texto: 'só hoje', largura: 70 }])
+    expect(m.maxLineWidth).toBe(184)
+  })
+
+  it('sem destaques, sem família ou a mesma família: a medida é a do render, intocada', () => {
+    const medir = comLarguraDoDestaque(falso)
+    expect(medir(texto({}))).toEqual(falso(texto({})))
+    expect(medir(texto({ destaques: [{ inicio: 0, fim: 7 }], destaque: { fill: '#f00' } }))!.maxLineWidth).toBe(160)
+    expect(medir(texto({ destaques: [{ inicio: 0, fim: 7 }], destaque: { fontFamily: 'Fina' } }))!.maxLineWidth).toBe(160)
   })
 })

@@ -15,6 +15,8 @@ import { CreativeError } from '@/lib/creatives/errors'
 import { celulaVazia } from '@/lib/grades/conferir'
 import { preencherCelula } from '@/lib/grades/operacoes'
 import { vinculadaAGrade } from '@/lib/grades/presenca'
+import { trocarConteudo } from '@/lib/compositor/destaques'
+
 
 /**
  * Um texto com conteúdo SUBSTANTIVO (letra, número ou pictograma) que o bake ESCONDEU, ESVAZIOU ou reduziu a
@@ -86,7 +88,17 @@ export function bakeLayers(
   slotValues: Record<string, unknown>,
   imageUrl: string | null,
   valores?: ReadonlyMap<number, ValorResolvido>,
-): { layers: any[]; imageApplied: boolean; changedTextIds: string[]; explicitFileUrlIds: string[]; imageBloqueadaPeloSemantico: boolean } {
+): { layers: any[]; imageApplied: boolean; changedTextIds: string[]; explicitFileUrlIds: string[]; imageBloqueadaPeloSemantico: boolean; avisos: string[] } {
+  /** O colchete sem par de cada texto trocado (`trocarConteudo`): vira aviso da chamada, nunca campo da camada. */
+  const avisos: string[] = []
+  // [colchetes] viram `destaques`; texto novo sem eles apaga os antigos (offsets órfãos); o MESMO texto limpo os mantém.
+  const trocar = (layer: any, updated: any, texto: string) => {
+    const { content, destaques, problema } = trocarConteudo(layer, texto, { mesmoTextoMantem: true })
+    if (problema) avisos.push(`"${layer.name ?? layer.id}": ${problema} — o trecho saiu sem destaque`)
+    updated.content = content
+    if (destaques) updated.destaques = destaques
+    else delete updated.destaques
+  }
   const explicitFileUrl = new Set<string>()
   /** Índices cujo `fileUrl` explícito veio de _slots/_papeis (não do legado por id/nome). */
   const fileUrlSemantico = new Set<number>()
@@ -112,13 +124,13 @@ export function bakeLayers(
     const recebeuConteudo = () => Object.assign(updated, semPrefixoHerdado(updated))
 
     if (typeof slot === 'string') {
-      updated.content = slot
+      trocar(layer, updated, slot)
       recebeuConteudo()
       if (layer.type === 'text') changedTextIds.push(layer.id)
     } else if (slot && typeof slot === 'object') {
       const slotObj = slot as Record<string, unknown>
       if (typeof slotObj.content === 'string') {
-        updated.content = slotObj.content
+        trocar(layer, updated, slotObj.content)
         recebeuConteudo()
         if (layer.type === 'text') changedTextIds.push(layer.id)
       }
@@ -166,7 +178,7 @@ export function bakeLayers(
   })
 
   const explicitFileUrlIds = [...explicitFileUrl]
-  if (!imageUrl) return { layers, imageApplied: false, changedTextIds, explicitFileUrlIds, imageBloqueadaPeloSemantico: false }
+  if (!imageUrl) return { layers, imageApplied: false, changedTextIds, explicitFileUrlIds, imageBloqueadaPeloSemantico: false, avisos }
 
   /**
    * Contrato NOVO estrito (opção C do #208): se o alvo NATURAL da foto — o que esta regra escolheria sem nenhum valor
@@ -179,7 +191,7 @@ export function bakeLayers(
   const vazia = sourceLayers.findIndex((l: any) => vaga(l) && !l.fileUrl)
   const natural = vazia !== -1 ? vazia : sourceLayers.findIndex(vaga)
   if (natural !== -1 && fileUrlSemantico.has(natural)) {
-    return { layers, imageApplied: false, changedTextIds, explicitFileUrlIds, imageBloqueadaPeloSemantico: true }
+    return { layers, imageApplied: false, changedTextIds, explicitFileUrlIds, imageBloqueadaPeloSemantico: true, avisos }
   }
 
   const isImageTarget = (layer: any) => vaga(layer) && !explicitFileUrl.has(layer.id)
@@ -187,8 +199,8 @@ export function bakeLayers(
   const target =
     layers.find((l: any) => isImageTarget(l) && !l.fileUrl) ?? layers.find(isImageTarget)
 
-  if (!target) return { layers, imageApplied: false, changedTextIds, explicitFileUrlIds, imageBloqueadaPeloSemantico: false }
+  if (!target) return { layers, imageApplied: false, changedTextIds, explicitFileUrlIds, imageBloqueadaPeloSemantico: false, avisos }
 
   target.fileUrl = imageUrl
-  return { layers, imageApplied: true, changedTextIds, explicitFileUrlIds, imageBloqueadaPeloSemantico: false }
+  return { layers, imageApplied: true, changedTextIds, explicitFileUrlIds, imageBloqueadaPeloSemantico: false, avisos }
 }

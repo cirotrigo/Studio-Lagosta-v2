@@ -61,27 +61,6 @@ export function KonvaMultiStyledText({
 }: KonvaMultiStyledTextProps) {
   const [isHovering, setIsHovering] = React.useState(false) // Hover state
 
-  // Apply text transform based on style (uppercase, lowercase, capitalize)
-  const applyTextTransform = React.useCallback((text: string, transform?: string) => {
-    if (!transform || transform === 'none') return text
-
-    switch (transform) {
-      case 'uppercase':
-        return text.toUpperCase()
-      case 'lowercase':
-        return text.toLowerCase()
-      case 'capitalize':
-        return text.replace(/\b\w/g, (char) => char.toUpperCase())
-      default:
-        return text
-    }
-  }, [])
-
-  // Get display text with transform applied
-  const displayText = React.useMemo(() => {
-    return applyTextTransform(layer.content ?? '', layer.style?.textTransform)
-  }, [layer.content, layer.style?.textTransform, applyTextTransform])
-
   // Handler para clique simples
   const handleClick = React.useCallback((event: KonvaEventObject<MouseEvent | TouchEvent>) => {
     commonProps.onClick(event)
@@ -128,105 +107,10 @@ export function KonvaMultiStyledText({
     }
   }, [layerId])
 
-  // Parsear rich text styles em segments
-  const segments = React.useMemo(() => {
-    const parsed = parseRichTextSegments(
-      displayText, // ← USAR displayText em vez de layer.content
-      layer.richTextStyles ?? [],
-      layer.style // Estilo base
-    )
-
-    // DEBUG: Log para verificar parsing
-    console.log('📝 KonvaMultiStyledText parsing:', {
-      originalContent: layer.content,
-      displayText: displayText,
-      textTransform: layer.style?.textTransform,
-      richTextStyles: layer.richTextStyles,
-      segments: parsed,
-      hasContent: !!layer.content,
-      segmentCount: parsed.length
-    })
-
-    return parsed
-  }, [displayText, layer.richTextStyles, layer.style])
-
-  // Calcular layout (posição de cada segment)
-  const layout = React.useMemo(() => {
-    // Criar um Text do Konva temporário para calcular quebras de linha
-    // usando o mesmo algoritmo que o KonvaEditableText usa
-    const tempText = new Konva.Text({
-      text: displayText,
-      width: layer.size?.width ?? 240,
-      fontSize: layer.style?.fontSize ?? 16,
-      fontFamily: layer.style?.fontFamily ?? 'Inter',
-      fontStyle: layer.style?.fontStyle ?? 'normal',
-      lineHeight: layer.style?.lineHeight ?? 1.2,
-      letterSpacing: layer.style?.letterSpacing ?? 0,
-      padding: 6,
-      wrap: 'word',
-    })
-
-    const options: RichTextRenderOptions = {
-      maxWidth: layer.size?.width,
-      lineHeight: layer.style?.lineHeight ?? 1.2,
-      textAlign: layer.style?.textAlign ?? 'left',
-      wrap: true,
-      breakMode: 'word',
-      useCache: false,
-      pixelRatio: 2,
-      padding: 6, // ← Mesmo padding que KonvaEditableText
-    }
-
-    // Usar as quebras de linha calculadas pelo Konva
-    const textLines = tempText.textArr || []
-
-    console.log('🔍 Konva calculou quebras de linha:', {
-      numLines: textLines.length,
-      lines: textLines.map(l => ({ text: l.text, width: l.width })),
-      layerWidth: layer.size?.width,
-    })
-
-    const calculatedLayout = calculateSegmentLayout(segments, options, textLines)
-
-    // DEBUG: Log layout calculado com TODOS os detalhes
-    console.log('📐 KonvaMultiStyledText layout:', {
-      bounds: calculatedLayout.bounds,
-      layerSize: layer.size,
-      segmentCount: calculatedLayout.segments.length,
-      lines: calculatedLayout.lines.length,
-      segments: calculatedLayout.segments.map(s => ({
-        text: s.text,
-        x: s.x,
-        y: s.y,
-        width: s.width,
-        height: s.height
-      }))
-    })
-
-    // GARANTIR que sempre tenha dimensões válidas para seleção
-    // Se não há bounds calculados, usar size do layer ou valores mínimos
-    if (calculatedLayout.bounds.width === 0 || calculatedLayout.bounds.height === 0) {
-      console.warn('⚠️ Rich text layout com bounds zero, usando fallback', {
-        layerSize: layer.size,
-        fallbackWidth: layer.size?.width ?? 100,
-        fallbackHeight: layer.size?.height ?? 50
-      })
-      return {
-        ...calculatedLayout,
-        bounds: {
-          width: layer.size?.width ?? 100,
-          height: layer.size?.height ?? 50,
-        }
-      }
-    }
-
-    return calculatedLayout
-  }, [segments, layer.size, layer.style, displayText])
-
-
-  // Usar dimensões do layer (preservar caixa de texto original)
-  const boxWidth = layer.size?.width ?? layout.bounds.width
-  const boxHeight = layer.size?.height ?? layout.bounds.height
+  // Usar dimensões do layer (preservar caixa de texto original); sem `size`, o que o layout mediu
+  const layout = useLayoutDosSegmentos(layer, layer.richTextStyles ?? [])
+  const boxWidth = layer.size?.width ?? (layout.bounds.width || 100)
+  const boxHeight = layer.size?.height ?? (layout.bounds.height || 50)
 
   return (
     <Group
@@ -277,7 +161,95 @@ export function KonvaMultiStyledText({
         />
       )}
 
-      {/* Renderizar segments de texto */}
+      <SegmentosDesenhados layout={layout} />
+    </Group>
+  )
+}
+
+/**
+ * Os `Text`s de um texto por segmentos, em coordenadas LOCAIS da caixa (quem
+ * chama os põe num Group). É o desenho que o rich-text sempre usou — e, desde
+ * o destaque por marcação, também o de uma camada `text` com `destaques`
+ * (`konva-editable-text`, com os segmentos de `segmentosDoTexto`). A quebra
+ * de linha vem de um Konva.Text temporário com o estilo BASE, igual ao da
+ * caixa comum; o servidor replica isso em `renderRichText`.
+ */
+export interface OpcoesDosSegmentos {
+  /**
+   * Camada `text` com destaques: os segmentos replicam o Konva.Text da
+   * camada — âncora vertical (`textboxConfig.anchor`), linhas truncadas pela
+   * altura da caixa e cada linha centrada na entrelinha (o Konva desenha com
+   * baseline no MEIO do line-box; um Text de lineHeight 1 por segmento subia
+   * (lineHeight−1)·fontSize/2). O rich-text antigo fica como sempre foi.
+   */
+  comoTextoComum?: boolean
+}
+
+/** O layout dos segmentos (posição de cada trecho) — compartilhado pelo rich-text e pelo texto com destaques. */
+export function useLayoutDosSegmentos(layer: Layer, estilos: RichTextStyle[], opcoes: OpcoesDosSegmentos = {}): LayoutResult {
+  const comoTextoComum = opcoes.comoTextoComum === true
+
+  // Fatia no texto CRU e transforma por segmento (ß → SS muda o comprimento;
+  // transformar antes de fatiar deslocava os offsets)
+  const { displayText, segments } = React.useMemo(() => {
+    const cru = layer.content ?? ''
+    const transformar = (s: string) => applyTextTransform(s, layer.style?.textTransform)
+    const crus = parseRichTextSegments(cru, estilos, layer.style)
+    let texto = ''
+    const transformados: TextStyleSegment[] = crus.map((s) => {
+      const start = texto.length
+      texto += transformar(s.text)
+      return { ...s, text: texto.slice(start), start, end: texto.length }
+    })
+    return { displayText: texto, segments: transformados }
+  }, [layer.content, layer.style, estilos])
+
+  // Calcular layout (posição de cada segment)
+  return React.useMemo(() => {
+    // Criar um Text do Konva temporário para calcular quebras de linha
+    // usando o mesmo algoritmo que o KonvaEditableText usa
+    const tempText = new Konva.Text({
+      text: displayText,
+      width: layer.size?.width ?? 240,
+      // Altura fixa: o Konva TRUNCA as linhas que não cabem — como o Text da camada
+      ...(comoTextoComum && layer.size?.height ? { height: layer.size.height } : {}),
+      fontSize: layer.style?.fontSize ?? 16,
+      fontFamily: layer.style?.fontFamily ?? 'Inter',
+      fontStyle: layer.style?.fontStyle ?? 'normal',
+      lineHeight: layer.style?.lineHeight ?? 1.2,
+      letterSpacing: layer.style?.letterSpacing ?? 0,
+      padding: 6,
+      wrap: 'word',
+    })
+
+    const options: RichTextRenderOptions = {
+      maxWidth: layer.size?.width,
+      lineHeight: layer.style?.lineHeight ?? 1.2,
+      textAlign: layer.style?.textAlign ?? 'left',
+      wrap: true,
+      breakMode: 'word',
+      useCache: false,
+      pixelRatio: 2,
+      padding: 6, // ← Mesmo padding que KonvaEditableText
+      ...(comoTextoComum
+        ? { comoTextoComum: true, anchor: layer.textboxConfig?.anchor ?? 'top', boxHeight: layer.size?.height, fontSize: layer.style?.fontSize ?? 16 }
+        : {}),
+    }
+
+    // Usar as quebras de linha calculadas pelo Konva
+    return calculateSegmentLayout(segments, options, tempText.textArr || [])
+  }, [segments, layer.size, layer.style, layer.textboxConfig?.anchor, displayText, comoTextoComum])
+}
+
+export function TextoEmSegmentos({ layer, estilos, opcoes }: { layer: Layer; estilos: RichTextStyle[]; opcoes?: OpcoesDosSegmentos }) {
+  const layout = useLayoutDosSegmentos(layer, estilos, opcoes)
+  return <SegmentosDesenhados layout={layout} />
+}
+
+/** Os `Text`s de um layout já calculado. */
+export function SegmentosDesenhados({ layout }: { layout: LayoutResult }) {
+  return (
+    <>
       {layout.segments.map((segment, index) => {
         // Faux-bold: o canvas NÃO sintetiza negrito para fontes customizadas
         // (carregadas via FontFace com um único peso). Engrossamos com um
@@ -316,8 +288,21 @@ export function KonvaMultiStyledText({
           />
         )
       })}
-    </Group>
+    </>
   )
+}
+
+function applyTextTransform(text: string, transform?: string): string {
+  switch (transform) {
+    case 'uppercase':
+      return text.toUpperCase()
+    case 'lowercase':
+      return text.toLowerCase()
+    case 'capitalize':
+      return text.replace(/\b\w/g, (char) => char.toUpperCase())
+    default:
+      return text
+  }
 }
 
 /**
@@ -706,10 +691,12 @@ function calculateLayoutFromKonvaLines(
       })
     }
 
-    // Calcular altura da linha (maior fontSize dos segments)
-    const lineHeight = lineSegments.length > 0
-      ? Math.max(...lineSegments.map(s => s.style.fontSize ?? 16))
-      : (options.lineHeight * 16) // fallback
+    // Calcular altura da linha (maior fontSize dos segments; texto comum: a fonte BASE, como o Konva.Text)
+    const lineHeight = options.comoTextoComum
+      ? (options.fontSize ?? 16)
+      : lineSegments.length > 0
+        ? Math.max(...lineSegments.map(s => s.style.fontSize ?? 16))
+        : (options.lineHeight * 16) // fallback
 
     // Calcular largura total da linha
     const lineWidth = lineSegments.reduce((sum, seg) => sum + (seg.width ?? 0), 0)
@@ -729,8 +716,20 @@ function calculateLayoutFromKonvaLines(
   // Aplicar alinhamento e posicionar segments
   const containerWidth = options.maxWidth ? options.maxWidth - paddingDouble : maxLineWidth
 
+  // Texto comum: a âncora vertical do Konva.Text (alignY sobre a altura da
+  // caixa) e a linha centrada na entrelinha — o Konva desenha com baseline no
+  // MEIO do line-box, um Text de lineHeight 1 por segmento desenha no meio da
+  // própria fonte: a diferença é (entrelinha − fontSize)/2.
+  let alignY = 0
+  if (options.comoTextoComum && options.boxHeight !== undefined) {
+    const total = lines.reduce((s, l) => s + l.height * options.lineHeight, 0)
+    if (options.anchor === 'middle') alignY = (options.boxHeight - paddingDouble - total) / 2
+    else if (options.anchor === 'bottom') alignY = options.boxHeight - paddingDouble - total
+  }
+
   for (const line of lines) {
     let xOffset = padding // Começar com padding à esquerda
+    const yLinha = options.comoTextoComum ? line.y + alignY + (line.height * options.lineHeight - line.height) / 2 : line.y
 
     // Aplicar alinhamento baseado na largura do container
     if (options.textAlign === 'center') {
@@ -743,7 +742,7 @@ function calculateLayoutFromKonvaLines(
       positionedSegments.push({
         ...segment,
         x: xOffset,
-        y: line.y,
+        y: yLinha,
       })
       xOffset += segment.width ?? 0
     }

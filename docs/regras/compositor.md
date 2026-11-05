@@ -2048,3 +2048,32 @@ descarta em silêncio; quem lia o resultado descartava.
   `PAGINA_E_MODELO` → `VETOR_INVALIDO` (forma vetorial, código próprio) → só
   então `SNAPSHOT_COM_CAMADAS_INVALIDAS` para o resto dos `v.problemas`.
 - Teste: `src/lib/compositor/__tests__/reverter-snapshot-invalido.test.ts`.
+
+## Destaque por marcação: `text` com `destaques` + `destaque` (T2, 05/11/2026)
+
+- O compositor não emite mais `rich-text` para o destaque da copy: emite `type: 'text'` com `content` LIMPO (sem
+  colchetes), `destaques: [{inicio, fim}]` (offsets no content) e `destaque: {fill, fontFamily, fontStyle,
+  textDecoration}` (o estilo resolvido da marca por `destaqueDoPapel`). Colchetes só existem nas pontas:
+  `lerDestaques` na gravação, `linhasComColchetes` na leitura.
+- Quem lê a camada para medir/tingir tem que ler os dois formatos: `medidas.ts` (famílias), `regua.ts` (`semTinta`),
+  `medir-copy.ts` (camada base), `arquetipos/fundo.ts` (`tintasAtivas`: o trecho herda `destaque.fill`),
+  `revisar-arte.ts` (`fontesQueFaltam`). A F2d (`arquetipos/referencia.ts`) RECUSA referência com `destaques`.
+- 🔴 **UM parser só dos colchetes: `trocarConteudo` (`destaques.ts`)** — o bake (`slotValues`) e o `definir content`
+  passam por ele com `mesmoTextoMantem` (o texto limpo IGUAL ao gravado mantém os `destaques`: é o agente reenviando o
+  que `ver-pagina` devolveu). O editor NÃO liga a opção: lá a caixa mostra os colchetes, e apagá-los é tirar o
+  destaque. `marcarDestaquesNoTexto` não lê colchete: só põe o estilo da marca e avisa o destaque que o texto tirou.
+  Duas passadas lendo colchetes (merge com a T1, 05/11) apagavam os destaques que o bake acabara de gravar.
+- Pelo MCP (`ajustar-arte`): colchetes em `slotValues` ou em `camadas.definir content` gravam content limpo +
+  `destaques`; o `destaque` vem da camada (se já tiver) ou da marca. Texto novo SEM colchetes tira os `destaques`.
+  Colchete sem par → aviso e o trecho sai sem destaque. Colchetes + `destaques` explícito na mesma op → recusa.
+  `destaques: []` remove. Offset além do content → `VALOR_FORA_DA_FAIXA`. `ver-pagina` devolve `conteudoMarcado`
+  (o content com os colchetes de volta) só na camada com destaques; mandá-lo de volta em `definir content` reproduz a camada.
+- O gate classifica `destaques.*` e `destaque.{fill,fontStyle,textDecoration}` como `inerte` e `destaque.fontFamily`
+  como `expansora` → **`VERSAO_DO_GATE` = `gate-v6`** (`revisor-da-arte.md`).
+- 🔴 **A medida enxerga a família do destaque**: `createServerTextBoxMeasurer` embrulha o `measureTextLayerBox` em
+  `comLarguraDoDestaque` (`blocos.ts`), que soma `larguraExtraDoDestaque` (a conta da montagem) em cada linha quebrada.
+  Autofix, gate e revisor passam por ele. Sem isso, uma linha que cabia por 10 px na família fina transbordava no PNG
+  (o trecho desenhado na pesada) e o gate dizia APTO. Quem mede uma camada SEM destaques e soma o extra à mão (a
+  montagem, o `medir-copy`) continua certo: a camada base não leva `destaques`.
+- 🔴 **ORDEM DE MERGE: o #297 (render do T1) entra ANTES do #298.** Sem o render, o compositor emitindo `text` +
+  `destaques` faz toda peça nova sair SEM destaque no PNG — o gate diz APTO e a arte vai para a agenda sem a palavra marcada.

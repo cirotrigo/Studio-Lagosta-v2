@@ -14,6 +14,7 @@
 
 import type { DesignData, Layer } from '@/types/template'
 import { lerCamadas } from './page-layers'
+import { trocarConteudo } from '@/lib/compositor/destaques'
 import { videosDaPagina } from '@/lib/video/camadas-de-video'
 
 interface PageRecord {
@@ -91,14 +92,20 @@ export function aplicarSlotNaCamada<T extends { id?: string; name?: string; cont
   if (!slot) return layer
 
   const updated = { ...layer }
+  // Texto novo passa por `trocarConteudo`: [colchetes] viram `destaques` e os
+  // antigos saem com o texto antigo (offsets órfãos pintariam letras ao acaso)
+  const trocar = (texto: string) => {
+    const { content, destaques } = trocarConteudo(layer as { type?: unknown; destaques?: unknown }, texto)
+    Object.assign(updated, { content, destaques })
+  }
 
   if (typeof slot === 'string') {
     // Simple string: replace text content
-    updated.content = slot
+    trocar(slot)
   } else if (typeof slot === 'object' && slot !== null) {
     const slotObj = slot as Record<string, unknown>
     if (typeof slotObj.content === 'string') {
-      updated.content = slotObj.content
+      trocar(slotObj.content)
     }
     if (typeof slotObj.fileUrl === 'string') {
       updated.fileUrl = slotObj.fileUrl
