@@ -9,7 +9,7 @@ import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { FundoDoTexto } from './konva-text-background'
 import { ajusteDeAlturaMedida } from '@/lib/texto-altura-automatica'
 import { irmaosQueAcompanham } from '@/lib/combo-stack-reflow'
-import { lerDestaquesDoTexto, linhasComColchetes, segmentosDoTexto } from '@/lib/compositor/destaques'
+import { linhasComColchetes, segmentosDoTexto, trocarConteudo } from '@/lib/compositor/destaques'
 import { getFontManager } from '@/lib/font-manager'
 import { useDestaqueDaMarca } from '@/hooks/use-destaque-da-marca'
 import { toast } from '@/hooks/use-toast'
@@ -166,6 +166,18 @@ export function KonvaEditableText({
       })
     } else {
       textNode.clearCache()
+    }
+
+    // Com destaques, quem desenha é o Group dos segmentos: o blur (filtro só
+    // age em nó cacheado) e o cache de qualidade vão nele, como no Text
+    const grupo = grupoDosSegmentosRef.current
+    if (grupo) {
+      grupo.clearCache()
+      if (shouldCache) {
+        grupo.filters(hasBlur ? [Konva.Filters.Blur] : [])
+        grupo.blurRadius(hasBlur ? layer.effects!.blur!.blurRadius : 0)
+        grupo.cache({ pixelRatio: Math.max(2, window.devicePixelRatio || 2), imageSmoothingEnabled: true })
+      }
     }
 
     textNode.getLayer()?.batchDraw()
@@ -332,8 +344,8 @@ export function KonvaEditableText({
    * primeira marcação, `destaque` sai da assinatura do projeto.
    */
   const segmentos = React.useMemo(
-    () => segmentosDoTexto(layer, getFontManager().getAvailableFonts(editor.projectId).all),
-    [layer.content, layer.destaques, layer.destaque, layer.style?.fontFamily, layer.effects?.shadow, editor.projectId, fontsTick],
+    () => segmentosDoTexto(layer, { familias: getFontManager().getAvailableFonts(editor.projectId).all, comEfeitos: true }),
+    [layer.content, layer.destaques, layer.destaque, layer.style?.fontFamily, layer.style?.border, layer.effects?.shadow, layer.effects?.stroke, editor.projectId, fontsTick],
   )
   const destaqueDaMarca = useDestaqueDaMarca(editor.projectId)
   const layerRef = React.useRef(layer)
@@ -504,8 +516,9 @@ export function KonvaEditableText({
     const fontStyle = layer.style?.fontStyle ?? (textNode.fontStyle().includes('italic') ? 'italic' : 'normal')
     const fontWeight = layer.style?.fontWeight ?? (textNode.fontStyle().includes('bold') ? '700' : '400')
     const letterSpacing = layer.style?.letterSpacing ?? textNode.letterSpacing()
+    // Com destaques o nó fica transparente: a caixa não pode herdar essa tinta
     const fill = textNode.fill()
-    const color = layer.style?.color ?? (typeof fill === 'string' ? fill : '#000000')
+    const color = layer.style?.color ?? (typeof fill === 'string' && fill !== 'transparent' ? fill : '#000000')
 
     const width = Math.max(textNode.width(), measured.width + padding * 2, 4)
     const height = Math.max(textNode.height(), measured.height + padding * 2, fontSize + padding * 2)
@@ -593,19 +606,14 @@ export function KonvaEditableText({
           // Os [colchetes] viram `destaques` (offsets no texto limpo); colchete
           // sem par é aviso, nunca erro. Na primeira marcação de uma camada sem
           // `destaque`, o estilo vem da assinatura do projeto.
-          const lido = lerDestaquesDoTexto(finalValue)
           const camada = layerRef.current
-          const updates: Partial<Layer> = { content: lido.texto }
-          if (lido.trechos.length > 0) {
-            updates.destaques = lido.trechos
-            if (!camada.destaque) updates.destaque = destaqueDaMarcaRef.current(camada) ?? undefined
-          } else if (camada.destaques) {
-            updates.destaques = undefined
-          }
+          const lido = trocarConteudo(camada, finalValue)
+          const updates: Partial<Layer> = { content: lido.content, destaques: lido.destaques }
+          if (lido.destaques && !camada.destaque) updates.destaque = destaqueDaMarcaRef.current(camada) ?? undefined
           if (lido.problema) toast({ description: `Destaque: ${lido.problema}. O texto saiu sem esse colchete.` })
           // ⚡ ATUALIZAR NODE DIRETAMENTE para visualização imediata
           if (textNode) {
-            textNode.text(lido.texto)
+            textNode.text(lido.content)
             // Limpar e recriar cache para fontes de alta qualidade
             if (textNode.isCached()) {
               textNode.clearCache()
@@ -1158,7 +1166,7 @@ export function KonvaEditableText({
     const nextLineHeight = layer.style?.lineHeight ?? textNode.lineHeight() ?? 1.2
     const nextTextAlign = (layer.style?.textAlign ?? textNode.align() ?? 'left') as 'left' | 'center' | 'right' | 'justify'
     const fill = textNode.fill()
-    const nextColor = layer.style?.color ?? (typeof fill === 'string' ? fill : editingState.color)
+    const nextColor = layer.style?.color ?? (typeof fill === 'string' && fill !== 'transparent' ? fill : editingState.color)
     const nextPadding = textNode.padding()
     const nextRotation = layer.rotation ?? textNode.rotation()
 
@@ -1486,7 +1494,7 @@ export function KonvaEditableText({
           visible={!isEditing}
           listening={false}
         >
-          <TextoEmSegmentos layer={layer} estilos={segmentos} />
+          <TextoEmSegmentos layer={layer} estilos={segmentos} opcoes={{ comoTextoComum: true }} />
         </Group>
       )}
     </>
