@@ -1463,6 +1463,15 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
     const vetores = problemasDosVetores(edicao.camadas)
     if (vetores.length > 0) throw new CreativeError('VETOR_INVALIDO', `Forma vetorial inválida — nada foi gravado (${vetores.map((c) => `${c.id}: ${c.motivos.map((m) => m.codigo).join(', ')}`).join('; ')}).`, 422, { camadas: vetores, ajusteGravado: false })
     camadasEditadas = canonicalizeLayersForPersistence(edicao.camadas) as Layer[]
+    // T1 (prova no Espeto, 05/11): texto tocado pelos dados (largura, corpo, conteúdo, entrelinha) ganha a ALTURA natural,
+    // como o editor ao soltar a caixa — sem isso a caixa de 2 linhas fica com 3 e o gate acusa tinta fora da caixa.
+    // Só a altura: a posição que `definir` gravou e a pilha do grupo ficam onde estão (o reflow da pilha rodou antes).
+    const tocadas = new Set(edicao.tocadas)
+    camadasEditadas = camadasEditadas.map((l) => {
+      if (l.type !== 'text' || !tocadas.has(l.id)) return l
+      const natural = measure(l)
+      return natural == null || Math.abs(natural - (l.size?.height ?? 0)) < 1 ? l : { ...l, size: { width: l.size?.width ?? 0, height: natural } }
+    })
   }
 
   // ANTES de medir qualquer coisa: o render de servidor é imagem e recusa página com vídeo — medir 30 ajustes para

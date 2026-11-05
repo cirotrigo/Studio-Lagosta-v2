@@ -269,6 +269,18 @@ describe('T1 — camadas pelos dados no draft-only (revisão do PR #294)', () =>
     expect(render.chamadas).toEqual([])
   })
 
+  it('definir a largura (ou o corpo) de um texto recalcula a ALTURA natural; a posição fica; camada só movida não muda de altura', async () => {
+    pagina('p1', { layers: [foto(), ...camadasLimpas()] })
+    geracaoDoCompositor('g-comp', 'p1')
+    const antes = banco.pages.get('p1')!.layers.find((l: Layer) => l.id === 'apoio').size
+    expect(antes.height).not.toBe(100)
+    await ajustar({ ajustes: undefined, camadas: [{ op: 'definir', camada: 'apoio', campos: { size: { width: 360 } } }] })
+    const gravada = banco.pages.get('p1')!
+    // O medidor de teste devolve 100 para qualquer texto: a largura pedida, a altura medida, a posição intocada.
+    expect(gravada.layers.find((l: Layer) => l.id === 'apoio')).toMatchObject({ position: { x: 100, y: 560 }, size: { width: 360, height: 100 } })
+    expect(gravada.layers.find((l: Layer) => l.id === 'headline').size).toEqual(camadasLimpas()[0].size)
+  })
+
   it('esconder a manchete por opacidade zero no draft-only: CONTEUDO_NAO_PODE_SER_REMOVIDO, nada gravado', async () => {
     await expect(ajustar({ ajustes: undefined, camadas: [{ op: 'definir', camada: 'headline', campos: { style: { opacity: 0 } } }] })).rejects.toMatchObject({ code: 'CONTEUDO_NAO_PODE_SER_REMOVIDO' })
     expect(novas()).toHaveLength(0)

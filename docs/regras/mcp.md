@@ -439,3 +439,23 @@ Testes: `src/lib/creatives/__tests__/editar-camadas.test.ts` (cada operação e 
 `src/lib/mcp/__tests__/ajustar-arte-camadas.test.ts` (schema, FASE 1 no handler, URL externa no draft-only),
 `src/lib/mcp/__tests__/ver-pagina.test.ts`, e o portão `VERSAO_OBRIGATORIA` em `ajustar-arte-portoes.test.ts`.
 Snapshots em `scripts/validar-registro-mcp.ts` (`ver-pagina` novo; `ajustar-arte` com `camadas`/`pagina`).
+
+**Altura do texto tocado pelos dados (prova no Espeto, 05/11/2026).** `definir` que mexe em largura, corpo, conteúdo
+ou entrelinha de um texto recebe a ALTURA natural logo depois da canonização (`measure`, o mesmo medidor do reflow),
+como o editor ao soltar a caixa. Só a altura: a posição que `definir` gravou e a pilha do grupo ficam onde estão (o
+reflow da pilha rodou antes). Medido na prova: apoio de 386→360 px virou 3 linhas com a caixa de 2 e o gate acusou
+`tinta-fora-da-caixa` (52 px abaixo da caixa); com a altura medida o achado some. Teste em `ajustar-arte-gate.test.ts`.
+
+**O que a prova no Espeto Gaúcho mostrou (05/11/2026, stdio `STUDIO_SO_RASCUNHO=1`, peça "[TESTE MCP] Picanha na
+brasa", página `cmw3ohtha0005kz084yw80pil`).** `compor-leva` → `ver-geracao` → `ver-pagina` (8 camadas, `versao`
+`v1:424613df8e5a93bcca56`) → `revisar-arte` → `ajustar-arte` com três `definir` (logo, cor da manchete, largura do
+apoio) e `versaoEsperada`. O gate CP5d mediu a página FUTURA com as camadas editadas e recusou
+(`REVISAO_HUMANA_NECESSARIA`, nada gravado, rollback inteiro): `logo-sem-leitura` na posição nova,
+`piso-de-interface` (o CTA que a própria composição já deixara no piso), e a manchete com `[destaque]` vira
+`headline2` rich-text, que o gate não prova (`texto-cortado`, `colisao`, `tratamento-piorou-leitura` em
+`NAO_COMPROVADA`; `oclusao` em `NAO_MEDIDO`). Ou seja: no draft-only, peça com destaque entre colchetes nunca passa
+em `ajustar-arte`, por desenho do gate — é limite conhecido (#209), não da porta de camadas.
+Duas medições de ambiente, para quem repetir a prova deste Mac: o gate tem 8 s (`PRAZO_DA_MEDICAO_MS`) e a transação
+20 s, calibrados para a Vercel (us-east-1, ao lado do Neon); daqui, cada consulta leva 0,5–2,8 s e só as sete travas
+da transação levaram 8,8 s antes de o gate começar, então a primeira passada estoura o prazo e a segunda cai em
+`P2028` (transação expirada). A prova alargou os dois prazos localmente, sem commitar; em produção os valores ficam.
