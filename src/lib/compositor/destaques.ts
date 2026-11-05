@@ -427,6 +427,34 @@ export function distanciaDeCor(a: string | null | undefined, b: string | null | 
   return Math.round(Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]))
 }
 
+/** O destaque padrão da marca quando `Project.assinatura` não diz nada: só o peso. */
+export const DESTAQUE_PADRAO: DestaquePadraoDaAssinatura = { pesado: true }
+
+export type DestaquePadraoDaAssinatura = { fill?: string; fontFamily?: string; pesado: boolean; alternativa?: string }
+
+/** `Project.assinatura.destaque` cru sobre a base — a regra do compositor (`mesclarNumeros`). */
+export function mesclarDestaque(base: DestaquePadraoDaAssinatura, extra: unknown): DestaquePadraoDaAssinatura {
+  if (!extra || typeof extra !== 'object') return base
+  const e = extra as Record<string, unknown>
+  return {
+    ...(typeof e.fill === 'string' && e.fill ? { fill: e.fill } : base.fill ? { fill: base.fill } : {}),
+    ...(typeof e.fontFamily === 'string' && e.fontFamily ? { fontFamily: e.fontFamily } : base.fontFamily ? { fontFamily: base.fontFamily } : {}),
+    pesado: typeof e.pesado === 'boolean' ? e.pesado : base.pesado,
+    ...(typeof e.alternativa === 'string' && e.alternativa ? { alternativa: e.alternativa } : base.alternativa ? { alternativa: base.alternativa } : {}),
+  }
+}
+
+/**
+ * O destaque padrão da marca a partir do JSON cru de `Project.assinatura` — a
+ * MESMA regra do compositor, para o editor não ter outra: cor só de
+ * `assinatura.destaque.fill`; sem ela, só o peso. Módulo puro: o hook do
+ * editor importa daqui (assinatura.ts arrasta o canvas do servidor).
+ */
+export function destaquePadraoDaAssinatura(numerosDoProjeto: unknown): DestaquePadraoDaAssinatura {
+  const cru = numerosDoProjeto && typeof numerosDoProjeto === 'object' ? (numerosDoProjeto as { destaque?: unknown }).destaque : undefined
+  return mesclarDestaque(DESTAQUE_PADRAO, cru)
+}
+
 export interface DestaquePadraoDaMarca {
   fill?: string
   fontFamily?: string

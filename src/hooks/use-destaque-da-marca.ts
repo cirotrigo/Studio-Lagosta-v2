@@ -2,8 +2,7 @@
 
 import * as React from 'react'
 import type { Layer } from '@/types/template'
-import { destaqueDoPapel, type EstiloDeDestaque } from '@/lib/compositor/destaques'
-import { destaquePadraoDaAssinatura } from '@/lib/compositor/assinatura'
+import { destaquePadraoDaAssinatura, destaqueDoPapel, type EstiloDeDestaque } from '@/lib/compositor/destaques'
 import { getFontManager } from '@/lib/font-manager'
 import { useProject } from './use-project'
 

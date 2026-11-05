@@ -15,7 +15,7 @@
 import type { Layer } from '@/types/template'
 import { variantesAutorizadasDaLogo, type VarianteDaLogo } from './legibilidade-da-logo'
 import { grupoDaCamada, membrosDoBloco, papelNoBloco } from '@/lib/creatives/halo/bloco-de-fundo'
-import { destaqueDaCamada, type EstiloDeDestaque } from './destaques'
+import { destaqueDaCamada, mesclarDestaque, type EstiloDeDestaque } from './destaques'
 import { configDaCamada, ehGradienteDeLeituraDaPagina, GRADIENTE_PADRAO, type AjustesDoGradiente, type ConfigDoGradiente, type CurvaDoGradiente } from './gradiente-de-leitura'
 import { papelDoNome } from './papel-do-nome'
 import { entraNoRodizio, TAG_FORA_DO_RODIZIO } from './fora-do-rodizio'
@@ -296,27 +296,6 @@ function mesclarGradiente(base: NumerosDaAssinatura['gradiente'], extra: unknown
     alturaMinima: numeroEm(e.alturaMinima, 0.05, 1, base.alturaMinima),
     alturaMaxima: numeroEm(e.alturaMaxima, 0.05, 1, base.alturaMaxima),
   }
-}
-
-function mesclarDestaque(base: NumerosDaAssinatura['destaque'], extra: unknown): NumerosDaAssinatura['destaque'] {
-  if (!extra || typeof extra !== 'object') return base
-  const e = extra as Record<string, unknown>
-  return {
-    ...(typeof e.fill === 'string' && e.fill ? { fill: e.fill } : base.fill ? { fill: base.fill } : {}),
-    ...(typeof e.fontFamily === 'string' && e.fontFamily ? { fontFamily: e.fontFamily } : base.fontFamily ? { fontFamily: base.fontFamily } : {}),
-    pesado: typeof e.pesado === 'boolean' ? e.pesado : base.pesado,
-    ...(typeof e.alternativa === 'string' && e.alternativa ? { alternativa: e.alternativa } : base.alternativa ? { alternativa: base.alternativa } : {}),
-  }
-}
-
-/**
- * O destaque padrão da marca a partir do JSON cru de `Project.assinatura` — a
- * MESMA regra do compositor (`mesclarDestaque`), para o editor não ter outra:
- * cor só de `assinatura.destaque.fill`; sem ela, só o peso.
- */
-export function destaquePadraoDaAssinatura(numerosDoProjeto: unknown): NumerosDaAssinatura['destaque'] {
-  const cru = numerosDoProjeto && typeof numerosDoProjeto === 'object' ? (numerosDoProjeto as { destaque?: unknown }).destaque : undefined
-  return mesclarDestaque(NUMEROS_PADRAO.destaque, cru)
 }
 
 function mesclarNumeros(base: NumerosDaAssinatura, extra: unknown): NumerosDaAssinatura {
