@@ -1062,8 +1062,7 @@ const LITERAIS_ARTE_IA: Record<string, unknown> = {
                           ]
                         }
                       },
-                      "additionalProperties": false,
-                      "type": "object"
+                      "additionalProperties": false
                     },
                     {
                       "type": "null"
