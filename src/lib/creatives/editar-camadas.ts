@@ -23,7 +23,7 @@ import { patchLineHeight } from '@/lib/text-line-height'
 import { temTextoSubstantivo } from '@/lib/creatives/revisao/texto-visivel'
 import { vinculadaAGrade } from '@/lib/grades/presenca'
 import { FONT_CONFIG } from '@/lib/font-config'
-import { lerDestaques, linhasComColchetes, temColchetes, type EstiloDeDestaque } from '@/lib/compositor/destaques'
+import { linhasComColchetes, temColchetes, trocarConteudo, type EstiloDeDestaque } from '@/lib/compositor/destaques'
 
 export const OPERACOES = ['definir', 'adicionar', 'remover', 'reordenar'] as const
 export const TIPOS_PARA_ADICIONAR = ['texto', 'imagem', 'logo', 'forma', 'icone', 'gradiente'] as const
@@ -533,26 +533,16 @@ function destaquesForaDoTexto(l: Layer): string | null {
 }
 
 /**
- * DESTAQUE POR MARCAÇÃO (05/11/2026): o `content` que acabou de chegar numa camada `text`. Com [colchetes], grava o
- * texto LIMPO e os trechos em `destaques` (o `content` segue texto para legenda, gate e medição). Sem colchetes: o texto
- * IGUAL ao `conteudoAnterior` (o agente reenviou o `content` limpo que leu) mantém os `destaques`; texto diferente os
- * tira, com aviso. O estilo (`destaque`) da camada fica; sem ele, entra o da marca. Colchete sem par vira aviso, nunca
- * recusa (`lerDestaques`).
+ * DESTAQUE POR MARCAÇÃO (05/11/2026): a camada `text` DEPOIS de `trocarConteudo` (o único parser dos colchetes — o
+ * bake e o `definir content` passam por ele). Aqui não se lê colchete: quem destaca e não tem estilo ganha o da marca
+ * (sem estilo da marca, os trechos saem com aviso — `comEstiloDoDestaque`); a camada que destacava (`origem`) e perdeu
+ * os trechos porque o texto mudou sem colchetes ganha o aviso.
  */
-export function marcarDestaquesNoTexto(camada: Layer, destaqueDaMarca?: (c: Layer) => EstiloDeDestaque | null, conteudoAnterior?: unknown): { camada: Layer; aviso: string | null } {
-  if (camada.type !== 'text' || typeof camada.content !== 'string') return { camada, aviso: null }
-  const { destaques: antigos, ...semTrechos } = camada
-  if (!temColchetes([camada.content])) {
-    if (!antigos?.length || camada.content === conteudoAnterior) return { camada, aviso: null }
-    return { camada: semTrechos as Layer, aviso: `destaque removido de "${camada.name ?? camada.id}": o texto mudou sem colchetes` }
-  }
-  const lida = lerDestaques(camada.content)
-  const marcada = { ...semTrechos, content: lida.texto } as Layer
-  const estilizada = comEstiloDoDestaque(lida.trechos.length > 0 ? { ...marcada, destaques: lida.trechos } : marcada, destaqueDaMarca)
-  return {
-    camada: estilizada.camada,
-    aviso: lida.problema ? `"${camada.name ?? camada.id}": ${lida.problema} — o trecho saiu sem destaque` : estilizada.aviso,
-  }
+export function marcarDestaquesNoTexto(camada: Layer, destaqueDaMarca?: (c: Layer) => EstiloDeDestaque | null, origem?: Pick<Layer, 'content' | 'destaques'>): { camada: Layer; aviso: string | null } {
+  if (camada.type !== 'text') return { camada, aviso: null }
+  if (camada.destaques?.length) return comEstiloDoDestaque(camada, destaqueDaMarca)
+  if (origem?.destaques?.length && camada.content !== origem.content) return { camada, aviso: `destaque removido de "${camada.name ?? camada.id}": o texto mudou sem colchetes` }
+  return { camada, aviso: null }
 }
 
 /**
@@ -682,15 +672,18 @@ export function aplicarOperacoesDeCamadas(entrada: Layer[], operacoes: OperacaoD
   /** O content chegou: colchetes viram `destaques`; com `destaques` enviados, valem eles. Destacando sem estilo, o da marca. */
   const marcar = (l: Layer, campos: CamposDaCamada | undefined, anterior?: Layer): Layer => {
     if (l.type !== 'text') return l
+    let atual = l
     // Com `destaques` explícito o content veio sem colchetes (FASE 1): os trechos são os enviados.
     if (campos?.content !== undefined && campos.destaques === undefined) {
-      const r = marcarDestaquesNoTexto(l, ctx.destaqueDaMarca, anterior?.content)
-      if (r.aviso) avisos.push(r.aviso)
-      return r.camada
+      const t = trocarConteudo(anterior ?? { type: 'text' }, campos.content, { mesmoTextoMantem: true })
+      const { destaques: _antigos, ...sem } = l
+      atual = { ...sem, content: t.content, ...(t.destaques ? { destaques: t.destaques } : {}) } as Layer
+      if (t.problema) avisos.push(`"${l.name ?? l.id}": ${t.problema} — o trecho saiu sem destaque`)
+    } else if (!campos?.destaques?.length) {
+      // Só quem TROUXE trechos pede o estilo: editar a cor de uma camada que já destacava não mexe nos trechos dela.
+      return l
     }
-    // Só quem TROUXE trechos pede o estilo: editar a cor de uma camada que já destacava não mexe nos trechos dela.
-    if (!campos?.destaques?.length) return l
-    const r = comEstiloDoDestaque(l, ctx.destaqueDaMarca)
+    const r = marcarDestaquesNoTexto(atual, ctx.destaqueDaMarca, anterior)
     if (r.aviso) avisos.push(r.aviso)
     return r.camada
   }

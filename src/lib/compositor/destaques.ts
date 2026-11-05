@@ -97,10 +97,20 @@ export function lerDestaquesDoTexto(texto: string): LinhaComDestaque {
  * sem par; o `destaque` (estilo) é de quem grava, pela marca.
  */
 export function trocarConteudo(
-  camada: { type?: unknown; destaques?: unknown },
+  camada: { type?: unknown; destaques?: unknown; content?: unknown },
   texto: string,
+  /**
+   * `mesmoTextoMantem`: o escritor que reenvia o texto LIMPO que leu (MCP: `ver-pagina` → `slotValues`/`definir`)
+   * não tirou o destaque — texto sem colchetes IGUAL ao `content` mantém os `destaques` (revisão M3 do PR #298). O
+   * editor NÃO liga: lá a caixa mostra os colchetes, e apagá-los cai exatamente no texto limpo — é tirar o destaque.
+   */
+  opcoes?: { mesmoTextoMantem?: boolean },
 ): { content: string; destaques: TrechoDestacado[] | undefined; problema: string | null } {
   if (camada.type !== 'text') return { content: texto, destaques: undefined, problema: null }
+  if (opcoes?.mesmoTextoMantem && texto === camada.content && !temColchetes([texto])) {
+    const atuais = Array.isArray(camada.destaques) && camada.destaques.length > 0 ? (camada.destaques as TrechoDestacado[]) : undefined
+    return { content: texto, destaques: atuais, problema: null }
+  }
   const lido = lerDestaquesDoTexto(texto)
   return { content: lido.texto, destaques: lido.trechos.length > 0 ? lido.trechos : undefined, problema: lido.problema }
 }

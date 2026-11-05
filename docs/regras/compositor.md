@@ -2029,6 +2029,11 @@ compilada em memória, sem escrever nada.
 - Quem lê a camada para medir/tingir tem que ler os dois formatos: `medidas.ts` (famílias), `regua.ts` (`semTinta`),
   `medir-copy.ts` (camada base), `arquetipos/fundo.ts` (`tintasAtivas`: o trecho herda `destaque.fill`),
   `revisar-arte.ts` (`fontesQueFaltam`). A F2d (`arquetipos/referencia.ts`) RECUSA referência com `destaques`.
+- 🔴 **UM parser só dos colchetes: `trocarConteudo` (`destaques.ts`)** — o bake (`slotValues`) e o `definir content`
+  passam por ele com `mesmoTextoMantem` (o texto limpo IGUAL ao gravado mantém os `destaques`: é o agente reenviando o
+  que `ver-pagina` devolveu). O editor NÃO liga a opção: lá a caixa mostra os colchetes, e apagá-los é tirar o
+  destaque. `marcarDestaquesNoTexto` não lê colchete: só põe o estilo da marca e avisa o destaque que o texto tirou.
+  Duas passadas lendo colchetes (merge com a T1, 05/11) apagavam os destaques que o bake acabara de gravar.
 - Pelo MCP (`ajustar-arte`): colchetes em `slotValues` ou em `camadas.definir content` gravam content limpo +
   `destaques`; o `destaque` vem da camada (se já tiver) ou da marca. Texto novo SEM colchetes tira os `destaques`.
   Colchete sem par → aviso e o trecho sai sem destaque. Colchetes + `destaques` explícito na mesma op → recusa.

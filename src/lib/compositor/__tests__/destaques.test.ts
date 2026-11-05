@@ -174,3 +174,26 @@ describe('bloco com destaque', () => {
     expect(r.avisos).toEqual([])
   })
 })
+
+describe('um parser só: trocarConteudo com mesmoTextoMantem e os avisos do bake (merge com a T1, 05/11)', () => {
+  const camada = { id: 'h', name: 'Título', type: 'text', content: 'Picanha na brasa', destaques: [{ inicio: 8, fim: 16 }] }
+
+  it('o MESMO texto limpo mantém os destaques só com a opção (o editor não liga: apagar os colchetes tira o destaque)', async () => {
+    const { trocarConteudo } = await import('../destaques')
+    expect(trocarConteudo(camada, 'Picanha na brasa', { mesmoTextoMantem: true }).destaques).toEqual([{ inicio: 8, fim: 16 }])
+    expect(trocarConteudo(camada, 'Picanha na brasa').destaques).toBeUndefined()
+    expect(trocarConteudo(camada, 'Costela no fogo', { mesmoTextoMantem: true }).destaques).toBeUndefined()
+    expect(trocarConteudo(camada, '[Picanha] na brasa', { mesmoTextoMantem: true }).destaques).toEqual([{ inicio: 0, fim: 7 }])
+  })
+
+  it('bakeLayers devolve o colchete sem par como aviso, não descarta; texto igual mantém, novo sem colchetes tira', async () => {
+    const { bakeLayers } = await import('@/lib/creatives/bake-layers')
+    const apoio = { ...camada, id: 'a', name: 'Apoio', content: 'Sexta no fogo', destaques: [{ inicio: 0, fim: 5 }] }
+    const r = bakeLayers([camada, apoio], { h: 'Picanha [na brasa', a: 'Sexta no fogo' }, null)
+    expect(r.avisos).toEqual(['"Título": colchete aberto sem fechar — o trecho saiu sem destaque'])
+    expect(r.layers[0]).toMatchObject({ content: 'Picanha na brasa' })
+    expect(r.layers[0]).not.toHaveProperty('destaques')
+    expect(r.layers[1].destaques).toEqual([{ inicio: 0, fim: 5 }])
+    expect(bakeLayers([apoio], { a: 'Sábado' }, null).layers[0]).not.toHaveProperty('destaques')
+  })
+})

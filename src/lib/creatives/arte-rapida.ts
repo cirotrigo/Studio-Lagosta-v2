@@ -1443,16 +1443,17 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
   const { changedTextIds } = baked
   let imageApplied = baked.imageApplied
 
-  // Destaque por marcação (05/11/2026): o texto que chegou com [colchetes] (slotValues ou `definir content`) grava
-  // limpo, com `destaques` e o estilo da marca. A assinatura só é lida quando alguém destaca.
+  // Destaque por marcação (05/11/2026): o bake já leu os [colchetes] (`trocarConteudo`, o único parser) e gravou
+  // `content` limpo + `destaques`; aqui só entra o estilo da marca (lido quando alguém destaca) e o aviso do destaque
+  // que o texto novo tirou.
   const trocados = new Set(changedTextIds)
-  const destacaPeloSlot = (baked.layers as Layer[]).some((l) => trocados.has(l.id) && temColchetes([l.content as string]))
+  const destacaPeloSlot = (baked.layers as Layer[]).some((l) => trocados.has(l.id) && (l.destaques?.length ?? 0) > 0 && !l.destaque)
   const destacaPelasCamadas = operacoes.some((o) => temColchetes([o.campos?.content]) || (o.campos?.destaques?.length ?? 0) > 0)
   const destaqueDaMarca = destacaPeloSlot || destacaPelasCamadas ? await resolvedorDoDestaqueDaMarca(projectId, { tags: page.tags, width: dims.width, height: dims.height }) : undefined
-  const avisosDoDestaque: string[] = []
+  const avisosDoDestaque: string[] = [...baked.avisos]
   const bakedLayers = (baked.layers as Layer[]).map((l) => {
     if (!trocados.has(l.id)) return l
-    const r = marcarDestaquesNoTexto(l, destaqueDaMarca, sourceLayers.find((s) => s.id === l.id)?.content)
+    const r = marcarDestaquesNoTexto(l, destaqueDaMarca, sourceLayers.find((s) => s.id === l.id))
     if (r.aviso) avisosDoDestaque.push(r.aviso)
     return r.camada
   })
