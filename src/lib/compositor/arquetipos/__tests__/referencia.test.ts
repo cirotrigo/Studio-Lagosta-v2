@@ -20,6 +20,7 @@ import { validarArquetipo } from '../validar'
 import brunch from './suporte/emporio-ref02-brunch.json'
 import restaurantWeek from './suporte/emporio-ref01-restaurant-week.json'
 import congelada from './suporte/emporio-ref02-brunch-v1-congelada.json'
+import ref03 from './suporte/emporio-ref03-topo-duas-faixas.json'
 
 type Pagina = { id: string; name: string; width: number; height: number; tags: string[]; layers: Layer[] }
 const BRUNCH = brunch as unknown as Pagina
@@ -451,5 +452,60 @@ describe('F2d · o estilo desenhado na referência (02/11/2026)', () => {
     const { estilos: _e, ...soCorpos } = compilada().definicao.formatos.story
     const v2 = { ...compilada().definicao, formatos: { story: soCorpos } } as unknown as Ok['definicao']
     expect(validarArquetipo(v2, { formatos: ['story'], areaSegura })).toEqual([])
+  })
+})
+
+/**
+ * DUAS FAIXAS (05/11/2026): o Ref 03 do Empório põe manchete e apoio no topo, serviço e CTA no rodapé (com a logo). A
+ * união dos textos não cabe na faixa da âncora "topo", então os textos se partem no maior vão: duas faixas de texto.
+ */
+describe('referência com duas faixas de texto (Ref 03 do Empório)', () => {
+  const REF03 = ref03 as unknown as Pagina
+  // O piso do Empório (o do projeto, não o padrão): a caixa do título começa em y 160.
+  const PISO_DO_EMPORIO = { margemH: 64, safeTopo: 160, safeRodape: 160 }
+  const areaDoEmporio = { story: { largura: 1080, altura: 1920, ...PISO_DO_EMPORIO } }
+  const compilar03 = (pagina: Pagina = REF03) => compilarReferencia(pagina, { pageVersion: 'v1:teste', versao: 1, piso: PISO_DO_EMPORIO })
+  const zonaY = (d: Ok['definicao'], papel: string) => {
+    const z = (d.formatos.story.papeis as Record<string, { zona: { yMin: number; yMax: number } }>)[papel].zona
+    return [z.yMin, z.yMax]
+  }
+
+  it('compila em duas faixas (manchete + apoio no topo; serviço + CTA + logo no rodapé) e passa no validador com o piso do Empório', () => {
+    const r = compilar03()
+    if (!r.ok) throw new Error(`${(r as Recusa).codigo}: ${(r as Recusa).mensagem}`)
+    const { definicao } = r as Ok
+    expect(definicao.preferencias.ancora).toBe('topo')
+    // Topo: y 160–414 (título + descrição). Rodapé: y 1608–1760 (serviço + CTA).
+    expect(zonaY(definicao, 'headline')).toEqual([0.0833, 0.2156])
+    expect(zonaY(definicao, 'apoio')).toEqual([0.0833, 0.2156])
+    expect(zonaY(definicao, 'servico')).toEqual([0.8375, 0.9167])
+    expect(zonaY(definicao, 'cta')).toEqual([0.8375, 0.9167])
+    expect(faixasDoArquetipo(definicao, 'story')).toEqual([['headline', 'apoio'], ['servico', 'cta', 'logo']])
+    expect(validarArquetipo(definicao, { formatos: ['story'], areaSegura: areaDoEmporio })).toEqual([])
+  })
+
+  it('materializa cada texto na caixa que o Ciro desenhou: a busca não tem para onde mover nenhuma das duas faixas', () => {
+    const { definicao } = compilar03() as Ok
+    const m = materializarArquetipo({
+      arquetipo: definicao, formato: 'story', canvas: DIMENSOES.story, geometria: { ...piso, ...PISO_DO_EMPORIO },
+      medidas: { headline: { width: 900, height: 150 }, apoio: { width: 700, height: 90 }, servico: { width: 740, height: 80 }, cta: { width: 600, height: 45 } },
+      logo: { razao: 55 / 168 },
+    })
+    if (!m.ok) throw new Error(JSON.stringify((m as Extract<typeof m, { ok: false }>).problemas))
+    const { papeis } = m as Extract<typeof m, { ok: true }>
+    expect([papeis.headline!.posicao.y, papeis.apoio!.posicao.y, papeis.servico!.posicao.y, papeis.cta!.posicao.y].map(Math.round)).toEqual([160, 319, 1608, 1712])
+  })
+
+  it('a logo longe das duas faixas de texto daria TRÊS faixas: recusa REFERENCIA_FAIXAS_DEMAIS na compilação', () => {
+    const layers = REF03.layers.map((l) => (l.type === 'logo' ? ({ ...l, position: { x: 848, y: 900 } } as Layer) : l))
+    const r = compilar03({ ...REF03, layers })
+    expect(r.ok).toBe(false)
+    expect((r as Recusa).codigo).toBe('REFERENCIA_FAIXAS_DEMAIS')
+  })
+
+  it('a união que cabe na faixa da âncora continua UMA faixa: o Brunch compila as zonas de sempre', () => {
+    const { definicao } = compilada()
+    expect(zonaY(definicao, 'headline')).toEqual(zonaY(definicao, 'apoio'))
+    expect(faixasDoArquetipo(definicao, 'story')).toHaveLength(2) // textos + logo, como antes
   })
 })
