@@ -907,9 +907,570 @@ const LITERAIS_ARTE_IA: Record<string, unknown> = {
         maxItems: 30,
         description: 'Ajustes de diagramação — a lista `ajustes` que revisar-arte devolve (mande todos ou só os que decidir aplicar). Aplicados depois dos textos e da foto.',
       },
-      versaoEsperada: {
-        type: 'string',
-        description: 'A `versao` que revisar-arte devolveu. OBRIGATÓRIA quando vierem `ajustes` (VERSAO_OBRIGATORIA sem ela). Se a página mudou desde a revisão, nada é aplicado (VERSAO_DIVERGENTE) — revise de novo.',
+      // T1 (05/11/2026): `camadas` e `pagina` — mudança DELIBERADA do schema; `versaoEsperada` passa a cobrir os dois.
+      "versaoEsperada": {
+        "type": "string",
+        "description": "A `versao` que ver-pagina ou revisar-arte devolveu. OBRIGATÓRIA quando vierem `ajustes`, `camadas` ou `pagina` (VERSAO_OBRIGATORIA sem ela). Se a página mudou desde a leitura, nada é aplicado (VERSAO_DIVERGENTE) — leia de novo."
+      },
+      "camadas": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "enum": [
+                "definir",
+                "adicionar",
+                "remover",
+                "reordenar"
+              ],
+              "description": "definir (campos de uma camada), adicionar (camada nova), remover, reordenar."
+            },
+            "camada": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "description": "definir/remover/reordenar: id OU nome da camada (ver-pagina lista os dois)."
+            },
+            "tipo": {
+              "type": "string",
+              "enum": [
+                "texto",
+                "imagem",
+                "logo",
+                "forma",
+                "icone",
+                "gradiente"
+              ],
+              "description": "adicionar: texto, imagem, logo, forma, icone ou gradiente."
+            },
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "description": "adicionar: id desejado para a camada nova (letras, números, _ e -); sem ele o servidor gera um."
+            },
+            "ordem": {
+              "type": "integer",
+              "description": "reordenar: a posição na pilha (0 = fundo, última = frente); adicionar: onde entra (default: na frente)."
+            },
+            "campos": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                },
+                "visible": {
+                  "type": "boolean"
+                },
+                "locked": {
+                  "type": "boolean"
+                },
+                "order": {
+                  "type": "integer",
+                  "description": "posição na pilha, 0 = fundo (o mesmo que reordenar)."
+                },
+                "rotation": {
+                  "type": "number",
+                  "description": "graus, -360 a 360."
+                },
+                "position": {
+                  "type": "object",
+                  "properties": {
+                    "x": {
+                      "type": "number"
+                    },
+                    "y": {
+                      "type": "number"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "description": "posição ABSOLUTA em px da página (canto superior esquerdo)."
+                },
+                "size": {
+                  "type": "object",
+                  "properties": {
+                    "width": {
+                      "type": "number"
+                    },
+                    "height": {
+                      "type": "number"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "description": "caixa em px (1 a 10000)."
+                },
+                "content": {
+                  "type": "string",
+                  "maxLength": 2000,
+                  "description": "texto: o conteúdo (\\n quebra linha)."
+                },
+                "fileUrl": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2048,
+                  "description": "imagem/logo: URL da imagem (no perfil de rascunho é recusada: use driveImageId)."
+                },
+                "driveImageId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200,
+                  "description": "imagem: a foto do acervo (de buscar-fotos) — resolvida para a URL do Studio."
+                },
+                "style": {
+                  "type": "object",
+                  "properties": {
+                    "fontFamily": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 120,
+                      "description": "texto: família da fonte (cadastrada no projeto)."
+                    },
+                    "fontWeight": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 20
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ],
+                      "description": "texto: peso (\"400\", \"700\", 700)."
+                    },
+                    "fontSize": {
+                      "type": "number",
+                      "description": "texto: corpo em px (8 a 600)."
+                    },
+                    "color": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64,
+                      "description": "texto/ícone: cor (#RRGGBB, rgba(), nome CSS)."
+                    },
+                    "textAlign": {
+                      "type": "string",
+                      "enum": [
+                        "left",
+                        "center",
+                        "right"
+                      ]
+                    },
+                    "textTransform": {
+                      "type": "string",
+                      "enum": [
+                        "none",
+                        "uppercase",
+                        "lowercase",
+                        "capitalize"
+                      ]
+                    },
+                    "letterSpacing": {
+                      "type": "number",
+                      "description": "texto: espaçamento entre letras em px (-100 a 100)."
+                    },
+                    "lineHeight": {
+                      "type": "number",
+                      "description": "texto: entrelinha, multiplicador do corpo (0.5 a 3) — gravada nos dois campos que o render lê."
+                    },
+                    "fontStyle": {
+                      "type": "string",
+                      "enum": [
+                        "normal",
+                        "italic"
+                      ]
+                    },
+                    "opacity": {
+                      "type": "number",
+                      "description": "qualquer camada visual: opacidade 0 a 1."
+                    },
+                    "crop": {
+                      "type": "object",
+                      "properties": {
+                        "x": {
+                          "type": "number"
+                        },
+                        "y": {
+                          "type": "number"
+                        },
+                        "width": {
+                          "type": "number"
+                        },
+                        "height": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "x",
+                        "y",
+                        "width",
+                        "height"
+                      ],
+                      "additionalProperties": false,
+                      "description": "imagem/logo: recorte em frações 0..1 da imagem original (vence objectFit/cropPosition)."
+                    },
+                    "objectFit": {
+                      "type": "string",
+                      "enum": [
+                        "contain",
+                        "cover",
+                        "fill"
+                      ]
+                    },
+                    "cropPosition": {
+                      "type": "string",
+                      "enum": [
+                        "left-top",
+                        "center-top",
+                        "right-top",
+                        "left-middle",
+                        "center-middle",
+                        "right-middle",
+                        "left-bottom",
+                        "center-bottom",
+                        "right-bottom"
+                      ]
+                    },
+                    "flipH": {
+                      "type": "boolean"
+                    },
+                    "flipV": {
+                      "type": "boolean"
+                    },
+                    "blur": {
+                      "type": "number",
+                      "description": "imagem: desfoque 0 a 100."
+                    },
+                    "exposure": {
+                      "type": "number",
+                      "description": "imagem: -1 a 1."
+                    },
+                    "contrast": {
+                      "type": "number",
+                      "description": "imagem: -100 a 100."
+                    },
+                    "highlights": {
+                      "type": "number",
+                      "description": "imagem: -100 a 100."
+                    },
+                    "shadows": {
+                      "type": "number",
+                      "description": "imagem: -100 a 100."
+                    },
+                    "whites": {
+                      "type": "number",
+                      "description": "imagem: -100 a 100."
+                    },
+                    "blacks": {
+                      "type": "number",
+                      "description": "imagem: -100 a 100."
+                    },
+                    "saturation": {
+                      "type": "number",
+                      "description": "imagem: -2 a 2."
+                    },
+                    "vignette": {
+                      "type": "number",
+                      "description": "imagem: 0 a 1."
+                    },
+                    "fill": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64,
+                      "description": "forma/ícone: cor de preenchimento."
+                    },
+                    "strokeColor": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64,
+                      "description": "forma/ícone: cor do contorno."
+                    },
+                    "strokeWidth": {
+                      "type": "number",
+                      "description": "forma/ícone: espessura do contorno em px (0 a 200)."
+                    },
+                    "shapeType": {
+                      "type": "string",
+                      "enum": [
+                        "rectangle",
+                        "rounded-rectangle",
+                        "circle",
+                        "triangle",
+                        "star",
+                        "arrow",
+                        "line"
+                      ],
+                      "description": "forma: o desenho (svg-path não entra por aqui)."
+                    },
+                    "iconId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 120,
+                      "description": "ícone: qual ícone."
+                    },
+                    "gradientType": {
+                      "type": "string",
+                      "enum": [
+                        "linear",
+                        "radial"
+                      ]
+                    },
+                    "gradientAngle": {
+                      "type": "number",
+                      "description": "gradiente: 0 a 360."
+                    },
+                    "gradientStops": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "maxLength": 64
+                          },
+                          "color": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 64
+                          },
+                          "position": {
+                            "type": "number"
+                          },
+                          "opacity": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "color",
+                          "position",
+                          "opacity"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "minItems": 1,
+                      "maxItems": 8,
+                      "description": "gradiente: paradas {color, position 0..1, opacity 0..1}."
+                    },
+                    "gradientStartX": {
+                      "type": "number"
+                    },
+                    "gradientStartY": {
+                      "type": "number"
+                    },
+                    "gradientEndX": {
+                      "type": "number"
+                    },
+                    "gradientEndY": {
+                      "type": "number"
+                    },
+                    "gradientCenterX": {
+                      "type": "number"
+                    },
+                    "gradientCenterY": {
+                      "type": "number"
+                    },
+                    "gradientRadiusScale": {
+                      "type": "number",
+                      "description": "gradiente radial: 0.1 a 5."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "textboxConfig": {
+                  "type": "object",
+                  "properties": {
+                    "anchor": {
+                      "type": "string",
+                      "enum": [
+                        "top",
+                        "middle",
+                        "bottom"
+                      ]
+                    },
+                    "autoWrap": {
+                      "type": "object",
+                      "properties": {
+                        "breakMode": {
+                          "type": "string",
+                          "enum": [
+                            "word",
+                            "char",
+                            "hybrid"
+                          ]
+                        },
+                        "autoExpand": {
+                          "type": "boolean"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "effects": {
+                  "type": "object",
+                  "properties": {
+                    "stroke": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "strokeColor": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 64
+                        },
+                        "strokeWidth": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "strokeColor",
+                        "strokeWidth"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "shadow": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "shadowColor": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 64
+                        },
+                        "shadowBlur": {
+                          "type": "number"
+                        },
+                        "shadowOffsetX": {
+                          "type": "number"
+                        },
+                        "shadowOffsetY": {
+                          "type": "number"
+                        },
+                        "shadowOpacity": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "shadowColor",
+                        "shadowBlur",
+                        "shadowOffsetX",
+                        "shadowOffsetY",
+                        "shadowOpacity"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "blur": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "blurRadius": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "blurRadius"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "background": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "backgroundColor": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 64
+                        },
+                        "padding": {
+                          "type": "number"
+                        },
+                        "fit": {
+                          "type": "string",
+                          "enum": [
+                            "caixa",
+                            "texto"
+                          ]
+                        },
+                        "opacity": {
+                          "type": "number"
+                        },
+                        "borderRadius": {
+                          "type": "number"
+                        },
+                        "blur": {
+                          "type": "number"
+                        },
+                        "offsetX": {
+                          "type": "number"
+                        },
+                        "offsetY": {
+                          "type": "number"
+                        },
+                        "paddingX": {
+                          "type": "number"
+                        },
+                        "paddingY": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "backgroundColor",
+                        "padding"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false,
+              "description": "definir: o que muda (só os campos enviados); adicionar: o que difere dos defaults do servidor."
+            }
+          },
+          "required": [
+            "op"
+          ],
+          "additionalProperties": false
+        },
+        "maxItems": 40,
+        "description": "Edição de camadas pelos dados (ver a descrição): lista de operações {op: definir|adicionar|remover|reordenar, camada (id ou nome), tipo, id, ordem, campos}. Exige versaoEsperada. Tudo ou nada."
+      },
+      "pagina": {
+        "type": "object",
+        "properties": {
+          "background": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "cor de fundo da página (#RRGGBB, rgba(), nome CSS)."
+          },
+          "width": {
+            "type": "integer",
+            "description": "largura em px (200 a 8000)."
+          },
+          "height": {
+            "type": "integer",
+            "description": "altura em px (200 a 8000)."
+          }
+        },
+        "additionalProperties": false,
+        "description": "A página: {background, width, height}. Exige versaoEsperada."
       },
     },
     required: ['projectId', 'pageId'],
@@ -949,6 +1510,28 @@ const LITERAIS_ARTE_IA: Record<string, unknown> = {
     },
     required: ['projectId', 'generationId'],
     additionalProperties: false,
+  },
+  // Tool NOVA (05/11/2026, T1 do plano "artes pelo MCP"): o fixture nasce com ela.
+  'ver-pagina': {
+    "type": "object",
+    "properties": {
+      "projectId": {
+        "type": "number",
+        "description": "ID do cliente."
+      },
+      "pageId": {
+        "type": "string",
+        "description": "A página (pageId de compor-arte, criar-arte, criar-arte-de-modelo, ajustar-arte, ver-geracao ou do post)."
+      },
+      "generationId": {
+        "type": "string",
+        "description": "Alternativa ao pageId: o id da arte; a página é a gravada nela."
+      }
+    },
+    "required": [
+      "projectId"
+    ],
+    "additionalProperties": false
   },
   'ver-geracao': {
     type: 'object',

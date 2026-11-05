@@ -76,6 +76,10 @@ import { formatoDaPaginaGravada } from '@/lib/compositor/formato'
 import { chaveDaAgenda, chaveDasFontes } from '@/lib/trava-por-chave'
 import { fecharGenerationComoFalha } from '@/lib/creatives/mesclar-field-values'
 import { vinculadaAGrade } from '@/lib/grades/presenca'
+import { aplicarOperacoesDeCamadas, aplicarPagina, erroDeCamadas, validarFormatoDaPagina, validarFormatoDasOperacoes, type CamadaAplicada, type OperacaoDeCamada, type PaginaDoAjuste } from '@/lib/creatives/editar-camadas'
+import { problemasDosVetores } from '@/lib/vetor/validar-camada'
+import { canonicalizeLayersForPersistence } from '@/lib/shape-style'
+import { problemasDosClipes } from '@/lib/video/linha-do-tempo'
 import { Prisma } from '@prisma/client'
 
 export { CreativeError, getPublicAppUrl }
@@ -1067,6 +1071,15 @@ export interface AjustarArteInput {
   /** A `versao` da revisão: página que mudou desde então recusa o ajuste (VERSAO_DIVERGENTE). */
   versaoEsperada?: string | null
   /**
+   * T1 (05/11/2026): edição de camadas pelos dados — definir campos (posição absoluta, tamanho, rotação, fonte, cor,
+   * efeitos, corte…), adicionar, remover, reordenar. Aplicadas DEPOIS dos textos/foto e ANTES dos `ajustes`, sob a
+   * mesma transação e o mesmo gate; exigem `versaoEsperada` (a `versao` de ver-pagina/revisar-arte). Pedido misto é
+   * recusado inteiro. Ver `editar-camadas.ts`.
+   */
+  camadas?: OperacaoDeCamada[]
+  /** T1: fundo, largura e altura da página. */
+  pagina?: PaginaDoAjuste
+  /**
    * Perfil draft-only (H4): o ajuste só alcança os RASCUNHOS da página. A invalidação deixa o agendado de fora e
    * a recomposição da arte congelada (slide de carrossel) não é pedida. É a rede debaixo da guarda da tool: um
    * post aprovado que ela não viu, ou aprovado entre a conferência e a escrita, fica com a arte que foi aprovada.
@@ -1096,6 +1109,10 @@ export interface AjustarArteResult {
    * `ajustada: true` sozinho não distingue (CP1, 13/10/2026).
    */
   resultadoDosAjustes?: 'completo' | 'parcial'
+  /** T1: as operações de `camadas` aplicadas (todas, ou nenhuma: pedido misto é recusado inteiro). */
+  camadasAplicadas?: CamadaAplicada[]
+  /** T1: sempre vazia num sucesso — a recusa de qualquer operação recusa a chamada (details.erros). Fica pelo contrato. */
+  camadasRecusadas?: never[]
   /** CP5d (draft-only): o veredito do gate sobre a versão GRAVADA — sempre `medida` APTO num sucesso; `generationId` é a Generation que o render fechou. */
   revisao?: RevisaoDoItem
   generationId: string
@@ -1252,15 +1269,19 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
   const slotValues = input.slotValues ?? {}
 
   const ajustes = input.ajustes ?? []
+  const operacoes = input.camadas ?? []
   const temAjuste =
-    Object.keys(slotValues).length > 0 || input.imageUrl || input.driveImageId || input.name || ajustes.length > 0
+    Object.keys(slotValues).length > 0 || input.imageUrl || input.driveImageId || input.name || ajustes.length > 0 || operacoes.length > 0 || !!input.pagina
   if (!temAjuste) {
     throw new CreativeError(
       'SEM_AJUSTE',
-      'Nada para ajustar: envie slotValues, imageUrl/driveImageId, name ou ajustes.',
+      'Nada para ajustar: envie slotValues, imageUrl/driveImageId, name, ajustes, camadas ou pagina.',
       400,
     )
   }
+  // T1 — FASE 1 das camadas e da página: forma, faixa, cor e URL, antes do banco. Pedido misto recusado inteiro.
+  const recusasDeFormato = [...validarFormatoDasOperacoes(operacoes, { apenasRascunho: input.apenasRascunho === true }), ...validarFormatoDaPagina(input.pagina)]
+  if (recusasDeFormato.length > 0) throw erroDeCamadas(recusasDeFormato)
   // Nada em silêncio (CP1): a recusa da chamada leva, por ajuste, o código e os campos — não só o texto.
   /** O rótulo `achado` do pedido segue em cada registro (rastreabilidade por índice). */
   const comAchado = (a: Ajuste) => (typeof a.achado === 'string' ? { achado: a.achado } : {})
@@ -1287,10 +1308,10 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
   // calculado: sem `versaoEsperada` os deltas iriam para o lugar errado se a
   // página tivesse mudado. Chamada sem `ajustes` (texto, foto, nome) continua
   // como sempre foi.
-  if (ajustes.length > 0 && !input.versaoEsperada) {
+  if ((ajustes.length > 0 || operacoes.length > 0 || input.pagina) && !input.versaoEsperada) {
     throw new CreativeError(
       'VERSAO_OBRIGATORIA',
-      'Ajustes de diagramação exigem `versaoEsperada` — a `versao` que revisar-arte devolveu. Rode revisar-arte e mande a versão junto.',
+      'Ajustes de diagramação, camadas e pagina exigem `versaoEsperada` — a `versao` que ver-pagina ou revisar-arte devolveu. Leia a página e mande a versão junto.',
       400,
     )
   }
@@ -1302,7 +1323,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
 
   const project = await db.project.findUnique({
     where: { id: projectId },
-    select: { id: true, name: true, userId: true },
+    select: { id: true, name: true, userId: true, titleFontFamily: true, bodyFontFamily: true },
   })
   if (!project) {
     throw new CreativeError('PROJECT_NOT_FOUND', `Project not found: ${projectId}`, 404)
@@ -1316,6 +1337,8 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
     throw new CreativeError('PAGE_NOT_FOUND', `Página não encontrada neste projeto: ${pageId}`, 404)
   }
   if (page.isTemplate) throw erroDePaginaModelo()
+  // T1: a página como VAI FICAR (fundo, largura, altura) — tudo daqui para baixo mede, grava e renderiza nela.
+  const { pagina: dims, mudou: paginaMudou } = aplicarPagina({ width: page.width, height: page.height, background: page.background }, input.pagina)
 
   // A revisão calcula os ajustes sobre UMA versão da página: se ela mudou (a
   // equipe editou, outro ajuste já entrou), os deltas iriam para o lugar errado.
@@ -1398,15 +1421,49 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
     }
   }
 
+  /**
+   * T1 — as CAMADAS, depois dos textos/foto e antes dos ajustes do revisor: `driveImageId` vira a URL do Blob
+   * (o caminho do acervo, o único do draft-only), a logo da marca e as fontes do projeto entram como defaults do
+   * servidor, e o módulo puro aplica tudo ou nada. Depois: clipes (`problemasDosClipes`), vetores
+   * (`problemasDosVetores`) e a canonização de forma — as mesmas guardas das portas do editor.
+   */
+  let edicao: ReturnType<typeof aplicarOperacoesDeCamadas> | null = null
+  let camadasEditadas = bakedLayers as Layer[]
+  if (operacoes.length > 0) {
+    const resolvidas: OperacaoDeCamada[] = []
+    for (const o of operacoes) {
+      if (o.campos?.driveImageId) {
+        const { driveImageId: id, ...campos } = o.campos
+        const foto = await resolveImageUrl(undefined, id, projectId)
+        if (!foto.url) throw new CreativeError('FOTO_NAO_RESOLVIDA', `A foto ${id} não pôde ser lida do acervo${foto.warning ? `: ${foto.warning}` : ''}.`, 422, { driveImageId: id, ajusteGravado: false })
+        resolvidas.push({ ...o, campos: { ...campos, fileUrl: foto.url } })
+      } else resolvidas.push(o)
+    }
+    const precisaDaLogo = resolvidas.some((o) => o.op === 'adicionar' && o.tipo === 'logo' && !o.campos?.fileUrl)
+    const logo = precisaDaLogo ? await db.logo.findFirst({ where: { projectId }, orderBy: [{ isProjectLogo: 'desc' }, { id: 'asc' }], select: { fileUrl: true } }) : null
+    edicao = aplicarOperacoesDeCamadas(camadasEditadas, resolvidas, {
+      canvas: { width: dims.width, height: dims.height },
+      apenasRascunho: input.apenasRascunho === true,
+      logoUrl: logo?.fileUrl ?? null,
+      fontes: { titulo: project.titleFontFamily, corpo: project.bodyFontFamily },
+    })
+    if (edicao.recusadas.length > 0) throw erroDeCamadas(edicao.recusadas)
+    const clipes = problemasDosClipes(edicao.camadas as never)
+    if (clipes.length > 0) throw new CreativeError('CLIPES_INVALIDOS', `As camadas não puderam ser editadas — nada foi gravado: ${clipes.join(' ')}`, 422, { problemas: clipes, ajusteGravado: false })
+    const vetores = problemasDosVetores(edicao.camadas)
+    if (vetores.length > 0) throw new CreativeError('VETOR_INVALIDO', `Forma vetorial inválida — nada foi gravado (${vetores.map((c) => `${c.id}: ${c.motivos.map((m) => m.codigo).join(', ')}`).join('; ')}).`, 422, { camadas: vetores, ajusteGravado: false })
+    camadasEditadas = canonicalizeLayersForPersistence(edicao.camadas) as Layer[]
+  }
+
   await registerProjectFonts(projectId)
   const measure = await createServerTextMeasurer()
-  // Com ajustes do revisor e nenhum texto trocado, não há preenchimento para
-  // refluir: normalizar a pilha antes deslocaria a base do grupo que o executor
-  // precisa preservar. Sem ajustes, o comportamento de sempre.
+  // Com ajustes do revisor (ou camadas editadas pelos dados) e nenhum texto trocado, não há preenchimento para
+  // refluir: normalizar a pilha antes deslocaria a base do grupo que o executor precisa preservar — e desfaria a
+  // posição que a edição acabou de definir. Sem ajustes nem camadas, o comportamento de sempre.
   const reflowed =
-    changedTextIds.length > 0 || ajustes.length === 0
-      ? reflowLayersAfterFill(bakedLayers as Layer[], changedTextIds, measure)
-      : (bakedLayers as Layer[])
+    changedTextIds.length > 0 || (ajustes.length === 0 && operacoes.length === 0)
+      ? reflowLayersAfterFill(camadasEditadas, changedTextIds, measure)
+      : camadasEditadas
 
   // ANTES de medir qualquer coisa: o render de servidor é imagem e recusa página com vídeo — medir 30 ajustes para
   // recusar no fim seria custo à toa (revisor E).
@@ -1427,14 +1484,15 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
   const fixDaBase = await aplicarAutofixOuFalhar({
     projectId,
     layers: reflowed,
-    canvas: { width: page.width, height: page.height },
-    changedLayerIds: changedTextIds,
+    canvas: { width: dims.width, height: dims.height },
+    // T1: o texto criado ou mexido pelas camadas também passa pela escada (TEXTO_NAO_CABE em vez de texto cortado).
+    changedLayerIds: [...changedTextIds, ...(edicao?.tocadas ?? [])],
   })
   const revisao =
     ajustes.length > 0
       ? await aplicarAjustesSemPiorar({
           projectId,
-          page: { id: page.id, name: page.name, width: page.width, height: page.height, tags: page.tags, background: page.background, layers: page.layers },
+          page: { id: page.id, name: page.name, width: dims.width, height: dims.height, tags: page.tags, background: dims.background, layers: page.layers },
           camadas: fixDaBase.layers as Layer[],
           ajustes,
           medir: measure,
@@ -1550,6 +1608,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
     layers: layers as any,
     thumbnail: null as string | null,
     ...(input.name ? { name: input.name } : {}),
+    ...(paginaMudou ? { width: dims.width, height: dims.height, background: dims.background } : {}),
     ...(revisaoDaCopy.estado === 'registrada' && revisaoDaCopy.copy ? { copyAutoral: revisaoDaCopy.copy as never } : {}),
   }
   /**
@@ -1565,7 +1624,8 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
    */
   // (A recusa de página com vídeo mora antes do executor do CP4 — ver acima.)
 
-  const travar = !!revisao && revisao.aplicados.length > 0
+  // T1: camadas editadas pelos dados e página mudada também travam a recomposição — a spec do compositor não as conhece.
+  const travar = (!!revisao && revisao.aplicados.length > 0) || (edicao?.aplicadas.length ?? 0) > 0 || paginaMudou
   const recompor = travar || input.apenasRascunho ? await import('@/lib/compositor/recompor') : null
   const travarRecomposicaoDaArte = travar && recompor ? recompor.travarRecomposicaoDaArte : null
   /** O que a transação devolve: a Generation PROCESSING do draft-only (o render a fecha) e o veredito do gate. */
@@ -1668,7 +1728,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
         const copyFutura = 'copyAutoral' in dadosDaPagina ? dadosDaPagina.copyAutoral : page.copyAutoral
         gate = await medirEDecidirAjuste(tx, {
           projectId,
-          paginaFutura: { id: page.id, name: pageName, tags: atual.tags, width: page.width, height: page.height, background: page.background, layers: layers as Layer[], copyAutoral: copyFutura },
+          paginaFutura: { id: page.id, name: pageName, tags: atual.tags, width: dims.width, height: dims.height, background: dims.background, layers: layers as Layer[], copyAutoral: copyFutura },
           audio: atual.audio,
           origem,
           generationId: nova.id,
@@ -1754,7 +1814,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
       }
       if (travarRecomposicaoDaArte) {
         if (input._prova?.entreGravarETravar) await input._prova.entreGravarETravar()
-        await travarRecomposicaoDaArte(page.id, 'ajuste do revisor gravado na página', { projectId: input.projectId, client: tx, ...(alvoDaTrava ? { alvo: alvoDaTrava } : {}) })
+        await travarRecomposicaoDaArte(page.id, edicao || paginaMudou ? 'camadas editadas pelos dados gravadas na página' : 'ajuste do revisor gravado na página', { projectId: input.projectId, client: tx, ...(alvoDaTrava ? { alvo: alvoDaTrava } : {}) })
       }
       return { generationId: generationNova, gate }
     },
@@ -1819,7 +1879,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
    * regravava a miniatura e virava a Generation mais recente com a versão
    * velha — o agendamento seguinte pela página nascia RENDERED com ela.
    */
-  const versaoGravada = versaoDaPagina({ width: page.width, height: page.height, background: page.background, layers })
+  const versaoGravada = versaoDaPagina({ width: dims.width, height: dims.height, background: dims.background, layers })
 
   // A página JÁ foi gravada: se o render falhar (Blob fora do ar), a invalidação
   // e a recomposição acontecem do mesmo jeito — senão a agenda segue com a arte
@@ -1837,10 +1897,10 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
       page: {
         id: page.id,
         name: pageName,
-        width: page.width,
-        height: page.height,
+        width: dims.width,
+        height: dims.height,
         layers,
-        background: page.background,
+        background: dims.background,
       },
       authorName: 'ajuste-arte',
       canal: input.canal ?? null,
@@ -1852,6 +1912,8 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
         ...(revisao
           ? { revisao: { versaoAntes, ajustes, aplicados: revisao.aplicados, recusados: revisao.recusados } }
           : {}),
+        ...(edicao ? { camadas: { versaoAntes, operacoes, aplicadas: edicao.aplicadas } } : {}),
+        ...(input.pagina ? { pagina: input.pagina } : {}),
         slotValues: slotValuesFinais,
         // A copy como o APRENDIZADO a lê (a camada escondida pelo revisor conta): é o lado "antes" do diff no
         // agendamento — os `slotValues` visuais acima acusariam essa camada como ADICIONADA (REV-8AD-01).
@@ -1957,6 +2019,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
     ...(revisao
       ? { ajustesAplicados: revisao.aplicados, ajustesRecusados: revisao.recusados, resultadoDosAjustes: revisao.recusados.length > 0 ? ('parcial' as const) : ('completo' as const) }
       : {}),
+    ...(edicao ? { camadasAplicadas: edicao.aplicadas, camadasRecusadas: [] as never[] } : {}),
     ...(escrita.gate ? { revisao: revisaoDoAjuste(escrita.gate, persisted.generationId) } : {}),
     imageApplied,
     ...(imageWarning ? { imageWarning } : {}),
