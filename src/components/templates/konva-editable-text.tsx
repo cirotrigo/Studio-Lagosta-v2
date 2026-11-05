@@ -952,7 +952,9 @@ export function KonvaEditableText({
       fontFamily: textNode.fontFamily(),
       transformOrigin: 'left top',
       textAlign: textNode.align(),
-      color: textNode.fill().toString(),
+      // A cor do ESTADO, não do nó: com destaques o Konva.Text fica transparente
+      // e a caixa abria com texto invisível (Ciro, 05/11)
+      color: editingState.color,
       fontStyle: editingState.fontStyle,
       fontWeight: String(editingState.fontWeight),
       letterSpacing: `${textNode.letterSpacing() * absoluteScale}px`,
