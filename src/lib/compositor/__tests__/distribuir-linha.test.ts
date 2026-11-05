@@ -37,9 +37,11 @@ describe('distribuirLinha', () => {
   it('nada cabe nem no teto de linhas → a melhor quebra mesmo assim', () => {
     expect(distribuirLinha(medirFalso, camada, 'Croissant amanteigado tradicional', 896, 2)).toEqual(['Croissant amanteigado', 'tradicional'])
   })
-  it('palavra única ou espaço duplo → null (não há onde quebrar com fidelidade)', () => {
+  it('palavra única, espaço duplo, NBSP ou \\n dentro do item → null (não há onde quebrar com fidelidade)', () => {
     expect(distribuirLinha(medirFalso, camada, 'Croissantamanteigadotradicional', 896, 2)).toBeNull()
     expect(distribuirLinha(medirFalso, camada, 'Toast da  casa com ovos mexidos', 896, 2)).toBeNull()
+    expect(distribuirLinha(medirFalso, camada, 'Toast\u00A0da\u00A0casa\u00A0com\u00A0ovos\u00A0mexidos', 896, 2)).toBeNull()
+    expect(distribuirLinha(medirFalso, camada, 'Toast da casa\ncom ovos mexidos', 896, 2)).toBeNull()
   })
 })
 

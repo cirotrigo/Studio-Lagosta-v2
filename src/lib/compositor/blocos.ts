@@ -303,8 +303,9 @@ export function larguraExtraDoDestaque(medir: MeasureTextBox, base: Layer, linha
  * com 2 linhas cheias, não com 1 linha miúda; o que cabe em 1 fica em 1.
  */
 export function distribuirLinha(medir: MeasureTextBox, base: Layer, linha: string, coluna: number, linhasMax: number): string[] | null {
+  // Só o espaço comum é vão: NBSP é o autor proibindo a quebra, e \n dentro do item é problema dele (diagnóstico próprio).
   const palavras = linha.split(' ')
-  if (palavras.length < 2 || palavras.some((p) => p === '')) return null
+  if (palavras.length < 2 || palavras.some((p) => p === '') || linha.includes('\n')) return null
   const inteira = medirLinha(medir, base, linha, coluna)
   if (!inteira || (inteira.largura <= coluna && inteira.linhas <= 1)) return null
   const medidas = new Map<string, number>()

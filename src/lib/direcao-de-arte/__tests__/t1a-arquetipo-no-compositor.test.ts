@@ -425,7 +425,8 @@ describe('T1a · medir-copy e compositor concordam', () => {
 
   it('17. copy larga demais: o medir-copy diz "não cabe" na coluna da referência e o compositor recusa com a MESMA coluna', async () => {
     await montar({ id: 't1a-17b' })
-    const larga = [{ papel: 'headline', linhas: ['Uma manchete longa demais de verdade'] }, SERVICO]
+    // NBSP: o autor proíbe a quebra, então o compositor não distribui (03/11/2026) e a recusa é a de sempre.
+    const larga = [{ papel: 'headline', linhas: ['Uma\u00A0manchete\u00A0longa\u00A0demais\u00A0de\u00A0verdade'] }, SERVICO]
     const m = await medir('t1a-17b', larga, { id: TOPO })
     expect(m.cabeTudo).toBe(false)
     const h = m.blocos.find((b) => b.id === 'headline')!
@@ -449,7 +450,8 @@ describe('T1a · medir-copy e compositor concordam', () => {
     // Manchete de 100 px na página: no feed, 87,5 px; a linha de 21 letras só cabe na coluna (742) a 70 px — 80% exatos.
     const comCorpo = { ...pagina, layers: pagina.layers.map((l) => (l.name === 'headline' ? { ...l, style: { ...l.style, fontSize: 100 } } : l)) }
     cenario.atual = { ...cenario.atual!, paginasDeAssinatura: [comCorpo] }
-    const blocos = [{ papel: 'headline', linhas: ['Almoço especial sexta'] }, SERVICO]
+    // NBSP: sem vão para distribuir (03/11/2026), a linha desce pela escada como antes; a largura é a mesma do espaço.
+    const blocos = [{ papel: 'headline', linhas: ['Almoço\u00A0especial\u00A0sexta'] }, SERVICO]
     const { r } = await compor(spec('t1a-piso', blocos, { formato: 'feed', arquetipo: { id: TOPO } }))
     expect(r.diagnostico.blocos.find((b) => b.id === 'headline')!.escala).toBe(0.8)
     const assinatura = montarAssinatura({ pagina: comCorpo, formatoDaPagina: 'story', numerosDoProjeto: noPisoDe1310(ASSINATURA), logoDoProjeto: null })

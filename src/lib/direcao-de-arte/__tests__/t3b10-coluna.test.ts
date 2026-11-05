@@ -318,7 +318,8 @@ describe('#10 · recusas, corte pelo assunto e gate (R-01, R-03, R-06, R-07, CT-
     const semFoto = spec10('story', 'D', 'claro')
     delete (semFoto as Record<string, unknown>).foto
     expect((await recusaDe(comporPeca(semFoto, { autor: 'u' }))).code).toBe('ARQUETIPO_FOTO_AUSENTE')
-    const umaLinha = spec10('feed', 'E', 'claro', { copyAutoral: copy10({ apoio: ['Luz natural e cada prato no ponto certo'] }) })
+    // NBSP: o autor proíbe a quebra; com espaço comum o compositor distribuiria a linha em vez de recusar (03/11/2026).
+    const umaLinha = spec10('feed', 'E', 'claro', { copyAutoral: copy10({ apoio: ['Luz\u00A0natural\u00A0e\u00A0cada\u00A0prato\u00A0no\u00A0ponto\u00A0certo'] }) })
     const e = await recusaDe(comporPeca(umaLinha, { autor: 'u' }))
     expect(e.code).toBe('ARQUETIPO_TEXTO_NAO_CABE')
     const mc = await medirCopyDoProjeto({ projectId: PROJETO_10, formato: 'feed', copyAutoral: umaLinha.copyAutoral, fotoUrl: umaLinha.foto.url, variante: umaLinha.preferencias.variante, arquetipo: umaLinha.arquetipo } as never)
