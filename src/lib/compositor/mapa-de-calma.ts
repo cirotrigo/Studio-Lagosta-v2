@@ -173,6 +173,24 @@ const PESO_LUZ = 0.3
 const PESO_PREFERENCIA = 0.15
 /** Acima disto o candidato cobre o assunto e é descartado. */
 export const TETO_DE_COBERTURA_DO_ASSUNTO = 0.25
+/** Assunto só ESTIMADO pela textura: 25% acusava 8 de 30 peças reais sem nada visível — o teto é outro (o do revisor). */
+export const TETO_DE_COBERTURA_DO_ASSUNTO_ESTIMADO = 0.4
+
+/**
+ * Quanto um bloco cobre uma região: duas frações, vence a maior — quanto da
+ * REGIÃO o bloco cobre (bloco grande sobre prato pequeno) e quanto do BLOCO
+ * está sobre a região (texto inteiro dentro de um assunto grande). Uma só
+ * deixava passar o texto pousado em cima do prato quando o prato ocupa meio
+ * quadro. 0 com área 0.
+ */
+export function coberturaDaRegiao(rect: Rect, regiao: Rect): number {
+  const areaRegiao = regiao.width * regiao.height
+  const areaBloco = rect.width * rect.height
+  // `!(x > 0)` e não `x <= 0`: área NaN (foto sem dimensões) também é zero, como na conta antiga.
+  if (!(areaRegiao > 0) || !(areaBloco > 0)) return 0
+  const inter = intersecao(rect, regiao)
+  return Math.max(inter / areaRegiao, inter / areaBloco)
+}
 
 /**
  * Pontua cada candidato. `coresDoTexto` decide quanta tinta o bloco pediria
@@ -197,14 +215,7 @@ export function pontuarCandidatos<T>(args: {
       // A luz que apaga a letra é o p98, não a média (roteiro 8 do _halo.py).
       const luz = 0.5 * leitura.media + 0.5 * leitura.p98
       const tinta = Math.max(0, Math.min(1, tintaParaAlvo(luz, alvo, luzTinta)))
-      // Duas frações, vence a maior: quanto do ASSUNTO o bloco cobre (bloco
-      // grande sobre prato pequeno) e quanto do BLOCO está sobre o assunto
-      // (texto inteiro dentro de um assunto grande). Uma só deixava passar
-      // o texto pousado em cima do prato quando o prato ocupa meio quadro.
-      const areaAssunto = args.assunto ? args.assunto.width * args.assunto.height : 0
-      const areaBloco = cand.rect.width * cand.rect.height
-      const inter = args.assunto ? intersecao(cand.rect, args.assunto) : 0
-      const cobreAssunto = areaAssunto > 0 && areaBloco > 0 ? Math.max(inter / areaAssunto, inter / areaBloco) : 0
+      const cobreAssunto = args.assunto ? coberturaDaRegiao(cand.rect, args.assunto) : 0
       const descartado = cobreAssunto > TETO_DE_COBERTURA_DO_ASSUNTO
       const pontuacao = PESO_CALMA * calma + PESO_LUZ * (1 - tinta) + PESO_PREFERENCIA * cand.preferencia
       const motivo = descartado

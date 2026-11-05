@@ -249,7 +249,7 @@ export async function createArteLivre(input: CreateArteLivreInput): Promise<Crea
 
   const arteTemplate = await ensureArteTemplate(project.id, project.userId, type, `${width}x${height}`)
 
-  const resolved = await resolveImageUrl(input.imageUrl, input.driveImageId)
+  const resolved = await resolveImageUrl(input.imageUrl, input.driveImageId, project.id)
   const temFoto = Boolean(resolved.url)
 
   // Marca sem par configurado cai na fonte padrão, e não na primeira fonte

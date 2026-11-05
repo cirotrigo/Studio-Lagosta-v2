@@ -72,9 +72,11 @@ export async function registrarUsoDaReferencia(generationId: string): Promise<vo
 export async function definirReferenciaDeEstilo(
   generationId: string,
   marcada: boolean,
+  projectId: number,
 ): Promise<{ generationId: string; marcada: boolean }> {
-  const gen = await db.generation.findUnique({
-    where: { id: generationId },
+  // Escopo no projeto: arte de outro cliente responde como inexistente.
+  const gen = await db.generation.findFirst({
+    where: { id: generationId, projectId },
     select: { id: true, status: true, resultUrl: true },
   })
   if (!gen) throw new Error('Arte não encontrada.')

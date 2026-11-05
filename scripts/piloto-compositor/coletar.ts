@@ -4,7 +4,7 @@ import { resolve } from 'node:path'
 import { createHash } from 'node:crypto'
 import { performance } from 'node:perf_hooks'
 import { parse } from 'dotenv'
-import { google } from 'googleapis'
+import * as google from 'googleapis/build/src/apis/drive'
 import { PrismaClient } from '../../prisma/generated/client'
 
 async function main() {

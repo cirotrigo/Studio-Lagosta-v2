@@ -9,8 +9,12 @@ import { Check, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { TextToolbar } from './text-toolbar'
 import { ImageToolbar } from './image-toolbar'
+import { ShapeToolbar } from './shape-toolbar'
 import { EffectsPanel } from '@/components/canvas/effects'
 import { AlignmentToolbar } from './alignment-toolbar'
+import { GradeToolbar } from './grade-toolbar'
+import { avisarDesfecho } from '@/hooks/use-ajustar-grade'
+import { modoDaSelecao, selecaoTocaGrade } from '@/lib/grades/ajustes'
 import { RichTextEditorHost } from './rich-text-editor-host'
 import { MotorDaPagina } from './motor-da-pagina'
 import { useMultiPageOpcional } from '@/contexts/multi-page-context'
@@ -75,8 +79,9 @@ export function EditorCanvas() {
     design,
     updateLayer,
     duplicateLayer,
-    removeLayer,
+    removeLayers,
     moveLayer,
+    moverSelecao,
     groupSelectedLayers,
     ungroupLayers,
     alignSelectedLeft,
@@ -97,6 +102,7 @@ export function EditorCanvas() {
     setZoom,
     croppingLayerId,
     getStageInstance,
+    updateLayerStyle,
   } = useTemplateEditor()
   const { viewMode } = useEditorViewMode()
   const relogio = relogioDaPagina(useMultiPageOpcional()?.currentPageId)
@@ -133,6 +139,9 @@ export function EditorCanvas() {
     return { canGroup: selecionadas.length >= 2 && !jaEhUmGrupo, canUngroup: podeDesagrupar }
   }, [design.layers, selectedLayerIds])
 
+  // G3: grade inteira selecionada ganha a barra da grade no lugar da de alinhamento (que não vale para grade)
+  const gradeSelecionada = React.useMemo(() => modoDaSelecao(design.layers, selectedLayerIds), [design.layers, selectedLayerIds])
+
   const isTextSelected = selectedLayer?.type === 'text'
   const isRichTextSelected = selectedLayer?.type === 'rich-text'
   const isAnyTextSelected = isTextSelected || isRichTextSelected
@@ -140,6 +149,12 @@ export function EditorCanvas() {
   const isLogoSelected = selectedLayer?.type === 'logo'
   // Mostrar toolbar de imagem para imagem OU logo
   const showImageToolbar = isImageSelected || isLogoSelected
+  const isShapeSelected = selectedLayer?.type === 'shape'
+  // A forma grava pelo mesmo `updateLayerStyle` do painel (canoniza o alfa; histórico e autosave)
+  const setShapeStyle = React.useCallback(
+    (layer: { id: string }, style: Parameters<typeof updateLayerStyle>[1]) => updateLayerStyle(layer.id, style),
+    [updateLayerStyle],
+  )
 
 
   // Atualizar node selecionado quando layer muda
@@ -211,6 +226,11 @@ export function EditorCanvas() {
         return
       }
 
+      // Tecla já tratada por um controle (o Slider do Radix chama preventDefault nas setas, Home/End e PageUp/PageDown;
+      // menus abertos idem) ou foco num slider: a tecla é dele, não do canvas. Sem isso a seta no slider de Espaçamento
+      // também movia a grade enquanto a foto era medida, e o ajuste era recusado (ALVO_MUDOU); o Delete apagava a grade.
+      if (e.defaultPrevented || target.closest?.('[role="slider"]')) return
+
       // Editor de rich text aberto: as teclas são dele, não do canvas
       // (sem isso, Backspace com uma palavra selecionada apagava a camada)
       if (getRichTextEditRequest()) return
@@ -241,7 +261,8 @@ export function EditorCanvas() {
       // Cmd+J (Mac) ou Ctrl+J (Windows) - Duplicar layer
       if ((e.metaKey || e.ctrlKey) && e.key === 'j') {
         e.preventDefault()
-        if (selectedLayerIds.length === 1) {
+        // G4.3: a grade INTEIRA selecionada duplica como grade (o contexto copia todas as células juntas)
+        if (selectedLayerIds.length === 1 || modoDaSelecao(design.layers, selectedLayerIds).modo === 'inteira') {
           duplicateLayer(selectedLayerIds[0])
           console.log('🔄 Layer duplicado via Cmd+J')
         }
@@ -251,7 +272,8 @@ export function EditorCanvas() {
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault()
         if (selectedLayerIds.length > 0) {
-          selectedLayerIds.forEach((id) => removeLayer(id))
+          // Rodada 1 (G4.3): a seleção sai numa operação só, um desfazer (grade inteira / célula esvaziada / avulsa)
+          removeLayers(selectedLayerIds)
           console.log('🗑️ Layer(s) deletado(s) via Delete/Backspace')
         }
       }
@@ -267,6 +289,11 @@ export function EditorCanvas() {
 
         e.preventDefault()
         const passo = e.shiftKey ? 10 : 1
+        // G3: com grade na seleção, UM movimento leva a grade inteira (e o resto) — nunca membro por membro
+        if (selecaoTocaGrade(design.layers, alvos)) {
+          void moverSelecao(alvos, nudge.x * passo, nudge.y * passo, { coalesceKey: `setas:${alvos.join(',')}` }).then(avisarDesfecho)
+          return
+        }
         alvos.forEach((id) => moveLayer(id, nudge.x * passo, nudge.y * passo))
       }
     }
@@ -279,8 +306,9 @@ export function EditorCanvas() {
     design.audio,
     relogio,
     duplicateLayer,
-    removeLayer,
+    removeLayers,
     moveLayer,
+    moverSelecao,
     croppingLayerId,
     canGroup,
     canUngroup,
@@ -393,7 +421,12 @@ export function EditorCanvas() {
             </div>
           ) : (
           <>
-          {/* Alignment Toolbar - no mobile só aparece com camada selecionada; desktop sempre */}
+          {gradeSelecionada.modo === 'inteira' && gradeSelecionada.gradeId ? (
+            <div className="pointer-events-auto max-w-full">
+              <GradeToolbar gradeId={gradeSelecionada.gradeId} />
+            </div>
+          ) : (
+          /* Alignment Toolbar - no mobile só aparece com camada selecionada; desktop sempre */
           <div className={`pointer-events-auto max-w-full overflow-x-auto rounded-lg border border-border/40 bg-background/95 shadow-md backdrop-blur supports-[backdrop-filter]:bg-background/80 ${selectedLayerIds.length > 0 ? '' : 'hidden md:block'}`}>
             <div className="flex items-center justify-center p-1.5 min-w-max">
           <AlignmentToolbar
@@ -431,6 +464,7 @@ export function EditorCanvas() {
           />
             </div>
           </div>
+          )}
 
           {/* Toolbar contextual de texto */}
           {isTextSelected && selectedLayer && (
@@ -453,6 +487,14 @@ export function EditorCanvas() {
                   updateLayer(id, (layer) => ({ ...layer, ...updates }))
                 }}
               />
+            </div>
+          )}
+
+          {/* Toolbar contextual da forma (seleção única); não encolhe: no celular a zona aperta, e a barra da camada
+              que a pessoa está editando não pode ser a cortada */}
+          {isShapeSelected && selectedLayer && (
+            <div className="pointer-events-auto max-w-full flex-shrink-0">
+              <ShapeToolbar selectedLayer={selectedLayer} setStyleValue={setShapeStyle} />
             </div>
           )}
           </>

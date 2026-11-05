@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { getAvailableModels } from '@/lib/ai/image-models-config'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Zap, Sparkles, Check, X } from 'lucide-react'
+import { useCobrancaLigada } from '@/hooks/use-credits'
 
 interface AIModelsComparisonModalProps {
   open: boolean
@@ -19,6 +20,8 @@ interface AIModelsComparisonModalProps {
 
 export function AIModelsComparisonModal({ open, onOpenChange }: AIModelsComparisonModalProps) {
   const models = getAvailableModels()
+  // Modo interno (cobrança desligada): sem preços em créditos.
+  const cobrancaLigada = useCobrancaLigada()
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -31,7 +34,9 @@ export function AIModelsComparisonModal({ open, onOpenChange }: AIModelsComparis
             </Badge>
           </DialogTitle>
           <DialogDescription>
-            Compare recursos, preços e capacidades de todos os modelos disponíveis
+            {cobrancaLigada
+              ? 'Compare recursos, preços e capacidades de todos os modelos disponíveis'
+              : 'Compare recursos e capacidades de todos os modelos disponíveis'}
           </DialogDescription>
         </DialogHeader>
 
@@ -43,7 +48,7 @@ export function AIModelsComparisonModal({ open, onOpenChange }: AIModelsComparis
                 <thead>
                   <tr className="border-b">
                     <th className="text-left py-3 px-3 font-medium min-w-[180px]">Modelo</th>
-                    <th className="text-center py-3 px-3 font-medium min-w-[100px]">Custo</th>
+                    {cobrancaLigada && <th className="text-center py-3 px-3 font-medium min-w-[100px]">Custo</th>}
                     <th className="text-center py-3 px-3 font-medium min-w-[90px]">Velocidade</th>
                     <th className="text-center py-3 px-3 font-medium min-w-[100px]">Resolução</th>
                     <th className="text-center py-3 px-3 font-medium min-w-[90px]">Ref. Images</th>
@@ -67,19 +72,21 @@ export function AIModelsComparisonModal({ open, onOpenChange }: AIModelsComparis
                           </div>
                         </div>
                       </td>
-                      <td className="py-3 px-3 text-center">
-                        {model.resolutions ? (
-                          <div className="text-xs space-y-0.5">
-                            {model.resolutions.map((res) => (
-                              <div key={res} className="whitespace-nowrap">
-                                {res}: {model.pricing[`resolution${res}`] ?? model.pricing.baseCredits}c
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="font-medium whitespace-nowrap">{model.pricing.baseCredits}c</div>
-                        )}
-                      </td>
+                      {cobrancaLigada && (
+                        <td className="py-3 px-3 text-center">
+                          {model.resolutions ? (
+                            <div className="text-xs space-y-0.5">
+                              {model.resolutions.map((res) => (
+                                <div key={res} className="whitespace-nowrap">
+                                  {res}: {model.pricing[`resolution${res}`] ?? model.pricing.baseCredits}c
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="font-medium whitespace-nowrap">{model.pricing.baseCredits}c</div>
+                          )}
+                        </td>
+                      )}
                       <td className="py-3 px-3 text-center">
                         <div className="text-xs whitespace-nowrap">~{model.capabilities.averageSpeed}s</div>
                       </td>
@@ -135,7 +142,7 @@ export function AIModelsComparisonModal({ open, onOpenChange }: AIModelsComparis
                       <p className="text-xs text-muted-foreground mt-1">{model.provider}</p>
                     </div>
                     <div className="text-right">
-                      <div className="text-sm font-medium">{model.pricing.baseCredits} créditos</div>
+                      {cobrancaLigada && <div className="text-sm font-medium">{model.pricing.baseCredits} créditos</div>}
                       <div className="text-xs text-muted-foreground">~{model.capabilities.averageSpeed}s</div>
                     </div>
                   </div>
@@ -196,27 +203,27 @@ export function AIModelsComparisonModal({ open, onOpenChange }: AIModelsComparis
               <div className="space-y-2 text-sm">
                 <div>
                   <span className="font-medium">Para testes/experimentação:</span>
-                  <span className="text-muted-foreground"> FLUX Schnell (1 crédito)</span>
+                  <span className="text-muted-foreground"> FLUX Schnell{cobrancaLigada && ' (1 crédito)'}</span>
                 </div>
                 <div>
                   <span className="font-medium">Para produção geral:</span>
-                  <span className="text-muted-foreground"> FLUX 1.1 Pro (4 créditos)</span>
+                  <span className="text-muted-foreground"> FLUX 1.1 Pro{cobrancaLigada && ' (4 créditos)'}</span>
                 </div>
                 <div>
                   <span className="font-medium">Para realismo extremo:</span>
-                  <span className="text-muted-foreground"> Seedream 4 (3-6 créditos)</span>
+                  <span className="text-muted-foreground"> Seedream 4{cobrancaLigada && ' (3-6 créditos)'}</span>
                 </div>
                 <div>
                   <span className="font-medium">Para texto em imagens:</span>
-                  <span className="text-muted-foreground"> Ideogram v3 Turbo (3 créditos)</span>
+                  <span className="text-muted-foreground"> Ideogram v3 Turbo{cobrancaLigada && ' (3 créditos)'}</span>
                 </div>
                 <div>
                   <span className="font-medium">Para design e ilustração:</span>
-                  <span className="text-muted-foreground"> Recraft V3 (4 créditos)</span>
+                  <span className="text-muted-foreground"> Recraft V3{cobrancaLigada && ' (4 créditos)'}</span>
                 </div>
                 <div>
                   <span className="font-medium">Para máxima qualidade:</span>
-                  <span className="text-muted-foreground"> Nano Banana Pro 4K (30 créditos)</span>
+                  <span className="text-muted-foreground"> Nano Banana Pro 4K{cobrancaLigada && ' (30 créditos)'}</span>
                 </div>
               </div>
             </div>

@@ -12,7 +12,12 @@ import { useBlobUpload } from '@/hooks/use-blob-upload'
 import { useProject } from '@/hooks/use-project'
 import { useAcervo } from '@/hooks/use-acervo'
 import { useAprendizado } from '@/hooks/use-aprendizado'
+import { useFotoNaGrade, type FonteDaFoto } from '@/hooks/use-preencher-grade'
+import { LIMITE_DO_LOTE, gradeDaSelecao, mensagemDoDesfecho, vaziasEmLeitura, type DesfechoDoPreenchimento } from '@/lib/grades/preenchimento'
+import { paginaEVideo } from '@/lib/video/camadas-de-video'
+import { BarraDoLote, alternarNoLote, type ContextoDaBusca, type EscolhaDoLote } from './lote-da-grade'
 import type { GoogleDriveItem } from '@/types/google-drive'
+import type { Layer } from '@/types/template'
 
 interface BreadcrumbItem {
   id: string
@@ -20,9 +25,25 @@ interface BreadcrumbItem {
 }
 
 export function ImagesPanelContent() {
-  const { addLayer, design, projectId } = useTemplateEditor()
+  const { addLayer, design, projectId, selectedLayerIds, planejarPreenchimento } = useTemplateEditor()
   const { toast } = useToast()
   const { data: project } = useProject(projectId)
+  // G2: grade selecionada recebe a foto; o lote junta fotos em ordem e aplica numa operação só
+  const { planejar: planejarFoto, colocar: colocarNaGrade, preencher, cancelar: cancelarPreenchimento, emVoo } = useFotoNaGrade()
+  const [lote, setLote] = React.useState<EscolhaDoLote[] | null>(null)
+  const selecaoDaGrade = gradeDaSelecao(design.layers, selectedLayerIds)
+  const vagas = selecaoDaGrade && !selecaoDaGrade.celulaId ? vaziasEmLeitura(design.layers, selecaoDaGrade.gradeId).length : 0
+  const limiteDoLote = Math.min(LIMITE_DO_LOTE, vagas)
+  const proximoArquivoRef = React.useRef(0)
+  const adicionarArquivos = React.useCallback(
+    (arquivos: File[]) => {
+      const novas = arquivos
+        .filter((arquivo) => arquivo.type.startsWith('image/'))
+        .map((arquivo): EscolhaDoLote => ({ chave: `arquivo:${++proximoArquivoRef.current}`, tipo: 'arquivo', arquivo, nome: arquivo.name }))
+      setLote((atual) => atual && novas.reduce((l, e) => alternarNoLote(l, e, limiteDoLote), atual))
+    },
+    [limiteDoLote],
+  )
 
   const [isDragging, setIsDragging] = React.useState(false)
   const [driveItems, setDriveItems] = React.useState<GoogleDriveItem[]>([])
@@ -51,6 +72,31 @@ export function ImagesPanelContent() {
    * como no ArteIaImagePicker.
    */
   const buscasFechadas = React.useRef<Set<string>>(new Set())
+  /** A busca aberta NESTE toque (lista ranqueada, topo, posição da foto): segue com a escolha até o registro */
+  const contextoDaBusca = (driveFileId: string): ContextoDaBusca | undefined => {
+    const sugestaoId = resultadoBusca?.sugestaoId
+    if (!sugestaoId) return undefined
+    const posicao = (resultadoBusca?.images ?? []).findIndex((i) => i.driveFileId === driveFileId)
+    return { sugestaoId, propostaTopo: resultadoBusca?.propostaTopo ?? null, ...(posicao >= 0 ? { posicao: posicao + 1 } : {}) }
+  }
+  /**
+   * O que a pessoa escolheu, comparado com o que o acervo propôs. A ordem da
+   * lista é a recomendação (menos usada primeiro); levar a primeira é aceitar
+   * a proposta. Sem isto o ranqueamento nunca fica sabendo que erra.
+   * G2: na grade o registro só acontece com a foto APLICADA, e vai para a busca de onde ela saiu (`ContextoDaBusca`).
+   */
+  const registrarEscolha = React.useCallback(
+    (busca: ContextoDaBusca, driveFileId: string) => {
+      if (buscasFechadas.current.has(busca.sugestaoId)) return
+      buscasFechadas.current.add(busca.sugestaoId)
+      registrarDesfecho({
+        sugestaoId: busca.sugestaoId,
+        desfecho: driveFileId === busca.propostaTopo ? 'aceita-como-veio' : 'trocada',
+        escolhido: { driveFileId, ...(busca.posicao ? { posicao: busca.posicao } : {}) },
+      })
+    },
+    [registrarDesfecho],
+  )
 
   const { upload: uploadToBlob, isUploading } = useBlobUpload()
 
@@ -64,7 +110,8 @@ export function ImagesPanelContent() {
 
   // Insert image layer with exact canvas size
   const insertImageLayer = React.useCallback(
-    (url: string, name?: string) => {
+    // G2: `inserir` é o `addLayer` de sempre; da grade cheia, `adicionarFotoAvulsa` (sem clipe)
+    (url: string, name?: string, inserir: (camada: Layer) => void = addLayer) => {
       // Imagem sempre tem exatamente o tamanho do canvas
       const base = createDefaultLayer('image')
       const layer = {
@@ -79,13 +126,31 @@ export function ImagesPanelContent() {
         },
       }
 
-      addLayer(layer)
+      inserir(layer)
       toast({
         title: 'Imagem adicionada',
         description: 'A imagem foi ajustada ao tamanho do canvas.'
       })
     },
     [addLayer, canvasWidth, canvasHeight, toast],
+  )
+
+  const avisarPreenchimento = React.useCallback(
+    (d: DesfechoDoPreenchimento) => {
+      const m = mensagemDoDesfecho(d)
+      toast({ description: m.texto, ...(m.erro ? { variant: 'destructive' as const } : {}) })
+    },
+    [toast],
+  )
+
+  /**
+   * G2 · foto única de qualquer entrada deste painel (upload, arrastar, Drive, acervo), pelo contrato de
+   * `useFotoNaGrade`: o alvo é decidido AQUI, antes de subir ou baixar; a avulsa monta a camada como sempre e a entrega
+   * a `inserir` (`addLayer` sem grade; sem clipe quando a grade está cheia).
+   */
+  const colocarFoto = React.useCallback(
+    (fonte: FonteDaFoto, avulsa: (inserir: (camada: Layer) => void) => Promise<void>) => colocarNaGrade(planejarFoto(), fonte, avulsa),
+    [colocarNaGrade, planejarFoto],
   )
 
   // Load Google Drive files
@@ -194,14 +259,14 @@ export function ImagesPanelContent() {
     }
   }, [driveFolderId, driveFolderName, loadDriveFiles])
 
-  // File upload
-  const uploadFile = React.useCallback(
-    async (file: File) => {
+  // File upload (avulsa: o caminho de sempre)
+  const uploadAvulso = React.useCallback(
+    async (file: File, inserir?: (camada: Layer) => void) => {
       setIsApplyingMedia(true)
       try {
         // Client-side upload direto ao Vercel Blob
         const url = await uploadToBlob(file)
-        insertImageLayer(url, file.name)
+        insertImageLayer(url, file.name, inserir)
 
         toast({
           title: 'Upload concluído',
@@ -219,6 +284,15 @@ export function ImagesPanelContent() {
       }
     },
     [insertImageLayer, toast, uploadToBlob],
+  )
+
+  const uploadFile = React.useCallback(
+    async (file: File) => {
+      // lote aberto: o arquivo entra na fila, na ordem, e só sobe ao "Preencher"
+      if (lote) return adicionarArquivos([file])
+      await colocarFoto({ tipo: 'arquivo', arquivo: file, nome: file.name }, (inserir) => uploadAvulso(file, inserir))
+    },
+    [adicionarArquivos, colocarFoto, lote, uploadAvulso],
   )
 
   const handleFileChange = React.useCallback(
@@ -272,8 +346,8 @@ export function ImagesPanelContent() {
     [uploadFile, toast],
   )
 
-  // Import from Google Drive
-  const importDriveFile = React.useCallback(async (fileId: string, fileName: string) => {
+  // Import from Google Drive (avulsa: o caminho de sempre)
+  const importDriveAvulso = React.useCallback(async (fileId: string, fileName: string, inserir?: (camada: Layer) => void) => {
     setIsApplyingMedia(true)
     try {
       const response = await fetch('/api/upload/google-drive', {
@@ -289,7 +363,7 @@ export function ImagesPanelContent() {
       if (!uploaded.url) {
         throw new Error('Falha ao importar arquivo do Google Drive')
       }
-      insertImageLayer(uploaded.url, uploaded.name ?? fileName)
+      insertImageLayer(uploaded.url, uploaded.name ?? fileName, inserir)
     } catch (_error) {
       console.error('[ImagesPanel] Drive import failed', _error)
       toast({
@@ -302,41 +376,62 @@ export function ImagesPanelContent() {
     }
   }, [insertImageLayer, toast])
 
+  // Drive e acervo: na grade, a rota do projeto (Blob próprio, nunca data:); fora dela, a de sempre
+  const importDriveFile = React.useCallback(
+    async (fileId: string, fileName: string, busca?: ContextoDaBusca) => {
+      const r = await colocarFoto({ tipo: 'drive', id: fileId, nome: fileName }, (inserir) => {
+        if (busca) registrarEscolha(busca, fileId) // avulsa: o sinal sai no clique, como sempre
+        return importDriveAvulso(fileId, fileName, inserir)
+      })
+      if (busca && 'ok' in r && r.ok) registrarEscolha(busca, fileId) // célula: só com a foto aplicada
+    },
+    [colocarFoto, importDriveAvulso, registrarEscolha],
+  )
+
+  /** Com o lote aberto, tocar numa foto do Drive/acervo a põe (ou tira) da fila, na ordem; nada é baixado ainda */
+  const escolherNoLote = React.useCallback(
+    (id: string, nome: string, busca?: ContextoDaBusca) =>
+      setLote((atual) => (atual ? alternarNoLote(atual, { chave: `drive:${id}`, tipo: 'drive', id, nome, ...(busca ? { busca } : {}) }, limiteDoLote) : atual)),
+    [limiteDoLote],
+  )
+  const numeroNoLote = (id: string) => {
+    const i = lote?.findIndex((e) => e.chave === `drive:${id}`) ?? -1
+    return i >= 0 ? i + 1 : undefined
+  }
+
+  const preencherLote = React.useCallback(async () => {
+    if (!lote?.length) return
+    const plano = planejarPreenchimento(lote.length)
+    if (plano.tipo !== 'grade') {
+      toast({ variant: 'destructive', description: plano.tipo === 'recusa' ? plano.mensagem : 'Selecione a grade inteira.' })
+      return
+    }
+    const fontes: FonteDaFoto[] = lote.map((e) => (e.tipo === 'drive' ? { tipo: 'drive', id: e.id, nome: e.nome } : { tipo: 'arquivo', arquivo: e.arquivo, nome: e.nome }))
+    const r = await preencher(plano.alvo, fontes)
+    avisarPreenchimento(r)
+    if (!r.ok) return
+    // sinal do acervo só das fotos APLICADAS, cada uma para a busca de onde saiu (uma escolha por busca)
+    lote.forEach((e, i) => {
+      if (e.tipo === 'drive' && e.busca && r.aplicadas.includes(plano.alvo.celulas[i])) registrarEscolha(e.busca, e.id)
+    })
+    setLote(null)
+  }, [avisarPreenchimento, lote, planejarPreenchimento, preencher, registrarEscolha, toast])
+
   // Handle file/folder click
   const handleDriveItemClick = React.useCallback((item: GoogleDriveItem) => {
-    if (isApplyingMedia) {
+    if (isApplyingMedia || emVoo) {
       return
     }
     if (item.kind === 'folder') {
       // Navigate into folder
       navigateToFolder(item.id, item.name)
+    } else if (lote) {
+      escolherNoLote(item.id, item.name)
     } else {
       // Import image
-      importDriveFile(item.id, item.name)
+      void importDriveFile(item.id, item.name)
     }
-  }, [navigateToFolder, importDriveFile, isApplyingMedia])
-
-  /**
-   * O que a pessoa escolheu, comparado com o que o acervo propôs. A ordem da
-   * lista é a recomendação (menos usada primeiro); levar a primeira é aceitar
-   * a proposta. Sem isto o ranqueamento nunca fica sabendo que erra.
-   */
-  const registrarEscolhaDaBusca = React.useCallback(
-    (driveFileId: string) => {
-      const sugestaoId = resultadoBusca?.sugestaoId
-      if (!sugestaoId) return
-      if (buscasFechadas.current.has(sugestaoId)) return
-      buscasFechadas.current.add(sugestaoId)
-
-      const posicao = (resultadoBusca?.images ?? []).findIndex((i) => i.driveFileId === driveFileId)
-      registrarDesfecho({
-        sugestaoId,
-        desfecho: driveFileId === resultadoBusca?.propostaTopo ? 'aceita-como-veio' : 'trocada',
-        escolhido: { driveFileId, ...(posicao >= 0 ? { posicao: posicao + 1 } : {}) },
-      })
-    },
-    [resultadoBusca, registrarDesfecho],
-  )
+  }, [navigateToFolder, importDriveFile, isApplyingMedia, emVoo, lote, escolherNoLote])
 
   const limparBusca = React.useCallback(() => {
     setBusca('')
@@ -345,6 +440,11 @@ export function ImagesPanelContent() {
   }, [])
 
   const isBusy = isUploading || isApplyingMedia
+  const ocupado = isBusy || emVoo
+  const selo = (id: string) => {
+    const n = numeroNoLote(id)
+    return n ? <span className="absolute left-1 top-1 z-10 rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground">{n}</span> : null
+  }
 
   const driveFolders = driveItems.filter((item) => item.kind === 'folder')
   const driveFiles = driveItems.filter((item) => item.kind !== 'folder')
@@ -367,6 +467,18 @@ export function ImagesPanelContent() {
         accept="image/*"
         className="hidden"
         onChange={handleFileChange}
+      />
+
+      <BarraDoLote
+        selecao={selecaoDaGrade ? (selecaoDaGrade.celulaId ? { tipo: 'celula' } : { tipo: 'grade', vagas }) : null}
+        video={paginaEVideo(design.layers, design.audio)}
+        lote={lote}
+        emVoo={emVoo}
+        onAbrir={() => setLote([])}
+        onRemover={(chave) => setLote((l) => l && l.filter((e) => e.chave !== chave))}
+        onArquivos={adicionarArquivos}
+        onPreencher={() => void preencherLote()}
+        onCancelar={emVoo ? cancelarPreenchimento : () => setLote(null)}
       />
 
       <Tabs defaultValue="drive" className="w-full">
@@ -468,11 +580,13 @@ export function ImagesPanelContent() {
                         key={img.driveFileId}
                         type="button"
                         onClick={() => {
-                          if (isBusy) return
-                          registrarEscolhaDaBusca(img.driveFileId)
-                          importDriveFile(img.driveFileId, img.fileName)
+                          if (ocupado) return
+                          // a busca deste toque segue com a escolha; o sinal só sai quando a foto é levada
+                          const contexto = contextoDaBusca(img.driveFileId)
+                          if (lote) escolherNoLote(img.driveFileId, img.fileName, contexto)
+                          else void importDriveFile(img.driveFileId, img.fileName, contexto)
                         }}
-                        disabled={isBusy}
+                        disabled={ocupado}
                         title={`${img.menuItem ?? img.fileName}${img.folder ? ` · ${img.folder}` : ''}${
                           img.ultimoUso === 'nunca' ? ' · nunca usada' : ` · usada em ${img.ultimoUso}`
                         }`}
@@ -486,6 +600,7 @@ export function ImagesPanelContent() {
                           className="object-cover transition-transform duration-500 group-hover:scale-105"
                           unoptimized
                         />
+                        {selo(img.driveFileId)}
                         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 via-black/30 to-transparent p-1.5 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
                           <p className="truncate text-[10px] font-medium text-white/90">
                             {img.menuItem ?? img.fileName}
@@ -595,7 +710,7 @@ export function ImagesPanelContent() {
                           key={folder.id}
                           type="button"
                           onClick={() => handleDriveItemClick(folder)}
-                          disabled={isBusy}
+                          disabled={ocupado}
                           title={folder.name}
                           className="group flex w-full items-center gap-2 rounded-lg border border-border/40 bg-card/50 px-2.5 py-2 text-left transition-colors hover:border-primary/50 hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-60"
                         >
@@ -621,10 +736,11 @@ export function ImagesPanelContent() {
                         <button
                           key={item.id}
                           onClick={() => handleDriveItemClick(item)}
-                          disabled={isBusy}
+                          disabled={ocupado}
                           title={item.name}
                           className="group relative aspect-square overflow-hidden rounded-xl border border-border/40 bg-card/50 transition-all hover:border-primary/50 hover:bg-muted/50 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
                         >
+                          {selo(item.id)}
                           {item.thumbnailLink ? (
                             <div className="relative h-full w-full">
                               <Image
@@ -688,7 +804,7 @@ export function ImagesPanelContent() {
               : 'border-border/40 hover:border-primary/50 hover:bg-muted/30'
               }`}
             onClick={() => {
-              if (!isBusy) {
+              if (!ocupado) {
                 fileInputRef.current?.click()
               }
             }}

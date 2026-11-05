@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Layer } from '@/types/template'
 import type { TextLayerMetrics } from '@/lib/creatives/text-geometry'
 import type { ContrasteMedido } from '@/lib/compositor/regua'
-import { avaliarPeca, type EntradaDaRevisao } from '../regras'
+import { avaliarPeca, pisosDoTitulo, titulosDaPagina, type EntradaDaRevisao } from '../regras'
 import { insumosDaVisao, reconciliarVisao, type AchadoVisto, type MarcaDaPeca } from '../visao'
 
 const W = 1080
@@ -141,6 +141,120 @@ describe('o título grande demais', () => {
   })
 })
 
+describe('texto pequeno (regra 9) — emissão determinística: corpo em 1080 contra o piso relativo ao modelo (CP4.1)', () => {
+  const servicoCom = (fontSize: number) => camada('servico', { x: 100, y: 1700, width: 880, height: 48 }, fontSize)
+  const pequeno = (fontSize: number, referencias: EntradaDaRevisao['referencias'] = {}) => {
+    const s = servicoCom(fontSize)
+    return avaliarPeca(entrada({ camadas: [s], metricas: [metrica(s)], referencias })).achados.find((a) => a.regra === 'texto-pequeno')
+  }
+  it('com referência 32 o piso é 26 (0,8 × 32): 25 emite (corpo1080 25, piso1080 26), 26 não; sem referência o piso é 24; modelo miúdo (ref 20) tem piso 16, relativo', () => {
+    const ref = (fontSize1080: number) => ({ servico: { fontSize1080 } as never })
+    expect(pequeno(25, ref(32))).toMatchObject({ severidade: 'aviso', certeza: 'medida', camadas: ['servico'], evidencia: { corpo1080: 25, piso1080: 26, referencia1080: 32 } })
+    expect(pequeno(26, ref(32))).toBeUndefined()
+    expect(pequeno(23)).toMatchObject({ evidencia: { corpo1080: 23, piso1080: 24, referencia1080: null } })
+    expect(pequeno(24)).toBeUndefined()
+    expect(pequeno(15, ref(20))).toMatchObject({ evidencia: { corpo1080: 15, piso1080: 16, referencia1080: 20 } })
+    expect(pequeno(16, ref(20))).toBeUndefined()
+  })
+})
+
+describe('CP4.2a — o piso da MANCHETE: um achado por componente (modelo 0,8 × ref; hierarquia 1,0; celular 24), ids estáveis, sem compensação', () => {
+  const headline = (fontSize: number, extra: Partial<Layer> = {}) => camada('headline', { x: 100, y: 300, width: 880, height: 200 }, fontSize, extra)
+  const apoio = (fontSize: number) => camada('apoio', { x: 100, y: 600, width: 880, height: 80 }, fontSize)
+  const servico = (fontSize: number) => camada('servico', { x: 100, y: 1700, width: 880, height: 48 }, fontSize)
+  const refs = (headline1080: number | null, extra: Record<string, unknown> = {}) => ({ ...(headline1080 !== null ? { headline: { fontSize1080: headline1080, entrelinha: null, origem: 'assinatura' } } : {}), ...extra }) as EntradaDaRevisao['referencias']
+  const avalia = (camadas: Layer[], referencias: EntradaDaRevisao['referencias'], titulosFixados?: string[]) =>
+    avaliarPeca(entrada({ camadas, metricas: camadas.map((c) => metrica(c)), referencias, ...(titulosFixados ? { titulosFixados } : {}) }))
+  const pequenos = (r: ReturnType<typeof avaliarPeca>, camada = 'headline') => r.achados.filter((a) => a.regra === 'texto-pequeno' && a.camadas.includes(camada))
+
+  it('pisosDoTitulo (puro): modelo só com referência válida; hierarquia só com secundário; celular salvo modelo discreto; referência inferida = ausente', () => {
+    expect(pisosDoTitulo({ referencia: { fontSize1080: 84, entrelinha: null, origem: 'a' }, maiorSecundario1080: 40 })).toEqual([
+      { componente: 'modelo', piso1080: 67.2 },
+      { componente: 'hierarquia', piso1080: 40 },
+      { componente: 'celular', piso1080: 24 },
+    ])
+    expect(pisosDoTitulo({ referencia: undefined, maiorSecundario1080: 36 })).toEqual([{ componente: 'hierarquia', piso1080: 36 }, { componente: 'celular', piso1080: 24 }])
+    expect(pisosDoTitulo({ referencia: { fontSize1080: 20, entrelinha: null, origem: 'a' }, maiorSecundario1080: 14 })).toEqual([{ componente: 'modelo', piso1080: 16 }, { componente: 'hierarquia', piso1080: 14 }])
+    expect(pisosDoTitulo({ referencia: { fontSize1080: 16, entrelinha: null, origem: 'a', inferida: true }, maiorSecundario1080: null })).toEqual([{ componente: 'celular', piso1080: 24 }])
+  })
+
+  it('84 (ref 84) → 8: três achados (modelo 67, hierarquia 40, celular 24), ids por componente, severidade aviso, UMA sugestão de fonte; → 42: modelo e hierarquia(40 → não: 42 ≥ 40); → 72: nenhum', () => {
+    const r8 = avalia([headline(8), apoio(40), servico(32)], refs(84))
+    expect(pequenos(r8).map((a) => [a.id, a.evidencia?.componente, a.evidencia?.piso1080, a.severidade])).toEqual([
+      ['texto-pequeno:headline:modelo', 'modelo', 67, 'aviso'],
+      ['texto-pequeno:headline:hierarquia', 'hierarquia', 40, 'aviso'],
+      ['texto-pequeno:headline:celular', 'celular', 24, 'aviso'],
+    ])
+    expect(pequenos(r8)[0].evidencia).toMatchObject({ corpo1080: 8, referencia1080: 84, maiorSecundario1080: 40 })
+    // Uma correção só para o título (os achados guardam índices em `r.ajustes`).
+    expect(r8.ajustes.filter((a) => a.tipo === 'fonte' && a.camadas?.includes('headline'))).toMatchObject([{ tipo: 'fonte', camadas: ['headline'], fontSize: 68 }])
+    const r42 = avalia([headline(42), apoio(40), servico(32)], refs(84))
+    expect(pequenos(r42).map((a) => a.id)).toEqual(['texto-pequeno:headline:modelo'])
+    expect(pequenos(avalia([headline(72), apoio(40), servico(32)], refs(84)))).toEqual([])
+    expect(pequenos(avalia([headline(67), apoio(40), servico(32)], refs(84)))).toEqual([])
+  })
+
+  it('hierarquia: headline 60 (ref 60, piso 48) com serviço 52 → 50 acusa SÓ a hierarquia (52); fator 1,0, nunca K', () => {
+    const r = avalia([headline(50), servico(52)], refs(60))
+    expect(pequenos(r).map((a) => [a.evidencia?.componente, a.evidencia?.piso1080])).toEqual([['hierarquia', 52]])
+  })
+
+  it('modelo discreto (ref 20): piso 16, sem os 24 — → 16 entra, → 12 acusa só o modelo', () => {
+    expect(pequenos(avalia([headline(16), servico(14)], refs(20)))).toEqual([])
+    expect(pequenos(avalia([headline(12), servico(14)], refs(20))).map((a) => a.evidencia?.componente)).toEqual(['modelo', 'hierarquia'])
+  })
+
+  it('sem referência: só hierarquia e celular, e a cobertura fica parcial com o motivo; referência inferida conta como ausente', () => {
+    const semRef = avalia([headline(30), servico(32)], refs(null))
+    expect(pequenos(semRef).map((a) => a.evidencia?.componente)).toEqual(['hierarquia'])
+    expect(semRef.cobertura['texto-pequeno']).toMatchObject({ estado: 'parcial', motivo: expect.stringContaining('sem referência de corpo no modelo') })
+    const inferida = avalia([headline(30), servico(32)], { headline: { fontSize1080: 16, entrelinha: null, origem: 'modelo', inferida: true } } as never)
+    expect(pequenos(inferida).map((a) => a.evidencia?.componente)).toEqual(['hierarquia'])
+    expect(inferida.cobertura['texto-pequeno']?.estado).toBe('parcial')
+  })
+
+  it('titulosFixados: a classificação vem de fora — o título inferido (sem papel: id/nome fora de PAPEIS_DA_PECA) reduzido a 50 (abaixo de 1,5× o segundo) CONTINUA título; sem a lista, a inferência de sempre', () => {
+    const semPapel = (id: string, fontSize: number) => camada(id, { x: 100, y: 300, width: 880, height: 100 }, fontSize, { metadata: {} as never })
+    const refsDoTitulo = { titulo: { fontSize1080: 84, entrelinha: null, origem: 'modelo' } } as EntradaDaRevisao['referencias']
+    const fixado = avalia([semPapel('titulo', 50), semPapel('texto', 40)], refsDoTitulo, ['titulo'])
+    expect(pequenos(fixado, 'titulo').map((a) => [a.id, a.evidencia?.componente])).toEqual([['texto-pequeno:titulo:modelo', 'modelo']])
+    // Sem fixação: 50 < 1,5 × 40 → não é título → julgado como NÃO-título (um achado só, sem componente, piso 0,8 × 84).
+    const inferido = avalia([semPapel('titulo', 50), semPapel('texto', 40)], refsDoTitulo)
+    expect(pequenos(inferido, 'titulo').map((a) => [a.id, a.evidencia?.componente])).toEqual([['texto-pequeno:titulo', undefined]])
+    // E com 60 (≥ 1,5 × 40) a inferência o classifica como título sozinha.
+    expect(pequenos(avalia([semPapel('titulo', 60), semPapel('texto', 40)], refsDoTitulo), 'titulo').map((a) => a.id)).toEqual(['texto-pequeno:titulo:modelo'])
+  })
+
+  it('titulosDaPagina (puro): papel gravado entra mesmo vazio ou oculto; sem papel, o maior visível com conteúdo ≥ 1,5× o segundo', () => {
+    expect(titulosDaPagina([headline(84, { content: '', visible: false }), apoio(40)])).toEqual(['headline'])
+    const h2 = camada('headline2', { x: 100, y: 500, width: 880, height: 100 }, 48)
+    expect(titulosDaPagina([headline(84), h2, apoio(40)])).toEqual(['headline', 'headline2'])
+    const semPapel = (id: string, fontSize: number, extra: Partial<Layer> = {}) => camada(id, { x: 100, y: 300, width: 880, height: 100 }, fontSize, { metadata: {} as never, ...extra })
+    expect(titulosDaPagina([semPapel('a', 60), semPapel('b', 36)])).toEqual(['a'])
+    expect(titulosDaPagina([semPapel('a', 50), semPapel('b', 36)])).toEqual([])
+    // Texto oculto ou vazio não entra na inferência por tamanho.
+    expect(titulosDaPagina([semPapel('a', 200, { visible: false }), semPapel('b', 60), semPapel('c', 36)])).toEqual(['b'])
+  })
+
+  it('regra 7: a escala sugerida para o título GRANDE respeita o piso compartilhado e o 0,5 do schema (140 com ref 84 → escala ≥ 67,2/140 = 0,48 → 0,5)', () => {
+    const grande = avalia([headline(140), apoio(40), servico(32)], refs(84))
+    const titulo = grande.achados.find((a) => a.regra === 'titulo-grande')!
+    expect(titulo).toBeTruthy()
+    const escala = grande.ajustes.find((a) => a.tipo === 'fonte' && a.camadas?.includes('headline') && typeof a.escala === 'number')?.escala
+    expect(escala).toBeGreaterThanOrEqual(0.5)
+    expect(140 * escala!).toBeGreaterThanOrEqual(67.2 - 0.5)
+  })
+
+  it('regra 7 (Codex): a referência INFERIDA não serve de modelo — um título de 84 com fallback 16 não é "5,25× maior que o modelo"', () => {
+    const inferida = { headline: { fontSize1080: 16, entrelinha: null, origem: 'modelo', inferida: true } } as never
+    const r = avalia([headline(84), apoio(40), servico(32)], inferida)
+    expect(r.achados.find((a) => a.regra === 'titulo-grande')).toBeUndefined()
+    // Com a mesma referência VÁLIDA (não inferida) a regra 7 acusa.
+    const valida = { headline: { fontSize1080: 16, entrelinha: null, origem: 'modelo' } } as never
+    expect(avalia([headline(84), apoio(40), servico(32)], valida).achados.find((a) => a.regra === 'titulo-grande')).toBeTruthy()
+  })
+})
+
 describe('a leitura sobre a foto (a régua)', () => {
   const servico = camada('servico', { x: 100, y: 1700, width: 880, height: 48 }, 30)
 
@@ -206,7 +320,8 @@ describe('a leitura sobre a foto (a régua)', () => {
     )
     const achado = r.achados.find((a) => a.regra === 'texto-sem-leitura')!
     expect(achado.ajustes).toEqual([])
-    expect(achado.observacao).toContain('teto')
+    expect(achado.observacao).toMatch(/teto/i)
+    expect(achado.observacao).toMatch(/não há margem para aumentar/)
   })
 
   it('gradiente sobrando em TODOS os blocos da borda: sugere devolver luz à foto', () => {
@@ -267,7 +382,8 @@ describe('geometria', () => {
     } as Layer
     const r = avaliarPeca(entrada({ camadas: [titulo, logo], metricas: [metrica(titulo, { maxLineWidth: 480 })] }))
     const achado = r.achados.find((a) => a.regra === 'logo-sobre-texto')!
-    expect(r.ajustes[achado.ajustes[0]]).toEqual({ tipo: 'mover', camadas: ['logo'], dx: -10, dy: 1500, achado: achado.id })
+    // 29/10: margem 64/160/160 → canto livre em x 896 (1016 − 120) e y 1640 (1760 − 120); era dx −10, dy 1500 com 70/120/100.
+    expect(r.ajustes[achado.ajustes[0]]).toEqual({ tipo: 'mover', camadas: ['logo'], dx: -4, dy: 1490, achado: achado.id })
   })
 
   it('a cedilha além da caixa é aviso sem ajuste: o conserto é no editor', () => {
@@ -307,6 +423,18 @@ describe('geometria', () => {
     expect(achado.severidade).toBe('aviso')
     expect(achado.ajustes).toEqual([])
     expect(achado.observacao).toContain('compor-arte')
+  })
+
+  it('CP4.1 — sem assunto, a cobertura diz o motivo e se a regra é INAPLICÁVEL (foto lida sem assunto) ou só não medida (a estimativa falhou)', () => {
+    const titulo = camada('headline', { x: 300, y: 800, width: 500, height: 200 }, 90)
+    const base = { camadas: [titulo], metricas: [metrica(titulo, { maxLineWidth: 480 })], assunto: null }
+    const inaplicavel = avaliarPeca(entrada({ ...base, motivoSemAssunto: 'a foto foi lida e não tem assunto localizável (mapa de calma sem região forte): nada a proteger', assuntoNaoSeAplica: true }))
+    expect(inaplicavel.cobertura['texto-sobre-assunto']).toEqual({ estado: 'nao-avaliada', motivo: expect.stringContaining('não tem assunto localizável'), naoSeAplica: true })
+    const falhou = avaliarPeca(entrada({ ...base, motivoSemAssunto: 'o assunto da foto não foi estimado: HTTP 403 ao baixar https://x/foto.jpg' }))
+    expect(falhou.cobertura['texto-sobre-assunto']).toEqual({ estado: 'nao-avaliada', motivo: expect.stringContaining('HTTP 403') })
+    expect(falhou.cobertura['texto-sobre-assunto']).not.toHaveProperty('naoSeAplica')
+    // Sem motivo (medida antiga): o texto de sempre, sem a marca.
+    expect(avaliarPeca(entrada(base)).cobertura['texto-sobre-assunto']).toEqual({ estado: 'nao-avaliada', motivo: 'sem foto ou sem assunto localizado' })
   })
 })
 
@@ -544,6 +672,11 @@ describe('o que a visão viu', () => {
     }
     expect(r.cobertura['fonte-nao-carregada']?.estado).toBe('avaliada')
     expect(r.resumo).not.toMatch(/nada a corrigir/i)
+  })
+
+  it('a conferência das fontes que NÃO rodou é cobertura "não avaliada" em `fonte-nao-carregada`, nunca "nenhuma fonte falta" (Codex R2 do CP4)', () => {
+    const r = avaliarPeca(entrada({ camadas: [titulo], motivoSemFontes: 'a conferência das fontes falhou: canvas' }))
+    expect(r.cobertura['fonte-nao-carregada']).toEqual({ estado: 'nao-avaliada', motivo: 'a conferência das fontes falhou: canvas' })
   })
 
   it('sem visão, a cobertura diz que ela não rodou', () => {

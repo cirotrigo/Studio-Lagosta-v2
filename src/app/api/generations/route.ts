@@ -64,6 +64,7 @@ export async function GET(req: NextRequest) {
         logoUrl: true,
         Logo: {
           where: { isProjectLogo: true },
+          orderBy: { id: 'asc' },
           select: { fileUrl: true },
           take: 1,
         },
@@ -174,6 +175,7 @@ export async function GET(req: NextRequest) {
             logoUrl: true,
             Logo: {
               where: { isProjectLogo: true },
+              orderBy: { id: 'asc' },
               select: { fileUrl: true },
               take: 1,
             },

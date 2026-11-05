@@ -2,7 +2,10 @@ import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { z } from 'zod'
 import { googleDriveService } from '@/server/google-drive-service'
+import { DriveIndisponivelError, filtrarAtalhosDoEscopo, idsDoDriveNaRotaDoProjeto, raizesNaRotaDoProjeto } from '@/lib/google-drive/escopo'
 import { PermissionError, requireProjectAccess } from '@/lib/permissions'
+
+const naoEncontrado = () => NextResponse.json({ error: 'Não encontrado' }, { status: 404 })
 
 const querySchema = z.object({
   folderId: z.string().trim().min(1),
@@ -32,8 +35,15 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Parâmetros inválidos', details: parsed.error.flatten() }, { status: 400 })
     }
 
-    const { folderId, projectId, fileIds } = parsed.data
+    const { folderId: pastaPedida, projectId, fileIds: arquivosPedidos } = parsed.data
     await requireProjectAccess(projectId, { userId, orgId })
+
+    // Pasta e arquivos: todos sob as pastas deste projeto, ou nada.
+    const permitidos = await idsDoDriveNaRotaDoProjeto(userId, projectId, [pastaPedida, ...(arquivosPedidos ?? [])])
+    if (!permitidos) {
+      return naoEncontrado()
+    }
+    const [folderId, ...fileIds] = permitidos
 
     const folderMetaPromise = googleDriveService.getFileMetadata(folderId, 'id, name')
     const filesPromise = fileIds?.length
@@ -53,7 +63,11 @@ export async function GET(req: Request) {
             }
           }),
         )
-      : googleDriveService.listFolderFiles(folderId)
+      : // Os ids pedidos já saem efetivos (atalho → destino conferido); os
+        // filhos listados não: atalho para fora do projeto sai (admin: tudo).
+        Promise.all([googleDriveService.listFolderFiles(folderId), raizesNaRotaDoProjeto(userId, projectId)]).then(
+          ([lista, raizes]) => (raizes ? filtrarAtalhosDoEscopo(lista, raizes) : lista),
+        )
 
     const [folderMeta, files] = await Promise.all([folderMetaPromise, filesPromise])
 
@@ -71,8 +85,12 @@ export async function GET(req: Request) {
       files: mapped,
     })
   } catch (error) {
+    if (error instanceof DriveIndisponivelError) {
+      return NextResponse.json({ error: 'Google Drive indisponível, tente de novo' }, { status: 503 })
+    }
+    // Projeto inexistente, sem acesso e pasta fora do projeto: a mesma resposta.
     if (error instanceof PermissionError) {
-      return NextResponse.json({ error: error.message }, { status: error.status })
+      return naoEncontrado()
     }
 
     console.error('[Drive API] Failed to load folder for download', error)

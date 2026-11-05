@@ -24,21 +24,48 @@ import type { Prisma } from '../../../prisma/generated/client'
 export type ClienteDoBanco = Prisma.TransactionClient | typeof db
 
 /**
- * Devolve a promessa do Prisma (serve tanto para `await` quanto para entrar
- * num `db.$transaction([...])` em lote). Com `client` de transação
- * interativa, roda dentro dela.
+ * Devolve a promessa do Prisma com o NÚMERO DE LINHAS afetadas (serve tanto
+ * para `await` quanto para entrar num `db.$transaction([...])` em lote). Com
+ * `client` de transação interativa, roda dentro dela.
+ *
+ * `somenteSe` (CP5b § 3.3): o merge só acontece se a Generation for do projeto
+ * E da página indicados (`"fieldValues"->>'pageId'`, o vínculo que
+ * `contextoDaMedicao` usa) E a página for do projeto (`EXISTS` por
+ * `Template.projectId`, a mesma relação que `ver-geracao` usa — `fieldValues.pageId`
+ * é JSON e não prova isso sozinho). 0 linhas = sem vínculo, nada gravado. Sem o
+ * parâmetro o SQL é byte a byte o de sempre — os chamadores atuais não mudam.
  */
 export function mesclarFieldValuesDaArte(
   client: ClienteDoBanco,
   generationId: string,
   patch: Record<string, unknown>,
-  colunas: { resultUrl?: string } = {},
+  colunas: { resultUrl?: string; somenteSe?: { projectId: number; pageId: string } } = {},
 ) {
   const json = JSON.stringify(patch)
+  const v = colunas.somenteSe
+  if (v !== undefined && colunas.resultUrl !== undefined) {
+    return client.$executeRaw`UPDATE "Generation" SET "fieldValues" = (CASE WHEN jsonb_typeof("fieldValues") = 'object' THEN "fieldValues" ELSE '{}'::jsonb END) || ${json}::jsonb, "resultUrl" = ${colunas.resultUrl} WHERE "id" = ${generationId} AND "projectId" = ${v.projectId} AND "fieldValues"->>'pageId' = ${v.pageId} AND EXISTS (SELECT 1 FROM "Page" p JOIN "Template" t ON t."id" = p."templateId" WHERE p."id" = ${v.pageId} AND t."projectId" = ${v.projectId})`
+  }
+  if (v !== undefined) {
+    return client.$executeRaw`UPDATE "Generation" SET "fieldValues" = (CASE WHEN jsonb_typeof("fieldValues") = 'object' THEN "fieldValues" ELSE '{}'::jsonb END) || ${json}::jsonb WHERE "id" = ${generationId} AND "projectId" = ${v.projectId} AND "fieldValues"->>'pageId' = ${v.pageId} AND EXISTS (SELECT 1 FROM "Page" p JOIN "Template" t ON t."id" = p."templateId" WHERE p."id" = ${v.pageId} AND t."projectId" = ${v.projectId})`
+  }
   if (colunas.resultUrl !== undefined) {
     return client.$executeRaw`UPDATE "Generation" SET "fieldValues" = (CASE WHEN jsonb_typeof("fieldValues") = 'object' THEN "fieldValues" ELSE '{}'::jsonb END) || ${json}::jsonb, "resultUrl" = ${colunas.resultUrl} WHERE "id" = ${generationId}`
   }
   return client.$executeRaw`UPDATE "Generation" SET "fieldValues" = (CASE WHEN jsonb_typeof("fieldValues") = 'object' THEN "fieldValues" ELSE '{}'::jsonb END) || ${json}::jsonb WHERE "id" = ${generationId}`
+}
+
+/**
+ * CP5d § 4.3 — FECHA como `FAILED` uma Generation que ainda está `PROCESSING`, numa ÚNICA instrução: status,
+ * `completedAt` e o patch do `fieldValues` (por merge raso — o registro do gate e o resto ficam) na mesma `UPDATE`,
+ * condicionada ao status. Dois fechamentos concorrentes (o explícito de `ajustarArte` e o cron de órfãs): quem chegar
+ * primeiro vence e grava o seu motivo; o segundo não escreve NADA (0 linhas) — em duas instruções (merge e depois
+ * `updateMany`) o segundo sobrescrevia o motivo antes de perder o status (Codex R4 do contrato do CP5d). Devolve o
+ * número de linhas (0 ou 1). `fieldValues` que não for objeto vira `{}` antes do merge.
+ */
+export function fecharGenerationComoFalha(client: ClienteDoBanco, generationId: string, patch: Record<string, unknown>) {
+  const json = JSON.stringify(patch)
+  return client.$executeRaw`UPDATE "Generation" SET "status" = 'FAILED'::"GenerationStatus", "completedAt" = NOW(), "fieldValues" = (CASE WHEN jsonb_typeof("fieldValues") = 'object' THEN "fieldValues" ELSE '{}'::jsonb END) || ${json}::jsonb WHERE "id" = ${generationId} AND "status" = 'PROCESSING'::"GenerationStatus"`
 }
 
 /**

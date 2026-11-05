@@ -183,7 +183,7 @@ export const toolsDePlanos = [
     acesso: { tipo: 'projeto' },
     superficies: ['remoto', 'local'],
     handler: async (args, principal) => {
-      const [{ criarPlano, anexarItensAoPlanoAtivo }, { quemDecidiu, itemParaChat }, { CreativeError }] =
+      const [{ criarPlano, anexarItensAoPlanoAtivo }, { quemDecidiu, itemParaChat, assertProjetoPermitido }, { CreativeError }] =
         await Promise.all([
           import('../../planos/plano-service'),
           import('../tools'),
@@ -201,6 +201,12 @@ export const toolsDePlanos = [
       const criadoPor = await quemDecidiu(projectId, principal)
 
       const entradas = (args.itens ?? []) as Array<Record<string, any>>
+      // O gate da porta confere só o projectId; cada cliente citado também tem
+      // de estar no alcance de quem chama.
+      const citados = new Set(
+        entradas.map((i) => i.clienteCitadoId).filter((id): id is number => typeof id === 'number' && id > 0),
+      )
+      for (const id of citados) await assertProjetoPermitido(id, principal)
       const itens = entradas.map((i) => ({
         quando: typeof i.quando === 'string' ? i.quando : null,
         tema: typeof i.tema === 'string' ? i.tema : null,
@@ -393,13 +399,18 @@ export const toolsDePlanos = [
     acesso: { tipo: 'projeto' },
     superficies: ['remoto', 'local'],
     handler: async (args, principal) => {
-      const [{ atualizarItem, transicionarItem }, { quemDecidiu, resolverPlano, itemParaChat }, { db }, { CreativeError }] = await Promise.all([
+      const [{ atualizarItem, transicionarItem }, { quemDecidiu, resolverPlano, itemParaChat, assertProjetoPermitido }, { db }, { CreativeError }] = await Promise.all([
         import('../../planos/plano-service'),
         import('../tools'),
         import('../../db'),
         import('../../creatives/errors'),
       ])
       const projectId = args.projectId as number
+      // O gate da porta confere só o projectId; o cliente citado também tem
+      // de estar no alcance de quem chama (0 limpa, sem checagem).
+      if (typeof args.clienteCitadoId === 'number' && args.clienteCitadoId > 0) {
+        await assertProjetoPermitido(args.clienteCitadoId, principal)
+      }
       const planoId = await resolverPlano(projectId, args.planoId)
 
       /**

@@ -13,7 +13,7 @@
  *   npx tsx scripts/plan-week.ts --project "By Rock"  # defaults to next Monday
  */
 
-import { google } from 'googleapis'
+import * as google from 'googleapis/build/src/apis/drive'
 import { PrismaClient } from '../prisma/generated/client'
 import * as https from 'https'
 import * as http from 'http'

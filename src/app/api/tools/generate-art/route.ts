@@ -200,6 +200,7 @@ async function fetchBrandAssets(projectId: number): Promise<BrandAssets | null> 
       bodyFontFamily: true,
       Logo: {
         where: { isProjectLogo: true },
+        orderBy: { id: 'asc' },
         select: { fileUrl: true },
         take: 1,
       },
@@ -1153,6 +1154,7 @@ async function handleTemplatePath(
       brandVisualElements: true,
       Logo: {
         where: { isProjectLogo: true },
+        orderBy: { id: 'asc' },
         select: { fileUrl: true },
         take: 1,
       },

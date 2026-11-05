@@ -68,6 +68,8 @@ function AssinaturasDaMarca({ projectId }: { projectId: number }) {
                 <div className="truncate font-medium group-hover:underline">{v.nome}</div>
                 <div className="flex flex-wrap gap-1 text-muted-foreground">
                   <Badge variant="outline" className="h-4 px-1 text-[10px]">{v.formato}</Badge>
+                  {/* T5: a variante promovida só entra numa peça quando pedida pelo nome ou id. */}
+                  {v.foraDoRodizio && <Badge variant="secondary" className="h-4 px-1 text-[10px]" data-selo="fora-do-rodizio" title="Só entra numa peça quando pedida pelo nome ou pelo id">Fora do rodízio</Badge>}
                   <span className="truncate">{v.papeis.join(' · ')}</span>
                 </div>
               </div>

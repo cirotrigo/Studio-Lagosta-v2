@@ -86,6 +86,13 @@ export async function upsertVectors(
   await index.upsert(vectors as unknown as Parameters<Index['upsert']>[0])
 }
 
+/** Quais destes ids NÃO estão no índice. Chunk gravado não prova o vetor: a reindexação pode ter caído antes de subi-lo. */
+export async function vetoresAusentes(ids: string[]): Promise<string[]> {
+  if (ids.length === 0) return []
+  const achados = await getVectorClient().fetch(ids)
+  return ids.filter((_, i) => !achados[i])
+}
+
 /**
  * Query relevant vectors by semantic similarity
  * @param embedding Query embedding vector

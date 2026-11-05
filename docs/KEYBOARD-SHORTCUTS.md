@@ -22,6 +22,26 @@ Camadas travadas ficam de fora. **Sem nada selecionado a seta volta a rolar a
 página** — o `preventDefault` só acontece quando há o que mover, e quem mexer
 nesse handler precisa manter essa saída.
 
+### 👁️ Exibição do canvas (L2 das linhas-guia, 29/10/2026)
+
+O mesmo estado do menu **Exibir** da barra do editor; a escolha fica salva por pessoa (localStorage,
+`lagosta:editor:exibicao`) e sobrevive à troca de página no modo contínuo. Nada disso sai no download, na miniatura
+nem no vídeo.
+
+| Atalho | Ação | Descrição |
+|--------|------|-----------|
+| `R` | **Margens da marca** | Mostra ou esconde as linhas azuis da margem da marca da página aberta |
+| `M` | **Interface do Instagram** | Mostra ou esconde a faixa hachurada e a máscara do Story |
+| `C` | **Bordas da página** | Mostra ou esconde as bordas amarelas do canvas |
+| `Alt` (segurar) | **Encaixe desligado** | Enquanto a tecla está presa, arrastar e redimensionar não encaixam; soltar devolve a preferência |
+| `Shift + R` | **Réguas e guias** | Mostra as réguas em px e as guias manuais da página (L4); a guia nasce arrastada da régua e some arrastada de volta |
+| `Shift + Alt + C` | **Centralizar (H)** | Centraliza a seleção no canvas, na horizontal |
+| `Shift + Alt + M` | **Centralizar (V)** | Centraliza a seleção no canvas, na vertical |
+
+`R`, `M` e `C` só valem **sozinhas**: com Ctrl/Cmd, Alt ou Shift não alternam nada (no Windows, `Shift+Alt+C` chegava
+como `c` e ligava as bordas). `Shift+Alt+C/M` são lidos pelo `code` da tecla, porque no Mac `Alt+C` produz `ç`. A
+decisão mora em `acaoDaTecla` (`src/lib/exibicao-do-editor.ts`), com testes.
+
 ### 🔒 Proteção de Inputs
 
 Os atalhos **não funcionam** quando você está:

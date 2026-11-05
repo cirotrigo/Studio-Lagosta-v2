@@ -24,6 +24,7 @@ import { getCurrentImageModel } from '@/lib/ai/openai-image-client'
 import { VERCEL_BLOB_HOST_REGEX } from '@/lib/ai/creative-improvement-service'
 import { OPENAI_INPUT_SIZE, FINAL_OUTPUT_SIZE } from '@/lib/ai/creative-improvement-format'
 import { ensureArteTemplate } from '@/lib/creatives/persist'
+import { assertDriveDoProjeto } from '@/lib/google-drive/escopo'
 import { calculateCreditsForModel, type AIImageModel } from '@/lib/ai/image-models-config'
 import { qualidadePadraoPara, type QualidadeArte } from '@/lib/ai/qualidade-arte'
 import {
@@ -295,6 +296,15 @@ export async function startArtGeneration(
   })
   if (!project) {
     throw new CreativeError('PROJECT_NOT_FOUND', 'Projeto não encontrado', 404)
+  }
+
+  // Foto do Drive como referência precisa estar sob as pastas deste projeto,
+  // para qualquer chamador; segue o id efetivo (o destino, se for atalho).
+  const memoDoDrive = new Map()
+  for (const ref of referencias) {
+    if (ref.driveFileId) {
+      ref.driveFileId = await assertDriveDoProjeto(input.projectId, ref.driveFileId, { memo: memoDoDrive })
+    }
   }
 
   /**

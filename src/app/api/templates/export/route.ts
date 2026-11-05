@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server'
 import { deductCreditsForFeature, validateCreditsForFeature } from '@/lib/credits/deduct'
 import { db } from '@/lib/db'
 import { InsufficientCreditsError } from '@/lib/credits/errors'
+import { fetchProjectWithShares, hasProjectWriteAccess } from '@/lib/projects/access'
 
 export const runtime = 'nodejs'
 
@@ -20,13 +21,20 @@ export async function POST(req: Request) {
     const body = await req.json()
     const { templateId, format } = body
 
+    // Com template, exige acesso de escrita ao projeto dele ANTES de registrar
+    // uso nesse projeto. Alheio ou inexistente: o mesmo 404. Sem template, o uso
+    // não é atribuído a projeto nenhum.
     let projectId: number | undefined
-    if (typeof templateId === 'number') {
-      const template = await db.template.findUnique({
-        where: { id: templateId },
-        select: { projectId: true },
-      })
-      projectId = template?.projectId
+    if (templateId != null) {
+      const template =
+        typeof templateId === 'number'
+          ? await db.template.findUnique({ where: { id: templateId }, select: { projectId: true } })
+          : null
+      const projeto = template ? await fetchProjectWithShares(template.projectId) : null
+      if (!hasProjectWriteAccess(projeto, { userId, orgId })) {
+        return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
+      }
+      projectId = template.projectId
     }
 
     console.log('[TEMPLATE_EXPORT] Starting export for user:', userId, 'format:', format)

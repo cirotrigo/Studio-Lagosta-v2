@@ -1,12 +1,14 @@
 /** Seleção opt-in sobre uma lista já curada pelo ranking do acervo. */
 import { CreativeError } from '@/lib/creatives/errors'
 import { compararComBaseline, leituraComparavel, type LeituraComparavel } from './comparar-baseline'
-import { lerCaixaDoAssunto } from './assunto-da-foto'
+import { fonteDaFoto } from './assunto-da-foto'
+import { assuntosOuRecusa } from '@/lib/creatives/assunto-da-foto-efetivo'
+import { entraNoRodizio } from './fora-do-rodizio'
 import type { SpecDePeca } from './spec'
 import type { ResultadoDaComposicao, OpcoesDeComposicao } from './compor'
 
 export interface DiagnosticoDaSelecao {
-  combinacoes: Array<{ foto: string; variante: string; impedimentos: string[]; pontos?: number; transitorio?: boolean; leitura?: LeituraComparavel; comparacao?: string[]; baseline?: boolean; detalhes?: Record<string, unknown> }>
+  combinacoes: Array<{ foto: string; variante: string; impedimentos: string[]; pendentesDePosicao?: string[]; pontos?: number; transitorio?: boolean; leitura?: LeituraComparavel; comparacao?: string[]; baseline?: boolean; detalhes?: Record<string, unknown> }>
   decisao?: 'baseline' | 'dominancia-tecnica'
   alternativas?: Array<{ foto: string; variante: string; motivos: string[] }>
   limite: number
@@ -22,8 +24,19 @@ export function avaliarCombinacao(r: ResultadoDaComposicao) {
   const d = r.diagnostico
   const impedimentos: string[] = []
   if (!d.contraste?.length) impedimentos.push('Contraste não medido; confira a foto e tente novamente.')
+  // CP2A (14/10/2026): o contraste que falha em texto cuja borda ficou SEM estratégia de tratamento (inviável
+  // ou recusada) não é impedimento terminal — só a posição (CP2B) pode resolver, e SEM_COMBINACAO só vem
+  // depois de posição e tratamento esgotados. Pesa na escolha entre as combinações.
+  const semEstrategia = new Set((d.tratamentoDeLeitura ?? []).filter((t) => t.estado === 'inviavel' || t.estado === 'recusado').flatMap((t) => t.textos.map((x) => x.camada)))
+  const pendentesDePosicao: string[] = []
   for (const c of d.contraste ?? []) {
-    if (!c.ok) impedimentos.push(`Contraste insuficiente em ${c.grupo}; escolha outra foto ou variante aprovada.`)
+    if (c.ok) continue
+    const semLeitura = (c.textos ?? []).filter((t) => !t.ok).map((t) => t.camada)
+    if (semLeitura.length > 0 && semLeitura.every((id) => semEstrategia.has(id))) {
+      pendentesDePosicao.push(`Contraste insuficiente em ${c.grupo}: nenhuma estratégia de tratamento serve na borda atual — a solução é de posição.`)
+    } else {
+      impedimentos.push(`Contraste insuficiente em ${c.grupo}; escolha outra foto ou variante aprovada.`)
+    }
   }
   // A caixa estimada por energia não é segmentação semântica. É um risco,
   // não prova de que texto ocultou um prato (especialmente em ambientes).
@@ -31,29 +44,34 @@ export function avaliarCombinacao(r: ResultadoDaComposicao) {
   if (cobertura && d.assuntoOrigem === 'catalogo') impedimentos.push('Todas as posições cobrem ou recortam excessivamente o assunto catalogado; escolha outro enquadramento/foto.')
   return {
     impedimentos,
+    ...(pendentesDePosicao.length > 0 ? { pendentesDePosicao } : {}),
     transitorio: !d.contraste?.length,
-    pontos: d.posicao.pontuacao - (cobertura ? 1 : 0) - d.blocos.reduce((s, b) => s + (1 - b.escala), 0),
+    pontos: d.posicao.pontuacao - (cobertura ? 1 : 0) - pendentesDePosicao.length - d.blocos.reduce((s, b) => s + (1 - b.escala), 0),
   }
 }
 
 export async function selecionarCombinacao(spec: SpecDePeca) {
   const { comporPeca, paginasDeAssinatura } = await import('./compor')
-  const { lerCatalogoDoProjeto } = await import('@/lib/creatives/acervo')
+  const { lerCatalogoDoProjeto, assuntosEfetivosDoProjeto } = await import('@/lib/creatives/acervo')
   const inicio = Date.now()
   const cacheDeFotos: NonNullable<OpcoesDeComposicao['cacheDeFotos']> = new Map()
+  const cacheDeLogos: NonNullable<OpcoesDeComposicao['cacheDeLogos']> = new Map()
   const { paginas } = await paginasDeAssinatura(spec.projectId)
   const variantes = paginas.filter((p) => p.formato === spec.formato && spec.blocos.every((b) => p.papeis.includes(b.papel)))
+  // T5: a promovida (fora do rodízio) só serve ao pedido explícito — nunca entra no laço, e sem pedido não conta na guarda.
+  const automaticas = variantes.filter(entraNoRodizio)
   const fotos: NonNullable<SpecDePeca['foto']>[] = spec.foto?.driveFileId || spec.foto?.url ? [spec.foto] :
     [...new Set(spec.fotosCandidatas ?? [])].slice(0, 3).map((driveFileId) => ({ driveFileId }))
   if (!fotos.length) throw new CreativeError('SPEC_INVALIDA', 'Seleção experimental exige foto explícita ou candidatas curadas.', 422)
-  if (!variantes.length) throw new CreativeError('SEM_COMBINACAO', 'Nenhuma variante do formato comporta todos os papéis pedidos. Preserve serviço e condições obrigatórias.', 422)
+  if (!(spec.preferencias?.variante ? variantes : automaticas).length) throw new CreativeError('SEM_COMBINACAO', 'Nenhuma variante do formato comporta todos os papéis pedidos. Preserve serviço e condições obrigatórias.', 422)
   let catalogo: Awaited<ReturnType<typeof lerCatalogoDoProjeto>> | null = null
   const avisos: string[] = []
   try { catalogo = await lerCatalogoDoProjeto(spec.projectId) } catch {
     avisos.push('Catálogo indisponível: conteúdo, unidade e campanha exigem revisão.')
   }
-  const assuntosDoCatalogo = new Map(fotos.flatMap((foto) => foto.driveFileId
-    ? [[foto.driveFileId, lerCaixaDoAssunto(catalogo?.todas.find((i) => i.driveFileId === foto.driveFileId)?.assunto)] as const] : []))
+  // F2b: fora do `tentar`, que engoliria a recusa — com arquétipo, a seleção não contorna a leitura obrigatória.
+  const idsDasFotos = [...new Set(fotos.map((f) => fonteDaFoto(f)).flatMap((f) => (f.coerente && f.id ? [f.id] : [])))]
+  const assuntosDoCatalogo = await assuntosOuRecusa(() => assuntosEfetivosDoProjeto(spec.projectId, idsDasFotos), idsDasFotos, !!spec.arquetipo)
   type Registro = DiagnosticoDaSelecao['combinacoes'][number]
   type Avaliada = { spec: SpecDePeca; registro: Registro; leitura: LeituraComparavel }
   const diagnosticos: Registro[] = []
@@ -71,7 +89,7 @@ export async function selecionarCombinacao(spec: SpecDePeca) {
     if (registro.impedimentos.length) { bloqueadas.add(idFoto(foto)); return null }
     const candidata: SpecDePeca = { ...spec, selecaoExperimental: undefined, fotosCandidatas: undefined, foto, preferencias: { ...spec.preferencias, variante } }
     try {
-      const r = await comporPeca(candidata, { somenteAvaliar: true, medirComparacao: true, cacheDeFotos, assuntosDoCatalogo })
+      const r = await comporPeca(candidata, { somenteAvaliar: true, medirComparacao: true, cacheDeFotos, cacheDeLogos, assuntosDoCatalogo })
       Object.assign(registro, avaliarCombinacao(r))
       registro.variante = r.diagnostico.assinatura.pageId ?? registro.variante
       const leitura = leituraComparavel(r)
@@ -91,7 +109,7 @@ export async function selecionarCombinacao(spec: SpecDePeca) {
   const baseline = await tentar(fotos[0], spec.preferencias?.variante, true)
   let interrompida = false
   if (!spec.preferencias?.variante) {
-    for (const variante of variantes) {
+    for (const variante of automaticas) {
       for (const foto of fotos) {
         if (baseline && baseline.registro.variante === variante.id && baseline.registro.foto === idFoto(foto)) continue
         if (bloqueadas.has(idFoto(foto))) continue
@@ -118,5 +136,5 @@ export async function selecionarCombinacao(spec: SpecDePeca) {
   if (!escolhida) throw new CreativeError(!diagnosticos.length || diagnosticos.some((d) => d.transitorio) ? 'SELECAO_INDISPONIVEL' : 'SEM_COMBINACAO', 'Nenhuma escolha sustentada pela comparação. Confira os impedimentos e alternativas, sem remover condições obrigatórias.', 422, { diagnosticos, alternativas, limite: LIMITE_COMBINACOES, janelaMs: JANELA_DE_SELECAO_MS })
   diagnostico.decisao = escolhida === baseline ? 'baseline' : 'dominancia-tecnica'
   avisos.push(`Seleção experimental: ${diagnostico.decisao === 'baseline' ? 'baseline preservado; melhoria não demonstrada' : 'dominância técnica relativa, sem aprovação estética'}. Logo, nitidez, peso tipográfico, conteúdo e gosto exigem revisão visual.`)
-  return { spec: escolhida.spec, avisos, diagnostico, cacheDeFotos, assuntosDoCatalogo }
+  return { spec: escolhida.spec, avisos, diagnostico, cacheDeFotos, cacheDeLogos, assuntosDoCatalogo }
 }

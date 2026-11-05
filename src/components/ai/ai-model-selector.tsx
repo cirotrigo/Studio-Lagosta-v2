@@ -16,6 +16,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Sparkles, Zap, Crown, Table } from 'lucide-react'
 import { AIModelsComparisonModal } from './ai-models-comparison-modal'
+import { useCobrancaLigada } from '@/hooks/use-credits'
 
 interface AIModelSelectorProps {
   value: AIImageModel
@@ -34,6 +35,8 @@ export function AIModelSelector({ value, onValueChange, disabled, filterByEditin
   })
   const selectedModel = AI_IMAGE_MODELS[value]
   const [showComparison, setShowComparison] = useState(false)
+  // Modo interno: sem custo em créditos ao lado do modelo.
+  const cobrancaLigada = useCobrancaLigada()
 
   return (
     <div className="space-y-2">
@@ -57,9 +60,11 @@ export function AIModelSelector({ value, onValueChange, disabled, filterByEditin
               {selectedModel.isRecommended && <Zap className="h-3.5 w-3.5 text-yellow-500 flex-shrink-0" />}
               {selectedModel.isNew && <Sparkles className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" />}
               <span className="truncate">{selectedModel.displayName}</span>
-              <span className="text-xs text-muted-foreground flex-shrink-0">
-                ({selectedModel.pricing.baseCredits}c)
-              </span>
+              {cobrancaLigada && (
+                <span className="text-xs text-muted-foreground flex-shrink-0">
+                  ({selectedModel.pricing.baseCredits}c)
+                </span>
+              )}
             </div>
           </SelectValue>
         </SelectTrigger>
@@ -71,7 +76,7 @@ export function AIModelSelector({ value, onValueChange, disabled, filterByEditin
                 {model.isNew && <Sparkles className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" />}
                 <span className="font-medium truncate">{model.displayName}</span>
                 <span className="text-xs text-muted-foreground flex-shrink-0">
-                  {model.pricing.baseCredits}c • ~{model.capabilities.averageSpeed}s
+                  {cobrancaLigada && `${model.pricing.baseCredits}c • `}~{model.capabilities.averageSpeed}s
                 </span>
               </div>
             </SelectItem>
@@ -107,6 +112,7 @@ export function ResolutionSelector({
   disabled,
 }: ResolutionSelectorProps) {
   const modelConfig = AI_IMAGE_MODELS[model]
+  const cobrancaLigada = useCobrancaLigada()
 
   // Apenas mostrar para modelos que suportam seleção de resolução
   if (!modelConfig.resolutions || modelConfig.resolutions.length === 0) {
@@ -130,9 +136,11 @@ export function ResolutionSelector({
               <div className="flex items-center justify-between gap-4">
                 <span>{resolution}</span>
                 {resolution === '4K' && <Crown className="h-3 w-3 text-yellow-500" />}
-                <span className="text-xs text-muted-foreground">
-                  ({getCredits(resolution)} créditos)
-                </span>
+                {cobrancaLigada && (
+                  <span className="text-xs text-muted-foreground">
+                    ({getCredits(resolution)} créditos)
+                  </span>
+                )}
               </div>
             </SelectItem>
           ))}

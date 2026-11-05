@@ -5,7 +5,7 @@
  * RenderEngine.measureTextLayerBox) e aponta:
  *  - overflow: o texto não cabe na caixa gravada (altura ou largura);
  *  - colisão: os GLIFOS de duas camadas de texto se sobrepõem;
- *  - fora-da-area-segura: texto invade as margens do story (CANVAS_MARGIN,
+ *  - fora-da-area-segura: texto invade a margem da marca padrão (`margensDoEditor`, 29/10/2026;
  *    as guias azuis do editor).
  *
  * Duas sutilezas aprendidas no repro do By Rock (template 140, Layout 2):
@@ -21,10 +21,13 @@
  * As fontes do projeto PRECISAM estar registradas antes de medir.
  */
 import type { Layer } from '@/types/template'
-import { CANVAS_MARGIN } from '@/lib/canvas-margin'
+import { margensDoEditor } from '@/lib/canvas-margin'
+import { formatoDaPaginaGravada } from '@/lib/compositor/formato'
 
 export type MeasureTextBox = (layer: Layer) => {
   height: number
+  /** A altura antes de arredondar. Ausente = o medidor só sabe `height`; ninguém inventa a fração. */
+  naturalHeight?: number
   maxLineWidth: number
   lineCount: number
   /** Folga entre a caixa-fórmula e a tinta real dos glifos (borda de cima/baixo). */
@@ -76,6 +79,35 @@ function isMeasurableText(layer: Layer): boolean {
   return layer.type === 'text' && layer.visible !== false
 }
 
+/**
+ * A tolerância de COLISÃO entre dois textos (CP5a, fonte única): vertical `max(4, 0,18 × maior corpo) + encaixe`,
+ * horizontal 4 px. Extraída de `checkTextGeometry` sem mudar o número; o gate de oclusão (`revisao/gate.ts`) a reutiliza
+ * como política declarada da exceção texto × texto (decisão 9.7 do contrato do CP5a).
+ */
+export function toleranciaDeColisao(a: { fontSize: number }, b: { fontSize: number }, encaixe: number): { vertical: number; horizontal: number } {
+  return {
+    vertical: Math.max(COLLISION_TOLERANCE_PX, 0.18 * Math.max(a.fontSize, b.fontSize)) + Math.max(0, encaixe),
+    horizontal: COLLISION_TOLERANCE_PX,
+  }
+}
+
+/**
+ * O ENCAIXE que vale entre duas camadas: só no MESMO `groupId`, o maior valor positivo e finito de
+ * `metadata.compositor.encaixe` das duas (a voz 2 entrando na linha de cima); entre grupos diferentes, 0.
+ */
+export function encaixeEntre(la: Layer | undefined, lb: Layer | undefined): number {
+  const encaixeDaCamada = (l: Layer | undefined): number => {
+    const v = (l?.metadata as { compositor?: { encaixe?: unknown } } | undefined)?.compositor?.encaixe
+    return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0
+  }
+  const grupoDe = (l: Layer | undefined): string | null => {
+    const g = (l?.metadata as { groupId?: unknown } | undefined)?.groupId
+    return typeof g === 'string' && g ? g : null
+  }
+  const mesmoGrupo = grupoDe(la) !== null && grupoDe(la) === grupoDe(lb)
+  return mesmoGrupo ? Math.max(encaixeDaCamada(la), encaixeDaCamada(lb)) : 0
+}
+
 export function measureTextLayers(layers: Layer[], measure: MeasureTextBox): TextLayerMetrics[] {
   const metrics: TextLayerMetrics[] = []
   for (const layer of layers) {
@@ -120,7 +152,6 @@ export function checkTextGeometry(
   const metricas = measureTextLayers(layers, measure)
   const colisoes: TextGeometryIssue[] = []
   const overflows: TextGeometryIssue[] = []
-  const foraDaArea: TextGeometryIssue[] = []
 
   // a) overflow da própria caixa (vertical e horizontal). O critério vertical
   //    é PARIDADE COM O TRUNCAMENTO do render: sem autoExpand, ele descarta
@@ -166,14 +197,6 @@ export function checkTextGeometry(
   //    não é colisão — sem isso o autofix encolhia a manchete até desfazer o
   //    encaixe (88 → 77 px, 11/09/2026). Entre grupos diferentes não vale nada.
   const porId = new Map(layers.map((l) => [l.id, l]))
-  const encaixeDaCamada = (l: Layer | undefined): number => {
-    const v = (l?.metadata as { compositor?: { encaixe?: unknown } } | undefined)?.compositor?.encaixe
-    return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0
-  }
-  const grupoDe = (l: Layer | undefined): string | null => {
-    const g = (l?.metadata as { groupId?: unknown } | undefined)?.groupId
-    return typeof g === 'string' && g ? g : null
-  }
   for (let i = 0; i < metricas.length; i++) {
     for (let j = i + 1; j < metricas.length; j++) {
       const a = metricas[i]
@@ -182,12 +205,9 @@ export function checkTextGeometry(
         Math.min(a.glyphBottom, b.glyphBottom) - Math.max(a.glyphTop, b.glyphTop)
       const overlapH =
         Math.min(a.box.x + a.box.width, b.box.x + b.box.width) - Math.max(a.box.x, b.box.x)
-      const la = porId.get(a.layerId)
-      const lb = porId.get(b.layerId)
-      const mesmoGrupo = grupoDe(la) !== null && grupoDe(la) === grupoDe(lb)
-      const encaixe = mesmoGrupo ? Math.max(encaixeDaCamada(la), encaixeDaCamada(lb)) : 0
-      const toleranciaV = Math.max(COLLISION_TOLERANCE_PX, 0.18 * Math.max(a.fontSize, b.fontSize)) + encaixe
-      if (overlapV > toleranciaV && overlapH > COLLISION_TOLERANCE_PX) {
+      // CP5a: a tolerância é FONTE ÚNICA (`toleranciaDeColisao`) — o gate de oclusão a reutiliza como política.
+      const tolerancia = toleranciaDeColisao(a, b, encaixeEntre(porId.get(a.layerId), porId.get(b.layerId)))
+      if (overlapV > tolerancia.vertical && overlapH > tolerancia.horizontal) {
         colisoes.push({
           tipo: 'colisao',
           camadas: [a.name, b.name],
@@ -199,16 +219,26 @@ export function checkTextGeometry(
     }
   }
 
-  // c) área segura do story (margens assimétricas das guias do editor),
-  //    escaladas pela largura do canvas. Só texto: logo na borda é decisão de
-  //    layout, não defeito.
-  const escala = canvas.width / 1080
-  const limites = {
-    top: CANVAS_MARGIN.top * escala,
-    bottom: canvas.height - CANVAS_MARGIN.bottom * escala,
-    left: CANVAS_MARGIN.left * escala,
-    right: canvas.width - CANVAS_MARGIN.right * escala,
-  }
+  // c) área segura (a margem da marca padrão, pelo formato do canvas), já na
+  //    escala da peça. Só texto: logo na borda é decisão de layout, não defeito.
+  const foraDaArea = foraDaAreaSegura(metricas, limitesDaAreaSegura(canvas))
+
+  return { issues: [...colisoes, ...overflows, ...foraDaArea], metricas }
+}
+
+/** As quatro linhas da área segura da peça (`margensDoEditor`, padrão da casa), nos nomes deste módulo. */
+export function limitesDaAreaSegura(canvas: { width: number; height: number }): { top: number; bottom: number; left: number; right: number } {
+  const m = margensDoEditor({ formato: formatoDaPaginaGravada(canvas), assinatura: null, largura: canvas.width, altura: canvas.height }).marca
+  return { top: m.topo, bottom: m.base, left: m.esquerda, right: m.direita }
+}
+
+/**
+ * Os textos cuja tinta (vertical) ou caixa (horizontal) passa das linhas, com a folga `SAFE_AREA_TOLERANCE_PX`.
+ * Separado de `checkTextGeometry` para a medição de 29/10 comparar as margens antigas e as novas sobre as MESMAS
+ * métricas (`scripts/medir-margens-2026-10-29.ts`).
+ */
+export function foraDaAreaSegura(metricas: TextLayerMetrics[], limites: { top: number; bottom: number; left: number; right: number }): TextGeometryIssue[] {
+  const foraDaArea: TextGeometryIssue[] = []
   for (const m of metricas) {
     const excessos: string[] = []
     let maiorExcesso = 0
@@ -238,6 +268,5 @@ export function checkTextGeometry(
       })
     }
   }
-
-  return { issues: [...colisoes, ...overflows, ...foraDaArea], metricas }
+  return foraDaArea
 }

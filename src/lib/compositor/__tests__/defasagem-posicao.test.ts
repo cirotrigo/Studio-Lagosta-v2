@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { specComAPosicaoOriginal } from '../defasagem'
+import { escolhaEspacialOriginal, specComAPosicaoOriginal } from '../defasagem'
 import type { SpecDePeca } from '../spec'
 
 const spec = (preferencias?: SpecDePeca['preferencias']): SpecDePeca =>
@@ -34,5 +34,110 @@ describe('posição da peça na recomposição', () => {
   it('"auto" na spec não é pedido: a posição original vale', () => {
     const r = specComAPosicaoOriginal(spec({ ancora: 'auto', alinha: 'auto' }), composicao('rodape', 'centro'))
     expect(r.preferencias).toMatchObject({ ancora: 'rodape', alinha: 'centro' })
+  })
+})
+
+describe('posição da peça COM arquétipo na recomposição (T1a)', () => {
+  const arquetipo = { id: 'minimal-fb-topo-esquerda', versao: 1, impressao: 'arq1-1f4ab8c4a215f2' }
+  const comArquetipo = (preferencias?: SpecDePeca['preferencias']) => ({ ...spec(preferencias), arquetipo }) as SpecDePeca
+
+  it('23. não injeta âncora nem alinhamento: o arquétipo já congela a geometria (a variante, estilo, continua fixada)', () => {
+    const r = specComAPosicaoOriginal(comArquetipo(), { composicao: { posicao: { ancora: 'topo', alinha: 'esquerda', crop: 'center-middle' }, assinatura: { pageId: 'pag-1' } } })
+    expect(r.preferencias).toEqual({ varianteOriginal: 'pag-1' })
+    expect(r.arquetipo).toEqual(arquetipo)
+  })
+
+  it('sem variante para fixar, devolve a MESMA spec (nada muda)', () => {
+    const s = comArquetipo()
+    expect(specComAPosicaoOriginal(s, composicao('rodape', 'centro'))).toBe(s)
+  })
+})
+
+describe('escolha espacial na recomposição (CP2B)', () => {
+  const arquetipo = { id: 'minimal-fb-topo-esquerda', versao: 1, impressao: 'arq1-1f4ab8c4a215f2' }
+  const comArquetipo = { ...spec(), arquetipo } as SpecDePeca
+  const escolha = { modo: 'busca-espacial-v1', foto: 'drive-123', corte: 'center-top', deslocamentos: { headline: -32, servico: 0, logo: 0 }, cantoDaLogo: null }
+  const gravada = (extra: Record<string, unknown>) => ({ composicao: { posicao: { ancora: 'topo', alinha: 'esquerda' }, arquetipo: { ...arquetipo, ...extra } } })
+  const daBusca = (e: unknown) => gravada({ modo: 'busca-espacial-v1', buscaEspacial: { versao: 'busca-espacial-v1', id: 'esc-1', escolha: e, vencedor: null } })
+  const codigo = (f: () => unknown) => {
+    try {
+      f()
+      return null
+    } catch (e) {
+      return (e as { code?: string }).code ?? 'sem código'
+    }
+  }
+
+  it('F2a: a escolha com corte "janela" volta com a janela lida; sem janela legível, ilegível (nunca "center-middle" por cima)', () => {
+    const janela = { x: 0.177, y: 0.058, width: 0.624, height: 0.742 }
+    expect(escolhaEspacialOriginal(daBusca({ ...escolha, corte: 'janela', janela }), comArquetipo)).toMatchObject({ modo: 'busca-espacial-v1', corte: 'janela', janela })
+    expect(codigo(() => escolhaEspacialOriginal(daBusca({ ...escolha, corte: 'janela' }), comArquetipo))).toBe('ARQUETIPO_ESCOLHA_ILEGIVEL')
+    // O histórico da busca guarda o corte 'janela' avaliado (Codex, rodada 2, P3).
+    const comHistorico = daBusca({ ...escolha, corte: 'janela', janela })
+    ;(comHistorico.composicao.arquetipo as Record<string, any>).buscaEspacial = { ...(comHistorico.composicao.arquetipo as Record<string, any>).buscaEspacial, motivo: 'ok', combinacoesAvaliadas: 1, cortesAvaliados: ['janela'] }
+    expect(escolhaEspacialOriginal(comHistorico, comArquetipo)).toMatchObject({ buscaOriginal: { cortesAvaliados: ['janela'] } })
+    // A janela gravada fora de faixa é RESOLVIDA como o desenho (o clamp), nunca ignorada (Codex, F2a rodada 1, P2 #7)…
+    expect(escolhaEspacialOriginal(daBusca({ ...escolha, corte: 'janela', janela: { x: 0.9, y: 0, width: 0.5, height: 0.5 } }), comArquetipo)).toMatchObject({ corte: 'janela', janela: { x: 0.9, y: 0, width: 1 - 0.9, height: 0.5 } })
+    // …e só a que o desenho também não aceita (nada sobra depois do clamp) é ilegível.
+    expect(codigo(() => escolhaEspacialOriginal(daBusca({ ...escolha, corte: 'janela', janela: { x: 1, y: 0, width: 0.5, height: 0.5 } }), comArquetipo))).toBe('ARQUETIPO_ESCOLHA_ILEGIVEL')
+  })
+
+  it('sem arquétipo, null — nem lê o diagnóstico', () => {
+    expect(escolhaEspacialOriginal(null, spec())).toBeNull()
+    expect(escolhaEspacialOriginal(daBusca(escolha), spec())).toBeNull()
+  })
+
+  it('peça do T1a (modo referência) reproduz a referência', () => {
+    expect(escolhaEspacialOriginal(gravada({ modo: 'referencia', papeis: [] }), comArquetipo)).toEqual({ modo: 'referencia' })
+  })
+
+  it('a escolha da busca volta LIMPA (cópia, sem as chaves do diagnóstico)', () => {
+    const fv = daBusca({ ...escolha, lixo: 1 })
+    const r = escolhaEspacialOriginal(fv, comArquetipo)
+    expect(r).toEqual(escolha)
+    expect(r).not.toBe((fv.composicao.arquetipo as unknown as { buscaEspacial: { escolha: unknown } }).buscaEspacial.escolha)
+    expect((r as typeof escolha).deslocamentos).not.toBe(escolha.deslocamentos)
+    // cantoDaLogo é opcional: ausente continua ausente.
+    const { cantoDaLogo: _c, ...semCanto } = escolha
+    expect(escolhaEspacialOriginal(daBusca(semCanto), comArquetipo)).toEqual(semCanto)
+    expect(escolhaEspacialOriginal(daBusca({ ...escolha, foto: null, cantoDaLogo: 'inferior-direito' }), comArquetipo)).toMatchObject({ foto: null, cantoDaLogo: 'inferior-direito' })
+  })
+
+  it.each([
+    ['diagnóstico ausente', { composicao: { posicao: {} } }],
+    ['fieldValues nulo', null],
+    ['modo desconhecido', gravada({ modo: 'busca-espacial-v2' })],
+    ['busca sem escolha', gravada({ modo: 'busca-espacial-v1', buscaEspacial: {} })],
+    ['escolha de outro modo', daBusca({ ...escolha, modo: 'referencia' })],
+    ['foto que não é texto', daBusca({ ...escolha, foto: 7 })],
+    ['foto ausente', daBusca({ ...escolha, foto: undefined })],
+    ['corte inválido', daBusca({ ...escolha, corte: 'meio' })],
+    ['corte herdado do protótipo', daBusca({ ...escolha, corte: 'constructor' })],
+    ['deslocamentos em lista', daBusca({ ...escolha, deslocamentos: [0] })],
+    ['dy não inteiro', daBusca({ ...escolha, deslocamentos: { headline: 12.5 } })],
+    ['dy infinito', daBusca({ ...escolha, deslocamentos: { headline: Infinity } })],
+    ['dy em texto', daBusca({ ...escolha, deslocamentos: { headline: '12' } })],
+    // O cta virou membro no #15 (coluna do rodapé); "rodape" nunca foi papel.
+    ['membro inválido', daBusca({ ...escolha, deslocamentos: { rodape: 0 } })],
+    ['canto inválido', daBusca({ ...escolha, cantoDaLogo: 'meio' })],
+  ])('ilegível (%s) recusa com ARQUETIPO_ESCOLHA_ILEGIVEL', (_nome, fv) => {
+    expect(codigo(() => escolhaEspacialOriginal(fv, comArquetipo))).toBe('ARQUETIPO_ESCOLHA_ILEGIVEL')
+  })
+
+  it.each([
+    ['id', { id: 'outro' }],
+    ['versão', { versao: 2 }],
+    ['impressão', { impressao: 'arq1-00000000000000' }],
+    ['impressão ausente', { impressao: undefined }],
+  ])('diagnóstico de outra definição (%s) recusa com ARQUETIPO_ESCOLHA_ILEGIVEL', (_nome, diferente) => {
+    expect(codigo(() => escolhaEspacialOriginal(gravada({ modo: 'referencia', ...diferente }), comArquetipo))).toBe('ARQUETIPO_ESCOLHA_ILEGIVEL')
+  })
+
+  it('specComAPosicaoOriginal não muda com a escolha gravada (nem âncora, nem alinhamento, nem escolha na spec)', () => {
+    const fv = { composicao: { ...daBusca(escolha).composicao, assinatura: { pageId: 'pag-1' } } }
+    const r = specComAPosicaoOriginal(comArquetipo, fv)
+    expect(r.preferencias).toEqual({ varianteOriginal: 'pag-1' })
+    expect(r).not.toHaveProperty('escolhaEspacial')
+    expect(specComAPosicaoOriginal(spec(), daBusca(escolha)).preferencias).toEqual({ ancora: 'topo', alinha: 'esquerda' })
   })
 })

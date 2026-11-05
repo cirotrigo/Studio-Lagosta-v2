@@ -99,13 +99,15 @@ export async function gravarCamadasComRevisao(
     humana?: boolean
     /** Reconcilia o contrato com as camadas RELIDAS antes da escrita como revisão do sistema (PR5-06). */
     reconciliarComAnteriores?: boolean
-    dados?: Record<string, unknown>
+    /** Os outros campos da escrita; como função, calculados sobre a MESMA base relida a cada volta (T5: as tags). */
+    dados?: Record<string, unknown> | ((base: { tags: string[] }) => Record<string, unknown>)
     voltas?: number
   },
 ): Promise<CamadasGravadas | null> {
   for (let volta = 0; volta < (args.voltas ?? 4); volta++) {
-    const base = await cliente.page.findUnique({ where: { id: args.pageId }, select: { updatedAt: true, layers: true, copyAutoral: true, background: true, width: true, height: true } })
+    const base = await cliente.page.findUnique({ where: { id: args.pageId }, select: { updatedAt: true, layers: true, copyAutoral: true, background: true, width: true, height: true, tags: true } })
     if (!base) return null
+    const dados = typeof args.dados === 'function' ? args.dados(base) : args.dados
     let camadas = args.camadas(base)
     if (args.humana) {
       const novas = lerCamadas(camadas)
@@ -116,7 +118,7 @@ export async function gravarCamadasComRevisao(
     const revisao = revisaoDaPaginaComCamadas(base.copyAutoral, camadas, args.quem, args.reconciliarComAnteriores ? { camadasAnteriores: base.layers } : {})
     const gravada = await cliente.page.updateMany({
       where: { id: args.pageId, updatedAt: base.updatedAt },
-      data: { ...(args.dados ?? {}), layers: camadas, ...(revisao.estado === 'registrada' && revisao.copy ? { copyAutoral: revisao.copy as never } : {}) },
+      data: { ...(dados ?? {}), layers: camadas, ...(revisao.estado === 'registrada' && revisao.copy ? { copyAutoral: revisao.copy as never } : {}) },
     })
     if (gravada.count > 0) return { camadas, base, revisao, aviso: recusaDaRevisao(revisao) }
   }

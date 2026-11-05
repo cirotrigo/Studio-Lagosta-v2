@@ -4,8 +4,13 @@
  *
  * Cada ajuste é aplicado em ordem sobre as camadas da página, e o que não
  * pode ser aplicado é RECUSADO com o motivo (camada inexistente, tipo errado),
- * nunca aplicado pela metade. Os cuidados, quase todos vindos da revisão
- * adversarial do Codex sobre a primeira versão:
+ * nunca aplicado pela metade. NADA EM SILÊNCIO (CP1, 13/10/2026): todo campo
+ * de todo ajuste termina APLICADO (e aparece no `detalhe`) ou RECUSADO (com
+ * `codigo` e os `campos`) — um campo que o tipo não usa ou uma cor pedida para
+ * um gradiente que já existe recusam o ajuste inteiro; um valor limitado pela
+ * peça, ou uma borda que diverge da camada apontada, aparece no `detalhe`.
+ * Os cuidados, quase todos vindos da revisão adversarial do Codex sobre a
+ * primeira versão:
  *
  *  - **O delta de altura é medido pelo MESMO medidor dos dois lados** (antes e
  *    depois da mudança). A altura gravada pode ter vindo do editor; comparar a
@@ -45,19 +50,48 @@ import {
   type Borda,
   type CurvaDoGradiente,
 } from '@/lib/compositor/gradiente-de-leitura'
-import { problemaDoAjuste, type Ajuste } from './contrato'
+import { problemaEstruturadoDoAjuste, type Ajuste, type CodigoDaRecusa } from './contrato'
+import { textoVisivel } from './texto-visivel'
 
 export interface AjusteAplicado {
   indice: number
   tipo: Ajuste['tipo']
   camadas: string[]
   detalhe: string
+  /** O rótulo `achado` do ajuste, quando veio (rastreabilidade por índice, CP1). */
+  achado?: string
+  /** CP4: a comparação antes/depois que aceitou (as melhoras medidas e o estado do achado alvo). */
+  comparacao?: ComparacaoDoAjuste
+  /** CP4: o que o autofix geométrico mudou na cópia aceita (fonte, entrelinha, caixa) — dito, nunca em silêncio. */
+  autocorrecao?: Array<{ layerId: string; propriedade: string; de: number; para: number; motivo: string }>
+}
+
+/** O que a não-piora (CP4) mediu de um ajuste: as pioras (antes → depois), o que não pôde medir e o achado alvo. */
+export interface ComparacaoDoAjuste {
+  pioras: Array<{ propriedade: string; camadas: string[]; antes: number | string | null; depois: number | string | null; motivo: string }>
+  naoMedidas: Array<{ propriedade: string; lado: 'antes' | 'depois' | 'ambos'; motivo: string }>
+  melhoras: Array<{ propriedade: string; camadas: string[]; antes: number | string | null; depois: number | string | null }>
+  achadoAlvo?: { id: string; regra: string; estado: string; antes: number | null; depois: number | null }
+  /** Regras `nao-avaliada` dos dois lados por não se aplicarem à peça (sem foto → sem assunto): ditas, não recusam. */
+  naoAplicaveis?: Array<{ propriedade: string; motivo: string }>
+  /** CP4: a candidata também é comparada com o estado de ENTRADA da chamada (contra a catraca de tolerâncias). */
+  contraEntrada?: { pioras: ComparacaoDoAjuste['pioras'] }
 }
 
 export interface AjusteRecusado {
   indice: number
   tipo: string
   motivo: string
+  /** Por que (estável). Ausente em registros anteriores ao CP1 (13/10/2026). */
+  codigo?: CodigoDaRecusa
+  /** Os campos do ajuste que causaram a recusa, quando a causa é um campo. */
+  campos?: string[]
+  /** O rótulo `achado` do ajuste, quando veio. */
+  achado?: string
+  /** CP4.1: o que o autofix geométrico mexeu na candidata recusada — a piora pode ter vindo da escada dele, não do ajuste pedido. */
+  autocorrecao?: Array<{ layerId: string; propriedade: string; de: number; para: number; motivo: string }>
+  /** CP4: a comparação antes/depois que recusou (pioras, não medidas, achado alvo). */
+  comparacao?: ComparacaoDoAjuste
 }
 
 export interface ResultadoDosAjustes {
@@ -93,6 +127,12 @@ export function bordaDaLeitura(l: Layer, H: number): Borda {
   const b = l.metadata?.borda
   if (b === 'topo' || b === 'rodape') return b
   return bordaDaCamadaDeGradiente(l) ?? ((l.position?.y ?? 0) <= 1 && (l.size?.height ?? 0) < H ? 'topo' : 'rodape')
+}
+
+/** Todas as cores das paradas de um gradiente (#RRGGBB), sem repetir. */
+function coresDoGradiente(l: Layer): string[] {
+  const stops = (l.style as { gradientStops?: Array<{ color?: string }> } | undefined)?.gradientStops ?? []
+  return [...new Set(stops.map((s) => s.color).filter((c): c is string => typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c)))]
 }
 
 function corDoGradiente(l: Layer | undefined): string | null {
@@ -272,29 +312,44 @@ function inserirAcimaDoFundo(camadas: Layer[], nova: Layer, canvas: Canvas): Lay
 export function aplicarAjustes(
   entrada: Layer[],
   ajustes: Ajuste[],
-  ctx: { canvas: Canvas; medir: MeasureLayerHeight },
+  ctx: {
+    canvas: Canvas
+    medir: MeasureLayerHeight
+    indiceBase?: number
+    /**
+     * O conteúdo de cada texto como a PÁGINA o tinha antes desta chamada (id → content). Esvaziar o texto pelo
+     * `slotValues` e escondê-lo por `visibilidade` na MESMA chamada é apagar copy em dois passos: a recusa olha os dois.
+     */
+    conteudoAnterior?: ReadonlyMap<string, string>
+  },
 ): ResultadoDosAjustes {
   let camadas = entrada
   const aplicados: AjusteAplicado[] = []
   const recusados: AjusteRecusado[] = []
   const alteradas = new Set<string>()
   const W = ctx.canvas.width
+  // O índice é o do LOTE: o executor do CP4 chama um ajuste por vez e o registro (inclusive a marca
+  // `ocultaPeloRevisor.ajuste`) tem de apontar o índice que a pessoa mandou, não 0.
+  const indiceBase = ctx.indiceBase ?? 0
   const H = ctx.canvas.height
   // O medidor do servidor só mede `text`; o rich text é medido como texto
   // simples do mesmo corpo e entrelinha — a mesma aproximação do compositor.
   const medirTexto = (l: Layer) => ctx.medir(l.type === 'rich-text' ? ({ ...l, type: 'text' } as Layer) : l)
 
-  ajustes.forEach((a, indice) => {
-    const problema = problemaDoAjuste(a)
+  ajustes.forEach((a, i) => {
+    const indice = indiceBase + i
+    const recusar = (codigo: CodigoDaRecusa, motivo: string, campos?: string[]) =>
+      recusados.push({ indice, tipo: String(a.tipo), motivo, codigo, ...(campos?.length ? { campos } : {}) })
+    const problema = problemaEstruturadoDoAjuste(a)
     if (problema) {
-      recusados.push({ indice, tipo: String(a.tipo), motivo: problema })
+      recusar(problema.codigo, problema.motivo, problema.campos)
       return
     }
     const porId = new Map(camadas.map((l) => [l.id, l]))
     const ids = a.camadas ?? []
     const faltando = ids.filter((id) => !porId.has(id))
     if (faltando.length > 0) {
-      recusados.push({ indice, tipo: a.tipo, motivo: `camada inexistente na página: ${faltando.join(', ')}` })
+      recusar('CAMADA_INEXISTENTE', `camada inexistente na página: ${faltando.join(', ')}`, ['camadas'])
       return
     }
 
@@ -303,15 +358,16 @@ export function aplicarAjustes(
         const alvos = ids.map((id) => porId.get(id)!)
         const naoTexto = alvos.filter((l) => !ehTexto(l))
         if (naoTexto.length > 0) {
-          recusados.push({ indice, tipo: a.tipo, motivo: `fonte só vale para texto: ${naoTexto.map((l) => l.id).join(', ')}` })
+          recusar('CAMADA_DE_OUTRO_TIPO', `fonte só vale para texto: ${naoTexto.map((l) => l.id).join(', ')}`, ['camadas'])
           return
         }
         const novas = new Map<string, Layer>()
         const partes: string[] = []
         for (const l of alvos) {
           const corpo = typeof l.style?.fontSize === 'number' ? l.style.fontSize : 16
+          // Só a entrelinha pedida: o corpo fica como está (nem arredondado, nem limitado).
           const pedido = a.fontSize != null ? a.fontSize : a.escala != null ? corpo * a.escala : corpo
-          const final = Math.max(8, Math.min(600, Math.round(pedido)))
+          const final = a.fontSize == null && a.escala == null ? corpo : Math.max(8, Math.min(600, Math.round(pedido)))
           const razao = final / corpo
           const alturaAntes = medirTexto(l)
           let nova: Layer = { ...l, style: { ...(l.style ?? {}), fontSize: final } }
@@ -340,7 +396,11 @@ export function aplicarAjustes(
           }
           novas.set(l.id, nova)
           alteradas.add(l.id)
-          partes.push(`${l.name || l.id}: ${corpo}→${final}px${a.entrelinha != null ? `, entrelinha ${a.entrelinha}` : ''}`)
+          const pedidoDito = a.fontSize != null ? a.fontSize : Number(pedido.toPrecision(12))
+          const nota = Math.round(pedido) !== final ? `pedido ${pedidoDito}px, limitado` : pedido !== final ? `pedido ${pedidoDito}px, arredondado` : ''
+          const comoPedido = a.escala != null ? ` (escala ${a.escala}${nota ? `, ${nota}` : ''})` : nota ? ` (${nota})` : ''
+          const corpoDito = a.fontSize == null && a.escala == null ? `corpo ${corpo}px mantido` : `${corpo}→${final}px${comoPedido}`
+          partes.push(`${l.name || l.id}: ${corpoDito}${a.entrelinha != null ? `, entrelinha ${a.entrelinha}` : ''}`)
         }
         camadas = refluir(camadas, novas, ctx.canvas)
         aplicados.push({ indice, tipo: a.tipo, camadas: ids, detalhe: partes.join('; ') })
@@ -350,11 +410,22 @@ export function aplicarAjustes(
       case 'mover': {
         const dx = Math.round(a.dx ?? 0)
         const dy = Math.round(a.dy ?? 0)
+        if (dx === 0 && dy === 0) {
+          recusar('SEM_EFEITO', `o deslocamento arredonda para 0px (dx ${a.dx ?? 0}, dy ${a.dy ?? 0})`, ['dx', 'dy'].filter((k) => (a as Record<string, unknown>)[k] != null))
+          return
+        }
+        // Um eixo pedido (≠ 0) que arredonda para 0px sumiria enquanto o outro se aplica: o ajuste é recusado inteiro.
+        const eixosNulos = (['dx', 'dy'] as const).filter((k) => a[k] != null && a[k] !== 0 && Math.round(a[k]!) === 0)
+        if (eixosNulos.length > 0) {
+          recusar('SEM_EFEITO', `${eixosNulos.map((k) => `${k} ${a[k]}`).join(', ')} arredonda para 0px: o ajuste foi recusado inteiro (nada foi movido)`, [...eixosNulos])
+          return
+        }
         const mover = new Set(ids)
         camadas = camadas.map((l) =>
           mover.has(l.id) ? { ...l, position: { x: Math.round(l.position.x + dx), y: Math.round(l.position.y + dy) } } : l,
         )
-        aplicados.push({ indice, tipo: a.tipo, camadas: ids, detalhe: `deslocadas ${dx}px na horizontal e ${dy}px na vertical` })
+        const arredondado = (a.dx ?? 0) !== dx || (a.dy ?? 0) !== dy ? ` (pedido dx ${a.dx ?? 0}, dy ${a.dy ?? 0}, arredondado ao pixel)` : ''
+        aplicados.push({ indice, tipo: a.tipo, camadas: ids, detalhe: `deslocadas ${dx}px na horizontal e ${dy}px na vertical${arredondado}` })
         return
       }
 
@@ -364,7 +435,7 @@ export function aplicarAjustes(
         if (ids.length > 0) {
           alvo = porId.get(ids[0])
           if (!alvo || !ehGradiente(alvo)) {
-            recusados.push({ indice, tipo: a.tipo, motivo: `a camada indicada não é um gradiente: ${ids[0]}` })
+            recusar('CAMADA_DE_OUTRO_TIPO', `a camada indicada não é um gradiente: ${ids[0]}`, ['camadas'])
             return
           }
         } else {
@@ -372,24 +443,74 @@ export function aplicarAjustes(
             (l) => ehGradiente(l) && l.visible !== false && ehGradienteDeLeitura(l) && bordaDaLeitura(l, H) === borda,
           )
         }
+        /** A força gravada (3 casas) e, quando difere, a pedida. */
+        const forcaDita = (gravada: number) => (gravada !== a.forca ? `${gravada} (pedida ${a.forca}, arredondada)` : `${gravada}`)
+        /** A altura pedida, e o que a peça deixou aplicar (nunca maior que ela). */
+        const alturaDoPedido = (pedida: number) => {
+          const aplicada = Math.round(Math.min(H, pedida))
+          const texto =
+            aplicada !== Math.round(pedida)
+              ? `altura ${aplicada}px (pedida ${pedida}px, limitada à altura da peça)`
+              : aplicada !== pedida
+                ? `altura ${aplicada}px (pedida ${pedida}px, arredondada)`
+                : `altura ${aplicada}px`
+          return { aplicada, texto }
+        }
+        // Pela borda, a busca acima só acha o gradiente DO COMPOSITOR. Com `cor`, um gradiente desenhado à mão
+        // naquela borda (o mesmo critério do revisor) também conta: criar outro de outra cor por baixo dele
+        // seria a troca de cor por outra porta.
+        const desenhadoNaBorda =
+          !alvo && a.cor != null
+            ? camadas.find(
+                (l) =>
+                  ehGradiente(l) &&
+                  l.visible !== false &&
+                  (l.size?.width ?? 0) >= W * 0.9 &&
+                  bordaDaLeitura(l, H) === borda &&
+                  coresDoGradiente(l).some((c) => c.toUpperCase() !== a.cor!.toUpperCase()),
+              )
+            : undefined
+        if (desenhadoNaBorda) {
+          recusar(
+            'COR_DE_GRADIENTE_EXISTENTE',
+            `a borda já tem o gradiente ${desenhadoNaBorda.id} (${coresDoGradiente(desenhadoNaBorda).join(', ')}): trocar a cor de um gradiente que já existe não é suportado, e criar outro de cor ${a.cor} sob ele seria a mesma troca — nada deste ajuste foi aplicado`,
+            ['cor'],
+          )
+          return
+        }
         if (alvo) {
+          // Trocar a cor de um gradiente que já existe NÃO é suportado por este ajuste (CP1): a cor era
+          // descartada calada enquanto a força mudava (peça piloto, 13/10/2026). Cor igual à dele é só confirmação.
+          const coresDoAlvo = coresDoGradiente(alvo)
+          if (a.cor != null && !(coresDoAlvo.length > 0 && coresDoAlvo.every((c) => c.toUpperCase() === a.cor!.toUpperCase()))) {
+            recusar(
+              'COR_DE_GRADIENTE_EXISTENTE',
+              `trocar a cor de um gradiente que já existe não é suportado: a cor ${a.cor} não foi aplicada e nada deste ajuste foi aplicado (o gradiente ${alvo.id} segue ${coresDoAlvo.join(', ') || 'sem cor legível'})`,
+              ['cor'],
+            )
+            return
+          }
           const antes = forcaDaCamada(alvo)
           let nova = comForca(alvo, a.forca!)
-          if (a.altura != null) {
-            const altura = Math.round(Math.min(H, a.altura))
+          const altura = a.altura != null ? alturaDoPedido(a.altura) : null
+          if (altura) {
             nova = {
               ...nova,
-              size: { ...nova.size, height: altura },
-              position: { ...nova.position, y: bordaDaLeitura(alvo, H) === 'topo' ? 0 : H - altura },
+              size: { ...nova.size, height: altura.aplicada },
+              position: { ...nova.position, y: bordaDaLeitura(alvo, H) === 'topo' ? 0 : H - altura.aplicada },
             }
           }
           const alvoId = alvo.id
           camadas = camadas.map((l) => (l.id === alvoId ? nova : l))
+          // Apontado pelo id, vale a borda DA CAMADA: a borda informada que diverge dela é dita, não ignorada calada.
+          const bordaDaCamada = bordaDaLeitura(alvo, H)
+          const nomeDaBorda = (b: Borda) => (b === 'topo' ? 'topo' : 'rodapé')
+          const sobreABorda = bordaDaCamada !== borda ? `, borda informada ${nomeDaBorda(borda)} ≠ ${nomeDaBorda(bordaDaCamada)} da camada (vale a camada apontada)` : ''
           aplicados.push({
             indice,
             tipo: a.tipo,
             camadas: [alvoId],
-            detalhe: `força ${antes}→${a.forca}${a.altura != null ? `, altura ${Math.round(a.altura)}px` : ''}`,
+            detalhe: `força ${antes}→${forcaDita(forcaDaCamada(nova))}${altura ? `, ${altura.texto}` : ''}${a.cor != null ? `, cor ${a.cor} mantida` : ''}${sobreABorda}${alvo.visible === false ? ', camada oculta: a mudança não aparece na peça' : ''}`,
           })
           return
         }
@@ -398,21 +519,39 @@ export function aplicarAjustes(
         const curva = Array.isArray(outro?.metadata?.curva)
           ? (outro!.metadata!.curva as CurvaDoGradiente)
           : CURVA_DE_LEITURA
-        const altura = Math.round(Math.min(H, a.altura ?? H * 0.45))
-        let nova = camadaDeGradiente({ borda, W, H, altura, cor, curva, forca: a.forca! })
+        const altura = alturaDoPedido(a.altura ?? H * 0.45)
+        let nova = camadaDeGradiente({ borda, W, H, altura: altura.aplicada, cor, curva, forca: a.forca! })
         nova = { ...nova, id: idLivre(nova.id, camadas) }
         camadas = inserirAcimaDoFundo(camadas, nova, ctx.canvas)
         aplicados.push({
           indice,
           tipo: a.tipo,
           camadas: [nova.id],
-          detalhe: `gradiente de leitura criado ${borda === 'topo' ? 'no topo' : 'no rodapé'} (força ${a.forca}, altura ${altura}px)`,
+          detalhe: `gradiente de leitura criado ${borda === 'topo' ? 'no topo' : 'no rodapé'} (cor ${cor}${a.cor != null ? '' : corDoGradiente(outro) ? ', a do gradiente de leitura da peça' : ', a padrão: a peça não tem gradiente de leitura'}, força ${forcaDita(forcaDaCamada(nova))}, ${altura.texto})`,
         })
         return
       }
 
       case 'visibilidade': {
         const alvo = new Set(ids)
+        // 🔴 Decisão do owner (15/10/2026): AJUSTAR-ARTE NÃO PODE APAGAR COPY. Esconder texto com conteúdo é perda de
+        // conteúdo, não correção de design — recusado aqui, na pré-checagem estrutural (antes de qualquer medida), com
+        // ou sem `achado`, mesmo que esconder "resolvesse" colisão ou contraste; se UMA das camadas é texto com
+        // conteúdo, o ajuste INTEIRO é recusado. Texto vazio e camada decorativa seguem o contrato de sempre.
+        if (a.visivel === false) {
+          const conteudoDe = (id: string) => {
+            const l = porId.get(id)
+            if (!l || (l.type !== 'text' && l.type !== 'rich-text')) return ''
+            const agora = textoVisivel(l.content)
+            return agora || textoVisivel(ctx.conteudoAnterior?.get(id))
+          }
+          const comConteudo = ids.filter((id) => conteudoDe(id).length > 0)
+          if (comConteudo.length > 0) {
+            // A mensagem diz QUAL camada (nome/id), nunca o texto (a mesma política do CP4.1 para o slotValues).
+            recusar('CONTEUDO_NAO_PODE_SER_OCULTADO', `esconder texto com conteúdo é apagar copy, não corrigir a arte: ${comConteudo.map((id) => `"${porId.get(id)!.name ?? id}" (${id})`).join(', ')}. Deixe o achado aberto para revisão humana ou outra composição; nada deste ajuste foi aplicado.`, ['visivel', 'camadas'])
+            return
+          }
+        }
         // A camada escondida pelo revisor leva a MARCA (metadata.revisao.ocultaPeloRevisor): é o que faz o
         // aprendizado não ler o esconder mecânico como a pessoa apagando o texto ao agendar (REV-9E-01).
         const marca = { em: new Date().toISOString(), ajuste: indice }
@@ -424,7 +563,7 @@ export function aplicarAjustes(
       case 'caixa': {
         const l = porId.get(ids[0])!
         if (!ehTexto(l)) {
-          recusados.push({ indice, tipo: a.tipo, motivo: `caixa só vale para texto: ${l.id}` })
+          recusar('CAMADA_DE_OUTRO_TIPO', `caixa só vale para texto: ${l.id}`, ['camadas'])
           return
         }
         const alturaAntes = medirTexto(l)
@@ -440,7 +579,7 @@ export function aplicarAjustes(
             position: { ...nova.position, x: Math.round(nova.position.x + dx) },
             size: { ...nova.size, width: largura },
           }
-          partes.push(`largura ${l.size.width}→${largura}px`)
+          partes.push(`largura ${l.size.width}→${largura}px${largura !== a.largura ? ` (pedida ${a.largura}px, arredondada)` : ''}`)
         }
         if (a.alturaAutomatica) {
           const autoWrap = nova.textboxConfig?.autoWrap
@@ -473,5 +612,11 @@ export function aplicarAjustes(
     }
   })
 
-  return { camadas, aplicados, recusados, alteradas: [...alteradas] }
+  // Cada registro carrega o `achado` do próprio ajuste: o rótulo não fica só no pedido.
+  const comAchado = <T extends { indice: number }>(r: T): T => {
+    // `indice` é o do LOTE (`indiceBase`); a lista desta chamada começa em `indiceBase` (Codex R1 do CP4).
+    const achado = (ajustes[r.indice - indiceBase] as { achado?: unknown } | undefined)?.achado
+    return typeof achado === 'string' ? { ...r, achado } : r
+  }
+  return { camadas, aplicados: aplicados.map(comAchado), recusados: recusados.map(comAchado), alteradas: [...alteradas] }
 }

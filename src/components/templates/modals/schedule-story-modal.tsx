@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
+import { useCobrancaLigada } from '@/hooks/use-credits'
 import { useSocialPosts } from '@/hooks/use-social-posts'
 import { useToast } from '@/hooks/use-toast'
 import { api } from '@/lib/api-client'
@@ -25,7 +26,8 @@ import {
   AI_INSTRUCTION_PLACEHOLDER,
   AI_IMPROVEMENT_CREDIT_COST,
 } from '@/lib/ai/instruction-field'
-import type { ExportRecord } from '@/contexts/template-editor-context'
+import { TemplateEditorContext, type ExportRecord } from '@/contexts/template-editor-context'
+import { avisoDeCelulasVazias } from '@/lib/grades/presenca'
 
 interface ScheduleStoryModalProps {
   open: boolean
@@ -62,6 +64,11 @@ export function ScheduleStoryModal({
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [submitStatus, setSubmitStatus] = React.useState('')
   const [aiInstruction, setAiInstruction] = React.useState('')
+  const cobrancaLigada = useCobrancaLigada()
+  // G4.6: o design que vai ser exportado é o do editor aberto — a célula vazia da grade sai como buraco na arte.
+  // Avisa ANTES de confirmar; o botão segue habilitado
+  const camadasDoEditor = React.useContext(TemplateEditorContext)?.design.layers
+  const avisoDaGrade = React.useMemo(() => (camadasDoEditor ? avisoDeCelulasVazias(camadasDoEditor) : null), [camadasDoEditor])
 
   React.useEffect(() => {
     if (open) setAiInstruction('')
@@ -169,7 +176,7 @@ export function ScheduleStoryModal({
           ? scheduled.toISOString()
           : undefined
 
-      await createPost.mutateAsync({
+      const resposta = await createPost.mutateAsync({
         postType: 'STORY',
         caption: '',
         generationIds: [],
@@ -184,6 +191,8 @@ export function ScheduleStoryModal({
         title: scheduleType === 'IMMEDIATE'
           ? 'Story enviado para publicação!'
           : 'Story agendado com sucesso!',
+        // G4.6: os avisos que a rota devolve (a grade com célula vazia, slot sem camada) não ficam calados
+        ...(resposta?.warnings?.length ? { description: resposta.warnings.join(' ') } : {}),
       })
       onClose()
     } catch (error) {
@@ -333,10 +342,16 @@ export function ScheduleStoryModal({
           />
           <p className="text-xs text-muted-foreground">
             {aiInstruction.trim()
-              ? `A arte passa pela melhoria com IA antes de ser agendada (+${AI_IMPROVEMENT_CREDIT_COST} créditos). O agendamento espera o resultado — pode levar até 2 minutos.`
+              ? `A arte passa pela melhoria com IA antes de ser agendada${cobrancaLigada ? ` (+${AI_IMPROVEMENT_CREDIT_COST} créditos)` : ''}. O agendamento espera o resultado — pode levar até 2 minutos.`
               : 'Deixe em branco para agendar a arte exatamente como está no editor.'}
           </p>
         </div>
+
+        {avisoDaGrade && (
+          <p role="status" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            {avisoDaGrade}
+          </p>
+        )}
 
         {/* Submit */}
         <Button

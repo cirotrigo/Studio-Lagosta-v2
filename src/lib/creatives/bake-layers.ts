@@ -7,7 +7,67 @@
  * e o que ela declara sobre si depois de receber conteúdo novo.
  */
 import { semPrefixoHerdado } from '@/lib/copy-autoral'
-import { semMarcaDoRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
+import { ocultaPeloRevisor, semMarcaDoRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
+import { temTextoSubstantivo, temTextoVisivel } from '@/lib/creatives/revisao/texto-visivel'
+import type { OrigemDoValor, ValorResolvido } from '@/lib/semantica/resolver-valores'
+import type { Layer } from '@/types/template'
+import { CreativeError } from '@/lib/creatives/errors'
+import { celulaVazia } from '@/lib/grades/conferir'
+import { preencherCelula } from '@/lib/grades/operacoes'
+import { vinculadaAGrade } from '@/lib/grades/presenca'
+
+/**
+ * Um texto com conteúdo SUBSTANTIVO (letra, número ou pictograma) que o bake ESCONDEU, ESVAZIOU ou reduziu a
+ * pontuação/símbolos SEM conteúdo (`sem-conteudo`: "Almoço" → "." ou "—") — por qual endereço (id, nome, slot, papel)
+ * o pedido chegou.
+ */
+export interface CopyRemovida {
+  layerId: string
+  /** O nome da camada (ou o id), para a pessoa saber qual texto. */
+  chave: string
+  operacao: 'escondido' | 'esvaziado' | 'sem-conteudo'
+  /** Por onde o pedido chegou: a MESMA precedência do bake (id > _slots/_papeis > nome). */
+  endereco: OrigemDoValor
+  /** O texto existia antes (sempre true aqui — a lista só tem textos com conteúdo). */
+  tinhaConteudo: true
+}
+
+/**
+ * CP4.1 (15/10/2026): o que o bake fez com a copy EXISTENTE da peça — texto (`text`/`rich-text`) com conteúdo
+ * SUBSTANTIVO (letra, número ou pictograma: `temTextoSubstantivo`), visível (ou escondido pelo revisor, que o
+ * aprendizado conta como presente) que saiu ESCONDIDO (`hidden: true`), ESVAZIADO (`''`, só espaço/invisíveis,
+ * `{ content: '' }`) ou SEM CONTEÚDO (só pontuação/símbolos: "." / "..." / "—" / "___"), inclusive por `_slots`/`_papeis`.
+ * Protege o RESULTADO, não a sintaxe. A origem que JÁ era só pontuação ("-", placeholder decorativo) não vira copy
+ * protegida. Puro; compara por índice (o bake preserva a posição). No perfil draft-only isso é recusa (ajustar-arte não
+ * apaga copy); no perfil humano é auditoria (`copyRemovida` no retorno e na Generation).
+ */
+export function copyRemovidaDoBake(
+  sourceLayers: any[],
+  bakedLayers: any[],
+  slotValues: Record<string, unknown>,
+  valores?: ReadonlyMap<number, ValorResolvido>,
+): CopyRemovida[] {
+  const saida: CopyRemovida[] = []
+  sourceLayers.forEach((src: any, i: number) => {
+    if (!src || (src.type !== 'text' && src.type !== 'rich-text')) return
+    // "Tem conteúdo" é texto SUBSTANTIVO: copy feita de zero-width ou só de pontuação não é copy a proteger.
+    if (!temTextoSubstantivo(src.content)) return
+    const dst = bakedLayers[i]
+    if (!dst) return
+    const endereco: OrigemDoValor =
+      slotValues[src.id] != null ? { tipo: 'layerId', chave: String(src.id) } : (valores?.get(i)?.origem ?? { tipo: 'name', chave: String(src.name ?? src.id) })
+    const base = { layerId: String(src.id), chave: String(src.name ?? src.id), endereco, tinhaConteudo: true as const }
+    // ESVAZIAR destrói conteúdo seja a camada visível, escondida pela pessoa ou pelo revisor (revisor A3); reduzir a
+    // pontuação ("." / "—" / "___") é a mesma remoção com outra sintaxe (ajuste final do owner, 15/10).
+    if (!temTextoVisivel(dst.content)) saida.push({ ...base, operacao: 'esvaziado' })
+    else if (!temTextoSubstantivo(dst.content)) saida.push({ ...base, operacao: 'sem-conteudo' })
+    // ESCONDER: a camada visível que some — ou a escondida pelo REVISOR que `hidden: true` assume como escondida pela
+    // pessoa (o bake lava a marca; no draft-only não há pessoa: conta como esconder — revisor A2). As duas operações
+    // na mesma chamada (`{ content: '', hidden: true }`) são DUAS entradas (revisor B).
+    if (dst.visible === false && (src.visible !== false || (ocultaPeloRevisor(src) && !ocultaPeloRevisor(dst)))) saida.push({ ...base, operacao: 'escondido' })
+  })
+  return saida
+}
 
 /**
  * Bake slot values and the background image into a copy of the source layers.
@@ -16,17 +76,25 @@ import { semMarcaDoRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
  * goes to the first empty dynamic image layer (the common case); if every
  * candidate already carries a static image, it replaces the first one — without
  * that fallback, templates with a hardcoded background silently ignore the photo.
+ *
+ * `valores` (B1c): os valores de `_slots`/`_papeis` já resolvidos por ÍNDICE do
+ * mesmo array (`resolverValoresSemanticos`). Entram entre a chave legada pelo id
+ * e a chave pelo nome; quem resolveu já recusou fontes divergentes.
  */
 export function bakeLayers(
   sourceLayers: any[],
   slotValues: Record<string, unknown>,
   imageUrl: string | null,
-): { layers: any[]; imageApplied: boolean; changedTextIds: string[] } {
+  valores?: ReadonlyMap<number, ValorResolvido>,
+): { layers: any[]; imageApplied: boolean; changedTextIds: string[]; explicitFileUrlIds: string[]; imageBloqueadaPeloSemantico: boolean } {
   const explicitFileUrl = new Set<string>()
+  /** Índices cujo `fileUrl` explícito veio de _slots/_papeis (não do legado por id/nome). */
+  const fileUrlSemantico = new Set<number>()
   const changedTextIds: string[] = []
 
-  const layers = sourceLayers.map((layer: any) => {
-    const slot = slotValues[layer.id] ?? slotValues[layer.name]
+  const layers = sourceLayers.map((layer: any, i: number) => {
+    const semantico = slotValues[layer.id] == null ? valores?.get(i)?.valor : undefined
+    const slot = slotValues[layer.id] ?? semantico ?? slotValues[layer.name]
     const updated = { ...layer }
 
     // 🔴 Camada que RECEBE conteúdo não herda a declaração de prefixo: ela
@@ -55,8 +123,28 @@ export function bakeLayers(
         if (layer.type === 'text') changedTextIds.push(layer.id)
       }
       if (typeof slotObj.fileUrl === 'string') {
-        updated.fileUrl = slotObj.fileUrl
+        if (vinculadaAGrade(layer)) {
+          // G4.5: foto para célula de grade só por `preencherCelula` (host próprio, cover, recorte da foto anterior
+          // limpo); `''` esvazia a célula. Pedido que não serve é RECUSADO inteiro (422), nunca descartado em silêncio.
+          if (celulaVazia(slotObj.fileUrl)) {
+            updated.fileUrl = ''
+            if (updated.style?.crop) updated.style = Object.fromEntries(Object.entries(updated.style).filter(([k]) => k !== 'crop'))
+          } else {
+            const r = preencherCelula(updated as Layer, slotObj.fileUrl)
+            if (!r.ok) {
+              throw new CreativeError(
+                'FOTO_DA_GRADE_RECUSADA',
+                `A foto pedida para "${layer.name ?? layer.id}" não entra na grade de fotos: ${r.diagnosticos[0]?.mensagem ?? 'célula incoerente'}`,
+                422,
+                { camada: layer.id },
+              )
+            }
+            updated.fileUrl = r.valor.fileUrl
+            updated.style = r.valor.style
+          }
+        } else updated.fileUrl = slotObj.fileUrl
         explicitFileUrl.add(layer.id)
+        if (semantico != null) fileUrlSemantico.add(i)
       }
       // O render pula `visible === false` — e o editor mostra a camada como
       // oculta, então quem abrir a arte consegue religá-la. `hidden: true` é
@@ -77,16 +165,30 @@ export function bakeLayers(
     return updated
   })
 
-  if (!imageUrl) return { layers, imageApplied: false, changedTextIds }
+  const explicitFileUrlIds = [...explicitFileUrl]
+  if (!imageUrl) return { layers, imageApplied: false, changedTextIds, explicitFileUrlIds, imageBloqueadaPeloSemantico: false }
 
-  const isImageTarget = (layer: any) =>
-    layer.type === 'image' && (layer.isDynamic || layer.id === 'bg-img') && !explicitFileUrl.has(layer.id)
+  /**
+   * Contrato NOVO estrito (opção C do #208): se o alvo NATURAL da foto — o que esta regra escolheria sem nenhum valor
+   * explícito — recebeu `fileUrl` por _slots/_papeis, a foto genérica não escorre para outra imagem. O legado por
+   * id/nome segue tolerante: a foto cai na próxima vaga dinâmica, como sempre.
+   */
+  // G4.5: célula de grade nunca é "a" foto da arte (grade é composição manual): a foto genérica não entra nela nem
+  // substitui uma foto dela — sem outra vaga, `imageApplied: false` e quem chama avisa
+  const vaga = (layer: any) => layer.type === 'image' && (layer.isDynamic || layer.id === 'bg-img') && !vinculadaAGrade(layer)
+  const vazia = sourceLayers.findIndex((l: any) => vaga(l) && !l.fileUrl)
+  const natural = vazia !== -1 ? vazia : sourceLayers.findIndex(vaga)
+  if (natural !== -1 && fileUrlSemantico.has(natural)) {
+    return { layers, imageApplied: false, changedTextIds, explicitFileUrlIds, imageBloqueadaPeloSemantico: true }
+  }
+
+  const isImageTarget = (layer: any) => vaga(layer) && !explicitFileUrl.has(layer.id)
 
   const target =
     layers.find((l: any) => isImageTarget(l) && !l.fileUrl) ?? layers.find(isImageTarget)
 
-  if (!target) return { layers, imageApplied: false, changedTextIds }
+  if (!target) return { layers, imageApplied: false, changedTextIds, explicitFileUrlIds, imageBloqueadaPeloSemantico: false }
 
   target.fileUrl = imageUrl
-  return { layers, imageApplied: true, changedTextIds }
+  return { layers, imageApplied: true, changedTextIds, explicitFileUrlIds, imageBloqueadaPeloSemantico: false }
 }

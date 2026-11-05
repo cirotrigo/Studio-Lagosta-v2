@@ -296,3 +296,17 @@ valem para qualquer mexida no editor:
   `textboxConfig.autoWrap.lineHeight` sobre `style.lineHeight`. Escreva sempre
   nos dois — escrever em um só faz o editor e a arte agendada divergirem, e o
   download do editor (`stage.toDataURL()`, que lê o `style`) **não** revela isso.
+
+## O Canvas fica vivo até o fim do `encode` (21/10/2026)
+
+No `@napi-rs/canvas` 0.1.84, `canvas.encode()` roda numa thread do libuv com um ponteiro CRU para a superfície do
+skia. Se o JS não alcança mais o `Canvas` (o padrão `await new CanvasRenderer(...).renderDesign(...)`), o GC pode
+coletá-lo no meio do PNG e o finalizador destrói a superfície debaixo do encoder → SIGSEGV. Reproduzido no caminho
+real com GC forçado: 3 de 3 sem o conserto, 5 de 5 limpos com ele (`canvas-renderer-sobrevive-ao-gc.test.ts`, filho
+isolado). Compatível com o "Worker exited unexpectedly" do `gate.test.ts` no CI do PR #256 — que não deixou core
+nem sinal, então lá é hipótese.
+
+- **Todo `encode` lê o canvas de novo DEPOIS do await** (`const png = await c.encode('png'); void c.width`), o que
+  o mantém alcançável até o fim: `CanvasRenderer.renderDesign` e `desenharMarcas` (`revisar-arte.ts`).
+- Sem troca de versão do pacote e sem `toBuffer` síncrono (o PR238 mediu ~160 ms de event loop bloqueado por
+  arte com ele). A atualização para 1.0.x continua sendo a frente do PR238, com os efeitos de fonte e sombra dela.

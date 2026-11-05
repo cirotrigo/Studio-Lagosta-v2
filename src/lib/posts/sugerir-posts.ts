@@ -38,14 +38,16 @@ import { CreativeError } from '@/lib/creatives/errors'
 import { formatarBRT } from '@/lib/posts/agenda-acoes'
 import { DIAS_SEMANA, escolherModeloDoDia, normalizar } from '@/lib/posts/dia-semana'
 import { vigenteEm, estaVigente } from '@/lib/knowledge/vigencia'
-import { calcularCadencia, type PostDoHistorico } from '@/lib/posts/cadencia'
 import { registrarSugestoes, sugestoesJaEmitidas } from '@/lib/aprendizado/captura'
 import { chaveDeSugestao } from '@/lib/aprendizado/chaves'
-import { fundirGradeComCadencia, lerGradeDasEntradas, VERSAO_DA_GRADE } from '@/lib/posts/grade-da-base'
+import { VERSAO_DA_GRADE } from '@/lib/posts/grade-da-base'
 import {
-  diaDaSemanaDe,
-  formatoDoBloco,
-  historicoParaFormato,
+  expectativaDoProjeto,
+  slotsEsperadosNaData,
+  JANELA_HISTORICO_DIAS,
+  TOLERANCIA_SLOT_MIN,
+} from '@/lib/posts/cobertura'
+import {
   formatoDoTipo,
   janelaDaSugestao,
   montarGradeDaSemana,
@@ -57,8 +59,6 @@ import {
   type Ocupante,
   chaveDaPropostaDeSlot,
 } from '@/lib/posts/contexto-da-semana'
-
-const JANELA_HISTORICO_DIAS = 56
 
 /**
  * Versão da heurística de cadência. Entra na chave de idempotência: mudou a
@@ -94,8 +94,6 @@ function chaveDoSlot(projectId: number, scheduledDatetime: string, versao = VERS
 function versaoDoSlot(s: Pick<SugestaoSlot, 'origem'>): string {
   return s.origem === 'grade' ? VERSAO_DA_GRADE : VERSAO_DA_CADENCIA
 }
-/** Slot ocupado se já existe post a menos de 45min dele. */
-const TOLERANCIA_SLOT_MIN = 45
 
 export interface SugestaoSlot {
   data: string
@@ -248,30 +246,6 @@ export async function sugerirPosts(params: {
     agora,
   )
 
-  const paraCadencia: PostDoHistorico[] = historico
-    .filter((p) => p.scheduledDatetime)
-    .map((p) => ({
-      quando: p.scheduledDatetime!,
-      origem: p.origem as PostDoHistorico['origem'],
-      escopo: p.learningScope,
-      campaignId: p.campaignId,
-      campanhaEncerrada: !!p.campaignId && encerradas.has(p.campaignId),
-    }))
-
-  const resultado = calcularCadencia(paraCadencia, { agora })
-  const { slotsPorDia, cadencia } = resultado
-
-  if (historico.length < 5) {
-    avisos.push(
-      `Histórico curto (${historico.length} publicações nas últimas ${Math.round(JANELA_HISTORICO_DIAS / 7)} semanas) — as sugestões ficam melhores conforme o cliente publica.`,
-    )
-  }
-  if (resultado.descartadosPorCampanha > 0) {
-    avisos.push(
-      `${resultado.descartadosPorCampanha} publicação(ões) de campanha já encerrada ficaram fora da conta de cadência.`,
-    )
-  }
-
   // ── Modelos por dia e campanhas que citam o dia ──────────────────────────
   const [modelos, campanhas, entradasDaGrade] = await Promise.all([
     db.page.findMany({
@@ -323,27 +297,27 @@ export async function sugerirPosts(params: {
       }),
   ])
 
-  // ── O formato de cada horário ─────────────────────────────────────────────
+  // ── A expectativa: grade aprovada + cadência + formato ────────────────────
   //
-  // Grade aprovada é de STORY por construção (o parser deixa feed e carrossel
-  // de fora); horário do histórico leva o formato da MAIORIA do que o cliente
-  // publicou naquele bloco — a MESMA população da cadência (sem campanha
-  // encerrada) e o MESMO bloco (arredondado ao mais próximo). É o formato que
-  // decide a ocupação: um feed às 19h não ocupa o story das 19h.
-  const historicoComFormato = historicoParaFormato(historico, encerradas)
-  const formatoDoSlot = (dia: number, slot: { minutosDoDia: number; origem: 'grade' | 'cadencia' }): FormatoDaPeca =>
-    slot.origem === 'grade' ? 'story' : formatoDoBloco(historicoComFormato, dia, slot.minutosDoDia)
+  // Mora em `cobertura.ts` (H2 do Dot, 13/10/2026) para a auditoria da
+  // carteira e esta sugestão nunca divergirem sobre que horários existem:
+  // onde a grade cobre o dia, os slots fixos substituem os horários de STORY
+  // do histórico, o feed do histórico continua, e o formato de cada horário
+  // decide a ocupação (um feed às 19h não ocupa o story das 19h).
+  const expectativa = expectativaDoProjeto({ historico, encerradas, entradasDaGrade, agora })
+  const { slotsPorDia: slotsFinais, formatoDoSlot, grade, cadencia: resultado } = expectativa
+  const { cadencia } = resultado
 
-  /**
-   * Onde a grade cobre o dia, os slots fixos SUBSTITUEM os horários de STORY
-   * do histórico; o feed que o histórico sustenta no mesmo dia continua, e nos
-   * dias que ela não cobre a cadência inteira continua. `fundirGradeComCadencia`
-   * é puro e com grade vazia é a identidade — um caminho só.
-   */
-  const grade = lerGradeDasEntradas(entradasDaGrade)
-  const slotsFinais = fundirGradeComCadencia(slotsPorDia, grade, {
-    formatoDe: (dia, t) => formatoDoBloco(historicoComFormato, dia, t.minutosDoDia),
-  })
+  if (historico.length < 5) {
+    avisos.push(
+      `Histórico curto (${historico.length} publicações nas últimas ${Math.round(JANELA_HISTORICO_DIAS / 7)} semanas) — as sugestões ficam melhores conforme o cliente publica.`,
+    )
+  }
+  if (resultado.descartadosPorCampanha > 0) {
+    avisos.push(
+      `${resultado.descartadosPorCampanha} publicação(ões) de campanha já encerrada ficaram fora da conta de cadência.`,
+    )
+  }
   if (grade.length > 0) {
     const diasCobertos = new Set(grade.flatMap((s) => s.dias)).size
     avisos.push(
@@ -417,15 +391,10 @@ export async function sugerirPosts(params: {
   // ── Buracos na janela ────────────────────────────────────────────────────
   const sugestoes: SugestaoSlot[] = []
   for (const dataISO of janela.datas) {
-    const dia = diaDaSemanaDe(dataISO)
-    const tipicos = slotsFinais.get(dia)
-    if (!tipicos) continue
-
-    for (const slot of tipicos) {
-      const quandoUTC = new Date(`${dataISO}T00:00:00-03:00`).getTime() + slot.minutosDoDia * 60_000
+    for (const slot of slotsEsperadosNaData(expectativa, dataISO)) {
+      const { dia, quandoUTC, formato } = slot
       if (quandoUTC <= agora.getTime() + 30 * 60_000) continue // já passou (ou colado)
       if (quandoUTC < janela.inicio.getTime() || quandoUTC > janela.fim.getTime()) continue
-      const formato = formatoDoSlot(dia, slot)
       if (slotOcupado(ocupados, quandoUTC, formato, TOLERANCIA_SLOT_MIN)) continue
 
       const campanhasDoSlot = campanhasDoDia(dia, quandoUTC)

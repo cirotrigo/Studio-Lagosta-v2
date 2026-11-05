@@ -1,6 +1,5 @@
 import { SignIn } from "@clerk/nextjs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import Link from "next/link";
 import type { Metadata } from "next";
 
 // Tela de login não é página para o Google.
@@ -28,6 +27,9 @@ export default function SignInPage() {
                   socialButtonsBlockButton: "border-input bg-background hover:bg-accent hover:text-accent-foreground",
                   formFieldInput: "border-input bg-background",
                   footerActionLink: "text-primary hover:text-primary/80",
+                  // Acesso só por convite: some o "Não tem uma conta? Inscreva-se"
+                  // do Clerk. O convite cai direto em /sign-up, que segue no ar.
+                  footerAction: { display: "none" },
                 }
               }}
               routing="path"
@@ -36,15 +38,6 @@ export default function SignInPage() {
             />
           </CardContent>
         </Card>
-        
-        <div className="text-center mt-6">
-          <p className="text-sm text-muted-foreground">
-            Não tem uma conta?{" "}
-            <Link href="/sign-up" className="text-primary hover:underline">
-              Criar conta
-            </Link>
-          </p>
-        </div>
       </div>
     </div>
   );

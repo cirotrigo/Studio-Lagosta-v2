@@ -48,6 +48,16 @@ const banco = vi.hoisted(() => ({
   travaConsultiva: null as string | null,
   /** R12-09: o que aconteceu, na ordem — a trava consultiva, a leitura e a criação da mídia da barreira, o carimbo. */
   eventos: [] as string[],
+  /**
+   * H4 (HORARIO_OCUPADO): transações CONCORRENTES de verdade. Sem a trava
+   * global do mock, só a consultiva (`pg_advisory_xact_lock`) serializa, por
+   * chave. E a leitura do horário espera a outra transação chegar, ou ficar
+   * presa na trava, para o pior intercalamento acontecer.
+   */
+  concorrente: false,
+  travasPorChave: new Map<string, Promise<void>>(),
+  leiturasDoHorario: 0,
+  chegouAoHorario: null as null | (() => void),
 }))
 
 const efeitos = vi.hoisted(() => ({
@@ -80,6 +90,13 @@ vi.mock('@/lib/db', () => {
       if (cond && typeof cond === 'object') {
         const c = cond as Record<string, unknown>
         if ('has' in c) return Array.isArray(atual) && atual.includes(c.has)
+        // A janela de ±45 min da guarda HORARIO_OCUPADO (H4).
+        if ('gte' in c || 'lte' in c) {
+          if (!(atual instanceof Date)) return false
+          if (c.gte instanceof Date && atual < c.gte) return false
+          if (c.lte instanceof Date && atual > c.lte) return false
+          return true
+        }
         if ('in' in c) return (c.in as unknown[]).includes(atual)
         // Como no SQL: `not` não casa com nulo.
         if ('not' in c) return atual !== null && atual !== c.not
@@ -117,6 +134,25 @@ vi.mock('@/lib/db', () => {
     if (naTransacao && banco.travaConsultiva && banco.transacoesPendentes > 1) return b.soltar()
     await b.solta
   }
+  /** CP5c: o `SELECT … FROM "SocialPost" WHERE "pageId" = $1 ORDER BY "id" FOR UPDATE` do gate devolve os posts da página, em ordem de id. */
+  const linhasTravadas = (sql: string, valores: unknown[]) => {
+    if (!sql.includes('FROM "SocialPost"')) return []
+    return [...banco.posts.values()]
+      .filter((p) => p.pageId === valores[0])
+      .sort((a, b) => String(a.id).localeCompare(String(b.id)))
+      .map((p) => ({ id: p.id, status: p.status, laterPostId: p.laterPostId ?? null, postType: p.postType, generationId: p.generationId ?? null, projectId: p.projectId, pageId: p.pageId }))
+  }
+  /** CP5c: o merge do registro do gate (`mesclarFieldValuesDaArte` com `somenteSe`): só com o vínculo (projeto, página, página do projeto). */
+  const executarRaw = (naTransacao: boolean) => async (partes: TemplateStringsArray, ...valores: unknown[]) => {
+    const sql = partes.join('?')
+    if (!sql.startsWith('UPDATE "Generation"')) throw new Error(`SQL inesperado no banco falso: ${sql.slice(0, 60)}`)
+    const [patch, id, projectId, pageId] = valores as [string, string, number, string]
+    const g = banco.generations.get(id)
+    if (!g || g.projectId !== projectId || (g.fieldValues as Record<string, unknown> | null)?.pageId !== pageId || !banco.pages.has(pageId)) return 0
+    gravar('generations', id, { ...g, fieldValues: { ...(g.fieldValues as object), ...JSON.parse(patch) } }, naTransacao)
+    banco.eventos.push('gate:gravado')
+    return 1
+  }
   const atualizarMuitos = (tabela: Tabela, naTransacao: boolean) => async ({ where, data }: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
     let count = 0
     for (const [id, linha] of banco[tabela]) {
@@ -130,6 +166,7 @@ vi.mock('@/lib/db', () => {
 
   const delegados = (naTransacao: boolean) => ({
     project: { findUnique: async ({ where }: { where: { id: number } }) => (where.id === 404 ? null : { id: where.id, name: 'Espeto Gaúcho', userId: 'dono-interno', instagramAccountId: null }) },
+    customFont: { findMany: async () => [] },
     knowledgeBaseEntry: { findFirst: async () => null },
     learningSignal: {
       upsert: async ({ where, create }: { where: { chave: string }; create: Record<string, unknown> }) => {
@@ -205,12 +242,26 @@ vi.mock('@/lib/db', () => {
         // A relação que `ensurePostGeneration` lê (catálogo REAL, R12-08).
         return p ? escolher({ Project: { userId: 'dono-interno', name: 'Espeto Gaúcho' }, ...p }, select) : null
       },
-      findMany: async ({ where, select, take }: { where: Record<string, unknown>; select?: Record<string, unknown>; take?: number }) =>
-        [...banco.posts.values()]
+      findMany: async ({ where, select, take }: { where: Record<string, unknown>; select?: Record<string, unknown>; take?: number }) => {
+        const doHorario = !!(where.scheduledDatetime && typeof where.scheduledDatetime === 'object' && 'gte' in (where.scheduledDatetime as object))
+        if (doHorario && naTransacao && banco.concorrente) {
+          banco.eventos.push(`horario:leu`)
+          banco.leiturasDoHorario++
+          // A primeira espera a segunda chegar aqui (sem trava as duas leem "livre"). Se a segunda está presa
+          // na trava consultiva, ela nunca chega: o prazo curto solta a primeira, que cria e faz o commit.
+          if (banco.leiturasDoHorario === 1) {
+            await new Promise<void>((r) => {
+              banco.chegouAoHorario = r
+              setTimeout(r, 30)
+            })
+          } else banco.chegouAoHorario?.()
+        }
+        return [...banco.posts.values()]
           .filter((p) => casa(p, where))
           .sort((a, b) => Number(a.createdAt) - Number(b.createdAt))
           .slice(0, take ?? Infinity)
-          .map((p) => escolher(p, select)),
+          .map((p) => escolher(p, select))
+      },
       // O vínculo da capa (`generationId: null` no where) — catálogo REAL, R12-08.
       updateMany: atualizarMuitos('posts', naTransacao),
     },
@@ -254,6 +305,7 @@ vi.mock('@/lib/db', () => {
   })
 
   const $transaction = async (run: (tx: unknown) => Promise<unknown>) => {
+    if (banco.concorrente) return transacaoConcorrente(run)
     banco.transacoesPendentes++
     // R12-09: entrar enquanto outra transação segura a trava consultiva é ficar preso atrás dela.
     if (banco.travaConsultiva) banco.barreira?.soltar()
@@ -279,8 +331,9 @@ vi.mock('@/lib/db', () => {
           const gancho = banco.aoTravar
           banco.aoTravar = null
           gancho?.()
-          return []
+          return linhasTravadas(partes.join(''), valores)
         },
+        $executeRaw: executarRaw(true),
       })
     } catch (erro) {
       Object.assign(banco, foto)
@@ -292,6 +345,32 @@ vi.mock('@/lib/db', () => {
       banco.emTransacao--
       banco.foraDaTransacao = []
       liberar()
+    }
+  }
+  /** H4: sem trava global e sem foto (o cenário não tem erro): só a consultiva, por chave, como o Postgres. */
+  const transacaoConcorrente = async (run: (tx: unknown) => Promise<unknown>) => {
+    const liberacoes: Array<() => void> = []
+    try {
+      return await run({
+        ...delegados(true),
+        $queryRaw: async (partes: TemplateStringsArray, ...valores: unknown[]) => {
+          if (partes.join('').includes('pg_advisory_xact_lock')) {
+            const chave = String(valores[0])
+            const anterior = banco.travasPorChave.get(chave) ?? Promise.resolve()
+            let soltar!: () => void
+            const minha = new Promise<void>((r) => (soltar = r))
+            banco.travasPorChave.set(chave, anterior.then(() => minha))
+            await anterior
+            banco.eventos.push(`trava:${chave}`)
+            liberacoes.push(soltar)
+            return [{ ok: 1 }]
+          }
+          return linhasTravadas(partes.join(''), valores)
+        },
+        $executeRaw: executarRaw(true),
+      })
+    } finally {
+      for (const soltar of liberacoes) soltar()
     }
   }
   const global: Record<string, unknown> = { ...delegados(false), $transaction }
@@ -320,6 +399,47 @@ vi.mock('@/lib/db', () => {
 })
 
 vi.mock('@/lib/creatives/persist', () => ({ getPublicAppUrl: () => 'https://studio.test' }))
+/**
+ * CP5c: no perfil draft-only o agendamento MEDE a página antes de criar o rascunho. A medição em si não é o objeto
+ * deste harness (P11 a faz de verdade sobre a fixture; `agendar-itens-gate.test.ts` prova a transação): aqui toda
+ * página mede LIMPA (a medida da peça limpa do gate, com as camadas reais da página), e o que se prova é o resto —
+ * horário, adoção, idempotência, efeitos.
+ */
+vi.mock('@/lib/creatives/revisao/revisar-arte', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/creatives/revisao/revisar-arte')>()
+  const { medida, metrica } = await import('../../creatives/revisao/__tests__/suporte/corpus-do-gate')
+  type Camada = { id: string; type: string; visible?: boolean }
+  const formatoDe = (tags: string[]) => (tags.includes('feed') ? 'feed' : tags.includes('quadrado') ? 'quadrado' : 'story')
+  return {
+    ...real,
+    contextoDaMedicao: async (args: { projectId: number; page: { width: number; height: number; tags: string[] } }) => ({
+      projectId: args.projectId,
+      canvas: { width: args.page.width, height: args.page.height },
+      formato: formatoDe(args.page.tags),
+      background: '#000000',
+      faixa: [0.45, 0.9],
+      referencias: { headline: { fontSize1080: 84, entrelinha: null, origem: 'assinatura' } },
+      referencia: 'assinatura',
+      assunto: null,
+      assuntoNaoSeAplica: true,
+      motivoSemAssunto: 'a peça não tem foto de fundo: não há assunto a proteger',
+      origensDaLogo: new Map(),
+      cacheDeLogos: new Map(),
+    }),
+    medirCamadasDaPeca: async (camadas: Camada[], ctx: { canvas: { width: number; height: number }; formato: 'story' | 'feed' | 'quadrado'; referencias: Record<string, unknown> }) =>
+      medida({
+        canvas: ctx.canvas,
+        formato: ctx.formato,
+        camadas: camadas as never,
+        metricas: camadas.filter((l) => l.type === 'text' && l.visible !== false).map((l) => metrica(l as never)),
+        referencias: ctx.referencias as never,
+        leituraDaLogo: [],
+        assunto: null,
+        assuntoNaoSeAplica: true,
+        motivoSemAssunto: 'a peça não tem foto de fundo: não há assunto a proteger',
+      }),
+  }
+})
 vi.mock('@/lib/creatives/ingerir-midia', () => ({ ingerirMidiaExterna: vi.fn(async (urls: string[]) => ({ urls, falhas: [], importadas: 0 })) }))
 
 // Os sinais são upsert por chave no código de produção: aqui também — a segunda escrita da mesma chave não muda nada.
@@ -395,6 +515,7 @@ vi.mock('@/lib/planos/plano-service', () => ({
 import { agendarItensDoLote } from '../agendar-itens'
 import { agendarPost } from '@/lib/creatives/agendar'
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
+import { auditarCarteira } from '@/lib/posts/cobertura'
 
 const PROJETO = 6
 const LOTE = 'semana-2026-09-14'
@@ -402,7 +523,9 @@ const BLOB = 'https://loja.public.blob.vercel-storage.com'
 
 function criarPeca(n: number, opcoes: { status?: string; formato?: 'story' | 'feed'; quando?: string | null; slide?: boolean; itemDoPlano?: { status: string; generationId?: string | null; postId?: string | null; pageId?: string } | 'ausente' } = {}) {
   const formato = opcoes.formato ?? 'story'
-  const camadas = [{ id: 'headline', type: 'text', content: `Manchete ${n}`, position: { x: 10, y: 20 } }]
+  // CP5c: a camada tem caixa, corpo e papel (o gate mede geometria, piso de interface e copy), e a página tem o contrato da copy.
+  const camadas = [{ id: 'headline', name: 'headline', type: 'text', visible: true, content: `Manchete ${n}`, position: { x: 100, y: 300 }, size: { width: 880, height: 120 }, style: { fontSize: 84, lineHeight: 1.2, color: '#FFFFFF' }, metadata: { compositor: { papel: 'headline' } } }]
+  const copyAutoral = { versao: 'copy-autoral-v1', origem: { autor: 'claude', superficie: 'chat' }, revisoes: [], blocos: [{ id: 'headline', funcao: 'headline', ordem: 0, linhas: [`Manchete ${n}`] }] }
   const url = `${BLOB}/page-${n}-1757700000000.png`
   const status = opcoes.status ?? 'COMPLETED'
   banco.pages.set(`page-${n}`, {
@@ -412,6 +535,11 @@ function criarPeca(n: number, opcoes: { status?: string; formato?: 'story' | 'fe
     width: 1080,
     height: formato === 'story' ? 1920 : 1350,
     tags: ['compositor', formato],
+    name: `Página ${n}`,
+    background: null,
+    audio: null,
+    copyAutoral,
+    updatedAt: new Date('2026-09-10T12:00:00.000Z'),
     thumbnail: status === 'COMPLETED' ? url : null,
     layers: camadas,
     Template: { projectId: PROJETO },
@@ -487,6 +615,10 @@ beforeEach(() => {
   banco.transacoesPendentes = 0
   banco.travaConsultiva = null
   banco.eventos = []
+  banco.concorrente = false
+  banco.travasPorChave = new Map()
+  banco.leiturasDoHorario = 0
+  banco.chegouAoHorario = null
   efeitos.artesFalham = false
   efeitos.artesReais = false
   vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -1233,7 +1365,8 @@ describe('R12-09 — retomadas simultâneas do catálogo', () => {
     expect(ev.slice(0, ev.indexOf('leitura:ausente'))).toContain(`trava:${chave}`)
     expect(ev[ev.indexOf('leitura:ausente') + 1]).toBe('criacao')
     // A capa e o catálogo disputam a MESMA chave: chaves diferentes não se excluiriam.
-    expect(new Set(ev.filter((e) => e.startsWith('trava:')))).toEqual(new Set([`trava:${chave}`]))
+    // A trava da agenda do projeto (HORARIO_OCUPADO, H4) é outra chave, de outro momento: a da transação do post.
+    expect(new Set(ev.filter((e) => e.startsWith('trava:') && !e.startsWith('trava:agenda-slot:')))).toEqual(new Set([`trava:${chave}`]))
   })
 })
 
@@ -1377,3 +1510,257 @@ describe('simular', () => {
     expect(banco.posts.size).toBe(0)
   })
 })
+
+describe('H4 — HORARIO_OCUPADO: um horário, um post', () => {
+  const QUANDO = '2026-09-14 19:00'
+  const em = (texto: string) => new Date(`${texto.replace(' ', 'T')}:00-03:00`)
+  /** Um post que outra pessoa (ou outra sessão) pôs na agenda: outra página, sem item de lote. */
+  const postAlheio = (extra: Record<string, unknown> = {}) =>
+    banco.posts.set('alheio', {
+      id: 'alheio', projectId: PROJETO, pageId: 'page-alheia', postType: 'STORY', status: 'DRAFT', scheduledDatetime: em(QUANDO),
+      mediaUrls: [], createdAt: 0, laterPostId: null, ...extra,
+    })
+  /** A guarda é do perfil draft-only (o agente); a pessoa pode empilhar dois stories de propósito. */
+  const DOT = { apenasRascunho: true }
+  const postsNovos = () => [...banco.posts.values()].filter((p) => p.id !== 'alheio')
+
+  it.each(['DRAFT', 'SCHEDULED', 'POSTING', 'POSTED', 'FAILED'])('%s de outro post no horário bloqueia, sem nada gravado', async (status) => {
+    criarPeca(1, { quando: QUANDO })
+    postAlheio({ status, scheduledDatetime: em('2026-09-14 19:30') })
+    const r = await agendar([item(1)], DOT)
+    expect(r.itens[0]).toMatchObject({ situacao: 'falhou', codigo: 'HORARIO_OCUPADO', motivo: 'O horário já foi ocupado por outro post. Audite novamente antes de produzir.' })
+    // Nada do outro post vaza na resposta.
+    expect(JSON.stringify(r.itens[0])).not.toContain('alheio')
+    expect(postsNovos()).toEqual([])
+    expect(banco.itensDeLote.get('lote-1')!.postId).toBeNull()
+  })
+
+  it('campanha vencida ocupando o horário também bloqueia', async () => {
+    criarPeca(1, { quando: QUANDO })
+    postAlheio({ campaignId: 'campanha-velha' })
+    expect((await agendar([item(1)], DOT)).itens[0]).toMatchObject({ codigo: 'HORARIO_OCUPADO' })
+  })
+
+  it('formato diferente não ocupa (feed no horário do story)', async () => {
+    criarPeca(1, { quando: QUANDO })
+    postAlheio({ postType: 'POST' })
+    expect((await agendar([item(1)], DOT)).itens[0]).toMatchObject({ situacao: 'concluido', desfecho: 'criado' })
+  })
+
+  it('a ±45 min ocupa (borda inclusiva); a 46 min não', async () => {
+    criarPeca(2, { quando: '2026-09-15 19:00' })
+    postAlheio({ scheduledDatetime: em('2026-09-15 18:14') })
+    expect((await agendar([item(2)], DOT)).itens[0]).toMatchObject({ situacao: 'concluido', desfecho: 'criado' })
+    criarPeca(3, { quando: '2026-09-16 19:00' })
+    banco.posts.set('alheio-2', { ...banco.posts.get('alheio')!, id: 'alheio-2', scheduledDatetime: em('2026-09-16 19:45') })
+    expect((await agendar([item(3)], DOT)).itens[0]).toMatchObject({ codigo: 'HORARIO_OCUPADO' })
+  })
+
+  it('o retry do mesmo item é idempotente: o próprio post não ocupa o horário dele', async () => {
+    criarPeca(1, { quando: QUANDO })
+    expect((await agendar([item(1)], DOT)).itens[0]).toMatchObject({ desfecho: 'criado' })
+    expect((await agendar([item(1)], DOT)).itens[0]).toMatchObject({ desfecho: 'reaproveitado' })
+    expect(postsDaPagina(1)).toHaveLength(1)
+  })
+
+  it('simular avisa o horário ocupado e não grava nada', async () => {
+    criarPeca(1, { quando: QUANDO })
+    postAlheio()
+    const antes = fotoDoBanco()
+    expect((await agendar([item(1)], { simular: true, apenasRascunho: true })).itens[0]).toMatchObject({ codigo: 'HORARIO_OCUPADO' })
+    expect(fotoDoBanco()).toEqual(antes)
+  })
+
+  it('CORRIDA: itens A e B, páginas A e B, mesmo projeto, formato e horário, ao mesmo tempo → exatamente UM post', async () => {
+    banco.concorrente = true
+    criarPeca(1, { quando: QUANDO })
+    criarPeca(2, { quando: QUANDO })
+    const [a, b] = await Promise.all([agendar([item(1)], DOT), agendar([item(2)], DOT)])
+    const desfechos = [a.itens[0], b.itens[0]].map((i) => i.desfecho ?? i.codigo).sort()
+    expect(desfechos).toEqual(['HORARIO_OCUPADO', 'criado'])
+    expect([...banco.posts.values()]).toHaveLength(1)
+    // A segunda leu o horário DEPOIS da primeira soltar a trava do projeto: as duas pegaram a mesma chave.
+    expect(banco.eventos.filter((e) => e === `trava:agenda-slot:${PROJETO}`)).toHaveLength(2)
+    expect(banco.eventos.indexOf('horario:leu')).toBeGreaterThan(banco.eventos.indexOf(`trava:agenda-slot:${PROJETO}`))
+  })
+
+  it('perfil normal: sem regressão, a pessoa ainda pode pôr dois posts no mesmo horário', async () => {
+    criarPeca(1, { quando: QUANDO })
+    postAlheio()
+    expect((await agendar([item(1)])).itens[0]).toMatchObject({ situacao: 'concluido', desfecho: 'criado' })
+  })
+})
+
+describe('H4 — perfil draft-only no agendar-leva: não adota nem mexe em post aprovado', () => {
+  it('a página já num post SCHEDULED: o perfil normal adota; o draft-only recusa e não escreve', async () => {
+    criarPeca(1)
+    const agendado = { id: 'aprovado', projectId: PROJETO, pageId: 'page-1', postType: 'STORY', status: 'SCHEDULED', scheduledDatetime: new Date('2026-09-14T22:00:00Z'), mediaUrls: [], createdAt: 0, laterPostId: null }
+    banco.posts.set('aprovado', { ...agendado })
+    const antes = fotoDoBanco()
+    const r = await agendar([item(1)], { apenasRascunho: true })
+    expect(r.itens[0]).toMatchObject({ situacao: 'falhou', codigo: 'POST_APROVADO_INTOCAVEL' })
+    expect(fotoDoBanco()).toEqual(antes)
+    expect(efeitos.refilagens).toEqual([])
+
+    const normal = await agendar([item(1)])
+    expect(normal.itens[0]).toMatchObject({ desfecho: 'adotado', postId: 'aprovado' })
+  })
+
+  it('rascunho entregue ao publicador (laterPostId) também é intocável', async () => {
+    criarPeca(1)
+    banco.posts.set('entregue', { id: 'entregue', projectId: PROJETO, pageId: 'page-1', postType: 'STORY', status: 'DRAFT', scheduledDatetime: new Date('2026-09-14T22:00:00Z'), mediaUrls: [], createdAt: 0, laterPostId: 'z1' })
+    expect((await agendar([item(1)], { apenasRascunho: true })).itens[0]).toMatchObject({ codigo: 'POST_APROVADO_INTOCAVEL' })
+  })
+
+  it('o post ligado foi aprovado depois: o retry draft-only devolve como está, sem efeitos em volta', async () => {
+    criarPeca(1)
+    await agendar([item(1)])
+    const [post] = postsDaPagina(1)
+    banco.posts.set(post.id as string, { ...post, status: 'SCHEDULED' })
+    banco.itensDeLote.set('lote-1', { ...banco.itensDeLote.get('lote-1')!, efeitosDoAgendamentoEm: null })
+    const refilagens = efeitos.refilagens.length
+    const r = await agendar([item(1)], { apenasRascunho: true })
+    expect(r.itens[0]).toMatchObject({ desfecho: 'reaproveitado' })
+    expect(efeitos.refilagens).toHaveLength(refilagens)
+    expect(banco.itensDeLote.get('lote-1')!.efeitosDoAgendamentoEm).toBeNull()
+  })
+})
+
+/**
+ * H5 do Dot — a rodada operacional como SISTEMA: a auditoria REAL (`auditarCarteira`) lê o MESMO banco falso em
+ * que o `agendarItensDoLote` REAL grava. O "agente" é a sequência de chamadas do manual (`operacao-dot.ts`):
+ * auditar → compor (aqui, a peça pronta que o compositor deixaria: `criarPeca`) → simular → [revisar] →
+ * agendar → auditar de novo. Nenhum cérebro novo: o servidor só dá estado, guardas e idempotência.
+ */
+describe('H5 — rodada operacional do Dot (auditoria real + agendamento real)', () => {
+  const AGORA = new Date('2026-09-13T12:00:00Z') // domingo 09:00 em Brasília: amanhã = 14/09, depois = 15/09
+  const SLOT = '2026-09-14 19:00'
+  const DOT = { apenasRascunho: true }
+  const em = (texto: string) => new Date(`${texto.replace(' ', 'T')}:00-03:00`)
+  const posts = () => [...banco.posts.values()]
+
+  /** A auditoria real da carteira de um cliente só, com a grade "um story às 19h todo dia". */
+  const auditar = () =>
+    auditarCarteira({
+      projetos: [{ id: PROJETO, name: 'Espeto Gaúcho' }],
+      historico: [],
+      posts: posts().map((p) => ({
+        id: p.id as string,
+        projectId: PROJETO,
+        scheduledDatetime: (p.scheduledDatetime as Date) ?? null,
+        postType: (p.postType as string) ?? 'STORY',
+        status: p.status as string,
+        mediaUrls: (p.mediaUrls as string[]) ?? [],
+        pageId: (p.pageId as string) ?? null,
+        renderStatus: (p.renderStatus as string) ?? null,
+        renderError: null,
+        errorMessage: (p.errorMessage as string) ?? null,
+        verificationStatus: null,
+        campaignId: (p.campaignId as string) ?? null,
+      })),
+      entradasDaGrade: [{ projectId: PROJETO, title: 'Padrões de Postagem — Espeto', content: 'SLOT 1 — 19h, todos os dias' }],
+      campanhas: [{ id: 'campanha-velha', projectId: PROJETO, expiresAt: new Date('2026-09-01T03:00:00Z') }],
+      comAssinatura: new Set([PROJETO]),
+      agora: AGORA,
+    }).clientes[0]
+
+  /** Um post que outra pessoa pôs na agenda: outra página, sem item de lote. */
+  const postAlheio = (extra: Record<string, unknown>) =>
+    banco.posts.set('alheio', {
+      id: 'alheio', projectId: PROJETO, pageId: 'page-alheia', postType: 'STORY', status: 'DRAFT', scheduledDatetime: em(SLOT),
+      mediaUrls: [`${BLOB}/alheia.png`], renderStatus: 'RENDERED', createdAt: 0, laterPostId: null, ...extra,
+    })
+
+  it('cenário 1 — cliente já coberto: NENHUMA, e a rodada não produz nada', async () => {
+    postAlheio({})
+    banco.posts.set('depois', { ...banco.posts.get('alheio')!, id: 'depois', scheduledDatetime: em('2026-09-15 19:00') })
+    const antes = fotoDoBanco()
+    const c = auditar()
+    expect(c).toMatchObject({ diasAdiantados: 2, acao: { codigo: 'NENHUMA' }, buracos: [] })
+    // A auditoria é observação pura: nenhum item de lote, nenhum post.
+    expect(fotoDoBanco()).toEqual(antes)
+  })
+
+  it('cenário 2 — gap amanhã + material: compor → simular → agendar → UM rascunho, nunca agendado; a rodada 2 não duplica (cenário 4)', async () => {
+    // Rodada 1.
+    const r1 = auditar()
+    expect(r1.acao.codigo).toBe('COMPOR')
+    expect(r1.buracos).toContainEqual({ data: '2026-09-14', hora: '19:00', formato: 'story', estado: 'vazio' })
+
+    criarPeca(1, { quando: SLOT }) // o que compor-leva deixa: Generation + página + ItemDeLote, peça pronta
+    const simulado = await agendar([item(1)], { ...DOT, simular: true })
+    expect(simulado.itens[0]).toMatchObject({ situacao: 'concluido', desfecho: 'criado', estadoDoPost: 'rascunho' })
+    expect(posts()).toEqual([]) // simular só informa
+    // (revisar-arte / ajustar-arte entram aqui; a peça foi aceita)
+    const real = await agendar([item(1)], DOT)
+    expect(real.itens[0]).toMatchObject({ situacao: 'concluido', desfecho: 'criado', estadoDoPost: 'rascunho' })
+    expect(posts()).toHaveLength(1)
+    expect(posts()[0]).toMatchObject({ status: 'DRAFT', pageId: 'page-1' })
+    expect(posts().some((p) => ['SCHEDULED', 'POSTING', 'POSTED'].includes(p.status as string))).toBe(false)
+    expect(auditar().amanha).toMatchObject({ estado: 'coberto', esperados: 1, cobertos: 1 })
+
+    // Rodada 2 — o agente perdeu a memória: audita de novo e repete as mesmas chamadas.
+    const r2 = auditar()
+    expect(r2.buracos.filter((b) => b.data === '2026-09-14')).toEqual([])
+    const repetida = await agendar([item(1)], DOT)
+    expect(repetida.itens[0]).toMatchObject({ desfecho: 'reaproveitado' })
+    expect(posts()).toHaveLength(1)
+    expect([...banco.itensDeLote.values()]).toHaveLength(1)
+  })
+
+  it('cenário 4 — rascunho já existe no horário (outra origem): coberto, e uma produção por cima é recusada', async () => {
+    postAlheio({})
+    expect(auditar().amanha.estado).toBe('coberto')
+    criarPeca(1, { quando: SLOT })
+    expect((await agendar([item(1)], DOT)).itens[0]).toMatchObject({ situacao: 'falhou', codigo: 'HORARIO_OCUPADO' })
+    expect(posts().map((p) => p.id)).toEqual(['alheio'])
+  })
+
+  it('cenário 5 — FAILED no horário: pendente + RELATAR_FALHA, e um substituto é recusado', async () => {
+    postAlheio({ status: 'FAILED', errorMessage: 'Later account not configured' })
+    const c = auditar()
+    expect(c.buracos).toContainEqual(expect.objectContaining({ data: '2026-09-14', estado: 'pendente', motivo: 'falhou' }))
+    expect(c.acao.codigo).toBe('RELATAR_FALHA')
+    expect(c.falhas[0]).toMatchObject({ tipo: 'publicacao', motivo: 'conta do Instagram não conectada' })
+    criarPeca(1, { quando: SLOT })
+    expect((await agendar([item(1)], DOT)).itens[0]).toMatchObject({ codigo: 'HORARIO_OCUPADO' })
+    expect(posts()).toHaveLength(1)
+    // A recuperação é do sistema; quando o horário ficar VAZIO de verdade, a auditoria volta a pedir COMPOR.
+    banco.posts.delete('alheio')
+    expect(auditar().acao.codigo).toBe('COMPOR')
+  })
+
+  it('cenário 6 — campanha vencida ocupando o horário: pendente, não cobre, e nada é criado por cima', async () => {
+    postAlheio({ status: 'SCHEDULED', campaignId: 'campanha-velha' })
+    const c = auditar()
+    expect(c.amanha.estado).toBe('pendente')
+    expect(c.buracos).toContainEqual(expect.objectContaining({ estado: 'pendente', motivo: 'campanha-vencida' }))
+    expect(c.acoes.map((a) => a.codigo)).toContain('CONSERTO_PENDENTE')
+    // O horário da campanha vencida NÃO é buraco vazio (o COMPOR que existe é o de 15/09, vazio de verdade).
+    expect(c.buracos.filter((b) => b.data === '2026-09-14')).toEqual([expect.objectContaining({ estado: 'pendente' })])
+    criarPeca(1, { quando: SLOT })
+    expect((await agendar([item(1)], DOT)).itens[0]).toMatchObject({ codigo: 'HORARIO_OCUPADO' })
+  })
+
+  it('cenário 8 — peça reprovada na revisão: sem agendar real não nasce rascunho "pronto"; o horário segue honesto (VAZIO) e a rodada seguinte reaproveita a mesma identidade', async () => {
+    criarPeca(1, { quando: SLOT })
+    // A revisão reprovou duas vezes: o agente para (REVISAO_HUMANA_NECESSARIA) e NÃO chama agendar-leva real.
+    await agendar([item(1)], { ...DOT, simular: true })
+    expect(posts()).toEqual([])
+    expect(auditar().buracos).toContainEqual(expect.objectContaining({ data: '2026-09-14', estado: 'vazio' }))
+    // Nenhuma peça nova nasce para o mesmo buraco: a identidade (loteId, itemId) é a mesma — ver o teste de reserva.
+    expect([...banco.itensDeLote.values()]).toHaveLength(1)
+  })
+
+  it('cenário 9 — slot preenchido DEPOIS da auditoria: o agendamento real revalida e recusa (HORARIO_OCUPADO), sem segundo post', async () => {
+    expect(auditar().acao.codigo).toBe('COMPOR') // a auditoria viu VAZIO
+    criarPeca(1, { quando: SLOT })
+    expect((await agendar([item(1)], { ...DOT, simular: true })).itens[0]).toMatchObject({ desfecho: 'criado' })
+    postAlheio({}) // outra pessoa ocupou o horário entre a auditoria e a escrita
+    const r = await agendar([item(1)], DOT)
+    expect(r.itens[0]).toMatchObject({ situacao: 'falhou', codigo: 'HORARIO_OCUPADO' })
+    expect(posts()).toHaveLength(1)
+    // A corrida simultânea (itens A e B ao mesmo tempo) está provada em 'H4 — HORARIO_OCUPADO', CORRIDA.
+  })
+})
+

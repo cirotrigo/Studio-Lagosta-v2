@@ -116,7 +116,7 @@ export class PostScheduler {
     const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000)
 
     // Case (a): POSTING without laterPostId — never sent to Zernio
-    const stuckPosts = await db.socialPost.findMany({
+    const posting = await db.socialPost.findMany({
       where: {
         status: PostStatus.POSTING,
         laterPostId: null,
@@ -126,6 +126,42 @@ export class PostScheduler {
         ],
       },
     })
+
+    /**
+     * ...a não ser que tenha chegado: `sendToLater` grava o log SENT com
+     * `persistenciaIncerta` quando o Zernio criou o post e o `laterPostId` não
+     * foi gravado. Marcar FAILED aqui mandaria o retry reenviar (publicação
+     * dupla). O `laterPostId` do log volta para a linha (CAS) e o status-sync
+     * (`syncLateStatus`) assume — ele já trata o 404 avisando, sem reenviar.
+     * Filtro do log em JS: filtro Json do Prisma descarta a linha sem a chave.
+     */
+    const incertos = new Map<string, string>()
+    if (posting.length > 0) {
+      const logs = await db.postLog.findMany({
+        where: { postId: { in: posting.map((p) => p.id) }, event: PostLogEvent.SENT },
+        select: { postId: true, metadata: true },
+      })
+      for (const log of logs) {
+        const m = log.metadata as { persistenciaIncerta?: unknown; laterPostId?: unknown } | null
+        if (m?.persistenciaIncerta === true && typeof m.laterPostId === 'string') incertos.set(log.postId, m.laterPostId)
+      }
+    }
+    for (const [postId, laterPostId] of incertos) {
+      try {
+        await db.socialPost.updateMany({
+          where: { id: postId, laterPostId: null, status: PostStatus.POSTING },
+          data: { laterPostId, lastSyncAt: null },
+        })
+        await this.createLog(postId, PostLogEvent.SENT, `laterPostId ${laterPostId} recuperado do envio incerto`, {
+          laterPostId,
+          recuperadoDoEnvioIncerto: true,
+        })
+      } catch (erro) {
+        // Fica para a próxima rodada — nunca FAILED por isso.
+        console.error(`[checkStuckPosts] Não deu para recuperar o laterPostId do post ${postId}:`, erro)
+      }
+    }
+    const stuckPosts = posting.filter((p) => !incertos.has(p.id))
 
     // Case (b): orphaned laterPostId — present locally, gone on Zernio.
     // Use scheduledDatetime OR processingStartedAt — IMMEDIATE posts may have a near-future

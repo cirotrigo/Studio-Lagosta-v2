@@ -16,7 +16,7 @@ import {
   type EscopoAprendizado,
   type OrigemDecisao,
 } from '@/lib/posts/learning-scope'
-import { copyDeCamadas, copyParaDecisao, diffDeCopy, type DiffDeCopy } from '@/lib/aprendizado/diff-copy'
+import { alinharChavesDaProposta, copyDeCamadas, copyParaDecisao, diffDeCopy, type DiffDeCopy } from '@/lib/aprendizado/diff-copy'
 import { lerProcedencia, AVISO_COPY_DE_ARTE_RE_RENDERIZADA } from '@/lib/creatives/procedencia-da-copy'
 import {
   fecharSugestaoDeSlot,
@@ -25,7 +25,7 @@ import {
 } from '@/lib/aprendizado/sinal-de-agendamento'
 import { registrarLegendaDoPost } from '@/lib/aprendizado/sinal-de-legenda'
 import { registrarArtesDoPost } from '@/lib/posts/artes-do-post'
-import { comoCopiaDaPagina } from '@/lib/posts/copy-segue-a-pagina'
+import { copiaDaPagina } from '@/lib/posts/copy-segue-a-pagina'
 import { recusaComoImagem } from '@/lib/video/pagina-com-video'
 import { vinculoDoVideo } from '@/lib/video/vinculo-do-video'
 import { ehExportDeVideo } from '@/lib/posts/post-de-video'
@@ -33,6 +33,7 @@ import { isVideoUrl } from '@/lib/media-type'
 import type { Superficie } from '@/lib/aprendizado/vocabulario'
 import { PostType, PostStatus, Prisma } from '@prisma/client'
 import { formatarBRT, parseBRT } from './data-brt'
+import { avisoDeCelulasVazias } from '@/lib/grades/presenca'
 
 export { parseBRT } from './data-brt'
 
@@ -358,6 +359,9 @@ export async function resolverAgendamento(input: AgendarPostInput, opcoes: Opcoe
    * publicação passa a depender de um link de terceiro sobreviver até a hora.
    */
   const avisos: string[] = []
+  // G4.6: grade de fotos com célula vazia vai ao ar com o buraco — avisa, não bloqueia (página como está agora)
+  const avisoDaGrade = avisoDeCelulasVazias(camadasDaPagina)
+  if (avisoDaGrade) avisos.push(avisoDaGrade)
   if (copyInvalidada && !input.pageId) {
     avisos.push(AVISO_COPY_DE_ARTE_RE_RENDERIZADA)
   }
@@ -458,8 +462,11 @@ export async function resolverAgendamento(input: AgendarPostInput, opcoes: Opcoe
    * ser legível, senão o diff diria "não mudou nada" justamente onde não se
    * sabe nada.
    */
-  const diffDaCopy =
-    copyPropostaTexto && copyDaDecisao ? diffDeCopy(copyPropostaTexto, copyDaDecisao) : null
+  // A proposta pode vir por layerId; a página é lida por nome. Traduz pela
+  // identidade da camada, senão o diff acusa edição onde o texto é o mesmo —
+  // e chave ambígua (id de uma camada, nome de outra) fica sem diff.
+  const propostaAlinhada = copyDaDecisao ? alinharChavesDaProposta(copyPropostaTexto, camadasDaPagina) : null
+  const diffDaCopy = propostaAlinhada && copyDaDecisao ? diffDeCopy(propostaAlinhada, copyDaDecisao) : null
 
   const observacao = input.observacao?.trim() || null
   // Guardada mesmo assim (quem trocar para manual na agenda a encontra), mas o
@@ -538,7 +545,7 @@ export async function criarPostDoAgendamento(client: EscritorDoAgendamento, r: A
       ...(copyFinal
         ? {
             slotValues: (copyDaPagina
-              ? comoCopiaDaPagina(copyDaPagina)
+              ? copiaDaPagina(copyDaPagina)
               : copyFinal) as Prisma.InputJsonValue,
           }
         : {}),
@@ -735,7 +742,10 @@ export async function efeitosDoAgendamento(
 
 export async function agendarPost(input: AgendarPostInput) {
   const r = await resolverAgendamento(input)
-  const post = await criarPostDoAgendamento(db, r)
+  // Sob a trava da agenda do projeto (H4): a criação por aqui (colocar-na-agenda, a agenda web) espera o
+  // agendar-leva do perfil draft-only que estiver rechecando o mesmo horário, e ele passa a ver este post.
+  const { comTravaPorChave, chaveDaAgenda } = await import('@/lib/trava-por-chave')
+  const post = await comTravaPorChave(chaveDaAgenda(input.projectId), (tx) => criarPostDoAgendamento(tx, r))
   await efeitosDoAgendamento(post, contextoDosEfeitos(r))
 
   const { project, vaiPublicar, avisos } = r

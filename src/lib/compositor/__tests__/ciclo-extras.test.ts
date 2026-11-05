@@ -164,12 +164,17 @@ describe('medirDefasagem — trocar a foto é defasagem; o enquadramento mexido 
     expect(r.spec.camadasExtras).toEqual([{ id: 'nota', linhas: ['vale só'], herdaDe: 'apoio' }])
   })
 
-  it('o corte da foto ajustado à mão é ajuste manual (re-render como está, nunca recompor por cima)', () => {
+  it('F2a: o corte da foto de FUNDO ajustado à mão é `enquadramentoAlterado` (defasada, recompõe adotando o corte da página), não ajuste manual', () => {
     const pagina = editar(snapshot, 'bg-foto', { style: { objectFit: 'cover', cropPosition: 'center-top' } })
     const d = medirDefasagem(pagina, snapshot)
-    expect(d.soTexto).toBe(false)
-    expect(d.mexidoNaMao.join(' ')).toMatch(/enquadramento da imagem "bg-foto"/)
+    expect(d).toMatchObject({ defasada: true, enquadramentoAlterado: true, soTexto: true, mexidoNaMao: [] })
     expect(precisaRefazer(d, [slide], ARTE)).toBe(true)
+    // A janela (o crop do editor) também é enquadramento; o objectFit, não: continua ajuste manual.
+    const comJanela = medirDefasagem(editar(snapshot, 'bg-foto', { style: { objectFit: 'cover', cropPosition: 'center-middle', crop: { x: 0.1, y: 0.1, width: 0.5, height: 0.8 } } }), snapshot)
+    expect(comJanela).toMatchObject({ enquadramentoAlterado: true, soTexto: true, mexidoNaMao: [] })
+    const semCover = medirDefasagem(editar(snapshot, 'bg-foto', { style: { objectFit: 'contain', cropPosition: 'center-middle' } }), snapshot)
+    expect(semCover.soTexto).toBe(false)
+    expect(semCover.mexidoNaMao.join(' ')).toMatch(/enquadramento da imagem "bg-foto"/)
   })
 
   it('página igual — mesma foto, mesmo corte — continua em dia', () => {

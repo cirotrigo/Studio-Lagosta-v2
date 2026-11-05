@@ -1,0 +1,708 @@
+{
+ "id": "cmvvaau640001sw7cd15roviq",
+ "name": "Ref 01 · Restaurant Week · Sugestão de Almoço",
+ "width": 1080,
+ "height": 1920,
+ "background": "#F4EBDE",
+ "isTemplate": false,
+ "tags": [
+  "referencia",
+  "restaurant-week",
+  "almoco"
+ ],
+ "order": 0,
+ "layerCount": 21,
+ "layers": [
+  {
+   "id": "foto-principal",
+   "name": "Foto principal",
+   "size": {
+    "width": 1080,
+    "height": 690
+   },
+   "type": "image",
+   "order": 0,
+   "style": {
+    "objectFit": "cover",
+    "cropPosition": "center-bottom",
+    "crop": {
+     "x": 0,
+     "y": 0.39391624278888515,
+     "width": 1,
+     "height": 0.42677948489571743
+    }
+   },
+   "locked": false,
+   "fileUrl": "https://lh3.googleusercontent.com/d/10IUnT21aqtz5wzKYw8ziExiI1LblRFCG=w2000",
+   "visible": true,
+   "position": {
+    "x": 0,
+    "y": 419
+   },
+   "rotation": 0,
+   "isDynamic": true
+  },
+  {
+   "id": "foto-entrada",
+   "name": "Foto entrada",
+   "size": {
+    "width": 554,
+    "height": 562
+   },
+   "type": "image",
+   "order": 1,
+   "style": {
+    "objectFit": "cover",
+    "cropPosition": "center-middle",
+    "crop": {
+     "x": 0.11370585879066397,
+     "y": 0.15190865417237964,
+     "width": 0.8788418398101877,
+     "height": 0.5955462235823337
+    }
+   },
+   "locked": false,
+   "fileUrl": "https://lh3.googleusercontent.com/d/1tJt2S05iCQ9_ewqP2RfeZESQ6ORNg1ov=w2000",
+   "visible": true,
+   "position": {
+    "x": 0,
+    "y": 1112
+   },
+   "rotation": 0,
+   "isDynamic": true
+  },
+  {
+   "id": "foto-sobremesa",
+   "name": "Foto sobremesa",
+   "size": {
+    "width": 521,
+    "height": 562
+   },
+   "type": "image",
+   "order": 2,
+   "style": {
+    "objectFit": "cover",
+    "cropPosition": "center-middle"
+   },
+   "locked": false,
+   "fileUrl": "https://lh3.googleusercontent.com/d/1LLu67Yy8foEUGKgYkgwKzevYK2c0rlvP=w2000",
+   "visible": true,
+   "position": {
+    "x": 559,
+    "y": 1112
+   },
+   "rotation": 0,
+   "isDynamic": true
+  },
+  {
+   "id": "pre-titulo",
+   "name": "Pré-título",
+   "size": {
+    "width": 400,
+    "height": 36
+   },
+   "type": "text",
+   "order": 3,
+   "style": {
+    "color": "#CAB371",
+    "fontSize": 24,
+    "textAlign": "center",
+    "fontFamily": "TrajanPro Regular",
+    "lineHeight": 1,
+    "letterSpacing": 6,
+    "textTransform": "uppercase"
+   },
+   "locked": false,
+   "content": "RESTAURANT WEEK",
+   "visible": true,
+   "position": {
+    "x": 340,
+    "y": 101
+   },
+   "rotation": 0,
+   "isDynamic": true,
+   "textboxConfig": {
+    "anchor": "top",
+    "autoWrap": {
+     "breakMode": "word",
+     "autoExpand": true,
+     "lineHeight": 1
+    }
+   }
+  },
+  {
+   "id": "titulo-1",
+   "name": "Título linha 1",
+   "size": {
+    "width": 800,
+    "height": 104
+   },
+   "type": "text",
+   "order": 4,
+   "style": {
+    "color": "#4D5D75",
+    "fontSize": 92,
+    "textAlign": "center",
+    "fontFamily": "FRZQUADN",
+    "lineHeight": 1,
+    "letterSpacing": 0,
+    "fontWeight": "normal"
+   },
+   "locked": false,
+   "content": "Sugestão de",
+   "visible": true,
+   "position": {
+    "x": 140,
+    "y": 131
+   },
+   "rotation": 0,
+   "isDynamic": true,
+   "textboxConfig": {
+    "anchor": "top",
+    "autoWrap": {
+     "breakMode": "word",
+     "autoExpand": true,
+     "lineHeight": 1
+    }
+   }
+  },
+  {
+   "id": "titulo-2",
+   "name": "Título linha 2 (destaque)",
+   "size": {
+    "width": 900,
+    "height": 162
+   },
+   "type": "text",
+   "order": 5,
+   "style": {
+    "color": "#CAB371",
+    "fontSize": 150,
+    "textAlign": "center",
+    "fontFamily": "TrajanPro Regular",
+    "lineHeight": 1,
+    "letterSpacing": 0,
+    "fontWeight": "normal",
+    "fontStyle": "italic"
+   },
+   "locked": false,
+   "content": "Almoço",
+   "visible": true,
+   "position": {
+    "x": 90,
+    "y": 217
+   },
+   "rotation": 0,
+   "isDynamic": true,
+   "textboxConfig": {
+    "anchor": "top",
+    "autoWrap": {
+     "breakMode": "word",
+     "autoExpand": true,
+     "lineHeight": 1
+    }
+   }
+  },
+  {
+   "id": "apoio",
+   "name": "Apoio",
+   "size": {
+    "width": 900,
+    "height": 64
+   },
+   "type": "text",
+   "order": 6,
+   "style": {
+    "color": "#4D5D75",
+    "fontSize": 52,
+    "textAlign": "center",
+    "fontFamily": "FRZQUADN",
+    "lineHeight": 1,
+    "letterSpacing": 0
+   },
+   "locked": false,
+   "content": "para iniciar o fim de semana",
+   "visible": true,
+   "position": {
+    "x": 90,
+    "y": 336
+   },
+   "rotation": 0,
+   "isDynamic": true,
+   "textboxConfig": {
+    "anchor": "top",
+    "autoWrap": {
+     "breakMode": "word",
+     "autoExpand": true,
+     "lineHeight": 1
+    }
+   }
+  },
+  {
+   "id": "rotulo-principal",
+   "name": "Rótulo Principal",
+   "size": {
+    "width": 300,
+    "height": 66
+   },
+   "type": "text",
+   "order": 7,
+   "style": {
+    "color": "#F8F8F8",
+    "fontSize": 54,
+    "textAlign": "left",
+    "fontFamily": "FRZQUADN",
+    "lineHeight": 1,
+    "letterSpacing": 0
+   },
+   "locked": false,
+   "content": "Principal",
+   "effects": {
+    "shadow": {
+     "enabled": true,
+     "shadowBlur": 8,
+     "shadowColor": "#000000",
+     "shadowOffsetX": 0,
+     "shadowOffsetY": 2,
+     "shadowOpacity": 0.35
+    }
+   },
+   "visible": true,
+   "position": {
+    "x": 71,
+    "y": 458
+   },
+   "rotation": 0,
+   "isDynamic": true,
+   "textboxConfig": {
+    "anchor": "top",
+    "autoWrap": {
+     "breakMode": "word",
+     "autoExpand": true,
+     "lineHeight": 1
+    }
+   }
+  },
+  {
+   "id": "rotulo-entrada",
+   "name": "Rótulo Entrada",
+   "size": {
+    "width": 300,
+    "height": 58
+   },
+   "type": "text",
+   "order": 8,
+   "style": {
+    "color": "#F8F8F8",
+    "fontSize": 46,
+    "textAlign": "left",
+    "fontFamily": "FRZQUADN",
+    "lineHeight": 1,
+    "letterSpacing": 0
+   },
+   "locked": false,
+   "content": "Entrada",
+   "effects": {
+    "shadow": {
+     "enabled": true,
+     "shadowBlur": 8,
+     "shadowColor": "#000000",
+     "shadowOffsetX": 0,
+     "shadowOffsetY": 2,
+     "shadowOpacity": 0.35
+    }
+   },
+   "visible": true,
+   "position": {
+    "x": 68,
+    "y": 1136
+   },
+   "rotation": 0,
+   "isDynamic": true,
+   "textboxConfig": {
+    "anchor": "top",
+    "autoWrap": {
+     "breakMode": "word",
+     "autoExpand": true,
+     "lineHeight": 1
+    }
+   }
+  },
+  {
+   "id": "rotulo-sobremesa",
+   "name": "Rótulo Sobremesa",
+   "size": {
+    "width": 300,
+    "height": 58
+   },
+   "type": "text",
+   "order": 9,
+   "style": {
+    "color": "#F8F8F8",
+    "fontSize": 46,
+    "textAlign": "left",
+    "fontFamily": "FRZQUADN",
+    "lineHeight": 1,
+    "letterSpacing": 0
+   },
+   "locked": false,
+   "content": "Sobremesa",
+   "effects": {
+    "shadow": {
+     "enabled": true,
+     "shadowBlur": 8,
+     "shadowColor": "#000000",
+     "shadowOffsetX": 0,
+     "shadowOffsetY": 2,
+     "shadowOpacity": 0.35
+    }
+   },
+   "visible": true,
+   "position": {
+    "x": 598,
+    "y": 1134
+   },
+   "rotation": 0,
+   "isDynamic": true,
+   "textboxConfig": {
+    "anchor": "top",
+    "autoWrap": {
+     "breakMode": "word",
+     "autoExpand": true,
+     "lineHeight": 1
+    }
+   }
+  },
+  {
+   "id": "logo-rodape",
+   "name": "Logo Empório Fonseca",
+   "size": {
+    "width": 241,
+    "height": 78
+   },
+   "type": "logo",
+   "order": 10,
+   "style": {
+    "objectFit": "contain"
+   },
+   "locked": false,
+   "logoId": 52,
+   "fileUrl": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/12/logos/1771683215986-Ativo_2icones.png",
+   "visible": true,
+   "position": {
+    "x": 68,
+    "y": 1739
+   },
+   "rotation": 0
+  },
+  {
+   "id": "servico-1",
+   "name": "Serviço linha 1",
+   "size": {
+    "width": 500,
+    "height": 52
+   },
+   "type": "text",
+   "order": 11,
+   "style": {
+    "color": "#4D5D75",
+    "fontSize": 40,
+    "textAlign": "center",
+    "fontFamily": "FRZQUADN",
+    "lineHeight": 1,
+    "letterSpacing": 0
+   },
+   "locked": false,
+   "content": "Almoço Restaurant Week",
+   "visible": true,
+   "position": {
+    "x": 340,
+    "y": 1732
+   },
+   "rotation": 0,
+   "isDynamic": true,
+   "textboxConfig": {
+    "anchor": "top",
+    "autoWrap": {
+     "breakMode": "word",
+     "autoExpand": true,
+     "lineHeight": 1
+    }
+   }
+  },
+  {
+   "id": "servico-2",
+   "name": "Serviço linha 2",
+   "size": {
+    "width": 500,
+    "height": 44
+   },
+   "type": "text",
+   "order": 12,
+   "style": {
+    "color": "#4D5D75",
+    "fontSize": 32,
+    "textAlign": "center",
+    "fontFamily": "FRZQUADN",
+    "lineHeight": 1,
+    "letterSpacing": 0
+   },
+   "locked": false,
+   "content": "Terça a sexta · 11h às 15h",
+   "visible": true,
+   "position": {
+    "x": 340,
+    "y": 1786
+   },
+   "rotation": 0,
+   "isDynamic": true,
+   "textboxConfig": {
+    "anchor": "top",
+    "autoWrap": {
+     "breakMode": "word",
+     "autoExpand": true,
+     "lineHeight": 1
+    }
+   }
+  },
+  {
+   "id": "selo-rw",
+   "name": "Selo Espírito Santo Restaurant Week",
+   "size": {
+    "width": 113,
+    "height": 123
+   },
+   "type": "element",
+   "order": 13,
+   "style": {
+    "objectFit": "contain"
+   },
+   "locked": false,
+   "fileUrl": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/12/elements/1793383436949-rw-logo.png",
+   "visible": true,
+   "position": {
+    "x": 910,
+    "y": 1716
+   },
+   "rotation": 0,
+   "elementId": 492
+  },
+  {
+   "id": "fc5b2267-030e-43a3-a7aa-adc1d57f89b7",
+   "type": "shape",
+   "name": "Fio fino",
+   "visible": true,
+   "locked": false,
+   "order": 14,
+   "position": {
+    "x": 221,
+    "y": 111
+   },
+   "size": {
+    "width": 138,
+    "height": 5
+   },
+   "style": {
+    "fill": "rgba(202, 179, 113, 1)",
+    "fillOpacity": 1,
+    "strokeOpacity": 1,
+    "strokeWidth": 2,
+    "shapeType": "line",
+    "vetor": {
+     "asset": {
+      "id": "fio-fino",
+      "versao": 1
+     }
+    },
+    "opacity": 1
+   },
+   "rotation": 0
+  },
+  {
+   "id": "601044eb-24ae-4fac-8d31-c5f459059c25",
+   "type": "shape",
+   "name": "Fio fino Copy",
+   "visible": true,
+   "locked": false,
+   "order": 15,
+   "position": {
+    "x": 725,
+    "y": 112
+   },
+   "size": {
+    "width": 138,
+    "height": 5
+   },
+   "style": {
+    "fill": "rgba(202, 179, 113, 1)",
+    "fillOpacity": 1,
+    "strokeOpacity": 1,
+    "strokeWidth": 2,
+    "shapeType": "line",
+    "vetor": {
+     "asset": {
+      "id": "fio-fino",
+      "versao": 1
+     }
+    },
+    "opacity": 1
+   },
+   "rotation": 0
+  },
+  {
+   "id": "917c356e-fca5-4065-9a31-23aa3332634a",
+   "type": "shape",
+   "name": "Fio fino Copy",
+   "visible": true,
+   "locked": false,
+   "order": 16,
+   "position": {
+    "x": 83,
+    "y": 524
+   },
+   "size": {
+    "width": 138,
+    "height": 5
+   },
+   "style": {
+    "fill": "rgba(202, 179, 113, 1)",
+    "fillOpacity": 1,
+    "strokeOpacity": 1,
+    "strokeWidth": 2,
+    "shapeType": "line",
+    "vetor": {
+     "asset": {
+      "id": "fio-fino",
+      "versao": 1
+     }
+    },
+    "opacity": 1
+   },
+   "rotation": 0
+  },
+  {
+   "id": "67ef94d1-01ce-4263-ad1d-24502c5e677a",
+   "type": "shape",
+   "name": "Fio fino Copy Copy",
+   "visible": true,
+   "locked": false,
+   "order": 17,
+   "position": {
+    "x": 76,
+    "y": 1189
+   },
+   "size": {
+    "width": 138,
+    "height": 5
+   },
+   "style": {
+    "fill": "rgba(202, 179, 113, 1)",
+    "fillOpacity": 1,
+    "strokeOpacity": 1,
+    "strokeWidth": 2,
+    "shapeType": "line",
+    "vetor": {
+     "asset": {
+      "id": "fio-fino",
+      "versao": 1
+     }
+    },
+    "opacity": 1
+   },
+   "rotation": 0
+  },
+  {
+   "id": "8e701b70-3437-4797-abf3-f42420368f60",
+   "type": "shape",
+   "name": "Fio fino Copy Copy Copy",
+   "visible": true,
+   "locked": false,
+   "order": 18,
+   "position": {
+    "x": 610,
+    "y": 1189
+   },
+   "size": {
+    "width": 138,
+    "height": 5
+   },
+   "style": {
+    "fill": "rgba(202, 179, 113, 1)",
+    "fillOpacity": 1,
+    "strokeOpacity": 1,
+    "strokeWidth": 2,
+    "shapeType": "line",
+    "vetor": {
+     "asset": {
+      "id": "fio-fino",
+      "versao": 1
+     }
+    },
+    "opacity": 1
+   },
+   "rotation": 0
+  },
+  {
+   "id": "704d7587-15af-46ae-a418-090a52854dbf",
+   "type": "shape",
+   "name": "Fio fino Copy Copy Copy Copy",
+   "visible": true,
+   "locked": false,
+   "order": 19,
+   "position": {
+    "x": 861,
+    "y": 1715
+   },
+   "size": {
+    "width": 124,
+    "height": 5
+   },
+   "style": {
+    "fill": "rgba(202, 179, 113, 1)",
+    "fillOpacity": 1,
+    "strokeOpacity": 1,
+    "strokeWidth": 2,
+    "shapeType": "line",
+    "vetor": {
+     "asset": {
+      "id": "fio-fino",
+      "versao": 1
+     }
+    },
+    "opacity": 1
+   },
+   "rotation": 90
+  },
+  {
+   "id": "5e7c58e1-0520-445b-a6be-b06a4adad62e",
+   "type": "shape",
+   "name": "Fio fino Copy Copy Copy Copy Copy",
+   "visible": true,
+   "locked": false,
+   "order": 20,
+   "position": {
+    "x": 327,
+    "y": 1718
+   },
+   "size": {
+    "width": 124,
+    "height": 5
+   },
+   "style": {
+    "fill": "rgba(202, 179, 113, 1)",
+    "fillOpacity": 1,
+    "strokeOpacity": 1,
+    "strokeWidth": 2,
+    "shapeType": "line",
+    "vetor": {
+     "asset": {
+      "id": "fio-fino",
+      "versao": 1
+     }
+    },
+    "opacity": 1
+   },
+   "rotation": 90
+  }
+ ]
+}

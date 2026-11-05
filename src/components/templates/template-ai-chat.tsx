@@ -133,7 +133,7 @@ export function TemplateAIChat({ projectId }: { projectId: number }) {
     }
     lastStatusRef.current = status
   }, [currentConversationId, projectId, queryClient, refetchConversation, status])
-  const { canPerformOperation, getCost, refresh } = useCredits()
+  const { canPerformOperation, getCost, refresh, creditosAplicados } = useCredits()
 
   const listRef = React.useRef<HTMLDivElement>(null)
   const endRef = React.useRef<HTMLDivElement>(null)
@@ -542,7 +542,7 @@ export function TemplateAIChat({ projectId }: { projectId: number }) {
           </Button>
         </div>
       <div className="text-[10px] text-muted-foreground">
-        GPT-5 Mini · {getCost('ai_chat')} crédito
+        GPT-5 Mini{creditosAplicados === true && ` · ${getCost('ai_chat')} crédito`}
       </div>
     </div>
 

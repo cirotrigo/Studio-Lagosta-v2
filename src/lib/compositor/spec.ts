@@ -138,6 +138,42 @@ export type Preferencias = z.infer<typeof preferenciasSchema>
 /** Um arranjo fixado: `{ grupo, arranjo }` (o id do arranjo DAQUELE grupo — R15) ou, no legado, só o id, para qualquer grupo. */
 export type ArranjoFixado = z.infer<typeof arranjoFixadoSchema>
 
+/**
+ * O ARQUÉTIPO de layout pedido (T1a, 14/10/2026) — o catálogo imutável de
+ * `arquetipos/`. Pedido público: `{ id }` ou `{ id, versao }`; persistido: os
+ * três, com a `impressao` da definição. Aqui só a FORMA: a resolução no
+ * catálogo, a conferência da impressão e as recusas moram em
+ * `arquetipos/na-spec.ts`, chamadas por quem compõe, enfileira, mede e recompõe
+ * — nunca aqui, onde uma recusa viraria "a arte não guardou a spec".
+ * `strict`: chave a mais é recusada, não descartada.
+ */
+export const arquetipoDaSpecSchema = z
+  .object({
+    id: z.string().min(1).max(80).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+    versao: z.number().int().min(1).optional(),
+    impressao: z.string().regex(/^arq1-[0-9a-f]{14}$/).optional(),
+  })
+  .strict()
+export type ArquetipoDaSpecPedido = z.infer<typeof arquetipoDaSpecSchema>
+
+/**
+ * A JANELA da foto (F2a, 01/11/2026): o retângulo da foto original que a peça mostra, em FRAÇÕES — o mesmo `style.crop`
+ * do editor. Mínimo 0,01 por lado (o clamp de `resolveImageSourceRect`), dentro de 0..1. A proporção se confere no
+ * compositor, em px, contra a caixa (ajuste mínimo dito; fora da foto, recusa). `corte` é a ÂNCORA efetiva da página
+ * (depois de "Remover" o crop no editor): só a recomposição a escreve.
+ */
+export const janelaSchema = z
+  .object({
+    x: z.number().min(0).max(1),
+    y: z.number().min(0).max(1),
+    width: z.number().min(0.01).max(1),
+    height: z.number().min(0.01).max(1),
+  })
+  .strict()
+  .refine((j) => j.x + j.width <= 1 + 1e-9 && j.y + j.height <= 1 + 1e-9, { message: 'a janela sai da foto (x + width e y + height até 1)' })
+export type JanelaDaSpec = z.infer<typeof janelaSchema>
+export const CORTES_DA_FOTO = ['left-top', 'center-top', 'right-top', 'left-middle', 'center-middle', 'right-middle', 'left-bottom', 'center-bottom', 'right-bottom'] as const
+
 export const specSchema = z.object({
   projectId: z.number().int().positive(),
   formato: z.enum(FORMATOS),
@@ -145,6 +181,8 @@ export const specSchema = z.object({
     .object({
       url: z.string().url().optional(),
       driveFileId: z.string().min(1).optional(),
+      janela: janelaSchema.optional(),
+      corte: z.enum(CORTES_DA_FOTO).optional(),
     })
     .optional(),
   selecaoExperimental: z.boolean().optional(),
@@ -171,6 +209,8 @@ export const specSchema = z.object({
    * blocos por `blocosParaOCompositor` na porta (nunca aqui, em silêncio).
    */
   copyAutoral: copyAutoralSchema.optional(),
+  /** O arquétipo de layout (T1a): opt-in. Sem ele, a composição é a de sempre. */
+  arquetipo: arquetipoDaSpecSchema.optional(),
 })
 export type SpecDePeca = z.infer<typeof specSchema>
 
@@ -299,6 +339,15 @@ export function validarSpec(entrada: unknown): { spec: SpecDePeca; problemas: []
     }
     const c = r.data.carrossel
     if (c?.de && c.slide > c.de) return { spec: null, problemas: [`carrossel: o slide ${c.slide} não cabe num carrossel de ${c.de}`] }
+    // F2a: a janela é de UMA foto — sem foto não há o que recortar, e com seleção (várias fotos) ela não tem dona.
+    if (r.data.foto?.janela || r.data.foto?.corte) {
+      if (!r.data.foto.url && !r.data.foto.driveFileId) return { spec: null, problemas: ['foto.janela: a janela (ou o corte) precisa da foto (url ou driveFileId)'] }
+      if (r.data.selecaoExperimental || (r.data.fotosCandidatas?.length ?? 0) > 0) return { spec: null, problemas: ['foto.janela: a janela é de uma foto só — não combina com selecaoExperimental nem com fotosCandidatas'] }
+      if (r.data.foto.janela && r.data.foto.corte) return { spec: null, problemas: ['foto: mande a janela OU o corte (âncora), não os dois'] }
+    }
+    if (r.data.arquetipo?.impressao && r.data.arquetipo.versao === undefined) {
+      return { spec: null, problemas: ['arquetipo: a impressão só vale com a versão exata (id + versao + impressao)'] }
+    }
     return { spec: r.data, problemas: [] }
   }
   return {

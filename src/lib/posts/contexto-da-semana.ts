@@ -124,7 +124,8 @@ export function dataBRT(d: Date): string {
   return new Date(d.getTime() - 3 * 3600_000).toISOString().slice(0, 10)
 }
 
-function inicioDoDiaBRT(dataISO: string): Date {
+/** Primeiro instante do dia "AAAA-MM-DD" em Brasília. */
+export function inicioDoDiaBRT(dataISO: string): Date {
   return new Date(`${dataISO}T00:00:00-03:00`)
 }
 function fimDoDiaBRT(dataISO: string): Date {
@@ -257,9 +258,13 @@ export function dentroDaJanela(quando: Date | null | undefined, janela: { inicio
   return t >= janela.inicio.getTime() && t <= janela.fim.getTime()
 }
 
+/** Este ocupante cai no slot? Mesmo formato, a até `toleranciaMin` dele — a regra única de ocupação. */
+export function ocupaOSlot(o: Ocupante, quandoUTC: number, formato: FormatoDaPeca, toleranciaMin: number): boolean {
+  return o.formato === formato && Math.abs(o.t - quandoUTC) <= toleranciaMin * 60_000
+}
+
 export function slotOcupado(ocupados: Ocupante[], quandoUTC: number, formato: FormatoDaPeca, toleranciaMin: number): boolean {
-  const tol = toleranciaMin * 60_000
-  return ocupados.some((o) => o.formato === formato && Math.abs(o.t - quandoUTC) <= tol)
+  return ocupados.some((o) => ocupaOSlot(o, quandoUTC, formato, toleranciaMin))
 }
 
 export type OrigemDoHorario = 'combinado' | 'historico' | 'nova'

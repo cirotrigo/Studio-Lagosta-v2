@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Montserrat } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -10,12 +10,21 @@ import {
 import { getSiteSettings } from "@/lib/site-settings";
 import { AnalyticsPixels } from "@/components/analytics/pixels";
 
-// Família Montserrat com todos os pesos necessários
-const montserrat = Montserrat({
+// Família Montserrat com todos os pesos necessários, em WOFF2 derivado sem perdas
+// dos TTF do repositório (os mesmos do CanvasRenderer, que segue lendo os TTF):
+// o build não depende do Google Fonts.
+const montserrat = localFont({
   variable: "--font-montserrat",
-  subsets: ["latin"],
-  weight: ["100", "300", "400", "500", "600", "700", "800", "900"], // Thin, Light, Regular, Medium, SemiBold, Bold, ExtraBold, Black
-  style: ["normal"],
+  src: [
+    { path: "../../assets/fonts/montserrat/Montserrat-100.woff2", weight: "100", style: "normal" }, // Thin
+    { path: "../../assets/fonts/montserrat/Montserrat-300.woff2", weight: "300", style: "normal" }, // Light
+    { path: "../../assets/fonts/montserrat/Montserrat-400.woff2", weight: "400", style: "normal" }, // Regular
+    { path: "../../assets/fonts/montserrat/Montserrat-500.woff2", weight: "500", style: "normal" }, // Medium
+    { path: "../../assets/fonts/montserrat/Montserrat-600.woff2", weight: "600", style: "normal" }, // SemiBold
+    { path: "../../assets/fonts/montserrat/Montserrat-700.woff2", weight: "700", style: "normal" }, // Bold
+    { path: "../../assets/fonts/montserrat/Montserrat-800.woff2", weight: "800", style: "normal" }, // ExtraBold
+    { path: "../../assets/fonts/montserrat/Montserrat-900.woff2", weight: "900", style: "normal" }, // Black
+  ],
   display: "swap",
   preload: true,
 });

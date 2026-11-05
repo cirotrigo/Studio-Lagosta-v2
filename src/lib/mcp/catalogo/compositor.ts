@@ -8,8 +8,9 @@
 import { z } from 'zod'
 import { definirTool } from '../registro/definir'
 // Módulos PUROS (zod + tipos): o catálogo continua carregando sem env.
-import { GRUPOS_VISUAIS, PAPEIS, blocoSchema } from '../../compositor/spec'
+import { GRUPOS_VISUAIS, PAPEIS, arquetipoDaSpecSchema, blocoSchema } from '../../compositor/spec'
 import { MAX_LINHAS } from '../../copy-autoral/contrato'
+import { vitrineDeArquetipos } from '../../compositor/arquetipos/na-spec'
 
 /**
  * 🔴 Os limites do bloco vêm do schema da SPEC, nunca redeclarados aqui (R02 da
@@ -20,6 +21,8 @@ import { MAX_LINHAS } from '../../copy-autoral/contrato'
  * que ficam literais (40 blocos, 3 candidatas, 20 slides, 8 arranjos) têm teste
  * de paridade com a spec.
  */
+const DICA_FORA_DO_RODIZIO =
+  ' Variante com foraDoRodizio true é uma página promovida: fica fora do rodízio e só entra numa peça quando a pessoa pede por ela (preferencias.variante com o id ou o nome) — não a escolha por conta própria.'
 const papelDaAssinatura = z.enum(PAPEIS)
 const linhasDoBloco = blocoSchema.shape.linhas.describe(
   `As linhas do bloco, JÁ quebradas como devem aparecer (uma string por linha). Headline em 1-2 linhas curtas; apoio em 1-2 linhas. Linha vazia ("") é respiro e fica onde está; até ${MAX_LINHAS} linhas. Palavra-chave entre [colchetes] sai DESTACADA na cor e no peso de destaque da marca (ex.: "Seu milk-shake vem [em dobro]") — marque 1 ou 2 por peça, só o que decide a leitura (preço, dia, a oferta); sem colchetes, sem destaque.`,
@@ -78,6 +81,11 @@ const preferencias = z
   })
   .optional()
 
+/** O schema da SPEC (T1a), com a descrição pública — o mesmo nas três portas que constroem a peça. */
+const arquetipo = arquetipoDaSpecSchema.describe(
+  'O ARQUÉTIPO de layout, opt-in: { id } ou { id, versao } — os disponíveis estão em ver-assinatura (campo arquetipos, com a disponibilidade de cada um). Com ele, a GEOMETRIA vem do arquétipo: a foto escolhe, DENTRO das zonas dele, o enquadramento e a posição de cada faixa (partindo da referência, só na vertical, poucas alternativas; o tratamento de leitura conta como custo, nunca como atalho), e a assinatura dá só o estilo (fonte, corpo, cor, destaque, logo, gradiente). No arquétipo de foto em caixa (fundo foto-em-caixa; ver-assinatura, campo caixaDaFoto — e mascaraDaFoto quando a caixa tem o topo em arco: o arco é do modelo, a peça o desenha e o congela, e o assunto conta só o que o arco mostra), a foto fica numa caixa e escolhe só o enquadramento: o texto fica na posição do modelo, no fundo da marca escolhido pelo contraste com as cores dos textos (nenhum papel serve: ARQUETIPO_FUNDO_INDISPONIVEL); sem foto, recusa (ARQUETIPO_FOTO_AUSENTE). Sem versão, vale a mais recente — e a peça grava a versão exata, a impressão e a escolha espacial, que a recomposição mantém (copy editada não move a peça: se não couber na posição congelada, é recusada). Para reproduzir uma medição, mande a fixacao.arquetipo do medir-copy (id + versao + impressao). Recusado ANTES de compor, com o motivo: papel que o arquétipo não tem (cta, por exemplo), papel obrigatório ausente, camada extra ou herdaDe, formato quadrado, linhas acima do máximo, preferência de âncora/alinhamento/canto diferente da dele, ou caixa que não cabe na referência — nada some. Os ACENTOS do arquétipo (fio fino, moldura aberta em L, brilho de 4 pontas, cantoneiras — ver-assinatura, campo elementos de cada arquétipo) entram presos ao texto (presoA), depois da posição escolhida pela foto, na cor desse texto (ou do destaque dele) — as cantoneiras (ancoradoA: peca) ficam nos cantos da peça, na cor do destaque da manchete, e só os braços contam como ocupados: o opcional que não cabe sai, dito em avisos e acentosOmitidos; o obrigatório que não cabe recusa (ARQUETIPO_ELEMENTO_NAO_CABE); a recomposição redesenha o acento gravado na peça (peça de antes deles continua sem). Sem posição válida na foto (zona, região protegida, leitura), SEM_COMBINACAO; com o enquadramento fixo impedindo o corte que resolveria, PREFERENCIA_INVIAVEL. Em leva com loteId, mande { id, versao } (ou a fixacao) para a retentativa continuar a mesma peça depois de uma versão nova publicada. Sem arquétipo, a composição é a de sempre.',
+)
+
 const spec = {
   projectId: z.number().describe('ID do cliente.'),
   formato: z.enum(['story', 'feed', 'quadrado']).describe('story (1080x1920), feed (1080x1350) ou quadrado (1080x1080).'),
@@ -85,6 +93,11 @@ const spec = {
   selecaoExperimental: z.boolean().optional().describe('Opt-in explícito para comparar variantes com o baseline. Default false: candidatas presentes não ativam seleção nem alteram o layout. Comparação técnica, sem aprovação estética automática.'),
   fotosCandidatas: z.array(z.string().min(1)).min(1).max(3).optional().describe('Só com selecaoExperimental: true. Até 3 driveFileIds já curados por buscar-fotos, em ordem de relevância. Avalia até 6 combinações com variantes, sem geração paga. Foto explícita prevalece. Sem combinação utilizável retorna diagnóstico; não remove copy.'),
   fotoUrl: z.string().optional().describe('URL pública da foto, quando ela não está no acervo (ex.: fotoUrl de ver-foto-enviada).'),
+  fotoJanela: z
+    .object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1), width: z.number().min(0.01).max(1), height: z.number().min(0.01).max(1) })
+    .strict()
+    .optional()
+    .describe('O CORTE da foto, explícito (F2a): o retângulo da foto original que a peça mostra, em frações 0..1 (x, y, width, height) — o mesmo crop que o editor grava. O compositor confere a proporção contra a caixa (ajuste mínimo dito; fora da foto, JANELA_NAO_CABE), lê a foto, protege o assunto e grava a janela na camada da foto (style.crop), que o editor abre igual. Sem ela, o compositor escolhe o enquadramento como sempre. Só com UMA foto (fotoDriveId ou fotoUrl); não combina com fotosCandidatas nem selecaoExperimental.'),
   blocos: z
     .array(bloco)
     .max(40)
@@ -97,6 +110,7 @@ const spec = {
     .describe('Texto SEM papel (uma nota, "vale só no almoço", um aviso) que veste o estilo de um papel da assinatura: {id, linhas, herdaDe, grupoVisual?, grupoDeLeitura?, ordem?}. Vira camada editável na página, com o id dado. Com copyAutoral não mande aqui: declare o bloco com funcao "livre" e estilo.herdaDe no contrato (as camadas extras saem dele).'),
   copyAutoral: z.record(z.string(), z.unknown()).optional().describe('O CONTRATO da copy autoral (F1): a copy inteira como você a escreveu — {versao: "copy-autoral-v1", origem: {autor: "claude", superficie: "chat"}, blocos: [{id, funcao (pre|headline|apoio|cta|servico|livre), grupoDeLeitura?, ordem, linhas (EXATAS: caixa, acento e [colchetes] como escritos), fatos?: [{entradaId, trecho}], estilo?: {herdaDe?, grupoVisual?, linhasNaVoz2?: [índices]}}], revisoes: []}. Com ele, `blocos` e `camadasExtras` são dispensáveis (saem do contrato, sem transformar texto). CAMADA EXTRA no contrato: bloco com estilo.herdaDe (o papel de que veste o estilo) e estilo.grupoVisual (principal|topo|rodape) — um bloco com função que a variante não tem (funcao "servico", herdaDe "apoio") ou um texto sem papel (funcao "livre", que EXIGE herdaDe). É o que deixa a copy inteira ser comparada com a arte depois (ver-geracao). O contrato é gravado ANTES de qualquer adaptação (página, arte e item).'),
   preferencias,
+  arquetipo: arquetipo.optional(),
   nome: z.string().optional().describe('Nome da peça na galeria (opcional).'),
   tema: z.string().optional().describe('Tema/assunto, para o registro e o rodízio de layout.'),
   itemDePlanoId: z.string().optional().describe('Quando a peça é de um item de plano: o id do item (ver-plano).'),
@@ -118,13 +132,16 @@ function specDe(args: Record<string, unknown>) {
   return {
     projectId: args.projectId,
     formato: args.formato,
-    ...(args.fotoDriveId || args.fotoUrl ? { foto: { ...(args.fotoDriveId ? { driveFileId: args.fotoDriveId } : {}), ...(args.fotoUrl ? { url: args.fotoUrl } : {}) } } : {}),
+    // `fotoJanela` sem foto segue para a validação comum, que a recusa (SPEC_INVALIDA) — descartá-la aqui compunha sem foto
+    // e sem a janela, em silêncio (Codex, F2a rodada 1, P2 #6).
+    ...(args.fotoDriveId || args.fotoUrl || args.fotoJanela ? { foto: { ...(args.fotoDriveId ? { driveFileId: args.fotoDriveId } : {}), ...(args.fotoUrl ? { url: args.fotoUrl } : {}), ...(args.fotoJanela && typeof args.fotoJanela === 'object' ? { janela: args.fotoJanela } : {}) } } : {}),
     fotosCandidatas: args.fotosCandidatas,
     selecaoExperimental: args.selecaoExperimental,
     blocos: args.blocos,
     ...(Array.isArray(args.camadasExtras) ? { camadasExtras: args.camadasExtras } : {}),
     ...(args.copyAutoral && typeof args.copyAutoral === 'object' ? { copyAutoral: args.copyAutoral } : {}),
     ...(args.preferencias ? { preferencias: args.preferencias } : {}),
+    ...(args.arquetipo ? { arquetipo: args.arquetipo } : {}),
     ...(args.nome ? { nome: args.nome } : {}),
     ...(args.tema ? { tema: args.tema } : {}),
     ...(args.itemDePlanoId ? { itemDePlanoId: args.itemDePlanoId } : {}),
@@ -238,6 +255,10 @@ export const toolsDoCompositor = [
       // Cada variante com os PRÓPRIOS estilos, a fonte disponível no servidor,
       // a área útil do formato pedido e o orçamento por papel (PR 8).
       const { templateId, variantes } = await descreverVariantes(projectId, formato)
+      // F2c: as REFERÊNCIAS aprovadas do cliente neste formato, com o corpo desenhado por papel (da revisão persistida) —
+      // com uma delas, o catálogo abaixo não vale para o cliente e a peça parte do corpo da referência, não do da assinatura.
+      const { listarReferencias } = await import('../../compositor/referencias')
+      const referencias = (await listarReferencias(projectId)).filter((l) => !l.revogadaEm && l.formato === formato).map((l) => ({ arquetipoId: l.arquetipoId, versao: l.versao, pagina: l.pagina, corpos: l.corpos, estilos: l.estilos, assunto: l.assunto }))
       const template = templateId ? { id: templateId } : null
       return {
         temAssinatura: Boolean(a.origem.pageId),
@@ -261,9 +282,17 @@ export const toolsDoCompositor = [
         gradiente: { ...a.numeros.gradiente, ...(a.gradienteDaPagina ? { daPagina: a.gradienteDaPagina } : {}) },
         logo: a.logo ? { largura: a.logo.largura } : null,
         numeros: a.numeros,
+        // T1a: os arquétipos de layout (só leitura) — o agente pede pelo id, sem decorar; a disponibilidade diz o que já compõe
+        // e `elementos` os acentos que a peça ganha (T1b).
+        arquetipos: vitrineDeArquetipos(),
+        referencias,
+        ...(referencias.length > 0 ? { avisoDasReferencias: `O cliente tem ${referencias.length} referência(s) aprovada(s) no ${formato}: o catálogo acima não vale para ele (ARQUETIPO_NAO_APROVADO) e a peça por referência parte do corpo desenhado nela (\`corpos\`; null = revisão de antes, que parte da assinatura). Peça uma em arquetipo.id.` } : {}),
         editorUrl: template ? `${getPublicAppUrl()}/templates/${template.id}/editor` : null,
+        // T5: a variante promovida (foraDoRodizio) só entra numa peça quando a pessoa pede por ela.
         dica: a.origem.pageId
-          ? 'A equipe ajusta fonte, tamanho, cor e destaque de cada papel abrindo a página de assinatura no editor; uma camada de gradiente na página manda na cor e na curva do gradiente de leitura. O próximo lote sai com a mudança. Cada variante traz o orçamento por papel (caracteres por linha, aproximado) e a fonte disponível: papel com fonteDisponivel false sai na fonte de fallback e a medida não vale. Antes de compor, medir-copy mede a copy escrita contra a variante.'
+          ? `A equipe ajusta fonte, tamanho, cor e destaque de cada papel abrindo a página de assinatura no editor; uma camada de gradiente na página manda na cor e na curva do gradiente de leitura. O próximo lote sai com a mudança. Cada variante traz o orçamento por papel (caracteres por linha, aproximado) e a fonte disponível: papel com fonteDisponivel false sai na fonte de fallback e a medida não vale. Antes de compor, medir-copy mede a copy escrita contra a variante.${variantes.some((v) => v.foraDoRodizio) ? DICA_FORA_DO_RODIZIO : ''}`
+          : variantes.some((v) => v.foraDoRodizio)
+          ? `Neste formato o cliente só tem variantes fora do rodízio: nenhuma entra sozinha numa peça.${DICA_FORA_DO_RODIZIO}`
           : 'Este cliente ainda não tem página de assinatura. Peça para a equipe criar (template "Assinatura", uma página por formato com camadas de texto chamadas pre, headline, apoio, cta, servico).',
       }
     },
@@ -279,11 +308,13 @@ export const toolsDoCompositor = [
       blocos: spec.blocos,
       camadasExtras: spec.camadasExtras,
       copyAutoral: spec.copyAutoral,
-      variante: z.string().optional().describe('A variante a medir (id da página, nome ou tag, como em compor-arte). Sem ela, a que a composição escolheria para esta copy — mande também nome, tema e a foto (a luz da foto e a chave da peça entram nessa escolha); sem a LUZ da foto (foto ausente, ou que não carregou) a escolha é PROVISÓRIA (escolhaProvisoria: true, com os motivos) — o rodízio de arranjos também usa a chave da peça, que inclui a foto, então fixar só a variante não basta: repita a medição com a foto definitiva antes de confiar nas medidas, ou fixe ao compor a `fixacao` inteira (preferencias.variante E preferencias.arranjos).'),
+      variante: z.string().optional().describe('A variante a medir (id da página, nome ou tag, como em compor-arte). Sem ela, a que a composição escolheria para esta copy — mande também nome, tema e a foto (a luz da foto e a chave da peça entram nessa escolha); sem a LUZ da foto (foto ausente, ou que não carregou) a escolha é PROVISÓRIA (escolhaProvisoria: true, com os motivos) — o rodízio de arranjos também usa a chave da peça, que inclui a foto, então fixar só a variante não basta: repita a medição com a foto definitiva antes de confiar nas medidas, ou fixe ao compor a `fixacao` inteira (preferencias.variante E preferencias.arranjos, e o arquetipo quando houver).'),
       tema: spec.tema,
       nome: spec.nome,
       fotoDriveId: spec.fotoDriveId,
       fotoUrl: spec.fotoUrl,
+      fotoJanela: spec.fotoJanela,
+      arquetipo: spec.arquetipo,
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     acesso: { tipo: 'projeto' },
@@ -301,6 +332,8 @@ export const toolsDoCompositor = [
         nome: typeof args.nome === 'string' ? args.nome : null,
         fotoDriveId: typeof args.fotoDriveId === 'string' ? args.fotoDriveId : null,
         fotoUrl: typeof args.fotoUrl === 'string' ? args.fotoUrl : null,
+        ...(args.fotoJanela && typeof args.fotoJanela === 'object' ? { fotoJanela: args.fotoJanela as { x: number; y: number; width: number; height: number } } : {}),
+        ...(args.arquetipo && typeof args.arquetipo === 'object' ? { arquetipo: args.arquetipo as { id: string; versao?: number; impressao?: string } } : {}),
       })
       const m = r.medicao
       return {
@@ -312,7 +345,7 @@ export const toolsDoCompositor = [
           ? {
               escolhaProvisoria: true,
               motivos: r.motivosDaProvisoriedade,
-              comoFixar: `repita a medição com a foto definitiva antes de confiar nas medidas; para reutilizar ESTA medição ao compor, mande preferencias.variante = ${JSON.stringify(r.fixacao.variante)} E preferencias.arranjos = ${JSON.stringify(r.fixacao.arranjos)} — sem os dois a composição pode escolher outra variante (luz clara/escura e rodízio) e outro arranjo (o rodízio de arranjos usa a chave da peça, que inclui a foto).`,
+              comoFixar: `repita a medição com a foto definitiva antes de confiar nas medidas; para reutilizar ESTA medição ao compor, mande preferencias.variante = ${JSON.stringify(r.fixacao.variante)} E preferencias.arranjos = ${JSON.stringify(r.fixacao.arranjos)}${r.fixacao.arquetipo ? ` E arquetipo = ${JSON.stringify(r.fixacao.arquetipo)}` : ''} — sem a fixação inteira a composição pode escolher outra variante (luz clara/escura e rodízio) e outro arranjo (o rodízio de arranjos usa a chave da peça, que inclui a foto).`,
             }
           : {}),
         formato: args.formato,
@@ -341,12 +374,14 @@ export const toolsDoCompositor = [
         })),
         alturaDosBlocos: m.alturaDosBlocos,
         segundaVoz: m.segundaVoz,
+        // T1a: a medida contra o arquétipo — a coluna e a capacidade de cada papel, onde pousaria e o que não cabe.
+        ...(m.arquetipo ? { arquetipo: m.arquetipo } : {}),
         outrasVariantes: r.outrasVariantes,
         ...(m.avisos.length ? { avisos: m.avisos } : {}),
         nota: m.naoMedido
           ? 'Há bloco NÃO MEDIDO: a fonte dele não está no servidor de render, e a peça sairia na fonte de fallback — avise a pessoa (a equipe cadastra a fonte em Configurações → Fontes) antes de compor.'
           : m.cabeTudo
-            ? 'Tudo cabe nesta variante. Nada foi gravado: compor-arte é o próximo passo.'
+            ? `Tudo cabe nesta variante. Nada foi gravado: compor-arte é o próximo passo.${m.arquetipo ? ' Com arquétipo, a medida confere o encaixe na posição de PARTIDA (a referência, ou o resgate dela) — avaliacaoEspacial: nao-executada: a posição final é escolhida pela foto no compor, e esta medição não garante que a foto tenha posição boa.' : ''}`
             : 'Algum bloco não cabe (ou falta papel na variante): reescreva com o orçamento devolvido ou escolha outra variante (outrasVariantes) — nunca insista com o mesmo texto.',
       }
     },
@@ -355,7 +390,7 @@ export const toolsDoCompositor = [
   definirTool({
     nome: 'revisar-arte',
     descricao:
-      'Revisa uma arte feita no EDITOR — peça do compositor, arte de modelo ou página editada — ANTES de ela ir para a agenda, e devolve o que está errado COM A MEDIDA e os AJUSTES prontos para aplicar. Não grava nada.\n\nDuas camadas. O código mede: texto cortado, fonte não cadastrada, colisão, texto fora da margem de segurança, logo sobre texto, texto sem leitura sobre a foto (a régua de contraste — o "horário não deu leitura"), gradiente mais forte do que o texto precisa, título grande demais para a peça ou maior que o modelo, entrelinha grande, texto pequeno, palavra sozinha na última linha e texto sobre o assunto da foto. A visão olha a peça renderizada, com cada bloco marcado (T1, T2… e L1 para a logo), e aponta o que a medida não vê — bloco mal colocado, gradiente pesando na foto, respiro desequilibrado. A resposta traz a miniatura com as marcas para você conferir.\n\nCada achado tem severidade (problema, aviso, sugestão), a evidência e os índices dos ajustes que o corrigem; o número de todo ajuste é calculado pelas medidas. Para corrigir: ajustar-arte com o pageId, versaoEsperada = a `versao` desta revisão e os ajustes que decidir aplicar — todos, ou só os que concordar (sugestão é gosto; achado de confiança média, confira na miniatura) — e revise de novo. No máximo DUAS rodadas por peça; o que sobrar vira observação para a pessoa. A revisão nunca bloqueia: peça com pendência vai para a agenda como rascunho do mesmo jeito, com a pendência dita. Achado sem ajuste é decisão de gente (trocar a foto, reescrever, mudar o bloco de borda) — proponha em vez de insistir.\n\nNa leva (compor-leva), revise pelo generationId assim que a peça aparecer pronta em ver-geracao. Com a visão leva ~20 a 40 segundos por peça; visao: false devolve só as medidas em poucos segundos.',
+      'Revisa uma arte feita no EDITOR — peça do compositor, arte de modelo ou página editada — ANTES de ela ir para a agenda, e devolve o que está errado COM A MEDIDA e os AJUSTES prontos para aplicar. Não grava nada.\n\nDuas camadas. O código mede: texto cortado, fonte não cadastrada, colisão, texto fora da margem de segurança, logo sobre texto, logo sem leitura (o contraste da logo medido pixel a pixel contra o fundo real — CP3), texto sem leitura sobre a foto (a régua de contraste — o "horário não deu leitura"), gradiente mais forte do que o texto precisa, título grande demais para a peça ou maior que o modelo, entrelinha grande, texto pequeno, palavra sozinha na última linha e texto sobre o assunto da foto. A visão olha a peça renderizada, com cada bloco marcado (T1, T2… e L1 para a logo), e aponta o que a medida não vê — bloco mal colocado, gradiente pesando na foto, respiro desequilibrado. A resposta traz a miniatura com as marcas para você conferir.\n\nCada achado tem severidade (problema, aviso, sugestão), a evidência e os índices dos ajustes que o corrigem; o número de todo ajuste é calculado pelas medidas. Para corrigir: ajustar-arte com o pageId, versaoEsperada = a `versao` desta revisão e os ajustes que decidir aplicar — todos, ou só os que concordar (sugestão é gosto; achado de confiança média, confira na miniatura) — e revise de novo. No máximo DUAS rodadas por peça; o que sobrar vira observação para a pessoa. A revisão nunca bloqueia: peça com pendência vai para a agenda como rascunho do mesmo jeito, com a pendência dita. Achado sem ajuste é decisão de gente (trocar a foto, reescrever, mudar o bloco de borda) — proponha em vez de insistir.\n\nNa leva (compor-leva), revise pelo generationId assim que a peça aparecer pronta em ver-geracao. Com a visão leva ~20 a 40 segundos por peça; visao: false devolve só as medidas em poucos segundos.\n\nGATE (informação): a resposta traz `gate` — o veredito que o gate de autonomia daria à página COMO ESTAVA nesta leitura (APTO ou REVISAO_HUMANA_NECESSARIA, com motivos e o que não foi medido), medido de novo sem a correção hipotética da régua. É INFORMAÇÃO: não autoriza, não grava e pode envelhecer — o veredito que vale é o medido na hora, sob trava, por agendar-leva e ajustar-arte. `gate.tipo` sem-vinculo = página sem arte ou página-modelo (nada a decidir); nao-medida = a decisão falhou. Se o gate recusa e não há ajuste a propor, leve à pessoa. Com pageId E generationId, a arte precisa ser desta página (GERACAO_DE_OUTRA_PAGINA).',
     schema: z.object({
       projectId: z.number().describe('ID do cliente.'),
       pageId: z.string().optional().describe('A peça (pageId de compor-arte, criar-arte, ajustar-arte ou do post).'),
@@ -388,12 +423,16 @@ export const toolsDoCompositor = [
         achados: r.relatorio.achados,
         ajustes: r.relatorio.ajustes,
         cobertura: r.relatorio.cobertura,
+        // CP5e § 1: o veredito do gate como INFORMAÇÃO (não autoriza, não grava; o que vale é o medido na hora, sob trava).
+        gate: r.gate,
         visao: r.visao,
         ...(r.referencia ? { referencia: r.referencia } : {}),
         comoAplicar:
           r.aplicavel && r.relatorio.ajustes.length > 0
             ? `ajustar-arte com projectId ${projectId}, pageId "${r.pageId}", versaoEsperada "${r.versao}" e os ajustes escolhidos (a lista inteira ou só os que fizerem sentido). Depois, revisar-arte de novo.`
-            : null,
+            : r.gate.tipo === 'medida' && r.gate.resultado === 'REVISAO_HUMANA_NECESSARIA'
+              ? 'leve à pessoa: o gate não aprovaria esta versão e o revisor não tem ajuste a propor (os motivos estão em gate.motivos).'
+              : null,
       }
       if (!r.previa) return corpo
       return {
@@ -427,11 +466,57 @@ export const toolsDoCompositor = [
         posicao: `${d.posicao.ancora}/${d.posicao.alinha}`,
         enquadramento: d.posicao.crop,
         logo: d.logo?.canto ?? 'sem logo',
+        // CP3: a leitura da logo medida contra o fundo real — o que foi feito e os números que decidiram.
+        ...(d.logo?.legibilidade
+          ? {
+              leituraDaLogo: (({ estado, legivel, escolha, variante, canto, posicao, medida, codigo, alternativa, mensagem, veusRemovidos, motivo }) => ({
+                estado,
+                legivel,
+                escolha,
+                variante: { origem: variante.origem, url: variante.url, ...(variante.logoId !== undefined ? { logoId: variante.logoId } : {}) },
+                canto,
+                posicao,
+                ...(medida ? { p10: medida.contrasteP10, media: medida.contrasteMedio, proporcaoNoLimiar: medida.proporcaoAcima45, pixels: medida.pixelsAvaliados } : {}),
+                ...(codigo ? { codigo } : {}),
+                ...(alternativa ? { alternativa: { origem: alternativa.variante.origem, url: alternativa.variante.url, canto: alternativa.canto, p10: alternativa.medida.contrasteP10 } } : {}),
+                ...(mensagem ? { mensagem } : {}),
+                ...(veusRemovidos?.length ? { veusRemovidos } : {}),
+                ...(motivo ? { motivo } : {}),
+              }))(d.logo.legibilidade),
+            }
+          : {}),
         selecao: d.selecao,
         tratamentoDeTexto: d.tratamentoDeTexto ?? 'gradiente-de-leitura',
-        gradientes: (d.gradientes ?? []).map((g) => ({ borda: g.borda, forca: g.forca })),
+        // A cor DESENHADA em cada borda, de onde ela veio, e a piora medida do tratamento (CP1): quem opera vê, não só o banco.
+        gradientes: (d.gradientes ?? []).map((g) => ({ borda: g.borda, forca: g.forca, cor: g.cor, ...(g.origemDaCor ? { origemDaCor: g.origemDaCor } : {}) })),
+        ...(d.tratamentoPiorou?.length
+          ? { tratamentoPiorou: d.tratamentoPiorou.map((p) => ({ codigo: p.codigo, camada: p.camada, polaridade: p.polaridade, percentil: p.percentil, antes: p.antes, depois: p.depois })) }
+          : {}),
         destaques: d.blocos.filter((b) => b.destacado).map((b) => b.papel),
         contraste: d.contraste?.map((c) => ({ bloco: c.grupo, ok: c.ok, p98: c.p98ComHalo, alvo: Math.round(c.alvo) })) ?? null,
+        // T1a: a procedência da geometria — o arquétipo exato e, por papel, referência, zona efetiva e posição. A busca
+        // espacial (CP2B) vai COMPACTA: o corte, o deslocamento de cada faixa, por que venceu e as recusas — o resto
+        // (vencedor, alternativas, leituras) fica gravado na composição.
+        ...(d.arquetipo
+          ? {
+              arquetipo: (({ buscaEspacial, ...resto }) =>
+                buscaEspacial
+                  ? {
+                      ...resto,
+                      buscaEspacial: {
+                        corte: buscaEspacial.escolha.corte,
+                        deslocamentos: buscaEspacial.escolha.deslocamentos,
+                        motivo: buscaEspacial.motivo,
+                        combinacoesAvaliadas: buscaEspacial.combinacoesAvaliadas,
+                        recusas: buscaEspacial.recusas,
+                        ...(buscaEspacial.regiaoProtegida ? { regiaoProtegida: buscaEspacial.regiaoProtegida } : {}),
+                        ...(buscaEspacial.vencedor ? { tratamentoEstimado: buscaEspacial.vencedor.tratamento } : {}),
+                        ...(buscaEspacial.reproduzida ? { reproduzida: true } : {}),
+                      },
+                    }
+                  : resto)(d.arquetipo),
+            }
+          : {}),
         avisos: d.avisos,
       }
       if (r.prova) {
@@ -467,12 +552,14 @@ export const toolsDoCompositor = [
             formato: spec.formato,
             fotoDriveId: spec.fotoDriveId,
             fotoUrl: spec.fotoUrl,
+            fotoJanela: spec.fotoJanela,
             fotosCandidatas: spec.fotosCandidatas,
             selecaoExperimental: spec.selecaoExperimental,
             blocos: spec.blocos,
             camadasExtras: spec.camadasExtras,
             copyAutoral: spec.copyAutoral,
             preferencias,
+            arquetipo: spec.arquetipo,
             nome: spec.nome,
             tema: spec.tema,
             itemDePlanoId: spec.itemDePlanoId,
@@ -510,6 +597,18 @@ export const toolsDoCompositor = [
       const decididoPor = await quemDecidiu(projectId, principal)
       const pecas: Array<{ indice: number; itemId: string | null; generationId: string; nome: string | null; desfecho: 'criado' | 'reaproveitado' | 'retomado'; situacao: 'pendente' | 'pronta' | 'falhou' }> = []
       const falhas: Array<{ indice: number; erro: string; codigo?: string; motivo?: string }> = []
+      // Perfil draft-only (H4): item cuja identidade já virou post aprovado não volta à produção
+      // (retomar ou recompor devolveria à fila um conteúdo aprovado). Conferido antes de enfileirar.
+      const { perfilDoPrincipal } = await import('../registro/perfil')
+      const draftOnly = perfilDoPrincipal(principal) === 'draft-only'
+      const aprovados =
+        draftOnly && loteId !== undefined
+          ? await (await import('../guardas-draft-only')).itensDeLoteJaAprovados(
+              projectId,
+              loteId,
+              itens.map((i) => i.itemId).filter((id): id is string => typeof id === 'string'),
+            )
+          : new Set<string>()
       const conflitos: Array<{ indice: number; itemId: string | null; diferencas: string[]; generationId: string | null }> = []
       // "Peça superada no plano" (decisão do Ciro, 13/09/2026): o item já tem
       // outra arte, mais recente que este pedido. Nada foi criado — nem vai para
@@ -518,6 +617,24 @@ export const toolsDoCompositor = [
       // Em SÉRIE, como todo lote da casa: cada item valida e grava sozinho.
       for (const [indice, item] of itens.entries()) {
         const itemId = (item.itemId as string | undefined) ?? null
+        // Perfil draft-only (H5): a peça só nasce com foto do ACERVO. Sem foto adequada, o agente relata
+        // MATERIAL_NECESSARIO em vez de compor sobre o fundo liso só para ocupar o horário; foto por URL de fora não
+        // entra (mesma regra do ajustar-arte).
+        if (draftOnly) {
+          const candidatas = Array.isArray(item.fotosCandidatas) ? (item.fotosCandidatas as unknown[]) : []
+          if ((typeof item.fotoUrl === 'string' && item.fotoUrl.trim()) || candidatas.some((c) => typeof c === 'string' && /^https?:/i.test(c))) {
+            falhas.push({ indice, erro: 'URL_EXTERNA_RECUSADA — este perfil compõe só com foto do acervo (driveFileId de buscar-fotos). Nada foi enfileirado.', codigo: 'URL_EXTERNA_RECUSADA' })
+            continue
+          }
+          if (typeof item.fotoDriveId !== 'string' || !item.fotoDriveId.trim()) {
+            falhas.push({ indice, erro: 'MATERIAL_NECESSARIO — sem foto do acervo para esta peça. Não componha sobre o fundo liso só para ocupar o horário: relate que falta material. Nada foi enfileirado.', codigo: 'MATERIAL_NECESSARIO' })
+            continue
+          }
+        }
+        if (itemId && aprovados.has(itemId)) {
+          falhas.push({ indice, erro: 'POST_APROVADO_INTOCAVEL — esta peça já está num post aprovado; este perfil só trabalha em rascunho. Nada foi enfileirado.', codigo: 'POST_APROVADO_INTOCAVEL' })
+          continue
+        }
         const itemRevisao = typeof item.itemRevisao === 'string' ? item.itemRevisao.trim() : ''
         const doPlano = loteId !== undefined && !!item.itemDePlanoId
         // A revisão lida no ver-plano é obrigatória para peça de item de plano
@@ -588,7 +705,7 @@ export const toolsDoCompositor = [
   definirTool({
     nome: 'agendar-leva',
     descricao:
-      'Põe na agenda, como RASCUNHO, as peças de uma leva composta por compor-leva — pela PÁGINA de cada peça (é o que dá "Editar Template" na agenda e faz a arte acompanhar o que a equipe mexer), no horário que a composição previu ou no quando do item. Use quando as peças aparecerem prontas em ver-geracao, com o MESMO loteId e os MESMOS itemId de compor-leva.\n\nIDEMPOTENTE: repetir a chamada (timeout, erro no meio) devolve os rascunhos que já existem e cria só os que faltaram — nunca duplica. Rascunho que a equipe remarcou ou editou depois fica como a equipe deixou. Outro pedido sob o mesmo itemId (horário, tipo, legenda, lembrete, escopo ou campanha diferentes) volta como conflito, sem alterar nada — mude o post na agenda. Uma peça que estava pendente e ficou pronta entra na repetição — é o que faltava, não duplicata.\n\nPLANO: peça que nasceu de item de plano só entra se o item aponta esta arte e está pronto. Item reprovado, reaberto ou refeito volta como PECA_SUPERADA_NO_PLANO, sem criar nada. Quando o item já tem arte mais recente, a resposta traz arteAtualDoItem: conte à pessoa qual é e quando foi feita e pergunte se ela quer manter essa arte (agendá-la pela página dela quando estiver pronta) ou refazer com o conteúdo atual do item (ver-plano, compor-leva com outro itemId e a itemRevisao atual). Não agende nem refaça sem ela pedir.\n\nRASCUNHO APAGADO PELA EQUIPE: não volta sozinho. O item vem como falhou (POST_REMOVIDO) com rascunhoApagado (dia e horário do pedido original — nulo quando esta chamada pede outro —, tema, manchete): conte à pessoa qual era e pergunte se ela quer de volta. Só com a confirmação dela repita a chamada com recriarRascunhoApagado: true NAQUELE item — o rascunho volta com a mesma arte da leva (desfecho recriado), e repetir a confirmação não cria outro.\n\nAntes, chame com simular: true e mostre a conta à pessoa (quantos entram, quantos ainda estão sendo compostos, quais falharam e por quê); só então chame sem simular. Cada item volta concluido (desfecho criado, adotado — a peça já tinha post na agenda, rascunho ou agendado —, reaproveitado ou recriado, e estadoDoPost diz o que o post é agora: só rascunho espera aprovar-rascunhos), pendente (peça ainda na fila: repita em alguns minutos) ou falhou (codigo e motivo). Nunca publica: virar publicação é aprovar-rascunhos, com confirmação.',
+      'Põe na agenda, como RASCUNHO, as peças de uma leva composta por compor-leva — pela PÁGINA de cada peça (é o que dá "Editar Template" na agenda e faz a arte acompanhar o que a equipe mexer), no horário que a composição previu ou no quando do item. Use quando as peças aparecerem prontas em ver-geracao, com o MESMO loteId e os MESMOS itemId de compor-leva.\n\nIDEMPOTENTE: repetir a chamada (timeout, erro no meio) devolve os rascunhos que já existem e cria só os que faltaram — nunca duplica. Rascunho que a equipe remarcou ou editou depois fica como a equipe deixou. Outro pedido sob o mesmo itemId (horário, tipo, legenda, lembrete, escopo ou campanha diferentes) volta como conflito, sem alterar nada — mude o post na agenda. Uma peça que estava pendente e ficou pronta entra na repetição — é o que faltava, não duplicata.\n\nPLANO: peça que nasceu de item de plano só entra se o item aponta esta arte e está pronto. Item reprovado, reaberto ou refeito volta como PECA_SUPERADA_NO_PLANO, sem criar nada. Quando o item já tem arte mais recente, a resposta traz arteAtualDoItem: conte à pessoa qual é e quando foi feita e pergunte se ela quer manter essa arte (agendá-la pela página dela quando estiver pronta) ou refazer com o conteúdo atual do item (ver-plano, compor-leva com outro itemId e a itemRevisao atual). Não agende nem refaça sem ela pedir.\n\nRASCUNHO APAGADO PELA EQUIPE: não volta sozinho. O item vem como falhou (POST_REMOVIDO) com rascunhoApagado (dia e horário do pedido original — nulo quando esta chamada pede outro —, tema, manchete): conte à pessoa qual era e pergunte se ela quer de volta. Só com a confirmação dela repita a chamada com recriarRascunhoApagado: true NAQUELE item — o rascunho volta com a mesma arte da leva (desfecho recriado), e repetir a confirmação não cria outro.\n\nAntes, chame com simular: true e mostre a conta à pessoa (quantos entram, quantos ainda estão sendo compostos, quais falharam e por quê); só então chame sem simular. Cada item volta concluido (desfecho criado, adotado — a peça já tinha post na agenda, rascunho ou agendado —, reaproveitado ou recriado, e estadoDoPost diz o que o post é agora: só rascunho espera aprovar-rascunhos), pendente (peça ainda na fila: repita em alguns minutos) ou falhou (codigo e motivo). Nunca publica: virar publicação é aprovar-rascunhos, com confirmação.\n\nGATE DE AUTONOMIA (perfil draft-only): o rascunho só nasce ou é adotado depois de a página ser MEDIDA na hora, dentro da transação que grava (geometria, leitura dos textos, logo, área segura, piso de interface, copy completa, identidade), e aceita pelo gate — o veredito (APTO ou não) fica registrado na arte e aparece em ver-geracao como auditoria, nunca como autoridade. Peça não apta volta falhou com REVISAO_HUMANA_NECESSARIA, generationId, pageId, editUrl e revisao (achados e motivos quando medida; sem-vinculo; nao-medida — vídeo/música, prazo, erro): conserte com ajustar-arte ou leve à pessoa; repetir igual não muda o veredito. Nesse perfil os efeitos pós-commit (pasta da semana, catálogo) não rodam: uma pessoa os completa repetindo o mesmo pedido. simular: true mede e decide igual, sem gravar nada.',
     schema: z.object({
       projectId: z.number().describe('ID do cliente.'),
       loteId: z.string().min(1).max(120).describe('O MESMO loteId usado em compor-leva.'),
@@ -624,10 +741,24 @@ export const toolsDoCompositor = [
     acesso: { tipo: 'projeto' },
     superficies: ['remoto', 'local'],
     handler: async (args, principal) => {
-      const [{ agendarItensDoLote }, { quemDecidiu }] = await Promise.all([import('../../lotes/agendar-itens'), import('../tools')])
+      const [{ agendarItensDoLote }, { quemDecidiu }, { perfilDoPrincipal }, { CreativeError }] = await Promise.all([
+        import('../../lotes/agendar-itens'),
+        import('../tools'),
+        import('../registro/perfil'),
+        import('../../creatives/errors'),
+      ])
       const projectId = args.projectId as number
+      // Perfil draft-only (H4): recriar rascunho apagado exige a confirmação de uma pessoa (a equipe apagou de
+      // propósito), e o agendamento nunca adota nem mexe em volta de post aprovado.
+      const apenasRascunho = perfilDoPrincipal(principal) === 'draft-only'
+      if (apenasRascunho && (args.itens as Array<Record<string, unknown>>).some((i) => i.recriarRascunhoApagado === true)) {
+        throw new CreativeError('CONFIRMACAO_HUMANA_NECESSARIA', 'Recriar um rascunho que a equipe apagou exige a confirmação de uma pessoa. Nada foi agendado.', 403)
+      }
       const decididoPor = await quemDecidiu(projectId, principal)
       const r = await agendarItensDoLote({
+        apenasRascunho,
+        // CP5c: quem pediu vai no registro do gate (auditoria); o perfil é decidido acima, pelo mesmo helper.
+        principal: { tipo: principal.kind, id: principal.userId ?? principal.clientId ?? 'servico' },
         projectId,
         loteId: args.loteId as string,
         itens: args.itens as unknown[],

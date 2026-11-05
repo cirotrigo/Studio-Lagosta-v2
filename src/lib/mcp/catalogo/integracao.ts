@@ -15,6 +15,7 @@ import { executarTool } from '../registro/porta'
 import { catalogoParaLista } from '../registro/derivar'
 import type { ResultadoMcp, ToolParaLista } from '../registro/tipos'
 import { CATALOGO, INDICE_DO_CATALOGO } from './index'
+import { perfilDoPrincipal, toolNoPerfil } from '../registro/perfil'
 
 /**
  * Vigia da constante cravada: a descrição de criar-plano.itens diz "Máximo
@@ -84,7 +85,12 @@ export async function executarToolLocal(
   })
 }
 
-/** O tools/list do conector remoto — o catálogo inteiro, com annotations. */
-export function listarToolsRemotas(): ToolParaLista[] {
-  return catalogoParaLista(CATALOGO, 'remoto')
+/**
+ * O tools/list do conector remoto, com annotations: o catálogo inteiro para o
+ * perfil normal; só a allowlist para o perfil draft-only (H4). Listar e chamar
+ * usam o MESMO filtro (`toolNoPerfil`), e as duas metades não divergem.
+ */
+export function listarToolsRemotas(principal: McpPrincipal): ToolParaLista[] {
+  const perfil = perfilDoPrincipal(principal)
+  return catalogoParaLista(CATALOGO, 'remoto').filter((t) => toolNoPerfil(perfil, t.name))
 }

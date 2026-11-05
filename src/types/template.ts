@@ -1,3 +1,5 @@
+import type { VetorDaCamada } from '@/lib/vetor/tipos'
+
 export interface DesignData {
   canvas: CanvasConfig
   layers: Layer[]
@@ -174,9 +176,19 @@ export interface LayerStyle {
    * resolução diferente — a fração sobrevive à troca.
    */
   crop?: { x: number; y: number; width: number; height: number }
-  /** Espelhamento — desenhado no node interno, NUNCA no scale (o transformEnd reseta o scale) */
+  /**
+   * Espelhamento — desenhado no node interno, NUNCA no scale (o transformEnd reseta o scale).
+   * Vale para imagem e, desde o CP-V1, para forma `svg-path` (dentro da caixa, pelo traçado de src/lib/vetor).
+   */
   flipH?: boolean
   flipV?: boolean
+  /** Forma: redimensionar mantém a proporção (keepRatio e só as alças dos cantos no editor). CP-V1. */
+  manterProporcao?: boolean
+  /**
+   * Proveniência da forma inserida pelo catálogo de elementos (CP-V2c): de qual item e versão veio o desenho e de qual
+   * papel da marca veio a cor de cada canal. INERTE: nenhum renderer a lê; a cor fica congelada em `fill`/`strokeColor`.
+   */
+  vetor?: VetorDaCamada
   /** Máscara de forma aplicada à imagem. path é um SVG path CONGELADO em viewBox 0 0 100 100. */
   mask?: { shapeId: string; path: string }
   opacity?: number
@@ -193,6 +205,8 @@ export interface LayerStyle {
   pathData?: string
   pathViewBox?: [number, number, number, number]
   pathFillRule?: 'nonzero' | 'evenodd'
+  /** Pontas do contorno do svg-path (padrão 'butt'), igual no editor e no servidor (src/lib/vetor) */
+  tracoPontas?: 'butt' | 'round'
   /** Estilo do traço de shapeType 'line' */
   lineStyle?: 'solid' | 'dashed' | 'dotted'
   lineStartCap?: 'none' | 'arrow'

@@ -17,6 +17,7 @@ import { refilarPaginasDoPost } from '@/lib/compositor/pastas'
 import { ehHostProprio } from '@/lib/creatives/ingerir-midia'
 import { CreativeError } from '@/lib/creatives/errors'
 import { MOTIVO_VIDEO_REMOVIDO, postDeVideo } from '@/lib/posts/post-de-video'
+import { NAO_E_FALHA_SEMANTICA } from '@/lib/posts/erro-render-semantico'
 import { avisosDeCampanhaVencida } from '@/lib/posts/campanha-vigencia'
 import { fecharSugestaoDeSlot, registrarSlotDoPost } from '@/lib/aprendizado/sinal-de-agendamento'
 import { registrarEdicaoDeLegenda } from '@/lib/aprendizado/sinal-de-legenda'
@@ -190,8 +191,16 @@ export async function processarAprovacao(params: {
       // preso para sempre fora do filtro renderAttempts < 3 do cron.
       const precisaRender = post.pageId !== null && post.mediaUrls.length === 0
 
-      await db.socialPost.update({
-        where: { id: post.id },
+      /**
+       * B1d (checkpoint f): post com falha SEMÂNTICA de render não é aprovado — com ou sem mídia antiga. A aprovação não
+       * valida o pedido; repor o render apagaria o envelope, e agendar sem repor deixaria o executor marcá-lo FAILED
+       * na hora. Só a recuperação (página / pedido corrigidos) o reabre. Status e reposição numa ÚNICA escrita,
+       * condicional à linha CORRENTE (Codex, checkpoint f).
+       */
+      // Gate final (Codex R2): a escrita também exige a linha AINDA rascunho e não entregue — uma aprovação atrasada
+      // não pode reabrir (SCHEDULED + render PENDING) um post que outra aprovação já agendou e o envio já reservou.
+      const aprovado = await db.socialPost.updateMany({
+        where: { id: post.id, status: PostStatus.DRAFT, laterPostId: null, ...NAO_E_FALHA_SEMANTICA },
         data: {
           status: PostStatus.SCHEDULED,
           errorMessage: null,
@@ -202,6 +211,13 @@ export async function processarAprovacao(params: {
             : {}),
         },
       })
+      if (aprovado.count === 0) {
+        ignorados.push({
+          postId: post.id,
+          motivo: 'Não aprovado: o rascunho mudou desde a leitura (já foi aprovado ou entregue), ou a arte dele falhou no contrato semântico — nesse caso, corrija a página ou o pedido (a arte volta a ser gerada sozinha) e aprove depois.',
+        })
+        continue
+      }
       processados.push(post.id)
 
       /**

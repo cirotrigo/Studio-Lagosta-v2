@@ -13,11 +13,16 @@
  */
 
 import type { Layer } from '@/types/template'
+import { variantesAutorizadasDaLogo, type VarianteDaLogo } from './legibilidade-da-logo'
 import { grupoDaCamada, membrosDoBloco, papelNoBloco } from '@/lib/creatives/halo/bloco-de-fundo'
 import { destaqueDaCamada, type EstiloDeDestaque } from './destaques'
-import { configDaCamada, GRADIENTE_PADRAO, type AjustesDoGradiente, type ConfigDoGradiente, type CurvaDoGradiente } from './gradiente-de-leitura'
+import { configDaCamada, ehGradienteDeLeituraDaPagina, GRADIENTE_PADRAO, type AjustesDoGradiente, type ConfigDoGradiente, type CurvaDoGradiente } from './gradiente-de-leitura'
 import { papelDoNome } from './papel-do-nome'
+import { entraNoRodizio, TAG_FORA_DO_RODIZIO } from './fora-do-rodizio'
 import type { Formato, Papel } from './spec'
+import { GEOMETRIA_PADRAO, mesclarGeometria, type GeometriaDoFormato } from './geometria'
+
+export type { GeometriaDoFormato } from './geometria'
 
 export const TAG_DA_ASSINATURA = 'assinatura'
 export const NOME_DO_TEMPLATE_DE_ASSINATURA = 'Assinatura'
@@ -30,6 +35,12 @@ export interface EstiloDePapel {
   lineHeight: number
   /** px. */
   letterSpacing: number
+  /**
+   * F2d: o espaçamento como CONTRATO da referência — `spacing` px no corpo desenhado `corpo`. `camadaDoPapel` o resolve
+   * DEPOIS de arredondar o corpo (`round2(spacing × fontSize / corpo)`); `letterSpacing` acima é a reserva contínua.
+   * Ausente = a conta de sempre (`letterSpacing × escala`).
+   */
+  espacamentoDaReferencia?: { spacing: number; corpo: number }
   textTransform?: 'uppercase' | 'lowercase' | 'capitalize' | 'none'
   color: string
   /** Prefixo desenhado antes da primeira linha (o "→ " do CTA). */
@@ -76,6 +87,10 @@ export interface FundoDePapel {
 
 export interface LogoDaAssinatura {
   url: string
+  /** De onde a logo DESENHADA veio: a camada da página de assinatura (a explícita) ou a `Logo` principal do projeto (CP3). */
+  origem?: 'pagina' | 'projeto'
+  /** O id da camada na página (explícita) — o identificador estável da variante além da URL (CP3). */
+  camada?: string
   /** Largura em px no canvas de 1080. */
   largura: number
   /** altura / largura. */
@@ -84,21 +99,17 @@ export interface LogoDaAssinatura {
   posicao?: { x: number; y: number }
 }
 
-export interface GeometriaDoFormato {
-  margemH: number
-  safeTopo: number
-  safeRodape: number
-  /** Vão vertical entre blocos (px). */
-  gapEntreBlocos: number
-  /** Multiplicador dos tamanhos de fonte da página de assinatura de STORY, quando o formato não tem página própria. */
-  escalaDeFonte: number
-}
 
 export interface NumerosDaAssinatura {
   /** O dark da marca: cor padrão do gradiente de leitura e sombra padrão do glifo. */
   mancha: string
   /** Fundo liso, quando a peça não tem foto. */
   fundo: string
+  /**
+   * O fundo liso CLARO da marca (T4-E): o dos arquétipos `liso-claro` (família E, sem foto). Sem padrão — a marca que
+   * não o define não compõe esses arquétipos (recusa explícita em `fundoDaPeca`, nunca o fundo escuro em silêncio).
+   */
+  fundoClaro?: string
   /**
    * Os números do halo — LEGADO desde 11/09/2026: o compositor não desenha mais
    * halo. Ficam aceitos no JSON para não quebrar quem ainda os grava.
@@ -132,29 +143,40 @@ export const NUMEROS_PADRAO: NumerosDaAssinatura = {
   gradiente: { ...GRADIENTE_PADRAO },
   destaque: { pesado: true },
   logo: { largura: 236 },
-  geometria: {
-    // Safe area do story: onde o Instagram desenha avatar e barra de resposta.
-    story: { margemH: 92, safeTopo: 188, safeRodape: 224, gapEntreBlocos: 14, escalaDeFonte: 1 },
-    // Feed e quadrado não têm faixa do Instagram, mas o autofix confere a
-    // margem de segurança do editor (CANVAS_MARGIN: 120 no topo, 100 na
-    // base) — o compositor não pode pousar texto onde o editor o acusa.
-    feed: { margemH: 92, safeTopo: 120, safeRodape: 104, gapEntreBlocos: 14, escalaDeFonte: 0.875 },
-    quadrado: { margemH: 92, safeTopo: 120, safeRodape: 104, gapEntreBlocos: 12, escalaDeFonte: 0.85 },
-  },
+  // Os números moram em `geometria.ts` (módulo puro, 29/10/2026): o editor os lê sem puxar o resto da assinatura.
+  geometria: GEOMETRIA_PADRAO,
 }
 
 export interface AssinaturaDaMarca {
   papeis: Partial<Record<Papel, EstiloDePapel>>
   logo: LogoDaAssinatura | null
+  /**
+   * As variantes AUTORIZADAS da logo, em ordem (CP3, 15/10/2026): a explícita da página primeiro, depois as linhas
+   * `Logo` com `isProjectLogo`, sem repetir arquivo. Nunca fabricadas; linhas sem a marca não entram. Vazio quando
+   * quem montou a assinatura não passou as logos do projeto (medir-copy) e a página não desenha logo.
+   */
+  variantesDaLogo: VarianteDaLogo[]
   numeros: NumerosDaAssinatura
   /** O alinhamento da headline na página — vira preferência do rodízio (a foto ainda manda). */
   alinhamento: 'esquerda' | 'centro' | 'direita' | null
-  /** A camada de gradiente que a equipe desenhou na página: manda na cor e na curva do gradiente de leitura. */
+  /**
+   * A camada de gradiente de LEITURA que a equipe desenhou na página: manda na cor e na curva do gradiente de
+   * leitura. Gradiente decorativo da página não conta (CP2A — `ehGradienteDeLeituraDaPagina`).
+   */
   gradienteDaPagina: AjustesDoGradiente | null
   /** De onde veio — para o registro atômico da geração. */
   origem: { pageId: string | null; formatoDaPagina: Formato | null; variante: string | null; motivoDaVariante?: string; versao: string }
   /** As camadas da página escolhida, para os arranjos de texto — preenchido por quem carrega a página. */
   camadasDaPagina?: Layer[]
+  /** O tamanho dessa página — para ler se um gradiente dela é de leitura (CP2A). */
+  dimensoesDaPagina?: { width: number; height: number }
+  /**
+   * O piso do PROJETO por formato: `NUMEROS_PADRAO` com `Project.assinatura`
+   * por cima, ANTES de as margens da página reescreverem `numeros.geometria` do
+   * formato dela. É a área segura efetiva com arquétipo (T1a): as margens da
+   * página são geometria da página, e com arquétipo a geometria tem uma fonte só.
+   */
+  pisoDoProjeto?: Record<Formato, GeometriaDoFormato>
 }
 
 /** Camada que carrega texto de um papel: texto simples ou rich text (o destaque). */
@@ -288,15 +310,13 @@ function mesclarDestaque(base: NumerosDaAssinatura['destaque'], extra: unknown):
 }
 
 function mesclarNumeros(base: NumerosDaAssinatura, extra: unknown): NumerosDaAssinatura {
-  if (!extra || typeof extra !== 'object') return { ...base, gradiente: { ...base.gradiente }, destaque: { ...base.destaque }, geometria: { ...base.geometria } }
-  const e = extra as Partial<NumerosDaAssinatura> & { geometria?: Partial<Record<Formato, Partial<GeometriaDoFormato>>> }
-  const geometria = { ...base.geometria }
-  for (const f of Object.keys(base.geometria) as Formato[]) {
-    geometria[f] = { ...base.geometria[f], ...(e.geometria?.[f] ?? {}) }
-  }
+  if (!extra || typeof extra !== 'object') return { ...base, gradiente: { ...base.gradiente }, destaque: { ...base.destaque }, geometria: mesclarGeometria(base.geometria, extra) }
+  const e = extra as Partial<NumerosDaAssinatura>
+  const geometria = mesclarGeometria(base.geometria, extra)
   return {
     mancha: typeof e.mancha === 'string' ? e.mancha : base.mancha,
     fundo: typeof e.fundo === 'string' ? e.fundo : base.fundo,
+    ...(typeof e.fundoClaro === 'string' ? { fundoClaro: e.fundoClaro } : base.fundoClaro ? { fundoClaro: base.fundoClaro } : {}),
     halo: { ...base.halo, ...(e.halo ?? {}) },
     gradiente: mesclarGradiente(base.gradiente, e.gradiente),
     destaque: mesclarDestaque(base.destaque, e.destaque),
@@ -326,8 +346,12 @@ export function montarAssinatura(args: {
   formatoDaPagina: Formato | null
   numerosDoProjeto: unknown
   logoDoProjeto?: { url: string; razao?: number } | null
+  /** As `Logo` do projeto com o flag (`isProjectLogo`), em ordem de id — só as marcadas viram variantes autorizadas (CP3). */
+  logosDoProjeto?: ReadonlyArray<{ id?: number; fileUrl: string; isProjectLogo: boolean }>
 }): AssinaturaDaMarca {
   const numeros = mesclarNumeros(NUMEROS_PADRAO, args.numerosDoProjeto)
+  // As entradas de `numeros.geometria` são TROCADAS (nunca alteradas) pela derivação da página abaixo.
+  const pisoDoProjeto = { ...numeros.geometria }
   const papeis: AssinaturaDaMarca['papeis'] = {}
   let logo: LogoDaAssinatura | null = null
   let alinhamento: AssinaturaDaMarca['alinhamento'] = null
@@ -348,7 +372,7 @@ export function montarAssinatura(args: {
         continue
       }
       if (camada.type === 'gradient' || camada.type === 'gradient2') {
-        gradienteDaPagina = gradienteDaPagina ?? configDaCamada(camada)
+        if (ehGradienteDeLeituraDaPagina(camada, args.pagina)) gradienteDaPagina = gradienteDaPagina ?? configDaCamada(camada)
         continue
       }
       if ((camada.type === 'logo' || camada.type === 'image') && /logo|marca/i.test(`${camada.name} ${camada.id}`)) {
@@ -356,6 +380,8 @@ export function montarAssinatura(args: {
         if (url && !logo) {
           logo = {
             url,
+            origem: 'pagina',
+            camada: camada.id,
             largura: Math.round(camada.size.width),
             razao: camada.size.height / camada.size.width,
             posicao: { x: camada.position.x, y: camada.position.y },
@@ -427,16 +453,23 @@ export function montarAssinatura(args: {
   }
 
   if (!logo && args.logoDoProjeto?.url) {
-    logo = { url: args.logoDoProjeto.url, largura: numeros.logo.largura, razao: args.logoDoProjeto.razao ?? 0.41 }
+    logo = { url: args.logoDoProjeto.url, origem: 'projeto', largura: numeros.logo.largura, razao: args.logoDoProjeto.razao ?? 0.41 }
   }
+  const variantesDaLogo = variantesAutorizadasDaLogo({
+    explicita: logo?.origem === 'pagina' ? { origem: 'pagina', url: logo.url, ...(logo.camada ? { camada: logo.camada } : {}) } : null,
+    // Sem a lista, só a principal que quem chamou já filtrou por `isProjectLogo: true` (o fallback de sempre).
+    doProjeto: args.logosDoProjeto ?? (args.logoDoProjeto?.url ? [{ fileUrl: args.logoDoProjeto.url, isProjectLogo: true }] : []),
+  })
 
   return {
     papeis,
     logo,
+    variantesDaLogo,
     numeros,
     alinhamento,
     gradienteDaPagina,
     origem: { pageId: args.pagina?.id ?? null, formatoDaPagina: args.formatoDaPagina, variante: args.pagina?.name ?? null, versao: 'assinatura-v3' },
+    pisoDoProjeto,
   }
 }
 
@@ -583,21 +616,29 @@ export function avaliarVariantes<T extends CandidataAVariante>(paginas: T[], c: 
     .sort((a, b) => b.pontos - a.pontos || `${a.pagina.name}`.localeCompare(`${b.pagina.name}`))
 }
 
+/** T5: só há variantes promovidas (fora do rodízio) para a peça e nada foi pedido — fail-closed, sem sorteio. */
+export const MOTIVO_SO_FORA_DO_RODIZIO = 'só há variantes fora do rodízio neste formato: peça uma pelo id ou pelo nome'
+
 /**
  * Escolhe a página de assinatura entre as VARIANTES do formato:
  * 1. `variante` pedida (nome, tag ou id) vence;
  * 2. senão, a melhor pontuação de `avaliarVariantes`; entre empatadas, o
  *    RODÍZIO determinístico pela chave da peça — uma leva varia sem repetir.
  * Sem página do formato cai na de story (escala de fonte), e sem nenhuma, null.
+ *
+ * T5: a variante PROMOVIDA (`fora-do-rodizio.ts`) fica fora da base, calculada como se ela não existisse — com zero
+ * promovidas, tudo é idêntico. Ela é achada pelo id, pela `varianteOriginal` e pelo nome (depois das da base); nunca
+ * pela tag reservada, nunca pela pontuação.
  */
 export function escolherVariante<T extends CandidataAVariante>(
   paginas: T[],
   args: CriteriosDeVariante,
 ): { pagina: T | null; formatoDaPagina: Formato | null; motivo: string } {
-  const doFormato = paginas.filter((p) => formatoDaPagina(p) === args.formato)
-  const candidatas = doFormato.length > 0 ? doFormato : paginas.filter((p) => formatoDaPagina(p) === 'story')
-  const base = candidatas.length > 0 ? candidatas : paginas
-  if (base.length === 0) return { pagina: null, formatoDaPagina: null, motivo: 'sem página' }
+  if (paginas.length === 0) return { pagina: null, formatoDaPagina: null, motivo: 'sem página' }
+  const noRodizio = paginas.filter(entraNoRodizio)
+  const doFormato = noRodizio.filter((p) => formatoDaPagina(p) === args.formato)
+  const candidatas = doFormato.length > 0 ? doFormato : noRodizio.filter((p) => formatoDaPagina(p) === 'story')
+  const base = candidatas.length > 0 ? candidatas : noRodizio
   const fmt = (p: T) => formatoDaPagina(p)
 
   // O id é procurado ANTES do filtro por formato: a peça de feed que nasceu na
@@ -616,7 +657,12 @@ export function escolherVariante<T extends CandidataAVariante>(
     // ambiguidade (ver-assinatura lista o `id`).
     const pedidaPorId = porId(alvo)
     if (pedidaPorId) return { pagina: pedidaPorId, formatoDaPagina: fmt(pedidaPorId), motivo: 'fixada por id' }
-    const achada = base.find((p) => `${p.name ?? ''}`.toLowerCase().includes(alvo) || (p.tags ?? []).some((t) => t.toLowerCase() === alvo))
+    const casa = (p: T) => `${p.name ?? ''}`.toLowerCase().includes(alvo) || (p.tags ?? []).some((t) => t.toLowerCase() === alvo && t !== TAG_FORA_DO_RODIZIO)
+    // T5: as promovidas só depois da base (o resultado de hoje fica), as do formato antes das de story.
+    const promovidas = paginas.filter((p) => !entraNoRodizio(p))
+    const achada =
+      base.find(casa) ??
+      [...promovidas.filter((p) => fmt(p) === args.formato), ...(args.formato === 'story' ? [] : promovidas.filter((p) => fmt(p) === 'story'))].find(casa)
     if (achada) return { pagina: achada, formatoDaPagina: fmt(achada), motivo: 'pedida' }
     return { pagina: null, formatoDaPagina: null, motivo: 'variante pedida não encontrada' }
   }
@@ -625,6 +671,7 @@ export function escolherVariante<T extends CandidataAVariante>(
     if (original) return { pagina: original, formatoDaPagina: fmt(original), motivo: 'fixada por id' }
     motivoDaOriginal = 'a variante com que a peça nasceu não existe mais; '
   }
+  if (base.length === 0) return { pagina: null, formatoDaPagina: null, motivo: `${motivoDaOriginal}${MOTIVO_SO_FORA_DO_RODIZIO}` }
 
   const avaliadas = avaliarVariantes(base, args)
   const melhor = avaliadas[0].pontos

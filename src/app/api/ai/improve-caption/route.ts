@@ -5,6 +5,7 @@ import { openai } from '@ai-sdk/openai'
 import { z } from 'zod'
 import { validateCreditsForFeature, deductCreditsForFeature, refundCreditsForFeature } from '@/lib/credits/deduct'
 import { InsufficientCreditsError } from '@/lib/credits/errors'
+import { fetchProjectWithShares, hasProjectWriteAccess } from '@/lib/projects/access'
 
 export const runtime = 'nodejs'
 export const maxDuration = 30
@@ -110,6 +111,12 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
     const { caption, projectId, postType } = improveCaptionSchema.parse(body)
+
+    // Acesso de escrita ao projeto ANTES do LLM e do registro de uso.
+    // Alheio ou inexistente: o mesmo 404 (não revela que o projeto existe).
+    if (!hasProjectWriteAccess(await fetchProjectWithShares(projectId), { userId, orgId })) {
+      return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
+    }
 
     console.log('[Improve Caption] Starting for user:', userId, 'caption length:', caption.length, 'postType:', postType)
 

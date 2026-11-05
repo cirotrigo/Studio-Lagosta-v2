@@ -4,7 +4,8 @@
  */
 
 import { db } from '@/lib/db'
-import { deductCreditsForFeature } from '@/lib/credits/deduct'
+import { deductCreditsForFeature, validateCreditsForFeature } from '@/lib/credits/deduct'
+import { creditosAplicados } from '@/lib/credits/aplicados'
 import { put } from '@vercel/blob'
 import {
   Prisma,
@@ -33,6 +34,38 @@ import { recusaComoImagem } from '@/lib/video/pagina-com-video'
 import { ensurePostGeneration } from './ensure-post-generation'
 import { ehExportDeVideo, postDeVideo } from './post-de-video'
 import { vinculoDoVideo } from '@/lib/video/vinculo-do-video'
+import { admitirPedidoSemantico } from './admitir-pedido-semantico'
+import { temContratoSemantico } from './copy-segue-a-pagina'
+import { VERSAO_DA_PROVA } from './prova-do-render'
+
+/**
+ * O post da linha corrente de "SocialPost" pode ir ao publicador quanto ao CONTRATO SEMÂNTICO?
+ *
+ * - Sem `_slots`/`_papeis` (o legado): sim, como sempre — a ausência de prova histórica não bloqueia.
+ * - Com o contrato: só com a mídia RENDERIZADA e PROVADA — `RENDERED`, exatamente uma mídia, a mesma de
+ *   `renderedImageUrl`, e uma prova DESTE post para ESSA URL, na versão corrente e com camadas. Prova de URL
+ *   anterior, de outro post, ou mídia fornecida (que nunca ganha prova) não passam.
+ *
+ * `mediaUrls` é `text[]` do Postgres: `cardinality` e índice 1, nunca JSON. Fragmento para o WHERE de um
+ * `UPDATE "SocialPost"` sem alias — a decisão de envio continua num único gate atômico. Exportado para
+ * a validação contra um Postgres de verdade usar o MESMO SQL.
+ */
+export const CONTRATO_PODE_SER_ENVIADO = Prisma.sql`(
+  jsonb_typeof("SocialPost"."slotValues") IS DISTINCT FROM 'object'
+  OR (NOT jsonb_exists("SocialPost"."slotValues", '_slots') AND NOT jsonb_exists("SocialPost"."slotValues", '_papeis'))
+  OR (
+    "SocialPost"."renderStatus" = 'RENDERED'::"RenderStatus"
+    AND cardinality("SocialPost"."mediaUrls") = 1
+    AND "SocialPost"."mediaUrls"[1] = "SocialPost"."renderedImageUrl"
+    AND EXISTS (
+      SELECT 1 FROM "PostRenderProof" AS prova
+      WHERE prova."postId" = "SocialPost"."id"
+        AND prova."mediaUrl" = "SocialPost"."renderedImageUrl"
+        AND prova."proofVersion" = ${VERSAO_DA_PROVA}
+        AND jsonb_typeof(prova."layersSnapshot") = 'array'
+    )
+  )
+)`
 
 interface RecurringConfig {
   frequency: RecurrenceFrequency
@@ -193,6 +226,16 @@ export class LaterPostScheduler {
     console.log('[Later Scheduler] Media count:', data.mediaUrls.length)
     console.log('========================================')
 
+    // B1d (checkpoint c): contrato semântico novo (_slots/_papeis) só entra se o render do servidor puder
+    // desenhá-lo — conferido contra a página ANTES de qualquer efeito. Sem as chaves, não lê nada.
+    await admitirPedidoSemantico(db, {
+      projectId: data.projectId,
+      postType: data.postType,
+      pageId: data.pageId,
+      mediaUrls: data.mediaUrls,
+      slotValues: data.slotValues,
+    })
+
     // Validate post type and media count
     console.log('[Later Scheduler] Validating post...')
     this.validatePost(data)
@@ -313,8 +356,11 @@ export class LaterPostScheduler {
       }
     }
 
-    // Create post in database with SCHEDULED status (using normalized URLs)
-    let post = await db.socialPost.create({
+    // Create post in database with SCHEDULED status (using normalized URLs).
+    // Sob a trava da agenda do projeto (H4): o agente draft-only que rechecha o mesmo horário espera este
+    // commit e passa a ver o post.
+    const { comTravaPorChave, chaveDaAgenda } = await import('@/lib/trava-por-chave')
+    let post = await comTravaPorChave(chaveDaAgenda(data.projectId), (tx) => tx.socialPost.create({
       data: {
         projectId: data.projectId,
         userId: data.userId,
@@ -344,7 +390,7 @@ export class LaterPostScheduler {
         renderedAt: isTemplateBased && data.mediaUrls.length > 0 ? new Date() : null,
         nextRenderAt: nextRenderAtValue,
       },
-    })
+    }))
 
     // Generate verification tag for stories
     if (post.postType === PostType.STORY) {
@@ -610,6 +656,8 @@ export class LaterPostScheduler {
   ) {
     const skipCreditDeduction = options?.skipCreditDeduction ?? false
     const forceImmediate = options?.forceImmediate ?? false
+    /** Preenchido assim que o `laterPostId` está no banco: dali em diante o post é intocável. */
+    let laterPostIdGravado: string | null = null
     try {
       console.log(`[Later Scheduler] Starting sendToLater for post ${postId}`, {
         skipCreditDeduction,
@@ -637,28 +685,46 @@ export class LaterPostScheduler {
        *
        * O que NÃO dá para exigir é `status: SCHEDULED`: quebraria o retry,
        * porque post que falha fica FAILED e é reenviado por `executeRetries`.
+       *
+       * B1d (checkpoint c): o WHERE também exige a AUSÊNCIA das chaves do contrato semântico novo
+       * (`_slots`/`_papeis`) no `slotValues` desta linha. Post semântico não chega ao Zernio enquanto não
+       * existir prova do render ligada à mídia (checkpoint e) — nem com `RENDERED`, que mídia fornecida também
+       * recebe. É a linha CORRENTE que o UPDATE avalia: edição entre uma leitura e a reserva não escapa. O
+       * Prisma não expressa "chave presente" num filtro Json (nem com valor null), por isso o SQL. Sem as
+       * chaves (o legado), a reserva é a de sempre.
+       *
+       * B1d (checkpoint e): com o contrato, o MESMO UPDATE passa quando existe a PROVA do render para a mídia
+       * atual (`CONTRATO_PODE_SER_ENVIADO`). O `RETURNING` devolve a mídia que o gate viu: o post semântico envia
+       * EXATAMENTE essa (a provada), não o que uma releitura posterior encontrar.
        */
-      const reserva = await db.socialPost.updateMany({
-        where: {
-          id: postId,
-          laterPostId: null,
-          status: { notIn: [PostStatus.POSTING, PostStatus.POSTED] },
-        },
-        data: {
-          status: PostStatus.POSTING,
-          processingStartedAt: new Date(),
-        },
-      })
+      const agora = new Date()
+      const linhasReservadas = await db.$queryRaw<Array<{ mediaUrls: string[]; slotValues: unknown }>>`
+        UPDATE "SocialPost"
+        SET "status" = 'POSTING'::"PostStatus", "processingStartedAt" = ${agora}, "updatedAt" = ${agora}
+        WHERE "id" = ${postId}
+          AND "laterPostId" IS NULL
+          AND "status" NOT IN ('POSTING'::"PostStatus", 'POSTED'::"PostStatus")
+          AND ${CONTRATO_PODE_SER_ENVIADO}
+        RETURNING "mediaUrls", "slotValues"
+      `
+      const reservadas = linhasReservadas.length
 
-      if (reserva.count === 0) {
+      if (reservadas === 0) {
         // Não conseguiu reservar: ou já foi entregue, ou outra execução pegou
-        // primeiro, ou o post sumiu. Leitura barata só para o log dizer qual.
+        // primeiro, ou o post sumiu, ou é contrato semântico sem prova do
+        // render. Leitura barata só para dizer qual.
         const atual = await db.socialPost.findUnique({
           where: { id: postId },
-          select: { id: true, laterPostId: true, status: true },
+          select: { id: true, laterPostId: true, status: true, slotValues: true },
         })
         if (!atual) {
           throw new Error('Post não encontrado')
+        }
+        if (!atual.laterPostId && atual.status !== PostStatus.POSTING && atual.status !== PostStatus.POSTED && temContratoSemantico(atual.slotValues)) {
+          console.warn(
+            `[Later Scheduler] Post ${postId} usa o contrato semântico (_slots/_papeis) e não tem prova do render para a mídia atual — envio bloqueado`
+          )
+          return { success: false, skipped: true, bloqueado: 'CONTRATO_SEM_PROVA_DE_RENDER' as const }
         }
         console.log(
           `[Later Scheduler] Post ${postId} não reservado (laterPostId=${atual.laterPostId ?? 'null'}, status=${atual.status}) — envio duplicado evitado`
@@ -698,6 +764,8 @@ export class LaterPostScheduler {
       }
 
       console.log(`[Later Scheduler] Post ${postId} reservado (status: ${post.status})`)
+      // B1d (checkpoint e): o contrato semântico publica a mídia que o gate PROVOU, nunca outra.
+      if (temContratoSemantico(linhasReservadas[0].slotValues)) post.mediaUrls = linhasReservadas[0].mediaUrls
 
       // NOTE: Media normalization already done in createPost() - no need to re-normalize here
       console.log('[Later Scheduler] Using pre-normalized media URLs from database')
@@ -711,14 +779,26 @@ export class LaterPostScheduler {
         )
       }
 
-      // Get post author for credit deduction
-      const postAuthor = await db.user.findUnique({
-        where: { id: post.userId },
-        select: { clerkId: true },
-      })
+      // Get post author for credit deduction. `post.userId` é o id INTERNO, mas
+      // projeto criado antes de 09/10/2026 podia ter o clerkId em
+      // `Project.userId`, e o agendar copiava para o post (Coronel Picanha:
+      // 32 posts). Mesma tolerância e mesma ordem de `resolveOwnerClerkId`.
+      const postAuthor =
+        (await db.user.findUnique({ where: { id: post.userId }, select: { clerkId: true } })) ??
+        (await db.user.findUnique({ where: { clerkId: post.userId }, select: { clerkId: true } }))
 
       if (!postAuthor?.clerkId) {
         throw new Error('Clerk user ID not found for post author')
+      }
+
+      // Com a cobrança ligada, saldo insuficiente impede o envio — ANTES do
+      // Zernio, quando nada saiu ainda: o erro cai no catch abaixo (FAILED +
+      // `handlePublishFailure`, que não retenta crédito). A cobrança em si vem
+      // depois de gravar o `laterPostId`. Desligada (modo interno), nada aqui.
+      if (creditosAplicados() && !skipCreditDeduction) {
+        await validateCreditsForFeature(postAuthor.clerkId, 'social_media_post', 1, {
+          organizationId: post.Project.organizationProjects?.[0]?.organization?.clerkOrgId,
+        })
       }
 
       console.log(`[Later Scheduler] Sending post ${post.id} to Later API`)
@@ -852,29 +932,7 @@ export class LaterPostScheduler {
         idType: typeof laterPost.id,
       })
 
-      // 6. Deduct credits AFTER successful post creation
-      // Skipped on recovery flows where credits were already charged on the first attempt.
-      const organizationId =
-        post.Project.organizationProjects?.[0]?.organization?.clerkOrgId
-      if (skipCreditDeduction) {
-        console.log('[Later Scheduler] ⏭️  Skipping credit deduction (recovery flow)')
-      } else {
-        console.log('[Later Scheduler] Deducting credits...')
-        await deductCreditsForFeature({
-          clerkUserId: postAuthor.clerkId,
-          feature: 'social_media_post',
-          details: {
-            postId: post.id,
-            postType: post.postType,
-            projectId: post.projectId,
-            laterPostId: laterPost.id,
-          },
-          organizationId,
-          projectId: post.projectId,
-        })
-      }
-
-      // 7. Update post in database
+      // 6. Update post in database
       const newStatus =
         laterPost.status === 'published'
           ? PostStatus.POSTED
@@ -926,9 +984,12 @@ export class LaterPostScheduler {
               failedAt: new Date(),
               processingStartedAt: null,
             }
-          : newStatus !== PostStatus.POSTING
-            ? { processingStartedAt: null }
-            : {}
+          : {
+              // O Zernio aceitou: o erro de uma tentativa anterior não vale mais.
+              errorMessage: null,
+              failedAt: null,
+              ...(newStatus !== PostStatus.POSTING ? { processingStartedAt: null } : {}),
+            }
 
       try {
         const updatedPost = await db.socialPost.update({
@@ -948,6 +1009,7 @@ export class LaterPostScheduler {
           },
         })
 
+        laterPostIdGravado = laterPost.id
         console.log(`[Later Scheduler] ✅ Database updated successfully`)
         console.log(`[Later Scheduler] 🔍 Verify save:`, {
           savedLaterPostId: updatedPost.laterPostId,
@@ -955,22 +1017,81 @@ export class LaterPostScheduler {
         })
       } catch (updateError) {
         console.error(`[Later Scheduler] ❌❌❌ DATABASE UPDATE FAILED:`, updateError)
-        throw updateError
+        // O post JÁ ESTÁ no Zernio: isto é INCERTO, nunca FAILED. O catch abaixo
+        // marcaria FAILED sem `laterPostId` e o retry o reenviaria (publicação
+        // dupla). Tenta gravar só o `laterPostId`; se nem isso, a linha fica
+        // POSTING e a varredura de travados a reenvia em 30 min — o Zernio
+        // recusa o conteúdo repetido (409) e `tryAdoptExistingPost` adota o post.
+        const salvo = await db.socialPost
+          .updateMany({ where: { id: post.id, laterPostId: null }, data: { laterPostId: laterPost.id } })
+          .then((r) => r.count === 1)
+          .catch((casError) => {
+            console.error('[Later Scheduler] ❌ Gravação mínima do laterPostId também falhou:', casError)
+            return false
+          })
+        if (!salvo) {
+          console.error(
+            `[Later Scheduler] 🚨 Post ${post.id} criado no Zernio (${laterPost.id}) SEM laterPostId gravado — persistência incerta`
+          )
+          await this.createLog(post.id, PostLogEvent.SENT, 'Post criado no Zernio, mas o laterPostId não foi gravado', {
+            laterPostId: laterPost.id,
+            persistenciaIncerta: true,
+          }).catch((logError) => console.error('[Later Scheduler] Log da persistência incerta falhou:', logError))
+          return { success: false, incerto: true as const, laterPostId: laterPost.id }
+        }
+        laterPostIdGravado = laterPost.id
+      }
+
+      // 7. Cobrança DEPOIS de gravar o `laterPostId`. O post já está no Zernio:
+      // falha aqui (saldo, banco) não pode cair no catch abaixo, que o marcaria
+      // FAILED sem `laterPostId` e o retry o reenviaria — publicação dupla.
+      // Vira log, nunca falha do post. Pulada na recuperação (já cobrado antes).
+      if (skipCreditDeduction) {
+        console.log('[Later Scheduler] ⏭️  Skipping credit deduction (recovery flow)')
+      } else {
+        try {
+          await deductCreditsForFeature({
+            clerkUserId: postAuthor.clerkId,
+            feature: 'social_media_post',
+            details: {
+              postId: post.id,
+              postType: post.postType,
+              projectId: post.projectId,
+              laterPostId: laterPost.id,
+            },
+            organizationId: post.Project.organizationProjects?.[0]?.organization?.clerkOrgId,
+            projectId: post.projectId,
+          })
+        } catch (cobrancaError) {
+          console.error(`[Later Scheduler] Cobrança do post ${post.id} falhou — o post segue:`, cobrancaError)
+          await this.createLog(post.id, PostLogEvent.SENT, 'Post enviado, mas a cobrança falhou', {
+            cobrancaFalhou: true,
+            laterPostId: laterPost.id,
+          }).catch((logError) => console.error('[Later Scheduler] Log da cobrança falhou:', logError))
+        }
       }
 
       // 8. Create log
       const logMessage = 'Post enviado para Later - publicação imediata'
 
+      // Só log: com o `laterPostId` gravado, falha aqui não muda o estado do post.
       await this.createLog(post.id, PostLogEvent.SENT, logMessage, {
         laterPostId: laterPost.id,
         laterStatus: laterPost.status,
-      })
+      }).catch((logError) => console.error('[Later Scheduler] Log do envio falhou — o post segue:', logError))
 
       console.log(`[Later Scheduler] ✅ Post ${post.id} processed successfully`)
 
       return { success: true, laterPostId: laterPost.id }
     } catch (error) {
       console.error(`[Later Scheduler] ❌ Error sending post ${postId}:`, error)
+
+      // Guarda: o post já está no Zernio e o `laterPostId` no banco. Marcar FAILED
+      // mostraria falha falsa na agenda e dispararia aviso falso — só log.
+      if (laterPostIdGravado) {
+        console.error(`[Later Scheduler] Post ${postId} já entregue (${laterPostIdGravado}) — erro depois da gravação ignorado`)
+        return { success: true, laterPostId: laterPostIdGravado }
+      }
 
       // Handle rate limit errors
       if (isRateLimitError(error)) {

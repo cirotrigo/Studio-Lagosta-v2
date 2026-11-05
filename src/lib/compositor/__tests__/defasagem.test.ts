@@ -14,6 +14,8 @@ import {
   precisaRefazer,
   slidesDaPagina,
   specComACopyDaPagina,
+  enquadramentoDaPagina,
+  paginaMudouDesde,
 } from '../defasagem'
 import type { SpecDePeca } from '../spec'
 
@@ -224,6 +226,22 @@ describe('specComACopyDaPagina', () => {
     expect(r.spec.foto).toEqual({ url: outra.fileUrl })
   })
 
+  it('CP2B: com arquétipo, a página que mostra a MESMA foto desenhada mantém a foto da spec (só o driveFileId: o assunto do catálogo não se perde)', () => {
+    const doDrive = { ...spec, foto: { driveFileId: 'abc' }, arquetipo: { id: 'minimal-fb-topo-esquerda', versao: 1, impressao: 'arq1-1f4ab8c4a215f2' } } as SpecDePeca
+    const pagina = [foto, texto('headline', 'a'), texto('apoio', 'b')]
+    const mesma = specComACopyDaPagina(doDrive, pagina, { fotoDesenhada: foto.fileUrl as string })
+    // Só o driveFileId: o compositor o resolve na MESMA URL, e foto por duas fontes é recusada com arquétipo.
+    expect(mesma.spec.foto).toEqual({ driveFileId: 'abc' })
+    expect(mesma.avisos.join(' ')).not.toContain('foto')
+    // Foto trocada: o vínculo cai, como sempre.
+    const outra = { ...foto, fileUrl: 'https://x.public.blob.vercel-storage.com/uploads/outra.jpg' }
+    expect(specComACopyDaPagina(doDrive, [outra, texto('headline', 'a')], { fotoDesenhada: foto.fileUrl as string }).spec.foto).toEqual({ url: outra.fileUrl })
+    // Sem arquétipo, o caminho legado é o de sempre (troca pela URL, com o aviso).
+    const legado = specComACopyDaPagina({ ...doDrive, arquetipo: undefined } as SpecDePeca, pagina, { fotoDesenhada: foto.fileUrl as string })
+    expect(legado.spec.foto).toEqual({ url: foto.fileUrl })
+    expect(legado.avisos.join(' ')).toContain('não tinha foto')
+  })
+
   it('papel apagado da página sai da spec, com aviso', () => {
     const r = specComACopyDaPagina(spec, [foto, texto('headline', 'só a manchete')])
     expect(r.spec.blocos.map((b) => b.papel)).toEqual(['headline'])
@@ -324,5 +342,53 @@ describe('alcancadoPelaInvalidacao', () => {
     expect(alcancadoPelaInvalidacao({ id: 'p', pageId: 'pag123', renderStatus: 'PENDING' }, 'pag123')).toBe(true)
     expect(alcancadoPelaInvalidacao({ id: 'p', pageId: 'outra', renderStatus: 'RENDERED' }, 'pag123')).toBe(false)
     expect(alcancadoPelaInvalidacao({ id: 'p', pageId: null, renderStatus: 'RENDERED' }, 'pag123')).toBe(false)
+  })
+})
+
+describe('F2a — o enquadramento efetivo da página na recomposição', () => {
+  const fotoComCrop = { ...foto, style: { objectFit: 'cover', crop: { x: 0.177, y: 0.058, width: 0.624, height: 0.742 } } } as Camada
+  const fotoComAncora = { ...foto, style: { objectFit: 'cover', cropPosition: 'center-top' } } as Camada
+  // Com arquétipo: a página que mostra a MESMA foto desenhada mantém o driveFileId (CP2B) — é o caso da recomposição.
+  const specComFoto = { ...spec, foto: { driveFileId: 'abc' }, arquetipo: { id: 'minimal-fb-topo-esquerda', versao: 1, impressao: 'arq1-00000000000001' } } as SpecDePeca
+
+  it('paginaMudouDesde (a conferência do FIM do job) enxerga o crop da foto de fundo, a âncora e a máscara mudados durante a recomposição — o job volta à fila', () => {
+    const antes = [{ ...foto, style: { objectFit: 'cover' } } as Camada, texto('headline', 'a')]
+    expect(paginaMudouDesde(antes, antes)).toBe(false)
+    expect(paginaMudouDesde(antes, [fotoComCrop, texto('headline', 'a')])).toBe(true)
+    expect(paginaMudouDesde(antes, [fotoComAncora, texto('headline', 'a')])).toBe(true)
+    expect(paginaMudouDesde(antes, [{ ...foto, style: { objectFit: 'cover', mask: { shapeId: 'arco', path: 'M0 0 L100 100' } } } as Camada, texto('headline', 'a')])).toBe(true)
+    // E "Remover" durante o job (a janela que o job leu já não está na página).
+    expect(paginaMudouDesde([fotoComCrop, texto('headline', 'a')], antes)).toBe(true)
+  })
+
+  it('sem a opção `enquadramento`, a spec não ganha janela nem corte (a escolha gravada reproduz como sempre)', () => {
+    const r = specComACopyDaPagina(specComFoto, [fotoComCrop, texto('headline', 'a')], { fotoDesenhada: foto.fileUrl as string })
+    expect(r.spec.foto).toEqual({ driveFileId: 'abc' })
+  })
+
+  it('com a janela da página, a spec leva `foto.janela` e perde a seleção de fotos (a foto está fixada)', () => {
+    const r = specComACopyDaPagina({ ...specComFoto, fotosCandidatas: ['x', 'y'], selecaoExperimental: true } as SpecDePeca, [fotoComCrop, texto('headline', 'a')], { fotoDesenhada: foto.fileUrl as string, enquadramento: enquadramentoDaPagina([fotoComCrop]) })
+    expect(r.spec.foto).toEqual({ driveFileId: 'abc', janela: { x: 0.177, y: 0.058, width: 0.624, height: 0.742 } })
+    expect(r.spec.fotosCandidatas).toBeUndefined()
+    expect(r.spec.selecaoExperimental).toBeUndefined()
+  })
+
+  it('com a âncora da página (depois de "Remover" o crop), a spec leva `foto.corte` — também na foto trocada', () => {
+    expect(enquadramentoDaPagina([fotoComAncora])).toEqual({ corte: 'center-top' })
+    const trocada = { ...fotoComAncora, fileUrl: 'https://x.public.blob.vercel-storage.com/uploads/outra.jpg' } as Camada
+    const r = specComACopyDaPagina(specComFoto, [trocada, texto('headline', 'a')], { enquadramento: enquadramentoDaPagina([trocada]) })
+    expect(r.spec.foto).toEqual({ url: trocada.fileUrl, corte: 'center-top' })
+  })
+
+  it('enquadramentoDaPagina: a janela vence a âncora; cover sem nenhum dos dois é o CENTRAL (o que "Remover" deixa); o crop clampado é lido como o desenho; esticado, null', () => {
+    expect(enquadramentoDaPagina([{ ...foto, style: { objectFit: 'cover', cropPosition: 'center-top', crop: { x: 0.1, y: 0.1, width: 0.5, height: 0.6 } } } as Camada])).toEqual({ janela: { x: 0.1, y: 0.1, width: 0.5, height: 0.6 } })
+    // Codex (rodada 1, P2 #1): a peça por janela nasce sem `cropPosition`; "Remover" apaga só o crop → cover central.
+    expect(enquadramentoDaPagina([{ ...foto, style: { objectFit: 'cover' } } as Camada])).toEqual({ corte: 'center-middle' })
+    expect(enquadramentoDaPagina([{ ...foto, style: {} } as Camada])).toBeNull()
+    // Codex (rodada 1, P2 #7): o crop que o renderer clampa é a faixa que ele mostra — nunca a âncora por baixo.
+    expect(enquadramentoDaPagina([{ ...foto, style: { objectFit: 'cover', cropPosition: 'center-top', crop: { x: 0.9, y: 0, width: 0.5, height: 0.5 } } } as Camada])).toEqual({ janela: { x: 0.9, y: 0, width: 1 - 0.9, height: 0.5 } })
+    expect(enquadramentoDaPagina([{ ...foto, style: { objectFit: 'cover', cropPosition: 'center-top', crop: { x: 0.995, y: 0, width: 0.5, height: 0.5 } } } as Camada])).toEqual({ janela: { x: 0.995, y: 0, width: 1 - 0.995, height: 0.5 } })
+    expect(enquadramentoDaPagina([{ ...foto, style: { objectFit: 'cover', cropPosition: 'center-top', crop: { x: 1, y: 0, width: 0.5, height: 0.5 } } } as Camada])).toEqual({ corte: 'center-top' })
+    expect(enquadramentoDaPagina([texto('headline', 'a')])).toBeNull()
   })
 })
