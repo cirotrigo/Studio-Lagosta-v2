@@ -353,3 +353,22 @@ revisões antigas); `aprovar-referencia` devolve `leitura.assunto`, com o motivo
 com a caixa nova ganha a revisão seguinte. `buscar-fotos` traz o `assuntoEfetivo` de cada foto. O diagnóstico de
 `compor-arte` traz `posicao.assistencia`. O gancho `leitorDeReferencias` é só de prova e o adaptador não o conhece. Detalhe
 em `docs/regras/compositor.md`, "F2b", e `docs/regras/acervo-de-fotos.md`, "A caixa do assunto".
+
+## Fluxo de arte pelo MCP: a skill `arte-pelo-mcp` (05/11/2026)
+
+O fluxo de criar e ajustar uma arte só pelos dados (`ver-pagina` e as `camadas`/`pagina` de `ajustar-arte`, seção
+anterior) está registrado como skill em `.claude/skills/arte-pelo-mcp/SKILL.md`, para o Claude Code seguir sem
+reinventar a ordem: contexto do cliente (`consultar-dna`, `consultar-voz`, `consultar-base`) → `buscar-fotos` →
+montar (`escolher-modelo`/`criar-arte-de-modelo` ou `compor-arte`) → `ver-pagina` → `revisar-arte` → `ajustar-arte`
+com `versaoEsperada` → `ver-geracao` (o PNG) → entregar o `editUrl` como rascunho.
+
+A skill não repete o contrato: aponta para a seção técnica e para `ver-pagina`, que devolve os ids. O que ela fixa
+são os limites: nunca `postar-agora`, `colocar-na-agenda`, `aprovar-rascunhos` ou `cancelar-post` sem pedido
+explícito; `agendar-leva` só com `simular: true`; nada de `ajustar-arte` em arte que a equipe editou sem perguntar;
+no máximo 2 ciclos de `revisar-arte` → `ajustar-arte` antes de pedir revisão humana; em recusa, ler `details.erros`
+e nunca repetir a chamada igual.
+
+🔴 **Ação que só existe na tela: avisar, nunca automatizar clique.** Rich-text por trecho, grade de fotos, grupo,
+vídeo/música/motion e página-modelo ficam no editor; a skill diz isso ao Ciro e passa o `editUrl`, em vez de
+contornar por `camadas` ou de dirigir o navegador. Mudou o contrato de `ver-pagina`/`camadas`? Atualize a skill no
+mesmo PR.
