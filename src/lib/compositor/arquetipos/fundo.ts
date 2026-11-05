@@ -90,11 +90,16 @@ const DESENHA = /[^\s\u200B-\u200D\u2060\uFEFF]/
  * as lacunas ficam na base (`style.color ?? '#000000'`) e o trecho herda `fill ?? base`. ponytail: essa regra curta de
  * lacuna e herança é repetida aqui (o renderer não a expõe como helper); os testes de `divisao-8` a travam.
  */
-export function tintasAtivas(montados: ReadonlyArray<{ layer: Pick<Layer, 'id' | 'type' | 'content' | 'style' | 'richTextStyles'> }>): TintaAtiva[] {
+export function tintasAtivas(montados: ReadonlyArray<{ layer: Pick<Layer, 'id' | 'type' | 'content' | 'style' | 'richTextStyles' | 'destaques' | 'destaque'> }>): TintaAtiva[] {
   return montados.flatMap(({ layer }) => {
     const content = String(layer.content ?? '')
     const base = String(layer.style?.color ?? '#000000')
-    const flat = layer.type === 'rich-text' ? flattenRichTextStyles(content.length, (layer.richTextStyles ?? []) as RichTextStyle[]) : []
+    // Texto com `destaques` (05/11): os trechos herdam `destaque.fill`, como o rich-text herda o `fill` do run.
+    const runs: RichTextStyle[] =
+      layer.type === 'rich-text'
+        ? ((layer.richTextStyles ?? []) as RichTextStyle[])
+        : (layer.destaques ?? []).map((d) => ({ start: d.inicio, end: d.fim, ...(layer.destaque?.fill ? { fill: layer.destaque.fill } : {}) }))
+    const flat = runs.length > 0 ? flattenRichTextStyles(content.length, runs) : []
     const segmentos: Array<Omit<TintaAtiva, 'camada'>> = []
     let cursor = 0
     for (const rich of flat) {

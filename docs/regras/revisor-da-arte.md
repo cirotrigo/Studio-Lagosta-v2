@@ -1404,3 +1404,12 @@ de régua em `docs/research/canva-guias-e-margens-2026-10/teste-de-regua/` e pod
   anonimização (`piloto-fixture.test.ts`) subiu de 19 % para 21 %. P9 voltou a `it()` e passa (41 verdes no
   `piloto-ciclo`; o pulado restante é o `hojeViola` do CP2). `piloto-fixture`, `piloto-compositor` e `piloto-portao` verdes.
 - **Quadrado decidido em 29/10 (Ciro no chat: "Manter 92/120/104")**: fica como está em `GEOMETRIA_PADRAO.quadrado`; nenhum projeto tem geometria própria de quadrado reconciliada, e a reconciliação de 29/10 não o tocou de propósito.
+
+## gate-v6 (05/11/2026): chaves do destaque por marcação
+
+`destaques.*` e `destaque.{fill,fontStyle,textDecoration}` entraram em `CHAVES_CLASSIFICADAS` como `inerte`, e
+`destaque.fontFamily` como `expansora`: a família pesada alarga a linha, e a métrica do gate a mede pelo medidor do
+servidor (`comLarguraDoDestaque`) (sem elas o gate falhava fechado: NAO_MEDIDO em toda peça com destaque). A impressão digital mudou, então
+`VERSAO_DO_GATE` subiu para `gate-v6` (`impressao-digital/gate-gate-v6.json`). Consequência: registros `gate-v5` nas
+Generations viram histórico e a peça é medida de novo antes de agendar. Contrato do destaque: `compositor.md`,
+"Destaque por marcação". Ao juntar com o T1 (que também declara os campos em `template.ts`), fica UMA classificação e UM `gate-v6`.

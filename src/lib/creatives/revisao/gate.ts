@@ -67,7 +67,7 @@ export interface MotivoDoGate {
 }
 
 /** A versão da DECISÃO do gate (CP5b § 5): bump obrigatório cobrado pela impressão digital `gate-<versao>.json`. */
-export const VERSAO_DO_GATE = 'gate-v5' as const
+export const VERSAO_DO_GATE = 'gate-v6' as const
 
 export interface GateDaArte {
   versao: typeof VERSAO_DO_GATE
@@ -204,6 +204,17 @@ export const CHAVES_CLASSIFICADAS: Record<string, ChaveClassificada> = {
   'videoMetadata.*': inerte({}),
   'clipe.*': inerte({}),
   'richTextStyles.*': inerte([]),
+  // Destaque por marcação (05/11/2026): trechos do PRÓPRIO texto pintados noutra cor/família, sem efeito por trecho (a
+  // sombra e o traço são os da camada, já classificados). Sem estas folhas, todo texto destacado caía fora da árvore e
+  // a peça saía NAO_MEDIDO em oclusão e piso de interface.
+  // A família do destaque ALARGA o trecho (revisão M4 do PR #298): é `expansora`, e a métrica do gate a mede — o
+  // medidor do servidor soma `larguraExtraDoDestaque` por linha (`comLarguraDoDestaque`), então `texto-cortado` vê a
+  // linha como o render a desenha.
+  'destaques.*': inerte([{ inicio: 0, fim: 4 }]),
+  'destaque.fill': inerte('#ff0000'),
+  'destaque.fontFamily': expansora('serif'),
+  'destaque.fontStyle': inerte('italic'),
+  'destaque.textDecoration': inerte('underline'),
   movimento: inerte('aproximar'),
   // textboxConfig (só layout dentro da caixa; com métrica, o texto é medido como desenhado)
   'textboxConfig.spacing': inerte(10),

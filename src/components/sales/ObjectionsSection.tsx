@@ -38,7 +38,7 @@ export function ObjectionsSection() {
                             <AccordionTrigger className="text-left text-lg font-medium">
                                 {item.question}
                             </AccordionTrigger>
-                            <AccordionContent className="text-muted-foreground text-base leading-relaxed">
+                            <AccordionContent forceMount className="text-muted-foreground text-base leading-relaxed">
                                 {item.answer}
                             </AccordionContent>
                         </AccordionItem>

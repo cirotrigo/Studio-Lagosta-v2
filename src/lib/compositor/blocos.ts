@@ -10,7 +10,7 @@
  * `gerar.py`, com uma diferença: aqui a recusa vem com o número.
  *
  * Palavra marcada com [colchetes] na copy sai DESTACADA (11/09/2026): o bloco
- * vira camada rich-text com o estilo de destaque da marca, e a largura da linha
+ * leva `destaques` (offsets) e `destaque` (o estilo da marca) na camada `text`, e a largura da linha
  * é medida já com a família mais pesada do trecho — senão a linha que "cabia"
  * transbordava a coluna depois de destacada.
  *
@@ -18,12 +18,13 @@
  */
 
 import type { Layer } from '@/types/template'
+import { aplicarCaixa } from '@/lib/posts/caixa-do-texto'
 import type { MeasureTextBox } from '@/lib/creatives/text-geometry'
 import { PADDING_DE_DESENHO } from '@/lib/creatives/halo/fundo-de-texto'
 
 import type { EstiloDePapel } from './assinatura'
 import { extensoesDosElementos, type ElementoDoArranjo } from './combinacoes'
-import { estilosDoRichText, lerDestaques, type EstiloDeDestaque, type TrechoDestacado } from './destaques'
+import { lerDestaques, type EstiloDeDestaque, type TrechoDestacado } from './destaques'
 import type { Papel } from './spec'
 
 /** Piso do encolhimento — o mesmo do autofix geométrico. */
@@ -39,7 +40,7 @@ export interface BlocoMontado {
   escala: number
   /** Cor do texto — quem calibra o gradiente precisa dela. */
   cor: string
-  /** O bloco saiu com palavra destacada (camada rich-text). Ausente = não. */
+  /** O bloco saiu com palavra destacada (`destaques` na camada). Ausente = não. */
   destacado?: boolean
   /**
    * O vão antes deste texto (px) como o arranjo o desenhou — a página de
@@ -254,11 +255,9 @@ export function camadaDoPapel(args: {
     for (const t of trechosPorLinha[i] ?? []) trechos.push({ inicio: inicioDaLinha + extra + t.inicio, fim: inicioDaLinha + extra + t.fim })
     inicioDaLinha += linha.length + 1
   })
-  return {
-    ...camada,
-    type: 'rich-text',
-    richTextStyles: estilosDoRichText({ conteudo, trechos, destaque: args.destaque.estilo, sombra: sombra ?? null }),
-  }
+  // Destaque por marcação (05/11/2026): a camada segue `text`, com os trechos e o estilo declarados — edita na caixa do
+  // editor e pelo MCP; o desenho por trecho é do render (`segmentosDoTexto`). A sombra é a da camada (`effects.shadow`).
+  return { ...camada, destaques: trechos, destaque: { ...args.destaque.estilo } }
 }
 
 /**
@@ -293,6 +292,37 @@ export function larguraExtraDoDestaque(medir: MeasureTextBox, base: Layer, linha
     if (normal && destacado) extra += Math.max(0, destacado.largura - normal.largura)
   }
   return extra
+}
+
+/**
+ * O medidor que enxerga o destaque (revisão M4 do PR #298, 05/11/2026): `measureTextLayerBox` mede a camada `text`
+ * inteira na família da camada, mas o render desenha os `destaques` na família de `destaque.fontFamily`. Cada linha
+ * quebrada soma a MESMA conta da montagem (`larguraExtraDoDestaque`), e `maxLineWidth` sobe junto — autofix, gate e
+ * revisor passam por `createServerTextBoxMeasurer`, então todos medem o que o PNG desenha.
+ * ponytail: a quebra é a da família da camada (só a largura cresce); se o render quebrar diferente por causa do trecho
+ * pesado, a caixa medida ainda transborda e a escada encolhe — medir a quebra por segmento quando isso aparecer.
+ */
+export function comLarguraDoDestaque(medir: MeasureTextBox): MeasureTextBox {
+  return (layer) => {
+    const m = medir(layer)
+    const familia = layer.destaque?.fontFamily
+    if (!m?.linhas?.length || layer.type !== 'text' || !layer.destaques?.length || !familia || familia === layer.style?.fontFamily) return m
+    const { destaques, destaque: _e, ...base } = layer
+    const conteudo = aplicarCaixa(String(layer.content ?? ''), layer.style?.textTransform)
+    const coluna = layer.size?.width ?? 0
+    let cursor = 0
+    let maior = 0
+    const linhas = m.linhas.map((l) => {
+      const ini = conteudo.indexOf(l.texto, cursor)
+      if (ini < 0) return l
+      cursor = ini + l.texto.length
+      const trechos = destaques.map((t) => ({ inicio: Math.max(t.inicio, ini) - ini, fim: Math.min(t.fim, cursor) - ini })).filter((t) => t.fim > t.inicio)
+      const largura = l.largura + larguraExtraDoDestaque(medir, base as Layer, l.texto, trechos, familia, coluna)
+      maior = Math.max(maior, largura)
+      return { ...l, largura }
+    })
+    return { ...m, maxLineWidth: Math.max(m.maxLineWidth, maior), linhas }
+  }
 }
 
 /**

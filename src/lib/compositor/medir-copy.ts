@@ -355,11 +355,11 @@ export function medirCopy(args: {
     const limpas = lidas.map((l) => l.texto)
     // F2d: o bloco MONTADO é medido com a camada preparada (o corpo e o espaçamento materializados), não reconstruído por
     // uma escala com três casas — a largura medida é a da montagem. A recusa reconstrói pelo mesmo contrato, no piso.
-    // A camada preparada com [colchetes] é `rich-text` e o medidor do servidor só mede `text` (devolve null): a base é a
-    // camada SIMPLES com os mesmos valores materializados; o acréscimo do destaque entra pela conta de sempre, abaixo.
+    // A base é a camada SIMPLES (sem os trechos do destaque) com os mesmos valores materializados; o acréscimo do
+    // destaque entra pela conta de sempre, abaixo.
     const base = camadaPreparada
       ? (() => {
-          const { richTextStyles: _r, ...simples } = camadaPreparada as Layer & { richTextStyles?: unknown }
+          const { richTextStyles: _r, destaques: _d, destaque: _e, ...simples } = camadaPreparada as Layer
           return { ...simples, type: 'text' as const, content: limpas.join('\n'), size: { ...camadaPreparada.size, width: coluna } } as Layer
         })()
       : camadaDoPapel({ papel, linhas: limpas, estilo, escala, width: coluna, textAlign: 'left', groupId: 'medicao', corDaMancha: args.assinatura.numeros.mancha })
