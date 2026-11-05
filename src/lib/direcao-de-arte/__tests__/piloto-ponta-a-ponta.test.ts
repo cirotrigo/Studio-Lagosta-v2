@@ -61,7 +61,7 @@ vi.mock('@napi-rs/canvas', async (original) => {
   const m = await original<typeof import('@napi-rs/canvas')>()
   const daFixture = ['Branley GC', 'StageGrotesk Thin', 'StageGrotesk Regular'].map((family) => ({ family, styles: [400, 700].map((weight) => ({ weight, width: 'normal', style: 'normal' })) }))
   // Um objeto próprio (não um Proxy: `has` e `registerFromPath` são propriedades não configuráveis do objeto nativo e o Proxy
-  // violaria o invariante ao devolvê-las ligadas) com o que a produção usa: `families`, `has`, `registerFromPath`.
+  // violaria o invariante ao devolvê-las ligadas) com o que a produção usa: `families`, `has`, `registerFromPath`, `setAlias`.
   const real = m.GlobalFonts
   const GlobalFonts = {
     get families() {
@@ -71,6 +71,8 @@ vi.mock('@napi-rs/canvas', async (original) => {
     },
     has: (familia: string) => real.has(familia) || daFixture.some((d) => d.family === familia),
     registerFromPath: (...a: Parameters<typeof real.registerFromPath>) => real.registerFromPath(...a),
+    // garantirFontesPadrao (canvas 1.0): o alias de `sans-serif` para a Montserrat vai para o registro real.
+    setAlias: (...a: Parameters<typeof real.setAlias>) => real.setAlias(...a),
   }
   return { ...m, GlobalFonts }
 })

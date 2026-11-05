@@ -77,6 +77,9 @@ Uma linha cada; o porquê e a medição estão no arquivo indicado.
   palavras da referência, nome de fonte) (`geracao-ia.md`).
 - 🔴 **Não existem classes Tailwind "mortas"**: o JIT só gera o que está no fonte; meça depois de
   escrever a classe (`editor-e-galeria.md`).
+- 🔴 **Worker do vitest morrendo com SIGSEGV no skia é objeto nativo coletado, não teste quebrado**:
+  leia o `.ips` (thread `libuv-worker`) e não "estabilize" com `toBuffer` nem `--maxWorkers`
+  (`render-e-texto.md`, "Workers do vitest morrendo no skia").
 
 ## Testes e formatação
 

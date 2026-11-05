@@ -222,7 +222,7 @@ function pintarEmGrupo(
   const [la, lb, lc, ld] = lim
   const cantos = [[la, lb], [lc, lb], [la, ld], [lc, ld]].map(([x, y]) => [m.a * x + m.c * y + m.e, m.b * x + m.d * y + m.f])
   // A fonte que importa: o canvas de destino e, com sombra, também o que a SOMBRA leva para dentro dele — o canvas
-  // deslocado pelo inverso do offset, com o alcance do blur (desvio shadowBlur/√2, ver abaixo; 3× cobre > 4 desvios).
+  // deslocado pelo inverso do offset, com o alcance do blur (desvio shadowBlur/2 pela especificação; 3× cobre 6 desvios).
   // Offset e blur da sombra são px do dispositivo (o transform não os afeta). Geometria que não chega ao destino nem
   // pela sombra fica fora: o auxiliar nunca passa de canvas + offset + alcance.
   const W = ctx.canvas.width, H = ctx.canvas.height
@@ -244,28 +244,9 @@ function pintarEmGrupo(
   pintarDireto(actx, partes, viewBox, largura, altura, pintura)
   ctx.save()
   ctx.setTransform(1, 0, 0, 1, 0, 0)
-  // A sombra do GRUPO desenhada explicitamente: o `drawImage` do @napi-rs/canvas ignora a sombra (e o padrão a tinge com
-  // a cor da imagem), então o servidor a perdia. Máscara do auxiliar na cor da sombra (com o alfa dela), desfocada por
-  // `filter: blur(shadowBlur/√2)` — medido contra a sombra nativa do Skia: ≤ 3 de diferença com blur 8 e 20 —,
-  // deslocada pelo offset e composta com o MESMO `globalAlpha`. Sem `ctx.filter` (Safari antigo) e com blur, fica a
-  // sombra nativa do `drawImage`, que o navegador aplica.
-  if (comSombra && (blur === 0 || typeof ctx.filter === 'string')) {
-    const aw = x1 - x0, ah = y1 - y0
-    const mascara = criarCanvas(aw + 2 * alcance, ah + 2 * alcance, 1)
-    const mctx = mascara?.getContext('2d') as CtxDeGrupo | null | undefined
-    if (mascara && mctx) {
-      mctx.globalCompositeOperation = 'source-over'
-      mctx.drawImage(aux, alcance, alcance)
-      mctx.globalCompositeOperation = 'source-in'
-      mctx.fillStyle = ctx.shadowColor
-      mctx.fillRect(0, 0, aw + 2 * alcance, ah + 2 * alcance)
-      mctx.globalCompositeOperation = 'source-over'
-      ctx.shadowColor = 'rgba(0, 0, 0, 0)'
-      if (blur > 0) ctx.filter = `blur(${blur / Math.SQRT2}px)`
-      ctx.drawImage(mascara, x0 - alcance + ox, y0 - alcance + oy)
-      if (blur > 0) ctx.filter = 'none'
-    }
-  }
+  // A sombra do GRUPO é a nativa do `drawImage` (navegador e @napi-rs/canvas ≥ 1.0, que passou a aplicá-la na cor
+  // certa). A sombra feita à mão do 0.1.x (máscara + `filter: blur`) saiu: na 1.0 ela somava à nativa e o desfoque do
+  // filtro ficou mais largo que o da sombra (medido em 05/11/2026: 42 contra 22 em x 125, blur 8).
   ctx.drawImage(aux, x0, y0)
   ctx.restore()
   return true
