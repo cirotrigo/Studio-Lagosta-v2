@@ -1,5 +1,9 @@
 import { SignIn } from "@clerk/nextjs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import type { Metadata } from "next";
+
+// Tela de login não é página para o Google.
+export const metadata: Metadata = { robots: { index: false, follow: false } };
 
 export default function SignInPage() {
   return (

@@ -168,6 +168,30 @@ const nextConfig: NextConfig = {
         ],
       },
 
+      // Imagens e vídeos da página de vendas (auditoria de SEO, 05/10/2026): saíam com
+      // max-age=0 e eram baixados de novo a cada visita. Os nomes não têm hash, então
+      // 7 dias (e não immutable): trocar um arquivo pelo mesmo nome chega em até uma semana.
+      {
+        source: '/clients/:path*',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=604800, stale-while-revalidate=86400' }],
+      },
+      {
+        source: '/videos/:path*',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=604800, stale-while-revalidate=86400' }],
+      },
+      {
+        source: '/crm/:path*',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=604800, stale-while-revalidate=86400' }],
+      },
+      {
+        source: '/sites/:path*',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=604800, stale-while-revalidate=86400' }],
+      },
+      {
+        source: '/lagosta-logo.:ext',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=604800, stale-while-revalidate=86400' }],
+      },
+
       // O conector do claude.ai fala com estes endpoints do navegador dele:
       // sem CORS a descoberta e o registro são bloqueados antes de sair.
       {
