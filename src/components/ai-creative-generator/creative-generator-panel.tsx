@@ -23,6 +23,7 @@ import type {
   ImageSource,
 } from '@/lib/ai-creative-generator/layout-types'
 import { vinculadaAGrade } from '@/lib/grades/no-editor'
+import { trocarConteudo } from '@/lib/compositor/destaques'
 
 interface CreativeGeneratorPanelProps {
   projectId: number
@@ -269,10 +270,14 @@ export function CreativeGeneratorPanel({
   function handleTextChange(layerId: string, value: string) {
     setTexts((prev) => ({ ...prev, [layerId]: value }))
 
-    // Atualizar layer em tempo real (apenas se estiver editando)
+    // Atualizar layer em tempo real (apenas se estiver editando). O texto
+    // passa por `trocarConteudo`: [colchetes] viram `destaques` e os antigos
+    // saem junto com o texto antigo.
     if (isEditing && layerBindings[layerId]) {
-      onLayerUpdate?.(layerBindings[layerId], { content: value })
-      autoSave(layerBindings[layerId], { content: value })
+      const camada = currentPage?.layers?.find((l: any) => l.id === layerBindings[layerId]) ?? { type: 'text' }
+      const { content, destaques } = trocarConteudo(camada, value)
+      onLayerUpdate?.(layerBindings[layerId], { content, destaques })
+      autoSave(layerBindings[layerId], { content, destaques: destaques ?? null })
     }
   }
 

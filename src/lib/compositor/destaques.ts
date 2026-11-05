@@ -71,6 +71,40 @@ export function lerDestaques(linha: string): LinhaComDestaque {
   return { texto, trechos: aparados, problema }
 }
 
+/**
+ * `lerDestaques` para um texto de VÁRIAS linhas (a caixa do editor, o
+ * `content` que chega pelo MCP): os offsets saem no texto limpo inteiro, com
+ * as quebras. O colchete não atravessa a linha; o primeiro problema vence.
+ */
+export function lerDestaquesDoTexto(texto: string): LinhaComDestaque {
+  const linhas = texto.split('\n').map(lerDestaques)
+  const trechos: TrechoDestacado[] = []
+  let base = 0
+  for (const l of linhas) {
+    for (const t of l.trechos) trechos.push({ inicio: base + t.inicio, fim: base + t.fim })
+    base += l.texto.length + 1
+  }
+  return { texto: linhas.map((l) => l.texto).join('\n'), trechos, problema: linhas.find((l) => l.problema)?.problema ?? null }
+}
+
+/**
+ * O ÚNICO jeito de trocar o `content` de uma camada: texto novo com [colchetes]
+ * vira `content` limpo + `destaques`; sem colchetes, os `destaques` antigos
+ * são apagados (offsets de um texto que não existe mais pintariam letras ao
+ * acaso). Quem grava `content` por fora da caixa do canvas (painel de
+ * propriedades, gerador, fieldValues, slotValues, bake) passa por aqui.
+ * Camada que não é `text`: só o conteúdo. `problema` é o aviso do colchete
+ * sem par; o `destaque` (estilo) é de quem grava, pela marca.
+ */
+export function trocarConteudo(
+  camada: { type?: unknown; destaques?: unknown },
+  texto: string,
+): { content: string; destaques: TrechoDestacado[] | undefined; problema: string | null } {
+  if (camada.type !== 'text') return { content: texto, destaques: undefined, problema: null }
+  const lido = lerDestaquesDoTexto(texto)
+  return { content: lido.texto, destaques: lido.trechos.length > 0 ? lido.trechos : undefined, problema: lido.problema }
+}
+
 /** A copy sem a marcação — para quem desenha texto sem rich text (IA, template, comparação). */
 export function semColchetes(texto: string): string {
   return texto.replace(/[[\]]/g, '')
@@ -164,15 +198,116 @@ function diferencaDaBase(s: RichTextStyle, base: Base): EstiloDeDestaque {
   return d
 }
 
-/** O destaque que a equipe deixou numa camada rich-text da página de assinatura. */
+/**
+ * O destaque que a equipe deixou numa camada da página de assinatura: o
+ * `destaque` de uma camada `text` com marcação, ou o trecho que difere da
+ * base numa rich-text.
+ */
 export function destaqueDaCamada(camada: Layer): EstiloDeDestaque | null {
-  if (camada.type !== 'rich-text' || !Array.isArray(camada.richTextStyles)) return null
   const base = baseDaCamada(camada)
+  if (camada.type === 'text') {
+    if (!trechosDaCamada(camada).length || !camada.destaque) return null
+    const d = diferencaDaBase({ start: 0, end: 0, ...camada.destaque }, base)
+    return Object.keys(d).length > 0 ? d : null
+  }
+  if (camada.type !== 'rich-text' || !Array.isArray(camada.richTextStyles)) return null
   for (const s of camada.richTextStyles) {
     const d = diferencaDaBase(s, base)
     if (Object.keys(d).length > 0) return d
   }
   return null
+}
+
+/** Os `destaques` de uma camada `text`, só os válidos dentro do `content`. */
+function trechosDaCamada(camada: Layer): TrechoDestacado[] {
+  if (!Array.isArray(camada.destaques)) return []
+  const n = typeof camada.content === 'string' ? camada.content.length : 0
+  return camada.destaques
+    .filter((t) => t && Number.isFinite(t.inicio) && Number.isFinite(t.fim))
+    .map((t) => ({ inicio: Math.max(0, Math.min(n, Math.floor(t.inicio))), fim: Math.max(0, Math.min(n, Math.floor(t.fim))) }))
+    .filter((t) => t.fim > t.inicio)
+}
+
+/** A sombra da camada no formato por glifo do rich text; null quando desligada. */
+export function sombraDaCamada(camada: Layer): SombraDoGlifo | null {
+  const s = camada.effects?.shadow
+  if (!s?.enabled) return null
+  return { color: s.shadowColor ?? '#000000', blur: s.shadowBlur ?? 0, offsetX: s.shadowOffsetX ?? 0, offsetY: s.shadowOffsetY ?? 0, opacity: s.shadowOpacity ?? 1 }
+}
+
+/** O contorno da camada `text` (effects.stroke, senão style.border) no formato por segmento; null sem contorno. */
+export function contornoDaCamada(camada: Layer): { color: string; width: number } | null {
+  const fx = camada.effects?.stroke
+  if (fx?.enabled && (fx.strokeWidth ?? 0) > 0) return { color: fx.strokeColor ?? '#000000', width: fx.strokeWidth }
+  const borda = camada.style?.border
+  if (borda?.width && borda.width > 0) return { color: borda.color ?? '#000000', width: borda.width }
+  return null
+}
+
+/**
+ * Os segmentos (no formato do rich text) de uma camada `text` com
+ * `destaques`: os offsets são no `content` CRU (ver
+ * `segmentosNoTextoTransformado` para o textTransform). O estilo é o
+ * `destaque` gravado; sem ele, a família mais pesada da mesma família quando
+ * há uma lista de famílias à mão. Sem estilo nenhum, null: o texto desenha
+ * como texto comum, nunca um destaque invisível. Camada sem `destaques`, ou
+ * que não é `text`: null — e nada muda no desenho.
+ *
+ * `comEfeitos`: a sombra e o contorno da camada entram em TODOS os segmentos
+ * — é o que o editor precisa, porque o Konva.Text fica transparente e os
+ * segmentos desenham tudo. O servidor NÃO pede: lá o texto com destaques
+ * passa pelo mesmo `renderText` do texto comum (sombra no ctx, contorno por
+ * linha), e só a tinta de cada trecho é por segmento.
+ */
+export function segmentosDoTexto(camada: Layer, opcoes: { familias?: string[]; comEfeitos?: boolean } = {}): RichTextStyle[] | null {
+  if (camada.type !== 'text') return null
+  const trechos = trechosDaCamada(camada)
+  if (trechos.length === 0) return null
+  const conteudo = typeof camada.content === 'string' ? camada.content : ''
+  let destaque: EstiloDeDestaque = { ...(camada.destaque ?? {}) }
+  if (Object.keys(destaque).length === 0 && opcoes.familias?.length) {
+    const pesada = familiaMaisPesada(baseDaCamada(camada).fontFamily, opcoes.familias)
+    destaque = pesada ? { fontFamily: pesada } : {}
+  }
+  if (Object.keys(destaque).length === 0) return null
+  return estilosDoRichText({
+    conteudo,
+    trechos,
+    destaque,
+    sombra: opcoes.comEfeitos ? sombraDaCamada(camada) : null,
+    contorno: opcoes.comEfeitos ? contornoDaCamada(camada) : null,
+  })
+}
+
+/**
+ * Leva segmentos com offsets no texto CRU para o texto TRANSFORMADO
+ * (`textTransform`): fatia o cru, transforma cada pedaço e soma os
+ * comprimentos. "ß" → "SS" e ligaduras mudam o comprimento, então transformar
+ * o texto inteiro antes de fatiar deslocava os offsets. Os pedaços sem
+ * segmento são transformados do mesmo jeito; `texto` é o conteúdo final.
+ */
+export function segmentosNoTextoTransformado(
+  segmentos: RichTextStyle[],
+  conteudoCru: string,
+  transformar: (pedaco: string) => string,
+): { texto: string; segmentos: RichTextStyle[] } {
+  const n = conteudoCru.length
+  const ordenados = [...segmentos]
+    .map((s) => ({ ...s, start: Math.max(0, Math.min(n, s.start)), end: Math.max(0, Math.min(n, s.end)) }))
+    .filter((s) => s.end > s.start)
+    .sort((a, b) => a.start - b.start)
+  let texto = ''
+  let cursor = 0
+  const saida: RichTextStyle[] = []
+  for (const s of ordenados) {
+    if (s.start > cursor) texto += transformar(conteudoCru.slice(cursor, s.start))
+    const inicio = texto.length
+    texto += transformar(conteudoCru.slice(Math.max(s.start, cursor), s.end))
+    saida.push({ ...s, start: inicio, end: texto.length })
+    cursor = Math.max(cursor, s.end)
+  }
+  if (cursor < n) texto += transformar(conteudoCru.slice(cursor))
+  return { texto, segmentos: saida }
 }
 
 /** `#RRGGBB` + opacidade → `rgba()` (a sombra do rich text só lê opacidade na cor). */
@@ -189,6 +324,8 @@ export function corComOpacidade(cor: string, opacidade: number): string {
 export interface SombraDoGlifo {
   color: string
   blur: number
+  /** Ausente = 0 (a sombra da assinatura só desloca na vertical). */
+  offsetX?: number
   offsetY: number
   opacity: number
 }
@@ -202,14 +339,17 @@ export function estilosDoRichText(args: {
   trechos: TrechoDestacado[]
   destaque: EstiloDeDestaque
   sombra: SombraDoGlifo | null
+  /** Contorno da camada inteira (como a sombra, cobre todo o conteúdo). */
+  contorno?: { color: string; width: number } | null
 }): RichTextStyle[] {
   const n = args.conteudo.length
   const trechos = args.trechos
     .map((t) => ({ inicio: Math.max(0, Math.min(n, t.inicio)), fim: Math.max(0, Math.min(n, t.fim)) }))
     .filter((t) => t.fim > t.inicio)
   const sombra = args.sombra
-    ? { color: corComOpacidade(args.sombra.color, args.sombra.opacity), blur: args.sombra.blur, offset: { x: 0, y: args.sombra.offsetY } }
+    ? { color: corComOpacidade(args.sombra.color, args.sombra.opacity), blur: args.sombra.blur, offset: { x: args.sombra.offsetX ?? 0, y: args.sombra.offsetY } }
     : null
+  const contorno = args.contorno ?? null
   const cortes = [...new Set([0, n, ...trechos.flatMap((t) => [t.inicio, t.fim])])].sort((a, b) => a - b)
   const saida: RichTextStyle[] = []
   for (let i = 0; i < cortes.length - 1; i++) {
@@ -217,30 +357,39 @@ export function estilosDoRichText(args: {
     const end = cortes[i + 1]
     if (end <= start) continue
     const destacado = trechos.some((t) => t.inicio <= start && end <= t.fim)
-    if (!destacado && !sombra) continue
-    saida.push({ start, end, ...(destacado ? args.destaque : {}), ...(sombra ? { shadow: sombra } : {}) })
+    if (!destacado && !sombra && !contorno) continue
+    saida.push({
+      start,
+      end,
+      ...(destacado ? args.destaque : {}),
+      ...(sombra ? { shadow: sombra } : {}),
+      ...(contorno ? { stroke: contorno } : {}),
+    })
   }
   return saida
 }
 
 /**
- * A volta: uma camada rich-text vira linhas com [colchetes] nos trechos que
+ * A volta: uma camada com destaque vira linhas com [colchetes] — nos
+ * `destaques` de uma camada `text`, ou nos trechos de uma rich-text que
  * DIFEREM do estilo base (sombra sozinha não é destaque). É o que deixa a
- * recomposição refazer a peça sem perder o destaque. Camada `text` com
- * `destaques` volta igual; outra camada que não é rich text → null.
+ * recomposição refazer a peça sem perder o destaque, e o que a caixa do
+ * editor mostra. Camada `text` sem destaques, ou de outro tipo → null.
  */
 export function linhasComColchetes(camada: Layer): string[] | null {
-  const marcadoPorTexto = camada.type === 'text' && Array.isArray(camada.destaques) && camada.destaques.length > 0
-  if (camada.type !== 'rich-text' && !marcadoPorTexto) return null
   const conteudo = typeof camada.content === 'string' ? camada.content : ''
   const marcado = new Array<boolean>(conteudo.length).fill(false)
-  // Destaque por marcação (05/11/2026): a camada `text` declara os trechos em `destaques`.
-  const faixas = marcadoPorTexto
-    ? camada.destaques!.map((t) => ({ start: t.inicio, end: t.fim }))
-    : (Array.isArray(camada.richTextStyles) ? camada.richTextStyles : []).filter((s) => Object.keys(diferencaDaBase(s, baseDaCamada(camada))).length > 0)
-  for (const s of faixas) {
-    for (let i = Math.max(0, s.start); i < Math.min(conteudo.length, s.end); i++) marcado[i] = true
-  }
+  if (camada.type === 'text') {
+    const trechos = trechosDaCamada(camada)
+    if (trechos.length === 0) return null
+    for (const t of trechos) for (let i = t.inicio; i < t.fim; i++) marcado[i] = true
+  } else if (camada.type === 'rich-text') {
+    const base = baseDaCamada(camada)
+    for (const s of Array.isArray(camada.richTextStyles) ? camada.richTextStyles : []) {
+      if (Object.keys(diferencaDaBase(s, base)).length === 0) continue
+      for (let i = Math.max(0, s.start); i < Math.min(conteudo.length, s.end); i++) marcado[i] = true
+    }
+  } else return null
   let saida = ''
   let aberto = false
   for (let i = 0; i < conteudo.length; i++) {
@@ -276,6 +425,34 @@ export function distanciaDeCor(a: string | null | undefined, b: string | null | 
   const y = rgb(b)
   if (!x || !y) return null
   return Math.round(Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]))
+}
+
+/** O destaque padrão da marca quando `Project.assinatura` não diz nada: só o peso. */
+export const DESTAQUE_PADRAO: DestaquePadraoDaAssinatura = { pesado: true }
+
+export type DestaquePadraoDaAssinatura = { fill?: string; fontFamily?: string; pesado: boolean; alternativa?: string }
+
+/** `Project.assinatura.destaque` cru sobre a base — a regra do compositor (`mesclarNumeros`). */
+export function mesclarDestaque(base: DestaquePadraoDaAssinatura, extra: unknown): DestaquePadraoDaAssinatura {
+  if (!extra || typeof extra !== 'object') return base
+  const e = extra as Record<string, unknown>
+  return {
+    ...(typeof e.fill === 'string' && e.fill ? { fill: e.fill } : base.fill ? { fill: base.fill } : {}),
+    ...(typeof e.fontFamily === 'string' && e.fontFamily ? { fontFamily: e.fontFamily } : base.fontFamily ? { fontFamily: base.fontFamily } : {}),
+    pesado: typeof e.pesado === 'boolean' ? e.pesado : base.pesado,
+    ...(typeof e.alternativa === 'string' && e.alternativa ? { alternativa: e.alternativa } : base.alternativa ? { alternativa: base.alternativa } : {}),
+  }
+}
+
+/**
+ * O destaque padrão da marca a partir do JSON cru de `Project.assinatura` — a
+ * MESMA regra do compositor, para o editor não ter outra: cor só de
+ * `assinatura.destaque.fill`; sem ela, só o peso. Módulo puro: o hook do
+ * editor importa daqui (assinatura.ts arrasta o canvas do servidor).
+ */
+export function destaquePadraoDaAssinatura(numerosDoProjeto: unknown): DestaquePadraoDaAssinatura {
+  const cru = numerosDoProjeto && typeof numerosDoProjeto === 'object' ? (numerosDoProjeto as { destaque?: unknown }).destaque : undefined
+  return mesclarDestaque(DESTAQUE_PADRAO, cru)
 }
 
 export interface DestaquePadraoDaMarca {

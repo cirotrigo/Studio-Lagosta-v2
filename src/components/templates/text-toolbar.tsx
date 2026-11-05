@@ -31,12 +31,15 @@ import {
   FoldVertical,
   MoveVertical,
   AlertTriangle,
+  RotateCcw,
 } from 'lucide-react'
 import { FONT_CONFIG } from '@/lib/font-config'
 import { patchLineHeight } from '@/lib/text-line-height'
 import { getFontManager } from '@/lib/font-manager'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { ColorPicker } from '@/components/canvas/effects/ColorPicker'
+import { familiaMaisPesada, type EstiloDeDestaque } from '@/lib/compositor/destaques'
+import { useDestaqueDaMarca } from '@/hooks/use-destaque-da-marca'
 import {
   Popover,
   PopoverContent,
@@ -298,6 +301,21 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
       },
     })
     forceRedraw() // ⚡ FORÇAR REDESENHO
+  }
+
+  // Destaque por marcação (só camada `text`): a cor e o peso que valem para
+  // TODAS as palavras entre [ ] da camada. Sem `destaque` gravado, mostra o
+  // da marca (assinatura/paleta); "Voltar ao da marca" apaga o campo.
+  const destaqueDaMarca = useDestaqueDaMarca(projectId)
+  const ehTexto = selectedLayer.type === 'text'
+  const temDestaques = Array.isArray(selectedLayer.destaques) && selectedLayer.destaques.length > 0
+  const destaqueAtual: EstiloDeDestaque = selectedLayer.destaque ?? destaqueDaMarca(selectedLayer) ?? {}
+  const familiaPesada = familiaMaisPesada(selectedLayer.style?.fontFamily ?? '', availableFonts.all)
+  const pesoForte = Boolean(destaqueAtual.fontFamily)
+  const gravarDestaque = (d: EstiloDeDestaque) => {
+    const limpo = Object.fromEntries(Object.entries(d).filter(([, v]) => v !== undefined && v !== '')) as EstiloDeDestaque
+    onUpdateLayer(selectedLayer.id, { destaque: Object.keys(limpo).length > 0 ? limpo : undefined })
+    forceRedraw()
   }
 
   const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
@@ -658,6 +676,56 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
                 title="Espessura do contorno"
               />
             </div>
+
+            {/* Destaque das palavras entre [ ] */}
+            {ehTexto && (
+              <div className="space-y-1" data-testid="campo-destaque">
+                <div className="flex items-center gap-2">
+                  <Label className="w-16 text-xs text-muted-foreground">Destaque</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button
+                        className="h-8 w-10 rounded border border-border cursor-pointer hover:border-primary transition"
+                        style={{ backgroundColor: destaqueAtual.fill ?? selectedLayer.style?.color ?? '#000000' }}
+                        title="Cor do destaque"
+                      />
+                    </PopoverTrigger>
+                    <PopoverContent className="w-80">
+                      <ColorPicker
+                        label="Cor do destaque"
+                        value={destaqueAtual.fill ?? selectedLayer.style?.color ?? '#000000'}
+                        onChange={(value) => gravarDestaque({ ...destaqueAtual, fill: value })}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  <Button
+                    variant={pesoForte ? 'default' : 'outline'}
+                    size="sm"
+                    className="h-8 px-2 text-xs"
+                    disabled={!pesoForte && !familiaPesada}
+                    onClick={() => gravarDestaque({ ...destaqueAtual, fontFamily: pesoForte ? undefined : familiaPesada ?? undefined })}
+                    title={familiaPesada ? `Peso forte: ${familiaPesada}` : 'A família não tem versão mais pesada entre as fontes do projeto'}
+                  >
+                    Peso forte
+                  </Button>
+                  {selectedLayer.destaque && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0"
+                      // Grava o valor RESOLVIDO da marca: sem `destaque` a camada desenharia sem destaque nenhum
+                      onClick={() => gravarDestaque(destaqueDaMarca(selectedLayer) ?? {})}
+                      title="Voltar ao destaque da marca"
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+                {!temDestaques && (
+                  <p className="text-[11px] text-muted-foreground">Marque a palavra com [ ] na caixa de texto.</p>
+                )}
+              </div>
+            )}
 
             {/* Espaçamento */}
             <div className="flex items-center gap-2">

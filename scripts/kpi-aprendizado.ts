@@ -151,7 +151,8 @@ async function main() {
 
   // ── 3. Decisões SEM sugestão ──────────────────────────────────────────────
   const absolutas = await db.learningSignal.count({
-    where: { sugeridoEm: null, createdAt: { gte: desde } },
+    // `camada` é o registro da edição à mão no editor (balde por página), não decisão por peça.
+    where: { sugeridoEm: null, createdAt: { gte: desde }, tipo: { not: 'camada' } },
   })
 
   if (jsonOut) {

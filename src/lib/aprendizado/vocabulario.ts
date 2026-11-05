@@ -94,6 +94,16 @@ export type TipoDeSinal =
    * servidor comparando a mídia do post criado com os candidatos.
    */
   | 'repost'
+  /**
+   * O que a equipe mudou À MÃO numa camada, no editor, em QUALQUER página
+   * (`diff-camadas.ts`, 05/11/2026): quais camadas foram alteradas, criadas ou
+   * apagadas e, nas alteradas, os CAMINHOS (`position.x`, `style.fontSize`,
+   * `content`), sem valores. É a medida da lacuna — o que a pessoa corrige
+   * depois que o MCP (ou o compositor) entrega a peça. Não substitui
+   * `geometria` (deltas numéricos, só peça do compositor) nem `copy` (o texto
+   * com diff de conteúdo): é o mapa largo e barato do que se mexe.
+   */
+  | 'camada'
 
 export const TIPOS_DE_SINAL: TipoDeSinal[] = [
   'slot',
@@ -106,6 +116,7 @@ export const TIPOS_DE_SINAL: TipoDeSinal[] = [
   'legenda',
   'geometria',
   'repost',
+  'camada',
 ]
 
 /**

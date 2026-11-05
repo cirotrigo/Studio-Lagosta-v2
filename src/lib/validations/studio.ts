@@ -34,6 +34,9 @@ export const layerSchema = z.object({
   metadata: z.record(z.string(), z.any()).optional(),
   videoMetadata: z.record(z.string(), z.any()).optional(),
   richTextStyles: z.array(z.record(z.string(), z.any())).optional(),
+  // Destaque por marcação [ ] numa camada `text` (ver src/lib/compositor/destaques.ts)
+  destaques: z.array(z.object({ inicio: z.number().int().nonnegative(), fim: z.number().int().nonnegative() })).optional(),
+  destaque: z.record(z.string(), z.any()).optional(),
 })
 
 export const designDataSchema = z.object({

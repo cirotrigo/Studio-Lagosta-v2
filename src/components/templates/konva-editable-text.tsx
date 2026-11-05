@@ -9,6 +9,11 @@ import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { FundoDoTexto } from './konva-text-background'
 import { ajusteDeAlturaMedida } from '@/lib/texto-altura-automatica'
 import { irmaosQueAcompanham } from '@/lib/combo-stack-reflow'
+import { linhasComColchetes, segmentosDoTexto, trocarConteudo } from '@/lib/compositor/destaques'
+import { getFontManager } from '@/lib/font-manager'
+import { useDestaqueDaMarca } from '@/hooks/use-destaque-da-marca'
+import { toast } from '@/hooks/use-toast'
+import { TextoEmSegmentos } from './konva-multi-styled-text'
 
 /**
  * KonvaEditableText - Componente de texto editável para Konva.js
@@ -131,6 +136,8 @@ export function KonvaEditableText({
     layer.style,
     layer.effects,
     layer.textboxConfig,
+    layer.destaques,
+    layer.destaque,
     fontsTick,
   ])
 
@@ -159,6 +166,18 @@ export function KonvaEditableText({
       })
     } else {
       textNode.clearCache()
+    }
+
+    // Com destaques, quem desenha é o Group dos segmentos: o blur (filtro só
+    // age em nó cacheado) e o cache de qualidade vão nele, como no Text
+    const grupo = grupoDosSegmentosRef.current
+    if (grupo) {
+      grupo.clearCache()
+      if (shouldCache) {
+        grupo.filters(hasBlur ? [Konva.Filters.Blur] : [])
+        grupo.blurRadius(hasBlur ? layer.effects!.blur!.blurRadius : 0)
+        grupo.cache({ pixelRatio: Math.max(2, window.devicePixelRatio || 2), imageSmoothingEnabled: true })
+      }
     }
 
     textNode.getLayer()?.batchDraw()
@@ -316,6 +335,40 @@ export function KonvaEditableText({
   const editorRef = React.useRef(editor)
   editorRef.current = editor
 
+  /**
+   * Destaque por marcação: a camada `text` com `destaques` desenha pelos
+   * segmentos do rich text (a MESMA conta do servidor), num Group irmão que
+   * segue o Konva.Text — que continua sendo o nó da camada (transformer,
+   * medição, halo, caixa de edição), só que com a tinta transparente. A caixa
+   * abre com os [colchetes] e grava `content` limpo + `destaques`; na
+   * primeira marcação, `destaque` sai da assinatura do projeto.
+   */
+  const segmentos = React.useMemo(
+    () => segmentosDoTexto(layer, { familias: getFontManager().getAvailableFonts(editor.projectId).all, comEfeitos: true }),
+    [layer.content, layer.destaques, layer.destaque, layer.style?.fontFamily, layer.style?.border, layer.effects?.shadow, layer.effects?.stroke, editor.projectId, fontsTick],
+  )
+  const destaqueDaMarca = useDestaqueDaMarca(editor.projectId)
+  const layerRef = React.useRef(layer)
+  layerRef.current = layer
+  const destaqueDaMarcaRef = React.useRef(destaqueDaMarca)
+  destaqueDaMarcaRef.current = destaqueDaMarca
+  const grupoDosSegmentosRef = React.useRef<Konva.Group | null>(null)
+
+  // O Group dos segmentos segue o Konva.Text no meio do gesto, pelos eventos
+  // de ATRIBUTO (o mesmo motivo do halo em konva-text-background).
+  React.useEffect(() => {
+    const node = shapeRef.current
+    const grupo = grupoDosSegmentosRef.current
+    if (!node || !grupo || !segmentos) return
+    const seguir = () => grupo.setAttrs({ x: node.x(), y: node.y(), rotation: node.rotation(), scaleX: node.scaleX(), scaleY: node.scaleY() })
+    seguir()
+    const eventos = 'xChange.destaque yChange.destaque rotationChange.destaque scaleXChange.destaque scaleYChange.destaque'
+    node.on(eventos, seguir)
+    return () => {
+      node.off(eventos)
+    }
+  }, [segmentos, shapeRef, layer.position?.x, layer.position?.y, layer.rotation])
+
   // Assinatura das entradas que mudam a quebra de linha. Um ajuste por
   // assinatura: o efeito escreve no mesmo estado que o dispara, e sem essa
   // trava um único pixel de divergência vira "Maximum update depth exceeded"
@@ -451,7 +504,8 @@ export function KonvaEditableText({
       }
     }
 
-    const currentValue = layer.content ?? textNode.text() ?? ''
+    // Com destaques, a caixa mostra a marcação [ ] — o `content` fica limpo
+    const currentValue = linhasComColchetes(layer)?.join('\n') ?? layer.content ?? textNode.text() ?? ''
     const padding = textNode.padding()
     const measured = textNode.measureSize(currentValue || ' ')
 
@@ -462,8 +516,9 @@ export function KonvaEditableText({
     const fontStyle = layer.style?.fontStyle ?? (textNode.fontStyle().includes('italic') ? 'italic' : 'normal')
     const fontWeight = layer.style?.fontWeight ?? (textNode.fontStyle().includes('bold') ? '700' : '400')
     const letterSpacing = layer.style?.letterSpacing ?? textNode.letterSpacing()
+    // Com destaques o nó fica transparente: a caixa não pode herdar essa tinta
     const fill = textNode.fill()
-    const color = layer.style?.color ?? (typeof fill === 'string' ? fill : '#000000')
+    const color = layer.style?.color ?? (typeof fill === 'string' && fill !== 'transparent' ? fill : '#000000')
 
     const width = Math.max(textNode.width(), measured.width + padding * 2, 4)
     const height = Math.max(textNode.height(), measured.height + padding * 2, fontSize + padding * 2)
@@ -548,9 +603,17 @@ export function KonvaEditableText({
         const finalValue = currentValue !== undefined ? currentValue : prev.value
 
         if (commit && finalValue !== prev.initialValue) {
+          // Os [colchetes] viram `destaques` (offsets no texto limpo); colchete
+          // sem par é aviso, nunca erro. Na primeira marcação de uma camada sem
+          // `destaque`, o estilo vem da assinatura do projeto.
+          const camada = layerRef.current
+          const lido = trocarConteudo(camada, finalValue)
+          const updates: Partial<Layer> = { content: lido.content, destaques: lido.destaques }
+          if (lido.destaques && !camada.destaque) updates.destaque = destaqueDaMarcaRef.current(camada) ?? undefined
+          if (lido.problema) toast({ description: `Destaque: ${lido.problema}. O texto saiu sem esse colchete.` })
           // ⚡ ATUALIZAR NODE DIRETAMENTE para visualização imediata
           if (textNode) {
-            textNode.text(finalValue)
+            textNode.text(lido.content)
             // Limpar e recriar cache para fontes de alta qualidade
             if (textNode.isCached()) {
               textNode.clearCache()
@@ -560,9 +623,7 @@ export function KonvaEditableText({
               })
             }
           }
-          onChange({
-            content: finalValue,
-          })
+          onChange(updates)
         }
 
         // DESKTOP: Restaurar visibilidade de text node e transformer
@@ -1105,7 +1166,7 @@ export function KonvaEditableText({
     const nextLineHeight = layer.style?.lineHeight ?? textNode.lineHeight() ?? 1.2
     const nextTextAlign = (layer.style?.textAlign ?? textNode.align() ?? 'left') as 'left' | 'center' | 'right' | 'justify'
     const fill = textNode.fill()
-    const nextColor = layer.style?.color ?? (typeof fill === 'string' ? fill : editingState.color)
+    const nextColor = layer.style?.color ?? (typeof fill === 'string' && fill !== 'transparent' ? fill : editingState.color)
     const nextPadding = textNode.padding()
     const nextRotation = layer.rotation ?? textNode.rotation()
 
@@ -1380,7 +1441,9 @@ export function KonvaEditableText({
         fontFamily={layer.style?.fontFamily ?? 'Inter'}
         fontStyle={layer.style?.fontStyle ?? 'normal'}
         fontVariant={layer.style?.fontWeight ? String(layer.style.fontWeight) : undefined}
-        fill={layer.style?.color ?? '#000000'}
+        // Com destaques a tinta vai nos segmentos (Group abaixo); o nó fica
+        // transparente e continua clicável, medível e transformável
+        fill={segmentos ? 'transparent' : (layer.style?.color ?? '#000000')}
         align={layer.style?.textAlign ?? 'left'}
         // Espelha o `anchor` que o render server-side já respeitava; sem isso
         // o editor mostrava o texto no topo e a arte exportada, embaixo
@@ -1396,20 +1459,20 @@ export function KonvaEditableText({
         perfectDrawEnabled={true}
         imageSmoothingEnabled={true}
         stroke={
-          layer.effects?.stroke?.enabled
+          segmentos ? undefined : layer.effects?.stroke?.enabled
             ? layer.effects.stroke.strokeColor
             : (layer.style?.border?.width && layer.style.border.width > 0 ? layer.style.border.color : undefined)
         }
         strokeWidth={
-          layer.effects?.stroke?.enabled
+          segmentos ? undefined : layer.effects?.stroke?.enabled
             ? layer.effects.stroke.strokeWidth
             : (layer.style?.border?.width && layer.style.border.width > 0 ? layer.style.border.width : undefined)
         }
-        shadowColor={layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowColor : undefined}
-        shadowBlur={layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowBlur : 0}
-        shadowOffsetX={layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowOffsetX : 0}
-        shadowOffsetY={layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowOffsetY : 0}
-        shadowOpacity={layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowOpacity : 1}
+        shadowColor={!segmentos && layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowColor : undefined}
+        shadowBlur={!segmentos && layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowBlur : 0}
+        shadowOffsetX={!segmentos && layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowOffsetX : 0}
+        shadowOffsetY={!segmentos && layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowOffsetY : 0}
+        shadowOpacity={!segmentos && layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowOpacity : 1}
         filters={filters}
         blurRadius={layer.effects?.blur?.enabled ? layer.effects.blur.blurRadius : 0}
         onDblClick={handleDblClick}
@@ -1418,6 +1481,21 @@ export function KonvaEditableText({
         onMouseEnter={() => setIsHovering(true)}
         onMouseLeave={() => setIsHovering(false)}
       />
+      )}
+
+      {/* Destaque por marcação: os segmentos, em cima do Text transparente */}
+      {!isCurvedText && segmentos && (
+        <Group
+          ref={grupoDosSegmentosRef}
+          x={layer.position?.x ?? 0}
+          y={layer.position?.y ?? 0}
+          rotation={layer.rotation ?? 0}
+          opacity={commonProps.opacity}
+          visible={!isEditing}
+          listening={false}
+        >
+          <TextoEmSegmentos layer={layer} estilos={segmentos} opcoes={{ comoTextoComum: true }} />
+        </Group>
       )}
     </>
   )
