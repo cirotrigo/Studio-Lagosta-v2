@@ -2077,3 +2077,15 @@ descarta em silêncio; quem lia o resultado descartava.
   montagem, o `medir-copy`) continua certo: a camada base não leva `destaques`.
 - 🔴 **ORDEM DE MERGE: o #297 (render do T1) entra ANTES do #298.** Sem o render, o compositor emitindo `text` +
   `destaques` faz toda peça nova sair SEM destaque no PNG — o gate diz APTO e a arte vai para a agenda sem a palavra marcada.
+
+## O destaque da manchete é `text` + `destaques` (05/11/2026)
+
+O compositor deixou de emitir `rich-text` para a palavra entre `[colchetes]` da copy: a camada sai `type: 'text'`, com
+`content` limpo, `destaques: [{inicio, fim}]` e `destaque` (o estilo da assinatura da marca, via `destaqueDoPapel`) — o
+formato do PR #298. `medidas.ts`, `regua.ts` (`semTinta`), `medir-copy.ts`, `arquetipos/fundo.ts` (`tintasAtivas`) e
+`revisar-arte.ts` (`fontesQueFaltam`) leem o formato novo; a volta página → spec continua por `linhasComColchetes`, que
+agora lê `destaques`. A F2d recusa uma referência que tenha `destaques`. A recomposição de slide não muda: refaz a peça
+a partir da copy com colchetes e o destaque volta sozinho. Páginas antigas com `rich-text` seguem desenhando como
+sempre até a conversão (`scripts/converter-rich-text.ts`, regras em `render-e-texto.md`, seção "Destaque por
+marcação"). Detalhe que pega: o compositor antigo gravava a sombra na camada E em cada trecho — a conversão aceita as
+duas quando são iguais; sombra só na camada (a feita à mão) mantém a peça `rich-text`.
