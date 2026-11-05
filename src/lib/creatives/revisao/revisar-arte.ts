@@ -170,6 +170,8 @@ export async function fontesQueFaltam(camadas: Layer[]) {
         familia: s.fontFamily ?? l.style?.fontFamily,
         peso: /bold/.test(String(s.fontStyle ?? '')) ? 700 : pesoBase,
       })),
+      // Destaque por marcação: a família do `destaque` também é desenhada (quando há trecho marcado).
+      ...(l.destaques?.length && l.destaque?.fontFamily ? [{ familia: l.destaque.fontFamily, peso: /bold/.test(String(l.destaque.fontStyle ?? '')) ? 700 : pesoBase }] : []),
     ]
     for (const p of pedidas) {
       const familia = primeiraFamilia(p.familia)

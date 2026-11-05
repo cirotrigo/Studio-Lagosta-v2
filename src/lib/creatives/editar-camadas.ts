@@ -23,6 +23,7 @@ import { patchLineHeight } from '@/lib/text-line-height'
 import { temTextoSubstantivo } from '@/lib/creatives/revisao/texto-visivel'
 import { vinculadaAGrade } from '@/lib/grades/presenca'
 import { FONT_CONFIG } from '@/lib/font-config'
+import { lerDestaques, linhasComColchetes, temColchetes, type EstiloDeDestaque } from '@/lib/compositor/destaques'
 
 export const OPERACOES = ['definir', 'adicionar', 'remover', 'reordenar'] as const
 export const TIPOS_PARA_ADICIONAR = ['texto', 'imagem', 'logo', 'forma', 'icone', 'gradiente'] as const
@@ -114,7 +115,22 @@ export const camposDaCamadaSchema = z
     rotation: z.number().optional().describe('graus, -360 a 360.'),
     position: z.object({ x: z.number().optional(), y: z.number().optional() }).strict().optional().describe('posição ABSOLUTA em px da página (canto superior esquerdo).'),
     size: z.object({ width: z.number().optional(), height: z.number().optional() }).strict().optional().describe('caixa em px (1 a 10000).'),
-    content: z.string().max(2000).optional().describe('texto: o conteúdo (\\n quebra linha).'),
+    content: z.string().max(2000).optional().describe('texto: o conteúdo (\\n quebra linha). Palavra entre [colchetes] sai destacada no estilo da marca; o conteúdo enviado é a verdade: sem colchetes, sem destaque.'),
+    destaques: z
+      .array(z.object({ inicio: z.number().int(), fim: z.number().int() }).strict())
+      .max(20)
+      .optional()
+      .describe('texto: os trechos destacados, offsets no content SEM colchetes ([] tira o destaque). Mais simples: colchetes no content.'),
+    destaque: z
+      .object({
+        fill: cor.optional(),
+        fontFamily: z.string().min(1).max(120).optional(),
+        fontStyle: z.enum(['normal', 'italic', 'bold', 'bold italic']).optional(),
+        textDecoration: z.enum(['none', 'underline', 'line-through']).optional(),
+      })
+      .strict()
+      .optional()
+      .describe('texto: o estilo do destaque (cor, família) — vale para todos os trechos da camada. Sem ele, o da marca.'),
     fileUrl: z.string().min(1).max(2048).optional().describe('imagem/logo: URL da imagem (no perfil de rascunho é recusada: use driveImageId).'),
     driveImageId: z.string().min(1).max(200).optional().describe('imagem: a foto do acervo (de buscar-fotos) — resolvida para a URL do Studio.'),
     style: estiloSchema.optional(),
@@ -194,6 +210,8 @@ export interface ContextoDeEdicao {
   logoUrl?: string | null
   /** As fontes da marca, para `adicionar texto` sem fontFamily. */
   fontes?: { titulo?: string | null; corpo?: string | null }
+  /** O estilo de destaque da MARCA para uma camada de texto (resolvido pelo serviço pela assinatura) — usado só quando a camada destaca e não tem `destaque`. */
+  destaqueDaMarca?: (camada: Layer) => EstiloDeDestaque | null
   novoId?: () => string
 }
 
@@ -203,6 +221,8 @@ export interface ResultadoDasCamadas {
   recusadas: RecusaDeCamada[]
   /** Ids das camadas de TEXTO criadas ou cujo texto, estilo ou caixa mudou — o autofix geométrico mede essas. */
   tocadas: string[]
+  /** Avisos que não recusam (colchete sem par: o trecho não é destacado). */
+  avisos: string[]
 }
 
 // ── Allowlist por tipo ────────────────────────────────────────────────────
@@ -223,7 +243,7 @@ interface Permitidos {
 }
 const SEM: Pick<Permitidos, 'textboxConfig' | 'effects'> = { textboxConfig: [], effects: [] }
 const PERMITIDOS: Record<string, Permitidos> = {
-  text: { campos: ['content'], style: TIPOGRAFIA, textboxConfig: ['anchor', 'autoWrap'], effects: ['stroke', 'shadow', 'blur', 'background'] },
+  text: { campos: ['content', 'destaques', 'destaque'], style: TIPOGRAFIA, textboxConfig: ['anchor', 'autoWrap'], effects: ['stroke', 'shadow', 'blur', 'background'] },
   // Quarentena #209: o rich-text se edita por trecho na tela; por aqui só geometria, nome, visibilidade, trava e ordem.
   'rich-text': { campos: [], style: [], ...SEM, motivo: 'rich-text está em quarentena (#209): por aqui só posição, tamanho, rotação, nome, visibilidade, trava e ordem' },
   image: { campos: ['fileUrl', 'driveImageId'], style: IMAGEM, ...SEM },
@@ -286,7 +306,7 @@ const FAIXAS: Record<string, [number, number]> = {
   'effects.background.offsetX': [-500, 500],
   'effects.background.offsetY': [-500, 500],
 }
-const CORES = new Set(['style.color', 'style.fill', 'style.strokeColor', 'style.gradientStops[].color', 'effects.stroke.strokeColor', 'effects.shadow.shadowColor', 'effects.background.backgroundColor'])
+const CORES = new Set(['destaque.fill', 'style.color', 'style.fill', 'style.strokeColor', 'style.gradientStops[].color', 'effects.stroke.strokeColor', 'effects.shadow.shadowColor', 'effects.background.backgroundColor'])
 const FAIXA_DA_PAGINA: [number, number] = [200, 8000]
 
 type Objeto = Record<string, unknown>
@@ -319,6 +339,10 @@ function problemasDeFormato(campos: CamposDaCamada): Array<{ campo: string; moti
     if (!ok) problemas.push({ campo: 'fileUrl', motivo: 'fileUrl precisa ser uma URL http(s)' })
   }
   if (campos.fileUrl !== undefined && campos.driveImageId !== undefined) problemas.push({ campo: 'fileUrl', motivo: 'mande fileUrl OU driveImageId, não os dois' })
+  for (const t of campos.destaques ?? []) {
+    if (t.inicio < 0 || t.fim <= t.inicio) problemas.push({ campo: 'destaques', motivo: `destaques: cada trecho vai de inicio ≥ 0 a fim > inicio (veio ${t.inicio}–${t.fim})` })
+  }
+  if (campos.destaques !== undefined && temColchetes([campos.content])) problemas.push({ campo: 'destaques', motivo: 'mande os [colchetes] no content OU destaques, não os dois' })
   return problemas
 }
 
@@ -485,7 +509,44 @@ function fundirDefinir(layer: Layer, campos: CamposDaCamada): Layer {
     }
   }
   if (campos.effects) nova.effects = { ...layer.effects, ...semIndefinidos(campos.effects) } as Layer['effects']
+  if (campos.destaque) nova.destaque = { ...layer.destaque, ...semIndefinidos(campos.destaque) }
+  if (campos.destaques) {
+    const { destaques: _d, ...sem } = nova
+    nova = campos.destaques.length > 0 ? { ...sem, destaques: campos.destaques.map((t) => ({ inicio: t.inicio, fim: t.fim })) } : (sem as Layer)
+  }
   return nova
+}
+
+/** Os trechos de `destaques` que caem fora do `content` final (FASE 2: só aqui o texto é conhecido). */
+function destaquesForaDoTexto(l: Layer): string | null {
+  const n = typeof l.content === 'string' ? l.content.length : 0
+  const fora = (l.destaques ?? []).filter((t) => t.fim > n)
+  return fora.length > 0 ? `destaques fora do texto (${n} caracteres): ${fora.map((t) => `${t.inicio}–${t.fim}`).join(', ')}` : null
+}
+
+/**
+ * DESTAQUE POR MARCAÇÃO (05/11/2026): o `content` que acabou de chegar numa camada `text`. Com [colchetes], grava o
+ * texto LIMPO e os trechos em `destaques` (o `content` segue texto para legenda, gate e medição); sem colchetes, o texto
+ * mudou e os `destaques` antigos saem. O estilo (`destaque`) da camada fica; sem ele, entra o da marca. Colchete sem par
+ * vira aviso, nunca recusa (`lerDestaques`).
+ */
+export function marcarDestaquesNoTexto(camada: Layer, destaqueDaMarca?: (c: Layer) => EstiloDeDestaque | null): { camada: Layer; aviso: string | null } {
+  if (camada.type !== 'text' || typeof camada.content !== 'string') return { camada, aviso: null }
+  const { destaques: _antigos, ...semTrechos } = camada
+  if (!temColchetes([camada.content])) return { camada: semTrechos as Layer, aviso: null }
+  const lida = lerDestaques(camada.content)
+  const marcada = { ...semTrechos, content: lida.texto } as Layer
+  return {
+    camada: comEstiloDoDestaque(lida.trechos.length > 0 ? { ...marcada, destaques: lida.trechos } : marcada, destaqueDaMarca),
+    aviso: lida.problema ? `"${camada.name ?? camada.id}": ${lida.problema} — o trecho saiu sem destaque` : null,
+  }
+}
+
+/** Camada que destaca e não tem estilo próprio ganha o da marca (sem ele, o render desenha só o peso forte). */
+function comEstiloDoDestaque(camada: Layer, destaqueDaMarca?: (c: Layer) => EstiloDeDestaque | null): Layer {
+  if (!camada.destaques?.length || camada.destaque) return camada
+  const daMarca = destaqueDaMarca?.(camada)
+  return daMarca ? { ...camada, destaque: { ...daMarca } } : camada
 }
 
 function semIndefinidos<T extends object>(o: T): Partial<T> {
@@ -598,7 +659,19 @@ export function aplicarOperacoesDeCamadas(entrada: Layer[], operacoes: OperacaoD
   const recusadas = validarFormatoDasOperacoes(operacoes, ctx)
   const aplicadas: CamadaAplicada[] = []
   const tocadas = new Set<string>()
+  const avisos: string[] = []
   let camadas: Layer[] = entrada.map((l) => ({ ...l }))
+  /** O content chegou: colchetes viram `destaques`; com `destaques` enviados, valem eles. Destacando sem estilo, o da marca. */
+  const marcar = (l: Layer, campos: CamposDaCamada | undefined): Layer => {
+    if (l.type !== 'text') return l
+    // Com `destaques` explícito o content veio sem colchetes (FASE 1): os trechos são os enviados.
+    if (campos?.content !== undefined && campos.destaques === undefined) {
+      const r = marcarDestaquesNoTexto(l, ctx.destaqueDaMarca)
+      if (r.aviso) avisos.push(r.aviso)
+      return r.camada
+    }
+    return comEstiloDoDestaque(l, ctx.destaqueDaMarca)
+  }
 
   operacoes.forEach((o, indice) => {
     if (recusadas.some((r) => r.indice === indice)) return
@@ -617,7 +690,9 @@ export function aplicarOperacoesDeCamadas(entrada: Layer[], operacoes: OperacaoD
       if ('codigo' in comFoto) return recusa(comFoto.codigo, comFoto.motivo, comFoto.campos)
       const fabricada = fabricar({ ...o, campos: comFoto.campos }, ctx, camadas)
       if (fabricada.ok === false) return recusa(fabricada.codigo, fabricada.motivo, fabricada.campos)
-      const nova = fabricada.layer
+      const nova = marcar(fabricada.layer, o.campos)
+      const foraDoTexto = destaquesForaDoTexto(nova)
+      if (foraDoTexto) return recusa('VALOR_FORA_DA_FAIXA', foraDoTexto, ['destaques'])
       camadas = o.ordem !== undefined ? mover([...camadas, nova], nova.id, o.ordem) : renumerar([...camadas, nova])
       if (ehTexto(nova)) tocadas.add(nova.id)
       aplicadas.push({ indice, op: o.op, camada: nova.id, detalhe: `${o.tipo} "${nova.name}" criado em (${nova.position.x}, ${nova.position.y}) ${nova.size.width}×${nova.size.height}${o.ordem !== undefined ? `, ordem ${o.ordem}` : ''}` })
@@ -654,7 +729,9 @@ export function aplicarOperacoesDeCamadas(entrada: Layer[], operacoes: OperacaoD
     const { order, ...semOrdem } = campos
     const comFoto = comFotoDoAcervo(semOrdem, ctx)
     if ('codigo' in comFoto) return recusa(comFoto.codigo, comFoto.motivo, comFoto.campos)
-    let nova = fundirDefinir(layer, comFoto.campos)
+    let nova = marcar(fundirDefinir(layer, comFoto.campos), campos)
+    const foraDoTexto = destaquesForaDoTexto(nova)
+    if (foraDoTexto) return recusa('VALOR_FORA_DA_FAIXA', `${layer.id}: ${foraDoTexto}`, ['destaques'])
     // Copy que SOME sem ser escondida (revisão do PR #294): invisível, minúscula ou fora da página é apagar copy.
     if (ctx.apenasRascunho && ehTexto(nova) && temTextoSubstantivo(nova.content)) {
       const sumida = copySumida(nova, campos, ctx.canvas)
@@ -665,12 +742,12 @@ export function aplicarOperacoesDeCamadas(entrada: Layer[], operacoes: OperacaoD
       camadas = mover(camadas, layer.id, order)
       nova = camadas.find((l) => l.id === layer.id)!
     }
-    if (ehTexto(nova) && ['content', 'style', 'size', 'textboxConfig'].some((k) => (campos as Objeto)[k] !== undefined)) tocadas.add(nova.id)
+    if (ehTexto(nova) && ['content', 'style', 'size', 'textboxConfig', 'destaques', 'destaque'].some((k) => (campos as Objeto)[k] !== undefined)) tocadas.add(nova.id)
     aplicadas.push({ indice, op: o.op, camada: layer.id, detalhe: `${Object.keys(campos).join(', ')} definidos em "${layer.name}"` })
   })
 
-  if (recusadas.length > 0) return { camadas: entrada, aplicadas: [], recusadas: recusadas.sort((a, b) => a.indice - b.indice), tocadas: [] }
-  return { camadas, aplicadas, recusadas: [], tocadas: [...tocadas] }
+  if (recusadas.length > 0) return { camadas: entrada, aplicadas: [], recusadas: recusadas.sort((a, b) => a.indice - b.indice), tocadas: [], avisos: [] }
+  return { camadas, aplicadas, recusadas: [], tocadas: [...tocadas], avisos }
 }
 
 /** O bloco `pagina`: fundo, largura e altura, com faixa e cor conferidas. */
@@ -704,9 +781,12 @@ export function camadaParaLeitura(l: Layer): Record<string, unknown> {
     position: l.position,
     size: l.size,
   }
-  for (const k of ['rotation', 'content', 'fileUrl', 'isDynamic', 'effects', 'textboxConfig', 'richTextStyles'] as const) {
+  for (const k of ['rotation', 'content', 'fileUrl', 'isDynamic', 'effects', 'textboxConfig', 'richTextStyles', 'destaques', 'destaque'] as const) {
     if (l[k] !== undefined) saida[k] = l[k]
   }
+  // Destaque por marcação: o mesmo texto com os [colchetes] — é o que se manda de volta em `definir content`.
+  const marcado = l.type === 'text' ? linhasComColchetes(l) : null
+  if (marcado) saida.conteudoMarcado = marcado.join('\n')
   if (Object.keys(style).length > 0) saida.style = style
   const grupo = grupoDe(l)
   if (grupo) saida.grupo = grupo

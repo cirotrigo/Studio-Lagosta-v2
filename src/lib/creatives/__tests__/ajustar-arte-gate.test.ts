@@ -281,6 +281,43 @@ describe('T1 — camadas pelos dados no draft-only (revisão do PR #294)', () =>
     expect(gravada.layers.find((l: Layer) => l.id === 'headline').size).toEqual(camadasLimpas()[0].size)
   })
 
+  it('destaque por marcação: `definir content` com [colchetes] grava o texto LIMPO, os destaques e o estilo da marca (Project.assinatura.destaque)', async () => {
+    // `Logo: []`: a assinatura é carregada pelo caminho real (`carregarAssinatura`), que lê as logos do projeto.
+    banco.projects.set(String(PROJETO), { ...banco.projects.get(String(PROJETO))!, Logo: [], assinatura: { gradiente: { forcaMinima: 0.45, forcaMaxima: 0.9 }, destaque: { fill: '#E30613' } } })
+    pagina('p1', { layers: [foto(), ...camadasLimpas()] })
+    geracaoDoCompositor('g-comp', 'p1')
+    // Draft-only: o gate mede a versão com destaque e diz APTO (antes de 05/11 a chave `destaques` caía fora da árvore → NAO_MEDIDO).
+    const r = await ajustar({ ajustes: undefined, camadas: [{ op: 'definir', camada: 'headline', campos: { content: 'Picanha [na brasa]' } }] })
+    expect(r.revisao).toMatchObject({ tipo: 'medida', resultado: 'APTO' })
+    const gravada = banco.pages.get('p1')!.layers.find((l: Layer) => l.id === 'headline')
+    expect(gravada).toMatchObject({ type: 'text', content: 'Picanha na brasa', destaques: [{ inicio: 8, fim: 16 }], destaque: { fill: '#E30613' } })
+    expect((medicao.chamadas[0].camadas as Layer[]).find((l) => l.id === 'headline')).toMatchObject({ type: 'text', content: 'Picanha na brasa', destaques: [{ inicio: 8, fim: 16 }] })
+  })
+
+  it('destaque por marcação: slotValues (string e { content }) com [colchetes] gravam limpos com destaques; texto novo sem colchetes perde os destaques antigos', async () => {
+    banco.projects.set(String(PROJETO), { ...banco.projects.get(String(PROJETO))!, Logo: [], assinatura: { destaque: { fill: '#E30613' } } })
+    const comDestaque = camadasLimpas().map((l) => (l.id === 'servico' ? ({ ...l, content: 'Sexta no fogo', destaques: [{ inicio: 0, fim: 5 }], destaque: { fill: '#00FF00' } } as Layer) : l))
+    pagina('p1', { layers: comDestaque })
+    const r = await ajustarArte({ projectId: PROJETO, pageId: 'p1', slotValues: { headline: 'Só [hoje]', apoio: { content: '[Rodízio] completo' }, servico: 'Sábado no fogo' } })
+    const camadas = banco.pages.get('p1')!.layers as Layer[]
+    expect(camadas.find((l) => l.id === 'headline')).toMatchObject({ content: 'Só hoje', destaques: [{ inicio: 3, fim: 7 }], destaque: { fill: '#E30613' } })
+    expect(camadas.find((l) => l.id === 'apoio')).toMatchObject({ content: 'Rodízio completo', destaques: [{ inicio: 0, fim: 7 }] })
+    const servico = camadas.find((l) => l.id === 'servico')!
+    expect(servico.content).toBe('Sábado no fogo')
+    expect(servico.destaques).toBeUndefined()
+    expect(r.avisos ?? []).toEqual([])
+  })
+
+  it('destaque por marcação: slotValues sem colchetes não muda nada; colchete sem par grava sem ele e AVISA', async () => {
+    const r = await ajustarArte({ projectId: PROJETO, pageId: 'p1', slotValues: { headline: 'Só [hoje', apoio: 'Rodízio completo' } })
+    const camadas = banco.pages.get('p1')!.layers as Layer[]
+    expect(camadas.find((l) => l.id === 'headline')!.content).toBe('Só hoje')
+    expect(camadas.find((l) => l.id === 'headline')!.destaques).toBeUndefined()
+    expect(camadas.find((l) => l.id === 'apoio')).not.toHaveProperty('destaques')
+    expect(camadas.find((l) => l.id === 'apoio')).not.toHaveProperty('destaque')
+    expect(r.avisos?.join(' ')).toMatch(/colchete aberto sem fechar/)
+  })
+
   it('esconder a manchete por opacidade zero no draft-only: CONTEUDO_NAO_PODE_SER_REMOVIDO, nada gravado', async () => {
     await expect(ajustar({ ajustes: undefined, camadas: [{ op: 'definir', camada: 'headline', campos: { style: { opacity: 0 } } }] })).rejects.toMatchObject({ code: 'CONTEUDO_NAO_PODE_SER_REMOVIDO' })
     expect(novas()).toHaveLength(0)

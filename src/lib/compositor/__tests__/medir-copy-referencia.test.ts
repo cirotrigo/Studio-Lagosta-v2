@@ -324,7 +324,7 @@ describe('F2d · rodada 1 do Codex: destaque, larguras e origem nas recusas', ()
     return medirCopy({ assinatura: assinaturaPesada, medir, familias, fonteCarregada, formato: 'story', spec, arquetipo: prepararArquetipo(spec, { definicoes: [d] })! })
   }
 
-  it('[colchetes] na copy: a camada preparada é rich-text, mas a remedição mede pela camada SIMPLES com os valores materializados (o medidor só mede text) — largura, cabe e caracteres continuam vindo; a família pesada é derivada da referência', () => {
+  it('[colchetes] na copy: a camada preparada leva os destaques, mas a remedição mede pela camada SIMPLES com os valores materializados (o medidor só mede text) — largura, cabe e caracteres continuam vindo; a família pesada é derivada da referência', () => {
     const m = medirCom(() => true, ['Café [da manhã]'])
     const h = bloco(m, 'headline')
     expect(h.aproximado).toBe(true)

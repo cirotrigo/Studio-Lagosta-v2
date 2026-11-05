@@ -54,6 +54,11 @@ describe('as medidas finais e o prefixo declarado', () => {
     expect(medidasFinaisDasCamadas([rica], new Set())[0].naoMedido).toBe(false)
     expect(medidasFinaisDasCamadas([rica], new Set(['Lato']))[0].naoMedido).toBe(true)
   })
+  it('texto com destaques: a família do destaque entra nas famílias (sem trecho marcado, não)', () => {
+    const marcada = { ...camada('headline', 'headline'), destaques: [{ inicio: 0, fim: 1 }], destaque: { fontFamily: 'Lato Bold' } } as Layer
+    expect(familiasDaCamada(marcada)).toEqual(['Lato', 'Lato Bold'])
+    expect(familiasDaCamada({ ...marcada, destaques: [] } as Layer)).toEqual(['Lato'])
+  })
   it('R01: manchete INTEIRA na voz 2 (uma ou várias linhas) é relida como a manchete declarada — id preservado, índices do zero, sem bloco extra, segunda leitura sem revisão', () => {
     for (const linhas of [['Título'], ['Título', 'inteiro']]) {
       const contrato: CopyAutoral = { versao: VERSAO_DO_CONTRATO, origem: { autor: 'claude' }, blocos: [{ id: 'headline', funcao: 'headline', ordem: 0, linhas, estilo: { linhasNaVoz2: linhas.map((_, i) => i) } }], revisoes: [] }

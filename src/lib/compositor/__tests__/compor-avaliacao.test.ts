@@ -52,9 +52,10 @@ describe('compositor em avaliação local', () => {
     mocks.paginas.mockResolvedValue([{ id: 'quintal', name: 'Quintal', width: 1080, height: 1920, layers: [headline, texto('headline2')], tags: [], background: '#000000' }])
     const r = await comporPeca({ projectId: 3, formato: 'story', blocos: [{ papel: 'headline', linhas: ['[Quarta] no', 'Quintal'] }] }, { somenteAvaliar: true })
     const destacada = r.layers.find((l) => l.id === 'headline')!
-    expect(destacada.type).toBe('rich-text')
+    expect(destacada.type).toBe('text')
     expect(destacada.content).toBe('Quarta no')
-    expect(destacada.richTextStyles).toEqual([{ start: 0, end: 6, fill: '#ff0000' }])
+    expect(destacada.destaques).toEqual([{ inicio: 0, fim: 6 }])
+    expect(destacada.destaque).toEqual({ fill: '#ff0000' })
     // A segunda voz não tem destaque na página e a copy não a marcou: texto comum
     expect(r.layers.find((l) => l.id === 'headline2')).toMatchObject({ type: 'text', content: 'Quintal' })
     expect(r.diagnostico.blocos.find((b) => b.papel === 'headline')?.destacado).toBe(true)

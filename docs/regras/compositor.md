@@ -2019,3 +2019,22 @@ foto no Blob fica `foto-sem-id`. Arquivo substituído no Drive mantendo o id nã
 **Gancho de prova.** `opcoes.leitorDeReferencias` só com `provar` ou `somenteAvaliar` (senão `OPCAO_SO_DE_PROVA`, 400, antes
 de qualquer efeito); nunca exposto pelo MCP. É por ele que `scripts/prova-f2b-assunto-local.ts` injeta a referência
 compilada em memória, sem escrever nada.
+
+## Destaque por marcação: `text` com `destaques` + `destaque` (T2, 05/11/2026)
+
+- O compositor não emite mais `rich-text` para o destaque da copy: emite `type: 'text'` com `content` LIMPO (sem
+  colchetes), `destaques: [{inicio, fim}]` (offsets no content) e `destaque: {fill, fontFamily, fontStyle,
+  textDecoration}` (o estilo resolvido da marca por `destaqueDoPapel`). Colchetes só existem nas pontas:
+  `lerDestaques` na gravação, `linhasComColchetes` na leitura.
+- Quem lê a camada para medir/tingir tem que ler os dois formatos: `medidas.ts` (famílias), `regua.ts` (`semTinta`),
+  `medir-copy.ts` (camada base), `arquetipos/fundo.ts` (`tintasAtivas`: o trecho herda `destaque.fill`),
+  `revisar-arte.ts` (`fontesQueFaltam`). A F2d (`arquetipos/referencia.ts`) RECUSA referência com `destaques`.
+- Pelo MCP (`ajustar-arte`): colchetes em `slotValues` ou em `camadas.definir content` gravam content limpo +
+  `destaques`; o `destaque` vem da camada (se já tiver) ou da marca. Texto novo SEM colchetes tira os `destaques`.
+  Colchete sem par → aviso e o trecho sai sem destaque. Colchetes + `destaques` explícito na mesma op → recusa.
+  `destaques: []` remove. Offset além do content → `VALOR_FORA_DA_FAIXA`. `ver-pagina` devolve `conteudoMarcado`
+  (o content com os colchetes de volta) só na camada com destaques; mandá-lo de volta em `definir content` reproduz a camada.
+- O gate classifica `destaques.*` e `destaque.*` como `inerte` → **`VERSAO_DO_GATE` = `gate-v6`**
+  (`revisor-da-arte.md`). ponytail: a fonte do destaque como `inerte` vale enquanto o render do T1 não mostrar tinta
+  fora da caixa; se mostrar, vira `expansora`.
+- Rendering: até o T1 entrar, `render-engine.ts` desenha o `text` com `destaques` SEM o destaque.

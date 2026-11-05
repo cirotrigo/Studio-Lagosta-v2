@@ -226,16 +226,19 @@ export function estilosDoRichText(args: {
 /**
  * A volta: uma camada rich-text vira linhas com [colchetes] nos trechos que
  * DIFEREM do estilo base (sombra sozinha não é destaque). É o que deixa a
- * recomposição refazer a peça sem perder o destaque. Camada que não é rich
- * text → null.
+ * recomposição refazer a peça sem perder o destaque. Camada `text` com
+ * `destaques` volta igual; outra camada que não é rich text → null.
  */
 export function linhasComColchetes(camada: Layer): string[] | null {
-  if (camada.type !== 'rich-text') return null
+  const marcadoPorTexto = camada.type === 'text' && Array.isArray(camada.destaques) && camada.destaques.length > 0
+  if (camada.type !== 'rich-text' && !marcadoPorTexto) return null
   const conteudo = typeof camada.content === 'string' ? camada.content : ''
-  const base = baseDaCamada(camada)
   const marcado = new Array<boolean>(conteudo.length).fill(false)
-  for (const s of Array.isArray(camada.richTextStyles) ? camada.richTextStyles : []) {
-    if (Object.keys(diferencaDaBase(s, base)).length === 0) continue
+  // Destaque por marcação (05/11/2026): a camada `text` declara os trechos em `destaques`.
+  const faixas = marcadoPorTexto
+    ? camada.destaques!.map((t) => ({ start: t.inicio, end: t.fim }))
+    : (Array.isArray(camada.richTextStyles) ? camada.richTextStyles : []).filter((s) => Object.keys(diferencaDaBase(s, baseDaCamada(camada))).length > 0)
+  for (const s of faixas) {
     for (let i = Math.max(0, s.start); i < Math.min(conteudo.length, s.end); i++) marcado[i] = true
   }
   let saida = ''

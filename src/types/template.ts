@@ -138,6 +138,10 @@ export interface Layer {
   movimento?: 'aproximar' | 'afastar' | 'deslizar'
   // Rich text support - estilos aplicados a trechos específicos do texto
   richTextStyles?: RichTextStyle[]
+  /** Trechos destacados, offsets no `content` (sem colchetes). */
+  destaques?: Array<{ inicio: number; fim: number }>
+  /** O estilo do destaque, resolvido na gravação (marca, nunca de quem escreve). */
+  destaque?: { fill?: string; fontFamily?: string; fontStyle?: RichTextStyle['fontStyle']; textDecoration?: RichTextStyle['textDecoration'] }
   [key: string]: unknown
 }
 

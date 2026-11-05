@@ -10,7 +10,7 @@
  * `gerar.py`, com uma diferença: aqui a recusa vem com o número.
  *
  * Palavra marcada com [colchetes] na copy sai DESTACADA (11/09/2026): o bloco
- * vira camada rich-text com o estilo de destaque da marca, e a largura da linha
+ * leva `destaques` (offsets) e `destaque` (o estilo da marca) na camada `text`, e a largura da linha
  * é medida já com a família mais pesada do trecho — senão a linha que "cabia"
  * transbordava a coluna depois de destacada.
  *
@@ -23,7 +23,7 @@ import { PADDING_DE_DESENHO } from '@/lib/creatives/halo/fundo-de-texto'
 
 import type { EstiloDePapel } from './assinatura'
 import { extensoesDosElementos, type ElementoDoArranjo } from './combinacoes'
-import { estilosDoRichText, lerDestaques, type EstiloDeDestaque, type TrechoDestacado } from './destaques'
+import { lerDestaques, type EstiloDeDestaque, type TrechoDestacado } from './destaques'
 import type { Papel } from './spec'
 
 /** Piso do encolhimento — o mesmo do autofix geométrico. */
@@ -39,7 +39,7 @@ export interface BlocoMontado {
   escala: number
   /** Cor do texto — quem calibra o gradiente precisa dela. */
   cor: string
-  /** O bloco saiu com palavra destacada (camada rich-text). Ausente = não. */
+  /** O bloco saiu com palavra destacada (`destaques` na camada). Ausente = não. */
   destacado?: boolean
   /**
    * O vão antes deste texto (px) como o arranjo o desenhou — a página de
@@ -254,11 +254,9 @@ export function camadaDoPapel(args: {
     for (const t of trechosPorLinha[i] ?? []) trechos.push({ inicio: inicioDaLinha + extra + t.inicio, fim: inicioDaLinha + extra + t.fim })
     inicioDaLinha += linha.length + 1
   })
-  return {
-    ...camada,
-    type: 'rich-text',
-    richTextStyles: estilosDoRichText({ conteudo, trechos, destaque: args.destaque.estilo, sombra: sombra ?? null }),
-  }
+  // Destaque por marcação (05/11/2026): a camada segue `text`, com os trechos e o estilo declarados — edita na caixa do
+  // editor e pelo MCP; o desenho por trecho é do render (`segmentosDoTexto`). A sombra é a da camada (`effects.shadow`).
+  return { ...camada, destaques: trechos, destaque: { ...args.destaque.estilo } }
 }
 
 /**
