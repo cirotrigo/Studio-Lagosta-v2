@@ -302,7 +302,11 @@ export function compilarReferencia(pagina: PaginaParaReferencia, args: { pageVer
   // Na horizontal a zona é a própria caixa (o alinhamento próprio prende a referência à borda ou ao eixo da zona).
   const zonaDosTextos: Zona = { xMin: arredondar(uniaoDosTextos.x), xMax: arredondar(uniaoDosTextos.x + uniaoDosTextos.w), yMin: arredondar(uniaoDosTextos.y), yMax: arredondar(uniaoDosTextos.y + uniaoDosTextos.h) }
 
-  const caixaDaLogo = emFracoes(retangulo(logo), pagina)
+  const logoLida = emFracoes(retangulo(logo), pagina)
+  // A logo no eixo da peça e na metade de cima é "superior-centro" (#16), não o canto que a fórmula sorteia em 0,5
+  // (Ref 04 do Empório, 05/11). Simetrizada, porque o validador exige o centro exato.
+  const logoNoEixo = Math.abs(logoLida.x + logoLida.w / 2 - 0.5) * pagina.width <= TOLERANCIA_DO_EIXO_PX && logoLida.y + logoLida.h / 2 < 0.5
+  const caixaDaLogo = logoNoEixo ? simetrizar(logoLida) : logoLida
   // Toda caixa aprovada tem de estar DENTRO do piso do projeto: é o piso que recorta a zona na composição, e uma caixa
   // fora dele não tem posição válida (nem resgate, já que a zona é a própria caixa). Medido em px, ½ px de tolerância.
   if (args.piso) {
@@ -324,7 +328,7 @@ export function compilarReferencia(pagina: PaginaParaReferencia, args: { pageVer
     }
   }
   const cx = caixaDaLogo.x + caixaDaLogo.w / 2, cy = caixaDaLogo.y + caixaDaLogo.h / 2
-  const cantoDaMarca: CantoDaLogo = `${cy < 0.5 ? 'superior' : 'inferior'}-${cx < 0.5 ? 'esquerdo' : 'direito'}`
+  const cantoDaMarca: CantoDaLogo = logoNoEixo ? 'superior-centro' : `${cy < 0.5 ? 'superior' : 'inferior'}-${cx < 0.5 ? 'esquerdo' : 'direito'}`
   const alinhaDaManchete = caixas.get('headline')!.alinha
 
   const ordem = [...caixas.entries()].sort((a, b) => a[1].caixa.y - b[1].caixa.y || a[1].caixa.x - b[1].caixa.x)

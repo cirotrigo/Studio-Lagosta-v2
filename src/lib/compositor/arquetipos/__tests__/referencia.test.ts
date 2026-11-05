@@ -48,6 +48,18 @@ const codigo = (f: () => unknown) => {
 }
 
 describe('F1 · compilar a página de referência', () => {
+  it('a logo centrada no topo compila "superior-centro", simetrizada no eixo, e passa no validador (Ref 04 do Empório, 05/11)', () => {
+    // A logo do Brunch (816, 160, 200×65) posta no eixo com 3 px de desvio: x = 437.
+    const layers = BRUNCH.layers.map((l) => (l.type === 'logo' ? { ...l, position: { ...l.position, x: 437 } } : l))
+    const r = compilarReferencia({ ...BRUNCH, layers }, { pageVersion: 'v1:teste', versao: 1 })
+    if (!r.ok) throw new Error(`${(r as Recusa).codigo}: ${(r as Recusa).mensagem}`)
+    const { definicao } = r as Ok
+    expect(definicao.preferencias.cantoDaMarca).toBe('superior-centro')
+    const logo = definicao.formatos.story.papeis.logo as { referencia: { x: number; w: number }; zona: { xMin: number; xMax: number } }
+    expect(logo.referencia.x + logo.referencia.w / 2).toBe(0.5)
+    expect((logo.zona.xMin + logo.zona.xMax) / 2).toBe(0.5)
+    expect(validarArquetipo(definicao, { formatos: ['story'], areaSegura })).toEqual([])
+  })
   it('a página do Brunch vira a definição do cliente: manchete e apoio no rodapé, centrados, logo no canto superior direito', () => {
     const { definicao, leitura } = compilada()
     expect(definicao.id).toBe(idDaReferencia(BRUNCH.id))
