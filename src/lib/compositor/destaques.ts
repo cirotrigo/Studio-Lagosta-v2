@@ -87,6 +87,24 @@ export function lerDestaquesDoTexto(texto: string): LinhaComDestaque {
   return { texto: linhas.map((l) => l.texto).join('\n'), trechos, problema: linhas.find((l) => l.problema)?.problema ?? null }
 }
 
+/**
+ * O ÚNICO jeito de trocar o `content` de uma camada: texto novo com [colchetes]
+ * vira `content` limpo + `destaques`; sem colchetes, os `destaques` antigos
+ * são apagados (offsets de um texto que não existe mais pintariam letras ao
+ * acaso). Quem grava `content` por fora da caixa do canvas (painel de
+ * propriedades, gerador, fieldValues, slotValues, bake) passa por aqui.
+ * Camada que não é `text`: só o conteúdo. `problema` é o aviso do colchete
+ * sem par; o `destaque` (estilo) é de quem grava, pela marca.
+ */
+export function trocarConteudo(
+  camada: { type?: unknown; destaques?: unknown },
+  texto: string,
+): { content: string; destaques: TrechoDestacado[] | undefined; problema: string | null } {
+  if (camada.type !== 'text') return { content: texto, destaques: undefined, problema: null }
+  const lido = lerDestaquesDoTexto(texto)
+  return { content: lido.texto, destaques: lido.trechos.length > 0 ? lido.trechos : undefined, problema: lido.problema }
+}
+
 /** A copy sem a marcação — para quem desenha texto sem rich text (IA, template, comparação). */
 export function semColchetes(texto: string): string {
   return texto.replace(/[[\]]/g, '')
@@ -217,25 +235,79 @@ export function sombraDaCamada(camada: Layer): SombraDoGlifo | null {
   return { color: s.shadowColor ?? '#000000', blur: s.shadowBlur ?? 0, offsetX: s.shadowOffsetX ?? 0, offsetY: s.shadowOffsetY ?? 0, opacity: s.shadowOpacity ?? 1 }
 }
 
+/** O contorno da camada `text` (effects.stroke, senão style.border) no formato por segmento; null sem contorno. */
+export function contornoDaCamada(camada: Layer): { color: string; width: number } | null {
+  const fx = camada.effects?.stroke
+  if (fx?.enabled && (fx.strokeWidth ?? 0) > 0) return { color: fx.strokeColor ?? '#000000', width: fx.strokeWidth }
+  const borda = camada.style?.border
+  if (borda?.width && borda.width > 0) return { color: borda.color ?? '#000000', width: borda.width }
+  return null
+}
+
 /**
  * Os segmentos (no formato do rich text) de uma camada `text` com
- * `destaques` — é o que o render e o editor desenham pelo caminho do rich
- * text. Sem `destaque` gravado, o segmento usa só a família mais pesada da
- * mesma família quando há uma lista de famílias à mão; sem lista, só os
- * trechos (com a sombra da camada). Camada sem destaque, ou que não é
- * `text`: null — e nada muda no desenho.
+ * `destaques`: os offsets são no `content` CRU (ver
+ * `segmentosNoTextoTransformado` para o textTransform). O estilo é o
+ * `destaque` gravado; sem ele, a família mais pesada da mesma família quando
+ * há uma lista de famílias à mão. Sem estilo nenhum, null: o texto desenha
+ * como texto comum, nunca um destaque invisível. Camada sem `destaques`, ou
+ * que não é `text`: null — e nada muda no desenho.
+ *
+ * `comEfeitos`: a sombra e o contorno da camada entram em TODOS os segmentos
+ * — é o que o editor precisa, porque o Konva.Text fica transparente e os
+ * segmentos desenham tudo. O servidor NÃO pede: lá o texto com destaques
+ * passa pelo mesmo `renderText` do texto comum (sombra no ctx, contorno por
+ * linha), e só a tinta de cada trecho é por segmento.
  */
-export function segmentosDoTexto(camada: Layer, familias?: string[]): RichTextStyle[] | null {
+export function segmentosDoTexto(camada: Layer, opcoes: { familias?: string[]; comEfeitos?: boolean } = {}): RichTextStyle[] | null {
   if (camada.type !== 'text') return null
   const trechos = trechosDaCamada(camada)
   if (trechos.length === 0) return null
   const conteudo = typeof camada.content === 'string' ? camada.content : ''
   let destaque: EstiloDeDestaque = { ...(camada.destaque ?? {}) }
-  if (Object.keys(destaque).length === 0 && familias?.length) {
-    const pesada = familiaMaisPesada(baseDaCamada(camada).fontFamily, familias)
+  if (Object.keys(destaque).length === 0 && opcoes.familias?.length) {
+    const pesada = familiaMaisPesada(baseDaCamada(camada).fontFamily, opcoes.familias)
     destaque = pesada ? { fontFamily: pesada } : {}
   }
-  return estilosDoRichText({ conteudo, trechos, destaque, sombra: sombraDaCamada(camada) })
+  if (Object.keys(destaque).length === 0) return null
+  return estilosDoRichText({
+    conteudo,
+    trechos,
+    destaque,
+    sombra: opcoes.comEfeitos ? sombraDaCamada(camada) : null,
+    contorno: opcoes.comEfeitos ? contornoDaCamada(camada) : null,
+  })
+}
+
+/**
+ * Leva segmentos com offsets no texto CRU para o texto TRANSFORMADO
+ * (`textTransform`): fatia o cru, transforma cada pedaço e soma os
+ * comprimentos. "ß" → "SS" e ligaduras mudam o comprimento, então transformar
+ * o texto inteiro antes de fatiar deslocava os offsets. Os pedaços sem
+ * segmento são transformados do mesmo jeito; `texto` é o conteúdo final.
+ */
+export function segmentosNoTextoTransformado(
+  segmentos: RichTextStyle[],
+  conteudoCru: string,
+  transformar: (pedaco: string) => string,
+): { texto: string; segmentos: RichTextStyle[] } {
+  const n = conteudoCru.length
+  const ordenados = [...segmentos]
+    .map((s) => ({ ...s, start: Math.max(0, Math.min(n, s.start)), end: Math.max(0, Math.min(n, s.end)) }))
+    .filter((s) => s.end > s.start)
+    .sort((a, b) => a.start - b.start)
+  let texto = ''
+  let cursor = 0
+  const saida: RichTextStyle[] = []
+  for (const s of ordenados) {
+    if (s.start > cursor) texto += transformar(conteudoCru.slice(cursor, s.start))
+    const inicio = texto.length
+    texto += transformar(conteudoCru.slice(Math.max(s.start, cursor), s.end))
+    saida.push({ ...s, start: inicio, end: texto.length })
+    cursor = Math.max(cursor, s.end)
+  }
+  if (cursor < n) texto += transformar(conteudoCru.slice(cursor))
+  return { texto, segmentos: saida }
 }
 
 /** `#RRGGBB` + opacidade → `rgba()` (a sombra do rich text só lê opacidade na cor). */
@@ -267,6 +339,8 @@ export function estilosDoRichText(args: {
   trechos: TrechoDestacado[]
   destaque: EstiloDeDestaque
   sombra: SombraDoGlifo | null
+  /** Contorno da camada inteira (como a sombra, cobre todo o conteúdo). */
+  contorno?: { color: string; width: number } | null
 }): RichTextStyle[] {
   const n = args.conteudo.length
   const trechos = args.trechos
@@ -275,6 +349,7 @@ export function estilosDoRichText(args: {
   const sombra = args.sombra
     ? { color: corComOpacidade(args.sombra.color, args.sombra.opacity), blur: args.sombra.blur, offset: { x: args.sombra.offsetX ?? 0, y: args.sombra.offsetY } }
     : null
+  const contorno = args.contorno ?? null
   const cortes = [...new Set([0, n, ...trechos.flatMap((t) => [t.inicio, t.fim])])].sort((a, b) => a - b)
   const saida: RichTextStyle[] = []
   for (let i = 0; i < cortes.length - 1; i++) {
@@ -282,8 +357,14 @@ export function estilosDoRichText(args: {
     const end = cortes[i + 1]
     if (end <= start) continue
     const destacado = trechos.some((t) => t.inicio <= start && end <= t.fim)
-    if (!destacado && !sombra) continue
-    saida.push({ start, end, ...(destacado ? args.destaque : {}), ...(sombra ? { shadow: sombra } : {}) })
+    if (!destacado && !sombra && !contorno) continue
+    saida.push({
+      start,
+      end,
+      ...(destacado ? args.destaque : {}),
+      ...(sombra ? { shadow: sombra } : {}),
+      ...(contorno ? { stroke: contorno } : {}),
+    })
   }
   return saida
 }

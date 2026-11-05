@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import type { Layer } from '@/types/template'
-import { destaqueDaCamada, lerDestaquesDoTexto, linhasComColchetes, segmentosDoTexto } from '../destaques'
+import { destaqueDaCamada, lerDestaquesDoTexto, linhasComColchetes, segmentosDoTexto, segmentosNoTextoTransformado, trocarConteudo } from '../destaques'
 
 const texto = (extra: Partial<Layer> = {}): Layer => ({
   id: 't1',
@@ -65,17 +65,23 @@ describe('segmentosDoTexto', () => {
     expect(segmentosDoTexto(camada)).toEqual([{ start: 8, end: 16, fill: '#e63946', fontFamily: 'StageGrotesk Medium' }])
   })
 
-  it('com sombra: os trechos cobrem o conteúdo inteiro e a sombra vai por segmento, com o offset X da camada', () => {
+  it('comEfeitos (editor): os trechos cobrem o conteúdo inteiro, com sombra e contorno da camada por segmento', () => {
     const camada = texto({
       destaques: [{ inicio: 8, fim: 16 }],
       destaque: { fill: '#e63946' },
-      effects: { shadow: { enabled: true, shadowColor: '#000000', shadowBlur: 10, shadowOffsetX: 2, shadowOffsetY: 4, shadowOpacity: 0.5 } },
+      effects: {
+        shadow: { enabled: true, shadowColor: '#000000', shadowBlur: 10, shadowOffsetX: 2, shadowOffsetY: 4, shadowOpacity: 0.5 },
+        stroke: { enabled: true, strokeColor: '#ffffff', strokeWidth: 3 },
+      },
     })
     const sombra = { color: 'rgba(0,0,0,0.5)', blur: 10, offset: { x: 2, y: 4 } }
-    expect(segmentosDoTexto(camada)).toEqual([
-      { start: 0, end: 8, shadow: sombra },
-      { start: 8, end: 16, fill: '#e63946', shadow: sombra },
+    const stroke = { color: '#ffffff', width: 3 }
+    expect(segmentosDoTexto(camada, { comEfeitos: true })).toEqual([
+      { start: 0, end: 8, shadow: sombra, stroke },
+      { start: 8, end: 16, fill: '#e63946', shadow: sombra, stroke },
     ])
+    // O servidor não pede os efeitos: sombra no ctx e contorno por linha, como no texto comum
+    expect(segmentosDoTexto(camada)).toEqual([{ start: 8, end: 16, fill: '#e63946' }])
   })
 
   it('sombra desligada não entra', () => {
@@ -84,16 +90,38 @@ describe('segmentosDoTexto', () => {
       destaque: { fill: '#e63946' },
       effects: { shadow: { enabled: false, shadowColor: '#000000', shadowBlur: 10, shadowOffsetX: 0, shadowOffsetY: 4, shadowOpacity: 1 } },
     })
-    expect(segmentosDoTexto(camada)).toEqual([{ start: 0, end: 7, fill: '#e63946' }])
+    expect(segmentosDoTexto(camada, { comEfeitos: true })).toEqual([{ start: 0, end: 7, fill: '#e63946' }])
   })
 
-  it('sem destaque gravado: a família mais pesada da mesma família quando há lista; sem lista, só o trecho', () => {
+  it('sem destaque gravado: a família mais pesada da mesma família quando há lista; sem estilo nenhum, null (nunca um destaque invisível)', () => {
     const camada = texto({ destaques: [{ inicio: 8, fim: 16 }] })
-    expect(segmentosDoTexto(camada, ['StageGrotesk Thin', 'StageGrotesk Medium', 'Branley GC'])).toEqual([
+    expect(segmentosDoTexto(camada, { familias: ['StageGrotesk Thin', 'StageGrotesk Medium', 'Branley GC'] })).toEqual([
       { start: 8, end: 16, fontFamily: 'StageGrotesk Medium' },
     ])
-    expect(segmentosDoTexto(camada, ['Branley GC'])).toEqual([{ start: 8, end: 16 }])
-    expect(segmentosDoTexto(camada)).toEqual([{ start: 8, end: 16 }])
+    expect(segmentosDoTexto(camada, { familias: ['Branley GC'] })).toBeNull()
+    expect(segmentosDoTexto(camada)).toBeNull()
+  })
+
+  it('segmentosNoTextoTransformado: fatia no cru e transforma por pedaço (ß → SS não desloca o destaque)', () => {
+    // 'straße bem feita': "bem" em 7..10 no cru; "STRASSE " tem uma letra a mais
+    const r = segmentosNoTextoTransformado([{ start: 7, end: 10, fill: '#e63946' }], 'straße bem feita', (s) => s.toUpperCase())
+    expect(r.texto).toBe('STRASSE BEM FEITA')
+    expect(r.segmentos).toEqual([{ start: 8, end: 11, fill: '#e63946' }])
+    expect(r.texto.slice(8, 11)).toBe('BEM')
+  })
+})
+
+describe('trocarConteudo é o único jeito de trocar o content', () => {
+  it('texto com colchetes grava content limpo + destaques; sem colchetes apaga os destaques antigos', () => {
+    const camada = texto({ destaques: [{ inicio: 8, fim: 16 }] })
+    expect(trocarConteudo(camada, 'Nossa [picanha] na brasa')).toEqual({ content: 'Nossa picanha na brasa', destaques: [{ inicio: 6, fim: 13 }], problema: null })
+    // Digitou "Nossa " na frente pelo painel: os offsets antigos cobririam "a na br"
+    expect(trocarConteudo(camada, 'Nossa Picanha na brasa')).toEqual({ content: 'Nossa Picanha na brasa', destaques: undefined, problema: null })
+    expect(trocarConteudo(camada, 'Vem [pro Real').problema).toMatch(/sem fechar/)
+  })
+
+  it('camada que não é text só troca o conteúdo', () => {
+    expect(trocarConteudo({ type: 'rich-text' }, 'a [b]')).toEqual({ content: 'a [b]', destaques: undefined, problema: null })
   })
 })
 

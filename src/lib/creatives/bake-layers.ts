@@ -15,6 +15,10 @@ import { CreativeError } from '@/lib/creatives/errors'
 import { celulaVazia } from '@/lib/grades/conferir'
 import { preencherCelula } from '@/lib/grades/operacoes'
 import { vinculadaAGrade } from '@/lib/grades/presenca'
+import { trocarConteudo } from '@/lib/compositor/destaques'
+
+/** `trocarConteudo` sem o `problema`: o aviso não vira campo da camada. */
+const semProblema = ({ content, destaques }: ReturnType<typeof trocarConteudo>) => ({ content, destaques })
 
 /**
  * Um texto com conteúdo SUBSTANTIVO (letra, número ou pictograma) que o bake ESCONDEU, ESVAZIOU ou reduziu a
@@ -112,13 +116,14 @@ export function bakeLayers(
     const recebeuConteudo = () => Object.assign(updated, semPrefixoHerdado(updated))
 
     if (typeof slot === 'string') {
-      updated.content = slot
+      // [colchetes] viram `destaques`; texto novo sem eles apaga os antigos (offsets órfãos)
+      Object.assign(updated, semProblema(trocarConteudo(layer, slot)))
       recebeuConteudo()
       if (layer.type === 'text') changedTextIds.push(layer.id)
     } else if (slot && typeof slot === 'object') {
       const slotObj = slot as Record<string, unknown>
       if (typeof slotObj.content === 'string') {
-        updated.content = slotObj.content
+        Object.assign(updated, semProblema(trocarConteudo(layer, slotObj.content)))
         recebeuConteudo()
         if (layer.type === 'text') changedTextIds.push(layer.id)
       }
