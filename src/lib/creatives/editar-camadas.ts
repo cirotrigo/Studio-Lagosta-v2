@@ -129,8 +129,9 @@ export const camposDaCamadaSchema = z
         textDecoration: z.enum(['none', 'underline', 'line-through']).optional(),
       })
       .strict()
+      .nullable()
       .optional()
-      .describe('texto: o estilo do destaque (cor, família) — vale para todos os trechos da camada. Sem ele, o da marca.'),
+      .describe('texto: o estilo do destaque (cor, família) — vale para todos os trechos da camada. Sem ele, o da marca; null apaga o próprio (volta ao da marca). Só em camada com destaques.'),
     fileUrl: z.string().min(1).max(2048).optional().describe('imagem/logo: URL da imagem (no perfil de rascunho é recusada: use driveImageId).'),
     driveImageId: z.string().min(1).max(200).optional().describe('imagem: a foto do acervo (de buscar-fotos) — resolvida para a URL do Studio.'),
     style: estiloSchema.optional(),
@@ -509,13 +510,20 @@ function fundirDefinir(layer: Layer, campos: CamposDaCamada): Layer {
     }
   }
   if (campos.effects) nova.effects = { ...layer.effects, ...semIndefinidos(campos.effects) } as Layer['effects']
-  if (campos.destaque) nova.destaque = { ...layer.destaque, ...semIndefinidos(campos.destaque) }
+  if (campos.destaque === null) {
+    const { destaque: _e, ...sem } = nova
+    nova = sem as Layer
+  } else if (campos.destaque) nova.destaque = { ...layer.destaque, ...semIndefinidos(campos.destaque) }
   if (campos.destaques) {
     const { destaques: _d, ...sem } = nova
     nova = campos.destaques.length > 0 ? { ...sem, destaques: campos.destaques.map((t) => ({ inicio: t.inicio, fim: t.fim })) } : (sem as Layer)
   }
   return nova
 }
+
+/** `destaque` mandado para uma camada que (no fim da op) não destaca nada: estilo morto, recusado (revisão L6). */
+const DESTAQUE_SEM_TRECHOS = 'destaque sem trechos: marque a palavra com [colchetes] no content (ou mande destaques) na mesma operação'
+const destaqueSemTrechos = (l: Layer, campos: CamposDaCamada | undefined) => Boolean(campos?.destaque) && !l.destaques?.length
 
 /** Os trechos de `destaques` que caem fora do `content` final (FASE 2: só aqui o texto é conhecido). */
 function destaquesForaDoTexto(l: Layer): string | null {
@@ -705,6 +713,7 @@ export function aplicarOperacoesDeCamadas(entrada: Layer[], operacoes: OperacaoD
       const fabricada = fabricar({ ...o, campos: comFoto.campos }, ctx, camadas)
       if (fabricada.ok === false) return recusa(fabricada.codigo, fabricada.motivo, fabricada.campos)
       const nova = marcar(fabricada.layer, o.campos)
+      if (destaqueSemTrechos(nova, o.campos)) return recusa('CAMPO_NAO_PERMITIDO', DESTAQUE_SEM_TRECHOS, ['destaque'])
       const foraDoTexto = destaquesForaDoTexto(nova)
       if (foraDoTexto) return recusa('VALOR_FORA_DA_FAIXA', foraDoTexto, ['destaques'])
       camadas = o.ordem !== undefined ? mover([...camadas, nova], nova.id, o.ordem) : renumerar([...camadas, nova])
@@ -744,6 +753,7 @@ export function aplicarOperacoesDeCamadas(entrada: Layer[], operacoes: OperacaoD
     const comFoto = comFotoDoAcervo(semOrdem, ctx)
     if ('codigo' in comFoto) return recusa(comFoto.codigo, comFoto.motivo, comFoto.campos)
     let nova = marcar(fundirDefinir(layer, comFoto.campos), campos, layer)
+    if (destaqueSemTrechos(nova, campos)) return recusa('CAMPO_NAO_PERMITIDO', `${layer.id}: ${DESTAQUE_SEM_TRECHOS}`, ['destaque'])
     const foraDoTexto = destaquesForaDoTexto(nova)
     if (foraDoTexto) return recusa('VALOR_FORA_DA_FAIXA', `${layer.id}: ${foraDoTexto}`, ['destaques'])
     // Copy que SOME sem ser escondida (revisão do PR #294): invisível, minúscula ou fora da página é apagar copy.

@@ -329,6 +329,17 @@ describe('destaque por marcação (05/11/2026)', () => {
     expect(comEstilo.avisos).toEqual([])
   })
 
+  it('destaque: null apaga o estilo próprio; destaque numa camada sem trechos é CAMPO_NAO_PERMITIDO (revisão L6)', () => {
+    const base = pagina().map((l) => (l.id === 'headline' ? ({ ...l, content: 'Picanha na brasa', destaques: [{ inicio: 8, fim: 16 }], destaque: { fill: '#00FF00' } } as Layer) : l))
+    const r = aplicarOperacoesDeCamadas(base, [definir('headline', { destaque: null })], comMarca)
+    expect(r.recusadas).toEqual([])
+    const h = r.camadas.find((l) => l.id === 'headline')!
+    expect(h).not.toHaveProperty('destaque')
+    expect(h.destaques).toEqual([{ inicio: 8, fim: 16 }])
+    expect(aplicarOperacoesDeCamadas(pagina(), [definir('headline', { destaque: { fill: '#123456' } })], comMarca).recusadas[0]).toMatchObject({ codigo: 'CAMPO_NAO_PERMITIDO', campos: ['destaque'] })
+    expect(aplicarOperacoesDeCamadas(pagina(), [{ op: 'adicionar', tipo: 'texto', campos: { content: 'Só hoje', destaque: { fill: '#123456' } } }], comMarca).recusadas[0]).toMatchObject({ codigo: 'CAMPO_NAO_PERMITIDO', campos: ['destaque'] })
+  })
+
   it('camadaParaLeitura: texto com destaques devolve conteudoMarcado ao lado do content limpo', () => {
     const l = { ...pagina()[2], content: 'Picanha na brasa\nsó hoje', destaques: [{ inicio: 8, fim: 16 }], destaque: marca() } as Layer
     const r = camadaParaLeitura(l)

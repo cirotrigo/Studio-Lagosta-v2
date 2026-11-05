@@ -1030,38 +1030,46 @@ const LITERAIS_ARTE_IA: Record<string, unknown> = {
                   "description": "texto: os trechos destacados, offsets no content SEM colchetes ([] tira o destaque). Mais simples: colchetes no content."
                 },
                 "destaque": {
-                  "type": "object",
-                  "properties": {
-                    "fill": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 64
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "fill": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 64
+                        },
+                        "fontFamily": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 120
+                        },
+                        "fontStyle": {
+                          "type": "string",
+                          "enum": [
+                            "normal",
+                            "italic",
+                            "bold",
+                            "bold italic"
+                          ]
+                        },
+                        "textDecoration": {
+                          "type": "string",
+                          "enum": [
+                            "none",
+                            "underline",
+                            "line-through"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object"
                     },
-                    "fontFamily": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 120
-                    },
-                    "fontStyle": {
-                      "type": "string",
-                      "enum": [
-                        "normal",
-                        "italic",
-                        "bold",
-                        "bold italic"
-                      ]
-                    },
-                    "textDecoration": {
-                      "type": "string",
-                      "enum": [
-                        "none",
-                        "underline",
-                        "line-through"
-                      ]
+                    {
+                      "type": "null"
                     }
-                  },
-                  "additionalProperties": false,
-                  "description": "texto: o estilo do destaque (cor, família) — vale para todos os trechos da camada. Sem ele, o da marca."
+                  ],
+                  "description": "texto: o estilo do destaque (cor, família) — vale para todos os trechos da camada. Sem ele, o da marca; null apaga o próprio (volta ao da marca). Só em camada com destaques."
                 },
                 "fileUrl": {
                   "type": "string",
