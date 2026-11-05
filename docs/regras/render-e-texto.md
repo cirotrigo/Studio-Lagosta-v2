@@ -351,6 +351,10 @@ a causa em todos os `encode` (inclusive o JPEG do revisor) sem mudar o caminho d
   `GlobalFonts.setAlias('Montserrat', 'sans-serif')`: o fallback vira Montserrat regular (o peso pedido não é
   honrado pelo alias). Camada sem `fontFamily`, que caía em `sans-serif`, agora sai em Montserrat. Teste:
   `src/lib/__tests__/canvas-fonte-generica-tem-acento.test.ts`.
+- **`drawImage` passou a aplicar a sombra, na cor certa** (medido em 05/11/2026). O grupo do vetor multicor
+  (`pintarEmGrupo` em `src/lib/vetor/desenhar.ts`) desenhava a sombra à mão, com máscara e `filter: blur(shadowBlur/√2)`,
+  porque o 0.1.84 a ignorava. Na 1.0 esse desfoque ficou mais largo que a sombra nativa (42 contra 22 em x 125, blur 8)
+  e a paridade com o legado quebrou. A sombra à mão saiu; vale a nativa, igual ao navegador.
 - **`GlobalFonts.registerFromPath` devolve `FontKey | null`**, não boolean. `!== false` passaria sempre — a
   conferência de arquivo corrompido em `register-project-fonts.ts` virou `Boolean(...)`.
 - As fontes padrão passam a ser registradas UMA vez por processo (antes, a cada `new CanvasRenderer`): o registro é
