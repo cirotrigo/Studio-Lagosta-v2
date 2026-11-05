@@ -1269,6 +1269,19 @@ function revisaoDoAjuste(gate: ResultadoDaMedicao, generationId: string): Revisa
  * destacou um trecho lá) ou `Project.assinatura.destaque`, pela regra do compositor (`destaqueDoPapel`: família pesada
  * DA camada, alternativa quando a camada já é da cor de destaque). Sem assinatura legível, o padrão da casa.
  */
+/** `slotValues` com o texto (string ou `{ content }`) sem os colchetes da marcação; as chaves de controle ficam cruas. */
+function pedidoSemColchetes<T extends Record<string, unknown> | undefined | null>(slotValues: T): T {
+  if (!slotValues) return slotValues
+  return Object.fromEntries(
+    Object.entries(slotValues).map(([k, v]) => {
+      if (k === '_imageUrl' || k === '_driveImageId') return [k, v]
+      if (typeof v === 'string') return [k, semColchetes(v)]
+      if (v && typeof v === 'object' && typeof (v as { content?: unknown }).content === 'string') return [k, { ...v, content: semColchetes((v as { content: string }).content) }]
+      return [k, v]
+    }),
+  ) as T
+}
+
 async function resolvedorDoDestaqueDaMarca(projectId: number, page: { tags?: string[] | null; width: number; height: number }): Promise<(c: Layer) => EstiloDeDestaque | null> {
   const [{ carregarAssinatura, familiasDoProjeto }, { NUMEROS_PADRAO }, { papelDaCamada }] = await Promise.all([
     import('@/lib/compositor/compor'),
@@ -1957,7 +1970,9 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
       fieldValues: {
         source: 'ajuste-arte',
         sourcePageId: page.id,
-        ajustes: slotValues,
+        // O pedido como a página o gravou: os [colchetes] já viraram `destaques` na camada, e a mineração do perfil usa
+        // este texto como exemplo (`camposDosAjustes`) — colchete ali vira "a IA escreve com colchetes" (revisão L9).
+        ajustes: pedidoSemColchetes(slotValues),
         ...(copyRemovida.length > 0 ? { copyRemovida } : {}),
         ...(revisao
           ? { revisao: { versaoAntes, ajustes, aplicados: revisao.aplicados, recusados: revisao.recusados } }

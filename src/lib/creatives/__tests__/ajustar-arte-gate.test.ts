@@ -302,6 +302,10 @@ describe('T1 — camadas pelos dados no draft-only (revisão do PR #294)', () =>
     const camadas = banco.pages.get('p1')!.layers as Layer[]
     expect(camadas.find((l) => l.id === 'headline')).toMatchObject({ content: 'Só hoje', destaques: [{ inicio: 3, fim: 7 }], destaque: { fill: '#E30613' } })
     expect(camadas.find((l) => l.id === 'apoio')).toMatchObject({ content: 'Rodízio completo', destaques: [{ inicio: 0, fim: 7 }] })
+    // L9: o pedido gravado na Generation vai limpo (a mineração do perfil usa como exemplo).
+    const g = [...banco.generations.values()].find((x) => x.fieldValues?.source === 'ajuste-arte')
+    expect(g, 'a Generation do ajuste').toBeDefined()
+    expect(g!.fieldValues.ajustes).toMatchObject({ headline: 'Só hoje', apoio: { content: 'Rodízio completo' }, servico: 'Sábado no fogo' })
     const servico = camadas.find((l) => l.id === 'servico')!
     expect(servico.content).toBe('Sábado no fogo')
     expect(servico.destaques).toBeUndefined()
