@@ -1,0 +1,357 @@
+{
+  "id": "cmw3j884f0001swvfqkkw2lr8",
+  "name": "Ref 03 · Story · Topo esquerda",
+  "width": 1080,
+  "height": 1920,
+  "background": "#2C3445",
+  "isTemplate": true,
+  "tags": [
+    "referencia",
+    "story",
+    "topo",
+    "esquerda",
+    "servico"
+  ],
+  "order": 2,
+  "layers": [
+    {
+      "id": "bg-foto",
+      "type": "image",
+      "name": "Foto de fundo",
+      "visible": true,
+      "locked": false,
+      "order": 0,
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "size": {
+        "width": 1080,
+        "height": 1920
+      },
+      "fileUrl": "https://lh3.googleusercontent.com/d/1NBT2gX-L2CAIyuUxbw-jVI55OV57SkkE=w2000",
+      "style": {
+        "objectFit": "cover"
+      }
+    },
+    {
+      "id": "veu-topo",
+      "type": "gradient",
+      "name": "Veu topo",
+      "visible": true,
+      "locked": false,
+      "order": 1,
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "size": {
+        "width": 1080,
+        "height": 1920
+      },
+      "style": {
+        "gradientType": "linear",
+        "gradientAngle": 180,
+        "gradientStops": [
+          {
+            "id": "1",
+            "color": "#2C3445",
+            "opacity": 0.9,
+            "position": 0
+          },
+          {
+            "id": "2",
+            "color": "#2C3445",
+            "opacity": 0,
+            "position": 0.36
+          }
+        ]
+      }
+    },
+    {
+      "id": "veu-rodape",
+      "type": "gradient",
+      "name": "Veu rodape",
+      "visible": true,
+      "locked": false,
+      "order": 2,
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "size": {
+        "width": 1080,
+        "height": 1920
+      },
+      "style": {
+        "gradientType": "linear",
+        "gradientAngle": 0,
+        "gradientStops": [
+          {
+            "id": "1",
+            "color": "#2C3445",
+            "opacity": 0.9,
+            "position": 0
+          },
+          {
+            "id": "2",
+            "color": "#2C3445",
+            "opacity": 0.57,
+            "position": 0.13279629149377592
+          },
+          {
+            "id": "stop-1793884496641",
+            "position": 0.20884660269709543,
+            "color": "#2C3445",
+            "opacity": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "titulo",
+      "type": "text",
+      "name": "Titulo",
+      "visible": true,
+      "locked": false,
+      "order": 3,
+      "position": {
+        "x": 84,
+        "y": 160
+      },
+      "size": {
+        "width": 912,
+        "height": 159
+      },
+      "content": "PÃO FRESCO E\nCAFÉ DE MÉTODO",
+      "style": {
+        "fontFamily": "FRZQUADB",
+        "fontSize": 70,
+        "fontWeight": 400,
+        "textAlign": "left",
+        "lineHeight": 1.05,
+        "letterSpacing": 2,
+        "textTransform": "uppercase",
+        "color": "#FFFFFF"
+      },
+      "textboxConfig": {
+        "anchor": "top",
+        "autoWrap": {
+          "lineHeight": 1.05,
+          "breakMode": "word",
+          "autoExpand": true
+        }
+      }
+    },
+    {
+      "id": "descricao",
+      "type": "text",
+      "name": "Descricao",
+      "visible": true,
+      "locked": false,
+      "order": 4,
+      "position": {
+        "x": 84,
+        "y": 319
+      },
+      "size": {
+        "width": 714,
+        "height": 95
+      },
+      "content": "Brioche de fermentação natural e o café coado no Hario V60.",
+      "style": {
+        "fontFamily": "TrajanPro Regular",
+        "fontSize": 36,
+        "fontWeight": 400,
+        "textAlign": "left",
+        "lineHeight": 1.15,
+        "color": "#FFFFFF"
+      },
+      "textboxConfig": {
+        "anchor": "top",
+        "autoWrap": {
+          "lineHeight": 1.15,
+          "breakMode": "word",
+          "autoExpand": true
+        }
+      },
+      "rotation": 0
+    },
+    {
+      "id": "info-1",
+      "type": "text",
+      "name": "Info - servico",
+      "visible": true,
+      "locked": false,
+      "order": 5,
+      "position": {
+        "x": 84,
+        "y": 1608
+      },
+      "size": {
+        "width": 744,
+        "height": 84
+      },
+      "content": "Café da manhã · terça a domingo, das 9h às 11h · Jardim Camburi, Vitória/ES",
+      "style": {
+        "fontFamily": "TrajanPro Regular",
+        "fontSize": 30,
+        "fontWeight": 600,
+        "textAlign": "left",
+        "lineHeight": 1.2,
+        "letterSpacing": 1.4,
+        "color": "#FFFFFF"
+      },
+      "textboxConfig": {
+        "anchor": "top",
+        "autoWrap": {
+          "lineHeight": 1.2,
+          "breakMode": "word",
+          "autoExpand": true
+        }
+      },
+      "rotation": 0
+    },
+    {
+      "id": "cta",
+      "type": "text",
+      "name": "CTA",
+      "visible": true,
+      "locked": false,
+      "order": 6,
+      "position": {
+        "x": 84,
+        "y": 1712
+      },
+      "size": {
+        "width": 640,
+        "height": 48
+      },
+      "content": "Aguardamos você.",
+      "style": {
+        "fontFamily": "TrajanPro Regular",
+        "fontSize": 30,
+        "fontWeight": 400,
+        "textAlign": "left",
+        "lineHeight": 1.2,
+        "letterSpacing": 2.6,
+        "color": "#CAB371"
+      },
+      "textboxConfig": {
+        "anchor": "top",
+        "autoWrap": {
+          "lineHeight": 1.2,
+          "breakMode": "word",
+          "autoExpand": true
+        }
+      }
+    },
+    {
+      "id": "logo",
+      "type": "logo",
+      "name": "Logo",
+      "visible": true,
+      "locked": false,
+      "order": 7,
+      "position": {
+        "x": 848,
+        "y": 1705
+      },
+      "size": {
+        "width": 168,
+        "height": 55
+      },
+      "fileUrl": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/12/logos/1771683215986-Ativo_2icones.png",
+      "style": {
+        "objectFit": "contain"
+      }
+    },
+    {
+      "id": "ffdb80ed-8328-4de3-a7ff-f96af362400f",
+      "type": "image",
+      "name": "Elemento - buganvilia-ramo-pendente",
+      "visible": true,
+      "locked": false,
+      "order": 8,
+      "position": {
+        "x": 937,
+        "y": -31
+      },
+      "size": {
+        "width": 200,
+        "height": 601
+      },
+      "style": {
+        "objectFit": "cover",
+        "border": {
+          "width": 0,
+          "color": "#000000",
+          "radius": 0
+        },
+        "blur": 0,
+        "brightness": 0,
+        "contrast": 0
+      },
+      "fileUrl": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/12/elements/1793542112932-buganvilia-ramo-pendente.png",
+      "rotation": -3
+    },
+    {
+      "id": "3a4aa635-4864-45b1-b36a-e63c2c6e3d35",
+      "type": "image",
+      "name": "Elemento - Elegance Sunset - Filete champagne",
+      "visible": true,
+      "locked": false,
+      "order": 9,
+      "position": {
+        "x": 84,
+        "y": 1666
+      },
+      "size": {
+        "width": 200,
+        "height": 73.33333333333333
+      },
+      "style": {
+        "objectFit": "cover",
+        "border": {
+          "width": 0,
+          "color": "#000000",
+          "radius": 0
+        },
+        "blur": 0,
+        "brightness": 0,
+        "contrast": 0
+      },
+      "fileUrl": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/12/elements/1792679908915-Elegance_Sunset_-_Filete_champagne.svg"
+    },
+    {
+      "id": "d35404c1-297a-4fd3-ac04-6aceeee85369",
+      "type": "image",
+      "name": "Elemento - buganvilia-ramo-pendente Copy",
+      "visible": true,
+      "locked": false,
+      "order": 10,
+      "position": {
+        "x": 84,
+        "y": 1931
+      },
+      "size": {
+        "width": 121,
+        "height": 364
+      },
+      "style": {
+        "objectFit": "cover",
+        "border": {
+          "width": 0,
+          "color": "#000000",
+          "radius": 0
+        },
+        "blur": 0,
+        "brightness": 0,
+        "contrast": 0
+      },
+      "fileUrl": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/12/elements/1793542112932-buganvilia-ramo-pendente.png",
+      "rotation": -180
+    }
+  ],
+  "layerCount": 11
+}

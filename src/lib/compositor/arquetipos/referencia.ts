@@ -24,6 +24,7 @@ import { enquadramentoDaPagina } from '../defasagem'
 import { formatoDaPaginaGravada } from '../formato'
 import { DIMENSOES, type Alinhamento, type Papel } from '../spec'
 import { camadaDaFotoDaPagina } from './da-pagina'
+import { faixasDoArquetipo } from './faixas'
 import { COR_HEX, CORPO_MINIMO_DA_REFERENCIA, FORMATOS_DO_ARQUETIPO, TRANSFORMACOES_DO_ESTILO, type ArquetipoDeLayout, type AssuntoNoQuadro, type EstiloDaReferencia, type Caixa, type CantoDaLogo, type FormatoDoArquetipo, type PapelDeTexto, type PapelNoArquetipo, type PosicaoDoPapel, type Zona } from './tipos'
 
 /** O id da definição de uma página: `ref-<pageId>` (o cuid é a-z0-9, kebab-case válido). */
@@ -45,6 +46,7 @@ export const CODIGOS_DA_COMPILACAO = [
   'REFERENCIA_DIMENSOES_INCOMPATIVEIS',
   'REFERENCIA_ESTILO_INVALIDO',
   'REFERENCIA_ESTILO_NAO_SUPORTADO',
+  'REFERENCIA_FAIXAS_DEMAIS',
 ] as const
 export type CodigoDaCompilacao = (typeof CODIGOS_DA_COMPILACAO)[number]
 
@@ -298,11 +300,28 @@ export function compilarReferencia(pagina: PaginaParaReferencia, args: { pageVer
     return recusa('REFERENCIA_ANCORA_INDEFINIDA', `A manchete (y ${caixaDaManchete.y.toFixed(3)}–${(caixaDaManchete.y + caixaDaManchete.h).toFixed(3)} da altura) não cai numa faixa de âncora: topo até 0,40, meio entre 0,33 e 0,67, rodapé a partir de 0,50.`, { caixa: caixaDaManchete })
   }
 
-  // A ZONA de cada papel de texto é a união das caixas de texto: os textos formam UMA faixa (com a logo, duas — o
+  // A ZONA de cada papel de texto é a união das caixas da FAIXA dele: os textos formam UMA faixa (com a logo, duas — o
   // teto da busca sobre foto) e o intervalo de deslocamento é zero — a posição aprovada é a única.
-  const uniaoDosTextos = [...caixas.values()].map((c) => c.caixa).reduce((u, c) => ({ x: Math.min(u.x, c.x), y: Math.min(u.y, c.y), w: Math.max(u.x + u.w, c.x + c.w) - Math.min(u.x, c.x), h: Math.max(u.y + u.h, c.y + c.h) - Math.min(u.y, c.y) }))
-  // Na horizontal a zona é a própria caixa (o alinhamento próprio prende a referência à borda ou ao eixo da zona).
-  const zonaDosTextos: Zona = { xMin: arredondar(uniaoDosTextos.x), xMax: arredondar(uniaoDosTextos.x + uniaoDosTextos.w), yMin: arredondar(uniaoDosTextos.y), yMax: arredondar(uniaoDosTextos.y + uniaoDosTextos.h) }
+  // DUAS FAIXAS (05/11/2026, Ref 03 do Empório): quando a união dos textos não cabe na faixa da âncora (manchete no topo,
+  // serviço e CTA no rodapé), os textos se partem no MAIOR vão vertical entre eles — duas faixas de texto. A união que
+  // cabe fica como era: a referência já aprovada compila igual (mesma impressão).
+  const uniao = (cs: Caixa[]) => cs.reduce((u, c) => ({ x: Math.min(u.x, c.x), y: Math.min(u.y, c.y), w: Math.max(u.x + u.w, c.x + c.w) - Math.min(u.x, c.x), h: Math.max(u.y + u.h, c.y + c.h) - Math.min(u.y, c.y) }))
+  const porY = [...caixas.entries()].sort((a, b) => a[1].caixa.y - b[1].caixa.y)
+  const uniaoDosTextos = uniao(porY.map(([, c]) => c.caixa))
+  const [deAncora, ateAncora] = FAIXA_DA_ANCORA[faixa]
+  let corte = porY.length // índice do primeiro papel da segunda faixa (= porY.length: uma faixa só)
+  if (uniaoDosTextos.y < deAncora - EPS || uniaoDosTextos.y + uniaoDosTextos.h > ateAncora + EPS) {
+    let base = -Infinity, maiorVao = 0
+    porY.forEach(([, c], i) => {
+      if (i > 0 && c.caixa.y - base > maiorVao) [maiorVao, corte] = [c.caixa.y - base, i]
+      base = Math.max(base, c.caixa.y + c.caixa.h)
+    })
+  }
+  const faixaDoPapel = new Map<PapelDeTexto, { yMin: number; yMax: number }>()
+  for (const grupo of [porY.slice(0, corte), porY.slice(corte)].filter((g) => g.length > 0)) {
+    const u = uniao(grupo.map(([, c]) => c.caixa))
+    for (const [papel] of grupo) faixaDoPapel.set(papel, { yMin: arredondar(u.y), yMax: arredondar(u.y + u.h) })
+  }
 
   const logoLida = emFracoes(retangulo(logo), pagina)
   // A logo no eixo da peça e na metade de cima é "superior-centro" (#16), não o canto que a fórmula sorteia em 0,5
@@ -347,7 +366,7 @@ export function compilarReferencia(pagina: PaginaParaReferencia, args: { pageVer
   const corpos: Partial<Record<PapelDeTexto, number>> = {}
   const estilos: Partial<Record<PapelDeTexto, EstiloDaReferencia>> = {}
   for (const [papel, c] of caixas) {
-    posicoes[papel] = { referencia: c.caixa, zona: { ...zonaDaCaixa(c.caixa), yMin: zonaDosTextos.yMin, yMax: zonaDosTextos.yMax } }
+    posicoes[papel] = { referencia: c.caixa, zona: { ...zonaDaCaixa(c.caixa), ...faixaDoPapel.get(papel)! } }
     limitesDeTexto[papel] = { linhasMax: c.linhas }
     corpos[papel] = c.corpo
     estilos[papel] = c.estilo
@@ -364,6 +383,12 @@ export function compilarReferencia(pagina: PaginaParaReferencia, args: { pageVer
     preferencias: { ancora: faixa, alinha: alinhaDaManchete, cantoDaMarca },
     formatos: { [formato]: { papeis: posicoes, limitesDeTexto, corpos, estilos, ...(assunto && 'caixa' in assunto ? { assunto } : {}) } } as unknown as ArquetipoDeLayout['formatos'],
     referencia: { pageId: pagina.id, pageVersion: args.pageVersion, formato },
+  }
+  // Duas faixas de texto e a logo longe das duas são TRÊS faixas: a busca sobre foto só avalia duas (LIMITES_DA_BUSCA),
+  // e a peça seria recusada na composição. Recusa aqui, dita.
+  const faixasDaPeca = faixasDoArquetipo(definicao, formato)
+  if (faixasDaPeca.length > 2) {
+    return recusa('REFERENCIA_FAIXAS_DEMAIS', `A referência tem ${faixasDaPeca.length} faixas (${faixasDaPeca.map((f) => f.join(' + ')).join('; ')}): a composição sobre foto aceita duas. Encoste a logo numa das faixas de texto ou junte os textos.`, { faixas: faixasDaPeca })
   }
   return {
     ok: true,

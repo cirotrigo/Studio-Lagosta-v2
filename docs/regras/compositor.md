@@ -2089,3 +2089,22 @@ a partir da copy com colchetes e o destaque volta sozinho. Páginas antigas com 
 sempre até a conversão (`scripts/converter-rich-text.ts`, regras em `render-e-texto.md`, seção "Destaque por
 marcação"). Detalhe que pega: o compositor antigo gravava a sombra na camada E em cada trecho — a conversão aceita as
 duas quando são iguais; sombra só na camada (a feita à mão) mantém a peça `rich-text`.
+
+### Referência com duas faixas de texto: manchete no topo, serviço e CTA no rodapé (05/11/2026)
+
+A F1 dava a todo papel de texto a faixa vertical da UNIÃO dos textos. No Ref 03 do Empório (manchete e apoio em y
+160–414, serviço e CTA em y 1608–1760) a união ia de 0,08 a 0,92, a zona da manchete saía da âncora "topo" (até 0,40)
+e o validador recusava com `PREFERENCIA_INCOERENTE`.
+
+- **Quando a união dos textos não cabe na faixa da âncora, `compilarReferencia` parte os textos no MAIOR vão vertical
+  entre eles**: duas faixas de texto, cada papel com a zona vertical da sua. A união que cabe continua uma faixa só.
+- 🔴 **A impressão das referências já aprovadas não muda**: elas passaram no validador, então a união delas cabia na
+  âncora e o caminho é o de antes. Conferido em 05/11 contra a produção: as 4 revisões vigentes com a página intacta
+  recompilam na mesma definição.
+- **Três faixas recusam na compilação, com `REFERENCIA_FAIXAS_DEMAIS`**: duas faixas de texto mais a logo longe das duas
+  passam do teto da busca sobre foto (`LIMITES_DA_BUSCA.faixas = 2`) e só quebrariam na composição.
+- A partição é de no máximo duas faixas. Uma página com três grupos de texto separados junta os dois mais próximos, e o
+  validador diz se a manchete ainda cabe na âncora.
+- Testes: `arquetipos/__tests__/referencia.test.ts` (describe "duas faixas", com a página do Ref 03 em
+  `suporte/emporio-ref03-topo-duas-faixas.json`) e `direcao-de-arte/__tests__/duas-faixas-compor.test.ts` (compositor
+  real: cada texto nasce na caixa aprovada).
