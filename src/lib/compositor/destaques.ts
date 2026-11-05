@@ -71,6 +71,22 @@ export function lerDestaques(linha: string): LinhaComDestaque {
   return { texto, trechos: aparados, problema }
 }
 
+/**
+ * `lerDestaques` para um texto de VÁRIAS linhas (a caixa do editor, o
+ * `content` que chega pelo MCP): os offsets saem no texto limpo inteiro, com
+ * as quebras. O colchete não atravessa a linha; o primeiro problema vence.
+ */
+export function lerDestaquesDoTexto(texto: string): LinhaComDestaque {
+  const linhas = texto.split('\n').map(lerDestaques)
+  const trechos: TrechoDestacado[] = []
+  let base = 0
+  for (const l of linhas) {
+    for (const t of l.trechos) trechos.push({ inicio: base + t.inicio, fim: base + t.fim })
+    base += l.texto.length + 1
+  }
+  return { texto: linhas.map((l) => l.texto).join('\n'), trechos, problema: linhas.find((l) => l.problema)?.problema ?? null }
+}
+
 /** A copy sem a marcação — para quem desenha texto sem rich text (IA, template, comparação). */
 export function semColchetes(texto: string): string {
   return texto.replace(/[[\]]/g, '')
@@ -164,15 +180,62 @@ function diferencaDaBase(s: RichTextStyle, base: Base): EstiloDeDestaque {
   return d
 }
 
-/** O destaque que a equipe deixou numa camada rich-text da página de assinatura. */
+/**
+ * O destaque que a equipe deixou numa camada da página de assinatura: o
+ * `destaque` de uma camada `text` com marcação, ou o trecho que difere da
+ * base numa rich-text.
+ */
 export function destaqueDaCamada(camada: Layer): EstiloDeDestaque | null {
-  if (camada.type !== 'rich-text' || !Array.isArray(camada.richTextStyles)) return null
   const base = baseDaCamada(camada)
+  if (camada.type === 'text') {
+    if (!trechosDaCamada(camada).length || !camada.destaque) return null
+    const d = diferencaDaBase({ start: 0, end: 0, ...camada.destaque }, base)
+    return Object.keys(d).length > 0 ? d : null
+  }
+  if (camada.type !== 'rich-text' || !Array.isArray(camada.richTextStyles)) return null
   for (const s of camada.richTextStyles) {
     const d = diferencaDaBase(s, base)
     if (Object.keys(d).length > 0) return d
   }
   return null
+}
+
+/** Os `destaques` de uma camada `text`, só os válidos dentro do `content`. */
+function trechosDaCamada(camada: Layer): TrechoDestacado[] {
+  if (!Array.isArray(camada.destaques)) return []
+  const n = typeof camada.content === 'string' ? camada.content.length : 0
+  return camada.destaques
+    .filter((t) => t && Number.isFinite(t.inicio) && Number.isFinite(t.fim))
+    .map((t) => ({ inicio: Math.max(0, Math.min(n, Math.floor(t.inicio))), fim: Math.max(0, Math.min(n, Math.floor(t.fim))) }))
+    .filter((t) => t.fim > t.inicio)
+}
+
+/** A sombra da camada no formato por glifo do rich text; null quando desligada. */
+export function sombraDaCamada(camada: Layer): SombraDoGlifo | null {
+  const s = camada.effects?.shadow
+  if (!s?.enabled) return null
+  return { color: s.shadowColor ?? '#000000', blur: s.shadowBlur ?? 0, offsetX: s.shadowOffsetX ?? 0, offsetY: s.shadowOffsetY ?? 0, opacity: s.shadowOpacity ?? 1 }
+}
+
+/**
+ * Os segmentos (no formato do rich text) de uma camada `text` com
+ * `destaques` — é o que o render e o editor desenham pelo caminho do rich
+ * text. Sem `destaque` gravado, o segmento usa só a família mais pesada da
+ * mesma família quando há uma lista de famílias à mão; sem lista, só os
+ * trechos (com a sombra da camada). Camada sem destaque, ou que não é
+ * `text`: null — e nada muda no desenho.
+ */
+export function segmentosDoTexto(camada: Layer, familias?: string[]): RichTextStyle[] | null {
+  if (camada.type !== 'text') return null
+  const trechos = trechosDaCamada(camada)
+  if (trechos.length === 0) return null
+  const conteudo = typeof camada.content === 'string' ? camada.content : ''
+  let destaque: EstiloDeDestaque = { ...(camada.destaque ?? {}) }
+  if (Object.keys(destaque).length === 0 && familias?.length) {
+    const pesada = familiaMaisPesada(baseDaCamada(camada).fontFamily, familias)
+    destaque = pesada ? { fontFamily: pesada } : {}
+  }
+  return estilosDoRichText({ conteudo, trechos, destaque, sombra: sombraDaCamada(camada) })
 }
 
 /** `#RRGGBB` + opacidade → `rgba()` (a sombra do rich text só lê opacidade na cor). */
@@ -189,6 +252,8 @@ export function corComOpacidade(cor: string, opacidade: number): string {
 export interface SombraDoGlifo {
   color: string
   blur: number
+  /** Ausente = 0 (a sombra da assinatura só desloca na vertical). */
+  offsetX?: number
   offsetY: number
   opacity: number
 }
@@ -208,7 +273,7 @@ export function estilosDoRichText(args: {
     .map((t) => ({ inicio: Math.max(0, Math.min(n, t.inicio)), fim: Math.max(0, Math.min(n, t.fim)) }))
     .filter((t) => t.fim > t.inicio)
   const sombra = args.sombra
-    ? { color: corComOpacidade(args.sombra.color, args.sombra.opacity), blur: args.sombra.blur, offset: { x: 0, y: args.sombra.offsetY } }
+    ? { color: corComOpacidade(args.sombra.color, args.sombra.opacity), blur: args.sombra.blur, offset: { x: args.sombra.offsetX ?? 0, y: args.sombra.offsetY } }
     : null
   const cortes = [...new Set([0, n, ...trechos.flatMap((t) => [t.inicio, t.fim])])].sort((a, b) => a - b)
   const saida: RichTextStyle[] = []
@@ -224,20 +289,26 @@ export function estilosDoRichText(args: {
 }
 
 /**
- * A volta: uma camada rich-text vira linhas com [colchetes] nos trechos que
+ * A volta: uma camada com destaque vira linhas com [colchetes] — nos
+ * `destaques` de uma camada `text`, ou nos trechos de uma rich-text que
  * DIFEREM do estilo base (sombra sozinha não é destaque). É o que deixa a
- * recomposição refazer a peça sem perder o destaque. Camada que não é rich
- * text → null.
+ * recomposição refazer a peça sem perder o destaque, e o que a caixa do
+ * editor mostra. Camada `text` sem destaques, ou de outro tipo → null.
  */
 export function linhasComColchetes(camada: Layer): string[] | null {
-  if (camada.type !== 'rich-text') return null
   const conteudo = typeof camada.content === 'string' ? camada.content : ''
-  const base = baseDaCamada(camada)
   const marcado = new Array<boolean>(conteudo.length).fill(false)
-  for (const s of Array.isArray(camada.richTextStyles) ? camada.richTextStyles : []) {
-    if (Object.keys(diferencaDaBase(s, base)).length === 0) continue
-    for (let i = Math.max(0, s.start); i < Math.min(conteudo.length, s.end); i++) marcado[i] = true
-  }
+  if (camada.type === 'text') {
+    const trechos = trechosDaCamada(camada)
+    if (trechos.length === 0) return null
+    for (const t of trechos) for (let i = t.inicio; i < t.fim; i++) marcado[i] = true
+  } else if (camada.type === 'rich-text') {
+    const base = baseDaCamada(camada)
+    for (const s of Array.isArray(camada.richTextStyles) ? camada.richTextStyles : []) {
+      if (Object.keys(diferencaDaBase(s, base)).length === 0) continue
+      for (let i = Math.max(0, s.start); i < Math.min(conteudo.length, s.end); i++) marcado[i] = true
+    }
+  } else return null
   let saida = ''
   let aberto = false
   for (let i = 0; i < conteudo.length; i++) {

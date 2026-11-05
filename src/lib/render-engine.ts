@@ -18,6 +18,7 @@ import { desenharSvgPath, pinturaDoSvgPath, type CtxDePintura } from './vetor/de
 import { partesParaPintar } from './vetor/partes'
 import { borrarPreMultiplicado } from './vetor/blur-do-multicor'
 import { flattenRichTextStyles } from './rich-text-styles'
+import { segmentosDoTexto } from './compositor/destaques'
 import type { Rect } from './creatives/halo/halo'
 import {
   escalaDoBlur,
@@ -122,14 +123,18 @@ export class RenderEngine {
     // efeitos por segmento e ignora layer.effects)
 
     const { width, height } = this.applyTransforms(ctx, finalLayer, scaleFactor)
+    // Texto com `destaques` (marcação [ ]) desenha pelo caminho do rich text,
+    // com a sombra POR SEGMENTO — a sombra da camada não entra duas vezes.
+    const segmentos = finalLayer.type === 'text' ? segmentosDoTexto(finalLayer) : null
     // O movimento da foto (quadro anotado por camadasNoInstante) é desenhado
     // em drawImageEmMovimento: máscara, cantos e borda presos à caixa
-    this.applyShadow(ctx, finalLayer, scaleFactor)
+    if (!segmentos) this.applyShadow(ctx, finalLayer, scaleFactor)
     this.applyOpacity(ctx, finalLayer.style)
 
     switch (finalLayer.type) {
       case 'text':
-        await this.renderText(ctx, finalLayer, width, height, options)
+        if (segmentos) await this.renderRichText(ctx, finalLayer, options, segmentos)
+        else await this.renderText(ctx, finalLayer, width, height, options)
         break
       case 'rich-text':
         await this.renderRichText(ctx, finalLayer, options)
@@ -609,6 +614,8 @@ export class RenderEngine {
     ctx: CanvasRenderingContext2D,
     layer: Layer,
     options: RenderOptions,
+    /** Camada `text` com `destaques`: os segmentos já derivados (`segmentosDoTexto`). */
+    segmentosProntos?: RichTextStyle[],
   ): Promise<void> {
     const style = layer.style ?? {}
     const scaleFactor = options.scaleFactor ?? 1
@@ -645,7 +652,7 @@ export class RenderEngine {
       textDecoration: 'none',
       letterSpacing: style.letterSpacing ?? 0,
     }
-    const flat = flattenRichTextStyles(content.length, (layer.richTextStyles ?? []) as RichTextStyle[])
+    const flat = flattenRichTextStyles(content.length, segmentosProntos ?? ((layer.richTextStyles ?? []) as RichTextStyle[]))
     const segments: RichTextStyle[] = []
     if (flat.length === 0) {
       segments.push({ ...baseSeg, start: 0, end: content.length })
