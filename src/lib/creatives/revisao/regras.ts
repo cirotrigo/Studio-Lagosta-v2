@@ -26,12 +26,17 @@
  */
 
 import type { Layer } from '@/types/template'
+import { temTextoVisivel } from './texto-visivel'
 import { TEXT_DRAW_PADDING, type TextGeometryIssue, type TextLayerMetrics } from '@/lib/creatives/text-geometry'
-import { CANVAS_MARGIN } from '@/lib/canvas-margin'
-import type { ContrasteMedido } from '@/lib/compositor/regua'
+import { margensDoEditor } from '@/lib/canvas-margin'
+import { formatoDaPaginaGravada } from '@/lib/compositor/formato'
+import { ajusteParaDentro } from './para-dentro'
+import { textosForaDaPiora, tratamentosQuePioraramALeitura, type ContrasteMedido, type PioraDeTratamento } from '@/lib/compositor/regua'
 import { papelDaCamada } from '@/lib/compositor/defasagem'
 import { alcanceDoGrupo, alturaDaFaixa, bordaDoGrupo, ehGradienteDeLeitura, forcaDaCamada, GRADIENTE_PADRAO, type Borda } from '@/lib/compositor/gradiente-de-leitura'
-import { uniao, type Rect } from '@/lib/creatives/halo/halo'
+import { luzDaCor, uniao, type Rect } from '@/lib/creatives/halo/halo'
+import { ALFA_VISIVEL_DA_LOGO, LIMIAR_DE_CONTRASTE_DA_LOGO, PERCENTIL_DA_LOGO, type MedidaDaLogo } from '@/lib/compositor/legibilidade-da-logo'
+import { TETO_DE_COBERTURA_DO_ASSUNTO, TETO_DE_COBERTURA_DO_ASSUNTO_ESTIMADO } from '@/lib/compositor/mapa-de-calma'
 import { bordaDaLeitura } from './aplicar-ajustes'
 import {
   ajusteSchema,
@@ -70,11 +75,78 @@ export function leituraDecisiva(m: ContrasteMedido): { p98: number; ok: boolean;
     : { p98: m.p98ComHalo, ok: m.ok, tinta: m.tinta, alvo: m.alvo, sentido: m.sentido }
 }
 
+/** Onde a força de um gradiente está na faixa da marca, e quanto ela ainda pode mudar. */
+export interface DiagnosticoDaForca {
+  posicao: 'abaixo-do-piso' | 'piso' | 'entre' | 'teto' | 'acima-do-teto'
+  forca: number
+  minima: number
+  maxima: number
+  margemParaAumentar: number
+  margemParaDiminuir: number
+}
+
+/**
+ * Pura (CP1, 13/10/2026): a posição REAL da força na faixa. O revisor dizia
+ * "já está no teto" para força 0.45 — que era o PISO (peça piloto). Faixa
+ * degenerada (mínimo = máximo) conta como teto: não há margem. Compara na
+ * precisão em que a força é gravada (3 casas): a posição e a margem saem da
+ * MESMA diferença real — 0.746 sob teto 0.75 está entre, com margem 0.004.
+ */
+export function diagnosticoDaForca(forca: number, [minima, maxima]: [number, number]): DiagnosticoDaForca {
+  const f = arred(forca, 3)
+  const min = arred(minima, 3)
+  const max = arred(maxima, 3)
+  const posicao: DiagnosticoDaForca['posicao'] = f > max ? 'acima-do-teto' : f === max ? 'teto' : f < min ? 'abaixo-do-piso' : f === min ? 'piso' : 'entre'
+  return {
+    posicao,
+    forca,
+    minima,
+    maxima,
+    margemParaAumentar: Math.max(0, arred(max - f, 3)),
+    margemParaDiminuir: Math.max(0, arred(f - min, 3)),
+  }
+}
+
+/** A frase da posição da força, para o achado de leitura (`proposta`: a força é a que o revisor propõe). */
+function fraseDaForca(d: DiagnosticoDaForca, borda: Borda, proposta = false): string {
+  const qual = borda === 'topo' ? 'do topo' : 'do rodapé'
+  const faixa = `força ${d.forca}; faixa da marca ${d.minima}–${d.maxima}`
+  const aumentar = d.margemParaAumentar > 0 ? `há margem para aumentar até ${d.maxima}` : 'não há margem para aumentar'
+  const diminuir = d.margemParaDiminuir > 0 ? `há margem para diminuir até ${d.minima}` : 'não há margem para diminuir'
+  const onde = {
+    'acima-do-teto': 'está ACIMA do teto da faixa da marca',
+    teto: 'está no TETO da faixa da marca',
+    entre: 'está entre o piso e o teto da faixa da marca',
+    piso: 'está no PISO da faixa da marca',
+    'abaixo-do-piso': 'está ABAIXO do piso da faixa da marca',
+  }[d.posicao]
+  return proposta ? `Com a proposta, o gradiente ${qual} ${onde.replace(/^está/, 'fica')} (${faixa}): ${aumentar}; ${diminuir}.` : `O gradiente ${qual} ${onde} (${faixa}): ${aumentar}; ${diminuir}.`
+}
+
 export interface ReferenciaDeCamada {
   /** Corpo do modelo, normalizado para 1080 de largura. */
   fontSize1080: number
   entrelinha: number | null
   origem: string
+  /**
+   * CP4.2a: a camada do modelo não tinha `fontSize` numérico e o corpo veio do fallback (16). Para TÍTULOS essa
+   * referência vale como AUSENTE (nunca vira um piso de 12,8 px); os demais seguem como sempre.
+   */
+  inferida?: true
+}
+
+export interface LeituraDaLogoNaRevisao {
+  camada: string
+  /** O arquivo desenhado e, quando a composição a gravou, a origem (página de assinatura ou logo do projeto). */
+  variante: { url: string; origem?: 'pagina' | 'projeto' }
+  posicao: Rect
+  medida: MedidaDaLogo | null
+  /**
+   * `indisponivel`: o arquivo não baixou ou não decodificou; `sem-pixels`: nenhum pixel visível sobre o fundo;
+   * `fora-do-contrato`: a camada é desenhada com rotação, opacidade, recorte ou `cover` — a caixa não representa o desenho.
+   */
+  estado: 'medida' | 'indisponivel' | 'sem-pixels' | 'fora-do-contrato'
+  motivo?: string
 }
 
 export interface EntradaDaRevisao {
@@ -86,11 +158,36 @@ export interface EntradaDaRevisao {
   geometria: TextGeometryIssue[]
   /** A régua rodada COM correção, em memória: `tintaCorrigida` é a força proposta. `null` = não medida. */
   contraste: ContrasteMedido[] | null
+  /**
+   * As pioras de tratamento na peça COMO ESTÁ (`ReguaResultado.pioras`, antes
+   * da correção em memória). `null` = a régua não rodou. Ausente: derivadas de
+   * `contraste` — o estado que a medida descreve, que nos grupos corrigidos é
+   * o DEPOIS da correção (CP1, 13/10/2026).
+   */
+  pioras?: PioraDeTratamento[] | null
   faixaDoGradiente: [number, number]
   /** Corpo e entrelinha de referência por id de camada da página revisada. */
   referencias: Record<string, ReferenciaDeCamada>
+  /**
+   * CP4.2a: os títulos FIXADOS pelo executor a partir da página ANTERIOR à chamada (`titulosDaPagina`). Presente, a
+   * classificação não é inferida de novo em cada medida — reduzir a manchete (ou reclassificá-la pelo `papel` do
+   * pedido) não a tira da proteção. Ausente (revisar-arte solto), a inferência de sempre.
+   */
+  titulosFixados?: string[]
   assunto: { rect: Rect; origem: 'catalogo' | 'estimado' } | null
+  /** Sem assunto: o motivo, e se a regra `texto-sobre-assunto` é inaplicável (foto lida sem assunto) em vez de não medida. */
+  motivoSemAssunto?: string
+  assuntoNaoSeAplica?: true
+  /**
+   * A leitura de cada logo solta (CP3, 15/10/2026): a medida pixel a pixel contra o fundo efetivo sem ela
+   * (`legibilidade-da-logo.ts`), ou o motivo de o ARQUIVO não ter carregado (`indisponivel`) — que é cobertura
+   * parcial, nunca "sem contraste". `null`/ausente = a medição não rodou (`motivoSemLeituraDaLogo`).
+   */
+  leituraDaLogo?: LeituraDaLogoNaRevisao[] | null
+  motivoSemLeituraDaLogo?: string
   fontesAusentes: Array<{ familia: string; peso: number | null; camadas: string[] }>
+  /** A conferência das fontes NÃO rodou (o registro de fontes falhou): `fonte-nao-carregada` sai "não avaliada", nunca "nenhuma falta". */
+  motivoSemFontes?: string
   /** Camadas medidas por aproximação (rich text). */
   medidasAproximadas: string[]
   /**
@@ -142,9 +239,10 @@ export const LIMITES_DA_REVISAO = {
   pisoDeFonte1080: 24,
   pisoRelativo: 0.8,
   orfaFracao: 0.3,
-  coberturaDoAssunto: 0.25,
+  /** Os tetos moram no mapa de calma: o compositor e a busca espacial usam os MESMOS (uma fonte só). */
+  coberturaDoAssunto: TETO_DE_COBERTURA_DO_ASSUNTO,
   /** Assunto só ESTIMADO pela textura: 25% acusava 8 de 30 peças reais sem nada visível — o teto é outro. */
-  coberturaDoAssuntoEstimado: 0.4,
+  coberturaDoAssuntoEstimado: TETO_DE_COBERTURA_DO_ASSUNTO_ESTIMADO,
   /** px de tinta além da caixa antes de acusar (antialias). */
   folgaDeTinta: 1.5,
   /** Níveis de p98 abaixo do alvo que já contam como gradiente sobrando. */
@@ -191,11 +289,57 @@ const pct = (v: number) => `${Math.round(v * 100)}%`
 
 /** Texto sem conteúdo (`content` vazio ou só espaço): o mesmo critério de `textosSemMetrica` em `revisar-arte`. */
 export function textoSemConteudo(l: Layer): boolean {
-  return (l.type === 'text' || l.type === 'rich-text') && String(l.content ?? '').trim() === ''
+  return (l.type === 'text' || l.type === 'rich-text') && !temTextoVisivel(l.content)
 }
 
 export function ehTextoVisivel(l: Layer): boolean {
   return (l.type === 'text' || l.type === 'rich-text') && l.visible !== false
+}
+
+/**
+ * CP4.2a — os títulos de uma página, pela MESMA regra de `idsDeTitulo`, mas lidos das camadas gravadas (a página
+ * ANTERIOR à chamada), para o executor fixar a classificação antes do lote: todo texto com papel GRAVADO
+ * `headline`/`headline2` (metadata/id/nome) entra, mesmo vazio ou oculto (uma manchete vazia que o pedido preenche
+ * continua manchete); sem papel gravado, a inferência por TAMANHO só entre os textos visíveis e com conteúdo (os
+ * mensuráveis): o maior é título se tem corpo ≥ 1,5× o segundo. Puro.
+ */
+export function titulosDaPagina(camadas: Layer[]): string[] {
+  const textos = camadas.filter((l) => l.type === 'text' || l.type === 'rich-text')
+  const porPapel = textos.filter((l) => {
+    const p = papelDaCamada(l)
+    return p === 'headline' || p === 'headline2'
+  })
+  if (porPapel.length > 0) return porPapel.map((l) => l.id)
+  const mensuraveis = textos.filter((l) => l.visible !== false && temTextoVisivel(l.content) && typeof l.style?.fontSize === 'number')
+  if (mensuraveis.length < 2) return []
+  const ordenadas = [...mensuraveis].sort((a, b) => Number(b.style!.fontSize) - Number(a.style!.fontSize))
+  return Number(ordenadas[0].style!.fontSize) >= Number(ordenadas[1].style!.fontSize) * 1.5 ? [ordenadas[0].id] : []
+}
+
+export type ComponenteDoPisoDoTitulo = 'modelo' | 'hierarquia' | 'celular'
+
+/**
+ * CP4.2a — os pisos de corpo (em px de 1080) de um TÍTULO, um por componente, SEM `max` entre eles: cada um vira um
+ * achado próprio e é comparado sozinho (uma melhora na hierarquia não compensa cruzar o piso do modelo).
+ *   modelo     — 0,8 × referência (`pisoRelativo`, a mesma escada do compositor e dos não-títulos); só com referência
+ *                válida (a inferida do fallback 16 conta como ausente);
+ *   hierarquia — o maior corpo1080 entre os textos visíveis que NÃO são título (fator 1,0: não inverter; K segue
+ *                telemetria); só quando há secundário medido;
+ *   celular    — `pisoDeFonte1080` (24), salvo modelo deliberadamente discreto (referência válida < 24: só o recuo
+ *                de 80 % conta, como na regra dos não-títulos).
+ */
+export function pisosDoTitulo(args: {
+  referencia: ReferenciaDeCamada | undefined
+  maiorSecundario1080: number | null
+  limites?: Pick<typeof LIMITES_DA_REVISAO, 'pisoRelativo' | 'pisoDeFonte1080'>
+}): Array<{ componente: ComponenteDoPisoDoTitulo; piso1080: number }> {
+  const L = args.limites ?? LIMITES_DA_REVISAO
+  const ref = args.referencia && !args.referencia.inferida && Number.isFinite(args.referencia.fontSize1080) && args.referencia.fontSize1080 > 0 ? args.referencia.fontSize1080 : null
+  const pisos: Array<{ componente: ComponenteDoPisoDoTitulo; piso1080: number }> = []
+  if (ref !== null) pisos.push({ componente: 'modelo', piso1080: L.pisoRelativo * ref })
+  if (args.maiorSecundario1080 !== null && args.maiorSecundario1080 > 0) pisos.push({ componente: 'hierarquia', piso1080: args.maiorSecundario1080 })
+  if (ref === null || ref >= L.pisoDeFonte1080) pisos.push({ componente: 'celular', piso1080: L.pisoDeFonte1080 })
+  return pisos
 }
 
 export function grupoDaCamada(l: Layer | undefined): string | null {
@@ -233,15 +377,13 @@ function expandir(r: Rect, d: number): Rect {
   return { x: r.x - d, y: r.y - d, width: r.width + 2 * d, height: r.height + 2 * d }
 }
 
-/** As margens de segurança do editor (as guias azuis), na escala da peça. */
+/**
+ * As margens de segurança do editor (as guias azuis), na escala da peça — a MARGEM DA MARCA padrão de
+ * `margensDoEditor` (29/10/2026: Story 64/160/160, Feed 64/72/72), pelo formato que o tamanho do canvas diz. Eram
+ * 70/120/100 fixos (até o L5 da instrução das linhas-guia, antecipado no PR das margens de 29/10).
+ */
 export function limitesDoEditor(canvas: { width: number; height: number }) {
-  const s = canvas.width / 1080
-  return {
-    topo: CANVAS_MARGIN.top * s,
-    base: canvas.height - CANVAS_MARGIN.bottom * s,
-    esquerda: CANVAS_MARGIN.left * s,
-    direita: canvas.width - CANVAS_MARGIN.right * s,
-  }
+  return margensDoEditor({ formato: formatoDaPaginaGravada(canvas), assinatura: null, largura: canvas.width, altura: canvas.height }).marca
 }
 
 /** A TINTA do texto na peça: vertical pelos glifos, horizontal pela linha mais larga no alinhamento. */
@@ -288,6 +430,15 @@ export function blocosDeTexto(camadas: Layer[], metricas: TextLayerMetrics[]): B
     blocos.set(chave, bloco)
   }
   return [...blocos.values()].sort((a, b) => a.tinta.y - b.tinta.y || a.tinta.x - b.tinta.x)
+}
+
+/** A foto de fundo da peça (`bg-foto` ou a imagem que cobre ≥ 90% do canvas): sem ela não há assunto a proteger. */
+export function fotoDeFundo(camadas: Layer[], canvas: { width: number; height: number }): Layer | null {
+  return (
+    camadas.find((l) => l.id === 'bg-foto' && l.visible !== false) ??
+    camadas.find((l) => l.type === 'image' && l.visible !== false && (l.size?.width ?? 0) >= canvas.width * 0.9 && (l.size?.height ?? 0) >= canvas.height * 0.9) ??
+    null
+  )
 }
 
 /** As logos soltas da peça (a logo que mora num arranjo de texto é desenho, não conta). */
@@ -650,24 +801,11 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
       marcarParcial('fora-da-area-segura', 'bloco com fonte não cadastrada')
       continue
     }
-    const t = b.tinta
-    const sobra = {
-      topo: lim.topo - t.y,
-      base: t.y + t.height - lim.base,
-      esquerda: lim.esquerda - t.x,
-      direita: t.x + t.width - lim.direita,
-    }
-    const lados = (Object.keys(sobra) as Array<keyof typeof sobra>).filter((k) => sobra[k] > 2)
+    // A conta mora em `para-dentro.ts` (L3 das linhas-guia): o editor usa a MESMA para o "Trazer para dentro"
+    const { lados, dx, dy, maior, vertical, horizontal } = ajusteParaDentro(b.tinta, lim)
     if (lados.length === 0) continue
-    let dy = 0
-    let dx = 0
-    const vertical = sobra.topo > 2 && sobra.base > 2
-    const horizontal = sobra.esquerda > 2 && sobra.direita > 2
-    if (!vertical) dy = sobra.topo > 2 ? Math.ceil(sobra.topo + 2) : sobra.base > 2 ? -Math.ceil(sobra.base + 2) : 0
-    if (!horizontal) dx = sobra.esquerda > 2 ? Math.ceil(sobra.esquerda + 2) : sobra.direita > 2 ? -Math.ceil(sobra.direita + 2) : 0
     const ids = b.textos.map((x) => x.camada.id)
     const nomes = b.textos.map((x) => nomeDaCamada(x.camada)).join(' + ')
-    const maior = Math.max(...lados.map((k) => sobra[k]))
     adicionar(
       {
         regra: 'fora-da-area-segura',
@@ -704,6 +842,63 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
     )
   }
 
+  // 5b. A LEITURA DA LOGO (CP3, 15/10/2026): a medida regional — p10 da diferença de luz pixel a pixel entre os
+  //     pixels visíveis (alfa ≥ 128) da logo e o fundo efetivo sem ela, ≥ 45. A média é só diagnóstico: não salva
+  //     uma logo cujo p10 falha. Sem ajuste mecânico: a correção (outra variante autorizada, outro canto) é do
+  //     compositor com arquétipo; aqui o fluxo humano só avisa (o gate é do CP5). Arquivo que não carregou é
+  //     cobertura PARCIAL, dita — nunca vira "sem contraste".
+  if (e.leituraDaLogo === null || e.leituraDaLogo === undefined) {
+    cobertura['logo-sem-leitura'] = { estado: 'nao-avaliada', motivo: e.motivoSemLeituraDaLogo ?? 'a leitura da logo não foi medida' }
+  } else if (e.leituraDaLogo.length === 0 && e.camadas.some((l) => l.visible !== false && grupoDaCamada(l) && (l.type === 'logo' || l.id === 'logo'))) {
+    // A logo mora num arranjo (grupo com o texto): fora do contrato do CP3 — "avaliada" com zero pixels mentiria.
+    cobertura['logo-sem-leitura'] = { estado: 'nao-avaliada', motivo: 'a logo da peça está num arranjo (grupo com o texto) e não é medida como logo solta' }
+  } else {
+    const naoMedidas = e.leituraDaLogo.filter((l) => l.estado !== 'medida' || !l.medida)
+    for (const l of e.leituraDaLogo) {
+      if (l.estado !== 'medida' || !l.medida || l.medida.legivel) continue
+      const m = l.medida
+      // Camada `image` com "logo" no nome pode ser logo de parceiro ou selo: sem variante cadastrada para trocar, é aviso.
+      const camadaDaLogo = porId.get(l.camada)
+      const ehLogoDaMarca = !camadaDaLogo || camadaDaLogo.type === 'logo' || camadaDaLogo.id === 'logo'
+      adicionar({
+        regra: 'logo-sem-leitura',
+        severidade: ehLogoDaMarca ? 'problema' : 'aviso',
+        certeza: 'medida',
+        camadas: [l.camada],
+        mensagem: `A logo não lê contra o fundo: ${Math.round(100 * (1 - m.proporcaoAcima45))}% dos pixels dela têm contraste abaixo de ${LIMIAR_DE_CONTRASTE_DA_LOGO} (p10 ${m.contrasteP10}; a média ${m.contrasteMedio} não decide).`,
+        evidencia: {
+          codigo: 'LOGO_SEM_LEITURA',
+          p10: m.contrasteP10,
+          media: m.contrasteMedio,
+          proporcaoNoLimiar: m.proporcaoAcima45,
+          pixelsAvaliados: m.pixelsAvaliados,
+          luzDaLogo: m.luzDaLogo,
+          luzDoFundo: m.luzDoFundo,
+          limiar: LIMIAR_DE_CONTRASTE_DA_LOGO,
+          alfaMinimo: ALFA_VISIVEL_DA_LOGO,
+          percentil: PERCENTIL_DA_LOGO,
+          variante: l.variante.url.startsWith('data:') ? `${l.variante.url.slice(0, 48)}…` : l.variante.url,
+          origem: l.variante.origem ?? null,
+          x: Math.round(l.posicao.x),
+          y: Math.round(l.posicao.y),
+          largura: Math.round(l.posicao.width),
+          altura: Math.round(l.posicao.height),
+        },
+        observacao: ehLogoDaMarca
+          ? 'Critério regional (CP3): o p10 da diferença |luz da logo − luz do fundo| no mesmo pixel, só nos pixels visíveis. Nenhuma variante é fabricada: troque por uma variante cadastrada que leia, mude a foto ou a posição.'
+          : 'Critério regional (CP3) numa imagem com "logo" no nome (parceiro, selo?): mude a foto ou a posição; se for a logo da marca, cadastre-a como logo.',
+      })
+    }
+    if (naoMedidas.length > 0) {
+      cobertura['logo-sem-leitura'] = { estado: e.leituraDaLogo.length === naoMedidas.length ? 'nao-avaliada' : 'parcial', motivo: naoMedidas.map((l) => `${l.camada}: ${l.estado === 'indisponivel' ? `o arquivo da logo não carregou (${l.motivo ?? 'sem motivo'})` : l.motivo ?? (l.estado === 'fora-do-contrato' ? 'camada fora do contrato do desenho' : 'sem pixel visível')}`).join('; ') }
+    }
+  }
+
+  // As pioras de tratamento (CP1): calculadas aqui porque a seção 6 avisa quando propõe reforçar o
+  // gradiente que piorou a leitura. Sem `pioras` na entrada, derivam da medida — o estado que ELA
+  // descreve (a régua com correção grava nos grupos corrigidos o depois). `null` = régua não rodou.
+  const pioras = e.pioras !== undefined ? e.pioras : e.contraste ? tratamentosQuePioraramALeitura(e.contraste) : null
+
   // ── 6. Leitura sobre a foto (a régua) e gradiente sobrando ─────────────
   if (!e.contraste) {
     cobertura['texto-sem-leitura'] = { estado: 'nao-avaliada', motivo: 'a régua de contraste não rodou' }
@@ -737,7 +932,9 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
           observacao = 'Texto escuro sobre fundo escuro: a régua não corrige esse caso — mova o bloco para uma área clara da foto ou mude a cor do texto.'
         } else if (gradiente && m.tintaCorrigida != null) {
           propostas.push({ tipo: 'gradiente', borda, camadas: [gradiente.id], forca: m.tintaCorrigida })
-          if (!m.ok) observacao = `Mesmo com a força em ${m.tintaCorrigida} (teto da marca: ${forcaMaxima}) a leitura não fecha (p98 ${m.p98ComHalo} contra alvo ${m.alvo}): mova o bloco para uma área mais escura da foto ou troque a foto.`
+          // CP1: dizia "(teto da marca: X)" mesmo com a força proposta abaixo do teto — a posição e a margem são as reais.
+          if (!m.ok)
+            observacao = `Mesmo com a força proposta (${m.tintaCorrigida}) a leitura não fecha (p98 ${m.p98ComHalo} contra alvo ${m.alvo}). ${fraseDaForca(diagnosticoDaForca(m.tintaCorrigida, [forcaMinima, forcaMaxima]), borda, true)} Mova o bloco para uma área mais escura da foto ou troque a foto.`
         } else if (!gradiente) {
           const necessaria = m.p98SemHalo > 0 ? (m.p98SemHalo - (alvo - 10)) / m.p98SemHalo / 0.7 : forcaMinima
           const forca = arred(Math.min(forcaMaxima, Math.max(forcaMinima, necessaria)), 3)
@@ -752,7 +949,27 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
             propostas.push({ tipo: 'gradiente', borda, forca, altura, cor: corDeOutroGradiente })
           }
         } else {
-          observacao = `O gradiente ${borda === 'topo' ? 'do topo' : 'do rodapé'} já está no teto da marca (${tinta}): mova o bloco para uma área mais escura da foto ou troque a foto.`
+          // A régua não achou força que feche a leitura. Dizer ONDE a força está de verdade (CP1: dizia "teto"
+          // no piso) e, havendo margem, por que mais força deste véu não resolve.
+          const forca = diagnosticoDaForca(tinta, [forcaMinima, forcaMaxima])
+          const stops = (gradiente.style as { gradientStops?: Array<{ color?: string }> } | undefined)?.gradientStops ?? []
+          const corDoVeu = stops.find((x) => typeof x.color === 'string')?.color
+          const veuClareia = typeof corDoVeu === 'string' && /^#[0-9a-fA-F]{6}$/.test(corDoVeu) && luzDaCor(corDoVeu) >= m.p98SemHalo
+          const porQue =
+            forca.margemParaAumentar <= 0
+              ? ''
+              : tinta <= 0
+                ? ' A régua não corrige um gradiente de força 0 (ele não está agindo sobre o texto).'
+                : veuClareia
+                ? ` Mais força não resolve: o véu (${corDoVeu}, luz ${Math.round(luzDaCor(corDoVeu!))}) é mais claro que o fundo sob o texto (p98 sem véu ${m.p98SemHalo}) — mais força clareia o fundo e piora a leitura.`
+                : ' Mesmo assim a régua não acha força deste véu que feche a leitura.'
+          observacao = `${fraseDaForca(forca, borda)}${porQue} Mova o bloco para uma área mais escura da foto ou troque a foto.`
+        }
+        // A proposta reforça um gradiente que, medido com e sem ele, PIOROU a leitura deste grupo: dizer,
+        // não esconder (a correção da polaridade é de outro checkpoint).
+        const gradientesReforcados = new Set(propostas.flatMap((p) => p.camadas ?? []))
+        if (pioras?.some((p) => (p.gradientes ?? (p.gradiente ? [p.gradiente] : [])).some((g) => gradientesReforcados.has(g)) && ids.includes(p.camada))) {
+          observacao = [observacao, 'Atenção: este gradiente PIOROU a leitura deste texto (TRATAMENTO_PIOROU_LEITURA, medido) — reforçá-lo tende a piorar mais; confira antes de aplicar.'].filter(Boolean).join(' ')
         }
         const doGrupo = ids.map((id) => porId.get(id)!)
         const sombra = doGrupo.some(temSombraNoGlifo)
@@ -781,6 +998,9 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
               p98,
               alvo,
               forcaAtual: tinta,
+              forcaMinima,
+              forcaMaxima,
+              posicaoDaForca: gradiente ? diagnosticoDaForca(tinta, [forcaMinima, forcaMaxima]).posicao : null,
               forcaProposta: m.tintaCorrigida ?? (propostas[0]?.forca ?? null),
               fechaComAProposta: gradiente ? m.ok : null,
             },
@@ -834,8 +1054,59 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
     }
   }
 
+  // ── 6b. O tratamento PIOROU a leitura (CP1, 13/10/2026) ─────────────────
+  // Derivado só da régua (com e sem o tratamento, texto a texto, nos dois
+  // sentidos). É `problema` medido e a visão NÃO o rebaixa — o benchmark REA viu
+  // ferramenta madura "melhorar o contraste" na polaridade errada e dizer que
+  // melhorou. Diagnóstico: não propõe cor nem layout.
+  if (!pioras) {
+    cobertura['tratamento-piorou-leitura'] = { estado: 'nao-avaliada', motivo: 'a régua de contraste não rodou' }
+  } else {
+    // O que a regra NÃO julgou fica dito na cobertura, nunca lido como "sem piora".
+    const foraDaPiora = textosForaDaPiora(e.contraste ?? [])
+    const lacunas = [
+      foraDaPiora.length > 0 ? `sem a medida com e sem o tratamento (ou cor que não é #hex): ${foraDaPiora.join(', ')}` : null,
+      e.camadas.some((l) => (l.type === 'gradient' || l.type === 'gradient2') && l.visible !== false && !ehGradienteDeLeitura(l))
+        ? 'gradiente desenhado à mão: só o gradiente de leitura do compositor é medido com e sem'
+        : null,
+      e.medidasAproximadas.length > 0 ? 'rich text: a polaridade sai da cor base do texto' : null,
+    ].filter(Boolean)
+    if (lacunas.length > 0) marcarParcial('tratamento-piorou-leitura', lacunas.join('; '))
+    for (const p of pioras) {
+      const camada = porId.get(p.camada)
+      if (!camada || textoSemConteudo(camada)) continue
+      const sobe = p.polaridade === 'clara'
+      adicionar({
+        regra: 'tratamento-piorou-leitura',
+        severidade: 'problema',
+        certeza: 'medida',
+        camadas: [p.camada],
+        mensagem: `${(p.gradientes?.length ?? 0) > 1 ? `Os tratamentos de leitura (${p.gradientes.join(', ')}) PIORARAM` : 'O tratamento de leitura PIOROU'} "${nomeDaCamada(camada)}": com ele, o ${p.percentil} do fundo sob o texto ${sobe ? 'claro SUBIU' : 'escuro DESCEU'} de ${p.antes} para ${p.depois} (tolerância ${p.tolerancia}).`,
+        evidencia: {
+          codigo: p.codigo,
+          grupo: p.grupo,
+          polaridade: p.polaridade,
+          percentil: p.percentil,
+          antes: p.antes,
+          depois: p.depois,
+          tolerancia: p.tolerancia,
+          luzDoTexto: p.luzDoTexto,
+          gradiente: p.gradiente,
+          gradientes: (p.gradientes ?? []).join(', '),
+          polaridadePor: p.polaridadePor,
+        },
+        observacao: 'Medido com e sem o tratamento: a visão não rebaixa este achado.',
+      })
+    }
+  }
+
   // ── 7. Título grande ───────────────────────────────────────────────────
   const idsDeTitulo = (() => {
+    // CP4.2a: fixados pelo executor a partir da página anterior à chamada — sem inferência nova (A.3 do contrato).
+    if (e.titulosFixados) {
+      const fixados = new Set(e.titulosFixados)
+      return e.metricas.filter((m) => fixados.has(m.layerId)).map((m) => m.layerId)
+    }
     const porPapel = e.metricas
       .filter((m) => {
         const p = papelDaCamada(porId.get(m.layerId)!)
@@ -847,6 +1118,11 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
     const ordenadas = [...e.metricas].sort((a, b) => b.fontSize - a.fontSize)
     return ordenadas[0].fontSize >= ordenadas[1].fontSize * 1.5 ? [ordenadas[0].layerId] : []
   })()
+  /** CP4.2a: o maior corpo1080 entre os textos medidos que não são título (o componente `hierarquia` do piso). */
+  const maiorSecundario1080De = (_titulo: string): number | null => {
+    const secundarios = e.metricas.filter((m) => !idsDeTitulo.includes(m.layerId) && !textoSemConteudo(porId.get(m.layerId)!))
+    return secundarios.length > 0 ? Math.max(...secundarios.map((m) => m.fontSize / s)) : null
+  }
   if (idsDeTitulo.length === 0) {
     cobertura['titulo-grande'] = { estado: 'nao-avaliada', motivo: 'a peça não tem título identificável' }
   } else if (idsDeTitulo.some((id) => fonteIncerta.has(id))) {
@@ -862,7 +1138,9 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
     let referencia: number | null = null
     for (const m of ms) {
       const ref = e.referencias[m.layerId]
-      if (!ref) continue
+      // CP4.2a (Codex): a referência INFERIDA (fallback 16 de camada do modelo sem corpo) é ausente também aqui —
+      // senão um título de 84 sairia "5,25× maior que o modelo" e a sugestão seria recusada pelo executor.
+      if (!ref || ref.inferida) continue
       const r = m.fontSize / s / ref.fontSize1080
       if (r > razao) {
         razao = r
@@ -877,7 +1155,14 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
       if (grande) candidatas.push((L.tituloAlturaSugestao * 0.92) / fracao)
       let escala = Math.min(...candidatas)
       const corpoMinimo = Math.min(...ms.map((m) => m.fontSize / s))
-      const piso = Math.max(maiorQueOModelo ? 0.5 : L.pisoRelativo, L.pisoDeFonte1080 / corpoMinimo)
+      // CP4.2a: a escala sugerida respeita o piso COMPARTILHADO do título (modelo × hierarquia × celular, por título
+      // atingido) e os limites do `ajusteSchema` (escala ≥ 0,5): a sugestão da regra 7 nunca produz um corpo que a
+      // regra 9 acusaria e a não-piora recusaria.
+      const razaoDoPisoCompartilhado = Math.max(
+        0,
+        ...ms.map((m) => Math.max(0, ...pisosDoTitulo({ referencia: e.referencias[m.layerId], maiorSecundario1080: maiorSecundario1080De(m.layerId), limites: L }).map((p) => p.piso1080)) / (m.fontSize / s)),
+      )
+      const piso = Math.max(maiorQueOModelo ? 0.5 : L.pisoRelativo, L.pisoDeFonte1080 / corpoMinimo, razaoDoPisoCompartilhado)
       escala = arred(Math.max(escala, Math.min(1, piso)), 3)
       const corpoMaior = Math.round(Math.max(...ms.map((m) => m.fontSize / s)))
       adicionar(
@@ -929,6 +1214,46 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
   }
 
   // ── 9. Texto pequeno ───────────────────────────────────────────────────
+  // CP4.2a — os TÍTULOS: um achado por componente do piso (modelo, hierarquia, celular), cada um com id estável
+  // `texto-pequeno:<camada>:<componente>` e gravidade própria — comparados um a um pela não-piora, sem compensação.
+  for (const m of e.metricas) {
+    if (!idsDeTitulo.includes(m.layerId) || fonteIncerta.has(m.layerId)) continue
+    const camada = porId.get(m.layerId)!
+    const corpo1080 = m.fontSize / s
+    const ref = e.referencias[m.layerId]
+    if (!ref || ref.inferida) marcarParcial('texto-pequeno', `título "${nomeDaCamada(camada)}" sem referência de corpo no modelo (só a hierarquia e o piso do celular valem)`)
+    const maiorSecundario1080 = maiorSecundario1080De(m.layerId)
+    const pisos = pisosDoTitulo({ referencia: ref, maiorSecundario1080, limites: L })
+    const abaixo = pisos.filter((p) => corpo1080 < p.piso1080 - 0.5)
+    const pisoMaior = Math.max(...abaixo.map((p) => p.piso1080), 0)
+    abaixo.forEach((p, i) => {
+      const porque =
+        p.componente === 'modelo'
+          ? `o modelo usa ${Math.round(ref!.fontSize1080)}px e o piso é ${Math.round(p.piso1080)}px`
+          : p.componente === 'hierarquia'
+            ? `o maior texto secundário tem ${Math.round(maiorSecundario1080!)}px e o título não pode ficar menor`
+            : `abaixo do piso de leitura no celular (${Math.round(p.piso1080)}px)`
+      adicionar(
+        {
+          regra: 'texto-pequeno',
+          severidade: 'aviso',
+          certeza: certezaDe([m.layerId]),
+          camadas: [m.layerId],
+          mensagem: `O título "${nomeDaCamada(camada)}" está com ${Math.round(corpo1080)}px: ${porque}.`,
+          evidencia: {
+            corpo1080: Math.round(corpo1080),
+            piso1080: Math.round(p.piso1080),
+            componente: p.componente,
+            referencia1080: ref && !ref.inferida ? Math.round(ref.fontSize1080) : null,
+            maiorSecundario1080: maiorSecundario1080 !== null ? Math.round(maiorSecundario1080) : null,
+          },
+        },
+        // Uma correção só, no primeiro achado do título: subir ao maior dos pisos cruzados.
+        i === 0 ? [{ tipo: 'fonte', camadas: [m.layerId], fontSize: Math.ceil(pisoMaior * s) }] : [],
+        `texto-pequeno:${m.layerId}:${p.componente}`,
+      )
+    })
+  }
   for (const m of e.metricas) {
     if (idsDeTitulo.includes(m.layerId) || fonteIncerta.has(m.layerId)) continue
     const camada = porId.get(m.layerId)!
@@ -982,7 +1307,7 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
 
   // ── 11. Texto sobre o assunto ──────────────────────────────────────────
   if (!e.assunto) {
-    cobertura['texto-sobre-assunto'] = { estado: 'nao-avaliada', motivo: 'sem foto ou sem assunto localizado' }
+    cobertura['texto-sobre-assunto'] = { estado: 'nao-avaliada', motivo: e.motivoSemAssunto ?? 'sem foto ou sem assunto localizado', ...(e.assuntoNaoSeAplica ? { naoSeAplica: true as const } : {}) }
   } else {
     const assunto = e.assunto
     for (const b of blocos) {
@@ -1311,11 +1636,14 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
   }
 
   for (const regra of REGRAS_DA_REVISAO) if (!cobertura[regra]) cobertura[regra] = { estado: 'avaliada' }
+  // A conferência das fontes que falhou não é "nenhuma fonte falta" (Codex R2 do CP4): a regra fica não avaliada, com
+  // o motivo — e o executor da não-piora recusa como NÃO MEDIDO.
+  if (e.motivoSemFontes) cobertura['fonte-nao-carregada'] = { estado: 'nao-avaliada', motivo: e.motivoSemFontes }
   if (e.motivoSemMedida) {
     // Sem métricas só valem as regras que não medem texto: fonte ausente (do
     // registro), a régua (do render) e a visão.
     for (const regra of REGRAS_DA_REVISAO) {
-      if (regra === 'fonte-nao-carregada' || regra === 'texto-sem-leitura' || regra === 'gradiente-forte-demais' || regra === 'visao') continue
+      if (regra === 'fonte-nao-carregada' || regra === 'texto-sem-leitura' || regra === 'gradiente-forte-demais' || regra === 'tratamento-piorou-leitura' || regra === 'logo-sem-leitura' || regra === 'visao') continue
       cobertura[regra] = { estado: 'nao-avaliada', motivo: e.motivoSemMedida }
     }
   }
@@ -1333,7 +1661,7 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
     const rotulo = (id: string) => { const l = porId.get(id); const nome = l ? nomeDaCamada(l) : null; return nome && nome !== id ? `${id} ("${nome}")` : id }
     const motivo = `texto(s) sem métrica — curvo, fitty ou auto-resize, que o medidor não mede: ${e.textosSemMetrica.map(rotulo).join(', ')}; as regras de geometria não os examinaram e a visão não recebeu marca deles`
     for (const regra of REGRAS_DA_REVISAO) {
-      if (regra === 'fonte-nao-carregada' || regra === 'texto-sem-leitura' || regra === 'gradiente-forte-demais') continue
+      if (regra === 'fonte-nao-carregada' || regra === 'texto-sem-leitura' || regra === 'gradiente-forte-demais' || regra === 'tratamento-piorou-leitura' || regra === 'logo-sem-leitura') continue
       const atual = cobertura[regra]
       if (atual?.estado === 'avaliada') cobertura[regra] = { estado: 'parcial', motivo }
       else if (atual?.estado === 'parcial') cobertura[regra] = { estado: 'parcial', motivo: [atual.motivo, motivo].filter(Boolean).join('; ') }

@@ -77,7 +77,7 @@ describe('assinatura', () => {
     expect(a.numeros.halo.faixaTexto).toEqual([0.2, 0.5])
     expect(a.numeros.halo.faixaMarca).toEqual(NUMEROS_PADRAO.halo.faixaMarca)
     expect(a.numeros.geometria.story.safeTopo).toBe(200)
-    expect(a.numeros.geometria.story.safeRodape).toBe(224)
+    expect(a.numeros.geometria.story.safeRodape).toBe(160) // padrão de 29/10 (era 224)
     expect(papeisQueFaltam(a, ['headline', 'apoio'])).toEqual(['apoio'])
   })
 })

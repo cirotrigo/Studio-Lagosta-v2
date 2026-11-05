@@ -107,6 +107,28 @@ export async function resolveImageUrl(
   driveImageId: string | null | undefined,
   projectId: number,
 ): Promise<{ url: string | null; warning?: string }> {
+  return persistirCacheDoDrive(await lerImagemDeEntrada(imageUrl, driveImageId, projectId))
+}
+
+/**
+ * CP4.2b — a imagem de entrada LIDA, sem persistir nada: a separação entre ler a foto (a criação precisa dela para
+ * escolher o layout e, com ele, o modelo efetivo onde os endereços de `slotValues` são validados) e gravar o cache
+ * do Drive no Blob (uma ESCRITA, que só pode acontecer depois dessa validação). URL direta: só a autorização por
+ * projeto, como sempre. Drive: metadados + download da miniatura; os bytes voltam com a chave do cache.
+ * Autorização (`assertDriveDoProjeto`) e falhas (aviso, nunca derruba a arte) continuam as de sempre.
+ */
+export interface ImagemDeEntradaLida {
+  url: string | null
+  warning?: string
+  /** Só com foto do Drive: os bytes baixados (ainda não gravados) e a chave determinística do cache. */
+  drive?: { bytes: Buffer; chave: string; projectId: number }
+}
+
+export async function lerImagemDeEntrada(
+  imageUrl: string | undefined,
+  driveImageId: string | null | undefined,
+  projectId: number,
+): Promise<ImagemDeEntradaLida> {
   if (imageUrl) {
     const idNaUrl = extractDriveFileId(imageUrl)
     if (idNaUrl) await assertDriveDoProjeto(projectId, idNaUrl)
@@ -131,9 +153,21 @@ export async function resolveImageUrl(
     }
 
     const { fetchBuffer } = await import('@/lib/posts/register-project-fonts')
-    const buffer = await fetchBuffer(thumbnailLink.replace(/=s\d+$/, '=s1920'))
+    const bytes = await fetchBuffer(thumbnailLink.replace(/=s\d+$/, '=s1920'))
     const chave = createHash('sha256').update(`${projectId}:${idEfetivo}`).digest('hex')
-    const blob = await put(`drive-cache/${projectId}/${chave}-s1920.jpg`, buffer, {
+    return { url: null, drive: { bytes, chave, projectId } }
+  } catch (error) {
+    const message = (error as Error).message
+    console.error('[creatives] Drive resolve failed:', message)
+    return { url: null, warning: `Falha ao resolver a imagem no Drive: ${message}` }
+  }
+}
+
+/** CP4.2b — a persistência do cache do Drive (o `put`): só depois da validação de endereço na criação. Sem Drive, devolve a leitura como está. */
+export async function persistirCacheDoDrive(lida: ImagemDeEntradaLida): Promise<{ url: string | null; warning?: string }> {
+  if (!lida.drive) return { url: lida.url, ...(lida.warning ? { warning: lida.warning } : {}) }
+  try {
+    const blob = await put(`drive-cache/${lida.drive.projectId}/${lida.drive.chave}-s1920.jpg`, lida.drive.bytes, {
       access: 'public',
       contentType: 'image/jpeg',
       addRandomSuffix: false,

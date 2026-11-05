@@ -44,6 +44,22 @@ export function textoEscuro(corHex: string): boolean {
  */
 export const TOLERANCIA_DO_ALVO = 12
 
+/**
+ * Ruído de render tolerado ao comparar duas medidas da MESMA caixa (com e sem
+ * tratamento), em níveis de 0–255 — a tolerância que o CP0 da direção de arte
+ * fixou (13/10/2026). Parâmetro de MEDIÇÃO, não limiar de qualidade.
+ */
+export const TOLERANCIA_DE_PIORA = 2
+
+/** O código estável do achado "o tratamento de leitura piorou a leitura" (CP1, 13/10/2026). */
+export const TRATAMENTO_PIOROU_LEITURA = 'TRATAMENTO_PIOROU_LEITURA'
+
+/** p02 e p98 da luminância sob a caixa de um texto. */
+export interface PercentisDoFundo {
+  p02: number
+  p98: number
+}
+
 export interface ContrasteMedido {
   grupo: string
   camadas: string[]
@@ -83,6 +99,163 @@ export interface LeituraDeTexto {
   p98SemHalo: number
   p98ComHalo: number
   ok: boolean
+  /** A cor do texto (desde o CP1, 13/10/2026). */
+  cor?: string
+  /**
+   * O texto tem caixa de fundo própria (`effects.background`, a pílula da
+   * marca): ele lê contra ela, e ela não é tratamento de leitura (CP1).
+   */
+  caixaDeFundo?: boolean
+  /**
+   * Os gradientes de leitura cuja caixa cobre o texto (CP1). O render "sem
+   * tratamento" tira TODOS: com topo e rodapé sobrepostos sob o texto, a piora
+   * é do conjunto, não de um só.
+   */
+  gradientesSob?: string[]
+  /**
+   * Os DOIS percentis do fundo, sem e com o tratamento de leitura (desde o
+   * CP1). `p98SemHalo/p98ComHalo` guardam só o do sentido da régua; a piora
+   * do tratamento precisa do outro também (texto escuro sob véu escuro).
+   */
+  percentis?: { sem: PercentisDoFundo; com: PercentisDoFundo }
+}
+
+/**
+ * O tratamento de leitura PIOROU a leitura de um texto (CP1, 13/10/2026):
+ * derivado só da medida, sem visão, sem propor correção.
+ */
+export interface PioraDeTratamento {
+  codigo: typeof TRATAMENTO_PIOROU_LEITURA
+  grupo: string
+  /** A camada de texto cuja leitura piorou, e todas as do grupo. */
+  camada: string
+  camadas: string[]
+  /**
+   * O gradiente de leitura a que a piora se deve. `null` quando mais de um
+   * cobre o texto (topo e rodapé sobrepostos): a medida, que tira todos de uma
+   * vez, não separa a contribuição de cada um — `gradientes` lista o conjunto.
+   */
+  gradiente: string | null
+  gradientes: string[]
+  /** Texto CLARO piora quando o p98 sobe; texto ESCURO, quando o p02 desce. */
+  polaridade: 'clara' | 'escura'
+  /**
+   * De onde saiu a polaridade: `fundo` = o texto é mais claro que o p98 (ou
+   * mais escuro que o p02) do fundo SEM tratamento; `cor-do-texto` = o fundo
+   * atravessa a luz do texto, e vale a classe WCAG da cor (contrasta mais com
+   * o preto → clara).
+   */
+  polaridadePor: 'fundo' | 'cor-do-texto'
+  percentil: 'p98' | 'p02'
+  /** O percentil sem e com o tratamento. */
+  antes: number
+  depois: number
+  tolerancia: number
+  luzDoTexto: number
+}
+
+/** Cor que a régua sabe ler (#RGB ou #RRGGBB); outra (rgba, nome) daria luz falsa. */
+export const ehCorHex = (cor: unknown): cor is string => typeof cor === 'string' && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(cor)
+
+/**
+ * Pura (CP2A): de que lado(s) a cor PODE ler a 3:1. Como texto claro, precisa
+ * de fundo de luz até `alvoPorContraste` — impossível quando ele dá 0 (cor
+ * escura demais); como texto escuro, de fundo a partir de
+ * `alvoClaroPorContraste` — impossível quando ele dá 255. Cor de luz média
+ * (vermelho, laranja, cinza médio) lê dos dois lados.
+ */
+export function ladosDeLeitura(cor: string): { clara: boolean; escura: boolean } {
+  return { clara: alvoPorContraste(cor, 3) > 0, escura: alvoClaroPorContraste(cor, 3) < 255 }
+}
+
+/**
+ * A luz de uma cor no ESPAÇO DA MEDIDA (0–255): a luminância relativa WCAG
+ * codificada em sRGB — o mesmo espaço do `b-w` do sharp com que a régua lê o
+ * fundo, e o de `alvoPorContraste`. `luzDaCor` (luma Rec.601) diverge nas
+ * cores saturadas: #FF0000 dá 76 lá e ≈124 no fundo medido (CP2A, revisão A).
+ */
+export function luzMedida(cor: string): number {
+  const y = luminanciaRelativa(cor)
+  return 255 * (y <= 0.0031308 ? 12.92 * y : 1.055 * Math.pow(y, 1 / 2.4) - 0.055)
+}
+
+/**
+ * Pura: a polaridade de um texto sobre o fundo SEM tratamento — a mesma regra
+ * para quem DETECTA a piora (CP1) e para quem ESCOLHE o tratamento (CP2A), para
+ * que um nunca contradiga o outro. NÃO sai da cor do véu (é a escolha do véu
+ * que está sob suspeita) nem do sentido da régua (que deriva do véu). Sai do
+ * FUNDO quando ele não deixa dúvida — o texto é mais claro que o p98 (clara)
+ * ou mais escuro que o p02 (escura) — e o lado lê (`ladosDeLeitura`): texto
+ * escuro demais para ler como claro é escuro mesmo sobre fundo ainda mais
+ * escuro. Quando o fundo atravessa a luz do texto, vale a classe WCAG da cor
+ * (contrasta mais com o preto → clara). Cor que não é #hex: `null`.
+ */
+export function polaridadeDoTexto(cor: string, sem: PercentisDoFundo): { polaridade: 'clara' | 'escura'; por: 'fundo' | 'cor-do-texto' } | null {
+  if (!ehCorHex(cor)) return null
+  const luz = luzMedida(cor)
+  const lados = ladosDeLeitura(cor)
+  const peloFundo = luz >= sem.p98 && lados.clara ? true : luz <= sem.p02 && lados.escura ? false : null
+  if (peloFundo !== null) return { polaridade: peloFundo ? 'clara' : 'escura', por: 'fundo' }
+  const l = luminanciaRelativa(cor)
+  return { polaridade: (l + 0.05) / 0.05 >= 1.05 / (l + 0.05) ? 'clara' : 'escura', por: 'cor-do-texto' }
+}
+
+/**
+ * Pura: o tratamento piorou a leitura deste texto? A polaridade é a de
+ * `polaridadeDoTexto` — assim o vermelho saturado sobre foto listrada é texto
+ * claro, e o véu escuro sob ele não é piora. Cor que não é #hex: `null` (não
+ * avaliada — `ehCorHex`).
+ */
+export function pioraDaLeitura(
+  leitura: { cor: string; sem: PercentisDoFundo; com: PercentisDoFundo },
+  tolerancia = TOLERANCIA_DE_PIORA,
+): Pick<PioraDeTratamento, 'polaridade' | 'polaridadePor' | 'percentil' | 'antes' | 'depois' | 'tolerancia' | 'luzDoTexto'> | null {
+  const polaridade = polaridadeDoTexto(leitura.cor, leitura.sem)
+  if (!polaridade) return null
+  const luzDoTexto = luzDaCor(leitura.cor)
+  const clara = polaridade.polaridade === 'clara'
+  const peloFundo = polaridade.por === 'fundo' ? clara : null
+  const antes = clara ? leitura.sem.p98 : leitura.sem.p02
+  const depois = clara ? leitura.com.p98 : leitura.com.p02
+  const piorou = clara ? depois > antes + tolerancia : depois < antes - tolerancia
+  return piorou
+    ? { polaridade: clara ? 'clara' : 'escura', polaridadePor: peloFundo === null ? 'cor-do-texto' : 'fundo', percentil: clara ? 'p98' : 'p02', antes, depois, tolerancia, luzDoTexto: Math.round(luzDoTexto) }
+    : null
+}
+
+/**
+ * Pura: as pioras de tratamento de uma lista de medidas. O tratamento sob
+ * suspeita é o GRADIENTE de leitura: grupo sem gradiente e texto com caixa de
+ * fundo própria ficam de fora; texto sem `cor`/`percentis` (medida anterior ao
+ * CP1) também — quem precisa saber o que ficou de fora usa `textosForaDaPiora`.
+ */
+export function tratamentosQuePioraramALeitura(medidas: ContrasteMedido[], tolerancia = TOLERANCIA_DE_PIORA): PioraDeTratamento[] {
+  return medidas.flatMap((m) =>
+    (m.textos ?? []).flatMap((t) => {
+      const gradientes = gradientesDoTexto(m, t)
+      if (gradientes.length === 0 || !t.cor || !t.percentis || t.caixaDeFundo) return []
+      const piora = pioraDaLeitura({ cor: t.cor, sem: t.percentis.sem, com: t.percentis.com }, tolerancia)
+      return piora
+        ? [{ codigo: TRATAMENTO_PIOROU_LEITURA, grupo: m.grupo, camada: t.camada, camadas: m.camadas, gradiente: gradientes.length === 1 ? gradientes[0] : null, gradientes, ...piora }]
+        : []
+    }),
+  )
+}
+
+/** Os gradientes de leitura sob o texto (medida anterior a `gradientesSob`: o do grupo). */
+function gradientesDoTexto(m: ContrasteMedido, t: LeituraDeTexto): string[] {
+  return t.gradientesSob ?? (m.gradiente ? [m.gradiente] : [])
+}
+
+/** Pura: os textos sob gradiente de leitura que a piora NÃO conseguiu julgar (medida antiga ou cor que não é #hex). */
+export function textosForaDaPiora(medidas: ContrasteMedido[]): string[] {
+  return medidas.flatMap((m) =>
+    m.textos
+      ? m.textos.filter((t) => gradientesDoTexto(m, t).length > 0 && !t.caixaDeFundo && (!t.percentis || !ehCorHex(t.cor))).map((t) => t.camada)
+      : m.gradiente
+        ? m.camadas
+        : [],
+  )
 }
 
 export interface IntervencaoDeTexto {
@@ -96,6 +269,10 @@ export interface ReguaResultado {
   layers: Layer[]
   medidas: ContrasteMedido[]
   avisos: string[]
+  /** As pioras de tratamento na peça COMO ENTROU (antes de qualquer correção desta chamada). */
+  pioras: PioraDeTratamento[]
+  /** As pioras na peça corrigida, quando a régua corrigiu alguma força. */
+  piorasDepoisDaCorrecao?: PioraDeTratamento[]
 }
 
 interface Canvas {
@@ -115,6 +292,8 @@ function grupoDe(camada: Layer): string {
 function rectDe(camada: Layer): Rect {
   return { x: camada.position.x, y: camada.position.y, width: camada.size.width, height: camada.size.height }
 }
+
+const sobrepoe = (a: Rect, b: Rect) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
 
 async function renderizar(layers: Layer[], canvas: Canvas, background: string): Promise<Buffer> {
   const { CanvasRenderer } = await import('@/lib/canvas-renderer')
@@ -160,7 +339,7 @@ const TRANSPARENTE = 'rgba(0,0,0,0)'
  * cor mora também em cada trecho — sem apagá-los, o destaque continuava
  * desenhado e contava como fundo.
  */
-function semTinta(layers: Layer[]): Layer[] {
+export function semTinta(layers: Layer[]): Layer[] {
   return layers.map((l) => {
     if (!ehTexto(l)) return l
     const apagada: Layer = {
@@ -180,6 +359,37 @@ function semTratamento(layers: Layer[]): Layer[] {
   return semTinta(layers)
     .filter((l) => !ehGradienteDeLeitura(l))
     .map((l) => (ehTexto(l) ? { ...l, effects: { ...(l.effects ?? {}), background: undefined } } : l))
+}
+
+/** O fundo sob um texto da peça ainda SEM tratamento de leitura (CP2A). */
+export interface FundoDoTexto {
+  camada: string
+  cor: string
+  rect: Rect
+  /** Texto com caixa de fundo própria: lê contra ela, não pede tratamento. */
+  caixaDeFundo: boolean
+  percentis: PercentisDoFundo
+}
+
+/**
+ * O p02 e o p98 sob cada texto visível, no MESMO render e na MESMA leitura da
+ * régua (sem a tinta, sem gradiente de leitura; a caixa de fundo do texto
+ * fica). É o que o compositor usa para DECIDIR o tratamento por borda antes
+ * de desenhá-lo (CP2A) — e a régua confere depois, com e sem ele.
+ */
+export async function medirFundoDosTextos(args: { layers: Layer[]; canvas: Canvas; background: string }): Promise<FundoDoTexto[]> {
+  const textos = args.layers.filter((l) => ehTexto(l) && l.visible !== false)
+  if (textos.length === 0) return []
+  const rects = textos.map(rectDe)
+  const png = await renderizar(semTinta(args.layers.filter((l) => !ehGradienteDeLeitura(l))), args.canvas, args.background)
+  const [claros, escuros] = await Promise.all([percentilSob(png, args.canvas, rects, 0.98), percentilSob(png, args.canvas, rects, 0.02)])
+  return textos.map((t, i) => ({
+    camada: t.id,
+    cor: String(t.style?.color ?? '#FFFFFF'),
+    rect: rects[i],
+    caixaDeFundo: !!t.effects?.background?.enabled,
+    percentis: { p02: escuros[i], p98: claros[i] },
+  }))
 }
 
 function bordaDaCamada(l: Layer, H: number): Borda {
@@ -205,7 +415,7 @@ export async function medirContrasteDaPeca(args: {
 }): Promise<ReguaResultado> {
   const avisos: string[] = []
   const textos = args.layers.filter((l) => ehTexto(l) && l.visible !== false)
-  if (textos.length === 0) return { layers: args.layers, medidas: [], avisos }
+  if (textos.length === 0) return { layers: args.layers, medidas: [], avisos, pioras: [] }
   const gradientes = args.layers.filter((l) => (l.type === 'gradient' || l.type === 'gradient2') && l.visible !== false && ehGradienteDeLeitura(l))
 
   const grupos = new Map<string, Layer[]>()
@@ -235,8 +445,12 @@ export async function medirContrasteDaPeca(args: {
     const corteDoEscuro = Math.max(128, luzDaMancha - 48)
     const leituras = camadas.map((c) => {
       const cor = String(c.style?.color ?? '#FFFFFF')
+      // A regra pela mancha só sobra para o texto com caixa de fundo própria e a cor que não é #hex: o resto
+      // ganha a polaridade de `polaridadeDoTexto` logo depois do render sem tratamento (CP2A).
       const escuro = luzDaMancha >= 128 && (textoEscuro(cor) || luzDaCor(cor) < corteDoEscuro)
-      return { rect: rectDe(c), escuro, alvo: escuro ? alvoClaroPorContraste(cor, 3) : alvoPorContraste(cor, 3) }
+      const rect = rectDe(c)
+      const gradientesSob = gradientes.filter((g) => sobrepoe(rectDe(g), rect)).map((g) => g.id)
+      return { rect, cor, escuro, alvo: 0, caixaDeFundo: !!c.effects?.background?.enabled, gradientesSob }
     })
     return { grupo, camadas, leituras, gradiente, tinta: gradiente ? forcaDaCamada(gradiente) : 0, mancha }
   })
@@ -254,11 +468,24 @@ export async function medirContrasteDaPeca(args: {
     renderizar(semTinta(args.layers), args.canvas, args.background),
   ])
   let pngFinal = pngCom
-  const medirTodos = async (png: Buffer) => {
+  /** Os dois percentis de cada texto num render. */
+  const percentisDe = async (png: Buffer): Promise<PercentisDoFundo[]> => {
     const [claros, escuros] = await Promise.all([percentilSob(png, args.canvas, rects, 0.98), percentilSob(png, args.canvas, rects, 0.02)])
-    return leituras.map((l, i) => (l.escuro ? escuros[i] : claros[i]))
+    return leituras.map((_, i) => ({ p02: escuros[i], p98: claros[i] }))
   }
-  const [semP98, comP98] = await Promise.all([medirTodos(pngSem), medirTodos(pngCom)])
+  /** O percentil do SENTIDO da régua (p02 para texto escuro, p98 para claro). */
+  const doSentido = (todos: PercentisDoFundo[]) => leituras.map((l, i) => (l.escuro ? todos[i].p02 : todos[i].p98))
+  const [semTodos, comTodos] = await Promise.all([percentisDe(pngSem), percentisDe(pngCom)])
+  // UMA polaridade para quem escolhe o tratamento, quem detecta a piora e quem mede (CP2A, 14/10/2026):
+  // a do texto sobre o fundo SEM tratamento. Antes ela saía da cor do véu — sob véu escuro todo texto era
+  // "claro", e o escuro ganhava alvo 0 e a correção escurecia o véu sob ele.
+  leituras.forEach((l, i) => {
+    const polaridade = l.caixaDeFundo ? null : polaridadeDoTexto(l.cor, semTodos[i])
+    if (polaridade) l.escuro = polaridade.polaridade === 'escura'
+    l.alvo = l.escuro ? alvoClaroPorContraste(l.cor, 3) : alvoPorContraste(l.cor, 3)
+  })
+  const semP98 = doSentido(semTodos)
+  const comP98 = doSentido(comTodos)
   /** Quanto a leitura sobra do alvo, já com a tolerância: ≥ 0 é ok. */
   const folga = (i: number, valores: number[]) =>
     leituras[i].escuro ? valores[i] - (leituras[i].alvo - TOLERANCIA_DO_ALVO) : leituras[i].alvo + TOLERANCIA_DO_ALVO - valores[i]
@@ -300,6 +527,10 @@ export async function medirContrasteDaPeca(args: {
         p98SemHalo: semP98[idx],
         p98ComHalo: valores[idx],
         ok: folga(idx, valores) >= 0,
+        cor: leituras[idx].cor,
+        ...(leituras[idx].caixaDeFundo ? { caixaDeFundo: true } : {}),
+        gradientesSob: leituras[idx].gradientesSob,
+        percentis: { sem: semTodos[idx], com: comTodos[idx] },
       }
     }
     medidas.push({
@@ -317,11 +548,16 @@ export async function medirContrasteDaPeca(args: {
     })
   })
 
+  // A piora do tratamento na peça como ENTROU — antes da correção, que muda `textos` dos grupos corrigidos.
+  const pioras = tratamentosQuePioraramALeitura(medidas)
+  let piorasDepoisDaCorrecao: PioraDeTratamento[] | undefined
+
   if (correcoes.size > 0) {
     layers = layers.map((l) => (correcoes.has(l.id) ? comForca(l, correcoes.get(l.id)!) : l))
     const pngCorrigido = await renderizar(semTinta(layers), args.canvas, args.background)
     pngFinal = pngCorrigido
-    const depois = await medirTodos(pngCorrigido)
+    const depoisTodos = await percentisDe(pngCorrigido)
+    const depois = doSentido(depoisTodos)
     medidas.forEach((m, i) => {
       if (m.gradiente && correcoes.has(m.gradiente)) {
         // A medida de ANTES sai do texto que decidiu a medida antes da correção
@@ -343,9 +579,17 @@ export async function medirContrasteDaPeca(args: {
           p98SemHalo: semP98[idx],
           p98ComHalo: depois[idx],
           ok: folga(idx, depois) >= 0,
+          cor: leituras[idx].cor,
+          ...(leituras[idx].caixaDeFundo ? { caixaDeFundo: true } : {}),
+          gradientesSob: leituras[idx].gradientesSob,
+          percentis: { sem: semTodos[idx], com: depoisTodos[idx] },
         }))
       }
     })
+    // A peça FINAL: o render corrigido vale para TODOS os textos (topo e rodapé podem se sobrepor), não só os dos grupos corrigidos.
+    piorasDepoisDaCorrecao = tratamentosQuePioraramALeitura(
+      medidas.map((m, i) => ({ ...m, textos: m.textos?.map((t, j) => ({ ...t, percentis: { sem: semTodos[indicesDoGrupo[i][j]], com: depoisTodos[indicesDoGrupo[i][j]] } })) })),
+    )
   }
 
   for (const m of medidas) {
@@ -365,5 +609,5 @@ export async function medirContrasteDaPeca(args: {
     const [antes, depois] = await Promise.all([cinza(pngSem), cinza(pngFinal)])
     intervencao = compararTons(antes, depois)
   }
-  return { layers, medidas, avisos, ...(intervencao ? { intervencao } : {}) }
+  return { layers, medidas, avisos, pioras, ...(piorasDepoisDaCorrecao ? { piorasDepoisDaCorrecao } : {}), ...(intervencao ? { intervencao } : {}) }
 }

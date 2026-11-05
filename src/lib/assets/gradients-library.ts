@@ -77,6 +77,15 @@ function escuroEClaro(prefixo: string, escuro: string, claro: { nome: string; co
  * Gradientes da marca": o escuro é a mancha de `Project.assinatura`, o claro é
  * o creme ou o branco da paleta. São ponto de partida para personalizar.
  */
+/**
+ * LEGADO (CP2A, 14/10/2026): tabela por `projectId` — NÃO expandir. No
+ * compositor, as cores daqui entram só como o ÚLTIMO recurso do tratamento de
+ * leitura por borda (`tratamento-de-leitura.ts`), depois das cores da
+ * assinatura; o escuro de cada linha é a própria mancha de `Project.assinatura`
+ * (conferido em 14/10/2026), então na prática só o claro ainda sai daqui. O
+ * painel de gradientes do editor e o script dos templates de gradiente seguem
+ * lendo a tabela.
+ */
 export const GRADIENTES_POR_PROJETO: Record<number, GradientDefinition[]> = {
   // Real Gelateria
   1: [

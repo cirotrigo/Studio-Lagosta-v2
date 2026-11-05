@@ -362,3 +362,837 @@ mesma página em 100 s, com a miniatura alternando entre null e o JPEG.
   vez e pode não sair antes de a aba fechar (antes saía em paralelo, com risco
   de o estado velho chegar por último). O "Salvar e Voltar" usa `descarregar`,
   que espera.
+
+## `svg-path`: um traçado só para editor e servidor (CP-V0, 20/10/2026)
+
+A camada `shape` com `shapeType: 'svg-path'` era desenhada por dois códigos com dois parsers: o editor pelo
+`Konva.Path.parsePathData` sem aplicar `pathFillRule`, e o servidor pelo `Path2D` do Skia, com o contorno dividido pela
+escala MÉDIA da caixa: em 300×100, um contorno de 8 px saía com 4 px em cima e 12 px dos lados (medido no CP-V0 com
+fixture sintética no canvas do Node, `src/lib/vetor/__tests__/paridade-pixel.test.ts`).
+
+- **Todo desenho de `svg-path` passa por `src/lib/vetor/`** (`tracar.ts` + `desenhar.ts`): o editor usa
+  `shapeKonvaDoSvgPath` (atributos e `sceneFunc` do `Konva.Shape`, pintura pelo `fillStrokeShape`, que também desenha o
+  canvas de hit com a mesma regra) e o `RenderEngine` usa `desenharSvgPath`. Nenhum dos dois traça por conta própria.
+- **Semântica única:** o path é traçado já escalado para a caixa e o transform é restaurado antes de pintar, então o
+  contorno tem `strokeWidth` px da camada nos dois eixos; `pathFillRule` vale nos dois lados; junção redonda; pontas por
+  `style.tracoPontas` (`butt` por padrão). No servidor com `scaleFactor` ≠ 1 (a miniatura avulsa) a caixa escala e o
+  `strokeWidth` não, como nas outras formas.
+- **Área de clique:** com `evenodd`, clicar no furo deixa de selecionar a camada (o Konva aplica a regra também no
+  canvas de hit). É o mesmo que se vê.
+- **Parser único: o do Konva**, importado de `konva/lib/shapes/Path` (o pacote raiz exige o `canvas` nativo no Node;
+  o import profundo deixa `globalThis.Konva` definido no processo do servidor). Ele diverge do SVG em quatro casos, todos
+  recusados pelo validador: comando relativo logo depois de `Z` sem `M` (parte do último ponto, não do início do
+  subpath); flags de arco coladas (`1010` vira um número); número `10.e5` (vira dois); raio de arco ≤ 0 (ângulos errados
+  ou NaN — o traçado PULA esse arco nos dois lados, em vez de o navegador lançar `IndexSizeError`). O bundle da função de
+  render na Vercel com esse import **não foi provado** no CP-V0 local.
+- **`validarPathData`** (`src/lib/vetor/validar.ts`, puro): texto não vazio, ≤ 16 KB, gramática de path do SVG
+  restrita ao que o parser do Konva lê igual (começa com `M`, desenha algo, nada depois de `Z` sem `M`, flags de arco
+  0/1 separadas, raio > 0, números finitos, vírgula só entre números). Ainda **não** está ligado nas portas de escrita
+  (é o CP-X2, que precisa antes da varredura das camadas existentes para não travar o autosave).
+- O `svg-path` não depende mais de `Path2D`: a miniatura avulsa (`generateThumbnail`) passou a desenhá-lo. Path que
+  lança no desenho é ignorado com aviso (não derruba a arte), como era com o `Path2D`. Máscara de
+  imagem e ícone continuam com `Path2D` no servidor; a máscara do editor já usa o traçado único.
+- ⚠️ **Muda pixel de propósito**: o contorno do servidor (px da camada), o furo do `evenodd` no editor e o parser do
+  servidor. Antes do merge, o inventário de diferenças (incluindo as `PostRenderProof` já gravadas) e, depois do deploy,
+  o re-render dos agendados; `laterPostId` não nulo continua intocável.
+
+## Espelhar e travar a proporção da forma (CP-V1, 21/10/2026)
+
+- **O espelho da forma `svg-path` mora no traçado único** (`src/lib/vetor/tracar.ts`). `style.flipH`/`style.flipV`
+  refletem o path em torno do centro da CAIXA, antes da escala do path e dentro do mesmo `save`/`restore`. Por isso:
+  - **a caixa e a rotação não mudam:** uma forma girada espelha no próprio referencial;
+  - **o contorno continua em px da camada;**
+  - **`fillRule` e `tracoPontas` valem iguais.**
+  Editor (`shapeKonvaDoSvgPath`) e servidor (`desenharSvgPath`) recebem o espelho pelo mesmo `pinturaDoSvgPath`.
+- **Só `true` literal espelha** (`style.flipH === true`). Sem os campos, a sequência de chamadas é exatamente a do CP-V0:
+  camada antiga não muda um pixel.
+- **Só o `svg-path` espelha.** Retângulo, círculo, triângulo, estrela, seta e linha NÃO têm espelho, e o painel não
+  oferece o botão para elas. Levar o espelho a outra forma exige o mesmo desenho nos dois renderers. Espelhar
+  ARRASTANDO a alça continua bloqueado no `boundBoxFunc` do Transformer.
+- **`style.manterProporcao`** é só o gesto do editor, e o render não a lê. **Toda forma** com `true` redimensiona com
+  `keepRatio` e **só pelas alças dos cantos**, porque o `keepRatio` do Konva não vale nas alças do meio.
+  - **Quem decide:** `src/lib/konva/trava-de-proporcao.ts` (puro), que o Transformer e o painel consultam.
+  - **O que não muda:** imagem, logo e elemento seguem proporcionais com as 8 alças; texto e forma sem a trava, livres
+    (Shift trava).
+  - **Multisseleção:** o Transformer é um só, então uma forma travada na seleção faz o grupo todo redimensionar pelos
+    cantos.
+- **Gate da revisão:** `style.manterProporcao` está classificada como **inerte** (`gate-v3`, impressão digital
+  `gate-gate-v3.json`; os JSONs v1 e v2 continuam imutáveis). O `svg-path` continua não suportado pelo gate.
+
+## Campo de texto da cor grava só ao confirmar (21/10/2026)
+
+O `<Input>` de "Preenchimento" e "Cor da borda" da forma era controlado pelo valor SALVO e gravava a cada
+tecla: `#111` (cor completa no meio de `#111827`) virava `rgba(17, 17, 17, 1)`, o campo passava a mostrar
+isso e o resto da digitação colava atrás — `rgba(17, 17, 17, 1)827` foi gravado no banco (smoke do CP-V1).
+
+- **`CampoDeCorDigitada`** (`properties-panel.tsx`) guarda o rascunho local e grava no Enter ou ao sair do
+  campo; Esc e texto inválido voltam ao salvo. `key={layer.id}`: o rascunho não atravessa a troca de seleção,
+  e é DESCARTADO (não só escondido) quando o valor muda por fora (seletor, alpha, paleta, undo).
+- **Clicar em outra camada no palco desmonta o campo ANTES do blur** (a seleção muda no mousedown): sem
+  cuidado o rascunho se perdia calado. Com rascunho, um `pointerdown` FORA do campo (captura no document,
+  antes do palco) confirma na camada atual. **Desmontar sem gesto descarta** (troca de página, camada removida,
+  editor fechado): gravar no unmount acertaria a página errada quando páginas repetem o id da camada. O campo
+  recebe a camada (`origem`): trocar de objeto também descarta, mesmo com o mesmo id e a mesma cor.
+- **`corDigitadaParaGravar`** (`src/lib/shape-style.ts`) confere o formato com números de verdade, converte a
+  sintaxe moderna com espaços para vírgulas (o helper só entende espaço com `/`: `rgb(1 2 3)` saía
+  `rgba(1 2 3, 1)`) e exige que entrada E saída passem em `CSS.supports('color', …)`. `rgb(10 20% 30)`
+  (moderna, mistura número e %) é recusado de propósito: a conversão ficaria inválida.
+- Nunca chame `applyOpacityToEditableColor` com texto parcial da digitação.
+- **O seletor nativo e a paleta da marca da forma mostram os CANAIS da cor salva** (`corParaSeletor`,
+  `src/lib/editor/cor-do-seletor.ts`, pelo `lerCor`): `rgba(15, 118, 110, 1)` aparece `#0f766e`, e `rgba(…, 0)` também
+  mostra os canais; o alfa fica no `style` e no slider. Só o literal `transparent`, o ausente, o ilegível e o contextual
+  mostram o fallback (`#2563eb` preenchimento, `#1e3a8a` borda). Antes, toda cor não-hex caía no azul do fallback e a
+  paleta acendia o swatch errado. Só apresentação: nada grava ao renderizar (22/10/2026).
+
+## O push do desktop não perde o que o desktop não representa (CP-X0, 21/10/2026)
+
+O `PUT /api/templates/[id]` com `designData.pages` é o push do app desktop: o Salvar do web não manda `pages`. O
+desktop devolve uma forma só com `fill`, `strokeColor`, `strokeWidth` e `shapeType` (`localLayerToWeb` no normalizador
+dele) e manda só as páginas que conhece. O PUT gravava isso por cima: o `svg-path` perdia o path, a máscara sumia, e a
+página feita no web era apagada, desvinculando os posts agendados dela (`SocialPost.pageId` é SetNull).
+
+- **Camadas**: a mescla é feita por `mesclarCamadasDoDesktop` (`src/lib/templates/guarda-do-push-do-desktop.ts`),
+  dentro do `camadas(base)` de `gravarCamadasComRevisao`, ou seja, sobre a base RELIDA a cada volta do
+  compare-and-set. O payload vence no que manda, e o que ele não traz (topo, `style`, `metadata`) fica da base.
+- **Camada protegida**: `svg-path`, `pathData`/`pathViewBox`/`pathFillRule`, `mask`, `vetor`, `metadata.compositor`
+  ou `metadata.slot`. A identidade dela (`type`, `shape`/`style.shapeType` e essas chaves) vem SEMPRE da base, e
+  `null` no payload não apaga. Se o payload troca o `type` ou a forma, a resposta é **409 `PUSH_ALTERA_VETOR`**. Se
+  ela some do payload, **409 `PUSH_APAGARIA_CAMADA`**.
+- **Páginas**: página ausente do push é **preservada** (`paginasPreservadas` na resposta). A página casada por
+  ordem/nome com camada protegida dá **409 `PUSH_PAGINA_INCERTA`**. Dois itens do payload no mesmo destino dão **409
+  `PUSH_DESTINO_REPETIDO`**, e id repetido dá **409 `PUSH_PAGINAS_DUPLICADAS`**.
+- **JSON ilegível** (base ou payload; `id` ausente; `style`/`metadata` não-objeto) dá **409** e nunca vira camada nova.
+- **Toda recusa LANÇA de dentro da transação**: o `$transaction` desfaz o template e as páginas já gravadas, e a
+  rota responde 409 fora dela.
+- 🔴 **Nada com efeito externo antes da guarda.** A miniatura do push (`thumbnailUrl`) só passa pelo
+  `guardarMiniatura` DEPOIS do commit das páginas, numa escrita separada: o upload sobrescreve o caminho estável
+  `templates/thumbnails/<id>` no Blob, e a transação não desfaz Blob. Limite: essa atualização é pós-commit e não
+  atômica com as páginas, e pode ficar PARCIAL (bytes novos no Blob com a coluna ainda antiga, se o update da coluna
+  falhar depois do upload); as páginas valem e o erro vai para o log. O Salvar do web (sem `pages`) continua subindo
+  a miniatura antes, como sempre.
+- **O `designData.pages` do template é reconstruído das páginas FINAIS** na mesma transação: é a cópia que o
+  `GET /api/templates/[id]` devolve ao desktop (`fetchRemoteTemplateById`). Gravar o payload cru devolveria ao app a
+  forma sem o path e sem as páginas preservadas, e o push seguinte as perderia.
+- **Limite**: camada COMUM que só existe no web e não está no push sai, como antes. Distinguir isso exige versionar o
+  pull do desktop.
+
+## /gerar-criativo desenha o `svg-path` (CP-X1, 21/10/2026)
+
+O PNG que o assistente exporta (`CanvasPreview.exportToDataUrl`) é o que vai ao ar: o `finalize` o grava como
+`Generation.resultUrl` e o agendamento publica esse arquivo, sem re-render no servidor. A prévia desenhava toda
+forma como `Rect`, e o export zerava o `stroke` do nó selecionado, o que apagava contorno legítimo.
+
+- **A prévia desenha `svg-path` pelo adaptador do editor** (`shapeKonvaDoSvgPath` + `pinturaDoSvgPath`, por
+  `configDoSvgPathNaPrevia` em `src/lib/gerar-criativo/previa-do-vetor.ts`). Ela nunca pinta direto no ctx do Konva.
+  A opacidade da camada vai no nó, a do canal na cor, e o nó leva `perfectDrawEnabled: false`: assim a opacidade se
+  aplica por operação, como o `globalAlpha` do servidor. Com o padrão do Konva, preenchimento + contorno com
+  opacidade < 1 são compostos num buffer e a faixa de sobreposição sai diferente do servidor (o editor ainda usa o
+  padrão; divergência anterior, fora do CP-X1).
+- **Candidato** = `shape` + `svg-path`, com ou sem `pathData`. **Desenhado** = fora de `hiddenLayerIds` e
+  `visible !== false`. `diagnosticoDoVetor` recusa no candidato desenhado:
+  - path ausente ou que não passa no `validarPathData` (só neste fluxo; as outras portas são o CP-X2);
+  - `pathViewBox` presente e malformado, **inclusive `null`** (ausente, `undefined`, vale como `0 0 100 100`);
+  - efeito que a prévia não desenha: `effects.*` ligado (blur só com raio > 0), `style.shadow`, `vetor.partes`.
+
+  Nada disso vira retângulo nem é omitido em silêncio. A tela bloqueia "Gerar criativo" com o motivo, e o export
+  interrompe com o diagnóstico.
+- **O export não muta camada nenhuma.** Transformer, realce de seleção (nó próprio `__ui-da-previa`, que substitui o
+  `stroke` azul na imagem) e guias saem do PNG só por visibilidade. O estado de snap não é tocado, para o React não
+  desmontar as guias no meio. Escala, posição e visibilidade voltam no `finally`, também quando o export falha.
+- **Trava de proporção**: forma com `style.manterProporcao` redimensiona na prévia com `keepRatio` e só pelos
+  cantos (`travaDaPrevia`). O resto continua livre, com 8 alças.
+- **`finalize` — precedência**: 401 → 400 (zod; `previa` só aceita `'vetor-v1'`) → 404 (acesso, como antes) →
+  **422 `VETOR_SEM_SUPORTE_NA_PREVIA`** (o diagnóstico acima, com ou sem a marca) → **409 `PREVIA_DESATUALIZADA`**
+  (vetor desenhado sem `previa: 'vetor-v1'`, ou seja, a aba anterior ao CP-X1). Em recusa: nada de `put`,
+  `Page.create`, `Generation.create`, `AICreativeGeneration.create` nem `registrarUsoDeModelo`. Sem vetor desenhado,
+  o comportamento é o de antes.
+- 🔴 **A marca `previa` não é prova de pixel.** Ela separa o fluxo atualizado do app da aba antiga. Uma chamada
+  forjada por quem tem escrita no projeto, com a marca e um PNG qualquer, continua aceita, como para toda camada.
+  Não afirme "nenhum caminho publica retângulo" sem essa ressalva. Prova de pixel no servidor seria renderizar a
+  página no `finalize`.
+- **Prova**: o harness `tests/harness/cp-x1` (`npx playwright test -c tests/harness/cp-x1/playwright.config.ts`)
+  monta o `CanvasPreview` REAL no Chromium, sem rede, login, banco ou Blob, e compara o PNG do export com o
+  `CanvasRenderer`. As tolerâncias foram medidas e não têm folga: fora da faixa de borda de 2 px nada difere; na
+  borda, delta de canal ≤ 1 e contagem ≤ o teto medido por caso. Um controle negativo mostra que contorno apagado
+  ou acinzentado fora das amostras reprova.
+- **Fora do CP-X1**: o fundo da prévia é sempre branco (o modelo não é passado), e as formas que não são `svg-path`
+  ainda saem como `Rect` na prévia.
+
+## Forma vetorial inválida não é gravada pelas portas P1–P5 (CP-X2b, 21/10/2026)
+
+O `svg-path` com dado inválido era gravado em silêncio: o render do servidor pula o path ruim com um `console.warn`,
+o post sai sem o vetor e a `PostRenderProof` é gravada sem erro. O validador (`validarPathData`, `lerCor`) existia,
+mas nenhuma porta de escrita o chamava.
+
+- **Quem decide:** `exigirVetoresValidos` (`src/lib/vetor/guarda-de-porta.ts`, puro) sobre `problemasDoVetor`
+  (`validar-camada.ts`). Ele lança `VetorInvalido`, o **único** erro que vira **422 `VETOR_INVALIDO`**, no corpo
+  `{ error, codigo, camadas: [{ id, motivos, paginaId? }] }`. Qualquer outro erro segue o mapeamento que a porta já
+  tinha (500 no PATCH da página, 400 "Dados inválidos" no PUT do template).
+- **Candidato:** `type === 'shape'` e `style.shapeType === 'svg-path'`, visível ou não. O estado final **inteiro** é
+  conferido, e não só a camada editada: uma página com `svg-path` inválido legado recusa a próxima escrita de
+  camadas. Por isso a ativação depende da varredura G zerada.
+- **Precedência preservada:** auth, acesso, corpo e zod continuam antes e com os mesmos códigos (P1 sem acesso 404; P2,
+  P3, P4 e P5 403; o P5 segue lendo o corpo antes do acesso). A guarda entra depois deles.
+- **Por porta:**
+  - **P1 (PATCH da página):** (a) payload CRU antes da canonização, que chama `trim` na cor e daria 500 com
+    `fill: 123`; (b) estado canonizado e reconciliado, antes da transação e em CADA volta do compare-and-set.
+  - **P2 (PATCH da camada):** a cada volta, a camada fundida crua → canonização → a lista final da página. A recusa
+    lança de dentro da transação.
+  - **P3 (POST de página):** depois do zod, antes do `create`.
+  - **P4 (PUT do template):** `designData.layers` da RAIZ, sempre que vier, com ou sem `pages` (vai cru para
+    `Template.designData`, que o render de generations lê), antes de Blob e escrita. As páginas do push do desktop
+    **não** são pré-conferidas: o X0 restaura da base o que o push omite (o normalizador real manda `svg-path` sem
+    `pathData` e nunca manda camadas na raiz). Por isso só o estado **mesclado** é conferido, em cada volta, depois
+    das recusas 409 do X0, que continuam iguais. Página nova é conferida antes do `create`. A recusa desfaz o
+    template e as páginas.
+  - **P5 (POST de template):** raiz e cada página antes da transação.
+- **Autosave:** o 422 do PATCH da página não é mais silencioso (`src/lib/editor/recusa-do-vetor.ts` + o aviso do
+  `PageSyncWrapper`).
+  - **A recusa fica por página, com o pendente inteiro.** Ela sobrevive à troca de página, e o aviso continua
+    visível com **Restaurar** (devolve a edição recusada à tela) e **Descartar**.
+  - **Sem laço:** o mesmo conteúdo recusado não é reenviado; qualquer edição nova é.
+  - **Linhagem:** só a correção gravada da própria edição recusada (mesma linhagem, captura mais nova) ou o descarte
+    explícito resolve a recusa. Gravar só fundo ou áudio sobre a versão do banco, depois de voltar à página, não a
+    apaga. Confirmação antiga também não.
+  - **Saída do editor:** o `descarregar` lança enquanto houver recusa, para o "Salvar e Voltar" não sair como se
+    tivesse gravado.
+- **Campo de cor do `svg-path`:** além do `CSS.supports`, o campo exige `lerCor(texto) !== null`. Assim
+  `currentcolor` e as CSS-wide são recusados na própria UI, que volta ao salvo. As outras formas não mudam.
+- **Fora do X2b:** `font-combinations` (P6), MCP stdio (P7) e `reverter` (são o X2c). Aceite global do X2 = P1–P7 +
+  reverter ativados juntos, depois da varredura G.
+- ⚠️ **Limite anterior ao X2b:** a carga de página termina no `requestAnimationFrame` seguinte (`isSyncingRef`).
+  Troca de página ou edição feita durante esse quadro faz os efeitos do `PageSyncWrapper` saírem cedo, e eles não
+  reagem quando o ref zera: a troca pode não carregar a página nova, e a edição pode não disparar o timer até a
+  próxima mudança. Isso vem da leitura do código e de timeouts do harness; não foi medido de forma determinística.
+  O harness do CP-X2b aguarda dois quadros depois de cada carga, e o caso ficou fora da suíte.
+
+## A forma inserida pelo painel sai na cor da marca, nunca na vitrine (CP-V2c, 23/10/2026)
+
+- **Ponto único de inserção.** O painel de formas só insere pelo construtor puro `camadaDoElemento`
+  (`src/lib/editor/camada-do-elemento.ts`), num `addLayer` só: uma camada, uma entrada de desfazer, selecionada. Ele
+  **nunca lê** `fill`/`strokeColor` da definição (a vitrine do catálogo; um teste com cor-sentinela prova). A cor de
+  cada canal é o papel do slot resolvido por `resolverCorDaMarca` (CP-V2a) e sai já pela
+  `canonicalizeShapeStyleForPersistence`, a mesma do PATCH. Canal sem slot: `fill: 'transparent'`, sem `strokeColor`.
+- **Proveniência em `style.vetor`** (`LayerStyle.vetor`, tipo `VetorDaCamada`): `{ asset: { id, versao }, papeis:
+  { <canal>: <papel> } }`, com o canal FÍSICO (`preenchimento` → `fill`, `contorno` → `strokeColor`; a `line` pinta
+  com `fill`). `manterProporcao: true` só no item `travado` (nunca grava `false`). A pílula leva
+  `border: { width: 0, color: 'transparent', radius: 9999 }`: o raio não liga contorno nenhum nos dois renderers.
+- **Escolher a cor à mão apaga o papel daquele canal** (`escolhaExplicitaDaCor`): campo de texto, seletor nativo e
+  swatch, nos dois canais. Os sliders de transparência não são escolha de cor e não tocam o papel.
+- **Bloqueio até os dados confirmarem** (`src/lib/editor/estado-da-insercao.ts`): `carregando` e `erro` não criam
+  camada nem desfazer. Erro é consulta falhada, paleta que não é lista (HTML 200), cor sem `hexCode` em texto ou
+  projeto sem a chave `assinatura`; **nunca** vira "marca sem cores". "Tentar de novo" refaz só o que falhou. O padrão
+  do resolvedor só vale com ausência CONFIRMADA (lista vazia válida, `assinatura: null` ou campo ausente no JSON).
+  Dado de outro `projectId` nunca entra: a paleta estrita volta marcada com o projeto, e o projeto tem o `id`.
+- **Paleta estrita é opt-in:** `useBrandColorsEstrita` (key `['brand-colors', id, 'estrita']`) lança no que não é
+  lista. O `useBrandColors` e os 4 consumidores dele seguem devolvendo `[]`. A aba Marca invalida
+  `['brand-colors', id]` ao criar e apagar cor, o que renova as duas keys.
+- **Catálogo vivo = 37 legados + 10 ativados**, num ponto só (`SHAPES_LIBRARY` no fim de `shapes-library.ts`). Os 37
+  ganham `versao: 1` e um slot de preenchimento (D3: básicas e decorativas → destaque; setas e linhas → texto); os
+  campos literais deles não mudam (o teste confere o sha256 da base). `SHAPE_CATEGORIES` cobre toda categoria usada.
+  O remapeamento para as 8 categorias e a troca do `sparkle` pelo `spark-4` são do V2d.
+- **Máscaras de imagem continuam as 26** (`MASCARAS_DE_IMAGEM`, por id); a ativação não as muda.
+- **Gate da revisão:** `style.vetor.*` é **inerte** (`gate-v4`, impressão `gate-gate-v4.json`; v1–v3 imutáveis).
+  Retângulo e pílula seguem medidos; `svg-path` e linha seguem fora (pelo desenho, nunca pela proveniência). O
+  pseudonimizador das fixtures preserva `vetor` inteiro.
+- **Um canto arredondado só, no editor e no servidor** (correção da pílula, 23/10/2026). O
+  `RenderEngine.traceRoundedRectPath` faz a MESMA sequência do `Konva.Util.drawRoundedRectPath` (Konva 9.3.22: `arc`
+  de círculo, mais o `closePath` do `Konva.Rect`), com o raio limitado a `max(0, min(r, w/2, h/2))` e retângulo
+  quando o raio é ≤ 0. O `strokeRoundedRect` (borda da imagem) abre o path e reutiliza o helper. Antes era
+  `quadraticCurveTo` com o controle no vértice: o canto saía 0,06 × raio mais "quadrado" (a pílula media 1.346 px).
+  - Vale para forma `rounded-rectangle`, `rectangle` com `border.radius` (inclusive o **halo**) e o recorte e a borda
+    de imagem/logo/elemento. O `rounded-rectangle` sem raio continua 24 pelo chamador.
+  - Paridade medida no Node, 0 px: `paridade-presets.test.ts` e `paridade-cantos.test.ts` (sequência contra o
+    `Konva.Util` real, raios 8/24/50/9999, caixa quadrada, alfa, rotação, recorte de imagem contra o `Konva.Image`).
+    Não prova o navegador.
+  - **Sem paridade, de propósito:** imagem com raio E borda (o editor traça antes da foto, o servidor depois) e raio
+    negativo (o servidor desenha retângulo; o editor não desenha). O gradiente com raio segue quadrado no servidor e o
+    fundo de texto usa outro helper (`arcTo`): nenhum dos dois mudou.
+  - Helper novo de canto no servidor tem de seguir a sequência do Konva, ou o teste de sequência reprova.
+- **Push do desktop (X0):** toda forma com `vetor` passa a ser protegida (inclusive `rectangle`/`line`); um `fill`
+  vindo do desktop deixa o papel antigo em `vetor.papeis`. Comportamento aceito até aposentar o push (d02).
+
+## Um rail só: o painel "Elementos" (CP-V2d, 23/10/2026)
+
+- **"Formas" saiu do rail.** No computador e no celular, "Elementos" monta o `ElementosPanel`
+  (`panels/elementos-panel.tsx`, ex-`shapes-panel.tsx`): busca, as 7 categorias do catálogo, "Outros" e a "Marca".
+  Painel novo de formas não volta a ser um item separado no rail.
+- **Categoria do painel é apresentação** (`src/lib/assets/painel-de-elementos.ts`, puro). Linhas, Formas, Orgânicos,
+  Setas, Destaques, Editorial e Ornamentos; os 37 legados vão por `category` (`basicas` → Formas) e as decorativas
+  **por id** (D3). O `category` literal dos 37 NÃO muda (o teste trava o sha256 deles). Item com categoria fora da
+  lista, ou decorativa nova sem id mapeado, cai em **"Outros"** (que só aparece com item): nunca some.
+- **`sparkle` só sai da exibição** (`OCULTOS_NO_PAINEL`), em favor do `spark-4` (D4a). Ele continua no
+  `SHAPES_LIBRARY` e nas 26 máscaras (`MASCARAS_DE_IMAGEM`, mesmos ids e paths); camada antiga com `sparkle` não muda.
+- **Busca sem acento e sem caixa, PT e EN** (`normalizarBusca`: NFD, sem diacríticos). Os termos em inglês dos 37
+  moram em `TERMOS_DO_PAINEL`, não nas `keywords` deles. Substring, sem ranking: "onda" também acha "Retângulo
+  Arredondado" e "selo" também acha a "Explosão".
+- **Aviso de marca sem cores (D5)** só com `estado === 'pronto' && ausenciaConfirmada` do adaptador do V2c, que é
+  `every(fonte === 'padrao')`: inclui paleta só com hex inválidos e assinatura `{}`. Nunca em carregamento ou erro;
+  projeto **sem a chave** `assinatura` é erro. O painel não refaz a conta.
+- **"Marca" só lista e insere** (`panels/marca-do-projeto.tsx`): pelo `useProjectElements` (mesma key das
+  combinações), camada `image` até 200 px, centrada, um `addLayer`. Sem `fetch` direto, sem envio e sem exclusão no
+  editor até o V2e; eles continuam na Identidade visual do projeto. Limite herdado do hook: HTML 200 vira "vazia".
+  *(Superado pelo CP-V2e, seção abaixo: a Marca envia e apaga pelos hooks, e HTML 200 é erro.)*
+- **Busca não inventa vazio** (revisão do Codex, 23/10/2026): a busca só esconde a Marca, e o painel só diz "Nenhum
+  elemento encontrado.", com a consulta da Marca em **sucesso** e sem resultado. Carregando e erro (com o "Tentar de
+  novo") continuam visíveis durante a busca.
+- **Tabelas por chave usam `Map` ou `Object.hasOwn`**, nunca `objeto[chave]` cru: `category` ou `id` como
+  `constructor`/`toString`/`__proto__` achava membro herdado e o item sumia (ou o `gruposDoPainel` lançava).
+- **Prova:** `tests/harness/cp-v2d` (`npx playwright test -c tests/harness/cp-v2d/playwright.config.ts`), o
+  `TemplateEditorShell` REAL com 7 módulos falsos listados em `bundle.ts` (canvas, propriedades, Clerk, roteador,
+  imagem do Next, créditos, metadado de página). Rede falsa numa origem própria; desfazer pelo `undo()` do contexto.
+  **Não prova** o atalho Ctrl/⌘+Z nem o canvas Konva real. O `index.html` do harness precisa da
+  `<meta name="viewport">`: sem ela o Chromium com `isMobile` usa 980 px de layout e o editor abre no modo computador.
+
+## Elementos da Marca: lista estrita, envio e exclusão só por hook, apagar não toca o arquivo (CP-V2e, 23/10/2026)
+
+- **Leitura estrita** (`src/lib/brand/lista-de-elementos.ts`, puro): `lerListaDeElementos(dado, projectId)` LANÇA
+  para não-lista (HTML 200 do login, `{}`, texto) e para qualquer item sem `id` inteiro seguro > 0, `name` texto,
+  `fileUrl` `http(s)://`, `category` `null`/texto ou com `projectId` diferente do pedido. Um item ruim recusa a lista
+  inteira (fail-closed, como a paleta do V2c): a Marca mostra erro com "Tentar de novo", **nunca "vazia"**. O `POST`
+  só é sucesso com o elemento do mesmo projeto (`lerElementoCriado`); o `DELETE`, só com `{ success: true }`
+  (`lerExclusaoConfirmada`). Texto e HTML 200 nunca viram sucesso.
+- **As 3 keys do endpoint** (`chavesDosElementos`): `['project-elements', id]`, `['project-assets', id, 'elements']` e
+  `['project', id, 'elements']`. Toda escrita invalida as 3 pelo `invalidarElementosDoProjeto(queryClient, id)` do
+  **projeto da mutação**, nunca o da tela — no `onSettled` (sucesso OU erro), sem nova tentativa automática: a nova
+  leitura é a autoridade, inclusive quando o servidor apagou e a resposta se perdeu. Isso vale para o envio e o Drive
+  da Identidade visual também. O `staleTime` de 5 min não é prazo máximo: query montada sem evento fica velha além.
+- **Envio no editor é multipart** pelo `importarElemento` (o mesmo serviço do MCP), com `fetch` dentro do hook
+  (`useUploadProjectElement`): o `api.post` faz `JSON.stringify` e o `FormData` vira `{}`. PNG, JPEG, WebP e SVG, teto
+  de **4.194.304 bytes** no cliente (corpo da função da Vercel é 4.5 MB); maior vai pela Identidade visual (upload
+  direto ao Blob). Vários arquivos vão em série; erro no meio não para a fila, resumo no fim. Nada é inserido sozinho.
+- **Apagar elemento (D6 b) remove só a linha da biblioteca**: a rota `DELETE …/elements/[elementId]` não chama mais o
+  `del` do Blob. As artes COPIAM a `fileUrl` para as camadas (sem referência por id), e apagar o arquivo quebrava o
+  editor e o render no servidor de toda arte que o usa. Arquivos órfãos no Blob ficam para uma limpeza futura com
+  conferência de uso (D6 c). Não volte a apagar o arquivo nesta rota sem essa conferência.
+- **Confirmação D6 comum** (`components/projects/confirmar-exclusao-de-elemento.tsx`), na Marca e na Identidade
+  visual: alvo (`projectId`, `elementId`, nome) capturado ao abrir; "Apagar" é `Button` comum num diálogo controlado
+  (o `AlertDialogAction` fecharia no clique, antes do resultado); clique fora não fecha; Esc cancela, mas é ignorado
+  com o DELETE em voo. **O "em voo" é uma ref marcada no clique**, não só o `isPending`: o TanStack notifica a tela
+  numa tarefa adiada, e nessa janela um 2º clique faria outro DELETE e um Esc fecharia o diálogo (medido no harness).
+- **Lixeira é irmã do botão de inserir**, nunca aninhada: clicar nela não chama `addLayer`. Desfazer do editor não
+  traz o elemento de volta (não é camada); a confirmação é a única barreira.
+- **Troca de projeto A → B**: a confirmação não iniciada fecha sem DELETE; a fila de envio cancela o que não saiu; o
+  pedido em voo termina e reconcilia só A. Callback tardio não anuncia nem fecha nada no projeto novo.
+- **Prova:** `tests/harness/cp-v2d/marca.spec.ts` (asserções `V2E-…`, espião exato em `invalidateQueries` pelo
+  `QueryClient` real da sonda) e os controles negativos do `bundle.ts`. Limites: o harness não prova o upload real ao
+  Blob (corpo real, `sharp`), a exclusão real nem o efeito em arte existente; isso é smoke de produção (D-E6).
+
+
+## Cores da forma por canal: Marca, Nesta página, elo e Reaplicar (CP-V3, 23/10/2026)
+
+- **Dois canais físicos, sempre visíveis**: `preenchimento` → `style.fill` e `contorno` → `style.strokeColor`. O catálogo
+  só dá o RÓTULO do canal (item conhecido e mesma `versao`; a `line` diz "Cor da linha"). O papel vem só de
+  `style.vetor.papeis` da camada, lido com `Object.hasOwn` e contra `PAPEIS_DA_MARCA`. Papel fora da lista é
+  "Papel desconhecido" e não é reaplicado. Tudo em `src/lib/editor/cores-da-forma.ts` (puro).
+- **Ordem de cada canal: Marca → Nesta página → Personalizada** (o campo de texto e o seletor nativo ficam na
+  Personalizada, com o mesmo `CampoDeCorDigitada`).
+- **Fileira Marca da forma = paleta ESTRITA** (`useBrandColorsEstrita`). Carregando e erro (HTML 200, cor sem `hexCode`)
+  mostram a mensagem e nunca viram "sem cores". O item só é aplicável se o `hexValido` o lê (`#rgb`/`#rrggbb`, espaço
+  externo vale), e o clique grava o hex CANÔNICO com a transparência do canal; o resto sai da fileira e é contado.
+  Os outros usos do `BrandColorSwatches` seguem como antes (as props `cores`/`ativo` são opcionais).
+- **Swatch ativo** = os canais da cor SALVA, crua, pelo `lerCor` (o alfa é do slider). `transparent`, ilegível e
+  ausente não acendem nada: nunca passe o `corParaSeletor` (o fallback acendia o swatch azul).
+- **Nesta página**: cores lidas pelo `lerCor` nas formas, no texto (`style.color`), no ícone e no fundo, sem repetir, sem
+  a paleta aplicável, teto 8. Derivada, nunca armazenada. O clique é escolha explícita.
+- **Escolha explícita (swatch, Nesta página, seletor, campo confirmado) tira o papel daquele canal**, e ele volta SÓ
+  pelo desfazer (Q1 = A, decidida pelo Ciro). Não existe "religar". O campo de texto exige `lerCor` em toda camada com
+  `style.vetor`, não só no `svg-path` (`currentcolor` é recusado no fio, na moldura e na pílula).
+- **Reaplicar cores da marca** (na camada; aparece com `style.vetor`):
+  - relê a paleta estrita e o projeto ANTES de gravar (o cache tem `refetchOnWindowFocus: false`); releitura que falha
+    não grava nada, mesmo com o cache bom;
+  - só os canais AINDA vinculados mudam; grava `resolverCorDaMarca(papel)` com o alfa EXATO da cor salva e não toca
+    `opacity`/`fillOpacity`/`strokeOpacity`: a canonização aplica os multiplicadores uma vez (opacity 0,5 + rgba 0,5 →
+    0,25, nunca 0,125);
+  - **sem mudança, o atualizador devolve a PRÓPRIA camada antes de canonizar**: nada de `dirty`, desfazer ou PATCH, e a
+    camada não canônica não é normalizada. Nunca use o `updateLayerStyle` aqui (ele canoniza sempre);
+  - **guarda completa do alvo** no clique, na volta da releitura e DENTRO do atualizador (`atualizadorDoReaplicar`):
+    token da operação, montagem, projeto, template, página (nula fora do multipágina), geração da carga e a seleção
+    exatamente [camada]. Resultado tardio não grava nem mostra mensagem na origem nova;
+  - chave de desfazer própria (`reaplicar:<n>`): nunca se funde com a edição anterior nem com a seguinte;
+  - **o aviso, o "em voo" e o retry pertencem à OPERAÇÃO** (número + token), não à chave do alvo: trocar o alvo os
+    DESCARTA (A → B → A não ressuscita "em voo" nem erro velho), e a resposta de uma operação velha nunca apaga nem
+    sobrescreve o aviso da nova;
+  - **"Tentar de novo" relê só a consulta que falhou** e reusa a que voltou boa, sob o MESMO alvo e token; um clique novo
+    no Reaplicar relê as duas (R2).
+- **`geracaoDaCarga()` do contexto** sobe em toda `loadTemplate` e na troca de template/projeto do provider (que NÃO
+  remonta: `key={initialPageId}`); não sobe em edição nem com objeto novo do mesmo template. Só leitura.
+- **Limites que ficam** (aprovados): no seletor nativo, eventos com menos de 800 ms entre si viram uma entrada de desfazer;
+  uma pausa maior abre outra, e o papel só volta no desfazer do primeiro trecho. Duas ações discretas na mesma camada a
+  menos de 800 ms também se fundem.
+- **Prova:**
+  - unitário: `src/lib/editor/__tests__/cores-da-forma.test.ts`;
+  - harness principal `tests/harness/cp-v3` (`cp-v3.spec.ts`): `TemplateEditorProvider` e `ShapeControls` reais; os
+    hooks da marca (paleta estrita, projeto) e a página multipágina são SIMULADOS (`falsos.tsx`), sem autosave. Os
+    controles negativos M0–M13 rodam nele e são classificados por `classificar-controles.mjs`, que fecha em INVÁLIDO
+    diante de qualquer falha não semântica (infraestrutura, pré-condição não alcançada, troca que não aplicou); um
+    subconjunto só vale declarado (`--grep`), sem esconder a rodada integral;
+  - H11 separado (`autosave.spec.ts`, `playwright.autosave.config.ts`): `QueryProvider`, `MultiPageProvider`,
+    `TemplateEditorProvider`, `PageSyncWrapper` (fila e PATCH) e os hooks da marca REAIS; só a API é falsa (o
+    `ServidorFalso` do V2d, com a guarda de vetor e a canonização da rota real). Prova o PATCH 200 com a cor, o `vetor`
+    e o `metadata`, o no-op sem PATCH e o reload pelo GET;
+  - continuam fora: banco, Clerk, Blob, canvas Konva, ⌘Z de teclado e Vercel.
+
+## Aba Layouts: o arquétipo cria PÁGINA NOVA, a origem não muda (CP-T2, 24/10/2026 — local, sem release)
+
+- **Onde:** 3ª aba da `EditorSidebar` (desktop) e item "Layouts" do drawer do celular; painel
+  `sidebar/layouts-panel.tsx`, hooks `use-layouts.ts`, rota `POST/GET /api/templates/[id]/pages/from-layout`, módulo
+  puro `compositor/arquetipos/da-pagina.ts`.
+- **d07: layout só em página nova.** Nada de "aplicar na aberta" nem `loadTemplate` sobrescrevendo: a rota cria a
+  página `isTemplate: false`, tags `['layout', 'arquetipo:<id>']`, logo depois da origem (as de baixo descem uma
+  posição, outro template não se mexe), e a UI navega para ela depois de a lista recarregar.
+- **Entrada estrita:** `{ arquetipo: { id, versao?, params? }, aPartirDaPagina, fotoUrl? }`. Nenhum arquétipo tem
+  parâmetro: `params` com chave, chave a mais ou `fotoUrl` sem https são 400 — recusados, nunca ignorados.
+- **Foto:** `fotoUrl` > camada `bg-foto` > a maior imagem visível cobrindo ≥ 90% da página; sem nenhuma, **409
+  `LAYOUT_SEM_FOTO`** (o único 409 da rota: a UI abre o painel de imagens pelo status, o `ApiError` não carrega o
+  código).
+- **Origem COM contrato de copy (rodada 1):** a spec é o CONTRATO, nunca blocos lidos das camadas — sem ele, a
+  divisão legada da manchete voltaria (a última linha na voz 2) e a segunda voz declarada (`linhasNaVoz2`) e a autoria
+  se perderiam. O contrato é confrontado com as camadas de hoje (`revisaoDaPaginaComCamadas`, a diferença é
+  reconciliação do sistema) e recortado ao arquétipo por `contratoDoLayout`: UMA revisão do `sistema`, superfície
+  `layout` — o bloco sem lugar (`cta`, `livre`, papel fora do modelo) sai com o que dizia em `removidos`, a ordem dos que
+  ficam é compactada (o leitor exige ordem contígua) e o papel obrigatório sem texto ganha o placeholder escrito pelo
+  sistema, dito no motivo. Origem e histórico seguem; a página nova guarda a EFETIVA sobre esse contrato.
+  **Rodada 2:** contrato que não pode ser levado com fidelidade — ilegível, reconciliação, recorte ou efetiva recusados
+  pelo leitor (histórico cheio de 200 revisões, por exemplo) — é **422 `COPY_DA_ORIGEM_NAO_TRANSPORTAVEL`** antes de
+  compor e de gravar. Nunca cair nos blocos legados: comporiam com outra regra de voz (a classe do PR10-05). Não há,
+  nesta fase, política nova para histórico cheio.
+- **Origem SEM contrato (legado):** textos por papel (`papelDoTexto`: `metadata.compositor.papel`, depois o nome); a
+  segunda voz volta para a manchete; texto sem papel, `cta` ou papel que o arquétipo não posiciona NÃO entra e volta
+  DITO em `foraDoLayout` (e no toast). Papel obrigatório ausente vira placeholder e a página nasce
+  "Layout — <preset> (rascunho)" sem contrato; com texto real, a copy efetiva de autoria `desconhecido`
+  (`copyAutoralDaSpec` + `tentarCopyEfetivaDasCamadas`), como o compositor grava.
+- **Composição:** `comporPeca(spec, { somenteAvaliar: true })` com `spec.arquetipo` (impressão, zonas HARD e recusas
+  do contrato atual — as `ARQUETIPO_*` saem com o código e a mensagem do compositor) → `prepararCamadasParaGravar`. Sem
+  página de assinatura: **422 `ASSINATURA_INCOMPLETA`** antes de baixar a foto; o GET diz o mesmo e a aba mostra o
+  motivo uma vez, com os cards desabilitados.
+- **Escrita (rodada 1):** `comTravaPorChave('paginas-do-template:<id>')` (trava consultiva de transação, READ
+  COMMITTED) → `SELECT "order" … FOR UPDATE` da origem, RELIDA ali (a lida antes do compositor pode ter vencido; sumiu
+  → 404 sem escrita) → descer irmãos → criar → `invalidateScheduledRenders`; fora dela,
+  `pedirRecomposicaoDaArteCongelada` — as DUAS, mesmo a página sendo nova. A trava serializa as criações de layout
+  entre si; duplicar, reordenar e criar página pelas outras rotas NÃO a pegam (a linha da origem travada só segura quem
+  escreve nela). Antes do POST a aba chama `pageSync.descarregar()`: a rota lê a origem do banco.
+- **Abrir a página criada (rodada 1):** o POST e a abertura são separados. A aba só navega depois de
+  `useAbrirPaginaCriada` (o MESMO GET e a mesma chave de `usePages`, `fetchQuery`) trazer a página nova; se a recarga
+  falha, a página fica "criada sem abrir": aviso com **Abrir página criada** (só GET) e nenhum card cria outra até
+  abrir — repetir o POST duplicaria a página.
+- **Sem Generation:** a página é conteúdo editável, não arte persistida; a procedência fica nas tags e no `metadata`
+  das camadas (o acento leva a receita em `metadata.compositor.acento`). O diagnóstico (`composicao.arquetipo`) não é
+  gravado — não há coluna para ele sem migração.
+- **Só os presets `disponivel` da vitrine** aparecem (hoje os três MIN-01/MIN-02); família ainda não aprovada (d04)
+  não entra por inferência.
+- **Prova:** `da-pagina.test.ts` (puro), `from-layout/__tests__/route.test.ts` (handler, acesso e contrato de camadas
+  reais, banco em memória, compositor dublado; reabre pelo GET real de `pages/route.ts`; trava e releitura da ordem
+  com a trava EMULADA — não prova o isolamento do Postgres), `cadeia-copy.test.ts` (rota → `comporPeca` REAL com o
+  suporte das provas T1a/T1b: segunda voz, autoria e recorte pelo contrato) e o harness Playwright do
+  relatório `human-output/relatorios/editor-madrugada-2026-10-24/cp-t2/harness` (providers reais do editor, API falsa
+  no `fetch`, desktop e celular emulado). Fora: banco, Clerk, Blob, foto e fonte reais, canvas Konva.
+
+## Grades de fotos, G1: inserir pelo painel Elementos (27/10/2026 — local, sem release)
+
+Motor do G0 em `src/lib/grades/` (sem alteração); a inserção é `src/lib/grades/insercao.ts` (puro), o contexto ganhou
+`inserirGrade` e o painel a seção `panels/secao-grades.tsx`. **Grades ainda não servem a piloto nem à equipe: o G4 bloqueia.**
+
+- **Seção "Grades"** no `ElementosPanel`, irmã da Marca: os 14 layouts do catálogo em miniatura na proporção da página
+  (espaçamento padrão 10; contorno da cor do fundo separa as células na miniatura), `aria-label="Grade <nome>"`. Não espera
+  a paleta da marca (só as formas esperam). Busca sem acento, pelo nome (× lido como x) e por grade/grid/colagem/fotos;
+  "Nenhum elemento encontrado." só sem forma, grade e Marca casando. Página de vídeo: botões desabilitados com o motivo.
+- **Um `applyDesign` por inserção = um desfazer.** As N células (camadas `image` do `criarGrade`, ids novos de `createId`,
+  nunca `bg-foto`/`bg-img`, conferidos contra os ids, `groupId` e ids de grade da página) entram num bloco, a ordem é
+  normalizada uma vez e a seleção vira as células. Cmd+Z devolve o design normalizado anterior byte a byte.
+- **Nunca o desvio de clipe do `addLayer`**: não consome o "+" armado da linha do tempo e não cria clipe. **Página de
+  vídeo** (`paginaEVideo(layers, audio)`: vídeo visível, sequência de clipes ou música) recusa sem medir e sem tocar
+  design, histórico ou dirty.
+- **Pilha:** o bloco entra logo abaixo da primeira camada que não é fundo, visível ou oculta (a oculta reaparece por
+  cima); texto, logo, elementos e o resto ficam por cima, na mesma ordem. Fundo convertido sai antes dessa conta (nunca
+  deixa o bloco no índice antigo dele).
+- **Fundo → célula 1** só com UM fundo (imagem visível com id reservado ou caixa sem rotação cobrindo ≥ 90% da página, a
+  régua de `COBERTURA_MINIMA_DA_FOTO`) que seja imagem comum: raiz só com as chaves da célula (qualquer outra com valor —
+  `logoId`, `elementId`, `clipe`, `movimento`, `__quadroDoMovimento`… — é especial), sem metadata, sem `style.vetor`,
+  nome sem logo/elemento/sombra/ícone, sem máscara, reta, destravada, sem borda/cantos/sombra/efeito ligado, estilo só com
+  enquadramento e ajustes de imagem (que a célula leva), foto do Blob próprio e cobrindo a página. A dimensão natural é
+  conferida pela URL exata (`dimensoesDaFotoCarregada`). O enquadramento passa pelo G0 (grade de 1 célula na caixa do
+  fundo → `refazerGrade`): mesma escala e centro; foto já esticada é recusada, nunca normalizada. O fundo sai e as
+  células entram no MESMO `applyDesign`; a célula não herda id, `isDynamic`, metadata, máscara nem borda.
+- **Na dúvida o fundo fica intacto**: a grade entra vazia e o toast diz o motivo (`AMBIGUO`, `ESPECIAL`, `MASCARA`,
+  `GIRADO`, `TRAVADO`, `ESTILO`, `URL`, `NAO_COBRE`, `SEM_MEDIDA`, `RECORTE`). Nada é apagado.
+- **Medida assíncrona:** o alvo (página, template/projeto, `geracaoDaCarga` e a impressão do fundo + canvas, sem a
+  `order`) é capturado antes de medir e conferido DENTRO do updater do `applyDesign`, sobre o estado atual. Troca de
+  página (inclusive ida e volta à mesma), de documento, recorte/foto/geometria do fundo ou do canvas durante a medida ⇒
+  `ALVO_MUDOU`, nada aplicado e a edição concorrente fica. Edição de outra camada não impede.
+- **Prova:** `insercao.test.ts` (puro), `inserir-grade-no-editor.test.ts` (`QueryClientProvider`, `MultiPageProvider` e
+  `TemplateEditorProvider` REAIS num host sem DOM pelo `react-reconciler` instalado, `__tests__/suporte/host-sem-dom.ts`;
+  só `use-pages` é dublê) e `secao-grades.test.ts` (painel real em SSR). **Não provam** clique no navegador, canvas Konva,
+  toast, a imagem real do `new Image()` nem o desenho das classes `fill-muted-foreground/60`/`stroke-background` na tela.
+- **Fora do G1** (G2–G4): preencher células, toolbar/transformer/setas/alinhar da grade, copiar/colar/duplicar, reflow,
+  push do desktop, `finalize` do /gerar-criativo. Célula vazia no editor/servidor não foi conferida visualmente.
+
+## Grades de fotos, G2: preencher células (27/10/2026 — local, sem release)
+
+Motor do G0/G1 sem alteração. O preenchimento é `src/lib/grades/preenchimento.ts` (puro), o contexto ganhou
+`planejarPreenchimento` e `preencherGrade`, o hook `src/hooks/use-preencher-grade.ts` busca as fotos e o painel Imagens a
+barra `panels/lote-da-grade.tsx`. **Grades ainda não servem a piloto nem à equipe: o G4 bloqueia.**
+
+- **O alvo é decidido ANTES de qualquer API** (`planejarPreenchimento`, sobre a seleção e o design do instante), em todas
+  as entradas: upload, arrastar, Drive e acervo no painel Imagens; biblioteca e geração no painel IA (a geração captura o
+  alvo antes de enviar referências ou gastar crédito). Grade inteira selecionada ⇒ próxima célula VAZIA em ordem de
+  leitura (pela geometria, `ordemDeLeitura`); célula selecionada ⇒ substitui a dela; grade cheia ⇒ avulsa com aviso;
+  sem grade ⇒ a avulsa de sempre, intocada. Página de vídeo, célula girada ou grade quebrada (`conferirGrade`) ⇒ recusa
+  com o motivo e nada sobe. As cinco entradas passam pelo MESMO `useFotoNaGrade` (a entrada só monta a avulsa e a
+  entrega a `inserir`).
+- **Grade cheia ≠ sem grade.** A avulsa da grade CHEIA entra por `adicionarFotoAvulsa` (imagem comum, sem metadado, grupo
+  ou clipe; o "+" armado da linha do tempo continua armado). Sem grade é o `addLayer` de sempre, inclusive consumindo o
+  "+". O `addLayer` não foi interceptado.
+- **Foto em célula só por `preencherCelula`** (cover escrito, recorte limpo, URL só do Blob próprio). Nunca `addLayer`:
+  a foto não vira clipe e o "+" armado da linha do tempo continua armado. A avulsa não herda metadado, grupo nem clipe.
+- **Lote** ("Preencher com várias fotos", só com a grade inteira selecionada): toques em fotos do Drive, do acervo e do
+  computador entram numa fila ordenada (selo 1, 2, 3…), até `min(6, células vazias)`; nada sobe nem baixa antes de
+  "Preencher". As fotos vão para as células VAZIAS em ordem de leitura; foto existente nunca é trocada pelo lote.
+- **Drive** por `useMutation` + `api` central num único `POST /api/google-drive-download` (limite da rota intocado). A
+  resposta 200 pode ser parcial: mapeada por `file.id`, nunca pela posição; id repetido ou `url` que não é texto vira
+  falha da célula. Toda URL (Drive, Blob, IA) passa por `motivoDaUrl` (https do Blob próprio; nunca `data:`, `blob:`,
+  lh3) e pela medida da dimensão natural na URL EXATA (`dimensoesDaFotoCarregada`) antes de qualquer escrita. O medidor
+  (`src/lib/grades/medir-foto.ts`, também usado pela inserção do G1) tem prazo de 20 s e cancelamento.
+- **Uma operação, um desfazer.** `preencherGrade` aplica num `applyDesign` só; dentro do updater confere cancelamento,
+  página, documento, geração da carga e a ASSINATURA da grade (todos os membros inteiros, menos a `order`). Recorte,
+  foto, geometria ou metadado de QUALQUER membro, grade removida ou trocada, navegação (inclusive ida e volta) ⇒ nada
+  aplicado e a edição concorrente fica. Sucesso parcial aplica as válidas nas células previstas e lista as falhas pelo
+  nome; a célula que falhou fica como estava. Zero sucesso ou cancelamento ⇒ sem histórico nem dirty.
+- **Cancelar vale até a decisão do updater**: o hook mantém o controlador até `preencherGrade` decidir (só limpa o
+  próprio), o sinal é lido dentro do updater e um segundo pedido com o primeiro em voo é recusado (`EM_ANDAMENTO`). Cada
+  entrada mostra o controle da SUA instância: a barra do lote no painel Imagens e `AplicandoNaGrade` na biblioteca e na
+  geração de IA (com o botão de gerar bloqueado enquanto a imagem gerada é aplicada).
+- **Aprendizado do acervo** (`docs/regras/aprendizado.md`, uma escolha por busca): na grade, o sinal só sai com a foto
+  APLICADA, para a busca de onde ela foi escolhida (`ContextoDaBusca`, preso no toque); tocar, retirar, lote cheio,
+  cancelar ou falha não emitem nada; no sucesso parcial, só as aplicadas. A avulsa sem grade segue registrando no
+  clique, como sempre.
+- **Prova:** `preenchimento.test.ts` (puro), `preencher-grade-no-editor.test.ts` (providers e hooks REAIS no host sem DOM;
+  só rede, envio e medidor dublados), `painel-imagens-grade.test.ts` e `painel-ia-grade.test.ts` (painéis reais; props
+  chamadas direto na árvore do host, não clique; o de IA dubla créditos, prompts, Radix e `window.location`),
+  `lote-da-grade.test.ts` (barra em SSR) e `medir-foto.test.ts`. **Não provam** clique no navegador, toast, canvas Konva,
+  a célula vazia desenhada, o upload real do Blob, a rota real do Drive, a IA real nem o desenho das classes novas
+  (`bg-primary/5`, `border-primary/30`, o selo e o `AplicandoNaGrade`). Fora do G2 (G3/G4):
+  barra de ajustes, transformer/setas/alinhar, copiar/colar, reflow, push do desktop, `finalize`.
+
+## Grades de fotos, G3: ajustar a grade (27/10/2026 — local, sem release)
+
+Motor do G0 sem alteração. Os ajustes são `src/lib/grades/ajustes.ts` (puro: `refazerGrade` do G0 para espaçamento,
+cantos, caixa e layout; translação pura para mover; desvincular), o contexto ganhou `planejarAjusteDaGrade`,
+`aplicarAjusteDaGrade`, `moverSelecao` e `desvincularGrade`, o hook `src/hooks/use-ajustar-grade.ts` mede e aplica
+(`useAjustarGrade`) e cola o arraste do stage (`useArrasteDaGrade`), e a barra é `grade-toolbar.tsx`. **Grades ainda não
+servem a piloto nem à equipe: o G4 bloqueia.**
+
+- **Barra da grade inteira** (no lugar da barra de alinhamento, que não vale para grade): espaçamento 0–100 px, cantos,
+  trocar layout (14), largura/altura da caixa e "Desvincular". Slider grava UMA vez ao soltar (arrastando, só o número
+  da barra muda): um gesto = um desfazer, dois gestos = dois desfazer — nada de `coalesceKey` + `gesto` que valeria para
+  sempre. Campos confirmam ao sair ou com Enter.
+- **Toda mudança geométrica passa pelo `refazerGrade`** com o espaçamento fixo em px e a dimensão natural de CADA foto
+  medida pela URL EXATA (`dimensoesDaFotoCarregada`; medida de outra URL não vale). Foto sem medida, recorte que não
+  cabe sem deformar, caixa pequena demais (célula < 8 px), célula girada ou grade quebrada ⇒ nada muda e o motivo
+  aparece. O enquadramento segue o `cropForResizedBox` (mesma escala, mesmo centro). Layout menor: as fotos que sobram
+  ficam AVULSAS no mesmo lugar (sem `grade` nem `groupId`), selecionadas e com aviso; células vazias que sobram saem;
+  layout maior cria células vazias logo depois da grade na pilha. Nenhuma foto é apagada.
+- **Espera da medida:** o alvo (grade, assinatura de TODOS os membros, página, documento, geração) é preso antes de
+  medir e conferido de novo DENTRO do updater. Recortou, moveu, removeu, navegou (inclusive ida e volta) ⇒ nada aplicado
+  e a edição concorrente fica; editar OUTRA camada não impede. Um pedido por vez por instância (`EM_ANDAMENTO`).
+- **Mover:** arraste, setas e X/Y do painel movem a grade INTEIRA (caixa + células) num `applyDesign`, sem medir e sem
+  arredondar a geometria fracionária; célula ou subconjunto arrastado leva as irmãs. No stage, a posição que cada nó
+  gravaria sozinho é consumida e o soltar faz UMA operação (os proxies do Transformer não movem de novo); recusa (ex.:
+  célula travada) devolve os nós do Konva ao lugar. Setas usam a janela de 800 ms de sempre (`setas:<ids>`).
+- **Transformer:** grade inteira tem alças e redimensiona como UMA caixa (sem girar); célula, subconjunto ou seleção
+  mista com grade: sem alças e sem girar. No fim do gesto os nós voltam NA HORA (escala 1, lugar do estado) e a grade é
+  refeita uma vez pela caixa nova. O nó da célula não grava transform nem recorta sozinho, e desenha até o piso de 8 px
+  do G0 (foto avulsa segue nos 20 px).
+- **Alinhar e distribuir** com célula de grade na seleção: bloqueados com motivo (MVP).
+- **Célula vinculada:** a toolbar não tem Quadrado 1:1, Ajustar à página nem Máscara (o motivo fica escrito) e ganha
+  "Desvincular da grade"; recortar, restaurar recorte e flips ficam. No painel Propriedades, posição e tamanho são os da
+  grade inteira, rotação bloqueada, e URL, "Object Fit" e "Editar" ficam desabilitados com motivo. Foto avulsa: toolbar
+  e painel como antes.
+- **Desvincular:** `grade` sai de todos os membros e o `groupId` igual ao id da grade sai de todas as camadas (grupo
+  alheio fica); foto, recorte, cantos e cover intactos; vale para grade girada ou quebrada; um desfazer.
+- **Prova:** `ajustes.test.ts` (puro, Story e Feed), `ajustar-grade-no-editor.test.ts` (providers e hooks REAIS no host
+  sem DOM; medidor dublado; nós/stage do arraste são objetos simples), `barra-da-grade.test.ts` (barra, toolbar e
+  Transformer reais; Slider/Popover e o `Transformer` do react-konva dublados) e `propriedades-da-grade.test.ts` (painel
+  real; Radix e modais dublados). **Não provam** clique, arraste ou alça no navegador, o Konva real (escala, proxies,
+  ordem dos eventos), toast, o desenho da barra nem paridade editor × PNG. Fora do G3 (G4): copiar/colar/duplicar,
+  excluir, agrupar/desagrupar (o "Desagrupar" ainda quebra a grade: use "Desvincular"), reflow, push do desktop,
+  `finalize`, persistência.
+
+## Grades de fotos, G4: as proteções (27/10/2026 — local, sem release)
+
+Plano: `docs/research/canva-grades-de-fotos-2026-10/PLANO-GRADES-PRIORITARIO.md` §4 e §7 G4 (fora do git). As sete
+proteções que bloqueiam piloto e uso da equipe. Todas valem para qualquer cliente, sem lista de ids.
+
+- **Push do desktop** (`guarda-do-push-do-desktop.ts`): dentro do compare-and-set, sobre a base RELIDA, o resultado
+  MESCLADO de cada membro de grade tem de sair igual à base — a camada INTEIRA (raiz, `style`, `metadata`, `effects`,
+  `movimento`…), menos a lista explícita do que o normalizador do desktop renormaliza sem mudar o desenho (nome,
+  `order`, o `fit` de topo; `visible`/`locked`/`rotation`/URL/`crop` de topo pelo valor efetivo). Membro apagado, camada
+  entrando na grade, página NOVA do push com metadata de grade ou `conferirGrade` pior ⇒ 409 `PUSH_ALTERA_GRADE` e o
+  `$transaction` desfaz tudo (template e páginas já gravadas; miniatura e invalidação não rodam). Push sem mexer na
+  grade passa; mudança fora dela também.
+- **`/gerar-criativo` → `finalize`**: sobre as camadas EFETIVAS (`processedLayers`, depois das fotos trocadas) e antes
+  do Blob: grade incoerente (foto de host alheio, célula oculta, geometria) ⇒ 422 `GRADE_INCOERENTE` mesmo com a
+  marca; célula de grade ou foto com recorte manual vinda de cliente sem `previaDeImagem: 'imagem-v1'` ⇒ 409
+  `PREVIA_DESATUALIZADA`. A marca vai do `useGerarCriativoFinalize` (compatibilidade, NÃO prova de pixel). A prévia
+  desenha pelo `desenhoDaImagemNaPrevia` (recorte do `resolveImageSourceRect`, raio, espelho num grupo, piso do editor:
+  8 px na célula) com a foto conferida pela URL (`dimensoesDaFotoCarregada`); célula não arrasta nem tem alças lá. O
+  export da prévia espera (com teto) a foto da URL ATUAL de toda imagem desenhada e, depois de todas as esperas,
+  confere de novo a arte (camadas, fotos, textos, ocultas, tamanho) e a prontidão imediatamente antes do `toDataURL`:
+  foto pendente, com erro, da URL anterior, ou arte trocada/ocultada na janela ⇒ nada de PNG nem finalize. A guarda do
+  vetor é a de antes.
+- **Operações genéricas do editor** (`src/lib/grades/no-editor.ts`, ligadas no contexto): a exclusão em lote (Delete,
+  botão de excluir do shell, Delete do painel de camadas) é UMA operação (`removeLayers`, um desfazer): grade INTEIRA
+  selecionada sai inteira; célula sem as irmãs é ESVAZIADA (sem recorte) e não fura a geometria; o resto sai como
+  sempre. A lixeira de UMA linha (`removeLayer`) vale só para ela e, numa célula, só ESVAZIA (vazia: nada muda) —
+  nem a única célula de uma grade `1-celula` é apagada por ela. Copiar/colar
+  e duplicar a grade inteira criam grade NOVA (ids, `grade.id`/`groupId` novos, UM deslocamento, caixa junto, sem
+  arredondar); célula solta copiada vira foto avulsa. "Duplicar seleção" (uma chamada por membro) gera uma grade só.
+  Cmd+G com célula: recusado com motivo. Cmd+Shift+G numa grade: desvincula todos os membros num desfazer. Toda edição
+  genérica de UMA camada (`updateLayer` e o que passa por ele: painéis, propriedades, gerador de criativo) não muda
+  posição, tamanho, rotação, cantos, ajuste, máscara nem o vínculo da célula; foto nova entra por `preencherCelula`.
+  O `CreativeGeneratorPanel` não faz mais o PATCH direto da camada numa célula (o autosave da página grava).
+- **Reflow:** célula de grade nunca é empurrada — `reflowComboStack`/`reflowLayersAfterFill` e o laço do texto
+  auto-expandido (`irmaosQueAcompanham`, provado com o `KonvaEditableText` real montado); os outros membros do grupo
+  seguem fluindo.
+- **Revisor, halo, bake, defasagem:** página com várias fotos cai no fallback que o gate já tinha (`texto-sobre-assunto`
+  não comprovada ⇒ revisão humana), sem esconder colisão, fonte, copy nem identidade. Halo com grade: fica o véu, com
+  aviso, sem ler a foto. Bake: `fileUrl` explícito para célula só por `preencherCelula` (host alheio ⇒ 422
+  `FOTO_DA_GRADE_RECUSADA`); a foto genérica nunca entra numa célula nem troca a foto dela (sem outra vaga,
+  `imageApplied: false` e aviso) — nem pelo atalho da "primeira imagem" do `ajustarArte`. Defasagem: foto trocada em
+  QUALQUER célula conta; página com grade nunca é recomposta pela spec (só re-render como está).
+- **Agendar:** "A grade tem N células vazias" (`''` ou ausente, visível) no `resolverAgendamento`, no POST de posts
+  (`warnings`) e no modal "Agendar Story" ANTES de confirmar (o botão segue habilitado) e no toast depois. Avisa, não
+  bloqueia.
+- **Persistência e paridade:** o PageSync real → PATCH real (`JSON.stringify` gravado) → GET real → provider novo
+  reidratam Story 2/1/2 e Feed 2×3 com `conferirGrade` limpo e ids, ordem, caixa, recorte, raio, espelhos, fotos e
+  vazias intactos; Konva real no Node × `CanvasRenderer` com diferença 0 por canal (tolerância declarada 8) inclusive a
+  célula de 8 px. Na célula vazia o editor mostra o marcador e a arte publicada deixa o fundo.
+- **Não provam:** navegador, clique em Salvar, reload, o banco real, o componente Konva montado, o desktop real nem o
+  gerador de criativo na tela. Prova: `guarda-do-push-do-desktop.test.ts` e `put-guarda-do-desktop.test.ts` (normalizador
+  real do desktop, diário de rollback), `contrato-do-vetor.test.ts` + `previa-da-imagem.test.ts` +
+  `emissor-da-previa.test.ts`, `no-editor.test.ts` + `operacoes-genericas-no-editor.test.ts`, `reflow-sem-grade.test.ts` +
+  `reflow-sem-grade-no-editor.test.ts`, `export-espera-a-foto.test.ts`, `pagina-e-video.test.ts` (inventário),
+  `grade-no-bake-halo-defasagem.test.ts` + `gate-grade-de-fotos.test.ts` + `ajustar-arte-concorrencia.test.ts`,
+  `aviso-ao-agendar.test.ts` + `agendar-pagina-com-video.test.ts` + `avisos-da-grade.test.ts`,
+  `persistencia-da-grade.test.ts` + `paridade-da-grade.test.ts`.
+
+## Grades de fotos, quadradas de 4 colunas: Story 4×7 e Feed 4×5 (Q1/Q2, 27/10/2026 — local, sem release)
+
+Plano: `docs/research/canva-grades-de-fotos-2026-10/PLANO-GRADES-QUADRADAS-4-COLUNAS.md` (fora do git). Dois ids novos
+no FIM do catálogo: `4x7-quadrada` ("Story · 28 fotos quadradas (4×7)") e `4x5-quadrada` ("Feed retrato · 20 fotos
+quadradas (4×5)"), versão 1. Os 14 anteriores não mudam (ids, versões, objetos e geometria; o teste
+`grades-quadradas.test.ts` trava a geometria deles por impressão digital tirada antes do Q1).
+
+- **Política `quadradas`** (`LayoutDeGrade.politica`): células iguais 1:1 CONTIDAS e centralizadas na caixa —
+  `s = min((W − (C−1)g)/C, (H − (R−1)g)/R)`, calha CHEIA entre células, sobra de um eixo vira margem igual dos dois
+  lados (mostra o fundo). O quadrado nunca estica. Piso de 8 px e calha inteira em [0, 100]; caixa que não comporta nem
+  com calha 0 ⇒ `GRADE_PEQUENA_DEMAIS`. Story 1080×1920: 270 px com margem de 15 em cima e embaixo (calha 0), encaixe
+  exato com calha 40. Feed 1080×1350: 270 px exato (calha 0), margem lateral 1 (calha 10).
+- **Espaçamento inicial** por layout só pelo `espacamentoInicial(layout)` (geometria): 0 nas quadradas, 10 nos outros.
+  Inserção (inclusive fundo → célula 1), `criarGrade` sem espaçamento e miniaturas leem dele; trocar de layout mantém o
+  espaçamento ATUAL da grade.
+- 🔴 **Nas quadradas a caixa NÃO é o menor x/y das células.** Quem deduz a caixa pelos nós (Transformer) aplica a mesma
+  afim dos nós à caixa inteira: `origem = nó − escala × (posição anterior do nó − origem da caixa)`
+  (`caixaPeloTransformer` com `antes`). Tomar o mínimo dos nós fazia a grade andar a margem (15 px no Story, 1 px no
+  Feed) a cada gesto, até no gesto sem mudança.
+- **Ajustes medem em fila de 2** (`medirEmFila`, `src/lib/grades/fila-de-medidas.ts`): 28 fotos nunca decodificam
+  juntas; cancelado, nenhuma medida nova começa; falha não trava a fila; a URL exata continua conferida por quem chama.
+- **Lote continua de até 6** (`LIMITE_DO_LOTE`): as quadradas se preenchem em vários lotes, na próxima vazia em ordem de
+  leitura.
+- **Seleção depois do desfazer** segue o contrato do editor: filtra ids que existem; não restaura a seleção exata (após
+  desfazer 28→20 as oito células antes avulsas podem seguir selecionadas).
+- **Não provam:** navegador, Konva montado, clique na seção, Salvar/recarregar real. Prova: `grades-quadradas.test.ts`,
+  `fila-de-medidas.test.ts`, os casos Q2 de `secao-grades`, `barra-da-grade` (handler real do Transformer, nós
+  dublados), `ajustes`, `ajustar-grade-no-editor`, `inserir-grade-no-editor`, `persistencia-da-grade` e
+  `paridade-da-grade` (Story 28 e Feed 20 com diferença 0 por canal no Node).
+
+## Linhas-guia e margens, L0: uma fonte só para as margens do editor (29/10/2026 — PR aberto, sem release)
+
+Instrução do Ciro de 29/10/2026 ("Linhas-guia e margens no editor do Studio"); pesquisa do Canva em
+`docs/research/canva-guias-e-margens-2026-10/`. Havia três conjuntos de margem que importavam e nenhum conversava: o
+editor desenhava, encaixava e alinhava em 70/120/100 (`CANVAS_MARGIN`), o compositor compunha em 92/188/224 por marca
+(`NUMEROS_PADRAO.geometria` + `Project.assinatura`) e o gate reprovava texto acima de 188/224. Quem encostava o texto
+na guia azul do Story (y = 120) fazia uma arte que o gate reprovava.
+
+- **`margensDoEditor({ formato, assinatura, largura, altura })`** (`src/lib/canvas-margin.ts`) é a fonte única.
+  Devolve `interface` (`FaixasDaInterface`: ALTURA da faixa de cima e de baixo; `null` fora do Story), `marca`
+  (`LinhasDaMarca`: as quatro LINHAS em COORDENADAS da página, como `limitesDoEditor` do revisor — `base` e `direita`
+  são y e x, não distâncias) e `origem` (`marca` quando `Project.assinatura.geometria[formato]` trouxe ao menos uma
+  das três margens válida, senão `padrao`). Dimensão inválida (NaN, Infinity, ≤ 0) cai na canônica de `DIMENSOES`:
+  as quatro linhas saem sempre finitas (Codex R1, achado P2).
+- **Duas camadas, nunca uma** (decisão do owner de 13/10/2026): a faixa da interface vem de `interfaceDoStory`
+  (piso 188/224, nunca afrouxa; no L0 sem configuração do cliente — o L5 liga) e a margem da marca vem de
+  `pisoDoProjetoDe`, a MESMA mesclagem do `pisoDoProjeto` do compositor. Nenhuma constante nova com 188, 224 ou 92.
+- 🔴 **A geometria e a mesclagem moram em `compositor/geometria.ts`** (módulo puro: `GEOMETRIA_PADRAO`,
+  `mesclarGeometria`, `pisoDoProjetoDe`); `NUMEROS_PADRAO.geometria` É `GEOMETRIA_PADRAO` e `mesclarNumeros` chama
+  `mesclarGeometria`. O editor lê dali sem puxar halo, gradiente, destaques e logo para o bundle. A equivalência é
+  de VALORES e de identidade (sem JSON só o mapa externo é copiado, como o `mesclarNumeros` antigo). Um teste confere
+  que `pisoDoProjetoDe(x)` é idêntico ao `pisoDoProjeto` de `montarAssinatura` (Real, Wine, Lagosta, vazio, lixo, e
+  com página de assinatura derivando `numeros.geometria`).
+- 🔴 **`interfaceDoStory` e `PISO_DE_INTERFACE_DO_STORY` moram em `revisao/interface-do-story.ts`** (módulo puro);
+  o `gate.ts` reexporta. Importar o gate do `canvas-margin.ts` fechava um ciclo (gate → text-geometry → canvas-margin)
+  e puxaria o revisor inteiro para o bundle do cliente.
+- **Lixo nunca afrouxa**: `NaN`, string e negativo em `Project.assinatura.geometria` caem no padrão e não contam como
+  `origem: 'marca'`. Página fora do canônico escala por `largura / 1080` (as duas camadas), como `text-geometry.ts`.
+- **A máscara do Story (tecla M) é a faixa da interface, não a margem da marca**: uma marca com rodapé 150 compõe
+  DENTRO da faixa e a máscara continua mostrando o que o app cobre. No L0 ela ainda lê `CANVAS_MARGIN` (o padrão do
+  Story, que coincide com o piso); no L1 nasce de `margensDoEditor(...).interface`.
+- **`CANVAS_MARGIN` e `marginsForAxis` delegam** para o padrão do Story de `margensDoEditor` (D1: 92/188/224 no lugar
+  de 70/120/100). Os consumidores do editor (`konva-editor-stage`, `konva-transformer`, `konva-alignment`,
+  `instagram-story-chrome`) mudam de número por tabela; no L1 passam a chamar `margensDoEditor` com o formato e a
+  assinatura da página aberta. Até lá o Feed 4:5 no editor mostra o padrão do Story.
+- 🔴 **Revisor, autofix e `text-geometry` continuam em 70/120/100** pela `MARGEM_LEGADA_DO_REVISOR` (mesmo arquivo),
+  até o L5: mudar o revisor exige medir antes quantas artes agendadas e dos últimos 30 dias mudariam de aviso, e o
+  Ciro confirma no chat. Ninguém novo importa a legada.
+- **Não muda:** `Page.layers`, o render do servidor, o PNG, o vídeo, `render-engine.ts`, o limiar do gate, o app
+  desktop e o `/gerar-criativo`.
+- **Prova:** `src/lib/__tests__/margens-do-editor.test.ts` (30 testes: Story e Feed com o padrão; marca própria;
+  marca mais frouxa que o piso; fora do canônico; dimensões inválidas; `NaN` na assinatura; a delegação;
+  `limitesDoEditor` do revisor em 70/120/100; a reexportação do gate; identidade com `montarAssinatura`).
+
+## Linhas-guia e margens, L1: o editor desenha as duas camadas (29/10/2026 — PR aberto, sem release)
+
+Segundo checkpoint da instrução de 29/10. O editor passa a mostrar e a usar a margem da MARCA da página aberta e, no
+Story, a faixa da interface — as duas de `margensDoEditor` (L0), nada copiado.
+
+- **`useMargensDoEditor(projectId, canvas)`** (`src/hooks/use-margens-do-editor.ts`): lê `Project.assinatura` pelo
+  `useProject` que o editor já carrega e devolve `margensDoEditor(...)` para o formato que o tamanho do canvas diz
+  (`formatoDaPaginaGravada`). Enquanto o projeto não chegou vale o padrão; `origem` diz qual está valendo. **O overlay
+  não escreve rótulo nenhum no canvas** (30/10/2026, pedido do Ciro: "Margem da marca" e "Interface do Instagram" em
+  cima da arte atrapalhavam a visualização) — a linha azul e a faixa hachurada bastam; o nome das camadas fica no
+  menu Exibir.
+- **`src/lib/margens-no-editor.ts`** (puro): `retangulosDeEncaixe` (os quatro objetos invisíveis do encaixe ao
+  arrastar), `paradasDeEncaixe` (o snap do redimensionar), `linhasDaMarca` (as azuis), `faixasDaInterface` (as
+  hachuradas, só Story) e `margensDoEixo` (as distâncias do "alinhar"). Uma conversão só para stage, transformer e
+  contexto.
+- **Overlay** na `guides-layer` (continua fora do download, da miniatura, do `exportDesign` e do vídeo): linhas azuis
+  tracejadas com traço e tracejado compensados pelo zoom (`2 / zoom`), rótulo discreto no canto; faixa da interface
+  hachurada (ladrilho 8×8 feito uma vez, `useHachura`) com o rótulo "Interface do Instagram". A faixa liga e desliga
+  com a máscara M; as linhas com R.
+- **Encaixe, alinhar e snap do resize usam a margem da marca**: o stage passa `margens.marca` ao transformer
+  (`margens`), o contexto passa `margensDoEixo(...)` ao `alignToCanvas` (parâmetro novo; sem ele vale o padrão do
+  Story, compatibilidade) e o Feed 4:5 ganha a mesma margem azul.
+- **O chrome do Story nasce da faixa**: `buildStoryChrome(baseHeight, faixa)`; a máscara recebe `faixa` em px da
+  página e devolve à base 1080 pela mesma escala. Sem `faixa`, o padrão de antes.
+- 🔴 **A faixa é a do piso, não a da marca**: uma marca com rodapé 150 (Wine) tem a linha azul em 1770 e a faixa
+  continua 224 — texto e logo dentro da faixa é aviso (L3), nunca bloqueio (D2).
+- **Prova:** `src/lib/__tests__/margens-no-editor.test.ts` (overlay = margensDoEditor em Story padrão, Wine e Feed;
+  encaixe em y = 188 e na direita; Feed encaixa em 120; alinhar pela marca com nós falsos; chrome dentro da faixa).
+  Não prova: Konva montado, o hook com React Query, o clique no editor — isso é a prova visual.
+
+## Linhas-guia e margens, L2: menu "Exibir", preferência por pessoa e atalhos (29/10/2026 — PR aberto, sem release)
+
+Terceiro checkpoint da instrução de 29/10. O que o editor mostra por cima da arte virou uma preferência só, com
+botão, atalho e persistência.
+
+- **`src/lib/exibicao-do-editor.ts`** (puro): `ExibicaoDoEditor` (`margens` R, `interface` M, `bordas` C, `encaixe`),
+  `EXIBICAO_PADRAO` (margens e interface ligadas, bordas desligadas, encaixe ligado — o que o stage já fazia),
+  `lerExibicao` (JSON do localStorage; lixo cai no padrão chave a chave) e `acaoDaTecla`.
+- **`ExibicaoDoEditorProvider` / `useExibicaoDoEditor`** (`src/hooks/use-exibicao-do-editor.tsx`): o padrão de
+  `use-editor-view-mode.tsx` (localStorage `lagosta:editor:exibicao` com try/catch). Mora no shell, ACIMA das páginas:
+  no modo contínuo cada página monta o stage de novo e, com `useState` no stage, R/M/C voltavam ao padrão a cada
+  troca. Sem o provider (stage montado solto, como em teste) o hook devolve um estado local sem persistência.
+- **Menu "Exibir"** (`menu-exibir.tsx`) na barra do editor, nos três modos (normal, agenda, IA): quatro caixas com o
+  atalho ao lado. É o MESMO estado das teclas.
+- 🔴 **R, M e C só valem sozinhas** (`acaoDaTecla`): com Ctrl/Cmd, Alt ou Shift não alternam nada. No Windows
+  `Shift+Alt+C` chegava como `c` e ligava as bordas da página.
+- **Os atalhos fantasma viraram atalhos**: `Shift+Alt+C` e `Shift+Alt+M` eram anunciados em `alignment-toolbar.tsx`
+  e `properties-panel.tsx` sem handler nenhum. Agora fazem o MESMO que os botões "Centralizar no canvas":
+  `alignSelectedToCanvasCenterH/V` (o conjunto vai ao centro preservando o arranjo — `alignSelectedCenterH` alinharia
+  as caixas ENTRE SI e as sobreporia, Codex R1), lidos pelo `code` da tecla (no Mac `Alt+C` produz `ç` em `key`).
+- 🔴 **Menu aberto não dispara atalho** (`alvoIgnoraAtalhos`): o Radix procura o item pela letra digitada sem
+  `preventDefault`, então "M" com o "Exibir" aberto alternava a interface por tabela. Alvo dentro de `role=menu*`,
+  `listbox`, `combobox` ou `dialog` fica de fora, como `input`/`textarea`/`contentEditable`.
+- **Alt segurado** desliga o encaixe enquanto a tecla está presa; soltar devolve a PREFERÊNCIA (antes voltava sempre
+  para ligado). Alt solto fora da janela nunca chega ao `keyup`: a perda de foco (`blur`) solta, qualquer tecla sem
+  Alt e o primeiro `pointerdown` reconciliam pelo próprio evento. Mobile continua sem encaixe; o menu "Exibir" também
+  está no cabeçalho mobile (`compacto`, só o ícone).
+- Ajuda em `layers-help-modal.tsx` (seção "Exibição do canvas") e `docs/KEYBOARD-SHORTCUTS.md`.
+- **Prova:** `src/lib/__tests__/exibicao-do-editor.test.ts` (leitura com lixo e parcial; R/M/C sozinhas; Windows
+  Shift+Alt+C → centrar, não bordas; Mac `ç`/`µ` pelo code; Ctrl/Cmd nunca). Não prova: o menu montado, o localStorage
+  real, a troca de página no contínuo — prova visual.
+
+## Linhas-guia e margens, L3: encaixe melhor e "Trazer para dentro" (29/10/2026 — PR aberto, sem release)
+
+Quarto checkpoint da instrução de 29/10.
+
+- **Encaixe pela seleção inteira** (`caixaDaSelecao`, `retangulosDosOutros` em `margens-no-editor.ts`): com seleção
+  múltipla, a caixa que encaixa é a união das camadas selecionadas VISÍVEIS, deslocada pelo arrasto, e a camada
+  agarrada anda o que a caixa andou. As caixas-alvo ignoram as invisíveis e a própria seleção (antes o grupo grudava
+  na posição antiga dele mesmo). O transformer também ignora as invisíveis nas paradas.
+- **Resize com proporção travada encaixa** (`encaixeProporcional`): foto, logo e elemento com `keepRatio` — o canto
+  arrastado encaixa no eixo em que mais anda e o outro eixo segue a proporção da caixa antiga, com a âncora (o canto
+  oposto) parada. Antes o `boundBoxFunc` pulava o snap com `keepRatio`.
+- 🔴 **"Trazer para dentro" usa a MESMA conta do revisor**: `ajusteParaDentro` (`revisao/para-dentro.ts`, puro) é a
+  regra `fora-da-area-segura` extraída de `regras.ts` (folga 2 px, `ceil(+2)`, "maior que a área" não move). O
+  editor vigia pela CAIXA da camada (sem rotação — limite registrado): texto, logo, forma, ícone e elemento cruzando a
+  margem da marca (`margem`); texto e logo dentro da faixa da interface (`interface`, D2). Foto, vídeo e gradiente
+  passam por baixo de propósito. `avisosDeMargem` só roda com as margens ligadas (R).
+- **Avisa, nunca bloqueia**: contorno tracejado (laranja = margem, vermelho = faixa) na `guides-layer` e um chip HTML
+  por cima do canvas com o botão "Trazer para dentro" — com seleção, age nas selecionadas com aviso; sem seleção, em
+  todas. Um clique = um passo de desfazer (`coalesceKey` por gesto, via `updateLayer`). Camada maior que a área ganha
+  a observação do revisor ("encurte o texto ou reduza a fonte") em vez do botão.
+- **Ajustes da revisão R1 do Codex**: texto e logo no Story são ajustados contra a linha mais apertada entre faixa e
+  margem em cada lado (um clique resolve as duas; na Wine, topo 200 da marca × 188 da faixa); camada TRAVADA avisa
+  mas o botão não a move (`travada`); caixa MAIOR que a área num eixo não ganha dx/dy no editor (o botão oscilava
+  −14 → 94 → −14; a conta do revisor fica como está); com proporção travada só a alça de CANTO usa o encaixe
+  proporcional — a lateral muda um eixo só (recorte da janela da foto) e segue o encaixe de borda (`alcaDeCanto`,
+  pelo `getActiveAnchor()` do Transformer).
+- **Não feito (P1)**: espaçamento igual entre 3 ou mais elementos com a linha e a medida — fica registrado.
+- **Prova:** `src/lib/__tests__/para-dentro.test.ts` (a conta do revisor em 4 casos e a faixa; seleção e invisíveis;
+  encaixe do conjunto em y = 188; resize proporcional nos dois cantos; avisos por tipo). `regras.test.ts` continua
+  verde com a conta extraída. Não prova: o gesto real no Konva, o chip montado — prova visual.
+
+
+## Linhas-guia e margens, L4: réguas e guias manuais, como no Canva (29/10/2026 — PR aberto, sem release)
+
+Quinto checkpoint da instrução de 29/10 (P1). Pesquisa do Canva em `docs/research/canva-guias-e-margens-2026-10/`.
+
+- **`src/lib/guias-manuais.ts`** (puro): `Guia`, `GuiasDaPagina` (guias, ocultas, travadas), `lerGuias` (lixo cai
+  fora guia a guia), `gerarGuias` (colunas e linhas DENTRO da margem da marca — cada coluna com as duas bordas, como
+  o Canva, mas o Canva calcula na página inteira com margem 0 e não sabe de topo ≠ base), `retangulosDasGuias` e
+  `paradasDasGuias` (o encaixe ao arrastar e no resize; vazios quando ocultas), `cairForaDaPagina` (solta de volta na
+  régua = apaga), `marcasDaRegua`/`intervaloDaRegua` (os degraus da régua do desktop, 10/25/50/100/200 pelo zoom).
+- **`useGuiasDaPagina(pageId)`** (`src/hooks/use-guias-da-pagina.tsx`): localStorage `lagosta:editor:guias:<pageId>`
+  com try/catch — por PESSOA e por PÁGINA (D4, v1). Trocar de página relê a chave. A equipe não vê as guias de
+  ninguém; gravar na página exigiria campo novo em `Page` e no zod do PATCH (migração) — não feito.
+- **`ReguasEGuias`** (`reguas-e-guias.tsx`): HTML por cima do stage (fora da `guides-layer` e do export), nos dois
+  modos (embutido: origem 0,0 do slot; clássico: `stage.position()` ouvido por `xChange/yChange/scaleXChange`).
+  Réguas em px do design (canvas 2D, sombreiam a faixa da seleção); a régua de cima cria guia horizontal e a da
+  esquerda cria vertical, com o selo da posição em px durante o arrasto; guia solta fora da página é apagada;
+  travadas não pegam; ocultas somem e deixam de encaixar; o canto das réguas abre o menu (Adicionar guias…,
+  Ocultar/Mostrar, Travar/Destravar, Limpar). "Adicionar guias" = colunas, linhas e espaçamento, com prévia da
+  contagem, dentro da margem da marca.
+- **Encaixe**: `retangulosDasGuias` entra no `otherRects` do arrasto e `paradasDasGuias` nas paradas do resize
+  (prop `guias` do transformer), só com "Réguas e guias" ligado (Shift+R, no menu Exibir; `reguas` na preferência,
+  padrão desligado). Mobile não mostra réguas.
+- **Ajustes da revisão R1 do Codex**: a chave é por PESSOA (id do Clerk) e por página — duas contas no mesmo
+  navegador não dividem guias; sem página ou sem pessoa nada é gravado; toda guia que entra por "Adicionar" ganha id
+  único (`acrescentarGuias`; o id de `gerarGuias` vinha da posição e repetia depois de mover); `pointercancel` e
+  `blur` cancelam o arrasto e só o `pointerId` do gesto conta; teto de 24 colunas/linhas e finitude antes da conta; no
+  modo clássico o overlay é IRMÃO do container do stage (um wrapper novo fazia o `ResizeObserver` do stage medir a si
+  mesmo) e a origem é `container.offsetLeft/Top + stage.position()`.
+- **Não feito**: guias gravadas na página para a equipe (migração — perguntar antes); guia que vai e volta ao mudar o
+  tamanho da página (as posições são absolutas em px).
+- **Prova:** `src/lib/__tests__/guias-manuais.test.ts` (leitura; gerar 2 colunas/3 linhas no Story dentro da margem;
+  encaixe em 283; ocultas não encaixam; apagar fora da página; marcas da régua). Não prova: o arrasto real na
+  tela, o canvas da régua — prova visual.
+
+## Margens de 29/10/2026: os números da casa na fonte única (PR aberto, sem release)
+
+Decisão do owner (29/10/2026), relayada pela sessão-mãe: Story laterais 64 · topo 160 · base 160; Feed 4:5 laterais
+64 · topo 72 · base 72; topo e base IGUAIS. Substituem 92/188/224 e 92/120/104 como padrão de `GEOMETRIA_PADRAO`
+(`compositor/geometria.ts`) e o piso 188/224 de `interface-do-story.ts` vira 160/160. Com a fonte única do L0, o
+editor (`CANVAS_MARGIN`, encaixe, alinhar, máscara M) mostra os números novos sem trabalho extra: Story 64/160/160.
+- No Feed nada cobre a foto aberta; a grade 3:4 do perfil corta ~34 px de cada lado e os 64 cobrem esse corte (D5
+  fica como P1 desligado).
+- 🔴 **Revisor, autofix e `text-geometry` vieram junto** (ver `revisor-da-arte.md`, seção de 29/10): a margem nova
+  do Feed e a lateral 64 ficam abaixo da margem antiga do revisor. `MARGEM_LEGADA_DO_REVISOR` deixou de existir.
+- **Quadrado não foi decidido**: segue 92/120/104.
+- **`Project.assinatura` por marca** (Real Story 96/250/350, Wine 96/200/150, Feed 96/120/100 nas duas) é dado de
+  produção: `scripts/reconciliar-assinatura-2026-10-29.ts` imprime o diff por projeto em SIMULAÇÃO e só grava com
+  `--gravar` depois do ok explícito do Ciro. Até lá o editor mostra o que está cadastrado.
+- **O catálogo dos arquétipos NÃO mudou**: versão publicada é imutável (`catalogo.ts`), a zona de cada arquétipo é
+  RECORTADA pelo piso na materialização e a referência pousa dentro do piso da marca (opção A, PR #270). Com o piso
+  mais folgado (160 < 188) os arquétipos v1 simplesmente não usam a faixa liberada; usar exige publicar `@2`, decisão
+  à parte.

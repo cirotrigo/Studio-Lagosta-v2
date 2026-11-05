@@ -12,6 +12,7 @@ import { CreativeError } from '@/lib/creatives/errors'
 import { getPublicAppUrl } from '@/lib/creatives/persist'
 import { contextoDeVoz, gravarVoz, lerRegistroDaVoz } from '@/lib/brand/voz-service'
 import { paginasDeAssinatura } from '@/lib/compositor/compor'
+import { entraNoRodizio, TAG_FORA_DO_RODIZIO } from '@/lib/compositor/fora-do-rodizio'
 import { lerVoz, type ContextoDeVoz, type VozCompacta } from '@/lib/brand/voz'
 
 export interface VozDaMarca {
@@ -130,7 +131,7 @@ export async function resumoDosFatos(projectId: number, agora = new Date()): Pro
 export interface AssinaturaDaMarcaNaTela {
   templateId: number | null
   editorUrl: string | null
-  variantes: Array<{ id: string; nome: string; formato: string; papeis: string[]; tags: string[]; largura: number; altura: number; miniatura: string | null; editorUrl: string | null }>
+  variantes: Array<{ id: string; nome: string; formato: string; papeis: string[]; tags: string[]; foraDoRodizio: boolean; largura: number; altura: number; miniatura: string | null; editorUrl: string | null }>
 }
 
 /** As páginas de assinatura (uma por variante), com a miniatura quando ela é publicável (nunca `data:`) e o atalho ao editor. */
@@ -150,7 +151,8 @@ export async function assinaturasDaMarca(projectId: number): Promise<AssinaturaD
         nome: p.name,
         formato: p.formato,
         papeis: p.papeis,
-        tags: p.tags.filter((t) => t !== 'assinatura'),
+        tags: p.tags.filter((t) => t !== 'assinatura' && t !== TAG_FORA_DO_RODIZIO),
+        foraDoRodizio: !entraNoRodizio(p),
         largura: p.width,
         altura: p.height,
         miniatura: thumb && !thumb.startsWith('data:') ? thumb : null,

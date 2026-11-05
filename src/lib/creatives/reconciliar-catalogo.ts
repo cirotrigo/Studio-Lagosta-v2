@@ -124,6 +124,58 @@ export interface ReconciliarCatalogoInput {
   tetoDeNovas?: number
 }
 
+/**
+ * O ÚNICO save do `_image-catalog.json` (F2b): o Drive escreve o arquivo inteiro, sem condição de versão, e há três
+ * escritores (este cron, `enriquecer-catalogo.ts` e `anotar-caixa-do-assunto.ts`). Relê o fresco e, em toda entrada que
+ * este escritor NÃO analisou nesta rodada, a caixa e o carimbo são os do fresco: o escritor com snapshot velho não
+ * apaga a caixa de quem gravou depois dele. `alteradas` = só as entradas com caixa válida ou `null` explícito nesta
+ * rodada; análise inválida fica de fora. A janela restante é a de um save.
+ */
+export async function escreverCatalogoPreservandoCaixas<D extends { images: Array<{ driveFileId: string }> }>(
+  catalogoId: string,
+  documento: D,
+  { alteradas }: { alteradas: Set<string> },
+): Promise<void> {
+  const fresco = await googleDriveService.readFileAsJson<{ images?: Array<Record<string, unknown>> }>(catalogoId)
+  const frescas = new Map((fresco?.images ?? []).map((e) => [e.driveFileId as string, e]))
+  const images = documento.images.map((entrada) => {
+    const nova = frescas.get(entrada.driveFileId)
+    if (alteradas.has(entrada.driveFileId) || !nova) return entrada
+    const { caixaDoAssunto: _c, caixaAnalisadaEm: _a, ...resto } = entrada as Record<string, unknown>
+    return {
+      ...resto,
+      ...('caixaDoAssunto' in nova ? { caixaDoAssunto: nova.caixaDoAssunto } : {}),
+      ...('caixaAnalisadaEm' in nova ? { caixaAnalisadaEm: nova.caixaAnalisadaEm } : {}),
+    }
+  })
+  await googleDriveService.writeFileAsJson(catalogoId, { ...documento, images })
+}
+
+/**
+ * Os saves de quem grava várias vezes na rodada e com workers em paralelo (`enriquecer-catalogo.ts`). Um de cada vez, senão
+ * dois leem o mesmo fresco e o segundo desfaz a caixa do primeiro; e `alteradas` é POR SAVE: o id acumulado reaplicaria a
+ * caixa desta rodada por cima da de quem a reanalisou depois. O save que falha devolve o lote ao próximo.
+ */
+export function salvadorDoCatalogo() {
+  const alteradas = new Set<string>()
+  let fila: Promise<unknown> = Promise.resolve()
+  const salvar = (catalogoId: string, documento: { images: Array<{ driveFileId: string }> }) => {
+    const vez = fila.then(async () => {
+      const lote = new Set(alteradas)
+      alteradas.clear()
+      try {
+        await escreverCatalogoPreservandoCaixas(catalogoId, documento, { alteradas: lote })
+      } catch (erro) {
+        lote.forEach((id) => alteradas.add(id))
+        throw erro
+      }
+    })
+    fila = vez.catch(() => undefined)
+    return vez
+  }
+  return { alteradas, salvar }
+}
+
 export async function reconciliarCatalogo({
   projectId,
   prazoEm = Number.POSITIVE_INFINITY,
@@ -276,6 +328,7 @@ export async function reconciliarCatalogo({
    * o que ficar para trás.
    */
   const novasParaIndexar: Array<EntradaDoCatalogo & { miniatura: Buffer }> = []
+  const comCaixaNestaRodada = new Set<string>()
 
   // v3: vocabulário fechado (pilares aprovados + pastas do acervo) e o
   // contexto do DNA, carregados UMA vez por projeto.
@@ -293,16 +346,17 @@ export async function reconciliarCatalogo({
     aoCatalogar: (entrada, miniatura) => {
       imagens.push(entrada)
       novasParaIndexar.push({ ...entrada, miniatura })
+      if (entrada.caixaAnalisadaEm) comCaixaNestaRodada.add(entrada.driveFileId)
     },
   })
 
   // Grava só se mudou: rodada sem drift não deve nem tocar no arquivo.
   if (orfas.length > 0 || catalogadas > 0 || hashesPreenchidos > 0) {
-    await googleDriveService.writeFileAsJson(catalogoId, {
-      ...catalogo,
-      images: imagens,
-      lastUpdated: new Date().toISOString(),
-    })
+    await escreverCatalogoPreservandoCaixas(
+      catalogoId,
+      { ...catalogo, images: imagens, lastUpdated: new Date().toISOString() },
+      { alteradas: comCaixaNestaRodada },
+    )
   }
 
   let vetoresIndexados = 0
@@ -494,12 +548,12 @@ async function carregarCardapio(projectId: number): Promise<string> {
  * A miniatura em s400 — não a foto inteira. É o que o script já fazia: 400px
  * bastam para a visão descrever a cena e evitam baixar megabytes por foto.
  */
-async function baixarMiniatura(fileId: string): Promise<Buffer> {
+export async function baixarMiniatura(fileId: string, lado = 400): Promise<Buffer> {
   const meta = await googleDriveService.getFileMetadata(fileId, 'thumbnailLink')
   const link = meta.thumbnailLink
   if (!link) throw new Error('sem thumbnail no Drive')
 
-  const resposta = await fetch(link.replace(/=s\d+/, '=s400'))
+  const resposta = await fetch(link.replace(/=s\d+/, `=s${lado}`))
   if (!resposta.ok) throw new Error(`thumbnail HTTP ${resposta.status}`)
   return Buffer.from(await resposta.arrayBuffer())
 }

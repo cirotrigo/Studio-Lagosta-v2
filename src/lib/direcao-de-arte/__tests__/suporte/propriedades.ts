@@ -12,8 +12,8 @@
 import sharp from 'sharp'
 
 import type { Layer } from '@/types/template'
-import { alvoPorContraste, luzDaCor, type Rect } from '@/lib/creatives/halo/halo'
-import { alvoClaroPorContraste, textoEscuro, TOLERANCIA_DO_ALVO } from '@/lib/compositor/regua'
+import { alvoPorContraste, luminanciaRelativa, luzDaCor, type Rect } from '@/lib/creatives/halo/halo'
+import { alvoClaroPorContraste, textoEscuro, TOLERANCIA_DE_PIORA, TOLERANCIA_DO_ALVO } from '@/lib/compositor/regua'
 import { TETO_DE_COBERTURA_DO_ASSUNTO } from '@/lib/compositor/mapa-de-calma'
 
 // ─── Contratos (limiares e perfis) ──────────────────────────────────────────
@@ -32,18 +32,8 @@ import { TETO_DE_COBERTURA_DO_ASSUNTO } from '@/lib/compositor/mapa-de-calma'
  *   frente e deve ser reconciliada/migrada — nunca vencer em silêncio;
  * - os 250/350 do DNA textual também ficam fora do gate.
  */
-export const PISO_DE_INTERFACE_DO_STORY = { topo: 188, rodape: 224 } as const
+export { PISO_DE_INTERFACE_DO_STORY, interfaceDoStory, foraDaInterface } from '@/lib/creatives/revisao/gate'
 
-/**
- * Uma configuração estruturada de INTERFACE do cliente (futura) pode ser MAIS
- * restritiva, nunca menos. A geometria de composição do projeto não entra aqui.
- */
-export function interfaceDoStory(doCliente?: { topo?: number; rodape?: number }) {
-  return {
-    topo: Math.max(PISO_DE_INTERFACE_DO_STORY.topo, doCliente?.topo ?? 0),
-    rodape: Math.max(PISO_DE_INTERFACE_DO_STORY.rodape, doCliente?.rodape ?? 0),
-  }
-}
 
 /**
  * Contraste mínimo logo × fundo (0–255): o `CONTRASTE_MINIMO` de
@@ -73,9 +63,10 @@ export const K_REFERENCIA_HIERARQUIA = 1.25
 /**
  * Ruído de render tolerado ao comparar duas medidas da MESMA caixa (com e sem
  * tratamento; antes e depois de um ajuste), em níveis de 0–255. Parâmetro de
- * medição, não limiar de qualidade: o limiar de leitura é o alvo da régua.
+ * medição, não limiar de qualidade. Desde o CP1 mora na régua de produção
+ * (fonte única): o detector TRATAMENTO_PIOROU_LEITURA usa o mesmo número.
  */
-export const TOLERANCIA_DE_PIORA = 2
+export { TOLERANCIA_DE_PIORA }
 
 /**
  * Os códigos estruturados que os checkpoints vão produzir (decisões do owner, 13/10/2026).
@@ -161,6 +152,44 @@ async function percentis(png: Buffer, canvas: Canvas, rects: Rect[]) {
   })
 }
 
+/** A razão de contraste WCAG entre duas luminâncias relativas. */
+const razaoDeContraste = (y1: number, y2: number) => (Math.max(y1, y2) + 0.05) / (Math.min(y1, y2) + 0.05)
+
+/** A luz da cor no espaço em que os percentis são lidos: a luminância relativa codificada em sRGB, 0–255 (o `b-w`). */
+function luzNoEspacoDaMedida(cor: string): number {
+  const y = luminanciaRelativa(cor)
+  return 255 * (y <= 0.0031308 ? 12.92 * y : 1.055 * Math.pow(y, 1 / 2.4) - 0.055)
+}
+
+/**
+ * A POLARIDADE DE LEITURA de um texto sobre o fundo SEM tratamento — o lado em
+ * que ele lê. Emenda do CP0 (14/10/2026, decisão do owner, depois do CP2A): o
+ * oráculo original tirava a polaridade só da COR ISOLADA (`textoEscuro`, luma
+ * < 128), premissa matematicamente errada para cor de luz intermediária, que lê
+ * dos DOIS lados (como texto escuro sobre fundo claro e como texto claro sobre
+ * fundo escuro) quando o contraste deixa. Escrita AQUI, por fora, só com
+ * primitivas estáveis (luminância relativa WCAG e razão de contraste): nada da
+ * decisão de produção (`polaridadeDoTexto`) é usado, para o teste não ser circular.
+ *
+ * 1. Capacidade: lê como CLARA se contra o preto chega a 3:1; como ESCURA se
+ *    contra o branco chega a 3:1.
+ * 2–4. O fundo decide quando está todo de um lado: cor acima do p98 (e lê
+ *    como clara) → clara; abaixo do p02 (e lê como escura) → escura.
+ * 5. O fundo atravessa a luz da cor (ou o lado do fundo não lê): o lado de
+ *    MAIOR contraste disponível — contra o preto ou contra o branco.
+ * Cor que não é #hex: a regra antiga pela cor isolada.
+ */
+export function polaridadeDoOraculo(cor: string, sem: { p02: number; p98: number }): 'clara' | 'escura' {
+  if (!/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(cor)) return textoEscuro(cor) ? 'escura' : 'clara'
+  const y = luminanciaRelativa(cor)
+  const contraOPreto = razaoDeContraste(y, 0)
+  const contraOBranco = razaoDeContraste(y, 1)
+  const luz = luzNoEspacoDaMedida(cor)
+  if (luz >= sem.p98 && contraOPreto >= 3) return 'clara'
+  if (luz <= sem.p02 && contraOBranco >= 3) return 'escura'
+  return contraOPreto >= contraOBranco ? 'clara' : 'escura'
+}
+
 export interface LeituraDoTexto {
   camada: string
   cor: string
@@ -173,8 +202,9 @@ export interface LeituraDoTexto {
 }
 
 /**
- * A leitura de CADA texto, com e sem o tratamento de leitura. A polaridade sai
- * da COR DO TEXTO (o que está sob teste é justamente a escolha do véu).
+ * A leitura de CADA texto, com e sem o tratamento de leitura. A polaridade é a
+ * do texto sobre o fundo SEM tratamento (`polaridadeDoOraculo`) — nunca da cor
+ * do véu, que é o que está sob teste. p98 para a leitura clara, p02 para a escura.
  */
 export async function leiturasDosTextos(layers: Layer[], canvas: Canvas, background?: string): Promise<LeituraDoTexto[]> {
   const textos = layers.filter(ehTexto)
@@ -183,7 +213,7 @@ export async function leiturasDosTextos(layers: Layer[], canvas: Canvas, backgro
   const [sem, com] = await Promise.all([percentis(semPng, canvas, rects), percentis(comPng, canvas, rects)])
   return textos.map((t, i) => {
     const cor = String(t.style?.color ?? '#FFFFFF')
-    const escura = textoEscuro(cor)
+    const escura = polaridadeDoOraculo(cor, sem[i]) === 'escura'
     return {
       camada: t.id,
       cor,
@@ -228,7 +258,10 @@ export interface LeituraDaLogo {
  * P4 — contraste REGIONAL da logo contra o FUNDO EFETIVO no mesmo pixel: foto
  * + tratamentos + véus, sem a logo e sem a tinta dos textos. Só os pixels
  * OPACOS da logo contam (alfa ≥ 128, a regra da `luminanciaDaLogo` do
- * logo-compositor). Supõe a logo desenhada com `objectFit: contain` na caixa.
+ * logo-compositor). A logo é lida COMO O RENDER A DESENHA: esticada na caixa
+ * (`objectFit: contain` não faz letterbox no editor nem no render —
+ * `image-fit.ts`); até o CP3 o oráculo supunha letterbox, e as contagens de
+ * pixel divergiam da produção quando a caixa não tinha a proporção exata.
  */
 export async function leituraDaLogo(layers: Layer[], canvas: Canvas, background?: string): Promise<LeituraDaLogo | null> {
   const logo = layers.find((l) => l.type === 'logo' && l.visible !== false)
@@ -238,7 +271,7 @@ export async function leituraDaLogo(layers: Layer[], canvas: Canvas, background?
   const arquivo = Buffer.from(logo.fileUrl.replace(/^data:image\/\w+;base64,/, ''), 'base64')
   const w = Math.round(logo.size.width)
   const h = Math.round(logo.size.height)
-  const { data: lg, info: li } = await sharp(arquivo).ensureAlpha().resize(w, h, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).raw().toBuffer({ resolveWithObject: true })
+  const { data: lg, info: li } = await sharp(arquivo).ensureAlpha().resize(w, h, { fit: 'fill' }).raw().toBuffer({ resolveWithObject: true })
   let somaLogo = 0
   let somaFundo = 0
   const diferencas: number[] = []
@@ -302,13 +335,7 @@ export function textosQueInvadem(layers: Layer[], regiaoProtegida: Rect) {
     .filter((c) => c.cobertura > TETO_DE_COBERTURA_DO_ASSUNTO)
 }
 
-/** P6 — texto e logo dentro da faixa livre da interface (topo e rodapé). */
-export function foraDaInterface(layers: Layer[], canvas: Canvas, interface_: { topo: number; rodape: number }) {
-  return layers
-    .filter((l) => (ehTexto(l) || l.type === 'logo') && l.visible !== false)
-    .filter((l) => l.position.y < interface_.topo || l.position.y + l.size.height > canvas.height - interface_.rodape)
-    .map((l) => ({ camada: l.id, topo: l.position.y, base: l.position.y + l.size.height }))
-}
+// P6 (`foraDaInterface`) agora vem de produção (`revisao/gate.ts`, CP5a): um só lugar com 188/224.
 
 /**
  * P7 — ordem de leitura: o bloco que a copy manda ler antes fica ACIMA (o topo

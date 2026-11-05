@@ -36,9 +36,38 @@ describe('portões de ajustarArte', () => {
     expect(mocks.findProject).not.toHaveBeenCalled()
   })
 
+  it('CP1: a recusa da chamada leva, por ajuste, código e campos — e diz que nenhum ajuste foi aplicado', async () => {
+    const r = ajustarArte({
+      projectId: 8,
+      pageId: 'p1',
+      versaoEsperada: 'v1:abc',
+      ajustes: [{ tipo: 'mover', camadas: ['headline'], dy: 10, achado: 'a:headline' }, { tipo: 'mover', camadas: ['logo'], dy: 5, forca: 0.5, achado: 'b:logo' } as never],
+    })
+    await expect(r).rejects.toMatchObject({
+      code: 'AJUSTE_INVALIDO',
+      message: expect.stringContaining('nenhum ajuste desta chamada foi aplicado'),
+      details: {
+        recusados: [
+          expect.objectContaining({ indice: 0, tipo: 'mover', codigo: 'CHAMADA_RECUSADA', achado: 'a:headline' }),
+          expect.objectContaining({ indice: 1, tipo: 'mover', codigo: 'CAMPO_FORA_DO_TIPO', campos: ['forca'], achado: 'b:logo' }),
+        ],
+      },
+    })
+    expect(mocks.findProject).not.toHaveBeenCalled()
+  })
+
   it('ajustes sem versaoEsperada: VERSAO_OBRIGATORIA — ajuste calculado só se aplica à versão em que foi calculado', async () => {
     const r = ajustarArte({ projectId: 8, pageId: 'p1', ajustes: [{ tipo: 'mover', camadas: ['headline'], dy: -12 }] })
     await expect(r).rejects.toMatchObject({ code: 'VERSAO_OBRIGATORIA', status: 400 })
+    expect(mocks.findProject).not.toHaveBeenCalled()
+  })
+
+  it('T1: camadas ou pagina sem versaoEsperada: VERSAO_OBRIGATORIA; forma inválida recusa inteira antes do banco', async () => {
+    await expect(ajustarArte({ projectId: 8, pageId: 'p1', camadas: [{ op: 'definir', camada: 'logo', campos: { position: { x: 1 } } }] })).rejects.toMatchObject({ code: 'VERSAO_OBRIGATORIA', status: 400 })
+    await expect(ajustarArte({ projectId: 8, pageId: 'p1', pagina: { background: '#000000' } })).rejects.toMatchObject({ code: 'VERSAO_OBRIGATORIA', status: 400 })
+    await expect(
+      ajustarArte({ projectId: 8, pageId: 'p1', versaoEsperada: 'v1:abc', camadas: [{ op: 'definir', camada: 'logo', campos: { position: { x: 1 } } }, { op: 'definir', camada: 'h', campos: { style: { fontSize: 1 } } }] }),
+    ).rejects.toMatchObject({ code: 'VALOR_FORA_DA_FAIXA', status: 400, details: { ajusteGravado: false, erros: [expect.objectContaining({ indice: 1, campos: ['style.fontSize'] })] } })
     expect(mocks.findProject).not.toHaveBeenCalled()
   })
 

@@ -221,6 +221,20 @@ describe('ajustar-arte no perfil draft-only', () => {
     ).resolves.toBeTruthy();
   });
 
+  it('revisão do owner (CP4.2b): `_imageUrl: null` / `_driveImageId: null` no slotValues → VALOR_INVALIDO 400 no HANDLER, com a chave, sem chamar o serviço — também no pedido misto e nos dois perfis', async () => {
+    for (const principal of [PESSOA, DOT]) {
+      for (const slotValues of [{ headline: 'novo', _imageUrl: null }, { _driveImageId: null }, { headline: 'novo', _driveImageId: null, _slots: null }]) {
+        const chave = Object.keys(slotValues).find((k) => k === '_imageUrl' || k === '_driveImageId')!
+        await expect(ajustar(principal, { slotValues })).rejects.toMatchObject({
+          code: 'VALOR_INVALIDO',
+          status: 400,
+          details: { erros: [{ codigo: 'VALOR_INVALIDO', origem: { tipo: 'chave', chave } }] },
+        })
+      }
+    }
+    expect(m.ajustarArte).not.toHaveBeenCalled()
+  })
+
   it('o perfil normal ajusta como sempre (sem a guarda)', async () => {
     m.posts = [post({ pageId: 'pg-1', status: 'SCHEDULED' })];
     await expect(
@@ -307,10 +321,11 @@ describe('ajustarArte: a conferência que fecha a corrida mora na transação da
     const { readFileSync } = await import('node:fs')
     const { join } = await import('node:path')
     const fonte = readFileSync(join(process.cwd(), 'src/lib/creatives/arte-rapida.ts'), 'utf8')
-    const transacao = fonte.indexOf('await db.$transaction(\n    async (tx) => {', fonte.indexOf('export async function ajustarArte'))
+    // CP5d: a transação devolve a Generation PROCESSING e o veredito do gate (`Promise<Escrita>`).
+    const transacao = fonte.indexOf('await db.$transaction(\n    async (tx): Promise<Escrita> => {', fonte.indexOf('export async function ajustarArte'))
     expect(transacao).toBeGreaterThan(0)
     const conferencia = fonte.indexOf('if (input.apenasRascunho) {', transacao)
-    const travaDosPosts = fonte.indexOf('FROM "SocialPost" WHERE "pageId" = ${page.id} FOR UPDATE', transacao)
+    const travaDosPosts = fonte.indexOf('FROM "SocialPost" WHERE "pageId" = ${page.id} ORDER BY "id" FOR UPDATE', transacao)
     const primeiraEscrita = fonte.indexOf('tx.page.updateMany', transacao)
     expect(conferencia).toBeGreaterThan(transacao)
     expect(travaDosPosts).toBeGreaterThan(conferencia)

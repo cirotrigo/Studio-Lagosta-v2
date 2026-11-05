@@ -11,7 +11,7 @@ import 'dotenv/config'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
-import { google } from 'googleapis'
+import * as google from 'googleapis/build/src/apis/drive'
 import { PrismaClient } from '../prisma/generated/client'
 // Caminho relativo de propósito: este servidor roda fora do bundle do Next,
 // onde o alias `@/` pode não resolver. O módulo não tem dependência nenhuma.
@@ -1198,7 +1198,17 @@ toolEstrita(
       if (mappedStatus !== 'POSTING') patch.processingStartedAt = null
       if (mappedStatus === 'POSTED') {
         patch.sentAt = post.sentAt || new Date()
-        if (zRaw.publishedAt) patch.latePublishedAt = new Date(zRaw.publishedAt)
+        patch.errorMessage = null
+        patch.failedAt = null
+        // O link e a data moram na plataforma, não na raiz do post do Zernio.
+        const instagram = zRaw.platforms?.find((p: any) => p.platform === 'instagram')
+        const publicadoEm = instagram?.publishedAt || zRaw.publishedAt
+        if (publicadoEm) patch.latePublishedAt = new Date(publicadoEm)
+        if (instagram?.platformPostUrl) {
+          patch.publishedUrl = instagram.platformPostUrl
+          patch.latePlatformUrl = instagram.platformPostUrl
+        }
+        if (instagram?.platformPostId) patch.instagramMediaId = instagram.platformPostId
       }
       if (mappedStatus === 'DRAFT' || mappedStatus === 'SCHEDULED') {
         patch.errorMessage = null

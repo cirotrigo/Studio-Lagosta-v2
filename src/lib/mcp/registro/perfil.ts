@@ -46,6 +46,7 @@ export const TOOLS_DRAFT_ONLY: ReadonlySet<string> = new Set([
   'ver-geracao',
   'agendar-leva',
   // revisão da peça própria
+  'ver-pagina',
   'revisar-arte',
   'conferir-arte',
   'ajustar-arte',

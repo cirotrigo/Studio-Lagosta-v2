@@ -63,7 +63,9 @@ describe('a fixture é local e anonimizada', () => {
       expect(j.escala, j.id).toBe(0.5)
     }
     const areaDasJanelas = f.janelas.reduce((s, j) => s + j.w * j.h, 0)
-    expect(areaDasJanelas / (f.origem.largura * f.origem.altura)).toBeLessThan(0.19)
+    // 29/10/2026: a janela `servico-v1` cresceu 80 px para cima (P9 com a margem da base em 160), com o ok do Ciro —
+    // a área das janelas foi de 18,2 % para 20,0 % da foto. O teto sobe de 19 % para 21 %; a faixa nova é balcão e um frasco.
+    expect(areaDasJanelas / (f.origem.largura * f.origem.altura)).toBeLessThan(0.21)
   })
 
   it('o projeto da spec é o fictício 9001 (a fixture não depende do projectId real)', () => {
@@ -91,6 +93,13 @@ describe('a fixture é local e anonimizada', () => {
 })
 
 describe('a régua de produção reproduz a peça sobre a fixture', () => {
+  it('o registro de produção tem UMA cor de véu para a peça inteira, #F3EADC no topo (0.9) e no rodapé (0.45) — o defeito de polaridade que o CP2A corrige', () => {
+    expect(fixture.peca().composicaoRegistrada.gradientes.map(({ borda, cor, forca }) => ({ borda, cor, forca }))).toEqual([
+      { borda: 'topo', cor: '#F3EADC', forca: 0.9 },
+      { borda: 'rodape', cor: '#F3EADC', forca: 0.45 },
+    ])
+  })
+
   it('v1 (compositor): serviço ≈166→194, apoio ≈33→121, headline ≈71→182 — os números gravados na Generation', async () => {
     const r = await medirContrasteDaPeca({ layers: comArquivos(fixture.peca().v1.layers, arquivos), canvas: CANVAS, background: '#FFFFFF', faixa: [0.45, 0.9], corrigir: false })
     const medido = porTexto(r.medidas)
@@ -125,8 +134,12 @@ describe('a régua de produção reproduz a peça sobre a fixture', () => {
 
 describe('limiares reaproveitados continuam com o dono', () => {
   it('o limiar de contraste da logo é o CONTRASTE_MINIMO do logo-compositor', () => {
-    // A constante de lá não é exportada (o CP0 não muda código de produção): a guarda lê a fonte.
+    // Desde o CP3 o número mora em `legibilidade-da-logo.ts` (fonte única); o logo-compositor o importa de lá, e a
+    // guarda lê a fonte para garantir que ele não voltou a ser um literal.
     const fonte = fs.readFileSync(path.join(process.cwd(), 'src/lib/ai/logo-compositor.ts'), 'utf8')
-    expect(fonte).toMatch(new RegExp(`const CONTRASTE_MINIMO = ${LIMIAR_DE_CONTRASTE_DA_LOGO}\\b`))
+    expect(fonte).toMatch(/const CONTRASTE_MINIMO = LIMIAR_DE_CONTRASTE_DA_LOGO\b/)
+    // O alfa que decide pixel visível também veio de lá: nenhum `data[p + 3] < 128` literal sobrou.
+    expect(fonte).not.toMatch(/data\[p(?: \+ 3)?\] [<>]=? 128\b/)
+    expect(LIMIAR_DE_CONTRASTE_DA_LOGO).toBe(45)
   })
 })

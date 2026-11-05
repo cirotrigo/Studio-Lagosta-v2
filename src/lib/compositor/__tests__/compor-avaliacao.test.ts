@@ -65,7 +65,7 @@ describe('compositor em avaliação local', () => {
 it('reentrada após seleção preserva a Generation da fila até a persistência final', async () => {
   const spec = { projectId: 3, formato: 'story' as const, blocos: [{ papel: 'headline' as const, linhas: ['Quintal'] }], itemDePlanoId: 'i', planoId: 'p' }
   // Seleção simulada: este teste isola o fio generationId, não aprova uma foto.
-  vi.spyOn(selecao, 'selecionarCombinacao').mockResolvedValueOnce({ spec, avisos: [], diagnostico: { combinacoes: [], limite: 6, janelaMs: 30000, interrompida: false }, cacheDeFotos: new Map(), assuntosDoCatalogo: new Map() })
+  vi.spyOn(selecao, 'selecionarCombinacao').mockResolvedValueOnce({ spec, avisos: [], diagnostico: { combinacoes: [], limite: 6, janelaMs: 30000, interrompida: false }, cacheDeFotos: new Map(), cacheDeLogos: new Map(), assuntosDoCatalogo: new Map() })
   mocks.regua.mockImplementation(async (args) => ({ layers: args.layers, medidas: [{ grupo: 'headline', ok: true }], avisos: [] }))
   mocks.pasta.mockResolvedValue({ id: 42, name: 'Semana' })
   mocks.persistir.mockResolvedValue({ generationId: 'g-fila', pageId: 'page', url: 'https://example.com/arte.png' })

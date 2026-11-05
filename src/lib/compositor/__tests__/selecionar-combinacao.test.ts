@@ -4,18 +4,19 @@ import type { SpecDePeca } from '../spec'
 import { selecionarCombinacao, avaliarCombinacao } from '../selecionar-combinacao'
 import { assuntoEmPixels, lerCaixaDoAssunto, fracaoVisivelDoAssunto } from '../assunto-da-foto'
 
-const mocks = vi.hoisted(() => ({ compor: vi.fn(), paginas: vi.fn(), catalogo: vi.fn() }))
+const mocks = vi.hoisted(() => ({ compor: vi.fn(), paginas: vi.fn(), catalogo: vi.fn(), assuntos: vi.fn() }))
 vi.mock('../compor', () => ({ comporPeca: mocks.compor, paginasDeAssinatura: mocks.paginas }))
-vi.mock('@/lib/creatives/acervo', () => ({ lerCatalogoDoProjeto: mocks.catalogo }))
+vi.mock('@/lib/creatives/acervo', () => ({ lerCatalogoDoProjeto: mocks.catalogo, assuntosEfetivosDoProjeto: mocks.assuntos }))
 const spec: SpecDePeca = { projectId: 3, formato: 'story', fotosCandidatas: ['clara', 'escura'], blocos: [{ papel: 'headline', linhas: ['Quarta no', 'Quintal'] }, { papel: 'servico', linhas: ['Quarta, 11h à meia-noite'] }] }
 const variante = (id: string, papeis = ['headline', 'servico']) => ({ id, name: id, tags: [], formato: 'story', papeis })
-const resultado = (ok = true): ResultadoDaComposicao => ({ persistido: null, prova: null, layers: [{ id: 'h', name: 'headline', type: 'text', visible: true, position: { x: 0, y: 100 }, size: { width: 500, height: 180 }, style: { fontSize: 60, color: '#ffffff' } } as any], diagnostico: {
+const resultado = (ok = true): ResultadoDaComposicao => ({ persistido: null, prova: null, fundo: '#0B0B0B', layers: [{ id: 'h', name: 'headline', type: 'text', visible: true, position: { x: 0, y: 100 }, size: { width: 500, height: 180 }, style: { fontSize: 60, color: '#ffffff' } } as any], diagnostico: {
   formato: 'story', posicao: { ancora: 'topo', alinha: 'esquerda', crop: 'center-middle', pontuacao: 0.8, motivo: '' }, candidatos: [{ ancora: 'topo', alinha: 'esquerda', crop: 'center-middle', pontuacao: 0.8, motivo: '', descartado: false }], assunto: null, assuntoOrigem: 'estimado', halos: [], logo: null, blocos: [{ papel: 'headline', escala: 1, width: 500, height: 180 }], contraste: [{ grupo: 'headline', camadas: ['h'], sentido: 'claro', alvo: 149, p98SemHalo: 160, p98ComHalo: ok ? 100 : 200, tinta: 0.4, tintaCorrigida: null, ok }], intervencaoDeTexto: { alteracaoMedia: 0.1, escurecimentoMedio: 0.1 }, assinatura: { pageId: 'a' } as ResultadoDaComposicao['diagnostico']['assinatura'], avisos: [],
 } })
 beforeEach(() => {
   vi.restoreAllMocks(); vi.clearAllMocks()
   mocks.paginas.mockResolvedValue({ paginas: [variante('a'), variante('b')] })
   mocks.catalogo.mockResolvedValue({ todas: [] })
+  mocks.assuntos.mockResolvedValue(new Map())
   mocks.compor.mockImplementation(async (s: SpecDePeca) => { const r = resultado(); r.diagnostico.assinatura.pageId = s.preferencias?.variante ?? 'a'; return r })
 })
 describe('seleção offline foto/assinatura', () => {
@@ -72,6 +73,31 @@ describe('seleção offline foto/assinatura', () => {
   it('régua ausente não recebe aprovação automática', () => {
     const r = resultado(); r.diagnostico.contraste = null
     expect(avaliarCombinacao(r).impedimentos[0]).toMatch(/não medido/)
+  })
+})
+describe('assunto efetivo na seleção (F2b)', () => {
+  const caixa = { x0: 0.1, y0: 0.1, x1: 0.4, y1: 0.4 }
+  it('o mapa de AssuntoEfetivo chega ao compositor, pelas fontes coerentes', async () => {
+    const efetivo = { caixa, origem: 'humano', estado: 'localizada' }
+    mocks.assuntos.mockResolvedValue(new Map([['clara', efetivo]]))
+    const r = await selecionarCombinacao(spec)
+    expect(mocks.assuntos).toHaveBeenCalledWith(3, ['clara', 'escura'])
+    expect(r.assuntosDoCatalogo.get('clara')).toEqual(efetivo)
+    expect(mocks.compor.mock.calls[0][1].assuntosDoCatalogo).toBe(r.assuntosDoCatalogo)
+  })
+  it('a fonte não coerente não entra na leitura (a caixa de A nunca cai sobre B)', async () => {
+    await selecionarCombinacao({ ...spec, fotosCandidatas: undefined, foto: { driveFileId: 'a', url: 'https://lh3.googleusercontent.com/d/b=w1920' } })
+    expect(mocks.assuntos).toHaveBeenCalledWith(3, [])
+  })
+  it('catálogo lançando COM arquétipo → CATALOGO_INDISPONIVEL, sem compor nada', async () => {
+    mocks.assuntos.mockRejectedValue(new Error('Drive fora do ar'))
+    await expect(selecionarCombinacao({ ...spec, arquetipo: { id: 'x' } } as unknown as SpecDePeca)).rejects.toMatchObject({ code: 'CATALOGO_INDISPONIVEL', status: 503 })
+    expect(mocks.compor).not.toHaveBeenCalled()
+  })
+  it('catálogo lançando SEM arquétipo → não analisada, como sempre', async () => {
+    mocks.assuntos.mockRejectedValue(new Error('Drive fora do ar'))
+    const r = await selecionarCombinacao(spec)
+    expect(r.assuntosDoCatalogo.get('clara')).toMatchObject({ caixa: null, estado: 'nao-analisada' })
   })
 })
 describe('caixa legada e catálogo v3', () => {

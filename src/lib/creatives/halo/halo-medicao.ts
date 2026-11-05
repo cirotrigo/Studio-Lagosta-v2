@@ -21,6 +21,7 @@
 import sharp from 'sharp'
 
 import { calculateImageCrop, type CropPosition } from '@/lib/image-crop-utils'
+import { janelaEmPx, type Janela } from '@/lib/compositor/corte-da-foto'
 
 import { luzDeLeitura, percentil, type LuzMedida, type Rect } from './halo'
 
@@ -52,17 +53,20 @@ const LARGURA_DE_MEDICAO = 540
 export async function lerFotoComoCover(
   fotoBuffer: Buffer,
   canvas: CanvasSize,
-  opts: { cropPosition?: CropPosition } = {},
+  /** F2a: `janela` (frações da foto, o `style.crop` do editor) vence a âncora — a mesma conta do desenho (`janelaEmPx`). */
+  opts: { cropPosition?: CropPosition; janela?: Janela } = {},
 ): Promise<FotoCinza> {
   if (!canvas.width || !canvas.height) throw new Error('canvas sem dimensões')
   const meta = await sharp(fotoBuffer).metadata()
   if (!meta.width || !meta.height) throw new Error('foto sem dimensões legíveis')
 
-  const crop = calculateImageCrop(
-    { width: meta.width, height: meta.height },
-    canvas,
-    opts.cropPosition ?? 'center-middle',
-  )
+  const crop = opts.janela
+    ? janelaEmPx(opts.janela, { width: meta.width, height: meta.height })
+    : calculateImageCrop(
+        { width: meta.width, height: meta.height },
+        canvas,
+        opts.cropPosition ?? 'center-middle',
+      )
   const left = Math.max(0, Math.floor(crop.cropX))
   const top = Math.max(0, Math.floor(crop.cropY))
   const cropW = Math.max(1, Math.min(meta.width - left, Math.floor(crop.cropWidth)))
@@ -123,6 +127,12 @@ export function luzNoRect(foto: FotoCinza, rect: Rect): LuzMedida | null {
   }
   if (total === 0) return null
   return { media: soma / total, p75: percentil(hist, 0.75) }
+}
+
+/** p02 e p98 da luz num retângulo da peça — o fundo SEM tratamento sob um texto, no raster do corte (CP2B). */
+export function percentisNoRect(foto: FotoCinza, rect: Rect): { p02: number; p98: number } | null {
+  const hist = histogramaNoRect(foto, rect)
+  return hist ? { p02: percentil(hist, 0.02), p98: percentil(hist, 0.98) } : null
 }
 
 export interface MedirLuzOptions {

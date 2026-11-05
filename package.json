@@ -46,7 +46,8 @@
     "validate-instagram-ids": "npx tsx src/scripts/validate-instagram-ids.ts",
     "migrate-verifying-status": "npx tsx src/scripts/migrate-verifying-status.ts",
     "debug-verification": "npx tsx src/scripts/debug-verification.ts",
-    "inspect-post": "npx tsx src/scripts/inspect-post.ts"
+    "inspect-post": "npx tsx src/scripts/inspect-post.ts",
+    "piloto:sintetico": "tsx scripts/piloto-sintetico.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^2.0.53",

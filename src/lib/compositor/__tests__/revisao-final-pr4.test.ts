@@ -146,8 +146,10 @@ describe('ids de camada únicos na peça inteira (varredura do PR 3, 18/09/2026)
     expect(servicos.map((l) => l.content).sort()).toEqual(['Rua Aleixo Netto, 1158', 'das 11h às 15h'])
     expect(new Set(r.layers.map((l) => l.id)).size).toBe(r.layers.length)
     const alvo = servicos[0].id
-    const ajuste = aplicarAjustes(r.layers, [{ tipo: 'visibilidade', camadas: [alvo], visivel: false } as never], { canvas: { width: 1080, height: 1920 }, medir: () => 100 } as never)
-    expect(ajuste.camadas.filter((l) => l.visible === false).map((l) => l.id)).toEqual([alvo])
+    // Esconder texto com conteúdo é recusado desde 15/10/2026 (CONTEUDO_NAO_PODE_SER_OCULTADO): o ajuste por id é provado pelo `mover`.
+    const ajuste = aplicarAjustes(r.layers, [{ tipo: 'mover', camadas: [alvo], dy: -10 } as never], { canvas: { width: 1080, height: 1920 }, medir: () => 100 } as never)
+    const movidas = ajuste.camadas.filter((l) => l.position.y !== r.layers.find((o) => o.id === l.id)!.position.y).map((l) => l.id)
+    expect(movidas).toEqual([alvo])
   })
   it('a logo presa a DOIS grupos sai com ids distintos', async () => {
     const logo = (y: number, grupo: string) => ({ id: `logo-${grupo}`, name: 'Logo', type: 'logo', visible: true, locked: false, order: 1, position: { x: 800, y }, size: { width: 150, height: 100 }, style: {}, fileUrl: 'https://example.com/logo.png', metadata: { groupId: grupo } }) as unknown as Layer

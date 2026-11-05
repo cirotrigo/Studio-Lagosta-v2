@@ -54,12 +54,34 @@ vi.mock('@/lib/db', () => {
         banco.generations.push({ id, createdAt: new Date(++banco.relogio), ...data })
         return { id }
       },
-      findFirst: async () => banco.generations.at(-1) ?? null,
+      // CP5d: a busca da Generation de ORIGEM (`source: compositor`) honra o where — este harness não tem arte do compositor
+      // (a peça nasceu no chat), então a origem é nula e a medição corre sem referências; as demais buscas devolvem a última.
+      findFirst: async ({ where }: { where?: Record<string, unknown> } = {}) =>
+        JSON.stringify(where ?? {}).includes('"compositor"') ? (banco.generations.find((g) => (g.fieldValues as Record<string, unknown> | undefined)?.source === 'compositor') ?? null) : (banco.generations.at(-1) ?? null),
+      findUnique: async ({ where }: { where: { id: string } }) => banco.generations.find((g) => g.id === where.id) ?? null,
+      // CP5d: o render FECHA a Generation PROCESSING criada na transação do ajuste (draft-only).
+      update: async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+        const i = banco.generations.findIndex((g) => g.id === where.id)
+        if (i < 0) throw new Error('generation not found')
+        banco.generations[i] = { ...banco.generations[i], ...data }
+        return { id: where.id }
+      },
     },
     knowledgeBaseEntry: { findFirst: async () => null },
     $queryRaw: async () => [],
     $executeRaw: async () => 1,
-    $transaction: async (arg: unknown) => (typeof arg === 'function' ? (arg as (tx: unknown) => unknown)(db) : Promise.all(arg as unknown[])),
+    // CP5d: a transação que lança desfaz o que escreveu (a Generation PROCESSING do gate inclusive), como no Postgres.
+    $transaction: async (arg: unknown) => {
+      if (typeof arg !== 'function') return Promise.all(arg as unknown[])
+      const antes = { pagina: banco.pagina, generations: [...banco.generations] }
+      try {
+        return await (arg as (tx: unknown) => unknown)(db)
+      } catch (erro) {
+        banco.pagina = antes.pagina
+        banco.generations = antes.generations
+        throw erro
+      }
+    },
   }
   return { db }
 })
@@ -92,11 +114,46 @@ vi.mock('@/lib/creatives/server-text-measurer', () => ({
 vi.mock('@/lib/creatives/text-autofix', () => ({
   aplicarAutofixOuFalhar: async (args: { layers: unknown[] }) => ({ layers: args.layers, autocorrecao: { aplicada: false }, avisos: [] }),
 }))
+// CP4: a não-piora (medir antes → aplicar em memória → medir depois) é provada em
+// `direcao-de-arte/__tests__/piloto-ciclo.test.ts` com o renderer REAL. Aqui o renderer é FALSO — a medida não
+// teria o que medir e recusaria tudo por `AJUSTE_NAO_MEDIDO` —, e o que este arquivo prova é a CORRIDA e a
+// escrita de `ajustarArte`: o executor vira o puro (`aplicarAjustes`), aceitando o que for estrutural.
+vi.mock('@/lib/creatives/revisao/ajustar-sem-piorar', async () => {
+  const { aplicarAjustes } = await import('@/lib/creatives/revisao/aplicar-ajustes')
+  const vazio = { achados: 0, problemas: 0, naoAvaliadas: [] as string[] }
+  return {
+    aplicarAjustesSemPiorar: async (a: { page: { width: number; height: number }; camadas: unknown[]; ajustes: unknown[]; medir: unknown }) => ({
+      ...aplicarAjustes(a.camadas as never, a.ajustes as never, { canvas: { width: a.page.width, height: a.page.height }, medir: a.medir as never }),
+      medidas: { antes: vazio, depois: vazio },
+    }),
+  }
+})
 vi.mock('@/lib/posts/invalidate-renders', () => ({ invalidateScheduledRenders: async () => ({ invalidados: 0, congelados: [] }) }))
 vi.mock('@/lib/compositor/recompor', () => ({
   travarRecomposicaoDaArte: vi.fn(async () => undefined),
   pedirRecomposicaoDaArteCongelada: vi.fn(async () => null),
+  // CP5d: a transação do gate resolve o alvo da recomposição pela própria função; aqui a página não tem arte com resultUrl.
+  alvoDaRecomposicao: vi.fn(async () => null),
 }))
+/**
+ * CP5d: no perfil draft-only o ajuste MEDE a versão final antes de gravar. A medição não é o objeto deste harness (a
+ * corrida e a escrita são) — a página mede LIMPA (a medida da peça limpa do gate, com as camadas reais); o gate decide
+ * sobre ela e grava o registro na Generation do ajuste. A medição real está em `piloto-ciclo.test.ts` e no gate.
+ */
+vi.mock('@/lib/creatives/revisao/revisar-arte', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/creatives/revisao/revisar-arte')>()
+  const { medida, metrica } = await import('../revisao/__tests__/suporte/corpus-do-gate')
+  const SEM_FUNDO = { assunto: null, assuntoNaoSeAplica: true as const, motivoSemAssunto: 'a peça não tem foto de fundo: não há assunto a proteger' }
+  return {
+    ...real,
+    contextoDaMedicao: async (args: Parameters<typeof real.contextoDaMedicao>[0]) => ({
+      projectId: args.projectId, canvas: { width: args.page.width, height: args.page.height }, formato: 'story' as const, background: '#101010', faixa: [0.45, 0.9] as [number, number],
+      referencias: { headline: { fontSize1080: 80, entrelinha: null, origem: 'assinatura' } }, referencia: 'assinatura', ...SEM_FUNDO, origensDaLogo: new Map(), cacheDeLogos: new Map(),
+    }),
+    medirCamadasDaPeca: async (camadas: Array<{ id: string; type: string; visible?: boolean }>, ctx: Parameters<typeof real.medirCamadasDaPeca>[1]) =>
+      medida({ canvas: ctx.canvas, formato: ctx.formato, camadas: camadas as never, metricas: camadas.filter((l) => l.type === 'text' && l.visible !== false).map((l) => metrica(l as never)), referencias: ctx.referencias as never, leituraDaLogo: [], ...SEM_FUNDO }),
+  }
+})
 vi.mock('@/lib/aprendizado/captura', () => ({ registrarDecisaoSemSugestao: vi.fn(async () => null) }))
 
 import { ajustarArte } from '../arte-rapida'
@@ -130,7 +187,9 @@ function paginaInicial(comContrato = true) {
     templateId: 77,
     thumbnail: 'https://blob.test/render-anterior.png',
     updatedAt: new Date(banco.relogio),
-    layers: [texto('headline', 1500, 'Almoço executivo'), texto('cta', 1650, 'Reserve pelo direct')],
+    // CP5d: no draft-only a versão final passa pelo gate, que mede o piso de interface do story (rodapé 224 px): os textos
+    // ficam ACIMA dele, senão toda escrita draft-only deste harness seria recusada pela peça, não pelo que se prova aqui.
+    layers: [texto('headline', 1200, 'Almoço executivo'), texto('cta', 1350, 'Reserve pelo direct')],
     copyAutoral: comContrato ? serializarCopyAutoral(contratoX) : null,
   }
 }
@@ -241,7 +300,7 @@ describe('C3-12 — a página promovida a MODELO durante o ajuste não é gravad
     expect(banco.pagina.isTemplate).toBe(true)
     expect(banco.pagina.name).toBe('Peça do chat')
     expect(banco.pagina.thumbnail).toBe('https://blob.test/render-anterior.png')
-    expect((banco.pagina.layers as Array<Record<string, any>>).find((l) => l.id === 'headline')!.position.y).toBe(1500)
+    expect((banco.pagina.layers as Array<Record<string, any>>).find((l) => l.id === 'headline')!.position.y).toBe(1200)
     expect(banco.generations).toHaveLength(0)
   }
 
@@ -446,5 +505,276 @@ describe('opção C (#208) no AJUSTE: fileUrl semântico no primeiro alvo não d
     const r = await ajustarArte({ projectId: 8, pageId: 'p1', imageUrl: 'https://blob.test/generica.jpg', slotValues: { bg: { fileUrl: 'https://blob.test/legado.jpg' } } })
     expect([camada('bg').fileUrl, camada('segunda').fileUrl]).toEqual(['https://blob.test/legado.jpg', 'https://blob.test/generica.jpg'])
     expect(r.imageApplied).toBe(true)
+  })
+})
+
+describe('CP4.1 — o agente autônomo (draft-only) não apaga copy pelo slotValues; o humano pode, e fica auditado', () => {
+  const cta = () => (banco.pagina!.layers as Array<Record<string, any>>).find((l) => l.id === 'cta')!
+  const comSlot = () => {
+    banco.pagina = {
+      ...banco.pagina,
+      layers: (banco.pagina.layers as Array<Record<string, any>>).map((l) => (l.id === 'headline' ? { ...l, metadata: { ...l.metadata, slot: { id: 'manchete' } } } : l)),
+    }
+  }
+  const intacto = async (chamada: Promise<unknown>, operacao: 'escondido' | 'esvaziado' | 'sem-conteudo', endereco: { tipo: string; chave: string }, layerId = 'cta', chave = layerId) => {
+    const antes = banco.pagina.updatedAt.getTime()
+    const erro = (await erroDe(chamada)) as CreativeError
+    expect(erro).toBeInstanceOf(CreativeError)
+    expect(erro.code).toBe('CONTEUDO_NAO_PODE_SER_REMOVIDO')
+    expect(erro.status).toBe(422)
+    expect(erro.details).toMatchObject({ ajusteGravado: false, copyRemovida: [{ layerId, chave, operacao, tinhaConteudo: true, endereco }] })
+    // Sem o texto integral nos details; a mensagem diz o nome da camada e a operação.
+    expect(JSON.stringify(erro.details)).not.toContain('Reserve pelo direct')
+    expect(erro.message).toMatch(new RegExp(`"${chave}" seria ${operacao === 'sem-conteudo' ? 'reduzido a pontuação sem conteúdo' : operacao}`))
+    // 11/12: nenhuma escrita, nenhuma Generation, nenhum render/Blob.
+    expect(banco.pagina.updatedAt.getTime()).toBe(antes)
+    expect(cta().visible).not.toBe(false)
+    expect(cta().content).toBe('Reserve pelo direct')
+    expect(banco.generations).toHaveLength(0)
+    expect(banco.putSeq).toBe(0)
+  }
+
+  it('1. draft-only: `{ cta: { hidden: true } }` sobre texto com conteúdo → recusado, nada gravado', async () => {
+    await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { cta: { hidden: true } } }), 'escondido', { tipo: 'layerId', chave: 'cta' })
+  })
+  it('2. draft-only: `{ cta: "" }` → recusado (esvaziado)', async () => {
+    await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { cta: '' } }), 'esvaziado', { tipo: 'layerId', chave: 'cta' })
+  })
+  it('3. draft-only: `{ cta: { content: "   " } }` (só espaço) → recusado (esvaziado)', async () => {
+    await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { cta: { content: '   ' } } }), 'esvaziado', { tipo: 'layerId', chave: 'cta' })
+  })
+  it('4. draft-only: `_slots` que resolve para vazio → recusado, com o endereço do slot', async () => {
+    comSlot()
+    await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { _slots: { manchete: '' } } }), 'esvaziado', { tipo: 'slotId', chave: 'manchete' }, 'headline')
+  })
+  it('5. draft-only: `_papeis` equivalente → recusado, com o endereço do papel', async () => {
+    await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { _papeis: { headline: ' ' } } }), 'esvaziado', { tipo: 'semanticRole', chave: 'headline' }, 'headline')
+  })
+  it('4b. draft-only: pela chave de NOME (atinge toda camada com esse nome) → recusado, endereço `name`', async () => {
+    banco.pagina = { ...banco.pagina, layers: (banco.pagina.layers as Array<Record<string, any>>).map((l) => (l.id === 'cta' ? { ...l, name: 'Chamada' } : l)) }
+    await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { Chamada: { hidden: true } } }), 'escondido', { tipo: 'name', chave: 'Chamada' }, 'cta', 'Chamada')
+  })
+  it('6. draft-only: trocar "Texto A" por "Texto B" → permitido, sujeito aos gates normais; sem `copyRemovida`', async () => {
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { cta: 'Reserve pelo WhatsApp' } })
+    expect(cta().content).toBe('Reserve pelo WhatsApp')
+    expect(r.camposAlterados).toEqual(['cta'])
+    expect(r.copyRemovida).toBeUndefined()
+    expect((banco.generations.at(-1)!.fieldValues as Record<string, unknown>).copyRemovida).toBeUndefined()
+  })
+  // CP5d: no draft-only o CP4.1 continua deixando passar (não é copy com conteúdo), mas a versão final passa pelo GATE,
+  // e esconder um texto fora do contrato deixa no contrato reconciliado um bloco que "não foi desenhado": copy-completa
+  // não comprovada → REVISAO_HUMANA_NECESSARIA, nada gravado. Antes do CP5d esta chamada gravava.
+  it('7. draft-only: esconder um slot de texto que JÁ estava vazio → o CP4.1 deixa passar (sem copyRemovida); o gate do CP5d recusa por copy-completa e nada é gravado', async () => {
+    banco.pagina = { ...banco.pagina, layers: [...(banco.pagina.layers as Array<Record<string, any>>), texto('badge', 200, '   ')] }
+    const antes = banco.pagina.updatedAt.getTime()
+    const erro = (await erroDe(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { badge: { hidden: true } } }))) as CreativeError
+    expect(erro).toBeInstanceOf(CreativeError)
+    expect(erro.code).toBe('REVISAO_HUMANA_NECESSARIA')
+    expect(erro.details).toMatchObject({ ajusteGravado: false, revisao: { tipo: 'medida', resultado: 'REVISAO_HUMANA_NECESSARIA' } })
+    expect((erro.details as { motivos: Array<{ regra: string }> }).motivos.map((m) => m.regra)).toContain('copy-completa')
+    expect((erro.details as Record<string, unknown>).copyRemovida).toBeUndefined()
+    expect(banco.pagina.updatedAt.getTime()).toBe(antes)
+    expect((banco.pagina.layers as Array<Record<string, any>>).find((l) => l.id === 'badge')!.visible).not.toBe(false)
+    expect(banco.generations).toHaveLength(0)
+  })
+  it('8/10. humano: `hidden: true` em texto com conteúdo continua permitido — e a procedência registra "escondido" (retorno e Generation)', async () => {
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { cta: { hidden: true } } })
+    expect(cta().visible).toBe(false)
+    const registro = { layerId: 'cta', chave: 'cta', operacao: 'escondido', endereco: { tipo: 'layerId', chave: 'cta' }, tinhaConteudo: true }
+    expect(r.copyRemovida).toEqual([registro])
+    expect((banco.generations.at(-1)!.fieldValues as Record<string, any>).copyRemovida).toEqual([registro])
+    // "conteúdo alterado" é outra coisa: a camada escondida não é texto alterado.
+    expect(r.camposAlterados).toEqual([])
+  })
+  it('9/10. humano: conteúdo → "" continua permitido — e a procedência distingue "esvaziado" de "alterado"', async () => {
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { cta: '', headline: 'Jantar executivo' } })
+    expect(cta().content).toBe('')
+    expect(r.copyRemovida).toEqual([{ layerId: 'cta', chave: 'cta', operacao: 'esvaziado', endereco: { tipo: 'layerId', chave: 'cta' }, tinhaConteudo: true }])
+    // "alterado" é texto trocado por OUTRO texto: o esvaziado não entra em camposAlterados.
+    expect(r.camposAlterados).toEqual(['headline'])
+  })
+  // Ajuste final do owner (15/10): trocar a copy por PONTUAÇÃO é apagar com outra sintaxe.
+  it('S1–S3. draft-only: "Texto real" → "." / "..." / "—" (e "___", "!!!", "()", "/", "•••") → recusado como sem-conteudo, nada gravado', async () => {
+    for (const pontuacao of ['.', '...', '—', '___', '!!!', '()', '/', '•••', ' - ', '…']) {
+      await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { cta: pontuacao } }), 'sem-conteudo', { tipo: 'layerId', chave: 'cta' })
+    }
+    await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { cta: { content: '.' } } }), 'sem-conteudo', { tipo: 'layerId', chave: 'cta' })
+  })
+  it('S5. draft-only: via `_slots` → "." → recusado, endereço do slot', async () => {
+    comSlot()
+    await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { _slots: { manchete: '.' } } }), 'sem-conteudo', { tipo: 'slotId', chave: 'manchete' }, 'headline')
+  })
+  it('S6. draft-only: via `_papeis` → "-" → recusado, endereço do papel', async () => {
+    await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { _papeis: { headline: '-' } } }), 'sem-conteudo', { tipo: 'semanticRole', chave: 'headline' }, 'headline')
+  })
+  it('S7–S9. draft-only: "Texto real" → "11h30" / "🍷" / "Novo texto!" / "R$ 79" / "50% OFF" → permitido (conteúdo substantivo), sem copyRemovida', async () => {
+    for (const novo of ['11h30', '🍷', 'Novo texto!', 'R$ 79', '50% OFF', '🇧🇷']) {
+      const r = await ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { cta: novo } })
+      expect(cta().content).toBe(novo)
+      expect(r.copyRemovida).toBeUndefined()
+      expect(r.camposAlterados).toEqual(['cta'])
+      banco.pagina = { ...banco.pagina, layers: (banco.pagina.layers as Array<Record<string, any>>).map((l) => (l.id === 'cta' ? { ...l, content: 'Reserve pelo direct' } : l)) }
+    }
+  })
+  it('S10. origem que JÁ era só pontuação ("-", placeholder decorativo) não vira copy protegida: esvaziar ou trocar por "." entra; esconder cai no gate do CP5d (copy-completa), não no CP4.1', async () => {
+    banco.pagina = { ...banco.pagina, layers: [...(banco.pagina.layers as Array<Record<string, any>>), texto('traco', 200, '-')] }
+    const escondido = (await erroDe(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { traco: { hidden: true } } }))) as CreativeError
+    expect(escondido.code).toBe('REVISAO_HUMANA_NECESSARIA')
+    expect((escondido.details as { motivos: Array<{ regra: string }> }).motivos.map((m) => m.regra)).toContain('copy-completa')
+    expect((escondido.details as Record<string, unknown>).copyRemovida).toBeUndefined()
+    for (const valor of ['', '.']) {
+      const r = await ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { traco: valor } })
+      expect(r.ajustada).toBe(true)
+      expect(r.copyRemovida).toBeUndefined()
+    }
+  })
+  it('S11. humano: "Texto real" → "." continua permitido — e `copyRemovida` registra "sem-conteudo" (retorno e Generation); não é "alterado"', async () => {
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { cta: '.', headline: 'Jantar executivo' } })
+    expect(cta().content).toBe('.')
+    const registro = { layerId: 'cta', chave: 'cta', operacao: 'sem-conteudo', endereco: { tipo: 'layerId', chave: 'cta' }, tinhaConteudo: true }
+    expect(r.copyRemovida).toEqual([registro])
+    expect((banco.generations.at(-1)!.fieldValues as Record<string, any>).copyRemovida).toEqual([registro])
+    expect(r.camposAlterados).toEqual(['headline'])
+  })
+  it('A1. draft-only: texto só de caracteres INVISÍVEIS (zero-width, soft hyphen, braille em branco) é esvaziar com outra sintaxe → recusado', async () => {
+    for (const invisivel of ['\u200b', '\u200c\u200d', '\u2060', '\u00ad', '\u2800', ' \u200b ']) {
+      await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { cta: invisivel } }), 'esvaziado', { tipo: 'layerId', chave: 'cta' })
+    }
+  })
+  it('A2/A3. draft-only: camada escondida pelo REVISOR (com marca) recebendo `hidden: true` conta como esconder; camada escondida pela PESSOA com conteúdo não pode ser esvaziada', async () => {
+    banco.pagina = {
+      ...banco.pagina,
+      layers: [
+        ...(banco.pagina.layers as Array<Record<string, any>>),
+        { ...texto('pelo-revisor', 1800, 'Texto que o revisor escondeu'), visible: false, metadata: { revisao: { ocultaPeloRevisor: { em: '2026-10-01T00:00:00.000Z', ajuste: 0 } } } },
+        { ...texto('pela-pessoa', 1850, 'Texto que a pessoa escondeu'), visible: false },
+      ],
+    }
+    await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { 'pelo-revisor': { hidden: true } } }), 'escondido', { tipo: 'layerId', chave: 'pelo-revisor' }, 'pelo-revisor')
+    await intacto(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { 'pela-pessoa': '' } }), 'esvaziado', { tipo: 'layerId', chave: 'pela-pessoa' }, 'pela-pessoa')
+    // Esconder de novo o que a pessoa já escondeu não é remoção (já estava escondido, nada muda).
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { 'pela-pessoa': { hidden: true } } })
+    expect(r.copyRemovida).toBeUndefined()
+  })
+})
+
+describe('CP4.2b — slotValues inválido é recusado ANTES de qualquer escrita (formato 400 / endereço 422), pedido misto inteiro; o CP4.1 continua decidindo o conteúdo', () => {
+  const cta = () => (banco.pagina!.layers as Array<Record<string, any>>).find((l) => l.id === 'cta')!
+  const recusado = async (slotValues: Record<string, unknown>, codigo: string, status: number, chaves: string[], apenasRascunho = false) => {
+    const antes = banco.pagina.updatedAt.getTime()
+    const erro = (await erroDe(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho, slotValues }))) as CreativeError
+    expect(erro).toBeInstanceOf(CreativeError)
+    expect(erro.code).toBe(codigo)
+    expect(erro.status).toBe(status)
+    expect(((erro.details as { erros: Array<{ codigo: string; origem?: { chave: string } }> }).erros ?? []).map((e) => [e.codigo, e.origem?.chave])).toEqual(chaves.map((c) => [codigo, c]))
+    // Zero escrita, zero Generation, zero render/Blob.
+    expect(banco.pagina.updatedAt.getTime()).toBe(antes)
+    expect(cta().content).toBe('Reserve pelo direct')
+    expect(banco.generations).toHaveLength(0)
+    expect(banco.putSeq).toBe(0)
+  }
+  it('V1/V2: número, array, boolean, null, objeto vazio → 400 VALOR_INVALIDO (origem chave), intacto', async () => {
+    for (const v of [123, ['x'], true, null, {}]) await recusado({ cta: v }, 'VALOR_INVALIDO', 400, ['cta'])
+  })
+  it('V3/V4/V5: { hidden: "true" }, { visible: false }, { content: 123 } → 400, intacto', async () => {
+    for (const v of [{ hidden: 'true' }, { visible: false }, { content: 123 }]) await recusado({ cta: v }, 'VALOR_INVALIDO', 400, ['cta'])
+  })
+  it('V6: pela chave de NOME com valor inválido → 400, origem é a chave (a FASE 1 não sabe que é nome)', async () => {
+    banco.pagina = { ...banco.pagina, layers: (banco.pagina.layers as Array<Record<string, any>>).map((l) => (l.id === 'cta' ? { ...l, name: 'Chamada' } : l)) }
+    await recusado({ Chamada: 7 }, 'VALOR_INVALIDO', 400, ['Chamada'])
+  })
+  it('V7/V8: _slots/_papeis malformados continuam 400 VALOR_INVALIDO (regressão da semântica)', async () => {
+    await recusado({ _slots: { manchete: 123 } }, 'VALOR_INVALIDO', 400, ['manchete'])
+    await recusado({ _papeis: { headline: [] } }, 'VALOR_INVALIDO', 400, ['headline'])
+  })
+  it('V9: pedido MISTO (cta válido + headline inválido) → 400 e NADA gravado, nem o cta', async () => {
+    await recusado({ cta: 'Novo', headline: 123 }, 'VALOR_INVALIDO', 400, ['headline'])
+  })
+  it('V10: chave que não endereça camada → 422 CHAVE_DESCONHECIDA, intacto; V14: _imageUrl não-string → 400; _qualquer → 400 CHAVE_DESCONHECIDA', async () => {
+    await recusado({ naoExiste: 'x' }, 'CHAVE_DESCONHECIDA', 422, ['naoExiste'])
+    await recusado({ _imageUrl: 123 }, 'VALOR_INVALIDO', 400, ['_imageUrl'])
+    await recusado({ _qualquer: 'x' }, 'CHAVE_DESCONHECIDA', 400, ['_qualquer'])
+  })
+  it('V14b (revisão do owner): _imageUrl: null e _driveImageId: null → 400 VALOR_INVALIDO com a chave; pedido MISTO (texto válido + controle null) recusado inteiro; _slots/_papeis null seguem aceitos', async () => {
+    await recusado({ _imageUrl: null }, 'VALOR_INVALIDO', 400, ['_imageUrl'])
+    await recusado({ _driveImageId: null }, 'VALOR_INVALIDO', 400, ['_driveImageId'])
+    await recusado({ cta: 'Novo', _driveImageId: null }, 'VALOR_INVALIDO', 400, ['_driveImageId'])
+    await recusado({ _imageUrl: null, _driveImageId: null }, 'VALOR_INVALIDO', 400, ['_imageUrl', '_driveImageId'])
+    const erro = (await erroDe(ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { _imageUrl: null } }))) as CreativeError
+    expect(erro.message).toContain('"_imageUrl"')
+    // Controle: `_slots: null` continua "não fornecido" — a chamada segue e grava o texto.
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { cta: 'Novo', _slots: null, _papeis: null } })
+    expect(r).toBeTruthy()
+    expect(cta().content).toBe('Novo')
+  })
+  it('V11: "" e "." no draft-only continuam chegando ao guard do CP4.1 (CONTEUDO_NAO_PODE_SER_REMOVIDO), não à validação', async () => {
+    for (const v of ['', '.']) {
+      const erro = (await erroDe(ajustarArte({ projectId: 8, pageId: 'p1', apenasRascunho: true, slotValues: { cta: v } }))) as CreativeError
+      expect(erro.code).toBe('CONTEUDO_NAO_PODE_SER_REMOVIDO')
+    }
+  })
+  it('V12/V15: "Texto B" entra (controle); objeto só com papel grava a metadata como hoje (comportamento inalterado)', async () => {
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { cta: 'Texto B' } })
+    expect(r.ajustada).toBe(true)
+    expect(cta().content).toBe('Texto B')
+    const so = await ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { cta: { papel: 'cta' } } })
+    expect(so.ajustada).toBe(true)
+    expect((cta().metadata as { compositor?: { papel?: string } })?.compositor?.papel).toBe('cta')
+  })
+  it('V18: a chave é id de uma camada e nome de outra — as duas recebem (precedência id > semântico > nome POR CAMADA, como o bake), sem erro', async () => {
+    banco.pagina = { ...banco.pagina, layers: [...(banco.pagina.layers as Array<Record<string, any>>), texto('rodape', 1800, 'Rodapé antigo'), { ...texto('outra', 1850, 'Outra antiga'), name: 'cta' }] }
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { cta: 'Pelo id e pelo nome', rodape: 'Rodapé novo' } })
+    expect(r.ajustada).toBe(true)
+    const porId = new Map((banco.pagina.layers as Array<Record<string, any>>).map((l) => [l.id, l.content]))
+    expect(porId.get('cta')).toBe('Pelo id e pelo nome')
+    expect(porId.get('outra')).toBe('Pelo id e pelo nome')
+    expect(porId.get('rodape')).toBe('Rodapé novo')
+  })
+})
+
+/**
+ * G4.5 (27/10/2026) — célula de grade de fotos no `ajustarArte`: a foto genérica nunca cai numa célula (nem pelo
+ * atalho da "primeira imagem"), e a foto pedida para uma célula entra só por `preencherCelula` ou é recusada (422).
+ */
+describe('G4.5 — grade de fotos no ajustarArte', () => {
+  const BLOB = 'https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com'
+  const g = { id: 'g1', layout: '2-colunas', versao: 1, espacamento: 10, raio: 0, caixa: { x: 0, y: 0, w: 1080, h: 1100 } }
+  const cel = (id: string, i: number, fileUrl: string) => ({
+    id, name: `Grade · foto ${i + 1}`, type: 'image', visible: true, locked: false, order: i, rotation: 0,
+    position: { x: i === 0 ? 0 : 545, y: 0 }, size: { width: 535, height: 1100 }, fileUrl,
+    style: { objectFit: 'cover', border: { radius: 0 }, crop: { x: 0.1, y: 0, width: 0.5, height: 1 } }, metadata: { grade: { ...g, celula: i }, groupId: 'g1' },
+  })
+  const comGrade = () => {
+    banco.pagina = { ...banco.pagina, layers: [cel('c0', 0, `${BLOB}/a.jpg`), cel('c1', 1, `${BLOB}/b.jpg`), ...(banco.pagina.layers as unknown[])] }
+  }
+  const camada = (id: string) => (banco.pagina.layers as Array<Record<string, any>>).find((l) => l.id === id)!
+
+  it('foto genérica numa página cuja primeira imagem é célula: as células ficam, imageApplied false e aviso', async () => {
+    comGrade()
+    const r = await ajustarArte({ projectId: 8, pageId: 'p1', imageUrl: 'https://blob.test/generica.jpg' })
+    expect([camada('c0').fileUrl, camada('c1').fileUrl]).toEqual([`${BLOB}/a.jpg`, `${BLOB}/b.jpg`])
+    expect(camada('c0').style.crop).toEqual({ x: 0.1, y: 0, width: 0.5, height: 1 })
+    expect(r.imageApplied).toBe(false)
+    expect(r.imageWarning).toBeTruthy()
+  })
+
+  it('foto pedida para a célula de host alheio: 422 FOTO_DA_GRADE_RECUSADA, nada gravado', async () => {
+    comGrade()
+    const antes = banco.pagina.updatedAt.getTime()
+    const erro = await erroDe(ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { c1: { fileUrl: 'https://blob.test/de-fora.jpg' } } }))
+    expect((erro as CreativeError).code).toBe('FOTO_DA_GRADE_RECUSADA')
+    expect((erro as CreativeError).status).toBe(422)
+    expect(banco.pagina.updatedAt.getTime()).toBe(antes)
+    expect(banco.generations).toHaveLength(0)
+    expect(banco.putSeq).toBe(0)
+  })
+
+  it('foto pedida para a célula do Blob próprio: entra por preencherCelula (recorte limpo, cover)', async () => {
+    comGrade()
+    await ajustarArte({ projectId: 8, pageId: 'p1', slotValues: { c1: { fileUrl: `${BLOB}/nova.jpg` } } })
+    expect(camada('c1').fileUrl).toBe(`${BLOB}/nova.jpg`)
+    expect(camada('c1').style.crop).toBeUndefined()
+    expect(camada('c1').style.objectFit).toBe('cover')
+    expect(camada('c0').style.crop).toEqual({ x: 0.1, y: 0, width: 0.5, height: 1 })
   })
 })

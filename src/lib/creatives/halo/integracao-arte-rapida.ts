@@ -14,6 +14,7 @@ import { fetchBuffer } from '@/lib/posts/register-project-fonts'
 import type { Layer } from '@/types/template'
 
 import { aplicarHalo, ehCamadaDeVeu, ehFotoDeFundo, type HaloDeBloco } from './aplicar-halo'
+import { temGradeVisivel } from '@/lib/grades/presenca'
 import { lerFotoComoCover, medirFaixasDaFoto, type CanvasSize, type FotoCinza } from './halo-medicao'
 import {
   ehTemplateDeTresLayouts,
@@ -41,6 +42,21 @@ function ehUrlHttp(url: unknown): url is string {
  * Baixa e decodifica a foto como cover no canvas. `null` (com log) em
  * qualquer falha — quem chama segue sem medição.
  */
+/**
+ * CP4.2b — a foto já BAIXADA (os bytes do Drive antes do `put` do cache): decodifica sem buscar de novo. A `url` é a
+ * que a foto vai ter DEPOIS de persistida; quem chama a preenche antes de passar ao halo (que confere `url` contra o
+ * `fileUrl` da camada).
+ */
+export async function lerFotoDeBytes(bytes: Buffer, canvas: CanvasSize, url = ''): Promise<FotoParaMedicao | null> {
+  try {
+    const raster = await lerFotoComoCover(bytes, canvas)
+    return { url, raster }
+  } catch (error) {
+    console.warn('[halo] Não deu para ler a foto (bytes) para medição:', (error as Error).message)
+    return null
+  }
+}
+
 export async function lerFotoParaMedicao(
   url: string | null | undefined,
   canvas: CanvasSize,
@@ -122,6 +138,9 @@ export async function aplicarHaloNaArte(input: AplicarHaloNaArteInput): Promise<
   })
 
   if (!ehFamiliaDeHalo(input.templateTags, input.layers)) return semHalo()
+  // G4.5: o halo mede UMA foto (a de fundo) e calibra a mancha por ela; com grade de fotos, os textos ficam sobre fotos
+  // que ninguém mediu — fica o véu, com aviso, em vez de um halo calibrado pela foto errada
+  if (temGradeVisivel(input.layers)) return semHalo('halo não aplicado: a arte tem grade de fotos e o halo mede uma foto só; ficou o véu')
 
   const fundo = input.layers.find((l) => ehFotoDeFundo(l, input.canvas) && l.visible !== false)
   const urlDoFundo = fundo?.fileUrl

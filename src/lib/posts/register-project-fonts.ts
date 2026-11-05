@@ -22,24 +22,53 @@ import * as https from 'https'
 import * as http from 'http'
 import { db } from '@/lib/db'
 
-export function fetchBuffer(url: string): Promise<Buffer> {
+/** CP5c § 3: o download aceita cancelamento (`req.destroy()` no abort) e um teto por download (`socket.setTimeout`). */
+export interface OpcoesDoDownload {
+  signal?: AbortSignal
+  /** Teto de inatividade do socket, em ms; sem ele não há teto (o comportamento de sempre). */
+  timeoutMs?: number
+}
+
+export function fetchBuffer(url: string, opcoes: OpcoesDoDownload = {}): Promise<Buffer> {
   return new Promise((resolve, reject) => {
+    const { signal, timeoutMs } = opcoes
+    const erroDeAborto = () => (signal?.reason instanceof Error ? signal.reason : new Error(`download abortado: ${url}`))
+    if (signal?.aborted) return reject(erroDeAborto())
     const client = url.startsWith('https') ? https : http
-    client
+    let terminou = false
+    const aoAbortar = () => {
+      if (terminou) return
+      terminou = true
+      req.destroy(erroDeAborto())
+      reject(erroDeAborto())
+    }
+    const fechar = <T>(fim: (v: T) => void) => (v: T) => {
+      if (terminou) return
+      terminou = true
+      signal?.removeEventListener('abort', aoAbortar)
+      fim(v)
+    }
+    const ok = fechar(resolve)
+    const falhou = fechar(reject)
+    const req = client
       .get(url, (res) => {
         if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          return fetchBuffer(res.headers.location).then(resolve).catch(reject)
+          res.resume()
+          // O redirecionamento segue com o MESMO sinal e o mesmo teto (CP5c: redirecionamento em laço também cai no prazo).
+          return fetchBuffer(res.headers.location, opcoes).then(ok).catch(falhou)
         }
         if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
           res.resume() // drena para liberar o socket
-          return reject(new Error(`HTTP ${res.statusCode} ao baixar ${url}`))
+          return falhou(new Error(`HTTP ${res.statusCode} ao baixar ${url}`))
         }
         const chunks: Buffer[] = []
         res.on('data', (c: Buffer) => chunks.push(c))
-        res.on('end', () => resolve(Buffer.concat(chunks)))
-        res.on('error', reject)
+        res.on('end', () => ok(Buffer.concat(chunks)))
+        res.on('error', falhou)
       })
-      .on('error', reject)
+      .on('error', falhou)
+    if (timeoutMs && timeoutMs > 0) req.setTimeout(timeoutMs, () => req.destroy(new Error(`download sem resposta por ${timeoutMs} ms: ${url}`)))
+    signal?.addEventListener('abort', aoAbortar, { once: true })
   })
 }
 
@@ -57,8 +86,14 @@ function pareceFonte(buf: Buffer): boolean {
   )
 }
 
-export async function registerProjectFonts(projectId: number): Promise<void> {
-  const fonts = await db.customFont.findMany({ where: { projectId } })
+/** CP5c: quem lê `CustomFont` (o `db`, ou a transação do gate, sob as travas) e o sinal/teto dos downloads. */
+export interface OpcoesDoRegistroDeFontes extends OpcoesDoDownload {
+  cliente?: { customFont: { findMany: (args: { where: { projectId: number } }) => Promise<Array<{ fontFamily: string; fileUrl: string }>> } }
+}
+
+export async function registerProjectFonts(projectId: number, opcoes: OpcoesDoRegistroDeFontes = {}): Promise<void> {
+  const cliente = opcoes.cliente ?? db
+  const fonts = await cliente.customFont.findMany({ where: { projectId } })
   if (fonts.length === 0) return
 
   // Dynamic import to avoid static bundling of @napi-rs/canvas
@@ -77,7 +112,7 @@ export async function registerProjectFonts(projectId: number): Promise<void> {
 
     const baixar = async (): Promise<boolean> => {
       try {
-        const buf = await fetchBuffer(font.fileUrl)
+        const buf = await fetchBuffer(font.fileUrl, { signal: opcoes.signal, timeoutMs: opcoes.timeoutMs })
         if (!pareceFonte(buf)) {
           throw new Error(`resposta não parece arquivo de fonte (${buf.length} bytes)`)
         }

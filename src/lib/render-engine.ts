@@ -14,6 +14,9 @@ import {
   applyStackBlur,
   hasImageFilters,
 } from './konva/filters/apply'
+import { desenharSvgPath, pinturaDoSvgPath, type CtxDePintura } from './vetor/desenhar'
+import { partesParaPintar } from './vetor/partes'
+import { borrarPreMultiplicado } from './vetor/blur-do-multicor'
 import { flattenRichTextStyles } from './rich-text-styles'
 import type { Rect } from './creatives/halo/halo'
 import {
@@ -853,6 +856,8 @@ export class RenderEngine {
     layer: Layer,
   ): {
     height: number
+    /** A altura antes de arredondar: quem decide escala usa `round` dela; a caixa gravada é `height` (ceil). */
+    naturalHeight: number
     maxLineWidth: number
     lineCount: number
     inkTopSlack: number
@@ -932,8 +937,10 @@ export class RenderEngine {
     ctx.restore()
     spacingCtx.letterSpacing = '0px'
 
+    const naturalHeight = Math.max(1, lines.length) * lineBox + pad * 2
     return {
-      height: Math.round(Math.max(1, lines.length) * lineBox + pad * 2),
+      height: Math.ceil(naturalHeight),
+      naturalHeight,
       maxLineWidth: Math.ceil(maxLineWidth),
       lineCount: Math.max(1, lines.length),
       inkTopSlack: Math.round(inkTopSlack * 10) / 10,
@@ -1723,24 +1730,15 @@ export class RenderEngine {
     }
   }
 
+  /** O contorno arredondado da imagem: o mesmo canto do recorte (`traceRoundedRectPath`). */
   private static strokeRoundedRect(
     ctx: CanvasRenderingContext2D,
     width: number,
     height: number,
     radius: number,
   ) {
-    const r = Math.min(radius, width / 2, height / 2)
     ctx.beginPath()
-    ctx.moveTo(r, 0)
-    ctx.lineTo(width - r, 0)
-    ctx.quadraticCurveTo(width, 0, width, r)
-    ctx.lineTo(width, height - r)
-    ctx.quadraticCurveTo(width, height, width - r, height)
-    ctx.lineTo(r, height)
-    ctx.quadraticCurveTo(0, height, 0, height - r)
-    ctx.lineTo(0, r)
-    ctx.quadraticCurveTo(0, 0, r, 0)
-    ctx.closePath()
+    this.traceRoundedRectPath(ctx, width, height, radius)
     ctx.stroke()
   }
 
@@ -1837,28 +1835,26 @@ export class RenderEngine {
       return
     }
 
-    // Forma vetorial genérica: path normalizado escalado para a caixa da
-    // camada — espelha o <Path> dentro de Group do editor. Stroke compensado
-    // pela escala média (editor usa strokeScaleEnabled=false).
+    // Forma vetorial genérica: o MESMO traçado e a mesma pintura do editor
+    // (src/lib/vetor): fillRule respeitado, contorno em px da camada nos dois
+    // eixos. Não depende de Path2D, então a miniatura avulsa também desenha.
     if (shapeType === 'svg-path') {
       if (!style.pathData) return
-      const path = this.getPath2D(style.pathData, options)
-      if (!path) return
-      const [vx, vy, vw, vh] = style.pathViewBox ?? [0, 0, 100, 100]
-      const scaleX = width / (vw || 1)
-      const scaleY = height / (vh || 1)
-      ctx.save()
-      ctx.scale(scaleX, scaleY)
-      ctx.translate(-vx, -vy)
-      ctx.fillStyle = fill
-      ctx.fill(path, style.pathFillRule ?? 'nonzero')
-      if (stroke && strokeWidth > 0) {
-        ctx.strokeStyle = stroke
-        ctx.lineWidth = strokeWidth / ((scaleX + scaleY) / 2 || 1)
-        ctx.lineJoin = 'round'
-        ctx.stroke(path)
+      try {
+        desenharSvgPath(
+          ctx as unknown as CtxDePintura,
+          style.pathData,
+          style.pathViewBox,
+          width,
+          height,
+          pinturaDoSvgPath(style, { fill, stroke, strokeWidth }),
+          // multicor: o canvas auxiliar da opacidade de GRUPO (desenhar.ts), o mesmo offscreen dos filtros
+          (w, h) => this.getOffscreen(w, h, options)?.canvas,
+        )
+      } catch (error) {
+        // path ruim não derruba a arte inteira (era o papel do try do getPath2D)
+        console.warn('[RenderEngine] Path SVG inválido — ignorando:', error)
       }
-      ctx.restore()
       return
     }
 
@@ -2031,7 +2027,9 @@ export class RenderEngine {
 
     try {
       const imageData = octx.getImageData(0, 0, off.width, off.height)
-      applyStackBlur(imageData.data, off.width, off.height, raioNoBuffer)
+      // multicor: blur sobre cor pré-multiplicada (a cor semitransparente das partes não satura); o resto, como sempre
+      if (partesParaPintar(layer.style?.vetor)) borrarPreMultiplicado(imageData.data, off.width, off.height, raioNoBuffer)
+      else applyStackBlur(imageData.data, off.width, off.height, raioNoBuffer)
       octx.putImageData(imageData, 0, 0)
     } catch (error) {
       console.warn('[RenderEngine] Falha ao borrar shape:', error)
@@ -2076,22 +2074,33 @@ export class RenderEngine {
     }
   }
 
+  /**
+   * O canto arredondado do servidor: a MESMA sequência do `Konva.Util.drawRoundedRectPath` (Konva 9.3.22) que o editor
+   * usa em `Rect` e `Image`, arcos de círculo, mais o `closePath` do `Konva.Rect`. Era `quadraticCurveTo` com o controle
+   * no vértice: o canto saía 0,06 × raio mais "quadrado" que no editor (preflight da pílula, 23/10/2026).
+   * Não abre o path (quem chama faz o `beginPath`). Raio ≤ 0 (ou inválido) é retângulo: `arc` com raio negativo lança.
+   */
   private static traceRoundedRectPath(
     ctx: CanvasRenderingContext2D,
     width: number,
     height: number,
     radius: number,
   ): void {
-    const r = Math.min(radius, width / 2, height / 2)
+    const r = Math.max(0, Math.min(radius, width / 2, height / 2))
+    if (!(r > 0)) {
+      ctx.rect(0, 0, width, height)
+      ctx.closePath()
+      return
+    }
     ctx.moveTo(r, 0)
     ctx.lineTo(width - r, 0)
-    ctx.quadraticCurveTo(width, 0, width, r)
+    ctx.arc(width - r, r, r, (Math.PI * 3) / 2, 0, false)
     ctx.lineTo(width, height - r)
-    ctx.quadraticCurveTo(width, height, width - r, height)
+    ctx.arc(width - r, height - r, r, 0, Math.PI / 2, false)
     ctx.lineTo(r, height)
-    ctx.quadraticCurveTo(0, height, 0, height - r)
+    ctx.arc(r, height - r, r, Math.PI / 2, Math.PI, false)
     ctx.lineTo(0, r)
-    ctx.quadraticCurveTo(0, 0, r, 0)
+    ctx.arc(r, r, r, Math.PI, (Math.PI * 3) / 2, false)
     ctx.closePath()
   }
 

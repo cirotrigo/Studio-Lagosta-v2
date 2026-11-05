@@ -17,11 +17,13 @@ import type { Layer } from '@/types/template'
 import type { MeasureTextBox } from '@/lib/creatives/text-geometry'
 import { blocosDeServico } from '@/lib/ai/blocos-de-servico'
 import type { AssinaturaDaMarca, EstiloDePapel, NumerosDaAssinatura } from './assinatura'
-import { montarBloco, type BlocoMontado, type OrcamentoDeLinha } from './blocos'
+import { camadaDoPapel, colunaDaCaixa, montarBloco, type BlocoMontado, type OrcamentoDeLinha, type RecusaDeBloco } from './blocos'
 import { arranjosDaPagina, distribuirLinhas, escolherArranjo, type ArranjoDeGrupo, type ElementoDoArranjo } from './combinacoes'
 import { destaqueDoPapel, type EstiloDeDestaque } from './destaques'
 import { dividirManchete } from './segunda-voz'
 import type { GrupoVisual, Papel } from './spec'
+import type { EstiloDaReferencia } from './arquetipos/tipos'
+import { vestirEstiloDaReferencia, type EstiloVestido } from './arquetipos/estilo-da-referencia'
 import { chaveDoGrupoExtra, estiloHerdado, resolverCamadasExtras, type BlocoResolvido, type CamadaExtraDaSpec, type IdentidadeDoExtra, type FalhaDeResolucao } from './camadas-extras'
 
 export function hashDe(texto: string): number {
@@ -73,6 +75,23 @@ export interface BlocoPreparado extends BlocoMontado {
   funcao: string
   /** F3: presente quando o bloco é uma camada extra (o `papel` é só o de estilo). */
   extra?: IdentidadeDoExtra
+  /** A coluna de tinta com que o bloco foi MEDIDO (px) — o medir-copy lê daqui, nunca a recalcula. */
+  coluna: number
+  /** As posições, no bloco do AUTOR, das linhas que este texto desenha — a ordem de leitura da copy. */
+  indicesDoBloco: number[]
+  /** F2c: na peça por referência com `corpos` — o corpo desenhado (px), o teto e o piso deste bloco (px) e o corpo efetivo. */
+  corpo?: CorpoDoBloco
+  /** F2d: na peça por referência com `estilos` — a origem de cada campo do estilo efetivo (referência, assinatura ou arranjo). */
+  estiloDaReferencia?: EstiloVestido['origem']
+}
+
+/** F2c: o corpo da referência como este bloco o viu — todos em px do canvas. */
+export interface CorpoDoBloco {
+  referencia: number
+  teto: number
+  piso: number
+  /** O corpo com que o bloco saiu (`layer.style.fontSize`); ausente na recusa. */
+  efetivo?: number
 }
 
 export interface RecusaPreparada {
@@ -87,6 +106,35 @@ export interface RecusaPreparada {
   /** O estilo de destaque com que a montagem mediu os [colchetes] (null = sem estilo na marca). */
   destaque: EstiloDeDestaque | null
   orcamento: OrcamentoDeLinha[]
+  /** A coluna de tinta com que o bloco foi MEDIDO (px). */
+  coluna: number
+  /** Com arquétipo: a altura que não coube na capacidade da referência (ver `RecusaDeBloco.altura`). */
+  altura?: RecusaDeBloco['altura']
+  /** Com arquétipo: as linhas que se desenham em mais de uma linha na coluna (ver `RecusaDeBloco.quebras`). */
+  quebras?: RecusaDeBloco['quebras']
+  /** F2c: o corpo da referência com que o bloco foi medido (a recusa diz o piso em px, não "80 %"). */
+  corpo?: CorpoDoBloco
+  /** F2d: a origem de cada campo do estilo com que a recusa foi medida. */
+  estiloDaReferencia?: EstiloVestido['origem']
+}
+
+/**
+ * F2d: o estilo com que a recusa foi MEDIDA, materializado no piso por `camadaDoPapel` — o mesmo objeto no `compor` e no
+ * `medir-copy`. É a camada quem resolve o espaçamento: pelo contrato da referência quando há (`2,38` em 31 px), e pela
+ * escala de sempre quando não há — a segunda voz, que só recebe a cor, publica `letterSpacing × piso/base`, não a reserva
+ * da base (Codex F2d R3).
+ */
+export function estiloDaRecusa(r: RecusaPreparada, escalaDoFormato: number, corDaMancha: string): { fontFamily: string; fontWeight: number | null; textTransform: string | null; letterSpacing: number; color: string; origem: EstiloVestido['origem'] } | null {
+  if (!r.estiloDaReferencia) return null
+  const noPiso = camadaDoPapel({ papel: r.papel, linhas: r.linhasDaCopy, estilo: r.estilo, escala: r.corpo ? r.corpo.piso / r.estilo.fontSize : escalaDoFormato, width: r.coluna, textAlign: 'left', groupId: 'medicao', corDaMancha })
+  return {
+    fontFamily: String(noPiso.style?.fontFamily ?? r.estilo.fontFamily),
+    fontWeight: typeof noPiso.style?.fontWeight === 'number' ? noPiso.style.fontWeight : null,
+    textTransform: (noPiso.style?.textTransform as string | undefined) ?? null,
+    letterSpacing: Number(noPiso.style?.letterSpacing ?? 0),
+    color: String(noPiso.style?.color ?? r.estilo.color),
+    origem: r.estiloDaReferencia,
+  }
 }
 
 export interface BlocosPreparados {
@@ -124,6 +172,32 @@ export function prepararBlocos(args: {
   familias: string[]
   /** As combinações salvas do projeto, já como arranjos (quem chama as carrega). */
   combinacoesSalvas: ArranjoDeGrupo[]
+  /**
+   * Com arquétipo (T1a): a caixa MÁXIMA de cada papel — a largura da referência
+   * vira a coluna do bloco e a altura, a capacidade. A segunda voz mede na caixa
+   * da manchete. Ausente = a coluna útil de sempre, nada muda.
+   */
+  caixaDoPapel?: (papel: Papel) => { largura: number; altura: number } | undefined
+  /** Com arquétipo: o fator (≤ 1) em que a escada de cada papel começa — a escada da unidade (`no-compositor.ts`). */
+  escalaMaximaDoPapel?: (papel: Papel) => number | undefined
+  /**
+   * F2c: na peça por referência com `corpos`, o teto e o piso do papel em PX (a régua comum da unidade). Convertidos AQUI
+   * ao estilo EFETIVO de cada bloco (o do arranjo ou o da assinatura): assinatura 58, arranjo 72, referência 85 → o bloco
+   * parte de 85 px, nunca de 106. Vence `escalaMaximaDoPapel`.
+   */
+  corpoDoPapel?: (papel: Papel) => { referencia: number; teto: number; piso: number } | undefined
+  /**
+   * F2d: na peça por referência com `estilos`, o estilo desenhado do papel e o corpo desenhado (a régua do espaçamento).
+   * Vestido sobre o estilo-base EFETIVO de cada bloco (`vestirEstiloDaReferencia`); a segunda voz toma só a cor.
+   */
+  estiloDoPapel?: (papel: Papel) => { estilo: EstiloDaReferencia; corpo: number } | undefined
+  /**
+   * Com arquétipo de LISTA (#15): o papel cujo bloco vira um ITEM por linha autoral — uma camada por linha, do MESMO
+   * bloco (`origem.linhas` = a linha dela), na ordem do autor. O item que quebra em duas linhas visuais segue uma camada.
+   */
+  listaDoPapel?: (papel: Papel) => boolean
+  /** Com arquétipo: o teto de linhas do papel (`limitesDeTexto`) — a linha única que não cabe no teto é distribuída (`montarBloco`). */
+  linhasMaxDoPapel?: (papel: Papel) => number | undefined
 }): BlocosPreparados {
   const { spec, assinatura, colunaUtil, escalaDoFormato, mancha, medir, familias, combinacoesSalvas } = args
   const avisos: string[] = []
@@ -287,10 +361,22 @@ export function prepararBlocos(args: {
         : doArranjo.map((b) => ({ ...b, texto: null }))),
       ...extrasDoGrupo.map((b) => ({ papel: b.papel, linhas: b.linhas, indicesDoBloco: b.indicesDoBloco, texto: null, extra: b.extra })),
     ]
-    for (const p of preenchidos) {
+    // A lista: cada linha do autor é um item, com camada própria. Os ornamentos do arranjo (ícone, filete, selo) ficam
+    // só no PRIMEIRO item — repeti-los seria desenho que a página não tem.
+    const porItem = preenchidos.flatMap((p) =>
+      !p.extra && p.linhas.length > 1 && args.listaDoPapel?.(p.papel)
+        ? p.linhas.map((linha, k) => ({ ...p, linhas: [linha], indicesDoBloco: [p.indicesDoBloco[k]], texto: k === 0 || !p.texto ? p.texto : { ...p.texto, elementos: [] } }))
+        : [p],
+    )
+    for (const p of porItem) {
       // O extra veste o estilo do papel de origem SEM a posição dele.
-      const estiloBase = p.texto?.estilo ?? assinatura.papeis[p.papel]
-      if (!estiloBase) continue
+      const estiloBase0 = p.texto?.estilo ?? assinatura.papeis[p.papel]
+      if (!estiloBase0) continue
+      // F2d: o estilo da referência vestido sobre o estilo-base EFETIVO (o do arranjo ou o da assinatura), campo a campo; a
+      // segunda voz toma só a cor. O arranjo salvo não é mutado: a sobreposição vive só neste bloco.
+      const daRef = args.estiloDoPapel?.(p.papel === 'headline2' ? 'headline' : p.papel)
+      const vestido = daRef ? vestirEstiloDaReferencia({ base: estiloBase0, origemDaBase: p.texto ? 'arranjo' : 'assinatura', estilo: daRef.estilo, corpo: daRef.corpo, apenasCor: p.papel === 'headline2' }) : null
+      const estiloBase = vestido ? vestido.estilo : estiloBase0
       const estilo = p.extra ? estiloHerdado(estiloBase) : estiloBase
       const n = p.extra ? 0 : (repeticoes.get(p.papel) ?? 0) + 1
       if (!p.extra) repeticoes.set(p.papel, n)
@@ -299,13 +385,31 @@ export function prepararBlocos(args: {
       const id = p.extra ? p.extra.id : n > 1 ? `${p.papel}-${n}` : p.papel
       const funcao = p.extra ? p.extra.funcao : p.papel
       const destaque = estiloDeDestaqueDoPapel(estilo, assinatura.numeros.destaque, familias)
+      // F2d: a família da referência e a do destaque RESOLVIDO sobre ela entram na conferência de fontes (a coleta de cima
+      // é anterior ao vestir).
+      if (vestido) for (const f of [estilo.fontFamily, destaque?.fontFamily]) if (typeof f === 'string' && f.trim()) familiasCandidatas.add(f)
+      // Com arquétipo a largura é a da REFERÊNCIA: a `larguraMaxima` da assinatura é geometria e sai da conta.
+      const caixa = args.caixaDoPapel?.(p.papel === 'headline2' ? 'headline' : p.papel)
+      const estiloMedido = caixa ? { ...estilo, larguraMaxima: undefined } : estilo
+      const colunaDoBloco = caixa ? colunaDaCaixa(caixa.largura) : colunaUtil
+      const coluna = Math.floor(colunaDoBloco * (estiloMedido.larguraMaxima ?? 1))
+      // F2c: o teto/piso em px do papel geométrico, convertidos ao estilo efetivo deste bloco (fator sobre `escalaDoFormato`).
+      const corpoDaRef = caixa ? args.corpoDoPapel?.(p.papel === 'headline2' ? 'headline' : p.papel) : undefined
+      const baseDoBloco = estiloMedido.fontSize * escalaDoFormato
+      const escalaMaxima = corpoDaRef ? corpoDaRef.teto / baseDoBloco : caixa ? args.escalaMaximaDoPapel?.(p.papel === 'headline2' ? 'headline' : p.papel) : undefined
+      // A distribuição vale para o texto comum do papel: a lista é um item por linha, o extra e a segunda voz têm as suas.
+      const linhasMax = caixa && !p.extra && p.papel !== 'headline2' && !args.listaDoPapel?.(p.papel) ? args.linhasMaxDoPapel?.(p.papel) : undefined
       const r = montarBloco({
         papel: p.papel,
         id,
         linhas: p.linhas,
-        estilo,
+        estilo: estiloMedido,
         escalaDoFormato,
-        colunaUtil,
+        colunaUtil: colunaDoBloco,
+        ...(caixa ? { alturaMaxima: caixa.altura } : {}),
+        ...(escalaMaxima !== undefined ? { escalaMaxima } : {}),
+        ...(corpoDaRef ? { pisoDeEscala: corpoDaRef.piso / baseDoBloco } : {}),
+        ...(linhasMax !== undefined ? { linhasMax } : {}),
         textAlign: 'left',
         groupId: `grupo-${hashDe(chaveDoGrupoAtual) % 99991}`,
         corDaMancha: mancha,
@@ -324,10 +428,14 @@ export function prepararBlocos(args: {
       })
       avisos.push(...r.avisos)
       if (r.recusa) {
-        recusas.push({ papel: r.recusa.papel, funcao, ...(p.extra ? { extra: p.extra } : {}), id, linhasDaCopy: p.linhas, estilo, familiasMedidas: r.recusa.familiasMedidas, destaque, orcamento: r.recusa.orcamento })
+        recusas.push({ papel: r.recusa.papel, funcao, ...(p.extra ? { extra: p.extra } : {}), id, linhasDaCopy: p.linhas, estilo, familiasMedidas: r.recusa.familiasMedidas, destaque, orcamento: r.recusa.orcamento, coluna, ...(r.recusa.altura ? { altura: r.recusa.altura } : {}), ...(r.recusa.quebras ? { quebras: r.recusa.quebras } : {}), ...(corpoDaRef ? { corpo: corpoDaRef } : {}), ...(vestido ? { estiloDaReferencia: vestido.origem } : {}) })
         continue
       }
-      if (r.bloco.escala < 1) avisos.push(`${p.papel}: fonte reduzida a ${Math.round(r.bloco.escala * 100)}% para caber na coluna`)
+      const corpoEfetivo = Number(r.bloco.layer.style?.fontSize ?? 0)
+      // F2c: a redução que importa é contra o corpo DESENHADO, não contra a assinatura (a escala técnica pode estar acima de 1).
+      if (corpoDaRef) {
+        if (corpoEfetivo < corpoDaRef.referencia) avisos.push(`${p.papel}: corpo ${corpoEfetivo} px, abaixo dos ${corpoDaRef.referencia} px da referência (−${Math.round((1 - corpoEfetivo / corpoDaRef.referencia) * 100)} %) para caber`)
+      } else if (r.bloco.escala < 1) avisos.push(`${p.papel}: fonte reduzida a ${Math.round(r.bloco.escala * 100)}% para caber na coluna`)
       const escalaDosElementos = escalaDoFormato * r.bloco.escala
       if (p.texto && p.texto.elementos.length > 0) elementosPorTexto.set(r.bloco.layer.id, { elementos: p.texto.elementos, escala: escalaDosElementos })
       const vaoAntes = p.texto && p.texto.vaoAntes !== null ? Math.round(p.texto.vaoAntes * escalaDoFormato) : null
@@ -345,14 +453,19 @@ export function prepararBlocos(args: {
         ...r.bloco,
         layer,
         chave: chaveDoGrupoAtual,
-        linhasDaCopy: p.linhas,
+        // O que a camada DESENHA (a linha distribuída pelo compositor conta como as linhas dela): é isso que o medir mede.
+        linhasDaCopy: r.bloco.distribuida ?? p.linhas,
         estilo,
         destaque,
         funcao,
+        coluna,
+        indicesDoBloco: p.indicesDoBloco,
         ...(p.extra ? { extra: p.extra } : {}),
         ...(vaoAntes !== null ? { vaoAntes } : {}),
         ...(p.texto?.recuo ? { recuo: Math.round(p.texto.recuo * escalaDoFormato) } : {}),
         ...(p.texto && p.texto.elementos.length > 0 ? { elementos: p.texto.elementos, escalaDosElementos } : {}),
+        ...(corpoDaRef ? { corpo: { ...corpoDaRef, efetivo: corpoEfetivo } } : {}),
+        ...(vestido ? { estiloDaReferencia: vestido.origem } : {}),
       })
     }
   }

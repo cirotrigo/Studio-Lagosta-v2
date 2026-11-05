@@ -46,7 +46,9 @@ const CORTE_DA_PECA = { left: 203, top: 0, width: 1080, height: 1920 }
 const JANELAS = [
   { id: 'topo-texto', x: 54, y: 132, w: 682, h: 345, motivo: 'headline e apoio da v1 e da v2' },
   { id: 'logo', x: 797, y: 132, w: 229, h: 128, motivo: 'logo no canto superior direito' },
-  { id: 'servico-v1', x: 314, y: 1712, w: 454, h: 125, motivo: 'serviço na v1 (balcão)' },
+  // 29/10/2026: com a margem do revisor em 160 na base, o revisor propõe subir o serviço (1728–1820) ≈ 62 px; a janela
+  // cresce 80 px para cima (1632–1837) para o 2º ciclo do P9 ser medido. Conferida a olho: balcão e um frasco, nenhum rosto.
+  { id: 'servico-v1', x: 314, y: 1632, w: 454, h: 205, motivo: 'serviço na v1 (balcão) e o mover para cima proposto pelo revisor' },
   { id: 'servico-v2', x: 314, y: 1482, w: 454, h: 125, motivo: 'serviço na v2 (vitrine)' },
 ]
 /**

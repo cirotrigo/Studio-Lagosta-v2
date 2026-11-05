@@ -259,3 +259,222 @@ estão cobertos, os buracos, as falhas e a ação recomendada.
   "falha sem diagnóstico disponível".
 - `horariosTipicosDoProjeto` ainda funde sem `formatoDe` (é a cópia sem formato
   da expectativa). Não foi trocada no H2 porque mudaria o resultado dela.
+
+### `slotValues` de `ajustar-arte` e `criar-arte-de-modelo` tem formato validado (CP4.2b, 15/10/2026)
+
+Valor de tipo errado (número, array, `null`, objeto vazio, `{ hidden: "true" }`, `{ visible: false }`, `{ content: 123 }`)
+era ignorado pelo bake e a chamada respondia sucesso re-renderizando a página igual. Agora: FASE 1 (formato) no
+handler e no serviço → `VALOR_INVALIDO` 400; FASE 2 (endereço) contra as camadas do modelo efetivo →
+`CHAVE_DESCONHECIDA` 422; pedido misto recusado inteiro; `details.erros[]` com a chave. Detalhe e provas em
+`docs/regras/revisor-da-arte.md` § "CP4.2".
+
+### `ver-geracao` traz o bloco `gate` — auditoria, nunca autoridade (CP5b, 16/10/2026)
+
+Quando a arte tem registro do gate de autonomia (`Generation.fieldValues.gateDaArte`, gravado só pelo CP5c), a
+resposta de `ver-geracao` ganha `gate: { validade, resultado, rulesVersion, versaoDoGate, medidoEm, origem, politica,
+politicaComparada, naoConferido | divergencias, motivos, aviso }`; sem registro, `gate: null` (não "APTO", não
+"pendente"); registro ilegível → `validade: 'ilegivel'` com o motivo e as versões gravadas, SEM resultado. O
+`select` da página ganhou `tags`, `width`, `height`, `background`, `layers`, `copyAutoral` (o que `identidadeDaPagina`
+lê), mantendo o filtro por projeto. Nenhuma tool ganhou parâmetro. Detalhe em `docs/regras/revisor-da-arte.md` § CP5b.
+
+### `agendar-leva` no perfil draft-only passa pelo gate de autonomia (CP5c, 16/10/2026)
+
+Só no perfil draft-only (`apenasRascunho`): o rascunho nasce ou é adotado depois de a página ser medida DENTRO da
+transação que grava, sob as travas, e aceita pelo gate (`decidirEMontarRegistro`, CP5b); o registro do veredito é
+gravado na mesma transação (APTO antes do post; reprovado, só ele). O item ganha `revisao` (`medida` / `sem-vinculo`
+/ `nao-medida`), `achados` e `motivos`; a recusa é sempre `REVISAO_HUMANA_NECESSARIA` com `generationId`, `pageId` e
+`editUrl`. Efeitos pós-commit não rodam nesse perfil (aviso fixo no item). O fluxo humano (perfil normal) não mudou
+em nada: nenhuma medição, trava nova ou campo novo. A descrição da tool ganhou o parágrafo "GATE DE AUTONOMIA"; nenhum
+parâmetro novo. `ver-geracao` compara a política gravada com `POLITICA_DO_ASSUNTO_DO_AGENDAR_LEVA` (proposta nomeada,
+decisão 8.1 do contrato). Detalhe em `docs/regras/revisor-da-arte.md` § CP5c.
+
+### `ajustar-arte` no perfil draft-only passa pelo gate de autonomia (CP5d, 17/10/2026)
+
+Só no perfil draft-only: a versão final que seria gravada é medida DENTRO da transação de escrita, sob as travas, e
+só é gravada se o gate disser APTO; o registro vai para a Generation PROCESSING criada na mesma transação e fechada
+pelo render (render que falha → `FAILED` por uma `UPDATE` atômica com `fieldValues.error`, o registro fica como
+auditoria). Recusa → `REVISAO_HUMANA_NECESSARIA` com `revisao`/`achados`/`motivos` e `ajusteGravado: false`, página
+intacta. A recusa TOTAL do CP4 no draft-only também sai como `REVISAO_HUMANA_NECESSARIA`, com a causa em
+`details.causa`. O sucesso traz `revisao` (APTO) com o `generationId`. Fluxo humano igual (código do CP4 mantido).
+Nenhum parâmetro novo; a descrição ganhou o parágrafo "GATE DE AUTONOMIA". Detalhe em `docs/regras/revisor-da-arte.md`
+§ CP5d.
+
+## CP5e — o gate como informação no `revisar-arte` e o bloco `gate` em `auditar-operacao` (17/10/2026)
+
+Contrato: `docs/PLANO-2026-10-17-CP5E-CONTRATO.md`. `revisar-arte` (consultiva, `readOnlyHint`) devolve `gate` (informação,
+sem gravar; segunda medida fiel com `corrigir: false`; seleção ÚNICA da Generation da peça: a pedida → a do compositor → a
+última arte → `sem-vinculo`). Com `pageId` E `generationId`, a arte precisa ser desta página (`GERACAO_DE_OUTRA_PAGINA`, 422 —
+antes o `generationId` era ignorado). `auditar-operacao` lê o registro dos posts da janela (duas consultas, teto 200) e
+rotula por `validadeDoGate`. Barreira de lint por NOME: leitores (`lerGateDaArte`/`validadeDoGate`: gate-persistido,
+gate-resumo, ver-geracao-retorno, arte-ia) × produtores (`decidirEMontarRegistro`: agendar-itens, arte-rapida, revisar-arte).
+
+### `aprovar-referencia` e `listar-referencias`: a página do Ciro vira o layout do cliente (F1, 01/11/2026)
+
+`aprovar-referencia` (gate `curador`, como `marcar-como-modelo`) compila uma página do editor em arquétipo do cliente
+(`ref-<pageId>`) e grava a revisão imutável; `versaoEsperada` (a `versao` do `revisar-arte`) aprova exatamente o que
+foi conferido; `revogar: true` tira a referência dos pedidos novos. `listar-referencias` (gate `projeto`) diz as que
+valem. A spec de `compor-arte`, `compor-leva` e `medir-copy` pede `"arquetipo": { "id": "ref-<pageId>" }`; referência
+de outro cliente ou revogada não resolve (`ARQUETIPO_DESCONHECIDO`), e **o cliente com referência aprovada no formato
+perde o catálogo** (`ARQUETIPO_NAO_APROVADO`, com as que valem). O
+detalhe (precedência, recusas, o que fica em `leitura.ignoradas`) está em `docs/regras/compositor.md`, seção "F1 da
+direção por referência".
+
+### `fotoJanela`: o corte explícito da foto em `compor-arte`, `compor-leva` e `medir-copy` (F2a, 01/11/2026)
+
+`fotoJanela = { x, y, width, height }` em frações 0..1 da foto original — o mesmo crop que o editor grava. Só com UMA
+foto (`fotoDriveId`/`fotoUrl`); com `fotosCandidatas` ou `selecaoExperimental` é `SPEC_INVALIDA`. O compositor confere
+a proporção contra a caixa (ajuste mínimo dito nos avisos; fora da foto, `JANELA_NAO_CABE`) e grava a janela na camada
+da foto (`style.crop`). Detalhe em `docs/regras/compositor.md`, seção F2a.
+
+
+### F2c (02/11/2026): `listar-referencias` devolve `corpos`
+
+Cada referência traz `corpos` (o corpo desenhado por papel, px) lido da REVISÃO PERSISTIDA — `null` nas revisões de
+antes da F2c (a escada delas parte da assinatura). `ver-assinatura` também devolve `referencias` (as vigentes no formato,
+com `corpos`) e `avisoDasReferencias`: com referência aprovada, o catálogo listado não vale para o cliente. `aprovar-referencia` mostra o corpo em `leitura.papeis[].corpo`; a
+mesma página reaprovada depois da F2c ganha a revisão seguinte com os corpos (a anterior é imutável). Detalhe em
+`docs/regras/compositor.md`, "F2c".
+
+
+### F2d (02/11/2026): `listar-referencias` e `ver-assinatura` devolvem `estilos`
+
+Por papel: família, peso (`null` = normal), entrelinha, espaçamento (px no corpo desenhado), caixa (`none` explícito),
+cor e sombra — da REVISÃO PERSISTIDA; `null` nas revisões de antes da F2d (a peça veste a assinatura). A segunda voz da
+peça toma só a cor; destaque e prefixo continuam da assinatura. Detalhe em `docs/regras/compositor.md`, "F2d".
+
+### F2b (02/11/2026): `marcar-assunto`, e `assunto` em `listar-referencias` e `ver-assinatura`
+
+`marcar-assunto` (curador) corrige a caixa do assunto de uma foto: `caixa`, `sem-assunto` ou `automatico` (revoga e a
+visão volta). Grava em `PhotoAssunto`, nunca no JSON do catálogo, e devolve o efetivo e o anterior. É a resposta certa ao
+aviso que diz a origem da caixa: a correção não é a copy.
+
+`listar-referencias` e `ver-assinatura` devolvem `assunto` (`{ caixa, visivel }`, da REVISÃO PERSISTIDA; `null` nas
+revisões antigas); `aprovar-referencia` devolve `leitura.assunto`, com o motivo quando faltou. A mesma página reaprovada
+com a caixa nova ganha a revisão seguinte. `buscar-fotos` traz o `assuntoEfetivo` de cada foto. O diagnóstico de
+`compor-arte` traz `posicao.assistencia`. O gancho `leitorDeReferencias` é só de prova e o adaptador não o conhece. Detalhe
+em `docs/regras/compositor.md`, "F2b", e `docs/regras/acervo-de-fotos.md`, "A caixa do assunto".
+
+### `ver-pagina` e as `camadas`/`pagina` de `ajustar-arte`: editar a arte pelos dados (T1, 05/11/2026)
+
+Pedido do Ciro (05/11/2026): criar e ajustar artes no editor de ponta a ponta só pelos dados, via MCP, com o PNG
+renderizado para conferir e o link do editor para o ajuste à mão. A lacuna central (`LACUNAS.md` do plano
+`mcp-ajustes-2026-11-05`, L1–L3): nenhuma tool remota devolvia as camadas de uma página, e `ajustar-arte` só
+aceitava texto/foto/nome e os cinco `ajustes` do revisor. Tudo o que a pessoa faz na tela ficava de fora.
+
+**Por que estender `ajustar-arte` em vez de criar `editar-camadas`**: o serviço `ajustarArte` já tem a transação, o
+compare-and-set por `versaoEsperada`, o gate CP5d no draft-only, a trava da recomposição, o render
+(`renderPageAndRegister`), a invalidação (`invalidateScheduledRenders` E `pedirRecomposicaoDaArteCongelada`) e a
+resposta com `url`/`editUrl`/`versao`. Uma tool nova pelo mesmo caminho seria duplicata; por caminho próprio, a
+segunda implementação da regra das duas chamadas.
+
+**`ver-pagina`** (leitura; gate `projeto`; remoto+local; na allowlist draft-only; `src/lib/mcp/catalogo/pagina.ts`).
+Entrada: `projectId` e `pageId` OU `generationId` (a página é `fieldValues.pageId` da arte, como em `ver-geracao`).
+Saída: `pageId`, `nome`, `templateId`, `templateName`, `formato` (`formatoDaPaginaGravada`), `largura`, `altura`,
+`fundo`, `isTemplate`, `tags`, `versao` (= `versaoDaPagina`, o MESMO valor que `revisar-arte` devolve e
+`ajustar-arte` exige em `versaoEsperada`), `editUrl` (montado como `montarRetornoDaPagina`), `thumbnail`,
+`atualizadaEm`, `camadas[]` e `comoAjustar`. As camadas saem por `lerCamadas` (a única leitura segura das três
+codificações) e NORMALIZADAS por `camadaParaLeitura`: só id, type, name, visible, locked, order, position, size,
+rotation, content, fileUrl, isDynamic, style (sem `vetor`), effects, textboxConfig, richTextStyles — nunca
+`metadata`. Duas marcas de leitura: `grupo` (a camada tem `metadata.groupId`/`parentId`: `remover`/`reordenar`
+recusam, `definir` vale) e `grade: true` (célula de grade: nada se edita por aqui). Recusas: `SEM_PAGINA` (400),
+`GERACAO_NAO_ENCONTRADA` (404), `GERACAO_SEM_PAGINA` (422, arte de IA/melhoria), `PAGE_NOT_FOUND` (404),
+`PAGINA_DE_OUTRO_PROJETO` (403, sem dizer de qual), `CAMADAS_ILEGIVEIS` (422 — ilegível nunca vira `[]`).
+Página-modelo e página com vídeo saem com `avisos` e `comoAjustar: null`.
+
+**`camadas` em `ajustar-arte`** (lista de até 40 operações, `src/lib/creatives/editar-camadas.ts`, módulo PURO):
+
+| `op` | campos da operação | o que faz |
+|---|---|---|
+| `definir` | `camada` (id ou nome), `campos` | muda só os campos enviados; `position`/`size` parciais fundem; `style` funde; `effects.<x>` substitui o efeito; `lineHeight` grava nos DOIS campos (`patchLineHeight`); `campos.order` move na pilha |
+| `adicionar` | `tipo` (texto, imagem, logo, forma, icone, gradiente), `id?`, `ordem?` (nunca `campos.order`), `campos?` (`fileUrl`/`driveImageId` só em imagem e logo) | camada nova com os defaults do SERVIDOR (os de `createArteLivre`: fonte do corpo da marca, branco, centrado; logo = a principal do cliente; imagem por `driveImageId`; forma retângulo preta; gradiente de leitura inferior) e `campos` por cima |
+| `remover` | `camada` | tira e renumera |
+| `reordenar` | `camada`, `ordem` (0 = fundo) | move na pilha e renumera |
+
+Allowlist por tipo de camada (campo fora dela é `CAMPO_NAO_PERMITIDO`, com o caminho): para TODAS, `name`,
+`visible`, `locked`, `order`, `rotation`, `position`, `size`; `text`: `content`, `style.{fontFamily, fontWeight,
+fontSize 8–600, color, textAlign, textTransform, letterSpacing −100..100, lineHeight 0,5..3, fontStyle, opacity}`,
+`textboxConfig.{anchor, autoWrap.{breakMode, autoExpand}}`, `effects.{stroke, shadow, blur, background}`;
+`image`/`logo`/`element`: `fileUrl`, `driveImageId`, `style.{crop 0..1, objectFit, cropPosition, flipH, flipV,
+opacity, blur, exposure, contrast, highlights, shadows, whites, blacks, saturation, vignette}`; `shape`/`icon`:
+`style.{fill, strokeColor, strokeWidth 0..200, opacity, shapeType (sem svg-path)}` (+ `iconId`, `color` no ícone);
+`gradient`/`gradient2`: `style.{gradientType, gradientAngle 0..360, gradientStops (1..8), gradientStart/End X/Y,
+gradientCenter X/Y, gradientRadiusScale 0,1..5, opacity}`; `rich-text`: só os comuns (quarentena #209);
+`video`: nada. Cor é lida por `lerCor` (hex, rgba(), hsl(), nome CSS). `fileUrl` precisa ser http(s).
+
+**`pagina`**: `background` (cor por `lerCor`), `width`/`height` (200..8000, inteiros). Com ela, tudo abaixo
+(autofix, gate, versão gravada, render) mede e desenha na página como VAI FICAR.
+
+**Recusas** (padrão do CP4: pedido misto recusado INTEIRO, nada gravado, código da primeira em `error`, a lista em
+`details.erros[]` com `indice`, `op`, `camada`, `codigo`, `motivo`, `campos`; `indice: -1` é o bloco `pagina`):
+`OPERACAO_INCOMPLETA`, `CAMADA_INEXISTENTE`, `CAMADA_AMBIGUA` (nome repetido: use o id), `ID_JA_EXISTE`,
+`CAMPO_NAO_PERMITIDO`, `VALOR_FORA_DA_FAIXA` (faixa, cor ilegível, URL que não é http(s)), `TIPO_NAO_EDITAVEL`
+(vídeo; célula de grade; `remover`/`reordenar` — e `definir` com `order` — em camada de grupo), `URL_EXTERNA_RECUSADA` (draft-only: qualquer
+`fileUrl`, como no `slotValues`; foto só por `driveImageId`), `CONTEUDO_NAO_PODE_SER_REMOVIDO` (draft-only: esconder,
+esvaziar ou remover texto com conteúdo — `temTextoSubstantivo` —, e também fazê-lo SUMIR pelos campos da operação:
+`style.opacity` < 0,2, `size` abaixo de 20×8 ou caixa inteira fora da página; no perfil humano é permitido), `VERSAO_OBRIGATORIA`
+(camadas/pagina sem `versaoEsperada`), e os de sempre: `VERSAO_DIVERGENTE`, `PAGINA_E_MODELO`, `PAGINA_COM_VIDEO`,
+`CLIPES_INVALIDOS` (`problemasDosClipes`), `VETOR_INVALIDO` (`problemasDosVetores`), `TEXTO_NAO_CABE` (o texto
+criado ou mexido passa pela escada do autofix), `REVISAO_HUMANA_NECESSARIA` (gate CP5d no draft-only).
+
+**Onde entra na cadeia** (`ajustarArte`): FASE 1 (forma, faixa, cor, URL) no handler E no serviço, antes do banco →
+leitura da página e `aplicarPagina` → `slotValues`/foto (bake) → reflow dos textos trocados (ANTES das camadas, para
+não mover grupos por cima da posição definida; não roda quando só há camadas/ajustes) → **camadas** (`driveImageId`
+resolvido pelo `resolveImageUrl` num mapa `urlsDoAcervo` que o módulo troca pela URL — a guarda de URL de fora vale
+só para `fileUrl` enviado; logo e fontes do projeto lidas só quando um `adicionar` precisa) → sobre o RESULTADO das
+camadas, antes do autofix e dos ajustes (nada abaixo cria clipe nem vetor): `problemasDosClipes` →
+`problemasDosVetores` → `canonicalizeLayersForPersistence` → autofix (os textos tocados entram em
+`changedLayerIds`) → `ajustes` do revisor →
+revisão do contrato da copy → transação (gate CP5d no draft-only, compare-and-set por `versaoEsperada`, trava da
+recomposição — camadas editadas e página mudada TRAVAM a recomposição como os ajustes) → `renderPageAndRegister` →
+`invalidateScheduledRenders` + `pedirRecomposicaoDaArteCongelada`. Resposta: a de sempre (`url`, `editUrl`,
+`versao` nova, `revisao`) + `camadasAplicadas[]` (`indice`, `op`, `camada` = id, `detalhe`) e `camadasRecusadas: []`
+(sempre vazia num sucesso; fica pelo contrato). A Generation guarda `fieldValues.camadas` (operações e aplicadas) e
+`fieldValues.pagina`.
+
+Continuam fora, de propósito: página-modelo, página com vídeo, trecho de rich-text (#209), grade (`metadata.grade`),
+desfazer grupo. O editor (`PageSync`) grava a página inteira; ler a página depois da edição é `ver-pagina` de novo —
+a `versao` nova vem na resposta do ajuste e também lá.
+
+Testes: `src/lib/creatives/__tests__/editar-camadas.test.ts` (cada operação e cada recusa, sem banco),
+`src/lib/mcp/__tests__/ajustar-arte-camadas.test.ts` (schema, FASE 1 no handler, URL externa no draft-only),
+`src/lib/mcp/__tests__/ver-pagina.test.ts`, e o portão `VERSAO_OBRIGATORIA` em `ajustar-arte-portoes.test.ts`.
+Snapshots em `scripts/validar-registro-mcp.ts` (`ver-pagina` novo; `ajustar-arte` com `camadas`/`pagina`).
+
+**Altura do texto tocado pelos dados (prova no Espeto, 05/11/2026).** `definir` que mexe em largura, corpo, conteúdo
+ou entrelinha de um texto recebe a ALTURA natural logo depois da canonização (`measure`, o mesmo medidor do reflow),
+como o editor ao soltar a caixa. Só a altura: a posição que `definir` gravou e a pilha do grupo ficam onde estão (o
+reflow da pilha rodou antes). Medido na prova: apoio de 386→360 px virou 3 linhas com a caixa de 2 e o gate acusou
+`tinta-fora-da-caixa` (52 px abaixo da caixa); com a altura medida o achado some. Teste em `ajustar-arte-gate.test.ts`.
+
+**O que a prova no Espeto Gaúcho mostrou (05/11/2026, stdio `STUDIO_SO_RASCUNHO=1`, peça "[TESTE MCP] Picanha na
+brasa", página `cmw3ohtha0005kz084yw80pil`).** `compor-leva` → `ver-geracao` → `ver-pagina` (8 camadas, `versao`
+`v1:424613df8e5a93bcca56`) → `revisar-arte` → `ajustar-arte` com três `definir` (logo, cor da manchete, largura do
+apoio) e `versaoEsperada`. O gate CP5d mediu a página FUTURA com as camadas editadas e recusou
+(`REVISAO_HUMANA_NECESSARIA`, nada gravado, rollback inteiro): `logo-sem-leitura` na posição nova,
+`piso-de-interface` (o CTA que a própria composição já deixara no piso), e a manchete com `[destaque]` vira
+`headline2` rich-text, que o gate não prova (`texto-cortado`, `colisao`, `tratamento-piorou-leitura` em
+`NAO_COMPROVADA`; `oclusao` em `NAO_MEDIDO`). Ou seja: no draft-only, peça com destaque entre colchetes nunca passa
+em `ajustar-arte`, por desenho do gate — é limite conhecido (#209), não da porta de camadas.
+Duas medições de ambiente, para quem repetir a prova deste Mac: o gate tem 8 s (`PRAZO_DA_MEDICAO_MS`) e a transação
+20 s, calibrados para a Vercel (us-east-1, ao lado do Neon); daqui, cada consulta leva 0,5–2,8 s e só as sete travas
+da transação levaram 8,8 s antes de o gate começar, então a primeira passada estoura o prazo e a segunda cai em
+`P2028` (transação expirada). A prova alargou os dois prazos localmente, sem commitar; em produção os valores ficam.
+
+## Fluxo de arte pelo MCP: a skill `arte-pelo-mcp` (05/11/2026)
+
+O fluxo de criar e ajustar uma arte só pelos dados (`ver-pagina` e as `camadas`/`pagina` de `ajustar-arte`, seção
+anterior) está registrado como skill em `.claude/skills/arte-pelo-mcp/SKILL.md`, para o Claude Code seguir sem
+reinventar a ordem: contexto do cliente (`consultar-dna`, `consultar-voz`, `consultar-base`) → `buscar-fotos` →
+montar (`escolher-modelo`/`criar-arte-de-modelo` ou `compor-arte`) → `ver-pagina` → `revisar-arte` → `ajustar-arte`
+com `versaoEsperada` → `ver-geracao` (o PNG) → entregar o `editUrl` como rascunho.
+
+A skill não repete o contrato: aponta para a seção técnica e para `ver-pagina`, que devolve os ids. O que ela fixa
+são os limites: nunca `postar-agora`, `colocar-na-agenda`, `aprovar-rascunhos` ou `cancelar-post` sem pedido
+explícito; `agendar-leva` só com `simular: true`; nada de `ajustar-arte` em arte que a equipe editou sem perguntar;
+no máximo 2 ciclos de `revisar-arte` → `ajustar-arte` antes de pedir revisão humana; em recusa, ler `details.erros`
+e nunca repetir a chamada igual.
+
+🔴 **Ação que só existe na tela: avisar, nunca automatizar clique.** Rich-text por trecho, grade de fotos, grupo,
+vídeo/música/motion e página-modelo ficam no editor; a skill diz isso ao Ciro e passa o `editUrl`, em vez de
+contornar por `camadas` ou de dirigir o navegador. Mudou o contrato de `ver-pagina`/`camadas`? Atualize a skill no
+mesmo PR.

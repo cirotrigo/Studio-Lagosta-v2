@@ -1,4 +1,5 @@
-import { google, type drive_v3 } from 'googleapis'
+import * as google from 'googleapis/build/src/apis/drive'
+import type { drive_v3 } from 'googleapis/build/src/apis/drive'
 import { OAuth2Client } from 'google-auth-library'
 import { Readable } from 'stream'
 import { randomUUID } from 'crypto'

@@ -2,7 +2,14 @@ import { NextResponse, after } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { invalidateScheduledRenders, normalizeLayersString } from '@/lib/posts/invalidate-renders'
-import { registrarDecisaoSemSugestao } from '@/lib/aprendizado/captura'
+import { registrarDecisaoSemSugestao, registrarEdicaoSemSugestao } from '@/lib/aprendizado/captura'
+import {
+  VERSAO_DIFF_CAMADAS,
+  diffDeCamadas,
+  diffVazio,
+  fundirDiffsDeCamadas,
+  type DiffDeCamadas,
+} from '@/lib/aprendizado/diff-camadas'
 import { lerCamadas } from '@/lib/posts/page-layers'
 import { problemasDosClipes } from '@/lib/video/linha-do-tempo'
 import { quadroZeroEmVideo } from '@/lib/video/movimento'
@@ -21,6 +28,9 @@ import {
   hasTemplateWriteAccess,
 } from '@/lib/templates/access'
 import { canonicalizeLayersForPersistence } from '@/lib/shape-style'
+import { VetorInvalido } from '@/lib/vetor/validar-camada'
+import { corpoDoVetorInvalido, exigirVetoresValidos } from '@/lib/vetor/guarda-de-porta'
+import { tagsComMarcaPreservada } from '@/lib/compositor/fora-do-rodizio'
 import { Prisma } from '../../../../../../../prisma/generated/client'
 
 const pageAudioSchema = z.object({
@@ -148,6 +158,10 @@ export async function PATCH(
       }
     }
 
+    // CP-X2b (a): o vetor é conferido CRU, antes da canonização — ela chama `trim` na cor e lançaria 500 com
+    // `fill: 123`. Recusa com 422 `VETOR_INVALIDO` sem nenhuma escrita (ver docs/regras/editor-e-galeria.md).
+    if (validatedData.layers !== undefined) exigirVetoresValidos(validatedData.layers)
+
     // Preparar dados com layers serializados se fornecidos
     const updateData: Record<string, unknown> = { ...validatedData }
     const canonicas = validatedData.layers !== undefined ? canonicalizeLayersForPersistence(validatedData.layers) : undefined
@@ -170,6 +184,8 @@ export async function PATCH(
         ? reconciliarMarcasDoRevisor(lerCamadas(camadasDaBase).camadas as Array<{ id: string; visible?: unknown }>, canonicas as Array<{ id: string; [chave: string]: unknown }>)
         : canonicas
       updateData.layers = JSON.stringify(reconciliadas)
+      // CP-X2b (b): o estado final (canonizado e reconciliado contra ESTA base) também precisa ser válido.
+      exigirVetoresValidos(reconciliadas)
     }
     // Prisma não aceita null literal em coluna Json — limpar exige DbNull
     if (validatedData.audio === null) {
@@ -198,7 +214,7 @@ export async function PATCH(
       validatedData.width !== undefined ||
       validatedData.height !== undefined ||
       validatedData.audio !== undefined
-    type BaseVisual = { layers: unknown; background: string | null; width: number; height: number; audio: unknown }
+    type BaseVisual = { layers: unknown; background: string | null; width: number; height: number; audio: unknown; tags?: string[] }
     /** Música só é visual quando liga ou desliga o movimento das fotos no quadro 0 — com as camadas que ficam. */
     const audioMudaOQuadroZero = (base: BaseVisual) => {
       const camadas = lerCamadas(validatedData.layers !== undefined ? updateData.layers : base.layers).camadas
@@ -226,6 +242,8 @@ export async function PATCH(
       if (validatedData.background !== undefined && !m.backgroundChanged) delete dados.background
       if (validatedData.width !== undefined && !m.widthChanged) delete dados.width
       if (validatedData.height !== undefined && !m.heightChanged) delete dados.height
+      // T5: a marca `fora-do-rodizio` é a da linha que esta escrita substitui (a relida no compare-and-set), nunca a do pedido.
+      if (validatedData.tags !== undefined) dados.tags = tagsComMarcaPreservada(base.tags, validatedData.tags)
       return dados
     }
 
@@ -235,7 +253,7 @@ export async function PATCH(
     // "Unable to start a transaction in the given time" no meio da edição.
     // A leitura fresca abaixo é o que decide se a transação abre: custa um
     // SELECT a mais por PATCH com campo visual e nenhuma transação nova.
-    const selecaoDaBase = { updatedAt: true, layers: true, background: true, width: true, height: true, audio: true, copyAutoral: true } as const
+    const selecaoDaBase = { updatedAt: true, layers: true, background: true, width: true, height: true, audio: true, copyAutoral: true, tags: true } as const
     const baseFresca = payloadVisual ? await db.page.findUnique({ where: { id: pageId }, select: selecaoDaBase }) : null
     if (payloadVisual && !baseFresca) {
       return NextResponse.json({ error: 'Page not found' }, { status: 404 })
@@ -488,6 +506,45 @@ export async function PATCH(
       }
     }
 
+    /**
+     * T2 (05/11/2026): o registro LARGO do que a equipe mudou à mão — toda
+     * página, modelo ou não, a partir de toda escrita efetiva das camadas, só com
+     * os CAMINHOS alterados (`diff-camadas.ts`). É a medida da lacuna: o que a
+     * pessoa corrige depois que o MCP entrega a peça. Modelo também conta
+     * (corrigir o modelo é corrigir todas as peças que nascem dele); a coluna
+     * `escolhido.modelo` separa os dois na consulta. Uma linha por página a
+     * cada 10 minutos (a mesma chave da rota de camada), fundida a cada
+     * autosave. Fora da resposta; falha aqui nunca derruba o save.
+     */
+    if (layersChanged) {
+      const projectId = template!.Project.id
+      const antes = baseGravada.layers
+      const depois = updateData.layers
+      after(async () => {
+        try {
+          const diff = diffDeCamadas(antes, depois)
+          if (diffVazio(diff)) return
+          const dbUser = await db.user.findUnique({ where: { clerkId: userId }, select: { id: true } })
+          await registrarEdicaoSemSugestao({
+            projectId,
+            tipo: 'camada',
+            escolhido: { modelo: existingPage.isTemplate, templateId, rota: 'pagina' },
+            diff,
+            pageId,
+            decididoPor: dbUser?.id ?? null,
+            superficie: 'editor',
+            servico: 'diff-camadas',
+            versao: VERSAO_DIFF_CAMADAS,
+            // Balde de 10 min por página, como `copy` e `geometria`: o autosave não vira dezenas de linhas.
+            // Aqui a linha do balde é FUNDIDA a cada escrita, então descreve a janela inteira.
+            chave: `camada:editor:${pageId}:${Math.floor(Date.now() / 600_000)}`,
+          }, (anterior, novo) => fundirDiffsDeCamadas(anterior as DiffDeCamadas, novo as DiffDeCamadas))
+        } catch (erro) {
+          console.error('[aprendizado] falha ao registrar edição de camadas (seguindo sem ela):', erro)
+        }
+      })
+    }
+
     // Deserializar layers na resposta
     const pageWithParsedLayers = {
       ...page,
@@ -506,6 +563,9 @@ export async function PATCH(
         { error: 'Invalid data', details: error.errors },
         { status: 400 }
       )
+    }
+    if (error instanceof VetorInvalido) {
+      return NextResponse.json(corpoDoVetorInvalido(error), { status: 422 })
     }
 
     console.error('Error updating page:', error)
