@@ -1057,3 +1057,63 @@ aprendizado** — nem `LearningSignal`, nem feedback de arte, nem destilação. 
 cliente real, nenhum banco de produção como teste), e vale para qualquer rodada futura com fixtures de clientes reais
 pseudonimizados: fixture é insumo do piloto, não evidência de uso. O que o piloto ensina vai para `docs/piloto-sintetico/`
 (resumo versionado por rodada) e para a decisão do owner, não para a base de conhecimento dos clientes.
+
+## Registro do que a equipe muda à mão no editor — sinal `camada` (05/11/2026)
+
+Fecha a lacuna L4 do plano "artes de ponta a ponta pelo MCP": medir o que a pessoa corrige depois que
+o MCP (ou o compositor, ou outra pessoa) entrega a peça. **Sem migration**: é uma linha de `LearningSignal`.
+
+- **O que é gravado**: uma linha por escrita EFETIVA das camadas (autosave idêntico não grava nada), em
+  qualquer página — peça ou modelo. Modelo também conta porque corrigir o modelo é corrigir toda peça que
+  nasce dele; `escolhido.modelo` separa os dois. Sem balde de tempo: cada autosave que muda camadas é uma
+  linha, então **quem agrega conta páginas distintas**, não linhas.
+- **Onde**: no `after()` de `PATCH /api/templates/[id]/pages/[pageId]` (quando `layersChanged`, contra a
+  base que o compare-and-set de fato substituiu) e de `PATCH /api/pages/[pageId]/layers/[layerId]` (quando
+  `layerChanged`, só a camada editada). Falha no registro é capturada e logada; o save nunca cai por ela.
+- **Colunas**: `tipo 'camada'`, `superficie 'editor'`, `desfecho 'editada'`, `servico 'diff-camadas'`,
+  `versao 'diff-camadas-v1'`, `decididoEm` agora, `decididoPor` = `User.id` INTERNO por
+  `findUnique({ where: { clerkId } })` (usuário ausente → `null`; nunca `getUserFromClerkId`), `pageId`,
+  `escolhido = { modelo, templateId, rota: 'pagina' | 'camada' }`. A tabela não tem coluna de template:
+  ele vai no `escolhido`.
+- ⚠️ **`editada` sem sugestão é exceção consciente** à regra de que linha sem `sugeridoEm` é
+  `escolha-propria` (`registrarEdicaoSemSugestao`, em `captura.ts`). O funil do KPI não é afetado (ele só
+  lê linhas com `sugeridoEm`), mas o contador de "decisões sem sugestão" de `scripts/kpi-aprendizado.ts`
+  passa a incluir estas linhas: filtre `tipo <> 'camada'` se quiser o número antigo.
+- **Formato do `diff`** (`src/lib/aprendizado/diff-camadas.ts`, puro, testado em
+  `__tests__/diff-camadas.test.ts`):
+  ```json
+  { "ilegivel": false,
+    "camadas": [
+      { "id": "t1", "tipo": "text", "nome": "Título", "situacao": "alterada",
+        "caminhos": ["content", "position.x", "style.fontSize"] },
+      { "id": "n1", "tipo": "shape", "nome": "Faixa", "situacao": "criada" },
+      { "id": "f1", "tipo": "image", "nome": "Foto", "situacao": "apagada" } ] }
+  ```
+  Compara pelo `id`. Objeto simples desce no caminho; array e valor primitivo são folha (`style.richText`,
+  `content`, `fileUrl`) — **nenhum valor é gravado**, nem texto do cliente nem URL. `order` é caminho como
+  outro qualquer (reordenar; apagar uma camada pode renumerar as outras). Até 40 caminhos por camada.
+  Lado ilegível ou nenhuma camada diferente → nada é gravado.
+- **Não substitui** `geometria` (deltas numéricos com tolerância, só peça do compositor) nem `copy` (o
+  diff do texto): os três podem sair da mesma escrita.
+
+Consulta de exemplo — campos mais alterados por tipo de camada nos últimos 30 dias (SQL, não filtro Json
+do Prisma, que descarta a linha sem o campo; `COALESCE` cobre camada sem `tipo` e linha sem `modelo`):
+
+```sql
+select coalesce(c->>'tipo', '?') as tipo_da_camada,
+       caminho,
+       count(distinct s."pageId") as paginas,
+       count(*) as escritas
+from "LearningSignal" s
+cross join lateral jsonb_array_elements(coalesce(s.diff->'camadas', '[]'::jsonb)) c
+cross join lateral jsonb_array_elements_text(coalesce(c->'caminhos', '[]'::jsonb)) caminho
+where s.tipo = 'camada'
+  and s."createdAt" >= now() - interval '30 days'
+  and coalesce((s.escolhido->>'modelo')::boolean, false) = false   -- só peças; tire para incluir modelos
+group by 1, 2
+order by paginas desc, escritas desc
+limit 50;
+```
+
+Criadas e apagadas por tipo: troque o segundo `lateral` por `group by c->>'tipo', c->>'situacao'` com
+`where c->>'situacao' in ('criada', 'apagada')`.

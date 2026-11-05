@@ -93,6 +93,9 @@ export interface DecisaoAbsoluta extends Vinculos {
   decididoPor?: string | null
   superficie?: Superficie
   chave?: string | null
+  /** Proveniência do REGISTRO (o módulo que mediu), quando faz sentido — ex.: `diff-camadas`. */
+  servico?: string | null
+  versao?: string | null
 }
 
 export type ResultadoDesfecho =
@@ -284,6 +287,25 @@ export async function registrarDesfecho(entrada: DesfechoDaSugestao): Promise<Re
  * taxa de aceitação sem precisar de nenhum filtro especial.
  */
 export async function registrarDecisaoSemSugestao(entrada: DecisaoAbsoluta): Promise<string | null> {
+  return gravarSemSugestao(entrada, 'escolha-propria')
+}
+
+/**
+ * EDIÇÃO À MÃO sobre algo já entregue, sem linha de sugestão do outro lado —
+ * o sinal `camada` (T2, 05/11/2026): a peça veio do MCP, do compositor ou de
+ * outra pessoa, e a equipe corrigiu no editor. O desfecho é `editada` por
+ * pedido do plano aprovado pelo Ciro, e é EXCEÇÃO consciente à regra de que
+ * linha sem sugestão é `escolha-propria`: não fere o KPI, que só conta linhas
+ * com `sugeridoEm`, e deixa a consulta da lacuna ler `desfecho = 'editada'`.
+ */
+export async function registrarEdicaoSemSugestao(entrada: DecisaoAbsoluta): Promise<string | null> {
+  return gravarSemSugestao(entrada, 'editada')
+}
+
+async function gravarSemSugestao(
+  entrada: DecisaoAbsoluta,
+  desfecho: Extract<Desfecho, 'escolha-propria' | 'editada'>,
+): Promise<string | null> {
   try {
     const agora = new Date()
     const dados = {
@@ -292,8 +314,9 @@ export async function registrarDecisaoSemSugestao(entrada: DecisaoAbsoluta): Pro
       // A metade de cima fica vazia de propósito: não houve proposta.
       sugerido: undefined,
       sugeridoEm: null,
-      servico: null,
-      desfecho: 'escolha-propria',
+      servico: entrada.servico ?? null,
+      versao: entrada.versao ?? null,
+      desfecho,
       decididoEm: agora,
       decididoPor: entrada.decididoPor ?? null,
       superficie: entrada.superficie ?? null,
