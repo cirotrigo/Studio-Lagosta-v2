@@ -31,6 +31,7 @@ import {
   FoldVertical,
   MoveVertical,
   AlertTriangle,
+  RotateCcw,
 } from 'lucide-react'
 import { FONT_CONFIG } from '@/lib/font-config'
 import { patchLineHeight } from '@/lib/text-line-height'
@@ -711,11 +712,11 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-8 px-2 text-xs"
+                      className="h-8 w-8 p-0"
                       onClick={() => gravarDestaque({})}
                       title="Voltar ao destaque da marca"
                     >
-                      Voltar ao da marca
+                      <RotateCcw className="h-4 w-4" />
                     </Button>
                   )}
                 </div>
