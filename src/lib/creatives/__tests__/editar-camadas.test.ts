@@ -282,6 +282,14 @@ describe('destaque por marcação (05/11/2026)', () => {
     expect(r.camadas.find((l) => l.id === 'nova-1')).toMatchObject({ content: 'Só hoje', destaques: [{ inicio: 3, fim: 7 }], destaque: marca() })
   })
 
+  it('adicionar texto com destaques/destaque EXPLÍCITOS grava os dois (fabricar funde como definir); fora do texto recusa', () => {
+    const r = aplicarOperacoesDeCamadas(pagina(), [{ op: 'adicionar', tipo: 'texto', campos: { content: 'Só hoje', destaques: [{ inicio: 3, fim: 7 }], destaque: { fill: '#123456' } } }], comMarca)
+    expect(r.recusadas).toEqual([])
+    expect(r.camadas.find((l) => l.id === 'nova-1')).toMatchObject({ content: 'Só hoje', destaques: [{ inicio: 3, fim: 7 }], destaque: { fill: '#123456' } })
+    const fora = aplicarOperacoesDeCamadas(pagina(), [{ op: 'adicionar', tipo: 'texto', campos: { content: 'Só hoje', destaques: [{ inicio: 3, fim: 70 }] } }], comMarca)
+    expect(fora.recusadas[0]).toMatchObject({ codigo: 'VALOR_FORA_DA_FAIXA', campos: ['destaques'] })
+  })
+
   it('destaques explícitos: offsets no content final; [] tira; fora do texto e inicio ≥ fim são recusados', () => {
     const ok = aplicarOperacoesDeCamadas(pagina(), [definir('headline', { destaques: [{ inicio: 0, fim: 6 }] })], comMarca)
     expect(ok.recusadas).toEqual([])
