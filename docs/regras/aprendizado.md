@@ -1063,10 +1063,16 @@ pseudonimizados: fixture é insumo do piloto, não evidência de uso. O que o pi
 Fecha a lacuna L4 do plano "artes de ponta a ponta pelo MCP": medir o que a pessoa corrige depois que
 o MCP (ou o compositor, ou outra pessoa) entrega a peça. **Sem migration**: é uma linha de `LearningSignal`.
 
-- **O que é gravado**: uma linha por escrita EFETIVA das camadas (autosave idêntico não grava nada), em
+- **O que é gravado**: a partir de toda escrita EFETIVA das camadas (autosave idêntico não grava nada), em
   qualquer página — peça ou modelo. Modelo também conta porque corrigir o modelo é corrigir toda peça que
-  nasce dele; `escolhido.modelo` separa os dois. Sem balde de tempo: cada autosave que muda camadas é uma
-  linha, então **quem agrega conta páginas distintas**, não linhas.
+  nasce dele; `escolhido.modelo` separa os dois.
+- **Balde de 10 minutos por página**, como `copy` e `geometria` (`chave =
+  camada:editor:<pageId>:<floor(agora/600000)>`, a MESMA nas duas rotas): o autosave (800 ms na página, 2 s
+  na camada) não vira dezenas de linhas quase iguais. Diferente da copy, que guarda a PRIMEIRA edição do
+  balde, aqui a linha é **fundida** a cada escrita (`fundirDiffsDeCamadas`): caminhos se somam, criada e
+  depois apagada some, criada e depois alterada continua criada. A linha descreve a janela inteira, e
+  `decididoEm`/`decididoPor` são os da última escrita. Leitura-fusão-gravação sem trava: dois autosaves
+  simultâneos da mesma página podem perder os caminhos de um deles (aceito; o autosave é sequencial por aba).
 - **Onde**: no `after()` de `PATCH /api/templates/[id]/pages/[pageId]` (quando `layersChanged`, contra a
   base que o compare-and-set de fato substituiu) e de `PATCH /api/pages/[pageId]/layers/[layerId]` (quando
   `layerChanged`, só a camada editada). Falha no registro é capturada e logada; o save nunca cai por ela.
@@ -1077,12 +1083,14 @@ o MCP (ou o compositor, ou outra pessoa) entrega a peça. **Sem migration**: é 
   ele vai no `escolhido`.
 - ⚠️ **`editada` sem sugestão é exceção consciente** à regra de que linha sem `sugeridoEm` é
   `escolha-propria` (`registrarEdicaoSemSugestao`, em `captura.ts`). O funil do KPI não é afetado (ele só
-  lê linhas com `sugeridoEm`), mas o contador de "decisões sem sugestão" de `scripts/kpi-aprendizado.ts`
-  passa a incluir estas linhas: filtre `tipo <> 'camada'` se quiser o número antigo.
+  lê linhas com `sugeridoEm`), e o contador de "decisões sem sugestão" de `scripts/kpi-aprendizado.ts`
+  exclui `tipo = 'camada'` (é registro de edição, não decisão por peça). **Contador novo sobre linhas sem
+  sugestão precisa do mesmo filtro.**
 - **Formato do `diff`** (`src/lib/aprendizado/diff-camadas.ts`, puro, testado em
   `__tests__/diff-camadas.test.ts`):
   ```json
   { "ilegivel": false,
+    "reordenou": false,
     "camadas": [
       { "id": "t1", "tipo": "text", "nome": "Título", "situacao": "alterada",
         "caminhos": ["content", "position.x", "style.fontSize"] },
@@ -1090,9 +1098,12 @@ o MCP (ou o compositor, ou outra pessoa) entrega a peça. **Sem migration**: é 
       { "id": "f1", "tipo": "image", "nome": "Foto", "situacao": "apagada" } ] }
   ```
   Compara pelo `id`. Objeto simples desce no caminho; array e valor primitivo são folha (`style.richText`,
-  `content`, `fileUrl`) — **nenhum valor é gravado**, nem texto do cliente nem URL. `order` é caminho como
-  outro qualquer (reordenar; apagar uma camada pode renumerar as outras). Até 40 caminhos por camada.
-  Lado ilegível ou nenhuma camada diferente → nada é gravado.
+  `content`, `fileUrl`) — **nenhum valor é gravado**, nem texto do cliente nem URL. Até 40 caminhos por
+  camada. `order` **não** é caminho por camada: apagar uma camada no meio de 12 renumeraria as outras 11 e a
+  consulta sairia com `order` no topo. O que se registra é `reordenou`: a ordem RELATIVA das camadas
+  presentes nos dois lados mudou. `text` é espelho de `content` na rota de camada: quando os dois mudam, fica
+  só `content` (igual à rota da página). Id repetido no lado "depois": vale a primeira ocorrência.
+  Lado ilegível, ou nenhuma camada diferente e nada reordenado → nada é gravado.
 - **Não substitui** `geometria` (deltas numéricos com tolerância, só peça do compositor) nem `copy` (o
   diff do texto): os três podem sair da mesma escrita.
 
@@ -1103,7 +1114,7 @@ do Prisma, que descarta a linha sem o campo; `COALESCE` cobre camada sem `tipo` 
 select coalesce(c->>'tipo', '?') as tipo_da_camada,
        caminho,
        count(distinct s."pageId") as paginas,
-       count(*) as escritas
+       count(*) as janelas_de_10_min
 from "LearningSignal" s
 cross join lateral jsonb_array_elements(coalesce(s.diff->'camadas', '[]'::jsonb)) c
 cross join lateral jsonb_array_elements_text(coalesce(c->'caminhos', '[]'::jsonb)) caminho
@@ -1111,9 +1122,10 @@ where s.tipo = 'camada'
   and s."createdAt" >= now() - interval '30 days'
   and coalesce((s.escolhido->>'modelo')::boolean, false) = false   -- só peças; tire para incluir modelos
 group by 1, 2
-order by paginas desc, escritas desc
+order by paginas desc, janelas_de_10_min desc
 limit 50;
 ```
 
 Criadas e apagadas por tipo: troque o segundo `lateral` por `group by c->>'tipo', c->>'situacao'` com
-`where c->>'situacao' in ('criada', 'apagada')`.
+`where c->>'situacao' in ('criada', 'apagada')`. Reordenação: `count(distinct "pageId") filter (where
+(diff->>'reordenou')::boolean)` sobre `tipo = 'camada'`.

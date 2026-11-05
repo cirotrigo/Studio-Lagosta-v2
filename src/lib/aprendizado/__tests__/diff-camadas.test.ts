@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { diffDeCamadas } from '../diff-camadas'
+import { diffDeCamadas, diffVazio, fundirDiffsDeCamadas } from '../diff-camadas'
 
 const titulo = {
   id: 't1',
@@ -15,7 +15,9 @@ const foto = { id: 'f1', type: 'image', name: 'Foto', order: 0, fileUrl: 'https:
 
 describe('diffDeCamadas', () => {
   it('camadas idênticas não entram (diff vazio)', () => {
-    expect(diffDeCamadas([titulo, foto], JSON.stringify([titulo, foto]))).toEqual({ ilegivel: false, camadas: [] })
+    const r = diffDeCamadas([titulo, foto], JSON.stringify([titulo, foto]))
+    expect(r).toEqual({ ilegivel: false, reordenou: false, camadas: [] })
+    expect(diffVazio(r)).toBe(true)
   })
 
   it('alterada: lista só os caminhos, com o aninhado completo', () => {
@@ -50,12 +52,30 @@ describe('diffDeCamadas', () => {
     expect(r.camadas[0].caminhos).toEqual(['style.fontWeight', 'style.richText'])
   })
 
-  it('reordenada: `order` é caminho', () => {
+  it('reordenada: vira `reordenou`, nunca `order` por camada', () => {
     const r = diffDeCamadas([titulo, foto], [{ ...foto, order: 1 }, { ...titulo, order: 0 }])
-    expect(r.camadas.map((c) => [c.id, c.caminhos])).toEqual([
-      ['f1', ['order']],
-      ['t1', ['order']],
-    ])
+    expect(r).toEqual({ ilegivel: false, reordenou: true, camadas: [] })
+    expect(diffVazio(r)).toBe(false)
+  })
+
+  it('apagar no meio renumera as outras sem acusar alteração', () => {
+    const a = { id: 'a', type: 'text', name: 'A', order: 0 }
+    const b = { id: 'b', type: 'text', name: 'B', order: 1 }
+    const c = { id: 'c', type: 'text', name: 'C', order: 2 }
+    const r = diffDeCamadas([a, b, c], [a, { ...c, order: 1 }])
+    expect(r.reordenou).toBe(false)
+    expect(r.camadas).toEqual([{ id: 'b', tipo: 'text', nome: 'B', situacao: 'apagada' }])
+  })
+
+  it('`text` espelhado em `content` sai só como `content`', () => {
+    const t = { ...titulo, text: titulo.content }
+    const r = diffDeCamadas([t], [{ ...t, content: 'Novo', text: 'Novo' }])
+    expect(r.camadas[0].caminhos).toEqual(['content'])
+  })
+
+  it('id repetido no depois: vale a primeira ocorrência', () => {
+    const r = diffDeCamadas([titulo], [{ ...titulo, visible: false }, { ...titulo, name: 'Cópia' }])
+    expect(r.camadas).toEqual([{ id: 't1', tipo: 'text', nome: 'Título', situacao: 'alterada', caminhos: ['visible'] }])
   })
 
   it('criada e apagada', () => {
@@ -67,11 +87,37 @@ describe('diffDeCamadas', () => {
   })
 
   it('lado ilegível nunca vira "não mudou"', () => {
-    expect(diffDeCamadas('{quebrado', [titulo])).toEqual({ ilegivel: true, camadas: [] })
+    const r = diffDeCamadas('{quebrado', [titulo])
+    expect(r).toEqual({ ilegivel: true, reordenou: false, camadas: [] })
+    expect(diffVazio(r)).toBe(true)
   })
 
   it('aceita a dupla codificação do banco', () => {
     const dupla = JSON.stringify(JSON.stringify([titulo]))
     expect(diffDeCamadas(dupla, [{ ...titulo, visible: false }]).camadas[0].caminhos).toEqual(['visible'])
+  })
+})
+
+describe('fundirDiffsDeCamadas (o balde de 10 min)', () => {
+  it('soma caminhos, criada+alterada continua criada, criada+apagada some', () => {
+    const primeiro = diffDeCamadas([titulo, foto], [{ ...titulo, content: 'x' }, foto, { id: 'n1', type: 'shape', name: 'Faixa' }])
+    const segundo = diffDeCamadas(
+      [{ ...titulo, content: 'x' }, foto, { id: 'n1', type: 'shape', name: 'Faixa' }],
+      [{ ...titulo, content: 'x', position: { x: 1, y: 160 } }, { id: 'n1', type: 'shape', name: 'Faixa', visible: false }],
+    )
+    const r = fundirDiffsDeCamadas(primeiro, segundo)
+    expect(r.camadas).toEqual([
+      { id: 't1', tipo: 'text', nome: 'Título', situacao: 'alterada', caminhos: ['content', 'position.x'] },
+      { id: 'n1', tipo: 'shape', nome: 'Faixa', situacao: 'criada' },
+      { id: 'f1', tipo: 'image', nome: 'Foto', situacao: 'apagada' },
+    ])
+    const apagaACriada = diffDeCamadas([{ id: 'n1', type: 'shape', name: 'Faixa' }], [])
+    expect(fundirDiffsDeCamadas(primeiro, apagaACriada).camadas.map((c) => c.id)).toEqual(['t1'])
+  })
+
+  it('linha anterior sem lista (truncada) recomeça do novo; reordenou acumula', () => {
+    const novo = diffDeCamadas([titulo], [{ ...titulo, visible: false }])
+    const r = fundirDiffsDeCamadas({ _truncado: true, reordenou: true } as never, novo)
+    expect(r).toEqual({ ...novo, reordenou: true })
   })
 })

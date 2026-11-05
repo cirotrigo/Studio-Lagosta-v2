@@ -3,7 +3,13 @@ import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { invalidateScheduledRenders, normalizeLayersString } from '@/lib/posts/invalidate-renders'
 import { registrarDecisaoSemSugestao, registrarEdicaoSemSugestao } from '@/lib/aprendizado/captura'
-import { VERSAO_DIFF_CAMADAS, diffDeCamadas } from '@/lib/aprendizado/diff-camadas'
+import {
+  VERSAO_DIFF_CAMADAS,
+  diffDeCamadas,
+  diffVazio,
+  fundirDiffsDeCamadas,
+  type DiffDeCamadas,
+} from '@/lib/aprendizado/diff-camadas'
 import { lerCamadas } from '@/lib/posts/page-layers'
 import { problemasDosClipes } from '@/lib/video/linha-do-tempo'
 import { quadroZeroEmVideo } from '@/lib/video/movimento'
@@ -502,13 +508,13 @@ export async function PATCH(
 
     /**
      * T2 (05/11/2026): o registro LARGO do que a equipe mudou à mão — toda
-     * página, modelo ou não, uma linha por escrita efetiva das camadas, só com
+     * página, modelo ou não, a partir de toda escrita efetiva das camadas, só com
      * os CAMINHOS alterados (`diff-camadas.ts`). É a medida da lacuna: o que a
      * pessoa corrige depois que o MCP entrega a peça. Modelo também conta
      * (corrigir o modelo é corrigir todas as peças que nascem dele); a coluna
-     * `escolhido.modelo` separa os dois na consulta. Sem balde: cada autosave
-     * que muda camadas é uma linha — quem agrega conta páginas distintas.
-     * Fora da resposta; falha aqui nunca derruba o save.
+     * `escolhido.modelo` separa os dois na consulta. Uma linha por página a
+     * cada 10 minutos (a mesma chave da rota de camada), fundida a cada
+     * autosave. Fora da resposta; falha aqui nunca derruba o save.
      */
     if (layersChanged) {
       const projectId = template!.Project.id
@@ -517,7 +523,7 @@ export async function PATCH(
       after(async () => {
         try {
           const diff = diffDeCamadas(antes, depois)
-          if (diff.ilegivel || diff.camadas.length === 0) return
+          if (diffVazio(diff)) return
           const dbUser = await db.user.findUnique({ where: { clerkId: userId }, select: { id: true } })
           await registrarEdicaoSemSugestao({
             projectId,
@@ -529,7 +535,10 @@ export async function PATCH(
             superficie: 'editor',
             servico: 'diff-camadas',
             versao: VERSAO_DIFF_CAMADAS,
-          })
+            // Balde de 10 min por página, como `copy` e `geometria`: o autosave não vira dezenas de linhas.
+            // Aqui a linha do balde é FUNDIDA a cada escrita, então descreve a janela inteira.
+            chave: `camada:editor:${pageId}:${Math.floor(Date.now() / 600_000)}`,
+          }, (anterior, novo) => fundirDiffsDeCamadas(anterior as DiffDeCamadas, novo as DiffDeCamadas))
         } catch (erro) {
           console.error('[aprendizado] falha ao registrar edição de camadas (seguindo sem ela):', erro)
         }

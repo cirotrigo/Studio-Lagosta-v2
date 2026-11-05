@@ -10,7 +10,13 @@ import { canonicalizeShapeLayerForPersistence } from '@/lib/shape-style'
 import { lerCamadas } from '@/lib/posts/page-layers'
 import { gravarCamadasComRevisao } from '@/lib/copy-autoral/persistir'
 import { registrarEdicaoSemSugestao } from '@/lib/aprendizado/captura'
-import { VERSAO_DIFF_CAMADAS, diffDeCamadas } from '@/lib/aprendizado/diff-camadas'
+import {
+  VERSAO_DIFF_CAMADAS,
+  diffDeCamadas,
+  diffVazio,
+  fundirDiffsDeCamadas,
+  type DiffDeCamadas,
+} from '@/lib/aprendizado/diff-camadas'
 import { CreativeError } from '@/lib/creatives/errors'
 import { VetorInvalido } from '@/lib/vetor/validar-camada'
 import { corpoDoVetorInvalido, exigirVetoresValidos } from '@/lib/vetor/guarda-de-porta'
@@ -155,7 +161,7 @@ export async function PATCH(
       after(async () => {
         try {
           const diff = diffDeCamadas(antes, depois)
-          if (diff.ilegivel || diff.camadas.length === 0) return
+          if (diffVazio(diff)) return
           const dbUser = await db.user.findUnique({ where: { clerkId: userId }, select: { id: true } })
           await registrarEdicaoSemSugestao({
             projectId,
@@ -167,7 +173,10 @@ export async function PATCH(
             superficie: 'editor',
             servico: 'diff-camadas',
             versao: VERSAO_DIFF_CAMADAS,
-          })
+            // Balde de 10 min por página, como `copy` e `geometria`: o autosave não vira dezenas de linhas.
+            // Aqui a linha do balde é FUNDIDA a cada escrita, então descreve a janela inteira.
+            chave: `camada:editor:${pageId}:${Math.floor(Date.now() / 600_000)}`,
+          }, (anterior, novo) => fundirDiffsDeCamadas(anterior as DiffDeCamadas, novo as DiffDeCamadas))
         } catch (erro) {
           console.error('[aprendizado] falha ao registrar edição de camada (seguindo sem ela):', erro)
         }

@@ -297,8 +297,40 @@ export async function registrarDecisaoSemSugestao(entrada: DecisaoAbsoluta): Pro
  * pedido do plano aprovado pelo Ciro, e é EXCEÇÃO consciente à regra de que
  * linha sem sugestão é `escolha-propria`: não fere o KPI, que só conta linhas
  * com `sugeridoEm`, e deixa a consulta da lacuna ler `desfecho = 'editada'`.
+ *
+ * Com `chave` e `fundirDiff`, a linha que já existe na chave (o balde de
+ * tempo) é ATUALIZADA com o diff fundido, em vez de ficar só com o primeiro:
+ * a linha descreve a janela inteira, não o primeiro autosave dela.
  */
-export async function registrarEdicaoSemSugestao(entrada: DecisaoAbsoluta): Promise<string | null> {
+export async function registrarEdicaoSemSugestao(
+  entrada: DecisaoAbsoluta,
+  fundirDiff?: (anterior: unknown, novo: unknown) => unknown,
+): Promise<string | null> {
+  if (entrada.chave && fundirDiff) {
+    try {
+      const existente = await db.learningSignal.findUnique({
+        where: { chave: entrada.chave },
+        select: { id: true, diff: true },
+      })
+      if (existente) {
+        // ponytail: ler-fundir-gravar sem trava; dois autosaves simultâneos da mesma página podem perder os
+        // caminhos de um deles. O autosave é sequencial por aba; trava só se medirmos perda.
+        await db.learningSignal.update({
+          where: { id: existente.id },
+          data: {
+            diff: (paraJson(fundirDiff(existente.diff, entrada.diff)) ?? undefined) as never,
+            escolhido: (paraJson(entrada.escolhido) ?? undefined) as never,
+            decididoEm: new Date(),
+            decididoPor: entrada.decididoPor ?? undefined,
+          },
+        })
+        return existente.id
+      }
+    } catch (erro) {
+      console.error('[aprendizado] falha ao fundir edição no balde (seguindo sem ela):', erro)
+      return null
+    }
+  }
   return gravarSemSugestao(entrada, 'editada')
 }
 
