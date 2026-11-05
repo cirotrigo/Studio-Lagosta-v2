@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Layer } from '@/types/template'
 import type { MeasureTextBox } from '@/lib/creatives/text-geometry'
 import { montarBloco } from '../blocos'
+import { semTinta } from '../regua'
 import type { EstiloDePapel } from '../assinatura'
 import {
   corComOpacidade,
@@ -122,13 +123,15 @@ describe('bloco com destaque', () => {
   }
   const base = { papel: 'apoio' as const, estilo, escalaDoFormato: 1, colunaUtil: 900, textAlign: 'left' as const, groupId: 'g', corDaMancha: '#000', medir }
 
-  it('vira rich text, mede a linha com a família mais pesada e volta com colchetes', () => {
+  it('sai texto com destaques, mede a linha com a família mais pesada e volta com colchetes', () => {
     const r = montarBloco({ ...base, linhas: ['Seu milk-shake vem [em dobro]'], destaque: { fill: '#EA5328', fontFamily: 'StageGrotesk Medium' } })
     expect(r.recusa).toBeNull()
     const layer = r.bloco!.layer
-    expect(layer.type).toBe('rich-text')
+    expect(layer.type).toBe('text')
     expect(layer.content).toBe('Seu milk-shake vem em dobro')
-    expect(layer.richTextStyles?.find((s) => s.fill === '#EA5328')).toMatchObject({ start: 19, end: 27, fontFamily: 'StageGrotesk Medium' })
+    expect(layer.richTextStyles).toBeUndefined()
+    expect(layer.destaques).toEqual([{ inicio: 19, fim: 27 }])
+    expect(layer.destaque).toEqual({ fill: '#EA5328', fontFamily: 'StageGrotesk Medium' })
     // 27 caracteres × 10 + "em dobro" ganha 2px por caractere na Medium
     expect(r.bloco!.width).toBe(270 + 16 + 12 + 2)
     expect(r.bloco!.destacado).toBe(true)
@@ -139,7 +142,7 @@ describe('bloco com destaque', () => {
     const r = montarBloco({ ...base, papel: 'cta', estilo: { ...estilo, prefixo: '→ ' }, linhas: ['[Reserve] já'], destaque: { fill: '#EA5328' } })
     const layer = r.bloco!.layer
     expect(layer.content).toBe('→ Reserve já')
-    expect(layer.richTextStyles?.find((s) => s.fill)).toMatchObject({ start: 2, end: 9 })
+    expect(layer.destaques).toEqual([{ inicio: 2, fim: 9 }])
     expect(linhasComColchetes(layer)).toEqual(['→ [Reserve] já'])
   })
 
@@ -147,7 +150,15 @@ describe('bloco com destaque', () => {
     const r = montarBloco({ ...base, linhas: ['Sua pausa', 'com [sabores Real]'], destaque: { fill: '#EA5328' } })
     const layer = r.bloco!.layer
     expect(layer.content).toBe('Sua pausa\ncom sabores Real')
+    expect(layer.destaques).toEqual([{ inicio: 14, fim: 26 }])
     expect(linhasComColchetes(layer)).toEqual(['Sua pausa', 'com [sabores Real]'])
+  })
+
+  it('a régua apaga também a tinta do destaque (a cor do trecho mora em destaque.fill)', () => {
+    const r = montarBloco({ ...base, linhas: ['Vem [pro Real]'], destaque: { fill: '#EA5328', fontFamily: 'StageGrotesk Medium' } })
+    const [apagada] = semTinta([r.bloco!.layer])
+    expect(apagada.destaque).toEqual({ fill: 'rgba(0,0,0,0)', fontFamily: 'StageGrotesk Medium' })
+    expect(apagada.destaques).toEqual(r.bloco!.layer.destaques)
   })
 
   it('sem estilo de destaque na marca, sai texto comum sem colchetes e avisa', () => {
@@ -161,5 +172,28 @@ describe('bloco com destaque', () => {
     const r = montarBloco({ ...base, linhas: ['Vem pro Real'], destaque: { fill: '#EA5328' } })
     expect(r.bloco!.layer.type).toBe('text')
     expect(r.avisos).toEqual([])
+  })
+})
+
+describe('um parser só: trocarConteudo com mesmoTextoMantem e os avisos do bake (merge com a T1, 05/11)', () => {
+  const camada = { id: 'h', name: 'Título', type: 'text', content: 'Picanha na brasa', destaques: [{ inicio: 8, fim: 16 }] }
+
+  it('o MESMO texto limpo mantém os destaques só com a opção (o editor não liga: apagar os colchetes tira o destaque)', async () => {
+    const { trocarConteudo } = await import('../destaques')
+    expect(trocarConteudo(camada, 'Picanha na brasa', { mesmoTextoMantem: true }).destaques).toEqual([{ inicio: 8, fim: 16 }])
+    expect(trocarConteudo(camada, 'Picanha na brasa').destaques).toBeUndefined()
+    expect(trocarConteudo(camada, 'Costela no fogo', { mesmoTextoMantem: true }).destaques).toBeUndefined()
+    expect(trocarConteudo(camada, '[Picanha] na brasa', { mesmoTextoMantem: true }).destaques).toEqual([{ inicio: 0, fim: 7 }])
+  })
+
+  it('bakeLayers devolve o colchete sem par como aviso, não descarta; texto igual mantém, novo sem colchetes tira', async () => {
+    const { bakeLayers } = await import('@/lib/creatives/bake-layers')
+    const apoio = { ...camada, id: 'a', name: 'Apoio', content: 'Sexta no fogo', destaques: [{ inicio: 0, fim: 5 }] }
+    const r = bakeLayers([camada, apoio], { h: 'Picanha [na brasa', a: 'Sexta no fogo' }, null)
+    expect(r.avisos).toEqual(['"Título": colchete aberto sem fechar — o trecho saiu sem destaque'])
+    expect(r.layers[0]).toMatchObject({ content: 'Picanha na brasa' })
+    expect(r.layers[0]).not.toHaveProperty('destaques')
+    expect(r.layers[1].destaques).toEqual([{ inicio: 0, fim: 5 }])
+    expect(bakeLayers([apoio], { a: 'Sábado' }, null).layers[0]).not.toHaveProperty('destaques')
   })
 })

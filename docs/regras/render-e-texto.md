@@ -310,3 +310,129 @@ nem sinal, então lá é hipótese.
   o mantém alcançável até o fim: `CanvasRenderer.renderDesign` e `desenharMarcas` (`revisar-arte.ts`).
 - Sem troca de versão do pacote e sem `toBuffer` síncrono (o PR238 mediu ~160 ms de event loop bloqueado por
   arte com ele). A atualização para 1.0.x continua sendo a frente do PR238, com os efeitos de fonte e sombra dela.
+
+## Destaque por marcação (05/11/2026)
+
+O grifo de uma palavra deixou de exigir a camada `rich-text` (modal, `richTextStyles[]` por índice). A camada `text`
+comum ganhou dois campos opcionais, e o destaque se edita na própria caixa de texto com a marcação `[...]` que a copy
+já usava. Código: PR #297 (tipos, render, caixa inline, barra), PR #298 (compositor e MCP), este arquivo e
+`scripts/converter-rich-text.ts` (a conversão do legado).
+
+**O contrato dos campos** (`src/types/template.ts`, `layerSchema` em `src/lib/validations/studio.ts`):
+
+```ts
+destaques?: Array<{ inicio: number; fim: number }>   // offsets no `content` LIMPO, sem colchetes
+destaque?:  { fill?; fontFamily?; fontStyle?; textDecoration? }  // o estilo, resolvido na GRAVAÇÃO
+```
+
+- 🔴 **`content` é sempre limpo.** Os colchetes só existem nas bordas: a caixa do editor e o MCP (`slotValues`,
+  `camadas.definir content`, `conteudoMarcado` de `ver-pagina`). Nada dentro da página, do banco ou do render tem `[ ]`.
+- **Ida e volta** (`src/lib/compositor/destaques.ts`): `lerDestaquesDoTexto` (texto de várias linhas com colchetes →
+  `content` limpo + `destaques`; o colchete não atravessa a quebra, colchete sem par vira aviso e o trecho sai sem
+  destaque, nunca erro) e `linhasComColchetes` (a volta). `segmentosDoTexto` deriva os segmentos que o render desenha.
+- **O estilo é da marca, nunca de quem escreve.** Quem grava `destaques` numa camada sem `destaque` resolve o estilo
+  pela assinatura do projeto (página de assinatura → `Project.assinatura.destaque` → só o peso, a família mais pesada
+  da mesma família). Camada que destaca e não acha estilo grava SEM os trechos, com aviso — nunca um destaque invisível.
+- **O que continua `rich-text`**: duas cores (ou dois estilos) na mesma frase, tamanho, espaçamento ou contorno por
+  trecho. O `destaque` é UM por camada. Por isso o conversor classifica e não arredonda (abaixo).
+- **Campo "Destaque" na barra** (`text-toolbar.tsx`, popover "Mais opções de texto", abaixo do contorno): seletor de cor
+  (o `ColorPicker` da paleta), botão **Peso forte** (`familiaMaisPesada` entre as fontes do projeto) e **Voltar ao da
+  marca** (apaga `layer.destaque`). Só em camada `text`; sem `destaques`, avisa "Marque a palavra com [ ] na caixa de texto."
+
+🔴 **Quem grava `content` por fora da caixa do canvas chama `trocarConteudo`** (`destaques.ts`): texto novo com colchetes
+→ `content` limpo + `destaques`; **sem colchetes, os `destaques` antigos são apagados** (offsets de um texto que não
+existe mais pintariam letras ao acaso). É o único parser dos colchetes — painel de propriedades, gerador de criativos,
+`fieldValues`, `slotValues` e o bake passam por ele; o #297 o chamou em cada um desses pontos, o #298 no MCP. Exceção só do MCP (#298): `definir content` passa `mesmoTextoMantem`, então reenviar o MESMO texto limpo mantém os
+`destaques`. Gravar `{ ...camada, content }` à mão é o bug que essa regra existe para impedir. Camada que não é `text`: só o conteúdo.
+
+**Armadilhas registradas nos PRs:**
+
+- 🔴 **O `layerSchema` é um `z.object` e DESCARTA chave desconhecida no PATCH da página.** Campo novo de camada só
+  existe depois de entrar ali; sem isso o editor "salva" e o campo some no servidor, sem erro.
+- **O texto com destaques desenha pelo caminho do rich text** (`renderRichText` alimentado por `segmentosDoTexto`): a
+  âncora vertical, o contorno, o blur e o texto curvo valem como valiam no rich-text (curvo desenha o texto comum). A
+  sombra da camada entra por segmento — `applyShadow` não roda nesse caso.
+- **Offsets são no `content` CRU.** Com `textTransform`, `segmentosNoTextoTransformado` fatia o cru, transforma cada
+  pedaço e soma os comprimentos; transformar o texto inteiro antes de fatiar deslocava os offsets ("ß" → "SS").
+- **No editor** o `Konva.Text` continua sendo o nó da camada (transformer, medição, halo, caixa inline), só com a tinta
+  transparente; os segmentos são desenhados num `Group` irmão que segue o texto pelos eventos de atributo (o mesmo
+  mecanismo do halo).
+- **Gate de autonomia**: `destaques.*` e `destaque.*` são `inerte`; sem a classificação o gate falhava fechado.
+  `VERSAO_DO_GATE` = `gate-v6`; os registros `gate-v5` nas Generations viram histórico e a peça é medida de novo antes
+  de agendar. Texto com destaque é medido como texto comum; o rich-text no mesmo lugar não é.
+- **`ajustar-arte`**: colchetes junto com `destaques` explícito são recusados; `destaques: []` remove; offset além do
+  `content` dá `VALOR_FORA_DA_FAIXA`; `destaque` numa camada sem trechos é recusado (estilo morto).
+
+**A conversão do legado** (`scripts/converter-rich-text.ts`, regra em `src/lib/compositor/converter-rich-text.ts`, com
+teste). Por padrão só LEITURA: lista, por projeto, cada camada `rich-text` como CONVERSÍVEL (todo trecho que difere da
+base tem o MESMO estilo; sombra igual em todo o conteúdo, ou já igual à da camada — o compositor antigo gravava as duas)
+ou NÃO CONVERSÍVEL, com o motivo: `dois-estilos`, `tamanho-por-trecho`, `espacamento-por-trecho`, `contorno-por-trecho`,
+`sombra-so-na-camada` (o rich-text ignora `effects.shadow`; o `text` a desenharia, então a aparência mudaria),
+`sombra-diferente-por-trecho`, `sombra-parcial`, `sombra-da-camada-diferente`, `sem-destaque`, `sem-trechos`.
+`--aplicar` grava a página inteira por `gravarCamadasComRevisao` (a função do PATCH de camada do editor, autor `sistema`)
+e chama `invalidateScheduledRenders` E `pedirRecomposicaoDaArteCongelada`. 🔴 **Só rode `--aplicar` com #297 e #298 na
+`main`**: sem o render novo, a camada `text` com `destaques` sai sem destaque no PNG (e a arte agendada com ela).
+
+### Workers do vitest morrendo no skia: `encode()` assíncrono × GC do Canvas (15/10/2026)
+
+Na revisão do CP5a os forks do vitest morriam com "[vitest-pool] Worker exited unexpectedly" em ~1 de cada 2–3
+rodadas completas (local) e em 1 de 6 runs do CI. O crash report (`~/Library/Logs/DiagnosticReports/node-*.ips`) era
+sempre o mesmo: SIGSEGV dentro de `skia.darwin-arm64.node`, numa thread `libuv-worker` (`node::ThreadPoolWork`), e
+o fork morria DEPOIS de todos os arquivos passarem — ou seja, uma tarefa nativa pendente, não uma asserção.
+
+**Causa (fechada, não suposta).** `canvas.encode('png')` do `@napi-rs/canvas` roda no pool do libuv. Até a 1.0.5 a
+tarefa guardava um ponteiro CRU para a superfície do skia; quando o Canvas saía de escopo e o GC o coletava antes
+do PNG terminar, o finalizador destruía a superfície debaixo do encoder. É exatamente o padrão
+`await new CanvasRenderer(...).renderDesign(...)` (compositor, régua, legibilidade da logo, gate do CP5a): só a
+Promise fica viva. A 1.0.6 conta referências da superfície (Brooooooklyn/canvas#1312) e a 1.0.8 tira a foto dos
+pixels no momento da chamada (#1313). Prova em processo filho com `--expose-gc`
+(`src/lib/__tests__/canvas-encode-sobrevive-ao-gc.test.ts`): na 0.1.84 morre com SIGSEGV em 3 de 3 execuções; na
+1.0.11 passa.
+
+**Medição (suíte completa, 383 arquivos, mesma máquina):**
+
+| Configuração | Mortes em 3 rodadas | Tempo por rodada |
+|---|---|---|
+| 0.1.84, `encode('png')` (antes) | 1 | 76–78 s |
+| 0.1.84, `toBuffer('image/png')` síncrono | 0 | 93–105 s |
+| **1.0.11, `encode('png')` (escolhido)** | **0** | 78–83 s |
+
+O `toBuffer` síncrono também zera as mortes, mas custa ~160 ms de event loop bloqueado por arte de 1080×1920
+(encode e toBuffer medem o mesmo, ~160 ms; a diferença é onde rodam) e 20–35 % a mais de suíte. A 1.0.11 corrige
+a causa em todos os `encode` (inclusive o JPEG do revisor) sem mudar o caminho do render.
+
+**O que a 1.0.x muda no render (dito aqui para não ser descoberto na arte):**
+
+- **Sombra alinhada ao Chromium** (1.0.3): `shadowColor` com alfa aplicava o alfa duas vezes; agora uma. Sombra
+  fica um pouco mais forte — igual à do editor, que roda no Chrome. Medido: 23 % dos pixels de um texto com
+  `shadowBlur 24` mudam, no máximo 40/255 por canal. Texto sem sombra: 0 pixel diferente.
+- **Família genérica ou desconhecida perde os acentos**: `sans-serif`, `serif` e nome fora do registro caem numa
+  fonte padrão sem Ç/à/ã (tofu) — igual da 1.0.5 à 1.0.11; na 0.1.84 o padrão era Arial/Helvetica. Cartões de
+  referência, manual de marca e revisor desenham com `sans-serif` direto. Por isso `garantirFontesPadrao()`
+  (em `canvas-renderer.ts`, chamada pelo construtor e por `registerProjectFonts`) registra a Montserrat e faz
+  `GlobalFonts.setAlias('Montserrat', 'sans-serif')`: o fallback vira Montserrat regular (o peso pedido não é
+  honrado pelo alias). Camada sem `fontFamily`, que caía em `sans-serif`, agora sai em Montserrat. Teste:
+  `src/lib/__tests__/canvas-fonte-generica-tem-acento.test.ts`.
+- **`drawImage` passou a aplicar a sombra, na cor certa** (medido em 05/11/2026). O grupo do vetor multicor
+  (`pintarEmGrupo` em `src/lib/vetor/desenhar.ts`) desenhava a sombra à mão, com máscara e `filter: blur(shadowBlur/√2)`,
+  porque o 0.1.84 a ignorava. Na 1.0 esse desfoque ficou mais largo que a sombra nativa (42 contra 22 em x 125, blur 8)
+  e a paridade com o legado quebrou. A sombra à mão saiu; vale a nativa, igual ao navegador.
+- **`GlobalFonts.registerFromPath` devolve `FontKey | null`**, não boolean. `!== false` passaria sempre — a
+  conferência de arquivo corrompido em `register-project-fonts.ts` virou `Boolean(...)`.
+- As fontes padrão passam a ser registradas UMA vez por processo (antes, a cada `new CanvasRenderer`): o registro é
+  global e a 1.0.9 invalida o cache de typefaces a cada registro.
+
+**Regras que ficam:**
+
+- 🔴 **Worker do vitest que morre com SIGSEGV no skia é lifetime de objeto nativo, não teste quebrado.** Olhe o
+  `.ips` antes de mexer no teste: thread `libuv-worker` + `ThreadPoolWork` = chamada assíncrona nativa com o objeto
+  JS já coletado.
+- 🔴 **Quem mede ou desenha texto com `createCanvas` direto chama `garantirFontesPadrao()` antes**: sem o alias, família
+  não registrada cai numa fonte sem glifos e mede caixas. O medidor do servidor (`server-text-measurer.ts`) não chamava, e
+  o piloto ponta a ponta media "Texto headline" acima de 880 px no CI, conforme a ordem dos testes no processo (o alias é
+  global; ele só existia se outro teste tivesse criado um `CanvasRenderer` antes). **Dublê de `GlobalFonts` feito como
+  objeto próprio repassa `setAlias`**; o feito com `Proxy` já repassa (05/11/2026).
+- **Não troque `encode` por `toBuffer` para "estabilizar"**: é o event loop de produção que paga.
+- **`--maxWorkers=4` "passar" não é evidência**: só muda o ritmo do GC. A correção é a versão com refcount.
+- **Subida do `@napi-rs/canvas` é mudança de render**: meça sombra, família genérica e o retorno das APIs de
+  registro antes de subir de novo (o método e os números estão no PR desta seção).

@@ -133,6 +133,8 @@ function estiloDaReferencia(c: Layer): { ok: true; estilo: EstiloDaReferencia } 
   const naoSuportado = (motivo: string) => ({ ok: false as const, codigo: 'REFERENCIA_ESTILO_NAO_SUPORTADO' as const, motivo })
   const invalido = (motivo: string) => ({ ok: false as const, codigo: 'REFERENCIA_ESTILO_INVALIDO' as const, motivo })
   const runs = (c as { richTextStyles?: unknown }).richTextStyles
+  const destaques = (c as { destaques?: unknown }).destaques
+  if (Array.isArray(destaques) && destaques.length > 0) return naoSuportado('a camada tem trechos destacados: a F2d só representa o estilo da camada inteira')
   if (c.type === 'rich-text' || (Array.isArray(runs) && runs.length > 0)) return naoSuportado('a camada é rich-text (trechos com estilo próprio): a F2d só representa o estilo da camada inteira')
   if (typeof s.fontStyle === 'string' && /italic/i.test(s.fontStyle)) return naoSuportado('itálico')
   if (typeof s.textDecoration === 'string' && s.textDecoration !== 'none') return naoSuportado(`decoração de texto "${s.textDecoration}"`)

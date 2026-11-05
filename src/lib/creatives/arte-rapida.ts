@@ -57,7 +57,7 @@ import { copyAutoralDaPagina, recusaDaRevisao, revisaoDaPaginaComCamadas } from 
 import { lerCopyAutoral, tentarCopyEfetivaDasCamadas } from '@/lib/copy-autoral'
 import { bakeLayers, copyRemovidaDoBake, type CopyRemovida } from '@/lib/creatives/bake-layers'
 import { camposDeTextoDasCamadas, mapearContratoParaCampos, mapearCopyParaSlots } from '@/lib/planos/execucao'
-import { semColchetes } from '@/lib/compositor/destaques'
+import { destaqueDoPapel, semColchetes, temColchetes, type EstiloDeDestaque } from '@/lib/compositor/destaques'
 import { resolverValoresSemanticos, validarEntradaSemantica, type ValorResolvido, validarFormatoDosSlotValues, validarEnderecosDosSlotValues } from '@/lib/semantica/resolver-valores'
 import { type AjusteAplicado, type AjusteRecusado } from '@/lib/creatives/revisao/aplicar-ajustes'
 import { aplicarAjustesSemPiorar } from '@/lib/creatives/revisao/ajustar-sem-piorar'
@@ -76,7 +76,7 @@ import { formatoDaPaginaGravada } from '@/lib/compositor/formato'
 import { chaveDaAgenda, chaveDasFontes } from '@/lib/trava-por-chave'
 import { fecharGenerationComoFalha } from '@/lib/creatives/mesclar-field-values'
 import { vinculadaAGrade } from '@/lib/grades/presenca'
-import { aplicarOperacoesDeCamadas, aplicarPagina, erroDeCamadas, validarFormatoDaPagina, validarFormatoDasOperacoes, type CamadaAplicada, type OperacaoDeCamada, type PaginaDoAjuste } from '@/lib/creatives/editar-camadas'
+import { aplicarOperacoesDeCamadas, aplicarPagina, erroDeCamadas, marcarDestaquesNoTexto, validarFormatoDaPagina, validarFormatoDasOperacoes, type CamadaAplicada, type OperacaoDeCamada, type PaginaDoAjuste } from '@/lib/creatives/editar-camadas'
 import { problemasDosVetores } from '@/lib/vetor/validar-camada'
 import { canonicalizeLayersForPersistence } from '@/lib/shape-style'
 import { problemasDosClipes } from '@/lib/video/linha-do-tempo'
@@ -1264,6 +1264,44 @@ function revisaoDoAjuste(gate: ResultadoDaMedicao, generationId: string): Revisa
   return r.tipo === 'medida' ? { ...r, generationId } : r
 }
 
+/**
+ * O estilo de destaque da MARCA para uma camada de texto: o que a página de assinatura do papel desenha (a equipe
+ * destacou um trecho lá) ou `Project.assinatura.destaque`, pela regra do compositor (`destaqueDoPapel`: família pesada
+ * DA camada, alternativa quando a camada já é da cor de destaque). Sem assinatura legível, o padrão da casa.
+ */
+/** `slotValues` com o texto (string ou `{ content }`) sem os colchetes da marcação; as chaves de controle ficam cruas. */
+function pedidoSemColchetes<T extends Record<string, unknown> | undefined | null>(slotValues: T): T {
+  if (!slotValues) return slotValues
+  return Object.fromEntries(
+    Object.entries(slotValues).map(([k, v]) => {
+      if (k === '_imageUrl' || k === '_driveImageId') return [k, v]
+      if (typeof v === 'string') return [k, semColchetes(v)]
+      if (v && typeof v === 'object' && typeof (v as { content?: unknown }).content === 'string') return [k, { ...v, content: semColchetes((v as { content: string }).content) }]
+      return [k, v]
+    }),
+  ) as T
+}
+
+async function resolvedorDoDestaqueDaMarca(projectId: number, page: { tags?: string[] | null; width: number; height: number }): Promise<(c: Layer) => EstiloDeDestaque | null> {
+  const [{ carregarAssinatura, familiasDoProjeto }, { NUMEROS_PADRAO }, { papelDaCamada }] = await Promise.all([
+    import('@/lib/compositor/compor'),
+    import('@/lib/compositor/assinatura'),
+    import('@/lib/compositor/defasagem'),
+  ])
+  const [assinatura, familias] = await Promise.all([carregarAssinatura(projectId, formatoDaPaginaGravada(page)).catch(() => null), familiasDoProjeto(projectId)])
+  const padrao = assinatura?.numeros.destaque ?? NUMEROS_PADRAO.destaque
+  return (c) => {
+    const papel = papelDaCamada(c)
+    return destaqueDoPapel({
+      daPagina: papel ? assinatura?.papeis[papel]?.destaque : null,
+      padrao,
+      corDoPapel: String(c.style?.color ?? ''),
+      familiaDoPapel: String(c.style?.fontFamily ?? ''),
+      familias,
+    })
+  }
+}
+
 export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteResult> {
   const { projectId, pageId } = input
   const slotValues = input.slotValues ?? {}
@@ -1402,8 +1440,23 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
   const copyAntes = copyParaDecisao(page.layers)
 
   const baked = bakeLayers(sourceLayers, slotValues, resolved.url, semanticos.valores)
-  const { layers: bakedLayers, changedTextIds } = baked
+  const { changedTextIds } = baked
   let imageApplied = baked.imageApplied
+
+  // Destaque por marcação (05/11/2026): o bake já leu os [colchetes] (`trocarConteudo`, o único parser) e gravou
+  // `content` limpo + `destaques`; aqui só entra o estilo da marca (lido quando alguém destaca) e o aviso do destaque
+  // que o texto novo tirou.
+  const trocados = new Set(changedTextIds)
+  const destacaPeloSlot = (baked.layers as Layer[]).some((l) => trocados.has(l.id) && (l.destaques?.length ?? 0) > 0 && !l.destaque)
+  const destacaPelasCamadas = operacoes.some((o) => temColchetes([o.campos?.content]) || (o.campos?.destaques?.length ?? 0) > 0)
+  const destaqueDaMarca = destacaPeloSlot || destacaPelasCamadas ? await resolvedorDoDestaqueDaMarca(projectId, { tags: page.tags, width: dims.width, height: dims.height }) : undefined
+  const avisosDoDestaque: string[] = [...baked.avisos]
+  const bakedLayers = (baked.layers as Layer[]).map((l) => {
+    if (!trocados.has(l.id)) return l
+    const r = marcarDestaquesNoTexto(l, destaqueDaMarca, sourceLayers.find((s) => s.id === l.id))
+    if (r.aviso) avisosDoDestaque.push(r.aviso)
+    return r.camada
+  })
 
   // Arte-livre não marca o fundo como dinâmico (a camada nasce aqui, não num
   // template): sem este fallback, trocar a foto de uma arte criada do zero
@@ -1456,8 +1509,10 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
       urlsDoAcervo,
       logoUrl: logo?.fileUrl ?? null,
       fontes: { titulo: project.titleFontFamily, corpo: project.bodyFontFamily },
+      destaqueDaMarca,
     })
     if (edicao.recusadas.length > 0) throw erroDeCamadas(edicao.recusadas)
+    avisosDoDestaque.push(...edicao.avisos)
     const clipes = problemasDosClipes(edicao.camadas as never)
     if (clipes.length > 0) throw new CreativeError('CLIPES_INVALIDOS', `As camadas não puderam ser editadas — nada foi gravado: ${clipes.join(' ')}`, 422, { problemas: clipes, ajusteGravado: false })
     const vetores = problemasDosVetores(edicao.camadas)
@@ -1916,7 +1971,9 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
       fieldValues: {
         source: 'ajuste-arte',
         sourcePageId: page.id,
-        ajustes: slotValues,
+        // O pedido como a página o gravou: os [colchetes] já viraram `destaques` na camada, e a mineração do perfil usa
+        // este texto como exemplo (`camposDosAjustes`) — colchete ali vira "a IA escreve com colchetes" (revisão L9).
+        ajustes: pedidoSemColchetes(slotValues),
         ...(copyRemovida.length > 0 ? { copyRemovida } : {}),
         ...(revisao
           ? { revisao: { versaoAntes, ajustes, aplicados: revisao.aplicados, recusados: revisao.recusados } }
@@ -2039,6 +2096,6 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
       ? { postsCongelados: invalidacao.congelados.length }
       : {}),
     autocorrecao: fix.autocorrecao,
-    ...(fix.avisos.length + avisosDaCopy.length > 0 ? { avisos: [...fix.avisos, ...avisosDaCopy] } : {}),
+    ...(fix.avisos.length + avisosDaCopy.length + avisosDoDestaque.length > 0 ? { avisos: [...fix.avisos, ...avisosDaCopy, ...avisosDoDestaque] } : {}),
   }
 }

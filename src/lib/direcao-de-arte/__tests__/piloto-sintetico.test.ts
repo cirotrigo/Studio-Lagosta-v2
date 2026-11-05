@@ -99,6 +99,8 @@ vi.mock('@napi-rs/canvas', async (original) => {
     },
     has: (familia: string) => real.has(familia) || daFixture.some((d) => d.family === familia),
     registerFromPath: (...a: Parameters<typeof real.registerFromPath>) => real.registerFromPath(...a),
+    // garantirFontesPadrao (canvas 1.0): o alias de `sans-serif` para a Montserrat vai para o registro real.
+    setAlias: (...a: Parameters<typeof real.setAlias>) => real.setAlias(...a),
   }
   return { ...m, GlobalFonts }
 })

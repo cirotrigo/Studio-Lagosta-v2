@@ -125,6 +125,19 @@ describe('G3–G10 — achado crítico, não crítico, visão, cobertura', () =>
     expect(motivosDe(g, 'colisao')[0]?.codigo).toBe('NAO_COMPROVADA')
   })
 
+  it('G7b: texto COM destaque por marcação (`destaques` + `destaque`, 05/11/2026) é texto comum: texto-cortado, colisão e tratamento saem medidas (o rich-text no mesmo lugar não sai)', () => {
+    const base = pecaLimpa()
+    const destacar = (l: Layer): Layer => (l.type === 'text' ? ({ ...l, destaques: [{ inicio: 0, fim: 4 }], destaque: { fill: '#E30613', fontFamily: 'Montserrat Black', fontStyle: 'italic', textDecoration: 'underline' } } as Layer) : l)
+    const camadas = base.camadas.map(destacar)
+    const g = gate({ medida: { camadas, metricas: base.metricas } })
+    expect(g.resultado, JSON.stringify(g.motivos)).toBe('APTO')
+    for (const regra of ['texto-cortado', 'colisao', 'tratamento-piorou-leitura'] as const) expect(g.cobertura[regra], regra).toEqual({ estado: 'comprovada' })
+    expect(g.naoMedidos).toEqual([])
+    // O controle: a mesma camada como rich-text fica fora da medida.
+    const rica = gate({ medida: { camadas: base.camadas.map((l) => (l.id === 'apoio' ? ({ ...l, type: 'rich-text' } as Layer) : l)), medidasAproximadas: ['apoio'] } })
+    expect(rica.cobertura['texto-cortado'].estado).toBe('nao-comprovada')
+  })
+
   it('G7: parcial (rich text / fonte não cadastrada) → não comprovada (o gate de produção não tem a exceção do piloto)', () => {
     const base = pecaLimpa()
     const rich = { ...base.camadas.find((l) => l.id === 'apoio')!, type: 'rich-text' } as Layer

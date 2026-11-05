@@ -12,9 +12,13 @@
 import type { MeasureLayerHeight } from '@/lib/combo-stack-reflow'
 import type { MeasureTextBox } from '@/lib/creatives/text-geometry'
 import { RenderEngine } from '@/lib/render-engine'
+import { comLarguraDoDestaque } from '@/lib/compositor/blocos'
+import { garantirFontesPadrao } from '@/lib/canvas-renderer'
 
 export async function createServerTextMeasurer(): Promise<MeasureLayerHeight> {
   const { createCanvas } = await import('@napi-rs/canvas')
+  // Canvas 1.0: família desconhecida sem o alias da Montserrat cai numa fonte sem glifos e mede caixas (tofu).
+  garantirFontesPadrao()
   const ctx = createCanvas(1, 1).getContext('2d')
   return (layer) =>
     RenderEngine.measureTextLayerHeight(ctx as unknown as CanvasRenderingContext2D, layer)
@@ -23,7 +27,9 @@ export async function createServerTextMeasurer(): Promise<MeasureLayerHeight> {
 /** Variante com a caixa completa (altura + largura de linha), para a validação geométrica. */
 export async function createServerTextBoxMeasurer(): Promise<MeasureTextBox> {
   const { createCanvas } = await import('@napi-rs/canvas')
+  // Canvas 1.0: família desconhecida sem o alias da Montserrat cai numa fonte sem glifos e mede caixas (tofu).
+  garantirFontesPadrao()
   const ctx = createCanvas(1, 1).getContext('2d')
-  return (layer) =>
-    RenderEngine.measureTextLayerBox(ctx as unknown as CanvasRenderingContext2D, layer)
+  // O destaque desenhado na família pesada alarga a linha: a medida soma o extra (`comLarguraDoDestaque`).
+  return comLarguraDoDestaque((layer) => RenderEngine.measureTextLayerBox(ctx as unknown as CanvasRenderingContext2D, layer))
 }

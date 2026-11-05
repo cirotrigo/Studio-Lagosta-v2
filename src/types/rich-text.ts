@@ -80,6 +80,16 @@ export interface RichTextRenderOptions {
 
   // Padding interno
   padding?: number
+
+  /**
+   * Camada `text` com destaques (não o rich-text antigo): replica o Konva.Text
+   * da camada — linhas avançam pela fonte BASE, cada linha é centrada na
+   * entrelinha e o bloco respeita a âncora vertical na altura da caixa.
+   */
+  comoTextoComum?: boolean
+  anchor?: 'top' | 'middle' | 'bottom'
+  boxHeight?: number
+  fontSize?: number
 }
 
 /**

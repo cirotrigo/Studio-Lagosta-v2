@@ -63,6 +63,8 @@ import {
 import { estadoDaInsercao } from '@/lib/editor/estado-da-insercao'
 import { useBrandColorsEstrita } from '@/hooks/use-brand-colors'
 import { useProject } from '@/hooks/use-project'
+import { useDestaqueDaMarca } from '@/hooks/use-destaque-da-marca'
+import { linhasComColchetes, trocarConteudo } from '@/lib/compositor/destaques'
 import { useMultiPageOpcional } from '@/contexts/multi-page-context'
 import type { ChaveDeCor } from '@/lib/vetor/tipos'
 import { ehMulticor } from '@/lib/vetor/partes'
@@ -601,6 +603,33 @@ interface TextControlsProps {
 function TextControls({ layer, setStyleValue, updateLayerPartial }: TextControlsProps) {
   const { projectId } = useTemplateEditor()
   const fontManager = React.useMemo(() => getFontManager(), [])
+
+  // A textarea mostra o texto COM os [colchetes] (a mesma ida e volta da caixa
+  // do canvas) e grava por `trocarConteudo`. O rascunho é local: enquanto o
+  // colchete está aberto, `content` não o tem, e um valor controlado pela
+  // camada apagaria o "[" no meio da digitação. Mudança vinda de fora
+  // (caixa do canvas, desfazer) substitui o rascunho.
+  const destaqueDaMarca = useDestaqueDaMarca(projectId)
+  const textoDaCamada = linhasComColchetes(layer)?.join('\n') ?? layer.content ?? ''
+  const [rascunho, setRascunho] = React.useState(textoDaCamada)
+  const gravadoRef = React.useRef(JSON.stringify([layer.content, layer.destaques]))
+  React.useEffect(() => {
+    const atual = JSON.stringify([layer.content, layer.destaques])
+    if (atual !== gravadoRef.current) {
+      gravadoRef.current = atual
+      setRascunho(textoDaCamada)
+    }
+  }, [layer.id, layer.content, layer.destaques, textoDaCamada])
+  const handleContentChange = (texto: string) => {
+    setRascunho(texto)
+    const { content, destaques } = trocarConteudo(layer, texto)
+    gravadoRef.current = JSON.stringify([content, destaques])
+    updateLayerPartial(layer.id, {
+      content,
+      destaques,
+      ...(destaques && !layer.destaque ? { destaque: destaqueDaMarca(layer) ?? undefined } : {}),
+    })
+  }
   // Mesma fonte de dados do toolbar flutuante: sistema + fontes do projeto
   const availableFonts = React.useMemo(
     () => fontManager.getAvailableFonts(projectId),
@@ -644,9 +673,12 @@ function TextControls({ layer, setStyleValue, updateLayerPartial }: TextControls
           id="layer-content"
           rows={3}
           className="text-xs"
-          value={layer.content ?? ''}
-          onChange={(event) => updateLayerPartial(layer.id, { content: event.target.value })}
+          value={rascunho}
+          onChange={(event) => handleContentChange(event.target.value)}
         />
+        {layer.type === 'text' && (
+          <p className="text-[10px] text-muted-foreground">Destaque: marque a palavra com [ ].</p>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-2">

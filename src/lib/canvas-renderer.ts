@@ -10,13 +10,25 @@ import { FONT_CONFIG } from './font-config'
 import type { DesignData, FieldValues } from '@/types/template'
 import type { FontValidationResult } from './render-engine'
 
+let fontesPadraoRegistradas = false
+
+/**
+ * Montserrat empacotada + fontes do sistema + o alias de `sans-serif`, uma vez por processo (o registro do
+ * @napi-rs/canvas é global). Quem desenha texto com `createCanvas` direto, fora do CanvasRenderer, chama isto
+ * antes — senão família genérica sai sem acento (ver registerDefaultFonts).
+ */
+export function garantirFontesPadrao(): void {
+  if (fontesPadraoRegistradas) return
+  fontesPadraoRegistradas = true
+  CanvasRenderer.registerDefaultFonts()
+}
+
 export class CanvasRenderer {
   private canvas: Canvas
   private ctx: SKRSContext2D
   private width: number
   private height: number
   private imageCache: Map<string, Image>
-  private fontsRegistered = false
 
   constructor(width: number, height: number) {
     this.width = width
@@ -25,16 +37,13 @@ export class CanvasRenderer {
     this.ctx = this.canvas.getContext('2d') as SKRSContext2D
     this.imageCache = new Map()
 
-    // Registrar fontes padrão na primeira instância
-    if (!this.fontsRegistered) {
-      this.registerDefaultFonts()
-    }
+    garantirFontesPadrao()
   }
 
   /**
    * Registra fontes padrão do sistema
    */
-  private registerDefaultFonts(): void {
+  static registerDefaultFonts(): void {
     // Montserrat vem empacotada no repositório, um arquivo por peso — o
     // matcher do napi-rs escolhe o arquivo certo pelo peso pedido.
     // (fs/path ficam aqui, e não em font-config, que também roda no client)
@@ -52,6 +61,11 @@ export class CanvasRenderer {
     }
     if (montserratCount > 0) {
       console.log(`[CanvasRenderer] Montserrat registered (${montserratCount} weights)`)
+      // Desde o @napi-rs/canvas 1.0.x, família genérica ou desconhecida (`sans-serif`, `serif`, nome que não
+      // está no registro) cai numa fonte padrão SEM os glifos acentuados — Ç, à, ã viravam tofu. O alias faz
+      // esse fallback ser a Montserrat (regular), em qualquer plataforma (ver docs/regras/render-e-texto.md,
+      // "Workers do vitest morrendo no skia", 15/10/2026).
+      GlobalFonts.setAlias('Montserrat', 'sans-serif')
     } else {
       console.warn('[CanvasRenderer] Montserrat files not found — falling back to system font')
     }
@@ -71,8 +85,6 @@ export class CanvasRenderer {
         console.warn(`[CanvasRenderer] Failed to register font ${name} from ${path}:`, error)
       }
     }
-
-    this.fontsRegistered = true
   }
 
   /**

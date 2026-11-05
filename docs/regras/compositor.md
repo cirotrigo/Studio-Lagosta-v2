@@ -2049,6 +2049,47 @@ descarta em silêncio; quem lia o resultado descartava.
   então `SNAPSHOT_COM_CAMADAS_INVALIDAS` para o resto dos `v.problemas`.
 - Teste: `src/lib/compositor/__tests__/reverter-snapshot-invalido.test.ts`.
 
+## Destaque por marcação: `text` com `destaques` + `destaque` (T2, 05/11/2026)
+
+- O compositor não emite mais `rich-text` para o destaque da copy: emite `type: 'text'` com `content` LIMPO (sem
+  colchetes), `destaques: [{inicio, fim}]` (offsets no content) e `destaque: {fill, fontFamily, fontStyle,
+  textDecoration}` (o estilo resolvido da marca por `destaqueDoPapel`). Colchetes só existem nas pontas:
+  `lerDestaques` na gravação, `linhasComColchetes` na leitura.
+- Quem lê a camada para medir/tingir tem que ler os dois formatos: `medidas.ts` (famílias), `regua.ts` (`semTinta`),
+  `medir-copy.ts` (camada base), `arquetipos/fundo.ts` (`tintasAtivas`: o trecho herda `destaque.fill`),
+  `revisar-arte.ts` (`fontesQueFaltam`). A F2d (`arquetipos/referencia.ts`) RECUSA referência com `destaques`.
+- 🔴 **UM parser só dos colchetes: `trocarConteudo` (`destaques.ts`)** — o bake (`slotValues`) e o `definir content`
+  passam por ele com `mesmoTextoMantem` (o texto limpo IGUAL ao gravado mantém os `destaques`: é o agente reenviando o
+  que `ver-pagina` devolveu). O editor NÃO liga a opção: lá a caixa mostra os colchetes, e apagá-los é tirar o
+  destaque. `marcarDestaquesNoTexto` não lê colchete: só põe o estilo da marca e avisa o destaque que o texto tirou.
+  Duas passadas lendo colchetes (merge com a T1, 05/11) apagavam os destaques que o bake acabara de gravar.
+- Pelo MCP (`ajustar-arte`): colchetes em `slotValues` ou em `camadas.definir content` gravam content limpo +
+  `destaques`; o `destaque` vem da camada (se já tiver) ou da marca. Texto novo SEM colchetes tira os `destaques`.
+  Colchete sem par → aviso e o trecho sai sem destaque. Colchetes + `destaques` explícito na mesma op → recusa.
+  `destaques: []` remove. Offset além do content → `VALOR_FORA_DA_FAIXA`. `ver-pagina` devolve `conteudoMarcado`
+  (o content com os colchetes de volta) só na camada com destaques; mandá-lo de volta em `definir content` reproduz a camada.
+- O gate classifica `destaques.*` e `destaque.{fill,fontStyle,textDecoration}` como `inerte` e `destaque.fontFamily`
+  como `expansora` → **`VERSAO_DO_GATE` = `gate-v6`** (`revisor-da-arte.md`).
+- 🔴 **A medida enxerga a família do destaque**: `createServerTextBoxMeasurer` embrulha o `measureTextLayerBox` em
+  `comLarguraDoDestaque` (`blocos.ts`), que soma `larguraExtraDoDestaque` (a conta da montagem) em cada linha quebrada.
+  Autofix, gate e revisor passam por ele. Sem isso, uma linha que cabia por 10 px na família fina transbordava no PNG
+  (o trecho desenhado na pesada) e o gate dizia APTO. Quem mede uma camada SEM destaques e soma o extra à mão (a
+  montagem, o `medir-copy`) continua certo: a camada base não leva `destaques`.
+- 🔴 **ORDEM DE MERGE: o #297 (render do T1) entra ANTES do #298.** Sem o render, o compositor emitindo `text` +
+  `destaques` faz toda peça nova sair SEM destaque no PNG — o gate diz APTO e a arte vai para a agenda sem a palavra marcada.
+
+## O destaque da manchete é `text` + `destaques` (05/11/2026)
+
+O compositor deixou de emitir `rich-text` para a palavra entre `[colchetes]` da copy: a camada sai `type: 'text'`, com
+`content` limpo, `destaques: [{inicio, fim}]` e `destaque` (o estilo da assinatura da marca, via `destaqueDoPapel`) — o
+formato do PR #298. `medidas.ts`, `regua.ts` (`semTinta`), `medir-copy.ts`, `arquetipos/fundo.ts` (`tintasAtivas`) e
+`revisar-arte.ts` (`fontesQueFaltam`) leem o formato novo; a volta página → spec continua por `linhasComColchetes`, que
+agora lê `destaques`. A F2d recusa uma referência que tenha `destaques`. A recomposição de slide não muda: refaz a peça
+a partir da copy com colchetes e o destaque volta sozinho. Páginas antigas com `rich-text` seguem desenhando como
+sempre até a conversão (`scripts/converter-rich-text.ts`, regras em `render-e-texto.md`, seção "Destaque por
+marcação"). Detalhe que pega: o compositor antigo gravava a sombra na camada E em cada trecho — a conversão aceita as
+duas quando são iguais; sombra só na camada (a feita à mão) mantém a peça `rich-text`.
+
 ### Referência com duas faixas de texto: manchete no topo, serviço e CTA no rodapé (05/11/2026)
 
 A F1 dava a todo papel de texto a faixa vertical da UNIÃO dos textos. No Ref 03 do Empório (manchete e apoio em y

@@ -18,6 +18,7 @@ import { desenharSvgPath, pinturaDoSvgPath, type CtxDePintura } from './vetor/de
 import { partesParaPintar } from './vetor/partes'
 import { borrarPreMultiplicado } from './vetor/blur-do-multicor'
 import { flattenRichTextStyles } from './rich-text-styles'
+import { segmentosDoTexto, segmentosNoTextoTransformado, trocarConteudo } from './compositor/destaques'
 import type { Rect } from './creatives/halo/halo'
 import {
   escalaDoBlur,
@@ -70,6 +71,18 @@ export interface RenderOptions {
    * são silenciosamente ignorados (comportamento antigo).
    */
   createCanvas?: (width: number, height: number) => HTMLCanvasElement
+}
+
+/** O que `pintarLinha` precisa para pintar uma linha por segmento (destaques). */
+interface PinturaPorSegmento {
+  /** O conteúdo TRANSFORMADO, em que as linhas e os offsets dos segmentos vivem. */
+  conteudo: string
+  segmentos: RichTextStyle[]
+  estilo: LayerStyle
+  /** A cor base da camada. */
+  fill: string
+  /** Família do segmento → família resolvida pelo fontChecker. */
+  familias: Map<string, string>
 }
 
 export class RenderEngine {
@@ -129,7 +142,10 @@ export class RenderEngine {
 
     switch (finalLayer.type) {
       case 'text':
-        await this.renderText(ctx, finalLayer, width, height, options)
+        // Texto com `destaques` (marcação [ ]) passa pelo MESMO caminho do
+        // texto comum (layout, fundo, blur, contorno, âncora); só a tinta de
+        // cada trecho é por segmento — ver pintarLinha
+        await this.renderText(ctx, finalLayer, width, height, options, segmentosDoTexto(finalLayer))
         break
       case 'rich-text':
         await this.renderRichText(ctx, finalLayer, options)
@@ -174,8 +190,13 @@ export class RenderEngine {
       overrides[styleKey] = value as never
     }
 
-    const transformedContent =
-      typeof dynamicValue === 'string' ? dynamicValue : layer.content
+    // Texto do fieldValue passa por `trocarConteudo`: [colchetes] viram
+    // `destaques` e os do modelo saem junto com o texto do modelo — senão os
+    // offsets antigos pintavam letras ao acaso no texto novo
+    const conteudo =
+      typeof dynamicValue === 'string'
+        ? trocarConteudo(layer, dynamicValue)
+        : { content: layer.content, destaques: layer.destaques }
     const transformedFileUrl =
       typeof dynamicValue === 'string' && this.looksLikeUrl(dynamicValue)
         ? dynamicValue
@@ -183,7 +204,8 @@ export class RenderEngine {
 
     return {
       ...layer,
-      content: transformedContent,
+      content: conteudo.content,
+      destaques: conteudo.destaques,
       fileUrl: transformedFileUrl,
       style: { ...layer.style, ...overrides },
     }
@@ -387,6 +409,7 @@ export class RenderEngine {
     width: number,
     height: number,
     options: RenderOptions,
+    segmentos: RichTextStyle[] | null = null,
   ): Promise<void> {
     // O fallback de fonte precisa valer também nos sub-renderers, que remontam
     // ctx.font a partir do style — sem isso o fallback só existia na primeira
@@ -411,12 +434,12 @@ export class RenderEngine {
     const blurRadius = blurFx?.enabled ? Math.round(blurFx.blurRadius ?? 0) : 0
     if (blurRadius > 0) {
       const done = await this.renderTextBlurred(
-        ctx, layer, resolvedStyle, width, height, blurRadius, options,
+        ctx, layer, resolvedStyle, width, height, blurRadius, options, segmentos,
       )
       if (done) return
     }
 
-    await this.drawTextContent(ctx, layer, resolvedStyle, width, height, options)
+    await this.drawTextContent(ctx, layer, resolvedStyle, width, height, options, segmentos)
   }
 
   /**
@@ -430,6 +453,7 @@ export class RenderEngine {
     width: number,
     height: number,
     options: RenderOptions,
+    segmentos: RichTextStyle[] | null = null,
   ): Promise<void> {
     const style = layer.style ?? {}
     const fontSize = Math.max(1, style.fontSize ?? 16)
@@ -439,7 +463,21 @@ export class RenderEngine {
     ctx.textBaseline = 'top'
     this.applyLetterSpacing(ctx, resolvedStyle, options.scaleFactor ?? 1)
 
-    const content = this.applyTextTransform(layer.content ?? '', style)
+    // Destaques: os offsets são no texto CRU; o textTransform é aplicado por
+    // pedaço (ß → SS muda o comprimento) e as famílias dos trechos passam pelo
+    // mesmo fontChecker da base
+    const cru = layer.content ?? ''
+    const remapeado = segmentos ? segmentosNoTextoTransformado(segmentos, cru, (s) => this.applyTextTransform(s, style)) : null
+    const content = remapeado ? remapeado.texto : this.applyTextTransform(cru, style)
+    let pintura: PinturaPorSegmento | undefined
+    if (remapeado && remapeado.segmentos.length > 0) {
+      const familias = new Map<string, string>()
+      for (const seg of remapeado.segmentos) {
+        if (!seg.fontFamily || familias.has(seg.fontFamily)) continue
+        familias.set(seg.fontFamily, (await this.resolveFontFamily({ ...layer, style: { ...style, fontFamily: seg.fontFamily } }, options)).fontFamily ?? seg.fontFamily)
+      }
+      pintura = { conteudo: content, segmentos: remapeado.segmentos, estilo: resolvedStyle, fill: style.color ?? '#000000', familias }
+    }
 
     // O Konva.Text do editor tem padding={6} fixo (konva-editable-text): o
     // conteúdo quebra em width-12 e começa 6px para dentro. Sem replicar, todo
@@ -467,7 +505,7 @@ export class RenderEngine {
     // horizontalmente em vez de quebrar, enquanto o editor Konva sempre quebra
     // (wrap="word") — 448 camadas publicavam texto deformado
     const config: TextboxConfig = layer.textboxConfig ?? { textMode: 'auto-wrap-fixed' }
-    await this.renderTextWithConfig(ctx, resolvedStyle, config, content, boxWidth, boxHeight, textStroke)
+    await this.renderTextWithConfig(ctx, resolvedStyle, config, content, boxWidth, boxHeight, textStroke, pintura)
   }
 
   /**
@@ -485,6 +523,7 @@ export class RenderEngine {
     height: number,
     blurRadius: number,
     options: RenderOptions,
+    segmentos: RichTextStyle[] | null = null,
   ): Promise<boolean> {
     const scaleFactor = options.scaleFactor ?? 1
 
@@ -519,7 +558,7 @@ export class RenderEngine {
     octx.translate(-bx, -by)
     // A sombra é desenhada DENTRO do cache (e borrada junto), como no editor
     this.applyShadow(octx, layer, scaleFactor)
-    await this.drawTextContent(octx, layer, resolvedStyle, width, height, options)
+    await this.drawTextContent(octx, layer, resolvedStyle, width, height, options, segmentos)
 
     const imageData = octx.getImageData(0, 0, off.width, off.height)
     applyStackBlur(imageData.data, off.width, off.height, Math.round(blurRadius * scaleFactor))
@@ -957,12 +996,17 @@ export class RenderEngine {
     width: number,
     height: number,
     textStroke?: { color: string; width: number },
+    pintura?: PinturaPorSegmento,
   ): Promise<void> {
     const layout = this.layoutTextLines(ctx, style, config, content, width, height)
 
     if (layout.mode === 'auto-resize-single') {
       // Linha única com a fonte que coube: desenhada no topo, sem contorno —
       // como sempre foi
+      if (pintura) {
+        this.pintarLinha(ctx, content, 0, width, 0, layout.fontSize, pintura)
+        return
+      }
       const x = this.getTextX(width, ctx.textAlign)
       ctx.fillText(content, x, 0)
       return
@@ -978,7 +1022,86 @@ export class RenderEngine {
       height,
       config.autoWrap?.autoExpand === true,
       textStroke,
+      pintura,
     )
+  }
+
+  /**
+   * Uma linha pintada POR SEGMENTO (destaques): cada trecho com a própria
+   * família, cor e sublinhado, medido com a própria fonte; o alinhamento usa a
+   * largura somada dos trechos (a família mais pesada é mais larga que a
+   * base, e o editor centra pelos segmentos desenhados). O contorno da camada
+   * e a sombra do ctx valem para todos os trechos, como no texto comum.
+   * `inicio` é o offset da linha em `pintura.conteudo`.
+   */
+  private static pintarLinha(
+    ctx: CanvasRenderingContext2D,
+    linha: string,
+    inicio: number,
+    width: number,
+    y: number,
+    fontSize: number,
+    pintura: PinturaPorSegmento,
+    textStroke?: { color: string; width: number },
+  ): void {
+    const fim = inicio + linha.length
+    const cortes = new Set<number>([inicio, fim])
+    for (const s of pintura.segmentos) {
+      if (s.end <= inicio || s.start >= fim) continue
+      cortes.add(Math.max(inicio, s.start))
+      cortes.add(Math.min(fim, s.end))
+    }
+    const pontos = [...cortes].sort((a, b) => a - b)
+    const fonteBase = ctx.font
+    const fonteDe = (seg: RichTextStyle | undefined) =>
+      seg?.fontFamily || seg?.fontStyle
+        ? this.buildFontString(fontSize, {
+            ...pintura.estilo,
+            ...(seg.fontFamily ? { fontFamily: pintura.familias.get(seg.fontFamily) ?? seg.fontFamily } : {}),
+            // `LayerStyle.fontStyle` só conhece itálico; o negrito do destaque vem pela família
+            ...(seg.fontStyle?.includes('italic') ? { fontStyle: 'italic' as const } : {}),
+          })
+        : fonteBase
+    const trechos: Array<{ texto: string; seg: RichTextStyle | undefined; fonte: string; largura: number }> = []
+    for (let i = 0; i < pontos.length - 1; i++) {
+      const a = pontos[i]
+      const b = pontos[i + 1]
+      if (b <= a) continue
+      const seg = pintura.segmentos.find((s) => s.start <= a && b <= s.end)
+      const fonte = fonteDe(seg)
+      ctx.font = fonte
+      const texto = linha.slice(a - inicio, b - inicio)
+      trechos.push({ texto, seg, fonte, largura: ctx.measureText(texto).width })
+    }
+    const larguraDaLinha = trechos.reduce((s, t) => s + t.largura, 0)
+    let x = 0
+    if (ctx.textAlign === 'center') x = (width - larguraDaLinha) / 2
+    else if (ctx.textAlign === 'right' || ctx.textAlign === 'end') x = width - larguraDaLinha
+
+    const alinhamento = ctx.textAlign
+    ctx.textAlign = 'left'
+    for (const t of trechos) {
+      ctx.font = t.fonte
+      ctx.fillStyle = t.seg?.fill ?? pintura.fill
+      ctx.fillText(t.texto, x, y)
+      if (textStroke) ctx.strokeText(t.texto, x, y)
+      if (t.seg?.textDecoration === 'underline' || t.seg?.textDecoration === 'line-through') {
+        // Como o Konva: sublinhado a +round(fontSize/2) do meio, riscado no meio, traço fontSize/15
+        const yLinha = ctx.textBaseline === 'middle' ? y + (t.seg.textDecoration === 'underline' ? Math.round(fontSize / 2) : 0) : y + (t.seg.textDecoration === 'underline' ? fontSize : fontSize / 2)
+        ctx.save()
+        ctx.beginPath()
+        ctx.moveTo(x, yLinha)
+        ctx.lineTo(x + t.largura, yLinha)
+        ctx.lineWidth = fontSize / 15
+        ctx.strokeStyle = t.seg.fill ?? pintura.fill
+        ctx.stroke()
+        ctx.restore()
+      }
+      x += t.largura
+    }
+    ctx.textAlign = alinhamento
+    ctx.font = fonteBase
+    ctx.fillStyle = pintura.fill
   }
 
   /**
@@ -1325,6 +1448,7 @@ export class RenderEngine {
     maxHeight?: number,
     autoExpand = false,
     textStroke?: { color: string; width: number },
+    pintura?: PinturaPorSegmento,
   ): void {
     if (!lines.length) return
 
@@ -1364,7 +1488,18 @@ export class RenderEngine {
       ctx.lineJoin = 'round'
     }
 
+    // Com destaques, cada linha é localizada no conteúdo (a quebra descarta o
+    // espaço consumido) para os offsets dos segmentos continuarem valendo
+    let cursor = 0
     for (const line of drawLines) {
+      if (pintura) {
+        let inicio = line.length > 0 ? pintura.conteudo.indexOf(line, cursor) : cursor
+        if (inicio === -1) inicio = cursor
+        this.pintarLinha(ctx, line, inicio, width, currentY, fontSize, pintura, textStroke)
+        cursor = inicio + line.length
+        currentY += lineHeight
+        continue
+      }
       // Sem o 4º argumento (maxWidth): ele COMPRIME os glifos quando a linha
       // passa da caixa. Palavra maior que a caixa transborda, como no editor
       ctx.fillText(line, x, currentY)

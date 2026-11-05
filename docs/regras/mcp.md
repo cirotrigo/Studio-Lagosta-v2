@@ -478,3 +478,13 @@ e nunca repetir a chamada igual.
 vídeo/música/motion e página-modelo ficam no editor; a skill diz isso ao Ciro e passa o `editUrl`, em vez de
 contornar por `camadas` ou de dirigir o navegador. Mudou o contrato de `ver-pagina`/`camadas`? Atualize a skill no
 mesmo PR.
+
+🔴 **Destaque por marcação no MCP (05/11/2026).** A manchete do compositor é camada `text` com `destaques`; a palavra
+destacada se edita por `ajustar-arte` → `camadas` → `definir` → `content` com `[colchetes]`. `ver-pagina` devolve
+`conteudoMarcado` (o `content` com os colchetes de volta) só nas camadas que têm destaques — mandar esse valor de volta
+reproduz a camada. Regras do `content`: o enviado é a verdade; o MESMO texto limpo mantém o destaque, texto diferente
+SEM colchetes apaga os `destaques` e volta o aviso (`destaque removido de "…": o texto mudou sem colchetes`); colchete
+sem par gera aviso e o trecho sai sem destaque; colchetes junto com `destaques` explícito são recusados. `destaque`
+(cor, família) vale para a camada inteira; sem ele, o da marca; sem estilo da marca, os trechos não são gravados e o
+aviso diz por quê. `slotValues` (string ou `{content}`) aceita colchetes; `criar-arte-de-modelo` ainda não. `destaques.*`
+e `destaque.*` são `inerte` no gate (`gate-v6`). Contrato completo em `render-e-texto.md`, "Destaque por marcação".

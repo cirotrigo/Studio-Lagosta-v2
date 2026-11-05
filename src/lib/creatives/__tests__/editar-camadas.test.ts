@@ -235,3 +235,118 @@ describe('schema e leitura', () => {
     expect(camadaParaLeitura({ ...pagina()[0], metadata: { grade: { id: 'g1' } } } as Layer).grade).toBe(true)
   })
 })
+
+describe('destaque por marcação (05/11/2026)', () => {
+  const marca = () => ({ fill: '#E30613', fontFamily: 'Montserrat Black' })
+  const comMarca = { ...ctx, destaqueDaMarca: marca }
+
+  it('definir content com [colchetes]: grava o texto LIMPO, os trechos em destaques e o estilo da marca', () => {
+    const r = aplicarOperacoesDeCamadas(pagina(), [definir('headline', { content: 'Picanha [na brasa]' })], comMarca)
+    expect(r.recusadas).toEqual([])
+    const h = r.camadas.find((l) => l.id === 'headline')!
+    expect(h).toMatchObject({ type: 'text', content: 'Picanha na brasa', destaques: [{ inicio: 8, fim: 16 }], destaque: marca() })
+    expect(h.content!.slice(8, 16)).toBe('na brasa')
+    expect(r.tocadas).toEqual(['headline'])
+    expect(r.avisos).toEqual([])
+  })
+
+  it('o estilo que a camada já tem fica (não volta ao da marca); destaque explícito vence', () => {
+    const base = pagina().map((l) => (l.id === 'headline' ? ({ ...l, destaque: { fill: '#00FF00' } } as Layer) : l))
+    expect(aplicarOperacoesDeCamadas(base, [definir('headline', { content: '[Picanha] hoje' })], comMarca).camadas.find((l) => l.id === 'headline')!.destaque).toEqual({ fill: '#00FF00' })
+    const r = aplicarOperacoesDeCamadas(pagina(), [definir('headline', { content: '[Picanha] hoje', destaque: { fill: '#123456' } })], comMarca)
+    expect(r.camadas.find((l) => l.id === 'headline')!.destaque).toEqual({ fill: '#123456' })
+  })
+
+  it('texto novo SEM colchetes numa camada que destacava perde os destaques (o texto mudou)', () => {
+    const base = pagina().map((l) => (l.id === 'headline' ? ({ ...l, content: 'Picanha na brasa', destaques: [{ inicio: 8, fim: 16 }], destaque: marca() } as Layer) : l))
+    const h = aplicarOperacoesDeCamadas(base, [definir('headline', { content: 'Costela no fogo' })], comMarca).camadas.find((l) => l.id === 'headline')!
+    const trocado = aplicarOperacoesDeCamadas(base, [definir('headline', { content: 'Costela no fogo' })], comMarca)
+    expect(h.content).toBe('Costela no fogo')
+    expect(h.destaques).toBeUndefined()
+    expect(trocado.avisos).toEqual(['destaque removido de "Título": o texto mudou sem colchetes'])
+    // O MESMO texto limpo (o content que ver-pagina devolveu) mantém os trechos, sem aviso (revisão M3).
+    const igual = aplicarOperacoesDeCamadas(base, [definir('headline', { content: 'Picanha na brasa' })], comMarca)
+    expect(igual.camadas.find((l) => l.id === 'headline')!.destaques).toEqual([{ inicio: 8, fim: 16 }])
+    expect(igual.avisos).toEqual([])
+    // Mexer só na cor não toca nos trechos.
+    expect(aplicarOperacoesDeCamadas(base, [definir('headline', { style: { color: '#000000' } })], comMarca).camadas.find((l) => l.id === 'headline')!.destaques).toEqual([{ inicio: 8, fim: 16 }])
+  })
+
+  it('colchete sem par vira AVISO, nunca recusa; sem colchetes nada muda', () => {
+    const r = aplicarOperacoesDeCamadas(pagina(), [definir('headline', { content: 'Picanha [na brasa' })], comMarca)
+    expect(r.recusadas).toEqual([])
+    expect(r.camadas.find((l) => l.id === 'headline')).toMatchObject({ content: 'Picanha na brasa' })
+    expect(r.camadas.find((l) => l.id === 'headline')!.destaques).toBeUndefined()
+    expect(r.avisos[0]).toMatch(/colchete aberto sem fechar/)
+    const simples = aplicarOperacoesDeCamadas(pagina(), [definir('headline', { content: 'Picanha na brasa' })], comMarca).camadas.find((l) => l.id === 'headline')!
+    expect(simples.destaques).toBeUndefined()
+    expect(simples.destaque).toBeUndefined()
+  })
+
+  it('adicionar texto com [colchetes] já nasce destacado', () => {
+    const r = aplicarOperacoesDeCamadas(pagina(), [{ op: 'adicionar', tipo: 'texto', campos: { content: 'Só [hoje]' } }], comMarca)
+    expect(r.camadas.find((l) => l.id === 'nova-1')).toMatchObject({ content: 'Só hoje', destaques: [{ inicio: 3, fim: 7 }], destaque: marca() })
+  })
+
+  it('adicionar texto com destaques/destaque EXPLÍCITOS grava os dois (fabricar funde como definir); fora do texto recusa', () => {
+    const r = aplicarOperacoesDeCamadas(pagina(), [{ op: 'adicionar', tipo: 'texto', campos: { content: 'Só hoje', destaques: [{ inicio: 3, fim: 7 }], destaque: { fill: '#123456' } } }], comMarca)
+    expect(r.recusadas).toEqual([])
+    expect(r.camadas.find((l) => l.id === 'nova-1')).toMatchObject({ content: 'Só hoje', destaques: [{ inicio: 3, fim: 7 }], destaque: { fill: '#123456' } })
+    const fora = aplicarOperacoesDeCamadas(pagina(), [{ op: 'adicionar', tipo: 'texto', campos: { content: 'Só hoje', destaques: [{ inicio: 3, fim: 70 }] } }], comMarca)
+    expect(fora.recusadas[0]).toMatchObject({ codigo: 'VALOR_FORA_DA_FAIXA', campos: ['destaques'] })
+  })
+
+  it('destaques explícitos: offsets no content final; [] tira; fora do texto e inicio ≥ fim são recusados', () => {
+    const ok = aplicarOperacoesDeCamadas(pagina(), [definir('headline', { destaques: [{ inicio: 0, fim: 6 }] })], comMarca)
+    expect(ok.recusadas).toEqual([])
+    expect(ok.camadas.find((l) => l.id === 'headline')).toMatchObject({ destaques: [{ inicio: 0, fim: 6 }], destaque: marca() })
+    const base = pagina().map((l) => (l.id === 'headline' ? ({ ...l, destaques: [{ inicio: 0, fim: 6 }] } as Layer) : l))
+    expect(aplicarOperacoesDeCamadas(base, [definir('headline', { destaques: [] })], comMarca).camadas.find((l) => l.id === 'headline')!.destaques).toBeUndefined()
+    expect(aplicarOperacoesDeCamadas(pagina(), [definir('headline', { destaques: [{ inicio: 10, fim: 99 }] })], comMarca).recusadas[0]).toMatchObject({ codigo: 'VALOR_FORA_DA_FAIXA', campos: ['destaques'] })
+    expect(validarFormatoDasOperacoes([definir('headline', { destaques: [{ inicio: 4, fim: 4 }] })], ctx)[0]).toMatchObject({ codigo: 'VALOR_FORA_DA_FAIXA', campos: ['destaques'] })
+    expect(validarFormatoDasOperacoes([definir('headline', { content: '[a] b', destaques: [{ inicio: 0, fim: 1 }] })], ctx)[0]).toMatchObject({ codigo: 'VALOR_FORA_DA_FAIXA', campos: ['destaques'] })
+  })
+
+  it('destaque: cor pelo lerCor; só em camada text (rich-text segue em quarentena; imagem não aceita)', () => {
+    expect(validarFormatoDasOperacoes([definir('headline', { destaque: { fill: 'nao-e-cor' } })], ctx)[0]).toMatchObject({ codigo: 'VALOR_FORA_DA_FAIXA', campos: ['destaque.fill'] })
+    expect(aplicarOperacoesDeCamadas(pagina(), [definir('logo', { destaque: { fill: '#FF0000' } })], ctx).recusadas[0]).toMatchObject({ codigo: 'CAMPO_NAO_PERMITIDO', campos: ['destaque'] })
+    const rico = [...pagina(), { id: 'rico', type: 'rich-text', name: 'Rico', visible: true, locked: false, order: 6, position: { x: 0, y: 0 }, size: { width: 100, height: 50 }, content: 'abc' } as Layer]
+    expect(aplicarOperacoesDeCamadas(rico, [definir('rico', { destaques: [{ inicio: 0, fim: 1 }] })], ctx).recusadas[0]).toMatchObject({ codigo: 'CAMPO_NAO_PERMITIDO', campos: ['destaques'] })
+    expect(operacaoDeCamadaSchema.safeParse({ op: 'definir', camada: 'x', campos: { destaque: { shadow: {} } } }).success).toBe(false)
+  })
+
+  it('sem estilo da marca: como o compositor, os trechos NÃO são gravados e o aviso diz por quê (revisão M5)', () => {
+    const r = aplicarOperacoesDeCamadas(pagina(), [definir('headline', { content: '[Picanha] hoje' })], ctx)
+    const h = r.camadas.find((l) => l.id === 'headline')!
+    expect(h.content).toBe('Picanha hoje')
+    expect(h.destaques).toBeUndefined()
+    expect(h.destaque).toBeUndefined()
+    expect(r.avisos).toEqual([expect.stringMatching(/marca não tem estilo de destaque.*saiu sem destaque/)])
+    // destaques explícitos, idem; com destaque explícito na mesma op, gravam.
+    expect(aplicarOperacoesDeCamadas(pagina(), [definir('headline', { destaques: [{ inicio: 0, fim: 4 }] })], ctx).camadas.find((l) => l.id === 'headline')!.destaques).toBeUndefined()
+    const comEstilo = aplicarOperacoesDeCamadas(pagina(), [definir('headline', { destaques: [{ inicio: 0, fim: 4 }], destaque: { fill: '#123456' } })], ctx)
+    expect(comEstilo.camadas.find((l) => l.id === 'headline')).toMatchObject({ destaques: [{ inicio: 0, fim: 4 }], destaque: { fill: '#123456' } })
+    expect(comEstilo.avisos).toEqual([])
+  })
+
+  it('destaque: null apaga o estilo próprio; destaque numa camada sem trechos é CAMPO_NAO_PERMITIDO (revisão L6)', () => {
+    const base = pagina().map((l) => (l.id === 'headline' ? ({ ...l, content: 'Picanha na brasa', destaques: [{ inicio: 8, fim: 16 }], destaque: { fill: '#00FF00' } } as Layer) : l))
+    const r = aplicarOperacoesDeCamadas(base, [definir('headline', { destaque: null })], comMarca)
+    expect(r.recusadas).toEqual([])
+    const h = r.camadas.find((l) => l.id === 'headline')!
+    expect(h).not.toHaveProperty('destaque')
+    expect(h.destaques).toEqual([{ inicio: 8, fim: 16 }])
+    expect(aplicarOperacoesDeCamadas(pagina(), [definir('headline', { destaque: { fill: '#123456' } })], comMarca).recusadas[0]).toMatchObject({ codigo: 'CAMPO_NAO_PERMITIDO', campos: ['destaque'] })
+    expect(aplicarOperacoesDeCamadas(pagina(), [{ op: 'adicionar', tipo: 'texto', campos: { content: 'Só hoje', destaque: { fill: '#123456' } } }], comMarca).recusadas[0]).toMatchObject({ codigo: 'CAMPO_NAO_PERMITIDO', campos: ['destaque'] })
+  })
+
+  it('camadaParaLeitura: texto com destaques devolve conteudoMarcado ao lado do content limpo', () => {
+    const l = { ...pagina()[2], content: 'Picanha na brasa\nsó hoje', destaques: [{ inicio: 8, fim: 16 }], destaque: marca() } as Layer
+    const r = camadaParaLeitura(l)
+    expect(r).toMatchObject({ content: 'Picanha na brasa\nsó hoje', conteudoMarcado: 'Picanha [na brasa]\nsó hoje', destaques: [{ inicio: 8, fim: 16 }], destaque: marca() })
+    expect(camadaParaLeitura(pagina()[2]).conteudoMarcado).toBeUndefined()
+    // ida e volta: o conteudoMarcado mandado de volta em definir content grava a mesma camada
+    const volta = aplicarOperacoesDeCamadas([l], [definir('headline', { content: r.conteudoMarcado as string })], comMarca).camadas[0]
+    expect(volta).toMatchObject({ content: l.content, destaques: l.destaques, destaque: l.destaque })
+  })
+})
