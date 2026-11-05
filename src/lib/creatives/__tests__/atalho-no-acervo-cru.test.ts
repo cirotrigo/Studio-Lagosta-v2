@@ -17,8 +17,6 @@ import { listarImagensDoDrive } from '../acervo'
 
 beforeEach(() => {
   zerarArvore()
-  // sem subpastas: a varredura fica na pasta configurada
-  drive.listFiles.mockResolvedValue({ items: [] })
   vi.spyOn(console, 'warn').mockImplementation(() => undefined)
 })
 
@@ -28,12 +26,9 @@ describe('listarImagensDoDrive', () => {
     expect(r.images.map((i) => i.driveFileId)).toContain('fileB')
     expect(JSON.stringify(r)).not.toMatch(/shortB|fileA/)
   })
-  it('atalho com destino no mesmo projeto continua', async () => {
-    drive.listFolderFiles.mockResolvedValueOnce([
-      { id: 'shortOk', name: 'ok', mimeType: 'image/jpeg', webContentLink: null, shortcutDetails: { targetId: 'fileAimg', targetMimeType: 'image/jpeg' } },
-      { id: 'shortA', name: 'fora', mimeType: 'image/jpeg', webContentLink: null, shortcutDetails: { targetId: 'fileB', targetMimeType: 'image/jpeg' } },
-    ] as never)
+  it('atalho não entra na listagem crua, nem com destino no mesmo projeto (a varredura em lote consulta pelo mimeType de imagem, #128)', async () => {
     const r = await listarImagensDoDrive(1)
-    expect(r.images.map((i) => i.driveFileId)).toEqual(['shortOk'])
+    expect(r.images.map((i) => i.driveFileId)).toEqual(['fileAimg'])
+    expect(JSON.stringify(r)).not.toMatch(/short/)
   })
 })
