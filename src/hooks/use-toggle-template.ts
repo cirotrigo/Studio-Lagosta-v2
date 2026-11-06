@@ -23,6 +23,8 @@ interface PageResponse {
   templateName: string | null
   createdAt: string
   updatedAt: string
+  /** Posts já entregues ao publicador: saem com a arte anterior. */
+  congelados?: string[]
 }
 
 export function useToggleTemplate(templateId: number) {
@@ -63,17 +65,25 @@ export function useToggleTemplate(templateId: number) {
       const message = variables.isTemplate
         ? 'Página marcada como modelo com sucesso'
         : 'Página desmarcada como modelo'
+      const n = updatedPage.congelados?.length ?? 0
+      const avisoCongelados =
+        n > 0
+          ? ` ${n} post${n === 1 ? '' : 's'} já entregue${n === 1 ? '' : 's'} ao publicador sa${n === 1 ? 'i' : 'em'} com a arte anterior.`
+          : ''
 
       toast({
         title: 'Sucesso',
-        description: message,
+        description: message + avisoCongelados,
+        ...(n > 0 ? { duration: 12_000 } : {}),
       })
     },
+    // O 409 MODELO_COM_POSTS traz na mensagem quantos e quais posts dependem da página: duração longa para ler.
     onError: (error: any) => {
       toast({
         title: 'Erro',
         description: error.message || 'Falha ao alterar status de modelo',
         variant: 'destructive',
+        duration: 12_000,
       })
     },
   })

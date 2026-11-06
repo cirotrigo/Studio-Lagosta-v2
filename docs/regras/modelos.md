@@ -167,3 +167,20 @@ arte existente só dava pelo MCP.
   `assertCuradorDoProjeto`, ao lado de `assertProjetoPermitido`. Ver o bloco
   abaixo — ENXERGAR um cliente e mandar na curadoria dele são portas
   diferentes, e só a primeira existia no conector.
+
+### "Tirar dos modelos" substitui "Excluir modelo", com guarda de posts (06/11/2026)
+
+A aba Modelos não apaga mais nada: o botão despromove pela `PATCH .../toggle-template` (`isTemplate: false`), e a
+página continua na pasta e nos posts. A rota `DELETE /api/projects/[projectId]/template-pages/[pageId]` foi
+removida (a `.../tags` ao lado fica).
+
+- 🔴 **Despromover muda a arte de post que tem copy própria.** O render só aplica `slotValues` quando a página é
+  modelo (`story-renderer.ts`): o contrato semântico vira `PAGINA_DE_CONTEUDO`, o legado perde a copy do post. Por
+  isso as duas portas que despromovem — a rota e `marcar-como-modelo` com `marcar: false` — rodam
+  `decidirDespromocao` (`src/lib/modelos/despromover.ts`) DENTRO da transação que grava, e recusam com 409
+  `MODELO_COM_POSTS` (mensagem com quantos e quais, e a lista `posts`) quando há post `DRAFT`, `SCHEDULED` ou
+  `POSTING` com copy própria apontando para a página. Cópia da página (`_copiaDaPagina`) e `slotValues` vazio não
+  contam: o render já os ignora.
+- Porta nova que despromova chama a mesma guarda; o teste de fonte `portas-de-modelo-invalidam.test.ts` confere as
+  duas que existem.
+- A resposta de sucesso traz `congelados` (posts com `laterPostId`, que saem com a arte anterior) e a UI avisa.

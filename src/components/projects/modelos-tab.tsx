@@ -5,7 +5,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
-import { AlertCircle, Lock, Pencil, Plus, Settings2, Tag, Trash2, Wand2 } from 'lucide-react'
+import { AlertCircle, Lock, Pencil, Plus, Settings2, StarOff, Tag, Wand2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '@/lib/api-client'
@@ -39,7 +39,7 @@ import {
 import { TagInput } from '@/components/projects/tag-input'
 import { ProjectTagsConfig } from '@/components/projects/project-tags-config'
 import {
-  useDeleteTemplatePage,
+  useTirarDosModelos,
   useUpdateTemplatePageTags,
 } from '@/hooks/use-template-page-tags'
 import { useCreateModelo } from '@/hooks/use-create-modelo'
@@ -302,24 +302,33 @@ function ModeloCard({
   canEdit: boolean
   tagSuggestions: string[]
 }) {
-  const deleteMutation = useDeleteTemplatePage(projectId)
+  const tirarMutation = useTirarDosModelos(projectId)
   const [previewAberta, setPreviewAberta] = React.useState(false)
 
-  const handleDelete = async () => {
+  /**
+   * Despromover, nunca excluir (docs/regras/modelos.md): a página continua na pasta e nos posts. A rota recusa (409)
+   * quando um post vivo usa a copy do modelo, e a mensagem dela já traz quantos e quais.
+   */
+  const handleTirar = async () => {
+    const pasta = page.templateName ?? page.Template?.name ?? 'de origem'
     const ok = window.confirm(
-      `Excluir o modelo "${page.name}"? Essa ação não pode ser desfeita.`,
+      `A página continua na pasta ${pasta} e nos posts que a usam. Tirar dos modelos?`,
     )
     if (!ok) return
     try {
-      const result = await deleteMutation.mutateAsync({ pageId: page.id })
-      if (result?.deletedTemplate) {
-        toast.success('Modelo excluído (template ficou vazio e foi removido)')
-      } else {
-        toast.success('Modelo excluído')
-      }
+      const { congelados = [] } = await tirarMutation.mutateAsync({
+        templateId: page.templateId,
+        pageId: page.id,
+      })
+      toast.success(`"${page.name}" saiu dos modelos`, {
+        description:
+          congelados.length > 0
+            ? `${congelados.length} post${congelados.length === 1 ? '' : 's'} já entregue${congelados.length === 1 ? '' : 's'} ao publicador sa${congelados.length === 1 ? 'i' : 'em'} com a arte anterior.`
+            : undefined,
+      })
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Erro ao excluir modelo'
-      toast.error(message)
+      const message = error instanceof Error ? error.message : 'Erro ao tirar dos modelos'
+      toast.error('Não deu para tirar dos modelos', { description: message, duration: 12_000 })
     }
   }
 
@@ -403,13 +412,12 @@ function ModeloCard({
             <Button
               size="sm"
               variant="outline"
-              onClick={handleDelete}
-              disabled={deleteMutation.isPending}
-              aria-label="Excluir modelo"
-              title="Excluir modelo"
-              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={handleTirar}
+              disabled={tirarMutation.isPending}
+              aria-label="Tirar dos modelos"
+              title="Tirar dos modelos"
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              <StarOff className="h-3.5 w-3.5" />
             </Button>
           </div>
         )}
