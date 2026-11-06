@@ -420,7 +420,7 @@ export function DriveItem({
                     <DropdownMenuSeparator />
                     {templateOptions.length > 0 && (
                       <>
-                        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Abrir no Template</div>
+                        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Abrir na pasta</div>
                         {templateOptions.map((t) => (
                           <DropdownMenuItem key={t.id} onSelect={() => onOpenInTemplate(item, t.id)}>
                             {t.name}

@@ -76,7 +76,7 @@ export function LayersPanel() {
     <div className="flex h-full min-h-[400px] min-w-[360px] flex-col gap-3 rounded-lg border border-border/40 bg-card/60 p-4 shadow-sm">
       <div>
         <h3 className="text-sm font-semibold">Layers</h3>
-        <p className="text-xs text-muted-foreground">Organize as camadas do template</p>
+        <p className="text-xs text-muted-foreground">Organize as camadas da página</p>
       </div>
       <ScrollArea className="flex-1">
         <div className="space-y-2 pr-2">

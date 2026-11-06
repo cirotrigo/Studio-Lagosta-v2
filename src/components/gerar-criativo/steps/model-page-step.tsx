@@ -62,8 +62,8 @@ export function ModelPageStep() {
             <div>
               <h3 className="font-medium">Nenhuma pagina modelo encontrada</h3>
               <p className="text-sm text-muted-foreground mt-1">
-                Este template nao possui paginas modelo (isTemplate: true). Crie uma pagina modelo
-                no editor de templates.
+                Esta pasta nao tem paginas modelo. Marque uma pagina como modelo
+                no editor (Marcar modelo).
               </p>
             </div>
             <Button variant="outline" asChild>

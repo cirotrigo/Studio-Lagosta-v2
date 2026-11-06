@@ -989,7 +989,7 @@ export function GerarVideoProvider({
           editorContext.setPageAudio(config)
           toast({
             title: 'Trilha sonora salva na página',
-            description: 'A configuração vale para este export e fica salva no template.',
+            description: 'A configuração vale para este export e fica salva na página.',
           })
         }}
       />

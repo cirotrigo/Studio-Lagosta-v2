@@ -230,7 +230,7 @@ export function ModelPageSelectionStep() {
             <div>
               <h3 className="font-medium">Nenhum modelo encontrado</h3>
               <p className="text-sm text-muted-foreground mt-1">
-                Marque uma pagina como modelo no editor de templates para comecar
+                Marque uma pagina como modelo no editor para comecar
               </p>
             </div>
           </div>

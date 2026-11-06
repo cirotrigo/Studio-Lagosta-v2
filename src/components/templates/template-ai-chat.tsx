@@ -563,7 +563,7 @@ export function TemplateAIChat({ projectId }: { projectId: number }) {
             {messages.length === 0 && (
               <div className="flex flex-col items-center justify-center py-8 text-center">
                 <p className="text-sm text-muted-foreground">
-                  Faça perguntas sobre design, conteúdo ou peça ajuda com seu template.
+                  Faça perguntas sobre design, conteúdo ou peça ajuda com sua arte.
                 </p>
               </div>
             )}

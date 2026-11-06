@@ -41,7 +41,7 @@ export function TemplateEditorClient({ templateId, prefillDriveImage, aiEditMode
     return (
       <div className="flex flex-col items-center justify-center rounded-lg border border-border/40 bg-card/60 p-10 text-center">
         <p className="mb-4 text-sm text-muted-foreground">
-          Não foi possível carregar o template solicitado.
+          Não foi possível abrir a pasta pedida.
         </p>
         <Button variant="outline" onClick={() => refetch()}>Tentar novamente</Button>
       </div>

@@ -68,7 +68,7 @@ export function ProjectSelectionStep() {
               <div className="flex-1 min-w-0">
                 <p className="font-medium truncate">{project.name}</p>
                 <p className="text-xs text-muted-foreground">
-                  {project._count?.Template || 0} templates
+                  {project._count?.Template || 0} pastas
                 </p>
               </div>
               <ChevronRight className="w-5 h-5 text-muted-foreground" />

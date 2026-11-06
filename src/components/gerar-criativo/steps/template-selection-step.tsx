@@ -86,7 +86,7 @@ export function TemplateSelectionStep() {
             <ChevronLeft className="w-5 h-5" />
           </Button>
           <div>
-            <h2 className="text-lg font-semibold">Selecione o Template</h2>
+            <h2 className="text-lg font-semibold">Selecione a pasta</h2>
           </div>
         </div>
         <Card className="p-8 text-center">
@@ -95,15 +95,15 @@ export function TemplateSelectionStep() {
               <LayoutTemplate className="w-8 h-8 text-muted-foreground" />
             </div>
             <div>
-              <h3 className="font-medium">Nenhum template encontrado</h3>
+              <h3 className="font-medium">Nenhuma pasta encontrada</h3>
               <p className="text-sm text-muted-foreground mt-1">
-                Este projeto nao possui templates. Crie um template primeiro.
+                Este projeto nao tem pastas. Crie uma pasta primeiro.
               </p>
             </div>
             <Button variant="outline" asChild>
               <Link href={`/projects/${selectedProjectId}/templates/new`}>
                 <Plus className="w-4 h-4 mr-2" />
-                Criar Template
+                Criar pasta
               </Link>
             </Button>
           </div>
@@ -119,7 +119,7 @@ export function TemplateSelectionStep() {
           <ChevronLeft className="w-5 h-5" />
         </Button>
         <div>
-          <h2 className="text-lg font-semibold">Selecione o Template</h2>
+          <h2 className="text-lg font-semibold">Selecione a pasta</h2>
           <p className="text-sm text-muted-foreground">
             Stories sao recomendados para publicacao rapida
           </p>
