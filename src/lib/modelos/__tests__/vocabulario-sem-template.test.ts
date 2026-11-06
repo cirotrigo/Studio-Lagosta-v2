@@ -4,8 +4,10 @@
  * editor é "Abrir no editor".
  *
  * Lê o TSX com o compilador e olha só o que vira tela: texto de JSX, string em atributo de JSX, string solta dentro
- * de `{…}` no JSX e o valor de `title`/`description`/`label`/`rotulo`/`placeholder` em objeto (toasts, menus).
- * Identificadores, rotas, query keys, comentários e valores como `via: 'template'` não são lidos.
+ * de `{…}` no JSX (inclusive os ramos de `?:`/`&&`/`||`, e um identificador que aponta para um `const` do MESMO
+ * arquivo com string) e o valor de `title`/`description`/`label`/`rotulo`/`placeholder` em objeto (toasts, menus).
+ * Identificadores, rotas, query keys, comentários e valores como `via: 'template'` não são lidos. Não vê: string que
+ * vem de outro arquivo, de prop, de função ou de `let`/parâmetro — o leitor é sintático, não segue tipos.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
@@ -40,6 +42,21 @@ export function textosVisiveis(fonte: string, nome = 'x.tsx'): Array<{ linha: nu
   const achados: Array<{ linha: number; texto: string }> = []
   const anotar = (n: ts.Node, texto: string) =>
     achados.push({ linha: sf.getLineAndCharacterOfPosition(n.getStart()).line + 1, texto })
+  // `const x = 'Texto'` (ou `?:` de strings) do mesmo arquivo: `{x}` no JSX é lido pelo valor.
+  const constantes = new Map<string, ts.Expression>()
+  const coletar = (n: ts.Node) => {
+    if (
+      ts.isVariableDeclaration(n) &&
+      ts.isIdentifier(n.name) &&
+      n.initializer &&
+      ts.isVariableDeclarationList(n.parent) &&
+      (n.parent.flags & ts.NodeFlags.Const) !== 0
+    )
+      constantes.set(n.name.text, n.initializer)
+    ts.forEachChild(n, coletar)
+  }
+  coletar(sf)
+  const resolvendo = new Set<string>()
   const textoDe = (n: ts.Node): string | null => {
     if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) return n.text
     if (ts.isTemplateExpression(n)) return [n.head.text, ...n.templateSpans.map((s) => s.literal.text)].join(' ')
@@ -50,6 +67,12 @@ export function textosVisiveis(fonte: string, nome = 'x.tsx'): Array<{ linha: nu
     const t = textoDe(n)
     if (t !== null) return anotar(n, t)
     if (ts.isParenthesizedExpression(n)) return ramos(n.expression)
+    if (ts.isIdentifier(n) && constantes.has(n.text) && !resolvendo.has(n.text)) {
+      resolvendo.add(n.text)
+      ramos(constantes.get(n.text)!)
+      resolvendo.delete(n.text)
+      return
+    }
     if (ts.isConditionalExpression(n)) return (ramos(n.whenTrue), ramos(n.whenFalse))
     if (ts.isBinaryExpression(n) && n.operatorToken.kind !== ts.SyntaxKind.EqualsEqualsEqualsToken) ramos(n.right)
   }
@@ -71,15 +94,18 @@ describe('vocabulário: "Template" não aparece no texto do editor, da Bancada, 
   it('o leitor acha o texto de tela e ignora identificador', () => {
     const fonte = `
       const rotuloEditar = cond ? 'Editar vídeo' : 'Editar Template'
+      const aviso = 'Template D'
+      const chave = 'template'
       export const X = () => (
         <div title="Template A" className="template">
-          Template B {ok ? 'Template C' : null} {via === 'template' && <span />}
+          Template B {ok ? 'Template C' : null} {via === 'template' && <span />} {aviso}
+          {lista.includes(chave) && <span />}
           <TemplatePanel templateId={1} />
           {toast({ title: \`Template \${n}\` })}
         </div>
       )`
     const textos = textosVisiveis(fonte).map((a) => a.texto.trim())
-    expect(textos).toEqual(expect.arrayContaining(['Editar Template', 'Template A', 'Template B', 'Template C', 'Template']))
+    expect(textos).toEqual(expect.arrayContaining(['Editar Template', 'Template A', 'Template B', 'Template C', 'Template', 'Template D']))
     expect(textos).not.toContain('template')
   })
 
