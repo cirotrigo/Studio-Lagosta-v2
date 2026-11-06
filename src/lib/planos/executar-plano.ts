@@ -32,6 +32,9 @@ import { startArtGeneration } from '@/lib/ai/creative-generation-service'
 import { enfileirarArte } from '@/lib/ai/generation-queue'
 import { lerCamadas } from '@/lib/posts/page-layers'
 import { MENOS_USADO_PRIMEIRO } from '@/lib/aprendizado/uso-de-modelo'
+import { formatoPeloTamanho } from '@/lib/compositor/formato'
+import { FORMATOS } from '@/lib/compositor/spec'
+import { PASTA_NAO_ARQUIVADA } from '@/lib/templates/classificar'
 import { lerPlano, transicionarItem, atualizarItem, statusDoItem } from '@/lib/planos/plano-service'
 import { progressoDoPlano, type StatusDoItem, type ViaDoItem } from '@/lib/planos/vocabulario'
 import {
@@ -489,29 +492,28 @@ async function enfileirarItemDeIA(item: ItemDoPlano, input: ExecutarPlanoInput):
   }
 }
 
-/** O `Template.type` que corresponde a cada formato de item. */
-const TIPO_POR_FORMATO: Record<string, 'STORY' | 'FEED' | 'SQUARE'> = {
-  story: 'STORY',
-  feed: 'FEED',
-  quadrado: 'SQUARE',
-}
-
 /**
  * O modelo pela ROTAÇÃO da casa: o menos usado primeiro (`MENOS_USADO_PRIMEIRO`,
  * com `nulls: 'first'` — em Postgres `ASC` é NULLS LAST e o nunca-usado tem de
- * vir antes), restrito ao formato do item. `null` quando o cliente não tem
- * modelo nenhum nesse formato.
+ * vir antes), restrito ao formato do item — pelo TAMANHO da página, não pela
+ * pasta (S2: modelo de feed mora em pasta story), e fora das pastas
+ * arquivadas. É a mesma lista que a bancada mostra. `null` quando o cliente
+ * não tem modelo nenhum nesse formato.
  */
 export async function modeloPorRotacao(
   projectId: number,
   formato: string | null | undefined,
 ): Promise<{ id: string; name: string } | null> {
-  const tipo = TIPO_POR_FORMATO[(formato ?? 'story').trim().toLowerCase()] ?? 'STORY'
-  return db.page.findFirst({
-    where: { isTemplate: true, Template: { projectId, type: tipo } },
+  const pedido = (formato ?? 'story').trim().toLowerCase()
+  const alvo = (FORMATOS as readonly string[]).includes(pedido) ? pedido : 'story'
+  // ponytail: lê todos os modelos do cliente (dezenas) e filtra em JS, porque o formato sai da proporção.
+  const modelos = await db.page.findMany({
+    where: { isTemplate: true, Template: { projectId, ...PASTA_NAO_ARQUIVADA } },
     orderBy: MENOS_USADO_PRIMEIRO,
-    select: { id: true, name: true },
+    select: { id: true, name: true, width: true, height: true },
   })
+  const m = modelos.find((p) => formatoPeloTamanho(p.width, p.height) === alvo)
+  return m ? { id: m.id, name: m.name } : null
 }
 
 /**

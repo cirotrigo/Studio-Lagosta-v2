@@ -15,8 +15,12 @@ export interface ModeloDoProjeto {
   tags: string[]
   templateId: number
   templateName: string
-  /** O formato do template dono da página. */
+  /** O tipo da PASTA dona da página — não é o formato (modelo de feed mora em pasta story). */
   tipo: 'STORY' | 'FEED' | 'SQUARE'
+  /** O formato pelo TAMANHO da página. É por ele que se filtra. */
+  formato: 'story' | 'feed' | 'quadrado'
+  /** Presente quando uma tag de formato da página discorda do tamanho. */
+  formatoDivergente?: true
   usedCount: number
   lastUsedAt: string | null
 }
