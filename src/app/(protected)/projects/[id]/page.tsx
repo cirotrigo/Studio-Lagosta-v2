@@ -74,7 +74,8 @@ export default function ProjectDetailPage() {
   const [selectedType, setSelectedType] = useState<string>('STORY')
   const queryClient = useQueryClient()
 
-  const activeTab = searchParams.get('tab') || 'templates'
+  // `?tab` ausente abre Modelos (S5, 06/11/2026). O MESMO default mora em `project-nav.tsx`.
+  const activeTab = searchParams.get('tab') || 'modelos'
 
   /*
     A agenda saiu da aba e virou rota (`/projects/[id]/agenda`) em 08/08/2026.
@@ -106,10 +107,10 @@ export default function ProjectDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['templates', projectId] })
       setIsDialogOpen(false)
       reset()
-      toast.success('Template criado com sucesso!')
+      toast.success('Pasta criada')
     },
     onError: () => {
-      toast.error('Erro ao criar template')
+      toast.error('Erro ao criar a pasta')
     },
   })
 
@@ -233,18 +234,18 @@ export default function ProjectDetailPage() {
           <div className="mb-3 flex justify-end">
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
               <DialogTrigger asChild>
-                <Button>
+                <Button variant="outline" size="sm">
                   <Plus className="w-4 h-4 mr-2" />
-                  Novo Template
+                  Nova pasta
                 </Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>Criar Novo Template</DialogTitle>
+                  <DialogTitle>Nova pasta</DialogTitle>
                 </DialogHeader>
                 <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                   <div>
-                    <Label htmlFor="name">Nome do Template</Label>
+                    <Label htmlFor="name">Nome da pasta</Label>
                     <Input
                       id="name"
                       {...register('name')}
@@ -256,7 +257,7 @@ export default function ProjectDetailPage() {
                   </div>
 
                   <div>
-                    <Label htmlFor="type">Tipo de Template</Label>
+                    <Label htmlFor="type">Formato</Label>
                     <Select value={selectedType} onValueChange={handleTypeChange}>
                       <SelectTrigger>
                         <SelectValue />
@@ -289,7 +290,7 @@ export default function ProjectDetailPage() {
                       Cancelar
                     </Button>
                     <Button type="submit" disabled={isSubmitting}>
-                      {isSubmitting ? 'Criando...' : 'Criar Template'}
+                      {isSubmitting ? 'Criando...' : 'Criar pasta'}
                     </Button>
                   </div>
                 </form>
@@ -303,12 +304,11 @@ export default function ProjectDetailPage() {
           />
         </TabsContent>
 
-        {/* Modelos mostra só os modelos de template. As artes de referência
+        {/* Modelos é a vitrine dos modelos do cliente. As artes de referência
             (artes estreladas que a IA imita) moram na Bancada. */}
         <TabsContent value="modelos" className="mt-3 md:mt-4">
           <p className="mb-3 text-sm text-muted-foreground">
-            Curadoria de templates por tema. Aplique tags para que a skill
-            /arte-rapida encontre o template certo a partir de uma frase em PT.
+            Os modelos do cliente. Usar cria uma cópia; o modelo nunca muda.
           </p>
           <ModelosTab projectId={projectId} canCurate={Boolean(projectDetails.canCurate)} />
         </TabsContent>

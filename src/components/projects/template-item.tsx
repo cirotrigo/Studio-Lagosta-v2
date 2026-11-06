@@ -222,7 +222,7 @@ export function TemplateItem({ template, onDuplicate, onDelete, index }: Templat
                     size="sm"
                     variant="ghost"
                     className="flex-1 h-8 bg-primary/95 hover:bg-primary text-white font-medium shadow-sm rounded-md"
-                    title="Editar Template"
+                    title="Abrir no editor"
                 >
                     <Link href={`/templates/${template.id}/editor`}>
                         <Edit className="h-3.5 w-3.5 sm:mr-1" />

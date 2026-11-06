@@ -35,8 +35,10 @@ type ItemDeMenu = {
 
 const ITENS: ItemDeMenu[] = [
   { chave: 'drive', rotulo: 'Drive' },
-  { chave: 'templates', rotulo: 'Templates' },
   { chave: 'modelos', rotulo: 'Modelos' },
+  // A chave continua 'templates' (`?tab=templates`, links e hábito); o rótulo
+  // virou Pastas em 06/11/2026, como 'assets' → Marca.
+  { chave: 'templates', rotulo: 'Pastas' },
   { chave: 'bancada', rotulo: 'Bancada', rota: 'bancada' },
   { chave: 'criativos', rotulo: 'Criativos' },
   { chave: 'agenda', rotulo: 'Agenda', rota: 'agenda' },
@@ -59,9 +61,9 @@ export function ProjectNav({ projectId }: { projectId: number }) {
     const porRota = ITENS.find((i) => i.rota && pathname.endsWith(`/${i.rota}`))
     if (porRota) return porRota.chave
     const tab = searchParams.get('tab')
-    // O default precisa ser o MESMO da página (`?tab` ausente → 'templates').
+    // O default precisa ser o MESMO da página (`?tab` ausente → 'modelos').
     // Divergir aqui acenderia um item enquanto outro conteúdo está na tela.
-    return ITENS.some((i) => i.chave === tab && !i.rota) ? tab! : 'templates'
+    return ITENS.some((i) => i.chave === tab && !i.rota) ? tab! : 'modelos'
   }, [pathname, searchParams])
 
   /**
