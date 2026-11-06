@@ -2053,6 +2053,7 @@ const LITERAIS_RESTANTE: Record<string, unknown> = {
       projectId: { type: 'number', description: 'ID do cliente.' },
       incluirNaoMarcadas: { type: 'boolean', description: 'Inclui páginas que ainda não são modelo (candidatas a promoção).' },
       limit: { type: 'number', description: 'Máximo de páginas (default 50, teto 200).' },
+      formato: { type: 'string', enum: ['story', 'feed', 'quadrado'], description: 'Só as páginas deste formato, pelo tamanho da página. Ausente = todos os formatos.' },
     },
     required: ['projectId'],
     additionalProperties: false,

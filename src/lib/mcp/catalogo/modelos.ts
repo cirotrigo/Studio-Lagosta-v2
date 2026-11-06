@@ -117,7 +117,7 @@ export const toolsDeModelos = [
   definirTool({
     nome: 'listar-modelos',
     descricao:
-      'Lista os modelos do cliente (as páginas que escolher-modelo consegue encontrar) com as tags de tema de cada um. Com incluirNaoMarcadas=true, lista também as páginas comuns — útil para achar uma arte boa e promovê-la com marcar-como-modelo. Clientes sem modelo nenhum dependem de criar-arte (do zero) para tudo.',
+      'Lista os modelos do cliente (as páginas que escolher-modelo consegue encontrar) com as tags de tema de cada um. Com incluirNaoMarcadas=true, lista também as páginas comuns — útil para achar uma arte boa e promovê-la com marcar-como-modelo. Com formato, só as páginas daquele formato (pelo tamanho da página, o mesmo filtro de escolher-modelo); sem ele, todos. Clientes sem modelo nenhum dependem de criar-arte (do zero) para tudo.',
     schema: z.object({
       projectId: z.number().describe('ID do cliente.'),
       incluirNaoMarcadas: z
@@ -125,6 +125,10 @@ export const toolsDeModelos = [
         .optional()
         .describe('Inclui páginas que ainda não são modelo (candidatas a promoção).'),
       limit: z.number().optional().describe('Máximo de páginas (default 50, teto 200).'),
+      formato: z
+        .enum(['story', 'feed', 'quadrado'])
+        .optional()
+        .describe('Só as páginas deste formato, pelo tamanho da página. Ausente = todos os formatos.'),
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     acesso: { tipo: 'projeto' },
@@ -134,8 +138,9 @@ export const toolsDeModelos = [
       const projectId = args.projectId as number
       const incluirNaoMarcadas = args.incluirNaoMarcadas === true
       const take = Math.min(typeof args.limit === 'number' ? args.limit : 50, 200)
+      const formato = typeof args.formato === 'string' ? args.formato : undefined
 
-      const paginas = await db.page.findMany({
+      const lidas = await db.page.findMany({
         where: {
           // Pasta arquivada fica fora, como em escolher-modelo (S2).
           Template: { projectId, ...PASTA_NAO_ARQUIVADA },
@@ -152,8 +157,13 @@ export const toolsDeModelos = [
           Template: { select: { id: true, name: true, type: true, tags: true } },
         },
         orderBy: [{ isTemplate: 'desc' }, { updatedAt: 'desc' }],
-        take,
+        // O formato sai da proporção, então o filtro é em JS e o limit vem DEPOIS dele.
+        // ponytail: com formato lê todas as páginas do cliente (colunas leves); filtro no SQL se ficar pesado.
+        ...(formato ? {} : { take }),
       })
+      const paginas = formato
+        ? lidas.filter((p) => formatoPeloTamanho(p.width, p.height) === formato).slice(0, take)
+        : lidas
 
       const modelos = paginas
         .filter((p) => p.isTemplate)
