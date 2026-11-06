@@ -13,6 +13,9 @@ import { useParams } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { ChevronDown } from 'lucide-react'
+import { ArtesReferenciaTab } from '@/components/projects/artes-referencia-tab'
 import { api } from '@/lib/api-client'
 import { usePageMetadata } from '@/contexts/page-metadata'
 import { BancadaCompositor } from '@/components/bancada/bancada-compositor'
@@ -133,6 +136,19 @@ export default function BancadaPage() {
 
       {/* Os pilares saíram da aba Marca: são planejamento (SOBRE O QUÊ a marca fala), e é aqui que a semana é montada. */}
       <PlanejamentoDePilares projectId={projectId} />
+
+      {/* As artes estreladas que a IA imita ("Base da arte"): vieram da aba Modelos. */}
+      <Collapsible className="group space-y-3">
+        <CollapsibleTrigger className="flex w-full items-center justify-between text-left">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Referências de estilo da IA
+          </h2>
+          <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <ArtesReferenciaTab projectId={projectId} />
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   )
 }
