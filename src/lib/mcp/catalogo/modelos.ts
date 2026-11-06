@@ -183,7 +183,7 @@ export const toolsDeModelos = [
   definirTool({
     nome: 'marcar-como-modelo',
     descricao:
-      'Promove uma página a MODELO do cliente (ou despromove): modelos são o que escolher-modelo encontra por tema, então uma arte que ficou boa pode virar base das próximas. As tags são o que casa o modelo com o tema pedido (ex: "happy-hour", "almoco-executivo") — sem tag, o modelo não é encontrado por tema.\n\nConfirme com a pessoa antes de marcar: modelo aparece para todos que criam arte deste cliente. Tags enviadas SUBSTITUEM as atuais.',
+      'Promove uma página a MODELO do cliente (ou despromove): modelos são o que escolher-modelo encontra por tema, então uma arte que ficou boa pode virar base das próximas. As tags são o que casa o modelo com o tema pedido (ex: "happy-hour", "almoco-executivo") — sem tag, o modelo não é encontrado por tema.\n\nConfirme com a pessoa antes de marcar: modelo aparece para todos que criam arte deste cliente. Tags enviadas SUBSTITUEM as atuais. Despromover é recusado (MODELO_COM_POSTS, com a lista) quando um post em rascunho, agendado ou publicando usa a página com copy própria: o render só aplica essa copy em modelo.',
     schema: z.object({
       projectId: z.number().describe('ID do cliente.'),
       pageId: z.string().describe('A página a marcar (de criar-arte, ajustar-arte ou listar-modelos).'),
@@ -232,12 +232,24 @@ export const toolsDeModelos = [
         })
       // B1d (checkpoint f): trocar isTemplate muda o que o render desenha — os renders da página voltam à fila na
       // mesma transação (e uma falha semântica PAGINA_DE_CONTEUDO se recupera quando a página vira modelo).
-      const { invalidateScheduledRenders } = await import('../../posts/invalidate-renders')
+      // Despromover passa pela guarda de posts dependentes (a mesma da rota toggle-template): post vivo com copy
+      // própria perderia essa copy no próximo render.
+      const [{ invalidateScheduledRenders }, { decidirDespromocao, postsQueDependemDaPagina }] = await Promise.all([
+        import('../../posts/invalidate-renders'),
+        import('../../modelos/despromover'),
+      ])
+      let congelados: string[] = []
       const updated =
         page.isTemplate !== marcar
           ? await db.$transaction(async (tx) => {
+              if (page.isTemplate && !marcar) {
+                const decisao = decidirDespromocao(await postsQueDependemDaPagina(tx, pageId))
+                if (!decisao.permitido) {
+                  throw new CreativeError('MODELO_COM_POSTS', decisao.mensagem, 409, { posts: decisao.posts })
+                }
+              }
               const r = await atualizar(tx)
-              await invalidateScheduledRenders(tx, { pageIds: [pageId] })
+              ;({ congelados } = await invalidateScheduledRenders(tx, { pageIds: [pageId] }))
               return r
             })
           : await atualizar(db)
@@ -249,6 +261,9 @@ export const toolsDeModelos = [
         mensagem: marcar
           ? `"${updated.name}" agora é modelo do cliente${tagsFinais.length ? ` (temas: ${tagsFinais.join(', ')})` : ''}.`
           : `"${updated.name}" deixou de ser modelo.`,
+        ...(congelados.length > 0
+          ? { congelados, avisoCongelados: `${congelados.length} post(s) já entregues ao publicador saem com a arte anterior.` }
+          : {}),
         ...(marcar && tagsFinais.length === 0
           ? {
               aviso:

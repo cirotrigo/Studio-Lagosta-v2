@@ -15,6 +15,7 @@ describe('as portas que trocam isTemplate invalidam os renders da página, na me
     const t = ler('src/app/api/templates/[id]/pages/[pageId]/toggle-template/route.ts')
     expect(t).toMatch(/existingPage\.isTemplate !== validatedData\.isTemplate/)
     expect(t).toMatch(/db\.\$transaction\(async \(tx\) => \{[\s\S]*tx\.page\.update\([\s\S]*invalidateScheduledRenders\(tx, \{ pageIds: \[pageId\] \}\)/)
+    expect(t).toMatch(/db\.\$transaction\(async \(tx\) => \{[\s\S]*decidirDespromocao\(await postsQueDependemDaPagina\(tx, pageId\)\)[\s\S]*tx\.page\.update\(/)
   })
 
   it('marcar-como-modelo (MCP)', () => {
@@ -23,6 +24,8 @@ describe('as portas que trocam isTemplate invalidam os renders da página, na me
     expect(ini).toBeGreaterThan(-1)
     const bloco = t.slice(ini, ini + 5000)
     expect(bloco).toMatch(/page\.isTemplate !== marcar/)
-    expect(bloco).toMatch(/db\.\$transaction\(async \(tx\) => \{\s*const r = await atualizar\(tx\)\s*await invalidateScheduledRenders\(tx, \{ pageIds: \[pageId\] \}\)/)
+    expect(bloco).toMatch(/db\.\$transaction\(async \(tx\) => \{[\s\S]*await atualizar\(tx\)[\s\S]*invalidateScheduledRenders\(tx, \{ pageIds: \[pageId\] \}\)/)
+    // S1 (06/11/2026): despromover passa pela guarda de posts dependentes ANTES de gravar, na mesma transação.
+    expect(bloco).toMatch(/db\.\$transaction\(async \(tx\) => \{[\s\S]*decidirDespromocao\(await postsQueDependemDaPagina\(tx, pageId\)\)[\s\S]*await atualizar\(tx\)/)
   })
 })

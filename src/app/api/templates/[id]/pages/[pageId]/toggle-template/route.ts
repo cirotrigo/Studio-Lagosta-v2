@@ -8,6 +8,7 @@ import {
   hasTemplateWriteAccess,
 } from '@/lib/templates/access'
 import { hasProjectOwnership } from '@/lib/projects/access'
+import { decidirDespromocao, postsQueDependemDaPagina } from '@/lib/modelos/despromover'
 
 const toggleTemplateSchema = z.object({
   isTemplate: z.boolean(),
@@ -77,19 +78,43 @@ export async function PATCH(
      * do post; o contrato semântico só vale em modelo) — os renders da página voltam à fila na MESMA transação, e uma
      * falha semântica `PAGINA_DE_CONTEUDO` se recupera quando a página vira modelo. Sem mudança, nada a invalidar.
      */
-    const page =
+    /**
+     * Despromover (true → false) passa pela guarda de posts dependentes (`src/lib/modelos/despromover.ts`): post vivo
+     * com copy própria perderia essa copy no próximo render. A leitura roda DENTRO da transação que grava.
+     */
+    const despromovendo = existingPage.isTemplate && !validatedData.isTemplate
+    const resultado =
       existingPage.isTemplate !== validatedData.isTemplate
         ? await db.$transaction(async (tx) => {
+            if (despromovendo) {
+              const decisao = decidirDespromocao(await postsQueDependemDaPagina(tx, pageId))
+              if (!decisao.permitido) return { recusa: decisao }
+            }
             const atualizada = await tx.page.update({ where: { id: pageId }, data: { isTemplate: validatedData.isTemplate } })
-            await invalidateScheduledRenders(tx, { pageIds: [pageId] })
-            return atualizada
+            const { congelados } = await invalidateScheduledRenders(tx, { pageIds: [pageId] })
+            return { page: atualizada, congelados }
           })
-        : await db.page.update({ where: { id: pageId }, data: { isTemplate: validatedData.isTemplate } })
+        : { page: await db.page.update({ where: { id: pageId }, data: { isTemplate: validatedData.isTemplate } }), congelados: [] }
 
-    // Deserializar layers na resposta
+    if ('recusa' in resultado) {
+      return NextResponse.json(
+        {
+          error: 'MODELO_COM_POSTS',
+          mensagem: resultado.recusa.mensagem,
+          // `message` repete a frase: é o campo que `apiClient` lê para montar o erro na UI.
+          message: resultado.recusa.mensagem,
+          posts: resultado.recusa.posts,
+        },
+        { status: 409 },
+      )
+    }
+
+    const { page, congelados } = resultado
+    // Deserializar layers na resposta. `congelados`: posts já entregues ao publicador, que saem com a arte anterior.
     const pageWithParsedLayers = {
       ...page,
       layers: typeof page.layers === 'string' ? JSON.parse(page.layers) : page.layers,
+      congelados,
     }
 
     return NextResponse.json(pageWithParsedLayers)
