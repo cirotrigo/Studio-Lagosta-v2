@@ -13,7 +13,8 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, Copy, Loader2, MoreVertical, Pencil, Search, StarOff, Tag } from 'lucide-react'
-import { toast } from 'sonner'
+// O Toaster montado no layout é o do `use-toast`; o do sonner não está montado (toast de 'sonner' some).
+import { toast } from '@/hooks/use-toast'
 
 import { api } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
@@ -106,7 +107,11 @@ export function ModelosGrid({ projectId, modelos, canCurate, compact, formatoFix
     [modelos, formatoFixo],
   )
   const formatos = React.useMemo(() => formatosPresentes(doFormato), [doFormato])
-  const temas = React.useMemo(() => chipsDeTema(doFormato, pilares), [doFormato, pilares])
+  // Só os temas que existem no formato escolhido: chip que leva a lista vazia não ajuda.
+  const temas = React.useMemo(
+    () => chipsDeTema(formato ? doFormato.filter((m) => m.formato === formato) : doFormato, pilares),
+    [doFormato, formato, pilares],
+  )
   const visiveis = React.useMemo(
     () => filtrarEOrdenar(doFormato, { busca, formato: formatoFixo ? null : formato, tema }),
     [doFormato, busca, formato, formatoFixo, tema],
@@ -121,19 +126,19 @@ export function ModelosGrid({ projectId, modelos, canCurate, compact, formatoFix
     if (onUsar) return onUsar(modelo)
     try {
       const copia = await usar.mutateAsync({ pageId: modelo.id })
-      toast.success(`Criamos uma cópia em ${copia.pastaNome}`)
+      toast({ title: `Criamos uma cópia em ${copia.pastaNome}` })
       router.push(copia.editorUrl)
     } catch (erro) {
-      toast.error('Não deu para usar o modelo', { description: mensagemDe(erro, 'Tente de novo.'), duration: 10_000 })
+      toast({ title: 'Não deu para usar o modelo', description: mensagemDe(erro, 'Tente de novo.'), variant: 'destructive', duration: 10_000 })
     }
   }
 
   const handleDuplicar = async (modelo: ModeloDoProjeto) => {
     try {
       const copia = await duplicar.mutateAsync({ pageId: modelo.id })
-      toast.success(`Modelo duplicado em ${copia.pastaNome}`)
+      toast({ title: `Modelo duplicado em ${copia.pastaNome}` })
     } catch (erro) {
-      toast.error('Não deu para duplicar', { description: mensagemDe(erro, 'Tente de novo.'), duration: 10_000 })
+      toast({ title: 'Não deu para duplicar', description: mensagemDe(erro, 'Tente de novo.'), variant: 'destructive', duration: 10_000 })
     }
   }
 
@@ -144,15 +149,18 @@ export function ModelosGrid({ projectId, modelos, canCurate, compact, formatoFix
     try {
       const { congelados = [] } = await tirar.mutateAsync({ templateId: modelo.templateId, pageId: modelo.id })
       const n = congelados.length
-      toast.success(`"${modelo.name}" saiu dos modelos`, {
+      toast({
+        title: `"${modelo.name}" saiu dos modelos`,
         description:
           n > 0
             ? `${n} post${n === 1 ? '' : 's'} já entregue${n === 1 ? '' : 's'} ao publicador sa${n === 1 ? 'i' : 'em'} com a arte anterior.`
             : undefined,
       })
     } catch (erro) {
-      toast.error('Não deu para tirar dos modelos', {
+      toast({
+        title: 'Não deu para tirar dos modelos',
         description: mensagemDe(erro, 'Tente de novo.'),
+        variant: 'destructive',
         duration: 12_000,
       })
     }
@@ -186,7 +194,7 @@ export function ModelosGrid({ projectId, modelos, canCurate, compact, formatoFix
     <div className="space-y-4">
       <div className="space-y-3">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="relative min-w-0 flex-1 sm:max-w-sm">
+          <div className="relative w-full min-w-0 sm:w-auto sm:max-w-sm sm:flex-1">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={busca}
@@ -446,10 +454,10 @@ function TagsDoModeloDialog({
     if (!modelo) return
     try {
       await atualizar.mutateAsync({ pageId: modelo.id, tags: rascunho })
-      toast.success('Tags atualizadas')
+      toast({ title: 'Tags atualizadas' })
       onClose()
     } catch (erro) {
-      toast.error('Não deu para salvar as tags', { description: mensagemDe(erro, 'Tente de novo.') })
+      toast({ title: 'Não deu para salvar as tags', description: mensagemDe(erro, 'Tente de novo.'), variant: 'destructive' })
     }
   }
 

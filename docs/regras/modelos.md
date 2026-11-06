@@ -184,3 +184,21 @@ removida (a `.../tags` ao lado fica).
 - Porta nova que despromova chama a mesma guarda; o teste de fonte `portas-de-modelo-invalidam.test.ts` confere as
   duas que existem.
 - A resposta de sucesso traz `congelados` (posts com `laterPostId`, que saem com a arte anterior) e a UI avisa.
+
+### A aba Modelos é a vitrine; aba padrão do projeto (S5, 06/11/2026)
+
+`?tab` ausente abre **Modelos** (`projects/[id]/page.tsx` e `project-nav.tsx`, que precisam do MESMO default). A
+vitrine é `ModelosGrid` (`src/components/modelos/modelos-grid.tsx`), o mesmo componente do painel do editor (S7, com
+`compact`), sobre `GET /api/projects/[id]/modelos`: um cartão por modelo, busca e chips no navegador, "Usar" cria a
+cópia em Avulsas. A regra (tags técnicas, chips, ordem por `lastUsedAt`) mora em `src/lib/modelos/vitrine.ts`.
+
+- **Tag técnica nova (gravada pelo sistema, não é tema) entra em `TAGS_TECNICAS`/`PREFIXOS_TECNICOS`**, senão vira
+  chip de tema na vitrine.
+- **Toda mutação de modelo invalida `['modelos', projectId]`** (ou o prefixo `['modelos']` quando o hook só conhece o
+  `templateId`, como `useToggleTemplate`). `['template-pages']` continua sendo invalidado: o seletor do gerador de
+  criativo no editor (`use-template-pages.ts`) ainda lê `GET /api/templates/[id]/template-pages`.
+- 🔴 **`toast` de `'sonner'` não aparece**: o layout monta só o `Toaster` do `use-toast` (`src/app/layout.tsx`). Tela
+  nova usa `toast` de `@/hooks/use-toast`. Medido em 06/11: os toasts de sonner da aba antiga (inclusive os do
+  "Tirar dos modelos" da S1) nunca chegavam à tela.
+- **Nas telas do projeto, a pasta (`Template`) se chama Pasta** ("Nova pasta", "Pastas da equipe"); a chave
+  `templates` da URL e das query keys não muda.

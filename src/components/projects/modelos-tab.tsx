@@ -9,7 +9,7 @@
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronDown, Plus, Settings2 } from 'lucide-react'
-import { toast } from 'sonner'
+import { toast } from '@/hooks/use-toast'
 
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -69,7 +69,7 @@ function CreateModeloDialog({
 
   const handleSubmit = async (action: 'create' | 'createAndOpen') => {
     if (!name.trim()) {
-      toast.error('Dá um nome pro modelo')
+      toast({ title: 'Dá um nome pro modelo', variant: 'destructive' })
       return
     }
     try {
@@ -79,14 +79,14 @@ function CreateModeloDialog({
         dimensions: MODELO_DIMENSIONS[type],
         tags,
       })
-      toast.success('Modelo criado')
+      toast({ title: 'Modelo criado' })
       onOpenChange(false)
       reset()
       if (action === 'createAndOpen') {
         router.push(`/templates/${created.templateId}/editor?pageId=${created.pageId}`)
       }
     } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : 'Erro ao criar modelo')
+      toast({ title: error instanceof Error ? error.message : 'Erro ao criar modelo', variant: 'destructive' })
     }
   }
 
@@ -194,9 +194,9 @@ export function ModelosTab({ projectId, canCurate }: ModelosTabProps) {
               onOpenChange={setTagsManagerOpen}
             >
               <SheetTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <Settings2 className="mr-1.5 h-4 w-4" />
-                  Gerenciar tags
+                <Button variant="outline" size="sm" aria-label="Gerenciar tags">
+                  <Settings2 className="h-4 w-4 sm:mr-1.5" />
+                  <span className="hidden sm:inline">Gerenciar tags</span>
                 </Button>
               </SheetTrigger>
               <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
