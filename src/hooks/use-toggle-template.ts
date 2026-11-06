@@ -53,12 +53,11 @@ export function useToggleTemplate(templateId: number) {
         )
       })
 
-      // Invalidação por PREFIXO, não por templateId. A aba Modelos do projeto
-      // consulta /api/templates/[seed]/template-pages — endpoint que devolve as
-      // páginas de TODOS os templates do projeto, mas fica cacheado sob o id do
-      // PRIMEIRO template ('seedTemplateId' em modelos-tab.tsx). Promover uma
-      // página de qualquer outro template não invalidava essa entrada, e o
-      // modelo recém-marcado não aparecia na aba até um refresh.
+      // A vitrine de Modelos lê ['modelos', projectId]; este hook só conhece o
+      // templateId, então invalida por PREFIXO. ['template-pages'] (também por
+      // prefixo) é o seletor do gerador de criativo no editor
+      // (use-template-pages.ts), cacheado sob outro templateId.
+      queryClient.invalidateQueries({ queryKey: ['modelos'] })
       queryClient.invalidateQueries({ queryKey: ['template-pages'] })
 
       // Mostrar mensagem de sucesso

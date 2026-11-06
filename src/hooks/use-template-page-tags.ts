@@ -26,10 +26,9 @@ export function useUpdateTemplatePageTags(projectId: number) {
         { tags },
       ),
     onSuccess: () => {
-      // Template pages are queried via /api/templates/[id]/template-pages
-      // and cached under ['template-pages', templateId]. The endpoint returns
-      // all pages across the project's templates, so any cached entry under
-      // this prefix should be invalidated.
+      // A vitrine de Modelos lê ['modelos', projectId]. ['template-pages'] (por prefixo) é o seletor de modelos do
+      // gerador de criativo no editor (use-template-pages.ts), que ainda lê GET /api/templates/[id]/template-pages.
+      queryClient.invalidateQueries({ queryKey: ['modelos', projectId] })
       queryClient.invalidateQueries({ queryKey: ['template-pages'] })
       // The PATCH endpoint also auto-creates ProjectTag entries for any new
       // tag names — invalidate the project tags cache so the suggestion

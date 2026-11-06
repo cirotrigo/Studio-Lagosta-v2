@@ -63,7 +63,7 @@ function useCopiarModelo(projectId: number, acao: 'usar' | 'duplicar') {
       ),
     onSuccess: (copia) => {
       queryClient.invalidateQueries({ queryKey: ['modelos', projectId] })
-      // Por prefixo: a aba Modelos cacheia sob o id do primeiro template (ver docs/regras/modelos.md).
+      // Por prefixo: o seletor de modelos do gerador de criativo no editor (use-template-pages.ts).
       queryClient.invalidateQueries({ queryKey: ['template-pages'] })
       queryClient.invalidateQueries({ queryKey: ['pages', copia.templateId] })
     },
