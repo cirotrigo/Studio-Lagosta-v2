@@ -9,11 +9,11 @@ interface UpdateTagsResponse {
   updatedAt: string
 }
 
-interface DeletePageResponse {
-  deleted: true
-  pageId: string
-  templateId: number
-  deletedTemplate: boolean
+interface TirarDosModelosResponse {
+  id: string
+  isTemplate: boolean
+  /** Posts já entregues ao publicador: saem com a arte anterior. */
+  congelados: string[]
 }
 
 export function useUpdateTemplatePageTags(projectId: number) {
@@ -39,19 +39,29 @@ export function useUpdateTemplatePageTags(projectId: number) {
   })
 }
 
-export function useDeleteTemplatePage(projectId: number) {
+/**
+ * "Tirar dos modelos": despromove a página (`isTemplate: false`) em vez de apagá-la — a página continua na pasta e
+ * nos posts que a usam. A rota recusa com 409 `MODELO_COM_POSTS` quando um post vivo depende da copy do modelo.
+ */
+export function useTirarDosModelos(projectId: number) {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ pageId }: { pageId: string }) =>
-      api.delete<DeletePageResponse>(
-        `/api/projects/${projectId}/template-pages/${pageId}`,
+    mutationFn: ({ templateId, pageId }: { templateId: number; pageId: string }) =>
+      api.patch<TirarDosModelosResponse>(
+        `/api/templates/${templateId}/pages/${pageId}/toggle-template`,
+        { isTemplate: false },
       ),
-    onSuccess: () => {
-      // The deletion may have removed the parent Template too, so refresh
-      // both the templates list and the template-pages bundle.
-      queryClient.invalidateQueries({ queryKey: ['templates'] })
+    onSuccess: (_r, { templateId, pageId }) => {
       queryClient.invalidateQueries({ queryKey: ['template-pages'] })
+      queryClient.invalidateQueries({ queryKey: ['modelos', projectId] })
+      // Escrita cirúrgica no cache do editor (como page-model-control.tsx): refetch de ['pages'] traria todas as
+      // páginas COM layers só por causa de um booleano.
+      queryClient.setQueryData(
+        ['pages', templateId],
+        (paginas: Array<{ id: string }> | undefined) =>
+          paginas?.map((p) => (p.id === pageId ? { ...p, isTemplate: false } : p)),
+      )
     },
   })
 }
