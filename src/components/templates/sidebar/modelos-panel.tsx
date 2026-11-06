@@ -10,7 +10,6 @@
  */
 
 import * as React from 'react'
-import { useQueryClient } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
 // O Toaster montado no layout é o do `use-toast` (o de 'sonner' não aparece).
 import { toast } from '@/hooks/use-toast'
@@ -19,17 +18,18 @@ import { ModelosGrid } from '@/components/modelos/modelos-grid'
 import { usePageSync } from '@/components/templates/page-sync-wrapper'
 import { useMultiPage } from '@/contexts/multi-page-context'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
+import { useAbrirPaginaCriada } from '@/hooks/use-layouts'
 import { useModelosDoProjeto, useUsarModelo, type ModeloDoProjeto } from '@/hooks/use-modelos-do-projeto'
 import { formatoPeloTamanho } from '@/lib/compositor/formato'
 import { ROTULO_DO_FORMATO } from '@/lib/modelos/vitrine'
 
 export function ModelosPanel({ aoCriarPagina }: { aoCriarPagina?: () => void }) {
-  const queryClient = useQueryClient()
   const { projectId, templateId, design } = useTemplateEditor()
   const { pages, setCurrentPageId } = useMultiPage()
   const pageSync = usePageSync()
   const { data: modelos = [], isLoading, isError } = useModelosDoProjeto(projectId)
   const usar = useUsarModelo(projectId)
+  const abrirPagina = useAbrirPaginaCriada()
 
   const formatoDaPagina = formatoPeloTamanho(design.canvas.width, design.canvas.height)
   const [todosOsFormatos, setTodosOsFormatos] = React.useState(false)
@@ -39,10 +39,12 @@ export function ModelosPanel({ aoCriarPagina }: { aoCriarPagina?: () => void }) 
   )
 
   // O pulo espera a página nova chegar à lista do editor: trocar o id antes faz o MultiPage cair na primeira página
-  // (o fallback de "página que não existe").
+  // (o fallback de "página que não existe"). Mesmo caminho do painel Layouts: no contínuo, quem ativa e rola até a
+  // página é o workspace (o evento da PagesBar); no clássico e no celular não há ouvinte e a troca direta basta.
   const [pularPara, setPularPara] = React.useState<string | null>(null)
   React.useEffect(() => {
     if (pularPara && pages.some((p) => p.id === pularPara)) {
+      window.dispatchEvent(new CustomEvent('lagosta:activate-page', { detail: pularPara }))
       setCurrentPageId(pularPara)
       setPularPara(null)
       aoCriarPagina?.()
@@ -59,8 +61,8 @@ export function ModelosPanel({ aoCriarPagina }: { aoCriarPagina?: () => void }) 
     }
     try {
       const copia = await usar.mutateAsync({ pageId: modelo.id, destinoTemplateId: templateId })
-      // O hook já invalidou; aqui ESPERA a lista nova (o editor lê `['pages', templateId]`).
-      await queryClient.refetchQueries({ queryKey: ['pages', templateId], exact: true })
+      // ESPERA a lista nova com a página (o editor lê `['pages', templateId]`); lança se ela não vier.
+      await abrirPagina(templateId, copia.pageId)
       setPularPara(copia.pageId)
       toast({ title: `Página nova criada a partir de ${modelo.name}` })
     } catch (erro) {
