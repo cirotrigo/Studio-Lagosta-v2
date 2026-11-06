@@ -148,7 +148,8 @@ export async function moverPaginaParaSemana(pageId: string, quando: string | Dat
       select: { id: true, isTemplate: true, tags: true, width: true, height: true, Template: { select: { id: true, name: true, category: true, projectId: true } } },
     })
     if (!page || page.isTemplate) return { moveu: false, de: null, para: null }
-    const ehComposta = page.tags.includes('compositor')
+    // S4: a cópia do "Usar" de um modelo (`de-modelo`) nasce nas Avulsas e segue para a semana como a peça composta.
+    const ehComposta = page.tags.includes('compositor') || page.tags.includes('de-modelo')
     const emAvulsas = page.Template.category === CATEGORIA_AVULSAS || page.Template.category === 'arte-rapida'
     if (!ehComposta || !emAvulsas) return { moveu: false, de: page.Template, para: null }
 
