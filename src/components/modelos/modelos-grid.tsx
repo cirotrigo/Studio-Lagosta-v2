@@ -53,8 +53,9 @@ export interface ModelosGridProps {
   compact?: boolean
   /** Esconde os chips de formato e mostra só este formato. */
   formatoFixo?: FormatoDoModelo
-  /** Gancho da S7: quando vem, o Usar chama isto em vez de criar a cópia em Avulsas. */
-  onUsar?: (modelo: ModeloDoProjeto) => void
+  /** Painel do editor (S7): quando vem, o Usar chama isto em vez de criar a cópia em Avulsas. Os botões ficam
+   *  desabilitados até a promessa terminar. */
+  onUsar?: (modelo: ModeloDoProjeto) => void | Promise<void>
 }
 
 const mensagemDe = (erro: unknown, padrao: string) => (erro instanceof Error && erro.message ? erro.message : padrao)
@@ -101,6 +102,7 @@ export function ModelosGrid({ projectId, modelos, canCurate, compact, formatoFix
   const [tema, setTema] = React.useState<string | null>(null)
   const [acoesDe, setAcoesDe] = React.useState<ModeloDoProjeto | null>(null)
   const [tagsDe, setTagsDe] = React.useState<ModeloDoProjeto | null>(null)
+  const [usandoDeFora, setUsandoDeFora] = React.useState<string | null>(null)
 
   const doFormato = React.useMemo(
     () => (formatoFixo ? modelos.filter((m) => m.formato === formatoFixo) : modelos),
@@ -123,7 +125,15 @@ export function ModelosGrid({ projectId, modelos, canCurate, compact, formatoFix
   }, [tema, temas])
 
   const handleUsar = async (modelo: ModeloDoProjeto) => {
-    if (onUsar) return onUsar(modelo)
+    if (onUsar) {
+      setUsandoDeFora(modelo.id)
+      try {
+        await onUsar(modelo)
+      } finally {
+        setUsandoDeFora(null)
+      }
+      return
+    }
     try {
       const copia = await usar.mutateAsync({ pageId: modelo.id })
       toast({ title: `Criamos uma cópia em ${copia.pastaNome}` })
@@ -252,8 +262,8 @@ export function ModelosGrid({ projectId, modelos, canCurate, compact, formatoFix
               key={modelo.id}
               modelo={modelo}
               compact={compact}
-              usando={usar.isPending}
-              usandoEste={usar.isPending && usar.variables?.pageId === modelo.id}
+              usando={usar.isPending || usandoDeFora !== null}
+              usandoEste={(usar.isPending && usar.variables?.pageId === modelo.id) || usandoDeFora === modelo.id}
               onUsar={() => handleUsar(modelo)}
               menu={
                 compact ? null : isMobile ? (
