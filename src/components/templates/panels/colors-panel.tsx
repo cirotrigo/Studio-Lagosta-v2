@@ -112,7 +112,7 @@ export function ColorsPanelContent() {
 
       toast({
         title: 'Cor adicionada',
-        description: 'A cor foi salva no projeto e está disponível para todos os templates.'
+        description: 'A cor foi salva no projeto e está disponível em todas as artes do projeto.'
       })
     } catch (_error) {
       console.error('[ColorsPanel] Failed to add color', _error)
@@ -301,7 +301,7 @@ export function ColorsPanelContent() {
       {/* Info Box */}
       <div className="rounded-lg border border-border/40 bg-muted/20 p-3">
         <p className="text-xs text-muted-foreground">
-          <strong>Dica:</strong> As cores da marca ficam disponíveis em todos os templates do projeto e aparecem nos seletores de cor dos textos.
+          <strong>Dica:</strong> As cores da marca ficam disponíveis em todas as artes do projeto e aparecem nos seletores de cor dos textos.
         </p>
       </div>
     </div>

@@ -55,7 +55,7 @@ function usePromocao(projectId: number) {
       setAberto(false)
       toast({
         title: r.jaExistia ? 'Esta página já é uma variante da marca' : 'Variante da marca criada',
-        description: `"${r.nome}" está no template Assinatura, fora do rodízio.${r.avisos.length ? ` ${r.avisos.join(' ')}` : ''}`,
+        description: `"${r.nome}" está na pasta Assinatura, fora do rodízio.${r.avisos.length ? ` ${r.avisos.join(' ')}` : ''}`,
         action: (
           <ToastAction altText="Abrir variante" onClick={() => window.location.assign(r.editorUrl)}>
             Abrir variante
@@ -84,10 +84,10 @@ function DialogoDaPromocao({ estado }: { estado: ReturnType<typeof usePromocao> 
           <AlertDialogTitle>Copiar como variante da marca?</AlertDialogTitle>
           <AlertDialogDescription asChild>
             <ul className="list-disc space-y-1.5 pl-5 text-left text-sm text-muted-foreground">
-              <li>Copia esta página para o template Assinatura; esta página fica igual.</li>
+              <li>Copia esta página para a pasta Assinatura; esta página fica igual.</li>
               <li>A variante leva o estilo e as posições dos textos, não o layout.</li>
               <li>Ela nasce fora do rodízio: só entra numa peça quando for pedida pelo nome ou pelo id.</li>
-              <li>A variante é editável no template Assinatura, e a edição vale para as próximas peças e recomposições.</li>
+              <li>A variante é editável na pasta Assinatura, e a edição vale para as próximas peças e recomposições.</li>
               {deLayouts && <li data-aviso="layouts">Esta página nasceu de um layout: a foto em caixa, o fundo liso e os acentos não se repetem nas peças.</li>}
             </ul>
           </AlertDialogDescription>

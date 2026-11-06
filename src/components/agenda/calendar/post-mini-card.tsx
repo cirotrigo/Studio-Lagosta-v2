@@ -88,7 +88,7 @@ export const PostMiniCard = memo(function PostMiniCard({ post, onClick }: PostMi
           {gerandoArte ? (
             <div
               className="absolute inset-0 w-full h-full flex items-center justify-center"
-              title="Gerando a arte a partir do template"
+              title="Gerando a arte a partir da página"
             >
               <Loader2 className="w-3.5 h-3.5 text-muted-foreground animate-spin" />
             </div>
@@ -244,7 +244,7 @@ export const PostMiniCard = memo(function PostMiniCard({ post, onClick }: PostMi
                 <Badge
                   variant="outline"
                   className="h-3 px-1 text-[8px] flex items-center gap-0.5 border-blue-400 text-blue-500"
-                  title="A arte está sendo gerada a partir do template"
+                  title="A arte está sendo gerada a partir da página"
                 >
                   <ImageIcon className="w-2 h-2" />
                   <span className="hidden sm:inline">Gerando arte</span>

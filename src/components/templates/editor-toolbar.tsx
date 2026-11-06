@@ -586,7 +586,7 @@ export function EditorToolbar({ onSave, saving }: EditorToolbarProps) {
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" onClick={onSave} disabled={saving || !dirty} className="shadow-sm">
               <Save className="mr-2 h-4 w-4" />
-              {saving ? 'Salvando…' : dirty ? 'Salvar Template' : 'Salvo'}
+              {saving ? 'Salvando…' : dirty ? 'Salvar' : 'Salvo'}
             </Button>
             <Button size="sm" variant="outline" onClick={handleExport} disabled={isExporting} className="shadow-sm">
               {isExporting ? (

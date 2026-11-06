@@ -178,7 +178,7 @@ export function PostDetailView({
     (post.videoDaPagina || (mediaUrls.length > 0 && isVideoUrl(mediaUrls[0])))
   const isTemplateBased = !!post.pageId && (post.postType === 'STORY' || ehVideoDaPagina)
   const editarHref = editarTemplateHref(post, ehVideoDaPagina ? { postId: post.id } : {})
-  const rotuloEditar = ehVideoDaPagina ? 'Editar vídeo' : 'Editar Template'
+  const rotuloEditar = ehVideoDaPagina ? 'Editar vídeo' : 'Abrir no editor'
   // Só o GET do post traz estes dois (a lista da agenda não).
   const estadoDoVideo = post as SocialPost & { videoDesatualizado?: boolean; substituicao?: Substituicao | null }
   const substituicao = ehVideoDaPagina ? estadoDoVideo.substituicao ?? null : null
@@ -672,7 +672,7 @@ export function PostDetailView({
                 <Loader2 className="h-6 w-6 animate-spin" />
                 <span className="text-sm font-medium">Gerando a arte…</span>
                 <span className="px-6 text-center text-xs">
-                  O template mudou. A arte nova aparece aqui em até 2 minutos.
+                  A página mudou. A arte nova aparece aqui em até 2 minutos.
                 </span>
               </div>
             )}
@@ -873,7 +873,7 @@ export function PostDetailView({
                   A arte já foi enviada para publicação
                 </div>
                 <p className="text-muted-foreground">
-                  Editar o template a partir de agora não muda mais o que vai ao ar. Para trocar a
+                  Editar a página a partir de agora não muda mais o que vai ao ar. Para trocar a
                   arte, volte o post para rascunho e agende de novo.
                 </p>
               </div>

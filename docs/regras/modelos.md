@@ -202,3 +202,22 @@ cópia em Avulsas. A regra (tags técnicas, chips, ordem por `lastUsedAt`) mora 
   "Tirar dos modelos" da S1) nunca chegavam à tela.
 - **Nas telas do projeto, a pasta (`Template`) se chama Pasta** ("Nova pasta", "Pastas da equipe"); a chave
   `templates` da URL e das query keys não muda.
+
+### O painel Modelos do editor: "Usar" cria página nova no arquivo aberto (S7, 06/11/2026)
+
+O painel "Templates" do editor virou **Modelos** (`src/components/templates/sidebar/modelos-panel.tsx`): o mesmo
+`ModelosGrid` da vitrine com `compact`, filtrado por `formatoPeloTamanho` da página aberta, com um toggle "N modelos
+de outros formatos". Some no `agendaMode` (desktop: a aba sai do `EditorSidebar`; celular: sai de `MOBILE_TOOL_ITEMS`).
+
+- 🔴 **"Usar" no editor NUNCA mexe na página aberta.** Chama a rota `usar` com `destinoTemplateId` = o arquivo aberto
+  e pula para a página criada no fim. O caminho antigo (`template-page-selector-dialog.tsx`, apagado) fazia
+  `loadTemplate` da página escolhida SOBRE a aberta, sem `historyKey`: zerava o desfazer e o autosave gravava a troca
+  em segundos — era o único lugar do Studio que alterava a página original ao "usar" um modelo.
+- **Antes do POST, `pageSync.descarregar()`**: a edição pendente da página aberta sai primeiro. Recusa do vetor não
+  impede o "Usar" (o aviso do PageSync guarda a edição e a troca de página a reenvia).
+- 🔴 **Pular para página criada = `useAbrirPaginaCriada` + evento `lagosta:activate-page` + `setCurrentPageId`**, o
+  mesmo do painel Layouts. Só `setCurrentPageId` no modo contínuo troca a página ativa mas a tela fica parada na de
+  antes (medido em 06/11); trocar o id antes de a lista conter a página faz o MultiPage cair na primeira.
+- **Guarda do vocabulário**: `src/lib/modelos/__tests__/vocabulario-sem-template.test.ts` lê o TSX com o compilador e
+  recusa "template" no texto de tela de `templates/`, `bancada/`, `agenda/`, `modelos/`, `ai-creative-generator/` e
+  `gerar-criativo/`. Atributo de JSX que não vira tela entra em `ATRIBUTO_INVISIVEL`.

@@ -146,7 +146,7 @@ export function GradientsPanel() {
       {/* Templates pré-definidos */}
       <div className="space-y-3">
         <div className="space-y-1">
-          <h3 className="text-sm font-semibold">Templates de Gradientes</h3>
+          <h3 className="text-sm font-semibold">Gradientes prontos</h3>
           <p className="text-xs text-muted-foreground">Clique para adicionar ao canvas (tamanho completo)</p>
         </div>
         <div className="grid gap-3 md:grid-cols-2">

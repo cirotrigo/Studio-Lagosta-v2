@@ -17,6 +17,7 @@ import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { EditorCanvas } from './editor-canvas'
 import { PropertiesPanel, EffectsPanel } from './properties-panel'
 import { EditorSidebar } from './sidebar/editor-sidebar'
+import { ModelosPanel } from './sidebar/modelos-panel'
 import { LayoutsPanel } from './sidebar/layouts-panel'
 import { TextToolsPanel } from './panels/text-panel'
 import { ImagesPanelContent } from './panels/images-panel'
@@ -199,10 +200,11 @@ type SidePanel = 'templates' | 'text' | 'images' | 'videos' | 'music' | 'element
 
 // Ferramentas disponíveis no drawer mobile (grid inicial e linha de chips)
 const MOBILE_TOOL_ITEMS: Array<{
-  key: Exclude<SidePanel, null | 'templates'>
+  key: Exclude<SidePanel, null>
   label: string
   icon: React.ComponentType<{ className?: string }>
 }> = [
+  { key: 'templates', label: 'Modelos', icon: FileText },
   { key: 'text', label: 'Texto', icon: TypeIcon },
   { key: 'images', label: 'Imagens', icon: ImageIcon },
   { key: 'videos', label: 'Vídeos', icon: Film },
@@ -334,8 +336,8 @@ function TemplateEditorContent({
   }, [dirty, agendaMode, router, projectId, pageSync])
 
   usePageConfig(
-    `${name || 'Editor de Template'}`,
-    'Monte e ajuste o layout visual do template com preview em tempo real.',
+    `${name || 'Editor'}`,
+    'Monte e ajuste o layout visual da página com preview em tempo real.',
     [
       { label: 'Dashboard', href: '/studio' },
       { label: 'Projetos', href: '/projects' },
@@ -347,7 +349,7 @@ function TemplateEditorContent({
   const handleSave = React.useCallback(async () => {
     // Mostrar feedback de que está gerando thumbnail
     const loadingToast = toast({
-      title: 'Salvando template...',
+      title: 'Salvando...',
       description: 'Gerando thumbnail da primeira página e salvando alterações.',
     })
 
@@ -423,8 +425,8 @@ function TemplateEditorContent({
         toast({
           title:
             congelados === 1
-              ? 'Template salvo — mas 1 post não recebeu a alteração'
-              : `Template salvo — mas ${congelados} posts não receberam a alteração`,
+              ? 'Salvo — mas 1 post não recebeu a alteração'
+              : `Salvo — mas ${congelados} posts não receberam a alteração`,
           description:
             `${congelados === 1 ? 'Esse post já foi enviado' : 'Esses posts já foram enviados'} para publicação e ` +
             `${congelados === 1 ? 'vai sair' : 'vão sair'} com a arte anterior. Para trocar, volte ` +
@@ -433,7 +435,7 @@ function TemplateEditorContent({
         })
       } else {
         toast({
-          title: agendaMode ? 'Template salvo! Imagem será regenerada.' : 'Template salvo com sucesso!',
+          title: agendaMode ? 'Salvo! A imagem será regenerada.' : 'Alterações salvas!',
           description: agendaMode
             ? 'Os posts agendados terão a imagem atualizada em instantes.'
             : thumbnailUrl
@@ -460,7 +462,7 @@ function TemplateEditorContent({
 
       toast({
         title: 'Erro ao salvar',
-        description: 'Não foi possível salvar o template. Tente novamente.',
+        description: 'Não foi possível salvar as alterações. Tente novamente.',
         variant: 'destructive',
       })
     }
@@ -525,6 +527,9 @@ function TemplateEditorContent({
   const creativeCost = getCost('creative_download')
   const hasCredits = pages.length <= 1 ? canPerformOperation('creative_download') : true // Para modal, verificar no próprio modal
 
+  // Modelos fica fora do agendaMode, como no desktop: ali o editor é o ajuste de UM post.
+  const ferramentasMobile = agendaMode ? MOBILE_TOOL_ITEMS.filter((t) => t.key !== 'templates') : MOBILE_TOOL_ITEMS
+
   const togglePanel = React.useCallback((panel: SidePanel) => {
     setActivePanel((current) => (current === panel ? null : panel))
   }, [])
@@ -559,7 +564,7 @@ function TemplateEditorContent({
       addLayer(layer)
       toast({
         title: 'Imagem aplicada',
-        description: 'A foto foi adicionada ao template.',
+        description: 'A foto foi adicionada à página.',
       })
     },
     [addLayer, design.canvas?.height, design.canvas?.width, toast],
@@ -649,7 +654,7 @@ function TemplateEditorContent({
           variant="ghost"
           onClick={handleBack}
           className="h-9 w-9 flex-shrink-0"
-          aria-label="Voltar para os templates"
+          aria-label="Voltar para as pastas"
         >
           <ArrowLeft className="h-5 w-5" />
         </Button>
@@ -658,7 +663,7 @@ function TemplateEditorContent({
             className="h-7 flex-1 border-0 bg-transparent text-sm font-medium focus-visible:ring-0 px-1"
             value={name}
             onChange={(event) => setName(event.target.value)}
-            placeholder="Nome do template"
+            placeholder="Nome da pasta"
           />
           {dirty && <span className="text-xs text-orange-500 flex-shrink-0" title="Alterações não salvas">●</span>}
         </div>
@@ -690,7 +695,7 @@ function TemplateEditorContent({
         {activePanel ? (
           <div className="flex-shrink-0 px-4 pb-2">
             <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
-              {MOBILE_TOOL_ITEMS.map((tool) => (
+              {ferramentasMobile.map((tool) => (
                 <Button
                   key={tool.key}
                   variant={activePanel === tool.key ? 'default' : 'outline'}
@@ -706,7 +711,7 @@ function TemplateEditorContent({
           </div>
         ) : (
           <div className="grid grid-cols-3 gap-2 p-4">
-            {MOBILE_TOOL_ITEMS.map((tool) => (
+            {ferramentasMobile.map((tool) => (
               <Button
                 key={tool.key}
                 variant="outline"
@@ -723,6 +728,9 @@ function TemplateEditorContent({
         {/* Tool Panel Content */}
         {activePanel && (
           <div className="flex-1 overflow-y-auto px-4 pb-4">
+            {activePanel === 'templates' && !agendaMode && (
+              <ModelosPanel aoCriarPagina={() => setMobileToolsOpen(false)} />
+            )}
             {activePanel === 'text' && <TextToolsPanel />}
             {activePanel === 'images' && <ImagesPanelContent />}
             {activePanel === 'videos' && <VideosPanel />}
@@ -756,7 +764,7 @@ function TemplateEditorContent({
       <div className="flex h-[calc(100vh-4rem)] items-center justify-center">
         <div className="text-center">
           <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent" />
-          <p className="text-sm text-muted-foreground">Carregando template...</p>
+          <p className="text-sm text-muted-foreground">Carregando...</p>
         </div>
       </div>
     )
@@ -774,8 +782,8 @@ function TemplateEditorContent({
             variant="ghost"
             onClick={handleBack}
             className="h-8 w-8 flex-shrink-0"
-            aria-label="Voltar para os templates"
-            title="Voltar para os templates"
+            aria-label="Voltar para as pastas"
+            title="Voltar para as pastas"
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
@@ -784,7 +792,7 @@ function TemplateEditorContent({
             className="h-8 w-32 min-w-0 border-0 bg-transparent text-sm font-medium focus-visible:ring-0 lg:w-64"
             value={name}
             onChange={(event) => setName(event.target.value)}
-            placeholder="Nome do template"
+            placeholder="Nome da pasta"
           />
           {dirty && <span className="hidden flex-shrink-0 text-xs text-orange-500 sm:inline">● Não salvo</span>}
         </div>
@@ -822,7 +830,7 @@ function TemplateEditorContent({
             <>
               <Button size="sm" variant="ghost" onClick={handleSave} disabled={isSaving || !dirty}>
                 <Save className="mr-2 h-4 w-4" />
-                {isSaving ? 'Salvando...' : dirty ? 'Salvar Template' : 'Salvo'}
+                {isSaving ? 'Salvando...' : dirty ? 'Salvar' : 'Salvo'}
               </Button>
               <Button size="sm" onClick={handleExport} disabled={isExporting || isGeneratingMultiple}>
                 <FileImage className="mr-2 h-4 w-4" />
@@ -932,7 +940,7 @@ function TemplateEditorContent({
           <div className="flex-1" />
           <ToolbarButton
             icon={<FileText className="h-5 w-5" />}
-            label="Templates"
+            label={agendaMode ? 'Layouts' : 'Modelos'}
             active={activePanel === 'templates'}
             onClick={() => togglePanel('templates')}
           />
@@ -943,7 +951,7 @@ function TemplateEditorContent({
           <aside className="flex w-64 flex-shrink-0 flex-col border-r border-border/40 bg-card shadow-lg overflow-hidden xl:w-80">
             <div className="flex-shrink-0 border-b border-border/40 p-4">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                {activePanel === 'templates' && 'Templates'}
+                {activePanel === 'templates' && (agendaMode ? 'Layouts' : 'Modelos')}
                 {activePanel === 'text' && 'Texto & Fontes'}
                 {activePanel === 'images' && 'Imagens'}
                 {activePanel === 'videos' && 'Vídeos'}
@@ -958,7 +966,9 @@ function TemplateEditorContent({
               </h2>
             </div>
             <div className="flex-1 min-h-0 overflow-y-auto p-4">
-              {activePanel === 'templates' && <EditorSidebar onPrecisaDeFoto={() => setActivePanel('images')} />}
+              {activePanel === 'templates' && (
+                <EditorSidebar agendaMode={agendaMode} onPrecisaDeFoto={() => setActivePanel('images')} />
+              )}
               {activePanel === 'text' && <TextToolsPanel />}
               {activePanel === 'images' && <ImagesPanelContent />}
               {activePanel === 'videos' && <VideosPanel />}
@@ -1008,7 +1018,7 @@ function TemplateEditorContent({
                 onClick={handleSave}
                 disabled={isSaving || !dirty}
                 className="h-10 w-10 shadow-lg bg-background/95 backdrop-blur-sm hover:bg-accent"
-                title={isSaving ? 'Salvando...' : dirty ? 'Salvar Template' : 'Template Salvo'}
+                title={isSaving ? 'Salvando...' : dirty ? 'Salvar' : 'Salvo'}
               >
                 <Save className={`h-4 w-4 ${dirty ? 'text-orange-500' : ''}`} />
               </Button>
@@ -1297,8 +1307,8 @@ function TemplateEditorContent({
                       : substituirNaAgenda
                         ? 'Salvar sem gerar'
                         : dirty
-                          ? 'Salvar template'
-                          : 'Template salvo'}
+                          ? 'Salvar'
+                          : 'Salvo'}
                   </span>
                   <span className="block text-xs text-muted-foreground">
                     {substituirNaAgenda

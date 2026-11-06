@@ -42,7 +42,7 @@ export function DynamicImageFieldsForm({
       <Card className="rounded-lg border border-amber-200 bg-amber-50 p-4">
         <p className="text-sm text-amber-700">
           Este modelo não possui imagens dinâmicas. Para marcar imagens como editáveis,
-          abra o editor de templates e ative o toggle "Imagem Dinâmica" nas propriedades da camada.
+          abra o modelo no editor e ative o toggle "Imagem Dinâmica" nas propriedades da camada.
         </p>
       </Card>
     )
@@ -56,7 +56,7 @@ export function DynamicImageFieldsForm({
       </div>
 
       <p className="text-sm text-muted-foreground -mt-2">
-        Substitua as imagens abaixo. Se não substituir, a imagem original do template será mantida.
+        Substitua as imagens abaixo. Se não substituir, a imagem original do modelo será mantida.
       </p>
 
       <div className="space-y-6">

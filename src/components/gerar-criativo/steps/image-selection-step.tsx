@@ -185,7 +185,7 @@ export function ImageSelectionStep() {
           <div className="space-y-1">
             <h3 className="text-sm font-semibold">Preencher textos com IA</h3>
             <p className="text-sm text-muted-foreground">
-              Gere uma primeira versao da copy e uma imagem IA para o template. Depois voce revisa tudo em Ajustes.
+              Gere uma primeira versao da copy e uma imagem IA para o modelo. Depois voce revisa tudo em Ajustes.
             </p>
           </div>
 
@@ -294,7 +294,7 @@ export function ImageSelectionStep() {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="text-xs text-muted-foreground">
               {hasPrefilledTexts
-                ? 'Ha textos preenchidos no template. Uma nova geracao ira sobrescrever os campos mapeados.'
+                ? 'Ha textos preenchidos no modelo. Uma nova geracao ira sobrescrever os campos mapeados.'
                 : `A IA vai preencher ${dynamicTextLayers.length} campo(s) de texto dinamico(s).`}
             </div>
             <Button

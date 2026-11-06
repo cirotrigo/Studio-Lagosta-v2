@@ -150,7 +150,7 @@ export function CreativeGeneratorPanel({
     if (!selectedTemplatePage || !selectedTemplatePageId) {
       toast({
         variant: 'destructive',
-        description: 'Selecione um template para continuar',
+        description: 'Selecione um modelo para continuar',
       })
       return
     }
@@ -210,7 +210,7 @@ export function CreativeGeneratorPanel({
         setIsStartingCreation(false)
 
         toast({
-          description: '✨ Template aplicado! Edite os campos abaixo e veja em tempo real no canvas.',
+          description: '✨ Modelo aplicado! Edite os campos abaixo e veja em tempo real no canvas.',
         })
       } else {
         // Criar nova página
@@ -331,7 +331,7 @@ export function CreativeGeneratorPanel({
         <Sparkles className="h-16 w-16 text-primary/50 mb-4" />
         <h3 className="text-lg font-semibold mb-2">Editor</h3>
         <p className="text-sm text-muted-foreground max-w-sm mb-6">
-          Crie páginas profissionais em poucos cliques: escolha template, personalize imagens e textos.
+          Crie páginas profissionais em poucos cliques: escolha o modelo, personalize imagens e textos.
         </p>
         <Button type="button" onClick={handleStartCreation} size="lg" className="gap-2">
           <Sparkles className="h-5 w-5" />
@@ -362,7 +362,7 @@ export function CreativeGeneratorPanel({
           <Card className="p-4">
             <div className="space-y-4">
               <div>
-                <h3 className="text-sm font-semibold mb-1">1. Escolha o Template</h3>
+                <h3 className="text-sm font-semibold mb-1">1. Escolha o modelo</h3>
                 <p className="text-xs text-muted-foreground mb-4">
                   Selecione o layout base para seu criativo
                 </p>
@@ -416,7 +416,7 @@ export function CreativeGeneratorPanel({
                   <p className="text-sm text-muted-foreground">
                     {isEditing
                       ? 'Edite os textos da página. Todas as alterações são salvas automaticamente.'
-                      : 'Personalize os textos. Se deixar vazio, o texto original do template será mantido.'}
+                      : 'Personalize os textos. Se deixar vazio, o texto original do modelo será mantido.'}
                   </p>
                   <DynamicTextFieldsForm
                     layers={isEditing && currentPage ? currentPage.layers : (selectedTemplatePage?.layers || [])}

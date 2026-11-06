@@ -167,7 +167,7 @@ export function LogoPanelContent() {
 
         toast({
           title: 'Logo salvo',
-          description: 'O logo foi salvo no projeto e está disponível para todos os templates.'
+          description: 'O logo foi salvo no projeto e está disponível em todas as artes do projeto.'
         })
       } catch (_error) {
         console.error('[LogoPanel] Upload failed', _error)
@@ -377,7 +377,7 @@ export function LogoPanelContent() {
         {/* Info Box */}
         <div className="rounded-lg border border-border/40 bg-muted/20 p-4">
           <p className="text-xs text-muted-foreground">
-            <strong>Dica:</strong> Os logos são salvos no projeto e ficam disponíveis em todos os templates.
+            <strong>Dica:</strong> Os logos são salvos no projeto e ficam disponíveis em todas as artes do projeto.
             Eles são adicionados em tamanho reduzido (200px) mantendo as proporções.
           </p>
         </div>

@@ -241,7 +241,9 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
     await autosaveRef.current!.salvar()
     // Edição recusada (desta ou de outra página) não foi gravada: quem sai do editor não pode achar que foi.
     const recusada = recusasRef.current.todas()[0]
-    if (recusada) throw new Error(recusada.mensagem)
+    // Com o status da recusa (422): quem chama distingue, por `ehRecusaDoVetor`, a edição que o aviso GUARDA de uma
+    // falha de rede, em que a edição ainda não está em lugar nenhum.
+    if (recusada) throw Object.assign(new Error(recusada.mensagem), { status: 422 })
   }, [])
 
   // O controle é estável e sempre chama a versão mais nova: trocar o valor do
