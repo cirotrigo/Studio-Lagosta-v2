@@ -31,7 +31,6 @@ import { CrivoArquivado, DirecaoDeArteAvancada } from '@/components/projects/dir
 import { CreativesGallery } from '@/components/projects/creatives-gallery'
 import { TemplatesGallery } from '@/components/projects/templates-gallery'
 import { ModelosTab } from '@/components/projects/modelos-tab'
-import { ArtesReferenciaTab } from '@/components/projects/artes-referencia-tab'
 import { GoogleDriveFolderSelector } from '@/components/projects/google-drive-folder-selector'
 import { InstagramAccountConfig } from '@/components/projects/instagram-account-config'
 import { LaterProviderConfig } from '@/components/projects/later-provider-config'
@@ -304,33 +303,14 @@ export default function ProjectDetailPage() {
           />
         </TabsContent>
 
-        {/* Modelos guarda DUAS coisas que só têm o nome em comum: páginas de
-            template (estrutura editável, escolhida por tag) e artes prontas
-            aprovadas (imagem de referência que inspira a próxima geração).
-            Juntas numa lista só, ninguém achava as segundas. */}
+        {/* Modelos mostra só os modelos de template. As artes de referência
+            (artes estreladas que a IA imita) moram na Bancada. */}
         <TabsContent value="modelos" className="mt-3 md:mt-4">
-          <Tabs defaultValue="templates" className="w-full">
-            <TabsList>
-              <TabsTrigger value="templates">Modelos de template</TabsTrigger>
-              <TabsTrigger value="artes">Artes de referência</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="templates" className="mt-3 md:mt-4">
-              <p className="mb-3 text-sm text-muted-foreground">
-                Curadoria de templates por tema. Aplique tags para que a skill
-                /arte-rapida encontre o template certo a partir de uma frase em PT.
-              </p>
-              <ModelosTab projectId={projectId} canCurate={Boolean(projectDetails.canCurate)} />
-            </TabsContent>
-
-            <TabsContent value="artes" className="mt-3 md:mt-4">
-              <p className="mb-3 text-sm text-muted-foreground">
-                As artes aprovadas que servem de inspiração para as próximas gerações desta marca.
-                Marque com a estrela na aba Criativos.
-              </p>
-              <ArtesReferenciaTab projectId={projectId} />
-            </TabsContent>
-          </Tabs>
+          <p className="mb-3 text-sm text-muted-foreground">
+            Curadoria de templates por tema. Aplique tags para que a skill
+            /arte-rapida encontre o template certo a partir de uma frase em PT.
+          </p>
+          <ModelosTab projectId={projectId} canCurate={Boolean(projectDetails.canCurate)} />
         </TabsContent>
 
         <TabsContent value="criativos" className="mt-3 md:mt-4">

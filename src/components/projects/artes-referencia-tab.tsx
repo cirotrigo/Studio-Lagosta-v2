@@ -77,8 +77,9 @@ export function ArtesReferenciaTab({ projectId }: { projectId: number }) {
         <p className="flex items-start gap-2">
           <Info className="mt-0.5 h-4 w-4 shrink-0" />
           <span>
-            Nenhuma arte marcada ainda. Na aba <strong>Criativos</strong>, clique na estrela de uma
-            arte que ficou boa: ela passa a inspirar as próximas gerações desta marca.
+            Nenhuma arte marcada ainda. Clique na estrela de uma arte da galeria (aba{' '}
+            <strong>Criativos</strong>): ela entra aqui e passa a inspirar as próximas gerações desta
+            marca.
           </span>
         </p>
       </Card>
