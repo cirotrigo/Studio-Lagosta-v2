@@ -55,6 +55,8 @@ export function useUpdateProjectTag() {
       api.put<ProjectTag>(`/api/projects/${projectId}/tags/${tagId}`, { name }),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['projectTags', variables.projectId] })
+      // Renomear reescreve Page.tags dos modelos: a vitrine lê ['modelos', projectId].
+      queryClient.invalidateQueries({ queryKey: ['modelos', variables.projectId] })
     },
   })
 }
@@ -106,6 +108,8 @@ export function useDeleteProjectTag() {
       // Only invalidate if deletion was successful
       if (data.success) {
         queryClient.invalidateQueries({ queryKey: ['projectTags', variables.projectId] })
+        // Excluir ou transferir reescreve Page.tags dos modelos: a vitrine lê ['modelos', projectId].
+        queryClient.invalidateQueries({ queryKey: ['modelos', variables.projectId] })
       }
     },
   })

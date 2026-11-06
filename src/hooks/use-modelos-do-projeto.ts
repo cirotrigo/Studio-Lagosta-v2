@@ -17,6 +17,8 @@ export interface ModeloDoProjeto {
   templateName: string
   /** O tipo da PASTA dona da página — não é o formato (modelo de feed mora em pasta story). */
   tipo: 'STORY' | 'FEED' | 'SQUARE'
+  /** A pasta é a da Assinatura (nome, categoria ou tag), pela mesma regra da guarda do servidor. */
+  assinatura: boolean
   /** O formato pelo TAMANHO da página. É por ele que se filtra. */
   formato: 'story' | 'feed' | 'quadrado'
   /** Presente quando uma tag de formato da página discorda do tamanho. */
@@ -66,6 +68,8 @@ function useCopiarModelo(projectId: number, acao: 'usar' | 'duplicar') {
       // Por prefixo: o seletor de modelos do gerador de criativo no editor (use-template-pages.ts).
       queryClient.invalidateQueries({ queryKey: ['template-pages'] })
       queryClient.invalidateQueries({ queryKey: ['pages', copia.templateId] })
+      // O "Usar" pode criar a pasta "Avulsas · mês": a aba Pastas precisa saber (prefixo, como useCreateModelo).
+      queryClient.invalidateQueries({ queryKey: ['templates'] })
     },
   })
 }

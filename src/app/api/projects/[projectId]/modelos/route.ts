@@ -12,6 +12,7 @@ import { MENOS_USADO_PRIMEIRO } from '@/lib/aprendizado/uso-de-modelo'
 import type { Prisma } from '@/lib/prisma-types'
 import { formatoDivergeDoTamanho, formatoPeloTamanho } from '@/lib/compositor/formato'
 import { PASTA_NAO_ARQUIVADA } from '@/lib/templates/classificar'
+import { ehPastaDaAssinatura } from '@/lib/modelos/copiar-pagina'
 
 export const runtime = 'nodejs'
 
@@ -74,7 +75,7 @@ export async function GET(
       templateId: true,
       usedCount: true,
       lastUsedAt: true,
-      Template: { select: { name: true, type: true } },
+      Template: { select: { name: true, type: true, category: true, tags: true } },
     },
   })
 
@@ -91,6 +92,8 @@ export async function GET(
         templateId: p.templateId,
         templateName: p.Template.name,
         tipo: p.Template.type,
+        // A MESMA regra da guarda do servidor (S4): nome, categoria ou tag da pasta.
+        assinatura: ehPastaDaAssinatura(p.Template),
         formato,
         ...(formatoDivergeDoTamanho(p.tags, formato) ? { formatoDivergente: true as const } : {}),
         usedCount: p.usedCount,

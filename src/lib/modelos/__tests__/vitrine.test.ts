@@ -102,6 +102,9 @@ describe('Assinatura e uso', () => {
     expect(ehDaAssinatura(m({ id: 'a', templateName: 'Assinatura' }))).toBe(true)
     expect(ehDaAssinatura(m({ id: 'b', tags: ['assinatura'] }))).toBe(true)
     expect(ehDaAssinatura(m({ id: 'c' }))).toBe(false)
+    // A pasta reconhecida pelo servidor (categoria ou tag da pasta), com outro nome.
+    expect(ehDaAssinatura(m({ id: 'd', templateName: 'Kit da marca', assinatura: true }))).toBe(true)
+    expect(ehDaAssinatura(m({ id: 'e', assinatura: false }))).toBe(false)
   })
 
   it('rótulo de uso', () => {

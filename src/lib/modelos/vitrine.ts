@@ -12,6 +12,8 @@ export interface ModeloDaVitrine {
   name: string
   tags: string[]
   templateName: string
+  /** Do servidor (`ehPastaDaAssinatura`); ausente, a vitrine cai no nome da pasta e na tag. */
+  assinatura?: boolean
   formato: FormatoDoModelo
   usedCount: number
   lastUsedAt: string | null
@@ -61,7 +63,8 @@ export function tagsDeTema(modelo: Pick<ModeloDaVitrine, 'tags'>): string[] {
 }
 
 /** Os modelos da Assinatura são as variantes do compositor: selo, sem Duplicar e sem Tirar. */
-export function ehDaAssinatura(modelo: Pick<ModeloDaVitrine, 'tags' | 'templateName'>): boolean {
+export function ehDaAssinatura(modelo: Pick<ModeloDaVitrine, 'tags' | 'templateName' | 'assinatura'>): boolean {
+  if (modelo.assinatura !== undefined) return modelo.assinatura
   if ((modelo.templateName ?? '').trim().toLowerCase() === 'assinatura') return true
   return (modelo.tags ?? []).some((t) => t.trim().toLowerCase() === 'assinatura')
 }
