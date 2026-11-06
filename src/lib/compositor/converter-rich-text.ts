@@ -174,8 +174,15 @@ export function classificarRichText(camada: Layer): Classificacao {
 export function converterCamada(camada: Layer, c: Extract<Classificacao, { veredito: 'conversivel' }>): Layer {
   const { richTextStyles: _descartado, ...resto } = camada
   void _descartado
+  // O rich-text desenha cada linha no TOPO do line-box (editor e servidor); a camada text, como o Konva.Text,
+  // no CENTRO — meia-entrelinha abaixo. Sem compensar, todo convertido descia (lineHeight − 1) · fontSize / 2
+  // (piloto no Ciro Trigo, 06/11/2026: 8 px). A entrelinha é a que a camada text vai usar (textboxConfig.autoWrap primeiro).
+  const fontSize = camada.style?.fontSize ?? 16
+  const lineHeight = camada.textboxConfig?.autoWrap?.lineHeight ?? camada.style?.lineHeight ?? 1.2
+  const meiaEntrelinha = ((lineHeight - 1) * fontSize) / 2
   return {
     ...resto,
+    ...(camada.position ? { position: { ...camada.position, y: camada.position.y - meiaEntrelinha } } : {}),
     type: 'text',
     destaques: c.destaques,
     destaque: c.destaque,
