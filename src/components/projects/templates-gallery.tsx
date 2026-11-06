@@ -55,10 +55,10 @@ export function TemplatesGallery({ projectId, onCreateClick }: TemplatesGalleryP
         mutationFn: (id: number) => api.delete(`/api/templates/${id}`),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['templates', projectId] })
-            toast.success('Template deletado com sucesso!')
+            toast.success('Pasta excluída')
         },
         onError: () => {
-            toast.error('Erro ao deletar template')
+            toast.error('Erro ao excluir a pasta')
         },
     })
 
@@ -66,21 +66,21 @@ export function TemplatesGallery({ projectId, onCreateClick }: TemplatesGalleryP
         mutationFn: (id: number) => api.post(`/api/templates/${id}/duplicate`, {}),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['templates', projectId] })
-            toast.success('Template duplicado com sucesso!')
+            toast.success('Pasta duplicada')
         },
         onError: (error) => {
-            toast.error(error instanceof Error ? error.message : 'Erro ao duplicar template')
+            toast.error(error instanceof Error ? error.message : 'Erro ao duplicar a pasta')
         },
     })
 
     const handleDelete = (id: number, name: string) => {
-        if (confirm(`Tem certeza que deseja excluir o template "${name}"?`)) {
+        if (confirm(`Tem certeza que deseja excluir a pasta "${name}"?`)) {
             deleteMutation.mutate(id)
         }
     }
 
     const handleDuplicate = (id: number, name: string) => {
-        if (confirm(`Duplicar o template "${name}"?`)) {
+        if (confirm(`Duplicar a pasta "${name}"?`)) {
             duplicateMutation.mutate(id)
         }
     }
@@ -109,14 +109,14 @@ export function TemplatesGallery({ projectId, onCreateClick }: TemplatesGalleryP
                         <FileText className="w-8 h-8 text-muted-foreground" />
                     </div>
                     <div>
-                        <h3 className="font-semibold text-lg mb-2">Nenhum template ainda</h3>
+                        <h3 className="font-semibold text-lg mb-2">Nenhuma pasta ainda</h3>
                         <p className="text-muted-foreground mb-4 max-w-sm mx-auto">
-                            Crie seu primeiro template para começar a produzir seus criativos com identidade visual consistente.
+                            Crie a primeira pasta para começar a produzir os criativos com a identidade visual da marca.
                         </p>
                         {onCreateClick && (
                             <Button onClick={onCreateClick} variant="default" className="shadow-lg hover:shadow-primary/20">
                                 <Plus className="w-4 h-4 mr-2" />
-                                Criar Primeiro Template
+                                Criar a primeira pasta
                             </Button>
                         )}
                     </div>
@@ -158,13 +158,13 @@ export function TemplatesGallery({ projectId, onCreateClick }: TemplatesGalleryP
 
             <Secao
                 icone={<PenTool className="h-4 w-4" />}
-                titulo="Modelos da equipe"
-                descricao="Layouts que vocês desenharam para reusar, sem pedir para criar. O botão Novo Template cria aqui."
+                titulo="Pastas da equipe"
+                descricao="Layouts que vocês desenharam para reusar, sem pedir para criar. O botão Nova pasta cria aqui."
             >
                 {grupos.equipe.length > 0 ? (
                     grade(grupos.equipe)
                 ) : (
-                    <p className="text-sm text-muted-foreground">Nenhum modelo da equipe ainda.</p>
+                    <p className="text-sm text-muted-foreground">Nenhuma pasta da equipe ainda.</p>
                 )}
             </Secao>
 
@@ -184,7 +184,7 @@ export function TemplatesGallery({ projectId, onCreateClick }: TemplatesGalleryP
                 <Secao
                     icone={<Archive className="h-4 w-4" />}
                     titulo={`Arquivo (${grupos.arquivo.length})`}
-                    descricao="Coletores antigos, famílias geradas por tema e templates de sistema. Nada aqui é apagado: posts agendados ainda apontam para estas páginas."
+                    descricao="Coletores antigos, famílias geradas por tema e pastas do sistema. Nada aqui é apagado: posts agendados ainda apontam para estas páginas."
                     acao={
                         <Button size="sm" variant="ghost" onClick={() => setArquivoAberto((v) => !v)}>
                             {arquivoAberto ? <ChevronDown className="mr-1 h-4 w-4" /> : <ChevronRight className="mr-1 h-4 w-4" />}

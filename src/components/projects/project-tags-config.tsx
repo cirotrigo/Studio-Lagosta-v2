@@ -207,7 +207,7 @@ export function ProjectTagsConfig({ projectId }: ProjectTagsConfigProps) {
         <div>
           <h3 className="text-lg font-semibold">Tags do Projeto</h3>
           <p className="text-sm text-muted-foreground">
-            Gerencie as tags que podem ser aplicadas as paginas dos templates
+            Gerencie as tags que podem ser aplicadas aos modelos
           </p>
         </div>
       </div>
@@ -351,7 +351,7 @@ export function ProjectTagsConfig({ projectId }: ProjectTagsConfigProps) {
 
         {/* Help text */}
         <p className="text-xs text-muted-foreground pt-2">
-          As tags sao usadas para organizar as paginas dos templates. Paginas com a tag "Template" aparecem no modo Arte Rapida.
+          As tags organizam os modelos por tema. Paginas com a tag "Template" aparecem no modo Arte Rapida.
         </p>
       </div>
 

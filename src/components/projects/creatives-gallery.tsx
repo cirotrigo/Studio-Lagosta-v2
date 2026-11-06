@@ -970,7 +970,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
           <div className="relative min-w-0 flex-1 sm:max-w-sm">
             <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Buscar por template ou ID"
+              placeholder="Buscar por pasta ou ID"
               className="pl-8 w-full"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
@@ -1228,7 +1228,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
             <div className="space-y-2">
               <h3 className="text-lg font-semibold">Nenhum criativo encontrado</h3>
               <p className="text-sm text-muted-foreground">
-                Exporte um template através do editor Konva para vê-lo listado aqui.
+                Exporte uma arte pelo editor para vê-la listada aqui.
               </p>
             </div>
           </div>
@@ -1240,7 +1240,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
         >
           {filtered.map((generation, index) => {
             const selected = selectedIds.has(generation.id)
-            const templateLabel = generation.Template?.name || generation.templateName || 'Template'
+            const templateLabel = generation.Template?.name || generation.templateName || 'Arte'
             // Prefer fieldValues.finalSize (escrito pela rota de melhoria de IA com
             // as dimensões REAIS da imagem gerada) sobre Template.dimensions —
             // criativos recuperados do Drive frequentemente têm Template default
@@ -1382,7 +1382,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
               <thead className="bg-muted/60 text-xs uppercase text-muted-foreground">
                 <tr>
                   <th className="w-32 px-4 py-2 text-left">Criativo</th>
-                  <th className="px-4 py-2 text-left">Template</th>
+                  <th className="px-4 py-2 text-left">Pasta</th>
                   <th className="w-32 px-4 py-2 text-left">Status</th>
                   <th className="w-44 px-4 py-2 text-left">Gerado em</th>
                   <th className="w-48 px-4 py-2 text-left">Ações</th>
@@ -1391,7 +1391,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
               <tbody>
                 {filtered.map((generation) => {
                   const selected = selectedIds.has(generation.id)
-                  const templateLabel = generation.Template?.name || generation.templateName || 'Template'
+                  const templateLabel = generation.Template?.name || generation.templateName || 'Arte'
                   const meta = getGenerationMeta(generation)
                   const previewUrl = meta.assetUrl ?? meta.displayUrl ?? null
                   const canPreview = Boolean(previewUrl)

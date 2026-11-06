@@ -1,48 +1,37 @@
 'use client'
 
-import * as React from 'react'
-import Image from 'next/image'
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { useQuery } from '@tanstack/react-query'
-import { AlertCircle, Lock, Pencil, Plus, Settings2, StarOff, Tag, Wand2 } from 'lucide-react'
-import { toast } from 'sonner'
+/**
+ * A aba Modelos do projeto: a vitrine (S5, 06/11/2026). Um cartão por modelo, sobre o `GET /api/projects/[id]/modelos`
+ * — a aba antiga agrupava por tag (o mesmo modelo repetia em cada tag) e lia o `GET template-pages`, que traz as
+ * camadas de todos os modelos.
+ */
 
-import { api } from '@/lib/api-client'
-import { Card } from '@/components/ui/card'
+import * as React from 'react'
+import { useRouter } from 'next/navigation'
+import { ChevronDown, Plus, Settings2 } from 'lucide-react'
+import { toast } from '@/hooks/use-toast'
+
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
+import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from '@/components/ui/sheet'
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { TagInput } from '@/components/projects/tag-input'
 import { ProjectTagsConfig } from '@/components/projects/project-tags-config'
-import {
-  useTirarDosModelos,
-  useUpdateTemplatePageTags,
-} from '@/hooks/use-template-page-tags'
+import { ModelosGrid } from '@/components/modelos/modelos-grid'
 import { useCreateModelo } from '@/hooks/use-create-modelo'
+import { useModelosDoProjeto } from '@/hooks/use-modelos-do-projeto'
 import { useProjectTags } from '@/hooks/use-project-tags'
 
 const MODELO_DIMENSIONS: Record<'STORY' | 'FEED' | 'SQUARE', string> = {
@@ -51,53 +40,23 @@ const MODELO_DIMENSIONS: Record<'STORY' | 'FEED' | 'SQUARE', string> = {
   SQUARE: '1080x1080',
 }
 
-const UNTAGGED_KEY = '__untagged__'
-
 interface ModelosTabProps {
   projectId: number
   canCurate: boolean
-}
-
-interface TemplateSummary {
-  id: number
-  name: string
-  type: string
-}
-
-interface TemplatePage {
-  id: string
-  name: string
-  templateId: number
-  templateName: string | null
-  thumbnail: string | null
-  width: number
-  height: number
-  tags: string[]
-  Template: { name: string; tags: string[] }
-}
-
-interface ProjectTagInfo {
-  name: string
-  color: string
-}
-
-// ─── Create dialog ──────────────────────────────────────────────────────
-
-interface CreateModeloDialogProps {
-  projectId: number
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  tagSuggestions: string[]
 }
 
 function CreateModeloDialog({
   projectId,
   open,
   onOpenChange,
-  tagSuggestions,
-}: CreateModeloDialogProps) {
+}: {
+  projectId: number
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
   const router = useRouter()
   const createModelo = useCreateModelo(projectId)
+  const projectTags = useProjectTags({ projectId, enabled: open })
   const [name, setName] = React.useState('')
   const [type, setType] = React.useState<'STORY' | 'FEED' | 'SQUARE'>('STORY')
   const [tags, setTags] = React.useState<string[]>([])
@@ -110,7 +69,7 @@ function CreateModeloDialog({
 
   const handleSubmit = async (action: 'create' | 'createAndOpen') => {
     if (!name.trim()) {
-      toast.error('Dá um nome pro modelo')
+      toast({ title: 'Dá um nome pro modelo', variant: 'destructive' })
       return
     }
     try {
@@ -120,18 +79,14 @@ function CreateModeloDialog({
         dimensions: MODELO_DIMENSIONS[type],
         tags,
       })
-      toast.success('Modelo criado')
+      toast({ title: 'Modelo criado' })
       onOpenChange(false)
       reset()
       if (action === 'createAndOpen') {
-        router.push(
-          `/templates/${created.templateId}/editor?pageId=${created.pageId}`,
-        )
+        router.push(`/templates/${created.templateId}/editor?pageId=${created.pageId}`)
       }
     } catch (error: unknown) {
-      const message =
-        error instanceof Error ? error.message : 'Erro ao criar modelo'
-      toast.error(message)
+      toast({ title: error instanceof Error ? error.message : 'Erro ao criar modelo', variant: 'destructive' })
     }
   }
 
@@ -161,12 +116,7 @@ function CreateModeloDialog({
 
           <div className="space-y-1.5">
             <Label htmlFor="modelo-type">Formato</Label>
-            <Select
-              value={type}
-              onValueChange={(value) =>
-                setType(value as 'STORY' | 'FEED' | 'SQUARE')
-              }
-            >
+            <Select value={type} onValueChange={(value) => setType(value as 'STORY' | 'FEED' | 'SQUARE')}>
               <SelectTrigger id="modelo-type">
                 <SelectValue />
               </SelectTrigger>
@@ -183,28 +133,19 @@ function CreateModeloDialog({
             <TagInput
               value={tags}
               onChange={setTags}
-              suggestions={tagSuggestions}
+              suggestions={(projectTags.data ?? []).map((t) => t.name).filter(Boolean)}
               placeholder="almoco-executivo, happy-hour..."
             />
             <p className="text-xs text-muted-foreground">
-              A skill /arte-rapida usa estas tags pra encontrar o modelo a partir
-              da frase do usuário. Tags novas viram tags do projeto
-              automaticamente.
+              É por elas que o Studio acha o modelo a partir de uma frase. Tags novas viram tags do projeto.
             </p>
           </div>
         </div>
         <DialogFooter className="gap-2 sm:gap-2">
-          <Button
-            variant="outline"
-            onClick={() => handleSubmit('create')}
-            disabled={createModelo.isPending}
-          >
+          <Button variant="outline" onClick={() => handleSubmit('create')} disabled={createModelo.isPending}>
             Criar
           </Button>
-          <Button
-            onClick={() => handleSubmit('createAndOpen')}
-            disabled={createModelo.isPending}
-          >
+          <Button onClick={() => handleSubmit('createAndOpen')} disabled={createModelo.isPending}>
             {createModelo.isPending ? 'Criando...' : 'Criar e abrir editor'}
           </Button>
         </DialogFooter>
@@ -213,345 +154,52 @@ function CreateModeloDialog({
   )
 }
 
-// ─── Tag editor inline (attached to a page card) ────────────────────────
-
-function PageTagEditor({
-  page,
-  projectId,
-  canEdit,
-  tagSuggestions,
-}: {
-  page: TemplatePage
-  projectId: number
-  canEdit: boolean
-  tagSuggestions: string[]
-}) {
-  const [draft, setDraft] = React.useState<string[]>(page.tags ?? [])
-  const [dirty, setDirty] = React.useState(false)
-  const updateMutation = useUpdateTemplatePageTags(projectId)
-
-  React.useEffect(() => {
-    setDraft(page.tags ?? [])
-    setDirty(false)
-  }, [page.tags])
-
-  const handleSave = async () => {
-    try {
-      await updateMutation.mutateAsync({ pageId: page.id, tags: draft })
-      toast.success('Tags atualizadas')
-      setDirty(false)
-    } catch (error: unknown) {
-      const message =
-        error instanceof Error ? error.message : 'Erro ao salvar tags'
-      toast.error(message)
-    }
-  }
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <Tag className="h-3 w-3" />
-        <span>Tags</span>
-        {!canEdit && <Lock className="h-3 w-3" aria-label="Somente leitura" />}
-      </div>
-      <TagInput
-        value={draft}
-        onChange={(next) => {
-          setDraft(next)
-          setDirty(true)
-        }}
-        suggestions={tagSuggestions}
-        placeholder={canEdit ? 'almoco-executivo, happy-hour...' : 'Sem tags'}
-        disabled={!canEdit}
-      />
-      {canEdit && dirty && (
-        <div className="flex justify-end gap-2 pt-1">
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => {
-              setDraft(page.tags ?? [])
-              setDirty(false)
-            }}
-          >
-            Cancelar
-          </Button>
-          <Button
-            size="sm"
-            onClick={handleSave}
-            disabled={updateMutation.isPending}
-          >
-            {updateMutation.isPending ? 'Salvando...' : 'Salvar'}
-          </Button>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ─── One modelo card (1 page) ───────────────────────────────────────────
-
-function ModeloCard({
-  page,
-  projectId,
-  canEdit,
-  tagSuggestions,
-}: {
-  page: TemplatePage
-  projectId: number
-  canEdit: boolean
-  tagSuggestions: string[]
-}) {
-  const tirarMutation = useTirarDosModelos(projectId)
-  const [previewAberta, setPreviewAberta] = React.useState(false)
-
-  /**
-   * Despromover, nunca excluir (docs/regras/modelos.md): a página continua na pasta e nos posts. A rota recusa (409)
-   * quando um post vivo usa a copy do modelo, e a mensagem dela já traz quantos e quais.
-   */
-  const handleTirar = async () => {
-    const pasta = page.templateName ?? page.Template?.name ?? 'de origem'
-    const ok = window.confirm(
-      `A página continua na pasta ${pasta} e nos posts que a usam. Tirar dos modelos?`,
-    )
-    if (!ok) return
-    try {
-      const { congelados = [] } = await tirarMutation.mutateAsync({
-        templateId: page.templateId,
-        pageId: page.id,
-      })
-      toast.success(`"${page.name}" saiu dos modelos`, {
-        description:
-          congelados.length > 0
-            ? `${congelados.length} post${congelados.length === 1 ? '' : 's'} já entregue${congelados.length === 1 ? '' : 's'} ao publicador sa${congelados.length === 1 ? 'i' : 'em'} com a arte anterior.`
-            : undefined,
-      })
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Erro ao tirar dos modelos'
-      toast.error('Não deu para tirar dos modelos', { description: message, duration: 12_000 })
-    }
-  }
-
-  /**
-   * A arte INTEIRA, na proporção real da página: a caixa fixa `aspect-[9/16]`
-   * + `object-cover` recortava o modelo (feed 4:5 e quadrado perdiam as
-   * bordas — justamente onde ficam rodapé e logo). A proporção vai em estilo
-   * INLINE porque classe arbitrária de Tailwind com valor dinâmico não gera
-   * CSS neste repo.
-   */
-  return (
-    <Card className="flex flex-col overflow-hidden">
-      <button
-        type="button"
-        onClick={() => page.thumbnail && setPreviewAberta(true)}
-        disabled={!page.thumbnail}
-        title={page.thumbnail ? 'Ver o modelo em tamanho grande' : undefined}
-        className="relative w-full bg-muted cursor-zoom-in disabled:cursor-default"
-        style={{ aspectRatio: `${page.width} / ${page.height}` }}
-      >
-        {page.thumbnail ? (
-          <Image
-            src={page.thumbnail}
-            alt={page.name}
-            fill
-            className="object-contain"
-            sizes="(max-width: 640px) 50vw, 200px"
-          />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-            <Wand2 className="h-6 w-6" />
-          </div>
-        )}
-      </button>
-
-      <Dialog open={previewAberta} onOpenChange={setPreviewAberta}>
-        <DialogContent className="sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="truncate pr-6">{page.name}</DialogTitle>
-          </DialogHeader>
-          {page.thumbnail && (
-            <img
-              src={page.thumbnail}
-              alt={page.name}
-              className="mx-auto h-auto w-auto max-w-full rounded-md"
-              style={{ maxHeight: '75dvh' }}
-            />
-          )}
-          <p className="text-center text-xs text-muted-foreground">
-            {page.width} × {page.height}
-            {page.templateName ? ` • ${page.templateName}` : ''}
-          </p>
-        </DialogContent>
-      </Dialog>
-      <div className="flex-1 p-3 space-y-3">
-        <div className="space-y-0.5">
-          <p className="font-medium text-sm truncate" title={page.name}>
-            {page.name}
-          </p>
-          <p className="text-[11px] text-muted-foreground">
-            {page.width} × {page.height}
-          </p>
-        </div>
-        <PageTagEditor
-          page={page}
-          projectId={projectId}
-          canEdit={canEdit}
-          tagSuggestions={tagSuggestions}
-        />
-        {canEdit && (
-          <div className="flex gap-1.5">
-            <Link
-              href={`/templates/${page.templateId}/editor?pageId=${page.id}`}
-              className="flex-1"
-            >
-              <Button size="sm" variant="outline" className="w-full">
-                <Pencil className="h-3.5 w-3.5 mr-1.5" />
-                Editar página
-              </Button>
-            </Link>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleTirar}
-              disabled={tirarMutation.isPending}
-              aria-label="Tirar dos modelos"
-              title="Tirar dos modelos"
-            >
-              <StarOff className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        )}
-      </div>
-    </Card>
-  )
-}
-
-// ─── Main tab ───────────────────────────────────────────────────────────
-
 export function ModelosTab({ projectId, canCurate }: ModelosTabProps) {
-  const canEdit = canCurate
   const [createOpen, setCreateOpen] = React.useState(false)
   const [tagsManagerOpen, setTagsManagerOpen] = React.useState(false)
+  const modelosQuery = useModelosDoProjeto(projectId)
+  const modelos = modelosQuery.data ?? []
 
-  const templatesQuery = useQuery<TemplateSummary[]>({
-    queryKey: ['templates', projectId],
-    queryFn: () => api.get(`/api/projects/${projectId}/templates`),
-    enabled: !Number.isNaN(projectId),
-  })
-
-  // Pages query: this endpoint returns ALL template pages in the project,
-  // regardless of templateId in the URL — derived from the template's project.
-  // We still need *a* templateId to call it, so pick the first available.
-  const seedTemplateId = templatesQuery.data?.[0]?.id ?? 0
-  const pagesQuery = useQuery<TemplatePage[]>({
-    queryKey: ['template-pages', seedTemplateId],
-    queryFn: () =>
-      api.get<TemplatePage[]>(`/api/templates/${seedTemplateId}/template-pages`),
-    enabled: seedTemplateId > 0,
-    staleTime: 60_000,
-  })
-
-  const projectTagsQuery = useProjectTags({ projectId })
-
-  // Suggestions = ProjectTag table (the global registry) UNION any tag that
-  // already lives on a loaded page (defensive: covers the case where a tag
-  // exists on a page but didn't get registered in ProjectTag for any reason,
-  // e.g. legacy data from before auto-registration was added).
-  const tagSuggestions = React.useMemo(() => {
-    const set = new Set<string>()
-    for (const tag of projectTagsQuery.data ?? []) {
-      if (tag.name) set.add(tag.name)
-    }
-    for (const page of pagesQuery.data ?? []) {
-      for (const tag of page.tags ?? []) {
-        if (tag) set.add(tag)
-      }
-    }
-    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
-  }, [projectTagsQuery.data, pagesQuery.data])
-
-  const tagInfoByName = React.useMemo<Record<string, ProjectTagInfo>>(() => {
-    const map: Record<string, ProjectTagInfo> = {}
-    for (const t of projectTagsQuery.data ?? []) {
-      map[t.name] = { name: t.name, color: t.color }
-    }
-    return map
-  }, [projectTagsQuery.data])
-
-  const pages = pagesQuery.data ?? []
-
-  // Group pages by tag. Each page may appear in multiple groups (one per tag);
-  // pages without tags fall under UNTAGGED_KEY.
-  const groups = React.useMemo(() => {
-    const map = new Map<string, TemplatePage[]>()
-    for (const page of pages) {
-      const tags = page.tags ?? []
-      if (tags.length === 0) {
-        const list = map.get(UNTAGGED_KEY) ?? []
-        list.push(page)
-        map.set(UNTAGGED_KEY, list)
-        continue
-      }
-      for (const tag of tags) {
-        const list = map.get(tag) ?? []
-        list.push(page)
-        map.set(tag, list)
-      }
-    }
-    return Array.from(map.entries()).sort(([a], [b]) => {
-      if (a === UNTAGGED_KEY) return 1
-      if (b === UNTAGGED_KEY) return -1
-      return a.localeCompare(b)
-    })
-  }, [pages])
-
-  const isLoading = templatesQuery.isLoading || pagesQuery.isLoading
-
-  if (isLoading) {
+  if (modelosQuery.isLoading) {
     return (
-      <div className="space-y-4">
-        {Array.from({ length: 2 }).map((_, index) => (
-          <Card key={index} className="p-6">
-            <Skeleton className="h-5 w-48" />
-            <Skeleton className="mt-4 h-32 w-full" />
-          </Card>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <Skeleton key={i} className="aspect-[9/16] w-full rounded-lg" />
         ))}
       </div>
     )
   }
 
-  const emptyState = pages.length === 0
+  if (modelosQuery.isError) {
+    return (
+      <Card className="p-6 text-sm text-muted-foreground">
+        Não deu para carregar os modelos.{' '}
+        <button type="button" className="font-medium text-primary hover:underline" onClick={() => modelosQuery.refetch()}>
+          Tentar de novo
+        </button>
+      </Card>
+    )
+  }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="text-sm text-muted-foreground">
-          {pages.length} modelo{pages.length === 1 ? '' : 's'} no projeto
-          {tagSuggestions.length > 0 && ` • ${tagSuggestions.length} tag${tagSuggestions.length === 1 ? '' : 's'} cadastrada${tagSuggestions.length === 1 ? '' : 's'}`}
-        </div>
-        {canEdit && (
+        <p className="text-sm text-muted-foreground">
+          {modelos.length} modelo{modelos.length === 1 ? '' : 's'}
+        </p>
+        {canCurate && (
           <div className="flex gap-2">
             <Sheet
               open={tagsManagerOpen}
-              onOpenChange={(open) => {
-                setTagsManagerOpen(open)
-                // Belt-and-suspenders: the mutations already invalidate
-                // ['projectTags', projectId], and useProjectTags has
-                // refetchOnMount enabled, so this should be fresh on its own.
-                // But if the user is still on a stale build (Vercel cache or
-                // service worker), or any future code adds a tag via a path
-                // that forgets to invalidate, this refetch guarantees the
-                // sheet always shows the current ProjectTag table.
-                if (open) projectTagsQuery.refetch()
-              }}
+              onOpenChange={setTagsManagerOpen}
             >
               <SheetTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <Settings2 className="h-4 w-4 mr-1.5" />
-                  Gerenciar tags
+                <Button variant="outline" size="sm" aria-label="Gerenciar tags">
+                  <Settings2 className="h-4 w-4 sm:mr-1.5" />
+                  <span className="hidden sm:inline">Gerenciar tags</span>
                 </Button>
               </SheetTrigger>
-              <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
+              <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
                 <SheetHeader>
                   <SheetTitle>Tags do projeto</SheetTitle>
                 </SheetHeader>
@@ -560,105 +208,46 @@ export function ModelosTab({ projectId, canCurate }: ModelosTabProps) {
                 </div>
               </SheetContent>
             </Sheet>
-            <Button onClick={() => setCreateOpen(true)}>
-              <Plus className="h-4 w-4 mr-1.5" />
-              Criar modelo do zero
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm">
+                  <Plus className="mr-1.5 h-4 w-4" />
+                  Novo modelo
+                  <ChevronDown className="ml-1 h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuItem onSelect={() => setCreateOpen(true)}>Criar modelo do zero</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                  ou abra qualquer arte e clique em Marcar modelo
+                </DropdownMenuLabel>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         )}
       </div>
 
-      <Card className="p-4 border-dashed bg-muted/30">
-        <div className="flex items-start gap-3">
-          {canEdit ? (
-            <Tag className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5" />
-          ) : (
-            <AlertCircle className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
-          )}
-          <div className="text-sm text-muted-foreground">
-            <p className="font-medium text-foreground">
-              Cada modelo é uma página única, organizada por tag.
-            </p>
-            <p className="mt-1">
-              {canEdit
-                ? 'Crie um modelo do zero, taggeie por tema, e ele aparece tanto na skill /arte-rapida quanto na aba Templates do editor (pra ser aplicado em outras pages).'
-                : 'Modo somente leitura: apenas o dono do projeto ou um admin da org podem criar/editar modelos.'}
-            </p>
-          </div>
-        </div>
-      </Card>
-
-      {emptyState ? (
-        <Card className="p-8 text-center space-y-4">
+      {modelos.length === 0 ? (
+        <Card className="space-y-4 p-8 text-center">
           <p className="text-sm text-muted-foreground">
             Nenhum modelo ainda.
-            {canEdit && ' Cria um do zero pra começar.'}
+            {canCurate && ' Crie um do zero, ou abra qualquer arte no editor e clique em Marcar modelo.'}
           </p>
-          {canEdit && (
+          {canCurate && (
             <div className="flex justify-center">
               <Button onClick={() => setCreateOpen(true)}>
-                <Plus className="h-4 w-4 mr-1.5" />
+                <Plus className="mr-1.5 h-4 w-4" />
                 Criar modelo do zero
               </Button>
             </div>
           )}
         </Card>
       ) : (
-        <div className="space-y-8">
-          {groups.map(([tag, tagPages]) => {
-            const isUntagged = tag === UNTAGGED_KEY
-            const info = tagInfoByName[tag]
-            return (
-              <section key={tag} className="space-y-3">
-                <div className="flex items-baseline gap-3">
-                  {isUntagged ? (
-                    <Badge variant="outline" className="text-xs">
-                      Sem tag
-                    </Badge>
-                  ) : (
-                    <Badge
-                      variant="secondary"
-                      className="text-xs"
-                      style={
-                        info?.color
-                          ? {
-                              backgroundColor: `${info.color}20`,
-                              color: info.color,
-                              borderColor: `${info.color}40`,
-                            }
-                          : undefined
-                      }
-                    >
-                      {tag}
-                    </Badge>
-                  )}
-                  <span className="text-xs text-muted-foreground">
-                    {tagPages.length} modelo{tagPages.length === 1 ? '' : 's'}
-                  </span>
-                </div>
-                <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-                  {tagPages.map((page) => (
-                    <ModeloCard
-                      key={`${tag}-${page.id}`}
-                      page={page}
-                      projectId={projectId}
-                      canEdit={canEdit}
-                      tagSuggestions={tagSuggestions}
-                    />
-                  ))}
-                </div>
-              </section>
-            )
-          })}
-        </div>
+        <ModelosGrid projectId={projectId} modelos={modelos} canCurate={canCurate} />
       )}
 
-      <CreateModeloDialog
-        projectId={projectId}
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        tagSuggestions={tagSuggestions}
-      />
+      <CreateModeloDialog projectId={projectId} open={createOpen} onOpenChange={setCreateOpen} />
     </div>
   )
 }
