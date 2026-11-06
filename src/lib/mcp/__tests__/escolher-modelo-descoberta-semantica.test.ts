@@ -24,8 +24,8 @@ vi.mock('@/lib/db', () => ({
     template: {
       findMany: vi.fn(async () => [
         { id: 10, name: estado.nomeDoTemplate, tags: [], Page: [
-          { id: 'p-main', name: 'Happy 1', templateId: 10, tags: ['happy hour'] },
-          { id: 'p-alt', name: 'Happy 2', templateId: 10, tags: ['happy hour'] },
+          { id: 'p-main', name: 'Happy 1', templateId: 10, tags: ['happy hour'], width: 1080, height: 1920 },
+          { id: 'p-alt', name: 'Happy 2', templateId: 10, tags: ['happy hour'], width: 1080, height: 1920 },
         ] },
       ]),
     },

@@ -10,6 +10,8 @@ import {
 import { createBlankDesign } from '@/lib/studio/defaults'
 import { MENOS_USADO_PRIMEIRO } from '@/lib/aprendizado/uso-de-modelo'
 import type { Prisma } from '@/lib/prisma-types'
+import { formatoDivergeDoTamanho, formatoPeloTamanho } from '@/lib/compositor/formato'
+import { PASTA_NAO_ARQUIVADA } from '@/lib/templates/classificar'
 
 export const runtime = 'nodejs'
 
@@ -35,6 +37,9 @@ function normalizeTag(raw: string): string {
  * ninguém escolhe. É a lista que a bancada mostra ao escolher o modelo a
  * seguir; sem `layers`, de propósito: escolher não precisa das camadas, e
  * elas dominariam o payload.
+ *
+ * `formato` sai do TAMANHO da página (S2): modelo de feed mora em pasta story.
+ * `tipo` (o da pasta) fica por compatibilidade. Pasta arquivada não entra.
  */
 export async function GET(
   _req: Request,
@@ -57,7 +62,7 @@ export async function GET(
   }
 
   const pages = await db.page.findMany({
-    where: { isTemplate: true, Template: { projectId: projectIdNum } },
+    where: { isTemplate: true, Template: { projectId: projectIdNum, ...PASTA_NAO_ARQUIVADA } },
     orderBy: MENOS_USADO_PRIMEIRO,
     select: {
       id: true,
@@ -74,19 +79,24 @@ export async function GET(
   })
 
   return NextResponse.json({
-    modelos: pages.map((p) => ({
-      id: p.id,
-      name: p.name,
-      thumbnail: p.thumbnail,
-      width: p.width,
-      height: p.height,
-      tags: p.tags ?? [],
-      templateId: p.templateId,
-      templateName: p.Template.name,
-      tipo: p.Template.type,
-      usedCount: p.usedCount,
-      lastUsedAt: p.lastUsedAt,
-    })),
+    modelos: pages.map((p) => {
+      const formato = formatoPeloTamanho(p.width, p.height)
+      return {
+        id: p.id,
+        name: p.name,
+        thumbnail: p.thumbnail,
+        width: p.width,
+        height: p.height,
+        tags: p.tags ?? [],
+        templateId: p.templateId,
+        templateName: p.Template.name,
+        tipo: p.Template.type,
+        formato,
+        ...(formatoDivergeDoTamanho(p.tags, formato) ? { formatoDivergente: true as const } : {}),
+        usedCount: p.usedCount,
+        lastUsedAt: p.lastUsedAt,
+      }
+    }),
   })
 }
 

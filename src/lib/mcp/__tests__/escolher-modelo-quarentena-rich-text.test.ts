@@ -12,7 +12,7 @@ const camadas = [
 vi.mock('@/lib/db', () => ({
   db: {
     project: { findUnique: vi.fn(async () => ({ id: 1, name: 'Bacana', status: 'ACTIVE', instagramUsername: null, googleDriveImagesFolderId: null, googleDriveFolderId: null })) },
-    template: { findMany: vi.fn(async () => [{ id: 10, name: 'Stories', tags: [], Page: [{ id: 'p-main', name: 'Happy 1', templateId: 10, tags: ['happy hour'] }] }]) },
+    template: { findMany: vi.fn(async () => [{ id: 10, name: 'Stories', tags: [], Page: [{ id: 'p-main', name: 'Happy 1', templateId: 10, tags: ['happy hour'], width: 1080, height: 1920 }] }]) },
     page: {
       findMany: vi.fn(async () => []),
       findUnique: vi.fn(async () => ({ id: 'p-main', templateId: 10, name: 'Happy 1', tags: ['happy hour'], layers: camadas, width: 1080, height: 1920, background: null })),

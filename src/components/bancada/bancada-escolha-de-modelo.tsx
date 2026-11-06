@@ -39,13 +39,6 @@ export type BaseDaArte =
   | { via: 'template'; sourcePageId: string | null }
   | { via: 'ia'; referencia: { generationId: string; url: string } | null }
 
-/** O `Template.type` que corresponde a cada formato de item da bancada. */
-const TIPO_POR_FORMATO: Record<'story' | 'feed' | 'quadrado', ModeloDoProjeto['tipo']> = {
-  story: 'STORY',
-  feed: 'FEED',
-  quadrado: 'SQUARE',
-}
-
 const ROTULO_DO_FORMATO: Record<'story' | 'feed' | 'quadrado', string> = {
   story: 'story',
   feed: 'feed',
@@ -107,7 +100,8 @@ export function BancadaEscolhaDeModelo({
   })
 
   const doFormato = React.useMemo(
-    () => (modelos ?? []).filter((m) => m.tipo === TIPO_POR_FORMATO[formato]),
+    // Pelo TAMANHO da página, não pela pasta: modelo de feed mora em pasta story (S2).
+    () => (modelos ?? []).filter((m) => m.formato === formato),
     [modelos, formato],
   )
   const referencias = React.useMemo(

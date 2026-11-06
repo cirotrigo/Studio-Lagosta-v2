@@ -53,7 +53,7 @@ export function TemplatesPanel() {
 
   const { data, isLoading, isRefetching, refetch } = useTemplates({
     projectId,
-    category: category === 'all' ? null : category,
+    type: category === 'all' ? null : category,
     search: debouncedSearch ? debouncedSearch : null,
     limit: 60,
   })

@@ -10,13 +10,27 @@
  *
  * Módulo PURO.
  */
-import type { Formato } from './spec'
+import { FORMATOS, type Formato } from './spec'
+
+/**
+ * O formato só pelo TAMANHO da página, sem olhar tag nenhuma (S2, 06/11/2026): é o que a vitrine de modelos, a
+ * Bancada e o `escolher-modelo` usam, porque modelo de feed mora em pasta story (a Assinatura do By Rock) e a tag
+ * pode estar velha. Lado igual → quadrado; mais de 1,6 vez mais alto que largo → story; o resto → feed.
+ */
+export function formatoPeloTamanho(width: number, height: number): Formato {
+  if (width === height) return 'quadrado'
+  return height > width * 1.6 ? 'story' : 'feed'
+}
+
+/** A página tem tag de formato (`story`/`feed`/`quadrado`) que discorda do tamanho. */
+export function formatoDivergeDoTamanho(tags: string[] | null | undefined, formato: Formato): boolean {
+  return (tags ?? []).some((t) => (FORMATOS as readonly string[]).includes(t) && t !== formato)
+}
 
 export function formatoDaPaginaGravada(page: { tags?: string[] | null; width: number; height: number }): Formato {
   const tags = page.tags ?? []
   if (tags.includes('story')) return 'story'
   if (tags.includes('feed')) return 'feed'
   if (tags.includes('quadrado')) return 'quadrado'
-  if (page.width === page.height) return 'quadrado'
-  return page.height > page.width * 1.6 ? 'story' : 'feed'
+  return formatoPeloTamanho(page.width, page.height)
 }

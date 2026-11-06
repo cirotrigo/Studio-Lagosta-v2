@@ -8,6 +8,8 @@
 import { z } from 'zod'
 import { definirTool } from '../registro/definir'
 import { tagsComMarcaPreservada } from '../../compositor/fora-do-rodizio'
+import { formatoDivergeDoTamanho, formatoPeloTamanho } from '../../compositor/formato'
+import { PASTA_NAO_ARQUIVADA } from '../../templates/classificar'
 
 export const toolsDeModelos = [
   definirTool({
@@ -20,6 +22,10 @@ export const toolsDeModelos = [
       projectHint: z.string().optional().describe('Nome ou parte do nome do projeto, se não souber o id.'),
       theme: z.string().describe('Tema do criativo (ex: "happy hour", "almoço executivo", "delivery").'),
       day: z.string().optional().describe('Dia da semana em PT para desempatar (ex: "sexta", "sabado").'),
+      formato: z
+        .enum(['story', 'feed', 'quadrado'])
+        .optional()
+        .describe('Formato do modelo, pelo tamanho da página: story (default), feed ou quadrado.'),
     }),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     // O gate declarado dispara quando projectId vem como número; sem ele o
@@ -38,6 +44,7 @@ export const toolsDeModelos = [
         projetosVisiveis: (await projetosVisiveis(principal)) ?? 'todos',
         theme: args.theme as string,
         day: typeof args.day === 'string' ? args.day : undefined,
+        formato: args.formato as 'story' | 'feed' | 'quadrado' | undefined,
       })
     },
   }),
@@ -110,7 +117,7 @@ export const toolsDeModelos = [
   definirTool({
     nome: 'listar-modelos',
     descricao:
-      'Lista os modelos do cliente (as páginas que escolher-modelo consegue encontrar) com as tags de tema de cada um. Com incluirNaoMarcadas=true, lista também as páginas comuns — útil para achar uma arte boa e promovê-la com marcar-como-modelo. Clientes sem modelo nenhum dependem de criar-arte (do zero) para tudo.',
+      'Lista os modelos do cliente (as páginas que escolher-modelo consegue encontrar) com as tags de tema de cada um. Com incluirNaoMarcadas=true, lista também as páginas comuns — útil para achar uma arte boa e promovê-la com marcar-como-modelo. Com formato, só as páginas daquele formato (pelo tamanho da página, o mesmo filtro de escolher-modelo); sem ele, todos. Clientes sem modelo nenhum dependem de criar-arte (do zero) para tudo.',
     schema: z.object({
       projectId: z.number().describe('ID do cliente.'),
       incluirNaoMarcadas: z
@@ -118,6 +125,10 @@ export const toolsDeModelos = [
         .optional()
         .describe('Inclui páginas que ainda não são modelo (candidatas a promoção).'),
       limit: z.number().optional().describe('Máximo de páginas (default 50, teto 200).'),
+      formato: z
+        .enum(['story', 'feed', 'quadrado'])
+        .optional()
+        .describe('Só as páginas deste formato, pelo tamanho da página. Ausente = todos os formatos.'),
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     acesso: { tipo: 'projeto' },
@@ -127,10 +138,12 @@ export const toolsDeModelos = [
       const projectId = args.projectId as number
       const incluirNaoMarcadas = args.incluirNaoMarcadas === true
       const take = Math.min(typeof args.limit === 'number' ? args.limit : 50, 200)
+      const formato = typeof args.formato === 'string' ? args.formato : undefined
 
-      const paginas = await db.page.findMany({
+      const lidas = await db.page.findMany({
         where: {
-          Template: { projectId },
+          // Pasta arquivada fica fora, como em escolher-modelo (S2).
+          Template: { projectId, ...PASTA_NAO_ARQUIVADA },
           ...(incluirNaoMarcadas ? {} : { isTemplate: true }),
         },
         select: {
@@ -138,12 +151,19 @@ export const toolsDeModelos = [
           name: true,
           isTemplate: true,
           tags: true,
+          width: true,
+          height: true,
           updatedAt: true,
           Template: { select: { id: true, name: true, type: true, tags: true } },
         },
         orderBy: [{ isTemplate: 'desc' }, { updatedAt: 'desc' }],
-        take,
+        // O formato sai da proporção, então o filtro é em JS e o limit vem DEPOIS dele.
+        // ponytail: com formato lê todas as páginas do cliente (colunas leves); filtro no SQL se ficar pesado.
+        ...(formato ? {} : { take }),
       })
+      const paginas = formato
+        ? lidas.filter((p) => formatoPeloTamanho(p.width, p.height) === formato).slice(0, take)
+        : lidas
 
       const modelos = paginas
         .filter((p) => p.isTemplate)
@@ -151,7 +171,10 @@ export const toolsDeModelos = [
           pageId: p.id,
           nome: p.name,
           template: p.Template.name,
-          formato: p.Template.type,
+          // Pelo TAMANHO da página (S2) — é o que escolher-modelo filtra. O tipo da pasta segue em tipoDaPasta.
+          formato: formatoPeloTamanho(p.width, p.height),
+          tipoDaPasta: p.Template.type,
+          ...(formatoDivergeDoTamanho(p.tags, formatoPeloTamanho(p.width, p.height)) ? { formatoDivergente: true } : {}),
           temas: Array.from(new Set([...(p.tags ?? []), ...(p.Template.tags ?? [])])),
         }))
       const candidatas = incluirNaoMarcadas
@@ -161,7 +184,8 @@ export const toolsDeModelos = [
               pageId: p.id,
               nome: p.name,
               template: p.Template.name,
-              formato: p.Template.type,
+              formato: formatoPeloTamanho(p.width, p.height),
+              tipoDaPasta: p.Template.type,
               atualizadaEm: p.updatedAt,
             }))
         : undefined

@@ -40,6 +40,7 @@ export async function GET(req: Request) {
 
   const projectIdParam = searchParams.get('projectId')
   const categoryParam = searchParams.get('category')
+  const typeParam = searchParams.get('type')
   const searchParam = searchParams.get('search')?.trim() ?? ''
   const includeDesign = searchParams.get('includeDesign') === 'true'
   const limit = parseLimit(searchParams.get('limit'))
@@ -108,6 +109,11 @@ export async function GET(req: Request) {
 
   if (categoryParam && categoryParam !== 'all') {
     where.category = categoryParam
+  }
+
+  // Os chips Story/Feed/Quadrado do painel filtram a PASTA (S2): antes mandavam o tipo em `category`, que nunca o guarda.
+  if (typeParam === 'STORY' || typeParam === 'FEED' || typeParam === 'SQUARE') {
+    where.type = typeParam
   }
 
   if (searchParam) {
