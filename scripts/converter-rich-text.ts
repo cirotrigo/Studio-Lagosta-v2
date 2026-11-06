@@ -19,6 +19,13 @@
  * (o JSON de `Page.layers` pode vir duplamente codificado) e reclassificadas
  * sobre a página RELIDA a cada volta.
  *
+ * Trava de render (06/11/2026): antes de gravar, `--aplicar` desenha a página
+ * como está e convertida (o mesmo `CanvasRenderer` do servidor, sem upload) e
+ * PULA a página cujo PNG mude acima de `LIMITE_PCT` — fica rich-text e sai
+ * listada. A classificação não enxerga tudo: na conferência das 254 páginas,
+ * 27 mudavam — `fontWeight` na base (o rich-text o ignora, a camada `text`
+ * desenha), quebra de linha diferente em título centralizado, espaçamento.
+ *
  * 🔴 O `.env` aponta para PRODUÇÃO. Rode o relatório, leia, e só então decida
  * o `--aplicar` — nunca antes de os PRs do render (#297 e #298) estarem na
  * main: sem eles a camada `text` com `destaques` sai SEM destaque no PNG.
@@ -31,7 +38,14 @@ import { canonicalizeLayersForPersistence } from '@/lib/shape-style'
 import { gravarCamadasComRevisao } from '@/lib/copy-autoral/persistir'
 import { invalidateScheduledRenders } from '@/lib/posts/invalidate-renders'
 import { classificarRichText, converterCamadasDaPagina } from '@/lib/compositor/converter-rich-text'
+import { convertPageToDesignData } from '@/lib/posts/page-to-design-data'
+import { registerProjectFonts } from '@/lib/posts/register-project-fonts'
+import { camadasNoInstante } from '@/lib/video/linha-do-tempo'
 import type { Layer } from '@/types/template'
+import sharp from 'sharp'
+
+/** Acima disto (% de pixels com algum canal diferindo > 8) a página não é convertida. Medido em 06/11: 207 de 247 dão 0. */
+const LIMITE_PCT = 0.05
 
 const args = process.argv.slice(2)
 const APLICAR = args.includes('--aplicar')
@@ -47,6 +61,41 @@ interface LinhaDoRelatorio {
   camadaId: string
   camada: string
   texto: string
+}
+
+type PaginaParaDesenhar = { id: string; name: string; width: number; height: number; background: unknown; audio: unknown }
+
+async function desenhar(page: PaginaParaDesenhar, camadas: unknown): Promise<Buffer> {
+  let d = convertPageToDesignData({ ...page, layers: camadas } as Parameters<typeof convertPageToDesignData>[0])
+  d = { ...d, layers: camadasNoInstante(d.layers, 0, { audio: d.audio }) }
+  const { CanvasRenderer } = await import('@/lib/canvas-renderer')
+  return (await new CanvasRenderer(d.canvas.width, d.canvas.height).renderDesign(d, {})) as Buffer
+}
+
+/** % de pixels em que algum canal (RGBA) difere mais de 8 entre os dois PNGs; 100 com tamanhos diferentes. */
+async function pctDiferente(a: Buffer, b: Buffer): Promise<number> {
+  const [x, y] = await Promise.all([a, b].map((p) => sharp(p).ensureAlpha().raw().toBuffer()))
+  if (x.length !== y.length) return 100
+  let n = 0
+  for (let i = 0; i < x.length; i += 4) {
+    if (Math.max(Math.abs(x[i] - y[i]), Math.abs(x[i + 1] - y[i + 1]), Math.abs(x[i + 2] - y[i + 2]), Math.abs(x[i + 3] - y[i + 3])) > 8) n++
+  }
+  return (n / (x.length / 4)) * 100
+}
+
+/** A trava: desenha a página como está e convertida; devolve o % que muda (null quando não há o que converter). */
+async function mudancaNoRender(pageId: string, fontesCarregadas: Set<string>): Promise<number | null> {
+  const page = await db.page.findUniqueOrThrow({ where: { id: pageId }, include: { Template: { select: { projectId: true } } } })
+  const lidas = lerCamadas(page.layers)
+  if (!lidas.legivel) return null
+  const r = converterCamadasDaPagina(lidas.camadas as unknown as Layer[])
+  if (r.convertidas.length === 0) return null
+  const projeto = String(page.Template.projectId)
+  if (!fontesCarregadas.has(projeto)) {
+    await registerProjectFonts(page.Template.projectId)
+    fontesCarregadas.add(projeto)
+  }
+  return pctDiferente(await desenhar(page, lidas.camadas), await desenhar(page, r.camadas))
 }
 
 async function main() {
@@ -125,9 +174,23 @@ async function main() {
   }
 
   // ─── Gravação ────────────────────────────────────────────────────────────
-  console.log('\n--aplicar: gravando…')
+  console.log('\n--aplicar: conferindo o render e gravando…')
   let paginasGravadas = 0
+  const puladas: string[] = []
+  const fontesCarregadas = new Set<string>()
   for (const alvo of paraAplicar) {
+    let mudanca: number | null
+    try {
+      mudanca = await mudancaNoRender(alvo.id, fontesCarregadas)
+    } catch (e) {
+      puladas.push(`  ${alvo.projeto} · página ${alvo.id}: render falhou (${(e as Error).message})`)
+      continue
+    }
+    if (mudanca === null) continue
+    if (mudanca > LIMITE_PCT) {
+      puladas.push(`  ${alvo.projeto} · página ${alvo.id}: o PNG muda ${mudanca.toFixed(3)}%`)
+      continue
+    }
     let convertidas: string[] = []
     const { invalidados } = await db.$transaction(
       async (tx) => {
@@ -157,6 +220,7 @@ async function main() {
     console.log(`  ${alvo.projeto} · página ${alvo.id}: ${convertidas.length} camada(s) convertida(s), ${invalidados} render(s) invalidado(s)`)
   }
   console.log(`Pronto: ${paginasGravadas} página(s) gravada(s).`)
+  if (puladas.length) console.log(`\nPuladas pela trava de render (continuam rich-text): ${puladas.length}\n${puladas.join('\n')}`)
 }
 
 main()
@@ -164,4 +228,8 @@ main()
     console.error(e)
     process.exitCode = 1
   })
-  .finally(() => db.$disconnect())
+  // O renderer deixa handles abertos (fontes, canvas) e o processo não sai sozinho depois de desenhar.
+  .finally(async () => {
+    await db.$disconnect()
+    process.exit()
+  })

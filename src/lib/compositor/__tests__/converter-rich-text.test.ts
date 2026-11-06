@@ -116,6 +116,20 @@ describe('converterCamada', () => {
     expect(l.type).toBe('rich-text')
   })
 
+  it('sobe a meia-entrelinha que a camada text acrescenta (piloto Ciro Trigo: 36 px, 1,45 → 8,1 px)', () => {
+    const l = rich({ position: { x: 70, y: 1639 }, style: { color: '#fff', fontSize: 36, lineHeight: 1.45 }, richTextStyles: [{ ...NA_BRASA, fill: '#f00' }] })
+    const c = classificarRichText(l)
+    if (c.veredito !== 'conversivel') throw new Error('esperava conversível')
+    const nova = converterCamada(l, c)
+    expect(nova.position.x).toBe(70)
+    expect(nova.position.y).toBeCloseTo(1639 - 8.1)
+    // entrelinha em dois campos: a camada text desenha com textboxConfig.autoWrap.lineHeight primeiro
+    const comAuto = rich({ position: { x: 0, y: 100 }, textboxConfig: { autoWrap: { lineHeight: 1.2 } }, style: { color: '#fff', fontSize: 50, lineHeight: 1.45 }, richTextStyles: [{ ...NA_BRASA, fill: '#f00' }] })
+    const c2 = classificarRichText(comAuto)
+    if (c2.veredito !== 'conversivel') throw new Error('esperava conversível')
+    expect(converterCamada(comAuto, c2).position.y).toBeCloseTo(95)
+  })
+
   it('converterCamadasDaPagina troca só as conversíveis', () => {
     const boa = rich({ id: 'a', richTextStyles: [{ ...NA_BRASA, fill: '#f00' }] })
     const ruim = rich({ id: 'b', richTextStyles: [{ start: 0, end: 7, fill: '#f00' }, { ...NA_BRASA, fill: '#0f0' }] })
