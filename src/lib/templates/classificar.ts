@@ -28,6 +28,20 @@ export interface TemplateClassificavel {
   _count?: { Page?: number } | null
 }
 
+/**
+ * Pasta ARQUIVADA (S2, 06/11/2026): sai da vitrine de modelos e do `escolher-modelo`, mas não é excluída — posts
+ * agendados apontam para as páginas dela. O prefixo `__system` já a manda para o Arquivo da aba.
+ */
+export const CATEGORIA_ARQUIVADA = '__system_arquivado__'
+
+/**
+ * Filtro Prisma de pasta NÃO arquivada. 🔴 `category: { not: X }` sozinho descarta as pastas com `category` nulo
+ * (em SQL, `NULL <> X` não é verdadeiro), e a maioria das pastas não tem categoria.
+ */
+export const PASTA_NAO_ARQUIVADA = {
+  OR: [{ category: null }, { category: { not: CATEGORIA_ARQUIVADA } }],
+}
+
 const COLETORES = /^(Arte Rápida|Arte IA|Arte Enviada|Arte Composta|Arte Rapida)(\s*—.*)?$/i
 const TAG_FAMILIA_GERADA = 'lote-tema-2026-08'
 
