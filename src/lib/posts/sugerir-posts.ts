@@ -40,6 +40,7 @@ import { DIAS_SEMANA, escolherModeloDoDia, normalizar } from '@/lib/posts/dia-se
 import { vigenteEm, estaVigente } from '@/lib/knowledge/vigencia'
 import { registrarSugestoes, sugestoesJaEmitidas } from '@/lib/aprendizado/captura'
 import { chaveDeSugestao } from '@/lib/aprendizado/chaves'
+import { PASTA_NAO_ARQUIVADA } from '@/lib/templates/classificar'
 import { VERSAO_DA_GRADE } from '@/lib/posts/grade-da-base'
 import {
   expectativaDoProjeto,
@@ -249,7 +250,8 @@ export async function sugerirPosts(params: {
   // ── Modelos por dia e campanhas que citam o dia ──────────────────────────
   const [modelos, campanhas, entradasDaGrade] = await Promise.all([
     db.page.findMany({
-      where: { isTemplate: true, Template: { projectId } },
+      // Pasta arquivada sai do rodízio (S2), como em escolher-modelo e GET /modelos.
+      where: { isTemplate: true, Template: { projectId, ...PASTA_NAO_ARQUIVADA } },
       select: { id: true, name: true, tags: true, Template: { select: { name: true, tags: true } } },
       /**
        * Ordem determinística com RODÍZIO — o menos usado primeiro, `name` só

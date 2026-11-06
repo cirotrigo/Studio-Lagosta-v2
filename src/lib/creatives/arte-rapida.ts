@@ -43,6 +43,9 @@ import { vigenteEm } from '@/lib/knowledge/vigencia'
 import { precedenciaDaVoz, type ContextoDeVoz } from '@/lib/brand/voz'
 import { reflowLayersAfterFill } from '@/lib/combo-stack-reflow'
 import { casaDiaComNome, casaTemaComTags } from '@/lib/creatives/casar-tema'
+import { formatoPeloTamanho } from '@/lib/compositor/formato'
+import type { Formato } from '@/lib/compositor/spec'
+import { PASTA_NAO_ARQUIVADA } from '@/lib/templates/classificar'
 import { createServerTextMeasurer } from '@/lib/creatives/server-text-measurer'
 import { aplicarAutofixOuFalhar, type AutofixReport } from '@/lib/creatives/text-autofix'
 import {
@@ -182,6 +185,11 @@ export interface PrepareCreativeInput {
   theme?: string
   /** Optional day of week in PT (e.g., "sexta", "sabado"). */
   day?: string
+  /**
+   * Formato do modelo, pelo TAMANHO da página (S2, 06/11/2026). Default
+   * `'story'`, o comportamento de sempre para quem não manda.
+   */
+  formato?: Formato
 }
 
 export interface PrepareCreativeResult {
@@ -327,20 +335,27 @@ export async function resolveProject(
   return projects[0] as any
 }
 
-/** All STORY template pages of a project, flattened with their template info. */
-async function getStoryTemplatePages(projectId: number) {
+/**
+ * Os modelos de UM formato do projeto, achatados com a pasta.
+ *
+ * O formato sai do TAMANHO da página, não de `Template.type` (S2, 06/11/2026):
+ * até aqui só pastas STORY eram lidas, então modelo de feed era invisível e a
+ * página de feed guardada em pasta story (a Assinatura do By Rock) passava por
+ * story. Lê todas as pastas do projeto, menos as arquivadas.
+ */
+async function getTemplatePagesDoFormato(projectId: number, formato: Formato) {
   const templates = await db.template.findMany({
-    where: { projectId, type: 'STORY' },
+    where: { projectId, ...PASTA_NAO_ARQUIVADA },
     include: {
       Page: {
         where: { isTemplate: true },
-        select: { id: true, name: true, templateId: true, tags: true },
+        select: { id: true, name: true, templateId: true, tags: true, width: true, height: true },
       },
     },
   })
 
   return templates.flatMap((t: any) =>
-    t.Page.map((p: any) => ({
+    t.Page.filter((p: any) => formatoPeloTamanho(p.width, p.height) === formato).map((p: any) => ({
       ...p,
       templateName: t.name,
       templateId: t.id,
@@ -356,13 +371,14 @@ async function getStoryTemplatePages(projectId: number) {
 export async function prepareCreative(input: PrepareCreativeInput): Promise<PrepareCreativeResult> {
   const project = await resolveProject(input)
 
-  const allPages = await getStoryTemplatePages(project.id)
+  const formato: Formato = input.formato ?? 'story'
+  const allPages = await getTemplatePagesDoFormato(project.id, formato)
   if (allPages.length === 0) {
     throw new CreativeError(
       'NO_TEMPLATE_PAGES',
-      `No template pages found for project "${project.name}". Create templates first.`,
+      `No ${formato} template pages found for project "${project.name}". Create templates first.`,
       404,
-      { project: { id: project.id, name: project.name } },
+      { project: { id: project.id, name: project.name }, formato },
     )
   }
 

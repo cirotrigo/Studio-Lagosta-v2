@@ -813,6 +813,7 @@ const LITERAIS_ARTE_IA: Record<string, unknown> = {
       projectHint: { type: 'string', description: 'Nome ou parte do nome do projeto, se não souber o id.' },
       theme: { type: 'string', description: 'Tema do criativo (ex: "happy hour", "almoço executivo", "delivery").' },
       day: { type: 'string', description: 'Dia da semana em PT para desempatar (ex: "sexta", "sabado").' },
+      formato: { type: 'string', enum: ['story', 'feed', 'quadrado'], description: 'Formato do modelo, pelo tamanho da página: story (default), feed ou quadrado.' },
     },
     required: ['theme'],
     additionalProperties: false,
