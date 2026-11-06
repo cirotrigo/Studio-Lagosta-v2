@@ -27,6 +27,8 @@ export interface TemplateDetail extends TemplateListItem {
 interface UseTemplatesParams {
   projectId?: number | null
   category?: string | null
+  /** O tipo da PASTA (`STORY`/`FEED`/`SQUARE`). `category` guarda outra coisa (programacao, avulsas…). */
+  type?: string | null
   search?: string | null
   limit?: number
   includeDesign?: boolean
@@ -59,6 +61,10 @@ function buildQueryString(params: UseTemplatesParams) {
     query.set('category', params.category)
   }
 
+  if (params.type) {
+    query.set('type', params.type)
+  }
+
   if (params.search) {
     query.set('search', params.search)
   }
@@ -88,6 +94,7 @@ export function useTemplates(params: UseTemplatesParams = {}) {
     {
       projectId: params.projectId ?? null,
       category: params.category ?? null,
+      type: params.type ?? null,
       search: params.search ?? null,
       limit: params.limit ?? null,
       includeDesign: Boolean(params.includeDesign),
