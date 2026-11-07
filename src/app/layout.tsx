@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
+import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
 import { QueryProvider } from "@/components/providers/query-provider";
 import {
@@ -149,6 +150,7 @@ export default function RootLayout({
             <ThemeProvider defaultTheme="dark">
               {children}
               <Toaster />
+              <SonnerToaster />
             </ThemeProvider>
           </QueryProvider>
         </body>

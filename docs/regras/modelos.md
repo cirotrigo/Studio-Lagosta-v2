@@ -197,9 +197,9 @@ cópia em Avulsas. A regra (tags técnicas, chips, ordem por `lastUsedAt`) mora 
 - **Toda mutação de modelo invalida `['modelos', projectId]`** (ou o prefixo `['modelos']` quando o hook só conhece o
   `templateId`, como `useToggleTemplate`). `['template-pages']` continua sendo invalidado: o seletor do gerador de
   criativo no editor (`use-template-pages.ts`) ainda lê `GET /api/templates/[id]/template-pages`.
-- 🔴 **`toast` de `'sonner'` não aparece**: o layout monta só o `Toaster` do `use-toast` (`src/app/layout.tsx`). Tela
-  nova usa `toast` de `@/hooks/use-toast`. Medido em 06/11: os toasts de sonner da aba antiga (inclusive os do
-  "Tirar dos modelos" da S1) nunca chegavam à tela.
+- **`toast` de `'sonner'` aparece desde 06/11/2026** (antes nunca chegava à tela): `src/components/ui/sonner.tsx`
+  monta o `Toaster` do sonner no `src/app/layout.tsx`, embaixo à direita (o do `use-toast`/Radix fica no topo à
+  direita). Os dois convivem; não troque os componentes de um para o outro.
 - **Nas telas do projeto, a pasta (`Template`) se chama Pasta** ("Nova pasta", "Pastas da equipe"); a chave
   `templates` da URL e das query keys não muda.
 
