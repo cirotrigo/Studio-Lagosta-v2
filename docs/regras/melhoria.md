@@ -2,6 +2,38 @@
 
 > Regras da área, lidas antes de mexer nela. Trecho movido do antigo `CLAUDE.md` em 05/10/2026, sem alteração de texto (as seções seguem a ordem original). Índice geral: `AGENTS.md`.
 
+### A foto da melhoria é a da origem (11/11/2026)
+
+Pedido do Ciro depois do teste em produção em três rascunhos do Bacana: em
+`rediagramar` e `refinar` a carne saiu "plástica" e os croutons mudaram de
+desenho, com `textCheck: passed`. O `images.edit` redesenha a imagem inteira
+mesmo quando o pedido é só texto, e a máscara da API não garante pixel (medido
+em 08/09/2026).
+
+- 🔴 **Em `rediagramar` e `refinar` a foto não vem do gerador.** A peça gerada é
+  recomposta por código (`preservar-foto.ts`): a arte de referência entra pixel
+  por pixel em tudo o que não é bloco de texto. Bloco de texto = mudança forte,
+  chapada, com cor de tinta (branco e as cores da marca) e densa. Com
+  `instrucaoImagem` ou fundo novo a foto muda de propósito e nada disto roda.
+- **A referência é a RAIZ da linhagem**, não a última melhoria
+  (`arteDeReferenciaDaFoto`): refinar três vezes não acumula perda. A subida
+  para no elo que mudou a foto de propósito.
+- **A conferência de texto lê a peça RECOMPOSTA**, que é a que vai ao ar. Texto
+  divergente nela pode ser letra comida pela máscara estrita: a mesma geração é
+  recomposta no rigor folgado e conferida de novo antes de outra chamada paga.
+- **A foto também reprova.** Máscara acima de `TETO_DA_MASCARA` (a IA mexeu em
+  área demais) e, em `redesenhar`, assunto fora do lugar (`deslocamentoDaFoto`)
+  descartam a tentativa como o texto divergente descarta: nova tentativa pela
+  fila e, sem tentativa sobrando, `FAILED` com "foto alterada". O que foi
+  medido fica em `fieldValues.foto*`.
+- ⚠️ **Limites conhecidos.** A heurística foi calibrada em quatro peças do
+  Bacana (texto claro sobre foto escura). Pedido de `refinar` que mexe em
+  elemento gráfico sem cor de tinta (tirar um selo fora da paleta) volta à
+  origem sem aviso: `fotoRecusada` registra a área. `redesenhar` não é
+  recomposto, e texto sobre o assunto da foto ainda não é barrado (falta saber
+  onde está o assunto). Para medir um par em disco:
+  `npx tsx scripts/medir-preservacao-da-foto.ts <origem> <gerada>`.
+
 ### A melhoria de artes na carteira inteira (02/09/2026)
 
 Plano em `docs/PLANO-2026-09-01-MELHORIA-DE-ARTES.md` (F0–F6), executado em
