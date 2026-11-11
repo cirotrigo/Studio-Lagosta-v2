@@ -58,6 +58,7 @@ import type { CanalDaArte } from '@/lib/creatives/canal'
 import { googleDriveService } from '@/server/google-drive-service'
 import { pedirNovaTentativa } from '@/lib/ai/generation-queue'
 import { qualidadePadraoPara } from '@/lib/ai/qualidade-arte'
+import { deslocamentoDaFoto, preservarFotoDaOrigem, TETO_DA_MASCARA, type RigorDaFoto } from '@/lib/ai/preservar-foto'
 
 const MAX_OPENAI_INPUT_BYTES = 4 * 1024 * 1024 // 4MB
 
@@ -274,6 +275,31 @@ async function reapontarItemDaBancada(input: {
   }
 }
 
+/**
+ * A arte cuja FOTO vale para esta melhoria: a raiz da linhagem, não a última
+ * melhoria (11/11/2026). Refinar em cima de uma melhoria reaproveitava a foto
+ * que o gerador já tinha redesenhado e perdia de novo a cada rodada.
+ *
+ * Para de subir no elo que mudou a foto DE PROPÓSITO (ajuste de foto ou fundo
+ * novo): dali para cima a foto é outra. Melhoria antiga não gravou
+ * `instrucaoImagem` ao concluir; nelas o tier `high` (o padrão do ajuste de
+ * foto) faz o mesmo papel, por cautela.
+ */
+export async function arteDeReferenciaDaFoto(generationId: string): Promise<string | null> {
+  let id: string | null = generationId
+  let url: string | null = null
+  for (let saltos = 0; saltos < 8 && id; saltos++) {
+    const g: { fieldValues: unknown; sourceGenerationId: string | null; resultUrl: string | null } | null =
+      await db.generation.findUnique({ where: { id }, select: { fieldValues: true, sourceGenerationId: true, resultUrl: true } })
+    if (!g?.resultUrl) break
+    url = g.resultUrl
+    const fv = (g.fieldValues ?? {}) as Record<string, unknown>
+    if (fv.source !== 'ai_improvement' || fv.instrucaoImagem || fv.backgroundImageUrl || fv.quality === 'high') break
+    id = g.sourceGenerationId
+  }
+  return url
+}
+
 const mensagemDe = (erro: unknown) => (erro instanceof Error ? erro.message : String(erro))
 
 /** A recusa do filtro de segurança da OpenAI (HTTP 400 com `safety_violations`). */
@@ -307,6 +333,8 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
   let ultimoCheck: TextCheckResult | null = null
   /** O prompt EXATO que foi ao modelo na última tentativa (`improveCreative.aoMontarPrompt`). */
   let promptEnviado: string | null = null
+  /** O que a conferência da FOTO mediu (`preservar-foto.ts`) — vai ao registro nos dois desfechos. */
+  let fotoInfo: Record<string, unknown> = {}
 
   // O tier vale para as duas tentativas — trocar no meio compararia peras com
   // maçãs quando o texto divergir. Só sobe ANTES da primeira geração, quando o
@@ -773,11 +801,39 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
       registroDaRun.copyAutoral = registroDaCopy
     }
 
+    /**
+     * A FOTO NÃO É DO GERADOR (11/11/2026). Em `rediagramar` e `refinar` só o
+     * texto pode mudar, e o `images.edit` redesenha a imagem inteira: a peça
+     * gerada é recomposta sobre a arte de referência, que entra pixel por
+     * pixel em tudo o que não é bloco de texto. Em `redesenhar` a peça muda
+     * demais para recompor; ali se MEDE se o assunto saiu do lugar. Com ajuste
+     * de foto ou fundo novo a foto muda de propósito e nada disto roda.
+     */
+    const fotoMudaDeProposito = !!args.instrucaoImagem?.trim() || !!args.backgroundImageUrl
+    const preservaFoto = !fotoMudaDeProposito && modo !== 'redesenhar'
+    let fotoDeReferencia = primary.buffer
+    if (preservaFoto && !(args.melhoraOutraImagem ?? !!args.skipTextVerification)) {
+      const urlDaRaiz = await arteDeReferenciaDaFoto(args.originalGenerationId).catch(() => null)
+      if (urlDaRaiz && urlDaRaiz !== args.originalResultUrl) {
+        try {
+          fotoDeReferencia = (await fetchImageSource(urlDaRaiz)).buffer
+          fotoInfo.fotoDeReferencia = 'raiz da linhagem'
+        } catch (erro) {
+          console.warn('[improve.bg] arte raiz indisponível — a foto de referência é a da entrada:', erro)
+        }
+      }
+    }
+    const coresDaMarca = assets.colors.map((c) => c.hexCode)
+    const recompor = (gerada: Buffer, rigor: RigorDaFoto) =>
+      preservarFotoDaOrigem(fotoDeReferencia, gerada, { coresDaMarca, folgado: rigor === 'folgado', tamanho: finalSize })
+
     // Gera e confere. Sem textos esperados (upload externo, export do editor)
     // não há o que comparar: uma geração só, verificação pulada.
     let improvedBuffer: Buffer | null = null
     const attemptsLog: Array<Record<string, unknown>> = []
     let lastMissing: string[] = []
+    /** A última tentativa foi descartada pela conferência da FOTO, não pela do texto. */
+    let reprovaDaFoto: string | null = null
     /** Duração da geração anterior — base para decidir se a próxima cabe. */
     let ultimaGeracaoMs = 0
 
@@ -816,6 +872,8 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
           timeoutMs: tempoParaGerar(deadlineDaGeracao),
         })
       let candidate: Buffer
+      /** A peça como o gerador devolveu — a recomposição folgada parte dela. */
+      let bruta: Buffer | null = null
       try {
         candidate = await gerar()
       } catch (erro) {
@@ -846,6 +904,40 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
       const generationMs = Date.now() - genStartedAt
       ultimaGeracaoMs = generationMs
 
+      // A conferência da FOTO vem antes da do texto: é a peça recomposta que
+      // vai ao ar, então é ela que a visão tem de ler.
+      reprovaDaFoto = null
+      try {
+        if (preservaFoto) {
+          bruta = candidate
+          const r = await recompor(candidate, 'estrito')
+          fotoInfo = { ...fotoInfo, fotoPreservada: true, fotoRigor: 'estrito', fotoMascara: Number(r.fracaoDaMascara.toFixed(3)), fotoBlocos: r.blocos, fotoRecusada: Number(r.fracaoRecusada.toFixed(3)), fotoDiferencaAntes: Number(r.diferencaForaAntes.toFixed(1)) }
+          if (r.fracaoDaMascara > TETO_DA_MASCARA) {
+            reprovaDaFoto = `a IA mexeu em ${Math.round(r.fracaoDaMascara * 100)}% da arte, e só o texto podia mudar`
+          } else {
+            candidate = r.buffer
+          }
+        } else if (!fotoMudaDeProposito) {
+          const d = await deslocamentoDaFoto(primary.buffer, candidate)
+          fotoInfo = { ...fotoInfo, fotoPreservada: false, fotoDeslocada: d.deslocada, fotoLadrilhos: d.ladrilhos, fotoLadrilhosDeslocados: d.deslocados }
+          if (d.deslocada) reprovaDaFoto = `a IA tirou o assunto da foto do lugar (${d.deslocados} de ${d.ladrilhos} pedaços, até ${Math.round(d.maior * 100)}% do quadro)`
+        }
+      } catch (erroDaFoto) {
+        // Falha de CÓDIGO na conferência não pode entregar foto redesenhada em
+        // silêncio nem derrubar a melhoria paga: segue, e o registro diz.
+        console.warn('[improve.bg] conferência da foto falhou — a peça segue como o gerador devolveu:', erroDaFoto)
+        fotoInfo = { ...fotoInfo, fotoPreservada: false, fotoErro: mensagemDe(erroDaFoto).slice(0, 200) }
+      }
+      if (reprovaDaFoto) {
+        attemptsLog.push({ attempt, generationMs, passed: false, foto: reprovaDaFoto })
+        console.log(`[improve.bg] tentativa ${attempt}: descartada pela conferência da foto — ${reprovaDaFoto}`)
+        if (args.queueJobId) {
+          if (await pedirNovaTentativa(args.queueJobId, `foto alterada: ${reprovaDaFoto}`)) return
+          break
+        }
+        continue
+      }
+
       if (textosDaRegua.length === 0) {
         improvedBuffer = candidate
         textCheckInfo = { textCheck: 'skipped', textCheckReason: 'sem texto esperado na Generation original' }
@@ -869,13 +961,32 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
 
       try {
         const checkStartedAt = Date.now()
-        const check = await verifyImageTexts(
-          candidate,
-          textosDaRegua,
-          [],
-          assets.brand?.projectName ?? null,
-          transcricaoDaOrigem.length > 0 ? transcricaoDaOrigem : primaryBuffer,
-        )
+        const conferir = (peca: Buffer) =>
+          verifyImageTexts(
+            peca,
+            textosDaRegua,
+            [],
+            assets.brand?.projectName ?? null,
+            transcricaoDaOrigem.length > 0 ? transcricaoDaOrigem : primaryBuffer,
+          )
+        let check = await conferir(candidate)
+        /**
+         * Texto divergente na peça RECOMPOSTA pode ser letra comida pela
+         * máscara estrita (tinta fora da paleta da marca), não erro do
+         * gerador. A mesma geração é recomposta no rigor folgado e conferida
+         * de novo antes de gastar outra chamada de imagem.
+         */
+        if (!check.passed && bruta) {
+          const folgada = await recompor(bruta, 'folgado').catch(() => null)
+          if (folgada && folgada.fracaoDaMascara <= TETO_DA_MASCARA) {
+            const segunda = await conferir(folgada.buffer)
+            if (segunda.passed) {
+              candidate = folgada.buffer
+              check = segunda
+              fotoInfo = { ...fotoInfo, fotoRigor: 'folgado', fotoMascara: Number(folgada.fracaoDaMascara.toFixed(3)), fotoBlocos: folgada.blocos }
+            }
+          }
+        }
         const checkMs = Date.now() - checkStartedAt
         ultimoCheck = check
         attemptsLog.push({
@@ -955,6 +1066,10 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
       registroDaRun.copyAutoral = registroDaCopy
     }
 
+    if (!improvedBuffer && reprovaDaFoto) {
+      // Foto alterada sem autorização é como texto errado: não vai para o post.
+      throw new Error(`foto alterada após ${attemptsLog.length} tentativa(s): ${reprovaDaFoto}`)
+    }
     if (!improvedBuffer) {
       // Todas as tentativas divergiram: a arte NÃO pode ir para o post — texto
       // errado publicado sem revisão é pior que melhoria nenhuma.
@@ -1058,6 +1173,8 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
           ...plannerInfo,
           ...(promptPronto ? { prompt: promptPronto } : {}),
           ...textCheckInfo,
+          ...fotoInfo,
+          ...(args.instrucaoImagem?.trim() ? { instrucaoImagem: args.instrucaoImagem } : {}),
           ...(registroDaCopy ? { copyAutoral: registroDaCopy as never } : {}),
         },
       },
@@ -1128,6 +1245,8 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
               ...(logoInfo ? { logo: JSON.parse(JSON.stringify(logoInfo)) } : {}),
               creditDeductionError: deductMessage.slice(0, 400),
               ...textCheckInfo,
+              ...fotoInfo,
+              ...(args.instrucaoImagem?.trim() ? { instrucaoImagem: args.instrucaoImagem } : {}),
             },
           },
         })
@@ -1195,6 +1314,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
             failedAt: new Date().toISOString(),
             ...registroDaRun,
             ...textCheckInfo,
+            ...fotoInfo,
           },
           completedAt: new Date(),
         },
