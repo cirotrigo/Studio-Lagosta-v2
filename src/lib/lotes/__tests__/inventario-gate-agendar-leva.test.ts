@@ -204,8 +204,7 @@ const CRIADORES_DE_POST = [
   'src/lib/creatives/agendar.ts', // agendarPost (fluxo humano: colocar-na-agenda, postar-agora — fora da allowlist)
   'src/lib/posts/later-scheduler.ts', // publicador (fora da allowlist)
   'src/lib/video/process-video-job.ts', // job de vídeo (fora da allowlist)
-  'src/app/api/cron/sync-zernio/route.ts', // sync do Zernio (não é tool)
-  'src/app/api/projects/[projectId]/posts/sync-zernio/route.ts',
+  'src/lib/posts/sync-zernio.ts', // sync do Zernio, cron e rota manual (não é tool); importa rascunho de lá como DRAFT
 ].sort()
 
 describe('C9 — inventário: quem cria DRAFT, e o que as tools da allowlist alcançam', () => {
