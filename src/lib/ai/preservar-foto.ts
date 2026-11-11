@@ -38,6 +38,10 @@ import { casarTomGlobal } from './mascara-da-geracao'
 const CELULA = 4
 /** Diferença média por canal (0..255) acima da qual o pixel "mudou". */
 const LIMIAR_DE_MUDANCA = 45
+/** Mudança fraca: a borda de uma letra que andou um ou dois pixels. */
+const LIMIAR_DE_MUDANCA_FRACA = 18
+/** Fração de tinta fraca, na vizinhança, para o bloco aceito crescer por ali. */
+const DENSIDADE_DE_TINTA_FRACA = 0.02
 /** Diferença máxima para os vizinhos de um pixel chapado. */
 const LIMIAR_DE_CHAPADO = 14
 /** Fração de tinta, na vizinhança, para a célula ser parte de um bloco de texto. */
@@ -63,7 +67,9 @@ export const TETO_DA_MASCARA = 0.45
  * 11/11/2026: o redesenho que deslocou a carne deu 22%; as três peças com a
  * foto no lugar deram de 1% a 6%.
  */
-const FRACAO_DESLOCADA = 0.15
+const FRACAO_DESLOCADA = 0.1
+/** Até onde a busca procura um pedaço da foto, em fração de cada eixo. */
+const ALCANCE_DA_BUSCA = 0.12
 /** Deslocamento (fração do quadro) a partir do qual um pedaço da foto saiu do lugar. */
 export const TETO_DE_DESLOCAMENTO = 0.02
 
@@ -179,14 +185,17 @@ export async function preservarFotoDaOrigem(
   const h = Math.floor(H / CELULA)
   const mudou = new Float32Array(w * h)
   const tinta = new Float32Array(w * h)
+  /** Mudança FRACA de tinta: é por ela que o bloco aceito cresce até a letra inteira. */
+  const fraca = new Float32Array(w * h)
   for (let y = 0; y < h * CELULA; y++) {
     for (let x = 0; x < w * CELULA; x++) {
       const p = y * W + x
-      if (!chapA[p] && !chapB[p]) continue
       const i = p * 3
       const d = (Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2])) / 3
-      if (d <= LIMIAR_DE_MUDANCA) continue
+      if (d <= LIMIAR_DE_MUDANCA_FRACA) continue
       const c = Math.floor(y / CELULA) * w + Math.floor(x / CELULA)
+      if (opcoes.folgado || ehTinta(a, i) || ehTinta(b, i)) fraca[c] += 1 / (CELULA * CELULA)
+      if (d <= LIMIAR_DE_MUDANCA || (!chapA[p] && !chapB[p])) continue
       mudou[c] += 1 / (CELULA * CELULA)
       if (ehTinta(a, i) || ehTinta(b, i)) tinta[c] += 1 / (CELULA * CELULA)
     }
@@ -242,6 +251,28 @@ export async function preservarFotoDaOrigem(
     }
     blocos++
     for (let k = 0; k < fim; k++) mascara[fila[k]] = 1
+  }
+
+  /**
+   * A EMENDA NÃO PODE CORTAR LETRA (11/11/2026). Texto que a IA deslocou só
+   * alguns pixels muda pouco onde as duas versões se sobrepõem: o bloco denso
+   * pegava parte da linha, e na borda ficavam as duas versões misturadas ("CHU"
+   * duplicado sob a logo do Bacana, "Praia da Costa" borrado). O bloco aceito
+   * cresce por onde houver tinta que mudou, mesmo pouco, até acabar a linha.
+   * Só cresce a partir de bloco já aceito: tinta fraca sozinha não vira bloco.
+   */
+  const vizinhanca = mediaLocal(fraca, w, h, raio)
+  let ini = 0
+  let fim = 0
+  for (let c = 0; c < w * h; c++) if (mascara[c]) fila[fim++] = c
+  while (ini < fim) {
+    const c = fila[ini++]
+    const cx = c % w
+    for (const n of [c - w, c + w, cx > 0 ? c - 1 : -1, cx < w - 1 ? c + 1 : -1]) {
+      if (n < 0 || n >= w * h || mascara[n] || vizinhanca[n] <= DENSIDADE_DE_TINTA_FRACA) continue
+      mascara[n] = 1
+      fila[fim++] = n
+    }
   }
 
   // Folga em volta do bloco (dilatação = média local > 0) e borda suave.
@@ -303,12 +334,14 @@ export async function deslocamentoDaFoto(
   const cinza = (buf: Buffer) => sharp(buf).rotate().resize(w, h, { fit: 'fill' }).grayscale().raw().toBuffer()
   const [a, b] = await Promise.all([cinza(origem), cinza(gerada)])
   const lado = 15
-  const alcance = Math.round(w * 0.1)
+  // O alcance é por eixo: 8% da altura de um story são mais pixels que 10% da largura.
+  const alcanceX = Math.round(w * ALCANCE_DA_BUSCA)
+  const alcanceY = Math.round(h * ALCANCE_DA_BUSCA)
   let ladrilhos = 0
   let deslocados = 0
   let maior = 0
-  for (let ty = alcance; ty + lado <= h - alcance; ty += lado) {
-    for (let tx = alcance; tx + lado <= w - alcance; tx += lado) {
+  for (let ty = alcanceY; ty + lado <= h - alcanceY; ty += lado) {
+    for (let tx = alcanceX; tx + lado <= w - alcanceX; tx += lado) {
       let mediaA = 0
       for (let y = 0; y < lado; y++) for (let x = 0; x < lado; x++) mediaA += a[(ty + y) * w + tx + x]
       mediaA /= lado * lado
@@ -327,8 +360,8 @@ export async function deslocamentoDaFoto(
       }
       const zero = custoEm(0, 0)
       let melhor = { dx: 0, dy: 0, custo: zero }
-      for (let dy = -alcance; dy <= alcance; dy++)
-        for (let dx = -alcance; dx <= alcance; dx++) {
+      for (let dy = -alcanceY; dy <= alcanceY; dy++)
+        for (let dx = -alcanceX; dx <= alcanceX; dx++) {
           const custo = custoEm(dx, dy)
           if (custo < melhor.custo) melhor = { dx, dy, custo }
         }

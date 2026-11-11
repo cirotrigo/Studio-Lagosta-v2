@@ -276,3 +276,24 @@ export function aplicarCaixaDaOrigem(
     return bloco
   })
 }
+
+/**
+ * Linhas que a arte de origem tinha em caixa natural e voltaram em CAIXA ALTA
+ * (ou o contrário). A conferência de texto compara sem caixa de propósito, e
+ * por isso "Quinta pede aquele" virou "QUINTA PEDE AQUELE" num `rediagramar`
+ * do Bacana com a conferência verde (11/11/2026).
+ *
+ * Compara linha a linha: a visão agrupa as linhas em blocos de um jeito na
+ * origem e de outro no resultado. Linha que não acha par não acusa nada.
+ */
+export function caixaTrocada(origem: string[], resultado: string[]): Array<{ origem: string; lido: string }> {
+  const chave = (t: string) => t.normalize('NFD').replace(/[^\p{L}\p{N}]/gu, '').toUpperCase()
+  const linhas = (blocos: string[]) => blocos.flatMap((b) => b.split(/\n|<br\s*\/?>/i)).map((l) => l.trim()).filter(Boolean)
+  const lidas = new Map(linhas(resultado).map((l) => [chave(l), l]))
+  const trocadas: Array<{ origem: string; lido: string }> = []
+  for (const linha of linhas(origem)) {
+    const lido = lidas.get(chave(linha))
+    if (lido && soLetras(linha).length >= 5 && estaTodoEmCaixaAlta(linha) !== estaTodoEmCaixaAlta(lido)) trocadas.push({ origem: linha, lido })
+  }
+  return trocadas
+}

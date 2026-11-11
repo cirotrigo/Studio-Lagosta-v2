@@ -32,7 +32,7 @@ import {
   type ImprovementFormat,
 } from '@/lib/ai/creative-improvement-format'
 import { loadImprovementAssets } from '@/lib/ai/improvement-assets-loader'
-import { CAIXA_DA_MANCHETE, aplicarCaixaDaOrigem } from '@/lib/ai/caixa-da-copy'
+import { CAIXA_DA_MANCHETE, aplicarCaixaDaOrigem, caixaTrocada } from '@/lib/ai/caixa-da-copy'
 import { normalizeForComparison, semTextosDaMarca } from '@/lib/ai/text-comparison'
 import {
   finalizarLogoDaMelhoria,
@@ -985,6 +985,18 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
               check = segunda
               fotoInfo = { ...fotoInfo, fotoRigor: 'folgado', fotoMascara: Number(folgada.fracaoDaMascara.toFixed(3)), fotoBlocos: folgada.blocos }
             }
+          }
+        }
+        /**
+         * `rediagramar` promete manter a caixa. A conferência compara sem
+         * caixa, então a troca é conferida à parte, contra o que a visão leu
+         * na arte de origem, e reprova como texto divergente.
+         */
+        if (check.passed && modo === 'rediagramar') {
+          const trocas = caixaTrocada(transcricaoDaOrigem, check.extracted)
+          if (trocas.length > 0) {
+            fotoInfo = { ...fotoInfo, caixaTrocada: trocas.slice(0, 5) }
+            check = { ...check, passed: false, missing: trocas.map((t) => `${t.origem} (a caixa mudou: voltou "${t.lido}")`) }
           }
         }
         const checkMs = Date.now() - checkStartedAt

@@ -21,7 +21,6 @@
 
 import { db } from '@/lib/db'
 import { getLaterClient, LaterNotFoundError } from '@/lib/later'
-import { ehHostProprio } from '@/lib/creatives/ingerir-midia'
 import {
   PostStatus,
   PostType,
@@ -175,10 +174,16 @@ export async function sincronizarZernio(params: {
           continue
         }
         const guarda = { id: post.id, status: PostStatus.DRAFT, laterPostId: post.laterPostId }
-        // A arte guardada no Zernio morreu com o post: a linha não serve mais. Arte
-        // nossa (post do Studio que virou rascunho por lá) sobrevive, e o post
-        // volta a ser um rascunho comum do Studio.
-        if (post.mediaUrls.length > 0 && post.mediaUrls.every(ehHostProprio)) {
+        // Só a peça que tem PÁGINA do Studio volta a ser rascunho comum: ela
+        // foi montada aqui e apagar a linha jogaria esse trabalho fora. O resto
+        // sai da agenda, que é o que quem apagou no Zernio espera ver.
+        //
+        // Até 11/11/2026 o critério era "a arte está no nosso Blob", e a
+        // melhoria por IA passou a pôr arte nossa em post que nasceu no
+        // Zernio: três rascunhos apagados lá ficaram na agenda como rascunho,
+        // prontos para serem aprovados e publicados de novo. A arte melhorada
+        // não se perde: continua na galeria.
+        if (post.pageId !== null) {
           await db.socialPost.updateMany({ where: guarda, data: { laterPostId: null, lateStatus: null } })
         } else {
           await db.socialPost.deleteMany({ where: guarda })

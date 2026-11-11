@@ -563,8 +563,10 @@ projeto 5 vazia nesses dias.
   Studio durante a rodada.
 - 🔴 **Rascunho apagado no Zernio some da listagem em silêncio.** Os que sumiram são conferidos por `getPost` (até 20
   por rodada, e só quando a listagem de rascunhos veio inteira) e **só o 404 remove a linha local**. Não vira
-  `FAILED`: nada ia publicar, e o aviso de falha no WhatsApp seria ruído. Se a arte é de host nosso (post do Studio
-  que virou rascunho por lá), o post só perde o `laterPostId` e volta a ser rascunho comum.
+  `FAILED`: nada ia publicar, e o aviso de falha no WhatsApp seria ruído. Só o post que tem PÁGINA do
+  Studio (`pageId`) perde o `laterPostId` e volta a ser rascunho comum; o resto sai da agenda. Até 11/11/2026 o
+  critério era "a arte é de host nosso", e a melhoria por IA passou a pôr arte nossa em post nascido no Zernio: três
+  rascunhos apagados lá ficaram na agenda, prontos para serem aprovados de novo.
 - 🔴 **Aprovar esse rascunho é um `PUT` no MESMO post**, com `isDraft: false`, `scheduledFor` no relógio de Brasília
   e `timezone: 'America/Sao_Paulo'` (`agendarRascunhoDoZernio`, em `agenda-acoes.ts`). Só com `scheduledFor` o Zernio
   deixa o post como rascunho, e ele descarta campo que não entende em vez de recusar: a resposta é conferida, e sem

@@ -185,3 +185,40 @@ describe('arteDeReferenciaDaFoto', () => {
     expect(findUnique).toHaveBeenCalledTimes(2)
   })
 })
+
+describe('caixaTrocada', () => {
+  it('acusa a linha que saiu de caixa natural para caixa alta, mesmo agrupada em outro bloco', async () => {
+    const { caixaTrocada } = await import('../caixa-da-copy')
+    expect(caixaTrocada(['Quinta pede aquele\nAlmoço Bacana', 'Praia da Costa · Das 11h30 às 16h'], ['QUINTA PEDE AQUELE', 'Almoço Bacana', 'Praia da Costa • Das 11h30 às 16h'])).toEqual([
+      { origem: 'Quinta pede aquele', lido: 'QUINTA PEDE AQUELE' },
+    ])
+  })
+
+  it('não acusa caixa igual nem linha sem par', async () => {
+    const { caixaTrocada } = await import('../caixa-da-copy')
+    expect(caixaTrocada(['CHURRASCO EM CASA', 'Fale com o gerente'], ['CHURRASCO EM CASA', 'Encomende com o gerente'])).toEqual([])
+  })
+})
+
+// O crescimento do bloco pela tinta fraca (a correção da mancha no ponto laranja) NÃO tem teste que falhe sem ele:
+// só foi conferido na peça real do Bacana. Este teste segura o caso vizinho, a letra miúda.
+describe('a emenda não corta letra', () => {
+  it('texto miúdo colado ao bloco, deslocado dois pixels, sai inteiro de uma versão só', async () => {
+    // Letra miúda (traço de 1px, como o "CHURRASCARIA" sob a logo do Bacana): não é
+    // chapada, então sozinha não forma bloco; a emenda passava no meio dela.
+    const miudo = (raw: Buffer, x0: number, y0: number) => {
+      for (let x = x0; x < x0 + 72; x += 4) for (let y = y0; y < y0 + 12; y++) raw.set([255, 255, 255], (y * W + x) * 3)
+    }
+    const origemRaw = foto(1)
+    escrever(origemRaw, 60, 40, BRANCO)
+    miudo(origemRaw, 290, 46)
+    const geradaRaw = foto(2)
+    escrever(geradaRaw, 62, 42, BRANCO)
+    miudo(geradaRaw, 292, 46)
+    const saida = await cru((await preservarFotoDaOrigem(await png(origemRaw), await png(geradaRaw))).buffer)
+    const claro = (x: number, y: number) => saida[(y * W + x) * 3] > 200
+    // No fim da palavra, longe da folga do bloco: vale a versão gerada, sem resto da antiga.
+    expect(claro(344, 52)).toBe(true)
+    expect(claro(342, 52)).toBe(false)
+  })
+})

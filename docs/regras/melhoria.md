@@ -26,6 +26,17 @@ em 08/09/2026).
   descartam a tentativa como o texto divergente descarta: nova tentativa pela
   fila e, sem tentativa sobrando, `FAILED` com "foto alterada". O que foi
   medido fica em `fieldValues.foto*`.
+- **A emenda não corta letra** (segunda rodada em produção, 11/11/2026): o
+  bloco aceito cresce por onde houver tinta que mudou, mesmo pouco. Sem isso o
+  ponto laranja do rodapé do Bacana saía manchado, com as duas versões
+  misturadas na borda da máscara.
+- **`rediagramar` confere a caixa** (`caixaTrocada`): a conferência de texto
+  compara sem caixa, e "Quinta pede aquele" voltou "QUINTA PEDE AQUELE" com
+  `passed`. Troca de caixa reprova como texto divergente. Troca de FONTE não é
+  conferida: não há como ler fonte pelo texto.
+- **A busca de deslocamento é por eixo** (12% de cada um): com o alcance preso
+  à largura, a carne que desceu 8% do story ficava fora da busca e o redesenho
+  saía como pronto.
 - ⚠️ **Limites conhecidos.** A heurística foi calibrada em quatro peças do
   Bacana (texto claro sobre foto escura). Pedido de `refinar` que mexe em
   elemento gráfico sem cor de tinta (tirar um selo fora da paleta) volta à
