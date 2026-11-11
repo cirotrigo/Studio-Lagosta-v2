@@ -4,6 +4,7 @@
  * O Ciro sobe a arte como RASCUNHO no Zernio e a Roberta aprova na agenda do Studio. Antes, o sync só listava
  * `scheduled` e `published`: o rascunho nunca chegava. Aqui: a importação, as transições nos dois sentidos, o
  * rascunho apagado por lá, e a aprovação — que tira AQUELE post de rascunho no Zernio, sem criar um segundo.
+ * E a volta: "voltar para rascunho" SEGURA o post no Zernio (a arte mora lá) em vez de apagar, fechando o ciclo.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -14,6 +15,7 @@ const zernio = vi.hoisted(() => ({
   getPost: null as any,
   updatePost: null as any,
   createPost: null as any,
+  deletePost: null as any,
 }))
 
 function casa(l: any, where: any): boolean {
@@ -47,6 +49,9 @@ vi.mock('@/lib/db', () => ({
         banco.posts = banco.posts.map((p) => (casa(p, where) ? (count++, { ...p, ...data }) : p))
         return { count }
       },
+      update: async ({ where, data }: any) => {
+        banco.posts = banco.posts.map((p) => (p.id === where.id ? { ...p, ...data } : p))
+      },
       deleteMany: async ({ where }: any) => {
         const antes = banco.posts.length
         banco.posts = banco.posts.filter((p) => !casa(p, where))
@@ -61,6 +66,7 @@ vi.mock('@/lib/later/client', () => ({
     getPost: (...a: unknown[]) => zernio.getPost(...a),
     updatePost: (...a: unknown[]) => zernio.updatePost(...a),
     createPost: (...a: unknown[]) => zernio.createPost(...a),
+    deletePost: (...a: unknown[]) => zernio.deletePost(...a),
   }),
 }))
 vi.mock('@/lib/aprendizado/sinal-de-agendamento', () => ({ fecharSugestaoDeSlot: async () => undefined, registrarSlotDoPost: async () => undefined }))
@@ -105,6 +111,7 @@ beforeEach(() => {
   zernio.getPost = vi.fn(async () => { throw new LaterNotFoundError('Post not found') })
   zernio.updatePost = vi.fn(async () => noZernio({ status: 'scheduled' }))
   zernio.createPost = vi.fn()
+  zernio.deletePost = vi.fn(async () => undefined)
 })
 
 describe('sync: importa o rascunho do Zernio', () => {
@@ -283,5 +290,113 @@ describe('aprovar na agenda um rascunho que veio do Zernio', () => {
     await aprovar()
     expect(zernio.updatePost).not.toHaveBeenCalled()
     expect(banco.posts[0]).toMatchObject({ status: 'SCHEDULED', laterPostId: null })
+  })
+})
+
+describe('voltar para rascunho um post que veio do Zernio', () => {
+  const voltar = () => processarAprovacao({ projectId: 5, postIds: ['local-1'], action: 'REVERT' })
+  const agendado = (extra: Record<string, unknown> = {}) => local({ status: 'SCHEDULED', lateStatus: 'scheduled', ...extra })
+
+  beforeEach(() => {
+    zernio.updatePost = vi.fn(async (_id: string, corpo: any) => noZernio({ status: corpo.isDraft ? 'draft' : 'scheduled' }))
+  })
+
+  it('SEGURA o post no Zernio (isDraft: true) em vez de apagar, e mantém id, arte e horário', async () => {
+    banco.posts = [agendado()]
+    const r = await voltar()
+
+    expect(zernio.updatePost).toHaveBeenCalledTimes(1)
+    expect(zernio.updatePost).toHaveBeenCalledWith('z1', { isDraft: true })
+    expect(zernio.deletePost).not.toHaveBeenCalled()
+    expect(r.processados).toEqual(['local-1'])
+    expect(banco.posts[0]).toMatchObject({
+      status: 'DRAFT', lateStatus: 'draft', laterPostId: 'z1', mediaUrls: [CDN_ZERNIO], scheduledDatetime: new Date(QUANDO), renderStatus: 'NOT_NEEDED',
+    })
+  })
+
+  it('a menos de 5 minutos do horário: não segura, e diz por quê', async () => {
+    banco.posts = [agendado({ scheduledDatetime: new Date(Date.now() + 3 * 60_000) })]
+    const r = await voltar()
+    expect(zernio.updatePost).not.toHaveBeenCalled()
+    expect(r.ignorados[0].motivo).toMatch(/publica em instantes/)
+    expect(banco.posts[0]).toMatchObject({ status: 'SCHEDULED', lateStatus: 'scheduled' })
+  })
+
+  it('já em publicação no Zernio: não segura', async () => {
+    banco.posts = [agendado({ lateStatus: 'publishing' })]
+    const r = await voltar()
+    expect(zernio.updatePost).not.toHaveBeenCalled()
+    expect(r.ignorados[0].motivo).toMatch(/já saiu para publicação/)
+    expect(banco.posts[0].status).toBe('SCHEDULED')
+  })
+
+  it('404 do Zernio: nada muda aqui (não dá para saber se publicou)', async () => {
+    banco.posts = [agendado()]
+    zernio.updatePost = vi.fn(async () => { throw new LaterNotFoundError('Post not found') })
+    const r = await voltar()
+    expect(r.processados).toEqual([])
+    expect(r.ignorados[0].motivo).toMatch(/sumiu da fila/)
+    expect(banco.posts[0]).toMatchObject({ status: 'SCHEDULED', lateStatus: 'scheduled', laterPostId: 'z1' })
+  })
+
+  it('Zernio fora do ar: nada muda e o motivo volta', async () => {
+    banco.posts = [agendado()]
+    zernio.updatePost = vi.fn(async () => { throw new Error('502') })
+    const r = await voltar()
+    expect(r.ignorados[0].motivo).toMatch(/Não foi possível tirar o post da fila/)
+    expect(banco.posts[0]).toMatchObject({ status: 'SCHEDULED', lateStatus: 'scheduled' })
+  })
+
+  it('Zernio aceita a chamada mas o post segue agendado por lá: não marca rascunho', async () => {
+    banco.posts = [agendado()]
+    zernio.updatePost = vi.fn(async () => noZernio({ status: 'scheduled' }))
+    const r = await voltar()
+    expect(r.ignorados[0].motivo).toMatch(/não confirmou/)
+    expect(banco.posts[0].status).toBe('SCHEDULED')
+  })
+
+  it('post NATIVO do Studio (arte em host nosso): apaga do Zernio e zera o laterPostId, como sempre', async () => {
+    banco.posts = [agendado({ pageId: 'p1', renderStatus: 'RENDERED', mediaUrls: ['https://abc.public.blob.vercel-storage.com/arte.png'] })]
+    await voltar()
+    expect(zernio.deletePost).toHaveBeenCalledWith('z1')
+    expect(zernio.updatePost).not.toHaveBeenCalled()
+    expect(banco.posts[0]).toMatchObject({ status: 'DRAFT', laterPostId: null, lateStatus: null, renderStatus: 'PENDING' })
+  })
+
+  it('ciclo completo: rascunho → agendado → rascunho → agendado, sempre o MESMO post do Zernio, e o sync concorda', async () => {
+    const aprovar = () => processarAprovacao({ projectId: 5, postIds: ['local-1'], action: 'APPROVE' })
+    banco.posts = [local()]
+
+    expect((await aprovar()).processados).toEqual(['local-1'])
+    expect(banco.posts[0]).toMatchObject({ status: 'SCHEDULED', lateStatus: 'scheduled' })
+    expect((await voltar()).processados).toEqual(['local-1'])
+    expect(banco.posts[0]).toMatchObject({ status: 'DRAFT', lateStatus: 'draft' })
+
+    // O cron seguinte encontra o post em rascunho nos dois lados: nada muda, nada é conferido nem apagado.
+    zernio.porStatus.draft = [noZernio()]
+    banco.posts[0].lastSyncAt = new Date(Date.now() - 600_000)
+    expect(await cron()).toMatchObject({ imported: 0, updated: 0, removed: 0 })
+    expect(zernio.getPost).not.toHaveBeenCalled()
+    expect(banco.posts[0]).toMatchObject({ status: 'DRAFT', lateStatus: 'draft', laterPostId: 'z1' })
+
+    expect((await aprovar()).processados).toEqual(['local-1'])
+    expect(banco.posts).toHaveLength(1)
+    expect(banco.posts[0]).toMatchObject({ status: 'SCHEDULED', lateStatus: 'scheduled', laterPostId: 'z1', mediaUrls: [CDN_ZERNIO] })
+    expect(zernio.updatePost.mock.calls.map(([id, corpo]: any) => [id, corpo.isDraft])).toEqual([['z1', false], ['z1', true], ['z1', false]])
+    expect(zernio.createPost).not.toHaveBeenCalled()
+    expect(zernio.deletePost).not.toHaveBeenCalled()
+  })
+
+  it('sync com listagem de ANTES do revert não rearma o post: linha mexida durante a rodada fica para a próxima', async () => {
+    banco.posts = [agendado()]
+    // A listagem (velha) ainda diz `scheduled`; no meio dela, o Studio segura o post.
+    zernio.listPosts = vi.fn(async ({ status, page }: any) => {
+      if (status !== 'scheduled' || page !== 1) return []
+      await new Promise((r) => setTimeout(r, 5))
+      await voltar()
+      return [noZernio({ status: 'scheduled' })]
+    })
+    await cron()
+    expect(banco.posts[0]).toMatchObject({ status: 'DRAFT', lateStatus: 'draft' })
   })
 })

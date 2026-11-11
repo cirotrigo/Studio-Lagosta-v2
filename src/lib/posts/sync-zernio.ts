@@ -65,6 +65,7 @@ const CAMPOS_DO_EXISTENTE = {
   scheduledDatetime: true,
   mediaUrls: true,
   pageId: true,
+  lastSyncAt: true,
 } as const
 
 function mapZernioStatus(status: string): PostStatus {
@@ -102,6 +103,7 @@ export async function sincronizarZernio(params: {
   accountId?: string
 }): Promise<ResultadoDoSync> {
   const { projects, statuses, accountId } = params
+  const inicio = new Date()
   const client = getLaterClient()
 
   const accountToProject = new Map<string, ProjetoDoSync>()
@@ -138,7 +140,7 @@ export async function sincronizarZernio(params: {
   for (const zPost of zernioPosts.values()) {
     const existing = porLaterId.get(zPost.id)
     if (existing) {
-      resultado[(await atualizarExistente(existing, zPost)) ? 'updated' : 'skipped']++
+      resultado[(await atualizarExistente(existing, zPost, inicio)) ? 'updated' : 'skipped']++
     } else {
       resultado[(await importarNovo(zPost, accountToProject)) ? 'imported' : 'skipped']++
     }
@@ -203,7 +205,11 @@ function dadosDoInstagram(zPost: any) {
   }
 }
 
-async function atualizarExistente(existing: Existente, zPost: any): Promise<boolean> {
+async function atualizarExistente(existing: Existente, zPost: any, listadoDesde?: Date): Promise<boolean> {
+  // Aprovar e voltar para rascunho no Studio gravam `lastSyncAt` depois de acertar o Zernio. Linha mexida DEPOIS que
+  // esta rodada começou a listar é mais nova que a listagem: fica para a próxima rodada.
+  if (listadoDesde && existing.lastSyncAt && existing.lastSyncAt > listadoDesde) return false
+
   const { publishedAt, platformPostUrl, platformPostId } = dadosDoInstagram(zPost)
 
   // A story can be already marked `published` locally but still have

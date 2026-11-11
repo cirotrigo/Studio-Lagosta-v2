@@ -570,5 +570,13 @@ projeto 5 vazia nesses dias.
   deixa o post como rascunho, e ele descarta campo que não entende em vez de recusar: a resposta é conferida, e sem
   `status: 'scheduled'` o post continua rascunho aqui. O caminho nativo (`laterPostId: null`) não mudou, e nenhum dos
   dois cria post novo para rascunho que já tem `laterPostId`.
-- Não coberto: **voltar para rascunho** um post cuja arte mora no Zernio continua recusado (o caminho de hoje apaga o
-  post remoto e a arte iria junto). Quem quiser segurar, segura no Zernio e o sync traz.
+- 🔴 **Voltar para rascunho um post cuja arte mora no Zernio SEGURA, não apaga** (`segurarNoZernio`, 11/11/2026): `PUT`
+  com `isDraft: true`, resposta conferida (`draft`), e só então `DRAFT` + `lateStatus: 'draft'` aqui, mantendo
+  `laterPostId`, mídia e horário. Antes era recusado, porque o revert de sempre apaga o post remoto e a arte iria
+  junto. O critério é `midiaSobreviveAoZernio`: arte em host nosso continua no caminho antigo (apaga do Zernio e
+  zera o `laterPostId`). Não segura a menos de 5 min do horário (`FREEZE_WINDOW_MS`) nem em `publishing`/`published`;
+  404 não muda nada (não dá para saber se publicou; o sync esclarece). O ciclo rascunho → agendado → rascunho →
+  agendado usa sempre o mesmo post do Zernio.
+- **Aprovar e segurar gravam `lastSyncAt`**, e o sync pula a linha mexida depois que a rodada começou a listar: a
+  listagem é mais velha que ela. Com a escrita condicional ao `lateStatus` lido, uma rodada em curso não desfaz a
+  ação feita no Studio em nenhuma das duas ordens.

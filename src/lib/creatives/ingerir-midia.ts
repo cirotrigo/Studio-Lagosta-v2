@@ -8,9 +8,10 @@
  *  1. A agenda não mostra a capa. O `next/image` só otimiza host declarado em
  *     `images.remotePatterns` (next.config.ts) e devolve 400 para o resto — o
  *     post aparece na grade sem arte nenhuma.
- *  2. O post não pode voltar para rascunho. `midiaSobreviveAoZernio` trata todo
- *     host desconhecido como CDN do Zernio e recusa o revert, porque apagar o
- *     post de lá levaria a arte junto.
+ *  2. O post não volta para rascunho como os outros. `midiaSobreviveAoZernio`
+ *     trata todo host desconhecido como CDN do Zernio, e apagar o post de lá
+ *     levaria a arte junto (até 11/11/2026 o revert era recusado; hoje o post
+ *     é segurado no Zernio como rascunho, e não se desprende mais de lá).
  *  3. A publicação depende de um link que não controlamos continuar de pé até
  *     a hora marcada. CDN de gerador expira; a agenda descobre no ar.
  *
