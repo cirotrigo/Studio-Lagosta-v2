@@ -580,3 +580,32 @@ projeto 5 vazia nesses dias.
 - **Aprovar e segurar gravam `lastSyncAt`**, e o sync pula a linha mexida depois que a rodada começou a listar: a
   listagem é mais velha que ela. Com a escrita condicional ao `lateStatus` lido, uma rodada em curso não desfaz a
   ação feita no Studio em nenhuma das duas ordens.
+
+## Trocar a arte de post que mora no Zernio (11/11/2026)
+
+Pedido do Ciro: "quando uma arte for ajustada, ela deve ser substituída no Zernio". Até aqui `laterPostId` não nulo
+recusava a melhoria com IA (`POST_CONGELADO`), o runner só escrevia em post com `laterPostId: null`,
+`trocar-arte-do-post` recusava, e o botão "Melhorar com IA" nem aparecia (post importado não tem `generationId`).
+
+- 🔴 **`laterPostId` não nulo continua INTOCÁVEL para quem escreve só no banco.** A porta que troca arte de post
+  entregue é `trocarMidiaNoZernio` (`src/lib/posts/midia-no-zernio.ts`): lê o post no Zernio, monta `mediaItems` com
+  a lista inteira e UMA posição trocada (os outros slides voltam com a URL e a ordem de lá), faz `PUT` no MESMO post e
+  confere que o estado e a quantidade de mídias são os de antes. O banco grava depois, com a URL que o Zernio devolveu.
+- **Quem pode** (`recusaDeArteNoZernio`): rascunho de lá sempre; agendado até 5 min antes do horário; `publishing` e
+  `published` nunca. O estado conferido na troca é o do Zernio, não o do banco.
+- **Melhoria com IA** (`aplicarArteMelhoradaAoPost`, extraída do runner): vale para rascunho e agendado, como já
+  valia para post do Studio (decisão de 01/08/2026). Se o Zernio não trocar, o banco não muda e a arte melhorada fica
+  só na galeria, como já acontecia quando o post mudava no meio.
+- **`trocar-arte-do-post`** segue só para RASCUNHO, agora também o rascunho que mora no Zernio (rascunho nos dois
+  lados). Agendado continua pedindo voltar-para-rascunho antes: é a regra de re-aprovação, e o revert desses posts
+  funciona desde o item acima.
+- **Arte de origem sob demanda** (`trazerArteDoPostParaGaleria`): post importado é imagem pronta, sem Generation e
+  com a mídia fora do nosso Blob, e a melhoria precisa das duas coisas. Ao pedir a melhoria (botão da agenda, pela
+  rota `arte-na-galeria`, ou `melhorar-arte` com `postId` e sem `generationId`), a arte é baixada do Zernio e
+  registrada pela `importarArte`. Sob demanda de propósito: copiar toda arte importada encheria a galeria.
+  Essa arte é a ANTERIOR: para desfazer a melhoria, troca-se a arte do post de volta por ela.
+- **Sem régua de texto**: a arte trazida não tem `textos`, então a melhoria não confere a copy contra nada. Conferir
+  o resultado com o olho antes de aprovar.
+- Arte trocada por fora, direto no Zernio, zera o `generationId` do post no sync: a Generation ligada era a da
+  imagem anterior.
+

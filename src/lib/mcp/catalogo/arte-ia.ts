@@ -487,7 +487,10 @@ export const toolsDeArteIA = [
       projectId: z.number().describe('ID do cliente.'),
       generationId: z
         .string()
-        .describe('A arte a melhorar (de criar-arte, criar-arte-de-modelo, ajustar-arte ou do post).'),
+        .optional()
+        .describe(
+          'A arte a melhorar (de criar-arte, criar-arte-de-modelo, ajustar-arte ou do post). Só pode faltar quando há `postId` de um post que veio do Zernio (imagem pronta, sem arte na galeria): aí a arte do post é trazida para a galeria e a melhoria parte dela.',
+        ),
       pedido: z
         .string()
         .optional()
@@ -508,7 +511,7 @@ export const toolsDeArteIA = [
         .string()
         .optional()
         .describe(
-          'Post da agenda (rascunho ou agendado) que recebe a arte melhorada ao final (opcional — sem ele a melhoria fica na galeria).',
+          'Post da agenda (rascunho ou agendado) que recebe a arte melhorada ao final (opcional — sem ele a melhoria fica na galeria). Vale também para post que já está no Zernio: a arte é trocada no mesmo post de lá, no mesmo horário, desde que não esteja a minutos de publicar.',
         ),
       itemId: z
         .string()
@@ -535,7 +538,26 @@ export const toolsDeArteIA = [
           import('../tools'),
         ])
       const projectId = args.projectId as number
-      const generationId = args.generationId as string
+      const postIdInformado = typeof args.postId === 'string' && args.postId ? args.postId : undefined
+      let generationId = typeof args.generationId === 'string' ? args.generationId : ''
+      // Post que veio do Zernio é imagem pronta, sem Generation: a arte dele entra na galeria agora, e é dela que a
+      // melhoria parte (e para ela que se volta, se a melhoria não agradar).
+      if (!generationId) {
+        if (!postIdInformado) {
+          throw new CreativeError('ENTRADA_INVALIDA', 'Informe generationId (a arte a melhorar) ou o postId de um post que veio do Zernio.', 400)
+        }
+        const [{ trazerArteDoPostParaGaleria }, { quemDecidiu }] = await Promise.all([
+          import('../../posts/arte-do-post-na-galeria'),
+          import('../tools'),
+        ])
+        const arte = await trazerArteDoPostParaGaleria({
+          projectId,
+          postId: postIdInformado,
+          createdBy: await quemDecidiu(projectId, principal),
+          canal: canalDoPrincipal(principal),
+        })
+        generationId = arte.generationId
+      }
 
       const gen = await db.generation.findFirst({
         where: { id: generationId, projectId },

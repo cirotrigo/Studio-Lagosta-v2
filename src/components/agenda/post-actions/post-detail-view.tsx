@@ -59,6 +59,7 @@ import { DuplicateDialog } from './duplicate-dialog'
 import { ApprovePostsDialog } from './approve-posts-dialog'
 import { ImproveCreativeModal } from '@/components/creatives/improve-creative-modal'
 import { toast } from 'sonner'
+import { api } from '@/lib/api-client'
 import { getPostDate, formatPostDateTimeBR, isVideoUrl } from '../calendar/calendar-utils'
 import { descreverJanela } from '@/lib/posts/freeze-window'
 import { editarTemplateHref, publicarLembreteHref } from '@/lib/agenda-routes'
@@ -115,6 +116,9 @@ export function PostDetailView({
   const [duplicateOpen, setDuplicateOpen] = useState(false)
   const [approveOpen, setApproveOpen] = useState(false)
   const [improveOpen, setImproveOpen] = useState(false)
+  /** Post do Zernio: a arte do slide, trazida para a galeria para a melhoria partir dela. */
+  const [arteTrazida, setArteTrazida] = useState<{ indice: number; generationId: string; url: string } | null>(null)
+  const [trazendoArte, setTrazendoArte] = useState(false)
   const [publicarAgoraOpen, setPublicarAgoraOpen] = useState(false)
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [isPolling, setIsPolling] = useState(false)
@@ -296,15 +300,48 @@ export function PostDetailView({
    * Melhorar com IA vale para RASCUNHO e AGENDADO (decisão de 01/08/2026 — a
    * melhoria virou etapa do acabamento da criação, não pós-aprovação), com
    * uma Generation vinculada e uma imagem atual. Posts antigos sem
-   * generationId não mostram o botão; post já entregue ao publicador também
-   * não, porque a arte dele não muda mais.
+   * generationId não mostram o botão; post nativo já entregue ao publicador
+   * também não, porque a arte dele não muda mais.
+   *
+   * Post que MORA no Zernio (subido por lá, 11/11/2026) é a exceção: a arte
+   * melhorada é trocada no mesmo post de lá, e a Generation de origem é
+   * trazida para a galeria na hora do clique (`abrirMelhoria`). O servidor
+   * recusa quando a publicação está a minutos ou já saiu.
    */
+  const arteNoZernio = (post as { arteNoZernio?: boolean }).arteNoZernio === true
   const canImprove =
     (post.status === 'SCHEDULED' || post.status === 'DRAFT') &&
-    !!post.generationId &&
     mediaUrls.length > 0 &&
     !isCurrentMediaVideo &&
-    !janela.congelado
+    (janela.congelado ? arteNoZernio : !!post.generationId)
+
+  const abrirMelhoria = async () => {
+    if (!arteNoZernio) {
+      setImproveOpen(true)
+      return
+    }
+    setTrazendoArte(true)
+    try {
+      const arte = await api.post<{ generationId: string; url: string }>(
+        `/api/projects/${post.projectId}/posts/${post.id}/arte-na-galeria`,
+        { indice: currentImageIndex },
+      )
+      setArteTrazida({ indice: currentImageIndex, generationId: arte.generationId, url: arte.url })
+      setImproveOpen(true)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível preparar a arte para a melhoria.')
+    } finally {
+      setTrazendoArte(false)
+    }
+  }
+  /** A arte de origem da melhoria: no post do Zernio, a que acabou de ser trazida para ESTE slide. */
+  const origemDaMelhoria = arteNoZernio
+    ? arteTrazida?.indice === currentImageIndex
+      ? { id: arteTrazida.generationId, resultUrl: arteTrazida.url }
+      : null
+    : post.generationId
+      ? { id: post.generationId, resultUrl: currentMediaUrl }
+      : null
 
   /**
    * "Publicar agora" abre o diálogo de confirmação — a ação manda o post para
@@ -1059,10 +1096,10 @@ export function PostDetailView({
               variant="outline"
               size="sm"
               className="hidden flex-1 sm:flex sm:min-w-[9rem] lg:flex-none"
-              onClick={() => setImproveOpen(true)}
+              onClick={abrirMelhoria}
               // Já tem melhoria em andamento: pedir de novo não gera uma
               // segunda arte (o servidor deduplica), só confunde.
-              disabled={!!melhoriaEmAndamento}
+              disabled={!!melhoriaEmAndamento || trazendoArte}
               title={
                 melhoriaEmAndamento
                   ? 'Já existe uma melhoria em andamento para este post'
@@ -1147,7 +1184,7 @@ export function PostDetailView({
               )}
 
               {canImprove && (
-                <DropdownMenuItem className="sm:hidden" onClick={() => setImproveOpen(true)}>
+                <DropdownMenuItem className="sm:hidden" onClick={abrirMelhoria} disabled={trazendoArte}>
                   <Sparkles className="mr-2 h-4 w-4" />
                   {isCarousel ? `Melhorar slide ${currentImageIndex + 1}` : 'Melhorar com IA'}
                 </DropdownMenuItem>
@@ -1225,16 +1262,17 @@ export function PostDetailView({
       </div>
 
       {/* Melhorar com IA — só chega aqui com post rascunho ou agendado */}
-      {canImprove && post.generationId && (
+      {canImprove && origemDaMelhoria && (
         <ImproveCreativeModal
           generation={{
-            id: post.generationId,
+            id: origemDaMelhoria.id,
             projectId: post.projectId,
             // A arte que se melhora é a que está NO POST, não o resultUrl da
             // Generation — o cron pode ter re-renderizado depois dela. Em
             // carrossel é o slide que está NA TELA: mandar sempre o primeiro
-            // melhorava a imagem errada.
-            resultUrl: currentMediaUrl,
+            // melhorava a imagem errada. No post do Zernio é a cópia dessa
+            // mesma arte no Blob (a melhoria só lê o nosso Blob).
+            resultUrl: origemDaMelhoria.resultUrl,
             templateName: isCarousel
               ? `${isStory ? 'Story' : 'Post'} agendado, slide ${currentImageIndex + 1}/${mediaUrls.length} — ${formatPostDateTimeBR(post)}`
               : `${isStory ? 'Story' : 'Post'} agendado — ${formatPostDateTimeBR(post)}`,
