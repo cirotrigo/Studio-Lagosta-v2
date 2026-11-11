@@ -1,3 +1,4 @@
+import { aplicarPromocoes, conferirPromocoes, problemasDasPromocoes, type AlteracaoDePromocao } from './promocoes-da-entrada'
 /**
  * A OPERAÇÃO sobre uma entrada da base pelo MCP: altera `dados` e, se pedido, o texto, com versão esperada, backup,
  * auditoria e idempotência. A trilha (`OperacaoDaBase`) nasce no MESMO commit da edição, então "operação não encontrada"
@@ -53,6 +54,7 @@ export interface PedidoDeOperacao {
   versaoEsperada: string
   operacaoId: string
   alteracoes?: Alteracao[]
+  alteracoesPromocoes?: AlteracaoDePromocao[]
   content?: string
   reverterOperacaoId?: string
   aceitarDivergencias?: string[]
@@ -113,6 +115,7 @@ function resultado(op: OperacaoDaBase, extras: Record<string, unknown> = {}) {
   }
   return {
     estado,
+    avisoDeCobertura: 'Ausência de divergências não certifica toda a Base. A conferência automática é parcial.',
     gravado: true,
     operacaoId: op.operacaoId,
     entradaId: op.entryId,
@@ -167,13 +170,13 @@ export async function executarOperacaoDaBase(pedido: PedidoDeOperacao) {
   const { projectId, entradaId, operacaoId, versaoEsperada, autor, ator } = pedido
   const reversao = pedido.reverterOperacaoId
   const confirmado = pedido.confirmado === true
-  const hash = hashDoPedido({ entradaId, versaoEsperada, alteracoes: pedido.alteracoes ?? null, content: pedido.content ?? null, reversao: reversao ?? null })
+  const hash = hashDoPedido({ entradaId, versaoEsperada, alteracoes: pedido.alteracoes ?? null, ...(pedido.alteracoesPromocoes ? { alteracoesPromocoes: pedido.alteracoesPromocoes } : {}), content: pedido.content ?? null, reversao: reversao ?? null })
 
   const jaFeita = await lerOperacao(projectId, operacaoId)
   if (jaFeita) return repetir(jaFeita, hash, confirmado)
 
-  if (reversao ? pedido.alteracoes || pedido.content !== undefined : !pedido.alteracoes?.length && pedido.content === undefined) {
-    throw new CreativeError('PEDIDO_INVALIDO', 'Envie alteracoes e/ou content, ou então só reverterOperacaoId.', 400)
+  if (reversao ? pedido.alteracoes || pedido.alteracoesPromocoes || pedido.content !== undefined : !pedido.alteracoes?.length && !pedido.alteracoesPromocoes?.length && pedido.content === undefined) {
+    throw new CreativeError('PEDIDO_INVALIDO', 'Envie alteracoes, alteracoesPromocoes e/ou content, ou então só reverterOperacaoId.', 400)
   }
 
   const entrada = await db.knowledgeBaseEntry.findUnique({ where: { id: entradaId } })
@@ -220,7 +223,7 @@ export async function executarOperacaoDaBase(pedido: PedidoDeOperacao) {
       })
     }
   } else {
-    const problemas = problemasDasAlteracoes(antes.dados, pedido.alteracoes ?? [])
+    const problemas = [...problemasDasAlteracoes(antes.dados, pedido.alteracoes ?? []), ...problemasDasPromocoes(antes.dados, pedido.alteracoesPromocoes ?? [])]
     if (problemas.length > 0) {
       throw new CreativeError('DADOS_INVALIDOS', `Nada foi gravado: ${problemas.map((p) => `${p.campo}: ${p.motivo}`).join('; ')}.`, 422, { problemas, camposPermitidos: CAMPOS_PERMITIDOS })
     }
@@ -232,10 +235,17 @@ export async function executarOperacaoDaBase(pedido: PedidoDeOperacao) {
   }
   const depois: Foto = {
     content: contentNovo ?? antes.content,
-    dados: reversao ? (alvo?.antes as unknown as Foto).dados : aplicarAlteracoes(antes.dados, pedido.alteracoes ?? []),
+    dados: reversao ? (alvo?.antes as unknown as Foto).dados : aplicarPromocoes(aplicarAlteracoes(antes.dados, pedido.alteracoes ?? []), pedido.alteracoesPromocoes ?? []),
   }
   const mudouTexto = depois.content !== antes.content
-  const diffDosDados = diffDeDados(antes.dados, depois.dados)
+  const diffDosDados = diffDeDados(antes.dados, depois.dados).flatMap(d => {
+    if (d.campo !== 'promoções' || !pedido.alteracoesPromocoes?.length || reversao) return [d]
+    return pedido.alteracoesPromocoes.flatMap(p => {
+      const antesP = (antes.dados.promoções as Record<string, unknown>[]).find(v => v?.nome === p.nome)!
+      const depoisP = (depois.dados.promoções as Record<string, unknown>[]).find(v => v?.nome === p.nome)!
+      return ['dias', 'horário'].filter(k => JSON.stringify(antesP[k]) !== JSON.stringify(depoisP[k])).map(k => ({ campo: `promoções[${p.nome}].${k}`, antes: antesP[k], depois: depoisP[k] }))
+    })
+  })
   const diff = [...diffDosDados, ...(mudouTexto ? [{ campo: 'content', antes: antes.content, depois: depois.content }] : [])]
   if (diff.length === 0) {
     throw new CreativeError('NADA_A_MUDAR', 'O pedido não muda nada: a entrada já tem esses valores. Nada foi gravado.', 400, { versaoAtual })
@@ -247,6 +257,14 @@ export async function executarOperacaoDaBase(pedido: PedidoDeOperacao) {
   const linhas = (await linhasDaBase(projectId)).map((l) => (l.id === entradaId ? { ...l, content: depois.content, metadata: depois.dados } : l))
   const divergencias = divergenciasDaBase(linhas)
   const tocados = new Set(diffDosDados.map((d) => d.campo))
+  // Dias e horário são um único serviço: alterar qualquer um confere ambos.
+  for (const p of pedido.alteracoesPromocoes ?? []) {
+    if ([...tocados].some(c => c.startsWith(`promoções[${p.nome}].`))) {
+      tocados.add(`promoções[${p.nome}].dias`)
+      tocados.add(`promoções[${p.nome}].horário`)
+    }
+  }
+  const coberturaPromocoes = conferirPromocoes(depois.dados, linhas).cobertura
   const aceitas = new Set(pedido.aceitarDivergencias ?? [])
   // Numa reversão nada se decide de novo: ela devolve um estado que já existiu, e as divergências só são relatadas.
   const bloqueiam = reversao ? [] : divergencias.filter((d) => ((d.entradaDosDados === entradaId && tocados.has(d.campo)) || (mudouTexto && d.origem.entradaId === entradaId)) && !aceitas.has(d.campo))
@@ -258,7 +276,7 @@ export async function executarOperacaoDaBase(pedido: PedidoDeOperacao) {
   const indexacao = { necessaria: !indice.confere, motivo: indice.motivo, trechos: indice.trechos, tokens: indice.tokens, tetoDeTokens: TETO_DE_TOKENS_DA_ENTRADA }
   const acimaDoTeto = !reversao && mudouTexto && indice.tokens > TETO_DE_TOKENS_DA_ENTRADA
 
-  const analise = { versaoAtual, diff, mudouTexto, divergencias, camposSemConferencia: camposSemConferencia(depois.dados, [...tocados]), excecoesPreservadas: excecoesDepois, excecoesRemovidas, indexacao, origemDosDados: { atualizadaEm: entrada.updatedAt.toISOString(), atualizadaPor: entrada.updatedBy ?? entrada.createdBy } }
+  const analise = { coberturaPromocoes, avisoDeCobertura: "camposSemConferencia refere-se somente aos campos tocados; ausência de divergências não certifica toda a Base.", versaoAtual, diff, mudouTexto, divergencias, camposSemConferencia: camposSemConferencia(depois.dados, [...tocados]), excecoesPreservadas: excecoesDepois, excecoesRemovidas, indexacao, origemDosDados: { atualizadaEm: entrada.updatedAt.toISOString(), atualizadaPor: entrada.updatedBy ?? entrada.createdBy } }
 
   if (!confirmado) {
     return {
@@ -312,6 +330,7 @@ export async function executarOperacaoDaBase(pedido: PedidoDeOperacao) {
               ator: ator as Prisma.InputJsonValue,
               pedido: {
                 alteracoes: pedido.alteracoes,
+                alteracoesPromocoes: pedido.alteracoesPromocoes,
                 textoTrocado: mudouTexto,
                 reverterOperacaoId: reversao,
                 aceitarDivergencias: pedido.aceitarDivergencias,
@@ -339,7 +358,7 @@ export async function executarOperacaoDaBase(pedido: PedidoDeOperacao) {
 
   const op = registrada as unknown as OperacaoDaBase
   const final = indexacao.necessaria ? await indexar(op) : op
-  return resultado(final, { divergencias, camposSemConferencia: analise.camposSemConferencia, excecoesPreservadas: analise.excecoesPreservadas, indexacao })
+  return resultado(final, { coberturaPromocoes, avisoDeCobertura: analise.avisoDeCobertura, divergencias, camposSemConferencia: analise.camposSemConferencia, excecoesPreservadas: analise.excecoesPreservadas, indexacao })
 }
 
 /** A consulta depois de um timeout, e a trilha da entrada. Só lê: é o que evita repetir a escrita às cegas. */

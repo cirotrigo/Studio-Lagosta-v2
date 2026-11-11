@@ -5,8 +5,9 @@
  * Módulo PURO, sem Prisma: `operacao-da-base.ts` lê e grava; aqui só se decide.
  *
  * Não existe formato único (35 chaves distintas em 12 clientes, levantadas em 02/11/2026): a lista fechada
- * abaixo cobre os vocabulários REAIS de horário, endereço e happy hour. Cardápio e promoções ficam de fora de propósito.
+ * abaixo cobre os vocabulários REAIS de horário, endereço e happy hour. Cardápio fica de fora; promoções usam contrato tipado separado em promocoes-da-entrada.ts.
  */
+import { conferirPromocoes } from './promocoes-da-entrada'
 import { createHash } from 'node:crypto'
 import { metadataComoObjeto, metadataDaPessoa } from './marca-de-indexado'
 
@@ -361,7 +362,7 @@ function horariosNosDados(dados: Record<string, unknown>): HorarioNosDados[] {
 }
 
 export function temHorarioNosDados(metadata: unknown): boolean {
-  return horariosNosDados(metadataComoObjeto(metadata)).length > 0
+  return horariosNosDados(metadataComoObjeto(metadata)).length > 0 || Array.isArray(metadataComoObjeto(metadata).promoções)
 }
 
 /** Os campos que o detector NÃO compara com os textos: a proposta diz, para ninguém ler "sem divergência" como "conferido". */
@@ -396,5 +397,5 @@ export function divergenciasDe(dados: Record<string, unknown>, textos: LinhaDaBa
       }
     }
   }
-  return [...achadas.values()]
+  return [...achadas.values(), ...conferirPromocoes(dados, textos).divergencias]
 }

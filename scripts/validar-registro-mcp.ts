@@ -2161,13 +2161,46 @@ const LITERAIS_OPERACAO_DA_BASE: Record<string, unknown> = {
         },
         "description": "Campos a alterar, cada um pelo caminho (ex: {\"campo\":\"hours.monday\",\"valor\":\"11:00-17:00\"})."
       },
+      "alteracoesPromocoes": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "nome": {
+              "type": "string",
+              "enum": ["Happy Wine", "Happy Hour"]
+            },
+            "dias": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["seg", "ter", "qua", "qui", "sex", "sab", "dom"]
+              },
+              "minItems": 1,
+              "maxItems": 7
+            },
+            "horario": {
+              "type": "object",
+              "additionalProperties": { "type": "string" },
+              "propertyNames": {
+                "enum": ["seg", "ter", "qua", "qui", "sex", "sab", "dom", "seg_sex", "ter_sex"]
+              }
+            }
+          },
+          "required": ["nome", "dias", "horario"],
+          "additionalProperties": false
+        },
+        "minItems": 1,
+        "maxItems": 2,
+        "description": "Promoções existentes por nome exato único. Envie dias e horario completos juntos, com cobertura exata, sem sobreposição. Ex.: seg_sex: 16:00-20:00 e sab: 12:00-16:00. Preserva preço, itens e demais dados. Não cria promoção."
+      },
       "content": {
         "type": "string",
         "description": "Novo texto completo da entrada (opcional): substitui o texto inteiro e exige reindexar."
       },
       "reverterOperacaoId": {
         "type": "string",
-        "description": "Restaura exatamente o estado anterior a esta operação. Não combina com alteracoes nem content."
+        "description": "Restaura exatamente o estado anterior a esta operação. Não combina com alteracoes, alteracoesPromocoes nem content."
       },
       "aceitarDivergencias": {
         "type": "array",
