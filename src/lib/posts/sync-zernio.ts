@@ -255,7 +255,8 @@ async function atualizarExistente(existing: Existente, zPost: any, listadoDesde?
       caption: zPost.text || existing.caption,
       lastSyncAt: new Date(),
       ...(mudouData ? { scheduledDatetime: quando, scheduleType: ScheduleType.SCHEDULED } : {}),
-      ...(mudouArte ? { mediaUrls: midias } : {}),
+      // A arte de galeria ligada ao post era a da imagem anterior.
+      ...(mudouArte ? { mediaUrls: midias, generationId: null } : {}),
       ...(publishedAt ? { latePublishedAt: publishedAt, sentAt: publishedAt } : {}),
       ...(platformPostUrl ? { publishedUrl: platformPostUrl, latePlatformUrl: platformPostUrl } : {}),
       ...(platformPostId ? { instagramMediaId: platformPostId } : {}),

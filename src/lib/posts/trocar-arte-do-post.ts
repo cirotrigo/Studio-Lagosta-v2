@@ -42,6 +42,7 @@ import {
   type RecusaDaTroca,
 } from './troca-de-arte'
 import { formatarBRT } from './agenda-acoes'
+import { trocarMidiaNoZernio } from './midia-no-zernio'
 import { copiaDaPagina, temContratoSemantico } from './copy-segue-a-pagina'
 import { PostLogEvent, Prisma } from '../../../prisma/generated/client'
 
@@ -121,6 +122,7 @@ export async function trocarArteDoPost(
       projectId: true,
       status: true,
       laterPostId: true,
+      lateStatus: true,
       scheduledDatetime: true,
       mediaUrls: true,
       postType: true,
@@ -290,11 +292,27 @@ export async function trocarArteDoPost(
     )
   }
 
-  const novasMidias = montarNovasMidias(midiasAtuais, indice, url)
-  const decisao = decidirRender(origem, novasMidias.length)
+  /**
+   * Rascunho que mora no Zernio (o único post com `laterPostId` que passa por `recusaDaTroca`): a arte troca NO MESMO
+   * post de lá, antes do banco. Se o Zernio não trocar, lança e nada muda aqui. O que entra em `mediaUrls` é a URL que
+   * o Zernio devolveu, para o sync (que espelha a arte do rascunho de lá) não ver diferença.
+   */
+  const noZernio = post.laterPostId
+    ? await trocarMidiaNoZernio({ laterPostId: post.laterPostId, indice, url, totalEsperado: midiasAtuais.length })
+    : null
+  const novasMidias = montarNovasMidias(midiasAtuais, indice, noZernio?.[indice] ?? url)
+  // Quem publica esse post é o Zernio, com a imagem que está lá: a arte entra como imagem pronta, sem vínculo de render.
+  const decisao = noZernio
+    ? { renderStatus: 'NOT_NEEDED' as const, vinculaPagina: false, motivo: 'o post mora no Zernio — a arte entrou lá como imagem pronta' }
+    : decidirRender(origem, novasMidias.length)
   const agora = new Date()
 
-  if (origem === 'pagina' && !decisao.vinculaPagina) {
+  if (origem === 'pagina' && noZernio) {
+    avisos.push(
+      'Este post já está no Zernio, então a arte entrou lá como imagem pronta: editar a página depois ' +
+        'não vai atualizar o post sozinho — troque de novo quando mexer nela.',
+    )
+  } else if (origem === 'pagina' && !decisao.vinculaPagina) {
     avisos.push(
       'Como este post é um carrossel, a arte entrou como imagem pronta: editar a página depois ' +
         'não vai atualizar o slide sozinho — troque de novo quando mexer nela.',
@@ -357,7 +375,8 @@ export async function trocarArteDoPost(
       // As duas travas de novo, agora como condição da escrita: entre a leitura
       // e este update o post pode ter sido aprovado ou entregue ao publicador.
       status: 'DRAFT',
-      laterPostId: null,
+      // O vínculo LIDO: `null` no post do Studio; o mesmo id no rascunho que mora no Zernio.
+      laterPostId: post.laterPostId ?? null,
       // Compare-and-swap: se outra edição mexeu nas mídias no meio do caminho,
       // esta escrita desiste em vez de ressuscitar a lista velha.
       mediaUrls: { equals: midiasAtuais },
@@ -378,6 +397,8 @@ export async function trocarArteDoPost(
         : { nextRenderAt: null }),
       ...(vinculaGeneration ? { generationId: novaGenerationId } : {}),
       ...slotValuesNovo,
+      // Mexido agora: uma rodada do sync que já estava listando não fala por cima.
+      ...(noZernio ? { lastSyncAt: agora } : {}),
     },
     })
   })

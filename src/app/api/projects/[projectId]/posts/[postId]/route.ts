@@ -97,6 +97,8 @@ export async function GET(
 
     return NextResponse.json({
       ...comTemplateDaPagina(post),
+      // A arte deste post mora no Zernio e ainda pode ser trocada LÁ (melhoria com IA, troca de arte).
+      arteNoZernio: post.laterPostId != null && (post.lateStatus === 'draft' || post.lateStatus === 'scheduled'),
       ...(estado ? { videoDesatualizado: estado.videoDesatualizado, substituicao: estado.substituicao } : {}),
     })
   } catch (error) {

@@ -15,7 +15,7 @@
 import type { CanalDaArte } from '@/lib/creatives/canal'
 import { db } from '@/lib/db'
 import { CreativeError } from '@/lib/creatives/errors'
-import { descreverJanela } from '@/lib/posts/freeze-window'
+import { recusaDeArteNoZernio } from '@/lib/posts/midia-no-zernio'
 import { validateCreditsForFeature } from '@/lib/credits/deduct'
 import { InsufficientCreditsError } from '@/lib/credits/errors'
 import { getCurrentImageModel } from '@/lib/ai/openai-image-client'
@@ -209,6 +209,7 @@ export async function startImprovement(
         id: true,
         status: true,
         laterPostId: true,
+        lateStatus: true,
         scheduledDatetime: true,
         mediaUrls: true,
       },
@@ -217,17 +218,15 @@ export async function startImprovement(
       throw new CreativeError('POST_NAO_ENCONTRADO', 'Post não encontrado neste projeto', 404)
     }
     /**
-     * Post já entregue ao publicador não aceita mais troca de arte: o que vai
-     * ao ar é a cópia que está no Zernio. Recusar ANTES de cobrar o crédito —
-     * a melhoria custa ~140s e 1 crédito, e aplicá-la a um post congelado
-     * gastaria os dois para mudar só o que a agenda mostra.
+     * Post já entregue ao publicador: o que vai ao ar é a cópia que está no
+     * Zernio, então a arte melhorada é trocada LÁ ao final (11/11/2026,
+     * `aplicar-arte-melhorada.ts`). Isso vale para rascunho de lá e para
+     * agendado fora da janela de publicação; dentro dela, ou já em publicação,
+     * recusar ANTES de cobrar o crédito — a melhoria custa ~140s e 1 crédito.
      */
     if (post.laterPostId) {
-      throw new CreativeError(
-        'POST_CONGELADO',
-        descreverJanela(post).mensagem,
-        409,
-      )
+      const recusa = recusaDeArteNoZernio(post)
+      if (recusa) throw new CreativeError(recusa.codigo, recusa.mensagem, recusa.status)
     }
     // A melhoria vale para RASCUNHO e AGENDADO (decisão de 01/08/2026 — a
     // arte da API virou o briefing e a melhoria é o acabamento da criação;

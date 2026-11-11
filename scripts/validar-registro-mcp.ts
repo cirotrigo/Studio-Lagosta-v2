@@ -1554,7 +1554,7 @@ const LITERAIS_ARTE_IA: Record<string, unknown> = {
     type: 'object',
     properties: {
       projectId: { type: 'number', description: 'ID do cliente.' },
-      generationId: { type: 'string', description: 'A arte a melhorar (de criar-arte, criar-arte-de-modelo, ajustar-arte ou do post).' },
+      generationId: { type: 'string', description: 'A arte a melhorar (de criar-arte, criar-arte-de-modelo, ajustar-arte ou do post). Só pode faltar quando há `postId` de um post que veio do Zernio (imagem pronta, sem arte na galeria): aí a arte do post é trazida para a galeria e a melhoria parte dela.' },
       pedido: { type: 'string', description: 'Instruções de melhoria vindas da sua análise da arte (máx 1200 caracteres). Vazio = só as diretrizes do Diretor de Arte da marca.' },
       modo: {
         type: 'string',
@@ -1562,7 +1562,7 @@ const LITERAIS_ARTE_IA: Record<string, unknown> = {
         description:
           'Como melhorar. `rediagramar` mantém textos, fontes, cores e foto e só melhora onde o texto pousa, o respiro e a quebra das linhas — para arte do compositor, do canvas ou já aprovada por quem cuida da marca. `redesenhar` refaz a diagramação inteira no estilo da marca, com o manual do designer como referência; copy e foto ficam intocadas — para arte de template chapado, export do editor ou primeira rodada de IA. `refinar` faz só a mudança pedida, e aí o `pedido` é OBRIGATÓRIO ("troque a frase X por Y", "remova o selo") — é como se itera uma melhoria anterior, e é o ÚNICO modo em que o pedido pode trocar texto da copy. Sem informar, o servidor escolhe pela origem da arte: melhoria anterior → refinar; compositor, canvas ou mídia de post → rediagramar; o resto → redesenhar.',
       },
-      postId: { type: 'string', description: 'Post da agenda (rascunho ou agendado) que recebe a arte melhorada ao final (opcional — sem ele a melhoria fica na galeria).' },
+      postId: { type: 'string', description: 'Post da agenda (rascunho ou agendado) que recebe a arte melhorada ao final (opcional — sem ele a melhoria fica na galeria). Vale também para post que já está no Zernio: a arte é trocada no mesmo post de lá, no mesmo horário, desde que não esteja a minutos de publicar.' },
       itemId: {
         type: 'string',
         description:
@@ -1571,7 +1571,8 @@ const LITERAIS_ARTE_IA: Record<string, unknown> = {
       planoId: { type: 'string', description: 'A leva do itemId. Sem isto, a que está em aberto.' },
       slide: { type: 'number', description: 'Carrossel na bancada: a ordem do slide que recebe a arte (1 = primeiro). Só com itemId.' },
     },
-    required: ['projectId', 'generationId'],
+    // 11/11/2026 (deliberado): `generationId` deixou de ser obrigatório — post que veio do Zernio entra só com `postId`.
+    required: ['projectId'],
     additionalProperties: false,
   },
   // Tool NOVA (05/11/2026, T1 do plano "artes pelo MCP"): o fixture nasce com ela.

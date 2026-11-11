@@ -31,6 +31,8 @@ export interface RecusaDaTroca {
 export interface PostParaTroca {
   status: string
   laterPostId?: string | null
+  /** O estado do post no Zernio (`draft` = segurado lá como rascunho). */
+  lateStatus?: string | null
   scheduledDatetime?: Date | string | null
 }
 
@@ -44,13 +46,16 @@ export interface PostParaTroca {
  *    de render fala com ele. Trocar `mediaUrls` aqui faria a agenda mentir
  *    sobre o que foi publicado. Vem primeiro porque a mensagem certa é a da
  *    janela de congelamento ("cancele e agende de novo"), não a de aprovação.
+ *    A exceção (11/11/2026) é o post que é RASCUNHO também no Zernio: ele não
+ *    publica sem aprovação, e o serviço troca a mídia no mesmo post de lá
+ *    antes de gravar aqui (`midia-no-zernio.ts`).
  * 2. **Só RASCUNHO.** Post aprovado está armado para publicar, e trocar a arte
  *    dele seria mudar uma publicação real sem re-aprovação — a mesma regra que
  *    `editarPost` já aplica à legenda. O caminho existe e é curto:
  *    voltar-para-rascunho → trocar → aprovar de novo.
  */
 export function recusaDaTroca(post: PostParaTroca): RecusaDaTroca | null {
-  if (post.laterPostId) {
+  if (post.laterPostId && !(post.status === 'DRAFT' && post.lateStatus === 'draft')) {
     return {
       codigo: 'POST_CONGELADO',
       mensagem: descreverJanela(post).mensagem,
