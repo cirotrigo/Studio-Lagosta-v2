@@ -12,6 +12,7 @@
  */
 
 import { z } from 'zod'
+import { DIAS_DE_PROMOCAO, GRUPOS_DE_PROMOCAO, NOMES_DE_PROMOCAO, type AlteracaoDePromocao } from '../../knowledge/promocoes-da-entrada'
 import { definirTool } from '../registro/definir'
 
 /** Espelho de Object.values(KnowledgeCategory) — vigiado em integracao.ts. */
@@ -609,7 +610,7 @@ export const toolsDeBaseEDna = [
   definirTool({
     nome: 'atualizar-dados-entrada-base',
     descricao:
-      'Altera os `dados` estruturados de uma entrada da base (horário, endereço, happy hour) e, junto, o texto se preciso: é a correção que atualizar-entrada-base não faz. Sem site e sem escrita livre: só os campos da lista fechada, e o que não foi pedido fica intacto.\n\nCampos: hours.<monday…sunday>, horarios.<segunda…domingo> e intervalos que já existam (horarios.terca-sabado), horarios_funcionamento.*, delivery.*, happy_hour.time/horario/days/dias/offer/desconto, address, endereco. Só altera chave que a entrada já tem: outro vocabulário ou chave nova é recusado. Horário é "HH:MM-HH:MM"; turnos com ", "; meia-noite é 24:00 ou 00:00.\n\nFluxo obrigatório: (1) consultar-base dá `versao`; (2) gere um `operacaoId` novo e chame SEM `confirmado`: volta a proposta (diff, `divergencias` com trecho e origem, exceções datadas, custo de indexação) e nada é gravado; (3) mostre tudo à pessoa; (4) com o OK dela repita o MESMO pedido com `confirmado: true`.\n\nContradição com os textos em campo alterado bloqueia: ajuste o texto em `content` ou aceite o campo em `aceitarDivergencias`, sempre por decisão da pessoa. Divergência em campo não alterado é só relatada. Exceção de data ou feriado não é horário habitual. `camposSemConferencia` lista o que o sistema não compara com os textos: mostre à pessoa, ausência de divergência ali não prova nada.\n\n`estado` da resposta: `proposta`, `concluida`, `indexacao_pendente`, `indexacao_falhou` ou `superada`. Nos três últimos os dados JÁ foram gravados e o índice não está garantido: nunca diga que concluiu. Timeout ou resposta perdida: use consultar-operacao-base; repetir o mesmo `operacaoId` nunca grava duas vezes e retoma a indexação. Para desfazer: `reverterOperacaoId`, com a versão atual e um operacaoId novo.',
+      'Altera os `dados` estruturados de uma entrada da base (horário, endereço, happy hour) e, junto, o texto se preciso: é a correção que atualizar-entrada-base não faz. Sem site e sem escrita livre: só os campos da lista fechada, e o que não foi pedido fica intacto.\n\nPromoções: alteracoesPromocoes altera dias e horário juntos de Happy Wine/Happy Hour existentes, por nome exato único, sem preço/itens. A proposta mostra os grupos antes/depois; coberturaPromocoes é parcial, não certifica toda a Base.\n\nCampos: hours.<monday…sunday>, horarios.<segunda…domingo> e intervalos que já existam (horarios.terca-sabado), horarios_funcionamento.*, delivery.*, happy_hour.time/horario/days/dias/offer/desconto, address, endereco. Só altera chave que a entrada já tem: outro vocabulário ou chave nova é recusado. Horário é "HH:MM-HH:MM"; turnos com ", "; meia-noite é 24:00 ou 00:00.\n\nFluxo obrigatório: (1) consultar-base dá `versao`; (2) gere um `operacaoId` novo e chame SEM `confirmado`: volta a proposta (diff, `divergencias` com trecho e origem, exceções datadas, custo de indexação) e nada é gravado; (3) mostre tudo à pessoa; (4) com o OK dela repita o MESMO pedido com `confirmado: true`.\n\nContradição com os textos em campo alterado bloqueia: ajuste o texto em `content` ou aceite o campo em `aceitarDivergencias`, sempre por decisão da pessoa. Divergência em campo não alterado é só relatada. Exceção de data ou feriado não é horário habitual. `camposSemConferencia` lista o que o sistema não compara com os textos: mostre à pessoa, ausência de divergência ali não prova nada.\n\n`estado` da resposta: `proposta`, `concluida`, `indexacao_pendente`, `indexacao_falhou` ou `superada`. Nos três últimos os dados JÁ foram gravados e o índice não está garantido: nunca diga que concluiu. Timeout ou resposta perdida: use consultar-operacao-base; repetir o mesmo `operacaoId` nunca grava duas vezes e retoma a indexação. Para desfazer: `reverterOperacaoId`, com a versão atual e um operacaoId novo.',
     schema: z.object({
       projectId: z.number().describe('ID do cliente.'),
       entradaId: z.string().describe('Id da entrada (de consultar-base).'),
@@ -622,8 +623,13 @@ export const toolsDeBaseEDna = [
         .array(z.object({ campo: z.string(), valor: z.string() }).strict())
         .optional()
         .describe('Campos a alterar, cada um pelo caminho (ex: {"campo":"hours.monday","valor":"11:00-17:00"}).'),
+      alteracoesPromocoes: z.array(z.object({
+        nome: z.enum(NOMES_DE_PROMOCAO),
+        dias: z.array(z.enum(DIAS_DE_PROMOCAO)).min(1).max(7),
+        horario: z.record(z.enum(GRUPOS_DE_PROMOCAO), z.string()),
+      }).strict()).min(1).max(2).optional().describe('Promoções existentes por nome exato único. Envie dias e horario completos juntos, com cobertura exata, sem sobreposição. Ex.: seg_sex: 16:00-20:00 e sab: 12:00-16:00. Preserva preço, itens e demais dados. Não cria promoção.'),
       content: z.string().optional().describe('Novo texto completo da entrada (opcional): substitui o texto inteiro e exige reindexar.'),
-      reverterOperacaoId: z.string().optional().describe('Restaura exatamente o estado anterior a esta operação. Não combina com alteracoes nem content.'),
+      reverterOperacaoId: z.string().optional().describe('Restaura exatamente o estado anterior a esta operação. Não combina com alteracoes, alteracoesPromocoes nem content.'),
       aceitarDivergencias: z
         .array(z.string())
         .optional()
@@ -646,6 +652,7 @@ export const toolsDeBaseEDna = [
         versaoEsperada: args.versaoEsperada as string,
         operacaoId: args.operacaoId as string,
         alteracoes: args.alteracoes as { campo: string; valor: string }[] | undefined,
+        alteracoesPromocoes: args.alteracoesPromocoes as AlteracaoDePromocao[] | undefined,
         content: args.content as string | undefined,
         reverterOperacaoId: args.reverterOperacaoId as string | undefined,
         aceitarDivergencias: args.aceitarDivergencias as string[] | undefined,

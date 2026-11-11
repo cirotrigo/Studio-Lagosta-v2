@@ -575,3 +575,81 @@ describe('leitura', () => {
     await expect(executarOperacaoDaBase(pedido({ versaoEsperada: 'outra-versao' }))).rejects.toMatchObject({ code: 'OPERACAO_REUTILIZADA' })
   })
 })
+
+describe('promoções TERO no mesmo fluxo transacional', () => {
+  const antigos = { promoções: [
+    { nome: 'Happy Wine', dias: ['ter', 'qua', 'qui', 'sex', 'sab'], preço: 79, horário: { ter_sex: '16h–20h', sab: '12h–16h' } },
+    { nome: 'Happy Hour', dias: ['ter', 'qua', 'qui', 'sex', 'sab'], itens: ['chopp', 'drinks selecionados'], horário: { ter_sex: '16h–20h', sab: '12h–16h' } },
+  ] }
+  const textoTero = 'Happy Wine\nVinhos selecionados à vontade por R$ 79,00 por pessoa.\nSegunda a sexta das 16h às 20h · Sábado das 12h às 16h.\n\nHappy Hour\nChopp e drinks selecionados em dobro.\nSegunda a sexta das 16h às 20h · Sábado das 12h às 16h.'
+  const alteracoesPromocoes: NonNullable<PedidoDeOperacao['alteracoesPromocoes']> = ['Happy Wine', 'Happy Hour'].map(nome => ({ nome: nome as 'Happy Wine' | 'Happy Hour', dias: ['seg', 'ter', 'qua', 'qui', 'sex', 'sab'], horario: { seg_sex: '16:00-20:00', sab: '12:00-16:00' } }))
+  const pedir = (extra: Partial<PedidoDeOperacao> = {}) => pedido({ alteracoes: undefined, alteracoesPromocoes, ...extra })
+  beforeEach(() => {
+    linha().title = 'Happy Wine e Happy Hour — TERO'
+    linha().content = textoTero
+    linha().metadata = structuredClone(antigos)
+    base.chunks = chunkText(textoTero).map(c => ({ id: `c${c.ordinal}`, entryId: ID, ordinal: c.ordinal, content: c.content, tokens: c.tokens, vectorId: `${ID}:${c.ordinal}` }))
+    base.vetores.clear()
+    for (const c of base.chunks) base.vetores.set(c.vectorId, { id: c.vectorId, vector: [1], metadata: { entryId: ID, ordinal: c.ordinal, projectId: 2 } })
+  })
+  it('proposta mostra segunda e troca do grupo; não grava, declara cobertura parcial', async () => {
+    expect(await executarOperacaoDaBase(pedir({ confirmado: false }))).toMatchObject({ estado: 'proposta', gravado: false, bloqueiam: [], coberturaPromocoes: { parcial: true }, diff: [
+      { campo: 'promoções[Happy Wine].dias', antes: antigos.promoções[0].dias, depois: alteracoesPromocoes[0].dias },
+      { campo: 'promoções[Happy Wine].horário', antes: antigos.promoções[0].horário, depois: alteracoesPromocoes[0].horario },
+      { campo: 'promoções[Happy Hour].dias' }, { campo: 'promoções[Happy Hour].horário' },
+    ] })
+    expect(linha().metadata).toEqual(antigos)
+    expect(base.operacoes).toHaveLength(0)
+  })
+  it('preserva item nulo alheio ao calcular diff e confirmar', async () => {
+    linha().metadata = { promoções: [null, ...structuredClone(antigos.promoções)] }
+    expect(await executarOperacaoDaBase(pedir({ confirmado: false }))).toMatchObject({ estado: 'proposta', bloqueiam: [] })
+    await executarOperacaoDaBase(pedir())
+    expect((base.meta(ID).promoções as unknown[])[0]).toBeNull()
+  })
+  it('schema do catálogo rejeita JSON extra e grupos desconhecidos', () => {
+    const schema = CATALOGO.get('atualizar-dados-entrada-base')!.schema
+    const { autor: _autor, ator: _ator, ...p } = pedir()
+    expect(schema.safeParse(p).success).toBe(true)
+    expect(schema.safeParse({ ...p, alteracoesPromocoes: [{ ...alteracoesPromocoes[0], preço: 1 }] }).success).toBe(false)
+    expect(schema.safeParse({ ...p, alteracoesPromocoes: [{ ...alteracoesPromocoes[0], horario: { feriados: '12:00-16:00' } }] }).success).toBe(false)
+  })
+  it('confirma, repete sem regravar e reverte com snapshots íntegros', async () => {
+    const p = pedir()
+    await executarOperacaoDaBase(p)
+    expect(base.meta(ID).promoções).toEqual(antigos.promoções.map((v, i) => ({ ...v, dias: alteracoesPromocoes[i].dias, horário: alteracoesPromocoes[i].horario })))
+    expect(await executarOperacaoDaBase(p)).toMatchObject({ repetida: true, estado: 'concluida' })
+    expect(base.operacoes).toHaveLength(1)
+    await executarOperacaoDaBase(pedir({ operacaoId: 'reverte-promocoes', alteracoesPromocoes: undefined, reverterOperacaoId: p.operacaoId }))
+    expect(linha().metadata).toEqual(antigos)
+  })
+  it('inclui promoções no hash e recusa reuso de id com outro horário', async () => {
+    const p = pedir()
+    await executarOperacaoDaBase(p)
+    await expect(executarOperacaoDaBase({ ...p, alteracoesPromocoes: [alteracoesPromocoes[0]] })).rejects.toMatchObject({ code: 'OPERACAO_REUTILIZADA' })
+  })
+  it('recusa versão concorrente e alvo fora do projeto', async () => {
+    const p = pedir()
+    linha().content += '\nMudança concorrente.'
+    await expect(executarOperacaoDaBase(p)).rejects.toMatchObject({ code: 'VERSAO_DIVERGENTE' })
+    await expect(executarOperacaoDaBase(pedir({ projectId: 3 }))).rejects.toMatchObject({ code: 'ENTRADA_NAO_ENCONTRADA' })
+    expect(base.operacoes).toHaveLength(0)
+  })
+  it('bloqueia contradição real no serviço alterado sem aceitar silêncio do parser', async () => {
+    const erradas = [{ ...alteracoesPromocoes[0], horario: { seg_sex: '15:00-20:00', sab: '12:00-16:00' } }]
+    await expect(executarOperacaoDaBase(pedir({ alteracoesPromocoes: erradas }))).rejects.toMatchObject({ code: 'DIVERGENCIA_NAO_RESOLVIDA' })
+    expect(base.operacoes).toHaveLength(0)
+  })
+  it('edição apenas textual detecta a segunda ausente no array', async () => {
+    await expect(executarOperacaoDaBase(pedir({ alteracoesPromocoes: undefined, content: textoTero + '\nReserva sugerida.', autorizarIndexacao: true }))).rejects.toMatchObject({ code: 'DIVERGENCIA_NAO_RESOLVIDA' })
+  })
+  it('falha do índice preserva dados e replay retoma só indexação', async () => {
+    base.vetores.clear()
+    embeddings.mockRejectedValueOnce(new Error('índice offline'))
+    const p = pedir({ autorizarIndexacao: true })
+    expect(await executarOperacaoDaBase(p)).toMatchObject({ estado: 'indexacao_falhou', gravado: true })
+    expect(base.operacoes).toHaveLength(1)
+    expect(await executarOperacaoDaBase(p)).toMatchObject({ estado: 'concluida', repetida: true })
+    expect(base.operacoes).toHaveLength(1)
+  })
+})
