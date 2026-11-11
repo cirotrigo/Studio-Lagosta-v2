@@ -541,7 +541,7 @@ export const toolsDeAgenda = [
   definirTool({
     nome: 'voltar-para-rascunho',
     descricao:
-      'Tira posts agendados da fila de publicação e os devolve à condição de rascunho — continuam na agenda, mas não publicam até nova aprovação. Use quando a pessoa quiser segurar algo que já foi aprovado. Se o post já tiver ido para a fila remota, ele é removido de lá antes; se a remoção falhar, o post aparece em ignorados com o motivo e SEGUE agendado.',
+      'Tira posts agendados da fila de publicação e os devolve à condição de rascunho — continuam na agenda, mas não publicam até nova aprovação. Use quando a pessoa quiser segurar algo que já foi aprovado. Se o post já tiver ido para a fila remota, ela é acertada antes: post com arte do Studio é removido de lá; post que veio do Zernio (a arte mora lá) é SEGURADO lá como rascunho, com a mesma arte e o mesmo horário, e volta a publicar quando for aprovado de novo. Se a fila remota não confirmar, ou se o post já estiver a minutos de publicar, ele aparece em ignorados com o motivo e SEGUE agendado.',
     schema: z.object({
       projectId: z.number().describe('ID do cliente.'),
       postIds: z.array(z.string()).describe('Ids dos posts a devolver para rascunho.'),

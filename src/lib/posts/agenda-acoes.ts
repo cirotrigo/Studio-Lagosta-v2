@@ -18,6 +18,7 @@ import { ehHostProprio } from '@/lib/creatives/ingerir-midia'
 import { CreativeError } from '@/lib/creatives/errors'
 import { MOTIVO_VIDEO_REMOVIDO, postDeVideo } from '@/lib/posts/post-de-video'
 import { NAO_E_FALHA_SEMANTICA } from '@/lib/posts/erro-render-semantico'
+import { FREEZE_WINDOW_MS } from '@/lib/posts/freeze-window'
 import { avisosDeCampanhaVencida } from '@/lib/posts/campanha-vigencia'
 import { fecharSugestaoDeSlot, registrarSlotDoPost } from '@/lib/aprendizado/sinal-de-agendamento'
 import { registrarEdicaoDeLegenda } from '@/lib/aprendizado/sinal-de-legenda'
@@ -295,14 +296,17 @@ export async function processarAprovacao(params: {
     }
 
     // Post importado do Zernio guarda a mídia no CDN de lá; apagar o post
-    // remoto mata as URLs e o rascunho volta sem arte, quebrado. Mídia nossa
-    // (Blob, Drive, Supabase) sobrevive ao delete — só essas podem reverter.
+    // remoto mataria as URLs e o rascunho voltaria sem arte. Esse post é
+    // SEGURADO no Zernio (vira rascunho lá, com a arte e o horário) em vez de
+    // apagado, e continua aprovável por `agendarRascunhoDoZernio`. Mídia nossa
+    // (Blob, Drive, Supabase) sobrevive ao delete e segue o caminho de sempre.
     if (post.laterPostId && !midiaSobreviveAoZernio(post.mediaUrls)) {
-      ignorados.push({
-        postId: post.id,
-        motivo:
-          'A arte deste post está guardada no Zernio e seria apagada junto. Para adiar, reagende; para remover de vez, cancele.',
-      })
+      const motivo = await segurarNoZernio(post, agora)
+      if (motivo) {
+        ignorados.push({ postId: post.id, motivo })
+        continue
+      }
+      processados.push(post.id)
       continue
     }
 
@@ -450,6 +454,51 @@ async function agendarRascunhoDoZernio(postId: string, laterPostId: string, quan
       failedAt: null,
       processingStartedAt: null,
     },
+  })
+  return null
+}
+
+/**
+ * O caminho de volta de `agendarRascunhoDoZernio`: põe como rascunho, no Zernio, um post agendado que mora lá, e só
+ * então o marca rascunho aqui. O post, a arte e o horário ficam onde estão — nada é apagado. Devolve o motivo quando
+ * não segura (e nada muda), `null` quando deu certo.
+ *
+ * Só `isDraft: true` no corpo: foi a forma conferida em produção em 11/11/2026 (o post voltou a `draft` sem perder
+ * mídia nem horário). A resposta é conferida pelo mesmo motivo da ida.
+ */
+async function segurarNoZernio(
+  post: { id: string; laterPostId: string | null; lateStatus: string | null; scheduledDatetime: Date | null },
+  agora: Date,
+): Promise<string | null> {
+  const laterPostId = post.laterPostId!
+
+  if (post.lateStatus === 'publishing' || post.lateStatus === 'published') {
+    return 'Este post já saiu para publicação e não pode voltar a rascunho.'
+  }
+  // Nos minutos finais o Zernio já pode estar publicando: segurar aqui seria uma corrida que a agenda perderia calada.
+  if (post.scheduledDatetime && post.scheduledDatetime.getTime() - agora.getTime() <= FREEZE_WINDOW_MS) {
+    return `Este post publica em instantes (${formatarBRT(post.scheduledDatetime)}) e não dá mais para segurar. Se precisar, apague direto no Instagram depois que sair.`
+  }
+
+  let estado: string | undefined
+  try {
+    estado = (await getLaterClient().updatePost(laterPostId, { isDraft: true })).status
+  } catch (error) {
+    if (error instanceof LaterNotFoundError) {
+      // Mesmo invariante do reagendar: sumiu de lá e não dá para saber se publicou.
+      return 'Este post sumiu da fila de publicação e não dá para saber se chegou a publicar. Aguarde alguns minutos a sincronização e confira a agenda (e o Instagram) antes de mexer nele.'
+    }
+    console.error(`[AGENDA_ACOES] Falha ao segurar o post no Zernio (${laterPostId}):`, error)
+    return 'Não foi possível tirar o post da fila de publicação. Tente de novo em instantes.'
+  }
+
+  if (estado !== 'draft') {
+    return `O Zernio não confirmou que o post voltou a rascunho (ele está como "${estado ?? 'desconhecido'}" por lá) e ele SEGUE agendado. Confira no Zernio antes de tentar de novo.`
+  }
+
+  await db.socialPost.updateMany({
+    where: { id: post.id, status: PostStatus.SCHEDULED, laterPostId },
+    data: { status: PostStatus.DRAFT, lateStatus: 'draft', lastSyncAt: new Date(), processingStartedAt: null },
   })
   return null
 }
