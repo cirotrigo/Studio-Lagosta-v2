@@ -212,7 +212,13 @@ describe('sync: rascunho apagado no Zernio', () => {
     expect(banco.posts).toHaveLength(0)
   })
 
-  it('com arte nossa (post do Studio que virou rascunho por lá): volta a ser rascunho comum do Studio', async () => {
+  it('nasceu no Zernio e ganhou arte nossa (melhoria por IA): sai da agenda do mesmo jeito', async () => {
+    banco.posts = [local({ mediaUrls: ['https://abc.public.blob.vercel-storage.com/melhorada.jpg'], generationId: 'g1' })]
+    expect(await cron()).toMatchObject({ removed: 1 })
+    expect(banco.posts).toHaveLength(0)
+  })
+
+  it('com página do Studio (post daqui que virou rascunho por lá): volta a ser rascunho comum do Studio', async () => {
     banco.posts = [local({ pageId: 'p1', mediaUrls: ['https://abc.public.blob.vercel-storage.com/arte.png'] })]
     await cron()
     expect(banco.posts[0]).toMatchObject({ status: 'DRAFT', laterPostId: null, lateStatus: null })
