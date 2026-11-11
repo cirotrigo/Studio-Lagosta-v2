@@ -146,6 +146,7 @@ export interface CreateLaterPostPayload {
  */
 export interface UpdateLaterPostPayload {
   content?: string // Post text/caption
+  isDraft?: boolean // false tira o post de rascunho (só scheduledFor o deixa rascunho)
   scheduledFor?: string // ISO 8601 timestamp
   title?: string // Post title
   mediaItems?: Array<{

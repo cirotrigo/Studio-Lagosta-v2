@@ -110,6 +110,7 @@ export async function processarAprovacao(params: {
       status: true,
       scheduledDatetime: true,
       laterPostId: true,
+      lateStatus: true,
       mediaUrls: true,
       pageId: true,
       renderStatus: true,
@@ -192,31 +193,44 @@ export async function processarAprovacao(params: {
       const precisaRender = post.pageId !== null && post.mediaUrls.length === 0
 
       /**
-       * B1d (checkpoint f): post com falha SEMÂNTICA de render não é aprovado — com ou sem mídia antiga. A aprovação não
-       * valida o pedido; repor o render apagaria o envelope, e agendar sem repor deixaria o executor marcá-lo FAILED
-       * na hora. Só a recuperação (página / pedido corrigidos) o reabre. Status e reposição numa ÚNICA escrita,
-       * condicional à linha CORRENTE (Codex, checkpoint f).
+       * Rascunho que JÁ ESTÁ no Zernio (subido por fora como rascunho e trazido pelo sync): aprovar é tirar AQUELE
+       * post de rascunho lá, na mesma data. Nada de render nem de envio pelo executor — isso criaria um segundo post.
+       * O Zernio primeiro, o banco depois (regra de ouro deste arquivo).
        */
-      // Gate final (Codex R2): a escrita também exige a linha AINDA rascunho e não entregue — uma aprovação atrasada
-      // não pode reabrir (SCHEDULED + render PENDING) um post que outra aprovação já agendou e o envio já reservou.
-      const aprovado = await db.socialPost.updateMany({
-        where: { id: post.id, status: PostStatus.DRAFT, laterPostId: null, ...NAO_E_FALHA_SEMANTICA },
-        data: {
-          status: PostStatus.SCHEDULED,
-          errorMessage: null,
-          failedAt: null,
-          processingStartedAt: null,
-          ...(precisaRender
-            ? { renderStatus: 'PENDING', nextRenderAt: agora, renderAttempts: 0, renderError: null }
-            : {}),
-        },
-      })
-      if (aprovado.count === 0) {
-        ignorados.push({
-          postId: post.id,
-          motivo: 'Não aprovado: o rascunho mudou desde a leitura (já foi aprovado ou entregue), ou a arte dele falhou no contrato semântico — nesse caso, corrija a página ou o pedido (a arte volta a ser gerada sozinha) e aprove depois.',
+      if (post.laterPostId && post.lateStatus === 'draft') {
+        const motivo = await agendarRascunhoDoZernio(post.id, post.laterPostId, post.scheduledDatetime)
+        if (motivo) {
+          ignorados.push({ postId: post.id, motivo })
+          continue
+        }
+      } else {
+        /**
+         * B1d (checkpoint f): post com falha SEMÂNTICA de render não é aprovado — com ou sem mídia antiga. A aprovação não
+         * valida o pedido; repor o render apagaria o envelope, e agendar sem repor deixaria o executor marcá-lo FAILED
+         * na hora. Só a recuperação (página / pedido corrigidos) o reabre. Status e reposição numa ÚNICA escrita,
+         * condicional à linha CORRENTE (Codex, checkpoint f).
+         */
+        // Gate final (Codex R2): a escrita também exige a linha AINDA rascunho e não entregue — uma aprovação atrasada
+        // não pode reabrir (SCHEDULED + render PENDING) um post que outra aprovação já agendou e o envio já reservou.
+        const aprovado = await db.socialPost.updateMany({
+          where: { id: post.id, status: PostStatus.DRAFT, laterPostId: null, ...NAO_E_FALHA_SEMANTICA },
+          data: {
+            status: PostStatus.SCHEDULED,
+            errorMessage: null,
+            failedAt: null,
+            processingStartedAt: null,
+            ...(precisaRender
+              ? { renderStatus: 'PENDING', nextRenderAt: agora, renderAttempts: 0, renderError: null }
+              : {}),
+          },
         })
-        continue
+        if (aprovado.count === 0) {
+          ignorados.push({
+            postId: post.id,
+            motivo: 'Não aprovado: o rascunho mudou desde a leitura (já foi aprovado ou entregue), ou a arte dele falhou no contrato semântico — nesse caso, corrija a página ou o pedido (a arte volta a ser gerada sozinha) e aprove depois.',
+          })
+          continue
+        }
       }
       processados.push(post.id)
 
@@ -394,6 +408,50 @@ export async function processarAprovacao(params: {
   }
 
   return { processados, ignorados, ...(avisos.length > 0 ? { avisos } : {}), mensagem }
+}
+
+/**
+ * Tira de rascunho, no Zernio, um post que já está lá, e só então o marca agendado aqui. Devolve o motivo quando
+ * não agenda (e nada muda), `null` quando deu certo.
+ *
+ * `isDraft: false` é obrigatório: só com `scheduledFor` o Zernio deixa o post como rascunho. A hora vai como
+ * relógio de Brasília + `timezone`, a forma documentada. E a resposta é conferida: o Zernio descarta campo que
+ * não entende em vez de recusar, então "não lançou" não prova que agendou.
+ */
+async function agendarRascunhoDoZernio(postId: string, laterPostId: string, quando: Date): Promise<string | null> {
+  let estado: string | undefined
+  try {
+    const noZernio = await getLaterClient().updatePost(laterPostId, {
+      isDraft: false,
+      // "AAAA-MM-DDTHH:mm:ss" no relógio de Brasília (o locale sueco é o ISO da stdlib).
+      scheduledFor: quando.toLocaleString('sv-SE', { timeZone: 'America/Sao_Paulo' }).replace(' ', 'T'),
+      timezone: 'America/Sao_Paulo',
+    })
+    estado = noZernio.status
+  } catch (error) {
+    if (error instanceof LaterNotFoundError) {
+      return 'Este rascunho foi apagado no Zernio e não existe mais para agendar. Ele sai da agenda na próxima sincronização.'
+    }
+    console.error(`[AGENDA_ACOES] Falha ao agendar o rascunho no Zernio (${laterPostId}):`, error)
+    return 'Não foi possível agendar o post no Zernio. Tente de novo em instantes.'
+  }
+
+  if (estado !== 'scheduled') {
+    return `O Zernio não confirmou o agendamento (o post ficou como "${estado ?? 'desconhecido'}" por lá). Confira no Zernio antes de tentar de novo.`
+  }
+
+  await db.socialPost.updateMany({
+    where: { id: postId, status: PostStatus.DRAFT, laterPostId },
+    data: {
+      status: PostStatus.SCHEDULED,
+      lateStatus: 'scheduled',
+      lastSyncAt: new Date(),
+      errorMessage: null,
+      failedAt: null,
+      processingStartedAt: null,
+    },
+  })
+  return null
 }
 
 /**

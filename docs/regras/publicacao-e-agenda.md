@@ -543,3 +543,32 @@ ficava em "postando" sem chegar ao Zernio até a varredura de travados, 30 minut
   editar post declaram `maxDuration = 300` inline.
 - **Só `console.error`/`warn` chegam aos logs de produção.** Ausência de `console.log` ali não prova que o código
   não rodou: compare com uma execução que se sabe ter acontecido antes de concluir.
+
+## Rascunho do Zernio na agenda (11/11/2026)
+
+O Ciro produz artes no computador e agenda pelo Zernio, fora do Studio. Quando não tem certeza de uma arte, sobe
+como **rascunho no Zernio** e a Roberta aprova pela agenda do Studio. Antes desta data o sync só listava `scheduled`
+e `published`, e o rascunho nunca chegava: sete rascunhos do Bacana (12 e 13/11) existiam no Zernio com a agenda do
+projeto 5 vazia nesses dias.
+
+- **Uma função só**: `sincronizarZernio` (`src/lib/posts/sync-zernio.ts`) serve o cron (`draft`, `scheduled`,
+  `published`) e a rota manual por projeto (`draft`, `scheduled`). As duas tinham cópias que já divergiam.
+- **Rascunho importado** entra como `DRAFT`, `lateStatus: 'draft'`, com `laterPostId`, `renderStatus: NOT_NEEDED`,
+  a mídia do Zernio em `mediaUrls` e o `scheduledFor` de lá em `scheduledDatetime`. Sem `contentType`, duas mídias
+  fazem `CAROUSEL` e um vídeo só faz `REEL`.
+- **Enquanto for rascunho, o Zernio manda** na data, na legenda e na arte (post sem página do Studio): é lá que a
+  correção acontece. Em post agendado ou publicado o sync continua sem tocar a data.
+- **Transições**: rascunho que vira agendado no Zernio passa a `SCHEDULED`; agendado que volta a rascunho passa a
+  `DRAFT`. A escrita é condicional ao `lateStatus` lido, para uma listagem velha não desfazer uma aprovação feita no
+  Studio durante a rodada.
+- 🔴 **Rascunho apagado no Zernio some da listagem em silêncio.** Os que sumiram são conferidos por `getPost` (até 20
+  por rodada, e só quando a listagem de rascunhos veio inteira) e **só o 404 remove a linha local**. Não vira
+  `FAILED`: nada ia publicar, e o aviso de falha no WhatsApp seria ruído. Se a arte é de host nosso (post do Studio
+  que virou rascunho por lá), o post só perde o `laterPostId` e volta a ser rascunho comum.
+- 🔴 **Aprovar esse rascunho é um `PUT` no MESMO post**, com `isDraft: false`, `scheduledFor` no relógio de Brasília
+  e `timezone: 'America/Sao_Paulo'` (`agendarRascunhoDoZernio`, em `agenda-acoes.ts`). Só com `scheduledFor` o Zernio
+  deixa o post como rascunho, e ele descarta campo que não entende em vez de recusar: a resposta é conferida, e sem
+  `status: 'scheduled'` o post continua rascunho aqui. O caminho nativo (`laterPostId: null`) não mudou, e nenhum dos
+  dois cria post novo para rascunho que já tem `laterPostId`.
+- Não coberto: **voltar para rascunho** um post cuja arte mora no Zernio continua recusado (o caminho de hoje apaga o
+  post remoto e a arte iria junto). Quem quiser segurar, segura no Zernio e o sync traz.
