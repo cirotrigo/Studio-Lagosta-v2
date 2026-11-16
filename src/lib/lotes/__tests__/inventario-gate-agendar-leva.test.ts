@@ -44,6 +44,7 @@ const ARQUIVOS_COM_TRAVAS = [
   'src/lib/lotes/reserva.ts',
   'src/lib/planos/enfileirar-composicao.ts',
   'src/lib/posts/edicao-semantica-do-post.ts',
+  'src/lib/posts/reagendar-rascunho.ts',
   'src/lib/posts/substituir-video-do-post.ts',
   'src/lib/posts/trocar-arte-do-post.ts',
   'src/lib/trava-por-chave.ts',
@@ -76,6 +77,14 @@ describe('C13 — inventário dos FOR UPDATE / FOR SHARE / pg_advisory_xact_lock
 
   it('a lista de arquivos que travam é a conhecida (um novo entra aqui com a ordem conferida)', () => {
     expect([...porArquivo.keys()].sort()).toEqual(ARQUIVOS_COM_TRAVAS)
+  })
+
+  it('reagendar-rascunho respeita agenda → único SocialPost do projeto, sem página/fontes', () => {
+    const travas = porArquivo.get('src/lib/posts/reagendar-rascunho.ts')!
+    expect(travas.map(t => [t.tabela,t.modo])).toEqual([['advisory','advisory'],['SocialPost','update']])
+    expect(travas[0].sql).toContain('chaveDaAgenda')
+    expect(travas[1].sql).toContain('"projectId"')
+    expect(travas[1].sql).toContain('WHERE id =')
   })
 
   it('toda trava nomeia a tabela (FROM "Tabela") — nenhum SQL montado em variável', () => {
@@ -243,7 +252,7 @@ describe('C9 — inventário: quem cria DRAFT, e o que as tools da allowlist alc
       return h && /readOnlyHint: false/.test(h.texto)
     })
     // buscar-fotos é mutante só porque registra o sinal de aprendizado da busca — não cria post.
-    expect(mutantes.sort()).toEqual(['agendar-leva', 'ajustar-arte', 'buscar-fotos', 'compor-leva'])
+    expect(mutantes.sort()).toEqual(['agendar-leva', 'ajustar-arte', 'buscar-fotos', 'compor-leva', 'reagendar-rascunho'])
     for (const tool of [...TOOLS_DRAFT_ONLY]) {
       const h = handlerDe(tool)
       expect(h, `${tool}: tool da allowlist sem handler no catálogo conhecido`).not.toBeNull()

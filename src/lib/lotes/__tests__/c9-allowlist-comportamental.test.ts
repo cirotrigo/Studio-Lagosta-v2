@@ -240,7 +240,20 @@ const mutantes = () => [...TOOLS_DRAFT_ONLY].filter((nome) => CATALOGO.get(nome)
 
 describe('C9 — as tools MUTANTES da allowlist, executadas com banco falso', () => {
   it('a lista de mutantes é a conhecida (uma tool nova da allowlist que mude de hint entra aqui com o seu caso)', () => {
-    expect(mutantes()).toEqual(['agendar-leva', 'ajustar-arte', 'buscar-fotos', 'compor-leva'])
+    expect(mutantes()).toEqual(['agendar-leva', 'ajustar-arte', 'buscar-fotos', 'compor-leva', 'reagendar-rascunho'])
+  })
+
+  it('reagendar-rascunho só altera horário/versão de DRAFT, sem criar post ou veredito', async () => {
+    const atualizado = new Date('2026-10-13T00:00:00.000Z')
+    const original = { id:'draft-cas', projectId:PROJETO, status:'DRAFT', postType:'STORY', scheduleType:'SCHEDULED', isRecurring:false, updatedAt:atualizado, scheduledDatetime:new Date('2098-01-01T00:00:00.000Z'), laterPostId:null, bufferId:null, sentAt:null, bufferSentAt:null, instagramMediaId:null, publishedUrl:null, latePublishedAt:null, latePlatformUrl:null }
+    banco.tabelas.set('socialPost', new Map([[original.id, original]]))
+    const {resultado,erro} = await executar('reagendar-rascunho',{projectId:PROJETO,postId:original.id,versaoEsperada:atualizado.toISOString(),quandoISO:'2099-01-01T21:00:00.000Z'})
+    expect(erro).toBeUndefined()
+    expect(resultado).toMatchObject({situacao:'rascunho'})
+    expect(t('socialPost').get(original.id)).toMatchObject({...original,scheduledDatetime:new Date('2099-01-01T21:00:00.000Z'),updatedAt:expect.any(Date)})
+    expect(banco.postsCriados).toBe(0)
+    expect(banco.eventos).not.toContain('VEREDITO GRAVADO')
+    expect(banco.eventos).not.toContain('agendarPost')
   })
 
   it('agendar-leva: cria o DRAFT, e no rastro o veredito vem ANTES do post (MEDICAO → VEREDITO GRAVADO → criarPostDoAgendamento → POST CRIADO)', async () => {
@@ -340,7 +353,7 @@ function fecho(iniciais: string[]): string[] {
   return [...vistos].sort()
 }
 function handlerDe(nome: string): { arquivo: string; texto: string } {
-  for (const c of ['src/lib/mcp/catalogo/compositor.ts', 'src/lib/mcp/catalogo/arte-ia.ts', 'src/lib/mcp/catalogo/fotos.ts']) {
+  for (const c of ['src/lib/mcp/catalogo/compositor.ts', 'src/lib/mcp/catalogo/arte-ia.ts', 'src/lib/mcp/catalogo/fotos.ts', 'src/lib/mcp/catalogo/rascunhos-restritos.ts']) {
     const texto = ler(c)
     const i = texto.indexOf(`nome: '${nome}'`)
     if (i < 0) continue
@@ -372,6 +385,7 @@ describe('C9 — fecho de imports de cada handler mutante (complemento estático
       'ajustar-arte': compartilhados,
       'buscar-fotos': compartilhados,
       'compor-leva': compartilhados,
+      'reagendar-rascunho': compartilhados, // dependências comuns; execução acima prova zero criação/publicação
     })
   })
 })

@@ -82,6 +82,7 @@ export const toolsDeAgenda = [
         },
         select: {
           id: true,
+          updatedAt: true,
           postType: true,
           status: true,
           caption: true,
@@ -208,6 +209,7 @@ export const toolsDeAgenda = [
         }
         grupo.posts.push({
           postId: post.id,
+          ...(post.status === 'DRAFT' && !post.laterPostId ? { versao: post.updatedAt?.toISOString() ?? null } : {}),
           tipo: post.postType === 'STORY' ? 'story' : post.postType.toLowerCase(),
           formato: post.postType === 'STORY' ? 'story' : 'feed',
           situacao: PARA_SITUACAO[post.status] ?? post.status.toLowerCase(),

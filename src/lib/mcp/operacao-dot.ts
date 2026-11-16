@@ -17,7 +17,7 @@
 
 import { TARGET_DAYS_AHEAD } from '../posts/cobertura';
 
-export const DOT_OPERACAO_VERSAO = 'dot-operacao-v8';
+export const DOT_OPERACAO_VERSAO = 'dot-operacao-v9';
 
 /** Ciclos de revisar-arte → ajustar-arte numa peça antes de parar e chamar gente. */
 export const MAX_CICLOS_DE_REVISAO = 2;
@@ -83,6 +83,7 @@ export const MANUAL_DO_DOT = {
     'FAILED: relatar; só agir se uma auditoria futura mostrar VAZIO real',
     `depois de ${MAX_CICLOS_DE_REVISAO} ciclos de revisar-arte e ajustar-arte com problema: parar e relatar REVISAO_HUMANA_NECESSARIA`,
     'sem estado próprio: o estado é a agenda e o banco; revalidar o horário imediatamente antes de qualquer escrita',
+    'reagendar-rascunho: pedido+versao+curador; só-DRAFT',
     'retry usa a MESMA identidade (loteId e itemId); nunca uma nova',
     'agendar-leva e ajustar-arte só gravam versão APTA medida na hora (REVISAO_HUMANA_NECESSARIA: relate, repetir não muda); gate de revisar-arte é informação, de ver-geracao/auditar-operacao é auditoria, nunca autorização',
   ],

@@ -156,3 +156,13 @@ describe('ver-agenda: página ou arte de OUTRO projeto nunca entrega textos (R29
     expect(item.textosOrigem).toBe('pagina')
   })
 })
+
+describe('versão do rascunho para CAS', () => {
+  it('só devolve versão do DRAFT sem envio deste projeto', async () => {
+    const updatedAt = new Date('2026-11-16T18:00:00.000Z')
+    banco.posts = [post('draft',{updatedAt}),post('aprovado',{updatedAt,status:'SCHEDULED'}),post('remoto',{updatedAt,laterPostId:'externo'})]
+    expect((await itemDoPost('draft')).versao).toBe(updatedAt.toISOString())
+    expect(await itemDoPost('aprovado')).not.toHaveProperty('versao')
+    expect(await itemDoPost('remoto')).not.toHaveProperty('versao')
+  })
+})

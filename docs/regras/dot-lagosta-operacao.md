@@ -1,4 +1,4 @@
-# Dot Lagosta: Constituição Operacional (`dot-operacao-v8`)
+# Dot Lagosta: Constituição Operacional (`dot-operacao-v9`)
 
 Criada em 13/10/2026 (H3 do Dot; o mapa e as decisões estão em
 `docs/PLANO-2026-10-13-DOT-OPERACAO-H1.md`).
@@ -369,3 +369,10 @@ Contrato e decisões do owner (P1 × P2 de preservação, etc.): `docs/PLANO-202
 - Regra do manual (v8, funde a do v7): "agendar-leva e ajustar-arte só gravam versão APTA medida na hora
   (REVISAO_HUMANA_NECESSARIA: relate, repetir não muda); gate de revisar-arte é informação, de ver-geracao/auditar-operacao
   é auditoria, nunca autorização".
+
+
+## Reagendamento restrito (`dot-operacao-v9`, 16/11/2026)
+
+`reagendar-rascunho` exige pedido explícito, curadoria e a `versao` lida em `ver-agenda`. Só aceita DRAFT de horário único sem vestígio remoto; usa trava da agenda, trava da linha e CAS por versão, projeto e estado. Recusa horário ocupado (mesmo formato, ±45min). Apenas data/updatedAt mudam: sem aprovação, publicação, exclusão, renomeação ou mudança da arte. Em conflito, consultar novamente; nunca substituir pela operação ampla `reagendar-post`. Não há ferramenta nova de exclusão: `cancelar-post` continua fora do perfil e requer humano.
+
+O CAS de aprovação local também vincula a versão/data lidas pelo servidor. Isso protege a corrida entre leitura e escrita, não transforma uma tela humana antiga em confirmação versionada.

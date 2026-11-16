@@ -10,6 +10,7 @@
 
 import type { ToolPronta } from '../registro/tipos'
 import { toolsDeAgenda } from './agenda'
+import { toolsDeRascunhosRestritos } from './rascunhos-restritos'
 import { toolsDeArteIA } from './arte-ia'
 import { toolsDeAvaliacoes } from './avaliacoes'
 import { toolsDeBaseEDna } from './base-e-dna'
@@ -29,6 +30,7 @@ const TODAS: ToolPronta[] = [
   ...toolsDePagina,
   ...toolsDeReferencias,
   ...toolsDeAgenda,
+  ...toolsDeRascunhosRestritos,
   ...toolsDePlanos,
   ...toolsDeArteIA,
   ...toolsDeCarrossel,

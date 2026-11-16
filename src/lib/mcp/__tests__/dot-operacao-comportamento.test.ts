@@ -183,7 +183,7 @@ describe('cenário 10 — sem aprovação humana, nada passa do rascunho (porta 
     }
     // E toda tool listada que escreve é uma das três da produção até rascunho.
     const escritas = listarToolsRemotas(DOT).filter((t) => t.annotations?.readOnlyHint === false).map((t) => t.name).sort()
-    expect(escritas).toEqual(['agendar-leva', 'ajustar-arte', 'buscar-fotos', 'compor-leva'])
+    expect(escritas).toEqual(['agendar-leva', 'ajustar-arte', 'buscar-fotos', 'compor-leva', 'reagendar-rascunho'])
   })
 })
 
