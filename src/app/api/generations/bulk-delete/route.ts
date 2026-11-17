@@ -7,6 +7,7 @@ import {
   hasProjectWriteAccess,
 } from '@/lib/projects/access'
 import { extractBlobPathname } from '@/lib/cleanup/blob-cleanup'
+import { modoDoBlob } from '@/lib/creatives/galeria'
 import { googleDriveService } from '@/server/google-drive-service'
 
 export const runtime = 'nodejs'
@@ -69,9 +70,15 @@ export async function POST(req: Request) {
     }
 
     // Limpar blobs do Vercel em paralelo
-    const blobPathnames = generations
-      .map((g) => g.fileName ?? extractBlobPathname(g.resultUrl))
-      .filter((p): p is string => Boolean(p))
+    // Pelo `resultUrl`, nunca por `fileName` (na peça composta ele é o nome da página, não o caminho do
+    // blob), e só o blob que não serve mais a ninguém — a mesma regra de `apagarArquivosELinhaDaArte`.
+    const idsDoLote = generations.map((g) => g.id)
+    const blobPathnames: string[] = []
+    for (const g of generations) {
+      if (g.resultUrl && extractBlobPathname(g.resultUrl) && (await modoDoBlob(g, idsDoLote)) === 'imagem') {
+        blobPathnames.push(g.resultUrl)
+      }
+    }
 
     if (blobPathnames.length > 0) {
       const blobResults = await Promise.allSettled(blobPathnames.map((p) => del(p)))

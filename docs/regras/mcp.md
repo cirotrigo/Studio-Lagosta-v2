@@ -488,3 +488,99 @@ sem par gera aviso e o trecho sai sem destaque; colchetes junto com `destaques` 
 (cor, família) vale para a camada inteira; sem ele, o da marca; sem estilo da marca, os trechos não são gravados e o
 aviso diz por quê. `slotValues` (string ou `{content}`) aceita colchetes; `criar-arte-de-modelo` ainda não. `destaques.*`
 e `destaque.*` são `inerte` no gate (`gate-v6`). Contrato completo em `render-e-texto.md`, "Destaque por marcação".
+
+## Gestão da galeria: `listar-artes` e `apagar-arte` (17/11/2026)
+
+O conector via UMA arte por id (`ver-geracao`) e não apagava nenhuma. Num teste de 17/11/2026 o agente
+compôs dois stories do By Rock, agendou como rascunho, cancelou os posts e ficou com as duas artes na
+galeria, sem saída: a exclusão só existia nas rotas do app, com login do Clerk. As duas tools moram em
+`src/lib/mcp/catalogo/galeria.ts`; as regras, em `src/lib/creatives/galeria-regras.ts` (puro); as leituras
+e a exclusão, em `src/lib/creatives/galeria.ts`.
+
+**`listar-artes`** (leitura, gate de membro do projeto): as artes da galeria do cliente, mais recentes
+primeiro, com `limite` (20, máximo 50), `pagina`, `de`/`ate` (dia de Brasília) e `nome`. Cada item traz
+`generationId`, nome, formato, situação, criação, URL, `pageId` + `editUrl` quando a arte tem página, e o
+uso pela agenda (`emUso`, `posts` com situação, horário e `noZernio`), além de `podeApagar`. O filtro `uso` separa
+`publicada` (algum post POSTED a usa), `na-agenda` (está em post, nenhum publicado) e `nunca-usada`; com ele
+a seleção e a paginação são feitas em SQL (`emPost`), a mesma regra de `postsQueUsam`.
+
+- **A foto de cena (`track: 'imagem'`) fica de fora**, como na galeria do app, e pelo mesmo SQL com
+  `COALESCE`: o filtro Json do Prisma esconderia toda arte sem o campo.
+- **"Em uso" é pelo vínculo OU pela imagem**: `SocialPost.generationId`, a URL da arte em `mediaUrls` ou em
+  `renderedImageUrl`. A coluna sozinha aponta só o primeiro slide de um carrossel.
+- O filtro `nome` casa `fileName` e `templateName` gravados na arte. Página renomeada depois do render só
+  casa pelo nome antigo (marcado com `ponytail:`).
+
+**`apagar-arte`** (destrutiva, sem desfazer, UMA arte por chamada): manda o arquivo do Drive para a LIXEIRA
+do Drive (`deleteFiles` grava `trashed: true`; a resposta diz `drive: 'na-lixeira'`) e apaga de vez o blob e a
+linha `Generation`, pela MESMA função das rotas do app (`apagarArquivosELinhaDaArte`). A descrição manda
+confirmar com a pessoa antes, citando a arte. `simular: true` devolve o que sairia e o que impede, sem gravar.
+
+- 🔴 **Arte de post que ainda existe na agenda não sai.** `cancelar-post` REMOVE o post, então "cancelado"
+  é post que não existe mais: rascunho, agendado, publicando, publicado E falhou seguram a arte
+  (`ARTE_EM_USO_NA_AGENDA`). O falhado entra porque o "Tentar novamente" publicaria uma imagem apagada.
+  Post com `laterPostId` sai com código próprio (`ARTE_EM_POST_NO_ZERNIO`) e vem primeiro na lista.
+- **Arte de outro cliente responde como inexistente** (`ARTE_NAO_ENCONTRADA`): a existência dela não vaza.
+- Recusa também a foto de cena (`NAO_E_ARTE_DA_GALERIA`: o arquivo dela no Drive É o acervo) e a arte
+  `PROCESSING` com menos de 10 minutos (`ARTE_EM_ANDAMENTO`: a fila gravaria numa linha que sumiu).
+- 🔴 **A `Page` da peça NÃO é apagada por padrão.** Continua na pasta de templates; a resposta traz `pagina`
+  com o link do editor e `mantida: true`. Com `apagarPagina: true` ela sai junto, mas só quando ninguém mais
+  depende dela. Seguram a página (`motivoDeManterAPagina`), nesta ordem: ser modelo, post que a aponta
+  (`SocialPost.pageId`: é dela que a arte do post é renderizada), referência de layout aprovada
+  (`ReferenciaDeLayout` não revogada), item de plano, outra arte nascida dela e ser a última página da pasta.
+  Página que fica NUNCA impede a arte de sair: a resposta diz o motivo em `pagina.motivoDeManter`.
+- 🔴 **`persist.ts` grava a MESMA URL em `Generation.resultUrl` e em `Page.thumbnail`.** O blob só sai quando
+  não serve mais a ninguém (`motivoDeManterOBlob`): mídia de post, miniatura de uma página que fica e arquivo
+  de outra arte o seguram, e a resposta avisa (`blob: 'mantido'`). Página que sai junto não segura a miniatura.
+- 🔴 **`Generation.fileName` não é o caminho do blob na peça composta**: é `"<nome da página>.png"`. Até
+  17/11/2026 as rotas do app (`DELETE /api/generations/[id]` e `bulk-delete`) apagavam por
+  `fileName ?? caminho do resultUrl`: para peça composta pediam a exclusão de um caminho que não existe e o
+  blob ficava órfão; para arte de IA apagavam o blob mesmo com post usando a imagem. Hoje as duas apagam pelo
+  `resultUrl`, e só depois de `modoDoBlob` dizer que ninguém mais usa o arquivo (no lote, as outras artes do
+  mesmo lote não contam). Blob órfão de exclusões antigas não é recolhido por isto.
+- **Fora de `TOOLS_DRAFT_ONLY`, as duas.** A lista é allowlist: no perfil só-rascunho `apagar-arte` responde
+  como ferramenta desconhecida. `listar-artes` também nasceu de fora; incluí-la é decisão do dono.
+- A conferência e a exclusão não são uma transação: um post criado com a arte nesse intervalo ficaria sem
+  a imagem (marcado com `ponytail:` em `galeria-regras.ts`).
+
+### A faxina: `limpar-galeria` (17/11/2026)
+
+Medido no branch de dev (retrato de 02/11/2026): 10.010 artes na galeria, 3.369 publicadas, 6.316 que nenhum
+post usa. `sugerir-repost` parte do post publicado, não da galeria, então a sobra não contamina o repost: ela
+polui a galeria e tudo o que lista arte. `limpar-galeria` apaga em lote, por cliente, as artes que nunca
+entraram em post e têm mais de `dias` dias (padrão 30, mínimo 7), levando a página junto quando ninguém depende
+dela. Gate de CURADOR, fora de `TOOLS_DRAFT_ONLY`.
+
+- **Duas chamadas, como `executar-plano`**: sem `confirmar` é simulação (a conta, `porOrigem`, as protegidas
+  por motivo, a mais antiga, a mais recente, uma amostra). Só o literal `confirmar: true` apaga, até `limite`
+  por chamada (20, máximo 40), das mais antigas para as mais novas, e diz quantas restam.
+- **A consulta traz FATOS, a regra decide**: `lerNuncaUsadas` (`galeria.ts`) devolve cada candidata com
+  booleanos; `motivoDeProteger` (`galeria-regras.ts`, puro) diz se fica. Cada arte sai por
+  `apagarArteDaGaleria` com `apagarPagina`, que confere tudo de novo: a que entrou num post nesse meio-tempo
+  é pulada com o motivo.
+- 🔴 **"Nunca usada" só é confiável para a arte que ainda está no armazenamento.** Todas as Generations de
+  antes de maio/2026 são `Criativo recuperado`: foram reconstruídas do Drive por
+  `scripts/recover-deleted-generations.ts` e perderam o vínculo com o post. Medido: os 3.966 posts publicados
+  em 2025-T4 e 2026-T1 não casam com arte NENHUMA, e as 1.935 artes "nunca usadas" desses trimestres são
+  todas recuperadas, só no Drive. A limpeza de 90 dias também arquiva arte no Drive, e nem sempre levou a
+  mídia do post junto. Por isso arte cuja imagem não está mais no Blob fica SEMPRE
+  (`historico-fora-do-armazenamento`): apagá-la mandaria para a lixeira o único arquivo de uma arte que
+  provavelmente foi ao ar. Na simulação de 17/11 isso protege 2.859 das 5.643 candidatas.
+- 🔴 **Arte que veio do Zernio não se apaga** (regra do Ciro, 17/11/2026: "se vem dele é porque foi agendada").
+  Vale para toda arte que NASCEU de um post (`veio-do-zernio-ou-da-agenda`), pela marca que quem a cria grava
+  em `fieldValues`: `origem: post-do-zernio:…` (`arte-do-post-na-galeria.ts`), `source: post-midia`
+  (`artes-do-post.ts`) e `source: post-schedule` (`ensure-post-generation.ts`). O post pode ter sido removido
+  depois, ou a mídia ter mudado de endereço: a arte continua sendo a de um post. Caminho novo que crie arte a
+  partir de post precisa de uma dessas marcas, ou entra na faxina.
+- **Ficam também**: arte cuja página está em post (`pagina-em-post`: a peça foi para a agenda por outro
+  render), referência de estilo, arte com "gostei" (`LearningSignal` de tipo `arte`), arte de item de plano,
+  carrossel com algum slide em uso, a original de uma melhoria que foi ao ar e vídeo (a limpeza de 90 dias
+  também o pula). `ItemDeLote` NÃO protege: peça de leva que nunca foi agendada é exatamente a sobra.
+- 🔴 **Risco que a regra não fecha**: arte publicada POR FORA da agenda do Studio (direto no Zernio, ou no
+  Instagram) aparece como nunca usada. É o caso provável de parte das `arte-enviada` (o `upload-creative`
+  das skills da pasta Clientes, que agendam pelo Zernio). A simulação mostra `porOrigem` para a pessoa
+  decidir, e a descrição da tool manda dizer isso junto com a conta. O arquivo do Drive vai para a lixeira,
+  não some: é a janela de arrependimento.
+- Simulação de 17/11/2026 no branch de dev, corte de 30 dias: sairiam 2.305 artes (959 `claude-code`,
+  677 sem canal, 442 `studio`, 226 `claude-ai`, 1 `claudinho`), entre 23 (Ciro Trigo) e 405 (Wine Vix) por
+  cliente; 91 ficaram por terem nascido de post. Nenhuma foi apagada.
