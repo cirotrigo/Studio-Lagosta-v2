@@ -19,6 +19,7 @@ import { toolsDeClientes } from './clientes'
 import { toolsDoCompositor } from './compositor'
 import { toolsDeFeedback } from './feedback'
 import { toolsDeFotos } from './fotos'
+import { toolsDeGaleria } from './galeria'
 import { toolsDeModelos } from './modelos'
 import { toolsDePagina } from './pagina'
 import { toolsDePlanos } from './planos'
@@ -33,6 +34,7 @@ const TODAS: ToolPronta[] = [
   ...toolsDeRascunhosRestritos,
   ...toolsDePlanos,
   ...toolsDeArteIA,
+  ...toolsDeGaleria,
   ...toolsDeCarrossel,
   ...toolsDeBaseEDna,
   ...toolsDeFotos,

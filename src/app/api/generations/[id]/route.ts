@@ -1,15 +1,13 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
-import { del } from '@vercel/blob'
 import { db } from '@/lib/db'
 import {
   fetchProjectWithShares,
   hasProjectReadAccess,
   hasProjectWriteAccess,
 } from '@/lib/projects/access'
-import { extractBlobPathname } from '@/lib/cleanup/blob-cleanup'
+import { apagarArquivosELinhaDaArte } from '@/lib/creatives/galeria'
 import { definirReferenciaDeEstilo } from '@/lib/ai/style-references'
-import { googleDriveService } from '@/server/google-drive-service'
 
 export const runtime = 'nodejs'
 
@@ -134,29 +132,8 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
     }
 
-    // Limpar Drive primeiro (mais visível pro usuário se falhar)
-    if (generation.googleDriveFileId && googleDriveService.isEnabled()) {
-      try {
-        await googleDriveService.deleteFiles([generation.googleDriveFileId])
-      } catch (driveError) {
-        console.warn(`[DELETE generation ${id}] Failed to delete Drive file:`, driveError)
-      }
-    }
-
-    // Limpar blob do Vercel
-    const pathname = generation.fileName ?? extractBlobPathname(generation.resultUrl)
-    if (pathname) {
-      try {
-        await del(pathname)
-      } catch (blobError) {
-        console.warn(`[DELETE generation ${id}] Failed to delete blob:`, blobError)
-      }
-    }
-
-    // Deletar geração do banco por último
-    await db.generation.delete({
-      where: { id },
-    })
+    // Drive, blob e por fim a linha: a mesma função do `apagar-arte` do conector.
+    await apagarArquivosELinhaDaArte(generation)
 
     return NextResponse.json({ success: true })
   } catch (error) {
