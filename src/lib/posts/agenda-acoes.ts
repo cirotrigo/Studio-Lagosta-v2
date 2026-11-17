@@ -110,6 +110,7 @@ export async function processarAprovacao(params: {
       id: true,
       status: true,
       scheduledDatetime: true,
+      updatedAt: true,
       laterPostId: true,
       lateStatus: true,
       mediaUrls: true,
@@ -214,7 +215,8 @@ export async function processarAprovacao(params: {
         // Gate final (Codex R2): a escrita também exige a linha AINDA rascunho e não entregue — uma aprovação atrasada
         // não pode reabrir (SCHEDULED + render PENDING) um post que outra aprovação já agendou e o envio já reservou.
         const aprovado = await db.socialPost.updateMany({
-          where: { id: post.id, status: PostStatus.DRAFT, laterPostId: null, ...NAO_E_FALHA_SEMANTICA },
+          // Reagendamento/edição após esta leitura invalida a aprovação local.
+          where: { id: post.id, projectId, updatedAt: post.updatedAt, scheduledDatetime: post.scheduledDatetime, status: PostStatus.DRAFT, laterPostId: null, ...NAO_E_FALHA_SEMANTICA },
           data: {
             status: PostStatus.SCHEDULED,
             errorMessage: null,

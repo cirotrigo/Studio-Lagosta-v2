@@ -16,6 +16,7 @@ function casa(l: any, where: any): boolean {
     if (k === 'NOT') return !casa(l, c)
     const v = l[k]
     if (c === null) return v === null || v === undefined
+    if (c instanceof Date) return v instanceof Date && v.getTime() === c.getTime()
     if (typeof c !== 'object') return v === c
     if ('in' in c) return c.in.includes(v)
     if ('not' in c) return v !== c.not
@@ -51,7 +52,7 @@ import { ErroRenderSemantico } from '../erro-render-semantico'
 
 const envelope = new ErroRenderSemantico('CONTRATO_INVALIDO', 'p1', []).paraRenderError()
 const rascunho = (extra: Record<string, unknown> = {}) => ({
-  id: 'post-1', status: 'DRAFT', scheduledDatetime: new Date(Date.now() + 3_600_000), laterPostId: null, mediaUrls: [], pageId: 'p1',
+  id: 'post-1', projectId: 8, updatedAt: new Date('2026-01-01T00:00:00.000Z'), status: 'DRAFT', scheduledDatetime: new Date(Date.now() + 3_600_000), laterPostId: null, mediaUrls: [], pageId: 'p1',
   renderStatus: 'RENDER_FAILED', renderError: envelope, renderAttempts: 1, videoDaPagina: false, campaignId: null, postType: 'STORY',
   generationId: null, sugestaoId: null, slotValues: { _slots: { manchete: 'X' } }, ...extra,
 })
@@ -105,6 +106,19 @@ describe('GATE FINAL (Codex R2): aprovação atrasada não reabre post já reser
     banco.posts = [emEntrega]
     const r = await aprovar()
     expect(banco.posts[0]).toEqual(emEntrega)
+    expect(r.processados ?? []).not.toContain('post-1')
+  })
+})
+
+
+describe('aprovação local vinculada ao snapshot lido', () => {
+  it.each(['updatedAt', 'scheduledDatetime'] as const)('recusa mudança concorrente de %s', async (campo) => {
+    const lido = rascunho({ renderStatus: 'RENDERED', renderError: null, mediaUrls: ['https://blob.test/arte.png'] })
+    const corrente = { ...lido, [campo]: new Date(lido[campo].getTime() + 60000) }
+    banco.lidos = [lido]
+    banco.posts = [corrente]
+    const r = await aprovar()
+    expect(banco.posts[0]).toEqual(corrente)
     expect(r.processados ?? []).not.toContain('post-1')
   })
 })

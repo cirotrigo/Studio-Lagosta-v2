@@ -31,6 +31,8 @@ export const TOOLS_DRAFT_ONLY: ReadonlySet<string> = new Set([
   'auditar-operacao',
   'listar-clientes',
   'ver-agenda',
+  // Gestão restrita de horário: DRAFT, CAS e nenhuma entrega remota.
+  'reagendar-rascunho',
   // fontes da peça
   'consultar-dna',
   'consultar-voz',
