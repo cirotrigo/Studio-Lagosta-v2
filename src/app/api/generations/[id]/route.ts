@@ -6,7 +6,7 @@ import {
   hasProjectReadAccess,
   hasProjectWriteAccess,
 } from '@/lib/projects/access'
-import { apagarArquivosELinhaDaArte } from '@/lib/creatives/galeria'
+import { apagarArquivosELinhaDaArte, modoDoBlob } from '@/lib/creatives/galeria'
 import { definirReferenciaDeEstilo } from '@/lib/ai/style-references'
 
 export const runtime = 'nodejs'
@@ -132,8 +132,9 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
     }
 
-    // Drive, blob e por fim a linha: a mesma função do `apagar-arte` do conector.
-    await apagarArquivosELinhaDaArte(generation)
+    // Drive, blob e por fim a linha: a mesma função do `apagar-arte` do conector. O blob só sai se não for
+    // mais a miniatura de uma página, o arquivo de outra arte nem a mídia de um post.
+    await apagarArquivosELinhaDaArte(generation, await modoDoBlob(generation))
 
     return NextResponse.json({ success: true })
   } catch (error) {

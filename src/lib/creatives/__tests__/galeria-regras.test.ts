@@ -4,6 +4,7 @@ import {
   apagarArte,
   impedimentosDeApagar,
   itemDaGaleria,
+  motivoDeManterOBlob,
   nomeDaArte,
   periodoDaLista,
   postsQueUsam,
@@ -11,6 +12,7 @@ import {
   type DepsDeApagarArte,
   type PaginaDaArte,
   type PostDaAgenda,
+  type UsoDaPagina,
 } from '../galeria-regras'
 
 /**
@@ -54,8 +56,11 @@ const pagina = (extra: Partial<PaginaDaArte> = {}): PaginaDaArte => ({
   templateId: 570,
   thumbnail: 'https://x.public.blob.vercel-storage.com/outra-miniatura.png',
   isTemplate: false,
+  order: 3,
   ...extra,
 })
+
+const paginaLivre: UsoDaPagina = { posts: 0, outrasArtes: 0, itensDePlano: 0, referenciaAprovada: false, paginasNaPasta: 5 }
 
 function deps(extra: Partial<DepsDeApagarArte> = {}) {
   const apagar = vi.fn(async (_a: ArteDaGaleria, o: { manterBlob: boolean }) => ({
@@ -69,11 +74,13 @@ function deps(extra: Partial<DepsDeApagarArte> = {}) {
     contarOutrasArtesComAImagem: async () => 0,
     estaNoBlob: (url) => url.includes('blob.vercel-storage.com'),
     apagar,
+    lerUsoDaPagina: vi.fn(async () => paginaLivre),
+    apagarPagina: vi.fn(async () => undefined),
     appUrl: 'https://studio.test',
     agora: AGORA,
     ...extra,
   }
-  return { d, apagar }
+  return { d, apagar, apagarPagina: d.apagarPagina as ReturnType<typeof vi.fn>, lerUsoDaPagina: d.lerUsoDaPagina as ReturnType<typeof vi.fn> }
 }
 
 async function recusa(promessa: Promise<unknown>): Promise<CreativeError> {
@@ -244,6 +251,99 @@ describe('apagar-arte: a imagem que ainda serve a alguém fica', () => {
     const { d } = deps({ lerPagina: async () => pagina({ thumbnail: URL_DA_ARTE }) })
     const r = await apagarArte({ projectId: 7, generationId: 'gen1', simular: true }, d)
     expect(r).toMatchObject({ apagaria: { imagemNoArmazenamento: false } })
+  })
+})
+
+describe('apagar-arte: a página só sai a pedido, e só quando ninguém depende dela', () => {
+  it('sem apagarPagina a página nem é consultada', async () => {
+    const { d, apagarPagina, lerUsoDaPagina } = deps()
+    const r = await apagarArte({ projectId: 7, generationId: 'gen1' }, d)
+    expect(lerUsoDaPagina).not.toHaveBeenCalled()
+    expect(apagarPagina).not.toHaveBeenCalled()
+    expect(r).toMatchObject({ pagina: { mantida: true } })
+  })
+
+  it('apagarPagina com a página livre: a arte sai, depois a página, e a miniatura não segura mais o blob', async () => {
+    const ordem: string[] = []
+    const { d, apagar, apagarPagina } = deps({ lerPagina: async () => pagina({ thumbnail: URL_DA_ARTE }) })
+    apagar.mockImplementation(async () => (ordem.push('arte'), { drive: 'apagado' as const, blob: 'apagado' as const }))
+    apagarPagina.mockImplementation(async () => void ordem.push('pagina'))
+    const r = await apagarArte({ projectId: 7, generationId: 'gen1', apagarPagina: true }, d)
+    expect(ordem).toEqual(['arte', 'pagina'])
+    expect(apagar).toHaveBeenCalledWith(expect.anything(), { manterBlob: false })
+    expect(apagarPagina).toHaveBeenCalledWith(expect.objectContaining({ id: 'pg1', templateId: 570, order: 3 }))
+    expect(r).toMatchObject({ apagada: true, pagina: { pageId: 'pg1', apagada: true } })
+    expect((r as { pagina: object }).pagina).not.toHaveProperty('mantida')
+  })
+
+  it.each([
+    ['modelo do cliente', { isTemplate: true }, {}, 'MODELO'],
+    ['post da agenda aponta a página', {}, { posts: 1 }, 'post(s) da agenda'],
+    ['referência de layout aprovada', {}, { referenciaAprovada: true }, 'referência de layout'],
+    ['item de plano aponta a página', {}, { itensDePlano: 2 }, 'plano de conteúdo'],
+    ['outra arte nasceu da página', {}, { outrasArtes: 1 }, 'arte(s) da galeria'],
+    ['última página da pasta', {}, { paginasNaPasta: 1 }, 'última página'],
+  ])('%s: a página fica com o motivo, e a arte sai do mesmo jeito', async (_caso, daPagina, uso, trecho) => {
+    const { d, apagar, apagarPagina } = deps({
+      lerPagina: async () => pagina({ thumbnail: URL_DA_ARTE, ...daPagina }),
+      lerUsoDaPagina: async () => ({ ...paginaLivre, ...uso }),
+    })
+    const r = (await apagarArte({ projectId: 7, generationId: 'gen1', apagarPagina: true }, d)) as {
+      pagina: { mantida?: boolean; motivoDeManter?: string }
+      avisos: string[]
+    }
+    expect(apagarPagina).not.toHaveBeenCalled()
+    // A página fica, então a miniatura dela continua segurando o blob.
+    expect(apagar).toHaveBeenCalledWith(expect.anything(), { manterBlob: true })
+    expect(r.pagina.mantida).toBe(true)
+    expect(r.pagina.motivoDeManter).toContain(trecho)
+    expect(r.avisos[0]).toContain('NÃO é apagada, mesmo com apagarPagina')
+  })
+
+  it('arte presa a post: nem a arte nem a página saem', async () => {
+    const { d, apagar, apagarPagina } = deps({ lerPostsDaArte: async () => [post()] })
+    expect((await recusa(apagarArte({ projectId: 7, generationId: 'gen1', apagarPagina: true }, d))).code).toBe('ARTE_EM_USO_NA_AGENDA')
+    expect(apagar).not.toHaveBeenCalled()
+    expect(apagarPagina).not.toHaveBeenCalled()
+  })
+
+  it('simular com apagarPagina diz que a página sairia e não apaga nada', async () => {
+    const { d, apagar, apagarPagina } = deps()
+    const r = await apagarArte({ projectId: 7, generationId: 'gen1', apagarPagina: true, simular: true }, d)
+    expect(r).toMatchObject({ simulacao: true, apagaria: { pagina: true }, pagina: { apagada: true } })
+    expect(apagar).not.toHaveBeenCalled()
+    expect(apagarPagina).not.toHaveBeenCalled()
+  })
+
+  it('a exclusão da página falha depois de a arte sair: a resposta diz, não finge', async () => {
+    const { d, apagarPagina } = deps()
+    apagarPagina.mockRejectedValueOnce(new Error('banco fora'))
+    const r = (await apagarArte({ projectId: 7, generationId: 'gen1', apagarPagina: true }, d)) as {
+      apagada: boolean
+      pagina: { mantida?: boolean }
+      avisos: string[]
+    }
+    expect(r.apagada).toBe(true)
+    expect(r.pagina.mantida).toBe(true)
+    expect(r.avisos[0]).toContain('A arte foi apagada, mas a página')
+  })
+
+  it('arte sem página: apagarPagina vira aviso', async () => {
+    const { d, apagarPagina } = deps({ lerArte: async () => arte({ fieldValues: {} }), lerPagina: async () => null })
+    const r = (await apagarArte({ projectId: 7, generationId: 'gen1', apagarPagina: true }, d)) as { avisos: string[] }
+    expect(apagarPagina).not.toHaveBeenCalled()
+    expect(r.avisos.join(' ')).toContain('não tem página')
+  })
+})
+
+describe('o blob que ainda serve a alguém fica (a regra das rotas do app e do conector)', () => {
+  it('mídia de post, miniatura de página e outra arte seguram; sem ninguém, sai', () => {
+    const a = { resultUrl: URL_DA_ARTE }
+    expect(motivoDeManterOBlob(a, null, 0, 2)).toContain('post(s) da agenda')
+    expect(motivoDeManterOBlob(a, { name: 'P', thumbnail: URL_DA_ARTE }, 0)).toContain('miniatura')
+    expect(motivoDeManterOBlob(a, { name: 'P', thumbnail: 'https://x/outra.png' }, 1)).toContain('outra(s) 1 arte')
+    expect(motivoDeManterOBlob(a, { name: 'P', thumbnail: null }, 0, 0)).toBeNull()
+    expect(motivoDeManterOBlob({ resultUrl: null }, null, 3, 3)).toBeNull()
   })
 })
 

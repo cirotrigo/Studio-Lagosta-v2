@@ -12,6 +12,9 @@
  * - post com `laterPostId` é intocável (já está no Zernio): o motivo sai separado, com outro código;
  * - foto de cena (`track: 'imagem'`) é insumo do acervo, não arte da galeria;
  * - arte ainda sendo gerada espera a fila terminar.
+ *
+ * A PÁGINA da peça só sai a pedido (`apagarPagina`), e só quando ninguém mais depende dela: post, outra
+ * arte, item de plano, referência de layout aprovada, modelo ou última página da pasta a seguram.
  */
 
 import { CreativeError } from './errors'
@@ -65,6 +68,17 @@ export interface PaginaDaArte {
   templateId: number
   thumbnail: string | null
   isTemplate: boolean
+  order: number
+}
+
+/** Quem ainda depende da página, além da arte que está sendo apagada. */
+export interface UsoDaPagina {
+  /** Posts que apontam a página (`SocialPost.pageId`): ela é renderizada minutos antes de publicar. */
+  posts: number
+  outrasArtes: number
+  itensDePlano: number
+  referenciaAprovada: boolean
+  paginasNaPasta: number
 }
 
 export interface ResultadoDaExclusao {
@@ -195,16 +209,31 @@ export function impedimentosDeApagar(arte: ArteDaGaleria, posts: PostDaAgenda[],
  */
 export function motivoDeManterOBlob(
   arte: Pick<ArteDaGaleria, 'resultUrl'>,
-  pagina: PaginaDaArte | null,
+  pagina: Pick<PaginaDaArte, 'name' | 'thumbnail'> | null,
   outrasArtesComAMesmaImagem: number,
+  postsComAImagem = 0,
 ): string | null {
   if (!arte.resultUrl) return null
+  if (postsComAImagem > 0) {
+    return `${postsComAImagem} post(s) da agenda usam esta imagem como mídia`
+  }
   if (pagina?.thumbnail && pagina.thumbnail === arte.resultUrl) {
     return `a imagem é também a miniatura da página "${pagina.name}", que continua existindo`
   }
   if (outrasArtesComAMesmaImagem > 0) {
     return `outra(s) ${outrasArtesComAMesmaImagem} arte(s) da galeria usam o mesmo arquivo`
   }
+  return null
+}
+
+/** Por que a página NÃO sai junto com a arte; `null` = pode sair. A ordem é a da gravidade. */
+export function motivoDeManterAPagina(pagina: PaginaDaArte, uso: UsoDaPagina): string | null {
+  if (pagina.isTemplate) return 'é um MODELO do cliente (modelo se desmarca no editor antes de apagar)'
+  if (uso.posts > 0) return `${uso.posts} post(s) da agenda apontam esta página, e é dela que a arte do post é renderizada`
+  if (uso.referenciaAprovada) return 'é referência de layout aprovada do cliente (aprovar-referencia)'
+  if (uso.itensDePlano > 0) return `${uso.itensDePlano} item(ns) de plano de conteúdo apontam esta página`
+  if (uso.outrasArtes > 0) return `outra(s) ${uso.outrasArtes} arte(s) da galeria nasceram desta página`
+  if (uso.paginasNaPasta <= 1) return 'é a última página da pasta (toda pasta precisa de ao menos uma)'
   return null
 }
 
@@ -265,12 +294,16 @@ export interface DepsDeApagarArte {
   estaNoBlob(url: string): boolean
   /** A exclusão de verdade (Drive, blob, linha) — a mesma função da rota do app. */
   apagar(arte: ArteDaGaleria, opcoes: { manterBlob: boolean }): Promise<ResultadoDaExclusao>
+  /** Só é chamado com `apagarPagina`. */
+  lerUsoDaPagina(pagina: PaginaDaArte, arte: ArteDaGaleria): Promise<UsoDaPagina>
+  /** Apaga a página e reordena a pasta, como a rota do editor. */
+  apagarPagina(pagina: PaginaDaArte): Promise<void>
   appUrl: string
   agora?: Date
 }
 
 export async function apagarArte(
-  params: { projectId: number; generationId: string; simular?: boolean },
+  params: { projectId: number; generationId: string; simular?: boolean; apagarPagina?: boolean },
   deps: DepsDeApagarArte,
 ) {
   const arte = await deps.lerArte(params.generationId)
@@ -289,14 +322,26 @@ export async function apagarArte(
   ])
 
   const impedimentos = impedimentosDeApagar(arte, posts, deps.agora)
-  const manterBlob = motivoDeManterOBlob(arte, pagina, outras)
   const nome = nomeDaArte(arte, pagina)
 
+  // A página só sai a pedido, e só se ninguém mais depende dela. Não sair NUNCA impede a arte de sair.
+  const manterPagina =
+    params.apagarPagina && pagina ? motivoDeManterAPagina(pagina, await deps.lerUsoDaPagina(pagina, arte)) : null
+  const paginaSai = !!params.apagarPagina && !!pagina && !manterPagina
+  // Página que sai junto não segura mais a miniatura.
+  const manterBlob = motivoDeManterOBlob(arte, paginaSai ? null : pagina, outras)
+
   const avisos: string[] = []
-  if (pagina) {
+  if (pagina && paginaSai) {
+    avisos.push(`A página "${pagina.name}" (${pagina.id}) sai junto com a arte, a pedido (apagarPagina).`)
+  } else if (pagina && manterPagina) {
+    avisos.push(`A página "${pagina.name}" (${pagina.id}) NÃO é apagada, mesmo com apagarPagina: ${manterPagina}.`)
+  } else if (pagina) {
     avisos.push(
-      `A página "${pagina.name}" (${pagina.id}) NÃO é apagada: continua na pasta de templates e pode ser reaproveitada ou apagada no editor.`,
+      `A página "${pagina.name}" (${pagina.id}) NÃO é apagada: continua na pasta de templates e pode ser reaproveitada. Para apagá-la junto, chame com apagarPagina: true.`,
     )
+  } else if (params.apagarPagina) {
+    avisos.push('Esta arte não tem página no editor: apagarPagina não tem o que apagar.')
   }
   if (manterBlob) avisos.push(`O arquivo da imagem fica no armazenamento: ${manterBlob}.`)
   if (arte.styleRefAt) avisos.push('Esta arte é referência de estilo da marca: ao ser apagada, sai do rodízio de referências.')
@@ -308,9 +353,20 @@ export async function apagarArte(
     criadaEm: formatarBRT(arte.createdAt),
     url: arte.resultUrl,
   }
-  const daPagina = pagina
-    ? { pagina: { pageId: pagina.id, nome: pagina.name, editUrl: linkDoEditor(deps.appUrl, pagina), mantida: true as const } }
-    : {}
+  const paginaMantida = (motivo: string | null) =>
+    pagina
+      ? {
+          pagina: {
+            pageId: pagina.id,
+            nome: pagina.name,
+            editUrl: linkDoEditor(deps.appUrl, pagina),
+            mantida: true as const,
+            ...(motivo ? { motivoDeManter: motivo } : {}),
+          },
+        }
+      : {}
+  const daPagina =
+    pagina && paginaSai ? { pagina: { pageId: pagina.id, nome: pagina.name, apagada: true as const } } : paginaMantida(manterPagina)
 
   if (params.simular) {
     return {
@@ -321,6 +377,7 @@ export async function apagarArte(
         arteNaGaleria: true,
         arquivoNoDrive: !!arte.googleDriveFileId,
         imagemNoArmazenamento: !!arte.resultUrl && deps.estaNoBlob(arte.resultUrl) && !manterBlob,
+        pagina: paginaSai,
       },
       impedimentos,
       ...daPagina,
@@ -344,5 +401,15 @@ export async function apagarArte(
   // ponytail: a conferência e a exclusão não são uma transação só; um post criado com esta arte nesse
   // intervalo (milissegundos) ficaria sem a imagem. Se acontecer, travar a linha da Generation aqui.
   const resultado = await deps.apagar(arte, { manterBlob: !!manterBlob })
+  if (pagina && paginaSai) {
+    try {
+      await deps.apagarPagina(pagina)
+    } catch (erro) {
+      // A arte já saiu: a falha da página é dita, nunca engolida nem transformada em "nada foi apagado".
+      const motivo = `a exclusão da página falhou (${erro instanceof Error ? erro.message : String(erro)})`
+      avisos[0] = `A arte foi apagada, mas a página "${pagina.name}" (${pagina.id}) NÃO: ${motivo}. Apague-a pelo editor.`
+      return { apagada: true as const, arte: daArte, ...resultado, ...paginaMantida(motivo), avisos }
+    }
+  }
   return { apagada: true as const, arte: daArte, ...resultado, ...daPagina, avisos }
 }

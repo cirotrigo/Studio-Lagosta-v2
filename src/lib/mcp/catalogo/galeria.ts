@@ -47,11 +47,12 @@ export const toolsDeGaleria = [
   definirTool({
     nome: 'apagar-arte',
     descricao:
-      'APAGA UMA arte da galeria (o generationId vem de listar-artes ou de quem a criou): o arquivo no Drive, a imagem no armazenamento e a arte na galeria. É ação DESTRUTIVA e SEM DESFAZER: confirme com a pessoa antes, citando a arte (nome e data), e nunca apague por conta própria nem em lote. Com `simular: true` nada é gravado: a resposta diz o que seria apagado e o que impediria — use antes de confirmar.\n\nRecusa, com o código e o motivo: arte em uso por post que ainda está na agenda (rascunho, agendado, publicando, publicado ou falhou) — ARTE_EM_USO_NA_AGENDA; arte de post que já foi para o Zernio — ARTE_EM_POST_NO_ZERNIO; arte ainda sendo gerada; foto de cena do acervo; e arte de outro cliente (não encontrada). Para liberar uma arte presa a rascunho ou agendado, o post sai da agenda antes (cancelar-post) ou recebe outra arte (trocar-arte-do-post); arte de post publicado não se apaga.\n\nA PÁGINA da peça (a que abre no editor) NÃO é apagada: continua na pasta de templates, e a resposta traz o link dela. Quando a imagem da arte é também a miniatura dessa página, o arquivo da imagem é mantido e a resposta avisa. Apaga uma arte por chamada.',
+      'APAGA UMA arte da galeria (o generationId vem de listar-artes ou de quem a criou): o arquivo no Drive, a imagem no armazenamento e a arte na galeria. É ação DESTRUTIVA e SEM DESFAZER: confirme com a pessoa antes, citando a arte (nome e data), e nunca apague por conta própria nem em lote. Com `simular: true` nada é gravado: a resposta diz o que seria apagado e o que impediria — use antes de confirmar.\n\nRecusa, com o código e o motivo: arte em uso por post que ainda está na agenda (rascunho, agendado, publicando, publicado ou falhou) — ARTE_EM_USO_NA_AGENDA; arte de post que já foi para o Zernio — ARTE_EM_POST_NO_ZERNIO; arte ainda sendo gerada; foto de cena do acervo; e arte de outro cliente (não encontrada). Para liberar uma arte presa a rascunho ou agendado, o post sai da agenda antes (cancelar-post) ou recebe outra arte (trocar-arte-do-post); arte de post publicado não se apaga.\n\nA PÁGINA da peça (a que abre no editor) NÃO é apagada por padrão: continua na pasta de templates, e a resposta traz o link dela. Com `apagarPagina: true` ela sai junto, mas só quando ninguém mais depende dela: página que é modelo, que está em post da agenda, em item de plano, que é referência de layout aprovada, que tem outra arte ou que é a última da pasta fica, e a resposta diz o motivo (a arte sai do mesmo jeito). Só peça apagarPagina quando a pessoa disser que a peça inteira é descartável (teste, rascunho abandonado). Quando a imagem da arte é também a miniatura de uma página que fica, o arquivo da imagem é mantido e a resposta avisa. Apaga uma arte por chamada.',
     schema: z.object({
       projectId: z.number().describe('ID do cliente dono da arte.'),
       generationId: z.string().min(1).describe('A arte a apagar (generationId de listar-artes).'),
       simular: z.boolean().optional().describe('true = só mostra o que seria apagado e o que impede; nada é gravado.'),
+      apagarPagina: z.boolean().optional().describe('true = apaga também a página da peça no editor, se ninguém mais depender dela. Padrão: a página fica.'),
     }),
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     acesso: { tipo: 'projeto' },
@@ -65,6 +66,7 @@ export const toolsDeGaleria = [
         projectId: args.projectId as number,
         generationId: args.generationId as string,
         simular: args.simular === true,
+        apagarPagina: args.apagarPagina === true,
         appUrl: getPublicAppUrl(),
       })
     },

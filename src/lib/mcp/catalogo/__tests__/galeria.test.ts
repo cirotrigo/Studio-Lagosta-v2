@@ -41,7 +41,8 @@ describe('catálogo da galeria', () => {
     expect(apagarArte.descricao).toContain('SEM DESFAZER')
     expect(apagarArte.descricao).toMatch(/confirme com a pessoa antes, citando a arte/)
     expect(apagarArte.descricao).toContain('simular')
-    expect(apagarArte.descricao).toContain('NÃO é apagada')
+    expect(apagarArte.descricao).toContain('NÃO é apagada por padrão')
+    expect(apagarArte.descricao).toContain('apagarPagina')
   })
 })
 
@@ -60,7 +61,7 @@ describe('apagar-arte na porta', () => {
   it('caminho feliz: chama o serviço com o cliente, a arte e simular false', async () => {
     const r = await executarTool(indice, 'remoto', 'apagar-arte', args, SERVICO, { gates: gates() })
     expect(r.isError).not.toBe(true)
-    expect(apagar).toHaveBeenCalledWith({ projectId: 7, generationId: 'gen1', simular: false, appUrl: 'https://studio.test' })
+    expect(apagar).toHaveBeenCalledWith({ projectId: 7, generationId: 'gen1', simular: false, apagarPagina: false, appUrl: 'https://studio.test' })
   })
 
   it('simular: true chega ao serviço como simulação', async () => {
@@ -68,10 +69,18 @@ describe('apagar-arte na porta', () => {
     expect(apagar).toHaveBeenCalledWith(expect.objectContaining({ simular: true }))
   })
 
-  it('payload estrito: sem lote, sem force, sem apagar página; faltando campo é recusado', async () => {
+  it('apagarPagina: true chega ao serviço; só o literal true vale', async () => {
+    await executarTool(indice, 'remoto', 'apagar-arte', { ...args, apagarPagina: true }, SERVICO, { gates: gates() })
+    expect(apagar).toHaveBeenLastCalledWith(expect.objectContaining({ apagarPagina: true }))
+    const r = await executarTool(indice, 'remoto', 'apagar-arte', { ...args, apagarPagina: 'sim' }, SERVICO, { gates: gates() })
+    expect(r.isError).toBe(true)
+    expect(apagar).toHaveBeenCalledTimes(1)
+  })
+
+  it('payload estrito: sem lote, sem force; faltando campo é recusado', async () => {
     for (const ruim of [
       { ...args, force: true },
-      { ...args, apagarPagina: true },
+      { ...args, apagarTudo: true },
       { ...args, generationIds: ['a', 'b'] },
       { projectId: 7 },
       { generationId: 'gen1' },

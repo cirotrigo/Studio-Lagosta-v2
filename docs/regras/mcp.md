@@ -510,7 +510,7 @@ uso pela agenda (`emUso`, `posts` com situação, horário e `noZernio`), além 
   casa pelo nome antigo (marcado com `ponytail:`).
 
 **`apagar-arte`** (destrutiva, sem desfazer, UMA arte por chamada): apaga o arquivo do Drive, o blob e a
-linha `Generation`, pela MESMA função da rota do app (`apagarArquivosELinhaDaArte`). A descrição manda
+linha `Generation`, pela MESMA função das rotas do app (`apagarArquivosELinhaDaArte`). A descrição manda
 confirmar com a pessoa antes, citando a arte. `simular: true` devolve o que sairia e o que impede, sem gravar.
 
 - 🔴 **Arte de post que ainda existe na agenda não sai.** `cancelar-post` REMOVE o post, então "cancelado"
@@ -520,16 +520,21 @@ confirmar com a pessoa antes, citando a arte. `simular: true` devolve o que sair
 - **Arte de outro cliente responde como inexistente** (`ARTE_NAO_ENCONTRADA`): a existência dela não vaza.
 - Recusa também a foto de cena (`NAO_E_ARTE_DA_GALERIA`: o arquivo dela no Drive É o acervo) e a arte
   `PROCESSING` com menos de 10 minutos (`ARTE_EM_ANDAMENTO`: a fila gravaria numa linha que sumiu).
-- 🔴 **A `Page` da peça NÃO é apagada.** Continua na pasta de templates; a resposta traz `pagina` com o
-  link do editor e `mantida: true`. Apagar página é decisão de quem está no editor.
-- 🔴 **`persist.ts` grava a MESMA URL em `Generation.resultUrl` e em `Page.thumbnail`.** Quando a imagem da
-  arte ainda é a miniatura da página (ou o arquivo de outra arte), o blob é MANTIDO e a resposta avisa
-  (`blob: 'mantido'`). Apagar o blob deixaria a página sem miniatura no editor.
-- 🔴 **`Generation.fileName` não é o caminho do blob na peça composta**: é `"<nome da página>.png"`. A rota
-  do app apaga por `fileName ?? caminho do resultUrl`, então para peça composta ela pede a exclusão de um
-  caminho que não existe e o blob fica. A função compartilhada preserva essa regra para a rota (sem opção)
-  e o conector usa `blob: 'imagem'`, que apaga pelo `resultUrl`. Corrigir a rota é mudança de comportamento
-  do app (passaria a apagar miniatura de página e mídia de post) e ficou de fora de propósito.
+- 🔴 **A `Page` da peça NÃO é apagada por padrão.** Continua na pasta de templates; a resposta traz `pagina`
+  com o link do editor e `mantida: true`. Com `apagarPagina: true` ela sai junto, mas só quando ninguém mais
+  depende dela. Seguram a página (`motivoDeManterAPagina`), nesta ordem: ser modelo, post que a aponta
+  (`SocialPost.pageId`: é dela que a arte do post é renderizada), referência de layout aprovada
+  (`ReferenciaDeLayout` não revogada), item de plano, outra arte nascida dela e ser a última página da pasta.
+  Página que fica NUNCA impede a arte de sair: a resposta diz o motivo em `pagina.motivoDeManter`.
+- 🔴 **`persist.ts` grava a MESMA URL em `Generation.resultUrl` e em `Page.thumbnail`.** O blob só sai quando
+  não serve mais a ninguém (`motivoDeManterOBlob`): mídia de post, miniatura de uma página que fica e arquivo
+  de outra arte o seguram, e a resposta avisa (`blob: 'mantido'`). Página que sai junto não segura a miniatura.
+- 🔴 **`Generation.fileName` não é o caminho do blob na peça composta**: é `"<nome da página>.png"`. Até
+  17/11/2026 as rotas do app (`DELETE /api/generations/[id]` e `bulk-delete`) apagavam por
+  `fileName ?? caminho do resultUrl`: para peça composta pediam a exclusão de um caminho que não existe e o
+  blob ficava órfão; para arte de IA apagavam o blob mesmo com post usando a imagem. Hoje as duas apagam pelo
+  `resultUrl`, e só depois de `modoDoBlob` dizer que ninguém mais usa o arquivo (no lote, as outras artes do
+  mesmo lote não contam). Blob órfão de exclusões antigas não é recolhido por isto.
 - **Fora de `TOOLS_DRAFT_ONLY`, as duas.** A lista é allowlist: no perfil só-rascunho `apagar-arte` responde
   como ferramenta desconhecida. `listar-artes` também nasceu de fora; incluí-la é decisão do dono.
 - A conferência e a exclusão não são uma transação: um post criado com a arte nesse intervalo ficaria sem
