@@ -32,7 +32,7 @@ import {
   type ImprovementFormat,
 } from '@/lib/ai/creative-improvement-format'
 import { loadImprovementAssets } from '@/lib/ai/improvement-assets-loader'
-import { CAIXA_DA_MANCHETE, aplicarCaixaDaOrigem, caixaTrocada } from '@/lib/ai/caixa-da-copy'
+import { CAIXA_DA_MANCHETE, aplicarCaixaDaOrigem, caixaTrocada, instrucaoDeCaixa } from '@/lib/ai/caixa-da-copy'
 import { normalizeForComparison, semTextosDaMarca } from '@/lib/ai/text-comparison'
 import {
   finalizarLogoDaMelhoria,
@@ -741,6 +741,10 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
       // tenha dito — instrução repetida aqui é barata e a duplicata de logo
       // é o defeito mais frequente da F0 (3 de 4 no prompt de produção).
       promptPronto = logoParaCompor ? `${plano.prompt}\n\n${instrucaoLogoNaMelhoria()}` : plano.prompt
+      // `rediagramar` promete a caixa e é reprovado por ela: as linhas em caixa
+      // mista vão nomeadas no fim do prompt, onde pesam mais.
+      const reforcoDeCaixa = modo === 'rediagramar' ? instrucaoDeCaixa(textosParaPrompt) : null
+      if (reforcoDeCaixa) promptPronto = `${promptPronto}\n\n${reforcoDeCaixa}`
       plannerInfo.planejadorTentativas = plano.tentativas
       if (plano.leitura) plannerInfo.leitura = plano.leitura
       // Bloco a bloco, nunca `join('\n')`: mover uma quebra de linha de um bloco
@@ -802,15 +806,20 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
     }
 
     /**
-     * A FOTO NÃO É DO GERADOR (11/11/2026). Em `rediagramar` e `refinar` só o
-     * texto pode mudar, e o `images.edit` redesenha a imagem inteira: a peça
-     * gerada é recomposta sobre a arte de referência, que entra pixel por
-     * pixel em tudo o que não é bloco de texto. Em `redesenhar` a peça muda
-     * demais para recompor; ali se MEDE se o assunto saiu do lugar. Com ajuste
-     * de foto ou fundo novo a foto muda de propósito e nada disto roda.
+     * A FOTO NÃO É DO GERADOR (11/11/2026). Só o texto pode mudar, e o
+     * `images.edit` redesenha a imagem inteira: a peça gerada é recomposta
+     * sobre a arte de referência, que entra pixel por pixel em tudo o que não
+     * é bloco de texto. Vale nos três modos. O `redesenhar` ficou de fora no
+     * primeiro dia ("muda demais para recompor") e entregou a carne do Bacana
+     * redesenhada (diferença 22,0) e a logo com "CHUR ASCARIA"; medido na
+     * mesma peça, a recomposição dá 19% de máscara, só texto. Antes de
+     * recompor, o `redesenhar` ainda MEDE se o assunto saiu do lugar: o layout
+     * que a IA fez para uma foto deslocada não serve para a foto de verdade.
+     * Com ajuste de foto ou fundo novo a foto muda de propósito e nada disto
+     * roda.
      */
     const fotoMudaDeProposito = !!args.instrucaoImagem?.trim() || !!args.backgroundImageUrl
-    const preservaFoto = !fotoMudaDeProposito && modo !== 'redesenhar'
+    const preservaFoto = !fotoMudaDeProposito
     let fotoDeReferencia = primary.buffer
     if (preservaFoto && !(args.melhoraOutraImagem ?? !!args.skipTextVerification)) {
       const urlDaRaiz = await arteDeReferenciaDaFoto(args.originalGenerationId).catch(() => null)
@@ -824,8 +833,11 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
       }
     }
     const coresDaMarca = assets.colors.map((c) => c.hexCode)
+    // A logo da origem volta junto com a foto. Em `compor` o código cola o PNG
+    // oficial depois, e não há logo da origem para proteger.
+    const logoDaOrigem = logoParaCompor ? null : (downloads.find((d) => d.role === 'logo')?.buffer ?? null)
     const recompor = (gerada: Buffer, rigor: RigorDaFoto) =>
-      preservarFotoDaOrigem(fotoDeReferencia, gerada, { coresDaMarca, folgado: rigor === 'folgado', tamanho: finalSize })
+      preservarFotoDaOrigem(fotoDeReferencia, gerada, { coresDaMarca, folgado: rigor === 'folgado', tamanho: finalSize, logo: logoDaOrigem })
 
     // Gera e confere. Sem textos esperados (upload externo, export do editor)
     // não há o que comparar: uma geração só, verificação pulada.
@@ -908,19 +920,29 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
       // vai ao ar, então é ela que a visão tem de ler.
       reprovaDaFoto = null
       try {
-        if (preservaFoto) {
+        if (preservaFoto && modo === 'redesenhar') {
+          const d = await deslocamentoDaFoto(primary.buffer, candidate)
+          fotoInfo = { ...fotoInfo, fotoDeslocada: d.deslocada, fotoLadrilhos: d.ladrilhos, fotoLadrilhosDeslocados: d.deslocados }
+          if (d.deslocada) reprovaDaFoto = `a IA tirou o assunto da foto do lugar (${d.deslocados} de ${d.ladrilhos} pedaços, até ${Math.round(d.maior * 100)}% do quadro)`
+        }
+        if (preservaFoto && !reprovaDaFoto) {
           bruta = candidate
           const r = await recompor(candidate, 'estrito')
-          fotoInfo = { ...fotoInfo, fotoPreservada: true, fotoRigor: 'estrito', fotoMascara: Number(r.fracaoDaMascara.toFixed(3)), fotoBlocos: r.blocos, fotoRecusada: Number(r.fracaoRecusada.toFixed(3)), fotoDiferencaAntes: Number(r.diferencaForaAntes.toFixed(1)) }
+          fotoInfo = {
+            ...fotoInfo,
+            fotoPreservada: true,
+            fotoRigor: 'estrito',
+            fotoMascara: Number(r.fracaoDaMascara.toFixed(3)),
+            fotoBlocos: r.blocos,
+            fotoRecusada: Number(r.fracaoRecusada.toFixed(3)),
+            fotoDiferencaAntes: Number(r.diferencaForaAntes.toFixed(1)),
+            ...(r.logo ? { logoProtegida: r.logo.protegida, logoCorrelacao: Number(r.logo.correlacao.toFixed(2)) } : {}),
+          }
           if (r.fracaoDaMascara > TETO_DA_MASCARA) {
             reprovaDaFoto = `a IA mexeu em ${Math.round(r.fracaoDaMascara * 100)}% da arte, e só o texto podia mudar`
           } else {
             candidate = r.buffer
           }
-        } else if (!fotoMudaDeProposito) {
-          const d = await deslocamentoDaFoto(primary.buffer, candidate)
-          fotoInfo = { ...fotoInfo, fotoPreservada: false, fotoDeslocada: d.deslocada, fotoLadrilhos: d.ladrilhos, fotoLadrilhosDeslocados: d.deslocados }
-          if (d.deslocada) reprovaDaFoto = `a IA tirou o assunto da foto do lugar (${d.deslocados} de ${d.ladrilhos} pedaços, até ${Math.round(d.maior * 100)}% do quadro)`
         }
       } catch (erroDaFoto) {
         // Falha de CÓDIGO na conferência não pode entregar foto redesenhada em

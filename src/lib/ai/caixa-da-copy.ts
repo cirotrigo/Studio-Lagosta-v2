@@ -297,3 +297,23 @@ export function caixaTrocada(origem: string[], resultado: string[]): Array<{ ori
   }
   return trocadas
 }
+
+/**
+ * `rediagramar`: as linhas em caixa mista, nomeadas uma a uma no fim do prompt
+ * (11/11/2026). Nas duas rodadas medidas no Bacana a IA devolveu "Quinta pede
+ * aquele" como "QUINTA PEDE AQUELE", com a string certa no prompt: a regra
+ * geral de copiar a caixa perde para o estilo da peça, que é quase todo em
+ * caixa alta. A lei da casa é que a instrução que se declara vencedora ganha.
+ */
+export function instrucaoDeCaixa(textos: string[]): string | null {
+  const mistas = textos
+    .flatMap((t) => t.split('\n'))
+    .map((l) => l.trim())
+    .filter((l) => l.replace(/[^\p{L}]/gu, '').length >= 5 && !estaTodoEmCaixaAlta(l))
+  if (mistas.length === 0) return null
+  return (
+    `LETTER CASE (this rule wins over any style or brand guidance about uppercase): these lines are written in mixed case and must be rendered with exactly these uppercase and lowercase letters, NOT converted to all caps, even though other lines of the artwork are in all caps: ` +
+    mistas.map((l) => `"${l}"`).join(', ') +
+    '.'
+  )
+}

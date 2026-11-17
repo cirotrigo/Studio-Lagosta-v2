@@ -222,3 +222,73 @@ describe('a emenda não corta letra', () => {
     expect(claro(342, 52)).toBe(false)
   })
 })
+
+describe('a logo é a da origem', () => {
+  /** Logo de teste: um anel e uma barra, branca sobre transparente. `falha` apaga um pedaço da barra. */
+  function logo(lw: number, lh: number, falha = false): Buffer {
+    const raw = Buffer.alloc(lw * lh * 4)
+    for (let y = 0; y < lh; y++)
+      for (let x = 0; x < lw; x++) {
+        const r = Math.hypot(x - lh / 2, y - lh / 2)
+        const anel = r < lh / 2 - 1 && r > lh / 4
+        const barra = x > lh + 6 && y > lh * 0.55 && y < lh * 0.9 && !(falha && x > lw * 0.6 && x < lw * 0.75)
+        const haste = x > lh + 6 && x < lh + 20
+        if (anel || barra || haste) raw.fill(255, (y * lw + x) * 4, (y * lw + x) * 4 + 4)
+      }
+    return raw
+  }
+  const colar = (raw: Buffer, l: Buffer, lw: number, lh: number, x0: number, y0: number) => {
+    for (let y = 0; y < lh; y++)
+      for (let x = 0; x < lw; x++)
+        if (l[(y * lw + x) * 4 + 3]) raw.fill(255, ((y0 + y) * W + x0 + x) * 3, ((y0 + y) * W + x0 + x) * 3 + 3)
+  }
+
+  it('a logo redesenhada, maior e deslocada, volta a ser a da origem; o texto novo fica', async () => {
+    const [lw, lh] = [150, 60]
+    const oficial = logo(lw, lh)
+    const arquivo = await sharp(oficial, { raw: { width: lw, height: lh, channels: 4 } }).png().toBuffer()
+    const origemRaw = foto(1)
+    escrever(origemRaw, 60, 40, BRANCO)
+    colar(origemRaw, oficial, lw, lh, 240, 680)
+    const geradaRaw = foto(2)
+    escrever(geradaRaw, 110, 560, BRANCO)
+    // A IA redesenha a logo 8% maior, 5 px ao lado, com um pedaço faltando.
+    const [gw, gh] = [162, 65]
+    colar(geradaRaw, logo(gw, gh, true), gw, gh, 235, 678)
+
+    const [origem, gerada] = [await png(origemRaw), await png(geradaRaw)]
+    const sem = await preservarFotoDaOrigem(origem, gerada)
+    const com = await preservarFotoDaOrigem(origem, gerada, { logo: arquivo })
+    expect(com.logo?.protegida).toBe(true)
+
+    const difere = async (r: Buffer, x0: number, y0: number, x1: number, y1: number) => {
+      const px = await cru(r)
+      let n = 0
+      for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) if (Math.abs(px[(y * W + x) * 3] - origemRaw[(y * W + x) * 3]) > 8) n++
+      return n
+    }
+    // Na logo e em volta dela (onde a redesenhada transbordava), só a origem.
+    expect(await difere(com.buffer, 225, 670, 410, 752)).toBe(0)
+    expect(await difere(sem.buffer, 225, 670, 410, 752)).toBeGreaterThan(100)
+    // O texto novo continua vindo da peça gerada.
+    expect(await difere(com.buffer, 110, 560, 330, 616)).toBeGreaterThan(1000)
+  })
+
+  it('bloco de texto não passa por logo', async () => {
+    const { origem, gerada } = await cenario()
+    const arquivo = await sharp(logo(150, 60), { raw: { width: 150, height: 60, channels: 4 } }).png().toBuffer()
+    const r = await preservarFotoDaOrigem(origem, gerada, { logo: arquivo })
+    expect(r.logo?.protegida).toBe(false)
+  })
+})
+
+describe('instrucaoDeCaixa', () => {
+  it('nomeia só as linhas em caixa mista', async () => {
+    const { instrucaoDeCaixa } = await import('../caixa-da-copy')
+    const t = instrucaoDeCaixa(['Quinta pede aquele\nALMOÇO BACANA', 'Praia da Costa · Das 11h30 às 16h'])
+    expect(t).toContain('"Quinta pede aquele"')
+    expect(t).toContain('"Praia da Costa · Das 11h30 às 16h"')
+    expect(t).not.toContain('ALMOÇO')
+    expect(instrucaoDeCaixa(['CHURRASCO EM CASA', 'TEM QUE SER BACANA'])).toBeNull()
+  })
+})

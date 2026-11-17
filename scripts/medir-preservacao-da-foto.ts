@@ -5,7 +5,7 @@
  * Escreve, ao lado da peça gerada (ou em <pastaDeSaida>), a peça recomposta e
  * uma folha: origem | gerada | recomposta | onde a recomposta difere da origem.
  *
- * Uso: npx tsx scripts/medir-preservacao-da-foto.ts <origem> <gerada> [pastaDeSaida] [--cores=#EF6A00,#FFFFFF] [--folgado]
+ * Uso: npx tsx scripts/medir-preservacao-da-foto.ts <origem> <gerada> [pastaDeSaida] [--cores=#EF6A00,#FFFFFF] [--logo=logo.png] [--folgado]
  */
 import sharp from 'sharp'
 import { readFileSync, writeFileSync } from 'fs'
@@ -20,7 +20,9 @@ async function main() {
   const a = readFileSync(origem)
   const b = readFileSync(gerada)
   const t0 = Date.now()
-  const f = await preservarFotoDaOrigem(a, b, { coresDaMarca: cores, folgado })
+  const arquivoDaLogo = process.argv.find((x) => x.startsWith('--logo='))?.slice(7)
+  const f = await preservarFotoDaOrigem(a, b, { coresDaMarca: cores, folgado, logo: arquivoDaLogo ? readFileSync(arquivoDaLogo) : null })
+  if (arquivoDaLogo) console.log(`logo: ${f.logo ? `correlação ${f.logo.correlacao.toFixed(2)}, ${f.logo.protegida ? 'PROTEGIDA' : 'não protegida'}` : 'arquivo sem forma para casar'} (${Date.now() - t0}ms)`)
   const d = await deslocamentoDaFoto(a, b)
   const nome = path.basename(gerada).replace(/\.[^.]+$/, '')
   console.log(

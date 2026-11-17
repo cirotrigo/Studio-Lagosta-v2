@@ -37,13 +37,33 @@ em 08/09/2026).
 - **A busca de deslocamento é por eixo** (12% de cada um): com o alcance preso
   à largura, a carne que desceu 8% do story ficava fora da busca e o redesenho
   saía como pronto.
-- ⚠️ **Limites conhecidos.** A heurística foi calibrada em quatro peças do
-  Bacana (texto claro sobre foto escura). Pedido de `refinar` que mexe em
-  elemento gráfico sem cor de tinta (tirar um selo fora da paleta) volta à
-  origem sem aviso: `fotoRecusada` registra a área. `redesenhar` não é
-  recomposto, e texto sobre o assunto da foto ainda não é barrado (falta saber
-  onde está o assunto). Para medir um par em disco:
-  `npx tsx scripts/medir-preservacao-da-foto.ts <origem> <gerada>`.
+- **`redesenhar` também é recomposto** (terceira rodada em produção,
+  11/11/2026). Ficou de fora no primeiro dia ("muda demais para recompor") e
+  entregou como pronta a carne do Bacana redesenhada (diferença 22,0, sem
+  deslocamento que a busca acusasse). Medido na mesma peça: 19% de máscara, só
+  texto. Antes de recompor ele ainda mede o deslocamento: layout feito para a
+  foto fora do lugar é descartado, não remendado. Mudar o enquadramento da
+  foto é decisão de quem pede (`instrucaoImagem`), nunca da IA.
+- **A logo é a da origem.** A IA redesenha a logo junto com o texto
+  ("CHURRASCARIA" virou "CHUR ASCARIA"), e a conferência de texto desconta a
+  marca de propósito. A recomposição procura o arquivo oficial da logo (canal
+  alfa, por forma) em volta dos blocos da máscara da arte de ORIGEM; onde casa
+  (`CORRELACAO_DA_LOGO`), a caixa e a tinta em contato com ela voltam à origem.
+  Vale nos três modos; em projeto `compor` não roda (o código cola o PNG
+  depois). `fieldValues.logoProtegida` e `logoCorrelacao` registram.
+- **`rediagramar` nomeia as linhas em caixa mista no fim do prompt**
+  (`instrucaoDeCaixa`): nas duas rodadas a IA trocou a caixa da mesma linha com
+  a string certa no prompt, e repetir a geração repetia o erro.
+- ⚠️ **Limites conhecidos.** A heurística foi calibrada em peças do Bacana
+  (texto claro sobre foto escura). Pedido de `refinar` que mexe em elemento
+  gráfico sem cor de tinta (tirar um selo fora da paleta) volta à origem sem
+  aviso: `fotoRecusada` registra a área. Texto sobre o assunto da foto ainda
+  não é barrado (falta saber onde está o assunto), e no `redesenhar` recomposto
+  o risco é maior: o texto fica onde a IA pôs. A logo só é protegida quando a
+  da origem é o arquivo oficial (logo desenhada por IA na origem não casa) e
+  tem transparência; logo que a IA leva para OUTRO canto fica duplicada (a da
+  origem volta, a redesenhada permanece). Para medir um par em disco:
+  `npx tsx scripts/medir-preservacao-da-foto.ts <origem> <gerada> [--logo=arquivo.png]`.
 
 ### A melhoria de artes na carteira inteira (02/09/2026)
 
