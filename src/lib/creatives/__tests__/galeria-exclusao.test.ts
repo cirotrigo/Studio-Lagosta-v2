@@ -46,13 +46,13 @@ beforeEach(() => {
 
 describe('apagarArquivosELinhaDaArte', () => {
   it("'imagem': apaga o Drive, o blob da IMAGEM (pelo resultUrl) e a linha por último", async () => {
-    expect(await apagarArquivosELinhaDaArte(composta, 'imagem')).toEqual({ drive: 'apagado', blob: 'apagado' })
+    expect(await apagarArquivosELinhaDaArte(composta, 'imagem')).toEqual({ drive: 'na-lixeira', blob: 'apagado' })
     expect(ordem).toEqual(['drive:drive1', `blob:${URL_DA_ARTE}`, 'linha:gen1'])
   })
 
   it("'imagem' com a arte fora do Blob (link do Drive): nenhum blob é tocado", async () => {
     const r = await apagarArquivosELinhaDaArte({ ...composta, resultUrl: 'https://lh3.googleusercontent.com/d/abc' }, 'imagem')
-    expect(r).toEqual({ drive: 'apagado', blob: 'nao-havia' })
+    expect(r).toEqual({ drive: 'na-lixeira', blob: 'nao-havia' })
     expect(del).not.toHaveBeenCalled()
     expect(banco.generation.delete).toHaveBeenCalledTimes(1)
   })

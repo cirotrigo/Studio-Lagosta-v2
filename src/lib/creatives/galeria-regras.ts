@@ -82,7 +82,8 @@ export interface UsoDaPagina {
 }
 
 export interface ResultadoDaExclusao {
-  drive: 'apagado' | 'falhou' | 'nao-havia'
+  /** `na-lixeira`: o Drive não apaga de vez, manda para a lixeira dele (recuperável por lá enquanto ela guardar). */
+  drive: 'na-lixeira' | 'falhou' | 'nao-havia'
   blob: 'apagado' | 'falhou' | 'mantido' | 'nao-havia'
 }
 
@@ -413,3 +414,173 @@ export async function apagarArte(
   }
   return { apagada: true as const, arte: daArte, ...resultado, ...daPagina, avisos }
 }
+
+// ── limpar-galeria: a faxina das artes que nunca foram usadas ────────────────
+
+/** O padrão combinado com o Ciro (17/11/2026): arte mais nova que isso ainda pode estar a caminho da agenda. */
+export const DIAS_PADRAO_DA_FAXINA = 30
+/** Abaixo disso não é faxina, é apagar o trabalho da semana. */
+export const DIAS_MINIMOS_DA_FAXINA = 7
+export const LIMITE_PADRAO_DA_FAXINA = 20
+export const LIMITE_MAXIMO_DA_FAXINA = 40
+
+/**
+ * Uma arte que NUNCA entrou em post (a consulta já garante isso, a idade e que não é foto de cena) e os
+ * fatos que podem protegê-la. A consulta só traz fatos; quem decide é `motivoDeProteger`, aqui, sem banco.
+ */
+export interface CandidataAFaxina {
+  id: string
+  createdAt: Date
+  fileName: string | null
+  templateName: string | null
+  resultUrl: string | null
+  /** Por onde a arte entrou (`claude-code`, `claude-ai`, `studio`, `claudinho`); só informa a conta. */
+  canal: string | null
+  /** A imagem já não está no armazenamento do Studio (mora só no Drive). */
+  foraDoBlob: boolean
+  /** A página da peça está em algum post: a peça foi para a agenda por outro render. */
+  paginaEmPost: boolean
+  refDeEstilo: boolean
+  gostei: boolean
+  emPlano: boolean
+  carrosselEmUso: boolean
+  origemDeMelhoriaEmUso: boolean
+  video: boolean
+}
+
+export type MotivoDeProteger =
+  | 'historico-fora-do-armazenamento'
+  | 'pagina-em-post'
+  | 'referencia-de-estilo'
+  | 'gostei'
+  | 'item-de-plano'
+  | 'carrossel-em-uso'
+  | 'origem-de-melhoria-em-uso'
+  | 'video'
+
+/** Por que a arte nunca usada fica mesmo assim; `null` = sai na faxina. */
+export function motivoDeProteger(c: CandidataAFaxina): MotivoDeProteger | null {
+  // 🔴 "Nunca usada" só é confiável para a arte que ainda está no armazenamento. A que mora só no Drive é
+  // HISTÓRICO: ou é "Criativo recuperado" (as Generations de antes de maio/2026 foram reconstruídas do Drive
+  // e perderam o vínculo com o post — TODOS os posts publicados até 2026-T1 estão sem arte casada), ou foi
+  // arquivada pela limpeza de 90 dias, que nem sempre levou a mídia do post junto. Pode ter ido ao ar.
+  if (c.foraDoBlob) return 'historico-fora-do-armazenamento'
+  if (c.paginaEmPost) return 'pagina-em-post'
+  if (c.refDeEstilo) return 'referencia-de-estilo'
+  if (c.gostei) return 'gostei'
+  if (c.emPlano) return 'item-de-plano'
+  if (c.carrosselEmUso) return 'carrossel-em-uso'
+  // A melhoria foi ao ar; a original é a volta atrás dela.
+  if (c.origemDeMelhoriaEmUso) return 'origem-de-melhoria-em-uso'
+  // Vídeo tem trilha própria (MP4, backup em outro campo): a limpeza de 90 dias também o pula.
+  if (c.video) return 'video'
+  return null
+}
+
+export interface DepsDaFaxina {
+  /** As artes do cliente criadas antes de `corte` que nenhum post usa, da mais antiga para a mais nova. */
+  lerNuncaUsadas(projectId: number, corte: Date): Promise<CandidataAFaxina[]>
+  /** `apagar-arte` com `apagarPagina`: confere TUDO de novo na hora, arte por arte. */
+  apagarUma(generationId: string): Promise<{ pagina?: { apagada?: true } }>
+  agora?: Date
+}
+
+export async function limparGaleria(
+  params: { projectId: number; dias?: number; limite?: number; confirmar?: boolean },
+  deps: DepsDaFaxina,
+) {
+  const dias = Math.max(Math.trunc(params.dias ?? DIAS_PADRAO_DA_FAXINA), DIAS_MINIMOS_DA_FAXINA)
+  const limite = Math.min(Math.max(Math.trunc(params.limite ?? LIMITE_PADRAO_DA_FAXINA), 1), LIMITE_MAXIMO_DA_FAXINA)
+  const agora = deps.agora ?? new Date()
+  const corte = new Date(agora.getTime() - dias * 24 * 3600_000)
+
+  const nuncaUsadas = await deps.lerNuncaUsadas(params.projectId, corte)
+  const porMotivo: Partial<Record<MotivoDeProteger, number>> = {}
+  const porOrigem: Record<string, number> = {}
+  const saem: CandidataAFaxina[] = []
+  for (const c of nuncaUsadas) {
+    const motivo = motivoDeProteger(c)
+    if (motivo) {
+      porMotivo[motivo] = (porMotivo[motivo] ?? 0) + 1
+    } else {
+      saem.push(c)
+      const origem = c.canal?.trim() || 'sem-canal'
+      porOrigem[origem] = (porOrigem[origem] ?? 0) + 1
+    }
+  }
+  const protegidas = nuncaUsadas.length - saem.length
+  const criterio = {
+    dias,
+    criadasAntesDe: formatarBRT(corte),
+    regra: 'arte que nunca entrou em post da agenda (nem pelo vínculo, nem pela imagem)',
+    ficamSempre: [
+      'arte em qualquer post da agenda',
+      'arte cuja página está em post da agenda',
+      'arte que mora só no Drive (histórico: recuperada ou arquivada, pode ter ido ao ar)',
+      'referência de estilo',
+      'arte com "gostei"',
+      'arte de item de plano',
+      'carrossel com algum slide em uso',
+      'original de melhoria que foi ao ar',
+      'vídeo',
+    ],
+  }
+  const paraChat = (c: CandidataAFaxina) => ({
+    generationId: c.id,
+    nome: nomeDaArte(c),
+    criadaEm: formatarBRT(c.createdAt),
+    url: c.resultUrl,
+  })
+
+  if (params.confirmar !== true) {
+    return {
+      simulacao: true as const,
+      criterio,
+      nuncaUsadas: nuncaUsadas.length,
+      apagaria: saem.length,
+      // Por onde as que sairiam entraram. Arte enviada de fora pode ter sido publicada fora da agenda do Studio.
+      porOrigem,
+      protegidas: { total: protegidas, porMotivo },
+      ...(saem.length > 0
+        ? { maisAntiga: formatarBRT(saem[0].createdAt), maisRecente: formatarBRT(saem[saem.length - 1].createdAt) }
+        : {}),
+      amostra: saem.slice(0, 10).map(paraChat),
+      proximoPasso:
+        saem.length === 0
+          ? 'Nada a apagar com este critério.'
+          : `Nada foi apagado. Mostre esta conta à pessoa (${saem.length} artes, com a amostra e a origem) e só com um sim explícito chame de novo com confirmar: true. Cada chamada apaga até ${limite}, das mais antigas para as mais novas. "Nunca usada" é o que a agenda do Studio sabe: arte publicada por fora (direto no Zernio ou no Instagram) aparece aqui como nunca usada.`,
+    }
+  }
+
+  const apagadas: Array<ReturnType<typeof paraChat>> = []
+  const puladas: Array<{ generationId: string; motivo: string }> = []
+  let paginasApagadas = 0
+  for (const c of saem.slice(0, limite)) {
+    try {
+      const r = await deps.apagarUma(c.id)
+      apagadas.push(paraChat(c))
+      if (r.pagina?.apagada) paginasApagadas += 1
+    } catch (erro) {
+      // Entrou num post, sumiu ou falhou entre a leitura e agora: fica, com o motivo, e a faxina segue.
+      puladas.push({ generationId: c.id, motivo: erro instanceof CreativeError ? `${erro.code}: ${erro.message}` : String(erro) })
+    }
+  }
+  const restantes = saem.length - apagadas.length - puladas.length
+  return {
+    criterio,
+    apagadas: apagadas.length,
+    paginasApagadas,
+    puladas,
+    restantes,
+    protegidas: { total: protegidas, porMotivo },
+    artes: apagadas,
+    proximoPasso:
+      restantes > 0
+        ? `Ainda há ${restantes} arte(s) neste critério: chame de novo com confirmar: true para o próximo lote.`
+        : 'A faxina deste cliente terminou para este critério.',
+  }
+}
+
+/** O filtro `uso` de listar-artes. */
+export const USOS_DA_ARTE = ['publicada', 'na-agenda', 'nunca-usada'] as const
+export type UsoDaArte = (typeof USOS_DA_ARTE)[number]

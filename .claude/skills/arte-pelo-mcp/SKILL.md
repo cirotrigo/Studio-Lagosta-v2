@@ -24,7 +24,7 @@ seção "`ver-pagina` e as `camadas`/`pagina` de `ajustar-arte`". Não decore: *
 
 ## 1. Regras duras (valem antes de qualquer passo)
 
-- 🔴 **Nunca** chame `postar-agora`, `colocar-na-agenda`, `aprovar-rascunhos`, `cancelar-post` ou `apagar-arte` sem pedido
+- 🔴 **Nunca** chame `postar-agora`, `colocar-na-agenda`, `aprovar-rascunhos`, `cancelar-post`, `apagar-arte` ou `limpar-galeria` sem pedido
   explícito do Ciro **neste turno**. `agendar-leva` só com `simular: true`. Esta skill termina em rascunho.
 - 🔴 **Nunca `ajustar-arte` numa arte de cliente que a equipe já editou à mão** sem perguntar antes
   (a equipe corrige no editor e o MCP sobrescreveria). Arte criada nesta conversa pode mexer à vontade.

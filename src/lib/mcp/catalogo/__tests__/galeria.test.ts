@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const listar = vi.hoisted(() => vi.fn(async () => ({ total: 0, artes: [] })))
 const apagar = vi.hoisted(() => vi.fn(async () => ({ apagada: true })))
-vi.mock('@/lib/creatives/galeria', () => ({ listarArtesDaGaleria: listar, apagarArteDaGaleria: apagar }))
+const limpar = vi.hoisted(() => vi.fn(async () => ({ simulacao: true })))
+vi.mock('@/lib/creatives/galeria', () => ({
+  listarArtesDaGaleria: listar,
+  apagarArteDaGaleria: apagar,
+  limparGaleriaDoCliente: limpar,
+}))
 vi.mock('@/lib/creatives/persist', () => ({ getPublicAppUrl: () => 'https://studio.test' }))
 
 import { toolsDeGaleria } from '../galeria'
@@ -14,7 +19,7 @@ import { TOOLS_DRAFT_ONLY, perfilDoPrincipal, registrarNoStdio } from '../../reg
  * inexistente para o perfil só-rascunho. As regras de recusa estão em `creatives/__tests__/galeria-regras.test.ts`.
  */
 
-const [listarArtes, apagarArte] = toolsDeGaleria
+const [listarArtes, apagarArte, limparGaleria] = toolsDeGaleria
 const indice = new Map(toolsDeGaleria.map((t) => [t.nome, t]))
 const SERVICO = { kind: 'service' as const }
 const gates = () => ({ projeto: vi.fn(async () => undefined), curador: vi.fn(async () => undefined) })
@@ -22,18 +27,21 @@ const gates = () => ({ projeto: vi.fn(async () => undefined), curador: vi.fn(asy
 beforeEach(() => {
   listar.mockClear()
   apagar.mockClear()
+  limpar.mockClear()
 })
 afterEach(() => vi.unstubAllEnvs())
 
 describe('catálogo da galeria', () => {
-  it('são duas tools: a leitura e a destrutiva, nas duas superfícies', () => {
-    expect(toolsDeGaleria.map((t) => t.nome)).toEqual(['listar-artes', 'apagar-arte'])
+  it('são três tools: a leitura e as duas destrutivas, nas duas superfícies', () => {
+    expect(toolsDeGaleria.map((t) => t.nome)).toEqual(['listar-artes', 'apagar-arte', 'limpar-galeria'])
     expect(listarArtes.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false })
     expect(apagarArte.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true })
-    for (const tool of toolsDeGaleria) {
-      expect(tool.acesso).toEqual({ tipo: 'projeto' })
-      expect([...tool.superficies].sort()).toEqual(['local', 'remoto'])
-    }
+    expect(limparGaleria.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true })
+    expect(listarArtes.acesso).toEqual({ tipo: 'projeto' })
+    expect(apagarArte.acesso).toEqual({ tipo: 'projeto' })
+    // A faxina muda a galeria de todo mundo: exige curador, não só membro.
+    expect(limparGaleria.acesso).toEqual({ tipo: 'curador' })
+    for (const tool of toolsDeGaleria) expect([...tool.superficies].sort()).toEqual(['local', 'remoto'])
   })
 
   it('a descrição de apagar-arte diz que é destrutiva, sem desfazer, e manda confirmar citando a arte', () => {
@@ -93,8 +101,56 @@ describe('apagar-arte na porta', () => {
   })
 })
 
+describe('limpar-galeria na porta', () => {
+  it('a descrição diz que é destrutiva, em duas chamadas, e que apagar exige o sim da pessoa', () => {
+    expect(limparGaleria.descricao).toContain('DESTRUTIVA')
+    expect(limparGaleria.descricao).toContain('SEM DESFAZER')
+    expect(limparGaleria.descricao).toContain('DUAS chamadas')
+    expect(limparGaleria.descricao).toMatch(/sim explícito/)
+  })
+
+  it('exige CURADOR antes do serviço', async () => {
+    const g = gates()
+    g.curador.mockRejectedValueOnce(new Error('PROJETO_SEM_CURADORIA'))
+    const r = await executarTool(indice, 'remoto', 'limpar-galeria', { projectId: 7, confirmar: true }, SERVICO, { gates: g })
+    expect(r.isError).toBe(true)
+    expect(g.curador).toHaveBeenCalledWith(7, SERVICO)
+    expect(limpar).not.toHaveBeenCalled()
+  })
+
+  it('sem confirmar chega ao serviço como simulação; só o literal true confirma', async () => {
+    await executarTool(indice, 'remoto', 'limpar-galeria', { projectId: 7 }, SERVICO, { gates: gates() })
+    expect(limpar).toHaveBeenLastCalledWith({ projectId: 7, dias: undefined, limite: undefined, confirmar: false, appUrl: 'https://studio.test' })
+    await executarTool(indice, 'remoto', 'limpar-galeria', { projectId: 7, dias: 45, limite: 10, confirmar: true }, SERVICO, { gates: gates() })
+    expect(limpar).toHaveBeenLastCalledWith({ projectId: 7, dias: 45, limite: 10, confirmar: true, appUrl: 'https://studio.test' })
+  })
+
+  it('recusa menos de 7 dias, lote acima de 40, confirmar que não é booleano e parâmetro extra', async () => {
+    for (const ruim of [
+      { projectId: 7, dias: 3 },
+      { projectId: 7, limite: 41 },
+      { projectId: 7, confirmar: 'sim' },
+      { projectId: 7, todosOsClientes: true },
+      { confirmar: true },
+    ]) {
+      const r = await executarTool(indice, 'remoto', 'limpar-galeria', ruim, SERVICO, { gates: gates() })
+      expect(r.isError).toBe(true)
+    }
+    expect(limpar).not.toHaveBeenCalled()
+  })
+
+  it.each(['remoto', 'local'] as const)('não existe para o cliente draft-only (%s)', async (superficie) => {
+    vi.stubEnv('MCP_DRAFT_ONLY_CLIENT_IDS', 'cliente-restrito')
+    const principal = { kind: 'user' as const, userId: 'clerk-teste', clientId: 'cliente-restrito' }
+    const r = await executarTool(indice, superficie, 'limpar-galeria', { projectId: 7, confirmar: true }, principal, { gates: gates() })
+    expect(r).toEqual({ content: [{ type: 'text', text: 'Ferramenta desconhecida: limpar-galeria' }], isError: true })
+    expect(limpar).not.toHaveBeenCalled()
+  })
+})
+
 describe('perfil só-rascunho', () => {
-  it('nenhuma das duas está na allowlist (tool nova nasce proibida)', () => {
+  it('nenhuma das três está na allowlist (tool nova nasce proibida)', () => {
+    expect(TOOLS_DRAFT_ONLY.has('limpar-galeria')).toBe(false)
     expect(TOOLS_DRAFT_ONLY.has('apagar-arte')).toBe(false)
     expect(TOOLS_DRAFT_ONLY.has('listar-artes')).toBe(false)
     expect(registrarNoStdio('apagar-arte', 'catalogo', true)).toBe(false)
@@ -120,7 +176,7 @@ describe('listar-artes na porta', () => {
       indice,
       'remoto',
       'listar-artes',
-      { projectId: 7, de: '2026-11-01', ate: '2026-11-17', nome: 'teste', limite: 10, pagina: 2 },
+      { projectId: 7, de: '2026-11-01', ate: '2026-11-17', nome: 'teste', uso: 'nunca-usada', limite: 10, pagina: 2 },
       SERVICO,
       { gates: g },
     )
@@ -131,6 +187,7 @@ describe('listar-artes na porta', () => {
       de: '2026-11-01',
       ate: '2026-11-17',
       nome: 'teste',
+      uso: 'nunca-usada',
       limite: 10,
       pagina: 2,
       appUrl: 'https://studio.test',
@@ -138,7 +195,7 @@ describe('listar-artes na porta', () => {
   })
 
   it('sem projectId, ou com paginação torta, é recusada antes do serviço', async () => {
-    for (const ruim of [{}, { projectId: 7, limite: 0 }, { projectId: 7, pagina: 1.5 }, { projectId: 7, apagar: true }]) {
+    for (const ruim of [{}, { projectId: 7, limite: 0 }, { projectId: 7, pagina: 1.5 }, { projectId: 7, apagar: true }, { projectId: 7, uso: 'todas' }]) {
       const r = await executarTool(indice, 'remoto', 'listar-artes', ruim, SERVICO, { gates: gates() })
       expect(r.isError).toBe(true)
     }

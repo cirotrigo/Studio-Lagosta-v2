@@ -4,11 +4,14 @@ import {
   apagarArte,
   impedimentosDeApagar,
   itemDaGaleria,
+  limparGaleria,
+  motivoDeProteger,
   motivoDeManterOBlob,
   nomeDaArte,
   periodoDaLista,
   postsQueUsam,
   type ArteDaGaleria,
+  type CandidataAFaxina,
   type DepsDeApagarArte,
   type PaginaDaArte,
   type PostDaAgenda,
@@ -64,7 +67,7 @@ const paginaLivre: UsoDaPagina = { posts: 0, outrasArtes: 0, itensDePlano: 0, re
 
 function deps(extra: Partial<DepsDeApagarArte> = {}) {
   const apagar = vi.fn(async (_a: ArteDaGaleria, o: { manterBlob: boolean }) => ({
-    drive: 'apagado' as const,
+    drive: 'na-lixeira' as const,
     blob: o.manterBlob ? ('mantido' as const) : ('apagado' as const),
   }))
   const d: DepsDeApagarArte = {
@@ -100,7 +103,7 @@ describe('apagar-arte: o caminho feliz', () => {
     expect(apagar).toHaveBeenCalledWith(expect.objectContaining({ id: 'gen1' }), { manterBlob: false })
     expect(r).toMatchObject({
       apagada: true,
-      drive: 'apagado',
+      drive: 'na-lixeira',
       blob: 'apagado',
       arte: { generationId: 'gen1', nome: 'Story teste' },
       pagina: { pageId: 'pg1', mantida: true, editUrl: 'https://studio.test/templates/570/editor?pageId=pg1' },
@@ -266,7 +269,7 @@ describe('apagar-arte: a página só sai a pedido, e só quando ninguém depende
   it('apagarPagina com a página livre: a arte sai, depois a página, e a miniatura não segura mais o blob', async () => {
     const ordem: string[] = []
     const { d, apagar, apagarPagina } = deps({ lerPagina: async () => pagina({ thumbnail: URL_DA_ARTE }) })
-    apagar.mockImplementation(async () => (ordem.push('arte'), { drive: 'apagado' as const, blob: 'apagado' as const }))
+    apagar.mockImplementation(async () => (ordem.push('arte'), { drive: 'na-lixeira' as const, blob: 'apagado' as const }))
     apagarPagina.mockImplementation(async () => void ordem.push('pagina'))
     const r = await apagarArte({ projectId: 7, generationId: 'gen1', apagarPagina: true }, d)
     expect(ordem).toEqual(['arte', 'pagina'])
@@ -392,5 +395,116 @@ describe('listar-artes: o item', () => {
     })
     expect(periodoDaLista()).toEqual({})
     expect(() => periodoDaLista('ontem')).toThrow(CreativeError)
+  })
+})
+
+describe('limpar-galeria: a faxina das artes nunca usadas', () => {
+  const candidata = (id: string, extra: Partial<CandidataAFaxina> = {}): CandidataAFaxina => ({
+    id,
+    createdAt: new Date('2026-09-01T12:00:00.000Z'),
+    fileName: `${id}.png`,
+    templateName: 'Semana 36',
+    resultUrl: `https://x.public.blob.vercel-storage.com/${id}.png`,
+    canal: 'claude-code',
+    foraDoBlob: false,
+    paginaEmPost: false,
+    refDeEstilo: false,
+    gostei: false,
+    emPlano: false,
+    carrosselEmUso: false,
+    origemDeMelhoriaEmUso: false,
+    video: false,
+    ...extra,
+  })
+  const faxina = (lista: CandidataAFaxina[]) => {
+    const lerNuncaUsadas = vi.fn(async (_projectId: number, _corte: Date) => lista)
+    const apagarUma = vi.fn(async (_id: string): Promise<{ pagina?: { apagada?: true } }> => ({}))
+    return { lerNuncaUsadas, apagarUma, deps: { lerNuncaUsadas, apagarUma, agora: AGORA } }
+  }
+
+  it.each([
+    [{ foraDoBlob: true }, 'historico-fora-do-armazenamento'],
+    [{ paginaEmPost: true }, 'pagina-em-post'],
+    [{ refDeEstilo: true }, 'referencia-de-estilo'],
+    [{ gostei: true }, 'gostei'],
+    [{ emPlano: true }, 'item-de-plano'],
+    [{ carrosselEmUso: true }, 'carrossel-em-uso'],
+    [{ origemDeMelhoriaEmUso: true }, 'origem-de-melhoria-em-uso'],
+    [{ video: true }, 'video'],
+  ] as const)('%o protege a arte nunca usada', (fato, motivo) => {
+    expect(motivoDeProteger(candidata('a', fato))).toBe(motivo)
+  })
+
+  it('sem fato nenhum a arte sai', () => {
+    expect(motivoDeProteger(candidata('a'))).toBeNull()
+  })
+
+  it('arte que mora só no Drive é histórico e vence qualquer outro motivo: pode ter ido ao ar', () => {
+    expect(motivoDeProteger(candidata('a', { foraDoBlob: true, gostei: true, video: true }))).toBe('historico-fora-do-armazenamento')
+  })
+
+  it('sem confirmar é SIMULAÇÃO: dá a conta, a amostra e não apaga nada', async () => {
+    const f = faxina([
+      candidata('a'),
+      candidata('b', { gostei: true }),
+      candidata('c', { refDeEstilo: true }),
+      candidata('d', { canal: null }),
+      candidata('e', { foraDoBlob: true }),
+    ])
+    const r = await limparGaleria({ projectId: 7 }, f.deps)
+    expect(f.apagarUma).not.toHaveBeenCalled()
+    expect(r).toMatchObject({
+      simulacao: true,
+      nuncaUsadas: 5,
+      apagaria: 2,
+      porOrigem: { 'claude-code': 1, 'sem-canal': 1 },
+      protegidas: { total: 3, porMotivo: { gostei: 1, 'referencia-de-estilo': 1, 'historico-fora-do-armazenamento': 1 } },
+      criterio: { dias: 30 },
+    })
+    expect((r as { amostra: Array<{ generationId: string }> }).amostra.map((a) => a.generationId)).toEqual(['a', 'd'])
+  })
+
+  it('confirmar: "true" (texto) ou qualquer coisa que não seja o literal true continua simulação', async () => {
+    const f = faxina([candidata('a')])
+    await limparGaleria({ projectId: 7, confirmar: 'true' as unknown as boolean }, f.deps)
+    await limparGaleria({ projectId: 7, confirmar: false }, f.deps)
+    expect(f.apagarUma).not.toHaveBeenCalled()
+  })
+
+  it('o corte é de 30 dias por padrão e nunca menos de 7', async () => {
+    const f = faxina([])
+    await limparGaleria({ projectId: 7 }, f.deps)
+    await limparGaleria({ projectId: 7, dias: 2 }, f.deps)
+    await limparGaleria({ projectId: 7, dias: 90 }, f.deps)
+    const cortes = f.lerNuncaUsadas.mock.calls.map((c) => Math.round((AGORA.getTime() - c[1].getTime()) / 86_400_000))
+    expect(cortes).toEqual([30, 7, 90])
+  })
+
+  it('confirmar: true apaga só as desprotegidas, das mais antigas, até o limite, e diz quantas restam', async () => {
+    const f = faxina([candidata('a'), candidata('b', { emPlano: true }), candidata('c'), candidata('d'), candidata('e')])
+    f.apagarUma.mockResolvedValueOnce({ pagina: { apagada: true } })
+    const r = await limparGaleria({ projectId: 7, confirmar: true, limite: 2 }, f.deps)
+    expect(f.apagarUma.mock.calls.map((c) => c[0])).toEqual(['a', 'c'])
+    expect(r).toMatchObject({ apagadas: 2, paginasApagadas: 1, puladas: [], restantes: 2, protegidas: { total: 1 } })
+  })
+
+  it('arte que entrou num post entre a leitura e a exclusão é pulada com o motivo, e a faxina segue', async () => {
+    const f = faxina([candidata('a'), candidata('b')])
+    f.apagarUma.mockRejectedValueOnce(new CreativeError('ARTE_EM_USO_NA_AGENDA', 'A arte está em uso pelo post p1.', 409))
+    const r = (await limparGaleria({ projectId: 7, confirmar: true }, f.deps)) as {
+      apagadas: number
+      puladas: Array<{ generationId: string; motivo: string }>
+      restantes: number
+    }
+    expect(r.apagadas).toBe(1)
+    expect(r.puladas).toEqual([{ generationId: 'a', motivo: 'ARTE_EM_USO_NA_AGENDA: A arte está em uso pelo post p1.' }])
+    expect(r.restantes).toBe(0)
+  })
+
+  it('o limite tem teto de 40 por chamada', async () => {
+    const f = faxina(Array.from({ length: 60 }, (_, i) => candidata(`a${i}`)))
+    const r = await limparGaleria({ projectId: 7, confirmar: true, limite: 500 }, f.deps)
+    expect(f.apagarUma).toHaveBeenCalledTimes(40)
+    expect(r).toMatchObject({ apagadas: 40, restantes: 20 })
   })
 })

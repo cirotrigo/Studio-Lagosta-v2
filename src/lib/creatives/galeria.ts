@@ -8,16 +8,20 @@ import { db } from '@/lib/db'
 import { extractBlobPathname } from '@/lib/cleanup/blob-cleanup'
 import { googleDriveService } from '@/server/google-drive-service'
 import { formatoPeloTamanho } from '@/lib/compositor/formato'
+import { Prisma } from '../../../prisma/generated/client'
 import {
   apagarArte,
   itemDaGaleria,
+  limparGaleria,
   motivoDeManterOBlob,
   pageIdDaArte,
   periodoDaLista,
   type ArteDaGaleria,
+  type CandidataAFaxina,
   type PaginaDaArte,
   type PostDaAgenda,
   type ResultadoDaExclusao,
+  type UsoDaArte,
 } from './galeria-regras'
 
 /**
@@ -40,7 +44,7 @@ export async function apagarArquivosELinhaDaArte(
   if (arte.googleDriveFileId && googleDriveService.isEnabled()) {
     try {
       await googleDriveService.deleteFiles([arte.googleDriveFileId])
-      resultado.drive = 'apagado'
+      resultado.drive = 'na-lixeira'
     } catch (driveError) {
       resultado.drive = 'falhou'
       console.warn(`[DELETE generation ${arte.id}] Failed to delete Drive file:`, driveError)
@@ -138,11 +142,34 @@ async function lerPostsDasArtes(projectId: number, artes: Array<Pick<ArteDaGaler
 
 const FORMATO_DO_MODELO: Record<string, string> = { STORY: 'story', FEED: 'feed', SQUARE: 'quadrado' }
 
+/**
+ * "Algum post do cliente usa esta arte?", em SQL: pelo vínculo OU pela imagem (a mesma regra de
+ * `postsQueUsam`). `a` é o alias da Generation na consulta; `soPublicado` restringe a post POSTED.
+ */
+function emPost(a: 'g' | 'i' | 'm', soPublicado = false): Prisma.Sql {
+  const g = Prisma.raw(a)
+  return Prisma.sql`EXISTS (
+    SELECT 1 FROM "SocialPost" p
+    WHERE p."projectId" = ${g}."projectId"
+      ${soPublicado ? Prisma.sql`AND p.status = 'POSTED'` : Prisma.empty}
+      AND (p."generationId" = ${g}.id
+        OR (${g}."resultUrl" IS NOT NULL AND (${g}."resultUrl" = ANY(p."mediaUrls") OR p."renderedImageUrl" = ${g}."resultUrl")))
+  )`
+}
+
+// A galeria mostra PEÇAS, não a foto de cena (`track: 'imagem'`). Em SQL com COALESCE, como na rota da galeria:
+// o filtro Json do Prisma descartaria junto toda arte que não tem o campo (AGENTS.md).
+/** O mesmo fragmento de `extractBlobPathname` (`blob-cleanup.ts`): é o que diz "a imagem está no armazenamento do Studio". */
+const FRAGMENTO_DO_BLOB = 'blob.vercel-storage.com'
+
+const E_ARTE_DA_GALERIA = Prisma.sql`COALESCE(g."fieldValues"->>'track', '') <> 'imagem'`
+
 export async function listarArtesDaGaleria(params: {
   projectId: number
   de?: string
   ate?: string
   nome?: string
+  uso?: UsoDaArte
   limite?: number
   pagina?: number
   /** Vem de quem chama (`getPublicAppUrl`): `persist.ts` carrega o renderizador, e a rota de exclusão importa este módulo. */
@@ -154,39 +181,43 @@ export async function listarArtesDaGaleria(params: {
   const periodo = periodoDaLista(params.de, params.ate)
   const texto = params.nome?.trim()
 
-  // A galeria mostra PEÇAS, não a foto de cena (`track: 'imagem'`). Em SQL com COALESCE, como na rota da
-  // galeria: o filtro Json do Prisma descartaria junto toda arte que não tem o campo (AGENTS.md).
-  const ocultas = await db.$queryRaw<Array<{ id: string }>>`
-    SELECT id FROM "Generation"
-    WHERE "projectId" = ${projectId}
-      AND COALESCE("fieldValues"->>'track', '') = 'imagem'
-  `
-  const where = {
-    projectId,
-    ...(ocultas.length > 0 ? { id: { notIn: ocultas.map((r) => r.id) } } : {}),
-    ...(periodo.gte || periodo.lte ? { createdAt: periodo } : {}),
-    // ponytail: o texto casa o nome do arquivo e o do modelo gravados na arte; página renomeada DEPOIS
-    // do render só casa pelo nome antigo. Se fizer falta, juntar "Page" por fieldValues->>'pageId' em SQL.
-    ...(texto
-      ? {
-          OR: [
-            { fileName: { contains: texto, mode: 'insensitive' as const } },
-            { templateName: { contains: texto, mode: 'insensitive' as const } },
-          ],
-        }
-      : {}),
-  }
+  const doUso =
+    params.uso === 'publicada'
+      ? Prisma.sql`AND ${emPost('g', true)}`
+      : params.uso === 'na-agenda'
+        ? Prisma.sql`AND ${emPost('g')} AND NOT ${emPost('g', true)}`
+        : params.uso === 'nunca-usada'
+          ? Prisma.sql`AND NOT ${emPost('g')}`
+          : Prisma.empty
+  const filtro = Prisma.sql`
+    FROM "Generation" g
+    WHERE g."projectId" = ${projectId} AND ${E_ARTE_DA_GALERIA}
+      ${periodo.gte ? Prisma.sql`AND g."createdAt" >= ${periodo.gte}` : Prisma.empty}
+      ${periodo.lte ? Prisma.sql`AND g."createdAt" <= ${periodo.lte}` : Prisma.empty}
+      ${
+        // ponytail: o texto casa o nome do arquivo e o do modelo gravados na arte; página renomeada DEPOIS do
+        // render só casa pelo nome antigo. Se fizer falta, juntar "Page" por fieldValues->>'pageId' aqui.
+        texto
+          ? Prisma.sql`AND (g."fileName" ILIKE ${`%${texto}%`} OR g."templateName" ILIKE ${`%${texto}%`})`
+          : Prisma.empty
+      }
+      ${doUso}`
 
-  const [total, artes] = await Promise.all([
-    db.generation.count({ where }),
-    db.generation.findMany({
-      where,
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      skip: (pagina - 1) * limite,
-      take: limite,
-      select: { ...CAMPOS_DA_ARTE, Template: { select: { type: true } } },
-    }),
+  const [contagem, ids] = await Promise.all([
+    db.$queryRaw<Array<{ total: number }>>`SELECT COUNT(*)::int AS total ${filtro}`,
+    db.$queryRaw<Array<{ id: string }>>`
+      SELECT g.id ${filtro}
+      ORDER BY g."createdAt" DESC, g.id DESC
+      LIMIT ${limite} OFFSET ${(pagina - 1) * limite}`,
   ])
+  const total = contagem[0]?.total ?? 0
+  const artes = ids.length
+    ? await db.generation.findMany({
+        where: { id: { in: ids.map((r) => r.id) } },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        select: { ...CAMPOS_DA_ARTE, Template: { select: { type: true } } },
+      })
+    : []
 
   const pageIds = [...new Set(artes.map(pageIdDaArte).filter((id): id is string => !!id))]
   const [paginas, posts] = await Promise.all([
@@ -213,7 +244,7 @@ export async function listarArtesDaGaleria(params: {
       })
     }),
     comoApagar:
-      'apagar-arte apaga UMA arte por generationId, sem desfazer: confirme com a pessoa citando a arte, e use simular: true para ver antes o que sai e o que impede. Arte com emUso: true não é apagada enquanto o post existir.',
+      'apagar-arte apaga UMA arte por generationId, sem desfazer: confirme com a pessoa citando a arte, e use simular: true para ver antes o que sai e o que impede. Arte com emUso: true não é apagada enquanto o post existir. Para a faxina das que nunca foram usadas, limpar-galeria.',
   }
 }
 
@@ -245,5 +276,55 @@ export async function apagarArteDaGaleria(params: { projectId: number; generatio
     },
     apagarPagina: apagarPaginaEReordenar,
     appUrl: params.appUrl,
+  })
+}
+
+/**
+ * As artes do cliente criadas antes de `corte` que NENHUM post usa, com os fatos que podem protegê-las. Só
+ * fatos: a decisão é `motivoDeProteger` (`galeria-regras.ts`), que tem teste sem banco.
+ */
+async function lerNuncaUsadas(projectId: number, corte: Date): Promise<CandidataAFaxina[]> {
+  return db.$queryRaw<CandidataAFaxina[]>`
+    SELECT g.id, g."createdAt", g."fileName", g."templateName", g."resultUrl", g.canal,
+      (g."resultUrl" IS NOT NULL AND g."resultUrl" NOT LIKE ${`%${FRAGMENTO_DO_BLOB}%`}) AS "foraDoBlob",
+      (g."fieldValues"->>'pageId' IS NOT NULL
+        AND EXISTS (SELECT 1 FROM "SocialPost" pp WHERE pp."pageId" = g."fieldValues"->>'pageId')) AS "paginaEmPost",
+      (g."styleRefAt" IS NOT NULL) AS "refDeEstilo",
+      EXISTS (
+        SELECT 1 FROM "LearningSignal" s
+        WHERE s."generationId" = g.id AND s.tipo = 'arte' AND LOWER(TRIM(s.escolhido->>'veredito')) = 'gostei'
+      ) AS gostei,
+      EXISTS (SELECT 1 FROM "ItemDePlano" ip WHERE ip."generationId" = g.id) AS "emPlano",
+      (g."carouselGroupId" IS NOT NULL AND EXISTS (
+        SELECT 1 FROM "Generation" i
+        WHERE i."carouselGroupId" = g."carouselGroupId" AND i.id <> g.id AND ${emPost('i')}
+      )) AS "carrosselEmUso",
+      EXISTS (SELECT 1 FROM "Generation" m WHERE m."sourceGenerationId" = g.id AND ${emPost('m')}) AS "origemDeMelhoriaEmUso",
+      (COALESCE(g."fieldValues"->>'isVideo', '') = 'true'
+        OR COALESCE(g."fieldValues"->>'videoExport', '') = 'true'
+        OR EXISTS (SELECT 1 FROM "VideoProcessingJob" v WHERE v."generationId" = g.id)) AS video
+    FROM "Generation" g
+    WHERE g."projectId" = ${projectId}
+      AND g."createdAt" < ${corte}
+      AND g.status <> 'PROCESSING'
+      AND ${E_ARTE_DA_GALERIA}
+      AND NOT ${emPost('g')}
+    ORDER BY g."createdAt" ASC, g.id ASC`
+}
+
+/** `limpar-galeria`: a regra de `galeria-regras.ts`; cada arte sai por `apagarArteDaGaleria`, que confere tudo de novo. */
+export async function limparGaleriaDoCliente(params: {
+  projectId: number
+  dias?: number
+  limite?: number
+  confirmar?: boolean
+  appUrl: string
+}) {
+  return limparGaleria(params, {
+    lerNuncaUsadas,
+    apagarUma: (generationId) =>
+      apagarArteDaGaleria({ projectId: params.projectId, generationId, apagarPagina: true, appUrl: params.appUrl }) as Promise<{
+        pagina?: { apagada?: true }
+      }>,
   })
 }
