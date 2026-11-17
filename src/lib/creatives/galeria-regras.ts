@@ -440,6 +440,11 @@ export interface CandidataAFaxina {
   foraDoBlob: boolean
   /** A página da peça está em algum post: a peça foi para a agenda por outro render. */
   paginaEmPost: boolean
+  /**
+   * A arte NASCEU de um post: trazida de um post do Zernio (`origem: post-do-zernio:…`) ou registrada a partir
+   * da mídia de um post da agenda (`source: post-midia | post-schedule`). Se veio de lá, foi agendada.
+   */
+  nasceuDePost: boolean
   refDeEstilo: boolean
   gostei: boolean
   emPlano: boolean
@@ -451,6 +456,7 @@ export interface CandidataAFaxina {
 export type MotivoDeProteger =
   | 'historico-fora-do-armazenamento'
   | 'pagina-em-post'
+  | 'veio-do-zernio-ou-da-agenda'
   | 'referencia-de-estilo'
   | 'gostei'
   | 'item-de-plano'
@@ -466,6 +472,9 @@ export function motivoDeProteger(c: CandidataAFaxina): MotivoDeProteger | null {
   // arquivada pela limpeza de 90 dias, que nem sempre levou a mídia do post junto. Pode ter ido ao ar.
   if (c.foraDoBlob) return 'historico-fora-do-armazenamento'
   if (c.paginaEmPost) return 'pagina-em-post'
+  // Regra do Ciro (17/11/2026): arte que vem do Zernio não se apaga — se veio dele, foi agendada. O post pode
+  // ter sido removido depois, ou a mídia ter mudado de endereço: a arte continua sendo a de um post.
+  if (c.nasceuDePost) return 'veio-do-zernio-ou-da-agenda'
   if (c.refDeEstilo) return 'referencia-de-estilo'
   if (c.gostei) return 'gostei'
   if (c.emPlano) return 'item-de-plano'
@@ -516,6 +525,7 @@ export async function limparGaleria(
     ficamSempre: [
       'arte em qualquer post da agenda',
       'arte cuja página está em post da agenda',
+      'arte que veio do Zernio ou nasceu de um post da agenda (se veio de lá, foi agendada)',
       'arte que mora só no Drive (histórico: recuperada ou arquivada, pode ter ido ao ar)',
       'referência de estilo',
       'arte com "gostei"',

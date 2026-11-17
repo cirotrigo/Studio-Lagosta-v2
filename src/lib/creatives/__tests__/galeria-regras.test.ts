@@ -408,6 +408,7 @@ describe('limpar-galeria: a faxina das artes nunca usadas', () => {
     canal: 'claude-code',
     foraDoBlob: false,
     paginaEmPost: false,
+    nasceuDePost: false,
     refDeEstilo: false,
     gostei: false,
     emPlano: false,
@@ -425,6 +426,7 @@ describe('limpar-galeria: a faxina das artes nunca usadas', () => {
   it.each([
     [{ foraDoBlob: true }, 'historico-fora-do-armazenamento'],
     [{ paginaEmPost: true }, 'pagina-em-post'],
+    [{ nasceuDePost: true }, 'veio-do-zernio-ou-da-agenda'],
     [{ refDeEstilo: true }, 'referencia-de-estilo'],
     [{ gostei: true }, 'gostei'],
     [{ emPlano: true }, 'item-de-plano'],
@@ -469,6 +471,13 @@ describe('limpar-galeria: a faxina das artes nunca usadas', () => {
     await limparGaleria({ projectId: 7, confirmar: 'true' as unknown as boolean }, f.deps)
     await limparGaleria({ projectId: 7, confirmar: false }, f.deps)
     expect(f.apagarUma).not.toHaveBeenCalled()
+  })
+
+  it('arte que veio do Zernio (ou nasceu de um post) nunca sai, nem com confirmar', async () => {
+    const f = faxina([candidata('do-zernio', { nasceuDePost: true }), candidata('solta')])
+    const r = await limparGaleria({ projectId: 7, confirmar: true }, f.deps)
+    expect(f.apagarUma.mock.calls.map((c) => c[0])).toEqual(['solta'])
+    expect(r).toMatchObject({ apagadas: 1, protegidas: { total: 1, porMotivo: { 'veio-do-zernio-ou-da-agenda': 1 } } })
   })
 
   it('o corte é de 30 dias por padrão e nunca menos de 7', async () => {

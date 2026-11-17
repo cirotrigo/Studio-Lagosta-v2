@@ -566,6 +566,12 @@ dela. Gate de CURADOR, fora de `TOOLS_DRAFT_ONLY`.
   mídia do post junto. Por isso arte cuja imagem não está mais no Blob fica SEMPRE
   (`historico-fora-do-armazenamento`): apagá-la mandaria para a lixeira o único arquivo de uma arte que
   provavelmente foi ao ar. Na simulação de 17/11 isso protege 2.859 das 5.643 candidatas.
+- 🔴 **Arte que veio do Zernio não se apaga** (regra do Ciro, 17/11/2026: "se vem dele é porque foi agendada").
+  Vale para toda arte que NASCEU de um post (`veio-do-zernio-ou-da-agenda`), pela marca que quem a cria grava
+  em `fieldValues`: `origem: post-do-zernio:…` (`arte-do-post-na-galeria.ts`), `source: post-midia`
+  (`artes-do-post.ts`) e `source: post-schedule` (`ensure-post-generation.ts`). O post pode ter sido removido
+  depois, ou a mídia ter mudado de endereço: a arte continua sendo a de um post. Caminho novo que crie arte a
+  partir de post precisa de uma dessas marcas, ou entra na faxina.
 - **Ficam também**: arte cuja página está em post (`pagina-em-post`: a peça foi para a agenda por outro
   render), referência de estilo, arte com "gostei" (`LearningSignal` de tipo `arte`), arte de item de plano,
   carrossel com algum slide em uso, a original de uma melhoria que foi ao ar e vídeo (a limpeza de 90 dias
@@ -575,6 +581,6 @@ dela. Gate de CURADOR, fora de `TOOLS_DRAFT_ONLY`.
   das skills da pasta Clientes, que agendam pelo Zernio). A simulação mostra `porOrigem` para a pessoa
   decidir, e a descrição da tool manda dizer isso junto com a conta. O arquivo do Drive vai para a lixeira,
   não some: é a janela de arrependimento.
-- Simulação de 17/11/2026 no branch de dev, corte de 30 dias: sairiam 2.396 artes (959 `claude-code`,
-  768 sem canal, 442 `studio`, 226 `claude-ai`, 1 `claudinho`), entre 86 (Seu Quinto) e 405 (Wine Vix) por
-  cliente. Nenhuma foi apagada.
+- Simulação de 17/11/2026 no branch de dev, corte de 30 dias: sairiam 2.305 artes (959 `claude-code`,
+  677 sem canal, 442 `studio`, 226 `claude-ai`, 1 `claudinho`), entre 23 (Ciro Trigo) e 405 (Wine Vix) por
+  cliente; 91 ficaram por terem nascido de post. Nenhuma foi apagada.

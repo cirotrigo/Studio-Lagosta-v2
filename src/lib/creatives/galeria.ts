@@ -284,11 +284,15 @@ export async function apagarArteDaGaleria(params: { projectId: number; generatio
  * fatos: a decisão é `motivoDeProteger` (`galeria-regras.ts`), que tem teste sem banco.
  */
 async function lerNuncaUsadas(projectId: number, corte: Date): Promise<CandidataAFaxina[]> {
+  // `nasceuDePost` lê as marcas de quem cria arte a partir de post: `arte-do-post-na-galeria.ts` (o Zernio,
+  // em `origem`), `artes-do-post.ts` (`source: post-midia`) e `ensure-post-generation.ts` (`post-schedule`).
   return db.$queryRaw<CandidataAFaxina[]>`
     SELECT g.id, g."createdAt", g."fileName", g."templateName", g."resultUrl", g.canal,
       (g."resultUrl" IS NOT NULL AND g."resultUrl" NOT LIKE ${`%${FRAGMENTO_DO_BLOB}%`}) AS "foraDoBlob",
       (g."fieldValues"->>'pageId' IS NOT NULL
         AND EXISTS (SELECT 1 FROM "SocialPost" pp WHERE pp."pageId" = g."fieldValues"->>'pageId')) AS "paginaEmPost",
+      (COALESCE(g."fieldValues"->>'origem', '') LIKE 'post-do-zernio:%'
+        OR COALESCE(g."fieldValues"->>'source', '') IN ('post-midia', 'post-schedule')) AS "nasceuDePost",
       (g."styleRefAt" IS NOT NULL) AS "refDeEstilo",
       EXISTS (
         SELECT 1 FROM "LearningSignal" s
