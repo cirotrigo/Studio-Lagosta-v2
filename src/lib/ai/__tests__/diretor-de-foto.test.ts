@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { contextoDaFoto, problemasDoPromptDeFoto, type PlanejarMelhoriaDeFotoArgs } from '../diretor-de-foto'
+import { caixaDoDiretor, contextoDaFoto, problemasDoPromptDeFoto, type PlanejarMelhoriaDeFotoArgs } from '../diretor-de-foto'
 
 const args = (extra: Partial<PlanejarMelhoriaDeFotoArgs> = {}): PlanejarMelhoriaDeFotoArgs => ({
   foto: Buffer.from(''),
@@ -80,3 +80,16 @@ describe('problemasDoPromptDeFoto', () => {
     expect(problemasDoPromptDeFoto('  ').length).toBe(1)
   })
 })
+
+describe('caixaDoDiretor', () => {
+  it('aceita a caixa em frações e corta o que passa do quadro', () => {
+    expect(caixaDoDiretor({ x: 0.2, y: 0.3, largura: 0.5, altura: 0.4 })).toEqual({ x: 0.2, y: 0.3, largura: 0.5, altura: 0.4 })
+    expect(caixaDoDiretor({ x: 0.8, y: -0.1, largura: 0.5, altura: 0.4 })).toEqual({ x: 0.8, y: 0, largura: 0.19999999999999996, altura: 0.4 })
+  })
+  it('recusa caixa ausente, sem tamanho ou que não é número', () => {
+    expect(caixaDoDiretor(null)).toBeNull()
+    expect(caixaDoDiretor({ x: 0.5, y: 0.5, largura: 0.01, altura: 0.3 })).toBeNull()
+    expect(caixaDoDiretor({ x: Number.NaN, y: 0, largura: 0.5, altura: 0.5 })).toBeNull()
+  })
+})
+

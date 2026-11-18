@@ -39,6 +39,8 @@ export interface OpcaoDeFoto {
   areaAlterada?: number
   /** Diferença média de tom para a foto de origem (0 a 255). */
   diferencaDeTom?: number
+  /** O que foi medido na opção (`MedidasDaFoto`): é o que a folha da bancada mostra. */
+  medidas?: MedidasDaFoto
   custoUsd: number
   tokens?: { entrada?: number; saida?: number }
   segundos: number
@@ -149,3 +151,82 @@ export function retornoDasOpcoes(registro: RegistroDaMelhoriaDeFoto) {
     aplicada: registro.aplicada ? { opcao: registro.aplicada.opcao, generationId: registro.aplicada.generationId, url: registro.aplicada.url } : null,
   }
 }
+
+/** O que se mede numa opção, contra a foto de origem. Tudo opcional: sem caixa do assunto, só o tom e a nitidez geral. */
+export interface MedidasDaFoto {
+  /** Fração do quadro com elemento novo (mapa de zonas). */
+  area?: number
+  /** Desvio médio de tom, 0 a 255. */
+  tom?: number
+  /** Nitidez nova/origem dentro da caixa do assunto. */
+  nitidezDoAssunto?: number | null
+  /** Nitidez nova/origem fora dela (abaixo de 1 = fundo mais desfocado). */
+  nitidezDoFundo?: number
+  /** Tamanho do assunto na foto nova, em relação à origem (0,8 = 80%). */
+  escalaDoAssunto?: number
+  /** Quanto o centro do assunto andou, em fração do quadro. */
+  dx?: number
+  dy?: number
+  /** Quão bem o assunto foi reconhecido na foto nova (0 a 1). */
+  correlacao?: number
+}
+
+/** Abaixo disto (0 a 255) o tom não mudou. Calibrado na bancada de 17 e 18/11/2026: iguais 2,0 a 2,9; tratadas de 3,0 para cima. */
+export const PISO_DE_TOM = 3
+/** Até aqui o tratamento existe, mas fica no limite do que se enxerga (bancada: 3,0 a 5,6 passavam despercebidos na folha). */
+export const TOM_VISIVEL = 6
+/** O fundo desfocou mais que o assunto quando a nitidez do assunto, dividida pela do fundo, passa disto. O ruído entre gerações iguais ficou entre 0,86 e 0,96. */
+export const SEPARACAO_VISIVEL = 1.2
+/** O assunto mudou de tamanho além disto (bancada: os que encolheram deram 0,75 e 0,80; os que ficaram, 1,00). */
+export const LIMITE_DE_ESCALA = 0.1
+/** O centro do assunto andou além disto, em fração do quadro (bancada: 0,09 e 0,12 nos que saíram do lugar; 0,00 nos outros). */
+export const LIMITE_DE_POSICAO = 0.05
+/** Abaixo disto o assunto não foi reconhecido como era, e escala e posição não valem. */
+export const CORRELACAO_MINIMA = 0.45
+
+/** O fundo ficou mais desfocado em relação ao assunto? Null sem caixa do assunto. */
+export function separacaoDoFundo(m: MedidasDaFoto): number | null {
+  if (m.nitidezDoAssunto == null || !m.nitidezDoFundo) return null
+  return m.nitidezDoAssunto / m.nitidezDoFundo
+}
+
+/**
+ * O ÚNICO descarte: a opção saiu igual à origem. Nada novo no quadro (mapa de
+ * zonas), tom parado e fundo sem desfoque a mais. O mapa de zonas sozinho
+ * descartava todo tratamento global (17/11/2026).
+ */
+export function saiuIgual(m: MedidasDaFoto, areaMinima: number): boolean {
+  const separacao = separacaoDoFundo(m)
+  return (m.area ?? 0) < areaMinima && (m.tom ?? 0) < PISO_DE_TOM && !(separacao != null && separacao >= SEPARACAO_VISIVEL)
+}
+
+/**
+ * Os avisos que saem das MEDIDAS (nunca veto): o assunto que encolheu ou saiu
+ * do lugar, e o tratamento que ficou quase imperceptível. `receitas` são os
+ * ids pedidos.
+ */
+export function avisosDasMedidas(receitas: string[], m: MedidasDaFoto): AvisoDaOpcao[] {
+  const avisos: AvisoDaOpcao[] = []
+  const pct = (n: number) => `${Math.round(Math.abs(n) * 100)}%`
+  if (m.correlacao != null && m.escalaDoAssunto != null) {
+    if (m.correlacao < CORRELACAO_MINIMA) {
+      avisos.push({ tipo: 'assunto', texto: 'O assunto da foto não foi reconhecido como era (pode ter mudado de tamanho, de lugar ou de aparência): compare o antes e o depois.' })
+    } else {
+      const partes: string[] = []
+      if (Math.abs(m.escalaDoAssunto - 1) >= LIMITE_DE_ESCALA) partes.push(`ficou com ${Math.round(m.escalaDoAssunto * 100)}% do tamanho`)
+      const dx = m.dx ?? 0
+      const dy = m.dy ?? 0
+      if (Math.abs(dx) >= LIMITE_DE_POSICAO) partes.push(`andou ${pct(dx)} do quadro para a ${dx > 0 ? 'direita' : 'esquerda'}`)
+      if (Math.abs(dy) >= LIMITE_DE_POSICAO) partes.push(`andou ${pct(dy)} do quadro para ${dy > 0 ? 'baixo' : 'cima'}`)
+      if (partes.length > 0) avisos.push({ tipo: 'assunto', texto: `O assunto da foto mudou: ${partes.join(' e ')}. A receita não devia mexer no tamanho nem no lugar dele: compare o antes e o depois.` })
+    }
+  }
+  if (receitas.includes('foto-profissional') && !receitas.includes('humanizar') && !receitas.includes('abrir-espaco')) {
+    const separacao = separacaoDoFundo(m)
+    if ((m.tom ?? 0) < TOM_VISIVEL && !(separacao != null && separacao >= SEPARACAO_VISIVEL)) {
+      avisos.push({ tipo: 'conferencia', texto: `O tratamento ficou no limite do que se enxerga (tom ${(m.tom ?? 0).toFixed(1)} de 255, fundo sem desfoque a mais): compare antes de usar, ou peça outra opção.` })
+    }
+  }
+  return avisos
+}
+

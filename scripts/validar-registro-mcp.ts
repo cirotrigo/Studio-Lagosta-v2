@@ -1592,7 +1592,7 @@ const LITERAIS_ARTE_IA: Record<string, unknown> = {
                 "abrir-espaco",
                 "ajuste-livre"
               ],
-              "description": "humanizar: Põe um gesto na cena: a mão puxando o queijo, o garfo na batata, o vinho sendo servido, o chope na mão, o brinde. foto-profissional: Trata a foto: balanço de branco, luz mais limpa, fundo mais desfocado e o prato nítido, com cara de câmera e lente melhores. abrir-espaco: Recompõe ou estende a foto para deixar uma área calma onde o texto da arte está. ajuste-livre: O que a pessoa escrever sobre a foto, com as proteções da casa."
+              "description": "humanizar: Põe um gesto na cena: a mão puxando o queijo, o garfo na batata, o vinho sendo servido, o chope na mão, o brinde. foto-profissional: Trata a foto: balanço de branco, luz mais limpa, fundo mais desfocado e o prato nítido, com cara de câmera e lente melhores. abrir-espaco: Acalma o fundo onde o texto da arte está, sem mexer no tamanho nem no lugar do prato. ajuste-livre: O que a pessoa escrever sobre a foto, com as proteções da casa."
             },
             "gesto": {
               "type": "string",
@@ -1618,7 +1618,7 @@ const LITERAIS_ARTE_IA: Record<string, unknown> = {
                 "leve",
                 "marcada"
               ],
-              "description": "foto-profissional: quanto tratar (padrão leve)."
+              "description": "foto-profissional: quanto tratar. Padrão marcada (a diferença aparece ao lado do original); leve é o retoque contido."
             },
             "area": {
               "type": "object",

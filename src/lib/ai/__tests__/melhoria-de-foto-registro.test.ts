@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   FONTE_DA_MELHORIA_DE_FOTO,
+  avisosDasMedidas,
+  saiuIgual,
+  separacaoDoFundo,
   fotoAindaEAMesma,
   lerRegistroDaMelhoriaDeFoto,
   opcaoParaAplicar,
@@ -96,3 +99,47 @@ describe('retornoDasOpcoes', () => {
     expect(r.aplicada).toEqual({ opcao: 1, generationId: 'g2', url: 'https://x/arte.png' })
   })
 })
+
+describe('medidas: o descarte e os avisos', () => {
+  it('saiu igual só quando não há elemento novo, o tom não mudou e o fundo não desfocou a mais', () => {
+    // Os pares da bancada: iguais (tom 2,0 a 2,9) e tratadas (3,0 para cima).
+    expect(saiuIgual({ area: 0, tom: 2.9, nitidezDoAssunto: 0.71, nitidezDoFundo: 0.78 }, 0.005)).toBe(true)
+    expect(saiuIgual({ area: 0, tom: 4.1, nitidezDoAssunto: 0.88, nitidezDoFundo: 0.94 }, 0.005)).toBe(false)
+    expect(saiuIgual({ area: 0.21, tom: 2 }, 0.005)).toBe(false)
+    // Tom parado, mas o fundo desfocou de verdade: a foto mudou.
+    expect(saiuIgual({ area: 0, tom: 2, nitidezDoAssunto: 0.9, nitidezDoFundo: 0.5 }, 0.005)).toBe(false)
+    // Sem caixa do assunto, vale o tom.
+    expect(saiuIgual({ area: 0, tom: 2 }, 0.005)).toBe(true)
+  })
+
+  it('separacaoDoFundo é a nitidez do assunto sobre a do fundo', () => {
+    expect(separacaoDoFundo({ nitidezDoAssunto: 0.9, nitidezDoFundo: 0.6 })).toBeCloseTo(1.5, 5)
+    expect(separacaoDoFundo({ nitidezDoFundo: 0.6 })).toBeNull()
+  })
+
+  it('avisa quando o assunto encolheu ou saiu do lugar (os casos da bancada)', () => {
+    const byrock = avisosDasMedidas(['abrir-espaco'], { escalaDoAssunto: 0.75, dx: 0, dy: -0.09, correlacao: 0.96 })
+    expect(byrock).toHaveLength(1)
+    expect(byrock[0].texto).toMatch(/75% do tamanho/)
+    expect(byrock[0].texto).toMatch(/9% do quadro para cima/)
+    const real = avisosDasMedidas(['abrir-espaco'], { escalaDoAssunto: 0.8, dx: 0.09, dy: -0.09, correlacao: 0.96 })
+    expect(real[0].texto).toMatch(/para a direita/)
+    // O Bacana, que ficou no lugar: sem aviso.
+    expect(avisosDasMedidas(['abrir-espaco'], { escalaDoAssunto: 1, dx: 0, dy: 0, correlacao: 0.68 })).toEqual([])
+  })
+
+  it('assunto não reconhecido vira aviso próprio, sem falar de escala', () => {
+    const a = avisosDasMedidas(['humanizar'], { escalaDoAssunto: 0.6, dx: 0.3, dy: 0, correlacao: 0.3 })
+    expect(a).toHaveLength(1)
+    expect(a[0].texto).toMatch(/não foi reconhecido/)
+  })
+
+  it('Foto profissional quase imperceptível avisa; a que mudou de verdade, não', () => {
+    expect(avisosDasMedidas(['foto-profissional'], { tom: 4.1, nitidezDoAssunto: 0.88, nitidezDoFundo: 0.94 })[0].texto).toMatch(/limite do que se enxerga/)
+    expect(avisosDasMedidas(['foto-profissional'], { tom: 15.1, nitidezDoAssunto: 0.75, nitidezDoFundo: 0.84 })).toEqual([])
+    expect(avisosDasMedidas(['foto-profissional'], { tom: 4, nitidezDoAssunto: 0.9, nitidezDoFundo: 0.5 })).toEqual([])
+    // Só vale para a receita sozinha: combinada com Humanizar, o gesto é a mudança.
+    expect(avisosDasMedidas(['humanizar', 'foto-profissional'], { tom: 4 })).toEqual([])
+  })
+})
+

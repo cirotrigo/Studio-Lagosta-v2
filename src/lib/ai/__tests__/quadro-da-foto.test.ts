@@ -4,6 +4,8 @@ import { currentSourceRect } from '@/lib/image-fit'
 import {
   RECORTE_INTEIRO,
   acharFotoDaPagina,
+  assuntoNaFotoNova,
+  nitidezDentroEFora,
   ajustarAoQuadro,
   caixaDoAssuntoNoQuadro,
   caixaDoTextoNoQuadro,
@@ -222,3 +224,58 @@ describe('diferencaDeTom', () => {
   })
 })
 
+
+describe('medidas do tratamento e do assunto', () => {
+  const W = 300
+  const H = 400
+  /** Fundo liso com um "prato" texturizado (xadrez fino) no retângulo dado. */
+  const cena = async (x0: number, y0: number, w: number, h: number, desfoque = 0) => {
+    const raw = Buffer.alloc(W * H * 3, 60)
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if ((Math.floor(x / 23) + Math.floor(y / 17)) % 2 === 0) raw.fill(75, (y * W + x) * 3, (y * W + x) * 3 + 3)
+    for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) {
+      const u = (x - x0) / w
+      const v = (y - y0) / h
+      const tom = 110 + 100 * Math.sin(u * 9) * Math.cos(v * 7) + ((Math.floor(u * 12) + Math.floor(v * 12)) % 2) * 30
+      raw.fill(Math.max(0, Math.min(255, Math.round(tom))), (y * W + x) * 3, (y * W + x) * 3 + 3)
+    }
+    const img = sharp(raw, { raw: { width: W, height: H, channels: 3 } })
+    return (desfoque > 0 ? img.blur(desfoque) : img).png().toBuffer()
+  }
+  const caixa = { x: 90 / W, y: 140 / H, largura: 120 / W, altura: 160 / H }
+
+  it('nitidezDentroEFora: fundo desfocado baixa a razão de fora e mantém a de dentro', async () => {
+    const origem = await cena(90, 140, 120, 160)
+    const igual = await nitidezDentroEFora(origem, origem, caixa)
+    expect(igual.dentro).toBeCloseTo(1, 5)
+    expect(igual.fora).toBeCloseTo(1, 5)
+    // Desfoca tudo e devolve o assunto nítido por cima: só o fundo muda.
+    const borrada = await cena(90, 140, 120, 160, 4)
+    const assunto = await sharp(origem).extract({ left: 90, top: 140, width: 120, height: 160 }).toBuffer()
+    const tratada = await sharp(borrada).composite([{ input: assunto, left: 90, top: 140 }]).png().toBuffer()
+    const r = await nitidezDentroEFora(origem, tratada, caixa)
+    expect(r.fora).toBeLessThan(0.7)
+    expect(r.dentro!).toBeGreaterThan(0.9)
+    expect((await nitidezDentroEFora(origem, tratada, null)).dentro).toBeNull()
+  })
+
+  it('assuntoNaFotoNova: acha o assunto no mesmo lugar e do mesmo tamanho', async () => {
+    const origem = await cena(90, 140, 120, 160)
+    const r = await assuntoNaFotoNova(origem, origem, caixa)
+    expect(r.escala).toBeCloseTo(1, 1)
+    expect(Math.abs(r.dx)).toBeLessThan(0.02)
+    expect(Math.abs(r.dy)).toBeLessThan(0.02)
+    expect(r.correlacao).toBeGreaterThan(0.95)
+  })
+
+  it('assuntoNaFotoNova: mede o assunto que encolheu e subiu', async () => {
+    const origem = await cena(90, 140, 120, 160)
+    // 70% do tamanho, centro 60 px acima (15% da altura) e 30 px à direita (10% da largura).
+    const nova = await cena(138, 104, 84, 112)
+    const r = await assuntoNaFotoNova(origem, nova, caixa)
+    expect(r.escala).toBeGreaterThan(0.6)
+    expect(r.escala).toBeLessThan(0.8)
+    expect(r.dy).toBeLessThan(-0.1)
+    expect(r.dx).toBeGreaterThan(0.05)
+    expect(r.correlacao).toBeGreaterThan(0.6)
+  })
+})

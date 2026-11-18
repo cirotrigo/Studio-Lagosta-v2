@@ -111,11 +111,27 @@ export const RECEITAS_DE_FOTO: Record<IdDaReceita, ReceitaDeFoto> = {
     id: 'foto-profissional',
     rotulo: 'Foto profissional',
     descricao: 'Trata a foto: balanço de branco, luz mais limpa, fundo mais desfocado e o prato nítido, com cara de câmera e lente melhores.',
-    parametros: { intensidade: 'leve (padrão) ou marcada.' },
+    parametros: { intensidade: 'marcada (padrão: a diferença tem de aparecer) ou leve.' },
+    /**
+     * O padrão virou `marcada` em 18/11/2026: na bancada, com `leve`, uma foto
+     * voltou igual e duas mudaram no limite do que se enxerga (as fotos da
+     * carteira já são de sessão profissional). O trecho diz o que TEM de ficar
+     * diferente; "retoque leve" o gerador cumpre não fazendo nada.
+     */
     trecho: (p) =>
-      p.intensidade === 'marcada'
-        ? 'Re-photograph this exact scene as a professional food photograph: full-frame camera, 85mm lens at f/2, the dish tack sharp and the background falling into a smooth, clearly visible blur. Neutral white balance (clean whites, no colour cast), soft directional key light from the side with gentle fill, true-to-life food colours with natural saturation, fine texture visible on the food.'
-        : 'Lightly retouch this exact photograph as a professional would: correct the white balance to neutral (clean whites, no colour cast), lift the exposure on the dish slightly, keep the dish sharp and let the background fall a little softer, as from a 50mm lens at f/2.8. Colours stay true to life.',
+      p.intensidade === 'leve'
+        ? [
+            'Retouch this photograph with a restrained but visible professional grade, as from a full-frame camera with a 50mm lens at f/2.8.',
+            'Three things must read as different next to the original: the white balance is neutral (white plates, napkins and walls read as clean white, with no yellow or green cast); the main subject is about a third of a stop brighter and crisper; the background behind it is one step softer.',
+            'Colours stay true to life.',
+          ].join(' ')
+        : [
+            'Retouch this photograph into a professional food photograph, as re-shot on a full-frame camera with an 85mm lens at f/2. The difference must be obvious at a glance next to the original.',
+            'White balance: neutral, so white plates, napkins and walls read as clean white with no yellow, orange or green cast.',
+            'Background: everything behind the main subject falls into a clearly deeper, smoother blur (creamy bokeh), visibly more out of focus than in the original.',
+            'Main subject: tack sharp, with crisp fine texture and gentle local contrast, about half a stop brighter, lit by a soft directional key light from the side with gentle fill; highlights keep their detail.',
+            'Colours true to life, with natural saturation.',
+          ].join(' '),
     protege: [...DA_CASA_PT, 'o enquadramento e o conteúdo da foto'],
     preserva: [
       'The content of the photograph stays the same: every ingredient, the portion, the crockery, the drink, every object and its position.',
@@ -127,21 +143,32 @@ export const RECEITAS_DE_FOTO: Record<IdDaReceita, ReceitaDeFoto> = {
   'abrir-espaco': {
     id: 'abrir-espaco',
     rotulo: 'Abrir espaço para o texto',
-    descricao: 'Recompõe ou estende a foto para deixar uma área calma onde o texto da arte está.',
+    descricao: 'Acalma o fundo onde o texto da arte está, sem mexer no tamanho nem no lugar do prato.',
     parametros: { area: 'Onde o texto está, em frações do quadro. Ausente, o Studio lê das camadas da página.' },
+    /**
+     * Reescrita em 18/11/2026. A primeira versão dizia "recompose" e deixava o
+     * prato "mover ou mudar de escala o quanto precisar": na bancada o prato
+     * do By Rock encolheu para 75% e as casquinhas da Real para 80%, subiram e
+     * ganharam uma mão. O que ficou bom foi o Bacana, onde o gerador só tirou
+     * a força do letreiro atrás do título. É esse o pedido agora.
+     */
     trecho: (p) =>
       [
-        `Recompose this photograph so that ${p.area ? ondeFica(p.area) : 'the area where the text of the design sits'} becomes a calm area: an even, uncluttered surface of the same scene (the same table, wall or background extended), with soft focus and no object, no bright highlight and no hard edge in it.`,
-        'The dish moves or scales only as much as that needs and stays whole inside the frame, sharp and well lit.',
+        `Calm the background in ${p.area ? ondeFica(p.area) : 'the area where the text of the design sits'}, where a title is placed over this photograph. Nothing moves.`,
+        'The main subject keeps exactly its size and its position in the frame: the same pixels of the frame hold the same parts of it.',
+        'Open the space only by simplifying the background inside that area: take away or soften the details that compete with a title there (signs, lettering, lamps, bright highlights, busy patterns, small objects far behind), and let that part of the background fall into a deeper, even blur with lower local contrast, keeping its own colours and its own brightness.',
+        'Where the photograph has spare margin beyond the subject, the same surface (the same table, wall or background) may extend into that area.',
+        'If that area lies over the subject itself, leave the subject as it is and calm only what surrounds it there.',
         'Same camera, same lens and same light as the original photograph.',
       ].join(' '),
-    protege: ['o prato inteiro', 'o que não está na área do texto', 'o lugar'],
+    protege: ['o tamanho e o lugar do prato', 'o que não está na área do texto', 'o lugar'],
     preserva: [
-      'The dish stays the same dish: same ingredients, same portion, same crockery, whole inside the frame.',
-      'The calm area is made of the same scene (its own table, wall or background), never of a new place.',
+      'The main subject stays the same size and in the same position in the frame, whole, sharp and well lit: same ingredients, same portion, same crockery.',
+      'The calm area is made of the same scene (its own table, wall or background), never of a new place, and it is not darkened.',
+      'Nothing is added to the scene: no person, no hand, no object.',
       'Everything outside that area keeps its look.',
     ],
-    conferencias: ['fidelidade-da-cena', 'rosto-em-foco'],
+    conferencias: ['assunto-no-lugar', 'fidelidade-da-cena', 'rosto-em-foco'],
   },
   'ajuste-livre': {
     id: 'ajuste-livre',

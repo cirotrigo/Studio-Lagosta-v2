@@ -539,7 +539,7 @@ export const toolsDeArteIA = [
               gesto: z.string().optional().describe('humanizar: o gesto, em poucas palavras ("mão puxando uma fatia", "vinho sendo servido"). Até 200 caracteres. Sem ele, quem escreve o prompt escolhe olhando a foto.'),
               lado: z.enum(['esquerda', 'direita', 'cima', 'baixo']).optional().describe('humanizar: por qual borda a pessoa entra.'),
               rosto: z.boolean().optional().describe('humanizar: true SÓ quando a pessoa autorizou rosto em foco. Sem isso entram apenas mãos e antebraço.'),
-              intensidade: z.enum(['leve', 'marcada']).optional().describe('foto-profissional: quanto tratar (padrão leve).'),
+              intensidade: z.enum(['leve', 'marcada']).optional().describe('foto-profissional: quanto tratar. Padrão marcada (a diferença aparece ao lado do original); leve é o retoque contido.'),
               area: z
                 .object({ x: z.number(), y: z.number(), largura: z.number(), altura: z.number() })
                 .optional()

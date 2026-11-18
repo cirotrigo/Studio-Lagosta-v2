@@ -36,6 +36,35 @@ describe('catálogo de receitas de foto', () => {
     const [espaco] = trechosFotograficos([{ id: 'abrir-espaco', area: { x: 0, y: 0, largura: 1, altura: 0.3 } }])
     expect(espaco).toMatch(/top/i)
   })
+
+  it('Foto profissional começa pelo verbo, diz o que TEM de ficar diferente, e o padrão é a marcada', () => {
+    const [padrao] = trechosFotograficos([{ id: 'foto-profissional' }])
+    const [marcada] = trechosFotograficos([{ id: 'foto-profissional', intensidade: 'marcada' }])
+    const [leve] = trechosFotograficos([{ id: 'foto-profissional', intensidade: 'leve' }])
+    expect(padrao).toBe(marcada)
+    expect(leve).not.toBe(marcada)
+    for (const t of [marcada, leve]) {
+      expect(t).toMatch(/^Retouch /)
+      expect(t).toMatch(/white balance/i)
+      expect(t).toMatch(/background/i)
+      expect(t).toMatch(/\bf\/\d/)
+      expect(t).toMatch(/different|difference/i)
+    }
+    expect(marcada).toMatch(/85mm lens at f\/2/)
+    expect(marcada).toMatch(/obvious at a glance/)
+  })
+
+  it('Abrir espaço não move nem encolhe o assunto, não acrescenta gente e não escurece', () => {
+    const [t] = trechosFotograficos([{ id: 'abrir-espaco' }])
+    expect(t).toMatch(/^Calm /)
+    expect(t).toMatch(/keeps exactly its size and its position/)
+    expect(t).not.toMatch(/recompose|moves or scales/i)
+    const bloco = blocoDePreservacao([{ id: 'abrir-espaco' }])
+    expect(bloco).toMatch(/same size and in the same position/)
+    expect(bloco).toMatch(/no person, no hand, no object/)
+    expect(bloco).toMatch(/not darkened/)
+    expect(conferenciasDasReceitas([{ id: 'abrir-espaco' }])).toContain('assunto-no-lugar')
+  })
 })
 
 describe('normalizarReceitas', () => {

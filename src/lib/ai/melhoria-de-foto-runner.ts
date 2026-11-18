@@ -12,7 +12,7 @@
  * post só mudam quando alguém aplica uma opção (`aplicarOpcaoDeFoto`).
  *
  * As conferências AVISAM, nunca vetam (regra de 10/08/2026). O único descarte
- * é medido por código: a opção que saiu igual à origem (`mudancaNaoEntrou`).
+ * é medido por código: a opção que saiu igual à origem (`saiuIgual`).
  * Nenhum crédito é cobrado; cada opção gerada vira uma linha de uso com o
  * custo real.
  */
@@ -38,8 +38,11 @@ import { fetchImageSource } from './fetch-image-source'
 import { generateImageWithGemini, idDoModeloGemini, type GeminiImageModel } from './gemini-image-client'
 import { pedirNovaTentativa } from './generation-queue'
 import {
+  avisosDasMedidas,
   CUSTO_POR_OPCAO_USD,
   FONTE_DA_MELHORIA_DE_FOTO,
+  saiuIgual,
+  type MedidasDaFoto,
   TRILHA_DA_FOTO_MELHORADA,
   type AvisoDaOpcao,
   type OpcaoDeFoto,
@@ -49,18 +52,20 @@ import { deslocamentoDaFoto } from './preservar-foto'
 import {
   acharFotoDaPagina,
   ajustarAoQuadro,
+  assuntoNaFotoNova,
   caixaDoAssuntoNoQuadro,
   caixaDoTextoNoQuadro,
   caixasDaMarcaNoQuadro,
   camadasComFotoTrocada,
   diferencaDeTom,
+  nitidezDentroEFora,
   proporcaoMaisProxima,
   recortarQuadro,
   retanguloDoQuadro,
   type FotoDaPagina,
 } from './quadro-da-foto'
 import { conferenciasDasReceitas, montarPromptDeFoto, promptSemDiretor, type CaixaEmFracoes, type ReceitaPedida } from './receitas-de-foto'
-import { areaVisivelmenteAlterada, mudancaNaoEntrou } from './recompor-por-zona'
+import { areaVisivelmenteAlterada, PISO_DE_MUDANCA } from './recompor-por-zona'
 
 /** O gerador da foto. Id conferido na listagem da API em 17/11/2026 (`gerador-da-melhoria.ts`). */
 export const MODELO_DA_FOTO: GeminiImageModel = 'nano-banana-2.1'
@@ -72,13 +77,7 @@ const LADO_MAXIMO_DE_ENVIO = 2048
 /** Largura em que a mudança visível é medida: o recorte de uma foto de acervo pode ter 4000 px. */
 const LARGURA_DA_MEDIDA = 1080
 
-/**
- * Abaixo disto (0 a 255, `diferencaDeTom`) a foto não foi tratada. Junto de
- * `mudancaNaoEntrou` decide o único descarte: a opção só "saiu igual" quando
- * não há elemento novo E o tom não mudou. Calibrado na bancada de 17/11/2026
- * (ver `docs/regras/melhoria.md`).
- */
-export const PISO_DE_TOM = 3
+export { PISO_DE_TOM } from './melhoria-de-foto-registro'
 
 export const AVISO_DE_ROSTO = 'Esta foto tem rosto: confira se a pessoa continua a mesma.'
 
@@ -145,6 +144,14 @@ export interface PreparoDaFoto {
   leitura: string | null
   riscos: string[]
   rostoEmFoco: boolean | null
+  /** Já há pessoa ou mão na foto de origem. Null quando ninguém olhou (prompt pronto, diretor fora do ar). */
+  genteNaFoto: boolean | null
+  /**
+   * A caixa do assunto no quadro: a marcada à mão (`marcar-assunto`) quando há,
+   * senão a que o diretor de foto viu. Null no prompt pronto do chat. É com ela
+   * que se mede se o assunto mudou de tamanho ou de lugar e se o fundo desfocou.
+   */
+  assunto: CaixaEmFracoes | null
   /** Quem escreveu o prompt, para o registro da run. */
   infoDoPrompt: Record<string, unknown>
   /**
@@ -224,6 +231,8 @@ export async function prepararMelhoriaDeFoto(p: {
   let leitura: string | null = null
   let riscos: string[] = []
   let rostoEmFoco: boolean | null = null
+  let genteNaFoto: boolean | null = null
+  let assuntoNoQuadro: CaixaEmFracoes | null = null
   const infoDoPrompt: Record<string, unknown> = {}
   if (p.promptPronto?.trim()) {
     promptBase = p.promptPronto.trim()
@@ -236,6 +245,7 @@ export async function prepararMelhoriaDeFoto(p: {
     infoDoPrompt.planejador = 'chat'
   } else {
     const assunto = await assuntoMarcado(p.projectId, typeof fvDaOrigem.driveImageId === 'string' ? fvDaOrigem.driveImageId : null)
+    assuntoNoQuadro = assunto ? caixaDoAssuntoNoQuadro(assunto, natural, retanguloDoQuadro(natural, foto)) : null
     const plano = await planejarMelhoriaDeFoto({
       foto: paraOGerador,
       // O diretor vê onde o texto mora HOJE.
@@ -245,7 +255,7 @@ export async function prepararMelhoriaDeFoto(p: {
       marca: marca?.projectName ?? p.projectName,
       cozinha: marca?.cuisineType ?? null,
       direcaoDeFoto: marca?.dna.photoDirection ?? null,
-      sobreAFoto: { caixaDoAssunto: assunto ? caixaDoAssuntoNoQuadro(assunto, natural, retanguloDoQuadro(natural, foto)) : null },
+      sobreAFoto: { caixaDoAssunto: assuntoNoQuadro },
       caixaDoTexto,
       caixasDaMarca: caixasDaMarcaNoQuadro(pagina.layers, foto.camadaId),
       proporcao,
@@ -256,6 +266,9 @@ export async function prepararMelhoriaDeFoto(p: {
       leitura = plano.leitura
       riscos = plano.riscos
       rostoEmFoco = plano.rostoEmFoco
+      genteNaFoto = plano.genteNaFoto
+      // A caixa marcada por gente vence a que o diretor viu.
+      assuntoNoQuadro = assuntoNoQuadro ?? plano.assunto
       Object.assign(infoDoPrompt, { planejador: plano.modelo, planejadorMs: plano.ms, planejadorTentativas: plano.tentativas })
     } else {
       console.warn('[foto.bg] diretor de foto indisponível: o prompt sai dos trechos das receitas')
@@ -264,7 +277,7 @@ export async function prepararMelhoriaDeFoto(p: {
       infoDoPrompt.planejador = 'fallback'
     }
   }
-  return { pagina, foto, quadro, paraOGerador, proporcao, prompt: montarPromptDeFoto(promptBase, receitas), promptDe, leitura, riscos, rostoEmFoco, infoDoPrompt, antes }
+  return { pagina, foto, quadro, paraOGerador, proporcao, prompt: montarPromptDeFoto(promptBase, receitas), promptDe, leitura, riscos, rostoEmFoco, genteNaFoto, assunto: assuntoNoQuadro, infoDoPrompt, antes }
 }
 
 /** Uma opção como saiu do gerador e das conferências, antes de ser guardada. */
@@ -276,6 +289,8 @@ export interface FotoGerada {
   areaAlterada?: number
   /** Diferença média de tom para a foto de origem (0 a 255): o tratamento global que não vira zona. */
   tom?: number
+  /** Tudo o que foi medido contra a foto de origem. */
+  medidas?: MedidasDaFoto
   /** Só na opção descartada por ter saído igual: a foto como veio, para a bancada calibrar o limiar. */
   fotoDescartada?: Buffer
   /** A chamada ao gerador foi paga (mesmo que a opção tenha sido descartada). */
@@ -311,12 +326,30 @@ export async function gerarFotoDaOpcao(preparo: PreparoDaFoto, receitas: Receita
     const fotoNova = await ajustarAoQuadro(r.imageBuffer, quadro)
 
     const tamanhoDaMedida = { width: LARGURA_DA_MEDIDA, height: Math.max(1, Math.round((LARGURA_DA_MEDIDA * quadro.height) / quadro.width)) }
-    // O ÚNICO descarte: nada novo na foto (mapa de zonas) E nenhum tratamento de tom.
-    const [area, tomBruto] = await Promise.all([areaVisivelmenteAlterada(quadro.buffer, fotoNova, tamanhoDaMedida), diferencaDeTom(quadro.buffer, fotoNova)])
+    /**
+     * AS MEDIDAS, contra a foto de origem: o que entrou de novo (mapa de
+     * zonas), o desvio de tom, a nitidez do assunto e do fundo e, com a caixa
+     * do assunto, onde ele foi parar e de que tamanho. Delas saem o único
+     * descarte (`saiuIgual`) e avisos (`avisosDasMedidas`). Medida que falha
+     * por código fica de fora, nunca derruba a opção.
+     */
+    const [area, tomBruto, nitidez, ondeFicou] = await Promise.all([
+      areaVisivelmenteAlterada(quadro.buffer, fotoNova, tamanhoDaMedida),
+      diferencaDeTom(quadro.buffer, fotoNova),
+      nitidezDentroEFora(quadro.buffer, fotoNova, preparo.assunto).catch(() => null),
+      preparo.assunto ? assuntoNaFotoNova(quadro.buffer, fotoNova, preparo.assunto).catch(() => null) : null,
+    ])
     const areaAlterada = Number(area.toFixed(3))
     const tom = Number(tomBruto.toFixed(1))
-    if (mudancaNaoEntrou(area) && tomBruto < PISO_DE_TOM) {
-      return { foto: null, fotoDescartada: fotoNova, avisos: [], descartada: 'saiu igual à foto de origem (a mudança não entrou)', areaAlterada, tom, gerou, tokens, segundos: segundos() }
+    const duas = (n: number) => Number(n.toFixed(2))
+    const medidas: MedidasDaFoto = {
+      area: areaAlterada,
+      tom,
+      ...(nitidez ? { nitidezDoAssunto: nitidez.dentro == null ? null : duas(nitidez.dentro), nitidezDoFundo: duas(nitidez.fora) } : {}),
+      ...(ondeFicou ? { escalaDoAssunto: ondeFicou.escala, dx: duas(ondeFicou.dx), dy: duas(ondeFicou.dy), correlacao: duas(ondeFicou.correlacao) } : {}),
+    }
+    if (saiuIgual(medidas, PISO_DE_MUDANCA)) {
+      return { foto: null, fotoDescartada: fotoNova, avisos: [], descartada: 'saiu igual à foto de origem (a mudança não entrou)', areaAlterada, tom, medidas, gerou, tokens, segundos: segundos() }
     }
 
     const conferencias = conferenciasDasReceitas(receitas)
@@ -324,16 +357,21 @@ export async function gerarFotoDaOpcao(preparo: PreparoDaFoto, receitas: Receita
       ...(preparo.rostoEmFoco === true ? [{ tipo: 'rosto' as const, texto: AVISO_DE_ROSTO, destaque: true }] : []),
       ...(preparo.rostoEmFoco === null ? [{ tipo: 'conferencia' as const, texto: 'Não foi possível conferir se a foto tem rosto de pessoa (a visão não respondeu): olhe antes de usar.' }] : []),
       ...(preparo.antes ? [{ tipo: 'conferencia' as const, texto: AVISO_DE_PAGINA_EDITADA }] : []),
+      ...(preparo.genteNaFoto && receitas.some((r) => r.id === 'humanizar')
+        ? [{ tipo: 'risco' as const, texto: 'A foto já tinha gente ou mão: confira se o gesto novo não disputa com o que já estava lá.' }]
+        : []),
       ...preparo.riscos.map((texto) => ({ tipo: 'risco' as const, texto })),
+      // Com a caixa do assunto, tamanho e lugar são medidos de verdade; sem ela, vale a conferência por ladrilhos (abaixo).
+      ...avisosDasMedidas(receitas.map((r) => r.id), medidas).filter((a) => a.tipo !== 'assunto' || conferencias.includes('assunto-no-lugar')),
     ]
     const [assunto, cena] = await Promise.all([
-      conferencias.includes('assunto-no-lugar') ? deslocamentoDaFoto(quadro.buffer, fotoNova).catch(() => null) : null,
+      conferencias.includes('assunto-no-lugar') && !ondeFicou ? deslocamentoDaFoto(quadro.buffer, fotoNova).catch(() => null) : null,
       conferencias.includes('fidelidade-da-cena') ? conferirFidelidadeDaCena(fotoNova, quadro.buffer) : null,
     ])
     if (assunto?.deslocada) avisos.push({ tipo: 'assunto', texto: `O assunto da foto pode ter saído do lugar (${assunto.deslocados} de ${assunto.ladrilhos} pedaços da foto mudaram de posição): compare o antes e o depois.` })
     if (cena && !cena.pulada && !cena.ok) avisos.push({ tipo: 'cena', texto: `A conferência viu diferença no prato: ${cena.motivo ?? 'confira os ingredientes e a porção'}.` })
     if (cena?.pulada) avisos.push({ tipo: 'conferencia', texto: 'Não foi possível conferir se o prato continua o mesmo (a visão não respondeu): compare o antes e o depois.' })
-    return { foto: fotoNova, avisos, areaAlterada, tom, gerou, tokens, segundos: segundos() }
+    return { foto: fotoNova, avisos, areaAlterada, tom, medidas, gerou, tokens, segundos: segundos() }
   } catch (erro) {
     console.warn('[foto.bg] a opção falhou:', mensagemDe(erro))
     return { foto: null, avisos: [], descartada: `não foi gerada: ${mensagemDe(erro).replace(/\s+/g, ' ').slice(0, 240)}`, gerou, tokens, segundos: segundos() }
@@ -398,7 +436,7 @@ export async function processarMelhoriaDeFoto(args: ImprovementJobArgs & { foto:
     /** Passos 5 e 6: guarda a foto no Blob (trilha `foto-melhorada`) e monta a prévia sem tocar na página. */
     const gerarOpcao = async (numero: number): Promise<OpcaoDeFoto> => {
       const g = await gerarFotoDaOpcao(preparo, receitas, () => tempoParaGerar(prazoParaGerar))
-      const comum = { opcao: numero, avisos: g.avisos, areaAlterada: g.areaAlterada, diferencaDeTom: g.tom, custoUsd: g.gerou ? CUSTO_POR_OPCAO_USD : 0, tokens: g.tokens }
+      const comum = { opcao: numero, avisos: g.avisos, areaAlterada: g.areaAlterada, diferencaDeTom: g.tom, medidas: g.medidas, custoUsd: g.gerou ? CUSTO_POR_OPCAO_USD : 0, tokens: g.tokens }
       if (!g.foto) return { ...comum, fotoUrl: null, previaUrl: null, descartada: g.descartada ?? 'não foi gerada', segundos: g.segundos }
       const t0 = Date.now()
       try {

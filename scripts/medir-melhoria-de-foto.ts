@@ -25,6 +25,7 @@
  *   ... --confirmar --so=byrock                              # uma arte só
  *   ... --confirmar --receitas=humanizar,foto-profissional   # só algumas receitas
  *   ... --saida=/outro/lugar
+ *   ... --folha=/outro/lugar/folha-2.jpg                     # outra rodada sem apagar a folha anterior
  *
  * `casos.json`: [{ "nome": "byrock", "projectId": 7, "generationId": "cm..." }]
  * A arte precisa ter página própria com foto (compositor, modelo aplicado, ajuste).
@@ -48,6 +49,7 @@ function arg(nome: string): string | undefined {
 }
 
 const SAIDA = arg('saida') ?? path.join(os.homedir(), 'Documents', 'Clientes', '_medicoes', '2026-11-melhorar-foto')
+const FOLHA = arg('folha') ?? path.join(SAIDA, 'folha.jpg')
 
 /** O `DATABASE_URL` em uso é o do `.env`? Então é produção, e a medição não roda. */
 function recusarProducao(): void {
@@ -58,25 +60,43 @@ function recusarProducao(): void {
     console.error('✗ Este script roda contra o banco de DESENVOLVIMENTO: npx tsx scripts/dev-db.ts npx tsx scripts/medir-melhoria-de-foto.ts …')
     process.exit(1)
   }
-  if (path.resolve(SAIDA).startsWith(path.resolve(process.cwd()) + path.sep)) {
+  if ([SAIDA, FOLHA].some((caminho) => path.resolve(caminho).startsWith(path.resolve(process.cwd()) + path.sep))) {
     console.error('✗ A saída não pode ficar dentro do repositório (ele é público e a folha mostra arte de cliente). Use --saida= com uma pasta de fora.')
     process.exit(1)
   }
   console.log(`banco: ${emUso} (desenvolvimento) · saída: ${SAIDA}`)
 }
 
+/** O que foi medido, em duas linhas curtas para a folha: o tratamento e o assunto. */
+function notasDasMedidas(r: Record<string, unknown>): string[] {
+  const m = (r.medidas ?? {}) as { tom?: number; nitidezDoAssunto?: number | null; nitidezDoFundo?: number; escalaDoAssunto?: number; dx?: number; dy?: number; correlacao?: number }
+  const tratamento = [`tom ${m.tom ?? r.tom ?? '-'}`]
+  if (m.nitidezDoAssunto != null) tratamento.push(`nitidez assunto x${m.nitidezDoAssunto}`)
+  if (m.nitidezDoFundo != null) tratamento.push(`fundo x${m.nitidezDoFundo}`)
+  const assunto =
+    m.escalaDoAssunto != null
+      ? `assunto: ${Math.round(m.escalaDoAssunto * 100)}% do tamanho, andou ${Math.round(Math.abs(m.dx ?? 0) * 100)}% / ${Math.round(Math.abs(m.dy ?? 0) * 100)}% (corr ${m.correlacao})`
+      : 'assunto: sem caixa para medir'
+  return [tratamento.join(' · '), assunto]
+}
+
+/** Altura da legenda de cada célula: o título e até três linhas de medida. */
+const FAIXA = 104
+
 const escapar = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
 /** Uma célula da folha: a imagem com uma faixa de legenda em cima. */
-async function celula(imagem: Buffer | null, titulo: string, nota: string, largura: number, altura: number): Promise<Buffer> {
-  const faixa = 64
+async function celula(imagem: Buffer | null, titulo: string, notas: string | string[], largura: number, altura: number): Promise<Buffer> {
+  const linhas = (Array.isArray(notas) ? notas : [notas]).slice(0, 3)
+  const faixa = FAIXA
   const corpo = imagem
     ? await sharp(imagem).resize(largura, altura, { fit: 'contain', background: '#111111' }).toBuffer()
     : await sharp({ create: { width: largura, height: altura, channels: 3, background: '#2a1515' } }).png().toBuffer()
   const legenda = Buffer.from(
     `<svg width="${largura}" height="${faixa}" xmlns="http://www.w3.org/2000/svg"><rect width="100%" height="100%" fill="#111"/>` +
       `<text x="10" y="26" font-family="Helvetica, Arial" font-size="20" font-weight="700" fill="#fff">${escapar(titulo)}</text>` +
-      `<text x="10" y="52" font-family="Helvetica, Arial" font-size="15" fill="#f5c26b">${escapar(nota.slice(0, 70))}</text></svg>`,
+      linhas.map((nota, i) => `<text x="10" y="${50 + i * 20}" font-family="Helvetica, Arial" font-size="14" fill="#f5c26b">${escapar(nota.slice(0, Math.floor(largura / 7.2)))}</text>`).join('') +
+      '</svg>',
   )
   return sharp({ create: { width: largura, height: altura + faixa, channels: 3, background: '#111111' } })
     .composite([
@@ -171,6 +191,9 @@ async function main() {
                 desfecho: g.foto ? 'opção' : (g.descartada ?? 'sem foto'),
                 areaAlterada: g.areaAlterada ?? null,
                 tom: g.tom ?? null,
+                medidas: g.medidas ?? null,
+                assunto: preparo.assunto,
+                genteNaFoto: preparo.genteNaFoto,
                 avisos: g.avisos.map((a) => `${a.destaque ? '[DESTAQUE] ' : ''}[${a.tipo}] ${a.texto}`),
                 leitura: preparo.leitura,
                 planejador: preparo.infoDoPrompt.planejador,
@@ -213,8 +236,8 @@ async function main() {
         if (!r) continue
         const previa = existsSync(arquivo(`${id}-previa`)) && r.desfecho === 'opção' ? readFileSync(arquivo(`${id}-previa`)) : null
         const conferencias = ((r.avisos as string[] | undefined) ?? []).filter((a) => !a.startsWith('[risco]')).length
-        const nota = previa ? `mudou ${Math.round(Number(r.areaAlterada ?? 0) * 100)}% · tom ${r.tom ?? '-'} · ${conferencias} aviso(s) de conferência` : String(r.desfecho)
-        celulas.push(await celula(previa, RECEITAS_DE_FOTO[id].rotulo, nota, largura, ALTURA))
+        const notas = previa ? [`elemento novo em ${Math.round(Number(r.areaAlterada ?? 0) * 100)}% do quadro · ${conferencias} aviso(s) de conferência`, ...notasDasMedidas(r)] : [String(r.desfecho), ...notasDasMedidas(r)]
+        celulas.push(await celula(previa, RECEITAS_DE_FOTO[id].rotulo, notas, largura, ALTURA))
       }
       const metas = await Promise.all(celulas.map((c) => sharp(c).metadata()))
       let x = 0
@@ -223,7 +246,7 @@ async function main() {
         x += (metas[i].width ?? largura) + 8
         return item
       })
-      linhasDaFolha.push(await sharp({ create: { width: x, height: ALTURA + 64, channels: 3, background: '#000000' } }).composite(composicao).jpeg({ quality: 88 }).toBuffer())
+      linhasDaFolha.push(await sharp({ create: { width: x, height: ALTURA + FAIXA, channels: 3, background: '#000000' } }).composite(composicao).jpeg({ quality: 88 }).toBuffer())
     }
 
     if (linhasDaFolha.length > 0) {
@@ -235,15 +258,19 @@ async function main() {
         y += (metas[i].height ?? 0) + 12
         return item
       })
-      await sharp({ create: { width: W, height: y, channels: 3, background: '#000000' } }).composite(composicao).jpeg({ quality: 86 }).toFile(path.join(SAIDA, 'folha.jpg'))
+      await sharp({ create: { width: W, height: y, channels: 3, background: '#000000' } }).composite(composicao).jpeg({ quality: 86 }).toFile(FOLHA)
     }
-    const tabela = ['| arte | receita | desfecho | mudou | tom | avisos de conferência | s |', '|---|---|---|---|---|---|---|']
+    const tabela = ['| arte | receita | desfecho | elemento novo | tom | nitidez do assunto | nitidez do fundo | tamanho do assunto | andou (x / y) | avisos de conferência | s |', '|---|---|---|---|---|---|---|---|---|---|---|']
     for (const r of resultados) {
       const avisos = ((r.avisos as string[] | undefined) ?? []).filter((a) => !a.startsWith('[risco]'))
-      tabela.push(`| ${r.caso} | ${r.receita} | ${r.desfecho} | ${r.areaAlterada != null ? `${Math.round(Number(r.areaAlterada) * 100)}%` : '-'} | ${r.tom ?? '-'} | ${avisos.join(' / ') || '-'} | ${r.segundosNoTotal ?? '-'} |`)
+      const m = (r.medidas ?? {}) as { nitidezDoAssunto?: number | null; nitidezDoFundo?: number; escalaDoAssunto?: number; dx?: number; dy?: number }
+      const pct = (n: number | undefined) => (n == null ? '-' : `${Math.round(n * 100)}%`)
+      tabela.push(
+        `| ${r.caso} | ${r.receita} | ${r.desfecho} | ${pct(r.areaAlterada as number | undefined)} | ${r.tom ?? '-'} | ${m.nitidezDoAssunto ?? '-'} | ${m.nitidezDoFundo ?? '-'} | ${pct(m.escalaDoAssunto)} | ${m.dx == null ? '-' : `${pct(m.dx)} / ${pct(m.dy)}`} | ${avisos.join(' / ') || '-'} | ${r.segundosNoTotal ?? '-'} |`,
+      )
     }
     writeFileSync(path.join(SAIDA, 'tabela.md'), `${tabela.join('\n')}\n`)
-    console.log(`\nfolha: ${path.join(SAIDA, 'folha.jpg')}\n${tabela.join('\n')}`)
+    console.log(`\nfolha: ${FOLHA}\n${tabela.join('\n')}`)
   } finally {
     await db.$disconnect()
   }

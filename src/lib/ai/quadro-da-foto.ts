@@ -248,3 +248,115 @@ export async function diferencaDeTom(origem: Buffer, nova: Buffer): Promise<numb
   return soma / a.length
 }
 
+
+const dentroDe = (c: CaixaEmFracoes, W: number, H: number) => {
+  const x0 = Math.max(0, Math.min(W - 1, Math.round(c.x * W)))
+  const y0 = Math.max(0, Math.min(H - 1, Math.round(c.y * H)))
+  return { x0, y0, x1: Math.max(x0 + 1, Math.min(W, Math.round((c.x + c.largura) * W))), y1: Math.max(y0 + 1, Math.min(H, Math.round((c.y + c.altura) * H))) }
+}
+
+/**
+ * O que a receita Foto profissional PROMETE, medido: o assunto mais nítido e
+ * o fundo mais desfocado. Nitidez = média do módulo do laplaciano, com as duas
+ * fotos na mesma largura. Devolve a razão nova/origem dentro e fora da caixa
+ * do assunto: `dentro` acima de 1 é assunto mais nítido; `fora` abaixo de 1 é
+ * fundo mais desfocado. Sem caixa, `dentro` é null e `fora` é a foto inteira.
+ */
+export async function nitidezDentroEFora(origem: Buffer, nova: Buffer, assunto: CaixaEmFracoes | null): Promise<{ dentro: number | null; fora: number }> {
+  const W = 512
+  const meta = await sharp(origem).metadata()
+  const H = Math.max(8, Math.round((W * (meta.height ?? 1)) / (meta.width ?? 1)))
+  const cinza = (b: Buffer) => sharp(b).resize(W, H, { fit: 'fill' }).grayscale().raw().toBuffer()
+  const [a, c] = await Promise.all([cinza(origem), cinza(nova)])
+  const caixa = assunto ? dentroDe(assunto, W, H) : null
+  const somas = { aDentro: 0, cDentro: 0, nDentro: 0, aFora: 0, cFora: 0, nFora: 0 }
+  const lap = (g: Buffer, i: number) => Math.abs(4 * g[i] - g[i - 1] - g[i + 1] - g[i - W] - g[i + W])
+  for (let y = 1; y < H - 1; y++) {
+    for (let x = 1; x < W - 1; x++) {
+      const i = y * W + x
+      if (caixa && x >= caixa.x0 && x < caixa.x1 && y >= caixa.y0 && y < caixa.y1) {
+        somas.aDentro += lap(a, i)
+        somas.cDentro += lap(c, i)
+        somas.nDentro++
+      } else {
+        somas.aFora += lap(a, i)
+        somas.cFora += lap(c, i)
+        somas.nFora++
+      }
+    }
+  }
+  const razao = (n: number, d: number) => (d > 0 ? n / d : 1)
+  return { dentro: caixa && somas.nDentro > 0 ? razao(somas.cDentro, somas.aDentro) : null, fora: somas.nFora > 0 ? razao(somas.cFora, somas.aFora) : 1 }
+}
+
+/**
+ * Onde o assunto foi parar na foto nova, e de que tamanho: o recorte do
+ * assunto na origem é procurado na foto nova em várias escalas (correlação
+ * normalizada, em 128 px de largura). É o que deixa avisar quando "Abrir
+ * espaço para o texto" encolheu ou moveu o prato em vez de acalmar o fundo.
+ *
+ * `escala` 0,8 = o assunto ficou com 80% do tamanho; `dx`/`dy` = quanto o
+ * centro dele andou, em fração do quadro; `correlacao` baixa (abaixo de ~0,5)
+ * quer dizer que o assunto não foi achado como era, e aí escala e posição não
+ * valem.
+ */
+export async function assuntoNaFotoNova(
+  origem: Buffer,
+  nova: Buffer,
+  assunto: CaixaEmFracoes,
+): Promise<{ escala: number; dx: number; dy: number; correlacao: number }> {
+  const W = 128
+  const meta = await sharp(origem).metadata()
+  const H = Math.max(8, Math.round((W * (meta.height ?? 1)) / (meta.width ?? 1)))
+  const [a, b] = await Promise.all([origem, nova].map((buf) => sharp(buf).resize(W, H, { fit: 'fill' }).grayscale().raw().toBuffer()))
+  const c = dentroDe(assunto, W, H)
+  const pw = c.x1 - c.x0
+  const ph = c.y1 - c.y0
+  const recorte = Buffer.alloc(pw * ph)
+  for (let y = 0; y < ph; y++) a.copy(recorte, y * pw, (c.y0 + y) * W + c.x0, (c.y0 + y) * W + c.x1)
+
+  let melhor = { escala: 1, dx: 0, dy: 0, correlacao: -1 }
+  for (let s = 0.5; s <= 1.3001; s += 0.05) {
+    const w = Math.round(pw * s)
+    const h = Math.round(ph * s)
+    if (w < 6 || h < 6 || w > W || h > H) continue
+    // `toColourspace('b-w')`: sem ele o sharp devolve o recorte cinza em 3 canais e o molde sai embaralhado.
+    const molde = await sharp(recorte, { raw: { width: pw, height: ph, channels: 1 } }).resize(w, h, { fit: 'fill' }).toColourspace('b-w').raw().toBuffer()
+    let mediaM = 0
+    for (let i = 0; i < molde.length; i++) mediaM += molde[i]
+    mediaM /= molde.length
+    let varM = 0
+    for (let i = 0; i < molde.length; i++) varM += (molde[i] - mediaM) ** 2
+    if (varM === 0) continue
+    const casar = (x0: number, y0: number) => {
+      let soma = 0
+      let somaB = 0
+      let somaB2 = 0
+      for (let y = 0; y < h; y++) {
+        const linha = (y0 + y) * W + x0
+        for (let x = 0; x < w; x++) {
+          const v = b[linha + x]
+          soma += (molde[y * w + x] - mediaM) * v
+          somaB += v
+          somaB2 += v * v
+        }
+      }
+      const varB = somaB2 - (somaB * somaB) / (w * h)
+      return varB > 0 ? soma / Math.sqrt(varM * varB) : -1
+    }
+    // Varredura de 2 em 2 e refino de 1 em 1 em volta do melhor ponto.
+    let local = { x: 0, y: 0, r: -1 }
+    for (let y0 = 0; y0 + h <= H; y0 += 2) for (let x0 = 0; x0 + w <= W; x0 += 2) {
+      const r = casar(x0, y0)
+      if (r > local.r) local = { x: x0, y: y0, r }
+    }
+    for (let y0 = Math.max(0, local.y - 1); y0 <= Math.min(H - h, local.y + 1); y0++) for (let x0 = Math.max(0, local.x - 1); x0 <= Math.min(W - w, local.x + 1); x0++) {
+      const r = casar(x0, y0)
+      if (r > local.r) local = { x: x0, y: y0, r }
+    }
+    if (local.r > melhor.correlacao) {
+      melhor = { escala: Number(s.toFixed(2)), dx: (local.x + w / 2 - (c.x0 + pw / 2)) / W, dy: (local.y + h / 2 - (c.y0 + ph / 2)) / H, correlacao: local.r }
+    }
+  }
+  return melhor
+}

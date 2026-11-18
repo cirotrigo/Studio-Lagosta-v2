@@ -57,6 +57,10 @@ export interface PlanoDeFoto {
   riscos: string[]
   /** Há rosto de pessoa em foco na foto de origem. */
   rostoEmFoco: boolean
+  /** Já há pessoa ou mão na foto de origem (o gesto do Humanizar pode disputar com ela). */
+  genteNaFoto: boolean
+  /** Onde o assunto principal está no quadro, pelo olho do diretor. Null quando ele não soube dizer. */
+  assunto: CaixaEmFracoes | null
   modelo: string
   ms: number
   tentativas: number
@@ -67,7 +71,23 @@ const saidaSchema = z.object({
   prompt: z.string().describe('O prompt de edição para o Nano Banana, em inglês, na estrutura pedida.'),
   riscos: z.array(z.string()).max(6).describe('Em português, curto: o que pode sair errado NESTA foto (mão perto de copo, rótulo legível, toalha estampada, rosto ao fundo). Lista vazia se nada chama atenção.'),
   rostoEmFoco: z.boolean().describe('true se a foto de origem mostra o rosto de uma pessoa em foco (reconhecível).'),
+  genteNaFoto: z.boolean().describe('true se a foto de origem JÁ mostra alguma pessoa ou parte de pessoa (mão, braço, corpo), em foco ou não.'),
+  assunto: z
+    .object({ x: z.number(), y: z.number(), largura: z.number(), altura: z.number() })
+    .nullable()
+    .describe('A caixa do ASSUNTO PRINCIPAL (o prato, a bebida, o produto que a foto vende) em frações do quadro, de 0 a 1: x e y do canto superior esquerdo, largura e altura. Justa no assunto, sem a mesa nem o fundo. null se a foto não tem um assunto só.'),
 })
+
+/** A caixa que o diretor devolveu, conferida: frações de 0 a 1, com tamanho. Fora disso, null. */
+// As chaves chegam opcionais (`strict: false` faz o `z.infer` marcar todas assim): a garantia é esta conferência.
+export function caixaDoDiretor(c: { x?: number; y?: number; largura?: number; altura?: number } | null | undefined): CaixaEmFracoes | null {
+  if (!c || ![c.x, c.y, c.largura, c.altura].every((n) => typeof n === 'number' && Number.isFinite(n))) return null
+  const x = Math.min(Math.max(c.x as number, 0), 1)
+  const y = Math.min(Math.max(c.y as number, 0), 1)
+  const largura = Math.min(c.largura as number, 1 - x)
+  const altura = Math.min(c.altura as number, 1 - y)
+  return largura >= 0.05 && altura >= 0.05 ? { x, y, largura, altura } : null
+}
 
 const SYSTEM = `Você é DIRETOR DE FOTOGRAFIA de gastronomia numa agência que cuida do Instagram de restaurantes, e escreve prompts de EDIÇÃO de imagem para o modelo Nano Banana (Gemini), que recebe UMA fotografia e a devolve editada.
 
@@ -76,7 +96,7 @@ Você recebe a fotografia COMO IMAGEM (e, quando houver, a arte pronta com o tex
 O texto, a logo e os elementos da arte NÃO são seu trabalho: eles são renderizados depois, por código, por cima da foto que o modelo devolver. Na foto limpa você nunca pede texto, logo, selo nem gráfico.
 
 COMO O NANO BANANA LÊ UM PROMPT DE EDIÇÃO (guia do Google):
-- O VERBO DA OPERAÇÃO vem primeiro: "Add…", "Retouch…", "Recompose…", "Extend…".
+- O VERBO DA OPERAÇÃO vem primeiro: "Add…", "Retouch…", "Calm…", "Soften…".
 - Depois, O QUE MUDA, em frases concretas, localizadas na imagem ("on the right side of the plate", "the blurred wall behind the glass").
 - Depois, a lista explícita do que FICA EXATAMENTE IGUAL ("Keep … exactly the same").
 - Depois, CÂMERA, LENTE, ABERTURA E LUZ, como um fotógrafo descreveria: corpo full-frame, distância focal, f/, direção e qualidade da luz, temperatura de cor em Kelvin quando ajudar.
@@ -97,9 +117,14 @@ REGRAS DA CASA (valem em qualquer receita):
 - Rosto de pessoa real que já está na foto não é refeito: se houver, o prompt manda manter cada pessoa exatamente como está.
 - SÓ AS RECEITAS ESCOLHIDAS: não aproveite para "melhorar" o que ninguém pediu. Sem a receita Foto profissional, a luz, a cor, o contraste, o desfoque e a limpeza da cena ficam como estão (medido em 17/11/2026: com só Humanizar pedido, o prompt mandou esquentar a luz, escurecer o fundo e limpar a mesa, puxado pela direção de foto da marca). A direção de foto da marca diz COMO fazer o que a receita pede (como iluminar a mão que entra, que clima o tratamento busca); ela não acrescenta tarefa.
 
+O QUE CADA RECEITA PEDE (medido na bancada de 17 e 18/11/2026):
+- FOTO PROFISSIONAL: a diferença tem de APARECER ao lado do original. Pedido tímido ("lightly", "subtle", "slightly", "gently improve") o gerador cumpre devolvendo a mesma foto: foi o que aconteceu em 3 de 4 fotos. Diga, com o nome das coisas desta foto, as três mudanças que têm de ser vistas: o branco neutro (qual branco: o prato, o guardanapo, o teto), o fundo visivelmente mais desfocado (qual fundo: o salão, a parede, o letreiro) e o assunto mais nítido e meio ponto mais claro. Câmera, lente e abertura concretas (85mm f/2 no padrão). Continua proibido mudar o conteúdo e o enquadramento, e escurecer qualquer área.
+- ABRIR ESPAÇO PARA O TEXTO: o assunto NÃO muda de tamanho nem de lugar. Na bancada o gerador "recompôs" a foto encolhendo o prato para 75% e subindo as casquinhas, e isso estraga a peça: a arte já foi diagramada em volta do assunto. O espaço se abre SÓ no fundo, dentro da área do texto: tirar ou amaciar o detalhe que disputa com o título (letreiro, luminária, reflexo, padrão, objeto ao fundo) e deixar esse pedaço do fundo cair num desfoque mais fundo e uniforme, com as cores e o brilho dele. Diga no prompt qual detalhe sai ou amacia, pelo nome. Estender a cena para fora só quando a foto tem margem além do assunto. Nunca "recompose", "reframe", "zoom out", "move" ou "scale". Nunca acrescentar pessoa, mão ou objeto (isso é da receita Humanizar). Se a área do texto cai em cima do próprio assunto, diga na leitura que há pouco fundo para acalmar ali e mexa só no que o cerca.
+- HUMANIZAR quando a foto JÁ TEM gente ou mão: olhe antes. Uma segunda mão fazendo o mesmo trabalho da que já está lá (medido: uma segunda mão segurando a casquinha que já estava numa mão) disputa com ela e parece montagem. Ou proponha um gesto que não dispute com o existente (outra pessoa da mesa, do outro lado, fazendo outra coisa), ou mantenha a cena e diga na leitura, com todas as letras, que a foto já está humanizada e a receita acrescenta pouco.
+
 Se a imagem recebida for a ARTE PRONTA (com texto e logo por cima), você será avisado: aí o prompt manda manter todo o texto, a logo e os elementos gráficos exatamente como estão, no mesmo lugar, e mexe só na fotografia por baixo.
 
-Responda em JSON: leitura (português), prompt (inglês), riscos (português) e rostoEmFoco.`
+Responda em JSON: leitura (português), prompt (inglês), riscos (português), rostoEmFoco, genteNaFoto e assunto (a caixa do assunto principal).`
 
 const pct = (n: number) => `${Math.round(n * 100)}%`
 const caixaLegivel = (c: CaixaEmFracoes) => `começa a ${pct(c.x)} da esquerda e ${pct(c.y)} do topo, com ${pct(c.largura)} da largura e ${pct(c.altura)} da altura do quadro`
@@ -192,6 +217,8 @@ export async function planejarMelhoriaDeFoto(args: PlanejarMelhoriaDeFotoArgs): 
           prompt,
           riscos: object.riscos.map((r) => r.trim()).filter(Boolean),
           rostoEmFoco: object.rostoEmFoco,
+          genteNaFoto: object.genteNaFoto,
+          assunto: caixaDoDiretor(object.assunto),
           modelo: PLANNER_MODEL,
           ms: Date.now() - inicio,
           tentativas: rodada,
