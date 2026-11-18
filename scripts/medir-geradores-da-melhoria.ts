@@ -4,10 +4,13 @@
  * no Nano Banana, cada uma com a recomposição do seu caminho em produção
  * (`preservar-foto.ts` no OpenAI, `recompor-por-zona.ts` no Gemini).
  *
- * Por caso e por gerador grava: quanto da arte o gerador mexeu, quanto a FOTO
- * diferia da origem fora das zonas (na peça como veio e na peça final), a
- * área que ficou alterada, o desfecho (pronta, reprovada, "não entrou"), a
- * conferência de texto, o tempo e os tokens. E monta uma folha de contato:
+ * Por caso e por gerador grava: quanto da arte o gerador mexeu (`mexeu`: a
+ * área das zonas na peça como veio; perto de 100% é a imagem inteira
+ * redesenhada), quanto a FOTO diferia da origem fora das zonas (na peça como
+ * veio e na peça final; com `mexeu` perto de 100% a primeira mede uma sobra
+ * pequena do quadro e não diz nada), a mudança VISÍVEL que ficou, o desfecho
+ * (pronta, reprovada, "não entrou"), a conferência de texto, o tempo e os
+ * tokens. E monta uma folha de contato:
  * origem | OpenAI | Gemini.
  *
  * Espelha o essencial do runner (`creative-improvement-runner.ts`) sem fila,
@@ -102,7 +105,7 @@ async function main() {
   const { qualidadePadraoPara } = await import('../src/lib/ai/qualidade-arte')
   const { inferFormatFromDimensions, OPENAI_INPUT_SIZE, FINAL_OUTPUT_SIZE } = await import('../src/lib/ai/creative-improvement-format')
   const { deslocamentoDaFoto, preservarFotoDaOrigem, TETO_DA_MASCARA } = await import('../src/lib/ai/preservar-foto')
-  const { mudancaNaoEntrou, recomporPorZona } = await import('../src/lib/ai/recompor-por-zona')
+  const { areaVisivelmenteAlterada, mudancaNaoEntrou, PISO_DE_MUDANCA, recomporPorZona } = await import('../src/lib/ai/recompor-por-zona')
 
   mkdirSync(SAIDA, { recursive: true })
   // Rodada parcial (`--so`, `--geradores`) não apaga o que já foi medido: geração paga não se repete.
@@ -236,6 +239,11 @@ async function main() {
           // A recomposição e as guardas do caminho de produção de cada gerador.
           let final: Buffer | null = null
           let desfecho = 'pronta'
+          const visivel = async (peca: Buffer) => {
+            const area = await areaVisivelmenteAlterada(origem, peca, finalSize)
+            linha.areaVisivel = Number(area.toFixed(3))
+            return area
+          }
           const deslocamento = async () => {
             const d = await deslocamentoDaFoto(origem, bruta)
             linha.fotoDeslocada = d.deslocada
@@ -248,7 +256,7 @@ async function main() {
               const r = await recomporPorZona(origem, bruta, { tamanho: finalSize, logo })
               linha.logo = r.logo
               if (r.fracaoDasZonas > TETO_DA_MASCARA) desfecho = `reprovada: a IA mexeu em ${Math.round(r.fracaoDasZonas * 100)}% da arte`
-              else if (mudancaNaoEntrou(r.fracaoDasZonas)) desfecho = 'não entrou: o gerador devolveu a arte como estava'
+              else if (mudancaNaoEntrou(await visivel(r.buffer))) desfecho = 'não entrou: o gerador devolveu a arte praticamente como estava'
               else final = r.buffer
             }
           } else if (caso.modo === 'redesenhar') {
@@ -260,15 +268,14 @@ async function main() {
             const r = await preservarFotoDaOrigem(origem, bruta, { coresDaMarca, tamanho: finalSize })
             linha.fotoRecusada = Number(r.fracaoRecusada.toFixed(3))
             if (r.fracaoDaMascara > TETO_DA_MASCARA) desfecho = `reprovada: a IA mexeu em ${Math.round(r.fracaoDaMascara * 100)}% da arte, e só o texto podia mudar`
-            else if (mudancaNaoEntrou(r.fracaoDaMascara))
-              desfecho = !mudancaNaoEntrou(r.fracaoRecusada) ? `não entrou: a recomposição devolveu ${Math.round(r.fracaoRecusada * 100)}% à origem (a mudança não é texto)` : 'não entrou: o gerador devolveu a arte como estava'
+            else if (mudancaNaoEntrou(await visivel(r.buffer)))
+              desfecho = r.fracaoRecusada >= PISO_DE_MUDANCA ? `não entrou: a recomposição devolveu ${Math.round(r.fracaoRecusada * 100)}% à origem (a mudança não é texto)` : 'não entrou: o gerador devolveu a arte praticamente como estava'
             else final = r.buffer
           }
 
           if (final) {
             writeFileSync(path.join(pasta, `${gerador}-final.jpg`), await jpg(final))
             const mFinal = await medir(final)
-            linha.areaAlteradaNaFinal = Number(mFinal.area.toFixed(3))
             linha.fotoForaDasZonasFinal = Number(mFinal.fotoFora.toFixed(1))
             if (textos.length > 0) {
               const check = await verifyImageTexts(final, textos, [], assets.brand?.projectName ?? null, transcricaoDaOrigem.length > 0 ? transcricaoDaOrigem : origem)
@@ -281,26 +288,27 @@ async function main() {
             }
           }
           linha.desfecho = desfecho
-          quadros.push({
-            titulo: `${gerador} · ${linha.modelo}`,
-            legenda: `${desfecho.slice(0, 60)} · ${linha.segundos}s`,
-            imagem: final ?? bruta,
-          })
+          // Reprovada ou "não entrou": a folha mostra a peça como o gerador devolveu.
+          return { linha, quadro: { titulo: `${gerador} · ${linha.modelo}`, legenda: `${desfecho.slice(0, 60)} · ${linha.segundos}s`, imagem: final ?? bruta } }
         } catch (erro) {
           linha.segundos ??= Math.round((Date.now() - t0) / 1000)
           linha.desfecho = `erro: ${(erro as Error).message.slice(0, 200)}`
         }
-        console.log(`  ${gerador.padEnd(7)} ${String(linha.segundos).padStart(4)}s  ${linha.desfecho}  | mexeu ${linha.areaMexidaPeloGerador ?? '-'} foto bruta ${linha.fotoForaDasZonasBruta ?? '-'} final ${linha.fotoForaDasZonasFinal ?? '-'} texto ${linha.texto ?? '-'}`)
-        return linha
+        return { linha, quadro: null }
       }),
     )
-    resultados.push(...porGerador)
+    // Na ordem pedida, não na de chegada.
+    for (const { linha, quadro } of porGerador) {
+      console.log(`  ${String(linha.gerador).padEnd(7)} ${String(linha.segundos).padStart(4)}s  ${linha.desfecho}  | mexeu ${linha.areaMexidaPeloGerador ?? '-'} foto bruta ${linha.fotoForaDasZonasBruta ?? '-'} final ${linha.fotoForaDasZonasFinal ?? '-'} texto ${linha.texto ?? '-'}`)
+      resultados.push(linha)
+      if (quadro) quadros.push(quadro)
+    }
     writeFileSync(arquivoDeResultados, JSON.stringify(resultados, null, 2))
 
     // A linha da folha: origem | um quadro por gerador, com a legenda embaixo.
     const alt = 640
     const larg = Math.round((alt * (meta.width ?? 1080)) / (meta.height ?? 1920))
-    const celula = 400
+    const celula = Math.max(400, larg) // a legenda precisa de 400; o feed (4:5) é mais largo que isso
     const itens = await Promise.all(
       quadros.map(async (q, i) => {
         const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;')
@@ -329,16 +337,17 @@ async function main() {
       y += metas[i].height ?? 0
       return item
     })
-    writeFileSync(path.join(SAIDA, 'folha.jpg'), await sharp({ create: { width: metas[0].width ?? 0, height: y, channels: 3, background: '#111111' } }).composite(composicao).jpeg({ quality: 82 }).toBuffer())
+    const largura = Math.max(...metas.map((m) => m.width ?? 0))
+    writeFileSync(path.join(SAIDA, 'folha.jpg'), await sharp({ create: { width: largura, height: y, channels: 3, background: '#111111' } }).composite(composicao).jpeg({ quality: 82 }).toBuffer())
   }
 
-  const cab = '| caso | modo | gerador | desfecho | mexeu | foto bruta | foto final | área final | texto | s | tokens (ent/saída) |\n|---|---|---|---|---|---|---|---|---|---|---|'
+  const cab = '| caso | modo | gerador | desfecho | mexeu | foto bruta | foto final | mudança visível | texto | s | tokens (ent/saída) |\n|---|---|---|---|---|---|---|---|---|---|---|'
   const pct = (v: unknown) => (typeof v === 'number' ? `${Math.round(v * 100)}%` : '–')
   const num = (v: unknown) => (typeof v === 'number' ? String(v).replace('.', ',') : '–')
   const ordem = todos.map((c) => c.nome)
   const tabela = [...resultados]
     .sort((a, b) => ordem.indexOf(String(a.caso)) - ordem.indexOf(String(b.caso)) || String(b.gerador).localeCompare(String(a.gerador)))
-    .map((r) => `| ${r.caso} | ${r.modo} | ${r.gerador}${r.tier ? ` (${r.tier})` : ''} | ${r.desfecho} | ${pct(r.areaMexidaPeloGerador)} | ${num(r.fotoForaDasZonasBruta)} | ${num(r.fotoForaDasZonasFinal)} | ${pct(r.areaAlteradaNaFinal)} | ${r.texto ?? '–'} | ${r.segundos} | ${r.tokensDeEntrada ?? '–'}/${r.tokensDeSaida ?? '–'} |`)
+    .map((r) => `| ${r.caso} | ${r.modo} | ${r.gerador}${r.tier ? ` (${r.tier})` : ''} | ${r.desfecho} | ${pct(r.areaMexidaPeloGerador)} | ${num(r.fotoForaDasZonasBruta)} | ${num(r.fotoForaDasZonasFinal)} | ${typeof r.areaVisivel === 'number' ? `${(r.areaVisivel * 100).toFixed(1).replace('.', ',')}%` : '–'} | ${r.texto ?? '–'} | ${r.segundos} | ${r.tokensDeEntrada ?? '–'}/${r.tokensDeSaida ?? '–'} |`)
     .join('\n')
   writeFileSync(path.join(SAIDA, 'tabela.md'), `${cab}\n${tabela}\n`)
   console.log(`\n${cab}\n${tabela}\n\nArquivos em ${SAIDA}/`)

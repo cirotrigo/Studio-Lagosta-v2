@@ -8,7 +8,7 @@ import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
 
 import { geradorDaMelhoria } from '../gerador-da-melhoria'
-import { mudancaNaoEntrou, PISO_DE_MUDANCA, recomporPorZona } from '../recompor-por-zona'
+import { areaVisivelmenteAlterada, mudancaNaoEntrou, PISO_DE_MUDANCA, recomporPorZona } from '../recompor-por-zona'
 
 const W = 432
 const H = 768
@@ -140,6 +140,23 @@ describe('recomporPorZona', () => {
     expect(r.fracaoDasZonas).toBeLessThan(PISO_DE_MUDANCA)
     expect(mudancaNaoEntrou(r.fracaoDasZonas)).toBe(true)
     expect(difere(await cru(r.buffer), origemRaw, 0, 0, W, H)).toBe(0)
+  })
+
+  it('texto redesenhado quase no mesmo lugar vira zona, mas não é mudança visível', async () => {
+    const origemRaw = foto(1)
+    escrever(origemRaw, 60, 40, BRANCO)
+    const geradaRaw = foto(2)
+    escrever(geradaRaw, 60, 44, BRANCO) // o gerador redesenhou o texto 4 px abaixo
+    const origem = await png(origemRaw)
+
+    const r = await recomporPorZona(origem, await png(geradaRaw))
+    expect(r.zonas).toBeGreaterThan(0)
+    expect(mudancaNaoEntrou(await areaVisivelmenteAlterada(origem, r.buffer))).toBe(true)
+
+    // Já o elemento novo é mudança visível.
+    ondaSonora(geradaRaw, 60, 150, ROXO)
+    const comOnda = await recomporPorZona(origem, await png(geradaRaw))
+    expect(mudancaNaoEntrou(await areaVisivelmenteAlterada(origem, comOnda.buffer))).toBe(false)
   })
 })
 

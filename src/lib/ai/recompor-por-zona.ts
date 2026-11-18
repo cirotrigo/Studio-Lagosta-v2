@@ -42,11 +42,19 @@ const DENSIDADE_FRACA = 0.25
 const AREA_MINIMA = 0.0004
 /** Folga em volta da zona, em fração da altura. */
 const FOLGA = 0.012
+/** Raio do fechamento, em fração da altura: zonas a menos de duas vezes isto viram uma (uma linha de texto entre duas). */
+const FECHAMENTO = 0.025
 /**
- * Abaixo disto (fração do quadro que veio da peça gerada) a mudança pedida não
- * entrou: a peça é a origem. A menor zona aceita, com a folga, passa de 0,3%.
+ * A MUDANÇA É VISÍVEL? Texto que o gerador redesenhou no mesmo lugar difere da
+ * origem nas bordas das letras e vira zona (15% do quadro no Bacana), mas quem
+ * olha vê a mesma peça. Com a vizinhança de comparação mais larga essas zonas
+ * somem e a mudança de verdade fica. Medido em 13 peças (17/11/2026), a 6 px:
+ * as duas que voltaram iguais deram 0,0% e 0,4%; a menor mudança real, um
+ * filete fino, 3,9%.
  */
-export const PISO_DE_MUDANCA = 0.002
+const TOLERANCIA_VISIVEL = 6
+/** Abaixo disto (fração do quadro visivelmente alterada) a mudança pedida não entrou. */
+export const PISO_DE_MUDANCA = 0.005
 
 /** Correlação mínima para dizer "aqui está a logo oficial" (medido em 11/11/2026: logo 0,88 a 0,97; texto até 0,44). */
 export const CORRELACAO_DA_LOGO = 0.65
@@ -76,6 +84,11 @@ export interface RecomposicaoPorZona {
 /** A mudança pedida não entrou: a peça recomposta é, na prática, a origem. */
 export function mudancaNaoEntrou(fracaoAlterada: number): boolean {
   return fracaoAlterada < PISO_DE_MUDANCA
+}
+
+/** Fração do quadro em que a peça difere VISIVELMENTE da origem. É o que `mudancaNaoEntrou` julga. */
+export async function areaVisivelmenteAlterada(origem: Buffer, peca: Buffer, tamanho?: { width: number; height: number }): Promise<number> {
+  return (await recomporPorZona(origem, peca, { tamanho, tolerancia: TOLERANCIA_VISIVEL })).fracaoDasZonas
 }
 
 const cru = (buffer: Buffer, W: number, H: number, fit: 'fill' | 'cover') =>
@@ -114,7 +127,7 @@ const dist = (a: Buffer, i: number, b: Buffer, j: number) => (Math.abs(a[i] - b[
  * pixel, ou letra amaciada pela reamostragem (2K para 1080), cai dentro da
  * faixa e não conta; barra nova (ou apagada) fica fora dela e conta.
  */
-function mudanca(a: Buffer, b: Buffer, W: number, H: number, x: number, y: number): number {
+function mudanca(a: Buffer, b: Buffer, W: number, H: number, x: number, y: number, tolerancia: number): number {
   const i = (y * W + x) * 3
   const direto = dist(a, i, b, i)
   if (direto <= LIMIAR_FRACO) return direto
@@ -123,8 +136,8 @@ function mudanca(a: Buffer, b: Buffer, W: number, H: number, x: number, y: numbe
     for (let c = 0; c < 3; c++) {
       let min = 255
       let max = 0
-      for (let yy = Math.max(0, y - TOLERANCIA); yy <= Math.min(H - 1, y + TOLERANCIA); yy++)
-        for (let xx = Math.max(0, x - TOLERANCIA); xx <= Math.min(W - 1, x + TOLERANCIA); xx++) {
+      for (let yy = Math.max(0, y - tolerancia); yy <= Math.min(H - 1, y + tolerancia); yy++)
+        for (let xx = Math.max(0, x - tolerancia); xx <= Math.min(W - 1, x + tolerancia); xx++) {
           const v = vizinhanca[(yy * W + xx) * 3 + c]
           if (v < min) min = v
           if (v > max) max = v
@@ -318,6 +331,8 @@ export async function recomporPorZona(
     tamanho?: { width: number; height: number }
     /** O arquivo oficial da logo: onde ele casar com a origem, a origem vence. */
     logo?: Buffer | null
+    /** Raio da vizinhança de comparação, em pixels. Ausente, `TOLERANCIA`. */
+    tolerancia?: number
   } = {},
 ): Promise<RecomposicaoPorZona> {
   const meta = await sharp(origem).rotate().metadata()
@@ -348,7 +363,7 @@ export async function recomporPorZona(
   const peso = 1 / (CELULA * CELULA)
   for (let y = 0; y < h * CELULA; y++) {
     for (let x = 0; x < w * CELULA; x++) {
-      const d = mudanca(a, b, W, H, x, y)
+      const d = mudanca(a, b, W, H, x, y, opcoes.tolerancia ?? TOLERANCIA)
       if (d <= LIMIAR_FRACO) continue
       const c = Math.floor(y / CELULA) * w + Math.floor(x / CELULA)
       fraca[c] += peso
@@ -503,7 +518,19 @@ export async function recomporPorZona(
 
   // Folga em volta da zona (dilatação = média local > 0) e borda suave.
   const folga = Math.max(1, Math.round(h * FOLGA))
-  const dilatada = mediaLocal(mascara, w, h, folga)
+  /**
+   * A EMENDA NÃO PASSA POR CIMA DE TEXTO. O gerador redesenha o bloco inteiro,
+   * e a linha que ficou quase igual cai dentro da tolerância: entre duas zonas
+   * (o título em cima, o convite embaixo) sobrava uma faixa estreita da
+   * origem, e na borda suave as duas versões da linha se misturavam ("DAS 16H
+   * ÀS 20H" com fantasma no By Rock). Um fechamento (dilata e erode) une as
+   * zonas separadas por menos de duas vezes o raio; a foto entre zonas
+   * distantes continua sendo a da origem.
+   */
+  const raioDoFechamento = Math.max(1, Math.round(h * FECHAMENTO))
+  const binaria = (src: Float32Array, cheia: boolean) => src.map((v) => ((cheia ? v > 0.999 : v > 0) ? 1 : 0))
+  const fechada = binaria(mediaLocal(binaria(mediaLocal(mascara, w, h, raioDoFechamento), false), w, h, raioDoFechamento), true)
+  const dilatada = mediaLocal(fechada, w, h, folga)
   // A folga da zona vizinha traria um pedaço da logo redesenhada.
   if (daLogo) for (let c = 0; c < w * h; c++) if (daLogo[c]) dilatada[c] = 0
   const alfaPequeno = Buffer.alloc(w * h)

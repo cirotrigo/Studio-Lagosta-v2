@@ -22,7 +22,7 @@ import { deductCreditsForFeature } from '@/lib/credits/deduct'
 import { fetchImageSource } from '@/lib/ai/fetch-image-source'
 import { type ReferenceImage } from '@/lib/ai/openai-image-client'
 import { geradorDaMelhoria, gerarMelhoria, modeloDaMelhoria } from '@/lib/ai/gerador-da-melhoria'
-import { mudancaNaoEntrou, recomporPorZona } from '@/lib/ai/recompor-por-zona'
+import { areaVisivelmenteAlterada, mudancaNaoEntrou, PISO_DE_MUDANCA, recomporPorZona } from '@/lib/ai/recompor-por-zona'
 import {
   inferFormatFromDimensions,
   OPENAI_INPUT_SIZE,
@@ -854,6 +854,12 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
      * (a cobrança só acontece depois do sucesso).
      */
     let naoEntrou: { motivo: string; repetir: boolean } | null = null
+    /** Quanto da peça recomposta difere VISIVELMENTE da arte de referência. */
+    const areaVisivel = async (peca: Buffer) => {
+      const area = await areaVisivelmenteAlterada(fotoDeReferencia, peca, finalSize)
+      fotoInfo = { ...fotoInfo, fotoAreaVisivel: Number(area.toFixed(3)) }
+      return area
+    }
     /** Duração da geração anterior — base para decidir se a próxima cabe. */
     let ultimaGeracaoMs = 0
 
@@ -949,8 +955,8 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
             }
             if (r.fracaoDasZonas > TETO_DA_MASCARA) {
               reprovaDaFoto = `a IA mexeu em ${Math.round(r.fracaoDasZonas * 100)}% da arte`
-            } else if (mudancaNaoEntrou(r.fracaoDasZonas)) {
-              naoEntrou = { motivo: 'o gerador devolveu a arte como estava', repetir: true }
+            } else if (mudancaNaoEntrou(await areaVisivel(r.buffer))) {
+              naoEntrou = { motivo: 'o gerador devolveu a arte praticamente como estava', repetir: true }
             } else {
               candidate = r.buffer
             }
@@ -961,13 +967,13 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
           fotoInfo = { ...fotoInfo, fotoPreservada: true, fotoRigor: 'estrito', fotoMascara: Number(r.fracaoDaMascara.toFixed(3)), fotoBlocos: r.blocos, fotoRecusada: Number(r.fracaoRecusada.toFixed(3)), fotoDiferencaAntes: Number(r.diferencaForaAntes.toFixed(1)) }
           if (r.fracaoDaMascara > TETO_DA_MASCARA) {
             reprovaDaFoto = `a IA mexeu em ${Math.round(r.fracaoDaMascara * 100)}% da arte, e só o texto podia mudar`
-          } else if (mudancaNaoEntrou(r.fracaoDaMascara)) {
+          } else if (mudancaNaoEntrou(await areaVisivel(r.buffer))) {
             // O que o gerador mudou e a recomposição devolveu à origem (elemento
             // gráfico fora da tinta da marca): repetir a geração repete o desfecho.
-            const recusada = !mudancaNaoEntrou(r.fracaoRecusada)
+            const recusada = r.fracaoRecusada >= PISO_DE_MUDANCA
             naoEntrou = recusada
               ? { motivo: 'a IA mexeu na arte, mas nada do que mudou foi reconhecido como texto, e a recomposição devolveu tudo à arte de origem (elemento gráfico novo não passa neste gerador)', repetir: false }
-              : { motivo: 'o gerador devolveu a arte como estava', repetir: true }
+              : { motivo: 'o gerador devolveu a arte praticamente como estava', repetir: true }
           } else {
             candidate = r.buffer
           }
