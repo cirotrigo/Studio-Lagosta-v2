@@ -612,7 +612,7 @@ export async function runImageEdit({
   }
 }
 
-interface ImproveCreativeOptions {
+export interface ImproveCreativeOptions {
   imageBuffer: Buffer
   mimeType: string
   userRequest: string
@@ -653,6 +653,27 @@ interface ImproveCreativeOptions {
   timeoutMs?: number
   /** Recebe o prompt EXATO que vai ao modelo — é dele que o registro da copy lê o que foi enviado (PR5-10). */
   aoMontarPrompt?: (prompt: string) => void
+  /** Recebe o consumo que a API informou, quando informa (medição dos geradores, 17/11/2026). */
+  aoConcluir?: (uso: { tokensDeEntrada?: number; tokensDeSaida?: number }) => void
+}
+
+/** O prompt que vai ao gerador: o do diretor de arte, ou o montado por código quando ele falhou. */
+export function promptDaMelhoria(o: ImproveCreativeOptions): string {
+  return (
+    o.promptPronto?.trim() ||
+    buildPrompt({
+      userRequest: o.userRequest,
+      references: o.references ?? [],
+      brandColors: o.brandColors ?? [],
+      artDirection: o.artDirection ?? null,
+      brand: o.brand ?? null,
+      expectedTexts: o.expectedTexts ?? [],
+      instrucaoImagem: o.instrucaoImagem ?? null,
+      arteSemTexto: o.arteSemTexto ?? false,
+      enxuto: o.enxuto ?? false,
+      logoCompor: o.logoCompor ?? false,
+    })
+  )
 }
 
 // Tempo máximo da chamada à OpenAI. O endpoint /improve roda em background
@@ -690,15 +711,14 @@ export async function improveCreative({
   promptPronto = null,
   timeoutMs = DEFAULT_TIMEOUT_MS,
   aoMontarPrompt,
+  aoConcluir,
 }: ImproveCreativeOptions): Promise<Buffer> {
   const client = getClient()
 
   const tier = quality ?? qualidadePadraoPara({ temAjusteDeFoto: !!instrucaoImagem?.trim() })
-  const prompt =
-    promptPronto?.trim() ||
-    buildPrompt({
-      userRequest, references, brandColors, artDirection, brand, expectedTexts, instrucaoImagem, arteSemTexto, enxuto, logoCompor,
-    })
+  const prompt = promptDaMelhoria({
+    imageBuffer, mimeType, size, userRequest, references, brandColors, artDirection, brand, expectedTexts, instrucaoImagem, arteSemTexto, enxuto, logoCompor, promptPronto,
+  })
   aoMontarPrompt?.(prompt)
 
   const primaryFile = await toFile(imageBuffer, `original.${extensionFromMime(mimeType)}`, {
@@ -755,6 +775,7 @@ export async function improveCreative({
     if (!b64) {
       throw new Error('OpenAI não retornou dados de imagem')
     }
+    aoConcluir?.({ tokensDeEntrada: response.usage?.input_tokens, tokensDeSaida: response.usage?.output_tokens })
     return Buffer.from(b64, 'base64')
   } catch (error) {
     const elapsed = Date.now() - startedAt

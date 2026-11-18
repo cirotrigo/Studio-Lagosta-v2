@@ -44,6 +44,10 @@ em 08/09/2026).
   recomposto, e texto sobre o assunto da foto ainda não é barrado (falta saber
   onde está o assunto). Para medir um par em disco:
   `npx tsx scripts/medir-preservacao-da-foto.ts <origem> <gerada>`.
+- **17/11/2026:** a volta à origem "sem aviso" acabou (a melhoria agora
+  termina dizendo que a mudança não entrou), e há um segundo gerador que não
+  depende do filtro de tinta. Ver "Gerador selecionável e recomposição por
+  zona", no fim deste arquivo.
 
 ### A melhoria de artes na carteira inteira (02/09/2026)
 
@@ -493,3 +497,151 @@ garçom") são o formato que vale medir.
 - **"Vem pro fogo" entrou no DNA do Espeto** como proibição (`virarRegra`,
   contentRules), pelo feedback do Ciro na peça de quarta: "Não use mais esse
   termo… Vou aprovar dessa vez mas não uso mais."
+
+### Gerador selecionável e recomposição por zona (17/11/2026)
+
+Relatado pelo Ciro no By Rock (`cmwl4l8lr004vswmgokql3lju`, arte do
+compositor): "trocar o tracejado por ondas sonoras estilizadas e rediagramar o
+bloco de texto". Em `refinar` a melhoria devolveu a arte IDÊNTICA à origem,
+marcada como pronta e cobrada; em `redesenhar` falhou com "a IA tirou o assunto
+da foto do lugar". As duas coisas saem do mesmo fato: o gpt-image redesenha a
+imagem inteira, e o que devolve a foto (`preservar-foto.ts`) só aceita bloco
+chapado, com cor de tinta e caixa preenchida. Barra fina de onda sonora não é
+nada disso e voltava à origem.
+
+- **`MELHORIA_GERADOR=openai|gemini`** (`gerador-da-melhoria.ts`). O padrão é
+  `openai`: sem a variável nada muda. `gemini` chama o Nano Banana 2.1
+  (`gemini-nano-banana-2.1`, id conferido na listagem de modelos da API) por
+  `gemini-image-client.ts`, com o MESMO prompt do diretor de arte e as mesmas
+  imagens, na mesma ordem. `fieldValues.model` diz qual gerador fez a peça.
+- **No caminho Gemini a recomposição é por zona** (`recompor-por-zona.ts`,
+  puro), nos três modos: a peça gerada (2K, 1536x2752 no story) é alinhada ao
+  tamanho da origem, o mapa de diferença vira zonas por limiar e componentes
+  conexos, e fora das zonas entra a origem pixel por pixel. **Sem filtro de cor
+  de tinta nem de preenchimento**: elemento gráfico novo é zona como texto é.
+  Só funciona com gerador que mantém o resto da imagem; com o gpt-image a zona
+  seria a arte inteira.
+- 🔴 **O mapa de diferença compara com a FAIXA da vizinhança, não pixel a
+  pixel.** A peça volta de 2K para 1080 amaciada e um ou dois pixels fora do
+  lugar; comparando pixel a pixel (mesmo procurando o par a 2 px), toda borda
+  de letra virava "mudança" e a logo inteira virava zona. Cada pixel é medido
+  contra o mínimo e o máximo dos vizinhos (2 px) do outro lado: borrão e
+  deslocamento caem dentro da faixa, barra nova fica fora.
+- 🔴 **Sem casamento de tom no caminho Gemini.** O Nano Banana não escurece o
+  quadro (viés medido de até 2,6 por canal; o gpt-image dá -9), e o LUT de
+  histograma (`casarTomGlobal`), com um elemento vermelho novo na conta, mexia
+  na foto mais do que o gerador (diferença 5,8 onde sem ele dá 0).
+- 🔴 **A emenda não passa por cima de texto.** O gerador redesenha o bloco
+  inteiro, e a linha que ficou quase igual cai dentro da tolerância: entre a
+  zona do título e a do convite sobrava uma faixa estreita da origem, e na
+  borda suave as duas versões da linha se misturavam ("DAS 16H ÀS 20H" com
+  fantasma no By Rock). Um fechamento (dilata e erode, 2,5% da altura) une as
+  zonas vizinhas; a foto entre zonas distantes continua sendo a da origem.
+- **A logo é sempre a da origem.** Com a tolerância acima a logo que o gerador
+  "quase copiou" nem vira zona. Quando vira (o gerador mexeu ali), o arquivo
+  oficial é procurado em volta das zonas e a caixa dele volta à origem
+  (`logoProtegida`, `logoCorrelacao`). O casamento só pela forma (canal alfa),
+  aproveitado do branch `claude/redesenhar-foto-e-logo`, não serve para logo
+  com desenho por dentro: a palheta vermelha do By Rock tem o alfa em mancha
+  lisa e casou com a espuma do chope (0,71) melhor que com ela mesma. Logo com
+  desenho interno casa pelo desenho, só nos pixels opacos (0,94 no lugar
+  certo). Por isso, no caminho Gemini, projeto em `compor` NÃO reserva canto
+  nem cola o PNG depois: daria duas logos.
+- **As guardas continuam**: `deslocamentoDaFoto` (agora nos três modos do
+  caminho Gemini, antes de recompor), `TETO_DA_MASCARA` sobre a área das zonas,
+  a conferência de texto na peça recomposta e a de caixa em `rediagramar`. Com
+  `instrucaoImagem` ou fundo novo nada disto roda, como antes.
+- 🔴 **Resultado honesto, nos dois geradores** (`mudancaNaoEntrou`): se depois
+  da recomposição a peça não difere VISIVELMENTE da origem, a tentativa é
+  descartada e, sem outra, a melhoria termina `FAILED` com "a mudança pedida
+  não entrou", `fieldValues.mudancaNaoEntrou`, e sem cobrança (o crédito só sai
+  depois do sucesso). Quando o gerador devolveu a arte como estava, vale nova
+  tentativa pela fila; quando a IA mudou e foi a recomposição do caminho OpenAI
+  que devolveu tudo (o caso das ondas sonoras), não: repetir a geração repete o
+  desfecho.
+- 🔴 **"Visível" não é "zona".** Texto que o gerador redesenhou no mesmo lugar
+  difere nas bordas das letras e vira zona (15% do quadro no Bacana), e a peça
+  é a mesma para quem olha. A conferência (`areaVisivelmenteAlterada`,
+  `fotoAreaVisivel`) refaz o mapa com a vizinhança em 6 px e reprova abaixo de
+  0,5% do quadro. Medido em 13 peças: as duas que voltaram iguais deram 0,0% e
+  0,4%; a menor mudança real (um filete fino), 3,9%.
+- **Medir antes de virar o padrão**: `scripts/medir-geradores-da-melhoria.ts`
+  roda os dois geradores na mesma arte, com o mesmo prompt, e grava por caso a
+  área mexida, a diferença da foto fora das zonas, o desfecho, a conferência de
+  texto, o tempo e os tokens, mais a folha de contato. Só lê o banco (o de
+  DESENVOLVIMENTO: recusa o do `.env`), não sobe arquivo e não cobra crédito.
+  `--reaproveitar` recalcula a partir das peças salvas, para calibrar limiar
+  sem pagar outra geração.
+
+**O que foi medido (17/11/2026).** Quatro artes do compositor, de quatro
+clientes (By Rock, Espeto Gaúcho e Real Gelateria em story; Bacana em feed),
+dois pedidos cada (um elemento gráfico novo; uma rediagramação), uma geração
+por caso e por gerador, com o mesmo prompt do diretor de arte. A folha de
+contato não fica no repositório (ele é público e ela mostra arte de cliente
+que ainda não foi ao ar): o script a grava em `.tmp-medicao-geradores/`.
+
+| caso | modo | gerador | desfecho | mexeu | foto bruta | foto final | mudança visível | texto | s | tokens (ent/saída) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| byrock-elemento | refinar | openai (low) | não entrou: a recomposição devolveu 59% à origem (a mudança não é texto) | 97% | 7,2 | – | 0,0% | – | 17 | 4994/148 |
+| byrock-elemento | refinar | gemini | pronta | 24% | 4 | 0 | 22,0% | ok | 37 | 3931/2959 |
+| espeto-elemento | refinar | openai (low) | pronta | 4% | 6,1 | 1 | 3,6% | ok | 16 | 4400/148 |
+| espeto-elemento | refinar | gemini | pronta | 8% | 5,9 | 0 | 3,9% | ok | 22 | 3829/2142 |
+| real-elemento | refinar | openai (low) | pronta | 10% | 4,6 | 0 | 10,1% | ok | 16 | 4056/148 |
+| real-elemento | refinar | gemini | pronta | 18% | 3,8 | 0 | 6,9% | ok | 18 | 3813/2239 |
+| bacana-elemento | refinar | openai (low) | pronta | 83% | 5,6 | 0 | 1,7% | ok | 16 | 3787/181 |
+| bacana-elemento | refinar | gemini | pronta | 19% | 9,3 | 0 | 4,0% | ok | 23 | 3783/2137 |
+| byrock-rediagramacao | redesenhar | openai (medium) | reprovada: a IA tirou o assunto da foto do lugar (54 de 54 pedaços) | 98% | 6 | – | – | – | 29 | 6475/1331 |
+| byrock-rediagramacao | redesenhar | gemini | pronta | 26% | 4,3 | 0 | 25,2% | ok | 41 | 5019/2813 |
+| espeto-rediagramacao | redesenhar | openai (medium) | reprovada: a IA tirou o assunto da foto do lugar (5 de 6 pedaços) | 93% | 8,1 | – | – | – | 30 | 6017/1331 |
+| espeto-rediagramacao | redesenhar | gemini | não entrou: o gerador devolveu a arte praticamente como estava | 5% | 5,8 | – | 0,0% | – | 37 | 5062/2719 |
+| real-rediagramacao | rediagramar | openai (low) | pronta | 13% | 4,9 | 1,6 | 12,4% | ok | 16 | 5562/148 |
+| real-rediagramacao | rediagramar | gemini | pronta | 22% | 3,7 | 0 | 12,6% | ok | 24 | 4927/2216 |
+| bacana-rediagramacao | rediagramar | openai (low) | pronta | 100% | 9,6 | 0 | 4,8% | ok | 14 | 5358/181 |
+| bacana-rediagramacao | rediagramar | gemini | não entrou: o gerador devolveu a arte praticamente como estava | 17% | 9,1 | – | 0,4% | – | 25 | 4965/2187 |
+
+`mexeu` é a área das zonas na peça como o gerador devolveu (perto de 100% é a
+imagem inteira redesenhada, e aí `foto bruta`, medida na sobra, não diz nada).
+`foto final` é a diferença média (0 a 255) entre a peça final e a origem fora
+das zonas. `openai` passou pela recomposição e pelas guardas do caminho de
+produção dele.
+
+- **Nano Banana: 6 prontas, 2 "não entrou", nenhuma reprovada.** Nas 6 a foto
+  fora das zonas é a origem (0), o texto confere e, olhando os blocos de texto
+  em tamanho real, não há emenda nem letra estragada. Os quatro elementos
+  gráficos entraram. As duas que não entraram são pedidos de rediagramação: o
+  gerador redesenhou o texto no mesmo lugar e a peça voltou igual.
+- **Um desvio da bancada, não do gerador:** a arte do By Rock entrou por
+  arquivo (não está no banco de dev), então a régua dela saiu por visão, que
+  leu "ATÉ 50% OFF, DAS 16H" com ponto no lugar da vírgula. As peças dos dois
+  geradores saíram com o ponto. Em produção a arte do compositor tem a régua
+  do banco.
+- **gpt-image: 5 "prontas", 1 "não entrou", 2 reprovadas.** As reprovadas são os
+  dois `redesenhar` (o assunto da foto saiu do lugar, como no relato). A que
+  não entrou é a do By Rock, que antes saía como pronta. E, olhando a folha,
+  duas das cinco "prontas" têm defeito que nenhuma conferência acusou: no
+  Bacana o filete pedido não está na peça (a recomposição o devolveu à origem
+  e o texto que andou alguns pixels bastou para passar), e na rediagramação do
+  Bacana "SABADOU" saiu duplicado e a logo voltou redesenhada, maior. Sobram 3
+  de 8.
+- **Tempo e consumo**: Nano Banana de 18 a 41 s, gpt-image de 14 a 30 s. O
+  Nano Banana consome de 2,1 a 3,0 mil tokens de saída por imagem; o gpt-image,
+  148 a 181 no `low` e 1.331 no `medium`. O preço por imagem do Nano Banana 2.1
+  não foi conferido na tabela do Google.
+- **Decisão: a medição sustenta um piloto com `MELHORIA_GERADOR=gemini`, e
+  ainda não sustenta trocar o padrão de vez.** A favor: nos pedidos de elemento
+  gráfico foram 4 de 4 contra 2 de 4, e nenhuma peça do Nano Banana saiu como
+  pronta com defeito (2 de 8 no gpt-image). Contra virar o padrão já: são 4 artes e uma
+  geração por caso, sem repetição; em rediagramação o Nano Banana é tímido (2
+  de 4 voltaram iguais, e cada uma custa duas gerações à casa antes do
+  `FAILED`); e ficaram fora da amostra os projetos em `compor` (TERO, Lagosta),
+  a arte de template chapado (o alvo do `redesenhar`), o carrossel e a
+  melhoria em cima de melhoria.
+- ⚠️ **Limites conhecidos do caminho Gemini.** A conferência honesta mede
+  mudança visível, não "o pedido foi atendido": se o gerador mexer em outra
+  coisa e ignorar o pedido, a peça sai como pronta. Texto sobre o assunto da
+  foto continua sem barreira (no `redesenhar` do By Rock o convite foi para
+  cima do chope). Mudança leve e larga (um halo que some) só entra quando
+  encosta numa zona forte. A logo que o gerador levar para outro canto fica
+  duplicada: a da origem volta ao lugar e a redesenhada permanece. E a logo só
+  é protegida quando a da origem é o arquivo oficial com transparência.
+
