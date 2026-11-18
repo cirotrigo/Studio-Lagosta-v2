@@ -25,6 +25,7 @@ import { geradorDaMelhoria, gerarMelhoria, modeloDaMelhoria, type GeradorDaMelho
 import { planejarMelhoriaDeFoto } from '@/lib/ai/diretor-de-foto'
 import { PISO_DE_TOM, processarMelhoriaDeFoto, type MelhoriaDeFotoArgs } from '@/lib/ai/melhoria-de-foto-runner'
 import { diferencaDeTom } from '@/lib/ai/quadro-da-foto'
+import { CUSTO_POR_OPCAO_USD } from '@/lib/ai/melhoria-de-foto-registro'
 import { montarPromptDeFoto, promptSemDiretor, type ReceitaPedida } from '@/lib/ai/receitas-de-foto'
 import { registrarUsoSemCobranca } from '@/lib/credits/registrar-uso-sem-cobranca'
 import { areaVisivelmenteAlterada, mudancaNaoEntrou, PISO_DE_MUDANCA, recomporPorZona } from '@/lib/ai/recompor-por-zona'
@@ -1364,7 +1365,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
         await registrarUsoSemCobranca({
           clerkUserId: args.userId,
           feature: 'ai_creative_improvement',
-          details: { alvo: 'foto', reserva: true, originalGenerationId: args.originalGenerationId, newGenerationId: args.jobGenerationId, projectId: args.projectId, model: modelo, custoUsd: 0.05, format, elapsedSeconds },
+          details: { alvo: 'foto', reserva: true, originalGenerationId: args.originalGenerationId, newGenerationId: args.jobGenerationId, projectId: args.projectId, model: modelo, custoUsd: CUSTO_POR_OPCAO_USD, format, elapsedSeconds },
         })
       } else await deductCreditsForFeature({
         clerkUserId: args.userId,
