@@ -133,6 +133,22 @@ describe('blocoDePreservacao', () => {
   })
 })
 
+describe('o fecho: o que tem de sair diferente, dito por último', () => {
+  it('Foto profissional e Abrir espaço terminam dizendo o que mudou; Humanizar não precisa', () => {
+    const fp = blocoDePreservacao([{ id: 'foto-profissional' }])
+    expect(fp).toMatch(/And in the result:\n- the photographic rendering is visibly different/)
+    expect(fp.indexOf('And in the result:')).toBeGreaterThan(fp.indexOf('Keep exactly as in the original photograph:'))
+    expect(fp.trim().endsWith('is wrong.')).toBe(true)
+    expect(blocoDePreservacao([{ id: 'abrir-espaco' }])).toMatch(/visibly calmer than in the input/)
+    expect(blocoDePreservacao([{ id: 'humanizar' }])).not.toMatch(/And in the result/)
+  })
+
+  it('o prompt montado continua idempotente com o fecho', () => {
+    const uma = montarPromptDeFoto('Retouch this photograph.', [{ id: 'foto-profissional' }])
+    expect(montarPromptDeFoto(uma, [{ id: 'foto-profissional' }])).toBe(uma)
+  })
+})
+
 describe('reserva (arte chapada) e prompt sem diretor', () => {
   it('na arte chapada o bloco manda manter texto e logo, em vez de proibir texto', () => {
     const b = blocoDePreservacao([{ id: 'foto-profissional' }], { arteChapada: true })

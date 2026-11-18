@@ -773,7 +773,8 @@ padrão.
   vira zona: na primeira rodada a receita Foto profissional saiu com "0% de
   mudança" em 4 de 4 e foi descartada em 3. A opção só é descartada quando não
   há elemento novo **e** a `diferencaDeTom` (média da diferença em 48x48
-  borrado, 0 a 255) fica abaixo de `PISO_DE_TOM` (3). Calibração, olhando os
+  borrado, 0 a 255) fica abaixo de `PISO_DE_TOM` (3) **e** o fundo não
+  desfocou a mais (`saiuIgual`, em `melhoria-de-foto-registro.ts`). Calibração, olhando os
   pares: as fotos que voltaram iguais deram 2,0 a 2,9; o menor tratamento que
   se enxerga, 4,1. São poucas peças: quem mexer no limiar mede de novo.
 - 🔴 **A arte de origem pode não ser mais o retrato da página.** Em 2 das 4
@@ -788,11 +789,9 @@ padrão.
 - 🔴 **A logo e os elementos ficam POR CIMA da foto.** A mão do Humanizar saiu
   embaixo da logo do Espeto: o diretor recebia só a caixa do texto. Hoje recebe
   também as caixas das camadas `logo` e `element` (`caixasDaMarcaNoQuadro`).
-- **Foto profissional no padrão (`leve`) quase não muda foto que já é boa.** As
-  fotos da carteira são de sessão profissional: o tratamento leve fica no
-  limite do que se enxerga e parte volta como "saiu igual" (o que custa uma
-  segunda geração pela fila). Se o padrão deve ser `marcada` é decisão do
-  Ciro, olhando a folha.
+- **Foto profissional quase não muda foto que já é boa**, e isso não se
+  resolveu com prompt (ver a segunda rodada, abaixo). O padrão virou `marcada`
+  em 18/11/2026.
 
 **O que foi medido (bancada de 18/11/2026).** Quatro artes do compositor, de
 quatro clientes (By Rock, Espeto Gaúcho e Real Gelateria em story; Bacana em
@@ -841,6 +840,91 @@ repositório (ele é público e ela mostra arte de cliente): o script grava em
 - ⚠️ **Fora da amostra:** página com a foto em parte do quadro (proporção fora
   das aceitas), carrossel, arte com vídeo, foto com rosto em primeiro plano, a
   receita Ajuste livre e o prompt pronto do chat com imagem real.
+
+**Segunda rodada: afinar Foto profissional e Abrir espaço (18/11/2026).** O
+Ciro viu a folha e mandou afinar. Folha em
+`~/Documents/Clientes/_medicoes/2026-11-melhorar-foto/folha-2.jpg` (a primeira
+tentativa desta rodada ficou em `folha-2a.jpg`).
+
+- 🔴 **Abrir espaço NÃO move nem encolhe o assunto.** A primeira versão dizia
+  "recompose" e deixava o prato "mover ou mudar de escala o quanto precisar":
+  o gerador encolheu o prato do By Rock para 75% e as casquinhas da Real para
+  80%, subiu as duas e pôs uma mão nova. A arte já foi diagramada em volta do
+  assunto: mexer nele estraga a peça. O trecho agora começa por "Calm the
+  background in…", exige o assunto no mesmo tamanho e lugar, e abre o espaço só
+  no fundo dentro da área do texto (tirar ou amaciar o detalhe que disputa com
+  o título, desfoque mais fundo e uniforme, mesmas cores e brilho). Sem gente
+  nem objeto novo (isso é da Humanizar) e sem escurecer. Medido nas duas
+  tentativas da rodada: 8 de 8 com o assunto em 100% do tamanho e 0% de
+  deslocamento.
+- **O assunto é medido, não suposto** (`assuntoNaFotoNova`, em
+  `quadro-da-foto.ts`): o recorte do assunto na origem é procurado na foto nova
+  em várias escalas, por correlação. Avisa (nunca veta) quando a escala passa
+  de 10% (`LIMITE_DE_ESCALA`) ou o centro anda mais de 5% do quadro
+  (`LIMITE_DE_POSICAO`); abaixo de 0,45 de correlação o aviso é "o assunto não
+  foi reconhecido". Calibração nas fotos da primeira rodada: os que saíram do
+  lugar deram escala 0,75 e 0,80 e deslocamento de 9% a 12%; os que ficaram,
+  1,00 e 0%. A caixa do assunto vem de `marcar-assunto` quando há, senão do
+  diretor de foto (campo `assunto` da resposta). Com prompt pronto do chat não
+  há caixa, e vale a conferência antiga por ladrilhos (`deslocamentoDaFoto`).
+- 🔴 **Foto profissional não se resolve com prompt neste gerador.** Três
+  redações (o retoque leve; o pedido firme, com verbo primeiro, 85mm f/2 e as
+  três mudanças que têm de aparecer; e o mesmo com um fecho por código depois
+  da lista do que fica igual), 16 gerações medidas em 4 fotos: em 14 o tom
+  ficou entre 2,2 e 6,1 (no limite do que se enxerga ou abaixo), 4 dessas
+  voltaram iguais, e só 2 passaram de 12, as duas com a redação LEVE: a firmeza
+  do pedido não explica o resultado, é sorteio do gerador. O fundo nunca
+  desfocou a mais (a nitidez do fundo acompanhou a do assunto). O Nano Banana em modo edição trata "mantenha o
+  conteúdo e o enquadramento" como "devolva a foto". Os prompts do diretor
+  estão certos; quem não cumpre é o gerador. **Caminhos, para decisão do
+  Ciro:** fazer o tratamento por código (balanço de branco, exposição e
+  desfoque do fundo pela caixa do assunto, que já existe), que é
+  determinístico; ou medir outro gerador para esta receita. Enquanto isso a
+  opção sai com o aviso "o tratamento ficou no limite do que se enxerga"
+  (`TOM_VISIVEL`, 6) e a receita não deve ir para a tela.
+- **O fecho** (`fecho` da receita, em `receitas-de-foto.ts`): o prompt de
+  edição termina numa lista longa de "fica igual", e a última coisa dita pesa
+  mais. Foto profissional e Abrir espaço acrescentam, por código e DEPOIS dessa
+  lista, o que tem de sair diferente. Em Abrir espaço o fundo passou a mudar
+  mais (o letreiro do Bacana amaciou atrás do título; tom de 2,1 a 7,6 para 4,0
+  a 9,5); em Foto profissional não mudou o resultado.
+- **A lista do que fica igual não pode citar o que muda.** O diretor mandava
+  neutralizar o branco e, na lista, manter "the background location and
+  colors". Em Foto profissional a lista fala só de conteúdo e enquadramento.
+- **O gerador devolve a foto menos nítida no detalhe fino**, mesmo quando nada
+  muda: a nitidez (laplaciano em 512 px) ficou em 0,65 a 0,90 da origem nas
+  fotos do By Rock, do Espeto e do Bacana. Por isso a medida que vale para
+  "fundo mais desfocado" é a RELAÇÃO entre a nitidez do assunto e a do fundo
+  (`separacaoDoFundo`, visível acima de 1,2), não a nitidez do fundo sozinha.
+  Em foto que já tem o fundo todo desfocado (a Real) a razão do fundo é
+  instável (1,3 a 1,5 sem mudança visível): o denominador é quase zero.
+- 🔴 **"Saiu igual" continua sendo um limiar, e limiar tem fronteira.** O
+  descarte (`saiuIgual`) exige as três coisas: nada novo no mapa de zonas, tom
+  abaixo de 3 e fundo sem desfoque a mais. Na primeira rodada o By Rock (tom
+  2,9) foi descartado e a Real (3,0) passou: a diferença entre as duas é
+  ruído. Na segunda, o mesmo By Rock com tom 2,9 passou porque 1% do quadro
+  virou zona. Quem segura esses casos não é o descarte, é o aviso de tratamento
+  imperceptível, que sai até o tom 6.
+- **Humanizar em foto que já tem mão.** Na Real a foto já mostra uma mão
+  segurando as casquinhas, e a IA pôs uma segunda beliscando o papel. O
+  diretor agora devolve `genteNaFoto`, a opção ganha um aviso, e a regra dele
+  é: nunca uma segunda mão tocando o objeto que já está numa mão; o gesto novo
+  só vale em outro ponto da cena, ou a leitura diz que a receita acrescenta
+  pouco. Medido depois: a segunda mão passou a entrar aberta, pela direita,
+  sem encostar. Ainda são duas mãos em volta do mesmo produto: é caso para o
+  olho do Ciro.
+
+| arte | receita | desfecho | elemento novo | tom | nitidez do assunto | nitidez do fundo | tamanho do assunto | andou |
+|---|---|---|---|---|---|---|---|---|
+| By Rock | Foto profissional | opção, com aviso de imperceptível | 1% | 2,9 | 0,65 | 0,74 | 100% | 0% |
+| By Rock | Abrir espaço | opção | 14% | 6,7 | 0,72 | 0,49 | 100% | 0% |
+| Espeto | Foto profissional | opção, com aviso de imperceptível | 0% | 5,2 | 0,88 | 0,94 | 100% | 0% |
+| Espeto | Abrir espaço | opção | 1% | 4,2 | 0,85 | 0,82 | 100% | 0% |
+| Real | Foto profissional | opção, com aviso de imperceptível | 0% | 4,2 | 1,01 | 1,39 | 100% | 0% |
+| Real | Abrir espaço | opção | 17% | 9,5 | 0,84 | 1,03 | 100% | 0% |
+| Bacana | Foto profissional | saiu igual | 0% | 2,3 | 0,75 | 0,85 | 100% | 0% |
+| Bacana | Abrir espaço | opção | 21% | 4,0 | 0,75 | 0,67 | 100% | 0% |
+| Real | Humanizar | opção, com aviso de gente na foto | 17% | 11,7 | 1,03 | 1,34 | 100% | 0% |
 
 **Ponta a ponta no banco de desenvolvimento (17 e 18/11/2026).** Pela fila
 (`startMelhoriaDeFoto`, `enfileirarMelhoria`, `dispararJobAgora`): By Rock,

@@ -57,6 +57,14 @@ export interface ReceitaDeFoto {
   protege: string[]
   /** As mesmas proteções como linhas do prompt (inglês, afirmativas). */
   preserva: string[]
+  /**
+   * O que TEM de sair diferente, dito por último. O prompt de edição termina
+   * numa lista longa de "fica igual", e a última coisa dita pesa mais: na
+   * bancada de 18/11/2026 o gerador cumpriu a lista devolvendo quase a mesma
+   * foto (Foto profissional com tom 2,2 a 6,1). Só as receitas em que a
+   * mudança é sutil por natureza têm fecho.
+   */
+  fecho?: string
   conferencias: Conferencia[]
 }
 
@@ -138,6 +146,8 @@ export const RECEITAS_DE_FOTO: Record<IdDaReceita, ReceitaDeFoto> = {
       'The table, the wall, the furniture and the background stay the same place (softer focus is allowed, replacing them is not).',
       'The framing and the camera angle stay the same.',
     ],
+    fecho:
+      'the photographic rendering is visibly different from the input: the white balance, the brightness and crispness of the main subject and the depth of the background blur have clearly changed. A result that looks like a copy of the input is wrong.',
     conferencias: ['assunto-no-lugar', 'fidelidade-da-cena', 'rosto-em-foco'],
   },
   'abrir-espaco': {
@@ -168,6 +178,8 @@ export const RECEITAS_DE_FOTO: Record<IdDaReceita, ReceitaDeFoto> = {
       'Nothing is added to the scene: no person, no hand, no object.',
       'Everything outside that area keeps its look.',
     ],
+    fecho:
+      'inside the text area the background is visibly calmer than in the input (softer, more even, with less detail and lower contrast), and the main subject has not moved or changed size. A result that looks like a copy of the input is wrong.',
     conferencias: ['assunto-no-lugar', 'fidelidade-da-cena', 'rosto-em-foco'],
   },
   'ajuste-livre': {
@@ -269,7 +281,10 @@ export function blocoDePreservacao(receitas: ReceitaPedida[], opcoes: { arteChap
     if (!humanizar.rosto) linhas.push('Only hands and forearms are added: no face in focus.')
   }
   const unicas = [...new Set(linhas)]
-  return `Keep exactly as in the original photograph:\n${unicas.map((l) => `- ${l}`).join('\n')}`
+  const fechos = receitas.map((r) => RECEITAS_DE_FOTO[r.id].fecho).filter((f): f is string => !!f)
+  const manter = `Keep exactly as in the original photograph:\n${unicas.map((l) => `- ${l}`).join('\n')}`
+  // O fecho vem DEPOIS da lista do que fica igual: é a última coisa que o gerador lê.
+  return fechos.length > 0 ? `${manter}\n\nAnd in the result:\n${fechos.map((f) => `- ${f}`).join('\n')}` : manter
 }
 
 /** O prompt que vai ao gerador: o de quem escreveu, mais o bloco de preservação. Idempotente. */
