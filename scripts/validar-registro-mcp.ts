@@ -1570,6 +1570,105 @@ const LITERAIS_ARTE_IA: Record<string, unknown> = {
       },
       planoId: { type: 'string', description: 'A leva do itemId. Sem isto, a que está em aberto.' },
       slide: { type: 'number', description: 'Carrossel na bancada: a ordem do slide que recebe a arte (1 = primeiro). Só com itemId.' },
+      // 17/11/2026 (deliberado): a melhoria de FOTO (alvo, receitas, promptPronto, opcoes) e o instrucaoImagem que só a tela tinha.
+      "alvo": {
+        "type": "string",
+        "enum": [
+          "arte",
+          "foto"
+        ],
+        "description": "O que a IA melhora. `arte` (padrão) é a melhoria de sempre: a arte inteira, pelos modos. `foto` melhora SÓ a fotografia da página e o Studio recoloca texto, logo e elementos por cima; devolve opções para escolher e nada é aplicado sozinho (aplicar-opcao-de-foto). Com `foto`, `modo`, `itemId` e `instrucaoImagem` não se aplicam."
+      },
+      "receitas": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "enum": [
+                "humanizar",
+                "foto-profissional",
+                "abrir-espaco",
+                "ajuste-livre"
+              ],
+              "description": "humanizar: Põe um gesto na cena: a mão puxando o queijo, o garfo na batata, o vinho sendo servido, o chope na mão, o brinde. foto-profissional: Trata a foto: balanço de branco, luz mais limpa, fundo mais desfocado e o prato nítido, com cara de câmera e lente melhores. abrir-espaco: Recompõe ou estende a foto para deixar uma área calma onde o texto da arte está. ajuste-livre: O que a pessoa escrever sobre a foto, com as proteções da casa."
+            },
+            "gesto": {
+              "type": "string",
+              "description": "humanizar: o gesto, em poucas palavras (\"mão puxando uma fatia\", \"vinho sendo servido\"). Até 200 caracteres. Sem ele, quem escreve o prompt escolhe olhando a foto."
+            },
+            "lado": {
+              "type": "string",
+              "enum": [
+                "esquerda",
+                "direita",
+                "cima",
+                "baixo"
+              ],
+              "description": "humanizar: por qual borda a pessoa entra."
+            },
+            "rosto": {
+              "type": "boolean",
+              "description": "humanizar: true SÓ quando a pessoa autorizou rosto em foco. Sem isso entram apenas mãos e antebraço."
+            },
+            "intensidade": {
+              "type": "string",
+              "enum": [
+                "leve",
+                "marcada"
+              ],
+              "description": "foto-profissional: quanto tratar (padrão leve)."
+            },
+            "area": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                },
+                "largura": {
+                  "type": "number"
+                },
+                "altura": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "largura",
+                "altura"
+              ],
+              "additionalProperties": false,
+              "description": "abrir-espaco: onde o texto está, em frações do quadro (0 a 1). Sem isso o Studio lê das camadas da página."
+            },
+            "texto": {
+              "type": "string",
+              "description": "ajuste-livre: o que mudar na foto, até 500 caracteres."
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "additionalProperties": true
+        },
+        "description": "Só com alvo \"foto\": as receitas, combináveis num pedido só (viram UMA geração por opção). Em qualquer receita a comida, a louça e o lugar são os do cliente e nenhum contraste é acrescentado para o texto."
+      },
+      "promptPronto": {
+        "type": "string",
+        "description": "Só com alvo \"foto\": o prompt de EDIÇÃO da foto, escrito por você em inglês depois de olhar a arte (até 4000 caracteres). Estrutura: o verbo da operação primeiro; o que muda, localizado na imagem; a lista do que fica exatamente igual; câmera, lente, abertura e luz; frases afirmativas. O Studio NÃO reescreve: acrescenta as proteções da casa e das receitas e roda as mesmas conferências. Não peça texto, logo nem véu ou gradiente."
+      },
+      "opcoes": {
+        "type": "number",
+        "description": "Só com alvo \"foto\": quantas opções gerar, 1 (padrão) ou 2. Duas custam o dobro."
+      },
+      "instrucaoImagem": {
+        "type": "string",
+        "description": "Só com alvo \"arte\": ajuste autorizado NA FOTO durante a melhoria da arte (máx 1200 caracteres). É a única forma de o alvo \"arte\" mexer na fotografia; o `pedido` sozinho não mexe. Para melhorar a foto de verdade prefira alvo \"foto\"."
+      },
     },
     // 11/11/2026 (deliberado): `generationId` deixou de ser obrigatório — post que veio do Zernio entra só com `postId`.
     required: ['projectId'],

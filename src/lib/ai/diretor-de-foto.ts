@@ -93,7 +93,7 @@ REGRAS DA CASA (valem em qualquer receita):
 - Nenhum contraste para segurar texto: sem véu, gradiente, tarja ou escurecimento. Legibilidade se resolve com área calma da própria cena.
 - Gente entra pelas bordas do quadro (mão, antebraço), nunca casa cheia, nunca rosto em foco sem autorização, homem nunca de terno ou blazer.
 - Rosto de pessoa real que já está na foto não é refeito: se houver, o prompt manda manter cada pessoa exatamente como está.
-- Só as receitas escolhidas: não aproveite para "melhorar" o que ninguém pediu.
+- SÓ AS RECEITAS ESCOLHIDAS: não aproveite para "melhorar" o que ninguém pediu. Sem a receita Foto profissional, a luz, a cor, o contraste, o desfoque e a limpeza da cena ficam como estão (medido em 17/11/2026: com só Humanizar pedido, o prompt mandou esquentar a luz, escurecer o fundo e limpar a mesa, puxado pela direção de foto da marca). A direção de foto da marca diz COMO fazer o que a receita pede (como iluminar a mão que entra, que clima o tratamento busca); ela não acrescenta tarefa.
 
 Se a imagem recebida for a ARTE PRONTA (com texto e logo por cima), você será avisado: aí o prompt manda manter todo o texto, a logo e os elementos gráficos exatamente como estão, no mesmo lugar, e mexe só na fotografia por baixo.
 
@@ -122,7 +122,9 @@ export function contextoDaFoto(args: PlanejarMelhoriaDeFotoArgs): string {
       : 'RECEITAS: (nenhuma: siga só o pedido)',
   )
   if (args.pedido?.trim()) linhas.push(`PEDIDO DE QUEM PEDIU: ${args.pedido.trim()}`)
-  if (args.direcaoDeFoto?.trim()) linhas.push(`DIREÇÃO DE FOTO DA MARCA (DNA):\n${args.direcaoDeFoto.trim()}`)
+  if (args.direcaoDeFoto?.trim()) {
+    linhas.push(`DIREÇÃO DE FOTO DA MARCA (DNA: é o clima da marca, para guiar o que as receitas mexem; não é tarefa a mais):\n${args.direcaoDeFoto.trim()}`)
+  }
   if (args.sobreAFoto?.prato) linhas.push(`O QUE O ACERVO SABE DA FOTO: ${args.sobreAFoto.prato}`)
   if (args.sobreAFoto?.caixaDoAssunto) linhas.push(`ASSUNTO (o prato, marcado por alguém da equipe): ${caixaLegivel(args.sobreAFoto.caixaDoAssunto)}. Ele não sai daí.`)
   if (args.caixaDoTexto) linhas.push(`TEXTO DA ARTE: ${caixaLegivel(args.caixaDoTexto)}. Não cubra essa área com o assunto nem com o gesto.`)
