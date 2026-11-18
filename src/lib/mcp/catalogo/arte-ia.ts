@@ -22,7 +22,7 @@ import { ajusteSchema, type Ajuste } from '../../creatives/revisao/contrato'
 import { MAX_OPERACOES, operacaoDeCamadaSchema, paginaDoAjusteSchema, type OperacaoDeCamada, type PaginaDoAjuste } from '../../creatives/editar-camadas'
 import type { ArtGenerationReference } from '../../ai/creative-generation-runner'
 import { MODOS_DA_MELHORIA, type ModoDaMelhoria } from '../../ai/modo-da-melhoria'
-import { IDS_DAS_RECEITAS, RECEITAS_DE_FOTO, TETO_DO_PROMPT_DE_FOTO } from '../../ai/receitas-de-foto'
+import { IDS_DAS_RECEITAS, melhoriaDeFotoLigada, RECEITAS_DE_FOTO, TETO_DO_PROMPT_DE_FOTO } from '../../ai/receitas-de-foto'
 
 const FORMATOS = ['story', 'feed', 'quadrado'] as const
 const PAPEIS_DE_REFERENCIA = ['subject', 'anchor-ambient', 'anchor-dish', 'style', 'documento'] as const
@@ -575,6 +575,10 @@ export const toolsDeArteIA = [
           import('../tools'),
         ])
       const projectId = args.projectId as number
+      // Antes de qualquer escrita (trazer a arte do post para a galeria é uma): com a chave desligada, alvo "foto" não existe.
+      if (args.alvo === 'foto' && !melhoriaDeFotoLigada()) {
+        throw new CreativeError('MELHORIA_DE_FOTO_DESLIGADA', 'A melhoria de foto ainda não está ligada neste ambiente. Use a melhoria da arte (alvo "arte"); para mexer na fotografia nela, informe instrucaoImagem.', 400)
+      }
       const postIdInformado = typeof args.postId === 'string' && args.postId ? args.postId : undefined
       let generationId = typeof args.generationId === 'string' ? args.generationId : ''
       // Post que veio do Zernio é imagem pronta, sem Generation: a arte dele entra na galeria agora, e é dela que a

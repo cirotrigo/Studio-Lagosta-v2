@@ -184,3 +184,28 @@ Reserva: `startImprovement` com `gerador: 'gemini'`, `fotoPelaReserva` e sem `ap
 - [ ] Ponta a ponta no banco de dev: arte do By Rock (projectId 7) com página → `startMelhoriaDeFoto` → `enfileirarMelhoria` → `dispararJobAgora` → conferir opção, prévia, uso; `aplicarOpcaoDeFoto` → conferir página, Generation nova e recorte.
 - [ ] Bancada: 4 clientes × 3 receitas × 1 opção. Rodar, olhar a folha, anotar.
 - [ ] `npm run typecheck`, `npm run lint`, testes; PR (não mesclar).
+
+---
+
+## O que mudou na execução (17 e 18/11/2026)
+
+O plano acima é o que foi escrito antes do código. O que a implementação e a
+bancada mudaram:
+
+- **O descarte ganhou uma segunda medida.** `mudancaNaoEntrou` sozinho descartava
+  a receita Foto profissional (tratamento global não vira zona). A opção só é
+  "igual" quando não há elemento novo E a `diferencaDeTom` fica abaixo de
+  `PISO_DE_TOM`.
+- **O runner virou três funções** (`prepararMelhoriaDeFoto`,
+  `gerarFotoDaOpcao`, e o guardar dentro de `processarMelhoriaDeFoto`) para a
+  bancada medir o código de produção sem subir nada.
+- **Página editada depois da arte.** O registro ganhou `antesUrl` e a opção
+  ganhou um aviso: a prévia é a página de hoje, que pode não ser mais a arte de
+  origem.
+- **A área da logo vai ao diretor** (`caixasDaMarcaNoQuadro`): o gesto do
+  Humanizar saía embaixo dela.
+- **`ver-geracao` devolve as miniaturas** do antes e de cada opção, para o chat
+  mostrar o par.
+- **`registrarUsoSemCobranca`** em vez de `deductCreditsForFeature`: a dedução
+  registra o preço cheio da feature mesmo sem debitar, e debitaria com
+  `CREDITOS_APLICADOS` ligado.
