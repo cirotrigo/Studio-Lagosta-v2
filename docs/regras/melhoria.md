@@ -645,3 +645,142 @@ produção dele.
   duplicada: a da origem volta ao lugar e a redesenhada permanece. E a logo só
   é protegida quando a da origem é o arquivo oficial com transparência.
 
+
+### Melhorar a foto com IA: foto por baixo, texto por cima (17/11/2026)
+
+Pedido do Ciro: a melhoria deve também melhorar a FOTOGRAFIA (balanço de
+branco, cara de câmera e lente melhores, fundo desfocado, prato nítido) e
+humanizar (a mão puxando o queijo, o garfo na batata, o vinho sendo servido, o
+brinde). Plano aprovado em `docs/PLANO-2026-11-17-MELHORAR-FOTO-COM-IA.md`;
+esta seção é a Fase 1 (o chat). Tudo atrás de `MELHORIA_DE_FOTO`, desligada por
+padrão.
+
+**As regras (decisão do Ciro, 17/11/2026).**
+
+- 🔴 **"A fotografia é intocável" continua sendo o padrão** dos modos de
+  diagramação (`rediagramar`, `redesenhar`, `refinar`). O que entrou é uma
+  lista FECHADA de exceções com nome, as **receitas de foto**
+  (`receitas-de-foto.ts`): Humanizar, Foto profissional, Abrir espaço para o
+  texto e Ajuste livre. Receita é sempre escolhida por gente. **Nenhum revisor
+  automático dispara receita de foto.**
+- 🔴 **A comida é a do cliente.** Não acrescentar, tirar nem trocar
+  ingrediente, porção, louça ou bebida. Tratar a foto não é mudar o prato.
+- 🔴 **O lugar é o do cliente.** Mesa, parede, móveis e fundo continuam os
+  mesmos. Desfocar pode; trocar não.
+- 🔴 **Nenhum contraste para segurar texto** (véu, gradiente, tarja,
+  escurecimento). A regra de 05/09 fica como está, também nas receitas: "abrir
+  espaço" se resolve com área calma da própria cena.
+- 🔴 **Gente entra pelas bordas do quadro** (mão, antebraço), nunca casa cheia,
+  nunca rosto em foco sem autorização (parâmetro `rosto: true` da receita
+  Humanizar). **Homem nunca de terno ou blazer** (regra do Ciro de 22/10/2026,
+  que não estava escrita em lugar nenhum).
+- 🔴 **Rosto de pessoa real não é refeito.** O Nano Banana repinta o quadro
+  inteiro, então qualquer receita pode alterar um rosto que já está na foto. O
+  prompt manda manter cada pessoa como está, e a opção sai com um aviso EM
+  DESTAQUE ("esta foto tem rosto: confira se a pessoa continua a mesma"). Não
+  há trava por código. A receita de postura e sorriso ficou de fora.
+- 🔴 **As conferências AVISAM e nunca vetam** (regra de 10/08/2026): assunto no
+  lugar (`deslocamentoDaFoto`), o prato é o mesmo (`conferirFidelidadeDaCena`),
+  rosto em foco. O único descarte é medido por código: a opção que saiu igual à
+  origem (`mudancaNaoEntrou`). Quem decide é gente, com o antes e depois na
+  frente.
+- 🔴 **Nada é aplicado a página ou post sem alguém escolher a opção.** A
+  melhoria de foto devolve uma PROPOSTA; aplicar é outra chamada.
+- **Sem preço em créditos** (o Studio não é mais SaaS, Ciro, 17/11/2026): este
+  caminho não confere saldo nem debita. Cada opção gerada vira uma linha de
+  `UsageHistory` com `creditsUsed: 0` e o custo real em dólar nos `details`
+  (`registrar-uso-sem-cobranca.ts`), esteja `CREDITOS_APLICADOS` ligado ou não.
+
+**Como funciona.**
+
+- **A IA edita só a foto limpa; o Studio renderiza o resto por cima.** A
+  melhoria de sempre manda a arte chapada (foto, texto e logo num PNG) para a
+  IA redesenhar tudo, e por isso o texto e a logo saem estragados. Aqui o texto
+  nunca passa pela IA: a arte continua editável e o post continua ligado à
+  página.
+- **A rota** (`rotaDaMelhoriaDeFoto`, puro): arte com página própria e foto vai
+  pela página. Vão pela RESERVA a arte sem página (importada, canvas, trazida
+  do Zernio), a página-modelo (o `ajustarArte` a recusa) e a **arte que já é
+  melhoria chapada**. Nesta a página existe, mas não é o que o post mostra, e
+  trocar a foto nela jogaria fora a diagramação aprovada.
+- **A foto é a primeira camada `image` visível com arquivo**, fora de grade.
+  A IA recebe o QUADRO que a peça mostra, não a foto inteira do acervo
+  (`recortarQuadro`, com o mesmo retângulo de `image-fit.ts` que o editor e o
+  render usam). A foto nova volta para a MESMA camada com o recorte inteiro
+  (`RECORTE_INTEIRO`): ela já vem no quadro.
+- 🔴 **A troca é por `ajustarArte` com a operação de camadas, não por
+  `imageUrl`.** `imageUrl` não zera o `crop` (a foto nova seria recortada de
+  novo pelo recorte da antiga) e escolhe a camada por outra regra (a vaga
+  dinâmica vazia primeiro). `camadas: [{ op: 'definir', camada, campos: {
+  fileUrl, style: { crop: inteiro } } }]` grava a camada certa e passa pela
+  mesma porta: mesmo render, `invalidateScheduledRenders` e
+  `pedirRecomposicaoDaArteCongelada`.
+- **O gerador é o Nano Banana 2.1** em modo edição, 2K, na proporção aceita
+  mais próxima do quadro (`proporcaoMaisProxima`); a saída é cortada no centro
+  para a proporção exata (`ajustarAoQuadro`). Uma opção por padrão, duas em
+  paralelo quando a pessoa pede.
+- **Quem escreve o prompt** (`diretor-de-foto.ts`, irmão do diretor de arte:
+  mesmo modelo, mesmo controle de prazo, validação por código com três
+  rodadas). Ele olha a foto e a arte, recebe as receitas, a direção de foto do
+  DNA e a caixa do texto, e devolve `leitura` (português), `prompt` (inglês,
+  até 4.000, verbo da operação primeiro, o que muda, o que fica igual, câmera,
+  lente e luz) e `riscos`. Com `promptPronto` (o chat escreveu), **o Studio não
+  reescreve**. Nos dois casos o bloco de preservação da casa e das receitas
+  entra POR CÓDIGO no fim (`montarPromptDeFoto`): o que é mecânico não depende
+  de quem escreveu.
+- 🔴 **A direção de foto do DNA não é tarefa a mais.** No primeiro teste (By
+  Rock, só Humanizar pedido) o diretor mandou esquentar a luz, escurecer o
+  fundo e limpar a mesa, puxado pelo `photoDirection` da marca. Sem a receita
+  Foto profissional, luz, cor, desfoque e limpeza ficam como estão: o DNA diz
+  COMO fazer o que a receita pede.
+- **A proposta é uma Generation** de `source: 'melhoria-de-foto'`, com
+  `fieldValues.melhoriaDeFoto` (`melhoria-de-foto-registro.ts`): leitura,
+  prompt, riscos e as opções (foto limpa e prévia no Blob, na trilha
+  `foto-melhorada`, com avisos). A prévia é a página renderizada EM MEMÓRIA com
+  a foto trocada (`renderizarPrevia`); a página e a miniatura não são gravadas.
+  `resultUrl` é a prévia da primeira opção válida.
+- **Aplicar** (`aplicarOpcaoDeFoto`): confere o post ANTES de qualquer escrita
+  (`laterPostId` dentro da janela de publicação recusa sem tocar na página),
+  confere que a foto da página ainda é a da proposta (`fotoAindaEAMesma`: outra
+  foto, outro recorte ou outra caixa recusam, porque a foto nova cairia no
+  lugar errado), troca pela porta de `ajustarArte` e grava `aplicada` por merge
+  no banco. Post que já está no Zernio recebe a arte renderizada por
+  `aplicarArteMelhoradaAoPost`, como a melhoria de sempre. Aplicar de novo a
+  mesma opção devolve a aplicação que existe; depois de uma aplicada, a outra
+  não entra.
+- **A reserva** é o runner de sempre com três desvios (`fotoPelaReserva`): o
+  gerador é forçado em `gemini`, o prompt é o do diretor de foto avisado de que
+  a imagem é a arte pronta ("texto e logo intactos, letra por letra"), e a
+  logo da origem volta por `recomporPorZona(..., { tudoEZona: true })`, que
+  aceita a peça gerada inteira menos a caixa da logo oficial. A conferência de
+  texto roda como sempre e reprova texto divergente. Nada é aplicado ao post
+  sozinho, e a resposta avisa que o texto pode ter saído diferente.
+- **No MCP:** `melhorar-arte` ganhou `alvo` (`arte` é o padrão e o
+  comportamento de sempre), `receitas[]`, `promptPronto`, `opcoes` (1 ou 2) e
+  `instrucaoImagem` (que só a tela tinha); `ver-geracao` devolve `leitura` e
+  `prompt` de toda melhoria e, na proposta de foto, `opcoes`, `riscos` e
+  `aplicada`; `aplicar-opcao-de-foto` aplica a escolhida. O perfil só-rascunho
+  continua sem nenhuma das duas escritas (allowlist).
+- **O gancho do acervo** (`registrarFotoMelhoradaNoAcervo`) é chamado ao
+  aplicar e hoje não faz nada: a cópia para `Fotos/IA_LAGOSTA`, a ficha no
+  catálogo e o `buscar-fotos` são a próxima fatia. A foto fica só no Blob.
+
+**Limites conhecidos.**
+
+- ⚠️ A opção não usada fica no Blob: a limpeza em 30 dias (seção 6.1 do plano)
+  não foi feita.
+- ⚠️ A conferência de mão com defeito não existe: o diretor lista o risco e
+  quem aprova olha. "A mudança entrou" mede mudança visível, não "o pedido foi
+  atendido".
+- ⚠️ Quadro fora das proporções que o gerador aceita (foto que ocupa só parte
+  da arte) é gerado na proporção mais próxima e cortado no centro: perde-se uma
+  faixa nas bordas.
+- ⚠️ A foto é lida como o arquivo está, sem girar pelo EXIF, que é como o
+  render do servidor a lê.
+- ⚠️ O que o catálogo sabe da foto entra só pela caixa do assunto marcada à mão
+  (`PhotoAssunto`); o nome do prato do catálogo (um JSON no Drive) não é lido.
+- ⚠️ Carrossel é uma página por vez; item da leva (`itemId`) não aceita
+  `alvo: 'foto'` nesta fase; a reserva gera uma opção por pedido.
+- ⚠️ O custo registrado é o da imagem (US$ 0,05 no Nano Banana 2.1 em 2K, tabela
+  do Google lida em 17/11/2026). O diretor de foto e a conferência por visão
+  não entram na conta.

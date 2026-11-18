@@ -864,7 +864,7 @@ export const toolsDeArteIA = [
         if (proposta) {
           const r = retornoDasOpcoes(proposta)
           const destaque = [...new Set(r.opcoes.flatMap((o) => o.avisosEmDestaque))]
-          return {
+          const retorno = {
             situacao: 'pronta',
             alvo: 'foto',
             ...r,
@@ -875,6 +875,33 @@ export const toolsDeArteIA = [
               : `Mostre à pessoa a prévia (previaUrl) de cada opção, ao lado da arte de origem, e os avisos. Só depois do OK dela: aplicar-opcao-de-foto com melhoriaId=${gen.id} e o número da opção. Não gostou: chame melhorar-arte de novo (outra opção) ou ajuste o pedido.`,
             galleryUrl,
             generationId: gen.id,
+          }
+          /**
+           * O antes e depois vai JUNTO, como imagem: a arte de origem e a prévia de cada opção. Sem isso o chat teria
+           * só URLs, e a segunda opção não tem Generation própria para o conferir-arte abrir. Miniatura que falha não
+           * derruba a resposta: volta só o texto.
+           */
+          try {
+            const [{ fetchImageSource }, { default: sharp }] = await Promise.all([import('../../ai/fetch-image-source'), import('sharp')])
+            const origemDaProposta = gen.sourceGenerationId
+              ? await db.generation.findFirst({ where: { id: gen.sourceGenerationId, projectId }, select: { resultUrl: true } })
+              : null
+            const fontes = [
+              ...(origemDaProposta?.resultUrl ? [{ rotulo: 'arte de origem (antes)', url: origemDaProposta.resultUrl }] : []),
+              ...r.opcoes.flatMap((o) => (o.previaUrl ? [{ rotulo: `opção ${o.opcao} (depois)`, url: o.previaUrl }] : [])),
+            ]
+            const miniaturas = await Promise.all(
+              fontes.map(async (f) => (await sharp((await fetchImageSource(f.url)).buffer).resize(768, 768, { fit: 'inside' }).jpeg({ quality: 80 }).toBuffer()).toString('base64')),
+            )
+            return {
+              _mcpContent: [
+                { type: 'text', text: JSON.stringify({ ...retorno, imagensNaOrdem: fontes.map((f) => f.rotulo) }, null, 2) },
+                ...miniaturas.map((data) => ({ type: 'image', data, mimeType: 'image/jpeg' })),
+              ],
+            }
+          } catch (erro) {
+            console.warn('[mcp] miniaturas da proposta de foto falharam:', erro)
+            return retorno
           }
         }
         return {

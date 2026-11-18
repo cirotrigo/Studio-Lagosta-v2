@@ -206,7 +206,7 @@ export async function startMelhoriaDeFoto(input: StartMelhoriaDeFotoInput): Prom
       selectedLogoIds: [],
       selectedElementIds: [],
       format,
-      foto: { pageId: rota.foto ? pagina!.id : '', receitas, pedido, promptPronto, opcoes, postId: input.postId ?? null },
+      foto: { pageId: pagina!.id, receitas, pedido, promptPronto, opcoes, postId: input.postId ?? null },
     },
   }
 }

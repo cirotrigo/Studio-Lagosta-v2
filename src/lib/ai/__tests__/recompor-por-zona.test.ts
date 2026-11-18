@@ -226,3 +226,25 @@ describe('geradorDaMelhoria', () => {
     expect(geradorDaMelhoria(' Gemini ')).toBe('gemini')
   })
 })
+
+describe('tudoEZona (reserva da melhoria de foto)', () => {
+  const png = (raw: Buffer) => sharp(raw, { raw: { width: W, height: H, channels: 3 } }).png().toBuffer()
+  const cru = (buf: Buffer) => sharp(buf).removeAlpha().raw().toBuffer()
+
+  it('a foto que mudou POUCO e por inteiro vale inteira: nada volta à origem em retalhos', async () => {
+    const origem = foto(1)
+    // Tratamento leve e global: tudo 4 níveis mais claro, abaixo do limiar das zonas.
+    const tratada = Buffer.from(origem.map((v) => Math.min(255, v + 4)))
+    const [a, b] = await Promise.all([png(origem), png(tratada)])
+
+    const porZona = await recomporPorZona(a, b, { tamanho: { width: W, height: H } })
+    expect(porZona.fracaoDasZonas).toBeLessThan(0.05) // sem a opção, a peça volta a ser a origem
+
+    const inteira = await recomporPorZona(a, b, { tamanho: { width: W, height: H }, tudoEZona: true })
+    expect(inteira.fracaoDasZonas).toBeGreaterThan(0.99)
+    const saida = await cru(inteira.buffer)
+    let iguaisATratada = 0
+    for (let i = 0; i < saida.length; i += 97) if (Math.abs(saida[i] - tratada[i]) <= 1) iguaisATratada++
+    expect(iguaisATratada / Math.ceil(saida.length / 97)).toBeGreaterThan(0.99)
+  })
+})

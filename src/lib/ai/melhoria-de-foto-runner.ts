@@ -29,7 +29,7 @@ import { videosDaPagina } from '@/lib/video/camadas-de-video'
 import { camadasNoInstante } from '@/lib/video/linha-do-tempo'
 import { MENSAGEM_PAGINA_COM_VIDEO } from '@/lib/video/pagina-com-video'
 import type { DesignData } from '@/types/template'
-import { criarControleDoDiretor, RESERVA_PARA_GERAR_MS, tempoParaGerar } from './controle-do-diretor'
+import { criarControleDoDiretor, RESERVA_PARA_GERAR_MS, tempoParaGerar, type ControleDoDiretor } from './controle-do-diretor'
 import { conferirFidelidadeDaCena } from './creative-qa'
 import type { ImprovementJobArgs } from './creative-improvement-runner'
 import { planejarMelhoriaDeFoto, problemasDoPromptDeFoto, verRostoEmFoco } from './diretor-de-foto'
@@ -54,6 +54,7 @@ import {
   proporcaoMaisProxima,
   recortarQuadro,
   retanguloDoQuadro,
+  type FotoDaPagina,
 } from './quadro-da-foto'
 import { conferenciasDasReceitas, montarPromptDeFoto, promptSemDiretor, type CaixaEmFracoes, type ReceitaPedida } from './receitas-de-foto'
 import { areaVisivelmenteAlterada, mudancaNaoEntrou } from './recompor-por-zona'
@@ -118,11 +119,194 @@ async function assuntoMarcado(projectId: number, driveFileId: string | null): Pr
   }
 }
 
+/** O que se sabe antes de gerar: a página, a foto no quadro e o prompt. */
+export interface PreparoDaFoto {
+  pagina: PaginaDaPrevia & { layers: unknown }
+  foto: FotoDaPagina
+  /** A foto limpa no enquadramento da peça, no tamanho do arquivo. */
+  quadro: { buffer: Buffer; width: number; height: number }
+  /** O mesmo quadro, no tamanho que vai ao gerador. */
+  paraOGerador: Buffer
+  proporcao: string
+  /** O prompt que vai ao gerador, já com o bloco de preservação. */
+  prompt: string
+  promptDe: RegistroDaMelhoriaDeFoto['promptDe']
+  leitura: string | null
+  riscos: string[]
+  rostoEmFoco: boolean | null
+  /** Quem escreveu o prompt, para o registro da run. */
+  infoDoPrompt: Record<string, unknown>
+}
+
+/**
+ * Passos 1, 2 e o prompt (seção 6 do plano): acha a página e a foto limpa,
+ * recorta o quadro que a arte mostra e decide o prompt. Só lê.
+ *
+ * QUEM ESCREVE O PROMPT. Com prompt pronto (o chat olhou a arte e escreveu), o
+ * Studio não reescreve. Sem ele, o diretor de foto olha a foto e a arte; se
+ * ele não responder, os trechos das receitas seguram. Nos três casos o bloco
+ * de preservação entra por código.
+ */
+export async function prepararMelhoriaDeFoto(p: {
+  projectId: number
+  projectName: string
+  pageId: string
+  /** A arte pronta, para o diretor ver onde o texto mora. */
+  arteUrl: string
+  originalGenerationId: string | null
+  receitas: ReceitaPedida[]
+  pedido: string
+  promptPronto: string | null
+  controle?: ControleDoDiretor
+}): Promise<PreparoDaFoto> {
+  const pagina = await db.page.findFirst({
+    where: { id: p.pageId, Template: { projectId: p.projectId } },
+    select: { id: true, name: true, width: true, height: true, background: true, layers: true, audio: true, isTemplate: true },
+  })
+  if (!pagina) throw new Error('a página desta arte não existe mais neste cliente')
+  if (pagina.isTemplate) throw new Error('a página desta arte virou modelo: a foto de um modelo não é trocada por aqui')
+  const foto = acharFotoDaPagina(pagina.layers)
+  if (!foto) throw new Error('a página desta arte não tem mais foto')
+
+  const [arquivo, arte, marca, origem] = await Promise.all([
+    fetchImageSource(foto.url),
+    fetchImageSource(p.arteUrl).then((r) => r.buffer).catch(() => null),
+    loadBrandContext(p.projectId).catch(() => null),
+    p.originalGenerationId ? db.generation.findUnique({ where: { id: p.originalGenerationId }, select: { fieldValues: true } }).catch(() => null) : null,
+  ])
+
+  const quadro = await recortarQuadro(arquivo.buffer, foto)
+  const meta = await sharp(arquivo.buffer).metadata()
+  const natural = { width: meta.width ?? quadro.width, height: meta.height ?? quadro.height }
+  const proporcao = proporcaoMaisProxima(quadro.width, quadro.height)
+  const paraOGerador = await sharp(quadro.buffer)
+    .resize(LADO_MAXIMO_DE_ENVIO, LADO_MAXIMO_DE_ENVIO, { fit: 'inside', withoutEnlargement: true })
+    .jpeg({ quality: 92 })
+    .toBuffer()
+
+  const caixaDoTexto: CaixaEmFracoes | null = p.receitas.find((r) => r.id === 'abrir-espaco')?.area ?? caixaDoTextoNoQuadro(pagina.layers, foto.camadaId)
+  // "Abrir espaço" sem área informada recebe a que as camadas da página dão.
+  const receitas = p.receitas.map((r) => (r.id === 'abrir-espaco' && !r.area && caixaDoTexto ? { ...r, area: caixaDoTexto } : r))
+
+  let promptBase: string
+  let promptDe: RegistroDaMelhoriaDeFoto['promptDe'] = 'diretor'
+  let leitura: string | null = null
+  let riscos: string[] = []
+  let rostoEmFoco: boolean | null = null
+  const infoDoPrompt: Record<string, unknown> = {}
+  if (p.promptPronto?.trim()) {
+    promptBase = p.promptPronto.trim()
+    promptDe = 'chat'
+    rostoEmFoco = await verRostoEmFoco(paraOGerador)
+    // Aviso, nunca veto: quem escreveu o prompt é quem decide.
+    riscos = problemasDoPromptDeFoto(promptBase)
+      .filter((problema) => /contraste/.test(problema))
+      .map((problema) => `O prompt enviado ${problema.replace(/^o prompt /, '')}.`)
+    infoDoPrompt.planejador = 'chat'
+  } else {
+    const fvDaOrigem = (origem?.fieldValues ?? {}) as Record<string, unknown>
+    const assunto = await assuntoMarcado(p.projectId, typeof fvDaOrigem.driveImageId === 'string' ? fvDaOrigem.driveImageId : null)
+    const plano = await planejarMelhoriaDeFoto({
+      foto: paraOGerador,
+      arte,
+      receitas,
+      pedido: p.pedido,
+      marca: marca?.projectName ?? p.projectName,
+      cozinha: marca?.cuisineType ?? null,
+      direcaoDeFoto: marca?.dna.photoDirection ?? null,
+      sobreAFoto: { caixaDoAssunto: assunto ? caixaDoAssuntoNoQuadro(assunto, natural, retanguloDoQuadro(natural, foto)) : null },
+      caixaDoTexto,
+      proporcao,
+      controle: p.controle,
+    })
+    if (plano) {
+      promptBase = plano.prompt
+      leitura = plano.leitura
+      riscos = plano.riscos
+      rostoEmFoco = plano.rostoEmFoco
+      Object.assign(infoDoPrompt, { planejador: plano.modelo, planejadorMs: plano.ms, planejadorTentativas: plano.tentativas })
+    } else {
+      console.warn('[foto.bg] diretor de foto indisponível: o prompt sai dos trechos das receitas')
+      promptBase = promptSemDiretor(receitas, p.pedido)
+      rostoEmFoco = await verRostoEmFoco(paraOGerador)
+      infoDoPrompt.planejador = 'fallback'
+    }
+  }
+  return { pagina, foto, quadro, paraOGerador, proporcao, prompt: montarPromptDeFoto(promptBase, receitas), promptDe, leitura, riscos, rostoEmFoco, infoDoPrompt }
+}
+
+/** Uma opção como saiu do gerador e das conferências, antes de ser guardada. */
+export interface FotoGerada {
+  /** A foto nova, no quadro. Null quando descartada ou quando a geração falhou. */
+  foto: Buffer | null
+  avisos: AvisoDaOpcao[]
+  descartada?: string
+  areaAlterada?: number
+  /** A chamada ao gerador foi paga (mesmo que a opção tenha sido descartada). */
+  gerou: boolean
+  tokens?: OpcaoDeFoto['tokens']
+  segundos: number
+}
+
+/**
+ * Passos 3 e 4: gera UMA opção no Nano Banana 2.1 (modo edição, 2K) e confere.
+ * O único descarte é a opção que saiu igual à origem; o resto é AVISO ao lado
+ * da opção, e conferência que falha por código também vira aviso. Nunca lança.
+ */
+export async function gerarFotoDaOpcao(preparo: PreparoDaFoto, receitas: ReceitaPedida[], timeoutMs: () => number): Promise<FotoGerada> {
+  const t0 = Date.now()
+  const segundos = () => Math.round((Date.now() - t0) / 1000)
+  const { quadro } = preparo
+  let tokens: OpcaoDeFoto['tokens']
+  let gerou = false
+  try {
+    const r = await generateImageWithGemini({
+      model: MODELO_DA_FOTO,
+      prompt: preparo.prompt,
+      mode: 'edit',
+      baseImage: preparo.paraOGerador,
+      baseImageType: 'image/jpeg',
+      aspectRatio: preparo.proporcao,
+      resolution: '2K',
+      timeoutMs: timeoutMs(),
+    })
+    gerou = true
+    tokens = r.usage?.tokensDeEntrada || r.usage?.tokensDeSaida ? { entrada: r.usage.tokensDeEntrada, saida: r.usage.tokensDeSaida } : undefined
+    const fotoNova = await ajustarAoQuadro(r.imageBuffer, quadro)
+
+    const tamanhoDaMedida = { width: LARGURA_DA_MEDIDA, height: Math.max(1, Math.round((LARGURA_DA_MEDIDA * quadro.height) / quadro.width)) }
+    const area = await areaVisivelmenteAlterada(quadro.buffer, fotoNova, tamanhoDaMedida)
+    const areaAlterada = Number(area.toFixed(3))
+    if (mudancaNaoEntrou(area)) {
+      return { foto: null, avisos: [], descartada: 'saiu igual à foto de origem (a mudança não entrou)', areaAlterada, gerou, tokens, segundos: segundos() }
+    }
+
+    const conferencias = conferenciasDasReceitas(receitas)
+    const avisos: AvisoDaOpcao[] = [
+      ...(preparo.rostoEmFoco === true ? [{ tipo: 'rosto' as const, texto: AVISO_DE_ROSTO, destaque: true }] : []),
+      ...(preparo.rostoEmFoco === null ? [{ tipo: 'conferencia' as const, texto: 'Não foi possível conferir se a foto tem rosto de pessoa (a visão não respondeu): olhe antes de usar.' }] : []),
+      ...preparo.riscos.map((texto) => ({ tipo: 'risco' as const, texto })),
+    ]
+    const [assunto, cena] = await Promise.all([
+      conferencias.includes('assunto-no-lugar') ? deslocamentoDaFoto(quadro.buffer, fotoNova).catch(() => null) : null,
+      conferencias.includes('fidelidade-da-cena') ? conferirFidelidadeDaCena(fotoNova, quadro.buffer) : null,
+    ])
+    if (assunto?.deslocada) avisos.push({ tipo: 'assunto', texto: `O assunto da foto pode ter saído do lugar (${assunto.deslocados} de ${assunto.ladrilhos} pedaços da foto mudaram de posição): compare o antes e o depois.` })
+    if (cena && !cena.pulada && !cena.ok) avisos.push({ tipo: 'cena', texto: `A conferência viu diferença no prato: ${cena.motivo ?? 'confira os ingredientes e a porção'}.` })
+    if (cena?.pulada) avisos.push({ tipo: 'conferencia', texto: 'Não foi possível conferir se o prato continua o mesmo (a visão não respondeu): compare o antes e o depois.' })
+    return { foto: fotoNova, avisos, areaAlterada, gerou, tokens, segundos: segundos() }
+  } catch (erro) {
+    console.warn('[foto.bg] a opção falhou:', mensagemDe(erro))
+    return { foto: null, avisos: [], descartada: `não foi gerada: ${mensagemDe(erro).replace(/\s+/g, ' ').slice(0, 240)}`, gerou, tokens, segundos: segundos() }
+  }
+}
+
 export async function processarMelhoriaDeFoto(args: ImprovementJobArgs & { foto: MelhoriaDeFotoArgs }): Promise<void> {
   const inicio = Date.now()
   const prazoParaGerar = inicio + ORCAMENTO_MS - RESERVA_PARA_FECHAR_MS
   const controle = criarControleDoDiretor(prazoParaGerar - RESERVA_PARA_GERAR_MS)
   const pedido = args.foto.pedido ?? ''
+  const receitas = args.foto.receitas
   const base: Record<string, unknown> = {
     source: FONTE_DA_MELHORIA_DE_FOTO,
     alvo: 'foto',
@@ -135,87 +319,18 @@ export async function processarMelhoriaDeFoto(args: ImprovementJobArgs & { foto:
   let registro: RegistroDaMelhoriaDeFoto | null = null
 
   try {
-    const pagina = await db.page.findFirst({
-      where: { id: args.foto.pageId, Template: { projectId: args.projectId } },
-      select: { id: true, name: true, width: true, height: true, background: true, layers: true, audio: true, isTemplate: true },
+    const preparo = await prepararMelhoriaDeFoto({
+      projectId: args.projectId,
+      projectName: args.projectName,
+      pageId: args.foto.pageId,
+      arteUrl: args.originalResultUrl,
+      originalGenerationId: args.originalGenerationId,
+      receitas,
+      pedido,
+      promptPronto: args.foto.promptPronto,
+      controle,
     })
-    if (!pagina) throw new Error('a página desta arte não existe mais neste cliente')
-    if (pagina.isTemplate) throw new Error('a página desta arte virou modelo: a foto de um modelo não é trocada por aqui')
-    const foto = acharFotoDaPagina(pagina.layers)
-    if (!foto) throw new Error('a página desta arte não tem mais foto')
-
-    const [arquivo, arte, marca, origem] = await Promise.all([
-      fetchImageSource(foto.url),
-      fetchImageSource(args.originalResultUrl).then((r) => r.buffer).catch(() => null),
-      loadBrandContext(args.projectId).catch(() => null),
-      db.generation.findUnique({ where: { id: args.originalGenerationId }, select: { fieldValues: true } }).catch(() => null),
-    ])
-
-    const quadro = await recortarQuadro(arquivo.buffer, foto)
-    const meta = await sharp(arquivo.buffer).metadata()
-    const natural = { width: meta.width ?? quadro.width, height: meta.height ?? quadro.height }
-    const proporcao = proporcaoMaisProxima(quadro.width, quadro.height)
-    const paraOGerador = await sharp(quadro.buffer)
-      .resize(LADO_MAXIMO_DE_ENVIO, LADO_MAXIMO_DE_ENVIO, { fit: 'inside', withoutEnlargement: true })
-      .jpeg({ quality: 92 })
-      .toBuffer()
-
-    const receitas = args.foto.receitas
-    const caixaDoTexto: CaixaEmFracoes | null = receitas.find((r) => r.id === 'abrir-espaco')?.area ?? caixaDoTextoNoQuadro(pagina.layers, foto.camadaId)
-    // "Abrir espaço" sem área informada recebe a que as camadas da página dão.
-    const receitasParaOPrompt = receitas.map((r) => (r.id === 'abrir-espaco' && !r.area && caixaDoTexto ? { ...r, area: caixaDoTexto } : r))
-
-    /**
-     * QUEM ESCREVE O PROMPT. Com prompt pronto (o chat olhou a arte e
-     * escreveu), o Studio não reescreve. Sem ele, o diretor de foto olha a
-     * foto e a arte; se ele não responder, os trechos das receitas seguram.
-     * Nos três casos o bloco de preservação entra por código.
-     */
-    let promptBase: string
-    let promptDe: RegistroDaMelhoriaDeFoto['promptDe'] = 'diretor'
-    let leitura: string | null = null
-    let riscos: string[] = []
-    let rostoEmFoco: boolean | null = null
-    const infoDoPrompt: Record<string, unknown> = {}
-    if (args.foto.promptPronto?.trim()) {
-      promptBase = args.foto.promptPronto.trim()
-      promptDe = 'chat'
-      rostoEmFoco = await verRostoEmFoco(paraOGerador)
-      // Aviso, nunca veto: quem escreveu o prompt é quem decide.
-      riscos = problemasDoPromptDeFoto(promptBase)
-        .filter((p) => /contraste/.test(p))
-        .map((p) => `O prompt enviado ${p.replace(/^o prompt /, '')}.`)
-      infoDoPrompt.planejador = 'chat'
-    } else {
-      const fvDaOrigem = (origem?.fieldValues ?? {}) as Record<string, unknown>
-      const assunto = await assuntoMarcado(args.projectId, typeof fvDaOrigem.driveImageId === 'string' ? fvDaOrigem.driveImageId : null)
-      const plano = await planejarMelhoriaDeFoto({
-        foto: paraOGerador,
-        arte,
-        receitas: receitasParaOPrompt,
-        pedido,
-        marca: marca?.projectName ?? args.projectName,
-        cozinha: marca?.cuisineType ?? null,
-        direcaoDeFoto: marca?.dna.photoDirection ?? null,
-        sobreAFoto: { caixaDoAssunto: assunto ? caixaDoAssuntoNoQuadro(assunto, natural, retanguloDoQuadro(natural, foto)) : null },
-        caixaDoTexto,
-        proporcao,
-        controle,
-      })
-      if (plano) {
-        promptBase = plano.prompt
-        leitura = plano.leitura
-        riscos = plano.riscos
-        rostoEmFoco = plano.rostoEmFoco
-        Object.assign(infoDoPrompt, { planejador: plano.modelo, planejadorMs: plano.ms, planejadorTentativas: plano.tentativas })
-      } else {
-        console.warn('[foto.bg] diretor de foto indisponível: o prompt sai dos trechos das receitas')
-        promptBase = promptSemDiretor(receitasParaOPrompt, pedido)
-        rostoEmFoco = await verRostoEmFoco(paraOGerador)
-        infoDoPrompt.planejador = 'fallback'
-      }
-    }
-    const prompt = montarPromptDeFoto(promptBase, receitasParaOPrompt)
+    const { pagina, foto } = preparo
 
     registro = {
       trilha: TRILHA_DA_FOTO_MELHORADA,
@@ -226,70 +341,32 @@ export async function processarMelhoriaDeFoto(args: ImprovementJobArgs & { foto:
       quadro: foto.caixa,
       receitas,
       pedido,
-      promptDe,
-      leitura,
-      prompt,
-      riscos,
-      rostoEmFoco,
+      promptDe: preparo.promptDe,
+      leitura: preparo.leitura,
+      prompt: preparo.prompt,
+      riscos: preparo.riscos,
+      rostoEmFoco: preparo.rostoEmFoco,
       opcoes: [],
       postId: args.foto.postId,
       aplicada: null,
     }
 
-    const conferencias = conferenciasDasReceitas(receitas)
-    const tamanhoDaMedida = { width: LARGURA_DA_MEDIDA, height: Math.max(1, Math.round((LARGURA_DA_MEDIDA * quadro.height) / quadro.width)) }
-    const avisosDaFoto: AvisoDaOpcao[] = [
-      ...(rostoEmFoco === true ? [{ tipo: 'rosto' as const, texto: AVISO_DE_ROSTO, destaque: true }] : []),
-      ...(rostoEmFoco === null ? [{ tipo: 'conferencia' as const, texto: 'Não foi possível conferir se a foto tem rosto de pessoa (a visão não respondeu): olhe antes de usar.' }] : []),
-      ...riscos.map((texto) => ({ tipo: 'risco' as const, texto })),
-    ]
-
+    /** Passos 5 e 6: guarda a foto no Blob (trilha `foto-melhorada`) e monta a prévia sem tocar na página. */
     const gerarOpcao = async (numero: number): Promise<OpcaoDeFoto> => {
+      const g = await gerarFotoDaOpcao(preparo, receitas, () => tempoParaGerar(prazoParaGerar))
+      const comum = { opcao: numero, avisos: g.avisos, areaAlterada: g.areaAlterada, custoUsd: g.gerou ? CUSTO_POR_OPCAO_USD : 0, tokens: g.tokens }
+      if (!g.foto) return { ...comum, fotoUrl: null, previaUrl: null, descartada: g.descartada ?? 'não foi gerada', segundos: g.segundos }
       const t0 = Date.now()
-      const segundos = () => Math.round((Date.now() - t0) / 1000)
-      let tokens: OpcaoDeFoto['tokens']
-      let gerou = false
       try {
-        const r = await generateImageWithGemini({
-          model: MODELO_DA_FOTO,
-          prompt,
-          mode: 'edit',
-          baseImage: paraOGerador,
-          baseImageType: 'image/jpeg',
-          aspectRatio: proporcao,
-          resolution: '2K',
-          timeoutMs: tempoParaGerar(prazoParaGerar),
-        })
-        gerou = true
-        tokens = r.usage?.tokensDeEntrada || r.usage?.tokensDeSaida ? { entrada: r.usage.tokensDeEntrada, saida: r.usage.tokensDeSaida } : undefined
-        const fotoNova = await ajustarAoQuadro(r.imageBuffer, quadro)
-
-        // O ÚNICO descarte: a opção saiu igual à foto de origem.
-        const area = await areaVisivelmenteAlterada(quadro.buffer, fotoNova, tamanhoDaMedida)
-        if (mudancaNaoEntrou(area)) {
-          return { opcao: numero, fotoUrl: null, previaUrl: null, avisos: [], descartada: 'saiu igual à foto de origem (a mudança não entrou)', areaAlterada: Number(area.toFixed(3)), custoUsd: CUSTO_POR_OPCAO_USD, tokens, segundos: segundos() }
-        }
-
-        // Daqui para baixo tudo é AVISO ao lado da opção. Conferência que falha por código também vira aviso.
-        const avisos: AvisoDaOpcao[] = [...avisosDaFoto]
-        const [assunto, cena] = await Promise.all([
-          conferencias.includes('assunto-no-lugar') ? deslocamentoDaFoto(quadro.buffer, fotoNova).catch(() => null) : null,
-          conferencias.includes('fidelidade-da-cena') ? conferirFidelidadeDaCena(fotoNova, quadro.buffer) : null,
-        ])
-        if (assunto?.deslocada) avisos.push({ tipo: 'assunto', texto: `O assunto da foto pode ter saído do lugar (${assunto.deslocados} de ${assunto.ladrilhos} pedaços da foto mudaram de posição): compare o antes e o depois.` })
-        if (cena && !cena.pulada && !cena.ok) avisos.push({ tipo: 'cena', texto: `A conferência viu diferença no prato: ${cena.motivo ?? 'confira os ingredientes e a porção'}.` })
-        if (cena?.pulada) avisos.push({ tipo: 'conferencia', texto: 'Não foi possível conferir se o prato continua o mesmo (a visão não respondeu): compare o antes e o depois.' })
-
         const caminho = `${TRILHA_DA_FOTO_MELHORADA}/${args.projectId}/${args.jobGenerationId}`
-        const blobDaFoto = await put(`${caminho}-opcao-${numero}.jpg`, fotoNova, { access: 'public', contentType: 'image/jpeg', addRandomSuffix: true })
-        // A prévia: a página como ela está, com a foto trocada. Nada é gravado na página.
+        const blobDaFoto = await put(`${caminho}-opcao-${numero}.jpg`, g.foto, { access: 'public', contentType: 'image/jpeg', addRandomSuffix: true })
         const png = await renderizarPrevia(pagina, camadasComFotoTrocada(pagina.layers, foto.camadaId, blobDaFoto.url), args.projectId)
         const previa = await sharp(png).jpeg({ quality: 92 }).toBuffer()
         const blobDaPrevia = await put(`${caminho}-previa-${numero}.jpg`, previa, { access: 'public', contentType: 'image/jpeg', addRandomSuffix: true })
-        return { opcao: numero, fotoUrl: blobDaFoto.url, previaUrl: blobDaPrevia.url, avisos, areaAlterada: Number(area.toFixed(3)), custoUsd: CUSTO_POR_OPCAO_USD, tokens, segundos: segundos() }
+        return { ...comum, fotoUrl: blobDaFoto.url, previaUrl: blobDaPrevia.url, segundos: g.segundos + Math.round((Date.now() - t0) / 1000) }
       } catch (erro) {
-        console.warn(`[foto.bg] opção ${numero} falhou:`, mensagemDe(erro))
-        return { opcao: numero, fotoUrl: null, previaUrl: null, avisos: [], descartada: `não foi gerada: ${mensagemDe(erro).replace(/\s+/g, ' ').slice(0, 240)}`, custoUsd: gerou ? CUSTO_POR_OPCAO_USD : 0, tokens, segundos: segundos() }
+        console.warn(`[foto.bg] opção ${numero}: a foto foi gerada, mas não deu para guardar ou montar a prévia:`, mensagemDe(erro))
+        return { ...comum, avisos: [], fotoUrl: null, previaUrl: null, descartada: `não foi possível montar a prévia: ${mensagemDe(erro).replace(/\s+/g, ' ').slice(0, 200)}`, segundos: g.segundos }
       }
     }
 
@@ -322,7 +399,7 @@ export async function processarMelhoriaDeFoto(args: ImprovementJobArgs & { foto:
     )
 
     const validas = registro.opcoes.filter((o) => o.fotoUrl && o.previaUrl)
-    const fieldValues = { ...base, ...infoDoPrompt, diretor: controle.registro, melhoriaDeFoto: registro, elapsedSeconds: Math.round((Date.now() - inicio) / 1000) }
+    const fieldValues = { ...base, ...preparo.infoDoPrompt, diretor: controle.registro, melhoriaDeFoto: registro, elapsedSeconds: Math.round((Date.now() - inicio) / 1000) }
     if (validas.length === 0) {
       const naoEntrou = registro.opcoes.some((o) => o.areaAlterada !== undefined)
       const motivo = naoEntrou
