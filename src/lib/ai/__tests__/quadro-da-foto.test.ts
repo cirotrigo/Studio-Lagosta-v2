@@ -5,6 +5,7 @@ import {
   RECORTE_INTEIRO,
   acharFotoDaPagina,
   ajustarAoQuadro,
+  caixaDoAssuntoNoQuadro,
   caixaDoTextoNoQuadro,
   camadasComFotoTrocada,
   pageIdDaArte,
@@ -115,6 +116,16 @@ describe('o quadro que a arte mostra', () => {
     expect(q.width).toBe(150)
     const meta = await sharp(q.buffer).metadata()
     expect([meta.width, meta.height]).toEqual([150, 300])
+  })
+})
+
+describe('caixaDoAssuntoNoQuadro', () => {
+  it('leva a caixa da foto inteira para frações do quadro, cortando o que sobra', () => {
+    const natural = { width: 4000, height: 3000 }
+    const quadro = { left: 1000, top: 0, width: 2000, height: 3000 }
+    const c = caixaDoAssuntoNoQuadro({ x0: 0.5, y0: 0.5, x1: 1, y1: 1 }, natural, quadro)!
+    expect(c).toEqual({ x: 0.5, y: 0.5, largura: 0.5, altura: 0.5 })
+    expect(caixaDoAssuntoNoQuadro({ x0: 0, y0: 0, x1: 0.2, y1: 0.2 }, natural, quadro)).toBeNull()
   })
 })
 

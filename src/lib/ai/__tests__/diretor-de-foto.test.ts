@@ -31,8 +31,8 @@ describe('contextoDaFoto', () => {
     expect(c).toContain('By Rock')
     expect(c).toContain('Luz quente de bar, fundo escuro.')
     expect(c).toContain('Chope pilsen')
-    expect(c).toMatch(/ASSUNTO.*30%.*40%/s)
-    expect(c).toMatch(/TEXTO DA ARTE.*10%.*5%/s)
+    expect(c).toMatch(/ASSUNTO[^\n]*30%[^\n]*40%/)
+    expect(c).toMatch(/TEXTO DA ARTE[^\n]*10%[^\n]*5%/)
     expect(c).toContain('a mão segurando o copo')
   })
 

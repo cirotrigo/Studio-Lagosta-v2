@@ -333,6 +333,12 @@ export async function recomporPorZona(
     logo?: Buffer | null
     /** Raio da vizinhança de comparação, em pixels. Ausente, `TOLERANCIA`. */
     tolerancia?: number
+    /**
+     * A peça gerada vale INTEIRA, menos a logo: é a reserva da melhoria de foto
+     * (17/11/2026), em que a foto muda de propósito e só a logo volta à origem.
+     * Sem isto, o que mudou pouco voltaria à origem em retalhos.
+     */
+    tudoEZona?: boolean
   } = {},
 ): Promise<RecomposicaoPorZona> {
   const meta = await sharp(origem).rotate().metadata()
@@ -400,6 +406,10 @@ export async function recomporPorZona(
     if (fim < w * h * AREA_MINIMA) continue
     zonas++
     for (let k = 0; k < fim; k++) mascara[fila[k]] = 1
+  }
+  if (opcoes.tudoEZona) {
+    mascara.fill(1)
+    zonas = Math.max(zonas, 1)
   }
 
   /**

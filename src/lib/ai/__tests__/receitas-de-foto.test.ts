@@ -8,6 +8,7 @@ import {
   melhoriaDeFotoLigada,
   montarPromptDeFoto,
   normalizarReceitas,
+  promptSemDiretor,
   trechosFotograficos,
 } from '../receitas-de-foto'
 
@@ -100,6 +101,22 @@ describe('blocoDePreservacao', () => {
   it('não repete linha quando duas receitas protegem a mesma coisa', () => {
     const linhas = blocoDePreservacao([{ id: 'humanizar' }, { id: 'foto-profissional' }, { id: 'abrir-espaco' }]).split('\n')
     expect(new Set(linhas).size).toBe(linhas.length)
+  })
+})
+
+describe('reserva (arte chapada) e prompt sem diretor', () => {
+  it('na arte chapada o bloco manda manter texto e logo, em vez de proibir texto', () => {
+    const b = blocoDePreservacao([{ id: 'foto-profissional' }], { arteChapada: true })
+    expect(b).toMatch(/letter by letter/)
+    expect(b).not.toMatch(/carries no text/)
+    expect(blocoDePreservacao([{ id: 'foto-profissional' }])).toMatch(/carries no text/)
+  })
+
+  it('sem diretor o prompt sai dos trechos das receitas e do pedido', () => {
+    const p = promptSemDiretor([{ id: 'foto-profissional' }], 'mais quente')
+    expect(p).toMatch(/^Edit this photograph\./)
+    expect(p).toMatch(/white balance/i)
+    expect(p).toMatch(/mais quente/)
   })
 })
 

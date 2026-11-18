@@ -119,6 +119,22 @@ export async function recortarQuadro(arquivo: Buffer, foto: FotoDaPagina): Promi
   return { buffer, width: r.width, height: r.height }
 }
 
+/**
+ * A caixa do assunto (frações da FOTO inteira, como `marcar-assunto` grava) em
+ * frações do QUADRO. Null quando o assunto ficou fora do quadro.
+ */
+export function caixaDoAssuntoNoQuadro(
+  caixa: { x0: number; y0: number; x1: number; y1: number },
+  natural: { width: number; height: number },
+  quadro: { left: number; top: number; width: number; height: number },
+): CaixaEmFracoes | null {
+  const x0 = Math.max(0, (caixa.x0 * natural.width - quadro.left) / quadro.width)
+  const y0 = Math.max(0, (caixa.y0 * natural.height - quadro.top) / quadro.height)
+  const x1 = Math.min(1, (caixa.x1 * natural.width - quadro.left) / quadro.width)
+  const y1 = Math.min(1, (caixa.y1 * natural.height - quadro.top) / quadro.height)
+  return x1 > x0 && y1 > y0 ? { x: x0, y: y0, largura: x1 - x0, altura: y1 - y0 } : null
+}
+
 /** As proporções que o Nano Banana aceita em `imageConfig.aspectRatio`. */
 const PROPORCOES = ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'] as const
 

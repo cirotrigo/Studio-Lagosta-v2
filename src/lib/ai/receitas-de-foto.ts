@@ -221,13 +221,17 @@ export function trechosFotograficos(receitas: ReceitaPedida[]): string[] {
 const REGRAS_DA_CASA = [
   'The food and drink are the restaurant\'s real ones: every ingredient, the portion size, the crockery and the drink stay exactly as photographed.',
   'The place is the real one: the same table, wall, furniture and background (they may fall softer in focus, they are never replaced).',
-  'The photograph carries no text, no logo, no watermark, no graphic, and no veil, gradient, band or darkened area added for text: light comes only from the scene.',
   'Every real person already in the photograph keeps the same face, the same features, the same expression and the same body.',
 ]
+/** Foto limpa: o texto e a logo entram depois, por código. */
+const SEM_TEXTO = 'The photograph carries no text, no logo, no watermark, no graphic, and no veil, gradient, band or darkened area added for text: light comes only from the scene.'
+/** Reserva (arte chapada): o texto e a logo já estão na imagem e têm de sair como entraram. */
+const TEXTO_INTACTO =
+  'Every piece of text, the logo and every graphic element of the design stay exactly as they are, in the same place, letter by letter. No text is added, and no veil, gradient, band or darkened area is added: light comes only from the scene.'
 
 /** O bloco que o Studio acrescenta POR CÓDIGO ao fim de todo prompt de foto, venha de quem vier. */
-export function blocoDePreservacao(receitas: ReceitaPedida[]): string {
-  const linhas = [...REGRAS_DA_CASA]
+export function blocoDePreservacao(receitas: ReceitaPedida[], opcoes: { arteChapada?: boolean } = {}): string {
+  const linhas = [...REGRAS_DA_CASA, opcoes.arteChapada ? TEXTO_INTACTO : SEM_TEXTO]
   for (const r of receitas) linhas.push(...RECEITAS_DE_FOTO[r.id].preserva)
   const humanizar = receitas.find((r) => r.id === 'humanizar')
   if (humanizar) {
@@ -242,10 +246,21 @@ export function blocoDePreservacao(receitas: ReceitaPedida[]): string {
 }
 
 /** O prompt que vai ao gerador: o de quem escreveu, mais o bloco de preservação. Idempotente. */
-export function montarPromptDeFoto(base: string, receitas: ReceitaPedida[]): string {
-  const bloco = blocoDePreservacao(receitas)
+export function montarPromptDeFoto(base: string, receitas: ReceitaPedida[], opcoes: { arteChapada?: boolean } = {}): string {
+  const bloco = blocoDePreservacao(receitas, opcoes)
   const limpo = base.trim()
   return limpo.endsWith(bloco) ? limpo : `${limpo}\n\n${bloco}`
+}
+
+/**
+ * O prompt quando o diretor de foto não respondeu: os trechos das receitas e o
+ * pedido, sem a leitura da foto. Pior que o do diretor, e melhor que derrubar a
+ * melhoria (o diretor nunca derruba, como o de arte).
+ */
+export function promptSemDiretor(receitas: ReceitaPedida[], pedido: string): string {
+  const partes = ['Edit this photograph.', ...trechosFotograficos(receitas)]
+  if (pedido.trim()) partes.push(`Also: ${pedido.trim()}`)
+  return partes.join(' ')
 }
 
 const TODAS_AS_CONFERENCIAS: Conferencia[] = ['assunto-no-lugar', 'fidelidade-da-cena', 'rosto-em-foco']
