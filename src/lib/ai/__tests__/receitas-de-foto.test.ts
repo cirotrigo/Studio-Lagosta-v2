@@ -1,0 +1,200 @@
+import { describe, expect, it } from 'vitest'
+import {
+  IDS_DAS_RECEITAS,
+  RECEITAS_DE_FOTO,
+  TETO_DO_PROMPT_DE_FOTO,
+  blocoDePreservacao,
+  conferenciasDasReceitas,
+  melhoriaDeFotoLigada,
+  montarPromptDeFoto,
+  normalizarReceitas,
+  promptSemDiretor,
+  trechosFotograficos,
+} from '../receitas-de-foto'
+
+describe('catálogo de receitas de foto', () => {
+  it('tem as quatro receitas, cada uma com rótulo, descrição, proteção e conferências', () => {
+    expect([...IDS_DAS_RECEITAS]).toEqual(['humanizar', 'foto-profissional', 'abrir-espaco', 'ajuste-livre'])
+    for (const id of IDS_DAS_RECEITAS) {
+      const r = RECEITAS_DE_FOTO[id]
+      expect(r.id).toBe(id)
+      expect(r.rotulo.length).toBeGreaterThan(3)
+      expect(r.descricao.length).toBeGreaterThan(20)
+      expect(r.protege.length).toBeGreaterThan(0)
+      expect(r.preserva.length).toBeGreaterThan(0)
+      expect(r.conferencias).toContain('rosto-em-foco')
+    }
+  })
+
+  it('o trecho fotográfico fala de câmera, lente e luz, e leva os parâmetros', () => {
+    const [humanizar] = trechosFotograficos([{ id: 'humanizar', gesto: 'a hand pulling a slice of pizza', lado: 'direita' }])
+    expect(humanizar).toContain('a hand pulling a slice of pizza')
+    expect(humanizar).toMatch(/right edge/i)
+    const [pro] = trechosFotograficos([{ id: 'foto-profissional', intensidade: 'marcada' }])
+    expect(pro).toMatch(/lens|f\/\d/i)
+    expect(pro).toMatch(/white balance/i)
+    const [espaco] = trechosFotograficos([{ id: 'abrir-espaco', area: { x: 0, y: 0, largura: 1, altura: 0.3 } }])
+    expect(espaco).toMatch(/top/i)
+  })
+
+  it('Foto profissional começa pelo verbo, diz o que TEM de ficar diferente, e o padrão é a marcada', () => {
+    const [padrao] = trechosFotograficos([{ id: 'foto-profissional' }])
+    const [marcada] = trechosFotograficos([{ id: 'foto-profissional', intensidade: 'marcada' }])
+    const [leve] = trechosFotograficos([{ id: 'foto-profissional', intensidade: 'leve' }])
+    expect(padrao).toBe(marcada)
+    expect(leve).not.toBe(marcada)
+    for (const t of [marcada, leve]) {
+      expect(t).toMatch(/^Retouch /)
+      expect(t).toMatch(/white balance/i)
+      expect(t).toMatch(/background/i)
+      expect(t).toMatch(/\bf\/\d/)
+      expect(t).toMatch(/different|difference/i)
+    }
+    expect(marcada).toMatch(/85mm lens at f\/2/)
+    expect(marcada).toMatch(/obvious at a glance/)
+  })
+
+  it('Abrir espaço não move nem encolhe o assunto, não acrescenta gente e não escurece', () => {
+    const [t] = trechosFotograficos([{ id: 'abrir-espaco' }])
+    expect(t).toMatch(/^Calm /)
+    expect(t).toMatch(/keeps exactly its size and its position/)
+    expect(t).not.toMatch(/recompose|moves or scales/i)
+    const bloco = blocoDePreservacao([{ id: 'abrir-espaco' }])
+    expect(bloco).toMatch(/same size and in the same position/)
+    expect(bloco).toMatch(/no person, no hand, no object/)
+    expect(bloco).toMatch(/not darkened/)
+    expect(conferenciasDasReceitas([{ id: 'abrir-espaco' }])).toContain('assunto-no-lugar')
+  })
+})
+
+describe('normalizarReceitas', () => {
+  it('aceita receitas combinadas num pedido só', () => {
+    const r = normalizarReceitas([{ id: 'humanizar', gesto: 'mão puxando o queijo' }, { id: 'foto-profissional' }])
+    expect(r.erros).toEqual([])
+    expect(r.receitas.map((x) => x.id)).toEqual(['humanizar', 'foto-profissional'])
+  })
+
+  it('aceita o id solto, sem objeto', () => {
+    expect(normalizarReceitas(['foto-profissional']).receitas).toEqual([{ id: 'foto-profissional' }])
+  })
+
+  it('ausente ou vazio é lista vazia, sem erro', () => {
+    expect(normalizarReceitas(undefined)).toEqual({ receitas: [], erros: [] })
+    expect(normalizarReceitas([])).toEqual({ receitas: [], erros: [] })
+  })
+
+  it('recusa receita desconhecida, repetida e parâmetro fora do limite, com todos os erros', () => {
+    const r = normalizarReceitas([
+      { id: 'postura-e-sorriso' },
+      { id: 'humanizar', gesto: 'x'.repeat(201) },
+      { id: 'foto-profissional' },
+      { id: 'foto-profissional' },
+      { id: 'ajuste-livre' },
+      { id: 'ajuste-livre', texto: 'y'.repeat(501) },
+    ])
+    expect(r.receitas).toEqual([])
+    expect(r.erros.join('\n')).toMatch(/postura-e-sorriso/)
+    expect(r.erros.join('\n')).toMatch(/gesto/)
+    expect(r.erros.join('\n')).toMatch(/repetida/)
+    expect(r.erros.join('\n')).toMatch(/ajuste-livre.*texto/)
+    expect(r.erros.length).toBeGreaterThanOrEqual(4)
+  })
+
+  it('recusa o que não é lista', () => {
+    expect(normalizarReceitas('humanizar').erros.length).toBe(1)
+  })
+})
+
+describe('blocoDePreservacao', () => {
+  it('sem receita traz as regras da casa', () => {
+    const b = blocoDePreservacao([])
+    expect(b).toMatch(/food/i)
+    expect(b).toMatch(/table|wall|furniture/i)
+    expect(b).toMatch(/veil|gradient/i)
+    expect(b).toMatch(/face/i)
+  })
+
+  it('com humanizar: gente pelas bordas, nunca de terno ou blazer, sem rosto em foco', () => {
+    const b = blocoDePreservacao([{ id: 'humanizar' }])
+    expect(b).toMatch(/never a suit or blazer/i)
+    expect(b).toMatch(/edge/i)
+    expect(b).toMatch(/no face in focus/i)
+  })
+
+  it('com rosto autorizado não proíbe o rosto em foco, e o terno segue proibido', () => {
+    const b = blocoDePreservacao([{ id: 'humanizar', rosto: true }])
+    expect(b).not.toMatch(/no face in focus/i)
+    expect(b).toMatch(/never a suit or blazer/i)
+  })
+
+  it('não repete linha quando duas receitas protegem a mesma coisa', () => {
+    const linhas = blocoDePreservacao([{ id: 'humanizar' }, { id: 'foto-profissional' }, { id: 'abrir-espaco' }]).split('\n')
+    expect(new Set(linhas).size).toBe(linhas.length)
+  })
+})
+
+describe('o fecho: o que tem de sair diferente, dito por último', () => {
+  it('Foto profissional e Abrir espaço terminam dizendo o que mudou; Humanizar não precisa', () => {
+    const fp = blocoDePreservacao([{ id: 'foto-profissional' }])
+    expect(fp).toMatch(/And in the result:\n- the photographic rendering is visibly different/)
+    expect(fp.indexOf('And in the result:')).toBeGreaterThan(fp.indexOf('Keep exactly as in the original photograph:'))
+    expect(fp.trim().endsWith('is wrong.')).toBe(true)
+    expect(blocoDePreservacao([{ id: 'abrir-espaco' }])).toMatch(/visibly calmer than in the input/)
+    expect(blocoDePreservacao([{ id: 'humanizar' }])).not.toMatch(/And in the result/)
+  })
+
+  it('o prompt montado continua idempotente com o fecho', () => {
+    const uma = montarPromptDeFoto('Retouch this photograph.', [{ id: 'foto-profissional' }])
+    expect(montarPromptDeFoto(uma, [{ id: 'foto-profissional' }])).toBe(uma)
+  })
+})
+
+describe('reserva (arte chapada) e prompt sem diretor', () => {
+  it('na arte chapada o bloco manda manter texto e logo, em vez de proibir texto', () => {
+    const b = blocoDePreservacao([{ id: 'foto-profissional' }], { arteChapada: true })
+    expect(b).toMatch(/letter by letter/)
+    expect(b).not.toMatch(/carries no text/)
+    expect(blocoDePreservacao([{ id: 'foto-profissional' }])).toMatch(/carries no text/)
+  })
+
+  it('sem diretor o prompt sai dos trechos das receitas e do pedido', () => {
+    const p = promptSemDiretor([{ id: 'foto-profissional' }], 'mais quente')
+    expect(p).toMatch(/^Edit this photograph\./)
+    expect(p).toMatch(/white balance/i)
+    expect(p).toMatch(/mais quente/)
+  })
+})
+
+describe('montarPromptDeFoto', () => {
+  it('acrescenta o bloco ao fim e não duplica', () => {
+    const base = 'Add a hand entering from the right edge.'
+    const uma = montarPromptDeFoto(base, [{ id: 'humanizar' }])
+    expect(uma.startsWith(base)).toBe(true)
+    expect(uma.endsWith(blocoDePreservacao([{ id: 'humanizar' }]))).toBe(true)
+    expect(montarPromptDeFoto(uma, [{ id: 'humanizar' }])).toBe(uma)
+  })
+
+  it('o teto do prompt de quem escreve é 4000', () => {
+    expect(TETO_DO_PROMPT_DE_FOTO).toBe(4000)
+  })
+})
+
+describe('conferências e chave', () => {
+  it('une as conferências das receitas, sem repetir', () => {
+    const c = conferenciasDasReceitas([{ id: 'humanizar' }, { id: 'foto-profissional' }])
+    expect(c).toEqual(expect.arrayContaining(['assunto-no-lugar', 'fidelidade-da-cena', 'rosto-em-foco']))
+    expect(new Set(c).size).toBe(c.length)
+  })
+
+  it('sem receita (prompt pronto) roda todas', () => {
+    expect(conferenciasDasReceitas([]).sort()).toEqual(['assunto-no-lugar', 'fidelidade-da-cena', 'rosto-em-foco'])
+  })
+
+  it('a chave nasce desligada', () => {
+    expect(melhoriaDeFotoLigada(undefined)).toBe(false)
+    expect(melhoriaDeFotoLigada('')).toBe(false)
+    expect(melhoriaDeFotoLigada('false')).toBe(false)
+    expect(melhoriaDeFotoLigada('true')).toBe(true)
+    expect(melhoriaDeFotoLigada(' 1 ')).toBe(true)
+  })
+})

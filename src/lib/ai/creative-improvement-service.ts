@@ -18,7 +18,7 @@ import { CreativeError } from '@/lib/creatives/errors'
 import { recusaDeArteNoZernio } from '@/lib/posts/midia-no-zernio'
 import { validateCreditsForFeature } from '@/lib/credits/deduct'
 import { InsufficientCreditsError } from '@/lib/credits/errors'
-import { getCurrentImageModel } from '@/lib/ai/openai-image-client'
+import { modeloDaMelhoria, type GeradorDaMelhoria } from '@/lib/ai/gerador-da-melhoria'
 import {
   inferFormatFromTemplate,
   OPENAI_INPUT_SIZE,
@@ -73,6 +73,14 @@ export interface StartImprovementInput {
    * `rediagramar`; o resto → `redesenhar`.
    */
   modo?: ModoDaMelhoria
+  /**
+   * A RESERVA da melhoria de foto (17/11/2026, `melhoria-de-foto-service.ts`):
+   * arte sem página, página-modelo ou arte que já é melhoria chapada. Força o
+   * gerador, manda o runner usar o prompt de foto e não cobra crédito.
+   */
+  gerador?: GeradorDaMelhoria
+  fotoPelaReserva?: ImprovementJobArgs['fotoPelaReserva']
+  semCobranca?: boolean
   /** Quem paga os créditos e assina a Generation — id do CLERK (user_…). */
   actorClerkId: string
   orgId?: string
@@ -289,7 +297,7 @@ export async function startImprovement(
   }
 
   try {
-    await validateCreditsForFeature(input.actorClerkId, 'ai_creative_improvement', 1, {
+    if (!input.semCobranca) await validateCreditsForFeature(input.actorClerkId, 'ai_creative_improvement', 1, {
       organizationId: input.orgId,
     })
   } catch (error) {
@@ -328,7 +336,8 @@ export async function startImprovement(
         applyToPostId: input.applyToPostId ?? null,
         applyToPostMediaIndex: mediaIndex,
         ...(itemDaBancada ? { applyToItemDePlanoId: itemDaBancada.itemId, applyToPlanoId: itemDaBancada.planoId, applyToSlideOrdem: itemDaBancada.slideOrdem } : {}),
-        model: getCurrentImageModel(),
+        model: modeloDaMelhoria(input.gerador),
+        ...(input.fotoPelaReserva ? { alvo: 'foto', fotoPelaReserva: { motivo: input.fotoPelaReserva.motivo, receitas: input.fotoPelaReserva.receitas as never } } : {}),
         quality: tier,
         modo,
         inputSize: openaiSize,
@@ -378,6 +387,9 @@ export async function startImprovement(
       selectedLogoIds,
       selectedElementIds,
       format,
+      ...(input.gerador ? { gerador: input.gerador } : {}),
+      ...(input.fotoPelaReserva ? { fotoPelaReserva: input.fotoPelaReserva } : {}),
+      ...(input.semCobranca ? { semCobranca: true } : {}),
     },
   }
 }

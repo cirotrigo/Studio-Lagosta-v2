@@ -56,8 +56,8 @@ import { criarControleDoDiretor, limiteDaRodada, registrarRodada, concluirFallba
  * conversa que originou este módulo, e a chave da conta o alcança (medido).
  * Modelos `gpt-5*` não aceitam `temperature`.
  */
-const PLANNER_MODEL = process.env.OPENAI_PLANNER_MODEL || 'gpt-5.2'
-const ACEITA_TEMPERATURA = !/^gpt-5/.test(PLANNER_MODEL)
+export const PLANNER_MODEL = process.env.OPENAI_PLANNER_MODEL || 'gpt-5.2'
+export const ACEITA_TEMPERATURA = !/^gpt-5/.test(PLANNER_MODEL)
 
 /**
  * Teto do prompt que o planejador escreve. O guia oficial de prompting dos GPT

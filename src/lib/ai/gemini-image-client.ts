@@ -25,10 +25,20 @@ function getGeminiClient(): GoogleGenAI {
 const GEMINI_IMAGE_MODELS = {
   'nano-banana-2': 'gemini-3.1-flash-image-preview',  // Mais rápido
   'nano-banana-pro': 'gemini-3-pro-image-preview',    // Maior qualidade, 4K
+  // Id confirmado na listagem de modelos da API em 17/11/2026. É o gerador da
+  // melhoria quando `MELHORIA_GERADOR=gemini` (ver `gerador-da-melhoria.ts`).
+  'nano-banana-2.1': 'gemini-nano-banana-2.1',
 } as const
 
+export type GeminiImageModel = keyof typeof GEMINI_IMAGE_MODELS
+
+/** O id que vai à API, para o registro da run. */
+export function idDoModeloGemini(model: GeminiImageModel): string {
+  return GEMINI_IMAGE_MODELS[model]
+}
+
 export interface GeminiImageParams {
-  model: 'nano-banana-2' | 'nano-banana-pro'
+  model: GeminiImageModel
   prompt: string
   aspectRatio?: string
   resolution?: '1K' | '2K' | '4K'
@@ -37,11 +47,15 @@ export interface GeminiImageParams {
   mode?: 'generate' | 'edit'
   baseImage?: Buffer
   baseImageType?: string
+  /** Aborta a chamada depois disto. Ausente, vale o tempo da própria SDK. */
+  timeoutMs?: number
 }
 
 export interface GeminiImageResult {
   imageBuffer: Buffer
   mimeType: string
+  /** O consumo que a API informou (`usageMetadata`). */
+  usage?: { tokensDeEntrada?: number; tokensDeSaida?: number }
 }
 
 /**
@@ -124,6 +138,7 @@ export async function generateImageWithGemini(
       config: {
         responseModalities: ['TEXT', 'IMAGE'],
         ...(imageConfig ? { imageConfig } : {}),
+        ...(params.timeoutMs ? { abortSignal: AbortSignal.timeout(params.timeoutMs) } : {}),
       },
     })
 
@@ -152,6 +167,10 @@ export async function generateImageWithGemini(
         return {
           imageBuffer,
           mimeType: part.inlineData.mimeType || 'image/png',
+          usage: {
+            tokensDeEntrada: response.usageMetadata?.promptTokenCount,
+            tokensDeSaida: response.usageMetadata?.candidatesTokenCount,
+          },
         }
       }
     }

@@ -44,6 +44,10 @@ em 08/09/2026).
   recomposto, e texto sobre o assunto da foto ainda não é barrado (falta saber
   onde está o assunto). Para medir um par em disco:
   `npx tsx scripts/medir-preservacao-da-foto.ts <origem> <gerada>`.
+- **17/11/2026:** a volta à origem "sem aviso" acabou (a melhoria agora
+  termina dizendo que a mudança não entrou), e há um segundo gerador que não
+  depende do filtro de tinta. Ver "Gerador selecionável e recomposição por
+  zona", no fim deste arquivo.
 
 ### A melhoria de artes na carteira inteira (02/09/2026)
 
@@ -493,3 +497,475 @@ garçom") são o formato que vale medir.
 - **"Vem pro fogo" entrou no DNA do Espeto** como proibição (`virarRegra`,
   contentRules), pelo feedback do Ciro na peça de quarta: "Não use mais esse
   termo… Vou aprovar dessa vez mas não uso mais."
+
+### Gerador selecionável e recomposição por zona (17/11/2026)
+
+Relatado pelo Ciro no By Rock (`cmwl4l8lr004vswmgokql3lju`, arte do
+compositor): "trocar o tracejado por ondas sonoras estilizadas e rediagramar o
+bloco de texto". Em `refinar` a melhoria devolveu a arte IDÊNTICA à origem,
+marcada como pronta e cobrada; em `redesenhar` falhou com "a IA tirou o assunto
+da foto do lugar". As duas coisas saem do mesmo fato: o gpt-image redesenha a
+imagem inteira, e o que devolve a foto (`preservar-foto.ts`) só aceita bloco
+chapado, com cor de tinta e caixa preenchida. Barra fina de onda sonora não é
+nada disso e voltava à origem.
+
+- **`MELHORIA_GERADOR=openai|gemini`** (`gerador-da-melhoria.ts`). O padrão é
+  `openai`: sem a variável nada muda. `gemini` chama o Nano Banana 2.1
+  (`gemini-nano-banana-2.1`, id conferido na listagem de modelos da API) por
+  `gemini-image-client.ts`, com o MESMO prompt do diretor de arte e as mesmas
+  imagens, na mesma ordem. `fieldValues.model` diz qual gerador fez a peça.
+- **No caminho Gemini a recomposição é por zona** (`recompor-por-zona.ts`,
+  puro), nos três modos: a peça gerada (2K, 1536x2752 no story) é alinhada ao
+  tamanho da origem, o mapa de diferença vira zonas por limiar e componentes
+  conexos, e fora das zonas entra a origem pixel por pixel. **Sem filtro de cor
+  de tinta nem de preenchimento**: elemento gráfico novo é zona como texto é.
+  Só funciona com gerador que mantém o resto da imagem; com o gpt-image a zona
+  seria a arte inteira.
+- 🔴 **O mapa de diferença compara com a FAIXA da vizinhança, não pixel a
+  pixel.** A peça volta de 2K para 1080 amaciada e um ou dois pixels fora do
+  lugar; comparando pixel a pixel (mesmo procurando o par a 2 px), toda borda
+  de letra virava "mudança" e a logo inteira virava zona. Cada pixel é medido
+  contra o mínimo e o máximo dos vizinhos (2 px) do outro lado: borrão e
+  deslocamento caem dentro da faixa, barra nova fica fora.
+- 🔴 **Sem casamento de tom no caminho Gemini.** O Nano Banana não escurece o
+  quadro (viés medido de até 2,6 por canal; o gpt-image dá -9), e o LUT de
+  histograma (`casarTomGlobal`), com um elemento vermelho novo na conta, mexia
+  na foto mais do que o gerador (diferença 5,8 onde sem ele dá 0).
+- 🔴 **A emenda não passa por cima de texto.** O gerador redesenha o bloco
+  inteiro, e a linha que ficou quase igual cai dentro da tolerância: entre a
+  zona do título e a do convite sobrava uma faixa estreita da origem, e na
+  borda suave as duas versões da linha se misturavam ("DAS 16H ÀS 20H" com
+  fantasma no By Rock). Um fechamento (dilata e erode, 2,5% da altura) une as
+  zonas vizinhas; a foto entre zonas distantes continua sendo a da origem.
+- **A logo é sempre a da origem.** Com a tolerância acima a logo que o gerador
+  "quase copiou" nem vira zona. Quando vira (o gerador mexeu ali), o arquivo
+  oficial é procurado em volta das zonas e a caixa dele volta à origem
+  (`logoProtegida`, `logoCorrelacao`). O casamento só pela forma (canal alfa),
+  aproveitado do branch `claude/redesenhar-foto-e-logo`, não serve para logo
+  com desenho por dentro: a palheta vermelha do By Rock tem o alfa em mancha
+  lisa e casou com a espuma do chope (0,71) melhor que com ela mesma. Logo com
+  desenho interno casa pelo desenho, só nos pixels opacos (0,94 no lugar
+  certo). Por isso, no caminho Gemini, projeto em `compor` NÃO reserva canto
+  nem cola o PNG depois: daria duas logos.
+- **As guardas continuam**: `deslocamentoDaFoto` (agora nos três modos do
+  caminho Gemini, antes de recompor), `TETO_DA_MASCARA` sobre a área das zonas,
+  a conferência de texto na peça recomposta e a de caixa em `rediagramar`. Com
+  `instrucaoImagem` ou fundo novo nada disto roda, como antes.
+- 🔴 **Resultado honesto, nos dois geradores** (`mudancaNaoEntrou`): se depois
+  da recomposição a peça não difere VISIVELMENTE da origem, a tentativa é
+  descartada e, sem outra, a melhoria termina `FAILED` com "a mudança pedida
+  não entrou", `fieldValues.mudancaNaoEntrou`, e sem cobrança (o crédito só sai
+  depois do sucesso). Quando o gerador devolveu a arte como estava, vale nova
+  tentativa pela fila; quando a IA mudou e foi a recomposição do caminho OpenAI
+  que devolveu tudo (o caso das ondas sonoras), não: repetir a geração repete o
+  desfecho.
+- 🔴 **"Visível" não é "zona".** Texto que o gerador redesenhou no mesmo lugar
+  difere nas bordas das letras e vira zona (15% do quadro no Bacana), e a peça
+  é a mesma para quem olha. A conferência (`areaVisivelmenteAlterada`,
+  `fotoAreaVisivel`) refaz o mapa com a vizinhança em 6 px e reprova abaixo de
+  0,5% do quadro. Medido em 13 peças: as duas que voltaram iguais deram 0,0% e
+  0,4%; a menor mudança real (um filete fino), 3,9%.
+- **Medir antes de virar o padrão**: `scripts/medir-geradores-da-melhoria.ts`
+  roda os dois geradores na mesma arte, com o mesmo prompt, e grava por caso a
+  área mexida, a diferença da foto fora das zonas, o desfecho, a conferência de
+  texto, o tempo e os tokens, mais a folha de contato. Só lê o banco (o de
+  DESENVOLVIMENTO: recusa o do `.env`), não sobe arquivo e não cobra crédito.
+  `--reaproveitar` recalcula a partir das peças salvas, para calibrar limiar
+  sem pagar outra geração.
+
+**O que foi medido (17/11/2026).** Quatro artes do compositor, de quatro
+clientes (By Rock, Espeto Gaúcho e Real Gelateria em story; Bacana em feed),
+dois pedidos cada (um elemento gráfico novo; uma rediagramação), uma geração
+por caso e por gerador, com o mesmo prompt do diretor de arte. A folha de
+contato não fica no repositório (ele é público e ela mostra arte de cliente
+que ainda não foi ao ar): o script a grava em `.tmp-medicao-geradores/`.
+
+| caso | modo | gerador | desfecho | mexeu | foto bruta | foto final | mudança visível | texto | s | tokens (ent/saída) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| byrock-elemento | refinar | openai (low) | não entrou: a recomposição devolveu 59% à origem (a mudança não é texto) | 97% | 7,2 | – | 0,0% | – | 17 | 4994/148 |
+| byrock-elemento | refinar | gemini | pronta | 24% | 4 | 0 | 22,0% | ok | 37 | 3931/2959 |
+| espeto-elemento | refinar | openai (low) | pronta | 4% | 6,1 | 1 | 3,6% | ok | 16 | 4400/148 |
+| espeto-elemento | refinar | gemini | pronta | 8% | 5,9 | 0 | 3,9% | ok | 22 | 3829/2142 |
+| real-elemento | refinar | openai (low) | pronta | 10% | 4,6 | 0 | 10,1% | ok | 16 | 4056/148 |
+| real-elemento | refinar | gemini | pronta | 18% | 3,8 | 0 | 6,9% | ok | 18 | 3813/2239 |
+| bacana-elemento | refinar | openai (low) | pronta | 83% | 5,6 | 0 | 1,7% | ok | 16 | 3787/181 |
+| bacana-elemento | refinar | gemini | pronta | 19% | 9,3 | 0 | 4,0% | ok | 23 | 3783/2137 |
+| byrock-rediagramacao | redesenhar | openai (medium) | reprovada: a IA tirou o assunto da foto do lugar (54 de 54 pedaços) | 98% | 6 | – | – | – | 29 | 6475/1331 |
+| byrock-rediagramacao | redesenhar | gemini | pronta | 26% | 4,3 | 0 | 25,2% | ok | 41 | 5019/2813 |
+| espeto-rediagramacao | redesenhar | openai (medium) | reprovada: a IA tirou o assunto da foto do lugar (5 de 6 pedaços) | 93% | 8,1 | – | – | – | 30 | 6017/1331 |
+| espeto-rediagramacao | redesenhar | gemini | não entrou: o gerador devolveu a arte praticamente como estava | 5% | 5,8 | – | 0,0% | – | 37 | 5062/2719 |
+| real-rediagramacao | rediagramar | openai (low) | pronta | 13% | 4,9 | 1,6 | 12,4% | ok | 16 | 5562/148 |
+| real-rediagramacao | rediagramar | gemini | pronta | 22% | 3,7 | 0 | 12,6% | ok | 24 | 4927/2216 |
+| bacana-rediagramacao | rediagramar | openai (low) | pronta | 100% | 9,6 | 0 | 4,8% | ok | 14 | 5358/181 |
+| bacana-rediagramacao | rediagramar | gemini | não entrou: o gerador devolveu a arte praticamente como estava | 17% | 9,1 | – | 0,4% | – | 25 | 4965/2187 |
+
+`mexeu` é a área das zonas na peça como o gerador devolveu (perto de 100% é a
+imagem inteira redesenhada, e aí `foto bruta`, medida na sobra, não diz nada).
+`foto final` é a diferença média (0 a 255) entre a peça final e a origem fora
+das zonas. `openai` passou pela recomposição e pelas guardas do caminho de
+produção dele.
+
+- **Nano Banana: 6 prontas, 2 "não entrou", nenhuma reprovada.** Nas 6 a foto
+  fora das zonas é a origem (0), o texto confere e, olhando os blocos de texto
+  em tamanho real, não há emenda nem letra estragada. Os quatro elementos
+  gráficos entraram. As duas que não entraram são pedidos de rediagramação: o
+  gerador redesenhou o texto no mesmo lugar e a peça voltou igual.
+- **Um desvio da bancada, não do gerador:** a arte do By Rock entrou por
+  arquivo (não está no banco de dev), então a régua dela saiu por visão, que
+  leu "ATÉ 50% OFF, DAS 16H" com ponto no lugar da vírgula. As peças dos dois
+  geradores saíram com o ponto. Em produção a arte do compositor tem a régua
+  do banco.
+- **gpt-image: 5 "prontas", 1 "não entrou", 2 reprovadas.** As reprovadas são os
+  dois `redesenhar` (o assunto da foto saiu do lugar, como no relato). A que
+  não entrou é a do By Rock, que antes saía como pronta. E, olhando a folha,
+  duas das cinco "prontas" têm defeito que nenhuma conferência acusou: no
+  Bacana o filete pedido não está na peça (a recomposição o devolveu à origem
+  e o texto que andou alguns pixels bastou para passar), e na rediagramação do
+  Bacana "SABADOU" saiu duplicado e a logo voltou redesenhada, maior. Sobram 3
+  de 8.
+- **Tempo e consumo**: Nano Banana de 18 a 41 s, gpt-image de 14 a 30 s. O
+  Nano Banana consome de 2,1 a 3,0 mil tokens de saída por imagem; o gpt-image,
+  148 a 181 no `low` e 1.331 no `medium`. O preço por imagem do Nano Banana 2.1
+  não foi conferido na tabela do Google.
+- **Decisão: a medição sustenta um piloto com `MELHORIA_GERADOR=gemini`, e
+  ainda não sustenta trocar o padrão de vez.** A favor: nos pedidos de elemento
+  gráfico foram 4 de 4 contra 2 de 4, e nenhuma peça do Nano Banana saiu como
+  pronta com defeito (2 de 8 no gpt-image). Contra virar o padrão já: são 4 artes e uma
+  geração por caso, sem repetição; em rediagramação o Nano Banana é tímido (2
+  de 4 voltaram iguais, e cada uma custa duas gerações à casa antes do
+  `FAILED`); e ficaram fora da amostra os projetos em `compor` (TERO, Lagosta),
+  a arte de template chapado (o alvo do `redesenhar`), o carrossel e a
+  melhoria em cima de melhoria.
+- ⚠️ **Limites conhecidos do caminho Gemini.** A conferência honesta mede
+  mudança visível, não "o pedido foi atendido": se o gerador mexer em outra
+  coisa e ignorar o pedido, a peça sai como pronta. Texto sobre o assunto da
+  foto continua sem barreira (no `redesenhar` do By Rock o convite foi para
+  cima do chope). Mudança leve e larga (um halo que some) só entra quando
+  encosta numa zona forte. A logo que o gerador levar para outro canto fica
+  duplicada: a da origem volta ao lugar e a redesenhada permanece. E a logo só
+  é protegida quando a da origem é o arquivo oficial com transparência.
+
+
+### Melhorar a foto com IA: foto por baixo, texto por cima (17/11/2026)
+
+Pedido do Ciro: a melhoria deve também melhorar a FOTOGRAFIA (balanço de
+branco, cara de câmera e lente melhores, fundo desfocado, prato nítido) e
+humanizar (a mão puxando o queijo, o garfo na batata, o vinho sendo servido, o
+brinde). Plano aprovado em `docs/PLANO-2026-11-17-MELHORAR-FOTO-COM-IA.md`;
+esta seção é a Fase 1 (o chat). Tudo atrás de `MELHORIA_DE_FOTO`, desligada por
+padrão.
+
+**As regras (decisão do Ciro, 17/11/2026).**
+
+- 🔴 **"A fotografia é intocável" continua sendo o padrão** dos modos de
+  diagramação (`rediagramar`, `redesenhar`, `refinar`). O que entrou é uma
+  lista FECHADA de exceções com nome, as **receitas de foto**
+  (`receitas-de-foto.ts`): Humanizar, Foto profissional, Abrir espaço para o
+  texto e Ajuste livre. Receita é sempre escolhida por gente. **Nenhum revisor
+  automático dispara receita de foto.**
+- 🔴 **A comida é a do cliente.** Não acrescentar, tirar nem trocar
+  ingrediente, porção, louça ou bebida. Tratar a foto não é mudar o prato.
+- 🔴 **O lugar é o do cliente.** Mesa, parede, móveis e fundo continuam os
+  mesmos. Desfocar pode; trocar não.
+- 🔴 **Nenhum contraste para segurar texto** (véu, gradiente, tarja,
+  escurecimento). A regra de 05/09 fica como está, também nas receitas: "abrir
+  espaço" se resolve com área calma da própria cena.
+- 🔴 **Gente entra pelas bordas do quadro** (mão, antebraço), nunca casa cheia,
+  nunca rosto em foco sem autorização (parâmetro `rosto: true` da receita
+  Humanizar). **Homem nunca de terno ou blazer** (regra do Ciro de 22/10/2026,
+  que não estava escrita em lugar nenhum).
+- 🔴 **Rosto de pessoa real não é refeito.** O Nano Banana repinta o quadro
+  inteiro, então qualquer receita pode alterar um rosto que já está na foto. O
+  prompt manda manter cada pessoa como está, e a opção sai com um aviso EM
+  DESTAQUE ("esta foto tem rosto: confira se a pessoa continua a mesma"). Não
+  há trava por código. A receita de postura e sorriso ficou de fora.
+- 🔴 **As conferências AVISAM e nunca vetam** (regra de 10/08/2026): assunto no
+  lugar (`deslocamentoDaFoto`), o prato é o mesmo (`conferirFidelidadeDaCena`),
+  rosto em foco. O único descarte é medido por código: a opção que saiu igual à
+  origem (`mudancaNaoEntrou`). Quem decide é gente, com o antes e depois na
+  frente.
+- 🔴 **Nada é aplicado a página ou post sem alguém escolher a opção.** A
+  melhoria de foto devolve uma PROPOSTA; aplicar é outra chamada.
+- **Sem preço em créditos** (o Studio não é mais SaaS, Ciro, 17/11/2026): este
+  caminho não confere saldo nem debita. Cada opção gerada vira uma linha de
+  `UsageHistory` com `creditsUsed: 0` e o custo real em dólar nos `details`
+  (`registrar-uso-sem-cobranca.ts`), esteja `CREDITOS_APLICADOS` ligado ou não.
+
+**Como funciona.**
+
+- **A IA edita só a foto limpa; o Studio renderiza o resto por cima.** A
+  melhoria de sempre manda a arte chapada (foto, texto e logo num PNG) para a
+  IA redesenhar tudo, e por isso o texto e a logo saem estragados. Aqui o texto
+  nunca passa pela IA: a arte continua editável e o post continua ligado à
+  página.
+- **A rota** (`rotaDaMelhoriaDeFoto`, puro): arte com página própria e foto vai
+  pela página. Vão pela RESERVA a arte sem página (importada, canvas, trazida
+  do Zernio), a página-modelo (o `ajustarArte` a recusa) e a **arte que já é
+  melhoria chapada**. Nesta a página existe, mas não é o que o post mostra, e
+  trocar a foto nela jogaria fora a diagramação aprovada.
+- **A foto é a primeira camada `image` visível com arquivo**, fora de grade.
+  A IA recebe o QUADRO que a peça mostra, não a foto inteira do acervo
+  (`recortarQuadro`, com o mesmo retângulo de `image-fit.ts` que o editor e o
+  render usam). A foto nova volta para a MESMA camada com o recorte inteiro
+  (`RECORTE_INTEIRO`): ela já vem no quadro.
+- 🔴 **A troca é por `ajustarArte` com a operação de camadas, não por
+  `imageUrl`.** `imageUrl` não zera o `crop` (a foto nova seria recortada de
+  novo pelo recorte da antiga) e escolhe a camada por outra regra (a vaga
+  dinâmica vazia primeiro). `camadas: [{ op: 'definir', camada, campos: {
+  fileUrl, style: { crop: inteiro } } }]` grava a camada certa e passa pela
+  mesma porta: mesmo render, `invalidateScheduledRenders` e
+  `pedirRecomposicaoDaArteCongelada`.
+- **O gerador é o Nano Banana 2.1** em modo edição, 2K, na proporção aceita
+  mais próxima do quadro (`proporcaoMaisProxima`); a saída é cortada no centro
+  para a proporção exata (`ajustarAoQuadro`). Uma opção por padrão, duas em
+  paralelo quando a pessoa pede.
+- **Quem escreve o prompt** (`diretor-de-foto.ts`, irmão do diretor de arte:
+  mesmo modelo, mesmo controle de prazo, validação por código com três
+  rodadas). Ele olha a foto e a arte, recebe as receitas, a direção de foto do
+  DNA e a caixa do texto, e devolve `leitura` (português), `prompt` (inglês,
+  até 4.000, verbo da operação primeiro, o que muda, o que fica igual, câmera,
+  lente e luz) e `riscos`. Com `promptPronto` (o chat escreveu), **o Studio não
+  reescreve**. Nos dois casos o bloco de preservação da casa e das receitas
+  entra POR CÓDIGO no fim (`montarPromptDeFoto`): o que é mecânico não depende
+  de quem escreveu.
+- 🔴 **A direção de foto do DNA não é tarefa a mais.** No primeiro teste (By
+  Rock, só Humanizar pedido) o diretor mandou esquentar a luz, escurecer o
+  fundo e limpar a mesa, puxado pelo `photoDirection` da marca. Sem a receita
+  Foto profissional, luz, cor, desfoque e limpeza ficam como estão: o DNA diz
+  COMO fazer o que a receita pede.
+- **A proposta é uma Generation** de `source: 'melhoria-de-foto'`, com
+  `fieldValues.melhoriaDeFoto` (`melhoria-de-foto-registro.ts`): leitura,
+  prompt, riscos e as opções (foto limpa e prévia no Blob, na trilha
+  `foto-melhorada`, com avisos). A prévia é a página renderizada EM MEMÓRIA com
+  a foto trocada (`renderizarPrevia`); a página e a miniatura não são gravadas.
+  `resultUrl` é a prévia da primeira opção válida.
+- **Aplicar** (`aplicarOpcaoDeFoto`): confere o post ANTES de qualquer escrita
+  (`laterPostId` dentro da janela de publicação recusa sem tocar na página),
+  confere que a foto da página ainda é a da proposta (`fotoAindaEAMesma`: outra
+  foto, outro recorte ou outra caixa recusam, porque a foto nova cairia no
+  lugar errado), troca pela porta de `ajustarArte` e grava `aplicada` por merge
+  no banco. Post que já está no Zernio recebe a arte renderizada por
+  `aplicarArteMelhoradaAoPost`, como a melhoria de sempre. Aplicar de novo a
+  mesma opção devolve a aplicação que existe; depois de uma aplicada, a outra
+  não entra.
+- **A reserva** é o runner de sempre com três desvios (`fotoPelaReserva`): o
+  gerador é forçado em `gemini`, o prompt é o do diretor de foto avisado de que
+  a imagem é a arte pronta ("texto e logo intactos, letra por letra"), e a
+  logo da origem volta por `recomporPorZona(..., { tudoEZona: true })`, que
+  aceita a peça gerada inteira menos a caixa da logo oficial. A conferência de
+  texto roda como sempre e reprova texto divergente. Nada é aplicado ao post
+  sozinho, e a resposta avisa que o texto pode ter saído diferente.
+- **No MCP:** `melhorar-arte` ganhou `alvo` (`arte` é o padrão e o
+  comportamento de sempre), `receitas[]`, `promptPronto`, `opcoes` (1 ou 2) e
+  `instrucaoImagem` (que só a tela tinha); `ver-geracao` devolve `leitura` e
+  `prompt` de toda melhoria e, na proposta de foto, `opcoes`, `riscos` e
+  `aplicada`; `aplicar-opcao-de-foto` aplica a escolhida. O perfil só-rascunho
+  continua sem nenhuma das duas escritas (allowlist).
+- **O gancho do acervo** (`registrarFotoMelhoradaNoAcervo`) é chamado ao
+  aplicar e hoje não faz nada: a cópia para `Fotos/IA_LAGOSTA`, a ficha no
+  catálogo e o `buscar-fotos` são a próxima fatia. A foto fica só no Blob.
+
+**O que a bancada ensinou (17 e 18/11/2026).**
+
+- 🔴 **"Saiu igual" tem duas medidas, não uma.** `mudancaNaoEntrou` (o mapa de
+  zonas do `recompor-por-zona.ts`) compara cada pixel com a faixa dos vizinhos
+  e foi feito para elemento novo (mão, texto). Tratamento GLOBAL de luz não
+  vira zona: na primeira rodada a receita Foto profissional saiu com "0% de
+  mudança" em 4 de 4 e foi descartada em 3. A opção só é descartada quando não
+  há elemento novo **e** a `diferencaDeTom` (média da diferença em 48x48
+  borrado, 0 a 255) fica abaixo de `PISO_DE_TOM` (3) **e** o fundo não
+  desfocou a mais (`saiuIgual`, em `melhoria-de-foto-registro.ts`). Calibração, olhando os
+  pares: as fotos que voltaram iguais deram 2,0 a 2,9; o menor tratamento que
+  se enxerga, 4,1. São poucas peças: quem mexer no limiar mede de novo.
+- 🔴 **A arte de origem pode não ser mais o retrato da página.** Em 2 das 4
+  artes da bancada a página tinha sido editada depois da arte (outro texto
+  numa, outro recorte da foto na outra). A prévia é a página de HOJE com a
+  foto trocada, e ao lado da arte antiga parecia ter mexido no texto e no
+  enquadramento, que a IA nem viu. Quando `versaoRenderizada` da arte difere da
+  versão da página, o runner renderiza o "antes" da página de hoje
+  (`antesUrl`), o diretor olha esse "antes" e a opção sai com o aviso
+  `AVISO_DE_PAGINA_EDITADA`. Arte antiga, sem `versaoRenderizada`, não tem como
+  ser conferida e segue sem o aviso.
+- 🔴 **A logo e os elementos ficam POR CIMA da foto.** A mão do Humanizar saiu
+  embaixo da logo do Espeto: o diretor recebia só a caixa do texto. Hoje recebe
+  também as caixas das camadas `logo` e `element` (`caixasDaMarcaNoQuadro`).
+- **Foto profissional quase não muda foto que já é boa**, e isso não se
+  resolveu com prompt (ver a segunda rodada, abaixo). O padrão virou `marcada`
+  em 18/11/2026.
+
+**O que foi medido (bancada de 18/11/2026).** Quatro artes do compositor, de
+quatro clientes (By Rock, Espeto Gaúcho e Real Gelateria em story; Bacana em
+feed), três receitas, uma opção cada, pelo código da fila
+(`scripts/medir-melhoria-de-foto.ts`). A folha de contato fica FORA do
+repositório (ele é público e ela mostra arte de cliente): o script grava em
+`~/Documents/Clientes/_medicoes/2026-11-melhorar-foto/`.
+
+| arte | receita | desfecho | mudou (zonas) | tom | aviso de conferência | s |
+|---|---|---|---|---|---|---|
+| By Rock | Humanizar | opção | 21% | 9,5 | nenhum | 43 |
+| By Rock | Foto profissional | saiu igual | 0% | 2,9 | – | 54 |
+| By Rock | Abrir espaço | opção | 86% | 37,2 | nenhum | 55 |
+| Espeto | Humanizar | opção | 4% | 3,3 | rosto (destaque), página editada | 53 |
+| Espeto | Foto profissional | opção | 0% | 4,1 | rosto (destaque), página editada | 55 |
+| Espeto | Abrir espaço | saiu igual | 0% | 2,0 | – | 47 |
+| Real | Humanizar | opção | 19% | 13,1 | página editada | 61 |
+| Real | Foto profissional | opção | 0% | 3,0 | página editada | 61 |
+| Real | Abrir espaço | opção | 94% | 48,7 | página editada, prato (cor e proporção das bolas) | 65 |
+| Bacana | Humanizar | opção | 8% | 5,5 | nenhum | 45 |
+| Bacana | Foto profissional | opção | 2% | 15,1 | nenhum | 66 |
+| Bacana | Abrir espaço | opção | 65% | 38,7 | nenhum | 63 |
+
+- **10 opções em 12; 2 descartadas por terem saído iguais.** O texto, a logo e
+  os elementos saíram idênticos nas 10, por construção (são renderizados por
+  cima). Na Real, que tem recorte manual na foto, a foto nova caiu no mesmo
+  enquadramento.
+- **Humanizar: 4 de 4 com o gesto**, todos entrando pela borda (garfo, pinça,
+  mão no cone), sem rosto novo e fora da área da logo. No By Rock veio junto
+  um pedaço de manga escura do braço, no canto do texto.
+- **Foto profissional (padrão `leve`): mudança no limite do que se enxerga.**
+  Uma voltou igual, duas ficaram com tom 3,0 e 4,1 (quase nada), e só a do
+  Bacana mudou de fato (15,1). Com `marcada`, numa geração à parte na Real, o
+  tratamento aparece.
+- **Abrir espaço: recompõe de verdade em 3 de 4** (o prato sobe ou o quadro
+  abre) e voltou igual no Espeto, onde o texto já pousa no teto liso. No Bacana
+  o letreiro luminoso atrás do título foi apagado para acalmar a área: é o
+  mesmo lugar, mas é um caso para o olho de quem aprova. Na Real a conferência
+  acusou diferença no prato, como aviso.
+- **Tempo:** 43 a 66 s por opção, com o diretor de foto. **Custo:** US$ 0,05
+  por imagem (tabela do Google); a bancada inteira, com a primeira rodada e a
+  calibração, gerou 28 imagens.
+- **O julgamento é do Ciro.** A bancada mede se o caminho funciona; se o prato
+  continua o mesmo, se a mão convence e quantas ele usaria, é a folha que
+  responde. Uma receita só fica ligada na tela se a maioria passar.
+- ⚠️ **Fora da amostra:** página com a foto em parte do quadro (proporção fora
+  das aceitas), carrossel, arte com vídeo, foto com rosto em primeiro plano, a
+  receita Ajuste livre e o prompt pronto do chat com imagem real.
+
+**Segunda rodada: afinar Foto profissional e Abrir espaço (18/11/2026).** O
+Ciro viu a folha e mandou afinar. Folha em
+`~/Documents/Clientes/_medicoes/2026-11-melhorar-foto/folha-2.jpg` (a primeira
+tentativa desta rodada ficou em `folha-2a.jpg`).
+
+- 🔴 **Abrir espaço NÃO move nem encolhe o assunto.** A primeira versão dizia
+  "recompose" e deixava o prato "mover ou mudar de escala o quanto precisar":
+  o gerador encolheu o prato do By Rock para 75% e as casquinhas da Real para
+  80%, subiu as duas e pôs uma mão nova. A arte já foi diagramada em volta do
+  assunto: mexer nele estraga a peça. O trecho agora começa por "Calm the
+  background in…", exige o assunto no mesmo tamanho e lugar, e abre o espaço só
+  no fundo dentro da área do texto (tirar ou amaciar o detalhe que disputa com
+  o título, desfoque mais fundo e uniforme, mesmas cores e brilho). Sem gente
+  nem objeto novo (isso é da Humanizar) e sem escurecer. Medido nas duas
+  tentativas da rodada: 8 de 8 com o assunto em 100% do tamanho e 0% de
+  deslocamento.
+- **O assunto é medido, não suposto** (`assuntoNaFotoNova`, em
+  `quadro-da-foto.ts`): o recorte do assunto na origem é procurado na foto nova
+  em várias escalas, por correlação. Avisa (nunca veta) quando a escala passa
+  de 10% (`LIMITE_DE_ESCALA`) ou o centro anda mais de 5% do quadro
+  (`LIMITE_DE_POSICAO`); abaixo de 0,45 de correlação o aviso é "o assunto não
+  foi reconhecido". Calibração nas fotos da primeira rodada: os que saíram do
+  lugar deram escala 0,75 e 0,80 e deslocamento de 9% a 12%; os que ficaram,
+  1,00 e 0%. A caixa do assunto vem de `marcar-assunto` quando há, senão do
+  diretor de foto (campo `assunto` da resposta). Com prompt pronto do chat não
+  há caixa, e vale a conferência antiga por ladrilhos (`deslocamentoDaFoto`).
+- 🔴 **Foto profissional não se resolve com prompt neste gerador.** Três
+  redações (o retoque leve; o pedido firme, com verbo primeiro, 85mm f/2 e as
+  três mudanças que têm de aparecer; e o mesmo com um fecho por código depois
+  da lista do que fica igual), 16 gerações medidas em 4 fotos: em 14 o tom
+  ficou entre 2,2 e 6,1 (no limite do que se enxerga ou abaixo), 4 dessas
+  voltaram iguais, e só 2 passaram de 12, as duas com a redação LEVE: a firmeza
+  do pedido não explica o resultado, é sorteio do gerador. O fundo nunca
+  desfocou a mais (a nitidez do fundo acompanhou a do assunto). O Nano Banana em modo edição trata "mantenha o
+  conteúdo e o enquadramento" como "devolva a foto". Os prompts do diretor
+  estão certos; quem não cumpre é o gerador. **Caminhos, para decisão do
+  Ciro:** fazer o tratamento por código (balanço de branco, exposição e
+  desfoque do fundo pela caixa do assunto, que já existe), que é
+  determinístico; ou medir outro gerador para esta receita. Enquanto isso a
+  opção sai com o aviso "o tratamento ficou no limite do que se enxerga"
+  (`TOM_VISIVEL`, 6) e a receita não deve ir para a tela.
+- **O fecho** (`fecho` da receita, em `receitas-de-foto.ts`): o prompt de
+  edição termina numa lista longa de "fica igual", e a última coisa dita pesa
+  mais. Foto profissional e Abrir espaço acrescentam, por código e DEPOIS dessa
+  lista, o que tem de sair diferente. Em Abrir espaço o fundo passou a mudar
+  mais (o letreiro do Bacana amaciou atrás do título; tom de 2,1 a 7,6 para 4,0
+  a 9,5); em Foto profissional não mudou o resultado.
+- **A lista do que fica igual não pode citar o que muda.** O diretor mandava
+  neutralizar o branco e, na lista, manter "the background location and
+  colors". Em Foto profissional a lista fala só de conteúdo e enquadramento.
+- **O gerador devolve a foto menos nítida no detalhe fino**, mesmo quando nada
+  muda: a nitidez (laplaciano em 512 px) ficou em 0,65 a 0,90 da origem nas
+  fotos do By Rock, do Espeto e do Bacana. Por isso a medida que vale para
+  "fundo mais desfocado" é a RELAÇÃO entre a nitidez do assunto e a do fundo
+  (`separacaoDoFundo`, visível acima de 1,2), não a nitidez do fundo sozinha.
+  Em foto que já tem o fundo todo desfocado (a Real) a razão do fundo é
+  instável (1,3 a 1,5 sem mudança visível): o denominador é quase zero.
+- 🔴 **"Saiu igual" continua sendo um limiar, e limiar tem fronteira.** O
+  descarte (`saiuIgual`) exige as três coisas: nada novo no mapa de zonas, tom
+  abaixo de 3 e fundo sem desfoque a mais. Na primeira rodada o By Rock (tom
+  2,9) foi descartado e a Real (3,0) passou: a diferença entre as duas é
+  ruído. Na segunda, o mesmo By Rock com tom 2,9 passou porque 1% do quadro
+  virou zona. Quem segura esses casos não é o descarte, é o aviso de tratamento
+  imperceptível, que sai até o tom 6.
+- **Humanizar em foto que já tem mão.** Na Real a foto já mostra uma mão
+  segurando as casquinhas, e a IA pôs uma segunda beliscando o papel. O
+  diretor agora devolve `genteNaFoto`, a opção ganha um aviso, e a regra dele
+  é: nunca uma segunda mão tocando o objeto que já está numa mão; o gesto novo
+  só vale em outro ponto da cena, ou a leitura diz que a receita acrescenta
+  pouco. Medido depois: a segunda mão passou a entrar aberta, pela direita,
+  sem encostar. Ainda são duas mãos em volta do mesmo produto: é caso para o
+  olho do Ciro.
+
+| arte | receita | desfecho | elemento novo | tom | nitidez do assunto | nitidez do fundo | tamanho do assunto | andou |
+|---|---|---|---|---|---|---|---|---|
+| By Rock | Foto profissional | opção, com aviso de imperceptível | 1% | 2,9 | 0,65 | 0,74 | 100% | 0% |
+| By Rock | Abrir espaço | opção | 14% | 6,7 | 0,72 | 0,49 | 100% | 0% |
+| Espeto | Foto profissional | opção, com aviso de imperceptível | 0% | 5,2 | 0,88 | 0,94 | 100% | 0% |
+| Espeto | Abrir espaço | opção | 1% | 4,2 | 0,85 | 0,82 | 100% | 0% |
+| Real | Foto profissional | opção, com aviso de imperceptível | 0% | 4,2 | 1,01 | 1,39 | 100% | 0% |
+| Real | Abrir espaço | opção | 17% | 9,5 | 0,84 | 1,03 | 100% | 0% |
+| Bacana | Foto profissional | saiu igual | 0% | 2,3 | 0,75 | 0,85 | 100% | 0% |
+| Bacana | Abrir espaço | opção | 21% | 4,0 | 0,75 | 0,67 | 100% | 0% |
+| Real | Humanizar | opção, com aviso de gente na foto | 17% | 11,7 | 1,03 | 1,34 | 100% | 0% |
+
+**Ponta a ponta no banco de desenvolvimento (17 e 18/11/2026).** Pela fila
+(`startMelhoriaDeFoto`, `enfileirarMelhoria`, `dispararJobAgora`): By Rock,
+Humanizar, uma opção em 60 s, prévia conferida, página intocada até aplicar,
+saldo sem débito e uma linha de uso com `creditsUsed: 0`; aplicada, a página
+ficou com a foto nova e o recorte inteiro, a arte renderizada bateu com a
+prévia e aplicar de novo devolveu a mesma arte. Pelas tools do MCP
+(`melhorar-arte`, `ver-geracao`, `aplicar-opcao-de-foto`): Real Gelateria,
+página com recorte manual, duas opções em 53 s, as três miniaturas no
+`ver-geracao`, aplicação e recusa da outra opção. Pela reserva: uma melhoria
+chapada do Espeto, texto conferido (`passed`), sem cobrança.
+
+- 🔴 **O recorte se compara campo a campo, nunca por `JSON.stringify`.** O
+  registro passa pelo `jsonb` do Postgres, que reordena as chaves: comparada
+  como texto, toda página com recorte manual "tinha mudado" e a aplicação era
+  recusada. Foi o teste das tools que pegou.
+- ⚠️ **Não foi exercitado com serviço real:** post com `laterPostId` (a troca
+  no Zernio), a recusa dentro da janela de publicação e a invalidação de post
+  agendado. Estão cobertos por teste com dublê
+  (`melhoria-de-foto-service.test.ts`), não por chamada de verdade.
+
+**Limites conhecidos.**
+
+- ⚠️ A opção não usada fica no Blob: a limpeza em 30 dias (seção 6.1 do plano)
+  não foi feita.
+- ⚠️ A conferência de mão com defeito não existe: o diretor lista o risco e
+  quem aprova olha. "A mudança entrou" mede mudança visível, não "o pedido foi
+  atendido".
+- ⚠️ Quadro fora das proporções que o gerador aceita (foto que ocupa só parte
+  da arte) é gerado na proporção mais próxima e cortado no centro: perde-se uma
+  faixa nas bordas.
+- ⚠️ A foto é lida como o arquivo está, sem girar pelo EXIF, que é como o
+  render do servidor a lê.
+- ⚠️ O que o catálogo sabe da foto entra só pela caixa do assunto marcada à mão
+  (`PhotoAssunto`); o nome do prato do catálogo (um JSON no Drive) não é lido.
+- ⚠️ Carrossel é uma página por vez; item da leva (`itemId`) não aceita
+  `alvo: 'foto'` nesta fase; a reserva gera uma opção por pedido.
+- ⚠️ Na reserva a logo só volta à origem quando o arquivo oficial casa com a
+  arte (correlação 0,65); no teste, numa arte que já era melhoria, casou 0,55 e
+  a logo ficou a do gerador. E a tentativa descartada não vira linha de uso: só
+  a que deu certo.
+- ⚠️ O custo registrado é o da imagem (US$ 0,05 no Nano Banana 2.1 em 2K, tabela
+  do Google lida em 17/11/2026). O diretor de foto e a conferência por visão
+  não entram na conta.

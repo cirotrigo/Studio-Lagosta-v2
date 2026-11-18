@@ -22,6 +22,7 @@ import { ajusteSchema, type Ajuste } from '../../creatives/revisao/contrato'
 import { MAX_OPERACOES, operacaoDeCamadaSchema, paginaDoAjusteSchema, type OperacaoDeCamada, type PaginaDoAjuste } from '../../creatives/editar-camadas'
 import type { ArtGenerationReference } from '../../ai/creative-generation-runner'
 import { MODOS_DA_MELHORIA, type ModoDaMelhoria } from '../../ai/modo-da-melhoria'
+import { IDS_DAS_RECEITAS, melhoriaDeFotoLigada, RECEITAS_DE_FOTO, TETO_DO_PROMPT_DE_FOTO } from '../../ai/receitas-de-foto'
 
 const FORMATOS = ['story', 'feed', 'quadrado'] as const
 const PAPEIS_DE_REFERENCIA = ['subject', 'anchor-ambient', 'anchor-dish', 'style', 'documento'] as const
@@ -482,7 +483,7 @@ export const toolsDeArteIA = [
   definirTool({
     nome: 'melhorar-arte',
     descricao:
-      'Melhora uma arte com IA: o modelo de imagem refina a composição inteira (luz, sombra, textura, integração do texto com a foto) seguindo a direção de arte e a identidade da marca. Os textos são mantidos EXATAMENTE como estão (salvo no modo `refinar`, abaixo) e conferidos por visão ao final — se divergirem, a melhoria é descartada e a arte original continua valendo.\n\nA melhoria tem três MODOS (parâmetro `modo`), e a diferença entre eles é o que o gerador PODE mudar. `rediagramar`: mantém textos, fontes, cores e foto; só melhora onde o texto pousa, o respiro e a quebra das linhas — é o modo para arte do compositor, do canvas ou já aprovada por quem cuida da marca. `redesenhar`: refaz a diagramação inteira no estilo da marca, com o manual do designer como referência, copy e foto intocadas — para arte de template chapado, export do editor ou primeira rodada de IA. `refinar`: faz só a mudança pedida e nada mais, e o `pedido` passa a ser OBRIGATÓRIO ("troque a frase X por Y", "remova o selo") — é como se itera uma melhoria já feita, e é o ÚNICO modo em que o pedido pode trocar texto da copy (o texto novo vira a régua da conferência). Sem `modo`, o servidor escolhe pela origem da arte: melhoria anterior → refinar; compositor, canvas ou mídia de post → rediagramar; o resto → redesenhar.\n\nNo fluxo normal a melhoria é o ACABAMENTO da criação: a arte criada é o esboço fiel (layout + textos certos) e esta etapa a leva ao nível de publicação. Antes de chamar, olhe a arte com conferir-arte e escreva o pedido a partir da SUA análise: aponte o que corrigir em concreto (hierarquia, contraste, luz da foto, integração do texto com o fundo, poluição) e o que preservar — sem falar dos textos, que são preservados automaticamente. Pedido vago ("deixe mais bonita") desperdiça a geração.\n\nDemora cerca de 2 minutos e custa créditos: a resposta volta na hora com o id da geração, acompanhe com ver-geracao. Com postId, aplica ao post da agenda ao final — vale para rascunho e agendado. Não chame de novo enquanto houver melhoria em andamento da mesma arte.\n\nPost agendado é enviado para publicação 5 minutos antes do horário e a partir daí a arte não muda mais: melhorar um post nesse estado é recusado (a melhoria leva ~2 min e não chegaria a tempo). Em ver-agenda o campo `arte` diz até quando dá — se estiver "enviada para publicação", não tente: traga o post para rascunho antes (voltar-para-rascunho) ou proponha melhorar a arte para um próximo post.',
+      'Melhora uma arte com IA: o modelo de imagem refina a composição inteira (luz, sombra, textura, integração do texto com a foto) seguindo a direção de arte e a identidade da marca. Os textos são mantidos EXATAMENTE como estão (salvo no modo `refinar`, abaixo) e conferidos por visão ao final — se divergirem, a melhoria é descartada e a arte original continua valendo.\n\nA melhoria tem três MODOS (parâmetro `modo`), e a diferença entre eles é o que o gerador PODE mudar. `rediagramar`: mantém textos, fontes, cores e foto; só melhora onde o texto pousa, o respiro e a quebra das linhas — é o modo para arte do compositor, do canvas ou já aprovada por quem cuida da marca. `redesenhar`: refaz a diagramação inteira no estilo da marca, com o manual do designer como referência, copy e foto intocadas — para arte de template chapado, export do editor ou primeira rodada de IA. `refinar`: faz só a mudança pedida e nada mais, e o `pedido` passa a ser OBRIGATÓRIO ("troque a frase X por Y", "remova o selo") — é como se itera uma melhoria já feita, e é o ÚNICO modo em que o pedido pode trocar texto da copy (o texto novo vira a régua da conferência). Sem `modo`, o servidor escolhe pela origem da arte: melhoria anterior → refinar; compositor, canvas ou mídia de post → rediagramar; o resto → redesenhar.\n\nNo fluxo normal a melhoria é o ACABAMENTO da criação: a arte criada é o esboço fiel (layout + textos certos) e esta etapa a leva ao nível de publicação. Antes de chamar, olhe a arte com conferir-arte e escreva o pedido a partir da SUA análise: aponte o que corrigir em concreto (hierarquia, contraste, luz da foto, integração do texto com o fundo, poluição) e o que preservar — sem falar dos textos, que são preservados automaticamente. Pedido vago ("deixe mais bonita") desperdiça a geração.\n\nDemora cerca de 2 minutos e custa créditos: a resposta volta na hora com o id da geração, acompanhe com ver-geracao. Com postId, aplica ao post da agenda ao final — vale para rascunho e agendado. Não chame de novo enquanto houver melhoria em andamento da mesma arte.\n\nMELHORAR SÓ A FOTO (`alvo: "foto"`, quando ligado no servidor): em vez de redesenhar a arte, a IA edita só a FOTO limpa da página e o Studio recoloca o texto, a logo e os elementos por cima, exatos. É o caminho para humanizar (mão, garfo, brinde), tratar a foto (luz, balanço de branco, fundo desfocado) e abrir área calma para o texto. Escolha `receitas` e/ou escreva o `promptPronto` (o prompt de edição em inglês, depois de olhar a arte com conferir-arte). O resultado é uma PROPOSTA com 1 ou 2 opções: ver-geracao mostra a leitura, o prompt, a prévia de cada opção e os avisos; NADA muda na página nem no post até alguém escolher e você chamar aplicar-opcao-de-foto. Mostre a prévia e os avisos à pessoa e pergunte: usa, gera outra ou ajusta. Não cobra créditos. Arte sem página no editor, página-modelo e arte que já é melhoria com IA vão pela reserva (a IA mexe na arte pronta e o texto pode sair diferente): a resposta avisa.\n\nPost agendado é enviado para publicação 5 minutos antes do horário e a partir daí a arte não muda mais: melhorar um post nesse estado é recusado (a melhoria leva ~2 min e não chegaria a tempo). Em ver-agenda o campo `arte` diz até quando dá — se estiver "enviada para publicação", não tente: traga o post para rascunho antes (voltar-para-rascunho) ou proponha melhorar a arte para um próximo post.',
     schema: z.object({
       projectId: z.number().describe('ID do cliente.'),
       generationId: z
@@ -524,6 +525,42 @@ export const toolsDeArteIA = [
         .number()
         .optional()
         .describe('Carrossel na bancada: a ordem do slide que recebe a arte (1 = primeiro). Só com itemId.'),
+      alvo: z
+        .enum(['arte', 'foto'])
+        .optional()
+        .describe(
+          'O que a IA melhora. `arte` (padrão) é a melhoria de sempre: a arte inteira, pelos modos. `foto` melhora SÓ a fotografia da página e o Studio recoloca texto, logo e elementos por cima; devolve opções para escolher e nada é aplicado sozinho (aplicar-opcao-de-foto). Com `foto`, `modo`, `itemId` e `instrucaoImagem` não se aplicam.',
+        ),
+      receitas: z
+        .array(
+          z
+            .object({
+              id: z.enum(IDS_DAS_RECEITAS).describe(IDS_DAS_RECEITAS.map((id) => `${id}: ${RECEITAS_DE_FOTO[id].descricao}`).join(' ')),
+              gesto: z.string().optional().describe('humanizar: o gesto, em poucas palavras ("mão puxando uma fatia", "vinho sendo servido"). Até 200 caracteres. Sem ele, quem escreve o prompt escolhe olhando a foto.'),
+              lado: z.enum(['esquerda', 'direita', 'cima', 'baixo']).optional().describe('humanizar: por qual borda a pessoa entra.'),
+              rosto: z.boolean().optional().describe('humanizar: true SÓ quando a pessoa autorizou rosto em foco. Sem isso entram apenas mãos e antebraço.'),
+              intensidade: z.enum(['leve', 'marcada']).optional().describe('foto-profissional: quanto tratar. Padrão marcada (a diferença aparece ao lado do original); leve é o retoque contido.'),
+              area: z
+                .object({ x: z.number(), y: z.number(), largura: z.number(), altura: z.number() })
+                .optional()
+                .describe('abrir-espaco: onde o texto está, em frações do quadro (0 a 1). Sem isso o Studio lê das camadas da página.'),
+              texto: z.string().optional().describe('ajuste-livre: o que mudar na foto, até 500 caracteres.'),
+            })
+            .passthrough(),
+        )
+        .optional()
+        .describe('Só com alvo "foto": as receitas, combináveis num pedido só (viram UMA geração por opção). Em qualquer receita a comida, a louça e o lugar são os do cliente e nenhum contraste é acrescentado para o texto.'),
+      promptPronto: z
+        .string()
+        .optional()
+        .describe(
+          `Só com alvo "foto": o prompt de EDIÇÃO da foto, escrito por você em inglês depois de olhar a arte (até ${TETO_DO_PROMPT_DE_FOTO} caracteres). Estrutura: o verbo da operação primeiro; o que muda, localizado na imagem; a lista do que fica exatamente igual; câmera, lente, abertura e luz; frases afirmativas. O Studio NÃO reescreve: acrescenta as proteções da casa e das receitas e roda as mesmas conferências. Não peça texto, logo nem véu ou gradiente.`,
+        ),
+      opcoes: z.number().optional().describe('Só com alvo "foto": quantas opções gerar, 1 (padrão) ou 2. Duas custam o dobro.'),
+      instrucaoImagem: z
+        .string()
+        .optional()
+        .describe('Só com alvo "arte": ajuste autorizado NA FOTO durante a melhoria da arte (máx 1200 caracteres). É a única forma de o alvo "arte" mexer na fotografia; o `pedido` sozinho não mexe. Para melhorar a foto de verdade prefira alvo "foto".'),
     }),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     acesso: { tipo: 'projeto' },
@@ -538,6 +575,10 @@ export const toolsDeArteIA = [
           import('../tools'),
         ])
       const projectId = args.projectId as number
+      // Antes de qualquer escrita (trazer a arte do post para a galeria é uma): com a chave desligada, alvo "foto" não existe.
+      if (args.alvo === 'foto' && !melhoriaDeFotoLigada()) {
+        throw new CreativeError('MELHORIA_DE_FOTO_DESLIGADA', 'A melhoria de foto ainda não está ligada neste ambiente. Use a melhoria da arte (alvo "arte"); para mexer na fotografia nela, informe instrucaoImagem.', 400)
+      }
       const postIdInformado = typeof args.postId === 'string' && args.postId ? args.postId : undefined
       let generationId = typeof args.generationId === 'string' ? args.generationId : ''
       // Post que veio do Zernio é imagem pronta, sem Generation: a arte dele entra na galeria agora, e é dela que a
@@ -585,6 +626,52 @@ export const toolsDeArteIA = [
       }
 
       const itemId = typeof args.itemId === 'string' && args.itemId ? args.itemId : undefined
+      const alvo = args.alvo === 'foto' ? 'foto' : 'arte'
+      const instrucaoImagem = typeof args.instrucaoImagem === 'string' && args.instrucaoImagem.trim() ? args.instrucaoImagem.trim() : null
+
+      /**
+       * ALVO FOTO (17/11/2026): a IA melhora só a foto limpa da página e o
+       * Studio renderiza o resto por cima. Devolve uma proposta com opções;
+       * a página e o post só mudam em `aplicar-opcao-de-foto`.
+       */
+      if (alvo === 'foto') {
+        if (itemId) throw new CreativeError('ENTRADA_INVALIDA', 'A melhoria de foto ainda não vale para item da leva: use a arte (generationId) ou o post.', 400)
+        if (args.modo) throw new CreativeError('ENTRADA_INVALIDA', '`modo` é da melhoria da arte. Com alvo "foto", escolha receitas ou mande o promptPronto.', 400)
+        if (instrucaoImagem) throw new CreativeError('ENTRADA_INVALIDA', '`instrucaoImagem` é do alvo "arte". Com alvo "foto", use a receita ajuste-livre ou o promptPronto.', 400)
+        const { startMelhoriaDeFoto } = await import('../../ai/melhoria-de-foto-service')
+        const dono = await resolverDono(projectId, principal)
+        const iniciada = await startMelhoriaDeFoto({
+          projectId,
+          generationId,
+          receitas: args.receitas,
+          pedido: typeof args.pedido === 'string' ? args.pedido : '',
+          promptPronto: typeof args.promptPronto === 'string' ? args.promptPronto : null,
+          opcoes: typeof args.opcoes === 'number' ? args.opcoes : undefined,
+          postId: postId ?? null,
+          actorClerkId: dono.clerkId,
+          canal: canalDoPrincipal(principal),
+          dedupeWindowMinutes: 10,
+        })
+        if (!iniciada.reused && iniciada.runnerArgs) await enfileirarMelhoria(iniciada.runnerArgs)
+        return {
+          emAndamento: true,
+          alvo: 'foto',
+          melhoriaId: iniciada.jobGenerationId,
+          via: iniciada.via,
+          ...(iniciada.reused ? { jaEstavaEmAndamento: true } : {}),
+          ...(iniciada.avisos.length > 0 ? { avisos: iniciada.avisos } : {}),
+          creditosCobrados: 0,
+          tempoEstimado: 'de 1 a 3 minutos',
+          mensagem: iniciada.reused
+            ? 'Já havia uma melhoria desta arte em andamento: acompanhe ela com ver-geracao em vez de disparar outra.'
+            : iniciada.via === 'pagina'
+              ? `Melhoria de foto iniciada. Consulte ver-geracao com geracaoId=${iniciada.jobGenerationId} em ~2 minutos: ele traz a leitura, o prompt e a prévia de cada opção. Nada muda na página nem no post até alguém escolher: mostre o antes e depois e aplique com aplicar-opcao-de-foto.`
+              : `Melhoria iniciada pela RESERVA (a IA mexe na arte pronta). Consulte ver-geracao com geracaoId=${iniciada.jobGenerationId} em ~3 minutos e confira o texto da arte nova antes de usar.`,
+        }
+      }
+      if (args.receitas !== undefined || args.promptPronto !== undefined || args.opcoes !== undefined) {
+        throw new CreativeError('ENTRADA_INVALIDA', '`receitas`, `promptPronto` e `opcoes` são da melhoria de foto: informe alvo "foto".', 400)
+      }
       if (itemId && postId) {
         throw new CreativeError('ENTRADA_INVALIDA', 'Informe itemId OU postId — a arte melhorada vai para um lugar só.', 400)
       }
@@ -605,6 +692,7 @@ export const toolsDeArteIA = [
       const started = await startImprovement({
         generationId,
         userRequest: pedido,
+        instrucaoImagem,
         modo,
         applyToPostId: postId ?? null,
         sourceImageUrl: sourceImageUrl ?? null,
@@ -643,7 +731,7 @@ export const toolsDeArteIA = [
     nome: 'ver-geracao',
     apelidos: ['ver-melhoria'],
     descricao:
-      'Acompanha qualquer arte em andamento — a criada por gerar-imagem/criar-arte, a peça de compor-arte/compor-leva E a melhoria disparada por melhorar-arte: em andamento, pronta ou falhou. Quando pronta, traz a imagem nova, o resultado da conferência de texto e, para peça com página (compositor, modelo, ajuste), o pageId, o link do editor e os avisos do compositor — é o pageId que vai em colocar-na-agenda. Quando falha, a arte original continua valendo. Consulte ~2 minutos após disparar (e re-consulte em ~30s se ainda estiver em andamento).\n\nChamava-se `ver-melhoria`, e esse nome segue funcionando — mas ele sugeria que só servia para melhorias, o que fazia quem gerava arte nova procurar uma tool que não existe.',
+      'Acompanha qualquer arte em andamento — a criada por gerar-imagem/criar-arte, a peça de compor-arte/compor-leva E a melhoria disparada por melhorar-arte: em andamento, pronta ou falhou. Quando pronta, traz a imagem nova, o resultado da conferência de texto e, para peça com página (compositor, modelo, ajuste), o pageId, o link do editor e os avisos do compositor — é o pageId que vai em colocar-na-agenda. Quando falha, a arte original continua valendo. Em toda melhoria traz também a `leitura` (o que o diretor viu e decidiu) e o `prompt` que foi ao gerador. Na melhoria de FOTO (melhorar-arte com alvo "foto") o que fica pronto é uma PROPOSTA: `opcoes` (a prévia e a foto de cada uma, com `avisos` e `avisosEmDestaque`), `riscos` e `aplicada` (qual opção já foi usada, ou null); a página e o post só mudam em aplicar-opcao-de-foto. Consulte ~2 minutos após disparar (e re-consulte em ~30s se ainda estiver em andamento).\n\nChamava-se `ver-melhoria`, e esse nome segue funcionando — mas ele sugeria que só servia para melhorias, o que fazia quem gerava arte nova procurar uma tool que não existe.',
     schema: z.object({
       projectId: z.number().describe('ID do cliente.'),
       geracaoId: z.string().optional().describe('O geracaoId (ou melhoriaId) devolvido por quem disparou.'),
@@ -653,10 +741,11 @@ export const toolsDeArteIA = [
     acesso: { tipo: 'projeto' },
     superficies: ['remoto', 'local'],
     handler: async (args, _principal) => {
-      const [{ db }, { CreativeError }, { getPublicAppUrl }] = await Promise.all([
+      const [{ db }, { CreativeError }, { getPublicAppUrl }, { lerRegistroDaMelhoriaDeFoto, retornoDasOpcoes }] = await Promise.all([
         import('../../db'),
         import('../../creatives/errors'),
         import('../../creatives/arte-rapida'),
+        import('../../ai/melhoria-de-foto-registro'),
       ])
       const projectId = args.projectId as number
       /**
@@ -772,13 +861,63 @@ export const toolsDeArteIA = [
               'A melhoria ficou pronta, mas o post não estava mais aprovado quando ela terminou — a arte nova está só na galeria.'
           }
         }
-        const avisos = [fv.textoAMaisAlerta, fv.textCheckAlert, fv.numerosAlerta, fv.vazamentoAlerta, fv.textoAMaisAviso]
+        const avisos = [fv.rostoAlerta, fv.textoAMaisAlerta, fv.textCheckAlert, fv.numerosAlerta, fv.vazamentoAlerta, fv.reservaAviso, fv.textoAMaisAviso, ...(Array.isArray(fv.fotoRiscos) ? fv.fotoRiscos : [])]
           .filter((a): a is string => typeof a === 'string' && a.length > 0)
+        // A PROPOSTA de melhoria de foto: leitura, prompt e opções. Nada foi aplicado até alguém escolher.
+        const proposta = lerRegistroDaMelhoriaDeFoto(fv)
+        if (proposta) {
+          const r = retornoDasOpcoes(proposta)
+          const destaque = [...new Set(r.opcoes.flatMap((o) => o.avisosEmDestaque))]
+          const retorno = {
+            situacao: 'pronta',
+            alvo: 'foto',
+            ...r,
+            pageId: proposta.pageId,
+            ...(destaque.length > 0 ? { atencao: destaque.join(' ') } : {}),
+            comoAplicar: r.aplicada
+              ? `A opção ${r.aplicada.opcao} já foi aplicada: a arte que vale é ${r.aplicada.generationId}.`
+              : `Mostre à pessoa a prévia (previaUrl) de cada opção, ao lado da arte de origem, e os avisos. Só depois do OK dela: aplicar-opcao-de-foto com melhoriaId=${gen.id} e o número da opção. Não gostou: chame melhorar-arte de novo (outra opção) ou ajuste o pedido.`,
+            galleryUrl,
+            generationId: gen.id,
+          }
+          /**
+           * O antes e depois vai JUNTO, como imagem: a arte de origem e a prévia de cada opção. Sem isso o chat teria
+           * só URLs, e a segunda opção não tem Generation própria para o conferir-arte abrir. Miniatura que falha não
+           * derruba a resposta: volta só o texto.
+           */
+          try {
+            const [{ fetchImageSource }, { default: sharp }] = await Promise.all([import('../../ai/fetch-image-source'), import('sharp')])
+            const origemDaProposta = gen.sourceGenerationId
+              ? await db.generation.findFirst({ where: { id: gen.sourceGenerationId, projectId }, select: { resultUrl: true } })
+              : null
+            // Página editada depois da arte: o "antes" é a página de hoje, não a arte de origem.
+            const antes = proposta.antesUrl ? { rotulo: 'a página como está hoje (antes)', url: proposta.antesUrl } : origemDaProposta?.resultUrl ? { rotulo: 'arte de origem (antes)', url: origemDaProposta.resultUrl } : null
+            const fontes = [
+              ...(antes ? [antes] : []),
+              ...r.opcoes.flatMap((o) => (o.previaUrl ? [{ rotulo: `opção ${o.opcao} (depois)`, url: o.previaUrl }] : [])),
+            ]
+            const miniaturas = await Promise.all(
+              fontes.map(async (f) => (await sharp((await fetchImageSource(f.url)).buffer).resize(768, 768, { fit: 'inside' }).jpeg({ quality: 80 }).toBuffer()).toString('base64')),
+            )
+            return {
+              _mcpContent: [
+                { type: 'text', text: JSON.stringify({ ...retorno, imagensNaOrdem: fontes.map((f) => f.rotulo) }, null, 2) },
+                ...miniaturas.map((data) => ({ type: 'image', data, mimeType: 'image/jpeg' })),
+              ],
+            }
+          } catch (erro) {
+            console.warn('[mcp] miniaturas da proposta de foto falharam:', erro)
+            return retorno
+          }
+        }
         return {
           situacao: 'pronta',
           url: gen.resultUrl,
           ...daPagina,
           ...doVideo,
+          // O que o diretor leu e o prompt que foi ao gerador (gravados desde 05/09; o chat não os via).
+          ...(typeof fv.leitura === 'string' ? { leitura: fv.leitura } : {}),
+          ...(gen.sourceGenerationId && typeof fv.prompt === 'string' ? { prompt: fv.prompt } : {}),
           verificacaoTexto: fv.textCheck ?? 'skipped',
           ...(typeof fv.regua === 'string' ? { regua: fv.regua } : {}),
           // Aviso vermelho primeiro: texto a mais com dado (endereço, horário)
@@ -794,14 +933,59 @@ export const toolsDeArteIA = [
 
       const { falhaDaGeracao } = await import('./ver-geracao-retorno')
       const falha = falhaDaGeracao({ fieldValues: fv, doCompositor, ehMelhoria: !!gen.sourceGenerationId })
+      const propostaQueFalhou = lerRegistroDaMelhoriaDeFoto(fv)
       return {
         situacao: 'falhou',
         ...daPagina,
         ...doVideo,
+        ...(propostaQueFalhou ? { alvo: 'foto', ...retornoDasOpcoes(propostaQueFalhou) } : {}),
         motivo: typeof fv.error === 'string' ? fv.error : 'Erro desconhecido',
         ...(falha.detalhes ? { detalhes: falha.detalhes } : {}),
         verificacaoTexto: fv.textCheck ?? undefined,
         mensagem: falha.mensagem,
+      }
+    },
+  }),
+
+  definirTool({
+    nome: 'aplicar-opcao-de-foto',
+    descricao:
+      'Aplica a opção ESCOLHIDA de uma melhoria de foto (melhorar-arte com alvo "foto"): a foto nova entra na página no lugar da antiga, o Studio renderiza a arte com o texto, a logo e os elementos como estavam, e os posts da agenda que usam a página passam a mostrar a arte nova. É o único passo que muda a página: chame só depois de a pessoa ver o antes e depois (ver-geracao traz a prévia de cada opção e os avisos) e dizer qual usa. Nunca aplique por conta própria.\n\nRepetir a chamada com a mesma opção não faz nada de novo (devolve a aplicação que já existe). Depois de uma opção aplicada, a outra não entra mais: peça uma melhoria nova sobre a arte atual. Se a foto da página mudou desde a proposta (outra foto, outro recorte), a aplicação é recusada e a saída é pedir a melhoria de novo.\n\nCom `postId` de um post que já está no Zernio, a arte renderizada é trocada no mesmo post de lá, desde que ele não esteja a minutos de publicar (aí a chamada é recusada antes de tocar na página). Para melhoria que foi pela reserva (arte sem página), a "opção" é a 1 e `postId` diz em qual post ela entra.\n\nPara desfazer, a foto anterior continua disponível: ajustar-arte na página com a foto antiga, ou reverter-arte no post.',
+    schema: z.object({
+      projectId: z.number().describe('ID do cliente.'),
+      melhoriaId: z.string().describe('O melhoriaId que melhorar-arte devolveu (a proposta com as opções).'),
+      opcao: z.number().describe('O número da opção escolhida pela pessoa (1 ou 2), como aparece em ver-geracao.'),
+      postId: z
+        .string()
+        .optional()
+        .describe('O post que recebe a arte. Sem ele, vale o post informado no pedido da melhoria; sem nenhum, só a página (e os posts que a usam) é atualizada.'),
+    }),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    acesso: { tipo: 'projeto' },
+    superficies: ['remoto', 'local'],
+    handler: async (args, principal) => {
+      const [{ aplicarOpcaoDeFoto }, { getPublicAppUrl }, { quemDecidiu, canalDoPrincipal }] = await Promise.all([
+        import('../../ai/melhoria-de-foto-service'),
+        import('../../creatives/arte-rapida'),
+        import('../tools'),
+      ])
+      const projectId = args.projectId as number
+      const r = await aplicarOpcaoDeFoto({
+        projectId,
+        melhoriaId: String(args.melhoriaId ?? ''),
+        opcao: Number(args.opcao),
+        postId: typeof args.postId === 'string' && args.postId ? args.postId : null,
+        decididoPor: await quemDecidiu(projectId, principal),
+        canal: canalDoPrincipal(principal),
+        appUrl: getPublicAppUrl(),
+      })
+      return {
+        ...r,
+        mensagem: r.jaEstavaAplicada
+          ? 'Esta opção já estava aplicada: nada mudou agora.'
+          : r.via === 'pagina'
+            ? 'Foto aplicada à página. Use conferir-arte com o generationId devolvido para ver a arte nova antes de mostrar à pessoa.'
+            : 'Arte da reserva aplicada.',
       }
     },
   }),
