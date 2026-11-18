@@ -20,11 +20,9 @@ import { put } from '@vercel/blob'
 import { db } from '@/lib/db'
 import { deductCreditsForFeature } from '@/lib/credits/deduct'
 import { fetchImageSource } from '@/lib/ai/fetch-image-source'
-import {
-  improveCreative,
-  getCurrentImageModel,
-  type ReferenceImage,
-} from '@/lib/ai/openai-image-client'
+import { type ReferenceImage } from '@/lib/ai/openai-image-client'
+import { geradorDaMelhoria, gerarMelhoria, modeloDaMelhoria } from '@/lib/ai/gerador-da-melhoria'
+import { mudancaNaoEntrou, recomporPorZona } from '@/lib/ai/recompor-por-zona'
 import {
   inferFormatFromDimensions,
   OPENAI_INPUT_SIZE,
@@ -312,6 +310,13 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
   const startedAt = Date.now()
   const deadlineDaGeracao = startedAt + BACKGROUND_BUDGET_MS - FINALIZE_RESERVE_MS
   const controleDiretor = criarControleDoDiretor(deadlineDaGeracao - RESERVA_PARA_GERAR_MS)
+  /**
+   * O GERADOR (17/11/2026): `MELHORIA_GERADOR=gemini` troca o gpt-image pelo
+   * Nano Banana, com a recomposição por zona no lugar do filtro de tinta. O
+   * padrão é `openai` e, nele, este arquivo se comporta como antes.
+   */
+  const gerador = geradorDaMelhoria()
+  const modelo = modeloDaMelhoria(gerador)
   let format = args.format
   let openaiSize = OPENAI_INPUT_SIZE[format]
   let finalSize = FINAL_OUTPUT_SIZE[format]
@@ -326,7 +331,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
    * prompt e sem régua no registro, e o diagnóstico teve de ser refeito à
    * mão a partir da transcrição.
    */
-  const registroDaRun: Record<string, unknown> = { diretor: controleDiretor.registro }
+  const registroDaRun: Record<string, unknown> = { diretor: controleDiretor.registro, gerador }
   /** O contrato da copy da arte de ORIGEM (F1): original × enviada × conferência nesta melhoria. */
   let registroDaCopy: RegistroDaCopyNaArte | null = null
   /** A última conferência por visão desta run. */
@@ -481,7 +486,13 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
      * desenharia) — fica guardada para o código colar depois. Ver
      * `logo-na-melhoria.ts` (Wine Vix, 02/09/2026).
      */
-    const logoParaCompor = melhoriaCompoeLogo(args.projectId)
+    /**
+     * Com a recomposição por zona (Gemini) a logo é a da ORIGEM, que volta
+     * pixel por pixel: reservar o canto e colar o PNG depois daria duas logos.
+     */
+    const fotoMudaDeProposito = !!args.instrucaoImagem?.trim() || !!args.backgroundImageUrl
+    const recompoePorZona = gerador === 'gemini' && !fotoMudaDeProposito
+    const logoParaCompor = melhoriaCompoeLogo(args.projectId) && !recompoePorZona
       ? (downloads.find((d) => d.role === 'logo') ?? null)
       : null
     for (const logo of logoParaCompor ? [] : downloads.filter((d) => d.role === 'logo')) {
@@ -809,10 +820,9 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
      * demais para recompor; ali se MEDE se o assunto saiu do lugar. Com ajuste
      * de foto ou fundo novo a foto muda de propósito e nada disto roda.
      */
-    const fotoMudaDeProposito = !!args.instrucaoImagem?.trim() || !!args.backgroundImageUrl
-    const preservaFoto = !fotoMudaDeProposito && modo !== 'redesenhar'
+    const preservaFoto = !fotoMudaDeProposito && modo !== 'redesenhar' && !recompoePorZona
     let fotoDeReferencia = primary.buffer
-    if (preservaFoto && !(args.melhoraOutraImagem ?? !!args.skipTextVerification)) {
+    if ((preservaFoto || recompoePorZona) && !(args.melhoraOutraImagem ?? !!args.skipTextVerification)) {
       const urlDaRaiz = await arteDeReferenciaDaFoto(args.originalGenerationId).catch(() => null)
       if (urlDaRaiz && urlDaRaiz !== args.originalResultUrl) {
         try {
@@ -826,6 +836,8 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
     const coresDaMarca = assets.colors.map((c) => c.hexCode)
     const recompor = (gerada: Buffer, rigor: RigorDaFoto) =>
       preservarFotoDaOrigem(fotoDeReferencia, gerada, { coresDaMarca, folgado: rigor === 'folgado', tamanho: finalSize })
+    /** O arquivo oficial da logo: na recomposição por zona, onde ele casar com a origem, a origem vence. */
+    const logoDaOrigem = downloads.find((d) => d.role === 'logo')?.buffer ?? null
 
     // Gera e confere. Sem textos esperados (upload externo, export do editor)
     // não há o que comparar: uma geração só, verificação pulada.
@@ -834,6 +846,14 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
     let lastMissing: string[] = []
     /** A última tentativa foi descartada pela conferência da FOTO, não pela do texto. */
     let reprovaDaFoto: string | null = null
+    /**
+     * RESULTADO HONESTO (17/11/2026): depois da recomposição a peça é, na
+     * prática, a origem. No By Rock um `refinar` saiu idêntico à arte de
+     * entrada, marcado como pronto e cobrado. Agora a tentativa é descartada e,
+     * sem outra, a melhoria termina FAILED dizendo que a mudança não entrou
+     * (a cobrança só acontece depois do sucesso).
+     */
+    let naoEntrou: { motivo: string; repetir: boolean } | null = null
     /** Duração da geração anterior — base para decidir se a próxima cabe. */
     let ultimaGeracaoMs = 0
 
@@ -851,7 +871,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
 
       const genStartedAt = Date.now()
       const gerar = () =>
-        improveCreative({
+        gerarMelhoria(gerador, {
           imageBuffer: primaryBuffer,
           mimeType: primaryMime,
           userRequest: args.userRequest,
@@ -907,13 +927,47 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
       // A conferência da FOTO vem antes da do texto: é a peça recomposta que
       // vai ao ar, então é ela que a visão tem de ler.
       reprovaDaFoto = null
+      naoEntrou = null
       try {
-        if (preservaFoto) {
+        if (recompoePorZona) {
+          // Nos três modos: layout feito para a foto fora do lugar não serve
+          // para a foto de verdade, que é a que volta na recomposição.
+          const d = await deslocamentoDaFoto(primary.buffer, candidate)
+          fotoInfo = { ...fotoInfo, fotoDeslocada: d.deslocada, fotoLadrilhos: d.ladrilhos, fotoLadrilhosDeslocados: d.deslocados }
+          if (d.deslocada) {
+            reprovaDaFoto = `a IA tirou o assunto da foto do lugar (${d.deslocados} de ${d.ladrilhos} pedaços, até ${Math.round(d.maior * 100)}% do quadro)`
+          } else {
+            const r = await recomporPorZona(fotoDeReferencia, candidate, { tamanho: finalSize, logo: logoDaOrigem })
+            fotoInfo = {
+              ...fotoInfo,
+              fotoPreservada: true,
+              fotoRigor: 'zona',
+              fotoMascara: Number(r.fracaoDasZonas.toFixed(3)),
+              fotoBlocos: r.zonas,
+              fotoDiferencaAntes: Number(r.diferencaForaAntes.toFixed(1)),
+              ...(r.logo ? { logoProtegida: r.logo.protegida, logoCorrelacao: Number(r.logo.correlacao.toFixed(2)) } : {}),
+            }
+            if (r.fracaoDasZonas > TETO_DA_MASCARA) {
+              reprovaDaFoto = `a IA mexeu em ${Math.round(r.fracaoDasZonas * 100)}% da arte`
+            } else if (mudancaNaoEntrou(r.fracaoDasZonas)) {
+              naoEntrou = { motivo: 'o gerador devolveu a arte como estava', repetir: true }
+            } else {
+              candidate = r.buffer
+            }
+          }
+        } else if (preservaFoto) {
           bruta = candidate
           const r = await recompor(candidate, 'estrito')
           fotoInfo = { ...fotoInfo, fotoPreservada: true, fotoRigor: 'estrito', fotoMascara: Number(r.fracaoDaMascara.toFixed(3)), fotoBlocos: r.blocos, fotoRecusada: Number(r.fracaoRecusada.toFixed(3)), fotoDiferencaAntes: Number(r.diferencaForaAntes.toFixed(1)) }
           if (r.fracaoDaMascara > TETO_DA_MASCARA) {
             reprovaDaFoto = `a IA mexeu em ${Math.round(r.fracaoDaMascara * 100)}% da arte, e só o texto podia mudar`
+          } else if (mudancaNaoEntrou(r.fracaoDaMascara)) {
+            // O que o gerador mudou e a recomposição devolveu à origem (elemento
+            // gráfico fora da tinta da marca): repetir a geração repete o desfecho.
+            const recusada = !mudancaNaoEntrou(r.fracaoRecusada)
+            naoEntrou = recusada
+              ? { motivo: 'a IA mexeu na arte, mas nada do que mudou foi reconhecido como texto, e a recomposição devolveu tudo à arte de origem (elemento gráfico novo não passa neste gerador)', repetir: false }
+              : { motivo: 'o gerador devolveu a arte como estava', repetir: true }
           } else {
             candidate = r.buffer
           }
@@ -933,6 +987,17 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
         console.log(`[improve.bg] tentativa ${attempt}: descartada pela conferência da foto — ${reprovaDaFoto}`)
         if (args.queueJobId) {
           if (await pedirNovaTentativa(args.queueJobId, `foto alterada: ${reprovaDaFoto}`)) return
+          break
+        }
+        continue
+      }
+      if (naoEntrou) {
+        fotoInfo = { ...fotoInfo, mudancaNaoEntrou: true }
+        attemptsLog.push({ attempt, generationMs, passed: false, naoEntrou: naoEntrou.motivo })
+        console.log(`[improve.bg] tentativa ${attempt}: a mudança pedida não entrou — ${naoEntrou.motivo}`)
+        if (!naoEntrou.repetir) break
+        if (args.queueJobId) {
+          if (await pedirNovaTentativa(args.queueJobId, `a mudança não entrou: ${naoEntrou.motivo}`)) return
           break
         }
         continue
@@ -1078,6 +1143,9 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
       registroDaRun.copyAutoral = registroDaCopy
     }
 
+    if (!improvedBuffer && naoEntrou) {
+      throw new Error(`a mudança pedida não entrou após ${attemptsLog.length} tentativa(s): ${naoEntrou.motivo}. Nenhum crédito foi cobrado.`)
+    }
     if (!improvedBuffer && reprovaDaFoto) {
       // Foto alterada sem autorização é como texto errado: não vai para o post.
       throw new Error(`foto alterada após ${attemptsLog.length} tentativa(s): ${reprovaDaFoto}`)
@@ -1148,7 +1216,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
           backgroundImageUrl: args.backgroundImageUrl ?? null,
           selectedLogoIds: args.selectedLogoIds,
           selectedElementIds: args.selectedElementIds,
-          model: getCurrentImageModel(),
+          model: modelo,
           quality: tier,
           /**
            * 🔴 A régua PROPAGA pela cadeia. Melhorar uma melhoria é o caso
@@ -1202,7 +1270,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
         details: {
           originalGenerationId: args.originalGenerationId,
           newGenerationId: args.jobGenerationId,
-          model: getCurrentImageModel(),
+          model: modelo,
           format,
           inputSize: openaiSize,
           elapsedSeconds,
@@ -1228,7 +1296,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
               backgroundImageUrl: args.backgroundImageUrl ?? null,
               selectedLogoIds: args.selectedLogoIds,
               selectedElementIds: args.selectedElementIds,
-              model: getCurrentImageModel(),
+              model: modelo,
               quality: tier,
               // A régua propaga também por este ramo — sem isto, uma falha
               // de cobrança apagava os `textos` e a próxima melhoria da
@@ -1317,7 +1385,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
             backgroundImageUrl: args.backgroundImageUrl ?? null,
             selectedLogoIds: args.selectedLogoIds,
             selectedElementIds: args.selectedElementIds,
-            model: getCurrentImageModel(),
+            model: modelo,
             quality: tier,
             inputSize: openaiSize,
             finalSize: `${finalSize.width}x${finalSize.height}`,

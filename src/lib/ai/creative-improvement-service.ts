@@ -18,7 +18,7 @@ import { CreativeError } from '@/lib/creatives/errors'
 import { recusaDeArteNoZernio } from '@/lib/posts/midia-no-zernio'
 import { validateCreditsForFeature } from '@/lib/credits/deduct'
 import { InsufficientCreditsError } from '@/lib/credits/errors'
-import { getCurrentImageModel } from '@/lib/ai/openai-image-client'
+import { modeloDaMelhoria } from '@/lib/ai/gerador-da-melhoria'
 import {
   inferFormatFromTemplate,
   OPENAI_INPUT_SIZE,
@@ -328,7 +328,7 @@ export async function startImprovement(
         applyToPostId: input.applyToPostId ?? null,
         applyToPostMediaIndex: mediaIndex,
         ...(itemDaBancada ? { applyToItemDePlanoId: itemDaBancada.itemId, applyToPlanoId: itemDaBancada.planoId, applyToSlideOrdem: itemDaBancada.slideOrdem } : {}),
-        model: getCurrentImageModel(),
+        model: modeloDaMelhoria(),
         quality: tier,
         modo,
         inputSize: openaiSize,
