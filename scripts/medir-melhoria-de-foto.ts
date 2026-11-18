@@ -116,16 +116,19 @@ async function main() {
     if (!process.argv.includes('--confirmar')) return console.log('(sem --confirmar: só listei)')
 
     mkdirSync(SAIDA, { recursive: true })
-    const resultados: Array<Record<string, unknown>> = []
-    const linhasDaFolha: Buffer[] = []
+    // Rodada parcial (`--so`, `--receitas`) atualiza o que rodou e mantém o resto: a tabela é da bancada inteira.
+    const arquivoDeResultados = path.join(SAIDA, 'resultados.json')
+    const resultados: Array<Record<string, unknown>> = existsSync(arquivoDeResultados) ? JSON.parse(readFileSync(arquivoDeResultados, 'utf8')) : []
+    const guardar = (r: Record<string, unknown>) => {
+      const i = resultados.findIndex((x) => x.caso === r.caso && x.receita === r.receita)
+      if (i === -1) resultados.push(r)
+      else resultados[i] = r
+    }
     const ALTURA = 760
 
     for (const { caso, origem, pageId } of prontos) {
       const arte = (await fetchImageSource(origem.resultUrl)).buffer
-      const metaDaArte = await sharp(arte).metadata()
-      const largura = Math.round((ALTURA * (metaDaArte.width ?? 1080)) / (metaDaArte.height ?? 1920))
       writeFileSync(path.join(SAIDA, `${caso.nome}-origem.jpg`), await sharp(arte).jpeg({ quality: 92 }).toBuffer())
-      const celulas: Buffer[] = [await celula(arte, `${caso.nome} · origem`, origem.projectName ?? '', largura, ALTURA)]
 
       // As receitas de uma arte em paralelo; uma arte por vez.
       const feitas = await Promise.all(
@@ -144,6 +147,11 @@ async function main() {
               promptPronto: null,
             })
             const g = await gerarFotoDaOpcao(preparo, receitas, () => 240_000)
+            writeFileSync(path.join(SAIDA, `${caso.nome}-quadro.jpg`), preparo.quadro.buffer)
+            // Página editada depois da arte: o "antes" da folha é a página de hoje.
+            if (preparo.antes) writeFileSync(path.join(SAIDA, `${caso.nome}-antes.jpg`), await sharp(preparo.antes).jpeg({ quality: 92 }).toBuffer())
+            // A descartada fica em disco para calibrar o limiar (não entra na folha como opção).
+            if (g.fotoDescartada) writeFileSync(path.join(SAIDA, `${caso.nome}-${id}-descartada.jpg`), g.fotoDescartada)
             let previa: Buffer | null = null
             if (g.foto) {
               const arquivoDaFoto = path.join(SAIDA, `${caso.nome}-${id}-foto.jpg`)
@@ -162,6 +170,7 @@ async function main() {
                 receita: id,
                 desfecho: g.foto ? 'opção' : (g.descartada ?? 'sem foto'),
                 areaAlterada: g.areaAlterada ?? null,
+                tom: g.tom ?? null,
                 avisos: g.avisos.map((a) => `${a.destaque ? '[DESTAQUE] ' : ''}[${a.tipo}] ${a.texto}`),
                 leitura: preparo.leitura,
                 planejador: preparo.infoDoPrompt.planejador,
@@ -181,10 +190,31 @@ async function main() {
       )
       for (const f of feitas) {
         const r = f.registro as Record<string, unknown>
-        resultados.push(r)
-        const nota = f.previa ? `mudou ${Math.round(Number(r.areaAlterada ?? 0) * 100)}% · ${(r.avisos as string[]).filter((a) => !a.startsWith('[risco]')).length} aviso(s) de conferência` : String(r.desfecho)
-        celulas.push(await celula(f.previa, RECEITAS_DE_FOTO[f.id].rotulo, nota, largura, ALTURA))
-        console.log(`  ${caso.nome} · ${f.id}: ${r.desfecho}${r.areaAlterada != null ? ` · mudou ${Math.round(Number(r.areaAlterada) * 100)}%` : ''} · ${r.segundosNoTotal ?? '-'}s`)
+        guardar(r)
+        console.log(`  ${caso.nome} · ${f.id}: ${r.desfecho}${r.areaAlterada != null ? ` · mudou ${Math.round(Number(r.areaAlterada) * 100)}% · tom ${r.tom ?? '-'}` : ''} · ${r.segundosNoTotal ?? '-'}s`)
+      }
+      writeFileSync(arquivoDeResultados, JSON.stringify(resultados, null, 2))
+    }
+
+    // A folha sai do que está em disco, da bancada inteira: rodada parcial não apaga as outras linhas.
+    const todos = JSON.parse(readFileSync(arquivoDeCasos, 'utf8')) as Caso[]
+    const receitasDaFolha = [...new Set(resultados.map((r) => String(r.receita)))] as IdDaReceita[]
+    const linhasDaFolha: Buffer[] = []
+    for (const caso of todos) {
+      const arquivo = (sufixo: string) => path.join(SAIDA, `${caso.nome}-${sufixo}.jpg`)
+      // Página editada depois da arte: o "antes" é a página de hoje, o par certo da prévia.
+      const antes = existsSync(arquivo('antes')) ? arquivo('antes') : existsSync(arquivo('origem')) ? arquivo('origem') : null
+      if (!antes) continue
+      const metaDoAntes = await sharp(antes).metadata()
+      const largura = Math.round((ALTURA * (metaDoAntes.width ?? 1080)) / (metaDoAntes.height ?? 1920))
+      const celulas: Buffer[] = [await celula(readFileSync(antes), `${caso.nome} · antes`, antes.endsWith('-antes.jpg') ? 'a página como está hoje (editada depois da arte)' : 'a arte de origem', largura, ALTURA)]
+      for (const id of receitasDaFolha) {
+        const r = resultados.find((x) => x.caso === caso.nome && x.receita === id)
+        if (!r) continue
+        const previa = existsSync(arquivo(`${id}-previa`)) && r.desfecho === 'opção' ? readFileSync(arquivo(`${id}-previa`)) : null
+        const conferencias = ((r.avisos as string[] | undefined) ?? []).filter((a) => !a.startsWith('[risco]')).length
+        const nota = previa ? `mudou ${Math.round(Number(r.areaAlterada ?? 0) * 100)}% · tom ${r.tom ?? '-'} · ${conferencias} aviso(s) de conferência` : String(r.desfecho)
+        celulas.push(await celula(previa, RECEITAS_DE_FOTO[id].rotulo, nota, largura, ALTURA))
       }
       const metas = await Promise.all(celulas.map((c) => sharp(c).metadata()))
       let x = 0
@@ -194,7 +224,6 @@ async function main() {
         return item
       })
       linhasDaFolha.push(await sharp({ create: { width: x, height: ALTURA + 64, channels: 3, background: '#000000' } }).composite(composicao).jpeg({ quality: 88 }).toBuffer())
-      writeFileSync(path.join(SAIDA, 'resultados.json'), JSON.stringify(resultados, null, 2))
     }
 
     if (linhasDaFolha.length > 0) {
@@ -208,10 +237,10 @@ async function main() {
       })
       await sharp({ create: { width: W, height: y, channels: 3, background: '#000000' } }).composite(composicao).jpeg({ quality: 86 }).toFile(path.join(SAIDA, 'folha.jpg'))
     }
-    const tabela = ['| arte | receita | desfecho | mudou | avisos de conferência | s |', '|---|---|---|---|---|---|']
+    const tabela = ['| arte | receita | desfecho | mudou | tom | avisos de conferência | s |', '|---|---|---|---|---|---|---|']
     for (const r of resultados) {
       const avisos = ((r.avisos as string[] | undefined) ?? []).filter((a) => !a.startsWith('[risco]'))
-      tabela.push(`| ${r.caso} | ${r.receita} | ${r.desfecho} | ${r.areaAlterada != null ? `${Math.round(Number(r.areaAlterada) * 100)}%` : '-'} | ${avisos.join(' / ') || '-'} | ${r.segundosNoTotal ?? '-'} |`)
+      tabela.push(`| ${r.caso} | ${r.receita} | ${r.desfecho} | ${r.areaAlterada != null ? `${Math.round(Number(r.areaAlterada) * 100)}%` : '-'} | ${r.tom ?? '-'} | ${avisos.join(' / ') || '-'} | ${r.segundosNoTotal ?? '-'} |`)
     }
     writeFileSync(path.join(SAIDA, 'tabela.md'), `${tabela.join('\n')}\n`)
     console.log(`\nfolha: ${path.join(SAIDA, 'folha.jpg')}\n${tabela.join('\n')}`)

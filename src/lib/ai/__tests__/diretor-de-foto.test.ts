@@ -36,6 +36,11 @@ describe('contextoDaFoto', () => {
     expect(c).toContain('a mão segurando o copo')
   })
 
+  it('avisa onde a logo fica por cima da foto', () => {
+    const c = contextoDaFoto(args({ caixasDaMarca: [{ x: 0.8, y: 0.9, largura: 0.2, altura: 0.1 }] }))
+    expect(c).toMatch(/LOGO E ELEMENTOS[^\n]*80%[^\n]*90%/)
+  })
+
   it('diz quando a imagem é a arte chapada (reserva)', () => {
     expect(contextoDaFoto(args({ arteChapada: true }))).toMatch(/ARTE PRONTA/)
     expect(contextoDaFoto(args())).toMatch(/FOTO LIMPA/)

@@ -22,6 +22,7 @@ import { put } from '@vercel/blob'
 import { db } from '@/lib/db'
 import { loadBrandContext } from '@/lib/brand/brand-context'
 import { CreativeError } from '@/lib/creatives/errors'
+import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
 import { registrarUsoSemCobranca } from '@/lib/credits/registrar-uso-sem-cobranca'
 import { convertPageToDesignData } from '@/lib/posts/page-to-design-data'
 import { registerProjectFonts } from '@/lib/posts/register-project-fonts'
@@ -50,7 +51,9 @@ import {
   ajustarAoQuadro,
   caixaDoAssuntoNoQuadro,
   caixaDoTextoNoQuadro,
+  caixasDaMarcaNoQuadro,
   camadasComFotoTrocada,
+  diferencaDeTom,
   proporcaoMaisProxima,
   recortarQuadro,
   retanguloDoQuadro,
@@ -68,6 +71,14 @@ const RESERVA_PARA_FECHAR_MS = 45_000
 const LADO_MAXIMO_DE_ENVIO = 2048
 /** Largura em que a mudança visível é medida: o recorte de uma foto de acervo pode ter 4000 px. */
 const LARGURA_DA_MEDIDA = 1080
+
+/**
+ * Abaixo disto (0 a 255, `diferencaDeTom`) a foto não foi tratada. Junto de
+ * `mudancaNaoEntrou` decide o único descarte: a opção só "saiu igual" quando
+ * não há elemento novo E o tom não mudou. Calibrado na bancada de 17/11/2026
+ * (ver `docs/regras/melhoria.md`).
+ */
+export const PISO_DE_TOM = 3
 
 export const AVISO_DE_ROSTO = 'Esta foto tem rosto: confira se a pessoa continua a mesma.'
 
@@ -136,7 +147,16 @@ export interface PreparoDaFoto {
   rostoEmFoco: boolean | null
   /** Quem escreveu o prompt, para o registro da run. */
   infoDoPrompt: Record<string, unknown>
+  /**
+   * A página foi editada depois da arte de origem: o "antes" honesto é a página
+   * como está HOJE, renderizada aqui (PNG). Null quando a arte de origem ainda
+   * é o retrato da página.
+   */
+  antes: Buffer | null
 }
+
+export const AVISO_DE_PAGINA_EDITADA =
+  'A página foi editada depois desta arte: o antes e o depois mostram a página como ela está hoje (texto, recorte e elementos atuais), não a arte de origem.'
 
 /**
  * Passos 1, 2 e o prompt (seção 6 do plano): acha a página e a foto limpa,
@@ -184,6 +204,17 @@ export async function prepararMelhoriaDeFoto(p: {
     .jpeg({ quality: 92 })
     .toBuffer()
 
+  /**
+   * A arte de origem ainda é o retrato da página? Medido na bancada de
+   * 17/11/2026: em 2 de 4 artes a página tinha sido editada depois (outro
+   * texto numa, outro recorte da foto na outra), e a prévia, que é a página de
+   * hoje com a foto trocada, parecia ter mexido no que a IA nem viu.
+   */
+  const fvDaOrigem = (origem?.fieldValues ?? {}) as Record<string, unknown>
+  const versaoDaArte = typeof fvDaOrigem.versaoRenderizada === 'string' ? fvDaOrigem.versaoRenderizada : null
+  const paginaMudou = !!versaoDaArte && versaoDaArte !== versaoDaPagina(pagina, { audio: pagina.audio })
+  const antes = paginaMudou ? await renderizarPrevia(pagina, pagina.layers, p.projectId).catch(() => null) : null
+
   const caixaDoTexto: CaixaEmFracoes | null = p.receitas.find((r) => r.id === 'abrir-espaco')?.area ?? caixaDoTextoNoQuadro(pagina.layers, foto.camadaId)
   // "Abrir espaço" sem área informada recebe a que as camadas da página dão.
   const receitas = p.receitas.map((r) => (r.id === 'abrir-espaco' && !r.area && caixaDoTexto ? { ...r, area: caixaDoTexto } : r))
@@ -204,11 +235,11 @@ export async function prepararMelhoriaDeFoto(p: {
       .map((problema) => `O prompt enviado ${problema.replace(/^o prompt /, '')}.`)
     infoDoPrompt.planejador = 'chat'
   } else {
-    const fvDaOrigem = (origem?.fieldValues ?? {}) as Record<string, unknown>
     const assunto = await assuntoMarcado(p.projectId, typeof fvDaOrigem.driveImageId === 'string' ? fvDaOrigem.driveImageId : null)
     const plano = await planejarMelhoriaDeFoto({
       foto: paraOGerador,
-      arte,
+      // O diretor vê onde o texto mora HOJE.
+      arte: antes ?? arte,
       receitas,
       pedido: p.pedido,
       marca: marca?.projectName ?? p.projectName,
@@ -216,6 +247,7 @@ export async function prepararMelhoriaDeFoto(p: {
       direcaoDeFoto: marca?.dna.photoDirection ?? null,
       sobreAFoto: { caixaDoAssunto: assunto ? caixaDoAssuntoNoQuadro(assunto, natural, retanguloDoQuadro(natural, foto)) : null },
       caixaDoTexto,
+      caixasDaMarca: caixasDaMarcaNoQuadro(pagina.layers, foto.camadaId),
       proporcao,
       controle: p.controle,
     })
@@ -232,7 +264,7 @@ export async function prepararMelhoriaDeFoto(p: {
       infoDoPrompt.planejador = 'fallback'
     }
   }
-  return { pagina, foto, quadro, paraOGerador, proporcao, prompt: montarPromptDeFoto(promptBase, receitas), promptDe, leitura, riscos, rostoEmFoco, infoDoPrompt }
+  return { pagina, foto, quadro, paraOGerador, proporcao, prompt: montarPromptDeFoto(promptBase, receitas), promptDe, leitura, riscos, rostoEmFoco, infoDoPrompt, antes }
 }
 
 /** Uma opção como saiu do gerador e das conferências, antes de ser guardada. */
@@ -242,6 +274,10 @@ export interface FotoGerada {
   avisos: AvisoDaOpcao[]
   descartada?: string
   areaAlterada?: number
+  /** Diferença média de tom para a foto de origem (0 a 255): o tratamento global que não vira zona. */
+  tom?: number
+  /** Só na opção descartada por ter saído igual: a foto como veio, para a bancada calibrar o limiar. */
+  fotoDescartada?: Buffer
   /** A chamada ao gerador foi paga (mesmo que a opção tenha sido descartada). */
   gerou: boolean
   tokens?: OpcaoDeFoto['tokens']
@@ -275,16 +311,19 @@ export async function gerarFotoDaOpcao(preparo: PreparoDaFoto, receitas: Receita
     const fotoNova = await ajustarAoQuadro(r.imageBuffer, quadro)
 
     const tamanhoDaMedida = { width: LARGURA_DA_MEDIDA, height: Math.max(1, Math.round((LARGURA_DA_MEDIDA * quadro.height) / quadro.width)) }
-    const area = await areaVisivelmenteAlterada(quadro.buffer, fotoNova, tamanhoDaMedida)
+    // O ÚNICO descarte: nada novo na foto (mapa de zonas) E nenhum tratamento de tom.
+    const [area, tomBruto] = await Promise.all([areaVisivelmenteAlterada(quadro.buffer, fotoNova, tamanhoDaMedida), diferencaDeTom(quadro.buffer, fotoNova)])
     const areaAlterada = Number(area.toFixed(3))
-    if (mudancaNaoEntrou(area)) {
-      return { foto: null, avisos: [], descartada: 'saiu igual à foto de origem (a mudança não entrou)', areaAlterada, gerou, tokens, segundos: segundos() }
+    const tom = Number(tomBruto.toFixed(1))
+    if (mudancaNaoEntrou(area) && tomBruto < PISO_DE_TOM) {
+      return { foto: null, fotoDescartada: fotoNova, avisos: [], descartada: 'saiu igual à foto de origem (a mudança não entrou)', areaAlterada, tom, gerou, tokens, segundos: segundos() }
     }
 
     const conferencias = conferenciasDasReceitas(receitas)
     const avisos: AvisoDaOpcao[] = [
       ...(preparo.rostoEmFoco === true ? [{ tipo: 'rosto' as const, texto: AVISO_DE_ROSTO, destaque: true }] : []),
       ...(preparo.rostoEmFoco === null ? [{ tipo: 'conferencia' as const, texto: 'Não foi possível conferir se a foto tem rosto de pessoa (a visão não respondeu): olhe antes de usar.' }] : []),
+      ...(preparo.antes ? [{ tipo: 'conferencia' as const, texto: AVISO_DE_PAGINA_EDITADA }] : []),
       ...preparo.riscos.map((texto) => ({ tipo: 'risco' as const, texto })),
     ]
     const [assunto, cena] = await Promise.all([
@@ -294,7 +333,7 @@ export async function gerarFotoDaOpcao(preparo: PreparoDaFoto, receitas: Receita
     if (assunto?.deslocada) avisos.push({ tipo: 'assunto', texto: `O assunto da foto pode ter saído do lugar (${assunto.deslocados} de ${assunto.ladrilhos} pedaços da foto mudaram de posição): compare o antes e o depois.` })
     if (cena && !cena.pulada && !cena.ok) avisos.push({ tipo: 'cena', texto: `A conferência viu diferença no prato: ${cena.motivo ?? 'confira os ingredientes e a porção'}.` })
     if (cena?.pulada) avisos.push({ tipo: 'conferencia', texto: 'Não foi possível conferir se o prato continua o mesmo (a visão não respondeu): compare o antes e o depois.' })
-    return { foto: fotoNova, avisos, areaAlterada, gerou, tokens, segundos: segundos() }
+    return { foto: fotoNova, avisos, areaAlterada, tom, gerou, tokens, segundos: segundos() }
   } catch (erro) {
     console.warn('[foto.bg] a opção falhou:', mensagemDe(erro))
     return { foto: null, avisos: [], descartada: `não foi gerada: ${mensagemDe(erro).replace(/\s+/g, ' ').slice(0, 240)}`, gerou, tokens, segundos: segundos() }
@@ -350,11 +389,16 @@ export async function processarMelhoriaDeFoto(args: ImprovementJobArgs & { foto:
       postId: args.foto.postId,
       aplicada: null,
     }
+    if (preparo.antes) {
+      // O "antes" da página de hoje vai ao Blob junto das opções: é o par certo da prévia.
+      const jpg = await sharp(preparo.antes).jpeg({ quality: 92 }).toBuffer()
+      registro.antesUrl = (await put(`${TRILHA_DA_FOTO_MELHORADA}/${args.projectId}/${args.jobGenerationId}-antes.jpg`, jpg, { access: 'public', contentType: 'image/jpeg', addRandomSuffix: true })).url
+    }
 
     /** Passos 5 e 6: guarda a foto no Blob (trilha `foto-melhorada`) e monta a prévia sem tocar na página. */
     const gerarOpcao = async (numero: number): Promise<OpcaoDeFoto> => {
       const g = await gerarFotoDaOpcao(preparo, receitas, () => tempoParaGerar(prazoParaGerar))
-      const comum = { opcao: numero, avisos: g.avisos, areaAlterada: g.areaAlterada, custoUsd: g.gerou ? CUSTO_POR_OPCAO_USD : 0, tokens: g.tokens }
+      const comum = { opcao: numero, avisos: g.avisos, areaAlterada: g.areaAlterada, diferencaDeTom: g.tom, custoUsd: g.gerou ? CUSTO_POR_OPCAO_USD : 0, tokens: g.tokens }
       if (!g.foto) return { ...comum, fotoUrl: null, previaUrl: null, descartada: g.descartada ?? 'não foi gerada', segundos: g.segundos }
       const t0 = Date.now()
       try {

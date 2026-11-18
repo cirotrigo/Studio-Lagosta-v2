@@ -37,6 +37,8 @@ export interface OpcaoDeFoto {
   descartada?: string
   /** Fração do quadro que mudou visivelmente. */
   areaAlterada?: number
+  /** Diferença média de tom para a foto de origem (0 a 255). */
+  diferencaDeTom?: number
   custoUsd: number
   tokens?: { entrada?: number; saida?: number }
   segundos: number
@@ -60,6 +62,8 @@ export interface RegistroDaMelhoriaDeFoto {
   /** Null quando ninguém olhou (visão fora do ar). */
   rostoEmFoco: boolean | null
   opcoes: OpcaoDeFoto[]
+  /** Só quando a página foi editada depois da arte de origem: a página de HOJE renderizada, o par certo da prévia. */
+  antesUrl?: string
   /** O post para o qual a melhoria foi pedida; a troca só acontece ao aplicar. */
   postId: string | null
   aplicada: { opcao: number; generationId: string; url: string; em: string; postId?: string | null } | null
@@ -118,6 +122,7 @@ export function opcaoParaAplicar(
 export function retornoDasOpcoes(registro: RegistroDaMelhoriaDeFoto) {
   return {
     leitura: registro.leitura,
+    ...(registro.antesUrl ? { antesUrl: registro.antesUrl } : {}),
     prompt: registro.prompt,
     riscos: registro.riscos,
     opcoes: registro.opcoes.map((o) => ({

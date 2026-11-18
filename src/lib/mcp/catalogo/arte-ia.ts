@@ -886,8 +886,10 @@ export const toolsDeArteIA = [
             const origemDaProposta = gen.sourceGenerationId
               ? await db.generation.findFirst({ where: { id: gen.sourceGenerationId, projectId }, select: { resultUrl: true } })
               : null
+            // Página editada depois da arte: o "antes" é a página de hoje, não a arte de origem.
+            const antes = proposta.antesUrl ? { rotulo: 'a página como está hoje (antes)', url: proposta.antesUrl } : origemDaProposta?.resultUrl ? { rotulo: 'arte de origem (antes)', url: origemDaProposta.resultUrl } : null
             const fontes = [
-              ...(origemDaProposta?.resultUrl ? [{ rotulo: 'arte de origem (antes)', url: origemDaProposta.resultUrl }] : []),
+              ...(antes ? [antes] : []),
               ...r.opcoes.flatMap((o) => (o.previaUrl ? [{ rotulo: `opção ${o.opcao} (depois)`, url: o.previaUrl }] : [])),
             ]
             const miniaturas = await Promise.all(

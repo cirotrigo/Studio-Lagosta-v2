@@ -7,6 +7,8 @@ import {
   ajustarAoQuadro,
   caixaDoAssuntoNoQuadro,
   caixaDoTextoNoQuadro,
+  caixasDaMarcaNoQuadro,
+  diferencaDeTom,
   camadasComFotoTrocada,
   pageIdDaArte,
   proporcaoMaisProxima,
@@ -168,6 +170,18 @@ describe('caixaDoTextoNoQuadro', () => {
   })
 })
 
+describe('caixasDaMarcaNoQuadro', () => {
+  it('devolve a caixa da logo e dos elementos que ficam sobre a foto, e ignora o resto', () => {
+    const layers = [foto(), texto('t', 0, 0, 500, 100), { id: 'logo', type: 'logo', fileUrl: 'https://x/l.png', position: { x: 864, y: 1728 }, size: { width: 216, height: 192 } }, { id: 'oculto', type: 'element', visible: false, position: { x: 0, y: 0 }, size: { width: 100, height: 100 } }]
+    const caixas = caixasDaMarcaNoQuadro(layers, 'bg-img')
+    expect(caixas).toHaveLength(1)
+    expect(caixas[0].x).toBeCloseTo(0.8, 5)
+    expect(caixas[0].y).toBeCloseTo(0.9, 5)
+    expect(caixas[0].largura).toBeCloseTo(0.2, 5)
+    expect(caixas[0].altura).toBeCloseTo(0.1, 5)
+  })
+})
+
 describe('camadasComFotoTrocada', () => {
   it('troca só a foto pedida e deixa o recorte inteiro: a foto nova já vem no quadro', () => {
     const original = [foto({ style: { objectFit: 'cover', cropPosition: 'left-top', crop: { x: 0.2, y: 0, width: 0.5, height: 1 }, opacity: 0.9 } }), texto('t', 0, 0, 10, 10), { id: 'logo', type: 'logo', fileUrl: 'https://x/logo.png' }]
@@ -181,3 +195,30 @@ describe('camadasComFotoTrocada', () => {
     expect((original[0] as any).fileUrl).toContain('foto.jpg')
   })
 })
+
+describe('diferencaDeTom', () => {
+  const cena = (r: number, g: number, b: number, extra?: (raw: Buffer) => void) => {
+    const raw = Buffer.alloc(200 * 300 * 3)
+    for (let i = 0; i < raw.length; i += 3) raw.set([r + ((i / 3) % 7), g, b], i)
+    extra?.(raw)
+    return sharp(raw, { raw: { width: 200, height: 300, channels: 3 } }).jpeg({ quality: 95 }).toBuffer()
+  }
+
+  it('é perto de zero na mesma foto e acompanha o tratamento global', async () => {
+    const origem = await cena(120, 100, 80)
+    expect(await diferencaDeTom(origem, await cena(120, 100, 80))).toBeLessThan(1)
+    // Balanço de branco: menos vermelho, mais azul, na foto inteira.
+    const tratada = await diferencaDeTom(origem, await cena(108, 100, 94))
+    expect(tratada).toBeGreaterThan(6)
+    expect(tratada).toBeLessThan(12)
+  })
+
+  it('um elemento pequeno novo quase não mexe no tom', async () => {
+    const origem = await cena(120, 100, 80)
+    const comMao = await cena(120, 100, 80, (raw) => {
+      for (let y = 100; y < 130; y++) for (let x = 150; x < 200; x++) raw.set([230, 190, 160], (y * 200 + x) * 3)
+    })
+    expect(await diferencaDeTom(origem, comMao)).toBeLessThan(3)
+  })
+})
+

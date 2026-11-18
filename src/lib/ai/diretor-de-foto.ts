@@ -40,6 +40,8 @@ export interface PlanejarMelhoriaDeFotoArgs {
   sobreAFoto?: { prato?: string | null; caixaDoAssunto?: CaixaEmFracoes | null }
   /** Onde o texto da arte está, em frações do quadro. */
   caixaDoTexto?: CaixaEmFracoes | null
+  /** Onde a logo e os elementos da arte ficam: são renderizados por cima da foto. */
+  caixasDaMarca?: CaixaEmFracoes[]
   /** A proporção do quadro ("9:16"). */
   proporcao: string
   controle?: ControleDoDiretor
@@ -128,6 +130,9 @@ export function contextoDaFoto(args: PlanejarMelhoriaDeFotoArgs): string {
   if (args.sobreAFoto?.prato) linhas.push(`O QUE O ACERVO SABE DA FOTO: ${args.sobreAFoto.prato}`)
   if (args.sobreAFoto?.caixaDoAssunto) linhas.push(`ASSUNTO (o prato, marcado por alguém da equipe): ${caixaLegivel(args.sobreAFoto.caixaDoAssunto)}. Ele não sai daí.`)
   if (args.caixaDoTexto) linhas.push(`TEXTO DA ARTE: ${caixaLegivel(args.caixaDoTexto)}. Não cubra essa área com o assunto nem com o gesto.`)
+  if (args.caixasDaMarca?.length) {
+    linhas.push(`LOGO E ELEMENTOS DA ARTE (renderizados POR CIMA da foto; o que ficar embaixo deles some): ${args.caixasDaMarca.map(caixaLegivel).join('; ')}. Não ponha o gesto nem o assunto aí.`)
+  }
   return linhas.join('\n\n')
 }
 

@@ -169,44 +169,56 @@ export async function ajustarAoQuadro(gerada: Buffer, quadro: { width: number; h
   return sharp(gerada).resize(largura, altura, { fit: 'cover', position: 'center' }).jpeg({ quality: 92 }).toBuffer()
 }
 
-/**
- * Onde o texto da arte está, em frações da caixa da foto: a união das camadas
- * de texto visíveis e com conteúdo, só no que cai sobre a foto. É o que
- * "Abrir espaço para o texto" recebe quando ninguém informa a área.
- */
-export function caixaDoTextoNoQuadro(layers: unknown, camadaId: string): CaixaEmFracoes | null {
+/** A caixa de cada camada que passa no filtro, só no que cai sobre a foto, em frações da caixa da foto. */
+function caixasSobreAFoto(layers: unknown, camadaId: string, entra: (c: PageLayer) => boolean): CaixaEmFracoes[] {
   const camadas = parsePageLayers(layers)
   const foto = camadas.find((c) => c?.id === camadaId)
-  if (!foto) return null
+  if (!foto) return []
   const caixaDe = (c: PageLayer) => {
     const p = (c.position ?? {}) as { x?: unknown; y?: unknown }
     const s = (c.size ?? {}) as { width?: unknown; height?: unknown }
     return { x0: numero(p.x), y0: numero(p.y), x1: numero(p.x) + numero(s.width), y1: numero(p.y) + numero(s.height) }
   }
   const f = caixaDe(foto)
-  if (f.x1 <= f.x0 || f.y1 <= f.y0) return null
-  let x0 = Infinity
-  let y0 = Infinity
-  let x1 = -Infinity
-  let y1 = -Infinity
-  for (const c of camadas) {
-    if ((c?.type !== 'text' && c?.type !== 'rich-text') || c.visible === false) continue
-    if (typeof c.content !== 'string' || !c.content.trim()) continue
-    const t = caixaDe(c)
-    const ix0 = Math.max(t.x0, f.x0)
-    const iy0 = Math.max(t.y0, f.y0)
-    const ix1 = Math.min(t.x1, f.x1)
-    const iy1 = Math.min(t.y1, f.y1)
-    if (ix1 <= ix0 || iy1 <= iy0) continue
-    x0 = Math.min(x0, ix0)
-    y0 = Math.min(y0, iy0)
-    x1 = Math.max(x1, ix1)
-    y1 = Math.max(y1, iy1)
-  }
-  if (!Number.isFinite(x0)) return null
   const w = f.x1 - f.x0
   const h = f.y1 - f.y0
-  return { x: (x0 - f.x0) / w, y: (y0 - f.y0) / h, largura: (x1 - x0) / w, altura: (y1 - y0) / h }
+  if (w <= 0 || h <= 0) return []
+  const caixas: CaixaEmFracoes[] = []
+  for (const c of camadas) {
+    if (!c || c.id === camadaId || c.visible === false || !entra(c)) continue
+    const t = caixaDe(c)
+    const x0 = Math.max(t.x0, f.x0)
+    const y0 = Math.max(t.y0, f.y0)
+    const x1 = Math.min(t.x1, f.x1)
+    const y1 = Math.min(t.y1, f.y1)
+    if (x1 <= x0 || y1 <= y0) continue
+    caixas.push({ x: (x0 - f.x0) / w, y: (y0 - f.y0) / h, largura: (x1 - x0) / w, altura: (y1 - y0) / h })
+  }
+  return caixas
+}
+
+/**
+ * Onde o texto da arte está, em frações da caixa da foto: a união das camadas
+ * de texto visíveis e com conteúdo, só no que cai sobre a foto. É o que
+ * "Abrir espaço para o texto" recebe quando ninguém informa a área.
+ */
+export function caixaDoTextoNoQuadro(layers: unknown, camadaId: string): CaixaEmFracoes | null {
+  const caixas = caixasSobreAFoto(layers, camadaId, (c) => (c.type === 'text' || c.type === 'rich-text') && typeof c.content === 'string' && !!c.content.trim())
+  if (caixas.length === 0) return null
+  const x0 = Math.min(...caixas.map((c) => c.x))
+  const y0 = Math.min(...caixas.map((c) => c.y))
+  const x1 = Math.max(...caixas.map((c) => c.x + c.largura))
+  const y1 = Math.max(...caixas.map((c) => c.y + c.altura))
+  return { x: x0, y: y0, largura: x1 - x0, altura: y1 - y0 }
+}
+
+/**
+ * Onde a logo e os elementos da arte ficam sobre a foto. Eles são renderizados
+ * POR CIMA dela: gesto ou assunto posto ali fica escondido (medido na bancada
+ * de 17/11/2026: a mão do Humanizar saiu embaixo da logo do Espeto).
+ */
+export function caixasDaMarcaNoQuadro(layers: unknown, camadaId: string): CaixaEmFracoes[] {
+  return caixasSobreAFoto(layers, camadaId, (c) => c.type === 'logo' || c.type === 'element')
 }
 
 /**
@@ -219,3 +231,20 @@ export function camadasComFotoTrocada(layers: unknown, camadaId: string, url: st
     c?.id === camadaId ? { ...c, fileUrl: url, style: { ...((c.style ?? {}) as Record<string, unknown>), crop: { ...RECORTE_INTEIRO } } } : c,
   )
 }
+
+/**
+ * Diferença média de TOM entre duas fotos (0 a 255), medida em 48x48 e
+ * borrada: enxerga o tratamento GLOBAL (balanço de branco, exposição), que não
+ * vira zona no mapa de `recompor-por-zona.ts`. Aquele mapa compara cada pixel
+ * com a faixa dos vizinhos e foi feito para elemento novo (mão, texto); medido
+ * em 17/11/2026, a receita Foto profissional saía como "0% de mudança" e era
+ * descartada como se a foto tivesse voltado igual.
+ */
+export async function diferencaDeTom(origem: Buffer, nova: Buffer): Promise<number> {
+  const mini = (b: Buffer) => sharp(b).resize(48, 48, { fit: 'fill' }).blur(1.5).removeAlpha().toColourspace('srgb').raw().toBuffer()
+  const [a, c] = await Promise.all([mini(origem), mini(nova)])
+  let soma = 0
+  for (let i = 0; i < a.length; i++) soma += Math.abs(a[i] - c[i])
+  return soma / a.length
+}
+
