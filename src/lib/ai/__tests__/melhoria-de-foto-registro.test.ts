@@ -48,6 +48,14 @@ describe('fotoAindaEAMesma', () => {
     const comRecorte = { x: 0.1, y: 0, width: 0.5, height: 1 }
     expect(fotoAindaEAMesma(registro({ recorteDeOrigem: comRecorte }), { ...atual, estilo: { crop: { ...comRecorte } } })).toBe(true)
   })
+  it('o recorte volta do banco com as chaves em outra ordem e continua sendo o mesmo', () => {
+    // O `jsonb` do Postgres reordena as chaves: comparar como texto recusava toda página com recorte manual.
+    const doBanco = JSON.parse('{"x":0.13316346318063138,"y":0.2310536345102041,"width":0.7692882713881907,"height":0.7689463654897959}')
+    const reordenado = { height: doBanco.height, width: doBanco.width, x: doBanco.x, y: doBanco.y }
+    expect(fotoAindaEAMesma(registro({ recorteDeOrigem: reordenado }), { ...atual, estilo: { crop: doBanco } })).toBe(true)
+    expect(fotoAindaEAMesma(registro({ recorteDeOrigem: reordenado }), { ...atual, estilo: {} })).toBe(false)
+  })
+
   it('recusa quando a foto, o recorte ou a caixa mudaram desde a prévia', () => {
     expect(fotoAindaEAMesma(registro(), null)).toBe(false)
     expect(fotoAindaEAMesma(registro(), { ...atual, url: 'https://x/outra.jpg' })).toBe(false)

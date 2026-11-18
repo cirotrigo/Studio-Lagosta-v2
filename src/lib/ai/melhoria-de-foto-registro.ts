@@ -87,10 +87,23 @@ export function fotoAindaEAMesma(registro: RegistroDaMelhoriaDeFoto, atual: Foto
   return (
     atual.camadaId === registro.camadaId &&
     atual.url === registro.fotoDeOrigemUrl &&
-    JSON.stringify(atual.estilo.crop ?? null) === JSON.stringify(registro.recorteDeOrigem ?? null) &&
+    mesmoRecorte(atual.estilo.crop ?? null, registro.recorteDeOrigem ?? null) &&
     atual.caixa.width === registro.quadro.width &&
     atual.caixa.height === registro.quadro.height
   )
+}
+
+/**
+ * Campo a campo, nunca por `JSON.stringify`: o registro passa pelo `jsonb` do
+ * Postgres, que REORDENA as chaves do objeto. Comparado como texto, todo
+ * recorte manual parecia outro e a aplicação era recusada (medido no banco de
+ * desenvolvimento em 18/11/2026, na primeira página com recorte).
+ */
+function mesmoRecorte(a: unknown, b: unknown): boolean {
+  if (a == null || b == null) return a == null && b == null
+  const x = a as Record<string, unknown>
+  const y = b as Record<string, unknown>
+  return (['x', 'y', 'width', 'height'] as const).every((k) => typeof x[k] === 'number' && typeof y[k] === 'number' && Math.abs((x[k] as number) - (y[k] as number)) < 1e-9)
 }
 
 export function opcaoParaAplicar(

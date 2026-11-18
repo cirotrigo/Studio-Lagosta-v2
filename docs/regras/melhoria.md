@@ -794,6 +794,74 @@ padrão.
   segunda geração pela fila). Se o padrão deve ser `marcada` é decisão do
   Ciro, olhando a folha.
 
+**O que foi medido (bancada de 18/11/2026).** Quatro artes do compositor, de
+quatro clientes (By Rock, Espeto Gaúcho e Real Gelateria em story; Bacana em
+feed), três receitas, uma opção cada, pelo código da fila
+(`scripts/medir-melhoria-de-foto.ts`). A folha de contato fica FORA do
+repositório (ele é público e ela mostra arte de cliente): o script grava em
+`~/Documents/Clientes/_medicoes/2026-11-melhorar-foto/`.
+
+| arte | receita | desfecho | mudou (zonas) | tom | aviso de conferência | s |
+|---|---|---|---|---|---|---|
+| By Rock | Humanizar | opção | 21% | 9,5 | nenhum | 43 |
+| By Rock | Foto profissional | saiu igual | 0% | 2,9 | – | 54 |
+| By Rock | Abrir espaço | opção | 86% | 37,2 | nenhum | 55 |
+| Espeto | Humanizar | opção | 4% | 3,3 | rosto (destaque), página editada | 53 |
+| Espeto | Foto profissional | opção | 0% | 4,1 | rosto (destaque), página editada | 55 |
+| Espeto | Abrir espaço | saiu igual | 0% | 2,0 | – | 47 |
+| Real | Humanizar | opção | 19% | 13,1 | página editada | 61 |
+| Real | Foto profissional | opção | 0% | 3,0 | página editada | 61 |
+| Real | Abrir espaço | opção | 94% | 48,7 | página editada, prato (cor e proporção das bolas) | 65 |
+| Bacana | Humanizar | opção | 8% | 5,5 | nenhum | 45 |
+| Bacana | Foto profissional | opção | 2% | 15,1 | nenhum | 66 |
+| Bacana | Abrir espaço | opção | 65% | 38,7 | nenhum | 63 |
+
+- **10 opções em 12; 2 descartadas por terem saído iguais.** O texto, a logo e
+  os elementos saíram idênticos nas 10, por construção (são renderizados por
+  cima). Na Real, que tem recorte manual na foto, a foto nova caiu no mesmo
+  enquadramento.
+- **Humanizar: 4 de 4 com o gesto**, todos entrando pela borda (garfo, pinça,
+  mão no cone), sem rosto novo e fora da área da logo. No By Rock veio junto
+  um pedaço de manga escura do braço, no canto do texto.
+- **Foto profissional (padrão `leve`): mudança no limite do que se enxerga.**
+  Uma voltou igual, duas ficaram com tom 3,0 e 4,1 (quase nada), e só a do
+  Bacana mudou de fato (15,1). Com `marcada`, numa geração à parte na Real, o
+  tratamento aparece.
+- **Abrir espaço: recompõe de verdade em 3 de 4** (o prato sobe ou o quadro
+  abre) e voltou igual no Espeto, onde o texto já pousa no teto liso. No Bacana
+  o letreiro luminoso atrás do título foi apagado para acalmar a área: é o
+  mesmo lugar, mas é um caso para o olho de quem aprova. Na Real a conferência
+  acusou diferença no prato, como aviso.
+- **Tempo:** 43 a 66 s por opção, com o diretor de foto. **Custo:** US$ 0,05
+  por imagem (tabela do Google); a bancada inteira, com a primeira rodada e a
+  calibração, gerou 28 imagens.
+- **O julgamento é do Ciro.** A bancada mede se o caminho funciona; se o prato
+  continua o mesmo, se a mão convence e quantas ele usaria, é a folha que
+  responde. Uma receita só fica ligada na tela se a maioria passar.
+- ⚠️ **Fora da amostra:** página com a foto em parte do quadro (proporção fora
+  das aceitas), carrossel, arte com vídeo, foto com rosto em primeiro plano, a
+  receita Ajuste livre e o prompt pronto do chat com imagem real.
+
+**Ponta a ponta no banco de desenvolvimento (17 e 18/11/2026).** Pela fila
+(`startMelhoriaDeFoto`, `enfileirarMelhoria`, `dispararJobAgora`): By Rock,
+Humanizar, uma opção em 60 s, prévia conferida, página intocada até aplicar,
+saldo sem débito e uma linha de uso com `creditsUsed: 0`; aplicada, a página
+ficou com a foto nova e o recorte inteiro, a arte renderizada bateu com a
+prévia e aplicar de novo devolveu a mesma arte. Pelas tools do MCP
+(`melhorar-arte`, `ver-geracao`, `aplicar-opcao-de-foto`): Real Gelateria,
+página com recorte manual, duas opções em 53 s, as três miniaturas no
+`ver-geracao`, aplicação e recusa da outra opção. Pela reserva: uma melhoria
+chapada do Espeto, texto conferido (`passed`), sem cobrança.
+
+- 🔴 **O recorte se compara campo a campo, nunca por `JSON.stringify`.** O
+  registro passa pelo `jsonb` do Postgres, que reordena as chaves: comparada
+  como texto, toda página com recorte manual "tinha mudado" e a aplicação era
+  recusada. Foi o teste das tools que pegou.
+- ⚠️ **Não foi exercitado com serviço real:** post com `laterPostId` (a troca
+  no Zernio), a recusa dentro da janela de publicação e a invalidação de post
+  agendado. Estão cobertos por teste com dublê
+  (`melhoria-de-foto-service.test.ts`), não por chamada de verdade.
+
 **Limites conhecidos.**
 
 - ⚠️ A opção não usada fica no Blob: a limpeza em 30 dias (seção 6.1 do plano)
@@ -810,6 +878,10 @@ padrão.
   (`PhotoAssunto`); o nome do prato do catálogo (um JSON no Drive) não é lido.
 - ⚠️ Carrossel é uma página por vez; item da leva (`itemId`) não aceita
   `alvo: 'foto'` nesta fase; a reserva gera uma opção por pedido.
+- ⚠️ Na reserva a logo só volta à origem quando o arquivo oficial casa com a
+  arte (correlação 0,65); no teste, numa arte que já era melhoria, casou 0,55 e
+  a logo ficou a do gerador. E a tentativa descartada não vira linha de uso: só
+  a que deu certo.
 - ⚠️ O custo registrado é o da imagem (US$ 0,05 no Nano Banana 2.1 em 2K, tabela
   do Google lida em 17/11/2026). O diretor de foto e a conferência por visão
   não entram na conta.

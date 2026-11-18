@@ -23,7 +23,8 @@ import { fetchImageSource } from '@/lib/ai/fetch-image-source'
 import { type ReferenceImage } from '@/lib/ai/openai-image-client'
 import { geradorDaMelhoria, gerarMelhoria, modeloDaMelhoria, type GeradorDaMelhoria } from '@/lib/ai/gerador-da-melhoria'
 import { planejarMelhoriaDeFoto } from '@/lib/ai/diretor-de-foto'
-import { processarMelhoriaDeFoto, type MelhoriaDeFotoArgs } from '@/lib/ai/melhoria-de-foto-runner'
+import { PISO_DE_TOM, processarMelhoriaDeFoto, type MelhoriaDeFotoArgs } from '@/lib/ai/melhoria-de-foto-runner'
+import { diferencaDeTom } from '@/lib/ai/quadro-da-foto'
 import { montarPromptDeFoto, promptSemDiretor, type ReceitaPedida } from '@/lib/ai/receitas-de-foto'
 import { registrarUsoSemCobranca } from '@/lib/credits/registrar-uso-sem-cobranca'
 import { areaVisivelmenteAlterada, mudancaNaoEntrou, PISO_DE_MUDANCA, recomporPorZona } from '@/lib/ai/recompor-por-zona'
@@ -1017,7 +1018,10 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
             candidate = r.buffer
             fotoInfo = { ...fotoInfo, ...(r.logo ? { logoProtegida: r.logo.protegida, logoCorrelacao: Number(r.logo.correlacao.toFixed(2)) } : {}) }
           }
-          if (mudancaNaoEntrou(await areaVisivel(candidate))) {
+          // Tratamento global de luz não vira zona: a peça só "voltou igual" se o tom também não mudou.
+          const tom = await diferencaDeTom(primary.buffer, candidate)
+          fotoInfo = { ...fotoInfo, fotoTom: Number(tom.toFixed(1)) }
+          if (mudancaNaoEntrou(await areaVisivel(candidate)) && tom < PISO_DE_TOM) {
             naoEntrou = { motivo: 'o gerador devolveu a arte praticamente como estava', repetir: true }
           }
         } else if (recompoePorZona) {
