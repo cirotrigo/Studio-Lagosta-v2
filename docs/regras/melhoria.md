@@ -765,6 +765,35 @@ padrão.
   aplicar e hoje não faz nada: a cópia para `Fotos/IA_LAGOSTA`, a ficha no
   catálogo e o `buscar-fotos` são a próxima fatia. A foto fica só no Blob.
 
+**O que a bancada ensinou (17 e 18/11/2026).**
+
+- 🔴 **"Saiu igual" tem duas medidas, não uma.** `mudancaNaoEntrou` (o mapa de
+  zonas do `recompor-por-zona.ts`) compara cada pixel com a faixa dos vizinhos
+  e foi feito para elemento novo (mão, texto). Tratamento GLOBAL de luz não
+  vira zona: na primeira rodada a receita Foto profissional saiu com "0% de
+  mudança" em 4 de 4 e foi descartada em 3. A opção só é descartada quando não
+  há elemento novo **e** a `diferencaDeTom` (média da diferença em 48x48
+  borrado, 0 a 255) fica abaixo de `PISO_DE_TOM` (3). Calibração, olhando os
+  pares: as fotos que voltaram iguais deram 2,0 a 2,9; o menor tratamento que
+  se enxerga, 4,1. São poucas peças: quem mexer no limiar mede de novo.
+- 🔴 **A arte de origem pode não ser mais o retrato da página.** Em 2 das 4
+  artes da bancada a página tinha sido editada depois da arte (outro texto
+  numa, outro recorte da foto na outra). A prévia é a página de HOJE com a
+  foto trocada, e ao lado da arte antiga parecia ter mexido no texto e no
+  enquadramento, que a IA nem viu. Quando `versaoRenderizada` da arte difere da
+  versão da página, o runner renderiza o "antes" da página de hoje
+  (`antesUrl`), o diretor olha esse "antes" e a opção sai com o aviso
+  `AVISO_DE_PAGINA_EDITADA`. Arte antiga, sem `versaoRenderizada`, não tem como
+  ser conferida e segue sem o aviso.
+- 🔴 **A logo e os elementos ficam POR CIMA da foto.** A mão do Humanizar saiu
+  embaixo da logo do Espeto: o diretor recebia só a caixa do texto. Hoje recebe
+  também as caixas das camadas `logo` e `element` (`caixasDaMarcaNoQuadro`).
+- **Foto profissional no padrão (`leve`) quase não muda foto que já é boa.** As
+  fotos da carteira são de sessão profissional: o tratamento leve fica no
+  limite do que se enxerga e parte volta como "saiu igual" (o que custa uma
+  segunda geração pela fila). Se o padrão deve ser `marcada` é decisão do
+  Ciro, olhando a folha.
+
 **Limites conhecidos.**
 
 - ⚠️ A opção não usada fica no Blob: a limpeza em 30 dias (seção 6.1 do plano)
