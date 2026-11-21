@@ -155,6 +155,15 @@ describe('classificação do erro do Gemini', () => {
     expect(deveTentarAlternativaGemini(erro)).toBe(true)
   })
 
+  it('408 é instabilidade: passageiro, com alternativa', async () => {
+    fetchFalso.mockResolvedValueOnce(
+      new Response('<html><body>Request Timeout</body></html>', { status: 408, headers: { 'content-type': 'text/html' } }),
+    )
+    const erro = await falhaDe('nano-banana-2')
+    expect(erro.kind).toBe('instabilidade')
+    expect(deveTentarAlternativaGemini(erro)).toBe(true)
+  })
+
   it('400 de chave inválida é autenticação, sem alternativa', async () => {
     fetchFalso.mockResolvedValueOnce(
       respostaDeErro(400, { error: { code: 400, message: 'API key not valid. Please pass a valid API key.', status: 'INVALID_ARGUMENT' } }),
@@ -210,7 +219,7 @@ describe('alternativa no Replicate', () => {
     expect(body.input.image_input).toHaveLength(14)
   })
 
-  it('no modo edição, a imagem base é a entrada', () => {
+  it('na edição vai a imagem base e depois as referências, como no Gemini', () => {
     const { body } = montarPredicaoReplicate({
       model: 'nano-banana-pro',
       prompt: 'troque o fundo',
@@ -218,6 +227,17 @@ describe('alternativa no Replicate', () => {
       mode: 'edit',
       baseImage: 'https://base.png',
       referenceImages: ['https://ref.jpg'],
+    })
+    expect(body.input.image_input).toEqual(['https://base.png', 'https://ref.jpg'])
+  })
+
+  it('inpaint é tratado como edição: a imagem base não se perde', () => {
+    const { body } = montarPredicaoReplicate({
+      model: 'nano-banana-pro',
+      prompt: 'tire o copo',
+      aspectRatio: '1:1',
+      mode: 'inpaint',
+      baseImage: 'https://base.png',
     })
     expect(body.input.image_input).toEqual(['https://base.png'])
   })

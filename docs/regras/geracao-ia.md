@@ -1287,18 +1287,28 @@ substituto que o Google indica) e `nano-banana-pro` → **`gemini-3-pro-image`**
   is not supported for **generateContent**", e "generatecontent" contém
   "rate"; o client procurava "rate" antes de "not found". O modelo desligado
   virava erro passageiro. Agora quem decide é o **status HTTP** do `ApiError`
-  (404, 429, 401/403, 5xx) e o texto só vale para erro sem status. O erro sai
+  (404, 408, 429, 401/403, 5xx); o texto só decide para erro sem status e para
+  400 e os demais 4xx (o Google manda chave inválida como 400). O erro sai
   como `GeminiImageError` com `kind`; retry e alternativa leem o `kind`.
 - **Modelo desligado ACIONA a alternativa** (`deveTentarAlternativaGemini`):
   é o caso em que repetir o mesmo modelo não adianta. Segurança, autenticação
-  e parâmetros inválidos não acionam.
+  e parâmetros inválidos não acionam. 🔴 **Só erro que É `GeminiImageError`
+  aciona**: o `put` do Blob está no mesmo `try`, e "Too many requests" ou
+  "This store does not exist" do Blob, lidos pelo texto, pagariam uma 2ª
+  geração com a imagem do Google já pronta. Se a alternativa não puder rodar
+  (sem `REPLICATE_API_TOKEN` ou sem tempo), o modelo desligado chega ao
+  usuário como "Modelo de IA não disponível", não como "temporariamente
+  indisponível".
 - 🔴 **A alternativa do gerador direto (`/api/ai/generate-image`) não
   funcionava desde 16/03/2026.** Ela mandava `version:
   AI_IMAGE_MODELS[...].version` para `POST /v1/predictions` do Replicate, e
   esse `version` tinha virado o ID do Google. Agora o modelo do Replicate é
   o campo `replicateModel` (`google/nano-banana-pro`), e o pedido vai para
   `/v1/models/{owner}/{name}/predictions`, sem `version`
-  (`src/lib/ai/replicate-nano-banana.ts`, com teste). A geração pela
+  (`src/lib/ai/replicate-nano-banana.ts`, com teste). A entrada segue o
+  caminho do Gemini: na edição vai a imagem base e depois as referências, e
+  inpaint conta como edição (antes a edição perdia as referências e o inpaint
+  ia sem a base). A geração pela
   alternativa também passou a registrar `apiProvider: 'replicate'`: antes saía
   `gemini-direct` e o painel de custo usava o preço do Google.
 - **Quem tem alternativa**: o gerador direto (Gemini → Replicate) e

@@ -168,4 +168,8 @@ A cobrança em créditos (10) não mudou.
   é o apelido e não o ID do Google: o painel recalcula o passado com o preço
   novo. Se o histórico importar, a chave precisa passar a levar o ID.
 - A alternativa do gerador direto agora grava `apiProvider: 'replicate'` e cai
-  nas chaves `replicate.`, como este arquivo já dizia que deveria.
+  nas chaves `replicate.`, como este arquivo já dizia que deveria. ⚠️ Esses
+  preços (`replicate.nano-banana-pro.*`: 0,06 / 0,10 / 0,20) são de quando o
+  Replicate era o caminho principal e não têm fonte nova. Fontes secundárias
+  dão hoje uns US$ 0,15–0,18 por imagem no Replicate, então o painel pode
+  SUBESTIMAR as gerações que passaram pela alternativa.

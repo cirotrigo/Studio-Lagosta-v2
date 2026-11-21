@@ -46,6 +46,7 @@ vi.mock('@/lib/ai/gemini-image-client', () => ({
     throw new Error('parou depois das referências')
   },
   deveTentarAlternativaGemini: () => false,
+  GeminiImageError: class GeminiImageError extends Error {},
 }))
 vi.mock('@/lib/knowledge/search', () => ({
   getProjectPromptKnowledgeContext: async () => ({ context: '', warnings: [], conflicts: [], hits: [], categoriesUsed: [] }),

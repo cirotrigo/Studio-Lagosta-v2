@@ -120,9 +120,10 @@ const PADROES_DE_MODELO_AUSENTE = [
 const PADROES_DE_INSTABILIDADE = ['unavailable', 'overloaded', 'deadline', 'timeout', 'internal error', 'temporarily']
 
 /**
- * Classifica um erro da geração. Ordem: status HTTP (404, 429, 401/403, 5xx),
- * depois o texto só para o que veio sem status (erro do próprio client ou de
- * rede). Puro: não toca rede nem env.
+ * Classifica um erro da geração. O status HTTP decide sozinho para 404, 408,
+ * 429, 401/403 e 5xx; o texto decide para o que veio sem status (erro do
+ * próprio client ou de rede) e para 400 e os demais 4xx — é assim que "API key
+ * not valid" (400) vira autenticação. Puro: não toca rede nem env.
  */
 export function classificarErroGemini(error: unknown): {
   kind: GeminiImageErrorKind
@@ -137,10 +138,11 @@ export function classificarErroGemini(error: unknown): {
 
   if (httpStatus === 404) return { kind: 'modelo-indisponivel', httpStatus }
   if (httpStatus === 429) return { kind: 'limite-de-uso', httpStatus }
+  if (httpStatus === 408) return { kind: 'instabilidade', httpStatus }
   if (httpStatus === 401 || httpStatus === 403) return { kind: 'autenticacao', httpStatus }
   if (httpStatus !== undefined && httpStatus >= 500) return { kind: 'instabilidade', httpStatus }
 
-  // Sem status, ou 400: o texto decide.
+  // Sem status, 400 ou outro 4xx: o texto decide.
   if (['safety', 'blocked', 'harm', 'responsible'].some((p) => texto.includes(p))) {
     return { kind: 'seguranca', httpStatus }
   }

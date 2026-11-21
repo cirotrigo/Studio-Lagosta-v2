@@ -12,7 +12,11 @@ import {
 import { fetchProjectWithAccess } from '@/lib/projects/access'
 import { googleDriveService } from '@/server/google-drive-service'
 import { assertDriveDoProjeto } from '@/lib/google-drive/escopo'
-import { generateImageWithGemini, deveTentarAlternativaGemini } from '@/lib/ai/gemini-image-client'
+import {
+  generateImageWithGemini,
+  deveTentarAlternativaGemini,
+  GeminiImageError,
+} from '@/lib/ai/gemini-image-client'
 import { montarPredicaoReplicate } from '@/lib/ai/replicate-nano-banana'
 import { extractDriveFileId } from '@/lib/ai/fetch-image-source'
 
@@ -271,6 +275,7 @@ export async function POST(request: Request) {
       const getRemainingTime = () => VERCEL_TIME_BUDGET_MS - (Date.now() - startTime)
 
       let geminiSuccess = false
+      let ultimoErroGemini: GeminiImageError | null = null
 
       for (let attempt = 1; attempt <= MAX_GEMINI_RETRIES; attempt++) {
         // Na 2ª tentativa, fallback para Nano Banana Pro via Replicate
@@ -360,7 +365,12 @@ export async function POST(request: Request) {
           const errorMessage = error instanceof Error ? error.message : String(error)
           // 🔴 Modelo desligado (404) também aciona a alternativa: antes, um 404
           // só chegava aqui por acaso ("rate" dentro de "generateContent").
-          const tentarAlternativa = deveTentarAlternativaGemini(error)
+          // Só erro do GEMINI paga uma alternativa: o `put` do Blob mora no mesmo
+          // try, e "Too many requests" / "does not exist" do Blob, lidos pelo
+          // texto, virariam uma 2ª geração paga com a imagem do Google já pronta.
+          const tentarAlternativa =
+            error instanceof GeminiImageError && deveTentarAlternativaGemini(error)
+          if (error instanceof GeminiImageError) ultimoErroGemini = error
 
           console.error(`[AI Generate] Gemini error on attempt ${attempt}:`, {
             error: errorMessage,
@@ -380,6 +390,11 @@ export async function POST(request: Request) {
       }
 
       if (!geminiSuccess) {
+        // Alternativa que não pôde rodar (sem REPLICATE_API_TOKEN ou sem tempo):
+        // modelo desligado não é "temporário", então o usuário vê o motivo real.
+        if (ultimoErroGemini?.kind === 'modelo-indisponivel') {
+          throw ultimoErroGemini
+        }
         throw new Error(
           `🔄 Falha ao gerar imagem com ${modelConfig.displayName}\n\n` +
           `O modelo está temporariamente indisponível.\n\n` +

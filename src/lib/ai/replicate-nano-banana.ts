@@ -47,11 +47,15 @@ export function montarPredicaoReplicate(params: ParametrosPredicaoReplicate): {
     input.resolution = params.resolution
   }
 
-  // Modo de edição: baseImage é a imagem principal; senão, as referências (até 14)
-  if (params.mode === 'edit' && params.baseImage) {
-    input.image_input = [params.baseImage]
-  } else if (params.referenceImages && params.referenceImages.length > 0) {
-    input.image_input = params.referenceImages.slice(0, 14)
+  // Igual ao caminho do Gemini (`route.ts` manda inpaint como edit, e o client
+  // manda a base e DEPOIS as referências): antes, a edição perdia as
+  // referências escolhidas e o inpaint ia sem a imagem base.
+  const editando = (params.mode === 'edit' || params.mode === 'inpaint') && !!params.baseImage
+  const imagens = editando
+    ? [params.baseImage as string, ...(params.referenceImages ?? [])]
+    : (params.referenceImages ?? [])
+  if (imagens.length > 0) {
+    input.image_input = imagens.slice(0, 14)
   }
 
   // Filtro de segurança (apenas Pro)
