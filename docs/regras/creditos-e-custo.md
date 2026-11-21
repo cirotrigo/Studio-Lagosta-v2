@@ -153,3 +153,19 @@ lida a cada chamada. **Padrão: desligada** (qualquer valor que não seja `true`
   anterior o mesmo caso marcava FAILED um post já publicado. Se a cobrança
   voltar a valer como regra, trocar a validação por reserva atômica antes do
   Zernio, com estorno idempotente quando o envio falhar de vez.
+
+### ⚠️ `nano-banana-2` virou o Nano Banana 2.1 e a tabela não acompanhou (21/11/2026)
+
+Desde 21/11/2026 o apelido `nano-banana-2` roda `gemini-nano-banana-2.1`
+(`geracao-ia.md`, "Nano Banana: previews desligados"). As chaves
+`nano-banana-2.*` de `cost-estimates.ts` continuam com o preço levantado em
+12/08/2026 para o NB2 (US$ 0,101). Fontes de terceiros dão o 2.1 por cerca de
+**US$ 0,034 em 1K e US$ 0,050 em 2K**, mas não foi conferido na tabela oficial.
+Até alguém conferir, o painel tende a SUPERESTIMAR o custo do `nano-banana-2`.
+A cobrança em créditos (10) não mudou.
+
+- Trocar o número muda também a estimativa das linhas ANTIGAS, porque a chave
+  é o apelido e não o ID do Google: o painel recalcula o passado com o preço
+  novo. Se o histórico importar, a chave precisa passar a levar o ID.
+- A alternativa do gerador direto agora grava `apiProvider: 'replicate'` e cai
+  nas chaves `replicate.`, como este arquivo já dizia que deveria.

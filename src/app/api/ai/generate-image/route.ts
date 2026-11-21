@@ -12,7 +12,8 @@ import {
 import { fetchProjectWithAccess } from '@/lib/projects/access'
 import { googleDriveService } from '@/server/google-drive-service'
 import { assertDriveDoProjeto } from '@/lib/google-drive/escopo'
-import { generateImageWithGemini, isGeminiRetryableError } from '@/lib/ai/gemini-image-client'
+import { generateImageWithGemini, deveTentarAlternativaGemini } from '@/lib/ai/gemini-image-client'
+import { montarPredicaoReplicate } from '@/lib/ai/replicate-nano-banana'
 import { extractDriveFileId } from '@/lib/ai/fetch-image-source'
 
 export const runtime = 'nodejs'
@@ -258,7 +259,9 @@ export async function POST(request: Request) {
         ? preparedReferenceAssets.map(asset => asset.contentType)
         : undefined
 
-      // Executar geração com retry (1 retry com Gemini, depois fallback para Nano Banana Pro via Replicate)
+      // Uma tentativa no Gemini; se ela falhar por motivo que outro provider
+      // resolve (modelo desligado, limite, instabilidade), a 2ª volta é o
+      // Nano Banana Pro via Replicate. Não há 2ª tentativa no Gemini.
       const MAX_GEMINI_RETRIES = 2
       const RETRY_DELAY_MS = 5000
       const startTime = Date.now()
@@ -355,15 +358,18 @@ export async function POST(request: Request) {
           break
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error)
-          const isRetryable = isGeminiRetryableError(errorMessage)
+          // 🔴 Modelo desligado (404) também aciona a alternativa: antes, um 404
+          // só chegava aqui por acaso ("rate" dentro de "generateContent").
+          const tentarAlternativa = deveTentarAlternativaGemini(error)
 
           console.error(`[AI Generate] Gemini error on attempt ${attempt}:`, {
             error: errorMessage,
-            isRetryable,
+            kind: (error as { kind?: string })?.kind,
+            tentarAlternativa,
             elapsedTime: `${getElapsedTime()}s`,
           })
 
-          if (!isRetryable) {
+          if (!tentarAlternativa) {
             throw error
           }
 
@@ -615,7 +621,7 @@ export async function POST(request: Request) {
         width: dimensions.width,
         height: dimensions.height,
         aspectRatio: body.aspectRatio,
-        provider: isGeminiModel && !usedFallbackModel ? 'gemini-direct' : currentModelConfig.provider.toLowerCase(),
+        provider: isGeminiModel && !usedFallbackModel ? 'gemini-direct' : 'replicate',
         model: actualModel,
         predictionId: predictionId,
         createdBy: userId,
@@ -636,7 +642,9 @@ export async function POST(request: Request) {
         model: actualModel,
         originalModel: usedFallbackModel ? body.model : undefined,
         usedFallbackModel,
-        apiProvider: isGeminiModel ? 'gemini-direct' : 'replicate',
+        // A alternativa roda no Replicate, e o preço do MESMO modelo muda com o
+        // provider (`cost-estimates.ts`, prefixo `replicate.`).
+        apiProvider: isGeminiModel && !usedFallbackModel ? 'gemini-direct' : 'replicate',
         resolution: body.resolution,
         prompt: body.prompt,
         aiImageId: aiImage.id,
@@ -724,54 +732,21 @@ async function createReplicatePrediction(params: {
   baseImage?: string
   maskImage?: string
 }) {
-  const modelConfig = AI_IMAGE_MODELS[params.model]
-  const inputData: Record<string, unknown> = {
-    prompt: params.prompt,
-  }
-
-  // Configuração para Nano Banana 2 e Nano Banana Pro
-  inputData.aspect_ratio = params.aspectRatio
-  inputData.output_format = 'png'
-
-  // Resolução (apenas Pro)
-  if (params.model === 'nano-banana-pro' && params.resolution) {
-    inputData.resolution = params.resolution
-  }
-
-  // Modo de edição: usar baseImage como imagem principal
-  if (params.mode === 'edit' && params.baseImage) {
-    console.log(`[AI Generate] ${params.model} edit mode: using baseImage as primary input`)
-    inputData.image_input = [params.baseImage]
-  }
-  // Modo geração: usar referenceImages (até 14 imagens)
-  else if (params.referenceImages && params.referenceImages.length > 0) {
-    inputData.image_input = params.referenceImages.slice(0, 14)
-  }
-
-  // Safety filter (apenas Pro)
-  if (params.model === 'nano-banana-pro') {
-    inputData.safety_filter_level = 'block_only_high'
-  }
-
-  const payload = {
-    version: modelConfig.version,
-    input: inputData
-  }
+  const { url, body } = montarPredicaoReplicate(params)
 
   console.log('[AI Generate] Sending to Replicate:', {
     model: params.model,
-    version: modelConfig.version,
-    inputKeys: Object.keys(inputData),
-    input: inputData
+    url,
+    inputKeys: Object.keys(body.input),
   })
 
-  const response = await fetch('https://api.replicate.com/v1/predictions', {
+  const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${process.env.REPLICATE_API_TOKEN}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(body)
   })
 
   if (!response.ok) {

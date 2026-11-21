@@ -1267,3 +1267,50 @@ automático. Medido no rodapé da Wine Vix, 5 tentativas de ~30s e ~US$ 0,008:
   "aumente o rodapé" o caminho determinístico é a peça ser página do editor
   (a via `compor`, onde `fontSize` é um campo). O gpt-image é pintor, não
   tipógrafo.
+
+### 🔴 Nano Banana: previews desligados, 404 lido como "limite de uso" e a alternativa que nunca funcionou (21/11/2026)
+
+Os dois apelidos apontavam para previews que o Google desligou em
+**25/06/2026**: `nano-banana-2` → `gemini-3.1-flash-image-preview` e
+`nano-banana-pro` → `gemini-3-pro-image-preview`. Desde 21/11/2026:
+`nano-banana-2` → **`gemini-nano-banana-2.1`** (GA desde 06/10/2026, o
+substituto que o Google indica) e `nano-banana-pro` → **`gemini-3-pro-image`**
+(GA). O apelido não mudou: ele está no banco, no MCP e na tabela de créditos.
+
+- **Fonte única do ID: `AI_IMAGE_MODELS[*].version`** (`image-models-config.ts`).
+  `gemini-image-client.ts` lê dali, com override por env
+  (`GEMINI_IMAGE_MODEL_NANO_BANANA_2`, `GEMINI_IMAGE_MODEL_NANO_BANANA_PRO`)
+  para o dia em que o modelo de hoje também se aposentar: troca a variável
+  na Vercel e redeploya. Um teste recusa `version` com `preview`.
+- 🔴 **O 404 do Google era reportado como "Limite de uso da API atingido".**
+  O texto padrão do 404 é "models/X is not found for API version v1beta, or
+  is not supported for **generateContent**", e "generatecontent" contém
+  "rate"; o client procurava "rate" antes de "not found". O modelo desligado
+  virava erro passageiro. Agora quem decide é o **status HTTP** do `ApiError`
+  (404, 429, 401/403, 5xx) e o texto só vale para erro sem status. O erro sai
+  como `GeminiImageError` com `kind`; retry e alternativa leem o `kind`.
+- **Modelo desligado ACIONA a alternativa** (`deveTentarAlternativaGemini`):
+  é o caso em que repetir o mesmo modelo não adianta. Segurança, autenticação
+  e parâmetros inválidos não acionam.
+- 🔴 **A alternativa do gerador direto (`/api/ai/generate-image`) não
+  funcionava desde 16/03/2026.** Ela mandava `version:
+  AI_IMAGE_MODELS[...].version` para `POST /v1/predictions` do Replicate, e
+  esse `version` tinha virado o ID do Google. Agora o modelo do Replicate é
+  o campo `replicateModel` (`google/nano-banana-pro`), e o pedido vai para
+  `/v1/models/{owner}/{name}/predictions`, sem `version`
+  (`src/lib/ai/replicate-nano-banana.ts`, com teste). A geração pela
+  alternativa também passou a registrar `apiProvider: 'replicate'`: antes saía
+  `gemini-direct` e o painel de custo usava o preço do Google.
+- **Quem tem alternativa**: o gerador direto (Gemini → Replicate) e
+  `/api/tools/generate-art` (NB2 → Pro, qualquer erro). A trilha `imagem` do
+  arte-ia (foto de cena, MCP `gerar-imagem`) e a Arte Rápida NÃO têm: um 404
+  ali marca a geração como falha, agora com a mensagem certa.
+- ⚠️ **Os logs de produção não mostram sucesso**: `next.config.ts` remove
+  `console.log` no build, e só `console.error`/`console.warn` sobrevivem. Para
+  saber se o Gemini está sendo usado, procure `[Gemini Image] Error` (que traz
+  o texto cru do Google, o `kind` e o status) ou consulte as gerações no banco.
+- **Não validado daqui** (a sessão que fez a troca não alcançava o Google nem
+  o Replicate): o ID exato `gemini-nano-banana-2.1` saiu de fontes de
+  terceiros, e o slug `google/nano-banana-pro` não foi chamado. Os números de
+  resolução do `nano-banana-pro` acima foram medidos no preview; vale medir de
+  novo no GA. O preço da tabela (`cost-estimates.ts`) segue o do NB2.

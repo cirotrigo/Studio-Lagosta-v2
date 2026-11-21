@@ -80,6 +80,9 @@ const PROVIDER_PRICING = {
   'nano-banana-pro.1K': 0.134,
   'nano-banana-pro.2K': 0.134,
   'nano-banana-pro.4K': 0.24,
+  // ⚠️ Desde 21/11/2026 o apelido roda `gemini-nano-banana-2.1`, que fontes de
+  // terceiros dão bem mais barato (~0.034 em 1K). Não conferido na tabela
+  // oficial, então o número abaixo segue o do NB2 (ver creditos-e-custo.md).
   'nano-banana-2.default': 0.101,
   'nano-banana-2.1K': 0.101,
   'nano-banana-2.2K': 0.101,

@@ -15,10 +15,11 @@ This guide covers production rollout for the Electron Instagram Art Automation m
   - `/api/tools/generate-ai-text` (real copy generation mode)
   - `/api/tools/generate-art` (prompt/text pipeline)
 - `GOOGLE_GENERATIVE_AI_API_KEY` - required by `/api/tools/generate-art` for image generation mode
-- `GEMINI_IMAGE_PRIMARY_MODEL` (optional override):
-  - default: `gemini-3.1-flash-image-preview` (Nano Banana 2)
-- `GEMINI_IMAGE_FALLBACK_MODEL` (optional override):
-  - default: `gemini-2.5-flash-image`
+- `GEMINI_IMAGE_MODEL_NANO_BANANA_2` (optional override of the Google model id; primary):
+  - default: `gemini-nano-banana-2.1` (Nano Banana 2.1)
+- `GEMINI_IMAGE_MODEL_NANO_BANANA_PRO` (optional override of the Google model id; fallback):
+  - default: `gemini-3-pro-image` (Nano Banana Pro)
+  - (until 21/11/2026 this doc listed `GEMINI_IMAGE_PRIMARY_MODEL`/`GEMINI_IMAGE_FALLBACK_MODEL`, which no code ever read)
 - `BLOB_READ_WRITE_TOKEN` - required for generated image persistence on Vercel Blob
 
 ## Deploy Steps
