@@ -6,6 +6,7 @@
  */
 
 import { GoogleGenAI } from '@google/genai'
+import { AI_IMAGE_MODELS } from '@/lib/ai/image-models-config'
 
 // Singleton do client Gemini
 let _geminiClient: GoogleGenAI | null = null
@@ -21,14 +22,150 @@ function getGeminiClient(): GoogleGenAI {
   return _geminiClient
 }
 
-// Modelos para geração de imagens
-const GEMINI_IMAGE_MODELS = {
-  'nano-banana-2': 'gemini-3.1-flash-image-preview',  // Mais rápido
-  'nano-banana-pro': 'gemini-3-pro-image-preview',    // Maior qualidade, 4K
-} as const
+export type GeminiImageModel = 'nano-banana-2' | 'nano-banana-pro'
+
+/**
+ * Override por env do ID do Google, para o dia em que o modelo de hoje também
+ * se aposentar — trocar a variável na Vercel e redeployar, sem mexer em código.
+ * Mesmo padrão do `GEMINI_VISION_MODEL` (`reconciliar-catalogo.ts`).
+ */
+const ENV_DO_MODELO: Record<GeminiImageModel, string> = {
+  'nano-banana-2': 'GEMINI_IMAGE_MODEL_NANO_BANANA_2',
+  'nano-banana-pro': 'GEMINI_IMAGE_MODEL_NANO_BANANA_PRO',
+}
+
+/**
+ * ID do Google que vai no `generateContent` para cada apelido interno.
+ *
+ * 🔴 Até 21/11/2026 isto apontava para `gemini-3.1-flash-image-preview` e
+ * `gemini-3-pro-image-preview`, previews que o Google desligou em 25/06/2026.
+ * A fonte única é `AI_IMAGE_MODELS[model].version`; não repita o ID aqui.
+ */
+export function resolverIdDoModeloGemini(
+  model: GeminiImageModel,
+  env: Record<string, string | undefined> = process.env,
+): string {
+  const override = env[ENV_DO_MODELO[model]]?.trim()
+  return override || AI_IMAGE_MODELS[model]?.version
+}
+
+/**
+ * Por que a geração falhou, decidido pelo STATUS HTTP quando ele existe.
+ *
+ * 🔴 Não classifique pela mensagem primeiro: o 404 padrão do Google é
+ * "models/X is not found for API version v1beta, or is not supported for
+ * generateContent", e "generateContent" contém "rate". O código antigo
+ * procurava "rate" antes de "not found", e um modelo DESLIGADO era reportado
+ * como "Limite de uso da API atingido" (e tratado como passageiro).
+ */
+export type GeminiImageErrorKind =
+  | 'modelo-indisponivel'
+  | 'limite-de-uso'
+  | 'seguranca'
+  | 'autenticacao'
+  | 'parametros-invalidos'
+  | 'instabilidade'
+  | 'desconhecido'
+
+export class GeminiImageError extends Error {
+  readonly kind: GeminiImageErrorKind
+  readonly httpStatus?: number
+  readonly modelId?: string
+
+  constructor(
+    message: string,
+    opts: { kind: GeminiImageErrorKind; httpStatus?: number; modelId?: string; cause?: unknown },
+  ) {
+    super(message, opts.cause !== undefined ? { cause: opts.cause } : undefined)
+    this.name = 'GeminiImageError'
+    this.kind = opts.kind
+    this.httpStatus = opts.httpStatus
+    this.modelId = opts.modelId
+  }
+}
+
+const MENSAGEM_DO_TIPO: Partial<Record<GeminiImageErrorKind, string>> = {
+  seguranca:
+    '🚫 Conteúdo bloqueado pelo filtro de segurança do Google.\n\n' +
+    'Por favor, ajuste o prompt e tente novamente com conteúdo apropriado.',
+  'limite-de-uso':
+    '⚠️ Limite de uso da API atingido.\n\n' +
+    'Aguarde alguns minutos e tente novamente.',
+  autenticacao:
+    '🔑 Erro de autenticação com a API Google.\n\n' +
+    'Contate o suporte técnico.',
+  'modelo-indisponivel':
+    '❌ Modelo de IA não disponível.\n\n' +
+    'O modelo solicitado pode não estar disponível na sua região ou conta.',
+  'parametros-invalidos':
+    '❌ Parâmetros inválidos.\n\n' +
+    'Verifique o prompt e as configurações e tente novamente.',
+}
+
+function statusHttpDe(error: unknown): number | undefined {
+  const status = (error as { status?: unknown } | null)?.status
+  return typeof status === 'number' && status >= 100 && status <= 599 ? status : undefined
+}
+
+const PADROES_DE_LIMITE = ['rate limit', 'rate_limit', 'ratelimit', 'too many requests', 'quota', 'resource_exhausted']
+const PADROES_DE_MODELO_AUSENTE = [
+  'not found',
+  'not_found',
+  'does not exist',
+  'no longer available',
+  'has been deprecated',
+  'has been shut down',
+  'has been discontinued',
+]
+const PADROES_DE_INSTABILIDADE = ['unavailable', 'overloaded', 'deadline', 'timeout', 'internal error', 'temporarily']
+
+/**
+ * Classifica um erro da geração. O status HTTP decide sozinho para 404, 408,
+ * 429, 401/403 e 5xx; o texto decide para o que veio sem status (erro do
+ * próprio client ou de rede) e para 400 e os demais 4xx — é assim que "API key
+ * not valid" (400) vira autenticação. Puro: não toca rede nem env.
+ */
+export function classificarErroGemini(error: unknown): {
+  kind: GeminiImageErrorKind
+  httpStatus?: number
+} {
+  if (error instanceof GeminiImageError) {
+    return { kind: error.kind, httpStatus: error.httpStatus }
+  }
+
+  const httpStatus = statusHttpDe(error)
+  const texto = (error instanceof Error ? error.message : String(error ?? '')).toLowerCase()
+
+  if (httpStatus === 404) return { kind: 'modelo-indisponivel', httpStatus }
+  if (httpStatus === 429) return { kind: 'limite-de-uso', httpStatus }
+  if (httpStatus === 408) return { kind: 'instabilidade', httpStatus }
+  if (httpStatus === 401 || httpStatus === 403) return { kind: 'autenticacao', httpStatus }
+  if (httpStatus !== undefined && httpStatus >= 500) return { kind: 'instabilidade', httpStatus }
+
+  // Sem status, 400 ou outro 4xx: o texto decide.
+  if (['safety', 'blocked', 'harm', 'responsible'].some((p) => texto.includes(p))) {
+    return { kind: 'seguranca', httpStatus }
+  }
+  // O Google devolve 400 INVALID_ARGUMENT para chave inválida ("API key not
+  // valid"), por isso autenticação vem antes de "invalid".
+  if (['api key', 'api_key', 'unauthorized', 'authentication', 'permission'].some((p) => texto.includes(p))) {
+    return { kind: 'autenticacao', httpStatus }
+  }
+  if (PADROES_DE_LIMITE.some((p) => texto.includes(p))) return { kind: 'limite-de-uso', httpStatus }
+  if (PADROES_DE_MODELO_AUSENTE.some((p) => texto.includes(p))) {
+    return { kind: 'modelo-indisponivel', httpStatus }
+  }
+  if (texto.includes('invalid') && !texto.includes('image')) {
+    return { kind: 'parametros-invalidos', httpStatus }
+  }
+  if (httpStatus === undefined && PADROES_DE_INSTABILIDADE.some((p) => texto.includes(p))) {
+    return { kind: 'instabilidade', httpStatus }
+  }
+  return { kind: 'desconhecido', httpStatus }
+}
 
 export interface GeminiImageParams {
-  model: 'nano-banana-2' | 'nano-banana-pro'
+  model: GeminiImageModel
   prompt: string
   aspectRatio?: string
   resolution?: '1K' | '2K' | '4K'
@@ -70,7 +207,7 @@ export async function generateImageWithGemini(
   params: GeminiImageParams
 ): Promise<GeminiImageResult> {
   const client = getGeminiClient()
-  const modelId = GEMINI_IMAGE_MODELS[params.model]
+  const modelId = resolverIdDoModeloGemini(params.model)
 
   if (!modelId) {
     throw new Error(`Modelo não suportado: ${params.model}`)
@@ -164,68 +301,45 @@ export async function generateImageWithGemini(
         : 'API Gemini não retornou nenhuma imagem'
     )
   } catch (error) {
-    // Traduzir erros conhecidos da API
     const errorMessage = error instanceof Error ? error.message : String(error)
-    const lowerError = errorMessage.toLowerCase()
+    const { kind, httpStatus } = classificarErroGemini(error)
 
+    // console.error sobrevive ao `removeConsole` do build de produção
+    // (next.config.ts): é a única linha que mostra o texto CRU do Google.
     console.error('[Gemini Image] Error:', {
       model: modelId,
+      kind,
+      httpStatus,
       error: errorMessage,
     })
 
-    // Safety filter
-    if (lowerError.includes('safety') || lowerError.includes('blocked') || lowerError.includes('harm') || lowerError.includes('responsible')) {
-      throw new Error(
-        '🚫 Conteúdo bloqueado pelo filtro de segurança do Google.\n\n' +
-        'Por favor, ajuste o prompt e tente novamente com conteúdo apropriado.'
-      )
-    }
-
-    // Rate limiting
-    if (lowerError.includes('rate') || lowerError.includes('429') || lowerError.includes('quota') || lowerError.includes('resource_exhausted')) {
-      throw new Error(
-        '⚠️ Limite de uso da API atingido.\n\n' +
-        'Aguarde alguns minutos e tente novamente.'
-      )
-    }
-
-    // Token/auth errors
-    if (lowerError.includes('api key') || lowerError.includes('unauthorized') || lowerError.includes('authentication') || lowerError.includes('permission')) {
-      throw new Error(
-        '🔑 Erro de autenticação com a API Google.\n\n' +
-        'Contate o suporte técnico.'
-      )
-    }
-
-    // Model not found / version error
-    if (lowerError.includes('not found') || lowerError.includes('does not exist') || lowerError.includes('version')) {
-      throw new Error(
-        '❌ Modelo de IA não disponível.\n\n' +
-        'O modelo solicitado pode não estar disponível na sua região ou conta.'
-      )
-    }
-
-    // Invalid request
-    if (lowerError.includes('invalid') && !lowerError.includes('image')) {
-      throw new Error(
-        '❌ Parâmetros inválidos.\n\n' +
-        'Verifique o prompt e as configurações e tente novamente.'
-      )
-    }
-
-    // Re-throw with original message if not matched
-    throw error
+    // Instabilidade e erro desconhecido mantêm o texto original, como antes;
+    // o `kind` é o que decide retry e alternativa, não o texto.
+    const mensagem = MENSAGEM_DO_TIPO[kind] ?? errorMessage
+    throw new GeminiImageError(mensagem, { kind, httpStatus, modelId, cause: error })
   }
 }
 
 /**
- * Verifica se o erro é retryable
+ * Verifica se o erro é passageiro (vale tentar de novo / outro provider).
+ *
+ * Aceita o erro (preferível: usa o `kind`) ou só a mensagem, para quem ainda
+ * passa string. 🔴 "rate" solto não entra nos padrões: casa "generateContent",
+ * "migrate", "generate"...
  */
-export function isGeminiRetryableError(errorMessage: string): boolean {
-  const lowerError = errorMessage.toLowerCase()
+export function isGeminiRetryableError(errorOrMessage: unknown): boolean {
+  if (errorOrMessage instanceof GeminiImageError) {
+    return errorOrMessage.kind === 'limite-de-uso' || errorOrMessage.kind === 'instabilidade'
+  }
+
+  const lowerError = (
+    errorOrMessage instanceof Error ? errorOrMessage.message : String(errorOrMessage ?? '')
+  ).toLowerCase()
 
   const retryablePatterns = [
-    'rate',
+    'rate limit',
+    'rate_limit',
+    'too many requests',
     '429',
     '503',
     '500',
@@ -252,9 +366,10 @@ export function isGeminiRetryableError(errorMessage: string): boolean {
     'invalid',
     'billing',
     'not found',
+    'not_found',
     'does not exist',
     'responsible',
-    'version',
+    'modelo de ia não disponível',
   ]
 
   if (nonRetryablePatterns.some(p => lowerError.includes(p))) {
@@ -262,4 +377,15 @@ export function isGeminiRetryableError(errorMessage: string): boolean {
   }
 
   return retryablePatterns.some(p => lowerError.includes(p))
+}
+
+/**
+ * Vale acionar a ALTERNATIVA (outro modelo ou outro provider)? Sim quando o
+ * erro é passageiro E quando o modelo não existe mais: modelo desligado é
+ * justamente o caso em que tentar de novo o MESMO não adianta e outro adianta.
+ * Não para segurança, autenticação ou parâmetros: a alternativa erraria igual.
+ */
+export function deveTentarAlternativaGemini(error: unknown): boolean {
+  const { kind } = classificarErroGemini(error)
+  return kind === 'modelo-indisponivel' || kind === 'limite-de-uso' || kind === 'instabilidade'
 }

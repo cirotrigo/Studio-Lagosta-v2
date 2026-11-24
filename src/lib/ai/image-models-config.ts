@@ -16,7 +16,19 @@ export interface AIImageModelConfig {
   provider: string
   displayName: string
   description: string
+  /**
+   * ID do modelo na API do GOOGLE (o que `gemini-image-client.ts` manda no
+   * `generateContent`). É a fonte única: o client lê daqui, com override por
+   * env. NÃO é identificador do Replicate — ver `replicateModel`.
+   */
   version: string
+  /**
+   * Modelo oficial no Replicate (`owner/name`), usado só pela alternativa de
+   * `generate-image/route.ts`. Até 21/11/2026 a alternativa mandava o `version`
+   * acima para o Replicate, que é um ID do Google: a chamada não tinha como dar
+   * certo, e ficou assim de 16/03 a 21/11/2026.
+   */
+  replicateModel?: string
   apiProvider: AIImageApiProvider
 
   // Capacidades
@@ -62,7 +74,10 @@ export const AI_IMAGE_MODELS: Record<AIImageModel, AIImageModelConfig> = {
     provider: 'Google',
     displayName: 'Nano Banana 2',
     description: 'Modelo mais recente e rápido para geração de imagens com referências',
-    version: 'gemini-3.1-flash-image-preview',
+    // O apelido segue `nano-banana-2` (está no banco, no MCP e na tabela de
+    // créditos), mas o modelo é o Nano Banana 2.1 desde 21/11/2026: o preview
+    // `gemini-3.1-flash-image-preview` foi desligado pelo Google em 25/06/2026.
+    version: 'gemini-nano-banana-2.1',
     apiProvider: 'gemini',
 
     capabilities: {
@@ -98,7 +113,10 @@ export const AI_IMAGE_MODELS: Record<AIImageModel, AIImageModelConfig> = {
     provider: 'Google',
     displayName: 'Nano Banana Pro',
     description: 'Modelo profissional com qualidade 4K e texto preciso',
-    version: 'gemini-3-pro-image-preview',
+    // Versão estável (GA). O preview `gemini-3-pro-image-preview` foi
+    // desligado pelo Google em 25/06/2026.
+    version: 'gemini-3-pro-image',
+    replicateModel: 'google/nano-banana-pro',
     apiProvider: 'gemini',
 
     capabilities: {
