@@ -1267,3 +1267,17 @@ automático. Medido no rodapé da Wine Vix, 5 tentativas de ~30s e ~US$ 0,008:
   "aumente o rodapé" o caminho determinístico é a peça ser página do editor
   (a via `compor`, onde `fontSize` é um campo). O gpt-image é pintor, não
   tipógrafo.
+
+## Ids de modelo aposentados no chat de IA (24/11/2026)
+
+- O menu e a allow-list do Google no chat (`src/app/api/ai/chat/route.ts`, `providers/route.ts`,
+  `ai-chat/page.tsx`) usam os **apelidos do Google** (`gemini-flash-latest`, `gemini-pro-latest`,
+  `gemini-flash-lite-latest`) e um id fixo GA (`gemini-3.5-flash`). Os apelidos seguem o modelo
+  vigente; id versionado envelhece: `gemini-1.5-*`, `gemini-2.0-*` e `gemini-pro` já foram
+  desligados e o `gemini-2.5-flash` tem desligamento marcado para 01/12/2026. As três listas
+  precisam bater: id no menu que não está na allow-list vira 400 no envio.
+- O padrão da rota `/api/ai/image` (OpenRouter) é `google/gemini-3.1-flash-image-preview`, o mesmo
+  modelo do Nano Banana 2.
+- Os únicos modelos de imagem são os de `src/lib/ai/image-models-config.ts`. Mensagem de erro ou dica
+  que sugere modelo cita só eles, e o custo em créditos sai de `calculateCreditsForModel`, nunca de
+  um número escrito à mão (as dicas antigas recomendavam FLUX, que o app não oferece mais).

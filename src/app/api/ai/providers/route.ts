@@ -35,10 +35,12 @@ const PROVIDER_MODELS: Record<string, { id: string; label: string }[]> = {
     { id: 'claude-3-haiku-20240307', label: 'Claude 3 Haiku' },
   ],
   google: [
-    { id: 'gemini-2.0-flash-exp', label: 'Gemini 2.0 Flash (Latest)' },
-    { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro' },
-    { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash' },
-    { id: 'gemini-1.5-flash-8b', label: 'Gemini 1.5 Flash 8B (Fast)' },
+    // Apelidos do Google (seguem o modelo vigente); a lista precisa bater com
+    // ALLOWED_MODELS.google em src/app/api/ai/chat/route.ts.
+    { id: 'gemini-flash-latest', label: 'Gemini Flash (Latest)' },
+    { id: 'gemini-pro-latest', label: 'Gemini Pro (Latest)' },
+    { id: 'gemini-flash-lite-latest', label: 'Gemini Flash-Lite (Fast)' },
+    { id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash' },
   ],
   mistral: [
     { id: 'mistral-large-latest', label: 'Mistral Large (Latest)' },
@@ -53,8 +55,7 @@ const PROVIDER_MODELS: Record<string, { id: string; label: string }[]> = {
     { id: 'openai/gpt-5-mini', label: 'OpenAI · GPT-5 Mini' },
     { id: 'anthropic/claude-3.5-sonnet', label: 'Anthropic · Claude 3.5 Sonnet' },
     { id: 'anthropic/claude-3.5-haiku', label: 'Anthropic · Claude 3.5 Haiku' },
-    { id: 'google/gemini-2.0-flash-exp:free', label: 'Google · Gemini 2.0 Flash (Free)' },
-    { id: 'google/gemini-flash-1.5', label: 'Google · Gemini 1.5 Flash' },
+    { id: 'google/gemini-3.5-flash', label: 'Google · Gemini 3.5 Flash' },
     { id: 'mistralai/mistral-large', label: 'Mistral · Large' },
     { id: 'meta-llama/llama-3.3-70b-instruct', label: 'Meta · Llama 3.3 70B' },
     { id: 'deepseek/deepseek-chat', label: 'DeepSeek · Chat' },

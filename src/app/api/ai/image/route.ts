@@ -47,7 +47,7 @@ const BodySchema = z
       // basic vendor/model pattern used by OpenRouter
       .regex(/^[a-z0-9-]+\/[a-z0-9_.:-]+$/i, 'Invalid OpenRouter model id')
       .max(100)
-      .default('google/gemini-2.5-flash-image-preview'),
+      .default('google/gemini-3.1-flash-image-preview'),
     prompt: z.string().min(1).max(2000),
     // Optional knobs kept for API stability, though not used by chat/completions
     size: z

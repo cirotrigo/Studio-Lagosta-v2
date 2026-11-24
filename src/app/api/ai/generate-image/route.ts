@@ -116,10 +116,10 @@ export async function POST(request: Request) {
             `Necessário: ${required} créditos\n` +
             `Disponível: ${available} créditos\n` +
             `Faltam: ${parseInt(required) - parseInt(available)} créditos\n\n` +
-            `💡 Dica: Use modelos mais econômicos:\n` +
-            `• FLUX Schnell: 1 crédito\n` +
-            `• Nano Banana Pro: 3 créditos\n` +
-            `• FLUX 1.1 Pro: 4 créditos`
+            `💡 Dica: o custo depende do modelo e da resolução:\n` +
+            `• Nano Banana 2: ${calculateCreditsForModel('nano-banana-2')} créditos\n` +
+            `• Nano Banana Pro: ${calculateCreditsForModel('nano-banana-pro', '2K')} créditos (1K/2K), ` +
+            `${calculateCreditsForModel('nano-banana-pro', '4K')} em 4K`
           )
         }
       }
@@ -378,7 +378,7 @@ export async function POST(request: Request) {
           `🔄 Falha ao gerar imagem com ${modelConfig.displayName}\n\n` +
           `O modelo está temporariamente indisponível.\n\n` +
           `💡 Soluções:\n` +
-          `• Tente outro modelo (FLUX 1.1 Pro ou Nano Banana Pro)\n` +
+          `• Tente o outro modelo (Nano Banana 2 ou Nano Banana Pro)\n` +
           `• Aguarde alguns minutos e tente novamente`
         )
       }
@@ -525,7 +525,7 @@ export async function POST(request: Request) {
           errorMessage = `🔄 Falha após ${MAX_RETRIES} tentativas automáticas\n\n` +
             `Tentamos com ${originalModelName}${triedFallback}, mas ambos estão com problemas no Replicate.\n\n` +
             `💡 Soluções:\n` +
-            `• Tente outro modelo (FLUX Schnell ou FLUX 1.1 Pro)\n` +
+            `• Tente o outro modelo (Nano Banana 2 ou Nano Banana Pro)\n` +
             `• Aguarde alguns minutos e tente novamente\n` +
             `• Reduza o número de imagens de referência`
         } else if (errorMessage.includes('E6716')) {
@@ -535,7 +535,7 @@ export async function POST(request: Request) {
             `O modelo não conseguiu processar ${refCount} imagem${refCount > 1 ? 'ns' : ''} de referência a tempo.\n\n` +
             `💡 Soluções:\n` +
             `• Reduza para no máximo 3 imagens de referência\n` +
-            `• Use FLUX 1.1 Pro (1 imagem) ou Nano Banana Pro (10 imagens)\n` +
+            `• Use o Nano Banana 2, que é o mais rápido\n` +
             `• Aguarde alguns minutos e tente novamente`
         } else if (errorMessage.includes('NSFW') || errorMessage.includes('safety')) {
           errorMessage = '🚫 Conteúdo bloqueado pelo filtro de segurança.\n\nPor favor, ajuste o prompt e tente novamente com conteúdo apropriado.'
@@ -855,7 +855,7 @@ async function waitForPrediction(predictionId: string, maxAttempts = 60) {
     `• Imagens 4K demoram mais - tente 2K\n` +
     `• Reduza o número de imagens de referência\n` +
     `• Tente novamente em alguns minutos\n` +
-    `• Use um modelo mais rápido (FLUX Schnell)`
+    `• Use o modelo mais rápido (Nano Banana 2)`
   )
 }
 

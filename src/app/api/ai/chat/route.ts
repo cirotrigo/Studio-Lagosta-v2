@@ -82,18 +82,14 @@ const ALLOWED_MODELS: Record<z.infer<typeof ProviderSchema>, string[]> = {
     'claude-3-haiku-20240307',
   ],
   google: [
-    // Gemini 2.0
-    'gemini-2.0-flash-exp',
-    'gemini-2.0-flash-thinking-exp-01-21',
-    // Gemini 1.5
-    'gemini-1.5-pro',
-    'gemini-1.5-pro-latest',
-    'gemini-1.5-flash',
-    'gemini-1.5-flash-latest',
-    'gemini-1.5-flash-8b',
-    'gemini-1.5-flash-8b-latest',
-    // Legacy
-    'gemini-pro',
+    // Apelidos mantidos pelo Google: apontam sempre para o modelo vigente,
+    // então não se aposentam (gemini-1.5-*, gemini-2.0-* e gemini-pro já
+    // foram desligados e o 2.5 está a caminho).
+    'gemini-flash-latest',
+    'gemini-flash-lite-latest',
+    'gemini-pro-latest',
+    // Versão fixa (GA)
+    'gemini-3.5-flash',
   ],
   mistral: [
     'mistral-large-latest',

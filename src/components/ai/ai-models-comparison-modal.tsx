@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
-import { getAvailableModels } from '@/lib/ai/image-models-config'
+import { calculateCreditsForModel, getAvailableModels } from '@/lib/ai/image-models-config'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Zap, Sparkles, Check, X } from 'lucide-react'
 import { useCobrancaLigada } from '@/hooks/use-credits'
@@ -202,28 +202,16 @@ export function AIModelsComparisonModal({ open, onOpenChange }: AIModelsComparis
 
               <div className="space-y-2 text-sm">
                 <div>
-                  <span className="font-medium">Para testes/experimentação:</span>
-                  <span className="text-muted-foreground"> FLUX Schnell{cobrancaLigada && ' (1 crédito)'}</span>
+                  <span className="font-medium">Para testes e uso geral:</span>
+                  <span className="text-muted-foreground"> Nano Banana 2{cobrancaLigada && ` (${calculateCreditsForModel('nano-banana-2')} créditos)`}</span>
                 </div>
                 <div>
-                  <span className="font-medium">Para produção geral:</span>
-                  <span className="text-muted-foreground"> FLUX 1.1 Pro{cobrancaLigada && ' (4 créditos)'}</span>
-                </div>
-                <div>
-                  <span className="font-medium">Para realismo extremo:</span>
-                  <span className="text-muted-foreground"> Seedream 4{cobrancaLigada && ' (3-6 créditos)'}</span>
-                </div>
-                <div>
-                  <span className="font-medium">Para texto em imagens:</span>
-                  <span className="text-muted-foreground"> Ideogram v3 Turbo{cobrancaLigada && ' (3 créditos)'}</span>
-                </div>
-                <div>
-                  <span className="font-medium">Para design e ilustração:</span>
-                  <span className="text-muted-foreground"> Recraft V3{cobrancaLigada && ' (4 créditos)'}</span>
+                  <span className="font-medium">Para texto em imagens e mais fidelidade:</span>
+                  <span className="text-muted-foreground"> Nano Banana Pro{cobrancaLigada && ` (${calculateCreditsForModel('nano-banana-pro', '2K')} créditos)`}</span>
                 </div>
                 <div>
                   <span className="font-medium">Para máxima qualidade:</span>
-                  <span className="text-muted-foreground"> Nano Banana Pro 4K{cobrancaLigada && ' (30 créditos)'}</span>
+                  <span className="text-muted-foreground"> Nano Banana Pro 4K{cobrancaLigada && ` (${calculateCreditsForModel('nano-banana-pro', '4K')} créditos)`}</span>
                 </div>
               </div>
             </div>
